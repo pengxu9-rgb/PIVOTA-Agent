@@ -161,12 +161,18 @@ describe('signature resolver: unavailable database', () => {
   });
 });
 
-describe('signature resolver: instance-wide cooldown after an unavailable database', () => {
+describe('signature resolver: cooldown after an unavailable database', () => {
+  const sigN = (n) => `sig_${String(n).padStart(32, '0')}`;
   const OTHER_SIG = 'sig_ffeeddccbbaa99887766554433221100';
+  const alwaysDown = () => jest.fn(async () => {
+    throw poolCheckoutTimeout();
+  });
 
-  test('the next resolve of ANY sig fails fast without a query while the cooldown lasts', async () => {
-    const query = jest.fn(async () => {
-      throw poolCheckoutTimeout();
+  test('ONE failing sig is held on its own and does not block any other sig', async () => {
+    let badSigDown = true;
+    const query = jest.fn(async (sql, params) => {
+      if (badSigDown && params?.[0] === SIG) throw poolCheckoutTimeout();
+      return { rows: [] };
     });
     const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '60000' });
     await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toMatchObject({
@@ -174,9 +180,32 @@ describe('signature resolver: instance-wide cooldown after an unavailable databa
     });
     const calls = query.mock.calls.length;
 
+    // The same sig fails fast...
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toMatchObject({
+      code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE', cooldown: true,
+    });
+    expect(query.mock.calls.length).toBe(calls);
+    // ...but every other sig still reaches the database.
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, {})).resolves.toBeNull();
+    expect(query.mock.calls.length).toBeGreaterThan(calls);
+    expect(app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs).toBe(0);
+  });
+
+  test('several DISTINCT sigs failing within the window trip the instance-wide fast-fail', async () => {
+    const query = alwaysDown();
+    const { app } = loadServer(query, {
+      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '60000', RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS: '3',
+    });
+    for (const n of [1, 2]) {
+      await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(sigN(n), {})).rejects.toBeTruthy();
+    }
+    // Two distinct failures: not yet an outage.
+    expect(app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs).toBe(0);
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(sigN(3), {})).rejects.toBeTruthy();
+    const calls = query.mock.calls.length;
+
     await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, {})).rejects.toMatchObject({
-      code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
-      cooldown: true,
+      code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE', cooldown: true,
     });
     // The bypass-cache path is held too.
     await expect(
@@ -190,6 +219,29 @@ describe('signature resolver: instance-wide cooldown after an unavailable databa
     expect(query.mock.calls.length).toBe(calls);
   });
 
+  test('the same sig failing repeatedly never counts as several', async () => {
+    const query = alwaysDown();
+    const { app } = loadServer(query, {
+      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '50', RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS: '2',
+    });
+    for (let i = 0; i < 3; i += 1) {
+      await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {}).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 70));
+    }
+    expect(app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs).toBe(0);
+  });
+
+  test('distinct sigs only add up WITHIN one window: an expired failure no longer counts', async () => {
+    const query = alwaysDown();
+    const { app } = loadServer(query, {
+      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '50', RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS: '2',
+    });
+    await app._debug.resolveCatalogProductRefFromPivotaSignature(sigN(1), {}).catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    await app._debug.resolveCatalogProductRefFromPivotaSignature(sigN(2), {}).catch(() => {});
+    expect(app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs).toBe(0);
+  });
+
   test('a cached ref is still served during the cooldown, and the database is asked again after it', async () => {
     let down = false;
     const query = jest.fn(async (sql) => {
@@ -198,7 +250,9 @@ describe('signature resolver: instance-wide cooldown after an unavailable databa
         ? { rows: [{ merchant_id: 'merch_test', platform: 'shopify', source_product_id: 'prod_test', pivota_signature_id: SIG }] }
         : { rows: [] };
     });
-    const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '100' });
+    const { app } = loadServer(query, {
+      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '100', RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS: '1',
+    });
     const warm = await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, { hydrateIdentityListing: false });
     expect(warm).toMatchObject({ merchant_id: 'merch_test' });
 
@@ -215,26 +269,30 @@ describe('signature resolver: instance-wide cooldown after an unavailable databa
     expect(query.mock.calls.length).toBeGreaterThan(calls);
   });
 
-  test('defaults to a few seconds when unset', async () => {
-    const query = jest.fn(async () => {
-      throw poolCheckoutTimeout();
+  test('defaults: a few seconds per sig, and three distinct sigs to trip the instance', async () => {
+    const query = alwaysDown();
+    const { app } = loadServer(query, {
+      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '', RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS: '',
     });
-    const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '' });
     const startedAt = Date.now();
-    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toBeTruthy();
-    const windowMs = app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs - startedAt;
+    for (const n of [1, 2]) {
+      await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(sigN(n), {})).rejects.toBeTruthy();
+    }
+    const state = app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+    const windowMs = state.perSig.get(sigN(1)) - startedAt;
     expect(windowMs).toBeGreaterThan(2_000);
     expect(windowMs).toBeLessThanOrEqual(3_500);
+    expect(state.untilMs).toBe(0);
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(sigN(3), {})).rejects.toBeTruthy();
+    expect(state.untilMs - startedAt).toBeGreaterThan(2_000);
   });
 
   test('0 disables it', async () => {
-    const query = jest.fn(async () => {
-      throw poolCheckoutTimeout();
-    });
+    const query = alwaysDown();
     const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '0' });
     await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toBeTruthy();
     const calls = query.mock.calls.length;
-    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, {})).rejects.toBeTruthy();
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toBeTruthy();
     expect(query.mock.calls.length).toBeGreaterThan(calls);
   });
 });
@@ -246,6 +304,8 @@ describe('signature resolver: an optional sub-read that could not reach the data
     ['the identity listing', (text) => /WHERE pil\.source_listing_ref = \$1/.test(text)],
     ['the identity-group members (direct query)', (text) => /WHERE pil\.sellable_item_group_id = \$1/.test(text)],
     ['the identity-group members (live identity graph)', (text) => /FROM pdp_identity_listing\s+WHERE sellable_item_group_id = \$1/.test(text)],
+    // The live graph's own fallback to the canonical catalog group used to swallow this with .catch(() => null).
+    ['the canonical catalog group (live graph fallback)', (text) => /WITH target AS/.test(text)],
   ])('%s failing is served but not memoized', async (_label, failsHere) => {
     const query = jest.fn(async (sql) => {
       const text = String(sql);
@@ -320,5 +380,33 @@ describe('signature resolver: lane deadline', () => {
     actual = loaded.actualDb;
     await loaded.app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {});
     expect(seenRemaining).toBeNull();
+  });
+});
+
+describe('get_pdp_v2 marks a response built from a degraded ref', () => {
+  const exactSeedRow = { merchant_id: 'external_seed', platform: 'external_seed', source_product_id: 'ext_synthetic_1', pivota_signature_id: SIG };
+  const invoke = (app) => request(app)
+    .post('/agent/shop/v1/invoke')
+    .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: SIG } } });
+
+  test('degraded: degraded_reads in the body and Cache-Control: no-store', async () => {
+    const query = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (/WHERE pil\.source_listing_ref = \$1/.test(text)) throw poolCheckoutTimeout();
+      if (text.includes('cp.pivota_signature_id = $1')) return { rows: [exactSeedRow] };
+      return { rows: [] };
+    });
+    const { app } = loadServer(query, { PIVOTA_API_BASE: 'http://localhost:8080', PIVOTA_API_KEY: 'test-token' });
+    const res = await invoke(app);
+    expect(res.headers['cache-control']).toMatch(/no-store/);
+    expect(res.body.degraded_reads).toEqual(['catalog_signature_partial']);
+  });
+
+  test('complete: no marker', async () => {
+    const query = jest.fn(async (sql) => (String(sql).includes('cp.pivota_signature_id = $1') ? { rows: [exactSeedRow] } : { rows: [] }));
+    const { app } = loadServer(query, { PIVOTA_API_BASE: 'http://localhost:8080', PIVOTA_API_KEY: 'test-token' });
+    const res = await invoke(app);
+    expect(res.body.degraded_reads).toBeUndefined();
+    expect(String(res.headers['cache-control'] || '')).not.toMatch(/^no-store$/);
   });
 });

@@ -184,6 +184,19 @@ describe('lane deadlines on plain query()', () => {
     ['DATABASE_URL carries its own options= (which would override the interval)', () => {
       process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20search_path%3Dx';
     }, 'database_url_options_override_check_interval'],
+    ['DATABASE_URL options= set the interval to 0 (a substring match would pass it)', () => {
+      process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20client_connection_check_interval%3D0';
+    }, 'database_url_options_check_interval_off'],
+    ['DATABASE_URL options= set the interval twice, the last to 0 (the server keeps the last)', () => {
+      process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20client_connection_check_interval%3D500%20-c%20client_connection_check_interval%3D0';
+    }, 'database_url_options_check_interval_off'],
+    ['DATABASE_URL cannot be parsed', () => {
+      process.env.DATABASE_URL = 'not a connection string ::: %%%';
+    }, 'database_url_unparseable'],
+    ['the Cloud SQL socket-form URL has no interval anywhere', () => {
+      process.env.DATABASE_URL = 'postgresql://example:test@/pivota?host=/cloudsql/project:region:instance';
+      delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS;
+    }, 'client_connection_check_interval_unset'],
   ])('deadlines are REFUSED, with one boot warning, when %s', async (_label, arrange, reason) => {
     arrange();
     const pool = buildPoolWith(async () => {
@@ -203,6 +216,53 @@ describe('lane deadlines on plain query()', () => {
     ).resolves.toEqual({ rows: [{ from: 'pool.query' }] });
     expect(pool.connect).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ['the Cloud SQL socket-form URL with the env interval', 'postgresql://example:test@/pivota?host=/cloudsql/project:region:instance', '1000'],
+    ['a URL whose options= set the interval > 0 (with a unit)', 'postgres://example:test@localhost:5432/pivota?options=-c%20client_connection_check_interval%3D2s', ''],
+    ['a plain URL with the env interval', 'postgres://example:test@localhost:5432/pivota', '250'],
+  ])('accepted: %s', (_label, databaseUrl, interval) => {
+    process.env.DATABASE_URL = databaseUrl;
+    if (interval) process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS = interval;
+    else delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS;
+    const db = loadDb(buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() })));
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(true);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['0', false],
+    ['1s', true],
+    ['250ms', true],
+  ])('the first pooled connection reporting the interval as %s leaves deadlines enabled=%s', async (shown, enabled) => {
+    const pool = buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() }));
+    const db = loadDb(pool);
+    db.getPool();
+    const onConnect = pool.on.mock.calls.find(([event]) => event === 'connect')[1];
+    const client = { query: jest.fn(async () => ({ rows: [{ client_connection_check_interval: shown }] })) };
+    onConnect(client);
+    onConnect(client); // asked once per process, not per connection
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenCalledWith('SHOW client_connection_check_interval');
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(enabled);
+    if (!enabled) {
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'server_reports_check_interval_off' }), expect.any(String));
+    }
+  });
+
+  test('the server is not asked when deadlines are not requested', async () => {
+    process.env.DB_LANE_DEADLINES_ENABLED = '';
+    const pool = buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() }));
+    const db = loadDb(pool);
+    db.getPool();
+    const onConnect = pool.on.mock.calls.find(([event]) => event === 'connect')[1];
+    const client = { query: jest.fn() };
+    onConnect(client);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(client.query).not.toHaveBeenCalled();
   });
 
   test('a DATABASE_URL whose options= carry the interval itself is accepted', () => {

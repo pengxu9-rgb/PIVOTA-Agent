@@ -111,6 +111,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // And the pool slot came straight back: the next caller is served at once.
     await expect(db.query('SELECT 1 AS ok')).resolves.toMatchObject({ rows: [{ ok: 1 }] });
+    // The server itself confirmed the interval on the first pooled connection, so the deadlines stay armed.
+    await sleep(50);
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(true);
+    const shown = await db.query('SHOW client_connection_check_interval');
+    expect(shown.rows[0].client_connection_check_interval).toBe('100ms');
   });
 
   test('without it, the same abandoned statement keeps running (the orphan this guards against)', async () => {

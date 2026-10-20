@@ -226,6 +226,7 @@ function getPool() {
         } catch {
           // a frozen/mock client is not worth failing a connection over
         }
+        probeServerCheckInterval(client);
       });
       nextPool.on('error', (err) => {
         logger.warn(
@@ -315,37 +316,115 @@ function isDbLaneDeadlinesRequested() {
 // client_connection_check_interval the server never notices: the backend keeps executing until
 // statement_timeout while the pool opens a replacement, so per-instance SERVER connections climb past
 // DB_POOL_MAX -- the pinned pool becomes orphan backends plus fresh connections, which is worse for the
-// primary than what the deadline was meant to fix. So the deadlines are refused unless the interval is
-// actually in the startup packet. pg merges DATABASE_URL's own `options=` over the config, so a URL that
-// carries options without the interval silently drops it; that refuses too.
-function laneDeadlinesBlockedReason() {
-  if (!(getClientConnectionCheckIntervalMs() > 0)) return 'client_connection_check_interval_unset';
-  let urlOptions = null;
+// primary than what the deadline was meant to fix. So the deadlines are refused unless the EFFECTIVE
+// interval the connection is opened with is > 0:
+//   - DATABASE_URL is parsed the way pg parses it (pg-connection-string); a URL it cannot parse refuses.
+//   - pg merges the URL's own `options=` OVER the pool config, so when the URL carries options, they are
+//     what the server sees: the interval must be set there, and set > 0 (`=0` is "off").
+//   - otherwise DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS must be > 0 (it is what buildConnectionStartupOptions
+//     sends).
+// And once a pooled connection exists, the SERVER's own answer (SHOW client_connection_check_interval on
+// the first connection, see getPool) can still refuse: a proxy or pooler may drop startup options.
+const PG_URL_SCHEME = /^\s*(postgres(?:ql)?:\/\/|socket:)/i;
+const INTERVAL_UNIT_MS = { ms: 1, s: 1_000, min: 60_000, h: 3_600_000 };
+
+function parseIntervalSettingMs(text) {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|min|h)?\s*$/i.exec(String(text ?? ''));
+  if (!m) return null;
+  return Number(m[1]) * INTERVAL_UNIT_MS[(m[2] || 'ms').toLowerCase()];
+}
+
+// The interval a libpq-style options string sets (last occurrence wins, as on the server), undefined when it
+// does not mention it, null when it mentions it with a value that cannot be read.
+function checkIntervalFromOptionsMs(options) {
+  const re = /(?:-c\s*|--)client_connection_check_interval\s*=\s*(\S+)/g;
+  let last;
+  for (let m = re.exec(options); m; m = re.exec(options)) last = m[1];
+  return last === undefined ? undefined : parseIntervalSettingMs(last);
+}
+
+// pg's own parser, resolved from pg's location: it is pg's dependency, not this package's, so a bare
+// require would only work while npm happens to hoist it.
+let pgConnectionStringParse = null;
+function loadPgConnectionStringParser() {
+  if (pgConnectionStringParse) return pgConnectionStringParse;
+  const path = require('path');
+  const mod = require(require.resolve('pg-connection-string', { paths: [path.dirname(require.resolve('pg'))] }));
+  pgConnectionStringParse = typeof mod.parse === 'function' ? mod.parse : mod;
+  return pgConnectionStringParse;
+}
+
+function staticLaneDeadlineBlockedReason() {
+  const url = String(process.env.DATABASE_URL || '');
+  if (!PG_URL_SCHEME.test(url)) return 'database_url_unparseable';
+  let parsed;
   try {
-    urlOptions = new URL(String(process.env.DATABASE_URL || '')).searchParams.get('options');
+    parsed = loadPgConnectionStringParser()(url);
   } catch {
-    urlOptions = null;
+    return 'database_url_unparseable';
   }
-  if (urlOptions !== null && !/client_connection_check_interval/.test(urlOptions)) {
-    return 'database_url_options_override_check_interval';
+  if (!parsed || typeof parsed !== 'object') return 'database_url_unparseable';
+  const urlOptions = typeof parsed.options === 'string' ? parsed.options.trim() : '';
+  if (urlOptions) {
+    const fromUrl = checkIntervalFromOptionsMs(urlOptions);
+    if (fromUrl === undefined) return 'database_url_options_override_check_interval';
+    if (!(fromUrl > 0)) return 'database_url_options_check_interval_off';
+    return null;
   }
+  if (!(getClientConnectionCheckIntervalMs() > 0)) return 'client_connection_check_interval_unset';
+  return null;
+}
+
+// Memoized on its inputs: runWithDbDeadline asks on every stage.
+let staticBlockedMemo = { key: null, reason: null };
+// Set when the first pooled connection reports the interval off (see getPool).
+let serverReportedCheckIntervalOff = false;
+function laneDeadlinesBlockedReason() {
+  const key = `${process.env.DATABASE_URL || ''}\u0000${process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS || ''}`;
+  if (staticBlockedMemo.key !== key) staticBlockedMemo = { key, reason: staticLaneDeadlineBlockedReason() };
+  if (staticBlockedMemo.reason) return staticBlockedMemo.reason;
+  if (serverReportedCheckIntervalOff) return 'server_reports_check_interval_off';
   return null;
 }
 
 let laneDeadlinesRefusalWarned = false;
+function warnLaneDeadlinesRefused(reason) {
+  if (laneDeadlinesRefusalWarned) return;
+  laneDeadlinesRefusalWarned = true;
+  logger.warn(
+    { reason, db_lane_deadlines_enabled: process.env.DB_LANE_DEADLINES_ENABLED },
+    'DB_LANE_DEADLINES_ENABLED is set but lane deadlines are REFUSED: they need an effective '
+      + 'client_connection_check_interval > 0 on the connection, or abandoned statements become orphan backends '
+      + 'plus new connections',
+  );
+}
+
 function isDbLaneDeadlinesEnabled() {
   if (!isDbLaneDeadlinesRequested()) return false;
   const blocked = laneDeadlinesBlockedReason();
   if (!blocked) return true;
-  if (!laneDeadlinesRefusalWarned) {
-    laneDeadlinesRefusalWarned = true;
-    logger.warn(
-      { reason: blocked, db_lane_deadlines_enabled: process.env.DB_LANE_DEADLINES_ENABLED },
-      'DB_LANE_DEADLINES_ENABLED is set but lane deadlines are REFUSED: they need DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS > 0 '
-        + 'in the startup packet, or abandoned statements become orphan backends plus new connections',
-    );
-  }
+  warnLaneDeadlinesRefused(blocked);
   return false;
+}
+
+// Asks the server, once per process, on the first pooled connection, and only when deadlines are requested.
+let serverCheckIntervalProbed = false;
+function probeServerCheckInterval(client) {
+  if (serverCheckIntervalProbed || !isDbLaneDeadlinesRequested() || !client || typeof client.query !== 'function') return;
+  serverCheckIntervalProbed = true;
+  Promise.resolve()
+    .then(() => client.query('SHOW client_connection_check_interval'))
+    .then((result) => {
+      const raw = result?.rows?.[0]?.client_connection_check_interval;
+      if (!(parseIntervalSettingMs(raw) > 0)) {
+        serverReportedCheckIntervalOff = true;
+        laneDeadlinesRefusalWarned = false; // a new reason deserves its own warning
+        warnLaneDeadlinesRefused('server_reports_check_interval_off');
+      }
+    })
+    .catch(() => {
+      // An unanswerable probe proves nothing either way; the static check stands.
+    });
 }
 
 function getDbLaneDeadlineGraceMs() {

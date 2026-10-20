@@ -5766,18 +5766,45 @@ const RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS = Math.max(
 );
 const RESOLVE_CATALOG_SIGNATURE_COOLDOWN = new Map(); // cacheKey -> expiresAtMs
 
-// Instance-wide fast-fail after the database could not answer a resolve
+// Fast-fail after the database could not answer a resolve
 // (CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE). Without it, an outage that fails
 // fast still sends every PDP and every public-search row to the database --
-// and each transient failure in src/db query() resets the whole pool. For this
-// short window the resolver answers the same retryable error without a query.
-// Cache hits are still served. 0 disables.
-const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS = (() => {
-  const raw = String(process.env.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS ?? '').trim();
+// and each transient failure in src/db query() resets the whole pool. Two
+// tiers, both for RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS
+// (default 3000, 0 disables):
+//   - per signature: the sig that failed answers the same retryable error
+//     without a query;
+//   - instance-wide: only once RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS
+//     (default 3) DISTINCT sigs failed within one window. One sig whose own
+//     query keeps dropping its connection must not black out every other
+//     resolve on the instance; several failing at once is the outage.
+// Cache hits are still served.
+function readNonNegativeIntEnv(name, fallback, max) {
+  const raw = String(process.env[name] ?? '').trim();
   const n = Number(raw);
-  return raw !== '' && Number.isFinite(n) && n >= 0 ? Math.min(60_000, Math.trunc(n)) : 3_000;
-})();
-const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE = { untilMs: 0 };
+  return raw !== '' && Number.isFinite(n) && n >= 0 ? Math.min(max, Math.trunc(n)) : fallback;
+}
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS = readNonNegativeIntEnv(
+  'RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS', 3_000, 60_000);
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS = Math.max(
+  1, readNonNegativeIntEnv('RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS', 3, 1_000));
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE = {
+  untilMs: 0, // instance-wide
+  perSig: new Map(), // sig -> untilMs (also the record of recent distinct failures)
+};
+
+function noteCatalogSignatureUnavailable(normalizedProductId) {
+  if (!(RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS > 0)) return;
+  const state = RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+  const now = Date.now();
+  for (const [sig, untilMs] of state.perSig) if (untilMs <= now) state.perSig.delete(sig);
+  state.perSig.delete(normalizedProductId); // re-insert: Map order = recency, for the size cap below
+  state.perSig.set(normalizedProductId, now + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS);
+  while (state.perSig.size > 1_000) state.perSig.delete(state.perSig.keys().next().value);
+  if (state.perSig.size >= RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS) {
+    state.untilMs = now + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS;
+  }
+}
 
 // Marks a resolved ref that is SERVABLE but incomplete because an optional
 // sub-read (identity listing, identity-group members) could not reach the
@@ -6180,8 +6207,8 @@ function resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions
     RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
     'resolve_catalog_signature',
   ).catch((err) => {
-    if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE' && RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS > 0) {
-      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs = Date.now() + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS;
+    if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE') {
+      noteCatalogSignatureUnavailable(normalizedProductId);
     }
     if (err?.code === 'STAGE_TIMEOUT') {
       // Trip the cooldown so we stop launching new copies of a query that is
@@ -6233,6 +6260,27 @@ function buildCatalogSignatureUnavailableError(normalizedProductId, cause) {
   err.code = 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE';
   err.cause = cause;
   return err;
+}
+
+// A 200 assembled while some optional read could not reach the database. The
+// body carries `degraded_reads` (what was missing) and the response is
+// `Cache-Control: no-store`, so it is not replayed as a complete answer. Covers
+// every res.json this request sends after the mark.
+function markInvokeResponseDegraded(res, reason) {
+  if (!res || typeof res.json !== 'function') return;
+  if (res.__pivotaDegradedReads instanceof Set) {
+    res.__pivotaDegradedReads.add(reason);
+    return;
+  }
+  const reasons = new Set([reason]);
+  res.__pivotaDegradedReads = reasons;
+  if (typeof res.set === 'function') res.set('Cache-Control', 'no-store');
+  const sendJson = res.json.bind(res);
+  res.json = (body) => sendJson(
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? { ...body, degraded_reads: [...reasons] }
+      : body,
+  );
 }
 
 // The reason a retryable resolve failure is reported under.
@@ -6313,7 +6361,9 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
 }
 
 function throwIfCatalogSignatureUnavailableCooldown(normalizedProductId) {
-  if (RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs > Date.now()) {
+  const now = Date.now();
+  const state = RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+  if (state.untilMs > now || (state.perSig.get(normalizedProductId) || 0) > now) {
     const err = buildCatalogSignatureUnavailableError(normalizedProductId, null);
     err.cooldown = true;
     throw err;
@@ -43932,6 +43982,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
         }
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+		        if (signatureProductRef && signatureProductRef[RESOLVE_CATALOG_SIGNATURE_DEGRADED] === true) {
+		          // Served, but built from a ref missing what an unavailable database could not
+		          // answer: say so, and keep every cache that honours headers from storing it.
+		          markInvokeResponseDegraded(res, 'catalog_signature_partial');
+		        }
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
               requestedSigDedupeKeeperSigId = String(
