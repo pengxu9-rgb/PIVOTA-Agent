@@ -22,7 +22,8 @@
 // The throw is injected at the one seam both write paths share: the JSON serialization of the adapter's
 // answer (Express's res.json on the buffered path, the heartbeat's JSON.stringify on the committed one),
 // failing exactly once for the one response id under test. Every case asserts the injection fired, so a case
-// cannot pass by never reaching its path.
+// cannot pass by never reaching its path. That seam sits AFTER the adapter answered; a throw BEFORE any answer
+// (the adapter failing to build) is covered by tests/mcp_caller_limits_slot_release_build_failure.node.test.cjs.
 //
 // Mode off is pinned at the end: with every limit at its tightest, nothing is counted, refused, logged or
 // forwarded, and the completion lines are the ones the doors wrote before the limits existed.
