@@ -411,6 +411,10 @@ async function run({
 }
 
 async function main() {
+  // CRAWL_FRESH: this script re-derives catalog_row_trust (through the trust
+  // upserter), so it logs the switch it runs with -- the flip must be the same on
+  // every writer (see catalogRowTrustUpserter's CRAWL_FRESH block).
+  require('../src/services/catalogRowTrustUpserter').logCrawlFreshConfig('reconcile-retired-merchant-catalog-rows', { stream: process.stderr });
   const write = hasFlag('write');
   const confirm = asString(argValue('confirm'));
   const merchantId = asString(argValue('merchant'));

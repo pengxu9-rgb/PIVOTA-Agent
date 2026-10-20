@@ -456,6 +456,10 @@ async function run({ client, apply = false, allowPromotions = false, trustRefres
 }
 
 async function main() {
+  // CRAWL_FRESH: this script re-derives catalog_row_trust (through the trust
+  // upserter), so it logs the switch it runs with -- the flip must be the same on
+  // every writer (see catalogRowTrustUpserter's CRAWL_FRESH block).
+  require('../src/services/catalogRowTrustUpserter').logCrawlFreshConfig('repairRetailerOfficialDomain', { stream: process.stderr });
   const { Client } = require('pg');
   const { upsertCatalogRowTrustForSourceListingRefs } = require('../src/services/catalogRowTrustUpserter');
   const args = parseArgs(process.argv.slice(2));

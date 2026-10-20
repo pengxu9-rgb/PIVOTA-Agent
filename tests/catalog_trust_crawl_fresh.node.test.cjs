@@ -1311,14 +1311,43 @@ test('logCrawlFreshConfig reports the effective switch and N', () => {
   assert.equal(last.days, 3.5);
 });
 
+// Every script that writes or re-derives catalog_row_trust, and the context it
+// logs under. Static over the sources, like the repo's other script pins.
+const TRUST_SCRIPTS = [
+  ['scripts/backfill-catalog-row-trust.cjs', 'backfill-catalog-row-trust'],
+  ['scripts/backfill-pdp-identity-graph.js', 'backfill-pdp-identity-graph'],
+  ['scripts/promote-pdp-identity-live-read.js', 'promote-pdp-identity-live-read'],
+  ['scripts/pdp-identity-coverage-lift.js', 'pdp-identity-coverage-lift'],
+  ['scripts/repairRetailerOfficialDomain.cjs', 'repairRetailerOfficialDomain'],
+  ['scripts/reconcile-retired-merchant-catalog-rows.cjs', 'reconcile-retired-merchant-catalog-rows'],
+  ['scripts/retire-demo-electronics-cohort.cjs', 'retire-demo-electronics-cohort'],
+  ['scripts/retire-demo-fixtures-and-stores.cjs', 'retire-demo-fixtures-and-stores'],
+  ['scripts/sync-external-seeds-to-catalog.cjs', 'sync-external-seeds-to-catalog'],
+];
+
+test('no script reaches the trust upserter without being in the boot-log list', () => {
+  // Discovery, so a NEW trust-writing script cannot skip the log: anything under
+  // scripts/ that imports the upserter or calls a pdpIdentityGraph entry point
+  // that refreshes trust must be listed in TRUST_SCRIPTS (and so must log).
+  const scriptsDir = path.join(__dirname, '..', 'scripts');
+  const reaches = /catalogRowTrustUpserter|\b(promotePdpIdentityLiveRead|applyPdpIdentityOverride|runPdpIdentityCoverageLift)\b/;
+  const listed = new Set(TRUST_SCRIPTS.map(([f]) => f));
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return walk(full);
+    return /\.(c?js|mjs)$/.test(e.name) ? [full] : [];
+  });
+  const found = walk(scriptsDir)
+    .filter((f) => reaches.test(fs.readFileSync(f, 'utf8')))
+    .map((f) => path.relative(path.join(__dirname, '..'), f).split(path.sep).join('/'));
+  for (const f of found) assert.ok(listed.has(f), `${f} reaches catalog_row_trust but does not log the CRAWL_FRESH switch`);
+  for (const f of listed) assert.ok(found.includes(f), `${f} is listed but no longer reaches the trust upserter`);
+});
+
 test('every entry point that writes or re-derives trust logs the switch it runs with', () => {
   const read = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
   assert.match(read('src/server.js'), /logCrawlFreshConfig\('gateway-boot'\)/);
-  for (const [file, ctx] of [
-    ['scripts/backfill-pdp-identity-graph.js', 'backfill-pdp-identity-graph'],
-    ['scripts/promote-pdp-identity-live-read.js', 'promote-pdp-identity-live-read'],
-    ['scripts/backfill-catalog-row-trust.cjs', 'backfill-catalog-row-trust'],
-  ]) {
+  for (const [file, ctx] of TRUST_SCRIPTS) {
     assert.ok(read(file).includes(`logCrawlFreshConfig('${ctx}', { stream: process.stderr })`), file);
   }
   // ...and the scheduled jobs that run them carry the switch, not a silent off.
