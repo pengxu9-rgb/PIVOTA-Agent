@@ -68,6 +68,33 @@ Gemini:
 
 Semantic rewrite no longer inherits model config from `PIVOTA_INTENT_MODEL` or `PIVOTA_INTENT_MODEL_GEMINI`.
 
+Rerank models:
+
+- `PIVOTA_RERANK_MODEL_OPENAI` (falls back to the legacy shared `PIVOTA_RERANK_MODEL`, then the built-in default `gpt-5.1-mini`)
+- `PIVOTA_RERANK_MODEL_GEMINI` (default floor: `gemini-3-flash-preview`)
+- `PIVOTA_RERANK_LLM_TIMEOUT_MS` (default 2500, max 15000): ONE deadline for the whole provider chain, not per provider
+
+Provider availability is decided by `llmRuntime.js` from API-key env vars only. A Gemini setup that relies on
+Vertex ADC with no Gemini key set does not count as available there, so the chain can resolve to OpenAI alone.
+
+### Model-unavailable breaker
+
+The built-in OpenAI defaults are not guaranteed to exist on every OpenAI-compatible endpoint. When a provider
+answers that the configured model does not exist (HTTP 404, `model_not_found`, or a 400 naming the model), the
+breaker in `src/findProductsMulti/llmModelBreaker.js` skips that provider and model for the rest of the process.
+It logs one WARN, `find_products_multi llm model unavailable; provider skipped for this process (logged once)`,
+with `feature`, `provider`, `model` and `env_hint` (the env var to change). Rerank and semantic rewrite share
+it, because a missing model is missing for both.
+
+While it is open:
+
+- rerank returns `{ applied: false, skipped_reason: 'model_unavailable' }` without calling the provider. The
+  search keeps its deterministic order, so no product is dropped or reordered.
+- semantic rewrite falls back to the rule-based intent, with `llm_error_class: 'model_unavailable'`.
+
+Timeouts, 429 and 5xx responses never open the breaker. To turn the pass back on, set the model env var named
+in the WARN to a model the endpoint serves and redeploy.
+
 ## `attributes.pivota` Product Tags
 
 When returning product results, the gateway injects (or preserves) the following structure:

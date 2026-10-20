@@ -11,9 +11,16 @@ const {
   resolveFindProductsOpenAiApiKey,
 } = require('./llmRuntime');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
+const { isModelBreakerOpen, recordModelFailure } = require('./llmModelBreaker');
 
 const DEFAULT_PROMPT_PATH = path.join(__dirname, '..', '..', 'prompts', 'product_rerank_prompt_v1.txt');
-const DEFAULT_MODEL_OPENAI = process.env.PIVOTA_RERANK_MODEL || 'gpt-5.1-mini';
+// OpenAI model for the rerank pass: PIVOTA_RERANK_MODEL_OPENAI, else the legacy shared PIVOTA_RERANK_MODEL, else
+// the built-in default. The default is NOT known to exist for every OpenAI-compatible endpoint — when the
+// provider answers model-not-found, the breaker in ./llmModelBreaker skips this provider for the rest of the
+// process (one WARN, no per-search retries) and the search keeps its deterministic order. Set
+// PIVOTA_RERANK_MODEL_OPENAI to a model the configured endpoint serves to turn the pass back on.
+const DEFAULT_MODEL_OPENAI =
+  process.env.PIVOTA_RERANK_MODEL_OPENAI || process.env.PIVOTA_RERANK_MODEL || 'gpt-5.1-mini';
 const DEFAULT_MODEL_GEMINI = resolveNonImageGeminiModel({
   model: process.env.PIVOTA_RERANK_MODEL_GEMINI || process.env.PIVOTA_RERANK_MODEL,
   fallbackModel: 'gemini-3-flash-preview',
@@ -67,6 +74,22 @@ function getProviderChain() {
   return Array.isArray(runtime.providerChain) && runtime.providerChain.length
     ? runtime.providerChain
     : ['openai'];
+}
+
+function modelForProvider(provider) {
+  if (provider === 'openai') return DEFAULT_MODEL_OPENAI;
+  if (provider === 'gemini') return DEFAULT_MODEL_GEMINI;
+  return null;
+}
+
+const MODEL_ENV_HINT = Object.freeze({
+  openai: 'PIVOTA_RERANK_MODEL_OPENAI',
+  gemini: 'PIVOTA_RERANK_MODEL_GEMINI',
+});
+
+// The chain minus any provider whose configured model the provider already said does not exist.
+function liveProviderChain() {
+  return getProviderChain().filter((provider) => !isModelBreakerOpen(provider, modelForProvider(provider)));
 }
 
 function getProductId(product) {
@@ -285,20 +308,45 @@ async function callGemini({ prompt }) {
   return JSON.parse(String(text || '').trim());
 }
 
-async function callRerankLlm({ prompt }) {
-  const providers = getProviderChain();
+async function callRerankChain({ prompt, providers }) {
   let lastErr = null;
   for (const provider of providers) {
+    // Re-checked per provider: an earlier request may have opened the breaker while this one was queued.
+    if (isModelBreakerOpen(provider, modelForProvider(provider))) continue;
     try {
       if (provider === 'openai') return { provider, json: await callOpenAI({ prompt }) };
       if (provider === 'gemini') return { provider, json: await callGemini({ prompt }) };
       // Unknown provider -> skip
     } catch (err) {
       lastErr = err;
+      recordModelFailure({
+        feature: 'rerank',
+        provider,
+        model: modelForProvider(provider),
+        err,
+        envHint: MODEL_ENV_HINT[provider] || null,
+      });
     }
   }
   const msg = lastErr instanceof Error ? lastErr.message : String(lastErr || 'unknown_error');
   throw new Error(`rerank_llm_failed: ${msg}`);
+}
+
+// ONE deadline for the whole provider chain. Each provider call carries RERANK_LLM_TIMEOUT_MS on its own
+// transport, but a chain of two providers (plus Vertex's access-token fetch, which sits outside the HTTP
+// timeout) could otherwise spend a multiple of it. The rerank is an optional quality pass: its failure must
+// cost the search no more than its budget. A provider call still in flight when the deadline fires is
+// abandoned (its own transport timeout ends it); its rejection is already handled by the race.
+function callRerankLlm({ prompt, providers }) {
+  let timer = null;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`rerank_llm_failed: deadline ${RERANK_LLM_TIMEOUT_MS}ms exceeded`)),
+      RERANK_LLM_TIMEOUT_MS,
+    );
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([callRerankChain({ prompt, providers }), deadline]).finally(() => clearTimeout(timer));
 }
 
 function extractProductsFromResponse(response) {
@@ -323,6 +371,10 @@ function setEvidenceProfileOnResponse(response, evidenceProfile) {
 
 async function maybeRerankFindProductsMultiResponse({ response, userQuery, limit }) {
   if (!isEnabled()) return { response, applied: false };
+  // Every configured provider has told this process its model does not exist: skip without dialling. Logged
+  // once when the breaker opened (llmModelBreaker), not per search.
+  const providers = liveProviderChain();
+  if (!providers.length) return { response, applied: false, skipped_reason: 'model_unavailable' };
   const q = String(userQuery || '').trim();
   if (!q) return { response, applied: false };
 
@@ -343,7 +395,7 @@ async function maybeRerankFindProductsMultiResponse({ response, userQuery, limit
   });
 
   const t0 = Date.now();
-  const { provider, json } = await callRerankLlm({ prompt });
+  const { provider, json } = await callRerankLlm({ prompt, providers });
   const items = parseRerankResponse(json);
   if (!items.length) return { response, applied: false, provider };
 
