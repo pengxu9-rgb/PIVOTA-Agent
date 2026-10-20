@@ -189,9 +189,16 @@ describe('controller review round 3 (2026-10-20)', () => {
     const rich = { ...TONER_A, description: 'Rich but non-greasy hydration for very dry skin.' };
     // "non" in the gap is a negation of "greasy", so it is still refused; "but" alone is not.
     expect(verdict(rich, b, [{ anchor_fact: 'Rich … hydration for very dry skin', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
-    const rich2 = { ...TONER_A, description: 'Rich texture but a lightweight feel, hydration for very dry skin.' };
-    // "but" in the skipped stretch is not a negation: skipping "but a lightweight feel" is a true elision.
-    expect(verdict(rich2, b, [{ anchor_fact: 'Rich texture … hydration for very dry skin', candidate_fact: cand }])).toBe('approve');
+    // A contrast or caveat in the skipped stretch refuses, even where it would have been harmless:
+    // "but too heavy for oily skin" is the case that matters (controller round 4).
+    for (const gap of ['but too heavy and', 'yet unsuitable and', 'while it can clog pores and', 'too rich and', 'but problematic and',
+      'but a lightweight feel and']) {
+      const a = { ...TONER_A, description: `Deeply hydrating texture, ${gap} lasts all day on skin.` };
+      expect(verdict(a, b, [{ anchor_fact: 'Deeply hydrating texture … lasts all day', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+    }
+    // "fragrance free" as a phrase in the gap is a negation too (N31)
+    const ff = { ...TONER_A, description: 'Calming toner formula, fragrance free, soothes redness fast.' };
+    expect(verdict(ff, b, [{ anchor_fact: 'Calming toner formula … soothes redness fast', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
   });
 
   test('a passage that cannot be shown is not evidence, so an approval never stores nothing', () => {
@@ -235,7 +242,12 @@ describe('controller review round 3 (2026-10-20)', () => {
     const near = { ...TONER_A, description: 'Calms redness quickly and keeps going, absorbs fast overnight, leaves skin soft.' };
     expect(verdict(near, b, [{ anchor_fact: 'Calms redness quickly … absorbs fast overnight … leaves skin soft', candidate_fact: cand }])).toBe('approve');
     expect(verdict(near, b, [{ anchor_fact: 'Calms redness quickly … leaves skin soft … absorbs fast overnight', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
-    expect(verdict(near, b, [{ anchor_fact: 'Calms redness quickly … overnight', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+    // a part too thin to place (one generic word) makes the quote prove nothing (N7)...
+    expect(verdict(near, b, [{ anchor_fact: 'Calms redness quickly … skin', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+    // ...but a specific single word may be a part, and an ignored quote does not sink a good pair
+    expect(verdict(near, b, [{ anchor_fact: 'Calms redness quickly … overnight', candidate_fact: cand }])).toBe('approve');
+    expect(verdict(near, b, [{ anchor_fact: 'Calms redness quickly … skin', candidate_fact: cand }, { anchor_fact: 'Allantoin', candidate_fact: 'Allantoin' }]))
+      .toBe('approve');
   });
 
   test('every word of a multi-word brand is the brand (N13)', () => {
@@ -284,4 +296,59 @@ test('a part still JSON-shaped after parsing fails the quote; it cannot hide an 
   // Malformed output is refused even when its words are only generic: it is not skipped as harmless.
   expect(verdict(TONER_A, TONER_B, [{ anchor_fact: 'niacinamide', candidate_fact: 'niacinamide' },
     { anchor_fact: 'skin": "', candidate_fact: 'face": "' }])).toBe('recommendation_facts_not_supplied');
+});
+
+describe('controller review round 4 (2026-10-20)', () => {
+  const cand = 'Suitable for sensitive skin';
+  const b = { ...TONER_B, description: 'Suitable for sensitive skin. Non-comedogenic.' };
+
+  test('an affix that flips the fact is part of the word', () => {
+    const a = { ...TONER_A, description: 'A Vitamin C-free gentle formula. Non-comedogenic finish.' };
+    expect(verdict(a, b, [{ anchor_fact: 'A Vitamin C … gentle formula', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+    expect(verdict(a, b, [{ anchor_fact: 'Vitamin C', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+    expect(verdict(a, b, [{ anchor_fact: 'comedogenic finish', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+  });
+
+  test('a key never reaches a sibling field: title": "x" is looked for in titles only', () => {
+    const { buildEvidence } = require('../../scripts/review-relationship-candidate-labels');
+    const evidenceRow = row(TONER_A, TONER_B);
+    const supplement = { catalog: { title: 'Soothing Toner', tags: ['barrier repair'] } };
+    const ev = buildEvidence(evidenceRow, new Map([['a', supplement], ['b', supplement]]));
+    const decide = (quotes) => validateRecommendationDecision(evidenceRow, approve(quotes), ev).verdict;
+    expect(decide([{ anchor_fact: 'title": "barrier repair', candidate_fact: 'barrier repair' }])).toBe('reject');
+    expect(decide([{ anchor_fact: 'tags": "barrier repair', candidate_fact: 'barrier repair' }])).toBe('approve');
+  });
+
+  test('sponsored or unreviewed signal claims never ground a quote', () => {
+    const { buildEvidence } = require('../../scripts/review-relationship-candidate-labels');
+    const evidenceRow = row(TONER_A, TONER_B);
+    const claim = 'clinically proven to reduce wrinkles by 50%';
+    const intel = { product_intel: { product_intel_core: {}, external_highlight_signals: [{ claim_text: claim, sponsored: true, review_status: 'rejected' }],
+      market_signal_badges: [{ claim_text: claim }] } };
+    const ev = buildEvidence({ ...evidenceRow, anchor_snapshot: { ...TONER_A, ...intel }, candidate_snapshot: { ...TONER_B, ...intel } }, new Map());
+    expect(validateRecommendationDecision(evidenceRow, approve([{ anchor_fact: claim, candidate_fact: claim }]), ev).verdict).toBe('reject');
+  });
+
+  test('"rose" is not in "rosemary" (N10)', () => {
+    const a = { ...TONER_A, description: 'Rosemary and clary sage toner.' };
+    expect(verdict(a, b, [{ anchor_fact: 'rose', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+  });
+
+  test('the elision search stays linear: many repeated parts over repeated text (N42)', () => {
+    const { __quoteGrounding } = require('../../scripts/review-relationship-candidate-labels');
+    const fact = 'calm soft '.repeat(400);
+    const values = [{ norm: fact, raw: fact }];
+    const t0 = Date.now();
+    // five parts that chain everywhere, and a sixth that never appears: without the memo this is
+    // exponential in the positions.
+    expect(__quoteGrounding.elidedPassage(values, ['calm soft', 'calm soft', 'calm soft', 'calm soft', 'calm soft', 'missing words'])).toBe('');
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  test('the fragrance rule judges the grounded quotes', () => {
+    const fragrance = (title, description) => product('P' + title, title, { category: 'fragrance', description });
+    const a = fragrance('Noir Eau de Parfum', 'Woody amber accord with vanilla.');
+    const c = fragrance('Ambre Eau de Parfum', 'A warm amber accord.');
+    expect(verdict(a, c, [{ anchor_fact: 'description": "Woody amber accord', candidate_fact: 'warm amber accord' }])).toBe('approve');
+  });
 });

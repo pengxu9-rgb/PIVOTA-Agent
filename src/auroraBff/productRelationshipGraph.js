@@ -453,8 +453,8 @@ function coerceRelationshipEdge(input = {}, options = {}) {
     // Quotes reach shoppers from here (similar items, PDP rails, signals): only specific, unstitched ones.
     why_candidate: isPlainObject(src.why_candidate || src.whyCandidate)
       ? sanitizeWhyCandidateQuotes({ ...(src.why_candidate || src.whyCandidate) }, {
-        anchorBrand: (src.anchor_snapshot || src.anchorSnapshot || {}).brand,
-        candidateBrand: (src.candidate_snapshot || src.candidateSnapshot || {}).brand,
+        anchor: src.anchor_snapshot || src.anchorSnapshot || {},
+        candidate: src.candidate_snapshot || src.candidateSnapshot || {},
       })
       : {},
     tradeoffs: normalizeArray(src.tradeoffs, 12),

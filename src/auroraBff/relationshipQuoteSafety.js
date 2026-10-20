@@ -14,7 +14,11 @@ const QUOTE_STOPWORDS = new Set(['a', 'an', 'the', 'of', 'with', 'and', 'or', 'f
   'is', 'are', 'be', 'this', 'that', 'these', 'those', 'your', 'our', 'its', 'it', 'all', 'any', 'more', 'most', 'very', 'so',
   'than', 'into', 'up', 'out', 'new', 'plus', 'each', 'per']);
 // Short actives a shopper does compare on; they count as specific despite their length.
-const SHORT_ACTIVES = new Set(['aha', 'bha', 'pha', 'spf', 'uva', 'uvb', 'cica', 'pdrn', 'egf', 'hpr']);
+const SHORT_ACTIVES = new Set(['aha', 'bha', 'pha', 'spf', 'uva', 'uvb', 'cica', 'pdrn', 'egf', 'hpr', 'ph']);
+// CJK category nouns and base ingredients (Korean, Chinese, Japanese), the same idea as the English list.
+const CJK_GENERIC = new Set(['크림', '세럼', '토너', '스킨', '에센스', '앰플', '로션', '마스크', '샴푸', '린스', '향수', '화장품',
+  '정제수', '물', '글리세린', '향료', '알코올', '精华', '精華', '面霜', '乳液', '化妆水', '化粧水', '爽肤水', '水', '甘油', '香精', '香料', '酒精',
+  '美容液', 'クリーム', 'セラム', 'ローション', 'トナー', 'マスク', 'シャンプー', 'グリセリン', '化粧品', '香水']);
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 // NFKC leaves curly apostrophes and quotes alone; "isn’t" must read as "isn't".
@@ -29,6 +33,15 @@ function quoteWords(value) {
   return normalizeQuoteText(value).split(/[^\p{L}\p{N}%]+/u).filter(Boolean);
 }
 
+// The brand as a quote can name it: the brand field, plus the native-script name a product's title opens
+// with when the brand field is Latin ("에뛰드 ..." for ETUDE). Titles lead with the brand on these sites.
+function brandAliases(product) {
+  const brand = product && typeof product.brand === 'string' ? product.brand : '';
+  const title = product && typeof (product.title || product.name) === 'string' ? (product.title || product.name) : '';
+  const first = quoteWords(title)[0] || '';
+  return CJK.test(first) && !CJK.test(brand) ? `${brand} ${first}` : brand;
+}
+
 // Specific: a curated short active, a CJK word of two or more characters, two or more words of which
 // one is a real word of three or more characters, or one real word of four or more. Generic words,
 // stopwords and every word of the brand never count.
@@ -36,7 +49,7 @@ function quotePartIsSpecific(part, brandValue = '') {
   const brandWords = new Set(quoteWords(brandValue));
   const words = quoteWords(part).filter((word) => !brandWords.has(word));
   if (words.some((word) => SHORT_ACTIVES.has(word))) return true;
-  const meaningful = words.filter((word) => !GENERIC_QUOTE_SPAN.test(word) && !QUOTE_STOPWORDS.has(word));
+  const meaningful = words.filter((word) => !GENERIC_QUOTE_SPAN.test(word) && !QUOTE_STOPWORDS.has(word) && !CJK_GENERIC.has(word));
   if (meaningful.some((word) => CJK.test(word) && [...word].length >= 2)) return true;
   if (words.length >= 2) return meaningful.some((word) => word.length >= 3);
   return meaningful.length === 1 && meaningful[0].length >= 4;
@@ -53,10 +66,17 @@ function isShowableQuote(text, brand = '') {
   return hasQuoteShape(text) && quotePartIsSpecific(text, brand);
 }
 
+// The builder's fixed reasons, for a why_candidate left with nothing to show. Never the row's own
+// summary: before 2026-10-01 (d24db0192) that was the model's recommendation_reason, and renewal keeps
+// such rows alive for up to 180 days without revalidation.
+const DEFAULT_REASONS_USER_VISIBLE = ['Category/use-case evidence is aligned.', 'Source provenance is available.'];
+
 // why_candidate with unshowable shared_evidence pairs removed, and the "anchor / candidate" reasons
 // built from them. Other reasons (the builder's own copy) are left alone; when nothing is left to show,
-// the summary stands in rather than an empty list.
-function sanitizeWhyCandidateQuotes(why, { anchorBrand = '', candidateBrand = '' } = {}) {
+// the fixed default reasons stand in rather than an empty list.
+function sanitizeWhyCandidateQuotes(why, { anchorBrand = '', candidateBrand = '', anchor = null, candidate = null } = {}) {
+  if (anchor) anchorBrand = brandAliases(anchor);
+  if (candidate) candidateBrand = brandAliases(candidate);
   if (!why || typeof why !== 'object' || Array.isArray(why) || !Array.isArray(why.shared_evidence)) return why;
   const kept = [];
   const dropped = new Set();
@@ -69,13 +89,12 @@ function sanitizeWhyCandidateQuotes(why, { anchorBrand = '', candidateBrand = ''
   const out = { ...why, shared_evidence: kept };
   if (Array.isArray(why.reasons_user_visible)) {
     const reasons = why.reasons_user_visible.filter((reason) => !dropped.has(reason));
-    const summary = typeof why.summary === 'string' ? why.summary.trim() : '';
-    out.reasons_user_visible = reasons.length || !summary ? reasons : [summary];
+    out.reasons_user_visible = reasons.length ? reasons : [...DEFAULT_REASONS_USER_VISIBLE];
   }
   return out;
 }
 
 module.exports = {
   GENERIC_QUOTE_SPAN, QUOTE_STOPWORDS, SHORT_ACTIVES, foldQuoteText, normalizeQuoteText, quoteWords, quotePartIsSpecific,
-  hasQuoteShape, isShowableQuote, sanitizeWhyCandidateQuotes,
+  hasQuoteShape, isShowableQuote, sanitizeWhyCandidateQuotes, DEFAULT_REASONS_USER_VISIBLE, CJK_GENERIC, brandAliases,
 };

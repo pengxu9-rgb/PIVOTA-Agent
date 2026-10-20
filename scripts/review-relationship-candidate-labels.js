@@ -37,7 +37,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { foldQuoteText, normalizeQuoteText, quoteWords, quotePartIsSpecific, hasQuoteShape, isShowableQuote } = require('../src/auroraBff/relationshipQuoteSafety');
+const { foldQuoteText, normalizeQuoteText, quoteWords, quotePartIsSpecific, hasQuoteShape, isShowableQuote, brandAliases } = require('../src/auroraBff/relationshipQuoteSafety');
 const { closePool, query } = require('../src/db');
 const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
 const { factualQuoteTable } = require('../src/llm/relationshipReviewFacts');
@@ -1203,19 +1203,29 @@ const QUOTE_FACT_FIELDS = Object.freeze({
   title: null, category: null, category_taxonomy: null, tags: null, description: null, ingredient_text: null,
   ingredient_evidence: ['ingredient_text'], routine_fit: null, best_for: null, watchouts: null, why_it_stands_out: null,
   beauty_attrs: null, catalog: ['title', 'category', 'category_path', 'use_case_tags', 'tags'], external_seed: ['title'],
-  market_signal_badges: ['claim_text'], external_highlight_signals: ['claim_text'],
+  // Not market_signal_badges / external_highlight_signals: their claims can be sponsored, rejected or
+  // weak, and the prompt's own factual sources (src/llm/relationshipReviewFacts.js) exclude them.
 });
+// key -> { field: null (all of it) | the sub-keys that key names }. A key names one fact, so it never
+// reaches a sibling field: title": "x' is looked for in titles, not in catalog.tags.
 const QUOTE_KEY_FIELDS = Object.freeze({
-  title: ['title', 'catalog', 'external_seed'], name: ['title', 'catalog', 'external_seed'], product_name: ['title', 'catalog', 'external_seed'],
-  category: ['category', 'category_taxonomy', 'catalog'], category_taxonomy: ['category_taxonomy', 'category'],
-  category_path: ['catalog', 'category_taxonomy'], product_type: ['category', 'category_taxonomy', 'catalog'],
-  tags: ['tags', 'catalog'], use_case_tags: ['catalog'], description: ['description'],
-  ingredients: ['ingredient_text', 'ingredient_evidence'], ingredient_text: ['ingredient_text', 'ingredient_evidence'],
-  inci: ['ingredient_text', 'ingredient_evidence'], best_for: ['best_for'], watchouts: ['watchouts'],
-  why_it_stands_out: ['why_it_stands_out'], routine_fit: ['routine_fit'], pairing_notes: ['routine_fit'], step: ['routine_fit'],
-  beauty_attrs: ['beauty_attrs'], claim_text: ['market_signal_badges', 'external_highlight_signals'],
+  title: { title: null, catalog: ['title'], external_seed: ['title'] },
+  name: { title: null, catalog: ['title'], external_seed: ['title'] },
+  product_name: { title: null, catalog: ['title'], external_seed: ['title'] },
+  category: { category: null, category_taxonomy: null, catalog: ['category', 'category_path'] },
+  category_taxonomy: { category_taxonomy: null, category: null },
+  category_path: { category_taxonomy: null, catalog: ['category_path'] },
+  product_type: { category: null, category_taxonomy: null, catalog: ['category'] },
+  tags: { tags: null, catalog: ['tags'] }, use_case_tags: { catalog: ['use_case_tags'] },
+  description: { description: null },
+  ingredients: { ingredient_text: null, ingredient_evidence: ['ingredient_text'] },
+  ingredient_text: { ingredient_text: null, ingredient_evidence: ['ingredient_text'] },
+  inci: { ingredient_text: null, ingredient_evidence: ['ingredient_text'] },
+  best_for: { best_for: null }, watchouts: { watchouts: null }, why_it_stands_out: { why_it_stands_out: null },
+  routine_fit: { routine_fit: null }, pairing_notes: { routine_fit: null }, step: { routine_fit: null },
+  beauty_attrs: { beauty_attrs: null },
   // A brand quote is recognised so it can be ignored (a brand is never specific), not failed as unknown text.
-  brand: [],
+  brand: {},
 });
 // Never descriptive, wherever they sit.
 const QUOTE_EVIDENCE_META_KEYS = new Set(['table', 'observed_at', 'review_status', 'audit_status', 'source_refs',
@@ -1236,11 +1246,10 @@ function quoteFactValues(product, key = null) {
     }
   };
   const mapped = key ? QUOTE_KEY_FIELDS[key] : null;
-  const fields = mapped || Object.keys(QUOTE_FACT_FIELDS);
-  for (const field of fields) {
+  const fields = mapped || QUOTE_FACT_FIELDS;
+  const keyMatch = !key || Boolean(mapped);
+  for (const [field, subKeys] of Object.entries(fields)) {
     const value = product && product[field];
-    const subKeys = QUOTE_FACT_FIELDS[field];
-    const keyMatch = !key || Boolean(mapped);
     if (!subKeys) { collect(value, keyMatch); continue; }
     for (const item of Array.isArray(value) ? value : [value]) {
       for (const sub of subKeys) if (item && typeof item === 'object') collect(item[sub], keyMatch);
@@ -1275,15 +1284,21 @@ function wholeWordPositions(haystack, needle, from = 0) {
   for (let at = haystack.indexOf(needle, from); at >= 0; at = haystack.indexOf(needle, at + 1)) {
     const before = at === 0 ? '' : haystack[at - 1];
     const after = haystack[at + needle.length] || '';
-    if (!/[\p{L}\p{N}]/u.test(before) && !/[\p{L}\p{N}]/u.test(after)) out.push(at);
+    if (/[\p{L}\p{N}]/u.test(before) || /[\p{L}\p{N}]/u.test(after)) continue;
+    // An affix that flips the fact is part of the word: "vitamin c" is not in "vitamin c-free", nor
+    // "comedogenic" in "non-comedogenic".
+    if (/^-(?:free|less)\b/.test(haystack.slice(at + needle.length)) || /\b(?:non|anti|un)-$/.test(haystack.slice(0, at))) continue;
+    out.push(at);
   }
   return out;
 }
 const ELISION_MAX_PARTS = 6;
 const ELISION_MAX_GAP = 160;
-// A skipped stretch may not carry a negation or a contrast; "oil-free"-style compounds are not negations.
+// A skipped stretch may not carry a negation, a contrast or a caveat ("but too heavy for oily skin",
+// "yet unsuitable", "while it can clog"); "oil-free"-style compounds alone are not negations.
 const ELISION_FORBIDDEN_GAP = new RegExp("\\b(?:not|no|never|except|excluding|without|non|avoid|unless|however|instead|nor|"
-  + "cannot|can't|won't|isn't|aren't|doesn't|don't|unlike|although|though|whereas|other than|rather than)\\b|(?<!-)\\bfree\\b");
+  + "but|yet|while|whilst|too|problematic|cannot|can't|won't|isn't|aren't|doesn't|don't|unlike|although|though|whereas|"
+  + "other than|rather than|un\\w+able)\\b|(?<!-)\\bfree\\b");
 // The fact's own text spanning every part in order, or ''. Memoised on (part, position): linear in the
 // candidate positions, so a many-part quote cannot stall the review.
 function elidedPassage(values, parts) {
@@ -1329,12 +1344,15 @@ function originalPassage(raw, passage) {
 function groundQuoteSide(product, value) {
   const parsed = parseQuote(value, product);
   if (!parsed) return false;
-  const brand = product && product.brand;
+  const brand = brandAliases(product);
   const values = quoteFactValues(product, parsed.key);
   const specific = [];
   for (const parts of parsed.items) {
     if (parts.length > 1) {
-      if (parts.length > ELISION_MAX_PARTS || parts.some((part) => quoteWords(part).length < 2)) return false;
+      // Too many parts, or a part too thin to place (one generic or short word): the quote proves nothing,
+      // so it is ignored rather than sinking a pair whose other quotes hold.
+      if (parts.length > ELISION_MAX_PARTS
+        || parts.some((part) => quoteWords(part).length < 2 && !quotePartIsSpecific(part, brand))) continue;
       const passage = elidedPassage(values, parts);
       if (!passage) return false;
       // A fact that itself carries an ellipsis or brackets cannot be shown, so it cannot be the evidence.
@@ -1396,7 +1414,7 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
   // A perfume is chosen by its scent: an alternative between fragrances must quote notes that share a
   // scent family, each a whole-word span of that product's own scent text (not taxonomy, tags or brand).
   if (!reason && ['dupe', 'competitive_alternative', 'niche_specialist'].includes(row.relation_type)) {
-    reason = fragranceAlternativeRejection(row.anchor_snapshot || {}, row.candidate_snapshot || {}, quotes,
+    reason = fragranceAlternativeRejection(row.anchor_snapshot || {}, row.candidate_snapshot || {}, grounded || quotes,
       { anchor: evidence.anchor, candidate: evidence.candidate }) || '';
   }
   let suggestedRelationType = '';
