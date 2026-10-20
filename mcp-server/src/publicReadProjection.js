@@ -369,11 +369,17 @@ function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit, emptyReason
   };
 }
 
-function projectGetProduct(raw, { base = DEFAULT_PDP_BASE } = {}) {
+function projectGetProduct(raw, { base = DEFAULT_PDP_BASE, emptyReason } = {}) {
   const r = isObj(raw) ? raw : {};
   const p = isObj(r.product) ? r.product : r;
   const summary = productSummary(p, base);
-  if (!summary) return { note: 'Product not found.' };
+  // A lane that did not answer (e.g. a degraded 503 during a database outage) learned nothing about the
+  // product: telling the caller "not found" would be a false verdict. Say it is temporarily unavailable.
+  if (!summary) {
+    return emptyReason === 'upstream_degraded'
+      ? { note: 'Product is temporarily unavailable. Please retry shortly.' }
+      : { note: 'Product not found.' };
+  }
   const detail = { ...summary };
   const description = clamp(p.description, DESCRIPTION_MAX);
   if (description) detail.description = description;
