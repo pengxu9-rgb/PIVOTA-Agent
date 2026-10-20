@@ -36,6 +36,11 @@ jobs:
       name: Pivota Agent / production
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # CRAWL_FRESH: catalog_row_trust is shared with the gateway service and
+      # pivota-backend; a job that derives trust must run with the SAME switch and
+      # N. Unset repository variables = switch off, N = 7 (the defaults).
+      CATALOG_TRUST_CRAWL_FRESH_ENABLED: ${{ vars.CATALOG_TRUST_CRAWL_FRESH_ENABLED }}
+      CATALOG_TRUST_CRAWL_FRESH_DAYS: ${{ vars.CATALOG_TRUST_CRAWL_FRESH_DAYS }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -23,6 +23,11 @@ const {
   seedRouteResolvesSql,
 } = require('../src/services/pdpRenderability');
 const { pricedOfferExistsSql } = require('../src/services/pricedOfferSql');
+// CRAWL_FRESH (2026-10-20): the switch, N and the freshness statement live in
+// the upserter; this driver supplies the input the same way it does, so a run
+// with CATALOG_TRUST_CRAWL_FRESH_ENABLED on writes what the steady-state
+// producers and the pivota-backend twin write. Off (default): no extra query.
+const { crawlFreshByKey, logCrawlFreshConfig } = require('../src/services/catalogRowTrustUpserter');
 
 const BATCH_SIZE = 500;
 
@@ -293,8 +298,10 @@ const UPSERT_SQL = `
      OR catalog_row_trust.identity_status <> EXCLUDED.identity_status
 `;
 
-function rowToPolicyInputs(row, activeQuarantines, now) {
-  return {
+// `crawlFresh`: crawlFreshByKey's answer for the batch (see the upserter).
+// null, or a key absent from it, leaves `crawl_fresh` UNSET.
+function rowToPolicyInputs(row, activeQuarantines, now, { crawlFresh = null } = {}) {
+  const inputs = {
     subject_type: 'product',
     subject_key: row.product_key,
     product: {
@@ -371,6 +378,10 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
     active_quarantines: activeQuarantines,
     now,
   };
+  if (crawlFresh != null && Object.prototype.hasOwnProperty.call(crawlFresh, row.product_key)) {
+    inputs.crawl_fresh = Boolean(crawlFresh[row.product_key]);
+  }
+  return inputs;
 }
 
 function trustRowToParams(trust) {
@@ -399,21 +410,19 @@ function trustRowToParams(trust) {
   ];
 }
 
-async function main() {
-  const totalLimit = Math.max(1, Number(argValue('limit') || 0)) || Infinity;
-  const dryRun = hasFlag('dry-run');
-  const subjectFilter = argValue('subject') || 'product';
-
-  if (subjectFilter !== 'product') {
-    throw new Error('phase 1 backfill only supports --subject product');
-  }
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL required');
-  }
-
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const now = new Date();
-
+// One pass over catalog_products, keyset-paged. Exported (with an injectable
+// pool and clock) so a test can drive it without a database.
+//
+// `now` is read PER BATCH, not once per run: the CRAWL_FRESH age of a row is
+// judged against it, and on a long run a run-start `now` would judge the last
+// batches against a clock hours stale.
+async function runBackfill({
+  pool,
+  totalLimit = Infinity,
+  dryRun = false,
+  clock = () => new Date(),
+  batchRows = BATCH_SIZE,
+}) {
   const tally = {
     scanned: 0, wrote: 0, public: 0, shadow: 0, blocked: 0,
     by_reason: Object.create(null),
@@ -423,13 +432,15 @@ async function main() {
 
   let cursor = null;
   while (tally.scanned < totalLimit) {
-    const batchSize = Math.min(BATCH_SIZE, totalLimit - tally.scanned);
+    const batchSize = Math.min(batchRows, totalLimit - tally.scanned);
     const { rows } = await pool.query(PRODUCT_DRIVER_SQL, [cursor, batchSize]);
     if (rows.length === 0) break;
 
+    const now = clock();
+    const crawlFresh = await crawlFreshByKey(pool, rows, now);
     for (const row of rows) {
       tally.scanned += 1;
-      const trust = deriveTrust(rowToPolicyInputs(row, activeQuarantines, now));
+      const trust = deriveTrust(rowToPolicyInputs(row, activeQuarantines, now, { crawlFresh }));
       tally[trust.serving_decision] += 1;
       for (const r of trust.serving_reason_codes) {
         tally.by_reason[r] = (tally.by_reason[r] || 0) + 1;
@@ -442,6 +453,24 @@ async function main() {
     cursor = rows[rows.length - 1].product_key;
     if (rows.length < batchSize) break;
   }
+  return tally;
+}
+
+async function main() {
+  const totalLimit = Math.max(1, Number(argValue('limit') || 0)) || Infinity;
+  const dryRun = hasFlag('dry-run');
+  const subjectFilter = argValue('subject') || 'product';
+
+  if (subjectFilter !== 'product') {
+    throw new Error('phase 1 backfill only supports --subject product');
+  }
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL required');
+  }
+
+  logCrawlFreshConfig('backfill-catalog-row-trust', { stream: process.stderr });
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const tally = await runBackfill({ pool, totalLimit, dryRun });
 
   process.stdout.write(JSON.stringify({
     ok: true,
@@ -458,7 +487,7 @@ async function main() {
 // scripts/backfill-catalog-row-trust.cjs` still runs exactly as before, while
 // `require()` from a test is inert. Without this, replacing the c1.v0.5
 // seed-route EXISTS in PRODUCT_DRIVER_SQL with TRUE was an invisible mutation.
-module.exports = { PRODUCT_DRIVER_SQL, rowToPolicyInputs };
+module.exports = { PRODUCT_DRIVER_SQL, rowToPolicyInputs, runBackfill };
 
 if (require.main === module) {
   main().catch((err) => {

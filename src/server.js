@@ -39,6 +39,7 @@ const {
   oauthClientFromClaims,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields } = require('./attribution/callerLogFields');
+const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
 
 // The caller-declared surface, for the completion log only. Both values are what the request body
 // said, bounded, and absent (not null-padded) when the caller said nothing, so a line from a
@@ -31690,7 +31691,22 @@ async function throwCommerceKernelUpstreamError(operation, err) {
     upstream_code: upstreamCode || null,
     message: upstreamMessage || undefined,
     upstream_detail: upstreamDetail || undefined,
+    // Read by the MCP tools/call completion line (mcp-server/src/toolCallOutcome.js describeToolError) so an
+    // upstream deadline is countable apart from other MERCHANT_UNAVAILABLE causes. Never surfaced to the
+    // caller: toToolError emits only allowlisted detail reasons. Present only when true.
+    ...(isCommerceKernelUpstreamTimeout(err) ? { upstream_timeout: true } : {}),
   });
+}
+
+// A request that never got a response because its transport deadline fired (axios `timeout`, a socket
+// timeout). A response that arrived — even a 504 — is not this: the upstream answered.
+function isCommerceKernelUpstreamTimeout(err) {
+  if (!err || typeof err !== 'object' || err.response) return false;
+  const code = String(err.code || '').trim().toUpperCase();
+  // Not ERR_CANCELED: a cancelled request was aborted by a caller's signal (get_offers' own deadline, a
+  // client gone away), which says nothing about whether the upstream would have answered in time.
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') return true;
+  return /\btime(?:d)? ?out\b/i.test(String(err.message || ''));
 }
 
 function recordCommerceKernelAudit(entry) {
@@ -32633,6 +32649,7 @@ async function getCommerceRemoteMcpAdapter() {
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
+      rememberMcpToolNames(surface);
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
@@ -32783,6 +32800,7 @@ async function getPublicReadMcpAdapter() {
         log: logger,
         filterChainResolvableRows: filterPublicReadChainResolvableRows,
       });
+      rememberMcpToolNames(surface);
       return createRemoteMcpAdapter(surface, {
         allowUnauthenticated: true,
         serverInfo: { name: 'pivota', version: '1.0.0' },
@@ -32848,27 +32866,35 @@ function mcpToolNameFromRpcBody(rpcBody) {
   return rpcBody && rpcBody.method === 'tools/call' && rpcBody.params ? rpcBody.params.name : null;
 }
 
-// One completion line per MCP tools/call, naming the tool and the resolved caller (see
-// src/attribution/callerLogFields.js). Without it an MCP tool call is invisible in the logs: its
-// search_catalog reaches the invoke route only as this gateway's own loopback call, under this gateway's
-// own key, so the invoke line cannot say which agent asked. Only tools/call is logged -- the one method
-// that does real work -- and never its arguments. Registered on 'finish', so it records the caller the
-// door actually resolved (req.invokeAuth is written after this runs). Never throws.
+// One completion line per MCP tools/call, naming the tool, the resolved caller (see
+// src/attribution/callerLogFields.js) and what the door answered (src/observability/mcpToolCallOutcome.js:
+// outcome, is_error, error_code, result_count, cache_hit, lane, degraded flags, tier). Without it an MCP tool
+// call is invisible in the logs: its search_catalog reaches the invoke route only as this gateway's own
+// loopback call, under this gateway's own key, so the invoke line cannot say which agent asked — and every
+// tools/call answers HTTP 200, so a failing tool never reaches a 5xx metric either. Only tools/call is logged
+// -- the one method that does real work -- and never its arguments. Registered on 'finish', so it records the
+// caller the door actually resolved (req.invokeAuth is written after this runs).
+//
+// Returns the per-request recorder (null for any other method): the door hands `recorder.observe` to the
+// adapter and reports what it sent. Never throws.
 function logMcpToolCallOnFinish(req, res, door) {
   try {
     const rpcBody = req && typeof req.body === 'object' && req.body !== null ? req.body : null;
     const rawTool = mcpToolNameFromRpcBody(rpcBody);
-    if (rawTool == null) return;
-    const tool = typeof rawTool === 'string' ? rawTool.trim().slice(0, 128) : null;
+    if (rawTool == null) return null;
     const startedAtMs = Date.now();
+    const recorder = createMcpToolCallRecorder();
     res.on('finish', () => {
       try {
         logger.info(
           {
             door,
-            tool,
+            // The caller chooses params.name; only a name a surface recognised is logged (else 'other').
+            tool: recorder.toolLabel(rawTool, KNOWN_MCP_TOOL_NAMES),
+            tier: mcpCallerTier(req, door),
             status: res.statusCode,
             latency_ms: Math.max(0, Date.now() - startedAtMs),
+            ...recorder.fields(res.statusCode),
             ...callerLogFields(req),
           },
           'mcp tools/call complete',
@@ -32877,9 +32903,30 @@ function logMcpToolCallOnFinish(req, res, door) {
         // Measurement must never break the surface it measures.
       }
     });
+    return recorder;
   } catch (_) {
     // Same.
+    return null;
   }
+}
+
+// Every tool name the gateway's own MCP surfaces advertise, collected as each surface is built. The completion
+// line labels a call refused before dispatch with its tool only when the name is in here (see toolLabel), so
+// a caller-invented name never becomes a log value or a metric label. Bounded by the registered tool lists.
+const KNOWN_MCP_TOOL_NAMES = new Set();
+function rememberMcpToolNames(surface) {
+  try {
+    for (const tool of surface?.tools || []) {
+      if (tool && typeof tool.name === 'string' && tool.name.length <= 64) KNOWN_MCP_TOOL_NAMES.add(tool.name);
+    }
+  } catch (_) {
+    // Labels only.
+  }
+}
+
+// The adapter request for one JSON-RPC call, with the recorder's sink attached only when there is one.
+function withMcpToolCallObserver(adapterReq, recorder) {
+  return recorder ? { ...adapterReq, observe: recorder.observe } : adapterReq;
 }
 
 // THE RULE, keyed on the CANONICAL operation id — never on one dialect's spelling of it.
@@ -32974,7 +33021,7 @@ function commerceMcpHeartbeatOptions(ctx) {
 }
 
 async function handlePublicReadMcp(req, res) {
-  logMcpToolCallOnFinish(req, res, 'public_mcp');
+  const toolCallRecorder = logMcpToolCallOnFinish(req, res, 'public_mcp');
   if (!isPublicReadMcpEnabled()) {
     return res.status(404).json({ error: 'not_found' });
   }
@@ -32997,11 +33044,17 @@ async function handlePublicReadMcp(req, res) {
       );
       try {
         const adapter = await getPublicReadMcpAdapter();
-        const out = await adapter.handleJsonRpc({ headers: req.headers || {}, body: req.body });
+        const out = await adapter.handleJsonRpc(
+          withMcpToolCallObserver({ headers: req.headers || {}, body: req.body }, toolCallRecorder),
+        );
+        toolCallRecorder?.recordRpcResponse(out);
         // finish() returns true when the heartbeat already committed the wire (slow path) and wrote the
         // body itself — every adapter path still running past the heartbeat delay is a tools/call, which
         // always resolves status 200, so committing early never masks a real non-200.
-        if (heartbeat.finish(out)) return undefined;
+        if (heartbeat.finish(out)) {
+          toolCallRecorder?.observe({ heartbeat_committed: true });
+          return undefined;
+        }
         for (const [key, value] of Object.entries(out.headers || {})) {
           res.setHeader(key, value);
         }
@@ -33009,6 +33062,7 @@ async function handlePublicReadMcp(req, res) {
         return res.status(out.status).json(out.body);
       } catch (err) {
         logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
+        toolCallRecorder?.recordInternalError();
         const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
         if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
           return undefined;
@@ -33064,7 +33118,7 @@ function registerCommerceRemoteMcpRoute() {
  * nothing here can accidentally re-open a door its own route decided to keep shut.
  */
 async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel, door }) {
-    logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
+    const toolCallRecorder = logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
     // MCP OAuth front door (additive, gated by MCP_OAUTH_ENABLED). Lets a native frontier MCP
     // client (Claude/ChatGPT/Gemini) connect with an OAuth access token instead of a commerce
     // API key: the verified token is BOTH the channel credential and the user identity. Inert
@@ -33117,6 +33171,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
               tool: blockedOperation.tool,
             }),
           });
+          toolCallRecorder?.recordToolError('OPERATION_NOT_ALLOWED');
           return res.status(200).json(mcpToolErrorBody({
             id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
             code: 'OPERATION_NOT_ALLOWED',
@@ -33142,13 +33197,17 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
           const sessionContext = mcpOAuthOutcome.mode === 'oauth'
             ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
             : await deriveStrictCommerceCtxAsync(req);
-          const out = await adapter.handleJsonRpc({
+          const out = await adapter.handleJsonRpc(withMcpToolCallObserver({
             headers: req.headers || {},
             body: req.body,
             authInfo: buildStrictSessionAuthInfo(req, sessionContext),
             sessionContext,
-          });
-          if (heartbeat.finish(out)) return undefined;
+          }, toolCallRecorder));
+          toolCallRecorder?.recordRpcResponse(out);
+          if (heartbeat.finish(out)) {
+            toolCallRecorder?.observe({ heartbeat_committed: true });
+            return undefined;
+          }
           for (const [key, value] of Object.entries(out.headers || {})) {
             res.setHeader(key, value);
           }
@@ -33156,6 +33215,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
           return res.status(out.status).json(out.body);
         } catch (err) {
           logger.error({ err: err?.message || String(err) }, failureLabel);
+          toolCallRecorder?.recordInternalError();
           const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
           if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
             return undefined;
@@ -33395,6 +33455,7 @@ async function getCommerceUcpMcpAdapter() {
       // false and the UCP door simply had no cache. Harmless while the dialect had no cacheable tool; not once
       // search_catalog is on it (tests/commerce_ucp_search_shared_cache.node.test.cjs pins the sharing).
       const surface = ucpDialectSurface(await getCommerceToolSurface());
+      rememberMcpToolNames(surface);
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-ucp', version: '0.1.0' },
         authenticate: async (req) => {
@@ -52248,9 +52309,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           userQuery: rawUserQuery,
           limit,
         });
+        // A rerank skipped because its model breaker is open is still a failed rerank: it keeps error:true on
+        // the stage (the signal a failing rerank has always left there) and says why with breaker_open.
         llmRerankOutcome = reranked?.applied
           ? { applied: true, provider: reranked.provider || null }
-          : { applied: false };
+          : reranked?.breaker_open
+            ? { applied: false, error: true, breaker_open: true }
+            : { applied: false };
         if (reranked?.applied) {
           maybePolicy = reranked.response;
           if (ROUTE_DEBUG_ENABLED) {
@@ -52279,6 +52344,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         applied: Boolean(llmRerankOutcome?.applied),
         provider: llmRerankOutcome?.provider,
         error: llmRerankOutcome?.error,
+        breaker_open: llmRerankOutcome?.breaker_open,
       });
     }
 
@@ -53505,6 +53571,13 @@ if (require.main === module) {
         },
         `Pivota Agent gateway listening on http://localhost:${PORT}, proxying to ${PIVOTA_API_BASE}`,
       );
+      // CRAWL_FRESH: this service writes catalog_row_trust on identity events, and
+      // the switch must match pivota-backend's; log what it booted with.
+      try {
+        require('./services/catalogRowTrustUpserter').logCrawlFreshConfig('gateway-boot');
+      } catch (err) {
+        logger.warn({ event: 'catalog_trust_crawl_fresh_config_log_failed', err: err && err.message });
+      }
 
 
       // Gemini gate startup check

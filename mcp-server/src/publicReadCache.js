@@ -65,6 +65,9 @@ function createPublicReadCache({
    * Get-or-compute through the cache.
    * @param {string} key
    * @param {() => Promise<any>} compute produces the value on miss/expiry (and on background revalidation)
+   * @param {{ onState?: (state: 'hit'|'stale'|'miss') => void }} [opts] optional per-call observer, told
+   *   which branch answered. Measurement only; it is called before the value is returned (and before an inline
+   *   compute runs) and a throwing observer is ignored.
    * @returns {Promise<any>}
    */
   // Store `value` under its own clock, or drop the key when the policy refuses it. Dropping matters on the
@@ -82,7 +85,15 @@ function createPublicReadCache({
     return true;
   }
 
-  async function getOrCompute(key, compute) {
+  async function getOrCompute(key, compute, { onState } = {}) {
+    const report = (state) => {
+      if (typeof onState !== 'function') return;
+      try {
+        onState(state);
+      } catch {
+        // An observer must never change what the cache serves.
+      }
+    };
     const t = now();
     const hit = entries.get(key);
     if (hit) {
@@ -91,9 +102,11 @@ function createPublicReadCache({
       const hitStale = Number.isFinite(hit.staleMs) ? hit.staleMs : staleMs;
       if (age < hitTtl) {
         touch(key, hit); // LRU bump
+        report('hit');
         return hit.value;
       }
       if (age < hitStale) {
+        report('stale');
         // Serve stale now; revalidate once in the background.
         if (!inflight.has(key)) {
           inflight.add(key);
@@ -107,6 +120,7 @@ function createPublicReadCache({
       }
       entries.delete(key); // fully expired
     }
+    report('miss');
     const value = await compute(); // errors propagate, nothing cached
     store(key, value);
     return value;
