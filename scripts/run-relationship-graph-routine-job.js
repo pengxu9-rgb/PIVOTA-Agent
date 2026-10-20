@@ -380,6 +380,7 @@ function buildRoutineSteps(options) {
       artifacts.review,
     ];
     pushArg(args, 'concurrency', options.reviewConcurrency);
+    pushArg(args, 'run-id', options.reviewRunId);
     pushArg(args, 'review-mode', options.reviewMode);
     pushArg(args, 'min-approval-confidence', options.minApprovalConfidence);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
@@ -893,9 +894,10 @@ async function runRoutineJob(
 ) {
   const outDir = resolvePathMaybeRelative(options.outDir);
   fs.mkdirSync(outDir, { recursive: true });
-  const { artifacts, steps } = buildRoutineSteps({ ...options, outDir });
-  const lockDir = buildLockPath({ ...options, outDir });
   const runId = `relgraph_routine_${dateStamp(now)}`;
+  // The review stamps every row it writes with this run id (provenance.ai_review.run_id, ...).
+  const { artifacts, steps } = buildRoutineSteps({ ...options, outDir, reviewRunId: runId });
+  const lockDir = buildLockPath({ ...options, outDir });
   const releaseLock = options.skipLock
     ? null
     : acquireRoutineLock(lockDir, {
