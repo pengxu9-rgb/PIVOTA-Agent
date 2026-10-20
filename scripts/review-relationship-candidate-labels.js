@@ -124,7 +124,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--ids <id,id,...>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--uncovered-first] [--ids-file <path>] [--ids <id,id,...>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     '--review-mode consensus (or RELGRAPH_AI_REVIEW_MODE=consensus) requires explicitly pinned GPT and Gemini models.',
@@ -240,6 +240,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     llmAttempts,
     relationTypes,
     excludeRelationTypes,
+    uncoveredFirst: hasFlag(argv, 'uncovered-first'),
     allowDupeAiApproval,
     reviewMode,
   };
@@ -617,6 +618,7 @@ async function fetchCandidates({
   anchorRefs = [],
   relationTypes = [],
   excludeRelationTypes = [],
+  uncoveredFirst = false,
   offset = 0,
   queryFn = query,
 }) {
@@ -652,28 +654,57 @@ async function fetchCandidates({
     offsetSql = `\n      OFFSET $${params.length}::int`;
   }
 
-  const res = await queryFn(
-    `
-      SELECT
+  const columns = `
         id, edge_id, anchor_type, anchor_ref, anchor_snapshot,
         candidate_product_ref, candidate_snapshot, relation_type,
         display_label, market, vertical, category_taxonomy, use_case,
         label_state, score_total, score_breakdown, price_evidence,
         source_refs, evidence_grade, why_candidate, tradeoffs, watchouts,
-        provenance, created_at, updated_at, updated_at::text AS review_row_version
-      FROM relationship_candidate_labels
+        provenance, created_at, updated_at, updated_at::text AS review_row_version`;
+  const where = `
       WHERE label_state = 'generated'
         AND COALESCE(updated_at, created_at) >= $1::timestamptz
         AND COALESCE(score_total, 0) >= $2::double precision
         ${idsSql}
         ${anchorRefsSql}
         ${relationTypesSql}
-        ${excludeRelationTypesSql}
+        ${excludeRelationTypesSql}`;
+  // UNCOVERED FIRST (2026-10-20). Of 26,617 generated competitive_alternative labels only 5,933 sat on
+  // the 2,616 anchors with no served alternative; score order spent a night's reviews on anchors that
+  // already had a rail. With uncoveredFirst the labels of anchors with no served label of the same
+  // relation type and market come first, one per anchor per round (best score first), and the
+  // covered anchors follow in the old score order. The served predicate is the serving view's
+  // (approved, verified, unexpired). Selection completes before any write, so it is stable per run.
+  const sql = uncoveredFirst
+    ? `
+      WITH served AS (
+        SELECT DISTINCT lower(anchor_ref) AS served_ref, relation_type AS served_relation_type,
+          upper(market) AS served_market
+        FROM relationship_candidate_labels
+        WHERE label_state IN ('ai_approved', 'human_approved')
+          AND last_verified_at IS NOT NULL AND expires_at > now()
+      ), queue AS (
+        SELECT l.*,
+          (s.served_ref IS NOT NULL) AS anchor_covered,
+          row_number() OVER (PARTITION BY lower(l.anchor_ref), l.relation_type, upper(l.market)
+            ORDER BY l.score_total DESC NULLS LAST, l.created_at ASC, l.id ASC) AS anchor_rank
+        FROM relationship_candidate_labels l
+        LEFT JOIN served s ON s.served_ref = lower(l.anchor_ref) AND s.served_relation_type = l.relation_type
+          AND s.served_market = upper(l.market)${where}
+      )
+      SELECT ${columns}
+      FROM queue
+      ORDER BY anchor_covered ASC, CASE WHEN anchor_covered THEN 0 ELSE anchor_rank END ASC,
+        score_total DESC NULLS LAST, created_at ASC, id ASC
+      LIMIT $3::int${offsetSql}
+    `
+    : `
+      SELECT ${columns}
+      FROM relationship_candidate_labels${where}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
       LIMIT $3::int${offsetSql}
-    `,
-    params,
-  );
+    `;
+  const res = await queryFn(sql, params);
   return Array.isArray(res && res.rows) ? res.rows : [];
 }
 
@@ -1433,6 +1464,7 @@ async function runReview({
   llmAttempts = DEFAULT_LLM_ATTEMPTS,
   relationTypes = [],
   excludeRelationTypes = DEFAULT_EXCLUDED_RELATION_TYPES,
+  uncoveredFirst = false,
   allowDupeAiApproval = false,
   queryFn = query,
   provider = null,
@@ -1482,6 +1514,7 @@ async function runReview({
     anchorRefs,
     relationTypes: includedRelationTypes,
     excludeRelationTypes: excludedRelationTypes,
+    uncoveredFirst: uncoveredFirst === true,
   };
   // Negative memory is a single-mode mechanism: consensus records its own
   // dispositions (needs_evidence), and a single-model verdict must not stop
@@ -1722,6 +1755,7 @@ async function runReview({
     anchor_refs_scope_count: anchorRefs.length,
     relation_types_filter: includedRelationTypes,
     excluded_relation_types: excludedRelationTypes,
+    uncovered_first: uncoveredFirst === true,
     dupe_ai_approval_allowed: allowDupeAiApproval,
     review_mode: reviewMode,
     cross_agent_approved_count: consensus ? approvedCount : 0,
