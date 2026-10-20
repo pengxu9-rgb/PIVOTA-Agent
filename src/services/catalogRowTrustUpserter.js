@@ -395,38 +395,48 @@ function crawlFreshDays() {
   return days;
 }
 
-// A "plain http(s) listing URL": the link a buyer is sent to, starting http://
-// or https:// and carrying no whitespace. An affiliate-feed offer is excluded by
-// provenance: its link is a network tracking URL, not the listing.
-// Byte-identical to the backend's CRAWL_OFFER_LINK_SQL /
-// CRAWL_OFFER_NOT_AFFILIATE_SQL.
+// THE LIVE-OFFER TEST (round 4): the payload link, else source_ref, trimmed,
+// starting http:// or https:// -- spelled exactly as the backend's offer reader
+// tests `servable` (round 3 also required no whitespace, so an offer the reader
+// serves could sit outside the class). A destination no reader serves (ftp:, a
+// bare path) is not live and neither dates nor blocks a row.
+// Byte-identical to the backend's CRAWL_OFFER_LINK_SQL.
 const CRAWL_OFFER_LINK_SQL =
   "btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref)," +
-  " E' \\t\\n\\r\\f\\v') ~ '^https?://\\S+$'";
+  " E' \\t\\n\\r\\f\\v') ~ '^https?://'";
+// An affiliate-feed offer's link is a network tracking URL, not the listing, and
+// the drain never read its price from the storefront: never a valid read.
+// Byte-identical to the backend's CRAWL_OFFER_NOT_AFFILIATE_SQL.
 const CRAWL_OFFER_NOT_AFFILIATE_SQL =
   "coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'";
 
-// ---- round 3 (2026-10-20): EVERY live offer fresh, in a DECLARED served market --
+// ---- round 4 (2026-10-20): EVERY live offer, fail closed ------------------------
 //
-// Twin of the backend's round-3 block. Trust stays per PRODUCT, so the row may
-// go public only when NO surface of it shows a stale drain price. The input is
-// the row's price-read date: the OLDEST valid read across EVERY live offer of
-// the qualifying class, NULL as soon as one of them has none.
+// Twin of the backend's round-4 block. Trust stays per PRODUCT, and the readers
+// serve every live offer of a product to somebody (a caller that declares no
+// market is shown them all), so the row may go public only when NO offer any
+// reader can show carries a price we cannot vouch for. The input is the row's
+// price-read date: the OLDEST valid read across EVERY live offer, NULL as soon
+// as one of them has none.
 //
-// THE QUALIFYING CLASS (crawlOfferClassConjuncts) -- every live drain-lane offer
-// a buyer in a served market can be shown: written by the drain, unsuppressed
-// and priced (pricedOfferSql), linking to a plain http(s) listing URL, not an
-// affiliate-feed link, in a SERVED market priced in that market's currency.
+// THE CLASS (crawlOfferClassConjuncts) -- every LIVE offer on the row:
+// unsuppressed and priced (pricedOfferSql), linking to an http(s) destination
+// (CRAWL_OFFER_LINK_SQL). Nothing else: any source_system, any market, any
+// currency, affiliate offers included.
 //
-// A VALID READ of one such offer (CRAWL_OFFER_VALID_READ_SQL): price_checked_at
+// A VALID READ of one class offer (CRAWL_OFFER_VALID_READ_SQL), ALL of: written
+// by the drain (source_system catalog_enrichment_agent_v1); in a SERVED market
+// priced in that market's currency; not an affiliate-feed offer; price_checked_at
 // not after the bound now (a future stamp is stale, per offer); the market was
 // DECLARED by the writer (offer_payload.declared_market = catalog_offers.market,
-// since the column is NOT NULL DEFAULT 'US'); not an employee price edit.
+// since the column is NOT NULL DEFAULT 'US'); not an employee price edit. So ONE
+// live offer that fails any of these makes the row NOT fresh: fail closed.
 //
 // THE ROW IS CRAWL-FRESH when it has at least one class offer, EVERY class offer
 // has a valid read, at least one class offer is not explicitly out of stock, and
 // the oldest of those reads is within N days of the SAME now the statement was
-// bound with. "Every" covers each live variant offer AND `<pk>::canonical`.
+// bound with. "Every" covers each live variant offer AND `<pk>::canonical`, and
+// an out-of-stock offer needs its valid read like any other.
 //
 // THE SERVED (market, currency) PAIRS ARE A CONSTANT HERE, NOT servedMarkets().
 // The backend renders them at import from its market registry (status 'served')
@@ -454,10 +464,10 @@ const CRAWL_OFFER_SERVED_MARKET_SQL =
 // backend's offer_buyability.OFFER_UNAVAILABLE_AVAILABILITIES. Sorted, as the
 // backend renders it. NOTE the one-argument btrim (spaces only), the backend's
 // spelling here -- not offerAvailabilitySql's JS-trim character set.
-// KNOWN GAP, kept byte-identical to the backend (unchanged in its round 3): a
-// tab/newline-padded value ('\tsoldout') and spaced spellings ('out of stock')
-// are not caught. Since round 3 this gates only "at least one class offer is in
-// stock", never freshness.
+// KNOWN GAP, kept byte-identical to the backend (unchanged through its round 4):
+// a tab/newline-padded value ('\tsoldout') and spaced spellings ('out of stock')
+// are not caught. It gates only "at least one class offer is in stock", never
+// freshness: an out-of-stock offer needs its valid read like any other.
 const CRAWL_OFFER_IN_STOCK_SQL =
   "lower(btrim(coalesce(co.availability, '')))" +
   ' NOT IN (' +
@@ -475,22 +485,23 @@ const CRAWL_DECLARED_MARKET_KEY = 'declared_market';
 const CRAWL_OFFER_DECLARED_MARKET_SQL =
   `upper(btrim(coalesce(co.offer_payload->>'${CRAWL_DECLARED_MARKET_KEY}', '')))` +
   " = upper(btrim(coalesce(co.market, '')))";
+const CRAWL_OFFER_DRAIN_SOURCE_SQL = `co.source_system = '${CRAWL_SOURCE_SYSTEM}'`;
 // `$2` is the batch's `now` (the backend's `:now`).
 const CRAWL_OFFER_VALID_READ_SQL =
-  'CASE WHEN co.price_checked_at <= CAST($2 AS timestamptz)' +
+  `CASE WHEN ${CRAWL_OFFER_DRAIN_SOURCE_SQL}` +
+  ` AND ${CRAWL_OFFER_SERVED_MARKET_SQL}` +
+  ` AND ${CRAWL_OFFER_NOT_AFFILIATE_SQL}` +
+  ' AND co.price_checked_at <= CAST($2 AS timestamptz)' +
   ` AND ${CRAWL_OFFER_DECLARED_MARKET_SQL}` +
   ` AND ${CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL}` +
   ' THEN co.price_checked_at END';
 
-/** The qualifying class for one row. `productKeyExpr` is SQL, never a value. */
+/** The class for one row: every live offer. `productKeyExpr` is SQL, never a value. */
 function crawlOfferClassConjuncts(productKeyExpr) {
   return [
     `co.product_key = ${productKeyExpr}`,
-    `co.source_system = '${CRAWL_SOURCE_SYSTEM}'`,
     ...pricedOfferRowConjuncts('co'),
     CRAWL_OFFER_LINK_SQL,
-    CRAWL_OFFER_NOT_AFFILIATE_SQL,
-    CRAWL_OFFER_SERVED_MARKET_SQL,
   ];
 }
 
@@ -944,6 +955,7 @@ module.exports = {
   CRAWL_OFFER_IN_STOCK_SQL,
   CRAWL_OFFER_SERVED_MARKET_SQL,
   CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS,
+  CRAWL_OFFER_VALID_READ_SQL,
   CRAWL_PRICE_READ_SOURCE_KEY,
   PRICE_CHECK_COLUMN_SQL,
   crawlFreshByKey,

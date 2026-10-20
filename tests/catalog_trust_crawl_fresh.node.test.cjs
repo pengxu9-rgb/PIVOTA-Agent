@@ -21,10 +21,13 @@
 //     no listing / a raw '' or 'unknown' status -- never 'rejected' and the
 //     like) and never to a row that stays shadow anyway, so every applied case
 //     ends public; a future-dated read is stale;
-//   * round 3: the row's read date is the OLDEST valid read across EVERY live
-//     drain offer in a served market (variants and ::canonical alike), valid =
-//     not after the batch's bound now, market DECLARED by the writer, not an
-//     employee edit; at least one such offer in stock; one clock per batch;
+//   * round 3/4: the row's read date is the OLDEST valid read across EVERY live
+//     offer (unsuppressed, priced, http(s) link; any source, market, currency or
+//     affiliate status; variants and ::canonical alike), valid = the drain's, in
+//     a served market+currency pair, not affiliate, not after the batch's bound
+//     now, market DECLARED by the writer, not an employee edit; at least one
+//     class offer in stock; one clock per batch. What the statement DECIDES is
+//     executed on Postgres in tests/integration/crawl_fresh_row_price_read_postgres.test.js;
 //   * first-party and observed-seller ('self') rows are untouched;
 //   * the switch (CATALOG_TRUST_CRAWL_FRESH_ENABLED, default off) and N
 //     (CATALOG_TRUST_CRAWL_FRESH_DAYS, default 7) live in the upserter, which
@@ -1074,7 +1077,7 @@ test('the freshness statement is the backend constant, with :product_keys / :now
 
 test('the freshness statement, spelled out (so a fixture edit cannot move both sides at once)', () => {
   const valid =
-    "CASE WHEN co.price_checked_at <= CAST($2 AS timestamptz) AND upper(btrim(coalesce(co.offer_payload->>'declared_market', ''))) = upper(btrim(coalesce(co.market, ''))) AND coalesce(co.offer_payload->>'price_read_source', '') <> 'employee_edit' THEN co.price_checked_at END";
+    "CASE WHEN co.source_system = 'catalog_enrichment_agent_v1' AND (upper(btrim(coalesce(co.market, ''))), upper(btrim(coalesce(co.currency, '')))) IN (('SG', 'SGD'), ('US', 'USD')) AND coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%' AND co.price_checked_at <= CAST($2 AS timestamptz) AND upper(btrim(coalesce(co.offer_payload->>'declared_market', ''))) = upper(btrim(coalesce(co.market, ''))) AND coalesce(co.offer_payload->>'price_read_source', '') <> 'employee_edit' THEN co.price_checked_at END";
   assert.equal(
     upserter.CRAWL_ROW_PRICE_READ_SQL,
     'SELECT k.product_key, r.row_price_read_at\n' +
@@ -1086,12 +1089,9 @@ test('the freshness statement, spelled out (so a fixture edit cannot move both s
       `               THEN min(${valid}) END AS row_price_read_at\n` +
       '     FROM catalog_offers co\n' +
       '    WHERE co.product_key = k.product_key\n' +
-      "      AND co.source_system = 'catalog_enrichment_agent_v1'\n" +
       '      AND co.suppressed_at IS NULL\n' +
       '      AND coalesce(co.merchant_effective_price, co.list_price) > 0\n' +
-      "      AND btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref), E' \\t\\n\\r\\f\\v') ~ '^https?://\\S+$'\n" +
-      "      AND coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'\n" +
-      "      AND (upper(btrim(coalesce(co.market, ''))), upper(btrim(coalesce(co.currency, '')))) IN (('SG', 'SGD'), ('US', 'USD'))\n" +
+      "      AND btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref), E' \\t\\n\\r\\f\\v') ~ '^https?://'\n" +
       ' ) r\n' +
       ' WHERE r.row_price_read_at IS NOT NULL\n',
   );
@@ -1424,4 +1424,26 @@ test('round 3: a failed read logs catalog_row_trust_crawl_fresh_read_failed', as
     logger.error = orig;
   }
   assert.ok(seen.some((o) => o && o.event === 'catalog_row_trust_crawl_fresh_read_failed'));
+});
+
+test('round 4: the class is every live offer; source, served pair and affiliate moved into the valid read', () => {
+  const cls = upserter.crawlOfferClassConjuncts('k.product_key');
+  assert.deepEqual(cls, [
+    'co.product_key = k.product_key',
+    'co.suppressed_at IS NULL',
+    'coalesce(co.merchant_effective_price, co.list_price) > 0',
+    "btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref), E' \\t\\n\\r\\f\\v') ~ '^https?://'",
+  ]);
+  const valid = upserter.CRAWL_OFFER_VALID_READ_SQL;
+  const order = [
+    "co.source_system = 'catalog_enrichment_agent_v1'",
+    upserter.CRAWL_OFFER_SERVED_MARKET_SQL,
+    "coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'",
+    'co.price_checked_at <= CAST($2 AS timestamptz)',
+    "co.offer_payload->>'declared_market'",
+    "'employee_edit'",
+  ].map((frag) => valid.indexOf(frag));
+  assert.ok(order.every((i) => i >= 0), `every predicate is in the valid read: ${order}`);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'in the backend\'s order');
+  assert.ok(valid.startsWith("CASE WHEN co.source_system = 'catalog_enrichment_agent_v1' AND "));
 });
