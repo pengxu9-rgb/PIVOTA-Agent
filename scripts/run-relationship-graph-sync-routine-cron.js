@@ -155,7 +155,9 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     '--limit',
     String(buildLimit),
     '--review-limit',
-    String(parseNumberEnv(env.RELGRAPH_SYNC_REVIEW_LIMIT, DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 })),
+    // Up to 10,000 reviews a run (Peng 2026-10-20): the nightly works the global generated backlog when
+    // RELGRAPH_SYNC_SCOPE_REVIEW_TO_BUILD=false and RELGRAPH_SYNC_CUTOFF reaches back. Same cap at every layer.
+    String(parseNumberEnv(env.RELGRAPH_SYNC_REVIEW_LIMIT, DEFAULT_REVIEW_LIMIT, { min: 1, max: 10000 })),
     '--run-started-at',
     runScopeStartedAt(env, now),
   ];

@@ -64,7 +64,11 @@ const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
 const DEFAULT_LIMIT = 250;
-const MAX_LIMIT = 5000;
+// The sync cron, sync routine and routine job cap --review-limit at the same 10,000.
+const MAX_LIMIT = 10000;
+// An inline --ids list stays at 5,000: it rides on the job's command line, and its bound is about
+// argument size, not about how many labels a run may review.
+const MAX_INLINE_IDS = 5000;
 const TEXT_LIMIT = 900;
 const DEFAULT_LLM_ATTEMPTS = 2;
 const MAX_LLM_ATTEMPTS = 5;
@@ -241,7 +245,7 @@ function parseInlineIds(value) {
   const ids = Array.from(new Set(raw.split(',').map((id) => id.trim()).filter(Boolean)));
   const invalid = ids.find((id) => !/^[A-Za-z0-9_-]{1,128}$/.test(id));
   if (invalid) throw new Error(`--ids: invalid label id ${JSON.stringify(invalid.slice(0, 40))}`);
-  if (ids.length > MAX_LIMIT) throw new Error(`--ids: ${ids.length} ids exceeds ${MAX_LIMIT}`);
+  if (ids.length > MAX_INLINE_IDS) throw new Error(`--ids: ${ids.length} ids exceeds ${MAX_INLINE_IDS}`);
   return ids;
 }
 
