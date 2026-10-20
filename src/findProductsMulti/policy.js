@@ -60,6 +60,7 @@ const {
   isBareIngredientRoutingEnabled,
   isBareStrictIngredientQuery,
 } = require('./strictIngredientQuery');
+const { detectLanguage: detectQueryLanguage } = require('./intent');
 const strictFindProductsMultiRuntime = createStrictFindProductsMultiRuntime({
   buildBeautyQueryProfile,
 });
@@ -5494,7 +5495,17 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     },
   };
 
-  return { intent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
+  // FIND_PRODUCTS_MULTI_*_ROUTING on: the gateway routed on a normalised (English) form of the query
+  // and kept the caller's own text as metadata.routing_original_query. Replies and clarifications speak
+  // the caller's language, so the intent's language is read from that original text. Routing above
+  // used the normalised form throughout, exactly as an English query would.
+  const routingOriginalQuery =
+    typeof metadata?.routing_original_query === 'string' ? metadata.routing_original_query.trim() : '';
+  const replyIntent =
+    routingOriginalQuery && intent && typeof intent === 'object'
+      ? { ...intent, language: detectQueryLanguage(routingOriginalQuery) }
+      : intent;
+  return { intent: replyIntent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
 }
 
 function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata, rawUserQuery }) {

@@ -1,9 +1,5 @@
 const { extractIntentRuleBased } = require('../../../findProductsMulti/intent');
 const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('../../../services/externalSeedRecall');
-const {
-  isBareIngredientRoutingEnabled,
-  stripNegatedStrictIngredientMentions,
-} = require('../../../findProductsMulti/strictIngredientQuery');
 
 const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES = Object.freeze({
   ascorbic_acid: Object.freeze({
@@ -360,12 +356,7 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
   );
 
   function extractStrictFindProductsMultiIngredientIntents(queryText, beautyQueryProfile = null) {
-    // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: a negated mention ("retinol free", "without
-    // retinol") is not a request for the ingredient. Off: plain substring matching, as before.
-    const matchedQuery = normalizeSearchTextForMatch(String(queryText || ''));
-    const normalizedQuery = isBareIngredientRoutingEnabled()
-      ? stripNegatedStrictIngredientMentions(matchedQuery)
-      : matchedQuery;
+    const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
     if (!normalizedQuery) return [];
     const beautyBucket = String(beautyQueryProfile?.bucket || '').trim().toLowerCase();
     const isBeautyQuery = Boolean(beautyQueryProfile?.isBeautyQuery);

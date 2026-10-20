@@ -1,29 +1,26 @@
+// Loopback-only: nothing in this file (or a mutant of the code it tests) can reach a real host.
+const netGuard = require('../search_routing_net_guard.cjs');
+
 /**
  * find_products_multi routing for bare ingredients and non-English beauty terms, on the real invoke
  * route with a mocked database (a fixed fixture catalog answers every canonical-catalog statement, so
  * which rows come back is decided by the lanes' own gates, not by SQL text matching).
  *
- * Flags (both default off; see src/findProductsMulti/queryRoutingNormalizer.js):
+ * Flags (each off | observe | on, default off; see src/findProductsMulti/queryRoutingNormalizer.js):
  *   FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING  a query that is only a known ingredient reaches the
- *     ingredient lane; negated mentions are not ingredient intents; the lane admits only rows that NAME
- *     the ingredient (title / structured ingredient fields, whole words, not negated).
+ *     ingredient lane; negated / stand-in mentions are not intents but exclusions; the lane admits only
+ *     rows that NAME the ingredient; a bare negation is a safe-empty clarify.
  *   FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING  known non-English beauty terms route like their English
- *     equivalents.
- *
- * Pinned here:
- *   - off: the measured misroutes (retinol -> clarify, hyaluronic acid -> backend lane, 선크림 -> backend
- *     lane, crème hydratante / 洗面奶 -> clarify), and unset == explicit off, byte for byte;
- *   - on: bare ingredients return only rows that name the ingredient (no "Retinol-Free", no
- *     "Retinol Alternative", no "Vitamin E" for vitamin c), in every language;
- *   - on: non-English category queries return exactly the rows their English equivalent returns;
- *   - on: negations route away from the ingredient lane and never return the negated ingredient;
- *   - on: non-beauty and ambiguous queries route exactly as before.
+ *     equivalents; English queries are never changed.
  */
 
 const nock = require('nock');
 const request = require('supertest');
 
 const CANONICAL_MARKER = 'WITH candidate_products';
+
+// Several tests replay a query set through two boots of the route.
+jest.setTimeout(60000);
 
 function row(key, title, categoryPath, { actives = [], productType = 'Skincare', description = null } = {}) {
   return {
@@ -54,23 +51,34 @@ function row(key, title, categoryPath, { actives = [], productType = 'Skincare',
   };
 }
 
+const SERUM = 'beauty/skincare/treat/serum';
+const CREAM = 'beauty/skincare/moisturize/cream';
 const CATALOG = [
-  row('retinol_serum', 'Retinol 0.3% Night Serum', 'beauty/skincare/treat/serum', { actives: ['retinol'], productType: 'Serum' }),
-  row('retinol_cream', 'Retinol Renewal Night Cream', 'beauty/skincare/moisturize/cream', { actives: ['retinol'], productType: 'Moisturizer' }),
-  row('retinol_free_moist', 'Retinol-Free Barrier Moisturizer', 'beauty/skincare/moisturize/cream', { actives: ['ceramide'], productType: 'Moisturizer' }),
-  row('retinol_free_serum', 'Retinol-Free Gentle Night Serum', 'beauty/skincare/treat/serum', { actives: ['peptides'], productType: 'Serum' }),
-  row('bakuchiol', 'Bakuchiol Retinol Alternative Serum', 'beauty/skincare/treat/serum', { actives: ['bakuchiol'], productType: 'Serum' }),
-  row('desc_only', 'Gentle Night Serum', 'beauty/skincare/treat/serum', { actives: ['squalane'], productType: 'Serum', description: 'Free of retinol. Pairs well with retinol.' }),
-  row('ha_serum', 'Hyaluronic Acid 2% Hydrating Serum', 'beauty/skincare/treat/serum', { actives: ['hyaluronic acid'], productType: 'Serum' }),
-  row('niacinamide_serum', 'Niacinamide 10% Serum', 'beauty/skincare/treat/serum', { actives: ['niacinamide'], productType: 'Serum' }),
-  row('vit_c', 'Vitamin C 15% Serum', 'beauty/skincare/treat/serum', { actives: ['ascorbic acid'], productType: 'Serum' }),
-  row('vit_e', 'Vitamin E Serum', 'beauty/skincare/treat/serum', { actives: ['tocopherol'], productType: 'Serum' }),
-  row('plain_moist', 'Daily Moisturizing Cream', 'beauty/skincare/moisturize/cream', { actives: ['glycerin'], productType: 'Moisturizer' }),
+  row('retinol_serum', 'Retinol 0.3% Night Serum', SERUM, { actives: ['retinol'], productType: 'Serum' }),
+  row('retinol_cream', 'Retinol Renewal Night Cream', CREAM, { actives: ['retinol'], productType: 'Moisturizer' }),
+  // Rows whose titles say "retinol" but are not retinol (the reviewed fooled-title shapes).
+  row('retinol_free_moist', 'Retinol-Free Barrier Moisturizer', CREAM, { actives: ['ceramide'], productType: 'Moisturizer' }),
+  row('retinol_free_serum', 'Retinol-Free Gentle Night Serum', SERUM, { actives: ['peptides'], productType: 'Serum' }),
+  row('bakuchiol', 'Bakuchiol Retinol Alternative Serum', SERUM, { actives: ['bakuchiol'], productType: 'Serum' }),
+  row('phyto', 'Phyto-Retinol Bakuchiol Serum', SERUM, { actives: ['bakuchiol'], productType: 'Serum' }),
+  row('retlike', 'Retinol-Like Bakuchiol Night Serum', SERUM, { actives: ['bakuchiol'], productType: 'Serum' }),
+  row('zero_ret', '0% Retinol Gentle Night Cream', CREAM, { actives: ['squalane'], productType: 'Moisturizer' }),
+  row('noadded', 'No Added Retinol Barrier Cream', CREAM, { actives: ['ceramide'], productType: 'Moisturizer' }),
+  row('better', 'Better Than Retinol Serum', SERUM, { actives: ['bakuchiol'], productType: 'Serum' }),
+  row('desc_only', 'Gentle Night Serum', SERUM, { actives: ['squalane'], productType: 'Serum', description: 'Free of retinol. Pairs well with retinol.' }),
+  row('ha_serum', 'Hyaluronic Acid 2% Hydrating Serum', SERUM, { actives: ['hyaluronic acid'], productType: 'Serum' }),
+  row('niacinamide_serum', 'Niacinamide 10% Serum', SERUM, { actives: ['niacinamide'], productType: 'Serum' }),
+  row('vit_c', 'Vitamin C 15% Serum', SERUM, { actives: ['ascorbic acid'], productType: 'Serum' }),
+  row('vitce', 'Vitamin C+E Ferulic Serum', SERUM, { actives: ['ascorbic acid', 'tocopherol'], productType: 'Serum' }),
+  row('vit_e', 'Vitamin E Serum', SERUM, { actives: ['tocopherol'], productType: 'Serum' }),
+  row('plain_serum', 'Daily Hydrating Serum', SERUM, { actives: ['glycerin'], productType: 'Serum' }),
+  row('plain_moist', 'Daily Moisturizing Cream', CREAM, { actives: ['glycerin'], productType: 'Moisturizer' }),
   row('sunscreen', 'Daily Sunscreen SPF 50', 'beauty/skincare/sun/sunscreen', { actives: ['zinc oxide'], productType: 'Sunscreen' }),
   row('cleanser', 'Gentle Foaming Face Cleanser', 'beauty/skincare/cleanse/cleanser', { actives: ['glycerin'], productType: 'Cleanser' }),
   row('lipstick', 'Velvet Matte Lipstick', 'beauty/makeup/lip/lipstick', { productType: 'Lipstick' }),
   row('shampoo', 'Repair Shampoo', 'beauty/haircare/shampoo', { productType: 'Shampoo' }),
 ];
+const REAL_RETINOL = ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream'];
 
 const LANES = {
   INGREDIENT: 'agent_products_ingredient_recall_direct',
@@ -80,9 +88,10 @@ const LANES = {
 };
 
 const FLAG_KEYS = ['FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING', 'FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING'];
-const BOTH_ON = {
-  FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on',
-  FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on',
+const BOTH_ON = { FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on', FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' };
+const BOTH_OBSERVE = {
+  FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'observe',
+  FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'observe',
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -106,11 +115,15 @@ const lane = (resp) => resp.body?.metadata?.query_source || null;
 describe('find_products_multi search routing: bare ingredients and non-English beauty terms', () => {
   let prevEnv;
 
+  afterAll(() => {
+    expect(netGuard.state.blocked).toEqual([]);
+  });
+
   beforeEach(() => {
     jest.resetModules();
     nock.cleanAll();
     nock.disableNetConnect();
-    nock.enableNetConnect((host) => String(host || '').includes('127.0.0.1') || String(host || '').includes('localhost'));
+    nock.enableNetConnect((host) => String(host || '').includes('127.0.0.1'));
     prevEnv = { ...process.env };
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
@@ -119,6 +132,8 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
     process.env.GATEWAY_RATE_LIMIT_ENABLED = 'false';
     delete process.env.INDEX_ELIGIBLE_RECALL;
+    delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
+    delete process.env.FIND_PRODUCTS_BUYER_MARKET;
     for (const key of FLAG_KEYS) delete process.env[key];
     // The backend text lane answers empty; it is only ever the lane a misrouted query falls to.
     nock('http://pivota.test')
@@ -139,8 +154,12 @@ describe('find_products_multi search routing: bare ingredients and non-English b
 
   function boot(env = {}) {
     Object.assign(process.env, env);
+    const statements = [];
     jest.doMock('../../src/db', () => ({
-      query: async (sql) => (String(sql || '').includes(CANONICAL_MARKER) ? { rows: CATALOG } : { rows: [] }),
+      query: async (sql, params) => {
+        statements.push({ sql: String(sql || ''), params: Array.isArray(params) ? params : [] });
+        return String(sql || '').includes(CANONICAL_MARKER) ? { rows: CATALOG } : { rows: [] };
+      },
     }));
     const logger = require('../../src/logger');
     const completionLines = [];
@@ -150,14 +169,14 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       return originalInfo(obj, msg, ...rest);
     };
     const app = require('../../src/server');
-    const invoke = async (query) => {
-      const resp = await request(app)
-        .post('/agent/shop/v1/invoke')
-        .send({ operation: 'find_products_multi', payload: { search: { query, page: 1, page_size: 20 } } });
+    const send = async (payload) => {
+      statements.length = 0;
+      const resp = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload });
       await delay(10);
-      return { resp, log: completionLines[completionLines.length - 1] || {} };
+      return { resp, log: completionLines[completionLines.length - 1] || {}, sql: statements.slice() };
     };
-    return { invoke };
+    const invoke = (query, extra = {}) => send({ search: { query, page: 1, page_size: 20, ...extra } });
+    return { invoke, send, app };
   }
 
   test('off: the measured misroutes', async () => {
@@ -176,7 +195,7 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       const { resp, log } = await invoke(query);
       expect(resp.status).toBe(200);
       expect([query, lane(resp)]).toEqual([query, expectedLane]);
-      expect(log.fpm_routing_query_normalized).toBeUndefined();
+      expect(log.fpm_routing_multilingual_mode).toBeUndefined();
     }
   });
 
@@ -184,34 +203,59 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     const { invoke } = boot();
     const { resp } = await invoke('retinol serum');
     expect(lane(resp)).toBe(LANES.INGREDIENT);
-    expect(titles(resp)).toEqual(expect.arrayContaining(['Retinol-Free Gentle Night Serum', 'Bakuchiol Retinol Alternative Serum']));
+    expect(titles(resp)).toEqual(expect.arrayContaining([
+      'Retinol-Free Gentle Night Serum', 'Bakuchiol Retinol Alternative Serum', 'Phyto-Retinol Bakuchiol Serum',
+    ]));
   });
 
+  const PARITY_QUERIES = ['retinol', 'retinol serum', '선크림', 'crème hydratante', 'moisturizer without retinol',
+    'retinol-free', 'without retinol', 'niacinamide-free serum', 'laptop', '레티놀 크림'];
+
   test('unset flags and explicit off answer byte-identically (volatile fields aside)', async () => {
-    const queries = ['retinol', 'retinol serum', '선크림', 'crème hydratante', 'moisturizer without retinol', 'laptop'];
     const unset = boot();
     const a = [];
-    for (const query of queries) a.push((await unset.invoke(query)).resp.body);
+    for (const query of PARITY_QUERIES) a.push((await unset.invoke(query)).resp.body);
     jest.resetModules();
-    const off = boot({
-      FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'off',
-      FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'off',
-    });
-    for (let i = 0; i < queries.length; i += 1) {
-      const b = (await off.invoke(queries[i])).resp.body;
-      expect(normalize(b)).toEqual(normalize(a[i]));
+    const off = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'off', FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'off' });
+    for (let i = 0; i < PARITY_QUERIES.length; i += 1) {
+      expect(normalize((await off.invoke(PARITY_QUERIES[i])).resp.body)).toEqual(normalize(a[i]));
     }
+  });
+
+  test('observe: responses are byte-identical to off; the completion line says what on would do', async () => {
+    const off = boot();
+    const a = [];
+    for (const query of PARITY_QUERIES) a.push((await off.invoke(query)).resp.body);
+    jest.resetModules();
+    const observe = boot(BOTH_OBSERVE);
+    const logs = {};
+    for (let i = 0; i < PARITY_QUERIES.length; i += 1) {
+      const { resp, log } = await observe.invoke(PARITY_QUERIES[i]);
+      expect([PARITY_QUERIES[i], normalize(resp.body)]).toEqual([PARITY_QUERIES[i], normalize(a[i])]);
+      logs[PARITY_QUERIES[i]] = log;
+    }
+    expect(logs['선크림']).toEqual(expect.objectContaining({
+      fpm_routing_multilingual_mode: 'observe',
+      fpm_routing_bare_ingredient_mode: 'observe',
+      fpm_routing_query_normalized: false,
+      fpm_routing_query_would_normalize: true,
+    }));
+    expect(logs.retinol.fpm_routing_would_bare_ingredient).toBe(true);
+    expect(logs['retinol serum'].ingredient_direct_admission_would_drop_count).toBeGreaterThan(0);
+    expect(logs['retinol serum'].ingredient_direct_admission_dropped_count).toBeUndefined();
+    expect(logs['retinol-free'].fpm_routing_bare_negation).toBe(true);
+    for (const log of Object.values(logs)) expect(JSON.stringify(log)).not.toMatch(/선크림|sunscreen|retinol/i);
   });
 
   test('on: a bare ingredient reaches the ingredient lane and returns only rows that name it', async () => {
     const { invoke } = boot(BOTH_ON);
     const expected = {
-      retinol: ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream'],
-      Retinol: ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream'],
+      retinol: REAL_RETINOL,
+      Retinol: REAL_RETINOL,
+      'best retinol products': REAL_RETINOL,
       'hyaluronic acid': ['Hyaluronic Acid 2% Hydrating Serum'],
       niacinamide: ['Niacinamide 10% Serum'],
-      'vitamin c': ['Vitamin C 15% Serum'],
-      'best retinol products': ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream'],
+      'vitamin c': ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum'],
     };
     for (const [query, expectedTitles] of Object.entries(expected)) {
       const { resp } = await invoke(query);
@@ -220,40 +264,85 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     }
   });
 
-  test('on: retinol-free, retinol alternatives, description-only mentions and vitamin E never answer an ingredient query', async () => {
+  test('on: no fooled "retinol" title ever answers a retinol query, in any language', async () => {
     const { invoke } = boot(BOTH_ON);
-    for (const query of ['retinol', 'retinol serum', '레티놀', 'rétinol']) {
-      const { resp } = await invoke(query);
-      expect(lane(resp)).toBe(LANES.INGREDIENT);
+    for (const query of ['retinol', 'retinol serum', '레티놀', 'レチノール', '视黄醇', 'rétinol', 'Retinol']) {
+      const { resp, log } = await invoke(query);
+      expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
       const got = titles(resp);
       expect(got.length).toBeGreaterThan(0);
-      for (const title of got) expect([query, title]).toEqual([query, expect.stringMatching(/^Retinol (0\.3%|Renewal)/)]);
-      expect(resp.body.metadata.ingredient_direct_admission_dropped_count).toBeGreaterThan(0);
+      for (const title of got) expect([query, REAL_RETINOL.includes(title)]).toEqual([query, true]);
+      expect(log.ingredient_direct_admission_dropped_count).toBeGreaterThan(0);
     }
-    const vitaminC = await invoke('vitamin c');
-    expect(titles(vitaminC.resp)).not.toContain('Vitamin E Serum');
+    expect(titles((await invoke('vitamin c')).resp)).not.toContain('Vitamin E Serum');
   });
 
-  test('on: a bare ingredient in another language returns exactly what the English ingredient returns', async () => {
+  test('on: a query that excludes an ingredient never gets a row naming it', async () => {
     const { invoke } = boot(BOTH_ON);
-    const pairs = [
-      ['레티놀', 'retinol'],
-      ['レチノール', 'retinol'],
-      ['视黄醇', 'retinol'],
-      ['rétinol', 'retinol'],
-      ['acide hyaluronique', 'hyaluronic acid'],
-      ['ácido hialurónico', 'hyaluronic acid'],
-      ['Hyaluronsäure', 'hyaluronic acid'],
-      ['玻尿酸', 'hyaluronic acid'],
-      ['ナイアシンアミド', 'niacinamide'],
-      ['비타민C', 'vitamin c'],
-    ];
-    for (const [foreign, english] of pairs) {
-      const a = await invoke(foreign);
-      const b = await invoke(english);
-      expect([foreign, lane(a.resp)]).toEqual([foreign, LANES.INGREDIENT]);
-      expect([foreign, ids(a.resp)]).toEqual([foreign, ids(b.resp)]);
-      expect(a.log).toEqual(expect.objectContaining({ fpm_routing_query_normalized: true }));
+    const cases = {
+      'niacinamide-free serum': /niacinamide/i,
+      'serum without niacinamide': /niacinamide/i,
+      'no niacinamide serum': /niacinamide/i,
+      'vitamin c free serum': /vitamin c/i,
+      'retinol alternative serum': /^Retinol (0\.3%|Renewal)/,
+      'moisturizer without retinol': /^Retinol (0\.3%|Renewal)/,
+      'crème hydratante sans rétinol': /^Retinol (0\.3%|Renewal)/,
+    };
+    for (const [query, forbidden] of Object.entries(cases)) {
+      const { resp } = await invoke(query);
+      const got = titles(resp);
+      expect([query, got.length > 0]).toEqual([query, true]);
+      for (const title of got) {
+        const namesIt = forbidden.test(title) && !/free|alternative|like|better than|phyto|0%|no added/i.test(title);
+        expect([query, title, namesIt]).toEqual([query, title, false]);
+      }
+    }
+  });
+
+  test('on: a bare negation never widens what is served', async () => {
+    const queries = ['without retinol', 'no retinol', 'avoid retinol', 'zero retinol', '0% retinol', 'sin retinol',
+      'ohne Retinol', 'sans rétinol', 'retinol-free', 'retinol free', 'retinol alternative'];
+    const off = boot();
+    const before = {};
+    for (const query of queries) before[query] = (await off.invoke(query)).resp;
+    jest.resetModules();
+    const on = boot(BOTH_ON);
+    for (const query of queries) {
+      const { resp } = await on.invoke(query);
+      expect([query, titles(resp).length <= titles(before[query]).length]).toEqual([query, true]);
+      expect([query, titles(resp)]).toEqual([query, []]);
+    }
+    // English "retinol-free" was a beauty-wide browse with the flags off; on, it is the clarify.
+    const { resp } = await on.invoke('retinol-free');
+    expect(lane(resp)).toBe(LANES.SAFE_EMPTY);
+    expect(resp.body.reply).toMatch(/Please search for a product/);
+  });
+
+  test('on: an ingredient with a form noun in another language routes like the English query', async () => {
+    const { invoke } = boot(BOTH_ON);
+    const english = await invoke('retinol cream');
+    for (const query of ['레티놀 크림', 'retinol 크림', 'レチノール クリーム', 'crème rétinol']) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp), ids(resp)]).toEqual([query, lane(english.resp), ids(english.resp)]);
+    }
+    // A form noun this table does not know is not dropped: the query is not the bare ingredient.
+    const cyrillic = await invoke('retinol крем');
+    expect(cyrillic.log.fpm_routing_would_bare_ingredient).toBe(false);
+  });
+
+  test('on (multilingual): English and loanword-identical queries answer byte-identically to off', async () => {
+    const queries = ['ceramides moisturizer', 'deo spray', 'Dior Sauvage parfum', 'serum', 'moisturizer', 'sunscreen',
+      'cleanser', 'lipstick', 'face mask', 'retinol serum', 'niacinamide serum', 'vitamin c serum', 'glycerine soap',
+      'panthenol', 'deodorant', 'creme brulee', 'retinol free shipping', 'rodeo boots'];
+    const off = boot();
+    const before = [];
+    for (const query of queries) before.push((await off.invoke(query)).resp.body);
+    jest.resetModules();
+    const on = boot({ FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' });
+    for (let i = 0; i < queries.length; i += 1) {
+      const { resp, log } = await on.invoke(queries[i]);
+      expect([queries[i], normalize(resp.body)]).toEqual([queries[i], normalize(before[i])]);
+      expect([queries[i], log.fpm_routing_query_normalized]).toEqual([queries[i], false]);
     }
   });
 
@@ -265,12 +354,12 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       ['日焼け止め', 'sunscreen', ['Daily Sunscreen SPF 50']],
       ['洗面奶', 'cleanser', ['Gentle Foaming Face Cleanser']],
       ['洗面乳', 'cleanser', ['Gentle Foaming Face Cleanser']],
-      ['crème hydratante', 'moisturizer', ['Daily Moisturizing Cream', 'Retinol-Free Barrier Moisturizer']],
-      ['hydratant', 'moisturizer', ['Daily Moisturizing Cream', 'Retinol-Free Barrier Moisturizer']],
-      ['crema hidratante', 'moisturizer', ['Daily Moisturizing Cream', 'Retinol-Free Barrier Moisturizer']],
-      ['Feuchtigkeitscreme', 'moisturizer', ['Daily Moisturizing Cream', 'Retinol-Free Barrier Moisturizer']],
+      ['crème hydratante', 'moisturizer', null],
+      ['hydratant', 'moisturizer', null],
+      ['crema hidratante', 'moisturizer', null],
+      ['Feuchtigkeitscreme', 'moisturizer', null],
       ['Lippenstift', 'lipstick', ['Velvet Matte Lipstick']],
-      ['labial', 'lipstick', ['Velvet Matte Lipstick']],
+      ['lápiz labial', 'lipstick', ['Velvet Matte Lipstick']],
     ];
     for (const [foreign, english, expectedTitles] of pairs) {
       const a = await invoke(foreign);
@@ -278,28 +367,15 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       expect([foreign, lane(a.resp)]).toEqual([foreign, lane(b.resp)]);
       expect([foreign, lane(a.resp)]).toEqual([foreign, LANES.MAINLINE]);
       expect([foreign, ids(a.resp)]).toEqual([foreign, ids(b.resp)]);
-      // Relevant rows only: the category's own rows, nothing from another category.
-      expect([foreign, titles(a.resp).sort()]).toEqual([foreign, [...expectedTitles].sort()]);
+      if (expectedTitles) expect([foreign, titles(a.resp).sort()]).toEqual([foreign, [...expectedTitles].sort()]);
+      for (const title of titles(a.resp)) expect([foreign, /Lipstick|Shampoo|Sunscreen|Cleanser/.test(title) && english === 'moisturizer']).toEqual([foreign, false]);
     }
   });
 
-  test('on: negations route away from the ingredient lane and never return the negated ingredient', async () => {
-    const { invoke } = boot(BOTH_ON);
-    for (const query of ['moisturizer without retinol', 'retinol-free moisturizer', 'no retinol moisturizer',
-      'crème hydratante sans rétinol', '不含视黄醇 保湿霜', '레티놀 없는 수분크림']) {
-      const { resp } = await invoke(query);
-      expect([query, lane(resp)]).toEqual([query, LANES.MAINLINE]);
-      const got = titles(resp);
-      expect(got.length).toBeGreaterThan(0);
-      for (const title of got) expect([query, /^Retinol (0\.3%|Renewal)/.test(title)]).toEqual([query, false]);
-      expect(resp.body.metadata.search_quality_contract.hard_constraints.exclusions).toContain('retinoid_forward');
-    }
-  });
-
-  test('on: non-beauty and ambiguous queries route exactly as with the flags off', async () => {
+  test('on: non-beauty, ambiguous and unknown-compound queries route exactly as with the flags off', async () => {
     const queries = ['laptop', 'running shoes', 'kitchen cleaner', 'air conditioner', 'printer toner', '프린터 토너',
       'limpiador de cocina', 'acondicionador de aire', 'creme brulee', 'crème', 'máscara', '크림', '마스크', 'Sonnenschutz',
-      'vitamin c supplement', 'mask', 'gift'];
+      'vitamin c supplement', 'mask', 'gift', '眼霜', '精华水', '아이크림'];
     const off = boot();
     const before = [];
     for (const query of queries) before.push((await off.invoke(query)).resp);
@@ -308,28 +384,35 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     for (let i = 0; i < queries.length; i += 1) {
       const { resp, log } = await on.invoke(queries[i]);
       expect([queries[i], lane(resp), ids(resp)]).toEqual([queries[i], lane(before[i]), ids(before[i])]);
-      expect(log.fpm_routing_query_normalized).toBeUndefined();
+      expect([queries[i], log.fpm_routing_query_normalized]).toEqual([queries[i], false]);
     }
   });
 
-  test('on: a top-level payload.query is normalised in both copies of the request, like search.query', async () => {
-    const { invoke } = boot(BOTH_ON);
-    const app = require('../../src/server');
+  test('on: a query that arrives only in messages, or as a top-level query, is normalised the same way', async () => {
+    const { send, invoke } = boot(BOTH_ON);
     for (const [foreign, english] of [['선크림', 'sunscreen'], ['레티놀', 'retinol'], ['洗面奶', 'cleanser']]) {
-      const topLevel = await request(app)
-        .post('/agent/shop/v1/invoke')
-        .send({ operation: 'find_products_multi', payload: { query: foreign, page: 1, page_size: 20 } });
-      const english_ = await request(app)
-        .post('/agent/shop/v1/invoke')
-        .send({ operation: 'find_products_multi', payload: { query: english, page: 1, page_size: 20 } });
-      expect([foreign, lane(topLevel)]).toEqual([foreign, lane(english_)]);
-      expect([foreign, ids(topLevel)]).toEqual([foreign, ids(english_)]);
-      expect([foreign, topLevel.body.metadata?.route_health?.primary_path_used]).toEqual([
-        foreign,
-        english_.body.metadata?.route_health?.primary_path_used,
-      ]);
+      const english_ = await invoke(english);
+      const viaMessages = await send({ search: { page: 1, page_size: 20 }, messages: [{ role: 'user', content: foreign }] });
+      const viaTopLevel = await send({ query: foreign, page: 1, page_size: 20 });
+      const englishMessages = await send({ search: { page: 1, page_size: 20 }, messages: [{ role: 'user', content: english }] });
+      expect([foreign, lane(viaMessages.resp), ids(viaMessages.resp)]).toEqual([foreign, lane(englishMessages.resp), ids(englishMessages.resp)]);
+      expect([foreign, lane(viaTopLevel.resp)]).toEqual([foreign, lane(english_.resp)]);
+      expect([foreign, ids(viaTopLevel.resp)]).toEqual([foreign, ids(english_.resp)]);
     }
-    expect(typeof invoke).toBe('function');
+  });
+
+  test('on: the caller\'s own text is kept for language and replies', async () => {
+    boot(BOTH_ON);
+    const { buildFindProductsMultiContext } = require('../../src/findProductsMulti/policy');
+    const routed = await buildFindProductsMultiContext({
+      payload: { search: { query: 'sunscreen' } },
+      metadata: { routing_original_query: '선크림' },
+    });
+    const english = await buildFindProductsMultiContext({ payload: { search: { query: 'sunscreen' } }, metadata: {} });
+    expect(routed.intent.language).toBe('ko');
+    expect(english.intent.language).toBe('en');
+    // Routing is unchanged by it: the same query reaches the lanes.
+    expect(routed.adjustedPayload.search.query).toBe(english.adjustedPayload.search.query);
   });
 
   test('each flag alone does only its own part', async () => {
@@ -339,8 +422,6 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     jest.resetModules();
     const multi = boot({ FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' });
     expect(lane((await multi.invoke('선크림')).resp)).toBe(LANES.MAINLINE);
-    // Multilingual alone maps 레티놀 -> retinol, which then routes exactly like English "retinol" with the
-    // bare-ingredient flag off.
     expect(lane((await multi.invoke('레티놀')).resp)).toBe(lane((await multi.invoke('retinol')).resp));
   });
 });

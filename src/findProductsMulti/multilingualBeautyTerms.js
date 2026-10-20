@@ -25,16 +25,15 @@
 // "retinol-free", the form the contract already reads as avoid-retinoids. "sans parfum", "无香料", ...
 // become "fragrance-free".
 //
-// Flag: FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING = off | on (default off), read per call. Off: never
-// called (see queryRoutingNormalizer.js), so routing is byte-identical.
+// Flag: FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING = off | observe | on (default off), read per call.
+// off: never called. observe: computed and logged only. on: applied to routing (queryRoutingNormalizer.js).
+// An English query is never changed: a Latin alias whose spelling is also English ("serum", "retinol",
+// "creme") applies only as typed with its accents, or to carry a non-English negation.
 //
 // Pure functions, no dependencies.
 
 const MULTILINGUAL_ROUTING_FLAG = 'FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING';
 
-function isMultilingualRoutingEnabled(env = process.env) {
-  return /^(1|true|on|yes)$/i.test(String((env && env[MULTILINGUAL_ROUTING_FLAG]) || '').trim());
-}
 
 // kind: 'term' (product type / form), 'ingredient' (strict ingredient table; negation applies),
 // 'phrase' (already a complete canonical phrase, e.g. fragrance-free).
@@ -50,8 +49,6 @@ const ROWS = [
   ['zh', 'makeup remover', 'term', ['卸妆水', '卸妝水', '卸妆乳', '卸妝乳', '卸妆', '卸妝']],
   ['zh', 'moisturizer', 'term', ['保湿霜', '保濕霜', '保湿乳', '保濕乳', '润肤霜', '潤膚霜']],
   ['zh', 'face cream', 'term', ['面霜']],
-  ['zh', 'eye cream', 'term', ['眼霜']],
-  ['zh', 'night cream', 'term', ['晚霜']],
   ['zh', 'lotion', 'term', ['乳液']], // also Japanese
   ['zh', 'sunscreen', 'term', ['防晒霜', '防曬霜', '防晒乳', '防曬乳', '防晒', '防曬']],
   ['zh', 'serum', 'term', ['精华液', '精華液', '精华', '精華']],
@@ -110,8 +107,7 @@ const ROWS = [
   ['ja', 'toner', 'term', ['化粧水']],
   ['ja', 'moisturizer', 'term', ['保湿クリーム']],
   ['ja', 'face cream', 'term', ['フェイスクリーム']],
-  ['ja', 'eye cream', 'term', ['アイクリーム']],
-  ['ja', 'night cream', 'term', ['ナイトクリーム']],
+  ['ja', 'cream', 'term', ['クリーム'], { contextual: true }],
   ['ja', 'sunscreen', 'term', ['日焼け止め', 'サンスクリーン']],
   ['ja', 'serum', 'term', ['美容液', 'セラム']],
   ['ja', 'essence', 'term', ['エッセンス']],
@@ -171,8 +167,7 @@ const ROWS = [
   ['ko', 'ampoule', 'term', ['앰플']],
   ['ko', 'moisturizer', 'term', ['수분크림', '수분 크림', '보습크림', '보습 크림']],
   ['ko', 'lotion', 'term', ['로션']],
-  ['ko', 'eye cream', 'term', ['아이크림', '아이 크림']],
-  ['ko', 'night cream', 'term', ['나이트크림']],
+  ['ko', 'cream', 'term', ['크림'], { contextual: true }],
   ['ko', 'sheet mask', 'term', ['시트마스크', '시트 마스크', '마스크팩']],
   ['ko', 'sleeping mask', 'term', ['수면팩']],
   ['ko', 'lipstick', 'term', ['립스틱']],
@@ -226,8 +221,7 @@ const ROWS = [
   ['fr', 'hydrating', 'term', ['hydratant', 'hydratante']],
   ['fr', 'hydrating face mask', 'term', ['masque hydratant']],
   ['fr', 'face cream', 'term', ['creme visage', 'creme pour le visage']],
-  ['fr', 'night cream', 'term', ['creme de nuit']],
-  ['fr', 'eye cream', 'term', ['creme contour des yeux', 'contour des yeux']],
+  ['fr', 'cream', 'term', ['creme'], { contextual: true, englishSpelling: true }], // only as "crème" 
   ['fr', 'sunscreen', 'term', ['creme solaire', 'ecran solaire', 'protection solaire', 'lait solaire', 'spray solaire']],
   ['fr', 'serum', 'term', ['serum']],
   ['fr', 'toner', 'term', ['lotion tonique', 'tonique visage']],
@@ -247,10 +241,7 @@ const ROWS = [
   ['fr', 'eyeshadow palette', 'term', ['palette de fards a paupieres', 'palette yeux']],
   ['fr', 'eyeshadow', 'term', ['fard a paupieres', 'ombre a paupieres']],
   ['fr', 'brow pencil', 'term', ['crayon a sourcils', 'crayon sourcils']],
-  ['fr', 'eau de parfum', 'phrase', ['eau de parfum']],
-  ['fr', 'eau de toilette', 'phrase', ['eau de toilette']],
   ['fr', 'fragrance-free', 'phrase', ['sans parfum']],
-  ['fr', 'perfume', 'term', ['parfum']],
   ['fr', 'conditioner', 'term', ['apres shampooing', 'apres shampoing']],
   ['fr', 'shampoo', 'term', ['shampooing', 'shampoing']],
   ['fr', 'hair oil', 'term', ['huile capillaire', 'huile cheveux']],
@@ -266,11 +257,11 @@ const ROWS = [
   ['fr', 'vitamin c', 'ingredient', ['vitamine c']],
   ['fr', 'ascorbic acid', 'ingredient', ['acide ascorbique']],
   ['fr', 'salicylic acid', 'ingredient', ['acide salicylique']],
-  ['fr', 'ceramide', 'ingredient', ['ceramide', 'ceramides']],
+  ['fr', 'ceramide', 'ingredient', ['ceramide', 'ceramides'], { englishSpelling: true }],
   ['fr', 'azelaic acid', 'ingredient', ['acide azelaique']],
   ['fr', 'benzoyl peroxide', 'ingredient', ['peroxyde de benzoyle']],
   ['fr', 'panthenol', 'ingredient', ['panthenol']],
-  ['fr', 'glycerin', 'ingredient', ['glycerine', 'glycerin']],
+  ['fr', 'glycerin', 'ingredient', ['glycerine', 'glycerin'], { englishSpelling: true }],
 
   // ---------------------------------------------------------------- Spanish
   ['es', 'face cleanser', 'term', ['limpiador facial']],
@@ -284,8 +275,7 @@ const ROWS = [
   ['es', 'moisturizer', 'term', ['hidratante'], { standalone: true }],
   ['es', 'hydrating', 'term', ['hidratante']],
   ['es', 'face cream', 'term', ['crema facial']],
-  ['es', 'night cream', 'term', ['crema de noche']],
-  ['es', 'eye cream', 'term', ['contorno de ojos', 'crema para ojos', 'crema de ojos']],
+  ['es', 'cream', 'term', ['crema'], { contextual: true }],
   ['es', 'sunscreen', 'term', ['protector solar', 'bloqueador solar', 'filtro solar', 'crema solar', 'proteccion solar', 'fotoprotector']],
   ['es', 'face serum', 'term', ['suero facial']],
   ['es', 'toner', 'term', ['tonico facial']],
@@ -297,7 +287,7 @@ const ROWS = [
   ['es', 'lip tint', 'term', ['tinta labial', 'tinta de labios']],
   ['es', 'lip scrub', 'term', ['exfoliante labial']],
   ['es', 'lip liner', 'term', ['delineador de labios']],
-  ['es', 'lipstick', 'term', ['labial', 'lapiz labial', 'pintalabios', 'barra de labios']],
+  ['es', 'lipstick', 'term', ['lapiz labial', 'pintalabios', 'barra de labios']], // bare "labial" is also English
   ['es', 'foundation', 'term', ['base de maquillaje']],
   ['es', 'concealer', 'term', ['corrector de ojeras']],
   ['es', 'pressed powder', 'term', ['polvo compacto']],
@@ -343,9 +333,6 @@ const ROWS = [
   ['de', 'makeup remover', 'term', ['make up entferner', 'makeup entferner', 'abschminkmittel']],
   ['de', 'moisturizer', 'term', ['feuchtigkeitscreme', 'feuchtigkeitspflege']],
   ['de', 'face cream', 'term', ['gesichtscreme']],
-  ['de', 'day cream', 'term', ['tagescreme']],
-  ['de', 'night cream', 'term', ['nachtcreme']],
-  ['de', 'eye cream', 'term', ['augencreme']],
   ['de', 'sunscreen', 'term', ['sonnencreme', 'sonnenmilch', 'sonnenspray', 'sonnenschutzcreme', 'sonnenschutzmittel']],
   ['de', 'face serum', 'term', ['gesichtsserum']],
   ['de', 'toner', 'term', ['gesichtswasser', 'gesichtstonikum']],
@@ -360,19 +347,18 @@ const ROWS = [
   ['de', 'eyeshadow', 'term', ['lidschatten']],
   ['de', 'brow pencil', 'term', ['augenbrauenstift']],
   ['de', 'fragrance-free', 'phrase', ['parfümfrei', 'parfumfrei', 'ohne parfum', 'ohne parfüm', 'ohne duftstoffe', 'duftstofffrei']],
-  ['de', 'perfume', 'term', ['parfüm']],
+  ['de', 'perfume', 'term', ['parfüm'], { englishSpelling: true }], // "parfum" as typed is English
   ['de', 'shampoo', 'term', ['haarshampoo']],
   ['de', 'conditioner', 'term', ['haarspülung']],
   ['de', 'hair oil', 'term', ['haaröl']],
   ['de', 'nail polish', 'term', ['nagellack']],
   // Bare "Peeling" is not mapped: it is also an English word ("peeling skin").
   ['de', 'exfoliant', 'term', ['gesichtspeeling']],
-  ['de', 'deodorant', 'term', ['deo']],
   ['de', 'shower gel', 'term', ['duschgel']],
   ['de', 'body lotion', 'term', ['körperlotion', 'bodylotion']],
   ['de', 'self tanner', 'term', ['selbstbräuner']],
   ['de', 'retinol', 'ingredient', ['retinol']],
-  ['de', 'hyaluronic acid', 'ingredient', ['hyaluronsäure', 'hyaluron']],
+  ['de', 'hyaluronic acid', 'ingredient', ['hyaluronsäure']],
   ['de', 'niacinamide', 'ingredient', ['niacinamid']],
   ['de', 'vitamin c', 'ingredient', ['vitamin c']],
   ['de', 'ascorbic acid', 'ingredient', ['ascorbinsäure']],
@@ -385,20 +371,21 @@ const ROWS = [
 ];
 
 const LATIN_WORD_CHAR = /[a-z0-9]/;
-const NON_LATIN_SCRIPT = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/;
+const NON_LATIN_SCRIPT = /[぀-ヿ㐀-鿿가-힯ᄀ-ᇿ㄰-㆏]/;
+const ASCII_ONLY = /^[\x00-\x7f]*$/;
 
 // Folds one character for matching: lowercase, diacritics stripped (é->e, ä->a), ß->s, full-width
 // forms to ASCII, and the separators people type inside a term ('-', '_', '’', "'", '.') to a space.
 // Always exactly ONE output character per input code unit, so positions in the folded text are
 // positions in the original.
 function foldChar(ch) {
-  if (ch === '\u00df') return 's'; // sharp s
-  if (/[-_'\u2019.\u00b7]/.test(ch)) return ' ';
+  if (ch === 'ß') return 's'; // sharp s
+  if (/[-_'’.·]/.test(ch)) return ' ';
   const code = ch.charCodeAt(0);
   // Only Latin letters and full-width ASCII are decomposed: NFKD would split a Hangul syllable into
   // jamo and a kana into base + voicing mark, and neither is a diacritic to strip.
   if (!(code <= 0x024f || (code >= 0xff00 && code <= 0xffef))) return ch.toLowerCase();
-  const decomposed = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const decomposed = ch.normalize('NFKD').replace(/[̀-ͯ]/g, '');
   const lower = (decomposed || ch).toLowerCase();
   return lower.length === 1 ? lower : lower.charAt(0) || ch;
 }
@@ -419,6 +406,14 @@ function germanTranscriptions(term) {
   return [term.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')];
 }
 
+// A Latin entry whose folded spelling is also an English word ("serum", "retinol", "ceramides",
+// "deodorant", "creme") must leave an English query alone. It applies only when the user typed it with
+// its accents ("sérum", "rétinol", "déodorant", "crème") -- or, for an ingredient, only to carry a
+// non-English negation ("sin retinol", "ohne Retinol", "retinolfrei").
+function isEnglishSpelling(key, en, options) {
+  return Boolean(options.englishSpelling) || key === en;
+}
+
 function buildEntries() {
   const byKey = new Map();
   const standaloneByKey = new Map();
@@ -428,13 +423,16 @@ function buildEntries() {
       for (const variant of variants) {
         const key = foldTerm(variant);
         if (!key) continue;
+        const script = NON_LATIN_SCRIPT.test(key) ? 'cjk' : 'latin';
         const entry = {
           key,
           en,
           kind,
           lang,
-          script: NON_LATIN_SCRIPT.test(key) ? 'cjk' : 'latin',
+          script,
           exclude: options.exclude || null,
+          contextual: Boolean(options.contextual),
+          englishSpelling: script === 'latin' && isEnglishSpelling(key, en, options),
         };
         const target = options.standalone ? standaloneByKey : byKey;
         const existing = target.get(key);
@@ -452,41 +450,33 @@ function buildEntries() {
 
 const { entries: ENTRIES, standaloneByKey: STANDALONE_BY_KEY } = buildEntries();
 
-// Negators around an ingredient term, on FOLDED text.
+// Negators around an ingredient term, on FOLDED text. All non-English: an English query's own
+// negation ("retinol free") is FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING's business, not this table's.
 const NEGATION_PREFIX_LATIN = /(?:^|\s)(?:sans|sin|ohne|frei von|libre de|exento de)\s+(?:(?:de|d|du|des|le|la|l|el|los|las)\s+)?$/;
 const NEGATION_PREFIX_CJK = /(?:不含|无添加|無添加|无|無|没有|沒有|避开|避開|不要|不加)\s*$/;
-const NEGATION_SUFFIX = /^(?:\s*(?:frei|free)(?=\s|$)|\s*(?:フリー|不使用|無添加|なし|無し|없는|무첨가|프리|없이))/;
+const NEGATION_SUFFIX_LATIN = /^\s*frei(?![a-z0-9])/;
+const NEGATION_SUFFIX_CJK = /^(?:\s*free(?![a-z0-9])|\s*(?:フリー|不使用|無添加|なし|無し|없는|무첨가|프리|없이))/;
 // Korean particles attached to a matched noun ("선크림을"): dropped with the match so they do not
 // linger as a stray token.
 const KOREAN_PARTICLE_SUFFIX = /^(?:을|를|은|는|이|가|도|의)(?=\s|$)/;
+// The strict ingredient terms in English: a contextual entry ("크림", "crème") also applies next to one
+// of these ("retinol 크림" reads like "retinol cream").
+const ENGLISH_INGREDIENT_RE = /(?:^|[^a-z0-9])(?:retinol|niacinamide|panthenol|glycerine?|ceramides?|hyaluronic acid|salicylic acid|azelaic acid|ascorbic acid|benzoyl peroxide|vitamin c|zinc pca)(?![a-z0-9])/;
 
 function isLatinBoundary(folded, index) {
   if (index < 0 || index >= folded.length) return true;
   return !LATIN_WORD_CHAR.test(folded[index]);
 }
 
-// Returns { query, applied, terms: [{ lang, kind, en }] }. `query` is the input with every known term
-// replaced by its English term (negated ingredients as "<en>-free"); unchanged input when nothing
-// matched or every match was already the English word.
-function normalizeMultilingualBeautyTerms(rawQuery) {
-  const original = String(rawQuery == null ? '' : rawQuery);
-  const none = { query: original, applied: false, terms: [] };
-  if (!original.trim()) return none;
-  const folded = foldText(original);
+function isCjkChar(ch) {
+  return typeof ch === 'string' && NON_LATIN_SCRIPT.test(ch);
+}
 
-  const wholeKey = folded.replace(/\s+/g, ' ').trim();
-  const standalone = STANDALONE_BY_KEY.get(wholeKey);
-  if (standalone) {
-    return {
-      query: standalone.en,
-      applied: standalone.en !== original.trim(),
-      terms: [{ lang: standalone.lang, kind: standalone.kind, en: standalone.en }],
-    };
-  }
-
+function collectMatches(original, folded, { includeContextual }) {
   const consumed = new Array(folded.length).fill(false);
   const matches = [];
   for (const entry of ENTRIES) {
+    if (entry.contextual && !includeContextual) continue;
     if (entry.exclude && entry.exclude.test(folded)) continue;
     let from = 0;
     while (from <= folded.length - entry.key.length) {
@@ -498,7 +488,7 @@ function normalizeMultilingualBeautyTerms(rawQuery) {
         const leftOk = isLatinBoundary(folded, index - 1);
         const rightOk =
           isLatinBoundary(folded, end) ||
-          (entry.kind === 'ingredient' && /^frei(?![a-z0-9])/.test(folded.slice(end)));
+          (entry.kind === 'ingredient' && NEGATION_SUFFIX_LATIN.test(folded.slice(end)));
         if (!leftOk || !rightOk) continue;
       }
       let overlaps = false;
@@ -519,12 +509,14 @@ function normalizeMultilingualBeautyTerms(rawQuery) {
           negated = true;
           start = index - prefix[0].replace(/^\s/, '').length;
         }
-        const suffix = folded.slice(end).match(NEGATION_SUFFIX);
+        const suffix = folded.slice(end).match(entry.script === 'latin' ? NEGATION_SUFFIX_LATIN : NEGATION_SUFFIX_CJK);
         if (suffix) {
           negated = true;
           stop = end + suffix[0].length;
         }
       }
+      // An English spelling as typed stays English unless it carries a non-English negation.
+      if (entry.englishSpelling && !negated && ASCII_ONLY.test(original.slice(index, end))) continue;
       if (entry.script === 'cjk') {
         const particle = folded.slice(stop).match(KOREAN_PARTICLE_SUFFIX);
         if (particle) stop += particle[0].length;
@@ -541,6 +533,59 @@ function normalizeMultilingualBeautyTerms(rawQuery) {
       matches.push({ start, stop, entry, negated });
     }
   }
+  return matches;
+}
+
+// A CJK term is mapped only as a WHOLE term: if the character right before or after it is another
+// Han / kana / Hangul character that no other mapped term covers, the match is part of a longer
+// compound this table does not know ("精华水", "아이크림", "레티놀배합") and is dropped. Repeated until
+// stable, because dropping one match can expose its neighbour.
+function dropPartialCompoundMatches(folded, matches) {
+  let kept = matches.slice();
+  for (;;) {
+    const covered = new Array(folded.length).fill(false);
+    for (const match of kept) for (let i = match.start; i < match.stop; i += 1) covered[i] = true;
+    const next = kept.filter((match) => {
+      if (match.entry.script !== 'cjk') return true;
+      const left = match.start - 1;
+      const right = match.stop;
+      const leftBad = left >= 0 && isCjkChar(folded[left]) && !covered[left];
+      const rightBad = right < folded.length && isCjkChar(folded[right]) && !covered[right];
+      return !leftBad && !rightBad;
+    });
+    if (next.length === kept.length) return kept;
+    kept = next;
+  }
+}
+
+// Returns { query, applied, terms: [{ lang, kind, en }] }. `query` is the input with every known term
+// replaced by its English term (negated ingredients as "<en>-free"); unchanged input when nothing
+// matched or every match was already the English word as typed.
+function normalizeMultilingualBeautyTerms(rawQuery) {
+  const original = String(rawQuery == null ? '' : rawQuery);
+  const none = { query: original, applied: false, terms: [] };
+  if (!original.trim()) return none;
+  const folded = foldText(original);
+
+  const wholeKey = folded.replace(/\s+/g, ' ').trim();
+  const standalone = STANDALONE_BY_KEY.get(wholeKey);
+  if (standalone) {
+    return {
+      query: standalone.en,
+      applied: standalone.en !== original.trim(),
+      terms: [{ lang: standalone.lang, kind: standalone.kind, en: standalone.en }],
+    };
+  }
+
+  // Contextual entries ("크림", "crème", "crema") name a product form only next to another beauty
+  // term: alone they are as likely to be whipped cream or coffee crema.
+  const withoutContextual = collectMatches(original, folded, { includeContextual: false });
+  const matches = dropPartialCompoundMatches(
+    folded,
+    withoutContextual.length > 0 || ENGLISH_INGREDIENT_RE.test(folded)
+      ? collectMatches(original, folded, { includeContextual: true })
+      : withoutContextual,
+  );
   if (matches.length === 0) return none;
 
   matches.sort((a, b) => a.start - b.start);
@@ -553,7 +598,6 @@ function normalizeMultilingualBeautyTerms(rawQuery) {
     const source = original.slice(match.start, match.stop);
     out += original.slice(cursor, match.start);
     if (!match.negated && source.toLowerCase().replace(/\s+/g, ' ') === replacement) {
-      // Already the English word, as typed ("retinol" is in the table only so "sin retinol" negates).
       out += source;
     } else {
       out += ` ${replacement} `;
@@ -567,8 +611,20 @@ function normalizeMultilingualBeautyTerms(rawQuery) {
   return { query: out.replace(/\s+/g, ' ').trim(), applied: true, terms };
 }
 
+function multilingualRoutingMode(env = process.env) {
+  const raw = String((env && env[MULTILINGUAL_ROUTING_FLAG]) || '').trim().toLowerCase();
+  if (/^(1|true|on|yes)$/.test(raw)) return 'on';
+  if (/^(observe|shadow)$/.test(raw)) return 'observe';
+  return 'off';
+}
+
+function isMultilingualRoutingEnabled(env = process.env) {
+  return multilingualRoutingMode(env) === 'on';
+}
+
 module.exports = {
   MULTILINGUAL_ROUTING_FLAG,
+  multilingualRoutingMode,
   isMultilingualRoutingEnabled,
   normalizeMultilingualBeautyTerms,
   // Exposed for tests: the folded alias table.
