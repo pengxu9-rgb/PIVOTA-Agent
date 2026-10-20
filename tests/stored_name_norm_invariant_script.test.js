@@ -107,7 +107,11 @@ describe('the invariant script on the real mainline', () => {
     const { calls, response } = await script.captureCanonicalCalls('niacinamide serum', 'US');
     expect(response.primary_path_used).toBe('ingredient_recall_direct');
     expect(calls.length).toBeGreaterThanOrEqual(1);
-    expect(calls[0].caller).toEqual(expect.objectContaining({ fn: 'handleInvokeRequest', file: 'server.js', mainline: false }));
+    // The lane's canonical call is issued from a thunk inside handleInvokeRequest (withStageBudgetDb starts
+    // it inside a DB lane deadline), so the frame is anonymous: pin the call site by its source line instead.
+    expect(calls[0].caller).toEqual(expect.objectContaining({ file: 'server.js', mainline: false }));
+    expect(fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8').split('\n')[calls[0].caller.line - 1])
+      .toContain('fetchCanonicalChainRows(');
     probe._resetForTest();
     const client = fakeClient(probe, { n: 9, same: 9 });
     const off = await script.buildStatement(calls[0].args, false, { client });
