@@ -33064,6 +33064,8 @@ async function handlePublicReadMcp(req, res) {
   // its slot until the work it started has finished.
   const admission = admitMcpCallerLimit(req, res, { door: 'public_mcp' });
   if (admission.refusal) {
+    // A shed 503 is logged as shedding, not as a server fault (src/observability/mcpToolCallOutcome.js).
+    toolCallRecorder?.recordCallerLimitRefusal(admission.refusal);
     for (const [key, value] of Object.entries(admission.refusal.headers)) res.setHeader(key, value);
     return res.status(admission.refusal.status).json(admission.refusal.body);
   }
@@ -33239,6 +33241,8 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
         // never admitted at all.
         const admission = admitMcpCallerLimit(req, res, { door: door || 'commerce_mcp' });
         if (admission.refusal) {
+          // A shed 503 is logged as shedding, not as a server fault (src/observability/mcpToolCallOutcome.js).
+          toolCallRecorder?.recordCallerLimitRefusal(admission.refusal);
           for (const [key, value] of Object.entries(admission.refusal.headers)) res.setHeader(key, value);
           return res.status(admission.refusal.status).json(admission.refusal.body);
         }
