@@ -1,5 +1,8 @@
 'use strict';
 
+// FIRST: no test in this directory may reach a non-loopback host (see _net_guard.cjs).
+require('./_net_guard.cjs');
+
 // The readiness eval's guard rails: target refusal (production is refused until a server-side synthetic
 // designation exists), hard load caps, the kill switch, config/secret handling, schema-driven argument
 // building, the read-only tool policy, SLO evaluation and the query set's composition.

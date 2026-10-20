@@ -1,5 +1,8 @@
 'use strict';
 
+// FIRST: no test in this directory may reach a non-loopback host (see _net_guard.cjs).
+require('./_net_guard.cjs');
+
 // END TO END against the REAL gateway (src/server.js) listening on a local port, driven by the harness CLI over
 // real HTTP — the closest thing to a partner run that needs no network. Only the network edge behind the
 // gateway is stubbed: the loopback search hop (`find_products_multi` -> this process's own invoke route), with

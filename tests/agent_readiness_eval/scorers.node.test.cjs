@@ -1,5 +1,8 @@
 'use strict';
 
+// FIRST: no test in this directory may reach a non-loopback host (see _net_guard.cjs).
+require('./_net_guard.cjs');
+
 // Deterministic scorers for the readiness eval: relevance rules, negation ("X-free"), currency vs market,
 // price/link integrity, duplicates, shade presence, consistency, offer/search price agreement, negatives.
 // Products here are invented.

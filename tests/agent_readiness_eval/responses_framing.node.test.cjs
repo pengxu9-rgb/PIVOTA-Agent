@@ -1,5 +1,8 @@
 'use strict';
 
+// FIRST: no test in this directory may reach a non-loopback host (see _net_guard.cjs).
+require('./_net_guard.cjs');
+
 // MCP framing + response reading for the readiness eval, against hand-made recorded responses
 // (tests/agent_readiness_eval/fixtures — invented products, no real catalog data).
 

@@ -1,5 +1,8 @@
 'use strict';
 
+// FIRST: no test in this directory may reach a non-loopback host (see _net_guard.cjs).
+require('./_net_guard.cjs');
+
 // END TO END against a local stub MCP server — the harness CLI (run.cjs main) over real HTTP.
 //
 // The stub is not a hand-rolled imitation of the wire: it mounts the gateway's OWN MCP machinery —
@@ -20,6 +23,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { main } = require('../../scripts/agent-readiness-eval/run.cjs');
+const { throwingFetch } = require('./_net_guard.cjs');
 
 const API_KEY = `ak_live_${'c'.repeat(64)}`;
 const CALLER_KEYS = [`ak_live_${'1'.repeat(64)}`, `ak_live_${'2'.repeat(64)}`];
@@ -310,9 +314,14 @@ test('kill switch at start: no tool is called; dry-run makes no request at all; 
   }
 });
 
-test('a production host is refused before any request is made', async () => {
+test('a non-allowed host is refused before any request is made (injected throwing fetch; unresolvable name)', async () => {
+  // NEVER a real hostname through main(): the refusal is asserted with a fetch that throws and counts, against
+  // a name that cannot resolve. The production-hostname cases are pure classifier unit tests
+  // (safety_config_queryset), which make no request at all.
+  const fetchImpl = throwingFetch();
   const io = { out: sink(), err: sink() };
-  const code = await main(['--base-url', 'https://mcp.pivota.cc', '--tier', 'public'], {}, io);
+  const code = await main(['--base-url', 'https://prod-refusal-check.invalid', '--tier', 'public'], {}, io, { fetchImpl });
   assert.equal(code, 2);
   assert.match(io.err.text(), /REFUSED/);
+  assert.equal(fetchImpl.calls.length, 0, 'the refused run made no request');
 });

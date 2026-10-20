@@ -61,7 +61,9 @@ function writeOut(dir, report, markdown) {
   fs.writeFileSync(path.join(dir, 'scorecard.html'), renderHtml(markdown, report.verdict));
 }
 
-async function main(argv = process.argv.slice(2), env = process.env, io = { out: process.stdout, err: process.stderr }) {
+// `deps.fetchImpl` (tests only): the fetch every MCP client uses. Refusal tests inject one that throws and
+// counts, so "the harness made no request" is asserted rather than assumed.
+async function main(argv = process.argv.slice(2), env = process.env, io = { out: process.stdout, err: process.stderr }, deps = {}) {
   if (argv.includes('--help') || argv.includes('-h')) {
     io.out.write(HELP);
     return 0;
@@ -118,6 +120,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
       protocolVersion: config.protocolVersion,
       clientInfo: { name: config.clientName, version: config.clientVersion },
       extraHeaders,
+      fetchImpl: deps.fetchImpl,
     });
   const log = (msg) => io.err.write(`[readiness-eval] ${msg}\n`);
 
