@@ -81,33 +81,40 @@ does not exist for its provider. `env_hint` on the line names the variable to ch
 
 ### Why the error-rate alert is 30m, at least 15 errors, sustained 10m
 
-Assume the worst case: every tool error is server-class at a baseline of p0 = 1.28%, the rate of all
-`search_catalog` tool errors in a recent week before any server/client split. With n answered calls in the
-window, the alert's ratio condition is X/n > 2%, where X is binomial(n, p0). The table gives the chance that a
-healthy window crosses it, and the chance that a real failure rate does:
+The alert compares the server-class error ratio X/n against 2%, where X is binomial(n, p0) for n answered calls
+in the window and a healthy baseline rate p0. This section does not publish a measured baseline. The table
+shows the chance that a HEALTHY window fires, at three assumed baselines:
 
-| calls in window (n) | errors needed | P(false fire), p0 = 1.28% | P(fire), p = 5% | p = 10% | p = 25% |
-|---|---|---|---|---|---|
-| 50, 2% only (the original 10m / no-floor design) | 2 | 13% | 72% | 97% | 100% |
-| 100, 2% only | 3 | 14% | 88% | 100% | 100% |
-| 50, with the 15-error floor | 15 | 6e-17 | 0 | 0 | 25% |
-| 100 | 15 | 4e-12 | 0 | 7% | 99.5% |
-| 200 | 15 | 6e-8 | 8% | 91% | 100% |
-| 400 | 15 | 3e-4 | 90% | 100% | 100% |
-| 750 | 16 | 3.5% | 100% | 100% | 100% |
-| 1000 | 21 | 2.1% | 100% | 100% | 100% |
-| 2000 | 41 | 0.3% | 100% | 100% | 100% |
+- **old**: the 2% ratio alone, with no error floor. This is the first draft's condition.
+- **new**: the 2% ratio, plus at least 15 server errors.
+- **new @3%**: the same floor, with the threshold raised to 3%.
 
-Without the floor, a healthy 10-minute window crosses 2% about one time in seven. With the 15-error floor, a
-healthy window is essentially never above it below about 400 calls per 30 minutes. The worst case is about 5.8%
-per 30-minute window, at about 740 calls, where 2% sits only about 1.9 standard deviations above 1.28%. The
-10-minute `duration` requires the overlapping windows to stay above the line, which lowers that further. The
-true server-class baseline is below 1.28%, because some of those errors are client-class, so these figures are
-an upper bound.
+| calls in window (n) | p0 = 0.5%: old / new / new @3% | p0 = 1%: old / new / new @3% | p0 = 2%: old / new / new @3% |
+|---|---|---|---|
+| 50 | 2.6% / ~0 / ~0 | 8.9% / ~0 / ~0 | 26% / ~0 / ~0 |
+| 100 | 1.4% / ~0 / ~0 | 7.9% / ~0 / ~0 | 32% / ~0 / ~0 |
+| 200 | 0.36% / ~0 / ~0 | 5.2% / ~0 / ~0 | 37% / 0.001% / 0.001% |
+| 400 | 0.02% / ~0 / ~0 | 2.1% / 0.002% / 0.002% | 41% / 1.6% / 1.6% |
+| 750 | ~0 / ~0 / ~0 | 0.44% / 0.44% / ~0 | 43% / 43% / 3.1% |
+| 1000 | ~0 / ~0 / ~0 | 0.15% / 0.15% / ~0 | 44% / 44% / 1.3% |
 
-The cost is sensitivity at low volume. Under about 100 calls per 30 minutes, only a large outage (25% and up)
-can fire, and a 5% failure rate cannot be told from noise at that volume anyway. If traffic settles near the
-worst-case band, raising the threshold to 3% cuts the worst case to about 0.2%.
+"~0" is below 0.001%.
+
+What the table shows:
+
+- **Low volume (the floor's job).** Without the floor, a healthy window crosses 2% often whenever n is small: a
+  handful of errors is enough. With the 15-error floor, a healthy window essentially never fires below roughly
+  400 calls per 30 minutes, at any baseline up to 1%.
+- **Worst case.** It sits where 15 errors and 2% of n coincide, at about 740 calls per 30 minutes. There it is
+  under 0.01% at a 0.5% baseline and about 0.9% at a 1% baseline. A 3% threshold cuts the 1% case to about
+  0.02%. Above that volume the ratio alone decides, and the variance shrinks as n grows.
+- **Baseline at the threshold.** At a 2% baseline the threshold IS the baseline, so a 2% alert fires about half
+  the time at any real volume. A threshold has to sit well above the measured server-class baseline. Check
+  that baseline from these metrics before enabling the alert, and use 3% if it is near 1% or higher.
+- **Duration.** The 10-minute `duration` requires the overlapping windows to stay above the line, which lowers
+  every figure above.
+- **The cost.** Sensitivity drops at low volume. Under about 100 calls per 30 minutes, only a large outage (25%
+  and up) can produce 15 errors. A 5% failure rate cannot be told from noise at that volume anyway.
 
 ## Useful queries
 
