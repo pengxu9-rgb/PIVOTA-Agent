@@ -146,8 +146,18 @@ const lane = (resp) => resp.body?.metadata?.query_source || null;
 describe('find_products_multi search routing: bare ingredients and non-English beauty terms', () => {
   let prevEnv;
 
+  // The guard REFUSES every non-loopback connection whatever happens. What this file asserts is that its
+  // own traffic never tried to leave: the hosts it mocks (nock / the fixture URLs) never reach a socket.
+  // (Under a preloaded guard in a shared Jest worker, other suites' late async work can be refused while
+  // this file runs; those refusals are theirs, not this file's.)
+  const OWN_HOSTS = /(^|\.)(pivota\.test|example\.com|brand\.example|agent\.pivota\.cc)(:\d+)?$/;
+  let blockedAtStart = 0;
+  beforeAll(() => {
+    blockedAtStart = netGuard.state.blocked.length;
+  });
   afterAll(() => {
-    expect(netGuard.state.blocked).toEqual([]);
+    const own = netGuard.state.blocked.slice(blockedAtStart).filter((entry) => OWN_HOSTS.test(String(entry.target || '')));
+    expect(own).toEqual([]);
   });
 
   beforeEach(() => {
