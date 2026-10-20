@@ -18290,9 +18290,9 @@ async function buildProductAnalysisFromUrlIngredients({
   if (!fetchOut.ok) {
     logger?.warn?.(
       {
-        url: parsedUrl.toString(),
+        url_host: urlHostForLog(parsedUrl.toString()),
         failure_code: fetchOut.failure_code,
-        attempts: fetchOut.attempts,
+        attempts: attemptsForLog(fetchOut.attempts),
       },
       'aurora bff: product URL ingredient extraction failed',
     );

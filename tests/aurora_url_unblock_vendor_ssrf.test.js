@@ -441,6 +441,42 @@ describe('the unblock vendor is never handed a non-public URL', () => {
     expect(JSON.stringify(line[0])).not.toContain('://');
   });
 
+  test('the ingredient-extraction failure warning logs the host only, never the url or attempt urls', async () => {
+    dns = stubDns();
+    const { lane, axiosInstance } = loadLaneWithVendorEnabled();
+    const refuse = async () => { const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err; };
+    // Every outbound path this function could take is refused here, so the test cannot reach a real host.
+    getSpy = jest.spyOn(axiosInstance, 'get').mockImplementation(refuse);
+    const postSpy = jest.spyOn(axiosInstance, 'post').mockImplementation(refuse);
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(refuse);
+    // eslint-disable-next-line global-require
+    const nock = require('nock');
+    nock.disableNetConnect();
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    try {
+      await lane.buildProductAnalysisFromUrlIngredients({
+        productUrl: 'https://shop.example.invalid/p/secret-path?token=abc123',
+        lang: 'EN',
+        logger,
+      });
+    } finally {
+      postSpy.mockRestore();
+      fetchSpy.mockRestore();
+      nock.enableNetConnect();
+    }
+
+    const line = logger.warn.mock.calls.find(([, msg]) => /product URL ingredient extraction failed/.test(String(msg)));
+    expect(line).toBeTruthy();
+    expect(line[0].url_host).toBe('shop.example.invalid');
+    expect(line[0].url).toBeUndefined();
+    expect(line[0].attempts.length).toBeGreaterThan(0);
+    for (const a of line[0].attempts) expect(a.__url).toBeUndefined();
+    const logged = JSON.stringify(line[0]);
+    expect(logged).not.toContain('://');
+    expect(logged).not.toContain('secret-path');
+    expect(logged).not.toContain('abc123');
+  });
+
   test('a retail page fetch returns the normalised url, never the raw text', async () => {
     const { fetchRetailProductPage } = armLane();
     getSpy.mockImplementation(async (url) => {
