@@ -5,6 +5,10 @@ describe('ingredientProductRecall', () => {
     jest.resetModules();
     prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://ingredient-product-recall-test';
+    // The ingredient signal/reference stores open their OWN pg pool from DATABASE_URL, and the
+    // tests that do not mock them used to send a real DNS query for the host above. Keep that
+    // database down, offline: tests that need rows mock the stores themselves.
+    jest.doMock('pg', () => require('../_support/unreachablePg.cjs').unreachablePg());
   });
 
   afterEach(() => {
