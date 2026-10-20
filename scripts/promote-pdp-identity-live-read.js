@@ -2,6 +2,7 @@
 
 const { promotePdpIdentityLiveRead } = require('../src/services/pdpIdentityGraph');
 const { closePool } = require('../src/db');
+const { logCrawlFreshConfig } = require('../src/services/catalogRowTrustUpserter');
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -21,6 +22,10 @@ function asString(value) {
 }
 
 async function main() {
+  // CRAWL_FRESH: promotion triggers the identity-event trust refresh
+  // (upsertCatalogRowTrustForSourceListingRefs), so this job WRITES
+  // catalog_row_trust and must run with the same switch as both services.
+  logCrawlFreshConfig('promote-pdp-identity-live-read', { stream: process.stderr });
   const brand = asString(argValue('brand')) || null;
   const refs = asString(argValue('source-listing-refs'))
     .split(',')
