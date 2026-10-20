@@ -59,7 +59,8 @@ const RUBRIC_VERSION = 'v4';
 // The fragrance scent rule (relationshipFragranceProfile) only REFUSES approvals v2 allowed, so the
 // validator version is unchanged. Its prompt line does change reviewPairFingerprint (the fingerprint
 // hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
-const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v2';
+// v3 (2026-10-20): quotes are grounded as the facts they quote, not as the JSON they were copied from.
+const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v3';
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
@@ -1160,24 +1161,59 @@ async function applyConsensusDisposition(row, decision, queryFn, { runId = '' } 
   return res.rows?.[0] || null;
 }
 
+// QUOTES ARE THE FACTS, NOT THE JSON THEY CAME FROM (2026-10-20). The evidence reaches the model as
+// JSON, and it often copies a quote with its key and quote marks ('category": "toner', 'best_for": [
+// "lip comfort", "shine finish" ]') or joins two spans with an ellipsis. On 37 approvals the
+// validator overturned (prod dry run, uncovered anchors), 36 failed only on that shape or on spacing
+// around punctuation, not on a fact the products lack. A quote is cut into the spans it quotes:
+// the key and JSON punctuation dropped, array items and ellipsis-joined parts split. Each span must
+// still appear verbatim (whitespace aside) in that product's own facts. A span that is only a generic
+// word ("cream") or the brand proves nothing: it neither grounds a quote nor sinks one, and at least
+// one quote must ground something specific on both sides. The cleaned text is what is stored, and a
+// generic-only quote is never shown to a shopper (recommendationFields).
+const GENERIC_QUOTE_SPAN = /^(?:beauty|skincare|makeup|cosmetics|face|body|skin|cream|serum)$/;
+function normalizeQuoteText(value) {
+  return String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function quoteSpans(value) {
+  const text = normalizeString(value, 350)
+    .replace(/^\s*[{\[]?\s*"?[A-Za-z][A-Za-z_]{0,40}"?\s*:\s*/, '')
+    .replace(/^[\s\["]+|[\s\]}",]+$/g, '');
+  return text.split(/"\s*,\s*"|\s*(?:\.\.\.|\u2026)\s*/).map((span) => span.replace(/^[\s"]+|[\s"]+$/g, '')).filter(Boolean);
+}
+function quoteSpanIsGeneric(span, product) {
+  const needle = normalizeQuoteText(span);
+  return !needle || needle === normalizeQuoteText(product && product.brand) || GENERIC_QUOTE_SPAN.test(needle);
+}
 function quotedEvidence(value) {
   return asArray(value).slice(0, 6).map((item) => ({
-    anchor_fact: normalizeString(item?.anchor_fact, 350),
-    candidate_fact: normalizeString(item?.candidate_fact, 350),
+    anchor_fact: quoteSpans(item?.anchor_fact).join(' … '),
+    candidate_fact: quoteSpans(item?.candidate_fact).join(' … '),
   })).filter((item) => item.anchor_fact && item.candidate_fact);
 }
 function factGrounded(product, quote) {
-  const norm = (value) => String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
-  const needle = norm(quote);
-  if (!needle || needle === norm(product.brand) || /^(?:beauty|skincare|makeup|cosmetics|face|body|skin|cream|serum)$/.test(needle)) return false;
+  const compact = (value) => normalizeQuoteText(value).replace(/\s+/g, '');
   const values = [];
   const collect = (value) => {
-    if (typeof value === 'string') values.push(norm(value));
+    if (typeof value === 'string') values.push(compact(value));
     else if (Array.isArray(value)) value.forEach(collect);
     else if (value && typeof value === 'object') Object.values(value).forEach(collect);
   };
   collect(product);
-  return values.some((value) => value.includes(needle));
+  const spans = quoteSpans(quote).filter((span) => !quoteSpanIsGeneric(span, product));
+  if (!spans.length) return null; // proves nothing either way
+  return spans.every((span) => values.some((value) => value.includes(compact(span))));
+}
+// Every quote must hold on both sides, and at least one must say something specific about each.
+function quotesGrounded(quotes, evidence) {
+  let specific = false;
+  for (const quote of quotes) {
+    const anchor = factGrounded(evidence.anchor, quote.anchor_fact);
+    const candidate = factGrounded(evidence.candidate, quote.candidate_fact);
+    if (anchor === false || candidate === false) return false;
+    if (anchor === true && candidate === true) specific = true;
+  }
+  return specific;
 }
 function validateRecommendationDecision(row, decision, suppliedEvidence = null) {
   if (decision.verdict !== 'approve') return decision;
@@ -1190,7 +1226,7 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
   let reason = '';
   if (!(allowed[row.relation_type] || []).includes(decision.relationship_kind)) reason = 'relation_semantics_mismatch';
   else if (!normalizeString(decision.recommendation_reason, 700) || !quotes.length) reason = 'recommendation_utility_evidence_missing';
-  else if (!quotes.every((quote) => factGrounded(evidence.anchor, quote.anchor_fact) && factGrounded(evidence.candidate, quote.candidate_fact))) reason = 'recommendation_facts_not_supplied';
+  else if (!quotesGrounded(quotes, evidence)) reason = 'recommendation_facts_not_supplied';
   else if (decision.relationship_kind !== 'complement' && !compactArray(decision.tradeoffs, 6).length) reason = 'substitution_tradeoffs_missing';
   if (!reason && ['dupe', 'competitive_alternative'].includes(row.relation_type)) {
     const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
@@ -1271,11 +1307,15 @@ function matchesConsumerCopy(decision) {
     JSON.stringify(decision.watchouts) === JSON.stringify(expected.watchouts));
 }
 function recommendationFields(decision) {
+  // A quote that is only a generic word ("cream / cream") is kept as evidence but never shown.
+  const genericOnly = (text) => quoteSpans(text).every((span) => GENERIC_QUOTE_SPAN.test(normalizeQuoteText(span)));
+  const quotes = quotedEvidence(decision.shared_evidence);
   return {
     relationship_kind: decision.relationship_kind,
     summary: consumerCopyForKind(decision.relationship_kind)?.recommendation_reason || '',
-    reasons_user_visible: quotedEvidence(decision.shared_evidence).map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
-    shared_evidence: quotedEvidence(decision.shared_evidence),
+    reasons_user_visible: quotes.filter((item) => !genericOnly(item.anchor_fact) && !genericOnly(item.candidate_fact))
+      .map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
+    shared_evidence: quotes,
   };
 }
 
