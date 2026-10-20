@@ -86,6 +86,12 @@ suite('seed-projected offers are prices only in their seed currency, real Postgr
         return `${col} ${type}`;
       });
       await db.query(`CREATE TABLE ${table} (${definitions.join(',')})`);
+      // Prod's index and statistics on the seeds the offer guard probes (seedSearchOfferScope): an
+      // unindexed, never-analyzed table makes the planner cost the probe as a scan per offer (35k -> 365k),
+      // past CI Postgres's jit_above_cost, and every statement then JIT-compiles for seconds.
+      if (table === 'external_product_seeds') {
+        await db.query('CREATE INDEX ON external_product_seeds(attached_product_key); ANALYZE external_product_seeds');
+      }
     }
 
     // 1. skintific.com, prod's rows: a re-read AUD seed whose payload and variants still say USD 23.56.
@@ -303,6 +309,37 @@ suite('seed-projected offers are prices only in their seed currency, real Postgr
     expect(sqlCalls[0].sql).not.toContain('eps_own');
     const card = (res.body.products || []).find((p) => p.product_key === SKIN_PK);
     expect(card && [Number(card.price), card.currency]).toEqual([23.56, 'USD']);
+  });
+
+  // CI's postgres:15 runs with JIT on (jit_above_cost 100000); a guarded statement whose planner
+  // estimate crossed it JIT-compiled for 2-5 s per query and timed the canonical CI job out
+  // (run 39272239301). With prod's index and statistics on the seeds (see the fixture DDL) the probe
+  // is costed as one index lookup per offer.
+  // The product-level offer pick (includeSkuOffers false: the surfaces that join offers by product_key,
+  // not through catalog_skus) carries the same guard as the sku-level one the invoke route uses.
+  test('the product-level offer pick refuses the copied USD rows too', async () => {
+    const { fetchCanonicalChainRows } = require('../../src/services/canonicalCatalogSearch');
+    const run = (sql, params) => db.query(sql, params);
+    const args = (query) => ({ query, includeSkuOffers: false, marketId: 'US', offerScope: { markets: ['US'], currency: 'USD' },
+      categoryPathPrefix: 'beauty/skincare/treat/', categoryMode: 'category_browse',
+      searchQualityContract: buildSearchQualityContract({ rawQuery: query }), deps: { query: run } });
+    // Recalled, but not priced in USD: the only USD rows are the copies off the AUD-read seed.
+    const rows = await skintificAlone(() => fetchCanonicalChainRows(args('skintific glow cushion peptide lip serum set')));
+    expect(rows.some((r) => r.product_key === SKIN_PK && r.currency === 'USD')).toBe(false);
+    const all = await fetchCanonicalChainRows(args('skintific serum'));
+    const priced = Object.fromEntries(all.filter((r) => r.currency).map((r) => [r.product_key, [Number(r.merchant_effective_price ?? r.list_price), r.currency]]));
+    expect(priced['prod::merch_obs_ctl::external_seed::ext_ctl_usd']).toEqual([18, 'USD']);
+    // The cheaper USD 25 copy off the SGD seed sits on the same product: the pick passes it over.
+    expect(priced['prod::merch_obs_mkt::external_seed::ext_mkt_sgd']).toEqual([30, 'USD']);
+    expect(priced).not.toHaveProperty(['prod::external_seed::external_seed::ext_nourwish_sgd']);
+    expect(priced).not.toHaveProperty(['prod::merch_obs_qar::external_seed::ext_qar_page']);
+  });
+
+  test('the guarded statement stays under the default jit_above_cost', async () => {
+    await invoke('skintific serum');
+    expect(sqlCalls).toHaveLength(1);
+    const plan = (await db.query(`EXPLAIN (FORMAT JSON) ${sqlCalls[0].sql}`, sqlCalls[0].params)).rows[0]['QUERY PLAN'][0];
+    expect(plan.Plan['Total Cost']).toBeLessThan(100000);
   });
 
   test('a seed that states no currency refuses the offer stamped from it', async () => {

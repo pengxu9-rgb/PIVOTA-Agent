@@ -42,6 +42,12 @@ suite('primary offer constraints execute before the candidate cut', () => {
         /(_payload|_json|^seed_data$|^visible_attributes$|^visible_option_labels$|^ingredient_ids$)/.test(col) ? 'jsonb' :
         /^(list_price|merchant_effective_price|estimated_best_price|inventory_quantity|.*confidence)$/.test(col) ? 'numeric' : /(_at)$/.test(col) ? 'timestamptz' : 'text'}`);
       await db.query(`CREATE TABLE ${table} (${defs.join(',')})`);
+      // Prod's index and statistics on the seeds the offer guard probes (seedSearchOfferScope): an
+      // unindexed, never-analyzed table makes the planner cost the probe as a scan per offer (35k -> 365k),
+      // past CI Postgres's jit_above_cost, and every statement then JIT-compiles for seconds.
+      if (table === 'external_product_seeds') {
+        await db.query('CREATE INDEX ON external_product_seeds(attached_product_key); ANALYZE external_product_seeds');
+      }
     }
     for(const merchant of ['budget','sibling','fx','unknown','stockcap','currencycap','marketcap']) await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status) VALUES ($1,$1,'active')",[merchant]);
     // More rejected products than the real candidate cap (25 at limit=1),

@@ -125,6 +125,12 @@ suite('narrow rank returns exactly the wide statement\'s rows, in order (Postgre
         return `${col} ${type}`;
       });
       await db.query(`CREATE TABLE ${table} (${defs.join(', ')})`);
+      // Prod's index and statistics on the seeds the offer guard probes (seedSearchOfferScope): an
+      // unindexed, never-analyzed table makes the planner cost the probe as a scan per offer (35k -> 365k),
+      // past CI Postgres's jit_above_cost, and every statement then JIT-compiles for seconds.
+      if (table === 'external_product_seeds') {
+        await db.query('CREATE INDEX ON external_product_seeds(attached_product_key); ANALYZE external_product_seeds');
+      }
     }
 
     const insert = async ({ key, merchant, title, brand, type, path, payload, platform = 'shopify', seconds, price = 20, description = null }) => {

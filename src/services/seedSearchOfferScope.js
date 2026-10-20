@@ -82,15 +82,16 @@ const SEED_PROJECTED_OFFER_SOURCE_SYSTEMS = Object.freeze([
 // re-detoasts it: the first v2 form referenced it up to four times per seed and cost +30-35% on scoped
 // recall (spccy6/spccy7-1019; local 20k-seed bench: 818k buffer hits against round 1's 258k). A simple
 // CASE evaluates its test once, `#>>` yields NULL through a snapshot or seed_data that is not an object,
-// and only a seed with no snapshot currency pays the type checks.
+// and only a seed with no snapshot currency pays the type checks. The no-page-read sentinel is '', which
+// neither side can equal: both are nullif(..., '').
 function seedCurrencySql(alias) {
   const column = `nullif(upper(trim(${alias}.price_currency)), '')`;
   const page = `nullif(upper(trim(${alias}.seed_data#>>'{snapshot,price_currency}')), '')`;
   const snapshot = `${alias}.seed_data->'snapshot'`;
   return `(CASE WHEN ${column} IS NULL THEN ${page}
-              ELSE (CASE coalesce(${page}, '~')
+              ELSE (CASE coalesce(${page}, '')
                       WHEN ${column} THEN ${column}
-                      WHEN '~' THEN (CASE WHEN ${alias}.seed_data IS NULL
+                      WHEN '' THEN (CASE WHEN ${alias}.seed_data IS NULL
                                             OR (jsonb_typeof(${alias}.seed_data) IN ('object', 'null')
                                                 AND (${snapshot} IS NULL OR jsonb_typeof(${snapshot}) IN ('object', 'null')))
                                           THEN ${column} END)
