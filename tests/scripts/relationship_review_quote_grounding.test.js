@@ -352,3 +352,29 @@ describe('controller review round 4 (2026-10-20)', () => {
     expect(verdict(a, c, [{ anchor_fact: 'description": "Woody amber accord', candidate_fact: 'warm amber accord' }])).toBe('approve');
   });
 });
+
+describe('controller review round 5 (2026-10-20)', () => {
+  const cand = 'Suitable for sensitive skin';
+  const b = { ...TONER_B, description: 'Suitable for sensitive skin. Non-comedogenic.' };
+  const good = { anchor_fact: 'Niacinamide', candidate_fact: 'Niacinamide' };
+
+  test('an ignored quote is still checked: an invented specific part refuses the pair', () => {
+    expect(verdict(TONER_A, TONER_B, [good, { anchor_fact: 'Allantoin', candidate_fact: 'cream … clinically proven to erase wrinkles' }]))
+      .toBe('recommendation_facts_not_supplied');
+    const seven = Array.from({ length: 6 }, () => 'Niacinamide').concat(['miraculous overnight results']).join(' … ');
+    expect(verdict(TONER_A, TONER_B, [good, { anchor_fact: 'Allantoin', candidate_fact: seven }])).toBe('recommendation_facts_not_supplied');
+    expect(verdict(TONER_A, TONER_B, [good, { anchor_fact: 'Allantoin', candidate_fact: 'water … miraculous' }])).toBe('recommendation_facts_not_supplied');
+    // an ignored quote whose specific parts are all real still does not sink the pair
+    expect(verdict(TONER_A, TONER_B, [good, { anchor_fact: 'Allantoin', candidate_fact: 'water … Niacinamide' }])).toBe('approve');
+  });
+
+  test('a dash is a hyphen: "oil" is not in "oil–free"', () => {
+    const a = { ...TONER_A, description: 'A lightweight oil–free gel. Calms redness fast.' };
+    expect(verdict(a, b, [{ anchor_fact: 'lightweight oil', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+  });
+
+  test('an un-...-able caveat in the gap refuses on its own (N48)', () => {
+    const a = { ...TONER_A, description: 'Deeply hydrating texture, unsuitable for oily skin, lasts all day on skin.' };
+    expect(verdict(a, b, [{ anchor_fact: 'Deeply hydrating texture … lasts all day', candidate_fact: cand }])).toBe('recommendation_facts_not_supplied');
+  });
+});

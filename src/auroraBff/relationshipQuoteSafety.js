@@ -23,7 +23,8 @@ const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hang
 
 // NFKC leaves curly apostrophes and quotes alone; "isn’t" must read as "isn't".
 function foldQuoteText(value) {
-  return String(value || '').normalize('NFKC').replace(/[‘’ʼ′]/g, "'").replace(/[“”″]/g, '"');
+  // Dashes fold to a hyphen too, so "oil–free" (en dash) is the same compound as "oil-free".
+  return String(value || '').normalize('NFKC').replace(/[\u2010-\u2015\u2212]/g, '-').replace(/[‘’ʼ′]/g, "'").replace(/[“”″]/g, '"');
 }
 function normalizeQuoteText(value) {
   return foldQuoteText(value).toLowerCase().replace(/\s+/g, ' ')
@@ -33,13 +34,29 @@ function quoteWords(value) {
   return normalizeQuoteText(value).split(/[^\p{L}\p{N}%]+/u).filter(Boolean);
 }
 
-// The brand as a quote can name it: the brand field, plus the native-script name a product's title opens
-// with when the brand field is Latin ("에뛰드 ..." for ETUDE). Titles lead with the brand on these sites.
+// Native-script names of brands in the catalog (lowercased Latin brand -> Hangul/kana/Han names).
+const NATIVE_BRAND_NAMES = Object.freeze({
+  etude: ['에뛰드', '에뛰드하우스'], 'etude house': ['에뛰드', '에뛰드하우스'], innisfree: ['이니스프리'], laneige: ['라네즈'],
+  sulwhasoo: ['설화수'], missha: ['미샤'], cosrx: ['코스알엑스'], tonymoly: ['토니모리'], 'the face shop': ['더페이스샵'],
+  'holika holika': ['홀리카홀리카'], 'banila co': ['바닐라코'], mediheal: ['메디힐'], 'round lab': ['라운드랩'], anua: ['아누아'],
+  torriden: ['토리든'], skin1004: ['스킨1004'], 'beauty of joseon': ['조선미녀'], iope: ['아이오페'], hera: ['헤라'],
+  'o hui': ['오휘'], 'dr.jart+': ['닥터자르트'], medicube: ['메디큐브'], isntree: ['이즈앤트리'], numbuzin: ['넘버즈인'],
+  abib: ['아비브'], rovectin: ['로벡틴'], mixsoon: ['믹순'], tirtir: ['티르티르'], '3ce': ['쓰리씨이'], 'rom&nd': ['롬앤'],
+  clio: ['클리오'], peripera: ['페리페라'], heimish: ['헤이미쉬'], mamonde: ['마몽드'], aestura: ['에스트라'],
+  illiyoon: ['일리윤'], "d'alba": ['달바'], cnp: ['차앤박'], manyo: ['마녀공장'], shiseido: ['資生堂', '资生堂'],
+  sk2: ['エスケーツー'], 'sk-ii': ['エスケーツー'], canmake: ['キャンメイク'], cezanne: ['セザンヌ'], dhc: ['ディーエイチシー'],
+});
+// The brand as a quote can name it: the brand field, its known native-script names, and a native-script
+// first token of the title only when brand punctuation marks it ("[에뛰드]", "에뛰드 | ..."), never a
+// bare first word, which is as often the product ("레티놀 시카 크림" opens with retinol).
 function brandAliases(product) {
   const brand = product && typeof product.brand === 'string' ? product.brand : '';
   const title = product && typeof (product.title || product.name) === 'string' ? (product.title || product.name) : '';
-  const first = quoteWords(title)[0] || '';
-  return CJK.test(first) && !CJK.test(brand) ? `${brand} ${first}` : brand;
+  const names = [brand, ...(NATIVE_BRAND_NAMES[normalizeQuoteText(brand)] || [])];
+  const marked = foldQuoteText(title).match(/^\s*[\[(【]\s*([^\]\)】]+?)\s*[\])】]|^\s*([^|/·]+?)\s*[|/·]/u);
+  const token = marked && (marked[1] || marked[2]);
+  if (token && CJK.test(token) && !CJK.test(brand) && quoteWords(token).length === 1) names.push(token);
+  return names.filter(Boolean).join(' ');
 }
 
 // Specific: a curated short active, a CJK word of two or more characters, two or more words of which
@@ -96,5 +113,5 @@ function sanitizeWhyCandidateQuotes(why, { anchorBrand = '', candidateBrand = ''
 
 module.exports = {
   GENERIC_QUOTE_SPAN, QUOTE_STOPWORDS, SHORT_ACTIVES, foldQuoteText, normalizeQuoteText, quoteWords, quotePartIsSpecific,
-  hasQuoteShape, isShowableQuote, sanitizeWhyCandidateQuotes, DEFAULT_REASONS_USER_VISIBLE, CJK_GENERIC, brandAliases,
+  hasQuoteShape, isShowableQuote, sanitizeWhyCandidateQuotes, DEFAULT_REASONS_USER_VISIBLE, CJK_GENERIC, brandAliases, NATIVE_BRAND_NAMES,
 };

@@ -1352,7 +1352,13 @@ function groundQuoteSide(product, value) {
       // Too many parts, or a part too thin to place (one generic or short word): the quote proves nothing,
       // so it is ignored rather than sinking a pair whose other quotes hold.
       if (parts.length > ELISION_MAX_PARTS
-        || parts.some((part) => quoteWords(part).length < 2 && !quotePartIsSpecific(part, brand))) continue;
+        || parts.some((part) => quoteWords(part).length < 2 && !quotePartIsSpecific(part, brand))) {
+        // ...but an ignored quote is still checked: every specific part must be the product's own text,
+        // or the model invented a fact and the pair is refused ("cream … clinically proven to erase wrinkles").
+        if (parts.some((part) => quotePartIsSpecific(part, brand)
+          && !values.some(({ norm }) => wholeWordPositions(norm, normalizeQuoteText(part)).length))) return false;
+        continue;
+      }
       const passage = elidedPassage(values, parts);
       if (!passage) return false;
       // A fact that itself carries an ellipsis or brackets cannot be shown, so it cannot be the evidence.

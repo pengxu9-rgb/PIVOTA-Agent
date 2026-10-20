@@ -62,6 +62,12 @@ test('when every quote reason is dropped the fixed default reasons stand in, nev
 test('a native-script brand name is the brand ("에뛰드" for ETUDE)', () => {
   const etude = { brand: 'ETUDE', title: '에뛰드 순정 약산성 클렌징 폼' };
   expect(isShowableQuote('에뛰드', brandAliases(etude))).toBe(false);
+  // a known transliteration, or a token brand punctuation marks; never a bare first word (it is often the product)
+  expect(brandAliases({ brand: 'BBB', title: '레티놀 시카 크림' })).toBe('BBB');
+  expect(isShowableQuote('레티놀', brandAliases({ brand: 'ETUDE', title: '레티놀 시카 크림' }))).toBe(true);
+  expect(brandAliases({ brand: 'BBB', title: '[에뛰드] 수분 크림' })).toBe('BBB 에뛰드');
+  expect(brandAliases({ brand: 'BBB', title: '에뛰드 | 수분 크림' })).toBe('BBB 에뛰드');
+  expect(isShowableQuote('에뛰드', brandAliases({ brand: 'ETUDE', title: 'NEW 에뛰드 크림' }))).toBe(false);
   expect(isShowableQuote('약산성 클렌징 폼', brandAliases(etude))).toBe(true);
   for (const word of ['크림', '정제수', '글리세린', '精华', '化粧水']) expect(isShowableQuote(word)).toBe(false);
   // a single CJK character is never specific (N35)
