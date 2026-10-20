@@ -12,6 +12,8 @@ const netGuard = require('../search_routing_net_guard.cjs');
  *     rows that NAME the ingredient; a bare negation is a safe-empty clarify.
  *   FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING  known non-English beauty terms route like their English
  *     equivalents; English queries are never changed.
+ *
+ * Also pinned (flags or no flags): the ingredient lane resolves its market exactly as the mainline does.
  */
 
 const nock = require('nock');
@@ -413,6 +415,51 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     expect(english.intent.language).toBe('en');
     // Routing is unchanged by it: the same query reaches the lanes.
     expect(routed.adjustedPayload.search.query).toBe(english.adjustedPayload.search.query);
+  });
+
+  describe.each([
+    ['off', {}],
+    ['observe', BOTH_OBSERVE],
+    ['on', BOTH_ON],
+  ])('market: the ingredient lane resolves its market exactly as the mainline (%s)', (_mode, env) => {
+    const marketParams = (sql) => sql.flatMap((s) => s.params).filter((p) => typeof p === 'string' && /^[A-Z]{2}$/.test(p));
+    const marketArrayParams = (sql) => sql.flatMap((s) => s.params).filter(Array.isArray).flat();
+    const boundMarkets = (sql) => [...marketParams(sql), ...marketArrayParams(sql).filter((p) => typeof p === 'string' && /^[A-Z]{2}$/.test(p))];
+
+    test('no market: both lanes bind the deployment\'s served market (never a literal US) and log market_source', async () => {
+      const { invoke } = boot({ ...env, CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'GB' });
+      const ingredient = await invoke('niacinamide serum');
+      const mainline = await invoke('sunscreen');
+      expect(lane(ingredient.resp)).toBe(LANES.INGREDIENT);
+      for (const result of [ingredient, mainline]) {
+        expect(result.log.market_source).toBe('defaulted');
+        expect(result.log.market_bound).toEqual(['GB']);
+        expect(boundMarkets(result.sql)).not.toContain('US');
+      }
+      expect(boundMarkets(ingredient.sql)).toContain('GB');
+    });
+
+    test('a market no currency is known for: both lanes serve nothing and run no SQL', async () => {
+      const { invoke } = boot(env);
+      const ingredient = await invoke('niacinamide serum', { market: 'en-US' });
+      const mainline = await invoke('sunscreen', { market: 'en-US' });
+      expect(lane(ingredient.resp)).toBe('ingredient_direct_buyer_market_unpriced');
+      expect(lane(mainline.resp)).toBe('beauty_mainline_buyer_market_unpriced');
+      for (const result of [ingredient, mainline]) {
+        expect(result.resp.body.products).toEqual([]);
+        expect(result.sql.filter((s) => s.sql.includes(CANONICAL_MARKER) || /external_product_seeds/.test(s.sql))).toEqual([]);
+      }
+    });
+
+    test('a named market binds that market on both legs, not the served default', async () => {
+      const { invoke } = boot(env);
+      const ingredient = await invoke('niacinamide serum', { market: 'SG' });
+      expect(lane(ingredient.resp)).toBe(LANES.INGREDIENT);
+      expect(ingredient.log.market_bound).toEqual(['SG']);
+      expect(ingredient.log.market_source).not.toBe('defaulted');
+      expect(boundMarkets(ingredient.sql)).toContain('SG');
+      expect(boundMarkets(ingredient.sql)).not.toContain('US');
+    });
   });
 
   test('each flag alone does only its own part', async () => {

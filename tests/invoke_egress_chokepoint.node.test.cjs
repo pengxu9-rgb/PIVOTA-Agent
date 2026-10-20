@@ -141,10 +141,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // read-only content, and current verified content.
   // 2026-10-16: +2, pdp_live_read — its answer (200, or 400 on a bad token) and its 500 when the
   // refresh throws unexpectedly.
+  // 2026-10-20: +1, the ingredient lane's unpriced-market answer (a market no currency is known for
+  // serves nothing and runs no SQL, as the beauty mainline already did).
   assert.equal(
     exits.length,
-    105,
-    `expected 105 response exits in handleInvokeRequest, saw ${exits.length}`,
+    106,
+    `expected 106 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
