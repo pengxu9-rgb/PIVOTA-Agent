@@ -4,13 +4,14 @@
 // this repo emits the backend's statement; this file proves what that statement
 // DECIDES, through the upserter's own crawlFreshByKey (probe, savepoint, binds,
 // age test) on a client inside a transaction:
-//   * the CLASS is every live offer (unsuppressed, priced, http(s) link), any
-//     source, market, currency or affiliate status;
+//   * the CLASS is every live offer (unsuppressed, priced) -- any link (round 5:
+//     canonicalPdpOwnMoney serves an offer's price whatever its destination),
+//     any source, market, currency or affiliate status;
 //   * ONE class offer without a valid read (not the drain's, not a served
 //     market+currency pair, affiliate, future-dated, undeclared, employee edit)
 //     makes the row not fresh;
-//   * an offer outside the class (suppressed, unpriced, non-http link) neither
-//     dates nor blocks the row.
+//   * an offer outside the class (suppressed, unpriced) neither dates nor
+//     blocks the row.
 // Twin of pivota-backend tests/test_crawl_fresh_trust_postgres.py (round 4).
 
 const { Client } = require('pg');
@@ -129,8 +130,6 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     ['a suppressed offer', { suppressed_at: new Date(NOW.getTime() - DAY) }],
     ['an unpriced offer', { list_price: null, merchant_effective_price: null }],
     ['a zero-priced offer', { list_price: 0 }],
-    ['a non-http link', { source_ref: 'ftp://shop.example.com/x', offer_payload: { destination_url: 'ftp://shop.example.com/x' } }],
-    ['a bare-path link', { source_ref: '/products/serum', offer_payload: { destination_url: '/products/serum' } }],
   ];
   for (const [name, overrides] of OUTSIDE) {
     test(`${name} (otherwise never valid) stays outside the class`, async () => {
@@ -141,20 +140,32 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     });
   }
 
-  test('a link containing a space is inside the class (round 4: the reader serves it)', async () => {
-    await offer();
-    await offer({
-      market: 'AU', currency: 'AUD',
-      source_ref: 'https://shop.example.com/products/a b',
-      offer_payload: { destination_url: '  https://shop.example.com/products/a b  ' },
+  // ---- round 5: the link does not decide class membership ----
+  const ANY_LINK = [
+    ['an ftp link', { source_ref: 'ftp://shop.example.com/x', destination_url: 'ftp://shop.example.com/x' }],
+    ['a bare-path link', { source_ref: '/products/serum', destination_url: '/products/serum' }],
+    ['an empty destination_url over an https source_ref', {
+      source_ref: 'https://shop.example.com/products/serum', destination_url: '',
+    }],
+    ['a link containing a space', {
+      source_ref: 'https://shop.example.com/products/a b', destination_url: '  https://shop.example.com/products/a b  ',
+    }],
+    ['no link at all', { source_ref: null, destination_url: null }],
+  ];
+  for (const [name, { source_ref, destination_url }] of ANY_LINK) {
+    const payload = (declared) => (destination_url === null
+      ? { declared_market: declared }
+      : { destination_url, declared_market: declared });
+    test(`${name}: an offer without a valid read BLOCKS the row`, async () => {
+      await offer();
+      await offer({ market: 'AU', currency: 'AUD', source_ref, offer_payload: payload('AU') });
+      expect(await fresh()).toBe(false);
     });
-    expect(await fresh()).toBe(false);
-  });
-
-  test('a valid read whose link contains a space dates the row', async () => {
-    await offer({ offer_payload: { destination_url: 'https://shop.example.com/products/a b', declared_market: 'US' } });
-    expect(await fresh()).toBe(true);
-  });
+    test(`${name}: an offer WITH a valid read dates the row`, async () => {
+      await offer({ source_ref, offer_payload: payload('US') });
+      expect(await fresh()).toBe(true);
+    });
+  }
 
   test('the date is the OLDEST valid read: one stale valid offer makes the row stale', async () => {
     await offer();

@@ -395,15 +395,13 @@ function crawlFreshDays() {
   return days;
 }
 
-// THE LIVE-OFFER TEST (round 4): the payload link, else source_ref, trimmed,
-// starting http:// or https:// -- spelled exactly as the backend's offer reader
-// tests `servable` (round 3 also required no whitespace, so an offer the reader
-// serves could sit outside the class). A destination no reader serves (ftp:, a
-// bare path) is not live and neither dates nor blocks a row.
-// Byte-identical to the backend's CRAWL_OFFER_LINK_SQL.
-const CRAWL_OFFER_LINK_SQL =
-  "btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref)," +
-  " E' \\t\\n\\r\\f\\v') ~ '^https?://'";
+// NO LINK TEST (round 5). Rounds 1-4 kept only offers with an http(s) link in
+// the class, but not every reader tests the link: this repo's
+// canonicalPdpOwnMoney (readCanonicalOwnMoney and its listing batch) serves the
+// price of an offer on a public row whatever its destination_url. A stale offer
+// with an empty or bare-path link sat outside the class while that reader served
+// its price. So every unsuppressed, priced offer is in the class, and the link
+// is not part of the valid read either: fail closed.
 // An affiliate-feed offer's link is a network tracking URL, not the listing, and
 // the drain never read its price from the storefront: never a valid read.
 // Byte-identical to the backend's CRAWL_OFFER_NOT_AFFILIATE_SQL.
@@ -420,9 +418,8 @@ const CRAWL_OFFER_NOT_AFFILIATE_SQL =
 // as one of them has none.
 //
 // THE CLASS (crawlOfferClassConjuncts) -- every LIVE offer on the row:
-// unsuppressed and priced (pricedOfferSql), linking to an http(s) destination
-// (CRAWL_OFFER_LINK_SQL). Nothing else: any source_system, any market, any
-// currency, affiliate offers included.
+// unsuppressed and priced (pricedOfferSql). Nothing else: any link (round 5), any
+// source_system, any market, any currency, affiliate offers included.
 //
 // A VALID READ of one class offer (CRAWL_OFFER_VALID_READ_SQL), ALL of: written
 // by the drain (source_system catalog_enrichment_agent_v1); in a SERVED market
@@ -496,12 +493,14 @@ const CRAWL_OFFER_VALID_READ_SQL =
   ` AND ${CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL}` +
   ' THEN co.price_checked_at END';
 
-/** The class for one row: every live offer. `productKeyExpr` is SQL, never a value. */
+/**
+ * The class for one row: every unsuppressed, priced offer, whatever its link.
+ * `productKeyExpr` is SQL, never a value.
+ */
 function crawlOfferClassConjuncts(productKeyExpr) {
   return [
     `co.product_key = ${productKeyExpr}`,
     ...pricedOfferRowConjuncts('co'),
-    CRAWL_OFFER_LINK_SQL,
   ];
 }
 

@@ -1091,7 +1091,6 @@ test('the freshness statement, spelled out (so a fixture edit cannot move both s
       '    WHERE co.product_key = k.product_key\n' +
       '      AND co.suppressed_at IS NULL\n' +
       '      AND coalesce(co.merchant_effective_price, co.list_price) > 0\n' +
-      "      AND btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref), E' \\t\\n\\r\\f\\v') ~ '^https?://'\n" +
       ' ) r\n' +
       ' WHERE r.row_price_read_at IS NOT NULL\n',
   );
@@ -1426,14 +1425,16 @@ test('round 3: a failed read logs catalog_row_trust_crawl_fresh_read_failed', as
   assert.ok(seen.some((o) => o && o.event === 'catalog_row_trust_crawl_fresh_read_failed'));
 });
 
-test('round 4: the class is every live offer; source, served pair and affiliate moved into the valid read', () => {
+test('round 4/5: the class is every unsuppressed, priced offer; source, served pair and affiliate are in the valid read', () => {
   const cls = upserter.crawlOfferClassConjuncts('k.product_key');
   assert.deepEqual(cls, [
     'co.product_key = k.product_key',
     'co.suppressed_at IS NULL',
     'coalesce(co.merchant_effective_price, co.list_price) > 0',
-    "btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref), E' \\t\\n\\r\\f\\v') ~ '^https?://'",
   ]);
+  // round 5: no link test anywhere -- not in the class, not in the valid read
+  assert.ok(!/https\?:/.test(upserter.CRAWL_ROW_PRICE_READ_SQL), 'the statement must not test the link');
+  assert.ok(!upserter.CRAWL_ROW_PRICE_READ_SQL.includes('destination_url'));
   const valid = upserter.CRAWL_OFFER_VALID_READ_SQL;
   const order = [
     "co.source_system = 'catalog_enrichment_agent_v1'",
