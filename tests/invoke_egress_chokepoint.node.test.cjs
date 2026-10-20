@@ -141,10 +141,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // read-only content, and current verified content.
   // 2026-10-16: +2, pdp_live_read — its answer (200, or 400 on a bad token) and its 500 when the
   // refresh throws unexpectedly.
+  // 2026-10-20: +2, the ingredient lane's zero-result retry (flag on only): the adopted retry answer,
+  // and the lane's own empty answer carrying the retry's metadata block. Both are plain res.json.
   assert.equal(
     exits.length,
-    105,
-    `expected 105 response exits in handleInvokeRequest, saw ${exits.length}`,
+    107,
+    `expected 107 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(

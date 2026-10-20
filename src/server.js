@@ -433,6 +433,7 @@ const {
   buildIngredientIntentDirectEmptyResponse,
   buildIngredientIntentDirectHitResponse,
 } = require('./findProductsIngredientIntentDirectResponse');
+const zeroResultFallthrough = require('./findProductsMulti/zeroResultFallthrough');
 const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
@@ -3082,6 +3083,40 @@ function filterStrictIngredientProductsByCategoryIntents(products = [], category
   return beautyRelevanceGate.filterProductsBySkincareFormIntents(products, categoryIntents);
 }
 
+// Whether a product NAMES every ingredient the query asks for: in its own ingredient fields or in its
+// title. Deliberately not the description, which mentions ingredients loosely ("free of", "pairs well
+// with"). Used to admit rows a zero-result retry brings back for an ingredient query: a row that does
+// not name the ingredient is not an answer to it, however well another lane ranked it.
+function productNamesStrictIngredientIntents(product, ingredientIntents = []) {
+  if (!product || typeof product !== 'object') return false;
+  const intents = (Array.isArray(ingredientIntents) ? ingredientIntents : [])
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (intents.length === 0) return false;
+  const ingredientIds = Array.isArray(product.ingredient_ids)
+    ? product.ingredient_ids.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const namedText = normalizeSearchTextForMatch(
+    [
+      product.title,
+      product.name,
+      ...(Array.isArray(product.ingredient_tokens) ? product.ingredient_tokens : []),
+      ...(Array.isArray(product.key_ingredients) ? product.key_ingredients : []),
+      ...(Array.isArray(product.active_ingredients) ? product.active_ingredients : []),
+      ...(Array.isArray(product.external_seed_recall?.ingredient_tokens)
+        ? product.external_seed_recall.ingredient_tokens
+        : []),
+    ]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .join(' '),
+  );
+  return intents.every(
+    (intent) =>
+      ingredientIds.includes(intent) ||
+      resolveStrictFindProductsMultiIngredientIntentTerms(intent).some((term) => term && namedText.includes(term)),
+  );
+}
+
 async function prefetchStrictIngredientExternalSeedCandidates({
   search = {},
   strictInvokeDecision = null,
@@ -4025,6 +4060,10 @@ const FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = Math.max(
   500,
   parseTimeoutMs(process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS, 6000),
 );
+// FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH (off | observe | on, default off) and its deadline and
+// minimum budget. See src/findProductsMulti/zeroResultFallthrough.js.
+const FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH =
+  zeroResultFallthrough.resolveZeroResultFallthroughConfig(process.env);
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
 const FPM_CLARIFY_NEVER_EMPTY =
@@ -41399,6 +41438,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // response body is known (res.json below) and emitted on the completion log line. Nothing
   // reads it; it exists because no data exists on how often callers name a market.
   let marketTelemetryRecord = {};
+  // Zero-result fallthrough: the decision a lane recorded for this request (null when none did), and
+  // the completion-line fields built from it and the final body. Both stay empty while the flag is off.
+  let zeroResultFallthroughRecord = null;
+  let zeroResultLogFields = {};
   // enterWith, not run(): this handler's body is ~8000 lines and wrapping it in a callback to set
   // one store would be a large, risky reshape of a live payments-adjacent path for a telemetry
   // field. enterWith binds the store for the remainder of this async context, which is exactly the
@@ -41648,6 +41691,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
         ...marketTelemetryRecord,
+        ...zeroResultLogFields,
         ...(fpmStageBreakdown.length > 0
           ? {
               fpm_stage_breakdown: fpmStageBreakdown,
@@ -41712,6 +41756,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     } catch (telemetryErr) {
       marketTelemetryRecord = { market_telemetry_error: String(telemetryErr?.message || telemetryErr).slice(0, 120) };
+    }
+    try {
+      zeroResultLogFields = zeroResultFallthrough.buildZeroResultLogFields({
+        config: FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH,
+        operation: String(debugRuntime.operation || req?.body?.operation || ''),
+        record: zeroResultFallthroughRecord,
+        body,
+      });
+    } catch (_) {
+      zeroResultLogFields = {};
     }
     return emit(body);
   })(res.json.bind(res));
@@ -48526,6 +48580,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // that keeps reading true if the call arg ever becomes conditional.
         const canonicalIngredientTokenMatch = true;
         const canonicalIngredientStartedAt = Date.now();
+        // Off / observe: exactly FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS. On: capped so that when this
+        // leg overruns, the zero-result fallthrough below still has its minimum budget before the
+        // deadline (zeroResultFallthrough.ingredientCanonicalStageBudgetMs).
+        const canonicalIngredientStageBudgetMs = zeroResultFallthrough.ingredientCanonicalStageBudgetMs({
+          config: FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH,
+          baseBudgetMs: FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS,
+          elapsedMs: canonicalIngredientStartedAt - invokeStartedAtMs,
+        });
         // Market-aware filtering on the ingredient path too — same
         // rationale as the other call sites (Round Lab market=KR was
         // leaking into US users' canonical chain). Falls back to env
@@ -48589,7 +48651,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           marketId: ingredientPathMarket,
           deps: { query },
           }),
-          FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS,
+          canonicalIngredientStageBudgetMs,
           'ingredient_canonical_chain',
         )
           .then((rows) => ({
@@ -48782,6 +48844,135 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ingredientIntentIds,
                 ingredientIntentDetected: true,
               });
+        // Zero-result fallthrough (off by default; see src/findProductsMulti/zeroResultFallthrough.js).
+        // Only when the lane's WHOLE filtered set is empty, not merely this page, and only a lane that
+        // did not work (timed out / errored) is retried; a lane that ran and found nothing answers empty.
+        if (
+          filteredDirectProducts.length === 0 &&
+          zeroResultFallthrough.isEngaged(FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH)
+        ) {
+          const fallthroughConfig = FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH;
+          const decisionAtMs = Date.now();
+          const emptyReason = zeroResultFallthrough.classifyIngredientDirectEmpty({
+            seedPrefetchCount: Array.isArray(directProducts) ? directProducts.length : 0,
+            canonicalRecalledCount: canonicalIngredientRecalledProducts.length,
+            canonicalError: canonicalIngredientResult?.error || null,
+            mergedCount: mergedIngredientRecallProducts.length,
+            categoryFilteredCount: strictIngredientCategoryFilter.products.length,
+            budgetFilteredCount: directBudgetFilter.products.length,
+            finalCount: filteredDirectProducts.length,
+          });
+          const ingredientMerchantIdsRaw = search.merchant_ids || search.merchantIds;
+          const decision = zeroResultFallthrough.decideZeroResultFallthrough({
+            config: fallthroughConfig,
+            fromLane: zeroResultFallthrough.LANES.INGREDIENT_DIRECT,
+            emptyReason,
+            elapsedMs: zeroResultFallthrough.projectElapsedForOnMode({
+              config: fallthroughConfig,
+              elapsedMs: decisionAtMs - invokeStartedAtMs,
+              legStartedAtElapsedMs: strictIngredientPrefetchStartedAt - invokeStartedAtMs,
+              legMs: strictIngredientPrefetchMs,
+            }),
+            hasMerchantScope:
+              Boolean(String(search.merchant_id || search.merchantId || '').trim()) ||
+              (Array.isArray(ingredientMerchantIdsRaw)
+                ? ingredientMerchantIdsRaw.some((value) => String(value || '').trim())
+                : Boolean(String(ingredientMerchantIdsRaw || '').trim())),
+            strictSurface: hasStrictInvokeCatalogSurface(search, metadata),
+          });
+          // The ingredient lane's own admission rules, applied to every retry row: the product names
+          // the ingredient, sits in the lane's category scope and the query's skincare form, fits the
+          // price cap, and survives the contraindication filter. Nothing here is looser than the lane.
+          const admitIngredientRetryProducts = (products) => {
+            const named = (Array.isArray(products) ? products : []).filter((product) =>
+              productNamesStrictIngredientIntents(product, ingredientIntentIds),
+            );
+            const scoped = ingredientCategoryScopePrefix
+              ? named.filter((product) =>
+                  beautyProductMatchesCategoryPathPrefix(product, ingredientCategoryScopePrefix),
+                )
+              : named;
+            const formed = filterStrictIngredientProductsByCategoryIntents(scoped, strictIngredientCategoryIntents).products;
+            const priced = filterFindProductsMultiDirectProductsByBudget(
+              effectiveIntent?.hard_constraints?.price || null,
+              formed,
+            ).products;
+            const safe = filterBeautyMainlineProductsByQuery(priced, rawUserQuery || queryText, { strictClass: false });
+            return safe.applied ? safe.products : priced;
+          };
+          const fallthroughRun = await zeroResultFallthrough.runZeroResultFallthrough({
+            decision,
+            admitProducts: admitIngredientRetryProducts,
+            runNextLane: () =>
+              searchBeautyExternalSeedProductsMainline({
+                search: { ...search },
+                metadata,
+                intent: effectiveIntent,
+                creatorScoped: isCreatorUiSource(source) || normalizeAgentSource(source) === 'creator-agent',
+              }),
+            raceWithBudget: (promise, budgetMs) =>
+              withStageBudget(promise, budgetMs, 'zero_result_fallthrough'),
+          });
+          zeroResultFallthroughRecord = {
+            mode: fallthroughConfig.mode,
+            action: decision.action,
+            fromLane: decision.fromLane,
+            toLane: decision.toLane,
+            emptyReason: decision.emptyReason,
+            skipReason: decision.skipReason,
+            budgetMs: decision.budgetMs,
+            attempted: Boolean(fallthroughRun),
+            adopted: Boolean(fallthroughRun?.body),
+            outcome: fallthroughRun?.outcome || null,
+            relevanceDroppedCount: fallthroughRun?.relevanceDroppedCount || 0,
+            latencyMs: fallthroughRun?.latencyMs || 0,
+          };
+          if (fallthroughRun) {
+            recordFpmStage('zero_result_fallthrough', Date.now() - fallthroughRun.latencyMs, {
+              outcome: fallthroughRun.outcome,
+              returned: Array.isArray(fallthroughRun.body?.products) ? fallthroughRun.body.products.length : 0,
+            });
+          }
+          if (fallthroughConfig.mode === 'on') {
+            const fallthroughMetadata = zeroResultFallthrough.buildFallthroughMetadata(zeroResultFallthroughRecord);
+            if (fallthroughRun?.body) {
+              const adopted = fallthroughRun.body;
+              const adoptedMetadata =
+                adopted.metadata && typeof adopted.metadata === 'object' && !Array.isArray(adopted.metadata)
+                  ? adopted.metadata
+                  : {};
+              const merged = zeroResultFallthrough.mergeLaneProducts(
+                pagedDirectProducts,
+                adopted.products,
+                buildSearchProductKey,
+              );
+              return res.json({
+                ...adopted,
+                products: merged.products,
+                ...(merged.duplicateCount > 0
+                  ? {
+                      page_size: merged.products.length,
+                      total: Math.max(merged.products.length, Number(adopted.total || 0) - merged.duplicateCount),
+                    }
+                  : {}),
+                // route_health is left as the mainline wrote it: this IS a mainline answer, and a
+                // fallback_triggered stamp would make the pivot beauty contract read it as a legacy
+                // fallback and withhold every row (isPivotBeautyFallbackLikeResponse).
+                metadata: {
+                  ...adoptedMetadata,
+                  zero_result_fallthrough: fallthroughMetadata,
+                },
+              });
+            }
+            return res.json({
+              ...directResponse,
+              metadata: {
+                ...(directResponse.metadata || {}),
+                zero_result_fallthrough: fallthroughMetadata,
+              },
+            });
+          }
+        }
         return res.json(directResponse);
       }
       // No beauty direct call here. The one after the creator lanes (creator_direct) takes every
