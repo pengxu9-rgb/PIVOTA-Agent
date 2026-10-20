@@ -305,8 +305,47 @@ async function queryPooled(text, params) {
 // ---------------------------------------------------------------------------
 const DB_DEADLINE_CONTEXT = new AsyncLocalStorage();
 
-function isDbLaneDeadlinesEnabled() {
+function isDbLaneDeadlinesRequested() {
   return /^(1|true|yes|on)$/i.test(String(process.env.DB_LANE_DEADLINES_ENABLED || '').trim());
+}
+
+// Why the requested deadlines cannot be honoured, or null when they can.
+//
+// A lane deadline DESTROYS the connection of a statement still running at the deadline. Without
+// client_connection_check_interval the server never notices: the backend keeps executing until
+// statement_timeout while the pool opens a replacement, so per-instance SERVER connections climb past
+// DB_POOL_MAX -- the pinned pool becomes orphan backends plus fresh connections, which is worse for the
+// primary than what the deadline was meant to fix. So the deadlines are refused unless the interval is
+// actually in the startup packet. pg merges DATABASE_URL's own `options=` over the config, so a URL that
+// carries options without the interval silently drops it; that refuses too.
+function laneDeadlinesBlockedReason() {
+  if (!(getClientConnectionCheckIntervalMs() > 0)) return 'client_connection_check_interval_unset';
+  let urlOptions = null;
+  try {
+    urlOptions = new URL(String(process.env.DATABASE_URL || '')).searchParams.get('options');
+  } catch {
+    urlOptions = null;
+  }
+  if (urlOptions !== null && !/client_connection_check_interval/.test(urlOptions)) {
+    return 'database_url_options_override_check_interval';
+  }
+  return null;
+}
+
+let laneDeadlinesRefusalWarned = false;
+function isDbLaneDeadlinesEnabled() {
+  if (!isDbLaneDeadlinesRequested()) return false;
+  const blocked = laneDeadlinesBlockedReason();
+  if (!blocked) return true;
+  if (!laneDeadlinesRefusalWarned) {
+    laneDeadlinesRefusalWarned = true;
+    logger.warn(
+      { reason: blocked, db_lane_deadlines_enabled: process.env.DB_LANE_DEADLINES_ENABLED },
+      'DB_LANE_DEADLINES_ENABLED is set but lane deadlines are REFUSED: they need DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS > 0 '
+        + 'in the startup packet, or abandoned statements become orphan backends plus new connections',
+    );
+  }
+  return false;
 }
 
 function getDbLaneDeadlineGraceMs() {
@@ -719,6 +758,18 @@ function captureCheckedOutClientErrors(client) {
   };
 }
 
+// A helper that changed session state on a checked-out client and could not restore it (for example a
+// failed `RESET statement_timeout`) marks the client so withClient DESTROYS it on release instead of
+// handing the next caller a connection in an unknown state.
+const DESTROY_ON_RELEASE = Symbol('pivota.db.destroyOnRelease');
+function markClientForDestroy(client) {
+  try {
+    if (client && typeof client === 'object') client[DESTROY_ON_RELEASE] = true;
+  } catch {
+    // a frozen/mock client cannot be marked; nothing else to do
+  }
+}
+
 async function withClient(fn) {
   const { client, pool: sourcePool } = await connectWithRetry();
   let released = false;
@@ -742,7 +793,7 @@ async function withClient(fn) {
     const checkedOutClientError = clientErrorCapture.getError();
     try {
       if (!released) {
-        client.release(Boolean(checkedOutClientError));
+        client.release(Boolean(checkedOutClientError) || client?.[DESTROY_ON_RELEASE] === true);
         released = true;
       }
     } finally {
@@ -781,13 +832,18 @@ function recordingFailures(label, fn) {
   };
 }
 
+// Boot-time check, so a refused configuration is in the logs at startup, not at the first request.
+isDbLaneDeadlinesEnabled();
+
 module.exports = {
   DB_BUDGET_ACQUIRE_TIMEOUT,
   DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,
+  isDbLaneDeadlinesEnabled,
   isDbUnavailableError,
   isTransientDbError,
+  markClientForDestroy,
   remainingDbDeadlineMs,
   runWithDbDeadline,
   query: recordingFailures('db_query', query),

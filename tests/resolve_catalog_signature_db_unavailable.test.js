@@ -30,6 +30,8 @@ function loadServer(queryImpl, envOverrides = {}) {
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://user:pass@localhost:5432/test',
     RESOLVE_CATALOG_SIGNATURE_BUDGET_MS: '2000',
+    // Off unless a test is about it, so the per-call assertions see every call reach the database.
+    RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '0',
     ...envOverrides,
   };
   const actualDb = jest.requireActual('../src/db');
@@ -123,8 +125,166 @@ describe('signature resolver: unavailable database', () => {
       .post('/agent/shop/v1/invoke')
       .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: SIG } } });
     expect(res.status).toBe(503);
-    expect(JSON.stringify(res.body)).toContain('TEMPORARY_UNAVAILABLE');
+    expect(res.body.error).toBe('TEMPORARY_UNAVAILABLE');
+    // Reported as what it is, not as a first-paint budget miss.
+    expect(res.body.reason_code).toBe('CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE');
+    expect(res.body.details).toMatchObject({ reason: 'catalog_signature_resolve_unavailable' });
     expect(JSON.stringify(res.body)).not.toContain('PRODUCT_NOT_FOUND');
+  });
+
+  test('get_pdp_v2 still reports a budget miss as the timeout it is', async () => {
+    const query = jest.fn(() => new Promise(() => {}));
+    const { app } = loadServer(query, {
+      RESOLVE_CATALOG_SIGNATURE_BUDGET_MS: '60', PIVOTA_API_BASE: 'http://localhost:8080', PIVOTA_API_KEY: 'test-token',
+    });
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: SIG } } });
+    expect(res.status).toBe(503);
+    expect(res.body.reason_code).toBe('CATALOG_SIGNATURE_RESOLVE_TIMEOUT');
+    expect(res.body.details).toMatchObject({ reason: 'catalog_signature_resolve_timeout' });
+  });
+
+  test('resolve_product_candidates answers a retryable 503 for an unavailable database, not a 500', async () => {
+    const query = jest.fn(async () => {
+      throw poolCheckoutTimeout();
+    });
+    const { app } = loadServer(query, { PIVOTA_API_BASE: 'http://localhost:8080', PIVOTA_API_KEY: 'test-token' });
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({ operation: 'resolve_product_candidates', payload: { product_ref: { product_id: SIG } } });
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      error: 'TEMPORARY_UNAVAILABLE',
+      details: { reason: 'catalog_signature_resolve_unavailable' },
+    });
+  });
+});
+
+describe('signature resolver: instance-wide cooldown after an unavailable database', () => {
+  const OTHER_SIG = 'sig_ffeeddccbbaa99887766554433221100';
+
+  test('the next resolve of ANY sig fails fast without a query while the cooldown lasts', async () => {
+    const query = jest.fn(async () => {
+      throw poolCheckoutTimeout();
+    });
+    const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '60000' });
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toMatchObject({
+      code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+    });
+    const calls = query.mock.calls.length;
+
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, {})).rejects.toMatchObject({
+      code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+      cooldown: true,
+    });
+    // The bypass-cache path is held too.
+    await expect(
+      app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, { bypassCache: true }),
+    ).rejects.toMatchObject({ code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE' });
+    expect(query.mock.calls.length).toBe(calls);
+
+    // Search rows checked during the cooldown are kept (fail-open), and counted as such.
+    const filtered = await app._debug.filterPublicReadChainResolvableRows([{ product_id: OTHER_SIG }]);
+    expect(filtered).toMatchObject({ droppedCount: 0, failedOpenCount: 1 });
+    expect(query.mock.calls.length).toBe(calls);
+  });
+
+  test('a cached ref is still served during the cooldown, and the database is asked again after it', async () => {
+    let down = false;
+    const query = jest.fn(async (sql) => {
+      if (down) throw poolCheckoutTimeout();
+      return String(sql).includes('cp.pivota_signature_id = $1')
+        ? { rows: [{ merchant_id: 'merch_test', platform: 'shopify', source_product_id: 'prod_test', pivota_signature_id: SIG }] }
+        : { rows: [] };
+    });
+    const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '100' });
+    const warm = await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, { hydrateIdentityListing: false });
+    expect(warm).toMatchObject({ merchant_id: 'merch_test' });
+
+    down = true;
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, { hydrateIdentityListing: false }))
+      .rejects.toMatchObject({ code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE' });
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, { hydrateIdentityListing: false }))
+      .resolves.toMatchObject({ merchant_id: 'merch_test' });
+
+    down = false;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const calls = query.mock.calls.length;
+    await app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, { hydrateIdentityListing: false });
+    expect(query.mock.calls.length).toBeGreaterThan(calls);
+  });
+
+  test('defaults to a few seconds when unset', async () => {
+    const query = jest.fn(async () => {
+      throw poolCheckoutTimeout();
+    });
+    const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '' });
+    const startedAt = Date.now();
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toBeTruthy();
+    const windowMs = app._debug.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs - startedAt;
+    expect(windowMs).toBeGreaterThan(2_000);
+    expect(windowMs).toBeLessThanOrEqual(3_500);
+  });
+
+  test('0 disables it', async () => {
+    const query = jest.fn(async () => {
+      throw poolCheckoutTimeout();
+    });
+    const { app } = loadServer(query, { RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS: '0' });
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {})).rejects.toBeTruthy();
+    const calls = query.mock.calls.length;
+    await expect(app._debug.resolveCatalogProductRefFromPivotaSignature(OTHER_SIG, {})).rejects.toBeTruthy();
+    expect(query.mock.calls.length).toBeGreaterThan(calls);
+  });
+});
+
+describe('signature resolver: an optional sub-read that could not reach the database', () => {
+  // Each optional sub-read of the rich shape, failing alone: the ref is served without what it would have
+  // added, and must not be memoized for the cache TTL.
+  test.each([
+    ['the identity listing', (text) => /WHERE pil\.source_listing_ref = \$1/.test(text)],
+    ['the identity-group members (direct query)', (text) => /WHERE pil\.sellable_item_group_id = \$1/.test(text)],
+    ['the identity-group members (live identity graph)', (text) => /FROM pdp_identity_listing\s+WHERE sellable_item_group_id = \$1/.test(text)],
+  ])('%s failing is served but not memoized', async (_label, failsHere) => {
+    const query = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (failsHere(text)) throw poolCheckoutTimeout();
+      if (text.includes('cp.pivota_signature_id = $1')) {
+        return { rows: [{ merchant_id: 'external_seed', platform: 'external_seed', source_product_id: 'ext_synthetic_1', pivota_signature_id: SIG }] };
+      }
+      if (/WHERE pil\.source_listing_ref = \$1/.test(text)) {
+        return { rows: [{ sellable_item_group_id: 'sig_group_synthetic', identity_status: 'approved', live_read_enabled: true }] };
+      }
+      return { rows: [] };
+    });
+    const { app } = loadServer(query, { PDP_IDENTITY_GRAPH_ENABLED: 'true' });
+    const ref = await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {});
+    expect(ref).toMatchObject({ merchant_id: 'external_seed', product_id: 'ext_synthetic_1' });
+    expect(query.mock.calls.some(([sql]) => failsHere(String(sql)))).toBe(true);
+    expect(app._debug.RESOLVE_CATALOG_SIGNATURE_CACHE.size).toBe(0);
+  });
+
+  test('serves the ref but never memoizes it', async () => {
+    let identityDown = true;
+    const query = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('cp.pivota_signature_id = $1')) {
+        return { rows: [{ merchant_id: 'external_seed', platform: 'external_seed', source_product_id: 'ext_synthetic_1', pivota_signature_id: SIG }] };
+      }
+      if (text.includes('FROM pdp_identity_listing pil') && identityDown) throw poolCheckoutTimeout();
+      return { rows: [] };
+    });
+    const { app } = loadServer(query);
+    const first = await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {});
+    expect(first).toMatchObject({ merchant_id: 'external_seed', product_id: 'ext_synthetic_1' });
+    expect(app._debug.RESOLVE_CATALOG_SIGNATURE_CACHE.size).toBe(0);
+
+    identityDown = false;
+    const second = await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG, {});
+    expect(second).toMatchObject({ merchant_id: 'external_seed' });
+    // A complete ref is memoized as before.
+    expect(app._debug.RESOLVE_CATALOG_SIGNATURE_CACHE.size).toBe(1);
   });
 });
 
@@ -138,6 +298,7 @@ describe('signature resolver: lane deadline', () => {
     });
     const loaded = loadServer(query, {
       DB_LANE_DEADLINES_ENABLED: 'true',
+      DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS: '1000',
       DB_LANE_DEADLINE_GRACE_MS: '100',
       RESOLVE_CATALOG_SIGNATURE_BUDGET_MS: '1500',
     });

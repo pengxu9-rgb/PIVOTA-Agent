@@ -88,6 +88,11 @@ function isDbUnavailableError(err) {
     ? dbModuleForLaneDeadlines.isDbUnavailableError(err)
     : false;
 }
+function markClientForDestroy(client) {
+  if (typeof dbModuleForLaneDeadlines.markClientForDestroy === 'function') {
+    dbModuleForLaneDeadlines.markClientForDestroy(client);
+  }
+}
 const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
@@ -5760,6 +5765,26 @@ const RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS = Math.max(
 );
 const RESOLVE_CATALOG_SIGNATURE_COOLDOWN = new Map(); // cacheKey -> expiresAtMs
 
+// Instance-wide fast-fail after the database could not answer a resolve
+// (CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE). Without it, an outage that fails
+// fast still sends every PDP and every public-search row to the database --
+// and each transient failure in src/db query() resets the whole pool. For this
+// short window the resolver answers the same retryable error without a query.
+// Cache hits are still served. 0 disables.
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS = (() => {
+  const raw = String(process.env.RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS ?? '').trim();
+  const n = Number(raw);
+  return raw !== '' && Number.isFinite(n) && n >= 0 ? Math.min(60_000, Math.trunc(n)) : 3_000;
+})();
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE = { untilMs: 0 };
+
+// Marks a resolved ref that is SERVABLE but incomplete because an optional
+// sub-read (identity listing, identity-group members) could not reach the
+// database. It is returned to this caller and never memoized, so a blip cannot
+// pin a members-less ref for the whole cache TTL. Non-enumerable: invisible to
+// spreads and JSON.
+const RESOLVE_CATALOG_SIGNATURE_DEGRADED = Symbol('resolveCatalogSignatureDegraded');
+
 // NOTE: the budget above only stops us WAITING. What actually releases the
 // pinned connection is the pool-level `statement_timeout` / `query_timeout` in
 // src/db/index.js — set there, not per-query, because the per-query helper
@@ -6154,6 +6179,9 @@ function resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions
     RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
     'resolve_catalog_signature',
   ).catch((err) => {
+    if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE' && RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS > 0) {
+      RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs = Date.now() + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS;
+    }
     if (err?.code === 'STAGE_TIMEOUT') {
       // Trip the cooldown so we stop launching new copies of a query that is
       // already pinning a pool connection.
@@ -6206,6 +6234,22 @@ function buildCatalogSignatureUnavailableError(normalizedProductId, cause) {
   return err;
 }
 
+// The reason a retryable resolve failure is reported under.
+function describeCatalogSignatureResolveFailure(err) {
+  if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE') {
+    return {
+      reasonCode: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+      reason: 'catalog_signature_resolve_unavailable',
+      logMessage: 'get_pdp_v2 signature resolve could not reach the database; returning retryable 503',
+    };
+  }
+  return {
+    reasonCode: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT',
+    reason: 'catalog_signature_resolve_timeout',
+    logMessage: 'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
+  };
+}
+
 // Both mean "could not look", never "looked and found nothing": the PDP lanes
 // answer them with a retryable 503 rather than a 404.
 function isCatalogSignatureResolveRetryableError(err) {
@@ -6235,12 +6279,14 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
     if (readCatalogSignatureCooldown(cacheKey)) {
       throw buildCatalogSignatureTimeoutError(normalizedProductId);
     }
+    throwIfCatalogSignatureUnavailableCooldown(normalizedProductId);
 
     const inflight = RESOLVE_CATALOG_SIGNATURE_INFLIGHT.get(cacheKey);
     if (inflight) return inflight;
 
     const promise = resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey)
       .then((value) => {
+        if (value && value[RESOLVE_CATALOG_SIGNATURE_DEGRADED] === true) return value;
         if (RESOLVE_CATALOG_SIGNATURE_CACHE.size >= RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES) {
           const firstKey = RESOLVE_CATALOG_SIGNATURE_CACHE.keys().next().value;
           if (firstKey !== undefined) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(firstKey);
@@ -6261,7 +6307,16 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
   // Cache-bypass path (debug probes, cache_bypass=true). Still bounded — an
   // unbounded await here would hang the request just as hard, it simply would
   // not poison the sig for everyone else.
+  throwIfCatalogSignatureUnavailableCooldown(normalizedProductId);
   return resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey);
+}
+
+function throwIfCatalogSignatureUnavailableCooldown(normalizedProductId) {
+  if (RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE.untilMs > Date.now()) {
+    const err = buildCatalogSignatureUnavailableError(normalizedProductId, null);
+    err.cooldown = true;
+    throw err;
+  }
 }
 
 // content_canonical_election is created by pivota-backend migration 181, whose
@@ -6619,6 +6674,9 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       mintedSeedRouteProductId || String(exactRow?.source_product_id || '').trim();
     if (exactMerchantId && exactSourceProductId) {
       let exactIdentityRow = null;
+      // An optional sub-read below could not reach the database: serve the ref,
+      // but never memoize it (RESOLVE_CATALOG_SIGNATURE_DEGRADED).
+      let exactRefDegradedByUnavailableDb = false;
       if (
         options.hydrateIdentityListing !== false &&
         isExternalSeedListingMerchantId(exactMerchantId) &&
@@ -6652,6 +6710,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           );
           exactIdentityRow = Array.isArray(identityResult?.rows) ? identityResult.rows[0] : null;
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           const message = String(err?.message || err || '');
           if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
             logger.debug?.(
@@ -6796,6 +6855,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             };
           }
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           const message = String(err?.message || err || '');
           if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
             logger.debug?.(
@@ -6820,6 +6880,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             queryFn: query,
           });
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           logger.debug?.(
             {
               err: err?.message || String(err),
@@ -6839,7 +6900,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         exactIdentityGroupId,
         normalizedProductId,
       );
-      return {
+      const exactRef = {
         merchant_id: exactMerchantId,
         product_id: exactSourceProductId,
         ...(exactRow?.platform ? { platform: String(exactRow.platform).trim() } : {}),
@@ -6935,6 +6996,10 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         ]),
         source: 'catalog_products_signature_exact',
       };
+      if (exactRefDegradedByUnavailableDb) {
+        Object.defineProperty(exactRef, RESOLVE_CATALOG_SIGNATURE_DEGRADED, { value: true });
+      }
+      return exactRef;
     }
 
     const canonicalGroup = await resolveCanonicalCatalogEntityGroup({
@@ -16946,8 +17011,10 @@ async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1
       // RESET, never `= 0`: this is a POOLED connection. `0` means "no limit",
       // so it stripped the pool's connection-level statement_timeout backstop
       // (src/db) from the socket and handed it to the next caller unbounded.
-      // RESET restores the value the connection was opened with.
-      await client.query('RESET statement_timeout').catch(() => {});
+      // RESET restores the value the connection was opened with. If even the
+      // RESET fails, the session still carries this helper's short timeout (or
+      // worse), so the connection is destroyed rather than returned.
+      await client.query('RESET statement_timeout').catch(() => markClientForDestroy(client));
     }
   });
 }
@@ -32826,6 +32893,9 @@ async function filterPublicReadChainResolvableRows(rows) {
     return { kept: list, droppedCount: 0 };
   }
   const verdicts = new Array(list.length).fill(true);
+  // Rows kept only because their probe failed (fail-open). The page is then a degraded answer, and the
+  // public-read cache stores it on its short clock instead of the normal one (publicReadCachePolicy).
+  let failedOpenCount = 0;
   let cursor = 0;
   const worker = async () => {
     for (let i = cursor++; i < list.length; i = cursor++) {
@@ -32840,6 +32910,7 @@ async function filterPublicReadChainResolvableRows(rows) {
           'public_read chain filter: resolvability probe failed (row kept)',
         );
         verdicts[i] = true;
+        failedOpenCount += 1;
       }
     }
   };
@@ -32847,7 +32918,7 @@ async function filterPublicReadChainResolvableRows(rows) {
     Array.from({ length: Math.min(PUBLIC_READ_CHAIN_FILTER_CONCURRENCY, list.length) }, worker),
   );
   const kept = list.filter((_, i) => verdicts[i]);
-  return { kept, droppedCount: list.length - kept.length };
+  return { kept, droppedCount: list.length - kept.length, failedOpenCount };
 }
 
 function isPublicReadMcpEnabled() {
@@ -43771,27 +43842,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // Deliberately not 404: a 404 here would deindex a product whose only
           // problem is a slow identity-group query.
           markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+          // Two retryable causes, reported as what they are. Both stay
+          // `error: TEMPORARY_UNAVAILABLE` with HTTP 503, which is what agent-ui
+          // classifies as a degraded (retry) read, never as not-found.
+          const signatureResolveFailure = describeCatalogSignatureResolveFailure(err);
           logger.warn(
             {
               product_id: productId,
               merchant_id: requestedMerchantId || null,
               wants_offers: wantsOffers,
               budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
-              // CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE = the database could not
-              // answer (full pool, statement timeout), not a budget miss. The
-              // response keeps one retryable reasonCode for both.
               err_code: err?.code || null,
               phase_timings: pdpV2PhaseTimings,
             },
-            'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
+            signatureResolveFailure.logMessage,
           );
           return res.status(503).json({
             ...buildPdpV2ErrorBody({
               error: 'TEMPORARY_UNAVAILABLE',
               message: 'Product is temporarily unavailable. Please retry shortly.',
-              reasonCode: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT',
+              reasonCode: signatureResolveFailure.reasonCode,
               details: {
-                reason: 'catalog_signature_resolve_timeout',
+                reason: signatureResolveFailure.reason,
                 budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
               },
               requestedProductId: requestedProductIdForDiagnostics || null,
@@ -47965,7 +48037,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           return res.status(503).json({
             error: 'TEMPORARY_UNAVAILABLE',
             message: 'Signature resolution is temporarily unavailable. Please retry shortly.',
-            details: { reason: 'catalog_signature_resolve_timeout' },
+            details: { reason: describeCatalogSignatureResolveFailure(err).reason },
           });
         }
         const sigMerchantId = String(signatureProductRef?.merchant_id || '').trim();
@@ -53321,7 +53393,9 @@ module.exports._debug = {
   RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
   RESOLVE_CATALOG_SIGNATURE_CACHE,
   RESOLVE_CATALOG_SIGNATURE_COOLDOWN,
+  RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE,
   filterPublicReadChainResolvableRows,
+  queryBeautyExternalSeedRowsWithTimeout,
   buildCatalogSignatureGroupMemberFromIdentityRow,
   buildGroupMemberCatalogOfferLateralJoinSql,
   filterGroupMembersByCatalogSourceQuarantine,

@@ -84,9 +84,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     // eslint-disable-next-line global-require
     db = require('../../src/db');
     const startedAt = Date.now();
-    const err = await db
-      .runWithDbDeadline({ budgetMs: 300, label: 'it_lane' }, () => db.query('SELECT pg_sleep(8)'))
-      .catch((e) => e);
+    // A lane deadline when the deadlines are allowed (they need the check interval); otherwise the same
+    // budgeted query, explicitly -- the abandon-and-destroy mechanics are identical.
+    const run = db.isDbLaneDeadlinesEnabled()
+      ? db.runWithDbDeadline({ budgetMs: 300, label: 'it_lane' }, () => db.query('SELECT pg_sleep(8)'))
+      : db.queryWithBudget('SELECT pg_sleep(8)', [], { timeoutMs: 300 });
+    const err = await run.catch((e) => e);
     return { err, elapsedMs: Date.now() - startedAt };
   }
 
@@ -95,6 +98,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const appName = `lane_deadline_reaped_${process.pid}`;
 
     const { err, elapsedMs } = await giveUpOnSlowStatement(appName);
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(true);
     expect(err).toMatchObject({ code: db.DB_BUDGET_QUERY_TIMEOUT });
     expect(elapsedMs).toBeLessThan(2_000);
 
@@ -114,6 +118,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const appName = `lane_deadline_orphan_${process.pid}`;
 
     const { err } = await giveUpOnSlowStatement(appName);
+    // ...which is exactly why the lane deadlines refuse to arm without the interval.
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(false);
     expect(err).toMatchObject({ code: db.DB_BUDGET_QUERY_TIMEOUT });
 
     await sleep(1_000);
@@ -125,7 +131,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     }
   });
 
-  test('a scoped statement_timeout lookup hands its pooled connection back WITH the pool backstop', async () => {
+  test.each([
+    ['products-cache lookup', (internals) => internals.fetchCandidatesViaProductsCache({
+      merchantIds: ['m1'], query: 'vitamin c serum', limit: 5, timeoutMs: 700,
+    })],
+    ['external-seed recall lookup', (internals) => internals.fetchCandidatesViaExternalSeedRecall({
+      query: 'vitamin c serum', hintBrand: 'Example Brand', limit: 5, timeoutMs: 700,
+    })],
+  ])('the grounding %s hands its pooled connection back WITH the pool backstop', async (_label, lookup) => {
     delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS;
     process.env.DB_LANE_DEADLINES_ENABLED = '';
     // An empty schema, so the lookup's table is missing and it fails AFTER the
@@ -142,12 +155,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const before = await db.query('SELECT pg_backend_pid() AS pid, current_setting($1) AS st', ['statement_timeout']);
       expect(before.rows[0].st).toBe('30s');
 
-      const result = await _internals.fetchCandidatesViaProductsCache({
-        merchantIds: ['m1'],
-        query: 'vitamin c serum',
-        limit: 5,
-        timeoutMs: 700,
-      });
+      const result = await lookup(_internals);
       expect(result.ok).toBe(false);
 
       const after = await db.query('SELECT pg_backend_pid() AS pid, current_setting($1) AS st', ['statement_timeout']);

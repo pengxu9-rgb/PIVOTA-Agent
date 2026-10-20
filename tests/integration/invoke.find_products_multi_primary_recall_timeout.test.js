@@ -278,7 +278,7 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     canonical = moisturizers;
     canonicalHangs = true;
     seedRowsByTool = { '*': [moisturizerSeedRow()] };
-    load({ DB_LANE_DEADLINES_ENABLED: 'true', DB_LANE_DEADLINE_GRACE_MS: '0', FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS: '300' });
+    load({ DB_LANE_DEADLINES_ENABLED: 'true', DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS: '1000', DB_LANE_DEADLINE_GRACE_MS: '0', FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS: '300' });
     const startedAt = Date.now();
     const resp = await invoke('moisturizer');
     expect(Date.now() - startedAt).toBeLessThan(5_000);
@@ -293,7 +293,7 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
   });
 
   test('unset (today): the canonical leg runs with no lane deadline', async () => {
-    load({ DB_LANE_DEADLINES_ENABLED: 'true' });
+    load({ DB_LANE_DEADLINES_ENABLED: 'true', DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS: '1000' });
     const resp = await invoke();
     expect(resp.status).toBe(200);
     expect(canonicalDeadlineSeen).toBeNull();

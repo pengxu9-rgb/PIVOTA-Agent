@@ -39,10 +39,12 @@ describe('lane deadlines on plain query()', () => {
   let previousEnv;
   let PoolCtor;
 
+  let logger;
   function loadDb(pool) {
     PoolCtor = jest.fn(() => pool);
+    logger = { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() };
     jest.doMock('pg', () => ({ Pool: PoolCtor }));
-    jest.doMock('../src/logger', () => ({ warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() }));
+    jest.doMock('../src/logger', () => logger);
     // eslint-disable-next-line global-require
     return require('../src/db');
   }
@@ -54,7 +56,8 @@ describe('lane deadlines on plain query()', () => {
     process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota';
     process.env.DB_LANE_DEADLINES_ENABLED = 'true';
     process.env.DB_LANE_DEADLINE_GRACE_MS = '0';
-    delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS;
+    // Lane deadlines are refused without the server-side check interval (see the refusal tests below).
+    process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS = '1000';
   });
 
   afterEach(() => {
@@ -175,6 +178,40 @@ describe('lane deadlines on plain query()', () => {
     expect(pool.connect).not.toHaveBeenCalled();
   });
 
+  test.each([
+    ['the check interval is unset', () => { delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS; }, 'client_connection_check_interval_unset'],
+    ['the check interval is 0', () => { process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS = '0'; }, 'client_connection_check_interval_unset'],
+    ['DATABASE_URL carries its own options= (which would override the interval)', () => {
+      process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20search_path%3Dx';
+    }, 'database_url_options_override_check_interval'],
+  ])('deadlines are REFUSED, with one boot warning, when %s', async (_label, arrange, reason) => {
+    arrange();
+    const pool = buildPoolWith(async () => {
+      throw new Error('connect() must not be used when the deadlines are refused');
+    });
+    const db = loadDb(pool);
+    // The boot-time check already warned, once.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn.mock.calls[0][0]).toMatchObject({ reason });
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(false);
+
+    await expect(
+      db.runWithDbDeadline({ budgetMs: 50 }, async () => {
+        expect(db.remainingDbDeadlineMs()).toBeNull();
+        return db.query('SELECT 1', []);
+      }),
+    ).resolves.toEqual({ rows: [{ from: 'pool.query' }] });
+    expect(pool.connect).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  test('a DATABASE_URL whose options= carry the interval itself is accepted', () => {
+    process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota?options=-c%20client_connection_check_interval%3D1000';
+    const db = loadDb(buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() })));
+    expect(db.isDbLaneDeadlinesEnabled()).toBe(true);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   test('the grace keeps the DB deadline behind the caller budget', async () => {
     process.env.DB_LANE_DEADLINE_GRACE_MS = '400';
     const db = loadDb(buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() })));
@@ -257,5 +294,37 @@ describe('isDbUnavailableError', () => {
     ['nothing', null],
   ])('%s is an answer (or a defect), not unavailability', (_label, err) => {
     expect(isDbUnavailableError(err)).toBe(false);
+  });
+});
+
+describe('withClient honours markClientForDestroy', () => {
+  let previous;
+  beforeEach(() => {
+    jest.resetModules();
+    previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota';
+  });
+  afterEach(() => {
+    jest.dontMock('pg');
+    jest.dontMock('../src/logger');
+    jest.resetModules();
+    if (previous === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = previous;
+  });
+
+  test.each([
+    ['marked', true, true],
+    ['not marked', false, false],
+  ])('a client %s is released with destroy=%s', async (_label, mark, destroyed) => {
+    const client = { query: jest.fn(async () => ({ rows: [] })), release: jest.fn(), on: jest.fn(), off: jest.fn() };
+    const pool = { connect: jest.fn(async () => client), query: jest.fn(), end: jest.fn(async () => {}), on: jest.fn() };
+    jest.doMock('pg', () => ({ Pool: jest.fn(() => pool) }));
+    jest.doMock('../src/logger', () => ({ warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() }));
+    // eslint-disable-next-line global-require
+    const db = require('../src/db');
+    await db.withClient(async (c) => {
+      if (mark) db.markClientForDestroy(c);
+    });
+    expect(client.release).toHaveBeenCalledTimes(1);
+    expect(client.release).toHaveBeenCalledWith(destroyed);
   });
 });
