@@ -53,8 +53,14 @@ test.before(async () => {
   // Nothing leaves this machine: only the local listener is reachable.
   nock.disableNetConnect();
   nock.enableNetConnect(/^(127\.0\.0\.1|localhost)(:\d+)?$/);
+  // The real gateway does not set the eval deployment attestation; a thin loopback wrapper (the "local stub" the
+  // runbook allows) adds it, so the harness accepts this local target and nothing else.
   server = await new Promise((resolve) => {
-    const s = app.listen(Number(PORT), '127.0.0.1', () => resolve(s));
+    const s = require('node:http').createServer((req, res) => {
+      res.setHeader('x-pivota-deployment', 'eval-clone');
+      app(req, res);
+    });
+    s.listen(Number(PORT), '127.0.0.1', () => resolve(s));
   });
   nock(LOOPBACK, { allowUnmocked: true })
     .persist()

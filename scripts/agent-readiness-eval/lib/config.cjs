@@ -18,7 +18,8 @@ const TIERS = Object.freeze({
 });
 
 const AUTH_MODES = Object.freeze(['none', 'api_key', 'bearer']);
-const TARGET_KINDS = Object.freeze(['local', 'prod-clone', 'prod-synthetic']);
+// 'prod-synthetic' is deliberately absent: no server-side synthetic-traffic designation exists (see safety.cjs).
+const TARGET_KINDS = Object.freeze(['local', 'prod-clone']);
 
 // SLO defaults. Every one is overridable with --slo key=value (or READINESS_EVAL_SLO_<KEY>).
 const DEFAULT_SLOS = Object.freeze({
@@ -76,6 +77,11 @@ const LOAD_DEFAULTS = Object.freeze({
   breakerWindow: 50,
   breakerErrorRate: 0.5,
 });
+
+// Flags that once existed and must now be a hard error, never silently ignored: a Host header override is a
+// way to address one vhost through another's address, and the remote/synthetic switches are replaced by the
+// compiled-in allowlist.
+const REMOVED_FLAGS = Object.freeze(['host-header', 'allow-remote-target', 'synthetic-flag-ack', 'allow-remote']);
 
 function parseArgv(argv) {
   const out = { _: [], slo: {} };
@@ -165,11 +171,9 @@ function resolveConfig(argv = [], env = process.env) {
     baseUrl,
     mcpPath,
     endpoint: baseUrl ? `${baseUrl}${mcpPath.startsWith('/') ? '' : '/'}${mcpPath}` : '',
-    hostHeader: pick('host-header', 'READINESS_EVAL_HOST_HEADER') || null,
     targetKind: String(pick('target-kind', 'READINESS_EVAL_TARGET_KIND') || DEFAULTS.targetKind).trim(),
-    allowRemote: bool(pick('allow-remote-target', 'READINESS_EVAL_ALLOW_REMOTE')),
-    syntheticFlagAck: String(pick('synthetic-flag-ack', 'READINESS_EVAL_SYNTHETIC_FLAG_ACK') || '').trim(),
-    syntheticHeader: pick('synthetic-header', 'READINESS_EVAL_SYNTHETIC_HEADER') || DEFAULTS.syntheticHeader,
+    // Fixed, not configurable: a configurable header NAME is a way to smuggle a Host (or auth) header.
+    syntheticHeader: DEFAULTS.syntheticHeader,
     syntheticHeaderValue: DEFAULTS.syntheticHeaderValue,
     timeoutMs: num(pick('timeout-ms', 'READINESS_EVAL_TIMEOUT_MS'), DEFAULTS.timeoutMs),
     concurrency: num(pick('concurrency', 'READINESS_EVAL_CONCURRENCY'), DEFAULTS.concurrency),
@@ -201,6 +205,7 @@ function resolveConfig(argv = [], env = process.env) {
     protocolVersion: String(pick('protocol-version', 'READINESS_EVAL_PROTOCOL_VERSION') || DEFAULTS.protocolVersion),
     slos,
     unknownSlos,
+    removedFlags: REMOVED_FLAGS.filter((k) => f[k] !== undefined || env[`READINESS_EVAL_${k.replace(/-/g, '_').toUpperCase()}`] !== undefined),
     load: {
       enabled: bool(pick('load', 'READINESS_EVAL_LOAD'), LOAD_DEFAULTS.enabled),
       rpsStart: num(pick('rps-start', 'READINESS_EVAL_RPS_START'), LOAD_DEFAULTS.rpsStart),
@@ -249,6 +254,9 @@ function validateConfig(config) {
       problems.push('auth=api_key needs READINESS_EVAL_API_KEY (or READINESS_EVAL_CALLER_KEYS)');
     }
     if (config.auth === 'bearer' && !config.secrets.bearerToken) problems.push('auth=bearer needs READINESS_EVAL_BEARER_TOKEN');
+  }
+  for (const removed of config.removedFlags) {
+    problems.push(`--${removed} is not supported (removed: the target allowlist in safety.cjs is the only way to choose a target)`);
   }
   if (config.unknownSlos.length) problems.push(`unknown --slo keys: ${config.unknownSlos.join(', ')}`);
   if (!(config.concurrency >= 1)) problems.push('concurrency must be >= 1');

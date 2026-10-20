@@ -24,36 +24,80 @@ const { build } = require('../../scripts/agent-readiness-eval/fixtures/build_que
 const QUERY_SET = path.join(__dirname, '..', '..', 'scripts', 'agent-readiness-eval', 'fixtures', 'queries.v1.json');
 const cfg = (argv, env = {}) => resolveConfig(argv, env);
 
-test('local development hosts are accepted without ceremony', () => {
-  for (const url of ['http://127.0.0.1:3000', 'http://localhost:8080', 'http://[::1]:3000', 'http://gw.localhost', 'http://gateway.test']) {
-    const r = safety.checkTarget(cfg(['--base-url', url]));
-    assert.equal(r.ok, true, `${url}: ${r.problems.join('; ')}`);
+// Pure classifier tests: no request is ever made here. Production-looking names appear ONLY in this form.
+const BYPASSES_SEEN_2026_10_20 = [
+  'https://gateway-gpx4jyrubq-uw.a.run.app',
+  'https://gateway-184498324954.us-west1.run.app',
+  'https://tag-abc---gateway-gpx4jyrubq-uw.a.run.app',
+  'https://pivota-agent-production.up.railway.app',
+  'http://34.110.1.2',
+  'http://0x226e0102',
+  'http://[::ffff:34.110.1.2]',
+  'http://127.0.0.1.nip.io',
+  'http://gateway.test',
+  'http://gw.localhost',
+  'http://localhost:3000',
+  'https://agent.pivota.cc',
+  'https://mcp.pivota.cc.',
+  'https://pivota.com',
+  'http://127.0.0.1@evil.example',
+  'http://10.0.0.5:3000',
+  'http://0.0.0.0:3000',
+];
+
+test('allowlist: only loopback IP literals pass; the compiled-in clone list is empty today', () => {
+  assert.deepEqual([...safety.EVAL_CLONE_HOSTS], []);
+  for (const url of ['http://127.0.0.1:3000', 'http://127.9.8.7', 'https://127.0.0.1:8443', 'http://[::1]:3000', 'http://0x7f000001:3000']) {
+    const r = safety.classifyTarget(url);
+    assert.equal(r.ok, true, `${url}: ${r.problem}`);
+    assert.equal(r.kind, 'loopback');
   }
+  for (const url of BYPASSES_SEEN_2026_10_20) {
+    const r = safety.classifyTarget(url);
+    assert.equal(r.ok, false, `${url} must be refused`);
+    assert.match(r.problem, /not allowed|credentials/);
+  }
+  assert.equal(safety.classifyTarget('ftp://127.0.0.1').ok, false);
+  assert.equal(safety.classifyTarget('not a url').ok, false);
 });
 
-test('a non-local host needs --allow-remote-target and a non-local target kind', () => {
-  const r = safety.checkTarget(cfg(['--base-url', 'https://clone.example.net']));
-  assert.equal(r.ok, false);
-  const ok = safety.checkTarget(cfg(['--base-url', 'https://clone.example.net', '--allow-remote-target', '--target-kind', 'prod-clone']));
-  assert.equal(ok.ok, true, ok.problems.join('; '));
+test('allowlist: a listed clone host needs https and an exact name (injected list; the real one is empty)', () => {
+  const cloneHosts = ['eval-clone.example.net'];
+  assert.equal(safety.classifyTarget('https://eval-clone.example.net/x', { cloneHosts }).kind, 'clone');
+  assert.equal(safety.classifyTarget('http://eval-clone.example.net', { cloneHosts }).ok, false, 'https only');
+  assert.equal(safety.classifyTarget('https://EVAL-CLONE.example.net', { cloneHosts }).ok, true, 'case-folded by the URL parser');
+  for (const near of ['https://eval-clone.example.net.', 'https://x.eval-clone.example.net', 'https://eval-clone.example.net.evil.example', 'https://evil-eval-clone.example.net']) {
+    assert.equal(safety.classifyTarget(near, { cloneHosts }).ok, false, near);
+  }
+  const c = cfg(['--base-url', 'https://eval-clone.example.net', '--target-kind', 'prod-clone']);
+  assert.equal(safety.checkTarget(c, { cloneHosts }).ok, true);
+  assert.equal(safety.checkTarget(c).ok, false, 'the compiled-in list does not contain it');
+  assert.equal(safety.checkTarget(cfg(['--base-url', 'https://eval-clone.example.net']), { cloneHosts }).ok, false, 'kind must be prod-clone');
+  assert.equal(safety.checkTarget(cfg(['--base-url', 'http://127.0.0.1:3000', '--target-kind', 'prod-clone'])).ok, false, 'kind must be local');
 });
 
-test('production hosts are REFUSED today, whatever flags are passed', () => {
-  const argv = [
-    '--base-url', 'https://agent.pivota.cc', '--tier', 'commerce', '--allow-remote-target',
-    '--target-kind', 'prod-synthetic', '--synthetic-flag-ack', safety.SYNTHETIC_FLAG_ACK,
-  ];
-  const r = safety.checkTarget(cfg(argv, { READINESS_EVAL_API_KEY: 'k' }));
-  assert.equal(safety.SYNTHETIC_TRAFFIC_SERVER_SUPPORT, false);
-  assert.equal(r.ok, false);
-  assert.match(r.problems.join('\n'), /synthetic-traffic designation does not exist yet/);
-  for (const host of ['mcp.pivota.cc', 'api.pivota.cc', 'pivota.cc', 'x.pivota.ai']) {
-    assert.equal(safety.isProductionHost(host), true, host);
+test('the FINAL endpoint is judged: an MCP path cannot move the host', () => {
+  const bad = cfg(['--base-url', 'http://127.0.0.1:3000', '--mcp-path', '@evil.example/mcp']);
+  assert.equal(safety.checkTarget(bad).ok, false);
+  assert.equal(safety.checkTarget(cfg(['--base-url', 'http://127.0.0.1:3000', '--mcp-path', '/mcp?x=1'])).ok, false);
+  assert.equal(safety.checkTarget(cfg(['--base-url', 'http://127.0.0.1:3000', '--mcp-path', '/public/mcp'])).ok, true);
+});
+
+test('hostOf normalisation: lowercase, brackets stripped, numeric IPv4 canonicalized, trailing dot KEPT', () => {
+  assert.equal(safety.hostOf('http://LOCALHOST.Example:1/'), 'localhost.example');
+  assert.equal(safety.hostOf('http://[::1]:3/'), '::1');
+  assert.equal(safety.hostOf('http://0x7f000001/'), '127.0.0.1');
+  assert.equal(safety.hostOf('http://2130706433/'), '127.0.0.1');
+  assert.equal(safety.hostOf('https://agent.pivota.cc./'), 'agent.pivota.cc.', 'a trailing dot is never stripped into a different name');
+  assert.equal(safety.hostOf('::'), null);
+});
+
+test('removed flags (--host-header, --allow-remote-target, --synthetic-flag-ack) are hard errors, as flag or env', () => {
+  for (const argv of [['--host-header', 'x'], ['--allow-remote-target'], ['--synthetic-flag-ack', 'x']]) {
+    assert.match(validateConfig(cfg(argv)).join('\n'), /is not supported/, argv[0]);
   }
-  assert.equal(safety.isProductionHost('notpivota.cc'), false);
-  // A Host header naming production from a remote IP is judged as production too.
-  const viaIp = safety.checkTarget(cfg(['--base-url', 'https://203.0.113.10', '--host-header', 'mcp.pivota.cc', '--allow-remote-target', '--target-kind', 'prod-clone']));
-  assert.equal(viaIp.ok, false);
+  assert.match(validateConfig(cfg([], { READINESS_EVAL_HOST_HEADER: 'x' })).join('\n'), /host-header is not supported/);
+  assert.match(validateConfig(cfg(['--target-kind', 'prod-synthetic'])).join('\n'), /unknown target kind/);
 });
 
 test('load settings beyond the compiled-in caps are refused', () => {

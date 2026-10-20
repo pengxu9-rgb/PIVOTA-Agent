@@ -5,14 +5,16 @@ HTTP to `/public/mcp` or `/mcp`, sends realistic beauty-shopping queries, follow
 and scores the answers against SLOs. Use it to check readiness ourselves instead of waiting for a partner to
 find the gaps.
 
-> **Never point it at production today.** A production `search_catalog` / `get_product` / `get_offers` call
-> can mint attribution links and click rows, and can trigger live reads against merchant stores. That
-> happens whoever calls, so synthetic traffic would corrupt attribution and hit merchants.
+> **Never point it at production.** A production `search_catalog` / `get_product` / `get_offers` call can
+> mint attribution links and click rows, and can trigger live reads against merchant stores. That happens
+> whoever calls, so synthetic traffic would corrupt attribution and hit merchants.
 >
-> The harness refuses production hosts (`*.pivota.cc`, `*.pivota.ai`, `*.pivota.com`). That refusal is a
-> compiled-in constant, `SYNTHETIC_TRAFFIC_SERVER_SUPPORT = false` in `lib/safety.cjs`, and no flag can
-> override it. It may only be flipped, in a reviewed change, once the server-side synthetic-traffic
-> designation described [below](#target-options) exists.
+> The harness therefore only addresses targets on a compiled-in **allowlist**: loopback IP literals, plus an
+> exact-hostname eval-clone list that is **empty today**. Every response must also carry the deployment
+> attestation header `X-Pivota-Deployment: eval-clone`, or the run halts. See [Safety](#safety-caps).
+>
+> On 2026-10-20 a test reached production after its refusal was mutated away. Every eval test now installs
+> a loopback-only network guard first (`tests/agent_readiness_eval/_net_guard.cjs`).
 
 ## Quick start
 
@@ -20,7 +22,8 @@ find the gaps.
 # 1. See the plan and the safety verdict. This makes no network calls.
 npm run eval:agent-readiness -- --dry-run --base-url http://127.0.0.1:3000
 
-# 2. Run against a locally started gateway: public read tier, no auth.
+# 2. Run against a local target: public read tier, no auth. The target must answer every request with
+#    X-Pivota-Deployment: eval-clone (a plain local gateway does not; see "Safety").
 READINESS_EVAL_BASE_URL=http://127.0.0.1:3000 npm run eval:agent-readiness
 
 # 3. Run against the commerce door with an API key. The key comes from env only, never a flag.
@@ -192,10 +195,29 @@ Every metric is also broken down **per tool**, **per query class**, **per langua
 
 ## Safety caps
 
-- **Target guard (`lib/safety.cjs`):**
-  - Local hosts run without extra flags: `localhost`, `127.0.0.1`, `::1`, `*.localhost` and `*.test`.
-  - Any other host needs `--allow-remote-target` and `--target-kind prod-clone|prod-synthetic`.
-  - Production hosts are refused outright today, including when reached through a `Host` header from an IP.
+- **Target allowlist (`lib/safety.cjs`):** an allowlist, never a denylist.
+  - Allowed: loopback IP literals (127.0.0.0/8 and `::1`), over http or https.
+  - Allowed: exact hostnames in the compiled-in `EVAL_CLONE_HOSTS`, https only. **The list is empty today.**
+    A clone host is added in a reviewed change once the clone exists and is verified to have its own
+    attribution tables and no merchant egress.
+  - Everything else is refused, including:
+    - names that need resolving, such as `localhost`, `*.localhost`, `*.test` and `*.nip.io`
+    - Cloud Run service and revision URLs, and hosting-provider default domains
+    - IP literals in any spelling other than loopback
+    - URLs carrying credentials
+  - The final endpoint is judged, not just the base URL, so an MCP path cannot move the host.
+  - The client re-checks the endpoint at construction, so removing one guard does not open the network.
+  - `--target-kind` must match: `local` for loopback, `prod-clone` for a clone host.
+- **Deployment attestation:** every response must carry `X-Pivota-Deployment: eval-clone`.
+  - The first response without it halts the client, and nothing more is sent. One request reaches the
+    target at most.
+  - This is what defeats a loopback port that is forwarded or tunnelled to production.
+  - Only the clone deployment, or a local test stub, may set the header. A plain local gateway does not set
+    it. To run against one, put a loopback wrapper in front that adds it, as
+    `tests/agent_readiness_eval/real_gateway_e2e` does.
+- **Redirects are never followed.** Requests use `redirect: 'manual'`, and a 3xx halts the client.
+- **Removed flags:** `--host-header`, `--allow-remote-target` and `--synthetic-flag-ack` are hard errors, as
+  flags or as env vars.
 - **Hard caps:** these are compiled in. Config can lower them but never raise them.
 
   | Cap | Value |
@@ -240,24 +262,25 @@ separately, from these two options.
 ### A. Prod-data clone (recommended first)
 
 This is a gateway and backend stack pointed at a copy of production catalog data, with no merchant egress.
-Its click and attribution tables are disposable.
+Its click and attribution tables are disposable. Before the harness will address it:
+
+1. Add the clone's exact hostname to `EVAL_CLONE_HOSTS` in `lib/safety.cjs`, in a reviewed change.
+2. Make the clone, and only the clone, answer every request with `X-Pivota-Deployment: eval-clone`.
+3. Check that the clone does not share production's attribution or click tables, or anything that reports
+   them.
+4. Check that merchant egress is blocked, or that the live-read flags are off. The live-read flags are
+   `UCP_LIVE_*_READ`, `UCP_LIVE_PDP_REFRESH`, `SERVE_LIVE_MERCHANT_PRICE`, `GET_OFFERS_LIVE_CART`,
+   `MERCHANT_VARIANT_SOURCING_ENABLED`, and the backend's live offer verification.
 
 ```bash
 READINESS_EVAL_BASE_URL=https://<clone-host> READINESS_EVAL_API_KEY=… \
-  npm run eval:agent-readiness -- --tier commerce --allow-remote-target --target-kind prod-clone
+  npm run eval:agent-readiness -- --tier commerce --target-kind prod-clone
 ```
 
-Before running, check:
+### B. Production with a synthetic-traffic designation (not supported)
 
-- The clone must not share production's attribution or click tables, or anything that reports them.
-- Merchant egress must be blocked, or the live-read flags must be off. The live-read flags are
-  `UCP_LIVE_*_READ`, `UCP_LIVE_PDP_REFRESH`, `SERVE_LIVE_MERCHANT_PRICE`, `GET_OFFERS_LIVE_CART`,
-  `MERCHANT_VARIANT_SOURCING_ENABLED`, and the backend's live offer verification.
-
-### B. Production with a synthetic-traffic designation (does not exist yet)
-
-This option is **blocked until the server change ships.** It means designating a synthetic API key or agent
-on the server, so that its calls:
+This option is not supported, and the harness has no target kind for it. It would need a server-side
+designation of a synthetic API key or agent, so that its calls:
 
 1. Mint no counted click or attribution rows. Either issue none, or tag them and filter the tag everywhere
    clicks or attribution are counted.
@@ -265,20 +288,15 @@ on the server, so that its calls:
 
 The gateway work is roughly:
 
-- Resolve the designation from the verified caller (`req.invokeAuth.agent_id`, or the OAuth client id) and
-  record it on the invoke context.
+- Resolve the designation from the verified caller and record it on the invoke context.
 - Have the live-reader getters return nothing for a synthetic caller.
 - Bypass the shared search cache for that caller.
 - Carry the designation on the signed issuing-agent assertion, so the backend skips or tags the clicks it
   issues.
 
-Only once that is live and verified:
-
-1. Flip `SYNTHETIC_TRAFFIC_SERVER_SUPPORT` to `true` in a reviewed change.
-2. Run with `--target-kind prod-synthetic --synthetic-flag-ack server-excludes-this-key-from-attribution-and-live-reads`.
-
-Even then, never follow links: the harness does not, and a following client would still record clicks
-unless the redirect token carries the designation.
+Until that ships and is verified, production is not on the allowlist. Even after it ships, adding a
+production host would need its own review, and production would also have to send the attestation header,
+which it must never do for normal traffic. So a dedicated synthetic deployment is the likelier route.
 
 ## Tests
 
@@ -290,6 +308,7 @@ node --test tests/agent_readiness_eval/*.node.test.cjs
 |---|---|
 | `responses_framing` | MCP framing (JSON, SSE, heartbeat-padded bodies, every failure class), reading both doors' result shapes, empty-class parsing, failed-with-hits. Uses hand-made fixtures. |
 | `scorers` | Relevance rules, negation, currency, price, link, duplicates, consistency, price agreement, negatives. |
-| `safety_config_queryset` | Target refusal, hard caps, kill switch, secret redaction, schema-driven arguments, read-only tool policy, SLO evaluation, judge data boundary, query-set composition and builder sync. |
+| `net_guard` | The loopback-only network guard every eval test installs first: fetch/undici, http/https, net/tls and DNS are all refused for non-loopback targets. |
+| `safety_config_queryset` | Target allowlist (including every bypass seen on 2026-10-20), hard caps, kill switch, secret redaction, schema-driven arguments, read-only tool policy, SLO evaluation, judge data boundary, query-set composition and builder sync. |
 | `stub_mcp_e2e` | The CLI over HTTP against a stub server built from the gateway's own MCP adapter and tool surfaces, over an invented catalog with planted defects. Proves each defect is caught, checkout tools are never called, no link is fetched, per-caller 429s are attributed, and dry-run makes no requests. |
 | `real_gateway_e2e` | The CLI against the real `src/server.js` on a local port. Only the loopback search hop is stubbed with nock, and all external network is disabled. |

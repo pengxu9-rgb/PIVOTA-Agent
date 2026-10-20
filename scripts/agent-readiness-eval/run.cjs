@@ -29,10 +29,9 @@ Target (env or flag):
   --mcp-path / READINESS_EVAL_MCP_PATH             override the path
   --auth none|api_key|bearer / READINESS_EVAL_AUTH
   READINESS_EVAL_API_KEY | READINESS_EVAL_BEARER_TOKEN  (env only; never a flag, never logged)
-  --host-header                                     send a Host header (e.g. to reach a host-dispatched tier)
-  --target-kind local|prod-clone|prod-synthetic     (default local)
-  --allow-remote-target                              required for any non-local host
-  --synthetic-flag-ack <statement>                   required for production hosts (see runbook)
+  --target-kind local|prod-clone                    local = a loopback IP literal; prod-clone = a host in the
+                                                    compiled-in EVAL_CLONE_HOSTS allowlist (empty today)
+  Every response must carry X-Pivota-Deployment: eval-clone or the run halts (see runbook).
 
 Run shape:
   --dry-run                       print the plan and the safety verdict; call nothing
@@ -115,7 +114,6 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
       auth: identity ? identity.auth : config.auth,
       apiKey: identity ? (identity.auth === 'api_key' ? identity.secret : null) : config.secrets.apiKey,
       bearerToken: identity ? (identity.auth === 'bearer' ? identity.secret : null) : config.secrets.bearerToken,
-      hostHeader: config.hostHeader,
       timeoutMs: config.timeoutMs,
       protocolVersion: config.protocolVersion,
       clientInfo: { name: config.clientName, version: config.clientVersion },

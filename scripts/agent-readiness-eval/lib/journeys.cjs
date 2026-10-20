@@ -131,6 +131,10 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
   let toolsByName = new Map();
 
   const call = async (toolName, desired, meta) => {
+    if (client.halted) {
+      out.aborted = out.aborted || client.halted;
+      return null;
+    }
     const reason = killSwitch && killSwitch.check();
     if (reason) {
       out.aborted = out.aborted || reason;
@@ -173,8 +177,18 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
     out.finished_at = new Date().toISOString();
     return out;
   }
+  if (client.halted) {
+    out.aborted = client.halted;
+    out.finished_at = new Date().toISOString();
+    return out;
+  }
   const listed = await client.listTools();
   calls.push({ phase: 'handshake', ...baseCallFields(listed, null) });
+  if (client.halted) {
+    out.aborted = client.halted;
+    out.finished_at = new Date().toISOString();
+    return out;
+  }
   const tools = listed.outcome === 'ok' && listed.rpc && listed.rpc.result && Array.isArray(listed.rpc.result.tools) ? listed.rpc.result.tools : [];
   out.tools = tools.map((t) => ({
     name: t.name,

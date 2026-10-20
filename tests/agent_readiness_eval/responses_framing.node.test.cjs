@@ -13,6 +13,7 @@ const path = require('node:path');
 
 const { classifyHttp, parseSseJsonRpc, McpClient, sanitizeErrorMessage } = require('../../scripts/agent-readiness-eval/lib/mcpClient.cjs');
 const R = require('../../scripts/agent-readiness-eval/lib/responses.cjs');
+const { throwingFetch } = require('./_net_guard.cjs');
 
 const FX = path.join(__dirname, 'fixtures');
 const raw = (name) => fs.readFileSync(path.join(FX, name), 'utf8');
@@ -61,7 +62,7 @@ test('McpClient sends partner-shaped JSON-RPC: initialize, then notifications/in
     seen.push({ url, headers: init.headers, body });
     const reply = (status, obj, headers = {}) => ({
       status,
-      headers: new Map(Object.entries({ 'content-type': 'application/json', ...headers })),
+      headers: new Map(Object.entries({ 'content-type': 'application/json', 'x-pivota-deployment': 'eval-clone', ...headers })),
       text: async () => (obj == null ? '' : JSON.stringify(obj)),
     });
     if (body.method === 'initialize') return reply(200, { jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-06-18', serverInfo: { name: 'stub', version: '0' }, capabilities: { tools: {} } } }, { 'mcp-session-id': 'sess-1' });
@@ -101,6 +102,55 @@ test('McpClient: bearer auth header; timeout and transport failures are classifi
   assert.equal(r2.outcome, 'transport_error');
   assert.equal(r2.error, 'ECONNREFUSED');
   assert.equal(sanitizeErrorMessage(new Error(`bad key ak_live_${'b'.repeat(64)}`)), 'bad key ak_<redacted>');
+});
+
+function attestedFetch(seen, { status = 200, headers = {} } = {}) {
+  return async (url, init) => {
+    seen.push({ url, body: init.body ? JSON.parse(init.body) : null, redirect: init.redirect });
+    const body = seen[seen.length - 1].body;
+    return {
+      status,
+      headers: new Map(Object.entries({ 'content-type': 'application/json', ...headers })),
+      text: async () => JSON.stringify({ jsonrpc: '2.0', id: body && body.id, result: { protocolVersion: '2025-06-18', content: [] } }),
+    };
+  };
+}
+
+test('attestation: a response without X-Pivota-Deployment: eval-clone halts the client; nothing more is sent', async () => {
+  for (const headers of [{}, { 'x-pivota-deployment': 'production' }, { 'x-pivota-deployment': 'eval-clone-x' }]) {
+    const seen = [];
+    const client = new McpClient({ endpoint: 'http://127.0.0.1:1/mcp', fetchImpl: attestedFetch(seen, { headers }) });
+    const init = await client.initialize();
+    assert.equal(init.outcome, 'attestation_missing', JSON.stringify(headers));
+    assert.match(client.halted, /attestation_missing/);
+    const after = await client.callTool('search_catalog', { query: 'x' });
+    assert.equal(after.outcome, 'halted');
+    assert.equal(seen.length, 1, 'only the first request was ever sent');
+  }
+});
+
+test('redirects are never followed: fetch is told redirect:manual and a 3xx halts the client', async () => {
+  const seen = [];
+  const client = new McpClient({
+    endpoint: 'http://127.0.0.1:1/mcp',
+    fetchImpl: attestedFetch(seen, { status: 307, headers: { 'x-pivota-deployment': 'eval-clone', location: 'http://127.0.0.1:2/mcp' } }),
+  });
+  const r = await client.callTool('search_catalog', { query: 'x' });
+  assert.equal(seen[0].redirect, 'manual');
+  assert.equal(r.outcome, 'redirect_refused');
+  assert.equal((await client.callTool('search_catalog', {})).outcome, 'halted');
+  assert.equal(seen.length, 1);
+});
+
+test('the client refuses a non-allowlisted endpoint and smuggled headers at construction (no I/O possible)', () => {
+  const f = throwingFetch();
+  for (const endpoint of ['https://prod-refusal-check.invalid/mcp', 'http://localhost:3000/mcp', 'http://10.0.0.1/mcp']) {
+    assert.throws(() => new McpClient({ endpoint, fetchImpl: f }), /refuses this endpoint/, endpoint);
+  }
+  for (const k of ['host', 'Host', 'authorization', 'x-agent-api-key']) {
+    assert.throws(() => new McpClient({ endpoint: 'http://127.0.0.1:1/mcp', fetchImpl: f, extraHeaders: { [k]: 'x' } }), /not allowed/, k);
+  }
+  assert.equal(f.calls.length, 0);
 });
 
 test('toolPayload reads the commerce door (content text) and the public door (structuredContent)', () => {

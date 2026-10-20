@@ -79,6 +79,10 @@ async function runLoad({ config, makeClient, querySet, killSwitch, log = () => {
 
   const fire = (tSec) => {
     const s = live[rr++ % live.length];
+    if (s.client.halted) {
+      killSwitch.trip(`${s.id.label} halted: ${s.client.halted}`);
+      return;
+    }
     const q = queries[Math.floor(rng() * queries.length)];
     const tool = load.tools[Math.floor(rng() * load.tools.length)];
     inFlight += 1;
@@ -107,6 +111,7 @@ async function runLoad({ config, makeClient, querySet, killSwitch, log = () => {
         failed_with_hits: search ? search.failed_with_hits : false,
       };
       result.calls.push(row);
+      if (s.client.halted) killSwitch.trip(`${s.id.label} halted: ${s.client.halted}`);
       recent.push(UNAVAILABLE_OUTCOMES.has(rec.outcome));
       if (recent.length > load.breakerWindow) recent.shift();
       if (recent.length >= Math.min(load.breakerWindow, 10)) {

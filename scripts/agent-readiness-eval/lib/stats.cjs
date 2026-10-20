@@ -26,7 +26,7 @@ function latencySummary(values) {
 }
 
 // Outcomes that mean "the partner did not get an answer from the service".
-const UNAVAILABLE_OUTCOMES = new Set(['transport_error', 'timeout', 'http_error', 'parse_error', 'jsonrpc_error']);
+const UNAVAILABLE_OUTCOMES = new Set(['transport_error', 'timeout', 'http_error', 'parse_error', 'jsonrpc_error', 'attestation_missing', 'redirect_refused']);
 
 /**
  * Availability over call records. 429 (rate_limited) and 401/403 (auth_error) are counted separately and

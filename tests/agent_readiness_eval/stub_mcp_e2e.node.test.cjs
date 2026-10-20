@@ -115,7 +115,7 @@ function makeExecutor(rows, executed) {
   };
 }
 
-async function startStub({ perCallerLimit = Infinity } = {}) {
+async function startStub({ perCallerLimit = Infinity, attest = true, redirectTo = null } = {}) {
   const { createRemoteMcpAdapter } = await import('../../mcp-server/src/remoteMcpAdapter.js');
   const { createPublicReadToolSurface, formatPublicReadToolResult } = await import('../../mcp-server/src/publicReadToolSurface.js');
   const { createCommerceToolSurface } = await import('../../mcp-server/src/commerceToolSurface.js');
@@ -127,6 +127,12 @@ async function startStub({ perCallerLimit = Infinity } = {}) {
     req.on('data', (c) => { body += c; });
     req.on('end', async () => {
       seen.requests.push({ method: req.method, url: req.url, headers: { ...req.headers } });
+      // The positive deployment attestation the harness requires on EVERY response (a local stub may set it).
+      if (attest) res.setHeader('x-pivota-deployment', 'eval-clone');
+      if (redirectTo) {
+        res.writeHead(307, { location: redirectTo });
+        return res.end();
+      }
       const send = (status, obj) => {
         res.writeHead(status, { 'content-type': 'application/json' });
         res.end(obj == null ? '' : JSON.stringify(obj));
@@ -311,6 +317,45 @@ test('kill switch at start: no tool is called; dry-run makes no request at all; 
     assert.match(cli.out.text(), /headline/);
   } finally {
     await stub.close();
+  }
+});
+
+test('a target that does not attest the eval deployment is abandoned after its first response', async () => {
+  const stub = await startStub({ attest: false });
+  try {
+    const out = tmp();
+    const io = { out: sink(), err: sink() };
+    const code = await main(['--base-url', stub.base, '--pacing-ms', '0', '--out', out], {}, io);
+    assert.equal(code, 3, io.err.text());
+    assert.equal(stub.seen.requests.length, 1, 'exactly one request (initialize), then the client halts');
+    assert.equal(stub.seen.toolCalls.length, 0);
+    const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+    assert.match(report.metrics.run.aborted, /attestation_missing/);
+  } finally {
+    await stub.close();
+  }
+});
+
+test('redirects are never followed, even to another loopback listener', async () => {
+  const elsewhere = { hits: 0 };
+  const other = http.createServer((req, res) => {
+    elsewhere.hits += 1;
+    res.setHeader('x-pivota-deployment', 'eval-clone');
+    res.end('{}');
+  });
+  await new Promise((r) => other.listen(0, '127.0.0.1', r));
+  const stub = await startStub({ redirectTo: `http://127.0.0.1:${other.address().port}/public/mcp` });
+  try {
+    const out = tmp();
+    const code = await main(['--base-url', stub.base, '--pacing-ms', '0', '--out', out], {}, { out: sink(), err: sink() });
+    assert.equal(code, 3);
+    assert.equal(stub.seen.requests.length, 1);
+    assert.equal(elsewhere.hits, 0, 'the redirect target was never contacted');
+    const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+    assert.match(report.metrics.run.aborted, /redirect_refused/);
+  } finally {
+    await stub.close();
+    await new Promise((r) => other.close(r));
   }
 });
 

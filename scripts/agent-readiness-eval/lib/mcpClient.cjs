@@ -20,28 +20,42 @@
 // NEVER LOGS A SECRET. Auth headers are built per request from the injected credential; nothing here
 // writes them anywhere.
 
+const { classifyTarget, ATTESTATION } = require('./safety.cjs');
+
 const DEFAULT_ACCEPT = 'application/json, text/event-stream';
+
+// Outcomes after which the client sends NOTHING more: the target is not provably the eval deployment
+// (attestation_missing), or it tried to send us elsewhere (redirect_refused).
+const HALTING_OUTCOMES = new Set(['attestation_missing', 'redirect_refused']);
 
 class McpClient {
   /**
    * @param {{
    *   endpoint: string, auth?: 'none'|'api_key'|'bearer', apiKey?: string|null, bearerToken?: string|null,
-   *   hostHeader?: string|null, timeoutMs?: number, fetchImpl?: Function, protocolVersion?: string,
+   *   timeoutMs?: number, fetchImpl?: Function, protocolVersion?: string,
    *   clientInfo?: {name:string, version:string}, extraHeaders?: object, now?: () => number,
    * }} opts
    */
   constructor(opts) {
     if (!opts || !opts.endpoint) throw new Error('McpClient requires an endpoint');
+    // Second, independent target check (run.cjs checks first): the client itself will not be built for an
+    // endpoint outside the compiled-in allowlist, so removing one guard does not open the network.
+    const target = classifyTarget(opts.endpoint);
+    if (!target.ok) throw new Error(`McpClient refuses this endpoint: ${target.problem}`);
     this.endpoint = opts.endpoint;
     this.auth = opts.auth || 'none';
     this.apiKey = opts.apiKey || null;
     this.bearerToken = opts.bearerToken || null;
-    this.hostHeader = opts.hostHeader || null;
     this.timeoutMs = opts.timeoutMs || 30000;
     this.fetchImpl = opts.fetchImpl || globalThis.fetch;
     this.requestedProtocolVersion = opts.protocolVersion || '2025-06-18';
     this.clientInfo = opts.clientInfo || { name: 'pivota-readiness-eval', version: '1.0.0' };
     this.extraHeaders = opts.extraHeaders || {};
+    for (const k of Object.keys(this.extraHeaders)) {
+      if (/^(host|authorization|x-agent-api-key|mcp-session-id)$/i.test(k)) throw new Error(`McpClient: extra header ${k} is not allowed`);
+    }
+    // Set once a response fails the attestation or redirects; every later send returns without I/O.
+    this.halted = null;
     this.now = opts.now || (() => performance.now());
     this.nextId = 1;
     this.sessionId = null;
@@ -58,7 +72,6 @@ class McpClient {
     };
     if (initialized && this.negotiatedProtocolVersion) h['mcp-protocol-version'] = this.negotiatedProtocolVersion;
     if (this.sessionId) h['mcp-session-id'] = this.sessionId;
-    if (this.hostHeader) h.host = this.hostHeader;
     if (this.auth === 'api_key' && this.apiKey) h['x-agent-api-key'] = this.apiKey;
     if (this.auth === 'bearer' && this.bearerToken) h.authorization = `Bearer ${this.bearerToken}`;
     return h;
@@ -69,6 +82,9 @@ class McpClient {
    * @returns {Promise<CallRecord>}
    */
   async send(method, params, { notification = false, initialized = true } = {}) {
+    if (this.halted) {
+      return { method, id: null, http_status: null, ttfb_ms: null, latency_ms: 0, outcome: 'halted', error: this.halted, rpc: null, session_id_header: null };
+    }
     const id = notification ? undefined : this.nextId++;
     const body = { jsonrpc: '2.0', method, ...(id !== undefined ? { id } : {}), ...(params !== undefined ? { params } : {}) };
     const controller = new AbortController();
@@ -96,6 +112,25 @@ class McpClient {
       });
       ttfb = this.now() - started;
       record.http_status = res.status;
+      const attested = res.headers && typeof res.headers.get === 'function' ? res.headers.get(ATTESTATION.header) : null;
+      const halt = attested !== ATTESTATION.value
+        ? ['attestation_missing', `response lacks ${ATTESTATION.header}: ${ATTESTATION.value} (got ${attested === null ? 'none' : JSON.stringify(String(attested).slice(0, 40))}); not provably the eval deployment`]
+        : res.status >= 300 && res.status < 400
+          ? ['redirect_refused', `HTTP ${res.status} redirect refused (redirects are never followed)`]
+          : null;
+      if (halt) {
+        try {
+          if (res.body && typeof res.body.cancel === 'function') await res.body.cancel();
+        } catch {
+          // Nothing to drain.
+        }
+        record.ttfb_ms = round(ttfb);
+        record.latency_ms = round(this.now() - started);
+        record.outcome = halt[0];
+        record.error = halt[1];
+        this.halted = `${halt[0]}: ${halt[1]}`;
+        return record;
+      }
       const sid = res.headers && typeof res.headers.get === 'function' ? res.headers.get('mcp-session-id') : null;
       if (sid) record.session_id_header = sid;
       const ctype = (res.headers && typeof res.headers.get === 'function' ? res.headers.get('content-type') : '') || '';
@@ -243,4 +278,4 @@ function classifyHttp(record, status, text, ctype, id, notification) {
   return record;
 }
 
-module.exports = { McpClient, parseSseJsonRpc, classifyHttp, sanitizeErrorMessage };
+module.exports = { McpClient, parseSseJsonRpc, classifyHttp, sanitizeErrorMessage, HALTING_OUTCOMES };
