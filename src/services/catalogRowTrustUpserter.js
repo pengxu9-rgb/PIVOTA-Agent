@@ -33,7 +33,7 @@ const {
   pdpRouteResolvableFromRow,
   seedRouteResolvesSql,
 } = require('./pdpRenderability');
-const { pricedOfferExistsSql, pricedOfferRowConjuncts } = require('./pricedOfferSql');
+const { pricedOfferExistsSql } = require('./pricedOfferSql');
 const { OFFER_UNAVAILABLE_AVAILABILITIES } = require('./offerAvailabilitySql');
 
 // ---------------------------------------------------------------------------
@@ -418,8 +418,10 @@ const CRAWL_OFFER_NOT_AFFILIATE_SQL =
 // as one of them has none.
 //
 // THE CLASS (crawlOfferClassConjuncts) -- every LIVE offer on the row:
-// unsuppressed and priced (pricedOfferSql). Nothing else: any link (round 5), any
-// source_system, any market, any currency, affiliate offers included.
+// unsuppressed and carrying any price a reader may serve, estimated_best_price
+// included (CRAWL_OFFER_CLASS_PRICED_SQL, round 6). Nothing else: any link
+// (round 5), any source_system, any market, any currency, affiliate offers
+// included.
 //
 // A VALID READ of one class offer (CRAWL_OFFER_VALID_READ_SQL), ALL of: written
 // by the drain (source_system catalog_enrichment_agent_v1); in a SERVED market
@@ -493,14 +495,25 @@ const CRAWL_OFFER_VALID_READ_SQL =
   ` AND ${CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL}` +
   ' THEN co.price_checked_at END';
 
+// "Priced" for the CLASS (round 6) is ANY price a reader may serve, with
+// estimated_best_price in the middle: several readers price an offer as
+// coalesce(merchant_effective_price, estimated_best_price, list_price), so an
+// ebp-only offer was served while it sat outside the class. Deliberately NOT
+// pricedOfferSql's conjunct, which excludes ebp on purpose (OFFER_PRICE_MISSING
+// must not publish a page on our own estimate) and is pinned to the backend's
+// priced_offer_sql: that gate and this class answer different questions.
+const CRAWL_OFFER_CLASS_PRICED_SQL =
+  'coalesce(co.merchant_effective_price, co.estimated_best_price, co.list_price) > 0';
+
 /**
- * The class for one row: every unsuppressed, priced offer, whatever its link.
- * `productKeyExpr` is SQL, never a value.
+ * The class for one row: every unsuppressed offer with any servable price,
+ * whatever its link. `productKeyExpr` is SQL, never a value.
  */
 function crawlOfferClassConjuncts(productKeyExpr) {
   return [
     `co.product_key = ${productKeyExpr}`,
-    ...pricedOfferRowConjuncts('co'),
+    'co.suppressed_at IS NULL',
+    CRAWL_OFFER_CLASS_PRICED_SQL,
   ];
 }
 

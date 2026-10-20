@@ -1090,7 +1090,7 @@ test('the freshness statement, spelled out (so a fixture edit cannot move both s
       '     FROM catalog_offers co\n' +
       '    WHERE co.product_key = k.product_key\n' +
       '      AND co.suppressed_at IS NULL\n' +
-      '      AND coalesce(co.merchant_effective_price, co.list_price) > 0\n' +
+      '      AND coalesce(co.merchant_effective_price, co.estimated_best_price, co.list_price) > 0\n' +
       ' ) r\n' +
       ' WHERE r.row_price_read_at IS NOT NULL\n',
   );
@@ -1430,7 +1430,8 @@ test('round 4/5: the class is every unsuppressed, priced offer; source, served p
   assert.deepEqual(cls, [
     'co.product_key = k.product_key',
     'co.suppressed_at IS NULL',
-    'coalesce(co.merchant_effective_price, co.list_price) > 0',
+    // round 6: estimated_best_price counts as a served price for the CLASS
+    'coalesce(co.merchant_effective_price, co.estimated_best_price, co.list_price) > 0',
   ]);
   // round 5: no link test anywhere -- not in the class, not in the valid read
   assert.ok(!/https\?:/.test(upserter.CRAWL_ROW_PRICE_READ_SQL), 'the statement must not test the link');

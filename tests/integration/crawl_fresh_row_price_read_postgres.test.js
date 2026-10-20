@@ -37,7 +37,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     await client.query(`BEGIN; CREATE SCHEMA ${schema}; SET LOCAL search_path TO ${schema};
       CREATE TABLE catalog_offers(offer_id text PRIMARY KEY, sku_key text, product_key text, source_system text,
         market text NOT NULL DEFAULT 'US', currency text, availability text,
-        merchant_effective_price numeric, list_price numeric, source_ref text, offer_payload jsonb,
+        merchant_effective_price numeric, estimated_best_price numeric, list_price numeric, source_ref text, offer_payload jsonb,
         suppressed_at timestamptz, price_checked_at timestamptz);`);
     for (const k of ['CATALOG_TRUST_CRAWL_FRESH_ENABLED', 'CATALOG_TRUST_CRAWL_FRESH_DAYS']) saved[k] = process.env[k];
     process.env.CATALOG_TRUST_CRAWL_FRESH_ENABLED = '1';
@@ -66,6 +66,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       currency: 'USD',
       availability: 'in_stock',
       merchant_effective_price: null,
+      estimated_best_price: null,
       list_price: 20,
       source_ref: 'https://shop.example.com/products/serum',
       offer_payload: { destination_url: 'https://shop.example.com/products/serum', declared_market: 'US' },
@@ -75,10 +76,12 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
     };
     await client.query(
       `INSERT INTO catalog_offers(offer_id, sku_key, product_key, source_system, market, currency, availability,
-         merchant_effective_price, list_price, source_ref, offer_payload, suppressed_at, price_checked_at)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         merchant_effective_price, estimated_best_price, list_price, source_ref, offer_payload, suppressed_at,
+         price_checked_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [o.offer_id, o.sku_key, o.product_key, o.source_system, o.market, o.currency, o.availability,
-        o.merchant_effective_price, o.list_price, o.source_ref, o.offer_payload, o.suppressed_at, o.price_checked_at],
+        o.merchant_effective_price, o.estimated_best_price, o.list_price, o.source_ref, o.offer_payload,
+        o.suppressed_at, o.price_checked_at],
     );
   }
   const fresh = async () => {
@@ -139,6 +142,28 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       expect(await fresh()).toBe(true);
     });
   }
+
+  // ---- round 6: an estimated_best_price-only offer is priced for the class ----
+  for (const [name, prices] of [
+    ['ebp only, list NULL', { merchant_effective_price: null, list_price: null, estimated_best_price: 18 }],
+    ['ebp only, list 0', { merchant_effective_price: null, list_price: 0, estimated_best_price: 18 }],
+  ]) {
+    test(`${name}: without a valid read it BLOCKS the row`, async () => {
+      await offer();
+      await offer({ market: 'AU', currency: 'AUD', offer_payload: { declared_market: 'AU' }, ...prices });
+      expect(await fresh()).toBe(false);
+    });
+    test(`${name}: with a valid read it dates the row`, async () => {
+      await offer({ ...prices });
+      expect(await fresh()).toBe(true);
+    });
+  }
+
+  test('an offer with no price at all (mep, ebp and list all NULL or 0) stays outside the class', async () => {
+    await offer();
+    await offer({ market: 'AU', currency: 'AUD', merchant_effective_price: 0, estimated_best_price: null, list_price: 0 });
+    expect(await fresh()).toBe(true);
+  });
 
   // ---- round 5: the link does not decide class membership ----
   const ANY_LINK = [
