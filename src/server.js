@@ -75,6 +75,19 @@ const {
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
+// Read off the module object, not destructured: many suites mock ./db with only
+// { query, withClient }, and both helpers must degrade to today's behaviour there.
+const dbModuleForLaneDeadlines = require('./db');
+function runWithDbDeadline(options, fn) {
+  return typeof dbModuleForLaneDeadlines.runWithDbDeadline === 'function'
+    ? dbModuleForLaneDeadlines.runWithDbDeadline(options, fn)
+    : fn();
+}
+function isDbUnavailableError(err) {
+  return typeof dbModuleForLaneDeadlines.isDbUnavailableError === 'function'
+    ? dbModuleForLaneDeadlines.isDbUnavailableError(err)
+    : false;
+}
 const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
@@ -6131,8 +6144,8 @@ function normalizeCatalogSignatureResolveOptions(options = {}) {
  * outage, not a slow request.
  */
 function resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey) {
-  return withStageBudget(
-    resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions),
+  return withStageBudgetDb(
+    () => resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions),
     RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
     'resolve_catalog_signature',
   ).catch((err) => {
@@ -6177,6 +6190,25 @@ function buildCatalogSignatureTimeoutError(normalizedProductId) {
   );
   err.code = 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT';
   return err;
+}
+
+function buildCatalogSignatureUnavailableError(normalizedProductId, cause) {
+  const err = new Error(
+    `Catalog signature resolve unavailable (${normalizedProductId}): database unavailable`,
+  );
+  err.code = 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE';
+  err.cause = cause;
+  return err;
+}
+
+// Both mean "could not look", never "looked and found nothing": the PDP lanes
+// answer them with a retryable 503 rather than a 404.
+function isCatalogSignatureResolveRetryableError(err) {
+  return (
+    err?.code === 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' ||
+    err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE' ||
+    err?.code === 'STAGE_TIMEOUT'
+  );
 }
 
 async function resolveCatalogProductRefFromPivotaSignature(productId, options = {}) {
@@ -6972,6 +7004,16 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       { err: err?.message || String(err), product_id: normalizedProductId },
       'Failed to resolve catalog product ref from pivota signature',
     );
+    // A database that could not answer (pool checkout timeout, statement
+    // timeout, dropped connection) is NOT "this sig resolves to nothing". A null
+    // here is memoized by the single-flight cache for its whole TTL, served as
+    // PRODUCT_NOT_FOUND by the PDP lanes, and read as "provably dead" by the
+    // public-search chain filter, which then DROPS the row -- three wrong
+    // answers from one full pool. Throw the same retryable shape the budget
+    // path uses instead: never cached, 503 at the PDP, row kept by the filter.
+    if (isDbUnavailableError(err)) {
+      throw buildCatalogSignatureUnavailableError(normalizedProductId, err);
+    }
     return null;
   }
 }
@@ -16007,6 +16049,22 @@ function normalizeSearchQueryParams(rawQuery) {
   return { queryText, queryParams };
 }
 
+// withStageBudget for a stage whose work is DB reads: the work is STARTED inside
+// a lane deadline (src/db runWithDbDeadline) matching the budget, so the
+// statements it issues stop holding pool connections -- and, with
+// DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS, stop running on the primary -- once
+// the caller has given up. Takes a thunk, not a promise: the deadline context
+// has to be active when the queries are issued. With DB_LANE_DEADLINES_ENABLED
+// off this is exactly withStageBudget(fn(), ...).
+function withStageBudgetDb(fn, timeoutMs, timeoutLabel) {
+  const budgetMs = Math.max(1, Number(timeoutMs || 0) || 0);
+  return withStageBudget(
+    runWithDbDeadline({ budgetMs, label: timeoutLabel }, fn),
+    timeoutMs,
+    timeoutLabel,
+  );
+}
+
 async function withStageBudget(promise, timeoutMs, timeoutLabel) {
   const budgetMs = Math.max(1, Number(timeoutMs || 0) || 0);
   if (!budgetMs) return promise;
@@ -16877,7 +16935,11 @@ async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1
       await client.query(`SET statement_timeout = ${boundedTimeoutMs}`);
       return await client.query(sql, params);
     } finally {
-      await client.query('SET statement_timeout = 0').catch(() => {});
+      // RESET, never `= 0`: this is a POOLED connection. `0` means "no limit",
+      // so it stripped the pool's connection-level statement_timeout backstop
+      // (src/db) from the socket and handed it to the next caller unbounded.
+      // RESET restores the value the connection was opened with.
+      await client.query('RESET statement_timeout').catch(() => {});
     }
   });
 }
@@ -28531,8 +28593,8 @@ async function enrichSimilarProductsForPdpCards({
   let officialSeedCardSourcesById = new Map();
   if (officialSeedHydrationProductIds.length > 0) {
     metadata.card_enrichment_official_seed_attempted_count = officialSeedHydrationCandidates.length;
-    officialSeedCardSourcesById = await withStageBudget(
-      fetchExternalSeedSimilarCardSourcesFromDb(officialSeedHydrationProductIds),
+    officialSeedCardSourcesById = await withStageBudgetDb(
+      () => fetchExternalSeedSimilarCardSourcesFromDb(officialSeedHydrationProductIds),
       normalizedOfficialSeedBudgetMs,
       'pdp_similar_card_official_seed_sources',
     ).catch((err) => {
@@ -43663,10 +43725,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             });
         } catch (err) {
           noteSwallowedPdpFailure('get_pdp_v2');
-          if (
-            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
-            err?.code !== 'STAGE_TIMEOUT'
-          ) {
+          if (!isCatalogSignatureResolveRetryableError(err)) {
             throw err;
           }
           // Bounded failure, NOT "no such product". Answer 503 so the PDP
@@ -43682,6 +43741,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               merchant_id: requestedMerchantId || null,
               wants_offers: wantsOffers,
               budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+              // CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE = the database could not
+              // answer (full pool, statement timeout), not a budget miss. The
+              // response keeps one retryable reasonCode for both.
+              err_code: err?.code || null,
               phase_timings: pdpV2PhaseTimings,
             },
             'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
@@ -44107,8 +44170,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            : null;
 	        try {
 	          if (!externalSeedRouteStatus) {
-	            externalSeedRouteStatus = await withStageBudget(
-	              fetchExternalSeedRouteStatusFromDb({
+	            externalSeedRouteStatus = await withStageBudgetDb(
+	              () => fetchExternalSeedRouteStatusFromDb({
 	                productId: entryProductId,
 	              }),
 	              PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
@@ -45886,8 +45949,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         canonicalProductRef, offersGateBuyerMarket(payload, metadata) || primaryMarket(), pdpServingCurrency,
       )) {
         try {
-          canonicalOwnMoney = await withStageBudget(
-            readCanonicalOwnMoney({ ref: canonicalProductRef, query }),
+          canonicalOwnMoney = await withStageBudgetDb(
+            () => readCanonicalOwnMoney({ ref: canonicalProductRef, query }),
             PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS,
             'pdp_current_own_money',
           );
@@ -46589,8 +46652,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (offersData && canonicalOwnMoney && options.allow_read_only === true) {
           let verifiedByListing = new Map();
           try {
-            verifiedByListing = await withStageBudget(
-              readCanonicalSellerOffersMoney({
+            verifiedByListing = await withStageBudgetDb(
+              () => readCanonicalSellerOffersMoney({
                 listings: (offersData.offers || []).filter((offer) => !(
                   offer?.merchant_id === canonicalProductRef.merchant_id && offer?.product_id === canonicalProductRef.product_id)),
                 query,
@@ -47857,10 +47920,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             bypassCache,
           });
         } catch (err) {
-          if (
-            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
-            err?.code !== 'STAGE_TIMEOUT'
-          ) {
+          if (!isCatalogSignatureResolveRetryableError(err)) {
             throw err;
           }
           // Mirror get_pdp_v2's sig-lane semantics: a bounded resolver failure
@@ -48538,8 +48598,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // in the handler with no withStageBudget wrapper. STAGE_TIMEOUT flows
         // into the .catch below and surfaces as canonical_error in telemetry;
         // the lane then serves seed-only results instead of hanging.
-        const canonicalIngredientRowsPromise = withStageBudget(
-          fetchCanonicalChainRows({
+        const canonicalIngredientRowsPromise = withStageBudgetDb(
+          () => fetchCanonicalChainRows({
           query: rawUserQuery || queryText,
           categoryPathPrefix: canonicalIngredientCategoryPathPrefix,
           // Always true for the ingredient_recall_direct path: by definition
@@ -53225,6 +53285,7 @@ module.exports._debug = {
   RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
   RESOLVE_CATALOG_SIGNATURE_CACHE,
   RESOLVE_CATALOG_SIGNATURE_COOLDOWN,
+  filterPublicReadChainResolvableRows,
   buildCatalogSignatureGroupMemberFromIdentityRow,
   buildGroupMemberCatalogOfferLateralJoinSql,
   filterGroupMembersByCatalogSourceQuarantine,

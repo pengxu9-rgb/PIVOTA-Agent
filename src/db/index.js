@@ -1,3 +1,4 @@
+const { AsyncLocalStorage } = require('async_hooks');
 const logger = require('../logger');
 
 let pool = null;
@@ -60,6 +61,28 @@ function isTransientDbError(err) {
   );
 }
 
+// pg-pool's and pg's own timeouts carry no SQLSTATE, only these messages.
+const DB_UNAVAILABLE_MESSAGES = [
+  /^timeout exceeded when trying to connect$/i,
+  /^Connection terminated due to connection timeout$/i,
+  /^Query read timeout$/i,
+];
+
+// "The database could not answer in time / at all", as opposed to "the database
+// answered and the answer is no". A caller that turns a failed lookup into a
+// negative answer (null -> not found, row dropped) must not do it for these:
+// a pool that is momentarily full says nothing about whether a row exists.
+function isDbUnavailableError(err) {
+  if (!err) return false;
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (code === DB_BUDGET_ACQUIRE_TIMEOUT || code === DB_BUDGET_QUERY_TIMEOUT) return true;
+  // query_canceled (statement_timeout), too_many_connections, cannot_connect_now.
+  if (code === '57014' || code === '53300' || code === '57P03') return true;
+  if (isTransientDbError(err)) return true;
+  const message = String(err?.message || '').trim();
+  return DB_UNAVAILABLE_MESSAGES.some((pattern) => pattern.test(message));
+}
+
 function buildNoDatabaseError() {
   const err = new Error('DATABASE_URL not configured or pg driver unavailable');
   err.code = 'NO_DATABASE';
@@ -120,6 +143,28 @@ function shouldUseSsl(databaseUrl) {
   );
 }
 
+// Server-side reaping of statements whose client has gone away.
+//
+// When a budgeted caller gives up, queryWithBudget DESTROYS the connection so
+// the pool slot comes back at once. That frees the client, not the server: a
+// backend busy executing does not read its socket, so the statement keeps
+// burning primary CPU until it finishes or `statement_timeout` (30s) fires --
+// orphaned work behind a caller whose budget was a few seconds.
+// `client_connection_check_interval` (PostgreSQL 14+, user-settable) makes the
+// backend poll its socket while it executes and cancel the statement once the
+// client has hung up. Sent in the startup packet like statement_timeout, so it
+// costs zero round-trips. Unset/0 keeps today's behaviour. A DATABASE_URL that
+// carries its own `options=` wins over this (pg merges the URL last).
+function getClientConnectionCheckIntervalMs() {
+  return parseIntegerEnv(process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS, 0, { min: 0, max: 60_000 });
+}
+
+function buildConnectionStartupOptions() {
+  const intervalMs = getClientConnectionCheckIntervalMs();
+  if (!(intervalMs > 0)) return {};
+  return { options: `-c client_connection_check_interval=${intervalMs}` };
+}
+
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) return null;
@@ -163,6 +208,9 @@ function getPool() {
       // itself is wedged.
       statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS || 30000),
       query_timeout: Number(process.env.DB_QUERY_TIMEOUT_MS || 35000),
+      // Off unless DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS is set; see
+      // buildConnectionStartupOptions.
+      ...buildConnectionStartupOptions(),
       ssl:
         useSsl
           ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
@@ -197,7 +245,7 @@ function getPool() {
   return pool;
 }
 
-async function query(text, params) {
+async function queryPooled(text, params) {
   const maxRetries = getDbQueryRetries();
   const backoffMs = getDbRetryBackoffMs();
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
@@ -223,6 +271,81 @@ async function query(text, params) {
     }
   }
   throw new Error('unreachable');
+}
+
+// ---------------------------------------------------------------------------
+// Lane deadlines: bound every plain `query()` issued inside a caller's budget.
+//
+// The interactive lanes (signature resolve, PDP prechecks, recall) wrap their
+// work in a wall-clock stage budget, but the statements underneath go through
+// plain `query()` = `pool.query`, which has no idea a budget exists. When the
+// budget fires the caller moves on and the statement does not: it keeps its
+// pooled connection until it ends or the 30s pool-level statement_timeout
+// fires. With a handful of connections per instance, a few of those pin the
+// whole pool, and every later checkout on the instance -- including lanes that
+// were fast -- queues until pg-pool's connect timeout. That is the shape of the
+// "timeout exceeded when trying to connect" bursts that follow
+// first-paint-budget misses on an otherwise idle database.
+//
+// runWithDbDeadline(options, fn) runs fn inside an AsyncLocalStorage context
+// that carries an absolute deadline. While it is active, `query()` routes
+// through queryWithBudget with whatever budget remains, so a checkout never
+// waits past the caller, a late checkout is handed straight back, and a
+// statement still running at the deadline has its connection destroyed (and,
+// with DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS, cancelled server-side). Nested
+// deadlines take the earlier of the two. Zero extra round-trips: the routed
+// path is the same checkout + query + release that pool.query does.
+//
+// The deadline sits a small grace (DB_LANE_DEADLINE_GRACE_MS) AFTER the stage
+// budget, so the caller's own STAGE_TIMEOUT still wins the race and the error a
+// caller sees is unchanged; the deadline only stops the work it left behind.
+//
+// Off unless DB_LANE_DEADLINES_ENABLED is set: with it off, runWithDbDeadline
+// is a plain call and query() behaves exactly as before.
+// ---------------------------------------------------------------------------
+const DB_DEADLINE_CONTEXT = new AsyncLocalStorage();
+
+function isDbLaneDeadlinesEnabled() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.DB_LANE_DEADLINES_ENABLED || '').trim());
+}
+
+function getDbLaneDeadlineGraceMs() {
+  return parseIntegerEnv(process.env.DB_LANE_DEADLINE_GRACE_MS, 100, { min: 0, max: 5_000 });
+}
+
+function runWithDbDeadline(options, fn) {
+  const budgetMs = Number(options?.budgetMs);
+  if (!isDbLaneDeadlinesEnabled() || !Number.isFinite(budgetMs) || budgetMs <= 0) return fn();
+  let deadlineAtMs = Date.now() + Math.trunc(budgetMs) + getDbLaneDeadlineGraceMs();
+  const outer = DB_DEADLINE_CONTEXT.getStore();
+  if (outer && Number.isFinite(outer.deadlineAtMs)) {
+    deadlineAtMs = Math.min(deadlineAtMs, outer.deadlineAtMs);
+  }
+  const label = String(options?.label || outer?.label || '').trim() || null;
+  return DB_DEADLINE_CONTEXT.run({ deadlineAtMs, label }, fn);
+}
+
+// Remaining ms of the active lane deadline, or null when no deadline applies.
+function remainingDbDeadlineMs() {
+  const store = DB_DEADLINE_CONTEXT.getStore();
+  if (!store || !Number.isFinite(store.deadlineAtMs)) return null;
+  return store.deadlineAtMs - Date.now();
+}
+
+function buildDeadlineExpiredError() {
+  const store = DB_DEADLINE_CONTEXT.getStore();
+  // Same code as a budgeted checkout that ran out of time: the caller's budget
+  // was spent before this statement could even be queued. Nothing touched the
+  // pool, which is the point -- an abandoned caller must not take a slot.
+  const err = buildBudgetTimeoutError(DB_BUDGET_ACQUIRE_TIMEOUT, { budgetMs: 0, waitedMs: 0 });
+  err.lane = store?.label || null;
+  return err;
+}
+
+async function query(text, params) {
+  if (remainingDbDeadlineMs() === null) return queryPooled(text, params);
+  // queryWithBudget takes its budget from the active lane deadline.
+  return queryWithBudget(text, params, {});
 }
 
 function normalizeLocalTimeoutMs(value) {
@@ -332,8 +455,14 @@ function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt, diag
 // The distinct error codes matter as much as the fix; `pool starvation` and
 // `slow query` need different remedies and used to look identical from outside.
 async function queryWithBudget(text, params, options = {}) {
-  const budgetMs = normalizeLocalTimeoutMs(options.timeoutMs);
-  if (!budgetMs) return query(text, params);
+  let budgetMs = normalizeLocalTimeoutMs(options.timeoutMs);
+  // An explicit budget inside a lane deadline gets the earlier of the two.
+  const laneRemainingMs = remainingDbDeadlineMs();
+  if (laneRemainingMs !== null) {
+    if (laneRemainingMs < 1) throw buildDeadlineExpiredError();
+    budgetMs = Math.min(budgetMs || Infinity, normalizeLocalTimeoutMs(laneRemainingMs));
+  }
+  if (!budgetMs) return queryPooled(text, params);
 
   const p = getPool();
   if (!p) throw buildNoDatabaseError();
@@ -657,7 +786,10 @@ module.exports = {
   DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,
+  isDbUnavailableError,
   isTransientDbError,
+  remainingDbDeadlineMs,
+  runWithDbDeadline,
   query: recordingFailures('db_query', query),
   queryWithBudget: recordingFailures('db_query_with_budget', queryWithBudget),
   queryWithStatementTimeout: recordingFailures('db_query_with_statement_timeout', queryWithStatementTimeout),

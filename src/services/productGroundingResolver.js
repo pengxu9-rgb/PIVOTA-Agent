@@ -938,7 +938,9 @@ async function fetchCandidatesViaProductsCache({
       try {
         return await client.query(sql, params);
       } finally {
-        await client.query('SET statement_timeout = 0');
+        // RESET, not `= 0` (no limit): the connection goes back to the shared
+        // pool and must keep the pool's statement_timeout backstop.
+        await client.query('RESET statement_timeout');
       }
     });
 
@@ -1178,7 +1180,8 @@ async function fetchCandidatesViaExternalSeedRecall({
         }
         return { rows };
       } finally {
-        await client.query('SET statement_timeout = 0');
+        // RESET, not `= 0`: see the note on the first lookup above.
+        await client.query('RESET statement_timeout');
       }
     });
     const rows = Array.isArray(res?.rows) ? res.rows : [];

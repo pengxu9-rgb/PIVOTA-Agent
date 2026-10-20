@@ -1,0 +1,261 @@
+'use strict';
+
+// Lane deadlines (src/db runWithDbDeadline): a plain query() issued inside a
+// caller's budget must not outlive the caller. A first-paint stage that gave up
+// at its budget used to leave its statement running on a pooled connection
+// until the 30s pool-level statement_timeout, and a few of those pinned a whole
+// instance's pool.
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function buildPoolWith(connectImpl) {
+  return {
+    connect: jest.fn(connectImpl),
+    query: jest.fn(async () => ({ rows: [{ from: 'pool.query' }] })),
+    end: jest.fn(async () => {}),
+    on: jest.fn(),
+    totalCount: 1,
+    idleCount: 0,
+    waitingCount: 0,
+  };
+}
+
+const ENV_KEYS = [
+  'DATABASE_URL',
+  'DB_LANE_DEADLINES_ENABLED',
+  'DB_LANE_DEADLINE_GRACE_MS',
+  'DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS',
+];
+
+describe('lane deadlines on plain query()', () => {
+  let previousEnv;
+  let PoolCtor;
+
+  function loadDb(pool) {
+    PoolCtor = jest.fn(() => pool);
+    jest.doMock('pg', () => ({ Pool: PoolCtor }));
+    jest.doMock('../src/logger', () => ({ warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() }));
+    // eslint-disable-next-line global-require
+    return require('../src/db');
+  }
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+    previousEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+    process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota';
+    process.env.DB_LANE_DEADLINES_ENABLED = 'true';
+    process.env.DB_LANE_DEADLINE_GRACE_MS = '0';
+    delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS;
+  });
+
+  afterEach(() => {
+    jest.dontMock('pg');
+    jest.dontMock('../src/logger');
+    jest.resetModules();
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  test('a statement still running at the deadline has its connection destroyed, not returned', async () => {
+    const running = deferred();
+    const client = { query: jest.fn(() => running.promise), release: jest.fn() };
+    const pool = buildPoolWith(async () => client);
+    const db = loadDb(pool);
+
+    await expect(
+      db.runWithDbDeadline({ budgetMs: 30, label: 'test_lane' }, () => db.query('SELECT slow()', [])),
+    ).rejects.toMatchObject({ code: db.DB_BUDGET_QUERY_TIMEOUT });
+
+    // Routed through the budgeted checkout, never the unbounded pool.query.
+    expect(pool.query).not.toHaveBeenCalled();
+    expect(client.query).toHaveBeenCalledWith('SELECT slow()', []);
+    expect(client.release).toHaveBeenCalledTimes(1);
+    expect(client.release).toHaveBeenCalledWith(true);
+
+    running.reject(Object.assign(new Error('Connection terminated'), { code: 'ECONNRESET' }));
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  test('a query inside the deadline answers normally and returns its connection', async () => {
+    const client = { query: jest.fn(async () => ({ rows: [{ ok: 1 }] })), release: jest.fn() };
+    const pool = buildPoolWith(async () => client);
+    const db = loadDb(pool);
+
+    await expect(
+      db.runWithDbDeadline({ budgetMs: 5000 }, () => db.query('SELECT 1', [])),
+    ).resolves.toEqual({ rows: [{ ok: 1 }] });
+    expect(client.release).toHaveBeenCalledWith();
+  });
+
+  test('a spent deadline fails before touching the pool', async () => {
+    const pool = buildPoolWith(async () => {
+      throw new Error('connect() must not be reached once the deadline is spent');
+    });
+    const db = loadDb(pool);
+
+    const err = await db
+      .runWithDbDeadline({ budgetMs: 5, label: 'spent_lane' }, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return db.query('SELECT 1', []);
+      })
+      .catch((e) => e);
+
+    expect(err).toMatchObject({ code: db.DB_BUDGET_ACQUIRE_TIMEOUT, lane: 'spent_lane' });
+    expect(pool.connect).not.toHaveBeenCalled();
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  test('a nested deadline can shorten the outer one but never extend it', async () => {
+    const db = loadDb(buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() })));
+
+    const seen = await db.runWithDbDeadline({ budgetMs: 200 }, () =>
+      db.runWithDbDeadline({ budgetMs: 60_000 }, () => db.remainingDbDeadlineMs()),
+    );
+    expect(seen).toBeLessThanOrEqual(200);
+
+    const shorter = await db.runWithDbDeadline({ budgetMs: 60_000 }, () =>
+      db.runWithDbDeadline({ budgetMs: 100 }, () => db.remainingDbDeadlineMs()),
+    );
+    expect(shorter).toBeLessThanOrEqual(100);
+  });
+
+  test('an explicit queryWithBudget inside a lane gets the earlier of the two budgets', async () => {
+    const running = deferred();
+    const client = { query: jest.fn(() => running.promise), release: jest.fn() };
+    const db = loadDb(buildPoolWith(async () => client));
+
+    const startedAt = Date.now();
+    await expect(
+      db.runWithDbDeadline({ budgetMs: 30 }, () =>
+        db.queryWithBudget('SELECT slow()', [], { timeoutMs: 10_000 }),
+      ),
+    ).rejects.toMatchObject({ code: db.DB_BUDGET_QUERY_TIMEOUT });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+
+    running.reject(new Error('Connection terminated'));
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  test('the deadline does not leak to queries issued outside the run', async () => {
+    const pool = buildPoolWith(async () => {
+      throw new Error('connect() is only for the budgeted path');
+    });
+    const db = loadDb(pool);
+
+    await db.runWithDbDeadline({ budgetMs: 5_000 }, async () => {});
+    await expect(db.query('SELECT 1', [])).resolves.toEqual({ rows: [{ from: 'pool.query' }] });
+    expect(db.remainingDbDeadlineMs()).toBeNull();
+  });
+
+  test('flag off: runWithDbDeadline is a plain call and query() stays on pool.query', async () => {
+    process.env.DB_LANE_DEADLINES_ENABLED = '';
+    const pool = buildPoolWith(async () => {
+      throw new Error('connect() must not be used with the flag off');
+    });
+    const db = loadDb(pool);
+
+    await expect(
+      db.runWithDbDeadline({ budgetMs: 1 }, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(db.remainingDbDeadlineMs()).toBeNull();
+        return db.query('SELECT 1', []);
+      }),
+    ).resolves.toEqual({ rows: [{ from: 'pool.query' }] });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test('the grace keeps the DB deadline behind the caller budget', async () => {
+    process.env.DB_LANE_DEADLINE_GRACE_MS = '400';
+    const db = loadDb(buildPoolWith(async () => ({ query: jest.fn(), release: jest.fn() })));
+    const remaining = await db.runWithDbDeadline({ budgetMs: 100 }, () => db.remainingDbDeadlineMs());
+    expect(remaining).toBeGreaterThan(100);
+    expect(remaining).toBeLessThanOrEqual(500);
+  });
+});
+
+describe('client_connection_check_interval startup option', () => {
+  let previous;
+
+  beforeEach(() => {
+    jest.resetModules();
+    previous = {
+      DATABASE_URL: process.env.DATABASE_URL,
+      DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS: process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS,
+    };
+    process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota';
+  });
+
+  afterEach(() => {
+    jest.dontMock('pg');
+    jest.resetModules();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  function poolConfigFor(intervalEnv) {
+    if (intervalEnv === undefined) delete process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS;
+    else process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS = intervalEnv;
+    const Pool = jest.fn(() => ({ query: jest.fn(), on: jest.fn(), end: jest.fn() }));
+    jest.doMock('pg', () => ({ Pool }));
+    // eslint-disable-next-line global-require
+    require('../src/db').getPool();
+    return Pool.mock.calls[0][0];
+  }
+
+  test('unset keeps today\'s startup packet (no options sent)', () => {
+    const config = poolConfigFor(undefined);
+    expect(config).not.toHaveProperty('options');
+    expect(config.statement_timeout).toBe(30000);
+  });
+
+  test('set sends the interval in the startup packet', () => {
+    expect(poolConfigFor('1000').options).toBe('-c client_connection_check_interval=1000');
+  });
+
+  test('garbage or zero is off', () => {
+    expect(poolConfigFor('0')).not.toHaveProperty('options');
+    jest.resetModules();
+    expect(poolConfigFor('soon')).not.toHaveProperty('options');
+  });
+});
+
+describe('isDbUnavailableError', () => {
+  // eslint-disable-next-line global-require
+  const { isDbUnavailableError, DB_BUDGET_ACQUIRE_TIMEOUT, DB_BUDGET_QUERY_TIMEOUT } = require('../src/db');
+
+  test.each([
+    ['pg-pool checkout timeout', new Error('timeout exceeded when trying to connect')],
+    ['pg connect timeout', new Error('Connection terminated due to connection timeout')],
+    ['pg client query_timeout', new Error('Query read timeout')],
+    ['statement_timeout', Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' })],
+    ['too many connections', Object.assign(new Error('sorry, too many clients already'), { code: '53300' })],
+    ['budgeted checkout', Object.assign(new Error('x'), { code: DB_BUDGET_ACQUIRE_TIMEOUT })],
+    ['budgeted statement', Object.assign(new Error('x'), { code: DB_BUDGET_QUERY_TIMEOUT })],
+    ['reset socket', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+    ['admin shutdown', Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' })],
+  ])('%s means the database could not answer', (_label, err) => {
+    expect(isDbUnavailableError(err)).toBe(true);
+  });
+
+  test.each([
+    ['missing relation', Object.assign(new Error('relation "x" does not exist'), { code: '42P01' })],
+    ['syntax error', Object.assign(new Error('syntax error at or near "SELEC"'), { code: '42601' })],
+    ['a defect that merely mentions timeout', new Error('timeout is not defined')],
+    ['nothing', null],
+  ])('%s is an answer (or a defect), not unavailability', (_label, err) => {
+    expect(isDbUnavailableError(err)).toBe(false);
+  });
+});

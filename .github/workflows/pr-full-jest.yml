@@ -212,6 +212,10 @@ jobs:
         env:
           CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
         run: npx jest --watchman=false --runInBand tests/scripts/relationship_graph_evidence_postgres.test.js tests/integration/relationship_graph_target_recall_postgres.test.js tests/integration/relationship_graph_freshness_postgres.test.js
+      - name: Check pool statement guards against a real server
+        env:
+          CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
+        run: npx jest --watchman=false --runInBand tests/integration/db_pool_statement_guards_postgres.test.js
       - name: Execute canonical primary SQL through HTTP without rescue
         env:
           CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
