@@ -68,6 +68,13 @@ suite('MCP caller limit counters on PostgreSQL', () => {
       [schema],
     );
     expect(rows[0].relpersistence).toBe('u');
+    // The salt table is deliberately a REGULAR one: a crash must not re-key every anonymous bucket mid-day.
+    const salts = await pool.query(
+      `SELECT c.relpersistence FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = $1 AND c.relname = 'gateway_caller_limit_salts'`,
+      [schema],
+    );
+    expect(salts.rows[0].relpersistence).toBe('p');
   });
 
   test('sync returns other instances\' totals only, never lowers a count, and filters stale gauges', async () => {
@@ -168,6 +175,27 @@ suite('MCP caller limit counters on PostgreSQL', () => {
     // The same pool keeps working.
     const after = await store.sync({ ...args, instanceId: 'other', rows: [{ key: 'locked', windowMs: win, requests: 0, inflight: 0 }], timeoutMs: 1000 });
     expect(after.find((r) => r.windowMs === win).requests).toBe(1);
+  });
+
+  test('the daily salt: four instances racing to create it all get the SAME salt, and old days are deleted', async () => {
+    await pool.query('TRUNCATE gateway_caller_limit_salts');
+    const runners = Array.from({ length: 4 }, () => new Pool({ connectionString: url, max: 2, options: `-c search_path=${schema}` }));
+    try {
+      const stores = runners.map((p) => createPostgresCallerLimitStore({ db: { getPool: () => p }, acquireTimeoutMs: 2000 }));
+      const day = '2026-01-15';
+      await pool.query("INSERT INTO gateway_caller_limit_salts (day, salt) VALUES ('2026-01-12', $1), ('2026-01-13', $1)", [crypto.randomBytes(32)]);
+      const got = await Promise.all(
+        stores.map((store) => store.getOrCreateSalt({ day, candidate: crypto.randomBytes(32), deleteBefore: '2026-01-13', timeoutMs: 2000 })),
+      );
+      expect(got.every((salt) => Buffer.isBuffer(salt) && salt.length === 32)).toBe(true);
+      expect(new Set(got.map((salt) => salt.toString('hex'))).size).toBe(1);
+      const { rows } = await pool.query('SELECT day::text AS day FROM gateway_caller_limit_salts ORDER BY day');
+      expect(rows.map((r) => r.day)).toEqual(['2026-01-13', '2026-01-15']);
+      // A wrong-sized salt is refused by the table itself.
+      await expect(pool.query("INSERT INTO gateway_caller_limit_salts (day, salt) VALUES ('2026-01-20', '\\x00')")).rejects.toThrow();
+    } finally {
+      await Promise.all(runners.map((p) => p.end()));
+    }
   });
 
   test('the statement text names only the migrated table', () => {

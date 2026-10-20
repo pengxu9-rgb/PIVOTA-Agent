@@ -254,7 +254,10 @@ test('observe admits everything and logs a WARN would_reject; enforce refuses an
     assert.equal(obj.reason, 'rate');
     assert.equal(obj.door, 'public_mcp');
     assert.equal(obj.tier, 'anonymous');
-    assert.equal(obj.caller_key, a.key);
+    assert.equal(obj.caller_key, undefined, 'an anonymous counter key is never logged');
+    assert.equal(obj.caller_tag, a.log_tag);
+    assert.notEqual(obj.caller_tag, a.key.split(':')[1], 'the log tag is not the counter key');
+    assert.equal(obj.limit_split, false, 'limit_split is always present, so observe can count it by tier');
     assert.equal(obj.limit, 1);
     assert.ok(!JSON.stringify(obj).includes('203.0.113.1'), 'no client address in the log line');
   }
@@ -594,27 +597,38 @@ test('burst split does not apply without a shared store (per-instance mode is an
   assert.equal(n, 8);
 });
 
-test('reaper: a slot whose release never ran is freed after the max age, with a WARN; a late release is a no-op', () => {
+test('max age: a slot past it is flagged and logged ONCE as a zombie but stays counted until its finally runs (1 s age, 3 s work)', () => {
   const c = clock();
   const log = capturingLog();
-  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_CONCURRENCY: '1', MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS: '10000' });
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_CONCURRENCY: '1', MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS: '1000' });
   const lim = createCallerLimiter({ env, now: c.now, log });
   const a = caller(anonReq('203.0.113.1'), env);
-  const leaked = lim.admit(a);
-  assert.equal(lim.admit(a).allowed, false);
-  c.advance(9000);
-  assert.equal(lim.admit(a).allowed, false, 'not yet expired');
-  c.advance(2000);
-  const after = lim.admit(a);
-  assert.equal(after.allowed, true, 'reaped, so the caller is admitted again');
-  const reaped = log.lines.filter((l) => l.obj.event === 'mcp_caller_limit_reaped');
-  assert.equal(reaped.length, 1);
-  assert.equal(reaped[0].msg, 'mcp caller limit in-flight slot reaped');
-  assert.ok(reaped[0].obj.age_ms > 10000);
-  assert.equal(reaped[0].obj.caller_key, a.key);
-  leaked.release(); // the late release must not free the NEW holder's slot
-  assert.equal(lim.admit(a).allowed, false);
-  assert.equal(lim.inspect(a.key).local.inflight, 1);
+  const slow = lim.admit(a); // 3 s of work starts
+  let concurrent = 1;
+  let peak = 1;
+  for (let ms = 250; ms <= 3000; ms += 250) {
+    c.advance(250);
+    const r = lim.admit(a);
+    if (r.allowed) {
+      concurrent += 1;
+      peak = Math.max(peak, concurrent);
+      r.release();
+      concurrent -= 1;
+    }
+  }
+  assert.equal(peak, 1, 'flagging a slot never lets a second request run beside the 3 s one');
+  const flagged = log.lines.filter((l) => l.obj.event === 'mcp_caller_limit_reaped');
+  assert.equal(flagged.length, 1, 'flagged once, not on every check');
+  assert.equal(flagged[0].obj.zombie, true);
+  assert.ok(flagged[0].obj.age_ms > 1000);
+  assert.equal(lim.inspect(a.key).zombies, 1);
+  slow.release(); // the work's finally
+  assert.equal(lim.inspect(a.key).zombies, 0);
+  assert.equal(lim.admit(a).allowed, true, 'released by its own finally, the slot is free');
+});
+
+test('max age defaults to twice the request timeout (300 s), so no legitimate request is ever flagged', () => {
+  assert.equal(readCallerLimitsConfig({}).inflightMaxAgeMs, 600_000);
 });
 
 test('sync backoff: 2 s, 4, 8, 16, 32, then capped at 60 s; a success resets it', async () => {
@@ -789,4 +803,198 @@ test('boot status names whether loopback tool calls can carry the caller', () =>
   assert.deepEqual(lines.map((l) => l[0]), ['info', 'warn']);
   const off = logMcpCallerLimitsBootStatus({ selfInvokeBase: 'http://127.0.0.1:8080', log, env: {} });
   assert.equal(off.loopback_assertion_active, false);
+});
+
+// ---------------- review round 3: the daily salt ----------------
+
+const crypto = require('crypto');
+const { createSaltProvider, utcDay, admitMcpCallerLimit, resetProcessCallerLimiterForTest } = require('../src/guardrails/mcpCallerLimits');
+
+function unsaltedKey(id) {
+  return crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
+}
+
+test('salted keys: neither the counter key nor the log tag is recoverable by hashing candidate addresses', async () => {
+  const c = clock();
+  const store = createMemoryCallerLimitStore({ now: c.now });
+  const salts = createSaltProvider({ store, now: c.now });
+  await salts.ready();
+  const env = baseEnv({ MCP_CALLER_LIMITS_MODE: 'observe', MCP_CALLER_LIMITS_ANON_RPM: '1' });
+  const target = caller(anonReq('203.0.113.77'), env);
+  const salted = resolveDoorCaller(anonReq('203.0.113.77'), { config: readCallerLimitsConfig(env), salts });
+  // Brute force the logged /24 the way an attacker would: the unsalted key of every address in it.
+  const candidates = new Set();
+  for (let i = 0; i < 256; i += 1) {
+    const id = `ip:203.0.113.${i}`;
+    candidates.add(unsaltedKey(id));
+    candidates.add(unsaltedKey(`anonymous:${id}`));
+  }
+  const keyHex = salted.key.split(':')[1];
+  assert.ok(!candidates.has(keyHex), 'the counter key is not an unsalted hash of any address');
+  assert.ok(!candidates.has(salted.log_tag), 'nor is the log tag');
+  assert.notEqual(keyHex, salted.log_tag, 'the log tag is not the counter key');
+  assert.equal(salted.salt_source, 'shared');
+  // And neither the log line nor the shared counters carry an unsalted hash.
+  const log = capturingLog();
+  const lim = createCallerLimiter({ env, now: c.now, store, autoSync: false, log });
+  lim.admit(salted, { door: 'public_mcp' });
+  lim.admit(salted, { door: 'public_mcp' });
+  await lim.syncNow();
+  const everything = JSON.stringify(log.lines) + JSON.stringify([...store.rows.values()]);
+  assert.ok(!everything.includes(unsaltedKey('ip:203.0.113.77')));
+  assert.ok(!everything.includes('203.0.113.77'));
+  assert.ok(JSON.stringify([...store.rows.values()]).includes(keyHex), 'the counters carry the salted key');
+  assert.ok(!JSON.stringify(log.lines).includes(keyHex), 'the log never carries the counter key');
+  assert.ok(target.key !== salted.key || target.salt_source === 'shared');
+});
+
+test('salted keys: two instances converge on the same daily salt, so their counters line up', async () => {
+  const c = clock();
+  const store = createMemoryCallerLimitStore({ now: c.now });
+  const s1 = createSaltProvider({ store, now: c.now });
+  const s2 = createSaltProvider({ store, now: c.now });
+  // Before either has fetched, each is on its own per-process salt: different keys, never unsalted.
+  const env = baseEnv();
+  const cfg = readCallerLimitsConfig(env);
+  const before1 = resolveDoorCaller(anonReq('203.0.113.5'), { config: cfg, salts: s1 });
+  assert.equal(before1.salt_source, 'local');
+  assert.notEqual(before1.key.split(':')[1], unsaltedKey('ip:203.0.113.5'));
+  assert.equal(await s1.ready(), true);
+  assert.equal(await s2.ready(), true);
+  const k1 = resolveDoorCaller(anonReq('203.0.113.5'), { config: cfg, salts: s1 });
+  const k2 = resolveDoorCaller(anonReq('203.0.113.5'), { config: cfg, salts: s2 });
+  assert.equal(k1.key, k2.key);
+  assert.equal(k1.log_tag, k2.log_tag);
+  assert.equal(store.salts.size, 1);
+});
+
+test('salted keys: the salt rotates at the UTC day boundary and days older than two are deleted', async () => {
+  const c = clock(Date.UTC(2026, 0, 10, 23, 59, 59));
+  const store = createMemoryCallerLimitStore({ now: c.now });
+  const salts = createSaltProvider({ store, now: c.now });
+  const cfg = readCallerLimitsConfig(baseEnv());
+  await salts.ready();
+  const day1 = resolveDoorCaller(anonReq('203.0.113.5'), { config: cfg, salts });
+  c.advance(2000); // past midnight
+  await salts.ready();
+  const day2 = resolveDoorCaller(anonReq('203.0.113.5'), { config: cfg, salts });
+  assert.notEqual(day2.key, day1.key, 'a new day, a new salt, a new key (anonymous buckets reset)');
+  assert.equal(day2.salt_source, 'shared');
+  assert.deepEqual([...store.salts.keys()].sort(), ['2026-01-10', '2026-01-11']);
+  c.advance(2 * 24 * 3600 * 1000);
+  await salts.ready();
+  assert.deepEqual([...store.salts.keys()].sort(), ['2026-01-11', '2026-01-13'], 'days more than two back are deleted');
+  assert.equal(utcDay(Date.UTC(2026, 0, 13, 0, 0, 0)), '2026-01-13');
+});
+
+test('salted keys: with the database down the salt is a per-process random one (never unsalted) and is retried', async () => {
+  const c = clock();
+  let calls = 0;
+  const down = { kind: 'postgres', async getOrCreateSalt() { calls += 1; throw Object.assign(new Error('down'), { code: 'ECONNREFUSED' }); } };
+  const log = capturingLog();
+  const salts = createSaltProvider({ store: down, now: c.now, log, retryMs: 30_000 });
+  const cfg = readCallerLimitsConfig(baseEnv());
+  assert.equal(await salts.ready(), false);
+  const who = resolveDoorCaller(anonReq('203.0.113.5'), { config: cfg, salts });
+  assert.equal(who.salt_source, 'local');
+  assert.notEqual(who.key.split(':')[1], unsaltedKey('ip:203.0.113.5'));
+  assert.equal(resolveDoorCaller(anonReq('203.0.113.5'), { config: cfg, salts }).key, who.key, 'stable within the process and day');
+  assert.equal(calls, 1);
+  c.advance(10_000);
+  salts.current();
+  assert.equal(calls, 1, 'not retried before retryMs');
+  c.advance(25_000);
+  await salts.ready();
+  assert.equal(calls, 2);
+  const line = log.lines.find((l) => l.obj.event === 'mcp_caller_limit_salt');
+  assert.ok(line);
+  assert.deepEqual(Object.keys(line.obj).sort(), ['err', 'event', 'retry_in_ms']);
+});
+
+test('slow success: a sync that takes more than half its budget is used, but backs off like a failure', async () => {
+  const c = clock(T0 + 1000);
+  const shared = createMemoryCallerLimitStore({ now: c.now });
+  let slowMs = 1000;
+  const store = { kind: 'memory', async sync(args) { c.advance(slowMs); return shared.sync(args); } };
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_RPM: '100', MCP_CALLER_LIMITS_SYNC_TIMEOUT_MS: '1500', MCP_CALLER_LIMITS_SYNC_MS: '2000' });
+  const lim = createCallerLimiter({ env, now: c.now, store, autoSync: false, log: capturingLog() });
+  lim.admit(caller(anonReq('203.0.113.1'), env)).release();
+  assert.equal(await lim.syncNow(), true, 'the snapshot is still used');
+  assert.equal(lim.inspect('x').sync.failures, 1);
+  assert.equal(lim.inspect('x').sync.nextAt - c.t, 2000);
+  c.t = lim.inspect('x').sync.nextAt;
+  slowMs = 100;
+  assert.equal(await lim.syncNow(), true);
+  assert.deepEqual(lim.inspect('x').sync, { failures: 0, nextAt: 0 });
+});
+
+test('observe never refuses or drops a client that is already gone; enforce does not dispatch for it', () => {
+  const prior = { ...process.env };
+  try {
+    Object.assign(process.env, baseEnv({ MCP_CALLER_LIMITS_STORE: 'local' }));
+    resetProcessCallerLimiterForTest({ env: process.env });
+    const gone = () => ({
+      body: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'x' } },
+      headers: { 'x-forwarded-for': `203.0.113.200, ${LB}` },
+      socket: { destroyed: true, remoteAddress: '169.254.1.1' },
+    });
+    process.env.MCP_CALLER_LIMITS_MODE = 'observe';
+    const observed = admitMcpCallerLimit(gone(), { destroyed: true });
+    assert.equal(observed.gone, undefined);
+    assert.equal(observed.refusal, undefined);
+    assert.equal(typeof observed.release, 'function');
+    process.env.MCP_CALLER_LIMITS_MODE = 'enforce';
+    assert.equal(admitMcpCallerLimit(gone(), { destroyed: true }).gone, true);
+  } finally {
+    resetProcessCallerLimiterForTest();
+    process.env = prior;
+  }
+});
+
+test('the store never waits long for a connection, and gives one straight back if the pool has waiters', async () => {
+  const { createPostgresCallerLimitStore } = require('../src/guardrails/mcpCallerLimits');
+  const released = [];
+  const fakeClient = (name) => ({
+    query: async () => ({ rows: [] }),
+    release: (broken) => released.push([name, Boolean(broken)]),
+  });
+  // 1. connect() is slow: the store gives up at the acquire timeout and returns the late connection.
+  let resolveLate;
+  const slowPool = { waitingCount: 0, connect: () => new Promise((r) => { resolveLate = r; }) };
+  const slowStore = createPostgresCallerLimitStore({ db: { getPool: () => slowPool }, acquireTimeoutMs: 20 });
+  const started = Date.now();
+  await assert.rejects(
+    slowStore.sync({ instanceId: 'i', rows: [], sinceMs: 0, freshSec: 6, timeoutMs: 1500 }),
+    (err) => err.code === 'SYNC_ACQUIRE_TIMEOUT',
+  );
+  assert.ok(Date.now() - started < 500);
+  resolveLate(fakeClient('late'));
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(released, [['late', false]], 'the late connection goes straight back to the pool');
+  // 2. connected, but the pool now has waiters: hand it back without running anything.
+  released.length = 0;
+  const queries = [];
+  const busyPool = {
+    waitingCount: 2,
+    connect: async () => ({ query: async (q) => { queries.push(q); return { rows: [] }; }, release: (b) => released.push(['busy', Boolean(b)]) }),
+  };
+  const busyStore = createPostgresCallerLimitStore({ db: { getPool: () => busyPool }, acquireTimeoutMs: 20 });
+  await assert.rejects(
+    busyStore.sync({ instanceId: 'i', rows: [], sinceMs: 0, freshSec: 6, timeoutMs: 1500 }),
+    (err) => err.code === 'SYNC_POOL_BUSY',
+  );
+  assert.deepEqual(queries, []);
+  assert.deepEqual(released, [['busy', false]]);
+  // 3. the normal path: one transaction, statement_timeout first, released healthy.
+  released.length = 0;
+  queries.length = 0;
+  const okPool = {
+    waitingCount: 0,
+    connect: async () => ({ query: async (q) => { queries.push(String(q).trim().split(/\s+/).slice(0, 3).join(' ')); return { rows: [] }; }, release: (b) => released.push(['ok', Boolean(b)]) }),
+  };
+  const okStore = createPostgresCallerLimitStore({ db: { getPool: () => okPool }, acquireTimeoutMs: 20 });
+  await okStore.sync({ instanceId: 'i', rows: [], sinceMs: 0, freshSec: 6, timeoutMs: 1500 });
+  assert.deepEqual(queries.slice(0, 2), ['BEGIN', "SET LOCAL statement_timeout"]);
+  assert.equal(queries[queries.length - 1], 'COMMIT');
+  assert.deepEqual(released, [['ok', false]]);
 });

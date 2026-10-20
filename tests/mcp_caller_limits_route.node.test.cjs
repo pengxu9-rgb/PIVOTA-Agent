@@ -535,3 +535,76 @@ test('recommend_products price checks are marked fan-out: keyed on the one tool 
     else process.env.MCP_CALLER_LIMITS_MODE = prior;
   }
 });
+
+// ---- review round 3: the salt stays inside the gateway ----
+
+test('the daily salt never appears in any log line, on stdout/stderr, or in any outbound header or payload', async () => {
+  const crypto = require('crypto');
+  const SALT = crypto.randomBytes(32);
+  const TAG_KEY = crypto.createHmac('sha256', SALT).update('pivota-mcp-caller-limit-log-tag-v1').digest();
+  const forms = (buf) => [buf.toString('hex'), buf.toString('base64'), buf.toString('base64url'), `\\x${buf.toString('hex')}`];
+  const needles = [...forms(SALT), ...forms(TAG_KEY)];
+  const store = limits.createMemoryCallerLimitStore();
+  const salts = limits.createSaltProvider({ store, randomBytes: () => Buffer.from(SALT) });
+  assert.equal(await salts.ready(), true);
+
+  const written = [];
+  const outbound = [];
+  const levels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'];
+  const saved = {};
+  for (const level of levels) {
+    saved[level] = logger[level];
+    logger[level] = function capture(obj, msg, ...rest) {
+      written.push(JSON.stringify([obj, msg]));
+      return saved[level].call(this, obj, msg, ...rest);
+    };
+  }
+  const realStdout = process.stdout.write.bind(process.stdout);
+  const realStderr = process.stderr.write.bind(process.stderr);
+  process.stdout.write = (chunk, ...rest) => { written.push(String(chunk)); return realStdout(chunk, ...rest); };
+  process.stderr.write = (chunk, ...rest) => { written.push(String(chunk)); return realStderr(chunk, ...rest); };
+  nock.cleanAll();
+  const record = (base, method) => nock(base).persist()[method](/.*/).reply(function reply(uri, body) {
+    outbound.push(JSON.stringify({ base, uri, headers: this.req.headers, body }));
+    if (base === INTROSPECT_BASE) return [200, { valid: true, is_active: true, auth_source: 'api_keys', agent_id: AGENTS[body?.api_key] || 'agent_x' }];
+    return [200, { status: 'success', products: [], total: 0, offers: [] }];
+  });
+  record(SELF_BASE, 'post');
+  record(BACKEND_BASE, 'post');
+  record(BACKEND_BASE, 'get');
+  record(INTROSPECT_BASE, 'post');
+  const search = (n) => rpc('tools/call', { name: 'search_catalog', arguments: { query: `salt leak probe ${n}` } }, n);
+  try {
+    for (const mode of ['observe', 'enforce']) {
+      setLimits({ MCP_CALLER_LIMITS_MODE: mode, MCP_CALLER_LIMITS_ANON_RPM: '2', MCP_CALLER_LIMITS_PARTNER_RPM: '2' });
+      limits.resetProcessCallerLimiterForTest({ env: process.env }, { salts });
+      for (const ip of ['198.51.100.31', '2001:db8:31::1']) {
+        await statuses(3, (i) => publicCall(ip, search(`${mode}${ip}${i}`)));
+      }
+      await statuses(3, (i) => partnerCall('198.51.100.32', search(`${mode}p${i}`)));
+    }
+  } finally {
+    for (const level of levels) logger[level] = saved[level];
+    process.stdout.write = realStdout;
+    process.stderr.write = realStderr;
+    limits.resetProcessCallerLimiterForTest(null, { salts: null });
+    restoreNocks();
+  }
+  const loopbacks = outbound.filter((o) => o.includes(SELF_BASE));
+  assert.ok(loopbacks.length > 0, 'loopback calls were made and captured');
+  assert.ok(loopbacks.some((o) => o.includes(LOOPBACK_CALLER_HEADER.toLowerCase())), 'they carried the caller header');
+  // Decode every loopback assertion: it names a key, never the salt.
+  for (const o of loopbacks) {
+    const h = JSON.parse(o).headers[LOOPBACK_CALLER_HEADER.toLowerCase()];
+    if (!h) continue;
+    const payload = Buffer.from(String(h).split('.')[1], 'base64url').toString('utf8');
+    for (const n of needles) assert.ok(!payload.includes(n));
+  }
+  const logs = written.join('\n');
+  const wire = outbound.join('\n');
+  assert.ok(logs.includes('mcp caller limit'), 'refusal lines were captured');
+  for (const n of needles) {
+    assert.ok(!logs.includes(n), 'the salt (or the derived log-tag key) is never logged');
+    assert.ok(!wire.includes(n), 'the salt (or the derived log-tag key) never leaves the process');
+  }
+});

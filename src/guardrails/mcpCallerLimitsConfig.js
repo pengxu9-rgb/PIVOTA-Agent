@@ -24,10 +24,16 @@ const DEFAULTS = Object.freeze({
   shed: Object.freeze({ anonymousPoolWaiting: 2, partnerPoolWaiting: 6, retryAfterSec: 5 }),
   // How many instances a key's budget is split across before this instance has a fresh shared count for it.
   expectedInstances: 4,
-  // Backstop for an in-flight slot whose release never ran: twice the longest tool deadline.
-  inflightMaxAgeMs: 120_000,
+  // An in-flight slot older than this is flagged and logged as a zombie (it stays counted until its work's
+  // finally runs). Twice the gateway's Cloud Run request timeout (300 s), so no legitimate request is ever
+  // flagged.
+  inflightMaxAgeMs: 600_000,
   syncIntervalMs: 2000,
   syncTimeoutMs: 1500,
+  // How long the sync may wait for a pool connection before giving up (and backing off).
+  syncAcquireTimeoutMs: 500,
+  // How often to retry fetching the shared daily salt while on a local one.
+  saltRetryMs: 30_000,
   syncMaxBackoffMs: 60_000,
   maxSyncKeys: 500,
 });
@@ -196,6 +202,8 @@ function readStoreConfig(env = process.env) {
     syncIntervalMs: positiveInt(env.MCP_CALLER_LIMITS_SYNC_MS, DEFAULTS.syncIntervalMs, 60_000),
     syncTimeoutMs: positiveInt(env.MCP_CALLER_LIMITS_SYNC_TIMEOUT_MS, DEFAULTS.syncTimeoutMs, 10_000),
     syncMaxBackoffMs: positiveInt(env.MCP_CALLER_LIMITS_SYNC_MAX_BACKOFF_MS, DEFAULTS.syncMaxBackoffMs, 600_000),
+    syncAcquireTimeoutMs: positiveInt(env.MCP_CALLER_LIMITS_SYNC_ACQUIRE_TIMEOUT_MS, DEFAULTS.syncAcquireTimeoutMs, 10_000),
+    saltRetryMs: positiveInt(env.MCP_CALLER_LIMITS_SALT_RETRY_MS, DEFAULTS.saltRetryMs, 3_600_000),
     maxSyncKeys: positiveInt(env.MCP_CALLER_LIMITS_MAX_SYNC_KEYS, DEFAULTS.maxSyncKeys, 5000),
   };
 }

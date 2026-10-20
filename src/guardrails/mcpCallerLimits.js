@@ -30,8 +30,7 @@
 // IN FLIGHT means "the door's tool dispatch is running", not "the response is open": the door releases the
 // slot in a finally around the dispatch, so a client that disconnects mid-call keeps its slot until the
 // work it started has finished (the work does not stop when the socket does). A client already gone when
-// its turn for admission comes is never admitted. A slot whose release somehow never runs is reaped after
-// MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS, with a WARN.
+// its turn for admission comes is never admitted.
 //
 // GLOBAL across instances without a per-request write. The only shared store this service has is the
 // Postgres primary it is protecting, so the hot path never touches it: every decision reads local
@@ -44,11 +43,22 @@
 // lock. The price is approximation: until a key appears in a fresh snapshot, this instance allows it only
 // limit / MCP_CALLER_LIMITS_EXPECTED_INSTANCES, so a burst landing on many instances at once cannot
 // multiply the budget; after that, a caller can overshoot by roughly what the instances admit between two
-// syncs. When the store is unreachable or missing, limits stay at that per-instance share.
+// syncs. When the store is unreachable, missing, or its snapshot has gone stale, limits drop back to that
+// per-instance share (observe lines say so: limit_split).
 //
-// NEVER LOGGED: a client address. A refusal line carries the hashed caller key and, for anonymous callers,
-// the truncated network (IPv4 /24, IPv6 /48) — enough to choose a cidr: override, not enough to name a
-// client.
+// NEVER LOGGED OR STORED: a client address, or anything an address can be recovered from. An unsalted hash
+// of an address is reversible by enumeration (2^8 tries inside a logged /24; the whole IPv4 space in
+// minutes), so an anonymous caller's key — in memory, in the shared counters, in the loopback header — is
+// HMAC-SHA256 under a random 32-byte salt that rotates every UTC day and that all instances share through
+// the gateway_caller_limit_salts table. Log lines carry a DIFFERENT HMAC (a key derived from the salt with
+// its own label), so a log tag never matches a counter key, plus the truncated network (IPv4 /24, IPv6
+// /48): enough to choose a cidr: override, not enough to name a client. With no database, the salt is a
+// per-process random one (never unsalted); anonymous buckets then aggregate per instance. Anonymous budgets
+// reset when the salt rotates at 00:00 UTC.
+//
+// IN-FLIGHT AGE: a slot older than MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS (default twice the request
+// timeout) is flagged and logged as a zombie but STAYS COUNTED until its work's finally runs, so the flag
+// can never let more work run than the cap allows.
 
 const crypto = require('crypto');
 const net = require('net');
@@ -87,6 +97,111 @@ function text(value) {
 
 function sha16(input) {
   return crypto.createHash('sha256').update(String(input)).digest('hex').slice(0, 16);
+}
+
+// ---------------- the daily salt ----------------
+
+const SALT_BYTES = 32;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SALT_LABEL_LOG_TAG = 'pivota-mcp-caller-limit-log-tag-v1';
+
+function hmac(key, data) {
+  return crypto.createHmac('sha256', key).update(String(data)).digest();
+}
+
+function utcDay(t) {
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+/**
+ * The day's salt for anonymous keys. `current()` is synchronous (it is on the request path): it answers from
+ * memory and, while today's SHARED salt is not yet known, from a per-process random one — never unsalted —
+ * kicking off one background fetch from the store (insert-if-absent, then read back, so every instance
+ * converges on the same salt). The salt itself never leaves this closure except to compute an HMAC.
+ */
+function createSaltProvider({
+  store = null,
+  now = () => Date.now(),
+  randomBytes = crypto.randomBytes,
+  log = null,
+  retryMs = 30_000,
+  timeoutMs = 1500,
+} = {}) {
+  const days = new Map();
+  let loading = null;
+  let nextTryAt = 0;
+  let lastWarnAt = 0;
+
+  function entryFor(day, salt, source) {
+    // Two keys from one salt: the counter key is HMAC(salt, id); the log tag is HMAC(HMAC(salt, label), id).
+    // A log tag can therefore never be matched against a counter key.
+    const tagKey = hmac(salt, SALT_LABEL_LOG_TAG);
+    return {
+      day,
+      source,
+      key: (id) => hmac(salt, id).toString('hex').slice(0, 16),
+      tag: (id) => hmac(tagKey, id).toString('hex').slice(0, 16),
+    };
+  }
+
+  function load(day, t) {
+    if (!store || typeof store.getOrCreateSalt !== 'function') return Promise.resolve(false);
+    if (loading) return loading;
+    loading = (async () => {
+      try {
+        const salt = await store.getOrCreateSalt({
+          day,
+          candidate: randomBytes(SALT_BYTES),
+          deleteBefore: utcDay(t - 2 * DAY_MS),
+          timeoutMs,
+        });
+        if (!Buffer.isBuffer(salt) || salt.length !== SALT_BYTES) throw new Error('caller limit salt has the wrong shape');
+        days.set(day, entryFor(day, salt, 'shared'));
+        return true;
+      } catch (err) {
+        nextTryAt = now() + retryMs;
+        if (now() - lastWarnAt >= 60_000) {
+          lastWarnAt = now();
+          try {
+            // The error only: never a parameter (the candidate salt is one).
+            log?.warn?.(
+              { event: 'mcp_caller_limit_salt', err: err?.code || 'salt_unavailable', retry_in_ms: retryMs },
+              'mcp caller limit shared salt unavailable; anonymous keys use a per-process salt',
+            );
+          } catch (_) {
+            // ignore
+          }
+        }
+        return false;
+      } finally {
+        loading = null;
+      }
+    })();
+    return loading;
+  }
+
+  function current() {
+    const t = now();
+    const day = utcDay(t);
+    let entry = days.get(day);
+    if (!entry) {
+      entry = entryFor(day, randomBytes(SALT_BYTES), 'local');
+      days.set(day, entry);
+      for (const d of days.keys()) if (d < utcDay(t - DAY_MS)) days.delete(d);
+      nextTryAt = 0;
+    }
+    if (entry.source !== 'shared' && !loading && t >= nextTryAt) load(day, t).catch(() => {});
+    return entry;
+  }
+
+  /** Resolves once today's shared salt has been fetched (or the attempt failed). */
+  async function ready() {
+    current();
+    if (loading) await loading;
+    return days.get(utcDay(now()))?.source === 'shared';
+  }
+
+  return { current, ready };
 }
 
 // ---------------- addresses ----------------
@@ -138,12 +253,18 @@ function logNetworkForIp(ip) {
 // ---------------- identity ----------------
 
 function makeCaller(tier, id, extra = {}) {
+  const salted = extra.salt || null;
   return {
     tier,
     // The id the operator names in MCP_CALLER_LIMITS_OVERRIDES_JSON. Never logged (for an anonymous caller it
-    // carries the client address); `key` is the hashed form used everywhere else.
+    // carries the client address); `key` is the form used everywhere else. An anonymous key is an HMAC under
+    // the day's salt (reversible by nobody without it); a partner key names a verified agent or client and
+    // stays stable across days.
     id,
-    key: `${tier}:${sha16(id)}`,
+    key: salted ? `${tier}:${salted.key(id)}` : `${tier}:${sha16(id)}`,
+    // Anonymous only: what a log line may carry instead of the key (a different HMAC of the same id).
+    log_tag: salted ? salted.tag(id) : null,
+    salt_source: salted ? salted.source : null,
     agent_id: extra.agentId || null,
     oauth_client_id: extra.oauthClientId || null,
     oauth_issuer: extra.oauthIssuer || null,
@@ -159,7 +280,7 @@ function makeCaller(tier, id, extra = {}) {
  * the api-key channel or the MCP OAuth front door) and the edge-attested client address; nothing the
  * request asserts about itself picks the bucket.
  */
-function resolveDoorCaller(req, { config } = {}) {
+function resolveDoorCaller(req, { config, salts } = {}) {
   const cfg = config || readCallerLimitsConfig();
   const auth = req && typeof req.invokeAuth === 'object' && req.invokeAuth ? req.invokeAuth : null;
   const authMode = auth ? text(auth.auth_mode) : null;
@@ -194,6 +315,7 @@ function resolveDoorCaller(req, { config } = {}) {
   const ip = clientIpFromRequest(req);
   const id = anonymousIdForIp(ip);
   return makeCaller('anonymous', id, {
+    salt: (salts || getProcessSaltProvider()).current(),
     ip: id === 'ip:unknown' ? null : ip,
     netPrefix: logNetworkForIp(ip),
     unknownIp: id === 'ip:unknown',
@@ -424,7 +546,11 @@ function createCallerLimiter({
   function callerLogFields(caller) {
     return {
       tier: caller.tier,
-      caller_key: caller.key,
+      // Anonymous: the salted log tag, never the counter key (which is the HMAC the counters and the loopback
+      // header carry). Partner: the key, which names a verified agent or client, not a person.
+      ...(caller.tier === 'anonymous'
+        ? { caller_tag: caller.log_tag, salt_source: caller.salt_source }
+        : { caller_key: caller.key }),
       ...(caller.net_prefix ? { caller_net: caller.net_prefix } : {}),
       ...(caller.unknown_ip ? { caller_ip_unknown: true } : {}),
       ...(caller.agent_id ? { caller_agent_id: caller.agent_id } : {}),
@@ -447,7 +573,9 @@ function createCallerLimiter({
           overridden: policy.overridden,
           ...(policy.oauthUnregistered ? { oauth_unregistered: true } : {}),
           limit: violation.limit,
-          ...(violation.limit_split ? { limit_split: true } : {}),
+          // Always present, so observe can count split refusals by tier: true while the caller has no fresh
+          // shared count (first sight, store down, or a stale snapshot).
+          limit_split: Boolean(violation.limit_split),
           observed: violation.observed,
           retry_after_s: violation.retryAfterSec,
           status: violation.status,
@@ -461,23 +589,26 @@ function createCallerLimiter({
     }
   }
 
-  // The max-age backstop: a slot older than any tool can legitimately run is released and reported.
+  // The max-age check FLAGS a slot older than any request can legitimately run, once, and logs it. It does
+  // NOT free it: the work is (as far as anyone knows) still running, so freeing the slot would let more work
+  // run than the cap allows. The slot is released only by its own finally.
   function reapExpired(t, cfg) {
     if (t - lastReapAt < REAP_INTERVAL_MS) return;
     lastReapAt = t;
-    for (const handle of [...held.values()]) {
-      if (t - handle.startedAt > cfg.inflightMaxAgeMs) {
-        handle.free();
+    for (const handle of held.values()) {
+      if (!handle.zombie && t - handle.startedAt > cfg.inflightMaxAgeMs) {
+        handle.zombie = true;
         try {
           log?.warn?.(
             {
               event: 'mcp_caller_limit_reaped',
+              zombie: true,
               door: handle.door,
               ...callerLogFields(handle.caller),
               age_ms: t - handle.startedAt,
               max_age_ms: cfg.inflightMaxAgeMs,
             },
-            'mcp caller limit in-flight slot reaped',
+            'mcp caller limit in-flight slot past its max age; still held until its work ends',
           );
         } catch (_) {
           // ignore
@@ -521,6 +652,7 @@ function createCallerLimiter({
       caller,
       door: door || null,
       startedAt: t,
+      zombie: false,
       free() {
         if (freed) return;
         freed = true;
@@ -593,6 +725,7 @@ function createCallerLimiter({
         rows.push({ key, windowMs: win, requests: entry.cur, inflight: entry.inflight });
         if (entry.prev) rows.push({ key, windowMs: win - WINDOW_MS, requests: entry.prev, inflight: 0 });
       }
+      const startedAt = now();
       const result = await store.sync({
         instanceId,
         rows,
@@ -610,9 +743,19 @@ function createCallerLimiter({
         next.set(key, o);
       }
       snapshot = { at: now(), others: next, synced: new Set(chosen.map(([key]) => key)) };
-      syncState.failures = 0;
-      syncState.nextAt = 0;
       syncState.lastOkAt = snapshot.at;
+      // A success that took more than half its budget is the primary saying it is busy: use the snapshot,
+      // but back off as for a failure.
+      if (snapshot.at - startedAt > cfg.syncTimeoutMs / 2) {
+        syncState.failures += 1;
+        syncState.nextAt = snapshot.at + backoffMs(syncState.failures, cfg);
+        warnStore(Object.assign(new Error('caller limit sync was slow'), { code: 'SYNC_SLOW' }), {
+          elapsed_ms: snapshot.at - startedAt,
+        });
+      } else {
+        syncState.failures = 0;
+        syncState.nextAt = 0;
+      }
       if (typeof store.prune === 'function' && snapshot.at - lastPruneAt >= PRUNE_INTERVAL_MS) {
         lastPruneAt = snapshot.at;
         store.prune({ beforeMs: win - 2 * WINDOW_MS, timeoutMs: cfg.syncTimeoutMs }).catch((err) => warnStore(err, { op: 'prune' }));
@@ -658,6 +801,7 @@ function createCallerLimiter({
       others: others(key, windowOf(t), t),
       snapshotAt: snapshot.at,
       held: held.size,
+      zombies: [...held.values()].filter((h) => h.zombie).length,
       sync: { failures: syncState.failures, nextAt: syncState.nextAt },
     };
   }
@@ -707,13 +851,80 @@ DELETE FROM gateway_caller_limit_counters
     FOR UPDATE SKIP LOCKED
  )`;
 
-function createPostgresCallerLimitStore({ db = require('../db') } = {}) {
+// One short transaction on its own pool connection, bounded at every step:
+//   - acquiring the connection: at most acquireTimeoutMs (a busy pool is a reason to skip, not to queue);
+//   - right after acquiring: if the pool now has waiters, give the connection straight back;
+//   - every statement: Postgres' own statement_timeout (SET LOCAL), so a slow statement is cancelled by
+//     the server and the connection stays healthy — no client-side abort, no orphaned statement.
+async function runBoundedTransaction(db, statements, { timeoutMs, acquireTimeoutMs = 500 }) {
+  const pool = db.getPool();
+  if (!pool) throw Object.assign(new Error('no database'), { code: 'NO_DATABASE' });
+  const acquire = pool.connect();
+  let timer = null;
+  let client;
+  try {
+    client = await Promise.race([
+      acquire,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(Object.assign(new Error('caller limit store: no connection in time'), { code: 'SYNC_ACQUIRE_TIMEOUT' })),
+          acquireTimeoutMs,
+        );
+      }),
+    ]);
+  } catch (err) {
+    // Still queued in the pool: hand the connection back the moment it arrives.
+    acquire.then((late) => late.release(), () => {});
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (Number(pool.waitingCount) > 0) {
+    client.release();
+    throw Object.assign(new Error('caller limit store: pool has waiters'), { code: 'SYNC_POOL_BUSY' });
+  }
+  let broken = false;
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL statement_timeout = '${Math.max(1, Math.trunc(timeoutMs))}ms'`);
+    const results = [];
+    for (const [text, params] of statements) results.push(await client.query(text, params));
+    await client.query('COMMIT');
+    return results;
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      broken = true;
+    }
+    throw err;
+  } finally {
+    client.release(broken);
+  }
+}
+
+function createPostgresCallerLimitStore({ db = require('../db'), acquireTimeoutMs } = {}) {
+  const acquireMs = () => acquireTimeoutMs || readStoreConfig().syncAcquireTimeoutMs;
   return {
     kind: 'postgres',
+    // Insert a candidate for the day if none exists, then read back the one that won (a new snapshot per
+    // statement under READ COMMITTED sees a concurrent winner's committed row), and drop days older than two.
+    async getOrCreateSalt({ day, candidate, deleteBefore, timeoutMs }) {
+      const [, read] = await runBoundedTransaction(
+        db,
+        [
+          ['INSERT INTO gateway_caller_limit_salts (day, salt) VALUES ($1::date, $2) ON CONFLICT (day) DO NOTHING', [day, candidate]],
+          ['SELECT salt FROM gateway_caller_limit_salts WHERE day = $1::date', [day]],
+          ['DELETE FROM gateway_caller_limit_salts WHERE day < $1::date', [deleteBefore]],
+        ],
+        { timeoutMs, acquireTimeoutMs: acquireMs() },
+      );
+      return read.rows[0] ? read.rows[0].salt : null;
+    },
     async sync({ instanceId, rows, sinceMs, freshSec, timeoutMs }) {
       // statement_timeout, NOT a client-side budget: a client-side abort would destroy the connection and
       // leave the statement running, which on a saturated primary means connection churn plus orphans.
-      const res = await db.queryWithStatementTimeout(
+      const [res] = await runBoundedTransaction(db, [[
         SYNC_SQL,
         [
           rows.map((r) => r.key),
@@ -724,8 +935,7 @@ function createPostgresCallerLimitStore({ db = require('../db') } = {}) {
           sinceMs,
           freshSec,
         ],
-        { statementTimeoutMs: timeoutMs },
-      );
+      ]], { timeoutMs, acquireTimeoutMs: acquireMs() });
       return (res?.rows || []).map((r) => ({
         key: r.caller_key,
         windowMs: Number(r.window_ms),
@@ -734,7 +944,7 @@ function createPostgresCallerLimitStore({ db = require('../db') } = {}) {
       }));
     },
     async prune({ beforeMs, timeoutMs }) {
-      await db.queryWithStatementTimeout(PRUNE_SQL, [beforeMs], { statementTimeoutMs: timeoutMs });
+      await runBoundedTransaction(db, [[PRUNE_SQL, [beforeMs]]], { timeoutMs, acquireTimeoutMs: acquireMs() });
     },
   };
 }
@@ -742,9 +952,16 @@ function createPostgresCallerLimitStore({ db = require('../db') } = {}) {
 // The same contract in memory: what several limiter instances in one test share in place of the table.
 function createMemoryCallerLimitStore({ now = () => Date.now() } = {}) {
   const rows = new Map();
+  const salts = new Map();
   return {
     kind: 'memory',
     rows,
+    salts,
+    async getOrCreateSalt({ day, candidate, deleteBefore }) {
+      if (!salts.has(day)) salts.set(day, Buffer.from(candidate));
+      for (const d of [...salts.keys()]) if (d < deleteBefore) salts.delete(d);
+      return salts.get(day);
+    },
     async sync({ instanceId, rows: incoming, sinceMs, freshSec }) {
       const t = now();
       for (const r of incoming) {
@@ -808,6 +1025,27 @@ function limitRejectionResponse(violation, { rpcId = null, tier } = {}) {
 // ---------------- the process-wide limiter and the door hooks ----------------
 
 let processLimiter = null;
+let processStore;
+let processSalts = null;
+
+function getProcessStore() {
+  if (processStore === undefined) {
+    processStore = readStoreConfig().kind === 'postgres' ? createPostgresCallerLimitStore() : null;
+  }
+  return processStore;
+}
+
+function getProcessSaltProvider() {
+  if (!processSalts) {
+    processSalts = createSaltProvider({
+      store: getProcessStore(),
+      log: require('../logger'),
+      retryMs: readStoreConfig().saltRetryMs,
+      timeoutMs: readStoreConfig().syncTimeoutMs,
+    });
+  }
+  return processSalts;
+}
 
 // The pool's census WITHOUT creating the pool: no pool yet means no load to shed.
 function defaultPoolStats() {
@@ -829,7 +1067,7 @@ function getProcessCallerLimiter() {
   if (!processLimiter) {
     const storeCfg = readStoreConfig();
     processLimiter = createCallerLimiter({
-      store: storeCfg.kind === 'postgres' ? createPostgresCallerLimitStore() : null,
+      store: storeCfg.kind === 'postgres' ? getProcessStore() : null,
       poolStats: defaultPoolStats,
       log: require('../logger'),
     });
@@ -837,9 +1075,10 @@ function getProcessCallerLimiter() {
   return processLimiter;
 }
 
-function resetProcessCallerLimiterForTest(opts = null) {
+function resetProcessCallerLimiterForTest(opts = null, { salts } = {}) {
   if (processLimiter) processLimiter.stop();
   processLimiter = opts ? createCallerLimiter({ log: require('../logger'), ...opts }) : null;
+  if (salts !== undefined) processSalts = salts;
   return processLimiter;
 }
 
@@ -940,6 +1179,9 @@ module.exports = {
   attachMcpLimitCaller,
   createCallerLimiter,
   createMemoryCallerLimitStore,
+  createSaltProvider,
+  getProcessSaltProvider,
+  utcDay,
   createPostgresCallerLimitStore,
   getProcessCallerLimiter,
   invokeContextLimitCaller,
