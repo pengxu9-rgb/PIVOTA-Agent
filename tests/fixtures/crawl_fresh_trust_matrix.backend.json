@@ -1,5 +1,5 @@
 {
- "_source": "Rendered (not hand-written) from pivota-backend services/catalog_trust_policy.derive_trust at commit d4f99ae90, over the matrix in tests/test_catalog_trust_policy_crawl_fresh.py (itertools.product of _PRODUCTS x _IDENTITIES x elected [None,True,False] x route [None,True,False] x priced [True,False], in that order). Each case is [decision, reason_codes] with crawl_fresh absent, then with crawl_fresh=True. Re-render from the backend when its policy changes; never hand-edit.",
+ "_source": "Rendered (not hand-written) from pivota-backend services/catalog_trust_policy.derive_trust at commit 1e4585aa6, over the matrix in tests/test_catalog_trust_policy_crawl_fresh.py (itertools.product of _PRODUCTS x _IDENTITIES x elected [None,True,False] x route [None,True,False] x priced [True,False], in that order). Each case is [decision, reason_codes] with crawl_fresh absent, then with crawl_fresh=True. Re-render from the backend when its policy changes; never hand-edit.",
  "cases": [
   ["shadow", ["IDENTITY_CONFIDENCE_NULL"], "public", ["CRAWL_FRESH", "PUBLIC_PASSTHROUGH"]],
   ["blocked", ["OFFER_PRICE_MISSING"], "blocked", ["OFFER_PRICE_MISSING"]],

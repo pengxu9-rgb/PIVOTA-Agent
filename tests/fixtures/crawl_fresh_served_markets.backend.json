@@ -1,13 +1,14 @@
 {
- "_source": "Generated from pivota-backend at commit d4f99ae90: services.market_registry.served_markets() (config/market_registry.json, status served) x services.region_pricing.pricing_currency_for_region, sorted -- the exact pairs the backend renders into CRAWL_OFFER_SERVED_MARKET_SQL. Only the served pairs are copied, not the whole registry. This repo has no generated registry copy yet (src/markets/market_registry.generated.json, from the backend scripts/generate_market_registry_json.py); the drift test reads that file instead once it exists. Re-generate from the backend, never hand-edit.",
- "served_market_currency_pairs": [
-  [
-   "SG",
-   "SGD"
+  "generated_from": "pivota-backend services.catalog_row_trust_upserter.CRAWL_SERVED_MARKET_CURRENCY_PAIRS",
+  "served_market_currency": [
+    [
+      "SG",
+      "SGD"
+    ],
+    [
+      "US",
+      "USD"
+    ]
   ],
-  [
-   "US",
-   "USD"
-  ]
- ]
+  "version": 1
 }

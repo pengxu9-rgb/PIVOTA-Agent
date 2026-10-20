@@ -319,12 +319,12 @@ const UPSERT_SQL = `
 // them 'shadow' on its next recompute: rows FLAP on the live serving surface.
 // The rule CATALOG_TRUST_RENDERABLE_GATE documents, unchanged.
 //
-// A FAILED READ FAILS CLOSED, PER BATCH (gateway only): the freshness statement
-// and the column probe run isolated (isolatedQuery: a SAVEPOINT on a client in a
-// transaction), and a failed freshness read leaves the input unset for that
-// batch, which then writes today's gates. The backend lets the error propagate
-// and writes nothing for that batch; the gateway never throws into its caller's
-// transaction (the retire-demo scripts pass a client inside BEGIN).
+// A FAILED READ FAILS CLOSED, PER BATCH, as in the backend (round 3): the
+// freshness statement and the column probe run isolated (isolatedQuery: a
+// SAVEPOINT on a client in a transaction), and a failed freshness read leaves
+// the input unset for that batch, which then writes the flag-off verdicts. It
+// never throws into the caller's transaction (the retire-demo scripts pass a
+// client inside BEGIN).
 //
 // NO DECAY RECHECK HERE. The backend's trust cron re-derives, every tick, the
 // CRAWL_FRESH rows whose read may age out (and, switched off, every CRAWL_FRESH
@@ -406,30 +406,36 @@ const CRAWL_OFFER_LINK_SQL =
 const CRAWL_OFFER_NOT_AFFILIATE_SQL =
   "coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'";
 
-// ---- round 2 (2026-10-20): the PER-MARKET rule ------------------------------
+// ---- round 3 (2026-10-20): EVERY live offer fresh, in a DECLARED served market --
 //
-// Trust stays per PRODUCT (catalog_row_trust has no market column); the row is
-// crawl-fresh when it is fresh in AT LEAST ONE served market, priced in that
-// market's currency. A qualifying offer, on top of the round-1 conjuncts, is:
-//   * declared for a SERVED market and priced in that market's currency;
-//   * not explicitly out of stock (offer_buyability's unavailable vocabulary);
-//   * not dated by an employee price edit (offer_payload.price_read_source);
-//   * on a VARIANT-SCOPED row (one with a live drain-lane variant offer), a
-//     variant offer: a `<pk>::canonical` stamp alone says nothing about what
-//     the buyer will pick;
-//   * not dated in the future (`<= now()`).
+// Twin of the backend's round-3 block. Trust stays per PRODUCT, so the row may
+// go public only when NO surface of it shows a stale drain price. The input is
+// the row's price-read date: the OLDEST valid read across EVERY live offer of
+// the qualifying class, NULL as soon as one of them has none.
+//
+// THE QUALIFYING CLASS (crawlOfferClassConjuncts) -- every live drain-lane offer
+// a buyer in a served market can be shown: written by the drain, unsuppressed
+// and priced (pricedOfferSql), linking to a plain http(s) listing URL, not an
+// affiliate-feed link, in a SERVED market priced in that market's currency.
+//
+// A VALID READ of one such offer (CRAWL_OFFER_VALID_READ_SQL): price_checked_at
+// not after the bound now (a future stamp is stale, per offer); the market was
+// DECLARED by the writer (offer_payload.declared_market = catalog_offers.market,
+// since the column is NOT NULL DEFAULT 'US'); not an employee price edit.
+//
+// THE ROW IS CRAWL-FRESH when it has at least one class offer, EVERY class offer
+// has a valid read, at least one class offer is not explicitly out of stock, and
+// the oldest of those reads is within N days of the SAME now the statement was
+// bound with. "Every" covers each live variant offer AND `<pk>::canonical`.
 //
 // THE SERVED (market, currency) PAIRS ARE A CONSTANT HERE, NOT servedMarkets().
-// The backend renders them at import from config/market_registry.json (status
-// 'served') x region_pricing, a CODE-level registry; this repo's servedMarkets()
-// is a per-deployment env list (CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET) and
-// would make the two statements differ by environment. A market added to the
-// backend registry changes the backend statement on its next deploy and this one
-// only when the pair below is updated: the twins must move together.
-// tests/catalog_trust_crawl_fresh.node.test.cjs fails when this list differs from
-// the backend registry's served set (src/markets/market_registry.generated.json
-// once this repo carries it; until then tests/fixtures/crawl_fresh_served_markets.backend.json,
-// generated from the backend).
+// The backend renders them at import from its market registry (status 'served')
+// x region_pricing, and commits them as config/crawl_fresh_served_markets.json for
+// this twin to pin; this repo's servedMarkets() is a per-deployment env list
+// (CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET) and would make the two statements
+// differ by environment. tests/catalog_trust_crawl_fresh.node.test.cjs fails when
+// this list differs from tests/fixtures/crawl_fresh_served_markets.backend.json, a
+// verbatim copy of that backend file: the twins must move together.
 const CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS = Object.freeze([
   Object.freeze(['SG', 'SGD']),
   Object.freeze(['US', 'USD']),
@@ -448,9 +454,10 @@ const CRAWL_OFFER_SERVED_MARKET_SQL =
 // backend's offer_buyability.OFFER_UNAVAILABLE_AVAILABILITIES. Sorted, as the
 // backend renders it. NOTE the one-argument btrim (spaces only), the backend's
 // spelling here -- not offerAvailabilitySql's JS-trim character set.
-// KNOWN GAP, kept byte-identical to the backend until the backend changes it: a
+// KNOWN GAP, kept byte-identical to the backend (unchanged in its round 3): a
 // tab/newline-padded value ('\tsoldout') and spaced spellings ('out of stock')
-// are not caught, so such an offer still counts as in stock.
+// are not caught. Since round 3 this gates only "at least one class offer is in
+// stock", never freshness.
 const CRAWL_OFFER_IN_STOCK_SQL =
   "lower(btrim(coalesce(co.availability, '')))" +
   ' NOT IN (' +
@@ -462,73 +469,66 @@ const CRAWL_OFFER_IN_STOCK_SQL =
 const CRAWL_PRICE_READ_SOURCE_KEY = 'price_read_source';
 const CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL =
   `coalesce(co.offer_payload->>'${CRAWL_PRICE_READ_SOURCE_KEY}', '') <> 'employee_edit'`;
-const CRAWL_CANONICAL_SKU_SUFFIX = '::canonical';
+// The key the backend's retailer-ingest drain stamps when its job carried an
+// explicit market (retailer_ingest.pipeline.stamp_declared_market).
+const CRAWL_DECLARED_MARKET_KEY = 'declared_market';
+const CRAWL_OFFER_DECLARED_MARKET_SQL =
+  `upper(btrim(coalesce(co.offer_payload->>'${CRAWL_DECLARED_MARKET_KEY}', '')))` +
+  " = upper(btrim(coalesce(co.market, '')))";
+// `$2` is the batch's `now` (the backend's `:now`).
+const CRAWL_OFFER_VALID_READ_SQL =
+  'CASE WHEN co.price_checked_at <= CAST($2 AS timestamptz)' +
+  ` AND ${CRAWL_OFFER_DECLARED_MARKET_SQL}` +
+  ` AND ${CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL}` +
+  ' THEN co.price_checked_at END';
 
-/**
- * The variant conjunct for one row: a canonical offer counts only when the row
- * has no live drain-lane variant offer. `productKeyExpr` is SQL, never a value.
- * Twin of crawl_offer_variant_sql.
- *
- * KNOWN GAP, mirrored as-is pending the backend's round-3 decision: an offer
- * with a NULL sku_key, or an unpriced live variant offer, still counts as "a
- * variant" and so variant-scopes the row (its ::canonical stamp stops counting).
- */
-function crawlOfferVariantSql(productKeyExpr) {
-  const canonical = `${productKeyExpr} || '${CRAWL_CANONICAL_SKU_SUFFIX}'`;
-  return (
-    `(co.sku_key IS DISTINCT FROM ${canonical}` +
-    ' OR NOT EXISTS (SELECT 1 FROM catalog_offers cv' +
-    ` WHERE cv.product_key = ${productKeyExpr}` +
-    ` AND cv.sku_key IS DISTINCT FROM ${canonical}` +
-    ` AND cv.source_system = '${CRAWL_SOURCE_SYSTEM}'` +
-    ' AND cv.suppressed_at IS NULL))'
-  );
-}
-
-/**
- * The newest qualifying read for one row, as the body of a LATERAL. Twin of
- * crawl_last_price_read_lateral_sql (the backend also builds its cron recheck
- * from it; this repo has no recheck, see the note above CRAWL_FRESH_ENV).
- */
-function crawlLastPriceReadLateralSql(productKeyExpr, indent = '   ') {
-  const conjuncts = [
+/** The qualifying class for one row. `productKeyExpr` is SQL, never a value. */
+function crawlOfferClassConjuncts(productKeyExpr) {
+  return [
     `co.product_key = ${productKeyExpr}`,
     `co.source_system = '${CRAWL_SOURCE_SYSTEM}'`,
     ...pricedOfferRowConjuncts('co'),
-    'co.price_checked_at IS NOT NULL',
-    'co.price_checked_at <= now()',
     CRAWL_OFFER_LINK_SQL,
     CRAWL_OFFER_NOT_AFFILIATE_SQL,
     CRAWL_OFFER_SERVED_MARKET_SQL,
-    CRAWL_OFFER_IN_STOCK_SQL,
-    CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL,
-    crawlOfferVariantSql(productKeyExpr),
   ];
-  const where = conjuncts.join(`\n${indent}   AND `);
+}
+
+/**
+ * The row's price-read date as the body of a LATERAL: the oldest valid read
+ * across every class offer, or NULL. Binds `$2` (now). Twin of
+ * crawl_row_price_read_lateral_sql (the backend also builds its recheck from
+ * it; this repo has no recheck, see the note above CRAWL_FRESH_ENV).
+ */
+function crawlRowPriceReadLateralSql(productKeyExpr, indent = '   ') {
+  const where = crawlOfferClassConjuncts(productKeyExpr).join(`\n${indent}   AND `);
   return (
-    `${indent}SELECT max(co.price_checked_at) AS last_price_read_at\n` +
+    `${indent}SELECT CASE WHEN count(*) > 0\n` +
+    `${indent}             AND bool_and((${CRAWL_OFFER_VALID_READ_SQL}) IS NOT NULL)\n` +
+    `${indent}             AND bool_or(${CRAWL_OFFER_IN_STOCK_SQL})\n` +
+    `${indent}            THEN min(${CRAWL_OFFER_VALID_READ_SQL}) END AS row_price_read_at\n` +
     `${indent}  FROM catalog_offers co\n` +
     `${indent} WHERE ${where}\n`
   );
 }
 
-// The newest qualifying price read per drain-lane row: one indexed probe per
-// key, as a LATERAL over the key list. The only clock in SQL is `<= now()`,
-// which drops future-dated stamps per offer; the AGE is judged in JS against the
-// derivation's own `now` (catalogTrustPolicy.isCrawlFresh).
+// One indexed probe per key, as a LATERAL over the key list.
 //
-// BYTE-IDENTICAL to the backend's CRAWL_LAST_PRICE_READ_SQL except for ONE
-// token: the backend binds the key list as SQLAlchemy's `:product_keys`, node-pg
-// binds it positionally as `$1`. tests/fixtures/crawl_fresh_trust_backend_sql.json
-// holds the backend constant verbatim; the suite pins this string to it with
-// exactly that one substitution.
-const CRAWL_LAST_PRICE_READ_SQL =
-  'SELECT k.product_key, r.last_price_read_at\n' +
+// ONE CLOCK: `$2` is the batch's `now`, bound from JS, and the age is judged in
+// JS (catalogTrustPolicy.isCrawlFresh) against that same value.
+//
+// BYTE-IDENTICAL to the backend's CRAWL_ROW_PRICE_READ_SQL except for the bind
+// tokens: the backend binds SQLAlchemy's `:product_keys` and `:now`, node-pg
+// binds them positionally as `$1` and `$2`.
+// tests/fixtures/crawl_fresh_trust_backend_sql.json holds the backend constant
+// verbatim; the suite pins this string to it with exactly those substitutions.
+const CRAWL_ROW_PRICE_READ_SQL =
+  'SELECT k.product_key, r.row_price_read_at\n' +
   '  FROM unnest(CAST($1 AS text[])) AS k(product_key)\n' +
   ' CROSS JOIN LATERAL (\n' +
-  crawlLastPriceReadLateralSql('k.product_key') +
+  crawlRowPriceReadLateralSql('k.product_key') +
   ' ) r\n' +
-  ' WHERE r.last_price_read_at IS NOT NULL\n';
+  ' WHERE r.row_price_read_at IS NOT NULL\n';
 
 // Does THIS database's catalog_offers carry price_checked_at? Byte-identical to
 // the backend's external_offer_dual_write.PRICE_CHECK_COLUMN_SQL, the probe its
@@ -748,12 +748,11 @@ async function crawlFreshByKey(pool, rows, now) {
   const maxAgeDays = crawlFreshDays();
   let res;
   try {
-    res = await isolatedQuery(pool, CRAWL_LAST_PRICE_READ_SQL, [keys]);
+    res = await isolatedQuery(pool, CRAWL_ROW_PRICE_READ_SQL, [keys, clock]);
   } catch (err) {
-    // FAIL CLOSED, PER BATCH: the input stays unset for every key of this
-    // batch, so each row gets today's gates and the batch is still written.
-    // NOT the backend's behaviour -- there the error propagates and that batch
-    // writes nothing (see the note above CRAWL_FRESH_ENV).
+    // FAIL CLOSED, PER BATCH (as the backend): the input stays unset for every
+    // key of this batch, so each row gets the flag-off verdict and the batch is
+    // still written.
     logger.error({
       event: 'catalog_row_trust_crawl_fresh_read_failed',
       keys: keys.length,
@@ -762,7 +761,7 @@ async function crawlFreshByKey(pool, rows, now) {
     return null;
   }
   const reads = new Map(
-    ((res && res.rows) || []).map((r) => [String(r.product_key), r.last_price_read_at]),
+    ((res && res.rows) || []).map((r) => [String(r.product_key), r.row_price_read_at]),
   );
   const out = {};
   for (const pk of keys) {
@@ -808,13 +807,19 @@ async function isolatedQuery(pool, sql, params) {
  * catalog_row_trust (the gateway at boot, the identity jobs at start), so a
  * flip can be verified from logs on every writer. Returns what it logged.
  * `stream` (e.g. process.stderr) writes one JSON line there instead of pino.
+ *
+ * Same event name and fields as the backend's log_crawl_fresh_config line
+ * (`catalog_row_trust_crawl_fresh_config component=... enabled=... days=...
+ * served_market_currency=SG:SGD,US:USD`), minus `recheck_limit`: the decay
+ * recheck is backend-only. `raw_enabled` / `raw_days` are extra.
  */
-function logCrawlFreshConfig(context, { stream = null } = {}) {
+function logCrawlFreshConfig(component, { stream = null } = {}) {
   const config = {
-    event: 'catalog_trust_crawl_fresh_config',
-    context: String(context || 'unknown'),
+    event: 'catalog_row_trust_crawl_fresh_config',
+    component: String(component || 'unknown'),
     enabled: crawlFreshEnabled(),
     days: crawlFreshDays(),
+    served_market_currency: CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS.map(([m, c]) => `${m}:${c}`).join(','),
     raw_enabled: process.env[CRAWL_FRESH_ENV] ?? null,
     raw_days: process.env[CRAWL_FRESH_DAYS_ENV] ?? null,
   };
@@ -935,14 +940,15 @@ module.exports = {
   PRODUCT_JOIN_SQL,
   CRAWL_FRESH_ENV,
   CRAWL_FRESH_DAYS_ENV,
-  CRAWL_LAST_PRICE_READ_SQL,
+  CRAWL_ROW_PRICE_READ_SQL,
   CRAWL_OFFER_IN_STOCK_SQL,
   CRAWL_OFFER_SERVED_MARKET_SQL,
   CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS,
   CRAWL_PRICE_READ_SOURCE_KEY,
   PRICE_CHECK_COLUMN_SQL,
   crawlFreshByKey,
-  crawlLastPriceReadLateralSql,
+  crawlOfferClassConjuncts,
+  crawlRowPriceReadLateralSql,
   isolatedQuery,
   logCrawlFreshConfig,
   crawlFreshDays,

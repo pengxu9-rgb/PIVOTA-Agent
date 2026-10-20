@@ -20,9 +20,11 @@
 //   * round 2: it applies only to an identity GAP ('approved', or 'unknown' with
 //     no listing / a raw '' or 'unknown' status -- never 'rejected' and the
 //     like) and never to a row that stays shadow anyway, so every applied case
-//     ends public; a future-dated read is stale; the freshness statement counts
-//     only a served-market, in-stock, non-employee-edit read (variant offers
-//     only, on a variant-scoped row);
+//     ends public; a future-dated read is stale;
+//   * round 3: the row's read date is the OLDEST valid read across EVERY live
+//     drain offer in a served market (variants and ::canonical alike), valid =
+//     not after the batch's bound now, market DECLARED by the writer, not an
+//     employee edit; at least one such offer in stock; one clock per batch;
 //   * first-party and observed-seller ('self') rows are untouched;
 //   * the switch (CATALOG_TRUST_CRAWL_FRESH_ENABLED, default off) and N
 //     (CATALOG_TRUST_CRAWL_FRESH_DAYS, default 7) live in the upserter, which
@@ -742,12 +744,13 @@ class CrawlFakePool {
       if (this.probeThrows) throw new Error('no pg_attribute here');
       return { rows: [{ present: this.columnPresent }] };
     }
-    if (sql === upserter.CRAWL_LAST_PRICE_READ_SQL) {
+    if (sql === upserter.CRAWL_ROW_PRICE_READ_SQL) {
+      assert.ok(params[1] instanceof Date && !Number.isNaN(params[1].getTime()), 'the batch clock must be bound as $2');
       assert.ok(this.columnPresent, 'the statement naming price_checked_at was sent to a DB without it');
       return {
         rows: params[0]
           .filter((k) => this.reads[k] != null)
-          .map((k) => ({ product_key: k, last_price_read_at: this.reads[k] })),
+          .map((k) => ({ product_key: k, row_price_read_at: this.reads[k] })),
       };
     }
     if (sql.includes('catalog_source_quarantine')) return { rows: [] };
@@ -771,6 +774,10 @@ class CrawlFakePool {
 
   sent(sql) {
     return this.queries.filter((q) => q.sql === sql).map((q) => q.params);
+  }
+
+  keysSent() {
+    return this.sent(upserter.CRAWL_ROW_PRICE_READ_SQL).map((params) => params[0]);
   }
 
   written() {
@@ -807,7 +814,7 @@ test('off: no extra statement, and today\'s decision is written', async () => {
   assert.equal(written.serving_decision, 'shadow');
   assert.deepEqual(written.serving_reason_codes, [REASON_CODES.IDENTITY_CONFIDENCE_NULL]);
   assert.deepEqual(pool.sent(upserter.PRICE_CHECK_COLUMN_SQL), []);
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+  assert.deepEqual(pool.sent(upserter.CRAWL_ROW_PRICE_READ_SQL), []);
 });
 
 for (const value of ['', '0', 'false', 'off', 'no', 'enabled', '2']) {
@@ -857,7 +864,9 @@ test('on: a fresh listing is written public with the trace code', async () => {
     REASON_CODES.CRAWL_FRESH,
     REASON_CODES.PUBLIC_PASSTHROUGH,
   ]);
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [[[RETAILER_PK]]]);
+  assert.deepEqual(pool.keysSent(), [[RETAILER_PK]]);
+  // ONE CLOCK: the statement is bound with the same now the age is judged by
+  assert.equal(pool.sent(upserter.CRAWL_ROW_PRICE_READ_SQL)[0][1], NOW);
 });
 
 test('on: a stale listing is today\'s decision', async () => {
@@ -878,7 +887,7 @@ test('on: without the price_checked_at column nothing names it and nothing moves
   switchOn();
   const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: NOW }, columnPresent: false });
   assert.deepEqual(await writeOne(pool), off);
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+  assert.deepEqual(pool.sent(upserter.CRAWL_ROW_PRICE_READ_SQL), []);
 });
 
 test('on: a failed column probe reads as absent', async () => {
@@ -886,7 +895,7 @@ test('on: a failed column probe reads as absent', async () => {
   const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: NOW }, probeThrows: true });
   const written = await writeOne(pool);
   assert.equal(written.serving_decision, 'shadow');
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+  assert.deepEqual(pool.sent(upserter.CRAWL_ROW_PRICE_READ_SQL), []);
 });
 
 test('on: a batch with no drain-lane row sends nothing extra', async () => {
@@ -894,7 +903,7 @@ test('on: a batch with no drain-lane row sends nothing extra', async () => {
   const pool = new CrawlFakePool({ joined: [firstPartyRow()] });
   await writeOne(pool, 'pk_internal_1');
   assert.deepEqual(pool.sent(upserter.PRICE_CHECK_COLUMN_SQL), []);
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+  assert.deepEqual(pool.sent(upserter.CRAWL_ROW_PRICE_READ_SQL), []);
 });
 
 test('on: a fresh brand-official row is written public with the same code', async () => {
@@ -933,9 +942,7 @@ test('on: only drain-lane rows are looked up, and only they get the input', asyn
   });
   const fresh = await upserter.crawlFreshByKey(pool, rows, NOW);
   assert.deepEqual(fresh, { [RETAILER_PK]: true, [OTHER_RETAILER_PK]: false, [BRAND_PK]: true });
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [
-    [[RETAILER_PK, OTHER_RETAILER_PK, BRAND_PK].sort()],
-  ]);
+  assert.deepEqual(pool.keysSent(), [[RETAILER_PK, OTHER_RETAILER_PK, BRAND_PK].sort()]);
 });
 
 for (const [days, ageDays, decision] of [[3, 4, 'shadow'], [5, 4, 'public'], [4, 4, 'public']]) {
@@ -983,7 +990,7 @@ test('bulk path (the external-seed sync and the one-off scripts)', async () => {
   assert.equal(wrote, 2);
   assert.equal(pool.written()[RETAILER_PK].serving_decision, 'public');
   assert.equal(pool.written()[OTHER_RETAILER_PK].serving_decision, 'shadow');
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [[[RETAILER_PK, OTHER_RETAILER_PK]]]);
+  assert.deepEqual(pool.keysSent(), [[RETAILER_PK, OTHER_RETAILER_PK]]);
 });
 
 test('identity-event path (source listing refs -> bulk) supplies it too', async () => {
@@ -1008,7 +1015,7 @@ test('a failing freshness statement fails CLOSED per batch: today\'s gates are w
   const pool = pathsPool();
   const origQuery = pool.query.bind(pool);
   pool.query = async (sql, params) => {
-    if (sql === upserter.CRAWL_LAST_PRICE_READ_SQL) throw new Error('boom');
+    if (sql === upserter.CRAWL_ROW_PRICE_READ_SQL) throw new Error('boom');
     return origQuery(sql, params);
   };
   assert.equal(await upserter.upsertCatalogRowTrust(pool, RETAILER_PK, NOW), true);
@@ -1053,41 +1060,40 @@ const BACKEND_SQL = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures', 'crawl_fresh_trust_backend_sql.json'), 'utf8'),
 );
 
-test('the freshness statement is the backend constant, with :product_keys bound as $1 and nothing else changed', () => {
-  const backend = BACKEND_SQL.CRAWL_LAST_PRICE_READ_SQL;
-  assert.equal(backend.split(':product_keys').length - 1, 1, 'the backend constant binds exactly one name');
-  assert.equal(upserter.CRAWL_LAST_PRICE_READ_SQL, backend.replace(':product_keys', '$1'));
-  assert.equal((upserter.CRAWL_LAST_PRICE_READ_SQL.match(/\$\d+/g) || []).join(','), '$1');
+test('the freshness statement is the backend constant, with :product_keys / :now bound as $1 / $2 and nothing else changed', () => {
+  const backend = BACKEND_SQL.CRAWL_ROW_PRICE_READ_SQL;
+  assert.equal(backend.split(':product_keys').length - 1, 1, 'the backend binds the key list once');
+  assert.equal(backend.split(':now').length - 1, 2, 'the backend binds :now in both valid-read arms');
+  assert.deepEqual([...new Set(backend.match(/:[a-z_]+\b/g) || [])].sort(), [':now', ':product_keys']);
+  assert.equal(
+    upserter.CRAWL_ROW_PRICE_READ_SQL,
+    backend.replace(':product_keys', '$1').split(':now').join('$2'),
+  );
+  assert.deepEqual([...new Set(upserter.CRAWL_ROW_PRICE_READ_SQL.match(/\$\d+/g) || [])].sort(), ['$1', '$2']);
 });
 
 test('the freshness statement, spelled out (so a fixture edit cannot move both sides at once)', () => {
+  const valid =
+    "CASE WHEN co.price_checked_at <= CAST($2 AS timestamptz) AND upper(btrim(coalesce(co.offer_payload->>'declared_market', ''))) = upper(btrim(coalesce(co.market, ''))) AND coalesce(co.offer_payload->>'price_read_source', '') <> 'employee_edit' THEN co.price_checked_at END";
   assert.equal(
-    upserter.CRAWL_LAST_PRICE_READ_SQL,
-    'SELECT k.product_key, r.last_price_read_at\n' +
+    upserter.CRAWL_ROW_PRICE_READ_SQL,
+    'SELECT k.product_key, r.row_price_read_at\n' +
       '  FROM unnest(CAST($1 AS text[])) AS k(product_key)\n' +
       ' CROSS JOIN LATERAL (\n' +
-      '   SELECT max(co.price_checked_at) AS last_price_read_at\n' +
+      '   SELECT CASE WHEN count(*) > 0\n' +
+      `                AND bool_and((${valid}) IS NOT NULL)\n` +
+      "                AND bool_or(lower(btrim(coalesce(co.availability, ''))) NOT IN ('out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable'))\n" +
+      `               THEN min(${valid}) END AS row_price_read_at\n` +
       '     FROM catalog_offers co\n' +
       '    WHERE co.product_key = k.product_key\n' +
       "      AND co.source_system = 'catalog_enrichment_agent_v1'\n" +
       '      AND co.suppressed_at IS NULL\n' +
       '      AND coalesce(co.merchant_effective_price, co.list_price) > 0\n' +
-      '      AND co.price_checked_at IS NOT NULL\n' +
-      '      AND co.price_checked_at <= now()\n' +
-      "      AND btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref)," +
-      " E' \\t\\n\\r\\f\\v') ~ '^https?://\\S+$'\n" +
+      "      AND btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref), E' \\t\\n\\r\\f\\v') ~ '^https?://\\S+$'\n" +
       "      AND coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'\n" +
-      "      AND (upper(btrim(coalesce(co.market, ''))), upper(btrim(coalesce(co.currency, ''))))" +
-      " IN (('SG', 'SGD'), ('US', 'USD'))\n" +
-      "      AND lower(btrim(coalesce(co.availability, '')))" +
-      " NOT IN ('out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable')\n" +
-      "      AND coalesce(co.offer_payload->>'price_read_source', '') <> 'employee_edit'\n" +
-      "      AND (co.sku_key IS DISTINCT FROM k.product_key || '::canonical'" +
-      ' OR NOT EXISTS (SELECT 1 FROM catalog_offers cv WHERE cv.product_key = k.product_key' +
-      " AND cv.sku_key IS DISTINCT FROM k.product_key || '::canonical'" +
-      " AND cv.source_system = 'catalog_enrichment_agent_v1' AND cv.suppressed_at IS NULL))\n" +
+      "      AND (upper(btrim(coalesce(co.market, ''))), upper(btrim(coalesce(co.currency, '')))) IN (('SG', 'SGD'), ('US', 'USD'))\n" +
       ' ) r\n' +
-      ' WHERE r.last_price_read_at IS NOT NULL\n',
+      ' WHERE r.row_price_read_at IS NOT NULL\n',
   );
 });
 
@@ -1108,7 +1114,10 @@ test('the read-source key is the backend writer\'s', () => {
 });
 
 test('the statement is built from the shared lateral body', () => {
-  assert.ok(upserter.CRAWL_LAST_PRICE_READ_SQL.includes(upserter.crawlLastPriceReadLateralSql('k.product_key')));
+  assert.ok(upserter.CRAWL_ROW_PRICE_READ_SQL.includes(upserter.crawlRowPriceReadLateralSql('k.product_key')));
+  for (const c of upserter.crawlOfferClassConjuncts('k.product_key')) {
+    assert.ok(upserter.CRAWL_ROW_PRICE_READ_SQL.includes(c), c);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1165,7 +1174,7 @@ test('inside a caller transaction, a failed freshness read rolls back to its sav
   const client = new TxnFakeClient({
     joined: [joinedRow(), joinedRow(OTHER_RETAILER_PK)],
     reads: { [RETAILER_PK]: NOW },
-    failSql: upserter.CRAWL_LAST_PRICE_READ_SQL,
+    failSql: upserter.CRAWL_ROW_PRICE_READ_SQL,
   });
   const wrote = await upserter.upsertCatalogRowTrustMany(client, [RETAILER_PK, OTHER_RETAILER_PK], NOW);
   assert.equal(wrote, 2);
@@ -1185,7 +1194,7 @@ test('inside a caller transaction, a failed column probe is contained the same w
   assert.equal(await upserter.upsertCatalogRowTrust(client, RETAILER_PK, NOW), true);
   assert.equal(client.aborted, false);
   assert.equal(client.written()[RETAILER_PK].serving_decision, 'shadow');
-  assert.deepEqual(client.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+  assert.deepEqual(client.sent(upserter.CRAWL_ROW_PRICE_READ_SQL), []);
 });
 
 test('inside a caller transaction, a successful read releases its savepoint and serves the input', async () => {
@@ -1201,7 +1210,7 @@ test('a client outside any transaction (SAVEPOINT refused with 25P01) runs the r
   const client = new TxnFakeClient({ inTransaction: false, joined: [joinedRow()], reads: { [RETAILER_PK]: NOW } });
   assert.equal(await upserter.upsertCatalogRowTrust(client, RETAILER_PK, NOW), true);
   assert.equal(client.written()[RETAILER_PK].serving_decision, 'public');
-  assert.deepEqual(client.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [[[RETAILER_PK]]]);
+  assert.deepEqual(client.keysSent(), [[RETAILER_PK]]);
 });
 
 test('a pg Pool gets no savepoint: each of its queries is already its own statement', async () => {
@@ -1258,7 +1267,7 @@ test('backfill driver: switched off it is today\'s decision and sends no extra s
   const pool = backfillPool({ rows: [joinedRow()], reads: { [RETAILER_PK]: ago(DAY_MS) } });
   const tally = await runBackfill({ pool, clock: () => NOW });
   assert.equal(tally.shadow, 1);
-  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+  assert.deepEqual(pool.sent(upserter.CRAWL_ROW_PRICE_READ_SQL), []);
 });
 
 test('backfill driver: `now` is read per batch, so a late batch is judged by a current clock', async () => {
@@ -1295,8 +1304,9 @@ test('logCrawlFreshConfig reports the effective switch and N', () => {
   assert.equal(out.enabled, true);
   assert.equal(out.days, 3.5);
   const last = JSON.parse(lines.at(-1));
-  assert.equal(last.event, 'catalog_trust_crawl_fresh_config');
-  assert.equal(last.context, 'test');
+  assert.equal(last.event, 'catalog_row_trust_crawl_fresh_config');
+  assert.equal(last.component, 'test');
+  assert.equal(last.served_market_currency, 'SG:SGD,US:USD');
   assert.equal(last.enabled, true);
   assert.equal(last.days, 3.5);
 });
@@ -1323,24 +1333,66 @@ test('every entry point that writes or re-derives trust logs the switch it runs 
 // Market drift: the served pairs the statement names are the registry's
 // ---------------------------------------------------------------------------
 
-test('the served (market, currency) pairs equal the backend registry served set', () => {
-  // Prefer this repo's generated registry copy once it exists; until then the
-  // fixture generated from the backend registry (see its _source).
-  const generated = path.join(__dirname, '..', 'src', 'markets', 'market_registry.generated.json');
-  let want;
-  if (fs.existsSync(generated)) {
-    const registry = JSON.parse(fs.readFileSync(generated, 'utf8'));
-    want = Object.entries(registry.markets)
-      .filter(([, e]) => e.status === 'served')
-      .map(([code, e]) => [code, e.currency]);
-  } else {
-    want = JSON.parse(
-      fs.readFileSync(path.join(__dirname, 'fixtures', 'crawl_fresh_served_markets.backend.json'), 'utf8'),
-    ).served_market_currency_pairs;
+test('the served (market, currency) pairs equal the backend\'s committed pin target', () => {
+  // tests/fixtures/crawl_fresh_served_markets.backend.json is a VERBATIM copy of
+  // pivota-backend config/crawl_fresh_served_markets.json (written by its
+  // scripts/generate_crawl_fresh_served_markets.py from
+  // CRAWL_SERVED_MARKET_CURRENCY_PAIRS, which the backend renders into its
+  // statement). Copy the file again whenever the backend's changes.
+  const pin = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'fixtures', 'crawl_fresh_served_markets.backend.json'), 'utf8'),
+  );
+  assert.equal(pin.generated_from, 'pivota-backend services.catalog_row_trust_upserter.CRAWL_SERVED_MARKET_CURRENCY_PAIRS');
+  assert.equal(pin.version, 1);
+  assert.deepEqual(
+    upserter.CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS.map((pair) => [...pair]),
+    pin.served_market_currency,
+  );
+  assert.ok(
+    upserter.CRAWL_OFFER_SERVED_MARKET_SQL.endsWith(
+      ` IN (${pin.served_market_currency.map(([m, c]) => `('${m}', '${c}')`).join(', ')})`,
+    ),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Round 3 specifics
+// ---------------------------------------------------------------------------
+
+test('round 3: the valid read requires a DECLARED market and is used in both arms; no DB clock', () => {
+  const sql = upserter.CRAWL_ROW_PRICE_READ_SQL;
+  assert.equal(sql.split("co.offer_payload->>'declared_market'").length - 1, 2);
+  assert.equal(sql.split('CAST($2 AS timestamptz)').length - 1, 2);
+  assert.ok(!/\bnow\(\)/.test(sql), 'the statement must not read the database clock');
+  assert.ok(!sql.includes('::canonical'), 'every live offer counts; no canonical special case');
+  assert.ok(!sql.includes('max('), 'the row date is the OLDEST valid read, not the newest');
+});
+
+test('round 3: with no `now` passed, the batch binds one Date and judges against it', async () => {
+  switchOn();
+  const pool = pathsPool();
+  await upserter.upsertCatalogRowTrustMany(pool, [RETAILER_PK, OTHER_RETAILER_PK]);
+  const sent = pool.sent(upserter.CRAWL_ROW_PRICE_READ_SQL);
+  assert.equal(sent.length, 1);
+  assert.ok(sent[0][1] instanceof Date);
+});
+
+test('round 3: a failed read logs catalog_row_trust_crawl_fresh_read_failed', async () => {
+  switchOn();
+  const logger = require('../src/logger');
+  const seen = [];
+  const orig = logger.error;
+  logger.error = (obj) => seen.push(obj);
+  try {
+    const pool = pathsPool();
+    const origQuery = pool.query.bind(pool);
+    pool.query = async (sql, params) => {
+      if (sql === upserter.CRAWL_ROW_PRICE_READ_SQL) throw new Error('boom');
+      return origQuery(sql, params);
+    };
+    assert.equal(await upserter.crawlFreshByKey(pool, [joinedRow()], NOW), null);
+  } finally {
+    logger.error = orig;
   }
-  const norm = (pairs) => pairs.map(([m, c]) => `${m}:${c}`).sort();
-  assert.deepEqual(norm(upserter.CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS), norm(want));
-  for (const [m, c] of want) {
-    assert.ok(upserter.CRAWL_OFFER_SERVED_MARKET_SQL.includes(`('${m}', '${c}')`), `${m}/${c}`);
-  }
+  assert.ok(seen.some((o) => o && o.event === 'catalog_row_trust_crawl_fresh_read_failed'));
 });

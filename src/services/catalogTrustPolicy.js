@@ -350,9 +350,10 @@ function isCrawlListing(product) {
 /**
  * Was the listing's price read within `maxAgeDays` of `now`?
  *
- * `lastPriceReadAt` is the newest catalog_offers.price_checked_at among the
- * row's live drain-lane offers (the upserter's CRAWL_LAST_PRICE_READ_SQL).
- * NULL / unparseable = never read = not fresh. Fresh iff 0 <= age <= N days,
+ * `lastPriceReadAt` is the row's price-read date: since round 3 the OLDEST
+ * valid read across EVERY live offer of the qualifying class (the upserter's
+ * CRAWL_ROW_PRICE_READ_SQL), NULL as soon as one has none. NULL / unparseable
+ * = not fresh. Fresh iff 0 <= age <= N days,
  * in seconds, INCLUSIVE at both ends. A stamp dated AFTER `now` is STALE
  * (round 2): a future date is not a read anyone can vouch for. Twin of
  * is_crawl_fresh: the same comparison.
