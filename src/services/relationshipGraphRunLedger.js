@@ -177,6 +177,8 @@ function extractRelationshipGraphRunRecord(summary = {}, {
       // Preserve exact batch identity after the container's temporary artifacts disappear.
       ...(Array.isArray(review?.decisions) ? { recommendation_review_batch: {
         schema_version: 'relgraph_review_batch.v1',
+        // Every row the batch wrote carries this id in its provenance (ai_review.run_id, ...).
+        review_run_id: normalizeString(reviewSummary.run_id, 180) || null,
         complete: Number(reviewSummary.reviewed_count) === review.decisions.length,
         applied_approval_count: Number(reviewSummary.approved_applied_count ??
           (Number(reviewSummary.applied_count || 0) - review.decisions.filter(row => row.applied === true && row.verdict === 'guard_blocked').length)),

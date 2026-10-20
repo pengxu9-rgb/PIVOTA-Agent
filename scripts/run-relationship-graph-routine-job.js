@@ -209,7 +209,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     maxReviewErrorRate: parseNumber(argValue(argv, 'max-review-error-rate'), 0.25, { min: 0, max: 1 }),
     minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
-    reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
+    reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 10000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), DEFAULT_REVIEW_MIN_SCORE, { min: 0, max: 1 }),
     reviewRelationTypes: normalizeString(argValue(argv, 'review-relation-types'), 1000),
     reviewExcludeRelationTypes,
@@ -380,6 +380,7 @@ function buildRoutineSteps(options) {
       artifacts.review,
     ];
     pushArg(args, 'concurrency', options.reviewConcurrency);
+    pushArg(args, 'run-id', options.reviewRunId);
     pushArg(args, 'review-mode', options.reviewMode);
     pushArg(args, 'min-approval-confidence', options.minApprovalConfidence);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
@@ -893,9 +894,10 @@ async function runRoutineJob(
 ) {
   const outDir = resolvePathMaybeRelative(options.outDir);
   fs.mkdirSync(outDir, { recursive: true });
-  const { artifacts, steps } = buildRoutineSteps({ ...options, outDir });
-  const lockDir = buildLockPath({ ...options, outDir });
   const runId = `relgraph_routine_${dateStamp(now)}`;
+  // The review stamps every row it writes with this run id (provenance.ai_review.run_id, ...).
+  const { artifacts, steps } = buildRoutineSteps({ ...options, outDir, reviewRunId: runId });
+  const lockDir = buildLockPath({ ...options, outDir });
   const releaseLock = options.skipLock
     ? null
     : acquireRoutineLock(lockDir, {
