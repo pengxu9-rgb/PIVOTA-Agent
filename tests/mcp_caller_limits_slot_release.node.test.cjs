@@ -25,6 +25,8 @@
 // cannot pass by never reaching its path. That seam sits AFTER the adapter answered; a throw BEFORE any answer
 // (the adapter failing to build) is covered by tests/mcp_caller_limits_slot_release_build_failure.node.test.cjs.
 //
+// A client that disconnects mid-dispatch keeps its slot until the work it started ends, then frees it.
+//
 // Mode off is pinned at the end: with every limit at its tightest, nothing is counted, refused, logged or
 // forwarded, and the completion lines are the ones the doors wrote before the limits existed.
 //
@@ -165,8 +167,8 @@ const DOORS = {
     ip: '203.0.113.141',
     limitsEnv: { MCP_CALLER_LIMITS_ANON_CONCURRENCY: '1' },
     heartbeatPrefix: 'PUBLIC_READ_MCP',
-    send(body) {
-      return supertest(app).post('/public/mcp').set('X-Forwarded-For', `${this.ip}, ${LB}`).send(body);
+    send(body, target = app) {
+      return supertest(target).post('/public/mcp').set('X-Forwarded-For', `${this.ip}, ${LB}`).send(body);
     },
     callerKey() {
       return limits.resolveDoorCaller({ headers: { 'x-forwarded-for': `${this.ip}, ${LB}` } }).key;
@@ -176,8 +178,8 @@ const DOORS = {
     ip: '203.0.113.142',
     limitsEnv: { MCP_CALLER_LIMITS_PARTNER_CONCURRENCY: '1' },
     heartbeatPrefix: 'COMMERCE_MCP',
-    send(body) {
-      return supertest(app)
+    send(body, target = app) {
+      return supertest(target)
         .post('/mcp')
         .set('X-Agent-API-Key', KEY_PARTNER)
         .set('Accept', 'application/json, text/event-stream')
@@ -297,6 +299,64 @@ for (const door of Object.keys(DOORS)) {
     assert.equal(failed.lines.length, 1);
     assert.equal(failed.lines[0].outcome, 'internal_error');
     await assertSlotFreed(door, 'throw before commit');
+  });
+}
+
+// ---- the client leaves mid-dispatch ----
+
+// Sends `req` and destroys the client side of it after `ms`. Resolves when the client gave up.
+function sendThenAbort(req, ms) {
+  return new Promise((resolve) => {
+    req.on('error', () => resolve());
+    req.end(() => resolve());
+    setTimeout(() => {
+      try {
+        req.abort();
+      } catch (_) {
+        // already done
+      }
+      resolve();
+    }, ms);
+  });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// An aborted supertest request never reaches the callback that closes supertest's own ephemeral server, so
+// these cases run against one loopback server this file closes itself (connections included).
+async function withServer(fn) {
+  const http = require('http');
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    return await fn(server);
+  } finally {
+    if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+    await new Promise((resolve) => server.close(() => resolve()));
+  }
+}
+
+for (const door of Object.keys(DOORS)) {
+  // A release tied to the response ('finish') instead of the finally would never run here: an aborted
+  // response emits 'close', not 'finish', so the slot would stay held for good.
+  test(`${door}: a client that leaves mid-dispatch keeps its slot until the work ends, then frees it`, async () => {
+    setLimits({ MCP_CALLER_LIMITS_MODE: 'enforce', ...DOORS[door].limitsEnv });
+    nock(SELF_BASE).post('/agent/shop/v1/invoke').delay(400).reply(200, { status: 'success', products: [], total: 0 });
+    try {
+      await withServer(async (server) => {
+        await sendThenAbort(DOORS[door].send(slowSearch(51), server), 100);
+        await sleep(50);
+        const during = await call(door, cheapCall(52));
+        assert.equal(during.status, 429, 'the abandoned search is still running, so its slot is still held');
+        assert.equal(during.json.error.data.reason, 'concurrency');
+        await sleep(500);
+      });
+      assert.deepEqual(slotsOf(door), { inflight: 0, held: 0 }, 'released when the dispatch finished');
+      warnings.length = 0;
+      await assertSlotFreed(door, 'client gone mid-dispatch');
+    } finally {
+      stubEdges();
+    }
   });
 }
 
