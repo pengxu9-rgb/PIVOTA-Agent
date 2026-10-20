@@ -373,7 +373,7 @@ const ROWS = [
 ];
 
 const LATIN_WORD_CHAR = /[a-z0-9]/;
-const NON_LATIN_SCRIPT = /[぀-ヿ㐀-鿿가-힯ᄀ-ᇿ㄰-㆏]/;
+const NON_LATIN_SCRIPT = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/;
 const ASCII_ONLY = /^[\x00-\x7f]*$/;
 
 // Folds one character for matching: lowercase, diacritics stripped (é->e, ä->a), ß->s, full-width
@@ -456,8 +456,8 @@ const { entries: ENTRIES, standaloneByKey: STANDALONE_BY_KEY } = buildEntries();
 // negation ("retinol free") is FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING's business, not this table's.
 const NEGATION_PREFIX_LATIN = /(?:^|\s)(?:sans|sin|ohne|frei von|libre de|exento de)\s+(?:(?:de|d|du|des|le|la|l|el|los|las)\s+)?$/;
 const NEGATION_PREFIX_CJK = /(?:不含|无添加|無添加|无|無|没有|沒有|避开|避開|不要|不加)\s*$/;
-const NEGATION_SUFFIX_LATIN = /^\s*frei(?![a-z0-9])/;
-const NEGATION_SUFFIX_CJK = /^(?:\s*free(?![a-z0-9])|\s*(?:フリー|不使用|無添加|なし|無し|없는|무첨가|프리|없이))/;
+const NEGATION_SUFFIX_LATIN = /^\s*frei(?:e|er|es|en|em)?(?![a-z0-9])/;
+const NEGATION_SUFFIX_CJK = /^(?:\s*free(?![a-z0-9])|\s*(?:フリー|不使用|無添加|なし|無し|없는|무첨가|프리(?![\uac00-\ud7af])|없이))/;
 // Korean particles attached to a matched noun ("선크림을"): dropped with the match so they do not
 // linger as a stray token.
 const KOREAN_PARTICLE_SUFFIX = /^(?:을|를|은|는|이|가|도|의)(?=\s|$)/;
@@ -645,7 +645,6 @@ function normalizeMultilingualBeautyTerms(rawQuery, { contextAvailable = false }
     }
     return text;
   };
-  if (droppedConnectors.length > 0) changed = true;
   for (const match of matches) {
     const replacement = match.negated ? `${match.entry.en}-free` : match.entry.en;
     const source = original.slice(match.start, match.stop);

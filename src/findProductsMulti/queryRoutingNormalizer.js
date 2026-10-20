@@ -28,6 +28,7 @@ const {
   canonicalizeEnglishIngredientNegations,
   extractExcludedStrictIngredientIds,
   extractPositiveStrictIngredientIds,
+  extractStandInOnlyStrictIngredientIds,
   isBareStrictIngredientQuery,
   normalizeForMatch,
   stripNegatedStrictIngredientMentions,
@@ -51,6 +52,11 @@ function runPipeline(original, { multilingual, bareIngredient }) {
       query = canonical.query;
       negation = true;
     }
+    const standIn = rewriteBareStandInQuery(query);
+    if (standIn !== query) {
+      query = standIn;
+      negation = true;
+    }
   }
   if (query === original) return { query: original, changed: false, terms: [], negation: false, guard: null };
   if (isBareIngredientNegationQuery(query)) {
@@ -58,6 +64,45 @@ function runPipeline(original, { multilingual, bareIngredient }) {
     return { query: original, changed: false, terms: [], negation: false, guard: 'bare_negation_kept', candidate: query };
   }
   return { query, changed: true, terms, negation, guard: null };
+}
+
+// The English words a stand-in phrase uses, removed when the phrase is rewritten.
+const STAND_IN_WORDS_RE =
+  /(?:^|\s)(?:alternatives?(?:\s+to)?|substitutes?(?:\s+for)?|replacements?(?:\s+for)?|instead\s+of|better\s+than|gentler\s+than)(?=\s|$)/g;
+const INGREDIENT_ENGLISH_NAME = Object.freeze({ ascorbic_acid: 'vitamin c', ceramide_np: 'ceramide' });
+
+// A query that only asks for a STAND-IN and names nothing to serve ("retinol alternative",
+// "alternative to retinol", "bakuchiol instead of retinol") is not a clarify: it is a skincare browse
+// without the ingredient. It is rewritten to "<rest> <ingredient>-free skincare", which the contract
+// reads as a skincare constraint search; the response door then drops every row naming the ingredient
+// and keeps the page inside skincare (see exclusionCategoryScope). Products that name themselves a
+// stand-in ("Bakuchiol Retinol Alternative Serum") are not "named" and stay on the page.
+// Anything else is returned unchanged.
+function rewriteBareStandInQuery(query) {
+  const excluded = extractExcludedStrictIngredientIds(query);
+  if (excluded.length === 0) return query;
+  const standInOnly = extractStandInOnlyStrictIngredientIds(query);
+  if (standInOnly.length !== excluded.length) return query;
+  if (!isBareIngredientNegationQuery(query)) return query;
+  const rest = stripNegatedStrictIngredientMentions(normalizeForMatch(query))
+    .replace(STAND_IN_WORDS_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const free = excluded.map((id) => `${INGREDIENT_ENGLISH_NAME[id] || id.replace(/_/g, ' ')}-free`).join(' ');
+  return [rest, free, 'skincare'].filter(Boolean).join(' ');
+}
+
+// The category scope a query that excludes an ingredient keeps the page in: when the rest of the query
+// names no category, the excluded actives are skincare actives and the page stays in skincare -- a
+// "retinol-free mist" is never a shampoo or a lipstick. A query that names a category ("retinol-free
+// cream", "retinol-free lipstick") keeps that category's own route and gets no extra scope (null).
+const EXCLUSION_DEFAULT_SCOPE = 'beauty/skincare/';
+function exclusionCategoryScope(text) {
+  const raw = String(text || '');
+  if (extractExcludedStrictIngredientIds(raw).length === 0) return null;
+  const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw));
+  if (resolveBeautyCategoryPathPrefixFromText(remainder)) return null;
+  return EXCLUSION_DEFAULT_SCOPE;
 }
 
 // Product-form words the category rules do not claim on their own ("balm", "mist", "suncream", ...),
@@ -80,10 +125,9 @@ function isBareIngredientNegationQuery(text) {
   if (!raw.trim()) return false;
   if (extractExcludedStrictIngredientIds(raw).length === 0) return false;
   if (extractPositiveStrictIngredientIds(raw).length > 0) return false;
-  const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw))
-    .replace(/(?:^|\s)(?:without(?:\s+any)?|no(?:\s+added)?|non|not|zero|0|avoid(?:ing)?|free(?:\s+(?:of|from))?|sans|sin|ohne|frei(?:\s+von)?|libre\s+de|без|alternatives?(?:\s+to)?|substitutes?(?:\s+for)?|replacements?(?:\s+for)?|instead\s+of|better\s+than|gentler\s+than|phyto|like)(?=\s|$)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // The qualifier words left behind ("without", "free", "alternative") name nothing to serve, so they
+  // need no removal: none of them is a product type, a brand, a concern or a skincare word.
+  const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw));
   if (!remainder) return true;
   if (resolveBeautyCategoryPathPrefixFromText(remainder)) return false;
   if (PRODUCT_FORM_RE.test(remainder) || SKIN_CONCERN_RE.test(remainder)) return false;
@@ -166,7 +210,9 @@ function buildRoutingQueryLogFields(normalization, extra = {}) {
 }
 
 module.exports = {
+  exclusionCategoryScope,
   isBareIngredientNegationQuery,
+  rewriteBareStandInQuery,
   normalizeFindProductsMultiRoutingQuery,
   locateRoutingQuery,
   buildRoutingQueryLogFields,

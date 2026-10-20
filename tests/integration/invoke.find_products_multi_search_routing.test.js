@@ -24,7 +24,7 @@ const CANONICAL_MARKER = 'WITH candidate_products';
 // Several tests replay a query set through two boots of the route.
 jest.setTimeout(60000);
 
-function row(key, title, categoryPath, { actives = [], productType = 'Skincare', description = null } = {}) {
+function row(key, title, categoryPath, { actives = [], productType = 'Skincare', description = null, inci = null } = {}) {
   return {
     merchant_id: 'external_seed',
     product_key: `prod::external_seed::external_seed::ext_${key}`,
@@ -47,7 +47,13 @@ function row(key, title, categoryPath, { actives = [], productType = 'Skincare',
     merchant_effective_price: '24.00',
     currency: 'USD',
     product_payload: {
-      seed_data: { price_amount: '24.00', price_currency: 'USD', availability: 'in stock', active_ingredients: actives },
+      seed_data: {
+        price_amount: '24.00',
+        price_currency: 'USD',
+        availability: 'in stock',
+        active_ingredients: actives,
+        ...(inci ? { ingredients_inci: inci } : {}),
+      },
     },
     rank_score: 90,
   };
@@ -86,11 +92,24 @@ const CATALOG = [
   row('natural_vit_c', 'Natural Vitamin C Brightening Serum', SERUM, { actives: ['ascorbic acid'], productType: 'Serum' }),
   row('ko_retinol', '레티놀 세럼', SERUM, { productType: 'Serum' }),
   row('ru_retinol', 'Ретинол сыворотка', SERUM, { productType: 'Serum' }),
+  // r4 review shapes
+  row('decimal_retinol', '1.0% Retinol Night Serum', SERUM, { actives: ['retinol'], productType: 'Serum' }),
+  row('decimal_niacinamide', '10.0% Niacinamide Booster', SERUM, { actives: ['niacinamide'], productType: 'Serum' }),
+  row('decimal_bha', '2.0% Salicylic Acid Cleanser', 'beauty/skincare/cleanse/cleanser', { actives: ['salicylic acid'], productType: 'Cleanser' }),
+  row('free_radical', 'Vitamin C Free Radical Defense Serum', SERUM, { actives: ['ascorbic acid'], productType: 'Serum' }),
+  row('ko_premium', '레티놀 프리미엄 세럼', SERUM, { productType: 'Serum' }),
+  row('ru_cream', 'Крем с ретинолом', CREAM, { productType: 'Moisturizer' }),
+  row('faux', 'Faux Retinol Night Oil', SERUM, { actives: ['squalane'], productType: 'Serum' }),
+  row('pseudo', 'Pseudo-Retinol Serum', SERUM, { actives: ['bakuchiol'], productType: 'Serum' }),
+  row('bio_inci', 'Bio-Retinol Bakuchiol Serum', SERUM, { productType: 'Serum', inci: ['Aqua', 'Bakuchiol', 'Squalane'] }),
 ];
 const REAL_RETINOL = ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream', 'Vegan Retinol Night Cream',
-  'Revive Pro-Retinol Night Cream', '레티놀 세럼', 'Ретинол сыворотка'];
-const REAL_NIACINAMIDE = ['Niacinamide 10% Serum', 'Vegan Niacinamide 10% + Zinc Serum'];
-const REAL_VITAMIN_C = ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum', 'Natural Vitamin C Brightening Serum'];
+  'Revive Pro-Retinol Night Cream', '레티놀 세럼', 'Ретинол сыворотка', '1.0% Retinol Night Serum', '레티놀 프리미엄 세럼',
+  'Крем с ретинолом'];
+const REAL_NIACINAMIDE = ['Niacinamide 10% Serum', 'Vegan Niacinamide 10% + Zinc Serum', '10.0% Niacinamide Booster'];
+const REAL_VITAMIN_C = ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum', 'Natural Vitamin C Brightening Serum',
+  'Vitamin C Free Radical Defense Serum'];
+const SKINCARE_PATH = /^beauty\/skincare(\/|$)/;
 
 const LANES = {
   INGREDIENT: 'agent_products_ingredient_recall_direct',
@@ -352,6 +371,79 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     }
   });
 
+  test('on: decimals stay numbers -- "1.0%" asks for the ingredient and names it on a product', async () => {
+    const { invoke } = boot(BOTH_ON);
+    // The query keeps its ingredient intent and is never read as "0% retinol". (Its rows are then emptied
+    // by the lane's budget filter, which reads the bare number "1.0" as a price cap -- the existing
+    // number-as-price behaviour, the same with the flags off; not part of these flags.)
+    for (const query of ['1.0% retinol serum', '2.0% salicylic acid', '10.0% niacinamide', '15.0% vitamin c']) {
+      const { resp, log } = await invoke(query);
+      expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
+      expect([query, log.fpm_excluded_ingredient_dropped_count]).toEqual([query, undefined]);
+      expect([query, log.fpm_routing_query_negation]).toEqual([query, undefined]);
+      expect([query, resp.body.metadata.ingredient_direct_budget_filtered_out_count > 0]).toEqual([query, true]);
+    }
+    for (const [query, forbidden] of [['retinol-free serum', '1.0% Retinol Night Serum'], ['niacinamide-free serum', '10.0% Niacinamide Booster'],
+      ['salicylic acid free cleanser', '2.0% Salicylic Acid Cleanser']]) {
+      expect([query, titles((await invoke(query)).resp)]).not.toContainEqual([query, forbidden]);
+      expect([query, titles((await invoke(query)).resp).includes(forbidden)]).toEqual([query, false]);
+    }
+  });
+
+  test('on: "free radical", Korean "premium", Russian inflections, faux / pseudo, INCI veto', async () => {
+    const { invoke } = boot(BOTH_ON);
+    const radical = await invoke('vitamin c free radical serum');
+    expect(lane(radical.resp)).toBe(LANES.INGREDIENT);
+    expect(titles(radical.resp)).toContain('Vitamin C 15% Serum');
+    expect(titles((await invoke('vitamin c free serum')).resp)).not.toContain('Vitamin C Free Radical Defense Serum');
+    const premium = await invoke('레티놀 프리미엄 세럼');
+    expect(lane(premium.resp)).toBe(LANES.INGREDIENT);
+    expect(titles((await invoke('retinol-free serum')).resp)).not.toContain('레티놀 프리미엄 세럼');
+    expect(titles((await invoke('retinol-free cream')).resp)).not.toContain('Крем с ретинолом');
+    const retinol = titles((await invoke('retinol')).resp);
+    for (const fooled of ['Faux Retinol Night Oil', 'Pseudo-Retinol Serum', 'Bio-Retinol Bakuchiol Serum']) {
+      expect([fooled, retinol.includes(fooled)]).toEqual([fooled, false]);
+    }
+  });
+
+  test('on: "like", "dupe" and "phyto" in a query ask FOR the ingredient; stand-in queries browse without it', async () => {
+    const { invoke } = boot(BOTH_ON);
+    for (const query of ['retinol like the ordinary', 'serum with retinol like the ordinary', 'phyto ceramides']) {
+      const { resp, log } = await invoke(query);
+      expect([query, log.fpm_excluded_ingredient_dropped_count]).toEqual([query, undefined]);
+      expect([query, resp.body.metadata?.excluded_ingredient_dropped_count]).toEqual([query, undefined]);
+    }
+    for (const query of ['retinol like results', 'retinol dupe', 'products like retinol']) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
+      for (const title of titles(resp)) expect([query, title, REAL_RETINOL.includes(title)]).toEqual([query, title, true]);
+    }
+    for (const query of ['retinol alternative', 'alternative to retinol', 'bakuchiol instead of retinol']) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp)]).not.toEqual([query, LANES.SAFE_EMPTY]);
+      expect([query, titles(resp).length > 0]).toEqual([query, true]);
+      for (const product of resp.body.products) {
+        expect([query, product.title, REAL_RETINOL.includes(product.title)]).toEqual([query, product.title, false]);
+        const path = product.catalog_category_path || (Array.isArray(product.category_path) ? product.category_path.join('/') : product.category_path);
+        expect([query, product.title, SKINCARE_PATH.test(String(path || ''))]).toEqual([query, product.title, true]);
+      }
+    }
+  });
+
+  test('on: an exclusion with no category stays in skincare; a German form keeps its form', async () => {
+    const { invoke } = boot(BOTH_ON);
+    for (const query of ['retinol-free mist', 'retinol-free balm', 'retinol free skincare', 'cerave without retinol']) {
+      const { resp } = await invoke(query);
+      for (const product of resp.body.products) {
+        const path = product.catalog_category_path || (Array.isArray(product.category_path) ? product.category_path.join('/') : product.category_path);
+        expect([query, product.title, SKINCARE_PATH.test(String(path || ''))]).toEqual([query, product.title, true]);
+      }
+    }
+    const german = await invoke('Retinolfreie Creme');
+    const english = await invoke('retinol-free cream');
+    expect([lane(german.resp), ids(german.resp)]).toEqual([lane(english.resp), ids(english.resp)]);
+  });
+
   test('bare-ingredient flag alone: a non-English negation never becomes a request FOR the ingredient', async () => {
     const { invoke } = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on' });
     for (const query of ['retinolfrei', 'ohne Retinol creme', 'crema sin retinol', 'sans retinol', 'Retinolfreie Creme']) {
@@ -381,7 +473,9 @@ describe('find_products_multi search routing: bare ingredients and non-English b
 
   test('on: a bare negation never widens what is served', async () => {
     const queries = ['without retinol', 'no retinol', 'avoid retinol', 'zero retinol', '0% retinol', 'sin retinol',
-      'ohne Retinol', 'sans rétinol', 'retinol-free', 'retinol free', 'retinol alternative'];
+      'ohne Retinol', 'sans rétinol', 'retinol-free', 'retinol free'];
+    // (A bare STAND-IN -- "retinol alternative" -- is not an absence: it browses skincare without the
+    // ingredient; see the stand-in test.)
     const off = boot();
     const before = {};
     for (const query of queries) before[query] = (await off.invoke(query)).resp;

@@ -2858,17 +2858,19 @@ function isStrictCommerceCatalogSurface(surface) {
 }
 
 function extractStrictFindProductsMultiIngredientIntents(queryText, beautyQueryProfile = null) {
-  // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: a negated mention ("retinol free", "without retinol")
-  // is not a request for the ingredient. Off: plain substring matching, as before.
-  const matchedQuery = normalizeSearchTextForMatch(String(queryText || ''));
-  const normalizedQuery = strictIngredientQuery.isBareIngredientRoutingEnabled()
-    ? strictIngredientQuery.stripNegatedStrictIngredientMentions(matchedQuery)
-    : matchedQuery;
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
   if (!normalizedQuery) return [];
   const beautyBucket = String(beautyQueryProfile?.bucket || '').trim().toLowerCase();
   const isBeautyQuery = Boolean(beautyQueryProfile?.isBeautyQuery);
   if (isBeautyQuery && beautyBucket && beautyBucket !== 'skincare') {
     return [];
+  }
+  // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: the ingredients the query asks FOR, read on whole
+  // words from the raw text, decimals kept -- a negated or stand-in mention ("retinol-free", "without
+  // retinol", "retinol alternative") is not a request, and "1.0% retinol" is. Off: plain substring
+  // matching, as before.
+  if (strictIngredientQuery.isBareIngredientRoutingEnabled()) {
+    return strictIngredientQuery.extractPositiveStrictIngredientIds(String(queryText || ''));
   }
   const intents = [];
   for (const [term, ingredientId] of Object.entries(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES)) {
@@ -41799,8 +41801,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? payloadBody.search
             : payloadBody;
         const queryText = String(
-          debugRuntime.routingUserQuery ||
-            debugRuntime.rawUserQuery ||
+          debugRuntime.rawUserQuery ||
             payloadBody.search?.query ||
             payloadBody.query ||
             extractSearchQueryText(queryParams) ||
@@ -42065,7 +42066,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           exclusionMode === 'on' ? routingQueryState.query : routingQueryState.shadow?.query || routingQueryState.original,
         );
         if (excludedIds.length > 0) {
-          const exclusion = strictIngredientQuery.excludeIngredientsFromPage(finalBody, { ingredientIds: excludedIds });
+          const exclusionQuery =
+            exclusionMode === 'on' ? routingQueryState.query : routingQueryState.shadow?.query || routingQueryState.original;
+          const exclusion = strictIngredientQuery.excludeIngredientsFromPage(finalBody, {
+            ingredientIds: excludedIds,
+            scopePrefix: queryRoutingNormalizer.exclusionCategoryScope(exclusionQuery),
+          });
           routingQueryLogFields = {
             ...routingQueryLogFields,
             [exclusionMode === 'on' ? 'fpm_excluded_ingredient_dropped_count' : 'fpm_excluded_ingredient_would_drop_count']:
