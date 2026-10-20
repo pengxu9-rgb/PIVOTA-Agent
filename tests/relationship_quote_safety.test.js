@@ -39,3 +39,17 @@ test('a why_candidate without quotes is left exactly as it was', () => {
   const clean = { shared_evidence: [{ anchor_fact: 'Niacinamide', candidate_fact: 'Allantoin' }] };
   expect(sanitizeWhyCandidateQuotes(clean, {})).toBe(clean);
 });
+
+test('short actives and CJK words count; stopwords and one word of a multi-word brand do not', () => {
+  for (const q of ['AHA', 'BHA', 'SPF', 'SPF 50']) expect(isShowableQuote(q)).toBe(true);
+  expect(isShowableQuote('미백 기능성')).toBe(true);
+  expect(isShowableQuote('保湿')).toBe(true);
+  for (const q of ['of the', 'with a', 'with', 'toner']) expect(isShowableQuote(q)).toBe(false);
+  expect(isShowableQuote('Ordinary', 'The Ordinary')).toBe(false);
+  expect(isShowableQuote('[THE ORDINARY] Retinol 0.2% in Squalane')).toBe(true);
+});
+
+test('when every quote reason is dropped the summary stands in, not an empty list', () => {
+  const why = { summary: 'A distinct product option.', shared_evidence: [{ anchor_fact: 'cream', candidate_fact: 'cream' }], reasons_user_visible: ['cream / cream'] };
+  expect(sanitizeWhyCandidateQuotes(why)).toEqual({ summary: 'A distinct product option.', shared_evidence: [], reasons_user_visible: ['A distinct product option.'] });
+});

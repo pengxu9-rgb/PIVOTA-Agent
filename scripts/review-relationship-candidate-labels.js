@@ -37,7 +37,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { GENERIC_QUOTE_SPAN, normalizeQuoteText, quotePartIsSpecific, isShowableQuote } = require('../src/auroraBff/relationshipQuoteSafety');
+const { foldQuoteText, normalizeQuoteText, quoteWords, quotePartIsSpecific, hasQuoteShape, isShowableQuote } = require('../src/auroraBff/relationshipQuoteSafety');
 const { closePool, query } = require('../src/db');
 const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
 const { factualQuoteTable } = require('../src/llm/relationshipReviewFacts');
@@ -1174,46 +1174,60 @@ async function applyConsensusDisposition(row, decision, queryFn, { runId = '' } 
   return res.rows?.[0] || null;
 }
 
-// QUOTES ARE THE FACTS, NOT THE JSON THEY CAME FROM (2026-10-20). The evidence reaches the model as
-// JSON, and it often copies a quote with its key and quote marks ('category": "toner', 'best_for": [
-// "dry skin", "oily skin" ]'), lists several facts with an ellipsis, or differs only in spacing around
-// punctuation. Of 37 approvals the validator overturned (prod dry run, uncovered anchors), 28 pass
-// under the rules below; the rest quote text the products do not hold, or only generic words. The rules, which never let a quote say more than one fact the product carries:
+// QUOTES ARE THE FACTS, NOT THE JSON THEY CAME FROM (validator v3, 2026-10-20). The evidence reaches the
+// model as JSON, and it copies quotes in that shape ('category": "toner', 'best_for": [ "dry skin",
+// "oily skin" ]'), elides with an ellipsis, or differs only in spacing around punctuation. Of 37
+// approvals v2 overturned on a prod dry run (uncovered anchors), most pass these rules; the rest quote
+// text the products do not hold, or nothing specific. A quote may never say more than one fact the
+// product carries:
 // - Each item of an array fragment is its own quote, found whole-word in one descriptive fact of that
-//   product (QUOTE_FACT_FIELDS: never ids, refs, currency or review status).
-// - An ellipsis quote is one elided passage, not a list: every part has at least two words, all parts
-//   are in ONE fact, in order, each gap at most 160 characters and free of any negating or contrasting
-//   word ("Suitable for ... sensitive skin" cannot skip "all skin types except"). What is kept is the
-//   fact's own text from the first part to the last, never the model's stitched words.
+//   product (QUOTE_FACT_FIELDS: what the model is shown about the product, never ids, refs, URLs,
+//   prices, currency or review status).
+// - An ellipsis quote is one elided passage of ONE fact: at most six parts, each at least two words, in
+//   order, each gap at most 160 characters and free of negating or contrasting words
+//   (ELISION_FORBIDDEN_GAP; "oil-free" style compounds are not negations). What is kept is the fact's own
+//   text from the first part to the last, in its own case, never the model's stitched words.
 // - A leading key is dropped only when it names a fact field, and then every part must be found IN that
 //   field ('best_for": "oily skin' needs oily skin under best_for, not "not for oily skin" elsewhere).
 //   Any other "word:" stays part of the quote ("Retinol: 1%" is not "Salicylic acid 1%"). A known key
 //   with nothing after it is a failed quote, not an empty one.
-// - Whitespace only normalises around punctuation ("bouncy ." = "bouncy."); words never merge.
-// - A part that is only generic words, common base ingredients or the brand, or one word under four letters, proves
-//   nothing: it neither grounds a quote nor sinks one. At least one quote must ground something specific
-//   on both sides, and only specific parts are kept: what is stored and shown is those parts, as quotes.
+// - Whitespace only normalises around punctuation ("bouncy ." = "bouncy."); words never merge; curly
+//   apostrophes fold to straight ones.
+// - A part that is not specific and showable (relationshipQuoteSafety: generic words, stopwords, the
+//   brand, too short) proves nothing: it neither grounds a quote nor sinks one. At least one quote must
+//   ground something specific on both sides, and only those parts are stored and shown.
 // Negation inside a fact ("not for oily skin" quoted as "oily skin") was already possible in v2 and is
 // not fixed here.
-const QUOTE_FACT_FIELDS = Object.freeze(['title', 'category', 'category_taxonomy', 'tags', 'description', 'ingredient_text',
-  'ingredient_evidence', 'routine_fit', 'best_for', 'watchouts', 'why_it_stands_out', 'beauty_attrs']);
+// field -> null (every string under it) or the sub-keys that are descriptive text.
+const QUOTE_FACT_FIELDS = Object.freeze({
+  title: null, category: null, category_taxonomy: null, tags: null, description: null, ingredient_text: null,
+  ingredient_evidence: ['ingredient_text'], routine_fit: null, best_for: null, watchouts: null, why_it_stands_out: null,
+  beauty_attrs: null, catalog: ['title', 'category', 'category_path', 'use_case_tags', 'tags'], external_seed: ['title'],
+  market_signal_badges: ['claim_text'], external_highlight_signals: ['claim_text'],
+});
 const QUOTE_KEY_FIELDS = Object.freeze({
-  title: ['title'], name: ['title'], product_name: ['title'], category: ['category', 'category_taxonomy'],
-  category_taxonomy: ['category_taxonomy', 'category'], product_type: ['category', 'category_taxonomy'], tags: ['tags'],
-  description: ['description'], ingredients: ['ingredient_text', 'ingredient_evidence'], ingredient_text: ['ingredient_text', 'ingredient_evidence'],
+  title: ['title', 'catalog', 'external_seed'], name: ['title', 'catalog', 'external_seed'], product_name: ['title', 'catalog', 'external_seed'],
+  category: ['category', 'category_taxonomy', 'catalog'], category_taxonomy: ['category_taxonomy', 'category'],
+  category_path: ['catalog', 'category_taxonomy'], product_type: ['category', 'category_taxonomy', 'catalog'],
+  tags: ['tags', 'catalog'], use_case_tags: ['catalog'], description: ['description'],
+  ingredients: ['ingredient_text', 'ingredient_evidence'], ingredient_text: ['ingredient_text', 'ingredient_evidence'],
   inci: ['ingredient_text', 'ingredient_evidence'], best_for: ['best_for'], watchouts: ['watchouts'],
   why_it_stands_out: ['why_it_stands_out'], routine_fit: ['routine_fit'], pairing_notes: ['routine_fit'], step: ['routine_fit'],
-  beauty_attrs: ['beauty_attrs'],
+  beauty_attrs: ['beauty_attrs'], claim_text: ['market_signal_badges', 'external_highlight_signals'],
   // A brand quote is recognised so it can be ignored (a brand is never specific), not failed as unknown text.
-  brand: ['brand'],
+  brand: [],
 });
-const QUOTE_EVIDENCE_META_KEYS = new Set(['table', 'observed_at', 'review_status', 'audit_status', 'source_refs', 'ingredient_text_truncated']);
-// Strings under the descriptive fields, or under one key: a top-level field from the map, or a key
-// nested inside a descriptive field (beauty_attrs.product_form).
+// Never descriptive, wherever they sit.
+const QUOTE_EVIDENCE_META_KEYS = new Set(['table', 'observed_at', 'review_status', 'audit_status', 'source_refs',
+  'ingredient_text_truncated', 'canonical_url', 'url', 'domain', 'price_amount', 'price_currency', 'availability', 'status',
+  'type', 'source_type', 'claim_type', 'evidence_strength', 'sponsorship_status', 'confidence', 'freshness',
+  'independence_count', 'sponsored', 'decision', 'tier']);
+// { norm, raw } for every descriptive string, or only those under one key (a mapped field, or a key
+// nested inside a descriptive field such as beauty_attrs.product_form).
 function quoteFactValues(product, key = null) {
   const out = [];
   const collect = (value, keyMatch) => {
-    if (typeof value === 'string') { if (keyMatch) out.push(normalizeQuoteText(value)); return; }
+    if (typeof value === 'string') { if (keyMatch) out.push({ norm: normalizeQuoteText(value), raw: foldQuoteText(value) }); return; }
     if (Array.isArray(value)) { value.forEach((item) => collect(item, keyMatch)); return; }
     if (!value || typeof value !== 'object') return;
     for (const [name, child] of Object.entries(value)) {
@@ -1221,17 +1235,27 @@ function quoteFactValues(product, key = null) {
       collect(child, keyMatch || (key && name === key));
     }
   };
-  const fields = key && QUOTE_KEY_FIELDS[key] ? QUOTE_KEY_FIELDS[key] : QUOTE_FACT_FIELDS;
-  for (const field of fields) collect(product && product[field], !key || Boolean(QUOTE_KEY_FIELDS[key]));
+  const mapped = key ? QUOTE_KEY_FIELDS[key] : null;
+  const fields = mapped || Object.keys(QUOTE_FACT_FIELDS);
+  for (const field of fields) {
+    const value = product && product[field];
+    const subKeys = QUOTE_FACT_FIELDS[field];
+    const keyMatch = !key || Boolean(mapped);
+    if (!subKeys) { collect(value, keyMatch); continue; }
+    for (const item of Array.isArray(value) ? value : [value]) {
+      for (const sub of subKeys) if (item && typeof item === 'object') collect(item[sub], keyMatch);
+    }
+  }
   return out;
 }
 function quoteKnownKey(key, product) {
   if (QUOTE_KEY_FIELDS[key]) return true;
   return quoteFactValues(product, key).length > 0; // a key nested inside a descriptive field
 }
-// { parts, key } for one side of one quote, or null when the quote is malformed (a known key, no fact).
+// { items, key } for one side of one quote: items are array items, each the parts an ellipsis separates.
+// null when the quote is malformed (a known key with no fact after it).
 function parseQuote(value, product) {
-  let text = normalizeString(value, 350);
+  let text = foldQuoteText(normalizeString(value, 350));
   let key = null;
   const match = text.match(/^\s*[{\[]?\s*"?([A-Za-z][A-Za-z_]{0,40})"?\s*:\s*/);
   if (match && quoteKnownKey(match[1].toLowerCase(), product)) {
@@ -1239,8 +1263,7 @@ function parseQuote(value, product) {
     text = text.slice(match[0].length);
   }
   const trim = (span) => span.replace(/^[\s"\[{]+|[\s"\]},]+$/g, '');
-  // items: array items; each item is the parts an ellipsis separates (one part when there is none).
-  const items = trim(text).split(/"\s*,\s*"/).map((item) => item.split(/\s*(?:\.\.\.|…)\s*/).map(trim).filter(Boolean))
+  const items = trim(text).split(/"\s*,\s*"/).map((item) => item.split(/\s*(?:\.\.\.|\u2026)\s*/).map(trim).filter(Boolean))
     .filter((parts) => parts.length);
   if (!items.length) return null;
   return { items, key };
@@ -1252,52 +1275,77 @@ function wholeWordPositions(haystack, needle, from = 0) {
   for (let at = haystack.indexOf(needle, from); at >= 0; at = haystack.indexOf(needle, at + 1)) {
     const before = at === 0 ? '' : haystack[at - 1];
     const after = haystack[at + needle.length] || '';
-    if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) out.push(at);
+    if (!/[\p{L}\p{N}]/u.test(before) && !/[\p{L}\p{N}]/u.test(after)) out.push(at);
   }
   return out;
 }
+const ELISION_MAX_PARTS = 6;
 const ELISION_MAX_GAP = 160;
-const ELISION_FORBIDDEN_GAP = /\b(?:not|no|never|except|without|non|free|avoid|unless|but|however|instead|nor|cannot|isn't|doesn't|don't)\b/;
-// The fact's own text spanning every part in order, or '' when no single fact holds them that way.
+// A skipped stretch may not carry a negation or a contrast; "oil-free"-style compounds are not negations.
+const ELISION_FORBIDDEN_GAP = new RegExp("\\b(?:not|no|never|except|excluding|without|non|avoid|unless|however|instead|nor|"
+  + "cannot|can't|won't|isn't|aren't|doesn't|don't|unlike|although|though|whereas|other than|rather than)\\b|(?<!-)\\bfree\\b");
+// The fact's own text spanning every part in order, or ''. Memoised on (part, position): linear in the
+// candidate positions, so a many-part quote cannot stall the review.
 function elidedPassage(values, parts) {
   const needles = parts.map(normalizeQuoteText);
-  for (const fact of values) {
-    const walk = (index, from, start) => {
-      for (const at of wholeWordPositions(fact, needles[index], from)) {
-        if (index > 0) {
-          const gap = fact.slice(from, at);
-          if (gap.length > ELISION_MAX_GAP || ELISION_FORBIDDEN_GAP.test(gap)) continue;
+  for (const { norm: fact, raw } of values) {
+    const memo = new Map();
+    const endOf = (index, at) => { // end of a chain from part `index` at `at`, or -1
+      const key = `${index}:${at}`;
+      if (memo.has(key)) return memo.get(key);
+      const end = at + needles[index].length;
+      let result = -1;
+      if (index === needles.length - 1) result = end;
+      else {
+        for (const next of wholeWordPositions(fact, needles[index + 1], end)) {
+          const gap = fact.slice(end, next);
+          if (gap.length > ELISION_MAX_GAP) break;
+          if (ELISION_FORBIDDEN_GAP.test(gap)) continue;
+          result = endOf(index + 1, next);
+          if (result >= 0) break;
         }
-        const begin = index === 0 ? at : start;
-        const end = at + needles[index].length;
-        if (index === needles.length - 1) return fact.slice(begin, end);
-        const found = walk(index + 1, end, begin);
-        if (found) return found;
       }
-      return '';
+      memo.set(key, result);
+      return result;
     };
-    const passage = walk(0, 0, 0);
-    if (passage) return passage;
+    for (const start of wholeWordPositions(fact, needles[0])) {
+      const end = endOf(0, start);
+      if (end >= 0) return originalPassage(raw, fact.slice(start, end));
+    }
   }
   return '';
 }
-// One side of one quote: false (a part is not the product's), or the specific facts it grounds.
+// The same passage in the fact's own case and spacing (normalisation only lowercases and respaces).
+function originalPassage(raw, passage) {
+  const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = passage.split(/\s+/).map((word) => {
+    const [, core, punct] = word.match(/^(.*?)([.,;:!?]*)$/);
+    return escape(core) + (punct ? `\\s*${escape(punct)}` : '');
+  }).join('\\s*');
+  const match = raw.match(new RegExp(pattern, 'iu'));
+  return match ? match[0].replace(/\s+/g, ' ').trim() : passage;
+}
+// One side of one quote: false (a part is not the product's), or the specific, showable facts it grounds.
 function groundQuoteSide(product, value) {
   const parsed = parseQuote(value, product);
   if (!parsed) return false;
+  const brand = product && product.brand;
   const values = quoteFactValues(product, parsed.key);
   const specific = [];
   for (const parts of parsed.items) {
     if (parts.length > 1) {
-      if (parts.some((part) => normalizeQuoteText(part).split(/[^a-z0-9%]+/).filter(Boolean).length < 2)) return false;
+      if (parts.length > ELISION_MAX_PARTS || parts.some((part) => quoteWords(part).length < 2)) return false;
       const passage = elidedPassage(values, parts);
       if (!passage) return false;
-      if (quotePartIsSpecific(passage, product && product.brand)) specific.push(passage);
+      // A fact that itself carries an ellipsis or brackets cannot be shown, so it cannot be the evidence.
+      if (isShowableQuote(passage, brand)) specific.push(passage);
       continue;
     }
     const [part] = parts;
-    if (!quotePartIsSpecific(part, product && product.brand)) continue; // proves nothing either way
-    if (!values.some((fact) => wholeWordPositions(fact, normalizeQuoteText(part)).length)) return false;
+    // Still JSON-shaped after parsing (an unknown key, a stray bracket): not a fact, so the quote fails.
+    if (!hasQuoteShape(part)) return false;
+    if (!quotePartIsSpecific(part, brand)) continue; // generic: proves nothing either way
+    if (!values.some(({ norm }) => wholeWordPositions(norm, normalizeQuoteText(part)).length)) return false;
     specific.push(part);
   }
   return specific;
@@ -2005,6 +2053,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  // Exposed for tests of the v3 grounding rules (tests/scripts/relationship_review_quote_grounding.test.js).
+  __quoteGrounding: { quoteFactValues, parseQuote, groundQuoteSide, elidedPassage },
   DEFAULT_NEGATIVE_REVIEW_TTL_DAYS,
   REVIEW_VALIDATOR_VERSION,
   MIN_AI_APPROVAL_CONFIDENCE,
