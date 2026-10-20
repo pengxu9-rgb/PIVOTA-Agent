@@ -532,6 +532,8 @@ try {
   );
 }
 const { applyGatewayGuardrails, clientIpFromRequest } = require('./guardrails/gatewayGuardrails');
+const { applyMcpCallerLimit, attachMcpLimitCaller } = require('./guardrails/mcpCallerLimits');
+const { loopbackCallerHeaders } = require('./guardrails/loopbackCallerAssertion');
 const {
   recommend: recommendPdpProducts,
   filterExcludedRecommendationCandidates,
@@ -31609,6 +31611,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // upstream key above is always the gateway's own, so without this the backend can name no MCP agent.
       // Empty for every cached read lane: ISSUING_OPS holds no cached op (issuingAgentAssertion.js).
       ...(COMMERCE_CACHED_READ_OPS.has(op) ? {} : issuingAgentAssertionHeaders({ op, invokeContext })),
+      // A call back into THIS process carries the caller the MCP door resolved, signed with a per-process
+      // secret, so the invoke limiter keys on that caller rather than on this gateway's own key (see
+      // src/guardrails/loopbackCallerAssertion.js). It names a rate-limit bucket only: the response, and so
+      // the shared search cache, cannot depend on it.
+      ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackCallerHeaders(invokeContext) : {}),
       ...headers,
     },
     data: requestBody,
@@ -32001,6 +32008,10 @@ function buildExternalInvokeContext(req) {
     // assertion, never forwarded as a header of its own.
     oauth_issuer: req?.invokeAuth?.oauth_issuer || null,
     oauth_client_id: req?.invokeAuth?.oauth_client_id || null,
+    // The caller an MCP door resolved for its per-caller limits (src/guardrails/mcpCallerLimits.js), so a
+    // tool's loopback invoke call can be keyed on it instead of on this gateway's own key. Null off the MCP
+    // doors and when MCP_CALLER_LIMITS_MODE is off.
+    limit_caller: req?.mcpLimitCaller || null,
     agent_user_jwt: firstNonEmptyString(
       req?.header('X-Agent-User-JWT'),
       req?.header('x-agent-user-jwt'),
@@ -32534,6 +32545,8 @@ async function getCommerceRemoteMcpAdapter() {
                       forwardAgentUserJwt: false,
                       forwardBuyerRef: false,
                     }),
+                    // Same loopback caller key as the kernel's self-calls (loopbackCallerAssertion.js).
+                    ...loopbackCallerHeaders(getInvokeAuthContext()),
                   },
                   validateStatus: () => true,
                 },
@@ -32986,10 +32999,23 @@ async function handlePublicReadMcp(req, res) {
     res.setHeader('Retry-After', '10');
     return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
   }
+  // Per-caller limits shared across instances (MCP_CALLER_LIMITS_MODE; inert when off). Runs AFTER the
+  // per-instance valve above, which stays exactly as it was.
+  const callerLimited = applyMcpCallerLimit(req, res, { door: 'public_mcp' });
+  if (callerLimited) {
+    for (const [key, value] of Object.entries(callerLimited.headers)) res.setHeader(key, value);
+    return res.status(callerLimited.status).json(callerLimited.body);
+  }
   // Explicit anonymous attribution context (same store the commerce door runs under) so downstream invoke
   // reads see a labeled public-tier caller instead of an absent store.
   return INVOKE_AUTH_CONTEXT.run(
-    { path: req?.path || null, surface: 'mcp_public', auth_mode: 'public_read', auth_source: 'public_read' },
+    {
+      path: req?.path || null,
+      surface: 'mcp_public',
+      auth_mode: 'public_read',
+      auth_source: 'public_read',
+      limit_caller: req.mcpLimitCaller || null,
+    },
     async () => {
       const heartbeat = createMcpResponseHeartbeat(
         res,
@@ -33085,6 +33111,9 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
     }
 
     const runMcp = async () => {
+      // Identity is known only now, after the auth channel. Resolved BEFORE the invoke context is built so
+      // the context (and through it every loopback call) carries it; admission happens below.
+      attachMcpLimitCaller(req);
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
         // The blocked-operation short-circuits run BEFORE the heartbeat exists. They decide purely from the
         // parsed body and two env flags — they never needed the adapter or the session context — so hoisting
@@ -33124,12 +33153,21 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
           }));
         }
 
+        // Per-caller limits (MCP_CALLER_LIMITS_MODE; inert when off). After the instant refusals above, so a
+        // refused money op costs no budget, and BEFORE the heartbeat, so a refusal keeps its own status and
+        // Retry-After instead of being committed to 200.
+        const callerLimited = applyMcpCallerLimit(req, res, { door: door || 'commerce_mcp' });
+        if (callerLimited) {
+          for (const [key, value] of Object.entries(callerLimited.headers)) res.setHeader(key, value);
+          return res.status(callerLimited.status).json(callerLimited.body);
+        }
+
         // Same Railway edge first-body-byte deadline as the public tier (services/publicReadMcpHeartbeat):
         // a commerce tools/call that outlives ~13s (cold search, slow checkout upstream) gets its connection
         // reset while the server completes uselessly. Two things make committing 200 here safe. First,
         // construction happens only AFTER every non-200 outcome this route can produce (strict-off 404,
-        // OAuth challenge + WWW-Authenticate, api-key 401/403/503, blocked-op refusal), so a commit can
-        // never mask a real status or drop a challenge header. Second, isMcpHeartbeatEligibleRequest arms it
+        // OAuth challenge + WWW-Authenticate, api-key 401/403/503, blocked-op refusal, caller-limit
+        // 429/503), so a commit can never mask a real status or drop a challenge header. Second, isMcpHeartbeatEligibleRequest arms it
         // for tools/call ONLY — the one method whose outcome is guaranteed 200, tool errors riding inside
         // the JSON-RPC body — instead of relying on the other methods being too fast to reach the delay.
         // Adapter headers are only content-type, which the heartbeat sets itself on commit.
