@@ -256,6 +256,16 @@ describe('breaker state', () => {
     expect(breakerWarns(logger)).toHaveLength(1);
   });
 
+  test('after an inconclusive probe, a late model-not-found from an older in-flight call does not log again', () => {
+    const { breaker, logger, advance } = load();
+    breaker.recordModelFailure({ feature: 'rerank', provider: 'openai', model: 'm', err: openAiModelNotFound('m') });
+    advance(15 * MIN);
+    expect(breaker.acquireModelCall('rerank', 'openai', 'm')).toBe(true);
+    breaker.recordModelFailure({ feature: 'rerank', provider: 'openai', model: 'm', err: axiosError(503) });
+    breaker.recordModelFailure({ feature: 'rerank', provider: 'openai', model: 'm', err: openAiModelNotFound('m') });
+    expect(breakerWarns(logger)).toHaveLength(1);
+  });
+
   test('a transient failure on a closed breaker leaves it closed', () => {
     const { breaker } = load();
     expect(breaker.recordModelFailure({ feature: 'rerank', provider: 'openai', model: 'm', err: axiosError(503) })).toBe(false);

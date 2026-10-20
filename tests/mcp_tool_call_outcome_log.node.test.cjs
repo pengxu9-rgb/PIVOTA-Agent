@@ -367,6 +367,39 @@ test('a commerce tools/call without credentials is logged as refused, unauthenti
   assert.equal(line.tool, 'search_catalog', 'a refused call keeps a tool name the gateway advertises');
 });
 
+test('a refused call keeps a commerce-only and a UCP-only tool name: each door\'s surface registers its names', async () => {
+  for (const [path, name] of [['/mcp', 'get_offers'], ['/ucp/mcp', 'create_checkout']]) {
+    captured.length = 0;
+    const res = await supertest(app).post(path).send(rpcCall(name, {}));
+    await settle();
+    assert.equal(res.status, 401, path);
+    assert.equal(captured.length, 1, path);
+    assert.equal(captured[0].tool, name, path);
+  }
+});
+
+for (const [doorKey, knob] of [['public_mcp', 'PUBLIC_READ_MCP'], ['mcp_first_party', 'COMMERCE_MCP']]) {
+  test(`${doorKey}: a call that outlives the heartbeat delay is logged heartbeat_committed, and still ok`, async () => {
+    const query = uniqueQuery(`heartbeat-${doorKey}`);
+    searchUpstream(query, { status: 'success', success: true, products: [row('sig_ggg1')], metadata: SEARCH_METADATA },
+      { delayMs: 150 });
+    process.env[`${knob}_HEARTBEAT_DELAY_MS`] = '1';
+    process.env[`${knob}_HEARTBEAT_INTERVAL_MS`] = '20';
+    let res;
+    let line;
+    try {
+      [res, line] = await call(doorKey, rpcCall('search_catalog', DOORS[doorKey].searchArgs(query)));
+    } finally {
+      delete process.env[`${knob}_HEARTBEAT_DELAY_MS`];
+      delete process.env[`${knob}_HEARTBEAT_INTERVAL_MS`];
+    }
+    assert.equal(res.status, 200);
+    assert.equal(line.heartbeat_committed, true);
+    assert.equal(line.outcome, 'ok');
+    assert.equal(line.result_count, 1);
+  });
+}
+
 test('a refused call naming a tool no surface advertises is labelled other', async () => {
   captured.length = 0;
   const res = await supertest(app).post('/mcp').send(rpcCall('invented tool name; drop table', { query: 'x' }));
