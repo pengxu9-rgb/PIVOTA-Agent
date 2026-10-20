@@ -123,6 +123,19 @@ describe('isModelUnavailableError', () => {
   });
 });
 
+describe('recordModelFailure', () => {
+  test('logs once per (provider, model) even when in-flight calls report the same 404 after it opened', () => {
+    const { breaker, logger } = load();
+    for (let i = 0; i < 3; i += 1) {
+      expect(breaker.recordModelFailure({ feature: 'rerank', provider: 'openai', model: 'm-a', err: openAiNotFound('m-a') })).toBe(true);
+    }
+    expect(breaker.recordModelFailure({ feature: 'rerank', provider: 'openai', model: 'm-b', err: openAiNotFound('m-b') })).toBe(true);
+    expect(breakerWarns(logger)).toHaveLength(2);
+    expect(breaker.isModelBreakerOpen('openai', 'm-a')).toBe(true);
+    expect(breaker.isModelBreakerOpen('gemini', 'm-a')).toBe(false);
+  });
+});
+
 describe('rerank breaker', () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = 'sk-breaker-test';

@@ -68,6 +68,7 @@ test("describeUpstreamEnvelope reports degradation markers and lane tokens, neve
     describeUpstreamEnvelope({ status: "failed", success: false, products: [1, 2] }),
     { upstream_degraded: true, upstream_status: "failed" },
   );
+  assert.deepEqual(describeUpstreamEnvelope({ status: "success", success: false }), { upstream_degraded: true });
   assert.deepEqual(describeUpstreamEnvelope({ ok: false }), { upstream_degraded: true });
   assert.deepEqual(describeUpstreamEnvelope({ error: "boom" }), { upstream_degraded: true });
   assert.deepEqual(describeUpstreamEnvelope({ error: "" }), {}, "an empty error is not degradation");
