@@ -156,9 +156,12 @@ const POLICY_VERSION = 'c1.v0.9';
 //     those gates, so a row that was public on its own identity keeps
 //     byte-identical reason codes. It never suppresses
 //     IDENTITY_REVIEW_REQUIRED_LIVE_READ, IDENTITY_CONFLICT,
-//     NON_CANONICAL_DUPLICATE or any blocked cause. See the `crawl_fresh` input
-//     in deriveTrust for the input contract and the reason it carries no flag
-//     of its own. Twin of pivota-backend services/catalog_trust_policy.py.
+//     NON_CANONICAL_DUPLICATE or any blocked cause, and it is not applied at
+//     all to a row one of those keeps shadow (so it never rewrites one), nor to
+//     an identity listing whose status is a verdict rather than a gap (see
+//     CRAWL_FRESH_COVERAGE_GAP_STATUSES). See the `crawl_fresh` input in
+//     deriveTrust for the input contract and the reason it carries no flag of
+//     its own. Twin of pivota-backend services/catalog_trust_policy.py.
 //
 // Blocked (no public surface):
 //   TEST_MERCHANT_EXCLUDED           — 2026-07-27. merchant_id is a known rig
@@ -326,6 +329,12 @@ const CRAWL_SOURCE_SYSTEM = 'catalog_enrichment_agent_v1';
 // CATALOG_TRUST_CRAWL_FRESH_DAYS); the policy only ever sees the resulting
 // boolean.
 const CRAWL_FRESH_DEFAULT_DAYS = 7;
+// Round 2 (2026-10-20): the raw pdp_identity_listing.identity_status values that
+// mean "identity not established YET" -- a coverage gap the crawl may stand in
+// for. A row with NO identity listing is the other gap. Every other status
+// deriveIdentity folds into 'unknown' (e.g. a 'rejected' listing) is a verdict,
+// not a gap, and CRAWL_FRESH never lifts it. Compared trimmed and lower-cased.
+const CRAWL_FRESH_COVERAGE_GAP_STATUSES = Object.freeze(['', 'unknown']);
 
 /**
  * Is this catalog row a drain-lane storefront crawl row (retailer listing,
@@ -343,16 +352,17 @@ function isCrawlListing(product) {
  *
  * `lastPriceReadAt` is the newest catalog_offers.price_checked_at among the
  * row's live drain-lane offers (the upserter's CRAWL_LAST_PRICE_READ_SQL).
- * NULL / unparseable = never read = not fresh. The bound is INCLUSIVE (age == N
- * days is fresh), and a stamp ahead of `now` (clock skew between the DB and
- * this process) counts as fresh: it was read, recently. Twin of
- * is_crawl_fresh: the same comparison, in seconds, inclusive.
+ * NULL / unparseable = never read = not fresh. Fresh iff 0 <= age <= N days,
+ * in seconds, INCLUSIVE at both ends. A stamp dated AFTER `now` is STALE
+ * (round 2): a future date is not a read anyone can vouch for. Twin of
+ * is_crawl_fresh: the same comparison.
  */
 function isCrawlFresh(lastPriceReadAt, { now, maxAgeDays } = {}) {
   const ts = toDateOrNull(lastPriceReadAt);
   if (ts == null) return false;
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) return false;
-  return (now.getTime() - ts.getTime()) / 1000 <= Number(maxAgeDays) * 24 * 60 * 60;
+  const ageSeconds = (now.getTime() - ts.getTime()) / 1000;
+  return ageSeconds >= 0 && ageSeconds <= Number(maxAgeDays) * 24 * 60 * 60;
 }
 
 // The Python twin's _to_datetime: a Date as is; a number as epoch MILLISECONDS;
@@ -494,6 +504,11 @@ function deriveTrust(inputs) {
     rowHasPricedOffer,
     rowIsElectedCanonical,
     crawlFresh,
+    identityIsCoverageGap:
+      identity == null ||
+      CRAWL_FRESH_COVERAGE_GAP_STATUSES.includes(
+        String(identity.identity_status || '').trim().toLowerCase(),
+      ),
     reasons,
   });
 
@@ -754,6 +769,7 @@ function deriveServingDecision({
   rowHasPricedOffer = null,
   rowIsElectedCanonical = null,
   crawlFresh = null,
+  identityIsCoverageGap = false,
   reasons,
 }) {
   // Offer-specific block: suppressed offers never surface.
@@ -934,20 +950,31 @@ function deriveServingDecision({
   // brand-official / curated canonical) whose listing price was read within the
   // window is exempt from the same COVERAGE gates, for as long as it stays
   // fresh. Only for rows the source tiers above do NOT already exempt, so
-  // first-party and observed-seller rows keep their exact reason codes. Three
-  // conjuncts, all required:
+  // first-party and observed-seller rows keep their exact reason codes. All
+  // required:
   //   * the explicit true input (the upserter supplies it only when switched
   //     on; false/null = today's gates);
   //   * the row really is a drain-lane crawl row (isCrawlListing) — the input is
   //     never trusted alone, a producer bug must not exempt another lane;
   //   * its PDP is not KNOWN to be unrenderable (`!== false`: tri-state, null =
   //     not computed). Independent of CATALOG_TRUST_RENDERABLE_GATE: a coverage
-  //     exemption must never be what newly promotes a page that 500s.
+  //     exemption must never be what newly promotes a page that 500s;
+  //   * round 2: the identity question is a GAP, not a verdict -- 'approved'
+  //     (its confidence / live-read gaps are coverage), or 'unknown' only when
+  //     there is no listing or its raw status is in
+  //     CRAWL_FRESH_COVERAGE_GAP_STATUSES. A 'rejected' (or any other
+  //     unrecognised) listing status is never lifted;
+  //   * round 2: nothing ELSE keeps the row shadow. A row that stays shadow as
+  //     a NON_CANONICAL_DUPLICATE (or under review) gets no exemption at all, so
+  //     switching the rule on rewrites none of its reason codes.
   const isCrawlFreshExempt =
     !isSourceCoverageExempt &&
     crawlFresh === true &&
     isCrawlListing(product) &&
-    pdpRouteResolvable !== false;
+    pdpRouteResolvable !== false &&
+    (identityDecision.status === 'approved' ||
+      (identityDecision.status === 'unknown' && identityIsCoverageGap)) &&
+    rowIsElectedCanonical !== false;
   const isIdentityCoverageExempt = isSourceCoverageExempt || isCrawlFreshExempt;
 
   if (identityDecision.status === 'review_required') {
@@ -1025,6 +1052,7 @@ module.exports = {
   POLICY_VERSION,
   REASON_CODES,
   VALID_SUBJECT_TYPES,
+  CRAWL_FRESH_COVERAGE_GAP_STATUSES,
   CRAWL_FRESH_DEFAULT_DAYS,
   CRAWL_LISTING_KEY_PREFIX,
   CRAWL_SOURCE_SYSTEM,

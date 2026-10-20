@@ -17,6 +17,12 @@
 //     removed one of them;
 //   * it never removes review, conflict, non-canonical or any blocked cause, and
 //     never promotes a row whose PDP is known not to render;
+//   * round 2: it applies only to an identity GAP ('approved', or 'unknown' with
+//     no listing / a raw '' or 'unknown' status -- never 'rejected' and the
+//     like) and never to a row that stays shadow anyway, so every applied case
+//     ends public; a future-dated read is stale; the freshness statement counts
+//     only a served-market, in-stock, non-employee-edit read (variant offers
+//     only, on a variant-scoped row);
 //   * first-party and observed-seller ('self') rows are untouched;
 //   * the switch (CATALOG_TRUST_CRAWL_FRESH_ENABLED, default off) and N
 //     (CATALOG_TRUST_CRAWL_FRESH_DAYS, default 7) live in the upserter, which
@@ -32,6 +38,7 @@ const fs = require('node:fs');
 const {
   POLICY_VERSION,
   REASON_CODES,
+  CRAWL_FRESH_COVERAGE_GAP_STATUSES,
   CRAWL_FRESH_DEFAULT_DAYS,
   CRAWL_LISTING_KEY_PREFIX,
   CRAWL_SOURCE_SYSTEM,
@@ -207,17 +214,36 @@ test('a fresh listing approved with a null confidence goes public', () => {
   for (const c of COVERAGE_CODES) assert.ok(!out.serving_reason_codes.includes(c));
 });
 
-test('a fresh listing with an unknown status and a confidence goes public (the silent shadow)', () => {
-  const ident = identity({ identity_status: 'pending', identity_confidence: 0.4 });
-  const today = derive({ identity: ident });
-  assert.equal(today.serving_decision, 'shadow');
-  for (const c of COVERAGE_CODES) assert.ok(!today.serving_reason_codes.includes(c));
-  const out = derive({ identity: ident, crawl_fresh: true });
-  assert.equal(out.serving_decision, 'public');
-  assert.deepEqual(out.serving_reason_codes, [
-    REASON_CODES.CRAWL_FRESH,
-    REASON_CODES.PUBLIC_PASSTHROUGH,
-  ]);
+for (const rawStatus of ['unknown', ' UNKNOWN ', '', null]) {
+  test(`a fresh listing with a gap status (${JSON.stringify(rawStatus)}) and a confidence goes public (the silent shadow)`, () => {
+    const ident = identity({ identity_status: rawStatus, identity_confidence: 0.4 });
+    const today = derive({ identity: ident });
+    assert.equal(today.serving_decision, 'shadow');
+    for (const c of COVERAGE_CODES) assert.ok(!today.serving_reason_codes.includes(c));
+    const out = derive({ identity: ident, crawl_fresh: true });
+    assert.equal(out.serving_decision, 'public');
+    assert.deepEqual(out.serving_reason_codes, [
+      REASON_CODES.CRAWL_FRESH,
+      REASON_CODES.PUBLIC_PASSTHROUGH,
+    ]);
+  });
+}
+
+// Round 2: deriveIdentity folds every unrecognised status into 'unknown'; only
+// the GAP statuses are a coverage question.
+for (const rawStatus of ['rejected', 'pending', 'resolved', 'unverified']) {
+  for (const confidence of [0.2, null]) {
+    test(`a listing status that is a verdict (${rawStatus}, confidence ${confidence}) is never lifted`, () => {
+      const ident = identity({ identity_status: rawStatus, identity_confidence: confidence });
+      const today = derive({ identity: ident });
+      assert.equal(today.serving_decision, 'shadow');
+      assert.deepEqual(derive({ identity: ident, crawl_fresh: true }), today);
+    });
+  }
+}
+
+test('the gap statuses are pinned', () => {
+  assert.deepEqual([...CRAWL_FRESH_COVERAGE_GAP_STATUSES].sort(), ['', 'unknown']);
 });
 
 test('a fresh listing public on its own identity gets no new code (no rewrite)', () => {
@@ -284,14 +310,17 @@ test('identity conflict still blocks', () => {
   assert.deepEqual(out, derive({ identity: ident }));
 });
 
-test('a non-canonical duplicate still shadows (coverage lifted, duplicate gate not)', () => {
-  const out = derive({ row_is_elected_canonical: false, crawl_fresh: true });
-  assert.equal(out.serving_decision, 'shadow');
-  assert.deepEqual(out.serving_reason_codes, [
-    REASON_CODES.CRAWL_FRESH,
-    REASON_CODES.NON_CANONICAL_DUPLICATE,
-  ]);
-});
+for (const ident of [null, identity({ live_read_enabled: false })]) {
+  test(`a non-canonical duplicate still shadows and is not rewritten (identity ${ident ? 'live_read off' : 'none'})`, () => {
+    // Round 2: a row that stays shadow as a duplicate gets no exemption at all,
+    // so its reason codes are exactly today's and the flip writes nothing.
+    const out = derive({ identity: ident, row_is_elected_canonical: false, crawl_fresh: true });
+    assert.equal(out.serving_decision, 'shadow');
+    assert.ok(out.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
+    assert.ok(!out.serving_reason_codes.includes(REASON_CODES.CRAWL_FRESH));
+    assert.deepEqual(out, derive({ identity: ident, row_is_elected_canonical: false }));
+  });
+}
 
 test('the elected canonical goes public', () => {
   assert.equal(derive({ row_is_elected_canonical: true, crawl_fresh: true }).serving_decision, 'public');
@@ -514,7 +543,8 @@ test('without a true input every decision is identical (864-case matrix)', () =>
       moved += 1;
       assert.equal(absent.serving_decision, 'shadow');
       assert.ok(fresh.serving_reason_codes.includes(REASON_CODES.CRAWL_FRESH));
-      assert.ok(['shadow', 'public'].includes(fresh.serving_decision));
+      // round 2: the exemption applies only when it makes the row public
+      assert.equal(fresh.serving_decision, 'public');
     }
   }
   assert.equal(cases, 864);
@@ -578,8 +608,8 @@ for (const [ageMs, days, fresh] of [
   [4 * DAY_MS + SEC, 4, false],
   [12 * HOUR, 0.5, true],
   [12 * HOUR + SEC, 0.5, false],
-  [-5 * 60 * SEC, 7, true], // a stamp slightly ahead of `now`
-  [-10 * DAY_MS, 7, true], // ahead by more than N: still a read, still fresh
+  [-SEC, 7, false], // round 2: a stamp ahead of `now` is stale
+  [-10 * DAY_MS, 7, false],
 ]) {
   test(`freshness window: age ${ageMs}ms, N=${days} -> ${fresh}`, () => {
     assert.equal(isCrawlFresh(ago(ageMs), { now: NOW, maxAgeDays: days }), fresh);
@@ -1027,9 +1057,19 @@ test('the freshness statement, spelled out (so a fixture edit cannot move both s
       '      AND co.suppressed_at IS NULL\n' +
       '      AND coalesce(co.merchant_effective_price, co.list_price) > 0\n' +
       '      AND co.price_checked_at IS NOT NULL\n' +
+      '      AND co.price_checked_at <= now()\n' +
       "      AND btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref)," +
       " E' \\t\\n\\r\\f\\v') ~ '^https?://\\S+$'\n" +
       "      AND coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'\n" +
+      "      AND (upper(btrim(coalesce(co.market, ''))), upper(btrim(coalesce(co.currency, ''))))" +
+      " IN (('SG', 'SGD'), ('US', 'USD'))\n" +
+      "      AND lower(btrim(coalesce(co.availability, '')))" +
+      " NOT IN ('out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable')\n" +
+      "      AND coalesce(co.offer_payload->>'price_read_source', '') <> 'employee_edit'\n" +
+      "      AND (co.sku_key IS DISTINCT FROM k.product_key || '::canonical'" +
+      ' OR NOT EXISTS (SELECT 1 FROM catalog_offers cv WHERE cv.product_key = k.product_key' +
+      " AND cv.sku_key IS DISTINCT FROM k.product_key || '::canonical'" +
+      " AND cv.source_system = 'catalog_enrichment_agent_v1' AND cv.suppressed_at IS NULL))\n" +
       ' ) r\n' +
       ' WHERE r.last_price_read_at IS NOT NULL\n',
   );
@@ -1037,4 +1077,20 @@ test('the freshness statement, spelled out (so a fixture edit cannot move both s
 
 test('the column probe is the backend constant, byte for byte', () => {
   assert.equal(upserter.PRICE_CHECK_COLUMN_SQL, BACKEND_SQL.PRICE_CHECK_COLUMN_SQL);
+});
+
+test('the stock fragment carries the pinned unavailable vocabulary; the market fragment the served pairs', () => {
+  const { OFFER_UNAVAILABLE_AVAILABILITIES } = require('../src/services/offerAvailabilitySql');
+  for (const value of OFFER_UNAVAILABLE_AVAILABILITIES) {
+    assert.ok(upserter.CRAWL_OFFER_IN_STOCK_SQL.includes(`'${value}'`), value);
+  }
+  assert.ok(upserter.CRAWL_OFFER_SERVED_MARKET_SQL.endsWith(" IN (('SG', 'SGD'), ('US', 'USD'))"));
+});
+
+test('the read-source key is the backend writer\'s', () => {
+  assert.equal(upserter.CRAWL_PRICE_READ_SOURCE_KEY, 'price_read_source');
+});
+
+test('the statement is built from the shared lateral body', () => {
+  assert.ok(upserter.CRAWL_LAST_PRICE_READ_SQL.includes(upserter.crawlLastPriceReadLateralSql('k.product_key')));
 });

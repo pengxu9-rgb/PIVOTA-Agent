@@ -33,6 +33,7 @@ const {
   seedRouteResolvesSql,
 } = require('./pdpRenderability');
 const { pricedOfferExistsSql, pricedOfferRowConjuncts } = require('./pricedOfferSql');
+const { OFFER_UNAVAILABLE_AVAILABILITIES } = require('./offerAvailabilitySql');
 
 // ---------------------------------------------------------------------------
 // SQL — kept literal & in sync with scripts/backfill-catalog-row-trust.cjs.
@@ -317,6 +318,12 @@ const UPSERT_SQL = `
 // them 'shadow' on its next recompute: rows FLAP on the live serving surface.
 // The rule CATALOG_TRUST_RENDERABLE_GATE documents, unchanged.
 //
+// NO DECAY RECHECK HERE. The backend's trust cron re-derives, every tick, the
+// CRAWL_FRESH rows whose read may age out (and, switched off, every CRAWL_FRESH
+// row), with CATALOG_TRUST_CRAWL_FRESH_RECHECK_LIMIT bounding it. That is a
+// backend-cron-only job and env var; this repo only recomputes on identity
+// events, and does so with exactly the input rule below.
+//
 // Not a separate SELECT column in the product join, deliberately: with the
 // switch off the join text stays byte-identical to main, a database whose
 // catalog_offers lacks price_checked_at is never sent a statement naming it,
@@ -371,30 +378,117 @@ const CRAWL_OFFER_LINK_SQL =
 const CRAWL_OFFER_NOT_AFFILIATE_SQL =
   "coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'";
 
-// The newest listing price read per drain-lane row: one indexed probe per key,
-// as a LATERAL over the key list. Restricted to served supply (unsuppressed and
-// priced — pricedOfferSql, the SAME conjuncts every price gate uses), written by
-// the drain writer (source_system), dated by a price read (price_checked_at),
-// linking to the listing itself. No time predicate in SQL: the age is judged in
-// JS against the derivation's own `now` (catalogTrustPolicy.isCrawlFresh).
+// ---- round 2 (2026-10-20): the PER-MARKET rule ------------------------------
+//
+// Trust stays per PRODUCT (catalog_row_trust has no market column); the row is
+// crawl-fresh when it is fresh in AT LEAST ONE served market, priced in that
+// market's currency. A qualifying offer, on top of the round-1 conjuncts, is:
+//   * declared for a SERVED market and priced in that market's currency;
+//   * not explicitly out of stock (offer_buyability's unavailable vocabulary);
+//   * not dated by an employee price edit (offer_payload.price_read_source);
+//   * on a VARIANT-SCOPED row (one with a live drain-lane variant offer), a
+//     variant offer: a `<pk>::canonical` stamp alone says nothing about what
+//     the buyer will pick;
+//   * not dated in the future (`<= now()`).
+//
+// THE SERVED (market, currency) PAIRS ARE A CONSTANT HERE, NOT servedMarkets().
+// The backend renders them at import from config/market_registry.json (status
+// 'served') x region_pricing, a CODE-level registry; this repo's servedMarkets()
+// is a per-deployment env list (CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET) and
+// would make the two statements differ by environment. A market added to the
+// backend registry changes the backend statement on its next deploy and this one
+// only when the pair below (and tests/fixtures/crawl_fresh_trust_backend_sql.json)
+// is updated: the twins must move together.
+const CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS = Object.freeze([
+  Object.freeze(['SG', 'SGD']),
+  Object.freeze(['US', 'USD']),
+]);
+
+const CRAWL_OFFER_SERVED_MARKET_SQL =
+  "(upper(btrim(coalesce(co.market, ''))), upper(btrim(coalesce(co.currency, ''))))" +
+  ' IN (' +
+  [...CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS]
+    .sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : 1) : a[0] < b[0] ? -1 : 1))
+    .map(([m, c]) => `('${m}', '${c}')`)
+    .join(', ') +
+  ')';
+
+// The unavailable vocabulary is offerAvailabilitySql's, itself pinned to the
+// backend's offer_buyability.OFFER_UNAVAILABLE_AVAILABILITIES. Sorted, as the
+// backend renders it. NOTE the one-argument btrim (spaces only), the backend's
+// spelling here -- not offerAvailabilitySql's JS-trim character set.
+const CRAWL_OFFER_IN_STOCK_SQL =
+  "lower(btrim(coalesce(co.availability, '')))" +
+  ' NOT IN (' +
+  [...OFFER_UNAVAILABLE_AVAILABILITIES].sort().map((a) => `'${a}'`).join(', ') +
+  ')';
+
+// The key the backend's attached-listing lane writes (its PRICE_READ_SOURCE_KEY)
+// and the one source that is not a crawl.
+const CRAWL_PRICE_READ_SOURCE_KEY = 'price_read_source';
+const CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL =
+  `coalesce(co.offer_payload->>'${CRAWL_PRICE_READ_SOURCE_KEY}', '') <> 'employee_edit'`;
+const CRAWL_CANONICAL_SKU_SUFFIX = '::canonical';
+
+/**
+ * The variant conjunct for one row: a canonical offer counts only when the row
+ * has no live drain-lane variant offer. `productKeyExpr` is SQL, never a value.
+ * Twin of crawl_offer_variant_sql.
+ */
+function crawlOfferVariantSql(productKeyExpr) {
+  const canonical = `${productKeyExpr} || '${CRAWL_CANONICAL_SKU_SUFFIX}'`;
+  return (
+    `(co.sku_key IS DISTINCT FROM ${canonical}` +
+    ' OR NOT EXISTS (SELECT 1 FROM catalog_offers cv' +
+    ` WHERE cv.product_key = ${productKeyExpr}` +
+    ` AND cv.sku_key IS DISTINCT FROM ${canonical}` +
+    ` AND cv.source_system = '${CRAWL_SOURCE_SYSTEM}'` +
+    ' AND cv.suppressed_at IS NULL))'
+  );
+}
+
+/**
+ * The newest qualifying read for one row, as the body of a LATERAL. Twin of
+ * crawl_last_price_read_lateral_sql (the backend also builds its cron recheck
+ * from it; this repo has no recheck, see the note above CRAWL_FRESH_ENV).
+ */
+function crawlLastPriceReadLateralSql(productKeyExpr, indent = '   ') {
+  const conjuncts = [
+    `co.product_key = ${productKeyExpr}`,
+    `co.source_system = '${CRAWL_SOURCE_SYSTEM}'`,
+    ...pricedOfferRowConjuncts('co'),
+    'co.price_checked_at IS NOT NULL',
+    'co.price_checked_at <= now()',
+    CRAWL_OFFER_LINK_SQL,
+    CRAWL_OFFER_NOT_AFFILIATE_SQL,
+    CRAWL_OFFER_SERVED_MARKET_SQL,
+    CRAWL_OFFER_IN_STOCK_SQL,
+    CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL,
+    crawlOfferVariantSql(productKeyExpr),
+  ];
+  const where = conjuncts.join(`\n${indent}   AND `);
+  return (
+    `${indent}SELECT max(co.price_checked_at) AS last_price_read_at\n` +
+    `${indent}  FROM catalog_offers co\n` +
+    `${indent} WHERE ${where}\n`
+  );
+}
+
+// The newest qualifying price read per drain-lane row: one indexed probe per
+// key, as a LATERAL over the key list. The only clock in SQL is `<= now()`,
+// which drops future-dated stamps per offer; the AGE is judged in JS against the
+// derivation's own `now` (catalogTrustPolicy.isCrawlFresh).
 //
 // BYTE-IDENTICAL to the backend's CRAWL_LAST_PRICE_READ_SQL except for ONE
 // token: the backend binds the key list as SQLAlchemy's `:product_keys`, node-pg
-// binds it positionally as `$1`. tests/fixtures/crawl_last_price_read_sql.backend.txt
-// is the backend constant verbatim; the suite pins this string to it with
+// binds it positionally as `$1`. tests/fixtures/crawl_fresh_trust_backend_sql.json
+// holds the backend constant verbatim; the suite pins this string to it with
 // exactly that one substitution.
 const CRAWL_LAST_PRICE_READ_SQL =
   'SELECT k.product_key, r.last_price_read_at\n' +
   '  FROM unnest(CAST($1 AS text[])) AS k(product_key)\n' +
   ' CROSS JOIN LATERAL (\n' +
-  '   SELECT max(co.price_checked_at) AS last_price_read_at\n' +
-  '     FROM catalog_offers co\n' +
-  '    WHERE co.product_key = k.product_key\n' +
-  `      AND co.source_system = '${CRAWL_SOURCE_SYSTEM}'\n` +
-  pricedOfferRowConjuncts('co').map((c) => `      AND ${c}\n`).join('') +
-  '      AND co.price_checked_at IS NOT NULL\n' +
-  `      AND ${CRAWL_OFFER_LINK_SQL}\n` +
-  `      AND ${CRAWL_OFFER_NOT_AFFILIATE_SQL}\n` +
+  crawlLastPriceReadLateralSql('k.product_key') +
   ' ) r\n' +
   ' WHERE r.last_price_read_at IS NOT NULL\n';
 
@@ -732,8 +826,12 @@ module.exports = {
   CRAWL_FRESH_ENV,
   CRAWL_FRESH_DAYS_ENV,
   CRAWL_LAST_PRICE_READ_SQL,
+  CRAWL_OFFER_IN_STOCK_SQL,
+  CRAWL_OFFER_SERVED_MARKET_SQL,
+  CRAWL_PRICE_READ_SOURCE_KEY,
   PRICE_CHECK_COLUMN_SQL,
   crawlFreshByKey,
+  crawlLastPriceReadLateralSql,
   crawlFreshDays,
   crawlFreshEnabled,
   rowToPolicyInputs,
