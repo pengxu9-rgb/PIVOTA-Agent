@@ -37,6 +37,12 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
         return `${col} ${type}`;
       });
       await db.query(`CREATE TABLE ${table} (${definitions.join(',')})`);
+      // Prod's index and statistics on the seeds the offer guard probes (seedSearchOfferScope): an
+      // unindexed, never-analyzed table makes the planner cost the probe as a scan per offer (35k -> 365k),
+      // past CI Postgres's jit_above_cost, and every statement then JIT-compiles for seconds.
+      if (table === 'external_product_seeds') {
+        await db.query('CREATE INDEX ON external_product_seeds(attached_product_key); ANALYZE external_product_seeds');
+      }
     }
     await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status,primary_platform) VALUES ('retailer','Retailer','active','shopify')");
     const items=[

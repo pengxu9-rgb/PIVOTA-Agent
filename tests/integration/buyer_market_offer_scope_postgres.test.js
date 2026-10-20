@@ -72,7 +72,7 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
       CREATE TABLE catalog_products(product_key text PRIMARY KEY,content_key text,pivota_signature_id text,merchant_id text,platform text,source_product_id text,brand text,canonical_url text,sync_status text,suppression_reason text,updated_at timestamptz,category_path text,source_system text,source_domain text);
       CREATE TABLE catalog_row_trust(subject_type text,subject_key text,serving_decision text);
       CREATE TABLE catalog_offers(offer_id text,product_key text,merchant_id text,market text,currency text,availability text,merchant_effective_price numeric,estimated_best_price numeric,list_price numeric,suppressed_at timestamptz,suppression_reason text,sku_key text,source_system text,source_domain text,source_ref text,offer_type text,is_first_party boolean,offer_mode text,catalog_track text,truth_tier text,readiness_tier text,offer_payload jsonb,updated_at timestamptz);
-      CREATE TABLE external_product_seeds(id text,attached_product_key text,destination_url text,status text,updated_at timestamptz);
+      CREATE TABLE external_product_seeds(id text,attached_product_key text,destination_url text,status text,updated_at timestamptz,price_currency text,seed_data jsonb);
       CREATE TABLE catalog_merchants(merchant_id text PRIMARY KEY,merchant_name text,source_system text,status text,indexable boolean,source_ref text,metadata_json jsonb);
       CREATE TABLE catalog_skus(sku_key text PRIMARY KEY,product_key text,merchant_id text,suppressed_at timestamptz,suppression_reason text,currency text);`);
     db.query.mockImplementation(run);
@@ -302,6 +302,26 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
         source_payload: { price: { amount: 40, currency: 'USD' }, price_amount: 40, currency: 'USD', catalog_offer_v1: { offer_id: 'rp_usd', sku_key: 'sku_rp' } },
       }], 'SGD', { queryFn: run });
       expect([out.source_payload.currency, out.source_payload.price_amount]).toEqual(['SGD', expected]);
+    });
+
+    // nourwish.com's shape (2026-10-19): the member's only USD offer is a mirror row the writer stamped
+    // `or "USD"` on a seed priced in SGD. It is no price (seedSearchOfferScope.seedProjectedOfferInSeedCurrencySql),
+    // so the re-pick must not hand it to a US buyer; the member keeps its SGD pick for the filter to judge.
+    test('flag on, US buyer: a USD row stamped off an SGD seed never wins the re-pick', async () => {
+      process.env[scope.FLAG] = 'on';
+      await run(`INSERT INTO catalog_skus(sku_key,product_key,merchant_id) VALUES('sku_nw','nw','merch_obs_local')`);
+      await run(`INSERT INTO catalog_offers(offer_id,product_key,sku_key,merchant_id,market,currency,availability,merchant_effective_price,source_system,updated_at) VALUES
+        ('nw_sgd','nw','sku_nw','merch_obs_local','SG','SGD','in_stock',38,'variant_offer_projection_v1',NOW()),
+        ('nw_usd','nw','sku_nw','merch_obs_local','US','USD','in_stock',38,'external_product_seeds_mirror_v1',NOW())`);
+      await run(`INSERT INTO external_product_seeds(id,attached_product_key,status,price_currency,seed_data) VALUES('eps_nw','nw','active','SGD','{"snapshot":{"price_currency":"SGD"}}')`);
+      const pick = { merchant_id: 'merch_obs_local', product_id: 'ext_nw',
+        source_payload: { price: { amount: 38, currency: 'SGD' }, price_amount: 38, currency: 'SGD', catalog_offer_v1: { offer_id: 'nw_sgd', sku_key: 'sku_nw' } } };
+      const [out] = await _debug.rescopeGroupMemberOffersToCurrency([pick], 'USD', { queryFn: run });
+      expect([out.source_payload.currency, out.source_payload.catalog_offer_v1.offer_id]).toEqual(['SGD', 'nw_sgd']);
+      // Control: the same row is the re-pick once its seed agrees it is a USD price.
+      await run(`UPDATE external_product_seeds SET price_currency='USD', seed_data='{"snapshot":{"price_currency":"USD"}}' WHERE id='eps_nw'`);
+      const [agreed] = await _debug.rescopeGroupMemberOffersToCurrency([pick], 'USD', { queryFn: run });
+      expect([agreed.source_payload.currency, agreed.source_payload.catalog_offer_v1.offer_id]).toEqual(['USD', 'nw_usd']);
     });
 
     test('flag on, US buyer: a member whose LATERAL pick was the newer SGD sibling gets its USD offer back', async () => {

@@ -30,6 +30,106 @@ function seedHasColumnPriceCurrencySql(alias = '') {
   return `nullif(trim(${a}price_currency), '') IS NOT NULL`;
 }
 
+// The offer writers that COPY a seed's money onto catalog_offers (pivota-backend: the seed mirror,
+// the variant-identity backfill, the variant-offer projection). Their row is a projection of the
+// seed, not a read of its own. A Shopify-Markets capture (shopify_markets_us_localization,
+// us_market_capture) reads the store's own US price and is deliberately not on this list.
+const SEED_PROJECTED_OFFER_SOURCE_SYSTEMS = Object.freeze([
+  'external_product_seeds_mirror_v1',
+  'variant_identity_backfill_v1',
+  'variant_offer_projection_v1',
+]);
+
+// A SEED-PROJECTED OFFER IS A PRICE ONLY IN THE CURRENCY ITS SEED'S PAGE READ STATES (Peng
+// 2026-10-19: a price's currency is the buyer market's, never defaulted, never relabelled).
+//
+// Live 2026-10-19, US search_catalog "skintific glow cushion peptide lip serum set": the card read
+// USD 23.56 off one of 20 offers the variant backfill wrote on 09-10 from seed_data.variants. The
+// seed has since been re-read (snapshot AUD 57, price_currency AUD 56, mirror offer AUD 56, and the
+// store's live read answers AUD); nothing retired the 20 USD rows, so an older read of the listing
+// kept answering as a US price.
+//
+// WHICH of the seed's currencies is its currency, measured on prod 2026-10-19 (read-only censuses
+// spccy-1019 .. spccy3-1019, active seeds with a live projected offer):
+//   - the COLUMN and the SNAPSHOT (the page as read) must agree; where they disagree (column USD,
+//     snapshot GBP 483 / QAR 367 / EUR 166 / INR 108 / ZAR 64 seeds) either can be wrong (see
+//     seedCurrencySql), so the seed states none;
+//   - either one stands in alone when the other is absent;
+//   - a seed_data or snapshot stored as anything but an object (a JSON string) hides the page read,
+//     so it states NO currency; it is not parsed here, where one malformed string would abort recall;
+//   - seed_data.price_currency is NOT evidence: it is a copy the writers default to 'USD' too (16
+//     serving SGD offers, column SGD, snapshot SGD, amount equal to both, seed_data 'USD').
+//
+// So a projected offer is a price only when an ACTIVE seed (status compared case-insensitively) is
+// attached to its listing AND every active attached seed states the offer's currency. An orphan --
+// its seed retired, detached, or superseded (a superseded seed keeps its attached key as a
+// tombstone, but not its status) -- has no read behind it and is refused too (PR controller review
+// of #2467). Wherever an offer is picked such a row is not a candidate, and the card is priced by
+// another offer or not at all.
+//
+// `productKeyExpr` is the listing the offer prices (SQL, not a value); the seeds are probed through
+// idx on external_product_seeds(attached_product_key, attached_variant_id). An offer from any other
+// writer is not judged here.
+// A SEED'S CURRENCY IS KNOWN ONLY WHEN ITS COLUMN AND ITS PAGE READ AGREE (or only one states one).
+// The refresh never redenominates (pivota-backend routes/employee_products: a read in another currency
+// is `skipped_currency_mismatch`, the column kept) and writes the snapshot from every read, so when the
+// two disagree either can be the wrong one: a geo-served misread in the snapshot over a right column
+// (us.oiolab.co: column USD, snapshot EUR, same amount), or the writers' old `or 'USD'` default in the
+// column over a right page read (column USD, snapshot QAR 367 / INR 108 / ZAR 64). Neither is a price
+// anyone can be quoted, so such a seed states no currency and its projections are refused.
+//
+// ONE detoast of seed_data on the common path. seed_data is ~25 KB and TOASTed, and every reference
+// re-detoasts it: the first v2 form referenced it up to four times per seed and cost +30-35% on scoped
+// recall (spccy6/spccy7-1019; local 20k-seed bench: 818k buffer hits against round 1's 258k). A simple
+// CASE evaluates its test once, `#>>` yields NULL through a snapshot or seed_data that is not an object,
+// and only a seed with no snapshot currency pays the type checks. The no-page-read sentinel is '', which
+// neither side can equal: both are nullif(..., '').
+function seedCurrencySql(alias) {
+  const column = `nullif(upper(trim(${alias}.price_currency)), '')`;
+  const page = `nullif(upper(trim(${alias}.seed_data#>>'{snapshot,price_currency}')), '')`;
+  const snapshot = `${alias}.seed_data->'snapshot'`;
+  return `(CASE WHEN ${column} IS NULL THEN ${page}
+              ELSE (CASE coalesce(${page}, '')
+                      WHEN ${column} THEN ${column}
+                      WHEN '' THEN (CASE WHEN ${alias}.seed_data IS NULL
+                                            OR (jsonb_typeof(${alias}.seed_data) IN ('object', 'null')
+                                                AND (${snapshot} IS NULL OR jsonb_typeof(${snapshot}) IN ('object', 'null')))
+                                          THEN ${column} END)
+                    END)
+            END)`;
+}
+
+function seedProjectedOfferInSeedCurrencySql(offerAlias, productKeyExpr) {
+  const systems = SEED_PROJECTED_OFFER_SOURCE_SYSTEMS.map((value) => `'${value}'`).join(', ');
+  // ONE index probe per offer (PR controller, spccy6-1019: two correlated EXISTS cost +30-35% on scoped
+  // queries). bool_and over the active attached seeds is NULL when there are none -- IS TRUE fails that
+  // orphan closed -- and false as soon as one seed states another currency or none.
+  return `(coalesce(${offerAlias}.source_system, '') NOT IN (${systems})
+          OR (
+            SELECT bool_and(${seedCurrencySql('eps_own')} IS NOT DISTINCT FROM upper(trim(coalesce(${offerAlias}.currency, ''))))
+            FROM external_product_seeds eps_own
+            WHERE eps_own.attached_product_key = ${productKeyExpr}
+              AND lower(trim(coalesce(eps_own.status, ''))) = 'active'
+          ) IS TRUE)`;
+}
+
+// KILL SWITCH, default ON (a currency-correctness rule: silence keeps it). Any of 0/false/off/no/
+// disabled in CANONICAL_SEED_PROJECTED_OFFER_CURRENCY_GUARD turns the guard off at every site, read
+// per call, and each site's statement is then byte-identical to the one before the guard existed.
+const SEED_PROJECTED_OFFER_CURRENCY_GUARD_FLAG = 'CANONICAL_SEED_PROJECTED_OFFER_CURRENCY_GUARD';
+const GUARD_OFF_VALUES = new Set(['0', 'false', 'off', 'no', 'disabled']);
+function isSeedProjectedOfferCurrencyGuardEnabled(env = process.env) {
+  return !GUARD_OFF_VALUES.has(String(env[SEED_PROJECTED_OFFER_CURRENCY_GUARD_FLAG] ?? '').trim().toLowerCase());
+}
+
+// The guard as a WHERE conjunct for a site: `${prefix}AND (...)`, or '' with the kill switch off.
+// `prefix` is what precedes the AND (a newline and the site's indent), so a site interpolates it at
+// the END of its previous line and "off" adds not even a blank line.
+function seedProjectedOfferCurrencyGuardSql(offerAlias, productKeyExpr, { prefix = '\n        ', env = process.env } = {}) {
+  if (!isSeedProjectedOfferCurrencyGuardEnabled(env)) return '';
+  return `${prefix}AND ${seedProjectedOfferInSeedCurrencySql(offerAlias, productKeyExpr)}`;
+}
+
 // A catalog product may be recommended to a buyer priced in `currencyParam` (a bound placeholder)
 // only when nothing that can price its card says otherwise: not the seed it mirrors (source id),
 // not a seed attached to it (minted lane), not one of its offers. A blank currency on any of them
@@ -110,4 +210,9 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
   }
   return clauses.length ? `AND ${clauses.join(' AND ')}` : '';
 }
-module.exports = { buildSeedSearchOfferScope, catalogProductPricedOnlyInCurrencySql, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql, seedNativeCurrencySql, SEED_OWN_BRAND_SQL };
+module.exports = {
+  buildSeedSearchOfferScope, catalogProductPricedOnlyInCurrencySql, seedHasColumnPriceCurrencySql, seedHasPriceCurrencySql,
+  seedNativeCurrencySql, seedProjectedOfferInSeedCurrencySql, seedProjectedOfferCurrencyGuardSql,
+  isSeedProjectedOfferCurrencyGuardEnabled, SEED_OWN_BRAND_SQL, SEED_PROJECTED_OFFER_CURRENCY_GUARD_FLAG,
+  SEED_PROJECTED_OFFER_SOURCE_SYSTEMS,
+};
