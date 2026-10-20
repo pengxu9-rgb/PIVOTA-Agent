@@ -559,6 +559,8 @@ test('multilingual terms map to the English routing vocabulary', () => {
     'レチノール配合の美容液': 'retinol serum',
     '含视黄醇的面霜': 'retinol face cream',
     'レチノール配合のクリーム': 'retinol cream',
+    // connectors chain: one that touches only another connector still goes with the term
+    'レチノール配合入りの美容液': 'retinol serum',
     'レチノール配合の美容液とクリーム': 'retinol serum cream',
     '레티놀 프리미엄 세럼': 'retinol 프리미엄 serum',
     'Retinolfreie Creme': 'retinol-free cream',
