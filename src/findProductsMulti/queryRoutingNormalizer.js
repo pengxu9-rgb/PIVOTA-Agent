@@ -32,7 +32,7 @@ const {
   normalizeForMatch,
   stripNegatedStrictIngredientMentions,
 } = require('./strictIngredientQuery');
-const { resolveBeautyCategoryPathPrefixFromText } = require('./queryUnderstanding');
+const { buildSearchQualityContract, resolveBeautyCategoryPathPrefixFromText } = require('./queryUnderstanding');
 
 function runPipeline(original, { multilingual, bareIngredient }) {
   let query = original;
@@ -60,16 +60,38 @@ function runPipeline(original, { multilingual, bareIngredient }) {
   return { query, changed: true, terms, negation, guard: null };
 }
 
-// A query that only EXCLUDES ingredients: no ingredient asked for, and no product type once the
-// excluded ingredient's own words are set aside ("retinol-free", "salicylic acid free", "without
-// retinol"). Such a query names nothing to serve.
+// Product-form words the category rules do not claim on their own ("balm", "mist", "suncream", ...),
+// and generic skincare words: any of them means the query names something to serve.
+const PRODUCT_FORM_RE =
+  /(?:^|\s)(?:balms?|mists?|sun\s*creams?|suncreams?|oils?|gels?|sticks?|essences?|ampoules?|lotions?|creams?|cremes?|serums?|toners?|masks?|cleansers?|moisturi[sz]ers?|sprays?|foams?|washes|sunscreens?|spf|skin\s*care|skincare|beauty|makeup|cosmetics?)(?=\s|$)/;
+
+// Skin concerns and constraints the contract may not read on their own.
+const SKIN_CONCERN_RE =
+  /(?:^|\s)(?:anti\s*aging|anti\s*ageing|ageing|aging|wrinkles?|fine\s+lines|acne|blemish(?:es)?|breakouts?|sensitive|sensiti[sz]ed|dry|oily|combination|redness|rosacea|eczema|pregnan\w*|dark\s+spots?|pigmentation|hyperpigmentation|brightening|firming|hydrating|barrier|pores?|dullness)(?=\s|$)/;
+
+// A query that only EXCLUDES ingredients: no ingredient asked for, and nothing to serve once the
+// excluded ingredient's own words are set aside -- no product type (in English or in any language the
+// multilingual table knows, flag or no flag), no brand, no skin concern or constraint, no generic
+// skincare word. "retinol-free", "without retinol", "0% retinol", "retinolfrei" are bare;
+// "retinol-free balm", "cerave without retinol", "retinol free for sensitive skin", "pregnancy safe
+// no retinol", "retinol free skincare", "retinol-free 크림", "ohne Retinol creme" are not.
 function isBareIngredientNegationQuery(text) {
   const raw = String(text || '');
   if (!raw.trim()) return false;
   if (extractExcludedStrictIngredientIds(raw).length === 0) return false;
   if (extractPositiveStrictIngredientIds(raw).length > 0) return false;
-  const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw));
-  return !resolveBeautyCategoryPathPrefixFromText(remainder);
+  const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw))
+    .replace(/(?:^|\s)(?:without(?:\s+any)?|no(?:\s+added)?|non|not|zero|0|avoid(?:ing)?|free(?:\s+(?:of|from))?|sans|sin|ohne|frei(?:\s+von)?|libre\s+de|без|alternatives?(?:\s+to)?|substitutes?(?:\s+for)?|replacements?(?:\s+for)?|instead\s+of|better\s+than|gentler\s+than|phyto|like)(?=\s|$)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!remainder) return true;
+  if (resolveBeautyCategoryPathPrefixFromText(remainder)) return false;
+  if (PRODUCT_FORM_RE.test(remainder) || SKIN_CONCERN_RE.test(remainder)) return false;
+  if (normalizeMultilingualBeautyTerms(remainder, { contextAvailable: true }).terms.some((term) => term.kind === 'term')) {
+    return false;
+  }
+  const contract = buildSearchQualityContract({ rawQuery: remainder, allowContextBinding: false });
+  return contract?.target_domain !== 'beauty';
 }
 
 // Returns the query to ROUTE on (`query`, `changed`: only the parts whose flag is on) and the query

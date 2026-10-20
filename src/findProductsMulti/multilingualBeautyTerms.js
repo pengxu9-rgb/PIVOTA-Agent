@@ -221,7 +221,9 @@ const ROWS = [
   ['fr', 'hydrating', 'term', ['hydratant', 'hydratante']],
   ['fr', 'hydrating face mask', 'term', ['masque hydratant']],
   ['fr', 'face cream', 'term', ['creme visage', 'creme pour le visage']],
-  ['fr', 'cream', 'term', ['creme'], { contextual: true, englishSpelling: true }], // only as "crème" 
+  // Context-only: next to an ingredient or another beauty term, "crème" / "creme" / German "Creme"
+  // all read as "cream" ("Retinol Creme" -> "retinol cream"); alone, "creme brulee" stays as typed.
+  ['fr', 'cream', 'term', ['creme'], { contextual: true }],
   ['fr', 'sunscreen', 'term', ['creme solaire', 'ecran solaire', 'protection solaire', 'lait solaire', 'spray solaire']],
   ['fr', 'serum', 'term', ['serum']],
   ['fr', 'toner', 'term', ['lotion tonique', 'tonique visage']],
@@ -536,15 +538,54 @@ function collectMatches(original, folded, { includeContextual }) {
   return matches;
 }
 
+// Connectors that sit between a term and the next word without making a new compound: "formulated
+// with" (配合, 배합, 함유, 含有, 含, 入り) and possessive / linking particles (の, 的, と, や). Next to a
+// mapped term they do not block it, and they are dropped from the rewritten query.
+const CJK_CONNECTORS = Object.freeze(['配合', '배합', '함유', '含有', '含', '入り', 'の', '的', 'と', 'や']);
+
+function connectorSpans(folded) {
+  const spans = [];
+  for (const connector of CJK_CONNECTORS) {
+    let from = 0;
+    for (;;) {
+      const index = folded.indexOf(connector, from);
+      if (index < 0) break;
+      spans.push({ start: index, stop: index + connector.length });
+      from = index + connector.length;
+    }
+  }
+  return spans;
+}
+
+// Connector spans that touch a kept match, directly or through another such connector.
+function touchingConnectors(spans, matches) {
+  const touching = [];
+  let grew = true;
+  const touches = (a, b) => a.start === b.stop || a.stop === b.start;
+  while (grew) {
+    grew = false;
+    for (const span of spans) {
+      if (touching.includes(span)) continue;
+      if (matches.some((match) => touches(span, match)) || touching.some((other) => touches(span, other))) {
+        touching.push(span);
+        grew = true;
+      }
+    }
+  }
+  return touching;
+}
+
 // A CJK term is mapped only as a WHOLE term: if the character right before or after it is another
-// Han / kana / Hangul character that no other mapped term covers, the match is part of a longer
-// compound this table does not know ("精华水", "아이크림", "레티놀배합") and is dropped. Repeated until
-// stable, because dropping one match can expose its neighbour.
+// Han / kana / Hangul character that no other mapped term (or a connector next to one) covers, the
+// match is part of a longer compound this table does not know ("精华水", "补水精华", "아이크림") and
+// is dropped. Repeated until stable, because dropping one match can expose its neighbour.
 function dropPartialCompoundMatches(folded, matches) {
   let kept = matches.slice();
+  const spans = connectorSpans(folded);
   for (;;) {
     const covered = new Array(folded.length).fill(false);
     for (const match of kept) for (let i = match.start; i < match.stop; i += 1) covered[i] = true;
+    for (const span of touchingConnectors(spans, kept)) for (let i = span.start; i < span.stop; i += 1) covered[i] = true;
     const next = kept.filter((match) => {
       if (match.entry.script !== 'cjk') return true;
       const left = match.start - 1;
@@ -561,7 +602,7 @@ function dropPartialCompoundMatches(folded, matches) {
 // Returns { query, applied, terms: [{ lang, kind, en }] }. `query` is the input with every known term
 // replaced by its English term (negated ingredients as "<en>-free"); unchanged input when nothing
 // matched or every match was already the English word as typed.
-function normalizeMultilingualBeautyTerms(rawQuery) {
+function normalizeMultilingualBeautyTerms(rawQuery, { contextAvailable = false } = {}) {
   const original = String(rawQuery == null ? '' : rawQuery);
   const none = { query: original, applied: false, terms: [] };
   if (!original.trim()) return none;
@@ -579,24 +620,36 @@ function normalizeMultilingualBeautyTerms(rawQuery) {
 
   // Contextual entries ("크림", "crème", "crema") name a product form only next to another beauty
   // term: alone they are as likely to be whipped cream or coffee crema.
-  const withoutContextual = collectMatches(original, folded, { includeContextual: false });
-  const matches = dropPartialCompoundMatches(
-    folded,
-    withoutContextual.length > 0 || ENGLISH_INGREDIENT_RE.test(folded)
-      ? collectMatches(original, folded, { includeContextual: true })
-      : withoutContextual,
-  );
+  // The context is what SURVIVES the whole-term rule: a term that was only part of an unknown compound
+  // is no context for its neighbour. (Before, "레티놀배합 크림" kept 크림 -> cream on the strength of a
+  // 레티놀 that was then dropped, and browsed every cream.)
+  const withContextual = dropPartialCompoundMatches(folded, collectMatches(original, folded, { includeContextual: true }));
+  const contextSurvives =
+    contextAvailable || ENGLISH_INGREDIENT_RE.test(folded) || withContextual.some((match) => !match.entry.contextual);
+  const matches = contextSurvives
+    ? withContextual
+    : dropPartialCompoundMatches(folded, collectMatches(original, folded, { includeContextual: false }));
   if (matches.length === 0) return none;
+  const droppedConnectors = touchingConnectors(connectorSpans(folded), matches);
 
   matches.sort((a, b) => a.start - b.start);
   let out = '';
   let cursor = 0;
   let changed = false;
   const terms = [];
+  // Connectors next to a mapped term go with it ("레티놀배합" -> "retinol", "配合の" -> "").
+  const withoutConnectors = (from, to) => {
+    let text = '';
+    for (let i = from; i < to; i += 1) {
+      text += droppedConnectors.some((span) => i >= span.start && i < span.stop) ? ' ' : original[i];
+    }
+    return text;
+  };
+  if (droppedConnectors.length > 0) changed = true;
   for (const match of matches) {
     const replacement = match.negated ? `${match.entry.en}-free` : match.entry.en;
     const source = original.slice(match.start, match.stop);
-    out += original.slice(cursor, match.start);
+    out += withoutConnectors(cursor, match.start);
     if (!match.negated && source.toLowerCase().replace(/\s+/g, ' ') === replacement) {
       out += source;
     } else {
@@ -606,7 +659,7 @@ function normalizeMultilingualBeautyTerms(rawQuery) {
     }
     cursor = match.stop;
   }
-  out += original.slice(cursor);
+  out += withoutConnectors(cursor, original.length);
   if (!changed) return none;
   return { query: out.replace(/\s+/g, ' ').trim(), applied: true, terms };
 }

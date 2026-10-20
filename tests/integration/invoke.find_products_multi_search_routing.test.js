@@ -79,8 +79,18 @@ const CATALOG = [
   row('cleanser', 'Gentle Foaming Face Cleanser', 'beauty/skincare/cleanse/cleanser', { actives: ['glycerin'], productType: 'Cleanser' }),
   row('lipstick', 'Velvet Matte Lipstick', 'beauty/makeup/lip/lipstick', { productType: 'Lipstick' }),
   row('shampoo', 'Repair Shampoo', 'beauty/haircare/shampoo', { productType: 'Shampoo' }),
+  // Rows that DO contain the ingredient under a positive marketing word, or in another script.
+  row('vegan_retinol', 'Vegan Retinol Night Cream', CREAM, { actives: ['retinol'], productType: 'Moisturizer' }),
+  row('pro_retinol', 'Revive Pro-Retinol Night Cream', CREAM, { actives: ['retinol'], productType: 'Moisturizer' }),
+  row('vegan_niacinamide', 'Vegan Niacinamide 10% + Zinc Serum', SERUM, { actives: ['niacinamide', 'zinc pca'], productType: 'Serum' }),
+  row('natural_vit_c', 'Natural Vitamin C Brightening Serum', SERUM, { actives: ['ascorbic acid'], productType: 'Serum' }),
+  row('ko_retinol', '레티놀 세럼', SERUM, { productType: 'Serum' }),
+  row('ru_retinol', 'Ретинол сыворотка', SERUM, { productType: 'Serum' }),
 ];
-const REAL_RETINOL = ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream'];
+const REAL_RETINOL = ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream', 'Vegan Retinol Night Cream',
+  'Revive Pro-Retinol Night Cream', '레티놀 세럼', 'Ретинол сыворотка'];
+const REAL_NIACINAMIDE = ['Niacinamide 10% Serum', 'Vegan Niacinamide 10% + Zinc Serum'];
+const REAL_VITAMIN_C = ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum', 'Natural Vitamin C Brightening Serum'];
 
 const LANES = {
   INGREDIENT: 'agent_products_ingredient_recall_direct',
@@ -256,13 +266,21 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       Retinol: REAL_RETINOL,
       'best retinol products': REAL_RETINOL,
       'hyaluronic acid': ['Hyaluronic Acid 2% Hydrating Serum'],
-      niacinamide: ['Niacinamide 10% Serum'],
-      'vitamin c': ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum'],
+      niacinamide: REAL_NIACINAMIDE,
+      'vitamin c': REAL_VITAMIN_C,
     };
     for (const [query, expectedTitles] of Object.entries(expected)) {
       const { resp } = await invoke(query);
       expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
-      expect([query, titles(resp).sort()]).toEqual([query, [...expectedTitles].sort()]);
+      // Every row names the ingredient. (The lane's own beauty-signal gate, unchanged, may still drop a
+      // row whose only text is in another script, e.g. the Cyrillic one.)
+      const got = titles(resp);
+      expect([query, got.length > 0]).toEqual([query, true]);
+      for (const title of got) expect([query, title, expectedTitles.includes(title)]).toEqual([query, title, true]);
+      expect([query, got.filter((title) => /^[\x00-\x7f]+$/.test(title)).sort()]).toEqual([
+        query,
+        expectedTitles.filter((title) => /^[\x00-\x7f]+$/.test(title)).sort(),
+      ]);
     }
   });
 
@@ -282,23 +300,83 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   test('on: a query that excludes an ingredient never gets a row naming it', async () => {
     const { invoke } = boot(BOTH_ON);
     const cases = {
-      'niacinamide-free serum': /niacinamide/i,
-      'serum without niacinamide': /niacinamide/i,
-      'no niacinamide serum': /niacinamide/i,
-      'vitamin c free serum': /vitamin c/i,
-      'retinol alternative serum': /^Retinol (0\.3%|Renewal)/,
-      'moisturizer without retinol': /^Retinol (0\.3%|Renewal)/,
-      'crème hydratante sans rétinol': /^Retinol (0\.3%|Renewal)/,
+      'niacinamide-free serum': REAL_NIACINAMIDE,
+      'serum without niacinamide': REAL_NIACINAMIDE,
+      'no niacinamide serum': REAL_NIACINAMIDE,
+      'vitamin c free serum': REAL_VITAMIN_C,
+      'retinol alternative serum': REAL_RETINOL,
+      'free of retinol serum': REAL_RETINOL,
+      'no added retinol serum': REAL_RETINOL,
+      'moisturizer without retinol': REAL_RETINOL,
+      'crème hydratante sans rétinol': REAL_RETINOL,
     };
     for (const [query, forbidden] of Object.entries(cases)) {
       const { resp } = await invoke(query);
       const got = titles(resp);
       expect([query, got.length > 0]).toEqual([query, true]);
-      for (const title of got) {
-        const namesIt = forbidden.test(title) && !/free|alternative|like|better than|phyto|0%|no added/i.test(title);
-        expect([query, title, namesIt]).toEqual([query, title, false]);
-      }
+      for (const title of got) expect([query, title, forbidden.includes(title)]).toEqual([query, title, false]);
+      // The page's total drops what the exclusion dropped (as the serving-currency guard does).
+      expect([query, Number(resp.body.total) <= CATALOG.length - forbidden.length]).toEqual([query, true]);
+      expect([query, Number(resp.body.total) >= got.length]).toEqual([query, true]);
     }
+  });
+
+  test('on: positive marketing words ask FOR the ingredient; they are never exclusions', async () => {
+    const { invoke } = boot(BOTH_ON);
+    const cases = {
+      'vegan retinol serum': REAL_RETINOL,
+      'natural vitamin c serum': REAL_VITAMIN_C,
+      'vegan niacinamide serum': REAL_NIACINAMIDE,
+    };
+    for (const [query, wanted] of Object.entries(cases)) {
+      const { resp } = await invoke(query);
+      const got = titles(resp);
+      expect([query, got.length > 0]).toEqual([query, true]);
+      for (const title of got) expect([query, title, wanted.includes(title)]).toEqual([query, title, true]);
+    }
+    for (const query of ['pro retinol cream', 'bio retinol', 'retinol dupe', 'products like retinol', 'vegan retinol serum']) {
+      const { resp, log } = await invoke(query);
+      expect([query, resp.body.metadata?.excluded_ingredient_dropped_count]).toEqual([query, undefined]);
+      expect([query, log.fpm_excluded_ingredient_dropped_count]).toEqual([query, undefined]);
+    }
+  });
+
+  test('on: a negation that names something to serve gets rows, never the clarify, and never the ingredient', async () => {
+    const { invoke } = boot(BOTH_ON);
+    for (const query of ['retinol-free balm', 'retinol-free suncream', 'retinol-free mist', 'cerave without retinol',
+      'the ordinary retinol free', 'retinol free for sensitive skin', 'pregnancy safe no retinol', 'retinol-free anti aging',
+      'retinol free skincare', 'retinol-free 크림', 'retinol-free crème', 'retinol-free crema', 'ohne Retinol creme']) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp)]).not.toEqual([query, LANES.SAFE_EMPTY]);
+      for (const title of titles(resp)) expect([query, title, REAL_RETINOL.includes(title)]).toEqual([query, title, false]);
+    }
+  });
+
+  test('bare-ingredient flag alone: a non-English negation never becomes a request FOR the ingredient', async () => {
+    const { invoke } = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on' });
+    for (const query of ['retinolfrei', 'ohne Retinol creme', 'crema sin retinol', 'sans retinol', 'Retinolfreie Creme']) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp)]).not.toEqual([query, LANES.INGREDIENT]);
+      for (const title of titles(resp)) expect([query, title, REAL_RETINOL.includes(title)]).toEqual([query, title, false]);
+    }
+    // ... and one that names a product type is served (minus the ingredient), not clarified.
+    for (const query of ['ohne Retinol creme', 'crema sin retinol', 'Retinolfreie Creme']) {
+      expect([query, lane((await invoke(query)).resp)]).not.toEqual([query, LANES.SAFE_EMPTY]);
+    }
+    expect(lane((await invoke('retinolfrei')).resp)).toBe(LANES.SAFE_EMPTY);
+  });
+
+  test('on: "formulated with" compounds keep the ingredient; a form noun next to an ingredient is a form', async () => {
+    const { invoke } = boot(BOTH_ON);
+    const retinolCream = await invoke('retinol cream');
+    const retinolSerum = await invoke('retinol serum');
+    for (const [query, english] of [['레티놀배합 크림', retinolCream], ['Retinol Creme', retinolCream], ['retinol creme', retinolCream],
+      ['レチノール配合の美容液', retinolSerum]]) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp), ids(resp)]).toEqual([query, lane(english.resp), ids(english.resp)]);
+      expect([query, titles(resp)]).not.toContainEqual([query, 'Retinol-Free Barrier Moisturizer']);
+    }
+    expect(lane((await invoke('レチノール配合の美容液')).resp)).toBe(LANES.INGREDIENT);
   });
 
   test('on: a bare negation never widens what is served', async () => {
@@ -451,14 +529,27 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       }
     });
 
-    test('a named market binds that market on both legs, not the served default', async () => {
-      const { invoke } = boot(env);
+    // The canonical leg's marketId is exactly the mainline's (server.js searchBeautyExternalSeedProductsMainline:
+    // `marketId: buyerCurrency ? null : market`, market = markets[0]); the seed leg is always a superset
+    // of the served list, because a named market's seeds are filed under the served 'US' partition.
+    test.each([
+      ['off', { FIND_PRODUCTS_BUYER_MARKET: 'off' }, 'SG', ['SG']],
+      ['on', { FIND_PRODUCTS_BUYER_MARKET: 'on' }, null, ['US', 'SG']],
+    ])('market=SG with FIND_PRODUCTS_BUYER_MARKET %s: canonical marketId and seed-leg bind', async (_flag, buyerEnv, canonicalMarket, bound) => {
+      const { invoke } = boot({ ...env, ...buyerEnv });
       const ingredient = await invoke('niacinamide serum', { market: 'SG' });
       expect(lane(ingredient.resp)).toBe(LANES.INGREDIENT);
-      expect(ingredient.log.market_bound).toEqual(['SG']);
+      expect(ingredient.log.market_bound).toEqual(bound);
       expect(ingredient.log.market_source).not.toBe('defaulted');
-      expect(boundMarkets(ingredient.sql)).toContain('SG');
-      expect(boundMarkets(ingredient.sql)).not.toContain('US');
+      const canonical = ingredient.sql.filter((s) => s.sql.includes(CANONICAL_MARKER));
+      const seed = ingredient.sql.filter((s) => /FROM external_product_seeds/.test(s.sql) && !s.sql.includes(CANONICAL_MARKER));
+      expect(canonical.length).toBeGreaterThan(0);
+      expect(seed.length).toBeGreaterThan(0);
+      if (canonicalMarket) expect(boundMarkets(canonical)).toContain(canonicalMarket);
+      else expect(boundMarkets(canonical)).toEqual([]);
+      for (const statement of seed) {
+        expect(boundMarkets([statement])).toEqual(expect.arrayContaining(['US', 'SG']));
+      }
     });
   });
 

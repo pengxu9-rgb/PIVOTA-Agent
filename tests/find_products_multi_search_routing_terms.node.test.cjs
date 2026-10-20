@@ -101,6 +101,27 @@ test('negated and stand-in mentions are not ingredient intents, and are exclusio
     'better than retinol': [[], ['retinol']],
     'phyto-retinol': [[], ['retinol']],
     'retinol substitutes': [[], ['retinol']],
+    'replacement for retinol': [[], ['retinol']],
+    'instead of retinol': [[], ['retinol']],
+    'retinol-like serum': [[], ['retinol']],
+    // non-English absence words, read even with the multilingual flag off
+    retinolfrei: [[], ['retinol']],
+    'ohne Retinol creme': [[], ['retinol']],
+    'crema sin retinol': [[], ['retinol']],
+    'sans retinol': [[], ['retinol']],
+    // positive marketing words are NOT qualifiers: these ask FOR the ingredient
+    'vegan retinol serum': [['retinol'], []],
+    'natural vitamin c serum': [['ascorbic_acid'], []],
+    'vegan niacinamide serum': [['niacinamide'], []],
+    'clean retinol cream': [['retinol'], []],
+    'pro retinol cream': [['retinol'], []],
+    'bio retinol': [['retinol'], []],
+    'plant based retinol serum': [['retinol'], []],
+    'retinol dupe': [['retinol'], []],
+    'retinol dupes': [['retinol'], []],
+    'products like retinol': [['retinol'], []],
+    'retinol alt serum': [['retinol'], []],
+    'retinol analog': [['retinol'], []],
     'niacinamide serum without retinol': [['niacinamide'], ['retinol']],
     'salicylic acid free cleanser': [[], ['salicylic_acid']],
     'niacinamide-free serum': [[], ['niacinamide']],
@@ -136,6 +157,16 @@ test('English negation phrasing becomes "<ingredient>-free"; stand-ins and "free
     'retinol serum': 'retinol serum',
     'No7 serum': 'No7 serum',
     '10% retinol': '10% retinol',
+    // the German / French / Spanish absence words the strict detector reads, flag-gated the same way
+    'ohne Retinol creme': 'retinol-free creme',
+    'crema sin retinol': 'crema retinol-free',
+    'sans retinol': 'retinol-free',
+    retinolfrei: 'retinol-free',
+    'Retinolfreie Creme': 'retinol-free Creme',
+    'Retinol-frei Creme': 'retinol-free Creme',
+    // a negator needs its own word
+    sinretinol: 'sinretinol',
+    'casino retinol': 'casino retinol',
   };
   for (const [query, expected] of Object.entries(cases)) {
     assert.equal(strict.canonicalizeEnglishIngredientNegations(query).query, expected, query);
@@ -162,10 +193,15 @@ test('product naming: fooled titles never name the ingredient', () => {
     product('Instead of Retinol: Bakuchiol'),
     product('No Retinol Night Cream'),
     product('Night Cream Free of Retinol'),
-    product('Plant-Based Retinol Serum'),
     product('Bioretinol Serum'),
-    // The title's own negation vetoes an ingredient id (a contradictory row is not an answer).
-    product('Retinol-Free Night Cream', { ingredient_ids: ['retinol'] }),
+    product('Retinolfreie Nachtcreme'),
+    product('Retinol Frei Creme'),
+    product('레티놀 프리 크림'),
+    product('无视黄醇面霜'),
+    product('レチノールフリー クリーム'),
+    // A qualified STRUCTURED mention is not a mention either.
+    product('Night Serum', { active_ingredients: ['Bakuchiol (retinol alternative)'] }),
+    product('Night Serum', { ingredients_inci: 'Aqua, Retinol-Free Base, Squalane' }),
     // The description and DERIVED tokens are never evidence.
     product('Gentle Night Serum', { description: 'Free of retinol. Pairs well with retinol.',
       ingredient_tokens: ['retinol'], external_seed_recall: { ingredient_tokens: ['retinol'] } }),
@@ -191,6 +227,8 @@ test('product naming: structured fields and plain titles do name it', () => {
     [product('Night Serum', { ingredients_inci: 'Aqua, Glycerin, Retinol, Tocopherol' }), 'retinol'],
     // Each INCI/actives entry stands alone: "Vegan" ending one entry does not qualify the next one.
     [product('Night Serum', { active_ingredients: 'Vegan, Retinol, Niacinamide' }), 'retinol'],
+    // ... and "Free" starting the NEXT entry does not qualify this one ("Retinol, Free Fatty Acids").
+    [product('Night Serum', { ingredients_inci: 'Aqua, Retinol, Free Fatty Acids' }), 'retinol'],
     [product('Night Serum', { inci_list: ['water', 'retinol'] }), 'retinol'],
     [product('Night Serum', { product_payload: { seed_data: { inci_list: ['water', 'retinol'] } } }), 'retinol'],
     [product('Night Serum', { product_payload: { seed_data: { active_ingredients: ['Hyaluronic Acid'] } } }), 'hyaluronic_acid'],
@@ -198,6 +236,24 @@ test('product naming: structured fields and plain titles do name it', () => {
     [product('Shade No', { active_ingredients: ['retinol'] }), 'retinol'],
     [product('Cream', { ingredient_ids: ['retinol'] }), 'retinol'],
     [product('Retinol 1% Serum', { key_ingredients: ['retinol-free base'] }), 'retinol'],
+    // Positive marketing words do not qualify the ingredient away.
+    [product('Vegan Retinol Night Cream'), 'retinol'],
+    [product('Natural Retinol Serum'), 'retinol'],
+    [product('Retinol Dupe Serum'), 'retinol'],
+    [product('Natural Vitamin C Brightening Serum'), 'ascorbic_acid'],
+    [product('Vegan Niacinamide 10% + Zinc Serum'), 'niacinamide'],
+    // Structured evidence always wins over a title.
+    [product('Revive Pro-Retinol Night Cream', { ingredients_inci: ['Aqua', 'Retinol'] }), 'retinol'],
+    [product('Clean Vegan Retinol 0.3%', { ingredient_ids: ['retinol'] }), 'retinol'],
+    [product('Retinol-Free Night Cream', { ingredient_ids: ['retinol'] }), 'retinol'],
+    [product('Phyto-Retinol Night Cream', { active_ingredients: ['retinol', 'bakuchiol'] }), 'retinol'],
+    // Every script the routing tables know.
+    [product('레티놀 세럼'), 'retinol'],
+    [product('Ретинол сыворотка'), 'retinol'],
+    [product('レチノール美容液'), 'retinol'],
+    [product('视黄醇精华'), 'retinol'],
+    [product('玻尿酸精华液'), 'hyaluronic_acid'],
+    [product('Night Serum', { active_ingredients: ['레티놀'] }), 'retinol'],
     // INCI synonyms, from structured fields only.
     [product('Hyalu B5 Serum', { ingredients_inci: 'Aqua, Sodium Hyaluronate, Panthenol' }), 'hyaluronic_acid'],
     [product('Vitamin E & C', { ingredients_inci: ['Ascorbyl Glucoside'] }), 'ascorbic_acid'],
@@ -234,19 +290,48 @@ test('exclusion drops every row that names an excluded ingredient, and keeps its
     { title: 'Daily Hydrating Serum' },
     { title: 'Brightening Serum', active_ingredients: ['niacinamide'] },
     { title: 'Niacinamide-Free Calm Serum' },
+    { title: 'Vegan Niacinamide 10% + Zinc Serum' },
+    { title: '나이아신아마이드 세럼' },
   ];
   const out = strict.excludeProductsNamingIngredients(rows, { ingredientIds: ['niacinamide'] });
   assert.deepEqual(out.products.map((row) => row.title), ['Daily Hydrating Serum', 'Niacinamide-Free Calm Serum']);
+  assert.equal(out.dropped_count, 4);
+});
+
+test('page exclusion keeps rows, page_size and total consistent', () => {
+  const body = {
+    products: [{ title: 'Niacinamide 10% Serum' }, { title: 'Daily Hydrating Serum' }, { title: 'Vegan Niacinamide Serum' }],
+    page_size: 3,
+    total: 28,
+    metadata: { query_source: 'x' },
+  };
+  const out = strict.excludeIngredientsFromPage(body, { ingredientIds: ['niacinamide'] });
   assert.equal(out.dropped_count, 2);
+  assert.deepEqual(out.body.products.map((row) => row.title), ['Daily Hydrating Serum']);
+  assert.equal(out.body.page_size, 1);
+  assert.equal(out.body.total, 26);
+  assert.equal(out.body.metadata.excluded_ingredient_dropped_count, 2);
+  assert.equal(out.body.metadata.query_source, 'x');
+  const floor = strict.excludeIngredientsFromPage({ ...body, total: 2 }, { ingredientIds: ['niacinamide'] });
+  assert.equal(floor.body.total, 1);
+  const untouched = strict.excludeIngredientsFromPage(body, { ingredientIds: ['retinol'] });
+  assert.equal(untouched.body, body);
+  assert.equal(untouched.dropped_count, 0);
 });
 
 test('bare ingredient negations name nothing to serve', () => {
   for (const query of ['retinol-free', 'retinol free', 'without retinol', '0% retinol', 'salicylic acid free',
-    'retinol alternative', 'no niacinamide']) {
+    'retinol alternative', 'no niacinamide', 'retinolfrei', 'sin retinol', 'ohne Retinol', 'sans rétinol']) {
     assert.equal(normalizer.isBareIngredientNegationQuery(query), true, query);
   }
   for (const query of ['retinol-free moisturizer', 'salicylic acid-free cleanser', 'retinol free shipping',
-    'retinol alternative serum', 'niacinamide serum without retinol', 'retinol', 'moisturizer', '']) {
+    'retinol alternative serum', 'niacinamide serum without retinol', 'retinol', 'moisturizer', '',
+    // a product type, a brand, a concern or a generic skincare word is something to serve
+    'retinol-free balm', 'retinol-free suncream', 'retinol-free mist', 'cerave without retinol',
+    'the ordinary retinol free', 'retinol free for sensitive skin', 'pregnancy safe no retinol',
+    'retinol-free anti aging', 'retinol free skincare',
+    // ... in another language too, with the multilingual flag off
+    'retinol-free 크림', 'retinol-free crème', 'retinol-free crema', 'ohne Retinol creme', 'crema sin retinol']) {
     assert.equal(normalizer.isBareIngredientNegationQuery(query), false, query);
   }
 });
@@ -261,6 +346,18 @@ test('a bare negation is never rewritten (it must not widen into a browse)', () 
   }
   const withNoun = normalizer.normalizeFindProductsMultiRoutingQuery('crème hydratante sans rétinol', BOTH_ON);
   assert.equal(withNoun.query, 'moisturizer retinol-free');
+});
+
+test('every non-Latin ingredient name the query table maps is also read on products', () => {
+  for (const entry of multilingual._entries) {
+    if (entry.kind !== 'ingredient' || entry.script !== 'cjk') continue;
+    const id = strict.STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES[entry.en];
+    assert.ok(id, entry.en);
+    assert.ok(
+      (strict.NON_LATIN_INGREDIENT_NAMES[id] || []).map((name) => strict.normalizeForMatch(name)).includes(strict.normalizeForMatch(entry.key)),
+      `${entry.key} (${id}) is mapped for queries but not read on products`,
+    );
+  }
 });
 
 test('multilingual table: every alias maps to exactly one English term; ambiguous words are absent', () => {
@@ -329,6 +426,13 @@ test('multilingual terms map to the English routing vocabulary', () => {
     '레티놀 크림': 'retinol cream',
     'retinol 크림': 'retinol cream',
     'レチノール クリーム': 'retinol cream',
+    'Retinol Creme': 'Retinol cream',
+    'retinol creme': 'retinol cream',
+    // "formulated with" connectors keep the ingredient, and go with it
+    '레티놀배합 크림': 'retinol cream',
+    'レチノール配合の美容液': 'retinol serum',
+    '含视黄醇的面霜': 'retinol face cream',
+    레티놀배합: 'retinol',
     'crème rétinol': 'cream retinol',
     'crema con retinol': 'cream con retinol',
     // negations keep their meaning
@@ -361,7 +465,7 @@ test('multilingual: English, loanword-identical, ambiguous, non-beauty and parti
     'limpiador de cocina', 'acondicionador de aire', '프린터 토너', '토너 카트리지', 'laptop', 'running shoes',
     'Laufschuhe', '운동화', '笔记本电脑',
     // a CJK term inside a longer compound this table does not know
-    '精华水', '眼霜', '아이크림', '선크림추천', '레티놀배합', 'retinol крем',
+    '精华水', '补水精华', '眼霜', '아이크림', '선크림추천', 'retinol крем',
   ]) {
     const out = multilingual.normalizeMultilingualBeautyTerms(query);
     assert.equal(out.query, query, query);

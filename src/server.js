@@ -41555,7 +41555,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       delete effectiveNormalizedNeed.beauty_request;
     }
     const rawGoal = String(
-      debugRuntime.rawUserQuery ||
+      debugRuntime.routingUserQuery ||
+        debugRuntime.rawUserQuery ||
         requestContext.raw_user_goal ||
         payloadContext.raw_user_goal ||
         search.query ||
@@ -41801,7 +41802,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? payloadBody.search
             : payloadBody;
         const queryText = String(
-          debugRuntime.rawUserQuery ||
+          debugRuntime.routingUserQuery ||
+            debugRuntime.rawUserQuery ||
             payloadBody.search?.query ||
             payloadBody.query ||
             extractSearchQueryText(queryParams) ||
@@ -42066,25 +42068,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           exclusionMode === 'on' ? routingQueryState.query : routingQueryState.shadow?.query || routingQueryState.original,
         );
         if (excludedIds.length > 0) {
-          const exclusion = strictIngredientQuery.excludeProductsNamingIngredients(finalBody.products, {
-            ingredientIds: excludedIds,
-          });
+          const exclusion = strictIngredientQuery.excludeIngredientsFromPage(finalBody, { ingredientIds: excludedIds });
           routingQueryLogFields = {
             ...routingQueryLogFields,
             [exclusionMode === 'on' ? 'fpm_excluded_ingredient_dropped_count' : 'fpm_excluded_ingredient_would_drop_count']:
               exclusion.dropped_count,
           };
-          if (exclusionMode === 'on' && exclusion.dropped_count > 0) {
-            finalBody = {
-              ...finalBody,
-              products: exclusion.products,
-              ...(Number.isFinite(Number(finalBody.page_size)) ? { page_size: exclusion.products.length } : {}),
-              metadata: {
-                ...(finalBody.metadata && typeof finalBody.metadata === 'object' ? finalBody.metadata : {}),
-                excluded_ingredient_dropped_count: exclusion.dropped_count,
-              },
-            };
-          }
+          if (exclusionMode === 'on') finalBody = exclusion.body;
         }
       }
     }
@@ -42708,7 +42698,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       payload?.search?.query ||
       payload?.query ||
       '';
+    // The debug bundle keeps the caller's own words; matching below reads the routing query.
     debugRuntime.rawUserQuery = String(routingOriginalQuery || rawUserQuery || '').trim();
+    debugRuntime.routingUserQuery = routingOriginalQuery ? String(rawUserQuery || '').trim() : null;
     debugRuntime.intent = effectiveIntent || null;
     debugRuntime.expansionMode = findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE;
     const policyMetadata =
@@ -48721,12 +48713,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const canonicalIngredientStartedAt = Date.now();
         // Market-aware filtering on the ingredient path too — same
         // rationale as the other call sites (Round Lab market=KR was
-        // leaking into US users' canonical chain). The lane market, as the
-        // mainline passes it to its canonical leg: markets[0] of the scope
-        // resolved above (never a literal default).
-        const ingredientPathMarket = String(ingredientMarketScope.markets[0]) /* scalar: marketId only */
-          .trim()
-          .toUpperCase();
+        // leaking into US users' canonical chain). The canonical leg's
+        // marketId exactly as the mainline passes it to ITS canonical leg
+        // (searchBeautyExternalSeedProductsMainline: `marketId: buyerCurrency
+        // ? null : market`, market = markets[0]): under a buyer currency the
+        // partition comparison is bypassed and the response door's
+        // serving-currency guard scopes the rows; otherwise the lane market.
+        const ingredientPathMarket = ingredientMarketScope.buyerCurrency
+          ? null
+          : String(ingredientMarketScope.markets[0]) /* scalar: marketId only */
+              .trim()
+              .toUpperCase();
         // Bounded from inside: this leg is otherwise the only expensive stage
         // in the handler with no withStageBudget wrapper. STAGE_TIMEOUT flows
         // into the .catch below and surfaces as canonical_error in telemetry;
@@ -48800,7 +48797,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             search,
             strictInvokeDecision: strictFindProductsMultiDecision,
             rawQueryText: rawUserQuery || queryText,
-            markets: ingredientMarketScope.markets,
+            // A SUPERSET of the served list, in both FIND_PRODUCTS_BUYER_MARKET states: a named
+            // market's SGD seeds are filed under the served 'US' partition (services/buyerMarket.js),
+            // so binding ['SG'] alone would read the empty partition. The response door's
+            // serving-currency guard keeps only rows priced for the buyer.
+            markets: Array.from(new Set([...servedMarkets(), ...ingredientMarketScope.markets])),
           }),
           canonicalIngredientRowsPromise,
         ]);
