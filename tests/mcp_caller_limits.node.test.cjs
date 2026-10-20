@@ -34,6 +34,10 @@ function baseEnv(extra = {}) {
     MCP_CALLER_LIMITS_ANON_TIER_CONCURRENCY_PER_INSTANCE: '0',
     MCP_CALLER_LIMITS_SHED_ANON_POOL_WAITING: '0',
     MCP_CALLER_LIMITS_SHED_PARTNER_POOL_WAITING: '0',
+    MCP_CALLER_LIMITS_OAUTH_UNREGISTERED_TIER_RPM: '0',
+    MCP_CALLER_LIMITS_OAUTH_UNREGISTERED_TIER_CONCURRENCY_PER_INSTANCE: '0',
+    // 1 = no per-instance split before the first sync; the split has its own cases below.
+    MCP_CALLER_LIMITS_EXPECTED_INSTANCES: '1',
     ...extra,
   };
 }
@@ -89,17 +93,22 @@ test('identity: a key with no agent keys on its fingerprint; a degraded verdict 
   assert.notEqual(degradedA.key, degradedB.key, 'two keys during an introspection outage keep two buckets');
 });
 
-test('identity: an MCP OAuth client is a partner keyed on its client id; no client id falls back to the address', () => {
+test('identity: an MCP OAuth client is a partner keyed on issuer AND client id; no client id falls back to the address', () => {
   const env = baseEnv();
-  const oauth = (cid, ip) => ({
+  const oauth = (cid, ip, iss = 'https://as.example.test') => ({
     headers: { 'x-forwarded-for': `${ip}, ${LB}` },
-    invokeAuth: { auth_mode: 'mcp_oauth', oauth_client_id: cid, oauth_issuer: 'https://as.example.test' },
+    invokeAuth: { auth_mode: 'mcp_oauth', oauth_client_id: cid, oauth_issuer: iss },
   });
   const c1 = caller(oauth('client_1', '203.0.113.1'), env);
   assert.equal(c1.tier, 'partner');
-  assert.equal(c1.id, 'oauth:client_1');
+  assert.equal(c1.id, 'oauth:https://as.example.test#client_1');
   assert.equal(c1.oauth_client_id, 'client_1');
   assert.equal(caller(oauth('client_1', '203.0.113.2'), env).key, c1.key);
+  assert.notEqual(
+    caller(oauth('client_1', '203.0.113.1', 'https://other-as.example.test'), env).key,
+    c1.key,
+    'the same client id from another issuer is another client',
+  );
   const anon = caller(oauth(null, '203.0.113.3'), env);
   assert.equal(anon.tier, 'anonymous');
   assert.equal(anon.key, caller(anonReq('203.0.113.3'), env).key);
@@ -167,7 +176,7 @@ test('rate: the sliding window lets a caller back in as the previous minute deca
 test('per-key override raises (or lowers) one caller without touching its tier', () => {
   const env = baseEnv({
     MCP_CALLER_LIMITS_PARTNER_RPM: '2',
-    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ 'agent:agent_big': { rpm: 5 }, 'oauth:client_small': { rpm: 1 } }),
+    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ 'agent:agent_big': { rpm: 5 }, 'oauth:https://as.example.test#client_small': { rpm: 1 } }),
   });
   const c = clock();
   const lim = createCallerLimiter({ env, now: c.now });
@@ -463,8 +472,10 @@ test('store failure: limits fall back to per-instance accounting, warn once, and
   const a = caller(anonReq('203.0.113.1'), env);
   assert.equal(lim.admit(a).allowed, true);
   assert.equal(await lim.syncNow(), false);
+  c.advance(5 * 60 * 1000); // far past any ordinary backoff step
+  lim.admit(a).release();
   assert.equal(await lim.syncNow(), false);
-  assert.equal(calls, 1, 'a missing table is not retried every tick');
+  assert.equal(calls, 1, 'a missing table pauses syncing for minutes, not one backoff step');
   assert.equal(log.lines.filter((l) => l.obj.event === 'mcp_caller_limit_store').length, 1);
   assert.equal(lim.admit(a).allowed, true);
   assert.equal(lim.admit(a).allowed, false, 'still limited, per instance');
@@ -526,4 +537,256 @@ test('a snapshot this instance stopped refreshing is not trusted for in-flight c
   assert.equal(await i2.syncNow(), false);
   assert.equal(i2.inspect(p.key).others.inflight, 0, 'a 7 s old gauge (3 intervals = 6 s) is dropped');
   assert.equal(i2.admit(p).allowed, true, 'and the caller is limited per instance until the store returns');
+});
+
+// ---------------- review round 2 ----------------
+
+const {
+  OAUTH_UNREG_TIER_KEY,
+  anonymousIdForIp,
+  invokeContextLimitCaller,
+  isClientGone,
+  logMcpCallerLimitsBootStatus,
+  logNetworkForIp,
+} = require('../src/guardrails/mcpCallerLimits');
+
+test('burst split: before a key has a fresh shared count, an instance allows only limit / expected instances', async () => {
+  const c = clock(T0 + 1000);
+  const store = createMemoryCallerLimitStore({ now: c.now });
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_RPM: '8', MCP_CALLER_LIMITS_EXPECTED_INSTANCES: '4' });
+  const lim = createCallerLimiter({ env, now: c.now, store, autoSync: false, instanceId: 'i1', log: capturingLog() });
+  const a = caller(anonReq('203.0.113.1'), env);
+  assert.equal(lim.admit(a).allowed, true);
+  assert.equal(lim.admit(a).allowed, true);
+  const r = lim.admit(a);
+  assert.equal(r.allowed, false, '8 / 4 = 2 before any sync');
+  assert.equal(r.violation.limit, 2);
+  assert.equal(r.violation.limit_split, true);
+  assert.equal(await lim.syncNow(), true);
+  let more = 0;
+  while (lim.admit(a).allowed && more < 20) more += 1;
+  assert.equal(more, 6, 'once the key is in a fresh snapshot the full global budget applies');
+  // A key that was NOT in that sync has no shared count yet, fresh snapshot or not.
+  const fresh = caller(anonReq('203.0.113.3'), env);
+  assert.equal(lim.admit(fresh).allowed, true);
+  assert.equal(lim.admit(fresh).allowed, true);
+  assert.equal(lim.admit(fresh).allowed, false);
+  // The snapshot goes stale (store down): back to the per-instance share.
+  c.advance(7000);
+  const b = caller(anonReq('203.0.113.2'), env);
+  assert.equal(lim.admit(b).allowed, true);
+  assert.equal(lim.admit(b).allowed, true);
+  assert.equal(lim.admit(b).allowed, false);
+  // Concurrency is split the same way, never below 1.
+  const env2 = baseEnv({ MCP_CALLER_LIMITS_PARTNER_CONCURRENCY: '3', MCP_CALLER_LIMITS_EXPECTED_INSTANCES: '4' });
+  const lim2 = createCallerLimiter({ env: env2, now: c.now, store, autoSync: false, instanceId: 'i2' });
+  const p = caller(apiKeyReq('agent_p'), env2);
+  assert.equal(lim2.admit(p).allowed, true);
+  assert.equal(lim2.admit(p).violation.reason, 'concurrency');
+});
+
+test('burst split does not apply without a shared store (per-instance mode is an explicit choice)', () => {
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_RPM: '8', MCP_CALLER_LIMITS_EXPECTED_INSTANCES: '4' });
+  const lim = createCallerLimiter({ env, now: clock().now });
+  const a = caller(anonReq('203.0.113.1'), env);
+  let n = 0;
+  while (lim.admit(a).allowed && n < 20) n += 1;
+  assert.equal(n, 8);
+});
+
+test('reaper: a slot whose release never ran is freed after the max age, with a WARN; a late release is a no-op', () => {
+  const c = clock();
+  const log = capturingLog();
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_CONCURRENCY: '1', MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS: '10000' });
+  const lim = createCallerLimiter({ env, now: c.now, log });
+  const a = caller(anonReq('203.0.113.1'), env);
+  const leaked = lim.admit(a);
+  assert.equal(lim.admit(a).allowed, false);
+  c.advance(9000);
+  assert.equal(lim.admit(a).allowed, false, 'not yet expired');
+  c.advance(2000);
+  const after = lim.admit(a);
+  assert.equal(after.allowed, true, 'reaped, so the caller is admitted again');
+  const reaped = log.lines.filter((l) => l.obj.event === 'mcp_caller_limit_reaped');
+  assert.equal(reaped.length, 1);
+  assert.equal(reaped[0].msg, 'mcp caller limit in-flight slot reaped');
+  assert.ok(reaped[0].obj.age_ms > 10000);
+  assert.equal(reaped[0].obj.caller_key, a.key);
+  leaked.release(); // the late release must not free the NEW holder's slot
+  assert.equal(lim.admit(a).allowed, false);
+  assert.equal(lim.inspect(a.key).local.inflight, 1);
+});
+
+test('sync backoff: 2 s, 4, 8, 16, 32, then capped at 60 s; a success resets it', async () => {
+  const c = clock(T0 + 1000);
+  let up = false;
+  const shared = createMemoryCallerLimitStore({ now: c.now });
+  const store = { kind: 'memory', sync: (args) => (up ? shared.sync(args) : Promise.reject(Object.assign(new Error('timeout'), { code: '57014' }))) };
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_RPM: '100', MCP_CALLER_LIMITS_SYNC_MS: '2000' });
+  const lim = createCallerLimiter({ env, now: c.now, store, autoSync: false, log: capturingLog() });
+  const delays = [];
+  for (let i = 0; i < 7; i += 1) {
+    lim.admit(caller(anonReq('203.0.113.1'), env)).release(); // keep the key active across window rolls
+    assert.equal(await lim.syncNow(), false);
+    const { nextAt, failures } = lim.inspect('x').sync;
+    assert.equal(failures, i + 1);
+    delays.push(nextAt - c.t);
+    // Asking early is refused without touching the store.
+    assert.equal(await lim.syncNow(), false);
+    assert.equal(lim.inspect('x').sync.failures, i + 1);
+    c.t = nextAt;
+  }
+  assert.deepEqual(delays, [2000, 4000, 8000, 16000, 32000, 60000, 60000]);
+  up = true;
+  assert.equal(await lim.syncNow(), true);
+  assert.deepEqual(lim.inspect('x').sync, { failures: 0, nextAt: 0 });
+});
+
+test('the sync never takes the last free connection: skipped while the pool has no idle connection at max', async () => {
+  const c = clock(T0 + 1000);
+  let calls = 0;
+  const store = { kind: 'memory', async sync() { calls += 1; return []; } };
+  let stats = { waiting: 0, idle: 0, total: 12, max: 12 };
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_RPM: '5' });
+  const lim = createCallerLimiter({ env, now: c.now, store, autoSync: false, poolStats: () => stats });
+  lim.admit(caller(anonReq('203.0.113.1'), env));
+  assert.equal(await lim.syncNow(), false);
+  stats = { waiting: 0, idle: 1, total: 12, max: 12 };
+  assert.equal(await lim.syncNow(), true);
+  assert.equal(calls, 1);
+});
+
+test('unregistered OAuth clients share one aggregate budget; a client with an override is exempt', () => {
+  const env = baseEnv({
+    MCP_CALLER_LIMITS_OAUTH_UNREGISTERED_TIER_CONCURRENCY_PER_INSTANCE: '2',
+    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ 'oauth:https://as.example.test#known': { rpm: 100 } }),
+  });
+  const lim = createCallerLimiter({ env, now: clock().now });
+  const oauth = (cid) => caller({
+    headers: { 'x-forwarded-for': `203.0.113.1, ${LB}` },
+    invokeAuth: { auth_mode: 'mcp_oauth', oauth_client_id: cid, oauth_issuer: 'https://as.example.test' },
+  }, env);
+  assert.equal(lim.admit(oauth('minted_1')).allowed, true);
+  assert.equal(lim.admit(oauth('minted_2')).allowed, true);
+  const third = lim.admit(oauth('minted_3'));
+  assert.equal(third.allowed, false, 'a freshly minted client id buys no new capacity');
+  assert.equal(third.violation.reason, 'tier_concurrency');
+  assert.equal(lim.admit(oauth('known')).allowed, true, 'an overridden client is outside the aggregate');
+  assert.equal(lim.inspect(OAUTH_UNREG_TIER_KEY).local.inflight, 2);
+  // API-key partners (issued by the platform, not mintable) are outside it too.
+  assert.equal(lim.admit(caller(apiKeyReq('agent_p'), env)).allowed, true);
+});
+
+test('partners shed too, at a higher default threshold than anonymous', () => {
+  const cfg = readCallerLimitsConfig({});
+  assert.ok(cfg.shed.partnerPoolWaiting > cfg.shed.anonymousPoolWaiting);
+  assert.ok(cfg.shed.anonymousPoolWaiting > 0);
+});
+
+test('IPv6 keys on the /64; logs carry IPv4 /24 or IPv6 /48 only', () => {
+  assert.equal(anonymousIdForIp('2001:db8:1:2:aaaa::1'), 'ip:2001:db8:1:2::/64');
+  assert.equal(anonymousIdForIp('2001:db8:1:2:ffff:ffff:ffff:ffff'), 'ip:2001:db8:1:2::/64');
+  assert.equal(anonymousIdForIp('2001:db8:1:3::1'), 'ip:2001:db8:1:3::/64');
+  assert.equal(anonymousIdForIp('203.0.113.7'), 'ip:203.0.113.7');
+  assert.equal(anonymousIdForIp(null), 'ip:unknown');
+  assert.equal(logNetworkForIp('203.0.113.7'), '203.0.113.0/24');
+  assert.equal(logNetworkForIp('2001:db8:1:2:aaaa::1'), '2001:db8:1::/48');
+  assert.equal(logNetworkForIp('::ffff:0:203.0.113.7'), '0:0:0::/48');
+  const env = baseEnv();
+  const a = caller(anonReq('2001:db8:1:2:aaaa::1'), env);
+  const b = caller(anonReq('2001:db8:1:2:bbbb::9'), env);
+  assert.equal(a.key, b.key, 'rotating inside one /64 buys no new bucket');
+  assert.notEqual(caller(anonReq('2001:db8:1:3::1'), env).key, a.key);
+});
+
+test('cidr overrides: every address in the range gets the limit in its OWN bucket; exact ip: wins; longest prefix wins', () => {
+  const env = baseEnv({
+    MCP_CALLER_LIMITS_ANON_RPM: '2',
+    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({
+      'cidr:198.51.100.0/24': { rpm: 5 },
+      'cidr:198.51.100.128/25': { rpm: 7 },
+      'ip:198.51.100.9': { rpm: 1 },
+      'cidr:2001:db8:5::/48': { rpm: 4 },
+    }),
+  });
+  const lim = createCallerLimiter({ env, now: clock().now });
+  const budget = (ip) => {
+    const c = caller(anonReq(ip), env);
+    let n = 0;
+    while (lim.admit(c).allowed && n < 50) n += 1;
+    return n;
+  };
+  assert.equal(budget('198.51.100.1'), 5);
+  assert.equal(budget('198.51.100.2'), 5, 'a second address in the range has its own bucket');
+  assert.equal(budget('198.51.100.200'), 7, 'the /25 is more specific than the /24');
+  assert.equal(budget('198.51.100.9'), 1, 'an exact ip: override wins over any cidr');
+  assert.equal(budget('203.0.113.1'), 2, 'outside every range: the tier default');
+  assert.equal(budget('2001:db8:5:1::1'), 4);
+  const bad = readCallerLimitsConfig(baseEnv({ MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ 'cidr:198.51.100.0/33': { rpm: 1 } }) }));
+  assert.ok(bad.overridesError);
+  assert.equal(bad.cidrOverrides.length, 0);
+});
+
+test('an unknown client address is its own strict class, not a shared loophole at the anonymous budget', () => {
+  const env = baseEnv({ MCP_CALLER_LIMITS_ANON_RPM: '30', MCP_CALLER_LIMITS_UNKNOWN_IP_RPM: '2' });
+  const lim = createCallerLimiter({ env, now: clock().now });
+  const unknown = caller({ headers: {}, socket: {} }, env);
+  assert.equal(unknown.unknown_ip, true);
+  assert.equal(unknown.id, 'ip:unknown');
+  let n = 0;
+  for (let r = lim.admit(unknown); r.allowed && n < 50; r = lim.admit(unknown)) {
+    n += 1;
+    r.release();
+  }
+  assert.equal(n, 2);
+  assert.equal(readCallerLimitsConfig({}).unknownIp.concurrency, 1);
+});
+
+test('a client address never reaches a log line or the invoke context, IPv4 or IPv6', () => {
+  const log = capturingLog();
+  const env = baseEnv({
+    MCP_CALLER_LIMITS_MODE: 'observe',
+    MCP_CALLER_LIMITS_ANON_RPM: '1',
+    MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS: '1',
+    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ 'ip:203.0.113.77': { rpm: 1 } }),
+  });
+  const c = clock();
+  const lim = createCallerLimiter({ env, now: c.now, log });
+  const ips = ['203.0.113.77', '2001:db8:9:8:7:6:5:4'];
+  for (const ip of ips) {
+    const who = caller(anonReq(ip), env);
+    lim.admit(who, { door: 'public_mcp' });
+    lim.admit(who, { door: 'public_mcp' });
+    c.advance(2000);
+    lim.admit(who, { door: 'public_mcp' }); // reaps the earlier slots, logging them
+    const ctx = invokeContextLimitCaller({ mcpLimitCaller: { ...who, call_id: 'c1' } });
+    assert.deepEqual(Object.keys(ctx).sort(), ['agent_id', 'call_id', 'key', 'tier']);
+    assert.ok(!JSON.stringify(ctx).includes(ip));
+  }
+  const all = JSON.stringify(log.lines);
+  assert.ok(log.lines.some((l) => l.obj.event === 'mcp_caller_limit'));
+  assert.ok(log.lines.some((l) => l.obj.event === 'mcp_caller_limit_reaped'));
+  for (const ip of ips) assert.ok(!all.includes(ip), `${ip} must never be logged`);
+  assert.ok(!all.includes('2001:db8:9:8'), 'not even the /64 a v6 caller is keyed on');
+  assert.ok(all.includes('203.0.113.0/24'));
+  assert.ok(all.includes('2001:db8:9::/48'));
+});
+
+test('client-gone detection: a closed socket or ended response, never req.destroyed (true on every read body)', () => {
+  assert.equal(isClientGone({ destroyed: true, socket: { destroyed: false } }, { destroyed: false, writableEnded: false }), false);
+  assert.equal(isClientGone({ socket: { destroyed: true } }, {}), true);
+  assert.equal(isClientGone({ socket: {} }, { destroyed: true }), true);
+  assert.equal(isClientGone({ socket: {} }, { writableEnded: true }), true);
+});
+
+test('boot status names whether loopback tool calls can carry the caller', () => {
+  const lines = [];
+  const log = { info: (o) => lines.push(['info', o]), warn: (o) => lines.push(['warn', o]) };
+  const ok = logMcpCallerLimitsBootStatus({ selfInvokeBase: 'http://127.0.0.1:8080', log, env: { MCP_CALLER_LIMITS_MODE: 'observe' } });
+  assert.equal(ok.loopback_assertion_active, true);
+  const bad = logMcpCallerLimitsBootStatus({ selfInvokeBase: 'https://gateway.example.test', log, env: { MCP_CALLER_LIMITS_MODE: 'enforce' } });
+  assert.equal(bad.loopback_assertion_active, false);
+  assert.deepEqual(lines.map((l) => l[0]), ['info', 'warn']);
+  const off = logMcpCallerLimitsBootStatus({ selfInvokeBase: 'http://127.0.0.1:8080', log, env: {} });
+  assert.equal(off.loopback_assertion_active, false);
 });

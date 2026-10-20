@@ -111,3 +111,12 @@ test('the invoke limiter acts on the assertion only in enforce mode', () => {
     else process.env.MCP_CALLER_LIMITS_MODE = prior;
   }
 });
+
+test('a fan-out sub-call also carries the door\'s per-call id; an ordinary loopback call does not', () => {
+  const ctx = { limit_caller: { ...CALLER, call_id: 'call-123' } };
+  const env = { MCP_CALLER_LIMITS_MODE: 'enforce' };
+  const plain = loopbackCallerHeaders(ctx, { env, nowSec: NOW })[LOOPBACK_CALLER_HEADER];
+  const fan = loopbackCallerHeaders(ctx, { env, nowSec: NOW, fanout: true })[LOOPBACK_CALLER_HEADER];
+  assert.deepEqual(verifyLoopbackCaller(loopbackReq(plain), { nowSec: NOW }), CALLER);
+  assert.deepEqual(verifyLoopbackCaller(loopbackReq(fan), { nowSec: NOW }), { ...CALLER, call_id: 'call-123' });
+});

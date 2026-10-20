@@ -2,52 +2,74 @@
 
 // PER-CALLER LIMITS AT THE MCP DOORS (/public/mcp, /mcp, /ucp/mcp).
 //
-// Why this exists. The doors had two gaps that let one caller degrade every other caller and the shared
+// Why this exists. The doors had gaps that let one caller degrade every other caller and the shared
 // Postgres primary:
 //   1. the public tier's limiter is in-memory PER INSTANCE, so its per-IP budget multiplies by however many
 //      instances the service has scaled to;
 //   2. the authenticated door had no per-caller limit at all, and every MCP tool's loopback invoke call
 //      drew from the invoke limiter's bucket for the gateway's own service key (fixed separately by
-//      src/guardrails/loopbackCallerAssertion.js).
-// And neither door bounded how many slow requests one caller may hold IN FLIGHT, which is what actually
-// loads the database: a caller well inside a request-rate budget can still pin the primary with slow
-// searches running in parallel.
+//      src/guardrails/loopbackCallerAssertion.js);
+//   3. neither door bounded how many slow requests one caller may hold IN FLIGHT, which is what actually
+//      loads the database: a caller well inside a request-rate budget can still pin the primary with slow
+//      searches running in parallel.
 //
 // What it does, per tools/call (the one MCP method that does real work; initialize / tools/list answer
 // from memory and are not counted):
 //   - resolves WHO is calling (resolveDoorCaller): a verified API key's agent (or key fingerprint), an MCP
-//     OAuth client id, else the client IP by the gateway-wide client-IP rule. First-party callers are
-//     never limited.
+//     OAuth client (issuer + client id), else the client address by the gateway-wide client-IP rule (an
+//     IPv6 address by its /64). First-party callers are never limited.
 //   - checks, in this order, and stops at the first that fails:
-//       shed            the DB pool is saturated: refuse the tiers configured to shed (anonymous first)
-//       tier_concurrency anonymous requests in flight on THIS instance (protects this instance's pool)
+//       shed             the DB pool is saturated: refuse anonymous first, partners at a higher threshold
+//       tier_concurrency anonymous (or unregistered-OAuth) requests in flight on THIS instance
 //       concurrency      this caller's requests in flight, across instances
 //       rate             this caller's requests per minute, across instances (sliding window)
-//       tier_rate        all anonymous requests per minute, across instances (optional)
+//       tier_rate        all anonymous / all unregistered-OAuth requests per minute, across instances
 //   - in OBSERVE mode logs the decision it would have made (WARN) and admits; in ENFORCE mode refuses with
 //     a JSON-RPC error and Retry-After (never a 200 with empty results).
+//
+// IN FLIGHT means "the door's tool dispatch is running", not "the response is open": the door releases the
+// slot in a finally around the dispatch, so a client that disconnects mid-call keeps its slot until the
+// work it started has finished (the work does not stop when the socket does). A client already gone when
+// its turn for admission comes is never admitted. A slot whose release somehow never runs is reaped after
+// MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS, with a WARN.
 //
 // GLOBAL across instances without a per-request write. The only shared store this service has is the
 // Postgres primary it is protecting, so the hot path never touches it: every decision reads local
 // counters plus the last snapshot of the other instances' counters. A background sync (one statement per
-// instance every MCP_CALLER_LIMITS_SYNC_MS, default 2 s, and only while this instance has active callers)
-// writes this instance's absolute counts for its busiest keys into an UNLOGGED table and reads back the
-// other instances' totals for the same keys. Each instance writes only its own rows, so instances never
-// contend on a row lock. The price is approximation: a caller can overshoot a global budget by roughly
-// what the instances admit between two syncs. When the store is unreachable, missing, or the pool is
-// already saturated, the sync is skipped and limits fall back to per-instance accounting — the protection
-// the doors had before, never less.
+// instance every MCP_CALLER_LIMITS_SYNC_MS, default 2 s, only while this instance has active callers and a
+// free pool connection) writes this instance's absolute counts for its busiest keys into an UNLOGGED table
+// and reads back the other instances' totals for the same keys. Postgres cancels the statement itself at
+// MCP_CALLER_LIMITS_SYNC_TIMEOUT_MS (statement_timeout, so the connection survives), and a failing sync
+// backs off exponentially. Each instance writes only its own rows, so instances never contend on a row
+// lock. The price is approximation: until a key appears in a fresh snapshot, this instance allows it only
+// limit / MCP_CALLER_LIMITS_EXPECTED_INSTANCES, so a burst landing on many instances at once cannot
+// multiply the budget; after that, a caller can overshoot by roughly what the instances admit between two
+// syncs. When the store is unreachable or missing, limits stay at that per-instance share.
+//
+// NEVER LOGGED: a client address. A refusal line carries the hashed caller key and, for anonymous callers,
+// the truncated network (IPv4 /24, IPv6 /48) — enough to choose a cidr: override, not enough to name a
+// client.
 
 const crypto = require('crypto');
+const net = require('net');
 const { clientIpFromRequest } = require('./gatewayGuardrails');
-const { readCallerLimitsConfig, readStoreConfig, callerLimitsMode } = require('./mcpCallerLimitsConfig');
+const {
+  matchCidrOverride,
+  readCallerLimitsConfig,
+  readStoreConfig,
+  callerLimitsMode,
+} = require('./mcpCallerLimitsConfig');
+const { loopbackAssertionStatus } = require('./loopbackCallerAssertion');
 
 const WINDOW_MS = 60_000;
 const ANON_TIER_KEY = 'tier:anonymous';
+const OAUTH_UNREG_TIER_KEY = 'tier:oauth_unregistered';
+const TIER_KEYS = new Set([ANON_TIER_KEY, OAUTH_UNREG_TIER_KEY]);
 const MAX_LOCAL_KEYS = 50_000;
 const STORE_DISABLE_MS = 10 * 60 * 1000;
 const STORE_WARN_INTERVAL_MS = 60 * 1000;
 const PRUNE_INTERVAL_MS = 60 * 1000;
+const REAP_INTERVAL_MS = 1000;
 const CONCURRENCY_RETRY_AFTER_SEC = 2;
 
 // JSON-RPC server-error codes (the -32000..-32099 range is implementation-defined).
@@ -67,15 +89,68 @@ function sha16(input) {
   return crypto.createHash('sha256').update(String(input)).digest('hex').slice(0, 16);
 }
 
-function makeCaller(tier, id, { agentId = null, oauthClientId = null } = {}) {
+// ---------------- addresses ----------------
+
+// The eight 16-bit groups of an IPv6 address, or null.
+function ipv6Groups(addr) {
+  let a = String(addr || '').toLowerCase().split('%')[0];
+  if (net.isIP(a) !== 6) return null;
+  const dotted = a.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const o = dotted[1].split('.').map(Number);
+    a = `${a.slice(0, -dotted[1].length)}${((o[0] << 8) | o[1]).toString(16)}:${((o[2] << 8) | o[3]).toString(16)}`;
+  }
+  const [head, tail] = a.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined && tail ? tail.split(':') : [];
+  const fill = tail !== undefined ? new Array(8 - h.length - t.length).fill('0') : [];
+  const groups = [...h, ...fill, ...t].map((g) => parseInt(g, 16));
+  return groups.length === 8 && groups.every((g) => Number.isInteger(g) && g >= 0 && g <= 0xffff) ? groups : null;
+}
+
+function ipv6Prefix(groups, nGroups) {
+  return `${groups.slice(0, nGroups).map((g) => g.toString(16)).join(':')}::/${nGroups * 16}`;
+}
+
+// The bucket an anonymous address keys on: an IPv4 address as itself; an IPv6 address by its /64, the
+// smallest block a single subscriber is normally given (rotating within it buys no new bucket).
+function anonymousIdForIp(ip) {
+  const family = net.isIP(String(ip || ''));
+  if (family === 4) return `ip:${ip}`;
+  if (family === 6) {
+    const groups = ipv6Groups(ip);
+    if (groups) return `ip:${ipv6Prefix(groups, 4)}`;
+  }
+  return 'ip:unknown';
+}
+
+// What a log line may say about an address: IPv4 /24, IPv6 /48. Never the address.
+function logNetworkForIp(ip) {
+  const family = net.isIP(String(ip || ''));
+  if (family === 4) return `${String(ip).split('.').slice(0, 3).join('.')}.0/24`;
+  if (family === 6) {
+    const groups = ipv6Groups(ip);
+    if (groups) return ipv6Prefix(groups, 3);
+  }
+  return 'unknown';
+}
+
+// ---------------- identity ----------------
+
+function makeCaller(tier, id, extra = {}) {
   return {
     tier,
-    // The id the operator names in MCP_CALLER_LIMITS_OVERRIDES_JSON. Never logged for anonymous callers
-    // (it carries the client address); `key` is the hashed form used everywhere else.
+    // The id the operator names in MCP_CALLER_LIMITS_OVERRIDES_JSON. Never logged (for an anonymous caller it
+    // carries the client address); `key` is the hashed form used everywhere else.
     id,
     key: `${tier}:${sha16(id)}`,
-    agent_id: agentId,
-    oauth_client_id: oauthClientId,
+    agent_id: extra.agentId || null,
+    oauth_client_id: extra.oauthClientId || null,
+    oauth_issuer: extra.oauthIssuer || null,
+    // Anonymous only, for cidr: override matching. Never logged, never leaves this module's decisions.
+    ip: extra.ip || null,
+    net_prefix: extra.netPrefix || null,
+    unknown_ip: extra.unknownIp === true,
   };
 }
 
@@ -107,18 +182,50 @@ function resolveDoorCaller(req, { config } = {}) {
   }
   if (authMode === 'mcp_oauth') {
     const clientId = text(auth.oauth_client_id);
-    if (clientId) return makeCaller('partner', `oauth:${clientId}`, { oauthClientId: clientId });
+    const issuer = text(auth.oauth_issuer);
+    // Issuer AND client id: two authorization servers may issue the same client id string.
+    if (clientId) {
+      return makeCaller('partner', `oauth:${issuer || 'unknown'}#${clientId}`, {
+        oauthClientId: clientId,
+        oauthIssuer: issuer,
+      });
+    }
   }
   const ip = clientIpFromRequest(req);
-  return makeCaller('anonymous', `ip:${ip || 'unknown'}`);
+  const id = anonymousIdForIp(ip);
+  return makeCaller('anonymous', id, {
+    ip: id === 'ip:unknown' ? null : ip,
+    netPrefix: logNetworkForIp(ip),
+    unknownIp: id === 'ip:unknown',
+  });
 }
 
 function policyFor(caller, cfg) {
-  const base = caller.tier === 'partner' ? cfg.partner : cfg.anonymous;
-  const override = cfg.overrides.get(caller.id) || {};
+  const exact = cfg.overrides.get(caller.id) || null;
+  const cidr = !exact && caller.tier === 'anonymous' && caller.ip
+    ? matchCidrOverride(cfg.cidrOverrides, caller.ip)
+    : null;
+  const override = exact || (cidr ? cidr.entry : null) || {};
+  let base = cfg.anonymous;
+  if (caller.unknown_ip) base = cfg.unknownIp;
+  else if (caller.tier === 'partner') base = cfg.partner;
+  const oauthUnregistered = Boolean(caller.oauth_client_id) && !exact;
+  let tierKey = null;
+  let tier = null;
+  if (caller.tier === 'anonymous') {
+    tierKey = ANON_TIER_KEY;
+    tier = cfg.anonymousTier;
+  } else if (oauthUnregistered) {
+    tierKey = OAUTH_UNREG_TIER_KEY;
+    tier = cfg.oauthUnregisteredTier;
+  }
   return {
     rpm: Number.isFinite(override.rpm) ? override.rpm : base.rpm,
     concurrency: Number.isFinite(override.concurrency) ? override.concurrency : base.concurrency,
+    overridden: Boolean(exact || cidr),
+    oauthUnregistered,
+    tierKey,
+    tier,
   };
 }
 
@@ -130,7 +237,7 @@ function clampSec(n, min, max) {
 /**
  * @param {object} opts
  * @param {object} [opts.store] shared counter store ({ sync, prune }); null = per-instance only.
- * @param {() => ({waiting:number}|null)} [opts.poolStats] the DB pool's current census.
+ * @param {() => ({waiting:number, idle?:number, total?:number, max?:number}|null)} [opts.poolStats]
  */
 function createCallerLimiter({
   env = process.env,
@@ -144,12 +251,17 @@ function createCallerLimiter({
   // key -> { win, cur, prev, inflight }: THIS instance's admitted requests in the current and previous
   // window, and its requests in flight.
   const local = new Map();
-  // key -> { byWin: Map(windowStartMs -> requests), inflight }: the OTHER instances, as of the last sync.
-  let snapshot = { at: 0, others: new Map() };
+  // others: key -> { byWin: Map(windowStartMs -> requests), inflight } for the OTHER instances; synced:
+  // the keys this instance sent in that sync (only those have a shared count, even when it is zero).
+  let snapshot = { at: 0, others: new Map(), synced: new Set() };
+  // Every slot currently held, for the max-age reaper.
+  const held = new Map();
+  let nextHandleId = 1;
+  let lastReapAt = 0;
   let syncing = null;
   let timer = null;
   let lastPruneAt = 0;
-  const storeHealth = { disabledUntil: 0, lastWarnAt: 0, lastOkAt: 0 };
+  const syncState = { failures: 0, nextAt: 0, lastWarnAt: 0, lastOkAt: 0 };
 
   function storeConfig() {
     return readStoreConfig(env);
@@ -186,12 +298,12 @@ function createCallerLimiter({
     }
     if (local.size < MAX_LOCAL_KEYS) return;
     for (const [key, entry] of local) {
-      if (!entry.inflight && key !== ANON_TIER_KEY) local.delete(key);
+      if (!entry.inflight && !TIER_KEYS.has(key)) local.delete(key);
     }
   }
 
   function snapshotFresh(t) {
-    return t - snapshot.at <= 3 * storeConfig().syncIntervalMs;
+    return snapshot.at > 0 && t - snapshot.at <= 3 * storeConfig().syncIntervalMs;
   }
 
   function others(key, win, t) {
@@ -203,6 +315,15 @@ function createCallerLimiter({
       // A gauge goes stale fast; window counts stay true for their window whatever their age.
       inflight: snapshotFresh(t) ? o.inflight : 0,
     };
+  }
+
+  // A key this instance has no fresh shared count for gets only its share of a global limit: a burst that
+  // lands on many instances at once cannot multiply the budget before the first sync. Per-instance mode
+  // (no shared store) is an explicit choice of per-instance limits, so it keeps the full limit.
+  function effectiveLimit(key, limit, t, cfg) {
+    if (!store || !(limit > 0)) return { limit, split: false };
+    if (snapshotFresh(t) && snapshot.synced.has(key)) return { limit, split: false };
+    return { limit: Math.max(1, Math.ceil(limit / cfg.expectedInstances)), split: true };
   }
 
   function inflightOf(key, t) {
@@ -234,6 +355,20 @@ function createCallerLimiter({
     return clampSec((((1 - frac) + afterRollFrac) * WINDOW_MS) / 1000, 1, 120);
   }
 
+  function rateViolation(reason, status, key, rawLimit, t, cfg) {
+    const { limit, split } = effectiveLimit(key, rawLimit, t, cfg);
+    const est = rateOf(key, t);
+    if (est.value + 1 <= limit) return null;
+    return {
+      reason,
+      status,
+      limit,
+      limit_split: split,
+      observed: Math.round(est.value * 100) / 100,
+      retryAfterSec: rateRetryAfterSec(est, limit),
+    };
+  }
+
   function firstViolation(caller, policy, cfg, t) {
     const shedAt = caller.tier === 'anonymous' ? cfg.shed.anonymousPoolWaiting : cfg.shed.partnerPoolWaiting;
     if (shedAt > 0) {
@@ -248,59 +383,57 @@ function createCallerLimiter({
         return { reason: 'shed', status: 503, limit: shedAt, observed: waiting, retryAfterSec: cfg.shed.retryAfterSec };
       }
     }
-    if (caller.tier === 'anonymous' && cfg.anonymousTier.concurrencyPerInstance > 0) {
-      const entry = local.get(ANON_TIER_KEY);
+    if (policy.tierKey && policy.tier.concurrencyPerInstance > 0) {
+      const entry = local.get(policy.tierKey);
       const inflight = entry ? entry.inflight : 0;
-      if (inflight >= cfg.anonymousTier.concurrencyPerInstance) {
+      if (inflight >= policy.tier.concurrencyPerInstance) {
         return {
           reason: 'tier_concurrency',
           status: 503,
-          limit: cfg.anonymousTier.concurrencyPerInstance,
+          limit: policy.tier.concurrencyPerInstance,
           observed: inflight,
           retryAfterSec: cfg.shed.retryAfterSec,
         };
       }
     }
     if (policy.concurrency > 0) {
+      const { limit, split } = effectiveLimit(caller.key, policy.concurrency, t, cfg);
       const inflight = inflightOf(caller.key, t);
-      if (inflight >= policy.concurrency) {
+      if (inflight >= limit) {
         return {
           reason: 'concurrency',
           status: 429,
-          limit: policy.concurrency,
+          limit,
+          limit_split: split,
           observed: inflight,
           retryAfterSec: CONCURRENCY_RETRY_AFTER_SEC,
         };
       }
     }
     if (policy.rpm > 0) {
-      const est = rateOf(caller.key, t);
-      if (est.value + 1 > policy.rpm) {
-        return {
-          reason: 'rate',
-          status: 429,
-          limit: policy.rpm,
-          observed: Math.round(est.value * 100) / 100,
-          retryAfterSec: rateRetryAfterSec(est, policy.rpm),
-        };
-      }
+      const v = rateViolation('rate', 429, caller.key, policy.rpm, t, cfg);
+      if (v) return v;
     }
-    if (caller.tier === 'anonymous' && cfg.anonymousTier.rpm > 0) {
-      const est = rateOf(ANON_TIER_KEY, t);
-      if (est.value + 1 > cfg.anonymousTier.rpm) {
-        return {
-          reason: 'tier_rate',
-          status: 503,
-          limit: cfg.anonymousTier.rpm,
-          observed: Math.round(est.value * 100) / 100,
-          retryAfterSec: rateRetryAfterSec(est, cfg.anonymousTier.rpm),
-        };
-      }
+    if (policy.tierKey && policy.tier.rpm > 0) {
+      const v = rateViolation('tier_rate', 503, policy.tierKey, policy.tier.rpm, t, cfg);
+      if (v) return v;
     }
     return null;
   }
 
-  function logDecision({ mode, violation, caller, door }) {
+  function callerLogFields(caller) {
+    return {
+      tier: caller.tier,
+      caller_key: caller.key,
+      ...(caller.net_prefix ? { caller_net: caller.net_prefix } : {}),
+      ...(caller.unknown_ip ? { caller_ip_unknown: true } : {}),
+      ...(caller.agent_id ? { caller_agent_id: caller.agent_id } : {}),
+      ...(caller.oauth_client_id ? { caller_oauth_client_id: caller.oauth_client_id } : {}),
+      ...(caller.oauth_issuer ? { caller_oauth_issuer: caller.oauth_issuer } : {}),
+    };
+  }
+
+  function logDecision({ mode, violation, caller, policy, door }) {
     try {
       log?.warn?.(
         {
@@ -309,11 +442,12 @@ function createCallerLimiter({
           mode,
           reason: violation.reason,
           door: door || null,
-          tier: caller.tier,
-          caller_key: caller.key,
-          ...(caller.agent_id ? { caller_agent_id: caller.agent_id } : {}),
-          ...(caller.oauth_client_id ? { caller_oauth_client_id: caller.oauth_client_id } : {}),
+          ...callerLogFields(caller),
+          // Whether an override set this caller's limits — never WHICH key (an ip: key is an address).
+          overridden: policy.overridden,
+          ...(policy.oauthUnregistered ? { oauth_unregistered: true } : {}),
           limit: violation.limit,
+          ...(violation.limit_split ? { limit_split: true } : {}),
           observed: violation.observed,
           retry_after_s: violation.retryAfterSec,
           status: violation.status,
@@ -327,57 +461,102 @@ function createCallerLimiter({
     }
   }
 
+  // The max-age backstop: a slot older than any tool can legitimately run is released and reported.
+  function reapExpired(t, cfg) {
+    if (t - lastReapAt < REAP_INTERVAL_MS) return;
+    lastReapAt = t;
+    for (const handle of [...held.values()]) {
+      if (t - handle.startedAt > cfg.inflightMaxAgeMs) {
+        handle.free();
+        try {
+          log?.warn?.(
+            {
+              event: 'mcp_caller_limit_reaped',
+              door: handle.door,
+              ...callerLogFields(handle.caller),
+              age_ms: t - handle.startedAt,
+              max_age_ms: cfg.inflightMaxAgeMs,
+            },
+            'mcp caller limit in-flight slot reaped',
+          );
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+  }
+
   const NOOP = Object.freeze({ allowed: true, violation: null, release() {} });
 
   /**
-   * Decide one tools/call. Returns { allowed, violation, release }. `release` MUST be called exactly once
-   * when the request finishes (it is idempotent). In observe mode `allowed` is always true and `violation`
-   * says what enforce would have done.
+   * Decide one tools/call. Returns { allowed, violation, release }. `release` must be called when the tool
+   * dispatch finishes (it is idempotent, and the reaper is the backstop). In observe mode `allowed` is
+   * always true and `violation` says what enforce would have done.
    */
   function admit(caller, { door } = {}) {
     const cfg = readCallerLimitsConfig(env);
     if (cfg.mode === 'off' || !caller || caller.tier === 'first_party') return NOOP;
     const t = now();
     ensureSyncTimer();
-    const violation = firstViolation(caller, policyFor(caller, cfg), cfg, t);
+    reapExpired(t, cfg);
+    const policy = policyFor(caller, cfg);
+    const violation = firstViolation(caller, policy, cfg, t);
     if (violation) {
-      logDecision({ mode: cfg.mode, violation, caller, door });
+      logDecision({ mode: cfg.mode, violation, caller, policy, door });
       if (cfg.mode === 'enforce') return { allowed: false, violation, release() {} };
     }
     const win = windowOf(t);
     const entry = localEntry(caller.key, win);
     entry.cur += 1;
     entry.inflight += 1;
-    const tierEntry = caller.tier === 'anonymous' ? localEntry(ANON_TIER_KEY, win) : null;
+    const tierEntry = policy.tierKey ? localEntry(policy.tierKey, win) : null;
     if (tierEntry) {
       tierEntry.cur += 1;
       tierEntry.inflight += 1;
     }
-    let released = false;
-    return {
-      allowed: true,
-      violation,
-      release() {
-        if (released) return;
-        released = true;
+    const id = nextHandleId;
+    nextHandleId += 1;
+    let freed = false;
+    const handle = {
+      caller,
+      door: door || null,
+      startedAt: t,
+      free() {
+        if (freed) return;
+        freed = true;
+        held.delete(id);
         entry.inflight = Math.max(0, entry.inflight - 1);
         if (tierEntry) tierEntry.inflight = Math.max(0, tierEntry.inflight - 1);
       },
     };
+    held.set(id, handle);
+    return { allowed: true, violation, release: handle.free };
   }
 
   function warnStore(err, extra = {}) {
     const t = now();
-    if (t - storeHealth.lastWarnAt < STORE_WARN_INTERVAL_MS) return;
-    storeHealth.lastWarnAt = t;
+    if (t - syncState.lastWarnAt < STORE_WARN_INTERVAL_MS) return;
+    syncState.lastWarnAt = t;
     try {
       log?.warn?.(
-        { event: 'mcp_caller_limit_store', err: err?.message || String(err), code: err?.code || null, ...extra },
-        'mcp caller limit store sync failed; limits are per-instance until it recovers',
+        {
+          event: 'mcp_caller_limit_store',
+          err: err?.message || String(err),
+          code: err?.code || null,
+          failures: syncState.failures,
+          next_sync_in_ms: Math.max(0, syncState.nextAt - t),
+          ...extra,
+        },
+        'mcp caller limit store sync failed; limits are per-instance shares until it recovers',
       );
     } catch (_) {
       // ignore
     }
+  }
+
+  // 1st failure: wait one interval; then 2x, 4x, ... up to the cap. A success resets it.
+  function backoffMs(failures, cfg) {
+    return Math.min(cfg.syncMaxBackoffMs, cfg.syncIntervalMs * 2 ** Math.max(0, failures - 1));
   }
 
   /** One sync round. Resolves true when a fresh snapshot was taken. Never rejects. */
@@ -386,8 +565,9 @@ function createCallerLimiter({
     if (syncing) return syncing;
     syncing = (async () => {
       const t = now();
-      if (t < storeHealth.disabledUntil) return false;
-      // Never queue behind real work: when the pool already has waiters, the sync would only add to them.
+      if (t < syncState.nextAt) return false;
+      reapExpired(t, readCallerLimitsConfig(env));
+      // Never queue behind real work: no sync while the pool has waiters or no free connection.
       let stats = null;
       try {
         stats = poolStats();
@@ -395,6 +575,9 @@ function createCallerLimiter({
         stats = null;
       }
       if (Number(stats?.waiting) > 0) return false;
+      if (stats && Number(stats.idle) === 0 && Number(stats.max) > 0 && Number(stats.total) >= Number(stats.max)) {
+        return false;
+      }
       const cfg = storeConfig();
       const win = windowOf(t);
       const active = [];
@@ -404,8 +587,9 @@ function createCallerLimiter({
       }
       if (!active.length) return false;
       active.sort((a, b) => (b[1].cur + b[1].inflight * 10) - (a[1].cur + a[1].inflight * 10));
+      const chosen = active.slice(0, cfg.maxSyncKeys);
       const rows = [];
-      for (const [key, entry] of active.slice(0, cfg.maxSyncKeys)) {
+      for (const [key, entry] of chosen) {
         rows.push({ key, windowMs: win, requests: entry.cur, inflight: entry.inflight });
         if (entry.prev) rows.push({ key, windowMs: win - WINDOW_MS, requests: entry.prev, inflight: 0 });
       }
@@ -425,8 +609,10 @@ function createCallerLimiter({
         if (rowWin === win) o.inflight += Number(row.inflight) || 0;
         next.set(key, o);
       }
-      snapshot = { at: now(), others: next };
-      storeHealth.lastOkAt = snapshot.at;
+      snapshot = { at: now(), others: next, synced: new Set(chosen.map(([key]) => key)) };
+      syncState.failures = 0;
+      syncState.nextAt = 0;
+      syncState.lastOkAt = snapshot.at;
       if (typeof store.prune === 'function' && snapshot.at - lastPruneAt >= PRUNE_INTERVAL_MS) {
         lastPruneAt = snapshot.at;
         store.prune({ beforeMs: win - 2 * WINDOW_MS, timeoutMs: cfg.syncTimeoutMs }).catch((err) => warnStore(err, { op: 'prune' }));
@@ -434,9 +620,12 @@ function createCallerLimiter({
       return true;
     })()
       .catch((err) => {
-        // The table is not there (migration not applied yet): stop asking for a while instead of failing
-        // every couple of seconds.
-        if (err?.code === '42P01') storeHealth.disabledUntil = now() + STORE_DISABLE_MS;
+        const t = now();
+        syncState.failures += 1;
+        // The table is not there (migration not applied yet): stop asking for a while.
+        syncState.nextAt = err?.code === '42P01'
+          ? t + STORE_DISABLE_MS
+          : t + backoffMs(syncState.failures, storeConfig());
         warnStore(err);
         return false;
       })
@@ -468,18 +657,26 @@ function createCallerLimiter({
       local: entry ? { ...roll(entry, windowOf(t)) } : null,
       others: others(key, windowOf(t), t),
       snapshotAt: snapshot.at,
+      held: held.size,
+      sync: { failures: syncState.failures, nextAt: syncState.nextAt },
     };
   }
 
-  return { admit, syncNow, stop, inspect, instanceId, ANON_TIER_KEY };
+  return { admit, syncNow, stop, inspect, instanceId };
 }
 
 // ---------------- shared stores ----------------
 
-// One round trip: upsert this instance's absolute counts (GREATEST, so a late or repeated sync can never
-// lower or double-count a window), then read the OTHER instances' totals for the same keys. The read runs
-// on the statement's snapshot, which never includes rows written by the same statement — and own rows are
-// excluded anyway, because this instance already counts its own requests locally.
+// One round trip for the work (inside a transaction that sets statement_timeout, so Postgres cancels a slow
+// sync itself and the connection stays healthy): upsert this instance's absolute counts (GREATEST, so a
+// late or repeated sync can never lower or double-count a window), then read the OTHER instances' totals
+// for the same keys. The read runs on the statement's snapshot, which never includes rows written by the
+// same statement — and own rows are excluded anyway, because this instance already counts its own
+// requests locally.
+//
+// GREATEST and the prune: the prune deletes only windows at least two minutes old, which no instance
+// writes any more (each writes its current and previous minute), so a pruned row is never re-created
+// lower. A table emptied by a crash or failover is re-filled with each instance's absolute counts.
 const SYNC_SQL = `
 WITH incoming AS (
   SELECT * FROM unnest($1::text[], $2::bigint[], $3::int[], $4::int[]) AS t(caller_key, window_ms, requests, in_flight)
@@ -514,7 +711,9 @@ function createPostgresCallerLimitStore({ db = require('../db') } = {}) {
   return {
     kind: 'postgres',
     async sync({ instanceId, rows, sinceMs, freshSec, timeoutMs }) {
-      const res = await db.queryWithBudget(
+      // statement_timeout, NOT a client-side budget: a client-side abort would destroy the connection and
+      // leave the statement running, which on a saturated primary means connection churn plus orphans.
+      const res = await db.queryWithStatementTimeout(
         SYNC_SQL,
         [
           rows.map((r) => r.key),
@@ -525,7 +724,7 @@ function createPostgresCallerLimitStore({ db = require('../db') } = {}) {
           sinceMs,
           freshSec,
         ],
-        { timeoutMs },
+        { statementTimeoutMs: timeoutMs },
       );
       return (res?.rows || []).map((r) => ({
         key: r.caller_key,
@@ -535,7 +734,7 @@ function createPostgresCallerLimitStore({ db = require('../db') } = {}) {
       }));
     },
     async prune({ beforeMs, timeoutMs }) {
-      await db.queryWithBudget(PRUNE_SQL, [beforeMs], { timeoutMs });
+      await db.queryWithStatementTimeout(PRUNE_SQL, [beforeMs], { statementTimeoutMs: timeoutMs });
     },
   };
 }
@@ -606,15 +805,21 @@ function limitRejectionResponse(violation, { rpcId = null, tier } = {}) {
   };
 }
 
-// ---------------- the process-wide limiter and the door hook ----------------
+// ---------------- the process-wide limiter and the door hooks ----------------
 
 let processLimiter = null;
 
+// The pool's census WITHOUT creating the pool: no pool yet means no load to shed.
 function defaultPoolStats() {
   try {
-    const pool = require('../db').getPool();
+    const pool = require('../db').peekPool();
     if (!pool) return null;
-    return { waiting: Number(pool.waitingCount) || 0, total: Number(pool.totalCount) || 0, idle: Number(pool.idleCount) || 0 };
+    return {
+      waiting: Number(pool.waitingCount) || 0,
+      total: Number(pool.totalCount) || 0,
+      idle: Number(pool.idleCount) || 0,
+      max: Number(pool.options?.max) || 0,
+    };
   } catch (_) {
     return null;
   }
@@ -643,60 +848,105 @@ function isToolsCall(req) {
   return Boolean(body) && body.method === 'tools/call';
 }
 
+// The client is gone: its socket closed or the response already ended. NOT req.destroyed — Node destroys a
+// healthy request as soon as its body has been read.
+function isClientGone(req, res) {
+  return Boolean(res?.writableEnded || res?.destroyed || req?.socket?.destroyed);
+}
+
 /**
- * Resolve and remember the caller on req (req.mcpLimitCaller), so the door's invoke context can carry it
- * to the loopback calls. Cheap; no admission. A no-op when limits are off.
+ * Resolve and remember the caller on req (req.mcpLimitCaller), with a fresh per-call id, so the door's
+ * invoke context can carry it to the loopback calls. Cheap; no admission. A no-op when limits are off.
  */
 function attachMcpLimitCaller(req) {
   try {
     if (callerLimitsMode() === 'off') return null;
-    if (!req.mcpLimitCaller) req.mcpLimitCaller = resolveDoorCaller(req);
+    if (!req.mcpLimitCaller) req.mcpLimitCaller = { ...resolveDoorCaller(req), call_id: crypto.randomUUID() };
     return req.mcpLimitCaller;
   } catch (_) {
     return null;
   }
 }
 
+/** What the invoke context may carry: the hashed key and tier, never the address or the override id. */
+function invokeContextLimitCaller(req) {
+  const c = req?.mcpLimitCaller;
+  if (!c) return null;
+  return { tier: c.tier, key: c.key, agent_id: c.agent_id || null, call_id: c.call_id || null };
+}
+
+const PASS = Object.freeze({ release() {} });
+
 /**
- * The door hook. Returns null to proceed, or { status, headers, body } to answer with instead. Admission
- * is released when the response finishes or the connection closes, whichever comes first.
+ * The door hook, called right before the tool dispatch. Returns one of:
+ *   { refusal: { status, headers, body } }  answer with this instead (enforce);
+ *   { gone: true }                          the client left while the request waited (enforce): do no work;
+ *   { release }                             proceed, and call release() in a FINALLY around the dispatch.
  */
-function applyMcpCallerLimit(req, res, { door } = {}) {
+function admitMcpCallerLimit(req, res, { door } = {}) {
   try {
-    if (callerLimitsMode() === 'off' || !isToolsCall(req)) return null;
+    const mode = callerLimitsMode();
+    if (mode === 'off' || !isToolsCall(req)) return PASS;
     const caller = attachMcpLimitCaller(req);
-    if (!caller) return null;
+    if (!caller) return PASS;
+    if (isClientGone(req, res)) {
+      // Observe changes nothing: the request runs as before, it just is not counted.
+      return mode === 'enforce' ? { gone: true, release() {} } : PASS;
+    }
     const decision = getProcessCallerLimiter().admit(caller, { door });
     if (!decision.allowed) {
       const rpcId = Object.prototype.hasOwnProperty.call(req.body, 'id') ? req.body.id : null;
-      return limitRejectionResponse(decision.violation, { rpcId, tier: caller.tier });
+      return { refusal: limitRejectionResponse(decision.violation, { rpcId, tier: caller.tier }), release() {} };
     }
-    if (res && typeof res.once === 'function') {
-      res.once('finish', decision.release);
-      res.once('close', decision.release);
-    } else {
-      decision.release();
-    }
-    return null;
+    return { release: decision.release };
   } catch (_) {
     // A limiter fault must never take a door down: fail open, as the doors behaved before.
+    return PASS;
+  }
+}
+
+/** One line at boot: the mode, the store, and whether loopback tool calls can carry the caller at all. */
+function logMcpCallerLimitsBootStatus({ selfInvokeBase, log = require('../logger'), env = process.env } = {}) {
+  try {
+    const mode = callerLimitsMode(env);
+    const loopback = loopbackAssertionStatus(selfInvokeBase);
+    const fields = {
+      event: 'mcp_caller_limits_boot',
+      mode,
+      store: readStoreConfig(env).kind,
+      loopback_assertion_active: mode !== 'off' && loopback.active,
+      self_invoke_host_is_loopback: loopback.self_invoke_host_is_loopback,
+    };
+    if (mode !== 'off' && !loopback.active) {
+      log.warn(fields, 'mcp caller limits: SELF_INVOKE_BASE is not loopback; tool calls keep the shared invoke key');
+    } else {
+      log.info(fields, 'mcp caller limits');
+    }
+    return fields;
+  } catch (_) {
     return null;
   }
 }
 
 module.exports = {
   ANON_TIER_KEY,
+  OAUTH_UNREG_TIER_KEY,
   RPC_CODE_CALLER_LIMITED,
   RPC_CODE_SERVER_BUSY,
   SYNC_SQL,
   WINDOW_MS,
-  applyMcpCallerLimit,
+  admitMcpCallerLimit,
+  anonymousIdForIp,
   attachMcpLimitCaller,
   createCallerLimiter,
   createMemoryCallerLimitStore,
   createPostgresCallerLimitStore,
   getProcessCallerLimiter,
+  invokeContextLimitCaller,
+  isClientGone,
   limitRejectionResponse,
+  logMcpCallerLimitsBootStatus,
+  logNetworkForIp,
   resetProcessCallerLimiterForTest,
   resolveDoorCaller,
 };

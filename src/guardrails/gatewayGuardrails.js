@@ -114,8 +114,17 @@ function classifyClient({ req } = {}) {
   // caller and every first-party user of that key would otherwise share as ONE bucket. When the MCP door
   // signed the caller it resolved (loopbackCallerAssertion.js: per-process secret, loopback socket only,
   // MCP_CALLER_LIMITS_MODE=enforce only), the bucket is that caller's. Its agent id was verified at the
-  // door, so the operator bypass list still applies to it by name.
+  // door, so the operator bypass list still applies to it by name. A FAN-OUT sub-call (one of several a
+  // single tool call makes) is keyed on that one tool call, so the call's own fan-out cannot drain the
+  // caller's per-operation budget; the door already bounded how many tool calls the caller may make.
   const loopback = enforcedLoopbackCaller(req);
+  if (loopback && loopback.call_id) {
+    return {
+      tier: 'mcp_fanout',
+      key: `mcp_fanout:${sha256Hex(`call:${loopback.call_id}`).slice(0, 16)}`,
+      agent_id: loopback.agent_id,
+    };
+  }
   if (loopback) {
     return {
       tier: `mcp_${loopback.tier}`,

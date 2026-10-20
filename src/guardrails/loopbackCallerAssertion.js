@@ -43,9 +43,9 @@ function mac(input, secret) {
   return crypto.createHmac('sha256', secret).update(input).digest();
 }
 
-function signLoopbackCaller({ tier, key, agentId = null }, { nowSec, secret = PROCESS_SECRET } = {}) {
+function signLoopbackCaller({ tier, key, agentId = null, callId = null }, { nowSec, secret = PROCESS_SECRET } = {}) {
   const ts = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
-  const payload = { t: tier, k: key, ts, ...(agentId ? { a: agentId } : {}) };
+  const payload = { t: tier, k: key, ts, ...(agentId ? { a: agentId } : {}), ...(callId ? { c: callId } : {}) };
   const signingInput = `${VERSION}.${b64url(JSON.stringify(payload))}`;
   return `${signingInput}.${b64url(mac(signingInput, secret))}`;
 }
@@ -54,15 +54,26 @@ function signLoopbackCaller({ tier, key, agentId = null }, { nowSec, secret = PR
  * Headers for one loopback invoke call: the signed caller the MCP door resolved, or {} when limits are
  * off, there is no resolved caller (not an MCP request), or the caller is first-party (whose invoke keying
  * stays exactly as it was). Never throws.
+ *
+ * `fanout: true` marks one of SEVERAL sub-calls a single tool call makes (recommend_products' per-item
+ * price checks): it also carries the door's per-call id, and the invoke limiter keys such sub-calls on
+ * that ONE tool call instead of on the caller, so a tool call's own fan-out cannot exhaust the caller's
+ * per-operation invoke budget. The fan-out stays bounded because every tool call was admitted at the door
+ * under the caller's rate and concurrency limits.
  */
-function loopbackCallerHeaders(invokeContext, { env = process.env, nowSec } = {}) {
+function loopbackCallerHeaders(invokeContext, { env = process.env, nowSec, fanout = false } = {}) {
   try {
     if (callerLimitsMode(env) === 'off') return {};
     const caller = invokeContext && typeof invokeContext === 'object' ? invokeContext.limit_caller : null;
     if (!caller || !TIERS.has(caller.tier) || typeof caller.key !== 'string' || !caller.key) return {};
     return {
       [LOOPBACK_CALLER_HEADER]: signLoopbackCaller(
-        { tier: caller.tier, key: caller.key, agentId: caller.agent_id || null },
+        {
+          tier: caller.tier,
+          key: caller.key,
+          agentId: caller.agent_id || null,
+          callId: fanout && typeof caller.call_id === 'string' && caller.call_id ? caller.call_id : null,
+        },
         { nowSec },
       ),
     };
@@ -90,7 +101,12 @@ function verifyLoopbackCaller(req, { nowSec, secret = PROCESS_SECRET } = {}) {
     const now = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
     if (!Number.isInteger(payload?.ts) || Math.abs(now - payload.ts) > MAX_AGE_SEC) return null;
     if (!TIERS.has(payload.t) || typeof payload.k !== 'string' || !payload.k) return null;
-    return { tier: payload.t, key: payload.k, agent_id: typeof payload.a === 'string' && payload.a ? payload.a : null };
+    return {
+      tier: payload.t,
+      key: payload.k,
+      agent_id: typeof payload.a === 'string' && payload.a ? payload.a : null,
+      ...(typeof payload.c === 'string' && payload.c ? { call_id: payload.c } : {}),
+    };
   } catch (_) {
     return null;
   }
@@ -105,8 +121,22 @@ function enforcedLoopbackCaller(req, { env = process.env } = {}) {
   return verifyLoopbackCaller(req);
 }
 
+// Whether a loopback call can carry the assertion at all: only when the self-invoke base is this host's
+// own loopback interface. A SELF_INVOKE_BASE pointing anywhere else lands on another process (or arrives
+// with X-Forwarded-For), so the assertion would be silently ignored there. Logged once at boot.
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+function loopbackAssertionStatus(selfInvokeBase) {
+  try {
+    const host = new URL(String(selfInvokeBase)).hostname.toLowerCase();
+    return { active: LOOPBACK_HOSTS.has(host), self_invoke_host_is_loopback: LOOPBACK_HOSTS.has(host) };
+  } catch (_) {
+    return { active: false, self_invoke_host_is_loopback: false };
+  }
+}
+
 module.exports = {
   LOOPBACK_CALLER_HEADER,
+  loopbackAssertionStatus,
   enforcedLoopbackCaller,
   loopbackCallerHeaders,
   signLoopbackCaller,

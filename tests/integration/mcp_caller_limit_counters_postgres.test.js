@@ -25,6 +25,7 @@ suite('MCP caller limit counters on PostgreSQL', () => {
   let pool;
   let schema;
   let db;
+  let priorDatabaseUrl;
 
   beforeAll(async () => {
     if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)) {
@@ -37,10 +38,18 @@ suite('MCP caller limit counters on PostgreSQL', () => {
     await pool.query(fs.readFileSync(MIGRATION, 'utf8'));
     // Applying twice is a no-op (the boot migrator may race a hand apply).
     await pool.query(fs.readFileSync(MIGRATION, 'utf8'));
-    db = { queryWithBudget: (sql, params) => pool.query(sql, params) };
+    // The REAL db module (src/db), pointed at this schema: the store's statement_timeout path is what runs.
+    priorDatabaseUrl = process.env.DATABASE_URL;
+    const u = new URL(url);
+    u.searchParams.set('options', `-c search_path=${schema}`);
+    process.env.DATABASE_URL = u.toString();
+    db = require('../../src/db');
   });
 
   afterAll(async () => {
+    if (db) await db.closePool();
+    if (priorDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = priorDatabaseUrl;
     if (pool) await pool.end();
     if (admin) {
       await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
@@ -113,6 +122,8 @@ suite('MCP caller limit counters on PostgreSQL', () => {
       MCP_CALLER_LIMITS_ANON_CONCURRENCY: '0',
       MCP_CALLER_LIMITS_ANON_TIER_CONCURRENCY_PER_INSTANCE: '0',
       MCP_CALLER_LIMITS_SHED_ANON_POOL_WAITING: '0',
+      // The per-instance split before a first sync is covered in the unit suite; here, the shared count.
+      MCP_CALLER_LIMITS_EXPECTED_INSTANCES: '1',
     };
     const now = () => Math.floor(Date.now() / WINDOW_MS) * WINDOW_MS + 1000;
     const i1 = createCallerLimiter({ env, now, store, autoSync: false, instanceId: 'i1' });
@@ -125,6 +136,38 @@ suite('MCP caller limit counters on PostgreSQL', () => {
     let more = 0;
     while (i2.admit(caller).allowed && more < 20) more += 1;
     expect(more).toBe(2);
+  });
+
+  test('a sync blocked past its timeout is cancelled BY POSTGRES (57014); the connection survives, no orphan runs', async () => {
+    const store = createPostgresCallerLimitStore({ db });
+    const win = Math.floor(Date.now() / WINDOW_MS) * WINDOW_MS;
+    const args = { instanceId: 'slow', sinceMs: win - WINDOW_MS, freshSec: 6 };
+    await store.sync({ ...args, rows: [{ key: 'locked', windowMs: win, requests: 1, inflight: 0 }], timeoutMs: 1000 });
+    const holder = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query("SELECT 1 FROM gateway_caller_limit_counters WHERE caller_key = 'locked' FOR UPDATE");
+      const gwPool = db.peekPool();
+      const connectionsBefore = gwPool.totalCount;
+      let err = null;
+      try {
+        await store.sync({ ...args, rows: [{ key: 'locked', windowMs: win, requests: 2, inflight: 0 }], timeoutMs: 300 });
+      } catch (e) {
+        err = e;
+      }
+      expect(err && err.code).toBe('57014');
+      expect(gwPool.totalCount).toBe(connectionsBefore);
+      const { rows } = await pool.query(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE state = 'active' AND query LIKE '%INSERT INTO gateway_caller_limit_counters%' AND pid <> pg_backend_pid()",
+      );
+      expect(rows[0].n).toBe(0);
+    } finally {
+      await holder.query('ROLLBACK');
+      holder.release();
+    }
+    // The same pool keeps working.
+    const after = await store.sync({ ...args, instanceId: 'other', rows: [{ key: 'locked', windowMs: win, requests: 0, inflight: 0 }], timeoutMs: 1000 });
+    expect(after.find((r) => r.windowMs === win).requests).toBe(1);
   });
 
   test('the statement text names only the migrated table', () => {

@@ -111,12 +111,12 @@ function rpc(method, params, id = 1) {
 // method the limiter counts.
 const CHEAP_CALL = (id) => rpc('tools/call', { name: 'no_such_tool', arguments: {} }, id);
 
-function publicCall(ip, body) {
-  return supertest(app).post('/public/mcp').set('X-Forwarded-For', `${ip}, ${LB}`).send(body);
+function publicCall(ip, body, target = app) {
+  return supertest(target).post('/public/mcp').set('X-Forwarded-For', `${ip}, ${LB}`).send(body);
 }
 
-function partnerCall(ip, body, key = KEY_PARTNER) {
-  return supertest(app)
+function partnerCall(ip, body, key = KEY_PARTNER, target = app) {
+  return supertest(target)
     .post('/mcp')
     .set('X-Agent-API-Key', key)
     .set('Accept', 'application/json, text/event-stream')
@@ -335,5 +335,203 @@ test('enforce: the invoke bypass list applies to a loopback call by the agent th
     assert.equal(await admittedBefore429(25, () => loopbackInvoke(KEY, anon)), 10);
   } finally {
     delete process.env.GATEWAY_RATE_LIMIT_BYPASS_AGENT_IDS;
+  }
+});
+
+// ---- review round 2: in-flight is the dispatch, not the response ----
+
+function restoreNocks() {
+  nock.cleanAll();
+  nock(INTROSPECT_BASE)
+    .persist()
+    .post(INTROSPECT_PATH, (body) => Boolean(AGENTS[body?.api_key]))
+    .reply(200, (_uri, body) => ({ valid: true, is_active: true, auth_source: 'api_keys', agent_id: AGENTS[body.api_key] }));
+  nock(BACKEND_BASE).persist().post(/.*/).reply(200, { status: 'success', offers: [], order: { order_id: 'ord_1', status: 'paid' } });
+  nock(BACKEND_BASE).persist().get(/.*/).reply(200, { status: 'success', products: [], total: 0 });
+}
+
+// Sends `test`, and destroys the client side of it after `ms`. Resolves when the client gave up.
+function sendThenAbort(req, ms) {
+  return new Promise((resolve) => {
+    req.on('error', () => resolve());
+    req.end(() => resolve());
+    setTimeout(() => {
+      try {
+        req.abort();
+      } catch (_) {
+        // already done
+      }
+      resolve();
+    }, ms);
+  });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// An aborted supertest request never reaches the callback that closes supertest's own ephemeral server, so
+// the abort cases run against one server this file closes itself (connections included).
+async function withServer(fn) {
+  const http = require('http');
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    return await fn(server);
+  } finally {
+    if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+    await new Promise((resolve) => server.close(() => resolve()));
+  }
+}
+
+test('a client that disconnects BEFORE admission (slow auth) is never admitted, so no slot leaks', async () => {
+  const KEY = `ak_live_${'6'.repeat(64)}`;
+  AGENTS[KEY] = 'agent_slow_auth';
+  nock.cleanAll();
+  nock(INTROSPECT_BASE)
+    .post(INTROSPECT_PATH, (body) => body?.api_key === KEY)
+    .times(2)
+    .delay(300)
+    .reply(200, { valid: false });
+  nock(INTROSPECT_BASE)
+    .persist()
+    .post(INTROSPECT_PATH, (body) => Boolean(AGENTS[body?.api_key]))
+    .reply(200, (_uri, body) => ({ valid: true, is_active: true, auth_source: 'api_keys', agent_id: AGENTS[body.api_key] }));
+  nock(BACKEND_BASE).persist().post(/.*/).reply(200, { status: 'success', offers: [] });
+  try {
+    setLimits({ MCP_CALLER_LIMITS_MODE: 'enforce', MCP_CALLER_LIMITS_PARTNER_CONCURRENCY: '1' });
+    // The first two introspections are slow (and say invalid), so the two aborted requests are refused at
+    // auth; replace them with ones that WOULD authenticate once the slow window has passed.
+    nock.cleanAll();
+    nock(INTROSPECT_BASE)
+      .post(INTROSPECT_PATH, (body) => body?.api_key === KEY)
+      .times(2)
+      .delay(300)
+      .reply(200, { valid: true, is_active: true, auth_source: 'api_keys', agent_id: 'agent_slow_auth' });
+    nock(BACKEND_BASE).persist().post(/.*/).reply(200, { status: 'success', offers: [] });
+    let loopbacks = 0;
+    nock(SELF_BASE).persist().post('/agent/shop/v1/invoke').reply(() => {
+      loopbacks += 1;
+      return [200, { status: 'success', products: [], total: 0 }];
+    });
+    const search = (n) => rpc('tools/call', { name: 'search_catalog', arguments: { query: `gone before admission ${n}` } }, n);
+    await withServer(async (server) => {
+      await sendThenAbort(partnerCall('203.0.113.101', search(1), KEY, server), 50);
+      await sendThenAbort(partnerCall('203.0.113.101', search(2), KEY, server), 50);
+      await sleep(500); // both handlers finish their slow auth and reach admission with the client gone
+    });
+    assert.equal(loopbacks, 0, 'no tool work is dispatched for a client that already left');
+    const who = limits.resolveDoorCaller({
+      invokeAuth: { auth_mode: 'api_key', agent_id: 'agent_slow_auth', introspect_auth_source: 'api_keys' },
+    });
+    const state = limits.getProcessCallerLimiter().inspect(who.key);
+    assert.equal(state.local ? state.local.inflight : 0, 0, 'nothing is held for clients that left');
+    assert.equal(state.held, 0);
+    restoreNocks();
+    const after = await statuses(2, (i) => partnerCall('203.0.113.101', CHEAP_CALL(10 + i), KEY));
+    assert.deepEqual(after.map((r) => r.status), [200, 200], 'later good requests are not refused');
+  } finally {
+    restoreNocks();
+  }
+});
+
+test('a client that disconnects MID-dispatch keeps its slot until the work finishes, then frees it', async () => {
+  nock(SELF_BASE).post('/agent/shop/v1/invoke').delay(500).reply(200, { status: 'success', products: [], total: 0 });
+  try {
+    setLimits({ MCP_CALLER_LIMITS_MODE: 'enforce', MCP_CALLER_LIMITS_ANON_CONCURRENCY: '1' });
+    const ip = '203.0.113.102';
+    await withServer(async (server) => {
+      await sendThenAbort(
+        publicCall(ip, rpc('tools/call', { name: 'search_catalog', arguments: { query: 'abort mid dispatch' } }, 1), server),
+        100,
+      );
+      await sleep(50);
+      const during = await publicCall(ip, CHEAP_CALL(2));
+      assert.equal(during.status, 429, 'the abandoned search is still running, so the slot is still held');
+      assert.equal(during.body.error.data.reason, 'concurrency');
+      await sleep(600);
+    });
+    assert.equal((await publicCall(ip, CHEAP_CALL(3))).status, 200, 'released when the dispatch finished');
+    const who = limits.resolveDoorCaller({ headers: { 'x-forwarded-for': `${ip}, ${LB}` } });
+    assert.equal(limits.getProcessCallerLimiter().inspect(who.key).local.inflight, 0);
+  } finally {
+    restoreNocks();
+  }
+});
+
+test('enforce: fan-out sub-calls are keyed on their ONE tool call, not on the caller', async () => {
+  setLimits({ MCP_CALLER_LIMITS_MODE: 'enforce' });
+  const KEY = `ak_live_${'5'.repeat(64)}`;
+  AGENTS[KEY] = 'agent_svc_5';
+  const sub = (callId) => ({
+    [LOOPBACK_CALLER_HEADER]: signLoopbackCaller({ tier: 'partner', key: 'partner:fanout_caller', callId }),
+  });
+  assert.equal(await admittedBefore429(25, () => loopbackInvoke(KEY, sub('call-a'))), 10);
+  assert.equal(await admittedBefore429(25, () => loopbackInvoke(KEY, sub('call-b'))), 10, 'a new tool call, a new bucket');
+  assert.equal(
+    await admittedBefore429(25, () => loopbackInvoke(KEY, { [LOOPBACK_CALLER_HEADER]: signLoopbackCaller({ tier: 'partner', key: 'partner:fanout_caller' }) })),
+    10,
+    'the caller\'s own (non-fan-out) bucket was untouched by its fan-out',
+  );
+});
+
+test('no client address appears in ANY log line the gateway writes for these doors (IPv4 and IPv6)', async () => {
+  const realStdout = process.stdout.write.bind(process.stdout);
+  const realStderr = process.stderr.write.bind(process.stderr);
+  const written = [];
+  const levels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'];
+  const saved = {};
+  for (const level of levels) {
+    saved[level] = logger[level];
+    logger[level] = function capture(obj, msg, ...rest) {
+      written.push(JSON.stringify([obj, msg]));
+      return saved[level].call(this, obj, msg, ...rest);
+    };
+  }
+  process.stdout.write = (chunk, ...rest) => {
+    written.push(String(chunk));
+    return realStdout(chunk, ...rest);
+  };
+  process.stderr.write = (chunk, ...rest) => {
+    written.push(String(chunk));
+    return realStderr(chunk, ...rest);
+  };
+  const v4 = '198.51.100.123';
+  const v6 = '2001:db8:77:66:55:44:33:22';
+  try {
+    for (const mode of ['observe', 'enforce']) {
+      setLimits({ MCP_CALLER_LIMITS_MODE: mode, MCP_CALLER_LIMITS_ANON_RPM: '1', MCP_CALLER_LIMITS_SHED_ANON_POOL_WAITING: '0' });
+      for (const ip of [v4, v6]) {
+        await statuses(3, (i) => publicCall(ip, CHEAP_CALL(i)));
+        await publicCall(ip, rpc('tools/list', undefined, 9));
+      }
+    }
+  } finally {
+    for (const level of levels) logger[level] = saved[level];
+    process.stdout.write = realStdout;
+    process.stderr.write = realStderr;
+  }
+  const all = written.join('\n');
+  assert.ok(all.includes('mcp caller limit'), 'the refusal lines were captured');
+  for (const needle of [v4, v6, '2001:db8:77:66']) {
+    assert.ok(!all.includes(needle), `${needle} must never be logged`);
+  }
+  assert.ok(all.includes('198.51.100.0/24'));
+  assert.ok(all.includes('2001:db8:77::/48'));
+});
+
+test('recommend_products price checks are marked fan-out: keyed on the one tool call, not the caller', () => {
+  const prior = process.env.MCP_CALLER_LIMITS_MODE;
+  process.env.MCP_CALLER_LIMITS_MODE = 'enforce';
+  try {
+    const ctx = { limit_caller: { tier: 'partner', key: 'partner:abc', agent_id: 'agent_partner', call_id: 'call-77' } };
+    const headers = app._debug.recommendPriceVerifyLoopbackHeaders(ctx);
+    const asserted = verifyLoopbackCaller({
+      headers: { [LOOPBACK_CALLER_HEADER.toLowerCase()]: headers[LOOPBACK_CALLER_HEADER] },
+      socket: { remoteAddress: '127.0.0.1' },
+    });
+    assert.equal(asserted.call_id, 'call-77');
+    assert.equal(asserted.key, 'partner:abc');
+  } finally {
+    if (prior === undefined) delete process.env.MCP_CALLER_LIMITS_MODE;
+    else process.env.MCP_CALLER_LIMITS_MODE = prior;
   }
 });

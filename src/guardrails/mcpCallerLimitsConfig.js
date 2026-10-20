@@ -7,15 +7,28 @@
 // Every limit is "0 = no limit". The defaults are a starting point for OBSERVE mode, which measures what
 // they would have done against real traffic before anything is enforced.
 
+const net = require('net');
+
 const MODES = Object.freeze(['off', 'observe', 'enforce']);
 
 const DEFAULTS = Object.freeze({
   anonymous: Object.freeze({ rpm: 30, concurrency: 2 }),
+  // A request whose client address could not be established at all. One shared bucket for every such
+  // request, so it is the strictest class rather than a loophole.
+  unknownIp: Object.freeze({ rpm: 10, concurrency: 1 }),
   partner: Object.freeze({ rpm: 300, concurrency: 8 }),
   anonymousTier: Object.freeze({ rpm: 0, concurrencyPerInstance: 4 }),
-  shed: Object.freeze({ anonymousPoolWaiting: 2, partnerPoolWaiting: 0, retryAfterSec: 5 }),
+  // MCP OAuth clients without an explicit override. Dynamic client registration means anyone can mint a
+  // client id, so together they share one aggregate budget; a client with an override is exempt.
+  oauthUnregisteredTier: Object.freeze({ rpm: 600, concurrencyPerInstance: 8 }),
+  shed: Object.freeze({ anonymousPoolWaiting: 2, partnerPoolWaiting: 6, retryAfterSec: 5 }),
+  // How many instances a key's budget is split across before this instance has a fresh shared count for it.
+  expectedInstances: 4,
+  // Backstop for an in-flight slot whose release never ran: twice the longest tool deadline.
+  inflightMaxAgeMs: 120_000,
   syncIntervalMs: 2000,
   syncTimeoutMs: 1500,
+  syncMaxBackoffMs: 60_000,
   maxSyncKeys: 500,
 });
 
@@ -47,34 +60,78 @@ function csvSet(...raws) {
   return out;
 }
 
-// MCP_CALLER_LIMITS_OVERRIDES_JSON: {"agent:<agent_id>": {"rpm": 600, "concurrency": 16},
-//                                    "key:<key fingerprint>": {...}, "oauth:<client_id>": {...}}
-// Keys are the caller ids resolveDoorCaller produces (OAuth by client id alone). A malformed value is
-// ignored as a whole, loudly, rather than half-applied.
-let overridesCache = { raw: null, map: new Map(), error: null };
+function limitEntry(v) {
+  const entry = {};
+  if (v.rpm !== undefined) entry.rpm = nonNegativeNumber(v.rpm, undefined);
+  if (v.concurrency !== undefined) entry.concurrency = nonNegativeNumber(v.concurrency, undefined);
+  return entry;
+}
+
+// cidr:<network>/<prefix> -> a matcher. Throws on anything that is not a valid network, so a typo fails the
+// whole overrides value loudly instead of silently matching nothing.
+function parseCidr(spec) {
+  const [addr, prefixText, extra] = String(spec).split('/');
+  const family = net.isIP(addr);
+  const prefix = Number(prefixText);
+  const max = family === 4 ? 32 : 128;
+  if (!family || extra !== undefined || !Number.isInteger(prefix) || prefix < 0 || prefix > max) {
+    throw new Error(`invalid cidr override: ${spec}`);
+  }
+  const type = family === 4 ? 'ipv4' : 'ipv6';
+  const list = new net.BlockList();
+  list.addSubnet(addr, prefix, type);
+  return { type, prefix, list };
+}
+
+// MCP_CALLER_LIMITS_OVERRIDES_JSON keys (the caller ids resolveDoorCaller produces):
+//   agent:<agent_id>                 a verified API-key agent
+//   key:<key fingerprint>            an API key with no agent
+//   oauth:<issuer>#<client_id>       an MCP OAuth client (issuer AND client id)
+//   ip:<IPv4 address>                one anonymous IPv4 address
+//   ip:<IPv6 /64 network>/64         one anonymous IPv6 /64, e.g. ip:2001:db8:1:2::/64
+//   cidr:<network>/<prefix>          every anonymous caller in a range (each address keeps its OWN bucket,
+//                                    at this limit); the longest matching prefix wins; an exact key wins
+//                                    over any cidr.
+// A malformed value is ignored as a whole, loudly, rather than half-applied.
+let overridesCache = { raw: null, map: new Map(), cidrs: [], error: null };
 function parseOverrides(raw) {
   const text = String(raw || '').trim();
   if (overridesCache.raw === text) return overridesCache;
   const map = new Map();
+  const cidrs = [];
   let error = null;
   if (text) {
     try {
       const parsed = JSON.parse(text);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
-      for (const [id, v] of Object.entries(parsed)) {
+      for (const [rawId, v] of Object.entries(parsed)) {
         if (!v || typeof v !== 'object') continue;
-        const entry = {};
-        if (v.rpm !== undefined) entry.rpm = nonNegativeNumber(v.rpm, undefined);
-        if (v.concurrency !== undefined) entry.concurrency = nonNegativeNumber(v.concurrency, undefined);
-        map.set(String(id).trim(), entry);
+        const id = String(rawId).trim();
+        if (id.startsWith('cidr:')) {
+          cidrs.push({ id, ...parseCidr(id.slice(5)), entry: limitEntry(v) });
+        } else {
+          map.set(id, limitEntry(v));
+        }
       }
+      cidrs.sort((a, b) => b.prefix - a.prefix);
     } catch (err) {
       error = err?.message || String(err);
       map.clear();
+      cidrs.length = 0;
     }
   }
-  overridesCache = { raw: text, map, error };
+  overridesCache = { raw: text, map, cidrs, error };
   return overridesCache;
+}
+
+function matchCidrOverride(cidrs, ip) {
+  const family = net.isIP(String(ip || ''));
+  if (!family) return null;
+  const type = family === 4 ? 'ipv4' : 'ipv6';
+  for (const c of cidrs) {
+    if (c.type === type && c.list.check(ip, type)) return c;
+  }
+  return null;
 }
 
 function readCallerLimitsConfig(env = process.env) {
@@ -85,6 +142,10 @@ function readCallerLimitsConfig(env = process.env) {
       rpm: nonNegativeNumber(env.MCP_CALLER_LIMITS_ANON_RPM, DEFAULTS.anonymous.rpm),
       concurrency: nonNegativeNumber(env.MCP_CALLER_LIMITS_ANON_CONCURRENCY, DEFAULTS.anonymous.concurrency),
     },
+    unknownIp: {
+      rpm: nonNegativeNumber(env.MCP_CALLER_LIMITS_UNKNOWN_IP_RPM, DEFAULTS.unknownIp.rpm),
+      concurrency: nonNegativeNumber(env.MCP_CALLER_LIMITS_UNKNOWN_IP_CONCURRENCY, DEFAULTS.unknownIp.concurrency),
+    },
     partner: {
       rpm: nonNegativeNumber(env.MCP_CALLER_LIMITS_PARTNER_RPM, DEFAULTS.partner.rpm),
       concurrency: nonNegativeNumber(env.MCP_CALLER_LIMITS_PARTNER_CONCURRENCY, DEFAULTS.partner.concurrency),
@@ -94,6 +155,13 @@ function readCallerLimitsConfig(env = process.env) {
       concurrencyPerInstance: nonNegativeNumber(
         env.MCP_CALLER_LIMITS_ANON_TIER_CONCURRENCY_PER_INSTANCE,
         DEFAULTS.anonymousTier.concurrencyPerInstance,
+      ),
+    },
+    oauthUnregisteredTier: {
+      rpm: nonNegativeNumber(env.MCP_CALLER_LIMITS_OAUTH_UNREGISTERED_TIER_RPM, DEFAULTS.oauthUnregisteredTier.rpm),
+      concurrencyPerInstance: nonNegativeNumber(
+        env.MCP_CALLER_LIMITS_OAUTH_UNREGISTERED_TIER_CONCURRENCY_PER_INSTANCE,
+        DEFAULTS.oauthUnregisteredTier.concurrencyPerInstance,
       ),
     },
     shed: {
@@ -107,7 +175,10 @@ function readCallerLimitsConfig(env = process.env) {
       ),
       retryAfterSec: positiveInt(env.MCP_CALLER_LIMITS_SHED_RETRY_AFTER_S, DEFAULTS.shed.retryAfterSec, 300),
     },
+    expectedInstances: positiveInt(env.MCP_CALLER_LIMITS_EXPECTED_INSTANCES, DEFAULTS.expectedInstances, 1000),
+    inflightMaxAgeMs: positiveInt(env.MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS, DEFAULTS.inflightMaxAgeMs, 3_600_000),
     overrides: overrides.map,
+    cidrOverrides: overrides.cidrs,
     overridesError: overrides.error,
     // A first-party proxy (one verified agent carrying many end users) is never limited or shed at the MCP
     // doors. DELIBERATELY a separate list from the invoke limiter's GATEWAY_RATE_LIMIT_BYPASS_AGENT_IDS: an
@@ -124,6 +195,7 @@ function readStoreConfig(env = process.env) {
     kind,
     syncIntervalMs: positiveInt(env.MCP_CALLER_LIMITS_SYNC_MS, DEFAULTS.syncIntervalMs, 60_000),
     syncTimeoutMs: positiveInt(env.MCP_CALLER_LIMITS_SYNC_TIMEOUT_MS, DEFAULTS.syncTimeoutMs, 10_000),
+    syncMaxBackoffMs: positiveInt(env.MCP_CALLER_LIMITS_SYNC_MAX_BACKOFF_MS, DEFAULTS.syncMaxBackoffMs, 600_000),
     maxSyncKeys: positiveInt(env.MCP_CALLER_LIMITS_MAX_SYNC_KEYS, DEFAULTS.maxSyncKeys, 5000),
   };
 }
@@ -132,6 +204,7 @@ module.exports = {
   DEFAULTS,
   MODES,
   callerLimitsMode,
+  matchCidrOverride,
   readCallerLimitsConfig,
   readStoreConfig,
 };
