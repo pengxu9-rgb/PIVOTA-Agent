@@ -1,3 +1,4 @@
+const { sanitizeWhyCandidateQuotes } = require('./relationshipQuoteSafety');
 const crypto = require('node:crypto');
 const { compareProductIdentity, RELATIONS: IDENTITY } = require('./relationshipProductIdentity');
 const { fragranceServingSuppressionReason } = require('./relationshipFragranceProfile');
@@ -449,8 +450,12 @@ function coerceRelationshipEdge(input = {}, options = {}) {
     source_refs: normalizeSourceRefs(src.source_refs || src.sourceRefs),
     evidence_grade: normalizeUpperEvidenceGrade(src.evidence_grade || src.evidenceGrade),
     review_status: normalizeLower(src.review_status || src.reviewStatus || 'pending', 32),
+    // Quotes reach shoppers from here (similar items, PDP rails, signals): only specific, unstitched ones.
     why_candidate: isPlainObject(src.why_candidate || src.whyCandidate)
-      ? { ...(src.why_candidate || src.whyCandidate) }
+      ? sanitizeWhyCandidateQuotes({ ...(src.why_candidate || src.whyCandidate) }, {
+        anchorBrand: (src.anchor_snapshot || src.anchorSnapshot || {}).brand,
+        candidateBrand: (src.candidate_snapshot || src.candidateSnapshot || {}).brand,
+      })
       : {},
     tradeoffs: normalizeArray(src.tradeoffs, 12),
     watchouts: normalizeArray(src.watchouts, 12),

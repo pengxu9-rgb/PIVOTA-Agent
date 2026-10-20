@@ -37,6 +37,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { GENERIC_QUOTE_SPAN, normalizeQuoteText, quotePartIsSpecific, isShowableQuote } = require('../src/auroraBff/relationshipQuoteSafety');
 const { closePool, query } = require('../src/db');
 const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
 const { factualQuoteTable } = require('../src/llm/relationshipReviewFacts');
@@ -1175,72 +1176,152 @@ async function applyConsensusDisposition(row, decision, queryFn, { runId = '' } 
 
 // QUOTES ARE THE FACTS, NOT THE JSON THEY CAME FROM (2026-10-20). The evidence reaches the model as
 // JSON, and it often copies a quote with its key and quote marks ('category": "toner', 'best_for": [
-// "lip comfort", "shine finish" ]') or joins two spans of one fact with an ellipsis. On 37 approvals the
-// validator overturned (prod dry run, uncovered anchors), 36 failed only on that shape or on spacing
-// around punctuation, not on a fact the products lack. A quote is cut into the spans it quotes:
-// the key and JSON punctuation dropped, array items and ellipsis-joined parts split. Each span must
-// still appear verbatim (whitespace aside) in that product's own facts. A span that is only a generic
-// word ("cream") or the brand proves nothing: it neither grounds a quote nor sinks one, and at least
-// one quote must ground something specific on both sides. The cleaned text is what is stored, and a
-// generic-only quote is never shown to a shopper (recommendationFields).
-const GENERIC_QUOTE_SPAN = /^(?:beauty|skincare|makeup|cosmetics|face|body|skin|cream|serum)$/;
-function normalizeQuoteText(value) {
-  return String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+// "dry skin", "oily skin" ]'), lists several facts with an ellipsis, or differs only in spacing around
+// punctuation. Of 37 approvals the validator overturned (prod dry run, uncovered anchors), 28 pass
+// under the rules below; the rest quote text the products do not hold, or only generic words. The rules, which never let a quote say more than one fact the product carries:
+// - Each item of an array fragment is its own quote, found whole-word in one descriptive fact of that
+//   product (QUOTE_FACT_FIELDS: never ids, refs, currency or review status).
+// - An ellipsis quote is one elided passage, not a list: every part has at least two words, all parts
+//   are in ONE fact, in order, each gap at most 160 characters and free of any negating or contrasting
+//   word ("Suitable for ... sensitive skin" cannot skip "all skin types except"). What is kept is the
+//   fact's own text from the first part to the last, never the model's stitched words.
+// - A leading key is dropped only when it names a fact field, and then every part must be found IN that
+//   field ('best_for": "oily skin' needs oily skin under best_for, not "not for oily skin" elsewhere).
+//   Any other "word:" stays part of the quote ("Retinol: 1%" is not "Salicylic acid 1%"). A known key
+//   with nothing after it is a failed quote, not an empty one.
+// - Whitespace only normalises around punctuation ("bouncy ." = "bouncy."); words never merge.
+// - A part that is only generic words, common base ingredients or the brand, or one word under four letters, proves
+//   nothing: it neither grounds a quote nor sinks one. At least one quote must ground something specific
+//   on both sides, and only specific parts are kept: what is stored and shown is those parts, as quotes.
+// Negation inside a fact ("not for oily skin" quoted as "oily skin") was already possible in v2 and is
+// not fixed here.
+const QUOTE_FACT_FIELDS = Object.freeze(['title', 'category', 'category_taxonomy', 'tags', 'description', 'ingredient_text',
+  'ingredient_evidence', 'routine_fit', 'best_for', 'watchouts', 'why_it_stands_out', 'beauty_attrs']);
+const QUOTE_KEY_FIELDS = Object.freeze({
+  title: ['title'], name: ['title'], product_name: ['title'], category: ['category', 'category_taxonomy'],
+  category_taxonomy: ['category_taxonomy', 'category'], product_type: ['category', 'category_taxonomy'], tags: ['tags'],
+  description: ['description'], ingredients: ['ingredient_text', 'ingredient_evidence'], ingredient_text: ['ingredient_text', 'ingredient_evidence'],
+  inci: ['ingredient_text', 'ingredient_evidence'], best_for: ['best_for'], watchouts: ['watchouts'],
+  why_it_stands_out: ['why_it_stands_out'], routine_fit: ['routine_fit'], pairing_notes: ['routine_fit'], step: ['routine_fit'],
+  beauty_attrs: ['beauty_attrs'],
+  // A brand quote is recognised so it can be ignored (a brand is never specific), not failed as unknown text.
+  brand: ['brand'],
+});
+const QUOTE_EVIDENCE_META_KEYS = new Set(['table', 'observed_at', 'review_status', 'audit_status', 'source_refs', 'ingredient_text_truncated']);
+// Strings under the descriptive fields, or under one key: a top-level field from the map, or a key
+// nested inside a descriptive field (beauty_attrs.product_form).
+function quoteFactValues(product, key = null) {
+  const out = [];
+  const collect = (value, keyMatch) => {
+    if (typeof value === 'string') { if (keyMatch) out.push(normalizeQuoteText(value)); return; }
+    if (Array.isArray(value)) { value.forEach((item) => collect(item, keyMatch)); return; }
+    if (!value || typeof value !== 'object') return;
+    for (const [name, child] of Object.entries(value)) {
+      if (QUOTE_EVIDENCE_META_KEYS.has(name)) continue;
+      collect(child, keyMatch || (key && name === key));
+    }
+  };
+  const fields = key && QUOTE_KEY_FIELDS[key] ? QUOTE_KEY_FIELDS[key] : QUOTE_FACT_FIELDS;
+  for (const field of fields) collect(product && product[field], !key || Boolean(QUOTE_KEY_FIELDS[key]));
+  return out;
 }
-// The items a quote names (array fragments split at '", "'), each the parts an ellipsis joins.
-function quoteParts(value) {
-  const text = normalizeString(value, 350)
-    .replace(/^\s*[{\[]?\s*"?[A-Za-z][A-Za-z_]{0,40}"?\s*:\s*/, '')
-    .replace(/^[\s\["]+|[\s\]}",]+$/g, '');
-  const trim = (span) => span.replace(/^[\s"]+|[\s"]+$/g, '');
-  return text.split(/"\s*,\s*"/).map((item) => item.split(/\s*(?:\.\.\.|\u2026)\s*/).map(trim).filter(Boolean))
+function quoteKnownKey(key, product) {
+  if (QUOTE_KEY_FIELDS[key]) return true;
+  return quoteFactValues(product, key).length > 0; // a key nested inside a descriptive field
+}
+// { parts, key } for one side of one quote, or null when the quote is malformed (a known key, no fact).
+function parseQuote(value, product) {
+  let text = normalizeString(value, 350);
+  let key = null;
+  const match = text.match(/^\s*[{\[]?\s*"?([A-Za-z][A-Za-z_]{0,40})"?\s*:\s*/);
+  if (match && quoteKnownKey(match[1].toLowerCase(), product)) {
+    key = match[1].toLowerCase();
+    text = text.slice(match[0].length);
+  }
+  const trim = (span) => span.replace(/^[\s"\[{]+|[\s"\]},]+$/g, '');
+  // items: array items; each item is the parts an ellipsis separates (one part when there is none).
+  const items = trim(text).split(/"\s*,\s*"/).map((item) => item.split(/\s*(?:\.\.\.|…)\s*/).map(trim).filter(Boolean))
     .filter((parts) => parts.length);
+  if (!items.length) return null;
+  return { items, key };
 }
-function quoteSpans(value) {
-  return quoteParts(value).flat();
+// Whole-word positions of needle in haystack, at or after `from`.
+function wholeWordPositions(haystack, needle, from = 0) {
+  const out = [];
+  if (!needle) return out;
+  for (let at = haystack.indexOf(needle, from); at >= 0; at = haystack.indexOf(needle, at + 1)) {
+    const before = at === 0 ? '' : haystack[at - 1];
+    const after = haystack[at + needle.length] || '';
+    if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) out.push(at);
+  }
+  return out;
 }
-function quoteSpanIsGeneric(span, product) {
-  const needle = normalizeQuoteText(span);
-  return !needle || needle === normalizeQuoteText(product && product.brand) || GENERIC_QUOTE_SPAN.test(needle);
+const ELISION_MAX_GAP = 160;
+const ELISION_FORBIDDEN_GAP = /\b(?:not|no|never|except|without|non|free|avoid|unless|but|however|instead|nor|cannot|isn't|doesn't|don't)\b/;
+// The fact's own text spanning every part in order, or '' when no single fact holds them that way.
+function elidedPassage(values, parts) {
+  const needles = parts.map(normalizeQuoteText);
+  for (const fact of values) {
+    const walk = (index, from, start) => {
+      for (const at of wholeWordPositions(fact, needles[index], from)) {
+        if (index > 0) {
+          const gap = fact.slice(from, at);
+          if (gap.length > ELISION_MAX_GAP || ELISION_FORBIDDEN_GAP.test(gap)) continue;
+        }
+        const begin = index === 0 ? at : start;
+        const end = at + needles[index].length;
+        if (index === needles.length - 1) return fact.slice(begin, end);
+        const found = walk(index + 1, end, begin);
+        if (found) return found;
+      }
+      return '';
+    };
+    const passage = walk(0, 0, 0);
+    if (passage) return passage;
+  }
+  return '';
 }
-// The model's own quotes, as given: grounding parses these. quotedEvidence is the cleaned text stored.
-function rawQuotedEvidence(value) {
-  return asArray(value).slice(0, 6).map((item) => ({
-    anchor_fact: normalizeString(item?.anchor_fact, 350),
-    candidate_fact: normalizeString(item?.candidate_fact, 350),
-  })).filter((item) => quoteParts(item.anchor_fact).length && quoteParts(item.candidate_fact).length);
+// One side of one quote: false (a part is not the product's), or the specific facts it grounds.
+function groundQuoteSide(product, value) {
+  const parsed = parseQuote(value, product);
+  if (!parsed) return false;
+  const values = quoteFactValues(product, parsed.key);
+  const specific = [];
+  for (const parts of parsed.items) {
+    if (parts.length > 1) {
+      if (parts.some((part) => normalizeQuoteText(part).split(/[^a-z0-9%]+/).filter(Boolean).length < 2)) return false;
+      const passage = elidedPassage(values, parts);
+      if (!passage) return false;
+      if (quotePartIsSpecific(passage, product && product.brand)) specific.push(passage);
+      continue;
+    }
+    const [part] = parts;
+    if (!quotePartIsSpecific(part, product && product.brand)) continue; // proves nothing either way
+    if (!values.some((fact) => wholeWordPositions(fact, normalizeQuoteText(part)).length)) return false;
+    specific.push(part);
+  }
+  return specific;
 }
 function quotedEvidence(value) {
   return asArray(value).slice(0, 6).map((item) => ({
-    anchor_fact: quoteParts(item?.anchor_fact).map((parts) => parts.join(' … ')).join(', '),
-    candidate_fact: quoteParts(item?.candidate_fact).map((parts) => parts.join(' … ')).join(', '),
+    anchor_fact: normalizeString(item?.anchor_fact, 350),
+    candidate_fact: normalizeString(item?.candidate_fact, 350),
   })).filter((item) => item.anchor_fact && item.candidate_fact);
 }
-function factGrounded(product, quote) {
-  const compact = (value) => normalizeQuoteText(value).replace(/\s+/g, '');
-  const values = [];
-  const collect = (value) => {
-    if (typeof value === 'string') values.push(compact(value));
-    else if (Array.isArray(value)) value.forEach(collect);
-    else if (value && typeof value === 'object') Object.values(value).forEach(collect);
-  };
-  collect(product);
-  const items = quoteParts(quote).map((parts) => parts.filter((span) => !quoteSpanIsGeneric(span, product))).filter((parts) => parts.length);
-  if (!items.length) return null; // proves nothing either way
-  // The parts an ellipsis joins must come from ONE fact (one field value), so a title and a description
-  // cannot be stitched into a claim neither makes. Array items are separate facts.
-  return items.every((parts) => values.some((value) => parts.every((span) => value.includes(compact(span)))));
-}
-// Every quote must hold on both sides, and at least one must say something specific about each.
-function quotesGrounded(quotes, evidence) {
-  let specific = false;
+// Every quote must hold on both sides; returns the specific grounded quotes (each part its own fact,
+// paired in order), or null. The returned quotes are what an approval stores and shows.
+function groundedQuotes(quotes, evidence) {
+  const kept = [];
   for (const quote of quotes) {
-    const anchor = factGrounded(evidence.anchor, quote.anchor_fact);
-    const candidate = factGrounded(evidence.candidate, quote.candidate_fact);
-    if (anchor === false || candidate === false) return false;
-    if (anchor === true && candidate === true) specific = true;
+    const anchor = groundQuoteSide(evidence.anchor, quote.anchor_fact);
+    const candidate = groundQuoteSide(evidence.candidate, quote.candidate_fact);
+    if (anchor === false || candidate === false) return null;
+    if (!anchor.length || !candidate.length) continue;
+    for (let i = 0; i < Math.max(anchor.length, candidate.length); i += 1) {
+      kept.push({ anchor_fact: anchor[Math.min(i, anchor.length - 1)], candidate_fact: candidate[Math.min(i, candidate.length - 1)] });
+    }
   }
-  return specific;
+  return kept.length ? kept.slice(0, 6) : null;
 }
 function validateRecommendationDecision(row, decision, suppliedEvidence = null) {
   if (decision.verdict !== 'approve') return decision;
@@ -1250,10 +1331,11 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
   };
   const evidence = suppliedEvidence || buildEvidence(row, new Map());
   const quotes = quotedEvidence(decision.shared_evidence);
+  let grounded = null;
   let reason = '';
   if (!(allowed[row.relation_type] || []).includes(decision.relationship_kind)) reason = 'relation_semantics_mismatch';
   else if (!normalizeString(decision.recommendation_reason, 700) || !quotes.length) reason = 'recommendation_utility_evidence_missing';
-  else if (!quotesGrounded(rawQuotedEvidence(decision.shared_evidence), evidence)) reason = 'recommendation_facts_not_supplied';
+  else if (!(grounded = groundedQuotes(quotes, evidence))) reason = 'recommendation_facts_not_supplied';
   else if (decision.relationship_kind !== 'complement' && !compactArray(decision.tradeoffs, 6).length) reason = 'substitution_tradeoffs_missing';
   if (!reason && ['dupe', 'competitive_alternative'].includes(row.relation_type)) {
     const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
@@ -1306,7 +1388,8 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     }
   }
   if (!reason && !matchesConsumerCopy(decision)) reason = 'consumer_copy_not_verified_contract';
-  if (!reason) return decision;
+  // An approval keeps only the quotes that grounded something specific, as single facts.
+  if (!reason) return { ...decision, shared_evidence: grounded };
   return { ...decision, verdict: 'reject', utility_rejection: reason,
     ...(suggestedRelationType ? { suggested_relation_type: suggestedRelationType } : {}),
     rationale: `${reason}: ${normalizeString(decision.rationale, 600)}` };
@@ -1334,14 +1417,13 @@ function matchesConsumerCopy(decision) {
     JSON.stringify(decision.watchouts) === JSON.stringify(expected.watchouts));
 }
 function recommendationFields(decision) {
-  // A quote that is only a generic word ("cream / cream") is kept as evidence but never shown.
-  const genericOnly = (text) => quoteSpans(text).every((span) => GENERIC_QUOTE_SPAN.test(normalizeQuoteText(span)));
-  const quotes = quotedEvidence(decision.shared_evidence);
+  // Called with a validated decision (applyApproval), whose shared_evidence is the grounded quotes only.
+  // Defence in depth for any other caller: nothing stitched, JSON-shaped or generic-only is shown.
+  const quotes = quotedEvidence(decision.shared_evidence).filter((item) => isShowableQuote(item.anchor_fact) && isShowableQuote(item.candidate_fact));
   return {
     relationship_kind: decision.relationship_kind,
     summary: consumerCopyForKind(decision.relationship_kind)?.recommendation_reason || '',
-    reasons_user_visible: quotes.filter((item) => !genericOnly(item.anchor_fact) && !genericOnly(item.candidate_fact))
-      .map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
+    reasons_user_visible: quotes.map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
     shared_evidence: quotes,
   };
 }
@@ -1454,11 +1536,14 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
     err.reasons = guardReasons;
     throw err;
   }
-  if (validateRecommendationDecision(row, { ...decision, verdict: 'approve' }, evidence).verdict !== 'approve') {
+  const validated = validateRecommendationDecision(row, { ...decision, verdict: 'approve' }, evidence);
+  if (validated.verdict !== 'approve') {
     const err = new Error('AI approval lacks matching recommendation utility evidence');
     err.code = 'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED';
     throw err;
   }
+  // Whoever calls this, what is stored and shown is the grounded quotes, never the model's raw ones.
+  decision = { ...decision, shared_evidence: validated.shared_evidence };
   const aiReview = { ...buildAiReview(decision), ...(runId ? { run_id: runId, decision: 'approve' } : {}) };
   const cas = requireConsensus ? consensusCas(row, 7) : null;
   const res = await queryFn(
