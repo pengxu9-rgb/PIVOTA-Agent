@@ -30,14 +30,17 @@ function token(value) {
 }
 
 /**
- * Call `observe(fields)` without ever letting it throw into the surface it measures.
+ * Call `observe(fields)` without ever letting it throw into the surface it measures. `fields` may be a function
+ * returning the fields: it is then evaluated INSIDE the guard, and not at all when there is no sink — so a
+ * derivation that throws on a strange value can never escape into the call, and costs nothing unobserved.
  * @param {((fields:object)=>void)|undefined|null} observe
- * @param {object} fields
+ * @param {object|(()=>object)} fields
  */
 export function noteToolCall(observe, fields) {
-  if (typeof observe !== "function" || !fields || typeof fields !== "object") return;
+  if (typeof observe !== "function") return;
   try {
-    observe(fields);
+    const value = typeof fields === "function" ? fields() : fields;
+    if (value && typeof value === "object") observe(value);
   } catch {
     // Measurement must never break the call it measures.
   }
@@ -101,16 +104,19 @@ export function describeToolError(error) {
 }
 
 /**
- * The error code the CALLER saw, read back from the formatted MCP error result rather than recomputed, so the
- * log can never disagree with the wire. Anything that does not parse as an UPPER_SNAKE code is UNEXPECTED_ERROR.
+ * The error the CALLER saw, read back from the formatted MCP error result rather than recomputed, so the log can
+ * never disagree with the wire: its code (anything that does not parse as an UPPER_SNAKE code is
+ * UNEXPECTED_ERROR) and, when the error taxonomy declares it, whether it is retriable — the line between a
+ * server-side fault (retry later) and a caller or policy refusal (will never succeed as sent).
  */
-export function toolErrorCodeOf(result) {
+export function toolErrorFieldsOf(result) {
   try {
     const text = result && Array.isArray(result.content) && result.content[0] ? result.content[0].text : null;
-    const code = typeof text === "string" ? JSON.parse(text)?.error?.code : null;
-    return typeof code === "string" && ERROR_CODE.test(code) ? code : "UNEXPECTED_ERROR";
+    const error = typeof text === "string" ? JSON.parse(text)?.error : null;
+    const code = error && typeof error.code === "string" && ERROR_CODE.test(error.code) ? error.code : "UNEXPECTED_ERROR";
+    return typeof error?.retriable === "boolean" ? { error_code: code, error_retriable: error.retriable } : { error_code: code };
   } catch {
-    return "UNEXPECTED_ERROR";
+    return { error_code: "UNEXPECTED_ERROR" };
   }
 }
 

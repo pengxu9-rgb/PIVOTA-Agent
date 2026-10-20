@@ -224,6 +224,7 @@ for (const doorKey of Object.keys(DOORS)) {
     assert.equal(line.outcome, 'ok');
     assert.equal(line.is_error, false);
     assert.equal(line.error_code, null);
+    assert.equal(line.error_class, null);
     assert.equal(line.result_count, 3);
     assert.equal(line.cache_hit, false);
     assert.equal(line.lane, 'beauty_discovery_mainline');
@@ -288,6 +289,7 @@ for (const doorKey of Object.keys(DOORS)) {
     assert.equal(line.outcome, 'tool_error');
     assert.equal(line.is_error, true);
     assert.equal(line.error_code, wireCode);
+    assert.equal(line.error_class, 'server', 'an upstream failure is ours, not the caller\'s');
     assert.equal(line.cache_hit, false);
     assert.equal(line.upstream_timeout, undefined);
   });
@@ -308,18 +310,21 @@ for (const doorKey of Object.keys(DOORS)) {
     assert.equal(line.outcome, 'tool_error');
     assert.equal(line.is_error, true);
     assert.equal(line.error_code, JSON.parse(res.body.result.content[0].text).error.code);
+    assert.equal(line.error_class, 'server');
     assert.equal(line.upstream_timeout, true);
     assert.equal(line.degraded, true);
     // The caller is never told about the flag: it is log-only.
     assert.ok(!res.body.result.content[0].text.includes('upstream_timeout'));
   });
 
-  test(`${doorKey}: an unknown tool logs UNKNOWN_TOOL and no result fields`, async () => {
+  test(`${doorKey}: an unknown tool logs UNKNOWN_TOOL, a client error, under the tool label 'other'`, async () => {
     const [res, line] = await call(doorKey, rpcCall('no_such_tool', {}));
     assert.equal(isToolError(res), true);
-    assertDoorFields(doorKey, line, 'no_such_tool');
+    assertDoorFields(doorKey, line, 'other');
+    assert.ok(!JSON.stringify(line).includes('no_such_tool'), 'a caller-invented tool name never reaches the line');
     assert.equal(line.outcome, 'tool_error');
     assert.equal(line.error_code, 'UNKNOWN_TOOL');
+    assert.equal(line.error_class, 'client');
     assert.equal(line.result_count, undefined);
     assert.equal(line.cache_hit, undefined);
   });
@@ -342,6 +347,8 @@ test('a malformed tools/call logs a JSON-RPC error by name', async () => {
   assert.equal(line.outcome, 'rpc_error');
   assert.equal(line.is_error, true);
   assert.equal(line.error_code, 'JSONRPC_INVALID_PARAMS');
+  assert.equal(line.error_class, 'client');
+  assert.equal(line.tool, 'other', 'a blank name is not a tool');
 });
 
 test('a commerce tools/call without credentials is logged as refused, unauthenticated', async () => {
@@ -356,6 +363,18 @@ test('a commerce tools/call without credentials is logged as refused, unauthenti
   assert.equal(line.outcome, 'refused');
   assert.equal(line.is_error, true);
   assert.equal(line.error_code, 'HTTP_401');
+  assert.equal(line.error_class, 'client');
+  assert.equal(line.tool, 'search_catalog', 'a refused call keeps a tool name the gateway advertises');
+});
+
+test('a refused call naming a tool no surface advertises is labelled other', async () => {
+  captured.length = 0;
+  const res = await supertest(app).post('/mcp').send(rpcCall('invented tool name; drop table', { query: 'x' }));
+  await settle();
+  assert.equal(res.status, 401);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].tool, 'other');
+  assert.ok(!JSON.stringify(captured[0]).includes('invented'));
 });
 
 test('a money op refused by its kill-switch is logged as the OPERATION_NOT_ALLOWED tool error it answered', async () => {
@@ -364,7 +383,41 @@ test('a money op refused by its kill-switch is logged as the OPERATION_NOT_ALLOW
   assert.equal(line.tool, 'complete_checkout_session');
   assert.equal(line.outcome, 'tool_error');
   assert.equal(line.error_code, 'OPERATION_NOT_ALLOWED');
+  assert.equal(line.error_class, 'client', 'a policy refusal is not an outage');
 });
+
+// The door's own catch: the adapter answered but the door could not write it. Injected at the one seam a
+// real route offers, Express's JSON serializer, failing exactly once so the door's 503 still goes out.
+async function withJsonWriteFailingOnce(fn) {
+  let thrown = false;
+  app.set('json replacer', (key, value) => {
+    if (!thrown && key === '' && value && value.jsonrpc === '2.0') {
+      thrown = true;
+      throw new Error('injected serialization failure');
+    }
+    return value;
+  });
+  try {
+    return await fn();
+  } finally {
+    app.set('json replacer', undefined);
+  }
+}
+
+for (const doorKey of ['public_mcp', 'mcp_first_party']) {
+  test(`${doorKey}: a door that cannot write the adapter's answer logs internal_error, a server error`, async () => {
+    const query = uniqueQuery(`internal-${doorKey}`);
+    searchUpstream(query, { status: 'success', success: true, products: [row('sig_fff1')], metadata: SEARCH_METADATA });
+    const [res, line] = await withJsonWriteFailingOnce(() =>
+      call(doorKey, rpcCall('search_catalog', DOORS[doorKey].searchArgs(query))));
+    assert.equal(res.status, 503);
+    assert.equal(line.outcome, 'internal_error');
+    assert.equal(line.is_error, true);
+    assert.equal(line.error_code, 'INTERNAL_ERROR');
+    assert.equal(line.error_class, 'server');
+    assert.equal(line.tool, 'search_catalog');
+  });
+}
 
 test('a non-tools/call method logs no completion line', async () => {
   captured.length = 0;

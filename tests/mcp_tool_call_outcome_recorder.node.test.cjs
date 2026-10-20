@@ -19,25 +19,63 @@ const okOut = (result) => ({ status: 200, body: { jsonrpc: '2.0', id: 1, result 
 test('an adapter answer with a result is ok; with isError it is a tool error carrying the observed code', () => {
   const ok = createMcpToolCallRecorder();
   ok.recordRpcResponse(okOut({ content: [] }));
-  assert.deepEqual(ok.fields(200), { outcome: 'ok', is_error: false, error_code: null, degraded: false });
+  assert.deepEqual(ok.fields(200), { outcome: 'ok', is_error: false, error_code: null, error_class: null, degraded: false });
 
   const bad = createMcpToolCallRecorder();
-  bad.observe({ error_code: 'NO_MERCHANT_OFFER' });
+  bad.observe({ error_code: 'NO_MERCHANT_OFFER', error_retriable: false });
   bad.recordRpcResponse(okOut({ isError: true, content: [] }));
   assert.deepEqual(bad.fields(200), {
-    outcome: 'tool_error', is_error: true, error_code: 'NO_MERCHANT_OFFER', degraded: false,
+    outcome: 'tool_error', is_error: true, error_code: 'NO_MERCHANT_OFFER', error_class: 'client', degraded: false,
   });
 
   const uncoded = createMcpToolCallRecorder();
   uncoded.recordRpcResponse(okOut({ isError: true, content: [] }));
   assert.equal(uncoded.fields(200).error_code, 'UNEXPECTED_ERROR');
+  assert.equal(uncoded.fields(200).error_class, 'server', 'an uncurated exception is ours');
+});
+
+test('error_class: a retriable taxonomy code is a server fault; a non-retriable one is the caller\'s', () => {
+  const retriable = createMcpToolCallRecorder();
+  retriable.observe({ error_code: 'MERCHANT_UNAVAILABLE', error_retriable: true });
+  retriable.recordRpcResponse(okOut({ isError: true }));
+  assert.equal(retriable.fields(200).error_class, 'server');
+  for (const code of ['UNKNOWN_TOOL', 'INVALID_ARGUMENTS', 'UNKNOWN_PRODUCT_ID', 'USER_AUTH_REQUIRED', 'OPERATION_NOT_ALLOWED']) {
+    const r = createMcpToolCallRecorder();
+    r.observe({ error_code: code });
+    r.recordRpcResponse(okOut({ isError: true }));
+    assert.equal(r.fields(200).error_class, 'client', code);
+  }
+  const rpcInternal = createMcpToolCallRecorder();
+  rpcInternal.recordRpcResponse({ status: 200, body: { jsonrpc: '2.0', id: 1, error: { code: -32603 } } });
+  assert.equal(rpcInternal.fields(200).error_class, 'server');
+  assert.equal(createMcpToolCallRecorder().fields(500).error_class, 'server');
+  assert.equal(createMcpToolCallRecorder().fields(429).error_class, 'client');
+  assert.equal(createMcpToolCallRecorder().fields(200).error_class, null);
+});
+
+test('toolLabel: the surface\'s verdict wins, then the advertised set; everything else is other', () => {
+  const known = new Set(['search_catalog']);
+  const registered = createMcpToolCallRecorder();
+  registered.observe({ tool_registered: true });
+  assert.equal(registered.toolLabel('recover_checkout', known), 'recover_checkout');
+  const unknown = createMcpToolCallRecorder();
+  unknown.observe({ tool_registered: false });
+  assert.equal(unknown.toolLabel('search_catalog', known), 'other', 'the surface refused it on this call');
+  const undispatched = createMcpToolCallRecorder();
+  assert.equal(undispatched.toolLabel('search_catalog', known), 'search_catalog');
+  assert.equal(undispatched.toolLabel('get_offers', known), 'other');
+  assert.equal(undispatched.toolLabel('   search_catalog ', known), 'search_catalog');
+  assert.equal(registered.toolLabel('has spaces', known), 'other');
+  assert.equal(registered.toolLabel('x'.repeat(65), known), 'other');
+  assert.equal(registered.toolLabel(42, known), 'other');
+  assert.equal(undispatched.toolLabel('search_catalog', null), 'other');
 });
 
 test('a JSON-RPC error is named, not numbered', () => {
   const r = createMcpToolCallRecorder();
   r.recordRpcResponse({ status: 200, body: { jsonrpc: '2.0', id: 1, error: { code: -32602, message: 'x' } } });
   assert.deepEqual(r.fields(200), {
-    outcome: 'rpc_error', is_error: true, error_code: 'JSONRPC_INVALID_PARAMS', degraded: false,
+    outcome: 'rpc_error', is_error: true, error_code: 'JSONRPC_INVALID_PARAMS', error_class: 'client', degraded: false,
   });
   assert.equal(jsonRpcErrorCode(-32001), 'JSONRPC_AUTHENTICATION_FAILED');
   assert.equal(jsonRpcErrorCode(-32000), 'JSONRPC_M32000');
@@ -49,19 +87,20 @@ test('an adapter that threw is an internal error even on a committed 200 wire', 
   r.observe({ heartbeat_committed: true });
   r.recordInternalError();
   assert.deepEqual(r.fields(200), {
-    outcome: 'internal_error', is_error: true, error_code: 'INTERNAL_ERROR', degraded: false, heartbeat_committed: true,
+    outcome: 'internal_error', is_error: true, error_code: 'INTERNAL_ERROR', error_class: 'server', degraded: false,
+    heartbeat_committed: true,
   });
 });
 
 test('with no answer recorded, the status decides: 4xx refused, 5xx internal, 2xx unknown', () => {
   assert.deepEqual(createMcpToolCallRecorder().fields(429), {
-    outcome: 'refused', is_error: true, error_code: 'HTTP_429', degraded: false,
+    outcome: 'refused', is_error: true, error_code: 'HTTP_429', error_class: 'client', degraded: false,
   });
   assert.deepEqual(createMcpToolCallRecorder().fields(503), {
-    outcome: 'internal_error', is_error: true, error_code: 'HTTP_503', degraded: false,
+    outcome: 'internal_error', is_error: true, error_code: 'HTTP_503', error_class: 'server', degraded: false,
   });
   assert.deepEqual(createMcpToolCallRecorder().fields(200), {
-    outcome: 'unknown', is_error: true, error_code: null, degraded: false,
+    outcome: 'unknown', is_error: true, error_code: null, error_class: null, degraded: false,
   });
 });
 
@@ -82,7 +121,7 @@ test('observed fields are allowlisted and validated; degraded is the OR of its f
   r.recordRpcResponse(okOut({ content: [] }));
   const fields = r.fields(200);
   assert.deepEqual(fields, {
-    outcome: 'ok', is_error: false, error_code: null,
+    outcome: 'ok', is_error: false, error_code: null, error_class: null,
     result_count: 4, cache_hit: 'stale', lane: 'lane_a', lane_source: 'src_b', upstream_status: 'failed',
     degraded: true, upstream_degraded: true, fallback_used: true,
   });
@@ -92,7 +131,7 @@ test('observed fields are allowlisted and validated; degraded is the OR of its f
     result_count: -1, cache_hit: 'maybe', lane: 'has spaces', error_code: 'lower', upstream_timeout: 'yes',
   });
   bad.recordRpcResponse(okOut({}));
-  assert.deepEqual(bad.fields(200), { outcome: 'ok', is_error: false, error_code: null, degraded: false });
+  assert.deepEqual(bad.fields(200), { outcome: 'ok', is_error: false, error_code: null, error_class: null, degraded: false });
 });
 
 test('later observations of the same field win (the surface reports cache state, then the adapter the count)', () => {

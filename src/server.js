@@ -31698,12 +31698,14 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   });
 }
 
-// A request that never got a response because a deadline fired (axios `timeout`, a socket timeout, or our own
-// AbortSignal deadline). A response that arrived — even a 504 — is not this: the upstream answered.
+// A request that never got a response because its transport deadline fired (axios `timeout`, a socket
+// timeout). A response that arrived — even a 504 — is not this: the upstream answered.
 function isCommerceKernelUpstreamTimeout(err) {
   if (!err || typeof err !== 'object' || err.response) return false;
   const code = String(err.code || '').trim().toUpperCase();
-  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ERR_CANCELED') return true;
+  // Not ERR_CANCELED: a cancelled request was aborted by a caller's signal (get_offers' own deadline, a
+  // client gone away), which says nothing about whether the upstream would have answered in time.
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') return true;
   return /\btime(?:d)? ?out\b/i.test(String(err.message || ''));
 }
 
@@ -32647,6 +32649,7 @@ async function getCommerceRemoteMcpAdapter() {
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
+      rememberMcpToolNames(surface);
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
@@ -32797,6 +32800,7 @@ async function getPublicReadMcpAdapter() {
         log: logger,
         filterChainResolvableRows: filterPublicReadChainResolvableRows,
       });
+      rememberMcpToolNames(surface);
       return createRemoteMcpAdapter(surface, {
         allowUnauthenticated: true,
         serverInfo: { name: 'pivota', version: '1.0.0' },
@@ -32878,7 +32882,6 @@ function logMcpToolCallOnFinish(req, res, door) {
     const rpcBody = req && typeof req.body === 'object' && req.body !== null ? req.body : null;
     const rawTool = mcpToolNameFromRpcBody(rpcBody);
     if (rawTool == null) return null;
-    const tool = typeof rawTool === 'string' ? rawTool.trim().slice(0, 128) : null;
     const startedAtMs = Date.now();
     const recorder = createMcpToolCallRecorder();
     res.on('finish', () => {
@@ -32886,7 +32889,8 @@ function logMcpToolCallOnFinish(req, res, door) {
         logger.info(
           {
             door,
-            tool,
+            // The caller chooses params.name; only a name a surface recognised is logged (else 'other').
+            tool: recorder.toolLabel(rawTool, KNOWN_MCP_TOOL_NAMES),
             tier: mcpCallerTier(req, door),
             status: res.statusCode,
             latency_ms: Math.max(0, Date.now() - startedAtMs),
@@ -32903,6 +32907,20 @@ function logMcpToolCallOnFinish(req, res, door) {
   } catch (_) {
     // Same.
     return null;
+  }
+}
+
+// Every tool name the gateway's own MCP surfaces advertise, collected as each surface is built. The completion
+// line labels a call refused before dispatch with its tool only when the name is in here (see toolLabel), so
+// a caller-invented name never becomes a log value or a metric label. Bounded by the registered tool lists.
+const KNOWN_MCP_TOOL_NAMES = new Set();
+function rememberMcpToolNames(surface) {
+  try {
+    for (const tool of surface?.tools || []) {
+      if (tool && typeof tool.name === 'string' && tool.name.length <= 64) KNOWN_MCP_TOOL_NAMES.add(tool.name);
+    }
+  } catch (_) {
+    // Labels only.
   }
 }
 
@@ -33437,6 +33455,7 @@ async function getCommerceUcpMcpAdapter() {
       // false and the UCP door simply had no cache. Harmless while the dialect had no cacheable tool; not once
       // search_catalog is on it (tests/commerce_ucp_search_shared_cache.node.test.cjs pins the sharing).
       const surface = ucpDialectSurface(await getCommerceToolSurface());
+      rememberMcpToolNames(surface);
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-ucp', version: '0.1.0' },
         authenticate: async (req) => {
@@ -52290,9 +52309,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           userQuery: rawUserQuery,
           limit,
         });
+        // A rerank skipped because its model breaker is open is still a failed rerank: it keeps error:true on
+        // the stage (the signal a failing rerank has always left there) and says why with breaker_open.
         llmRerankOutcome = reranked?.applied
           ? { applied: true, provider: reranked.provider || null }
-          : { applied: false };
+          : reranked?.breaker_open
+            ? { applied: false, error: true, breaker_open: true }
+            : { applied: false };
         if (reranked?.applied) {
           maybePolicy = reranked.response;
           if (ROUTE_DEBUG_ENABLED) {
@@ -52321,6 +52344,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         applied: Boolean(llmRerankOutcome?.applied),
         provider: llmRerankOutcome?.provider,
         error: llmRerankOutcome?.error,
+        breaker_open: llmRerankOutcome?.breaker_open,
       });
     }
 

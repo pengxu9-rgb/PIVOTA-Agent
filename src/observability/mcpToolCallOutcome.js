@@ -13,6 +13,11 @@
 //                docs/runbooks/mcp_tool_outcome_monitoring.md, so a rate-limit flood cannot page as a tool fault)
 //   error_code   the tool's code as the caller saw it (UNKNOWN_PRODUCT_ID, ...), JSONRPC_<NAME> for a protocol
 //                error, INTERNAL_ERROR when the adapter threw, HTTP_<status> for a refusal before dispatch
+//   error_class  'server' (a fault on our side: a retriable taxonomy code such as MERCHANT_UNAVAILABLE, an
+//                UNEXPECTED_ERROR from an uncurated exception, an internal error, a 5xx) | 'client' (the call
+//                will not succeed as sent: UNKNOWN_TOOL, INVALID_ARGUMENTS, UNKNOWN_PRODUCT_ID,
+//                USER_AUTH_REQUIRED, OPERATION_NOT_ALLOWED, a protocol error, a refusal) | null when ok. The
+//                error-rate alert counts 'server' only: a caller sending bad ids is not an outage.
 //   result_count rows the caller received, AFTER the public tier's filters (absent for a non-list result)
 //   cache_hit    true | false | 'stale' (absent when no cache was consulted)
 //   lane, lane_source, upstream_status    the search envelope's own markers, short tokens only
@@ -47,7 +52,17 @@ const OBSERVED_FIELDS = Object.freeze({
   upstream_degraded: (v) => (v === true ? true : undefined),
   fallback_used: (v) => (v === true ? true : undefined),
   heartbeat_committed: (v) => (v === true ? true : undefined),
+  // Internal to the recorder, never logged as such: they decide error_class and the tool label.
+  error_retriable: (v) => (v === true || v === false ? v : undefined),
+  tool_registered: (v) => (v === true || v === false ? v : undefined),
 });
+
+// Codes that mean "our side failed" even though the taxonomy marks them non-retriable or carries no flag:
+// UNEXPECTED_ERROR is what an uncurated exception becomes on the wire.
+const SERVER_TOOL_ERROR_CODES = new Set(['UNEXPECTED_ERROR']);
+
+const MAX_TOOL_LABEL_LENGTH = 64;
+const TOOL_LABEL = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function jsonRpcErrorCode(code) {
   const name = JSONRPC_ERROR_NAMES[String(code)];
@@ -132,7 +147,14 @@ function createMcpToolCallRecorder() {
       outcome = 'unknown';
     }
 
-    const out = { outcome, is_error: outcome !== 'ok', error_code: errorCode };
+    let errorClass = null;
+    if (outcome === 'internal_error') errorClass = 'server';
+    else if (outcome === 'rpc_error') errorClass = errorCode === 'JSONRPC_INTERNAL_ERROR' ? 'server' : 'client';
+    else if (outcome === 'tool_error') {
+      errorClass = observed.error_retriable === true || SERVER_TOOL_ERROR_CODES.has(errorCode) ? 'server' : 'client';
+    } else if (outcome === 'refused') errorClass = 'client';
+
+    const out = { outcome, is_error: outcome !== 'ok', error_code: errorCode, error_class: errorClass };
     for (const key of ['result_count', 'cache_hit', 'lane', 'lane_source', 'upstream_status']) {
       if (observed[key] !== undefined) out[key] = observed[key];
     }
@@ -143,7 +165,25 @@ function createMcpToolCallRecorder() {
     return out;
   }
 
-  return { observe, recordRpcResponse, recordToolError, recordInternalError, fields };
+  /**
+   * The tool name for the log line. `params.name` is whatever the caller sent, so it is logged only when the
+   * door's surface recognised it on this call, or when it is one of the names the gateway's own surfaces
+   * advertise (`knownToolNames`, for calls refused before dispatch). Anything else is 'other': an unbounded,
+   * caller-chosen string must not become a metric label or reach the log verbatim.
+   */
+  function toolLabel(rawTool, knownToolNames) {
+    try {
+      const name = typeof rawTool === 'string' ? rawTool.trim() : '';
+      if (!name || name.length > MAX_TOOL_LABEL_LENGTH || !TOOL_LABEL.test(name)) return 'other';
+      if (observed.tool_registered === false) return 'other';
+      if (observed.tool_registered === true) return name;
+      return knownToolNames && typeof knownToolNames.has === 'function' && knownToolNames.has(name) ? name : 'other';
+    } catch (_) {
+      return 'other';
+    }
+  }
+
+  return { observe, recordRpcResponse, recordToolError, recordInternalError, fields, toolLabel };
 }
 
 /**

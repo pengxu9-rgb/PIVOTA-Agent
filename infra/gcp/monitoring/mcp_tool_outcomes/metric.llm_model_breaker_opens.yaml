@@ -1,0 +1,27 @@
+# Log-based counter: find_products_multi LLM model breaker openings (src/findProductsMulti/llmModelBreaker.js).
+# One line per opening or re-opening after a failed cooldown probe, severity WARNING. A steady count means a
+# configured model id does not exist for its provider: the pass (rerank / semantic rewrite) is being skipped and
+# `env_hint` on the line names the variable to change.
+#   gcloud logging metrics create llm_model_breaker_opens --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.llm_model_breaker_opens.yaml
+description: find_products_multi LLM model breaker openings, by feature / provider / model
+filter: >-
+  resource.type="cloud_run_revision"
+  AND resource.labels.service_name="gateway"
+  AND severity=WARNING
+  AND jsonPayload.event="llm_model_breaker_open"
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: feature
+      valueType: STRING
+    - key: provider
+      valueType: STRING
+    - key: model
+      valueType: STRING
+labelExtractors:
+  feature: EXTRACT(jsonPayload.feature)
+  provider: EXTRACT(jsonPayload.provider)
+  model: EXTRACT(jsonPayload.model)

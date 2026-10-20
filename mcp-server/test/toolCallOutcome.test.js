@@ -8,14 +8,14 @@ import assert from "node:assert/strict";
 
 import { createPublicReadCache } from "../src/publicReadCache.js";
 import { createRemoteMcpAdapter } from "../src/remoteMcpAdapter.js";
-import { ToolValidationError } from "../src/commerceToolSurface.js";
+import { ToolValidationError, UnknownToolError } from "../src/commerceToolSurface.js";
 import {
   cacheHitField,
   describeToolError,
   describeUpstreamEnvelope,
   noteToolCall,
   resultCountOf,
-  toolErrorCodeOf,
+  toolErrorFieldsOf,
 } from "../src/toolCallOutcome.js";
 
 test("cache onState reports miss, hit and stale, in that order, and never changes what is served", async () => {
@@ -92,16 +92,32 @@ test("describeToolError reads only the upstream timeout flag", () => {
   assert.deepEqual(describeToolError(new Error("x")), {});
 });
 
-test("toolErrorCodeOf reads the code back off the formatted result", () => {
-  const result = { isError: true, content: [{ type: "text", text: JSON.stringify({ error: { code: "UNKNOWN_PRODUCT_ID" } }) }] };
-  assert.equal(toolErrorCodeOf(result), "UNKNOWN_PRODUCT_ID");
-  assert.equal(toolErrorCodeOf({ content: [{ text: "not json" }] }), "UNEXPECTED_ERROR");
-  assert.equal(toolErrorCodeOf({ content: [{ text: JSON.stringify({ error: { code: "lower case" } }) }] }), "UNEXPECTED_ERROR");
+test("toolErrorFieldsOf reads the code, and the retriable flag when declared, back off the formatted result", () => {
+  const text = (error) => ({ isError: true, content: [{ type: "text", text: JSON.stringify({ error }) }] });
+  assert.deepEqual(toolErrorFieldsOf(text({ code: "UNKNOWN_PRODUCT_ID", retriable: false })), {
+    error_code: "UNKNOWN_PRODUCT_ID", error_retriable: false,
+  });
+  assert.deepEqual(toolErrorFieldsOf(text({ code: "MERCHANT_UNAVAILABLE", retriable: true })), {
+    error_code: "MERCHANT_UNAVAILABLE", error_retriable: true,
+  });
+  assert.deepEqual(toolErrorFieldsOf(text({ code: "UNKNOWN_TOOL" })), { error_code: "UNKNOWN_TOOL" });
+  assert.deepEqual(toolErrorFieldsOf({ content: [{ text: "not json" }] }), { error_code: "UNEXPECTED_ERROR" });
+  assert.deepEqual(toolErrorFieldsOf(text({ code: "lower case", retriable: "yes" })), { error_code: "UNEXPECTED_ERROR" });
 });
 
 test("noteToolCall swallows a throwing sink and ignores a missing one", () => {
   noteToolCall(() => { throw new Error("sink"); }, { a: 1 });
   noteToolCall(undefined, { a: 1 });
+});
+
+test("noteToolCall evaluates a field thunk inside its guard, and not at all without a sink", () => {
+  let evaluated = 0;
+  noteToolCall(undefined, () => { evaluated += 1; return { a: 1 }; });
+  assert.equal(evaluated, 0);
+  const seen = [];
+  noteToolCall((f) => seen.push(f), () => { throw new Error("derivation"); });
+  noteToolCall((f) => seen.push(f), () => ({ a: 2 }));
+  assert.deepEqual(seen, [{ a: 2 }]);
 });
 
 // ---- the adapter hands the sink the caller-visible facts, and passes nothing when there is no sink ----
@@ -125,7 +141,7 @@ test("adapter: success reports the result count; the surface may add its own fie
   const adapter = createRemoteMcpAdapter(surface, { allowUnauthenticated: true });
   const fields = [];
   await adapter.handleJsonRpc({ body: rpc("t"), observe: (f) => fields.push(f) });
-  assert.deepEqual(Object.assign({}, ...fields), { cache_hit: true, result_count: 2 });
+  assert.deepEqual(Object.assign({}, ...fields), { cache_hit: true, tool_registered: true, result_count: 2 });
 });
 
 test("adapter: a thrown tool error reports the wire code and the timeout flag", async () => {
@@ -136,7 +152,9 @@ test("adapter: a thrown tool error reports the wire code and the timeout flag", 
   const fields = [];
   const out = await adapter.handleJsonRpc({ body: rpc("t"), observe: (f) => fields.push(f) });
   assert.equal(out.body.result.isError, true);
-  assert.deepEqual(Object.assign({}, ...fields), { error_code: "INVALID_ARGUMENTS", upstream_timeout: true });
+  assert.deepEqual(Object.assign({}, ...fields), {
+    tool_registered: true, error_code: "INVALID_ARGUMENTS", upstream_timeout: true,
+  });
 });
 
 test("adapter: a non-curated error is logged as the generic code the caller saw", async () => {
@@ -144,7 +162,15 @@ test("adapter: a non-curated error is logged as the generic code the caller saw"
   const adapter = createRemoteMcpAdapter(surface, { allowUnauthenticated: true });
   const fields = [];
   await adapter.handleJsonRpc({ body: rpc("t"), observe: (f) => fields.push(f) });
-  assert.deepEqual(Object.assign({}, ...fields), { error_code: "UNEXPECTED_ERROR" });
+  assert.deepEqual(Object.assign({}, ...fields), { tool_registered: true, error_code: "UNEXPECTED_ERROR" });
+});
+
+test("adapter: an unknown tool is reported as not registered", async () => {
+  const surface = surfaceReturning((name) => { throw new UnknownToolError(name); });
+  const adapter = createRemoteMcpAdapter(surface, { allowUnauthenticated: true });
+  const fields = [];
+  await adapter.handleJsonRpc({ body: rpc("made_up"), observe: (f) => fields.push(f) });
+  assert.deepEqual(Object.assign({}, ...fields), { tool_registered: false, error_code: "UNKNOWN_TOOL" });
 });
 
 test("adapter: without a sink the surface is called with exactly the three arguments it always got", async () => {

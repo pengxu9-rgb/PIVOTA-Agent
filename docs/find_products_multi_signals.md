@@ -79,21 +79,35 @@ Vertex ADC with no Gemini key set does not count as available there, so the chai
 
 ### Model-unavailable breaker
 
-The built-in OpenAI defaults are not guaranteed to exist on every OpenAI-compatible endpoint. When a provider
-answers that the configured model does not exist (HTTP 404, `model_not_found`, or a 400 naming the model), the
-breaker in `src/findProductsMulti/llmModelBreaker.js` skips that provider and model for the rest of the process.
-It logs one WARN, `find_products_multi llm model unavailable; provider skipped for this process (logged once)`,
-with `feature`, `provider`, `model` and `env_hint` (the env var to change). Rerank and semantic rewrite share
-it, because a missing model is missing for both.
+The built-in OpenAI defaults are not guaranteed to exist on every OpenAI-compatible endpoint.
+`src/findProductsMulti/llmModelBreaker.js` keeps a breaker per (feature, provider, model). Rerank and semantic
+rewrite send different requests, so one feature's breaker never switches off the other.
+
+- **What opens it:** only an HTTP 404 that says the model does not exist. That is OpenAI's
+  `code: 'model_not_found'`, or a Gemini/Vertex `NOT_FOUND` whose message names a model.
+- **What never opens it:** a 400 (request-shape refusals such as an unsupported `temperature` or
+  `response_format`), a bare or unrelated 404 (a wrong base URL, a token-endpoint 404), a timeout, a 429 or a 5xx.
+- **The log:** each opening writes one WARNING, `event: llm_model_breaker_open`, with `feature`, `provider`,
+  `model`, `reopened` and `env_hint` (the env var to change). The log-based metric is
+  `infra/gcp/monitoring/mcp_tool_outcomes/metric.llm_model_breaker_opens.yaml`.
+- **Cooldown:** `PIVOTA_LLM_MODEL_BREAKER_COOLDOWN_MS`, default 15 min, clamped to 10-30 min. After the cooldown,
+  ONE call goes through as a probe:
+  - a success closes the breaker;
+  - another model-not-found re-opens it and logs again;
+  - any other failure keeps it open for another cooldown without logging.
+  For semantic rewrite, a reply that is not valid JSON or fails the schema still proves the model exists.
 
 While it is open:
 
-- rerank returns `{ applied: false, skipped_reason: 'model_unavailable' }` without calling the provider. The
-  search keeps its deterministic order, so no product is dropped or reordered.
+- rerank returns `{ applied: false, skipped_reason: 'model_unavailable', breaker_open: true }` without calling
+  the provider. The search keeps its deterministic order, so nothing is dropped or reordered. The `llm_rerank`
+  entry of `fpm_stage_breakdown` records `error: true, breaker_open: true`.
 - semantic rewrite falls back to the rule-based intent, with `llm_error_class: 'model_unavailable'`.
 
-Timeouts, 429 and 5xx responses never open the breaker. To turn the pass back on, set the model env var named
-in the WARN to a model the endpoint serves and redeploy.
+The rerank deadline (`PIVOTA_RERANK_LLM_TIMEOUT_MS`) covers the whole provider chain. When a fallback provider
+is still live, the provider before it gets 60% of the remaining budget, so the fallback is not left with a spent
+budget. When the deadline fires, the chain is cancelled: the in-flight call is aborted and no further provider is
+dialled.
 
 ## `attributes.pivota` Product Tags
 

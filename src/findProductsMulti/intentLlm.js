@@ -13,7 +13,14 @@ const {
   resolveFindProductsOpenAiApiKey,
 } = require('./llmRuntime');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
-const { LlmModelUnavailableError, isModelBreakerOpen, recordModelFailure } = require('./llmModelBreaker');
+const {
+  LlmModelUnavailableError,
+  acquireModelCall,
+  recordModelFailure,
+  recordModelSuccess,
+} = require('./llmModelBreaker');
+
+const BREAKER_FEATURE = 'semantic_rewrite';
 const { extractJsonObject, parseJsonOnlyObject } = require('../auroraBff/jsonExtract');
 
 const INTENT_LLM_MAX_RECENT_QUERIES = Math.max(
@@ -967,31 +974,47 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
 
     const run = async (provider, stage) => {
       const model = plan.primaryProvider === provider ? plan.primaryModel : plan.fallbackModel;
+      let dialled = false;
       try {
-        // A provider that already answered model-not-found for this model is not dialled again this process
-        // (see ./llmModelBreaker): the caller falls back exactly as on any provider failure, minus the round trip.
-        if (isModelBreakerOpen(provider, model)) throw new LlmModelUnavailableError(provider, model);
+        // A provider that answered model-not-found for this model is not dialled again until its cooldown
+        // probe (see ./llmModelBreaker): the caller falls back exactly as on any provider failure, minus the
+        // round trip.
+        if (!acquireModelCall(BREAKER_FEATURE, provider, model)) throw new LlmModelUnavailableError(provider, model);
+        let intent;
         if (provider === 'openai') {
-          return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages, {
+          dialled = true;
+          intent = await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages, {
             ...options,
             model,
           });
-        }
-        if (provider === 'gemini') {
-          return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages, {
+        } else if (provider === 'gemini') {
+          dialled = true;
+          intent = await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages, {
             ...options,
             model,
           });
+        } else {
+          throw new Error(`Unsupported intent provider: ${provider}`);
         }
-        throw new Error(`Unsupported intent provider: ${provider}`);
+        recordModelSuccess(BREAKER_FEATURE, provider, model);
+        return intent;
       } catch (err) {
-        recordModelFailure({
-          feature: 'semantic_rewrite',
-          provider,
-          model,
-          err,
-          envHint: provider === 'openai' ? SEMANTIC_REWRITE_OPENAI_MODEL_ENV : SEMANTIC_REWRITE_GEMINI_MODEL_ENV,
-        });
+        if (dialled) {
+          // An answer the model gave but we could not use (bad JSON, schema mismatch) still proves the model
+          // exists; anything else is reported and only a model-not-found answer opens the breaker.
+          const errorClass = normalizeIntentLlmError(err).llm_error_class;
+          if (errorClass === 'invalid_json' || errorClass === 'schema_validation_failed') {
+            recordModelSuccess(BREAKER_FEATURE, provider, model);
+          } else {
+            recordModelFailure({
+              feature: BREAKER_FEATURE,
+              provider,
+              model,
+              err,
+              envHint: provider === 'openai' ? SEMANTIC_REWRITE_OPENAI_MODEL_ENV : SEMANTIC_REWRITE_GEMINI_MODEL_ENV,
+            });
+          }
+        }
         throw annotateIntentLlmError(err, {
           provider,
           stage,

@@ -519,13 +519,13 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     const observe = typeof options.observe === "function" ? options.observe : null;
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) {
       const fresh = await execute();
-      if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, describeUpstreamEnvelope(fresh));
+      if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
       return shape(fresh);
     }
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
-      onState: (state) => noteToolCall(observe, cacheHitField(state)),
+      onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
     });
-    noteToolCall(observe, describeUpstreamEnvelope(value));
+    noteToolCall(observe, () => describeUpstreamEnvelope(value));
     return shape(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(

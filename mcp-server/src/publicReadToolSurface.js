@@ -253,10 +253,10 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const args = canonicalizeToolArgs(toolArgs);
     const computed = cache
       ? await cache.getOrCompute(cacheKeyFor(toolName, args), () => computeTool(toolName, args), {
-          onState: (state) => noteToolCall(observe, cacheHitField(state)),
+          onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
         })
       : await computeTool(toolName, args);
-    if (computed && computed.observed) noteToolCall(observe, computed.observed);
+    noteToolCall(observe, () => computed.observed);
     return computed.value;
   }
 
