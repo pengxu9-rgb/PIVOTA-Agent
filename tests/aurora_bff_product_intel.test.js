@@ -5148,12 +5148,22 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query(true)
       .reply(200, { products: [] });
 
-    const app = require('../src/server');
-    const res = await request(app)
-      .post('/v1/product/analyze')
-      .set('X-Aurora-UID', 'uid_test_url_fetch_blocked_1')
-      .send({ url: 'https://brand.example/blocked-all.html' })
-      .expect(200);
+    // DNS answers NOTHING, deterministically: this request must not depend on the runner's resolver, and a
+    // resolver that stays silent is exactly the case that used to relabel this 403 as a forbidden address.
+    // Installed before the require: the lane's host check captures dns.lookup when its module loads.
+    const nodeDns = require('node:dns');
+    const lookupSpy = jest.spyOn(nodeDns, 'lookup').mockImplementation(() => {});
+    let res;
+    try {
+      const app = require('../src/server');
+      res = await request(app)
+        .post('/v1/product/analyze')
+        .set('X-Aurora-UID', 'uid_test_url_fetch_blocked_1')
+        .send({ url: 'https://brand.example/blocked-all.html' })
+        .expect(200);
+    } finally {
+      lookupSpy.mockRestore();
+    }
 
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();

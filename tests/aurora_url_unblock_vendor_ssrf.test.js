@@ -29,6 +29,9 @@
  *   - a name in DNS_ANSWERS answers with that address;
  *   - any other name answers ENOTFOUND (a real, prompt "no such name");
  *   - `stall` never answers.
+ * Answers arrive after DNS_ANSWER_DELAY_MS, like a real resolver, not on the next tick: a precheck whose timer
+ * fires at once (a "refuse everything" bug) must lose to a resolver that answers in tens of milliseconds, and
+ * the positive-control and NXDOMAIN cases below then catch it.
  */
 // eslint-disable-next-line global-require
 const nodeDns = require('node:dns');
@@ -43,14 +46,16 @@ const DNS_ANSWERS = Object.freeze({
   'linklocal.unblock.test': '169.254.10.10',
 });
 
-function stubDns({ stall = false } = {}) {
+const DNS_ANSWER_DELAY_MS = 30;
+
+function stubDns({ stall = false, delayMs = DNS_ANSWER_DELAY_MS } = {}) {
   const looked = [];
   const spy = jest.spyOn(nodeDns, 'lookup').mockImplementation((hostname, options, callback) => {
     const cb = typeof options === 'function' ? options : callback;
     looked.push(hostname);
     if (stall) return; // never answers
     const address = DNS_ANSWERS[hostname];
-    setImmediate(() => {
+    setTimeout(() => {
       if (!address) {
         const err = new Error(`getaddrinfo ENOTFOUND ${hostname}`);
         err.code = 'ENOTFOUND';
@@ -58,7 +63,7 @@ function stubDns({ stall = false } = {}) {
       }
       const all = options && typeof options === 'object' && options.all;
       return all ? cb(null, [{ address, family: 4 }]) : cb(null, address, 4);
-    });
+    }, delayMs);
   });
   return { spy, looked };
 }
@@ -309,10 +314,52 @@ describe('the unblock vendor is never handed a non-public URL', () => {
     expect(dns.looked).toContain('cosrx.com');
     expect(zenrowsCalls()).toHaveLength(0);
     expect(out.used_unblock_vendor).toBe(false);
+    // Recorded as a precheck TIMEOUT, not as a forbidden address: a slow resolver says nothing about the
+    // address, and `pivota_ssrf*` would be reported as url_forbidden_address.
     expect(out.attempts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ strategy: 'vendor_precheck', error_code: 'pivota_ssrf_unverified' }),
+      expect.objectContaining({ strategy: 'vendor_precheck', error_code: 'pivota_precheck_timeout' }),
     ]));
-    expect(out.failure_code).toBe('url_forbidden_address');
+    expect(out.attempts.some((a) => String(a.error_code || '').startsWith('pivota_ssrf'))).toBe(false);
+    expect(out.failure_code).toBe('url_fetch_timeout');
+  });
+
+  test('a slow resolver after a 403 keeps the 403 as the failure code (default config)', async () => {
+    const { fetchProductHtmlWithUnblockChain } = armLane({ AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED: 'true' }, {
+      dnsOptions: { stall: true },
+    });
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      return { status: 403, headers: {}, data: 'forbidden' };
+    });
+
+    const out = await fetchProductHtmlWithUnblockChain({ productUrl: 'https://cosrx.com/products/x', timeoutMs: 3000 });
+
+    expect(zenrowsCalls()).toHaveLength(0);
+    expect(out.failure_code).toBe('url_fetch_forbidden_403');
+  });
+
+  test('NO VENDOR KEY: no precheck lookup at all, and the vendor attempts say vendor_not_configured as before', async () => {
+    const { fetchProductHtmlWithUnblockChain } = armLane({
+      AURORA_BFF_URL_UNBLOCK_ZENROWS_API_KEY: '',
+      AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED: 'true',
+    }, { dnsOptions: { stall: true } });
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      return { status: 403, headers: {}, data: 'forbidden' };
+    });
+
+    const out = await fetchProductHtmlWithUnblockChain({ productUrl: 'https://cosrx.com/products/x', timeoutMs: 3000 });
+
+    expect(dns.looked).toEqual([]);
+    expect(zenrowsCalls()).toHaveLength(0);
+    expect(out.attempts.some((a) => a.strategy === 'vendor_precheck')).toBe(false);
+    expect(out.attempts.filter((a) => a.provider === 'zenrows').map((a) => a.error_code))
+      .toEqual(['vendor_not_configured', 'vendor_not_configured']);
+    expect(out.failure_code).toBe('url_fetch_forbidden_403');
   });
 
   test.each([
@@ -366,7 +413,47 @@ describe('the unblock vendor is never handed a non-public URL', () => {
     expect(line).toBeTruthy();
     expect(line[0].url_host).toBe('cosrx.com');
     expect(line[0].url).toBeUndefined();
-    expect(JSON.stringify(line[0])).not.toContain('\\\\@');
+    // Attempts carry their HOST, not the url they tried.
+    expect(line[0].attempts.length).toBeGreaterThan(0);
+    for (const a of line[0].attempts) {
+      expect(a.__url).toBeUndefined();
+      if (a.provider === 'native') expect(['cosrx.com', 'www.cosrx.com']).toContain(a.url_host);
+    }
+    const logged = JSON.stringify(line[0]);
+    expect(logged).not.toContain('\\\\@');
+    expect(logged).not.toContain('://');
+  });
+
+  test('the reco page fetch logs the normalised host only', async () => {
+    dns = stubDns({ stall: true });
+    const { lane, axiosInstance } = loadLaneWithVendorEnabled();
+    getSpy = jest.spyOn(axiosInstance, 'get').mockImplementation(async () => {
+      const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err;
+    });
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+
+    await lane.fetchProductPageHtmlForReco({ productUrl: 'http://cosrx.com\\@127.0.0.1/x?q=1', timeoutMs: 3000, logger });
+
+    const line = logger.debug.mock.calls.find(([, msg]) => /reco blocks on-page html fetch failed/.test(String(msg)));
+    expect(line).toBeTruthy();
+    expect(line[0].url_host).toBe('cosrx.com');
+    expect(line[0].url).toBeUndefined();
+    expect(JSON.stringify(line[0])).not.toContain('://');
+  });
+
+  test('a retail page fetch returns the normalised url, never the raw text', async () => {
+    const { fetchRetailProductPage } = armLane();
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err;
+    });
+
+    const out = await fetchRetailProductPage({ productUrl: 'http://cosrx.com\\@127.0.0.1/', timeoutMs: 3000 });
+    expect(out.url).toBe('http://cosrx.com/@127.0.0.1/');
+    const refused = await fetchRetailProductPage({ productUrl: 'http://127.0.0.1/x', timeoutMs: 3000 });
+    expect(refused.url).toBeNull();
   });
 
   test('F4: a refusal on the www HOST VARIANT does not withhold the vendor for a public canonical url', async () => {
