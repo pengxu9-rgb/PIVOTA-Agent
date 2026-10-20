@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const { closePool } = require('../src/db');
 const { backfillPdpIdentityGraph } = require('../src/services/pdpIdentityGraph');
+const { logCrawlFreshConfig } = require('../src/services/catalogRowTrustUpserter');
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -33,6 +34,10 @@ function ensureParent(filePath) {
 }
 
 async function main() {
+  // CRAWL_FRESH: logs the switch this job runs with, so a flip is visible on
+  // every identity job. backfillPdpIdentityGraph itself has no trust refresh
+  // today; promote-pdp-identity-live-read (which does) logs the same line.
+  logCrawlFreshConfig('backfill-pdp-identity-graph', { stream: process.stderr });
   const brand = argValue('brand') || null;
   const externalProductIdsFile = argValue('external-product-ids-file');
   const externalProductIds = parseListValues(

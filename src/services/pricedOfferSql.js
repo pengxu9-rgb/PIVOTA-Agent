@@ -53,6 +53,23 @@ function pricedOfferPriceExpr(alias = 'co') {
 }
 
 /**
+ * The two per-ROW conjuncts that make a `catalog_offers` row served supply.
+ *
+ * Twin of pivota-backend `priced_offer_row_conjuncts`. `pricedOfferExistsSql`
+ * below is these two conjuncts plus the correlated product_key join, and it is
+ * built from this function so the two spellings cannot diverge. Exposed
+ * separately for consumers that ask the question at OFFER grain (the trust
+ * upserter's CRAWL_LAST_PRICE_READ_SQL). Returned as separate conjuncts so each
+ * caller supplies its own indentation.
+ */
+function pricedOfferRowConjuncts(alias = 'co') {
+  return [
+    `${alias}.suppressed_at IS NULL`,
+    `${pricedOfferPriceExpr(alias)} > 0`,
+  ];
+}
+
+/**
  * `EXISTS` over `catalog_offers` for one product_key's real price.
  *
  * `productKeyExpr` is SQL, not a value — pass the correlated column
@@ -69,13 +86,15 @@ function pricedOfferPriceExpr(alias = 'co') {
  */
 function pricedOfferExistsSql(productKeyExpr, { alias = 'co', extraPredicate = '' } = {}) {
   const extra = extraPredicate ? `\n          AND ${extraPredicate}` : '';
+  const row = pricedOfferRowConjuncts(alias)
+    .map((conjunct) => `\n          AND ${conjunct}`)
+    .join('');
   return (
     'EXISTS (\n' +
     '        SELECT 1\n' +
     `        FROM catalog_offers ${alias}\n` +
-    `        WHERE ${alias}.product_key = ${productKeyExpr}\n` +
-    `          AND ${alias}.suppressed_at IS NULL\n` +
-    `          AND ${pricedOfferPriceExpr(alias)} > 0` +
+    `        WHERE ${alias}.product_key = ${productKeyExpr}` +
+    `${row}` +
     `${extra}\n` +
     '    )'
   );
@@ -83,5 +102,6 @@ function pricedOfferExistsSql(productKeyExpr, { alias = 'co', extraPredicate = '
 
 module.exports = {
   pricedOfferPriceExpr,
+  pricedOfferRowConjuncts,
   pricedOfferExistsSql,
 };

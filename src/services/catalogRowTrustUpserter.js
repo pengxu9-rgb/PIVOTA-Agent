@@ -18,14 +18,23 @@
 //   upsertCatalogRowTrust(pool, productKey, [now])
 //   upsertCatalogRowTrustMany(pool, productKeys, [now])
 
+const { Pool } = require('pg');
 const logger = require('../logger');
 
-const { POLICY_VERSION, deriveTrust } = require('./catalogTrustPolicy');
+const {
+  CRAWL_FRESH_DEFAULT_DAYS,
+  CRAWL_SOURCE_SYSTEM,
+  POLICY_VERSION,
+  deriveTrust,
+  isCrawlFresh,
+  isCrawlListing,
+} = require('./catalogTrustPolicy');
 const {
   pdpRouteResolvableFromRow,
   seedRouteResolvesSql,
 } = require('./pdpRenderability');
 const { pricedOfferExistsSql } = require('./pricedOfferSql');
+const { OFFER_UNAVAILABLE_AVAILABILITIES } = require('./offerAvailabilitySql');
 
 // ---------------------------------------------------------------------------
 // SQL — kept literal & in sync with scripts/backfill-catalog-row-trust.cjs.
@@ -286,6 +295,278 @@ const UPSERT_SQL = `
 `;
 
 // ---------------------------------------------------------------------------
+// CRAWL_FRESH input (2026-10-20) — default OFF
+// ---------------------------------------------------------------------------
+//
+// Twin of pivota-backend services/catalog_row_trust_upserter.py (the
+// CRAWL_FRESH block there).
+//
+// THE SWITCH LIVES HERE, NOT IN THE POLICY. catalog_row_trust is shared state
+// written by this service (on identity events) and by the pivota-backend twin
+// (its cron and hooks), so whatever decides a row must be computed identically
+// on both sides. The policy stays a pure function of its inputs; this upserter
+// decides whether to SUPPLY the `crawl_fresh` input at all.
+//
+//   * OFF (default): no extra query runs and the input key is never set, so the
+//     inputs object, every decision, every reason code and POLICY_VERSION are
+//     byte-identical to main.
+//   * ON: drain-lane crawl rows (catalogTrustPolicy.isCrawlListing: retailer
+//     listings and brand-official / curated `ext:` canonicals) get
+//     `crawl_fresh` = true/false from the newest price read below.
+//
+// 🚨 SET IT ON BOTH SERVICES OR NEITHER, and set the SAME N. With it on one side
+// only, that side writes the fresh listings 'public' and the other re-derives
+// them 'shadow' on its next recompute: rows FLAP on the live serving surface.
+// The rule CATALOG_TRUST_RENDERABLE_GATE documents, unchanged.
+//
+// A FAILED READ FAILS CLOSED, PER BATCH, as in the backend (round 3): the
+// freshness statement and the column probe run isolated (isolatedQuery: a
+// SAVEPOINT on a client in a transaction), and a failed freshness read leaves
+// the input unset for that batch, which then writes the flag-off verdicts. It
+// never throws into the caller's transaction (the retire-demo scripts pass a
+// client inside BEGIN).
+//
+// NO DECAY RECHECK HERE. The backend's trust cron re-derives, every tick, the
+// CRAWL_FRESH rows whose read may age out (and, switched off, every CRAWL_FRESH
+// row), with CATALOG_TRUST_CRAWL_FRESH_RECHECK_LIMIT bounding it. That is a
+// backend-cron-only job and env var; this repo only recomputes on identity
+// events, and does so with exactly the input rule below.
+//
+// Not a separate SELECT column in the product join, deliberately: with the
+// switch off the join text stays byte-identical to main, a database whose
+// catalog_offers lacks price_checked_at is never sent a statement naming it,
+// and the lookup runs only for the drain-lane rows of a batch.
+const CRAWL_FRESH_ENV = 'CATALOG_TRUST_CRAWL_FRESH_ENABLED';
+const CRAWL_FRESH_DAYS_ENV = 'CATALOG_TRUST_CRAWL_FRESH_DAYS';
+
+const CRAWL_FRESH_TRUTHY = new Set(['1', 'true', 'yes', 'on']);
+
+/** Default OFF. The same truthy spelling as the policy's other switches. */
+function crawlFreshEnabled() {
+  return CRAWL_FRESH_TRUTHY.has(String(process.env[CRAWL_FRESH_ENV] ?? '').trim().toLowerCase());
+}
+
+// The decimal spellings Python's float() accepts (digits, one point, an
+// exponent, `_` between digits). Number() alone would also take hex / octal /
+// binary literals ('0x10' -> 16) that the twin rejects, and reject the `_`
+// spellings the twin takes; this keeps the two answering alike. inf / nan
+// spellings are rejected on both sides (Python parses them, then the positivity
+// and finiteness test sends them to the default, as here).
+const PY_FLOAT_DECIMAL = /^[+-]?(?:\d(?:_?\d)*(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\d)*)(?:[eE][+-]?\d(?:_?\d)*)?$/;
+
+// Python's float() also reads any Unicode decimal digit (General_Category Nd:
+// fullwidth '３', Arabic-Indic '٣', mathematical '𝟓', ...) as its ASCII value.
+// Unicode guarantees every Nd digit sits in a contiguous run of whole 0..9
+// blocks, so a digit's value is its offset from the start of its run, mod 10.
+const UNICODE_DECIMAL_DIGIT = /\p{Nd}/u;
+function asciiDigits(text) {
+  let out = '';
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp < 0x80 || !UNICODE_DECIMAL_DIGIT.test(ch)) {
+      out += ch;
+      continue;
+    }
+    let start = cp;
+    while (start > 0 && UNICODE_DECIMAL_DIGIT.test(String.fromCodePoint(start - 1))) start -= 1;
+    out += String((cp - start) % 10);
+  }
+  return out;
+}
+
+/**
+ * N for "crawl-fresh", in days. Unset, unparseable, non-finite or not positive
+ * -> the default (7). Fractions are allowed (0.5 = 12 hours).
+ */
+function crawlFreshDays() {
+  const raw = process.env[CRAWL_FRESH_DAYS_ENV];
+  if (raw == null || !String(raw).trim()) return CRAWL_FRESH_DEFAULT_DAYS;
+  const text = asciiDigits(String(raw).trim());
+  const days = PY_FLOAT_DECIMAL.test(text) ? Number(text.replace(/_/g, '')) : Number.NaN;
+  if (!(days > 0 && days !== Number.POSITIVE_INFINITY)) {
+    logger.warn({
+      event: 'catalog_row_trust_invalid_crawl_fresh_days',
+      env: CRAWL_FRESH_DAYS_ENV,
+      raw,
+      using: CRAWL_FRESH_DEFAULT_DAYS,
+    });
+    return CRAWL_FRESH_DEFAULT_DAYS;
+  }
+  return days;
+}
+
+// NO LINK TEST (round 5). Rounds 1-4 kept only offers with an http(s) link in
+// the class, but not every reader tests the link: this repo's
+// canonicalPdpOwnMoney (readCanonicalOwnMoney and its listing batch) serves the
+// price of an offer on a public row whatever its destination_url. A stale offer
+// with an empty or bare-path link sat outside the class while that reader served
+// its price. So every unsuppressed, priced offer is in the class, and the link
+// is not part of the valid read either: fail closed.
+// An affiliate-feed offer's link is a network tracking URL, not the listing, and
+// the drain never read its price from the storefront: never a valid read.
+// Byte-identical to the backend's CRAWL_OFFER_NOT_AFFILIATE_SQL.
+const CRAWL_OFFER_NOT_AFFILIATE_SQL =
+  "coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'";
+
+// ---- round 4 (2026-10-20): EVERY live offer, fail closed ------------------------
+//
+// Twin of the backend's round-4 block. Trust stays per PRODUCT, and the readers
+// serve every live offer of a product to somebody (a caller that declares no
+// market is shown them all), so the row may go public only when NO offer any
+// reader can show carries a price we cannot vouch for. The input is the row's
+// price-read date: the OLDEST valid read across EVERY live offer, NULL as soon
+// as one of them has none.
+//
+// THE CLASS (crawlOfferClassConjuncts) -- every LIVE offer on the row:
+// unsuppressed and carrying any price a reader may serve, estimated_best_price
+// included (CRAWL_OFFER_CLASS_PRICED_SQL, round 6). Nothing else: any link
+// (round 5), any source_system, any market, any currency, affiliate offers
+// included.
+//
+// A VALID READ of one class offer (CRAWL_OFFER_VALID_READ_SQL), ALL of: written
+// by the drain (source_system catalog_enrichment_agent_v1); in a SERVED market
+// priced in that market's currency; not an affiliate-feed offer; price_checked_at
+// not after the bound now (a future stamp is stale, per offer); the market was
+// DECLARED by the writer (offer_payload.declared_market = catalog_offers.market,
+// since the column is NOT NULL DEFAULT 'US'); not an employee price edit. So ONE
+// live offer that fails any of these makes the row NOT fresh: fail closed.
+//
+// THE ROW IS CRAWL-FRESH when it has at least one class offer, EVERY class offer
+// has a valid read, at least one class offer is not explicitly out of stock, and
+// the oldest of those reads is within N days of the SAME now the statement was
+// bound with. "Every" covers each live variant offer AND `<pk>::canonical`, and
+// an out-of-stock offer needs its valid read like any other.
+//
+// THE SERVED (market, currency) PAIRS ARE A CONSTANT HERE, NOT servedMarkets().
+// The backend renders them at import from its market registry (status 'served')
+// x region_pricing, and commits them as config/crawl_fresh_served_markets.json for
+// this twin to pin; this repo's servedMarkets() is a per-deployment env list
+// (CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET) and would make the two statements
+// differ by environment. tests/catalog_trust_crawl_fresh.node.test.cjs fails when
+// this list differs from tests/fixtures/crawl_fresh_served_markets.backend.json, a
+// verbatim copy of that backend file: the twins must move together.
+const CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS = Object.freeze([
+  Object.freeze(['SG', 'SGD']),
+  Object.freeze(['US', 'USD']),
+]);
+
+const CRAWL_OFFER_SERVED_MARKET_SQL =
+  "(upper(btrim(coalesce(co.market, ''))), upper(btrim(coalesce(co.currency, ''))))" +
+  ' IN (' +
+  [...CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS]
+    .sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : 1) : a[0] < b[0] ? -1 : 1))
+    .map(([m, c]) => `('${m}', '${c}')`)
+    .join(', ') +
+  ')';
+
+// The unavailable vocabulary is offerAvailabilitySql's, itself pinned to the
+// backend's offer_buyability.OFFER_UNAVAILABLE_AVAILABILITIES. Sorted, as the
+// backend renders it. NOTE the one-argument btrim (spaces only), the backend's
+// spelling here -- not offerAvailabilitySql's JS-trim character set.
+// KNOWN GAP, kept byte-identical to the backend (unchanged through its round 4):
+// a tab/newline-padded value ('\tsoldout') and spaced spellings ('out of stock')
+// are not caught. It gates only "at least one class offer is in stock", never
+// freshness: an out-of-stock offer needs its valid read like any other.
+const CRAWL_OFFER_IN_STOCK_SQL =
+  "lower(btrim(coalesce(co.availability, '')))" +
+  ' NOT IN (' +
+  [...OFFER_UNAVAILABLE_AVAILABILITIES].sort().map((a) => `'${a}'`).join(', ') +
+  ')';
+
+// The key the backend's attached-listing lane writes (its PRICE_READ_SOURCE_KEY)
+// and the one source that is not a crawl.
+const CRAWL_PRICE_READ_SOURCE_KEY = 'price_read_source';
+const CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL =
+  `coalesce(co.offer_payload->>'${CRAWL_PRICE_READ_SOURCE_KEY}', '') <> 'employee_edit'`;
+// The key the backend's retailer-ingest drain stamps when its job carried an
+// explicit market (retailer_ingest.pipeline.stamp_declared_market).
+const CRAWL_DECLARED_MARKET_KEY = 'declared_market';
+const CRAWL_OFFER_DECLARED_MARKET_SQL =
+  `upper(btrim(coalesce(co.offer_payload->>'${CRAWL_DECLARED_MARKET_KEY}', '')))` +
+  " = upper(btrim(coalesce(co.market, '')))";
+const CRAWL_OFFER_DRAIN_SOURCE_SQL = `co.source_system = '${CRAWL_SOURCE_SYSTEM}'`;
+// `$2` is the batch's `now` (the backend's `:now`).
+const CRAWL_OFFER_VALID_READ_SQL =
+  `CASE WHEN ${CRAWL_OFFER_DRAIN_SOURCE_SQL}` +
+  ` AND ${CRAWL_OFFER_SERVED_MARKET_SQL}` +
+  ` AND ${CRAWL_OFFER_NOT_AFFILIATE_SQL}` +
+  ' AND co.price_checked_at <= CAST($2 AS timestamptz)' +
+  ` AND ${CRAWL_OFFER_DECLARED_MARKET_SQL}` +
+  ` AND ${CRAWL_OFFER_NOT_EMPLOYEE_EDIT_SQL}` +
+  ' THEN co.price_checked_at END';
+
+// "Priced" for the CLASS (round 6) is ANY price a reader may serve, with
+// estimated_best_price in the middle: several readers price an offer as
+// coalesce(merchant_effective_price, estimated_best_price, list_price), so an
+// ebp-only offer was served while it sat outside the class. Deliberately NOT
+// pricedOfferSql's conjunct, which excludes ebp on purpose (OFFER_PRICE_MISSING
+// must not publish a page on our own estimate) and is pinned to the backend's
+// priced_offer_sql: that gate and this class answer different questions.
+const CRAWL_OFFER_CLASS_PRICED_SQL =
+  'coalesce(co.merchant_effective_price, co.estimated_best_price, co.list_price) > 0';
+
+/**
+ * The class for one row: every unsuppressed offer with any servable price,
+ * whatever its link. `productKeyExpr` is SQL, never a value.
+ */
+function crawlOfferClassConjuncts(productKeyExpr) {
+  return [
+    `co.product_key = ${productKeyExpr}`,
+    'co.suppressed_at IS NULL',
+    CRAWL_OFFER_CLASS_PRICED_SQL,
+  ];
+}
+
+/**
+ * The row's price-read date as the body of a LATERAL: the oldest valid read
+ * across every class offer, or NULL. Binds `$2` (now). Twin of
+ * crawl_row_price_read_lateral_sql (the backend also builds its recheck from
+ * it; this repo has no recheck, see the note above CRAWL_FRESH_ENV).
+ */
+function crawlRowPriceReadLateralSql(productKeyExpr, indent = '   ') {
+  const where = crawlOfferClassConjuncts(productKeyExpr).join(`\n${indent}   AND `);
+  return (
+    `${indent}SELECT CASE WHEN count(*) > 0\n` +
+    `${indent}             AND bool_and((${CRAWL_OFFER_VALID_READ_SQL}) IS NOT NULL)\n` +
+    `${indent}             AND bool_or(${CRAWL_OFFER_IN_STOCK_SQL})\n` +
+    `${indent}            THEN min(${CRAWL_OFFER_VALID_READ_SQL}) END AS row_price_read_at\n` +
+    `${indent}  FROM catalog_offers co\n` +
+    `${indent} WHERE ${where}\n`
+  );
+}
+
+// One indexed probe per key, as a LATERAL over the key list.
+//
+// ONE CLOCK: `$2` is the batch's `now`, bound from JS, and the age is judged in
+// JS (catalogTrustPolicy.isCrawlFresh) against that same value.
+//
+// BYTE-IDENTICAL to the backend's CRAWL_ROW_PRICE_READ_SQL except for the bind
+// tokens: the backend binds SQLAlchemy's `:product_keys` and `:now`, node-pg
+// binds them positionally as `$1` and `$2`.
+// tests/fixtures/crawl_fresh_trust_backend_sql.json holds the backend constant
+// verbatim; the suite pins this string to it with exactly those substitutions.
+const CRAWL_ROW_PRICE_READ_SQL =
+  'SELECT k.product_key, r.row_price_read_at\n' +
+  '  FROM unnest(CAST($1 AS text[])) AS k(product_key)\n' +
+  ' CROSS JOIN LATERAL (\n' +
+  crawlRowPriceReadLateralSql('k.product_key') +
+  ' ) r\n' +
+  ' WHERE r.row_price_read_at IS NOT NULL\n';
+
+// Does THIS database's catalog_offers carry price_checked_at? Byte-identical to
+// the backend's external_offer_dual_write.PRICE_CHECK_COLUMN_SQL, the probe its
+// upserter asks before naming the column.
+const PRICE_CHECK_COLUMN_SQL = `
+SELECT EXISTS (
+  SELECT 1 FROM pg_attribute
+  WHERE attrelid = to_regclass('catalog_offers')
+    AND attname = 'price_checked_at'
+    AND attnum > 0
+    AND NOT attisdropped
+) AS present
+`;
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -314,7 +595,9 @@ async function upsertCatalogRowTrust(pool, productKey, now) {
       return false;
     }
     const activeQuarantines = quarantinesRes.rows;
-    const inputs = rowToPolicyInputs(row, activeQuarantines, now || new Date());
+    const clock = now || new Date();
+    const crawlFresh = await crawlFreshByKey(pool, [row], clock);
+    const inputs = rowToPolicyInputs(row, activeQuarantines, clock, { crawlFresh });
     const trust = deriveTrust(inputs);
     await pool.query(UPSERT_SQL, trustToParams(trust));
     return true;
@@ -343,10 +626,11 @@ async function upsertCatalogRowTrustMany(pool, productKeys, now, limit = 5000) {
     ]);
     const activeQuarantines = quarantinesRes.rows;
     const clock = now || new Date();
+    const crawlFresh = await crawlFreshByKey(pool, joinedRes.rows, clock);
     let wrote = 0;
     for (const row of joinedRes.rows) {
       try {
-        const inputs = rowToPolicyInputs(row, activeQuarantines, clock);
+        const inputs = rowToPolicyInputs(row, activeQuarantines, clock, { crawlFresh });
         const trust = deriveTrust(inputs);
         await pool.query(UPSERT_SQL, trustToParams(trust));
         wrote += 1;
@@ -373,8 +657,11 @@ async function upsertCatalogRowTrustMany(pool, productKeys, now, limit = 5000) {
 // Internals
 // ---------------------------------------------------------------------------
 
-function rowToPolicyInputs(row, activeQuarantines, now) {
-  return {
+// `crawlFresh` is crawlFreshByKey's answer for the batch. null (the switch off,
+// or no price_checked_at column) and a key absent from it both leave
+// `crawl_fresh` UNSET, so the object is exactly what main built.
+function rowToPolicyInputs(row, activeQuarantines, now, { crawlFresh = null } = {}) {
+  const inputs = {
     subject_type: 'product',
     subject_key: row.product_key,
     product: {
@@ -451,6 +738,138 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
     active_quarantines: activeQuarantines,
     now,
   };
+  if (crawlFresh != null && Object.prototype.hasOwnProperty.call(crawlFresh, row.product_key)) {
+    inputs.crawl_fresh = Boolean(crawlFresh[row.product_key]);
+  }
+  return inputs;
+}
+
+/**
+ * `{ [product_key]: crawl-fresh? }` for the drain-lane crawl rows among `rows`,
+ * or null when the input must not be supplied at all.
+ *
+ * null (-> every row byte-identical to main) when the switch is off, and when
+ * this database's catalog_offers has no price_checked_at yet (asked first, so
+ * no statement naming a missing column is ever sent -- on Postgres a failed
+ * statement would abort the caller's transaction). Rows that are not drain-lane
+ * crawl rows never appear in the map. A listing with no qualifying offer maps
+ * to false: never read = not fresh = today's gates. A failure of the freshness
+ * statement itself propagates to the caller's log-and-swallow, as in the twin.
+ */
+async function crawlFreshByKey(pool, rows, now) {
+  if (!crawlFreshEnabled()) return null;
+  const keys = Array.from(
+    new Set(
+      (rows || [])
+        .filter((r) => isCrawlListing({ product_key: r?.product_key, source_system: r?.source_system }))
+        .map((r) => String(r.product_key)),
+    ),
+  ).sort();
+  if (!keys.length) return {};
+  if (!(await priceCheckColumnPresent(pool))) return null;
+  const clock = now instanceof Date ? now : new Date();
+  const maxAgeDays = crawlFreshDays();
+  let res;
+  try {
+    res = await isolatedQuery(pool, CRAWL_ROW_PRICE_READ_SQL, [keys, clock]);
+  } catch (err) {
+    // FAIL CLOSED, PER BATCH (as the backend): the input stays unset for every
+    // key of this batch, so each row gets the flag-off verdict and the batch is
+    // still written.
+    logger.error({
+      event: 'catalog_row_trust_crawl_fresh_read_failed',
+      keys: keys.length,
+      err: err && err.message,
+    });
+    return null;
+  }
+  const reads = new Map(
+    ((res && res.rows) || []).map((r) => [String(r.product_key), r.row_price_read_at]),
+  );
+  const out = {};
+  for (const pk of keys) {
+    out[pk] = isCrawlFresh(reads.get(pk), { now: clock, maxAgeDays });
+  }
+  return out;
+}
+
+const CRAWL_FRESH_SAVEPOINT = 'catalog_row_trust_crawl_fresh';
+
+/**
+ * Run one of the CRAWL_FRESH reads so that its failure can never abort the
+ * CALLER'S transaction. Callers hand this module a pg Pool (each query its own
+ * autocommit statement: a failure is already isolated) or a single client that
+ * may be inside BEGIN (the retire-demo scripts do). On a client, the read runs
+ * under a SAVEPOINT and a failure rolls back to it, leaving the caller's
+ * transaction usable. A client NOT in a transaction refuses SAVEPOINT with
+ * 25P01 (no_active_sql_transaction), which changes nothing; the read then runs
+ * plainly, isolated by autocommit. Errors from the read itself still throw, to
+ * the caller in this module that decides what a failure means.
+ */
+async function isolatedQuery(pool, sql, params) {
+  if (pool instanceof Pool) return pool.query(sql, params);
+  try {
+    await pool.query(`SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`);
+  } catch (err) {
+    if (err && err.code === '25P01') return pool.query(sql, params);
+    throw err;
+  }
+  try {
+    const res = await pool.query(sql, params);
+    await pool.query(`RELEASE SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`);
+    return res;
+  } catch (err) {
+    await pool.query(`ROLLBACK TO SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`).catch(() => {});
+    await pool.query(`RELEASE SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`).catch(() => {});
+    throw err;
+  }
+}
+
+/**
+ * The effective switch and N, logged once by each entry point that can write
+ * catalog_row_trust (the gateway at boot, the identity jobs at start), so a
+ * flip can be verified from logs on every writer. Returns what it logged.
+ * `stream` (e.g. process.stderr) writes one JSON line there instead of pino.
+ *
+ * Same event name and fields as the backend's log_crawl_fresh_config line
+ * (`catalog_row_trust_crawl_fresh_config component=... enabled=... days=...
+ * served_market_currency=SG:SGD,US:USD`), minus `recheck_limit`: the decay
+ * recheck is backend-only. `raw_enabled` / `raw_days` are extra.
+ */
+function logCrawlFreshConfig(component, { stream = null } = {}) {
+  const config = {
+    event: 'catalog_row_trust_crawl_fresh_config',
+    component: String(component || 'unknown'),
+    enabled: crawlFreshEnabled(),
+    days: crawlFreshDays(),
+    served_market_currency: CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS.map(([m, c]) => `${m}:${c}`).join(','),
+    raw_enabled: process.env[CRAWL_FRESH_ENV] ?? null,
+    raw_days: process.env[CRAWL_FRESH_DAYS_ENV] ?? null,
+  };
+  if (stream && typeof stream.write === 'function') {
+    // Scripts whose stdout is a JSON report pass process.stderr, so the line
+    // never lands inside that report.
+    stream.write(`${JSON.stringify(config)}\n`);
+  } else {
+    // warn, not info: a deployment running LOG_LEVEL=warn must still show it.
+    logger.warn(config);
+  }
+  return config;
+}
+
+/**
+ * Does THIS database's catalog_offers carry price_checked_at? Asked of the
+ * caller's own pool/client. Never throws: a failed read is "absent". Not
+ * cached: one catalog lookup per batch, and only while the switch is on.
+ */
+async function priceCheckColumnPresent(pool) {
+  try {
+    const res = await isolatedQuery(pool, PRICE_CHECK_COLUMN_SQL);
+    const row = res && res.rows ? res.rows[0] : null;
+    return Boolean(row != null && row.present);
+  } catch (_err) {
+    return false;
+  }
 }
 
 function trustToParams(trust) {
@@ -542,6 +961,22 @@ module.exports = {
   // Exported for tests: the compiled join must keep carrying the c1.v0.5
   // seed-route EXISTS. Swapping it for TRUE was an invisible mutation.
   PRODUCT_JOIN_SQL,
+  CRAWL_FRESH_ENV,
+  CRAWL_FRESH_DAYS_ENV,
+  CRAWL_ROW_PRICE_READ_SQL,
+  CRAWL_OFFER_IN_STOCK_SQL,
+  CRAWL_OFFER_SERVED_MARKET_SQL,
+  CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS,
+  CRAWL_OFFER_VALID_READ_SQL,
+  CRAWL_PRICE_READ_SOURCE_KEY,
+  PRICE_CHECK_COLUMN_SQL,
+  crawlFreshByKey,
+  crawlOfferClassConjuncts,
+  crawlRowPriceReadLateralSql,
+  isolatedQuery,
+  logCrawlFreshConfig,
+  crawlFreshDays,
+  crawlFreshEnabled,
   rowToPolicyInputs,
   upsertCatalogRowTrust,
   upsertCatalogRowTrustMany,

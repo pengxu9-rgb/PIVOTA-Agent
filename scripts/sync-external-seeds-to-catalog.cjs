@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { closePool, getPool, query, withClient } = require('../src/db');
-const { upsertCatalogRowTrustMany } = require('../src/services/catalogRowTrustUpserter');
+const { logCrawlFreshConfig, upsertCatalogRowTrustMany } = require('../src/services/catalogRowTrustUpserter');
 const {
   buildAgentSafeCommerceFacts,
   readCommerceFactsV1,
@@ -2666,6 +2666,10 @@ async function run() {
 }
 
 if (require.main === module) {
+  // CRAWL_FRESH: this script re-derives catalog_row_trust (upsertCatalogRowTrustMany),
+  // so it logs the switch it runs with -- the flip must be the same on every writer.
+  // stderr: stdout is the JSON report.
+  logCrawlFreshConfig('sync-external-seeds-to-catalog', { stream: process.stderr });
   run()
     .catch((err) => {
       process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
