@@ -147,6 +147,18 @@ const POLICY_VERSION = 'c1.v0.9';
 //     exist to verify scraped third-party content) don't apply. Emitted for
 //     `product.merchant_id !== 'external_seed'` when identity is missing or
 //     low-info.
+//   CRAWL_FRESH — 2026-10-20. A drain-lane storefront crawl row (see
+//     isCrawlListing: retailer listings AND brand-official / curated rows)
+//     whose listing price was re-read within the freshness window, so the
+//     identity-COVERAGE gates (IDENTITY_CONFIDENCE_NULL,
+//     IDENTITY_LIVE_READ_DISABLED, the silent identity-'unknown' shadow) did
+//     not shadow it. Emitted ONLY when the exemption actually suppressed one of
+//     those gates, so a row that was public on its own identity keeps
+//     byte-identical reason codes. It never suppresses
+//     IDENTITY_REVIEW_REQUIRED_LIVE_READ, IDENTITY_CONFLICT,
+//     NON_CANONICAL_DUPLICATE or any blocked cause. See the `crawl_fresh` input
+//     in deriveTrust for the input contract and the reason it carries no flag
+//     of its own. Twin of pivota-backend services/catalog_trust_policy.py.
 //
 // Blocked (no public surface):
 //   TEST_MERCHANT_EXCLUDED           — 2026-07-27. merchant_id is a known rig
@@ -222,6 +234,7 @@ const REASON_CODES = Object.freeze({
   IDENTITY_CONFIDENCE_NULL: 'IDENTITY_CONFIDENCE_NULL',
   IDENTITY_LIVE_READ_DISABLED: 'IDENTITY_LIVE_READ_DISABLED',
   IDENTITY_NOT_APPLICABLE_FIRST_PARTY: 'IDENTITY_NOT_APPLICABLE_FIRST_PARTY',
+  CRAWL_FRESH: 'CRAWL_FRESH',
   FRESHNESS_UNVERIFIED: 'FRESHNESS_UNVERIFIED',
 
   SOURCE_QUARANTINED: 'SOURCE_QUARANTINED',
@@ -289,6 +302,84 @@ function renderableGateEnabled() {
 const FRESH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const STALE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+// ---- Drain-lane crawl rows (CRAWL_FRESH) -----------------------------------
+//
+// A drain-lane crawl row is a catalog row the storefront-crawl writer built.
+// Both conjuncts are exact row facts the upserter's join already selects:
+//   * source_system is that writer, `catalog_enrichment_agent_v1`;
+//   * product_key starts with `ext:` — the writer's key space. It covers the
+//     retailer listings (`ext:retailer:<digest of the listing URL>`) AND the
+//     brand-official / curated canonicals (`ext:<slug>::<digest>`), which are
+//     external-seed content but not observed sellers, so the source tiers in
+//     deriveServingDecision never exempted them either.
+// The predicate alone grants nothing: CRAWL_FRESH also needs a recent price
+// READ on one of the row's own live offers (catalog_offers.price_checked_at,
+// stamped only by a writer that read the listing page), which is what makes the
+// wide key space safe.
+// Twin: pivota-backend services/catalog_trust_policy.py spells both constants
+// and the predicate byte-identically (CRAWL_LISTING_KEY_PREFIX,
+// CRAWL_SOURCE_SYSTEM, is_crawl_listing).
+const CRAWL_LISTING_KEY_PREFIX = 'ext:';
+const CRAWL_SOURCE_SYSTEM = 'catalog_enrichment_agent_v1';
+// Default N for "crawl-fresh": the listing's price was read within the last N
+// days. The upserter resolves the effective N (env
+// CATALOG_TRUST_CRAWL_FRESH_DAYS); the policy only ever sees the resulting
+// boolean.
+const CRAWL_FRESH_DEFAULT_DAYS = 7;
+
+/**
+ * Is this catalog row a drain-lane storefront crawl row (retailer listing,
+ * brand-official or curated)? Exact, case-sensitive, no trimming.
+ */
+function isCrawlListing(product) {
+  if (product == null) return false;
+  const productKey = String(product.product_key || '');
+  const sourceSystem = String(product.source_system || '');
+  return productKey.startsWith(CRAWL_LISTING_KEY_PREFIX) && sourceSystem === CRAWL_SOURCE_SYSTEM;
+}
+
+/**
+ * Was the listing's price read within `maxAgeDays` of `now`?
+ *
+ * `lastPriceReadAt` is the newest catalog_offers.price_checked_at among the
+ * row's live drain-lane offers (the upserter's CRAWL_LAST_PRICE_READ_SQL).
+ * NULL / unparseable = never read = not fresh. The bound is INCLUSIVE (age == N
+ * days is fresh), and a stamp ahead of `now` (clock skew between the DB and
+ * this process) counts as fresh: it was read, recently. Twin of
+ * is_crawl_fresh: the same comparison, in seconds, inclusive.
+ */
+function isCrawlFresh(lastPriceReadAt, { now, maxAgeDays } = {}) {
+  const ts = toDateOrNull(lastPriceReadAt);
+  if (ts == null) return false;
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) return false;
+  return (now.getTime() - ts.getTime()) / 1000 <= Number(maxAgeDays) * 24 * 60 * 60;
+}
+
+// The Python twin's _to_datetime: a Date as is; a number as epoch MILLISECONDS;
+// an ISO-8601 string with a trailing Z, an offset, or NO zone (read as UTC, as
+// Python reads a naive datetime — JS Date.parse would read it as LOCAL time);
+// anything else null.
+const ISO_ZONE_SUFFIX = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+function toDateOrNull(value) {
+  if (value == null) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === 'string') {
+    let s = value.trim();
+    if (!s) return null;
+    // A date-and-time with no zone designator is UTC (Python: naive -> UTC).
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s) && !ISO_ZONE_SUFFIX.test(s)) {
+      s = `${s.replace(' ', 'T')}Z`;
+    }
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 // ---- Public API ------------------------------------------------------------
 
 /**
@@ -310,6 +401,10 @@ const STALE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
  *   the caller did not compute it.
  *   Absence NEVER blocks, so producers not yet taught to supply it keep their
  *   c1.v0.4 output exactly.
+ * @param {boolean} [inputs.crawl_fresh] 2026-10-20 tri-state, only an explicit
+ *   true acts: the drain-lane crawl row's listing price was read within the
+ *   window. Supplied by the upserter only when CATALOG_TRUST_CRAWL_FRESH_ENABLED
+ *   is on; false and absent are today's decision.
  * @param {Array}  [inputs.active_quarantines] active catalog_source_quarantine rows
  * @param {Date}   [inputs.now]          injectable clock (defaults to new Date())
  *
@@ -345,6 +440,23 @@ function deriveTrust(inputs) {
   // false = a sibling holds the canonical URL, null = no election exists.
   const rowIsElectedCanonical =
     inputs.row_is_elected_canonical == null ? null : Boolean(inputs.row_is_elected_canonical);
+  // CRAWL_FRESH input (2026-10-20). Tri-state like the three above, but only an
+  // explicit true ACTS: true = this drain-lane crawl row's listing price was
+  // read within the window; false = it was not (stale or never); null/absent =
+  // not computed. false and null are deliberately the SAME decision -- today's
+  // gates -- so a stale listing falls back to shadow on its next recompute and
+  // nothing is sticky.
+  //
+  // NO FLAG IS READ HERE, on purpose. catalog_row_trust is shared state written
+  // by this service AND the pivota-backend twin, and an env read inside the pure
+  // policy is the per-service split CATALOG_TRUST_RENDERABLE_GATE warns about.
+  // The switch (CATALOG_TRUST_CRAWL_FRESH_ENABLED) lives in the upserter that
+  // BUILDS inputs: switched off, the upserter never supplies this key, so every
+  // decision, every reason code and POLICY_VERSION are byte-identical to
+  // c1.v0.9 -- which is also why the version does not bump (see the versioning
+  // note at the top: no row can observe the change until the switch flips, and
+  // it must flip on BOTH services in one operation).
+  const crawlFresh = inputs.crawl_fresh == null ? null : Boolean(inputs.crawl_fresh);
   const activeQuarantines = Array.isArray(inputs.active_quarantines)
     ? inputs.active_quarantines
     : [];
@@ -381,6 +493,7 @@ function deriveTrust(inputs) {
     pdpRouteResolvable,
     rowHasPricedOffer,
     rowIsElectedCanonical,
+    crawlFresh,
     reasons,
   });
 
@@ -640,6 +753,7 @@ function deriveServingDecision({
   pdpRouteResolvable = null,
   rowHasPricedOffer = null,
   rowIsElectedCanonical = null,
+  crawlFresh = null,
   reasons,
 }) {
   // Offer-specific block: suppressed offers never surface.
@@ -814,8 +928,27 @@ function deriveServingDecision({
   // in the Python twin only; the two disagreed live until c1.v0.5.
   const _seedKind = product ? String(product.seed_kind ?? '').trim().toLowerCase() : '';
   const isObservedSellerExempt = isObservedSeller && _seedKind !== 'cross';
-  const isIdentityCoverageExempt =
+  const isSourceCoverageExempt =
     !!product && (!isExternalSeedContent || isObservedSellerExempt);
+  // CRAWL_FRESH (2026-10-20): a drain-lane crawl row (retailer listing or
+  // brand-official / curated canonical) whose listing price was read within the
+  // window is exempt from the same COVERAGE gates, for as long as it stays
+  // fresh. Only for rows the source tiers above do NOT already exempt, so
+  // first-party and observed-seller rows keep their exact reason codes. Three
+  // conjuncts, all required:
+  //   * the explicit true input (the upserter supplies it only when switched
+  //     on; false/null = today's gates);
+  //   * the row really is a drain-lane crawl row (isCrawlListing) — the input is
+  //     never trusted alone, a producer bug must not exempt another lane;
+  //   * its PDP is not KNOWN to be unrenderable (`!== false`: tri-state, null =
+  //     not computed). Independent of CATALOG_TRUST_RENDERABLE_GATE: a coverage
+  //     exemption must never be what newly promotes a page that 500s.
+  const isCrawlFreshExempt =
+    !isSourceCoverageExempt &&
+    crawlFresh === true &&
+    isCrawlListing(product) &&
+    pdpRouteResolvable !== false;
+  const isIdentityCoverageExempt = isSourceCoverageExempt || isCrawlFreshExempt;
 
   if (identityDecision.status === 'review_required') {
     reasons.push(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ);
@@ -825,17 +958,30 @@ function deriveServingDecision({
     (identityDecision.status === 'unknown' || identityDecision.status === 'approved') &&
     identityDecision.confidence == null;
   if (missingConfidence) {
-    if (isIdentityCoverageExempt) {
+    if (isSourceCoverageExempt) {
       reasons.push(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY);
-    } else {
+    } else if (!isCrawlFreshExempt) {
       reasons.push(REASON_CODES.IDENTITY_CONFIDENCE_NULL);
     }
   }
 
-  if (identityDecision.status === 'approved' && identityDecision.liveRead === false) {
+  const liveReadDisabled =
+    identityDecision.status === 'approved' && identityDecision.liveRead === false;
+  if (liveReadDisabled) {
     if (!isIdentityCoverageExempt) {
       reasons.push(REASON_CODES.IDENTITY_LIVE_READ_DISABLED);
     }
+  }
+
+  // The trace code, emitted only where the exemption actually suppressed a
+  // coverage gate. A fresh listing that is public on its own identity
+  // (approved, confidence set, live read on) gets no new code, so switching the
+  // rule on rewrites no row whose decision it does not change.
+  if (
+    isCrawlFreshExempt &&
+    (missingConfidence || liveReadDisabled || identityDecision.status === 'unknown')
+  ) {
+    reasons.push(REASON_CODES.CRAWL_FRESH);
   }
 
   // c1.v0.7: a row that is not its content_key's elected canonical is a
@@ -879,5 +1025,10 @@ module.exports = {
   POLICY_VERSION,
   REASON_CODES,
   VALID_SUBJECT_TYPES,
+  CRAWL_FRESH_DEFAULT_DAYS,
+  CRAWL_LISTING_KEY_PREFIX,
+  CRAWL_SOURCE_SYSTEM,
   deriveTrust,
+  isCrawlFresh,
+  isCrawlListing,
 };

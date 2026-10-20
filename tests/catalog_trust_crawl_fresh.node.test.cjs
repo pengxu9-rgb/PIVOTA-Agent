@@ -1,0 +1,1040 @@
+'use strict';
+
+// CRAWL_FRESH: a drain-lane storefront crawl row (a retailer listing, or a
+// brand-official / curated `ext:` canonical) whose listing price was read
+// recently is exempt from the identity-COVERAGE gates while it stays fresh.
+//
+// NODE TWIN of pivota-backend tests/test_catalog_trust_policy_crawl_fresh.py and
+// tests/test_catalog_row_trust_upserter_crawl_fresh.py. Same cases, same
+// fixtures, same input matrix. The two services write ONE catalog_row_trust
+// table, so a case that answers differently here than there is a row that flaps.
+//
+// The contract pinned here:
+//   * only an explicit `crawl_fresh: true` on a drain-lane crawl row acts; false
+//     and absent are today's decision, byte for byte;
+//   * it removes IDENTITY_CONFIDENCE_NULL, IDENTITY_LIVE_READ_DISABLED and the
+//     silent identity-'unknown' shadow, and records CRAWL_FRESH only where it
+//     removed one of them;
+//   * it never removes review, conflict, non-canonical or any blocked cause, and
+//     never promotes a row whose PDP is known not to render;
+//   * first-party and observed-seller ('self') rows are untouched;
+//   * the switch (CATALOG_TRUST_CRAWL_FRESH_ENABLED, default off) and N
+//     (CATALOG_TRUST_CRAWL_FRESH_DAYS, default 7) live in the upserter, which
+//     with the switch off sends no extra statement and never sets the input;
+//   * the freshness statement is the backend's, byte for byte (one bind token
+//     aside), pinned against a fixture rendered from the backend constant.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const fs = require('node:fs');
+
+const {
+  POLICY_VERSION,
+  REASON_CODES,
+  CRAWL_FRESH_DEFAULT_DAYS,
+  CRAWL_LISTING_KEY_PREFIX,
+  CRAWL_SOURCE_SYSTEM,
+  deriveTrust,
+  isCrawlFresh,
+  isCrawlListing,
+} = require('../src/services/catalogTrustPolicy');
+const { TEST_MERCHANT_IDS } = require('../src/services/testMerchantPolicy');
+const upserter = require('../src/services/catalogRowTrustUpserter');
+
+const NOW = new Date('2026-10-20T12:00:00Z');
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RETAILER_PK = 'ext:retailer:0123456789abcdef0123456789abcdef';
+const OTHER_RETAILER_PK = 'ext:retailer:fedcba9876543210fedcba9876543210';
+const BRAND_PK = 'ext:serum-slug::0123abcd';
+const COVERAGE_CODES = [
+  REASON_CODES.IDENTITY_CONFIDENCE_NULL,
+  REASON_CODES.IDENTITY_LIVE_READ_DISABLED,
+];
+
+function ago(ms) {
+  return new Date(NOW.getTime() - ms);
+}
+
+// Every env var this file touches, restored after each test so no case leaks a
+// switch into the next (and the suite is order-independent).
+const TOUCHED_ENV = [
+  'CATALOG_TRUST_CRAWL_FRESH_ENABLED',
+  'CATALOG_TRUST_CRAWL_FRESH_DAYS',
+  'CATALOG_TRUST_RENDERABLE_GATE',
+  'INDEX_ELIGIBLE_READ',
+];
+let savedEnv = {};
+test.beforeEach(() => {
+  savedEnv = {};
+  for (const k of TOUCHED_ENV) {
+    savedEnv[k] = process.env[k];
+    delete process.env[k];
+  }
+});
+test.afterEach(() => {
+  for (const k of TOUCHED_ENV) {
+    if (savedEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = savedEnv[k];
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Policy fixtures (the backend file's, field for field)
+// ---------------------------------------------------------------------------
+
+function retailerProduct(overrides = {}) {
+  return {
+    product_key: RETAILER_PK,
+    content_key: 'ck_retailer_1',
+    merchant_id: 'merch_obs_0123456789abcdef',
+    platform: 'external_seed',
+    source_system: 'catalog_enrichment_agent_v1',
+    source_ref: 'https://shop.example.com/products/serum',
+    source_product_id: 'serum-slug',
+    source_domain: 'shop.example.com',
+    sync_status: 'live',
+    suppression_reason: null,
+    last_seen_in_sync_at: ago(DAY_MS),
+    // The drain's seeds are tagged 'cross': a retailer is not the brand.
+    seed_kind: 'cross',
+    ...overrides,
+  };
+}
+
+function eligibleIps(overrides = {}) {
+  return {
+    serving_eligible: true,
+    pipeline_stage: 'serving',
+    blocker_code: null,
+    content_quality_score: 0.8,
+    quality_scored_at: ago(DAY_MS),
+    last_extracted_at: ago(DAY_MS),
+    ...overrides,
+  };
+}
+
+function activeSeed(overrides = {}) {
+  return {
+    id: 77,
+    status: 'active',
+    domain: 'shop.example.com',
+    attached_product_key: RETAILER_PK,
+    last_seen_at: ago(DAY_MS),
+    ...overrides,
+  };
+}
+
+function identity(overrides = {}) {
+  return {
+    source_listing_ref: 'seed:77',
+    identity_status: 'approved',
+    identity_confidence: 0.9,
+    live_read_enabled: true,
+    review_required: false,
+    sellable_item_group_id: 'sig_example',
+    ...overrides,
+  };
+}
+
+function inputs(overrides = {}) {
+  return {
+    subject_type: 'product',
+    subject_key: RETAILER_PK,
+    product: retailerProduct(),
+    identity: null,
+    ips: eligibleIps(),
+    external_seed: activeSeed(),
+    pdp_route_resolvable: true,
+    row_has_priced_offer: true,
+    row_is_elected_canonical: null,
+    now: NOW,
+    ...overrides,
+  };
+}
+
+function derive(overrides = {}) {
+  return deriveTrust(inputs(overrides));
+}
+
+function without(obj, ...keys) {
+  const out = { ...obj };
+  for (const k of keys) delete out[k];
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// The exemption itself
+// ---------------------------------------------------------------------------
+
+test('today a retailer listing with no identity is shadow (IDENTITY_CONFIDENCE_NULL)', () => {
+  const out = derive();
+  assert.equal(out.serving_decision, 'shadow');
+  assert.ok(out.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
+  assert.ok(!out.serving_reason_codes.includes(REASON_CODES.CRAWL_FRESH));
+});
+
+test('a fresh listing with no identity goes public with the trace code', () => {
+  const out = derive({ crawl_fresh: true });
+  assert.equal(out.serving_decision, 'public');
+  assert.deepEqual(out.serving_reason_codes, [
+    REASON_CODES.CRAWL_FRESH,
+    REASON_CODES.PUBLIC_PASSTHROUGH,
+  ]);
+  assert.equal(out.identity_status, 'unknown');
+  assert.equal(out.policy_version, POLICY_VERSION);
+});
+
+test('a fresh listing with live_read disabled goes public', () => {
+  const ident = identity({ live_read_enabled: false });
+  assert.deepEqual(derive({ identity: ident }).serving_reason_codes, [
+    REASON_CODES.IDENTITY_LIVE_READ_DISABLED,
+  ]);
+  const out = derive({ identity: ident, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'public');
+  assert.deepEqual(out.serving_reason_codes, [
+    REASON_CODES.CRAWL_FRESH,
+    REASON_CODES.PUBLIC_PASSTHROUGH,
+  ]);
+});
+
+test('a fresh listing approved with a null confidence goes public', () => {
+  const ident = identity({ identity_confidence: null });
+  assert.equal(derive({ identity: ident }).serving_decision, 'shadow');
+  const out = derive({ identity: ident, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'public');
+  assert.ok(out.serving_reason_codes.includes(REASON_CODES.CRAWL_FRESH));
+  for (const c of COVERAGE_CODES) assert.ok(!out.serving_reason_codes.includes(c));
+});
+
+test('a fresh listing with an unknown status and a confidence goes public (the silent shadow)', () => {
+  const ident = identity({ identity_status: 'pending', identity_confidence: 0.4 });
+  const today = derive({ identity: ident });
+  assert.equal(today.serving_decision, 'shadow');
+  for (const c of COVERAGE_CODES) assert.ok(!today.serving_reason_codes.includes(c));
+  const out = derive({ identity: ident, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'public');
+  assert.deepEqual(out.serving_reason_codes, [
+    REASON_CODES.CRAWL_FRESH,
+    REASON_CODES.PUBLIC_PASSTHROUGH,
+  ]);
+});
+
+test('a fresh listing public on its own identity gets no new code (no rewrite)', () => {
+  const ident = identity();
+  assert.deepEqual(derive({ identity: ident, crawl_fresh: true }), derive({ identity: ident }));
+});
+
+test('the trace code is in the vocabulary', () => {
+  assert.equal(REASON_CODES.CRAWL_FRESH, 'CRAWL_FRESH');
+  assert.ok(Object.values(REASON_CODES).includes('CRAWL_FRESH'));
+});
+
+test('POLICY_VERSION does not bump for CRAWL_FRESH', () => {
+  assert.equal(POLICY_VERSION, 'c1.v0.9');
+});
+
+// ---------------------------------------------------------------------------
+// Stale / absent: today's gates, byte for byte
+// ---------------------------------------------------------------------------
+
+for (const value of [false, null, undefined, 0, '']) {
+  test(`stale or absent (${JSON.stringify(value) ?? 'undefined'}) is exactly today`, () => {
+    for (const ident of [null, identity({ live_read_enabled: false }), identity({ identity_confidence: null })]) {
+      assert.deepEqual(derive({ identity: ident, crawl_fresh: value }), derive({ identity: ident }));
+    }
+  });
+}
+
+test('an absent key and an explicit null are the same', () => {
+  assert.deepEqual(deriveTrust(without(inputs(), 'crawl_fresh')), derive({ crawl_fresh: null }));
+});
+
+// ---------------------------------------------------------------------------
+// Never exempted
+// ---------------------------------------------------------------------------
+
+test('review_required still shadows', () => {
+  const ident = identity({ identity_status: 'review_required' });
+  const out = derive({ identity: ident, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'shadow');
+  assert.deepEqual(out.serving_reason_codes, [REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ]);
+  assert.deepEqual(out, derive({ identity: ident }));
+});
+
+test('approved but flagged for review still shadows', () => {
+  const ident = identity({ review_required: true, live_read_enabled: false });
+  const out = derive({ identity: ident, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'shadow');
+  assert.deepEqual(out, derive({ identity: ident }));
+});
+
+test('a force_review_required override still shadows', () => {
+  const override = { id: 'ovr_1', action_type: 'force_review_required', active: true };
+  const out = derive({ override, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'shadow');
+  assert.ok(out.serving_reason_codes.includes(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ));
+});
+
+test('identity conflict still blocks', () => {
+  const ident = identity({ identity_status: 'conflict' });
+  const out = derive({ identity: ident, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'blocked');
+  assert.deepEqual(out.serving_reason_codes, [REASON_CODES.IDENTITY_CONFLICT]);
+  assert.deepEqual(out, derive({ identity: ident }));
+});
+
+test('a non-canonical duplicate still shadows (coverage lifted, duplicate gate not)', () => {
+  const out = derive({ row_is_elected_canonical: false, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'shadow');
+  assert.deepEqual(out.serving_reason_codes, [
+    REASON_CODES.CRAWL_FRESH,
+    REASON_CODES.NON_CANONICAL_DUPLICATE,
+  ]);
+});
+
+test('the elected canonical goes public', () => {
+  assert.equal(derive({ row_is_elected_canonical: true, crawl_fresh: true }).serving_decision, 'public');
+});
+
+const BLOCKED_CAUSES = [
+  [{ product: retailerProduct({ suppression_reason: 'retired' }) }, REASON_CODES.ROW_TOMBSTONED],
+  [{ external_seed: activeSeed({ status: 'disabled' }) }, REASON_CODES.EXTERNAL_SEED_INACTIVE],
+  [{ ips: null }, REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE],
+  [{ ips: eligibleIps({ serving_eligible: false }) }, REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE],
+  [{ product: retailerProduct({ sync_status: 'paused' }) }, REASON_CODES.PUBLISH_STATE_NOT_PUBLIC],
+  [{ row_has_priced_offer: false }, REASON_CODES.OFFER_PRICE_MISSING],
+  [
+    { active_quarantines: [{ state: 'active', match_type: 'domain', match_value: 'shop.example.com' }] },
+    REASON_CODES.SOURCE_QUARANTINED,
+  ],
+];
+for (const [overrides, reason] of BLOCKED_CAUSES) {
+  test(`blocked cause ${reason} (${Object.keys(overrides).join(',')}) still blocks`, () => {
+    const today = derive(overrides);
+    const out = derive({ crawl_fresh: true, ...overrides });
+    assert.equal(out.serving_decision, 'blocked');
+    assert.ok(out.serving_reason_codes.includes(reason));
+    assert.deepEqual(out, today);
+  });
+}
+
+test('a test merchant still blocks', () => {
+  const rig = [...TEST_MERCHANT_IDS].sort()[0];
+  const product = retailerProduct({ merchant_id: rig });
+  const out = derive({ product, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'blocked');
+  assert.equal(out.serving_reason_codes.at(-1), REASON_CODES.TEST_MERCHANT_EXCLUDED);
+  assert.deepEqual(out, derive({ product }));
+});
+
+test('the renderable gate still blocks', () => {
+  process.env.CATALOG_TRUST_RENDERABLE_GATE = '1';
+  const out = derive({ pdp_route_resolvable: false, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'blocked');
+  assert.equal(out.serving_reason_codes.at(-1), REASON_CODES.PDP_ROUTE_UNRESOLVABLE);
+});
+
+test('a known-unrenderable PDP is never promoted, even with the renderable gate off', () => {
+  const out = derive({ pdp_route_resolvable: false, crawl_fresh: true });
+  assert.equal(out.serving_decision, 'shadow');
+  assert.deepEqual(out, derive({ pdp_route_resolvable: false }));
+});
+
+test('an uncomputed renderability does not hold the exemption back', () => {
+  assert.equal(derive({ pdp_route_resolvable: null, crawl_fresh: true }).serving_decision, 'public');
+});
+
+// ---------------------------------------------------------------------------
+// Brand-official / curated drain rows: the same arm, the same code
+// ---------------------------------------------------------------------------
+
+function brandOfficialProduct(overrides = {}) {
+  return retailerProduct({
+    product_key: BRAND_PK,
+    merchant_id: 'merch_brand_0123456789ab',
+    source_domain: 'brand.example.com',
+    seed_kind: 'cross',
+    ...overrides,
+  });
+}
+
+for (const seedKind of ['cross', 'self', null]) {
+  for (const [ident, todayCode] of [
+    [null, REASON_CODES.IDENTITY_CONFIDENCE_NULL],
+    [identity({ live_read_enabled: false }), REASON_CODES.IDENTITY_LIVE_READ_DISABLED],
+  ]) {
+    test(`a fresh brand-official row (seed_kind=${seedKind}, ${todayCode}) goes public with the same code`, () => {
+      const product = brandOfficialProduct({ seed_kind: seedKind });
+      const today = derive({ product, identity: ident });
+      assert.equal(today.serving_decision, 'shadow');
+      assert.ok(today.serving_reason_codes.includes(todayCode));
+      const out = derive({ product, identity: ident, crawl_fresh: true });
+      assert.equal(out.serving_decision, 'public');
+      assert.deepEqual(out.serving_reason_codes, [
+        REASON_CODES.CRAWL_FRESH,
+        REASON_CODES.PUBLIC_PASSTHROUGH,
+      ]);
+    });
+  }
+}
+
+test('a stale brand-official row is today', () => {
+  const product = brandOfficialProduct();
+  assert.deepEqual(derive({ product, crawl_fresh: false }), derive({ product }));
+});
+
+// ---------------------------------------------------------------------------
+// Other lanes untouched, whatever the input says
+// ---------------------------------------------------------------------------
+
+const OTHER_LANES = [
+  // another writer's key space
+  retailerProduct({ product_key: 'prod::external_seed::merch_x::ext_1' }),
+  // retailer key, another writer
+  retailerProduct({ source_system: 'external_product_seeds_mirror_v1' }),
+  retailerProduct({ source_system: null }),
+  // the prefix must be a PREFIX
+  retailerProduct({ product_key: `x${RETAILER_PK}` }),
+  retailerProduct({ product_key: RETAILER_PK.toUpperCase() }),
+];
+OTHER_LANES.forEach((product, i) => {
+  test(`the input alone never exempts another lane (#${i})`, () => {
+    for (const ident of [null, identity({ live_read_enabled: false })]) {
+      assert.deepEqual(
+        derive({ product, identity: ident, crawl_fresh: true }),
+        derive({ product, identity: ident }),
+      );
+    }
+  });
+});
+
+test('first-party rows are unchanged', () => {
+  const product = retailerProduct({
+    product_key: 'pk_first_party_1',
+    merchant_id: 'merch_first_party_seller_1',
+    platform: 'shopify',
+    source_system: 'shopify',
+    seed_kind: null,
+  });
+  for (const ident of [null, identity({ live_read_enabled: false })]) {
+    assert.deepEqual(
+      derive({ product, identity: ident, external_seed: null, crawl_fresh: true }),
+      derive({ product, identity: ident, external_seed: null }),
+    );
+  }
+  assert.ok(
+    derive({ product, external_seed: null, crawl_fresh: true })
+      .serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY),
+  );
+});
+
+for (const seedKind of ['self', null]) {
+  test(`observed-seller rows (seed_kind=${seedKind}) are unchanged even on a retailer key`, () => {
+    const product = retailerProduct({ seed_kind: seedKind });
+    const out = derive({ product, crawl_fresh: true });
+    assert.deepEqual(out, derive({ product }));
+    assert.deepEqual(out.serving_reason_codes, [
+      REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY,
+      REASON_CODES.PUBLIC_PASSTHROUGH,
+    ]);
+  });
+}
+
+test('a missing product is never exempt', () => {
+  const out = deriveTrust({ subject_type: 'product', subject_key: RETAILER_PK, crawl_fresh: true, now: NOW });
+  assert.equal(out.serving_decision, 'shadow');
+});
+
+// ---------------------------------------------------------------------------
+// Byte-identical without the input: the backend's matrix, case for case
+// (6 products x 8 identities x 3 elected x 3 route x 2 priced = 864 cases, the
+// same itertools.product, in the same order, the backend test parametrizes)
+// ---------------------------------------------------------------------------
+
+const MATRIX_IDENTITIES = [
+  null,
+  identity(),
+  identity({ live_read_enabled: false }),
+  identity({ identity_confidence: null }),
+  identity({ identity_status: 'review_required' }),
+  identity({ identity_status: 'conflict' }),
+  identity({ identity_status: 'pending', identity_confidence: 0.3 }),
+  identity({ review_required: true }),
+];
+const MATRIX_PRODUCTS = [
+  retailerProduct(),
+  retailerProduct({ seed_kind: 'self' }),
+  retailerProduct({ product_key: BRAND_PK, merchant_id: 'merch_brand_x' }),
+  retailerProduct({
+    product_key: 'pk_first_party_1', merchant_id: 'merch_fp', platform: 'shopify',
+    source_system: 'shopify', seed_kind: null,
+  }),
+  retailerProduct({
+    product_key: 'ext_4242', merchant_id: 'external_seed',
+    source_system: 'external_product_seeds_mirror_v1', seed_kind: null,
+  }),
+  retailerProduct({ suppression_reason: 'retired' }),
+];
+const TRI = [null, true, false];
+
+function* matrixCases() {
+  for (const product of MATRIX_PRODUCTS) {
+    for (const ident of MATRIX_IDENTITIES) {
+      for (const elected of TRI) {
+        for (const route of TRI) {
+          for (const priced of [true, false]) {
+            yield {
+              product, identity: ident, row_is_elected_canonical: elected,
+              pdp_route_resolvable: route, row_has_priced_offer: priced,
+            };
+          }
+        }
+      }
+    }
+  }
+}
+
+test('without a true input every decision is identical (864-case matrix)', () => {
+  let cases = 0;
+  let moved = 0;
+  for (const base of matrixCases()) {
+    cases += 1;
+    const absent = deriveTrust(without(inputs(base), 'crawl_fresh'));
+    assert.deepEqual(derive({ ...base, crawl_fresh: false }), absent);
+    assert.deepEqual(derive({ ...base, crawl_fresh: null }), absent);
+    const fresh = derive({ ...base, crawl_fresh: true });
+    // With the input on, only the decision/reason codes may move, and only from
+    // shadow to public (or a shadow gaining the trace code).
+    assert.deepEqual(
+      without(fresh, 'serving_decision', 'serving_reason_codes'),
+      without(absent, 'serving_decision', 'serving_reason_codes'),
+    );
+    if (JSON.stringify(fresh) !== JSON.stringify(absent)) {
+      moved += 1;
+      assert.equal(absent.serving_decision, 'shadow');
+      assert.ok(fresh.serving_reason_codes.includes(REASON_CODES.CRAWL_FRESH));
+      assert.ok(['shadow', 'public'].includes(fresh.serving_decision));
+    }
+  }
+  assert.equal(cases, 864);
+  assert.ok(moved > 0, 'the matrix must exercise the exemption at least once');
+});
+
+// Cross-language pin: the backend's derive_trust over the SAME matrix, rendered
+// to a fixture (decision + reason codes, input absent and input true). Any
+// case where this twin answers differently is a row the two services would
+// write differently -- a flap.
+test('the matrix answers exactly as the backend twin does (rendered golden)', () => {
+  const golden = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'fixtures', 'crawl_fresh_trust_matrix.backend.json'), 'utf8'),
+  );
+  assert.equal(golden.cases.length, 864);
+  let i = 0;
+  for (const base of matrixCases()) {
+    const [absentDecision, absentCodes, freshDecision, freshCodes] = golden.cases[i];
+    const absent = deriveTrust(without(inputs(base), 'crawl_fresh'));
+    const fresh = derive({ ...base, crawl_fresh: true });
+    assert.deepEqual(
+      [absent.serving_decision, absent.serving_reason_codes, fresh.serving_decision, fresh.serving_reason_codes],
+      [absentDecision, absentCodes, freshDecision, freshCodes],
+      `matrix case #${i} disagrees with the backend twin`,
+    );
+    i += 1;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The two predicates
+// ---------------------------------------------------------------------------
+
+test('listing predicate constants', () => {
+  assert.equal(CRAWL_LISTING_KEY_PREFIX, 'ext:');
+  assert.equal(CRAWL_SOURCE_SYSTEM, 'catalog_enrichment_agent_v1');
+  assert.equal(CRAWL_FRESH_DEFAULT_DAYS, 7);
+});
+
+test('listing predicate', () => {
+  assert.equal(isCrawlListing(retailerProduct()), true);
+  assert.equal(isCrawlListing(null), false);
+  assert.equal(isCrawlListing(undefined), false);
+  assert.equal(isCrawlListing({}), false);
+  assert.equal(isCrawlListing(retailerProduct({ source_system: ' catalog_enrichment_agent_v1' })), false);
+  assert.equal(isCrawlListing(retailerProduct({ source_system: 'CATALOG_ENRICHMENT_AGENT_V1' })), false);
+  assert.equal(isCrawlListing(retailerProduct({ product_key: 'ext:retailer' })), true);
+  assert.equal(isCrawlListing(retailerProduct({ product_key: BRAND_PK })), true);
+  assert.equal(isCrawlListing(retailerProduct({ product_key: 'ext' })), false);
+  assert.equal(isCrawlListing(retailerProduct({ product_key: 'ext_4242' })), false);
+  assert.equal(isCrawlListing(retailerProduct({ product_key: ' ext:retailer:x' })), false);
+});
+
+const SEC = 1000;
+const HOUR = 60 * 60 * SEC;
+for (const [ageMs, days, fresh] of [
+  [0, 7, true],
+  [7 * DAY_MS, 7, true], // inclusive bound
+  [7 * DAY_MS + SEC, 7, false],
+  [3 * DAY_MS + 23 * HOUR, 4, true],
+  [4 * DAY_MS + SEC, 4, false],
+  [12 * HOUR, 0.5, true],
+  [12 * HOUR + SEC, 0.5, false],
+  [-5 * 60 * SEC, 7, true], // a stamp slightly ahead of `now`
+  [-10 * DAY_MS, 7, true], // ahead by more than N: still a read, still fresh
+]) {
+  test(`freshness window: age ${ageMs}ms, N=${days} -> ${fresh}`, () => {
+    assert.equal(isCrawlFresh(ago(ageMs), { now: NOW, maxAgeDays: days }), fresh);
+  });
+}
+
+test('freshness of nothing is false', () => {
+  assert.equal(isCrawlFresh(null, { now: NOW, maxAgeDays: 7 }), false);
+  assert.equal(isCrawlFresh(undefined, { now: NOW, maxAgeDays: 7 }), false);
+  assert.equal(isCrawlFresh('not a date', { now: NOW, maxAgeDays: 7 }), false);
+  assert.equal(isCrawlFresh('', { now: NOW, maxAgeDays: 7 }), false);
+  assert.equal(isCrawlFresh(NOW, { now: null, maxAgeDays: 7 }), false);
+  assert.equal(isCrawlFresh(new Date('nope'), { now: NOW, maxAgeDays: 7 }), false);
+});
+
+test('freshness reads ISO strings, and a zone-less timestamp as UTC (the twin reads naive as UTC)', () => {
+  assert.equal(isCrawlFresh('2026-10-14T12:00:00Z', { now: NOW, maxAgeDays: 6 }), true);
+  assert.equal(isCrawlFresh('2026-10-14T11:59:59Z', { now: NOW, maxAgeDays: 6 }), false);
+  assert.equal(isCrawlFresh('2026-10-14T12:00:00+00:00', { now: NOW, maxAgeDays: 6 }), true);
+  assert.equal(isCrawlFresh('2026-10-14T12:00:00', { now: NOW, maxAgeDays: 6 }), true);
+  assert.equal(isCrawlFresh('2026-10-14 11:59:59', { now: NOW, maxAgeDays: 6 }), false);
+  assert.equal(isCrawlFresh('2026-10-14T14:00:00+02:00', { now: NOW, maxAgeDays: 6 }), true);
+  // A number is epoch MILLISECONDS, as in the twin.
+  assert.equal(isCrawlFresh(NOW.getTime() - DAY_MS, { now: NOW, maxAgeDays: 1 }), true);
+});
+
+// ---------------------------------------------------------------------------
+// The upserter half: the switch, N, and the input
+// ---------------------------------------------------------------------------
+
+function joinedRow(pk = RETAILER_PK, overrides = {}) {
+  // A drain-written listing as the product join returns it: no identity
+  // listing minted yet (the IDENTITY_CONFIDENCE_NULL case).
+  return {
+    product_key: pk,
+    content_key: `ck_${pk.slice(-6)}`,
+    merchant_id: 'merch_obs_0123456789abcdef',
+    platform: 'external_seed',
+    source_system: 'catalog_enrichment_agent_v1',
+    source_ref: 'https://shop.example.com/products/serum',
+    source_product_id: 'serum-slug',
+    source_domain: 'shop.example.com',
+    sync_status: 'live',
+    suppression_reason: null,
+    last_seen_in_sync_at: ago(DAY_MS),
+    pdp_seed_route_ok: true,
+    serving_eligible: true,
+    pipeline_stage: 'serving',
+    blocker_code: null,
+    content_quality_score: 0.8,
+    quality_scored_at: ago(DAY_MS),
+    last_extracted_at: ago(DAY_MS),
+    pil_source_listing_ref: null,
+    identity_status: null,
+    identity_confidence: null,
+    live_read_enabled: null,
+    review_required: null,
+    sellable_item_group_id: null,
+    product_line_id: null,
+    review_family_id: null,
+    row_has_priced_offer: true,
+    row_is_elected_canonical: null,
+    eps_id: 77,
+    eps_status: 'active',
+    eps_domain: 'shop.example.com',
+    eps_attached_product_key: pk,
+    eps_last_seen_at: NOW,
+    eps_seed_kind: 'cross',
+    ms_merchant_id: null,
+    ms_platform: null,
+    ms_domain: null,
+    ms_status: null,
+    ms_last_sync: null,
+    override_id: null,
+    override_action_type: null,
+    override_active: null,
+    ...overrides,
+  };
+}
+
+function firstPartyRow() {
+  return joinedRow('pk_internal_1', {
+    content_key: 'ck_internal_1',
+    merchant_id: 'merch_first_party_seller_1',
+    platform: 'shopify',
+    source_system: 'shopify',
+    source_ref: 'gid://shopify/Product/1',
+    source_product_id: '1',
+    source_domain: 'store.example.com',
+    pil_source_listing_ref: 'merch_first_party_seller_1:1',
+    identity_status: 'approved',
+    identity_confidence: 0.95,
+    live_read_enabled: true,
+    review_required: false,
+    eps_id: null,
+    eps_status: null,
+    eps_domain: null,
+    eps_attached_product_key: null,
+    eps_last_seen_at: null,
+    eps_seed_kind: null,
+    ms_merchant_id: 'merch_first_party_seller_1',
+    ms_platform: 'shopify',
+    ms_domain: 'store.example.com',
+    ms_status: 'active',
+    ms_last_sync: ago(DAY_MS),
+  });
+}
+
+// The product join, the quarantine list, the column probe and the freshness
+// statement, each recognised by the exact text the real statement carries.
+class CrawlFakePool {
+  constructor({ joined = [], reads = {}, columnPresent = true, probeThrows = false } = {}) {
+    this.joined = joined;
+    this.reads = reads;
+    this.columnPresent = columnPresent;
+    this.probeThrows = probeThrows;
+    this.queries = [];
+  }
+
+  async query(sql, params) {
+    this.queries.push({ sql, params });
+    if (sql === upserter.PRICE_CHECK_COLUMN_SQL) {
+      if (this.probeThrows) throw new Error('no pg_attribute here');
+      return { rows: [{ present: this.columnPresent }] };
+    }
+    if (sql === upserter.CRAWL_LAST_PRICE_READ_SQL) {
+      assert.ok(this.columnPresent, 'the statement naming price_checked_at was sent to a DB without it');
+      return {
+        rows: params[0]
+          .filter((k) => this.reads[k] != null)
+          .map((k) => ({ product_key: k, last_price_read_at: this.reads[k] })),
+      };
+    }
+    if (sql.includes('catalog_source_quarantine')) return { rows: [] };
+    if (sql.includes('ON CONFLICT (subject_type, subject_key)')) return { rowCount: 1 };
+    if (sql.includes('catalog_products cp') && Array.isArray(params?.[0])) {
+      const keys = new Set(params[0]);
+      const limit = Number(params[1]) || Infinity;
+      return {
+        rows: this.joined
+          .filter((r) => keys.has(r.product_key))
+          .sort((a, b) => (a.product_key < b.product_key ? -1 : 1))
+          .slice(0, limit),
+      };
+    }
+    if (sql.includes('catalog_products cp') && params?.length === 1) {
+      const row = this.joined.find((r) => r.product_key === params[0]);
+      return { rows: row ? [row] : [] };
+    }
+    return { rows: [], rowCount: 0 };
+  }
+
+  sent(sql) {
+    return this.queries.filter((q) => q.sql === sql).map((q) => q.params);
+  }
+
+  written() {
+    const out = {};
+    for (const q of this.queries) {
+      if (q.sql.includes('ON CONFLICT (subject_type, subject_key)')) {
+        out[q.params[1]] = { serving_decision: q.params[17], serving_reason_codes: q.params[18] };
+      }
+    }
+    return out;
+  }
+}
+
+function switchOn(days) {
+  process.env.CATALOG_TRUST_CRAWL_FRESH_ENABLED = '1';
+  if (days != null) process.env.CATALOG_TRUST_CRAWL_FRESH_DAYS = String(days);
+}
+
+async function writeOne(pool, pk = RETAILER_PK) {
+  assert.equal(await upserter.upsertCatalogRowTrust(pool, pk, NOW), true);
+  return pool.written()[pk];
+}
+
+test('env names match the backend', () => {
+  assert.equal(upserter.CRAWL_FRESH_ENV, 'CATALOG_TRUST_CRAWL_FRESH_ENABLED');
+  assert.equal(upserter.CRAWL_FRESH_DAYS_ENV, 'CATALOG_TRUST_CRAWL_FRESH_DAYS');
+});
+
+// ---- switch OFF: byte-identical to main ------------------------------------
+
+test('off: no extra statement, and today\'s decision is written', async () => {
+  const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: NOW } });
+  const written = await writeOne(pool);
+  assert.equal(written.serving_decision, 'shadow');
+  assert.deepEqual(written.serving_reason_codes, [REASON_CODES.IDENTITY_CONFIDENCE_NULL]);
+  assert.deepEqual(pool.sent(upserter.PRICE_CHECK_COLUMN_SQL), []);
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+});
+
+for (const value of ['', '0', 'false', 'off', 'no', 'enabled', '2']) {
+  test(`only the truthy spellings switch it on (${JSON.stringify(value)} is off)`, () => {
+    process.env.CATALOG_TRUST_CRAWL_FRESH_ENABLED = value;
+    assert.equal(upserter.crawlFreshEnabled(), false);
+  });
+}
+
+for (const value of ['1', 'true', 'TRUE', ' yes ', 'on']) {
+  test(`truthy spelling ${JSON.stringify(value)} is on`, () => {
+    process.env.CATALOG_TRUST_CRAWL_FRESH_ENABLED = value;
+    assert.equal(upserter.crawlFreshEnabled(), true);
+  });
+}
+
+test('off leaves the inputs object exactly as main built it', () => {
+  const row = joinedRow();
+  const built = upserter.rowToPolicyInputs(row, [], NOW);
+  assert.ok(!('crawl_fresh' in built));
+  assert.deepEqual(upserter.rowToPolicyInputs(row, [], NOW, { crawlFresh: null }), built);
+  // A key the map does not carry (a non-drain row) leaves it unset too.
+  assert.deepEqual(upserter.rowToPolicyInputs(row, [], NOW, { crawlFresh: { other: true } }), built);
+  assert.equal(upserter.rowToPolicyInputs(row, [], NOW, { crawlFresh: { [RETAILER_PK]: true } }).crawl_fresh, true);
+});
+
+test('the backfill driver builds the same input the same way', () => {
+  const backfill = require('../scripts/backfill-catalog-row-trust.cjs');
+  const row = joinedRow();
+  for (const crawlFresh of [null, {}, { other: true }, { [RETAILER_PK]: true }, { [RETAILER_PK]: false }]) {
+    assert.deepEqual(
+      backfill.rowToPolicyInputs(row, [], NOW, { crawlFresh }),
+      upserter.rowToPolicyInputs(row, [], NOW, { crawlFresh }),
+    );
+  }
+  assert.deepEqual(backfill.rowToPolicyInputs(row, [], NOW), upserter.rowToPolicyInputs(row, [], NOW));
+});
+
+// ---- switch ON -------------------------------------------------------------
+
+test('on: a fresh listing is written public with the trace code', async () => {
+  switchOn();
+  const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: ago(2 * DAY_MS) } });
+  const written = await writeOne(pool);
+  assert.equal(written.serving_decision, 'public');
+  assert.deepEqual(written.serving_reason_codes, [
+    REASON_CODES.CRAWL_FRESH,
+    REASON_CODES.PUBLIC_PASSTHROUGH,
+  ]);
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [[[RETAILER_PK]]]);
+});
+
+test('on: a stale listing is today\'s decision', async () => {
+  const off = await writeOne(new CrawlFakePool({ joined: [joinedRow()] }));
+  switchOn();
+  const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: ago(8 * DAY_MS) } });
+  assert.deepEqual(await writeOne(pool), off);
+});
+
+test('on: a listing with no qualifying read is today\'s decision', async () => {
+  const off = await writeOne(new CrawlFakePool({ joined: [joinedRow()] }));
+  switchOn();
+  assert.deepEqual(await writeOne(new CrawlFakePool({ joined: [joinedRow()], reads: {} })), off);
+});
+
+test('on: without the price_checked_at column nothing names it and nothing moves', async () => {
+  const off = await writeOne(new CrawlFakePool({ joined: [joinedRow()] }));
+  switchOn();
+  const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: NOW }, columnPresent: false });
+  assert.deepEqual(await writeOne(pool), off);
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+});
+
+test('on: a failed column probe reads as absent', async () => {
+  switchOn();
+  const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: NOW }, probeThrows: true });
+  const written = await writeOne(pool);
+  assert.equal(written.serving_decision, 'shadow');
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+});
+
+test('on: a batch with no drain-lane row sends nothing extra', async () => {
+  switchOn();
+  const pool = new CrawlFakePool({ joined: [firstPartyRow()] });
+  await writeOne(pool, 'pk_internal_1');
+  assert.deepEqual(pool.sent(upserter.PRICE_CHECK_COLUMN_SQL), []);
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+});
+
+test('on: a fresh brand-official row is written public with the same code', async () => {
+  switchOn();
+  const row = joinedRow(BRAND_PK, {
+    merchant_id: 'merch_brand_0123456789ab',
+    identity_status: 'approved',
+    identity_confidence: 0.9,
+    live_read_enabled: false,
+    review_required: false,
+    pil_source_listing_ref: 'seed:9',
+  });
+  const pool = new CrawlFakePool({ joined: [row], reads: { [BRAND_PK]: ago(DAY_MS) } });
+  const written = await writeOne(pool, BRAND_PK);
+  assert.equal(written.serving_decision, 'public');
+  assert.deepEqual(written.serving_reason_codes, [
+    REASON_CODES.CRAWL_FRESH,
+    REASON_CODES.PUBLIC_PASSTHROUGH,
+  ]);
+});
+
+test('on: only drain-lane rows are looked up, and only they get the input', async () => {
+  switchOn();
+  const rows = [
+    joinedRow(),
+    joinedRow(OTHER_RETAILER_PK),
+    firstPartyRow(),
+    // the drain writer's brand-official / curated slug key: also a crawl row
+    joinedRow(BRAND_PK, { merchant_id: 'merch_brand_0123456789ab' }),
+    // an `ext:` key under another writer: not
+    joinedRow('ext:mirror-slug::0123abcd', { source_system: 'external_product_seeds_mirror_v1' }),
+  ];
+  const pool = new CrawlFakePool({
+    joined: rows,
+    reads: { [RETAILER_PK]: NOW, [BRAND_PK]: NOW, 'ext:mirror-slug::0123abcd': NOW },
+  });
+  const fresh = await upserter.crawlFreshByKey(pool, rows, NOW);
+  assert.deepEqual(fresh, { [RETAILER_PK]: true, [OTHER_RETAILER_PK]: false, [BRAND_PK]: true });
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [
+    [[RETAILER_PK, OTHER_RETAILER_PK, BRAND_PK].sort()],
+  ]);
+});
+
+for (const [days, ageDays, decision] of [[3, 4, 'shadow'], [5, 4, 'public'], [4, 4, 'public']]) {
+  test(`on: N comes from the env (N=${days}, age ${ageDays}d -> ${decision})`, async () => {
+    switchOn(days);
+    const pool = new CrawlFakePool({ joined: [joinedRow()], reads: { [RETAILER_PK]: ago(ageDays * DAY_MS) } });
+    assert.equal((await writeOne(pool)).serving_decision, decision);
+  });
+}
+
+for (const raw of ['', '  ', 'x', '0', '-1', 'nan', 'inf', '-inf', 'Infinity', '0x10', '0b1', '1__0', '_1']) {
+  test(`an unusable N (${JSON.stringify(raw)}) falls back to seven`, () => {
+    process.env.CATALOG_TRUST_CRAWL_FRESH_DAYS = raw;
+    assert.equal(upserter.crawlFreshDays(), 7);
+  });
+}
+
+test('N accepts fractions and the other decimal spellings the twin\'s float() accepts', () => {
+  for (const [raw, want] of [[' 0.5 ', 0.5], ['3', 3], ['.5', 0.5], ['2.', 2], ['1e1', 10], ['+4', 4], ['1_0', 10]]) {
+    process.env.CATALOG_TRUST_CRAWL_FRESH_DAYS = raw;
+    assert.equal(upserter.crawlFreshDays(), want, raw);
+  }
+  delete process.env.CATALOG_TRUST_CRAWL_FRESH_DAYS;
+  assert.equal(upserter.crawlFreshDays(), 7);
+});
+
+// ---- every recompute path supplies it --------------------------------------
+
+function pathsPool() {
+  return new CrawlFakePool({
+    joined: [joinedRow(), joinedRow(OTHER_RETAILER_PK)],
+    reads: { [RETAILER_PK]: ago(6 * HOUR), [OTHER_RETAILER_PK]: ago(30 * DAY_MS) },
+  });
+}
+
+test('bulk path (the external-seed sync and the one-off scripts)', async () => {
+  switchOn();
+  const pool = pathsPool();
+  const wrote = await upserter.upsertCatalogRowTrustMany(pool, [RETAILER_PK, OTHER_RETAILER_PK], NOW);
+  assert.equal(wrote, 2);
+  assert.equal(pool.written()[RETAILER_PK].serving_decision, 'public');
+  assert.equal(pool.written()[OTHER_RETAILER_PK].serving_decision, 'shadow');
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [[[RETAILER_PK, OTHER_RETAILER_PK]]]);
+});
+
+test('identity-event path (source listing refs -> bulk) supplies it too', async () => {
+  switchOn();
+  const pool = pathsPool();
+  const origQuery = pool.query.bind(pool);
+  pool.query = async (sql, params) => {
+    if (sql.includes('SELECT DISTINCT cp.product_key') && sql.includes('pdp_identity_listing')) {
+      pool.queries.push({ sql, params });
+      return { rows: [{ product_key: RETAILER_PK }, { product_key: OTHER_RETAILER_PK }] };
+    }
+    return origQuery(sql, params);
+  };
+  const wrote = await upserter.upsertCatalogRowTrustForSourceListingRefs(pool, ['seed:77'], NOW);
+  assert.equal(wrote, 2);
+  assert.equal(pool.written()[RETAILER_PK].serving_decision, 'public');
+  assert.equal(pool.written()[OTHER_RETAILER_PK].serving_decision, 'shadow');
+});
+
+test('a failing freshness statement fails the batch into the log-and-swallow contract', async () => {
+  switchOn();
+  const pool = pathsPool();
+  const origQuery = pool.query.bind(pool);
+  pool.query = async (sql, params) => {
+    if (sql === upserter.CRAWL_LAST_PRICE_READ_SQL) throw new Error('boom');
+    return origQuery(sql, params);
+  };
+  assert.equal(await upserter.upsertCatalogRowTrust(pool, RETAILER_PK, NOW), false);
+  assert.equal(await upserter.upsertCatalogRowTrustMany(pool, [RETAILER_PK], NOW), 0);
+});
+
+test('the read-only serving predictor (repairRetailerOfficialDomain) supplies it too', async () => {
+  const { predictServing, SERVING_SQL } = require('../scripts/repairRetailerOfficialDomain.cjs');
+  const run = async () => {
+    const pool = new CrawlFakePool({
+      joined: [joinedRow(RETAILER_PK, { pil_source_listing_ref: 'seed:77' })],
+      reads: { [RETAILER_PK]: ago(DAY_MS) },
+    });
+    const origQuery = pool.query.bind(pool);
+    pool.query = async (sql, params) => {
+      if (sql === SERVING_SQL) {
+        pool.queries.push({ sql, params });
+        return { rows: [{ product_key: RETAILER_PK, serving_decision: 'shadow' }] };
+      }
+      return origQuery(sql, params);
+    };
+    const plans = [{ kind: 'update', ref: 'seed:77', fields: {} }];
+    const out = await predictServing({ client: pool, plans, now: NOW });
+    const entry = (out.get('seed:77') || [])[0];
+    assert.ok(entry, 'the predictor returned no entry for the planned listing');
+    return entry.before;
+  };
+  assert.equal(await run(), 'shadow');
+  switchOn();
+  assert.equal(await run(), 'public');
+});
+
+// ---------------------------------------------------------------------------
+// The statements, pinned byte for byte against the backend's constants
+// ---------------------------------------------------------------------------
+
+const BACKEND_SQL = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'fixtures', 'crawl_fresh_trust_backend_sql.json'), 'utf8'),
+);
+
+test('the freshness statement is the backend constant, with :product_keys bound as $1 and nothing else changed', () => {
+  const backend = BACKEND_SQL.CRAWL_LAST_PRICE_READ_SQL;
+  assert.equal(backend.split(':product_keys').length - 1, 1, 'the backend constant binds exactly one name');
+  assert.equal(upserter.CRAWL_LAST_PRICE_READ_SQL, backend.replace(':product_keys', '$1'));
+  assert.equal((upserter.CRAWL_LAST_PRICE_READ_SQL.match(/\$\d+/g) || []).join(','), '$1');
+});
+
+test('the freshness statement, spelled out (so a fixture edit cannot move both sides at once)', () => {
+  assert.equal(
+    upserter.CRAWL_LAST_PRICE_READ_SQL,
+    'SELECT k.product_key, r.last_price_read_at\n' +
+      '  FROM unnest(CAST($1 AS text[])) AS k(product_key)\n' +
+      ' CROSS JOIN LATERAL (\n' +
+      '   SELECT max(co.price_checked_at) AS last_price_read_at\n' +
+      '     FROM catalog_offers co\n' +
+      '    WHERE co.product_key = k.product_key\n' +
+      "      AND co.source_system = 'catalog_enrichment_agent_v1'\n" +
+      '      AND co.suppressed_at IS NULL\n' +
+      '      AND coalesce(co.merchant_effective_price, co.list_price) > 0\n' +
+      '      AND co.price_checked_at IS NOT NULL\n' +
+      "      AND btrim(coalesce(co.offer_payload->>'destination_url', co.source_ref)," +
+      " E' \\t\\n\\r\\f\\v') ~ '^https?://\\S+$'\n" +
+      "      AND coalesce(co.offer_payload->>'validated_at', '') NOT LIKE 'affiliate_feed:%'\n" +
+      ' ) r\n' +
+      ' WHERE r.last_price_read_at IS NOT NULL\n',
+  );
+});
+
+test('the column probe is the backend constant, byte for byte', () => {
+  assert.equal(upserter.PRICE_CHECK_COLUMN_SQL, BACKEND_SQL.PRICE_CHECK_COLUMN_SQL);
+});

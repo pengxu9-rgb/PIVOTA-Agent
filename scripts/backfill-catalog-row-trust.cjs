@@ -23,6 +23,11 @@ const {
   seedRouteResolvesSql,
 } = require('../src/services/pdpRenderability');
 const { pricedOfferExistsSql } = require('../src/services/pricedOfferSql');
+// CRAWL_FRESH (2026-10-20): the switch, N and the freshness statement live in
+// the upserter; this driver supplies the input the same way it does, so a run
+// with CATALOG_TRUST_CRAWL_FRESH_ENABLED on writes what the steady-state
+// producers and the pivota-backend twin write. Off (default): no extra query.
+const { crawlFreshByKey } = require('../src/services/catalogRowTrustUpserter');
 
 const BATCH_SIZE = 500;
 
@@ -293,8 +298,10 @@ const UPSERT_SQL = `
      OR catalog_row_trust.identity_status <> EXCLUDED.identity_status
 `;
 
-function rowToPolicyInputs(row, activeQuarantines, now) {
-  return {
+// `crawlFresh`: crawlFreshByKey's answer for the batch (see the upserter).
+// null, or a key absent from it, leaves `crawl_fresh` UNSET.
+function rowToPolicyInputs(row, activeQuarantines, now, { crawlFresh = null } = {}) {
+  const inputs = {
     subject_type: 'product',
     subject_key: row.product_key,
     product: {
@@ -371,6 +378,10 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
     active_quarantines: activeQuarantines,
     now,
   };
+  if (crawlFresh != null && Object.prototype.hasOwnProperty.call(crawlFresh, row.product_key)) {
+    inputs.crawl_fresh = Boolean(crawlFresh[row.product_key]);
+  }
+  return inputs;
 }
 
 function trustRowToParams(trust) {
@@ -427,9 +438,10 @@ async function main() {
     const { rows } = await pool.query(PRODUCT_DRIVER_SQL, [cursor, batchSize]);
     if (rows.length === 0) break;
 
+    const crawlFresh = await crawlFreshByKey(pool, rows, now);
     for (const row of rows) {
       tally.scanned += 1;
-      const trust = deriveTrust(rowToPolicyInputs(row, activeQuarantines, now));
+      const trust = deriveTrust(rowToPolicyInputs(row, activeQuarantines, now, { crawlFresh }));
       tally[trust.serving_decision] += 1;
       for (const r of trust.serving_reason_codes) {
         tally.by_reason[r] = (tally.by_reason[r] || 0) + 1;
