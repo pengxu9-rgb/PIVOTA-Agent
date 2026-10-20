@@ -56,6 +56,10 @@ const resolveKnownStableLookupAlias =
   typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
     ? productGroundingResolverInternals.resolveKnownStableProductRef
     : null;
+const {
+  isBareIngredientRoutingEnabled,
+  isBareStrictIngredientQuery,
+} = require('./strictIngredientQuery');
 const strictFindProductsMultiRuntime = createStrictFindProductsMultiRuntime({
   buildBeautyQueryProfile,
 });
@@ -4937,10 +4941,18 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   ) {
     queryClass = 'exploratory';
   }
+  // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: a query that is ONLY a known ingredient ("retinol",
+  // "hyaluronic acid") keeps its own words. Without this the beauty semantic rewrite below replaced it
+  // with its step-family phrase ("anti aging treatment", "treatment treatment"), which names no
+  // ingredient, so the gateway's strict ingredient detector found none and the query never reached the
+  // ingredient lane: it fell to the safe-empty clarify or the backend text lane instead. Off: unchanged.
+  const preserveBareIngredientQuery =
+    isBareIngredientRoutingEnabled() && isBareStrictIngredientQuery(latestUserQuery);
   const preserveLiteralConstraintQueryExpansion =
-    Boolean(strictQueryOwnerDecision?.strictConstraintQuery) &&
-    semanticContractIsBeautyDiscovery &&
-    ['lookup', 'attribute'].includes(String(queryClass || '').trim().toLowerCase());
+    preserveBareIngredientQuery ||
+    (Boolean(strictQueryOwnerDecision?.strictConstraintQuery) &&
+      semanticContractIsBeautyDiscovery &&
+      ['lookup', 'attribute'].includes(String(queryClass || '').trim().toLowerCase()));
   const ambiguityScorePre = computeAmbiguityScorePre(intent, queryClass);
   const associationPlan = SEARCH_SCENARIO_ASSOCIATION_ENABLED
     ? buildScenarioAssociationPlan({
