@@ -495,60 +495,83 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     expect(routed.adjustedPayload.search.query).toBe(english.adjustedPayload.search.query);
   });
 
-  describe.each([
-    ['off', {}],
-    ['observe', BOTH_OBSERVE],
-    ['on', BOTH_ON],
-  ])('market: the ingredient lane resolves its market exactly as the mainline (%s)', (_mode, env) => {
-    const marketParams = (sql) => sql.flatMap((s) => s.params).filter((p) => typeof p === 'string' && /^[A-Z]{2}$/.test(p));
-    const marketArrayParams = (sql) => sql.flatMap((s) => s.params).filter(Array.isArray).flat();
-    const boundMarkets = (sql) => [...marketParams(sql), ...marketArrayParams(sql).filter((p) => typeof p === 'string' && /^[A-Z]{2}$/.test(p))];
+  // The routing flags never touch the ingredient lane's market: with the routing flags off -- and on --
+  // the lane binds exactly what main binds, on a partitioned mock (US with an SGD seed filed under it,
+  // SG empty, JP, KR with a USD and a currency-less row), buyer-market flag on and off. Values captured
+  // from origin/main on the same mock. Market scoping is a separate change, not part of these flags.
+  describe('ingredient lane market binds are main\'s, whatever the routing flags', () => {
+    const PARTITIONED = [
+      ['us_retinol', 'Retinol 0.3% Night Serum', 'US', 'USD'],
+      ['us_sgd_retinol', 'Retinol Night Serum (SGD seed)', 'US', 'SGD'],
+      ['jp_retinol', 'Tokyo Retinol Essence', 'JP', 'JPY'],
+      ['kr_ampoule', 'Seoul Retinol Ampoule', 'KR', 'USD'],
+      ['kr_toner', 'Busan Retinol Toner', 'KR', null],
+    ].map(([key, title, market, currency]) => ({
+      ...row(key, title, SERUM, { actives: ['retinol'], productType: 'Serum' }),
+      currency,
+      merchant_effective_price: currency ? '24.00' : null,
+      recall_market: market,
+      product_payload: { seed_data: { price_amount: currency ? '24.00' : null, price_currency: currency, availability: 'in stock', active_ingredients: ['retinol'] } },
+      _market: market,
+    }));
+    const codesOf = (params) => params.flatMap((p) => (Array.isArray(p) ? p : [p])).filter((p) => typeof p === 'string' && /^[A-Z]{2,3}$/.test(p));
 
-    test('no market: both lanes bind the deployment\'s served market (never a literal US) and log market_source', async () => {
-      const { invoke } = boot({ ...env, CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'GB' });
-      const ingredient = await invoke('niacinamide serum');
-      const mainline = await invoke('sunscreen');
-      expect(lane(ingredient.resp)).toBe(LANES.INGREDIENT);
-      for (const result of [ingredient, mainline]) {
-        expect(result.log.market_source).toBe('defaulted');
-        expect(result.log.market_bound).toEqual(['GB']);
-        expect(boundMarkets(result.sql)).not.toContain('US');
-      }
-      expect(boundMarkets(ingredient.sql)).toContain('GB');
-    });
+    function bootPartitioned(env) {
+      Object.assign(process.env, env);
+      const statements = [];
+      jest.doMock('../../src/db', () => ({
+        query: async (sql, params) => {
+          const text = String(sql || '');
+          const codes = codesOf(Array.isArray(params) ? params : []);
+          const kind = text.includes(CANONICAL_MARKER) ? 'canonical' : /FROM external_product_seeds/.test(text) ? 'seed' : 'other';
+          statements.push({ kind, codes });
+          if (kind !== 'canonical') return { rows: [] };
+          const markets = codes.filter((c) => c.length === 2);
+          const currencies = codes.filter((c) => c.length === 3);
+          return {
+            rows: PARTITIONED.filter(
+              (r) => (markets.length ? markets.includes(r._market) : true) && (currencies.length ? currencies.includes(r.currency) : true),
+            ),
+          };
+        },
+      }));
+      const app = require('../../src/server');
+      return async (market) => {
+        statements.length = 0;
+        const search = { query: 'retinol serum', page: 1, page_size: 20, ...(market ? { market } : {}) };
+        const resp = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload: { search } });
+        return {
+          lane: lane(resp),
+          rows: titles(resp),
+          canonical: statements.filter((s) => s.kind === 'canonical').map((s) => s.codes),
+          seed: Array.from(new Set(statements.filter((s) => s.kind === 'seed').map((s) => s.codes.join(',')))),
+        };
+      };
+    }
 
-    test('a market no currency is known for: both lanes serve nothing and run no SQL', async () => {
-      const { invoke } = boot(env);
-      const ingredient = await invoke('niacinamide serum', { market: 'en-US' });
-      const mainline = await invoke('sunscreen', { market: 'en-US' });
-      expect(lane(ingredient.resp)).toBe('ingredient_direct_buyer_market_unpriced');
-      expect(lane(mainline.resp)).toBe('beauty_mainline_buyer_market_unpriced');
-      for (const result of [ingredient, mainline]) {
-        expect(result.resp.body.products).toEqual([]);
-        expect(result.sql.filter((s) => s.sql.includes(CANONICAL_MARKER) || /external_product_seeds/.test(s.sql))).toEqual([]);
-      }
-    });
-
-    // The canonical leg's marketId is exactly the mainline's (server.js searchBeautyExternalSeedProductsMainline:
-    // `marketId: buyerCurrency ? null : market`, market = markets[0]); the seed leg is always a superset
-    // of the served list, because a named market's seeds are filed under the served 'US' partition.
+    // [market, canonical binds, rows] -- origin/main, both buyer-flag states (identical there).
+    const MAIN = [
+      [null, [['US', 'US']], ['Retinol 0.3% Night Serum']],
+      ['US', [['US', 'US']], ['Retinol 0.3% Night Serum']],
+      ['SG', [['SG', 'SG']], []],
+      ['JP', [['JP', 'JP']], ['Tokyo Retinol Essence']],
+      ['KR', [['KR', 'KR']], ['Busan Retinol Toner']],
+      ['en-US', [['US', 'US']], []],
+    ];
     test.each([
-      ['off', { FIND_PRODUCTS_BUYER_MARKET: 'off' }, 'SG', ['SG']],
-      ['on', { FIND_PRODUCTS_BUYER_MARKET: 'on' }, null, ['US', 'SG']],
-    ])('market=SG with FIND_PRODUCTS_BUYER_MARKET %s: canonical marketId and seed-leg bind', async (_flag, buyerEnv, canonicalMarket, bound) => {
-      const { invoke } = boot({ ...env, ...buyerEnv });
-      const ingredient = await invoke('niacinamide serum', { market: 'SG' });
-      expect(lane(ingredient.resp)).toBe(LANES.INGREDIENT);
-      expect(ingredient.log.market_bound).toEqual(bound);
-      expect(ingredient.log.market_source).not.toBe('defaulted');
-      const canonical = ingredient.sql.filter((s) => s.sql.includes(CANONICAL_MARKER));
-      const seed = ingredient.sql.filter((s) => /FROM external_product_seeds/.test(s.sql) && !s.sql.includes(CANONICAL_MARKER));
-      expect(canonical.length).toBeGreaterThan(0);
-      expect(seed.length).toBeGreaterThan(0);
-      if (canonicalMarket) expect(boundMarkets(canonical)).toContain(canonicalMarket);
-      else expect(boundMarkets(canonical)).toEqual([]);
-      for (const statement of seed) {
-        expect(boundMarkets([statement])).toEqual(expect.arrayContaining(['US', 'SG']));
+      ['routing off, buyer flag off', { FIND_PRODUCTS_BUYER_MARKET: 'off' }],
+      ['routing off, buyer flag on', { FIND_PRODUCTS_BUYER_MARKET: 'on' }],
+      ['routing observe, buyer flag on', { FIND_PRODUCTS_BUYER_MARKET: 'on', ...BOTH_OBSERVE }],
+      ['routing on, buyer flag on', { FIND_PRODUCTS_BUYER_MARKET: 'on', ...BOTH_ON }],
+      ['routing on, buyer flag off', { FIND_PRODUCTS_BUYER_MARKET: 'off', ...BOTH_ON }],
+    ])('%s', async (_label, env) => {
+      const invokeMarket = bootPartitioned(env);
+      for (const [market, canonical, rows] of MAIN) {
+        const got = await invokeMarket(market);
+        expect([market, got.lane]).toEqual([market, LANES.INGREDIENT]);
+        expect([market, got.canonical]).toEqual([market, canonical]);
+        expect([market, got.seed]).toEqual([market, ['US']]);
+        expect([market, got.rows]).toEqual([market, rows]);
       }
     });
   });

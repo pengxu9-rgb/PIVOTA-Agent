@@ -3082,9 +3082,6 @@ async function prefetchStrictIngredientExternalSeedCandidates({
   search = {},
   strictInvokeDecision = null,
   rawQueryText = null,
-  // The partitions to bind, as the caller resolved them for this request (resolveBuyerMarketScope).
-  // Absent: the deployment's served list, as before.
-  markets = null,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
 
@@ -3195,7 +3192,7 @@ ${seedDataProjection}
       created_at,
       updated_at
   `;
-  const stageMkt = marketBind(Array.isArray(markets) && markets.length > 0 ? markets : servedMarkets(), '$1');
+  const stageMkt = marketBind(servedMarkets(), '$1');
   const buildStageSql = (matchSql) => `
     SELECT
 ${selectColumns}
@@ -48627,51 +48624,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : (safePage - 1) * safeLimit,
         );
         const strictIngredientPrefetchStartedAt = Date.now();
-        // MARKET (applies with every routing flag off). Resolved exactly as the beauty mainline resolves
-        // it (searchBeautyExternalSeedProductsMainline: resolveBuyerMarketScope), never by a literal:
-        // this lane used to bind `marketsForRequest(...)[0] || 'US'` for its canonical leg and the served
-        // list for its seed leg whatever the caller named, so a locale ('en-US') or two markets ('US,SG')
-        // silently bound US. Now: a request naming no market binds the deployment's served markets (the
-        // mainline's rule, servedMarkets(); market_source=defaulted on the completion line), a named
-        // market binds that market, and a market no currency is known for runs no SQL and serves
-        // nothing -- the mainline's answer to the same request.
-        const ingredientMarketScope = resolveBuyerMarketScope(search.market || metadata.market);
-        marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
-          search,
-          metadata,
-          markets: ingredientMarketScope.servingCurrency ? ingredientMarketScope.markets : null,
-          buyerCurrency: ingredientMarketScope.buyerCurrency,
-          servingCurrency: ingredientMarketScope.servingCurrency,
-        });
-        if (!ingredientMarketScope.servingCurrency) {
-          return res.json({
-            status: 'success',
-            success: true,
-            products: [],
-            total: 0,
-            page: safePage,
-            page_size: 0,
-            reply: null,
-            metadata: {
-              ...buildInvokeSearchRailMetadata('authoritative_shopping'),
-              query_source: 'ingredient_direct_buyer_market_unpriced',
-              fetched_at: new Date().toISOString(),
-              search_decision: {
-                final_decision: 'strict_empty',
-                decision_authority: 'buyer_market_currency',
-                decision_locked: true,
-                decision_lock_reason: 'buyer_market_has_no_pricing_currency',
-              },
-              route_health: {
-                primary_path_used: 'ingredient_direct_buyer_market_unpriced',
-                fallback_triggered: false,
-                fallback_reason: null,
-                canonical_path_executed: false,
-                final_returned_count: 0,
-              },
-            },
-          });
-        }
         // Phase 7b ingredient_recall_direct extension: run canonical_chain in
         // parallel with the existing seed-only prefetch. Mirrors the beauty
         // mainline integration around line 12959. Without this, ingredient
@@ -48713,17 +48665,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const canonicalIngredientStartedAt = Date.now();
         // Market-aware filtering on the ingredient path too — same
         // rationale as the other call sites (Round Lab market=KR was
-        // leaking into US users' canonical chain). The canonical leg's
-        // marketId exactly as the mainline passes it to ITS canonical leg
-        // (searchBeautyExternalSeedProductsMainline: `marketId: buyerCurrency
-        // ? null : market`, market = markets[0]): under a buyer currency the
-        // partition comparison is bypassed and the response door's
-        // serving-currency guard scopes the rows; otherwise the lane market.
-        const ingredientPathMarket = ingredientMarketScope.buyerCurrency
-          ? null
-          : String(ingredientMarketScope.markets[0]) /* scalar: marketId only */
-              .trim()
-              .toUpperCase();
+        // leaking into US users' canonical chain). Falls back to env
+        // / 'US' when not set.
+        const ingredientPathMarket =
+          String(marketsForRequest(search.market || metadata.market)[0]) /* scalar: marketId only */
+            .trim()
+            .toUpperCase() || 'US';
         // Bounded from inside: this leg is otherwise the only expensive stage
         // in the handler with no withStageBudget wrapper. STAGE_TIMEOUT flows
         // into the .catch below and surfaces as canonical_error in telemetry;
@@ -48797,11 +48744,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             search,
             strictInvokeDecision: strictFindProductsMultiDecision,
             rawQueryText: rawUserQuery || queryText,
-            // A SUPERSET of the served list, in both FIND_PRODUCTS_BUYER_MARKET states: a named
-            // market's SGD seeds are filed under the served 'US' partition (services/buyerMarket.js),
-            // so binding ['SG'] alone would read the empty partition. The response door's
-            // serving-currency guard keeps only rows priced for the buyer.
-            markets: Array.from(new Set([...servedMarkets(), ...ingredientMarketScope.markets])),
           }),
           canonicalIngredientRowsPromise,
         ]);
