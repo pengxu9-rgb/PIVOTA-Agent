@@ -1,0 +1,26 @@
+# Alert: an MCP tool's p95 latency is above 15s over 10 minutes. 15s is a STARTING threshold, set below the
+# edge's first-body-byte deadline the heartbeat exists for; tune per tool once a week of this metric exists.
+# Needs the mcp_tool_call_latency log metric (distribution). The same query without the comparison is the
+# per-tool p95 dashboard chart.
+#   gcloud alpha monitoring policies create --project=$PROJECT \
+#     --policy-from-file=infra/gcp/monitoring/mcp_tool_outcomes/alert.mcp_tool_latency_p95.yaml
+displayName: MCP tool p95 latency > 15s (10m)
+combiner: OR
+conditions:
+  - displayName: tools/call p95 latency by tool > 15000ms over 10m
+    conditionPrometheusQueryLanguage:
+      query: |
+        histogram_quantile(
+          0.95,
+          sum by (tool, le) (rate(logging_googleapis_com:user_mcp_tool_call_latency_bucket[10m]))
+        ) > 15000
+      duration: 600s
+      evaluationInterval: 60s
+alertStrategy:
+  autoClose: 1800s
+documentation:
+  mimeType: text/markdown
+  content: |
+    An MCP tool's p95 latency is above 15s. Compare `cache_hit` and `heartbeat_committed` on the slow lines:
+    a cold-cache search is the usual tail. Runbook: docs/runbooks/mcp_tool_outcome_monitoring.md
+notificationChannels: []

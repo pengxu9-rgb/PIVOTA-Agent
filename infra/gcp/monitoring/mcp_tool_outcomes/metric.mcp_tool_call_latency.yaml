@@ -1,0 +1,34 @@
+# Log-based distribution: tools/call latency (handler entry to response finish) in ms, by tool / door.
+# Source of the per-tool p95 alert and dashboard.
+# Every metric here counts only the gateway service's lines that carry `outcome` (lines written before the field
+# existed are ignored) and excludes tier=first_party, so Pivota's own CI and probe traffic on the service key
+# cannot move a ratio.
+#   gcloud logging metrics create mcp_tool_call_latency --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_tool_call_latency.yaml
+description: MCP tools/call latency in ms, by tool / door (refused and first-party excluded)
+filter: >-
+  resource.type="cloud_run_revision"
+  AND resource.labels.service_name="gateway"
+  AND jsonPayload.msg="mcp tools/call complete"
+  AND jsonPayload.outcome:*
+  AND jsonPayload.tier!="first_party"
+  AND jsonPayload.outcome!="refused"
+valueExtractor: EXTRACT(jsonPayload.latency_ms)
+bucketOptions:
+  # 10ms .. ~112s (10 * 1.5^23): covers a cache hit and the slowest cold search.
+  exponentialBuckets:
+    numFiniteBuckets: 23
+    growthFactor: 1.5
+    scale: 10
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: ms
+  labels:
+    - key: tool
+      valueType: STRING
+    - key: door
+      valueType: STRING
+labelExtractors:
+  tool: EXTRACT(jsonPayload.tool)
+  door: EXTRACT(jsonPayload.door)

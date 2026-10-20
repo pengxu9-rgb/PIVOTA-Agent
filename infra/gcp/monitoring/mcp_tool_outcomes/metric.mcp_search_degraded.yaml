@@ -1,0 +1,30 @@
+# Log-based counter: search_catalog answers whose upstream envelope said it DEGRADED (status not success,
+# success:false, ok:false, or an error) yet the door answered without a tool error. On the public tier such an
+# answer is usually an empty page with the 'upstream_degraded' note, logged outcome=ok, so neither the error
+# metric nor the zero-result metric attributes it to the lane. Numerator of the degraded-answer alert.
+# Every metric here counts only the gateway service's lines that carry `outcome` (lines written before the field
+# existed are ignored) and excludes tier=first_party, so Pivota's own CI and probe traffic on the service key
+# cannot move a ratio.
+#   gcloud logging metrics create mcp_search_degraded --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_search_degraded.yaml
+description: MCP search_catalog answers the upstream marked degraded, by door / tier
+filter: >-
+  resource.type="cloud_run_revision"
+  AND resource.labels.service_name="gateway"
+  AND jsonPayload.msg="mcp tools/call complete"
+  AND jsonPayload.outcome:*
+  AND jsonPayload.tier!="first_party"
+  AND jsonPayload.tool="search_catalog"
+  AND jsonPayload.upstream_degraded=true
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: door
+      valueType: STRING
+    - key: tier
+      valueType: STRING
+labelExtractors:
+  door: EXTRACT(jsonPayload.door)
+  tier: EXTRACT(jsonPayload.tier)
