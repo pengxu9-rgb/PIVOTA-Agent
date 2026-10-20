@@ -1,19 +1,15 @@
 /**
- * Zero-result fallthrough on the invoke route (FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH).
+ * Zero-result classification on the invoke route (FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH).
  *
- * The ingredient-direct lane answers its own request, and before this flag an empty answer stayed
- * empty. These tests drive the real route with a mocked database and pin:
- *   - off: the lane answers exactly as before, and the completion log gains nothing;
- *   - observe: the same answer, no extra lane, and the decision on the completion log;
- *   - on: a healthy lane that found nothing answers empty (no retry);
- *   - on: a lane that timed out or errored is retried on the beauty mainline inside the remaining
- *     budget, and retry rows that do not pass the ingredient lane's own relevance rules are dropped;
- *   - refusals, merchant scope and strict surfaces are never widened;
- *   - the deadline is never extended (budget skip, capped leg, slow next lane);
- *   - lanes with no next lane answer unchanged.
+ * Measurement only. These tests drive the real route with a mocked database and pin:
+ *   - off (default) and every unsupported value (on, true, 1): the answer and the completion log are
+ *     exactly as before; an unsupported value logs one warning at startup;
+ *   - observe: the same answer as off, no extra database work, and the completion log line names the
+ *     lane, why it was empty and the class (degraded / genuine / policy / unclassified);
+ *   - observe on an ingredient answer WITH rows: whether its canonical leg ran past the cap a future
+ *     retry would need.
  *
- * The decision logic itself is unit-tested in
- * tests/find_products_multi_zero_result_fallthrough.node.test.cjs.
+ * The classifier itself is unit-tested in tests/find_products_multi_zero_result_fallthrough.node.test.cjs.
  */
 
 const nock = require('nock');
@@ -73,21 +69,15 @@ function normalize(value) {
   return out;
 }
 
-const FALLTHROUGH_LOG_KEYS = [
+const LOG_KEYS = [
   'fpm_lane_chain',
-  'fpm_fallthrough',
-  'fpm_fallthrough_used',
   'fpm_empty_reason',
   'fpm_empty_class',
-  'fpm_fallthrough_relevance_dropped',
-  'fpm_fallthrough_skip_reason',
-  'fpm_fallthrough_outcome',
-  'fpm_fallthrough_next_lane',
-  'fpm_fallthrough_budget_ms',
-  'fpm_fallthrough_ms',
+  'fpm_ingredient_leg_ms',
+  'fpm_ingredient_leg_over_proposed_cap',
 ];
 
-describe('find_products_multi zero-result fallthrough', () => {
+describe('find_products_multi zero-result classification', () => {
   let prevEnv;
 
   beforeEach(() => {
@@ -103,9 +93,8 @@ describe('find_products_multi zero-result fallthrough', () => {
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
     delete process.env.INDEX_ELIGIBLE_RECALL;
     delete process.env.FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH;
-    delete process.env.FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_DEADLINE_MS;
-    delete process.env.FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_MIN_BUDGET_MS;
-    // Any upstream search call answers empty; the lanes under test never need it.
+    delete process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS;
+    // Any upstream search call answers empty.
     nock('http://pivota.test')
       .persist()
       .post(/.*/)
@@ -141,41 +130,56 @@ describe('find_products_multi zero-result fallthrough', () => {
     }));
     const logger = require('../../src/logger');
     const completionLines = [];
+    const warnings = [];
     const originalInfo = logger.info.bind(logger);
+    const originalWarn = logger.warn.bind(logger);
     logger.info = (obj, msg, ...rest) => {
       if (msg === 'invoke request complete') completionLines.push(obj);
       return originalInfo(obj, msg, ...rest);
     };
+    logger.warn = (obj, msg, ...rest) => {
+      warnings.push(String(msg || ''));
+      return originalWarn(obj, msg, ...rest);
+    };
     const app = require('../../src/server');
     const invoke = async (search) => {
-      const startedAt = Date.now();
       const resp = await request(app)
         .post('/agent/shop/v1/invoke')
         .send({ operation: 'find_products_multi', payload: { search: { page: 1, page_size: 10, ...search } } });
-      const elapsedMs = Date.now() - startedAt;
       await delay(20);
-      return { resp, elapsedMs, log: completionLines[completionLines.length - 1] || {} };
+      return { resp, log: completionLines[completionLines.length - 1] || {} };
     };
-    return { invoke, calls };
+    return { invoke, calls, warnings };
   }
 
-  function fallthroughLogFields(log) {
-    return Object.fromEntries(Object.entries(log).filter(([key]) => FALLTHROUGH_LOG_KEYS.includes(key)));
+  const logFields = (log) => Object.fromEntries(Object.entries(log).filter(([key]) => LOG_KEYS.includes(key)));
+
+  // Same request under off and under `mode`: identical answers, identical database work.
+  async function compareWithOff(mode, search, options = {}) {
+    const off = boot({ mode: 'off', ...options });
+    const baseline = await off.invoke(search);
+    const offCalls = off.calls.canonical;
+    jest.resetModules();
+    const other = boot({ mode, ...options });
+    const result = await other.invoke(search);
+    expect(normalize(result.resp.body)).toEqual(normalize(baseline.resp.body));
+    expect(other.calls.canonical).toBe(offCalls);
+    expect(logFields(baseline.log)).toEqual({});
+    return { ...result, warnings: other.warnings, offWarnings: off.warnings };
   }
 
-  test('off: an empty ingredient lane answers exactly as before, with no new log fields', async () => {
+  test('off: an empty ingredient answer is unchanged and the log gains nothing', async () => {
     const { invoke, calls } = boot({ mode: 'off' });
     const { resp, log } = await invoke({ query: 'niacinamide serum' });
     expect(resp.status).toBe(200);
     expect(resp.body.metadata.query_source).toBe('agent_products_ingredient_recall_direct');
     expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata.zero_result_fallthrough).toBeUndefined();
-    // Only the ingredient lane's own canonical statement ran: no second lane.
     expect(calls.canonical).toBe(1);
-    expect(fallthroughLogFields(log)).toEqual({});
+    expect(logFields(log)).toEqual({});
   });
 
-  test('unset flag and explicit off answer byte-identically (volatile fields aside)', async () => {
+  test('unset and off answer byte-identically (volatile fields aside)', async () => {
     const unset = boot({});
     const a = await unset.invoke({ query: 'niacinamide serum' });
     jest.resetModules();
@@ -184,298 +188,92 @@ describe('find_products_multi zero-result fallthrough', () => {
     expect(normalize(b.resp.body)).toEqual(normalize(a.resp.body));
   });
 
-  test('observe: same answer as off, no extra lane, and the decision on the completion line', async () => {
-    const env = { FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS: '600' };
-    const off = boot({ mode: 'off', env, canonical: () => never() });
-    const baseline = await off.invoke({ query: 'niacinamide serum' });
-    jest.resetModules();
-    const { invoke, calls } = boot({ mode: 'observe', env, canonical: () => never() });
-    const { resp, log } = await invoke({ query: 'niacinamide serum' });
-    expect(normalize(resp.body)).toEqual(normalize(baseline.resp.body));
-    expect(calls.canonical).toBe(1);
-    expect(fallthroughLogFields(log)).toEqual(
-      expect.objectContaining({
-        fpm_lane_chain: 'ingredient_direct',
-        fpm_fallthrough: 'observed',
-        fpm_fallthrough_used: false,
-        fpm_empty_reason: 'lane_timeout',
-        fpm_empty_class: 'degraded',
-        fpm_fallthrough_next_lane: 'beauty_mainline',
-      }),
-    );
-    expect(log.fpm_fallthrough_budget_ms).toBeGreaterThan(0);
+  test.each(['on', 'true', '1'])('unsupported value %s runs as off and warns once at startup', async (value) => {
+    const { log, warnings, offWarnings } = await compareWithOff(value, { query: 'niacinamide serum' });
+    expect(logFields(log)).toEqual({});
+    const message = 'FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH has an unsupported value; running as off';
+    // Emitted once, when the gateway module loads (the spy is installed before it is required).
+    expect(warnings.filter((w) => w === message)).toHaveLength(1);
+    expect(offWarnings.filter((w) => w === message)).toHaveLength(0);
   });
 
-  test('observe: a healthy empty lane is logged as genuinely empty', async () => {
-    const { invoke, calls } = boot({ mode: 'observe' });
-    const { log } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(1);
-    expect(fallthroughLogFields(log)).toEqual({
+  test('observe: a healthy ingredient lane that found nothing is genuine, the answer unchanged', async () => {
+    const { log } = await compareWithOff('observe', { query: 'niacinamide serum' });
+    expect(logFields(log)).toEqual({
       fpm_lane_chain: 'ingredient_direct',
-      fpm_fallthrough: 'skipped',
-      fpm_fallthrough_used: false,
       fpm_empty_reason: 'no_catalog_match',
       fpm_empty_class: 'genuine',
-      fpm_fallthrough_skip_reason: 'genuinely_empty',
     });
   });
 
-  test('on: a healthy ingredient lane that found nothing is NOT retried', async () => {
-    const off = boot({ mode: 'off', canonical: (index) => ({ rows: index === 0 ? [] : serumRows(8) }) });
-    const baseline = await off.invoke({ query: 'niacinamide serum' });
-    jest.resetModules();
-    const { invoke, calls } = boot({
-      mode: 'on',
-      canonical: (index) => ({ rows: index === 0 ? [] : serumRows(8) }),
-    });
-    const { resp, log } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(1);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata.query_source).toBe('agent_products_ingredient_recall_direct');
-    expect(resp.body.metadata.zero_result_fallthrough).toEqual(
-      expect.objectContaining({
-        empty_reason: 'no_catalog_match',
-        empty_class: 'genuine',
-        attempted: false,
-        skip_reason: 'genuinely_empty',
-      }),
-    );
-    // Products and every field but the new metadata block are exactly the off answer.
-    const { zero_result_fallthrough: _block, ...metadataWithoutBlock } = resp.body.metadata;
-    expect(normalize({ ...resp.body, metadata: metadataWithoutBlock })).toEqual(normalize(baseline.resp.body));
-    expect(log.fpm_fallthrough_skip_reason).toBe('genuinely_empty');
-    expect(log.fpm_empty_class).toBe('genuine');
-  });
-
-  test('on: an errored ingredient lane is retried on the beauty mainline', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      canonical: (index) => (index === 0 ? broken() : { rows: serumRows(8) }),
-    });
-    const { resp, log } = await invoke({ query: 'niacinamide serum' });
-    expect(resp.status).toBe(200);
-    expect(calls.canonical).toBe(2);
-    expect(resp.body.metadata.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(resp.body.products.length).toBeGreaterThan(0);
-    const ids = resp.body.products.map((product) => `${product.merchant_id}::${product.product_id}`);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(resp.body.metadata.zero_result_fallthrough).toEqual(
-      expect.objectContaining({
-        mode: 'on',
-        from_lane: 'ingredient_direct',
-        to_lane: 'beauty_mainline',
-        empty_reason: 'lane_error',
-        empty_class: 'degraded',
-        attempted: true,
-        adopted: true,
-        outcome: 'adopted',
-        relevance_dropped_count: 0,
-      }),
-    );
-    expect(fallthroughLogFields(log)).toEqual(
-      expect.objectContaining({
-        fpm_lane_chain: 'ingredient_direct>beauty_mainline',
-        fpm_fallthrough: 'used',
-        fpm_fallthrough_used: true,
-        fpm_empty_reason: 'lane_error',
-        fpm_empty_class: 'degraded',
-        fpm_fallthrough_outcome: 'adopted',
-      }),
-    );
-  });
-
-  test('on: retry rows that do not name the ingredient are dropped, never served', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      canonical: (index) =>
-        index === 0
-          ? broken()
-          : { rows: [...serumRows(3, 'loose', 'Hydrating Barrier Serum'), ...serumRows(2, 'nia')] },
-    });
-    const { resp, log } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(2);
-    expect(resp.body.products.length).toBeGreaterThan(0);
-    for (const product of resp.body.products) {
-      expect(String(product.title || '')).toMatch(/niacinamide/i);
-    }
-    expect(resp.body.metadata.zero_result_fallthrough.relevance_dropped_count).toBeGreaterThan(0);
-    expect(log.fpm_fallthrough_relevance_dropped).toBeGreaterThan(0);
-  });
-
-  test('on: a retry whose rows are all irrelevant keeps the honest empty answer', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      canonical: (index) => (index === 0 ? broken() : { rows: serumRows(4, 'loose', 'Hydrating Barrier Serum') }),
-    });
-    const { resp, log } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(2);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata.query_source).toBe('agent_products_ingredient_recall_direct');
-    expect(resp.body.metadata.zero_result_fallthrough).toEqual(
-      expect.objectContaining({ attempted: true, adopted: false, outcome: 'next_lane_irrelevant' }),
-    );
-    expect(log.fpm_fallthrough_outcome).toBe('next_lane_irrelevant');
-  });
-
-  test('on: the next lane answering empty keeps the original empty answer', async () => {
-    const { invoke, calls } = boot({ mode: 'on', canonical: (index) => (index === 0 ? broken() : { rows: [] }) });
-    const { resp, log } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(2);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata.query_source).toBe('agent_products_ingredient_recall_direct');
-    expect(resp.body.metadata.zero_result_fallthrough).toEqual(
-      expect.objectContaining({ attempted: true, adopted: false, outcome: 'next_lane_empty' }),
-    );
-    expect(log.fpm_fallthrough).toBe('tried');
-    expect(log.fpm_fallthrough_used).toBe(false);
-  });
-
-  test('on: a lane that answered rows on a later page is not "empty" and never retries', async () => {
-    const { invoke, calls } = boot({ mode: 'on', canonical: () => ({ rows: serumRows(3) }) });
-    const { resp } = await invoke({ query: 'niacinamide serum', page: 3, page_size: 10 });
-    expect(resp.body.metadata.query_source).toBe('agent_products_ingredient_recall_direct');
-    expect(calls.canonical).toBe(1);
-    expect(resp.body.metadata.zero_result_fallthrough).toBeUndefined();
-  });
-
-  test('on: a top-level safe-empty refusal is not overridden', async () => {
-    const off = boot({ mode: 'off' });
-    const baseline = await off.invoke({ query: 'retinol' });
-    expect(baseline.resp.body.metadata.query_source).toBe('search_quality_contract_v1_safe_empty');
-    jest.resetModules();
-    const { invoke, calls } = boot({ mode: 'on', canonical: () => ({ rows: serumRows(8) }) });
-    const { resp, log } = await invoke({ query: 'retinol' });
-    expect(normalize(resp.body)).toEqual(normalize(baseline.resp.body));
-    expect(calls.canonical).toBe(0);
-    expect(log.fpm_empty_reason).toBe('policy_safe_empty');
-    expect(log.fpm_fallthrough_used).toBe(false);
-  });
-
-  test('on: a merchant-scoped request is never widened to the cross-merchant mainline', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      canonical: (index) => (index === 0 ? broken() : { rows: serumRows(8) }),
-    });
-    const { resp, log } = await invoke({ query: 'niacinamide serum', merchant_id: 'merch_test_1' });
-    expect(calls.canonical).toBe(1);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata.zero_result_fallthrough).toEqual(
-      expect.objectContaining({ attempted: false, skip_reason: 'merchant_scoped' }),
-    );
-    expect(log.fpm_fallthrough_skip_reason).toBe('merchant_scoped');
-  });
-
-  test('on: a strict catalog surface is never widened', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      canonical: (index) => (index === 0 ? broken() : { rows: serumRows(8) }),
-    });
-    const { resp, log } = await invoke({ query: 'niacinamide serum', catalog_surface: 'acp' });
-    expect(resp.body.products).toEqual([]);
-    expect(calls.canonical).toBe(1);
-    expect(log.fpm_fallthrough_skip_reason).toBe('strict_surface');
-  });
-
-  test('on: too little budget left skips the fallthrough and adds no latency', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      env: {
-        FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_DEADLINE_MS: '1000',
-        FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_MIN_BUDGET_MS: '1000',
-      },
-      canonical: (index) => (index === 0 ? never() : { rows: serumRows(8) }),
-    });
-    const { resp, log, elapsedMs } = await invoke({ query: 'niacinamide serum' });
-    expect(resp.body.products).toEqual([]);
-    expect(calls.canonical).toBe(1);
-    expect(log.fpm_empty_reason).toBe('lane_timeout');
-    expect(log.fpm_fallthrough_skip_reason).toBe('budget_exhausted');
-    // The leg was capped at its floor (500 ms), not left to run its 6 s stage budget.
-    expect(elapsedMs).toBeLessThan(1000 + 600);
-  });
-
-  test('on: a hung ingredient leg is capped so the mainline answers inside the deadline', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      env: {
-        FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_DEADLINE_MS: '2500',
-        FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_MIN_BUDGET_MS: '800',
-      },
-      canonical: (index) => (index === 0 ? never() : { rows: serumRows(8) }),
-    });
-    const { resp, log, elapsedMs } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(2);
-    expect(resp.body.products.length).toBeGreaterThan(0);
-    expect(resp.body.metadata.zero_result_fallthrough).toEqual(
-      expect.objectContaining({ empty_reason: 'lane_timeout', adopted: true }),
-    );
-    expect(log.fpm_fallthrough_used).toBe(true);
-    expect(elapsedMs).toBeLessThan(2500 + 600);
-  });
-
-  test('on: a slow next lane is cut at the remaining budget and the original answer stands', async () => {
-    const { invoke, calls } = boot({
-      mode: 'on',
-      env: {
-        FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_DEADLINE_MS: '2500',
-        FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH_MIN_BUDGET_MS: '800',
-      },
+  test('observe: a timed-out ingredient lane is degraded, the answer unchanged', async () => {
+    const { log } = await compareWithOff('observe', { query: 'niacinamide serum' }, {
+      env: { FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS: '600' },
       canonical: () => never(),
     });
-    const { resp, log, elapsedMs } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(2);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata.query_source).toBe('agent_products_ingredient_recall_direct');
-    expect(resp.body.metadata.zero_result_fallthrough).toEqual(
-      expect.objectContaining({ attempted: true, adopted: false, outcome: 'next_lane_timeout' }),
-    );
-    expect(log.fpm_fallthrough_outcome).toBe('next_lane_timeout');
-    expect(elapsedMs).toBeLessThan(2500 + 600);
-  });
-
-  test('on: an empty beauty mainline answer has no next lane and is unchanged', async () => {
-    const off = boot({ mode: 'off' });
-    const baseline = await off.invoke({ query: 'moisturizer' });
-    expect(baseline.resp.body.metadata.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(baseline.resp.body.products).toEqual([]);
-    jest.resetModules();
-    const { invoke, calls } = boot({ mode: 'on' });
-    const { resp, log } = await invoke({ query: 'moisturizer' });
-    expect(normalize(resp.body)).toEqual(normalize(baseline.resp.body));
-    expect(calls.canonical).toBe(1);
-    expect(fallthroughLogFields(log)).toEqual({
-      fpm_lane_chain: 'beauty_mainline',
-      fpm_fallthrough: 'skipped',
-      fpm_fallthrough_used: false,
-      fpm_empty_reason: 'no_catalog_match',
-      fpm_empty_class: 'genuine',
-      fpm_fallthrough_skip_reason: 'genuinely_empty',
+    expect(logFields(log)).toEqual({
+      fpm_lane_chain: 'ingredient_direct',
+      fpm_empty_reason: 'lane_timeout',
+      fpm_empty_class: 'degraded',
     });
   });
 
-  test('on: an empty upstream answer has no next lane and is unchanged', async () => {
-    const off = boot({ mode: 'off' });
-    const baseline = await off.invoke({ query: 'wireless earbuds' });
-    expect(baseline.resp.body.metadata.query_source).toBe('agent_products_search');
-    jest.resetModules();
-    const { invoke } = boot({ mode: 'on' });
-    const { resp, log } = await invoke({ query: 'wireless earbuds' });
-    expect(normalize(resp.body)).toEqual(normalize(baseline.resp.body));
-    expect(log.fpm_lane_chain).toBe('upstream_search');
-    expect(['genuine', 'policy']).toContain(log.fpm_empty_class);
-    expect(['genuinely_empty', 'refusal']).toContain(log.fpm_fallthrough_skip_reason);
-    expect(log.fpm_fallthrough_used).toBe(false);
+  test('observe: an errored ingredient lane is degraded, the answer unchanged', async () => {
+    const { log } = await compareWithOff('observe', { query: 'niacinamide serum' }, { canonical: () => broken() });
+    expect(logFields(log)).toEqual({
+      fpm_lane_chain: 'ingredient_direct',
+      fpm_empty_reason: 'lane_error',
+      fpm_empty_class: 'degraded',
+    });
   });
 
-  test('on: an ingredient lane that answered rows is untouched', async () => {
-    const off = boot({ mode: 'off', canonical: () => ({ rows: serumRows(8) }) });
-    const baseline = await off.invoke({ query: 'niacinamide serum' });
-    expect(baseline.resp.body.products.length).toBeGreaterThan(0);
-    jest.resetModules();
-    const { invoke, calls } = boot({ mode: 'on', canonical: () => ({ rows: serumRows(8) }) });
-    const { resp, log } = await invoke({ query: 'niacinamide serum' });
-    expect(calls.canonical).toBe(1);
-    expect(normalize(resp.body)).toEqual(normalize(baseline.resp.body));
-    expect(fallthroughLogFields(log)).toEqual({});
+  test('observe: a safe-empty refusal is policy, the answer unchanged', async () => {
+    const { resp, log } = await compareWithOff('observe', { query: 'retinol' });
+    expect(resp.body.metadata.query_source).toBe('search_quality_contract_v1_safe_empty');
+    expect(logFields(log)).toEqual({
+      fpm_lane_chain: 'safe_empty',
+      fpm_empty_reason: 'policy_safe_empty',
+      fpm_empty_class: 'policy',
+    });
   });
+
+  test('observe: an empty beauty mainline answer is classified, the answer unchanged', async () => {
+    const { resp, log } = await compareWithOff('observe', { query: 'moisturizer' });
+    expect(resp.body.metadata.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(logFields(log)).toEqual({
+      fpm_lane_chain: 'beauty_mainline',
+      fpm_empty_reason: 'no_catalog_match',
+      fpm_empty_class: 'genuine',
+    });
+  });
+
+  test('observe: an empty upstream answer is classified, the answer unchanged', async () => {
+    const { resp, log } = await compareWithOff('observe', { query: 'wireless earbuds' });
+    expect(resp.body.metadata.query_source).toBe('agent_products_search');
+    expect(log.fpm_lane_chain).toBe('upstream_search');
+    expect(['policy', 'genuine']).toContain(log.fpm_empty_class);
+  });
+
+  test('observe: an ingredient answer with rows reports a fast leg as under the proposed cap', async () => {
+    const { resp, log } = await compareWithOff('observe', { query: 'niacinamide serum' }, {
+      canonical: () => ({ rows: serumRows(8) }),
+    });
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(log.fpm_lane_chain).toBe('ingredient_direct');
+    expect(log.fpm_ingredient_leg_over_proposed_cap).toBe(false);
+    expect(log.fpm_ingredient_leg_ms).toBeGreaterThanOrEqual(0);
+    expect(log.fpm_empty_reason).toBeUndefined();
+  });
+
+  test('observe: an ingredient answer with rows reports a slow leg as over the proposed cap', async () => {
+    const { resp, log } = await compareWithOff('observe', { query: 'niacinamide serum' }, {
+      canonical: async () => {
+        await delay(4400);
+        return { rows: serumRows(8) };
+      },
+    });
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(log.fpm_ingredient_leg_over_proposed_cap).toBe(true);
+    expect(log.fpm_ingredient_leg_ms).toBeGreaterThanOrEqual(4400);
+  }, 30000);
 });
