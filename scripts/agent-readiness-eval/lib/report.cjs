@@ -6,12 +6,15 @@ const { latencySummary, availabilitySummary, groupBy, rate, round4 } = require('
 const { summarizeLoad } = require('./load.cjs');
 
 function sumRows(list) {
-  const out = { rows: 0, missing_price: 0, non_positive_price: 0, invalid_currency: 0, currency_market_mismatch: 0, currency_checked: 0, missing_link: 0, link_problems: {} };
+  const out = {
+    rows: 0, missing_price: 0, non_positive_price: 0, invalid_currency: 0, currency_market_mismatch: 0, currency_checked: 0,
+    missing_link: 0, link_problems: {}, no_market_rows: 0, no_market_currency: {}, mixed_currency_pages: 0,
+  };
   for (const r of list) {
     if (!r) continue;
     for (const k of Object.keys(out)) {
-      if (k === 'link_problems') {
-        for (const [p, n] of Object.entries(r.link_problems || {})) out.link_problems[p] = (out.link_problems[p] || 0) + n;
+      if (k === 'link_problems' || k === 'no_market_currency') {
+        for (const [p, n] of Object.entries(r[k] || {})) out[k][p] = (out[k][p] || 0) + n;
       } else out[k] += r[k] || 0;
     }
   }
@@ -154,7 +157,28 @@ function computeMetrics(run, config) {
     },
     load: run.load ? summarizeLoad(run.load) : null,
   };
+  metrics.findings = findingsOf(metrics);
   return metrics;
+}
+
+// Observations that are not SLOs but that a reviewer must see. Deterministic; no thresholds hidden in prose.
+function findingsOf(m) {
+  const out = [];
+  const nm = m.rows_gated;
+  if (nm.no_market_rows > 0) {
+    const usd = nm.no_market_currency.USD || 0;
+    const share = usd / nm.no_market_rows;
+    out.push({
+      key: 'no_market_currency',
+      severity: share >= 0.9 ? 'warn' : 'info',
+      text: `Queries that named NO market were answered with ${nm.no_market_rows} priced rows: ${Object.entries(nm.no_market_currency).map(([c, n]) => `${c} ×${n}`).join(', ')}.`
+        + (share >= 0.9 ? ' The service appears to default to the US market silently: a partner that sends no market is shown US prices.' : ''),
+    });
+  }
+  if (nm.mixed_currency_pages > 0) {
+    out.push({ key: 'mixed_currency_pages', severity: 'warn', text: `${nm.mixed_currency_pages} answers mixed currencies on one page.` });
+  }
+  return out;
 }
 
 function mergeCounts(list) {
@@ -287,6 +311,12 @@ function renderMarkdown(report) {
   L.push('|---|---:|---:|---|');
   for (const s of slos) L.push(`| ${s.label} | ${s.direction === 'min' ? '≥' : '≤'} ${fmt(s.threshold, kindOfKey(s.key))} | ${fmt(s.value, kindOfKey(s.key))} | ${s.status.toUpperCase()} |`);
   L.push('');
+  if (m.findings && m.findings.length) {
+    L.push('## Findings');
+    L.push('');
+    for (const f of m.findings) L.push(`- **${f.severity.toUpperCase()}** \`${f.key}\`: ${f.text}`);
+    L.push('');
+  }
   L.push('## Availability by tool');
   L.push('');
   L.push('| tool | calls | ok | tool err | failed+hits | 429 | auth | unavailable | availability | p50 ms | p95 ms | p99 ms |');

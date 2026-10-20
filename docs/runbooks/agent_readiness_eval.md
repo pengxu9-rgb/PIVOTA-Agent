@@ -124,15 +124,33 @@ The score is precision@k (`--top-k`, default 5) over products that pass every ap
 
 - **Category:** a category term must appear in the title or category. The description counts only when the
   product has no category at all.
-- **Ingredient:** the ingredient must appear in the title, actives, INCI list or description, and not inside
-  a negation. If the product has ingredient data that lacks it, the check fails. If the product has no
-  ingredient data at all, the check is unknown.
-- **Exclusion (negation queries):** an affirmed mention fails the check. Mentions inside a negation are
-  ignored: "X-free", "free of X", "no / without X", "sans X", "sin X", "无 / 無 / 不含 X", "X フリー" and
-  "무X". Benign compounds are also ignored, so "cetyl alcohol" does not break "alcohol-free".
+Term matching needs a word boundary on both sides, and only a plural "s" or "es" may follow the term. So
+"lipsticks" matches "lipstick", but "scent" does not match "scentless" and "lip" does not match "tulip".
+CJK terms match as substrings.
+
+- **Ingredient:** the ingredient must be *claimed* in the title, actives, INCI list or description. Two kinds of
+  mention do not count as a claim:
+  - a negated mention (see *Exclusion* below);
+  - an "alternative" mention, such as "Retinol Alternative Bakuchiol", "gentler than retinol" or "instead of
+    retinol".
+
+  If the product has ingredient data that lacks it, the check fails. If the product has no ingredient data at
+  all, the check is unknown.
+- **Exclusion (negation queries):** an affirmed mention fails the check. Absence statements are recognized as
+  follows:
+  - **A cue before the term** scopes forward over a list within the same sentence, up to 8 words. Cues include
+    "free of / from", "no", "not", "without", "sans", "sin", "zero" and "0%". So "free of parabens, sulfates,
+    and fragrance", "no added fragrance", "made without … fragrance" and "does not contain fragrance" each
+    count as free of every listed item.
+  - **The scope ends** at a word that reintroduces content ("with", "but", "contains", …) or at a sentence end.
+    So "free of parabens with a rose fragrance" still contains fragrance.
+  - **A cue after the term:** "X-free" and "A and X free".
+  - **CJK cues:** "无 / 無 / 不含 X", "X フリー" and "무X".
+  - **"unX" and "Xless":** for example "unscented" and "scentless".
+  - **Benign compounds** are ignored, so "cetyl alcohol" does not break "alcohol-free".
 - **Brand:** the brand field must match, or the title must start with the brand.
-- **Price cap:** the amount must be at or under the cap *and* in the requested currency. A missing price is
-  unknown.
+- **Price cap:** the amount must be at or under the cap *and* in the requested currency. If the price is
+  missing, or either currency is missing or invalid, the check is unknown, never a pass.
 
 A query passes relevance when its precision is at least `--query-pass-threshold` (default 0.6).
 
@@ -149,6 +167,10 @@ A query passes relevance when its precision is at least `--query-pass-threshold`
 - **Row integrity:** checked on search rows, the PDP, offers, alternatives and recommendations:
   - The price must be present, positive, and in a valid ISO currency.
   - The currency must match the market: US→USD, SG→SGD.
+  - Rows for queries with **no market** are still checked for price and link, and their currencies are
+    recorded. If those rows come back almost all in USD, the scorecard's *Findings* section reports that the
+    service silently defaults to the US market. Pages that mix currencies are also reported. The harness
+    itself never defaults a market.
   - The link must be present and well-formed: http(s), a real host, and no
     `undefined`/`null` path segments.
 - **Duplicates:** the same product id, or the same brand + title, appearing twice on one page.

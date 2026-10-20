@@ -20,7 +20,10 @@ function norm(s) {
     .replace(/[̀-ͯ]/g, '')
     .normalize('NFC')
     .toLowerCase()
-    .replace(/[‐-―−_/\\|,;:()[\]{}"“”'’`]+/g, ' ')
+    // Sentence boundaries survive as " . " so a negation never reaches across a sentence or a list item.
+    .replace(/[;!?。！？]+/g, ' . ')
+    .replace(/\.(?=\s|$)/g, ' . ')
+    .replace(/[‐-―−_/\\|,:()[\]{}"“”'’`]+/g, ' ')
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -32,7 +35,11 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** All start offsets where `term` occurs in normalized `text`. Latin terms need a leading word boundary. */
+/**
+ * All start offsets where `term` occurs in normalized `text`. CJK terms match as substrings. Latin terms need a
+ * word boundary on BOTH sides, allowing only a plural "s"/"es" before the right boundary: "lipsticks" matches
+ * "lipstick", but "scentless" does not match "scent", and "tulip" does not match "lip".
+ */
 function occurrences(text, term) {
   const t = norm(term);
   if (!t) return [];
@@ -45,7 +52,7 @@ function occurrences(text, term) {
     }
     return out;
   }
-  const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(t)}`, 'gu');
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(t)}(?=(?:e?s)?(?![\\p{L}]))`, 'gu');
   let m;
   while ((m = re.exec(text)) !== null) {
     out.push(m.index + m[1].length);
@@ -59,35 +66,68 @@ function containsAny(text, terms) {
 }
 
 // ---- negation ---------------------------------------------------------------------------------------------
-// "fragrance-free", "free of fragrance", "no fragrance", "without alcohol", "sans parfum", "sin alcohol",
-// "无香精", "無香料", "不含酒精", "アルコールフリー", "무향", "알코올 프리" — an occurrence of an excluded term
-// inside one of these is a statement of ABSENCE and must not count as the product containing it.
+// A mention inside a negation is a statement of ABSENCE and never counts as the product containing it:
+//   cue BEFORE, scoped forward over a list: "free of parabens, sulfates, and fragrance" (each one),
+//     "no added fragrance", "made without parabens or fragrance", "does not contain alcohol", "sans parfum",
+//     "sin alcohol"; the scope is the same sentence, at most NEG_SCOPE_WORDS words, and ends at a word that
+//     reintroduces content ("with", "but", "contains", ...): "free of parabens with a rose fragrance" still
+//     contains fragrance.
+//   cue AFTER: "fragrance-free", "paraben and sulfate free", "アルコールフリー", "알코올 프리".
+//   CJK cues directly before: "无香精", "無香料", "不含酒精", "무향".
+//   "un" + term: "unscented".
 
-const NEG_BEFORE = [
-  'free of', 'free from', 'no', 'non', 'without', 'zero', '0%', '0 %', 'sans', 'sin', 'libre de', 'exempt de',
-  '无', '無', '不含', '零', '무', '노',
-];
-const NEG_AFTER = ['free', 'frei', 'libre', 'フリー', '無添加', '프리', 'free formula'];
+const NEG_SCOPE_WORDS = 8;
+const NEG_BEFORE_LATIN = ['free of', 'free from', 'no', 'non', 'not', 'without', 'zero', '0%', 'sans', 'sin', 'libre de', 'exempt de', 'never'];
+const NEG_BEFORE_CJK = ['无', '無', '不含', '零', '무', '노'];
+const NEG_AFTER = ['free', 'frei', 'libre', 'フリー', '無添加', '프리'];
+const SCOPE_TERMINATORS = new Set(['with', 'but', 'except', 'contains', 'containing', 'plus', 'including', 'yet', 'however', 'has', 'have', 'and added']);
+
+// Mentions that are not a claim of containing the term: "retinol alternative bakuchiol", "gentler than
+// retinol", "a dupe of …", "instead of retinol". They never count as the ingredient being present.
+const NON_CLAIM_AFTER = ['alternative', 'alt', 'substitute', 'replacement', 'dupe', 'like', 'inspired', 'free'];
+const NON_CLAIM_BEFORE = ['alternative to', 'instead of', 'substitute for', 'replaces', 'replacing', 'like', 'vs', 'versus', 'than', 'dupe of'];
+
+function wordsBefore(text, index) {
+  const sentenceStart = text.lastIndexOf(' . ', index - 1);
+  const from = sentenceStart === -1 ? 0 : sentenceStart + 3;
+  return text.slice(from, index).trim().split(' ').filter(Boolean);
+}
+
+function endsWithPhrase(words, endIdx, phrase) {
+  const p = phrase.split(' ');
+  if (endIdx + 1 < p.length) return false;
+  for (let k = 0; k < p.length; k += 1) if (words[endIdx - p.length + 1 + k] !== p[k]) return false;
+  return true;
+}
 
 function isNegatedAt(text, index, term) {
   const t = norm(term);
-  const before = text.slice(Math.max(0, index - 14), index);
-  const after = text.slice(index + t.length, index + t.length + 10);
-  for (const n of NEG_BEFORE) {
-    const nn = norm(n);
-    if (CJK_RE.test(nn)) {
-      if (before.endsWith(nn) || before.endsWith(`${nn} `)) return true;
-    } else if (new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(nn)}\\s*$`, 'u').test(before)) {
-      return true;
-    }
+  const before = text.slice(Math.max(0, index - 4), index);
+  for (const cue of NEG_BEFORE_CJK) if (before.endsWith(cue) || before.endsWith(`${cue} `)) return true;
+  const words = wordsBefore(text, index);
+  // Walk back from the term over at most NEG_SCOPE_WORDS words, stopping at a scope terminator.
+  for (let j = words.length - 1, steps = 0; j >= 0 && steps <= NEG_SCOPE_WORDS; j -= 1, steps += 1) {
+    if (NEG_BEFORE_LATIN.some((cue) => endsWithPhrase(words, j, cue))) return true;
+    if (SCOPE_TERMINATORS.has(words[j])) break;
   }
-  for (const n of NEG_AFTER) {
-    const nn = norm(n);
-    if (CJK_RE.test(nn) ? after.replace(/^\s+/, '').startsWith(nn) : new RegExp(`^\\s*${escapeRe(nn)}(?![\\p{L}])`, 'u').test(after)) {
+  const after = text.slice(index + t.length).replace(/^(?:e?s)(?![\p{L}])/u, '');
+  for (const cue of NEG_AFTER) {
+    const c = norm(cue);
+    if (CJK_RE.test(c)) {
+      if (after.replace(/^\s+/, '').startsWith(c)) return true;
+    } else if (new RegExp(`^\\s*(?:(?:and|or|&)\\s+[\\p{L}]+\\s+)?${escapeRe(c)}(?![\\p{L}])`, 'u').test(after)) {
       return true;
     }
   }
   return false;
+}
+
+function isNonClaimAt(text, index, term) {
+  const t = norm(term);
+  const after = text.slice(index + t.length).replace(/^(?:e?s)(?![\p{L}])/u, '');
+  if (NON_CLAIM_AFTER.some((w) => new RegExp(`^\\s*${escapeRe(w)}(?![\\p{L}])`, 'u').test(after))) return true;
+  const words = wordsBefore(text, index);
+  return NON_CLAIM_BEFORE.some((p) => endsWithPhrase(words, words.length - 1, p));
 }
 
 // Occurrences that name a DIFFERENT, benign ingredient: "cetyl alcohol" is a fatty alcohol that alcohol-free
@@ -99,26 +139,28 @@ const BENIGN_PRECEDERS = Object.freeze({
 function isBenignAt(text, index, term) {
   const preceders = BENIGN_PRECEDERS[norm(term)];
   if (!preceders) return false;
-  const before = text.slice(Math.max(0, index - 14), index);
-  return preceders.some((p) => new RegExp(`(^|[^\\p{L}])${escapeRe(p)}\\s*$`, 'u').test(before));
+  const words = wordsBefore(text, index);
+  return preceders.includes(words[words.length - 1]);
 }
 
-/** true when `text` mentions any term NOT inside a negation (and not as part of a benign compound name). */
+/** true when `text` CLAIMS any term: not negated, not an "alternative to" mention, not a benign compound name. */
 function containsAffirmed(text, terms) {
   for (const term of terms || []) {
     for (const i of occurrences(text, term)) {
-      if (!isNegatedAt(text, i, term) && !isBenignAt(text, i, term)) return true;
+      if (!isNegatedAt(text, i, term) && !isNonClaimAt(text, i, term) && !isBenignAt(text, i, term)) return true;
     }
   }
   return false;
 }
 
-/** true when `text` states the absence of any term ("X-free", "no X"). */
+/** true when `text` states the absence of any term ("X-free", "no X", "free of A, B and X", "unX", "Xless"). */
 function statesAbsence(text, terms) {
   for (const term of terms || []) {
     for (const i of occurrences(text, term)) {
       if (isNegatedAt(text, i, term)) return true;
     }
+    const t = norm(term);
+    if (!CJK_RE.test(t) && (occurrences(text, `un${t}`).length > 0 || occurrences(text, `${t}less`).length > 0)) return true;
   }
   return false;
 }
@@ -130,8 +172,9 @@ function fieldsOf(product) {
   const category = norm(product.category);
   const brand = norm(product.brand);
   const description = norm(product.description);
-  const actives = norm((product.actives || []).join(' | '));
-  const ingredients = norm((product.ingredients || []).join(' | '));
+  // List items are joined as separate "sentences" so a negation or a qualifier never spans two items.
+  const actives = norm((product.actives || []).join(' . '));
+  const ingredients = norm((product.ingredients || []).join(' . '));
   return { title, category, brand, description, actives, ingredients };
 }
 
@@ -169,10 +212,12 @@ function checkBrand(product, terms) {
   return 'fail';
 }
 
+// A cap is a statement in ONE currency: with either currency unknown, an amount proves nothing ('unknown').
 function checkPriceMax(product, priceMax, currency) {
   const p = product.price;
   if (!p || !(p.amount > 0)) return 'unknown';
-  if (currency && p.currency && p.currency !== currency) return 'fail';
+  if (!currency || !p.currency || !p.currencyValid) return 'unknown';
+  if (p.currency !== currency) return 'fail';
   return p.amount <= priceMax * 1.005 ? 'pass' : 'fail';
 }
 
@@ -257,16 +302,28 @@ function scoreRows(products, { market } = {}) {
     currency_checked: 0,
     missing_link: 0,
     link_problems: {},
+    // No market stated: there is nothing to compare against, but the rows are still checked, and the
+    // currencies they arrive in are recorded — a page answered in USD for a query that named no market is a
+    // SILENT US default, which the scorecard surfaces as a finding.
+    no_market_rows: 0,
+    no_market_currency: {},
+    mixed_currency_pages: 0,
   };
+  const pageCurrencies = new Set();
   for (const p of products || []) {
     out.rows += 1;
     if (!p.price) out.missing_price += 1;
     else {
       if (!(p.price.amount > 0)) out.non_positive_price += 1;
       if (!p.price.currencyValid) out.invalid_currency += 1;
+      if (p.price.currencyValid) pageCurrencies.add(p.price.currency);
       if (expectedCurrency && p.price.currencyValid) {
         out.currency_checked += 1;
         if (p.price.currency !== expectedCurrency) out.currency_market_mismatch += 1;
+      }
+      if (!market && p.price.currencyValid) {
+        out.no_market_rows += 1;
+        out.no_market_currency[p.price.currency] = (out.no_market_currency[p.price.currency] || 0) + 1;
       }
     }
     const problem = linkProblem(p.link);
@@ -275,6 +332,7 @@ function scoreRows(products, { market } = {}) {
       out.link_problems[problem] = (out.link_problems[problem] || 0) + 1;
     }
   }
+  if (pageCurrencies.size > 1) out.mixed_currency_pages = 1;
   return out;
 }
 
