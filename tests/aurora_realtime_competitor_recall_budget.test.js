@@ -1,9 +1,18 @@
 'use strict';
 
 const nock = require('nock');
+const { nockOffline } = require('./_support/nockOffline.cjs');
 
 describe('aurora realtime competitor recall budget control', () => {
   const ORIGINAL_ENV = process.env;
+
+  // The async backfill lane fetches the anchor's product page for on-page related products. No
+  // test here mocks it, and it used to go to the real store; it is down (nockOffline.cjs).
+  let restoreNock;
+  beforeAll(() => {
+    restoreNock = nockOffline(nock, { down: ['theordinary.com'] });
+  });
+  afterAll(() => restoreNock());
 
   beforeEach(() => {
     jest.resetModules();

@@ -2815,8 +2815,12 @@ Contains four types of peptides`,
           },
         },
       });
-    jest
+    // Two GETs: the Shopify products.json handle fallback, then the direct-PDP size-evidence read.
+    // The second used to fall through the spy to the REAL store page. Answer it as a 404 (no size
+    // evidence) and make any further unmocked GET fail instead of reaching the network.
+    const getSpy = jest
       .spyOn(axios, 'get')
+      .mockRejectedValue(new Error('unmocked axios.get in test'))
       .mockResolvedValueOnce({
         status: 200,
         data: {
@@ -2846,7 +2850,8 @@ Contains four types of peptides`,
             },
           ],
         },
-      });
+      })
+      .mockResolvedValueOnce({ status: 404, data: '' });
 
     const result = await processRow(row, {
       dryRun: true,
@@ -2867,6 +2872,8 @@ Contains four types of peptides`,
       source_origin: 'shopify_products_json',
       source_quality_status: 'medium',
     });
+    expect(getSpy).toHaveBeenCalledTimes(2);
+    expect(String(getSpy.mock.calls[1][0])).toContain('roundlab.com/products/birch-moisturizing-hand-cream');
   });
 
   test('recovers the original PDP target from diagnostics when the stored URL drifted to contact-us', () => {

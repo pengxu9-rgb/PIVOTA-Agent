@@ -2,6 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const supertest = require('supertest');
+const { installGeocoderDown } = require('./_support/offlineGeocoder.cjs');
+
+// Travel paths geocode through global.fetch; answer Open-Meteo as down instead of the internet.
+test.after(installGeocoderDown());
 
 function withEnv(patch, fn) {
   const keys = Object.keys(patch || {});
