@@ -38,10 +38,9 @@ function withEnv(patch, fn) {
     previous[key] = process.env[key];
     delete process.env[key];
   }
-  // Point gcloud's config at nothing that exists. Otherwise a developer machine with
-  // ~/.config/gcloud/application_default_credentials.json lets the readiness probe mint a REAL
-  // token against real infrastructure from a unit test — harmless to these assertions, which read
-  // the synchronous return, but not something a test suite should be doing.
+  // Point gcloud's config at nothing that exists. This alone does not keep the readiness probe
+  // off the network: the probe resolves ADC asynchronously, after the finally below has put the
+  // real environment back. The getAccessToken stub further down is what does.
   process.env.CLOUDSDK_CONFIG = '/nonexistent-gcloud-config-for-tests';
   for (const [key, value] of Object.entries(patch)) process.env[key] = String(value);
   // The module memoises the auth client and the probe result across calls; without this a
@@ -57,6 +56,21 @@ function withEnv(patch, fn) {
     vertexGemini.resetCredentialsCache();
   }
 }
+
+// No case here may mint a real token. credentialProbeState() starts the readiness probe, and a
+// real mint goes to oauth2.googleapis.com (a developer's gcloud ADC) or the metadata server (CI)
+// after the case has already returned. Stub the mint on the google-auth-library copy the probe
+// actually uses (googleAuthForVertex() resolves it through @anthropic-ai/vertex-sdk).
+const authProto = Object.getPrototypeOf(withEnv({}, () => vertexGemini.googleAuthForVertex()));
+const realGetAccessToken = authProto.getAccessToken;
+let mintCalls = 0;
+authProto.getAccessToken = async function stubbedMint() {
+  mintCalls += 1;
+  throw new Error('healthz_gemini_vertex.node.test: no token mint in tests');
+};
+test.after(() => {
+  authProto.getAccessToken = realGetAccessToken;
+});
 
 test('vertex off is not applicable, whatever else is set', () => {
   const state = withEnv({ GOOGLE_CLOUD_PROJECT: 'p', K_SERVICE: 'gateway' }, () =>
@@ -86,12 +100,15 @@ test('CLOUD_RUN_MARKER_ONLY: K_SERVICE with no credential is never ok', () => {
   // The regression this file exists for. K_SERVICE alone satisfies
   // credentialSourceConfigured(), so anything deriving readiness from configuration reports
   // healthy here - on a container that cannot mint a token.
+  const before = mintCalls;
   const state = withEnv(
     { VERTEX_AI_ENABLED: 'true', GOOGLE_CLOUD_PROJECT: 'pivota-prod', K_SERVICE: 'gateway' },
     () => vertexGemini.credentialProbeState(),
   );
   assert.notStrictEqual(state, 'ok');
   assert.strictEqual(state, 'pending');
+  // 'pending' started the probe; it must have gone to the stub, not the network.
+  assert.strictEqual(mintCalls, before + 1);
 });
 
 test('the call gate still says available there - the two answer different questions', () => {

@@ -6,6 +6,25 @@
  * Gemini audit probes down on 2026-07-21, and it is checkable here.
  */
 
+// No test here may mint a real token. With nothing configured, credentialsAvailable()
+// starts a background ADC probe and swallows its result, so a real mint outlives the
+// test that started it: google-auth-library goes to oauth2.googleapis.com (a gcloud
+// ADC session) or the metadata server, and the request lands in whatever file the
+// jest worker runs next. Stub only the mint and keep the rest of the library real,
+// since the host-pinning tests below drive the real @google/genai constructor.
+const mockMint = jest.fn(async () => {
+  throw new Error('vertex_gemini_credentials.test: no token mint in tests');
+});
+jest.mock('google-auth-library', () => {
+  const actual = jest.requireActual('google-auth-library');
+  class GoogleAuth extends actual.GoogleAuth {
+    getAccessToken(...args) {
+      return mockMint(...args);
+    }
+  }
+  return { ...actual, GoogleAuth };
+});
+
 const ENV_KEYS = [
   'VERTEX_AI_ENABLED',
   'GOOGLE_CLOUD_PROJECT',
@@ -44,6 +63,7 @@ describe('vertexGemini credential source', () => {
   });
 
   beforeEach(() => {
+    mockMint.mockClear();
     // The seam logs an unusable credential once; keep it out of test output
     // while still allowing assertions on it.
     errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -244,8 +264,13 @@ describe('vertexGemini credential source', () => {
     expect(seam.credentialsAvailable('ak-ignored')).toBe(true);
   });
 
-  test('with no runtime marker and no credential the first call still fails closed', () => {
+  test('with no runtime marker and no credential the first call still fails closed', async () => {
     const seam = loadSeam({ VERTEX_AI_ENABLED: 'true', GOOGLE_CLOUD_PROJECT: 'proj-none' });
+    expect(seam.credentialsAvailable('ak-ignored')).toBe(false);
+    // That call started the background probe. Let it settle here, against the stub,
+    // so nothing is still in flight when this file ends.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(mockMint).toHaveBeenCalledTimes(1);
     expect(seam.credentialsAvailable('ak-ignored')).toBe(false);
   });
 
