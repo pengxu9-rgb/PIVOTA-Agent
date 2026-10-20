@@ -53505,6 +53505,13 @@ if (require.main === module) {
         },
         `Pivota Agent gateway listening on http://localhost:${PORT}, proxying to ${PIVOTA_API_BASE}`,
       );
+      // CRAWL_FRESH: this service writes catalog_row_trust on identity events, and
+      // the switch must match pivota-backend's; log what it booted with.
+      try {
+        require('./services/catalogRowTrustUpserter').logCrawlFreshConfig('gateway-boot');
+      } catch (err) {
+        logger.warn({ event: 'catalog_trust_crawl_fresh_config_log_failed', err: err && err.message });
+      }
 
 
       // Gemini gate startup check

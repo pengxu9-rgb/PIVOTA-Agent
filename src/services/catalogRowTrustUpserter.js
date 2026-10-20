@@ -18,6 +18,7 @@
 //   upsertCatalogRowTrust(pool, productKey, [now])
 //   upsertCatalogRowTrustMany(pool, productKeys, [now])
 
+const { Pool } = require('pg');
 const logger = require('../logger');
 
 const {
@@ -318,6 +319,13 @@ const UPSERT_SQL = `
 // them 'shadow' on its next recompute: rows FLAP on the live serving surface.
 // The rule CATALOG_TRUST_RENDERABLE_GATE documents, unchanged.
 //
+// A FAILED READ FAILS CLOSED, PER BATCH (gateway only): the freshness statement
+// and the column probe run isolated (isolatedQuery: a SAVEPOINT on a client in a
+// transaction), and a failed freshness read leaves the input unset for that
+// batch, which then writes today's gates. The backend lets the error propagate
+// and writes nothing for that batch; the gateway never throws into its caller's
+// transaction (the retire-demo scripts pass a client inside BEGIN).
+//
 // NO DECAY RECHECK HERE. The backend's trust cron re-derives, every tick, the
 // CRAWL_FRESH rows whose read may age out (and, switched off, every CRAWL_FRESH
 // row), with CATALOG_TRUST_CRAWL_FRESH_RECHECK_LIMIT bounding it. That is a
@@ -346,6 +354,26 @@ function crawlFreshEnabled() {
 // and finiteness test sends them to the default, as here).
 const PY_FLOAT_DECIMAL = /^[+-]?(?:\d(?:_?\d)*(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\d)*)(?:[eE][+-]?\d(?:_?\d)*)?$/;
 
+// Python's float() also reads any Unicode decimal digit (General_Category Nd:
+// fullwidth '３', Arabic-Indic '٣', mathematical '𝟓', ...) as its ASCII value.
+// Unicode guarantees every Nd digit sits in a contiguous run of whole 0..9
+// blocks, so a digit's value is its offset from the start of its run, mod 10.
+const UNICODE_DECIMAL_DIGIT = /\p{Nd}/u;
+function asciiDigits(text) {
+  let out = '';
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp < 0x80 || !UNICODE_DECIMAL_DIGIT.test(ch)) {
+      out += ch;
+      continue;
+    }
+    let start = cp;
+    while (start > 0 && UNICODE_DECIMAL_DIGIT.test(String.fromCodePoint(start - 1))) start -= 1;
+    out += String((cp - start) % 10);
+  }
+  return out;
+}
+
 /**
  * N for "crawl-fresh", in days. Unset, unparseable, non-finite or not positive
  * -> the default (7). Fractions are allowed (0.5 = 12 hours).
@@ -353,7 +381,7 @@ const PY_FLOAT_DECIMAL = /^[+-]?(?:\d(?:_?\d)*(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\
 function crawlFreshDays() {
   const raw = process.env[CRAWL_FRESH_DAYS_ENV];
   if (raw == null || !String(raw).trim()) return CRAWL_FRESH_DEFAULT_DAYS;
-  const text = String(raw).trim();
+  const text = asciiDigits(String(raw).trim());
   const days = PY_FLOAT_DECIMAL.test(text) ? Number(text.replace(/_/g, '')) : Number.NaN;
   if (!(days > 0 && days !== Number.POSITIVE_INFINITY)) {
     logger.warn({
@@ -397,8 +425,11 @@ const CRAWL_OFFER_NOT_AFFILIATE_SQL =
 // is a per-deployment env list (CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET) and
 // would make the two statements differ by environment. A market added to the
 // backend registry changes the backend statement on its next deploy and this one
-// only when the pair below (and tests/fixtures/crawl_fresh_trust_backend_sql.json)
-// is updated: the twins must move together.
+// only when the pair below is updated: the twins must move together.
+// tests/catalog_trust_crawl_fresh.node.test.cjs fails when this list differs from
+// the backend registry's served set (src/markets/market_registry.generated.json
+// once this repo carries it; until then tests/fixtures/crawl_fresh_served_markets.backend.json,
+// generated from the backend).
 const CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS = Object.freeze([
   Object.freeze(['SG', 'SGD']),
   Object.freeze(['US', 'USD']),
@@ -417,6 +448,9 @@ const CRAWL_OFFER_SERVED_MARKET_SQL =
 // backend's offer_buyability.OFFER_UNAVAILABLE_AVAILABILITIES. Sorted, as the
 // backend renders it. NOTE the one-argument btrim (spaces only), the backend's
 // spelling here -- not offerAvailabilitySql's JS-trim character set.
+// KNOWN GAP, kept byte-identical to the backend until the backend changes it: a
+// tab/newline-padded value ('\tsoldout') and spaced spellings ('out of stock')
+// are not caught, so such an offer still counts as in stock.
 const CRAWL_OFFER_IN_STOCK_SQL =
   "lower(btrim(coalesce(co.availability, '')))" +
   ' NOT IN (' +
@@ -434,6 +468,10 @@ const CRAWL_CANONICAL_SKU_SUFFIX = '::canonical';
  * The variant conjunct for one row: a canonical offer counts only when the row
  * has no live drain-lane variant offer. `productKeyExpr` is SQL, never a value.
  * Twin of crawl_offer_variant_sql.
+ *
+ * KNOWN GAP, mirrored as-is pending the backend's round-3 decision: an offer
+ * with a NULL sku_key, or an unpriced live variant offer, still counts as "a
+ * variant" and so variant-scopes the row (its ::canonical stamp stops counting).
  */
 function crawlOfferVariantSql(productKeyExpr) {
   const canonical = `${productKeyExpr} || '${CRAWL_CANONICAL_SKU_SUFFIX}'`;
@@ -708,7 +746,21 @@ async function crawlFreshByKey(pool, rows, now) {
   if (!(await priceCheckColumnPresent(pool))) return null;
   const clock = now instanceof Date ? now : new Date();
   const maxAgeDays = crawlFreshDays();
-  const res = await pool.query(CRAWL_LAST_PRICE_READ_SQL, [keys]);
+  let res;
+  try {
+    res = await isolatedQuery(pool, CRAWL_LAST_PRICE_READ_SQL, [keys]);
+  } catch (err) {
+    // FAIL CLOSED, PER BATCH: the input stays unset for every key of this
+    // batch, so each row gets today's gates and the batch is still written.
+    // NOT the backend's behaviour -- there the error propagates and that batch
+    // writes nothing (see the note above CRAWL_FRESH_ENV).
+    logger.error({
+      event: 'catalog_row_trust_crawl_fresh_read_failed',
+      keys: keys.length,
+      err: err && err.message,
+    });
+    return null;
+  }
   const reads = new Map(
     ((res && res.rows) || []).map((r) => [String(r.product_key), r.last_price_read_at]),
   );
@@ -719,6 +771,64 @@ async function crawlFreshByKey(pool, rows, now) {
   return out;
 }
 
+const CRAWL_FRESH_SAVEPOINT = 'catalog_row_trust_crawl_fresh';
+
+/**
+ * Run one of the CRAWL_FRESH reads so that its failure can never abort the
+ * CALLER'S transaction. Callers hand this module a pg Pool (each query its own
+ * autocommit statement: a failure is already isolated) or a single client that
+ * may be inside BEGIN (the retire-demo scripts do). On a client, the read runs
+ * under a SAVEPOINT and a failure rolls back to it, leaving the caller's
+ * transaction usable. A client NOT in a transaction refuses SAVEPOINT with
+ * 25P01 (no_active_sql_transaction), which changes nothing; the read then runs
+ * plainly, isolated by autocommit. Errors from the read itself still throw, to
+ * the caller in this module that decides what a failure means.
+ */
+async function isolatedQuery(pool, sql, params) {
+  if (pool instanceof Pool) return pool.query(sql, params);
+  try {
+    await pool.query(`SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`);
+  } catch (err) {
+    if (err && err.code === '25P01') return pool.query(sql, params);
+    throw err;
+  }
+  try {
+    const res = await pool.query(sql, params);
+    await pool.query(`RELEASE SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`);
+    return res;
+  } catch (err) {
+    await pool.query(`ROLLBACK TO SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`).catch(() => {});
+    await pool.query(`RELEASE SAVEPOINT ${CRAWL_FRESH_SAVEPOINT}`).catch(() => {});
+    throw err;
+  }
+}
+
+/**
+ * The effective switch and N, logged once by each entry point that can write
+ * catalog_row_trust (the gateway at boot, the identity jobs at start), so a
+ * flip can be verified from logs on every writer. Returns what it logged.
+ * `stream` (e.g. process.stderr) writes one JSON line there instead of pino.
+ */
+function logCrawlFreshConfig(context, { stream = null } = {}) {
+  const config = {
+    event: 'catalog_trust_crawl_fresh_config',
+    context: String(context || 'unknown'),
+    enabled: crawlFreshEnabled(),
+    days: crawlFreshDays(),
+    raw_enabled: process.env[CRAWL_FRESH_ENV] ?? null,
+    raw_days: process.env[CRAWL_FRESH_DAYS_ENV] ?? null,
+  };
+  if (stream && typeof stream.write === 'function') {
+    // Scripts whose stdout is a JSON report pass process.stderr, so the line
+    // never lands inside that report.
+    stream.write(`${JSON.stringify(config)}\n`);
+  } else {
+    // warn, not info: a deployment running LOG_LEVEL=warn must still show it.
+    logger.warn(config);
+  }
+  return config;
+}
+
 /**
  * Does THIS database's catalog_offers carry price_checked_at? Asked of the
  * caller's own pool/client. Never throws: a failed read is "absent". Not
@@ -726,7 +836,7 @@ async function crawlFreshByKey(pool, rows, now) {
  */
 async function priceCheckColumnPresent(pool) {
   try {
-    const res = await pool.query(PRICE_CHECK_COLUMN_SQL);
+    const res = await isolatedQuery(pool, PRICE_CHECK_COLUMN_SQL);
     const row = res && res.rows ? res.rows[0] : null;
     return Boolean(row != null && row.present);
   } catch (_err) {
@@ -828,10 +938,13 @@ module.exports = {
   CRAWL_LAST_PRICE_READ_SQL,
   CRAWL_OFFER_IN_STOCK_SQL,
   CRAWL_OFFER_SERVED_MARKET_SQL,
+  CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS,
   CRAWL_PRICE_READ_SOURCE_KEY,
   PRICE_CHECK_COLUMN_SQL,
   crawlFreshByKey,
   crawlLastPriceReadLateralSql,
+  isolatedQuery,
+  logCrawlFreshConfig,
   crawlFreshDays,
   crawlFreshEnabled,
   rowToPolicyInputs,

@@ -632,6 +632,13 @@ test('freshness reads ISO strings, and a zone-less timestamp as UTC (the twin re
   assert.equal(isCrawlFresh('2026-10-14T12:00:00', { now: NOW, maxAgeDays: 6 }), true);
   assert.equal(isCrawlFresh('2026-10-14 11:59:59', { now: NOW, maxAgeDays: 6 }), false);
   assert.equal(isCrawlFresh('2026-10-14T14:00:00+02:00', { now: NOW, maxAgeDays: 6 }), true);
+  // An hours-only offset, as Python's fromisoformat reads it; a lowercase 'z',
+  // which Python rejects.
+  assert.equal(isCrawlFresh('2026-10-14T14:00:00+02', { now: NOW, maxAgeDays: 6 }), true);
+  assert.equal(isCrawlFresh('2026-10-14T13:59:59+02', { now: NOW, maxAgeDays: 6 }), false);
+  assert.equal(isCrawlFresh('2026-10-14T07:00:00.000-05', { now: NOW, maxAgeDays: 6 }), true);
+  assert.equal(isCrawlFresh('2026-10-14T14:00:00+0200', { now: NOW, maxAgeDays: 6 }), true);
+  assert.equal(isCrawlFresh('2026-10-19T12:00:00z', { now: NOW, maxAgeDays: 6 }), false);
   // A number is epoch MILLISECONDS, as in the twin.
   assert.equal(isCrawlFresh(NOW.getTime() - DAY_MS, { now: NOW, maxAgeDays: 1 }), true);
 });
@@ -939,7 +946,7 @@ for (const [days, ageDays, decision] of [[3, 4, 'shadow'], [5, 4, 'public'], [4,
   });
 }
 
-for (const raw of ['', '  ', 'x', '0', '-1', 'nan', 'inf', '-inf', 'Infinity', '0x10', '0b1', '1__0', '_1']) {
+for (const raw of ['', '  ', 'x', '0', '-1', 'nan', 'inf', '-inf', 'Infinity', '1e400', '0x10', '0b1', '1__0', '_1', '٣x']) {
   test(`an unusable N (${JSON.stringify(raw)}) falls back to seven`, () => {
     process.env.CATALOG_TRUST_CRAWL_FRESH_DAYS = raw;
     assert.equal(upserter.crawlFreshDays(), 7);
@@ -947,7 +954,12 @@ for (const raw of ['', '  ', 'x', '0', '-1', 'nan', 'inf', '-inf', 'Infinity', '
 }
 
 test('N accepts fractions and the other decimal spellings the twin\'s float() accepts', () => {
-  for (const [raw, want] of [[' 0.5 ', 0.5], ['3', 3], ['.5', 0.5], ['2.', 2], ['1e1', 10], ['+4', 4], ['1_0', 10]]) {
+  for (const [raw, want] of [
+    [' 0.5 ', 0.5], ['3', 3], ['.5', 0.5], ['2.', 2], ['1e1', 10], ['+4', 4], ['1_0', 10],
+    // Unicode decimal digits, as Python's float() reads them (values checked
+    // against float() on the backend's interpreter)
+    ['３', 3], ['٣.٥', 3.5], ['１_０', 10], ['𝟓', 5], ['٣e١', 30], ['\u00a07\u2003', 7],
+  ]) {
     process.env.CATALOG_TRUST_CRAWL_FRESH_DAYS = raw;
     assert.equal(upserter.crawlFreshDays(), want, raw);
   }
@@ -991,7 +1003,7 @@ test('identity-event path (source listing refs -> bulk) supplies it too', async 
   assert.equal(pool.written()[OTHER_RETAILER_PK].serving_decision, 'shadow');
 });
 
-test('a failing freshness statement fails the batch into the log-and-swallow contract', async () => {
+test('a failing freshness statement fails CLOSED per batch: today\'s gates are written, nothing throws', async () => {
   switchOn();
   const pool = pathsPool();
   const origQuery = pool.query.bind(pool);
@@ -999,8 +1011,11 @@ test('a failing freshness statement fails the batch into the log-and-swallow con
     if (sql === upserter.CRAWL_LAST_PRICE_READ_SQL) throw new Error('boom');
     return origQuery(sql, params);
   };
-  assert.equal(await upserter.upsertCatalogRowTrust(pool, RETAILER_PK, NOW), false);
-  assert.equal(await upserter.upsertCatalogRowTrustMany(pool, [RETAILER_PK], NOW), 0);
+  assert.equal(await upserter.upsertCatalogRowTrust(pool, RETAILER_PK, NOW), true);
+  assert.equal(await upserter.upsertCatalogRowTrustMany(pool, [RETAILER_PK, OTHER_RETAILER_PK], NOW), 2);
+  // the fresh row would have gone public: with the read failed, it is today's shadow
+  assert.equal(pool.written()[RETAILER_PK].serving_decision, 'shadow');
+  assert.deepEqual(pool.written()[RETAILER_PK].serving_reason_codes, [REASON_CODES.IDENTITY_CONFIDENCE_NULL]);
 });
 
 test('the read-only serving predictor (repairRetailerOfficialDomain) supplies it too', async () => {
@@ -1022,11 +1037,12 @@ test('the read-only serving predictor (repairRetailerOfficialDomain) supplies it
     const out = await predictServing({ client: pool, plans, now: NOW });
     const entry = (out.get('seed:77') || [])[0];
     assert.ok(entry, 'the predictor returned no entry for the planned listing');
-    return entry.before;
+    return [entry.before, entry.after];
   };
-  assert.equal(await run(), 'shadow');
+  assert.deepEqual(await run(), ['shadow', 'shadow']);
   switchOn();
-  assert.equal(await run(), 'public');
+  // both the as-is and the planned derivation carry the input
+  assert.deepEqual(await run(), ['public', 'public']);
 });
 
 // ---------------------------------------------------------------------------
@@ -1093,4 +1109,238 @@ test('the read-source key is the backend writer\'s', () => {
 
 test('the statement is built from the shared lateral body', () => {
   assert.ok(upserter.CRAWL_LAST_PRICE_READ_SQL.includes(upserter.crawlLastPriceReadLateralSql('k.product_key')));
+});
+
+// ---------------------------------------------------------------------------
+// Failure isolation: a CRAWL_FRESH read never aborts the caller's transaction
+// ---------------------------------------------------------------------------
+
+// A single pg connection, modelled closely enough to show transaction state: a
+// failed statement inside BEGIN poisons every later statement ("current
+// transaction is aborted") until ROLLBACK TO SAVEPOINT (or ROLLBACK). Outside
+// BEGIN, SAVEPOINT is refused with 25P01, as Postgres does.
+class TxnFakeClient extends CrawlFakePool {
+  constructor({ inTransaction = true, failSql = null, ...rest } = {}) {
+    super(rest);
+    this.inTransaction = inTransaction;
+    this.failSql = failSql;
+    this.aborted = false;
+    this.savepoints = [];
+  }
+
+  async query(sql, params) {
+    if (this.aborted && !/^ROLLBACK/.test(sql)) {
+      this.queries.push({ sql, params, rejected: true });
+      throw Object.assign(new Error('current transaction is aborted'), { code: '25P02' });
+    }
+    if (/^SAVEPOINT /.test(sql)) {
+      this.queries.push({ sql, params });
+      if (!this.inTransaction) {
+        throw Object.assign(new Error('SAVEPOINT can only be used in transaction blocks'), { code: '25P01' });
+      }
+      this.savepoints.push(sql.slice('SAVEPOINT '.length));
+      return { rows: [] };
+    }
+    if (/^ROLLBACK TO SAVEPOINT /.test(sql)) {
+      this.queries.push({ sql, params });
+      this.aborted = false;
+      return { rows: [] };
+    }
+    if (/^RELEASE SAVEPOINT /.test(sql)) {
+      this.queries.push({ sql, params });
+      this.savepoints.pop();
+      return { rows: [] };
+    }
+    if (this.failSql && sql === this.failSql) {
+      this.queries.push({ sql, params });
+      if (this.inTransaction) this.aborted = true;
+      throw new Error('boom');
+    }
+    return super.query(sql, params);
+  }
+}
+
+test('inside a caller transaction, a failed freshness read rolls back to its savepoint and the batch is still written', async () => {
+  switchOn();
+  const client = new TxnFakeClient({
+    joined: [joinedRow(), joinedRow(OTHER_RETAILER_PK)],
+    reads: { [RETAILER_PK]: NOW },
+    failSql: upserter.CRAWL_LAST_PRICE_READ_SQL,
+  });
+  const wrote = await upserter.upsertCatalogRowTrustMany(client, [RETAILER_PK, OTHER_RETAILER_PK], NOW);
+  assert.equal(wrote, 2);
+  assert.equal(client.aborted, false, "the caller's transaction must still be usable");
+  assert.ok(client.queries.some((q) => q.sql === 'ROLLBACK TO SAVEPOINT catalog_row_trust_crawl_fresh'));
+  assert.ok(!client.queries.some((q) => q.rejected), 'no statement may run in an aborted transaction');
+  assert.equal(client.written()[RETAILER_PK].serving_decision, 'shadow');
+});
+
+test('inside a caller transaction, a failed column probe is contained the same way', async () => {
+  switchOn();
+  const client = new TxnFakeClient({
+    joined: [joinedRow()],
+    reads: { [RETAILER_PK]: NOW },
+    failSql: upserter.PRICE_CHECK_COLUMN_SQL,
+  });
+  assert.equal(await upserter.upsertCatalogRowTrust(client, RETAILER_PK, NOW), true);
+  assert.equal(client.aborted, false);
+  assert.equal(client.written()[RETAILER_PK].serving_decision, 'shadow');
+  assert.deepEqual(client.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+});
+
+test('inside a caller transaction, a successful read releases its savepoint and serves the input', async () => {
+  switchOn();
+  const client = new TxnFakeClient({ joined: [joinedRow()], reads: { [RETAILER_PK]: NOW } });
+  assert.equal(await upserter.upsertCatalogRowTrust(client, RETAILER_PK, NOW), true);
+  assert.deepEqual(client.savepoints, []);
+  assert.equal(client.written()[RETAILER_PK].serving_decision, 'public');
+});
+
+test('a client outside any transaction (SAVEPOINT refused with 25P01) runs the read plainly', async () => {
+  switchOn();
+  const client = new TxnFakeClient({ inTransaction: false, joined: [joinedRow()], reads: { [RETAILER_PK]: NOW } });
+  assert.equal(await upserter.upsertCatalogRowTrust(client, RETAILER_PK, NOW), true);
+  assert.equal(client.written()[RETAILER_PK].serving_decision, 'public');
+  assert.deepEqual(client.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), [[[RETAILER_PK]]]);
+});
+
+test('a pg Pool gets no savepoint: each of its queries is already its own statement', async () => {
+  const { Pool } = require('pg');
+  const pool = new Pool({ max: 1 });
+  const sent = [];
+  pool.query = async (sql) => {
+    sent.push(sql);
+    return { rows: [{ present: true }] };
+  };
+  try {
+    await upserter.isolatedQuery(pool, upserter.PRICE_CHECK_COLUMN_SQL);
+    assert.deepEqual(sent, [upserter.PRICE_CHECK_COLUMN_SQL]);
+  } finally {
+    await pool.end();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The backfill driver: the input reaches deriveTrust, and `now` is per batch
+// ---------------------------------------------------------------------------
+
+function backfillPool({ rows, reads }) {
+  const backfill = require('../scripts/backfill-catalog-row-trust.cjs');
+  const pool = new CrawlFakePool({ joined: rows, reads });
+  const origQuery = pool.query.bind(pool);
+  pool.query = async (sql, params) => {
+    if (sql === backfill.PRODUCT_DRIVER_SQL) {
+      pool.queries.push({ sql, params });
+      const [cursor, size] = params;
+      const page = rows
+        .filter((r) => cursor == null || r.product_key > cursor)
+        .sort((a, b) => (a.product_key < b.product_key ? -1 : 1))
+        .slice(0, size);
+      return { rows: page };
+    }
+    return origQuery(sql, params);
+  };
+  return pool;
+}
+
+test('backfill driver: the crawl_fresh input reaches deriveTrust and the write', async () => {
+  const { runBackfill } = require('../scripts/backfill-catalog-row-trust.cjs');
+  switchOn();
+  const pool = backfillPool({ rows: [joinedRow()], reads: { [RETAILER_PK]: ago(DAY_MS) } });
+  const tally = await runBackfill({ pool, clock: () => NOW });
+  assert.equal(tally.public, 1);
+  assert.equal(tally.by_reason.CRAWL_FRESH, 1);
+  assert.equal(pool.written()[RETAILER_PK].serving_decision, 'public');
+});
+
+test('backfill driver: switched off it is today\'s decision and sends no extra statement', async () => {
+  const { runBackfill } = require('../scripts/backfill-catalog-row-trust.cjs');
+  const pool = backfillPool({ rows: [joinedRow()], reads: { [RETAILER_PK]: ago(DAY_MS) } });
+  const tally = await runBackfill({ pool, clock: () => NOW });
+  assert.equal(tally.shadow, 1);
+  assert.deepEqual(pool.sent(upserter.CRAWL_LAST_PRICE_READ_SQL), []);
+});
+
+test('backfill driver: `now` is read per batch, so a late batch is judged by a current clock', async () => {
+  const { runBackfill } = require('../scripts/backfill-catalog-row-trust.cjs');
+  switchOn(7);
+  // Both rows were read at the same instant. Batch 1 runs 1 day later (fresh),
+  // batch 2 runs 8 days later (stale). A run-start clock would call both fresh.
+  const readAt = ago(0);
+  const clocks = [new Date(NOW.getTime() + DAY_MS), new Date(NOW.getTime() + 8 * DAY_MS)];
+  let calls = 0;
+  const pool = backfillPool({
+    rows: [joinedRow(), joinedRow(OTHER_RETAILER_PK)],
+    reads: { [RETAILER_PK]: readAt, [OTHER_RETAILER_PK]: readAt },
+  });
+  await runBackfill({ pool, batchRows: 1, clock: () => clocks[Math.min(calls++, 1)] });
+  assert.equal(calls >= 2, true, 'the clock must be read once per batch');
+  assert.equal(pool.written()[RETAILER_PK].serving_decision, 'public');
+  assert.equal(pool.written()[OTHER_RETAILER_PK].serving_decision, 'shadow');
+});
+
+// ---------------------------------------------------------------------------
+// Boot / job log of the effective switch
+// ---------------------------------------------------------------------------
+
+test('logCrawlFreshConfig reports the effective switch and N', () => {
+  const lines = [];
+  const stream = { write: (s) => lines.push(s) };
+  let out = upserter.logCrawlFreshConfig('test', { stream });
+  assert.equal(out.enabled, false);
+  assert.equal(out.days, 7);
+  process.env.CATALOG_TRUST_CRAWL_FRESH_ENABLED = ' On ';
+  process.env.CATALOG_TRUST_CRAWL_FRESH_DAYS = '3.5';
+  out = upserter.logCrawlFreshConfig('test', { stream });
+  assert.equal(out.enabled, true);
+  assert.equal(out.days, 3.5);
+  const last = JSON.parse(lines.at(-1));
+  assert.equal(last.event, 'catalog_trust_crawl_fresh_config');
+  assert.equal(last.context, 'test');
+  assert.equal(last.enabled, true);
+  assert.equal(last.days, 3.5);
+});
+
+test('every entry point that writes or re-derives trust logs the switch it runs with', () => {
+  const read = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+  assert.match(read('src/server.js'), /logCrawlFreshConfig\('gateway-boot'\)/);
+  for (const [file, ctx] of [
+    ['scripts/backfill-pdp-identity-graph.js', 'backfill-pdp-identity-graph'],
+    ['scripts/promote-pdp-identity-live-read.js', 'promote-pdp-identity-live-read'],
+    ['scripts/backfill-catalog-row-trust.cjs', 'backfill-catalog-row-trust'],
+  ]) {
+    assert.ok(read(file).includes(`logCrawlFreshConfig('${ctx}', { stream: process.stderr })`), file);
+  }
+  // ...and the scheduled jobs that run them carry the switch, not a silent off.
+  for (const wf of ['pdp-identity-graph-backfill.yml', 'pdp-identity-live-read-promote.yml']) {
+    const text = read(path.join('.github', 'workflows', wf));
+    assert.ok(text.includes('CATALOG_TRUST_CRAWL_FRESH_ENABLED: ${{ vars.CATALOG_TRUST_CRAWL_FRESH_ENABLED }}'), wf);
+    assert.ok(text.includes('CATALOG_TRUST_CRAWL_FRESH_DAYS: ${{ vars.CATALOG_TRUST_CRAWL_FRESH_DAYS }}'), wf);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Market drift: the served pairs the statement names are the registry's
+// ---------------------------------------------------------------------------
+
+test('the served (market, currency) pairs equal the backend registry served set', () => {
+  // Prefer this repo's generated registry copy once it exists; until then the
+  // fixture generated from the backend registry (see its _source).
+  const generated = path.join(__dirname, '..', 'src', 'markets', 'market_registry.generated.json');
+  let want;
+  if (fs.existsSync(generated)) {
+    const registry = JSON.parse(fs.readFileSync(generated, 'utf8'));
+    want = Object.entries(registry.markets)
+      .filter(([, e]) => e.status === 'served')
+      .map(([code, e]) => [code, e.currency]);
+  } else {
+    want = JSON.parse(
+      fs.readFileSync(path.join(__dirname, 'fixtures', 'crawl_fresh_served_markets.backend.json'), 'utf8'),
+    ).served_market_currency_pairs;
+  }
+  const norm = (pairs) => pairs.map(([m, c]) => `${m}:${c}`).sort();
+  assert.deepEqual(norm(upserter.CRAWL_FRESH_SERVED_MARKET_CURRENCY_PAIRS), norm(want));
+  for (const [m, c] of want) {
+    assert.ok(upserter.CRAWL_OFFER_SERVED_MARKET_SQL.includes(`('${m}', '${c}')`), `${m}/${c}`);
+  }
 });

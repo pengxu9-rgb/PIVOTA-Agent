@@ -366,10 +366,17 @@ function isCrawlFresh(lastPriceReadAt, { now, maxAgeDays } = {}) {
 }
 
 // The Python twin's _to_datetime: a Date as is; a number as epoch MILLISECONDS;
-// an ISO-8601 string with a trailing Z, an offset, or NO zone (read as UTC, as
-// Python reads a naive datetime — JS Date.parse would read it as LOCAL time);
-// anything else null.
-const ISO_ZONE_SUFFIX = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+// an ISO-8601 string with a trailing Z, an offset (+HH:MM, +HHMM or +HH), or NO
+// zone (read as UTC, as Python reads a naive datetime — JS Date.parse would read
+// it as LOCAL time); anything else null. Python 3.11's fromisoformat accepts more
+// spellings than this (basic format '20261014T140000Z', an hour-only time); they
+// are NOT mirrored, and need not be: the production input is the freshness
+// statement's timestamptz, which node-pg hands over as a Date.
+const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+const ISO_HOURS_ONLY_OFFSET = /([+-]\d{2})$/;
+const ISO_ZONE_SUFFIX = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/;
+// Case-sensitive on purpose: Python rejects a lowercase 'z' designator, and here
+// a trailing 'z' is not a zone, gains a 'Z', and fails to parse -> null.
 function toDateOrNull(value) {
   if (value == null) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -380,9 +387,15 @@ function toDateOrNull(value) {
   if (typeof value === 'string') {
     let s = value.trim();
     if (!s) return null;
-    // A date-and-time with no zone designator is UTC (Python: naive -> UTC).
-    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s) && !ISO_ZONE_SUFFIX.test(s)) {
-      s = `${s.replace(' ', 'T')}Z`;
+    if (ISO_DATE_TIME.test(s)) {
+      s = s.replace(' ', 'T');
+      if (!ISO_ZONE_SUFFIX.test(s)) {
+        // A date-and-time with no zone designator is UTC (Python: naive -> UTC).
+        s = `${s}Z`;
+      } else if (/T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?[+-]\d{2}$/.test(s)) {
+        // '+02' (hours only): Python reads it, JS Date does not.
+        s = s.replace(ISO_HOURS_ONLY_OFFSET, '$1:00');
+      }
     }
     const d = new Date(s);
     return Number.isNaN(d.getTime()) ? null : d;
