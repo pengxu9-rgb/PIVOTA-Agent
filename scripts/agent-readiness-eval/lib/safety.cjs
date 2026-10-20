@@ -29,6 +29,9 @@ const HARD_CAPS = Object.freeze({
   maxLoadRequests: 5000,
   maxLoadSeconds: 900,
   maxDiscoveryCalls: 20000,
+  // Non-load runs are paced too: a shared start-rate limit and a wall-clock limit.
+  maxDiscoveryRps: 50,
+  maxRunSeconds: 4 * 3600,
   minTimeoutMs: 1000,
   maxTimeoutMs: 120000,
 });
@@ -136,33 +139,54 @@ function checkLoad(load) {
   if (seconds > HARD_CAPS.maxLoadSeconds) problems.push(`load duration ${seconds}s exceeds hard cap ${HARD_CAPS.maxLoadSeconds}s`);
   if (!(seconds > 0)) problems.push('load duration must be > 0');
   if (!(load.breakerErrorRate > 0 && load.breakerErrorRate <= 1)) problems.push('breaker error rate must be within (0,1]');
+  if (!(Number.isInteger(load.breakerWindow) && load.breakerWindow >= 1)) problems.push('breaker window must be an integer >= 1');
+  if (!(Number.isInteger(load.maxConcurrency) && load.maxConcurrency >= 1)) problems.push('load concurrency must be an integer >= 1');
+  if (!(Number.isInteger(load.maxRequests) && load.maxRequests >= 1)) problems.push('load max requests must be an integer >= 1');
+  if (!(load.rampSeconds >= 0) || !(load.holdSeconds >= 0)) problems.push('load ramp/hold seconds must be >= 0');
   return { ok: problems.length === 0, problems };
 }
 
 /**
- * The kill switch: a file whose existence stops the run, a process signal, and the env var at start.
+ * The kill switch: a file whose existence stops the run, SIGINT/SIGTERM, the env var at start, and trip() (the
+ * load breaker, a halted client). Stopping is not only "send nothing new": `signal` is a run-wide AbortSignal
+ * every MCP client passes to fetch, so stopping also CANCELS what is in flight. A SECOND signal exits the
+ * process immediately (exit code 130), whatever is still running.
+ *
  * `check()` is cheap and is called before every request.
  */
-function createKillSwitch({ killFile, env = process.env, fs = require('node:fs'), onSignal = true } = {}) {
-  let killedReason = env.READINESS_EVAL_KILL && /^(1|true|yes|on)$/i.test(env.READINESS_EVAL_KILL)
-    ? 'READINESS_EVAL_KILL set'
-    : null;
+function createKillSwitch({ killFile, env = process.env, fs = require('node:fs'), onSignal = true, exit = (code) => process.exit(code) } = {}) {
+  const controller = new AbortController();
+  let killedReason = null;
+  const kill = (reason) => {
+    if (!killedReason) killedReason = reason;
+    if (!controller.signal.aborted) controller.abort(new Error(`readiness-eval stopped: ${killedReason}`));
+  };
+  if (env.READINESS_EVAL_KILL && /^(1|true|yes|on)$/i.test(env.READINESS_EVAL_KILL)) kill('READINESS_EVAL_KILL set');
   const handlers = [];
+  let signals = 0;
   if (onSignal) {
     for (const sig of ['SIGINT', 'SIGTERM']) {
       const h = () => {
-        killedReason = killedReason || `received ${sig}`;
+        signals += 1;
+        if (signals >= 2) {
+          process.stderr.write(`[readiness-eval] second signal (${sig}): exiting now\n`);
+          exit(130);
+          return;
+        }
+        process.stderr.write(`[readiness-eval] ${sig}: stopping and cancelling in-flight calls (send again to exit now)\n`);
+        kill(`received ${sig}`);
       };
-      process.once(sig, h);
+      process.on(sig, h);
       handlers.push([sig, h]);
     }
   }
   return {
+    signal: controller.signal,
     check() {
       if (killedReason) return killedReason;
       if (killFile) {
         try {
-          if (fs.existsSync(killFile)) killedReason = `kill file present: ${killFile}`;
+          if (fs.existsSync(killFile)) kill(`kill file present: ${killFile}`);
         } catch {
           // An unreadable path is not a kill.
         }
@@ -170,7 +194,11 @@ function createKillSwitch({ killFile, env = process.env, fs = require('node:fs')
       return killedReason;
     },
     trip(reason) {
-      killedReason = killedReason || reason;
+      kill(reason);
+    },
+    // Test hook: what a signal would do, without sending one to the test runner.
+    _signal(sig) {
+      for (const [s2, h] of handlers) if (s2 === sig) h();
     },
     dispose() {
       for (const [sig, h] of handlers) process.removeListener(sig, h);

@@ -200,10 +200,12 @@ function evaluateSlos(metrics, slos) {
   });
 }
 
+// pass ONLY when every SLO that is not switched off was measured and met. A missing measurement is not a pass:
+// it is `incomplete` (switch an SLO off explicitly, e.g. the offers SLO on the public tier, to accept that).
 function overallVerdict(sloResults, run) {
   if (run.aborted) return 'aborted';
   if (sloResults.some((s) => s.status === 'fail')) return 'fail';
-  if (sloResults.every((s) => s.status === 'no_data' || s.status === 'off')) return 'no_data';
+  if (sloResults.some((s) => s.status === 'no_data')) return 'incomplete';
   return 'pass';
 }
 

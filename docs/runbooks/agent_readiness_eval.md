@@ -35,23 +35,26 @@ npm run eval:agent-readiness -- --base-url … --diff-against /path/to/previous/
 node scripts/agent-readiness-eval/run.cjs diff previous/results.json current/results.json
 ```
 
-Each run writes three files to `--out`:
+Each run writes into a new directory of its own, `run_<timestamp>_<pid>_<random>`, under `--out`. It
+writes three files:
 
 - `results.json`: every call record, per-query scores, metrics, SLO verdicts and the optional diff.
 - `scorecard.md`: the scorecard as Markdown.
 - `scorecard.html`: the same scorecard as self-contained HTML.
 
 `--out` defaults to the OS temp directory, because results contain measured metrics and **this repository is
-public**. Never commit a results directory.
+public**. A `--out` inside any git checkout is refused.
+
+At start, the run prints its run directory and the path of its KILL file.
 
 Exit codes:
 
 | Code | Meaning |
 |---|---|
-| 0 | All SLOs pass |
-| 1 | At least one SLO fails |
+| 0 | Pass: every SLO that is not switched off was measured and met |
+| 1 | Fail (an SLO missed), or incomplete (an SLO had no data: switch it off explicitly with `--slo key=off` to accept that) |
 | 2 | Refused: config or safety check failed |
-| 3 | Aborted: kill switch, failed handshake, or call budget used up |
+| 3 | Aborted: kill switch, failed handshake, missing attestation, a redirect, the wall-clock limit, or the call budget |
 | 4 | Fatal error |
 
 ## What it does
@@ -188,8 +191,9 @@ Override any threshold with `--slo key=value`, or `--slo key=off` to make it inf
 | `offer_search_price_agreement_min` | ≥ 90% | Added: offer price agrees with search price. |
 | `chain_resolve_rate_min` | ≥ 98% | Added: search ids that `get_product` resolves. |
 
-An SLO with no data, for example `get_offers` on the public tier, shows as `NO_DATA` and does not fail the
-run.
+An SLO with no data shows as `NO_DATA`. One unmeasured SLO makes the whole verdict `incomplete`, never
+`pass`. For example, `get_offers` does not exist on the public tier, so run that tier with
+`--slo offer_search_price_agreement_min=off`.
 
 Every metric is also broken down **per tool**, **per query class**, **per language** and **per market**.
 
@@ -223,19 +227,30 @@ Every metric is also broken down **per tool**, **per query class**, **per langua
   | Cap | Value |
   |---|---|
   | Load rate | ≤ 20 rps |
-  | Concurrency | ≤ 32 |
+  | Discovery start rate (`--rps`, default 4) | ≤ 50 rps, shared by all workers |
+  | Run wall clock (`--max-wall-seconds`, default 3600) | ≤ 4 h |
+  | Concurrency | 1–32, integer |
   | Load requests | ≤ 5000 |
   | Load duration | ≤ 900 s |
   | Calls per non-load run | ≤ 20000 |
   | Timeout | 1–120 s |
-- **Kill switch:** any of these stops the run before the next request.
-  - Create the kill file (`<out>/KILL`, or `--kill-file`).
+  | Pacing | ≥ 1 ms |
+
+  Every numeric option is range-checked, and out-of-range or negative values are refused.
+- **Tool allowlist:** `McpClient.callTool` will only ever call `search_catalog`, `get_product`, `get_offers`,
+  `get_alternatives` and `recommend_products`. The list is compiled in and checked before any I/O.
+- **Kill switch:** any of these stops the run.
+  - Create the KILL file printed at start (or `--kill-file`).
   - Press Ctrl-C or send SIGTERM.
-  - Set `READINESS_EVAL_KILL=1`, which stops the run at start.
-- **Discovery pacing:** one call at a time with 250 ms between calls by default (`--concurrency`,
-  `--pacing-ms`).
-- **Secrets:** API keys and bearer tokens come from env only. They are sent only in auth headers, and are never
-  written to logs or results. Load callers are identified by `caller_N` plus an 8-character hash.
+  - Have the load breaker trip.
+  - Have a client halt.
+  - Set `READINESS_EVAL_KILL=1`, which stops the run before anything is sent.
+
+  Stopping also aborts in-flight requests through a run-wide AbortSignal. A **second** Ctrl-C or SIGTERM exits
+  at once with code 130.
+- **Secrets:** API keys, bearer tokens and caller keys come from env only. `--caller-keys`, `--api-key` and
+  `--bearer-token` are refused. Secrets are sent only in auth headers and never written to logs or results.
+  Load callers are identified by `caller_N` plus an 8-character hash.
 
 ## Load mode
 

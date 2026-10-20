@@ -45,6 +45,11 @@ function availabilitySummary(records) {
     tool_error_codes: {},
   };
   for (const r of records) {
+    // Cancelled by our own kill switch, or never sent because the client halted: not the service's doing.
+    if (r.outcome === 'aborted' || r.outcome === 'halted') {
+      out.cancelled = (out.cancelled || 0) + 1;
+      continue;
+    }
     out.calls += 1;
     out.by_outcome[r.outcome] = (out.by_outcome[r.outcome] || 0) + 1;
     if (r.outcome === 'ok') out.ok += 1;
@@ -56,6 +61,7 @@ function availabilitySummary(records) {
     }
     if (r.failed_with_hits) out.failed_with_hits += 1;
   }
+  out.cancelled = out.cancelled || 0;
   const unavailable = records.filter((r) => UNAVAILABLE_OUTCOMES.has(r.outcome)).length;
   const denom = out.calls - out.rate_limited - out.auth_error;
   out.unavailable = unavailable;

@@ -89,6 +89,13 @@ test.after(async () => {
   process.env = { ...ORIGINAL_ENV };
 });
 
+/** Each run writes into its own new subdirectory of --out; return the one this test's run created. */
+function runDirOf(base) {
+  const dirs = fs.readdirSync(base).filter((d) => d.startsWith('run_'));
+  assert.equal(dirs.length, 1, `expected exactly one run dir in ${base}, found ${dirs.join(', ')}`);
+  return path.join(base, dirs[0]);
+}
+
 function sink() {
   const chunks = [];
   return { write: (s) => { chunks.push(String(s)); return true; }, text: () => chunks.join('') };
@@ -98,12 +105,12 @@ test('real gateway, /public/mcp: handshake, tools/list, search_catalog over the 
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'readiness-real-'));
   const io = { out: sink(), err: sink() };
   const code = await main(
-    ['--base-url', LOOPBACK, '--tier', 'public', '--journeys', 'discovery,consistency', '--classes', 'makeup_shade,negative_non_beauty,negative_nonsense', '--limit', '20', '--consistency-sample', '3', '--consistency-repeats', '1', '--pacing-ms', '0', '--out', out],
+    ['--base-url', LOOPBACK, '--tier', 'public', '--journeys', 'discovery,consistency', '--classes', 'makeup_shade,negative_non_beauty,negative_nonsense', '--limit', '20', '--consistency-sample', '3', '--consistency-repeats', '1', '--pacing-ms', '1', '--rps', '50', '--out', out],
     {},
     io,
   );
   assert.ok([0, 1].includes(code), `exit ${code}: ${io.err.text()}`);
-  const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+  const report = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8'));
   const m = report.metrics;
   assert.equal(m.run.handshake.outcome, 'ok', JSON.stringify(m.run.handshake));
   assert.equal(m.run.handshake.server_info.name, 'pivota');
@@ -122,12 +129,12 @@ test('real gateway, /mcp with an API key: the commerce door answers the same jou
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'readiness-real-'));
   const io = { out: sink(), err: sink() };
   const code = await main(
-    ['--base-url', LOOPBACK, '--tier', 'commerce', '--journeys', 'discovery', '--classes', 'makeup_shade', '--limit', '8', '--pacing-ms', '0', '--out', out],
+    ['--base-url', LOOPBACK, '--tier', 'commerce', '--journeys', 'discovery', '--classes', 'makeup_shade', '--limit', '8', '--pacing-ms', '1', '--rps', '50', '--out', out],
     { READINESS_EVAL_API_KEY: SERVICE_KEY },
     io,
   );
   assert.ok([0, 1].includes(code), `exit ${code}: ${io.err.text()}`);
-  const m = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8')).metrics;
+  const m = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8')).metrics;
   assert.equal(m.run.handshake.outcome, 'ok', JSON.stringify(m.run.handshake));
   assert.equal(m.run.handshake.server_info.name, 'pivota-commerce-mcp');
   assert.equal(m.by_tool.search_catalog.calls, 8);
@@ -139,7 +146,7 @@ test('real gateway, /mcp without credentials: refused at the door and reported a
   const io = { out: sink(), err: sink() };
   const code = await main(['--base-url', LOOPBACK, '--tier', 'commerce', '--auth', 'none', '--limit', '1', '--out', out], {}, io);
   assert.equal(code, 3, io.err.text());
-  const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+  const report = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8'));
   assert.equal(report.metrics.run.handshake.outcome, 'auth_error');
   assert.match(report.metrics.run.aborted, /initialize failed: auth_error/);
 });

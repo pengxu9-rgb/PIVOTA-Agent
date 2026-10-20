@@ -181,6 +181,13 @@ async function startStub({ perCallerLimit = Infinity, attest = true, redirectTo 
   return stub;
 }
 
+/** Each run writes into its own new subdirectory of --out; return the one this test's run created. */
+function runDirOf(base) {
+  const dirs = fs.readdirSync(base).filter((d) => d.startsWith('run_'));
+  assert.equal(dirs.length, 1, `expected exactly one run dir in ${base}, found ${dirs.join(', ')}`);
+  return path.join(base, dirs[0]);
+}
+
 function sink() {
   const chunks = [];
   return { write: (s) => { chunks.push(String(s)); return true; }, text: () => chunks.join('') };
@@ -193,9 +200,9 @@ test('public tier: full query set end to end; planted defects are caught; nothin
   try {
     const out = tmp();
     const io = { out: sink(), err: sink() };
-    const code = await main(['--base-url', stub.base, '--tier', 'public', '--pacing-ms', '0', '--concurrency', '4', '--out', out], {}, io);
+    const code = await main(['--base-url', stub.base, '--tier', 'public', '--pacing-ms', '1', '--rps', '50', '--concurrency', '4', '--out', out], {}, io);
     assert.ok([0, 1].includes(code), `exit ${code}: ${io.err.text()}`);
-    const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+    const report = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8'));
     const m = report.metrics;
     assert.equal(m.run.handshake.outcome, 'ok');
     assert.equal(m.run.handshake.protocol_version, '2025-06-18');
@@ -224,8 +231,8 @@ test('public tier: full query set end to end; planted defects are caught; nothin
     assert.ok(stub.seen.requests.length > 300);
     assert.ok(stub.seen.requests.every((r) => r.method === 'POST' && r.url === '/public/mcp'), 'only POST /public/mcp');
     assert.ok(stub.seen.requests.every((r) => r.headers['x-pivota-synthetic-traffic'] === 'readiness-eval'));
-    for (const f of ['scorecard.md', 'scorecard.html']) assert.ok(fs.statSync(path.join(out, f)).size > 500, f);
-    const md = fs.readFileSync(path.join(out, 'scorecard.md'), 'utf8');
+    for (const f of ['scorecard.md', 'scorecard.html']) assert.ok(fs.statSync(path.join(runDirOf(out), f)).size > 500, f);
+    const md = fs.readFileSync(path.join(runDirOf(out), 'scorecard.md'), 'utf8');
     assert.match(md, /## SLOs/);
     assert.match(md, /By language/);
     assert.match(md, /zh-Hant/);
@@ -240,12 +247,12 @@ test('commerce tier: API key auth, follow-through incl. offers + recommend, chec
     const out = tmp();
     const io = { out: sink(), err: sink() };
     const code = await main(
-      ['--base-url', stub.base, '--tier', 'commerce', '--pacing-ms', '0', '--concurrency', '4', '--classes', 'makeup_shade,skincare_ingredient,negative_non_beauty', '--markets', 'US,SG', '--out', out],
+      ['--base-url', stub.base, '--tier', 'commerce', '--pacing-ms', '1', '--rps', '50', '--concurrency', '4', '--classes', 'makeup_shade,skincare_ingredient,negative_non_beauty', '--markets', 'US,SG', '--out', out],
       { READINESS_EVAL_API_KEY: API_KEY },
       io,
     );
     assert.ok([0, 1].includes(code), `exit ${code}: ${io.err.text()}`);
-    const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+    const report = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8'));
     const m = report.metrics;
     assert.ok(m.search.failed_with_hits > 0, '"failed" envelopes carrying hits are counted');
     assert.ok(m.by_tool.get_offers.calls > 0);
@@ -261,7 +268,7 @@ test('commerce tier: API key auth, follow-through incl. offers + recommend, chec
     assert.ok(stub.seen.toolCalls.every((c) => c.key === API_KEY));
     assert.ok(stub.seen.requests.every((r) => r.url === '/mcp'));
     // The raw report never carries the API key.
-    assert.equal(fs.readFileSync(path.join(out, 'results.json'), 'utf8').includes(API_KEY), false);
+    assert.equal(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8').includes(API_KEY), false);
   } finally {
     await stub.close();
   }
@@ -273,13 +280,13 @@ test('load mode: per-caller sessions, per-caller 429s attributed, bounded by max
     const out = tmp();
     const io = { out: sink(), err: sink() };
     const code = await main(
-      ['--base-url', stub.base, '--tier', 'commerce', '--journeys', 'discovery', '--limit', '2', '--pacing-ms', '0',
+      ['--base-url', stub.base, '--tier', 'commerce', '--journeys', 'discovery', '--limit', '2', '--pacing-ms', '1', '--rps', '50',
         '--load', '--rps-start', '20', '--rps-end', '20', '--ramp-seconds', '0', '--hold-seconds', '3', '--max-requests', '24', '--load-concurrency', '8', '--out', out],
       { READINESS_EVAL_API_KEY: API_KEY, READINESS_EVAL_CALLER_KEYS: CALLER_KEYS.join(',') },
       io,
     );
     assert.ok([0, 1].includes(code), `exit ${code}: ${io.err.text()}`);
-    const m = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8')).metrics;
+    const m = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8')).metrics;
     assert.equal(m.load.sent, 24);
     assert.match(m.load.stopped_by, /max requests/);
     assert.equal(m.load.per_caller.caller_1.rate_limited, 0);
@@ -296,9 +303,10 @@ test('kill switch at start: no tool is called; dry-run makes no request at all; 
   try {
     const io = { out: sink(), err: sink() };
     const out = tmp();
-    const code = await main(['--base-url', stub.base, '--pacing-ms', '0', '--out', out], { READINESS_EVAL_KILL: '1' }, io);
+    const code = await main(['--base-url', stub.base, '--pacing-ms', '1', '--rps', '50', '--out', out], { READINESS_EVAL_KILL: '1' }, io);
     assert.equal(code, 3);
-    assert.equal(stub.seen.toolCalls.length, 0);
+    assert.equal(stub.seen.requests.length, 0, 'a run killed at start sends nothing, not even initialize');
+    assert.match(io.err.text(), /KILL SWITCH: touch .*KILL/);
     const before = stub.seen.requests.length;
     const dry = { out: sink(), err: sink() };
     assert.equal(await main(['--dry-run', '--base-url', stub.base], {}, dry), 0);
@@ -307,13 +315,13 @@ test('kill switch at start: no tool is called; dry-run makes no request at all; 
     // Two small real runs, then diff.
     const a = tmp();
     const b = tmp();
-    await main(['--base-url', stub.base, '--limit', '12', '--journeys', 'discovery', '--pacing-ms', '0', '--out', a], {}, { out: sink(), err: sink() });
-    await main(['--base-url', stub.base, '--limit', '12', '--journeys', 'discovery', '--pacing-ms', '0', '--out', b, '--diff-against', path.join(a, 'results.json')], {}, { out: sink(), err: sink() });
-    const diffed = JSON.parse(fs.readFileSync(path.join(b, 'results.json'), 'utf8')).diff;
+    await main(['--base-url', stub.base, '--limit', '12', '--journeys', 'discovery', '--pacing-ms', '1', '--rps', '50', '--out', a], {}, { out: sink(), err: sink() });
+    await main(['--base-url', stub.base, '--limit', '12', '--journeys', 'discovery', '--pacing-ms', '1', '--rps', '50', '--out', b, '--diff-against', path.join(runDirOf(a), 'results.json')], {}, { out: sink(), err: sink() });
+    const diffed = JSON.parse(fs.readFileSync(path.join(runDirOf(b), 'results.json'), 'utf8')).diff;
     assert.ok(Array.isArray(diffed.headline) && diffed.headline.length > 5);
     assert.deepEqual(diffed.changes.became_empty, []);
     const cli = { out: sink(), err: sink() };
-    assert.equal(await main(['diff', path.join(a, 'results.json'), path.join(b, 'results.json')], {}, cli), 0);
+    assert.equal(await main(['diff', path.join(runDirOf(a), 'results.json'), path.join(runDirOf(b), 'results.json')], {}, cli), 0);
     assert.match(cli.out.text(), /headline/);
   } finally {
     await stub.close();
@@ -325,11 +333,11 @@ test('a target that does not attest the eval deployment is abandoned after its f
   try {
     const out = tmp();
     const io = { out: sink(), err: sink() };
-    const code = await main(['--base-url', stub.base, '--pacing-ms', '0', '--out', out], {}, io);
+    const code = await main(['--base-url', stub.base, '--pacing-ms', '1', '--rps', '50', '--out', out], {}, io);
     assert.equal(code, 3, io.err.text());
     assert.equal(stub.seen.requests.length, 1, 'exactly one request (initialize), then the client halts');
     assert.equal(stub.seen.toolCalls.length, 0);
-    const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+    const report = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8'));
     assert.match(report.metrics.run.aborted, /attestation_missing/);
   } finally {
     await stub.close();
@@ -347,11 +355,11 @@ test('redirects are never followed, even to another loopback listener', async ()
   const stub = await startStub({ redirectTo: `http://127.0.0.1:${other.address().port}/public/mcp` });
   try {
     const out = tmp();
-    const code = await main(['--base-url', stub.base, '--pacing-ms', '0', '--out', out], {}, { out: sink(), err: sink() });
+    const code = await main(['--base-url', stub.base, '--pacing-ms', '1', '--rps', '50', '--out', out], {}, { out: sink(), err: sink() });
     assert.equal(code, 3);
     assert.equal(stub.seen.requests.length, 1);
     assert.equal(elsewhere.hits, 0, 'the redirect target was never contacted');
-    const report = JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8'));
+    const report = JSON.parse(fs.readFileSync(path.join(runDirOf(out), 'results.json'), 'utf8'));
     assert.match(report.metrics.run.aborted, /redirect_refused/);
   } finally {
     await stub.close();

@@ -180,6 +180,9 @@ test('SLO evaluation: pass / fail / no_data / off, and the overall verdict', () 
   assert.equal(by.consistency_stable_rate_min, 'no_data');
   assert.equal(by.duplicate_query_rate_max, 'off');
   assert.equal(overallVerdict(res, {}), 'fail');
+  const noFail = res.map((r) => (r.status === 'fail' ? { ...r, status: 'pass' } : r));
+  assert.equal(overallVerdict(noFail, {}), 'incomplete', 'an unmeasured SLO is never a pass');
+  assert.equal(overallVerdict(noFail.filter((r) => r.status !== 'no_data'), {}), 'pass');
   assert.equal(overallVerdict(res, { aborted: 'x' }), 'aborted');
 });
 

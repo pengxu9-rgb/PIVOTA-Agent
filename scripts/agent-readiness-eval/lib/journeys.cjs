@@ -110,7 +110,7 @@ function baseCallFields(rec, payload) {
  * Run the configured journeys.
  * @param {{ config, client, querySet, judgeFn?, killSwitch, log?, now? }} deps
  */
-async function runJourneys({ config, client, querySet, judgeFn = null, killSwitch, log = () => {} }) {
+async function runJourneys({ config, client, querySet, judgeFn = null, killSwitch, log = () => {}, callBudget = Infinity }) {
   const startedAt = new Date().toISOString();
   const rng = mulberry32(config.seed);
   const calls = [];
@@ -127,7 +127,14 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
     consistency: [],
     calls,
   };
-  let budget = HARD_CAPS.maxDiscoveryCalls;
+  // `callBudget` (tests) can only LOWER the compiled-in cap.
+  let budget = Math.min(HARD_CAPS.maxDiscoveryCalls, callBudget);
+  // Start-rate limit shared by every worker, and a wall-clock limit for the whole run (compiled-in caps bound both).
+  const rps = Math.min(config.discoveryRps, HARD_CAPS.maxDiscoveryRps);
+  const minIntervalMs = 1000 / rps;
+  const wallLimitMs = Math.min(config.maxWallSeconds, HARD_CAPS.maxRunSeconds) * 1000;
+  const runStartedMs = Date.now();
+  let nextSlotMs = 0;
   let toolsByName = new Map();
 
   const call = async (toolName, desired, meta) => {
@@ -135,6 +142,14 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
       out.aborted = out.aborted || client.halted;
       return null;
     }
+    if (Date.now() - runStartedMs > wallLimitMs) {
+      out.aborted = out.aborted || `wall-clock limit reached (${wallLimitMs / 1000}s)`;
+      return null;
+    }
+    const nowMs = Date.now();
+    const slot = Math.max(nowMs, nextSlotMs);
+    nextSlotMs = slot + minIntervalMs;
+    if (slot > nowMs) await sleep(slot - nowMs);
     const reason = killSwitch && killSwitch.check();
     if (reason) {
       out.aborted = out.aborted || reason;

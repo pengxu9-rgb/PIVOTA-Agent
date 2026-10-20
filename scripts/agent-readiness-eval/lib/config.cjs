@@ -9,6 +9,7 @@
 
 const os = require('node:os');
 const path = require('node:path');
+const { HARD_CAPS } = require('./safety.cjs');
 
 const TIERS = Object.freeze({
   // The auth:none read tier (four read tools, projected shapes, structuredContent).
@@ -46,6 +47,9 @@ const DEFAULTS = Object.freeze({
   // Discovery is paced, not a load test: one call at a time unless --concurrency says otherwise.
   concurrency: 1,
   pacingMs: 250,
+  // Shared start rate across all workers (calls/second); bounded by HARD_CAPS.maxDiscoveryRps.
+  discoveryRps: 4,
+  maxWallSeconds: 3600,
   pageSize: 10,
   relevanceTopK: 5,
   relevanceQueryPassThreshold: 0.6,
@@ -82,6 +86,8 @@ const LOAD_DEFAULTS = Object.freeze({
 // way to address one vhost through another's address, and the remote/synthetic switches are replaced by the
 // compiled-in allowlist.
 const REMOVED_FLAGS = Object.freeze(['host-header', 'allow-remote-target', 'synthetic-flag-ack', 'allow-remote']);
+// Secrets are env-only; passing one as a flag is refused outright.
+const SECRET_FLAGS = Object.freeze(['caller-keys', 'api-key', 'bearer-token']);
 
 function parseArgv(argv) {
   const out = { _: [], slo: {} };
@@ -157,11 +163,12 @@ function resolveConfig(argv = [], env = process.env) {
   }
   const unknownSlos = Object.keys(f.slo).filter((k) => !(k in DEFAULT_SLOS));
 
-  const callerKeys = list(pick('caller-keys', 'READINESS_EVAL_CALLER_KEYS'), []);
+  // ENV ONLY: keys never travel on a command line (shell history, process listings).
+  const callerKeys = list(env.READINESS_EVAL_CALLER_KEYS, []);
 
   const outDir = String(
     // Default OUTSIDE the repo: results carry measured metrics, and this repository is public.
-    pick('out', 'READINESS_EVAL_OUT_DIR') || path.join(os.tmpdir(), 'pivota-readiness-eval', timestampSlug()),
+    pick('out', 'READINESS_EVAL_OUT_DIR') || path.join(os.tmpdir(), 'pivota-readiness-eval'),
   );
 
   const config = {
@@ -178,6 +185,8 @@ function resolveConfig(argv = [], env = process.env) {
     timeoutMs: num(pick('timeout-ms', 'READINESS_EVAL_TIMEOUT_MS'), DEFAULTS.timeoutMs),
     concurrency: num(pick('concurrency', 'READINESS_EVAL_CONCURRENCY'), DEFAULTS.concurrency),
     pacingMs: num(pick('pacing-ms', 'READINESS_EVAL_PACING_MS'), DEFAULTS.pacingMs),
+    discoveryRps: num(pick('rps', 'READINESS_EVAL_RPS'), DEFAULTS.discoveryRps),
+    maxWallSeconds: num(pick('max-wall-seconds', 'READINESS_EVAL_MAX_WALL_SECONDS'), DEFAULTS.maxWallSeconds),
     pageSize: num(pick('page-size', 'READINESS_EVAL_PAGE_SIZE'), DEFAULTS.pageSize),
     relevanceTopK: num(pick('top-k', 'READINESS_EVAL_TOP_K'), DEFAULTS.relevanceTopK),
     relevanceQueryPassThreshold: num(pick('query-pass-threshold', 'READINESS_EVAL_QUERY_PASS_THRESHOLD'), DEFAULTS.relevanceQueryPassThreshold),
@@ -199,12 +208,14 @@ function resolveConfig(argv = [], env = process.env) {
     outDir,
     diffAgainst: pick('diff-against', 'READINESS_EVAL_DIFF_AGAINST') || null,
     judgeModule: pick('judge-module', 'READINESS_EVAL_JUDGE_MODULE') || null,
-    killFile: String(pick('kill-file', 'READINESS_EVAL_KILL_FILE') || path.join(outDir, 'KILL')),
+    // Default: <run dir>/KILL, decided when the unique run dir is created (run.cjs).
+    killFile: pick('kill-file', 'READINESS_EVAL_KILL_FILE') || null,
     clientName: DEFAULTS.clientName,
     clientVersion: DEFAULTS.clientVersion,
     protocolVersion: String(pick('protocol-version', 'READINESS_EVAL_PROTOCOL_VERSION') || DEFAULTS.protocolVersion),
     slos,
     unknownSlos,
+    secretFlags: SECRET_FLAGS.filter((k) => f[k] !== undefined),
     removedFlags: REMOVED_FLAGS.filter((k) => f[k] !== undefined || env[`READINESS_EVAL_${k.replace(/-/g, '_').toUpperCase()}`] !== undefined),
     load: {
       enabled: bool(pick('load', 'READINESS_EVAL_LOAD'), LOAD_DEFAULTS.enabled),
@@ -259,9 +270,29 @@ function validateConfig(config) {
     problems.push(`--${removed} is not supported (removed: the target allowlist in safety.cjs is the only way to choose a target)`);
   }
   if (config.unknownSlos.length) problems.push(`unknown --slo keys: ${config.unknownSlos.join(', ')}`);
-  if (!(config.concurrency >= 1)) problems.push('concurrency must be >= 1');
-  if (!(config.timeoutMs > 0)) problems.push('timeout must be > 0');
-  if (!(config.followSample >= 0 && config.followSample <= 1)) problems.push('follow-sample must be within [0,1]');
+  for (const k of config.secretFlags) problems.push(`--${k} is refused: secrets come from env only`);
+  const intIn = (name, v, lo, hi) => {
+    if (!(Number.isInteger(v) && v >= lo && v <= hi)) problems.push(`${name} must be an integer in [${lo}, ${hi}] (got ${v})`);
+  };
+  const numIn = (name, v, lo, hi, { loExclusive = false } = {}) => {
+    if (!(typeof v === 'number' && Number.isFinite(v) && (loExclusive ? v > lo : v >= lo) && v <= hi)) {
+      problems.push(`${name} must be in ${loExclusive ? '(' : '['}${lo}, ${hi}] (got ${v})`);
+    }
+  };
+  intIn('concurrency', config.concurrency, 1, HARD_CAPS.maxConcurrency);
+  intIn('pacing-ms', config.pacingMs, 1, 60000);
+  numIn('rps', config.discoveryRps, 0, HARD_CAPS.maxDiscoveryRps, { loExclusive: true });
+  numIn('max-wall-seconds', config.maxWallSeconds, 0, HARD_CAPS.maxRunSeconds, { loExclusive: true });
+  intIn('timeout-ms', config.timeoutMs, HARD_CAPS.minTimeoutMs, HARD_CAPS.maxTimeoutMs);
+  intIn('page-size', config.pageSize, 1, 50);
+  intIn('top-k', config.relevanceTopK, 1, 50);
+  numIn('query-pass-threshold', config.relevanceQueryPassThreshold, 0, 1);
+  intIn('follow-top', config.followTop, 0, 10);
+  numIn('follow-sample', config.followSample, 0, 1);
+  intIn('consistency-sample', config.consistencySample, 0, 1000);
+  intIn('consistency-repeats', config.consistencyRepeats, 0, 5);
+  numIn('price-tolerance', config.priceAgreementTolerance, 0, 1);
+  intIn('limit', config.limit, 0, 100000);
   return problems;
 }
 

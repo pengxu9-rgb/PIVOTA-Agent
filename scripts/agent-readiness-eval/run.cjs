@@ -11,6 +11,7 @@
 // mint attribution click rows and can trigger live merchant reads. The target guard in lib/safety.cjs
 // refuses production hosts unless a server-side synthetic-traffic designation exists and is acknowledged.
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { resolveConfig, validateConfig, redactConfig } = require('./lib/config.cjs');
@@ -37,13 +38,16 @@ Run shape:
   --dry-run                       print the plan and the safety verdict; call nothing
   --journeys discovery,follow,recommend,consistency
   --classes / --langs / --markets (comma lists; market "none" = no market) / --limit N
-  --concurrency N (default 1) --pacing-ms N (default 250) --timeout-ms N (default 30000)
+  --concurrency 1..32 (default 1) --pacing-ms >=1 (default 250) --timeout-ms 1000..120000 (default 30000)
   --page-size N --top-k N --follow-top N --follow-sample 0..1
   --consistency-sample N --consistency-repeats N --price-tolerance 0.05
   --query-set <json> --query-overlay <json>   (overlay = private extra queries, not committed)
   --judge-module <path>           optional LLM judge (off by default; see lib/judge.cjs for the data boundary)
   --slo key=value                 override an SLO threshold (value "off" disables it)
-  --out <dir>                     results dir (default: OS temp dir — results hold measured metrics; this repo is public)
+  --out <dir>                     base dir; each run gets its own new subdir (default: OS temp dir). Refused inside
+                                  any git checkout: results hold measured metrics and this repo is public
+  --rps N (default 4, cap ${HARD_CAPS.maxDiscoveryRps})   shared start rate for non-load runs
+  --max-wall-seconds N (default 3600)   wall-clock limit for the whole run
   --diff-against <results.json>   add a diff vs a previous run
 
 Load mode (OFF unless --load):
@@ -54,14 +58,34 @@ Load mode (OFF unless --load):
 `;
 
 function writeOut(dir, report, markdown) {
-  fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'results.json'), `${JSON.stringify(report, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, 'scorecard.md'), markdown);
   fs.writeFileSync(path.join(dir, 'scorecard.html'), renderHtml(markdown, report.verdict));
 }
 
-// `deps.fetchImpl` (tests only): the fetch every MCP client uses. Refusal tests inject one that throws and
-// counts, so "the harness made no request" is asserted rather than assumed.
+/** The nearest ancestor (or self) that holds a `.git` entry — a repository or worktree root — or null. */
+function enclosingGitRoot(dir) {
+  let d = path.resolve(dir);
+  for (;;) {
+    if (fs.existsSync(path.join(d, '.git'))) return d;
+    const parent = path.dirname(d);
+    if (parent === d) return null;
+    d = parent;
+  }
+}
+
+/** A fresh, never-reused run directory under `base` (mkdir of the leaf fails if it exists). */
+function createRunDir(base) {
+  fs.mkdirSync(base, { recursive: true });
+  const slug = new Date().toISOString().replace(/[:.]/g, '').replace('T', '_').slice(0, 17);
+  const dir = path.join(base, `run_${slug}_${process.pid}_${crypto.randomBytes(4).toString('hex')}`);
+  fs.mkdirSync(dir);
+  return dir;
+}
+
+// Test-only deps: `fetchImpl` (refusal tests inject one that throws and counts, so "the harness made no
+// request" is asserted rather than assumed), `callBudget` (can only lower the compiled-in call cap),
+// `onRunDir(dir)` (where this run wrote its results).
 async function main(argv = process.argv.slice(2), env = process.env, io = { out: process.stdout, err: process.stderr }, deps = {}) {
   if (argv.includes('--help') || argv.includes('-h')) {
     io.out.write(HELP);
@@ -84,6 +108,9 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
   const target = checkTarget(config);
   const loadCheck = checkLoad(config.load);
   problems.push(...target.problems, ...loadCheck.problems);
+  // Results hold measured metrics and this repository is public: never write them into any git checkout.
+  const gitRoot = enclosingGitRoot(config.outDir);
+  if (gitRoot) problems.push(`--out ${config.outDir} is inside a git checkout (${gitRoot}); write results outside any repository`);
   const querySet = loadQuerySet(config.querySet, config.queryOverlay);
 
   if (config.mode === 'dry-run') {
@@ -106,7 +133,9 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
   }
 
   const judgeFn = loadJudge(config.judgeModule);
-  const killSwitch = createKillSwitch({ killFile: config.killFile, env });
+  const runDir = createRunDir(config.outDir);
+  const killFile = config.killFile || path.join(runDir, 'KILL');
+  const killSwitch = createKillSwitch({ killFile, env });
   const extraHeaders = config.syntheticHeader ? { [config.syntheticHeader.toLowerCase()]: config.syntheticHeaderValue } : {};
   const makeClient = (identity) =>
     new McpClient({
@@ -119,13 +148,16 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
       clientInfo: { name: config.clientName, version: config.clientVersion },
       extraHeaders,
       fetchImpl: deps.fetchImpl,
+      runSignal: killSwitch.signal,
     });
   const log = (msg) => io.err.write(`[readiness-eval] ${msg}\n`);
+  log(`run dir ${runDir}`);
+  log(`KILL SWITCH: touch ${killFile}   (or Ctrl-C to stop and cancel in-flight calls; Ctrl-C twice exits at once)`);
 
   let run;
   try {
     log(`target ${config.endpoint} tier=${config.tier} kind=${config.targetKind}; ${querySet.queries.length} queries in set`);
-    run = await runJourneys({ config, client: makeClient(null), querySet, judgeFn, killSwitch, log });
+    run = await runJourneys({ config, client: makeClient(null), querySet, judgeFn, killSwitch, log, callBudget: deps.callBudget });
     run.query_set_version = querySet.version;
     if (config.load.enabled && !run.aborted) {
       log('load mode: starting');
@@ -138,9 +170,11 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
   const previous = config.diffAgainst ? JSON.parse(fs.readFileSync(config.diffAgainst, 'utf8')) : null;
   const report = buildReport(run, config, previous);
   const markdown = renderMarkdown(report);
-  writeOut(config.outDir, report, markdown);
-  log(`verdict ${report.verdict.toUpperCase()} — ${path.join(config.outDir, 'scorecard.md')}`);
+  writeOut(runDir, report, markdown);
+  if (deps.onRunDir) deps.onRunDir(runDir);
+  log(`verdict ${report.verdict.toUpperCase()} — ${path.join(runDir, 'scorecard.md')}`);
   for (const s of report.slos) log(`  ${s.status.padEnd(7)} ${s.label}: ${s.value === null ? '—' : s.value} (threshold ${s.threshold})`);
+  // pass = every gated SLO measured and met; incomplete (an SLO had no data) and fail both exit 1.
   return report.verdict === 'pass' ? 0 : report.verdict === 'aborted' ? 3 : 1;
 }
 

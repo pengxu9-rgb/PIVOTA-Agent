@@ -24,6 +24,10 @@ const { classifyTarget, ATTESTATION } = require('./safety.cjs');
 
 const DEFAULT_ACCEPT = 'application/json, text/event-stream';
 
+// THE ONLY TOOLS THIS CLIENT WILL EVER CALL. Compiled in, checked before any I/O: whatever the journey code,
+// the config or a server's tools/list says, a checkout / payment / order tool cannot be invoked from here.
+const ALLOWED_TOOLS = Object.freeze(['search_catalog', 'get_product', 'get_offers', 'get_alternatives', 'recommend_products']);
+
 // Outcomes after which the client sends NOTHING more: the target is not provably the eval deployment
 // (attestation_missing), or it tried to send us elsewhere (redirect_refused).
 const HALTING_OUTCOMES = new Set(['attestation_missing', 'redirect_refused']);
@@ -56,6 +60,8 @@ class McpClient {
     }
     // Set once a response fails the attestation or redirects; every later send returns without I/O.
     this.halted = null;
+    // Run-wide cancellation (safety.createKillSwitch().signal): aborts in-flight requests and refuses new ones.
+    this.runSignal = opts.runSignal || null;
     this.now = opts.now || (() => performance.now());
     this.nextId = 1;
     this.sessionId = null;
@@ -85,6 +91,9 @@ class McpClient {
     if (this.halted) {
       return { method, id: null, http_status: null, ttfb_ms: null, latency_ms: 0, outcome: 'halted', error: this.halted, rpc: null, session_id_header: null };
     }
+    if (this.runSignal && this.runSignal.aborted) {
+      return { method, id: null, http_status: null, ttfb_ms: null, latency_ms: 0, outcome: 'aborted', error: 'run stopped', rpc: null, session_id_header: null };
+    }
     const id = notification ? undefined : this.nextId++;
     const body = { jsonrpc: '2.0', method, ...(id !== undefined ? { id } : {}), ...(params !== undefined ? { params } : {}) };
     const controller = new AbortController();
@@ -107,7 +116,7 @@ class McpClient {
         method: 'POST',
         headers: this.headers({ initialized }),
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal: this.runSignal ? AbortSignal.any([controller.signal, this.runSignal]) : controller.signal,
         redirect: 'manual',
       });
       ttfb = this.now() - started;
@@ -143,7 +152,10 @@ class McpClient {
     } catch (err) {
       record.latency_ms = round(this.now() - started);
       if (ttfb != null) record.ttfb_ms = round(ttfb);
-      if (err && (err.name === 'AbortError' || controller.signal.aborted)) {
+      if (this.runSignal && this.runSignal.aborted) {
+        record.outcome = 'aborted';
+        record.error = 'cancelled: run stopped';
+      } else if (err && (err.name === 'AbortError' || controller.signal.aborted)) {
         record.outcome = 'timeout';
         record.error = `no complete response within ${this.timeoutMs}ms`;
       } else {
@@ -178,6 +190,9 @@ class McpClient {
   }
 
   async callTool(name, args) {
+    if (!ALLOWED_TOOLS.includes(name)) {
+      throw new Error(`McpClient.callTool: "${name}" is not an allowed tool (allowed: ${ALLOWED_TOOLS.join(', ')})`);
+    }
     const rec = await this.send('tools/call', { name, arguments: args || {} });
     rec.tool = name;
     return rec;
@@ -278,4 +293,4 @@ function classifyHttp(record, status, text, ctype, id, notification) {
   return record;
 }
 
-module.exports = { McpClient, parseSseJsonRpc, classifyHttp, sanitizeErrorMessage, HALTING_OUTCOMES };
+module.exports = { McpClient, parseSseJsonRpc, classifyHttp, sanitizeErrorMessage, HALTING_OUTCOMES, ALLOWED_TOOLS };
