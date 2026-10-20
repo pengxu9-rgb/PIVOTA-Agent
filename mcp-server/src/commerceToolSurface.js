@@ -69,6 +69,7 @@ import {
   startPurchaseArgumentProblems,
 } from "./orchestratedPurchaseTool.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
+import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -511,8 +512,20 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    the clone `cloneCachedValue` hands out. See mcp-server/src/ucpResponseShaper.js for what maps.
     //    (`shape` itself is defined above step 3a, so the Reap lane's answer uses the same function.)
 
-    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return shape(await execute());
-    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
+    //
+    // 8) MEASUREMENT (`options.observe`, optional): the cache branch that answered and the search envelope's
+    //    lane/degradation markers, read from the NATIVE value before dialect shaping can drop them. Feeds the
+    //    gateway's tools/call completion line only; it changes nothing about the value returned.
+    const observe = typeof options.observe === "function" ? options.observe : null;
+    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) {
+      const fresh = await execute();
+      if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, describeUpstreamEnvelope(fresh));
+      return shape(fresh);
+    }
+    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
+      onState: (state) => noteToolCall(observe, cacheHitField(state)),
+    });
+    noteToolCall(observe, describeUpstreamEnvelope(value));
     return shape(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
@@ -1280,14 +1293,18 @@ export function ucpDialectSurface(surface) {
         inputSchema:UCP_REAP_RECOVER_INPUT_SCHEMA,
       }] : tools;
     },
-    callTool: async (name, args, sessionContext) =>
-      name === "resume_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapResumeOnly: true })
+    // `options.observe` (measurement only) is the one caller option forwarded; the dialect and Reap-mode flags
+    // are this projection's own and are never taken from the caller.
+    callTool: async (name, args, sessionContext, options) => {
+      const measure = options && typeof options.observe === "function" ? { observe: options.observe } : {};
+      return name === "resume_checkout"
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapResumeOnly: true })
         : name === "prepare_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
         : name === "recover_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
-        : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
+        : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp }));
+    },
     isCommerceTool: (name) => name === "resume_checkout" || name === "prepare_checkout" || name === "recover_checkout" || (
       typeof surface.isCommerceTool === "function"
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)

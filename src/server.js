@@ -39,6 +39,7 @@ const {
   oauthClientFromClaims,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields } = require('./attribution/callerLogFields');
+const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
 
 // The caller-declared surface, for the completion log only. Both values are what the request body
 // said, bounded, and absent (not null-padded) when the caller said nothing, so a line from a
@@ -31690,7 +31691,20 @@ async function throwCommerceKernelUpstreamError(operation, err) {
     upstream_code: upstreamCode || null,
     message: upstreamMessage || undefined,
     upstream_detail: upstreamDetail || undefined,
+    // Read by the MCP tools/call completion line (mcp-server/src/toolCallOutcome.js describeToolError) so an
+    // upstream deadline is countable apart from other MERCHANT_UNAVAILABLE causes. Never surfaced to the
+    // caller: toToolError emits only allowlisted detail reasons. Present only when true.
+    ...(isCommerceKernelUpstreamTimeout(err) ? { upstream_timeout: true } : {}),
   });
+}
+
+// A request that never got a response because a deadline fired (axios `timeout`, a socket timeout, or our own
+// AbortSignal deadline). A response that arrived — even a 504 — is not this: the upstream answered.
+function isCommerceKernelUpstreamTimeout(err) {
+  if (!err || typeof err !== 'object' || err.response) return false;
+  const code = String(err.code || '').trim().toUpperCase();
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT' || code === 'ERR_CANCELED') return true;
+  return /\btime(?:d)? ?out\b/i.test(String(err.message || ''));
 }
 
 function recordCommerceKernelAudit(entry) {
@@ -32848,27 +32862,35 @@ function mcpToolNameFromRpcBody(rpcBody) {
   return rpcBody && rpcBody.method === 'tools/call' && rpcBody.params ? rpcBody.params.name : null;
 }
 
-// One completion line per MCP tools/call, naming the tool and the resolved caller (see
-// src/attribution/callerLogFields.js). Without it an MCP tool call is invisible in the logs: its
-// search_catalog reaches the invoke route only as this gateway's own loopback call, under this gateway's
-// own key, so the invoke line cannot say which agent asked. Only tools/call is logged -- the one method
-// that does real work -- and never its arguments. Registered on 'finish', so it records the caller the
-// door actually resolved (req.invokeAuth is written after this runs). Never throws.
+// One completion line per MCP tools/call, naming the tool, the resolved caller (see
+// src/attribution/callerLogFields.js) and what the door answered (src/observability/mcpToolCallOutcome.js:
+// outcome, is_error, error_code, result_count, cache_hit, lane, degraded flags, tier). Without it an MCP tool
+// call is invisible in the logs: its search_catalog reaches the invoke route only as this gateway's own
+// loopback call, under this gateway's own key, so the invoke line cannot say which agent asked — and every
+// tools/call answers HTTP 200, so a failing tool never reaches a 5xx metric either. Only tools/call is logged
+// -- the one method that does real work -- and never its arguments. Registered on 'finish', so it records the
+// caller the door actually resolved (req.invokeAuth is written after this runs).
+//
+// Returns the per-request recorder (null for any other method): the door hands `recorder.observe` to the
+// adapter and reports what it sent. Never throws.
 function logMcpToolCallOnFinish(req, res, door) {
   try {
     const rpcBody = req && typeof req.body === 'object' && req.body !== null ? req.body : null;
     const rawTool = mcpToolNameFromRpcBody(rpcBody);
-    if (rawTool == null) return;
+    if (rawTool == null) return null;
     const tool = typeof rawTool === 'string' ? rawTool.trim().slice(0, 128) : null;
     const startedAtMs = Date.now();
+    const recorder = createMcpToolCallRecorder();
     res.on('finish', () => {
       try {
         logger.info(
           {
             door,
             tool,
+            tier: mcpCallerTier(req, door),
             status: res.statusCode,
             latency_ms: Math.max(0, Date.now() - startedAtMs),
+            ...recorder.fields(res.statusCode),
             ...callerLogFields(req),
           },
           'mcp tools/call complete',
@@ -32877,9 +32899,16 @@ function logMcpToolCallOnFinish(req, res, door) {
         // Measurement must never break the surface it measures.
       }
     });
+    return recorder;
   } catch (_) {
     // Same.
+    return null;
   }
+}
+
+// The adapter request for one JSON-RPC call, with the recorder's sink attached only when there is one.
+function withMcpToolCallObserver(adapterReq, recorder) {
+  return recorder ? { ...adapterReq, observe: recorder.observe } : adapterReq;
 }
 
 // THE RULE, keyed on the CANONICAL operation id — never on one dialect's spelling of it.
@@ -32974,7 +33003,7 @@ function commerceMcpHeartbeatOptions(ctx) {
 }
 
 async function handlePublicReadMcp(req, res) {
-  logMcpToolCallOnFinish(req, res, 'public_mcp');
+  const toolCallRecorder = logMcpToolCallOnFinish(req, res, 'public_mcp');
   if (!isPublicReadMcpEnabled()) {
     return res.status(404).json({ error: 'not_found' });
   }
@@ -32997,11 +33026,17 @@ async function handlePublicReadMcp(req, res) {
       );
       try {
         const adapter = await getPublicReadMcpAdapter();
-        const out = await adapter.handleJsonRpc({ headers: req.headers || {}, body: req.body });
+        const out = await adapter.handleJsonRpc(
+          withMcpToolCallObserver({ headers: req.headers || {}, body: req.body }, toolCallRecorder),
+        );
+        toolCallRecorder?.recordRpcResponse(out);
         // finish() returns true when the heartbeat already committed the wire (slow path) and wrote the
         // body itself — every adapter path still running past the heartbeat delay is a tools/call, which
         // always resolves status 200, so committing early never masks a real non-200.
-        if (heartbeat.finish(out)) return undefined;
+        if (heartbeat.finish(out)) {
+          toolCallRecorder?.observe({ heartbeat_committed: true });
+          return undefined;
+        }
         for (const [key, value] of Object.entries(out.headers || {})) {
           res.setHeader(key, value);
         }
@@ -33009,6 +33044,7 @@ async function handlePublicReadMcp(req, res) {
         return res.status(out.status).json(out.body);
       } catch (err) {
         logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
+        toolCallRecorder?.recordInternalError();
         const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
         if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
           return undefined;
@@ -33064,7 +33100,7 @@ function registerCommerceRemoteMcpRoute() {
  * nothing here can accidentally re-open a door its own route decided to keep shut.
  */
 async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel, door }) {
-    logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
+    const toolCallRecorder = logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
     // MCP OAuth front door (additive, gated by MCP_OAUTH_ENABLED). Lets a native frontier MCP
     // client (Claude/ChatGPT/Gemini) connect with an OAuth access token instead of a commerce
     // API key: the verified token is BOTH the channel credential and the user identity. Inert
@@ -33117,6 +33153,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
               tool: blockedOperation.tool,
             }),
           });
+          toolCallRecorder?.recordToolError('OPERATION_NOT_ALLOWED');
           return res.status(200).json(mcpToolErrorBody({
             id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
             code: 'OPERATION_NOT_ALLOWED',
@@ -33142,13 +33179,17 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
           const sessionContext = mcpOAuthOutcome.mode === 'oauth'
             ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
             : await deriveStrictCommerceCtxAsync(req);
-          const out = await adapter.handleJsonRpc({
+          const out = await adapter.handleJsonRpc(withMcpToolCallObserver({
             headers: req.headers || {},
             body: req.body,
             authInfo: buildStrictSessionAuthInfo(req, sessionContext),
             sessionContext,
-          });
-          if (heartbeat.finish(out)) return undefined;
+          }, toolCallRecorder));
+          toolCallRecorder?.recordRpcResponse(out);
+          if (heartbeat.finish(out)) {
+            toolCallRecorder?.observe({ heartbeat_committed: true });
+            return undefined;
+          }
           for (const [key, value] of Object.entries(out.headers || {})) {
             res.setHeader(key, value);
           }
@@ -33156,6 +33197,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
           return res.status(out.status).json(out.body);
         } catch (err) {
           logger.error({ err: err?.message || String(err) }, failureLabel);
+          toolCallRecorder?.recordInternalError();
           const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
           if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
             return undefined;

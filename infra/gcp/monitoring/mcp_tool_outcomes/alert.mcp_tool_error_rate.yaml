@@ -1,0 +1,31 @@
+# Alert: an MCP tool's error rate is above 2% over 10 minutes (per tool, with a volume floor so a handful of
+# calls in a quiet window cannot page). Every tools/call answers HTTP 200, so this is the ONLY signal that sees
+# a failing tool. Needs the mcp_tool_calls and mcp_tool_call_errors log metrics.
+# Create (not applied by this repo; fill notificationChannels first):
+#   gcloud alpha monitoring policies create --project=$PROJECT \
+#     --policy-from-file=infra/gcp/monitoring/mcp_tool_outcomes/alert.mcp_tool_error_rate.yaml
+displayName: MCP tool error rate > 2% (10m)
+combiner: OR
+conditions:
+  - displayName: tools/call error rate by tool > 2% over 10m (>= 50 calls)
+    conditionPrometheusQueryLanguage:
+      query: |
+        (
+          sum by (tool) (increase(logging_googleapis_com:user_mcp_tool_call_errors[10m]))
+            / sum by (tool) (increase(logging_googleapis_com:user_mcp_tool_calls[10m]))
+        ) > 0.02
+        and on (tool)
+        sum by (tool) (increase(logging_googleapis_com:user_mcp_tool_calls[10m])) >= 50
+      duration: 0s
+      evaluationInterval: 60s
+alertStrategy:
+  autoClose: 1800s
+documentation:
+  mimeType: text/markdown
+  content: |
+    An MCP tool is failing on more than 2% of answered calls (refusals such as rate limits are excluded).
+    Break down by `error_code` in Logs Explorer:
+    `jsonPayload.msg="mcp tools/call complete" AND jsonPayload.is_error=true AND jsonPayload.tool="<tool>"`.
+    `upstream_timeout=true` means the upstream deadline fired; `outcome="internal_error"` means the adapter threw.
+    Runbook: docs/runbooks/mcp_tool_outcome_monitoring.md
+notificationChannels: []

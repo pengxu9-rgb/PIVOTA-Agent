@@ -1,0 +1,29 @@
+# Log-based counter: every MCP tools/call the gateway ANSWERED (refusals before dispatch excluded — a rate-limit
+# flood or an auth challenge is not a tool outcome). Denominator of the tool error-rate alert.
+# Create (not applied by this repo):
+#   gcloud logging metrics create mcp_tool_calls --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_tool_calls.yaml
+description: MCP tools/call completions, by tool / door / tier / outcome (refused excluded)
+filter: >-
+  resource.type="cloud_run_revision"
+  AND jsonPayload.msg="mcp tools/call complete"
+  AND jsonPayload.outcome:*
+  AND jsonPayload.outcome!="refused"
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: tool
+      valueType: STRING
+    - key: door
+      valueType: STRING
+    - key: tier
+      valueType: STRING
+    - key: outcome
+      valueType: STRING
+labelExtractors:
+  tool: EXTRACT(jsonPayload.tool)
+  door: EXTRACT(jsonPayload.door)
+  tier: EXTRACT(jsonPayload.tier)
+  outcome: EXTRACT(jsonPayload.outcome)

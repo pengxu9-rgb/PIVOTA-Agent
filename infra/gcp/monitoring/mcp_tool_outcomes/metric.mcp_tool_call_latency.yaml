@@ -1,0 +1,29 @@
+# Log-based distribution: tools/call latency (handler entry to response finish) in ms, by tool / door.
+# Source of the per-tool p95 alert and dashboard.
+#   gcloud logging metrics create mcp_tool_call_latency --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_tool_call_latency.yaml
+description: MCP tools/call latency in ms, by tool / door (refused excluded)
+filter: >-
+  resource.type="cloud_run_revision"
+  AND jsonPayload.msg="mcp tools/call complete"
+  AND jsonPayload.outcome:*
+  AND jsonPayload.outcome!="refused"
+valueExtractor: EXTRACT(jsonPayload.latency_ms)
+bucketOptions:
+  # 10ms .. ~84s: covers a cache hit and the slowest cold search.
+  exponentialBuckets:
+    numFiniteBuckets: 23
+    growthFactor: 1.5
+    scale: 10
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: ms
+  labels:
+    - key: tool
+      valueType: STRING
+    - key: door
+      valueType: STRING
+labelExtractors:
+  tool: EXTRACT(jsonPayload.tool)
+  door: EXTRACT(jsonPayload.door)
