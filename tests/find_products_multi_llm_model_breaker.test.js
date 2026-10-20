@@ -184,8 +184,10 @@ describe('isModelUnavailableError', () => {
     expect(isModelUnavailableError(OPENAI_BAD_URL_404())).toBe(false);
     expect(isModelUnavailableError(TOKEN_FETCH_404())).toBe(false);
     expect(isModelUnavailableError(VERTEX_OTHER_NOT_FOUND())).toBe(false);
-    // model_not_found must arrive WITH a 404.
+    // model_not_found must arrive WITH a 404 — a compatible endpoint answering 400 with OpenAI's words does not
+    // count either: a 400 is a refusal of this request, not a statement that the model is missing.
     expect(isModelUnavailableError({ code: 'model_not_found' })).toBe(false);
+    expect(isModelUnavailableError(openAiError(400, { error: { message: 'The model `m` does not exist', code: 'model_not_found' } }))).toBe(false);
     expect(isModelUnavailableError(axiosError(429))).toBe(false);
     expect(isModelUnavailableError(axiosError(500))).toBe(false);
     expect(isModelUnavailableError(openAiError(429, { error: { message: 'Rate limit' } }))).toBe(false);
@@ -482,6 +484,23 @@ describe('semantic rewrite breaker', () => {
     expect(breakerWarns(logger)[0][0]).toMatchObject({
       feature: 'semantic_rewrite', provider: 'openai', env_hint: 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI',
     });
+  });
+
+  test('a probe the model answers successfully closes the breaker', async () => {
+    const { extractIntentRuleBased } = jest.requireActual('../src/findProductsMulti/intent');
+    const valid = extractIntentRuleBased('hydrating serum for dry skin', [], []);
+    const create = jest.fn()
+      .mockRejectedValueOnce(openAiModelNotFound())
+      .mockResolvedValue({ choices: [{ message: { content: JSON.stringify(valid) } }] });
+    const { breaker, advance } = load({ openaiCreate: create });
+    const { extractIntentWithMeta } = require('../src/findProductsMulti/intentLlm');
+    await extractIntentWithMeta('hydrating serum for dry skin');
+    advance(15 * MIN);
+    const probed = await extractIntentWithMeta('hydrating serum for dry skin');
+    expect(probed.meta.mode).toBe('llm');
+    expect(breaker.isModelBreakerOpen('semantic_rewrite', 'openai', 'gpt-5.1-mini')).toBe(false);
+    await extractIntentWithMeta('hydrating serum for dry skin');
+    expect(create).toHaveBeenCalledTimes(3);
   });
 
   test('a probe the model answers with unusable JSON still proves the model exists and closes the breaker', async () => {
