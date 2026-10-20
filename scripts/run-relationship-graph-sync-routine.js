@@ -239,9 +239,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
     reviewMode,
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
-    reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
+    reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 10000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), 0, { min: 0, max: 1 }),
     reviewRelationTypes: normalizeString(argValue(argv, 'review-relation-types'), 1000),
+    reviewUncoveredFirst: hasFlag(argv, 'review-uncovered-first'),
     reviewExcludeRelationTypes: normalizeString(argValue(argv, 'review-exclude-relation-types'), 1000),
     allowDupeAiApproval: hasFlag(argv, 'allow-dupe-ai-approval'),
     servingAuditLimit: parseNumber(argValue(argv, 'serving-audit-limit'), 0, { min: 0, max: 250000 }),
@@ -517,6 +518,7 @@ function buildSyncRoutineSteps(options = {}) {
   pushArg(routineArgs, 'source-limit', options.sourceLimit || '');
   appendTargetRecallArgs(routineArgs, options);
   pushArg(routineArgs, 'review-relation-types', options.reviewRelationTypes);
+  if (options.reviewUncoveredFirst) routineArgs.push('--review-uncovered-first');
   pushArg(routineArgs, 'review-exclude-relation-types', options.reviewExcludeRelationTypes);
   pushArg(routineArgs, 'serving-audit-limit', options.servingAuditLimit || '');
   pushFlag(routineArgs, 'allow-dupe-ai-approval', options.allowDupeAiApproval);

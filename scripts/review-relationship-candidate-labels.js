@@ -64,7 +64,11 @@ const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
 const DEFAULT_LIMIT = 250;
-const MAX_LIMIT = 5000;
+// The sync cron, sync routine and routine job cap --review-limit at the same 10,000.
+const MAX_LIMIT = 10000;
+// An inline --ids list stays at 5,000: it rides on the job's command line, and its bound is about
+// argument size, not about how many labels a run may review.
+const MAX_INLINE_IDS = 5000;
 const TEXT_LIMIT = 900;
 const DEFAULT_LLM_ATTEMPTS = 2;
 const MAX_LLM_ATTEMPTS = 5;
@@ -120,7 +124,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--ids <id,id,...>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--uncovered-first] [--ids-file <path>] [--ids <id,id,...>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     '--review-mode consensus (or RELGRAPH_AI_REVIEW_MODE=consensus) requires explicitly pinned GPT and Gemini models.',
@@ -160,6 +164,16 @@ function parseRelationTypes(value, { optionName = 'relation-types' } = {}) {
   return out;
 }
 
+// The run every write is stamped with, so one night's verdicts can be found and undone with a single
+// UPDATE on provenance (2026-10-20: a 10,000-review night serves its approvals on commit through the
+// product_relationship_edges view). The routine job passes its own run id; a bare run makes one.
+function normalizeReviewRunId(value) {
+  const text = normalizeString(value, 200);
+  if (!text) return '';
+  if (!/^[A-Za-z0-9_.:-]{1,160}$/.test(text)) throw new Error(`invalid --run-id: ${text.slice(0, 40)}`);
+  return text;
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
   if (hasFlag(argv, 'help') || hasFlag(argv, 'h')) {
     return { help: true };
@@ -182,6 +196,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const anchorRefsFromBuild = String(argValue(argv, 'anchor-refs-from-build') || '').trim();
   const verdictsFile = String(argValue(argv, 'verdicts-file') || '').trim();
   const out = String(argValue(argv, 'out') || '').trim();
+  const runId = normalizeReviewRunId(argValue(argv, 'run-id'));
   const apply = hasFlag(argv, 'apply');
   const llmAttempts = Math.trunc(parseNumber(argValue(argv, 'llm-attempts'), DEFAULT_LLM_ATTEMPTS, {
     min: 1,
@@ -220,10 +235,12 @@ function parseArgs(argv = process.argv.slice(2)) {
     anchorRefsFromBuild,
     verdictsFile,
     out,
+    runId,
     apply,
     llmAttempts,
     relationTypes,
     excludeRelationTypes,
+    uncoveredFirst: hasFlag(argv, 'uncovered-first'),
     allowDupeAiApproval,
     reviewMode,
   };
@@ -241,7 +258,7 @@ function parseInlineIds(value) {
   const ids = Array.from(new Set(raw.split(',').map((id) => id.trim()).filter(Boolean)));
   const invalid = ids.find((id) => !/^[A-Za-z0-9_-]{1,128}$/.test(id));
   if (invalid) throw new Error(`--ids: invalid label id ${JSON.stringify(invalid.slice(0, 40))}`);
-  if (ids.length > MAX_LIMIT) throw new Error(`--ids: ${ids.length} ids exceeds ${MAX_LIMIT}`);
+  if (ids.length > MAX_INLINE_IDS) throw new Error(`--ids: ${ids.length} ids exceeds ${MAX_INLINE_IDS}`);
   return ids;
 }
 
@@ -601,6 +618,7 @@ async function fetchCandidates({
   anchorRefs = [],
   relationTypes = [],
   excludeRelationTypes = [],
+  uncoveredFirst = false,
   offset = 0,
   queryFn = query,
 }) {
@@ -636,28 +654,57 @@ async function fetchCandidates({
     offsetSql = `\n      OFFSET $${params.length}::int`;
   }
 
-  const res = await queryFn(
-    `
-      SELECT
+  const columns = `
         id, edge_id, anchor_type, anchor_ref, anchor_snapshot,
         candidate_product_ref, candidate_snapshot, relation_type,
         display_label, market, vertical, category_taxonomy, use_case,
         label_state, score_total, score_breakdown, price_evidence,
         source_refs, evidence_grade, why_candidate, tradeoffs, watchouts,
-        provenance, created_at, updated_at, updated_at::text AS review_row_version
-      FROM relationship_candidate_labels
+        provenance, created_at, updated_at, updated_at::text AS review_row_version`;
+  const where = `
       WHERE label_state = 'generated'
         AND COALESCE(updated_at, created_at) >= $1::timestamptz
         AND COALESCE(score_total, 0) >= $2::double precision
         ${idsSql}
         ${anchorRefsSql}
         ${relationTypesSql}
-        ${excludeRelationTypesSql}
+        ${excludeRelationTypesSql}`;
+  // UNCOVERED FIRST (2026-10-20). Of 26,617 generated competitive_alternative labels only 5,933 sat on
+  // the 2,616 anchors with no served alternative; score order spent a night's reviews on anchors that
+  // already had a rail. With uncoveredFirst the labels of anchors with no served label of the same
+  // relation type and market come first, one per anchor per round (best score first), and the
+  // covered anchors follow in the old score order. The served predicate is the serving view's
+  // (approved, verified, unexpired). Selection completes before any write, so it is stable per run.
+  const sql = uncoveredFirst
+    ? `
+      WITH served AS (
+        SELECT DISTINCT lower(anchor_ref) AS served_ref, relation_type AS served_relation_type,
+          upper(market) AS served_market
+        FROM relationship_candidate_labels
+        WHERE label_state IN ('ai_approved', 'human_approved')
+          AND last_verified_at IS NOT NULL AND expires_at > now()
+      ), queue AS (
+        SELECT l.*,
+          (s.served_ref IS NOT NULL) AS anchor_covered,
+          row_number() OVER (PARTITION BY lower(l.anchor_ref), l.relation_type, upper(l.market)
+            ORDER BY l.score_total DESC NULLS LAST, l.created_at ASC, l.id ASC) AS anchor_rank
+        FROM relationship_candidate_labels l
+        LEFT JOIN served s ON s.served_ref = lower(l.anchor_ref) AND s.served_relation_type = l.relation_type
+          AND s.served_market = upper(l.market)${where}
+      )
+      SELECT ${columns}
+      FROM queue
+      ORDER BY anchor_covered ASC, CASE WHEN anchor_covered THEN 0 ELSE anchor_rank END ASC,
+        score_total DESC NULLS LAST, created_at ASC, id ASC
+      LIMIT $3::int${offsetSql}
+    `
+    : `
+      SELECT ${columns}
+      FROM relationship_candidate_labels${where}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
       LIMIT $3::int${offsetSql}
-    `,
-    params,
-  );
+    `;
+  const res = await queryFn(sql, params);
   return Array.isArray(res && res.rows) ? res.rows : [];
 }
 
@@ -872,7 +919,7 @@ function negativeRationaleCode(decision = {}) {
   return normalizeString(raw, 80).toLowerCase().replace(/[^a-z0-9_:-]+/g, '_');
 }
 
-function buildNegativeReviewMemo(decision, { fingerprint, model = null, reviewedAt, minApprovalConfidence = null } = {}) {
+function buildNegativeReviewMemo(decision, { fingerprint, model = null, reviewedAt, minApprovalConfidence = null, runId = '' } = {}) {
   return {
     verdict: decision.verdict,
     confidence: Number.isFinite(Number(decision.confidence)) ? Number(Number(decision.confidence).toFixed(4)) : null,
@@ -888,6 +935,7 @@ function buildNegativeReviewMemo(decision, { fingerprint, model = null, reviewed
       : {}),
     reviewed_at: reviewedAt,
     pair_fingerprint: fingerprint,
+    ...(runId ? { run_id: runId } : {}),
   };
 }
 
@@ -1097,15 +1145,18 @@ function consensusCas(row, startIndex) {
   return { sql: clauses.join(' AND '), params };
 }
 
-async function applyConsensusDisposition(row, decision, queryFn) {
+async function applyConsensusDisposition(row, decision, queryFn, { runId = '' } = {}) {
   const cas = consensusCas(row, 4);
+  const runIndex = 4 + cas.params.length;
   const reason = decision.verdict === 'human_review' ? 'cross_agent_human_review' : 'cross_agent_rejected';
   const res = await queryFn(`UPDATE relationship_candidate_labels SET label_state = 'needs_evidence',
     reason_flags = ARRAY(SELECT DISTINCT flag FROM unnest(COALESCE(reason_flags, '{}'::text[]) || ARRAY[$2::text]) AS flags(flag)),
-    provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{cross_agent_review}', $3::jsonb, true), updated_at = now()
+    provenance = jsonb_set(jsonb_set(COALESCE(provenance, '{}'::jsonb), '{cross_agent_review}', $3::jsonb, true),
+      '{ai_review_run}', $${runIndex}::jsonb, true), updated_at = now()
     WHERE id = $1 AND label_state = 'generated' AND ${cas.sql}
     RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state`,
-  [row.id, reason, JSON.stringify(decision.cross_agent_review), ...cas.params]);
+  [row.id, reason, JSON.stringify(decision.cross_agent_review), ...cas.params,
+    JSON.stringify({ run_id: runId || null, decision: decision.verdict })]);
   return res.rows?.[0] || null;
 }
 
@@ -1275,7 +1326,7 @@ function servingGuardReasonsIfApproved(row, { allowDupeAiApproval = false } = {}
   return allowDupeAiApproval ? reasons.filter((reason) => reason !== DUPE_QUARANTINE_REASON) : reasons;
 }
 
-async function applyGuardBlock(row, reasons, queryFn = query) {
+async function applyGuardBlock(row, reasons, queryFn = query, { runId = '' } = {}) {
   const reasonFlags = reasons.map((reason) => `serving_guard:${normalizeString(reason, 150).toLowerCase()}`);
   const stamp = {
     action: 'relationship_graph_review_serving_guard_block',
@@ -1283,6 +1334,7 @@ async function applyGuardBlock(row, reasons, queryFn = query) {
     reviewer: REVIEWER_ID,
     rubric: RUBRIC_VERSION,
     blocked_at: new Date().toISOString(),
+    ...(runId ? { run_id: runId, decision: 'guard_blocked' } : {}),
   };
   const res = await queryFn(
     `
@@ -1311,7 +1363,7 @@ async function applyGuardBlock(row, reasons, queryFn = query) {
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
 
-async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE, evidence = null, requireConsensus = false } = {}) {
+async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE, evidence = null, requireConsensus = false, runId = '' } = {}) {
   if (requireConsensus) {
     assertConsensusApproval(row, decision, evidence);
   } else if (decision.cross_agent_review) {
@@ -1340,7 +1392,7 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
     err.code = 'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED';
     throw err;
   }
-  const aiReview = buildAiReview(decision);
+  const aiReview = { ...buildAiReview(decision), ...(runId ? { run_id: runId, decision: 'approve' } : {}) };
   const cas = requireConsensus ? consensusCas(row, 7) : null;
   const res = await queryFn(
     `
@@ -1404,6 +1456,7 @@ async function runReview({
   anchorRefsFromBuild = '',
   verdictsFile = '',
   out = '',
+  runId = '',
   apply = false,
   concurrency = 1,
   minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE,
@@ -1411,6 +1464,7 @@ async function runReview({
   llmAttempts = DEFAULT_LLM_ATTEMPTS,
   relationTypes = [],
   excludeRelationTypes = DEFAULT_EXCLUDED_RELATION_TYPES,
+  uncoveredFirst = false,
   allowDupeAiApproval = false,
   queryFn = query,
   provider = null,
@@ -1422,6 +1476,7 @@ async function runReview({
   if (apply && process.env.RELGRAPH_AI_REVIEW_APPLY !== '1') {
     throw new Error('--apply requested but RELGRAPH_AI_REVIEW_APPLY=1 is not set');
   }
+  const reviewRunId = normalizeReviewRunId(runId) || `relgraph_review_${new Date(clock()).toISOString().replace(/[-:.]/g, '')}_${process.pid}`;
 
   if (!['single', 'consensus'].includes(reviewMode)) throw new Error('review-mode must be single or consensus');
   const consensus = reviewMode === 'consensus';
@@ -1459,6 +1514,7 @@ async function runReview({
     anchorRefs,
     relationTypes: includedRelationTypes,
     excludeRelationTypes: excludedRelationTypes,
+    uncoveredFirst: uncoveredFirst === true,
   };
   // Negative memory is a single-mode mechanism: consensus records its own
   // dispositions (needs_evidence), and a single-model verdict must not stop
@@ -1547,14 +1603,14 @@ async function runReview({
     let appliedRow = null;
     if (apply && decision.verdict === 'approve') {
       // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor, evidence, requireConsensus: consensus });
+      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor, evidence, requireConsensus: consensus, runId: reviewRunId });
       if (appliedRow) appliedCount += 1;
     } else if (apply && decision.verdict === 'guard_blocked') {
       // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyGuardBlock(row, decision.serving_guard_reasons, queryFn);
+      appliedRow = await applyGuardBlock(row, decision.serving_guard_reasons, queryFn, { runId: reviewRunId });
       if (appliedRow) guardBlockedAppliedCount += 1;
     } else if (apply && consensus && ['human_review', 'consensus_reject'].includes(decision.verdict)) {
-      appliedRow = await applyConsensusDisposition(row, decision, queryFn);
+      appliedRow = await applyConsensusDisposition(row, decision, queryFn, { runId: reviewRunId });
       if (appliedRow) consensusDispositionAppliedCount += 1;
     }
     let negativeMemoryRecorded = false;
@@ -1573,6 +1629,7 @@ async function runReview({
           model: llmProvider && llmProvider.__meta && llmProvider.__meta.model,
           reviewedAt: new Date(clock()).toISOString(),
           minApprovalConfidence: confidenceFloor,
+          runId: reviewRunId,
         }), queryFn);
         if (remembered) {
           negativeMemoryRecorded = true;
@@ -1684,6 +1741,7 @@ async function runReview({
   const approvals = completed.filter((row) => row.verdict === 'approve');
   const approvalRate = completed.length ? approvedCount / completed.length : 0;
   const summary = {
+    run_id: reviewRunId,
     dry_run: !apply,
     cutoff,
     min_score: minScore,
@@ -1697,6 +1755,7 @@ async function runReview({
     anchor_refs_scope_count: anchorRefs.length,
     relation_types_filter: includedRelationTypes,
     excluded_relation_types: excludedRelationTypes,
+    uncovered_first: uncoveredFirst === true,
     dupe_ai_approval_allowed: allowDupeAiApproval,
     review_mode: reviewMode,
     cross_agent_approved_count: consensus ? approvedCount : 0,
@@ -1803,6 +1862,7 @@ module.exports = {
   AI_APPROVAL_FRESHNESS_INTERVAL,
   VerdictSchema,
   applyApproval,
+  applyConsensusDisposition,
   applyGuardBlock,
   buildEvidence,
   buildReviewPrompt,

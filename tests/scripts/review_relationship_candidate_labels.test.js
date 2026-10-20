@@ -666,10 +666,12 @@ describe('bounded review concurrency', () => {
       // Identical except the recorded setting itself.
       expect(parallel.result.summary.concurrency).toBe(2);
       expect(serial.result.summary.concurrency).toBe(1);
-      expect({ ...parallel.result.summary, concurrency: 0 }).toEqual({ ...serial.result.summary, concurrency: 0 });
+      // run_id is per run by design (2026-10-20): each run stamps its own writes.
+      expect({ ...parallel.result.summary, concurrency: 0, run_id: null }).toEqual({ ...serial.result.summary, concurrency: 0, run_id: null });
       expect(parallel.result.decisions).toEqual(serial.result.decisions);
       // Per-row lines are identical; the trailing summary differs only in the recorded concurrency.
-      const normalizeConcurrency = (ls) => ls.map((l) => String(l).replace(/"concurrency": \d+/, '"concurrency": N'));
+      const normalizeConcurrency = (ls) => ls.map((l) => String(l).replace(/"concurrency": \d+/, '"concurrency": N')
+        .replace(/"run_id": "[^"]*"/, '"run_id": "R"'));
       expect(normalizeConcurrency(parallel.lines)).toEqual(normalizeConcurrency(serial.lines));
       expect(parallel.saved.decisions).toEqual(serial.saved.decisions);
       expect(parallel.result.decisions.map((row) => row.id)).toEqual(rows.map((row) => row.id));
@@ -890,5 +892,68 @@ describe('--ids pins label ids inline (no file needed in a job container)', () =
     const select = queryFn.mock.calls.find(([sql]) => /FROM relationship_candidate_labels/.test(sql) && /label_state = 'generated'/.test(sql));
     expect(select[0]).toMatch(/AND id = ANY\(\$\d+::text\[\]\)/);
     expect(select[1]).toContainEqual(['prel_a', 'prel_b']);
+  });
+});
+
+
+// 2026-10-20: a review run stamps every row it writes with its run id, so one night can be found and
+// undone with a single UPDATE (the product_relationship_edges view serves approvals on commit).
+describe('review run id stamps every write', () => {
+  const review = require('../../scripts/review-relationship-candidate-labels');
+  const withApply = async (fn) => {
+    const saved = process.env.RELGRAPH_AI_REVIEW_APPLY;
+    process.env.RELGRAPH_AI_REVIEW_APPLY = '1';
+    try { return await fn(); } finally {
+      if (saved === undefined) delete process.env.RELGRAPH_AI_REVIEW_APPLY; else process.env.RELGRAPH_AI_REVIEW_APPLY = saved;
+    }
+  };
+  const fakeQuery = () => jest.fn(async (sql, params) => {
+    if (/^\s*SELECT[\s\S]*FROM relationship_candidate_labels/i.test(sql)) return { rows: [labelRow('rcl_variant'), genuineRelatedRow('rcl_ok')] };
+    if (/UPDATE relationship_candidate_labels/i.test(sql)) {
+      const next = /label_state = 'needs_evidence'/.test(sql) ? 'needs_evidence' : 'ai_approved';
+      return { rows: [{ id: params[0], old_label_state: 'generated', new_label_state: next }] };
+    }
+    return { rows: [] };
+  });
+
+  test('the approval and the guard block carry the routine run id and their decision', () => withApply(async () => {
+    const queryFn = fakeQuery();
+    const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+    const result = await review.runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, apply: true,
+      queryFn, provider, runId: 'relgraph_routine_20261021T103800' });
+    const updates = queryFn.mock.calls.filter(([sql]) => /UPDATE relationship_candidate_labels/i.test(sql));
+    const [, approveParams] = updates.find(([, params]) => params[0] === 'rcl_ok');
+    expect(JSON.parse(approveParams[1])).toEqual(expect.objectContaining({ run_id: 'relgraph_routine_20261021T103800', decision: 'approve' }));
+    const [, blockParams] = updates.find(([, params]) => params[0] === 'rcl_variant');
+    expect(JSON.parse(blockParams[2])).toEqual(expect.objectContaining({ run_id: 'relgraph_routine_20261021T103800', decision: 'guard_blocked' }));
+    expect(result.summary.run_id).toBe('relgraph_routine_20261021T103800');
+  }));
+
+  test('a bare run makes its own run id and stamps with it', () => withApply(async () => {
+    const queryFn = fakeQuery();
+    const provider = { analyzeTextToJson: jest.fn(async () => APPROVE) };
+    const result = await review.runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, apply: true, queryFn, provider,
+      clock: () => Date.parse('2026-10-21T10:38:00.000Z') });
+    expect(result.summary.run_id).toMatch(/^relgraph_review_20261021T103800000Z_\d+$/);
+    const [, approveParams] = queryFn.mock.calls.find(([sql, params]) => /label_state = 'ai_approved'/.test(sql) && params[0] === 'rcl_ok');
+    expect(JSON.parse(approveParams[1]).run_id).toBe(result.summary.run_id);
+  }));
+
+  test('--run-id is validated', () => {
+    expect(review.parseArgs(['--cutoff', '2026-06-01T00:00:00Z', '--run-id', 'relgraph_routine_20261021T103800']).runId).toBe('relgraph_routine_20261021T103800');
+    expect(review.parseArgs(['--cutoff', '2026-06-01T00:00:00Z']).runId).toBe('');
+    expect(() => review.parseArgs(['--cutoff', '2026-06-01T00:00:00Z', '--run-id', "x'; DROP"])).toThrow(/invalid --run-id/);
+  });
+
+  test('a remembered negative verdict and a consensus disposition carry the run id', async () => {
+    expect(review.buildNegativeReviewMemo({ verdict: 'reject', confidence: 0.2 }, { fingerprint: 'f', reviewedAt: '2026-10-21T00:00:00Z', runId: 'run_1' }).run_id).toBe('run_1');
+    expect(review.buildNegativeReviewMemo({ verdict: 'reject', confidence: 0.2 }, { fingerprint: 'f', reviewedAt: '2026-10-21T00:00:00Z' })).not.toHaveProperty('run_id');
+    const queryFn = jest.fn(async () => ({ rows: [{ id: 'rcl_c', old_label_state: 'generated', new_label_state: 'needs_evidence' }] }));
+    await review.applyConsensusDisposition({ ...genuineRelatedRow('rcl_c'), review_row_version: '2026-10-21 10:38:00+00' },
+      { verdict: 'consensus_reject', cross_agent_review: { verdict: 'reject' } }, queryFn, { runId: 'run_2' });
+    const [sql, params] = queryFn.mock.calls[0];
+    const runParam = Number(sql.match(/'\{ai_review_run\}', \$(\d+)::jsonb/)[1]);
+    expect(params).toHaveLength(runParam);
+    expect(JSON.parse(params[runParam - 1])).toEqual({ run_id: 'run_2', decision: 'consensus_reject' });
   });
 });
