@@ -87,7 +87,7 @@ rewrite send different requests, so one feature's breaker never switches off the
   `code: 'model_not_found'`, or a Gemini/Vertex `NOT_FOUND` whose message names a model.
 - **What never opens it:** a 400 (request-shape refusals such as an unsupported `temperature` or
   `response_format`), a bare or unrelated 404 (a wrong base URL, a token-endpoint 404), a timeout, a 429 or a 5xx.
-- **The log:** each opening writes one WARNING, `event: llm_model_breaker_open`, with `feature`, `provider`,
+- **The log:** each opening writes one WARN line carrying its own `severity: WARNING`, `event: llm_model_breaker_open`, with `feature`, `provider`,
   `model`, `reopened` and `env_hint` (the env var to change). The log-based metric is
   `infra/gcp/monitoring/mcp_tool_outcomes/metric.llm_model_breaker_opens.yaml`.
 - **Cooldown:** `PIVOTA_LLM_MODEL_BREAKER_COOLDOWN_MS`, default 15 min, clamped to 10-30 min. After the cooldown,

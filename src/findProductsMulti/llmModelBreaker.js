@@ -147,6 +147,10 @@ function recordModelFailure({ feature, provider, model, err, envHint } = {}) {
   try {
     logger.warn(
       {
+        // Local to this line: the gateway logger writes only pino's numeric level, which Cloud Logging files as
+        // DEFAULT. This one line opts into WARNING so it can be found by severity; every other gateway line is
+        // classified as before.
+        severity: 'WARNING',
         event: 'llm_model_breaker_open',
         feature: String(feature || ''),
         provider: String(provider || ''),

@@ -4,8 +4,9 @@
 // entry of fpm_stage_breakdown keeps error:true and says breaker_open:true. Without this, opening the breaker
 // would make the failure baseline vanish from the stage telemetry the moment it started saving round trips.
 //
-// Also pins that the breaker's WARN reaches Cloud Logging as severity WARNING (src/logger.js): pino alone writes
-// only a numeric level, which Cloud Logging files as DEFAULT.
+// Also pins that the breaker's WARN carries its own `severity: "WARNING"` (a field on that one log call), and that
+// no other gateway line gains a `severity` field: the gateway logger writes only pino's numeric level, and this
+// PR does not change how any other line is classified.
 //
 // Read from a real child process's stdout, as tests/fpm_stage_attribution.node.test.cjs does: pino writes
 // straight to fd 1, so an in-process stdout patch sees nothing.
@@ -67,13 +68,14 @@ test('control: with the breaker closed the same request records no breaker_open'
   assert.equal(stage.breaker_open, undefined);
 });
 
-test('the breaker WARN carries Cloud Logging severity WARNING; info lines carry INFO', async () => {
+test('the breaker WARN carries severity WARNING; no other line carries a severity field', async () => {
   const lines = jsonLines(await runProbe());
   const warn = lines.find((l) => l.event === 'llm_model_breaker_open');
   assert.ok(warn, 'expected the breaker-open WARN');
   assert.equal(warn.severity, 'WARNING');
-  assert.equal(warn.level, 40, 'the numeric level is kept for existing queries');
-  const info = lines.find((l) => l.level === 30);
-  assert.ok(info, 'expected an info line');
-  assert.equal(info.severity, 'INFO');
+  assert.equal(warn.level, 40);
+  const others = lines.filter((l) => l.event !== 'llm_model_breaker_open');
+  assert.ok(others.some((l) => l.level === 30), 'expected info lines to compare against');
+  const withSeverity = others.filter((l) => Object.prototype.hasOwnProperty.call(l, 'severity'));
+  assert.deepEqual(withSeverity.map((l) => l.msg), [], 'no other gateway line may carry a severity field');
 });
