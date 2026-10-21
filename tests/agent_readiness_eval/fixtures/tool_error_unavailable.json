@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "result": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"error\": {\n    \"code\": \"MERCHANT_UNAVAILABLE\",\n    \"message\": \"The catalog is temporarily unavailable.\",\n    \"retriable\": true\n  }\n}"
+      }
+    ]
+  }
+}

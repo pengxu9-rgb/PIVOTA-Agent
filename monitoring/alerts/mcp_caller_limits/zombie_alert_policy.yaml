@@ -1,0 +1,25 @@
+displayName: MCP caller limit - in-flight slot past max age (zombie)
+documentation:
+  content: >-
+    A tools/call held its caller-limit slot longer than MCP_CALLER_LIMITS_INFLIGHT_MAX_AGE_MS (default 600 s,
+    twice the request timeout). The slot stays counted until the work's finally runs, so the caller is
+    throttled, not unbounded. Find the line by jsonPayload.event="mcp_caller_limit_reaped" and check what the
+    door was doing (a hung upstream or a dispatch that never settles).
+  mimeType: text/markdown
+combiner: OR
+conditions:
+  - displayName: any zombie in 10 minutes
+    conditionThreshold:
+      filter: >-
+        metric.type="logging.googleapis.com/user/mcp_caller_limit_zombies"
+        resource.type="cloud_run_revision"
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 0s
+      aggregations:
+        - alignmentPeriod: 600s
+          perSeriesAligner: ALIGN_SUM
+          crossSeriesReducer: REDUCE_SUM
+alertStrategy:
+  autoClose: 3600s
+notificationChannels: []

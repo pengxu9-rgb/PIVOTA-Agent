@@ -21,6 +21,53 @@
  * meaningful observation is whether it was handed over.
  */
 
+/*
+ * DNS IS STUBBED for every lane case. The vendor precheck resolves the product host and REFUSES when the
+ * resolver has not answered in time (fail closed), so a test that relied on the real resolver was a test of
+ * the CI runner's network: F1 went red on a slow runner while passing locally. `node:dns`.lookup is replaced
+ * BEFORE the lane is re-required, because the host check captures it when the module loads.
+ *   - a name in DNS_ANSWERS answers with that address;
+ *   - any other name answers ENOTFOUND (a real, prompt "no such name");
+ *   - `stall` never answers.
+ * Answers arrive after DNS_ANSWER_DELAY_MS, like a real resolver, not on the next tick: a precheck whose timer
+ * fires at once (a "refuse everything" bug) must lose to a resolver that answers in tens of milliseconds, and
+ * the positive-control and NXDOMAIN cases below then catch it.
+ */
+// eslint-disable-next-line global-require
+const nodeDns = require('node:dns');
+
+const PUBLIC_ADDRESS = '8.8.8.8';
+const DNS_ANSWERS = Object.freeze({
+  'cosrx.com': PUBLIC_ADDRESS,
+  'www.cosrx.com': PUBLIC_ADDRESS,
+  localhost: '127.0.0.1',
+  'loopback.unblock.test': '127.0.0.2',
+  'private.unblock.test': '10.0.0.7',
+  'linklocal.unblock.test': '169.254.10.10',
+});
+
+const DNS_ANSWER_DELAY_MS = 30;
+
+function stubDns({ stall = false, delayMs = DNS_ANSWER_DELAY_MS } = {}) {
+  const looked = [];
+  const spy = jest.spyOn(nodeDns, 'lookup').mockImplementation((hostname, options, callback) => {
+    const cb = typeof options === 'function' ? options : callback;
+    looked.push(hostname);
+    if (stall) return; // never answers
+    const address = DNS_ANSWERS[hostname];
+    setTimeout(() => {
+      if (!address) {
+        const err = new Error(`getaddrinfo ENOTFOUND ${hostname}`);
+        err.code = 'ENOTFOUND';
+        return cb(err);
+      }
+      const all = options && typeof options === 'object' && options.all;
+      return all ? cb(null, [{ address, family: 4 }]) : cb(null, address, 4);
+    }, delayMs);
+  });
+  return { spy, looked };
+}
+
 const ENV_KEYS = [
   'AURORA_BFF_URL_UNBLOCK_ENABLED',
   'AURORA_BFF_URL_UNBLOCK_PROVIDER',
@@ -60,6 +107,7 @@ function loadLaneWithVendorEnabled(overrides = {}) {
 describe('the unblock vendor is never handed a non-public URL', () => {
   let saved;
   let getSpy;
+  let dns;
 
   beforeEach(() => {
     saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -68,6 +116,8 @@ describe('the unblock vendor is never handed a non-public URL', () => {
   afterEach(() => {
     if (getSpy) getSpy.mockRestore();
     getSpy = null;
+    if (dns) dns.spy.mockRestore();
+    dns = null;
     // `process.env` is per jest WORKER, not per file, so these must be put back or they leak into
     // whatever this worker runs next.
     for (const k of ENV_KEYS) {
@@ -78,7 +128,8 @@ describe('the unblock vendor is never handed a non-public URL', () => {
   });
 
   /** Spy the instance the LANE resolved, then hand back its lane. See loadLaneWithVendorEnabled. */
-  function armLane(overrides) {
+  function armLane(overrides, { dnsOptions } = {}) {
+    dns = stubDns(dnsOptions);
     const { lane, axiosInstance } = loadLaneWithVendorEnabled(overrides);
     getSpy = jest.spyOn(axiosInstance, 'get');
     return lane;
@@ -150,8 +201,10 @@ describe('the unblock vendor is never handed a non-public URL', () => {
       throw err;
     });
 
+    // Spelled so the caller's text and the normalised url DIFFER (case): the evidence is recorded against
+    // the normalised url the attempt used, and must be matched against that, not against the raw text.
     const out = await fetchProductHtmlWithUnblockChain({
-      productUrl: 'https://cosrx.com/products/some-product',
+      productUrl: 'HTTPS://COSRX.COM/products/some-product',
       timeoutMs: 3000,
     });
 
@@ -204,7 +257,7 @@ describe('the unblock vendor is never handed a non-public URL', () => {
     /*
      * Validating one string and transmitting another. Our own fetches go out normalised, but the vendor
      * was handed the caller's raw input, and the two can disagree about the HOST:
-     *   Node WHATWG : http://cosrx.com\@127.0.0.1/  ->  host cosrx.com  (backslash = path delimiter)
+     *   Node WHATWG : http://cosrx.com\\@127.0.0.1/  ->  host cosrx.com  (backslash = path delimiter)
      *   Python urllib: same bytes                    ->  host 127.0.0.1
      * We do not control the vendor's parser. The only safe string to send is the one we judged.
      */
@@ -215,17 +268,228 @@ describe('the unblock vendor is never handed a non-public URL', () => {
       }
       const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err;
     });
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
 
-    await fetchProductHtmlWithUnblockChain({
+    const out = await fetchProductHtmlWithUnblockChain({
+      productUrl: 'http://cosrx.com\\@127.0.0.1/',
+      timeoutMs: 3000,
+      logger,
+    });
+
+    expect(zenrowsCalls().length).toBeGreaterThan(0);
+    // Every vendor call (http AND the js_render retry) carries the normalised string.
+    for (const call of zenrowsCalls()) {
+      expect(call[1].params.url).toBe('http://cosrx.com/@127.0.0.1/');
+      expect(call[1].params.url).not.toContain('\\');
+    }
+    // The precheck resolved the NORMALISED host, not a host read out of the raw string.
+    expect(dns.looked).toContain('cosrx.com');
+    expect(dns.looked).not.toContain('127.0.0.1');
+    // The direct attempts were made on the normalised url too.
+    const direct = out.attempts.filter((a) => a.provider === 'native');
+    expect(direct.length).toBeGreaterThan(0);
+    for (const a of direct) expect(String(a.__url)).not.toContain('\\');
+    expect(out.used_unblock_vendor).toBe(true);
+  });
+
+  test('F1b: FAIL CLOSED — a precheck lookup that never answers refuses the vendor', async () => {
+    /*
+     * The precheck races its DNS lookup against a timer. When the timer won, the vendor used to be called
+     * anyway ("not proven bad") with the caller's RAW string, because that branch carried no url. A URL whose
+     * address was never checked must not reach the vendor at all.
+     */
+    const { fetchProductHtmlWithUnblockChain } = armLane({}, { dnsOptions: { stall: true } });
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err;
+    });
+
+    const out = await fetchProductHtmlWithUnblockChain({
       productUrl: 'http://cosrx.com\\@127.0.0.1/',
       timeoutMs: 3000,
     });
 
+    expect(dns.looked).toContain('cosrx.com');
+    expect(zenrowsCalls()).toHaveLength(0);
+    expect(out.used_unblock_vendor).toBe(false);
+    // Recorded as a precheck TIMEOUT, not as a forbidden address: a slow resolver says nothing about the
+    // address, and `pivota_ssrf*` would be reported as url_forbidden_address.
+    expect(out.attempts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ strategy: 'vendor_precheck', error_code: 'pivota_precheck_timeout' }),
+    ]));
+    expect(out.attempts.some((a) => String(a.error_code || '').startsWith('pivota_ssrf'))).toBe(false);
+    expect(out.failure_code).toBe('url_fetch_timeout');
+  });
+
+  test('a slow resolver after a 403 keeps the 403 as the failure code (default config)', async () => {
+    const { fetchProductHtmlWithUnblockChain } = armLane({ AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED: 'true' }, {
+      dnsOptions: { stall: true },
+    });
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      return { status: 403, headers: {}, data: 'forbidden' };
+    });
+
+    const out = await fetchProductHtmlWithUnblockChain({ productUrl: 'https://cosrx.com/products/x', timeoutMs: 3000 });
+
+    expect(zenrowsCalls()).toHaveLength(0);
+    expect(out.failure_code).toBe('url_fetch_forbidden_403');
+  });
+
+  test('NO VENDOR KEY: no precheck lookup at all, and the vendor attempts say vendor_not_configured as before', async () => {
+    const { fetchProductHtmlWithUnblockChain } = armLane({
+      AURORA_BFF_URL_UNBLOCK_ZENROWS_API_KEY: '',
+      AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED: 'true',
+    }, { dnsOptions: { stall: true } });
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      return { status: 403, headers: {}, data: 'forbidden' };
+    });
+
+    const out = await fetchProductHtmlWithUnblockChain({ productUrl: 'https://cosrx.com/products/x', timeoutMs: 3000 });
+
+    expect(dns.looked).toEqual([]);
+    expect(zenrowsCalls()).toHaveLength(0);
+    expect(out.attempts.some((a) => a.strategy === 'vendor_precheck')).toBe(false);
+    expect(out.attempts.filter((a) => a.provider === 'zenrows').map((a) => a.error_code))
+      .toEqual(['vendor_not_configured', 'vendor_not_configured']);
+    expect(out.failure_code).toBe('url_fetch_forbidden_403');
+  });
+
+  test.each([
+    ['loopback', 'http://loopback.unblock.test/p'],
+    ['private (RFC1918)', 'https://private.unblock.test/p'],
+    ['link-local', 'https://linklocal.unblock.test/p'],
+  ])('a host RESOLVING to a %s address is refused and the vendor never called', async (_label, productUrl) => {
+    const { fetchProductHtmlWithUnblockChain } = armLane();
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      const err = new Error('socket hang up'); err.code = 'ECONNRESET'; throw err;
+    });
+
+    const out = await fetchProductHtmlWithUnblockChain({ productUrl, timeoutMs: 3000 });
+
+    expect(zenrowsCalls()).toHaveLength(0);
+    expect(out.used_unblock_vendor).toBe(false);
+    expect(out.attempts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ strategy: 'vendor_precheck', error_code: 'pivota_ssrf_refused' }),
+    ]));
+  });
+
+  test('a host the resolver ANSWERS does not exist is still escalated (a prompt NXDOMAIN is not silence)', async () => {
+    // The vendor exists to reach hosts our resolver cannot see. This is the deliberate counterpart of F1b:
+    // only a resolver that never answers is refused.
+    const { fetchProductHtmlWithUnblockChain } = armLane();
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      const err = new Error('getaddrinfo ENOTFOUND'); err.code = 'ENOTFOUND'; throw err;
+    });
+
+    const out = await fetchProductHtmlWithUnblockChain({ productUrl: 'https://nxdomain.unblock.test/p', timeoutMs: 3000 });
+
+    expect(dns.looked).toContain('nxdomain.unblock.test');
     expect(zenrowsCalls().length).toBeGreaterThan(0);
-    const sent = zenrowsCalls()[0][1].params.url;
-    // The host must be unambiguous in the string the vendor receives.
-    expect(sent).toBe('http://cosrx.com/@127.0.0.1/');
-    expect(sent).not.toContain('\\');
+    expect(zenrowsCalls()[0][1].params.url).toBe('https://nxdomain.unblock.test/p');
+  });
+
+  test('the failure log names the normalised host only, never the raw string', async () => {
+    const { fetchProductHtmlWithUnblockChain } = armLane({}, { dnsOptions: { stall: true } });
+    getSpy.mockImplementation(async () => { const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err; });
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+
+    await fetchProductHtmlWithUnblockChain({ productUrl: 'http://cosrx.com\\@127.0.0.1/', timeoutMs: 3000, logger });
+
+    const line = logger.debug.mock.calls.find(([, msg]) => /product url fetch fallback failed/.test(String(msg)));
+    expect(line).toBeTruthy();
+    expect(line[0].url_host).toBe('cosrx.com');
+    expect(line[0].url).toBeUndefined();
+    // Attempts carry their HOST, not the url they tried.
+    expect(line[0].attempts.length).toBeGreaterThan(0);
+    for (const a of line[0].attempts) {
+      expect(a.__url).toBeUndefined();
+      if (a.provider === 'native') expect(['cosrx.com', 'www.cosrx.com']).toContain(a.url_host);
+    }
+    const logged = JSON.stringify(line[0]);
+    expect(logged).not.toContain('\\\\@');
+    expect(logged).not.toContain('://');
+  });
+
+  test('the reco page fetch logs the normalised host only', async () => {
+    dns = stubDns({ stall: true });
+    const { lane, axiosInstance } = loadLaneWithVendorEnabled();
+    getSpy = jest.spyOn(axiosInstance, 'get').mockImplementation(async () => {
+      const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err;
+    });
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+
+    await lane.fetchProductPageHtmlForReco({ productUrl: 'http://cosrx.com\\@127.0.0.1/x?q=1', timeoutMs: 3000, logger });
+
+    const line = logger.debug.mock.calls.find(([, msg]) => /reco blocks on-page html fetch failed/.test(String(msg)));
+    expect(line).toBeTruthy();
+    expect(line[0].url_host).toBe('cosrx.com');
+    expect(line[0].url).toBeUndefined();
+    expect(JSON.stringify(line[0])).not.toContain('://');
+  });
+
+  test('the ingredient-extraction failure warning logs the host only, never the url or attempt urls', async () => {
+    dns = stubDns();
+    const { lane, axiosInstance } = loadLaneWithVendorEnabled();
+    const refuse = async () => { const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err; };
+    // Every outbound path this function could take is refused here, so the test cannot reach a real host.
+    getSpy = jest.spyOn(axiosInstance, 'get').mockImplementation(refuse);
+    const postSpy = jest.spyOn(axiosInstance, 'post').mockImplementation(refuse);
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(refuse);
+    // eslint-disable-next-line global-require
+    const nock = require('nock');
+    nock.disableNetConnect();
+    const logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    try {
+      await lane.buildProductAnalysisFromUrlIngredients({
+        productUrl: 'https://shop.example.invalid/p/secret-path?token=abc123',
+        lang: 'EN',
+        logger,
+      });
+    } finally {
+      postSpy.mockRestore();
+      fetchSpy.mockRestore();
+      nock.enableNetConnect();
+    }
+
+    const line = logger.warn.mock.calls.find(([, msg]) => /product URL ingredient extraction failed/.test(String(msg)));
+    expect(line).toBeTruthy();
+    expect(line[0].url_host).toBe('shop.example.invalid');
+    expect(line[0].url).toBeUndefined();
+    expect(line[0].attempts.length).toBeGreaterThan(0);
+    for (const a of line[0].attempts) expect(a.__url).toBeUndefined();
+    const logged = JSON.stringify(line[0]);
+    expect(logged).not.toContain('://');
+    expect(logged).not.toContain('secret-path');
+    expect(logged).not.toContain('abc123');
+  });
+
+  test('a retail page fetch returns the normalised url, never the raw text', async () => {
+    const { fetchRetailProductPage } = armLane();
+    getSpy.mockImplementation(async (url) => {
+      if (String(url).includes('api.zenrows.com')) {
+        return { status: 200, headers: {}, data: '<html>via vendor</html>' };
+      }
+      const err = new Error('blocked'); err.code = 'ECONNRESET'; throw err;
+    });
+
+    const out = await fetchRetailProductPage({ productUrl: 'http://cosrx.com\\@127.0.0.1/', timeoutMs: 3000 });
+    expect(out.url).toBe('http://cosrx.com/@127.0.0.1/');
+    const refused = await fetchRetailProductPage({ productUrl: 'http://127.0.0.1/x', timeoutMs: 3000 });
+    expect(refused.url).toBeNull();
   });
 
   test('F4: a refusal on the www HOST VARIANT does not withhold the vendor for a public canonical url', async () => {

@@ -8,16 +8,23 @@
 // same line. This records, per request, what the door actually answered, and folds it into a fixed set of
 // fields at 'finish':
 //
-//   outcome      'ok' | 'tool_error' | 'rpc_error' | 'internal_error' | 'refused' | 'unknown'
+//   outcome      'ok' | 'tool_error' | 'rpc_error' | 'internal_error' | 'refused' | 'shed' | 'unknown'
 //   is_error     outcome !== 'ok'  (a refusal is an error for the caller; the alert filters it out, see
 //                docs/runbooks/mcp_tool_outcome_monitoring.md, so a rate-limit flood cannot page as a tool fault)
 //   error_code   the tool's code as the caller saw it (UNKNOWN_PRODUCT_ID, ...), JSONRPC_<NAME> for a protocol
-//                error, INTERNAL_ERROR when the adapter threw, HTTP_<status> for a refusal before dispatch
+//                error, INTERNAL_ERROR when the adapter threw, HTTP_<status> for a refusal before dispatch,
+//                MCP_CALLER_SHED for a caller-limit 503 (the door shed load before dispatch)
 //   error_class  'server' (a fault on our side: a retriable taxonomy code such as MERCHANT_UNAVAILABLE, an
 //                UNEXPECTED_ERROR from an uncurated exception, an internal error, a 5xx) | 'client' (the call
 //                will not succeed as sent: UNKNOWN_TOOL, INVALID_ARGUMENTS, UNKNOWN_PRODUCT_ID,
-//                USER_AUTH_REQUIRED, OPERATION_NOT_ALLOWED, a protocol error, a refusal) | null when ok. The
-//                error-rate alert counts 'server' only: a caller sending bad ids is not an outage.
+//                USER_AUTH_REQUIRED, OPERATION_NOT_ALLOWED, a protocol error, a refusal) | 'capacity' (the
+//                caller limits shed the call before dispatch: src/guardrails/mcpCallerLimits.js answered 503
+//                because the database pool was saturated, or a TIER was full or over its rate: the anonymous
+//                tier or the unregistered-OAuth-client tier, whose tier rate drops to a per-instance share
+//                while the shared counter store is down or stale; see recordCallerLimitRefusal) | null when
+//                ok. The error-rate alert counts 'server' only: a caller sending bad ids is not an outage,
+//                and shedding is the limits doing their job, counted and alerted on by their own metric and
+//                policy (monitoring/alerts/mcp_caller_limits/).
 //   result_count rows the caller received, AFTER the public tier's filters (absent for a non-list result)
 //   cache_hit    true | false | 'stale' (absent when no cache was consulted)
 //   lane, lane_source, upstream_status    the search envelope's own markers, short tokens only
@@ -121,6 +128,28 @@ function createMcpToolCallRecorder() {
     answer = { kind: 'internal_error' };
   }
 
+  // The per-caller limits refused the call before dispatch (src/guardrails/mcpCallerLimits.js). A 5xx there is
+  // SHEDDING: 'shed' / 'capacity', not a server fault, so the error-rate alert does not count the limits working
+  // as an outage. The limiter answers 503 for three reasons (firstViolation):
+  //   shed              the database pool has waiters at or above the threshold (anonymous callers at theirs,
+  //                     every other limited caller, unregistered OAuth clients included, at the partner one);
+  //   tier_concurrency  a TIER's in-flight cap on this instance is full;
+  //   tier_rate         a TIER's requests per minute are spent.
+  // A tier is the anonymous tier or the unregistered-OAuth-client tier (an OAuth client with no override of
+  // its own: policyFor). The tier rate is a shared count, so while the shared counter store is down, its
+  // snapshot is stale, or the tier key has not been synced yet, it is cut to this instance's share (limit /
+  // MCP_CALLER_LIMITS_EXPECTED_INSTANCES: effectiveLimit) and a store outage alone can raise tier_rate 503s
+  // (the limiter's line says limit_split: true). All three are shedding. A 4xx is the caller's own budget
+  // (rate, concurrency; also cut to the per-instance share in that fallback) and stays what any refusal before
+  // dispatch is: 'refused' / 'client' / HTTP_<status>.
+  function recordCallerLimitRefusal(refusal) {
+    try {
+      if (Number(refusal && refusal.status) >= 500) answer = { kind: 'shed' };
+    } catch (_) {
+      // Never into the request.
+    }
+  }
+
   function fields(statusCode) {
     const status = Number(statusCode) || 0;
     let outcome;
@@ -128,6 +157,9 @@ function createMcpToolCallRecorder() {
     if (answer && answer.kind === 'internal_error') {
       outcome = 'internal_error';
       errorCode = 'INTERNAL_ERROR';
+    } else if (answer && answer.kind === 'shed') {
+      outcome = 'shed';
+      errorCode = 'MCP_CALLER_SHED';
     } else if (answer && answer.kind === 'rpc_error') {
       outcome = 'rpc_error';
       errorCode = answer.code;
@@ -153,6 +185,7 @@ function createMcpToolCallRecorder() {
     else if (outcome === 'tool_error') {
       errorClass = observed.error_retriable === true || SERVER_TOOL_ERROR_CODES.has(errorCode) ? 'server' : 'client';
     } else if (outcome === 'refused') errorClass = 'client';
+    else if (outcome === 'shed') errorClass = 'capacity';
 
     const out = { outcome, is_error: outcome !== 'ok', error_code: errorCode, error_class: errorClass };
     for (const key of ['result_count', 'cache_hit', 'lane', 'lane_source', 'upstream_status']) {
@@ -183,7 +216,7 @@ function createMcpToolCallRecorder() {
     }
   }
 
-  return { observe, recordRpcResponse, recordToolError, recordInternalError, fields, toolLabel };
+  return { observe, recordRpcResponse, recordToolError, recordInternalError, recordCallerLimitRefusal, fields, toolLabel };
 }
 
 /**

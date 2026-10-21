@@ -652,8 +652,15 @@ function recordingFailures(label, fn) {
   };
 }
 
+// The pool if one exists, WITHOUT creating it: for readers of its census (load shedding) that must not
+// open connections just to look.
+function peekPool() {
+  return pool;
+}
+
 module.exports = {
   DB_BUDGET_ACQUIRE_TIMEOUT,
+  peekPool,
   DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,

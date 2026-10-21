@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"status\": \"success\",\n  \"success\": true,\n  \"total\": 3,\n  \"page\": 1,\n  \"page_size\": 10,\n  \"products\": [\n    {\n      \"product_id\": \"sig_fx_001\",\n      \"merchant_id\": \"merch_fixture_a\",\n      \"title\": \"Velvet Matte Lipstick - Classic Red\",\n      \"brand\": \"Fixture Cosmetics\",\n      \"category\": \"Makeup > Lips > Lipstick\",\n      \"product_type\": \"lipstick\",\n      \"price\": 18,\n      \"currency\": \"USD\",\n      \"availability\": \"in_stock\",\n      \"in_stock\": true,\n      \"url\": \"https://shop.fixture.example/products/sig_fx_001\",\n      \"pivota_url\": \"https://agent.fixture.example/products/sig_fx_001\",\n      \"variants\": [\n        {\n          \"title\": \"Classic Red\"\n        },\n        {\n          \"title\": \"Brick\"\n        }\n      ]\n    },\n    {\n      \"product_id\": \"sig_fx_002\",\n      \"merchant_id\": \"merch_fixture_a\",\n      \"title\": \"Satin Lipstick - Cherry\",\n      \"brand\": \"Fixture Cosmetics\",\n      \"category\": \"Makeup > Lips > Lipstick\",\n      \"product_type\": \"lipstick\",\n      \"price\": 22,\n      \"currency\": \"USD\",\n      \"availability\": \"in_stock\",\n      \"in_stock\": true,\n      \"url\": \"https://shop.fixture.example/products/sig_fx_002\",\n      \"pivota_url\": \"https://agent.fixture.example/products/sig_fx_002\"\n    },\n    {\n      \"product_id\": \"sig_fx_003\",\n      \"merchant_id\": \"merch_fixture_b\",\n      \"title\": \"Hydrating Lip Balm\",\n      \"brand\": \"Fixture Botanics\",\n      \"category\": \"Skincare > Lips\",\n      \"price\": 9,\n      \"currency\": \"USD\",\n      \"url\": \"https://shop.fixture.example/products/sig_fx_003\"\n    }\n  ],\n  \"metadata\": {\n    \"primary_lane\": \"fixture_lane\"\n  }\n}"
+      }
+    ]
+  }
+}

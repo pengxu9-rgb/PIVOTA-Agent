@@ -538,6 +538,13 @@ try {
 }
 const { applyGatewayGuardrails, clientIpFromRequest } = require('./guardrails/gatewayGuardrails');
 const {
+  admitMcpCallerLimit,
+  attachMcpLimitCaller,
+  invokeContextLimitCaller,
+  logMcpCallerLimitsBootStatus,
+} = require('./guardrails/mcpCallerLimits');
+const { loopbackCallerHeaders } = require('./guardrails/loopbackCallerAssertion');
+const {
   recommend: recommendPdpProducts,
   filterExcludedRecommendationCandidates,
   getCacheStats: getPdpRecsCacheStats,
@@ -31341,6 +31348,14 @@ function normalizePdpV2ToProductDetail(body) {
   }
 }
 
+// recommend_products' per-item live price checks call get_pdp_v2 back into this process. They carry the MCP
+// door's caller like every loopback call (loopbackCallerAssertion.js), marked as FAN-OUT: one tool call
+// verifies many items, so these sub-calls are keyed on that ONE tool call by the invoke limiter instead of
+// draining the caller's own per-operation get_pdp_v2 budget.
+function recommendPriceVerifyLoopbackHeaders(invokeContext) {
+  return loopbackCallerHeaders(invokeContext, { fanout: true });
+}
+
 // Base URL for calling THIS service's own invoke pipeline over loopback (multi-merchant discovery reads).
 // Overridable for environments where loopback isn't routable (SELF_INVOKE_BASE).
 function selfInvokeBase() {
@@ -31607,6 +31622,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // upstream key above is always the gateway's own, so without this the backend can name no MCP agent.
       // Empty for every cached read lane: ISSUING_OPS holds no cached op (issuingAgentAssertion.js).
       ...(COMMERCE_CACHED_READ_OPS.has(op) ? {} : issuingAgentAssertionHeaders({ op, invokeContext })),
+      // A call back into THIS process carries the caller the MCP door resolved, signed with a per-process
+      // secret, so the invoke limiter keys on that caller rather than on this gateway's own key (see
+      // src/guardrails/loopbackCallerAssertion.js). It names a rate-limit bucket only: the response, and so
+      // the shared search cache, cannot depend on it.
+      ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackCallerHeaders(invokeContext) : {}),
       ...headers,
     },
     data: requestBody,
@@ -32014,6 +32034,10 @@ function buildExternalInvokeContext(req) {
     // assertion, never forwarded as a header of its own.
     oauth_issuer: req?.invokeAuth?.oauth_issuer || null,
     oauth_client_id: req?.invokeAuth?.oauth_client_id || null,
+    // The caller an MCP door resolved for its per-caller limits (src/guardrails/mcpCallerLimits.js), so a
+    // tool's loopback invoke call can be keyed on it instead of on this gateway's own key. Null off the MCP
+    // doors and when MCP_CALLER_LIMITS_MODE is off.
+    limit_caller: invokeContextLimitCaller(req),
     agent_user_jwt: firstNonEmptyString(
       req?.header('X-Agent-User-JWT'),
       req?.header('x-agent-user-jwt'),
@@ -32547,6 +32571,7 @@ async function getCommerceRemoteMcpAdapter() {
                       forwardAgentUserJwt: false,
                       forwardBuyerRef: false,
                     }),
+                    ...recommendPriceVerifyLoopbackHeaders(getInvokeAuthContext()),
                   },
                   validateStatus: () => true,
                 },
@@ -33030,10 +33055,36 @@ async function handlePublicReadMcp(req, res) {
     res.setHeader('Retry-After', '10');
     return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
   }
+  // Per-caller limits shared across instances (MCP_CALLER_LIMITS_MODE; inert when off). Runs AFTER the
+  // per-instance valve above, which stays exactly as it was. The slot is held for the whole dispatch and
+  // released in the finally below — NOT on a response event, so a client that disconnects mid-call keeps
+  // its slot until the work it started has finished.
+  const admission = admitMcpCallerLimit(req, res, { door: 'public_mcp' });
+  if (admission.refusal) {
+    // A shed 503 is logged as shedding, not as a server fault (src/observability/mcpToolCallOutcome.js).
+    toolCallRecorder?.recordCallerLimitRefusal(admission.refusal);
+    for (const [key, value] of Object.entries(admission.refusal.headers)) res.setHeader(key, value);
+    return res.status(admission.refusal.status).json(admission.refusal.body);
+  }
+  if (admission.gone) return res.end();
   // Explicit anonymous attribution context (same store the commerce door runs under) so downstream invoke
   // reads see a labeled public-tier caller instead of an absent store.
+  try {
+    return await runPublicReadMcpDispatch(req, res, toolCallRecorder);
+  } finally {
+    admission.release();
+  }
+}
+
+function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
   return INVOKE_AUTH_CONTEXT.run(
-    { path: req?.path || null, surface: 'mcp_public', auth_mode: 'public_read', auth_source: 'public_read' },
+    {
+      path: req?.path || null,
+      surface: 'mcp_public',
+      auth_mode: 'public_read',
+      auth_source: 'public_read',
+      limit_caller: invokeContextLimitCaller(req),
+    },
     async () => {
       const heartbeat = createMcpResponseHeartbeat(
         res,
@@ -33136,6 +33187,9 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
     }
 
     const runMcp = async () => {
+      // Identity is known only now, after the auth channel. Resolved BEFORE the invoke context is built so
+      // the context (and through it every loopback call) carries it; admission happens below.
+      attachMcpLimitCaller(req);
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
         // The blocked-operation short-circuits run BEFORE the heartbeat exists. They decide purely from the
         // parsed body and two env flags — they never needed the adapter or the session context — so hoisting
@@ -33176,48 +33230,68 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
           }));
         }
 
-        // Same Railway edge first-body-byte deadline as the public tier (services/publicReadMcpHeartbeat):
-        // a commerce tools/call that outlives ~13s (cold search, slow checkout upstream) gets its connection
-        // reset while the server completes uselessly. Two things make committing 200 here safe. First,
-        // construction happens only AFTER every non-200 outcome this route can produce (strict-off 404,
-        // OAuth challenge + WWW-Authenticate, api-key 401/403/503, blocked-op refusal), so a commit can
-        // never mask a real status or drop a challenge header. Second, isMcpHeartbeatEligibleRequest arms it
-        // for tools/call ONLY — the one method whose outcome is guaranteed 200, tool errors riding inside
-        // the JSON-RPC body — instead of relying on the other methods being too fast to reach the delay.
-        // Adapter headers are only content-type, which the heartbeat sets itself on commit.
-        const heartbeat = createMcpResponseHeartbeat(res, commerceMcpHeartbeatOptions({
-          eligible: isMcpHeartbeatEligibleRequest(req),
-          elapsedMs: Date.now() - handlerEnteredAtMs,
-        }));
+        // Per-caller limits (MCP_CALLER_LIMITS_MODE; inert when off). After the instant refusals above, so a
+        // refused money op costs no budget, and BEFORE the heartbeat, so a refusal keeps its own status and
+        // Retry-After instead of being committed to 200. The slot is held for the whole dispatch and released
+        // in the finally below — NOT on a response event: a client that disconnects mid-call keeps its slot
+        // until the work it started has finished, and one that left while auth was being resolved above is
+        // never admitted at all.
+        const admission = admitMcpCallerLimit(req, res, { door: door || 'commerce_mcp' });
+        if (admission.refusal) {
+          // A shed 503 is logged as shedding, not as a server fault (src/observability/mcpToolCallOutcome.js).
+          toolCallRecorder?.recordCallerLimitRefusal(admission.refusal);
+          for (const [key, value] of Object.entries(admission.refusal.headers)) res.setHeader(key, value);
+          return res.status(admission.refusal.status).json(admission.refusal.body);
+        }
+        if (admission.gone) return res.end();
+
         try {
-          const adapter = await getAdapter();
-          const sessionContext = mcpOAuthOutcome.mode === 'oauth'
-            ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
-            : await deriveStrictCommerceCtxAsync(req);
-          const out = await adapter.handleJsonRpc(withMcpToolCallObserver({
-            headers: req.headers || {},
-            body: req.body,
-            authInfo: buildStrictSessionAuthInfo(req, sessionContext),
-            sessionContext,
-          }, toolCallRecorder));
-          toolCallRecorder?.recordRpcResponse(out);
-          if (heartbeat.finish(out)) {
-            toolCallRecorder?.observe({ heartbeat_committed: true });
-            return undefined;
+          // Same Railway edge first-body-byte deadline as the public tier (services/publicReadMcpHeartbeat):
+          // a commerce tools/call that outlives ~13s (cold search, slow checkout upstream) gets its connection
+          // reset while the server completes uselessly. Two things make committing 200 here safe. First,
+          // construction happens only AFTER every non-200 outcome this route can produce (strict-off 404,
+          // OAuth challenge + WWW-Authenticate, api-key 401/403/503, blocked-op refusal, caller-limit
+          // 429/503), so a commit can never mask a real status or drop a challenge header. Second,
+          // isMcpHeartbeatEligibleRequest arms it for tools/call ONLY — the one method whose outcome is
+          // guaranteed 200, tool errors riding inside the JSON-RPC body — instead of relying on the other
+          // methods being too fast to reach the delay.
+          // Adapter headers are only content-type, which the heartbeat sets itself on commit.
+          const heartbeat = createMcpResponseHeartbeat(res, commerceMcpHeartbeatOptions({
+            eligible: isMcpHeartbeatEligibleRequest(req),
+            elapsedMs: Date.now() - handlerEnteredAtMs,
+          }));
+          try {
+            const adapter = await getAdapter();
+            const sessionContext = mcpOAuthOutcome.mode === 'oauth'
+              ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
+              : await deriveStrictCommerceCtxAsync(req);
+            const out = await adapter.handleJsonRpc(withMcpToolCallObserver({
+              headers: req.headers || {},
+              body: req.body,
+              authInfo: buildStrictSessionAuthInfo(req, sessionContext),
+              sessionContext,
+            }, toolCallRecorder));
+            toolCallRecorder?.recordRpcResponse(out);
+            if (heartbeat.finish(out)) {
+              toolCallRecorder?.observe({ heartbeat_committed: true });
+              return undefined;
+            }
+            for (const [key, value] of Object.entries(out.headers || {})) {
+              res.setHeader(key, value);
+            }
+            if (out.body == null) return res.status(out.status).end();
+            return res.status(out.status).json(out.body);
+          } catch (err) {
+            logger.error({ err: err?.message || String(err) }, failureLabel);
+            toolCallRecorder?.recordInternalError();
+            const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
+            if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+              return undefined;
+            }
+            return res.status(503).json({ error: 'mcp_unavailable' });
           }
-          for (const [key, value] of Object.entries(out.headers || {})) {
-            res.setHeader(key, value);
-          }
-          if (out.body == null) return res.status(out.status).end();
-          return res.status(out.status).json(out.body);
-        } catch (err) {
-          logger.error({ err: err?.message || String(err) }, failureLabel);
-          toolCallRecorder?.recordInternalError();
-          const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
-          if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
-            return undefined;
-          }
-          return res.status(503).json({ error: 'mcp_unavailable' });
+        } finally {
+          admission.release();
         }
       });
     };
@@ -53256,6 +53330,9 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Exported because the price-check fan-out runs only behind the external reco lane: the property under
+  // test is that its loopback sub-calls are marked fan-out (keyed per tool call, not per caller).
+  recommendPriceVerifyLoopbackHeaders,
   // Exported so the reco rebound gate can be tested against the rows the search actually emits: a seed
   // row's real path (a string) and a path the response hint inferred from the query (marked).
   buildBeautyExternalSeedMainlineProduct,
@@ -53686,6 +53763,9 @@ if (require.main === module) {
       } catch (err) {
         logger.warn({ event: 'catalog_trust_crawl_fresh_config_log_failed', err: err && err.message });
       }
+      // MCP caller limits: mode, store, and whether tool calls back into this process can carry the caller
+      // (a non-loopback SELF_INVOKE_BASE silently keeps them on the shared invoke key; this line says so).
+      logMcpCallerLimitsBootStatus({ selfInvokeBase: selfInvokeBase(), log: logger });
 
 
       // Gemini gate startup check
