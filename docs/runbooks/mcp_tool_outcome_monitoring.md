@@ -23,7 +23,7 @@ written once per `tools/call`, on response `finish`, on every door:
 | `tier` | `public` · `first_party` (the configured service key) · `authenticated` (any other resolved caller) · `unauthenticated` (refused before a caller was resolved) |
 | `status` | HTTP status written (200 for every dispatched call) |
 | `latency_ms` | handler entry to response finish |
-| `outcome` | `ok` · `tool_error` (`result.isError`) · `rpc_error` (JSON-RPC `error`) · `internal_error` (the adapter threw, or a 5xx) · `refused` (4xx before dispatch: door off, body too large, rate limit, auth challenge, a caller-limit rate or concurrency 429) · `shed` (a caller-limit 503 before dispatch: the database pool or an anonymous tier was saturated, see `src/guardrails/mcpCallerLimits.js`) · `unknown` (should not occur) |
+| `outcome` | `ok` · `tool_error` (`result.isError`) · `rpc_error` (JSON-RPC `error`) · `internal_error` (the adapter threw, or a 5xx) · `refused` (4xx before dispatch: door off, body too large, rate limit, auth challenge, a caller-limit rate or concurrency 429) · `shed` (a caller-limit 503 before dispatch, see [Shed 503s](#shed-503s)) · `unknown` (should not occur) |
 | `is_error` | `outcome !== "ok"` |
 | `error_class` | `server`: a fault on our side. That is a retriable taxonomy code (for example `MERCHANT_UNAVAILABLE`), `UNEXPECTED_ERROR` from an uncurated exception, an internal error, `JSONRPC_INTERNAL_ERROR`, or a 5xx. `client`: the call will not succeed as sent. That is `UNKNOWN_TOOL`, `INVALID_ARGUMENTS`, `UNKNOWN_PRODUCT_ID`, `USER_AUTH_REQUIRED`, `OPERATION_NOT_ALLOWED`, any other non-retriable code, a protocol error, or a refusal. `capacity`: the caller limits shed the call (`outcome="shed"`); the limits working under load, not a fault. `null` when the call is ok |
 | `error_code` | the code the caller saw: the tool code (`UNKNOWN_TOOL`, `MERCHANT_UNAVAILABLE`, `OPERATION_NOT_ALLOWED`, ...), `JSONRPC_<NAME>` (`JSONRPC_INVALID_PARAMS`, ...), `INTERNAL_ERROR`, `HTTP_<status>` for a refusal, or `MCP_CALLER_SHED` for a shed call. `null` when ok |
@@ -43,6 +43,31 @@ A search can answer `status:"failed"` with rows attached. That logs `outcome="ok
 
 Nothing in the line comes from the tool arguments. String fields are short tokens checked against a strict
 pattern, so a query or a product title cannot reach the log.
+
+### Shed 503s
+
+A caller-limit 503 (`outcome="shed"`, `error_class="capacity"`, `error_code="MCP_CALLER_SHED"`) is one of three
+refusals in `src/guardrails/mcpCallerLimits.js` (`firstViolation`), all written before dispatch:
+
+| reason (on the `mcp caller limit` line) | when |
+|---|---|
+| `shed` | the database pool has at least the configured number of waiters. Anonymous callers shed at their threshold; every other limited caller, unregistered OAuth clients included, at the partner threshold |
+| `tier_concurrency` | a tier's in-flight cap on this instance is full |
+| `tier_rate` | a tier's requests per minute are spent |
+
+A tier is the anonymous tier or the **unregistered-OAuth-client tier**: an OAuth client with no override of its
+own shares one tier budget (`policyFor`). Its 503s are shedding like the anonymous tier's; its line carries
+`tier="partner"` and `oauth_unregistered=true`.
+
+The tier rate is a shared count across instances. While the shared counter store is down, its snapshot is
+stale, or a key has not been synced yet, the limit is cut to this instance's share (limit /
+`MCP_CALLER_LIMITS_EXPECTED_INSTANCES`, `effectiveLimit`). So **the per-instance fallback** can raise
+`tier_rate` 503s on its own, with no load change: the line says `limit_split=true` and the store alert
+(`monitoring/alerts/mcp_caller_limits/`) should be firing too. The same fallback also tightens the per-caller
+rate and concurrency limits, whose 429s stay `refused` / `client`.
+
+Shedding is alerted on by `monitoring/alerts/mcp_caller_limits/shed_alert_policy.yaml`, not by the tool
+error-rate alert below.
 
 ## Metrics and alerts
 
