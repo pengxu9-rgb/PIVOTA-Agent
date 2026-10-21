@@ -311,6 +311,7 @@ const {
 // FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING and FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING.
 const strictIngredientQuery = require('./findProductsMulti/strictIngredientQuery');
 const queryRoutingNormalizer = require('./findProductsMulti/queryRoutingNormalizer');
+const multilingualBeautyTerms = require('./findProductsMulti/multilingualBeautyTerms');
 const {
   buildFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
@@ -42144,6 +42145,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ingredientIds: door.excludedIds,
             requiredIds: door.requiredIds,
             scopePrefix: door.scopePrefix,
+            inferCategoryPath: queryRoutingNormalizer.inferRowCategoryPath,
           });
           routingQueryLogFields = {
             ...routingQueryLogFields,
@@ -42895,6 +42897,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(safeSearch.limit || safeSearch.page_size || 20) || 20)),
       );
       const safePage = Math.max(1, Math.floor(Number(safeSearch.page || 1) || 1));
+      // With a routing flag on, the caller's request metadata is not echoed into this answer (it carried
+      // hostile routing_original_query / routingOriginalQuery / routingUserQuery values straight back),
+      // the same as the contract safe-empty in the mainline helper, which never spreads it. Both flags
+      // off or observe: unchanged, byte-identical to before.
+      const safeEmptyEchoesCallerMetadata =
+        strictIngredientQuery.bareIngredientRoutingMode() !== 'on' && multilingualBeautyTerms.multilingualRoutingMode() !== 'on';
       const safeEmpty = normalizeAgentProductsListResponse(
         {
           status: 'success',
@@ -42907,7 +42915,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? 'Please search for a product, brand, category, or skin concern.'
             : null,
           metadata: {
-            ...metadata,
+            ...(safeEmptyEchoesCallerMetadata ? metadata : {}),
             ...buildInvokeSearchRailMetadata('authoritative_shopping'),
             query_source: 'search_quality_contract_v1_safe_empty',
             fetched_at: new Date().toISOString(),
