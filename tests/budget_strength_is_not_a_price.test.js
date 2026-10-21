@@ -53,29 +53,21 @@ const STRENGTHS = [
   '10％ or less niacinamide',
   '10%以下 niacinamide',
   'vitamin c serum 10-15%',
-  'vitamin c serum 10 to 15％',
   '5％-10％ niacinamide',
   'between 5 and 10% niacinamide',
   'between 5 and 10％ niacinamide',
-  'price 5-10％',
   'under 1 per cent retinol',
   'under 2 per cent',
   'under 2 per-cent',
   'niacinamide 10 pct serum',
-  // the unit right after the first number does not break the join: "10% to 20"
-  '10% to 20',
-  '10% - 20 niacinamide',
-  // 〜 ～ 到 and & join like - and to
+  // a tight 〜 ～ 到 – — join and "between ... &" spread like - does
   '10〜15％ niacinamide',
   '10～15％ niacinamide',
   '10到15％ niacinamide',
   'between 5 & 10％ niacinamide',
-  // a chain spreads back to its first number
-  '1-2-3%',
-  // a percentage range spreads onto a bound partner when it reads low to high
-  'around 5-10% niacinamide',
-  'under 5-10% niacinamide',
-  'around 1-2-3% niacinamide',
+  'vitamin c 10–15%',
+  'vitamin c 10—15%',
+  '2X serum',
   // sizes and strengths with no currency of their own
   '50ml toner',
   '30 ml serum',
@@ -90,7 +82,6 @@ const STRENGTHS = [
   '2x serum',
   'under 2x',
   '3x or less',
-  'sunscreen 50 pa+++',
   'spf 50 sunscreen',
   'spf50 sunscreen',
   'spf 30-50 sunscreen',
@@ -99,8 +90,22 @@ const STRENGTHS = [
   '30-50ml toner',
   '30ml-50 toner',
   'under 1.5x',
+];
+
+// No budget with the flag on. A strength reaches across a spaced " - " / " to " / " and ", or two
+// hops, only in these; flag off they keep main's legacy reading of the bare number next to the
+// strength, because nothing spreads across a clause separator or further than one hop.
+const FLAG_ON_STRENGTHS = [
+  'vitamin c serum 10 to 15％',
+  'price 5-10％',
+  '10% to 20',
+  '10% - 20 niacinamide',
+  '1-2-3%',
+  'around 5-10% niacinamide',
   'spf 30 and 50',
   'between spf 30 and 50',
+  'spf 30 ~ 50',
+  'sunscreen 50 pa+++',
 ];
 
 // Real budgets sitting next to a strength or size.
@@ -136,17 +141,64 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   ['around 30 x 2', { currency: null, min: 22.5, max: 37.5 }],
   ['under 30 x rhode', max(null, 30)],
   ['sunscreen under 30 x spf 50', max(null, 30)],
-  ['under 20 - 2x', max(null, 20)],
   ['under 20x2 pack', max(null, 20)],
-  // review of #2485 (S2): a size does not spread its mask onto a partner with a bound word
-  // right before it -- the 30 is the budget, the 50ml a size
+  ['under 30x 2 pack', max(null, 30)],
+  ['under 30xl hoodie', max(null, 30)],
+  ['under 30 pa', max(null, 30)],
+  ['serum under 30 - 10% niacinamide', max(null, 30)],
+  // review r3 (B1): a currency range's unmarked far end shares the currency, so a strength or size
+  // after it never collapses the range to its low end
+  ['$20-40 - 10% niacinamide', { currency: 'USD', min: 20, max: 40 }],
+  ['$20-40 – 50ml', { currency: 'USD', min: 20, max: 40 }],
+  ['S$20-40 ~ 50ml', { currency: 'SGD', min: 20, max: 40 }],
+  ['¥200-400 - 50ml', { currency: 'CNY', min: 200, max: 400 }],
+  ['€20-40 to 2% bha', { currency: 'EUR', min: 20, max: 40 }],
+  ['price $20-40 - 50ml', { currency: 'USD', min: 20, max: 40 }],
+  ['under $20-40 - 50ml', { currency: 'USD', min: 20, max: 40 }],
+  ['$20-40-10% niacinamide', { currency: 'USD', min: 20, max: 40 }],
+  ['$20 - 40-50ml', { currency: 'USD', min: 20, max: 40 }],
+  // (B2) a spread never runs through a range that is a budget
+  ['price 20-40 - 10% niacinamide', { currency: null, min: 20, max: 40 }],
+  ['price 20-40-50ml', { currency: null, min: 20, max: 40 }],
+  ['50ml - 20-30 usd', { currency: 'USD', min: 20, max: 30 }],
+  // (S1) a bound number before a spaced strength is a budget, whatever its size
+  ['serum under 15 - 20% vitamin c', max(null, 15)],
+  ['peel under 25 - 30% aha', max(null, 25)],
+  ['under 10 - 10% niacinamide', max(null, 10)],
+  ['under 30 - 100% silk', max(null, 30)],
+  ['less than 20 - 30% off', max(null, 20)],
+  ['under 5 - 10% off', max(null, 5)],
+  ['max 30 to 100% silk', max(null, 30)],
+  ['budget 30 to 100% silk', max(null, 30)],
+  ['under 15-20% vitamin c', max(null, 15)],
+  // (S2) a bound AFTER the number protects it too
+  ['spf 50 - 30 or less', max(null, 30)],
+  ['50ml ~ 30 or less', max(null, 30)],
+  ['spf 50 ~ 300以内', max(null, 300)],
+  ['50ml - 300以下', max(null, 300)],
+  ['spf 50 - 300左右', { currency: null, min: 225, max: 375 }],
+  ['spf 50 - 30 max', max(null, 30)],
+  ['spf 50 - 30 and under', max(null, 30)],
+  ['50ml ~30', max(null, 30)],
+  ['10%-30 or less', max(null, 30)],
+  ['spf 50+ $30', max('USD', 30)],
+];
+
+// Budgets with the flag on (= main). Flag off, main's legacy parser reads the spaced pair as a range
+// and these keep that reading: a size never spreads across a clause separator, and a size range
+// with a bare end is left whole.
+const FLAG_ON_BUDGETS = [
+  ['under 20 - 2x', max(null, 20)],
   ['under 30 - 50ml', max(null, 30)],
   ['under 25 – 50ml', max(null, 25)],
   ['under 25 — 50ml', max(null, 25)],
   ['under 30 ~ 50ml', max(null, 30)],
   ['under 30 to 50ml', max(null, 30)],
-  // ...and a percentage does not spread onto a bound partner larger than itself
-  ['serum under 30 - 10% niacinamide', max(null, 30)],
+  ['serum between 20 and 40 - 10% niacinamide', { currency: null, min: 20, max: 40 }],
+  ['between 20 and 40 - 50ml', { currency: null, min: 20, max: 40 }],
+  ['between 20 and 40-50ml', { currency: null, min: 20, max: 40 }],
+  ['spf 30-50 - 20-30 usd', { currency: 'USD', min: 20, max: 30 }],
+  ['spf 30 ~ 50 - $15', max('USD', 15)],
 ];
 
 // Plain budgets: unchanged.
@@ -193,8 +245,8 @@ describe.each(FLAG_STATES)('%s', (_label, flagValue) => {
     const started = Date.now();
     parseBudgetToPriceConstraint('1% - '.repeat(20000));
     parseBudgetToPriceConstraint('between 1 and 2% '.repeat(20000));
-    // worst case for the join pass: a 500-char chain that spreads back one number per pass
-    expect(parseBudgetToPriceConstraint(`${'1-'.repeat(249)}1%`)).toBeNull();
+    parseBudgetToPriceConstraint(`${'1-'.repeat(249)}1%`);
+    parseBudgetToPriceConstraint(`${'$1-'.repeat(166)}1%`);
     expect(Date.now() - started).toBeLessThan(250);
   });
 });
@@ -212,4 +264,57 @@ test('flag on, a size with a soft-bound partner reads as main does: no budget', 
   expect(parseBudgetToPriceConstraint('around 30 - 50ml')).toBeNull();
   expect(parseBudgetToPriceConstraint('about 5-10 ml')).toBeNull();
   expect(parseBudgetToPriceConstraint('max 30 - 50ml')).toBeNull();
+});
+
+describe('flag on only', () => {
+  beforeEach(() => {
+    process.env[FLAG] = '1';
+  });
+
+  test.each(FLAG_ON_STRENGTHS)('"%s" -> no budget', (q) => {
+    expect(parseBudgetToPriceConstraint(q)).toBeNull();
+  });
+
+  test.each(FLAG_ON_BUDGETS)('"%s" keeps its budget', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});
+
+// Every bound word the mask knows protects the number it marks from a tight strength join: the
+// query parses exactly as its budget phrase alone. Flag off that holds for every entry. Flag on it
+// holds for the hard bounds; after a soft bound ("around", "max", "budget", "~", "预算"...) main's
+// countsThings already refuses a number followed by "-<digit>", so the query has no budget either way.
+const BOUND_WORDS_BEFORE = [
+  'under', 'below', 'less than', 'no more than', 'at most', 'up to', 'max', 'maximum', 'around', 'about',
+  'approx', 'approximately', 'roughly', 'over', 'above', 'more than', 'at least', 'from', 'starting from',
+  'starting at', 'budget', 'budget of', 'price', 'prices', 'priced', '<', '>', '≤', '≥', '~', '≈', '＜', '＞',
+  '<=', '>=', '预算', '不超过', '至多', '最多', '至少', '不低于',
+];
+const SOFT_BOUND_WORDS = new Set([
+  'max', 'maximum', 'around', 'about', 'approx', 'approximately', 'roughly', 'budget', 'budget of', '<', '~',
+  '≈', '预算',
+]);
+const BOUND_WORDS_AFTER = [
+  'or less', 'or under', 'or below', 'or more', 'or above', 'and under', 'and below', 'and up', 'and above',
+  'and over', 'max', 'maximum', '以内', '以下', '以上', '左右', '起', '之间',
+];
+const afterPhrase = (word) => (/^[a-z]/.test(word) ? `30 ${word}` : `300${word}`);
+
+describe.each(FLAG_STATES)('bound words, %s', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+
+  test.each(BOUND_WORDS_BEFORE)('"serum %s 30-10%%" parses as "serum %s 30"', (word) => {
+    const got = parseBudgetToPriceConstraint(`serum ${word} 30-10%`);
+    if (flagValue !== undefined && SOFT_BOUND_WORDS.has(word)) expect(got).toBeNull();
+    else expect(got).toEqual(parseBudgetToPriceConstraint(`serum ${word} 30`));
+  });
+
+  test.each(BOUND_WORDS_AFTER)('"serum 10%%-<n> %s" parses as "serum <n> %s"', (word) => {
+    expect(parseBudgetToPriceConstraint(`serum 10%-${afterPhrase(word)}`)).toEqual(
+      parseBudgetToPriceConstraint(`serum ${afterPhrase(word)}`),
+    );
+  });
 });
