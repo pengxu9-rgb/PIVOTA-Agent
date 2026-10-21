@@ -640,6 +640,40 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     expect(ctx.intent.language).toBe('en');
   });
 
+  test('on: end to end, the debug bundle speaks the caller\'s language and the original never enters request metadata', async () => {
+    Object.assign(process.env, BOTH_ON, { SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP: 'true' });
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => (String(sql || '').includes(CANONICAL_MARKER) ? { rows: CATALOG } : { rows: [] }),
+    }));
+    const app = listen(owned(() => require('../../src/server')));
+    const call = (query, metadata) =>
+      owned(async () =>
+        request(app)
+          .post('/agent/shop/v1/invoke')
+          .set('x-debug', '1')
+          .send({ operation: 'find_products_multi', payload: { search: { query } }, ...(metadata ? { metadata } : {}) }),
+      );
+    // Queries whose lane runs after the context build (the early beauty lane answers before it and
+    // records no intent at all).
+    for (const [query, language] of [['레티놀', 'ko'], ['视黄醇', 'zh'], ['レチノール', 'ja'], ['crème hydratante', 'fr'], ['retinol', 'en']]) {
+      for (const metadata of [null, { routing_original_query: query === '视黄醇' ? '레티놀' : '视黄醇' }]) {
+        const resp = await call(query, metadata);
+        const bundle = resp.body.debug_bundle || resp.body.metadata?.debug_bundle;
+        expect([query, Boolean(bundle)]).toEqual([query, true]);
+        expect([query, metadata, JSON.stringify(bundle).includes(`"locale":"${language}"`)]).toEqual([query, metadata, true]);
+        // The gateway never writes the original into anything a response echoes.
+        if (!metadata) expect([query, JSON.stringify(resp.body).includes('routing_original_query')]).toEqual([query, false]);
+      }
+    }
+    // A rewritten query answered by a lane that echoes the request metadata (the safe-empty answer):
+    // nothing about the original is in it.
+    for (const query of ['선크림 return policy', '洗面奶 return policy']) {
+      const resp = await call(query, null);
+      expect([query, lane(resp)]).toEqual([query, LANES.SAFE_EMPTY]);
+      expect([query, JSON.stringify(resp.body).includes('routing_original_query')]).toEqual([query, false]);
+    }
+  });
+
   // Drops the caller's own metadata echo so two bodies can be compared on everything else.
   const withoutEcho = (value) => {
     if (Array.isArray(value)) return value.map(withoutEcho);
