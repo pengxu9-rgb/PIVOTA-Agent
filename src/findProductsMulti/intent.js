@@ -918,7 +918,8 @@ function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []
   return null;
 }
 
-// Default OFF: the parser below is byte-identical to its pre-flag behaviour unless this is set.
+// Default OFF: the parser below is byte-identical to its pre-flag behaviour unless this is set,
+// except that a strength or size number is never a price in either state (maskStrengthNumbers).
 function budgetRequiresMarker() {
   return ['1', 'true', 'yes', 'on'].includes(
     String(process.env.SEARCH_BUDGET_REQUIRE_MARKER || '').trim().toLowerCase(),
@@ -944,6 +945,70 @@ const CURRENCY_WORD_AFTER_RE =
   /^\s*(?:s\$|sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid|元|块钱|块|円|刀|美元|美金|欧元|英镑|人民币|日元)/i;
 const SPF_BEFORE_RE =
   /\bspf\s*(?:(?:about|around|approx(?:imately)?|roughly|max(?:imum)?|over|above|under|below|at least|at most|more than|less than|[~<>≈≥≤]=?)\s*)?$/i;
+
+// A strength or a size is never a price, with the flag on or off. Before any budget regex runs,
+// every such number is masked out of the text the parser reads:
+//   * a number followed by "%" / "％" / "percent" ("1.0% retinol", "10 ％", "under 2％") -- always;
+//   * a number followed by ml / mg / g / oz / fl oz / spf / pa / x, or preceded by SPF ("50ml",
+//     "1.7 oz", "2x", "spf 30") -- unless the number carries a currency of its own ("$30 spf 50"
+//     keeps the 30);
+//   * the other end of a range whose one end is masked ("5-10%", "spf 30-50", "between 5 and 10％").
+// Masking only rewrites those numbers to STRENGTH_MASK, so a query with none of them parses exactly
+// as before. Without it the flag-off parser fell back to the strength ("1.0% retinol serum" -> a
+// 1.00 cap that emptied the ingredient lane), and with the flag on a bound word before a full-width
+// "％" ("max 10％") or a range of strengths still became a cap.
+const STRENGTH_MASK = '#';
+const STRENGTH_NUMBER_RE = /\d+(?:\.\d+)?/g;
+const PERCENT_AFTER_RE = /^\s*(?:[%％]|(?:percent|pct)(?![a-z]))/i;
+const STRENGTH_UNIT_AFTER_RE = /^\s*(?:ml|mg|g|oz|fl\.?\s*oz|spf|pa|x)(?![a-z])/i;
+const CURRENCY_BEFORE_NUMBER_RE = /(?:s\$|[$€£¥￥]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy))\s*$/i;
+const STRENGTH_RANGE_GAP_RE = /^\s*(?:-|~|—|–|to|到|〜|～)\s*$/i;
+const STRENGTH_BETWEEN_GAP_RE = /^\s*(?:and|&)\s*$/i;
+const STRENGTH_BETWEEN_BEFORE_RE = /\bbetween\s*$/i;
+
+function maskStrengthNumbers(text) {
+  if (!/\d/.test(text)) return text;
+  const tokens = [];
+  for (const match of text.matchAll(STRENGTH_NUMBER_RE)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    // Both windows are bounded, so the pass stays linear in the (500-char-capped) query.
+    const before = text.slice(Math.max(0, start - 48), start);
+    const after = text.slice(end, end + 48);
+    const currencyMarked = CURRENCY_BEFORE_NUMBER_RE.test(before) || CURRENCY_WORD_AFTER_RE.test(after);
+    const masked =
+      PERCENT_AFTER_RE.test(after) ||
+      (!currencyMarked && (STRENGTH_UNIT_AFTER_RE.test(after) || SPF_BEFORE_RE.test(before)));
+    tokens.push({ start, end, before, currencyMarked, masked });
+  }
+  // Spread a mask across a range join: "5-10%", "spf 30-50", "between 5 and 10％".
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let i = 0; i + 1 < tokens.length; i += 1) {
+      const a = tokens[i];
+      const b = tokens[i + 1];
+      if (a.masked === b.masked) continue;
+      const gap = text.slice(a.end, b.start);
+      const joined =
+        STRENGTH_RANGE_GAP_RE.test(gap) ||
+        (STRENGTH_BETWEEN_GAP_RE.test(gap) && STRENGTH_BETWEEN_BEFORE_RE.test(a.before));
+      if (!joined) continue;
+      const other = a.masked ? b : a;
+      if (other.currencyMarked) continue;
+      other.masked = true;
+      changed = true;
+    }
+  }
+  if (!tokens.some((t) => t.masked)) return text;
+  let out = '';
+  let cursor = 0;
+  for (const t of tokens) {
+    if (!t.masked) continue;
+    out += text.slice(cursor, t.start) + STRENGTH_MASK;
+    cursor = t.end;
+  }
+  return out + text.slice(cursor);
+}
 
 function numberSpan(match, group = 1) {
   const start = (match.index || 0) + match[0].indexOf(match[group]);
@@ -1006,7 +1071,9 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Flag on: collapse whitespace first. Every regex below chains optional \s* runs, and on a
   // long whitespace run that backtracking is super-linear (review of #2275: "about" + 5,000
   // spaces took 29 s on the event loop). Collapsing it changes no match.
-  const normalized = budgetRequiresMarker() ? digitsNormalized.replace(/\s+/g, ' ') : digitsNormalized;
+  const normalized = maskStrengthNumbers(
+    budgetRequiresMarker() ? digitsNormalized.replace(/\s+/g, ' ') : digitsNormalized,
+  );
   const hasSgd = /(?:s\$|sgd|singapore dollars?|新加坡元)/i.test(normalized);
   const hasUsd = /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
   const hasEur = /(?:€|eur|euros?|欧元)/i.test(normalized);
