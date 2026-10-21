@@ -16,8 +16,9 @@
 // ("without retinol", "sin retinol", "0% retinol") is left exactly as typed. Rewriting it would turn a
 // clarify into a beauty-wide browse, and a bare negation must never widen what is served.
 //
-// The original text is kept for logs, language detection and replies (the handler passes it on as
-// metadata.routing_original_query); the normalised text is used only to route and match.
+// The original text is kept for logs, language detection and replies (the handler keeps it in its own
+// variable and hands it to the context build; never in caller-visible metadata); the normalised text is
+// used only to route and match.
 
 const {
   multilingualRoutingMode,

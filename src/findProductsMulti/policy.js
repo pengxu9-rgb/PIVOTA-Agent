@@ -57,10 +57,12 @@ const resolveKnownStableLookupAlias =
     ? productGroundingResolverInternals.resolveKnownStableProductRef
     : null;
 const {
+  bareIngredientRoutingMode,
   isBareIngredientRoutingEnabled,
   isBareStrictIngredientQuery,
 } = require('./strictIngredientQuery');
 const { detectLanguage: detectQueryLanguage } = require('./intent');
+const { multilingualRoutingMode } = require('./multilingualBeautyTerms');
 const strictFindProductsMultiRuntime = createStrictFindProductsMultiRuntime({
   buildBeautyQueryProfile,
 });
@@ -4609,7 +4611,7 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     .join('\n');
 }
 
-async function buildFindProductsMultiContext({ payload, metadata }) {
+async function buildFindProductsMultiContext({ payload, metadata, routingOriginalQuery: gatewayRoutingOriginalQuery = null }) {
   const search = payload?.search || {};
   const topLevelSearchCompat = {
     ...(payload?.query != null ? { query: payload.query } : {}),
@@ -5496,11 +5498,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   };
 
   // FIND_PRODUCTS_MULTI_*_ROUTING on: the gateway routed on a normalised (English) form of the query
-  // and kept the caller's own text as metadata.routing_original_query. Replies and clarifications speak
-  // the caller's language, so the intent's language is read from that original text. Routing above
-  // used the normalised form throughout, exactly as an English query would.
+  // and handed the caller's own text in as `routingOriginalQuery` -- a gateway-internal argument, never
+  // anything from the request (a caller's metadata is ignored, flag or no flag). Replies and
+  // clarifications speak the caller's language, so the intent's language is read from that original
+  // text, and only while a routing flag is on or observing. Routing above used the normalised form.
+  const routingFlagActive = bareIngredientRoutingMode() !== 'off' || multilingualRoutingMode() !== 'off';
   const routingOriginalQuery =
-    typeof metadata?.routing_original_query === 'string' ? metadata.routing_original_query.trim() : '';
+    routingFlagActive && typeof gatewayRoutingOriginalQuery === 'string' ? gatewayRoutingOriginalQuery.trim() : '';
   const replyIntent =
     routingOriginalQuery && intent && typeof intent === 'object'
       ? { ...intent, language: detectQueryLanguage(routingOriginalQuery) }

@@ -42359,9 +42359,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // term every lane decision below is written against, and English ingredient negations become the
     // "<ingredient>-free" form the contract already reads. `on` writes the normalised text, once, here,
     // before any lane is chosen, into the routing query of BOTH copies of the payload (the lane
-    // detectors read req.body as well as the parsed payload), and keeps the original as
-    // metadata.routing_original_query for logs, language detection and replies. `observe` only describes
-    // what `on` would do on the completion line. Both flags off: nothing is read or written.
+    // detectors read req.body as well as the parsed payload), and keeps the original in this handler's
+    // own `routingOriginalQuery` for logs, language detection and replies -- never in caller-visible
+    // metadata, so a caller cannot supply it. `observe` only describes what `on` would do on the
+    // completion line. Both flags off: nothing is read or written.
     if (operation === 'find_products_multi') {
       const routingTarget = queryRoutingNormalizer.locateRoutingQuery(payload);
       const routingQuery = queryRoutingNormalizer.normalizeFindProductsMultiRoutingQuery(routingTarget?.text || '');
@@ -42372,13 +42373,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? queryRoutingNormalizer.locateRoutingQuery(req.body.payload)
             : null;
         if (bodyTarget && bodyTarget.text === routingQuery.original) bodyTarget.write(routingQuery.query);
-        if (req?.body && typeof req.body === 'object') {
-          const bodyMetadata =
-            req.body.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
-              ? req.body.metadata
-              : {};
-          req.body.metadata = { ...bodyMetadata, routing_original_query: routingQuery.original };
-        }
         routingOriginalQuery = routingQuery.original;
       }
       routingQueryState = routingQuery;
@@ -42679,6 +42673,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(metadata || {}),
           expansion_mode: FIND_PRODUCTS_MULTI_EXPANSION_MODE,
         },
+        // Gateway-internal (never read from the request): the caller's own text when a routing flag
+        // replaced it for routing; null otherwise.
+        routingOriginalQuery,
       });
       debugRuntime.nluLatencyMs = Math.max(0, Date.now() - nluStartedAtMs);
       recordFpmStage('context_build', nluStartedAtMs, {
@@ -48817,9 +48814,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           routingQueryLogFields = {
             ...routingQueryLogFields,
             [ingredientAdmissionMode === 'on'
-              ? 'ingredient_direct_admission_dropped_count'
-              : 'ingredient_direct_admission_would_drop_count']: ingredientLaneAdmissionDecision.dropped_count,
-            ingredient_direct_admission_input_count: mergedIngredientRecallProducts.length,
+              ? 'fpm_routing_ingredient_admission_dropped_count'
+              : 'fpm_routing_ingredient_admission_would_drop_count']: ingredientLaneAdmissionDecision.dropped_count,
+            fpm_routing_ingredient_admission_input_count: mergedIngredientRecallProducts.length,
           };
         }
         const ingredientLaneAdmission = ingredientAdmissionMode === 'on' ? ingredientLaneAdmissionDecision : null;

@@ -24,10 +24,18 @@
 // which are loopback by construction.
 
 const net = require('node:net');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const dns = require('node:dns');
 const dgram = require('node:dgram');
 
 const STATE_KEY = '__SEARCH_ROUTING_NET_GUARD__';
+
+// ATTRIBUTION. A refusal records the async context it happened in. A test file runs its own work inside
+// `attribution.run({ owner }, fn)` -- the app boot and every request -- and asserts on the refusals
+// that carry its owner: everything the routing code it drives tries, synchronously or later, carries
+// that context, while another suite's late timer in a shared Jest worker does not.
+// It lives ON the shared state object, so a preloaded guard (NODE_OPTIONS=--require) and a test file's
+// own require of this module -- which finds that state and installs nothing -- use ONE storage.
 
 function isLoopbackLiteral(host) {
   if (typeof host !== 'string') return false;
@@ -40,12 +48,13 @@ function isLoopbackLiteral(host) {
 
 function install() {
   if (globalThis[STATE_KEY]) return globalThis[STATE_KEY];
-  const state = { installed: true, blocked: [], passed: 0, originalConnectCalls: 0 };
+  const state = { installed: true, blocked: [], passed: 0, originalConnectCalls: 0, attribution: new AsyncLocalStorage() };
   globalThis[STATE_KEY] = state;
 
   const refuse = (what, target) => {
     const msg = `search-routing net guard: refused ${what} to ${target} (tests may only reach loopback IP literals)`;
-    state.blocked.push({ what, target: String(target) });
+    const store = state.attribution.getStore();
+    state.blocked.push({ what, target: String(target), owner: store && store.owner ? store.owner : null });
     const err = new Error(msg);
     err.code = 'ERR_SEARCH_ROUTING_NET_GUARD';
     throw err;
@@ -111,4 +120,4 @@ function install() {
 }
 
 const state = install();
-module.exports = { state, isLoopbackLiteral, STATE_KEY };
+module.exports = { state, isLoopbackLiteral, STATE_KEY, attribution: state.attribution };

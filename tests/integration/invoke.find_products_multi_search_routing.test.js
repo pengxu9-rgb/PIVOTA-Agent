@@ -111,6 +111,18 @@ const REAL_VITAMIN_C = ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum', 'Nat
   'Vitamin C Free Radical Defense Serum'];
 const SKINCARE_PATH = /^beauty\/skincare(\/|$)/;
 
+const OWNER = 'invoke.find_products_multi_search_routing';
+const owned = (fn) => netGuard.attribution.run({ owner: OWNER }, fn);
+// One listening server per boot (instead of one per request): the app's own request handling then runs
+// in the attribution context the server was created in, and no request races a server teardown.
+const openServers = [];
+const listen = (app) =>
+  owned(() => {
+    const server = app.listen(0, '127.0.0.1');
+    openServers.push(server);
+    return server;
+  });
+
 const LANES = {
   INGREDIENT: 'agent_products_ingredient_recall_direct',
   MAINLINE: 'agent_products_beauty_external_seed_mainline',
@@ -146,18 +158,13 @@ const lane = (resp) => resp.body?.metadata?.query_source || null;
 describe('find_products_multi search routing: bare ingredients and non-English beauty terms', () => {
   let prevEnv;
 
-  // The guard REFUSES every non-loopback connection whatever happens. What this file asserts is that its
-  // own traffic never tried to leave: the hosts it mocks (nock / the fixture URLs) never reach a socket.
-  // (Under a preloaded guard in a shared Jest worker, other suites' late async work can be refused while
-  // this file runs; those refusals are theirs, not this file's.)
-  const OWN_HOSTS = /(^|\.)(pivota\.test|example\.com|brand\.example|agent\.pivota\.cc)(:\d+)?$/;
-  let blockedAtStart = 0;
-  beforeAll(() => {
-    blockedAtStart = netGuard.state.blocked.length;
-  });
+  // The guard REFUSES every non-loopback connection whatever happens. This file asserts that nothing IT
+  // drives tried to leave, to any host: the app boot and every request run inside the guard's
+  // attribution context (OWNER), so every refusal the routing code causes -- a connect, a DNS lookup, now
+  // or in a later callback -- carries OWNER. Another suite's late async work in a shared Jest worker runs
+  // in no such context and is not this file's. No host filter.
   afterAll(() => {
-    const own = netGuard.state.blocked.slice(blockedAtStart).filter((entry) => OWN_HOSTS.test(String(entry.target || '')));
-    expect(own).toEqual([]);
+    expect(netGuard.state.blocked.filter((entry) => entry.owner === OWNER)).toEqual([]);
   });
 
   beforeEach(() => {
@@ -185,7 +192,8 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       .reply(200, { status: 'success', products: [], total: 0 });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await Promise.all(openServers.splice(0).map((server) => new Promise((resolve) => server.close(() => resolve()))));
     process.env = prevEnv;
     jest.dontMock('../../src/db');
     jest.resetModules();
@@ -209,10 +217,10 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       if (msg === 'invoke request complete') completionLines.push(obj);
       return originalInfo(obj, msg, ...rest);
     };
-    const app = require('../../src/server');
+    const app = listen(owned(() => require('../../src/server')));
     const send = async (payload) => {
       statements.length = 0;
-      const resp = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload });
+      const resp = await owned(async () => request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload }));
       await delay(10);
       return { resp, log: completionLines[completionLines.length - 1] || {}, sql: statements.slice() };
     };
@@ -237,6 +245,12 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       expect(resp.status).toBe(200);
       expect([query, lane(resp)]).toEqual([query, expectedLane]);
       expect(log.fpm_routing_multilingual_mode).toBeUndefined();
+    }
+    // Flags off: no routing field and no would_* field on any completion line, whatever the query
+    // (the exclusion, the admission and the bare-negation checks are not even computed).
+    for (const query of ['niacinamide-free serum', 'retinol serum', 'retinol-free', 'retinol alternative', '선크림', 'laptop']) {
+      const { log } = await invoke(query);
+      expect([query, Object.keys(log).filter((key) => /^fpm_routing_|^fpm_excluded_|would_|admission|excluded_ingredient/.test(key))]).toEqual([query, []]);
     }
   });
 
@@ -266,13 +280,23 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   test('observe: responses are byte-identical to off; the completion line says what on would do', async () => {
     const off = boot();
     const a = [];
-    for (const query of PARITY_QUERIES) a.push((await off.invoke(query)).resp.body);
+    const offLogs = [];
+    for (const query of PARITY_QUERIES) {
+      const result = await off.invoke(query);
+      a.push(result.resp.body);
+      offLogs.push(result.log);
+    }
     jest.resetModules();
     const observe = boot(BOTH_OBSERVE);
     const logs = {};
+    const ROUTING_FIELD = /^fpm_routing_|^fpm_excluded_|would_/;
+    const stable = (log) =>
+      normalize(Object.fromEntries(Object.entries(log).filter(([key]) => !ROUTING_FIELD.test(key) && key !== 'fpm_stage_breakdown')));
     for (let i = 0; i < PARITY_QUERIES.length; i += 1) {
       const { resp, log } = await observe.invoke(PARITY_QUERIES[i]);
       expect([PARITY_QUERIES[i], normalize(resp.body)]).toEqual([PARITY_QUERIES[i], normalize(a[i])]);
+      // The completion line is the same too, apart from the routing namespace.
+      expect([PARITY_QUERIES[i], stable(log)]).toEqual([PARITY_QUERIES[i], stable(offLogs[i])]);
       logs[PARITY_QUERIES[i]] = log;
     }
     expect(logs['선크림']).toEqual(expect.objectContaining({
@@ -282,8 +306,10 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       fpm_routing_query_would_normalize: true,
     }));
     expect(logs.retinol.fpm_routing_would_bare_ingredient).toBe(true);
-    expect(logs['retinol serum'].ingredient_direct_admission_would_drop_count).toBeGreaterThan(0);
-    expect(logs['retinol serum'].ingredient_direct_admission_dropped_count).toBeUndefined();
+    expect(logs['retinol serum'].fpm_routing_ingredient_admission_would_drop_count).toBeGreaterThan(0);
+    expect(logs['retinol serum'].fpm_routing_ingredient_admission_input_count).toBeGreaterThan(0);
+    expect(logs['retinol serum'].fpm_routing_ingredient_admission_dropped_count).toBeUndefined();
+    expect(logs['niacinamide-free serum'].fpm_excluded_ingredient_would_drop_count).toBeGreaterThan(0);
     expect(logs['retinol-free'].fpm_routing_bare_negation).toBe(true);
     for (const log of Object.values(logs)) expect(JSON.stringify(log)).not.toMatch(/선크림|sunscreen|retinol/i);
   });
@@ -321,7 +347,7 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       const got = titles(resp);
       expect(got.length).toBeGreaterThan(0);
       for (const title of got) expect([query, REAL_RETINOL.includes(title)]).toEqual([query, true]);
-      expect(log.ingredient_direct_admission_dropped_count).toBeGreaterThan(0);
+      expect(log.fpm_routing_ingredient_admission_dropped_count).toBeGreaterThan(0);
     }
     expect(titles((await invoke('vitamin c')).resp)).not.toContain('Vitamin E Serum');
   });
@@ -428,8 +454,11 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
       for (const title of titles(resp)) expect([query, title, REAL_RETINOL.includes(title)]).toEqual([query, title, true]);
     }
+    expect((await invoke('retinol')).log.fpm_routing_query_negation).toBeUndefined();
     for (const query of ['retinol alternative', 'alternative to retinol', 'bakuchiol instead of retinol']) {
-      const { resp } = await invoke(query);
+      const { resp, log } = await invoke(query);
+      // the stand-in rewrite is logged as a negation rewrite
+      expect([query, log.fpm_routing_query_negation]).toEqual([query, true]);
       expect([query, lane(resp)]).not.toEqual([query, LANES.SAFE_EMPTY]);
       expect([query, titles(resp).length > 0]).toEqual([query, true]);
       for (const product of resp.body.products) {
@@ -585,18 +614,66 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     }
   });
 
-  test('on: the caller\'s own text is kept for language and replies', async () => {
+  test('the caller\'s own text sets the reply language only through the gateway, never through request metadata', async () => {
     boot(BOTH_ON);
     const { buildFindProductsMultiContext } = require('../../src/findProductsMulti/policy');
-    const routed = await buildFindProductsMultiContext({
-      payload: { search: { query: 'sunscreen' } },
-      metadata: { routing_original_query: '선크림' },
-    });
-    const english = await buildFindProductsMultiContext({ payload: { search: { query: 'sunscreen' } }, metadata: {} });
+    const sunscreen = { search: { query: 'sunscreen' } };
+    // The gateway hands its own original in; that is honoured while a routing flag is on.
+    const routed = await owned(() => buildFindProductsMultiContext({ payload: sunscreen, metadata: {}, routingOriginalQuery: '선크림' }));
     expect(routed.intent.language).toBe('ko');
-    expect(english.intent.language).toBe('en');
+    // A caller-supplied metadata.routing_original_query is ignored ...
+    const hostile = await owned(() => buildFindProductsMultiContext({ payload: sunscreen, metadata: { routing_original_query: '洗面奶' } }));
+    expect(hostile.intent.language).toBe('en');
+    // ... and never wins over the gateway's own.
+    const both = await owned(() =>
+      buildFindProductsMultiContext({ payload: sunscreen, metadata: { routing_original_query: '洗面奶' }, routingOriginalQuery: '선크림' }),
+    );
+    expect(both.intent.language).toBe('ko');
     // Routing is unchanged by it: the same query reaches the lanes.
-    expect(routed.adjustedPayload.search.query).toBe(english.adjustedPayload.search.query);
+    expect(routed.adjustedPayload.search.query).toBe(hostile.adjustedPayload.search.query);
+  });
+
+  test('flags off: the gateway\'s original is not honoured either', async () => {
+    boot();
+    const { buildFindProductsMultiContext } = require('../../src/findProductsMulti/policy');
+    const ctx = await owned(() => buildFindProductsMultiContext({ payload: { search: { query: 'sunscreen' } }, metadata: {}, routingOriginalQuery: '선크림' }));
+    expect(ctx.intent.language).toBe('en');
+  });
+
+  // Drops the caller's own metadata echo so two bodies can be compared on everything else.
+  const withoutEcho = (value) => {
+    if (Array.isArray(value)) return value.map(withoutEcho);
+    if (!value || typeof value !== 'object') return value;
+    const out = {};
+    for (const [key, inner] of Object.entries(value)) if (key !== 'routing_original_query') out[key] = withoutEcho(inner);
+    return out;
+  };
+  const HOSTILE = ['洗面奶', '선크림', '日焼け止め', 'crème hydratante'];
+  const SHAPES = {
+    search: (query) => ({ search: { query, page: 1, page_size: 20 } }),
+    messages: (query) => ({ search: { page: 1, page_size: 20 }, messages: [{ role: 'user', content: query }] }),
+  };
+  test.each([
+    ['flags off', {}],
+    ['both flags on', BOTH_ON],
+  ])('%s: a hostile metadata.routing_original_query changes nothing (reply, language, body)', async (_label, env) => {
+    Object.assign(process.env, env);
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => (String(sql || '').includes(CANONICAL_MARKER) ? { rows: CATALOG } : { rows: [] }),
+    }));
+    const app = listen(owned(() => require('../../src/server')));
+    const call = (payload, metadata) =>
+      owned(async () => request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload, ...(metadata ? { metadata } : {}) }));
+    for (const query of ['gift', 'sunscreen', '선크림']) {
+      for (const [shape, build] of Object.entries(SHAPES)) {
+        const baseline = await call(build(query));
+        for (const hostile of HOSTILE) {
+          const attacked = await call(build(query), { routing_original_query: hostile });
+          expect([query, shape, hostile, attacked.body.reply]).toEqual([query, shape, hostile, baseline.body.reply]);
+          expect([query, shape, hostile, normalize(withoutEcho(attacked.body))]).toEqual([query, shape, hostile, normalize(withoutEcho(baseline.body))]);
+        }
+      }
+    }
   });
 
   // The routing flags never touch the ingredient lane's market: with the routing flags off -- and on --
@@ -639,11 +716,11 @@ describe('find_products_multi search routing: bare ingredients and non-English b
           };
         },
       }));
-      const app = require('../../src/server');
+      const app = listen(owned(() => require('../../src/server')));
       return async (market) => {
         statements.length = 0;
         const search = { query: 'retinol serum', page: 1, page_size: 20, ...(market ? { market } : {}) };
-        const resp = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload: { search } });
+        const resp = await owned(async () => request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload: { search } }));
         return {
           lane: lane(resp),
           rows: titles(resp),

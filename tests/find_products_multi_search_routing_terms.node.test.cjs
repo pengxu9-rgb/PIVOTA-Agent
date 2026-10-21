@@ -70,7 +70,8 @@ test('bare strict-ingredient queries: only table ingredients plus filler, asked 
   for (const query of ['retinol', 'Retinol', 'HYALURONIC ACID', 'niacinamide', 'vitamin c', 'ascorbic acid',
     'salicylic acid', 'ceramide', 'ceramides', 'ceramide np', 'azelaic acid', 'benzoyl peroxide', 'panthenol',
     'glycerin', 'zinc pca', 'best niacinamide products', 'products with retinol', 'niacinamide zinc pca',
-    'retinol dupe', 'products like retinol', 'retinol like results']) {
+    'retinol dupe', 'products like retinol', 'retinol like results', 'similar retinol products', 'retinol similar',
+    'retinol effects']) {
     assert.equal(strict.isBareStrictIngredientQuery(query), true, query);
   }
   for (const query of ['retinol serum', 'retinol cream', 'retinol-free', 'retinol free', 'without retinol',
@@ -130,6 +131,11 @@ test('negated and stand-in mentions are not ingredient intents, and are exclusio
     'vitamin c free radical serum': [['ascorbic_acid'], []],
     'retinol free sample': [['retinol'], []],
     'retinol free size': [['retinol'], []],
+    'retinol free delivery': [['retinol'], []],
+    'retinol free returns': [['retinol'], []],
+    'retinol free trials': [['retinol'], []],
+    'retinol free gifts': [['retinol'], []],
+    'retinol free radicals': [['retinol'], []],
     // non-English absence words, read even with the multilingual flag off
     retinolfrei: [[], ['retinol']],
     'ohne Retinol creme': [[], ['retinol']],
@@ -198,6 +204,16 @@ test('English negation phrasing becomes "<ingredient>-free"; stand-ins and "free
     '10.0% niacinamide': '10.0% niacinamide',
     'vitamin c free radical serum': 'vitamin c free radical serum',
     'retinol free gift': 'retinol free gift',
+    'retinol free delivery': 'retinol free delivery',
+    'retinol free returns': 'retinol free returns',
+    'retinol free trials': 'retinol free trials',
+    'retinol free sample': 'retinol free sample',
+    'retinol free shipping': 'retinol free shipping',
+    'retinol free radicals': 'retinol free radicals',
+    // "0 %" with a space is still "0%"; a negator glued to the previous word by a hyphen is part of it
+    '0 % retinol cream': 'retinol-free cream',
+    'anti-no retinol cream': 'anti-no retinol cream',
+    'pre-0% retinol cream': 'pre-0% retinol cream',
     'not retinol cream': 'retinol-free cream',
     // the form noun next to the canonicalised ingredient keeps its meaning
     'Retinolfreie Creme': 'retinol-free cream',
@@ -251,6 +267,8 @@ test('product naming: fooled titles never name the ingredient (exact kind)', () 
     product('无视黄醇面霜'),
     product('レチノールフリー クリーム'),
     product('Крем без ретинола'),
+    product('Крем не содержит ретинол'),
+    product('Сыворотка не содержит ретинола'),
     // A qualified STRUCTURED mention is a qualified mention.
     product('Night Serum', { active_ingredients: ['Bakuchiol (retinol alternative)'] }),
     product('Night Serum', { ingredients_inci: 'Aqua, Retinol-Free Base, Squalane' }),

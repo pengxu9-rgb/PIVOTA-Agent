@@ -352,8 +352,10 @@ const BARE_QUERY_FILLER_WORDS = new Set([
 function isBareStrictIngredientQuery(text) {
   const normalized = normalizeForMatch(text);
   if (!normalized) return false;
-  const { wanted, excluded } = classifyStrictIngredientMentions(normalized);
-  if (wanted.length === 0 || excluded.length > 0) return false;
+  // A qualified mention leaves its qualifier word behind ("free", "without", "alternative"), and no
+  // qualifier word is a filler word, so a query with one is never bare: no separate check needed.
+  const { wanted } = classifyStrictIngredientMentions(normalized);
+  if (wanted.length === 0) return false;
   let remainder = ` ${normalized} `;
   for (const term of STRICT_TERMS_BY_LENGTH) {
     remainder = remainder.replace(new RegExp(`\\s${escapeRegExp(term)}(?=\\s)`, 'g'), ' ');
