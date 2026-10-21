@@ -948,23 +948,41 @@ const SPF_BEFORE_RE =
 
 // A strength or a size is never a price, with the flag on or off. Before any budget regex runs,
 // every such number is masked out of the text the parser reads:
-//   * a number followed by "%" / "％" / "percent" ("1.0% retinol", "10 ％", "under 2％") -- always;
-//   * a number followed by ml / mg / g / oz / fl oz / spf / pa / x, or preceded by SPF ("50ml",
-//     "1.7 oz", "2x", "spf 30") -- unless the number carries a currency of its own ("$30 spf 50"
-//     keeps the 30);
-//   * the other end of a range whose one end is masked ("5-10%", "spf 30-50", "between 5 and 10％").
+//   * a number followed by "%" / "％" / "percent" / "per cent" / "pct" ("1.0% retinol", "10 ％",
+//     "under 2％") -- always;
+//   * a number followed by ml / mg / g / oz / fl oz / spf / pa, glued to an "x" that no digit
+//     follows ("2x", "1.5x" -- not "x2" or "20 x 2", which count packs), or preceded by SPF ("50ml",
+//     "1.7 oz", "spf 30") -- unless the number carries a currency of its own ("$30 spf 50", "usd 30
+//     spf 50" keep the 30);
+//   * the other end of a range whose one end is masked ("5-10%", "10% to 20", "spf 30-50",
+//     "spf 30 and 50", "between 5 and 10％", "1-2-3%"). A size or SPF does not spread onto a partner
+//     that has a bound word right before it: in "under 30 - 50ml" the 30 is still a budget. A
+//     percentage does ("around 5-10%"), unless the partner is the larger number ("under 30 - 10%").
 // Masking only rewrites those numbers to STRENGTH_MASK, so a query with none of them parses exactly
 // as before. Without it the flag-off parser fell back to the strength ("1.0% retinol serum" -> a
 // 1.00 cap that emptied the ingredient lane), and with the flag on a bound word before a full-width
 // "％" ("max 10％") or a range of strengths still became a cap.
-const STRENGTH_MASK = '#';
+//
+// STRENGTH_MASK is a private-use character: a user never types it, so no query without a masked
+// number can contain it, and countsThings below can treat it as the digit it replaced.
+const STRENGTH_MASK = '\uE000';
 const STRENGTH_NUMBER_RE = /\d+(?:\.\d+)?/g;
-const PERCENT_AFTER_RE = /^\s*(?:[%％]|(?:percent|pct)(?![a-z]))/i;
-const STRENGTH_UNIT_AFTER_RE = /^\s*(?:ml|mg|g|oz|fl\.?\s*oz|spf|pa|x)(?![a-z])/i;
+// per[\s-]?cent covers "percent", "per cent" and "per-cent".
+const PERCENT_UNIT_SRC = '[%％]|(?:per[\\s-]?cent|pct)(?![a-z])';
+const PERCENT_AFTER_RE = new RegExp(`^\\s*(?:${PERCENT_UNIT_SRC})`, 'i');
+const SIZE_UNIT_SRC = '(?:ml|mg|g|oz|fl\\.?\\s*oz|pa)(?![a-z])';
+const SPF_UNIT_AFTER_RE = /^\s*spf(?![a-z])/i;
+const SIZE_UNIT_AFTER_RE = new RegExp(`^\\s*${SIZE_UNIT_SRC}|^x(?![a-z\\d])`, 'i');
 const CURRENCY_BEFORE_NUMBER_RE = /(?:s\$|[$€£¥￥]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy))\s*$/i;
-const STRENGTH_RANGE_GAP_RE = /^\s*(?:-|~|—|–|to|到|〜|～)\s*$/i;
-const STRENGTH_BETWEEN_GAP_RE = /^\s*(?:and|&)\s*$/i;
+// The gap between two joined numbers: a separator, optionally after the first number's own unit
+// ("10% to 20", "30ml-50").
+const STRENGTH_GAP_UNIT_SRC = `(?:${PERCENT_UNIT_SRC}|${SIZE_UNIT_SRC}|spf(?![a-z])|x(?![a-z\\d]))?\\s*`;
+const STRENGTH_RANGE_GAP_RE = new RegExp(`^\\s*${STRENGTH_GAP_UNIT_SRC}(?:-|~|—|–|to|到|〜|～)\\s*$`, 'i');
+const STRENGTH_AND_GAP_RE = new RegExp(`^\\s*${STRENGTH_GAP_UNIT_SRC}(?:and|&)\\s*$`, 'i');
 const STRENGTH_BETWEEN_BEFORE_RE = /\bbetween\s*$/i;
+// The bound words the parser reads as a budget marker, right before a number.
+const BOUND_WORD_BEFORE_RE =
+  /(?:\b(?:under|below|less than|no more than|at most|up to|max(?:imum)?|around|about|approx(?:imately)?|roughly|over|above|more than|at least|from|starting (?:from|at)|budget(?: of)?|price[ds]?)|[<>≤≥~≈＜＞]=?|预算|不超过|至多|最多|至少|不低于)\s*$/i;
 
 function maskStrengthNumbers(text) {
   if (!/\d/.test(text)) return text;
@@ -976,34 +994,41 @@ function maskStrengthNumbers(text) {
     const before = text.slice(Math.max(0, start - 48), start);
     const after = text.slice(end, end + 48);
     const currencyMarked = CURRENCY_BEFORE_NUMBER_RE.test(before) || CURRENCY_WORD_AFTER_RE.test(after);
-    const masked =
-      PERCENT_AFTER_RE.test(after) ||
-      (!currencyMarked && (STRENGTH_UNIT_AFTER_RE.test(after) || SPF_BEFORE_RE.test(before)));
-    tokens.push({ start, end, before, currencyMarked, masked });
+    let kind = null;
+    if (PERCENT_AFTER_RE.test(after)) kind = 'percent';
+    else if (!currencyMarked && (SPF_UNIT_AFTER_RE.test(after) || SPF_BEFORE_RE.test(before))) kind = 'spf';
+    else if (!currencyMarked && SIZE_UNIT_AFTER_RE.test(after)) kind = 'size';
+    tokens.push({ start, end, before, currencyMarked, kind });
   }
-  // Spread a mask across a range join: "5-10%", "spf 30-50", "between 5 and 10％".
+  // Spread a mask across a range join.
   for (let changed = true; changed; ) {
     changed = false;
     for (let i = 0; i + 1 < tokens.length; i += 1) {
       const a = tokens[i];
       const b = tokens[i + 1];
-      if (a.masked === b.masked) continue;
+      if (Boolean(a.kind) === Boolean(b.kind)) continue;
+      const source = a.kind ? a : b;
+      const other = a.kind ? b : a;
       const gap = text.slice(a.end, b.start);
       const joined =
         STRENGTH_RANGE_GAP_RE.test(gap) ||
-        (STRENGTH_BETWEEN_GAP_RE.test(gap) && STRENGTH_BETWEEN_BEFORE_RE.test(a.before));
-      if (!joined) continue;
-      const other = a.masked ? b : a;
-      if (other.currencyMarked) continue;
-      other.masked = true;
+        (STRENGTH_AND_GAP_RE.test(gap) && (STRENGTH_BETWEEN_BEFORE_RE.test(a.before) || a.kind === 'spf'));
+      if (!joined || other.currencyMarked) continue;
+      // A bound word right before the partner makes it a budget ("under 30 - 50ml"), unless a
+      // percentage range reads low to high from it ("around 5-10%"): "under 30 - 10%" keeps the 30.
+      if (other === a && BOUND_WORD_BEFORE_RE.test(a.before)) {
+        const ascending = Number(text.slice(a.start, a.end)) <= Number(text.slice(b.start, b.end));
+        if (source.kind !== 'percent' || !ascending) continue;
+      }
+      other.kind = source.kind;
       changed = true;
     }
   }
-  if (!tokens.some((t) => t.masked)) return text;
+  if (!tokens.some((t) => t.kind)) return text;
   let out = '';
   let cursor = 0;
   for (const t of tokens) {
-    if (!t.masked) continue;
+    if (!t.kind) continue;
     out += text.slice(cursor, t.start) + STRENGTH_MASK;
     cursor = t.end;
   }
@@ -1159,7 +1184,8 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // one that opens a range the range pass refused ("about 5-10 minutes", "预算3-4步").
     const countsThings = (match) => {
       const tail = normalized.slice((match.index || 0) + match[0].length);
-      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*\d/.test(tail);
+      // a masked strength counts as the digit it replaced: "about 5-10 ml", "around 30 - 50ml"
+      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*[\d\uE000]/.test(tail);
     };
     const hardUsable = (match) => (usable(match) && !countsThings(match) ? match : null);
     // about / around / max / < / ~ / "or less" with no currency: also no plural noun after

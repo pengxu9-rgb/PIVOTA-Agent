@@ -58,6 +58,24 @@ const STRENGTHS = [
   'between 5 and 10% niacinamide',
   'between 5 and 10％ niacinamide',
   'price 5-10％',
+  'under 1 per cent retinol',
+  'under 2 per cent',
+  'under 2 per-cent',
+  'niacinamide 10 pct serum',
+  // the unit right after the first number does not break the join: "10% to 20"
+  '10% to 20',
+  '10% - 20 niacinamide',
+  // 〜 ～ 到 and & join like - and to
+  '10〜15％ niacinamide',
+  '10～15％ niacinamide',
+  '10到15％ niacinamide',
+  'between 5 & 10％ niacinamide',
+  // a chain spreads back to its first number
+  '1-2-3%',
+  // a percentage range spreads onto a bound partner when it reads low to high
+  'around 5-10% niacinamide',
+  'under 5-10% niacinamide',
+  'around 1-2-3% niacinamide',
   // sizes and strengths with no currency of their own
   '50ml toner',
   '30 ml serum',
@@ -79,6 +97,10 @@ const STRENGTHS = [
   'under spf 30',
   'sunscreen 50 spf',
   '30-50ml toner',
+  '30ml-50 toner',
+  'under 1.5x',
+  'spf 30 and 50',
+  'between spf 30 and 50',
 ];
 
 // Real budgets sitting next to a strength or size.
@@ -95,11 +117,36 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   ['2x serum 20 bucks', max(null, 20)],
   // "and" joins a range only after "between": 30 is still the cap
   ['serum under 30 and 2% bha', max(null, 30)],
+  ['budget: 30 and 2% bha', max(null, 30)],
   // a currency-marked end of a range is kept, even next to a strength
   ['niacinamide serum under $25 - 10% strength', max('USD', 25)],
   ['niacinamide 10% - 20 dollars', max('USD', 20)],
   // a number right after SPF is still a price when a currency word follows it
   ['sunscreen spf under 30 dollars', max('USD', 30)],
+  // a currency code before the number keeps it, whatever unit follows
+  ['usd 30 spf 50', max('USD', 30)],
+  ['spf 30 and 50 dollars', max('USD', 50)],
+  // review of #2485 (S1): an "x" that counts packs ("x 3", "x2") or sits before a word is not a
+  // strength -- only an "x" glued to the number with no digit after it is ("2x", "1.5x")
+  ['lip balm under 10 x 3', max(null, 10)],
+  ['sheet masks under 20 x 10', max(null, 20)],
+  ['under 15 x2 pack', max(null, 15)],
+  ['under 20 x 2 pack', max(null, 20)],
+  ['under 20 x2', max(null, 20)],
+  ['around 30 x 2', { currency: null, min: 22.5, max: 37.5 }],
+  ['under 30 x rhode', max(null, 30)],
+  ['sunscreen under 30 x spf 50', max(null, 30)],
+  ['under 20 - 2x', max(null, 20)],
+  ['under 20x2 pack', max(null, 20)],
+  // review of #2485 (S2): a size does not spread its mask onto a partner with a bound word
+  // right before it -- the 30 is the budget, the 50ml a size
+  ['under 30 - 50ml', max(null, 30)],
+  ['under 25 – 50ml', max(null, 25)],
+  ['under 25 — 50ml', max(null, 25)],
+  ['under 30 ~ 50ml', max(null, 30)],
+  ['under 30 to 50ml', max(null, 30)],
+  // ...and a percentage does not spread onto a bound partner larger than itself
+  ['serum under 30 - 10% niacinamide', max(null, 30)],
 ];
 
 // Plain budgets: unchanged.
@@ -146,6 +193,8 @@ describe.each(FLAG_STATES)('%s', (_label, flagValue) => {
     const started = Date.now();
     parseBudgetToPriceConstraint('1% - '.repeat(20000));
     parseBudgetToPriceConstraint('between 1 and 2% '.repeat(20000));
+    // worst case for the join pass: a 500-char chain that spreads back one number per pass
+    expect(parseBudgetToPriceConstraint(`${'1-'.repeat(249)}1%`)).toBeNull();
     expect(Date.now() - started).toBeLessThan(250);
   });
 });
@@ -154,4 +203,13 @@ test('flag off, a bare number with no unit still falls back to the legacy cap', 
   delete process.env[FLAG];
   expect(parseBudgetToPriceConstraint('retinol 0.5')).toEqual(max(null, 0.5));
   expect(parseBudgetToPriceConstraint('K18')).toEqual(max(null, 18));
+});
+
+test('flag on, a size with a soft-bound partner reads as main does: no budget', () => {
+  // "around 30 - 50ml" / "about 5-10 ml": the soft bound's partner is kept, and the masked size after
+  // the dash still counts as the digit it replaced, so countsThings refuses the 30 / 5.
+  process.env[FLAG] = '1';
+  expect(parseBudgetToPriceConstraint('around 30 - 50ml')).toBeNull();
+  expect(parseBudgetToPriceConstraint('about 5-10 ml')).toBeNull();
+  expect(parseBudgetToPriceConstraint('max 30 - 50ml')).toBeNull();
 });
