@@ -457,7 +457,7 @@ const { entries: ENTRIES, standaloneByKey: STANDALONE_BY_KEY } = buildEntries();
 const NEGATION_PREFIX_LATIN = /(?:^|\s)(?:sans|sin|ohne|frei von|libre de|exento de)\s+(?:(?:de|d|du|des|le|la|l|el|los|las)\s+)?$/;
 const NEGATION_PREFIX_CJK = /(?:不含|无添加|無添加|无|無|没有|沒有|避开|避開|不要|不加)\s*$/;
 const NEGATION_SUFFIX_LATIN = /^\s*frei(?:e|er|es|en|em)?(?![a-z0-9])/;
-const NEGATION_SUFFIX_CJK = /^(?:\s*free(?![a-z0-9])|\s*(?:フリー|不使用|無添加|なし|無し|없는|무첨가|프리(?![\uac00-\ud7af])|없이))/;
+const NEGATION_SUFFIX_CJK = /^(?:\s*free(?![a-z0-9])|\s*(?:フリー|不使用|無添加|なし|無し|없는|무첨가|프리(?!미엄)|없이))/;
 // Korean particles attached to a matched noun ("선크림을"): dropped with the match so they do not
 // linger as a stray token.
 const KOREAN_PARTICLE_SUFFIX = /^(?:을|를|은|는|이|가|도|의)(?=\s|$)/;

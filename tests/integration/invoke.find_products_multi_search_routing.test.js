@@ -24,7 +24,7 @@ const CANONICAL_MARKER = 'WITH candidate_products';
 // Several tests replay a query set through two boots of the route.
 jest.setTimeout(60000);
 
-function row(key, title, categoryPath, { actives = [], productType = 'Skincare', description = null, inci = null } = {}) {
+function row(key, title, categoryPath, { actives = [], productType = 'Skincare', description = null, inci = null, brand = 'Test Brand' } = {}) {
   return {
     merchant_id: 'external_seed',
     product_key: `prod::external_seed::external_seed::ext_${key}`,
@@ -34,7 +34,7 @@ function row(key, title, categoryPath, { actives = [], productType = 'Skincare',
     pivota_canonical_url: `https://agent.pivota.cc/products/sig_${key}`,
     product_title: title,
     product_description: description || `${title}. A test product.`,
-    brand: 'Test Brand',
+    brand,
     product_type: productType,
     category: productType,
     category_path: categoryPath,
@@ -102,11 +102,39 @@ const CATALOG = [
   row('faux', 'Faux Retinol Night Oil', SERUM, { actives: ['squalane'], productType: 'Serum' }),
   row('pseudo', 'Pseudo-Retinol Serum', SERUM, { actives: ['bakuchiol'], productType: 'Serum' }),
   row('bio_inci', 'Bio-Retinol Bakuchiol Serum', SERUM, { productType: 'Serum', inci: ['Aqua', 'Bakuchiol', 'Squalane'] }),
+  // r6: stand-ins, areas, "like", glued Korean "free", compounds that are other substances, a trailing 0%.
+  row('bakuchiol_oil', 'Bakuchiol Night Oil', 'beauty/skincare/face-oil', { actives: ['bakuchiol'], productType: 'Face Oil' }),
+  row('retinol_bakuchiol', 'Retinol + Bakuchiol Serum', SERUM, { actives: ['retinol', 'bakuchiol'], productType: 'Serum' }),
+  row('hair_gel_gly', 'Glycerin Hold Hair Gel', 'beauty/haircare/styling', { actives: ['glycerin'], productType: 'Hair Gel' }),
+  row('scalp_serum', 'Peptide Scalp Serum', 'beauty/haircare/scalp', { actives: ['peptides'], productType: 'Scalp Serum' }),
+  row('retinol_scalp', 'Retinol Scalp Treatment', 'beauty/haircare/scalp', { actives: ['retinol'], productType: 'Scalp Treatment' }),
+  row('lip_balm', 'Nourishing Lip Balm', 'beauty/makeup/lip/lip-balm', { actives: ['shea butter'], productType: 'Lip Balm' }),
+  row('retinol_lip', 'Retinol Lip Treatment', 'beauty/makeup/lip/lip-treatment', { actives: ['retinol'], productType: 'Lip Treatment' }),
+  row('retinol_body', 'Retinol Body Lotion', 'beauty/body-care/body-lotion', { actives: ['retinol'], productType: 'Body Lotion' }),
+  row('phyto_ceramide', 'Phyto Ceramides Cream', CREAM, { productType: 'Moisturizer' }),
+  row('retinol_like_balm', 'Retinol Like Butter Balm', 'beauty/skincare/moisturize/balm', { productType: 'Balm' }),
+  row('retinol_like_serum', 'Retinol-Like Smoothing Serum', SERUM, { productType: 'Serum' }),
+  row('ko_free_cream', '레티놀프리크림', CREAM, { productType: 'Moisturizer' }),
+  row('ko_free_serum', '레티놀프리세럼', SERUM, { productType: 'Serum' }),
+  row('zero_after', 'Retinol 0% Night Cream', CREAM, { productType: 'Moisturizer' }),
+  row('zh_ehg', '乙基己基甘油 爽肤水', 'beauty/skincare/tone/toner', { productType: 'Toner' }),
+  row('ja_ehg', 'エチルヘキシルグリセリン配合ローション', 'beauty/skincare/tone/toner', { productType: 'Toner' }),
+  row('ko_ehg', '에틸헥실글리세린 토너', 'beauty/skincare/tone/toner', { productType: 'Toner' }),
+  row('zh_octisalate', '水杨酸乙基己酯防晒霜', 'beauty/skincare/sun/sunscreen', { productType: 'Sunscreen' }),
+  row('ja_octisalate', 'サリチル酸エチルヘキシル配合UV', 'beauty/skincare/sun/sunscreen', { productType: 'Sunscreen' }),
+  row('zh_retinyl', '视黄醇棕榈酸酯面霜', CREAM, { productType: 'Moisturizer' }),
+  row('ru_retinol_like', 'Ретинолоподобный крем', CREAM, { productType: 'Moisturizer' }),
+  row('ru_hyaluronidase', 'Крем с гиалуронидазой', CREAM, { productType: 'Moisturizer' }),
+  row('ru_vitamins_oil', 'Комплекс витаминов с маслом', SERUM, { productType: 'Serum' }),
+  row('brand_retinol', 'Night Retinol Cream', CREAM, { actives: ['retinol'], productType: 'Moisturizer', brand: 'CeraVe' }),
+  row('brand_niacinamide', 'Hydrating Niacinamide Lotion', CREAM, { actives: ['niacinamide'], productType: 'Moisturizer', brand: 'CeraVe' }),
 ];
 const REAL_RETINOL = ['Retinol 0.3% Night Serum', 'Retinol Renewal Night Cream', 'Vegan Retinol Night Cream',
   'Revive Pro-Retinol Night Cream', '레티놀 세럼', 'Ретинол сыворотка', '1.0% Retinol Night Serum', '레티놀 프리미엄 세럼',
-  'Крем с ретинолом'];
-const REAL_NIACINAMIDE = ['Niacinamide 10% Serum', 'Vegan Niacinamide 10% + Zinc Serum', '10.0% Niacinamide Booster'];
+  'Крем с ретинолом', 'Retinol + Bakuchiol Serum', 'Retinol Scalp Treatment', 'Retinol Lip Treatment', 'Retinol Body Lotion',
+  'Retinol Like Butter Balm', 'Night Retinol Cream'];
+const REAL_NIACINAMIDE = ['Niacinamide 10% Serum', 'Vegan Niacinamide 10% + Zinc Serum', '10.0% Niacinamide Booster',
+  'Hydrating Niacinamide Lotion'];
 const REAL_VITAMIN_C = ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum', 'Natural Vitamin C Brightening Serum',
   'Vitamin C Free Radical Defense Serum'];
 const SKINCARE_PATH = /^beauty\/skincare(\/|$)/;
@@ -442,9 +470,16 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     }
   });
 
-  test('on: "like", "dupe" and "phyto" in a query ask FOR the ingredient; stand-in queries browse without it', async () => {
+  const pathOf = (product) =>
+    String(product.catalog_category_path || (Array.isArray(product.category_path) ? product.category_path.join('/') : product.category_path) || '');
+  // Rows that name bakuchiol in the title or in their actives.
+  const BAKUCHIOL_TITLES = CATALOG.filter((r) => /bakuchiol/i.test(r.product_title)
+    || r.product_payload.seed_data.active_ingredients.includes('bakuchiol')).map((r) => r.product_title);
+  const namesBakuchiol = (product) => BAKUCHIOL_TITLES.includes(product.title);
+
+  test('on: "like", "dupe" and "phyto ceramides" ask FOR the ingredient', async () => {
     const { invoke } = boot(BOTH_ON);
-    for (const query of ['retinol like the ordinary', 'serum with retinol like the ordinary', 'phyto ceramides']) {
+    for (const query of ['serum with retinol like the ordinary', 'phyto ceramides']) {
       const { resp, log } = await invoke(query);
       expect([query, log.fpm_excluded_ingredient_dropped_count]).toEqual([query, undefined]);
       expect([query, resp.body.metadata?.excluded_ingredient_dropped_count]).toEqual([query, undefined]);
@@ -455,17 +490,101 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       for (const title of titles(resp)) expect([query, title, REAL_RETINOL.includes(title)]).toEqual([query, title, true]);
     }
     expect((await invoke('retinol')).log.fpm_routing_query_negation).toBeUndefined();
-    for (const query of ['retinol alternative', 'alternative to retinol', 'bakuchiol instead of retinol']) {
+    // S6: phyto-ceramides ARE ceramides
+    for (const query of ['phyto ceramides', 'ceramides']) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp), titles(resp).includes('Phyto Ceramides Cream')]).toEqual([query, LANES.INGREDIENT, true]);
+    }
+  });
+
+  test('on (S3/S5): a bare stand-in query asks for the known stand-in, or the stand-in it names, never the ingredient', async () => {
+    const { invoke } = boot(BOTH_ON);
+    for (const [query, kind] of [['retinol alternative', 'stand_in_known'], ['alternative to retinol', 'stand_in_known'],
+      ['retinol substitute', 'stand_in_known'], ['faux retinol', 'stand_in_known'], ['phyto retinol', 'stand_in_known'],
+      ['pseudo retinol', 'stand_in_known'], ['bakuchiol instead of retinol', 'stand_in_named'], ['retinol free bakuchiol', 'stand_in_named']]) {
       const { resp, log } = await invoke(query);
-      // the stand-in rewrite is logged as a negation rewrite
-      expect([query, log.fpm_routing_query_negation]).toEqual([query, true]);
-      expect([query, lane(resp)]).not.toEqual([query, LANES.SAFE_EMPTY]);
+      // the stand-in rewrite is logged as a negation rewrite, with its kind
+      expect([query, log.fpm_routing_query_negation, log.fpm_routing_query_rewrite]).toEqual([query, true, kind]);
+      expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
       expect([query, titles(resp).length > 0]).toEqual([query, true]);
       for (const product of resp.body.products) {
-        expect([query, product.title, REAL_RETINOL.includes(product.title)]).toEqual([query, product.title, false]);
-        const path = product.catalog_category_path || (Array.isArray(product.category_path) ? product.category_path.join('/') : product.category_path);
-        expect([query, product.title, SKINCARE_PATH.test(String(path || ''))]).toEqual([query, product.title, true]);
+        expect([query, product.title, namesBakuchiol(product), REAL_RETINOL.includes(product.title)])
+          .toEqual([query, product.title, true, false]);
+        expect([query, product.title, SKINCARE_PATH.test(pathOf(product))]).toEqual([query, product.title, true]);
       }
+      expect([query, titles(resp).includes('Retinol + Bakuchiol Serum')]).toEqual([query, false]);
+    }
+    // No known stand-in: the same answer for every ingredient -- a bare negation names nothing to serve.
+    for (const query of ['vitamin c alternative', 'niacinamide alternative', 'hyaluronic acid alternative',
+      'salicylic acid alternative', 'alternative to ceramides', 'faux niacinamide']) {
+      const { resp, log } = await invoke(query);
+      expect([query, lane(resp), log.fpm_routing_bare_negation]).toEqual([query, LANES.SAFE_EMPTY, true]);
+    }
+    // "<ingredient> like <brand>": the brand's rows that name the ingredient.
+    const { resp, log } = await invoke('retinol like cerave');
+    expect(log.fpm_routing_query_rewrite).toBe('ingredient_like_brand');
+    expect(titles(resp)).toEqual(['Night Retinol Cream']);
+    // typed the other way round, the brand browse serves every row of the brand (unchanged route)
+    expect(titles((await invoke('cerave retinol')).resp).sort()).toEqual(['Hydrating Niacinamide Lotion', 'Night Retinol Cream']);
+  });
+
+  test('on (S2/S4): an exclusion keeps the area it names -- hair and lips get their own tree, never skincare', async () => {
+    const { invoke } = boot(BOTH_ON);
+    for (const [query, tree, excluded = 'retinol'] of [['retinol alternative for hair', /^beauty\/haircare\//], ['retinol alternative for scalp', /^beauty\/haircare\//],
+      ['alternative to retinol for hair', /^beauty\/haircare\//], ['without glycerin for hair', /^beauty\/haircare\//, 'glycerin'],
+      ['retinol alternative for lips', /^beauty\/makeup\/lip\//]]) {
+      const { resp, log } = await invoke(query);
+      expect([query, log.fpm_routing_query_rewrite]).toEqual([query, 'area']);
+      expect([query, lane(resp)]).toEqual([query, LANES.MAINLINE]);
+      expect([query, titles(resp).length > 0]).toEqual([query, true]);
+      for (const product of resp.body.products) {
+        expect([query, product.title, tree.test(pathOf(product))]).toEqual([query, product.title, true]);
+        const named = excluded === 'retinol' ? REAL_RETINOL.includes(product.title) : /glycerin/i.test(product.title);
+        expect([query, product.title, named]).toEqual([query, product.title, false]);
+      }
+    }
+    // Another area is not rewritten and never scoped to skincare.
+    for (const query of ['retinol alternative for body', 'glycerin-free soap', "glycerin-free men's"]) {
+      const { resp, log } = await invoke(query);
+      expect([query, log.fpm_routing_query_rewrite]).toEqual([query, undefined]);
+      for (const product of resp.body.products) {
+        expect([query, product.title, SKINCARE_PATH.test(pathOf(product))]).toEqual([query, product.title, false]);
+      }
+    }
+  });
+
+  test('on (S6-S9): what a product title names', async () => {
+    const { invoke } = boot(BOTH_ON);
+    const retinol = titles((await invoke('retinol')).resp);
+    // "Retinol Like Butter Balm" is retinol; "Retinol-Like" (hyphen), glued Korean "free", a trailing 0%,
+    // a retinyl ester and Russian "retinol-like" are not.
+    expect(retinol).toContain('Retinol Like Butter Balm');
+    for (const title of ['Retinol-Like Smoothing Serum', '레티놀프리크림', '레티놀프리세럼', 'Retinol 0% Night Cream', '视黄醇棕榈酸酯面霜',
+      'Ретинолоподобный крем']) {
+      expect([title, retinol.includes(title)]).toEqual([title, false]);
+    }
+    for (const [query, notThese] of [['glycerin', ['乙基己基甘油 爽肤水', 'エチルヘキシルグリセリン配合ローション', '에틸헥실글리세린 토너']],
+      ['salicylic acid', ['水杨酸乙基己酯防晒霜', 'サリチル酸エチルヘキシル配合UV']], ['hyaluronic acid', ['Крем с гиалуронидазой']],
+      ['vitamin c', ['Комплекс витаминов с маслом']]]) {
+      const { resp } = await invoke(query);
+      expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
+      for (const title of notThese) expect([query, title, titles(resp).includes(title)]).toEqual([query, title, false]);
+    }
+    expect(titles((await invoke('glycerin')).resp)).toContain('Glycerin Hold Hair Gel');
+    // S7: glued Korean "free" is an absence on the query side too, like the English query; "premium" is not.
+    const korean = await invoke('레티놀프리크림');
+    const english = await invoke('retinol-free cream');
+    expect([lane(korean.resp), ids(korean.resp)]).toEqual([lane(english.resp), ids(english.resp)]);
+    expect(lane(korean.resp)).not.toBe(LANES.INGREDIENT);
+    for (const title of titles(korean.resp)) expect([title, REAL_RETINOL.includes(title)]).toEqual([title, false]);
+    expect(lane((await invoke('레티놀 프리미엄 크림')).resp)).toBe(LANES.INGREDIENT);
+    // S9: a trailing 0% is an absence; any other trailing number asks for the ingredient.
+    expect(lane((await invoke('retinol 0%')).resp)).toBe(LANES.SAFE_EMPTY);
+    const zeroCream = await invoke('retinol 0% cream');
+    expect(lane(zeroCream.resp)).not.toBe(LANES.INGREDIENT);
+    expect([lane(zeroCream.resp), ids(zeroCream.resp)]).toEqual([lane(english.resp), ids(english.resp)]);
+    for (const query of ['retinol 1.0% serum', 'retinol 0.3% serum', 'retinol 10% serum']) {
+      expect([query, lane((await invoke(query)).resp)]).toEqual([query, LANES.INGREDIENT]);
     }
   });
 
@@ -580,7 +699,11 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       expect([foreign, lane(a.resp)]).toEqual([foreign, lane(b.resp)]);
       expect([foreign, lane(a.resp)]).toEqual([foreign, LANES.MAINLINE]);
       expect([foreign, ids(a.resp)]).toEqual([foreign, ids(b.resp)]);
-      if (expectedTitles) expect([foreign, titles(a.resp).sort()]).toEqual([foreign, [...expectedTitles].sort()]);
+      // (the r6 sunscreen rows -- other substances named in CJK -- are sunscreens too)
+      if (expectedTitles) {
+        expect([foreign, titles(a.resp).filter((title) => !/[\u3040-\u30ff\u3400-\u9fff]/.test(title)).sort()])
+          .toEqual([foreign, [...expectedTitles].sort()]);
+      }
       for (const title of titles(a.resp)) expect([foreign, /Lipstick|Shampoo|Sunscreen|Cleanser/.test(title) && english === 'moisturizer']).toEqual([foreign, false]);
     }
   });

@@ -20,6 +20,8 @@
 //              ingredient (productIngredientMention).
 //            4. A query that excludes an ingredient ("niacinamide-free serum", "retinol alternative
 //              serum") never gets a row that names it, whichever lane answered.
+//            5. A stand-in active (bakuchiol, STAND_IN_ACTIVE_ALIASES) is asked for like a table
+//              ingredient, and KNOWN_STAND_INS names the stand-in a bare "retinol alternative" asks for.
 //
 // Pure functions, no dependencies.
 
@@ -90,72 +92,82 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const TERM_TO_ID = new Map(
-  Object.entries(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES).map(([term, id]) => [normalizeForMatch(term), id]),
-);
+// Stand-in actives: substances sold AS a substitute for a table ingredient. Routing vocabulary only
+// (the lane's table above is unchanged, and the lane reads it directly when the flag is off). With the
+// flag on, a query that names one asks for it the way "retinol" asks for retinol: "bakuchiol",
+// "bakuchiol instead of retinol".
+const STAND_IN_ACTIVE_ALIASES = Object.freeze({ bakuchiol: 'bakuchiol' });
+// The stand-in a bare "<ingredient> alternative" asks for, when one is well established. One row, on
+// purpose: bakuchiol is the plant-derived active marketed and studied as the retinol alternative
+// (randomised, double-blind comparison with retinol: Dhaliwal et al., Br J Dermatol 2019;180:289-296).
+// No other table ingredient has a single accepted stand-in, so their bare stand-in queries name
+// nothing to serve (see queryRoutingNormalizer.js).
+const KNOWN_STAND_INS = Object.freeze({ retinol: Object.freeze(['bakuchiol']) });
+
+const ROUTING_ALIASES = Object.freeze({ ...STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES, ...STAND_IN_ACTIVE_ALIASES });
+const TERM_TO_ID = new Map(Object.entries(ROUTING_ALIASES).map(([term, id]) => [normalizeForMatch(term), id]));
 // Longest first, so "ceramide np" is consumed before "ceramide".
 const STRICT_TERMS_BY_LENGTH = Object.freeze(Array.from(TERM_TO_ID.keys()).sort((a, b) => b.length - a.length));
 const STRICT_TERM_ALTERNATION = STRICT_TERMS_BY_LENGTH.map(escapeRegExp).join('|');
 
 // Words around an ingredient that mean "without it" (ABSENCE) or "a stand-in for it" (STAND-IN), on
 // normalised text (punctuation is already a space: "retinol-free" is "retinol free"; "0% retinol" is
-// "0 retinol", while "1.0% retinol" is "1.0 retinol" and asks FOR retinol).
-// Positive marketing words -- vegan, natural, clean, pro, bio, plant(-based), dupe, "like X" -- are not
+// "0 retinol", while "1.0% retinol" is "1.0 retinol" and asks FOR retinol). The same words are read on
+// queries and on products, with two exceptions:
+//   - "phyto" is a stand-in only for an ingredient that HAS a plant analogue (retinol: bakuchiol is sold
+//     as "phyto-retinol"). Phyto-ceramides ARE ceramides; "phyto ceramides" asks for ceramides.
+//   - "like" after the ingredient is a stand-in only on a product title and only glued with a hyphen
+//     ("Retinol-Like Serum"); "Retinol Like Butter Balm" is a retinol balm, and in a query "retinol
+//     like <brand>" / "products like retinol" ask for retinol.
+// Positive marketing words -- vegan, natural, clean, pro, bio, plant(-based), dupe -- are not
 // qualifiers anywhere. Absence words include German / French / Spanish (ohne, sans, sin, frei) and
 // Russian (без, не содержит), so a non-English negation never becomes a request FOR the ingredient.
-// Three stand-in forms are read on PRODUCTS only, where they are marketing for a substitute:
-// "Phyto-Retinol", "Faux Retinol", "Pseudo-Retinol", "Retinol-Like". In a QUERY "phyto ceramides" and
-// "products like retinol" ask for the ingredient.
 const ABSENCE_BEFORE = [
   'without any', 'without', 'no added', 'no', 'non', 'not', 'zero', '0(?:\\.0+)?', 'avoid', 'avoiding',
   'free of', 'free from', 'sans', 'sin', 'ohne', 'frei von', 'libre de', 'без', 'не содержит',
 ];
 const STAND_IN_BEFORE = [
   'alternatives to', 'alternative to', 'substitutes for', 'substitute for', 'replacements for', 'replacement for',
-  'instead of', 'better than', 'gentler than',
+  'instead of', 'better than', 'gentler than', 'faux', 'pseudo',
 ];
-const PRODUCT_ONLY_STAND_IN_BEFORE = ['phyto', 'faux', 'pseudo'];
+const PLANT_ANALOGUE_IDS = Object.freeze(['retinol']);
 // "free" before shipping / delivery / returns / gift / sample / trial / radical(s) / size is not an
 // absence: "retinol free shipping", "Vitamin C Free Radical Defense Serum".
 const FREE_NOT_ABSENCE = '(?:shipping|delivery|returns?|gifts?|samples?|trials?|radicals?|sizes?)';
-const ABSENCE_AFTER = [`free(?!\\s+${FREE_NOT_ABSENCE}(?:\\s|$))`, 'frei(?:e|er|es|en|em)?'];
+// A trailing "0%" / "0.0%" is an absence ("retinol 0%"); "10%", "1.0%", "0.3%" are not.
+const ABSENCE_AFTER = [`free(?!\\s+${FREE_NOT_ABSENCE}(?:\\s|$))`, 'frei(?:e|er|es|en|em)?', '0(?:\\.0+)?'];
 const STAND_IN_AFTER = ['alternatives?', 'substitutes?', 'replacements?'];
-const PRODUCT_ONLY_STAND_IN_AFTER = ['like'];
 
 const alternation = (words) => `(?:${words.map((value) => value.replace(/ /g, '\\s+')).join('|')})`;
 const beforeTail = (words) => new RegExp(`(?:^|\\s)${alternation(words)}\\s$`, 'u');
 const afterHead = (words) => new RegExp(`^\\s${alternation(words)}(?=\\s|$)`, 'u');
 const QUALIFIERS = Object.freeze({
-  query: {
-    absenceBefore: beforeTail(ABSENCE_BEFORE),
-    absenceAfter: afterHead(ABSENCE_AFTER),
-    standInBefore: beforeTail(STAND_IN_BEFORE),
-    standInAfter: afterHead(STAND_IN_AFTER),
-  },
-  product: {
-    absenceBefore: beforeTail(ABSENCE_BEFORE),
-    absenceAfter: afterHead(ABSENCE_AFTER),
-    standInBefore: beforeTail([...STAND_IN_BEFORE, ...PRODUCT_ONLY_STAND_IN_BEFORE]),
-    standInAfter: afterHead([...STAND_IN_AFTER, ...PRODUCT_ONLY_STAND_IN_AFTER]),
-  },
+  absenceBefore: beforeTail(ABSENCE_BEFORE),
+  absenceAfter: afterHead(ABSENCE_AFTER),
+  standInBefore: beforeTail(STAND_IN_BEFORE),
+  standInAfter: afterHead(STAND_IN_AFTER),
+  phytoBefore: beforeTail(['phyto']),
+  likeAfter: afterHead(['like']),
 });
 // German glues "frei" onto the noun: "retinolfrei", "Retinolfreie Creme".
 const GLUED_FREI_RE = /^frei(?:e|er|es|en|em)?(?=\s|$)/;
 
-// 'absence', 'standin' or null for the text around one occurrence.
-function qualifierKind(text, start, end, context) {
-  const q = QUALIFIERS[context] || QUALIFIERS.product;
+// 'absence', 'standin' or null for the text around one occurrence of ingredient `id`. `hyphenLike`:
+// the raw title glued this term to "-like".
+function qualifierKind(text, start, end, { id = null, hyphenLike = false } = {}) {
   const before = text.slice(0, start);
   const after = text.slice(end);
-  if (q.absenceBefore.test(before) || q.absenceAfter.test(after)) return 'absence';
-  if (q.standInBefore.test(before) || q.standInAfter.test(after)) return 'standin';
+  if (QUALIFIERS.absenceBefore.test(before) || QUALIFIERS.absenceAfter.test(after)) return 'absence';
+  if (QUALIFIERS.standInBefore.test(before) || QUALIFIERS.standInAfter.test(after)) return 'standin';
+  if (PLANT_ANALOGUE_IDS.includes(id) && QUALIFIERS.phytoBefore.test(before)) return 'standin';
+  if (hyphenLike && QUALIFIERS.likeAfter.test(after)) return 'standin';
   return null;
 }
 
 // Every whole-word occurrence of `term` in normalised `text`, each with its qualifier kind. Whole words
 // on BOTH sides: "bioretinol" and "retinoloid" are not "retinol"; the one glued suffix recognised is
 // German "-frei", which is an absence.
-function termOccurrences(text, term, context = 'product') {
+function termOccurrences(text, term, { id = TERM_TO_ID.get(term) || null, hyphenLike = false } = {}) {
   const out = [];
   if (!text || !term) return out;
   const pattern = new RegExp(`(?:^|\\s)${escapeRegExp(term)}(?=\\s|$|frei)`, 'g');
@@ -166,7 +178,7 @@ function termOccurrences(text, term, context = 'product') {
     const glued = text.slice(end).match(GLUED_FREI_RE);
     if (!glued && !/^(?:\s|$)/.test(text.slice(end))) continue;
     if (glued) end += glued[0].length;
-    const kind = glued ? 'absence' : qualifierKind(text, start, end, context);
+    const kind = glued ? 'absence' : qualifierKind(text, start, end, { id, hyphenLike });
     out.push({ start, end, qualified: Boolean(kind), kind });
   }
   return out;
@@ -174,8 +186,9 @@ function termOccurrences(text, term, context = 'product') {
 
 // The ingredient's names in the other scripts the routing tables know, used to read PRODUCTS ("레티놀
 // 세럼"), never to detect a query intent (the lane's detector is English-only; multilingualBeautyTerms.js
-// maps queries). Han / kana / Hangul names match as substrings -- unless they sit inside a longer known
-// compound ("甘油三酯" is a triglyceride, not glycerin) -- with the CJK negation forms around them.
+// maps queries). Han / kana / Hangul names match as substrings, because titles in these scripts glue
+// words together ("视黄醇精华") -- unless the name is part of a longer compound that is a different
+// substance (CJK_COMPOUND_RULES) -- with the CJK negation forms around them.
 const NON_LATIN_INGREDIENT_NAMES = Object.freeze({
   retinol: ['视黄醇', '視黃醇', '维a醇', '維a醇', 'a醇', 'レチノール', '레티놀'],
   hyaluronic_acid: ['透明质酸', '透明質酸', '玻尿酸', 'ヒアルロン酸', '히알루론산'],
@@ -188,41 +201,65 @@ const NON_LATIN_INGREDIENT_NAMES = Object.freeze({
   benzoyl_peroxide: ['过氧化苯甲酰', '過氧化苯甲醯', '過酸化ベンゾイル', '벤조일퍼옥사이드'],
   panthenol: ['泛醇', 'パンテノール', '판테놀'],
   glycerin: ['甘油', 'グリセリン', '글리세린'],
+  bakuchiol: ['补骨脂酚', '補骨脂酚', 'バクチオール', '바쿠치올'],
 });
-// Longer CJK compounds that contain a name above but are a different substance.
-const CJK_LONGER_COMPOUNDS = Object.freeze({
-  甘油: ['甘油三酯', '甘油二酯', '甘油单酯', '甘油酯', '聚甘油', '甘油醚', '硝酸甘油'],
+// A CJK name inside a longer compound that is a DIFFERENT substance: an ester or ether of it, a
+// glycerin derivative, a salicylate. Matched on normalised text around the occurrence.
+//   - Any Han name followed (within the same run of Han characters) by 酯 (ester) or 醚 (ether):
+//     视黄醇棕榈酸酯 retinyl palmitate, 水杨酸乙基己酯 ethylhexyl salicylate, 水杨酸苄酯 benzyl
+//     salicylate, 甘油硬脂酸酯 glyceryl stearate, 甘油聚醚-26 glycereth-26.
+//   - Per name, the compounds that put another word before or after it.
+// A retinyl ester is not retinol for strict matching (it is a different, weaker retinoid; the
+// contract's retinoid safety rules are separate and unchanged).
+const HAN_NAME_RE = /[㐀-鿿]$/;
+const HAN_ESTER_OR_ETHER_AFTER_RE = /^[㐀-鿿]{0,4}[酯醚]/;
+const CJK_COMPOUND_RULES = Object.freeze({
+  甘油: {
+    before: /(?:基|聚|硝酸)$/,
+    after: /^(?:三酯|二酯|单酯|單酯|酯|醚)/,
+  },
+  グリセリン: { before: /(?:エチルヘキシル|ポリ|ジ|カプリリル|ヘキシル)$/ },
+  글리세린: { before: /(?:에틸헥실|헥실|폴리|다이|카프릴릴)$/ },
+  レチノール: { before: /(?:パルミチン酸|酢酸|プロピオン酸|リノール酸)$/ },
+  레티놀: { after: /^(?:팔미테이트|아세테이트|프로피오네이트)/ },
+  サリチル酸: { after: /^(?:エチルヘキシル|ベンジル|メチル|フェニル|ブチルオクチル|ホモメンチル|オクチル)/ },
 });
-// Russian names are matched by STEM, so every inflection counts ("ретинол", "ретинолом", "ретинола",
-// "гиалуроновой кислотой"), for presence and for absence ("без ретинола").
-const RUSSIAN_INGREDIENT_STEMS = Object.freeze({
-  retinol: ['ретинол'],
-  hyaluronic_acid: ['гиалурон'],
-  niacinamide: ['ниацинамид'],
-  ascorbic_acid: ['аскорбинов', 'витамин\\p{L}*\\s+[cс]'],
-  salicylic_acid: ['салицилов'],
-  ceramide_np: ['церамид'],
-  azelaic_acid: ['азелаинов'],
-  benzoyl_peroxide: ['бензоилпероксид', 'бензоил\\p{L}*\\s+пероксид'],
-  panthenol: ['пантенол'],
-  glycerin: ['глицерин'],
-});
-const CJK_SCRIPT_RE = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
-const CJK_NEGATION_BEFORE_RE = /(?:不含|无添加|無添加|无|無|没有|沒有|避开|避開|不要|不加)\s*$/;
-// Korean 프리 ("free") only as its own word or a word-final suffix (레티놀프리, 레티놀 프리): never the
-// start of a longer Hangul word ("프리미엄", premium).
-const CJK_NEGATION_AFTER_RE = /^\s*(?:free(?=\s|$)|フリー|不使用|無添加|なし|無し|없는|무첨가|프리(?![\uac00-\ud7af])|없이|대체|代替|替代)/;
 
-function insideLongerCompound(text, start, alias) {
-  for (const compound of CJK_LONGER_COMPOUNDS[alias] || []) {
-    let offset = compound.indexOf(alias);
-    while (offset >= 0) {
-      if (start - offset >= 0 && text.slice(start - offset, start - offset + compound.length) === compound) return true;
-      offset = compound.indexOf(alias, offset + 1);
-    }
-  }
-  return false;
+function insideDifferentCompound(text, start, end, alias) {
+  const after = text.slice(end);
+  if (HAN_NAME_RE.test(alias) && HAN_ESTER_OR_ETHER_AFTER_RE.test(after)) return true;
+  const rule = CJK_COMPOUND_RULES[alias];
+  if (!rule) return false;
+  return Boolean((rule.before && rule.before.test(text.slice(0, start))) || (rule.after && rule.after.test(after)));
 }
+
+// Russian names with their inflection endings, bounded: a noun's case endings, an adjective's
+// ("гиалуроновой кислотой"), never an open stem -- "гиалуронидаза" (an enzyme), "ретинолоподобный"
+// ("retinol-like") are not the ingredient. Vitamin C is "витамин С" in the singular only, and not when
+// the "с" is the preposition "with" ("витамин с маслом", a noun in the instrumental after it).
+// Endings are written as normalizeForMatch leaves them: it strips the breve, so "й" is "и" ("гиалуроновой"
+// is matched as "гиалуроновои").
+const RU_NOUN = '(?:|а|у|ом|е|ы|ов|ам|ами|ах)';
+const RU_ADJ = '(?:ая|ои|ую|ыи|ое|ого|ому|ым|ом|ые|ых|ыми|еи)';
+const RU_INSTRUMENTAL_WORD = '\\s+\\p{L}*(?:ом|ем|ои|еи|ами|ями|ью)(?=\\s|$)';
+const RUSSIAN_INGREDIENT_FORMS = Object.freeze({
+  retinol: [`ретинол${RU_NOUN}`],
+  hyaluronic_acid: [`гиалурон${RU_NOUN}`, `гиалуронов${RU_ADJ}`],
+  niacinamide: [`ниацинамид${RU_NOUN}`],
+  ascorbic_acid: [`аскорбинов${RU_ADJ}`, `витамин(?:|а|у|ом|е)\\s+[cс](?=\\s|$)(?!${RU_INSTRUMENTAL_WORD})`],
+  salicylic_acid: [`салицилов${RU_ADJ}`],
+  ceramide_np: [`церамид${RU_NOUN}`],
+  azelaic_acid: [`азелаинов${RU_ADJ}`],
+  benzoyl_peroxide: [`бензоилпероксид${RU_NOUN}`, `бензоил(?:а)?\\s+пероксид${RU_NOUN}`],
+  panthenol: [`пантенол${RU_NOUN}`],
+  glycerin: [`глицерин${RU_NOUN}`],
+  bakuchiol: [`бакучиол${RU_NOUN}`],
+});
+const CJK_SCRIPT_RE = /[぀-ヿ㐀-鿿가-힯]/;
+const CJK_NEGATION_BEFORE_RE = /(?:不含|无添加|無添加|无|無|没有|沒有|避开|避開|不要|不加)\s*$/;
+// Korean 프리 ("free") wherever it is glued -- 레티놀프리, 레티놀 프리, 레티놀프리크림 -- except as the
+// start of 프리미엄 ("premium").
+const CJK_NEGATION_AFTER_RE = /^\s*(?:free(?=\s|$)|フリー|不使用|無添加|なし|無し|없는|무첨가|프리(?!미엄)|없이|대체|代替|替代)/;
 
 function cjkOccurrences(text, alias) {
   const out = [];
@@ -233,22 +270,22 @@ function cjkOccurrences(text, alias) {
     if (start < 0) break;
     const end = start + alias.length;
     from = start + 1;
-    if (insideLongerCompound(text, start, alias)) continue;
+    if (insideDifferentCompound(text, start, end, alias)) continue;
     const qualified = CJK_NEGATION_BEFORE_RE.test(text.slice(0, start)) || CJK_NEGATION_AFTER_RE.test(text.slice(end));
     out.push({ start, end, qualified, kind: qualified ? 'absence' : null });
   }
   return out;
 }
 
-function russianOccurrences(text, id, context) {
+function russianOccurrences(text, id) {
   const out = [];
-  for (const stem of RUSSIAN_INGREDIENT_STEMS[id] || []) {
-    const pattern = new RegExp(`(?:^|\\s)(${stem}\\p{L}*)(?=\\s|$)`, 'gu');
+  for (const form of RUSSIAN_INGREDIENT_FORMS[id] || []) {
+    const pattern = new RegExp(`(?:^|\\s)(${form})(?=\\s|$)`, 'gu');
     let match;
     while ((match = pattern.exec(text)) !== null) {
       const start = match.index + (match[0].startsWith(' ') ? 1 : 0);
       const end = start + match[1].length;
-      const kind = qualifierKind(text, start, end, context);
+      const kind = qualifierKind(text, start, end, { id });
       out.push({ start, end, qualified: Boolean(kind), kind });
     }
   }
@@ -256,14 +293,14 @@ function russianOccurrences(text, id, context) {
 }
 
 // Occurrences of any of an ingredient's names in normalised text, in every script.
-function ingredientOccurrences(text, latinTerms, id, context = 'product') {
+function ingredientOccurrences(text, latinTerms, id, { hyphenLikeTerms = [] } = {}) {
   const out = [];
-  for (const term of latinTerms) out.push(...termOccurrences(text, term, context));
+  for (const term of latinTerms) out.push(...termOccurrences(text, term, { id, hyphenLike: hyphenLikeTerms.includes(term) }));
   for (const raw of NON_LATIN_INGREDIENT_NAMES[id] || []) {
     const alias = normalizeForMatch(raw);
     if (alias) out.push(...cjkOccurrences(text, alias));
   }
-  out.push(...russianOccurrences(text, id, context));
+  out.push(...russianOccurrences(text, id));
   return out;
 }
 
@@ -277,7 +314,7 @@ function classifyStrictIngredientMentions(text) {
     const consumed = new Array(normalized.length).fill(false);
     for (const term of STRICT_TERMS_BY_LENGTH) {
       const id = TERM_TO_ID.get(term);
-      for (const occurrence of termOccurrences(normalized, term, 'query')) {
+      for (const occurrence of termOccurrences(normalized, term)) {
         let overlaps = false;
         for (let i = occurrence.start; i < occurrence.end; i += 1) if (consumed[i]) overlaps = true;
         if (overlaps) continue;
@@ -293,7 +330,7 @@ function classifyStrictIngredientMentions(text) {
   const wanted = [];
   const excluded = [];
   const standInOnly = [];
-  for (const id of Object.values(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES)) {
+  for (const id of Object.values(ROUTING_ALIASES)) {
     const state = states.get(id);
     if (!state) continue;
     if (state.positive && !wanted.includes(id)) wanted.push(id);
@@ -312,7 +349,7 @@ function stripNegatedStrictIngredientMentions(normalizedText) {
   if (!text) return text;
   let out = text;
   for (const term of STRICT_TERMS_BY_LENGTH) {
-    const occurrences = termOccurrences(out, term, 'query').filter((occurrence) => occurrence.qualified);
+    const occurrences = termOccurrences(out, term).filter((occurrence) => occurrence.qualified);
     for (let i = occurrences.length - 1; i >= 0; i -= 1) {
       out = `${out.slice(0, occurrences[i].start)} ${out.slice(occurrences[i].end)}`;
     }
@@ -441,10 +478,18 @@ function productStructuredIngredientEntries(product) {
   return [...actives, ...inci];
 }
 
-function productTitleText(product) {
+function productTitleRaw(product) {
   if (!product || typeof product !== 'object') return '';
-  return normalizeForMatch(
-    [product.title, product.name, product.product_title].filter((value) => typeof value === 'string' && value.trim()).join(' | '),
+  return [product.title, product.name, product.product_title].filter((value) => typeof value === 'string' && value.trim()).join(' | ');
+}
+
+// The naming terms a raw title glues to "-like" ("Retinol-Like Serum", "Retinol‑like"): normalisation
+// turns the hyphen into a space, so this is read before it.
+function hyphenLikeTerms(rawTitle, terms) {
+  const raw = String(rawTitle || '').toLowerCase();
+  if (!/like/.test(raw)) return [];
+  return terms.filter((term) =>
+    new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term).replace(/ /g, '[\\s-]+')}\\s*[-\u2010\u2011\u2013]\\s*like(?![\\p{L}\\p{N}])`, 'u').test(raw),
   );
 }
 
@@ -454,7 +499,8 @@ function productTitleText(product) {
 //                   in any script the routing tables know;
 //   'negated_only'  no positive evidence, and some mention is qualified away ("Retinol-Free",
 //                   "Phyto-Retinol", "Retinol-Like", "Retinol Alternative", "Better Than Retinol",
-//                   "0% Retinol", "No Added Retinol", "Not Retinol", "레티놀 프리");
+//                   "0% Retinol", "Retinol 0%", "No Added Retinol", "Not Retinol", "레티놀 프리",
+//                   "레티놀프리크림");
 //   'absent'        no mention.
 // A title never overrides structured evidence, either way: an INCI list that contains retinol
 // contains retinol, and a full INCI list WITHOUT retinol (or any of its INCI names) means the product
@@ -473,7 +519,12 @@ function productIngredientMention(product, ingredientId) {
     }
   }
   if (inci.length > 0) return qualifiedSeen ? 'negated_only' : 'absent';
-  for (const occurrence of ingredientOccurrences(productTitleText(product), strictIngredientNamingTerms(id), id)) {
+  const titleRaw = productTitleRaw(product);
+  const titleTerms = strictIngredientNamingTerms(id);
+  const titleOccurrences = ingredientOccurrences(normalizeForMatch(titleRaw), titleTerms, id, {
+    hyphenLikeTerms: hyphenLikeTerms(titleRaw, titleTerms),
+  });
+  for (const occurrence of titleOccurrences) {
     if (!occurrence.qualified) return 'named';
     qualifiedSeen = true;
   }
@@ -524,18 +575,20 @@ function productCategoryPath(product) {
   return typeof path === 'string' ? path.toLowerCase() : '';
 }
 
-// `scopePrefix` (optional): rows outside this category path are dropped too (a row with no path
-// fails closed).
-function excludeIngredientsFromPage(body, { ingredientIds = [], scopePrefix = null } = {}) {
+// `requiredIds` (optional): rows must also NAME each of these (the stand-in a query asked for:
+// "bakuchiol instead of retinol"). `scopePrefix` (optional): rows outside this category path are
+// dropped too (a row with no path fails closed).
+function excludeIngredientsFromPage(body, { ingredientIds = [], requiredIds = [], scopePrefix = null } = {}) {
   if (!body || typeof body !== 'object' || !Array.isArray(body.products)) return { body, dropped_count: 0 };
   const exclusion = excludeProductsNamingIngredients(body.products, { ingredientIds });
+  const required = admitIngredientLaneProducts(exclusion.products, { ingredientIds: requiredIds });
   const scope = scopePrefix ? String(scopePrefix).toLowerCase().replace(/\/+$/, '') : '';
   const kept = scope
-    ? exclusion.products.filter((product) => {
+    ? required.products.filter((product) => {
         const path = productCategoryPath(product);
         return path === scope || path.startsWith(`${scope}/`);
       })
-    : exclusion.products;
+    : required.products;
   const droppedCount = body.products.length - kept.length;
   if (droppedCount === 0) return { body, dropped_count: 0 };
   return {
@@ -572,6 +625,8 @@ const RAW_TERM_FREE_RE = new RegExp(
   `\\b${RAW_TERM}[\\s-]+free\\b(?![\\s-]+${FREE_NOT_ABSENCE}\\b)`,
   'gi',
 );
+// A trailing zero: "retinol 0%", "Retinol-0.0%". Not "retinol 10%", "retinol 1.0%", "retinol 0.3%".
+const RAW_TERM_ZERO_RE = new RegExp(`\\b${RAW_TERM}[\\s-]*0(?:\\.0+)?\\s*%(?![\\d.%])`, 'gi');
 // A form noun in another language right next to a strict ingredient reads as "cream", as the
 // multilingual table maps it ("Retinolfreie Creme" keeps its form with only this flag on).
 const RAW_CREAM_NOUN_RE = /(?<![\p{L}])(?:cr[eè]me|crema)(?![\p{L}])|크림(?![\uac00-\ud7af])|クリーム/giu;
@@ -584,13 +639,16 @@ function canonicalizeEnglishIngredientNegations(rawQuery) {
   let out = text
     .replace(RAW_NEGATED_TERM_RE, toFree)
     .replace(RAW_TERM_FREI_RE, toFree)
-    .replace(RAW_TERM_FREE_RE, toFree);
+    .replace(RAW_TERM_FREE_RE, toFree)
+    .replace(RAW_TERM_ZERO_RE, toFree);
   if (out !== text && RAW_TERM_ANY_RE.test(out)) out = out.replace(RAW_CREAM_NOUN_RE, 'cream');
   if (out === text) return { query: text, changed: false };
   return { query: out.replace(/\s+/g, ' ').trim(), changed: true };
 }
 
 module.exports = {
+  KNOWN_STAND_INS,
+  STAND_IN_ACTIVE_ALIASES,
   NON_LATIN_INGREDIENT_NAMES,
   BARE_INGREDIENT_ROUTING_FLAG,
   STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES,

@@ -42061,16 +42061,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // this is the generic one, for every ingredient in the lane's table. observe: counted, not applied.
     if (finalOperation === 'find_products_multi' && routingQueryState) {
       const exclusionMode = strictIngredientQuery.bareIngredientRoutingMode();
-      if (exclusionMode !== 'off' && Array.isArray(finalBody?.products) && finalBody.products.length > 0) {
-        const excludedIds = strictIngredientQuery.extractExcludedStrictIngredientIds(
-          exclusionMode === 'on' ? routingQueryState.query : routingQueryState.shadow?.query || routingQueryState.original,
-        );
-        if (excludedIds.length > 0) {
-          const exclusionQuery =
-            exclusionMode === 'on' ? routingQueryState.query : routingQueryState.shadow?.query || routingQueryState.original;
+      // The door rules come from the query as typed (after negation canonicalisation), so a rewrite
+      // never loses them: "bakuchiol instead of retinol" routes as "bakuchiol" and still excludes retinol.
+      const door = exclusionMode === 'on' ? routingQueryState.door : routingQueryState.shadow?.door;
+      if (exclusionMode !== 'off' && door && Array.isArray(finalBody?.products) && finalBody.products.length > 0) {
+        if (door.excludedIds.length > 0 || door.requiredIds.length > 0) {
           const exclusion = strictIngredientQuery.excludeIngredientsFromPage(finalBody, {
-            ingredientIds: excludedIds,
-            scopePrefix: queryRoutingNormalizer.exclusionCategoryScope(exclusionQuery),
+            ingredientIds: door.excludedIds,
+            requiredIds: door.requiredIds,
+            scopePrefix: door.scopePrefix,
           });
           routingQueryLogFields = {
             ...routingQueryLogFields,

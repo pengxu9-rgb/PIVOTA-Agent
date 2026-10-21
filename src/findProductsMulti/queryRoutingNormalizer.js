@@ -12,6 +12,11 @@
 // off: nothing is computed. observe: the normalised query is computed and described on the completion
 // log line, and nothing in the request changes. on: the normalised query replaces the routing query.
 //
+// With the bare-ingredient flag, a query that only excludes ingredients is rewritten to what it asks
+// for (rewriteExclusionQuery: a known or named stand-in, or the body area it names), "<ingredient> like
+// <brand>" becomes "<brand> <ingredient>", and the response door's rules (routingDoor) are read from the
+// query before any rewrite.
+//
 // One guard over both: a query whose normalised form EXCLUDES an ingredient but names no product type
 // ("without retinol", "sin retinol", "0% retinol") is left exactly as typed. Rewriting it would turn a
 // clarify into a beauty-wide browse, and a bare negation must never widen what is served.
@@ -25,6 +30,8 @@ const {
   normalizeMultilingualBeautyTerms,
 } = require('./multilingualBeautyTerms');
 const {
+  KNOWN_STAND_INS,
+  STAND_IN_ACTIVE_ALIASES,
   bareIngredientRoutingMode,
   canonicalizeEnglishIngredientNegations,
   extractExcludedStrictIngredientIds,
@@ -33,13 +40,29 @@ const {
   isBareStrictIngredientQuery,
   normalizeForMatch,
   stripNegatedStrictIngredientMentions,
+  strictIngredientNamingTerms,
 } = require('./strictIngredientQuery');
 const { buildSearchQualityContract, resolveBeautyCategoryPathPrefixFromText } = require('./queryUnderstanding');
+const { resolveBeautyBrandBrowseQuery } = require('./brandLexicon');
+
+// What the response door enforces for this query (see server.js): rows naming an excluded ingredient
+// are dropped, rows not naming a required one (a stand-in the query asked for) are dropped, and rows
+// outside the scope are dropped. Read from the query BEFORE any rewrite below, so a rewrite never
+// loses an exclusion ("bakuchiol instead of retinol" -> "bakuchiol" still excludes retinol).
+function routingDoor(text, requiredIds = []) {
+  return {
+    excludedIds: extractExcludedStrictIngredientIds(text),
+    requiredIds,
+    scopePrefix: exclusionCategoryScope(text),
+  };
+}
 
 function runPipeline(original, { multilingual, bareIngredient }) {
   let query = original;
   let terms = [];
   let negation = false;
+  let rewrite = null;
+  let door = null;
   if (multilingual) {
     const mapped = normalizeMultilingualBeautyTerms(query);
     if (mapped.applied) {
@@ -53,56 +76,152 @@ function runPipeline(original, { multilingual, bareIngredient }) {
       query = canonical.query;
       negation = true;
     }
-    const standIn = rewriteBareStandInQuery(query);
-    if (standIn !== query) {
-      query = standIn;
+    // Before any rewrite: the exclusions and the scope are the query's own.
+    door = routingDoor(query);
+    const fromBrand = rewriteIngredientLikeBrandQuery(query);
+    if (fromBrand.query !== query) {
+      query = fromBrand.query;
+      rewrite = 'ingredient_like_brand';
+      door = { ...door, requiredIds: fromBrand.requiredIds };
+    }
+    const exclusion = rewriteExclusionQuery(query);
+    if (exclusion.kind) {
+      query = exclusion.query;
       negation = true;
+      rewrite = exclusion.kind;
+      door = { ...door, requiredIds: exclusion.requiredIds };
     }
   }
-  if (query === original) return { query: original, changed: false, terms: [], negation: false, guard: null };
+  if (query === original) return { query: original, changed: false, terms: [], negation: false, rewrite: null, guard: null, door };
   if (isBareIngredientNegationQuery(query)) {
     // `candidate` is what the rewrite would have been; the handler answers it with a safe-empty.
-    return { query: original, changed: false, terms: [], negation: false, guard: 'bare_negation_kept', candidate: query };
+    return { query: original, changed: false, terms: [], negation: false, rewrite: null, guard: 'bare_negation_kept', candidate: query, door };
   }
-  return { query, changed: true, terms, negation, guard: null };
+  return { query, changed: true, terms, negation, rewrite, guard: null, door };
 }
 
-// The English words a stand-in phrase uses, removed when the phrase is rewritten.
-const STAND_IN_WORDS_RE =
-  /(?:^|\s)(?:alternatives?(?:\s+to)?|substitutes?(?:\s+for)?|replacements?(?:\s+for)?|instead\s+of|better\s+than|gentler\s+than)(?=\s|$)/g;
+// "<ingredient> like <brand>" asks for that ingredient FROM that brand (the brand's version of it):
+// "retinol like the ordinary" -> "the ordinary retinol", and the door keeps only rows that name the
+// ingredient (the brand browse that query lands in serves every row of the brand). Only when the head
+// is nothing but table ingredients and the tail is nothing but a known beauty brand; "products like
+// retinol", "retinol like results" are unchanged. Returns { query, requiredIds }.
+function rewriteIngredientLikeBrandQuery(query) {
+  const unchanged = { query, requiredIds: [] };
+  const match = String(query || '').match(/^\s*(.+?)\s+like\s+(.+?)\s*$/i);
+  if (!match) return unchanged;
+  const [, head, tail] = match;
+  if (!isBareStrictIngredientQuery(head)) return unchanged;
+  const brand = resolveBeautyBrandBrowseQuery(tail);
+  if (!brand || !brand.matched || !brand.brand_only) return unchanged;
+  return { query: `${tail.trim()} ${head.trim()}`, requiredIds: extractPositiveStrictIngredientIds(head) };
+}
+
+// Body areas a query can name. hair and lip have a category the contract routes ("hair care",
+// "lip treatment") and a scope; the others have no category of their own (body care is spread over
+// several trees), so they keep the query's own route and get no scope -- never skincare.
+const AREA_PATTERNS = Object.freeze([
+  ['hair', /(?:^|\s)(?:hair|scalp|haircare|shampoos?|conditioners?|hairsprays?|pomades?)(?=\s|$)/],
+  ['lip', /(?:^|\s)lips?(?=\s|$)/],
+  ['other', /(?:^|\s)(?:body|bodies|nails?|cuticles?|soaps?|hands?|feet|foot|bath|shower|deodorants?|men|mens|man|male|beard)(?=\s|$)/],
+]);
+const AREA_SCOPE = Object.freeze({ hair: 'beauty/haircare/', lip: 'beauty/makeup/lip/', other: null });
+// The words that name ONLY the area (not a product form like "shampoo"), and the phrase the contract
+// routes to that area's category.
+const AREA_ONLY_WORDS = Object.freeze({ hair: ['hair', 'scalp'], lip: ['lip', 'lips'] });
+const AREA_NOUN = Object.freeze({ hair: 'hair care', lip: 'lip treatment' });
+
+// The single area normalised text names, 'mixed' for more than one, or null.
+function areaOf(normalizedText) {
+  const found = AREA_PATTERNS.filter(([, pattern]) => pattern.test(normalizedText)).map(([area]) => area);
+  if (found.length === 0) return null;
+  return found.length === 1 ? found[0] : 'mixed';
+}
+
+// Words a query that only EXCLUDES ingredients may carry besides them: the qualifier words themselves
+// and the filler words a bare query may carry.
+const EXCLUSION_QUALIFIER_WORDS = new Set([
+  'alternative', 'alternatives', 'to', 'substitute', 'substitutes', 'replacement', 'replacements', 'for',
+  'instead', 'of', 'better', 'gentler', 'than', 'faux', 'pseudo', 'phyto',
+  'without', 'any', 'no', 'added', 'non', 'not', 'zero', '0', 'avoid', 'avoiding', 'free', 'from',
+  'sans', 'sin', 'ohne', 'frei', 'freie', 'freier', 'freies', 'freien', 'freiem', 'von', 'libre', 'de',
+  'без', 'не', 'содержит',
+  'a', 'an', 'the', 'some', 'me', 'my', 'i', 'best', 'top', 'good', 'great', 'popular',
+  'product', 'products', 'item', 'items', 'shop', 'buy', 'find', 'show', 'search', 'get', 'want', 'need',
+  'looking', 'recommend', 'recommendation', 'recommendations', 'please', 'with', 'something',
+]);
 const INGREDIENT_ENGLISH_NAME = Object.freeze({ ascorbic_acid: 'vitamin c', ceramide_np: 'ceramide' });
+const ingredientName = (id) => INGREDIENT_ENGLISH_NAME[id] || id.replace(/_/g, ' ');
 
-// A query that only asks for a STAND-IN and names nothing to serve ("retinol alternative",
-// "alternative to retinol", "bakuchiol instead of retinol") is not a clarify: it is a skincare browse
-// without the ingredient. It is rewritten to "<rest> <ingredient>-free skincare", which the contract
-// reads as a skincare constraint search; the response door then drops every row naming the ingredient
-// and keeps the page inside skincare (see exclusionCategoryScope). Products that name themselves a
-// stand-in ("Bakuchiol Retinol Alternative Serum") are not "named" and stay on the page.
-// Anything else is returned unchanged.
-function rewriteBareStandInQuery(query) {
-  const excluded = extractExcludedStrictIngredientIds(query);
-  if (excluded.length === 0) return query;
-  const standInOnly = extractStandInOnlyStrictIngredientIds(query);
-  if (standInOnly.length !== excluded.length) return query;
-  if (!isBareIngredientNegationQuery(query)) return query;
-  const rest = stripNegatedStrictIngredientMentions(normalizeForMatch(query))
-    .replace(STAND_IN_WORDS_RE, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const free = excluded.map((id) => `${INGREDIENT_ENGLISH_NAME[id] || id.replace(/_/g, ' ')}-free`).join(' ');
-  return [rest, free, 'skincare'].filter(Boolean).join(' ');
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The words of normalised text left after the given ingredients' terms (qualified or not) and every
+// qualifier, filler or zero-percent word are set aside.
+function exclusionRemainderWords(normalized, ids) {
+  let text = ` ${normalized} `;
+  const terms = Array.from(new Set(ids.flatMap((id) => strictIngredientNamingTerms(id)))).sort((a, b) => b.length - a.length);
+  for (const term of terms) text = text.replace(new RegExp(`\\s${escapeRegExp(term)}(?=\\s|frei)`, 'g'), ' ');
+  return text.split(/\s+/).filter((word) => word && !EXCLUSION_QUALIFIER_WORDS.has(word) && !/^0(?:\.0+)?$/.test(word));
 }
 
-// The category scope a query that excludes an ingredient keeps the page in: when the rest of the query
-// names no category, the excluded actives are skincare actives and the page stays in skincare -- a
-// "retinol-free mist" is never a shampoo or a lipstick. A query that names a category ("retinol-free
-// cream", "retinol-free lipstick") keeps that category's own route and gets no extra scope (null).
+// A query that EXCLUDES ingredients and names nothing else to serve but, at most, a body area or a
+// stand-in active. Rewritten so the contract routes what it asks for:
+//   - it names a stand-in active ("bakuchiol instead of retinol", "retinol-free bakuchiol"): that
+//     active is the ask -> "bakuchiol" (kind stand_in_named);
+//   - it only asks for a stand-in, with no area, and every excluded ingredient has a known stand-in
+//     ("retinol alternative", "alternative to retinol", "faux retinol", "phyto retinol"): the known
+//     stand-in is the ask -> "bakuchiol" (kind stand_in_known);
+//   - it names hair or lips ("retinol alternative for hair", "without glycerin for hair"): the area's
+//     own category, without the ingredient -> "retinol-free hair care", "retinol-free lip treatment"
+//     (kind area).
+// The door keeps the exclusion, requires the asked-for stand-in, and scopes the page (routingDoor).
+// Anything else is unchanged: a bare stand-in with no known stand-in ("niacinamide alternative") or a
+// bare absence ("without retinol") names nothing to serve and is answered as a bare negation (a
+// clarify), the same for every ingredient; a query naming a product type, a concern, a brand or any
+// other area keeps its own route.
+function rewriteExclusionQuery(query) {
+  const unchanged = { query, kind: null, requiredIds: [] };
+  const excluded = extractExcludedStrictIngredientIds(query);
+  if (excluded.length === 0) return unchanged;
+  const wanted = extractPositiveStrictIngredientIds(query);
+  const standInActives = Object.values(STAND_IN_ACTIVE_ALIASES);
+  if (wanted.some((id) => !standInActives.includes(id))) return unchanged;
+  const normalized = normalizeForMatch(query);
+  const rest = exclusionRemainderWords(normalized, [...excluded, ...wanted]);
+  const area = areaOf(rest.join(' '));
+  if (area === 'mixed' || area === 'other') return unchanged;
+  const restWithoutArea = rest.filter((word) => !(area && AREA_ONLY_WORDS[area].includes(word)));
+  if (restWithoutArea.length > 0) return unchanged;
+  const withArea = (text) => (area ? `${text} ${AREA_NOUN[area]}` : text);
+  if (wanted.length > 0) {
+    return { query: withArea(wanted.map(ingredientName).join(' ')), kind: 'stand_in_named', requiredIds: wanted };
+  }
+  const standInOnly = extractStandInOnlyStrictIngredientIds(query);
+  if (!area && standInOnly.length === excluded.length && excluded.every((id) => KNOWN_STAND_INS[id])) {
+    const standIns = Array.from(new Set(excluded.flatMap((id) => KNOWN_STAND_INS[id])));
+    return { query: standIns.join(' '), kind: 'stand_in_known', requiredIds: standIns };
+  }
+  if (area) {
+    return { query: withArea(excluded.map((id) => `${ingredientName(id)}-free`).join(' ')), kind: 'area', requiredIds: [] };
+  }
+  return unchanged;
+}
+
+// The category scope a query that excludes an ingredient keeps the page in:
+//   - the rest of the query names a category ("retinol-free cream", "retinol-free lipstick"): that
+//     category's own route, no extra scope (null);
+//   - it names hair or lips: that area's tree ("glycerin-free hair gel" -> beauty/haircare/);
+//   - it names another area (body, nails, soap, hands, men's): no scope (null) -- never skincare;
+//   - nothing: the excluded actives are skincare actives and the page stays in skincare -- a
+//     "retinol-free mist" is never a shampoo or a lipstick.
 const EXCLUSION_DEFAULT_SCOPE = 'beauty/skincare/';
 function exclusionCategoryScope(text) {
   const raw = String(text || '');
   if (extractExcludedStrictIngredientIds(raw).length === 0) return null;
   const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw));
   if (resolveBeautyCategoryPathPrefixFromText(remainder)) return null;
+  const area = areaOf(remainder);
+  if (area === 'mixed') return null;
+  if (area) return AREA_SCOPE[area];
   return EXCLUSION_DEFAULT_SCOPE;
 }
 
@@ -117,10 +236,11 @@ const SKIN_CONCERN_RE =
 
 // A query that only EXCLUDES ingredients: no ingredient asked for, and nothing to serve once the
 // excluded ingredient's own words are set aside -- no product type (in English or in any language the
-// multilingual table knows, flag or no flag), no brand, no skin concern or constraint, no generic
-// skincare word. "retinol-free", "without retinol", "0% retinol", "retinolfrei" are bare;
-// "retinol-free balm", "cerave without retinol", "retinol free for sensitive skin", "pregnancy safe
-// no retinol", "retinol free skincare", "retinol-free 크림", "ohne Retinol creme" are not.
+// multilingual table knows, flag or no flag), no body area, no brand, no skin concern or constraint, no
+// generic skincare word. "retinol-free", "without retinol", "0% retinol", "retinol 0%", "retinolfrei",
+// "niacinamide alternative" are bare; "retinol-free balm", "cerave without retinol", "retinol free for
+// sensitive skin", "pregnancy safe no retinol", "retinol free skincare", "retinol-free 크림", "ohne
+// Retinol creme", "without glycerin for hair", "retinol alternative for body" are not.
 function isBareIngredientNegationQuery(text) {
   const raw = String(text || '');
   if (!raw.trim()) return false;
@@ -131,7 +251,7 @@ function isBareIngredientNegationQuery(text) {
   const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw));
   if (!remainder) return true;
   if (resolveBeautyCategoryPathPrefixFromText(remainder)) return false;
-  if (PRODUCT_FORM_RE.test(remainder) || SKIN_CONCERN_RE.test(remainder)) return false;
+  if (PRODUCT_FORM_RE.test(remainder) || SKIN_CONCERN_RE.test(remainder) || areaOf(remainder)) return false;
   if (normalizeMultilingualBeautyTerms(remainder, { contextAvailable: true }).terms.some((term) => term.kind === 'term')) {
     return false;
   }
@@ -144,7 +264,7 @@ function isBareIngredientNegationQuery(text) {
 function normalizeFindProductsMultiRoutingQuery(rawQuery, env = process.env) {
   const original = typeof rawQuery === 'string' ? rawQuery : '';
   const modes = { multilingual: multilingualRoutingMode(env), bareIngredient: bareIngredientRoutingMode(env) };
-  const inactive = { query: original, changed: false, terms: [], negation: false, guard: null };
+  const inactive = { query: original, changed: false, terms: [], negation: false, rewrite: null, guard: null, door: null };
   const result = { original, modes, ...inactive, shadow: inactive };
   if (!original.trim() || (modes.multilingual === 'off' && modes.bareIngredient === 'off')) return result;
   const applied = runPipeline(original, {
@@ -202,6 +322,7 @@ function buildRoutingQueryLogFields(normalization, extra = {}) {
     ...(shadow.changed ? { fpm_routing_query_terms_mapped: (shadow.terms || []).length } : {}),
     ...(kinds.length ? { fpm_routing_query_term_kinds: kinds } : {}),
     ...(shadow.negation ? { fpm_routing_query_negation: true } : {}),
+    ...(shadow.rewrite ? { fpm_routing_query_rewrite: shadow.rewrite } : {}),
     ...(shadow.guard ? { fpm_routing_query_guard: shadow.guard } : {}),
     ...(modes.bareIngredient !== 'off'
       ? { fpm_routing_would_bare_ingredient: isBareStrictIngredientQuery(shadow.query || normalization.original) }
@@ -213,7 +334,8 @@ function buildRoutingQueryLogFields(normalization, extra = {}) {
 module.exports = {
   exclusionCategoryScope,
   isBareIngredientNegationQuery,
-  rewriteBareStandInQuery,
+  rewriteExclusionQuery,
+  rewriteIngredientLikeBrandQuery,
   normalizeFindProductsMultiRoutingQuery,
   locateRoutingQuery,
   buildRoutingQueryLogFields,
