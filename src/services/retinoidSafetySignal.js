@@ -1,0 +1,562 @@
+'use strict';
+
+// Does a shopping request carry a reason to keep retinoids out of the answer?
+//
+// The beauty search gate (isBeautyProductContraindicatedForQuery in src/server.js) drops retinoid
+// products when the query's intent carries `avoid_retinoids`. Before this module, that flag was set
+// by one English regex (pregnan* | ttc | trying to conceive | retinol-free | no retinol) plus a few
+// Chinese words. So "retinol serum breastfeeding", "retinol serum for kids", "preggo retinol serum"
+// and "retinol serum 임산부" all served retinoids. A serum never reaches the moisturizer /
+// cleanser / sunscreen retinoid rule, so nothing else stood behind that regex.
+//
+// This module answers the question for the query text AND for the rest of the request: earlier
+// conversation turns, a user profile, ingredient constraints and safety flags. It never decides
+// what a product is. It only says whether retinoids must be kept out, and why.
+//
+// TIERS. Gating hides retinoids from people who can use them, so the lexicon is split:
+//   HARD (always on):
+//     - pregnancy / lactation / fertility;
+//     - children under 12;
+//     - isotretinoin, or being "on" a prescription retinoid (layering context);
+//     - the user saying no to retinoids ("don't want retinol", "retinol broke me out").
+//   SOFT (BEAUTY_RETINOID_SOFT_SAFETY_TIER=on; default off):
+//     - teens 12-17 and students;
+//     - skin conditions;
+//     - sensitivity.
+//     These are judgement calls, not contraindications. The existing sensitive-query rule in the
+//     gate keeps gating what it already gated, whatever this flag says. The soft tier only adds.
+//
+// MATCHING. Words are matched on three views of the text:
+//   - script view: NFKC, zero-width characters removed, lowercased. It keeps Hangul, Cyrillic,
+//     Thai, CJK and emoji, which the search normaliser deletes.
+//   - latin view: the script view with Cyrillic / Greek look-alikes mapped to Latin, accents
+//     removed, and every non-letter turned into a space.
+//   - compact view: the latin view with every separator removed, so "p r e g n a n t",
+//     "pre-gnant" and "#momtobe" are caught for the long, distinctive stems.
+// Typos of the core words are caught by a bounded edit-distance check: one edit, words of six or
+// more letters, same first letter.
+//
+// AGES. An age of 11 or under is a child (hard). 12 to 17 is a teen (soft). 18 and over is an adult
+// and does not gate: adult retinoid use is ordinary.
+
+const SOFT_TIER_ENV = 'BEAUTY_RETINOID_SOFT_SAFETY_TIER';
+
+function softTierEnabled(env = process.env) {
+  return String(env[SOFT_TIER_ENV] || '').trim().toLowerCase() === 'on';
+}
+
+// ---------------------------------------------------------------------------------------------
+// Retinoid names: used by the negation class and by ingredient constraints. Latin view / script view.
+const RETINOID_NAME_LATIN =
+  /\b(?:retinol\w*|retinal\w*|retinoid\w*|retinyl\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\s?a|vitamin\s?a|granactive|hydroxypinacolone|hpr|accutane|roaccutane)\b/;
+const RETINOID_NAME_SCRIPT = /视黄醇|視黃醇|维a|維a|a醇|维甲酸|維甲酸|レチノール|레티놀|레틴|ретинол|ретиноид|เรตินอล/;
+
+// ---------------------------------------------------------------------------------------------
+// HARD tier lists.
+
+// Pregnancy, lactation and fertility. Latin view, word-bounded.
+const HARD_PREGNANCY_LACTATION_FERTILITY_LATIN = [
+  'pregnan\\w*', 'preggo', 'preggers', 'preggy', 'mom\\s?to\\s?be', 'mum\\s?to\\s?be', 'mama\\s?to\\s?be', 'moms\\s?to\\s?be',
+  'maternity', 'bun\\s+in\\s+the\\s+oven', 'ob\\s?gyn', 'trimesters?', 'ivf', 'fertility', 'infertility', 'conceiv\\w*',
+  'conception', 'ttc', 'trying\\s+(?:to\\s+conceive|for\\s+a\\s+baby)', 'expecting', 'expectant', 'new\\s+(?:mom|mum|mother|mama)s?',
+  'bf\\s+(?:mom|mum|mama)s?', 'bfing', 'pumping', 'for\\s+(?:moms|mums|mothers|mamas)', 'post\\s?partum', 'postnatal',
+  'prenatal', 'antenatal', 'gestational', 'breast\\s?feed\\w*', 'breast\\s?fed', 'nursing', 'lactating', 'lactation',
+  // Other Latin-script languages.
+  'embarazad\\w*', 'lactancia', 'lactante', 'enceinte', 'allait\\w*', 'grossesse', 'schwanger\\w*', 'stillzeit', 'stillende',
+  'gravidanza', 'incinta', 'allattamento', 'gravida', 'gravidez', 'gestante', 'amamenta\\w*', 'hamil', 'menyusui',
+  'mang\\s+thai', 'cho\\s+con\\s+bu', 'gebelik', 'hamile', 'emzirme', 'zwanger\\w*', 'borstvoeding',
+  'embaraz\\w*', 'gestac\\w*', 'stillen', 'mang\\s+bau', 'co\\s+bau', 'knocked\\s+up', 'eating\\s+for\\s+two',
+  'baby\\s+bump', 'with\\s+child',
+];
+// Script view, substring.
+const HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT = [
+  '임산부', '임신', '임부', '수유', '산후', '출산', '모유', 'беремен', 'кормящ', 'грудн', 'грудью', 'лактац',
+  'ตั้งครรภ์', 'ให้นมบุตร', 'ตั้งท้อง', 'गर्भवती', 'गर्भावस्था', 'स्तनपान', 'حامل', 'الحمل', 'رضاعة', 'مرضع',
+  'マタニティ', '喂奶', '餵奶', '母乳',
+  '妊婦', '妊活', '産後', '産婦', '妊娠', '授乳', '孕', '哺乳', '坐月子', '月子', '产后', '產後', '宝妈', '寶媽',
+  '🤰', '🤱', '🫃', '🫄',
+];
+// Compact view, substring. Only long, distinctive stems: these match across separators.
+const HARD_PREGNANCY_LACTATION_FERTILITY_COMPACT = [
+  'pregnan', 'preggo', 'preggers', 'momtobe', 'mumtobe', 'mamatobe', 'breastfe', 'lactating', 'lactation', 'postpartum',
+  'trimester', 'maternity', 'tryingtoconceive', 'embaraz', 'schwanger', 'zwanger', 'gravidanza', 'amamenta',
+];
+// Typos of these words are caught by the edit-distance check.
+const HARD_PREGNANCY_LACTATION_FERTILITY_FUZZY = [
+  'pregnant', 'pregnancy', 'breastfeeding', 'breastfeed', 'postpartum', 'lactating', 'lactation', 'trimester',
+];
+
+// Children under 12.
+const HARD_CHILD_UNDER_12_LATIN = [
+  'kids?', 'kiddos?', 'child', 'children', 'childrens', 'infants?', 'toddlers?', 'newborns?', 'bab(?:y|ies)',
+  'ninos', 'ninas', 'bebe', 'bebes', 'enfants?', 'kinder', 'crianca', 'criancas', 'elementary\\s+school',
+  'primary\\s+school', 'grade\\s?school(?:ers?)?', 'preschool(?:ers?)?', 'kindergarten',
+];
+const HARD_CHILD_UNDER_12_SCRIPT = [
+  '👶', '🍼', '孩子', '小孩', '宝宝', '寶寶', '婴', '嬰', '儿童', '兒童', '幼儿', '幼兒', '赤ちゃん', '子供', '子ども', 'こども', '幼児',
+  '아기', '어린이', '유아', 'ребен', 'ребён', 'детск', 'дети',
+];
+
+// Isotretinoin, or being on a prescription retinoid: layering / contraindication context, never an ask.
+const HARD_ISOTRETINOIN_LAYERING_LATIN = [
+  'accutane', 'roaccutane', 'isotretinoin\\w*',
+  '(?:on|use|uses|using|taking|prescribed|started|starting)\\s+(?:a\\s+|my\\s+)?(?:tretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|prescription\\s+retinoids?)',
+];
+const HARD_ISOTRETINOIN_LAYERING_COMPACT = ['accutane', 'isotretinoin'];
+const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
+
+// The user saying no to retinoids. These count only when the same text also names a retinoid.
+// The phrases may sit anywhere in that text, not only directly before the name.
+const HARD_DISTANT_NEGATION_LATIN = [
+  'don\\s?t\\s+want', 'do\\s+not\\s+want', 'dont\\s+want', 'don\\s?t\\s+use', 'do\\s+not\\s+use', 'can\\s?t\\s+use', 'cant\\s+use',
+  'cannot\\s+use', 'can\\s+not\\s+use', 'can\\s?t\\s+tolerate', 'cannot\\s+tolerate', 'can\\s?t\\s+handle', 'anything\\s+but',
+  'never', 'stop\\s+using', 'stopped', 'quit', 'quitting', 'no\\s+more', 'no\\s+thanks', 'not\\s+for\\s+me', 'hate[sd]?',
+  'i\\s+react\\s+to', 'react\\s+badly', 'reacts?\\s+to', 'reaction\\s+to', 'gives?\\s+me\\s+(?:a\\s+)?rash', 'rash',
+  'broke\\s+me\\s+out', 'breaks?\\s+me\\s+out', 'allerg\\w*', 'sans', 'avoid\\w*', 'without', 'non', 'not', 'no', 'zero',
+  'free', 'alternatives?', 'substitutes?', 'instead\\s+of', 'other\\s+than', 'except', 'excluding', '0\\s?%',
+  'aren\\s?t', 'isn\\s?t', 'doesn\\s?t', 'won\\s?t', 'shouldn\\s?t', 'can\\s?t', 'cannot', 'nope', 'nah', 'skip\\w*',
+  'ditch\\w*', 'w\\s?o', 'minus',
+];
+// Same, script view, substring.
+const HARD_DISTANT_NEGATION_SCRIPT = [
+  '不要', '不含', '无', '無', '不用', '避免', '避开', '避開', '过敏', '過敏', '不能用', '替代', '平替',
+  'フリー', '不使用', 'なし', '無し', '使えない', '안 쓰', '없는', '프리', 'без',
+];
+
+// ---------------------------------------------------------------------------------------------
+// SOFT tier lists.
+
+const SOFT_TEEN_LATIN = [
+  'teens?', 'teenage', 'teenagers?', 'tweens?', 'adolescents?', 'adolescentes?', 'minors?', 'juniors?', 'students?',
+  'puberty', 'high\\s?school(?:ers?)?', 'middle\\s+school(?:ers?)?',
+];
+const SOFT_TEEN_SCRIPT = ['青少年', '学生', '學生', '中学生', '高中生', '青春期', '高校生', '10代', '청소년', '학생', 'подрост'];
+
+const SOFT_SKIN_CONDITION_LATIN = [
+  'redness', 'very\\s+dry', 'extremely\\s+dry', 'thin\\s+skin', 'psoriasis', 'sunburn\\w*', 'post\\s?procedure',
+  'post\\s?laser', 'post\\s?peel', 'broken\\s+skin', 'inflamed', 'inflammation', 'itch\\w*', 'flak\\w*', 'atopic',
+  'stinging', 'peeling', 'dermatitis', 'eczema', 'rosacea', 'reactive', 'allerg\\w*', 'intoleran\\w*', 'irritated',
+];
+const SOFT_SKIN_CONDITION_SCRIPT = ['过敏', '過敏', '泛红', '泛紅', '皮炎', '湿疹', '濕疹', '玫瑰痤疮', '玫瑰痤瘡', '酒糟', '脱皮', '脫皮', '刺痛', '아토피', '홍조'];
+
+const SOFT_SENSITIVITY_LATIN = ['sensitive', 'sensiti[sz]ed', 'sensitivity'];
+const SOFT_SENSITIVITY_SCRIPT = ['敏感', '민감'];
+
+// ---------------------------------------------------------------------------------------------
+// Normalisation.
+
+const TAG_CHAR_RE = /[\u{E0000}-\u{E007F}]/gu;
+const ZERO_WIDTH_RE = /[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u206A-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]/g;
+const CONFUSABLES = {
+  'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c', 'т': 't',
+  'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ԛ': 'q', 'ԝ': 'w', 'ɡ': 'g',
+  'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't', 'υ': 'u', 'χ': 'x',
+  'ı': 'i', 'ł': 'l', 'ø': 'o', 'đ': 'd', 'ß': 'ss', 'æ': 'ae', 'œ': 'oe',
+  // small capitals, which NFKC leaves alone
+  'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ꜰ': 'f', 'ɢ': 'g', 'ʜ': 'h', 'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k',
+  'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 'ʀ': 'r', 'ꜱ': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w',
+  'ʏ': 'y', 'ᴢ': 'z',
+};
+const CONFUSABLE_RE = new RegExp(`[${Object.keys(CONFUSABLES).join('')}]`, 'g');
+
+function scriptView(text) {
+  return String(text == null ? '' : text)
+    .normalize('NFKC')
+    .replace(ZERO_WIDTH_RE, '')
+    .replace(TAG_CHAR_RE, '')
+    .toLowerCase();
+}
+
+function latinView(script) {
+  return script
+    .replace(CONFUSABLE_RE, (ch) => CONFUSABLES[ch] || ch)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036F]/g, '')
+    .replace(/[’'`´]/g, '')
+    .replace(/[^a-z0-9%]+/g, ' ')
+    .trim();
+}
+
+// Digits used as letters ("pr3gn4nt"). Only the compact view and the typo check read this;
+// ages are read from the latin view, where digits stay digits.
+const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't' };
+function deLeet(latin) {
+  return latin.replace(/[a-z0-9]+/g, (token) => (/[a-z]/.test(token) ? token.replace(/[013457]/g, (d) => LEET[d]) : token));
+}
+
+function compactView(latin) {
+  return deLeet(latin).replace(/[^a-z]+/g, '');
+}
+
+// Tokens, with runs of single letters joined ("p r e g n a n t" -> "pregnant").
+function latinTokens(latin) {
+  const raw = latin.split(' ').filter(Boolean);
+  const out = [];
+  let run = '';
+  for (const token of raw) {
+    if (/^[a-z]$/.test(token)) {
+      run += token;
+      continue;
+    }
+    if (run) {
+      out.push(run);
+      run = '';
+    }
+    out.push(token);
+  }
+  if (run) out.push(run);
+  return out;
+}
+
+function wordRegex(list) {
+  return new RegExp(`(?:^|\\s)(?:${list.join('|')})(?=\\s|$)`);
+}
+
+// Damerau-Levenshtein distance, stopped early once it exceeds 1.
+function withinOneEdit(a, b) {
+  if (a === b) return true;
+  const la = a.length;
+  const lb = b.length;
+  let i = 0;
+  while (i < la && i < lb && a[i] === b[i]) i += 1;
+  // One string is a prefix of the other: within one edit only if it is one letter longer.
+  if (i === la || i === lb) return Math.abs(la - lb) === 1;
+  // substitution
+  if (la === lb && a.slice(i + 1) === b.slice(i + 1)) return true;
+  // transposition
+  if (la === lb && a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2)) return true;
+  // insertion / deletion
+  if (la + 1 === lb && a.slice(i) === b.slice(i + 1)) return true;
+  if (la === lb + 1 && a.slice(i + 1) === b.slice(i)) return true;
+  return false;
+}
+
+function fuzzyHit(tokens, targets) {
+  for (const token of tokens) {
+    if (token.length < 6 || token.length > 24) continue;
+    for (const target of targets) {
+      if (token[0] === target[0] && withinOneEdit(token, target)) return target;
+    }
+  }
+  return null;
+}
+
+const WORD_NUMBERS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+};
+const AGE_NUMBER = `(\\d{1,3}|${Object.keys(WORD_NUMBERS).join('|')})`;
+const AGE_PATTERNS = [
+  new RegExp(`(?:^|\\s)${AGE_NUMBER}\\s?(?:yo|y\\s?o|yr\\s?old|yrs?\\s+old|years?\\s+old|year\\s?olds?)(?=\\s|$)`, 'g'),
+  new RegExp(`(?:^|\\s)aged?\\s+${AGE_NUMBER}(?=\\s|$)`, 'g'),
+  new RegExp(`(?:^|\\s)(?:son|daughter|kid|child|boy|girl|niece|nephew)\\s+(?:is|who\\s+is|turning|turned)\\s+${AGE_NUMBER}(?=\\s|$)`, 'g'),
+];
+const INFANT_AGE_PATTERN = /(?:^|\s)\d{1,2}\s?(?:months?|mos?|weeks?|wks?)\s+old(?=\s|$)/;
+const SCRIPT_AGE_PATTERN = /(\d{1,3})\s?(?:岁|歲|歳|살|세)/g;
+
+function ageNumber(value) {
+  const n = Object.prototype.hasOwnProperty.call(WORD_NUMBERS, value) ? WORD_NUMBERS[value] : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function agesIn(latin, script) {
+  const ages = [];
+  for (const re of AGE_PATTERNS) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(latin))) {
+      const n = ageNumber(m[1]);
+      if (n != null) ages.push(n);
+    }
+  }
+  SCRIPT_AGE_PATTERN.lastIndex = 0;
+  let m;
+  while ((m = SCRIPT_AGE_PATTERN.exec(script))) ages.push(Number(m[1]));
+  if (INFANT_AGE_PATTERN.test(latin)) ages.push(0);
+  return ages;
+}
+
+const RE = {
+  pregnancyLatin: wordRegex(HARD_PREGNANCY_LACTATION_FERTILITY_LATIN),
+  childLatin: wordRegex(HARD_CHILD_UNDER_12_LATIN),
+  isotretinoinLatin: wordRegex(HARD_ISOTRETINOIN_LAYERING_LATIN),
+  negationLatin: wordRegex(HARD_DISTANT_NEGATION_LATIN),
+  teenLatin: wordRegex(SOFT_TEEN_LATIN),
+  skinConditionLatin: wordRegex(SOFT_SKIN_CONDITION_LATIN),
+  sensitivityLatin: wordRegex(SOFT_SENSITIVITY_LATIN),
+};
+
+const scriptHas = (script, list) => list.find((term) => script.includes(term)) || null;
+
+// The classes a piece of text carries. Every class is reported, whatever the soft-tier flag says;
+// tiering is applied by the callers below.
+function classifyText(text) {
+  const script = scriptView(text);
+  const classes = new Set();
+  if (!script.trim()) return classes;
+  const latin = latinView(script);
+  const padded = ` ${latin} `;
+  const compact = compactView(latin);
+  const tokens = latinTokens(deLeet(latin));
+  const joined = ` ${tokens.join(' ')} `;
+
+  if (
+    RE.pregnancyLatin.test(joined) ||
+    scriptHas(script, HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT) ||
+    HARD_PREGNANCY_LACTATION_FERTILITY_COMPACT.some((stem) => compact.includes(stem)) ||
+    fuzzyHit(tokens, HARD_PREGNANCY_LACTATION_FERTILITY_FUZZY)
+  ) {
+    classes.add('pregnancy_lactation_fertility');
+  }
+  if (
+    RE.isotretinoinLatin.test(padded) ||
+    HARD_ISOTRETINOIN_LAYERING_COMPACT.some((stem) => compact.includes(stem)) ||
+    fuzzyHit(tokens, HARD_ISOTRETINOIN_LAYERING_FUZZY)
+  ) {
+    classes.add('isotretinoin_layering');
+  }
+  const ages = agesIn(padded, script);
+  if (RE.childLatin.test(padded) || scriptHas(script, HARD_CHILD_UNDER_12_SCRIPT) || ages.some((n) => n <= 11)) {
+    classes.add('child_under_12');
+  }
+  const namesRetinoid = RETINOID_NAME_LATIN.test(padded) || RETINOID_NAME_SCRIPT.test(script);
+  if (namesRetinoid && (RE.negationLatin.test(padded) || scriptHas(script, HARD_DISTANT_NEGATION_SCRIPT))) {
+    classes.add('retinoid_negation');
+  }
+  if (RE.teenLatin.test(padded) || scriptHas(script, SOFT_TEEN_SCRIPT) || ages.some((n) => n >= 12 && n <= 17)) {
+    classes.add('teen_12_17');
+  }
+  if (RE.skinConditionLatin.test(padded) || scriptHas(script, SOFT_SKIN_CONDITION_SCRIPT)) classes.add('skin_condition');
+  if (RE.sensitivityLatin.test(padded) || scriptHas(script, SOFT_SENSITIVITY_SCRIPT)) classes.add('sensitivity');
+  return classes;
+}
+
+const HARD_CLASSES = new Set(['pregnancy_lactation_fertility', 'child_under_12', 'isotretinoin_layering', 'retinoid_negation']);
+const SOFT_CLASSES = new Set(['teen_12_17', 'skin_condition', 'sensitivity']);
+
+const CLASSIFY_CACHE = new Map();
+const CLASSIFY_CACHE_MAX = 2000;
+function classifyTextCached(text) {
+  const key = String(text == null ? '' : text);
+  const hit = CLASSIFY_CACHE.get(key);
+  if (hit) return hit;
+  const classes = classifyText(key);
+  if (CLASSIFY_CACHE.size >= CLASSIFY_CACHE_MAX) CLASSIFY_CACHE.delete(CLASSIFY_CACHE.keys().next().value);
+  CLASSIFY_CACHE.set(key, classes);
+  return classes;
+}
+
+function tierFilter(classes, { softTier = softTierEnabled() } = {}) {
+  return Array.from(classes).filter((c) => HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c))).sort();
+}
+
+// The gating classes of one text (a query or one message). [] means no reason to gate.
+function retinoidSafetyClassesForText(text, options = {}) {
+  return tierFilter(classifyTextCached(text), options);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Request context: earlier turns, profiles, constraints and safety flags.
+
+const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+
+const NEUTRAL_VALUE_RE =
+  /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|not[\s_-].*|non[\s_-].*|never)$/;
+
+function valueIsAffirmative(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0;
+  if (Array.isArray(value)) return value.some(valueIsAffirmative);
+  if (isObj(value)) return Object.values(value).some(valueIsAffirmative);
+  return !NEUTRAL_VALUE_RE.test(String(value).trim().toLowerCase());
+}
+
+const PROFILE_STATUS_KEY_RE = /pregnan|breast|lactat|nursing|ttc|fertility|conceiv|postpartum|trimester|expecting|maternity/i;
+const PROFILE_AGE_KEY_RE = /^(?:age|age_years|ageyears|user_age|years_old|age_range|age_group|age_bracket|agerange|agegroup)$/i;
+const AVOID_KEY_RE = /avoid|allerg|exclu|contraindicat|sensitiv\w*_ingredients|intoleran|blacklist|block/i;
+
+function collectStrings(value, out, depth = 0) {
+  if (depth > 5 || out.length > 200) return;
+  if (typeof value === 'string') out.push(value);
+  else if (Array.isArray(value)) value.forEach((v) => collectStrings(v, out, depth + 1));
+  else if (isObj(value)) Object.values(value).forEach((v) => collectStrings(v, out, depth + 1));
+}
+
+function ageClass(value) {
+  const nums = String(value).match(/\d{1,3}/g);
+  if (!nums) return null;
+  const upper = Math.max(...nums.map(Number));
+  if (upper <= 11) return 'child_under_12';
+  if (upper <= 17) return 'teen_12_17';
+  return null;
+}
+
+// A profile gates on what it SAYS, never on existing: neutral fields (skin_type=oily, age=30,
+// pregnancy_status=not_pregnant) add nothing.
+function classesForProfile(profile, sink) {
+  if (!isObj(profile)) return;
+  for (const [key, value] of Object.entries(profile)) {
+    if (PROFILE_STATUS_KEY_RE.test(key)) {
+      if (valueIsAffirmative(value)) sink.add('pregnancy_lactation_fertility');
+      continue;
+    }
+    if (PROFILE_AGE_KEY_RE.test(key)) {
+      const c = ageClass(value);
+      if (c) sink.add(c);
+      continue;
+    }
+    if (AVOID_KEY_RE.test(key)) {
+      classesForAvoidList(value, sink);
+      continue;
+    }
+    if (isObj(value)) {
+      classesForProfile(value, sink);
+      continue;
+    }
+    const strings = [];
+    collectStrings(value, strings);
+    for (const s of strings) classifyTextCached(s).forEach((c) => sink.add(c));
+  }
+}
+
+function classesForAvoidList(value, sink) {
+  const strings = [];
+  collectStrings(value, strings);
+  for (const s of strings) {
+    const script = scriptView(s);
+    if (RETINOID_NAME_LATIN.test(` ${latinView(script)} `) || RETINOID_NAME_SCRIPT.test(script)) {
+      sink.add('retinoid_negation');
+    }
+    classifyTextCached(s).forEach((c) => sink.add(c));
+  }
+}
+
+function classesForConstraints(constraints, sink) {
+  if (constraints == null) return;
+  if (isObj(constraints)) {
+    for (const [key, value] of Object.entries(constraints)) {
+      if (AVOID_KEY_RE.test(key)) classesForAvoidList(value, sink);
+      else if (PROFILE_STATUS_KEY_RE.test(key)) {
+        if (valueIsAffirmative(value)) sink.add('pregnancy_lactation_fertility');
+      } else classesForConstraints(value, sink);
+    }
+    return;
+  }
+  const strings = [];
+  collectStrings(constraints, strings);
+  for (const s of strings) {
+    classifyTextCached(s).forEach((c) => sink.add(c));
+  }
+}
+
+// Any safety flag that is set is a safety signal. A flag object's false values are not set.
+function classesForSafetyFlags(flags, sink) {
+  if (flags == null || flags === false) return;
+  const named = [];
+  if (typeof flags === 'string') named.push(flags);
+  else if (Array.isArray(flags)) flags.forEach((f) => (typeof f === 'string' ? named.push(f) : isObj(f) && classesForSafetyFlags(f, sink)));
+  else if (isObj(flags)) {
+    for (const [key, value] of Object.entries(flags)) if (valueIsAffirmative(value)) named.push(key);
+  } else if (flags === true) named.push('safety_flag');
+  for (const name of named) {
+    if (NEUTRAL_VALUE_RE.test(String(name).trim().toLowerCase())) continue;
+    const classes = classifyTextCached(String(name).replace(/[_-]+/g, ' '));
+    if (classes.size > 0) classes.forEach((c) => sink.add(c));
+    else sink.add('safety_flag');
+  }
+}
+
+function messageText(message) {
+  if (typeof message === 'string') return message;
+  if (!isObj(message)) return '';
+  const role = String(message.role || '').toLowerCase();
+  if (role === 'system') return '';
+  const content = message.content != null ? message.content : message.text;
+  if (typeof content === 'string') return content;
+  const parts = [];
+  collectStrings(content, parts);
+  return parts.join(' ');
+}
+
+const MESSAGE_KEYS = ['messages', 'conversation', 'history', 'chat_history', 'conversation_messages', 'session_recent_queries', 'recent_queries'];
+const GOAL_KEYS = ['raw_user_goal', 'user_goal'];
+const PROFILE_KEYS = ['user_profile', 'userProfile', 'profile', 'skin_profile', 'skinProfile'];
+const CONSTRAINT_KEYS = ['constraints', 'avoid_ingredients', 'avoidIngredients'];
+const FLAG_KEYS = ['safety_flags', 'safetyFlags'];
+
+function requestContainers(body) {
+  const b = isObj(body) ? body : {};
+  const payload = isObj(b.payload) ? b.payload : {};
+  const out = [b, payload, b.metadata, b.context, b.user, payload.search, payload.context, payload.metadata, payload.user];
+  for (const c of [b.context, payload.context]) {
+    if (isObj(c) && isObj(c.normalized_need)) {
+      out.push(c.normalized_need);
+      if (isObj(c.normalized_need.beauty_request)) out.push(c.normalized_need.beauty_request);
+    }
+  }
+  return out.filter(isObj);
+}
+
+// The gating classes carried by the request OUTSIDE its query text: earlier turns, profiles,
+// constraints and safety flags. Returns { classes, sources }.
+function retinoidSafetyClassesForRequestContext(body, options = {}) {
+  const softTier = options.softTier ?? softTierEnabled();
+  const keep = (c) => c === 'safety_flag' || HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c));
+  const all = new Set();
+  const sources = new Set();
+  const record = (source, collect) => {
+    const local = new Set();
+    collect(local);
+    const kept = Array.from(local).filter(keep);
+    if (kept.length === 0) return;
+    sources.add(source);
+    kept.forEach((c) => all.add(c));
+  };
+  for (const container of requestContainers(body)) {
+    for (const key of MESSAGE_KEYS) {
+      const value = container[key];
+      if (!Array.isArray(value)) continue;
+      record('messages', (sink) => value.forEach((m) => classifyTextCached(messageText(m)).forEach((c) => sink.add(c))));
+    }
+    for (const key of GOAL_KEYS) {
+      if (typeof container[key] !== 'string') continue;
+      record('goal', (sink) => classifyTextCached(container[key]).forEach((c) => sink.add(c)));
+    }
+    for (const key of PROFILE_KEYS) record('profile', (sink) => classesForProfile(container[key], sink));
+    for (const key of CONSTRAINT_KEYS) {
+      if (container[key] == null) continue;
+      record('constraints', (sink) =>
+        key === 'constraints' ? classesForConstraints(container[key], sink) : classesForAvoidList(container[key], sink),
+      );
+    }
+    for (const key of FLAG_KEYS) record('safety_flags', (sink) => classesForSafetyFlags(container[key], sink));
+  }
+  return { classes: Array.from(all).sort(), sources: Array.from(sources).sort() };
+}
+
+module.exports = {
+  SOFT_TIER_ENV,
+  softTierEnabled,
+  HARD_PREGNANCY_LACTATION_FERTILITY_LATIN,
+  HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT,
+  HARD_PREGNANCY_LACTATION_FERTILITY_COMPACT,
+  HARD_PREGNANCY_LACTATION_FERTILITY_FUZZY,
+  HARD_CHILD_UNDER_12_LATIN,
+  HARD_CHILD_UNDER_12_SCRIPT,
+  HARD_ISOTRETINOIN_LAYERING_LATIN,
+  HARD_DISTANT_NEGATION_LATIN,
+  HARD_DISTANT_NEGATION_SCRIPT,
+  SOFT_TEEN_LATIN,
+  SOFT_TEEN_SCRIPT,
+  SOFT_SKIN_CONDITION_LATIN,
+  SOFT_SKIN_CONDITION_SCRIPT,
+  SOFT_SENSITIVITY_LATIN,
+  SOFT_SENSITIVITY_SCRIPT,
+  HARD_CLASSES,
+  SOFT_CLASSES,
+  classifyText,
+  retinoidSafetyClassesForText,
+  retinoidSafetyClassesForRequestContext,
+  _internal: { scriptView, latinView, compactView, latinTokens, withinOneEdit, agesIn },
+};
