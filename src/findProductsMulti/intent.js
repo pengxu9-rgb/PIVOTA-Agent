@@ -1102,13 +1102,15 @@ function maskStrengthNumbers(text) {
     if (own[ib].bound) a.bound = true;
   }
   // One hop, from a number masked on its own to its bare partner.
-  for (const { a, b, type } of links) {
+  for (const { a, b, type, ia } of links) {
     if (type === 'spaced' || type === 'to' || Boolean(a.kind) === Boolean(b.kind)) continue;
     if (type === 'between') {
-      // "between 5 and 10％": the "between" is the range's own marker, not a budget's, and the
-      // "between ... and" gap leaves no room for a marker of the 5's own. Only the first end can
-      // take the mask here: if it is the masked one ("between 5% and 10"), the 10 stays bare.
-      a.spread = true;
+      // "between 5 and 10％" / "between 5% and 10": the "between" is the range's own marker, not a
+      // budget's, and the "between ... and" gap leaves no room for a marker of the first number's
+      // own, so it always takes the mask. The second end keeps a currency or bound of its own
+      // ("between 5% and 10 dollars").
+      if (b.kind) a.spread = true;
+      else if (!own[ia + 1].currency && !own[ia + 1].bound) b.spread = true;
       continue;
     }
     const other = a.kind ? b : a;

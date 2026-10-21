@@ -228,6 +228,9 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   // glued "to" is a range join too, sharing the currency (G13)
   ['toner under usd 30 ml', max('USD', 30)],
   ['$20to40-50ml', { currency: 'USD', min: 20, max: 40 }],
+  // "between 5% and 10": the second end of a between-range keeps a currency or bound of its own
+  ['between 5% and 10 dollars serum', max('USD', 10)],
+  ['between 5% and 10 or less serum', max(null, 10)],
 ];
 
 // Budgets with the flag on (= main). Flag off, main's legacy parser reads the spaced pair as a range
@@ -335,6 +338,10 @@ describe('flag off: nothing spreads across a spaced join, and a bare number next
     ['30ml to 50 toner', 30],
   ])('"%s" keeps its bare number', (q, value) => {
     expect(parseBudgetToPriceConstraint(q)).toEqual(max(null, value));
+  });
+  // a between-range spreads from either end (r4b sweep survivor P06)
+  test('"between 5% and 10 serum" has no budget', () => {
+    expect(parseBudgetToPriceConstraint('between 5% and 10 serum')).toBeNull();
   });
   // a size whose spaced partner stays bare is left whole, as main reads it (G15, R06)
   test('"toner 50ml - 30" reads as main does', () => {
