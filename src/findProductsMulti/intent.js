@@ -1031,7 +1031,8 @@ const RANGE_SEPARATOR_SRC = '(?:-|~|—|–|〜|～|到)';
 const TIGHT_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}${RANGE_SEPARATOR_SRC}$`, 'i');
 // Any range join, spaced or not -- used only to share markers between a range's ends.
 const ANY_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:${RANGE_SEPARATOR_SRC}|to)\\s*$`, 'i');
-const SPACED_TO_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s+to\\s+$`, 'i');
+// "to" joins a range at any spacing ("20 to 40", "$20to40").
+const TO_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*to\\s*$`, 'i');
 const BETWEEN_AND_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:and|&)\\s*$`, 'i');
 const STRENGTH_BETWEEN_BEFORE_RE = /\bbetween\s*$/i;
 // A number is bound-marked when the parser could read it as a budget through a marker word: built
@@ -1078,7 +1079,7 @@ function maskStrengthNumbers(text) {
     const gap = text.slice(a.end, b.start);
     const type = TIGHT_RANGE_GAP_RE.test(gap)
       ? 'tight'
-      : SPACED_TO_GAP_RE.test(gap)
+      : TO_GAP_RE.test(gap)
         ? 'to'
         : ANY_RANGE_GAP_RE.test(gap)
           ? 'spaced'
@@ -1104,8 +1105,10 @@ function maskStrengthNumbers(text) {
   for (const { a, b, type } of links) {
     if (type === 'spaced' || type === 'to' || Boolean(a.kind) === Boolean(b.kind)) continue;
     if (type === 'between') {
-      // "between 5 and 10％": the "between" is the range's own marker, not a budget's.
-      if (b.kind && !a.currency && !a.boundOwn) a.spread = true;
+      // "between 5 and 10％": the "between" is the range's own marker, not a budget's, and the
+      // "between ... and" gap leaves no room for a marker of the 5's own. Only the first end can
+      // take the mask here: if it is the masked one ("between 5% and 10"), the 10 stays bare.
+      a.spread = true;
       continue;
     }
     const other = a.kind ? b : a;

@@ -224,6 +224,10 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   ['预算 150 - 50 g', max(null, 150)],
   // r3 sweep survivors: a currency right before a size number keeps it a price (S05)
   ['toner under $30 ml', max('USD', 30)],
+  // r4 sweep survivors: a currency CODE right before a size number keeps it a price (C02), and a
+  // glued "to" is a range join too, sharing the currency (G13)
+  ['toner under usd 30 ml', max('USD', 30)],
+  ['$20to40-50ml', { currency: 'USD', min: 20, max: 40 }],
 ];
 
 // Budgets with the flag on (= main). Flag off, main's legacy parser reads the spaced pair as a range
@@ -319,6 +323,23 @@ describe('flag off: nothing spreads across a spaced join, and a bare number next
       expect(parseBudgetToPriceConstraint(q)).toEqual(max(null, 30));
     },
   );
+  // r4 sweep survivors, all decided by what the flag-off fallback reads:
+  // a currency glued after a number protects it from a tight strength join (C05)
+  test('"niacinamide 10%-30€" keeps the 30€', () => {
+    expect(parseBudgetToPriceConstraint('niacinamide 10%-30€')).toEqual(max('EUR', 30));
+  });
+  // "and" joins a range only after "between" (G18), and nothing spreads across "to" (P02)
+  test.each([
+    ['serum 20 and 10%', 20],
+    ['10% to 20', 20],
+    ['30ml to 50 toner', 30],
+  ])('"%s" keeps its bare number', (q, value) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(max(null, value));
+  });
+  // a size whose spaced partner stays bare is left whole, as main reads it (G15, R06)
+  test('"toner 50ml - 30" reads as main does', () => {
+    expect(parseBudgetToPriceConstraint('toner 50ml - 30')).toEqual(max(null, 50));
+  });
   // one hop only: in "1-2-3%" the 2 is the 3%'s partner, the 1 is not
   test('"vitamin c 1-2-3%" keeps the legacy 1', () => {
     expect(parseBudgetToPriceConstraint('vitamin c 1-2-3%')).toEqual(max(null, 1));
