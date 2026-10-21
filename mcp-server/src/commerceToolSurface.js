@@ -70,6 +70,7 @@ import {
 } from "./orchestratedPurchaseTool.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
 import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
+import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -517,15 +518,19 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    lane/degradation markers, read from the NATIVE value before dialect shaping can drop them. Feeds the
     //    gateway's tools/call completion line only; it changes nothing about the value returned.
     const observe = typeof options.observe === "function" ? options.observe : null;
+    //    And the price facts of a priced tool's NATIVE answer (the UCP shaper drops price_source / price_as_of /
+    //    live_read), for the gateway's price_verification_served line: null unless PRICE_VERIFICATION_LOG.
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) {
       const fresh = await execute();
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
+      noteToolCall(observe, () => priceVerificationFacts.priceFactsOf(op.id, fresh));
       return shape(fresh);
     }
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
       onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
     });
     noteToolCall(observe, () => describeUpstreamEnvelope(value));
+    noteToolCall(observe, () => priceVerificationFacts.priceFactsOf(op.id, value));
     return shape(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(

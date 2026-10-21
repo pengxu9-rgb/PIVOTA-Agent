@@ -40,6 +40,20 @@ const {
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
+const {
+  priceContextMiddleware,
+  priceContextLogFields,
+  priceContextHeaders,
+  logPriceVerificationServed,
+  searchOverlayLogFields,
+  trackSearchOverlay,
+  trackLiveWork,
+  currentPriceContext,
+  runWithPriceDoor,
+  mcpPriceCapture,
+  logMcpPriceVerificationServed,
+  recordedLiveWork,
+} = require('./observability/priceVerificationLog');
 
 // The caller-declared surface, for the completion log only. Both values are what the request body
 // said, bounded, and absent (not null-padded) when the caller said nothing, so a line from a
@@ -14027,8 +14041,10 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
 }
 
 function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
-  if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return response;
-  if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return response;
+  // trackSearchOverlay: the price_verification_served line's record of this run (log only; it returns its
+  // argument unchanged, and with PRICE_VERIFICATION_LOG off does nothing at all).
+  if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return trackSearchOverlay(response, { skipped: 'flag_off' });
+  if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return trackSearchOverlay(response, { skipped: 'page_gt_1' });
   // The mainline has already applied this constraint to stored prices. Repricing now
   // could return an offer outside the buyer's bound. Use the same resolved intent as
   // recall, including ranges and non-English phrases, instead of a prose regex.
@@ -14036,6 +14052,7 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
     search, intent, queryText: extractSearchQueryText(search),
   });
   if (resolvedBudget && (resolvedBudget.min != null || resolvedBudget.max != null)) {
+    trackSearchOverlay(null, { skipped: 'budget_constraint' });
     return {
       ...response,
       metadata: {
@@ -14044,12 +14061,75 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
       },
     };
   }
-  return overlayLiveMerchantSearchPrices(response, {
+  return trackSearchOverlay(overlayLiveMerchantSearchPrices(response, {
     // The merchant's own UCP catalog first (price and stock, for the buyer's market); UCP_LIVE_SEARCH_READ.
     ucpSearchReader: getUcpLiveSearchReader(),
     // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
     market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
-  });
+  }));
+}
+
+// The invoke handler's price_verification_served line, from the FINAL body of a find_products_multi or
+// get_pdp_v2 answer (src/observability/priceVerificationLog.js; a no-op unless PRICE_VERIFICATION_LOG). A
+// loopback call (an MCP door's search, unscoped get_product, recommend's price checks) writes none: its door
+// writes the line for the answer the agent got, and this hands that door the market the search bound.
+const PRICE_LOG_LANE = /^[A-Za-z0-9_.:-]{1,64}$/;
+function logInvokePriceVerification({ operation, body, statusCode, payload, metadata, marketRecord } = {}) {
+  try {
+    const store = currentPriceContext();
+    if (!store || !body || typeof body !== 'object' || Array.isArray(body)) return;
+    if (!(Number(statusCode) >= 200 && Number(statusCode) < 300)) return;
+    const meta = isPlainObject(body.metadata) ? body.metadata : {};
+    const record = isPlainObject(marketRecord) ? marketRecord : {};
+    const bound = typeof record.market_bound === 'string' ? record.market_bound : null;
+    if (store.via_loopback) {
+      if (operation === 'find_products_multi' && store.parent && bound) store.parent.search_market = bound;
+      return;
+    }
+    if (operation === 'find_products_multi') {
+      const work = recordedLiveWork(store);
+      const lane = [meta.query_source, meta.route_health?.primary_path_used]
+        .find((v) => typeof v === 'string' && PRICE_LOG_LANE.test(v)) || null;
+      const skipped = !work.overlay_calls
+        ? 'lane_not_overlaid'
+        : work.overlay_skipped || meta.live_merchant_price?.skipped_reason || null;
+      logPriceVerificationServed(logger, {
+        surface: 'search',
+        items: Array.isArray(body.products) ? body.products : [],
+        market: bound,
+        added_ms: work.added_ms,
+        skipped_reason: skipped,
+        extra: {
+          ...searchOverlayLogFields(meta.live_merchant_price),
+          lane,
+          ...(typeof record.market_source === 'string' && PRICE_LOG_LANE.test(record.market_source)
+            ? { market_source: record.market_source } : {}),
+        },
+      });
+      return;
+    }
+    if (operation === 'get_pdp_v2') {
+      const found = require('./services/pdpLiveOverlay').canonicalCard(body);
+      const card = found ? found.card : null;
+      const variants = card && Array.isArray(card.variants) ? card.variants : [];
+      logPriceVerificationServed(logger, {
+        surface: 'get_pdp_v2',
+        items: card ? [card] : [],
+        market: offersGateBuyerMarket(payload || {}, metadata || {}),
+        // The PDP overlay serves cached answers; it never waits for a read.
+        added_ms: 0,
+        skipped_reason: card && card.price_source !== 'merchant_live'
+          ? (ucpLivePdpEnforced() && getUcpLivePdpReader() ? 'no_cached_merchant_answer' : 'pdp_overlay_not_enforced')
+          : null,
+        extra: {
+          variants_total: variants.length,
+          variants_live_read: variants.filter((v) => v && v.live_read && v.live_read.status === 'verified').length,
+        },
+      });
+    }
+  } catch (_) {
+    // Measurement must never break the answer it measures.
+  }
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -30876,6 +30956,13 @@ function buildReapAgenticPurchaseClient(log, deps = {}) {
 // in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
 // comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
 // a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
+// A live-read line (`*_ucp_live_read`, pdp_live_read, get_offers events) with the door, caller and request id
+// of the request that triggered it (src/observability/priceVerificationLog.js). PRICE_VERIFICATION_LOG off
+// (default): the line exactly as before.
+function logUcpLiveRead(event, fields) {
+  logger.info({ event, ...fields, ...priceContextLogFields() }, event);
+}
+
 // ONE UCP client and ONE discovery (endpoint memo + in-flight discoveries) for every UCP live read in this
 // process; each reader -- get_offers, get_product, search -- has its OWN lookup pool and lookup memo, so a
 // burst on one cannot starve the others (review round 2 of #2439). Built only when a reader is first needed.
@@ -30912,7 +30999,7 @@ function getUcpLiveSearchReader() {
   _ucpLiveSearchReader = createUcpLiveSearchReader({
     // Search fans out per page: the smallest pool (8).
     ...ucpLiveReaderDeps(8),
-    log: (event, fields) => logger.info({ event, ...fields }, event),
+    log: logUcpLiveRead,
   });
   return _ucpLiveSearchReader;
 }
@@ -30926,7 +31013,7 @@ function getUcpLiveProductReader() {
   if (readMode(process.env, 'UCP_LIVE_PRODUCT_READ') === MODES.OFF) return null;
   _ucpLiveProductReader = createUcpLiveProductReader({
     ...ucpLiveReaderDeps(16),
-    log: (event, fields) => logger.info({ event, ...fields }, event),
+    log: logUcpLiveRead,
   });
   return _ucpLiveProductReader;
 }
@@ -30949,7 +31036,7 @@ function getUcpLivePdpReader() {
     ...ucpLiveReaderDeps(8, { maxPerHost: 3 }),
     mode: MODES.SHADOW,
     event: 'get_pdp_v2_ucp_live_read',
-    log: (event, fields) => logger.info({ event, ...fields }, event),
+    log: logUcpLiveRead,
   });
   return _ucpLivePdpReader;
 }
@@ -31069,7 +31156,7 @@ function pdpLiveRefresh() {
     isCardOfferFor: (listingId) => (card, offer) => offerSellsCardListing(card, offer, listingId),
     // Savings copy computed against a stored price is dropped wherever the live price differs.
     presentationFields: SAVINGS_PRESENTATION_FIELDS,
-    log: (event, fields) => logger.info({ event, ...fields }, event),
+    log: logUcpLiveRead,
     warn: (event, fields) => logger.warn({ event, ...fields }, event),
   });
   return _pdpLiveRefresh;
@@ -31096,7 +31183,7 @@ function getUcpLiveOfferReader() {
   if (readMode() === MODES.OFF) return null;
   _ucpLiveOfferReader = createUcpLiveOfferReader({
     ...ucpLiveReaderDeps(16),
-    log: (event, fields) => logger.info({ event, ...fields }, event),
+    log: logUcpLiveRead,
   });
   return _ucpLiveOfferReader;
 }
@@ -31356,7 +31443,7 @@ function normalizePdpV2ToProductDetail(body) {
 // verifies many items, so these sub-calls are keyed on that ONE tool call by the invoke limiter instead of
 // draining the caller's own per-operation get_pdp_v2 budget.
 function recommendPriceVerifyLoopbackHeaders(invokeContext) {
-  return loopbackCallerHeaders(invokeContext, { fanout: true });
+  return { ...loopbackCallerHeaders(invokeContext, { fanout: true }), ...priceContextHeaders() };
 }
 
 // Base URL for calling THIS service's own invoke pipeline over loopback (multi-merchant discovery reads).
@@ -31630,6 +31717,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // src/guardrails/loopbackCallerAssertion.js). It names a rate-limit bucket only: the response, and so
       // the shared search cache, cannot depend on it.
       ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackCallerHeaders(invokeContext) : {}),
+      // The door, caller and request id this call is made for, so the loopback invoke's price lines name
+      // them (src/observability/priceVerificationLog.js). Log labels only; {} unless PRICE_VERIFICATION_LOG.
+      ...(url.startsWith(`${selfInvokeBase()}/`) ? priceContextHeaders() : {}),
       ...headers,
     },
     data: requestBody,
@@ -32392,7 +32482,8 @@ async function getCommerceRemoteMcpAdapter() {
         // services/ucpLiveOfferRead). UCP_LIVE_PRODUCT_READ=off (default) | shadow | enforce.
         live_product_read: (result, ctx) => {
           const reader = getUcpLiveProductReader();
-          return reader ? reader.readProduct(result, ctx) : null;
+          // trackLiveWork: the answer's added_ms on its price line (log only; off, the same promise).
+          return reader ? trackLiveWork(reader.readProduct(result, ctx)) : null;
         },
         get_alternatives: makeGetAlternatives({
           listApprovedRelationshipEdgesForAnchor,
@@ -32452,7 +32543,7 @@ async function getCommerceRemoteMcpAdapter() {
           // services/ucpLiveOfferRead). UCP_LIVE_OFFER_READ=off (default) | shadow | enforce.
           readOffersLive: (offers, ctx) => {
             const reader = getUcpLiveOfferReader();
-            return reader ? reader.readOffers(offers, ctx) : null;
+            return reader ? trackLiveWork(reader.readOffers(offers, ctx)) : null;
           },
           // Freshness-gated seed offers (pivota-backend #2629) only while the live offer read ENFORCES.
           liveVerificationOptIn: () => {
@@ -32465,7 +32556,7 @@ async function getCommerceRemoteMcpAdapter() {
           // OFFER_LIVE_VERIFICATION_SECRET (>= 32 bytes).
           liveCartMode: () => require('./services/offerLiveVerification').liveCartMode(),
           liveVerificationSecret: () => require('./services/offerLiveVerification').readOfferLiveVerificationSecret(),
-          log: (event, fields) => logger.info({ event, ...fields }, event),
+          log: logUcpLiveRead,
           fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
@@ -32555,7 +32646,7 @@ async function getCommerceRemoteMcpAdapter() {
             ? async ({ product_id: productId }) => {
               const pid = String(productId || '').trim();
               if (!pid) return null;
-              const response = await axios.post(
+              const response = await trackLiveWork(axios.post(
                 `${selfInvokeBase()}/agent/shop/v1/invoke`,
                 { operation: 'get_pdp_v2', payload: { product_ref: { product_id: pid }, include: ['product_overview'] } },
                 {
@@ -32578,7 +32669,7 @@ async function getCommerceRemoteMcpAdapter() {
                   },
                   validateStatus: () => true,
                 },
-              );
+              ));
               // A DEFINITIVE not-found — HTTP 404 carrying the PRODUCT_NOT_FOUND envelope — means the
               // id this item would advertise is dead on the very lane get_product serves, and the
               // bridge drops the item rather than handing an agent an id that 404s one call later
@@ -32950,8 +33041,28 @@ function rememberMcpToolNames(surface) {
 }
 
 // The adapter request for one JSON-RPC call, with the recorder's sink attached only when there is one.
+// With PRICE_VERIFICATION_LOG on, the same sink also hands the surface's price facts to this door's price
+// line (src/observability/priceVerificationLog.js); the recorder ignores that field.
 function withMcpToolCallObserver(adapterReq, recorder) {
-  return recorder ? { ...adapterReq, observe: recorder.observe } : adapterReq;
+  if (!recorder) return adapterReq;
+  const priceCapture = mcpPriceCapture();
+  const observe = priceCapture
+    ? (fields) => {
+        priceCapture.note(fields);
+        recorder.observe(fields);
+      }
+    : recorder.observe;
+  return { ...adapterReq, observe };
+}
+
+// The tool call's price_verification_served line (a no-op unless PRICE_VERIFICATION_LOG). The market a caller
+// declared, when the answer does not name the one it was served for: native `market`, UCP context country.
+function logMcpToolCallPriceVerification(req, out) {
+  const args = req?.body?.params?.arguments;
+  const declared = args && typeof args === 'object'
+    ? firstNonEmptyString(args.market, args.context?.address_country, args.context?.country)
+    : null;
+  logMcpPriceVerificationServed(logger, out, { market: declared || undefined });
 }
 
 // THE RULE, keyed on the CANONICAL operation id — never on one dialect's spelling of it.
@@ -33073,7 +33184,8 @@ async function handlePublicReadMcp(req, res) {
   // Explicit anonymous attribution context (same store the commerce door runs under) so downstream invoke
   // reads see a labeled public-tier caller instead of an absent store.
   try {
-    return await runPublicReadMcpDispatch(req, res, toolCallRecorder);
+    // The price context for this door (PRICE_VERIFICATION_LOG; off: the dispatch exactly as called).
+    return await runWithPriceDoor(req, 'public_mcp', () => runPublicReadMcpDispatch(req, res, toolCallRecorder));
   } finally {
     admission.release();
   }
@@ -33099,6 +33211,7 @@ function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
           withMcpToolCallObserver({ headers: req.headers || {}, body: req.body }, toolCallRecorder),
         );
         toolCallRecorder?.recordRpcResponse(out);
+        logMcpToolCallPriceVerification(req, out);
         // finish() returns true when the heartbeat already committed the wire (slow path) and wrote the
         // body itself — every adapter path still running past the heartbeat delay is a tools/call, which
         // always resolves status 200, so committing early never masks a real non-200.
@@ -33146,13 +33259,13 @@ function registerCommerceRemoteMcpRoute() {
     if (!isAgentCheckoutStrictEnabled()) {
       return res.status(404).json({ error: 'not_found' });
     }
-    return serveCommerceMcpJsonRpc(req, res, {
+    return runWithPriceDoor(req, 'mcp', () => serveCommerceMcpJsonRpc(req, res, {
       handlerEnteredAtMs,
       getAdapter: getCommerceRemoteMcpAdapter,
       resolveBlockedOperation: async (rpcBody) => resolveBlockedCommerceMcpOperation(rpcBody),
       failureLabel: 'Strict checkout remote MCP route failed',
       door: 'mcp',
-    });
+    }));
   });
 }
 
@@ -33275,6 +33388,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
               sessionContext,
             }, toolCallRecorder));
             toolCallRecorder?.recordRpcResponse(out);
+            logMcpToolCallPriceVerification(req, out);
             if (heartbeat.finish(out)) {
               toolCallRecorder?.observe({ heartbeat_committed: true });
               return undefined;
@@ -33339,13 +33453,13 @@ function registerCommerceUcpMcpRoute() {
     if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpToolDoorEnabled()) {
       return res.status(404).json({ error: 'not_found' });
     }
-    return serveCommerceMcpJsonRpc(req, res, {
+    return runWithPriceDoor(req, 'ucp_mcp', () => serveCommerceMcpJsonRpc(req, res, {
       handlerEnteredAtMs,
       getAdapter: getCommerceUcpMcpAdapter,
       resolveBlockedOperation: resolveBlockedUcpMcpOperation,
       failureLabel: 'UCP dialect commerce MCP route failed',
       door: 'ucp_mcp',
-    });
+    }));
   });
 }
 
@@ -38186,7 +38300,7 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
   });
 }
 
-app.get('/agent/v1/products/search', handleAgentProductsSearchViaInvoke);
+app.get('/agent/v1/products/search', priceContextMiddleware('rest'), handleAgentProductsSearchViaInvoke);
 app.get('/agent/v1/beauty/products/search', (req, res) => {
   const mergedQuery =
     req.query && typeof req.query === 'object' && !Array.isArray(req.query)
@@ -41848,6 +41962,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     } catch (telemetryErr) {
       marketTelemetryRecord = { market_telemetry_error: String(telemetryErr?.message || telemetryErr).slice(0, 120) };
     }
+    logInvokePriceVerification({
+      operation: String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase(),
+      body,
+      statusCode: res.statusCode,
+      payload: req?.body?.payload,
+      metadata: req?.body?.metadata,
+      marketRecord: marketTelemetryRecord,
+    });
     return emit(body);
   })(res.json.bind(res));
   res.json = (body) => {
@@ -53069,7 +53191,9 @@ function authenticateExternalInvokeRoute(req, res, next) {
 }
 
 function registerExternalInvokeRoute(path, clientChannel) {
-  app.post(path, authenticateExternalInvokeRoute, async (req, res) => {
+  // priceContextMiddleware: the price context of this request (door `invoke`, or the MCP door a loopback call
+  // carries); off, next() exactly.
+  app.post(path, priceContextMiddleware('invoke'), authenticateExternalInvokeRoute, async (req, res) => {
     return INVOKE_AUTH_CONTEXT.run(
       {
         api_key: req?.invokeAuth?.raw_token || null,
@@ -53557,6 +53681,7 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   maybeOverlayLiveSearchPrice,
+  logInvokePriceVerification,
   shadowPdpLiveRead,
   livePdpOverlay,
   pdpLiveRefresh,

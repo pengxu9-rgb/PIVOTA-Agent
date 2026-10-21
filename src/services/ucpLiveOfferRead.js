@@ -39,6 +39,7 @@ const { currencyExponent, majorUnitsOf, isRestatedProductId } = require('./merch
 const { unwrapToolPayload } = require('./ucpBuyerAgentClient');
 
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
+const { priceVerificationLogEnabled } = require('../observability/priceVerificationFacts');
 
 const MODES = Object.freeze({ OFF: 'off', SHADOW: 'shadow', ENFORCE: 'enforce' });
 const STATUS = Object.freeze({
@@ -51,6 +52,19 @@ const STATUS = Object.freeze({
   SKIPPED: 'skipped',
 });
 const MAX_IDS_PER_LOOKUP = 10;
+
+// LOG-ONLY: the HTTP status a failed discovery or lookup answered (a 429 is not just `lookup_failed`), kept
+// BESIDE the read and never in it, so nothing that builds an answer (or the PDP cache's record) can see it.
+// Logged as `http_status` under PRICE_VERIFICATION_LOG only.
+const readHttpStatus = new WeakMap();
+function withHttpStatus(read, e) {
+  const s = e && Number(e.status);
+  if (Number.isInteger(s) && s >= 100 && s <= 599) readHttpStatus.set(read, s);
+  return read;
+}
+function httpStatusLogField(read) {
+  return read && readHttpStatus.has(read) && priceVerificationLogEnabled() ? { http_status: readHttpStatus.get(read) } : {};
+}
 
 function readMode(env = process.env, key = 'UCP_LIVE_OFFER_READ') {
   const v = String(env[key] || '').trim().toLowerCase();
@@ -575,7 +589,7 @@ function createUcpLiveOfferReader(deps = {}) {
       if (own.amount === null || own.available === null || !own.currency) return { status: STATUS.ERROR, host, reason: 'unreadable_variant' };
       return { status: STATUS.VERIFIED, host, variantId: ids[0], live: own, liveVariants };
     } catch (e) {
-      return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, reason: str(e && e.message).slice(0, 80) };
+      return withHttpStatus({ status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, reason: str(e && e.message).slice(0, 80) }, e);
     }
   }
 
@@ -697,7 +711,7 @@ function createUcpLiveOfferReader(deps = {}) {
     });
     log('get_offers_ucp_live_read', {
       ...stats,
-      hosts: reads.map((r, i) => ({ host: r.host || hostOf(targets[i]), status: r.status, ...(r.reason ? { reason: r.reason } : {}) })),
+      hosts: reads.map((r, i) => ({ host: r.host || hostOf(targets[i]), status: r.status, ...(r.reason ? { reason: r.reason } : {}), ...httpStatusLogField(r) })),
     });
     return { reads, stats };
   }
@@ -896,7 +910,7 @@ function createUcpLiveProductReader(deps = {}) {
       return { status: STATUS.VERIFIED, host, country, currency, basis, live, notFound, askedIds: ids };
     } catch (e) {
       if (e && e.code === 'host_busy') return { status: STATUS.SKIPPED, reason: 'host_busy', host, country, currency, basis };
-      return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, basis, reason: str(e && e.message).slice(0, 80) };
+      return withHttpStatus({ status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, basis, reason: str(e && e.message).slice(0, 80) }, e);
     }
   }
 
@@ -1016,6 +1030,7 @@ function createUcpLiveProductReader(deps = {}) {
       status: read.status,
       reason: read.reason || null,
       market_basis: read.basis || null,
+      ...httpStatusLogField(read),
     };
     if (read.status === STATUS.VERIFIED || read.status === STATUS.VARIANT_GONE) {
       const preview = applyProductRead(product, read);
