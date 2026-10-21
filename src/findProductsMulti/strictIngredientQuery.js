@@ -211,8 +211,8 @@ const NON_LATIN_INGREDIENT_NAMES = Object.freeze({
 //   - Per name, the compounds that put another word before or after it.
 // A retinyl ester is not retinol for strict matching (it is a different, weaker retinoid; the
 // contract's retinoid safety rules are separate and unchanged).
-const HAN_NAME_RE = /[㐀-鿿]$/;
-const HAN_ESTER_OR_ETHER_AFTER_RE = /^[㐀-鿿]{0,4}[酯醚]/;
+const HAN_NAME_RE = /[\u3400-\u9fff]$/;
+const HAN_ESTER_OR_ETHER_AFTER_RE = /^[\u3400-\u9fff]{0,4}[酯醚]/;
 const CJK_COMPOUND_RULES = Object.freeze({
   甘油: {
     before: /(?:基|聚|硝酸)$/,
@@ -255,7 +255,6 @@ const RUSSIAN_INGREDIENT_FORMS = Object.freeze({
   glycerin: [`глицерин${RU_NOUN}`],
   bakuchiol: [`бакучиол${RU_NOUN}`],
 });
-const CJK_SCRIPT_RE = /[぀-ヿ㐀-鿿가-힯]/;
 const CJK_NEGATION_BEFORE_RE = /(?:不含|无添加|無添加|无|無|没有|沒有|避开|避開|不要|不加)\s*$/;
 // Korean 프리 ("free") wherever it is glued -- 레티놀프리, 레티놀 프리, 레티놀프리크림 -- except as the
 // start of 프리미엄 ("premium").
