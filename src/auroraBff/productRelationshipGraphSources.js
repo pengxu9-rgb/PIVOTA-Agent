@@ -11,6 +11,7 @@ const { coverageCatalogJoinSql, prioritizeUncoveredProducts, productAnchorRefs, 
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 const { withoutRelationshipPairContext } = require('./relationshipCandidatePairContext');
 const { foldTokenText } = require('./relationshipTokenText');
+const { filterProductsByCatalogServingGate } = require('./relationshipCatalogServingGate');
 
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
@@ -3179,7 +3180,7 @@ async function loadProductRelationshipGraphSourceInputs({
   const coverageSuppressedIds = prioritizeUncovered
     ? await loadCoverageSuppressedIds({ queryFn, market }) : undefined;
   const sourceLimit = normalizeLimit(limit);
-  const approvedLiveExternalSeedAnchors = includeApprovedLiveExternalSeedAnchors
+  const approvedLiveExternalSeedAnchorsLoaded = includeApprovedLiveExternalSeedAnchors
     ? await loadApprovedLiveExternalSeedAnchors({
       queryFn,
       limit: approvedLiveExternalSeedAnchorLimit,
@@ -3187,16 +3188,17 @@ async function loadProductRelationshipGraphSourceInputs({
       missingCandidateLabelsOnly,
     })
     : [];
-  const productsCache = await loadProductsCacheCandidates({ queryFn, limit: sourceLimit * 4 });
-  const externalSeeds = await loadExternalProductSeedCandidates({ queryFn, limit: sourceLimit * 3, market });
+  const productsCacheLoaded = await loadProductsCacheCandidates({ queryFn, limit: sourceLimit * 4 });
+  const externalSeedsLoaded = await loadExternalProductSeedCandidates({ queryFn, limit: sourceLimit * 3, market });
   const ingredientRows = await loadIngredientKbCandidates({ queryFn, limit: sourceLimit * 2 });
-  const intelRows = await loadProductIntelKbRows({ queryFn, limit: sourceLimit * 2 });
+  const intelRowsLoaded = await loadProductIntelKbRows({ queryFn, limit: sourceLimit * 2 });
   const legacyDupes = await loadLegacyDupeKbRows({ queryFn, limit: sourceLimit * 2 });
-  const vectorRows = await loadProductsCacheVectorRecallCandidates({ queryFn, queryVector, limit: sourceLimit });
-  const affectedProducts = await loadAffectedProductAnchorCandidates({
+  const vectorRowsLoaded = await loadProductsCacheVectorRecallCandidates({ queryFn, queryVector, limit: sourceLimit });
+  const affectedProductsLoaded = await loadAffectedProductAnchorCandidates({
     queryFn,
     refs: prioritizeUncovered && !affectedRefs.length
-      ? [...productsCache, ...externalSeeds, ...ingredientRows, ...vectorRows, ...intelRows, ...approvedLiveExternalSeedAnchors].flatMap(productAnchorRefs)
+      ? [...productsCacheLoaded, ...externalSeedsLoaded, ...ingredientRows, ...vectorRowsLoaded, ...intelRowsLoaded,
+        ...approvedLiveExternalSeedAnchorsLoaded].flatMap(productAnchorRefs)
       : affectedRefs,
     prioritizeUncovered,
     uncoveredCooldownDays,
@@ -3205,6 +3207,19 @@ async function loadProductRelationshipGraphSourceInputs({
     market,
     limit: Math.max(sourceLimit, Array.isArray(affectedRefs) ? affectedRefs.length * 3 : sourceLimit),
   });
+  // Every product lane obeys the catalog serving gate, as anchor and as candidate: a donation, a
+  // voucher or a suppressed / not-live / IPS-ineligible listing never enters the pool, so neither
+  // the baseline candidates built from it nor the affected anchors can name one. The seed lane
+  // reads external_product_seeds.status only, so this is the only catalog check it gets.
+  const gate = await filterProductsByCatalogServingGate([...affectedProductsLoaded, ...productsCacheLoaded,
+    ...externalSeedsLoaded, ...vectorRowsLoaded, ...intelRowsLoaded, ...approvedLiveExternalSeedAnchorsLoaded], { queryFn });
+  const passesGate = (rows) => rows.filter((row) => !gate.dropped.has(row));
+  const affectedProducts = passesGate(affectedProductsLoaded);
+  const productsCache = passesGate(productsCacheLoaded);
+  const externalSeeds = passesGate(externalSeedsLoaded);
+  const vectorRows = passesGate(vectorRowsLoaded);
+  const intelRows = passesGate(intelRowsLoaded);
+  const approvedLiveExternalSeedAnchors = passesGate(approvedLiveExternalSeedAnchorsLoaded);
   const products = dedupeNormalizedProducts(enrichProductsWithEvidence([
     ...affectedProducts,
     ...productsCache,
@@ -3236,6 +3251,8 @@ async function loadProductRelationshipGraphSourceInputs({
       vector_recall: vectorRows.length,
       approved_live_external_seed_anchors: approvedLiveExternalSeedAnchors.length,
       products: products.length,
+      catalog_serving_gate_dropped: gate.dropped.size,
+      catalog_serving_gate_dropped_by_reason: gate.counts,
     },
   };
 }

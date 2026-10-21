@@ -12,6 +12,12 @@ const { seedProjectedOfferCurrencyGuardSql } = require('../services/seedSearchOf
 const productRelationshipGraphSources = require('./productRelationshipGraphSources');
 const { normalizeCurrencyCode, readPriceWithCurrency } = require('./relationshipPriceCurrency');
 const { EXTERNAL_SEED_PLATFORM } = require('../services/pdpRenderability');
+const {
+  catalogGateKeys,
+  isNonProductListing,
+  loadCatalogServingGateFailures,
+  relationshipServingCatalogGateMode,
+} = require('./relationshipCatalogServingGate');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
 const familyIdentityKey =
@@ -1359,6 +1365,42 @@ function relationshipGraphReadResult(edges, diagnostics = {}) {
   };
 }
 
+// The view serves an approved label until it expires, whatever has happened to the candidate's
+// listing since. RELATIONSHIP_GRAPH_SERVING_CATALOG_GATE_MODE (relationshipCatalogServingGate.js)
+// decides the edges whose candidate fails the catalog serving gate or is a non-product listing:
+//   off (default) - not computed, no extra query
+//   shadow        - computed and logged, nothing dropped; a gate error never fails the read
+//   enforce       - dropped; a gate error fails the read like any other read error, since serving
+//                   the edges the gate could not judge is the unguarded read again
+// A second query, not a predicate on the view read, so neither off nor shadow can change that read.
+async function applyServingCatalogGate(edges, { queryFn } = {}) {
+  const mode = relationshipServingCatalogGateMode();
+  if (mode === 'off') return { edges, diagnostics: {} };
+  if (!edges.length) return { edges, diagnostics: { catalog_gate_mode: mode, catalog_gate_failed_count: 0, catalog_gate_dropped_count: 0 } };
+  let failures;
+  try {
+    failures = await loadCatalogServingGateFailures({ queryFn,
+      subjects: edges.map((edge, index) => ({ subject_id: String(index),
+        keys: catalogGateKeys(edge.candidate_snapshot, edge.candidate_product_ref) })) });
+  } catch (err) {
+    if (mode === 'enforce') throw err;
+    logger.warn?.({ kind: 'metric', name: 'aurora_bff_relationship_graph_serving_catalog_gate_error', mode, error: err?.message },
+      'aurora bff: relationship graph catalog serving gate failed in shadow mode; edges unchanged');
+    return { edges, diagnostics: { catalog_gate_mode: mode, catalog_gate_status: 'error' } };
+  }
+  const failed = new Set(edges.filter((edge, index) =>
+    failures.has(String(index)) || isNonProductListing(edge.candidate_snapshot)));
+  if (failed.size) {
+    logger.warn?.({ kind: 'metric', name: 'aurora_bff_relationship_graph_serving_catalog_gate_failed', mode, failed_count: failed.size },
+      `aurora bff: relationship graph catalog serving gate ${mode === 'enforce' ? 'dropped' : 'would drop'} edges`);
+  }
+  return {
+    edges: mode === 'enforce' ? edges.filter((edge) => !failed.has(edge)) : edges,
+    diagnostics: { catalog_gate_mode: mode, catalog_gate_failed_count: failed.size,
+      catalog_gate_dropped_count: mode === 'enforce' ? failed.size : 0 },
+  };
+}
+
 async function readApprovedRelationshipEdgesForAnchorUncollapsed({
   anchorType = 'product',
   anchorRefs,
@@ -1409,7 +1451,9 @@ async function readApprovedRelationshipEdgesForAnchorUncollapsed({
       `,
       params,
     );
-    const edges = (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
+    const readEdges = (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
+    const catalogGate = await applyServingCatalogGate(readEdges, { queryFn });
+    const edges = catalogGate.edges;
     const safeEdges = edges.filter(isRelationshipEdgeServingSafe);
     const dropped = edges.length - safeEdges.length;
     if (dropped) {
@@ -1417,8 +1461,9 @@ async function readApprovedRelationshipEdgesForAnchorUncollapsed({
         'aurora bff: relationship graph serving guard dropped unsafe edges');
     }
     return relationshipGraphReadResult(dedupeApprovedRelationshipEdges(safeEdges).slice(0, requestedLimit), {
-      serving_rows_read: edges.length,
+      serving_rows_read: readEdges.length,
       serving_guard_dropped_count: dropped,
+      ...catalogGate.diagnostics,
     });
   } catch (err) {
     const code = normalizeString(err && err.code, 20);

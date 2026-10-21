@@ -48,6 +48,7 @@ const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, val
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
 const { fragranceAlternativeRejection } = require('../src/auroraBff/relationshipFragranceProfile');
+const { isNonProductListing, labelRefFailsCatalogGateSql } = require('../src/auroraBff/relationshipCatalogServingGate');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v4';
@@ -661,6 +662,12 @@ async function fetchCandidates({
         label_state, score_total, score_breakdown, price_evidence,
         source_refs, evidence_grade, why_candidate, tradeoffs, watchouts,
         provenance, created_at, updated_at, updated_at::text AS review_row_version`;
+  // CATALOG SERVING GATE (2026-10-21). A label whose candidate or anchor names a suppressed, not-live
+  // or IPS-ineligible listing is SKIPPED: left 'generated', not selected, not reviewed. Not moved to
+  // needs_evidence, deliberately: a catalog state is transient (a stale row re-syncs live) and
+  // nothing moves needs_evidence back, so a move would retire labels on a passing state; and a move
+  // is a write to relationship_candidate_labels on every review run after deploy, i.e. label
+  // cleanup through a side door. Skipping writes nothing and frees the run's LIMIT for real pairs.
   const where = `
       WHERE label_state = 'generated'
         AND COALESCE(updated_at, created_at) >= $1::timestamptz
@@ -668,7 +675,9 @@ async function fetchCandidates({
         ${idsSql}
         ${anchorRefsSql}
         ${relationTypesSql}
-        ${excludeRelationTypesSql}`;
+        ${excludeRelationTypesSql}
+        AND NOT ${labelRefFailsCatalogGateSql('l.candidate_product_ref', 'l.candidate_snapshot')}
+        AND NOT ${labelRefFailsCatalogGateSql('l.anchor_ref', 'l.anchor_snapshot')}`;
   // UNCOVERED FIRST (2026-10-20). Of 26,617 generated competitive_alternative labels only 5,933 sat on
   // the 2,616 anchors with no served alternative; score order spent a night's reviews on anchors that
   // already had a rail. With uncoveredFirst the labels of anchors with no served label of the same
@@ -700,7 +709,7 @@ async function fetchCandidates({
     `
     : `
       SELECT ${columns}
-      FROM relationship_candidate_labels${where}
+      FROM relationship_candidate_labels l${where}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
       LIMIT $3::int${offsetSql}
     `;
@@ -997,6 +1006,7 @@ async function selectReviewCandidates({
   const rows = [];
   const prepared = new Map();
   const skippedIds = [];
+  const nonProductSkippedIds = [];
   const seen = new Set();
   let scanned = 0;
   let offset = 0;
@@ -1014,6 +1024,10 @@ async function selectReviewCandidates({
       const supplements = await supplementsFn(fresh, queryFn);
       for (const row of fresh) {
         if (rows.length >= limit) break;
+        if (isNonProductLabel(row)) {
+          nonProductSkippedIds.push(row.id);
+          continue;
+        }
         const evidence = buildEvidence(row, supplements);
         const fingerprint = reviewPairFingerprint(evidence);
         if (memory && isRememberedNegative(row, fingerprint, memory)) {
@@ -1024,13 +1038,20 @@ async function selectReviewCandidates({
         prepared.set(row.id, { evidence, fingerprint });
       }
     }
-    if (!memory || rows.length >= limit || page.length < limit || fresh.length === 0) break;
+    if ((!memory && !nonProductSkippedIds.length) || rows.length >= limit || page.length < limit || fresh.length === 0) break;
     if (offset >= maxScan) {
       truncated = true;
       break;
     }
   }
-  return { rows, prepared, skippedIds, scanned, truncated };
+  return { rows, prepared, skippedIds, nonProductSkippedIds, scanned, truncated };
+}
+
+// A donation, voucher, protection fee, tip or deposit on either side is skipped like a catalog-gate
+// failure (see fetchCandidates): left 'generated', never reviewed. The title rule lives in JS only
+// (relationshipCatalogServingGate.js), so it runs on the fetched page rather than in the SELECT.
+function isNonProductLabel(row) {
+  return isNonProductListing(row && row.candidate_snapshot) || isNonProductListing(row && row.anchor_snapshot);
 }
 
 function reviewErrorCode(err) {
@@ -1540,12 +1561,16 @@ async function runReview({
   const memory = memoryTtlDays > 0
     ? { ttlDays: memoryTtlDays, nowMs: clock(), minApprovalConfidence: confidenceFloor, model: currentModel }
     : null;
-  let selection = { rows: [], prepared: new Map(), skippedIds: [], scanned: 0, truncated: false };
+  let selection = { rows: [], prepared: new Map(), skippedIds: [], nonProductSkippedIds: [], scanned: 0, truncated: false };
   // FAIL CLOSED on an id scope that resolved to nothing, exactly like the anchor scope.
   if (!(anchorScopeRequested && anchorRefs.length === 0) && !(idScopeRequested && ids.length === 0)) {
-    selection = consensus
-      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit: effectiveLimit, queryFn }) }
-      : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
+    if (consensus) {
+      const fetched = await fetchCandidates({ ...fetchOptions, limit: effectiveLimit, queryFn });
+      selection = { ...selection, rows: fetched.filter((row) => !isNonProductLabel(row)),
+        nonProductSkippedIds: fetched.filter(isNonProductLabel).map((row) => row.id) };
+    } else {
+      selection = await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
+    }
   }
   const { rows } = selection;
   const independentProviders = consensus && rows.length ? (consensusProviders || createConsensusProviders()) : null;
@@ -1795,6 +1820,7 @@ async function runReview({
     negative_memory_ttl_days: memoryTtlDays,
     negative_memory_scanned_count: selection.scanned,
     negative_memory_skipped_count: selection.skippedIds.length,
+    non_product_listing_skipped_count: selection.nonProductSkippedIds.length,
     negative_memory_scan_truncated: Boolean(selection.truncated),
     negative_memory_recorded_count: negativeMemoryRecordedCount,
     negative_memory_write_errors: negativeMemoryWriteErrors,
