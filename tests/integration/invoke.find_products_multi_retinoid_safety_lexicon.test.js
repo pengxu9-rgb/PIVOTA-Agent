@@ -224,6 +224,12 @@ describe('/agent/shop/v1/invoke find_products_multi: retinoid safety lexicon', (
     for (const query of queries) {
       for (const source of SOURCES) {
         const { ids } = await search(query, { source });
+        // An exact explicit ask ("retinol cream") is the one class the explicit-ask exemption
+        // (src/server.js, beautyQueryPositivelyAsksForRetinoid) deliberately changes from main.
+        if (query === 'retinol cream') {
+          expect({ query, served: retinoidsIn(ids).length > 0 }).toEqual({ query, served: true });
+          continue;
+        }
         expect({ query, ids }).toEqual({ query, ids: MAIN_GOLDEN[`${sourceKey(source)}|${query}`] });
       }
     }
