@@ -56,6 +56,13 @@ const resolveKnownStableLookupAlias =
   typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
     ? productGroundingResolverInternals.resolveKnownStableProductRef
     : null;
+const {
+  bareIngredientRoutingMode,
+  isBareIngredientRoutingEnabled,
+  isBareStrictIngredientQuery,
+} = require('./strictIngredientQuery');
+const { detectLanguage: detectQueryLanguage } = require('./intent');
+const { multilingualRoutingMode } = require('./multilingualBeautyTerms');
 const strictFindProductsMultiRuntime = createStrictFindProductsMultiRuntime({
   buildBeautyQueryProfile,
 });
@@ -4604,7 +4611,7 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     .join('\n');
 }
 
-async function buildFindProductsMultiContext({ payload, metadata }) {
+async function buildFindProductsMultiContext({ payload, metadata, routingOriginalQuery: gatewayRoutingOriginalQuery = null }) {
   const search = payload?.search || {};
   const topLevelSearchCompat = {
     ...(payload?.query != null ? { query: payload.query } : {}),
@@ -4937,10 +4944,18 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   ) {
     queryClass = 'exploratory';
   }
+  // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: a query that is ONLY a known ingredient ("retinol",
+  // "hyaluronic acid") keeps its own words. Without this the beauty semantic rewrite below replaced it
+  // with its step-family phrase ("anti aging treatment", "treatment treatment"), which names no
+  // ingredient, so the gateway's strict ingredient detector found none and the query never reached the
+  // ingredient lane: it fell to the safe-empty clarify or the backend text lane instead. Off: unchanged.
+  const preserveBareIngredientQuery =
+    isBareIngredientRoutingEnabled() && isBareStrictIngredientQuery(latestUserQuery);
   const preserveLiteralConstraintQueryExpansion =
-    Boolean(strictQueryOwnerDecision?.strictConstraintQuery) &&
-    semanticContractIsBeautyDiscovery &&
-    ['lookup', 'attribute'].includes(String(queryClass || '').trim().toLowerCase());
+    preserveBareIngredientQuery ||
+    (Boolean(strictQueryOwnerDecision?.strictConstraintQuery) &&
+      semanticContractIsBeautyDiscovery &&
+      ['lookup', 'attribute'].includes(String(queryClass || '').trim().toLowerCase()));
   const ambiguityScorePre = computeAmbiguityScorePre(intent, queryClass);
   const associationPlan = SEARCH_SCENARIO_ASSOCIATION_ENABLED
     ? buildScenarioAssociationPlan({
@@ -5482,7 +5497,19 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     },
   };
 
-  return { intent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
+  // FIND_PRODUCTS_MULTI_*_ROUTING on: the gateway routed on a normalised (English) form of the query
+  // and handed the caller's own text in as `routingOriginalQuery` -- a gateway-internal argument, never
+  // anything from the request (a caller's metadata is ignored, flag or no flag). Replies and
+  // clarifications speak the caller's language, so the intent's language is read from that original
+  // text, and only while a routing flag is on or observing. Routing above used the normalised form.
+  const routingFlagActive = bareIngredientRoutingMode() !== 'off' || multilingualRoutingMode() !== 'off';
+  const routingOriginalQuery =
+    routingFlagActive && typeof gatewayRoutingOriginalQuery === 'string' ? gatewayRoutingOriginalQuery.trim() : '';
+  const replyIntent =
+    routingOriginalQuery && intent && typeof intent === 'object'
+      ? { ...intent, language: detectQueryLanguage(routingOriginalQuery) }
+      : intent;
+  return { intent: replyIntent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
 }
 
 function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata, rawUserQuery }) {

@@ -307,6 +307,10 @@ const {
 const {
   expandQueryWithZhAlias,
 } = require('./findProductsMulti/zhEnQueryAliases');
+// Routing-layer query normalisation and the strict ingredient vocabulary (both flag-gated, default off):
+// FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING and FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING.
+const strictIngredientQuery = require('./findProductsMulti/strictIngredientQuery');
+const queryRoutingNormalizer = require('./findProductsMulti/queryRoutingNormalizer');
 const {
   buildFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
@@ -2828,23 +2832,9 @@ function getRequestedCatalogSurface({ search = {}, metadata = {} } = {}) {
     .toLowerCase();
 }
 
-const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES = Object.freeze({
-  'ascorbic acid': 'ascorbic_acid',
-  'azelaic acid': 'azelaic_acid',
-  'benzoyl peroxide': 'benzoyl_peroxide',
-  ceramide: 'ceramide_np',
-  ceramides: 'ceramide_np',
-  'ceramide np': 'ceramide_np',
-  glycerin: 'glycerin',
-  glycerine: 'glycerin',
-  'hyaluronic acid': 'hyaluronic_acid',
-  niacinamide: 'niacinamide',
-  panthenol: 'panthenol',
-  retinol: 'retinol',
-  'salicylic acid': 'salicylic_acid',
-  'vitamin c': 'ascorbic_acid',
-  'zinc pca': 'zinc_pca',
-});
+// The ingredient lane's term -> ingredient id table. Lives in src/findProductsMulti/strictIngredientQuery.js
+// so the routing layer can ask the lane's question without loading the gateway; same object.
+const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES = strictIngredientQuery.STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES;
 
 const STRICT_FIND_PRODUCTS_MULTI_SHADE_CATEGORY_TERMS = Object.freeze([
   'foundation',
@@ -2881,6 +2871,13 @@ function extractStrictFindProductsMultiIngredientIntents(queryText, beautyQueryP
   const isBeautyQuery = Boolean(beautyQueryProfile?.isBeautyQuery);
   if (isBeautyQuery && beautyBucket && beautyBucket !== 'skincare') {
     return [];
+  }
+  // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: the ingredients the query asks FOR, read on whole
+  // words from the raw text, decimals kept -- a negated or stand-in mention ("retinol-free", "without
+  // retinol", "retinol alternative") is not a request, and "1.0% retinol" is. Off: plain substring
+  // matching, as before.
+  if (strictIngredientQuery.isBareIngredientRoutingEnabled()) {
+    return strictIngredientQuery.extractPositiveStrictIngredientIds(String(queryText || ''));
   }
   const intents = [];
   for (const [term, ingredientId] of Object.entries(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES)) {
@@ -41530,6 +41527,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // pipeline leg, emitted in the 'invoke request complete' log so prod logs
   // can attribute latency_ms to concrete legs (upstream HTTP vs LLM vs local).
   const fpmStageBreakdown = [];
+  // Routing query normalisation (queryRoutingNormalizer.js): its outcome for the completion log line
+  // (modes, counts and fixed tokens only; empty while both flags are off), the decision itself, and the
+  // caller's original query text when `on` replaced it for routing.
+  let routingQueryLogFields = {};
+  let routingQueryState = null;
+  let routingOriginalQuery = null;
   // What the caller asked for, what the door bound, what it served -- filled in when the
   // response body is known (res.json below) and emitted on the completion log line. Nothing
   // reads it; it exists because no data exists on how often callers name a market.
@@ -41625,7 +41628,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       delete effectiveNormalizedNeed.beauty_request;
     }
     const rawGoal = String(
-      debugRuntime.rawUserQuery ||
+      debugRuntime.routingUserQuery ||
+        debugRuntime.rawUserQuery ||
         requestContext.raw_user_goal ||
         payloadContext.raw_user_goal ||
         search.query ||
@@ -41777,6 +41781,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // (2026-10-09: the market-less majority was CI runners, not buyers). Capped, never
         // free text at length.
         ...requestSourceLogFields(req),
+        ...routingQueryLogFields,
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -42124,6 +42129,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
       .trim()
       .toLowerCase();
+    // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING (observe | on): a query that EXCLUDES an ingredient
+    // ("niacinamide-free serum", "serum without niacinamide", "retinol alternative serum") never gets a
+    // row that names it, whichever lane built the page. The contract only knows a retinoid exclusion;
+    // this is the generic one, for every ingredient in the lane's table. observe: counted, not applied.
+    if (finalOperation === 'find_products_multi' && routingQueryState) {
+      const exclusionMode = strictIngredientQuery.bareIngredientRoutingMode();
+      // The door rules come from the query as typed (after negation canonicalisation), so a rewrite
+      // never loses them: "bakuchiol instead of retinol" routes as "bakuchiol" and still excludes retinol.
+      const door = exclusionMode === 'on' ? routingQueryState.door : routingQueryState.shadow?.door;
+      if (exclusionMode !== 'off' && door && Array.isArray(finalBody?.products) && finalBody.products.length > 0) {
+        if (door.excludedIds.length > 0 || door.requiredIds.length > 0) {
+          const exclusion = strictIngredientQuery.excludeIngredientsFromPage(finalBody, {
+            ingredientIds: door.excludedIds,
+            requiredIds: door.requiredIds,
+            scopePrefix: door.scopePrefix,
+          });
+          routingQueryLogFields = {
+            ...routingQueryLogFields,
+            [exclusionMode === 'on' ? 'fpm_excluded_ingredient_dropped_count' : 'fpm_excluded_ingredient_would_drop_count']:
+              exclusion.dropped_count,
+          };
+          if (exclusionMode === 'on') finalBody = exclusion.body;
+        }
+      }
+    }
     // Peng 2026-09-26: no row priced in another currency than the buyer's leaves this door,
     // whichever lane built the page. Before pagination, so a dropped row cannot hold a slot.
     // Not wrapped: it is pure and cannot throw on any body shape (servingCurrencyGuard tests).
@@ -42395,6 +42425,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         { gateway_request_id: gatewayRequestId, operation, truncated_history_entries: truncatedHistoryEntries },
         'search history truncated to the query length limit',
       );
+    }
+    // Routing query normalisation (FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING /
+    // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING, each off | observe | on, default off; see
+    // src/findProductsMulti/queryRoutingNormalizer.js). Known non-English beauty terms become the English
+    // term every lane decision below is written against, and English ingredient negations become the
+    // "<ingredient>-free" form the contract already reads. `on` writes the normalised text, once, here,
+    // before any lane is chosen, into the routing query of BOTH copies of the payload (the lane
+    // detectors read req.body as well as the parsed payload), and keeps the original in this handler's
+    // own `routingOriginalQuery` for logs, language detection and replies -- never in caller-visible
+    // metadata, so a caller cannot supply it. `observe` only describes what `on` would do on the
+    // completion line. Both flags off: nothing is read or written.
+    if (operation === 'find_products_multi') {
+      const routingTarget = queryRoutingNormalizer.locateRoutingQuery(payload);
+      const routingQuery = queryRoutingNormalizer.normalizeFindProductsMultiRoutingQuery(routingTarget?.text || '');
+      if (routingQuery.changed && routingTarget) {
+        routingTarget.write(routingQuery.query);
+        const bodyTarget =
+          req?.body?.payload && req.body.payload !== payload
+            ? queryRoutingNormalizer.locateRoutingQuery(req.body.payload)
+            : null;
+        if (bodyTarget && bodyTarget.text === routingQuery.original) bodyTarget.write(routingQuery.query);
+        routingOriginalQuery = routingQuery.original;
+      }
+      routingQueryState = routingQuery;
+      routingQueryLogFields = queryRoutingNormalizer.buildRoutingQueryLogFields(routingQuery);
     }
     const requestLevelContext =
       req?.body?.context && typeof req.body.context === 'object' && !Array.isArray(req.body.context)
@@ -42691,6 +42746,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(metadata || {}),
           expansion_mode: FIND_PRODUCTS_MULTI_EXPANSION_MODE,
         },
+        // Gateway-internal (never read from the request): the caller's own text when a routing flag
+        // replaced it for routing; null otherwise.
+        routingOriginalQuery,
       });
       debugRuntime.nluLatencyMs = Math.max(0, Date.now() - nluStartedAtMs);
       recordFpmStage('context_build', nluStartedAtMs, {
@@ -42713,7 +42771,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       payload?.search?.query ||
       payload?.query ||
       '';
-    debugRuntime.rawUserQuery = String(rawUserQuery || '').trim();
+    // The debug bundle keeps the caller's own words; matching below reads the routing query.
+    debugRuntime.rawUserQuery = String(routingOriginalQuery || rawUserQuery || '').trim();
+    debugRuntime.routingUserQuery = routingOriginalQuery ? String(rawUserQuery || '').trim() : null;
     debugRuntime.intent = effectiveIntent || null;
     debugRuntime.expansionMode = findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE;
     const policyMetadata =
@@ -42796,15 +42856,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       !Array.isArray(findProductsExpansionMeta.search_quality_contract)
         ? findProductsExpansionMeta.search_quality_contract
         : null;
+    // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: a query that only EXCLUDES an ingredient and names
+    // nothing to serve ("retinol-free", "without retinol", "0% retinol") is answered with the same
+    // safe-empty clarify as any query with no product, brand, category or concern in it. Before, the
+    // contract read "retinol-free" as a beauty constraint and the mainline served every category it
+    // had (shampoo, lipstick, sunscreen) minus the retinoids. observe: logged only.
+    const bareNegationSafeEmpty =
+      operation === 'find_products_multi' &&
+      Boolean(findProductsSearchQualityContract) &&
+      strictIngredientQuery.bareIngredientRoutingMode() !== 'off' &&
+      queryRoutingNormalizer.isBareIngredientNegationQuery(
+        routingQueryState?.shadow?.candidate || routingQueryState?.shadow?.query || String(rawUserQuery || ''),
+      );
+    if (bareNegationSafeEmpty) {
+      routingQueryLogFields = { ...routingQueryLogFields, fpm_routing_bare_negation: true };
+    }
+    const bareNegationSafeEmptyApplied =
+      bareNegationSafeEmpty && strictIngredientQuery.bareIngredientRoutingMode() === 'on';
     if (
       operation === 'find_products_multi' &&
       !canonicalSigEntityMode &&
-      shouldShortCircuitInvokeSearchQualitySafeEmpty({
-        contract: findProductsSearchQualityContract,
-        payload: effectivePayload,
-        metadata,
-        queryClass: traceQueryClass,
-      })
+      (bareNegationSafeEmptyApplied ||
+        shouldShortCircuitInvokeSearchQualitySafeEmpty({
+          contract: findProductsSearchQualityContract,
+          payload: effectivePayload,
+          metadata,
+          queryClass: traceQueryClass,
+        }))
     ) {
       const safeSearch =
         effectivePayload?.search && typeof effectivePayload.search === 'object' && !Array.isArray(effectivePayload.search)
@@ -42825,7 +42903,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           total: 0,
           page: safePage,
           page_size: 0,
-          reply: findProductsSearchQualityContract.clarification_allowed
+          reply: findProductsSearchQualityContract.clarification_allowed || bareNegationSafeEmptyApplied
             ? 'Please search for a product, brand, category, or skin concern.'
             : null,
           metadata: {
@@ -48791,10 +48869,37 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const mergedIngredientRecallProducts = Array.isArray(mergedIngredientRecall?.products)
           ? mergedIngredientRecall.products
           : [];
+        // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: a row must answer the ingredient. Every row must
+        // NAME every queried ingredient in its title or its structured ingredient fields, on whole words
+        // and not negated: "Retinol-Free Night Cream", "Bakuchiol Retinol Alternative Serum", a row whose
+        // only retinol is a description-derived token, and "Vitamin E Serum" for "vitamin c" are dropped.
+        // The recall above does not guarantee any of that (see admitIngredientLaneProducts). Stricter
+        // than the recall, never looser. Off: the merged recall goes on unchanged.
+        // observe: the same decision, counted on the completion line, rows untouched.
+        const ingredientAdmissionMode = strictIngredientQuery.bareIngredientRoutingMode();
+        const ingredientLaneAdmissionDecision =
+          ingredientAdmissionMode === 'off'
+            ? null
+            : strictIngredientQuery.admitIngredientLaneProducts(mergedIngredientRecallProducts, {
+                ingredientIds: ingredientIntentIds,
+              });
+        if (ingredientLaneAdmissionDecision) {
+          routingQueryLogFields = {
+            ...routingQueryLogFields,
+            [ingredientAdmissionMode === 'on'
+              ? 'fpm_routing_ingredient_admission_dropped_count'
+              : 'fpm_routing_ingredient_admission_would_drop_count']: ingredientLaneAdmissionDecision.dropped_count,
+            fpm_routing_ingredient_admission_input_count: mergedIngredientRecallProducts.length,
+          };
+        }
+        const ingredientLaneAdmission = ingredientAdmissionMode === 'on' ? ingredientLaneAdmissionDecision : null;
+        const admittedIngredientRecallProducts = ingredientLaneAdmission
+          ? ingredientLaneAdmission.products
+          : mergedIngredientRecallProducts;
         const strictIngredientCategoryIntents =
           extractStrictFindProductsMultiSkincareCategoryIntents(rawUserQuery || queryText);
         const strictIngredientCategoryFilter = filterStrictIngredientProductsByCategoryIntents(
-          mergedIngredientRecallProducts,
+          admittedIngredientRecallProducts,
           strictIngredientCategoryIntents,
         );
         const canonicalIngredientTelemetry = {
@@ -48869,6 +48974,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           service_version: buildServiceVersionMetadata(),
           ingredient_direct_prefetch_ms: strictIngredientPrefetchMs,
           ingredient_direct_prefetch_count: Array.isArray(directProducts) ? directProducts.length : 0,
+          ...(ingredientLaneAdmission
+            ? { ingredient_direct_admission_dropped_count: ingredientLaneAdmission.dropped_count }
+            : {}),
           ingredient_direct_category_filter_applied: strictIngredientCategoryFilter.applied,
           ingredient_direct_category_filtered_out_count:
             strictIngredientCategoryFilter.filtered_out_count,
