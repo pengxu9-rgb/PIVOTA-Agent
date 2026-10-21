@@ -20986,6 +20986,76 @@ function buildBeautyCreatorRankTelemetry({ overlayScore = 0 } = {}) {
   };
 }
 
+// Does the query ask for a retinoid product in a cream, moisturizer, cleanser or sunscreen form,
+// and nothing else? The retinoid rule in isBeautyProductContraindicatedForQuery keeps retinoids
+// out of a GENERIC moisturizer / cleanser / sunscreen answer. Without this check it also emptied
+// every query that named the retinoid it wanted ("retinol cream").
+//
+// This is an ALLOWLIST. The WHOLE query, after normalisation, must be exactly one ask phrase:
+//   [modifiers] <retinoid> [modifiers] <form> [modifiers]
+//   [modifiers] <form> [with] <retinoid> [modifiers]   (not for a sunscreen form)
+// The bare "<form> <retinoid>" order is how noun-first languages write it ("crème rétinol",
+// "crema retinol"); with FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING on they arrive as "cream retinol".
+// The modifiers are only: night, eye, face, for acne, (for) mature skin, (for) men,
+// (for) beginners, and a strength such as "0.3%". Anything else makes the answer false, which
+// keeps the rule exactly as it was. That includes:
+//   - any other word;
+//   - any character the normaliser would strip (punctuation, emoji);
+//   - any digit that is not a strength;
+//   - any non-Latin script outside the two exact Chinese and Japanese ask forms.
+// So pairings ("retinol and moisturizer"), questions ("do i need sunscreen with retinol"),
+// reviews and side-effect queries are never asks.
+//
+// It is also false whenever:
+//   - the request carries ANY context beyond this query (earlier turns, a profile,
+//     constraints, safety flags);
+//   - the retinoid safety lexicon (src/services/retinoidSafetySignal.js) finds a signal in
+//     the query or the request.
+const BEAUTY_RETINOID_ASK_NAMES = [
+  'retinol', 'pro retinol', 'retinal', 'retinaldehyde', 'retinoid', 'retinoids', 'retinyl palmitate',
+  'granactive retinoid', 'hydroxypinacolone retinoate', 'tretinoin', 'adapalene',
+];
+const BEAUTY_RETINOID_ASK_FORMS = [
+  'cream', 'creams', 'creme', 'moisturizer', 'moisturiser', 'lotion', 'emulsion', 'balm', 'cleanser', 'face wash',
+  'sunscreen', 'spf', 'sunblock',
+];
+const BEAUTY_RETINOID_ASK_MODIFIERS = [
+  'night', 'eye', 'face', 'for acne', 'for mature skin', 'mature skin', 'for men', 'men', 'mens', 'for beginners',
+  'beginners', 'beginner', '\\d{1,2}(?:\\.\\d{1,2})?%',
+];
+// "<form> [with] <retinoid>" is an ask only for these: "sunscreen with retinol" and "spf with retinol"
+// are how people ask whether they need sunscreen when using retinol.
+const BEAUTY_RETINOID_ASK_WITH_FORMS = [
+  'cream', 'creams', 'creme', 'moisturizer', 'moisturiser', 'lotion', 'emulsion', 'balm', 'cleanser', 'face wash',
+];
+const beautyRetinoidAskAlternation = (list) => `(?:${list.join('|')})`;
+const BEAUTY_RETINOID_ASK_MODIFIER_RUN = `(?: ${beautyRetinoidAskAlternation(BEAUTY_RETINOID_ASK_MODIFIERS)}){0,3}`;
+const BEAUTY_RETINOID_ASK_RE = new RegExp(
+  `^${BEAUTY_RETINOID_ASK_MODIFIER_RUN}` +
+    `(?: ${beautyRetinoidAskAlternation(BEAUTY_RETINOID_ASK_NAMES)}${BEAUTY_RETINOID_ASK_MODIFIER_RUN} ${beautyRetinoidAskAlternation(BEAUTY_RETINOID_ASK_FORMS)}` +
+    `| ${beautyRetinoidAskAlternation(BEAUTY_RETINOID_ASK_WITH_FORMS)}(?: with)? ${beautyRetinoidAskAlternation(BEAUTY_RETINOID_ASK_NAMES)})` +
+    `${BEAUTY_RETINOID_ASK_MODIFIER_RUN}$`,
+);
+// The two exact non-Latin ask forms: a Chinese name from the gate's own retinoidHit table, or the
+// Japanese name from the intent lexicon, followed directly by a form the family detector reads.
+const BEAUTY_RETINOID_ASK_CJK_RE = /^(?:(?:视黄醇|視黃醇|维a醇|維a醇|a醇) ?(?:晚霜|面霜|眼霜|乳液|洁面|潔面|洗面奶|洗面乳|防晒|防曬)|レチノール ?(?:クリーム|乳液|洗顔|日焼け止め))$/;
+
+function beautyQueryPositivelyAsksForRetinoid(queryText = '') {
+  const requestContext = INVOKE_RETINOID_SAFETY_CONTEXT.getStore();
+  if (requestContext && requestContext.has_context) return false;
+  if (resolveBeautyRetinoidSafetyClasses(queryText).length > 0) return false;
+  const raw = String(queryText == null ? '' : queryText).normalize('NFKC').toLowerCase().trim().replace(/\s+/g, ' ');
+  if (BEAUTY_RETINOID_ASK_CJK_RE.test(raw)) return true;
+  // A combining mark that NFKC could not compose into a letter is an overlay, not an accent.
+  if (/\p{M}/u.test(raw)) return false;
+  // Accents fold ("crème" is "creme"). Every token of the ask pattern is a literal ASCII word
+  // joined by single spaces, and the only "." it allows sits inside a strength ("0.3%"), so any
+  // other character (punctuation, emoji, another script, a doubled or edge hyphen, a stray dot)
+  // makes the match fail on its own. The unit suite pins each of those.
+  const latin = raw.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  const text = latin.replace(/'s\b/g, 's').replace(/-/g, ' ');
+  return BEAUTY_RETINOID_ASK_RE.test(` ${text}`);
+}
 
 function beautyQueryRequestsLipCare(queryText = '') {
   return /\b(lip|lips|lip\s*balm|lip\s*shield|chapstick)\b|唇膏|润唇|潤唇|护唇|護唇/i.test(String(queryText || ''));
@@ -21088,10 +21158,14 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
       return true;
     }
   }
+  // Keeps retinoids out of a generic moisturizer / cleanser / sunscreen answer. A query that
+  // itself asks for the retinoid in that form ("retinol cream") is not generic; the safety
+  // rules above and below still apply to it.
   if (
     retinoidHit &&
     (families.has('sunscreen') || families.has('cleanser') || families.has('moisturizer')) &&
-    !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)
+    !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text) &&
+    !beautyQueryPositivelyAsksForRetinoid(queryText)
   ) {
     return true;
   }
@@ -42812,10 +42886,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // The reader is bounded and fails CLOSED: a body it cannot read, or one over its scan limits, is
     // treated as carrying a safety signal, so retinoids are kept out rather than let through.
     if (RETINOID_SAFETY_CONTEXT_OPERATIONS.has(String(operation || '').trim().toLowerCase())) {
+      // has_context: anything besides the query itself (turns, goal, profile, constraints, flags). The
+      // explicit-ask allowlist only applies without it.
       try {
-        retinoidSafetyRequestContext = retinoidSafetySignal.retinoidSafetyClassesForRequestContext(req?.body);
+        retinoidSafetyRequestContext = {
+          ...retinoidSafetySignal.retinoidSafetyClassesForRequestContext(req?.body),
+          has_context: retinoidSafetySignal.requestCarriesContextBeyondQuery(req?.body),
+        };
       } catch (_) {
-        retinoidSafetyRequestContext = { classes: ['context_unreadable'], sources: ['error'] };
+        retinoidSafetyRequestContext = { classes: ['context_unreadable'], sources: ['error'], has_context: true };
       }
       INVOKE_RETINOID_SAFETY_CONTEXT.enterWith(retinoidSafetyRequestContext);
     }
@@ -54073,6 +54152,7 @@ module.exports._debug = {
   applyRetinoidSafetyNetToSearchBody,
   applyRetinoidSafetyNetForInvokeResponse,
   runInRetinoidSafetyContextForTest: (store, fn) => INVOKE_RETINOID_SAFETY_CONTEXT.run(store, fn),
+  beautyQueryPositivelyAsksForRetinoid,
   extractBeautyQueryActiveConcepts,
   countBeautyActiveConceptMatches,
   buildBeautyActivesText,
