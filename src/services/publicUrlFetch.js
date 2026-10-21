@@ -345,12 +345,13 @@ function createPublicHostCheck(lookup) {
     // `{ all: true }` to avoid the single-address branch's IPv4-preference logic, which has nothing to
     // say about a call that discards the addresses.
     publicOnlyLookup(parsed.hostname, { all: true }, (error) => {
-      // `url` is the NORMALISED href, and callers must send THAT rather than the string they passed in.
-      // Validating one string and transmitting another is the whole bug class: measured, Node's WHATWG
-      // parser reads `http://cosrx.com\\@127.0.0.1/` as host `cosrx.com` (the backslash is a path
-      // delimiter for special schemes) while Python's urllib reads the same bytes as host `127.0.0.1`.
-      // We do not control the vendor's parser, so the only safe thing to hand it is the form OUR check
-      // actually judged — `http://cosrx.com/@127.0.0.1/`, where the host is unambiguous.
+      // `url` is the NORMALISED href: the same string `parsePublicHttpUrl(rawUrl).toString()` gives, and the
+      // host checked here is ITS host. Never send a caller's raw string after this check: Node's WHATWG parser
+      // reads `http://cosrx.com\\@127.0.0.1/` as host `cosrx.com` (a backslash is a path delimiter for
+      // special schemes) while Python's urllib reads the same bytes as host `127.0.0.1`. The product-url lane
+      // (src/auroraBff/routes.js fetchProductHtmlWithUnblockChain) normalises BEFORE calling this and sends
+      // only that href, so it never depends on this field — which also lets a timed-out check, which has no
+      // answer and no url, never fall back to the raw text.
       if (!error) return resolve({ ok: true, code: null, reason: 'public', url: parsed.toString() });
       /*
        * A REFUSAL AND A RESOLUTION FAILURE ARE NOT THE SAME ANSWER, and conflating them broke a real

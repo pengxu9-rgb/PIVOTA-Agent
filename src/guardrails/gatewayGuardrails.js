@@ -1,5 +1,6 @@
 const { createHash } = require('crypto');
 const { isIP } = require('net');
+const { enforcedLoopbackCaller } = require('./loopbackCallerAssertion');
 
 const RATE_LIMIT_ENABLED = process.env.GATEWAY_RATE_LIMIT_ENABLED !== 'false';
 const RATE_LIMIT_TTL_MS = Math.max(
@@ -109,6 +110,28 @@ function clientIpFromRequest(req) {
 }
 
 function classifyClient({ req } = {}) {
+  // An MCP tool's call back into this process authenticates with the gateway's own key, which every MCP
+  // caller and every first-party user of that key would otherwise share as ONE bucket. When the MCP door
+  // signed the caller it resolved (loopbackCallerAssertion.js: per-process secret, loopback socket only,
+  // MCP_CALLER_LIMITS_MODE=enforce only), the bucket is that caller's. Its agent id was verified at the
+  // door, so the operator bypass list still applies to it by name. A FAN-OUT sub-call (one of several a
+  // single tool call makes) is keyed on that one tool call, so the call's own fan-out cannot drain the
+  // caller's per-operation budget; the door already bounded how many tool calls the caller may make.
+  const loopback = enforcedLoopbackCaller(req);
+  if (loopback && loopback.call_id) {
+    return {
+      tier: 'mcp_fanout',
+      key: `mcp_fanout:${sha256Hex(`call:${loopback.call_id}`).slice(0, 16)}`,
+      agent_id: loopback.agent_id,
+    };
+  }
+  if (loopback) {
+    return {
+      tier: `mcp_${loopback.tier}`,
+      key: `mcp_${loopback.tier}:${sha256Hex(`loopback:${loopback.key}`).slice(0, 16)}`,
+      agent_id: loopback.agent_id,
+    };
+  }
   const verified = verifiedClientIdentity(req?.invokeAuth);
   if (verified) {
     return {

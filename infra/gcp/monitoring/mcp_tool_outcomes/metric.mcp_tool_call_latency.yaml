@@ -5,7 +5,7 @@
 # cannot move a ratio.
 #   gcloud logging metrics create mcp_tool_call_latency --project=$PROJECT \
 #     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_tool_call_latency.yaml
-description: MCP tools/call latency in ms, by tool / door (refused and first-party excluded)
+description: MCP tools/call latency in ms, by tool / door (refused, shed and first-party excluded)
 filter: >-
   resource.type="cloud_run_revision"
   AND resource.labels.service_name="gateway"
@@ -13,6 +13,7 @@ filter: >-
   AND jsonPayload.outcome:*
   AND jsonPayload.tier!="first_party"
   AND jsonPayload.outcome!="refused"
+  AND jsonPayload.outcome!="shed"
 valueExtractor: EXTRACT(jsonPayload.latency_ms)
 bucketOptions:
   # 10ms .. ~112s (10 * 1.5^23): covers a cache hit and the slowest cold search.
