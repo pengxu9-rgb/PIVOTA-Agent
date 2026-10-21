@@ -329,7 +329,9 @@ test('product naming: fooled titles never name the ingredient (exact kind)', () 
     salicylic_acid: ['水杨酸乙基己酯防晒霜', '水楊酸乙基己酯', '水杨酸苄酯香水', 'サリチル酸エチルヘキシル配合UV',
       'サリチル酸ベンジル'],
     hyaluronic_acid: ['Крем с гиалуронидазой', 'Гиалуронидаза'],
-    ascorbic_acid: ['Комплекс витаминов с маслом', 'Витамин сияние', 'Витамин с маслом ши', 'Витамины с экстрактом'],
+    ascorbic_acid: ['Комплекс витаминов с маслом', 'Витамин сияние', 'Витамин с маслом ши', 'Витамины с экстрактом',
+      // plural "vitamins with" before an indeclinable noun (no instrumental ending to tell it apart)
+      'Набор витаминов с алоэ'],
   };
   for (const [id, titles] of Object.entries(absentAs)) {
     for (const title of titles) assert.equal(strict.productIngredientMention(product(title), id), 'absent', `${title} / ${id}`);
@@ -530,6 +532,9 @@ test('stand-in and area rewrites: what each exclusion-only query asks for', () =
   assert.deepEqual(rw('niacinamide alternative for hair'), { query: 'niacinamide-free hair care', kind: 'area', requiredIds: [] });
   assert.deepEqual(rw('retinol alternative for lips'), { query: 'retinol-free lip treatment', kind: 'area', requiredIds: [] });
   assert.deepEqual(rw('without glycerin for hair'), { query: 'glycerin-free hair care', kind: 'area', requiredIds: [] });
+  // a bare zero left after the ingredient is a qualifier, not something to serve
+  assert.deepEqual(rw('retinol 0 for hair'), { query: 'retinol-free hair care', kind: 'area', requiredIds: [] });
+  assert.deepEqual(rw('retinol 0.0 for hair'), { query: 'retinol-free hair care', kind: 'area', requiredIds: [] });
   assert.deepEqual(rw('bakuchiol instead of retinol for hair'), { query: 'bakuchiol hair care', kind: 'stand_in_named', requiredIds: ['bakuchiol'] });
   // Unchanged: no known stand-in (every ingredient alike), an absence alone, a product type, another area,
   // two areas, a table ingredient asked for, or nothing excluded.
@@ -538,7 +543,9 @@ test('stand-in and area rewrites: what each exclusion-only query asks for', () =
     'retinol alternative serum', 'glycerin-free shampoo', 'glycerin-free hair gel', 'retinol alternative for body',
     'glycerin-free soap', "retinol alternative for men's skin", 'retinol alternative for hair and body',
     'niacinamide serum without retinol', 'retinol', 'retinol dupe', 'products like retinol', 'bakuchiol',
-    'bakuchiol serum instead of retinol', 'retinol alternative for acne']) {
+    'bakuchiol serum instead of retinol', 'retinol alternative for acne',
+    // a TABLE ingredient asked for alongside the exclusion is not a stand-in ask
+    'niacinamide without retinol', 'retinol free niacinamide', 'hyaluronic acid instead of retinol']) {
     assert.deepEqual(rw(query), { query, kind: null, requiredIds: [] }, query);
   }
   // Only retinol has a known stand-in.
