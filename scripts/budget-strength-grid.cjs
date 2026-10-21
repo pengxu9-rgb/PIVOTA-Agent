@@ -9,7 +9,9 @@
 //
 // The fixture (tests/fixtures/budget_strength_grid.json) pins, per flag state:
 //   * expected[budget]  -- the pinned parser's parse of each budget phrase alone;
-//   * pinned_wrong      -- the grid indices where the PINNED parser already missed that expectation.
+//   * pinned_wrong      -- the grid indices where the PINNED parser already missed that expectation
+//                          (run-length encoded; tests/budget_strength_grid.test.js pins its count and
+//                          sha256, so it cannot be widened to hide a regression).
 // A query is a REGRESSION when the current parser misses the expectation and the pinned parser did
 // not; a FIX when the current parser meets it and the pinned parser did not. The pins are data, so
 // they stay honest when main moves on: re-pin deliberately with --pin <module>.
@@ -62,6 +64,27 @@ function buildGrid(spec) {
 
 const key = (value) => JSON.stringify(value === undefined ? null : value);
 
+// pinned_wrong is stored as runs of consecutive grid indices, "start.length" in base 36, comma-separated.
+function encodeIndices(indices) {
+  const runs = [];
+  for (const i of indices) {
+    const last = runs[runs.length - 1];
+    if (last && last[0] + last[1] === i) last[1] += 1;
+    else runs.push([i, 1]);
+  }
+  return runs.map(([start, length]) => `${start.toString(36)}.${length.toString(36)}`).join(',');
+}
+
+function decodeIndices(encoded) {
+  const out = [];
+  if (!encoded) return out;
+  for (const run of encoded.split(',')) {
+    const [start, length] = run.split('.').map((part) => parseInt(part, 36));
+    for (let i = 0; i < length; i += 1) out.push(start + i);
+  }
+  return out;
+}
+
 function pin(spec, parse) {
   const rows = buildGrid(spec);
   const out = { ...spec, pins: {} };
@@ -71,7 +94,7 @@ function pin(spec, parse) {
       const pinnedWrong = rows
         .filter((row) => key(parse(row.query)) !== key(expected[row.budgetIndex]))
         .map((row) => row.index);
-      out.pins[state] = { expected, pinned_wrong: pinnedWrong };
+      out.pins[state] = { expected, pinned_wrong: encodeIndices(pinnedWrong) };
     });
   }
   return out;
@@ -81,7 +104,7 @@ function evaluateGrid(fixture, parse, state) {
   const value = STATES.find(([name]) => name === state)[1];
   const rows = buildGrid(fixture);
   const { expected, pinned_wrong: pinnedWrong } = fixture.pins[state];
-  const wrongBefore = new Set(pinnedWrong);
+  const wrongBefore = new Set(decodeIndices(pinnedWrong));
   const result = { state, total: rows.length, ok: 0, fixes: [], regressions: [], stillWrong: [] };
   withFlag(value, () => {
     for (const row of rows) {
@@ -138,6 +161,6 @@ function main(argv) {
   return failed ? 1 : 0;
 }
 
-module.exports = { buildGrid, evaluateGrid, budgetPhraseDrift, FIXTURE };
+module.exports = { buildGrid, evaluateGrid, budgetPhraseDrift, decodeIndices, FIXTURE };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

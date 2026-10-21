@@ -933,7 +933,7 @@ function budgetRequiresMarker() {
 const BUDGET_CURRENCY_MARKER_RE =
   /s\$|[$€£¥￥元块円刀]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid)\b|美元|美金|欧元|英镑|人民币|日元|日圆|新加坡元/i;
 const NOT_A_PRICE_UNIT_AFTER_RE =
-  /^\s*(?:%|pa\s*\+|(?:ml|l|g|gr|grams?|kg|oz|fl|percent|pct|ct|count|packs?(?!\s+of)|pk|pcs|pieces|mm|cm|inch(?:es)?|spf|years?|yrs?|yo|y\/o|age|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)(?![a-z'’]))/i;
+  /^\s*(?:%|pa\s*\+|(?:ml|l|g|gr|grams?|kg|oz|fl|percent|pct|ct|count|packs?(?!\s+of)|pk|pcs|pieces|mm|cm|inch(?:es)?|spf(?!\s*[\d\uE000])|years?|yrs?|yo|y\/o|age|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)(?![a-z'’]))/i;
 // Right after the number: a glued Latin letter ("111SKIN", "30CE"), "-in-1", a count noun,
 // or a CJK classifier.
 const COUNT_WORD_AFTER_RE =
@@ -943,6 +943,44 @@ const COUNT_WORD_AFTER_RE =
 const PLURAL_WORD_AFTER_RE = /^\s*-?\s*(?!(?:is|this|was|has|yes|plus|less|as|us)\b)[a-z]*s\b/i;
 const CURRENCY_WORD_AFTER_RE =
   /^\s*(?:s\$|sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid|元|块钱|块|円|刀|美元|美金|欧元|英镑|人民币|日元)/i;
+// The parser's budget-marker vocabulary. Each source string below is used verbatim by the parser
+// regex named next to it AND by the strength mask's bound-word check, so the two cannot drift:
+// a number the parser could read as a budget is never swallowed by a strength next to it.
+//   bound words before a number (boundedAmountMatch)
+const BOUNDED_PREFIX_WORDS_SRC =
+  '以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at';
+//   "budget" words before a number (budgetWordMatch)
+const BUDGET_WORD_PREFIX_SRC =
+  '\\b(?:max(?:imum)?\\s+)?budget(?:\\s+of)?(?:\\s*(?:is|:))?\\s*|预算(?:\\s*(?:是|在|大概|大约))?\\s*';
+//   soft bounds before a number (softBoundMatch)
+const SOFT_BOUND_PREFIX_SRC =
+  '\\b(?:max(?:imum)?|around|about|approx(?:imately)?|roughly)(?:\\s*(?:is|:))?\\s*|(?<![\\d.\\uE000]\\s?)[<~≈]\\s*';
+//   price words before a range (findMarkedBudgetRange)
+const RANGE_PRICE_WORD_SRC =
+  '(?:\\b(?:price|priced|budget|range|spend|cost|around|about|approx(?:imately)?|roughly)\\b|预算|价格|价位)\\s*(?:of|is|in|:|在|是)?\\s*';
+//   bounds after a number (postfixBound, cjkPostfixBound) and after a range (findMarkedBudgetRange)
+const POSTFIX_BOUND_SRC = 'bucks\\b|quid\\b|or less\\b|or under\\b|and under\\b|and below\\b|max\\b';
+const CJK_CURRENCY_SUFFIX_SRC = '元|块钱|块|美元|美金|日元|円|刀(?!片|头)';
+const CJK_BOUND_SUFFIX_SRC = '以内|以下|以上|左右|起';
+const RANGE_BOUND_SUFFIX_SRC = '之间';
+const BOUNDED_AMOUNT_RE = new RegExp(
+  `(?:${BOUNDED_PREFIX_WORDS_SRC})\\s*(?:s\\$|[$€£¥￥]|sgd|usd|eur|gbp|cny|rmb|jpy)?\\s*(\\d+(?:\\.\\d+)?)`,
+  'i',
+);
+const BUDGET_WORD_AMOUNT_RE = new RegExp(
+  `(?:${BUDGET_WORD_PREFIX_SRC})(?:(?:s\\$|[$€£¥￥])\\s*)?(\\d+(?:\\.\\d+)?)`,
+  'i',
+);
+const SOFT_BOUND_AMOUNT_RE = new RegExp(
+  `(?:${SOFT_BOUND_PREFIX_SRC})(?:(?:s\\$|[$€£¥￥])\\s*)?(\\d+(?:\\.\\d+)?)`,
+  'i',
+);
+const RANGE_PRICE_WORD_BEFORE_RE = new RegExp(`${RANGE_PRICE_WORD_SRC}$`, 'i');
+const RANGE_BOUND_SUFFIX_RE = new RegExp(`^\\s*(?:${RANGE_BOUND_SUFFIX_SRC})`);
+const CJK_POSTFIX_BOUND_RE = new RegExp(
+  `(\\d+(?:\\.\\d+)?)\\s*(?:${CJK_CURRENCY_SUFFIX_SRC})?\\s*(?:${CJK_BOUND_SUFFIX_SRC})`,
+);
+const POSTFIX_BOUND_RE = new RegExp(`(?<![a-z\\d.])(\\d+(?:\\.\\d+)?)\\s*(?:${POSTFIX_BOUND_SRC})`, 'i');
 const SPF_BEFORE_RE =
   /\bspf\s*(?:(?:about|around|approx(?:imately)?|roughly|max(?:imum)?|over|above|under|below|at least|at most|more than|less than|[~<>≈≥≤]=?)\s*)?$/i;
 
@@ -978,10 +1016,14 @@ const PERCENT_UNIT_SRC = '[%％]|(?:per[\\s-]?cent|pct)(?![a-z])';
 const PERCENT_AFTER_RE = new RegExp(`^\\s*(?:${PERCENT_UNIT_SRC})`, 'i');
 const SIZE_UNIT_SRC = '(?:ml|mg|g|oz|fl\\.?\\s*oz)(?![a-z])';
 const MULTIPLIER_X_SRC = 'x(?![a-z]|\\s*\\d)';
-// "50 spf" -- but not the 30 in "under 30 spf 50", where the SPF belongs to the 50.
+// "50 spf" -- but not the 30 in "under 30 spf 50", where the SPF belongs to the 50 (the parser's own
+// unit guard, NOT_A_PRICE_UNIT_AFTER_RE, agrees: that 30 is a budget with the flag on too).
 const SPF_UNIT_AFTER_RE = /^\s*spf(?![a-z])(?!\s*\d)/i;
 const SIZE_UNIT_AFTER_RE = new RegExp(`^\\s*(?:${SIZE_UNIT_SRC})|^${MULTIPLIER_X_SRC}`, 'i');
-const CURRENCY_BEFORE_NUMBER_RE = /(?:s\$|[$€£¥￥]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy))\s*$/i;
+// A currency symbol glued to the end of a number belongs to that number ("40€ 50ml": the € is
+// the 40's), so it marks the next number only when no digit precedes it ("S$30", "under $30").
+const CURRENCY_BEFORE_NUMBER_RE = /(?:(?<![\d.])[$€£¥￥]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy))\s*$/i;
+const CURRENCY_SYMBOL_SUFFIX_RE = /^[$€£¥￥]/;
 // The first number's own unit may sit in the gap ("5%-10%", "30ml-50").
 const STRENGTH_GAP_UNIT_SRC = `(?:\\s*(?:${PERCENT_UNIT_SRC}|${SIZE_UNIT_SRC}|spf(?![a-z])|${MULTIPLIER_X_SRC}))?`;
 const RANGE_SEPARATOR_SRC = '(?:-|~|—|–|〜|～|到)';
@@ -989,15 +1031,26 @@ const RANGE_SEPARATOR_SRC = '(?:-|~|—|–|〜|～|到)';
 const TIGHT_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}${RANGE_SEPARATOR_SRC}$`, 'i');
 // Any range join, spaced or not -- used only to share markers between a range's ends.
 const ANY_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:${RANGE_SEPARATOR_SRC}|to)\\s*$`, 'i');
+const SPACED_TO_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s+to\\s+$`, 'i');
 const BETWEEN_AND_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:and|&)\\s*$`, 'i');
 const STRENGTH_BETWEEN_BEFORE_RE = /\bbetween\s*$/i;
-// The bound words the parser reads as a budget marker, right before a number. As in the parser's soft
-// bound, a symbol right after a number is a range separator ("spf 30 ~ 50"), not a bound...
-const BOUND_WORD_BEFORE_RE =
-  /(?:\b(?:under|below|less than|no more than|at most|up to|max(?:imum)?|around|about|approx(?:imately)?|roughly|over|above|more than|at least|from|starting (?:from|at)|budget(?: of)?|price[ds]?)|(?<![\d.]\s?)[<>≤≥~≈＜＞]=?|预算|不超过|至多|最多|至少|不低于)\s*$/i;
-// ...and right after it.
-const BOUND_WORD_AFTER_RE =
-  /^\s*(?:or (?:less|under|below|more|above)\b|and (?:under|below|up|above|over)\b|max(?:imum)?(?![a-z])|以内|以下|以上|左右|起|之间)/i;
+// A number is bound-marked when the parser could read it as a budget through a marker word: built
+// from the parser's own vocabulary above (plus "between", "no more than", "price(s)", bare > and <),
+// so the mask never knows fewer markers than the parser does. As in the parser's soft bound, a
+// symbol right after a number is a range separator ("spf 30 ~ 50"), not a bound.
+const MASK_BOUND_BEFORE_SRC = [
+  `(?:${BOUNDED_PREFIX_WORDS_SRC})\\s*`,
+  BUDGET_WORD_PREFIX_SRC,
+  SOFT_BOUND_PREFIX_SRC,
+  RANGE_PRICE_WORD_SRC,
+  '\\b(?:no more than|prices?|priced)\\s*',
+  '(?<![\\d.]\\s?)[<>≤≥~≈＜＞]=?\\s*',
+].join('|');
+const BOUND_WORD_BEFORE_RE = new RegExp(`(?:${MASK_BOUND_BEFORE_SRC})$`, 'i');
+const BOUND_WORD_AFTER_RE = new RegExp(
+  `^\\s*(?:${POSTFIX_BOUND_SRC}|(?:${CJK_CURRENCY_SUFFIX_SRC})?\\s*(?:${CJK_BOUND_SUFFIX_SRC})|${RANGE_BOUND_SUFFIX_SRC}|or (?:below|more|above)\\b|and (?:up|above|over)\\b|maximum(?![a-z]))`,
+  'i',
+);
 
 function maskStrengthNumbers(text) {
   if (!/\d/.test(text)) return text;
@@ -1008,7 +1061,8 @@ function maskStrengthNumbers(text) {
     // Both windows are bounded, so the pass stays linear in the (500-char-capped) query.
     const before = text.slice(Math.max(0, start - 48), start);
     const after = text.slice(end, end + 48);
-    const currency = CURRENCY_BEFORE_NUMBER_RE.test(before) || CURRENCY_WORD_AFTER_RE.test(after);
+    const currency =
+      CURRENCY_BEFORE_NUMBER_RE.test(before) || CURRENCY_WORD_AFTER_RE.test(after) || CURRENCY_SYMBOL_SUFFIX_RE.test(after);
     const boundOwn = BOUND_WORD_BEFORE_RE.test(before) || BOUND_WORD_AFTER_RE.test(after);
     const between = STRENGTH_BETWEEN_BEFORE_RE.test(before);
     let kind = null;
@@ -1024,17 +1078,22 @@ function maskStrengthNumbers(text) {
     const gap = text.slice(a.end, b.start);
     const type = TIGHT_RANGE_GAP_RE.test(gap)
       ? 'tight'
-      : ANY_RANGE_GAP_RE.test(gap)
-        ? 'spaced'
-        : a.between && BETWEEN_AND_GAP_RE.test(gap)
-          ? 'between'
-          : null;
+      : SPACED_TO_GAP_RE.test(gap)
+        ? 'to'
+        : ANY_RANGE_GAP_RE.test(gap)
+          ? 'spaced'
+          : a.between && BETWEEN_AND_GAP_RE.test(gap)
+            ? 'between'
+            : null;
     if (type) links.push({ a, b, type, ia: i });
   }
-  // A range shares its ends' OWN markers: "$20-40", "price 20-40", "between 20 and 40", "20-40 usd".
-  // One hop and never transitive: in "spf 30-50 - 20-30 usd" the 20 takes the usd, the 50 does not.
+  // A range shares its ends' OWN markers: "$20-40", "price 20-40", "between 20 and 40", "20-40 usd",
+  // "20 to 40 dollars". One hop and never transitive: in "spf 30-50 - 20-30 usd" the 20 takes the usd,
+  // the 50 does not. Never across a spaced " - " / " ~ ": that is a clause separator, so in
+  // "$30 - 5-10% niacinamide" the 5 is the strength range's, not the $30's.
   const own = tokens.map((t) => ({ currency: t.currency, bound: t.bound }));
-  for (const { a, b, ia } of links) {
+  for (const { a, b, ia, type } of links) {
+    if (type === 'spaced') continue;
     const ib = ia + 1;
     if (own[ia].currency) b.currency = true;
     if (own[ib].currency) a.currency = true;
@@ -1043,7 +1102,7 @@ function maskStrengthNumbers(text) {
   }
   // One hop, from a number masked on its own to its bare partner.
   for (const { a, b, type } of links) {
-    if (type === 'spaced' || Boolean(a.kind) === Boolean(b.kind)) continue;
+    if (type === 'spaced' || type === 'to' || Boolean(a.kind) === Boolean(b.kind)) continue;
     if (type === 'between') {
       // "between 5 and 10％": the "between" is the range's own marker, not a budget's.
       if (b.kind && !a.currency && !a.boundOwn) a.spread = true;
@@ -1108,8 +1167,8 @@ function findMarkedBudgetRange(normalized) {
     const marked =
       /s\$|[$€£¥￥]/.test(match[0]) ||
       CURRENCY_WORD_AFTER_RE.test(after) ||
-      /(?:\b(?:price|priced|budget|range|spend|cost|around|about|approx(?:imately)?|roughly)\b|预算|价格|价位)\s*(?:of|is|in|:|在|是)?\s*$/i.test(before) ||
-      /^\s*之间/.test(after);
+      RANGE_PRICE_WORD_BEFORE_RE.test(before) ||
+      RANGE_BOUND_SUFFIX_RE.test(after);
     if (!marked || NOT_A_PRICE_UNIT_AFTER_RE.test(after) || COUNT_WORD_AFTER_RE.test(after)) continue;
     // "about 2-3 serums under $30": a counting range must not override the real budget
     if (!CURRENCY_WORD_AFTER_RE.test(after) && PLURAL_WORD_AFTER_RE.test(after)) continue;
@@ -1203,9 +1262,7 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     /(\d+(?:\.\d+)?)\s*(?:sgd|usd|eur|gbp|cny|rmb|jpy|singapore dollars?|dollars?|euros?|pounds?|yuan|yen|新加坡元|美元|美金|欧元|英镑|人民币|日元|日圆|円)/i,
   );
   const boundedAmountMatch = maxOnly || minOnly
-    ? normalized.match(
-        /(?:以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at)\s*(?:s\$|[$€£¥￥]|sgd|usd|eur|gbp|cny|rmb|jpy)?\s*(\d+(?:\.\d+)?)/i,
-      )
+    ? normalized.match(BOUNDED_AMOUNT_RE)
     : null;
   let m;
   if (budgetRequiresMarker()) {
@@ -1223,8 +1280,10 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // one that opens a range the range pass refused ("about 5-10 minutes", "预算3-4步").
     const countsThings = (match) => {
       const tail = normalized.slice((match.index || 0) + match[0].length);
-      // a masked strength counts as the digit it replaced: "about 5-10 ml", "around 30 - 50ml"
-      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*[\d\uE000]/.test(tail);
+      // A masked strength right after a TIGHT join counts as the digit it replaced ("about 5-10 ml"
+      // stays budget-free, as before masking); after a spaced " - " it is the next clause
+      // ("around 30 - 50ml" keeps its 30, like "under 30 - 50ml").
+      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*\d|^[-~–—到]\uE000/.test(tail);
     };
     const hardUsable = (match) => (usable(match) && !countsThings(match) ? match : null);
     // about / around / max / < / ~ / "or less" with no currency: also no plural noun after
@@ -1237,20 +1296,12 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
       const tail = normalized.slice((match.index || 0) + match[0].length);
       return PLURAL_WORD_AFTER_RE.test(tail) ? null : match;
     };
-    const budgetWordMatch = normalized.match(
-      /(?:\b(?:max(?:imum)?\s+)?budget(?:\s+of)?(?:\s*(?:is|:))?\s*|预算(?:\s*(?:是|在|大概|大约))?\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
-    );
+    const budgetWordMatch = normalized.match(BUDGET_WORD_AMOUNT_RE);
     // about / around / max / < / ~ with no currency also count things -- see softUsable.
-    const softBoundMatch = normalized.match(
-      /(?:\b(?:max(?:imum)?|around|about|approx(?:imately)?|roughly)(?:\s*(?:is|:))?\s*|(?<![\d.\uE000]\s?)[<~≈]\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
-    );
-    const cjkPostfixBound = normalized.match(
-      /(\d+(?:\.\d+)?)\s*(?:元|块钱|块|美元|美金|日元|円|刀(?!片|头))?\s*(?:以内|以下|以上|左右|起)/,
-    );
+    const softBoundMatch = normalized.match(SOFT_BOUND_AMOUNT_RE);
+    const cjkPostfixBound = normalized.match(CJK_POSTFIX_BOUND_RE);
     const cjkCurrencySuffix = normalized.match(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块|刀(?!片|头))(?!\s*以)/);
-    const postfixBound = normalized.match(
-      /(?<![a-z\d.])(\d+(?:\.\d+)?)\s*(?:bucks\b|quid\b|or less\b|or under\b|and under\b|and below\b|max\b)/i,
-    );
+    const postfixBound = normalized.match(POSTFIX_BOUND_RE);
     m =
       usable(currencyAmountMatch) ||
       usable(boundedAmountMatch) ||
@@ -1947,4 +1998,16 @@ module.exports = {
   INTENT_VERSION,
   QueryClassEnum,
   parseBudgetToPriceConstraint,
+  // for tests: the parser's budget-marker vocabulary and the strength mask built from it
+  __budgetMarkerVocabulary: {
+    BOUNDED_AMOUNT_RE,
+    BUDGET_WORD_AMOUNT_RE,
+    SOFT_BOUND_AMOUNT_RE,
+    RANGE_PRICE_WORD_BEFORE_RE,
+    POSTFIX_BOUND_RE,
+    CJK_POSTFIX_BOUND_RE,
+    RANGE_BOUND_SUFFIX_RE,
+    BOUND_WORD_BEFORE_RE,
+    BOUND_WORD_AFTER_RE,
+  },
 };

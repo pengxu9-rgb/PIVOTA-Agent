@@ -74,6 +74,8 @@ const STRENGTHS = [
   'under 50 ml',
   '1.7 oz cream',
   '1.7 fl oz cream',
+  '1.7 fl. oz cream',
+  '1.7fl.oz cream',
   'under 5 oz',
   '500mg vitamin c',
   'max 50mg',
@@ -96,6 +98,10 @@ const STRENGTHS = [
 // hops, only in these; flag off they keep main's legacy reading of the bare number next to the
 // strength, because nothing spreads across a clause separator or further than one hop.
 const FLAG_ON_STRENGTHS = [
+  // a suffix currency on a number that has no marker word is no budget with the flag on
+  'moins de 30€ 0.025% tretinoin',
+  // r3 sweep survivor A07: a percentage is masked even right after a currency
+  'usd 30% off serum',
   'vitamin c serum 10 to 15％',
   'price 5-10％',
   '10% to 20',
@@ -156,7 +162,6 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   ['price $20-40 - 50ml', { currency: 'USD', min: 20, max: 40 }],
   ['under $20-40 - 50ml', { currency: 'USD', min: 20, max: 40 }],
   ['$20-40-10% niacinamide', { currency: 'USD', min: 20, max: 40 }],
-  ['$20 - 40-50ml', { currency: 'USD', min: 20, max: 40 }],
   // (B2) a spread never runs through a range that is a budget
   ['price 20-40 - 10% niacinamide', { currency: null, min: 20, max: 40 }],
   ['price 20-40-50ml', { currency: null, min: 20, max: 40 }],
@@ -182,6 +187,43 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   ['50ml ~30', max(null, 30)],
   ['10%-30 or less', max(null, 30)],
   ['spf 50+ $30', max('USD', 30)],
+  // review r4 (B1): every parser marker protects its number -- "range", "cost", "价格", "预算是",
+  // "budget is", "budget:", "max is", "around:"
+  ['price range 20-40-10% serum', { currency: null, min: 20, max: 40 }],
+  ['价格200-300-50ml', { currency: null, min: 200, max: 300 }],
+  ['预算是200-300-50ml', { currency: null, min: 200, max: 300 }],
+  ['my budget is 35～10% serum', max(null, 35)],
+  ['budget: 30～50ml', max(null, 30)],
+  ['cost 20-40-2x serum', { currency: null, min: 20, max: 40 }],
+  ['max is 30～10% serum', max(null, 30)],
+  ['around: 20-40-50ml', { currency: null, min: 20, max: 40 }],
+  ['price range 20-40 - 50ml', { currency: null, min: 20, max: 40 }],
+  ['my budget is 35 - 10%', max(null, 35)],
+  ['my budget is 35 - 200 mg serum', max(null, 35)],
+  // (R2) a marker never crosses a spaced " - " / " ~ ": the tight strength range keeps its low end
+  ['spf 50 - $40 - 2-4% serum', max('USD', 40)],
+  ['toner spf 50～€20 - 50-100ml', max('EUR', 20)],
+  ['$30 - 5-10% niacinamide', max('USD', 30)],
+  ['under $40 - 2-4% bha', max('USD', 40)],
+  ['€20 – 1-2% retinol', max('EUR', 20)],
+  ['$25 - 30-50ml', max('USD', 25)],
+  ['$20 - 40-50ml', max('USD', 20)],
+  ['under $25 - 2x serum', max('USD', 25)],
+  // ...but it does cross a spaced "to": "20 to 40 dollars" is one range
+  ['30 ml-20 to 40 dollars', { currency: 'USD', min: 20, max: 40 }],
+  // (S2) a currency glued after a number is that number's, not the next one's
+  ['under 40€ 50ml', max('EUR', 40)],
+  ['under 30$ 50ml', max('USD', 30)],
+  // (S4) the SPF in "30 spf 50" belongs to the 50
+  ['under 30 spf 50', max(null, 30)],
+  // (S5) a spaced " - " after a bound number is a clause separator for every bound word alike
+  ['under 30 - 50ml', max(null, 30)],
+  ['budget 30 - 50ml', max(null, 30)],
+  ['around 30 - 50ml', { currency: null, min: 22.5, max: 37.5 }],
+  ['max 30 - 50ml', max(null, 30)],
+  ['预算 150 - 50 g', max(null, 150)],
+  // r3 sweep survivors: a currency right before a size number keeps it a price (S05)
+  ['toner under $30 ml', max('USD', 30)],
 ];
 
 // Budgets with the flag on (= main). Flag off, main's legacy parser reads the spaced pair as a range
@@ -189,7 +231,6 @@ const BUDGETS_NEXT_TO_STRENGTH = [
 // with a bare end is left whole.
 const FLAG_ON_BUDGETS = [
   ['under 20 - 2x', max(null, 20)],
-  ['under 30 - 50ml', max(null, 30)],
   ['under 25 – 50ml', max(null, 25)],
   ['under 25 — 50ml', max(null, 25)],
   ['under 30 ~ 50ml', max(null, 30)],
@@ -199,6 +240,8 @@ const FLAG_ON_BUDGETS = [
   ['between 20 and 40-50ml', { currency: null, min: 20, max: 40 }],
   ['spf 30-50 - 20-30 usd', { currency: 'USD', min: 20, max: 30 }],
   ['spf 30 ~ 50 - $15', max('USD', 15)],
+  // (S4) the range is no longer refused for an "spf" that belongs to the next number
+  ['$15-$30 spf 50', { currency: 'USD', min: 15, max: 30 }],
 ];
 
 // Plain budgets: unchanged.
@@ -257,13 +300,36 @@ test('flag off, a bare number with no unit still falls back to the legacy cap', 
   expect(parseBudgetToPriceConstraint('K18')).toEqual(max(null, 18));
 });
 
-test('flag on, a size with a soft-bound partner reads as main does: no budget', () => {
-  // "around 30 - 50ml" / "about 5-10 ml": the soft bound's partner is kept, and the masked size after
-  // the dash still counts as the digit it replaced, so countsThings refuses the 30 / 5.
+test('flag on, a soft bound tight-joined to a size counts things, as before masking: no budget', () => {
+  // "about 5-10 ml": the 5 is kept (bound), and the masked size right after the tight "-" still
+  // counts as the digit it replaced, so countsThings refuses the 5 as main did.
   process.env[FLAG] = '1';
-  expect(parseBudgetToPriceConstraint('around 30 - 50ml')).toBeNull();
   expect(parseBudgetToPriceConstraint('about 5-10 ml')).toBeNull();
-  expect(parseBudgetToPriceConstraint('max 30 - 50ml')).toBeNull();
+  expect(parseBudgetToPriceConstraint('around 30-50ml')).toBeNull();
+});
+
+describe('flag off: nothing spreads across a spaced join, and a bare number next to a strength stays legacy', () => {
+  beforeEach(() => {
+    delete process.env[FLAG];
+  });
+  // r3 sweep survivors G01-G03: the join must be tight on BOTH sides of the separator
+  test.each(['serum 30 - 10% niacinamide', 'serum 30 -10% niacinamide', 'serum 30- 10% niacinamide'])(
+    '"%s" keeps the 30',
+    (q) => {
+      expect(parseBudgetToPriceConstraint(q)).toEqual(max(null, 30));
+    },
+  );
+  // one hop only: in "1-2-3%" the 2 is the 3%'s partner, the 1 is not
+  test('"vitamin c 1-2-3%" keeps the legacy 1', () => {
+    expect(parseBudgetToPriceConstraint('vitamin c 1-2-3%')).toEqual(max(null, 1));
+  });
+  // r3 sweep survivor A05: "percentile" is not "percent"
+  test('"top 5 percentile serum" is not masked', () => {
+    expect(parseBudgetToPriceConstraint('top 5 percentile serum')).toEqual(max(null, 5));
+  });
+  test('"moins de 30€ 0.025% tretinoin" keeps the 30€, not the strength', () => {
+    expect(parseBudgetToPriceConstraint('moins de 30€ 0.025% tretinoin')).toEqual(max('EUR', 30));
+  });
 });
 
 describe('flag on only', () => {
