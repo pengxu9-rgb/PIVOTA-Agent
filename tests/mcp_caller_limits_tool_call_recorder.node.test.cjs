@@ -1,19 +1,23 @@
 'use strict';
 
-// The per-caller limit refusal on the COMMERCE MCP door, with the tools/call outcome recorder wired in.
+// The per-caller limit refusal on BOTH MCP doors, with the tools/call outcome recorder wired in.
 //
-// Both land in the same few lines of serveCommerceMcpJsonRpc: the recorder (src/observability/mcpToolCallOutcome.js)
-// wraps the adapter request and reports what the door answered, and the caller-limit admission
-// (src/guardrails/mcpCallerLimits.js) must refuse BEFORE the edge heartbeat exists and release its slot in a
-// finally. These cases pin the combination through the real route:
+// Both land in the same few lines of serveCommerceMcpJsonRpc and of handlePublicReadMcp /
+// runPublicReadMcpDispatch: the recorder (src/observability/mcpToolCallOutcome.js) wraps the adapter request
+// and reports what the door answered, and the caller-limit admission (src/guardrails/mcpCallerLimits.js) must
+// refuse BEFORE the edge heartbeat exists and release its slot in a finally. These cases pin the combination
+// through the real routes:
 //
 //   * a refusal keeps its own status (429 for the caller's budget, 503 for shedding) and Retry-After;
 //   * no heartbeat is even constructed for a refused request, so none can commit a 200 over the refusal;
 //   * an admitted call's slot is released when its dispatch ends (the in-flight count returns to zero);
-//   * the recorder logs the refusal exactly once, as #2472's contract classifies a status written before
-//     dispatch: 4xx -> outcome 'refused' (client), 5xx -> outcome 'internal_error' (server), error_code HTTP_<status>;
+//   * the recorder logs the refusal exactly once: a rate or concurrency 429 as any refusal before dispatch
+//     (outcome 'refused', error_class 'client', error_code HTTP_429), a shed 503 as shedding (outcome 'shed',
+//     error_class 'capacity', error_code MCP_CALLER_SHED), never as a server fault the error-rate alert counts;
 //   * an admitted call still reaches the recorder through the adapter's observer (UNKNOWN_TOOL, not the
-//     UNEXPECTED_ERROR the recorder falls back to when nothing was observed).
+//     UNEXPECTED_ERROR the recorder falls back to when nothing was observed) on BOTH doors. On the public door
+//     the recorder is created in handlePublicReadMcp and handed to runPublicReadMcpDispatch; a dispatch that
+//     does not receive it (the merge that left it out of scope) logs 'unknown' for every call it served.
 //
 // Why the heartbeat factory is spied on rather than only read off the wire: admission is synchronous, so a
 // heartbeat constructed before it would have its commit timer armed but never reach the timer phase before
@@ -53,7 +57,12 @@ process.env.AGENT_AUTH_INTROSPECT_URL = `${INTROSPECT_BASE}${INTROSPECT_PATH}`;
 process.env.AGENT_AUTH_INTROSPECT_INTERNAL_KEY = 'internal_test_key';
 process.env.AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED = 'false';
 process.env.INVOKE_AUTH_BYPASS_IN_TEST = '0';
-delete process.env.PUBLIC_READ_MCP_ENABLED;
+process.env.PUBLIC_READ_MCP_ENABLED = '1';
+process.env.PUBLIC_READ_MCP_HOSTS = 'mcp.caller-limits-recorder.invalid';
+// The pre-existing per-instance public valve stays out of the way: these cases are about the caller limits.
+process.env.PUBLIC_READ_MCP_RPM = '60000';
+process.env.PUBLIC_READ_MCP_BURST = '10000';
+delete process.env.PUBLIC_READ_CACHE_ENABLED;
 delete process.env.MCP_OAUTH_ENABLED;
 delete process.env.DATABASE_URL;
 delete process.env.GATEWAY_RATE_LIMIT_ENABLED;
@@ -144,16 +153,25 @@ async function settle() {
 
 /** One commerce /mcp tools/call. Returns the response (raw body + parsed JSON), its heartbeats and its completion lines. */
 async function commerceCall(body, ip) {
+  return doorCall(
+    supertest(app)
+      .post('/mcp')
+      .set('X-Agent-API-Key', KEY_PARTNER)
+      .set('Accept', 'application/json, text/event-stream')
+      .set('X-Forwarded-For', `${ip}, ${LB}`)
+      .send(body),
+  );
+}
+
+/** One anonymous /public/mcp tools/call, read the same way. */
+async function publicCall(body, ip) {
+  return doorCall(supertest(app).post('/public/mcp').set('X-Forwarded-For', `${ip}, ${LB}`).send(body));
+}
+
+async function doorCall(request) {
   const heartbeatsBefore = heartbeats.length;
   const linesBefore = lines.length;
-  const res = await supertest(app)
-    .post('/mcp')
-    .set('X-Agent-API-Key', KEY_PARTNER)
-    .set('Accept', 'application/json, text/event-stream')
-    .set('X-Forwarded-For', `${ip}, ${LB}`)
-    .send(body)
-    .buffer(true)
-    .parse(rawParser);
+  const res = await request.buffer(true).parse(rawParser);
   await settle();
   return {
     status: res.status,
@@ -175,6 +193,17 @@ function partnerSlots() {
 
 // Arms every heartbeat to commit as early as it can, so a heartbeat that existed for a refused request
 // would have had every chance to turn it into a 200.
+async function withEagerPublicHeartbeat(fn) {
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS = '1';
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS = '5';
+  try {
+    return await fn();
+  } finally {
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS;
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS;
+  }
+}
+
 async function withEagerHeartbeat(fn) {
   process.env.COMMERCE_MCP_HEARTBEAT_DELAY_MS = '1';
   process.env.COMMERCE_MCP_HEARTBEAT_INTERVAL_MS = '5';
@@ -186,7 +215,7 @@ async function withEagerHeartbeat(fn) {
   }
 }
 
-function assertRefusalOnTheWire(r, { status, rpcCode, reason, id }) {
+function assertRefusalOnTheWire(r, { status, rpcCode, reason, id, tier = 'partner' }) {
   assert.equal(r.status, status, `the refusal keeps its own status (got ${r.status})`);
   assert.ok(Number(r.headers['retry-after']) >= 1, 'Retry-After survives');
   assert.doesNotMatch(r.raw, /^\s/, 'no heartbeat whitespace was committed ahead of the refusal');
@@ -195,20 +224,20 @@ function assertRefusalOnTheWire(r, { status, rpcCode, reason, id }) {
   assert.equal(r.json.result, undefined, 'never a result on a refusal');
   assert.equal(r.json.error.code, rpcCode);
   assert.equal(r.json.error.data.reason, reason);
-  assert.equal(r.json.error.data.tier, 'partner');
+  assert.equal(r.json.error.data.tier, tier);
   assert.equal(r.heartbeats.length, 0, 'no heartbeat is constructed for a refused request');
 }
 
-function assertOneRefusalLine(r, { status, outcome, errorClass }) {
+function assertOneRefusalLine(r, { status, outcome, errorClass, errorCode = `HTTP_${status}`, door = 'mcp', tier = 'authenticated' }) {
   assert.equal(r.lines.length, 1, `the refusal is logged exactly once (got ${r.lines.length})`);
   const [line] = r.lines;
-  assert.equal(line.door, 'mcp');
-  assert.equal(line.tier, 'authenticated');
+  assert.equal(line.door, door);
+  assert.equal(line.tier, tier);
   assert.equal(line.tool, 'search_catalog', 'a refused call keeps a tool name the gateway advertises');
   assert.equal(line.status, status);
   assert.equal(line.outcome, outcome);
   assert.equal(line.is_error, true);
-  assert.equal(line.error_code, `HTTP_${status}`);
+  assert.equal(line.error_code, errorCode);
   assert.equal(line.error_class, errorClass);
   assert.equal(line.heartbeat_committed, undefined, 'nothing was streamed');
 }
@@ -266,7 +295,7 @@ test('commerce /mcp: a concurrency 429 while a slow call is in flight; that call
   }
 });
 
-test('commerce /mcp: shedding answers 503 past the recorder, with no heartbeat, logged once as a server-side refusal', async () => {
+test('commerce /mcp: shedding answers 503 past the recorder, with no heartbeat, logged once as shedding, not a server fault', async () => {
   setLimits(
     {
       MCP_CALLER_LIMITS_MODE: 'enforce',
@@ -278,7 +307,113 @@ test('commerce /mcp: shedding answers 503 past the recorder, with no heartbeat, 
   const refused = await withEagerHeartbeat(() => commerceCall(rpcCall('search_catalog', { query: 'shed' }, 9), '203.0.113.123'));
   assertRefusalOnTheWire(refused, { status: 503, rpcCode: limits.RPC_CODE_SERVER_BUSY, reason: 'shed', id: 9 });
   assert.equal(refused.headers['retry-after'], '7');
-  // #2472's recorder classifies any 5xx written before dispatch as internal_error / server.
-  assertOneRefusalLine(refused, { status: 503, outcome: 'internal_error', errorClass: 'server' });
+  // Not #2472's default for a 5xx written before dispatch (internal_error / server): the door tells the
+  // recorder this 503 is the limits shedding, so the server-error metric does not count it.
+  assertOneRefusalLine(refused, { status: 503, outcome: 'shed', errorClass: 'capacity', errorCode: 'MCP_CALLER_SHED' });
   assert.deepEqual(partnerSlots(), { inflight: 0, held: 0 });
+});
+
+// ---- the public door ----
+
+function anonSlots(ip) {
+  const who = limits.resolveDoorCaller({ headers: { 'x-forwarded-for': `${ip}, ${LB}` } });
+  const state = limits.getProcessCallerLimiter().inspect(who.key);
+  return { inflight: state.local ? state.local.inflight : 0, held: state.held };
+}
+
+test('public /public/mcp: an admitted call reaches the recorder through the dispatch; a heartbeat-committed one too', async () => {
+  setLimits({ MCP_CALLER_LIMITS_MODE: 'enforce', MCP_CALLER_LIMITS_ANON_CONCURRENCY: '1', MCP_CALLER_LIMITS_ANON_RPM: '50' });
+  const ip = '203.0.113.131';
+
+  // The adapter's observer and recordRpcResponse both live inside runPublicReadMcpDispatch: without the
+  // recorder there, the line could only say 'unknown' (nothing answered) with no error code.
+  const unknownTool = await publicCall(rpcCall('no_such_tool', {}, 1), ip);
+  assert.equal(unknownTool.status, 200);
+  assert.equal(unknownTool.json.result.isError, true);
+  assert.equal(unknownTool.lines.length, 1);
+  assert.equal(unknownTool.lines[0].door, 'public_mcp');
+  assert.equal(unknownTool.lines[0].tier, 'public');
+  assert.equal(unknownTool.lines[0].outcome, 'tool_error');
+  assert.equal(unknownTool.lines[0].error_code, 'UNKNOWN_TOOL');
+  assert.equal(unknownTool.lines[0].error_class, 'client');
+  assert.equal(unknownTool.heartbeats.length, 1, 'an admitted tools/call gets its one heartbeat');
+  assert.deepEqual(anonSlots(ip), { inflight: 0, held: 0 });
+
+  // A search answered with rows: the observer reports the count the caller received.
+  nock(SELF_BASE).post('/agent/shop/v1/invoke').reply(200, {
+    status: 'success',
+    products: [{ product_id: 'prod_rec_1', merchant_id: 'merch_rec_1', title: 'Row', price: 10, currency: 'USD' }],
+    total: 1,
+  });
+  const search = await publicCall(rpcCall('search_catalog', { query: 'recorder public search' }, 2), ip);
+  assert.equal(search.status, 200);
+  assert.equal(search.lines.length, 1);
+  assert.equal(search.lines[0].tool, 'search_catalog', 'the surface recognised the tool on this call');
+  assert.ok(['ok', 'tool_error'].includes(search.lines[0].outcome), `answered, not unknown (${search.lines[0].outcome})`);
+  assert.notEqual(search.lines[0].outcome, 'unknown');
+
+  // Slow enough for the heartbeat to commit: the dispatch's recorder marks the line as streamed.
+  nock(SELF_BASE).post('/agent/shop/v1/invoke').delay(200).reply(200, { status: 'success', products: [], total: 0 });
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS = '1';
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS = '20';
+  let slow;
+  try {
+    slow = await publicCall(rpcCall('search_catalog', { query: 'recorder public slow' }, 3), ip);
+  } finally {
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS;
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS;
+    stubEdges();
+  }
+  assert.equal(slow.status, 200);
+  assert.match(slow.raw, /^\s+\{/, 'the heartbeat committed');
+  assert.equal(slow.lines.length, 1);
+  assert.equal(slow.lines[0].heartbeat_committed, true);
+  assert.notEqual(slow.lines[0].outcome, 'unknown');
+  assert.deepEqual(anonSlots(ip), { inflight: 0, held: 0 });
+});
+
+test('public /public/mcp: a caller over its budget gets 429, logged once as a client refusal', async () => {
+  setLimits({ MCP_CALLER_LIMITS_MODE: 'enforce', MCP_CALLER_LIMITS_ANON_RPM: '1' });
+  const ip = '203.0.113.132';
+  assert.equal((await publicCall(rpcCall('no_such_tool', {}, 1), ip)).status, 200);
+  const refused = await withEagerPublicHeartbeat(() => publicCall(rpcCall('search_catalog', { query: 'over' }, 2), ip));
+  assertRefusalOnTheWire(refused, { status: 429, rpcCode: limits.RPC_CODE_CALLER_LIMITED, reason: 'rate', id: 2, tier: 'anonymous' });
+  assertOneRefusalLine(refused, { status: 429, outcome: 'refused', errorClass: 'client', door: 'public_mcp', tier: 'public' });
+  assert.deepEqual(anonSlots(ip), { inflight: 0, held: 0 });
+});
+
+test('public /public/mcp: shedding answers 503 with no heartbeat, logged once as shedding, not a server fault', async () => {
+  setLimits(
+    {
+      MCP_CALLER_LIMITS_MODE: 'enforce',
+      MCP_CALLER_LIMITS_SHED_ANON_POOL_WAITING: '2',
+      MCP_CALLER_LIMITS_SHED_RETRY_AFTER_S: '7',
+    },
+    { poolStats: () => ({ waiting: 5 }) },
+  );
+  const ip = '203.0.113.133';
+  const refused = await withEagerPublicHeartbeat(() => publicCall(rpcCall('search_catalog', { query: 'shed' }, 9), ip));
+  assertRefusalOnTheWire(refused, { status: 503, rpcCode: limits.RPC_CODE_SERVER_BUSY, reason: 'shed', id: 9, tier: 'anonymous' });
+  assert.equal(refused.headers['retry-after'], '7');
+  assertOneRefusalLine(refused, {
+    status: 503, outcome: 'shed', errorClass: 'capacity', errorCode: 'MCP_CALLER_SHED', door: 'public_mcp', tier: 'public',
+  });
+  assert.deepEqual(anonSlots(ip), { inflight: 0, held: 0 });
+});
+
+test('public /public/mcp: the anonymous tier full (tier_concurrency 503) is shedding too', async () => {
+  nock(SELF_BASE).post('/agent/shop/v1/invoke').delay(300).reply(200, { status: 'success', products: [], total: 0 });
+  try {
+    setLimits({ MCP_CALLER_LIMITS_MODE: 'enforce', MCP_CALLER_LIMITS_ANON_TIER_CONCURRENCY_PER_INSTANCE: '1' });
+    const slow = publicCall(rpcCall('search_catalog', { query: 'tier holder' }, 1), '203.0.113.134');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const refused = await publicCall(rpcCall('search_catalog', { query: 'tier full' }, 2), '203.0.113.135');
+    assertRefusalOnTheWire(refused, { status: 503, rpcCode: limits.RPC_CODE_SERVER_BUSY, reason: 'tier_concurrency', id: 2, tier: 'anonymous' });
+    assertOneRefusalLine(refused, {
+      status: 503, outcome: 'shed', errorClass: 'capacity', errorCode: 'MCP_CALLER_SHED', door: 'public_mcp', tier: 'public',
+    });
+    assert.equal((await slow).status, 200);
+  } finally {
+    stubEdges();
+  }
 });
