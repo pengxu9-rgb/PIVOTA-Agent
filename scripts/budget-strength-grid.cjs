@@ -85,6 +85,50 @@ function decodeIndices(encoded) {
   return out;
 }
 
+// The soft-bound sweep: every soft bound / budget / bound word before a strength or size RANGE, spaced
+// and tight. Its expectation is main's parse of the WHOLE query: the mask may remove a budget main
+// read from a strength range (a phantom), but must never add one or change one.
+function buildSweep(spec) {
+  const rows = [];
+  const s = spec.sweep;
+  for (const w of s.words) for (const r of s.ranges) for (const p of s.products) for (const a of s.arrangements) {
+    rows.push({ index: rows.length, query: a.replace('{w}', w).replace('{r}', r).replace('{p}', p) });
+  }
+  return rows;
+}
+
+function pinSweep(spec, parse, value) {
+  return withFlag(value, () => {
+    const values = [];
+    const ids = buildSweep(spec).map((row) => {
+      const k = key(parse(row.query));
+      let at = values.indexOf(k);
+      if (at < 0) at = values.push(k) - 1;
+      return at.toString(36);
+    });
+    return { values, rows: ids.join(',') };
+  });
+}
+
+function evaluateSweep(fixture, parse, state) {
+  const value = STATES.find(([name]) => name === state)[1];
+  const { values, rows: encoded } = fixture.pins[`sweep_${state}`];
+  const mainKeys = encoded.split(',').map((id) => values[parseInt(id, 36)]);
+  const result = { state, total: 0, same: 0, phantomsRemoved: [], phantomsAdded: [], changed: [] };
+  withFlag(value, () => {
+    for (const row of buildSweep(fixture)) {
+      result.total += 1;
+      const main = mainKeys[row.index];
+      const got = key(parse(row.query));
+      if (got === main) result.same += 1;
+      else if (got === 'null') result.phantomsRemoved.push({ query: row.query, main, got });
+      else if (main === 'null') result.phantomsAdded.push({ query: row.query, main, got });
+      else result.changed.push({ query: row.query, main, got });
+    }
+  });
+  return result;
+}
+
 function pin(spec, parse) {
   const rows = buildGrid(spec);
   const out = { ...spec, pins: {} };
@@ -96,6 +140,7 @@ function pin(spec, parse) {
         .map((row) => row.index);
       out.pins[state] = { expected, pinned_wrong: encodeIndices(pinnedWrong) };
     });
+    if (spec.sweep) out.pins[`sweep_${state}`] = pinSweep(spec, parse, value);
   }
   return out;
 }
@@ -157,10 +202,21 @@ function main(argv) {
     for (const e of r.fixes.slice(0, 5)) console.log(`  fix ${JSON.stringify(e)}`);
     for (const d of drift) console.log(`  DRIFT ${JSON.stringify(d)}`);
     if (r.regressions.length || drift.length) failed = true;
+    if (fixture.sweep) {
+      const w = evaluateSweep(fixture, parseBudgetToPriceConstraint, state);
+      console.log(
+        `${state} sweep: total=${w.total} same_as_main=${w.same} main_phantoms_removed=${w.phantomsRemoved.length} ` +
+          `phantoms_added=${w.phantomsAdded.length} changed=${w.changed.length}`,
+      );
+      for (const e of [...w.phantomsAdded, ...w.changed].slice(0, 20)) console.log(`  SWEEP ${JSON.stringify(e)}`);
+      // with the marker on (prod) the sweep must read exactly as main, phantoms removed aside; flag off,
+      // main's legacy fallback reads a bare number next to a strength range, so only an ADDED budget fails
+      if (w.phantomsAdded.length || (state === 'marker_on' && w.changed.length)) failed = true;
+    }
   }
   return failed ? 1 : 0;
 }
 
-module.exports = { buildGrid, evaluateGrid, budgetPhraseDrift, decodeIndices, FIXTURE };
+module.exports = { buildGrid, buildSweep, evaluateGrid, evaluateSweep, budgetPhraseDrift, decodeIndices, FIXTURE };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
