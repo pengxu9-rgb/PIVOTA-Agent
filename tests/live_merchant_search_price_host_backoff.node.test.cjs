@@ -401,3 +401,33 @@ test('N1: a cache entry this same request filled stays live (an overlay that run
   });
   assert.deepEqual(door.search_overlay_cached_at, []);
 });
+
+test('a malformed host never becomes an overlay_throttled_hosts key (it still backs off)', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  const log = sink();
+  await pv.runWithPriceContext({ door: 'rest' }, async () => {
+    const out = await overlayLiveMerchantSearchPrices({ products: [...cards('bad_host.test', 1), ...cards('good-host.test', 1)] }, {
+      fetchImpl: merchant({ 'bad_host.test': 429, 'good-host.test': 429 }).fetchImpl, env: ON,
+    });
+    pv.noteSearchOverlay({ throttledHosts: { '-lead.test': 1, 'a b.test': 1, '': 1, ['x'.repeat(254)]: 1, 'ok-host.test': 0 } });
+    pv.logPriceVerificationServed(log, { surface: 'search', items: out.products });
+  });
+  assert.ok(_hostBackoff.has('bad_host.test'));
+  assert.deepEqual(log.lines[0].overlay_throttled_hosts, { 'good-host.test': 1 });
+});
+
+test('overlay_cache_not_live is absent when cache answers were noted but none would have been live', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  const products = cards('older.test', 1);
+  const m = merchant({ 'older.test': 200 });
+  await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: m.fetchImpl, env: {} });
+  const log = sink();
+  // This request started well after the cached read: that answer is recent by its stamp alone.
+  await pv.runWithPriceContext({ door: 'rest', started_at_ms: Date.now() + 5000 }, async () => {
+    const out = await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: m.fetchImpl, env: {} });
+    assert.equal(pv.currentPriceContext().search_overlay_cached_at.length, 1, 'the cache answer was noted');
+    pv.logPriceVerificationServed(log, { surface: 'search', items: out.products });
+  });
+  assert.deepEqual([log.lines[0].live, log.lines[0].recent], [0, 1]);
+  assert.equal('overlay_cache_not_live' in log.lines[0], false);
+});
