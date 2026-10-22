@@ -144,7 +144,7 @@ const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 // Matched on the latin view, where apostrophes are dropped and punctuation is a space
 // ("retinol-free" is "retinol free", "don't" is "dont").
 const RETINOID_NAME_FOR_NEGATION =
-  '(?:retinol\\w*|retinal\\w*|retinoid\\w*|retinyl\\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|vit(?:amin)?\\s?a|granactive|hydroxypinacolone|hpr|differin|accutane)';
+  '(?:retinol\\w*|retinal\\w*|retinoid\\w*|retinyl\\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|vit(?:amin)?s?\\s+a|granactive|hydroxypinacolone|hpr|differin|accutane)';
 // Up to three filler words between the negation and the name: "no added retinol", "avoid any
 // retinoids", "nothing with retinol", "avoid using any more retinol". Four are not a negation of the
 // name: "what not to use with my retinol" asks how to pair it.
@@ -826,7 +826,59 @@ function readRequestContext(body, options) {
   return { classes: Array.from(all).sort(), sources: Array.from(sources).sort() };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Products: does a product's own text name a real retinoid?
+//
+// Read on the script view (NFKC, zero-width removed, lowercased), so a retinoid named in another
+// script, behind a zero-width character, or with a digit glued on ("Retinol0.3") is still seen.
+// Stand-in and free-of phrases are removed first ("Bakuchiol Retinol Alternative", "retinol-free",
+// "no retinol irritation", "without retinol side effects"); whatever retinoid name is left after that,
+// anywhere on the product, makes it a retinoid. So "Retinol-Free Retinoid Serum (HPR)" and "Retinal
+// serum, without retinol side effects" stay retinoids, and "Bakuchiol Retinol Alternative Serum" is
+// not one unless its ingredients name a real retinoid.
+const PRODUCT_STAND_IN_RES = [
+  /\b(?:bio|phyto|plant|botanical|herbal)[-\s]?retinol\b/g,
+  /\bplant[-\s]based[-\s]+retinol\b/g,
+  /\b(?:retinol|retinoid)s?[-\s]+(?:alternatives?|substitutes?|replacements?|dupes?)\b/g,
+  /\b(?:retinol|retinoid)s?-like\b/g,
+  /\b(?:alternatives?|substitutes?|replacements?)[-\s]+(?:to|for)[-\s]+(?:retinol|retinoids?)\b/g,
+  /\b(?:gentler|better|kinder|softer)[-\s]+than[-\s]+retinol\b/g,
+  /\b(?:retinol|retinoid)s?[-\s]?free\b/g,
+  /\bfree[-\s]+(?:of|from)[-\s]+(?:retinol|retinoids?)\b/g,
+  /\b(?:no|without|zero|0[-\s]?%)[-\s]+(?:added[-\s]+)?(?:retinol|retinoids?)\b/g,
+  /레티놀[-\s]?(?:대체|프리(?!미엄))/g,
+  /(?:植物)?(?:视黄醇|視黃醇|a醇)(?:平替|替代|代替)|植物(?:视黄醇|視黃醇|a醇)/g,
+  /レチノール(?:代替|フリー|様)/g,
+];
+// Latin view of de-leeted tokens: generic names, prescription brands sold under their own name,
+// French / Italian / Spanish forms (rétinol, retinolo, rétinoïde fold to these).
+const PRODUCT_RETINOID_LATIN_RE = new RegExp(
+  '(?:^|\\s)(?:retinol\\w*|retinal\\w*|retinaldehyde|retinoid\\w*|retinyl\\w*|retinoic|retinoate|tretinoin\\w*|isotretinoin\\w*|' +
+    'adapalene|tazarotene|trifarotene|retin\\s+a|vit(?:amin)?s?\\s+a|vitamina\\s+a|granactive|hydroxypinacolone|hpr|' +
+    'differin|tazorac|arazlo|aklief|epiduo|altreno|atralin|refissa|avita|fabior|absorica|claravis|amnesteem|myorisan|zenatane|' +
+    'accutane|roaccutane)(?=\\s|$)',
+);
+const PRODUCT_RETINOID_SCRIPT_RE = new RegExp(
+  [
+    '视黄醇', '視黃醇', '视黄醛', '視黃醛', '维a醇', '維a醇', '维a酸', '維a酸', '维甲酸', '維甲酸', 'a醇', 'a醛', 'レチノール', 'レチナール',
+    'レチノイン酸', '레티놀', '레티날', '레티노이드', '레티닐 ?팔미테이트', '트레티노인', 'เรตินอล', 'เรตินัล', 'ريتينول', 'رتينول',
+    'רטינול', 'रेटिनॉल', 'रेटिनोल',
+    // Russian, with up to four inflection letters (ретинолом), not ретинолоподобный ("retinol-like")
+    '(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])',
+  ].join('|'),
+);
+function productTextNamesRetinoid(text) {
+  const script = scriptView(text);
+  if (!script.trim()) return false;
+  const stripped = PRODUCT_STAND_IN_RES.reduce((out, re) => out.replace(re, ' '), script);
+  if (PRODUCT_RETINOID_SCRIPT_RE.test(stripped)) return true;
+  const latin = deLeet(latinView(stripped));
+  // as written ("vitamin a c e") and with single letters joined ("r e t i n o l")
+  return PRODUCT_RETINOID_LATIN_RE.test(` ${latin} `) || PRODUCT_RETINOID_LATIN_RE.test(` ${latinTokens(latin).join(' ')} `);
+}
+
 module.exports = {
+  productTextNamesRetinoid,
   SOFT_TIER_ENV,
   OVER_LIMIT_CLASS,
   MAX_SCAN_STRING_CHARS,

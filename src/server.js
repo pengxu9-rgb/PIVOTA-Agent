@@ -20105,28 +20105,31 @@ function resolveBeautyRetinoidSafetyClasses(queryText = '') {
   return Array.from(classes).sort();
 }
 
-// The raw text a product carries about itself: names, descriptions, ingredients and INCI, as
-// typed. The search-normalised candidate texts drop Hangul and Cyrillic, so a retinoid named only
-// in Korean or Russian ("레티놀 프리미엄 세럼", "Крем с ретинолом") was invisible to them.
+// Everything a product says about itself, as typed: names, brand, descriptions (HTML stripped),
+// tags, highlights, attributes, variants, ingredients, INCI and actives, at the top level, in
+// `seed_data`, its snapshot and `ingredient_intel`. The search-normalised candidate texts drop
+// Hangul, Cyrillic and Thai and miss most of these fields.
 const BEAUTY_PRODUCT_RAW_SAFETY_FIELDS = [
-  'title', 'name', 'product_name', 'display_name', 'description', 'ingredients', 'inci', 'inci_list',
-  'ingredients_inci', 'active_ingredients', 'key_ingredients', 'raw_ingredient_text_clean', 'pdp_ingredients_raw',
-  'pdp_active_ingredients_raw', 'pdp_description_raw', 'inci_normalized',
+  'title', 'name', 'product_name', 'display_name', 'brand', 'vendor', 'product_type', 'category', 'description',
+  'short_description', 'body_html', 'pdp_description_raw', 'highlights', 'benefits', 'claims', 'tags', 'attributes',
+  'variants', 'options', 'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients',
+  'actives', 'key_ingredients', 'ingredient_tokens', 'raw_ingredient_text_clean', 'pdp_ingredients_raw',
+  'pdp_active_ingredients_raw', 'external_url', 'canonical_url', 'destination_url',
 ];
 function buildBeautyProductRawSafetyText(product) {
   const parts = [];
   const append = (value, depth = 0) => {
     if (depth > 3 || parts.length > 400 || value == null) return;
     if (typeof value === 'string') {
-      if (value.trim()) parts.push(value);
+      if (value.trim()) parts.push(value.length > 20000 ? value.slice(0, 20000) : value);
       return;
     }
     if (Array.isArray(value)) {
-      for (const item of value) append(item, depth + 1);
+      for (const item of value.slice(0, 100)) append(item, depth + 1);
       return;
     }
     if (typeof value === 'object') {
-      for (const key of ['name', 'title', 'inci', 'ingredient', 'label']) append(value[key], depth + 1);
+      for (const item of Object.values(value).slice(0, 100)) append(item, depth + 1);
     }
   };
   const sources = [product];
@@ -20141,84 +20144,19 @@ function buildBeautyProductRawSafetyText(product) {
   for (const source of sources) {
     for (const field of BEAUTY_PRODUCT_RAW_SAFETY_FIELDS) append(source[field]);
   }
-  return parts.join(' \n ').normalize('NFKC');
+  return parts.join(' \n ').replace(/<[^>]*>/g, ' ');
 }
 
-// Korean and Russian retinoid names, matched on the raw text: Korean as written, with or without
-// the space in "레티닐 팔미테이트"; Russian with up to four inflection letters after the stem
-// (ретинол, ретинола, ретинолом; ретиноидная).
-const BEAUTY_PRODUCT_RETINOID_KO_RE = /레티놀|레티날|레티노이드|레티닐 ?팔미테이트/;
-const BEAUTY_PRODUCT_RETINOID_RU_RE = /(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])/i;
-
-// A product that names a retinoid ONLY inside a stand-in phrase ("Bakuchiol Retinol Alternative
-// Serum", "Phyto-Retinol Night Cream", "Retinol-Like Serum") is not a retinoid product, unless its
-// description or its structured ingredients (INCI, actives, key ingredients) name a real retinoid.
-// This follows the strict ingredient reader's naming rules (src/findProductsMulti/
-// strictIngredientQuery.js): a stand-in or negated mention never counts as naming the ingredient.
-// A bare "retinol like" (no hyphen) is NOT treated as a stand-in: "Retinol Like Butter Balm" is a
-// retinol balm, so it stays gated.
-const BEAUTY_RETINOID_STAND_IN_PHRASES = [
-  /\b(?:bio|phyto|plant|botanical|herbal)[-\s]?retinol\b/g,
-  /\bplant[-\s]based\s+retinol\b/g,
-  /\b(?:retinol|retinoid)s?(?:\s+|-)(?:alternatives?|substitutes?|replacements?|dupes?)\b/g,
-  /\b(?:retinol|retinoid)s?-like\b/g,
-  /\b(?:alternatives?|substitutes?|replacements?)\s+(?:to|for)\s+(?:retinol|retinoids?)\b/g,
-  /\b(?:gentler|better|kinder|softer)\s+than\s+retinol\b/g,
-  /\b(?:retinol|retinoid)s?[-\s]?free\b/g,
-  /\b(?:no|without|zero|0\s?%)\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
-  /레티놀\s?(?:대체|프리(?!미엄))/g,
-  /(?:植物)?(?:视黄醇|視黃醇|a醇)(?:平替|替代|代替)|植物(?:视黄醇|視黃醇|a醇)/g,
-  /レチノール(?:代替|フリー|様)/g,
-];
-const BEAUTY_RETINOID_NAME_ANY_RE =
-  /\b(?:retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|granactive\s+retinoid)\b|视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール|레티놀|레티날|레티노이드|레티닐 ?팔미테이트|(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])/i;
-
-function beautyProductRetinoidMentionIsStandInOnly(product) {
-  if (!product || typeof product !== 'object') return false;
-  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
-  const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
-  const pick = (holders, fields) => {
-    const parts = [];
-    const add = (value) => {
-      if (typeof value === 'string') parts.push(value);
-      else if (Array.isArray(value)) value.forEach(add);
-      else if (value && typeof value === 'object') ['name', 'title', 'inci', 'ingredient', 'label'].forEach((k) => add(value[k]));
-    };
-    for (const holder of holders) for (const field of fields) add(holder[field]);
-    return parts.join(' \n ').normalize('NFKC').toLowerCase();
-  };
-  const intelHolders = [product.ingredient_intel, seedData.ingredient_intel].filter((v) => v && typeof v === 'object');
-  const title = pick([product, seedData, snapshot], ['title', 'name', 'product_name', 'display_name']);
-  const description = pick([product, seedData, snapshot], ['description', 'pdp_description_raw']);
-  const structured = pick([product, seedData, snapshot, ...intelHolders], [
-    'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients', 'key_ingredients',
-    'raw_ingredient_text_clean', 'pdp_ingredients_raw', 'pdp_active_ingredients_raw', 'ingredient_tokens',
-  ]);
-  const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
-  // The title must carry a stand-in phrase, and nothing anywhere may name a retinoid outside one.
-  if (strip(title) === title) return false;
-  return [title, description, structured].every((text) => !BEAUTY_RETINOID_NAME_ANY_RE.test(strip(text)));
-}
-
-// A product the retinoid safety rules must keep out: it names a retinoid and does not say it is
-// retinoid-free. Wider than the gate's own retinoidHit (it also reads prescription and
-// non-Latin names, on the raw title, description, ingredients and INCI). Only safety-signalled
-// requests use it, so it never changes a request without a signal.
+// A product the retinoid safety rules must keep out: its own text names a real retinoid, outside
+// any stand-in or free-of phrase (retinoidSafetySignal.productTextNamesRetinoid). Wider than the
+// gate's own retinoidHit: prescription brands, Vitamin A, Granactive, every script the lexicon
+// reads, and every field a product carries. Only safety-signalled requests use it, so it never
+// changes a request without a signal.
 function beautyProductIsRetinoidForSafety(product) {
   if (!product || typeof product !== 'object') return false;
-  const text = buildFallbackCandidateText(product);
-  const safetyText = buildBeautyProductSafetyText(product, text);
-  const rawText = buildBeautyProductRawSafetyText(product);
-  const scriptText = [text, safetyText, rawText].join(' ');
-  if (!scriptText.trim()) return false;
-  const hit =
-    /\b(bio[-\s]?retinol|retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|hpr|granactive\s+retinoid)\b/i.test(scriptText) ||
-    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/i.test(scriptText) ||
-    BEAUTY_PRODUCT_RETINOID_KO_RE.test(rawText) ||
-    BEAUTY_PRODUCT_RETINOID_RU_RE.test(rawText);
-  if (!hit) return false;
-  if (beautyProductRetinoidMentionIsStandInOnly(product)) return false;
-  return !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text);
+  return retinoidSafetySignal.productTextNamesRetinoid(
+    [buildBeautyProductSafetyText(product, ''), buildBeautyProductRawSafetyText(product)].join(' \n '),
+  );
 }
 
 // The last line of the retinoid safety rules: for a find_products_multi response to a request that
@@ -54111,7 +54049,6 @@ module.exports._debug = {
   scoreBeautyExternalSeedProduct,
   isBeautyProductContraindicatedForQuery,
   beautyProductIsRetinoidForSafety,
-  beautyProductRetinoidMentionIsStandInOnly,
   resolveBeautyRetinoidSafetyClasses,
   applyRetinoidSafetyNetToSearchBody,
   applyRetinoidSafetyNetForInvokeResponse,
