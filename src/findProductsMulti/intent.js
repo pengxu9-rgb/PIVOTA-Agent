@@ -1076,7 +1076,7 @@ function maskStrengthNumbers(text) {
     if (PERCENT_AFTER_RE.test(after)) kind = 'percent';
     else if (!currency && (SPF_UNIT_AFTER_RE.test(after) || SPF_BEFORE_RE.test(before) || SPF_HYPHEN_BEFORE_RE.test(before))) kind = 'spf';
     else if (!currency && SIZE_UNIT_AFTER_RE.test(after)) kind = 'size';
-    tokens.push({ start, end, currency, currencyWordAfter, boundOwn, between, bound: boundOwn || between, kind, spread: false });
+    tokens.push({ start, end, currency, currencyWordAfter, bound: boundOwn, between, kind, spread: false });
   }
   const links = [];
   for (let i = 0; i + 1 < tokens.length; i += 1) {
@@ -1090,12 +1090,11 @@ function maskStrengthNumbers(text) {
         : a.between && BETWEEN_AND_GAP_RE.test(gap)
           ? 'between'
           : null;
-    if (type) links.push({ a, b, type, ia: i });
+    if (type) links.push({ a, b, type });
   }
-  // Each number's OWN markers. Nothing is shared between a range's ends: a budget range the parser
-  // reads is protected whole below, and a marker never travels into a strength range
-  // ("$15 to 5-10% serum" is the $15's budget and the 5-10% strength).
-  const own = tokens.map((t) => ({ currency: t.currency, bound: t.bound }));
+  // Every check below reads a number's OWN markers. Nothing is shared between a range's ends: a
+  // budget range the parser reads is protected whole, and a marker never travels into a strength
+  // range ("$15 to 5-10% serum" is the $15's budget and the 5-10% strength).
   // Never swallow an end of a range the parser itself reads as a budget ("$20 - 40-10%",
   // "price 20 – 40–50ml", "预算 200 - 300-50ml"), unless the range has a strength at an end. A budget
   // range reads low to high: in "$30 - 5-10% niacinamide" the 5 opens the strength range, so the
@@ -1103,8 +1102,7 @@ function maskStrengthNumbers(text) {
   for (const range of markedBudgetRanges(text)) {
     if (Number(range[1]) > Number(range[2])) continue;
     const ends = [1, 2].map((group) => tokens.find((x) => x.start === numberSpan(range, group).start));
-    // a range with a strength at either end ("between 5 and 10％") is the strength's, not a budget
-    if (ends.some((t) => !t || t.kind)) continue;
+    if (ends.some((t) => !t)) continue;
     for (const t of ends) t.protected = true;
   }
   // ...and a plain range whose second end names its currency in a word ("20 - 30 singapore dollars",
@@ -1116,7 +1114,7 @@ function maskStrengthNumbers(text) {
     if (a.kind === 'spf') inSpfRange.add(b);
     if (b.kind === 'spf') inSpfRange.add(a);
   }
-  for (const { a, b, ia } of links) {
+  for (const { a, b } of links) {
     if (a.kind || b.kind || inSpfRange.has(a) || inSpfRange.has(b)) continue;
     if (!b.currencyWordAfter) continue;
     if (Number(text.slice(a.start, a.end)) > Number(text.slice(b.start, b.end))) continue;
@@ -1124,7 +1122,7 @@ function maskStrengthNumbers(text) {
     b.protected = true;
   }
   // One hop, from a number masked on its own to its bare partner.
-  for (const { a, b, type, ia } of links) {
+  for (const { a, b, type } of links) {
     if (type === 'spaced' || Boolean(a.kind) === Boolean(b.kind)) continue;
     if (type === 'between') {
       // "between 5 and 10％" / "between 5% and 10": the "between" is the range's own marker, not a
@@ -1133,7 +1131,7 @@ function maskStrengthNumbers(text) {
       // ("between 5% and 10 dollars").
       // (the first end cannot be a protected range end: its other neighbour sits before "between")
       if (b.kind) a.spread = true;
-      else if (!own[ia + 1].currency && !own[ia + 1].bound && !b.protected) b.spread = true;
+      else if (!b.currency && !b.bound && !b.protected) b.spread = true;
       continue;
     }
     const other = a.kind ? b : a;
@@ -1144,9 +1142,9 @@ function maskStrengthNumbers(text) {
   // ("spf 30 ~ 50 - $15" keeps its $15, "spf 30-50 - 30 dollars" its 30). Next to a number that is
   // itself a budget ("under 30 - 50ml", "50ml - 300以下") the size stays masked. A percentage is
   // never a price, so it always stays masked.
-  for (const { a, b, ia } of links) {
-    for (const [x, y, yOwn] of [[a, b, own[ia + 1]], [b, a, own[ia]]]) {
-      const bare = !y.kind && !y.spread && !yOwn.currency && !yOwn.bound && !y.protected;
+  for (const { a, b } of links) {
+    for (const [x, y] of [[a, b], [b, a]]) {
+      const bare = !y.kind && !y.spread && !y.currency && !y.bound && !y.protected;
       if ((x.kind === 'spf' || x.kind === 'size') && bare) x.kind = null;
     }
   }

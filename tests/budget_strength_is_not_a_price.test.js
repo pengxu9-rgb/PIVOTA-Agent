@@ -406,6 +406,10 @@ describe('flag off: nothing spreads across a spaced join, and a bare number next
   test('"between 20 and 40-50ml" keeps the between budget, not the size range', () => {
     expect(parseBudgetToPriceConstraint('between 20 and 40-50ml')).toEqual(max(null, 20));
   });
+  // "between" is not a budget marker of its own: "between 5-10%" is a strength range (r5b sweep survivor I08)
+  test.each(['between 5-10% serum', 'between 5–10％ serum'])('"%s" has no budget', (q) => {
+    expect(parseBudgetToPriceConstraint(q)).toBeNull();
+  });
   // "between" needs no space before the number (M7)
   test.each(['between5 and 10% serum', 'between5% and 10 serum'])('"%s" has no budget', (q) => {
     expect(parseBudgetToPriceConstraint(q)).toBeNull();
