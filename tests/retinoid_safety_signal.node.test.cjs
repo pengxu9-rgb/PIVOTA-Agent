@@ -215,6 +215,13 @@ test('context: a profile, flag or constraint that SAYS something gates', () => {
   for (const body of gated) assert.notDeepEqual(contextClasses(body), [], JSON.stringify(body));
 });
 
+test('look-alikes of the words added from review stay silent', () => {
+  for (const text of ['массаж в положении лёжа', 'retinol serum, sleep in положении сидя', 'what kind of retinol', 'retinol under 12',
+    '레티놀 아이크림', 'nina ricci perfume', 'delivery due date', 'ich gebe retinol', 'retinol for my husband']) {
+    assert.deepEqual([text, signal.retinoidSafetyClassesForText(text, { softTier: false })], [text, []]);
+  }
+});
+
 test('context: the shapes and fields review found unread', () => {
   const year = new Date().getUTCFullYear();
   const cases = [

@@ -20144,7 +20144,11 @@ function buildBeautyProductRawSafetyText(product) {
   for (const source of sources) {
     for (const field of BEAUTY_PRODUCT_RAW_SAFETY_FIELDS) append(source[field]);
   }
-  return parts.join(' \n ').replace(/<[^>]*>/g, ' ');
+  // HTML: inline tags can split a word ("re<span>tinol</span>"), block tags separate words
+  return parts
+    .join(' \n ')
+    .replace(/<\/?(?:span|b|i|em|strong|u|small|sup|sub|font|a|mark)\b[^>]*>/gi, '')
+    .replace(/<[^>]*>/g, ' ');
 }
 
 // A product the retinoid safety rules must keep out: its own text names a real retinoid, outside
