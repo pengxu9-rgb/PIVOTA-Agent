@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { installGeocoderDown } = require('./_support/offlineGeocoder.cjs');
+
+// Travel paths geocode through global.fetch; answer Open-Meteo as down instead of the internet.
+test.after(installGeocoderDown());
 
 const ROOT_CONTRACTS = '../src/auroraBff/travelSkills/contracts';
 const ROOT_KB_STORE = '../src/auroraBff/travelKbStore';

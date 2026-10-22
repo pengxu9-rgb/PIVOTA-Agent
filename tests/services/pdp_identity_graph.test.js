@@ -3755,6 +3755,14 @@ describe('pdpIdentityGraph', () => {
       DATABASE_URL: 'postgresql://example.test/pivota',
     };
     jest.resetModules();
+    // The post-promotion trust refresh is fire-and-forget on the module's own pool (it does not
+    // use the injected queryFn), so unstubbed it dialled DATABASE_URL's host for real. Stub it and
+    // pin that it is asked to refresh exactly the promoted rows.
+    const upsertCatalogRowTrustForSourceListingRefs = jest.fn(async () => 0);
+    jest.doMock('../../src/services/catalogRowTrustUpserter', () => ({
+      ...jest.requireActual('../../src/services/catalogRowTrustUpserter'),
+      upsertCatalogRowTrustForSourceListingRefs,
+    }));
     const { promotePdpIdentityLiveRead } = require('../../src/services/pdpIdentityGraph');
     const candidateRow = {
       source_listing_ref: 'external_seed:ext_1',
@@ -3834,6 +3842,12 @@ describe('pdpIdentityGraph', () => {
         updated_rows: 2,
       }),
     );
+    expect(upsertCatalogRowTrustForSourceListingRefs).toHaveBeenCalledTimes(1);
+    expect([...upsertCatalogRowTrustForSourceListingRefs.mock.calls[0][1]].sort()).toEqual([
+      'external_seed:ext_1',
+      'merch_1:prod_1',
+    ]);
+    jest.dontMock('../../src/services/catalogRowTrustUpserter');
   });
 
   test('summarizePdpIdentityCoverageByBrand normalizes coverage ratios', async () => {

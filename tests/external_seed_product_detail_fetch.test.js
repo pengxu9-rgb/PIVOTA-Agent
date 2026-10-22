@@ -1,4 +1,5 @@
 const nock = require('nock');
+const { nockOffline } = require('./_support/nockOffline.cjs');
 const request = require('supertest');
 const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../src/services/catalogEntityResolutionSqlTag');
 
@@ -40,6 +41,14 @@ function eligibleServingRow(overrides = {}) {
 }
 
 describe('external seed product detail hydration', () => {
+  // Tests that do not mock the backend's group-resolve / invoke calls see it as down, offline,
+  // instead of a DNS query for backend.test; any other unmocked host fails (nockOffline.cjs).
+  let restoreNock;
+  beforeAll(() => {
+    restoreNock = nockOffline(nock, { down: ['backend.test'] });
+  });
+  afterAll(() => restoreNock());
+
   afterEach(() => {
     nock.cleanAll();
   });

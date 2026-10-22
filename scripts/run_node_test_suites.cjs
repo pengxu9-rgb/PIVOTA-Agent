@@ -53,7 +53,20 @@ const SUITE_ROOTS = Object.freeze([
 //
 // The CI job this replaces set no such flag over its 110 suites, so inheriting is also
 // the faithful choice. A suite that needs the mock sets it for itself.
-const TEST_ENV = { ...process.env };
+//
+// One addition: the loopback-only network guard (tests/_support/netGuard.cjs) is preloaded
+// into every suite through NODE_OPTIONS, which `node --test` hands to each per-file child
+// process (and which any `node` a suite spawns inherits). An attempt to reach anything but
+// loopback is refused, and the suite's process exits non-zero listing the target and stack,
+// even when the code under test swallowed the error.
+const NET_GUARD = path.join(TESTS_DIR, '_support', 'netGuard.cjs');
+
+function buildTestEnv(baseEnv = process.env) {
+  const { withGuardPreload } = require(NET_GUARD);
+  return { ...baseEnv, NODE_OPTIONS: withGuardPreload(baseEnv.NODE_OPTIONS) };
+}
+
+const TEST_ENV = buildTestEnv();
 
 // Generous: the observed gated batch is ~2.5 minutes. This exists so a hang fails with a
 // signal rather than eating the workflow's own timeout with no output.
@@ -232,6 +245,8 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  buildTestEnv,
+  NET_GUARD,
   discoverSuites,
   readQuarantine,
   readQuarantineEntries,
