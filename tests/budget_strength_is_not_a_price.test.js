@@ -98,6 +98,8 @@ const STRENGTHS = [
 // hops, only in these; flag off they keep main's legacy reading of the bare number next to the
 // strength, because nothing spreads across a clause separator or further than one hop.
 const FLAG_ON_STRENGTHS = [
+  // the age/count guard reads "spf-50" like "spf 50" (r5 sweep survivor Y05)
+  'kids under 12 spf-50',
   // review r5 (B1): a soft bound or budget word before a strength range is no budget, as on main --
   // the masked strength still counts as the digit it replaced
   'around 5 - 10% niacinamide serum',
@@ -227,8 +229,18 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   ['under $40 - 2-4% bha', max('USD', 40)],
   ['€20 – 1-2% retinol', max('EUR', 20)],
   ['under $25 - 2x serum', max('USD', 25)],
-  // ...but it does cross a spaced "to": "20 to 40 dollars" is one range
+  // ...and "20 to 40 dollars" is one budget range the parser reads, so it stays whole
   ['30 ml-20 to 40 dollars', { currency: 'USD', min: 20, max: 40 }],
+  // a marker never travels into a strength range: "$15 to 5-10%" is the $15 and a 5-10% strength
+  ['$15 to 5-10% serum', max('USD', 15)],
+  ['$15-5-10% serum', max('USD', 15)],
+  // r5 sweep survivors: every marked range is protected, not only the first (X04), a currency-word
+  // range read high to low is not (X08), and a between-range's second end keeps a range of its own
+  // (P06g)
+  ['between 5 and 10％ niacinamide $20 - 40-10%', { currency: 'USD', min: 20, max: 40 }],
+  ['price 5-10％ then $20 - 40-10%', { currency: 'USD', min: 20, max: 40 }],
+  ['10%-30 - 20 usd', max('USD', 20)],
+  ['between 5% and 10-20 dollars serum', { currency: 'USD', min: 10, max: 20 }],
   // (S2) a currency glued after a number is that number's, not the next one's
   ['under 40€ 50ml', max('EUR', 40)],
   ['under 30$ 50ml', max('USD', 30)],
@@ -385,6 +397,14 @@ describe('flag off: nothing spreads across a spaced join, and a bare number next
   // ...in both directions: the bare end before the size restores it too (W7)
   test('"30 - 50ml toner" reads as main does', () => {
     expect(parseBudgetToPriceConstraint('30 - 50ml toner')).toEqual({ currency: null, min: 30, max: 50 });
+  });
+  // "spf-50" is the 50's SPF (r5 sweep survivor S03b)
+  test('"serum spf-50" has no budget', () => {
+    expect(parseBudgetToPriceConstraint('serum spf-50')).toBeNull();
+  });
+  // a size next to a protected budget range stays masked (r5 sweep survivor R10)
+  test('"between 20 and 40-50ml" keeps the between budget, not the size range', () => {
+    expect(parseBudgetToPriceConstraint('between 20 and 40-50ml')).toEqual(max(null, 20));
   });
   // "between" needs no space before the number (M7)
   test.each(['between5 and 10% serum', 'between5% and 10 serum'])('"%s" has no budget', (q) => {

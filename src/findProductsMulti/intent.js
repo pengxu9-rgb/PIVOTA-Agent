@@ -998,12 +998,11 @@ const SPF_BEFORE_RE =
 //     "usd 30 spf 50" keep the 30);
 //   * ONE hop further, the bare partner of such a number across a TIGHT range join -- no space on
 //     either side of the separator ("5-10%", "10〜15％", "30-50ml", "spf 30-50") -- or across
-//     "between N and M" ("between 5 and 10％").
+//     "between N and M" from either end ("between 5 and 10％", "between 5% and 10").
 // A spaced " - " / " ~ " / " to " reads as a clause separator ("under 30 - 50ml"), so nothing spreads
 // across it. Nothing spreads onto a number that is currency- or bound-marked -- by a currency, a bound
 // word before it ("under", "around", "预算"...) or a bound after it ("or less", "max", "以内"...) -- nor
-// onto the far end of a range whose other end is marked ("$20-40-10%", "price 20-40-50ml"): a range
-// shares its ends' markers.
+// onto an end of a range the parser itself reads as a budget ("$20-40-10%", "price 20 - 40-50ml").
 // Masking only rewrites those numbers to STRENGTH_MASK, so a query with none of them parses exactly
 // as before. Without it the flag-off parser fell back to the strength ("1.0% retinol serum" -> a
 // 1.00 cap that emptied the ingredient lane), and with the flag on a bound word before a full-width
@@ -1037,10 +1036,8 @@ const STRENGTH_GAP_UNIT_SRC = `(?:\\s*(?:${PERCENT_UNIT_SRC}|${SIZE_UNIT_SRC}|sp
 const RANGE_SEPARATOR_SRC = '(?:-|~|—|–|〜|～|到)';
 // A tight join: the separator touches both numbers.
 const TIGHT_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}${RANGE_SEPARATOR_SRC}$`, 'i');
-// Any range join, spaced or not -- used only to share markers between a range's ends.
+// Any range join, spaced or not: a link for the whole-or-nothing rule, never a spread.
 const ANY_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:${RANGE_SEPARATOR_SRC}|to)\\s*$`, 'i');
-// "to" joins a range at any spacing ("20 to 40", "$20to40").
-const TO_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*to\\s*$`, 'i');
 const BETWEEN_AND_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:and|&)\\s*$`, 'i');
 const STRENGTH_BETWEEN_BEFORE_RE = /\bbetween\s*$/i;
 // A number is bound-marked when the parser could read it as a budget through a marker word: built
@@ -1088,28 +1085,17 @@ function maskStrengthNumbers(text) {
     const gap = text.slice(a.end, b.start);
     const type = TIGHT_RANGE_GAP_RE.test(gap)
       ? 'tight'
-      : TO_GAP_RE.test(gap)
-        ? 'to'
-        : ANY_RANGE_GAP_RE.test(gap)
-          ? 'spaced'
-          : a.between && BETWEEN_AND_GAP_RE.test(gap)
-            ? 'between'
-            : null;
+      : ANY_RANGE_GAP_RE.test(gap)
+        ? 'spaced'
+        : a.between && BETWEEN_AND_GAP_RE.test(gap)
+          ? 'between'
+          : null;
     if (type) links.push({ a, b, type, ia: i });
   }
-  // A range shares its ends' OWN markers: "$20-40", "price 20-40", "between 20 and 40", "20-40 usd",
-  // "20 to 40 dollars". One hop and never transitive: in "spf 30-50 - 20-30 usd" the 20 takes the usd,
-  // the 50 does not. Never across a spaced " - " / " ~ ": that is a clause separator, so in
-  // "$30 - 5-10% niacinamide" the 5 is the strength range's, not the $30's.
+  // Each number's OWN markers. Nothing is shared between a range's ends: a budget range the parser
+  // reads is protected whole below, and a marker never travels into a strength range
+  // ("$15 to 5-10% serum" is the $15's budget and the 5-10% strength).
   const own = tokens.map((t) => ({ currency: t.currency, bound: t.bound }));
-  for (const { a, b, ia, type } of links) {
-    if (type === 'spaced') continue;
-    const ib = ia + 1;
-    if (own[ia].currency) b.currency = true;
-    if (own[ib].currency) a.currency = true;
-    if (own[ia].bound) b.bound = true;
-    if (own[ib].bound) a.bound = true;
-  }
   // Never swallow an end of a range the parser itself reads as a budget ("$20 - 40-10%",
   // "price 20 – 40–50ml", "预算 200 - 300-50ml"), unless the range has a strength at an end. A budget
   // range reads low to high: in "$30 - 5-10% niacinamide" the 5 opens the strength range, so the
@@ -1139,15 +1125,15 @@ function maskStrengthNumbers(text) {
   }
   // One hop, from a number masked on its own to its bare partner.
   for (const { a, b, type, ia } of links) {
-    if (type === 'spaced' || type === 'to' || Boolean(a.kind) === Boolean(b.kind)) continue;
+    if (type === 'spaced' || Boolean(a.kind) === Boolean(b.kind)) continue;
     if (type === 'between') {
       // "between 5 and 10％" / "between 5% and 10": the "between" is the range's own marker, not a
       // budget's, and the "between ... and" gap leaves no room for a marker of the first number's
       // own, so it always takes the mask. The second end keeps a currency or bound of its own
       // ("between 5% and 10 dollars").
-      if (b.kind) {
-        if (!a.protected) a.spread = true;
-      } else if (!own[ia + 1].currency && !own[ia + 1].bound && !b.protected) b.spread = true;
+      // (the first end cannot be a protected range end: its other neighbour sits before "between")
+      if (b.kind) a.spread = true;
+      else if (!own[ia + 1].currency && !own[ia + 1].bound && !b.protected) b.spread = true;
       continue;
     }
     const other = a.kind ? b : a;
