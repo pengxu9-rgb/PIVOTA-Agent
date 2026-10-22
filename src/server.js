@@ -20273,10 +20273,14 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
 // out, and the body says why.
 function applyRetinoidSafetyNetForInvokeResponse({ body, queryTexts = [], requestContext = null, onError = null } = {}) {
   try {
-    const text = queryTexts.filter((v) => typeof v === 'string' && v.trim()).join(' \n ');
-    const classes = INVOKE_RETINOID_SAFETY_CONTEXT.run(requestContext || { classes: [], sources: [] }, () =>
-      resolveBeautyRetinoidSafetyClasses(text),
-    );
+    // Each text is read on its own: joined, a negation at the end of one ("retinol serum, don't want")
+    // would bind to the retinoid that starts the next copy of the same query.
+    const texts = Array.from(new Set(queryTexts.filter((v) => typeof v === 'string' && v.trim())));
+    const classes = INVOKE_RETINOID_SAFETY_CONTEXT.run(requestContext || { classes: [], sources: [] }, () => {
+      const all = new Set(resolveBeautyRetinoidSafetyClasses(''));
+      for (const text of texts) resolveBeautyRetinoidSafetyClasses(text).forEach((c) => all.add(c));
+      return Array.from(all).sort();
+    });
     return applyRetinoidSafetyNetToSearchBody(body, classes);
   } catch (err) {
     if (typeof onError === 'function') onError(err);

@@ -80,13 +80,14 @@ function loadApp({ seam = true, detectorDown = false } = {}) {
     });
   }
   if (detectorDown) {
-    // Only the net joins its query texts with " \n ", so this throws inside the net and nowhere else.
+    // Only the net reads the empty text (for the request context alone), so this throws inside the
+    // net and nowhere else.
     jest.doMock('../../src/services/retinoidSafetySignal', () => {
       const actual = jest.requireActual('../../src/services/retinoidSafetySignal');
       return {
         ...actual,
         retinoidSafetyClassesForText: (text, options) => {
-          if (String(text).includes(' \n ')) throw new Error('retinoid detector unavailable');
+          if (text === '') throw new Error('retinoid detector unavailable');
           return actual.retinoidSafetyClassesForText(text, options);
         },
       };
@@ -107,7 +108,7 @@ async function invoke(app, query, { payload = {}, metadata = { source: 'search' 
       });
       return resp;
     } catch (err) {
-      const reset = err && (err.code === 'ECONNRESET' || /socket hang up/.test(String(err.message)));
+      const reset = err && (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || /socket hang up|ETIMEDOUT/.test(String(err.message)));
       if (!reset || attempt >= 2) throw err;
     }
   }

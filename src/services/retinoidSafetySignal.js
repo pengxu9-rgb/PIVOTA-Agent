@@ -120,7 +120,7 @@ const RETINOID_NAME_FOR_NEGATION =
 const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,3}';
 const HARD_NEGATION_BEFORE_NAME_LATIN = [
   'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans',
-  'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing',
+  'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing', 'never', 'nope', 'no\\s+thanks',
   'stop(?:ped)?(?:\\s+using)?', 'quit(?:ting)?', 'no\\s+more', 'dont\\s+want', 'do\\s+not\\s+want', 'dont\\s+use',
   'do\\s+not\\s+use', 'cant\\s+use', 'cannot\\s+use', 'can\\s+not\\s+use', 'cant\\s+tolerate', 'cannot\\s+tolerate',
   'cant\\s+handle', 'never\\s+use', 'wont\\s+use', 'hate[sd]?', 'allergic\\s+to', 'allergy\\s+to', 'intolerant\\s+(?:to|of)',
@@ -130,8 +130,12 @@ const HARD_NEGATION_AFTER_NAME_LATIN = [
   'free(?!\\s+(?:shipping|delivery|gift|gifts|sample|samples|trial|returns?|standard|radicals?|size))',
   'alternatives?', 'substitutes?', 'replacements?', 'irritates?\\s+me', 'irritated\\s+me', 'burns?(?:\\s+my\\s+skin|\\s+me)?',
   'burned\\s+(?:my\\s+skin|me)', 'broke\\s+me\\s+out', 'breaks?\\s+me\\s+out', 'gives?\\s+me\\s+(?:a\\s+)?rash',
-  'gave\\s+me\\s+(?:a\\s+)?rash', 'not\\s+for\\s+me', 'no\\s+thanks', 'allergy', 'intolerance', 'makes\\s+me\\s+(?:break\\s+out|peel|red)',
+  'gave\\s+me\\s+(?:a\\s+)?rash', '(?:(?:is|are|was)\\s+)?not\\s+for\\s+me', '(?:is|are)nt\\s+for\\s+me', 'no\\s+thanks', 'nope', 'allergy', 'allergic',
+  'intolerance', 'makes\\s+me\\s+(?:break\\s+out|peel|red)',
 ];
+// A product word may sit between the name and what follows it: "retinol cream gives me a rash",
+// "retinol serum, not for me".
+const RETINOID_PRODUCT_WORD = '(?:\\s+(?:serums?|creams?|products?|oils?|lotions?|gels?|treatments?|moisturi[sz]ers?))?';
 // Same, in other scripts. These count only NEXT TO a retinoid name, the way the strict ingredient
 // reader (src/findProductsMulti/strictIngredientQuery.js, CJK_NEGATION_BEFORE_RE / _AFTER_RE) reads
 // them, never as a substring anywhere in the text:
@@ -314,7 +318,14 @@ const RE = {
   childLatin: wordRegex(HARD_CHILD_UNDER_12_LATIN),
   isotretinoinLatin: wordRegex(HARD_ISOTRETINOIN_LAYERING_LATIN),
   negationBeforeLatin: new RegExp(`(?:^|\\s)(?:${HARD_NEGATION_BEFORE_NAME_LATIN.join('|')})${NEGATION_FILLER}\\s+${RETINOID_NAME_FOR_NEGATION}(?=\\s|$)`),
-  negationAfterLatin: new RegExp(`(?:^|\\s)${RETINOID_NAME_FOR_NEGATION}\\s+(?:${HARD_NEGATION_AFTER_NAME_LATIN.join('|')})(?=\\s|$)`),
+  negationAfterLatin: new RegExp(
+    `(?:^|\\s)${RETINOID_NAME_FOR_NEGATION}${RETINOID_PRODUCT_WORD}\\s+(?:${HARD_NEGATION_AFTER_NAME_LATIN.join('|')})(?=\\s|$)`,
+  ),
+  // A negation that ends the text, after the name, has the name as its object: "retinol serum, don't
+  // want", "retinol, never". Followed by anything else it is not ("retinol stopped working").
+  negationTailLatin: new RegExp(
+    `(?:^|\\s)${RETINOID_NAME_FOR_NEGATION}${RETINOID_PRODUCT_WORD}\\s+(?:i\\s+)?(?:${HARD_NEGATION_BEFORE_NAME_LATIN.join('|')})\\s*$`,
+  ),
   teenLatin: wordRegex(SOFT_TEEN_LATIN),
   skinConditionLatin: wordRegex(SOFT_SKIN_CONDITION_LATIN),
   sensitivityLatin: wordRegex(SOFT_SENSITIVITY_LATIN),
@@ -356,6 +367,7 @@ function classifyText(text) {
   if (
     RE.negationBeforeLatin.test(joined) ||
     RE.negationAfterLatin.test(joined) ||
+    RE.negationTailLatin.test(joined) ||
     SCRIPT_NEGATION_RES.some((re) => re.test(script))
   ) {
     classes.add('retinoid_negation');

@@ -188,6 +188,9 @@ test('invoke net: query texts and request context decide; failures fail closed',
   assert.equal(applyRetinoidSafetyNetForInvokeResponse({ body: plain, queryTexts: ['retinol serum'] }), plain);
   // a signal in any of the query texts
   assert.deepEqual(ids(applyRetinoidSafetyNetForInvokeResponse({ body: body(), queryTexts: [null, 'retinol serum', '', 'for my 8 year old'] })), ['ha_serum']);
+  // each text is read on its own: a negation ending one text does not bind to the name starting the next
+  const split = body();
+  assert.equal(applyRetinoidSafetyNetForInvokeResponse({ body: split, queryTexts: ['vitamin c serum, no', 'retinol cream', 'vitamin c serum, no'] }), split);
   // a signal in the request context only
   const ctx = { classes: ['pregnancy_lactation_fertility'], sources: ['profile'] };
   assert.deepEqual(ids(applyRetinoidSafetyNetForInvokeResponse({ body: body(), queryTexts: ['retinol serum'], requestContext: ctx })), ['ha_serum']);
