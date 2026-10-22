@@ -36,12 +36,27 @@ const HARD = {
   ],
 };
 
-// Distant negations: these gate only when the same text also names a retinoid.
+// Negations bound to the retinoid term itself: each of these is a "no" to retinoids.
 const HARD_NEGATION_PHRASES = [
-  "don't want", 'do not want', 'dont want', "can't use", 'cannot use', "can't tolerate", 'cannot tolerate', 'anything but',
-  'never', 'stop using', 'stopped', 'quit', 'no more', 'no thanks', 'not for me', 'hate', 'i react to',
-  'gives me rash', 'gives me a rash', 'broke me out', 'breaks me out', 'allergic to', 'sans', 'free', '0%',
-  "aren't for me", "isn't for me", 'nope', 'skip', 'w/o', 'ditch',
+  'no retinol', 'retinol-free', 'retinol free', 'without retinol', 'w/o retinol', '0% retinol', 'free of retinol',
+  'free from retinoids', 'sans retinol', 'avoid retinol', 'avoid any retinoids', 'nothing with retinol', 'no more retinol',
+  'stop using retinol', 'stopped retinol', 'quit retinol', "don't want retinol", 'do not want retinoids',
+  "don't want to use retinol", "can't use retinol", 'cannot tolerate retinol', 'never use retinol', 'hate retinol',
+  'allergic to retinol', 'intolerant to retinol', 'i react to retinol', 'sensitive to retinol', 'retinol irritates me',
+  'retinol burns my skin', 'retinol broke me out', 'retinol gives me a rash', 'retinol not for me', 'retinol no thanks',
+  'retinol alternative', 'retinoid allergy', 'no differin', 'no vit a', 'no added retinol', 'anything but retinol',
+  'other than retinol', 'instead of retinol', 'no tretinoin', 'adapalene free',
+];
+
+// A negation of ANOTHER word next to a retinoid: these still ask for the retinoid.
+const NEGATION_LOOKALIKE_ASKS = [
+  'retinol without irritation', 'non-comedogenic retinol', 'oil free retinol', 'alcohol free retinol', 'retinol not greasy',
+  'retinol free shipping', 'retinol stopped working', 'strongest retinol no prescription', '视黄醇精华 无香精', 'レチノール 無香料',
+  'fragrance free retinol serum', 'paraben free retinol cream', 'retinol serum no fragrance', 'retinol cream without parabens',
+  'cruelty free retinol', 'first time retinol', 'retinol that wont irritate', 'retinol not drying', 'retinol serum free sample',
+  'retinol with no fragrance', 'retinol no side effects', 'best retinol no purge', 'never used retinol before',
+  'non irritating retinol', 'not too strong retinol', 'retinol cream not sticky', 'retinol free gift',
+  '레티놀 프리미엄', '레티놀 프리미엄 세럼', 'безопасный ретинол',
 ];
 
 const SOFT = {
@@ -66,4 +81,4 @@ const NEUTRAL = [
   'ammonium lactate lotion', 'lactic acid serum', 'hydrating toner', 'spf 30',
 ];
 
-module.exports = { HARD, HARD_NEGATION_PHRASES, SOFT, NEUTRAL };
+module.exports = { HARD, HARD_NEGATION_PHRASES, NEGATION_LOOKALIKE_ASKS, SOFT, NEUTRAL };

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const signal = require('../src/services/retinoidSafetySignal');
-const { HARD, HARD_NEGATION_PHRASES, SOFT, NEUTRAL } = require('./retinoid_safety_lexicon_phrases.cjs');
+const { HARD, HARD_NEGATION_PHRASES, NEGATION_LOOKALIKE_ASKS, SOFT, NEUTRAL } = require('./retinoid_safety_lexicon_phrases.cjs');
 
 const classes = (text, softTier = false) => signal.retinoidSafetyClassesForText(text, { softTier });
 const contextClasses = (body, softTier = false) =>
@@ -21,14 +21,21 @@ test('every HARD word and shape gates, alone and inside a serum, cream or generi
   }
 });
 
-test('a distant negation gates when the text names a retinoid, and only then', () => {
+test('a negation gates only when it binds to the retinoid term itself', () => {
   for (const phrase of HARD_NEGATION_PHRASES) {
-    for (const query of [`retinol serum, ${phrase}`, `${phrase} retinol`, `night cream ${phrase} tretinoin`, `${phrase} 레티놀`]) {
+    for (const query of [phrase, `retinol serum, ${phrase}`, `night cream ${phrase}`, `acne treatment, ${phrase}`]) {
       assert.ok(classes(query).includes('retinoid_negation'), query);
     }
-    assert.deepEqual(classes(`moisturizer, ${phrase}`), [], `no retinoid named: ${phrase}`);
+  }
+  for (const query of NEGATION_LOOKALIKE_ASKS) {
+    assert.ok(!classes(query).includes('retinoid_negation'), query);
+  }
+  // A negation word with no retinoid next to it never gates.
+  for (const query of ['moisturizer, no fragrance', 'serum without parabens', 'never tried serum', 'oil free moisturizer']) {
+    assert.deepEqual(classes(query), [], query);
   }
 });
+
 
 test('a negation written only in another script gates when that text names a retinoid', () => {
   for (const query of ['不要视黄醇精华', '不含A醇的面霜', '避开视黄醇', 'レチノールフリー 美容液', 'レチノール不使用', '레티놀 없는 크림', 'без ретинола']) {
@@ -112,7 +119,8 @@ test('the lists are separate and named: each tier holds its own classes', () => 
   assert.deepEqual([...signal.SOFT_CLASSES].sort(), ['sensitivity', 'skin_condition', 'teen_12_17']);
   for (const name of [
     'HARD_PREGNANCY_LACTATION_FERTILITY_LATIN', 'HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT', 'HARD_CHILD_UNDER_12_LATIN',
-    'HARD_ISOTRETINOIN_LAYERING_LATIN', 'HARD_DISTANT_NEGATION_LATIN', 'SOFT_TEEN_LATIN', 'SOFT_SKIN_CONDITION_LATIN',
+    'HARD_ISOTRETINOIN_LAYERING_LATIN', 'HARD_NEGATION_BEFORE_NAME_LATIN', 'HARD_NEGATION_AFTER_NAME_LATIN',
+    'HARD_NEGATION_BEFORE_NAME_SCRIPT', 'HARD_NEGATION_AFTER_NAME_SCRIPT', 'SOFT_TEEN_LATIN', 'SOFT_SKIN_CONDITION_LATIN',
     'SOFT_SENSITIVITY_LATIN',
   ]) {
     assert.ok(Array.isArray(signal[name]) && signal[name].length > 0, name);

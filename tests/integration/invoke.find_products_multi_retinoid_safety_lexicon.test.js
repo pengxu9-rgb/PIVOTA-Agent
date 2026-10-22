@@ -146,11 +146,11 @@ describe('/agent/shop/v1/invoke find_products_multi: retinoid safety lexicon', (
     });
   }
 
-  test('HARD distant negations: no retinoid for serum, cream or generic', async () => {
+  test('HARD negations bound to the retinoid: no retinoid for serum, cream or generic', async () => {
     const cases = [];
     for (const phrase of HARD_NEGATION_PHRASES) {
       for (const source of SOURCES) {
-        for (const query of [`retinol serum, ${phrase}`, `retinol cream, ${phrase}`, `acne treatment, ${phrase} retinol`]) {
+        for (const query of [`retinol serum, ${phrase}`, `retinol cream, ${phrase}`, `acne treatment, ${phrase}`]) {
           cases.push({ query, source });
         }
       }

@@ -105,17 +105,31 @@ const HARD_ISOTRETINOIN_LAYERING_LATIN = [
 const HARD_ISOTRETINOIN_LAYERING_COMPACT = ['accutane', 'isotretinoin'];
 const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 
-// The user saying no to retinoids. These count only when the same text also names a retinoid.
-// The phrases may sit anywhere in that text, not only directly before the name.
-const HARD_DISTANT_NEGATION_LATIN = [
-  'don\\s?t\\s+want', 'do\\s+not\\s+want', 'dont\\s+want', 'don\\s?t\\s+use', 'do\\s+not\\s+use', 'can\\s?t\\s+use', 'cant\\s+use',
-  'cannot\\s+use', 'can\\s+not\\s+use', 'can\\s?t\\s+tolerate', 'cannot\\s+tolerate', 'can\\s?t\\s+handle', 'anything\\s+but',
-  'never', 'stop\\s+using', 'stopped', 'quit', 'quitting', 'no\\s+more', 'no\\s+thanks', 'not\\s+for\\s+me', 'hate[sd]?',
-  'i\\s+react\\s+to', 'react\\s+badly', 'reacts?\\s+to', 'reaction\\s+to', 'gives?\\s+me\\s+(?:a\\s+)?rash', 'rash',
-  'broke\\s+me\\s+out', 'breaks?\\s+me\\s+out', 'allerg\\w*', 'sans', 'avoid\\w*', 'without', 'non', 'not', 'no', 'zero',
-  'free', 'alternatives?', 'substitutes?', 'instead\\s+of', 'other\\s+than', 'except', 'excluding', '0\\s?%',
-  'aren\\s?t', 'isn\\s?t', 'doesn\\s?t', 'won\\s?t', 'shouldn\\s?t', 'can\\s?t', 'cannot', 'nope', 'nah', 'skip\\w*',
-  'ditch\\w*', 'w\\s?o', 'minus',
+// The user saying no to retinoids. A negation counts only when it binds to the retinoid term itself:
+// "no retinol", "retinol-free", "can't use retinol", "retinol irritates me". A negation of another
+// word in the same text is not a "no" to the retinoid: "retinol without irritation", "oil free
+// retinol", "non-comedogenic retinol", "retinol not greasy", "strongest retinol no prescription",
+// "retinol free shipping", "retinol stopped working" all still ask for one.
+// Matched on the latin view, where apostrophes are dropped and punctuation is a space
+// ("retinol-free" is "retinol free", "don't" is "dont").
+const RETINOID_NAME_FOR_NEGATION =
+  '(?:retinol\\w*|retinal\\w*|retinoid\\w*|retinyl\\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|vit(?:amin)?\\s?a|granactive|hydroxypinacolone|hpr|differin|accutane)';
+// Up to two words between the negation and the name: "no added retinol", "avoid any retinoids",
+// "nothing with retinol", "don't want to use retinol".
+const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,2}';
+const HARD_NEGATION_BEFORE_NAME_LATIN = [
+  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans',
+  'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing',
+  'stop(?:ped)?(?:\\s+using)?', 'quit(?:ting)?', 'no\\s+more', 'dont\\s+want', 'do\\s+not\\s+want', 'dont\\s+use',
+  'do\\s+not\\s+use', 'cant\\s+use', 'cannot\\s+use', 'can\\s+not\\s+use', 'cant\\s+tolerate', 'cannot\\s+tolerate',
+  'cant\\s+handle', 'never\\s+use', 'wont\\s+use', 'hate[sd]?', 'allergic\\s+to', 'allergy\\s+to', 'intolerant\\s+(?:to|of)',
+  'sensitive\\s+to', 'react(?:s|ed)?(?:\\s+badly)?\\s+to', 'reaction\\s+to', 'ditch(?:ing|ed)?',
+];
+const HARD_NEGATION_AFTER_NAME_LATIN = [
+  'free(?!\\s+(?:shipping|delivery|gift|gifts|sample|samples|trial|returns?|standard|radicals?|size))',
+  'alternatives?', 'substitutes?', 'replacements?', 'irritates?\\s+me', 'irritated\\s+me', 'burns?(?:\\s+my\\s+skin|\\s+me)?',
+  'burned\\s+(?:my\\s+skin|me)', 'broke\\s+me\\s+out', 'breaks?\\s+me\\s+out', 'gives?\\s+me\\s+(?:a\\s+)?rash',
+  'gave\\s+me\\s+(?:a\\s+)?rash', 'not\\s+for\\s+me', 'no\\s+thanks', 'allergy', 'intolerance', 'makes\\s+me\\s+(?:break\\s+out|peel|red)',
 ];
 // Same, in other scripts. These count only NEXT TO a retinoid name, the way the strict ingredient
 // reader (src/findProductsMulti/strictIngredientQuery.js, CJK_NEGATION_BEFORE_RE / _AFTER_RE) reads
@@ -298,7 +312,8 @@ const RE = {
   pregnancyLatin: wordRegex(HARD_PREGNANCY_LACTATION_FERTILITY_LATIN),
   childLatin: wordRegex(HARD_CHILD_UNDER_12_LATIN),
   isotretinoinLatin: wordRegex(HARD_ISOTRETINOIN_LAYERING_LATIN),
-  negationLatin: wordRegex(HARD_DISTANT_NEGATION_LATIN),
+  negationBeforeLatin: new RegExp(`(?:^|\\s)(?:${HARD_NEGATION_BEFORE_NAME_LATIN.join('|')})${NEGATION_FILLER}\\s+${RETINOID_NAME_FOR_NEGATION}(?=\\s|$)`),
+  negationAfterLatin: new RegExp(`(?:^|\\s)${RETINOID_NAME_FOR_NEGATION}\\s+(?:${HARD_NEGATION_AFTER_NAME_LATIN.join('|')})(?=\\s|$)`),
   teenLatin: wordRegex(SOFT_TEEN_LATIN),
   skinConditionLatin: wordRegex(SOFT_SKIN_CONDITION_LATIN),
   sensitivityLatin: wordRegex(SOFT_SENSITIVITY_LATIN),
@@ -337,9 +352,9 @@ function classifyText(text) {
   if (RE.childLatin.test(padded) || scriptHas(script, HARD_CHILD_UNDER_12_SCRIPT) || ages.some((n) => n <= 11)) {
     classes.add('child_under_12');
   }
-  const namesRetinoid = RETINOID_NAME_LATIN.test(padded) || RETINOID_NAME_SCRIPT.test(script);
   if (
-    (namesRetinoid && RE.negationLatin.test(padded)) ||
+    RE.negationBeforeLatin.test(joined) ||
+    RE.negationAfterLatin.test(joined) ||
     SCRIPT_NEGATION_RES.some((re) => re.test(script))
   ) {
     classes.add('retinoid_negation');
@@ -566,7 +581,8 @@ module.exports = {
   HARD_CHILD_UNDER_12_LATIN,
   HARD_CHILD_UNDER_12_SCRIPT,
   HARD_ISOTRETINOIN_LAYERING_LATIN,
-  HARD_DISTANT_NEGATION_LATIN,
+  HARD_NEGATION_BEFORE_NAME_LATIN,
+  HARD_NEGATION_AFTER_NAME_LATIN,
   HARD_NEGATION_BEFORE_NAME_SCRIPT,
   HARD_NEGATION_AFTER_NAME_SCRIPT,
   SOFT_TEEN_LATIN,
