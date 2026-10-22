@@ -279,15 +279,16 @@ function noteSearchOverlay({ throttledHosts, cachedAnswerStamps } = {}) {
 }
 
 /**
- * A tag for this request's search overlay reads (the door's key; a loopback call reports to its door), so a cache
- * entry this same request filled is not counted as another request's read. null when off or outside a context.
+ * A tag for this request's search overlay reads, kept on the context its overlay reports to (a loopback call's
+ * is its door's), so a cache entry this same request filled is not counted as another request's read. null when
+ * off or outside a context.
  */
 function searchOverlayRequestTag() {
   try {
     if (!priceVerificationLogEnabled()) return null;
     const target = recordTarget();
     if (!target) return null;
-    if (!target.overlay_tag) target.overlay_tag = target.door_key || crypto.randomBytes(12).toString('hex');
+    if (!target.overlay_tag) target.overlay_tag = crypto.randomBytes(12).toString('hex');
     return target.overlay_tag;
   } catch {
     return null;

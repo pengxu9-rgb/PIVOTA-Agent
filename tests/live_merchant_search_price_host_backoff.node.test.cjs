@@ -132,6 +132,9 @@ test('flag on: 60 s, doubling on a repeat up to 10 min; a 2xx clears it; in-flig
       assert.equal(m.calls.length, 1);
       assert.equal(_hostBackoff.get('slow.test').ms, ms);
     }
+    m.calls.length = 0;
+    await page();
+    assert.equal(m.calls.length, 0, 'a 10 min backoff just set holds (exactly 10 min left is not a clock step)');
 
     test.mock.timers.tick(_hostBackoff.get('slow.test').until - Date.now());
     status = 200;
@@ -220,6 +223,7 @@ test('a line without a refusal or a cache answer carries neither field; flag off
     const store = pv.currentPriceContext();
     assert.equal(store.search_overlay_throttled_hosts, undefined);
     assert.equal(store.search_overlay_cached_at, undefined);
+    assert.equal(store.overlay_tag, undefined, 'no request tag either');
   });
   assert.equal(_hostBackoff.has('quiet.test'), true, 'the backoff itself does not depend on the log flag');
 });
