@@ -175,6 +175,40 @@ async function offThenOn(send) {
 
 const served = (ls) => ls.filter((l) => l.event === 'price_verification_served');
 
+// THE LINE'S EXACT KEY SET (PII guard): a served line carries these keys and nothing else -- never the tool
+// arguments, the query text, a header or a buyer field. `extra` names the per-surface additions.
+const BASE_KEYS = [
+  'event', 'msg', 'surface', 'door', 'tier', 'caller_class', 'agent_id', 'request_id', 'market', 'live', 'recent',
+  'stored', 'verified_count', 'total', 'added_ms', 'skipped_reason',
+];
+const OVERLAY_KEYS = [
+  'overlay_ran', 'overlay_eligible', 'overlay_fetch_attempts', 'overlay_cache_hits', 'overlay_verified',
+  'overlay_drifted', 'overlay_gone', 'overlay_dropped_gone', 'overlay_failure_reasons',
+];
+function assertLineKeys(line, extra = []) {
+  assert.deepEqual(Object.keys(line).sort(), [...BASE_KEYS, ...extra].sort(), `exact key set: ${JSON.stringify(line)}`);
+}
+
+// X-Pivota-Price-Context grammar: `key=value` pairs joined by `;`, keys from this fixed set, each at most once,
+// values URI-encoded tokens. Nothing else (no Authorization, no argument) may ride in it.
+const CONTEXT_KEYS = new Set(['door', 'tier', 'caller_class', 'agent_id', 'request_id', 'started_at_ms']);
+function assertContextHeader(header) {
+  assert.equal(typeof header, 'string');
+  const seen = new Set();
+  for (const part of header.split(';')) {
+    const m = /^([a-z_]+)=([A-Za-z0-9_.%-]{1,128})$/.exec(part);
+    assert.ok(m, `header part ${JSON.stringify(part)} breaks the grammar`);
+    assert.ok(CONTEXT_KEYS.has(m[1]), `header key ${m[1]} is not allowed`);
+    assert.ok(!seen.has(m[1]), `header key ${m[1]} repeated`);
+    seen.add(m[1]);
+  }
+  assert.ok(seen.has('door') && seen.has('request_id'));
+}
+
+// A secret and a query no line or header may ever carry.
+const SECRET = 'secret-token-price-log-probe';
+const QUERY = 'tint-query-text-probe';
+
 // The invoke handler stamps fresh random ids (randomUUID) into every search answer, flag or no flag:
 // metadata.request_id and metadata.search_trace.trace_id (inside an MCP result they are JSON-escaped). Those
 // two values are masked; every other byte is compared.
@@ -193,13 +227,21 @@ function assertGolden({ off, on }, label) {
 }
 
 test('MCP /mcp search_catalog: byte-identical; one line counting the native page live / recent / stored', async () => {
-  const pair = await offThenOn(() => supertest(app).post('/mcp').send(rpc('search_catalog', { query: 'tint', market: 'US' })));
+  const pair = await offThenOn(() => supertest(app).post('/mcp').set('Authorization', `Bearer ${SECRET}`)
+    .send(rpc('search_catalog', { query: QUERY, market: 'US' })));
   assertGolden(pair, '/mcp search');
   assert.deepEqual(pair.off.headers, [null], 'off: the loopback call carries no price context header');
   assert.match(pair.on.headers[0], /^door=mcp;tier=authenticated;/, 'on: the loopback names its door and caller');
+  assertContextHeader(pair.on.headers[0]);
+  assert.ok(!pair.on.headers[0].includes(SECRET) && !pair.on.headers[0].includes(QUERY), 'no secret or query in the header');
+  for (const l of served(pair.on.lines)) {
+    const text = JSON.stringify(l);
+    assert.ok(!text.includes(SECRET) && !text.includes(QUERY), `no secret or query text in a served line: ${text}`);
+  }
   const [line, ...more] = served(pair.on.lines);
   assert.equal(more.length, 0, 'exactly one line per answer: the loopback invoke writes none of its own');
   assert.equal(line.msg, 'price_verification_served');
+  assertLineKeys(line, OVERLAY_KEYS);
   assert.equal(line.surface, 'search');
   assert.equal(line.door, 'mcp');
   assert.equal(line.tier, 'authenticated');
@@ -222,6 +264,7 @@ test('MCP /ucp/mcp search_catalog: byte-identical; counted from the native value
   assertGolden(pair, '/ucp/mcp search');
   const lines_ = served(pair.on.lines);
   assert.equal(lines_.length, 1);
+  assertLineKeys(lines_[0], OVERLAY_KEYS);
   assert.equal(lines_[0].door, 'ucp_mcp');
   assert.equal(lines_[0].live, 1);
   assert.equal(lines_[0].recent, 1);
@@ -233,6 +276,7 @@ test('MCP /public/mcp search_catalog: byte-identical; the public tier counts the
   assertGolden(pair, '/public/mcp search');
   const [line, ...more] = served(pair.on.lines);
   assert.equal(more.length, 0);
+  assertLineKeys(line, OVERLAY_KEYS);
   assert.equal(line.door, 'public_mcp');
   assert.equal(line.tier, 'public');
   const shown = JSON.parse(pair.on.text).result.structuredContent.products.filter((p) => p.price != null).length;
@@ -247,6 +291,7 @@ test('MCP /mcp get_offers (live read enforced): byte-identical; the reader line 
   assert.ok(offLive, 'the live read ran with the flag off too');
   const [line, ...more] = served(pair.on.lines);
   assert.equal(more.length, 0);
+  assertLineKeys(line);
   assert.equal(line.surface, 'get_offers');
   assert.equal(line.door, 'mcp');
   assert.equal(line.market, 'US');
@@ -263,6 +308,7 @@ test('REST /agent/v1/products/search: byte-identical; one line at door rest with
   assertGolden(pair, 'REST search');
   const [line, ...more] = served(pair.on.lines);
   assert.equal(more.length, 0);
+  assertLineKeys(line, [...OVERLAY_KEYS.filter((k) => !['overlay_failure_reasons'].includes(k)), 'lane', 'market_source']);
   assert.equal(line.surface, 'search');
   assert.equal(line.door, 'rest');
   assert.equal(line.tier, 'unauthenticated');
@@ -282,6 +328,7 @@ test('an MCP search that REALLY loops back into the invoke handler: byte-identic
   // Had the loopback not been recognised as this door's (X-Pivota-Price-Context on a loopback self-call), the
   // invoke hop would have written a second line, at door `invoke`.
   assert.equal(all.length, 1, `one line per answer: ${JSON.stringify(all)}`);
+  assertLineKeys(all[0], ['overlay_ran']);
   assert.equal(all[0].door, 'mcp');
   assert.equal(all[0].surface, 'search');
   assert.equal(all[0].skipped_reason, 'lane_not_overlaid', 'the upstream-proxy lane never calls the overlay');

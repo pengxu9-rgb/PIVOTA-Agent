@@ -269,6 +269,8 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
   // (commerce verification required, untrusted price) is not a served price. Log only; never throws.
   function publicPriceFacts(toolName, raw, value) {
     try {
+      // Off: not even the alignment pass (productSummary per raw row) runs.
+      if (!priceVerificationFacts.priceVerificationLogEnabled()) return null;
       if (toolName === "search_catalog") {
         const served = value && Array.isArray(value.products) ? value.products : [];
         const rows = (raw && Array.isArray(raw.products) ? raw.products : [])
