@@ -42937,7 +42937,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           has_context: retinoidSafetySignal.requestCarriesContextBeyondQuery(req?.body),
         };
       } catch (_) {
-        retinoidSafetyRequestContext = { classes: ['context_unreadable'], sources: ['error'], has_context: true };
+        // its class alone turns the explicit-ask allowlist off
+        retinoidSafetyRequestContext = { classes: ['context_unreadable'], sources: ['error'] };
       }
       INVOKE_RETINOID_SAFETY_CONTEXT.enterWith(retinoidSafetyRequestContext);
     }

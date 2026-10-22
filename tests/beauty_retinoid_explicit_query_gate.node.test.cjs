@@ -137,6 +137,31 @@ test('any context beyond the single query turns the ask off', () => {
   assert.equal(asksForRetinoid('retinol cream'), true, 'no request store at all');
 });
 
+test('context beyond the query: presence decides, and a body too big to look through counts as context', () => {
+  const { requestCarriesContextBeyondQuery: carries, MAX_SCAN_ARRAY_ITEMS } = require('../src/services/retinoidSafetySignal');
+  const q = (extra = {}) => ({ payload: { search: { query: 'retinol cream' }, ...extra } });
+  assert.equal(carries(q()), false);
+  assert.equal(carries(q({ messages: [{ role: 'user', content: 'Retinol cream ' }] })), false);
+  assert.equal(carries(q({ user_profile: {}, constraints: [], safety_flags: { pregnant: false } })), false);
+  assert.equal(carries(q({ messages: [{ role: 'user', content: 'oily skin' }] })), true);
+  assert.equal(carries(q({ user_profile: { skin_type: 'oily' } })), true);
+  assert.equal(carries(q({ context: { raw_user_goal: 'something for my mum' } })), true);
+  // over a cap or the node budget: context (fail closed), and cheap
+  const tree = (w, d, leaf) => (d === 0 ? leaf : Array.from({ length: w }, () => tree(w, d - 1, leaf)));
+  for (const [name, body] of [
+    ['many copies of the query', q({ messages: Array.from({ length: MAX_SCAN_ARRAY_ITEMS + 1 }, () => ({ role: 'user', content: 'retinol cream' })) })],
+    ['a huge empty profile', q({ user_profile: { a: tree(100, 3, false) } })],
+    ['a wide empty constraints list', q({ constraints: Array.from({ length: MAX_SCAN_ARRAY_ITEMS + 1 }, () => '') })],
+    ['message content past the node budget', q({ messages: [{ role: 'user', content: tree(100, 3, []) }] })],
+  ]) {
+    const t = process.hrtime.bigint();
+    assert.equal(carries(body), true, name);
+    const ms = Number(process.hrtime.bigint() - t) / 1e6;
+    assert.ok(ms < 20, `${name} took ${ms} ms`);
+  }
+  assert.equal(carries(q({ messages: Array.from({ length: MAX_SCAN_ARRAY_ITEMS }, () => ({ role: 'user', content: 'retinol cream' })) })), false);
+});
+
 test('the rule lets a retinoid through only for an ask', () => {
   for (const query of ['retinol cream', 'retinol night cream', 'retinol moisturizer', 'night cream with retinol', 'pro-retinol cream', '视黄醇面霜']) {
     assert.equal(contraindicated(RETINOL_CREAM, query), false, query);
