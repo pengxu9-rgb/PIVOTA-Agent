@@ -278,6 +278,22 @@ function noteSearchOverlay({ throttledHosts, cachedAnswerStamps } = {}) {
   }
 }
 
+/**
+ * A tag for this request's search overlay reads (the door's key; a loopback call reports to its door), so a cache
+ * entry this same request filled is not counted as another request's read. null when off or outside a context.
+ */
+function searchOverlayRequestTag() {
+  try {
+    if (!priceVerificationLogEnabled()) return null;
+    const target = recordTarget();
+    if (!target) return null;
+    if (!target.overlay_tag) target.overlay_tag = target.door_key || crypto.randomBytes(12).toString('hex');
+    return target.overlay_tag;
+  } catch {
+    return null;
+  }
+}
+
 /** The noted hosts as a log field: the 8 with the most refusals (ties by name), or null when none. */
 function throttledHostsField(hosts) {
   if (!isObj(hosts)) return null;
@@ -612,6 +628,7 @@ module.exports = {
   trackLiveWork,
   trackSearchOverlay,
   noteSearchOverlay,
+  searchOverlayRequestTag,
   priceContextLogFields,
   priceContextHeaders,
   inheritedContext,

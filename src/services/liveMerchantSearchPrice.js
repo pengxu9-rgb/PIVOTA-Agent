@@ -9,7 +9,7 @@
 const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
 const { isRestatedProductId } = require('./merchantVariantSource');
 const storefrontProductPage = require('./storefrontProductPage');
-const { noteSearchOverlay } = require('../observability/priceVerificationLog');
+const { noteSearchOverlay, searchOverlayRequestTag } = require('../observability/priceVerificationLog');
 
 const publicFetch = createPublicNetworkFetch();
 const cache = new Map();
@@ -23,40 +23,57 @@ const DROP_GONE_FLAG = 'SERVE_LIVE_MERCHANT_PRICE_DROP_GONE';
 // A STORE THAT REFUSED US IS LEFT ALONE FOR A WHILE, by every request on this instance (not only this page).
 // Shopify's local_rate_limited 429 is per store, not per IP: 16 parallel searches on 2026-10-22 drew ten 429s from
 // one store in 6 s, because the 4-reader cap holds per page and nothing held across requests. Behind
-// SEARCH_OVERLAY_HOST_BACKOFF (default OFF, read per call), a 429 or 5xx from a host skips that host for 60 s; a
-// repeat within 10 min of the last backoff ending doubles it, up to 10 min; any 2xx from the host clears it. A
-// failure that lands while the host is already backed off (a read that was in flight when it started) does not
-// double it. A skipped card fails as `host_backoff` and keeps its stored price, like any failed read; a fresh
-// cache entry or the gone memo still answers for it. Per process only: the fleet-wide backoff (Firestore
+// SEARCH_OVERLAY_HOST_BACKOFF (default OFF, read per call), a 429, a 430 (Shopify's bot-protection refusal) or a
+// 5xx from a host skips that host for 60 s; a repeat within 10 min of the last backoff ending doubles it, up to
+// 10 min. A 2xx clears it only when that read STARTED after the backoff was set: in a burst, reads already in
+// flight when the first 429 lands may still come back 200, and they say nothing about the store's limit now. A
+// refusal that lands while the host is backed off (a read in flight) does not double it either. A backoff that
+// ends more than 10 min from now (the clock stepped back) has expired. The order for a card is fixed: a fresh
+// cache entry, then the gone memo (a page Shopify said is gone stays gone, and DROP_GONE still drops it), then the
+// backoff. A skipped card fails as `host_backoff` and keeps its stored price, like any failed read. One store is
+// one key: `www.` and a trailing dot are dropped (hostKey). Per process only: the fleet-wide backoff (Firestore
 // `host_backoff`) is PR-3 of the verified-price plan. Off, nothing is read or written here.
 const HOST_BACKOFF_FLAG = 'SEARCH_OVERLAY_HOST_BACKOFF';
 const HOST_BACKOFF_BASE_MS = 60000;
 const HOST_BACKOFF_MAX_MS = 600000;
-const hostBackoff = new Map(); // host -> { until, ms, status }
-// The failures the price line reports per host (`overlay_throttled_hosts`): a 429 or 5xx, and a skip for one.
-const THROTTLE_REASON = /^(?:http_429|http_5\d\d|host_backoff)$/;
+const HOST_BACKOFF_MAX_HOSTS = 1000;
+const hostBackoff = new Map(); // hostKey -> { until, ms, status, setAt }
+// The failures the price line reports per host (`overlay_throttled_hosts`): a refusal that backs off, and a skip.
+const THROTTLE_REASON = /^(?:http_429|http_430|http_5\d\d|host_backoff)$/;
 const MERCHANT_HEADERS = Object.freeze({
   'User-Agent': 'PivotaCatalog/1.0',
   Accept: 'application/json',
 });
 
 function backsOff(status) {
-  return status === 429 || (status >= 500 && status <= 599);
+  return status === 429 || status === 430 || (status >= 500 && status <= 599);
+}
+
+/** One store, one key: `www.shop.com`, `shop.com` and `shop.com.` are the same storefront. */
+function hostKey(url) {
+  return new URL(url).hostname.toLowerCase().replace(/\.+$/, '').replace(/^www\./, '');
 }
 
 function hostBackedOff(host, now = Date.now()) {
   const entry = hostBackoff.get(host);
-  return Boolean(entry && entry.until > now);
+  return Boolean(entry && entry.until > now && entry.until - now <= HOST_BACKOFF_MAX_MS);
 }
 
 function noteHostRefusal(host, status, now = Date.now()) {
   const prev = hostBackoff.get(host);
-  if (prev && prev.until > now) return;
-  const repeat = prev && now - prev.until < HOST_BACKOFF_MAX_MS;
+  if (prev && hostBackedOff(host, now)) return;
+  const sinceEnd = prev ? now - prev.until : -1;
+  const repeat = sinceEnd >= 0 && sinceEnd < HOST_BACKOFF_MAX_MS;
   const ms = repeat ? Math.min(prev.ms * 2, HOST_BACKOFF_MAX_MS) : HOST_BACKOFF_BASE_MS;
   hostBackoff.delete(host);
-  hostBackoff.set(host, { until: now + ms, ms, status });
-  if (hostBackoff.size > 1000) hostBackoff.delete(hostBackoff.keys().next().value);
+  hostBackoff.set(host, { until: now + ms, ms, status, setAt: now });
+  if (hostBackoff.size > HOST_BACKOFF_MAX_HOSTS) hostBackoff.delete(hostBackoff.keys().next().value);
+}
+
+/** A 2xx clears the host, unless the read started before the backoff was set (it was in flight). */
+function noteHostAnswer(host, startedAt) {
+  const entry = hostBackoff.get(host);
+  if (entry && startedAt >= entry.setAt) hostBackoff.delete(host);
 }
 
 function targetOf(card) {
@@ -116,10 +133,13 @@ function unverifiedPriceReason(body, variantId) {
   return 'unverifiable_price';
 }
 
-async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal, backoffHost = null) {
+async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal, backoffHost = null, requestTag = null) {
   const now = Date.now();
   const cached = cache.get(target.url);
-  if (cached && cached.expires > now) return { ...cached.value, cacheHit: true };
+  // ownRead: this request filled the entry (an overlay that ran twice in one request); log only.
+  if (cached && cached.expires > now) {
+    return { ...cached.value, cacheHit: true, ownRead: Boolean(requestTag) && cached.by === requestTag };
+  }
   const gone = storefrontProductPage.knownGone(target.url, now);
   if (gone) return { reason: `http_${gone.status}`, gone: true, cacheHit: true };
   if (backoffHost && hostBackedOff(backoffHost, now)) return { reason: 'host_backoff' };
@@ -144,7 +164,7 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal, backoffHost 
       }
       return { reason };
     }
-    if (backoffHost) hostBackoff.delete(backoffHost);
+    if (backoffHost) noteHostAnswer(backoffHost, now);
     let body;
     try {
       body = await response.json();
@@ -153,7 +173,7 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal, backoffHost 
     }
     if (controller.signal.aborted) return { reason: pageSignal?.aborted ? 'deadline_exceeded' : 'timeout' };
     const value = { body, asOf: new Date().toISOString() };
-    cache.set(target.url, { value, expires: Date.now() + TTL_MS });
+    cache.set(target.url, { value, expires: Date.now() + TTL_MS, by: requestTag });
     if (cache.size > 1000) cache.delete(cache.keys().next().value);
     return value;
   } catch {
@@ -170,6 +190,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   const env = options.env || process.env;
   const dropGone = /^(1|true|yes|on|enabled)$/i.test(String(env[DROP_GONE_FLAG] || '').trim());
   const backoff = /^(1|true|yes|on|enabled)$/i.test(String(env[HOST_BACKOFF_FLAG] || '').trim());
+  const requestTag = searchOverlayRequestTag();
   const goneIndexes = new Set();
   const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : TIMEOUT_MS;
   const pageDeadlineMs = Number(options.pageDeadlineMs) > 0 ? Number(options.pageDeadlineMs) : PAGE_DEADLINE_MS;
@@ -198,10 +219,10 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     if (!pageFetches.has(target.url)) {
       const cached = cache.get(target.url);
       const fresh = (cached && cached.expires > Date.now()) || storefrontProductPage.knownGone(target.url);
-      const host = backoff ? new URL(target.url).hostname : null;
+      const host = backoff ? hostKey(target.url) : null;
       if (!fresh && !(host && hostBackedOff(host))) attempted += 1;
       pageFetches.set(target.url, fetchPrice(
-        target, fetchImpl, timeoutMs, pageController.signal, host,
+        target, fetchImpl, timeoutMs, pageController.signal, host, requestTag,
       ));
     }
     return pageFetches.get(target.url);
@@ -284,13 +305,13 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
           cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
           countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
           if (THROTTLE_REASON.test(fetched.reason || '')) {
-            const host = new URL(target.url).hostname;
+            const host = hostKey(target.url);
             throttledHosts[host] = (throttledHosts[host] || 0) + 1;
           }
           continue;
         }
         verified += 1;
-        if (fetched.cacheHit) cachedAnswerStamps.push(fetched.asOf);
+        if (fetched.cacheHit && !fetched.ownRead) cachedAnswerStamps.push(fetched.asOf);
         if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
         cards[index] = {
           ...card, price: price.amount, price_amount: price.amount,
@@ -395,6 +416,6 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
 }
 
 module.exports = {
-  DROP_GONE_FLAG, HOST_BACKOFF_FLAG, targetOf, verifiedPrice, overlayLiveMerchantSearchPrices,
-  _hostBackoff: hostBackoff,
+  DROP_GONE_FLAG, HOST_BACKOFF_FLAG, HOST_BACKOFF_MAX_HOSTS, targetOf, verifiedPrice, overlayLiveMerchantSearchPrices,
+  hostKey, _hostBackoff: hostBackoff,
 };
