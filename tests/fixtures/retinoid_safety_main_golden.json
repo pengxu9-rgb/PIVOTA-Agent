@@ -1,5 +1,5 @@
 {
- "generated_from": "origin/main 3dc23ea64 over tests/fixtures/retinoid_explicit_query_catalog.cjs, upstream empty",
+ "generated_from": "origin/main 3dc23ea64 over tests/fixtures/retinoid_explicit_query_catalog.cjs, upstream empty; later entries from origin/main 32f1c51e6, same catalog",
  "product_ids": {
   "batch|retinol serum teen": [
    "ext_ret_serum",
@@ -1935,6 +1935,42 @@
    "ext_vitc_serum",
    "ext_peptide_night_cream",
    "ext_retinal_serum"
-  ]
+  ],
+  "batch|what kind of retinol": [],
+  "none|what kind of retinol": [],
+  "batch|one of a kind serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream"
+  ],
+  "none|one of a kind serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream"
+  ],
+  "batch|retinol under 12": [],
+  "none|retinol under 12": [],
+  "batch|retinol under $12": [],
+  "none|retinol under $12": [],
+  "batch|레티놀 아이크림": [],
+  "none|레티놀 아이크림": [],
+  "batch|아이섀도": [],
+  "none|아이섀도": [],
+  "batch|nina ricci perfume": [],
+  "none|nina ricci perfume": [],
+  "batch|delivery due date": [],
+  "none|delivery due date": [],
+  "batch|used retinol for 8 years": [],
+  "none|used retinol for 8 years": [],
+  "batch|ich gebe retinol": [],
+  "none|ich gebe retinol": [],
+  "batch|retinol for my husband": [],
+  "none|retinol for my husband": []
  }
 }

@@ -23,16 +23,27 @@ const HARD = {
     '#momtobe', '#pregnant', '#PregnancySkincare', 'ＰＲＥＧＮＡＮＴ', 'PREGNANT', 'b r e a s t f e e d i n g', 'p r e g n e n t', 'i v f', 'o b g y n', '임\u200B산부', '임\u{E0020}산부', '妊\u200C婦', 'pr3gn4nt', 'pregn4nt', 'ᴘʀᴇɢɴᴀɴᴛ', '𝐩𝐫𝐞𝐠𝐧𝐚𝐧𝐭', 'ⓟⓡⓔⓖⓝⓐⓝⓣ', 'p\u0336r\u0336e\u0336g\u0336n\u0336a\u0336n\u0336t\u0336',
     'preg\u{E0020}nant', 'pregnant%20', 'embarazo', 'gestação', 'knocked up', 'eating for two', 'with child', '임부', '출산',
     'кормление грудью', 'गर्भवती', 'حامل', 'マタニティ', '喂奶', '母乳', 'mang bầu',
+    // review misses
+    'bà bầu', 'mẹ bầu', 'có thai', 'sau sinh', 'คนท้อง', 'แม่ท้อง', 'หลังคลอด', 'ให้นมลูก', '准妈妈', '准媽媽', '產婦', '산모',
+    'в положении', 'для ГВ', 'posparto', 'gebe', 'bumil', 'busui', 'mother-to-be', 'mommy-to-be', 'mummy-to-be',
+    'soon-to-be mom', 'preg', 'preg safe', 'pregnate', 'pregnet', 'chestfeeding', 'egg retrieval', 'in the family way',
+    'due date in may', '2nd tri', '3rd tri', 'pregn@nt', 'pr€gnant', 'pregnɑnt', 'ꮲregnant', '🅿regnant', '🅟🅡🅔🅖🅝🅐🅝🅣',
   ],
   child_under_12: [
     'for kids', 'kid', 'kiddo', 'child', 'children', 'infant', 'toddler', 'newborn', 'baby', 'babies', '👶',
     'for 9 year old', 'for my 8 year old', '8yo', '10 y/o', 'age 9', 'aged 11', 'my 10-year-old', 'six year old',
     '6 month old', 'niños', 'enfant', 'my son is 10', 'daughter who is nine', 'elementary school', '🍼',
     '宝宝', '婴儿', '儿童', '小孩', '孩子', '赤ちゃん', '子供', '10岁',
+    // review misses
+    'trẻ em', 'em bé', 'เด็ก', 'ทารก', '小朋友', '孩童', '小学生', '키즈', '우리 아이', '아이용', '초등학생', 'キッズ', 'ベビー',
+    'для детей', 'малыш', 'niño', 'niña', 'infantil', 'für mein Kind', 'bambino', 'bambini', 'kinderen', 'çocuk', 'bebek',
+    'anak', 'bayi', 'preteen', 'kids under 12', 'under 12s', '8yrs', '3rd grader', 'for my son', 'for my daughter',
+    'little one', 'k1ds', 'k!ds', 'kidz', 'ch1ld', 'c h i l d',
   ],
   isotretinoin_layering: [
     'on accutane', 'accutane', 'roaccutane', 'isotretinoin', 'on isotretinoin', 'on tretinoin', 'using tretinoin',
     'on adapalene', 'prescribed tretinoin', 'acutane', 'isotretinion', 'accu-tane', 'iso tretinoin', 'i use tretinoin at night',
+    'on differin', 'on tret', 'on tazorac', 'on aklief', 'on epiduo', 'on absorica', 'on claravis', 'on isotret',
   ],
 };
 
@@ -82,6 +93,9 @@ const NEUTRAL = [
   'mother of pearl highlighter', '10% niacinamide + retinol', '0.3% retinol serum', 'retinol 1%', 'used retinol for 2 years',
   'anti aging serum', 'lip balm', 'red lipstick', 'kidney bean mask', 'skincare', 'expectation', 'nurse shark',
   'ammonium lactate lotion', 'lactic acid serum', 'hydrating toner', 'spf 30',
+  // look-alikes of the words added from review
+  'what kind of retinol', 'one of a kind serum', 'retinol under 12', 'retinol under $12', '레티놀 아이크림', '아이섀도',
+  'nina ricci perfume', 'delivery due date', 'used retinol for 8 years', 'ich gebe retinol', 'retinol for my husband',
 ];
 
 module.exports = { HARD, HARD_NEGATION_PHRASES, NEGATION_LOOKALIKE_ASKS, SOFT, NEUTRAL };

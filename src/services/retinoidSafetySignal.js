@@ -67,6 +67,13 @@ const HARD_PREGNANCY_LACTATION_FERTILITY_LATIN = [
   'mang\\s+thai', 'cho\\s+con\\s+bu', 'gebelik', 'hamile', 'emzirme', 'zwanger\\w*', 'borstvoeding',
   'embaraz\\w*', 'gestac\\w*', 'stillen', 'mang\\s+bau', 'co\\s+bau', 'knocked\\s+up', 'eating\\s+for\\s+two',
   'baby\\s+bump', 'with\\s+child',
+  // Vietnamese, Spanish, Turkish, Indonesian (accents folded)
+  'ba\\s+bau', 'me\\s+bau', 'co\\s+thai', 'sau\\s+sinh', 'posparto', '(?<!ich\\s)gebe', 'bumil', 'busui',
+  // English
+  '(?:mother|mommy|mummy|mommie|mamma)s?\\s?to\\s?be', 'soon\\s?to\\s?be\\s+(?:mom|mum|mama|mommy|mummy|mother|parents?)s?',
+  'pregs?', 'pregnate', 'pregnet', 'pregnent', 'chest\\s?feed\\w*', 'egg\\s+retrieval', 'egg\\s+freezing',
+  'in\\s+the\\s+family\\s+way', '(?<!(?:delivery|shipping|order|payment|return|invoice|billing)\\s)due\\s+date',
+  '(?:1st|2nd|3rd|first|second|third)\\s+tri',
 ];
 // Script view, substring.
 const HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT = [
@@ -75,6 +82,14 @@ const HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT = [
   'マタニティ', '喂奶', '餵奶', '母乳',
   '妊婦', '妊活', '産後', '産婦', '妊娠', '授乳', '孕', '哺乳', '坐月子', '月子', '产后', '產後', '宝妈', '寶媽',
   '🤰', '🤱', '🫃', '🫄',
+  '准妈', '准媽', '產婦', '产妇', '孕妇', '산모', 'คนท้อง', 'แม่ท้อง', 'หลังคลอด', 'ให้นมลูก',
+];
+// Script view, as regexes: words that need a boundary or a following-word check.
+const HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT_RES = [
+  // Russian "в положении" (pregnant), but not a body position ("в положении лёжа")
+  /(?<![а-яё])в\s+положении(?!\s+(?:лёжа|лежа|сидя|стоя))/,
+  // Russian ГВ (breastfeeding), as a word of its own
+  /(?<![а-яёa-z])гв(?![а-яёa-z])/,
 ];
 // Compact view, substring. Only long, distinctive stems: these match across separators.
 const HARD_PREGNANCY_LACTATION_FERTILITY_COMPACT = [
@@ -91,18 +106,34 @@ const HARD_CHILD_UNDER_12_LATIN = [
   'kids?', 'kiddos?', 'child', 'children', 'childrens', 'infants?', 'toddlers?', 'newborns?', 'bab(?:y|ies)',
   'ninos', 'ninas', 'bebe', 'bebes', 'enfants?', 'kinder', 'crianca', 'criancas', 'elementary\\s+school',
   'primary\\s+school', 'grade\\s?school(?:ers?)?', 'preschool(?:ers?)?', 'kindergarten',
+  'kidz', 'pre\\s?teens?', 'pre\\s?tweens?', 'little\\s+ones?',
+  'for\\s+my\\s+(?:little\\s+)?(?:son|daughter|boy|girl)s?',
+  '(?:1st|2nd|3rd|4th|5th|6th|first|second|third|fourth|fifth|sixth)\\s+grade(?:rs?)?',
+  // "under 12" as an age; a bare "under 12" is a price cap
+  '(?:kids?|children|child|ages?|aged)\\s+(?:under|below)\\s+(?:1[0-2]|[1-9])',
+  '(?:under|below)\\s+(?:age\\s+)?(?:1[0-2]|[1-9])\\s?(?:s|yrs?|years?|yo|y\\s?o)',
+  // Vietnamese, Spanish, German, Italian, Dutch, Turkish, Indonesian (accents folded)
+  'tre\\s+em', 'em\\s+be', 'infantil', '(?:fur|fuer|mein(?:em)?|unser(?:em)?|kleines?)\\s+kind', 'bambin[oaie]',
+  'kinderen', 'cocuk\\w*', 'bebek', 'anak', 'anak\\s+anak', 'bayi',
 ];
 const HARD_CHILD_UNDER_12_SCRIPT = [
   '👶', '🍼', '孩子', '小孩', '宝宝', '寶寶', '婴', '嬰', '儿童', '兒童', '幼儿', '幼兒', '赤ちゃん', '子供', '子ども', 'こども', '幼児',
-  '아기', '어린이', '유아', 'ребен', 'ребён', 'детск', 'дети',
+  '아기', '어린이', '유아', 'ребен', 'ребён', 'детск', 'дети', 'детей', 'малыш',
+  'เด็ก', 'ทารก', '小朋友', '孩童', '小学生', '小學生', '키즈', '초등학생', 'キッズ', 'ベビー',
+];
+const HARD_CHILD_UNDER_12_SCRIPT_RES = [
+  // 아이 (child) as a word, with its particles; never 아이크림, 아이섀도 ("eye")
+  /(?<![가-힣])아이(?:들|용|가|를|에게|한테|도|의|는)?(?![가-힣])/,
+  // niño / niña, with the tilde (folded, "nina" is a name)
+  /(?<![\p{L}])niñ[oa]s?(?![\p{L}])/u,
 ];
 
 // Isotretinoin, or being on a prescription retinoid: layering / contraindication context, never an ask.
 const HARD_ISOTRETINOIN_LAYERING_LATIN = [
-  'accutane', 'roaccutane', 'isotretinoin\\w*',
-  '(?:on|use|uses|using|taking|prescribed|started|starting)\\s+(?:a\\s+|my\\s+)?(?:tretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|prescription\\s+retinoids?)',
+  'accutane', 'roaccutane', 'isotretinoin\\w*', 'isotret', 'absorica', 'claravis', 'amnesteem', 'myorisan', 'zenatane',
+  '(?:on|use|uses|using|taking|prescribed|started|starting)\\s+(?:a\\s+|my\\s+)?(?:tretinoin|tret|adapalene|differin|tazarotene|tazorac|arazlo|trifarotene|aklief|epiduo|altreno|atralin|renova|avita|retin\\s?a|prescription\\s+retinoids?)',
 ];
-const HARD_ISOTRETINOIN_LAYERING_COMPACT = ['accutane', 'isotretinoin'];
+const HARD_ISOTRETINOIN_LAYERING_COMPACT = ['accutane', 'isotretinoin', 'isotret'];
 const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 
 // The user saying no to retinoids. A negation counts only when it binds to the retinoid term itself:
@@ -193,23 +224,44 @@ const CONFUSABLES = {
   'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ꜰ': 'f', 'ɢ': 'g', 'ʜ': 'h', 'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k',
   'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 'ʀ': 'r', 'ꜱ': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w',
   'ʏ': 'y', 'ᴢ': 'z',
+  'ɑ': 'a', 'ɩ': 'i', 'ɵ': 'o', 'ʋ': 'u',
 };
+// Cherokee letters that look like Latin capitals (Unicode confusables), in both cases.
+for (const [cherokee, latin] of Object.entries({
+  'Ꭺ': 'a', 'Ᏼ': 'b', 'Ꮯ': 'c', 'Ꭰ': 'd', 'Ꭼ': 'e', 'Ꮐ': 'g', 'Ꮋ': 'h', 'Ꭻ': 'j', 'Ꮶ': 'k', 'Ꮮ': 'l', 'Ꮇ': 'm',
+  'Ꮲ': 'p', 'Ꭱ': 'r', 'Ꮪ': 's', 'Ꭲ': 't', 'Ꮩ': 'v', 'Ꮃ': 'w', 'Ꮓ': 'z', 'Ꭹ': 'y',
+})) {
+  CONFUSABLES[cherokee] = latin;
+  CONFUSABLES[cherokee.toLowerCase()] = latin;
+}
 const CONFUSABLE_RE = new RegExp(`[${Object.keys(CONFUSABLES).join('')}]`, 'g');
+
+// Enclosed letters NFKC leaves alone (negative circled / squared, regional indicators): letters.
+const ENCLOSED_LETTER_RE = /[\u{1F150}-\u{1F169}\u{1F170}-\u{1F189}\u{1F1E6}-\u{1F1FF}]/gu;
+function enclosedLetter(ch) {
+  const cp = ch.codePointAt(0);
+  const base = cp >= 0x1f1e6 ? 0x1f1e6 : cp >= 0x1f170 ? 0x1f170 : 0x1f150;
+  return String.fromCharCode(97 + cp - base);
+}
 
 function scriptView(text) {
   return String(text == null ? '' : text)
+    .replace(ENCLOSED_LETTER_RE, enclosedLetter)
     .normalize('NFKC')
     .replace(ZERO_WIDTH_RE, '')
     .replace(TAG_CHAR_RE, '')
     .toLowerCase();
 }
 
+const SYMBOL_LETTERS = { '@': 'a', '€': 'e', $: 's', '!': 'i', '|': 'l' };
 function latinView(script) {
   return script
     .replace(CONFUSABLE_RE, (ch) => CONFUSABLES[ch] || ch)
     .normalize('NFKD')
     .replace(/[\u0300-\u036F]/g, '')
     .replace(/[’'`´]/g, '')
+    // a symbol standing for a letter inside a word: pregn@nt, pr€gnant, k!ds, $kin
+    .replace(/(?<=[a-z])[@€$!|](?=[a-z])/g, (ch) => SYMBOL_LETTERS[ch])
     .replace(/[^a-z0-9%]+/g, ' ')
     .trim();
 }
@@ -288,6 +340,8 @@ const AGE_PATTERNS = [
   new RegExp(`(?:^|\\s)aged?\\s+${AGE_NUMBER}(?=\\s|$)`, 'g'),
   new RegExp(`(?:^|\\s)(?:son|daughter|kid|child|boy|girl|niece|nephew)\\s+(?:is|who\\s+is|turning|turned)\\s+${AGE_NUMBER}(?=\\s|$)`, 'g'),
 ];
+// "8yrs", "8yr" written as one word (spaced, "8 years" is as often a duration)
+AGE_PATTERNS.push(new RegExp(`(?:^|\\s)(\\d{1,2})yrs?(?=\\s|$)`, 'g'));
 const INFANT_AGE_PATTERN = /(?:^|\s)\d{1,2}\s?(?:months?|mos?|weeks?|wks?)\s+old(?=\s|$)/;
 const SCRIPT_AGE_PATTERN = /(\d{1,3})\s?(?:岁|歲|歳|살|세)/g;
 
@@ -347,7 +401,10 @@ function classifyText(text) {
 
   if (
     RE.pregnancyLatin.test(joined) ||
+    // digits as written ("3rd tri"); the joined view is de-leeted
+    RE.pregnancyLatin.test(padded) ||
     scriptHas(script, HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT) ||
+    HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT_RES.some((re) => re.test(script)) ||
     HARD_PREGNANCY_LACTATION_FERTILITY_COMPACT.some((stem) => compact.includes(stem)) ||
     fuzzyHit(tokens, HARD_PREGNANCY_LACTATION_FERTILITY_FUZZY)
   ) {
@@ -361,7 +418,14 @@ function classifyText(text) {
     classes.add('isotretinoin_layering');
   }
   const ages = agesIn(padded, script);
-  if (RE.childLatin.test(padded) || scriptHas(script, HARD_CHILD_UNDER_12_SCRIPT) || ages.some((n) => n <= 11)) {
+  if (
+    RE.childLatin.test(padded) ||
+    // de-leeted, single letters joined: k1ds, ch1ld, "c h i l d"
+    RE.childLatin.test(joined) ||
+    scriptHas(script, HARD_CHILD_UNDER_12_SCRIPT) ||
+    HARD_CHILD_UNDER_12_SCRIPT_RES.some((re) => re.test(script)) ||
+    ages.some((n) => n <= 11)
+  ) {
     classes.add('child_under_12');
   }
   if (
