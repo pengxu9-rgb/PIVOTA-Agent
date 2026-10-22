@@ -35,7 +35,7 @@ import { deriveUserRef } from "../auth/userRef.js";
 import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
-import { shapeUcpResult } from "./ucpResponseShaper.js";
+import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong } from "./ucpCheckoutEscalation.js";
 import {
   assertExpectedSeller,
@@ -70,6 +70,25 @@ import {
 } from "./orchestratedPurchaseTool.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
 import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
+import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
+
+// THE PRICE FACTS OF WHAT THIS DOOR SERVES (gateway price_verification_served line; null unless
+// PRICE_VERIFICATION_LOG). /mcp serves the native value, so every native row counts. The UCP dialect publishes a
+// search row only when shapeUcpProduct keeps it (an id, an ISO-currency price, no live quote required), so only
+// those rows count there; a get_product it cannot publish is a tool error and writes no line. Reads `value` and
+// never writes it: the same object is shaped and returned (or is a cache entry). Never throws.
+function servedPriceFacts(toolId, value, dialect) {
+  try {
+    if (!priceVerificationFacts.priceVerificationLogEnabled()) return null;
+    if (dialect === TOOL_DIALECTS.ucp && toolId === "search_catalog" && isPlainObject(value)) {
+      const rows = (Array.isArray(value.products) ? value.products : []).filter((row) => shapeUcpProduct(row).product);
+      return priceVerificationFacts.priceFactsOf(toolId, { ...value, products: rows });
+    }
+    return priceVerificationFacts.priceFactsOf(toolId, value);
+  } catch {
+    return null;
+  }
+}
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -517,15 +536,21 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    lane/degradation markers, read from the NATIVE value before dialect shaping can drop them. Feeds the
     //    gateway's tools/call completion line only; it changes nothing about the value returned.
     const observe = typeof options.observe === "function" ? options.observe : null;
+    //    And the price facts of a priced tool's NATIVE answer (the UCP shaper drops price_source / price_as_of /
+    //    live_read), for the gateway's price_verification_served line: null unless PRICE_VERIFICATION_LOG.
+    //    Computed from the value on every call, a cache hit included, so a replay is counted from the entry it
+    //    replays whatever the flag was when that entry was stored.
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) {
       const fresh = await execute();
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
+      noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
       return shape(fresh);
     }
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
       onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
     });
     noteToolCall(observe, () => describeUpstreamEnvelope(value));
+    noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
     return shape(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(

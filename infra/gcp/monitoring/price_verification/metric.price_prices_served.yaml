@@ -1,0 +1,30 @@
+# Distribution: prices served to agents, value = `total` priced items in one response.
+# Source line: jsonPayload.msg="price_verification_served" (src/observability/priceVerificationLog.js), one per
+#   priced agent response while PRICE_VERIFICATION_LOG is on. Fields: surface, door, tier, caller_class,
+#   market, live, recent, stored, verified_count (= live + recent), total, added_ms, skipped_reason.
+# Coverage = sum(price_prices_verified) / sum(price_prices_served), per surface / door.
+# Excludes tier=first_party, like mcp_tool_outcomes/, so Pivota's own CI and probe traffic on the service key
+# cannot move a ratio.
+#   gcloud logging metrics create price_prices_served --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/price_verification/metric.price_prices_served.yaml
+description: Prices served to agents (value = total priced items in the response), by surface / door / tier
+filter: >-
+  resource.type="cloud_run_revision"
+  AND resource.labels.service_name="gateway"
+  AND jsonPayload.msg="price_verification_served"
+  AND jsonPayload.tier!="first_party"
+valueExtractor: EXTRACT(jsonPayload.total)
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: "1"
+  labels:
+    - {key: surface, valueType: STRING}
+    - {key: door, valueType: STRING}
+    - {key: tier, valueType: STRING}
+labelExtractors:
+  surface: EXTRACT(jsonPayload.surface)
+  door: EXTRACT(jsonPayload.door)
+  tier: EXTRACT(jsonPayload.tier)
+bucketOptions:
+  explicitBuckets: {bounds: [0, 1, 2, 3, 5, 10, 20, 50, 100]}
