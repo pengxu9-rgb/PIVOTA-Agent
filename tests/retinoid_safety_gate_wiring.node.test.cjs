@@ -14,6 +14,7 @@ const {
   applyRetinoidSafetyNetForInvokeResponse,
   applyRetinoidSafetyNetToSearchBody,
   beautyProductIsRetinoidForSafety,
+  beautyProductRetinoidMentionIsStandInOnly,
   buildBeautyMainlineRetrievalQueries,
   getSearchQualityContractHardConstraintResult,
   inferBeautyMainlineIntent,
@@ -218,4 +219,32 @@ test('product detection: Korean and Russian retinoid names on the raw title, des
   for (const item of [p('히알루론산 수분 세럼', ''), p('시카 진정 크림', ''), p('Увлажняющий крем с гиалуроновой кислотой', ''), p('Ретинолоподобный крем', '')]) {
     assert.equal(beautyProductIsRetinoidForSafety(item), false, JSON.stringify(item));
   }
+});
+
+test('product detection: a retinoid named only in a stand-in phrase is not a retinoid product, unless the ingredients name one', () => {
+  const p = (title, description = '', seed = {}) => ({
+    title, description, category: 'serum', seed_data: { description, ...seed },
+    destination_url: `https://fixture-store.invalid/products/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+  });
+  const standIns = [
+    p('Bakuchiol Retinol Alternative Serum'), p('Bio-Retinol Night Cream'), p('Phyto-Retinol Serum'), p('Retinol-Like Serum'),
+    p('Retinol Substitute Cream'), p('Plant-Based Retinol Cream'), p('Botanical Retinol Oil'), p('Retinol Replacement Balm'),
+    p('Gentle Alternative to Retinol Cream', 'Gentler than retinol.'), p('Retinol Alternative Serum', '', { key_ingredients: ['bakuchiol'] }),
+    p('레티놀 대체 세럼'), p('视黄醇平替精华'), p('レチノール代替 美容液'),
+  ];
+  for (const item of standIns) {
+    assert.equal(beautyProductRetinoidMentionIsStandInOnly(item), true, item.title);
+    assert.equal(beautyProductIsRetinoidForSafety(item), false, item.title);
+  }
+  const realRetinoids = [
+    p('Bakuchiol Retinol Alternative Serum', '', { inci: ['Aqua', 'Retinol'] }),
+    p('Bakuchiol Retinol Alternative Serum', 'Contains 0.1% retinol.'),
+    p('Retinol Alternative Serum', '', { key_ingredients: ['retinal'] }),
+    p('Retinol Alternative Serum', '', { ingredient_intel: { active_ingredients: ['hydroxypinacolone retinoate'] } }),
+    p('Retinol Like Butter Balm'), // no hyphen: a retinol balm, not a stand-in
+    p('Retinol Night Cream'), p('레티놀 프리미엄 세럼'), p('Phyto Night Cream with Retinol'),
+  ];
+  for (const item of realRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, item.title);
+  assert.equal(beautyProductRetinoidMentionIsStandInOnly(p('Retinol Night Cream')), false);
+  assert.equal(beautyProductRetinoidMentionIsStandInOnly(null), false);
 });
