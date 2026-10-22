@@ -42246,6 +42246,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     // Retinoid safety net: the last line of the retinoid safety rules (see
     // applyRetinoidSafetyNetForInvokeResponse). It fails closed on its own.
+    const bodyBeforeRetinoidNet = finalBody;
     if (String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase() === 'find_products_multi') {
       const payloadBody =
         req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
@@ -42280,7 +42281,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const debugBundle = buildSearchDebugBundle({
             requestId: gatewayRequestId,
             req,
-            responseBody: body,
+            // What was served: when the retinoid safety net removed products, the bundle describes
+            // the body after it, so it never lists a removed product. Otherwise as before.
+            responseBody: finalBody !== bodyBeforeRetinoidNet ? finalBody : body,
             context: debugRuntime,
           });
           if (debugBundle) {

@@ -177,6 +177,35 @@ describe('the safety net on a lane that never calls the beauty gate (seam on)', 
   });
 });
 
+describe('the debug bundle describes what was served, after the net (seam on)', () => {
+  let app;
+  let prevAllow;
+  beforeAll(() => {
+    prevAllow = process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP;
+    process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP = 'true';
+    app = loadApp({ seam: true });
+  });
+  afterAll(() => {
+    if (prevAllow === undefined) delete process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP;
+    else process.env.SEARCH_DEBUG_BUNDLE_ALLOW_PRIVATE_IP = prevAllow;
+  });
+
+  test('with a signal: the bundle never lists the removed retinoid row', async () => {
+    const resp = await invoke(app, 'serum', { payload: { user_profile: { pregnancy_status: 'pregnant' } }, headers: { 'x-debug': '1' } });
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((p) => p.product_id)).toEqual([SEAM_PLAIN_ID]);
+    expect(resp.body.debug_bundle).toBeTruthy();
+    expect(JSON.stringify(resp.body.debug_bundle)).not.toContain(SEAM_RETINOID_ID);
+    expect(JSON.stringify(resp.body.debug_bundle)).toContain(SEAM_PLAIN_ID);
+  });
+
+  test('without a signal: the bundle lists both rows, as before', async () => {
+    const resp = await invoke(app, 'serum', { headers: { 'x-debug': '1' } });
+    expect(resp.body.products.map((p) => p.product_id)).toEqual([SEAM_RETINOID_ID, SEAM_PLAIN_ID]);
+    expect(JSON.stringify(resp.body.debug_bundle)).toContain(SEAM_RETINOID_ID);
+  });
+});
+
 describe('the net fails closed when its detector throws (seam on, detector down)', () => {
   let app;
   beforeAll(() => {
