@@ -1,179 +1,32 @@
 'use strict';
 
 // PRICE_VERIFICATION_LOG IS LOG ONLY: every answer an agent gets is byte-identical with the flag off and on,
-// through the REAL doors (/mcp, /ucp/mcp, /public/mcp, REST search), and only the log changes.
+// through the REAL doors (/mcp, /ucp/mcp, /public/mcp, REST search), and only the log changes. And each door's
+// line counts the prices THAT DOOR serves (priceVerificationFacts, WHAT COUNTS).
 //
-// HARNESS. No store, backend or search pipeline is contacted:
-//   - an MCP search reaches find_products_multi as this process calling itself over loopback
-//     (invokeCommerceKernelRawUpstream); nock answers that loopback origin, the same interception
-//     tests/commerce_ucp_search_shared_cache.node.test.cjs uses, and records the headers it was sent;
-//   - get_offers' offers.resolve goes to PIVOTA_API_BASE, a nock host;
-//   - the merchant's UCP catalog (UCP_LIVE_OFFER_READ=enforce) is a fake client set before any reader is built;
-//   - REST search reaches the discovery bridge, whose backend call is a nock host.
-// The read caches are off so both calls of a pair reach the same fixture. `Date` is frozen (node:test mock
-// timers, Date only) so a live read stamps the same checked_at on both calls of a pair.
+// HARNESS: tests/_support/priceLogDoors.cjs (no store, backend, search pipeline or reco lane is contacted).
+// Off vs on inside one build cannot see a change that happens whatever the flag says; the answers are also
+// pinned against bodies captured before the log existed: tests/price_verification_log_fixture.node.test.cjs.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const nock = require('nock');
-const supertest = require('supertest');
+const { createPriceLogDoors, NOW, iso, SECRET, QUERY, maskIds } = require('./_support/priceLogDoors.cjs');
 
-const ORIGINAL_ENV = { ...process.env };
-const PORT = '3993';
-const LOOPBACK = `http://127.0.0.1:${PORT}`;
-const BACKEND = 'http://backend.price-log.test';
+const doors = createPriceLogDoors({ port: 3993 });
+const { app, lines, CASES } = doors;
 
-process.env.NODE_ENV = 'test';
-process.env.AURORA_BFF_USE_MOCK = 'true';
-process.env.AURORA_CHAT_RESPONSE_FORMAT = 'legacy';
-process.env.PORT = PORT;
-process.env.AGENT_CHECKOUT_STRICT = '1';
-process.env.AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED = '1';
-process.env.AGENT_CHECKOUT_ALLOW_IN_MEMORY_STRICT = '1';
-process.env.PIVOTA_API_BASE = BACKEND;
-process.env.PIVOTA_API_KEY = 'test-token';
-process.env.CONFIRMATION_SECRET = 'strict-confirmation-secret-0123456789';
-process.env.PAYMENT_WEBHOOK_SECRET = 'strict-webhook-secret-0123456789';
-process.env.COMMERCE_READ_CACHE_ENABLED = '0';
-process.env.PUBLIC_READ_CACHE_ENABLED = '0';
-process.env.PUBLIC_READ_MCP_ENABLED = '1';
-process.env.PUBLIC_READ_MCP_HOSTS = 'mcp.pivota.cc';
-process.env.UCP_LIVE_OFFER_READ = 'enforce';
-process.env.SERVE_LIVE_MERCHANT_PRICE = 'on';
-process.env.SELF_INVOKE_TIMEOUT_MS = '6000';
-delete process.env.PRICE_VERIFICATION_LOG;
-for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']) delete process.env[k];
-for (const prefix of ['COMMERCE_MCP', 'PUBLIC_READ_MCP']) {
-  for (const suffix of ['ENABLED', 'DELAY_MS', 'INTERVAL_MS']) delete process.env[`${prefix}_HEARTBEAT_${suffix}`];
-}
-
-const logger = require('../src/logger');
-const app = require('../src/server');
-
-// Every info line, as the logger was handed it; nothing is printed. (pino's level setter rebinds its methods,
-// so the level is set BEFORE the spy is installed.)
-const lines = [];
-const originalLevel = logger.level;
-const originalInfo = logger.info;
-logger.level = 'silent';
-logger.info = (obj, msg) => {
-  if (obj && typeof obj === 'object') lines.push({ ...obj, msg });
-};
-
-const NOW = Date.parse('2026-10-22T12:00:00.000Z');
-const iso = (ms) => new Date(ms).toISOString();
-
-// The merchant's UCP catalog: one store, one variant, priced in USD for US.
-const STORE = 'store.price-log.test';
-const VARIANT = '43734829564039';
-app._debug.useUcpLiveClientForTest({
-  async discoverEndpoint(base) {
-    return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 };
-  },
-  async lookupCatalog(endpoint, { ids }) {
-    const variants = ids.includes(`gid://shopify/ProductVariant/${VARIANT}`)
-      ? [{ id: `gid://shopify/ProductVariant/${VARIANT}`, price: { amount: 2300, currency: 'USD' }, availability: { available: true } }]
-      : [];
-    return {
-      ok: true,
-      status: 200,
-      response: { jsonrpc: '2.0', result: { content: [{ type: 'text', text: JSON.stringify({ products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants }], messages: [] }) }] } },
-    };
-  },
-});
-
-// One search page, every status: live (answered at NOW), recent (5 min old), stored (30 min old, older than the
-// 15-min search window), the catalog's own price, an unpriced card and a price withheld for verification.
-const SEARCH_PAGE = {
-  status: 'success',
-  success: true,
-  products: [
-    { product_id: 'sig_live', title: 'Live', price: 10, currency: 'USD', price_source: 'merchant_live', price_as_of: iso(NOW) },
-    { product_id: 'sig_recent', title: 'Recent', price: 11, currency: 'USD', price_source: 'merchant_live', price_as_of: iso(NOW - 5 * 60e3) },
-    { product_id: 'sig_old', title: 'Old', price: 12, currency: 'USD', price_source: 'merchant_live', price_as_of: iso(NOW - 30 * 60e3) },
-    { product_id: 'sig_stored', title: 'Stored', price: 13, currency: 'USD', price_source: 'catalog_offer' },
-    { product_id: 'sig_unpriced', title: 'Unpriced', price: 0, currency: 'USD' },
-    { product_id: 'sig_held', title: 'Held', price: 14, currency: 'USD', commerce_verification: { required: true, price_trusted: false } },
-  ],
-  total: 6,
-  metadata: {
-    live_merchant_price: {
-      attempted: true, eligible_count: 3, fetch_attempt_count: 2, cache_hit_count: 1, verified_count: 2,
-      drift_count: 1, failure_reasons: { http_429: 1 }, deadline_exceeded: false, gone_count: 0, dropped_gone_count: 0,
-    },
-  },
-};
-
-const OFFERS = {
-  offers: [
-    {
-      offer_id: `of:external_seed:eps_t:${VARIANT}`, merchant_id: STORE, price: 25, currency: 'USD', in_stock: true,
-      execution_spec: { merchant_domain: STORE, variant_id: VARIANT, cart_url: `https://${STORE}/cart/${VARIANT}:1?country=US` },
-    },
-    { offer_id: 'of:merch_b:sku_2', merchant_id: 'merch_b', price: 27, currency: 'USD', in_stock: true },
-  ],
-  product_group_id: 'pg_price_log',
-};
-
-const loopbackHeaders = [];
-// A search for REAL_LOOPBACK_QUERY is not intercepted: it reaches this process's own invoke route (listening on
-// PORT, see test.before) and runs the real handler. A non-beauty query takes the upstream-proxy lane, whose
-// backend call is the nock below; it answers 200 offline (the beauty lanes need a database).
-const REAL_LOOPBACK_QUERY = 'usb charging cable';
-nock(LOOPBACK, { allowUnmocked: true }).persist()
-  .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi'
-    && body.payload?.search?.query !== REAL_LOOPBACK_QUERY)
-  .reply(function reply() {
-    loopbackHeaders.push(this.req.headers['x-pivota-price-context'] || null);
-    return [200, SEARCH_PAGE];
-  });
-nock(BACKEND).persist()
-  .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'offers.resolve')
-  .reply(200, OFFERS);
-nock(BACKEND).persist()
-  .post(/^\/agent\/v2\/products\/search/)
-  .reply(200, { status: 'success', products: [{ product_id: 'p_usb', merchant_id: 'm2', title: 'USB-C charging cable', price: 9, currency: 'USD' }], total: 1 });
-nock(BACKEND).persist()
-  .get(/^\/agent\/v1\/products\/search/)
-  .reply(200, { status: 'success', products: [{ product_id: 'p_rest', merchant_id: 'm1', title: 'Serum A', price: 12, currency: 'USD' }], total: 1 });
-
-let server;
-test.before(async () => {
-  test.mock.timers.enable({ apis: ['Date'], now: NOW });
-  server = await new Promise((resolve) => { const s = app.listen(Number(PORT), '127.0.0.1', () => resolve(s)); });
-});
-
-test.after(async () => {
-  await new Promise((resolve) => server.close(resolve));
-  test.mock.timers.reset();
-  nock.cleanAll();
-  logger.level = originalLevel;
-  logger.info = originalInfo;
-  process.env = { ...ORIGINAL_ENV };
-});
-
-const rpc = (name, args, id = 1) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
-const AGENT_META = { 'ucp-agent': { profile: 'https://agent.example/.well-known/ucp-agent' } };
+test.before(() => doors.start(test.mock.timers));
+test.after(() => doors.stop(test.mock.timers));
 
 /** The same request with the flag off, then on: the bodies, and the lines each one wrote. */
-async function offThenOn(send) {
-  const run = async (flag) => {
-    if (flag) process.env.PRICE_VERIFICATION_LOG = 'on';
-    else delete process.env.PRICE_VERIFICATION_LOG;
-    lines.length = 0;
-    loopbackHeaders.length = 0;
-    const resp = await send();
-    // Lines written after the answer (shadow reads, finish handlers) land before the next tick settles.
-    await new Promise((r) => setImmediate(r));
-    return { status: resp.status, text: resp.text, lines: [...lines], headers: [...loopbackHeaders] };
-  };
-  const off = await run(false);
-  const on = await run(true);
-  delete process.env.PRICE_VERIFICATION_LOG;
+async function offThenOn(request) {
+  const off = await doors.send(request, { flag: false });
+  const on = await doors.send(request, { flag: true });
   return { off, on };
 }
 
 const served = (ls) => ls.filter((l) => l.event === 'price_verification_served');
+const counts = (l) => ({ live: l.live, recent: l.recent, stored: l.stored, verified_count: l.verified_count, total: l.total });
 
 // THE LINE'S EXACT KEY SET (PII guard): a served line carries these keys and nothing else -- never the tool
 // arguments, the query text, a header or a buyer field. `extra` names the per-surface additions.
@@ -191,7 +44,7 @@ function assertLineKeys(line, extra = []) {
 
 // X-Pivota-Price-Context grammar: `key=value` pairs joined by `;`, keys from this fixed set, each at most once,
 // values URI-encoded tokens. Nothing else (no Authorization, no argument) may ride in it.
-const CONTEXT_KEYS = new Set(['door', 'tier', 'caller_class', 'agent_id', 'request_id', 'started_at_ms']);
+const CONTEXT_KEYS = new Set(['door', 'tier', 'caller_class', 'agent_id', 'request_id', 'door_key', 'started_at_ms']);
 function assertContextHeader(header) {
   assert.equal(typeof header, 'string');
   const seen = new Set();
@@ -202,23 +55,21 @@ function assertContextHeader(header) {
     assert.ok(!seen.has(m[1]), `header key ${m[1]} repeated`);
     seen.add(m[1]);
   }
-  assert.ok(seen.has('door') && seen.has('request_id'));
+  assert.ok(seen.has('door') && seen.has('request_id') && seen.has('door_key'));
 }
-
-// A secret and a query no line or header may ever carry.
-const SECRET = 'secret-token-price-log-probe';
-const QUERY = 'tint-query-text-probe';
-
-// The invoke handler stamps fresh random ids (randomUUID) into every search answer, flag or no flag:
-// metadata.request_id and metadata.search_trace.trace_id (inside an MCP result they are JSON-escaped). Those
-// two values are masked; every other byte is compared.
-const maskRequestId = (text) => text.replace(/(\\?"(?:request_id|trace_id)\\?":\s*\\?")[0-9a-f-]{36}/g, '$1<uuid>');
 
 function assertGolden({ off, on }, label) {
   assert.equal(off.status, 200, `${label}: ${off.text.slice(0, 300)}`);
   assert.equal(on.status, off.status, `${label}: same status`);
-  assert.equal(maskRequestId(on.text), maskRequestId(off.text), `${label}: the answer must be byte-identical with PRICE_VERIFICATION_LOG on`);
+  assert.equal(maskIds(on.text), maskIds(off.text), `${label}: the answer must be byte-identical with PRICE_VERIFICATION_LOG on`);
   assert.deepEqual(served(off.lines), [], `${label}: flag off writes no price line`);
+  assert.deepEqual(off.headers.map((h) => h.price_context), off.headers.map(() => null), `${label}: off, no loopback call carries a price context`);
+  // The context header is for this process's own loopback only: never the backend (offers.resolve, v1 / v2
+  // search) and never the merchant's UCP client, flag off or on.
+  for (const r of [off, on]) {
+    assert.deepEqual(r.backend.filter((b) => b.price_context !== null), [], `${label}: no backend call carries X-Pivota-Price-Context`);
+    assert.deepEqual(r.merchant.filter((m) => /door_key|door=|X-Pivota-Price-Context/i.test(m)), [], `${label}: no merchant call carries the price context`);
+  }
   for (const l of off.lines) {
     for (const k of ['door', 'request_id', 'http_status']) {
       if (String(l.event || '').endsWith('_ucp_live_read')) assert.equal(l[k], undefined, `${label}: off, ${l.event} carries no ${k}`);
@@ -226,14 +77,14 @@ function assertGolden({ off, on }, label) {
   }
 }
 
-test('MCP /mcp search_catalog: byte-identical; one line counting the native page live / recent / stored', async () => {
-  const pair = await offThenOn(() => supertest(app).post('/mcp').set('Authorization', `Bearer ${SECRET}`)
-    .send(rpc('search_catalog', { query: QUERY, market: 'US' })));
+// The search page (priceLogDoors SEARCH_PAGE): noid live, live, recent, old, stored, unpriced, held, nocur (recent).
+test('MCP /mcp search_catalog: byte-identical; the native page counted as /mcp serves it, held and unpublishable rows included', async () => {
+  const pair = await offThenOn(CASES.mcp_search);
   assertGolden(pair, '/mcp search');
-  assert.deepEqual(pair.off.headers, [null], 'off: the loopback call carries no price context header');
-  assert.match(pair.on.headers[0], /^door=mcp;tier=authenticated;/, 'on: the loopback names its door and caller');
-  assertContextHeader(pair.on.headers[0]);
-  assert.ok(!pair.on.headers[0].includes(SECRET) && !pair.on.headers[0].includes(QUERY), 'no secret or query in the header');
+  assert.equal(pair.off.headers.length, 1);
+  assert.match(pair.on.headers[0].price_context, /^door=mcp;tier=authenticated;/, 'on: the loopback names its door and caller');
+  assertContextHeader(pair.on.headers[0].price_context);
+  assert.ok(!pair.on.headers[0].price_context.includes(SECRET) && !pair.on.headers[0].price_context.includes(QUERY), 'no secret or query in the header');
   for (const l of served(pair.on.lines)) {
     const text = JSON.stringify(l);
     assert.ok(!text.includes(SECRET) && !text.includes(QUERY), `no secret or query text in a served line: ${text}`);
@@ -247,45 +98,54 @@ test('MCP /mcp search_catalog: byte-identical; one line counting the native page
   assert.equal(line.tier, 'authenticated');
   assert.equal(line.market, 'US');
   assert.deepEqual(
-    { live: line.live, recent: line.recent, stored: line.stored, verified_count: line.verified_count, total: line.total },
-    { live: 1, recent: 1, stored: 2, verified_count: 2, total: 4 },
-    'unpriced and verification-held cards are not served prices',
+    counts(line),
+    { live: 2, recent: 2, stored: 3, verified_count: 4, total: 7 },
+    '/mcp serves the native page: the id-less row and the no-currency row carry prices, and a price flagged for verification is still quoted (stored); only the 0 sentinel is not a price',
   );
   assert.equal(line.overlay_ran, true);
   assert.equal(line.overlay_verified, 2);
   assert.deepEqual(line.overlay_failure_reasons, { http_429: 1 });
+  // The loopback here is a fixture: the page carries an overlay outcome this request never ran.
+  assert.equal(line.skipped_reason, 'overlay_not_observed');
   assert.equal(line.cache_hit, undefined, 'the read cache is off here');
   assert.match(line.request_id, /^[0-9a-f]{16}$/);
-  assert.ok(pair.on.headers[0].includes(`request_id=${line.request_id}`), 'the loopback carries the door line\'s request id');
+  assert.ok(pair.on.headers[0].price_context.includes(`request_id=${line.request_id}`), 'the loopback carries the door line\'s request id');
 });
 
-test('MCP /ucp/mcp search_catalog: byte-identical; counted from the native value the UCP shaper strips', async () => {
-  const pair = await offThenOn(() => supertest(app).post('/ucp/mcp').send(rpc('search_catalog', { meta: AGENT_META, catalog: { query: 'tint' } })));
+test('MCP /ucp/mcp search_catalog: byte-identical; only the rows the UCP shaper publishes are counted', async () => {
+  const pair = await offThenOn(CASES.ucp_search);
   assertGolden(pair, '/ucp/mcp search');
   const lines_ = served(pair.on.lines);
   assert.equal(lines_.length, 1);
   assertLineKeys(lines_[0], OVERLAY_KEYS);
   assert.equal(lines_[0].door, 'ucp_mcp');
-  assert.equal(lines_[0].live, 1);
-  assert.equal(lines_[0].recent, 1);
-  assert.equal(lines_[0].total, 4);
+  const published = JSON.parse(JSON.parse(pair.on.text).result.content[0].text).products.length;
+  assert.equal(published, 5, 'the shaper published live, recent, old, stored and unpriced');
+  assert.deepEqual(
+    counts(lines_[0]),
+    { live: 1, recent: 1, stored: 2, verified_count: 2, total: 4 },
+    'no id (noid), live quote required (held) and no ISO currency (nocur) are not published, so not counted',
+  );
 });
 
-test('MCP /public/mcp search_catalog: byte-identical; the public tier counts the rows it serves', async () => {
-  const pair = await offThenOn(() => supertest(app).post('/public/mcp').send(rpc('search_catalog', { query: 'tint' })));
+test('MCP /public/mcp search_catalog: byte-identical; the public tier counts the rows it serves with a price', async () => {
+  const pair = await offThenOn(CASES.public_search);
   assertGolden(pair, '/public/mcp search');
   const [line, ...more] = served(pair.on.lines);
   assert.equal(more.length, 0);
   assertLineKeys(line, OVERLAY_KEYS);
   assert.equal(line.door, 'public_mcp');
   assert.equal(line.tier, 'public');
-  const shown = JSON.parse(pair.on.text).result.structuredContent.products.filter((p) => p.price != null).length;
-  assert.equal(line.total, shown, 'total = priced rows the agent was shown');
-  assert.equal(line.live + line.recent + line.stored, line.total);
+  const rows = JSON.parse(pair.on.text).result.structuredContent.products;
+  assert.deepEqual(rows.map((p) => p.price != null), [true, true, true, true, false, false, false],
+    'served: live, recent, old, stored priced; unpriced, held, nocur without a price; noid dropped');
+  // The id-less row first, so a fact list not aligned to the projected rows shifts every status by one; the held
+  // and no-currency rows are served WITHOUT a price, so a fact that ignored the projection would count them.
+  assert.deepEqual(counts(line), { live: 1, recent: 1, stored: 2, verified_count: 2, total: 4 });
 });
 
 test('MCP /mcp get_offers (live read enforced): byte-identical; the reader line names the door and request', async () => {
-  const pair = await offThenOn(() => supertest(app).post('/mcp').send(rpc('get_offers', { product_id: 'sig_live', market: 'US' })));
+  const pair = await offThenOn(CASES.mcp_get_offers);
   assertGolden(pair, '/mcp get_offers');
   const offLive = pair.off.lines.find((l) => l.event === 'get_offers_ucp_live_read');
   assert.ok(offLive, 'the live read ran with the flag off too');
@@ -296,16 +156,52 @@ test('MCP /mcp get_offers (live read enforced): byte-identical; the reader line 
   assert.equal(line.door, 'mcp');
   assert.equal(line.market, 'US');
   assert.equal(line.live, 1, 'the offer the merchant answered during this request');
-  assert.equal(line.stored, 1, 'the offer nobody re-read');
+  assert.equal(line.stored, 1, 'backend-verified, but this request\'s read of it was skipped: stamped, not answered');
   assert.equal(line.total, 2);
+  assert.deepEqual(pair.on.backend.map((b) => b.route), ['offers.resolve'], 'the backend was called, without the header');
   const onLive = pair.on.lines.find((l) => l.event === 'get_offers_ucp_live_read');
   assert.equal(onLive.door, 'mcp');
   assert.equal(onLive.request_id, line.request_id, 'the read line and the served line share the request id');
 });
 
+test('flag on, the merchant\'s UCP client is handed no price context', async () => {
+  // The reader's 30 s lookup memo would answer this call from the flag-off run above (Date is frozen), so the
+  // clock moves past it: this call really reaches the (fake) merchant client.
+  test.mock.timers.setTime(NOW + 31 * 1000);
+  try {
+    const on = await doors.send(CASES.mcp_get_offers, { flag: true });
+    assert.equal(on.status, 200);
+    assert.ok(on.merchant.length > 0, 'the merchant was asked');
+    assert.deepEqual(on.merchant.filter((m) => /door_key|door=|price.context/i.test(m)), []);
+    assert.equal(served(on.lines).length, 1);
+  } finally {
+    test.mock.timers.setTime(NOW);
+  }
+});
+
+test('MCP /mcp recommend_products: byte-identical; its price checks loop back with the door\'s context only when on', async () => {
+  const pair = await offThenOn(CASES.mcp_recommend);
+  assertGolden(pair, '/mcp recommend_products');
+  assert.deepEqual(pair.off.headers.map((h) => h.operation), ['get_pdp_v2', 'get_pdp_v2'], 'one price check per grounded item');
+  assert.equal(pair.on.headers.length, 2);
+  const [line, ...more] = served(pair.on.lines);
+  assert.equal(more.length, 0, 'the price-check loopbacks write no line of their own');
+  for (const { price_context: header } of pair.on.headers) {
+    assertContextHeader(header);
+    assert.match(header, /^door=mcp;tier=authenticated;/);
+    assert.ok(header.includes(`request_id=${line.request_id}`), 'each check carries the door line\'s request id');
+  }
+  assertLineKeys(line);
+  assert.equal(line.surface, 'recommend_products');
+  assert.equal(line.door, 'mcp');
+  // price_verified is the PDP's price over loopback, not a merchant answer: stored, by design.
+  assert.deepEqual(counts(line), { live: 0, recent: 0, stored: 2, verified_count: 0, total: 2 });
+});
+
 test('REST /agent/v1/products/search: byte-identical; one line at door rest with the lane and the overlay outcome', async () => {
-  const pair = await offThenOn(() => supertest(app).get('/agent/v1/products/search?query=serum'));
+  const pair = await offThenOn(CASES.rest_search);
   assertGolden(pair, 'REST search');
+  assert.deepEqual(pair.on.backend.map((b) => b.route), ['v1_search'], 'v1 search was called, without the header');
   const [line, ...more] = served(pair.on.lines);
   assert.equal(more.length, 0);
   assertLineKeys(line, [...OVERLAY_KEYS.filter((k) => !['overlay_failure_reasons'].includes(k)), 'lane', 'market_source']);
@@ -319,8 +215,9 @@ test('REST /agent/v1/products/search: byte-identical; one line at door rest with
 });
 
 test('an MCP search that REALLY loops back into the invoke handler: byte-identical, and one line, not one per hop', async () => {
-  const pair = await offThenOn(() => supertest(app).post('/mcp').send(rpc('search_catalog', { query: REAL_LOOPBACK_QUERY, market: 'US' })));
+  const pair = await offThenOn(CASES.mcp_real_loopback_search);
   assertGolden(pair, '/mcp real loopback search');
+  assert.deepEqual(pair.on.backend.map((b) => b.route), ['v2_search'], 'the loopback hop called v2 search, without the header');
   const hops = pair.on.lines.filter((l) => l.msg === 'invoke request complete');
   assert.deepEqual(hops.map((l) => [l.status, l.operation, l.caller_loopback]), [[200, 'find_products_multi', true]],
     'the search ran in the real invoke handler, over loopback, and answered 200');
@@ -331,11 +228,23 @@ test('an MCP search that REALLY loops back into the invoke handler: byte-identic
   assertLineKeys(all[0], ['overlay_ran']);
   assert.equal(all[0].door, 'mcp');
   assert.equal(all[0].surface, 'search');
-  assert.equal(all[0].skipped_reason, 'lane_not_overlaid', 'the upstream-proxy lane never calls the overlay');
+  assert.equal(all[0].skipped_reason, 'lane_not_overlaid', 'the upstream-proxy lane never calls the overlay, and its answer carries no outcome');
+});
+
+test('invoke find_products_multi whose page was overlaid outside this request: overlay_not_observed, not lane_not_overlaid', async () => {
+  const pair = await offThenOn(CASES.invoke_overlaid_elsewhere);
+  assertGolden(pair, 'invoke overlaid elsewhere');
+  assert.ok(pair.on.backend.length > 0 && pair.on.backend.every((b) => b.route === 'v2_search'), 'the upstream-proxy lane, over the backend');
+  const [line, ...more] = served(pair.on.lines);
+  assert.equal(more.length, 0);
+  assert.equal(line.door, 'invoke');
+  assert.equal(line.surface, 'search');
+  assert.equal(line.overlay_ran, true, 'the answer carries an overlay outcome');
+  assert.equal(line.skipped_reason, 'overlay_not_observed', 'no overlay call was recorded in this request');
 });
 
 test('a tools/call that is not priced, and a non-tools/call method, write no price line', async () => {
-  const pair = await offThenOn(() => supertest(app).post('/public/mcp').send({ jsonrpc: '2.0', id: 9, method: 'tools/list' }));
+  const pair = await offThenOn(CASES.public_tools_list);
   assertGolden(pair, 'tools/list');
   assert.deepEqual(served(pair.on.lines), []);
 });

@@ -46,6 +46,7 @@ const {
   priceContextHeaders,
   logPriceVerificationServed,
   searchOverlayLogFields,
+  searchSkipReason,
   trackSearchOverlay,
   trackLiveWork,
   currentPriceContext,
@@ -14087,9 +14088,7 @@ function logInvokePriceVerification({ operation, body, statusCode, payload, meta
       const work = recordedLiveWork(store);
       const lane = [meta.query_source, meta.route_health?.primary_path_used]
         .find((v) => typeof v === 'string' && PRICE_LOG_LANE.test(v)) || null;
-      const skipped = !work.overlay_calls
-        ? 'lane_not_overlaid'
-        : work.overlay_skipped || meta.live_merchant_price?.skipped_reason || null;
+      const skipped = searchSkipReason(work, meta.live_merchant_price);
       logPriceVerificationServed(logger, {
         surface: 'search',
         items: Array.isArray(body.products) ? body.products : [],
