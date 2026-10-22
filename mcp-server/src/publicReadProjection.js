@@ -516,6 +516,7 @@ export {
   projectGetProduct,
   projectGetIntel,
   projectGetAlternatives,
+  productSummary,
   publicIdFromRef,
   findLeakedFields,
   DENYLIST_FIELDS,
