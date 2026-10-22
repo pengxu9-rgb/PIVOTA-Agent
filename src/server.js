@@ -1003,6 +1003,9 @@ const INVOKE_MARKET_CONTEXT = new AsyncLocalStorage();
 // once at the top of handleInvokeRequest and read by inferBeautyMainlineIntent, so every beauty
 // lane that infers intent from the query also sees what the rest of the request said.
 const INVOKE_RETINOID_SAFETY_CONTEXT = new AsyncLocalStorage();
+// The invoke operations whose beauty lanes and response net read the retinoid safety context. Every
+// other operation never runs the context reader.
+const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi', 'find_products']);
 
 // Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
 // scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum
@@ -41899,15 +41902,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   } catch (_) {
     // Same rule: an unavailable store means no observation, never a failed request.
   }
-  // Retinoid safety context. This one fails CLOSED: if the request cannot be read, it is treated
-  // as carrying a safety signal, so retinoids are kept out rather than let through.
-  let retinoidSafetyRequestContext;
-  try {
-    retinoidSafetyRequestContext = retinoidSafetySignal.retinoidSafetyClassesForRequestContext(req?.body);
-  } catch (_) {
-    retinoidSafetyRequestContext = { classes: ['context_unreadable'], sources: ['error'] };
-  }
-  INVOKE_RETINOID_SAFETY_CONTEXT.enterWith(retinoidSafetyRequestContext);
+  // Retinoid safety context: read once the body has passed schema validation and the query-length
+  // check, and only for the product-search operations that use it (see below).
+  let retinoidSafetyRequestContext = null;
   let fpmUpstreamHttpMs = 0;
   const isFpmStageOperation = () => {
     const op = String(debugRuntime.operation || '').trim().toLowerCase();
@@ -42803,6 +42800,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         max_chars: overlongQuery.max_chars,
         length: overlongQuery.length,
       });
+    }
+    // Retinoid safety context (src/services/retinoidSafetySignal.js): earlier turns, profiles,
+    // constraints and safety flags, read only for the product-search operations whose beauty lanes and
+    // response net use it, and before the history below is cut, so a long turn cannot hide a signal.
+    // The reader is bounded and fails CLOSED: a body it cannot read, or one over its scan limits, is
+    // treated as carrying a safety signal, so retinoids are kept out rather than let through.
+    if (RETINOID_SAFETY_CONTEXT_OPERATIONS.has(String(operation || '').trim().toLowerCase())) {
+      try {
+        retinoidSafetyRequestContext = retinoidSafetySignal.retinoidSafetyClassesForRequestContext(req?.body);
+      } catch (_) {
+        retinoidSafetyRequestContext = { classes: ['context_unreadable'], sources: ['error'] };
+      }
+      INVOKE_RETINOID_SAFETY_CONTEXT.enterWith(retinoidSafetyRequestContext);
     }
     // Over-long history (recent queries, earlier user turns) is parsed too but is not the query: it is
     // cut to the limit so the request still searches. Both copies are cut, since downstream reads both.

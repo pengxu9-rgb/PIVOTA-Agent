@@ -370,10 +370,23 @@ function classifyText(text) {
 const HARD_CLASSES = new Set(['pregnancy_lactation_fertility', 'child_under_12', 'isotretinoin_layering', 'retinoid_negation']);
 const SOFT_CLASSES = new Set(['teen_12_17', 'skin_condition', 'sensitivity']);
 
-const CLASSIFY_CACHE = new Map();
+// BUDGETS. Request bodies can be large (the JSON limit is 10 MB), so the reader is bounded in what
+// it scans and what it keeps. Going over a limit never drops a signal silently: the request is
+// treated as carrying one ('context_over_limit', HARD), so retinoids are kept out.
+const MAX_SCAN_STRING_CHARS = 4000; // one message, profile value or query text
+const MAX_SCAN_TOTAL_CHARS = 40000; // everything one request's context reader reads
+const MAX_SCAN_STRINGS = 200; // strings one request's context reader reads
+const MAX_SCAN_ARRAY_ITEMS = 100; // turns in one message list, entries in one list or object
+const MAX_SCAN_DEPTH = 5;
 const CLASSIFY_CACHE_MAX = 2000;
+const CLASSIFY_CACHE_MAX_KEY_CHARS = 256; // longer texts are classified, never cached
+const OVER_LIMIT_CLASS = 'context_over_limit';
+const EMPTY_CLASSES = new Set();
+
+const CLASSIFY_CACHE = new Map();
 function classifyTextCached(text) {
   const key = String(text == null ? '' : text);
+  if (key.length > CLASSIFY_CACHE_MAX_KEY_CHARS) return classifyText(key);
   const hit = CLASSIFY_CACHE.get(key);
   if (hit) return hit;
   const classes = classifyText(key);
@@ -382,13 +395,46 @@ function classifyTextCached(text) {
   return classes;
 }
 
-function tierFilter(classes, { softTier = softTierEnabled() } = {}) {
-  return Array.from(classes).filter((c) => HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c))).sort();
+// More keys than the reader will look at? Counted with an early exit, so a huge object costs at most
+// MAX_SCAN_ARRAY_ITEMS steps here.
+function tooManyKeys(obj) {
+  let n = 0;
+  for (const key in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+    n += 1;
+    if (n > MAX_SCAN_ARRAY_ITEMS) return true;
+  }
+  return false;
 }
 
-// The gating classes of one text (a query or one message). [] means no reason to gate.
+// The scan budget of the request context being read (the reader is synchronous, so one at a time).
+let SCAN = null;
+function overLimit() {
+  if (SCAN) SCAN.overflow = true;
+  return EMPTY_CLASSES;
+}
+function scanClasses(text) {
+  const s = String(text == null ? '' : text);
+  if (!SCAN) return s.length > MAX_SCAN_STRING_CHARS ? new Set([OVER_LIMIT_CLASS]) : classifyTextCached(s);
+  if (SCAN.overflow) return EMPTY_CLASSES;
+  SCAN.strings += 1;
+  SCAN.chars += s.length;
+  if (s.length > MAX_SCAN_STRING_CHARS || SCAN.strings > MAX_SCAN_STRINGS || SCAN.chars > MAX_SCAN_TOTAL_CHARS) return overLimit();
+  return classifyTextCached(s);
+}
+
+function tierFilter(classes, { softTier = softTierEnabled() } = {}) {
+  return Array.from(classes)
+    .filter((c) => c === OVER_LIMIT_CLASS || HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c)))
+    .sort();
+}
+
+// The gating classes of one text (a query or one message). [] means no reason to gate. A text longer
+// than the scan limit is not read: it gates ('context_over_limit').
 function retinoidSafetyClassesForText(text, options = {}) {
-  return tierFilter(classifyTextCached(text), options);
+  const s = String(text == null ? '' : text);
+  if (s.length > MAX_SCAN_STRING_CHARS) return [OVER_LIMIT_CLASS];
+  return tierFilter(classifyTextCached(s), options);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -403,8 +449,9 @@ function valueIsAffirmative(value) {
   if (value === true) return true;
   if (value === false || value == null) return false;
   if (typeof value === 'number') return Number.isFinite(value) && value > 0;
-  if (Array.isArray(value)) return value.some(valueIsAffirmative);
-  if (isObj(value)) return Object.values(value).some(valueIsAffirmative);
+  // Too big to read is treated as affirmative: fail closed.
+  if (Array.isArray(value)) return value.length > MAX_SCAN_ARRAY_ITEMS || value.some(valueIsAffirmative);
+  if (isObj(value)) return tooManyKeys(value) || Object.values(value).some(valueIsAffirmative);
   return !NEUTRAL_VALUE_RE.test(String(value).trim().toLowerCase());
 }
 
@@ -413,10 +460,25 @@ const PROFILE_AGE_KEY_RE = /^(?:age|age_years|ageyears|user_age|years_old|age_ra
 const AVOID_KEY_RE = /avoid|allerg|exclu|contraindicat|sensitiv\w*_ingredients|intoleran|blacklist|block/i;
 
 function collectStrings(value, out, depth = 0) {
-  if (depth > 5 || out.length > 200) return;
+  if (SCAN && SCAN.overflow) return;
+  if (depth > MAX_SCAN_DEPTH || out.length >= MAX_SCAN_STRINGS) {
+    overLimit();
+    return;
+  }
   if (typeof value === 'string') out.push(value);
-  else if (Array.isArray(value)) value.forEach((v) => collectStrings(v, out, depth + 1));
-  else if (isObj(value)) Object.values(value).forEach((v) => collectStrings(v, out, depth + 1));
+  else if (Array.isArray(value)) {
+    if (value.length > MAX_SCAN_ARRAY_ITEMS) {
+      overLimit();
+      return;
+    }
+    value.forEach((v) => collectStrings(v, out, depth + 1));
+  } else if (isObj(value)) {
+    if (tooManyKeys(value)) {
+      overLimit();
+      return;
+    }
+    Object.values(value).forEach((v) => collectStrings(v, out, depth + 1));
+  }
 }
 
 function ageClass(value) {
@@ -430,8 +492,12 @@ function ageClass(value) {
 
 // A profile gates on what it SAYS, never on existing: neutral fields (skin_type=oily, age=30,
 // pregnancy_status=not_pregnant) add nothing.
-function classesForProfile(profile, sink) {
+function classesForProfile(profile, sink, depth = 0) {
   if (!isObj(profile)) return;
+  if (tooManyKeys(profile) || depth > MAX_SCAN_DEPTH) {
+    overLimit();
+    return;
+  }
   for (const [key, value] of Object.entries(profile)) {
     if (PROFILE_STATUS_KEY_RE.test(key)) {
       if (valueIsAffirmative(value)) sink.add('pregnancy_lactation_fertility');
@@ -447,12 +513,12 @@ function classesForProfile(profile, sink) {
       continue;
     }
     if (isObj(value)) {
-      classesForProfile(value, sink);
+      classesForProfile(value, sink, depth + 1);
       continue;
     }
     const strings = [];
     collectStrings(value, strings);
-    for (const s of strings) classifyTextCached(s).forEach((c) => sink.add(c));
+    for (const s of strings) scanClasses(s).forEach((c) => sink.add(c));
   }
 }
 
@@ -460,29 +526,41 @@ function classesForAvoidList(value, sink) {
   const strings = [];
   collectStrings(value, strings);
   for (const s of strings) {
+    if (s.length > MAX_SCAN_STRING_CHARS) {
+      overLimit();
+      continue;
+    }
     const script = scriptView(s);
+    if (s.length > MAX_SCAN_STRING_CHARS) {
+      overLimit();
+      continue;
+    }
     if (RETINOID_NAME_LATIN.test(` ${latinView(script)} `) || RETINOID_NAME_SCRIPT.test(script)) {
       sink.add('retinoid_negation');
     }
-    classifyTextCached(s).forEach((c) => sink.add(c));
+    scanClasses(s).forEach((c) => sink.add(c));
   }
 }
 
-function classesForConstraints(constraints, sink) {
+function classesForConstraints(constraints, sink, depth = 0) {
   if (constraints == null) return;
   if (isObj(constraints)) {
+    if (tooManyKeys(constraints) || depth > MAX_SCAN_DEPTH) {
+      overLimit();
+      return;
+    }
     for (const [key, value] of Object.entries(constraints)) {
       if (AVOID_KEY_RE.test(key)) classesForAvoidList(value, sink);
       else if (PROFILE_STATUS_KEY_RE.test(key)) {
         if (valueIsAffirmative(value)) sink.add('pregnancy_lactation_fertility');
-      } else classesForConstraints(value, sink);
+      } else classesForConstraints(value, sink, depth + 1);
     }
     return;
   }
   const strings = [];
   collectStrings(constraints, strings);
   for (const s of strings) {
-    classifyTextCached(s).forEach((c) => sink.add(c));
+    scanClasses(s).forEach((c) => sink.add(c));
   }
 }
 
@@ -490,6 +568,10 @@ function classesForConstraints(constraints, sink) {
 function classesForSafetyFlags(flags, sink) {
   if (flags == null || flags === false) return;
   const named = [];
+  if ((Array.isArray(flags) && flags.length > MAX_SCAN_ARRAY_ITEMS) || (isObj(flags) && tooManyKeys(flags))) {
+    overLimit();
+    return;
+  }
   if (typeof flags === 'string') named.push(flags);
   else if (Array.isArray(flags)) flags.forEach((f) => (typeof f === 'string' ? named.push(f) : isObj(f) && classesForSafetyFlags(f, sink)));
   else if (isObj(flags)) {
@@ -497,9 +579,9 @@ function classesForSafetyFlags(flags, sink) {
   } else if (flags === true) named.push('safety_flag');
   for (const name of named) {
     if (NEUTRAL_VALUE_RE.test(String(name).trim().toLowerCase())) continue;
-    const classes = classifyTextCached(String(name).replace(/[_-]+/g, ' '));
+    const classes = scanClasses(String(name).replace(/[_-]+/g, ' '));
     if (classes.size > 0) classes.forEach((c) => sink.add(c));
-    else sink.add('safety_flag');
+    else if (!(SCAN && SCAN.overflow)) sink.add('safety_flag');
   }
 }
 
@@ -537,8 +619,18 @@ function requestContainers(body) {
 // The gating classes carried by the request OUTSIDE its query text: earlier turns, profiles,
 // constraints and safety flags. Returns { classes, sources }.
 function retinoidSafetyClassesForRequestContext(body, options = {}) {
+  const previousScan = SCAN;
+  SCAN = { strings: 0, chars: 0, overflow: false };
+  try {
+    return readRequestContext(body, options);
+  } finally {
+    SCAN = previousScan;
+  }
+}
+
+function readRequestContext(body, options) {
   const softTier = options.softTier ?? softTierEnabled();
-  const keep = (c) => c === 'safety_flag' || HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c));
+  const keep = (c) => c === 'safety_flag' || c === OVER_LIMIT_CLASS || HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c));
   const all = new Set();
   const sources = new Set();
   const record = (source, collect) => {
@@ -553,11 +645,17 @@ function retinoidSafetyClassesForRequestContext(body, options = {}) {
     for (const key of MESSAGE_KEYS) {
       const value = container[key];
       if (!Array.isArray(value)) continue;
-      record('messages', (sink) => value.forEach((m) => classifyTextCached(messageText(m)).forEach((c) => sink.add(c))));
+      record('messages', (sink) => {
+        if (value.length > MAX_SCAN_ARRAY_ITEMS) {
+          overLimit();
+          return;
+        }
+        value.forEach((m) => scanClasses(messageText(m)).forEach((c) => sink.add(c)));
+      });
     }
     for (const key of GOAL_KEYS) {
       if (typeof container[key] !== 'string') continue;
-      record('goal', (sink) => classifyTextCached(container[key]).forEach((c) => sink.add(c)));
+      record('goal', (sink) => scanClasses(container[key]).forEach((c) => sink.add(c)));
     }
     for (const key of PROFILE_KEYS) record('profile', (sink) => classesForProfile(container[key], sink));
     for (const key of CONSTRAINT_KEYS) {
@@ -567,12 +665,22 @@ function retinoidSafetyClassesForRequestContext(body, options = {}) {
       );
     }
     for (const key of FLAG_KEYS) record('safety_flags', (sink) => classesForSafetyFlags(container[key], sink));
+    if (SCAN.overflow) break;
+  }
+  if (SCAN.overflow) {
+    all.add(OVER_LIMIT_CLASS);
+    sources.add('over_limit');
   }
   return { classes: Array.from(all).sort(), sources: Array.from(sources).sort() };
 }
 
 module.exports = {
   SOFT_TIER_ENV,
+  OVER_LIMIT_CLASS,
+  MAX_SCAN_STRING_CHARS,
+  MAX_SCAN_TOTAL_CHARS,
+  MAX_SCAN_STRINGS,
+  MAX_SCAN_ARRAY_ITEMS,
   softTierEnabled,
   HARD_PREGNANCY_LACTATION_FERTILITY_LATIN,
   HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT,
@@ -596,5 +704,5 @@ module.exports = {
   classifyText,
   retinoidSafetyClassesForText,
   retinoidSafetyClassesForRequestContext,
-  _internal: { scriptView, latinView, compactView, latinTokens, withinOneEdit, agesIn },
+  _internal: { scriptView, latinView, compactView, latinTokens, withinOneEdit, agesIn, classifyCacheSize: () => CLASSIFY_CACHE.size, classifyCacheKeys: () => Array.from(CLASSIFY_CACHE.keys()) },
 };

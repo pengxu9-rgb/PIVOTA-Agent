@@ -249,3 +249,49 @@ test('context: the soft tier in a profile or turn gates only with the flag on', 
   assert.deepEqual(contextClasses(turns, false), []);
   assert.deepEqual(contextClasses(turns, true), ['skin_condition']);
 });
+
+test('budgets: a huge or numerous context is never read in full, and gates instead of dropping a signal', () => {
+  const over = { classes: [signal.OVER_LIMIT_CLASS], sources: ['over_limit'] };
+  const time = (fn) => {
+    const t = process.hrtime.bigint();
+    const out = fn();
+    return { out, ms: Number(process.hrtime.bigint() - t) / 1e6 };
+  };
+  // one 5 MB message
+  let r = time(() => signal.retinoidSafetyClassesForRequestContext({ payload: { messages: [{ role: 'user', content: 'x'.repeat(5 * 1024 * 1024) }] } }));
+  assert.deepEqual(r.out, over);
+  assert.ok(r.ms < 50, `5 MB message took ${r.ms} ms`);
+  // 200k short messages
+  r = time(() => signal.retinoidSafetyClassesForRequestContext({ payload: { messages: Array.from({ length: 200000 }, (_, i) => ({ role: 'user', content: `hi ${i}` })) } }));
+  assert.deepEqual(r.out, over);
+  assert.ok(r.ms < 50, `200k messages took ${r.ms} ms`);
+  // a signal past the turn cap still gates (overflow), it is not dropped
+  const turns = Array.from({ length: signal.MAX_SCAN_ARRAY_ITEMS + 50 }, () => ({ role: 'user', content: 'hello' }));
+  turns.push({ role: 'user', content: 'I am pregnant' });
+  assert.deepEqual(contextClasses({ payload: { messages: turns } }), [signal.OVER_LIMIT_CLASS]);
+  // too many strings, too many total characters, too deep, too many keys, one over-long value
+  const strings = Array.from({ length: 60 }, () => Array.from({ length: 5 }, () => 'neutral words'));
+  assert.deepEqual(contextClasses({ payload: { user_profile: { notes: strings } } }), [signal.OVER_LIMIT_CLASS]);
+  const chunk = 'a'.repeat(3000);
+  assert.deepEqual(contextClasses({ payload: { messages: Array.from({ length: 20 }, () => ({ role: 'user', content: chunk })) } }), [signal.OVER_LIMIT_CLASS]);
+  let deep = { note: 'fine' };
+  for (let i = 0; i < 10; i += 1) deep = { nested: deep };
+  assert.deepEqual(contextClasses({ payload: { user_profile: deep } }), [signal.OVER_LIMIT_CLASS]);
+  assert.deepEqual(contextClasses({ payload: { user_profile: Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`k${i}`, 'v'])) } }), [signal.OVER_LIMIT_CLASS]);
+  assert.deepEqual(contextClasses({ metadata: { safety_flags: Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`f${i}`, false])) } }), [signal.OVER_LIMIT_CLASS]);
+  assert.deepEqual(contextClasses({ payload: { context: { raw_user_goal: 'y'.repeat(signal.MAX_SCAN_STRING_CHARS + 1) } } }), [signal.OVER_LIMIT_CLASS]);
+  assert.deepEqual(contextClasses({ payload: { constraints: { avoid_ingredients: ['z'.repeat(signal.MAX_SCAN_STRING_CHARS + 1)] } } }), [signal.OVER_LIMIT_CLASS]);
+  // ordinary context stays within budget and reads as before
+  assert.deepEqual(contextClasses({ payload: { messages: Array.from({ length: 30 }, () => ({ role: 'user', content: 'oily skin, want a serum' })) } }), []);
+  // a query text over the scan limit gates rather than being read
+  assert.deepEqual(signal.retinoidSafetyClassesForText('w'.repeat(signal.MAX_SCAN_STRING_CHARS + 1)), [signal.OVER_LIMIT_CLASS]);
+  assert.deepEqual(signal.retinoidSafetyClassesForText('w'.repeat(signal.MAX_SCAN_STRING_CHARS)), []);
+});
+
+test('the classification cache never keeps a long text', () => {
+  for (const n of [257, 1000, 3999]) signal.retinoidSafetyClassesForText(`retinol serum ${'q'.repeat(n)}`);
+  signal.retinoidSafetyClassesForRequestContext({ payload: { messages: [{ role: 'user', content: 'p'.repeat(3000) }] } });
+  const keys = signal._internal.classifyCacheKeys();
+  assert.ok(keys.every((k) => k.length <= 256), `longest cached key: ${Math.max(...keys.map((k) => k.length))}`);
+  assert.ok(signal._internal.classifyCacheSize() <= 2000);
+});
