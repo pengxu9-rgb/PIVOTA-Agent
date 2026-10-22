@@ -140,6 +140,14 @@ const CATALOG = [
   // rows with NO category path (as backend-lane rows often arrive): judged by their own title
   row('nopath_hair_oil', 'Bakuchiol Hair Oil', null, { actives: ['bakuchiol'], productType: 'Hair Oil' }),
   row('nopath_drops', 'Bakuchiol Booster Drops', null, { actives: ['bakuchiol'], productType: 'Booster' }),
+  // round 2: more of the retinoid family, and unfiled rows whose titles negate or name a category
+  row('vitamin_a', 'Vitamin A Serum', SERUM, { productType: 'Serum' }),
+  row('trifarotene', 'Trifarotene Cream', CREAM, { productType: 'Moisturizer' }),
+  row('retin_a', 'Retin-A 0.05% Cream', CREAM, { productType: 'Moisturizer' }),
+  row('zh_a_aldehyde', 'A醛精华', SERUM, { productType: 'Serum' }),
+  row('fr_retinoide', 'Rétinoïde Crème de Nuit', CREAM, { productType: 'Moisturizer' }),
+  row('nopath_shampoo_free', 'Shampoo-Free Bakuchiol Serum', null, { actives: ['bakuchiol'], productType: 'Serum' }),
+  row('nopath_ko_shampoo', '바쿠치올 데일리 샴푸', null, { actives: ['bakuchiol'], productType: '' }),
   row('brand_retinol', 'Night Retinol Cream', CREAM, { actives: ['retinol'], productType: 'Moisturizer', brand: 'CeraVe' }),
   row('brand_niacinamide', 'Hydrating Niacinamide Lotion', CREAM, { actives: ['niacinamide'], productType: 'Moisturizer', brand: 'CeraVe' }),
 ];
@@ -153,7 +161,8 @@ const REAL_VITAMIN_C = ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum', 'Nat
   'Vitamin C Free Radical Defense Serum', 'Витамины С и Е сыворотка'];
 // Retinoids that are not retinol by name: a retinol exclusion excludes them too.
 const RETINOID_FAMILY = ['Retinal 0.1% Night Serum', 'Granactive Retinoid 2% Emulsion', 'Adapalene Gel 0.1%',
-  'Retinyl Palmitate Night Cream', '레티날 크림', '레티놀 팔미테이트 크림', '视黄醇棕榈酸酯面霜'];
+  'Retinyl Palmitate Night Cream', '레티날 크림', '레티놀 팔미테이트 크림', '视黄醇棕榈酸酯面霜', 'Vitamin A Serum', 'Trifarotene Cream',
+  'Retin-A 0.05% Cream', 'A醛精华', 'Rétinoïde Crème de Nuit'];
 const SKINCARE_PATH = /^beauty\/skincare(\/|$)/;
 
 const OWNER = 'invoke.find_products_multi_search_routing';
@@ -854,8 +863,15 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   });
 
   // Follow-up item 1: no response a routing flag can reach spreads the caller's request metadata.
-  const CALLER = { routing_original_query: '洗面奶', routingOriginalQuery: 'レチノール', routingUserQuery: 'crème', zz_caller_sentinel: 'zz' };
-  const echoed = (body) => Object.keys(CALLER).filter((key) => JSON.stringify(body).includes(key));
+  const CALLER = {
+    routing_original_query: '洗面奶', routingOriginalQuery: 'レチノール', routingUserQuery: 'crème', zz_caller_sentinel: 'zz',
+    // round 2: a spoofed service_version and nested keys
+    service_version: { commit: 'HOSTILE_COMMIT', nested: { deep: 'HOSTILE_NESTED' } },
+    zz_nested: { inner: { deeper: 'HOSTILE_DEEP' } },
+  };
+  const ECHO_MARKERS = ['routing_original_query', 'routingOriginalQuery', 'routingUserQuery', 'zz_caller_sentinel', 'HOSTILE_COMMIT',
+    'HOSTILE_NESTED', 'zz_nested', 'HOSTILE_DEEP'];
+  const echoed = (body) => ECHO_MARKERS.filter((marker) => JSON.stringify(body).includes(marker));
   const ECHO_QUERIES = ['retinol free', 'without retinol', 'retinolfrei', 'retinol 0%', 'niacinamide alternative',
     'retinol alternative for body', 'gift', 'return policy', '선크림 return policy', '洗面奶 return policy', 'retinol',
     'retinol alternative', 'crème hydratante', 'retinol-free cream', '레티놀 프리미엄', 'laptop', 'Lidschatten'];
@@ -889,9 +905,9 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     // the handler's contract safe-empty (the one answer on main that spreads request metadata)
     const { resp } = await send({ search: { query: 'Lidschatten', page: 1, page_size: 20 } }, CALLER);
     expect(lane(resp)).toBe(LANES.SAFE_EMPTY);
-    expect(echoed(resp.body)).toEqual(Object.keys(CALLER));
+    expect(echoed(resp.body)).toEqual(ECHO_MARKERS);
     const surface = await send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, CALLER);
-    expect([lane(surface.resp), echoed(surface.resp.body)]).toEqual([LANES.SAFE_EMPTY, Object.keys(CALLER)]);
+    expect([lane(surface.resp), echoed(surface.resp.body)]).toEqual([LANES.SAFE_EMPTY, ECHO_MARKERS]);
   });
 
   test('on: the debug bundle\'s query is the caller\'s own text, never a metadata value (nb1_debug_raw)', async () => {
@@ -940,6 +956,72 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     expect(normalize(shadowEn.resp.body)).toEqual(normalize(mlOnlyEn.resp.body));
     expect(shadowEn.log.fpm_excluded_ingredient_would_drop_count > 0).toBe(true);
     expect(shadowEn.log.fpm_excluded_ingredient_dropped_count).toBeUndefined();
+  }, 180000);
+
+  test('on (round 2 / item 1): the safe-empty keeps the gateway\'s own fields and drops every caller value', async () => {
+    const off = boot();
+    const offAnswer = await off.send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, CALLER);
+    jest.resetModules();
+    for (const key of FLAG_KEYS) delete process.env[key];
+    const on = boot(BOTH_ON);
+    const caller = { ...CALLER, source: 'agent-api-tests', market: 'US', creator_id: 'creator_123', query_understanding: { hostile: 'HOSTILE_QU' } };
+    const onAnswer = await on.send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, caller);
+    const md = onAnswer.resp.body.metadata;
+    expect(lane(onAnswer.resp)).toBe(LANES.SAFE_EMPTY);
+    // the handler's own fields are all there ...
+    for (const key of ['query_understanding', 'query_understanding_executed', 'query_understanding_decision', 'supplement_lanes',
+      'search_request_contract', 'primary_lane', 'service_version', 'source']) {
+      expect([key, Object.prototype.hasOwnProperty.call(md, key)]).toEqual([key, true]);
+    }
+    expect(Object.keys(md).filter((key) => !Object.prototype.hasOwnProperty.call(offAnswer.resp.body.metadata, key))
+      .filter((key) => !['market', 'creator_id', 'creatorId'].includes(key))).toEqual([]);
+    // ... with the gateway's values, never the caller's
+    expect(md.service_version.commit).not.toBe('HOSTILE_COMMIT');
+    expect(JSON.stringify(md.query_understanding)).not.toContain('HOSTILE_QU');
+    expect(echoed(onAnswer.resp.body)).toEqual([]);
+    // the attribution allowlist: short plain values only
+    expect([md.source, md.market, md.creator_id]).toEqual(['agent-api-tests', 'US', 'creator_123']);
+    const spoofed = await on.send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } },
+      { source: 'x'.repeat(65), market: 'NOT A MARKET', creator_id: { nested: 'HOSTILE_ID' } });
+    // (the gateway's own query_understanding / search_request_contract record the source it used, on
+    // every lane and with the flags off too; that is not an echo of the caller's metadata object)
+    const spoofedMd = spoofed.resp.body.metadata;
+    expect([spoofedMd.market, spoofedMd.source, spoofedMd.creator_id, spoofedMd.creatorId, JSON.stringify(spoofed.resp.body).includes('HOSTILE_ID')])
+      .toEqual([undefined, undefined, undefined, undefined, false]);
+  }, 180000);
+
+  test('on (round 2 / items 2-5): explicit list joiners, the shared family, budgets and unfiled rows', async () => {
+    const { invoke } = boot(BOTH_ON);
+    // 2: two ingredients side by side are not a list
+    for (const [query, mustContain] of [['niacinamide retinol-free serum', REAL_NIACINAMIDE], ['vitamin c retinol-free serum', REAL_VITAMIN_C]]) {
+      const got = titles((await invoke(query)).resp);
+      expect([query, got.some((title) => mustContain.includes(title))]).toEqual([query, true]);
+      for (const title of got) expect([query, title, REAL_RETINOL.includes(title) || RETINOID_FAMILY.includes(title)]).toEqual([query, title, false]);
+    }
+    const standInSerum = await invoke('bakuchiol retinol alternative serum');
+    expect(titles(standInSerum.resp).length > 0 && standInSerum.resp.body.products.every(namesBakuchiol)).toBe(true);
+    // "bakuchiol, and retinol-free": bakuchiol is the ask (the ingredient lane), retinol the exclusion. (Its
+    // one bakuchiol serum is then removed by main's retinoid safety gate, which reads "retinol-free" as
+    // avoid-retinoids and the title's "Retinol Alternative" as a retinoid: not this change.)
+    const listed = await invoke('bakuchiol and retinol free serum');
+    expect(lane(listed.resp)).toBe(LANES.INGREDIENT);
+    for (const product of listed.resp.body.products) expect([product.title, namesBakuchiol(product)]).toEqual([product.title, true]);
+    // 3: the shared family, by a family word in the query too
+    for (const query of ['retinoid free serum', 'retinol alternative serum', 'retinol-free cream', 'sans rétinoïde crème']) {
+      for (const title of titles((await invoke(query)).resp)) {
+        expect([query, title, RETINOID_FAMILY.includes(title) || REAL_RETINOL.includes(title)]).toEqual([query, title, false]);
+      }
+    }
+    // 4: the budget travels (every fixture row costs 24.00)
+    for (const [query, empty] of [['retinol alternative 20 dollars', true], ['retinol alternative under €20', true], ['retinol alternative $15', true],
+      ['retinol alternative 30 dollars', false], ['low price retinol alternative', false]]) {
+      const { resp, log } = await invoke(query);
+      expect([query, lane(resp), log.fpm_routing_query_rewrite, titles(resp).length === 0]).toEqual([query, LANES.INGREDIENT, 'stand_in_known', empty]);
+    }
+    // 5: an unfiled row is judged by what its title names, never by a negated category word
+    const ask = titles((await invoke('retinol alternative')).resp);
+    expect(ask).toContain('Shampoo-Free Bakuchiol Serum');
+    expect(ask).not.toContain('바쿠치올 데일리 샴푸');
   }, 180000);
 
   test('on (follow-up 2): a retinol stand-in or exclusion excludes the whole retinoid family', async () => {

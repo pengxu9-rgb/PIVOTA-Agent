@@ -13551,6 +13551,46 @@ function buildServiceVersionMetadata() {
   };
 }
 
+// The handler's metadata (caller metadata merged with what the gateway computed) without the caller's
+// own values. A key the caller sent and the gateway left untouched is the caller's, and is dropped,
+// whatever it holds (a nested object, a spoofed service_version); only the attribution keys below may
+// come back, and only as short plain values. A key the gateway added, or overwrote with its own value,
+// is the gateway's and stays.
+const { isDeepStrictEqual: callerMetadataValueUnchanged } = require('node:util');
+const CALLER_METADATA_ECHO_ALLOWLIST = Object.freeze({
+  source: /^[a-z0-9_.:-]{1,64}$/i,
+  creator_id: /^[\w.:-]{1,128}$/,
+  creatorId: /^[\w.:-]{1,128}$/,
+  creator_name: /^[^\u0000-\u001f<>]{1,128}$/,
+  creatorName: /^[^\u0000-\u001f<>]{1,128}$/,
+  trace_id: /^[\w.:-]{1,128}$/,
+  traceId: /^[\w.:-]{1,128}$/,
+  market: /^[A-Z]{2}$/,
+});
+// normalizeMetadata copies these caller keys under a second spelling: the copy is the caller's too.
+const CALLER_METADATA_KEY_ALIASES = Object.freeze({
+  creatorId: 'creator_id', creator_id: 'creatorId', creatorName: 'creator_name', creator_name: 'creatorName',
+  traceId: 'trace_id', trace_id: 'traceId',
+});
+function withoutCallerMetadataEcho(handlerMetadata, callerMetadata) {
+  const handler = handlerMetadata && typeof handlerMetadata === 'object' && !Array.isArray(handlerMetadata) ? handlerMetadata : {};
+  const caller = callerMetadata && typeof callerMetadata === 'object' && !Array.isArray(callerMetadata) ? callerMetadata : {};
+  const sentAs = (key, value) => Object.prototype.hasOwnProperty.call(caller, key) && callerMetadataValueUnchanged(caller[key], value);
+  const out = {};
+  for (const [key, value] of Object.entries(handler)) {
+    const fromCaller = sentAs(key, value) || (CALLER_METADATA_KEY_ALIASES[key] ? sentAs(CALLER_METADATA_KEY_ALIASES[key], value) : false);
+    if (!fromCaller) {
+      out[key] = value;
+      continue;
+    }
+    const allowed = Object.prototype.hasOwnProperty.call(CALLER_METADATA_ECHO_ALLOWLIST, key)
+      ? CALLER_METADATA_ECHO_ALLOWLIST[key]
+      : null;
+    if (allowed && typeof value === 'string' && allowed.test(value)) out[key] = value;
+  }
+  return out;
+}
+
 function completeServiceVersionMetadata(existing = null) {
   const base = buildServiceVersionMetadata();
   const current =
@@ -42612,6 +42652,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (CHECKOUT_TIMING_OPS.has(debugRuntime.operation)) {
       checkoutRuntime.checkoutTraceId = gatewayRequestId;
     }
+    // The metadata object exactly as the caller sent it (the handler later replaces req.body.metadata
+    // with its own merged copy): what an answer must not echo back when a routing flag is on.
+    const callerRequestMetadata = req?.body?.metadata;
     let metadata = normalizeMetadata(req.body.metadata, payload);
     const sourceContractPayload = applyFindProductsMultiSourceContract(
       payloadWithRequestContext,
@@ -43018,12 +43061,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(safeSearch.limit || safeSearch.page_size || 20) || 20)),
       );
       const safePage = Math.max(1, Math.floor(Number(safeSearch.page || 1) || 1));
-      // With a routing flag on, the caller's request metadata is not echoed into this answer (it carried
-      // hostile routing_original_query / routingOriginalQuery / routingUserQuery values straight back),
-      // the same as the contract safe-empty in the mainline helper, which never spreads it. Both flags
-      // off or observe: unchanged, byte-identical to before.
+      // With a routing flag on, nothing the caller sent comes back in this answer unless it is on the echo
+      // allowlist (routing_original_query, a spoofed service_version.commit, nested keys all did). The
+      // handler's own fields (query_understanding*, supplement_lanes, source, ...) stay: they are the
+      // gateway's, not the caller's. service_version is the gateway's own. Both flags off or observe:
+      // unchanged, byte-identical to before.
       const safeEmptyEchoesCallerMetadata =
         strictIngredientQuery.bareIngredientRoutingMode() !== 'on' && multilingualBeautyTerms.multilingualRoutingMode() !== 'on';
+      const safeEmptyHandlerMetadata = safeEmptyEchoesCallerMetadata
+        ? metadata
+        : withoutCallerMetadataEcho(metadata, callerRequestMetadata);
       const safeEmpty = normalizeAgentProductsListResponse(
         {
           status: 'success',
@@ -43036,7 +43083,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? 'Please search for a product, brand, category, or skin concern.'
             : null,
           metadata: {
-            ...(safeEmptyEchoesCallerMetadata ? metadata : {}),
+            ...safeEmptyHandlerMetadata,
             ...buildInvokeSearchRailMetadata('authoritative_shopping'),
             query_source: 'search_quality_contract_v1_safe_empty',
             fetched_at: new Date().toISOString(),
@@ -43103,7 +43150,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             contract_bridge: {
               legacy_fallback: false,
             },
-            service_version: completeServiceVersionMetadata(metadata?.service_version),
+            service_version: completeServiceVersionMetadata(safeEmptyEchoesCallerMetadata ? metadata?.service_version : null),
           },
         },
         {

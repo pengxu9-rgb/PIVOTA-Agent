@@ -960,11 +960,11 @@ test('follow-up 3: face / skin are skincare, price words travel with the rewrite
     'facial retinol alternative', 'retinol alternative for my skin please']) {
     assert.deepEqual(rw(query), { query: 'bakuchiol', kind: 'stand_in_known', requiredIds: ['bakuchiol'] }, query);
   }
-  assert.deepEqual(rw('cheap retinol alternative under $20'), { query: 'cheap bakuchiol under $20', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
+  assert.deepEqual(rw('cheap retinol alternative under $20'), { query: 'bakuchiol cheap under $20', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
   assert.deepEqual(rw('retinol alternative under 20 dollars'), { query: 'bakuchiol under 20 dollars', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
-  assert.deepEqual(rw('affordable bakuchiol instead of retinol'), { query: 'affordable bakuchiol', kind: 'stand_in_named', requiredIds: ['bakuchiol'] });
+  assert.deepEqual(rw('affordable bakuchiol instead of retinol'), { query: 'bakuchiol affordable', kind: 'stand_in_named', requiredIds: ['bakuchiol'] });
   assert.deepEqual(rw('retinol alternative for hair under $15'), { query: 'retinol-free hair care under $15', kind: 'area', requiredIds: [] });
-  assert.deepEqual(rw('budget retinol alternative max 25 usd'), { query: 'budget bakuchiol max 25 usd', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
+  assert.deepEqual(rw('budget retinol alternative max 25 usd'), { query: 'bakuchiol budget max 25 usd', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
   // a product word or another area still keeps the query as typed
   for (const query of ['cheap retinol alternative serum', 'retinol alternative under eye', 'premium retinol alternative cream']) {
     assert.deepEqual(rw(query), { query, kind: null, requiredIds: [] }, query);
@@ -974,4 +974,114 @@ test('follow-up 3: face / skin are skincare, price words travel with the rewrite
     assert.equal(strict.isBareStrictIngredientQuery(query), true, query);
   }
   assert.equal(normalizer.normalizeFindProductsMultiRoutingQuery('레티놀 프리미엄', BOTH_ON).query, 'retinol 프리미엄');
+});
+
+
+// ---- flag-on follow-ups, round 2 ----------------------------------------------------------------
+
+test('round 2 / item 2: a list needs an explicit joiner, on both readings; a stand-in active is never a member', () => {
+  const cases = {
+    // side by side is not a list (the regression)
+    'niacinamide retinol-free serum': [['niacinamide'], ['retinol']],
+    'hyaluronic acid retinol free serum': [['hyaluronic_acid'], ['retinol']],
+    'vitamin c retinol-free serum': [['ascorbic_acid'], ['retinol']],
+    'bakuchiol retinol alternative serum': [['bakuchiol'], ['retinol']],
+    // "bakuchiol, and retinol-free": the stand-in named beside what it replaces is the ask
+    'bakuchiol and retinol free serum': [['bakuchiol'], ['retinol']],
+    'retinol and bakuchiol free serum': [['retinol'], ['bakuchiol']],
+    // explicit joiners: a list word, a comma, "&"
+    'retinol and niacinamide free serum': [[], ['niacinamide', 'retinol']],
+    'retinol, niacinamide free serum': [[], ['niacinamide', 'retinol']],
+    'retinol & niacinamide free serum': [[], ['niacinamide', 'retinol']],
+    'retinol or niacinamide alternative': [[], ['niacinamide', 'retinol']],
+    'without retinol und niacinamide': [[], ['niacinamide', 'retinol']],
+    // "e" / "o" are not joiners: vitamin e is an ingredient name
+    'retinol e niacinamide free serum': [['retinol'], ['niacinamide']],
+  };
+  for (const [query, [wanted, excluded]] of Object.entries(cases)) {
+    assert.deepEqual(strict.extractPositiveStrictIngredientIds(query).sort(), wanted.sort(), `wanted: ${query}`);
+    assert.deepEqual(strict.extractExcludedStrictIngredientIds(query).sort(), excluded.sort(), `excluded: ${query}`);
+    // the raw canonicalisation reads the same list (it never negates a member the classifier keeps)
+    const canonical = strict.canonicalizeEnglishIngredientNegations(query).query;
+    assert.deepEqual(strict.extractPositiveStrictIngredientIds(canonical).sort(), wanted.sort(), `canonical wanted: ${query} -> ${canonical}`);
+    assert.deepEqual(strict.extractExcludedStrictIngredientIds(canonical).sort(), excluded.sort(), `canonical excluded: ${query} -> ${canonical}`);
+  }
+  assert.equal(strict.canonicalizeEnglishIngredientNegations('bakuchiol and retinol free serum').query, 'bakuchiol and retinol-free serum');
+  assert.equal(strict.canonicalizeEnglishIngredientNegations('without bakuchiol').query, 'bakuchiol-free');
+  assert.equal(strict.normalizeForRouting('retinol, niacinamide & vitamin c'), 'retinol and niacinamide and vitamin c');
+});
+
+test('round 2 / item 3: the shared retinoid family, on products and in queries', () => {
+  const family = require('../src/services/retinoidFamily');
+  const product = (title) => ({ title });
+  for (const title of ['Vitamin A Serum', 'Vitamin A Palmitate Cream', 'Trifarotene Cream', 'Retin-A 0.05% Cream', 'A醛精华', '维A醛面霜',
+    '維A醛乳霜', 'Rétinoïde Crème de Nuit', 'Retinoide Nachtcreme', 'Crema con retinoides', 'トリファロテン クリーム', '트리파로텐 크림',
+    'Крем с трифаротеном', 'Accutane Aftercare Balm']) {
+    assert.equal(strict.productNamesIngredientFamily(product(title), 'retinol'), true, title);
+  }
+  // a family name qualified away is not the family (M65), in every script
+  for (const title of ['不含视黄醛面霜', 'レチナールフリー クリーム', '레티날 프리 크림', 'Retinal-Free Serum', 'Vitamin A Free Cream',
+    'Vitamin ACE Body Oil', 'Retinoid Alternative Serum']) {
+    assert.equal(strict.productNamesIngredientFamily(product(title), 'retinol'), false, title);
+  }
+  // queries: a qualified family name excludes retinol; a positive one asks for nothing
+  for (const query of ['retinoid free serum', 'retinoid-free serum', 'no retinal serum', 'without vitamin a', 'retin-a alternative',
+    'sans rétinoïde', 'retinoide-free creme', 'retinoid and niacinamide free serum']) {
+    assert.ok(strict.extractExcludedStrictIngredientIds(query).includes('retinol'), query);
+    assert.deepEqual(strict.extractPositiveStrictIngredientIds(query), [], query);
+  }
+  for (const query of ['retinal serum', 'vitamin a serum', 'retinoid serum']) {
+    assert.deepEqual([strict.extractPositiveStrictIngredientIds(query), strict.extractExcludedStrictIngredientIds(query)], [[], []], query);
+  }
+  // one list, not two
+  assert.ok(family.RETINOID_FAMILY_LATIN.includes('trifarotene'));
+  assert.ok(family.RETINOID_FAMILY_SCRIPT.includes('a醛'));
+  assert.equal(new Set(family.RETINOID_FAMILY_LATIN).size, family.RETINOID_FAMILY_LATIN.length);
+});
+
+test('round 2 / item 4: every budget the parser reads travels with the rewrite; none is ever dropped', () => {
+  const { parseBudgetToPriceConstraint } = require('../src/findProductsMulti/intent');
+  const rw = (query) => normalizer.rewriteExclusionQuery(query);
+  const cases = {
+    'retinol alternative 20 dollars': 'bakuchiol 20 dollars',
+    'retinol alternative under €20': 'bakuchiol under €20',
+    'retinol alternative 30': 'bakuchiol 30',
+    'low price retinol alternative': 'bakuchiol low price',
+    'retinol alternative $15': 'bakuchiol $15',
+    'retinol alternative s$15': 'bakuchiol s$15',
+    'retinol alternative 20€': 'bakuchiol 20€',
+    'retinol alternative 100元以内': 'bakuchiol 100元以内',
+    'retinol alternative $15-$30': 'bakuchiol $15-$30',
+    'retinol alternative between 20 and 40 dollars': 'bakuchiol between 20 and 40 dollars',
+    'alternative to retinol up to $30': 'bakuchiol up to $30',
+    'retinol alternative under 20 euros': 'bakuchiol under 20 euros',
+    'alternative to retinol': 'bakuchiol',
+  };
+  for (const [query, expected] of Object.entries(cases)) {
+    const out = rw(query);
+    assert.equal(out.query, expected, query);
+    assert.deepEqual(parseBudgetToPriceConstraint(out.query), parseBudgetToPriceConstraint(query), query);
+  }
+  // a budget the phrase cannot carry leaves the query as typed rather than dropping it
+  const odd = 'retinol alternative for twenty bucks';
+  assert.equal(rw(odd).query, odd);
+});
+
+test('round 2 / item 5: a negated category word never sets a row\'s area; CJK hair titles are hair; category is read (M17)', () => {
+  const infer = normalizer.inferRowCategoryPath;
+  for (const title of ['Shampoo-Free Bakuchiol Serum', 'Bakuchiol Serum (not a shampoo)', 'Shampoo free bakuchiol serum',
+    'Bakuchiol Serum, no shampoo needed']) {
+    assert.equal(infer({ title }), 'beauty/skincare/treat/', title);
+  }
+  for (const title of ['데일리 샴푸', '모이스처 샴푸 500ml', 'シャンプー 500ml', 'ヘアオイル', 'Sulfate-Free Shampoo']) {
+    assert.equal(infer({ title }), 'beauty/haircare/', title);
+  }
+  assert.equal(infer({ title: 'Daily Thing', category: 'Shampoo' }), 'beauty/haircare/');
+  assert.equal(infer({ title: 'Daily Thing', product_type: 'Lipstick' }), 'beauty/makeup/lip/');
+  assert.equal(infer({ title: 'Mystery Item' }), '');
+  const page = strict.excludeIngredientsFromPage({ products: [{ title: 'Shampoo-Free Bakuchiol Serum' }, { title: '데일리 샴푸' },
+    { title: 'Daily Thing', category: 'Shampoo' }, { title: 'Mystery Item' }] }, {
+    ingredientIds: ['retinol'], scopePrefix: 'beauty/skincare/', inferCategoryPath: infer,
+  });
+  assert.deepEqual(page.body.products.map((row) => row.title), ['Shampoo-Free Bakuchiol Serum', 'Mystery Item']);
 });
