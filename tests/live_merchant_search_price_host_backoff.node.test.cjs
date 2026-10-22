@@ -8,7 +8,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  HOST_BACKOFF_FLAG, HOST_BACKOFF_MAX_HOSTS, overlayLiveMerchantSearchPrices, hostKey, _hostBackoff,
+  HOST_BACKOFF_FLAG, HOST_BACKOFF_MAX_HOSTS, HOST_BACKOFF_MAX_MS, HOST_BACKOFF_CLOCK_SLACK_MS,
+  overlayLiveMerchantSearchPrices, hostKey, _hostBackoff,
 } = require('../src/services/liveMerchantSearchPrice');
 const storefrontProductPage = require('../src/services/storefrontProductPage');
 const pv = require('../src/observability/priceVerificationLog');
@@ -52,6 +53,8 @@ function merchant(byHost) {
   return { calls, fetchImpl };
 }
 const lmp = (r) => r.metadata.live_merchant_price;
+/** A backoff entry's wall-clock fields (setAt is monotonic: when, not what). */
+const wall = (entry) => (entry ? { until: entry.until, ms: entry.ms, status: entry.status } : entry);
 
 test('flag off: a 429 changes nothing, every later page reads the host again, and no backoff state is kept', async () => {
   const m = merchant({ 'off.test': 429 });
@@ -117,7 +120,7 @@ test('flag on: 60 s, doubling on a repeat up to 10 min; a 2xx clears it; in-flig
     const page = (n = 1) => overlayLiveMerchantSearchPrices({ products: cards('slow.test', n) }, { fetchImpl: m.fetchImpl, env: ON });
 
     await page(8); // 429s from the four readers in flight together (see above), then four skips
-    assert.deepEqual(_hostBackoff.get('slow.test'), { until: T0 + MIN, ms: MIN, status: 429, setAt: T0 });
+    assert.deepEqual(wall(_hostBackoff.get('slow.test')), { until: T0 + MIN, ms: MIN, status: 429 });
 
     test.mock.timers.tick(MIN - 1);
     m.calls.length = 0;
@@ -135,6 +138,14 @@ test('flag on: 60 s, doubling on a repeat up to 10 min; a 2xx clears it; in-flig
     m.calls.length = 0;
     await page();
     assert.equal(m.calls.length, 0, 'a 10 min backoff just set holds (exactly 10 min left is not a clock step)');
+
+    // At the cap, the four readers in flight are all refused: the first sets 10 min, the other three land during
+    // it and leave it exactly as it was (never back to 60 s).
+    test.mock.timers.tick(_hostBackoff.get('slow.test').until - Date.now());
+    m.calls.length = 0;
+    await page(8);
+    assert.equal(m.calls.length, 4);
+    assert.deepEqual(wall(_hostBackoff.get('slow.test')), { until: Date.now() + 10 * MIN, ms: 10 * MIN, status: 429 });
 
     test.mock.timers.tick(_hostBackoff.get('slow.test').until - Date.now());
     status = 200;
@@ -326,7 +337,7 @@ test('S3: a backoff ending more than 10 min from now (the clock stepped back) ha
     m.calls.length = 0;
     await overlayLiveMerchantSearchPrices({ products: cards('clock.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
     assert.equal(m.calls.length, 1, 'read again: 11 min left is more than any backoff');
-    assert.deepEqual(_hostBackoff.get('clock.test'), { until: T0 - 9 * MIN, ms: MIN, status: 429, setAt: T0 - 10 * MIN }, 'a fresh 60 s, not a doubling');
+    assert.deepEqual(wall(_hostBackoff.get('clock.test')), { until: T0 - 9 * MIN, ms: MIN, status: 429 }, 'a fresh 60 s, not a doubling');
     test.mock.timers.setTime(T0 - 10 * MIN + 1);
     m.calls.length = 0;
     await overlayLiveMerchantSearchPrices({ products: cards('clock.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
@@ -430,4 +441,83 @@ test('overlay_cache_not_live is absent when cache answers were noted but none wo
   });
   assert.deepEqual([log.lines[0].live, log.lines[0].recent], [0, 1]);
   assert.equal('overlay_cache_not_live' in log.lines[0], false);
+});
+
+// ---- controller review of #2495 (clock edges, sibling loopbacks, hostKey, one queue per store) ----
+
+test('a wall-clock step back while reads are in flight never lets an in-flight 2xx clear the backoff', async () => {
+  test.mock.timers.enable({ apis: ['Date'], now: T0 });
+  try {
+    // Two readers: the first answers 200 at 40 ms; the second is refused at 5 ms, just after the clock stepped
+    // back a minute, so by the wall clock the refusal looks older than the read that answers 200.
+    const m = merchant({
+      'step.test': (_url, i) => {
+        if (i === 0) return { status: 200, delayMs: 40 };
+        if (i === 1) {
+          setTimeout(() => test.mock.timers.setTime(T0 - MIN), 1);
+          return { status: 429, delayMs: 5 };
+        }
+        return 200;
+      },
+    });
+    await overlayLiveMerchantSearchPrices({ products: cards('step.test', 4) }, { fetchImpl: m.fetchImpl, env: ON });
+    assert.equal(m.calls.length, 2);
+    assert.ok(_hostBackoff.has('step.test'), 'the in-flight 200 did not clear it');
+    assert.equal(_hostBackoff.get('step.test').until, T0, 'set at the stepped-back wall clock');
+  } finally {
+    test.mock.timers.reset();
+  }
+});
+
+test('the 10 min clamp has 1 s of slack: jitter keeps the backoff, a real step back expires it', async () => {
+  test.mock.timers.enable({ apis: ['Date'], now: T0 });
+  try {
+    _hostBackoff.set('slack.test', { until: T0 + HOST_BACKOFF_MAX_MS + HOST_BACKOFF_CLOCK_SLACK_MS, ms: HOST_BACKOFF_MAX_MS, status: 429, setAt: 0 });
+    const m = merchant({ 'slack.test': 429 });
+    await overlayLiveMerchantSearchPrices({ products: cards('slack.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
+    assert.equal(m.calls.length, 0, 'within the slack: still backed off');
+    _hostBackoff.get('slack.test').until += 1;
+    await overlayLiveMerchantSearchPrices({ products: cards('slack.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
+    assert.equal(m.calls.length, 1, 'past the slack: expired');
+  } finally {
+    test.mock.timers.reset();
+  }
+});
+
+test('two sibling loopback calls of one door share its tag: the second reads the first one\'s cache as its own', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  const door = { door: 'mcp', started_at_ms: Date.now(), request_id: 'd' };
+  const products = cards('siblings.test', 1);
+  const m = merchant({ 'siblings.test': 200 });
+  for (let i = 0; i < 2; i += 1) {
+    await pv.runWithPriceContext({ door: 'mcp', via_loopback: true, parent: door }, async () => {
+      await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: m.fetchImpl, env: {} });
+    });
+  }
+  assert.equal(m.calls.length, 1, 'the second sibling was answered from the cache');
+  assert.equal(typeof door.overlay_tag, 'string');
+  assert.deepEqual(door.search_overlay_cached_at, []);
+});
+
+test('hostKey folds only a LEADING www. and trailing dots', () => {
+  assert.equal(hostKey('https://shop.www.test/products/a.json'), 'shop.www.test');
+  assert.equal(hostKey('https://www2.shop.test/products/a.json'), 'www2.shop.test');
+  assert.equal(hostKey('https://www.www.shop.test/products/a.json'), 'www.shop.test');
+  assert.equal(hostKey('https://shop.test../products/a.json'), 'shop.test');
+});
+
+test('flag on, www.x and x share one page queue of 4 readers; off, each keeps its own (as before)', async () => {
+  for (const [env, peakWanted] of [[ON, 4], [{}, 8]]) {
+    let active = 0;
+    let peak = 0;
+    const fetchImpl = async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return { ok: true, status: 200, json: async () => body };
+    };
+    await overlayLiveMerchantSearchPrices({ products: [...cards('www.queue.test', 9), ...cards('queue.test', 9)] }, { fetchImpl, env });
+    assert.equal(peak, peakWanted);
+  }
 });
