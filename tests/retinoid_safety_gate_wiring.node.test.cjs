@@ -117,6 +117,35 @@ test('product detection: retinoid names in every script, minus retinoid-free cla
   assert.equal(beautyProductIsRetinoidForSafety(null), false);
 });
 
+test('safety net: no id list or generated text still points at a removed product', () => {
+  const body = {
+    products: [RETINOL_SERUM, PLAIN_SERUM],
+    reply: 'Retinol 0.5% Serum is the current lead; Hyaluronic Acid Serum is the comparison.',
+    assistant_message: { role: 'assistant', content: 'Try the retinol 0.5% serum tonight.' },
+    beauty_expert_v1: { next_actions: [{ type: 'compare', payload: { product_ids: ['ret_serum', 'ha_serum'] } }] },
+    metadata: { search_trace: { raw_query: 'retinol 0.5% serum' }, note: 'Retinol 0.5% Serum' },
+  };
+  const out = applyRetinoidSafetyNetToSearchBody(body, ['child_under_12']);
+  assert.deepEqual(out.products.map((p) => p.product_id), ['ha_serum']);
+  assert.equal(out.reply, '');
+  assert.equal(out.assistant_message.content, '');
+  assert.equal(out.assistant_message.role, 'assistant');
+  assert.deepEqual(out.beauty_expert_v1.next_actions[0].payload.product_ids, ['ha_serum']);
+  // not prose: left as it is
+  assert.equal(out.metadata.search_trace.raw_query, 'retinol 0.5% serum');
+  assert.equal(out.metadata.note, 'Retinol 0.5% Serum');
+  assert.deepEqual(out.metadata.retinoid_safety_net, { removed_count: 1, classes: ['child_under_12'], prose_cleared: 2 });
+  // a title too short to be a name ("Gel") never clears prose
+  const shortTitle = product('short', 'Gel', 'serum', 'Night gel with retinol.');
+  const kept2 = applyRetinoidSafetyNetToSearchBody({ products: [shortTitle, PLAIN_SERUM], reply: 'Gel textures absorb fast.' }, ['x']);
+  assert.deepEqual(kept2.products.map((p) => p.product_id), ['ha_serum']);
+  assert.equal(kept2.reply, 'Gel textures absorb fast.');
+  // prose that names only what is still served is kept
+  const kept = applyRetinoidSafetyNetToSearchBody({ products: [RETINOL_SERUM, PLAIN_SERUM], reply: 'Hyaluronic Acid Serum hydrates.' }, ['x']);
+  assert.equal(kept.reply, 'Hyaluronic Acid Serum hydrates.');
+  assert.equal(kept.metadata.retinoid_safety_net.prose_cleared, undefined);
+});
+
 test('contract: a retinoid_forward exclusion now rejects retinoid products', () => {
   const contract = buildSearchQualityContract({ rawQuery: 'pregnancy safe serum', market: 'US' });
   assert.ok(contract.hard_constraints.exclusions.includes('retinoid_forward'));
@@ -196,13 +225,19 @@ test('invoke net: query texts and request context decide; failures fail closed',
   assert.deepEqual(ids(applyRetinoidSafetyNetForInvokeResponse({ body: body(), queryTexts: ['retinol serum'], requestContext: ctx })), ['ha_serum']);
   // anything that throws: no products, the response still goes out, and the body says why
   const errors = [];
-  const hostile = { status: 'success', metadata: { query_source: 'x' } };
+  const hostile = {
+    status: 'success', metadata: { query_source: 'x' }, reply: 'Retinol 0.5% Serum is the lead.', assistant_message: { content: 'x' },
+    beauty_expert_v1: { reco_bundle: { lead_picks: [RETINOL_SERUM] } },
+  };
   Object.defineProperty(hostile, 'products', { enumerable: true, get() { throw new Error('boom'); } });
   const out = applyRetinoidSafetyNetForInvokeResponse({ body: hostile, queryTexts: ['serum for kids'], onError: (e) => errors.push(e.message) });
   assert.deepEqual(out.products, []);
   assert.equal(out.total, 0);
   assert.deepEqual(out.metadata, { query_source: 'x', retinoid_safety_net: { error: true } });
   assert.equal(out.status, 'success');
+  assert.equal(out.reply, '');
+  assert.equal(out.assistant_message, undefined);
+  assert.equal(out.beauty_expert_v1, undefined);
   assert.deepEqual(errors, ['boom']);
   // a failure on a non-object body passes it through
   assert.equal(applyRetinoidSafetyNetForInvokeResponse({ body: 'x', queryTexts: null }), 'x');

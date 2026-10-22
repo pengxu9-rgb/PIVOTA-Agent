@@ -20226,10 +20226,16 @@ function beautyProductIsRetinoidForSafety(product) {
 // body, whatever lane produced it. The beauty gate already keeps retinoids out of the lanes that
 // call it; this catches the lanes that never do (upstream proxy, canonical, fallbacks). Returns the
 // body unchanged when nothing is removed.
+// Generated text a response carries about its products.
+const RETINOID_SAFETY_NET_PROSE_KEYS = new Set([
+  'reply', 'assistant_text', 'assistant_reply', 'content', 'text', 'summary', 'explanation', 'rationale', 'headline', 'message',
+]);
 function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
   if (!Array.isArray(classes) || classes.length === 0) return body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
   let removed = 0;
+  const removedIds = new Set();
+  const removedTitles = new Set();
   const looksLikeProduct = (item) =>
     item && typeof item === 'object' && !Array.isArray(item) &&
     (item.product_id != null || item.id != null || item.sku_id != null) &&
@@ -20242,6 +20248,10 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
         ? value.filter((item) => {
             if (looksLikeProduct(item) && beautyProductIsRetinoidForSafety(item)) {
               removed += 1;
+              for (const id of [item.product_id, item.id, item.sku_id]) if (id != null && String(id).trim()) removedIds.add(String(id));
+              for (const t of [item.title, item.name, item.product_name]) {
+                if (typeof t === 'string' && t.trim().length >= 6) removedTitles.add(t.trim().toLowerCase());
+              }
               return false;
             }
             return true;
@@ -20255,14 +20265,41 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
     }
     return out;
   };
-  const next = walk(body, 0);
+  let next = walk(body, 0);
   if (removed === 0) return body;
+  // What is left that still points at a removed product: an id in a plain id list (next_actions'
+  // product_ids), and the generated prose (reply, assistant_text, assistant_message.content ...)
+  // that names one. The prose was written for the list before the net; it is cleared, not rewritten.
+  let proseCleared = 0;
+  const scrub = (value, key, depth) => {
+    if (depth > 8 || value == null) return value;
+    if (typeof value === 'string') {
+      if (!RETINOID_SAFETY_NET_PROSE_KEYS.has(key)) return value;
+      const lowered = value.toLowerCase();
+      for (const t of removedTitles) {
+        if (lowered.includes(t)) {
+          proseCleared += 1;
+          return '';
+        }
+      }
+      return value;
+    }
+    if (typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      const kept = value.filter((item) => !((typeof item === 'string' || typeof item === 'number') && removedIds.has(String(item))));
+      return kept.map((item) => scrub(item, key, depth + 1));
+    }
+    const out = {};
+    for (const [k, child] of Object.entries(value)) out[k] = scrub(child, k, depth + 1);
+    return out;
+  };
+  next = scrub(next, '', 0);
   if (Array.isArray(body.products) && typeof body.total === 'number' && Array.isArray(next.products)) {
     next.total = Math.max(0, body.total - (body.products.length - next.products.length));
   }
   next.metadata = {
     ...(next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata) ? next.metadata : {}),
-    retinoid_safety_net: { removed_count: removed, classes: classes.slice() },
+    retinoid_safety_net: { removed_count: removed, classes: classes.slice(), ...(proseCleared ? { prose_cleared: proseCleared } : {}) },
   };
   return next;
 }
@@ -20295,6 +20332,12 @@ function applyRetinoidSafetyNetForInvokeResponse({ body, queryTexts = [], reques
       }
     }
     const metadata = out.metadata && typeof out.metadata === 'object' && !Array.isArray(out.metadata) ? out.metadata : {};
+    // the generated prose and picks describe products that are no longer served
+    for (const key of Object.keys(out)) {
+      if (RETINOID_SAFETY_NET_PROSE_KEYS.has(key) && typeof out[key] === 'string') out[key] = '';
+    }
+    delete out.assistant_message;
+    delete out.beauty_expert_v1;
     return { ...out, products: [], total: 0, metadata: { ...metadata, retinoid_safety_net: { error: true } } };
   }
 }

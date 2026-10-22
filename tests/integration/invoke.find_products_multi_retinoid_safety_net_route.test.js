@@ -171,6 +171,9 @@ describe('the safety net on a lane that never calls the beauty gate (seam on)', 
     expect(resp.body.products.map((p) => p.product_id)).toEqual([SEAM_PLAIN_ID]);
     expect(resp.body.metadata?.retinoid_safety_net?.removed_count).toBeGreaterThan(0);
     if (typeof resp.body.total === 'number') expect(resp.body.total).toBe(resp.body.products.length);
+    // no id list or generated text still points at it
+    expect(JSON.stringify(resp.body)).not.toContain(SEAM_RETINOID_ID);
+    expect(JSON.stringify(resp.body)).not.toMatch(/Retinol Night Serum/);
   });
 });
 
