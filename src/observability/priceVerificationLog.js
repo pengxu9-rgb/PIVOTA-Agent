@@ -22,6 +22,9 @@
 //           replay, which still says price_source 'merchant_live'. A replay is NEVER live, however fresh its
 //           stamp: the merchant answered the request that filled the cache, not this one.
 //   stored  everything else: Pivota's catalog copy, an older answer, or one with no time.
+//   A search card the `.json` overlay answered from its per-instance cache (another request's read) is never
+//   live either, even when that read landed after this request started (a concurrent burst): the overlay notes
+//   each such answer's stamp (noteSearchOverlay) and the line counts a matching fact as a replay.
 //   What dates an answer, and why `live` allows a reader memo's ~30 s: priceVerificationFacts (WHEN THE
 //   MERCHANT ANSWERED). Which prices a door counts at all: priceVerificationFacts (WHAT COUNTS).
 //
@@ -67,6 +70,8 @@ const TTL_MS = Object.freeze({
   get_offers: 0,
 });
 const TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
+const HOST = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
+const MAX_THROTTLED_HOSTS = 8;
 const MAX_ITEMS = 500;
 // Door contexts a loopback call may report to, by request id. Same process only; bounded.
 const OPEN_DOORS_MAX = 2000;
@@ -242,6 +247,46 @@ function trackSearchOverlay(result, { skipped = null } = {}) {
   }
 }
 
+/**
+ * What the search `.json` overlay saw that only the line needs (liveMerchantSearchPrice; never in the answer):
+ * per host, the reads refused with a 429 / 5xx or skipped for a host backoff; and the stamp (price_as_of) of
+ * each card it verified from its per-instance cache. Off or outside a context: nothing. Never throws.
+ */
+function noteSearchOverlay({ throttledHosts, cachedAnswerStamps } = {}) {
+  try {
+    if (!priceVerificationLogEnabled()) return;
+    const target = recordTarget();
+    if (!target) return;
+    if (isObj(throttledHosts)) {
+      for (const [host, n] of Object.entries(throttledHosts)) {
+        if (!HOST.test(host) || !(Number.isInteger(n) && n > 0)) continue;
+        if (!target.search_overlay_throttled_hosts) target.search_overlay_throttled_hosts = {};
+        const hosts = target.search_overlay_throttled_hosts;
+        if (!(host in hosts) && Object.keys(hosts).length >= 64) continue;
+        hosts[host] = (hosts[host] || 0) + n;
+      }
+    }
+    if (Array.isArray(cachedAnswerStamps)) {
+      if (!target.search_overlay_cached_at) target.search_overlay_cached_at = [];
+      for (const raw of cachedAnswerStamps) {
+        const at = typeof raw === 'string' ? Date.parse(raw) : NaN;
+        if (Number.isFinite(at) && target.search_overlay_cached_at.length < MAX_ITEMS) target.search_overlay_cached_at.push(at);
+      }
+    }
+  } catch {
+    /* measurement only */
+  }
+}
+
+/** The noted hosts as a log field: the 8 with the most refusals (ties by name), or null when none. */
+function throttledHostsField(hosts) {
+  if (!isObj(hosts)) return null;
+  const top = Object.entries(hosts)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, MAX_THROTTLED_HOSTS);
+  return top.length ? Object.fromEntries(top) : null;
+}
+
 function callerOf(store) {
   if (!store) return {};
   if (!store.req) {
@@ -314,13 +359,28 @@ function classifyPrice(item, o) {
   return classifyFact(priceFactOf(item), o);
 }
 
-/** { live, recent, stored, total } over facts. Pure. */
-function countFacts(facts, o) {
+/**
+ * { live, recent, stored, total } over facts. Pure. `o.cachedAt` (epoch ms, one per answer the search overlay
+ * served from its cache): a fact that would be live and carries one of those stamps is counted as a replay,
+ * each stamp once; `cache_not_live` says how many were.
+ */
+function countFacts(facts, o = {}) {
   const counts = { live: 0, recent: 0, stored: 0, total: 0 };
   if (!Array.isArray(facts)) return counts;
+  let cached = null;
+  if (Array.isArray(o.cachedAt) && o.cachedAt.length) {
+    cached = new Map();
+    for (const at of o.cachedAt) if (Number.isFinite(at)) cached.set(at, (cached.get(at) || 0) + 1);
+    counts.cache_not_live = 0;
+  }
   for (const fact of facts.slice(0, MAX_ITEMS)) {
-    const status = classifyFact(fact, o);
+    let status = classifyFact(fact, o);
     if (!status) continue;
+    if (status === 'live' && cached && cached.get(fact.at) > 0) {
+      cached.set(fact.at, cached.get(fact.at) - 1);
+      status = classifyFact(fact, { ...o, replay: true });
+      counts.cache_not_live += 1;
+    }
     counts[status] += 1;
     counts.total += 1;
   }
@@ -413,7 +473,14 @@ function logPriceVerificationServed(logger, f = {}) {
     const facts = Array.isArray(f.facts)
       ? f.facts
       : (Array.isArray(f.items) ? f.items.slice(0, MAX_ITEMS).map(priceFactOf) : []);
-    const counts = countFacts(facts, { startedAtMs, nowMs, ttlMs: TTL_MS[f.surface], replay: f.replay === true });
+    const replay = f.replay === true;
+    // What this request's search overlay noted (noteSearchOverlay). A replay ran no overlay of its own.
+    const overlay = f.surface === 'search' && !replay && store ? store : null;
+    const counts = countFacts(facts, {
+      startedAtMs, nowMs, ttlMs: TTL_MS[f.surface], replay,
+      cachedAt: overlay ? overlay.search_overlay_cached_at : null,
+    });
+    const throttled = overlay ? throttledHostsField(overlay.search_overlay_throttled_hosts) : null;
     const ctx = priceContextLogFields(env);
     const door = DOORS.has(f.door) ? f.door : (ctx.door || 'unknown');
     const market = token(f.market);
@@ -436,6 +503,10 @@ function logPriceVerificationServed(logger, f = {}) {
         added_ms: Number.isFinite(added) && added >= 0 ? Math.round(added) : 0,
         skipped_reason: token(f.skipped_reason),
         ...(isObj(f.extra) ? f.extra : {}),
+        // Search only, and only when non-zero: overlay answers from the per-instance cache counted as recent or
+        // stored instead of live; the hosts that refused (429 / 5xx) or were skipped for a backoff, by count.
+        ...(counts.cache_not_live ? { overlay_cache_not_live: counts.cache_not_live } : {}),
+        ...(throttled ? { overlay_throttled_hosts: throttled } : {}),
       },
       EVENT,
     );
@@ -540,6 +611,7 @@ module.exports = {
   recordedLiveWork,
   trackLiveWork,
   trackSearchOverlay,
+  noteSearchOverlay,
   priceContextLogFields,
   priceContextHeaders,
   inheritedContext,

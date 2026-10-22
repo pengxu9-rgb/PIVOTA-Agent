@@ -19,7 +19,9 @@ Every price the door serves to the agent is exactly one of these:
   - get_product and the PDP: 10 min
   - get_offers: 0 (so never recent)
 
-  A read-cache replay is never live: at best it is recent.
+  A read-cache replay is never live: at best it is recent. Neither is a search card the `.json` overlay answered
+  from its per-instance cache (120 s): another request read it, even when that read landed after this request
+  started (a concurrent burst). The line says how many such cards it moved off live in `overlay_cache_not_live`.
 - **stored**: everything else. That covers Pivota's catalog copy, an older merchant answer, and an answer with
   no time. It includes a price the answer flags for verification (`commerce_verification.required`,
   `price_trusted: false`) on a door that still quotes it (/mcp, invoke, REST), unless the merchant answered it.
@@ -45,3 +47,13 @@ What a door counts is what it serves:
   - `flag_off` (SERVE_LIVE_MERCHANT_PRICE), `page_gt_1`, `budget_constraint`.
   - `mcp_read_cache_replay`.
 - **PDP:** `pdp_overlay_not_enforced`, `no_cached_merchant_answer`.
+
+## Search overlay refusals (`overlay_throttled_hosts`)
+
+Search lines carry `overlay_throttled_hosts: {host: count}` when the `.json` overlay was refused by a host (HTTP 429
+or 5xx) or skipped it for a backoff (`host_backoff` in `overlay_failure_reasons`). At most 8 hosts, most refusals
+first; absent when there were none. Log only: the answer never names the hosts.
+
+The backoff itself is `SEARCH_OVERLAY_HOST_BACKOFF` (default off; src/services/liveMerchantSearchPrice.js). After a
+429 or 5xx from a host, every request on that instance skips the host for 60 s, doubling on a repeat up to 10 min.
+It is per instance; the fleet-wide backoff comes later.
