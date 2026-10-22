@@ -117,10 +117,28 @@ const HARD_DISTANT_NEGATION_LATIN = [
   'aren\\s?t', 'isn\\s?t', 'doesn\\s?t', 'won\\s?t', 'shouldn\\s?t', 'can\\s?t', 'cannot', 'nope', 'nah', 'skip\\w*',
   'ditch\\w*', 'w\\s?o', 'minus',
 ];
-// Same, script view, substring.
-const HARD_DISTANT_NEGATION_SCRIPT = [
-  '不要', '不含', '无', '無', '不用', '避免', '避开', '避開', '过敏', '過敏', '不能用', '替代', '平替',
-  'フリー', '不使用', 'なし', '無し', '使えない', '안 쓰', '없는', '프리', 'без',
+// Same, in other scripts. These count only NEXT TO a retinoid name, the way the strict ingredient
+// reader (src/findProductsMulti/strictIngredientQuery.js, CJK_NEGATION_BEFORE_RE / _AFTER_RE) reads
+// them, never as a substring anywhere in the text:
+//   - 프리 is "free" in 레티놀프리 / 레티놀 프리 / 레티놀프리크림, but the start of 프리미엄 ("premium");
+//   - 无 is "without" in 无视黄醇, but part of 无暇 ("flawless");
+//   - без is "without" in без ретинола, but the start of безопасный ("safe");
+//   - なし is "none" in レチノールなし, but part of はなし ("talk").
+const HARD_NEGATION_BEFORE_NAME_SCRIPT = [
+  '不含', '无添加', '無添加', '无', '無', '没有', '沒有', '避开', '避開', '避免', '不要', '不加', '不用', '不想用', '不想要',
+  '不能用',
+];
+const HARD_NEGATION_AFTER_NAME_SCRIPT = [
+  'フリー', '不使用', '無添加', 'なし', '無し', 'が使えない', 'は使えない', '使えない', '없는', '없이', '무첨가',
+  '프리(?!미엄)', '대체', '代替', '替代', '平替', '过敏', '過敏', '안 ?쓰', '못 ?쓰',
+];
+const RETINOID_NAME_NEXT_TO_NEGATION =
+  '(?:视黄醇|視黃醇|维a醇|維a醇|a醇|维甲酸|維甲酸|レチノール|레티놀|레티날|레티노이드|레티닐 ?팔미테이트|retinol|retinal|retinoids?|tretinoin|adapalene)';
+const SCRIPT_NEGATION_RES = [
+  new RegExp(`(?:${HARD_NEGATION_BEFORE_NAME_SCRIPT.join('|')})\\s*${RETINOID_NAME_NEXT_TO_NEGATION}`),
+  new RegExp(`${RETINOID_NAME_NEXT_TO_NEGATION}\\s*(?:${HARD_NEGATION_AFTER_NAME_SCRIPT.join('|')})`),
+  // Russian: без / не содержит as a word of its own, before the name (ретинола, ретиноидов ...).
+  /(?<![а-яё])(?:без|не\s+содержит)\s+(?:[а-яё]+\s+)?ретин[а-яё]*/,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -320,7 +338,10 @@ function classifyText(text) {
     classes.add('child_under_12');
   }
   const namesRetinoid = RETINOID_NAME_LATIN.test(padded) || RETINOID_NAME_SCRIPT.test(script);
-  if (namesRetinoid && (RE.negationLatin.test(padded) || scriptHas(script, HARD_DISTANT_NEGATION_SCRIPT))) {
+  if (
+    (namesRetinoid && RE.negationLatin.test(padded)) ||
+    SCRIPT_NEGATION_RES.some((re) => re.test(script))
+  ) {
     classes.add('retinoid_negation');
   }
   if (RE.teenLatin.test(padded) || scriptHas(script, SOFT_TEEN_SCRIPT) || ages.some((n) => n >= 12 && n <= 17)) {
@@ -546,7 +567,8 @@ module.exports = {
   HARD_CHILD_UNDER_12_SCRIPT,
   HARD_ISOTRETINOIN_LAYERING_LATIN,
   HARD_DISTANT_NEGATION_LATIN,
-  HARD_DISTANT_NEGATION_SCRIPT,
+  HARD_NEGATION_BEFORE_NAME_SCRIPT,
+  HARD_NEGATION_AFTER_NAME_SCRIPT,
   SOFT_TEEN_LATIN,
   SOFT_TEEN_SCRIPT,
   SOFT_SKIN_CONDITION_LATIN,

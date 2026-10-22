@@ -37,6 +37,32 @@ test('a negation written only in another script gates when that text names a ret
   assert.deepEqual(classes('不要香精的面霜'), [], 'no retinoid named');
 });
 
+test('a negation in another script counts only next to a retinoid name, never as a substring', () => {
+  // 프리 is "free" glued after the name, never the start of 프리미엄 ("premium").
+  for (const query of ['레티놀 프리미엄', '레티놀 프리미엄 세럼', '프리미엄 레티놀 크림']) {
+    assert.ok(!classes(query).includes('retinoid_negation'), query);
+  }
+  for (const query of ['레티놀프리크림', '레티놀 프리', '레티놀프리', 'retinol 프리', '레티놀 없는 크림', '레티놀 대체 세럼']) {
+    assert.ok(classes(query).includes('retinoid_negation'), query);
+  }
+  // The audit: every other-script negation word that is also the start or middle of an ordinary word.
+  const notNegations = [
+    '无暇视黄醇精华', // 无暇 "flawless"
+    '视黄醇 精华 过敏', // allergy named, but not next to the name
+    'безопасный ретинол', 'ретинол безопасный крем', // без- in безопасный "safe"
+    'おはなし レチノール', // なし inside はなし "talk"
+    '不用担心 视黄醇 面霜', '视黄醇不用担心', // 不用 "no need", not next to the name as a negation of it
+    'レチノールクリーム フリーサイズ', // フリー in フリーサイズ "free size", not after the name
+  ];
+  for (const query of notNegations) assert.ok(!classes(query).includes('retinoid_negation'), query);
+  const negations = [
+    '无视黄醇面霜', '無視黃醇', '不含A醇的面霜', '没有视黄醇', '避开视黄醇', '不想用视黄醇', '视黄醇过敏', 'A醇平替面霜',
+    'レチノールなし', 'レチノールフリー 美容液', 'レチノール不使用', 'レチノールが使えない',
+    'без ретинола', 'не содержит ретинол', 'без ретиноидов',
+  ];
+  for (const query of negations) assert.ok(classes(query).includes('retinoid_negation'), query);
+});
+
 test('the SOFT tier gates only when BEAUTY_RETINOID_SOFT_SAFETY_TIER is on', () => {
   for (const [cls, phrases] of Object.entries(SOFT)) {
     for (const phrase of phrases) {
