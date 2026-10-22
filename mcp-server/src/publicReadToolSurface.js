@@ -259,7 +259,9 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       : await computeTool(toolName, args);
     noteToolCall(observe, () => computed.observed);
     // The price facts of what this tier served, computed with the answer and replayed with it from the cache
-    // (gateway price_verification_served line; null unless PRICE_VERIFICATION_LOG).
+    // (gateway price_verification_served line; null unless PRICE_VERIFICATION_LOG). Not recomputed at replay:
+    // that needs the raw upstream rows, which the cache does not keep. So an entry computed while the flag was
+    // off replays with no line until it is recomputed (at most PUBLIC_READ_CACHE_STALE_MS after the flip).
     noteToolCall(observe, () => computed.priceFacts || null);
     return computed.value;
   }

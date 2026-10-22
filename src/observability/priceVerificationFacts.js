@@ -10,6 +10,25 @@
 // price_as_of or live_read.checked_at; null when unknown). Classifying a fact as live / recent / stored needs
 // the request's start time and the surface's window, so it is done by the gateway when the line is written.
 // A fact is a few scalars, so a cached answer can carry its facts and a replay is classified honestly.
+//
+// WHAT COUNTS IS WHAT THE DOOR SERVES. A fact describes the NATIVE item; whether that item's price reaches the
+// agent depends on the door:
+//   /mcp, invoke, REST  the native value IS the answer, so a price the answer flags for verification
+//                       (commerce_verification.required, price_trusted: false) is still a price the agent was
+//                       quoted: it counts (as stored, unless the merchant answered it).
+//   /ucp/mcp            only the rows the UCP shaper publishes (commerceToolSurface): it drops a row that
+//                       needs a live quote, has no id, or has no ISO-currency price.
+//   /public/mcp         only the rows the public projection serves with a price (publicReadToolSurface).
+//
+// WHEN THE MERCHANT ANSWERED. `at` is read from price_as_of, then live_read.checked_at. On a get_offers signal,
+// price_as_of is the gateway's own live read on a verified offer, else the backend's price_checked_at (relayed
+// under the fresh-price contract, agentSignals/offerToSignal). So a backend-verified offer
+// (merchant_price_verified: true, no live read this request) is dated by the backend's last read when the
+// contract carries one, and is `stored` when nothing dates it. freshness.observed_at is deliberately NOT read:
+// without the contract it is the row's updated_at, a write, not a price read.
+// A live_read.checked_at is stamped when the reader settles, and a reader's lookup memo (request coalescing,
+// 30 s: services/ucpLiveOfferRead memoTtlMs) hands a second request the first one's answer with its own stamp.
+// So `live` means "the merchant answered during this request, or at most ~30 s before it".
 
 // PRICE_VERIFICATION_LOG (default off, read per call) gates every price line; off, no fact is computed.
 const FLAG = 'PRICE_VERIFICATION_LOG';
@@ -56,12 +75,10 @@ function answeredAtMs(item) {
 function priceFactOf(item) {
   if (!isObj(item)) return null;
   const amount = amountOf(item);
-  // A price the answer itself tells the agent not to rely on (commerce verification required, price not
-  // trusted) is withheld by the UCP shaper and the public projection: on no door is it a served price.
-  const cv = isObj(item.commerce_verification) ? item.commerce_verification : null;
-  const withheld = Boolean(cv && (cv.required === true || cv.price_trusted === false));
+  // A price flagged for verification is still on the item: whether it is served is the door's call (see WHAT
+  // COUNTS above), so the fact does not withhold it.
   return {
-    priced: !withheld && amount !== null && amount > 0,
+    priced: amount !== null && amount > 0,
     merchant: item.price_source === 'merchant_live' || item.merchant_price_verified === true,
     at: answeredAtMs(item),
   };

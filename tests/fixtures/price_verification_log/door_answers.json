@@ -1,0 +1,330 @@
+{
+  "captured_from": "04f819f4a656ff519c52fc666efaf6e620bfc34f",
+  "cases": {
+    "mcp_search": {
+      "status": 200,
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"status\\\": \\\"success\\\",\\n  \\\"success\\\": true,\\n  \\\"products\\\": [\\n    {\\n      \\\"price\\\": 15,\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"price_source\\\": \\\"merchant_live\\\",\\n      \\\"price_as_of\\\": \\\"2026-10-22T12:00:00.000Z\\\"\\n    },\\n    {\\n      \\\"product_id\\\": \\\"sig_live\\\",\\n      \\\"title\\\": \\\"Live\\\",\\n      \\\"price\\\": 10,\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"price_source\\\": \\\"merchant_live\\\",\\n      \\\"price_as_of\\\": \\\"2026-10-22T12:00:00.000Z\\\"\\n    },\\n    {\\n      \\\"product_id\\\": \\\"sig_recent\\\",\\n      \\\"title\\\": \\\"Recent\\\",\\n      \\\"price\\\": 11,\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"price_source\\\": \\\"merchant_live\\\",\\n      \\\"price_as_of\\\": \\\"2026-10-22T11:55:00.000Z\\\"\\n    },\\n    {\\n      \\\"product_id\\\": \\\"sig_old\\\",\\n      \\\"title\\\": \\\"Old\\\",\\n      \\\"price\\\": 12,\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"price_source\\\": \\\"merchant_live\\\",\\n      \\\"price_as_of\\\": \\\"2026-10-22T11:30:00.000Z\\\"\\n    },\\n    {\\n      \\\"product_id\\\": \\\"sig_stored\\\",\\n      \\\"title\\\": \\\"Stored\\\",\\n      \\\"price\\\": 13,\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"price_source\\\": \\\"catalog_offer\\\"\\n    },\\n    {\\n      \\\"product_id\\\": \\\"sig_unpriced\\\",\\n      \\\"title\\\": \\\"Unpriced\\\",\\n      \\\"price\\\": 0,\\n      \\\"currency\\\": \\\"USD\\\"\\n    },\\n    {\\n      \\\"product_id\\\": \\\"sig_held\\\",\\n      \\\"title\\\": \\\"Held\\\",\\n      \\\"price\\\": 14,\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"commerce_verification\\\": {\\n        \\\"required\\\": true,\\n        \\\"price_trusted\\\": false\\n      }\\n    },\\n    {\\n      \\\"product_id\\\": \\\"sig_nocur\\\",\\n      \\\"title\\\": \\\"No currency\\\",\\n      \\\"price\\\": 16,\\n      \\\"price_source\\\": \\\"merchant_live\\\",\\n      \\\"price_as_of\\\": \\\"2026-10-22T11:58:00.000Z\\\"\\n    }\\n  ],\\n  \\\"total\\\": 8,\\n  \\\"metadata\\\": {\\n    \\\"live_merchant_price\\\": {\\n      \\\"attempted\\\": true,\\n      \\\"eligible_count\\\": 3,\\n      \\\"fetch_attempt_count\\\": 2,\\n      \\\"cache_hit_count\\\": 1,\\n      \\\"verified_count\\\": 2,\\n      \\\"drift_count\\\": 1,\\n      \\\"failure_reasons\\\": {\\n        \\\"http_429\\\": 1\\n      },\\n      \\\"deadline_exceeded\\\": false,\\n      \\\"gone_count\\\": 0,\\n      \\\"dropped_gone_count\\\": 0\\n    }\\n  }\\n}\"}]}}",
+      "lines": [
+        {
+          "door": "mcp",
+          "tool": "search_catalog",
+          "tier": "authenticated",
+          "status": 200,
+          "latency_ms": 0,
+          "outcome": "ok",
+          "is_error": false,
+          "error_code": null,
+          "error_class": null,
+          "result_count": 8,
+          "degraded": false,
+          "caller_auth_mode": "test_bypass",
+          "caller_loopback": true,
+          "msg": "mcp tools/call complete"
+        }
+      ],
+      "loopback": [
+        {
+          "operation": "find_products_multi",
+          "price_context": null
+        }
+      ]
+    },
+    "ucp_search": {
+      "status": 200,
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"ucp\\\": {\\n    \\\"version\\\": \\\"2026-04-08\\\",\\n    \\\"status\\\": \\\"success\\\"\\n  },\\n  \\\"products\\\": [\\n    {\\n      \\\"id\\\": \\\"sig_live\\\",\\n      \\\"title\\\": \\\"Live\\\",\\n      \\\"description\\\": {\\n        \\\"plain\\\": \\\"Live\\\"\\n      },\\n      \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_live\\\",\\n      \\\"price_range\\\": {\\n        \\\"min\\\": {\\n          \\\"amount\\\": 1000,\\n          \\\"currency\\\": \\\"USD\\\"\\n        },\\n        \\\"max\\\": {\\n          \\\"amount\\\": 1000,\\n          \\\"currency\\\": \\\"USD\\\"\\n        }\\n      },\\n      \\\"variants\\\": [\\n        {\\n          \\\"id\\\": \\\"sig_live\\\",\\n          \\\"title\\\": \\\"Live\\\",\\n          \\\"description\\\": {\\n            \\\"plain\\\": \\\"Live\\\"\\n          },\\n          \\\"price\\\": {\\n            \\\"amount\\\": 1000,\\n            \\\"currency\\\": \\\"USD\\\"\\n          },\\n          \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_live\\\"\\n        }\\n      ]\\n    },\\n    {\\n      \\\"id\\\": \\\"sig_recent\\\",\\n      \\\"title\\\": \\\"Recent\\\",\\n      \\\"description\\\": {\\n        \\\"plain\\\": \\\"Recent\\\"\\n      },\\n      \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_recent\\\",\\n      \\\"price_range\\\": {\\n        \\\"min\\\": {\\n          \\\"amount\\\": 1100,\\n          \\\"currency\\\": \\\"USD\\\"\\n        },\\n        \\\"max\\\": {\\n          \\\"amount\\\": 1100,\\n          \\\"currency\\\": \\\"USD\\\"\\n        }\\n      },\\n      \\\"variants\\\": [\\n        {\\n          \\\"id\\\": \\\"sig_recent\\\",\\n          \\\"title\\\": \\\"Recent\\\",\\n          \\\"description\\\": {\\n            \\\"plain\\\": \\\"Recent\\\"\\n          },\\n          \\\"price\\\": {\\n            \\\"amount\\\": 1100,\\n            \\\"currency\\\": \\\"USD\\\"\\n          },\\n          \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_recent\\\"\\n        }\\n      ]\\n    },\\n    {\\n      \\\"id\\\": \\\"sig_old\\\",\\n      \\\"title\\\": \\\"Old\\\",\\n      \\\"description\\\": {\\n        \\\"plain\\\": \\\"Old\\\"\\n      },\\n      \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_old\\\",\\n      \\\"price_range\\\": {\\n        \\\"min\\\": {\\n          \\\"amount\\\": 1200,\\n          \\\"currency\\\": \\\"USD\\\"\\n        },\\n        \\\"max\\\": {\\n          \\\"amount\\\": 1200,\\n          \\\"currency\\\": \\\"USD\\\"\\n        }\\n      },\\n      \\\"variants\\\": [\\n        {\\n          \\\"id\\\": \\\"sig_old\\\",\\n          \\\"title\\\": \\\"Old\\\",\\n          \\\"description\\\": {\\n            \\\"plain\\\": \\\"Old\\\"\\n          },\\n          \\\"price\\\": {\\n            \\\"amount\\\": 1200,\\n            \\\"currency\\\": \\\"USD\\\"\\n          },\\n          \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_old\\\"\\n        }\\n      ]\\n    },\\n    {\\n      \\\"id\\\": \\\"sig_stored\\\",\\n      \\\"title\\\": \\\"Stored\\\",\\n      \\\"description\\\": {\\n        \\\"plain\\\": \\\"Stored\\\"\\n      },\\n      \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_stored\\\",\\n      \\\"price_range\\\": {\\n        \\\"min\\\": {\\n          \\\"amount\\\": 1300,\\n          \\\"currency\\\": \\\"USD\\\"\\n        },\\n        \\\"max\\\": {\\n          \\\"amount\\\": 1300,\\n          \\\"currency\\\": \\\"USD\\\"\\n        }\\n      },\\n      \\\"variants\\\": [\\n        {\\n          \\\"id\\\": \\\"sig_stored\\\",\\n          \\\"title\\\": \\\"Stored\\\",\\n          \\\"description\\\": {\\n            \\\"plain\\\": \\\"Stored\\\"\\n          },\\n          \\\"price\\\": {\\n            \\\"amount\\\": 1300,\\n            \\\"currency\\\": \\\"USD\\\"\\n          },\\n          \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_stored\\\"\\n        }\\n      ]\\n    },\\n    {\\n      \\\"id\\\": \\\"sig_unpriced\\\",\\n      \\\"title\\\": \\\"Unpriced\\\",\\n      \\\"description\\\": {\\n        \\\"plain\\\": \\\"Unpriced\\\"\\n      },\\n      \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_unpriced\\\",\\n      \\\"price_range\\\": {\\n        \\\"min\\\": {\\n          \\\"amount\\\": 0,\\n          \\\"currency\\\": \\\"USD\\\"\\n        },\\n        \\\"max\\\": {\\n          \\\"amount\\\": 0,\\n          \\\"currency\\\": \\\"USD\\\"\\n        }\\n      },\\n      \\\"variants\\\": [\\n        {\\n          \\\"id\\\": \\\"sig_unpriced\\\",\\n          \\\"title\\\": \\\"Unpriced\\\",\\n          \\\"description\\\": {\\n            \\\"plain\\\": \\\"Unpriced\\\"\\n          },\\n          \\\"price\\\": {\\n            \\\"amount\\\": 0,\\n            \\\"currency\\\": \\\"USD\\\"\\n          },\\n          \\\"url\\\": \\\"https://agent.pivota.cc/products/sig_unpriced\\\"\\n        }\\n      ]\\n    }\\n  ],\\n  \\\"pagination\\\": {\\n    \\\"has_next_page\\\": false,\\n    \\\"total_count\\\": 8\\n  },\\n  \\\"messages\\\": [\\n    {\\n      \\\"type\\\": \\\"info\\\",\\n      \\\"code\\\": \\\"products.omitted_no_price\\\",\\n      \\\"path\\\": \\\"$.products\\\",\\n      \\\"content\\\": \\\"1 matching product omitted: no priced offer, so no spec-conformant price_range could be published.\\\",\\n      \\\"content_type\\\": \\\"plain\\\"\\n    },\\n    {\\n      \\\"type\\\": \\\"info\\\",\\n      \\\"code\\\": \\\"products.deferred_live_quote_required\\\",\\n      \\\"path\\\": \\\"$.products\\\",\\n      \\\"content\\\": \\\"1 matching product deferred: current price and availability require live merchant verification, so no spec-conformant priced UCP product could be published. Retry after merchant verification completes.\\\",\\n      \\\"content_type\\\": \\\"plain\\\"\\n    },\\n    {\\n      \\\"type\\\": \\\"info\\\",\\n      \\\"code\\\": \\\"products.omitted_no_id\\\",\\n      \\\"path\\\": \\\"$.products\\\",\\n      \\\"content\\\": \\\"1 row omitted: no product id.\\\",\\n      \\\"content_type\\\": \\\"plain\\\"\\n    }\\n  ]\\n}\"}]}}",
+      "lines": [
+        {
+          "door": "ucp_mcp",
+          "tool": "search_catalog",
+          "tier": "authenticated",
+          "status": 200,
+          "latency_ms": 0,
+          "outcome": "ok",
+          "is_error": false,
+          "error_code": null,
+          "error_class": null,
+          "result_count": 5,
+          "degraded": false,
+          "caller_auth_mode": "test_bypass",
+          "caller_loopback": true,
+          "msg": "mcp tools/call complete"
+        }
+      ],
+      "loopback": [
+        {
+          "operation": "find_products_multi",
+          "price_context": null
+        }
+      ]
+    },
+    "public_search": {
+      "status": 200,
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Found 7 products of 8: Live; Recent; Old.\"}],\"structuredContent\":{\"products\":[{\"product_id\":\"sig_live\",\"title\":\"Live\",\"price\":{\"amount\":10,\"currency\":\"USD\"},\"availability\":\"unknown\",\"pivota_url\":\"https://agent.pivota.cc/products/sig_live\"},{\"product_id\":\"sig_recent\",\"title\":\"Recent\",\"price\":{\"amount\":11,\"currency\":\"USD\"},\"availability\":\"unknown\",\"pivota_url\":\"https://agent.pivota.cc/products/sig_recent\"},{\"product_id\":\"sig_old\",\"title\":\"Old\",\"price\":{\"amount\":12,\"currency\":\"USD\"},\"availability\":\"unknown\",\"pivota_url\":\"https://agent.pivota.cc/products/sig_old\"},{\"product_id\":\"sig_stored\",\"title\":\"Stored\",\"price\":{\"amount\":13,\"currency\":\"USD\"},\"availability\":\"unknown\",\"pivota_url\":\"https://agent.pivota.cc/products/sig_stored\"},{\"product_id\":\"sig_unpriced\",\"title\":\"Unpriced\",\"availability\":\"unknown\",\"pivota_url\":\"https://agent.pivota.cc/products/sig_unpriced\"},{\"product_id\":\"sig_held\",\"title\":\"Held\",\"availability\":\"unknown\",\"commerce_verification\":{\"required\":true,\"price_trusted\":false},\"pivota_url\":\"https://agent.pivota.cc/products/sig_held\"},{\"product_id\":\"sig_nocur\",\"title\":\"No currency\",\"availability\":\"unknown\",\"pivota_url\":\"https://agent.pivota.cc/products/sig_nocur\"}],\"page\":1,\"page_size\":10,\"returned\":7,\"total\":8}}}",
+      "lines": [
+        {
+          "door": "public_mcp",
+          "tool": "search_catalog",
+          "tier": "public",
+          "status": 200,
+          "latency_ms": 0,
+          "outcome": "ok",
+          "is_error": false,
+          "error_code": null,
+          "error_class": null,
+          "result_count": 7,
+          "degraded": false,
+          "caller_auth_mode": "unauthenticated",
+          "caller_loopback": true,
+          "msg": "mcp tools/call complete"
+        }
+      ],
+      "loopback": [
+        {
+          "operation": "find_products_multi",
+          "price_context": null
+        }
+      ]
+    },
+    "mcp_get_offers": {
+      "status": 200,
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"subject\\\": {\\n    \\\"kind\\\": \\\"product\\\",\\n    \\\"id\\\": \\\"sig_live\\\"\\n  },\\n  \\\"best_offer\\\": {\\n    \\\"signal_type\\\": \\\"offer\\\",\\n    \\\"subject\\\": {\\n      \\\"kind\\\": \\\"offer\\\",\\n      \\\"id\\\": \\\"store.price-log.test:sig_live\\\"\\n    },\\n    \\\"value\\\": {\\n      \\\"merchant_id\\\": \\\"store.price-log.test\\\",\\n      \\\"merchant_name\\\": null,\\n      \\\"price\\\": 23,\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"availability\\\": null,\\n      \\\"in_stock\\\": true,\\n      \\\"is_primary\\\": false,\\n      \\\"url\\\": null,\\n      \\\"affiliate_url\\\": null,\\n      \\\"purchase_route\\\": null,\\n      \\\"cart_prefilled\\\": null,\\n      \\\"stock_verified\\\": true,\\n      \\\"merchant_price_verified\\\": true,\\n      \\\"rank_one_unverified\\\": null,\\n      \\\"execution_spec\\\": {\\n        \\\"merchant_domain\\\": \\\"store.price-log.test\\\",\\n        \\\"pdp_url\\\": null,\\n        \\\"cart_url\\\": \\\"https://store.price-log.test/cart/43734829564039:1?country=US\\\",\\n        \\\"variant_id\\\": \\\"43734829564039\\\",\\n        \\\"rail\\\": null,\\n        \\\"expires_at\\\": null,\\n        \\\"expected_item_total\\\": 23,\\n        \\\"expected_currency\\\": \\\"USD\\\",\\n        \\\"expected_quantity\\\": 1,\\n        \\\"expected_total_expires_at\\\": \\\"2026-10-22T12:10:00.000Z\\\",\\n        \\\"tracking\\\": {\\n          \\\"click_id\\\": null,\\n          \\\"param\\\": null,\\n          \\\"join_mode\\\": null\\n        }\\n      },\\n      \\\"live_read\\\": {\\n        \\\"status\\\": \\\"verified\\\",\\n        \\\"checked_at\\\": \\\"2026-10-22T12:00:00.000Z\\\",\\n        \\\"stored_price\\\": 25\\n      }\\n    },\\n    \\\"evidence\\\": {\\n      \\\"grade\\\": null,\\n      \\\"confidence\\\": null,\\n      \\\"method\\\": \\\"merchant_reported\\\",\\n      \\\"sources\\\": []\\n    },\\n    \\\"freshness\\\": {\\n      \\\"observed_at\\\": \\\"2026-10-22T12:00:00.000Z\\\",\\n      \\\"fresh_until\\\": null\\n    },\\n    \\\"seller_trust\\\": null,\\n    \\\"visibility\\\": \\\"buyer_safe\\\"\\n  },\\n  \\\"signals\\\": [\\n    {\\n      \\\"signal_type\\\": \\\"offer\\\",\\n      \\\"subject\\\": {\\n        \\\"kind\\\": \\\"offer\\\",\\n        \\\"id\\\": \\\"store.price-log.test:sig_live\\\"\\n      },\\n      \\\"value\\\": {\\n        \\\"merchant_id\\\": \\\"store.price-log.test\\\",\\n        \\\"merchant_name\\\": null,\\n        \\\"price\\\": 23,\\n        \\\"currency\\\": \\\"USD\\\",\\n        \\\"availability\\\": null,\\n        \\\"in_stock\\\": true,\\n        \\\"is_primary\\\": false,\\n        \\\"url\\\": null,\\n        \\\"affiliate_url\\\": null,\\n        \\\"purchase_route\\\": null,\\n        \\\"cart_prefilled\\\": null,\\n        \\\"stock_verified\\\": true,\\n        \\\"merchant_price_verified\\\": true,\\n        \\\"rank_one_unverified\\\": null,\\n        \\\"execution_spec\\\": {\\n          \\\"merchant_domain\\\": \\\"store.price-log.test\\\",\\n          \\\"pdp_url\\\": null,\\n          \\\"cart_url\\\": \\\"https://store.price-log.test/cart/43734829564039:1?country=US\\\",\\n          \\\"variant_id\\\": \\\"43734829564039\\\",\\n          \\\"rail\\\": null,\\n          \\\"expires_at\\\": null,\\n          \\\"expected_item_total\\\": 23,\\n          \\\"expected_currency\\\": \\\"USD\\\",\\n          \\\"expected_quantity\\\": 1,\\n          \\\"expected_total_expires_at\\\": \\\"2026-10-22T12:10:00.000Z\\\",\\n          \\\"tracking\\\": {\\n            \\\"click_id\\\": null,\\n            \\\"param\\\": null,\\n            \\\"join_mode\\\": null\\n          }\\n        },\\n        \\\"live_read\\\": {\\n          \\\"status\\\": \\\"verified\\\",\\n          \\\"checked_at\\\": \\\"2026-10-22T12:00:00.000Z\\\",\\n          \\\"stored_price\\\": 25\\n        }\\n      },\\n      \\\"evidence\\\": {\\n        \\\"grade\\\": null,\\n        \\\"confidence\\\": null,\\n        \\\"method\\\": \\\"merchant_reported\\\",\\n        \\\"sources\\\": []\\n      },\\n      \\\"freshness\\\": {\\n        \\\"observed_at\\\": \\\"2026-10-22T12:00:00.000Z\\\",\\n        \\\"fresh_until\\\": null\\n      },\\n      \\\"seller_trust\\\": null,\\n      \\\"visibility\\\": \\\"buyer_safe\\\"\\n    },\\n    {\\n      \\\"signal_type\\\": \\\"offer\\\",\\n      \\\"subject\\\": {\\n        \\\"kind\\\": \\\"offer\\\",\\n        \\\"id\\\": \\\"merch_b:sig_live\\\"\\n      },\\n      \\\"value\\\": {\\n        \\\"merchant_id\\\": \\\"merch_b\\\",\\n        \\\"merchant_name\\\": null,\\n        \\\"price\\\": 27,\\n        \\\"currency\\\": \\\"USD\\\",\\n        \\\"availability\\\": null,\\n        \\\"in_stock\\\": true,\\n        \\\"is_primary\\\": false,\\n        \\\"url\\\": null,\\n        \\\"affiliate_url\\\": null,\\n        \\\"purchase_route\\\": null,\\n        \\\"cart_prefilled\\\": null,\\n        \\\"stock_verified\\\": null,\\n        \\\"merchant_price_verified\\\": null,\\n        \\\"rank_one_unverified\\\": null,\\n        \\\"execution_spec\\\": null,\\n        \\\"live_read\\\": {\\n          \\\"status\\\": \\\"skipped\\\",\\n          \\\"checked_at\\\": \\\"2026-10-22T12:00:00.000Z\\\"\\n        }\\n      },\\n      \\\"evidence\\\": {\\n        \\\"grade\\\": null,\\n        \\\"confidence\\\": null,\\n        \\\"method\\\": \\\"merchant_reported\\\",\\n        \\\"sources\\\": []\\n      },\\n      \\\"freshness\\\": {\\n        \\\"observed_at\\\": null,\\n        \\\"fresh_until\\\": null\\n      },\\n      \\\"seller_trust\\\": null,\\n      \\\"visibility\\\": \\\"buyer_safe\\\"\\n    }\\n  ],\\n  \\\"metadata\\\": {\\n    \\\"offer_count\\\": 2,\\n    \\\"product_group_id\\\": \\\"pg_price_log\\\",\\n    \\\"market\\\": \\\"US\\\",\\n    \\\"market_currency\\\": \\\"USD\\\",\\n    \\\"withheld_other_currency_count\\\": 0,\\n    \\\"live_read\\\": {\\n      \\\"mode\\\": \\\"enforce\\\",\\n      \\\"market\\\": \\\"US\\\",\\n      \\\"currency\\\": \\\"USD\\\",\\n      \\\"read\\\": 2,\\n      \\\"by_status\\\": {\\n        \\\"verified\\\": 1,\\n        \\\"skipped\\\": 1\\n      },\\n      \\\"price_changed\\\": 1,\\n      \\\"stock_changed\\\": 0\\n    }\\n  }\\n}\"}]}}",
+      "lines": [
+        {
+          "event": "get_offers_ucp_live_read",
+          "mode": "enforce",
+          "market": "US",
+          "currency": "USD",
+          "read": 2,
+          "by_status": {
+            "verified": 1,
+            "skipped": 1
+          },
+          "price_changed": 1,
+          "stock_changed": 0,
+          "hosts": [
+            {
+              "host": "store.price-log.test",
+              "status": "verified"
+            },
+            {
+              "host": null,
+              "status": "skipped",
+              "reason": "no_host"
+            }
+          ],
+          "msg": "get_offers_ucp_live_read"
+        },
+        {
+          "door": "mcp",
+          "tool": "get_offers",
+          "tier": "authenticated",
+          "status": 200,
+          "latency_ms": 0,
+          "outcome": "ok",
+          "is_error": false,
+          "error_code": null,
+          "error_class": null,
+          "degraded": false,
+          "caller_auth_mode": "test_bypass",
+          "caller_loopback": true,
+          "msg": "mcp tools/call complete"
+        }
+      ],
+      "loopback": []
+    },
+    "mcp_recommend": {
+      "status": 200,
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"subject\\\": {\\n    \\\"kind\\\": \\\"need\\\",\\n    \\\"text\\\": \\\"gentle exfoliant for oily skin\\\"\\n  },\\n  \\\"signals\\\": [\\n    {\\n      \\\"signal_type\\\": \\\"recommendation\\\",\\n      \\\"subject\\\": {\\n        \\\"kind\\\": \\\"product\\\",\\n        \\\"id\\\": \\\"sig_reco_a\\\"\\n      },\\n      \\\"value\\\": {\\n        \\\"rank\\\": 1,\\n        \\\"product\\\": {\\n          \\\"product_id\\\": \\\"sig_reco_a\\\",\\n          \\\"merchant_id\\\": \\\"merch_reco\\\",\\n          \\\"title\\\": \\\"Exfoliant A\\\",\\n          \\\"brand\\\": \\\"Brand A\\\",\\n          \\\"category\\\": \\\"Exfoliant\\\",\\n          \\\"price\\\": 33,\\n          \\\"currency\\\": \\\"USD\\\",\\n          \\\"url\\\": null,\\n          \\\"product_ref\\\": null,\\n          \\\"image_url\\\": null,\\n          \\\"price_verified\\\": true\\n        },\\n        \\\"why\\\": [\\n          \\\"clears pores\\\"\\n        ],\\n        \\\"watchouts\\\": [\\n          \\\"price updated by live check: 35 USD -> 33 USD\\\"\\n        ],\\n        \\\"notes\\\": [],\\n        \\\"routine_step\\\": \\\"treatment\\\",\\n        \\\"product_type\\\": null,\\n        \\\"grounding\\\": \\\"catalog\\\",\\n        \\\"lane_confidence\\\": {\\n          \\\"level\\\": null,\\n          \\\"basis\\\": \\\"unknown\\\"\\n        },\\n        \\\"fit\\\": {\\n          \\\"level\\\": null,\\n          \\\"basis\\\": \\\"unknown\\\"\\n        },\\n        \\\"recommendation_id\\\": \\\"<id>\\\"\\n      },\\n      \\\"evidence\\\": {\\n        \\\"method\\\": \\\"llm_recommendation_catalog_grounded\\\"\\n      },\\n      \\\"visibility\\\": \\\"buyer_safe\\\"\\n    },\\n    {\\n      \\\"signal_type\\\": \\\"recommendation\\\",\\n      \\\"subject\\\": {\\n        \\\"kind\\\": \\\"product\\\",\\n        \\\"id\\\": \\\"sig_reco_b\\\"\\n      },\\n      \\\"value\\\": {\\n        \\\"rank\\\": 2,\\n        \\\"product\\\": {\\n          \\\"product_id\\\": \\\"sig_reco_b\\\",\\n          \\\"merchant_id\\\": \\\"merch_reco\\\",\\n          \\\"title\\\": \\\"Cream B\\\",\\n          \\\"brand\\\": \\\"Brand B\\\",\\n          \\\"category\\\": \\\"Moisturizer\\\",\\n          \\\"price\\\": 18,\\n          \\\"currency\\\": \\\"USD\\\",\\n          \\\"url\\\": null,\\n          \\\"product_ref\\\": null,\\n          \\\"image_url\\\": null,\\n          \\\"price_verified\\\": true\\n        },\\n        \\\"why\\\": [\\n          \\\"supports the barrier\\\"\\n        ],\\n        \\\"watchouts\\\": [],\\n        \\\"notes\\\": [],\\n        \\\"routine_step\\\": \\\"moisturizer\\\",\\n        \\\"product_type\\\": null,\\n        \\\"grounding\\\": \\\"catalog\\\",\\n        \\\"lane_confidence\\\": {\\n          \\\"level\\\": null,\\n          \\\"basis\\\": \\\"unknown\\\"\\n        },\\n        \\\"fit\\\": {\\n          \\\"level\\\": null,\\n          \\\"basis\\\": \\\"unknown\\\"\\n        },\\n        \\\"recommendation_id\\\": \\\"<id>\\\"\\n      },\\n      \\\"evidence\\\": {\\n        \\\"method\\\": \\\"llm_recommendation_catalog_grounded\\\"\\n      },\\n      \\\"visibility\\\": \\\"buyer_safe\\\"\\n    }\\n  ],\\n  \\\"metadata\\\": {\\n    \\\"need\\\": \\\"gentle exfoliant for oily skin\\\",\\n    \\\"constraints\\\": {},\\n    \\\"limit\\\": 2,\\n    \\\"returned\\\": 2,\\n    \\\"recommendation_set_id\\\": \\\"<id>\\\",\\n    \\\"confidence_overall\\\": 0.72,\\n    \\\"confidence_basis\\\": \\\"unknown\\\",\\n    \\\"missing_info\\\": [],\\n    \\\"warnings\\\": [],\\n    \\\"grounding_status\\\": \\\"grounded\\\",\\n    \\\"source_mode\\\": \\\"catalog_grounded\\\",\\n    \\\"products_empty_reason\\\": null,\\n    \\\"vertical\\\": \\\"beauty\\\",\\n    \\\"latency_ms\\\": 0,\\n    \\\"price_verification\\\": {\\n      \\\"checked\\\": 2,\\n      \\\"confirmed\\\": 1,\\n      \\\"updated\\\": 1,\\n      \\\"unavailable\\\": 0,\\n      \\\"unresolvable\\\": 0,\\n      \\\"unchecked\\\": 0\\n    }\\n  }\\n}\"}]}}",
+      "lines": [
+        {
+          "door": "mcp",
+          "tool": "recommend_products",
+          "tier": "authenticated",
+          "status": 200,
+          "latency_ms": 0,
+          "outcome": "ok",
+          "is_error": false,
+          "error_code": null,
+          "error_class": null,
+          "degraded": false,
+          "caller_auth_mode": "test_bypass",
+          "caller_loopback": true,
+          "msg": "mcp tools/call complete"
+        }
+      ],
+      "loopback": [
+        {
+          "operation": "get_pdp_v2",
+          "price_context": null
+        },
+        {
+          "operation": "get_pdp_v2",
+          "price_context": null
+        }
+      ]
+    },
+    "rest_search": {
+      "status": 200,
+      "text": "{\"status\":\"success\",\"success\":true,\"products\":[{\"product_id\":\"p_rest\",\"merchant_id\":\"m1\",\"title\":\"Serum A\",\"price\":12,\"currency\":\"USD\",\"id\":\"p_rest\",\"card_title\":\"Serum A\",\"search_card\":{\"title_candidate\":\"Serum A\"},\"shopping_card\":{\"contract_version\":\"pivota.shopping_card.v1\",\"title\":\"Serum A\"}}],\"total\":1,\"page\":1,\"page_size\":1,\"reply\":null,\"metadata\":{\"discovery_strategy\":\"cold_start_curated\",\"personalization_source\":\"none\",\"history_items_used\":0,\"query_items_used\":0,\"anchor_count\":0,\"scoring_version\":\"discovery_v2\",\"serving_contract_version\":\"pivota.discovery.serving.v1\",\"serving_engine\":\"runtime_discovery\",\"surface\":\"browse_products\",\"locale\":\"en-US\",\"candidate_source\":\"multi_provider\",\"primary_path_used\":\"multi_provider\",\"fallback_triggered\":false,\"provider_breakdown\":[{\"provider\":\"canonical_sig\",\"attempted\":false,\"successful\":false,\"returned\":0,\"steps\":0,\"skipped\":false,\"latency_ms\":0},{\"provider\":\"beauty_interest_mainline\",\"attempted\":false,\"successful\":false,\"returned\":0,\"steps\":0,\"skipped\":false,\"latency_ms\":0},{\"provider\":\"products_search\",\"attempted\":true,\"successful\":true,\"returned\":1,\"steps\":1,\"skipped\":false,\"latency_ms\":0},{\"provider\":\"internal_catalog\",\"attempted\":true,\"successful\":false,\"returned\":0,\"steps\":1,\"skipped\":true,\"latency_ms\":0,\"skip_reason\":\"missing_database\",\"failure_reason\":\"missing_database\"},{\"provider\":\"external_seeds\",\"attempted\":true,\"successful\":false,\"returned\":0,\"steps\":1,\"skipped\":true,\"latency_ms\":0,\"skip_reason\":\"missing_database\",\"failure_reason\":\"missing_database\"}],\"candidate_counts\":{\"raw\":1,\"normalized\":1,\"scored\":1,\"eligible_pool\":1,\"returned\":1,\"same_domain\":1,\"semantic_deduped\":0,\"identity_graph_deduped\":0},\"eligible_pool_count\":1,\"corpus_total_count\":1,\"runtime_corpus_count\":1,\"count_source\":\"runtime_corpus_query_scoped\",\"serving_mode\":\"exhaustive\",\"cursor_info\":{\"next_cursor\":null,\"has_next_page\":false,\"serving_mode\":\"exhaustive\"},\"selected_source_breakdown\":{\"products_search\":1},\"sort_applied\":\"popular\",\"brand_scope_applied\":[],\"category_scope_applied\":[],\"query_text\":\"serum\",\"has_more\":false,\"facets\":{\"categories\":[]},\"filter_counts\":{\"selected\":1},\"underfilled_reason\":\"public_search_underfilled_unified_relevance\",\"route_health\":{\"primary_path_used\":\"beauty_discovery_mainline\",\"fallback_triggered\":false,\"fallback_reason\":null,\"primary_quality_gate_passed\":false,\"underfilled_reason\":\"public_search_underfilled_unified_relevance\",\"orchestrator_path\":\"local_discovery_bridge\",\"decision_node\":\"beauty_discovery_mainline\",\"final_returned_count\":1,\"primary_underfilled_public_beauty_unified\":true,\"primary_exact_intent_underfilled_public_beauty\":false,\"primary_latency_ms\":0,\"fallback_adopted\":false},\"search_decision\":{\"primary_path_used\":\"multi_provider\",\"fallback_triggered\":false,\"final_decision\":\"products_returned\",\"decision_authority\":\"beauty_discovery_mainline\",\"decision_locked\":true,\"decision_lock_reason\":\"pivot_beauty_contract_v1\"},\"selection_latency_ms\":0,\"hydrate_latency_ms\":0,\"request_latency_ms\":0,\"query_source\":\"beauty_discovery_mainline\",\"primary_lane\":\"beauty_discovery_mainline\",\"primary_retrieval_contract\":\"agent_v1_search_beauty_mainline\",\"search_request_contract\":{\"contract_version\":\"search_contract_v1\",\"surface\":\"direct\",\"operation\":\"find_products_multi\",\"source\":\"aurora-bff\",\"source_profile\":{\"source\":\"aurora-bff\",\"caller_kind\":\"chat_surface\",\"default_entry_layer\":\"orchestration\",\"interaction_mode\":\"conversational\",\"allow_clarification\":true,\"allow_external_supplement\":true,\"allow_execution_handoff\":true,\"response_contract\":\"orchestration\",\"policy_tags\":[\"aurora_orchestration\",\"shared_commerce_semantics\"]},\"ownership_domain\":\"beauty_mainline\",\"request_class\":\"beauty_discovery\",\"semantic_contract\":null,\"policy\":{\"allow_external_seed\":true,\"ui_surface\":null,\"decision_mode\":null,\"product_only\":false,\"timeout_budget\":{\"query_class\":null,\"target_step_family\":null}},\"target_step_family\":null,\"semantic_family\":null,\"primary_lane\":\"beauty_discovery_mainline\",\"primary_retrieval_contract\":\"agent_v1_search_beauty_mainline\",\"supplement_lanes\":[\"external_seed_supplement\",\"coverage_supplement\"]},\"contract_bridge\":{\"attempted_contract\":\"pivot.agent.v1\",\"resolved_contract\":\"pivot.agent.v1\",\"legacy_fallback\":false},\"source_breakdown\":{\"internal_count\":0,\"external_seed_count\":0,\"stale_cache_used\":false,\"strategy_applied\":\"unified_relevance\"},\"public_search_discovery_bridge\":true,\"bridged_operation\":\"get_discovery_feed\",\"bridged_query_text\":\"serum\",\"fetched_at\":\"2026-10-22T12:00:00.000Z\",\"service_version\":{\"service\":\"pivota-agent-gateway\",\"commit\":null,\"build_id\":\"started-<iso>\",\"branch\":null,\"deployment_id\":null,\"started_at\":\"<iso>\"},\"live_merchant_price\":{\"attempted\":false,\"eligible_count\":0,\"fetch_attempt_count\":0,\"cache_hit_count\":0,\"verified_count\":0,\"drift_count\":0,\"failure_reasons\":{},\"deadline_exceeded\":false,\"gone_count\":0,\"dropped_gone_count\":0},\"orchestrator_version\":\"search_orchestrator_unified_v1\",\"orchestrator_path\":\"external_invoke_route\",\"semantic_retry_applied\":false,\"semantic_retry_query\":null,\"semantic_retry_hits\":0,\"domain_filter_dropped_external\":0,\"external_fill_gate_reason\":null,\"invoke_search_rail\":\"public_observability\",\"legacy_contract\":false,\"pivot_contract_version\":\"pivot.agent.v1\",\"route_authority\":\"shopping_agent\",\"status\":\"success\",\"decision_authority\":\"beauty_discovery_mainline\",\"mainline_latency_ms\":0,\"degraded_reason\":null,\"failure_class\":null,\"fallback_attempted\":false,\"fallback_adopted\":false,\"request_id\":\"<id>\"},\"pivot_contract_version\":\"pivot.agent.v1\",\"route_authority\":\"shopping_agent\",\"safety\":{\"risk_level\":\"info\",\"rules_applied\":[\"product_class_gate:serum\"],\"contraindications_blocked\":[]}}",
+      "lines": [
+        {
+          "client_channel": "shop",
+          "key_fingerprint": null,
+          "caller_auth_mode": "unauthenticated",
+          "caller_loopback": true,
+          "request_source": "aurora-bff",
+          "operation": "find_products_multi",
+          "status": 200,
+          "latency_ms": 0,
+          "upstream_ms": 0,
+          "gateway_retries": 0,
+          "market_observed": false,
+          "market_requested": null,
+          "market_source": "defaulted",
+          "market_bound": null,
+          "market_buyer_currency": null,
+          "market_serving_currency": null,
+          "served_currencies": [
+            "USD"
+          ],
+          "served_currency_mismatch": false,
+          "served_price_sources": {
+            "unknown": 1
+          },
+          "query_source": "beauty_discovery_mainline",
+          "primary_path_used": "beauty_discovery_mainline",
+          "fpm_stage_breakdown": [
+            {
+              "stage": "route_entry",
+              "latency_ms": 0
+            },
+            {
+              "stage": "context_build",
+              "latency_ms": 0,
+              "expansion_mode": "conservative",
+              "query_class": "category"
+            }
+          ],
+          "fpm_stage_total_ms": 0,
+          "fpm_unattributed_ms": 0,
+          "fpm_upstream_http_ms": 0,
+          "msg": "invoke request complete"
+        }
+      ],
+      "loopback": []
+    },
+    "mcp_real_loopback_search": {
+      "status": 200,
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\n  \\\"status\\\": \\\"success\\\",\\n  \\\"products\\\": [],\\n  \\\"total\\\": 0,\\n  \\\"success\\\": true,\\n  \\\"page\\\": 1,\\n  \\\"page_size\\\": 0,\\n  \\\"reply\\\": \\\"To avoid off-topic recommendations, what should we prioritize?\\\\n1) Brand lookup\\\\n2) Scenario checklist\\\\n3) Budget filter\\\\n4) Popular picks\\\",\\n  \\\"metadata\\\": {\\n    \\\"query_source\\\": \\\"agent_products_search\\\",\\n    \\\"fetched_at\\\": \\\"2026-10-22T12:00:00.000Z\\\",\\n    \\\"contract_bridge\\\": {\\n      \\\"attempted_contract\\\": \\\"agent_v2\\\",\\n      \\\"resolved_contract\\\": \\\"agent_v2\\\",\\n      \\\"legacy_fallback\\\": false\\n    },\\n    \\\"semantic_retry_applied\\\": false,\\n    \\\"semantic_retry_actual_attempted\\\": false,\\n    \\\"semantic_retry_query\\\": null,\\n    \\\"semantic_retry_hits\\\": 0,\\n    \\\"primary_quality_gate_passed\\\": false,\\n    \\\"primary_quality_score\\\": 0.792,\\n    \\\"low_quality_nonempty_detected\\\": false,\\n    \\\"primary_underfilled_public_beauty_unified\\\": false,\\n    \\\"primary_exact_intent_underfilled_public_beauty\\\": false,\\n    \\\"internal_raw_count\\\": 0,\\n    \\\"external_raw_count\\\": 0,\\n    \\\"merged_pre_limit_count\\\": 0,\\n    \\\"supplement_attempted\\\": false,\\n    \\\"supplement_skip_reason\\\": \\\"not_needed\\\",\\n    \\\"retry_attempt_count\\\": 0,\\n    \\\"fallback_attempt_count\\\": 0,\\n    \\\"selected_fallback_attempt\\\": 0,\\n    \\\"route_health\\\": {\\n      \\\"semantic_retry_applied\\\": false,\\n      \\\"semantic_retry_actual_attempted\\\": false,\\n      \\\"semantic_retry_query\\\": null,\\n      \\\"semantic_retry_hits\\\": 0,\\n      \\\"primary_quality_gate_passed\\\": false,\\n      \\\"primary_quality_score\\\": 0.792,\\n      \\\"low_quality_nonempty_detected\\\": false,\\n      \\\"primary_underfilled_public_beauty_unified\\\": false,\\n      \\\"primary_exact_intent_underfilled_public_beauty\\\": false,\\n      \\\"internal_raw_count\\\": 0,\\n      \\\"external_raw_count\\\": 0,\\n      \\\"merged_pre_limit_count\\\": 0,\\n      \\\"supplement_attempted\\\": false,\\n      \\\"supplement_skip_reason\\\": \\\"not_needed\\\",\\n      \\\"retry_attempt_count\\\": 0,\\n      \\\"fallback_attempt_count\\\": 0,\\n      \\\"selected_fallback_attempt\\\": 0,\\n      \\\"final_returned_count\\\": 0,\\n      \\\"orchestrator_path\\\": \\\"external_invoke_route\\\",\\n      \\\"decision_node\\\": \\\"upstream_stage\\\",\\n      \\\"primary_path_used\\\": \\\"upstream_stage\\\",\\n      \\\"primary_latency_ms\\\": 0,\\n      \\\"fallback_triggered\\\": false,\\n      \\\"fallback_reason\\\": null,\\n      \\\"query_semantic_class\\\": \\\"default\\\",\\n      \\\"domain_filter_dropped_external\\\": 0,\\n      \\\"external_fill_gate_reason\\\": null,\\n      \\\"external_seed_query_timeout\\\": false,\\n      \\\"external_seed_skip_reason\\\": null,\\n      \\\"external_seed_cache_hit\\\": false,\\n      \\\"external_seed_rows_fetched\\\": 0,\\n      \\\"external_seed_rows_built\\\": 0,\\n      \\\"external_seed_brand_strict_rows\\\": 0,\\n      \\\"external_seed_brand_relevant_rows\\\": 0,\\n      \\\"external_seed_broad_fallback_used\\\": false,\\n      \\\"external_seed_broad_scope_rows\\\": 0,\\n      \\\"ambiguity_score_pre\\\": 0.5055555555555556,\\n      \\\"ambiguity_score_post\\\": 0.3436111111111111,\\n      \\\"clarify_triggered\\\": true,\\n      \\\"degrade_flags\\\": {\\n        \\\"vector_skipped\\\": false,\\n        \\\"behavior_skipped\\\": false,\\n        \\\"nlu_degraded\\\": false\\n      },\\n      \\\"external_seed_returned_count\\\": 0\\n    },\\n    \\\"guard_source_normalized\\\": \\\"shopping-agent-ui\\\",\\n    \\\"secondary_fallback_skipped\\\": false,\\n    \\\"secondary_fallback_skip_reason\\\": null,\\n    \\\"latency_guard_applied\\\": false,\\n    \\\"skipped_gates_due_to_budget\\\": [],\\n    \\\"gate_trace\\\": [\\n      {\\n        \\\"gate_id\\\": \\\"domain_hard_filter\\\",\\n        \\\"applied\\\": false,\\n        \\\"decision\\\": \\\"pass\\\",\\n        \\\"reason\\\": null,\\n        \\\"cost_ms_estimate\\\": 90,\\n        \\\"query_class\\\": \\\"exploratory\\\"\\n      },\\n      {\\n        \\\"gate_id\\\": \\\"domain_condenser\\\",\\n        \\\"applied\\\": false,\\n        \\\"decision\\\": \\\"pass\\\",\\n        \\\"reason\\\": \\\"disabled\\\",\\n        \\\"cost_ms_estimate\\\": 120,\\n        \\\"query_class\\\": null\\n      },\\n      {\\n        \\\"gate_id\\\": \\\"beauty_bucket_backstop\\\",\\n        \\\"applied\\\": false,\\n        \\\"decision\\\": \\\"pass\\\",\\n        \\\"reason\\\": \\\"not_applicable\\\",\\n        \\\"cost_ms_estimate\\\": 40,\\n        \\\"query_class\\\": \\\"exploratory\\\"\\n      },\\n      {\\n        \\\"gate_id\\\": \\\"ambiguity_gate\\\",\\n        \\\"applied\\\": true,\\n        \\\"decision\\\": \\\"clarify\\\",\\n        \\\"reason\\\": \\\"ambiguity_clarify\\\",\\n        \\\"cost_ms_estimate\\\": 140,\\n        \\\"query_class\\\": \\\"exploratory\\\"\\n      },\\n      {\\n        \\\"gate_id\\\": \\\"brand_result_scope\\\",\\n        \\\"applied\\\": false,\\n        \\\"decision\\\": \\\"pass\\\",\\n        \\\"reason\\\": null,\\n        \\\"cost_ms_estimate\\\": 5,\\n        \\\"query_class\\\": \\\"exploratory\\\"\\n      },\\n      {\\n        \\\"gate_id\\\": \\\"resolver_first\\\",\\n        \\\"applied\\\": false,\\n        \\\"decision\\\": \\\"pass\\\",\\n        \\\"reason\\\": \\\"disabled_or_not_lookup\\\",\\n        \\\"cost_ms_estimate\\\": 0,\\n        \\\"query_class\\\": \\\"exploratory\\\"\\n      },\\n      {\\n        \\\"gate_id\\\": \\\"secondary_fallback_skip_check\\\",\\n        \\\"applied\\\": true,\\n        \\\"decision\\\": \\\"pass\\\",\\n        \\\"reason\\\": null,\\n        \\\"cost_ms_estimate\\\": 25,\\n        \\\"query_class\\\": \\\"exploratory\\\"\\n      },\\n      {\\n        \\\"gate_id\\\": \\\"second_stage_expansion\\\",\\n        \\\"applied\\\": true,\\n        \\\"decision\\\": \\\"attempted\\\",\\n        \\\"reason\\\": \\\"under_limit_first_page\\\",\\n        \\\"cost_ms_estimate\\\": 260,\\n        \\\"query_class\\\": \\\"exploratory\\\"\\n      }\\n    ],\\n    \\\"gate_summary\\\": {\\n      \\\"applied_count\\\": 3,\\n      \\\"blocked_count\\\": 0,\\n      \\\"total_cost_ms_estimate\\\": 680\\n    },\\n    \\\"strategy_version\\\": \\\"ambiguity_gate_v2\\\",\\n    \\\"brand_query_detected\\\": false,\\n    \\\"brand_entities\\\": [],\\n    \\\"brand_scope\\\": null,\\n    \\\"brand_query_bypass_ambiguity\\\": false,\\n    \\\"query_understanding\\\": {\\n      \\\"version\\\": \\\"query_understanding_v1\\\",\\n      \\\"query_understanding_executed\\\": true,\\n      \\\"raw_query\\\": \\\"usb charging cable\\\",\\n      \\\"normalized_query\\\": \\\"usb charging cable\\\",\\n      \\\"corrected_query\\\": \\\"usb charging cable\\\",\\n      \\\"corrected_normalized_query\\\": \\\"usb charging cable\\\",\\n      \\\"effective_query\\\": \\\"usb charging cable\\\",\\n      \\\"corrections\\\": [],\\n      \\\"brand_candidates\\\": [],\\n      \\\"category_path_prefix\\\": null,\\n      \\\"context_binding\\\": null,\\n      \\\"context_scope\\\": \\\"none\\\",\\n      \\\"risk_flags\\\": [],\\n      \\\"decision\\\": \\\"apply_raw\\\",\\n      \\\"beauty_context\\\": {\\n        \\\"current_profile\\\": {\\n          \\\"skin_type\\\": null,\\n          \\\"environment\\\": null,\\n          \\\"location\\\": null,\\n          \\\"has_profile_signal\\\": false\\n        },\\n        \\\"current_concerns\\\": {\\n          \\\"concerns\\\": [],\\n          \\\"primary_concern\\\": null,\\n          \\\"category_path_prefix\\\": null,\\n          \\\"target_step_family\\\": null,\\n          \\\"semantic_family\\\": null,\\n          \\\"has_concern_signal\\\": false\\n        },\\n        \\\"effective_profile\\\": {\\n          \\\"skin_type\\\": null,\\n          \\\"environment\\\": null,\\n          \\\"location\\\": null,\\n          \\\"has_profile_signal\\\": false\\n        },\\n        \\\"effective_concerns\\\": {\\n          \\\"concerns\\\": [],\\n          \\\"primary_concern\\\": null,\\n          \\\"category_path_prefix\\\": null,\\n          \\\"target_step_family\\\": null,\\n          \\\"semantic_family\\\": null,\\n          \\\"has_concern_signal\\\": false\\n        }\\n      },\\n      \\\"hard_negatives\\\": {\\n        \\\"fragrance_free_skincare\\\": false,\\n        \\\"strict_lipstick\\\": false,\\n        \\\"strict_shave\\\": false,\\n        \\\"non_merchandise_query\\\": false\\n      },\\n      \\\"market\\\": \\\"US\\\",\\n      \\\"source\\\": \\\"shopping-agent-ui\\\"\\n    },\\n    \\\"query_understanding_executed\\\": true,\\n    \\\"query_understanding_decision\\\": \\\"apply_raw\\\",\\n    \\\"search_quality_contract\\\": {\\n      \\\"contract_version\\\": \\\"search_quality_contract_v1\\\",\\n      \\\"target_domain\\\": \\\"other\\\",\\n      \\\"query_class\\\": \\\"ambiguous_or_non_shopping\\\",\\n      \\\"effective_query\\\": \\\"usb charging cable\\\",\\n      \\\"clarification_allowed\\\": true,\\n      \\\"hard_constraints\\\": {\\n        \\\"brand\\\": null,\\n        \\\"category_path_prefix\\\": null,\\n        \\\"market\\\": \\\"US\\\",\\n        \\\"exclusions\\\": [],\\n        \\\"exact_product_anchor\\\": null,\\n        \\\"strict_lipstick\\\": false,\\n        \\\"strict_shave\\\": false,\\n        \\\"fragrance_free_skincare\\\": false\\n      },\\n      \\\"soft_preferences\\\": {\\n        \\\"concerns\\\": [],\\n        \\\"primary_concern\\\": null,\\n        \\\"ingredient_tokens\\\": [],\\n        \\\"skin_type\\\": null,\\n        \\\"format\\\": [],\\n        \\\"local_destination\\\": []\\n      }\\n    },\\n    \\\"search_quality_contract_applied\\\": false,\\n    \\\"search_decision\\\": {\\n      \\\"query_class\\\": \\\"exploratory\\\",\\n      \\\"query_semantic_class\\\": \\\"default\\\",\\n      \\\"brand_query_detected\\\": false,\\n      \\\"brand_entities\\\": [],\\n      \\\"brand_scope\\\": null,\\n      \\\"brand_query_bypass_ambiguity\\\": false,\\n      \\\"ambiguity_score_pre\\\": 0.5055555555555556,\\n      \\\"ambiguity_score_post\\\": 0.3436111111111111,\\n      \\\"clarify_triggered\\\": true,\\n      \\\"strict_empty_triggered\\\": false,\\n      \\\"final_decision\\\": \\\"clarify\\\",\\n      \\\"query_understanding_decision\\\": \\\"apply_raw\\\",\\n      \\\"domain_condenser\\\": {\\n        \\\"enabled\\\": false,\\n        \\\"applied\\\": false,\\n        \\\"query_class\\\": \\\"exploratory\\\",\\n        \\\"source_candidates\\\": 1,\\n        \\\"candidates_before\\\": 1,\\n        \\\"entropy_before\\\": 0,\\n        \\\"min_candidates_before\\\": 8,\\n        \\\"min_candidates_after\\\": 4,\\n        \\\"entropy_threshold\\\": 0.8,\\n        \\\"reason\\\": \\\"disabled\\\"\\n      },\\n      \\\"post_quality\\\": {\\n        \\\"candidates\\\": 1,\\n        \\\"anchor_ratio\\\": 1,\\n        \\\"domain_entropy\\\": 0,\\n        \\\"min_recall_candidates\\\": 6,\\n        \\\"min_anchor_ratio\\\": 0.12,\\n        \\\"max_domain_entropy\\\": 0.5,\\n        \\\"anchor_mode\\\": \\\"raw\\\",\\n        \\\"anchor_source\\\": \\\"raw_query\\\",\\n        \\\"anchor_basis_size\\\": 3,\\n        \\\"candidates_ok\\\": false,\\n        \\\"anchor_ok\\\": true,\\n        \\\"entropy_ok\\\": true,\\n        \\\"context_fail_open_applied\\\": false\\n      },\\n      \\\"low_confidence\\\": true,\\n      \\\"low_confidence_reasons\\\": [\\n        \\\"post_quality_low_confidence\\\",\\n        \\\"clarification_attached_non_blocking\\\"\\n      ],\\n      \\\"domain_filter_dropped_external\\\": 0,\\n      \\\"slot_state\\\": {\\n        \\\"asked_slots\\\": [\\n          \\\"category\\\"\\n        ],\\n        \\\"resolved_slots\\\": {}\\n      }\\n    },\\n    \\\"query_semantic_class\\\": \\\"default\\\",\\n    \\\"domain_filter_dropped_external\\\": 0,\\n    \\\"source_breakdown\\\": {\\n      \\\"internal_count\\\": 0,\\n      \\\"external_seed_count\\\": 0,\\n      \\\"stable_prior_count\\\": 0,\\n      \\\"stale_cache_used\\\": false,\\n      \\\"source_channel_counts\\\": {\\n        \\\"internal_search\\\": 0,\\n        \\\"external_seed\\\": 0,\\n        \\\"products_cache\\\": 0,\\n        \\\"products_cache_stale\\\": 0,\\n        \\\"exact_title_rescue\\\": 0,\\n        \\\"transient_fallback\\\": 0\\n      },\\n      \\\"source_tier_counts\\\": {\\n        \\\"fresh_internal\\\": 0,\\n        \\\"fresh_external\\\": 0,\\n        \\\"cache_fresh\\\": 0,\\n        \\\"cache_stale\\\": 0,\\n        \\\"fallback\\\": 0\\n      },\\n      \\\"source_quality_counts\\\": {\\n        \\\"trusted\\\": 0,\\n        \\\"mixed\\\": 0,\\n        \\\"degraded\\\": 0\\n      },\\n      \\\"cache_owner_paths\\\": [],\\n      \\\"top_candidate_provenance\\\": null\\n    },\\n    \\\"identity_graph_search_recall\\\": {\\n      \\\"attempted\\\": true,\\n      \\\"applied\\\": false,\\n      \\\"reason\\\": \\\"db_not_configured\\\"\\n    },\\n    \\\"orchestrator_path\\\": \\\"external_invoke_route\\\",\\n    \\\"decision_node\\\": \\\"upstream_stage\\\",\\n    \\\"external_fill_gate_reason\\\": null,\\n    \\\"external_seed_query_timeout\\\": false,\\n    \\\"external_seed_skip_reason\\\": null,\\n    \\\"external_seed_cache_hit\\\": false,\\n    \\\"external_seed_rows_fetched\\\": 0,\\n    \\\"external_seed_rows_built\\\": 0,\\n    \\\"external_seed_brand_strict_rows\\\": 0,\\n    \\\"external_seed_brand_relevant_rows\\\": 0,\\n    \\\"external_seed_broad_fallback_used\\\": false,\\n    \\\"external_seed_broad_scope_rows\\\": 0,\\n    \\\"external_seed_returned_count\\\": 0,\\n    \\\"final_returned_count\\\": 0,\\n    \\\"fallback_reason\\\": null,\\n    \\\"route_trace\\\": {\\n      \\\"node_timings_ms\\\": {\\n        \\\"route_entry\\\": 0,\\n        \\\"context_build\\\": 0,\\n        \\\"primary_upstream\\\": 0,\\n        \\\"normalize_hydrate\\\": 0,\\n        \\\"second_stage_context\\\": 0,\\n        \\\"brand_rescue_pre_policy\\\": 0,\\n        \\\"policy_apply\\\": 0,\\n        \\\"brand_rescue_post_policy\\\": 0,\\n        \\\"llm_rerank\\\": 0,\\n        \\\"pdp_identity_rescue\\\": 0\\n      }\\n    },\\n    \\\"search_trace\\\": {\\n      \\\"trace_id\\\": \\\"<id>\\\",\\n      \\\"raw_query\\\": \\\"usb charging cable\\\",\\n      \\\"expanded_query\\\": \\\"usb charging cable\\\",\\n      \\\"expansion_mode\\\": \\\"conservative\\\",\\n      \\\"query_class\\\": \\\"exploratory\\\",\\n      \\\"rewrite_gate\\\": {\\n        \\\"requested_mode\\\": \\\"conservative\\\",\\n        \\\"mode\\\": \\\"conservative\\\",\\n        \\\"blocked_reason\\\": null,\\n        \\\"rewrite_drift_risk\\\": 1,\\n        \\\"use_association_only\\\": false\\n      },\\n      \\\"association_plan\\\": {\\n        \\\"applied\\\": true,\\n        \\\"blocked_reason\\\": null,\\n        \\\"domain_key\\\": \\\"default\\\",\\n        \\\"scenario_key\\\": \\\"default\\\",\\n        \\\"category_keywords\\\": [\\n          \\\"popular products\\\",\\n          \\\"best sellers\\\"\\n        ]\\n      },\\n      \\\"flags_snapshot\\\": {\\n        \\\"search_domain_hard_filter_mode\\\": \\\"strict\\\",\\n        \\\"search_clarify_min_recall_candidates\\\": 6,\\n        \\\"search_clarify_min_anchor_ratio\\\": 0.12,\\n        \\\"search_clarify_max_domain_entropy\\\": 0.5,\\n        \\\"search_scenario_anchor_mode\\\": \\\"raw\\\",\\n        \\\"search_scenario_derived_min_recall_candidates\\\": 4,\\n        \\\"search_scenario_derived_min_anchor_ratio\\\": 0.1,\\n        \\\"search_scenario_derived_max_domain_entropy\\\": 0.6,\\n        \\\"search_domain_condenser_enabled\\\": false,\\n        \\\"search_domain_condenser_entropy_th\\\": 0.8,\\n        \\\"search_domain_condenser_min_cands_before\\\": 8,\\n        \\\"search_domain_condenser_min_cands_after\\\": 4,\\n        \\\"search_anchor_alias_v2\\\": false,\\n        \\\"search_cache_validate\\\": false,\\n        \\\"search_force_controlled_recall_for_scenario\\\": false,\\n        \\\"search_cache_min_anchor\\\": 0.15,\\n        \\\"search_cache_max_domain_entropy\\\": 0.55,\\n        \\\"search_cache_min_count\\\": 6,\\n        \\\"search_cache_max_cross_domain_ratio\\\": 0.08,\\n        \\\"search_upstream_quota_clarify_enabled\\\": true,\\n        \\\"search_upstream_quota_clarify_query_classes\\\": [\\n          \\\"scenario\\\",\\n          \\\"mission\\\",\\n          \\\"gift\\\",\\n          \\\"exploratory\\\",\\n          \\\"category\\\",\\n          \\\"non_shopping\\\"\\n        ]\\n      },\\n      \\\"intent_domain\\\": \\\"other\\\",\\n      \\\"intent_target\\\": \\\"unknown\\\",\\n      \\\"intent_scenario\\\": \\\"general\\\",\\n      \\\"scenario\\\": \\\"general\\\",\\n      \\\"cache_stage\\\": {\\n        \\\"hit\\\": false,\\n        \\\"candidate_count\\\": 0,\\n        \\\"relevant_count\\\": 0,\\n        \\\"retrieval_sources\\\": [],\\n        \\\"attempted\\\": false,\\n        \\\"query_terms\\\": [],\\n        \\\"strict_total\\\": 0,\\n        \\\"relaxed_total\\\": 0,\\n        \\\"filtered_irrelevant_count\\\": 0,\\n        \\\"beauty_bucket\\\": null,\\n        \\\"selected_source\\\": null\\n      },\\n      \\\"upstream_stage\\\": {\\n        \\\"called\\\": true,\\n        \\\"timeout\\\": false,\\n        \\\"status\\\": 200,\\n        \\\"latency_ms\\\": 0\\n      },\\n      \\\"resolver_stage\\\": {\\n        \\\"called\\\": false,\\n        \\\"hit\\\": false,\\n        \\\"miss\\\": false,\\n        \\\"latency_ms\\\": null\\n      },\\n      \\\"final_decision\\\": \\\"clarify\\\"\\n    },\\n    \\\"service_version\\\": {\\n      \\\"service\\\": \\\"pivota-agent-gateway\\\",\\n      \\\"commit\\\": null,\\n      \\\"build_id\\\": \\\"started-<iso>\\\",\\n      \\\"branch\\\": null,\\n      \\\"deployment_id\\\": null,\\n      \\\"started_at\\\": \\\"<iso>\\\"\\n    },\\n    \\\"resolver_rejected_reason\\\": null,\\n    \\\"resolver_query_used\\\": null,\\n    \\\"low_confidence\\\": true,\\n    \\\"low_confidence_reasons\\\": [\\n      \\\"post_quality_low_confidence\\\",\\n      \\\"clarification_attached_non_blocking\\\"\\n    ],\\n    \\\"search_transport_projection\\\": {\\n      \\\"applied\\\": true,\\n      \\\"max_offers_per_product\\\": 3,\\n      \\\"max_variants_per_product\\\": 8,\\n      \\\"max_images_per_product\\\": 6,\\n      \\\"trimmed_offers\\\": 0,\\n      \\\"trimmed_variants\\\": 0\\n    },\\n    \\\"orchestrator_version\\\": \\\"search_orchestrator_unified_v1\\\",\\n    \\\"search_request_contract\\\": {\\n      \\\"contract_version\\\": \\\"search_contract_v1\\\",\\n      \\\"surface\\\": \\\"gateway\\\",\\n      \\\"operation\\\": \\\"find_products_multi\\\",\\n      \\\"source\\\": \\\"shopping-agent-ui\\\",\\n      \\\"source_profile\\\": {\\n        \\\"source\\\": \\\"shopping_agent\\\",\\n        \\\"caller_kind\\\": \\\"agent_tool\\\",\\n        \\\"default_entry_layer\\\": \\\"decisioning\\\",\\n        \\\"interaction_mode\\\": \\\"conversational\\\",\\n        \\\"allow_clarification\\\": true,\\n        \\\"allow_external_supplement\\\": true,\\n        \\\"allow_execution_handoff\\\": true,\\n        \\\"response_contract\\\": \\\"decisioning\\\",\\n        \\\"policy_tags\\\": [\\n          \\\"broad_commerce_search\\\",\\n          \\\"internal_plus_external\\\"\\n        ]\\n      },\\n      \\\"ownership_domain\\\": \\\"beauty_mainline\\\",\\n      \\\"request_class\\\": \\\"beauty_discovery\\\",\\n      \\\"semantic_contract\\\": null,\\n      \\\"policy\\\": {\\n        \\\"allow_external_seed\\\": false,\\n        \\\"ui_surface\\\": null,\\n        \\\"decision_mode\\\": null,\\n        \\\"product_only\\\": false,\\n        \\\"timeout_budget\\\": {\\n          \\\"query_class\\\": \\\"exploratory\\\",\\n          \\\"target_step_family\\\": null\\n        }\\n      },\\n      \\\"target_step_family\\\": null,\\n      \\\"semantic_family\\\": null,\\n      \\\"primary_lane\\\": \\\"beauty_discovery_mainline\\\",\\n      \\\"primary_retrieval_contract\\\": \\\"agent_v1_search_beauty_mainline\\\",\\n      \\\"supplement_lanes\\\": []\\n    },\\n    \\\"primary_lane\\\": \\\"beauty_discovery_mainline\\\",\\n    \\\"primary_retrieval_contract\\\": \\\"agent_v1_search_beauty_mainline\\\",\\n    \\\"invoke_search_rail\\\": \\\"authoritative_shopping\\\",\\n    \\\"legacy_contract\\\": false\\n  },\\n  \\\"policy_version\\\": \\\"find_products_multi_policy_v40\\\",\\n  \\\"intent\\\": {\\n    \\\"intent_version\\\": \\\"1.0\\\",\\n    \\\"language\\\": \\\"en\\\",\\n    \\\"primary_domain\\\": \\\"other\\\",\\n    \\\"target_object\\\": {\\n      \\\"type\\\": \\\"unknown\\\",\\n      \\\"age_group\\\": \\\"unknown\\\",\\n      \\\"notes\\\": \\\"\\\"\\n    },\\n    \\\"category\\\": {\\n      \\\"required\\\": [],\\n      \\\"optional\\\": []\\n    },\\n    \\\"scenario\\\": {\\n      \\\"name\\\": \\\"general\\\",\\n      \\\"signals\\\": []\\n    },\\n    \\\"hard_constraints\\\": {\\n      \\\"temperature_c\\\": {\\n        \\\"min\\\": null,\\n        \\\"max\\\": null\\n      },\\n      \\\"must_include_keywords\\\": [],\\n      \\\"must_exclude_domains\\\": [],\\n      \\\"must_exclude_keywords\\\": [],\\n      \\\"in_stock_only\\\": null,\\n      \\\"price\\\": {\\n        \\\"currency\\\": null,\\n        \\\"min\\\": null,\\n        \\\"max\\\": null\\n      }\\n    },\\n    \\\"soft_preferences\\\": {\\n      \\\"style\\\": [],\\n      \\\"colors\\\": [],\\n      \\\"brands\\\": [],\\n      \\\"materials\\\": []\\n    },\\n    \\\"confidence\\\": {\\n      \\\"overall\\\": 0.43333333333333335,\\n      \\\"domain\\\": 0.5,\\n      \\\"target_object\\\": 0.4,\\n      \\\"category\\\": 0.4,\\n      \\\"notes\\\": \\\"\\\"\\n    },\\n    \\\"ambiguity\\\": {\\n      \\\"needs_clarification\\\": true,\\n      \\\"missing_slots\\\": [],\\n      \\\"clarifying_questions\\\": [\\n        \\\"Is this for you, a gift, or for a doll/toy like Labubu?\\\",\\n        \\\"What’s the main scenario (commute, date, hiking, indoor)?\\\",\\n        \\\"Do you prefer a down jacket, a shell, or a coat?\\\"\\n      ]\\n    },\\n    \\\"history_usage\\\": {\\n      \\\"used\\\": false,\\n      \\\"reason\\\": \\\"Latest query is treated as authoritative; recent history not applied to domain/target decisions.\\\",\\n      \\\"ignored_queries\\\": []\\n    },\\n    \\\"query_class\\\": \\\"exploratory\\\"\\n  },\\n  \\\"filters_applied\\\": {\\n    \\\"required_domains\\\": [],\\n    \\\"required_target_object\\\": \\\"unknown\\\",\\n    \\\"required_category_paths\\\": [],\\n    \\\"excluded_domains\\\": [],\\n    \\\"excluded_keywords\\\": []\\n  },\\n  \\\"match_confidence\\\": 0,\\n  \\\"has_good_match\\\": false,\\n  \\\"match_tier\\\": \\\"none\\\",\\n  \\\"reason_codes\\\": [\\n    \\\"NEEDS_CLARIFICATION\\\",\\n    \\\"FILTERED_TO_EMPTY\\\",\\n    \\\"AMBIGUITY_CLARIFY\\\",\\n    \\\"LOW_CONF_POST\\\"\\n  ],\\n  \\\"clarification\\\": {\\n    \\\"question\\\": \\\"To avoid off-topic recommendations, what should we prioritize?\\\",\\n    \\\"options\\\": [\\n      \\\"Brand lookup\\\",\\n      \\\"Scenario checklist\\\",\\n      \\\"Budget filter\\\",\\n      \\\"Popular picks\\\"\\n    ],\\n    \\\"reason_code\\\": \\\"CLARIFY_AMBIGUOUS_QUERY\\\",\\n    \\\"slot\\\": \\\"category\\\",\\n    \\\"dedup_key\\\": \\\"category:CLARIFY_AMBIGUOUS_QUERY\\\"\\n  }\\n}\"}]}}",
+      "lines": [
+        {
+          "client_channel": "shop",
+          "key_fingerprint": null,
+          "caller_auth_mode": "test_bypass",
+          "caller_loopback": true,
+          "request_source": "shopping-agent-ui",
+          "operation": "find_products_multi",
+          "status": 200,
+          "latency_ms": 0,
+          "upstream_ms": 0,
+          "gateway_retries": 0,
+          "market_observed": false,
+          "market_requested": "US",
+          "market_source": "explicit_search",
+          "market_bound": null,
+          "market_buyer_currency": null,
+          "market_serving_currency": null,
+          "served_currencies": [],
+          "served_currency_mismatch": false,
+          "served_price_sources": {},
+          "query_source": "agent_products_search",
+          "primary_path_used": "upstream_stage",
+          "fpm_stage_breakdown": [
+            {
+              "stage": "route_entry",
+              "latency_ms": 0
+            },
+            {
+              "stage": "context_build",
+              "latency_ms": 0,
+              "expansion_mode": "conservative",
+              "query_class": "exploratory"
+            },
+            {
+              "stage": "primary_upstream",
+              "latency_ms": 0,
+              "upstream_http": true
+            },
+            {
+              "stage": "normalize_hydrate",
+              "latency_ms": 0,
+              "returned": 1
+            },
+            {
+              "stage": "second_stage_context",
+              "latency_ms": 0
+            },
+            {
+              "stage": "brand_rescue_pre_policy",
+              "latency_ms": 0
+            },
+            {
+              "stage": "policy_apply",
+              "latency_ms": 0
+            },
+            {
+              "stage": "brand_rescue_post_policy",
+              "latency_ms": 0
+            },
+            {
+              "stage": "llm_rerank",
+              "latency_ms": 0,
+              "applied": false
+            },
+            {
+              "stage": "pdp_identity_rescue",
+              "latency_ms": 0
+            },
+            {
+              "stage": "savings_hydrate",
+              "latency_ms": 0
+            },
+            {
+              "stage": "canonical_chain_join",
+              "latency_ms": 0
+            }
+          ],
+          "fpm_stage_total_ms": 0,
+          "fpm_unattributed_ms": 0,
+          "fpm_upstream_http_ms": 0,
+          "msg": "invoke request complete"
+        },
+        {
+          "door": "mcp",
+          "tool": "search_catalog",
+          "tier": "authenticated",
+          "status": 200,
+          "latency_ms": 0,
+          "outcome": "ok",
+          "is_error": false,
+          "error_code": null,
+          "error_class": null,
+          "result_count": 0,
+          "lane": "beauty_discovery_mainline",
+          "lane_source": "agent_products_search",
+          "degraded": false,
+          "caller_auth_mode": "test_bypass",
+          "caller_loopback": true,
+          "msg": "mcp tools/call complete"
+        }
+      ],
+      "loopback": []
+    },
+    "public_tools_list": {
+      "status": 200,
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"tools\":[{\"name\":\"search_catalog\",\"description\":\"Search Pivota's normalized catalog of beauty and skincare products by query, category, or price range. Returns product identity, price, availability, key active ingredients, and a canonical Pivota URL for each result. Read-only.\",\"inputSchema\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"query\":{\"type\":\"string\",\"maxLength\":500},\"merchant_id\":{\"type\":\"string\"},\"category\":{\"type\":\"string\"},\"price_min\":{\"type\":\"number\"},\"price_max\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"},\"market\":{\"type\":\"string\",\"description\":\"Buyer country (ISO 3166-1 alpha-2).\"},\"in_stock_only\":{\"type\":\"boolean\"},\"page\":{\"type\":\"integer\",\"minimum\":1},\"page_size\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":50}}},\"annotations\":{\"title\":\"Search products\",\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}},{\"name\":\"get_product\",\"description\":\"Get detail for one product by its Pivota product_id (the id returned by search_catalog): description, ingredient list, images, price, availability, and a canonical Pivota URL. Pass include:['decision'] to also attach an evidence-graded decision summary when reviewed intelligence exists. Read-only.\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"product_id\"],\"additionalProperties\":false,\"properties\":{\"merchant_id\":{\"type\":\"string\"},\"product_id\":{\"type\":\"string\"},\"sku_id\":{\"type\":\"string\"},\"include\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"enum\":[\"decision\"]},\"description\":\"Optional add-ons. 'decision' attaches the inline why/fit/evidence decision block when reviewed intelligence exists.\"}}},\"annotations\":{\"title\":\"Get product detail\",\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}},{\"name\":\"get_alternatives\",\"description\":\"Find reviewed alternatives or related products for a given product, with price comparison, tradeoffs, and cited evidence. Cheaper look-alikes ('dupes') are returned only when explicitly requested. Read-only.\",\"inputSchema\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"merchant_id\":{\"type\":\"string\"},\"product_id\":{\"type\":\"string\"},\"product_ref\":{\"type\":\"string\",\"description\":\"Optional canonical ref (sig_… / url) if the agent already has it.\"},\"relation\":{\"type\":\"string\",\"enum\":[\"competitive_alternative\",\"niche_specialist\",\"related_product\",\"dupe\"]},\"include_dupes\":{\"type\":\"boolean\",\"description\":\"Include cheaper similar products (dupes). Off by default.\"},\"market\":{\"type\":\"string\"},\"max_price_ratio\":{\"type\":\"number\",\"description\":\"Cap candidate/anchor price ratio, e.g. 1.0 → only equal-or-cheaper.\"},\"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":20}}},\"annotations\":{\"title\":\"Find alternatives\",\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}},{\"name\":\"get_intel\",\"description\":\"Get Pivota's reviewed intelligence for a product: a plain-language summary, who it suits, and evidence-graded claims, each with citation URLs (e.g. PubMed). Cite the provided citation URLs when repeating these claims. Returns empty when no reviewed intelligence exists rather than guessing. Read-only.\",\"inputSchema\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"merchant_id\":{\"type\":\"string\"},\"product_id\":{\"type\":\"string\"},\"product_ref\":{\"type\":\"string\",\"description\":\"Optional canonical ref (sig_… / url) if the agent already has it.\"},\"pivota_signature_id\":{\"type\":\"string\",\"description\":\"Optional Pivota signature, if known, to improve the intel match.\"}}},\"annotations\":{\"title\":\"Get product intelligence\",\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}}]}}",
+      "lines": [],
+      "loopback": []
+    }
+  }
+}
