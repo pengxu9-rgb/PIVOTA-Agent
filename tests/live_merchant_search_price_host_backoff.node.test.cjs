@@ -8,8 +8,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  HOST_BACKOFF_FLAG, overlayLiveMerchantSearchPrices, _hostBackoff,
+  HOST_BACKOFF_FLAG, HOST_BACKOFF_MAX_HOSTS, overlayLiveMerchantSearchPrices, hostKey, _hostBackoff,
 } = require('../src/services/liveMerchantSearchPrice');
+const storefrontProductPage = require('../src/services/storefrontProductPage');
 const pv = require('../src/observability/priceVerificationLog');
 
 const ORIGINAL_LOG_FLAG = process.env.PRICE_VERIFICATION_LOG;
@@ -34,14 +35,18 @@ function cards(host, n) {
     destination_url: `https://${host}/products/p-${seq}-${i}`,
   }));
 }
-/** A fetch whose answer is chosen per host; records every URL it was asked for. */
+/**
+ * A fetch whose answer is chosen per host; records every URL it was asked for. An answer may be a status, or a
+ * function of (url, call index) returning a status or { status, delayMs }.
+ */
 function merchant(byHost) {
   const calls = [];
   const fetchImpl = async (url) => {
     calls.push(url);
     const answer = byHost[new URL(url).hostname];
-    const status = typeof answer === 'function' ? answer(url) : answer;
-    await new Promise((resolve) => setImmediate(resolve));
+    const picked = typeof answer === 'function' ? answer(url, calls.length - 1) : answer;
+    const { status, delayMs } = typeof picked === 'object' ? picked : { status: picked, delayMs: 0 };
+    await new Promise((resolve) => (delayMs ? setTimeout(resolve, delayMs) : setImmediate(resolve)));
     return status === 200 ? { ok: true, status: 200, json: async () => body } : { ok: false, status, headers: new Map() };
   };
   return { calls, fetchImpl };
@@ -87,7 +92,8 @@ test('flag off: the answer is the same object, byte for byte, whatever the flag 
 test('flag on: one 429 backs the host off for every later read on the instance; other hosts are untouched', async () => {
   const m = merchant({ 'busy.test': 429, 'calm.test': 200 });
   const first = await overlayLiveMerchantSearchPrices({ products: cards('busy.test', 8) }, { fetchImpl: m.fetchImpl, env: ON });
-  // Four readers were already in flight when the first 429 landed; the four queued behind them never go out.
+  // Eight queued cards on one host start the per-page maximum of four readers (fewer cards start fewer); all four
+  // were in flight when the first 429 landed, and the four queued behind them never go out.
   assert.equal(m.calls.length, 4);
   assert.deepEqual(lmp(first).failure_reasons, { http_429: 4, host_backoff: 4 });
   assert.equal(lmp(first).fetch_attempt_count, 4, 'a skipped card is not an attempt');
@@ -110,8 +116,8 @@ test('flag on: 60 s, doubling on a repeat up to 10 min; a 2xx clears it; in-flig
     const m = merchant({ 'slow.test': () => status });
     const page = (n = 1) => overlayLiveMerchantSearchPrices({ products: cards('slow.test', n) }, { fetchImpl: m.fetchImpl, env: ON });
 
-    await page(8); // four 429s from the four readers in flight together, then four skips
-    assert.deepEqual(_hostBackoff.get('slow.test'), { until: T0 + MIN, ms: MIN, status: 429 });
+    await page(8); // 429s from the four readers in flight together (see above), then four skips
+    assert.deepEqual(_hostBackoff.get('slow.test'), { until: T0 + MIN, ms: MIN, status: 429, setAt: T0 });
 
     test.mock.timers.tick(MIN - 1);
     m.calls.length = 0;
@@ -126,6 +132,9 @@ test('flag on: 60 s, doubling on a repeat up to 10 min; a 2xx clears it; in-flig
       assert.equal(m.calls.length, 1);
       assert.equal(_hostBackoff.get('slow.test').ms, ms);
     }
+    m.calls.length = 0;
+    await page();
+    assert.equal(m.calls.length, 0, 'a 10 min backoff just set holds (exactly 10 min left is not a clock step)');
 
     test.mock.timers.tick(_hostBackoff.get('slow.test').until - Date.now());
     status = 200;
@@ -214,6 +223,7 @@ test('a line without a refusal or a cache answer carries neither field; flag off
     const store = pv.currentPriceContext();
     assert.equal(store.search_overlay_throttled_hosts, undefined);
     assert.equal(store.search_overlay_cached_at, undefined);
+    assert.equal(store.overlay_tag, undefined, 'no request tag either');
   });
   assert.equal(_hostBackoff.has('quiet.test'), true, 'the backoff itself does not depend on the log flag');
 });
@@ -273,4 +283,151 @@ test('countFacts: each noted stamp turns one would-be-live fact into a replay, a
   assert.deepEqual(pv.countFacts([older, fact], { ...o, cachedAt: [older.at, T0 + 999] }), { live: 1, recent: 1, stored: 0, total: 2, cache_not_live: 0 });
   // Past the window, a cached answer is stored, as any replay would be.
   assert.deepEqual(pv.countFacts([fact], { ...o, ttlMs: 0, cachedAt: [at] }), { live: 0, recent: 0, stored: 1, total: 1, cache_not_live: 1 });
+});
+
+// ---- controller review of #2493 (S1-S3, hosts, 430, bound, N1) ----
+
+test('S1: a 2xx from a read that started before the backoff does not clear it (the Shopify burst)', async () => {
+  // Four readers in flight: the first is refused at 5 ms, the other three answer 200 at 40 ms.
+  const m = merchant({ 'burst-store.test': (_url, i) => (i === 0 ? { status: 429, delayMs: 5 } : { status: 200, delayMs: 40 }) });
+  const first = await overlayLiveMerchantSearchPrices({ products: cards('burst-store.test', 8) }, { fetchImpl: m.fetchImpl, env: ON });
+  assert.equal(m.calls.length, 4);
+  assert.equal(lmp(first).verified_count, 3);
+  assert.ok(_hostBackoff.has('burst-store.test'), 'still backed off after the in-flight 200s');
+  m.calls.length = 0;
+  const next = await overlayLiveMerchantSearchPrices({ products: cards('burst-store.test', 2) }, { fetchImpl: m.fetchImpl, env: ON });
+  assert.equal(m.calls.length, 0, 'the next request does not read the host');
+  assert.deepEqual(lmp(next).failure_reasons, { host_backoff: 2 });
+});
+
+test('S2: the order is cache, then the gone memo, then the backoff: a known-gone card is still dropped under DROP_GONE', async () => {
+  const gone = cards('gone-store.test', 1);
+  storefrontProductPage.noteGone(`${gone[0].destination_url}.json`, 404);
+  await overlayLiveMerchantSearchPrices({ products: cards('gone-store.test', 1) }, { fetchImpl: merchant({ 'gone-store.test': 429 }).fetchImpl, env: ON });
+  assert.ok(_hostBackoff.has('gone-store.test'));
+  const m = merchant({ 'gone-store.test': 200 });
+  const out = await overlayLiveMerchantSearchPrices({ products: [...gone, ...cards('gone-store.test', 1)] }, {
+    fetchImpl: m.fetchImpl, env: { ...ON, SERVE_LIVE_MERCHANT_PRICE_DROP_GONE: 'on' },
+  });
+  assert.equal(m.calls.length, 0);
+  assert.deepEqual(lmp(out).failure_reasons, { http_404: 1, host_backoff: 1 });
+  assert.equal(lmp(out).gone_count, 1);
+  assert.equal(lmp(out).dropped_gone_count, 1);
+  assert.deepEqual(out.products.map((p) => p.product_id), [`sig_${seq}_0`], 'the gone card left the page; the skipped one stayed');
+});
+
+test('S3: a backoff ending more than 10 min from now (the clock stepped back) has expired', async () => {
+  test.mock.timers.enable({ apis: ['Date'], now: T0 });
+  try {
+    const m = merchant({ 'clock.test': 429 });
+    await overlayLiveMerchantSearchPrices({ products: cards('clock.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
+    assert.equal(_hostBackoff.get('clock.test').until, T0 + MIN);
+    test.mock.timers.setTime(T0 - 10 * MIN);
+    m.calls.length = 0;
+    await overlayLiveMerchantSearchPrices({ products: cards('clock.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
+    assert.equal(m.calls.length, 1, 'read again: 11 min left is more than any backoff');
+    assert.deepEqual(_hostBackoff.get('clock.test'), { until: T0 - 9 * MIN, ms: MIN, status: 429, setAt: T0 - 10 * MIN }, 'a fresh 60 s, not a doubling');
+    test.mock.timers.setTime(T0 - 10 * MIN + 1);
+    m.calls.length = 0;
+    await overlayLiveMerchantSearchPrices({ products: cards('clock.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
+    assert.equal(m.calls.length, 0, 'exactly 10 min or less left is a live backoff');
+  } finally {
+    test.mock.timers.reset();
+  }
+});
+
+test('a 430 (Shopify bot protection), a 500 and a 503 each back off; the host is named in the line', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  for (const status of [430, 500, 503]) {
+    const host = `s${status}-store.test`;
+    const log = sink();
+    await pv.runWithPriceContext({ door: 'rest' }, async () => {
+      const out = await overlayLiveMerchantSearchPrices({ products: cards(host, 1) }, { fetchImpl: merchant({ [host]: status }).fetchImpl, env: ON });
+      pv.logPriceVerificationServed(log, { surface: 'search', items: out.products });
+    });
+    assert.equal(_hostBackoff.get(host).status, status);
+    assert.deepEqual(log.lines[0].overlay_throttled_hosts, { [host]: 1 });
+  }
+});
+
+test('one store is one key: www., the apex and a trailing dot share a backoff and a line entry', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  assert.equal(hostKey('https://WWW.Same-Store.test./products/a.json'), 'same-store.test');
+  const m = merchant({ 'www.same-store.test': 429, 'same-store.test': 200, 'same-store.test.': 200 });
+  const log = sink();
+  await pv.runWithPriceContext({ door: 'rest' }, async () => {
+    await overlayLiveMerchantSearchPrices({ products: cards('www.same-store.test', 1) }, { fetchImpl: m.fetchImpl, env: ON });
+    m.calls.length = 0;
+    const out = await overlayLiveMerchantSearchPrices({ products: [...cards('same-store.test', 1), ...cards('same-store.test.', 1)] }, { fetchImpl: m.fetchImpl, env: ON });
+    assert.equal(m.calls.length, 0);
+    pv.logPriceVerificationServed(log, { surface: 'search', items: out.products });
+  });
+  assert.deepEqual([..._hostBackoff.keys()], ['same-store.test']);
+  assert.deepEqual(log.lines[0].overlay_throttled_hosts, { 'same-store.test': 3 });
+});
+
+test('the backoff table is bounded: past the cap the oldest host is dropped', async () => {
+  const many = Array.from({ length: HOST_BACKOFF_MAX_HOSTS + 1 }, (_, i) => `h${i}.bound.test`);
+  const fetchImpl = merchant(Object.fromEntries(many.map((h) => [h, 429]))).fetchImpl;
+  for (let i = 0; i < many.length; i += 20) {
+    const products = many.slice(i, i + 20).flatMap((h) => cards(h, 1));
+    await overlayLiveMerchantSearchPrices({ products }, { fetchImpl, env: ON });
+  }
+  assert.equal(_hostBackoff.size, HOST_BACKOFF_MAX_HOSTS);
+  assert.equal(_hostBackoff.has(many[0]), false);
+  assert.equal(_hostBackoff.has(many[many.length - 1]), true);
+});
+
+test('N1: a cache entry this same request filled stays live (an overlay that runs twice in one request)', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  const products = cards('twice.test', 1);
+  const m = merchant({ 'twice.test': 200 });
+  const log = sink();
+  await pv.runWithPriceContext({ door: 'rest' }, async () => {
+    await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: m.fetchImpl, env: {} });
+    const again = await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: m.fetchImpl, env: {} });
+    assert.equal(lmp(again).cache_hit_count, 1);
+    pv.logPriceVerificationServed(log, { surface: 'search', items: again.products });
+  });
+  assert.equal(m.calls.length, 1);
+  assert.deepEqual([log.lines[0].live, log.lines[0].recent], [1, 0]);
+  assert.equal('overlay_cache_not_live' in log.lines[0], false);
+  // A loopback reports to its door: the door's own earlier read is its own too.
+  const door = { door: 'mcp', door_key: 'a'.repeat(24), started_at_ms: Date.now(), request_id: 'd' };
+  const more = cards('twice.test', 1);
+  await pv.runWithPriceContext({ door: 'mcp', via_loopback: true, parent: door }, async () => {
+    await overlayLiveMerchantSearchPrices({ products: more }, { fetchImpl: m.fetchImpl, env: {} });
+    await overlayLiveMerchantSearchPrices({ products: more }, { fetchImpl: m.fetchImpl, env: {} });
+  });
+  assert.deepEqual(door.search_overlay_cached_at, []);
+});
+
+test('a malformed host never becomes an overlay_throttled_hosts key (it still backs off)', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  const log = sink();
+  await pv.runWithPriceContext({ door: 'rest' }, async () => {
+    const out = await overlayLiveMerchantSearchPrices({ products: [...cards('bad_host.test', 1), ...cards('good-host.test', 1)] }, {
+      fetchImpl: merchant({ 'bad_host.test': 429, 'good-host.test': 429 }).fetchImpl, env: ON,
+    });
+    pv.noteSearchOverlay({ throttledHosts: { '-lead.test': 1, 'a b.test': 1, '': 1, ['x'.repeat(254)]: 1, 'ok-host.test': 0 } });
+    pv.logPriceVerificationServed(log, { surface: 'search', items: out.products });
+  });
+  assert.ok(_hostBackoff.has('bad_host.test'));
+  assert.deepEqual(log.lines[0].overlay_throttled_hosts, { 'good-host.test': 1 });
+});
+
+test('overlay_cache_not_live is absent when cache answers were noted but none would have been live', async () => {
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  const products = cards('older.test', 1);
+  const m = merchant({ 'older.test': 200 });
+  await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: m.fetchImpl, env: {} });
+  const log = sink();
+  // This request started well after the cached read: that answer is recent by its stamp alone.
+  await pv.runWithPriceContext({ door: 'rest', started_at_ms: Date.now() + 5000 }, async () => {
+    const out = await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: m.fetchImpl, env: {} });
+    assert.equal(pv.currentPriceContext().search_overlay_cached_at.length, 1, 'the cache answer was noted');
+    pv.logPriceVerificationServed(log, { surface: 'search', items: out.products });
+  });
+  assert.deepEqual([log.lines[0].live, log.lines[0].recent], [0, 1]);
+  assert.equal('overlay_cache_not_live' in log.lines[0], false);
 });
