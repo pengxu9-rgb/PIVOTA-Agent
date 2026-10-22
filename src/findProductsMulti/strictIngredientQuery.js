@@ -226,10 +226,8 @@ const NON_LATIN_INGREDIENT_NAMES = Object.freeze({
 const HAN_NAME_RE = /[\u3400-\u9fff]$/;
 const HAN_ESTER_OR_ETHER_AFTER_RE = /^[\u3400-\u9fff]{0,4}[酯醚]/;
 const CJK_COMPOUND_RULES = Object.freeze({
-  甘油: {
-    before: /(?:基|聚|硝酸)$/,
-    after: /^(?:三酯|二酯|单酯|單酯|酯|醚)/,
-  },
+  // (甘油三酯 / 甘油硬脂酸酯 / 甘油聚醚 are caught by the ester / ether rule above)
+  甘油: { before: /(?:基|聚|硝酸)$/ },
   グリセリン: { before: /(?:エチルヘキシル|ポリ|ジ|カプリリル|ヘキシル)$/ },
   글리세린: { before: /(?:에틸헥실|헥실|폴리|다이|카프릴릴)$/ },
   // 类视黄醇 is "retinoids" (the family), not retinol

@@ -183,10 +183,11 @@ function exclusionRemainderWords(normalized, ids) {
   let text = ` ${normalized} `;
   const terms = Array.from(new Set(ids.flatMap((id) => strictIngredientNamingTerms(id)))).sort((a, b) => b.length - a.length);
   for (const term of terms) text = text.replace(new RegExp(`\\s${escapeRegExp(term)}(?=\\s|frei)`, 'g'), ' ');
-  return text.split(/\s+/).filter((word) => word && !EXCLUSION_QUALIFIER_WORDS.has(word) && !/^0(?:\.0+)?$/.test(word));
+  return text.split(/\s+/).filter((word) => word && !EXCLUSION_QUALIFIER_WORDS.has(word));
 }
 
-// The remainder words that name something to serve: price words and plain numbers (a budget) are not.
+// The remainder words that name something to serve: price words and plain numbers (a budget, a bare
+// zero left by "retinol 0") are not.
 function servableRemainderWords(words) {
   return words.filter((word) => !PRICE_WORDS.has(word) && !/^\d+(?:\.\d+)?$/.test(word));
 }

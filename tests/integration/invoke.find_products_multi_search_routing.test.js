@@ -137,6 +137,9 @@ const CATALOG = [
   row('ko_palmitate', '레티놀 팔미테이트 크림', CREAM, { productType: 'Moisturizer' }),
   row('ru_vitamin_list', 'Витамины С и Е сыворотка', SERUM, { productType: 'Serum' }),
   row('zh_not_contains', '不含视黄醇面霜', CREAM, { productType: 'Moisturizer' }),
+  // rows with NO category path (as backend-lane rows often arrive): judged by their own title
+  row('nopath_hair_oil', 'Bakuchiol Hair Oil', null, { actives: ['bakuchiol'], productType: 'Hair Oil' }),
+  row('nopath_drops', 'Bakuchiol Booster Drops', null, { actives: ['bakuchiol'], productType: 'Booster' }),
   row('brand_retinol', 'Night Retinol Cream', CREAM, { actives: ['retinol'], productType: 'Moisturizer', brand: 'CeraVe' }),
   row('brand_niacinamide', 'Hydrating Niacinamide Lotion', CREAM, { actives: ['niacinamide'], productType: 'Moisturizer', brand: 'CeraVe' }),
 ];
@@ -525,9 +528,11 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       for (const product of resp.body.products) {
         expect([query, product.title, namesBakuchiol(product), REAL_RETINOL.includes(product.title)])
           .toEqual([query, product.title, true, false]);
-        expect([query, product.title, SKINCARE_PATH.test(pathOf(product))]).toEqual([query, product.title, true]);
+        // (an unfiled row is kept when its own title names no other area: follow-up 4)
+        expect([query, product.title, !pathOf(product) || SKINCARE_PATH.test(pathOf(product))]).toEqual([query, product.title, true]);
       }
       expect([query, titles(resp).includes('Retinol + Bakuchiol Serum')]).toEqual([query, false]);
+      expect([query, titles(resp).includes('Bakuchiol Hair Oil')]).toEqual([query, false]);
     }
     // No known stand-in: the same answer for every ingredient -- a bare negation names nothing to serve.
     for (const query of ['vitamin c alternative', 'niacinamide alternative', 'hyaluronic acid alternative',
@@ -545,15 +550,15 @@ describe('find_products_multi search routing: bare ingredients and non-English b
 
   test('on (S2/S4): an exclusion keeps the area it names -- hair and lips get their own tree, never skincare', async () => {
     const { invoke } = boot(BOTH_ON);
-    for (const [query, tree, excluded = 'retinol'] of [['retinol alternative for hair', /^beauty\/haircare\//], ['retinol alternative for scalp', /^beauty\/haircare\//],
-      ['alternative to retinol for hair', /^beauty\/haircare\//], ['without glycerin for hair', /^beauty\/haircare\//, 'glycerin'],
-      ['retinol alternative for lips', /^beauty\/makeup\/lip\//]]) {
+    for (const [query, tree, excluded = 'retinol'] of [['retinol alternative for hair', /^beauty\/haircare(\/|$)/], ['retinol alternative for scalp', /^beauty\/haircare(\/|$)/],
+      ['alternative to retinol for hair', /^beauty\/haircare(\/|$)/], ['without glycerin for hair', /^beauty\/haircare(\/|$)/, 'glycerin'],
+      ['retinol alternative for lips', /^beauty\/makeup\/lip(\/|$)/]]) {
       const { resp, log } = await invoke(query);
       expect([query, log.fpm_routing_query_rewrite]).toEqual([query, 'area']);
       expect([query, lane(resp)]).toEqual([query, LANES.MAINLINE]);
       expect([query, titles(resp).length > 0]).toEqual([query, true]);
       for (const product of resp.body.products) {
-        expect([query, product.title, tree.test(pathOf(product))]).toEqual([query, product.title, true]);
+        expect([query, product.title, !pathOf(product) || tree.test(pathOf(product))]).toEqual([query, product.title, true]);
         const named = excluded === 'retinol' ? REAL_RETINOL.includes(product.title) : /glycerin/i.test(product.title);
         expect([query, product.title, named]).toEqual([query, product.title, false]);
       }
@@ -861,7 +866,8 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       const { resp } = await send({ search: { query, page: 1, page_size: 20 } }, CALLER);
       expect([query, lane(resp), echoed(resp.body)]).toEqual([query, lane(resp), []]);
     }
-    // each flag alone too
+    // each flag alone too -- including an agent-API surface query, which reaches the handler's
+    // contract safe-empty with either flag
     for (const env of [{ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on' }, { FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' }]) {
       jest.resetModules();
       for (const key of FLAG_KEYS) delete process.env[key];
@@ -870,6 +876,8 @@ describe('find_products_multi search routing: bare ingredients and non-English b
         const { resp } = await one.send({ search: { query, page: 1, page_size: 20 } }, CALLER);
         expect([env, query, echoed(resp.body)]).toEqual([env, query, []]);
       }
+      const surface = await one.send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, CALLER);
+      expect([env, lane(surface.resp), echoed(surface.resp.body)]).toEqual([env, LANES.SAFE_EMPTY, []]);
     }
   }, 180000);
 
@@ -882,6 +890,8 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     const { resp } = await send({ search: { query: 'Lidschatten', page: 1, page_size: 20 } }, CALLER);
     expect(lane(resp)).toBe(LANES.SAFE_EMPTY);
     expect(echoed(resp.body)).toEqual(Object.keys(CALLER));
+    const surface = await send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, CALLER);
+    expect([lane(surface.resp), echoed(surface.resp.body)]).toEqual([LANES.SAFE_EMPTY, Object.keys(CALLER)]);
   });
 
   test('on: the debug bundle\'s query is the caller\'s own text, never a metadata value (nb1_debug_raw)', async () => {
@@ -943,6 +953,11 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     }
     const serums = titles((await invoke('retinol alternative serum')).resp);
     expect(serums).toContain('Bakuchiol Retinol Alternative Serum');
+    // follow-up 4: a row with no category path is judged by its own title -- a hair oil is not
+    // skincare, an unfiled booster is kept (fail safe)
+    const askTitles = titles((await invoke('retinol alternative')).resp);
+    expect(askTitles).toContain('Bakuchiol Booster Drops');
+    expect(askTitles).not.toContain('Bakuchiol Hair Oil');
     // ... while asking FOR retinol is unchanged: only rows that name retinol itself.
     const retinol = titles((await invoke('retinol')).resp);
     for (const title of RETINOID_FAMILY) expect([title, retinol.includes(title)]).toEqual([title, false]);

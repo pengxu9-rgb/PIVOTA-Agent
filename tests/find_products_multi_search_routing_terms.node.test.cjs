@@ -931,6 +931,8 @@ test('follow-up 6: a qualifier on a list qualifies every member', () => {
     'niacinamide serum without retinol': [['niacinamide'], ['retinol']],
     'retinol free bakuchiol': [['bakuchiol'], ['retinol']],
     'retinol and niacinamide serum': [['niacinamide', 'retinol'], []],
+    // a list whose qualified members disagree (an absence and a stand-in) leaves its plain member alone
+    'without retinol, vitamin c and niacinamide alternative': [['ascorbic_acid'], ['niacinamide', 'retinol']],
   };
   for (const [query, [wanted, excluded]] of Object.entries(cases)) {
     assert.deepEqual(strict.extractPositiveStrictIngredientIds(query).sort(), wanted.sort(), `wanted: ${query}`);
