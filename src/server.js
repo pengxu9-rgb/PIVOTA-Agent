@@ -1004,8 +1004,9 @@ const INVOKE_MARKET_CONTEXT = new AsyncLocalStorage();
 // lane that infers intent from the query also sees what the rest of the request said.
 const INVOKE_RETINOID_SAFETY_CONTEXT = new AsyncLocalStorage();
 // The invoke operations whose beauty lanes and response net read the retinoid safety context. Every
-// other operation never runs the context reader.
-const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi', 'find_products']);
+// other operation never runs the context reader (find_products, the single-merchant search, never
+// reaches the beauty gate: it is on the follow-up list of operations the gate does not cover yet).
+const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi']);
 
 // Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
 // scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum

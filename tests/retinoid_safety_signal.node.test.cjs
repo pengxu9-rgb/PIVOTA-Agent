@@ -274,9 +274,38 @@ test('budgets: a huge or numerous context is never read in full, and gates inste
   assert.deepEqual(contextClasses({ payload: { user_profile: { notes: strings } } }), [signal.OVER_LIMIT_CLASS]);
   const chunk = 'a'.repeat(3000);
   assert.deepEqual(contextClasses({ payload: { messages: Array.from({ length: 20 }, () => ({ role: 'user', content: chunk })) } }), [signal.OVER_LIMIT_CLASS]);
-  let deep = { note: 'fine' };
+  // depth costs nodes: a profile nested ten deep reads normally, three thousand deep is over the limit
+  let deep = { note: 'pregnant' };
   for (let i = 0; i < 10; i += 1) deep = { nested: deep };
+  assert.deepEqual(contextClasses({ payload: { user_profile: deep } }), ['pregnancy_lactation_fertility']);
+  for (let i = 0; i < 3000; i += 1) deep = { nested: deep };
   assert.deepEqual(contextClasses({ payload: { user_profile: deep } }), [signal.OVER_LIMIT_CLASS]);
+  // the string count is per request, across every place a string is read (each list here is under its own cap)
+  const turnsOf = (n) => Array.from({ length: n }, (_, i) => ({ role: 'user', content: `neutral ${i}` }));
+  assert.deepEqual(contextClasses({ messages: turnsOf(100), payload: { messages: turnsOf(100) } }), []);
+  assert.deepEqual(contextClasses({ messages: turnsOf(100), payload: { messages: turnsOf(100), context: { raw_user_goal: 'a serum' } } }), [signal.OVER_LIMIT_CLASS]);
+  // every list or object over MAX_SCAN_ARRAY_ITEMS is over the limit, in every reader
+  const list = (n, v) => Array.from({ length: n }, () => v);
+  const keys = (n, v) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, v]));
+  const n = signal.MAX_SCAN_ARRAY_ITEMS;
+  // (a status too big to read is also read as affirmative)
+  const pregnantOver = [signal.OVER_LIMIT_CLASS, 'pregnancy_lactation_fertility'];
+  for (const [name, make, overClasses] of [
+    ['profile status list', (m) => ({ payload: { user_profile: { pregnancy_status: list(m, false) } } }), pregnantOver],
+    ['profile status object', (m) => ({ payload: { user_profile: { pregnancy_status: keys(m, false) } } }), pregnantOver],
+    ['constraint status list', (m) => ({ payload: { constraints: { pregnant: list(m, 'no') } } }), pregnantOver],
+    ['message content list', (m) => ({ payload: { messages: [{ role: 'user', content: list(m, 'hi') }] } }), [signal.OVER_LIMIT_CLASS]],
+    ['message content object', (m) => ({ payload: { messages: [{ role: 'user', content: keys(m, 'hi') }] } }), [signal.OVER_LIMIT_CLASS]],
+    ['constraints object', (m) => ({ payload: { constraints: keys(m, 'none') } }), [signal.OVER_LIMIT_CLASS]],
+  ]) {
+    assert.deepEqual([name, contextClasses(make(n))], [name, []]);
+    assert.deepEqual([name, contextClasses(make(n + 1))], [name, overClasses]);
+  }
+  // an avoid list with a huge entry is over the limit, and that entry is never viewed (time)
+  const t0 = process.hrtime.bigint();
+  assert.deepEqual(contextClasses({ payload: { avoid_ingredients: ['z'.repeat(8 * 1024 * 1024)] } }), [signal.OVER_LIMIT_CLASS]);
+  const avoidMs = Number(process.hrtime.bigint() - t0) / 1e6;
+  assert.ok(avoidMs < 20, `huge avoid entry took ${avoidMs} ms`);
   assert.deepEqual(contextClasses({ payload: { user_profile: Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`k${i}`, 'v'])) } }), [signal.OVER_LIMIT_CLASS]);
   assert.deepEqual(contextClasses({ metadata: { safety_flags: Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`f${i}`, false])) } }), [signal.OVER_LIMIT_CLASS]);
   assert.deepEqual(contextClasses({ payload: { context: { raw_user_goal: 'y'.repeat(signal.MAX_SCAN_STRING_CHARS + 1) } } }), [signal.OVER_LIMIT_CLASS]);
@@ -286,6 +315,53 @@ test('budgets: a huge or numerous context is never read in full, and gates inste
   // a query text over the scan limit gates rather than being read
   assert.deepEqual(signal.retinoidSafetyClassesForText('w'.repeat(signal.MAX_SCAN_STRING_CHARS + 1)), [signal.OVER_LIMIT_CLASS]);
   assert.deepEqual(signal.retinoidSafetyClassesForText('w'.repeat(signal.MAX_SCAN_STRING_CHARS)), []);
+});
+
+test('budgets: a wide or deep body costs at most the node budget, in every reader, and gates', () => {
+  // Each shape stays under the per-list and depth limits, so only the node budget stops it. Unbounded,
+  // each of these took 100-200 ms of one CPU per request.
+  const tree = (width, depth, leaf) => (depth === 0 ? leaf : Array.from({ length: width }, () => tree(width, depth - 1, leaf)));
+  const otree = (width, depth, leaf) =>
+    depth === 0 ? leaf : Object.fromEntries(Array.from({ length: width }, (_, i) => [`k${i}`, otree(width, depth - 1, leaf)]));
+  const nested = (n) => JSON.parse('['.repeat(n) + ']'.repeat(n));
+  const shapes = {
+    'profile status, nested lists': { payload: { user_profile: { pregnant: tree(100, 3, false) } } },
+    'profile status, nested objects': { payload: { user_profile: { pregnant: otree(100, 3, false) } } },
+    'profile status, 5000 levels deep': { payload: { user_profile: { pregnant: nested(5000) } } },
+    'message content, nested lists': { payload: { messages: [{ role: 'user', content: tree(100, 3, []) }] } },
+    'message content, nested objects': { payload: { messages: [{ role: 'user', content: otree(100, 3, {}) }] } },
+    'profile, nested objects': { payload: { user_profile: otree(100, 3, {}) } },
+    'constraints, nested objects': { payload: { constraints: otree(100, 3, {}) } },
+    'constraint status, nested objects': { payload: { constraints: { pregnant: otree(100, 3, false) } } },
+    'avoid list, nested objects': { payload: { avoid_ingredients: otree(100, 3, {}) } },
+    'safety flags, nested lists': { payload: { safety_flags: { flag: tree(100, 3, false) } } },
+  };
+  for (const [name, body] of Object.entries(shapes)) {
+    const t = process.hrtime.bigint();
+    const out = signal.retinoidSafetyClassesForRequestContext(body);
+    const ms = Number(process.hrtime.bigint() - t) / 1e6;
+    assert.ok(out.classes.includes(signal.OVER_LIMIT_CLASS), `${name}: ${JSON.stringify(out)}`);
+    assert.ok(ms < 20, `${name} took ${ms} ms`);
+  }
+  // just under the node budget reads normally; a profile of ordinary size is far below it
+  assert.deepEqual(contextClasses({ payload: { user_profile: { pregnant: tree(40, 2, false) } } }), []);
+  assert.deepEqual(contextClasses({ payload: { user_profile: { pregnant: tree(50, 2, false) } } }), [signal.OVER_LIMIT_CLASS, 'pregnancy_lactation_fertility']);
+});
+
+test('budgets: once a request is over its limit, nothing more of it is read', () => {
+  const marker = `after-the-limit-${Date.now()}`;
+  const out = signal.retinoidSafetyClassesForRequestContext({
+    messages: [{ role: 'user', content: 'o'.repeat(signal.MAX_SCAN_STRING_CHARS + 1) }, { role: 'user', content: `${marker} one` }],
+    payload: { context: { raw_user_goal: `${marker} two` }, safety_flags: [`${marker} three`] },
+  });
+  assert.deepEqual(out, { classes: [signal.OVER_LIMIT_CLASS], sources: ['over_limit'] });
+  // and a status read after the limit is read as it is, not as affirmative
+  assert.deepEqual(
+    contextClasses({ messages: [{ role: 'user', content: 'o'.repeat(signal.MAX_SCAN_STRING_CHARS + 1) }], payload: { user_profile: { pregnancy_status: 'no' } } }),
+    [signal.OVER_LIMIT_CLASS],
+  );
+  const read = signal._internal.classifyCacheKeys().filter((k) => k.includes(marker));
+  assert.deepEqual(read, []);
 });
 
 test('the classification cache never keeps a long text', () => {

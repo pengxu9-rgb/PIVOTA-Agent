@@ -31,6 +31,8 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
   // When true, the wrapped reader answers without reading the body: the baseline for what the rest of
   // the gateway retains per request (see the memory test).
   let readerOff = false;
+  // When true, the wrapped reader throws, as a reader bug would.
+  let readerThrows = false;
 
   beforeAll(() => {
     jest.resetModules();
@@ -58,6 +60,7 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
         ...actualSignal,
         retinoidSafetyClassesForRequestContext: (body, options) => {
           const t = process.hrtime.bigint();
+          if (readerThrows) throw new Error('context reader failure (test)');
           const out = readerOff
             ? { classes: [actualSignal.OVER_LIMIT_CLASS], sources: ['over_limit'] }
             : actualSignal.retinoidSafetyClassesForRequestContext(body, options);
@@ -88,7 +91,7 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
 
   test('operations other than product search never run the reader, whatever the body carries', async () => {
     const before = calls.length;
-    for (const operation of ['get_discovery_feed', 'resolve_product_group', 'find_similar_products', 'products.recommendations', 'resolve_product_candidates']) {
+    for (const operation of ['find_products', 'get_discovery_feed', 'resolve_product_group', 'find_similar_products', 'products.recommendations', 'resolve_product_candidates']) {
       await post(operation, { messages: bigMessages(5), user_profile: { pregnancy_status: 'pregnant' }, search: { query: 'serum' } });
     }
     expect(calls.length).toBe(before);
@@ -103,6 +106,30 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
     const ids = (resp.body.products || []).map((p) => p.product_id);
     expect(ids).not.toContain(RETINOID_ID);
     expect(ids).toContain(PLAIN_ID);
+  });
+
+  test('a wide, deep profile (a million values, under every per-list limit) stops at the node budget and gates', async () => {
+    // 6 MB of JSON, under the body limit
+    const tree = (width, depth, leaf) => (depth === 0 ? leaf : Array.from({ length: width }, () => tree(width, depth - 1, leaf)));
+    const resp = await post('find_products_multi', { user_profile: { pregnancy_status: tree(100, 3, false) }, search: { query: 'serum', page: 1, limit: 10, in_stock_only: true } });
+    expect(resp.status).toBe(200);
+    const last = calls[calls.length - 1];
+    expect(last.classes).toContain(actualSignal.OVER_LIMIT_CLASS);
+    expect(last.ms).toBeLessThan(25);
+    expect((resp.body.products || []).map((p) => p.product_id)).not.toContain(RETINOID_ID);
+  });
+
+  test('a reader that throws fails closed: the request is treated as carrying a signal', async () => {
+    readerThrows = true;
+    try {
+      const resp = await post('find_products_multi', { messages: [{ role: 'user', content: 'I have oily skin' }], search: { query: 'serum', page: 1, limit: 10, in_stock_only: true } });
+      expect(resp.status).toBe(200);
+      const ids = (resp.body.products || []).map((p) => p.product_id);
+      expect(ids).not.toContain(RETINOID_ID);
+      expect(ids).toContain(PLAIN_ID);
+    } finally {
+      readerThrows = false;
+    }
   });
 
   test('200k short turns: over the limit, gated, and read in well under the budget', async () => {

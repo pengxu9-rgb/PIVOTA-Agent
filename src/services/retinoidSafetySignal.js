@@ -114,9 +114,10 @@ const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 // ("retinol-free" is "retinol free", "don't" is "dont").
 const RETINOID_NAME_FOR_NEGATION =
   '(?:retinol\\w*|retinal\\w*|retinoid\\w*|retinyl\\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|vit(?:amin)?\\s?a|granactive|hydroxypinacolone|hpr|differin|accutane)';
-// Up to two words between the negation and the name: "no added retinol", "avoid any retinoids",
-// "nothing with retinol", "don't want to use retinol".
-const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,2}';
+// Up to three filler words between the negation and the name: "no added retinol", "avoid any
+// retinoids", "nothing with retinol", "avoid using any more retinol". Four are not a negation of the
+// name: "what not to use with my retinol" asks how to pair it.
+const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,3}';
 const HARD_NEGATION_BEFORE_NAME_LATIN = [
   'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans',
   'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing',
@@ -377,7 +378,7 @@ const MAX_SCAN_STRING_CHARS = 4000; // one message, profile value or query text
 const MAX_SCAN_TOTAL_CHARS = 40000; // everything one request's context reader reads
 const MAX_SCAN_STRINGS = 200; // strings one request's context reader reads
 const MAX_SCAN_ARRAY_ITEMS = 100; // turns in one message list, entries in one list or object
-const MAX_SCAN_DEPTH = 5;
+const MAX_SCAN_NODES = 2000; // values (lists, objects, strings) one request's context reader visits
 const CLASSIFY_CACHE_MAX = 2000;
 const CLASSIFY_CACHE_MAX_KEY_CHARS = 256; // longer texts are classified, never cached
 const OVER_LIMIT_CLASS = 'context_over_limit';
@@ -407,15 +408,34 @@ function tooManyKeys(obj) {
   return false;
 }
 
-// The scan budget of the request context being read (the reader is synchronous, so one at a time).
+// The scan budget of the request context being read. The reader is synchronous, so one at a time;
+// every function below runs only inside retinoidSafetyClassesForRequestContext, which sets it.
 let SCAN = null;
 function overLimit() {
-  if (SCAN) SCAN.overflow = true;
+  SCAN.overflow = true;
   return EMPTY_CLASSES;
 }
+// Counts one visited value. False once the request is over its node budget (or any other limit):
+// the caller stops walking. A deep or wide body therefore costs at most MAX_SCAN_NODES steps.
+function visit() {
+  SCAN.nodes += 1;
+  if (SCAN.nodes > MAX_SCAN_NODES) {
+    overLimit();
+    return false;
+  }
+  return true;
+}
+// The values of a list or object (or an object's [key, value] entries), or null when it holds more
+// than MAX_SCAN_ARRAY_ITEMS: the request is then over its limit. Keys are counted with an early exit,
+// so a huge object is never copied.
+function childrenOf(value, entries = false) {
+  if (Array.isArray(value)) return value.length > MAX_SCAN_ARRAY_ITEMS ? null : value;
+  if (tooManyKeys(value)) return null;
+  return entries ? Object.entries(value) : Object.values(value);
+}
+
 function scanClasses(text) {
   const s = String(text == null ? '' : text);
-  if (!SCAN) return s.length > MAX_SCAN_STRING_CHARS ? new Set([OVER_LIMIT_CLASS]) : classifyTextCached(s);
   if (SCAN.overflow) return EMPTY_CLASSES;
   SCAN.strings += 1;
   SCAN.chars += s.length;
@@ -425,7 +445,7 @@ function scanClasses(text) {
 
 function tierFilter(classes, { softTier = softTierEnabled() } = {}) {
   return Array.from(classes)
-    .filter((c) => c === OVER_LIMIT_CLASS || HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c)))
+    .filter((c) => HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c)))
     .sort();
 }
 
@@ -446,12 +466,20 @@ const NEUTRAL_VALUE_RE =
   /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|not[\s_-].*|non[\s_-].*|never)$/;
 
 function valueIsAffirmative(value) {
+  // Over the node budget: treated as affirmative (fail closed; the request gates as over the limit).
+  if (!visit()) return true;
   if (value === true) return true;
   if (value === false || value == null) return false;
   if (typeof value === 'number') return Number.isFinite(value) && value > 0;
-  // Too big to read is treated as affirmative: fail closed.
-  if (Array.isArray(value)) return value.length > MAX_SCAN_ARRAY_ITEMS || value.some(valueIsAffirmative);
-  if (isObj(value)) return tooManyKeys(value) || Object.values(value).some(valueIsAffirmative);
+  if (Array.isArray(value) || isObj(value)) {
+    // Too big to read is treated as affirmative: fail closed.
+    const children = childrenOf(value);
+    if (!children) {
+      overLimit();
+      return true;
+    }
+    return children.some(valueIsAffirmative);
+  }
   return !NEUTRAL_VALUE_RE.test(String(value).trim().toLowerCase());
 }
 
@@ -459,25 +487,13 @@ const PROFILE_STATUS_KEY_RE = /pregnan|breast|lactat|nursing|ttc|fertility|conce
 const PROFILE_AGE_KEY_RE = /^(?:age|age_years|ageyears|user_age|years_old|age_range|age_group|age_bracket|agerange|agegroup)$/i;
 const AVOID_KEY_RE = /avoid|allerg|exclu|contraindicat|sensitiv\w*_ingredients|intoleran|blacklist|block/i;
 
-function collectStrings(value, out, depth = 0) {
-  if (SCAN && SCAN.overflow) return;
-  if (depth > MAX_SCAN_DEPTH || out.length >= MAX_SCAN_STRINGS) {
-    overLimit();
-    return;
-  }
+function collectStrings(value, out) {
+  if (!visit()) return;
   if (typeof value === 'string') out.push(value);
-  else if (Array.isArray(value)) {
-    if (value.length > MAX_SCAN_ARRAY_ITEMS) {
-      overLimit();
-      return;
-    }
-    value.forEach((v) => collectStrings(v, out, depth + 1));
-  } else if (isObj(value)) {
-    if (tooManyKeys(value)) {
-      overLimit();
-      return;
-    }
-    Object.values(value).forEach((v) => collectStrings(v, out, depth + 1));
+  else if (Array.isArray(value) || isObj(value)) {
+    const children = childrenOf(value);
+    if (!children) overLimit();
+    else children.forEach((v) => collectStrings(v, out));
   }
 }
 
@@ -492,13 +508,14 @@ function ageClass(value) {
 
 // A profile gates on what it SAYS, never on existing: neutral fields (skin_type=oily, age=30,
 // pregnancy_status=not_pregnant) add nothing.
-function classesForProfile(profile, sink, depth = 0) {
-  if (!isObj(profile)) return;
-  if (tooManyKeys(profile) || depth > MAX_SCAN_DEPTH) {
+function classesForProfile(profile, sink) {
+  if (!isObj(profile) || !visit()) return;
+  const entries = childrenOf(profile, true);
+  if (!entries) {
     overLimit();
     return;
   }
-  for (const [key, value] of Object.entries(profile)) {
+  for (const [key, value] of entries) {
     if (PROFILE_STATUS_KEY_RE.test(key)) {
       if (valueIsAffirmative(value)) sink.add('pregnancy_lactation_fertility');
       continue;
@@ -513,7 +530,7 @@ function classesForProfile(profile, sink, depth = 0) {
       continue;
     }
     if (isObj(value)) {
-      classesForProfile(value, sink, depth + 1);
+      classesForProfile(value, sink);
       continue;
     }
     const strings = [];
@@ -526,34 +543,30 @@ function classesForAvoidList(value, sink) {
   const strings = [];
   collectStrings(value, strings);
   for (const s of strings) {
-    if (s.length > MAX_SCAN_STRING_CHARS) {
-      overLimit();
-      continue;
-    }
+    // Budgeted first: a string over the limit is never viewed.
+    const classes = scanClasses(s);
+    if (SCAN.overflow) return;
+    classes.forEach((c) => sink.add(c));
     const script = scriptView(s);
-    if (s.length > MAX_SCAN_STRING_CHARS) {
-      overLimit();
-      continue;
-    }
     if (RETINOID_NAME_LATIN.test(` ${latinView(script)} `) || RETINOID_NAME_SCRIPT.test(script)) {
       sink.add('retinoid_negation');
     }
-    scanClasses(s).forEach((c) => sink.add(c));
   }
 }
 
-function classesForConstraints(constraints, sink, depth = 0) {
-  if (constraints == null) return;
+function classesForConstraints(constraints, sink) {
+  if (constraints == null || !visit()) return;
   if (isObj(constraints)) {
-    if (tooManyKeys(constraints) || depth > MAX_SCAN_DEPTH) {
+    const entries = childrenOf(constraints, true);
+    if (!entries) {
       overLimit();
       return;
     }
-    for (const [key, value] of Object.entries(constraints)) {
+    for (const [key, value] of entries) {
       if (AVOID_KEY_RE.test(key)) classesForAvoidList(value, sink);
       else if (PROFILE_STATUS_KEY_RE.test(key)) {
         if (valueIsAffirmative(value)) sink.add('pregnancy_lactation_fertility');
-      } else classesForConstraints(value, sink, depth + 1);
+      } else classesForConstraints(value, sink);
     }
     return;
   }
@@ -581,7 +594,7 @@ function classesForSafetyFlags(flags, sink) {
     if (NEUTRAL_VALUE_RE.test(String(name).trim().toLowerCase())) continue;
     const classes = scanClasses(String(name).replace(/[_-]+/g, ' '));
     if (classes.size > 0) classes.forEach((c) => sink.add(c));
-    else if (!(SCAN && SCAN.overflow)) sink.add('safety_flag');
+    else if (!SCAN.overflow) sink.add('safety_flag');
   }
 }
 
@@ -619,18 +632,13 @@ function requestContainers(body) {
 // The gating classes carried by the request OUTSIDE its query text: earlier turns, profiles,
 // constraints and safety flags. Returns { classes, sources }.
 function retinoidSafetyClassesForRequestContext(body, options = {}) {
-  const previousScan = SCAN;
-  SCAN = { strings: 0, chars: 0, overflow: false };
-  try {
-    return readRequestContext(body, options);
-  } finally {
-    SCAN = previousScan;
-  }
+  SCAN = { strings: 0, chars: 0, nodes: 0, overflow: false };
+  return readRequestContext(body, options);
 }
 
 function readRequestContext(body, options) {
   const softTier = options.softTier ?? softTierEnabled();
-  const keep = (c) => c === 'safety_flag' || c === OVER_LIMIT_CLASS || HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c));
+  const keep = (c) => c === 'safety_flag' || HARD_CLASSES.has(c) || (softTier && SOFT_CLASSES.has(c));
   const all = new Set();
   const sources = new Set();
   const record = (source, collect) => {
@@ -665,7 +673,6 @@ function readRequestContext(body, options) {
       );
     }
     for (const key of FLAG_KEYS) record('safety_flags', (sink) => classesForSafetyFlags(container[key], sink));
-    if (SCAN.overflow) break;
   }
   if (SCAN.overflow) {
     all.add(OVER_LIMIT_CLASS);
@@ -681,6 +688,7 @@ module.exports = {
   MAX_SCAN_TOTAL_CHARS,
   MAX_SCAN_STRINGS,
   MAX_SCAN_ARRAY_ITEMS,
+  MAX_SCAN_NODES,
   softTierEnabled,
   HARD_PREGNANCY_LACTATION_FERTILITY_LATIN,
   HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT,

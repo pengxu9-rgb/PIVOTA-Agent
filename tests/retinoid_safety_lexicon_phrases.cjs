@@ -45,7 +45,8 @@ const HARD_NEGATION_PHRASES = [
   'allergic to retinol', 'intolerant to retinol', 'i react to retinol', 'sensitive to retinol', 'retinol irritates me',
   'retinol burns my skin', 'retinol broke me out', 'retinol gives me a rash', 'retinol not for me', 'retinol no thanks',
   'retinol alternative', 'retinoid allergy', 'no differin', 'no vit a', 'no added retinol', 'anything but retinol',
-  'other than retinol', 'instead of retinol', 'no tretinoin', 'adapalene free',
+  'other than retinol', 'instead of retinol', 'no tretinoin', 'adapalene free', 'avoid using any more retinol',
+  'not retinol based',
 ];
 
 // A negation of ANOTHER word next to a retinoid: these still ask for the retinoid.
@@ -56,7 +57,7 @@ const NEGATION_LOOKALIKE_ASKS = [
   'cruelty free retinol', 'first time retinol', 'retinol that wont irritate', 'retinol not drying', 'retinol serum free sample',
   'retinol with no fragrance', 'retinol no side effects', 'best retinol no purge', 'never used retinol before',
   'non irritating retinol', 'not too strong retinol', 'retinol cream not sticky', 'retinol free gift',
-  '레티놀 프리미엄', '레티놀 프리미엄 세럼', 'безопасный ретинол',
+  '레티놀 프리미엄', '레티놀 프리미엄 세럼', 'безопасный ретинол', 'nano retinol serum', 'what not to use with my retinol',
 ];
 
 const SOFT = {
