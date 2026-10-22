@@ -148,16 +148,20 @@ const QUALIFIERS = Object.freeze({
   standInAfter: afterHead(STAND_IN_AFTER),
   phytoBefore: beforeTail(['phyto']),
   likeAfter: afterHead(['like']),
+  freeAfter: afterHead(['free']),
 });
 // German glues "frei" onto the noun: "retinolfrei", "Retinolfreie Creme".
 const GLUED_FREI_RE = /^frei(?:e|er|es|en|em)?(?=\s|$)/;
 
 // 'absence', 'standin' or null for the text around one occurrence of ingredient `id`. `hyphenLike`:
 // the raw title glued this term to "-like".
-function qualifierKind(text, start, end, { id = null, hyphenLike = false } = {}) {
+// `hyphenFree`: the raw title glued this term to "-free" ("Retinol-Free Sample" is retinol-free, though
+// "retinol free sample" typed as words is a free sample).
+function qualifierKind(text, start, end, { id = null, hyphenLike = false, hyphenFree = false } = {}) {
   const before = text.slice(0, start);
   const after = text.slice(end);
   if (QUALIFIERS.absenceBefore.test(before) || QUALIFIERS.absenceAfter.test(after)) return 'absence';
+  if (hyphenFree && QUALIFIERS.freeAfter.test(after)) return 'absence';
   if (QUALIFIERS.standInBefore.test(before) || QUALIFIERS.standInAfter.test(after)) return 'standin';
   if (PLANT_ANALOGUE_IDS.includes(id) && QUALIFIERS.phytoBefore.test(before)) return 'standin';
   if (hyphenLike && QUALIFIERS.likeAfter.test(after)) return 'standin';
@@ -167,18 +171,26 @@ function qualifierKind(text, start, end, { id = null, hyphenLike = false } = {})
 // Every whole-word occurrence of `term` in normalised `text`, each with its qualifier kind. Whole words
 // on BOTH sides: "bioretinol" and "retinoloid" are not "retinol"; the one glued suffix recognised is
 // German "-frei", which is an absence.
-function termOccurrences(text, term, { id = TERM_TO_ID.get(term) || null, hyphenLike = false } = {}) {
+// A Latin term followed by a word that makes it a different substance: "retinol palmitate" is a retinyl
+// ester, not retinol.
+const LATIN_DIFFERENT_COMPOUND_AFTER = Object.freeze({
+  retinol: /^\s(?:palmitate|acetate|propionate|linoleate|esters?)(?=\s|$)/,
+});
+
+function termOccurrences(text, term, { id = TERM_TO_ID.get(term) || null, hyphenLike = false, hyphenFree = false } = {}) {
   const out = [];
   if (!text || !term) return out;
   const pattern = new RegExp(`(?:^|\\s)${escapeRegExp(term)}(?=\\s|$|frei)`, 'g');
+  const differentCompound = LATIN_DIFFERENT_COMPOUND_AFTER[term] || null;
   let match;
   while ((match = pattern.exec(text)) !== null) {
     const start = match.index + (match[0].startsWith(' ') ? 1 : 0);
     let end = start + term.length;
     const glued = text.slice(end).match(GLUED_FREI_RE);
     if (!glued && !/^(?:\s|$)/.test(text.slice(end))) continue;
+    if (!glued && differentCompound && differentCompound.test(text.slice(end))) continue;
     if (glued) end += glued[0].length;
-    const kind = glued ? 'absence' : qualifierKind(text, start, end, { id, hyphenLike });
+    const kind = glued ? 'absence' : qualifierKind(text, start, end, { id, hyphenLike, hyphenFree });
     out.push({ start, end, qualified: Boolean(kind), kind });
   }
   return out;
@@ -214,14 +226,15 @@ const NON_LATIN_INGREDIENT_NAMES = Object.freeze({
 const HAN_NAME_RE = /[\u3400-\u9fff]$/;
 const HAN_ESTER_OR_ETHER_AFTER_RE = /^[\u3400-\u9fff]{0,4}[酯醚]/;
 const CJK_COMPOUND_RULES = Object.freeze({
-  甘油: {
-    before: /(?:基|聚|硝酸)$/,
-    after: /^(?:三酯|二酯|单酯|單酯|酯|醚)/,
-  },
+  // (甘油三酯 / 甘油硬脂酸酯 / 甘油聚醚 are caught by the ester / ether rule above)
+  甘油: { before: /(?:基|聚|硝酸)$/ },
   グリセリン: { before: /(?:エチルヘキシル|ポリ|ジ|カプリリル|ヘキシル)$/ },
   글리세린: { before: /(?:에틸헥실|헥실|폴리|다이|카프릴릴)$/ },
+  // 类视黄醇 is "retinoids" (the family), not retinol
+  视黄醇: { before: /[类類]$/ },
+  視黃醇: { before: /[类類]$/ },
   レチノール: { before: /(?:パルミチン酸|酢酸|プロピオン酸|リノール酸)$/ },
-  레티놀: { after: /^(?:팔미테이트|아세테이트|프로피오네이트)/ },
+  레티놀: { after: /^\s*(?:팔미테이트|아세테이트|프로피오네이트)/ },
   サリチル酸: { after: /^(?:エチルヘキシル|ベンジル|メチル|フェニル|ブチルオクチル|ホモメンチル|オクチル)/ },
 });
 
@@ -246,7 +259,9 @@ const RUSSIAN_INGREDIENT_FORMS = Object.freeze({
   retinol: [`ретинол${RU_NOUN}`],
   hyaluronic_acid: [`гиалурон${RU_NOUN}`, `гиалуронов${RU_ADJ}`],
   niacinamide: [`ниацинамид${RU_NOUN}`],
-  ascorbic_acid: [`аскорбинов${RU_ADJ}`, `витамин(?:|а|у|ом|е)\\s+[cс](?=\\s|$)(?!${RU_INSTRUMENTAL_WORD})`],
+  // ... and in the plural only in a list of vitamin letters ("витамины С и Е", "витаминов С, Е")
+  ascorbic_acid: [`аскорбинов${RU_ADJ}`, `витамин(?:|а|у|ом|е)\\s+[cс](?=\\s|$)(?!${RU_INSTRUMENTAL_WORD})`,
+    `витамин(?:ы|ов|ами|ах)\\s+[cс](?=\\s*$|\\s+(?:и|[a-zа-я])(?=\\s|$))`],
   salicylic_acid: [`салицилов${RU_ADJ}`],
   ceramide_np: [`церамид${RU_NOUN}`],
   azelaic_acid: [`азелаинов${RU_ADJ}`],
@@ -276,9 +291,9 @@ function cjkOccurrences(text, alias) {
   return out;
 }
 
-function russianOccurrences(text, id) {
+function russianOccurrences(text, id, forms = RUSSIAN_INGREDIENT_FORMS[id] || []) {
   const out = [];
-  for (const form of RUSSIAN_INGREDIENT_FORMS[id] || []) {
+  for (const form of forms) {
     const pattern = new RegExp(`(?:^|\\s)(${form})(?=\\s|$)`, 'gu');
     let match;
     while ((match = pattern.exec(text)) !== null) {
@@ -292,15 +307,57 @@ function russianOccurrences(text, id) {
 }
 
 // Occurrences of any of an ingredient's names in normalised text, in every script.
-function ingredientOccurrences(text, latinTerms, id, { hyphenLikeTerms = [] } = {}) {
+function ingredientOccurrences(text, latinTerms, id, { hyphenLikeTerms = [], hyphenFreeTerms = [] } = {}) {
   const out = [];
-  for (const term of latinTerms) out.push(...termOccurrences(text, term, { id, hyphenLike: hyphenLikeTerms.includes(term) }));
+  for (const term of latinTerms) {
+    out.push(...termOccurrences(text, term, { id, hyphenLike: hyphenLikeTerms.includes(term), hyphenFree: hyphenFreeTerms.includes(term) }));
+  }
   for (const raw of NON_LATIN_INGREDIENT_NAMES[id] || []) {
     const alias = normalizeForMatch(raw);
     if (alias) out.push(...cjkOccurrences(text, alias));
   }
   out.push(...russianOccurrences(text, id));
   return out;
+}
+
+// A qualifier on a LIST of ingredients qualifies every one of them: "alternative to retinol and
+// niacinamide", "retinol and niacinamide alternative", "without retinol or vitamin c". Members are
+// adjacent occurrences joined only by a list word (and / or / nor, in the languages the absence words
+// come from) or by nothing (a comma, which normalisation removed). A group whose qualified members
+// disagree (an absence and a stand-in) is left as it is.
+const LIST_JOINER_RE = /^\s+(?:(?:and|or|nor|und|oder|et|ou|y|o|e|и|или)\s+)?$/u;
+function distributeListQualifiers(normalized, occurrences) {
+  const sorted = occurrences.slice().sort((a, b) => a.start - b.start);
+  const groups = [];
+  for (const occurrence of sorted) {
+    const last = groups[groups.length - 1];
+    const previous = last ? last[last.length - 1] : null;
+    if (previous && LIST_JOINER_RE.test(normalized.slice(previous.end, occurrence.start))) last.push(occurrence);
+    else groups.push([occurrence]);
+  }
+  return groups.flatMap((group) => {
+    const kinds = Array.from(new Set(group.map((occurrence) => occurrence.kind).filter(Boolean)));
+    if (group.length < 2 || kinds.length !== 1) return group;
+    return group.map((occurrence) => (occurrence.kind ? occurrence : { ...occurrence, qualified: true, kind: kinds[0] }));
+  });
+}
+
+// Every strict-table / stand-in term occurrence in normalised query text (longest terms first, no
+// overlaps), with list qualifiers distributed.
+function strictIngredientOccurrences(normalized) {
+  const consumed = new Array(normalized.length).fill(false);
+  const found = [];
+  for (const term of STRICT_TERMS_BY_LENGTH) {
+    const id = TERM_TO_ID.get(term);
+    for (const occurrence of termOccurrences(normalized, term)) {
+      let overlaps = false;
+      for (let i = occurrence.start; i < occurrence.end; i += 1) if (consumed[i]) overlaps = true;
+      if (overlaps) continue;
+      for (let i = occurrence.start; i < occurrence.end; i += 1) consumed[i] = true;
+      found.push({ ...occurrence, id });
+    }
+  }
+  return distributeListQualifiers(normalized, found);
 }
 
 // Query side: which table ingredients the text asks FOR, which it EXCLUDES (mentions only in a
@@ -310,20 +367,12 @@ function classifyStrictIngredientMentions(text) {
   const normalized = normalizeForMatch(text);
   const states = new Map();
   if (normalized) {
-    const consumed = new Array(normalized.length).fill(false);
-    for (const term of STRICT_TERMS_BY_LENGTH) {
-      const id = TERM_TO_ID.get(term);
-      for (const occurrence of termOccurrences(normalized, term)) {
-        let overlaps = false;
-        for (let i = occurrence.start; i < occurrence.end; i += 1) if (consumed[i]) overlaps = true;
-        if (overlaps) continue;
-        for (let i = occurrence.start; i < occurrence.end; i += 1) consumed[i] = true;
-        const state = states.get(id) || { positive: false, absence: false, standin: false };
-        if (occurrence.kind === 'absence') state.absence = true;
-        else if (occurrence.kind === 'standin') state.standin = true;
-        else state.positive = true;
-        states.set(id, state);
-      }
+    for (const occurrence of strictIngredientOccurrences(normalized)) {
+      const state = states.get(occurrence.id) || { positive: false, absence: false, standin: false };
+      if (occurrence.kind === 'absence') state.absence = true;
+      else if (occurrence.kind === 'standin') state.standin = true;
+      else state.positive = true;
+      states.set(occurrence.id, state);
     }
   }
   const wanted = [];
@@ -346,14 +395,13 @@ function classifyStrictIngredientMentions(text) {
 function stripNegatedStrictIngredientMentions(normalizedText) {
   const text = String(normalizedText || '');
   if (!text) return text;
+  const qualified = strictIngredientOccurrences(text).filter((occurrence) => occurrence.qualified);
+  if (qualified.length === 0) return text;
   let out = text;
-  for (const term of STRICT_TERMS_BY_LENGTH) {
-    const occurrences = termOccurrences(out, term).filter((occurrence) => occurrence.qualified);
-    for (let i = occurrences.length - 1; i >= 0; i -= 1) {
-      out = `${out.slice(0, occurrences[i].start)} ${out.slice(occurrences[i].end)}`;
-    }
+  for (const occurrence of qualified.sort((a, b) => b.start - a.start)) {
+    out = `${out.slice(0, occurrence.start)} ${out.slice(occurrence.end)}`;
   }
-  return out === text ? text : out.replace(/\s+/g, ' ').trim();
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 function extractPositiveStrictIngredientIds(text) {
@@ -380,6 +428,8 @@ const BARE_QUERY_FILLER_WORDS = new Set([
   'with', 'containing', 'contains', 'for',
   // "retinol dupe", "products like retinol", "retinol like results" ask for retinol(-similar) products
   'dupe', 'dupes', 'like', 'similar', 'results', 'result', 'effect', 'effects',
+  // marketing words, in the scripts a query may mix in ("레티놀 프리미엄" is a premium retinol)
+  'premium', '프리미엄', 'プレミアム',
 ]);
 
 // True when the query is ONLY one or more strict-table ingredients (plus filler words, including
@@ -484,13 +534,15 @@ function productTitleRaw(product) {
 
 // The naming terms a raw title glues to "-like" ("Retinol-Like Serum", "Retinol‑like"): normalisation
 // turns the hyphen into a space, so this is read before it.
-function hyphenLikeTerms(rawTitle, terms) {
+function hyphenGluedTerms(rawTitle, terms, word) {
   const raw = String(rawTitle || '').toLowerCase();
-  if (!/like/.test(raw)) return [];
+  if (!raw.includes(word)) return [];
   return terms.filter((term) =>
-    new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term).replace(/ /g, '[\\s-]+')}\\s*[-\u2010\u2011\u2013]\\s*like(?![\\p{L}\\p{N}])`, 'u').test(raw),
+    new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term).replace(/ /g, '[\\s-]+')}\\s*[-\u2010\u2011\u2013]\\s*${word}(?![\\p{L}\\p{N}])`, 'u').test(raw),
   );
 }
+const hyphenLikeTerms = (rawTitle, terms) => hyphenGluedTerms(rawTitle, terms, 'like');
+const hyphenFreeTerms = (rawTitle, terms) => hyphenGluedTerms(rawTitle, terms, 'free');
 
 // How the product mentions one ingredient, STRUCTURED EVIDENCE FIRST:
 //   'named'         its ingredient_ids carry it, or a structured ingredient entry names it (not
@@ -522,6 +574,7 @@ function productIngredientMention(product, ingredientId) {
   const titleTerms = strictIngredientNamingTerms(id);
   const titleOccurrences = ingredientOccurrences(normalizeForMatch(titleRaw), titleTerms, id, {
     hyphenLikeTerms: hyphenLikeTerms(titleRaw, titleTerms),
+    hyphenFreeTerms: hyphenFreeTerms(titleRaw, titleTerms),
   });
   for (const occurrence of titleOccurrences) {
     if (!occurrence.qualified) return 'named';
@@ -557,11 +610,74 @@ function admitIngredientLaneProducts(products = [], { ingredientIds = [] } = {})
 
 // The exclusion a query like "niacinamide-free serum" or "retinol alternative serum" asks for: no row
 // that names the excluded ingredient. Order is preserved and nothing is added.
+// An EXCLUSION excludes the ingredient's whole family, not just its name: "retinol alternative serum"
+// must not serve a retinal or a Granactive Retinoid serum. A family member is read like the ingredient
+// (whole words, qualifiers, CJK compound and negation rules, bounded Russian endings), in titles and
+// structured fields, and any positive mention excludes the row (no INCI veto: an exclusion fails
+// toward excluding). Asking FOR an ingredient (lane admission) is unchanged: only its own name counts.
+//   retinol: the retinoids -- retinal / retinaldehyde, retinyl esters, hydroxypinacolone retinoate
+//            (HPR, Granactive Retinoid), retinoic acid / tretinoin / isotretinoin, adapalene,
+//            tazarotene, and the word "retinoid" itself.
+//   others:  their structured INCI synonyms (salts, esters, derivatives), now read in titles too.
+// The tables have no AHA (glycolic / lactic / mandelic) or other acid family: none is a table ingredient.
+const RETINOID_FAMILY_LATIN = Object.freeze([
+  'retinal', 'retinaldehyde', 'retinyl palmitate', 'retinyl acetate', 'retinyl propionate', 'retinyl linoleate',
+  'retinyl retinoate', 'retinyl ester', 'retinyl esters', 'retinol palmitate', 'retinol acetate',
+  'hydroxypinacolone retinoate', 'hpr', 'granactive retinoid', 'retinoid', 'retinoids', 'retinoic acid',
+  'tretinoin', 'isotretinoin', 'adapalene', 'tazarotene',
+]);
+const INGREDIENT_FAMILY = Object.freeze({
+  retinol: {
+    latin: RETINOID_FAMILY_LATIN,
+    nonLatin: ['视黄醛', '視黃醛', '视黄醇棕榈酸酯', '視黃醇棕櫚酸酯', '视黄醇醋酸酯', '視黃醇醋酸酯', '视黄醇丙酸酯',
+      '羟基频哪酮视黄酸酯', '羥基頻哪酮視黃酸酯', '视黄酸', '視黃酸', '维a酸', '維a酸', '维甲酸', '維甲酸', '阿达帕林', '阿達帕林',
+      '他扎罗汀', '类视黄醇', '類視黃醇',
+      'レチナール', 'パルミチン酸レチノール', '酢酸レチノール', 'レチノイン酸', 'トレチノイン', 'アダパレン',
+      'ヒドロキシピナコロンレチノアート', 'レチノイド',
+      '레티날', '레티날데하이드', '레티닐팔미테이트', '레티닐 팔미테이트', '레티놀팔미테이트', '레티놀 팔미테이트',
+      '하이드록시피나코론레티노에이트', '아다팔렌', '트레티노인', '레티노이드'],
+    russian: [`ретинал(?:|ь|я|ю|ем|е)`, `ретинальдегид${RU_NOUN}`, `ретинилпальмитат${RU_NOUN}`, `ретинил\\s+пальмитат${RU_NOUN}`,
+      `адапален${RU_NOUN}`, `третиноин${RU_NOUN}`, `ретиноид${RU_NOUN}`],
+  },
+});
+
+function familyLatinTerms(id) {
+  const extra = INGREDIENT_FAMILY[id]?.latin || [];
+  const synonyms = STRUCTURED_INCI_SYNONYMS[id] || [];
+  return Array.from(new Set([...extra, ...synonyms].map((term) => normalizeForMatch(term)).filter(Boolean)));
+}
+
+// True when the product names the ingredient or any member of its family, positively, anywhere.
+function productNamesIngredientFamily(product, ingredientId) {
+  const id = String(ingredientId || '').trim().toLowerCase();
+  if (!id || !product || typeof product !== 'object') return false;
+  if (productIngredientMention(product, id) === 'named') return true;
+  const latin = familyLatinTerms(id);
+  const nonLatin = (INGREDIENT_FAMILY[id]?.nonLatin || []).map((raw) => normalizeForMatch(raw)).filter(Boolean);
+  const russian = INGREDIENT_FAMILY[id]?.russian || [];
+  if (latin.length === 0 && nonLatin.length === 0 && russian.length === 0) return false;
+  const titleRaw = productTitleRaw(product);
+  const { actives, inci } = productStructuredFields(product);
+  const texts = [
+    { text: normalizeForMatch(titleRaw), hyphenLike: hyphenLikeTerms(titleRaw, latin), hyphenFree: hyphenFreeTerms(titleRaw, latin) },
+    ...[...actives, ...inci].map((text) => ({ text, hyphenLike: [], hyphenFree: [] })),
+  ];
+  for (const { text, hyphenLike, hyphenFree } of texts) {
+    for (const term of latin) {
+      const found = termOccurrences(text, term, { id, hyphenLike: hyphenLike.includes(term), hyphenFree: hyphenFree.includes(term) });
+      if (found.some((occurrence) => !occurrence.qualified)) return true;
+    }
+    for (const alias of nonLatin) if (cjkOccurrences(text, alias).some((occurrence) => !occurrence.qualified)) return true;
+    if (russianOccurrences(text, id, russian).some((occurrence) => !occurrence.qualified)) return true;
+  }
+  return false;
+}
+
 function excludeProductsNamingIngredients(products = [], { ingredientIds = [] } = {}) {
   const list = Array.isArray(products) ? products : [];
   const ids = cleanIds(ingredientIds);
   if (ids.length === 0) return { products: list, dropped_count: 0 };
-  const kept = list.filter((product) => !ids.some((id) => productIngredientMention(product, id) === 'named'));
+  const kept = list.filter((product) => !ids.some((id) => productNamesIngredientFamily(product, id)));
   return { products: kept, dropped_count: list.length - kept.length };
 }
 
@@ -576,15 +692,21 @@ function productCategoryPath(product) {
 
 // `requiredIds` (optional): rows must also NAME each of these (the stand-in a query asked for:
 // "bakuchiol instead of retinol"). `scopePrefix` (optional): rows outside this category path are
-// dropped too (a row with no path fails closed).
-function excludeIngredientsFromPage(body, { ingredientIds = [], requiredIds = [], scopePrefix = null } = {}) {
+// dropped too. A row with NO category path (typical of backend-lane rows) is judged by the path
+// `inferCategoryPath(row)` reads from its own title / product type; when that names nothing, the row is
+// KEPT (fail safe): the scope only stops cross-area padding (a shampoo for a skincare query), the
+// exclusion above has already been applied to it, and dropping every unfiled row would empty whole
+// lanes ("glycerin-free hair gel" served by the backend lane).
+function excludeIngredientsFromPage(body, { ingredientIds = [], requiredIds = [], scopePrefix = null, inferCategoryPath = null } = {}) {
   if (!body || typeof body !== 'object' || !Array.isArray(body.products)) return { body, dropped_count: 0 };
   const exclusion = excludeProductsNamingIngredients(body.products, { ingredientIds });
   const required = admitIngredientLaneProducts(exclusion.products, { ingredientIds: requiredIds });
   const scope = scopePrefix ? String(scopePrefix).toLowerCase().replace(/\/+$/, '') : '';
   const kept = scope
     ? required.products.filter((product) => {
-        const path = productCategoryPath(product);
+        let path = productCategoryPath(product);
+        if (!path && typeof inferCategoryPath === 'function') path = String(inferCategoryPath(product) || '').toLowerCase().replace(/\/+$/, '');
+        if (!path) return true;
         return path === scope || path.startsWith(`${scope}/`);
       })
     : required.products;
@@ -613,15 +735,20 @@ function excludeIngredientsFromPage(body, { ingredientIds = [], requiredIds = []
 // ("<ingredient>-free": the search-quality contract reads "retinol-free" as avoid-retinoids). Absence
 // forms only -- a stand-in ("retinol alternative") is not "free of" anything. Strict-table terms only.
 const RAW_TERM = `(${STRICT_TERM_ALTERNATION.replace(/ /g, '[\\s-]+')})`;
+// A list of terms ("retinol and niacinamide", "retinol, niacinamide or vitamin c"), one capture.
+const RAW_TERM_NC = `(?:${STRICT_TERM_ALTERNATION.replace(/ /g, '[\\s-]+')})`;
+const RAW_LIST_JOINER = '(?:\\s*,\\s*(?:(?:and|or)\\s+)?|\\s+(?:and|or)\\s+|\\s*&\\s*)';
+const RAW_TERM_LIST = `(${RAW_TERM_NC}(?:${RAW_LIST_JOINER}${RAW_TERM_NC})*)`;
+const RAW_LIST_SPLIT_RE = new RegExp(RAW_LIST_JOINER, 'i');
 // "0%" / "0.0%" only as its own number: never the tail of "1.0%" or "10%".
 const RAW_NEGATED_TERM_RE = new RegExp(
-  `(?<![\\w.-])(?:without(?:\\s+any)?|no(?:\\s+added)?|non|not|avoid(?:ing)?|free\\s+(?:of|from)|zero|0(?:\\.0+)?\\s*%|sans|sin|ohne|frei\\s+von|libre\\s+de)[\\s-]+${RAW_TERM}\\b`,
+  `(?<![\\w.-])(?:without(?:\\s+any)?|no(?:\\s+added)?|non|not|avoid(?:ing)?|free\\s+(?:of|from)|zero|0(?:\\.0+)?\\s*%|sans|sin|ohne|frei\\s+von|libre\\s+de)[\\s-]+${RAW_TERM_LIST}\\b`,
   'gi',
 );
 // German glues it on: "retinolfrei", "Retinol-frei", "Retinolfreie Creme".
 const RAW_TERM_FREI_RE = new RegExp(`\\b${RAW_TERM}-?frei(?:e|er|es|en|em)?\\b`, 'gi');
 const RAW_TERM_FREE_RE = new RegExp(
-  `\\b${RAW_TERM}[\\s-]+free\\b(?![\\s-]+${FREE_NOT_ABSENCE}\\b)`,
+  `\\b${RAW_TERM_LIST}[\\s-]+free\\b(?![\\s-]+${FREE_NOT_ABSENCE}\\b)`,
   'gi',
 );
 // A trailing zero: "retinol 0%", "Retinol-0.0%". Not "retinol 10%", "retinol 1.0%", "retinol 0.3%".
@@ -635,10 +762,12 @@ function canonicalizeEnglishIngredientNegations(rawQuery) {
   const text = String(rawQuery || '');
   if (!text.trim()) return { query: text, changed: false };
   const toFree = (_match, term) => `${term.toLowerCase().replace(/[\s-]+/g, ' ')}-free`;
+  // A list keeps every member: "without retinol and niacinamide" -> "retinol-free niacinamide-free".
+  const listToFree = (_match, list) => list.split(RAW_LIST_SPLIT_RE).map((term) => toFree(null, term)).join(' ');
   let out = text
-    .replace(RAW_NEGATED_TERM_RE, toFree)
+    .replace(RAW_NEGATED_TERM_RE, listToFree)
     .replace(RAW_TERM_FREI_RE, toFree)
-    .replace(RAW_TERM_FREE_RE, toFree)
+    .replace(RAW_TERM_FREE_RE, listToFree)
     .replace(RAW_TERM_ZERO_RE, toFree);
   if (out !== text && RAW_TERM_ANY_RE.test(out)) out = out.replace(RAW_CREAM_NOUN_RE, 'cream');
   if (out === text) return { query: text, changed: false };
@@ -665,6 +794,7 @@ module.exports = {
   productNamesStrictIngredientsPositively,
   admitIngredientLaneProducts,
   excludeProductsNamingIngredients,
+  productNamesIngredientFamily,
   excludeIngredientsFromPage,
   canonicalizeEnglishIngredientNegations,
 };

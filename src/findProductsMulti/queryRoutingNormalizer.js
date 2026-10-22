@@ -148,7 +148,30 @@ const EXCLUSION_QUALIFIER_WORDS = new Set([
   'a', 'an', 'the', 'some', 'me', 'my', 'i', 'best', 'top', 'good', 'great', 'popular',
   'product', 'products', 'item', 'items', 'shop', 'buy', 'find', 'show', 'search', 'get', 'want', 'need',
   'looking', 'recommend', 'recommendation', 'recommendations', 'please', 'with', 'something',
+  // list words between the excluded ingredients ("instead of retinol and niacinamide")
+  'and', 'or', 'nor',
+  // marketing words
+  'premium', '프리미엄', 'プレミアム',
+  // face and skin ARE skincare, the default area: "retinol alternative for my face" is a bare stand-in ask
+  'face', 'faces', 'facial', 'skin', 'complexion',
 ]);
+// Price words and budgets are not something to serve, and they travel with the rewrite (below), so the
+// price cap the rest of the pipeline reads from them still applies.
+const PRICE_WORDS = new Set([
+  'cheap', 'cheaper', 'cheapest', 'affordable', 'budget', 'inexpensive', 'low', 'cost', 'priced', 'price',
+  'under', 'below', 'less', 'than', 'max', 'maximum', 'up', 'to', 'dollar', 'dollars', 'usd', 'bucks',
+]);
+const PRICE_ADJECTIVE_RE = /(?<![\p{L}\p{N}])(?:cheap|cheaper|cheapest|affordable|budget|inexpensive|low[-\s]cost)(?![\p{L}\p{N}])/giu;
+const BUDGET_PHRASE_RE =
+  /(?<![\p{L}\p{N}])(?:under|below|less\s+than|max(?:imum)?|up\s+to)\s*(?:\$|usd\s*)?\d+(?:\.\d+)?\s*(?:\$|usd|dollars?|bucks)?(?![\p{L}\p{N}])|\$\s*\d+(?:\.\d+)?/giu;
+
+// The price words and budget phrases of a raw query, in order, to carry onto a rewrite.
+function pricePhrases(rawQuery) {
+  const raw = String(rawQuery || '');
+  const adjectives = (raw.match(PRICE_ADJECTIVE_RE) || []).map((value) => value.trim().toLowerCase());
+  const budgets = (raw.match(BUDGET_PHRASE_RE) || []).map((value) => value.trim().replace(/\s+/g, ' '));
+  return { before: adjectives.join(' '), after: budgets.join(' ') };
+}
 const INGREDIENT_ENGLISH_NAME = Object.freeze({ ascorbic_acid: 'vitamin c', ceramide_np: 'ceramide' });
 const ingredientName = (id) => INGREDIENT_ENGLISH_NAME[id] || id.replace(/_/g, ' ');
 
@@ -160,7 +183,13 @@ function exclusionRemainderWords(normalized, ids) {
   let text = ` ${normalized} `;
   const terms = Array.from(new Set(ids.flatMap((id) => strictIngredientNamingTerms(id)))).sort((a, b) => b.length - a.length);
   for (const term of terms) text = text.replace(new RegExp(`\\s${escapeRegExp(term)}(?=\\s|frei)`, 'g'), ' ');
-  return text.split(/\s+/).filter((word) => word && !EXCLUSION_QUALIFIER_WORDS.has(word) && !/^0(?:\.0+)?$/.test(word));
+  return text.split(/\s+/).filter((word) => word && !EXCLUSION_QUALIFIER_WORDS.has(word));
+}
+
+// The remainder words that name something to serve: price words and plain numbers (a budget, a bare
+// zero left by "retinol 0") are not.
+function servableRemainderWords(words) {
+  return words.filter((word) => !PRICE_WORDS.has(word) && !/^\d+(?:\.\d+)?$/.test(word));
 }
 
 // A query that EXCLUDES ingredients and names nothing else to serve but, at most, a body area or a
@@ -186,24 +215,35 @@ function rewriteExclusionQuery(query) {
   const standInActives = Object.values(STAND_IN_ACTIVE_ALIASES);
   if (wanted.some((id) => !standInActives.includes(id))) return unchanged;
   const normalized = normalizeForMatch(query);
-  const rest = exclusionRemainderWords(normalized, [...excluded, ...wanted]);
+  const rest = servableRemainderWords(exclusionRemainderWords(normalized, [...excluded, ...wanted]));
   const area = areaOf(rest.join(' '));
   if (area === 'mixed' || area === 'other') return unchanged;
   const restWithoutArea = rest.filter((word) => !(area && AREA_ONLY_WORDS[area].includes(word)));
   if (restWithoutArea.length > 0) return unchanged;
-  const withArea = (text) => (area ? `${text} ${AREA_NOUN[area]}` : text);
+  const price = pricePhrases(query);
+  const withArea = (text) => [price.before, area ? `${text} ${AREA_NOUN[area]}` : text, price.after].filter(Boolean).join(' ');
   if (wanted.length > 0) {
     return { query: withArea(wanted.map(ingredientName).join(' ')), kind: 'stand_in_named', requiredIds: wanted };
   }
   const standInOnly = extractStandInOnlyStrictIngredientIds(query);
   if (!area && standInOnly.length === excluded.length && excluded.every((id) => KNOWN_STAND_INS[id])) {
     const standIns = Array.from(new Set(excluded.flatMap((id) => KNOWN_STAND_INS[id])));
-    return { query: standIns.join(' '), kind: 'stand_in_known', requiredIds: standIns };
+    return { query: withArea(standIns.join(' ')), kind: 'stand_in_known', requiredIds: standIns };
   }
   if (area) {
     return { query: withArea(excluded.map((id) => `${ingredientName(id)}-free`).join(' ')), kind: 'area', requiredIds: [] };
   }
   return unchanged;
+}
+
+// The category path a row WITHOUT one reads as, from its own title / product type / category text, for
+// the door's scope check (strictIngredientQuery.excludeIngredientsFromPage). '' when nothing is named.
+function inferRowCategoryPath(product) {
+  if (!product || typeof product !== 'object') return '';
+  const text = [product.title, product.name, product.product_title, product.product_type, product.category]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .join(' ');
+  return text ? resolveBeautyCategoryPathPrefixFromText(text) || '' : '';
 }
 
 // The category scope a query that excludes an ingredient keeps the page in:
@@ -333,6 +373,7 @@ function buildRoutingQueryLogFields(normalization, extra = {}) {
 
 module.exports = {
   exclusionCategoryScope,
+  inferRowCategoryPath,
   isBareIngredientNegationQuery,
   rewriteExclusionQuery,
   rewriteIngredientLikeBrandQuery,
