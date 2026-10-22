@@ -398,6 +398,7 @@ const {
   isServedPriceAsOfEnabled: isCanonicalServedPriceAsOfEnabled,
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
+const retinoidSafetySignal = require('./services/retinoidSafetySignal');
 const marketTelemetry = require('./services/marketTelemetry');
 const {
   enforceServingCurrency,
@@ -997,6 +998,15 @@ const INVOKE_FPM_STAGE_CONTEXT = new AsyncLocalStorage();
 // (searchBeautyExternalSeedProductsMainline) and read on the invoke completion log line. See
 // services/marketTelemetry.js for why it is observed rather than re-derived.
 const INVOKE_MARKET_CONTEXT = new AsyncLocalStorage();
+// Per-request retinoid safety classes carried OUTSIDE the query text: earlier turns, a user
+// profile, ingredient constraints, safety flags (src/services/retinoidSafetySignal.js). Written
+// once at the top of handleInvokeRequest and read by inferBeautyMainlineIntent, so every beauty
+// lane that infers intent from the query also sees what the rest of the request said.
+const INVOKE_RETINOID_SAFETY_CONTEXT = new AsyncLocalStorage();
+// The invoke operations whose beauty lanes and response net read the retinoid safety context. Every
+// other operation never runs the context reader (find_products, the single-merchant search, never
+// reaches the beauty gate: it is on the follow-up list of operations the gate does not cover yet).
+const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi']);
 
 // Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
 // scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum
@@ -19012,6 +19022,12 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
     reasons.push('fragrance_product_for_fragrance_free_query');
   }
 
+  // Built by buildSearchQualityContract (src/findProductsMulti/queryUnderstanding.js) for a
+  // pregnancy-safe or avoid-retinoids query, and read by nothing until now.
+  if (Array.isArray(hard.exclusions) && hard.exclusions.includes('retinoid_forward') && beautyProductIsRetinoidForSafety(product)) {
+    reasons.push('retinoid_forward_excluded');
+  }
+
   return {
     eligible: reasons.length === 0,
     reasons,
@@ -20078,6 +20094,211 @@ function beautyQueryNamesOtherFamilyThan(raw = '', familyPathPrefix = '') {
   return /\b(self[-\s]?tan\w*|sunless|tanning|tanners?|bronz\w*)\b/i.test(raw) || /美黑|セルフタンニング/.test(raw);
 }
 
+// The retinoid safety classes for this query: its own text, plus whatever the in-flight request
+// carried outside it (INVOKE_RETINOID_SAFETY_CONTEXT). [] means no reason to gate.
+function resolveBeautyRetinoidSafetyClasses(queryText = '') {
+  const classes = new Set(retinoidSafetySignal.retinoidSafetyClassesForText(queryText));
+  const requestContext = INVOKE_RETINOID_SAFETY_CONTEXT.getStore();
+  if (requestContext && Array.isArray(requestContext.classes)) {
+    for (const c of requestContext.classes) classes.add(c);
+  }
+  return Array.from(classes).sort();
+}
+
+// The raw text a product carries about itself: names, descriptions, ingredients and INCI, as
+// typed. The search-normalised candidate texts drop Hangul and Cyrillic, so a retinoid named only
+// in Korean or Russian ("레티놀 프리미엄 세럼", "Крем с ретинолом") was invisible to them.
+const BEAUTY_PRODUCT_RAW_SAFETY_FIELDS = [
+  'title', 'name', 'product_name', 'display_name', 'description', 'ingredients', 'inci', 'inci_list',
+  'ingredients_inci', 'active_ingredients', 'key_ingredients', 'raw_ingredient_text_clean', 'pdp_ingredients_raw',
+  'pdp_active_ingredients_raw', 'pdp_description_raw', 'inci_normalized',
+];
+function buildBeautyProductRawSafetyText(product) {
+  const parts = [];
+  const append = (value, depth = 0) => {
+    if (depth > 3 || parts.length > 400 || value == null) return;
+    if (typeof value === 'string') {
+      if (value.trim()) parts.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) append(item, depth + 1);
+      return;
+    }
+    if (typeof value === 'object') {
+      for (const key of ['name', 'title', 'inci', 'ingredient', 'label']) append(value[key], depth + 1);
+    }
+  };
+  const sources = [product];
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : null;
+  if (seedData) {
+    sources.push(seedData);
+    if (seedData.snapshot && typeof seedData.snapshot === 'object') sources.push(seedData.snapshot);
+  }
+  for (const holder of [product, seedData]) {
+    if (holder && holder.ingredient_intel && typeof holder.ingredient_intel === 'object') sources.push(holder.ingredient_intel);
+  }
+  for (const source of sources) {
+    for (const field of BEAUTY_PRODUCT_RAW_SAFETY_FIELDS) append(source[field]);
+  }
+  return parts.join(' \n ').normalize('NFKC');
+}
+
+// Korean and Russian retinoid names, matched on the raw text: Korean as written, with or without
+// the space in "레티닐 팔미테이트"; Russian with up to four inflection letters after the stem
+// (ретинол, ретинола, ретинолом; ретиноидная).
+const BEAUTY_PRODUCT_RETINOID_KO_RE = /레티놀|레티날|레티노이드|레티닐 ?팔미테이트/;
+const BEAUTY_PRODUCT_RETINOID_RU_RE = /(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])/i;
+
+// A product that names a retinoid ONLY inside a stand-in phrase ("Bakuchiol Retinol Alternative
+// Serum", "Phyto-Retinol Night Cream", "Retinol-Like Serum") is not a retinoid product, unless its
+// description or its structured ingredients (INCI, actives, key ingredients) name a real retinoid.
+// This follows the strict ingredient reader's naming rules (src/findProductsMulti/
+// strictIngredientQuery.js): a stand-in or negated mention never counts as naming the ingredient.
+// A bare "retinol like" (no hyphen) is NOT treated as a stand-in: "Retinol Like Butter Balm" is a
+// retinol balm, so it stays gated.
+const BEAUTY_RETINOID_STAND_IN_PHRASES = [
+  /\b(?:bio|phyto|plant|botanical|herbal)[-\s]?retinol\b/g,
+  /\bplant[-\s]based\s+retinol\b/g,
+  /\b(?:retinol|retinoid)s?(?:\s+|-)(?:alternatives?|substitutes?|replacements?|dupes?)\b/g,
+  /\b(?:retinol|retinoid)s?-like\b/g,
+  /\b(?:alternatives?|substitutes?|replacements?)\s+(?:to|for)\s+(?:retinol|retinoids?)\b/g,
+  /\b(?:gentler|better|kinder|softer)\s+than\s+retinol\b/g,
+  /\b(?:retinol|retinoid)s?[-\s]?free\b/g,
+  /\b(?:no|without|zero|0\s?%)\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
+  /레티놀\s?(?:대체|프리(?!미엄))/g,
+  /(?:植物)?(?:视黄醇|視黃醇|a醇)(?:平替|替代|代替)|植物(?:视黄醇|視黃醇|a醇)/g,
+  /レチノール(?:代替|フリー|様)/g,
+];
+const BEAUTY_RETINOID_NAME_ANY_RE =
+  /\b(?:retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|granactive\s+retinoid)\b|视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール|레티놀|레티날|레티노이드|레티닐 ?팔미테이트|(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])/i;
+
+function beautyProductRetinoidMentionIsStandInOnly(product) {
+  if (!product || typeof product !== 'object') return false;
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
+  const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
+  const pick = (holders, fields) => {
+    const parts = [];
+    const add = (value) => {
+      if (typeof value === 'string') parts.push(value);
+      else if (Array.isArray(value)) value.forEach(add);
+      else if (value && typeof value === 'object') ['name', 'title', 'inci', 'ingredient', 'label'].forEach((k) => add(value[k]));
+    };
+    for (const holder of holders) for (const field of fields) add(holder[field]);
+    return parts.join(' \n ').normalize('NFKC').toLowerCase();
+  };
+  const intelHolders = [product.ingredient_intel, seedData.ingredient_intel].filter((v) => v && typeof v === 'object');
+  const title = pick([product, seedData, snapshot], ['title', 'name', 'product_name', 'display_name']);
+  const description = pick([product, seedData, snapshot], ['description', 'pdp_description_raw']);
+  const structured = pick([product, seedData, snapshot, ...intelHolders], [
+    'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients', 'key_ingredients',
+    'raw_ingredient_text_clean', 'pdp_ingredients_raw', 'pdp_active_ingredients_raw', 'ingredient_tokens',
+  ]);
+  const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
+  // The title must carry a stand-in phrase, and nothing anywhere may name a retinoid outside one.
+  if (strip(title) === title) return false;
+  return [title, description, structured].every((text) => !BEAUTY_RETINOID_NAME_ANY_RE.test(strip(text)));
+}
+
+// A product the retinoid safety rules must keep out: it names a retinoid and does not say it is
+// retinoid-free. Wider than the gate's own retinoidHit (it also reads prescription and
+// non-Latin names, on the raw title, description, ingredients and INCI). Only safety-signalled
+// requests use it, so it never changes a request without a signal.
+function beautyProductIsRetinoidForSafety(product) {
+  if (!product || typeof product !== 'object') return false;
+  const text = buildFallbackCandidateText(product);
+  const safetyText = buildBeautyProductSafetyText(product, text);
+  const rawText = buildBeautyProductRawSafetyText(product);
+  const scriptText = [text, safetyText, rawText].join(' ');
+  if (!scriptText.trim()) return false;
+  const hit =
+    /\b(bio[-\s]?retinol|retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|hpr|granactive\s+retinoid)\b/i.test(scriptText) ||
+    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/i.test(scriptText) ||
+    BEAUTY_PRODUCT_RETINOID_KO_RE.test(rawText) ||
+    BEAUTY_PRODUCT_RETINOID_RU_RE.test(rawText);
+  if (!hit) return false;
+  if (beautyProductRetinoidMentionIsStandInOnly(product)) return false;
+  return !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text);
+}
+
+// The last line of the retinoid safety rules: for a find_products_multi response to a request that
+// carries a retinoid safety signal, remove every retinoid product from every product list in the
+// body, whatever lane produced it. The beauty gate already keeps retinoids out of the lanes that
+// call it; this catches the lanes that never do (upstream proxy, canonical, fallbacks). Returns the
+// body unchanged when nothing is removed.
+function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
+  if (!Array.isArray(classes) || classes.length === 0) return body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  let removed = 0;
+  const looksLikeProduct = (item) =>
+    item && typeof item === 'object' && !Array.isArray(item) &&
+    (item.product_id != null || item.id != null || item.sku_id != null) &&
+    (item.title != null || item.name != null || item.product_name != null);
+  const walk = (value, depth) => {
+    if (depth > 6 || value == null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      const isProductList = value.some(looksLikeProduct);
+      const kept = isProductList
+        ? value.filter((item) => {
+            if (looksLikeProduct(item) && beautyProductIsRetinoidForSafety(item)) {
+              removed += 1;
+              return false;
+            }
+            return true;
+          })
+        : value;
+      return kept.map((item) => walk(item, depth + 1));
+    }
+    const out = {};
+    for (const [key, child] of Object.entries(value)) {
+      out[key] = key === 'variants' ? child : walk(child, depth + 1);
+    }
+    return out;
+  };
+  const next = walk(body, 0);
+  if (removed === 0) return body;
+  if (Array.isArray(body.products) && typeof body.total === 'number' && Array.isArray(next.products)) {
+    next.total = Math.max(0, body.total - (body.products.length - next.products.length));
+  }
+  next.metadata = {
+    ...(next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata) ? next.metadata : {}),
+    retinoid_safety_net: { removed_count: removed, classes: classes.slice() },
+  };
+  return next;
+}
+
+// The retinoid safety net for one find_products_multi response: resolve the request's retinoid
+// safety classes (its query texts plus the request context) and strip retinoid products when there
+// are any. If anything here throws, it fails CLOSED: every product goes, the response still goes
+// out, and the body says why.
+function applyRetinoidSafetyNetForInvokeResponse({ body, queryTexts = [], requestContext = null, onError = null } = {}) {
+  try {
+    // Each text is read on its own: joined, a negation at the end of one ("retinol serum, don't want")
+    // would bind to the retinoid that starts the next copy of the same query.
+    const texts = Array.from(new Set(queryTexts.filter((v) => typeof v === 'string' && v.trim())));
+    const classes = INVOKE_RETINOID_SAFETY_CONTEXT.run(requestContext || { classes: [], sources: [] }, () => {
+      const all = new Set(resolveBeautyRetinoidSafetyClasses(''));
+      for (const text of texts) resolveBeautyRetinoidSafetyClasses(text).forEach((c) => all.add(c));
+      return Array.from(all).sort();
+    });
+    return applyRetinoidSafetyNetToSearchBody(body, classes);
+  } catch (err) {
+    if (typeof onError === 'function') onError(err);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+    // Copied field by field: whatever threw above may throw again on a second read.
+    const out = {};
+    for (const key of Object.keys(body)) {
+      try {
+        out[key] = body[key];
+      } catch (_) {
+        // a field that cannot be read is left out
+      }
+    }
+    const metadata = out.metadata && typeof out.metadata === 'object' && !Array.isArray(out.metadata) ? out.metadata : {};
+    return { ...out, products: [], total: 0, metadata: { ...metadata, retinoid_safety_net: { error: true } } };
+  }
+}
+
 function inferBeautyMainlineIntent(queryText = '') {
   const raw = String(queryText || '');
   const normalized = normalizeSearchTextForMatch(raw);
@@ -20138,6 +20359,19 @@ function inferBeautyMainlineIntent(queryText = '') {
     /怀孕|懷孕|备孕|備孕|孕期|不要视黄醇|不含视黄醇|避开视黄醇/.test(raw)
   ) {
     safety.add('avoid_retinoids');
+  }
+  // The wider retinoid safety lexicon, on the query text and on the rest of the request. A
+  // pregnancy / lactation / fertility signal gets everything avoid_retinoids has always meant
+  // (retinoids AND exfoliating acids out, pregnancy-safe retrieval). Every other class gates
+  // retinoids only: 'retinoid_gate_only' keeps the acid rule, the retrieval variants and the
+  // ranking boosts exactly as they were.
+  const retinoidSafetyClasses = resolveBeautyRetinoidSafetyClasses(raw);
+  if (retinoidSafetyClasses.length > 0) {
+    const legacyAvoidRetinoids = safety.has('avoid_retinoids');
+    safety.add('avoid_retinoids');
+    if (!legacyAvoidRetinoids && !retinoidSafetyClasses.includes('pregnancy_lactation_fertility')) {
+      safety.add('retinoid_gate_only');
+    }
   }
   if (
     /\b(rosacea|redness|sensitive|sensiti[sz]ed|stinging|burning|gentle|fragrance[-\s]?free|dry\s*sensitive)\b/i.test(raw) ||
@@ -20844,10 +21078,13 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     /\b(bio[-\s]?retinol|retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(safetyText) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(safetyText);
   if (safety.has('avoid_retinoids')) {
-    if (retinoidHit && !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)) {
+    if (beautyProductIsRetinoidForSafety(product)) {
       return true;
     }
-    if (/\b(resurfacing|pore\s*refine|clarifying|peel|peeling|exfoliating|aha|bha|salicylic|glycolic|lactic|mandelic)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸/i.test(text)) {
+    if (
+      !safety.has('retinoid_gate_only') &&
+      /\b(resurfacing|pore\s*refine|clarifying|peel|peeling|exfoliating|aha|bha|salicylic|glycolic|lactic|mandelic)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸/i.test(text)
+    ) {
       return true;
     }
   }
@@ -21756,7 +21993,7 @@ function buildBeautyMainlineRetrievalQueries(queryText = '', intent = null) {
       push('niacinamide azelaic serum');
     }
   }
-  if (profile.safety.includes('avoid_retinoids')) {
+  if (profile.safety.includes('avoid_retinoids') && !profile.safety.includes('retinoid_gate_only')) {
     push('pregnancy safe skincare brightening');
     push('retinol free brightening serum');
     push('daily sunscreen pregnancy safe');
@@ -22575,7 +22812,11 @@ function scoreBeautyExternalSeedProduct({
   if (bucket === 'skincare' && !explicitCategoryPathQuery) score += 12;
   if ((bucket === 'makeup' || bucket === 'fragrance') && explicitCategoryPathQuery) score += 10;
   if (bucket === 'bodycare' && targetFamilies.includes('moisturizer')) score += 4;
-  if (intent?.safety?.includes('avoid_retinoids') && /\b(retinol[-\s]?free|retinoid[-\s]?free|pregnancy[-\s]?safe)\b/i.test(candidateText)) {
+  if (
+    intent?.safety?.includes('avoid_retinoids') &&
+    !intent.safety.includes('retinoid_gate_only') &&
+    /\b(retinol[-\s]?free|retinoid[-\s]?free|pregnancy[-\s]?safe)\b/i.test(candidateText)
+  ) {
     score += 16;
   }
   if (intent?.safety?.includes('avoid_cooling_strong_cleanser') && /\b(fragrance[-\s]?free|gentle|sensitive|soap[-\s]?free)\b/i.test(candidateText)) {
@@ -22595,7 +22836,7 @@ function scoreBeautyExternalSeedProduct({
   if (packVariant.jumbo_or_value) score += queryHasTravelSizeNeed ? -12 : -8;
   if (packVariant.multi_pack) score += -8;
   const pregnancyOrRetinolFreeContext =
-    intent?.safety?.includes('avoid_retinoids') ||
+    (intent?.safety?.includes('avoid_retinoids') && !intent.safety.includes('retinoid_gate_only')) ||
     /\b(pregnan\w*|ttc|trying\s*to\s*conceive|retinol[-\s]?free)\b|备孕|備孕|怀孕|懷孕|孕期/i.test(String(queryText || ''));
   if (pregnancyOrRetinolFreeContext) {
     if (/\b(spf|sunscreen|azelaic|niacinamide|peptide|ceramide|panthenol|barrier|repair|moisturi[sz]er)\b/i.test(candidateText)) {
@@ -41666,6 +41907,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   } catch (_) {
     // Same rule: an unavailable store means no observation, never a failed request.
   }
+  // Retinoid safety context: read once the body has passed schema validation and the query-length
+  // check, and only for the product-search operations that use it (see below).
+  let retinoidSafetyRequestContext = null;
   let fpmUpstreamHttpMs = 0;
   const isFpmStageOperation = () => {
     const op = String(debugRuntime.operation || '').trim().toLowerCase();
@@ -42018,6 +42262,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         },
         'failed to apply final identity graph search overlay',
       );
+    }
+    // Retinoid safety net: the last line of the retinoid safety rules (see
+    // applyRetinoidSafetyNetForInvokeResponse). It fails closed on its own.
+    if (String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase() === 'find_products_multi') {
+      const payloadBody =
+        req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+          ? req.body.payload
+          : {};
+      finalBody = applyRetinoidSafetyNetForInvokeResponse({
+        body: finalBody,
+        queryTexts: [
+          debugRuntime.rawUserQuery,
+          payloadBody.search?.query,
+          payloadBody.query,
+          payloadBody.context?.raw_user_goal,
+          req?.body?.context?.raw_user_goal,
+        ],
+        requestContext: retinoidSafetyRequestContext,
+        onError: (err) =>
+          logger.warn(
+            { gateway_request_id: gatewayRequestId, err: err?.message || String(err) },
+            'retinoid safety net failed; serving no products',
+          ),
+      });
     }
     try {
       const operation = String(debugRuntime.operation || req?.body?.operation || '')
@@ -42537,6 +42805,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         max_chars: overlongQuery.max_chars,
         length: overlongQuery.length,
       });
+    }
+    // Retinoid safety context (src/services/retinoidSafetySignal.js): earlier turns, profiles,
+    // constraints and safety flags, read only for the product-search operations whose beauty lanes and
+    // response net use it, and before the history below is cut, so a long turn cannot hide a signal.
+    // The reader is bounded and fails CLOSED: a body it cannot read, or one over its scan limits, is
+    // treated as carrying a safety signal, so retinoids are kept out rather than let through.
+    if (RETINOID_SAFETY_CONTEXT_OPERATIONS.has(String(operation || '').trim().toLowerCase())) {
+      try {
+        retinoidSafetyRequestContext = retinoidSafetySignal.retinoidSafetyClassesForRequestContext(req?.body);
+      } catch (_) {
+        retinoidSafetyRequestContext = { classes: ['context_unreadable'], sources: ['error'] };
+      }
+      INVOKE_RETINOID_SAFETY_CONTEXT.enterWith(retinoidSafetyRequestContext);
     }
     // Over-long history (recent queries, earlier user turns) is parsed too but is not the query: it is
     // cut to the limit so the request still searches. Both copies are cut, since downstream reads both.
@@ -53786,6 +54067,12 @@ module.exports._debug = {
   beautyProductHasAcneOilControlEvidence,
   scoreBeautyExternalSeedProduct,
   isBeautyProductContraindicatedForQuery,
+  beautyProductIsRetinoidForSafety,
+  beautyProductRetinoidMentionIsStandInOnly,
+  resolveBeautyRetinoidSafetyClasses,
+  applyRetinoidSafetyNetToSearchBody,
+  applyRetinoidSafetyNetForInvokeResponse,
+  runInRetinoidSafetyContextForTest: (store, fn) => INVOKE_RETINOID_SAFETY_CONTEXT.run(store, fn),
   extractBeautyQueryActiveConcepts,
   countBeautyActiveConceptMatches,
   buildBeautyActivesText,
