@@ -20101,24 +20101,67 @@ function resolveBeautyRetinoidSafetyClasses(queryText = '') {
   return Array.from(classes).sort();
 }
 
+// The raw text a product carries about itself: names, descriptions, ingredients and INCI, as
+// typed. The search-normalised candidate texts drop Hangul and Cyrillic, so a retinoid named only
+// in Korean or Russian ("레티놀 프리미엄 세럼", "Крем с ретинолом") was invisible to them.
+const BEAUTY_PRODUCT_RAW_SAFETY_FIELDS = [
+  'title', 'name', 'product_name', 'display_name', 'description', 'ingredients', 'inci', 'inci_list',
+  'ingredients_inci', 'active_ingredients', 'key_ingredients', 'raw_ingredient_text_clean', 'pdp_ingredients_raw',
+  'pdp_active_ingredients_raw', 'pdp_description_raw', 'inci_normalized',
+];
+function buildBeautyProductRawSafetyText(product) {
+  const parts = [];
+  const append = (value, depth = 0) => {
+    if (depth > 3 || parts.length > 400 || value == null) return;
+    if (typeof value === 'string') {
+      if (value.trim()) parts.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) append(item, depth + 1);
+      return;
+    }
+    if (typeof value === 'object') {
+      for (const key of ['name', 'title', 'inci', 'ingredient', 'label']) append(value[key], depth + 1);
+    }
+  };
+  const sources = [product];
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : null;
+  if (seedData) {
+    sources.push(seedData);
+    if (seedData.snapshot && typeof seedData.snapshot === 'object') sources.push(seedData.snapshot);
+  }
+  for (const holder of [product, seedData]) {
+    if (holder && holder.ingredient_intel && typeof holder.ingredient_intel === 'object') sources.push(holder.ingredient_intel);
+  }
+  for (const source of sources) {
+    for (const field of BEAUTY_PRODUCT_RAW_SAFETY_FIELDS) append(source[field]);
+  }
+  return parts.join(' \n ').normalize('NFKC');
+}
+
+// Korean and Russian retinoid names, matched on the raw text: Korean as written, with or without
+// the space in "레티닐 팔미테이트"; Russian with up to four inflection letters after the stem
+// (ретинол, ретинола, ретинолом; ретиноидная).
+const BEAUTY_PRODUCT_RETINOID_KO_RE = /레티놀|레티날|레티노이드|레티닐 ?팔미테이트/;
+const BEAUTY_PRODUCT_RETINOID_RU_RE = /(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])/i;
+
 // A product the retinoid safety rules must keep out: it names a retinoid and does not say it is
 // retinoid-free. Wider than the gate's own retinoidHit (it also reads prescription and
-// non-Latin names). Only safety-signalled requests use it, so it never changes a request
-// without a signal.
+// non-Latin names, on the raw title, description, ingredients and INCI). Only safety-signalled
+// requests use it, so it never changes a request without a signal.
 function beautyProductIsRetinoidForSafety(product) {
   if (!product || typeof product !== 'object') return false;
   const text = buildFallbackCandidateText(product);
   const safetyText = buildBeautyProductSafetyText(product, text);
-  // The candidate texts are normalised for search and drop Hangul and Cyrillic, so the raw
-  // name fields are read as well.
-  const rawNames = [product.title, product.name, product.product_name, product.display_name, product.description]
-    .filter((v) => typeof v === 'string')
-    .join(' ');
-  const scriptText = [text, safetyText, rawNames].join(' ');
+  const rawText = buildBeautyProductRawSafetyText(product);
+  const scriptText = [text, safetyText, rawText].join(' ');
   if (!scriptText.trim()) return false;
   const hit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|hpr|granactive\s+retinoid)\b/i.test(scriptText) ||
-    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール|레티놀|ретинол/i.test(scriptText);
+    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/i.test(scriptText) ||
+    BEAUTY_PRODUCT_RETINOID_KO_RE.test(rawText) ||
+    BEAUTY_PRODUCT_RETINOID_RU_RE.test(rawText);
   if (!hit) return false;
   return !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text);
 }

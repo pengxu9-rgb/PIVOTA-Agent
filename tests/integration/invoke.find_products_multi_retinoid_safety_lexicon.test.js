@@ -114,9 +114,14 @@ describe('/agent/shop/v1/invoke find_products_multi: retinoid safety lexicon', (
     await Promise.all(runners);
   }
 
+  // Every lane this fixture reaches calls the beauty gate, so the gate itself must keep the
+  // retinoids out. The response-level net reporting a removal means a lane let one through.
   async function expectNoRetinoids(query, options = {}) {
     const { ids, body } = await search(query, options);
     if (retinoidsIn(ids).length > 0) throw new Error(`retinoids served for ${JSON.stringify(query)}: ${ids.join(',')}`);
+    if (body?.metadata?.retinoid_safety_net) {
+      throw new Error(`the gate let a retinoid through for ${JSON.stringify(query)}: ${JSON.stringify(body.metadata.retinoid_safety_net)}`);
+    }
     return { ids, body };
   }
 

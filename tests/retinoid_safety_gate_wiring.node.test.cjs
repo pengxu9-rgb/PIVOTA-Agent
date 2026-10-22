@@ -203,3 +203,19 @@ test('invoke net: query texts and request context decide; failures fail closed',
   // a failure on a non-object body passes it through
   assert.equal(applyRetinoidSafetyNetForInvokeResponse({ body: 'x', queryTexts: null }), 'x');
 });
+
+test('product detection: Korean and Russian retinoid names on the raw title, description, ingredients and INCI', () => {
+  const p = (title, description, seed = {}) => ({ title, description, category: 'serum', seed_data: { description, ...seed } });
+  for (const item of [
+    p('레티놀 프리미엄 세럼', ''), p('레티날 나이트 크림', ''), p('레티노이드 앰플', ''),
+    p('데일리 크림', '보습', { ingredients: ['정제수', '레티닐 팔미테이트'] }), p('나이트 세럼', '', { inci: '정제수, 레티닐팔미테이트' }),
+    p('Крем с ретинолом', ''), p('Сыворотка', 'Содержит ретинола 0,3%.'), p('Крем ретиналь', ''), p('Ретиноидная сыворотка', ''),
+    p('Night cream', '', { inci_list: ['Aqua', 'ретинол'] }), p('Serum', '', { snapshot: { title: '레티놀 세럼' } }),
+    { title: 'Cream', ingredient_intel: { key_ingredients: [{ name: '레티놀' }] } },
+  ]) {
+    assert.equal(beautyProductIsRetinoidForSafety(item), true, JSON.stringify(item));
+  }
+  for (const item of [p('히알루론산 수분 세럼', ''), p('시카 진정 크림', ''), p('Увлажняющий крем с гиалуроновой кислотой', ''), p('Ретинолоподобный крем', '')]) {
+    assert.equal(beautyProductIsRetinoidForSafety(item), false, JSON.stringify(item));
+  }
+});
