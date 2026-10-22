@@ -64,6 +64,12 @@ function assertGolden({ off, on }, label) {
   assert.equal(maskIds(on.text), maskIds(off.text), `${label}: the answer must be byte-identical with PRICE_VERIFICATION_LOG on`);
   assert.deepEqual(served(off.lines), [], `${label}: flag off writes no price line`);
   assert.deepEqual(off.headers.map((h) => h.price_context), off.headers.map(() => null), `${label}: off, no loopback call carries a price context`);
+  // The context header is for this process's own loopback only: never the backend (offers.resolve, v1 / v2
+  // search) and never the merchant's UCP client, flag off or on.
+  for (const r of [off, on]) {
+    assert.deepEqual(r.backend.filter((b) => b.price_context !== null), [], `${label}: no backend call carries X-Pivota-Price-Context`);
+    assert.deepEqual(r.merchant.filter((m) => /door_key|door=|X-Pivota-Price-Context/i.test(m)), [], `${label}: no merchant call carries the price context`);
+  }
   for (const l of off.lines) {
     for (const k of ['door', 'request_id', 'http_status']) {
       if (String(l.event || '').endsWith('_ucp_live_read')) assert.equal(l[k], undefined, `${label}: off, ${l.event} carries no ${k}`);
@@ -150,11 +156,27 @@ test('MCP /mcp get_offers (live read enforced): byte-identical; the reader line 
   assert.equal(line.door, 'mcp');
   assert.equal(line.market, 'US');
   assert.equal(line.live, 1, 'the offer the merchant answered during this request');
-  assert.equal(line.stored, 1, 'the offer nobody re-read');
+  assert.equal(line.stored, 1, 'backend-verified, but this request\'s read of it was skipped: stamped, not answered');
   assert.equal(line.total, 2);
+  assert.deepEqual(pair.on.backend.map((b) => b.route), ['offers.resolve'], 'the backend was called, without the header');
   const onLive = pair.on.lines.find((l) => l.event === 'get_offers_ucp_live_read');
   assert.equal(onLive.door, 'mcp');
   assert.equal(onLive.request_id, line.request_id, 'the read line and the served line share the request id');
+});
+
+test('flag on, the merchant\'s UCP client is handed no price context', async () => {
+  // The reader's 30 s lookup memo would answer this call from the flag-off run above (Date is frozen), so the
+  // clock moves past it: this call really reaches the (fake) merchant client.
+  test.mock.timers.setTime(NOW + 31 * 1000);
+  try {
+    const on = await doors.send(CASES.mcp_get_offers, { flag: true });
+    assert.equal(on.status, 200);
+    assert.ok(on.merchant.length > 0, 'the merchant was asked');
+    assert.deepEqual(on.merchant.filter((m) => /door_key|door=|price.context/i.test(m)), []);
+    assert.equal(served(on.lines).length, 1);
+  } finally {
+    test.mock.timers.setTime(NOW);
+  }
 });
 
 test('MCP /mcp recommend_products: byte-identical; its price checks loop back with the door\'s context only when on', async () => {
@@ -179,6 +201,7 @@ test('MCP /mcp recommend_products: byte-identical; its price checks loop back wi
 test('REST /agent/v1/products/search: byte-identical; one line at door rest with the lane and the overlay outcome', async () => {
   const pair = await offThenOn(CASES.rest_search);
   assertGolden(pair, 'REST search');
+  assert.deepEqual(pair.on.backend.map((b) => b.route), ['v1_search'], 'v1 search was called, without the header');
   const [line, ...more] = served(pair.on.lines);
   assert.equal(more.length, 0);
   assertLineKeys(line, [...OVERLAY_KEYS.filter((k) => !['overlay_failure_reasons'].includes(k)), 'lane', 'market_source']);
@@ -194,6 +217,7 @@ test('REST /agent/v1/products/search: byte-identical; one line at door rest with
 test('an MCP search that REALLY loops back into the invoke handler: byte-identical, and one line, not one per hop', async () => {
   const pair = await offThenOn(CASES.mcp_real_loopback_search);
   assertGolden(pair, '/mcp real loopback search');
+  assert.deepEqual(pair.on.backend.map((b) => b.route), ['v2_search'], 'the loopback hop called v2 search, without the header');
   const hops = pair.on.lines.filter((l) => l.msg === 'invoke request complete');
   assert.deepEqual(hops.map((l) => [l.status, l.operation, l.caller_loopback]), [[200, 'find_products_multi', true]],
     'the search ran in the real invoke handler, over loopback, and answered 200');
@@ -205,6 +229,18 @@ test('an MCP search that REALLY loops back into the invoke handler: byte-identic
   assert.equal(all[0].door, 'mcp');
   assert.equal(all[0].surface, 'search');
   assert.equal(all[0].skipped_reason, 'lane_not_overlaid', 'the upstream-proxy lane never calls the overlay, and its answer carries no outcome');
+});
+
+test('invoke find_products_multi whose page was overlaid outside this request: overlay_not_observed, not lane_not_overlaid', async () => {
+  const pair = await offThenOn(CASES.invoke_overlaid_elsewhere);
+  assertGolden(pair, 'invoke overlaid elsewhere');
+  assert.ok(pair.on.backend.length > 0 && pair.on.backend.every((b) => b.route === 'v2_search'), 'the upstream-proxy lane, over the backend');
+  const [line, ...more] = served(pair.on.lines);
+  assert.equal(more.length, 0);
+  assert.equal(line.door, 'invoke');
+  assert.equal(line.surface, 'search');
+  assert.equal(line.overlay_ran, true, 'the answer carries an overlay outcome');
+  assert.equal(line.skipped_reason, 'overlay_not_observed', 'no overlay call was recorded in this request');
 });
 
 test('a tools/call that is not priced, and a non-tools/call method, write no price line', async () => {

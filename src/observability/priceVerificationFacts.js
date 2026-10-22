@@ -20,7 +20,8 @@
 //                       needs a live quote, has no id, or has no ISO-currency price.
 //   /public/mcp         only the rows the public projection serves with a price (publicReadToolSurface).
 //
-// WHEN THE MERCHANT ANSWERED. `at` is read from price_as_of, then live_read.checked_at. On a get_offers signal,
+// WHEN THE MERCHANT ANSWERED. `at` is read from price_as_of, then live_read.checked_at when that read is
+// `verified` (a failed or skipped read is stamped too, and dates nothing). On a get_offers signal,
 // price_as_of is the gateway's own live read on a verified offer, else the backend's price_checked_at (relayed
 // under the fresh-price contract, agentSignals/offerToSignal). So a backend-verified offer
 // (merchant_price_verified: true, no live read this request) is dated by the backend's last read when the
@@ -63,7 +64,10 @@ function amountOf(item) {
 }
 
 function answeredAtMs(item) {
-  const lr = isObj(item.live_read) ? item.live_read : null;
+  // live_read.checked_at says when the reader SETTLED, whatever it found: the readers stamp it on a skipped,
+  // timed-out, failed, not-UCP, host-busy or variant-gone read too (ucpLiveOfferRead.applyRead). Only a
+  // `verified` read is a merchant answer of that time (as offerToSignal.priceFreshnessFields reads it).
+  const lr = isObj(item.live_read) && item.live_read.status === 'verified' ? item.live_read : null;
   for (const raw of [item.price_as_of, lr && lr.checked_at]) {
     const t = typeof raw === 'string' ? Date.parse(raw) : NaN;
     if (Number.isFinite(t)) return t;

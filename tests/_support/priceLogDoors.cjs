@@ -68,7 +68,9 @@ const OFFERS = {
       offer_id: `of:external_seed:eps_t:${VARIANT}`, merchant_id: STORE, price: 25, currency: 'USD', in_stock: true,
       execution_spec: { merchant_domain: STORE, variant_id: VARIANT, cart_url: `https://${STORE}/cart/${VARIANT}:1?country=US` },
     },
-    { offer_id: 'of:merch_b:sku_2', merchant_id: 'merch_b', price: 27, currency: 'USD', in_stock: true },
+    // The backend says verified, but the gateway's own read of it is skipped (no host): the reader stamps a
+    // checked_at on it anyway, which must not make it live (only a `verified` read dates a price).
+    { offer_id: 'of:merch_b:sku_2', merchant_id: 'merch_b', price: 27, currency: 'USD', in_stock: true, merchant_price_verified: true },
   ],
   product_group_id: 'pg_price_log',
 };
@@ -93,6 +95,9 @@ const RECO_PDP_PRICE = { sig_reco_a: 33, sig_reco_b: 18 };
 // the port, see start()) and runs the real handler. A non-beauty query takes the upstream-proxy lane, whose
 // backend call is the nock below; it answers 200 offline (the beauty lanes need a database).
 const REAL_LOOPBACK_QUERY = 'usb charging cable';
+// A search the invoke door answers from the upstream-proxy lane whose backend page ALREADY carries an overlay
+// outcome (metadata.live_merchant_price): the overlay ran, but not in this request.
+const OVERLAID_ELSEWHERE_QUERY = 'usb hub overlay probe';
 
 // A secret and a query no line or header may ever carry.
 const SECRET = 'secret-token-price-log-probe';
@@ -161,11 +166,15 @@ function createPriceLogDoors({ port, env = {} } = {}) {
     if (obj && typeof obj === 'object') lines.push({ ...obj, msg });
   };
 
+  // Every argument the merchant's UCP client was handed (JSON), so a test can show no price context reaches it.
+  const merchantCalls = [];
   app._debug.useUcpLiveClientForTest({
-    async discoverEndpoint(base) {
+    async discoverEndpoint(base, ...rest) {
+      merchantCalls.push(JSON.stringify([base, ...rest]));
       return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 };
     },
-    async lookupCatalog(endpoint, { ids }) {
+    async lookupCatalog(endpoint, { ids }, ...rest) {
+      merchantCalls.push(JSON.stringify([endpoint, { ids }, ...rest]));
       const variants = ids.includes(`gid://shopify/ProductVariant/${VARIANT}`)
         ? [{ id: `gid://shopify/ProductVariant/${VARIANT}`, price: { amount: 2300, currency: 'USD' }, availability: { available: true } }]
         : [];
@@ -195,6 +204,12 @@ function createPriceLogDoors({ port, env = {} } = {}) {
 
   // The headers each intercepted loopback call carried, in order: { operation, price_context }.
   const loopbackHeaders = [];
+  // X-Pivota-Price-Context as each BACKEND call carried it (null: absent). Only a loopback may carry it.
+  const backendHeaders = [];
+  const backendReply = (route, body) => function reply() {
+    backendHeaders.push({ route, price_context: this.req.headers['x-pivota-price-context'] || null });
+    return [200, typeof body === 'function' ? body() : body];
+  };
   nock(LOOPBACK, { allowUnmocked: true }).persist()
     .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi'
       && body.payload?.search?.query !== REAL_LOOPBACK_QUERY)
@@ -213,13 +228,21 @@ function createPriceLogDoors({ port, env = {} } = {}) {
     });
   nock(BACKEND).persist()
     .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'offers.resolve')
-    .reply(200, OFFERS);
+    .reply(backendReply('offers.resolve', OFFERS));
+  nock(BACKEND).persist()
+    .post(/^\/agent\/v2\/products\/search/, (body) => JSON.stringify(body || {}).includes(OVERLAID_ELSEWHERE_QUERY))
+    .reply(backendReply('v2_search', {
+      status: 'success',
+      products: [{ product_id: 'p_hub', merchant_id: 'm2', title: 'USB hub', price: 19, currency: 'USD' }],
+      total: 1,
+      metadata: { live_merchant_price: { attempted: true, eligible_count: 1, verified_count: 1 } },
+    }));
   nock(BACKEND).persist()
     .post(/^\/agent\/v2\/products\/search/)
-    .reply(200, { status: 'success', products: [{ product_id: 'p_usb', merchant_id: 'm2', title: 'USB-C charging cable', price: 9, currency: 'USD' }], total: 1 });
+    .reply(backendReply('v2_search', { status: 'success', products: [{ product_id: 'p_usb', merchant_id: 'm2', title: 'USB-C charging cable', price: 9, currency: 'USD' }], total: 1 }));
   nock(BACKEND).persist()
     .get(/^\/agent\/v1\/products\/search/)
-    .reply(200, { status: 'success', products: [{ product_id: 'p_rest', merchant_id: 'm1', title: 'Serum A', price: 12, currency: 'USD' }], total: 1 });
+    .reply(backendReply('v1_search', { status: 'success', products: [{ product_id: 'p_rest', merchant_id: 'm1', title: 'Serum A', price: 12, currency: 'USD' }], total: 1 }));
 
   const supertest = require('supertest');
   // EVERY DOOR ANSWER the fixture pins, by name. Each is one request; the same request is sent flag off and on.
@@ -233,6 +256,8 @@ function createPriceLogDoors({ port, env = {} } = {}) {
     rest_search: () => supertest(app).get('/agent/v1/products/search?query=serum'),
     mcp_real_loopback_search: () => supertest(app).post('/mcp').send(rpc('search_catalog', { query: REAL_LOOPBACK_QUERY, market: 'US' })),
     public_tools_list: () => supertest(app).post('/public/mcp').send({ jsonrpc: '2.0', id: 9, method: 'tools/list' }),
+    invoke_overlaid_elsewhere: () => supertest(app).post('/agent/shop/v1/invoke')
+      .send({ operation: 'find_products_multi', payload: { search: { query: OVERLAID_ELSEWHERE_QUERY, market: 'US' } } }),
   };
 
   let server;
@@ -241,6 +266,8 @@ function createPriceLogDoors({ port, env = {} } = {}) {
     logger,
     lines,
     loopbackHeaders,
+    backendHeaders,
+    merchantCalls,
     CASES,
     LOOPBACK,
     /** test.before: freeze Date, listen on the loopback port. `mockTimers` is node:test's `test.mock.timers`. */
@@ -263,11 +290,13 @@ function createPriceLogDoors({ port, env = {} } = {}) {
       else delete process.env.PRICE_VERIFICATION_LOG;
       lines.length = 0;
       loopbackHeaders.length = 0;
+      backendHeaders.length = 0;
+      merchantCalls.length = 0;
       try {
         const resp = await request();
         // Lines written after the answer (shadow reads, finish handlers) land before the next tick settles.
         await new Promise((r) => setImmediate(r));
-        return { status: resp.status, text: resp.text, lines: [...lines], headers: [...loopbackHeaders] };
+        return { status: resp.status, text: resp.text, lines: [...lines], headers: [...loopbackHeaders], backend: [...backendHeaders], merchant: [...merchantCalls] };
       } finally {
         delete process.env.PRICE_VERIFICATION_LOG;
       }
@@ -283,6 +312,7 @@ module.exports = {
   OFFERS,
   RECO_ITEMS,
   REAL_LOOPBACK_QUERY,
+  OVERLAID_ELSEWHERE_QUERY,
   SECRET,
   QUERY,
   AGENT_META,
