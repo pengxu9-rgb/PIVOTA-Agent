@@ -24,6 +24,7 @@ const {
 } = require('./relationshipClaimPhrases');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
 const { foldTokenText } = require('./relationshipTokenText');
+const { isNonProductListing } = require('./relationshipCatalogServingGate');
 
 // One candidate may serve at most this many anchors as a dupe / competitive_alternative in ONE
 // BUILD. 2026-09-26 JP/AU dry run: ALBION Excia Replant Whitening Cream was the alternative for
@@ -712,7 +713,10 @@ function tokenGroups(tokens, groupMap) {
   return groups;
 }
 
+// A donation, voucher, protection fee, tip or deposit is no product at all (the backend
+// non_core_product rule's twin, relationshipCatalogServingGate.js); merch is a product outside beauty.
 function isOutOfScopeBeautyProduct(snapshot = {}) {
+  if (isNonProductListing(snapshot)) return true;
   const tokens = rawProductTokens(snapshot);
   if (!hasAnyToken(tokens, OUT_OF_SCOPE_MERCH_TOKENS)) return false;
   return !tokenSetHasAny(tokens, ['beauty bag', 'beauty pouch', 'cosmetic bag', 'makeup bag', 'makeup pouch']);
@@ -1681,7 +1685,9 @@ function inferRelationship(anchorSnapshot, candidateSnapshot, candidate = {}) {
       ingredientScore,
       scoreTotal,
       priceRatio,
-      scopeCompatibility: { compatible: false, reason: 'non_beauty_merch_scope' },
+      scopeCompatibility: { compatible: false,
+        reason: isNonProductListing(anchorSnapshot) || isNonProductListing(candidateSnapshot)
+          ? 'non_product_listing' : 'non_beauty_merch_scope' },
       setCompatibility,
       formCompatibility,
       jobCompatibility,
