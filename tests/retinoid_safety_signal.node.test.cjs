@@ -197,7 +197,8 @@ test('context: a profile, flag or constraint that SAYS something gates', () => {
     { metadata: { safety_flags: ['pregnancy'] } },
     { metadata: { safety_flags: { pregnant: true } } },
     { metadata: { safety_flags: 'breastfeeding' } },
-    { metadata: { safety_flags: ['custom_flag'] } },
+    { metadata: { safety_flags: ['contraindicated'] } },
+    { metadata: { safety_flags: { derm_supervision: true } } },
     { metadata: { safety_flags: true } },
     { payload: { safety_flags: ['child'] } },
     { payload: { context: { user_profile: { pregnancy_status: 'pregnant' } } } },
@@ -207,11 +208,55 @@ test('context: a profile, flag or constraint that SAYS something gates', () => {
     { context: { raw_user_goal: 'breastfeeding friendly serum' } },
     { payload: { messages: [{ role: 'user', content: [{ type: 'text', text: 'I am nursing' }] }] } },
     { payload: { messages: ['I am pregnant'] } },
-    { payload: { conversation: [{ role: 'assistant', content: 'since you are pregnant' }] } },
+    { payload: { conversation: [{ role: 'user', content: 'since I am pregnant' }] } },
     { payload: { user: { session_recent_queries: ['serum for my 7 year old'] } } },
     { payload: { user: { conversation_messages: [{ role: 'user', content: 'breastfeeding' }] } } },
   ];
   for (const body of gated) assert.notDeepEqual(contextClasses(body), [], JSON.stringify(body));
+});
+
+test('context: the shapes and fields review found unread', () => {
+  const year = new Date().getUTCFullYear();
+  const cases = [
+    [{ payload: { user_profile: { age_group: 'child' } } }, ['child_under_12']],
+    [{ payload: { user_profile: { age_group: 'kids' } } }, ['child_under_12']],
+    [{ payload: { user_profile: { age_group: 'toddler' } } }, ['child_under_12']],
+    [{ payload: { user_profile: { age_group: 'adult' } } }, []],
+    [{ payload: { user_profile: { pregnancy_status: 'not pregnant, breastfeeding' } } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { user_profile: { pregnancy_status: 'non-pregnant but nursing' } } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { contents: [{ role: 'user', parts: [{ text: 'I am 20 weeks pregnant' }] }] } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { input: [{ role: 'user', content: [{ type: 'input_text', text: 'for my 8 year old' }] }] } }, ['child_under_12']],
+    [{ payload: { input: 'serum while breastfeeding' } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { search: { query: 'serum', filters: { life_stage: 'pregnancy' } } } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { search: { query: 'serum', attributes: { suitable_for: 'kids' } } } }, ['child_under_12']],
+    [{ payload: { search: { query: 'serum', exclude_ingredients: ['retinol'] } } }, ['retinoid_negation']],
+    [{ metadata: { user: { pregnant: true } } }, ['pregnancy_lactation_fertility']],
+    [{ metadata: { user: { age: 9 } } }, ['child_under_12']],
+    [{ metadata: { safety: { pregnant: true } } }, ['pregnancy_lactation_fertility']],
+    [{ metadata: { health_flags: ['breastfeeding'] } }, ['pregnancy_lactation_fertility']],
+    [{ metadata: { conditions: ['pregnancy'] } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { context: { session: { messages: [{ role: 'user', content: 'I am expecting' }] } } } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { search: { query: 'serum', context: { messages: [{ role: 'user', content: 'for my toddler' }] } } } }, ['child_under_12']],
+    [{ payload: { conversation: { messages: [{ role: 'user', content: 'nursing mom' }] } } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { recent_queries: [{ query: 'pregnancy safe moisturizer' }] } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { user: { age: 7 } } }, ['child_under_12']],
+    [{ payload: { user: { birth_year: year - 9 } } }, ['child_under_12']],
+    [{ payload: { user: { dob: `${year - 6}-04-01` } } }, ['child_under_12']],
+    [{ payload: { user: { birth_year: year - 30 } } }, []],
+    [{ payload: { user: { prescriptions: ['tretinoin 0.05%'] } } }, ['isotretinoin_layering']],
+    [{ payload: { user_profile: { medications: ['Differin'] } } }, ['isotretinoin_layering']],
+    [{ payload: { user_profile: { medications: ['ibuprofen'] } } }, []],
+    [{ payload: { avoid_ingredients: ['Differin'] } }, ['retinoid_negation']],
+    [{ payload: { avoid_ingredients: ['vit A'] } }, ['retinoid_negation']],
+    [{ payload: { avoid_ingredients: ['レチナール'] } }, ['retinoid_negation']],
+    [{ payload: { avoid_ingredients: ['视黄醛'] } }, ['retinoid_negation']],
+    [{ payload: { avoid_ingredients: ['ретинал'] } }, ['retinoid_negation']],
+    [{ payload: { avoid_ingredients: ['레티날'] } }, ['retinoid_negation']],
+    // a household mention does not hide a real signal in the same turn
+    [{ payload: { messages: [{ role: 'user', content: 'I have 2 kids and I am pregnant again' }] } }, ['pregnancy_lactation_fertility']],
+    [{ payload: { messages: [{ role: 'user', content: 'I have 2 kids, this is for my son' }] } }, ['child_under_12']],
+  ];
+  for (const [body, expected] of cases) assert.deepEqual([JSON.stringify(body), contextClasses(body)], [JSON.stringify(body), expected]);
 });
 
 test('context: a profile, flag or earlier turn that merely EXISTS, with neutral fields, does not gate', () => {
@@ -237,6 +282,17 @@ test('context: a profile, flag or earlier turn that merely EXISTS, with neutral 
     { metadata: { source: 'beauty_cross_agent_batch', market: 'US' } },
     { payload: { messages: [{ role: 'user', content: 'I have oily skin' }, { role: 'assistant', content: 'Got it.' }] } },
     { payload: { messages: [{ role: 'system', content: 'Never recommend retinoids to pregnant users.' }] } },
+    // false-positive rules: only the user's own turns are read; a flag gates by what it is about;
+    // how many children someone has is not who they shop for
+    { payload: { messages: [{ role: 'assistant', content: 'Avoid retinol if you are pregnant or breastfeeding.' }] } },
+    { payload: { contents: [{ role: 'model', parts: [{ text: 'Not for use during pregnancy.' }] }] } },
+    { payload: { messages: [{ role: 'tool', content: 'pregnancy-safe, no retinol' }] } },
+    { metadata: { safety_flags: ['high_value_order', 'vip'] } },
+    { metadata: { safety_flags: { vip: true, fraud_check: 'passed' } } },
+    { payload: { messages: [{ role: 'user', content: 'I have 2 kids and no time, need a retinol serum' }] } },
+    { payload: { messages: [{ role: 'user', content: 'mom of three boys here' }] } },
+    { payload: { user_profile: { household: '2 kids', number_of_children: 2 } } },
+    { payload: { user_profile: { pregnancy_status: 'not pregnant and not breastfeeding' } } },
   ];
   for (const body of neutral) assert.deepEqual(contextClasses(body), [], JSON.stringify(body));
 });

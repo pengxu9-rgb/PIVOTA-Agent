@@ -48,8 +48,8 @@ function softTierEnabled(env = process.env) {
 // ---------------------------------------------------------------------------------------------
 // Retinoid names: used by the negation class and by ingredient constraints. Latin view / script view.
 const RETINOID_NAME_LATIN =
-  /\b(?:retinol\w*|retinal\w*|retinoid\w*|retinyl\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\s?a|vitamin\s?a|granactive|hydroxypinacolone|hpr|accutane|roaccutane)\b/;
-const RETINOID_NAME_SCRIPT = /视黄醇|視黃醇|维a|維a|a醇|维甲酸|維甲酸|レチノール|레티놀|레틴|ретинол|ретиноид|เรตินอล/;
+  /\b(?:retinol\w*|retinal\w*|retinoid\w*|retinyl\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\s?a|vit(?:amin)?s?\s+a|granactive|hydroxypinacolone|hpr|accutane|roaccutane|differin|tazorac|arazlo|aklief|epiduo|altreno|atralin|renova|absorica|claravis)\b/;
+const RETINOID_NAME_SCRIPT = /视黄醇|視黃醇|视黄醛|視黃醛|维a|維a|a醇|a醛|维甲酸|維甲酸|レチノール|レチナール|레티놀|레티날|레틴|레티노이드|ретинол|ретинал|ретиноид|เรตินอล|เรตินัล/;
 
 // ---------------------------------------------------------------------------------------------
 // HARD tier lists.
@@ -540,6 +540,15 @@ const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
 const NEUTRAL_VALUE_RE =
   /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|not[\s_-].*|non[\s_-].*|never)$/;
+// A value is neutral only if every part of it is: "not pregnant, breastfeeding" and "non-pregnant but
+// nursing" say yes to something.
+function valueIsNeutral(text) {
+  return String(text)
+    .trim()
+    .toLowerCase()
+    .split(/\s*(?:[,;/&+|]|\bbut\b|\band\b)\s*/)
+    .every((part) => NEUTRAL_VALUE_RE.test(part));
+}
 
 function valueIsAffirmative(value) {
   // Over the node budget: treated as affirmative (fail closed; the request gates as over the limit).
@@ -556,12 +565,18 @@ function valueIsAffirmative(value) {
     }
     return children.some(valueIsAffirmative);
   }
-  return !NEUTRAL_VALUE_RE.test(String(value).trim().toLowerCase());
+  return !valueIsNeutral(value);
 }
 
 const PROFILE_STATUS_KEY_RE = /pregnan|breast|lactat|nursing|ttc|fertility|conceiv|postpartum|trimester|expecting|maternity/i;
 const PROFILE_AGE_KEY_RE = /^(?:age|age_years|ageyears|user_age|years_old|age_range|age_group|age_bracket|agerange|agegroup)$/i;
 const AVOID_KEY_RE = /avoid|allerg|exclu|contraindicat|sensitiv\w*_ingredients|intoleran|blacklist|block/i;
+const BIRTH_KEY_RE = /^(?:birth_?year|year_?of_?birth|dob|date_?of_?birth|birth_?date|birthday)$/i;
+const PRESCRIPTION_KEY_RE = /prescri|medication|medicine|^rx$|^drugs?$/i;
+// How many children someone has is not who they are shopping for.
+const HOUSEHOLD_KEY_RE = /household|family|children_count|num_children|number_of_(?:kids|children)|kids_count|dependents/i;
+const HOUSEHOLD_PHRASE_RE =
+  /\b(?:i\s+have|i'?ve\s+got|we\s+have|mom\s+of|mum\s+of|mother\s+of|dad\s+of|father\s+of|parent\s+of)\s+(?:\d+|one|two|three|four|five|six|a\s+few|several)\s+(?:little\s+|young\s+)?(?:kids|children|toddlers|boys|girls)\b/gi;
 
 function collectStrings(value, out) {
   if (!visit()) return;
@@ -575,7 +590,13 @@ function collectStrings(value, out) {
 
 function ageClass(value) {
   const nums = String(value).match(/\d{1,3}/g);
-  if (!nums) return null;
+  if (!nums) {
+    // a word, not a number: age_group 'child', 'kids', 'toddler', 'teen'
+    const classes = scanClasses(value);
+    if (classes.has('child_under_12')) return 'child_under_12';
+    if (classes.has('teen_12_17')) return 'teen_12_17';
+    return null;
+  }
   const upper = Math.max(...nums.map(Number));
   if (upper <= 11) return 'child_under_12';
   if (upper <= 17) return 'teen_12_17';
@@ -601,6 +622,25 @@ function classesForProfile(profile, sink) {
       if (c) sink.add(c);
       continue;
     }
+    if (BIRTH_KEY_RE.test(key)) {
+      const year = String(value).match(/(?:19|20)\d\d/);
+      const c = year && ageClass(String(new Date().getUTCFullYear() - Number(year[0])));
+      if (c) sink.add(c);
+      continue;
+    }
+    if (PRESCRIPTION_KEY_RE.test(key)) {
+      // on a prescription retinoid: layering context
+      const strings = [];
+      collectStrings(value, strings);
+      for (const s of strings) {
+        const classes = scanClasses(s);
+        if (SCAN.overflow) return;
+        classes.forEach((c) => sink.add(c));
+        if (namesRetinoid(s)) sink.add('isotretinoin_layering');
+      }
+      continue;
+    }
+    if (HOUSEHOLD_KEY_RE.test(key)) continue;
     if (AVOID_KEY_RE.test(key)) {
       classesForAvoidList(value, sink);
       continue;
@@ -615,6 +655,11 @@ function classesForProfile(profile, sink) {
   }
 }
 
+function namesRetinoid(text) {
+  const script = scriptView(text);
+  return RETINOID_NAME_LATIN.test(` ${latinView(script)} `) || RETINOID_NAME_SCRIPT.test(script);
+}
+
 function classesForAvoidList(value, sink) {
   const strings = [];
   collectStrings(value, strings);
@@ -623,10 +668,7 @@ function classesForAvoidList(value, sink) {
     const classes = scanClasses(s);
     if (SCAN.overflow) return;
     classes.forEach((c) => sink.add(c));
-    const script = scriptView(s);
-    if (RETINOID_NAME_LATIN.test(` ${latinView(script)} `) || RETINOID_NAME_SCRIPT.test(script)) {
-      sink.add('retinoid_negation');
-    }
+    if (namesRetinoid(s)) sink.add('retinoid_negation');
   }
 }
 
@@ -653,6 +695,9 @@ function classesForConstraints(constraints, sink) {
   }
 }
 
+const SAFETY_FLAG_NAME_RE =
+  /^safety_flag$|retin|pregnan|lactat|breast|nursing|fertil|ttc|conceiv|partum|natal|child|kid|minor|infant|toddler|baby|isotret|accutane|teratogen|contraindicat|prescri|derm|medical|doctor|physician|vitamin_?a/i;
+
 // Any safety flag that is set is a safety signal. A flag object's false values are not set.
 function classesForSafetyFlags(flags, sink) {
   if (flags == null || flags === false) return;
@@ -667,35 +712,54 @@ function classesForSafetyFlags(flags, sink) {
     for (const [key, value] of Object.entries(flags)) if (valueIsAffirmative(value)) named.push(key);
   } else if (flags === true) named.push('safety_flag');
   for (const name of named) {
-    if (NEUTRAL_VALUE_RE.test(String(name).trim().toLowerCase())) continue;
+    if (valueIsNeutral(name)) continue;
     const classes = scanClasses(String(name).replace(/[_-]+/g, ' '));
     if (classes.size > 0) classes.forEach((c) => sink.add(c));
-    else if (!SCAN.overflow) sink.add('safety_flag');
+    // A flag gates by what it is about, not by being set: high_value_order or vip does not.
+    else if (!SCAN.overflow && SAFETY_FLAG_NAME_RE.test(String(name))) sink.add('safety_flag');
   }
 }
 
+// Only what the user said is read. System, developer and tool turns are instructions or data, and an
+// assistant (model) turn is the agent talking: a generic "avoid retinol if pregnant" disclaimer there
+// would otherwise gate the rest of the session. Facts about the user are in the user's own turns,
+// the profile, the constraints and the flags.
+const NON_USER_ROLE_RE = /^(?:system|developer|tool|function|assistant|model|bot|ai|agent)$/;
 function messageText(message) {
-  if (typeof message === 'string') return message;
+  if (typeof message === 'string') return stripHousehold(message);
   if (!isObj(message)) return '';
-  const role = String(message.role || '').toLowerCase();
-  if (role === 'system') return '';
-  const content = message.content != null ? message.content : message.text;
-  if (typeof content === 'string') return content;
+  const role = String(message.role || message.author || '').toLowerCase();
+  if (NON_USER_ROLE_RE.test(role)) return '';
+  // OpenAI / Anthropic content, Gemini parts, plain text, a recent-query object
+  const content = [message.content, message.text, message.parts, message.query].find((v) => v != null);
+  if (typeof content === 'string') return stripHousehold(content);
   const parts = [];
   collectStrings(content, parts);
-  return parts.join(' ');
+  return stripHousehold(parts.join(' '));
+}
+function stripHousehold(text) {
+  return String(text).replace(HOUSEHOLD_PHRASE_RE, ' ');
 }
 
-const MESSAGE_KEYS = ['messages', 'conversation', 'history', 'chat_history', 'conversation_messages', 'session_recent_queries', 'recent_queries'];
+const MESSAGE_KEYS = [
+  'messages', 'conversation', 'history', 'chat_history', 'conversation_messages', 'session_recent_queries', 'recent_queries',
+  'contents', 'input',
+];
 const GOAL_KEYS = ['raw_user_goal', 'user_goal'];
-const PROFILE_KEYS = ['user_profile', 'userProfile', 'profile', 'skin_profile', 'skinProfile'];
-const CONSTRAINT_KEYS = ['constraints', 'avoid_ingredients', 'avoidIngredients'];
-const FLAG_KEYS = ['safety_flags', 'safetyFlags'];
+const PROFILE_KEYS = ['user_profile', 'userProfile', 'profile', 'skin_profile', 'skinProfile', 'user'];
+// Objects whose keys say what they hold (avoid lists, statuses) and whose other strings are read.
+const CONSTRAINT_OBJECT_KEYS = ['constraints', 'filters', 'attributes', 'conditions', 'health_conditions'];
+const AVOID_LIST_KEYS = ['avoid_ingredients', 'avoidIngredients', 'exclude_ingredients', 'excludeIngredients', 'excluded_ingredients'];
+const FLAG_KEYS = ['safety_flags', 'safetyFlags', 'safety', 'health_flags', 'healthFlags'];
 
 function requestContainers(body) {
   const b = isObj(body) ? body : {};
   const payload = isObj(b.payload) ? b.payload : {};
-  const out = [b, payload, b.metadata, b.context, b.user, payload.search, payload.context, payload.metadata, payload.user];
+  const search = isObj(payload.search) ? payload.search : {};
+  const out = [b, payload, b.metadata, b.context, b.user, payload.search, payload.context, payload.metadata, payload.user, search.context];
+  for (const c of [b.context, payload.context, search.context]) {
+    if (isObj(c) && isObj(c.session)) out.push(c.session);
+  }
   for (const c of [b.context, payload.context]) {
     if (isObj(c) && isObj(c.normalized_need)) {
       out.push(c.normalized_need);
@@ -727,7 +791,10 @@ function readRequestContext(body, options) {
   };
   for (const container of requestContainers(body)) {
     for (const key of MESSAGE_KEYS) {
-      const value = container[key];
+      let value = container[key];
+      // { conversation: { messages: [...] } }, and a bare string input
+      if (isObj(value) && Array.isArray(value.messages)) value = value.messages;
+      if (typeof value === 'string' && key === 'input') value = [value];
       if (!Array.isArray(value)) continue;
       record('messages', (sink) => {
         if (value.length > MAX_SCAN_ARRAY_ITEMS) {
@@ -742,11 +809,13 @@ function readRequestContext(body, options) {
       record('goal', (sink) => scanClasses(container[key]).forEach((c) => sink.add(c)));
     }
     for (const key of PROFILE_KEYS) record('profile', (sink) => classesForProfile(container[key], sink));
-    for (const key of CONSTRAINT_KEYS) {
+    for (const key of CONSTRAINT_OBJECT_KEYS) {
       if (container[key] == null) continue;
-      record('constraints', (sink) =>
-        key === 'constraints' ? classesForConstraints(container[key], sink) : classesForAvoidList(container[key], sink),
-      );
+      record('constraints', (sink) => classesForConstraints(container[key], sink));
+    }
+    for (const key of AVOID_LIST_KEYS) {
+      if (container[key] == null) continue;
+      record('constraints', (sink) => classesForAvoidList(container[key], sink));
     }
     for (const key of FLAG_KEYS) record('safety_flags', (sink) => classesForSafetyFlags(container[key], sink));
   }
