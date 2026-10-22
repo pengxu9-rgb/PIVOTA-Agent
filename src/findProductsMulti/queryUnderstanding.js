@@ -28,6 +28,12 @@ const CATEGORY_TYPO_CORRECTIONS = Object.freeze([
 // externalSeedProducts.resolveBeautyCategoryPathPrefixForQuery), so with it off every query routes exactly
 // as before. (The "Brush On" tool-filter fix shipped alongside is NOT behind this flag.)
 const LASH_CATEGORY_ROUTE_FLAG = 'SEARCH_LASH_CATEGORY_ROUTE';
+// Setting-spray route (2026-10-10). OFF unless SEARCH_SETTING_SPRAY_CATEGORY_ROUTE is on, through the same
+// door as the lash route. pivota-backend#2547 makes beauty/makeup/face/setting-spray a leaf, but the live
+// setting sprays sit on beauty/makeup, beauty/skincare/tone/toner and the old gap path until they are
+// re-filed; a hard-bounded browse turned on before that would serve almost nothing. Turn it on once
+// the rows are there.
+const SETTING_SPRAY_CATEGORY_ROUTE_FLAG = 'SEARCH_SETTING_SPRAY_CATEGORY_ROUTE';
 
 function categoryRouteFlagEnabled(flag, env = process.env) {
   return /^(1|true|on|yes)$/i.test(String(env[flag] || '').trim());
@@ -77,6 +83,19 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     flag: LASH_CATEGORY_ROUTE_FLAG,
     pattern:
       /^(?!.*\b(?:mascaras?|serums?|lifts?|lifting|curlers?|tints?|primers?|conditioners?|growth|removers?)\b)(?:.*\b(?:false|fake|faux|mink|magnetic|strip|individual|cluster|wispy)\s+(?:eye\s?)?lash(?:es)?\b|.*\b(?:eye\s?)?lash\s+(?:clusters?|wisps?|strips?|bands?|glue|adhesives?)\b|.*\bstriplash(?:es)?\b|.*\b(?:impress|kiss)\s+falsies\b|.*\bfalsies\s+(?:press[-\s]?on|lash(?:es)?|clusters?)\b|.*\bpress[-\s]?on\s+(?:eye\s?)?lash(?:es)?\b|.*\bdiy\s+lash\s+extensions?\b|.*\bfalscara\b|.*(?:假睫毛|睫毛胶|睫毛膠))/is,
+  },
+  // Setting spray, behind SEARCH_SETTING_SPRAY_CATEGORY_ROUTE. The phrases the backend classifier files
+  // under this leaf (pivota-backend services/pdp_category_classifier.py "Setting Spray"): setting
+  // spray/mist, fixer/fixing spray/mist, mist & fix, makeup (setting) fixer, setting fixer. A bare
+  // `finishing spray` is not claimed (hair finishing sprays), nor a bare `mist` (a face mist is a
+  // toner), and any query naming hair is declined so `hair fixing spray` keeps the haircare rule.
+  // Sits before fragrance so no later rule's noun claims it first.
+  {
+    category: 'setting_spray',
+    categoryPathPrefix: 'beauty/makeup/face/setting-spray/',
+    flag: SETTING_SPRAY_CATEGORY_ROUTE_FLAG,
+    pattern:
+      /^(?!.*\bhair)(?:.*\b(?:setting\s+(?:spray|mist)s?|fix(?:er|ing)?\s+(?:spray|mist)s?|mist\s*(?:&|and|\+)\s*fix|make[\s-]?up\s+(?:setting\s+)?fix(?:er|ing)s?|setting\s+fixers?)\b|.*(?:定妆喷雾|定妝噴霧))/is,
   },
   {
     category: 'fragrance',
@@ -383,6 +402,7 @@ const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
   'beauty/makeup/eye/eyeshadow/': 'eyeshadow',
   'beauty/makeup/face/bronzer/': 'bronzer',
   'beauty/makeup/face/powder/': 'setting powder',
+  'beauty/makeup/face/setting-spray/': 'setting spray',
   'beauty/skincare/treat/mask/': 'face mask',
   'beauty/makeup/face/highlighter/': 'highlighter',
   'beauty/makeup/face/primer/': 'primer',
@@ -1202,6 +1222,7 @@ module.exports = {
   resolveBeautyCategoryPathPrefixFromText,
   resolveBeautyCategoryPathPrefixFromDeclaredStepFamily,
   LASH_CATEGORY_ROUTE_FLAG,
+  SETTING_SPRAY_CATEGORY_ROUTE_FLAG,
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
   isStrictLipstickQuery,
