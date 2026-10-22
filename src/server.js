@@ -1003,10 +1003,11 @@ const INVOKE_MARKET_CONTEXT = new AsyncLocalStorage();
 // once at the top of handleInvokeRequest and read by inferBeautyMainlineIntent, so every beauty
 // lane that infers intent from the query also sees what the rest of the request said.
 const INVOKE_RETINOID_SAFETY_CONTEXT = new AsyncLocalStorage();
-// The invoke operations whose beauty lanes and response net read the retinoid safety context. Every
-// other operation never runs the context reader (find_products, the single-merchant search, never
-// reaches the beauty gate: it is on the follow-up list of operations the gate does not cover yet).
-const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi']);
+// The invoke operations whose responses the retinoid safety net filters, and so the only ones that
+// run the retinoid safety context reader: the multi-merchant search (whose beauty lanes also read
+// the context), the single-merchant search and the discovery feed (neither reaches the beauty gate;
+// the net is their only retinoid rule). Every other operation never runs the reader.
+const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi', 'find_products', 'get_discovery_feed']);
 
 // Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
 // scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum
@@ -42251,7 +42252,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // Retinoid safety net: the last line of the retinoid safety rules (see
     // applyRetinoidSafetyNetForInvokeResponse). It fails closed on its own.
     const bodyBeforeRetinoidNet = finalBody;
-    if (String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase() === 'find_products_multi') {
+    if (RETINOID_SAFETY_CONTEXT_OPERATIONS.has(String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase())) {
       const payloadBody =
         req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
           ? req.body.payload

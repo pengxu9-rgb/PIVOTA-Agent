@@ -91,7 +91,7 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
 
   test('operations other than product search never run the reader, whatever the body carries', async () => {
     const before = calls.length;
-    for (const operation of ['find_products', 'get_discovery_feed', 'resolve_product_group', 'find_similar_products', 'products.recommendations', 'resolve_product_candidates']) {
+    for (const operation of ['resolve_product_group', 'find_similar_products', 'products.recommendations', 'resolve_product_candidates']) {
       await post(operation, { messages: bigMessages(5), user_profile: { pregnancy_status: 'pregnant' }, search: { query: 'serum' } });
     }
     expect(calls.length).toBe(before);
