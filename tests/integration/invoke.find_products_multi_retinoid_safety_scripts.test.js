@@ -115,7 +115,7 @@ describe.each(['off', 'on'])('/agent/shop/v1/invoke find_products_multi: Korean 
       try {
         return await request(app).post('/agent/shop/v1/invoke').send(body);
       } catch (err) {
-        const reset = err && (err.code === 'ECONNRESET' || /socket hang up/.test(String(err.message)));
+        const reset = err && (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || /socket hang up|ETIMEDOUT/.test(String(err.message)));
         if (!reset || attempt >= 2) throw err;
       }
     }
