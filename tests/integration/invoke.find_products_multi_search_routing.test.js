@@ -915,9 +915,13 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   test('mixed modes: the door applied is the ON flag\'s, the observed one only logs (door_shadow_on)', async () => {
     // bare on, multilingual observe: the Korean negation is not mapped, so its door has no exclusion,
     // and the answer is the bare-only one.
+    // The English half uses a niacinamide exclusion: a retinol one ("retinol alternative serum") also
+    // carries a retinoid safety signal, so the beauty gate removes the retinoid rows before the door
+    // sees them and there is nothing left for the door to drop or count.
+    const DOOR_QUERY = 'niacinamide-free serum';
     const bareOnly = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on' });
     const bareOnlyKo = await bareOnly.invoke('레티놀 프리 크림');
-    const bareOnlyEn = await bareOnly.invoke('retinol alternative serum');
+    const bareOnlyEn = await bareOnly.invoke(DOOR_QUERY);
     jest.resetModules();
     for (const key of FLAG_KEYS) delete process.env[key];
     const mixed = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on', FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'observe' });
@@ -925,18 +929,18 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     expect(normalize(mixedKo.resp.body)).toEqual(normalize(bareOnlyKo.resp.body));
     expect(mixedKo.log.fpm_routing_query_would_normalize).toBe(true);
     expect(mixedKo.log.fpm_routing_query_normalized).toBe(false);
-    const mixedEn = await mixed.invoke('retinol alternative serum');
+    const mixedEn = await mixed.invoke(DOOR_QUERY);
     expect(normalize(mixedEn.resp.body)).toEqual(normalize(bareOnlyEn.resp.body));
     expect(mixedEn.log.fpm_excluded_ingredient_dropped_count > 0).toBe(true);
     // bare observe, multilingual on: the door only counts (would_drop) and the body is the multilingual-only one.
     jest.resetModules();
     for (const key of FLAG_KEYS) delete process.env[key];
     const mlOnly = boot({ FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' });
-    const mlOnlyEn = await mlOnly.invoke('retinol alternative serum');
+    const mlOnlyEn = await mlOnly.invoke(DOOR_QUERY);
     jest.resetModules();
     for (const key of FLAG_KEYS) delete process.env[key];
     const shadow = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'observe', FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' });
-    const shadowEn = await shadow.invoke('retinol alternative serum');
+    const shadowEn = await shadow.invoke(DOOR_QUERY);
     expect(normalize(shadowEn.resp.body)).toEqual(normalize(mlOnlyEn.resp.body));
     expect(shadowEn.log.fpm_excluded_ingredient_would_drop_count > 0).toBe(true);
     expect(shadowEn.log.fpm_excluded_ingredient_dropped_count).toBeUndefined();
