@@ -169,16 +169,18 @@ const PRICE_WORDS = new Set([
   'under', 'below', 'less', 'than', 'max', 'maximum', 'up', 'to', 'around', 'about', 'between', 'within',
   'dollar', 'dollars', 'usd', 'sgd', 'eur', 'euro', 'euros', 'gbp', 'pound', 'pounds', 'jpy', 'yen', 'cny', 'rmb', 'yuan',
   'bucks', 's',
+  // lower bounds and bound phrasing ("over $20", "from $20", "at least 20", "30 or less", "budget of 30")
+  'over', 'above', 'from', 'at', 'least', 'more', 'min', 'minimum', 'starting', 'each', 'per', 'or', 'of',
 ]);
-const PRICE_NUMBER_RE = /^\d+(?:\.\d+)?(?:元|円|块|以内|以下|以上|k)*$/u;
+const PRICE_NUMBER_RE = /^(?:预算|价格)?\d+(?:\.\d+)?(?:元|円|块|以内|以下|以上|k)*$/u;
 // A raw token is part of a price phrase when, without surrounding punctuation, it is a price word, a
 // currency, or a number with an optional currency or budget mark on either side.
-const RAW_PRICE_AMOUNT = '(?:s\\$|[$€£¥￥])?\\d+(?:[.,]\\d+)?(?:[$€£¥￥元円块]|usd|sgd|eur|gbp|jpy|cny|rmb|k)?';
+const RAW_PRICE_AMOUNT = '(?:预算|价格|[<>≤≥]=?)?(?:s\\$|[$€£¥￥])?\\d+(?:[.,]\\d+)?(?:[$€£¥￥元円块]|usd|sgd|eur|gbp|jpy|cny|rmb|k)?\\+?';
 const RAW_PRICE_TOKEN_RE = new RegExp(
-  `^(?:${RAW_PRICE_AMOUNT}(?:[-~–—到]${RAW_PRICE_AMOUNT})?(?:以内|以下|以上)?|s\\$|[$€£¥￥]|cheap|cheaper|cheapest|affordable|budget|inexpensive|low|lowest|cost|low-cost|low-priced|priced|price|under|below|less|than|max|maximum|up|to|around|about|between|within|dollars?|usd|sgd|eur|euros?|gbp|pounds?|jpy|yen|cny|rmb|yuan|bucks)$`,
+  `^(?:${RAW_PRICE_AMOUNT}(?:[-~–—到]${RAW_PRICE_AMOUNT})?(?:以内|以下|以上)?|s\\$|[$€£¥￥]|cheap|cheaper|cheapest|affordable|budget|inexpensive|low|lowest|cost|low-cost|low-priced|priced|price|under|below|less|than|max|maximum|up|to|around|about|between|within|dollars?|usd|sgd|eur|euros?|gbp|pounds?|jpy|yen|cny|rmb|yuan|bucks|over|above|from|at|least|more|min|minimum|starting|each|per|[<>≤≥]=?)$`,
   'iu',
 );
-const RAW_PRICE_JOINER_RE = /^(?:and|to|-|~|–|—|到)$/iu;
+const RAW_PRICE_JOINER_RE = /^(?:and|or|of|to|-|~|–|—|到)$/iu;
 
 // The price phrases of a raw query, as typed and in order: runs of price tokens (a joiner such as "and"
 // or "-" only inside a run). A run is kept only when it carries an amount or a price word of its own

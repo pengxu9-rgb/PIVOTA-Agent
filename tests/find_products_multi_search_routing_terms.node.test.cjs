@@ -1009,6 +1009,12 @@ test('round 2 / item 2: a list needs an explicit joiner, on both readings; a sta
   assert.equal(strict.canonicalizeEnglishIngredientNegations('bakuchiol and retinol free serum').query, 'bakuchiol and retinol-free serum');
   assert.equal(strict.canonicalizeEnglishIngredientNegations('without bakuchiol').query, 'bakuchiol-free');
   assert.equal(strict.normalizeForRouting('retinol, niacinamide & vitamin c'), 'retinol and niacinamide and vitamin c');
+  // the scope and the bare-negation reading see the comma list the classifier sees: in "niacinamide,
+  // retinol free" niacinamide is excluded too, so nothing is left to name a category or a product
+  assert.equal(normalizer.exclusionCategoryScope('niacinamide, retinol free'), 'beauty/skincare/');
+  assert.equal(normalizer.exclusionCategoryScope('niacinamide & retinol free'), 'beauty/skincare/');
+  assert.equal(normalizer.isBareIngredientNegationQuery('niacinamide, retinol free'), true);
+  assert.equal(normalizer.isBareIngredientNegationQuery('niacinamide & retinol free'), true);
 });
 
 test('round 2 / item 3: the shared retinoid family, on products and in queries', () => {
@@ -1062,9 +1068,34 @@ test('round 2 / item 4: every budget the parser reads travels with the rewrite; 
     assert.equal(out.query, expected, query);
     assert.deepEqual(parseBudgetToPriceConstraint(out.query), parseBudgetToPriceConstraint(query), query);
   }
+  // lower bounds and bound phrasing travel too
+  for (const [query, expected] of Object.entries({
+    'retinol alternative over $20': 'bakuchiol over $20',
+    'retinol alternative from $20': 'bakuchiol from $20',
+    'retinol alternative at least 20 usd': 'bakuchiol at least 20 usd',
+    'retinol alternative $20+': 'bakuchiol $20+',
+    'retinol alternative 30 or less': 'bakuchiol 30 or less',
+    'retinol alternative budget of 30': 'bakuchiol budget of 30',
+    'retinol alternative 预算100': 'bakuchiol 预算100',
+  })) {
+    assert.equal(rw(query).query, expected, query);
+    assert.deepEqual(parseBudgetToPriceConstraint(rw(query).query), parseBudgetToPriceConstraint(query), query);
+  }
   // a budget the phrase cannot carry leaves the query as typed rather than dropping it
   const odd = 'retinol alternative for twenty bucks';
   assert.equal(rw(odd).query, odd);
+  // ... checked against the parser itself: with bare numbers no longer budgets, "< 30" is a budget
+  // only through its "<", which normalisation removes -- the rewrite would read no budget, so none is made
+  const previous = process.env.SEARCH_BUDGET_REQUIRE_MARKER;
+  process.env.SEARCH_BUDGET_REQUIRE_MARKER = 'on';
+  try {
+    assert.deepEqual(parseBudgetToPriceConstraint('retinol alternative < 30'), { currency: null, min: null, max: 30 });
+    assert.equal(rw('retinol alternative < 30').query, 'retinol alternative < 30');
+    assert.equal(rw('retinol alternative under $20').query, 'bakuchiol under $20');
+  } finally {
+    if (previous === undefined) delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
+    else process.env.SEARCH_BUDGET_REQUIRE_MARKER = previous;
+  }
 });
 
 test('round 2 / item 5: a negated category word never sets a row\'s area; CJK hair titles are hair; category is read (M17)', () => {
