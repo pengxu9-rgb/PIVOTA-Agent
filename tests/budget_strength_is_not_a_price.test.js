@@ -89,6 +89,9 @@ const STRENGTHS = [
   'spf 30-50 sunscreen',
   'under spf 30',
   'sunscreen 50 spf',
+  // a bound of its own does not stop "N spf" / "spf N" being the SPF (r6 sweep survivor H11)
+  'under 50 spf sunscreen',
+  'spf 30 or less',
   '30-50ml toner',
   '30ml-50 toner',
   'under 1.5x',
@@ -562,10 +565,18 @@ describe('flag on: a budget above the strength after it keeps its cap (r6 S1)', 
   ])('"%s" has no budget, as on main', (q) => {
     expect(parseBudgetToPriceConstraint(q)).toBeNull();
   });
-  // Y03: two marked ranges in one query, each read high to low -- the second one's budget word is the
-  // one the parser takes, so its range must be known too
-  test('"around 5 - 1% or budget 30 - 2 per cent" keeps the budget 30', () => {
-    expect(parseBudgetToPriceConstraint('around 5 - 1% or budget 30 - 2 per cent')).toEqual(max(null, 30));
+  // Y03: two marked ranges in one query -- every one is read, not only the first: the second one's
+  // budget word is the one the parser takes (r6 sweep survivor D03), and a budget range after a
+  // high-to-low one is still protected whole
+  test.each([
+    ['around 5 - 1 per cent or budget 30 - 2 per cent', max(null, 30)],
+    ['budget 30 - 5-10% then price 20 - 40-50ml', { currency: null, min: 20, max: 40 }],
+  ])('"%s" keeps its budget', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+  // a masked strength earlier in the query shifts every position after it (r6 sweep survivor D04)
+  test('"10% niacinamide, budget 30 - 5-10%" keeps the budget 30', () => {
+    expect(parseBudgetToPriceConstraint('10% niacinamide, budget 30 - 5-10%')).toEqual(max(null, 30));
   });
   // P02: an equal-ended range is low to high: a parser-read budget range with equal ends stays whole,
   // and a budget word equal to the strength after it has no budget
@@ -603,6 +614,11 @@ describe.each(FLAG_STATES)('"spf-N" next to a budget, %s (r6 S2)', (_label, flag
     // H02: a spaced "spf - N" is a clause separator, not an SPF
     ['sunscreen spf - 30 or less', max(null, 30)],
     ['serum spf - 50', on ? null : max(null, 50)],
+    // ...nor is a half-spaced one (r6 sweep survivors H02, H03)
+    ['serum spf- 50', on ? null : max(null, 50)],
+    ['serum spf -50', on ? null : max(null, 50)],
+    // a currency of its own keeps an "spf-N" number a price (r6 sweep survivor H06)
+    ['sunscreen spf-30 dollars', max('USD', 30)],
   ])('"%s" reads as main does', (q, expected) => {
     expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
   });
