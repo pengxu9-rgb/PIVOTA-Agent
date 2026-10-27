@@ -252,7 +252,9 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   // (P06g)
   ['between 5 and 10％ niacinamide $20 - 40-10%', { currency: 'USD', min: 20, max: 40 }],
   ['price 5-10％ then $20 - 40-10%', { currency: 'USD', min: 20, max: 40 }],
-  ['10%-30 - 20 usd', max('USD', 20)],
+  // review r7: the high end of a range the parser reads high to low is protected too, so this reads
+  // {20, 30}, as on main (r5 read max 20)
+  ['10%-30 - 20 usd', { currency: 'USD', min: 20, max: 30 }],
   ['between 5% and 10-20 dollars serum', { currency: 'USD', min: 10, max: 20 }],
   // (S2) a currency glued after a number is that number's, not the next one's
   ['under 40€ 50ml', max('EUR', 40)],
@@ -549,7 +551,7 @@ describe('flag on: a budget above the strength after it keeps its cap (r6 S1)', 
   });
   test.each([
     ['budget 30 - 5-10%', max(null, 30)],
-    ['around 30 - 5-10% serum', { currency: null, min: 22.5, max: 37.5 }],
+    ['around 30 - 5-10% serum', max(null, 30)],
     ['预算300 - 1 per cent', max(null, 300)],
     ['my budget is 30 ~ 2 per-cent', max(null, 30)],
     ['预算是250~50ml', max(null, 250)],
@@ -565,12 +567,11 @@ describe('flag on: a budget above the strength after it keeps its cap (r6 S1)', 
   ])('"%s" has no budget, as on main', (q) => {
     expect(parseBudgetToPriceConstraint(q)).toBeNull();
   });
-  // Y03: two marked ranges in one query -- every one is read, not only the first: the second one's
-  // budget word is the one the parser takes (r6 sweep survivor D03), and a budget range after a
-  // high-to-low one is still protected whole
+  // Y03: two marked ranges in one query -- the parser answers with its FIRST range, as on main (review
+  // r7): main read {1, 5} and {5, 30}; the strength low end goes, the high end stays
   test.each([
-    ['around 5 - 1 per cent or budget 30 - 2 per cent', max(null, 30)],
-    ['budget 30 - 5-10% then price 20 - 40-50ml', { currency: null, min: 20, max: 40 }],
+    ['around 5 - 1 per cent or budget 30 - 2 per cent', max(null, 5)],
+    ['budget 30 - 5-10% then price 20 - 40-50ml', max(null, 30)],
   ])('"%s" keeps its budget', (q, expected) => {
     expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
   });
@@ -635,5 +636,124 @@ describe('flag on: a price word must sit right before the range (r6 V04)', () =>
   });
   test('"price 20-40" is a budget range', () => {
     expect(parseBudgetToPriceConstraint('serum price 20-40')).toEqual({ currency: null, min: 20, max: 40 });
+  });
+});
+
+// review r7 (X1): each budget regex takes its FIRST match, as on main. When that first match is a
+// masked strength, the path yields nothing -- it does not move on to a later phrase, which main never
+// read (an age, a count, a rating). Main has no budget for any of these with the flag on.
+describe('flag on: a strength never hands its bound to a later number (r7 X1)', () => {
+  beforeEach(() => {
+    process.env[FLAG] = '1';
+  });
+  test.each([
+    'retinol serum up to 1% for women over 40',
+    'bha toner under 2% for teens under 18',
+    'niacinamide serum under 2% and from 3 brands',
+    'under 2% bha rated over 4',
+    'at least 10% vitamin c for over 50 skin',
+    'under 50ml for under 20',
+    // (b) a soft "~" after a strength
+    '1% ~ 2%~30€',
+    'toner 1ml ~ 2ml ~ 250원',
+    // the range finder's first match, too: main reads no range here
+    'between 2 & 30 ml - between 100 and 200',
+    '精华 between 30% and 30-20-40之间',
+  ])('"%s" has no budget', (q) => {
+    expect(parseBudgetToPriceConstraint(q)).toBeNull();
+  });
+  // (a soft "max 10%" lead is left out: main's bounded regex then reads the trail, "under 18", itself)
+  const LEADS = ['under 2%', 'up to 5%', 'at least 10%', 'less than 1%', 'below 0.5%', 'over 20%', 'from 5%',
+    'under 50ml', 'at most 1%'];
+  const TRAILS = ['for teens under 18', 'for women over 40', 'from 3 brands', 'for kids under 12', 'over 50 skin',
+    'at least 18 years', 'under 25 year olds', 'from 2 shops', 'at least 3 times', 'rated over 4', 'for men over 50'];
+  const queries = [];
+  for (const l of LEADS) for (const t of TRAILS) for (const j of [' ', ', ', ' and ']) queries.push(`retinol serum ${l}${j}${t}`);
+  test(`all ${queries.length} strength-then-count queries have no budget`, () => {
+    const budgets = queries.filter((q) => parseBudgetToPriceConstraint(q) !== null);
+    expect(budgets.slice(0, 10)).toEqual([]);
+    expect(budgets).toHaveLength(0);
+  });
+  // a later phrase of a DIFFERENT kind is still read, as main reads it
+  test.each([
+    ['salicylic acid toner under 2％ max 25', max(null, 25)],
+    ['retinol 1% serum under $20', max('USD', 20)],
+  ])('"%s" keeps its budget', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});
+
+// review r7 (X2): a masked number glued before "spf" still counts as a digit, so "50spf under 30" is
+// not "spf under 30" and keeps main's cap.
+describe.each(FLAG_STATES)('a glued "Nspf" before a bound, %s (r7 X2)', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+  test.each([
+    ['sunscreen 50spf under 30', max(null, 30)],
+    ['50spf max 30', max(null, 30)],
+    ['50SPF below 40', max(null, 40)],
+    ['2spf under 250', max(null, 250)],
+  ])('"%s" keeps its budget', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});
+
+// review r7 (X3): the parser's first range read high to low with only its low end masked leaves the high
+// end as the cap, whatever marks the range -- a budget word, a price word, a currency or "between".
+describe('flag on: a high-to-low range keeps its high end (r7 X3)', () => {
+  beforeEach(() => {
+    process.env[FLAG] = '1';
+  });
+  test.each([
+    ['price 30 - 5-10%', 30],
+    ['cost 40 - 10-15%', 40],
+    ['spend 30 - 5-10%', 30],
+    ['range 30 - 5-10%', 30],
+    ['priced 30 - 5-10%', 30],
+    ['price is 30 - 2 per cent', 30],
+    ['价格300 - 5-10%', 300],
+    ['between 30 and 5-10%', 30],
+    ['price 40 - 20~50ml', 40],
+  ])('"%s" -> max %d', (q, value) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(max(null, value));
+  });
+  test('"$30 - 5-10% niacinamide" keeps its currency', () => {
+    expect(parseBudgetToPriceConstraint('$30 - 5-10% niacinamide')).toEqual(max('USD', 30));
+  });
+});
+
+// review r7: a strength just before a range the parser reads high to low never swallows that range's
+// high end ("5 spf~40~20元" is CNY 20-40, as on main).
+describe.each(FLAG_STATES)('the high end of a high-to-low budget range, %s (r7)', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+  test.each([
+    ['sunscreen 5 spf～40~20元', { currency: 'CNY', min: 20, max: 40 }],
+    ['1 – 2 per cent-40-20之间', { currency: null, min: 20, max: 40 }],
+  ])('"%s" keeps its range', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});
+
+// review r7 (a): main's range finder reads "15～15spf" / "5-5 spf" / "50～50 spf" as a range (its
+// numberSpan finds the first end again for an equal-ended range, so it never sees the "spf" after the
+// second). The mask still masks that SPF: protection keeps only an "spf-N" number a price.
+describe.each(FLAG_STATES)('an equal-ended range before "spf", %s (r7 H08)', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+  const on = flagValue !== undefined;
+  test.each([
+    ['$15～15spf', max('USD', 15)],
+    ['max budget 5-5 spf', on ? null : max(null, 5)],
+    // still a phantom, as main's {50, 50} is: the soft bound reads the 50 before the SPF
+    ['about 50～50 spf', { currency: null, min: 37.5, max: 62.5 }],
+  ])('"%s"', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
   });
 });
