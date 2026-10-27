@@ -79,7 +79,7 @@ test('putPrice never writes on the call; the queue is flushed about a second lat
   await store.flush();
   assert.equal(fake.calls.writerOptions.length, 1, 'the BulkWriter is reused');
   assert.equal(fake.docs.get(`verified_prices/${id(3)}`).amount, '23.00');
-  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, flush_timeouts: 0, resets: 0, abandoned: 0, pending: 0, inflight: 0, disabled: false });
+  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, flush_timeouts: 0, resets: 0, abandoned: 0, reenabled: 0, probes: 0, pending: 0, inflight: 0, disabled: false });
 });
 
 test('one doc queued twice in a window is written once, with the NEWER read_at, whichever came last', async () => {
@@ -217,7 +217,7 @@ test('S2: a flush Firestore never answers gives up after its deadline, is logged
     assert.ok(Date.now() - t < 1000, 'the flush gave up waiting');
     assert.deepEqual(lines.filter((l) => l.e === 'price_cache_write_failed'), [{ e: 'price_cache_write_failed', failures: 1, code: 'flush_timeout' }]);
     const stat = lines.find((l) => l.e === 'price_cache_store_stats');
-    assert.deepEqual(stat, { e: 'price_cache_store_stats', written: 0, failed: 0, dropped: 0, flush_timeouts: 1, resets: 0, abandoned: 0, pending: 0, inflight: 2 });
+    assert.deepEqual(stat, { e: 'price_cache_store_stats', written: 0, failed: 0, dropped: 0, flush_timeouts: 1, resets: 0, abandoned: 0, reenabled: 0, probes: 0, pending: 0, inflight: 2 });
     assert.equal(store.stats().inflight, 2);
     // Two writes are still inside the client: room for one more, then drops (counted) until Firestore answers.
     store.putPrice(id(3), doc(T0));
@@ -246,7 +246,7 @@ test('the stats line: at most once a minute, only when something moved, with wha
   store.putPrice(id(2), doc(T0));
   await store.flush();
   const stats = () => lines.filter((l) => l.e === 'price_cache_store_stats');
-  assert.deepEqual(stats(), [{ e: 'price_cache_store_stats', written: 1, failed: 0, dropped: 0, flush_timeouts: 0, resets: 0, abandoned: 0, pending: 0, inflight: 0 }]);
+  assert.deepEqual(stats(), [{ e: 'price_cache_store_stats', written: 1, failed: 0, dropped: 0, flush_timeouts: 0, resets: 0, abandoned: 0, reenabled: 0, probes: 0, pending: 0, inflight: 0 }]);
   t += 61 * 1000;
   await store.flush();
   assert.equal(stats().length, 2);
@@ -446,4 +446,115 @@ test('reset cap: any write that lands (even a late one from a dropped client) re
   } finally {
     clearTimeout(keep);
   }
+});
+
+// ---- controller r5: a disabled store comes back -----------------------------------------------------------------
+
+/** A store whose every client hangs until released; `healthyFrom` (1-based) makes that client and later ones answer. */
+function hungStore({ healthyFrom = Infinity, ...opts } = {}) {
+  const clients = [];
+  const lines = [];
+  const store = createFirestorePriceCacheStore({
+    clientFactory: () => {
+      const f = createFakeFirestore();
+      if (clients.length + 1 < healthyFrom) f.faults.writeHang = true;
+      clients.push(f);
+      return f.db;
+    },
+    flushMs: 60000, flushTimeoutMs: 10, probeInitialMs: 1e9, log: (e, f) => lines.push({ e, ...f }), ...opts,
+  });
+  let n = 0;
+  const put = async () => { n += 1; store.putPrice(id(n), doc(T0)); await store.flush(); };
+  return { store, clients, lines, put };
+}
+
+test('proof of life: a write from a dropped client lands while disabled -> re-enabled, and ONE fresh client takes the next writes', { timeout: 10000 }, async () => {
+  const keep = setTimeout(() => {}, 8000);
+  try {
+    const { store, clients, lines, put } = hungStore({ healthyFrom: 6 });
+    for (let i = 0; i < 15; i += 1) await put();
+    assert.equal(store.stats().disabled, true);
+    assert.equal(clients.length, 5);
+    await put(); // dropped while disabled
+    assert.equal(store.stats().dropped, 1);
+    clients[0].release(); // Firestore answers again: the first dropped client's writes land
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(store.stats().disabled, false);
+    assert.equal(store.stats().reenabled, 1);
+    assert.deepEqual(lines.find((l) => l.e === 'price_cache_store_enabled'), { e: 'price_cache_store_enabled', reason: 'write_landed', resets: 5 });
+    assert.equal(clients.length, 5, 'nothing is built until a write needs it');
+    await put();
+    assert.equal(clients.length, 6, 'exactly one fresh client');
+    assert.equal(clients[5].docs.size, 1, 'the next write went through it');
+    assert.equal(store.stats().written, 1);
+    for (const c of clients) c.release();
+  } finally {
+    clearTimeout(keep);
+  }
+});
+
+test('a refused outage never re-enables: dropped writes that FAIL are no proof of life', { timeout: 10000 }, async () => {
+  const keep = setTimeout(() => {}, 8000);
+  try {
+    const { store, clients, put } = hungStore();
+    for (let i = 0; i < 15; i += 1) await put();
+    assert.equal(store.stats().disabled, true);
+    for (const c of clients) c.release({ fail: true });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(store.stats().disabled, true);
+    assert.equal(store.stats().reenabled, 0);
+    await put();
+    assert.equal(clients.length, 5, 'still no new client');
+  } finally {
+    clearTimeout(keep);
+  }
+});
+
+test('slow probe: one fresh client after the delay, one more reset and disabled again; the delay doubles to its cap; at most maxProbes', { timeout: 10000 }, async () => {
+  const keep = setTimeout(() => {}, 8000);
+  try {
+    const { store, clients, lines, put } = hungStore({ probeInitialMs: 40, probeMaxMs: 60, maxProbes: 2 });
+    for (let i = 0; i < 15; i += 1) await put();
+    assert.equal(store.stats().disabled, true);
+    await new Promise((r) => setTimeout(r, 25));
+    assert.equal(store.stats().probes, 0, 'not before the delay');
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(store.stats().probes, 1);
+    assert.equal(store.stats().disabled, false);
+    for (let i = 0; i < 3; i += 1) await put(); // the probe's client hangs too: one reset
+    assert.deepEqual([store.stats().resets, store.stats().disabled, clients.length], [6, true, 6], 'one more reset, one more client, disabled again');
+    await new Promise((r) => setTimeout(r, 70)); // the second delay is min(80, 60) = 60 ms
+    assert.equal(store.stats().probes, 2);
+    for (let i = 0; i < 3; i += 1) await put();
+    assert.equal(store.stats().disabled, true);
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(store.stats().probes, 2, 'at most maxProbes');
+    assert.equal(clients.length, 7);
+    assert.deepEqual(lines.filter((l) => l.e === 'price_cache_store_enabled').map((l) => l.reason), ['probe', 'probe']);
+    for (const c of clients) c.release();
+  } finally {
+    clearTimeout(keep);
+  }
+});
+
+test('a probe whose client answers brings the store fully back (the next outage needs 5 resets again)', { timeout: 10000 }, async () => {
+  const keep = setTimeout(() => {}, 8000);
+  try {
+    const { store, clients, put } = hungStore({ healthyFrom: 6, probeInitialMs: 20 });
+    for (let i = 0; i < 15; i += 1) await put();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(store.stats().probes, 1);
+    await put();
+    assert.equal(store.stats().written, 1, 'the probe client wrote');
+    assert.equal(store.stats().disabled, false);
+    assert.equal(clients.length, 6);
+    for (const c of clients) c.release();
+  } finally {
+    clearTimeout(keep);
+  }
+});
+
+test('the probe defaults: 30 min, doubling to 4 h, at most 6 per process', () => {
+  const { PROBE_INITIAL_MS, PROBE_MAX_MS, MAX_PROBES } = require('../src/services/priceCacheStore');
+  assert.deepEqual([PROBE_INITIAL_MS, PROBE_MAX_MS, MAX_PROBES], [30 * 60 * 1000, 4 * 60 * 60 * 1000, 6]);
 });

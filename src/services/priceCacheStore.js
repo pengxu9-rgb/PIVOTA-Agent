@@ -54,6 +54,16 @@ const RESET_AFTER_FLUSH_TIMEOUTS = 3;
 // slow-but-alive Firestore is never disabled (it keeps resetting every ~30 s instead; its late writes are reported as
 // abandoned).
 const RESET_CAP_WITHOUT_SUCCESS = 5;
+// A disabled store comes back two ways (controller r5):
+//   - PROOF OF LIFE: a write from a dropped client finally lands (the library kept retrying it), so Firestore answers
+//     again. The store re-enables at once and the next flush builds one fresh client. It cannot fire while Firestore
+//     refuses, and fires within a retry or two of recovery.
+//   - A SLOW PROBE, for a hung connection whose dropped writes never land: one fresh client after 30 min, doubling to
+//     4 h, at most 6 per process. A probe gets exactly one more reset before the store disables again, so each probe
+//     can cost at most one more held client.
+const PROBE_INITIAL_MS = 30 * 60 * 1000;
+const PROBE_MAX_MS = 4 * 60 * 60 * 1000;
+const MAX_PROBES = 6;
 // gRPC channel options for every client this store builds. grpc-js shares subchannels PROCESS-WIDE by default, so a
 // rebuilt client would reuse the hung connection it was rebuilt to escape (controller r3 sim: 6 rebuilds, 0 writes,
 // 140 s after the backend recovered). A local pool gives each client its own connection.
@@ -105,6 +115,9 @@ function createFirestorePriceCacheStore(opts = {}) {
   const maxPending = Number.isInteger(opts.maxPending) && opts.maxPending > 0 ? opts.maxPending : MAX_PENDING;
   const flushTimeoutMs = Number(opts.flushTimeoutMs) > 0 ? Number(opts.flushTimeoutMs) : FLUSH_TIMEOUT_MS;
   const statsLogEveryMs = Number(opts.statsLogEveryMs) > 0 ? Number(opts.statsLogEveryMs) : STATS_LOG_EVERY_MS;
+  const probeInitialMs = Number(opts.probeInitialMs) > 0 ? Number(opts.probeInitialMs) : PROBE_INITIAL_MS;
+  const probeMaxMs = Number(opts.probeMaxMs) > 0 ? Number(opts.probeMaxMs) : PROBE_MAX_MS;
+  const maxProbes = Number.isInteger(opts.maxProbes) && opts.maxProbes >= 0 ? opts.maxProbes : MAX_PROBES;
   const now = typeof opts.now === 'function' ? opts.now : () => Date.now();
   const logSink = typeof opts.log === 'function' ? opts.log : () => {};
   const log = (event, fields) => {
@@ -125,9 +138,11 @@ function createFirestorePriceCacheStore(opts = {}) {
   };
 
   const pending = new Map(); // `${collection}/${id}` -> { collection, id, doc }
-  const stats = { queued: 0, written: 0, failed: 0, dropped: 0, flushes: 0, flush_timeouts: 0, resets: 0, abandoned: 0 };
+  const stats = { queued: 0, written: 0, failed: 0, dropped: 0, flushes: 0, flush_timeouts: 0, resets: 0, abandoned: 0, reenabled: 0, probes: 0 };
   let resetsSinceSuccess = 0;
   let disabled = false;
+  let probeTimer = null;
+  let nextProbeMs = probeInitialMs;
   let inflight = 0; // handed to the current BulkWriter, not yet settled
   let generation = 0; // which BulkWriter an in-flight write belongs to
   let consecutiveTimeouts = 0;
@@ -177,7 +192,7 @@ function createFirestorePriceCacheStore(opts = {}) {
     if (t - lastStatsLogAt < STATS_LOG_EVERY_MS) return;
     const delta = {};
     let moved = false;
-    for (const k of ['written', 'failed', 'dropped', 'flush_timeouts', 'resets', 'abandoned']) {
+    for (const k of ['written', 'failed', 'dropped', 'flush_timeouts', 'resets', 'abandoned', 'reenabled', 'probes']) {
       delta[k] = stats[k] - statsAtLastLog[k];
       if (delta[k]) moved = true;
     }
@@ -222,6 +237,35 @@ function createFirestorePriceCacheStore(opts = {}) {
     writer = null;
     db = null;
     log('price_cache_store_disabled', { resets: stats.resets, abandoned: stats.abandoned, reason: 'no_write_succeeded' });
+    scheduleProbe();
+  }
+
+  function scheduleProbe() {
+    if (probeTimer || closed || stats.probes >= maxProbes) return;
+    const delay = nextProbeMs;
+    nextProbeMs = Math.min(nextProbeMs * 2, probeMaxMs);
+    probeTimer = setTimeout(() => {
+      probeTimer = null;
+      if (!disabled || closed) return;
+      stats.probes += 1;
+      enable('probe');
+      // One more reset (three more flush timeouts) and the store is disabled again.
+      resetsSinceSuccess = RESET_CAP_WITHOUT_SUCCESS - 1;
+    }, delay);
+    if (typeof probeTimer.unref === 'function') probeTimer.unref();
+  }
+
+  /** Back to work: the next flush builds a fresh client. */
+  function enable(reason) {
+    if (!disabled) return;
+    disabled = false;
+    resetsSinceSuccess = 0;
+    if (reason === 'write_landed') {
+      stats.reenabled += 1;
+      if (probeTimer) clearTimeout(probeTimer);
+      probeTimer = null;
+    }
+    log('price_cache_store_enabled', { reason, resets: stats.resets });
   }
 
   function enqueue(collection, id, doc) {
@@ -272,6 +316,8 @@ function createFirestorePriceCacheStore(opts = {}) {
             // Firestore is alive, so the reset cap's count starts again.
             () => {
               resetsSinceSuccess = 0;
+              nextProbeMs = probeInitialMs; // a future outage probes from the start again
+              if (disabled) enable('write_landed');
               if (gen === generation) stats.written += 1;
             },
             // An abandoned write was counted when it was abandoned.
@@ -359,6 +405,8 @@ function createFirestorePriceCacheStore(opts = {}) {
       timer = null;
       if (statsTimer) clearInterval(statsTimer);
       statsTimer = null;
+      if (probeTimer) clearTimeout(probeTimer);
+      probeTimer = null;
       await flush();
       if (writer) await writer.close().catch(() => {});
       if (db && typeof db.terminate === 'function') await db.terminate().catch(() => {});
@@ -381,6 +429,9 @@ module.exports = {
   FLUSH_TIMEOUT_MS,
   RESET_AFTER_FLUSH_TIMEOUTS,
   RESET_CAP_WITHOUT_SUCCESS,
+  PROBE_INITIAL_MS,
+  PROBE_MAX_MS,
+  MAX_PROBES,
   GRPC_CHANNEL_OPTIONS,
   WARM_DOC_ID,
 };
