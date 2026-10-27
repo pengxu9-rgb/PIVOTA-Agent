@@ -674,6 +674,13 @@ describe('flag on: a strength never hands its bound to a later number (r7 X1)', 
     expect(budgets.slice(0, 10)).toEqual([]);
     expect(budgets).toHaveLength(0);
   });
+  // every path keeps its first match: a budget word, a CJK bound and a postfix bound after an SPF
+  test.each(['budget 5% serum, my budget is 30', 'spf50以上精华300以内', 'spf 30 or less, 20 or less'])(
+    '"%s" has no budget',
+    (q) => {
+      expect(parseBudgetToPriceConstraint(q)).toBeNull();
+    },
+  );
   // a later phrase of a DIFFERENT kind is still read, as main reads it
   test.each([
     ['salicylic acid toner under 2％ max 25', max(null, 25)],
@@ -753,6 +760,28 @@ describe.each(FLAG_STATES)('an equal-ended range before "spf", %s (r7 H08)', (_l
     ['max budget 5-5 spf', on ? null : max(null, 5)],
     // still a phantom, as main's {50, 50} is: the soft bound reads the 50 before the SPF
     ['about 50～50 spf', { currency: null, min: 37.5, max: 62.5 }],
+  ])('"%s"', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});
+
+// review r7: where main takes a strength whose value is 0 -- its range, its currency, its bound or its
+// first number -- main has no budget at all, and neither does the parser after masking. A masked 0 is
+// never skipped over to a later budget main did not read.
+describe.each(FLAG_STATES)('a 0 strength main would take, %s (r7)', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+  const on = flagValue !== undefined;
+  test.each([
+    ['price 30 - 0-10%', null],
+    ['under 0％ alcohol max 20', null],
+    ['usd 0% sugar, under 30', null],
+    ['0% alcohol toner max 20', on ? max(null, 20) : null],
+    ['0% alcohol toner 20', null],
+    ['0-10% under 20', on ? max(null, 20) : null],
+    ['0% alcohol toner under 20', max(null, 20)],
   ])('"%s"', (q, expected) => {
     expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
   });

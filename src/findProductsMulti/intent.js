@@ -1064,10 +1064,11 @@ const BOUND_WORD_AFTER_RE = new RegExp(
   'i',
 );
 
-// Returns the masked text, whether anything was masked, and the parser's first marked range on the
-// unmasked text with which of its ends were masked (markedRangeAfterMask reads it).
+// Returns the masked text, whether anything was masked, the value of every masked number in order, and
+// the parser's first marked range on the unmasked text with which of its ends were masked
+// (markedRangeAfterMask reads it).
 function maskStrengthNumbers(text) {
-  if (!/\d/.test(text)) return { text, masked: false, firstRange: null };
+  if (!/\d/.test(text)) return { text, masked: false, firstRange: null, values: [] };
   const tokens = [];
   for (const match of text.matchAll(STRENGTH_NUMBER_RE)) {
     const start = match.index;
@@ -1176,17 +1177,19 @@ function maskStrengthNumbers(text) {
       if ((x.kind === 'spf' || x.kind === 'size') && bare) x.kind = null;
     }
   }
-  if (!tokens.some((t) => t.kind || t.spread)) return { text, masked: false, firstRange: null };
+  if (!tokens.some((t) => t.kind || t.spread)) return { text, masked: false, firstRange: null, values: [] };
   const masks = (t) => Boolean(t && (t.kind || t.spread));
   if (firstRange) firstRange = { a: firstRange.a, b: firstRange.b, masked: firstRange.ends.map(masks) };
   let out = '';
   let cursor = 0;
+  const values = [];
   for (const t of tokens) {
     if (!masks(t)) continue;
     out += text.slice(cursor, t.start) + STRENGTH_MASK;
+    values.push(Number(text.slice(t.start, t.end)));
     cursor = t.end;
   }
-  return { text: out + text.slice(cursor), masked: true, firstRange };
+  return { text: out + text.slice(cursor), masked: true, firstRange, values };
 }
 
 // The range the parser answers with the flag on, as { min, max }, null for "no budget at all", or
@@ -1285,9 +1288,8 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Flag on: collapse whitespace first. Every regex below chains optional \s* runs, and on a
   // long whitespace run that backtracking is super-linear (review of #2275: "about" + 5,000
   // spaces took 29 s on the event loop). Collapsing it changes no match.
-  const masked = maskStrengthNumbers(
-    budgetRequiresMarker() ? digitsNormalized.replace(/\s+/g, ' ') : digitsNormalized,
-  );
+  const unmasked = budgetRequiresMarker() ? digitsNormalized.replace(/\s+/g, ' ') : digitsNormalized;
+  const masked = maskStrengthNumbers(unmasked);
   const normalized = masked.text;
   const hasSgd = /(?:s\$|sgd|singapore dollars?|新加坡元)/i.test(normalized);
   const hasUsd = /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
@@ -1321,6 +1323,25 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     /(?:以上)\b/.test(normalized) ||
     /ドル以上|円以上|以上/.test(normalized);
 
+  // Each budget regex below takes its FIRST match, as on main: it runs on a probe of the masked text
+  // with every masked number back as a digit, and a first match that lands on a masked number yields
+  // nothing -- it does not move on to a later phrase ("retinol serum up to 1% for women over 40" has no
+  // budget, as on main; it is not "max 40"). Positions in the probe and the masked text are the same.
+  // A match on a masked number carries the value it stood for: where main would have taken that
+  // number and it is 0, main has no budget, and neither does this ("0% alcohol toner max 20").
+  const probe = normalized.replace(STRENGTH_MASK_RE, '0');
+  const valueAt = (start, digits) =>
+    normalized[start] === STRENGTH_MASK
+      ? masked.values[normalized.slice(0, start).split(STRENGTH_MASK).length - 1]
+      : Number(digits);
+  const firstMatch = (re) => {
+    const found = probe.match(re);
+    if (!found) return { found: false, match: null };
+    const onMask = normalized.slice(found.index, found.index + found[0].length).includes(STRENGTH_MASK);
+    return { found: true, match: onMask ? null : found, raw: found, onMask, value: valueAt(numberSpan(found).start, found[1]) };
+  };
+  const picksZeroStrength = (pick) => Boolean(pick && pick.found && pick.onMask && !(pick.value > 0));
+
   // Range forms: "30-50", "30~50", "30 to 50", "30到50". Percentage
   // ranges are formulation strengths, not prices (for example niacinamide
   // 5%-10%), so never let them preempt a later explicit budget.
@@ -1329,9 +1350,11 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     if (range === null) return null;
     if (range) return { currency, ...range };
   } else {
-    const rangeMatch = normalized.match(
-      /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
-    );
+    const legacyRange = /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i;
+    // main's first range with a 0 end is main's "no budget", strength or not ("0-10% under 20")
+    const legacyFirst = unmasked.match(legacyRange);
+    if (legacyFirst && !(Number(legacyFirst[1]) > 0 && Number(legacyFirst[2]) > 0)) return null;
+    const rangeMatch = normalized.match(legacyRange);
     if (rangeMatch) {
       const a = Number(rangeMatch[1]);
       const b = Number(rangeMatch[2]);
@@ -1344,23 +1367,12 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Product names routinely contain concentrations and sizes before the
   // budget clause ("Niacinamide 10% + Zinc 1% under $8"). Falling back to the
   // first number silently turns the formulation strength into a price cap.
-  //
-  // Each regex below takes its FIRST match, as on main: it runs on a probe of the masked text with every
-  // masked number back as a digit, and a first match that lands on a masked number yields nothing --
-  // it does not move on to a later phrase ("retinol serum up to 1% for women over 40" has no budget,
-  // as on main; it is not "max 40"). Positions in the probe and the masked text are the same.
-  const probe = normalized.replace(STRENGTH_MASK_RE, '0');
-  const firstMatch = (re) => {
-    const found = probe.match(re);
-    if (!found) return { found: false, match: null };
-    const onMask = normalized.slice(found.index, found.index + found[0].length).includes(STRENGTH_MASK);
-    return { found: true, match: onMask ? null : found };
-  };
+  // (each through the first-match probe above)
   const currencySign = firstMatch(/(?:s\$\s*|[$€£¥￥]\s*|(?:sgd|usd|eur|gbp|cny|rmb|jpy)\s*)(\d+(?:\.\d+)?)/i);
-  const currencyAmountMatch = currencySign.found ? currencySign.match : firstMatch(CURRENCY_SUFFIX_AMOUNT_RE).match;
-  const boundedAmountMatch = maxOnly || minOnly
-    ? firstMatch(BOUNDED_AMOUNT_RE).match
-    : null;
+  const currencyFirst = currencySign.found ? currencySign : firstMatch(CURRENCY_SUFFIX_AMOUNT_RE);
+  const currencyAmountMatch = currencyFirst.match;
+  const boundedFirst = maxOnly || minOnly ? firstMatch(BOUNDED_AMOUNT_RE) : { found: false, match: null };
+  const boundedAmountMatch = boundedFirst.match;
   let m;
   if (budgetRequiresMarker()) {
     // SEARCH_BUDGET_REQUIRE_MARKER: a bare number is NEVER a budget. Measured on prod
@@ -1371,34 +1383,53 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // bound word before the number ("under 40", "max 40", "budget 30", "< 30"), or a bound
     // after it ("100以内", "30 bucks", "30 or less"). An unmarked number followed by a
     // size/strength/age/duration unit, or preceded by SPF, is never a price.
-    const usable = (match) => (isMarkedBudgetAmount(normalized, match) ? match : null);
+    // Each check reads the masked text, or the probe (with the masked number's own value) when it
+    // replays main's choice below.
+    const usable = (match, text = normalized) => (match && isMarkedBudgetAmount(text, match) ? match : null);
     // A number that counts things is not a price, whatever marker precedes it:
     // "budget 2-in-1", "预算3步", "max 10 items", "about 20 reviews", "预算10个" -- nor is
     // one that opens a range the range pass refused ("about 5-10 minutes", "预算3-4步").
-    const countsThings = (match) => {
-      const tail = normalized.slice((match.index || 0) + match[0].length);
+    const countsThings = (match, text = normalized) => {
+      const tail = text.slice((match.index || 0) + match[0].length);
       // A masked strength counts as the digit it replaced, so a soft bound or budget word before a
       // strength range reads exactly as before masking: "about 5-10 ml", "around 5 - 10%",
       // "budget 30 - 50ml" have no budget, as on main.
       return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*[\d\uE000]/.test(tail);
     };
-    const hardUsable = (match) => (usable(match) && !countsThings(match) ? match : null);
+    const hardUsable = (match, text = normalized) => (usable(match, text) && !countsThings(match, text) ? match : null);
     // about / around / max / < / ~ / "or less" with no currency: also no plural noun after
     // the number ("about 5 products", "~50 reviews", "around 30s") and at least 5 ("<3",
     // "max 3 layers", "tell me about 2 serums").
-    const softUsable = (match) => {
-      if (!usable(match)) return null;
+    const softUsable = (match, text = normalized, value = Number(match && match[1])) => {
+      if (!usable(match, text)) return null;
       if (BUDGET_CURRENCY_MARKER_RE.test(match[0])) return match;
-      if (Number(match[1]) < 5 || countsThings(match)) return null;
-      const tail = normalized.slice((match.index || 0) + match[0].length);
+      if (value < 5 || countsThings(match, text)) return null;
+      const tail = text.slice((match.index || 0) + match[0].length);
       return PLURAL_WORD_AFTER_RE.test(tail) ? null : match;
     };
-    const budgetWordMatch = firstMatch(BUDGET_WORD_AMOUNT_RE).match;
+    const budgetWordFirst = firstMatch(BUDGET_WORD_AMOUNT_RE);
     // about / around / max / < / ~ with no currency also count things -- see softUsable.
-    const softBoundMatch = firstMatch(SOFT_BOUND_AMOUNT_RE).match;
-    const cjkPostfixBound = firstMatch(CJK_POSTFIX_BOUND_RE).match;
-    const cjkCurrencySuffix = firstMatch(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块|刀(?!片|头))(?!\s*以)/).match;
-    const postfixBound = firstMatch(POSTFIX_BOUND_RE).match;
+    const softBoundFirst = firstMatch(SOFT_BOUND_AMOUNT_RE);
+    const cjkPostfixFirst = firstMatch(CJK_POSTFIX_BOUND_RE);
+    const cjkCurrencyFirst = firstMatch(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块|刀(?!片|头))(?!\s*以)/);
+    const postfixFirst = firstMatch(POSTFIX_BOUND_RE);
+    // Replay main's choice on the probe: if main would take a masked number that is 0, main has no
+    // budget ("under 0％ alcohol max 20"), so neither does this.
+    const mainChoice = [
+      [currencyFirst, usable],
+      [boundedFirst, usable],
+      [budgetWordFirst, hardUsable],
+      [softBoundFirst, softUsable],
+      [cjkPostfixFirst, usable],
+      [cjkCurrencyFirst, usable],
+      [postfixFirst, softUsable],
+    ].find(([first, check]) => first.found && check(first.raw, probe, first.value));
+    if (mainChoice && picksZeroStrength(mainChoice[0])) return null;
+    const budgetWordMatch = budgetWordFirst.match;
+    const softBoundMatch = softBoundFirst.match;
+    const cjkPostfixBound = cjkPostfixFirst.match;
+    const cjkCurrencySuffix = cjkCurrencyFirst.match;
+    const postfixBound = postfixFirst.match;
     m =
       usable(currencyAmountMatch) ||
       usable(boundedAmountMatch) ||
@@ -1408,6 +1439,9 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
       usable(cjkCurrencySuffix) ||
       softUsable(postfixBound);
   } else {
+    // main takes the first of these that matches at all; a masked 0 there is main's "no budget"
+    const legacyPick = [currencyFirst, boundedFirst].find((first) => first.found) || firstMatch(/(\d+(?:\.\d+)?)/);
+    if (picksZeroStrength(legacyPick)) return null;
     m = currencyAmountMatch || boundedAmountMatch || normalized.match(/(\d+(?:\.\d+)?)/);
   }
   if (!m) return null;
