@@ -127,6 +127,27 @@ test('get_offers: a currency mismatch, no declared market, or a skipped read wri
   assert.equal(docs[0].available, false);
 });
 
+test('THE MERCHANT\'S currency is what is recorded: an option (get_offers) or a card (search) answered in another currency is never written', async () => {
+  // One lookup, mixed currencies: the offer's own variant in USD (a verified read), an option in CAD.
+  const mixed = { US: [variant(BLISS, 2500, 'USD', true), variant(HOPE, 3300, 'CAD', true)] };
+  const h = cacheHarness();
+  const r = createUcpLiveOfferReader({ ucpClient: fakeClient(mixed), mode: 'enforce', priceCache: h.api });
+  const out = await r.readOffers([offer({ variants: [{ variant_id: BLISS }, { variant_id: HOPE }] })], { market: 'US', currency: 'USD' });
+  assert.equal(out.offers[0].live_read.status, 'verified');
+  assert.deepEqual(prices(await h.written()), [`rarebeauty.com|US|${BLISS}|USD|verified|25.00|merchant_ucp|offers`]);
+
+  const s = cacheHarness();
+  const sr = createUcpLiveSearchReader({ ucpClient: fakeClient(mixed), mode: 'enforce', priceCache: s.api });
+  const reads = await sr.readCards([card(BLISS), card(HOPE)], { market: 'US' });
+  assert.equal(reads.get(1).status, 'currency_mismatch');
+  assert.deepEqual(prices(await s.written()), [`rarebeauty.com|US|${BLISS}|USD|verified|25.00|merchant_ucp|search`]);
+
+  const p = cacheHarness();
+  const pr = createUcpLiveProductReader({ ucpClient: fakeClient(mixed), mode: 'enforce', priceCache: p.api });
+  await pr.readProduct(pdp({ variants: [{ variant_id: BLISS }, { variant_id: HOPE }] }), { market: 'US' });
+  assert.deepEqual(prices(await p.written()), [], 'a product read answered in two currencies is a mismatch: nothing written');
+});
+
 test('get_offers: without a priceCache dep the reader is exactly as before (no record, same answer)', async () => {
   const h = cacheHarness();
   const withCache = createUcpLiveOfferReader({ ucpClient: fakeClient(rareBeauty), mode: 'enforce', priceCache: h.api, now: () => 1e12 });
