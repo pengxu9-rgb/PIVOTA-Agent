@@ -257,12 +257,19 @@ test('budgets: a huge or numerous context is never read in full, and gates inste
     const out = fn();
     return { out, ms: Number(process.hrtime.bigint() - t) / 1e6 };
   };
-  // one 5 MB message
-  let r = time(() => signal.retinoidSafetyClassesForRequestContext({ payload: { messages: [{ role: 'user', content: 'x'.repeat(5 * 1024 * 1024) }] } }));
+  // Only the reader is timed: the bodies are built before the clock starts (building 200k turns alone
+  // takes ~90 ms on a CI runner). Bounded, the reader stops at the first cap and takes well under 1 ms.
+  // A reader that reads the whole body before (or instead of) applying its caps pays at least one pass of
+  // the text views over it: ~80 ms for the 8 MB turn and seconds for the 200k turns on a laptop, more on
+  // a runner. 50 ms separates the two.
+  // one 8 MB message (the JSON body limit is 10 MB)
+  const bigTurn = { payload: { messages: [{ role: 'user', content: 'x'.repeat(8 * 1024 * 1024) }] } };
+  let r = time(() => signal.retinoidSafetyClassesForRequestContext(bigTurn));
   assert.deepEqual(r.out, over);
-  assert.ok(r.ms < 50, `5 MB message took ${r.ms} ms`);
+  assert.ok(r.ms < 50, `8 MB message took ${r.ms} ms`);
   // 200k short messages
-  r = time(() => signal.retinoidSafetyClassesForRequestContext({ payload: { messages: Array.from({ length: 200000 }, (_, i) => ({ role: 'user', content: `hi ${i}` })) } }));
+  const manyTurns = { payload: { messages: Array.from({ length: 200000 }, (_, i) => ({ role: 'user', content: `hi ${i}` })) } };
+  r = time(() => signal.retinoidSafetyClassesForRequestContext(manyTurns));
   assert.deepEqual(r.out, over);
   assert.ok(r.ms < 50, `200k messages took ${r.ms} ms`);
   // a signal past the turn cap still gates (overflow), it is not dropped
