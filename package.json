@@ -208,6 +208,7 @@
     "@aws-sdk/client-s3": "^3.885.0",
     "@aws-sdk/client-ses": "^3.885.0",
     "@aws-sdk/s3-request-presigner": "^3.885.0",
+    "@google-cloud/firestore": "8.7.1",
     "@google/genai": "^0.7.0",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",

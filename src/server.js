@@ -95,6 +95,10 @@ const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices } = require('./services/liveMerchantSearchPrice');
+// The shared verified-price cache (PRICE_CACHE_STORE + PRICE_CACHE_MODE) and the merchant politeness gate
+// (PRICE_HOST_BUDGET): every live merchant read records into the first and asks the second. Both default off, and
+// off they build nothing, load no Firestore client and change no answer (see priceHostGate below).
+const priceCacheHooks = require('./services/priceCache');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -14063,6 +14067,8 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
   return trackSearchOverlay(overlayLiveMerchantSearchPrices(response, {
     // The merchant's own UCP catalog first (price and stock, for the buyer's market); UCP_LIVE_SEARCH_READ.
     ucpSearchReader: getUcpLiveSearchReader(),
+    priceCache: priceCacheHooks,
+    hostGate: priceHostGate,
     // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
     market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
   }));
@@ -30971,12 +30977,20 @@ function getUcpLiveShared() {
   _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
   return _ucpLiveShared;
 }
-function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
+// Whose merchant reads a lookup core makes (`readClass`): get_offers may spend the budget's reserved quarter.
+const priceHostGate = {
+  admit: (host, klass) => require('./services/priceHostBudget').processHostReadGate().admit(host, klass),
+  noteRefusal: (host, status) => priceCacheHooks.noteHostRefusal(host, status),
+};
+function ucpLiveReaderDeps(maxConcurrent, { maxPerHost, readClass } = {}) {
   const { createLookupCore } = require('./services/ucpLiveOfferRead');
   const shared = getUcpLiveShared();
   return {
     ucpClient: shared.ucpClient,
+    priceCache: priceCacheHooks,
     core: createLookupCore({
+      hostGate: priceHostGate,
+      readClass: readClass || 'search',
       ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
       maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
       discoveryFailures: shared.discoveryFailures,
@@ -30995,7 +31009,7 @@ function getUcpLiveSearchReader() {
   if (readMode(process.env, 'UCP_LIVE_SEARCH_READ') === MODES.OFF) return null;
   _ucpLiveSearchReader = createUcpLiveSearchReader({
     // Search fans out per page: the smallest pool (8).
-    ...ucpLiveReaderDeps(8),
+    ...ucpLiveReaderDeps(8, { readClass: 'search' }),
     log: logUcpLiveRead,
   });
   return _ucpLiveSearchReader;
@@ -31009,7 +31023,8 @@ function getUcpLiveProductReader() {
   const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_PRODUCT_READ') === MODES.OFF) return null;
   _ucpLiveProductReader = createUcpLiveProductReader({
-    ...ucpLiveReaderDeps(16),
+    ...ucpLiveReaderDeps(16, { readClass: 'product' }),
+    priceCacheWriter: 'product',
     log: logUcpLiveRead,
   });
   return _ucpLiveProductReader;
@@ -31030,7 +31045,8 @@ function getUcpLivePdpReader() {
   _ucpLivePdpReader = createUcpLiveProductReader({
     // The frontend PDP is the highest-volume surface: at most 3 lookups to one store in flight -- one
     // product's full read (up to 30 variants = 3 chunks of 10), never a stack of several products.
-    ...ucpLiveReaderDeps(8, { maxPerHost: 3 }),
+    ...ucpLiveReaderDeps(8, { maxPerHost: 3, readClass: 'pdp' }),
+    priceCacheWriter: 'pdp',
     mode: MODES.SHADOW,
     event: 'get_pdp_v2_ucp_live_read',
     log: logUcpLiveRead,
@@ -31179,7 +31195,7 @@ function getUcpLiveOfferReader() {
   const { createUcpLiveOfferReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode() === MODES.OFF) return null;
   _ucpLiveOfferReader = createUcpLiveOfferReader({
-    ...ucpLiveReaderDeps(16),
+    ...ucpLiveReaderDeps(16, { readClass: 'offers' }),
     log: logUcpLiveRead,
   });
   return _ucpLiveOfferReader;
@@ -32553,6 +32569,8 @@ async function getCommerceRemoteMcpAdapter() {
           // OFFER_LIVE_VERIFICATION_SECRET (>= 32 bytes).
           liveCartMode: () => require('./services/offerLiveVerification').liveCartMode(),
           liveVerificationSecret: () => require('./services/offerLiveVerification').readOfferLiveVerificationSecret(),
+          // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
+          priceCache: priceCacheHooks,
           log: logUcpLiveRead,
           fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
