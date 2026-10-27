@@ -681,6 +681,19 @@ describe('flag on: a strength never hands its bound to a later number (r7 X1)', 
       expect(parseBudgetToPriceConstraint(q)).toBeNull();
     },
   );
+  // the currency path keeps its first match too: a currency sign before a strength is that path's
+  // match, and the suffix form after it is not read instead (r7 sweep survivor X1c)
+  test.each(['usd 30% off serum, 20 dollars', '15 usd 10％'])('"%s" has no budget', (q) => {
+    expect(parseBudgetToPriceConstraint(q)).toBeNull();
+  });
+  // a budget word that counts things ("budget 0x serums") is not main's choice, so its masked 0 does not
+  // end the parse: the later soft bound is read, as on main (r7 sweep survivor Z12)
+  test.each([
+    ['budget 0x around 40', { currency: null, min: 30, max: 50 }],
+    ['budget 0x max 20', max(null, 20)],
+  ])('"%s" keeps its budget', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
   // a later phrase of a DIFFERENT kind is still read, as main reads it
   test.each([
     ['salicylic acid toner under 2％ max 25', max(null, 25)],
