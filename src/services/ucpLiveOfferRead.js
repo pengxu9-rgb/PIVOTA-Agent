@@ -976,7 +976,10 @@ function createUcpLiveProductReader(deps = {}) {
     const defaultId = numericVariantId(product.default_variant_id) || (out.variants[0] && numericVariantId(out.variants[0].variant_id));
     const defaultLive = defaultId ? read.live.get(defaultId) : null;
     const defaultVariant = (out.variants || []).find((v) => numericVariantId(v && v.variant_id) === defaultId);
-    if (defaultLive && defaultLive.amount !== null && sameProduct(defaultVariant || { variant_id: defaultId }, defaultLive)) {
+    // The headline is re-priced on exactly the terms its variant is (above: a price AND a stock answer), so the
+    // headline and the default variant never disagree about whether the merchant answered them.
+    if (defaultLive && defaultLive.amount !== null && defaultLive.available !== null
+      && sameProduct(defaultVariant || { variant_id: defaultId }, defaultLive)) {
       out.price = roundTo(defaultLive.amount, read.currency);
       out.currency = read.currency;
       out.price_source = 'merchant_live';

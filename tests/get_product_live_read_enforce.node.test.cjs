@@ -322,3 +322,15 @@ test('facts: the answer\'s own metadata.market wins; only get_product reads live
     assert.equal(priceFactsOf('get_product', { product: card }).price_facts.items[0].at, null);
   });
 });
+
+test('R2: a default variant answered with a price but no stock does not re-price or date the headline', async () => {
+  const c = client({ lookup: merchantAnswers([{ id: gid(ROSE), price: { amount: 2300, currency: 'USD' }, availability: { available: null } }, variantAnswer(PLUM, 2100, 'USD')]) });
+  const out = await enforceReader(c).readProduct(storedResult(), { market: 'US' });
+  const p = out.product;
+  assert.equal(p.live_read.status, STATUS.VERIFIED, 'Plum was read');
+  assert.equal(p.price, 25, 'headline stays stored, like its variant');
+  assert.equal(p.price_as_of, undefined);
+  assert.equal(p.price_source, undefined);
+  assert.equal(p.variants[0].live_read, undefined);
+  assert.equal(classify(out).status, 'stored');
+});

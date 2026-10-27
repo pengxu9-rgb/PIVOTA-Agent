@@ -1457,7 +1457,8 @@ export function ucpGetProductForwardMarketEnabled(env = process.env) {
 const GET_PRODUCT_MARKET_SENTENCE = [
   "Send `catalog.context.address_country` (the buyer market, ISO 3166-1 alpha-2) when you know it: the",
   "price and stock may then be read live from the merchant for that market. It is never inferred, and without",
-  "it the price is Pivota's stored one; `messages` says which it is (`price.merchant_verified` or `price.stored`).",
+  "it the price is Pivota's stored one; `messages` says which it is (`price.merchant_verified`,",
+  "`price.partially_verified` when the default variant's price was read but not every variant's, or `price.stored`).",
   "A stored price is for discovery only: before quoting a final price, call `get_offers` for the product and",
   "market and quote only an offer whose `merchant_price_verified` is true.",
 ].join(" ");

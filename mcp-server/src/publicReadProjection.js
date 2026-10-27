@@ -14,6 +14,8 @@
 
 import { productPriceCheck } from './productPriceCheck.js';
 
+const PUBLIC_PRICE_CHECK_REASONS = new Set(['no_market', 'market_not_priced']);
+
 // Public canonical PDP base (the citable URL host). Overridable so a future domain move needs no code change.
 const DEFAULT_PDP_BASE = 'https://agent.pivota.cc';
 
@@ -395,7 +397,9 @@ function projectGetProduct(raw, { base = DEFAULT_PDP_BASE } = {}) {
     detail.price_check = compact({
       confirmed_with_merchant: check.live,
       market: check.market,
-      reason: check.live ? null : check.reason,
+      // Only the reasons an agent can act on (state a market; this market is not priced). The rest are the
+      // reader's internals, and this tier serves no diagnostics (§3).
+      reason: !check.live && PUBLIC_PRICE_CHECK_REASONS.has(check.reason) ? check.reason : null,
     });
   }
   return compact(detail);
