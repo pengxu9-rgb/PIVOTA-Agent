@@ -38,9 +38,14 @@ export function productPriceCheck(product) {
   if (!lr) return null;
   const market = typeof lr.market === "string" && ISO2.test(lr.market) ? lr.market : null;
   const checkedAt = typeof lr.checked_at === "string" ? lr.checked_at : null;
-  if (lr.status === "verified" && checkedAt && product.price_as_of === checkedAt) {
-    const variants = (Array.isArray(product.variants) ? product.variants : []).filter(isObj);
-    const read = variants.filter((v) => isObj(v.live_read) && v.live_read.status === "verified").length;
+  const variants = (Array.isArray(product.variants) ? product.variants : []).filter(isObj);
+  const verified = (v) => isObj(v.live_read) && v.live_read.status === "verified";
+  // The default variant, when listed, must itself be verified: a headline the reader re-priced while that
+  // variant kept its stored price would publish the stored price beside a claim that the default was read.
+  const defaultVariant = product.default_variant_id == null ? null
+    : variants.find((v) => v.variant_id != null && String(v.variant_id) === String(product.default_variant_id));
+  if (lr.status === "verified" && checkedAt && product.price_as_of === checkedAt && !(defaultVariant && !verified(defaultVariant))) {
+    const read = variants.filter(verified).length;
     return { live: true, market, as_of: checkedAt, read_variants: read, stored_variants: variants.length - read };
   }
   // Why it is stored: the reader's reason when it is one of ours, else the read's status.

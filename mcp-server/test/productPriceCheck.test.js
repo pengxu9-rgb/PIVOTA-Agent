@@ -270,3 +270,43 @@ test('public price_check never carries an internal reason token', async () => {
   }
   assert.deepEqual(projectPublicReadResult('get_product', await enforced(() => assert.fail('never'), {})).price_check, { confirmed_with_merchant: false, reason: 'no_market' });
 });
+
+// R2 (controller r4): the merchant answers the default variant's PRICE but not its stock, and Plum in full. The
+// default variant keeps its stored price (a variant is re-priced only with both); the headline must agree.
+const ROSE_NO_STOCK = () => answer({
+  products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [
+    { id: gid(ROSE), price: { amount: 2300, currency: 'USD' }, availability: { available: null } },
+    v(PLUM, 2100, 'USD'),
+  ] }],
+  messages: [],
+});
+
+test('R2: default answered with a price but no stock: the headline stays stored with its variant, and nothing claims the default was read', async () => {
+  const out = await enforced(ROSE_NO_STOCK);
+  const p = out.product;
+  assert.equal(p.variants[0].live_read, undefined, 'Rose is not verified (no stock answer)');
+  assert.equal(p.variants[0].price.current.amount, 25);
+  assert.equal(p.variants[1].live_read.status, 'verified');
+  assert.equal(p.variants[1].price.current.amount, 21);
+  assert.equal(p.price, 25, 'the headline agrees with its variant: stored');
+  assert.equal(p.price_as_of, undefined, 'and is not dated');
+  assert.equal(p.price_source, undefined);
+  assert.deepEqual(productPriceCheck(p), { live: false, market: 'US', reason: 'headline_not_read' });
+  const msgs = priceMessages(shapeUcpGetProductResponse(out, {}));
+  assert.deepEqual(msgs.map((m) => [m.type, m.code]), [['warning', 'price.stored']]);
+  assert.doesNotMatch(msgs[0].content, /default among them/);
+  assert.deepEqual(projectPublicReadResult('get_product', out).price_check, { confirmed_with_merchant: false, market: 'US' });
+});
+
+test('R2 guard: a headline dated by a read while its listed default variant is not verified is never live', () => {
+  const p = {
+    price: 23, price_as_of: 't', default_variant_id: 1,
+    live_read: { status: 'verified', market: 'US', checked_at: 't' },
+    variants: [{ variant_id: '1', price: { current: { amount: 25 } } }, { variant_id: '2', live_read: { status: 'verified' } }],
+  };
+  assert.deepEqual(productPriceCheck(p), { live: false, market: 'US', reason: 'headline_not_read' });
+  p.variants[0].live_read = { status: 'verified' };
+  assert.equal(productPriceCheck(p).live, true, 'once the default variant is verified, the headline is live');
+  delete p.default_variant_id;
+  assert.equal(productPriceCheck(p).live, true, 'no default named: the headline stamp decides');
+});
