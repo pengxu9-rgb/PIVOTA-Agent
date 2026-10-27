@@ -513,7 +513,7 @@ test('a refused outage never re-enables: dropped writes that FAIL are no proof o
 test('slow probe: one fresh client after the delay, one more reset and disabled again; the delay doubles to its cap; at most maxProbes', { timeout: 10000 }, async () => {
   const keep = setTimeout(() => {}, 8000);
   try {
-    const { store, clients, lines, put } = hungStore({ probeInitialMs: 40, probeMaxMs: 60, maxProbes: 2 });
+    const { store, clients, lines, put } = hungStore({ probeInitialMs: 40, probeMaxMs: 200, maxProbes: 2 });
     for (let i = 0; i < 15; i += 1) await put();
     assert.equal(store.stats().disabled, true);
     await new Promise((r) => setTimeout(r, 25));
@@ -523,7 +523,9 @@ test('slow probe: one fresh client after the delay, one more reset and disabled 
     assert.equal(store.stats().disabled, false);
     for (let i = 0; i < 3; i += 1) await put(); // the probe's client hangs too: one reset
     assert.deepEqual([store.stats().resets, store.stats().disabled, clients.length], [6, true, 6], 'one more reset, one more client, disabled again');
-    await new Promise((r) => setTimeout(r, 70)); // the second delay is min(80, 60) = 60 ms
+    await new Promise((r) => setTimeout(r, 55));
+    assert.equal(store.stats().probes, 1, 'the second delay doubled to 80 ms: not yet at 55');
+    await new Promise((r) => setTimeout(r, 45));
     assert.equal(store.stats().probes, 2);
     for (let i = 0; i < 3; i += 1) await put();
     assert.equal(store.stats().disabled, true);
@@ -557,4 +559,26 @@ test('a probe whose client answers brings the store fully back (the next outage 
 test('the probe defaults: 30 min, doubling to 4 h, at most 6 per process', () => {
   const { PROBE_INITIAL_MS, PROBE_MAX_MS, MAX_PROBES } = require('../src/services/priceCacheStore');
   assert.deepEqual([PROBE_INITIAL_MS, PROBE_MAX_MS, MAX_PROBES], [30 * 60 * 1000, 4 * 60 * 60 * 1000, 6]);
+});
+
+test('the probe delay doubles up to its cap', { timeout: 10000 }, async () => {
+  const keep = setTimeout(() => {}, 8000);
+  try {
+    const { store, clients, put } = hungStore({ probeInitialMs: 20, probeMaxMs: 50, maxProbes: 4 });
+    for (let i = 0; i < 15; i += 1) await put();
+    const gaps = [];
+    for (let k = 0; k < 3; k += 1) {
+      const t = Date.now();
+      while (store.stats().probes === k) await new Promise((r) => setTimeout(r, 2));
+      gaps.push(Date.now() - t);
+      for (let i = 0; i < 3; i += 1) await put(); // the probe fails: disabled again, the next delay starts now
+    }
+    // 20, 40, then capped at 50 (not 80); each measured from the re-disable, so allow a little slack.
+    assert.ok(gaps[0] >= 18 && gaps[0] < 38, String(gaps));
+    assert.ok(gaps[1] >= 38 && gaps[1] < 60, String(gaps));
+    assert.ok(gaps[2] >= 48 && gaps[2] < 75, String(gaps));
+    for (const c of clients) c.release();
+  } finally {
+    clearTimeout(keep);
+  }
 });
