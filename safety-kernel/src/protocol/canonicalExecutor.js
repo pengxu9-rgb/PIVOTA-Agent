@@ -262,7 +262,8 @@ export function createCanonicalExecutor({
           /* decision block is best-effort; the base product result is unaffected */
         }
         // Optional LIVE READ of the variants from the merchant's own catalog (UCP lookup_catalog), for the
-        // caller's declared market or the listing's home market. Injected as localReads.live_product_read
+        // caller's DECLARED market only (ADR-026: never one inferred from the listing; no market, no read).
+        // Injected as localReads.live_product_read
         // (services/ucpLiveOfferRead); null means "serve the result unchanged". Best-effort like the
         // decision block: a failure never affects the product result.
         try {

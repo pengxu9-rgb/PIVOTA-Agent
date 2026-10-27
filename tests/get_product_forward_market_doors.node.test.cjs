@@ -137,20 +137,57 @@ test('shadow + forward: no answer changes, and the UCP door hands its declared m
   assert.deepEqual(R.shadow.ucp_gp_ctx.reads, [{ mode: 'shadow', market: null, status: 'skipped', reason: 'no_market' }], 'forward off: the context is not read');
 });
 
-test('enforce, forward off: the UCP door reads nothing live, whatever context it is sent', () => {
-  assertSameAsMain(R.enforce, 'enforce', GP_CASES.filter((n) => n !== 'mcp_gp_market'));
+// What enforce ADDS to an answer, taken back out: the UCP `price.*` message, the public `price_check`, and /mcp's
+// `price_as_of`. Re-serialized the way the doors serialize (inner text JSON.stringify(_, null, 2), outer
+// JSON.stringify), so "the rest is byte-identical to main" is checked against main's sha, and `added` is the label.
+function stripEnforceLabels(body) {
+  const o = JSON.parse(body);
+  const added = {};
+  const r = o.result || {};
+  if (r.structuredContent && 'price_check' in r.structuredContent) {
+    added.price_check = r.structuredContent.price_check;
+    delete r.structuredContent.price_check;
+  } else if (Array.isArray(r.content) && r.content[0] && !r.isError) {
+    const inner = JSON.parse(r.content[0].text);
+    if (Array.isArray(inner.messages)) {
+      added.messages = inner.messages.filter((m) => /^price\./.test(m.code));
+      const rest = inner.messages.filter((m) => !/^price\./.test(m.code));
+      if (rest.length) inner.messages = rest;
+      else delete inner.messages;
+    }
+    if (inner.product && 'price_as_of' in inner.product) {
+      added.price_as_of = inner.product.price_as_of;
+      delete inner.product.price_as_of;
+    }
+    r.content[0].text = JSON.stringify(inner, null, 2);
+  }
+  return { rest: JSON.stringify(o), added };
+}
+const ucpPriceMessage = (c) => {
+  const { added } = stripEnforceLabels(c.body);
+  assert.equal((added.messages || []).length, 1, 'exactly one price message');
+  return added.messages[0];
+};
+
+test('enforce, forward off: the UCP door reads nothing live, whatever context it is sent, and labels the stored price', () => {
+  for (const name of GP_CASES) {
+    const { rest } = stripEnforceLabels(R.enforce[name].body);
+    assert.equal(sha(rest), MAIN.combos.enforce.cases[name].sha256, `${name}: main's enforce answer, once the label is taken out`);
+  }
   for (const name of ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other', 'ucp_gp_ctx']) {
     assert.equal(ucpMinor(R.enforce[name]), 2500, `${name}: the stored price`);
     assert.deepEqual(R.enforce[name].lookups, [], name);
     assert.deepEqual(served(R.enforce[name]), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }], name);
+    const m = ucpPriceMessage(R.enforce[name]);
+    assert.deepEqual([m.type, m.code, m.path], ['warning', 'price.stored', '$.product.price_range'], name);
+    assert.match(m.content, /not confirmed with the merchant \(no_market\)/);
   }
 });
 
-test('enforce: the one byte /mcp adds to a verified product is price_as_of, the time its headline price was read', () => {
-  const body = R.enforce.mcp_gp_market.body;
-  const stamp = ',\\n    \\"price_as_of\\": \\"2026-10-22T12:00:00.000Z\\"';
-  assert.equal(body.split(stamp).length, 2, 'price_as_of appears once');
-  assert.equal(sha(body.replace(stamp, '')), MAIN.combos.enforce.cases.mcp_gp_market.sha256, 'otherwise main\'s enforce answer');
+test('enforce: /mcp adds only price_as_of to a verified product; /public/mcp adds only price_check', () => {
+  const { rest, added } = stripEnforceLabels(R.enforce.mcp_gp_market.body);
+  assert.deepEqual(added, { price_as_of: '2026-10-22T12:00:00.000Z' });
+  assert.equal(sha(rest), MAIN.combos.enforce.cases.mcp_gp_market.sha256, 'otherwise main\'s enforce answer');
   const p = productOf(R.enforce.mcp_gp_market);
   assert.equal(p.price, 23);
   assert.equal(p.live_read.status, 'verified');
@@ -160,28 +197,34 @@ test('enforce: the one byte /mcp adds to a verified product is price_as_of, the 
   assert.equal(stored.price, 25, 'no market: the stored price, never blanked');
   assert.deepEqual(stored.live_read && [stored.live_read.status, stored.live_read.reason], ['skipped', 'no_market']);
   assert.equal(stored.price_as_of, undefined, 'an unread price is not dated');
+  assert.deepEqual(stripEnforceLabels(R.enforce.mcp_gp.body).added, {}, '/mcp already carries live_read: nothing is added');
   assert.deepEqual(served(R.enforce.mcp_gp), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }]);
+  assert.deepEqual(stripEnforceLabels(R.enforce.public_gp_market.body).added, { price_check: { confirmed_with_merchant: true, market: 'US' } });
+  assert.deepEqual(stripEnforceLabels(R.enforce.public_gp.body).added, { price_check: { confirmed_with_merchant: false, reason: 'no_market' } });
+  assert.doesNotMatch(R.enforce.public_gp_market.body, /\d{4}-\d{2}-\d{2}T\d{2}:/, 'the public tier serves no timestamp');
 });
 
-test('enforce + forward: a declared UCP market is read live; none, blank or other context members read nothing', () => {
+test('enforce + forward: a declared UCP market is read live and says so; none, blank or other context members read nothing and say so', () => {
   const ctx = R.enforcefwd.ucp_gp_ctx;
   assert.equal(ucpMinor(ctx), 2300, 'the merchant\'s live price, in minor units');
   assert.deepEqual(ctx.reads, [{ mode: 'enforce', market: 'US', status: 'verified', reason: null }]);
   assert.equal(ctx.lookups.length, 1);
   assert.deepEqual(served(ctx), [{ live: 1, recent: 0, stored: 0, market: 'US', surface: 'get_product' }], 'counted live, for US');
+  const m = ucpPriceMessage(ctx);
+  assert.deepEqual([m.type, m.code], ['info', 'price.merchant_verified']);
+  assert.match(m.content, /for US at 2026-10-22T12:00:00\.000Z/);
+  // Without the label, the answer differs from main's only in the amounts.
+  assert.equal(
+    sha(stripEnforceLabels(ctx.body).rest.replace(/\\"amount\\": 2300/g, '\\"amount\\": 2500')),
+    MAIN.combos.enforce.cases.ucp_gp_ctx.sha256,
+    'only the amounts moved',
+  );
   for (const name of ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other']) {
-    assert.equal(R.enforcefwd[name].sha256, MAIN.combos.enforce.cases[name].sha256, `${name}: main's enforce answer`);
+    assert.equal(R.enforcefwd[name].sha256, R.enforce[name].sha256, `${name}: as under enforce alone (stored, labelled)`);
     assert.equal(ucpMinor(R.enforcefwd[name]), 2500, `${name}: stored`);
     assert.deepEqual(R.enforcefwd[name].reads, [{ mode: 'enforce', market: null, status: 'skipped', reason: 'no_market' }], name);
     assert.deepEqual(served(R.enforcefwd[name]), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }], name);
   }
-  // The UCP shaper does not publish price_as_of or live_read: the answer differs from main's only in the price.
-  assert.equal(
-    sha(ctx.body.replace(/\\"amount\\": 2300/g, '\\"amount\\": 2500')),
-    MAIN.combos.enforce.cases.ucp_gp_ctx.sha256,
-    'only the amounts moved',
-  );
-  // The other doors are what they are under enforce alone.
   for (const name of ['mcp_gp', 'mcp_gp_market', 'public_gp', 'public_gp_market']) {
     assert.equal(R.enforcefwd[name].sha256, R.enforce[name].sha256, name);
   }

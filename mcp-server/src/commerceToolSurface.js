@@ -216,7 +216,7 @@ const UCP_LIVE_OFFER_READ_ENFORCED = liveReadMode("UCP_LIVE_OFFER_READ") === "en
 // for discovery; get_offers asks the merchant).
 const GET_PRODUCT_MARKET_SENTENCES =
   " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: without it nothing is read live and the price is Pivota's stored one." +
-  " A stored price is for discovery only: call get_offers for the product and market before quoting a final price to a buyer.";
+  " A stored price is for discovery only: before quoting a final price to a buyer, call get_offers for the product and market and quote only an offer whose `merchant_price_verified` is true.";
 
 function positiveIntEnv(name, fallback) {
   const n = Number(envValue(name));

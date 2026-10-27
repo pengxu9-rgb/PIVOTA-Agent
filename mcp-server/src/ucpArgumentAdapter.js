@@ -1457,8 +1457,9 @@ export function ucpGetProductForwardMarketEnabled(env = process.env) {
 const GET_PRODUCT_MARKET_SENTENCE = [
   "Send `catalog.context.address_country` (the buyer market, ISO 3166-1 alpha-2) when you know it: the",
   "price and stock may then be read live from the merchant for that market. It is never inferred, and without",
-  "it the price is Pivota's stored one. A stored price is for discovery only: call `get_offers` for the",
-  "product and market before quoting a final price.",
+  "it the price is Pivota's stored one; `messages` says which it is (`price.merchant_verified` or `price.stored`).",
+  "A stored price is for discovery only: before quoting a final price, call `get_offers` for the product and",
+  "market and quote only an offer whose `merchant_price_verified` is true.",
 ].join(" ");
 
 const SEARCH_CATALOG_DESCRIPTION = [
@@ -1887,8 +1888,15 @@ const SPECS = Object.freeze({
       // input the live variant read needs (native `market`; src/services/ucpLiveOfferRead). Off, `context`
       // stays accepted-and-unread and the args are exactly `{ product_id }`. Never defaulted: absent or
       // blank, no market is sent and nothing is read live.
+      //
+      // A null `address_country` is ABSENT (platforms serialize unset optional fields as null). A non-string is a
+      // malformed envelope around a valid id, so it is refused as search refuses it (OPERATION_NOT_ALLOWED), never
+      // as UNKNOWN_PRODUCT_ID, whose "no product matches, search again" would send the agent round in a loop.
       if (ucpGetProductForwardMarketEnabled(env)) {
-        const country = readSearchCountry(own(catalog, "context"), code);
+        const context = own(catalog, "context");
+        const country = isPlainObject(context) && own(context, "address_country") === null
+          ? undefined
+          : readSearchCountry(context, SEARCH_REFUSAL_CODE);
         if (country !== undefined) native.market = country;
       }
       return native;

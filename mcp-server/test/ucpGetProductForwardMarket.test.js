@@ -57,6 +57,7 @@ test('on: no market is ever defaulted or inferred', () => {
   for (const catalog of [
     { id: 'sig_1' },
     { id: 'sig_1', context: {} },
+    { id: 'sig_1', context: { address_country: null } },
     { id: 'sig_1', context: { address_country: '' } },
     { id: 'sig_1', context: { address_country: '   ' } },
     // currency is NOT a market (ADR-026): a USD price may only mean the crawl's vantage.
@@ -68,12 +69,26 @@ test('on: no market is ever defaulted or inferred', () => {
   }
 });
 
-test('on: a non-string address_country is refused, naming the field (as search_catalog refuses it)', () => {
-  const e = refusalOf(() => map({ id: 'sig_1', context: { address_country: ['US'] } }, ON));
-  assert.equal(e.code, 'UNKNOWN_PRODUCT_ID');
-  assert.equal(e.detail.reason, 'ucp_country_string_required');
-  assert.equal(e.detail.acp_detail.rejected_field, 'catalog.context.address_country');
-  assert.match(e.detail.acp_message, /address_country/);
+test('on: a null address_country is absent (an unset optional field), never a refusal', () => {
+  assert.deepEqual(map({ id: 'sig_1', context: { address_country: null } }, ON), { product_id: 'sig_1' });
+  assert.deepEqual(map({ id: 'sig_1', context: { address_country: null, currency: 'USD' } }, ON), { product_id: 'sig_1' });
+});
+
+test('on: a non-string address_country is refused as a malformed envelope (as search_catalog refuses it), never as an unknown product', () => {
+  for (const bad of [['US'], 840, true, { code: 'US' }]) {
+    const e = refusalOf(() => map({ id: 'sig_1', context: { address_country: bad } }, ON));
+    assert.equal(e.code, 'OPERATION_NOT_ALLOWED', JSON.stringify(bad));
+    assert.notEqual(e.code, 'UNKNOWN_PRODUCT_ID', 'a valid id is never answered "no product matches"');
+    assert.equal(e.retriable, false);
+    assert.equal(e.detail.reason, 'ucp_country_string_required');
+    assert.equal(e.detail.acp_detail.rejected_field, 'catalog.context.address_country');
+    assert.match(e.detail.acp_message, /address_country/);
+    assert.doesNotMatch(String(e.userMessage), /search again/i);
+  }
+  // The same refusal search_catalog gives for the same field.
+  const s = refusalOf(() => ucpToNativeToolArgs(canonicalOpForUcpTool('search_catalog'), { meta: META, catalog: { query: 'x', context: { address_country: 840 } } }));
+  assert.equal(s.code, 'OPERATION_NOT_ALLOWED');
+  assert.equal(s.detail.reason, 'ucp_country_string_required');
 });
 
 test('the flag: on/1/true/yes/enabled in any case; anything else is off', () => {
@@ -97,6 +112,8 @@ test('tools/list: off is the very same declarations; on changes get_product only
       assert.ok(def.description.startsWith(`${UCP_TOOL_DESCRIPTIONS.get_product} `));
       assert.match(def.description, /catalog\.context\.address_country/);
       assert.match(def.description, /call `get_offers`/);
+      assert.match(def.description, /merchant_price_verified/);
+      assert.match(def.description, /price\.stored/);
       assert.equal(def.inputSchema.properties.catalog.properties.context.properties.address_country.type, 'string');
       assert.deepEqual(def.inputSchema.properties.catalog.required, ['id']);
       assert.equal(def.inputSchema.additionalProperties, false);
@@ -143,16 +160,22 @@ test('through the UCP dialect surface: the executor sees market only when the fl
     process.env.UCP_GET_PRODUCT_FORWARD_MARKET = 'on';
     await surface.callTool('get_product', { meta: META, catalog: { id: 'sig_1', context: { address_country: 'US' } } }, {});
     await surface.callTool('get_product', { meta: META, catalog: { id: 'sig_1' } }, {});
+    await surface.callTool('get_product', { meta: META, catalog: { id: 'sig_1', context: { address_country: null } } }, {});
+    await assert.rejects(
+      surface.callTool('get_product', { meta: META, catalog: { id: 'sig_1', context: { address_country: 840 } } }, {}),
+      (e) => e.code === 'OPERATION_NOT_ALLOWED',
+    );
     const gp = surface.tools.find((t) => t.name === 'get_product');
     assert.match(gp.description, /address_country/, 'tools/list follows the flag per call');
   } finally {
     if (prior === undefined) delete process.env.UCP_GET_PRODUCT_FORWARD_MARKET;
     else process.env.UCP_GET_PRODUCT_FORWARD_MARKET = prior;
   }
-  assert.deepEqual(seen.map((c) => c.op), ['get_product', 'get_product', 'get_product']);
+  assert.deepEqual(seen.map((c) => c.op), ['get_product', 'get_product', 'get_product', 'get_product'], 'the refused call never reached the executor');
   assert.deepEqual(seen.map((c) => c.params.payload), [
     { product: { product_id: 'sig_1' } },
     { product: { product_id: 'sig_1' }, market: 'US' },
+    { product: { product_id: 'sig_1' } },
     { product: { product_id: 'sig_1' } },
   ]);
   for (const c of seen) assert.equal(c.params.live_read, true, 'the agent\'s own get_product opts into the live read');

@@ -311,10 +311,13 @@ test('facts: the answer\'s own metadata.market wins; only get_product reads live
     assert.equal(priceFactsOf('get_product', { product: { ...product, live_read: { status: 'skipped', reason: 'no_market', market: null } } }).price_facts.market, null);
     assert.equal(priceFactsOf('get_product', { product: { ...product, live_read: { status: 'verified', market: 'USA' } } }).price_facts.market, null, 'ISO-2 only');
     // A search card the live read verified carries no price_as_of of its own: its live_read still dates it.
-    const card = { product_id: 'p', price: 10, currency: 'USD', price_source: 'merchant_live', live_read: { status: 'verified', checked_at: new Date(NOW).toISOString() } };
+    // It names a market in its live_read too: only a get_product reads one from there.
+    const card = { product_id: 'p', price: 10, currency: 'USD', price_source: 'merchant_live', live_read: { status: 'verified', market: 'US', checked_at: new Date(NOW).toISOString() } };
     const searchFact = priceFactsOf('search_catalog', { products: [card] }).price_facts.items[0];
     assert.equal(searchFact.at, NOW);
     assert.equal(priceFactsOf('search_catalog', { products: [card] }).price_facts.market, null, 'search reads no live_read market');
+    assert.equal(priceFactsOf('get_offers', { signals: [{ value: card }] }).price_facts.market, null, 'nor does get_offers');
+    assert.equal(priceFactsOf('recommend_products', { signals: [{ value: { product: card } }] }).price_facts.market, null, 'nor recommend');
     // The same object as a get_product: its live_read does not date the headline.
     assert.equal(priceFactsOf('get_product', { product: card }).price_facts.items[0].at, null);
   });
