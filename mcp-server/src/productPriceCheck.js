@@ -23,9 +23,19 @@ function isObj(v) {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
 }
 
+function hasPrice(v) {
+  const raw = isObj(v) ? (isObj(v.price) ? (isObj(v.price.current) ? v.price.current.amount : v.price.amount) : v.price) : null;
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0;
+}
+
 /**
+ * The headline verdict, and, when the headline was read, how many PRICED variants still carry a stored price
+ * (`stored_variants`): the merchant was silent on them, or the read never asked (a product has more variants
+ * than one read covers, MAX_PRODUCT_VARIANT_IDS). A door that shows the whole price range must not call it read
+ * while any of them is stored.
  * @param {object} product the native get_product product
- * @returns {null | { live: boolean, market: string|null, as_of?: string, reason?: string }}
+ * @returns {null | { live: boolean, market: string|null, as_of?: string, stored_variants?: number, reason?: string }}
  */
 export function productPriceCheck(product) {
   const lr = isObj(product) && isObj(product.live_read) ? product.live_read : null;
@@ -33,7 +43,9 @@ export function productPriceCheck(product) {
   const market = typeof lr.market === "string" && ISO2.test(lr.market) ? lr.market : null;
   const checkedAt = typeof lr.checked_at === "string" ? lr.checked_at : null;
   if (lr.status === "verified" && checkedAt && product.price_as_of === checkedAt) {
-    return { live: true, market, as_of: checkedAt };
+    const storedVariants = (Array.isArray(product.variants) ? product.variants : [])
+      .filter((v) => hasPrice(v) && !(isObj(v.live_read) && v.live_read.status === "verified")).length;
+    return { live: true, market, as_of: checkedAt, stored_variants: storedVariants };
   }
   // Why it is stored: the reader's reason when it is one of ours, else the read's status.
   const reason = lr.status === "verified" ? "headline_not_read"

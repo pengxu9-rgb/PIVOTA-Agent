@@ -469,6 +469,18 @@ export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = 
 
 function priceCheckMessage(check) {
   const forMarket = check.market ? ` for ${check.market}` : "";
+  if (check.live && check.stored_variants > 0) {
+    // The range spans read and stored prices: only the default variant's is the merchant's.
+    return {
+      type: "warning",
+      code: "price.partially_verified",
+      path: "$.product.price_range",
+      content: `Only the default variant's price was read from the merchant's own catalog${forMarket} (at ${check.as_of}); `
+        + `${check.stored_variants} other variant${check.stored_variants === 1 ? "" : "s"} show Pivota's stored price. `
+        + "Before quoting a final price for any other variant, call get_offers and quote only an offer whose merchant_price_verified is true.",
+      content_type: "plain",
+    };
+  }
   if (check.live) {
     return {
       type: "info",
