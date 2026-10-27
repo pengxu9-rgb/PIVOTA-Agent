@@ -35,7 +35,11 @@ test('B1: Firestore refused from boot: warm-up and writes time out, the client i
   assert.ok(r.out.stats.resets >= 2, `several rebuilds: ${JSON.stringify(r.out.stats)}`);
   assert.ok(r.out.stats.flush_timeouts >= 6);
   assert.equal(r.out.stats.written, 0);
-  assert.equal(r.out.stats.inflight, 0, 'nothing left pinning the cap');
+  // Every write is accounted for exactly once, and only the current (unfinished) timeout streak can still be in
+  // flight: at most 2 flushes of one write each, never the backlog of every rebuild.
+  const st = r.out.stats;
+  assert.equal(st.abandoned + st.inflight + st.written + st.failed + st.dropped + st.pending, st.queued, JSON.stringify(st));
+  assert.ok(st.inflight <= 2, `nothing pinning the cap: ${JSON.stringify(st)}`);
   assert.ok(r.out.events.includes('price_cache_store_reset'));
 });
 
