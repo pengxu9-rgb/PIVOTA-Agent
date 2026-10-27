@@ -63,11 +63,11 @@ function amountOf(item) {
   return null;
 }
 
-function answeredAtMs(item) {
+function answeredAtMs(item, { liveReadDates = true } = {}) {
   // live_read.checked_at says when the reader SETTLED, whatever it found: the readers stamp it on a skipped,
   // timed-out, failed, not-UCP, host-busy or variant-gone read too (ucpLiveOfferRead.applyRead). Only a
   // `verified` read is a merchant answer of that time (as offerToSignal.priceFreshnessFields reads it).
-  const lr = isObj(item.live_read) && item.live_read.status === 'verified' ? item.live_read : null;
+  const lr = liveReadDates && isObj(item.live_read) && item.live_read.status === 'verified' ? item.live_read : null;
   for (const raw of [item.price_as_of, lr && lr.checked_at]) {
     const t = typeof raw === 'string' ? Date.parse(raw) : NaN;
     if (Number.isFinite(t)) return t;
@@ -75,8 +75,12 @@ function answeredAtMs(item) {
   return null;
 }
 
-/** The fact of one priced object (search card, product, offer, recommendation product, PDP card). Pure. */
-function priceFactOf(item) {
+/**
+ * The fact of one priced object (search card, product, offer, recommendation product, PDP card). Pure.
+ * `o.liveReadDates: false` (get_product): a product's `live_read` sums up its VARIANTS' read, so a `verified`
+ * one does not date the headline price; the product reader stamps `price_as_of` when it read that price.
+ */
+function priceFactOf(item, o) {
   if (!isObj(item)) return null;
   const amount = amountOf(item);
   // A price flagged for verification is still on the item: whether it is served is the door's call (see WHAT
@@ -84,7 +88,7 @@ function priceFactOf(item) {
   return {
     priced: amount !== null && amount > 0,
     merchant: item.price_source === 'merchant_live' || item.merchant_price_verified === true,
-    at: answeredAtMs(item),
+    at: answeredAtMs(item, o),
   };
 }
 
@@ -145,14 +149,18 @@ function priceFactsOf(tool, value, { limit } = {}) {
     if (!surface) return null;
     let items = pricedItemsOf(tool, value);
     if (Number.isInteger(limit) && limit >= 0) items = items.slice(0, limit);
-    const facts = items.slice(0, MAX_ITEMS).map(priceFactOf).filter(Boolean);
+    const factOptions = tool === 'get_product' ? { liveReadDates: false } : undefined;
+    const facts = items.slice(0, MAX_ITEMS).map((item) => priceFactOf(item, factOptions)).filter(Boolean);
+    // A product names the market its live read ran for (`live_read.market`, declared, never inferred).
+    const declared = isObj(value) && isObj(value.metadata) ? value.metadata.market : null;
+    const market = typeof declared === 'string' ? declared
+      : tool === 'get_product' && isObj(items[0]) && isObj(items[0].live_read) ? items[0].live_read.market : null;
     return {
       price_facts: {
         tool,
         surface,
         items: facts,
-        market: isObj(value) && isObj(value.metadata) && typeof value.metadata.market === 'string'
-          && /^[A-Za-z]{2}$/.test(value.metadata.market.trim()) ? value.metadata.market.trim().toUpperCase() : null,
+        market: typeof market === 'string' && /^[A-Za-z]{2}$/.test(market.trim()) ? market.trim().toUpperCase() : null,
         ...(tool === 'search_catalog' ? { overlay: overlayOutcomeOf(value) } : {}),
       },
     };

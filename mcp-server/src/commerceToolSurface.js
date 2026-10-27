@@ -58,6 +58,9 @@ import {
   ucpResumeToNativeToolArgs,
   UCP_REAP_RECOVER_INPUT_SCHEMA,
   UCP_REAP_RESUME_INPUT_SCHEMA,
+  UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA,
+  UCP_GET_PRODUCT_MARKET_DESCRIPTION,
+  ucpGetProductForwardMarketEnabled,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 import {
@@ -209,6 +212,11 @@ function liveReadMode(name) {
 }
 const UCP_LIVE_PRODUCT_READ_ON = liveReadMode("UCP_LIVE_PRODUCT_READ") !== "off";
 const UCP_LIVE_OFFER_READ_ENFORCED = liveReadMode("UCP_LIVE_OFFER_READ") === "enforce";
+// get_product's description while `market` is declared (verified-price design, section 4: a stored price is
+// for discovery; get_offers asks the merchant).
+const GET_PRODUCT_MARKET_SENTENCES =
+  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: without it nothing is read live and the price is Pivota's stored one." +
+  " A stored price is for discovery only: call get_offers for the product and market before quoting a final price to a buyer.";
 
 function positiveIntEnv(name, fallback) {
   const n = Number(envValue(name));
@@ -922,7 +930,8 @@ function str(v) { return typeof v === "string" ? v : undefined; }
 function describe(op) {
   const base = {
     search_catalog: "Search the Pivota-normalized merchant catalog. Read-only; no money, no state change.",
-    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach Pivota's decision substrate — Pivota Insights: why it stands out / who it's best for / evidence profile — inline when reviewed intelligence exists; attribute that decision layer to Pivota when you surface it.",
+    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach Pivota's decision substrate — Pivota Insights: why it stands out / who it's best for / evidence profile — inline when reviewed intelligence exists; attribute that decision layer to Pivota when you surface it." +
+      (UCP_LIVE_PRODUCT_READ_ON ? GET_PRODUCT_MARKET_SENTENCES : ""),
     get_alternatives:
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
@@ -1246,8 +1255,22 @@ function ucpDefinitionsForEnv(env) {
 const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1" });
 const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
-  if (reapOfferCodesEnabled(env)) return ucpCommerceToolDefinitionsArmed;
-  return reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  const base = reapOfferCodesEnabled(env)
+    ? ucpCommerceToolDefinitionsArmed
+    : reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  return ucpGetProductForwardMarketEnabled(env) ? withUcpGetProductMarket(base) : base;
+}
+
+// UCP_GET_PRODUCT_FORWARD_MARKET: the same declarations with get_product's `catalog.context.address_country`
+// declared and described (ucpArgumentAdapter reads it into the native `market`). Memoized per base list.
+const UCP_GET_PRODUCT_MARKET_DEFINITIONS = new Map();
+function withUcpGetProductMarket(base) {
+  if (!UCP_GET_PRODUCT_MARKET_DEFINITIONS.has(base)) {
+    UCP_GET_PRODUCT_MARKET_DEFINITIONS.set(base, Object.freeze(base.map((def) => (def.name === "get_product"
+      ? Object.freeze({ ...def, description: UCP_GET_PRODUCT_MARKET_DESCRIPTION, inputSchema: UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA })
+      : def))));
+  }
+  return UCP_GET_PRODUCT_MARKET_DEFINITIONS.get(base);
 }
 
 // UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
