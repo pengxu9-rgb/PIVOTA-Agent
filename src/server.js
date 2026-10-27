@@ -443,6 +443,7 @@ const {
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
 } = require('./services/catalogEntityResolution');
+const { resolveReferralContentKey } = require('./services/referralContentKeyResolution');
 const {
   resolveExternalSeedLocalityFacts,
   applyLocalityFactsToSeedData,
@@ -44036,6 +44037,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // signature lane). Read by every identity_resolution this request emits, so a pg_ request that
       // now reports its sig as requested_product_id still says which group the caller asked for.
       let pdpV2ProductGroupSubjectId = null;
+      let pdpV2ContentKeyResolution = null;
       const buildPdpV2IdentityResolution = ({
         requestedProductId = null,
         requestedMerchantId = null,
@@ -44055,6 +44057,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         entry_precheck_missing: Boolean(entryPrecheckMissing),
         resolution_source: resolutionSource || null,
         ...(pdpV2ProductGroupSubjectId ? { requested_product_group_id: pdpV2ProductGroupSubjectId } : {}),
+        ...(pdpV2ContentKeyResolution ? { content_key_resolution: pdpV2ContentKeyResolution } : {}),
       });
       const buildPdpV2RouteHealth = ({
         requestedProductId = null,
@@ -44335,6 +44338,53 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let pdpServingEligibility = null;
           let pdpServingEligibilityChecked = false;
           let signaturePrefetchedPdpContentProductId = null;
+
+          // An anonymous, unminted referral content key names an existing
+          // catalog row. Keep its actual seller and content key through the
+          // normal seed/serving checks instead of falling back to a sellerless
+          // ck_ lookup (400) or the legacy seed merchant (false eligibility miss).
+          // The caller's id and seller were frozen above for response binding.
+          if (
+            /^ck_[a-f0-9]{32}$/.test(productId) &&
+            !requestedMerchantId && !variantId && !offerId && !payload.subject &&
+            process.env.DATABASE_URL
+          ) {
+            const contentKeyStartedAt = Date.now();
+            let contentRef;
+            try {
+              contentRef = await withStageBudget(
+                resolveReferralContentKey(productId, { queryFn: query }),
+                RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+                'resolve_referral_content_key',
+              );
+            } catch (err) {
+              markPdpV2Phase('resolve_referral_content_key', contentKeyStartedAt);
+              logger.warn({ code: err?.code || null, product_id: productId },
+                'get_pdp_v2 referral content-key resolution unavailable');
+              return res.status(503).json(buildPdpV2ErrorBody({
+                error: 'TEMPORARY_UNAVAILABLE',
+                message: 'Product is temporarily unavailable. Please retry shortly.',
+                reasonCode: 'CONTENT_KEY_RESOLVE_UNAVAILABLE',
+                requestedProductId: requestedProductIdForDiagnostics,
+                requestedMerchantId: requestedMerchantIdForDiagnostics,
+              }));
+            }
+            markPdpV2Phase('resolve_referral_content_key', contentKeyStartedAt);
+            if (contentRef) {
+              canonicalProductRef = contentRef;
+              pdpV2ContentKeyResolution = {
+                content_key: contentRef.content_key,
+                product_key: contentRef.product_key,
+                merchant_id: contentRef.merchant_id,
+                product_id: contentRef.product_id,
+              };
+              productId = contentRef.product_id;
+              requestedMerchantId = contentRef.merchant_id;
+              canonicalizationApplied = true;
+              canonicalizationReasonCode = 'CATALOG_CONTENT_KEY';
+              identityResolutionSource = 'catalog_content_key';
+            }
+          }
 		      if (
 			        productId &&
 			        String(productId).trim().toLowerCase().startsWith('sig_') &&
