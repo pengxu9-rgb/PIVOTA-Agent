@@ -976,10 +976,15 @@ function createUcpLiveProductReader(deps = {}) {
     const defaultId = numericVariantId(product.default_variant_id) || (out.variants[0] && numericVariantId(out.variants[0].variant_id));
     const defaultLive = defaultId ? read.live.get(defaultId) : null;
     const defaultVariant = (out.variants || []).find((v) => numericVariantId(v && v.variant_id) === defaultId);
-    if (defaultLive && defaultLive.amount !== null && sameProduct(defaultVariant || { variant_id: defaultId }, defaultLive)) {
+    // The headline is re-priced on exactly the terms its variant is (above: a price AND a stock answer), so the
+    // headline and the default variant never disagree about whether the merchant answered them.
+    if (defaultLive && defaultLive.amount !== null && defaultLive.available !== null
+      && sameProduct(defaultVariant || { variant_id: defaultId }, defaultLive)) {
       out.price = roundTo(defaultLive.amount, read.currency);
       out.currency = read.currency;
       out.price_source = 'merchant_live';
+      // When the HEADLINE price was read: only here, so a verified read that left it stored never dates it.
+      out.price_as_of = checkedAt;
     }
     const allAsked = (Array.isArray(product.variants) ? product.variants : []).every((v) => asked.has(numericVariantId(v && v.variant_id)));
     const anyInStock = out.variants.some((v) => v && v.availability && v.availability.in_stock === true && v.live_read);
@@ -1007,7 +1012,14 @@ function createUcpLiveProductReader(deps = {}) {
       readAndLog(result, product, ctx).catch(() => {});
       return null;
     }
-    return readAndLog(result, product, ctx);
+    // Enforce: whatever fails here, the agent still gets the stored product, with `live_read` saying it was not
+    // verified (the executor's own catch would serve it with no explanation at all).
+    try {
+      return await readAndLog(result, product, ctx);
+    } catch {
+      const annotated = applyProductRead(product, { status: STATUS.ERROR, reason: 'reader_error' });
+      return result.product && typeof result.product === 'object' ? { ...result, product: annotated } : annotated;
+    }
   }
 
   async function readAndLog(result, product, ctx) {
