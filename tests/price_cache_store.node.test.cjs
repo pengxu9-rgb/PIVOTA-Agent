@@ -343,3 +343,25 @@ test('the stats line runs on its own clock: drops after traffic stops are still 
     await store.close();
   }
 });
+
+test('an abandoned write that later FAILS is not counted again (it was counted as abandoned)', { timeout: 5000 }, async () => {
+  const keep = setTimeout(() => {}, 3000);
+  try {
+    const hung = createFakeFirestore();
+    const fresh = createFakeFirestore();
+    const clients = [hung.db, fresh.db];
+    let built = 0;
+    const store = createFirestorePriceCacheStore({ clientFactory: () => clients[built++], flushMs: 60000, flushTimeoutMs: 15 });
+    hung.faults.writeHang = true;
+    for (let i = 1; i <= 3; i += 1) {
+      store.putPrice(id(i), doc(T0));
+      await store.flush();
+    }
+    assert.deepEqual([store.stats().resets, store.stats().abandoned, store.stats().failed], [1, 3, 0]);
+    hung.release({ fail: true });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual([store.stats().failed, store.stats().inflight, store.stats().written], [0, 0, 0]);
+  } finally {
+    clearTimeout(keep);
+  }
+});

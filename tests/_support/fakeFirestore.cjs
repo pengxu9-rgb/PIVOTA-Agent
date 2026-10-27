@@ -122,7 +122,11 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
       async function send(batch) {
         calls.batches.push(batch.map((op) => op.ref.path));
         await pause(0);
-        if (faults.writeHang) await hung();
+        if (faults.writeHang && (await hung()) === 'fail') {
+          // The blackholed connection finally errors (after the client's own retries): every write on it fails.
+          for (const op of batch) op.reject(Object.assign(new Error('fake connection reset'), { code: 14, failedAttempts: 3, documentRef: op.ref }));
+          return;
+        }
         for (const op of batch) {
           if (faults.writeFailures > 0) {
             faults.writeFailures -= 1;
@@ -190,7 +194,7 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
       db.terminated = true;
     },
   };
-  return { db, docs, calls, faults, FakeTimestamp, release: () => { faults.writeHang = false; hangs.splice(0).forEach((resolve) => resolve()); } };
+  return { db, docs, calls, faults, FakeTimestamp, release: ({ fail = false } = {}) => { faults.writeHang = false; hangs.splice(0).forEach((resolve) => resolve(fail ? 'fail' : 'ok')); } };
 }
 
 module.exports = { createFakeFirestore, FakeTimestamp };
