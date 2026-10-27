@@ -204,8 +204,14 @@ function scriptView(text) {
     .toLowerCase();
 }
 
+// A decimal percentage is read as its value before punctuation becomes a space, so "1.0%" is "1%",
+// never "1 0%" with a "0%" absence in it; "0.0%" and "0.00%" are "0%". Only a point is a decimal
+// mark here: "spf 30,0% retinol" may be a list, and a missed "no" is the costlier mistake.
+const DECIMAL_PERCENT_RE = /(?<![\d.])(\d+)\.(\d+)(?=\s?%)/g;
+
 function latinView(script) {
   return script
+    .replace(DECIMAL_PERCENT_RE, (m, whole, fraction) => String(Number(`${whole}.${fraction}`)))
     .replace(CONFUSABLE_RE, (ch) => CONFUSABLES[ch] || ch)
     .normalize('NFKD')
     .replace(/[\u0300-\u036F]/g, '')

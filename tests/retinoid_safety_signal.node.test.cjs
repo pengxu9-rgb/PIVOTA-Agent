@@ -36,6 +36,22 @@ test('a negation gates only when it binds to the retinoid term itself', () => {
   }
 });
 
+test('a decimal strength is a strength, never a "0%" absence', () => {
+  // "1.0%" once read as "1 0%", and its "0%" as a "no" to the retinoid after it.
+  for (const query of [
+    '1.0% retinol serum', '1.0% retinol', '10.0% retinol cream', '2.0 % retinol', '２.０％ retinol', '0.5% retinol',
+    'retinol serum 1.0%', 'retinol 1.0 % cream', 'retinal 0.10% serum',
+  ]) {
+    assert.ok(!classes(query).includes('retinoid_negation'), query);
+  }
+  // A zero is still an absence, however it is written.
+  for (const query of ['0% retinol', '0.0% retinol', '0.00% retinol', 'retinol 0%', 'retinol serum 0.0%', 'spf 30, 0% retinol']) {
+    assert.ok(classes(query).includes('retinoid_negation'), query);
+  }
+  // A comma is not read as a decimal mark: "30,0%" may be a list, so its "0%" still gates.
+  assert.ok(classes('spf 30,0% retinol').includes('retinoid_negation'));
+});
+
 
 test('a negation written only in another script gates when that text names a retinoid', () => {
   for (const query of ['不要视黄醇精华', '不含A醇的面霜', '避开视黄醇', 'レチノールフリー 美容液', 'レチノール不使用', '레티놀 없는 크림', 'без ретинола']) {
