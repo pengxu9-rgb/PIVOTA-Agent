@@ -5,9 +5,13 @@
 // process dying, exactly as it would take down the gateway. Prints ONE JSON line with what happened.
 //
 //   refused  Firestore refuses every connection from boot: a 200 ms warm-up times out while the library keeps retrying
-//            it, writes time out, the store rebuilds its client; the process must stay up.
+//            it, writes time out, the store rebuilds its client until the reset cap disables it; the process must
+//            stay up.
 //   hung     healthy, then every connection hangs (a frozen proxy that never resets), then new connections are healthy
 //            again while the hung ones stay hung: after rebuilding, the store must write through a NEW connection.
+//   library_terminate  NOT the store: one raw client whose getAll is being retried against a refused port, then
+//            terminate()d. The library's own retry rejects with nothing to catch it and the process dies: the hazard
+//            that makes a store reset only DROP a client (controller r4's deterministic repro, Node 20 and 24).
 
 const path = require('node:path');
 const { createFirestorePriceCacheStore } = require(path.join(__dirname, '..', '..', 'src', 'services', 'priceCacheStore'));
@@ -32,13 +36,31 @@ async function refused() {
   const lines = [];
   const s = store(await refusedPort(), lines);
   const warm = await s.warm({ timeoutMs: 200 });
-  const until = Date.now() + 6000;
-  while (Date.now() < until) {
+  const until = Date.now() + 20000;
+  while (Date.now() < until && !s.stats().disabled) {
     s.putPrice(nextId(), doc());
     await s.flush();
     await sleep(50);
   }
+  // Disabled: more writes are dropped and counted, nothing else happens.
+  for (let i = 0; i < 5; i += 1) {
+    s.putPrice(nextId(), doc());
+    await s.flush();
+  }
   return { warmOk: warm.ok, stats: s.stats(), events: [...new Set(lines.map((l) => l.e))].sort() };
+}
+
+async function libraryTerminate() {
+  const { Firestore } = require('@google-cloud/firestore');
+  const db = new Firestore({ projectId: 'cache-project-test', databaseId: 'price-cache', host: '127.0.0.1', port: await refusedPort(), ssl: false });
+  let callerCaught = false;
+  db.getAll(db.collection('verified_prices').doc('0'.repeat(64))).catch(() => { callerCaught = true; });
+  // The crash comes at the library's NEXT retry after terminate(), which backoff can put many seconds out: watch long
+  // enough to see it (the controller's repro: 6/6 with a 15 s watch).
+  await sleep(3000);
+  db.terminate().catch(() => {});
+  await sleep(20000);
+  return { survived: true, callerCaught };
 }
 
 async function hung() {
@@ -80,7 +102,7 @@ async function hung() {
 }
 
 (async () => {
-  const run = { refused, hung }[scenario];
+  const run = { refused, hung, library_terminate: libraryTerminate }[scenario];
   if (!run) throw new Error(`unknown scenario ${scenario}`);
   const out = await run();
   process.stdout.write(`${JSON.stringify({ scenario, ...out })}\n`);

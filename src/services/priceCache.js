@@ -444,7 +444,7 @@ let storeFactory = null; // tests: (settings) => PriceCacheStore
 function defaultLog(event, fields) {
   try {
     // Failures are warnings (they reach error reporting); the stats and warm-up lines are info.
-    const level = /_failed$|_reset$/.test(event) ? 'warn' : 'info';
+    const level = /_failed$|_reset$|_disabled$/.test(event) ? 'warn' : 'info';
     require('../logger')[level]({ event, ...fields }, event);
   } catch {
     /* ignored */

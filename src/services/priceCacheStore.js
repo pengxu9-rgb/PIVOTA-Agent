@@ -46,6 +46,14 @@ const STATS_LOG_EVERY_MS = 60 * 1000;
 // after this many flush timeouts in a row the BulkWriter and the client (its channel) are dropped and built again on
 // next use. Their unsettled writes are counted as `abandoned` and stop holding the in-flight cap.
 const RESET_AFTER_FLUSH_TIMEOUTS = 3;
+// A store that keeps resetting with no write landing in between is talking to a Firestore that is not there (refused,
+// unreachable). The library keeps retrying on every dropped client, so it never frees them (controller r4: 0 of 615
+// collected after 9 min, ~8 MB RSS per reset): after this many resets without one successful write the store DISABLES
+// itself until the process restarts (price_cache_store_disabled, once), so an hours-long outage cannot exhaust memory.
+// Any write that lands, even a late one from a dropped client, means Firestore is alive and restarts the count, so a
+// slow-but-alive Firestore is never disabled (it keeps resetting every ~30 s instead; its late writes are reported as
+// abandoned).
+const RESET_CAP_WITHOUT_SUCCESS = 5;
 // gRPC channel options for every client this store builds. grpc-js shares subchannels PROCESS-WIDE by default, so a
 // rebuilt client would reuse the hung connection it was rebuilt to escape (controller r3 sim: 6 rebuilds, 0 writes,
 // 140 s after the backend recovered). A local pool gives each client its own connection.
@@ -118,6 +126,8 @@ function createFirestorePriceCacheStore(opts = {}) {
 
   const pending = new Map(); // `${collection}/${id}` -> { collection, id, doc }
   const stats = { queued: 0, written: 0, failed: 0, dropped: 0, flushes: 0, flush_timeouts: 0, resets: 0, abandoned: 0 };
+  let resetsSinceSuccess = 0;
+  let disabled = false;
   let inflight = 0; // handed to the current BulkWriter, not yet settled
   let generation = 0; // which BulkWriter an in-flight write belongs to
   let consecutiveTimeouts = 0;
@@ -174,7 +184,7 @@ function createFirestorePriceCacheStore(opts = {}) {
     if (!moved) return;
     lastStatsLogAt = t;
     statsAtLastLog = { ...stats };
-    log('price_cache_store_stats', { ...delta, pending: pending.size, inflight });
+    log('price_cache_store_stats', { ...delta, pending: pending.size, inflight, ...(disabled ? { disabled: true } : {}) });
   }
 
   /** The stats line on its own clock too: drops after traffic stops (no flush) still reach the log. */
@@ -192,6 +202,7 @@ function createFirestorePriceCacheStore(opts = {}) {
    */
   function reset() {
     stats.resets += 1;
+    resetsSinceSuccess += 1;
     stats.abandoned += inflight;
     inflight = 0;
     generation += 1;
@@ -199,11 +210,27 @@ function createFirestorePriceCacheStore(opts = {}) {
     writer = null;
     if (clientFactory) db = null;
     log('price_cache_store_reset', { abandoned: stats.abandoned, resets: stats.resets });
+    if (resetsSinceSuccess >= RESET_CAP_WITHOUT_SUCCESS) disable();
+  }
+
+  /** No more clients, writes or reads until the process restarts (the cache is optional; answers fall back). */
+  function disable() {
+    if (disabled) return;
+    disabled = true;
+    stats.dropped += pending.size;
+    pending.clear();
+    writer = null;
+    db = null;
+    log('price_cache_store_disabled', { resets: stats.resets, abandoned: stats.abandoned, reason: 'no_write_succeeded' });
   }
 
   function enqueue(collection, id, doc) {
     if (closed) return;
     startStatsTimer();
+    if (disabled) {
+      stats.dropped += 1;
+      return;
+    }
     const key = `${collection}/${id}`;
     const prev = pending.get(key);
     // Last writer wins by read time: an older answer that reaches the queue later never replaces a newer one.
@@ -221,7 +248,7 @@ function createFirestorePriceCacheStore(opts = {}) {
   /** Hand every queued doc to the BulkWriter and wait for it. Never rejects. */
   function flush() {
     flushing = flushing.then(async () => {
-      if (!pending.size) {
+      if (!pending.size || disabled) {
         maybeLogStats();
         return;
       }
@@ -241,8 +268,12 @@ function createFirestorePriceCacheStore(opts = {}) {
           const op = w.set(client().collection(collection).doc(id), doc);
           inflight += 1;
           return op.then(
-            // An abandoned write was counted when it was abandoned, landing or not.
-            () => { if (gen === generation) stats.written += 1; },
+            // An abandoned write was counted when it was abandoned, landing or not; but any write that lands means
+            // Firestore is alive, so the reset cap's count starts again.
+            () => {
+              resetsSinceSuccess = 0;
+              if (gen === generation) stats.written += 1;
+            },
             // An abandoned write was counted when it was abandoned.
             (err) => { if (gen === generation) noteFailure(err); },
           ).finally(() => {
@@ -281,7 +312,7 @@ function createFirestorePriceCacheStore(opts = {}) {
   async function getPrices(ids) {
     const list = [...new Set(Array.isArray(ids) ? ids : [])].slice(0, MAX_GET_ALL);
     const out = new Map();
-    if (!list.length) return out;
+    if (!list.length || disabled) return out;
     const c = client();
     const refs = list.map((id) => c.collection(PRICES).doc(id));
     const snaps = await withTimeout(Promise.resolve().then(() => c.getAll(...refs)), readTimeoutMs);
@@ -292,6 +323,7 @@ function createFirestorePriceCacheStore(opts = {}) {
   }
 
   async function getHostBackoff(host) {
+    if (disabled) return null;
     const c = client();
     const snap = await withTimeout(Promise.resolve().then(() => c.collection(BACKOFF).doc(host).get()), readTimeoutMs);
     return snap && snap.exists ? snap.data() : null;
@@ -300,6 +332,7 @@ function createFirestorePriceCacheStore(opts = {}) {
   /** Load the client and make one read now (boot, before traffic), so no request pays for it. Never rejects. */
   async function warm({ timeoutMs = WARM_TIMEOUT_MS } = {}) {
     const t = now();
+    if (disabled) return { ok: false, ms: 0 };
     try {
       const c = client();
       bulkWriter();
@@ -330,7 +363,7 @@ function createFirestorePriceCacheStore(opts = {}) {
       if (writer) await writer.close().catch(() => {});
       if (db && typeof db.terminate === 'function') await db.terminate().catch(() => {});
     },
-    stats: () => ({ ...stats, pending: pending.size, inflight }),
+    stats: () => ({ ...stats, pending: pending.size, inflight, disabled }),
     /** Tests: the client this store would use now (built on demand, no RPC). */
     _client: () => client(),
   };
@@ -347,6 +380,7 @@ module.exports = {
   MAX_PENDING,
   FLUSH_TIMEOUT_MS,
   RESET_AFTER_FLUSH_TIMEOUTS,
+  RESET_CAP_WITHOUT_SUCCESS,
   GRPC_CHANNEL_OPTIONS,
   WARM_DOC_ID,
 };

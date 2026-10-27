@@ -79,7 +79,7 @@ test('putPrice never writes on the call; the queue is flushed about a second lat
   await store.flush();
   assert.equal(fake.calls.writerOptions.length, 1, 'the BulkWriter is reused');
   assert.equal(fake.docs.get(`verified_prices/${id(3)}`).amount, '23.00');
-  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, flush_timeouts: 0, resets: 0, abandoned: 0, pending: 0, inflight: 0 });
+  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, flush_timeouts: 0, resets: 0, abandoned: 0, pending: 0, inflight: 0, disabled: false });
 });
 
 test('one doc queued twice in a window is written once, with the NEWER read_at, whichever came last', async () => {
@@ -384,5 +384,66 @@ test('no project: the store refuses to build (it never lets the library pick GOO
   } finally {
     if (saved === undefined) delete process.env.GOOGLE_CLOUD_PROJECT;
     else process.env.GOOGLE_CLOUD_PROJECT = saved;
+  }
+});
+
+// ---- S-R4: a dead Firestore cannot make the store hold dropped clients forever ---------------------------------
+
+test('reset cap: after 5 resets with no write landing, the store disables itself (once) and builds no more clients', { timeout: 10000 }, async () => {
+  const keep = setTimeout(() => {}, 8000);
+  try {
+    const { RESET_CAP_WITHOUT_SUCCESS } = require('../src/services/priceCacheStore');
+    assert.equal(RESET_CAP_WITHOUT_SUCCESS, 5);
+    const clients = [];
+    const lines = [];
+    const store = createFirestorePriceCacheStore({
+      clientFactory: () => { const f = createFakeFirestore(); f.faults.writeHang = true; clients.push(f); return f.db; },
+      flushMs: 60000, flushTimeoutMs: 10, log: (e, f) => lines.push({ e, ...f }),
+    });
+    for (let i = 1; i <= 30; i += 1) {
+      store.putPrice(id(i), doc(T0));
+      await store.flush();
+    }
+    const st = store.stats();
+    assert.equal(st.resets, 5, 'it stopped at the cap');
+    assert.equal(st.disabled, true);
+    assert.equal(clients.length, 5, 'no client after the one that hit the cap');
+    assert.equal(lines.filter((l) => l.e === 'price_cache_store_disabled').length, 1, 'logged once');
+    assert.deepEqual(lines.find((l) => l.e === 'price_cache_store_disabled'), { e: 'price_cache_store_disabled', resets: 5, abandoned: 15, reason: 'no_write_succeeded' });
+    assert.equal(st.queued + st.dropped, 30, 'every put is either queued or dropped');
+    assert.equal(st.abandoned, st.queued, 'every queued write was abandoned (none landed, none left in flight)');
+    assert.equal(st.dropped, 15, 'after disabling, every write is dropped and counted');
+    // Disabled: reads are misses without touching any client, the warm-up does nothing.
+    assert.equal((await store.getPrices([id(1)])).size, 0);
+    assert.equal(await store.getHostBackoff('shop.example.com'), null);
+    assert.deepEqual(await store.warm(), { ok: false, ms: 0 });
+    assert.ok(clients.every((c) => c.calls.getAll.length === 0 && c.calls.get.length === 0));
+    for (const c of clients) c.release();
+  } finally {
+    clearTimeout(keep);
+  }
+});
+
+test('reset cap: any write that lands (even a late one from a dropped client) restarts the count: a slow Firestore is never disabled', { timeout: 10000 }, async () => {
+  const keep = setTimeout(() => {}, 8000);
+  try {
+    const clients = [];
+    const store = createFirestorePriceCacheStore({
+      clientFactory: () => { const f = createFakeFirestore(); f.faults.writeHang = true; clients.push(f); return f.db; },
+      flushMs: 60000, flushTimeoutMs: 10,
+    });
+    let n = 0;
+    const timeoutOnce = async () => { n += 1; store.putPrice(id(n), doc(T0)); await store.flush(); };
+    for (let i = 0; i < 12; i += 1) await timeoutOnce(); // 4 resets
+    assert.equal(store.stats().resets, 4);
+    clients[0].release(); // the first, long-dropped connection finally answers: Firestore is alive
+    await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 12; i += 1) await timeoutOnce(); // 4 more resets
+    assert.equal(store.stats().resets, 8);
+    assert.equal(store.stats().disabled, false, '4 + (a write landed) + 4 never reaches 5 in a row');
+    assert.equal(store.stats().written, 0, 'the late writes were abandoned, so they are not counted as written');
+    for (const c of clients) c.release();
+  } finally {
+    clearTimeout(keep);
   }
 });

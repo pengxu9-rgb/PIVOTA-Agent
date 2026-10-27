@@ -32,13 +32,16 @@ test('B1: Firestore refused from boot: warm-up and writes time out, the client i
   assert.equal(r.status, 0, `the process died (an unhandled rejection exits the gateway): ${r.stderr}`);
   assert.equal(r.clean, true);
   assert.equal(r.out.warmOk, false);
-  assert.ok(r.out.stats.resets >= 2, `several rebuilds: ${JSON.stringify(r.out.stats)}`);
-  assert.ok(r.out.stats.flush_timeouts >= 6);
+  assert.equal(r.out.stats.resets, 5, `rebuilt until the cap, then no more: ${JSON.stringify(r.out.stats)}`);
+  assert.equal(r.out.stats.disabled, true);
+  assert.equal(r.out.stats.flush_timeouts, 15, '3 timeouts per reset, 5 resets, none after');
+  assert.equal(r.out.stats.dropped, 5, 'the 5 writes after disabling are dropped and counted, never queued');
+  assert.ok(r.out.events.includes('price_cache_store_disabled'));
   assert.equal(r.out.stats.written, 0);
-  // Every write is accounted for exactly once, and only the current (unfinished) timeout streak can still be in
-  // flight: at most 2 flushes of one write each, never the backlog of every rebuild.
+  // Every queued write is accounted for exactly once (writes dropped after disabling were never queued), and only the
+  // current (unfinished) timeout streak can still be in flight: never the backlog of every rebuild.
   const st = r.out.stats;
-  assert.equal(st.abandoned + st.inflight + st.written + st.failed + st.dropped + st.pending, st.queued, JSON.stringify(st));
+  assert.equal(st.abandoned + st.inflight + st.written + st.failed + st.pending, st.queued, JSON.stringify(st));
   assert.ok(st.inflight <= 2, `nothing pinning the cap: ${JSON.stringify(st)}`);
   assert.ok(r.out.events.includes('price_cache_store_reset'));
 });
@@ -53,4 +56,12 @@ test('(2) a hung connection: after the rebuild the store writes through a NEW co
   assert.notEqual(r.out.msToRecover, null, `never wrote again after the connection hung: ${JSON.stringify(r.out)}`);
   assert.ok(r.out.msToRecover < 3000);
   assert.deepEqual(r.out.databases, ['projects/cache-project-test/databases/price-cache']);
+});
+
+test('the hazard behind B1, in the REAL library: terminate() on a client whose read is still being retried kills the process', { timeout: 90000 }, () => {
+  // If a dependency upgrade makes this survive, terminate() became safe; the store still only drops clients.
+  const r = sim('library_terminate');
+  assert.notEqual(r.status, 0, `expected the process to die: ${JSON.stringify(r.out)}`);
+  assert.equal(r.clean, false);
+  assert.match(r.stderr, /already been terminated/);
 });

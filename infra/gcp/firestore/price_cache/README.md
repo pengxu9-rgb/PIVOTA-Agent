@@ -55,7 +55,8 @@ for 5 s.
    - `price_cache_warm` at boot (one per instance; `price_cache_warm_failed` when the first read did not answer in 5 s);
    - `price_cache_write_failed` (warning; `code: flush_timeout` means Firestore did not answer a flush within 10 s);
    - `price_cache_store_stats` (at most one a minute while anything moved: written / failed / dropped /
-     flush_timeouts / resets / abandoned / pending / inflight);
+     flush_timeouts / resets / abandoned / pending / inflight, and `disabled: true` once disabled);
+   - `price_cache_store_reset` / `price_cache_store_disabled` (warnings; see below);
    - the doc count in the database.
 3. `PRICE_HOST_BUDGET=shadow`, read `price_host_budget_shadow`, then `on`.
 4. `PRICE_CACHE_MODE=read`. Before it, settle:
@@ -64,6 +65,17 @@ for 5 s.
    - plain `set` across instances (no `read_at` precondition).
 
 `price_cache_store_reset` (warning): three flushes in a row timed out, so the BulkWriter and the client were rebuilt and
-their unsettled writes counted as `abandoned` (a hung connection; the cache keeps writing on a new channel).
+their unsettled writes counted as `abandoned` (a hung connection; the cache keeps writing on a new channel). A dropped
+client is never terminated (terminating one whose read the library is still retrying crashes the process).
+
+`price_cache_store_disabled` (warning, once per process): five resets with no write landing in between (Firestore refused
+or unreachable). The library keeps every dropped client alive while it retries, so the store stops rebuilding and
+DISABLES itself until the instance restarts: writes are dropped and counted (`price_cache_store_stats` keeps running,
+with `disabled: true`), reads are misses, answers are what they would be with the cache off. A deploy or instance
+restart re-enables it.
+
+A slow-but-alive Firestore (a batch takes longer than the 10 s flush deadline) resets every ~30 s and its late writes
+are reported as `abandoned` although they land; because they land, the cap's count restarts and the store is not
+disabled. Read `abandoned` as "not confirmed in time", not "lost".
 
 Rollback at any step: unset the flag (or set it to `off`).
