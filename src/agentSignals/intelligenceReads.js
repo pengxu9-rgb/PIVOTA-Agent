@@ -447,6 +447,10 @@ function makeGetOffers(deps = {}) {
   const liveCartMode = typeof deps.liveCartMode === 'function' ? deps.liveCartMode : () => liveVerification.MODES.OFF;
   const liveVerificationSecret = typeof deps.liveVerificationSecret === 'function' ? deps.liveVerificationSecret : () => '';
   const liveCartTimeoutMs = Number.isFinite(deps.liveCartTimeoutMs) ? deps.liveCartTimeoutMs : 2500;
+  // `priceCache` (optional; services/priceCache.js, PRICE_CACHE_*): under `on`, each cart the backend minted from
+  // a signed assertion is recorded as `merchant_cart`, the strongest source, at the asserted price. A no-op while
+  // the cache flags are off.
+  const priceCache = deps.priceCache && typeof deps.priceCache.recordVerifiedPrice === 'function' ? deps.priceCache : null;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const logSink = typeof deps.log === 'function' ? deps.log : () => {};
   // A log line never costs the answer.
@@ -521,6 +525,22 @@ function makeGetOffers(deps = {}) {
       });
       // (Shadow never serves this: its caller has already returned the first pass.)
       if (!replacements.length) return offers;
+      if (priceCache && !shadow) {
+        for (const r of replacements) {
+          if (!liveVerification.hasCart(r.offer)) continue;
+          const x = asserted.find((a) => a.index === r.index);
+          const lr = offers[r.index] && offers[r.index].live_read;
+          try {
+            priceCache.recordVerifiedPrice({
+              host: x.claims.h, market: x.claims.m, variant_id: x.claims.vid, currency: x.claims.c,
+              amount: x.claims.a, available: x.claims.av, handle: lr && lr.handle, source: 'merchant_cart', writer: 'cart',
+              read_at: lr && lr.checked_at,
+            });
+          } catch {
+            /* the record never costs the cart */
+          }
+        }
+      }
       const out = offers.slice();
       for (const r of replacements) out[r.index] = r.offer;
       return out;

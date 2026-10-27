@@ -1,0 +1,285 @@
+'use strict';
+
+/*
+ * THE SHARED VERIFIED-PRICE STORE (verified-price plan PR-3; design section 2.2). One interface, so the store can
+ * change without touching a reader:
+ *
+ *   PriceCacheStore {
+ *     getPrices(ids: string[]): Promise<Map<id, object|null>>   at most MAX_GET_ALL ids, ONE round trip; rejects
+ *                                                              on error or after the read timeout (the caller
+ *                                                              fails open)
+ *     putPrice(id: string, doc: object): void                  queued, never awaited; flushed in the background
+ *     getHostBackoff(host: string): Promise<object|null>       one host_backoff doc; rejects like getPrices
+ *     putHostBackoff(host: string, doc: object): void          queued like putPrice
+ *     warm(): Promise<{ ok, ms }>                                load the client and make one read, at boot
+ *     close(): Promise<void>
+ *   }
+ *
+ * The Firestore implementation: collection `verified_prices` (doc id = hex sha256 of host|market|variant|currency,
+ * services/priceCache.js), collection `host_backoff` (doc id = the host). Reads are one `getAll`, raced against a
+ * 150 ms timer. Writes go into a per-process map (the newest `read_at` per doc wins) and a BulkWriter takes them
+ * about once a second, so a write is never on a response path. Nothing here runs, and `@google-cloud/firestore`
+ * is not even loaded, until createFirestorePriceCacheStore is called (PRICE_CACHE_STORE=firestore and
+ * PRICE_CACHE_MODE write|read; services/priceCache.js).
+ */
+
+const PRICES = 'verified_prices';
+const BACKOFF = 'host_backoff';
+const MAX_GET_ALL = 20;
+const READ_TIMEOUT_MS = 150;
+const FLUSH_MS = 1000;
+// A store that cannot keep up (Firestore down, quota) must not grow this process: past this many queued docs,
+// new writes are dropped and counted.
+const MAX_PENDING = 2000;
+// A failed write is retried at most twice more (the BulkWriter's own backoff), then dropped and counted.
+const MAX_WRITE_ATTEMPTS = 3;
+const FAILURE_LOG_EVERY_MS = 60 * 1000;
+// A flush that has not settled in this long (Firestore refused or unreachable: the BulkWriter keeps retrying) is
+// given up on: counted as `flush_timeout` and logged, so an outage is never silent. Its writes may still land.
+const FLUSH_TIMEOUT_MS = 10 * 1000;
+// Writes handed to the BulkWriter that have not settled count against maxPending too: while Firestore does not
+// answer, new writes are dropped (and counted) instead of piling up inside the client.
+// One stats line at most this often, whenever anything moved: written / failed / dropped / timeouts, and what is
+// queued or in flight now.
+const STATS_LOG_EVERY_MS = 60 * 1000;
+// The doc the boot warm-up reads (a valid id no price key hashes to in practice); absent, it costs one read.
+const WARM_DOC_ID = '0'.repeat(64);
+const WARM_TIMEOUT_MS = 5000;
+
+function msOf(v) {
+  if (v == null) return NaN;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return Date.parse(v);
+  return NaN;
+}
+
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error('price_cache_timeout'), { code: 'timeout' })), ms);
+    if (typeof t.unref === 'function') t.unref();
+    promise.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/**
+ * @param {{
+ *   database?: string,      // Firestore database id (PRICE_CACHE_FIRESTORE_DATABASE, default price-cache)
+ *   client?: object,        // a Firestore instance (tests); built from @google-cloud/firestore otherwise
+ *   readTimeoutMs?: number, flushMs?: number, maxPending?: number,
+ *   now?: () => number,
+ *   log?: (event: string, fields: object) => void,
+ * }} opts
+ * @returns {PriceCacheStore & { flush(): Promise<void>, stats(): object }}
+ */
+function createFirestorePriceCacheStore(opts = {}) {
+  const database = String(opts.database || 'price-cache');
+  const readTimeoutMs = Number(opts.readTimeoutMs) > 0 ? Number(opts.readTimeoutMs) : READ_TIMEOUT_MS;
+  const flushMs = Number(opts.flushMs) > 0 ? Number(opts.flushMs) : FLUSH_MS;
+  const maxPending = Number.isInteger(opts.maxPending) && opts.maxPending > 0 ? opts.maxPending : MAX_PENDING;
+  const flushTimeoutMs = Number(opts.flushTimeoutMs) > 0 ? Number(opts.flushTimeoutMs) : FLUSH_TIMEOUT_MS;
+  const now = typeof opts.now === 'function' ? opts.now : () => Date.now();
+  const logSink = typeof opts.log === 'function' ? opts.log : () => {};
+  const log = (event, fields) => {
+    try { logSink(event, fields); } catch { /* a log line never costs a write */ }
+  };
+  let db = opts.client || null;
+  const client = () => {
+    if (!db) {
+      // Only here: an off or unconfigured cache never loads the client (and so never opens a channel).
+      const { Firestore } = require('@google-cloud/firestore');
+      db = new Firestore({ databaseId: database });
+    }
+    return db;
+  };
+
+  const pending = new Map(); // `${collection}/${id}` -> { collection, id, doc }
+  const stats = { queued: 0, written: 0, failed: 0, dropped: 0, flushes: 0, flush_timeouts: 0 };
+  let inflight = 0; // handed to the BulkWriter, not yet settled
+  let lastStatsLogAt = -Infinity;
+  let statsAtLastLog = { ...stats };
+  let writer = null;
+  let timer = null;
+  let flushing = Promise.resolve();
+  let lastFailureLogAt = -Infinity;
+  let failuresSinceLog = 0;
+  let closed = false;
+
+  function bulkWriter() {
+    if (!writer) {
+      writer = client().bulkWriter({ throttling: false });
+      writer.onWriteError((err) => Number(err && err.failedAttempts) < MAX_WRITE_ATTEMPTS);
+    }
+    return writer;
+  }
+
+  function noteFailure(err, { count = true } = {}) {
+    if (count) stats.failed += 1;
+    failuresSinceLog += 1;
+    const t = now();
+    if (t - lastFailureLogAt < FAILURE_LOG_EVERY_MS) return;
+    lastFailureLogAt = t;
+    log('price_cache_write_failed', {
+      failures: failuresSinceLog,
+      code: err && err.code != null ? String(err.code).slice(0, 40) : null,
+    });
+    failuresSinceLog = 0;
+  }
+
+  function schedule() {
+    if (timer || closed) return;
+    timer = setTimeout(() => {
+      timer = null;
+      flush().catch(() => {});
+    }, flushMs);
+    if (typeof timer.unref === 'function') timer.unref();
+  }
+
+  /** One `price_cache_store_stats` line at most a minute, when anything moved since the last one. */
+  function maybeLogStats() {
+    const t = now();
+    if (t - lastStatsLogAt < STATS_LOG_EVERY_MS) return;
+    const delta = {};
+    let moved = false;
+    for (const k of ['written', 'failed', 'dropped', 'flush_timeouts']) {
+      delta[k] = stats[k] - statsAtLastLog[k];
+      if (delta[k]) moved = true;
+    }
+    if (!moved) return;
+    lastStatsLogAt = t;
+    statsAtLastLog = { ...stats };
+    log('price_cache_store_stats', { ...delta, pending: pending.size, inflight });
+  }
+
+  function enqueue(collection, id, doc) {
+    if (closed) return;
+    const key = `${collection}/${id}`;
+    const prev = pending.get(key);
+    // Last writer wins by read time: an older answer that reaches the queue later never replaces a newer one.
+    if (prev && msOf(prev.doc.read_at) > msOf(doc.read_at)) return;
+    if (!prev && pending.size + inflight >= maxPending) {
+      stats.dropped += 1;
+      schedule(); // so the drop reaches the stats line even when nothing else is queued
+      return;
+    }
+    pending.set(key, { collection, id, doc });
+    stats.queued += 1;
+    schedule();
+  }
+
+  /** Hand every queued doc to the BulkWriter and wait for it. Never rejects. */
+  function flush() {
+    flushing = flushing.then(async () => {
+      if (!pending.size) {
+        maybeLogStats();
+        return;
+      }
+      const batch = [...pending.values()];
+      pending.clear();
+      stats.flushes += 1;
+      let w;
+      try {
+        w = bulkWriter();
+      } catch (err) {
+        for (let i = 0; i < batch.length; i += 1) noteFailure(err);
+        return;
+      }
+      const results = batch.map(({ collection, id, doc }) => {
+        try {
+          const op = w.set(client().collection(collection).doc(id), doc);
+          inflight += 1;
+          return op.then(
+            () => { stats.written += 1; },
+            (err) => noteFailure(err),
+          ).finally(() => { inflight -= 1; });
+        } catch (err) {
+          // An invalid doc (the client refuses it synchronously) costs that doc only.
+          noteFailure(err);
+          return null;
+        }
+      });
+      const settled = Promise.all([Promise.resolve().then(() => w.flush()).catch((err) => noteFailure(err)), ...results]);
+      let timer;
+      const timedOut = await Promise.race([
+        settled.then(() => false),
+        new Promise((resolve) => {
+          timer = setTimeout(() => resolve(true), flushTimeoutMs);
+          if (typeof timer.unref === 'function') timer.unref();
+        }),
+      ]);
+      clearTimeout(timer);
+      if (timedOut) {
+        // The writes stay with the client (they may land later and are counted then); this flush gives up waiting.
+        stats.flush_timeouts += 1;
+        noteFailure({ code: 'flush_timeout' }, { count: false });
+      }
+      maybeLogStats();
+    }).catch(() => {});
+    return flushing;
+  }
+
+  async function getPrices(ids) {
+    const list = [...new Set(Array.isArray(ids) ? ids : [])].slice(0, MAX_GET_ALL);
+    const out = new Map();
+    if (!list.length) return out;
+    const c = client();
+    const refs = list.map((id) => c.collection(PRICES).doc(id));
+    const snaps = await withTimeout(Promise.resolve().then(() => c.getAll(...refs)), readTimeoutMs);
+    for (const snap of snaps) {
+      if (snap && snap.id) out.set(snap.id, snap.exists ? snap.data() : null);
+    }
+    return out;
+  }
+
+  async function getHostBackoff(host) {
+    const c = client();
+    const snap = await withTimeout(Promise.resolve().then(() => c.collection(BACKOFF).doc(host).get()), readTimeoutMs);
+    return snap && snap.exists ? snap.data() : null;
+  }
+
+  /** Load the client and make one read now (boot, before traffic), so no request pays for it. Never rejects. */
+  async function warm({ timeoutMs = WARM_TIMEOUT_MS } = {}) {
+    const t = now();
+    try {
+      const c = client();
+      bulkWriter();
+      await withTimeout(Promise.resolve().then(() => c.getAll(c.collection(PRICES).doc(WARM_DOC_ID))), timeoutMs);
+      return { ok: true, ms: now() - t };
+    } catch (err) {
+      log('price_cache_warm_failed', { code: err && err.code != null ? String(err.code).slice(0, 40) : null, ms: now() - t });
+      return { ok: false, ms: now() - t };
+    }
+  }
+
+  return {
+    warm,
+    getPrices,
+    putPrice: (id, doc) => enqueue(PRICES, id, doc),
+    getHostBackoff,
+    putHostBackoff: (host, doc) => enqueue(BACKOFF, host, doc),
+    flush,
+    async close() {
+      closed = true;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      await flush();
+      if (writer) await writer.close().catch(() => {});
+      if (db && typeof db.terminate === 'function') await db.terminate().catch(() => {});
+    },
+    stats: () => ({ ...stats, pending: pending.size, inflight }),
+  };
+}
+
+module.exports = {
+  createFirestorePriceCacheStore,
+  msOf,
+  PRICES,
+  BACKOFF,
+  MAX_GET_ALL,
+  READ_TIMEOUT_MS,
+  FLUSH_MS,
+  MAX_PENDING,
+  FLUSH_TIMEOUT_MS,
+  WARM_DOC_ID,
+};

@@ -626,11 +626,11 @@ test('STRUCTURAL: search gets its own 8-slot pool and the buyer market the searc
   assert.match(src, /buyerMarket: publicBeautySearch\.market \|\| metadata\.market \}/);
   const s = src.indexOf('function getUcpLiveSearchReader()');
   assert.ok(s > 0);
-  assert.match(src.slice(s, s + 900), /\.\.\.ucpLiveReaderDeps\(8\),/);
+  assert.match(src.slice(s, s + 900), /\.\.\.ucpLiveReaderDeps\(8, \{ readClass: 'search' \}\),/);
   for (const getter of ['getUcpLiveProductReader', 'getUcpLiveOfferReader']) {
     const i = src.indexOf(`function ${getter}()`);
     assert.ok(i > 0, getter);
-    assert.match(src.slice(i, i + 900), /\.\.\.ucpLiveReaderDeps\(16\),/, `${getter} has its own pool`);
+    assert.match(src.slice(i, i + 900), /\.\.\.ucpLiveReaderDeps\(16, \{ readClass: '(?:product|offers)' \}\),/, `${getter} has its own pool`);
   }
   const d = src.indexOf('function ucpLiveReaderDeps(');
   assert.match(src.slice(d, d + 700), /maxConcurrent, endpointCache: shared\.endpoints, discoveryInFlight: shared\.discovering/);
