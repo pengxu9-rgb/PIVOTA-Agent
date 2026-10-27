@@ -70,6 +70,8 @@ function withTimeout(promise, ms) {
 /**
  * @param {{
  *   database?: string,      // Firestore database id (PRICE_CACHE_FIRESTORE_DATABASE, default price-cache)
+ *   projectId?: string,     // the cache's GCP project (PRICE_CACHE_FIRESTORE_PROJECT); REQUIRED unless a client or
+ *                           // clientFactory is given: never left to the library, which reads GOOGLE_CLOUD_PROJECT
  *   client?: object,        // a Firestore instance (tests); built from @google-cloud/firestore otherwise
  *   readTimeoutMs?: number, flushMs?: number, maxPending?: number,
  *   now?: () => number,
@@ -79,6 +81,13 @@ function withTimeout(promise, ms) {
  */
 function createFirestorePriceCacheStore(opts = {}) {
   const database = String(opts.database || 'price-cache');
+  const projectId = String(opts.projectId || '').trim();
+  // The project is NEVER left to the library: unset, google-gax takes GOOGLE_CLOUD_PROJECT, which on the gateway is the
+  // Vertex/Gemini billing project, not the cache's (write mode 2026-10-27: every call PERMISSION_DENIED on the wrong
+  // project). No project, no store.
+  if (!projectId && !opts.client && typeof opts.clientFactory !== 'function') {
+    throw Object.assign(new Error('price cache: no Firestore project (PRICE_CACHE_FIRESTORE_PROJECT)'), { code: 'project_unset' });
+  }
   const readTimeoutMs = Number(opts.readTimeoutMs) > 0 ? Number(opts.readTimeoutMs) : READ_TIMEOUT_MS;
   const flushMs = Number(opts.flushMs) > 0 ? Number(opts.flushMs) : FLUSH_MS;
   const maxPending = Number.isInteger(opts.maxPending) && opts.maxPending > 0 ? opts.maxPending : MAX_PENDING;
@@ -93,7 +102,7 @@ function createFirestorePriceCacheStore(opts = {}) {
   const clientFactory = typeof opts.clientFactory === 'function' ? opts.clientFactory : (opts.client ? null : () => {
     // Only here: an off or unconfigured cache never loads the client (and so never opens a channel).
     const { Firestore } = require('@google-cloud/firestore');
-    return new Firestore({ databaseId: database });
+    return new Firestore({ projectId, databaseId: database });
   });
   let db = opts.client || null;
   const client = () => {
@@ -313,6 +322,8 @@ function createFirestorePriceCacheStore(opts = {}) {
       if (db && typeof db.terminate === 'function') await db.terminate().catch(() => {});
     },
     stats: () => ({ ...stats, pending: pending.size, inflight }),
+    /** Tests: the client this store would use now (built on demand, no RPC). */
+    _client: () => client(),
   };
 }
 

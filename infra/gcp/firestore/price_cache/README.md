@@ -11,10 +11,16 @@ Verified-price plan PR-3. Code: `src/services/priceCache.js` (cache, key, curren
 | `PRICE_CACHE_STORE` | `off` \| `firestore` | Which store. |
 | `PRICE_CACHE_MODE` | `off` \| `write` \| `read` | `write`: every live reader records its verified answers and merchant 429/5xx backoffs; nothing reads the cache, every answer is byte-identical to off. `read`: as write, and the search `.json` overlay may serve a card from the cache (15 min window) as `recent`. |
 | `PRICE_CACHE_FIRESTORE_DATABASE` | database id | Default `price-cache`. |
+| `PRICE_CACHE_FIRESTORE_PROJECT` | GCP project id | **Required.** The project that holds the database. Never inferred: unset with the flags on, no store is built and `price_cache_config_failed` is logged once. |
 | `PRICE_HOST_BUDGET` | `off` \| `shadow` \| `on` | Per-host merchant read budget and the fleet's shared backoff. `shadow` logs `price_host_budget_shadow` once a minute with what `on` would refuse; `on` refuses reads (`host_budget` / `host_backoff`; the stored price stands). Separate from the cache flags because a refused read changes an answer. |
 | `PRICE_HOST_BUDGET_INSTANCES` | integer, default 4 | Per-instance bucket = ceil(60 / instances) reads a minute per host; a quarter is kept for get_offers. |
 
 `STORE` and `MODE` must both be on, or nothing is built: no Firestore client is loaded and no connection is opened.
+
+**The gateway's `GOOGLE_CLOUD_PROJECT` is the Vertex/Gemini billing project, not the cache's.** A Firestore client given
+no project takes `GOOGLE_CLOUD_PROJECT`, so the cache always passes `PRICE_CACHE_FIRESTORE_PROJECT` explicitly. The
+first write-mode flip (2026-10-27) had no such variable: every call addressed the Vertex project and was refused with
+`PERMISSION_DENIED` (code 7). No answer changed, because a failed cache call is a miss.
 
 ## Data
 
@@ -42,6 +48,7 @@ for 5 s.
    PRICE_CACHE_STORE=firestore
    PRICE_CACHE_MODE=write
    PRICE_CACHE_FIRESTORE_DATABASE=price-cache
+   PRICE_CACHE_FIRESTORE_PROJECT=<the project that holds the price-cache database>
    ```
 
    Watch:

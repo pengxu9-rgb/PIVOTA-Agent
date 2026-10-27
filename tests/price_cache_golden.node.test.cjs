@@ -16,7 +16,7 @@ const pc = require('../src/services/priceCache');
 const { createFirestorePriceCacheStore } = require('../src/services/priceCacheStore');
 const { createFakeFirestore } = require('./_support/fakeFirestore.cjs');
 
-const FLAGS = ['PRICE_CACHE_STORE', 'PRICE_CACHE_MODE', 'PRICE_CACHE_FIRESTORE_DATABASE', 'PRICE_HOST_BUDGET', 'PRICE_HOST_BUDGET_INSTANCES'];
+const FLAGS = ['PRICE_CACHE_STORE', 'PRICE_CACHE_MODE', 'PRICE_CACHE_FIRESTORE_DATABASE', 'PRICE_CACHE_FIRESTORE_PROJECT', 'PRICE_HOST_BUDGET', 'PRICE_HOST_BUDGET_INSTANCES'];
 for (const k of FLAGS) delete process.env[k];
 
 // R14: a flagged offer whose cart the backend mints once the gateway asserts the merchant's live answer (the
@@ -78,7 +78,7 @@ async function sendWith(env, request, flag) {
   }
 }
 
-const WRITE = { PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write', PRICE_CACHE_FIRESTORE_DATABASE: 'price-cache' };
+const WRITE = { PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write', PRICE_CACHE_FIRESTORE_DATABASE: 'price-cache', PRICE_CACHE_FIRESTORE_PROJECT: 'cache-project-test' };
 const offs = new Map();
 
 test('FLAGS UNSET: every door answers, and no store is built and no Firestore client is loaded', async () => {
@@ -118,7 +118,7 @@ test('WRITE MODE: every door\'s answer is byte-identical to flags unset, log fla
 
 test('WRITE MODE wrote what the get_offers live read verified: the doors\' merchant answer, under the declared market', async () => {
   await sendWith(WRITE, CASES.mcp_get_offers, false);
-  await pc.activePriceCache({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write' }).store.flush();
+  await pc.activePriceCache({ ...WRITE }).store.flush();
   const docs = [...fake.docs.entries()].filter(([p]) => p.startsWith('verified_prices/')).map(([, d]) => d);
   assert.ok(docs.length >= 1);
   const d = docs.find((x) => x.variant_id === '43734829564039');
@@ -131,7 +131,7 @@ test('WRITE MODE wrote what the get_offers live read verified: the doors\' merch
 
 const supertest = require('supertest');
 async function flushedDocs() {
-  await pc.activePriceCache({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write' }).store.flush();
+  await pc.activePriceCache({ ...WRITE }).store.flush();
   return [...fake.docs.entries()].filter(([p]) => p.startsWith('verified_prices/')).map(([, d]) => d);
 }
 

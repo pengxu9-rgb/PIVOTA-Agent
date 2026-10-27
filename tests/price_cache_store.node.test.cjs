@@ -170,7 +170,7 @@ test('building the store and queueing a write load no Firestore library (it load
     const before = () => Object.keys(require.cache).some((k) => k.includes('@google-cloud/firestore'));
     const { createFirestorePriceCacheStore } = require('./src/services/priceCacheStore');
     // flushMs: never reached (the process exits first), so no write is ever attempted.
-    const s = createFirestorePriceCacheStore({ database: 'price-cache', flushMs: 600000 });
+    const s = createFirestorePriceCacheStore({ database: 'price-cache', projectId: 'cache-project-test', flushMs: 600000 });
     const loadedAtBuild = before();
     s.putPrice('${id(1)}', { read_at: new Date() });
     const loadedAtQueue = before();
@@ -363,5 +363,22 @@ test('an abandoned write that later FAILS is not counted again (it was counted a
     assert.deepEqual([store.stats().failed, store.stats().inflight, store.stats().written], [0, 0, 0]);
   } finally {
     clearTimeout(keep);
+  }
+});
+
+test('no project: the store refuses to build (it never lets the library pick GOOGLE_CLOUD_PROJECT)', () => {
+  const saved = process.env.GOOGLE_CLOUD_PROJECT;
+  process.env.GOOGLE_CLOUD_PROJECT = 'vertex-billing-project';
+  try {
+    for (const projectId of [undefined, '', '  ']) {
+      assert.throws(() => createFirestorePriceCacheStore({ database: 'price-cache', projectId }), (e) => e.code === 'project_unset', String(projectId));
+    }
+    const s = createFirestorePriceCacheStore({ database: 'price-cache', projectId: 'cache-project-test', flushMs: 600000 });
+    const db = s._client();
+    assert.equal(db.projectId, 'cache-project-test');
+    return db.terminate();
+  } finally {
+    if (saved === undefined) delete process.env.GOOGLE_CLOUD_PROJECT;
+    else process.env.GOOGLE_CLOUD_PROJECT = saved;
   }
 });

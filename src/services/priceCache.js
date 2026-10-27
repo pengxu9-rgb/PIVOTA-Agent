@@ -16,6 +16,9 @@
  *     read   as write, and a consumer may serve an answer from the cache as `recent` inside its own window
  *            (search: 15 min; services/liveMerchantSearchPrice.js is the only consumer today)
  *   PRICE_CACHE_FIRESTORE_DATABASE  the Firestore database id (default price-cache)
+ *   PRICE_CACHE_FIRESTORE_PROJECT   the GCP project that holds it. REQUIRED, never inferred: the gateway's
+ *                                   GOOGLE_CLOUD_PROJECT is the Vertex/Gemini project, a different one. Unset with the
+ *                                   flags on: no store is built, and `price_cache_config_failed` is logged once.
  * Both STORE and MODE must be on, or nothing is built: no client is loaded and no connection is opened.
  *
  * KEY. host | market | variant_id | currency, hashed (sha256 hex) to the doc id. host: lowercased, a trailing dot
@@ -96,6 +99,7 @@ function priceCacheSettings(env = process.env) {
     store,
     mode,
     database: str(env && env.PRICE_CACHE_FIRESTORE_DATABASE) || 'price-cache',
+    project: str(env && env.PRICE_CACHE_FIRESTORE_PROJECT),
     active,
     read: active && mode === 'read',
   };
@@ -450,13 +454,25 @@ let runtimeLog = defaultLog;
 
 function defaultStoreFactory(settings) {
   const { createFirestorePriceCacheStore } = require('./priceCacheStore');
-  return createFirestorePriceCacheStore({ database: settings.database, log: runtimeLog });
+  return createFirestorePriceCacheStore({ database: settings.database, projectId: settings.project, log: runtimeLog });
 }
 
-/** The process cache, or null when the flags are off (then nothing is built, loaded or connected). */
+let configFailureLogged = false;
+
+/**
+ * The process cache, or null when the flags are off (then nothing is built, loaded or connected), and null when they
+ * are on but name no project (logged once; never a guessed project).
+ */
 function activePriceCache(env = process.env) {
   const settings = priceCacheSettings(env);
   if (!settings.active) return null;
+  if (!settings.project) {
+    if (!configFailureLogged) {
+      configFailureLogged = true;
+      runtimeLog('price_cache_config_failed', { reason: 'project_unset', variable: 'PRICE_CACHE_FIRESTORE_PROJECT' });
+    }
+    return null;
+  }
   if (!runtime) {
     const store = (storeFactory || defaultStoreFactory)(settings);
     runtime = createPriceCache({
@@ -535,8 +551,10 @@ module.exports = {
   _setStoreFactoryForTest(fn) {
     storeFactory = typeof fn === 'function' ? fn : null;
     runtime = null;
+    configFailureLogged = false;
   },
   _resetForTest() {
     runtime = null;
+    configFailureLogged = false;
   },
 };
