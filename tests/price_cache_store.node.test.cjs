@@ -281,18 +281,22 @@ test('a hung connection: after 3 flush timeouts in a row the BulkWriter and clie
     await store.flush();
     assert.deepEqual([store.stats().resets, store.stats().abandoned, store.stats().inflight], [1, 3, 0]);
     assert.deepEqual(lines.find((l) => l.e === 'price_cache_store_reset'), { e: 'price_cache_store_reset', abandoned: 3, resets: 1 });
-    assert.equal(hung.db.terminated, true, 'the old client is let go');
+    assert.equal(hung.db.terminated, undefined, 'the old client is only let go, never terminated');
     // Firestore is back: new writes go through a NEW client and writer, and nothing is pinned.
     store.putPrice(id(4), doc(T0));
     await store.flush();
     assert.equal(built, 2);
     assert.equal(fresh.docs.has(`verified_prices/${id(4)}`), true);
     assert.equal(store.stats().inflight, 0);
-    // The old connection finally answers: its writes count as written, never push inflight below zero.
+    // The old connection finally answers: those writes were counted as abandoned, so they are not counted again as
+    // written, and never push inflight below zero.
+    const written = store.stats().written;
     hung.release();
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(store.stats().inflight, 0);
     assert.equal(store.stats().failed, 0, 'abandoned writes are not counted twice');
+    assert.equal(store.stats().written, written, 'an abandoned write that lands is not counted as written too');
+    assert.equal(hung.db.terminated, undefined, 'a rebuilt-away client is never terminated (B1)');
   } finally {
     clearTimeout(keep);
   }

@@ -46,6 +46,10 @@ const STATS_LOG_EVERY_MS = 60 * 1000;
 // after this many flush timeouts in a row the BulkWriter and the client (its channel) are dropped and built again on
 // next use. Their unsettled writes are counted as `abandoned` and stop holding the in-flight cap.
 const RESET_AFTER_FLUSH_TIMEOUTS = 3;
+// gRPC channel options for every client this store builds. grpc-js shares subchannels PROCESS-WIDE by default, so a
+// rebuilt client would reuse the hung connection it was rebuilt to escape (controller r3 sim: 6 rebuilds, 0 writes,
+// 140 s after the backend recovered). A local pool gives each client its own connection.
+const GRPC_CHANNEL_OPTIONS = Object.freeze({ 'grpc.use_local_subchannel_pool': 1 });
 // The doc the boot warm-up reads (a valid id no price key hashes to in practice); absent, it costs one read.
 const WARM_DOC_ID = '0'.repeat(64);
 const WARM_TIMEOUT_MS = 5000;
@@ -99,10 +103,12 @@ function createFirestorePriceCacheStore(opts = {}) {
     try { logSink(event, fields); } catch { /* a log line never costs a write */ }
   };
   // An injected client (tests) is kept across a reset unless a factory says how to build another.
+  // `firestoreSettings` (tests only): extra client settings such as a loopback host, so the REAL client runs offline.
+  const extraSettings = opts.firestoreSettings && typeof opts.firestoreSettings === 'object' ? opts.firestoreSettings : {};
   const clientFactory = typeof opts.clientFactory === 'function' ? opts.clientFactory : (opts.client ? null : () => {
     // Only here: an off or unconfigured cache never loads the client (and so never opens a channel).
     const { Firestore } = require('@google-cloud/firestore');
-    return new Firestore({ projectId, databaseId: database });
+    return new Firestore({ ...extraSettings, ...GRPC_CHANNEL_OPTIONS, projectId, databaseId: database });
   });
   let db = opts.client || null;
   const client = () => {
@@ -178,10 +184,13 @@ function createFirestorePriceCacheStore(opts = {}) {
     if (typeof statsTimer.unref === 'function') statsTimer.unref();
   }
 
-  /** Drop the BulkWriter and the client (rebuilt on next use); their unsettled writes are abandoned. */
+  /**
+   * Drop the BulkWriter and the client (rebuilt on next use); their unsettled writes are abandoned. The old ones are
+   * NEVER closed or terminated: terminate() rejects the library's own in-flight retries (a timed-out warm-up read, a
+   * cache read) with nothing to catch them, and an unhandled rejection exits the gateway (controller r3, B1). They are
+   * only let go; the hung channel goes with them.
+   */
   function reset() {
-    const oldWriter = writer;
-    const oldDb = db;
     stats.resets += 1;
     stats.abandoned += inflight;
     inflight = 0;
@@ -190,9 +199,6 @@ function createFirestorePriceCacheStore(opts = {}) {
     writer = null;
     if (clientFactory) db = null;
     log('price_cache_store_reset', { abandoned: stats.abandoned, resets: stats.resets });
-    // Never awaited: on a hung channel neither ever settles.
-    if (oldWriter) Promise.resolve().then(() => oldWriter.close()).catch(() => {});
-    if (clientFactory && oldDb && typeof oldDb.terminate === 'function') Promise.resolve().then(() => oldDb.terminate()).catch(() => {});
   }
 
   function enqueue(collection, id, doc) {
@@ -235,7 +241,8 @@ function createFirestorePriceCacheStore(opts = {}) {
           const op = w.set(client().collection(collection).doc(id), doc);
           inflight += 1;
           return op.then(
-            () => { stats.written += 1; },
+            // An abandoned write was counted when it was abandoned, landing or not.
+            () => { if (gen === generation) stats.written += 1; },
             // An abandoned write was counted when it was abandoned.
             (err) => { if (gen === generation) noteFailure(err); },
           ).finally(() => {
@@ -296,7 +303,9 @@ function createFirestorePriceCacheStore(opts = {}) {
     try {
       const c = client();
       bulkWriter();
-      await withTimeout(Promise.resolve().then(() => c.getAll(c.collection(PRICES).doc(WARM_DOC_ID))), timeoutMs);
+      const read = Promise.resolve().then(() => c.getAll(c.collection(PRICES).doc(WARM_DOC_ID)));
+      read.catch(() => {}); // the library keeps retrying after our timeout: its later rejection is handled here
+      await withTimeout(read, timeoutMs);
       return { ok: true, ms: now() - t };
     } catch (err) {
       log('price_cache_warm_failed', { code: err && err.code != null ? String(err.code).slice(0, 40) : null, ms: now() - t });
@@ -338,5 +347,6 @@ module.exports = {
   MAX_PENDING,
   FLUSH_TIMEOUT_MS,
   RESET_AFTER_FLUSH_TIMEOUTS,
+  GRPC_CHANNEL_OPTIONS,
   WARM_DOC_ID,
 };
