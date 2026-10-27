@@ -60,6 +60,10 @@ const READ_FAILURE_LOG_EVERY_MS = 60 * 1000;
 const BACKOFF_L1_TTL_MS = 10 * 1000;
 const BACKOFF_BASE_MS = 60 * 1000;
 const BACKOFF_MAX_MS = 10 * 60 * 1000;
+// Write cost: an answer identical to the one this instance last saw for the key (same status, amount, compare-at,
+// stock, handle and source) is not written again until that one is this old. The doc's read_at then lags the
+// truth by at most this much, well inside every consumer window (10 and 15 min).
+const UNCHANGED_REWRITE_MS = 5 * 60 * 1000;
 
 const SOURCES = new Set(['merchant_ucp', 'merchant_storefront', 'merchant_cart']);
 const WRITERS = new Set(['search', 'pdp', 'product', 'offers', 'cart']);
@@ -268,11 +272,17 @@ function createPriceCache({ store, now = () => Date.now(), log = () => {}, read 
     while (map.size > L1_MAX) map.delete(map.keys().next().value);
   }
 
+  function sameAnswer(a, b) {
+    return ['status', 'amount', 'compare_at', 'available', 'handle', 'source'].every((k) => a[k] === b[k]);
+  }
+
   function put(built) {
     if (!built) return false;
     const id = priceCacheDocId(built.key);
     const prev = l1.get(id);
     if (prev && prev.doc && msOf(prev.doc.read_at) > msOf(built.doc.read_at)) return false;
+    if (prev && prev.doc && sameAnswer(prev.doc, built.doc)
+      && msOf(built.doc.read_at) - msOf(prev.doc.read_at) < UNCHANGED_REWRITE_MS) return false;
     l1Set(l1, id, { doc: built.doc, at: now() });
     try {
       store.putPrice(id, built.doc);
@@ -424,7 +434,9 @@ let runtime = null;
 let storeFactory = null; // tests: (settings) => PriceCacheStore
 function defaultLog(event, fields) {
   try {
-    require('../logger').warn({ event, ...fields }, event);
+    // Failures are warnings (they reach error reporting); the stats and warm-up lines are info.
+    const level = /_failed$/.test(event) ? 'warn' : 'info';
+    require('../logger')[level]({ event, ...fields }, event);
   } catch {
     /* ignored */
   }
@@ -468,6 +480,22 @@ module.exports = {
   /** True while the shared backoff names `host` (always false with the cache off). */
   sharedHostBackedOff: (host) => safe(() => { const c = activePriceCache(); return c ? c.hostBackedOff(host) : false; }, false),
   priceCacheReadEnabled: (env = process.env) => priceCacheSettings(env).read,
+  /**
+   * At boot, before the server listens: build the store, load the Firestore client and make one read, so the
+   * first request on a new instance never pays the client's load and channel setup on the event loop. Flags off:
+   * nothing at all. Never rejects.
+   */
+  async warmPriceCache(opts) {
+    try {
+      const c = activePriceCache();
+      if (!c) return { skipped: true };
+      const out = typeof c.store.warm === 'function' ? await c.store.warm(opts) : { ok: true, ms: 0 };
+      runtimeLog('price_cache_warm', { ok: out.ok, ms: out.ms });
+      return out;
+    } catch {
+      return { ok: false };
+    }
+  },
   async lookupRecentPrices(keys, opts) {
     try {
       const c = priceCacheSettings(process.env).read ? activePriceCache() : null;
@@ -494,6 +522,7 @@ module.exports = {
   TTL_MS: Object.freeze({ search: 15 * 60 * 1000, recommend: 15 * 60 * 1000, get_product: 10 * 60 * 1000, pdp: 10 * 60 * 1000, get_offers: 0, cart: 0 }),
   HARD_EXPIRY_MS,
   TOMBSTONE_TTL_MS,
+  UNCHANGED_REWRITE_MS,
   L1_TTL_MS,
   BACKOFF_L1_TTL_MS,
   BACKOFF_BASE_MS,

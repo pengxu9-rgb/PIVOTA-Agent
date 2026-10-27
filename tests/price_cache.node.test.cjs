@@ -341,3 +341,54 @@ test('FLAGS OFF in a fresh process: requiring the cache, the reader module and r
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').pop()), { loaded: 0 });
 });
+
+test('S1 warmPriceCache: off builds and warms nothing; active builds the store and warms it (one read) and logs it', async () => {
+  const warmed = [];
+  const lines = [];
+  pc._setStoreFactoryForTest(() => ({ warm: async () => { warmed.push(1); return { ok: true, ms: 3 }; }, putPrice() {}, putHostBackoff() {}, async getPrices() { return new Map(); } }));
+  pc.setPriceCacheLog((e, f) => lines.push({ e, ...f }));
+  try {
+    await withEnv({ PRICE_CACHE_STORE: 'firestore' }, async () => assert.deepEqual(await pc.warmPriceCache(), { skipped: true }));
+    assert.deepEqual(warmed, []);
+    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write' }, async () => assert.deepEqual(await pc.warmPriceCache(), { ok: true, ms: 3 }));
+    assert.deepEqual(warmed, [1]);
+    assert.deepEqual(lines, [{ e: 'price_cache_warm', ok: true, ms: 3 }]);
+  } finally {
+    pc._setStoreFactoryForTest(null);
+    pc.setPriceCacheLog(null);
+  }
+});
+
+test('S1 STRUCTURAL: the boot awaits the cache warm-up BEFORE the server listens', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const boot = src.slice(src.indexOf('if (require.main === module) {'));
+  const warm = boot.indexOf('await priceCacheHooks.warmPriceCache();');
+  const listen = boot.indexOf('app.listen(PORT');
+  assert.ok(warm > 0 && listen > 0 && warm < listen);
+});
+
+test('R11 READ MODE: no declared market is never served, even with a US/USD answer in the store', async () => {
+  const { store, cache } = harness();
+  cache.recordVerifiedPrice({ ...VERIFIED, read_at: T0 - MIN });
+  await store.flush();
+  cache._l1.clear();
+  assert.equal((await cache.lookup([KEY], { ttlMs: pc.TTL_MS.search }))[0].amount, 23, 'the doc is there for US');
+  for (const market of [undefined, null, '', ' ', 'us-', 'USA']) {
+    assert.deepEqual(await cache.lookup([{ ...KEY, market }], { ttlMs: pc.TTL_MS.search }), [null], String(market));
+  }
+  assert.deepEqual(await cache.lookup([{ host: KEY.host, variant_id: KEY.variant_id }], { ttlMs: pc.TTL_MS.search }), [null], 'no market, no currency');
+});
+
+test('write cost: an unchanged answer is not re-written within 5 min; a changed one, or one 5 min on, is', async () => {
+  const { fake, c, store, cache } = harness();
+  assert.equal(cache.recordVerifiedPrice(VERIFIED), true);
+  c.add(4 * MIN);
+  assert.equal(cache.recordVerifiedPrice(VERIFIED), false, 'same answer 4 min later: skipped');
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, available: false }), true, 'stock changed: written at once');
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, available: false, source: 'merchant_cart', writer: 'cart' }), true, 'a stronger source: written');
+  c.add(5 * MIN);
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, available: false, source: 'merchant_cart', writer: 'cart' }), true, '5 min on: refreshed');
+  await store.flush();
+  assert.equal(fake.calls.batches.flat().length, 1, 'coalesced in the queue: one doc');
+  assert.equal(fake.docs.size, 1);
+});

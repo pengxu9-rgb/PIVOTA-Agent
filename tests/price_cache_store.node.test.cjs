@@ -79,7 +79,7 @@ test('putPrice never writes on the call; the queue is flushed about a second lat
   await store.flush();
   assert.equal(fake.calls.writerOptions.length, 1, 'the BulkWriter is reused');
   assert.equal(fake.docs.get(`verified_prices/${id(3)}`).amount, '23.00');
-  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, pending: 0 });
+  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, flush_timeouts: 0, pending: 0, inflight: 0 });
 });
 
 test('one doc queued twice in a window is written once, with the NEWER read_at, whichever came last', async () => {
@@ -129,7 +129,8 @@ test('a failing write is retried at most 3 attempts, then counted and logged onc
   assert.equal(fake.calls.batches.length, 3, 'three attempts');
   assert.equal(fake.docs.size, 0);
   assert.equal(store.stats().failed, 1);
-  assert.deepEqual(lines, [{ e: 'price_cache_write_failed', failures: 1, code: '14' }]);
+  const failures = () => lines.filter((l) => l.e === 'price_cache_write_failed');
+  assert.deepEqual(failures(), [{ e: 'price_cache_write_failed', failures: 1, code: '14' }]);
   fake.faults.writeFailures = 2;
   store.putPrice(id(2), doc(T0));
   await store.flush();
@@ -138,7 +139,7 @@ test('a failing write is retried at most 3 attempts, then counted and logged onc
   store.putPrice(id(3), doc(T0));
   await store.flush();
   assert.equal(store.stats().failed, 2);
-  assert.equal(lines.length, 1, 'the second failure inside the minute is counted, not logged');
+  assert.equal(failures().length, 1, 'the second failure inside the minute is counted, not logged');
 });
 
 test('an invalid doc costs that doc only: undefined throws at set(), a function rejects; the others are written', async () => {
@@ -178,4 +179,77 @@ test('building the store and queueing a write load no Firestore library (it load
   const r = spawnSync(process.execPath, ['-e', script], { cwd: require('node:path').join(__dirname, '..'), encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').pop()), { loadedAtBuild: false, loadedAtQueue: false });
+});
+
+// ---- S1 (boot warm-up) and S2 (a store that never answers is never silent) -----------------------------------
+
+test('warm: loads the client, builds the BulkWriter and makes ONE read of the warm doc; a hanging read gives up at its timeout', async () => {
+  const { WARM_DOC_ID } = require('../src/services/priceCacheStore');
+  const fake = createFakeFirestore();
+  const lines = [];
+  const store = createFirestorePriceCacheStore({ client: fake.db, log: (e, f) => lines.push({ e, ...f }) });
+  const ok = await store.warm();
+  assert.equal(ok.ok, true);
+  assert.deepEqual(fake.calls.getAll, [[`verified_prices/${WARM_DOC_ID}`]]);
+  assert.equal(fake.calls.writerOptions.length, 1, 'the BulkWriter is built at warm-up too');
+  fake.faults.getAllDelayMs = 1000;
+  const t = Date.now();
+  const slow = await store.warm({ timeoutMs: 50 });
+  assert.equal(slow.ok, false);
+  assert.ok(Date.now() - t < 500);
+  assert.equal(lines[0].e, 'price_cache_warm_failed');
+  assert.equal(lines[0].code, 'timeout');
+});
+
+test('S2: a flush Firestore never answers gives up after its deadline, is logged as flush_timeout, and is counted', async () => {
+  const keep = setInterval(() => {}, 1000);
+  try {
+    const fake = createFakeFirestore();
+    const lines = [];
+    const store = createFirestorePriceCacheStore({ client: fake.db, flushMs: 60000, flushTimeoutMs: 40, maxPending: 3, log: (e, f) => lines.push({ e, ...f }) });
+    fake.faults.writeHang = true;
+    store.putPrice(id(1), doc(T0));
+    store.putPrice(id(2), doc(T0));
+    const t = Date.now();
+    await store.flush();
+    assert.ok(Date.now() - t < 1000, 'the flush gave up waiting');
+    assert.deepEqual(lines.filter((l) => l.e === 'price_cache_write_failed'), [{ e: 'price_cache_write_failed', failures: 1, code: 'flush_timeout' }]);
+    const stat = lines.find((l) => l.e === 'price_cache_store_stats');
+    assert.deepEqual(stat, { e: 'price_cache_store_stats', written: 0, failed: 0, dropped: 0, flush_timeouts: 1, pending: 0, inflight: 2 });
+    assert.equal(store.stats().inflight, 2);
+    // Two writes are still inside the client: room for one more, then drops (counted) until Firestore answers.
+    store.putPrice(id(3), doc(T0));
+    store.putPrice(id(4), doc(T0));
+    store.putPrice(id(5), doc(T0));
+    assert.equal(store.stats().dropped, 2);
+    fake.release();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(store.stats().inflight, 0);
+    assert.equal(store.stats().written, 2, 'the timed-out writes landed later and were counted then');
+    store.putPrice(id(6), doc(T0));
+    await store.flush();
+    assert.equal(store.stats().written, 4);
+  } finally {
+    clearInterval(keep);
+  }
+});
+
+test('the stats line: at most once a minute, only when something moved, with what is queued and in flight', async () => {
+  let t = T0;
+  const fake = createFakeFirestore();
+  const lines = [];
+  const store = createFirestorePriceCacheStore({ client: fake.db, flushMs: 60000, now: () => t, log: (e, f) => lines.push({ e, ...f }) });
+  store.putPrice(id(1), doc(T0));
+  await store.flush();
+  store.putPrice(id(2), doc(T0));
+  await store.flush();
+  const stats = () => lines.filter((l) => l.e === 'price_cache_store_stats');
+  assert.deepEqual(stats(), [{ e: 'price_cache_store_stats', written: 1, failed: 0, dropped: 0, flush_timeouts: 0, pending: 0, inflight: 0 }]);
+  t += 61 * 1000;
+  await store.flush();
+  assert.equal(stats().length, 2);
+  assert.equal(stats()[1].written, 1, 'the delta since the last line');
+  t += 61 * 1000;
+  await store.flush();
+  assert.equal(stats().length, 2, 'a quiet minute writes no line');
 });

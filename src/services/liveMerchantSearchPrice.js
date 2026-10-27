@@ -38,8 +38,9 @@ const HOST_BACKOFF_BASE_MS = 60000;
 const HOST_BACKOFF_MAX_MS = 600000;
 const HOST_BACKOFF_MAX_HOSTS = 1000;
 const hostBackoff = new Map(); // hostKey -> { until, ms, status, setAt }
-// The failures the price line reports per host (`overlay_throttled_hosts`): a refusal that backs off, and a skip.
-const THROTTLE_REASON = /^(?:http_429|http_430|http_5\d\d|host_backoff)$/;
+// The failures the price line reports per host (`overlay_throttled_hosts`): a refusal that backs off, a backoff skip,
+// and a read our own per-host budget refused (PRICE_HOST_BUDGET=on; services/priceHostBudget.js).
+const THROTTLE_REASON = /^(?:http_429|http_430|http_5\d\d|host_backoff|host_budget)$/;
 // THE SHARED VERIFIED-PRICE CACHE (services/priceCache.js; PRICE_CACHE_STORE / PRICE_CACHE_MODE, default off), when
 // the caller hands it in (`options.priceCache`): every card a FRESH `.json` read verified is recorded for the fleet
 // (each variant the verdict covered, in the merchant's currency, for the declared market only). Under

@@ -406,6 +406,22 @@ test('READ MODE: not served from the cache: another product\'s handle, older tha
   assert.equal(none.metadata.live_merchant_price.shared_cache_hit_count, 0);
 });
 
+test('R11 READ MODE: a page with no declared market is never served from the cache, even with a US/USD answer there', async () => {
+  const h = cacheHarness({ read: true });
+  const products = jsonCards(1);
+  const host = `shop-${seq}.example.com`;
+  await seed(h, { host, variant_id: '9000', amount: 26, handle: 'p-0' });
+  const us = await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: storefront().fetchImpl, env: {}, market: 'US', priceCache: h.api });
+  assert.equal(us.metadata.live_merchant_price.shared_cache_hit_count, 1, 'the doc IS served to a page that declared US');
+  const sf = storefront();
+  for (const market of [undefined, '', 'USA']) {
+    const out = await overlayLiveMerchantSearchPrices({ products: products.map((c) => ({ ...c, product_id: `${c.product_id}_${market}` })) }, { fetchImpl: sf.fetchImpl, env: {}, market, priceCache: h.api });
+    assert.equal(out.metadata.live_merchant_price.shared_cache_hit_count, 0, String(market));
+    assert.equal(out.products[0].price, 30, `${market}: read from the store, never the US cache answer`);
+  }
+  assert.equal(sf.calls.length, 1, 'read once, then from this instance\'s own fresh read');
+});
+
 test('READ MODE: this instance\'s fresh read and the gone memo come first; a failing store is a miss (fail open)', async () => {
   const h = cacheHarness({ read: true });
   const products = jsonCards(2);
@@ -458,6 +474,23 @@ test('READ MODE on the price line: a cache answer is RECENT, never live, even wh
     const line = lines[0];
     assert.deepEqual([line.live, line.recent, line.stored, line.verified_count, line.total], [1, 1, 0, 2, 2]);
     assert.equal(line.overlay_cache_not_live, 1);
+  } finally {
+    if (saved === undefined) delete process.env.PRICE_VERIFICATION_LOG;
+    else process.env.PRICE_VERIFICATION_LOG = saved;
+  }
+});
+
+test('a read our own budget refused is named on the price line\'s throttled hosts', async () => {
+  const saved = process.env.PRICE_VERIFICATION_LOG;
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  try {
+    const products = jsonCards(2);
+    const lines = [];
+    await pv.runWithPriceContext({ door: 'rest' }, async () => {
+      const out = await overlayLiveMerchantSearchPrices({ products }, { fetchImpl: storefront().fetchImpl, env: {}, market: 'US', hostGate: { admit: () => 'host_budget', noteRefusal() {} } });
+      pv.logPriceVerificationServed({ info: (o, msg) => lines.push({ ...o, msg }) }, { surface: 'search', items: out.products });
+    });
+    assert.deepEqual(lines[0].overlay_throttled_hosts, { [`shop-${seq}.example.com`]: 2 });
   } finally {
     if (saved === undefined) delete process.env.PRICE_VERIFICATION_LOG;
     else process.env.PRICE_VERIFICATION_LOG = saved;

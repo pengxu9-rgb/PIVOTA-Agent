@@ -14043,6 +14043,8 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
   );
 }
 
+// Tests only (app._debug.useSearchOverlayFetchForTest, NODE_ENV=test): the storefront fetch the `.json` overlay uses.
+let _searchOverlayFetchForTest = null;
 function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
   // trackSearchOverlay: the price_verification_served line's record of this run (log only; it returns its
   // argument unchanged, and with PRICE_VERIFICATION_LOG off does nothing at all).
@@ -14069,6 +14071,7 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
     ucpSearchReader: getUcpLiveSearchReader(),
     priceCache: priceCacheHooks,
     hostGate: priceHostGate,
+    ...(_searchOverlayFetchForTest ? { fetchImpl: _searchOverlayFetchForTest } : {}),
     // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
     market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
   }));
@@ -53820,6 +53823,10 @@ module.exports._debug = {
   pdpLiveRefresh,
   withPdpLiveRefreshDescriptor,
   // Tests only: the live readers' UCP client, set before any reader is built (no store is ever contacted).
+  useSearchOverlayFetchForTest(fetchImpl) {
+    if (process.env.NODE_ENV !== 'test') throw new Error('useSearchOverlayFetchForTest is for tests only');
+    _searchOverlayFetchForTest = typeof fetchImpl === 'function' ? fetchImpl : null;
+  },
   useUcpLiveClientForTest(ucpClient) {
     if (_ucpLiveShared) throw new Error('the UCP live client is already built');
     _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
@@ -53893,6 +53900,10 @@ if (require.main === module) {
       await runMigrations();
       logger.info('DB migrations complete');
     }
+
+    // The shared verified-price cache, when its flags are on: the Firestore client is loaded and its first read made
+    // NOW, before traffic, not inside a request's flush timer (src/services/priceCache.js). Off: nothing. At most ~5 s.
+    await priceCacheHooks.warmPriceCache();
 
     const server = app.listen(PORT, () => {
       const auroraChatContract = resolveAuroraChatContractConfig();

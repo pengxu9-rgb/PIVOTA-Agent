@@ -72,7 +72,10 @@ function decode(value) {
 function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
   const docs = new Map(); // path -> encoded data
   const calls = { getAll: [], get: [], batches: [], writerOptions: [] };
-  const faults = { getAllDelayMs: 0, getAllError: null, getDelayMs: 0, getError: null, writeFailures: 0, writeCode: 14 };
+  // writeHang: a commit that never answers (a blackholed Firestore) until release() is called.
+  const faults = { getAllDelayMs: 0, getAllError: null, getDelayMs: 0, getError: null, writeFailures: 0, writeCode: 14, writeHang: false };
+  let releaseHang = () => {};
+  const hung = () => new Promise((resolve) => { releaseHang = resolve; });
   const pause = (ms) => new Promise((r) => (ms ? setTimeout(r, ms) : setImmediate(r)));
 
   function docRef(collection, id) {
@@ -119,6 +122,7 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
       async function send(batch) {
         calls.batches.push(batch.map((op) => op.ref.path));
         await pause(0);
+        if (faults.writeHang) await hung();
         for (const op of batch) {
           if (faults.writeFailures > 0) {
             faults.writeFailures -= 1;
@@ -186,7 +190,7 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
       db.terminated = true;
     },
   };
-  return { db, docs, calls, faults, FakeTimestamp };
+  return { db, docs, calls, faults, FakeTimestamp, release: () => { faults.writeHang = false; releaseHang(); } };
 }
 
 module.exports = { createFakeFirestore, FakeTimestamp };
