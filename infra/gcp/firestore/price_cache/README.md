@@ -27,7 +27,8 @@ Verified-price plan PR-3. Code: `src/services/priceCache.js` (cache, key, curren
 
 Writers: search `.json` overlay and UCP search read, get_product read, frontend PDP read (shadow and
 `pdp_live_read`), get_offers read, cart mint (`GET_OFFERS_LIVE_CART=on`). Writes are batched (BulkWriter, about once a
-second) and never on a response path. Reads are one `getAll` of at most 20 docs with a 150 ms timeout behind a 30 s
+second) and never on a response path. With the cache on, the boot loads the client and makes one read before the
+server listens. Reads are one `getAll` of at most 20 docs with a 150 ms timeout behind a 30 s
 per-process L1; a failed read is a miss (`price_cache_read_failed`, at most one line a minute) and pauses store reads
 for 5 s.
 
@@ -43,7 +44,12 @@ for 5 s.
    PRICE_CACHE_FIRESTORE_DATABASE=price-cache
    ```
 
-   Watch for `price_cache_write_failed` (error reporting) and the doc count in the database.
+   Watch:
+   - `price_cache_warm` at boot (one per instance; `price_cache_warm_failed` when the first read did not answer in 5 s);
+   - `price_cache_write_failed` (warning; `code: flush_timeout` means Firestore did not answer a flush within 10 s);
+   - `price_cache_store_stats` (at most one a minute while writing: written / failed / dropped / flush_timeouts /
+     pending / inflight);
+   - the doc count in the database.
 3. `PRICE_HOST_BUDGET=shadow`, read `price_host_budget_shadow`, then `on`.
 4. `PRICE_CACHE_MODE=read`.
 
