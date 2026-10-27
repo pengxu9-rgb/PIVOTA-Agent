@@ -1056,6 +1056,8 @@ function createUcpLiveProductReader(deps = {}) {
       out.price = roundTo(defaultLive.amount, read.currency);
       out.currency = read.currency;
       out.price_source = 'merchant_live';
+      // When the HEADLINE price was read: only here, so a verified read that left it stored never dates it.
+      out.price_as_of = checkedAt;
     }
     const allAsked = (Array.isArray(product.variants) ? product.variants : []).every((v) => asked.has(numericVariantId(v && v.variant_id)));
     const anyInStock = out.variants.some((v) => v && v.availability && v.availability.in_stock === true && v.live_read);
@@ -1083,7 +1085,14 @@ function createUcpLiveProductReader(deps = {}) {
       readAndLog(result, product, ctx).catch(() => {});
       return null;
     }
-    return readAndLog(result, product, ctx);
+    // Enforce: whatever fails here, the agent still gets the stored product, with `live_read` saying it was not
+    // verified (the executor's own catch would serve it with no explanation at all).
+    try {
+      return await readAndLog(result, product, ctx);
+    } catch {
+      const annotated = applyProductRead(product, { status: STATUS.ERROR, reason: 'reader_error' });
+      return result.product && typeof result.product === 'object' ? { ...result, product: annotated } : annotated;
+    }
   }
 
   async function readAndLog(result, product, ctx) {

@@ -178,6 +178,15 @@ const PUBLIC_DESCRIPTIONS = Object.freeze({
     "Read-only.",
 });
 
+// get_product's public description while the commerce schema declares `market` (it does exactly while the live
+// product read is on, UCP_LIVE_PRODUCT_READ). get_offers is not on this tier, so the price rule names no tool. This
+// tier replays an answer from its read cache for up to an hour, so a confirmed price is not claimed as current.
+const PUBLIC_GET_PRODUCT_MARKET_SENTENCES =
+  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: Pivota may then confirm the " +
+  "price with the merchant for that market, and when it has, `price_check.confirmed_with_merchant` is true (an " +
+  "answer may be up to an hour old). Without it the price is Pivota's stored one. A price here is for " +
+  "discovery only: never quote it to a buyer as the final price.";
+
 // Apply the public presentation to a read tool: the de-marketed description, and — for get_product only —
 // relax the schema so it resolves by the single public sig id alone (the backend product cache matches by
 // product_id when merchant_id is absent; routes/agent_shop_gateway.py _load_product_by_id). Annotations are
@@ -187,6 +196,7 @@ function publicPresentation(tool) {
   if (PUBLIC_DESCRIPTIONS[tool.name]) next.description = PUBLIC_DESCRIPTIONS[tool.name];
   if (tool.name === "get_product" && tool.inputSchema) {
     next.inputSchema = { ...tool.inputSchema, required: ["product_id"] };
+    if (tool.inputSchema.properties && tool.inputSchema.properties.market) next.description += PUBLIC_GET_PRODUCT_MARKET_SENTENCES;
   }
   return next;
 }
