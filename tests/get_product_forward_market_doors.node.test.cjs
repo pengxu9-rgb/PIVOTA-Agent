@@ -155,7 +155,10 @@ function stripEnforceLabels(body) {
       if (rest.length) inner.messages = rest;
       else delete inner.messages;
     }
-    if (inner.product && 'price_as_of' in inner.product) {
+    if (inner.ucp) {
+      // The UCP shaper publishes no price_as_of: the message carries the read time instead.
+      assert.equal(inner.product && 'price_as_of' in inner.product, false, 'UCP never carries price_as_of');
+    } else if (inner.product && 'price_as_of' in inner.product) {
       added.price_as_of = inner.product.price_as_of;
       delete inner.product.price_as_of;
     }
@@ -200,7 +203,7 @@ test('enforce: /mcp adds only price_as_of to a verified product; /public/mcp add
   assert.deepEqual(stripEnforceLabels(R.enforce.mcp_gp.body).added, {}, '/mcp already carries live_read: nothing is added');
   assert.deepEqual(served(R.enforce.mcp_gp), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }]);
   assert.deepEqual(stripEnforceLabels(R.enforce.public_gp_market.body).added, { price_check: { confirmed_with_merchant: true, market: 'US' } });
-  assert.deepEqual(stripEnforceLabels(R.enforce.public_gp.body).added, { price_check: { confirmed_with_merchant: false, reason: 'no_market' } });
+  assert.deepEqual(stripEnforceLabels(R.enforce.public_gp.body).added, { price_check: { confirmed_with_merchant: false, reason: 'no_market' } }, 'an actionable reason is kept');
   assert.doesNotMatch(R.enforce.public_gp_market.body, /\d{4}-\d{2}-\d{2}T\d{2}:/, 'the public tier serves no timestamp');
 });
 

@@ -77,7 +77,7 @@ test('no live_read (read off or shadow): the UCP and public answers are exactly 
 
 test('verified headline: UCP says the merchant price and when; public says confirmed, undated', async () => {
   const out = await enforced(VERIFIED);
-  assert.deepEqual(productPriceCheck(out.product), { live: true, market: 'US', as_of: '2026-10-27T09:00:00.000Z' });
+  assert.deepEqual(productPriceCheck(out.product), { live: true, market: 'US', as_of: '2026-10-27T09:00:00.000Z', read_variants: 2, stored_variants: 0 });
   const ucp = shapeUcpGetProductResponse(out, {});
   assert.equal(ucp.product.price_range.min.amount, 2300);
   assert.deepEqual(priceMessages(ucp), [{
@@ -138,7 +138,9 @@ for (const [name, run, reason, market] of FALLBACKS) {
     assert.doesNotMatch(msg.content, /ECONNRESET|10\.0\.0\.1|secret/, 'a free-text error never reaches the buyer');
     const pub = projectPublicReadResult('get_product', out);
     assert.equal(pub.price.amount, 25);
-    assert.deepEqual(pub.price_check, { confirmed_with_merchant: false, ...(market ? { market } : {}), reason });
+    // Public: only the reasons an agent can act on; the reader's internals are not diagnostics it serves.
+    const publicReason = ['no_market', 'market_not_priced'].includes(reason) ? { reason } : {};
+    assert.deepEqual(pub.price_check, { confirmed_with_merchant: false, ...(market ? { market } : {}), ...publicReason });
   });
 }
 
@@ -160,8 +162,151 @@ test('an unpriced public product gets no price_check (nothing to label)', async 
 test('productPriceCheck: an unknown reason or status is dropped, never echoed; a non-ISO-2 market is null', () => {
   assert.deepEqual(productPriceCheck({ live_read: { status: 'error', reason: 'socket hang up', market: 'US' } }), { live: false, market: 'US', reason: 'error' });
   assert.deepEqual(productPriceCheck({ live_read: { status: 'weird', reason: 'free text' } }), { live: false, market: null });
-  assert.deepEqual(productPriceCheck({ live_read: { status: 'verified', market: 'USA', checked_at: 'x' }, price_as_of: 'x' }), { live: true, market: null, as_of: 'x' });
+  assert.deepEqual(productPriceCheck({ live_read: { status: 'verified', market: 'USA', checked_at: 'x' }, price_as_of: 'x' }), { live: true, market: null, as_of: 'x', read_variants: 0, stored_variants: 0 });
   assert.deepEqual(productPriceCheck({ live_read: { status: 'verified', checked_at: 'a' }, price_as_of: 'b' }), { live: false, market: null, reason: 'headline_not_read' });
   assert.equal(productPriceCheck({ live_read: 'verified' }), null);
   assert.equal(productPriceCheck(null), null);
+});
+
+// ------------------------------------------------------------------------- B3: a partly read product (controller r2)
+
+const ROSE_ONLY = () => answer({ products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [v(ROSE, 2300, 'USD')] }], messages: [] });
+
+test('partly read (the merchant answers Rose, is silent on Plum): UCP counts what was read, never claims the whole range', async () => {
+  const out = await enforced(ROSE_ONLY);
+  assert.equal(out.product.price, 23, 'the headline is the merchant\'s');
+  assert.equal(out.product.variants[1].live_read, undefined, 'Plum keeps its stored price');
+  assert.deepEqual(productPriceCheck(out.product), { live: true, market: 'US', as_of: '2026-10-27T09:00:00.000Z', read_variants: 1, stored_variants: 1 });
+  const ucp = shapeUcpGetProductResponse(out, {});
+  assert.deepEqual([ucp.product.price_range.min.amount, ucp.product.price_range.max.amount], [2300, 2700], 'a range of read and stored prices');
+  const msgs = priceMessages(ucp);
+  assert.equal(msgs.length, 1);
+  assert.deepEqual([msgs[0].type, msgs[0].code, msgs[0].path], ['warning', 'price.partially_verified', '$.product.price_range']);
+  assert.match(msgs[0].content, /^The merchant's own catalog for US \(at 2026-10-27T09:00:00\.000Z\) confirmed 1 of 2 variants, the default among them; 1 variant shows Pivota's stored price, or the product price where it has none of its own\./);
+  assert.ok(!msgs.some((m) => m.code === 'price.merchant_verified'), 'never labelled verified');
+  // Public shows the headline only, and the headline was read.
+  assert.deepEqual(projectPublicReadResult('get_product', out).price_check, { confirmed_with_merchant: true, market: 'US' });
+});
+
+test('more variants than one read covers (30): the unasked ones are stored, so UCP says 30 of 32', async () => {
+  const ids = Array.from({ length: 32 }, (_, i) => String(43734829564100 + i));
+  const variants = ids.map((id, i) => ({ variant_id: id, title: `Shade ${i}`, price: { current: { amount: 25, currency: 'USD' } }, availability: { in_stock: true } }));
+  const asked = [];
+  const out = await enforced((idsAsked) => {
+    asked.push(...idsAsked);
+    return answer({ products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: idsAsked.map((g) => ({ id: g, price: { amount: 2300, currency: 'USD' }, availability: { available: true } })) }], messages: [] });
+  }, { market: 'US' }, { default_variant_id: ids[0], variants });
+  assert.equal(asked.length, 30, 'the reader asks for at most 30');
+  const check = productPriceCheck(out.product);
+  assert.equal(check.live, true);
+  assert.deepEqual([check.read_variants, check.stored_variants], [30, 2]);
+  const msg = priceMessages(shapeUcpGetProductResponse(out, {}))[0];
+  assert.equal(msg.code, 'price.partially_verified');
+  assert.match(msg.content, /confirmed 30 of 32 variants, the default among them; 2 variants show Pivota's stored price/);
+});
+
+test('every variant read: merchant_verified', async () => {
+  const out = await enforced(VERIFIED);
+  assert.deepEqual([productPriceCheck(out.product).read_variants, productPriceCheck(out.product).stored_variants], [2, 0]);
+  assert.equal(priceMessages(shapeUcpGetProductResponse(out, {}))[0].code, 'price.merchant_verified');
+});
+
+// R1 (controller r3): the UCP shaper publishes a variant with no price of its own (null, or the 0 placeholder
+// feeds carry) at the PRODUCT price, which is the live headline. A variant the merchant never priced must not
+// sit under "read from the merchant's own catalog".
+test('R1: unpriced variants never answered are published at the product price, so the product is only partially verified', async () => {
+  const ids = [ROSE, '43734829564201', '43734829564202', '43734829564203'];
+  const variants = [
+    { variant_id: ROSE, title: 'Rose', price: { current: { amount: 25, currency: 'USD' } }, availability: { in_stock: true } },
+    ...ids.slice(1).map((id, i) => ({ variant_id: id, title: `Unpriced ${i}`, price: null, availability: { in_stock: true } })),
+  ];
+  const out = await enforced(() => answer({ products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [v(ROSE, 2000, 'USD')] }], messages: [] }), { market: 'US' }, { variants });
+  assert.equal(out.product.price, 20);
+  const check = productPriceCheck(out.product);
+  assert.deepEqual([check.read_variants, check.stored_variants], [1, 3]);
+  const ucp = shapeUcpGetProductResponse(out, {});
+  const msgs = priceMessages(ucp);
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].code, 'price.partially_verified', JSON.stringify(ucp.product.variants.map((x) => x.price)));
+  assert.match(msgs[0].content, /confirmed 1 of 4 variants, the default among them; 3 variants show/);
+});
+
+test('R1: 35 variants with 0 placeholders, the last 5 never asked: partially verified, never merchant_verified', async () => {
+  const ids = Array.from({ length: 35 }, (_, i) => String(43734829564300 + i));
+  const variants = ids.map((id, i) => ({ variant_id: id, title: `Shade ${i}`, price: { current: { amount: i === 0 ? 25 : 0, currency: 'USD' } }, availability: { in_stock: true } }));
+  const out = await enforced((idsAsked) => answer({
+    products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: idsAsked.map((g) => ({ id: g, price: { amount: 2000, currency: 'USD' }, availability: { available: true } })) }],
+    messages: [],
+  }), { market: 'US' }, { default_variant_id: ids[0], variants });
+  const check = productPriceCheck(out.product);
+  assert.deepEqual([check.read_variants, check.stored_variants], [30, 5]);
+  const msgs = priceMessages(shapeUcpGetProductResponse(out, {}));
+  assert.deepEqual(msgs.map((m) => m.code), ['price.partially_verified']);
+  assert.match(msgs[0].content, /confirmed 30 of 35 variants.*5 variants show/);
+});
+
+test('a variant the merchant says is gone carries a live_read and is still counted stored (its price was not read)', async () => {
+  const out = await enforced(() => answer({
+    products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [v(ROSE, 2300, 'USD')] }],
+    messages: [{ type: 'info', code: 'not_found', content: gid(PLUM) }],
+  }));
+  assert.equal(out.product.variants[1].live_read.status, 'variant_gone');
+  const check = productPriceCheck(out.product);
+  assert.deepEqual([check.read_variants, check.stored_variants], [1, 1]);
+  assert.equal(priceMessages(shapeUcpGetProductResponse(out, {}))[0].code, 'price.partially_verified');
+});
+
+test('a product with no variants list: the headline is the whole claim', async () => {
+  const out = await enforced(VERIFIED);
+  delete out.product.variants;
+  assert.deepEqual([productPriceCheck(out.product).read_variants, productPriceCheck(out.product).stored_variants], [0, 0]);
+});
+
+test('public price_check never carries an internal reason token', async () => {
+  for (const run of [() => enforced(THROWS), () => enforced(ONLY_PLUM)]) {
+    const pc = projectPublicReadResult('get_product', await run()).price_check;
+    assert.equal(pc.confirmed_with_merchant, false);
+    assert.equal('reason' in pc, false, JSON.stringify(pc));
+  }
+  assert.deepEqual(projectPublicReadResult('get_product', await enforced(() => assert.fail('never'), {})).price_check, { confirmed_with_merchant: false, reason: 'no_market' });
+});
+
+// R2 (controller r4): the merchant answers the default variant's PRICE but not its stock, and Plum in full. The
+// default variant keeps its stored price (a variant is re-priced only with both); the headline must agree.
+const ROSE_NO_STOCK = () => answer({
+  products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [
+    { id: gid(ROSE), price: { amount: 2300, currency: 'USD' }, availability: { available: null } },
+    v(PLUM, 2100, 'USD'),
+  ] }],
+  messages: [],
+});
+
+test('R2: default answered with a price but no stock: the headline stays stored with its variant, and nothing claims the default was read', async () => {
+  const out = await enforced(ROSE_NO_STOCK);
+  const p = out.product;
+  assert.equal(p.variants[0].live_read, undefined, 'Rose is not verified (no stock answer)');
+  assert.equal(p.variants[0].price.current.amount, 25);
+  assert.equal(p.variants[1].live_read.status, 'verified');
+  assert.equal(p.variants[1].price.current.amount, 21);
+  assert.equal(p.price, 25, 'the headline agrees with its variant: stored');
+  assert.equal(p.price_as_of, undefined, 'and is not dated');
+  assert.equal(p.price_source, undefined);
+  assert.deepEqual(productPriceCheck(p), { live: false, market: 'US', reason: 'headline_not_read' });
+  const msgs = priceMessages(shapeUcpGetProductResponse(out, {}));
+  assert.deepEqual(msgs.map((m) => [m.type, m.code]), [['warning', 'price.stored']]);
+  assert.doesNotMatch(msgs[0].content, /default among them/);
+  assert.deepEqual(projectPublicReadResult('get_product', out).price_check, { confirmed_with_merchant: false, market: 'US' });
+});
+
+test('R2 guard: a headline dated by a read while its listed default variant is not verified is never live', () => {
+  const p = {
+    price: 23, price_as_of: 't', default_variant_id: 1,
+    live_read: { status: 'verified', market: 'US', checked_at: 't' },
+    variants: [{ variant_id: '1', price: { current: { amount: 25 } } }, { variant_id: '2', live_read: { status: 'verified' } }],
+  };
+  assert.deepEqual(productPriceCheck(p), { live: false, market: 'US', reason: 'headline_not_read' });
+  p.variants[0].live_read = { status: 'verified' };
+  assert.equal(productPriceCheck(p).live, true, 'once the default variant is verified, the headline is live');
+  delete p.default_variant_id;
+  assert.equal(productPriceCheck(p).live, true, 'no default named: the headline stamp decides');
 });
