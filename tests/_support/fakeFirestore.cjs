@@ -74,8 +74,8 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
   const calls = { getAll: [], get: [], batches: [], writerOptions: [] };
   // writeHang: a commit that never answers (a blackholed Firestore) until release() is called.
   const faults = { getAllDelayMs: 0, getAllError: null, getDelayMs: 0, getError: null, writeFailures: 0, writeCode: 14, writeHang: false };
-  let releaseHang = () => {};
-  const hung = () => new Promise((resolve) => { releaseHang = resolve; });
+  const hangs = []; // every commit waiting on the blackhole
+  const hung = () => new Promise((resolve) => { hangs.push(resolve); });
   const pause = (ms) => new Promise((r) => (ms ? setTimeout(r, ms) : setImmediate(r)));
 
   function docRef(collection, id) {
@@ -190,7 +190,7 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
       db.terminated = true;
     },
   };
-  return { db, docs, calls, faults, FakeTimestamp, release: () => { faults.writeHang = false; releaseHang(); } };
+  return { db, docs, calls, faults, FakeTimestamp, release: () => { faults.writeHang = false; hangs.splice(0).forEach((resolve) => resolve()); } };
 }
 
 module.exports = { createFakeFirestore, FakeTimestamp };

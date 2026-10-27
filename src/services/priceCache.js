@@ -64,6 +64,11 @@ const BACKOFF_MAX_MS = 10 * 60 * 1000;
 // stock, handle and source) is not written again until that one is this old. The doc's read_at then lags the
 // truth by at most this much, well inside every consumer window (10 and 15 min).
 const UNCHANGED_REWRITE_MS = 5 * 60 * 1000;
+// KNOWN EDGE, TO SETTLE BEFORE PRICE_CACHE_MODE=read: the skip compares against what THIS instance last saw. When
+// instance A wrote $10, instance B then wrote $12, and A reads $10 again inside 5 min, A skips and the store keeps
+// B's $12 until A's window ends. Harmless in write mode (nothing reads the store); before read mode either compare
+// against the store's doc (L1-refreshed) or drop the skip for keys another writer touched.
+
 
 const SOURCES = new Set(['merchant_ucp', 'merchant_storefront', 'merchant_cart']);
 const WRITERS = new Set(['search', 'pdp', 'product', 'offers', 'cart']);
@@ -435,7 +440,7 @@ let storeFactory = null; // tests: (settings) => PriceCacheStore
 function defaultLog(event, fields) {
   try {
     // Failures are warnings (they reach error reporting); the stats and warm-up lines are info.
-    const level = /_failed$/.test(event) ? 'warn' : 'info';
+    const level = /_failed$|_reset$/.test(event) ? 'warn' : 'info';
     require('../logger')[level]({ event, ...fields }, event);
   } catch {
     /* ignored */

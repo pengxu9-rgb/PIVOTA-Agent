@@ -392,3 +392,19 @@ test('write cost: an unchanged answer is not re-written within 5 min; a changed 
   assert.equal(fake.calls.batches.flat().length, 1, 'coalesced in the queue: one doc');
   assert.equal(fake.docs.size, 1);
 });
+
+test('N1: an AMOUNT change inside the 5-min window is written at once (so is compare-at, handle or tombstone)', async () => {
+  const { fake, c, store, cache } = harness();
+  assert.equal(cache.recordVerifiedPrice(VERIFIED), true);
+  c.add(MIN);
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, amount: 24 }), true, 'price changed: written');
+  c.add(MIN);
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, amount: 24, compare_at: 30 }), true, 'compare-at changed: written');
+  c.add(MIN);
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, amount: 24, compare_at: 30, handle: 'other' }), true, 'handle changed: written');
+  c.add(MIN);
+  assert.equal(cache.recordVariantGone({ ...KEY, source: 'merchant_ucp', writer: 'offers' }), true, 'gone: written');
+  await store.flush();
+  const d = [...fake.docs.values()][0];
+  assert.equal(d.status, 'variant_gone');
+});

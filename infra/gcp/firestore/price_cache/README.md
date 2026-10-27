@@ -47,10 +47,16 @@ for 5 s.
    Watch:
    - `price_cache_warm` at boot (one per instance; `price_cache_warm_failed` when the first read did not answer in 5 s);
    - `price_cache_write_failed` (warning; `code: flush_timeout` means Firestore did not answer a flush within 10 s);
-   - `price_cache_store_stats` (at most one a minute while writing: written / failed / dropped / flush_timeouts /
-     pending / inflight);
+   - `price_cache_store_stats` (at most one a minute while anything moved: written / failed / dropped /
+     flush_timeouts / resets / abandoned / pending / inflight);
    - the doc count in the database.
 3. `PRICE_HOST_BUDGET=shadow`, read `price_host_budget_shadow`, then `on`.
-4. `PRICE_CACHE_MODE=read`.
+4. `PRICE_CACHE_MODE=read`. Before it, settle:
+   - the write skip's edge: an instance skips re-writing an answer it saw itself within 5 min, even when another
+     instance has since written a different one (`UNCHANGED_REWRITE_MS`, src/services/priceCache.js);
+   - plain `set` across instances (no `read_at` precondition).
+
+`price_cache_store_reset` (warning): three flushes in a row timed out, so the BulkWriter and the client were rebuilt and
+their unsettled writes counted as `abandoned` (a hung connection; the cache keeps writing on a new channel).
 
 Rollback at any step: unset the flag (or set it to `off`).

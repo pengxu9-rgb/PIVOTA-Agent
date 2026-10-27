@@ -79,7 +79,7 @@ test('putPrice never writes on the call; the queue is flushed about a second lat
   await store.flush();
   assert.equal(fake.calls.writerOptions.length, 1, 'the BulkWriter is reused');
   assert.equal(fake.docs.get(`verified_prices/${id(3)}`).amount, '23.00');
-  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, flush_timeouts: 0, pending: 0, inflight: 0 });
+  assert.deepEqual(store.stats(), { queued: 3, written: 3, failed: 0, dropped: 0, flushes: 2, flush_timeouts: 0, resets: 0, abandoned: 0, pending: 0, inflight: 0 });
 });
 
 test('one doc queued twice in a window is written once, with the NEWER read_at, whichever came last', async () => {
@@ -217,7 +217,7 @@ test('S2: a flush Firestore never answers gives up after its deadline, is logged
     assert.ok(Date.now() - t < 1000, 'the flush gave up waiting');
     assert.deepEqual(lines.filter((l) => l.e === 'price_cache_write_failed'), [{ e: 'price_cache_write_failed', failures: 1, code: 'flush_timeout' }]);
     const stat = lines.find((l) => l.e === 'price_cache_store_stats');
-    assert.deepEqual(stat, { e: 'price_cache_store_stats', written: 0, failed: 0, dropped: 0, flush_timeouts: 1, pending: 0, inflight: 2 });
+    assert.deepEqual(stat, { e: 'price_cache_store_stats', written: 0, failed: 0, dropped: 0, flush_timeouts: 1, resets: 0, abandoned: 0, pending: 0, inflight: 2 });
     assert.equal(store.stats().inflight, 2);
     // Two writes are still inside the client: room for one more, then drops (counted) until Firestore answers.
     store.putPrice(id(3), doc(T0));
@@ -246,7 +246,7 @@ test('the stats line: at most once a minute, only when something moved, with wha
   store.putPrice(id(2), doc(T0));
   await store.flush();
   const stats = () => lines.filter((l) => l.e === 'price_cache_store_stats');
-  assert.deepEqual(stats(), [{ e: 'price_cache_store_stats', written: 1, failed: 0, dropped: 0, flush_timeouts: 0, pending: 0, inflight: 0 }]);
+  assert.deepEqual(stats(), [{ e: 'price_cache_store_stats', written: 1, failed: 0, dropped: 0, flush_timeouts: 0, resets: 0, abandoned: 0, pending: 0, inflight: 0 }]);
   t += 61 * 1000;
   await store.flush();
   assert.equal(stats().length, 2);
@@ -254,4 +254,92 @@ test('the stats line: at most once a minute, only when something moved, with wha
   t += 61 * 1000;
   await store.flush();
   assert.equal(stats().length, 2, 'a quiet minute writes no line');
+});
+
+test('a hung connection: after 3 flush timeouts in a row the BulkWriter and client are rebuilt, the stuck writes are abandoned', { timeout: 5000 }, async () => {
+  const keep = setTimeout(() => {}, 3000);
+  try {
+    const { RESET_AFTER_FLUSH_TIMEOUTS } = require('../src/services/priceCacheStore');
+    assert.equal(RESET_AFTER_FLUSH_TIMEOUTS, 3);
+    const hung = createFakeFirestore();
+    const fresh = createFakeFirestore();
+    const clients = [hung.db, fresh.db];
+    let built = 0;
+    const lines = [];
+    const store = createFirestorePriceCacheStore({
+      clientFactory: () => clients[built++], flushMs: 60000, flushTimeoutMs: 15, maxPending: 4,
+      log: (e, f) => lines.push({ e, ...f }),
+    });
+    hung.faults.writeHang = true;
+    for (let i = 1; i <= 2; i += 1) {
+      store.putPrice(id(i), doc(T0));
+      await store.flush();
+    }
+    assert.equal(store.stats().inflight, 2);
+    assert.equal(store.stats().resets, 0, 'two timeouts: not yet');
+    store.putPrice(id(3), doc(T0));
+    await store.flush();
+    assert.deepEqual([store.stats().resets, store.stats().abandoned, store.stats().inflight], [1, 3, 0]);
+    assert.deepEqual(lines.find((l) => l.e === 'price_cache_store_reset'), { e: 'price_cache_store_reset', abandoned: 3, resets: 1 });
+    assert.equal(hung.db.terminated, true, 'the old client is let go');
+    // Firestore is back: new writes go through a NEW client and writer, and nothing is pinned.
+    store.putPrice(id(4), doc(T0));
+    await store.flush();
+    assert.equal(built, 2);
+    assert.equal(fresh.docs.has(`verified_prices/${id(4)}`), true);
+    assert.equal(store.stats().inflight, 0);
+    // The old connection finally answers: its writes count as written, never push inflight below zero.
+    hung.release();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(store.stats().inflight, 0);
+    assert.equal(store.stats().failed, 0, 'abandoned writes are not counted twice');
+  } finally {
+    clearTimeout(keep);
+  }
+});
+
+test('a timeout streak is broken by any flush that settles; an injected client is kept, only the writer is rebuilt', { timeout: 5000 }, async () => {
+  const keep = setTimeout(() => {}, 3000);
+  try {
+    const fake = createFakeFirestore();
+    const store = createFirestorePriceCacheStore({ client: fake.db, flushMs: 60000, flushTimeoutMs: 15 });
+    fake.faults.writeHang = true;
+    store.putPrice(id(1), doc(T0)); await store.flush();
+    store.putPrice(id(2), doc(T0)); await store.flush();
+    fake.release();
+    await new Promise((r) => setTimeout(r, 10));
+    store.putPrice(id(3), doc(T0)); await store.flush();
+    fake.faults.writeHang = true;
+    store.putPrice(id(4), doc(T0)); await store.flush();
+    store.putPrice(id(5), doc(T0)); await store.flush();
+    assert.equal(store.stats().resets, 0, '2 + (a good flush) + 2 is not 3 in a row');
+    store.putPrice(id(6), doc(T0)); await store.flush();
+    assert.equal(store.stats().resets, 1);
+    fake.release();
+    store.putPrice(id(7), doc(T0)); await store.flush();
+    assert.equal(fake.calls.writerOptions.length, 2, 'a new BulkWriter on the same injected client');
+    assert.equal(fake.docs.has(`verified_prices/${id(7)}`), true);
+    assert.equal(fake.db.terminated, undefined, 'an injected client is never terminated by a reset');
+  } finally {
+    clearTimeout(keep);
+  }
+});
+
+test('the stats line runs on its own clock: drops after traffic stops are still logged', { timeout: 5000 }, async () => {
+  const fake = createFakeFirestore();
+  const lines = [];
+  const store = createFirestorePriceCacheStore({ client: fake.db, flushMs: 60000, maxPending: 1, statsLogEveryMs: 40, log: (e, f) => lines.push({ e, ...f }) });
+  try {
+    store.putPrice(id(1), doc(T0));
+    store.putPrice(id(2), doc(T0)); // the queue is full: dropped
+    const keep = setTimeout(() => {}, 1000);
+    await new Promise((r) => setTimeout(r, 120));
+    clearTimeout(keep);
+    const stat = lines.find((l) => l.e === 'price_cache_store_stats');
+    assert.ok(stat, 'logged without any flush');
+    assert.equal(stat.dropped, 1);
+    assert.equal(stat.pending, 1);
+  } finally {
+    await store.close();
+  }
 });
