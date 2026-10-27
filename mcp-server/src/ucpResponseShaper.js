@@ -475,9 +475,10 @@ function priceCheckMessage(check) {
       type: "warning",
       code: "price.partially_verified",
       path: "$.product.price_range",
-      content: `Only the default variant's price was read from the merchant's own catalog${forMarket} (at ${check.as_of}); `
-        + `${check.stored_variants} other variant${check.stored_variants === 1 ? "" : "s"} show Pivota's stored price. `
-        + "Before quoting a final price for any other variant, call get_offers and quote only an offer whose merchant_price_verified is true.",
+      content: `The merchant's own catalog${forMarket} (at ${check.as_of}) confirmed ${check.read_variants} of `
+        + `${check.read_variants + check.stored_variants} variants, the default among them; ${check.stored_variants === 1 ? "1 variant shows" : `${check.stored_variants} variants show`} `
+        + "Pivota's stored price, or the product price where it has none of its own. "
+        + "Before quoting a final price for any variant but the default, call get_offers and quote only an offer whose merchant_price_verified is true.",
       content_type: "plain",
     };
   }
