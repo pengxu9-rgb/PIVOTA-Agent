@@ -202,7 +202,9 @@ test('warm: loads the client, builds the BulkWriter and makes ONE read of the wa
 });
 
 test('S2: a flush Firestore never answers gives up after its deadline, is logged as flush_timeout, and is counted', { timeout: 5000 }, async () => {
-  const keep = setInterval(() => {}, 1000);
+  // Holds the loop while the (unref'd) flush deadline runs, and lets go by itself: a flush that never gives up
+  // fails this test in seconds instead of hanging the file.
+  const keep = setTimeout(() => {}, 3000);
   try {
     const fake = createFakeFirestore();
     const lines = [];
@@ -230,7 +232,7 @@ test('S2: a flush Firestore never answers gives up after its deadline, is logged
     await store.flush();
     assert.equal(store.stats().written, 4);
   } finally {
-    clearInterval(keep);
+    clearTimeout(keep);
   }
 });
 
