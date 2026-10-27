@@ -799,3 +799,35 @@ describe.each(FLAG_STATES)('a 0 strength main would take, %s (r7)', (_label, fla
     expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
   });
 });
+
+// review r8: a high-to-low "between" range whose second end is a strength is a strength range: its first
+// end takes the mask even as the protected high end, so no high-end budget is left (r7 mutant X3c).
+// Flag off, main's legacy range reads the same pair; the mask leaves nothing to read.
+describe.each(FLAG_STATES)('a high-to-low between-range of strengths, %s (r8 X3c)', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+  test.each(['between 5 and 2 per-cent', 'between 10 and 2 per-cent serum'])('"%s" has no budget', (q) => {
+    expect(parseBudgetToPriceConstraint(q)).toBeNull();
+  });
+});
+
+// review r8: main's first range with a 0 end is main's "no budget", even when a strength is masked
+// elsewhere in the query -- the parse ends there, it never reads on to a later budget (r8 mutant P5).
+// Flag off, main's legacy reading is the same for the two price ranges; "between 0 and 20" is no
+// legacy range, so main reads the $30.
+describe.each(FLAG_STATES)('a zero-ended first range, %s (r8 P5)', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+  const on = flagValue !== undefined;
+  test.each([
+    ['price 0-20 serum 5% under 30', null],
+    ['price 0 - 20 2% bha, budget 40', null],
+    ['between 0 and 20 5% serum under $30', on ? null : max('USD', 30)],
+  ])('"%s"', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});

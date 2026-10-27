@@ -1156,9 +1156,10 @@ function maskStrengthNumbers(text) {
     if (type === 'between') {
       // "between 5 and 10％" / "between 5% and 10": the "between" is the range's own marker, not a
       // budget's, and the "between ... and" gap leaves no room for a marker of the first number's
-      // own, so it always takes the mask. The second end keeps a currency or bound of its own
-      // ("between 5% and 10 dollars").
-      // (the first end cannot be a protected range end: its other neighbour sits before "between")
+      // own, so when the second end is a strength the first end always takes the mask -- even when
+      // it is protected as an end of a range the parser reads ("between 5 and 10 per cent", or the
+      // high end of "between 5 and 2 per-cent": both are strength ranges, and have no budget). The
+      // second end keeps a currency, bound or protection of its own ("between 5% and 10 dollars").
       if (b.kind) a.spread = true;
       else if (!b.currency && !b.bound && !b.protected) b.spread = true;
       continue;
