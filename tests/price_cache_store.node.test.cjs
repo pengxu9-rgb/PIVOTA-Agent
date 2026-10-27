@@ -529,7 +529,7 @@ test('slow probe: one fresh client after the delay, one more reset and disabled 
     assert.equal(store.stats().probes, 2);
     for (let i = 0; i < 3; i += 1) await put();
     assert.equal(store.stats().disabled, true);
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 300)); // a third probe would come at min(160, 200) = 160 ms
     assert.equal(store.stats().probes, 2, 'at most maxProbes');
     assert.equal(clients.length, 7);
     assert.deepEqual(lines.filter((l) => l.e === 'price_cache_store_enabled').map((l) => l.reason), ['probe', 'probe']);
