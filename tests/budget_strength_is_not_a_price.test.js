@@ -98,8 +98,19 @@ const STRENGTHS = [
 // hops, only in these; flag off they keep main's legacy reading of the bare number next to the
 // strength, because nothing spreads across a clause separator or further than one hop.
 const FLAG_ON_STRENGTHS = [
-  // the age/count guard reads "spf-50" like "spf 50" (r5 sweep survivor Y05)
+  // review r6 (B1): a number followed by "spf" is never a budget with the flag on, as on main --
+  // whether it reads as an age, a count or anything else
   'kids under 12 spf-50',
+  'under 30 spf 50',
+  'under 30 spf-50',
+  'over 60 spf 50 pa++++',
+  'mature skin over 50 spf 30',
+  'woman over 40 spf 50',
+  'my mom is over 60 spf 50 face cream',
+  'over 50 spf 30 moisturizer',
+  'show me up to 10 spf 50 sunscreens',
+  'at least 10 spf 50 sunscreens',
+  'list up to 8 spf 30 moisturizers',
   // review r5 (B1): a soft bound or budget word before a strength range is no budget, as on main --
   // the masked strength still counts as the digit it replaced
   'around 5 - 10% niacinamide serum',
@@ -114,10 +125,9 @@ const FLAG_ON_STRENGTHS = [
   'budget 30 - 50ml',
   'around 30 - 50ml',
   'max 30 - 50ml',
-  '预算 150 - 50 g',
   'my budget is 35 - 10%',
   'my budget is 35 - 200 mg serum',
-  // (should-fix) an age or a count before "spf N" is no budget
+  // an age or a count before "spf N" is no budget
   'sunscreen for women over 40 spf 50',
   'kids under 12 spf 50',
   'under 2 spf 30 baby sunscreen',
@@ -244,8 +254,6 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   // (S2) a currency glued after a number is that number's, not the next one's
   ['under 40€ 50ml', max('EUR', 40)],
   ['under 30$ 50ml', max('USD', 30)],
-  // (S4) the SPF in "30 spf 50" belongs to the 50
-  ['under 30 spf 50', max(null, 30)],
   // a hard bound before a spaced size keeps its budget (the parser's bounded match counts nothing)
   ['under 30 - 50ml', max(null, 30)],
   // review r5 (B2): a spaced budget range the parser reads keeps both ends, whatever strength
@@ -263,8 +271,6 @@ const BUDGETS_NEXT_TO_STRENGTH = [
   ['10%-30 singapore dollars', max('SGD', 30)],
   ['10%-300日圆', max('JPY', 300)],
   ['10%-300新加坡元', max('SGD', 300)],
-  // (should-fix) "spf-50" is the 50's SPF too
-  ['under 30 spf-50', max(null, 30)],
   // r3 sweep survivors: a currency right before a size number keeps it a price (S05)
   ['toner under $30 ml', max('USD', 30)],
   // r4 sweep survivors: a currency CODE right before a size number keeps it a price (C02), and a
@@ -290,12 +296,11 @@ const FLAG_ON_BUDGETS = [
   ['between 20 and 40-50ml', { currency: null, min: 20, max: 40 }],
   ['spf 30-50 - 20-30 usd', { currency: 'USD', min: 20, max: 30 }],
   ['spf 30 ~ 50 - $15', max('USD', 15)],
-  // (S4) the range is no longer refused for an "spf" that belongs to the next number
-  ['$15-$30 spf 50', { currency: 'USD', min: 15, max: 30 }],
+  // review r6 (B1): the parser's unit guard refuses a range followed by "spf", as on main
+  ['$15-$30 spf 50', max('USD', 15)],
   ['300元 ~ 5 - 10% serum', max('CNY', 300)],
-  // the age/count guard is narrow: a bare large number after "over" before "spf N" stays a budget,
-  // as the same phrasing without spf does on main
-  ['over 60 spf 50 pa++++', { currency: null, min: 60, max: null }],
+  // review r6 (S1): main read "150 - 50" as a budget range; masking the 50 g leaves the 150 its cap
+  ['预算 150 - 50 g', max(null, 150)],
 ];
 
 // Plain budgets: unchanged.
@@ -398,6 +403,15 @@ describe('flag off: nothing spreads across a spaced join, and a bare number next
   test('"30 - 50ml toner" reads as main does', () => {
     expect(parseBudgetToPriceConstraint('30 - 50ml toner')).toEqual({ currency: null, min: 30, max: 50 });
   });
+  // review r6 (B1): flag off, the number before "spf N" keeps main's legacy reading
+  test.each([
+    ['under 30 spf 50', max(null, 30)],
+    ['under 30 spf-50', max(null, 30)],
+    ['over 50 spf 30 moisturizer', { currency: null, min: 50, max: null }],
+    ['show me up to 10 spf 50 sunscreens', max(null, 10)],
+  ])('"%s" reads as main does', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
   // "spf-50" is the 50's SPF (r5 sweep survivor S03b)
   test('"serum spf-50" has no budget', () => {
     expect(parseBudgetToPriceConstraint('serum spf-50')).toBeNull();
@@ -477,5 +491,133 @@ describe.each(FLAG_STATES)('bound words, %s', (_label, flagValue) => {
     expect(parseBudgetToPriceConstraint(`serum 10%-${afterPhrase(word)}`)).toEqual(
       parseBudgetToPriceConstraint(`serum ${afterPhrase(word)}`),
     );
+  });
+});
+
+// review r6 (B1): with the flag on, a number followed by "spf" is never a budget, as on main, whatever
+// comes before the bound or after the SPF. Without a currency of its own, no lead x bound x number x
+// SPF form below has a budget.
+describe('flag on: a bound number before an SPF is no budget (r6 B1 sweep shape)', () => {
+  beforeEach(() => {
+    process.env[FLAG] = '1';
+  });
+  const LEADS = ['', 'mature skin', 'my mom is', 'show me', 'sunscreen for women with very dry sensitive skin'];
+  const BOUNDS = [
+    'under', 'below', 'less than', 'at most', 'up to', 'over', 'above', 'more than', 'at least', 'from',
+    'no more than', 'max', 'around', 'about', 'budget', 'budget is', '预算', '不超过', '至少', '<', '>', '~',
+  ];
+  const NUMBERS = ['2', '4', '5', '6', '10', '40', '60'];
+  const SPFS = ['spf 30', 'spf-30', 'spf30', 'SPF 50+', 'spf 50 pa++++', 'spf 30-50', 'spf 30 ~ 50'];
+  const queries = [];
+  for (const l of LEADS) for (const b of BOUNDS) for (const n of NUMBERS) for (const spf of SPFS) {
+    queries.push([l, b, n, spf, 'sunscreens'].filter(Boolean).join(' '));
+  }
+  test(`all ${queries.length} queries have no budget`, () => {
+    const budgets = queries.filter((q) => parseBudgetToPriceConstraint(q) !== null);
+    expect(budgets.slice(0, 10)).toEqual([]);
+    expect(budgets).toHaveLength(0);
+  });
+  // G02: there is no age/count floor any more -- a number on either side of 5 is refused alike, and
+  // the same phrase without the SPF is a budget
+  test.each(['4', '5', '6'])('"under %s spf 30" has no budget, "under %s" has one', (n) => {
+    expect(parseBudgetToPriceConstraint(`under ${n} spf 30`)).toBeNull();
+    expect(parseBudgetToPriceConstraint(`under ${n}`)).toEqual(max(null, Number(n)));
+  });
+  // G09: a person word further back than any guard window makes no difference
+  test('"sunscreen for women with very dry and sensitive skin over 40 spf 50" has no budget', () => {
+    expect(parseBudgetToPriceConstraint('sunscreen for women with very dry and sensitive skin over 40 spf 50')).toBeNull();
+  });
+  // a currency of its own still makes it a budget
+  test.each([
+    ['over $50 spf 30', { currency: 'USD', min: 50, max: null }],
+    ['under 30 dollars spf 50', max('USD', 30)],
+  ])('"%s" keeps its budget', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});
+
+// review r6 (S1): a budget word or soft bound before a spaced strength that the parser read as the HIGH
+// end of a budget range keeps its budget once the strength is masked (main read {low strength, budget}).
+// A strength range read low to high still has no budget, as on main, and no number gains a budget
+// main did not read.
+describe('flag on: a budget above the strength after it keeps its cap (r6 S1)', () => {
+  beforeEach(() => {
+    process.env[FLAG] = '1';
+  });
+  test.each([
+    ['budget 30 - 5-10%', max(null, 30)],
+    ['around 30 - 5-10% serum', { currency: null, min: 22.5, max: 37.5 }],
+    ['预算300 - 1 per cent', max(null, 300)],
+    ['my budget is 30 ~ 2 per-cent', max(null, 30)],
+    ['预算是250~50ml', max(null, 250)],
+  ])('"%s" keeps its budget', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+  test.each([
+    'around 5 - 10%',
+    'budget 5 - 100 mg',
+    // main reads no range here, so there is no budget either: nothing is added
+    'my budget is 35 - 10%',
+    'serum budget 30-10%',
+  ])('"%s" has no budget, as on main', (q) => {
+    expect(parseBudgetToPriceConstraint(q)).toBeNull();
+  });
+  // Y03: two marked ranges in one query, each read high to low -- the second one's budget word is the
+  // one the parser takes, so its range must be known too
+  test('"around 5 - 1% or budget 30 - 2 per cent" keeps the budget 30', () => {
+    expect(parseBudgetToPriceConstraint('around 5 - 1% or budget 30 - 2 per cent')).toEqual(max(null, 30));
+  });
+  // P02: an equal-ended range is low to high: a parser-read budget range with equal ends stays whole,
+  // and a budget word equal to the strength after it has no budget
+  // (the mask located a range's second end with indexOf, which found the first end again when the two
+  // were equal, so the second end was swallowed by the strength after it)
+  test.each([
+    ['price 30 - 30-50ml', { currency: null, min: 30, max: 30 }],
+    ['$30 - 30-10%', { currency: 'USD', min: 30, max: 30 }],
+    ['between 20 and 20-50ml', { currency: null, min: 20, max: 20 }],
+    ['price 1.5 - 5-50ml', { currency: null, min: 1.5, max: 5 }],
+  ])('"%s" keeps its whole range', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+  test('"budget 30 - 30 per cent" has no budget', () => {
+    expect(parseBudgetToPriceConstraint('budget 30 - 30 per cent')).toBeNull();
+  });
+});
+
+// review r6 (S2): only a glued "spf-" masks the number after it, and never one with a bound, a currency
+// or a budget range of its own: these read exactly as main reads them, in both flag states.
+describe.each(FLAG_STATES)('"spf-N" next to a budget, %s (r6 S2)', (_label, flagValue) => {
+  beforeEach(() => {
+    if (flagValue === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = flagValue;
+  });
+  const on = flagValue !== undefined;
+  test.each([
+    ['50 spf-30 or less', on ? max(null, 30) : max(null, 50)],
+    ['50 spf-30 max', on ? max(null, 30) : max(null, 50)],
+    ['50 spf-200以下', on ? max(null, 200) : max(null, 50)],
+    ['50 spf-20 to 40 dollars', { currency: 'USD', min: 20, max: 40 }],
+    // "40 spf-30" is no range join: the hyphen is the SPF's, so nothing spreads onto the 40 or the 50
+    ['$20-40 spf-30 serum', on ? max('USD', 20) : { currency: 'USD', min: 20, max: 40 }],
+    ['50 spf-30 sunscreen', on ? null : max(null, 50)],
+    // H02: a spaced "spf - N" is a clause separator, not an SPF
+    ['sunscreen spf - 30 or less', max(null, 30)],
+    ['serum spf - 50', on ? null : max(null, 50)],
+  ])('"%s" reads as main does', (q, expected) => {
+    expect(parseBudgetToPriceConstraint(q)).toEqual(expected);
+  });
+});
+
+// V04: the range price-word check is anchored at the range -- a price word earlier in the query does
+// not make a later bare range a budget
+describe('flag on: a price word must sit right before the range (r6 V04)', () => {
+  beforeEach(() => {
+    process.env[FLAG] = '1';
+  });
+  test.each(['cost effective serum 20-40', 'price matters, serum 20-40', '价格 serum 20-40'])('"%s" has no budget', (q) => {
+    expect(parseBudgetToPriceConstraint(q)).toBeNull();
+  });
+  test('"price 20-40" is a budget range', () => {
+    expect(parseBudgetToPriceConstraint('serum price 20-40')).toEqual({ currency: null, min: 20, max: 40 });
   });
 });

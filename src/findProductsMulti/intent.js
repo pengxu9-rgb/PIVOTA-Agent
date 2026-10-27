@@ -933,7 +933,7 @@ function budgetRequiresMarker() {
 const BUDGET_CURRENCY_MARKER_RE =
   /s\$|[$€£¥￥元块円刀]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid)\b|美元|美金|欧元|英镑|人民币|日元|日圆|新加坡元/i;
 const NOT_A_PRICE_UNIT_AFTER_RE =
-  /^\s*(?:%|pa\s*\+|(?:ml|l|g|gr|grams?|kg|oz|fl|percent|pct|ct|count|packs?(?!\s+of)|pk|pcs|pieces|mm|cm|inch(?:es)?|spf(?!\s*-?\s*[\d\uE000])|years?|yrs?|yo|y\/o|age|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)(?![a-z'’]))/i;
+  /^\s*(?:%|pa\s*\+|(?:ml|l|g|gr|grams?|kg|oz|fl|percent|pct|ct|count|packs?(?!\s+of)|pk|pcs|pieces|mm|cm|inch(?:es)?|spf|years?|yrs?|yo|y\/o|age|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)(?![a-z'’]))/i;
 // Right after the number: a glued Latin letter ("111SKIN", "30CE"), "-in-1", a count noun,
 // or a CJK classifier.
 const COUNT_WORD_AFTER_RE =
@@ -1009,9 +1009,10 @@ const SPF_BEFORE_RE =
 // "％" ("max 10％") or a range of strengths still became a cap.
 //
 // STRENGTH_MASK is a private-use character: a user never types it, so no query without a masked
-// number can contain it. The parser's "is a digit next to this?" checks (countsThings, the soft-bound
-// lookbehind) treat it as the digit it replaced, so "spf 30 ~ 50" and "around 30-50ml" read as
-// they did before masking.
+// number can contain it. The parser's "is a digit next to this?" checks treat it as the digit it
+// replaced -- the soft-bound lookbehind always, countsThings unless the number was the high end of a
+// budget range the parser read -- so "spf 30 ~ 50" and "around 30-50ml" read as they did before
+// masking.
 const STRENGTH_MASK = '\uE000';
 const STRENGTH_NUMBER_RE = /\d+(?:\.\d+)?/g;
 // per[\s-]?cent covers "percent", "per cent" and "per-cent".
@@ -1019,11 +1020,14 @@ const PERCENT_UNIT_SRC = '[%％]|(?:per[\\s-]?cent|pct)(?![a-z])';
 const PERCENT_AFTER_RE = new RegExp(`^\\s*(?:${PERCENT_UNIT_SRC})`, 'i');
 const SIZE_UNIT_SRC = '(?:ml|mg|g|oz|fl\\.?\\s*oz)(?![a-z])';
 const MULTIPLIER_X_SRC = 'x(?![a-z]|\\s*\\d)';
-// "50 spf" -- but not the 30 in "under 30 spf 50", where the SPF belongs to the 50 (the parser's own
-// unit guard, NOT_A_PRICE_UNIT_AFTER_RE, agrees: that 30 is a budget with the flag on too).
+// "50 spf" -- but not the 30 in "under 30 spf 50", where the SPF belongs to the 50. The mask leaves
+// that 30 as it found it: flag on, the parser's own unit guard (NOT_A_PRICE_UNIT_AFTER_RE) refuses a
+// number followed by "spf", as on main, and flag off main's legacy reading of it is kept.
 const SPF_UNIT_AFTER_RE = /^\s*spf(?![a-z])(?!\s*-?\s*\d)/i;
-// "spf-50": the parser's SPF_BEFORE_RE does not take a hyphen; the mask does.
-const SPF_HYPHEN_BEFORE_RE = /\bspf\s*-\s*$/i;
+// "spf-50": the parser's SPF_BEFORE_RE does not take a hyphen; the mask does, but only glued on both
+// sides ("spf - 30" is a clause separator) and only for a number with no currency, bound or budget
+// range of its own ("50 spf-30 or less", "50 spf-20 to 40 dollars" keep their budgets, as on main).
+const SPF_HYPHEN_BEFORE_RE = /\bspf-$/i;
 const SIZE_UNIT_AFTER_RE = new RegExp(`^\\s*(?:${SIZE_UNIT_SRC})|^${MULTIPLIER_X_SRC}`, 'i');
 // A currency symbol glued to the end of a number belongs to that number ("40€ 50ml": the € is
 // the 40's), so it marks the next number only when no digit precedes it ("S$30", "under $30").
@@ -1058,8 +1062,10 @@ const BOUND_WORD_AFTER_RE = new RegExp(
   'i',
 );
 
+// Returns the masked text, and where in it a bare number opens a high-to-low range the parser reads
+// as a budget (countsThings reads those).
 function maskStrengthNumbers(text) {
-  if (!/\d/.test(text)) return text;
+  if (!/\d/.test(text)) return { text, descendingRangeStarts: new Set() };
   const tokens = [];
   for (const match of text.matchAll(STRENGTH_NUMBER_RE)) {
     const start = match.index;
@@ -1073,23 +1079,30 @@ function maskStrengthNumbers(text) {
     const boundOwn = BOUND_WORD_BEFORE_RE.test(before) || BOUND_WORD_AFTER_RE.test(after);
     const between = STRENGTH_BETWEEN_BEFORE_RE.test(before);
     let kind = null;
+    let spfHyphen = false;
     if (PERCENT_AFTER_RE.test(after)) kind = 'percent';
-    else if (!currency && (SPF_UNIT_AFTER_RE.test(after) || SPF_BEFORE_RE.test(before) || SPF_HYPHEN_BEFORE_RE.test(before))) kind = 'spf';
-    else if (!currency && SIZE_UNIT_AFTER_RE.test(after)) kind = 'size';
-    tokens.push({ start, end, currency, currencyWordAfter, bound: boundOwn, between, kind, spread: false });
+    else if (!currency && (SPF_UNIT_AFTER_RE.test(after) || SPF_BEFORE_RE.test(before))) kind = 'spf';
+    else if (!currency && !boundOwn && SPF_HYPHEN_BEFORE_RE.test(before)) {
+      kind = 'spf';
+      spfHyphen = true;
+    } else if (!currency && SIZE_UNIT_AFTER_RE.test(after)) kind = 'size';
+    tokens.push({ start, end, currency, currencyWordAfter, bound: boundOwn, between, kind, spfHyphen, spread: false });
   }
   const links = [];
   for (let i = 0; i + 1 < tokens.length; i += 1) {
     const a = tokens[i];
     const b = tokens[i + 1];
     const gap = text.slice(a.end, b.start);
-    const type = TIGHT_RANGE_GAP_RE.test(gap)
-      ? 'tight'
-      : ANY_RANGE_GAP_RE.test(gap)
-        ? 'spaced'
-        : a.between && BETWEEN_AND_GAP_RE.test(gap)
-          ? 'between'
-          : null;
+    // "40 spf-30" is no range: the hyphen belongs to the SPF ("$20-40 spf-30 serum" keeps its $20-40)
+    const type = SPF_HYPHEN_BEFORE_RE.test(gap)
+      ? null
+      : TIGHT_RANGE_GAP_RE.test(gap)
+        ? 'tight'
+        : ANY_RANGE_GAP_RE.test(gap)
+          ? 'spaced'
+          : a.between && BETWEEN_AND_GAP_RE.test(gap)
+            ? 'between'
+            : null;
     if (type) links.push({ a, b, type });
   }
   // Every check below reads a number's OWN markers. Nothing is shared between a range's ends: a
@@ -1100,11 +1113,22 @@ function maskStrengthNumbers(text) {
   // range reads low to high: in "$30 - 5-10% niacinamide" the 5 opens the strength range, so the
   // "range" $30 - 5 the parser sees is not protected and the answer is the $30.
   for (const range of markedBudgetRanges(text)) {
-    if (Number(range[1]) > Number(range[2])) continue;
-    const ends = [1, 2].map((group) => tokens.find((x) => x.start === numberSpan(range, group).start));
+    // Both range regexes end on their second number, so it ends the match: numberSpan's indexOf would
+    // find the FIRST end again when the two are equal ("price 30 - 30-50ml").
+    const secondStart = (range.index || 0) + range[0].length - range[2].length;
+    const ends = [numberSpan(range, 1).start, secondStart].map((at) => tokens.find((x) => x.start === at));
+    if (Number(range[1]) > Number(range[2])) {
+      // ...but the parser read that number as a budget (main: "budget 30 - 5-10%" -> {5, 30}), so
+      // countsThings must not refuse it once its strength partner is masked.
+      if (ends[0]) ends[0].opensDescendingRange = true;
+      continue;
+    }
     if (ends.some((t) => !t)) continue;
     for (const t of ends) t.protected = true;
   }
+  // The parser itself never reads "spf-N" as an SPF, so an "spf-" number that ends one of its budget
+  // ranges stays the budget's ("50 spf-20 to 40 dollars").
+  for (const t of tokens) if (t.spfHyphen && t.protected) t.kind = null;
   // ...and a plain range whose second end names its currency in a word ("20 - 30 singapore dollars",
   // which the flag-off parser reads as a range and the marker-mode range finder does not know), read
   // low to high -- unless an end belongs to an SPF range ("spf 30 ~ 50 - 300元": the 50 is the SPF's).
@@ -1148,15 +1172,19 @@ function maskStrengthNumbers(text) {
       if ((x.kind === 'spf' || x.kind === 'size') && bare) x.kind = null;
     }
   }
-  if (!tokens.some((t) => t.kind || t.spread)) return text;
+  if (!tokens.some((t) => t.kind || t.spread)) return { text, descendingRangeStarts: new Set() };
   let out = '';
   let cursor = 0;
+  const descendingRangeStarts = new Set();
   for (const t of tokens) {
-    if (!t.kind && !t.spread) continue;
+    if (!t.kind && !t.spread) {
+      if (t.opensDescendingRange) descendingRangeStarts.add(out.length + (t.start - cursor));
+      continue;
+    }
     out += text.slice(cursor, t.start) + STRENGTH_MASK;
     cursor = t.end;
   }
-  return out + text.slice(cursor);
+  return { text: out + text.slice(cursor), descendingRangeStarts };
 }
 
 function numberSpan(match, group = 1) {
@@ -1164,27 +1192,12 @@ function numberSpan(match, group = 1) {
   return { start, end: start + match[group].length };
 }
 
-// The SPF in "30 spf 50" belongs to the 50 (NOT_A_PRICE_UNIT_AFTER_RE), so the 30 can be a budget --
-// unless it reads as an age or a count: a number under 5 ("under 2 spf 30", "at least 2 spf 50"), or a
-// person right before the bound ("kids under 12 spf 50", "women over 40 spf 50"). Without the SPF the
-// same phrasing still reads as a budget, as on main; this guard only keeps the SPF case from adding
-// more of it.
-const SPF_NUMBER_AFTER_RE = /^\s*spf\s*-?\s*[\d\uE000]/i;
-const AGE_OR_AUDIENCE_BEFORE_RE =
-  /\b(?:kids?|child(?:ren)?|bab(?:y|ies)|toddlers?|infants?|teens?|teenagers?|women|men|ladies|girls?|boys?|adults?|seniors?|ages?|aged)\b[^\d]{0,24}$/i;
-
 function isMarkedBudgetAmount(normalized, match) {
   if (!match) return false;
   if (BUDGET_CURRENCY_MARKER_RE.test(match[0])) return true;
   const { start, end } = numberSpan(match);
   if (SPF_BEFORE_RE.test(normalized.slice(0, start))) return false;
-  const after = normalized.slice(end);
-  if (NOT_A_PRICE_UNIT_AFTER_RE.test(after)) return false;
-  if (SPF_NUMBER_AFTER_RE.test(after)) {
-    const at = match.index || 0;
-    if (Number(match[1]) < 5 || AGE_OR_AUDIENCE_BEFORE_RE.test(normalized.slice(Math.max(0, at - 48), at))) return false;
-  }
-  return true;
+  return !NOT_A_PRICE_UNIT_AFTER_RE.test(normalized.slice(end));
 }
 
 // The first range that is a budget: "between 20 and 40", a currency on either end
@@ -1241,9 +1254,10 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Flag on: collapse whitespace first. Every regex below chains optional \s* runs, and on a
   // long whitespace run that backtracking is super-linear (review of #2275: "about" + 5,000
   // spaces took 29 s on the event loop). Collapsing it changes no match.
-  const normalized = maskStrengthNumbers(
+  const masked = maskStrengthNumbers(
     budgetRequiresMarker() ? digitsNormalized.replace(/\s+/g, ' ') : digitsNormalized,
   );
+  const normalized = masked.text;
   const hasSgd = /(?:s\$|sgd|singapore dollars?|新加坡元)/i.test(normalized);
   const hasUsd = /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
   const hasEur = /(?:€|eur|euros?|欧元)/i.test(normalized);
@@ -1325,10 +1339,16 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // one that opens a range the range pass refused ("about 5-10 minutes", "预算3-4步").
     const countsThings = (match) => {
       const tail = normalized.slice((match.index || 0) + match[0].length);
+      if (COUNT_WORD_AFTER_RE.test(tail)) return true;
+      const join = /^\s*[-~–—到]\s*(?:\d|(\uE000))/.exec(tail);
+      if (!join) return false;
       // A masked strength counts as the digit it replaced, so a soft bound or budget word before a
       // strength range reads exactly as before masking: "about 5-10 ml", "around 5 - 10%",
-      // "budget 30 - 50ml" have no budget, as on main.
-      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*[\d\uE000]/.test(tail);
+      // "budget 30 - 50ml" have no budget, as on main. The one exception is a number the parser read
+      // as the HIGH end of a budget range with that strength ("budget 30 - 5-10%", "预算是250~50ml",
+      // "my budget is 30 ~ 2 per-cent": main {5, 30}, {50, 250}, {2, 30}): masking took the range
+      // away, so the number keeps the budget, as its cap.
+      return !join[1] || !masked.descendingRangeStarts.has(numberSpan(match).start);
     };
     const hardUsable = (match) => (usable(match) && !countsThings(match) ? match : null);
     // about / around / max / < / ~ / "or less" with no currency: also no plural noun after
