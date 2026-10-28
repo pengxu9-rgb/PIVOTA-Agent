@@ -394,3 +394,23 @@ test('the classification cache never keeps a long text', () => {
   assert.ok(keys.every((k) => k.length <= 256), `longest cached key: ${Math.max(...keys.map((k) => k.length))}`);
   assert.ok(signal._internal.classifyCacheSize() <= 2000);
 });
+
+test('the shared retinoid family: an ester, an acid, a prescription name or a non-English name can be negated too', () => {
+  for (const text of [
+    'retinyl palmitate free', 'retinyl palmitate free moisturizer', 'no retinyl palmitate', 'retinoic acid free',
+    'retinoic acid free cream', 'vitamin a palmitate free', 'serum without vitamin a palmitate', 'differin free', 'tazorac free',
+    'rétinoïde free cream', '不含视黄醛', '无阿达帕林', 'レチナールフリー', 'トレチノインなし', '아다팔렌 없는', '트레티노인 프리',
+    'без третиноина', 'без адапалена',
+  ]) {
+    assert.deepEqual(classes(text), ['retinoid_negation'], text);
+  }
+  // still an ask, as on main
+  for (const text of ['retinyl palmitate serum', 'vitamin a palmitate cream', 'retinyl palmitate free shipping', 'retinoic acid cream']) {
+    assert.deepEqual(classes(text), [], text);
+  }
+  // an avoid list naming any family member
+  for (const name of ['vitamin A palmitate', 'Differin', 'Epiduo', 'Tazorac', '阿达帕林', 'レチナール', '트레티노인', 'адапален', 'Rétinoïde']) {
+    const out = signal.retinoidSafetyClassesForRequestContext({ payload: { constraints: { avoid_ingredients: [name] } } });
+    assert.ok(out.classes.includes('retinoid_negation'), name);
+  }
+});
