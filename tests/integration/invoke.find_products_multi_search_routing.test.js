@@ -921,14 +921,15 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   test.each([
     ['flags off', {}],
     ['both observe', BOTH_OBSERVE],
-  ])('%s: the safe-empty still echoes the caller metadata exactly as main does', async (_label, env) => {
+  ])('%s: the safe-empty echoes none of the caller metadata either', async (_label, env) => {
     const { send } = boot(env);
-    // the handler's contract safe-empty (the one answer on main that spreads request metadata)
+    // the handler's contract safe-empty (the one answer that spreads request metadata): filtered by the
+    // same allowlist whatever the routing flags (it echoed every caller key with them off)
     const { resp } = await send({ search: { query: 'Lidschatten', page: 1, page_size: 20 } }, CALLER);
     expect(lane(resp)).toBe(LANES.SAFE_EMPTY);
-    expect(echoed(resp.body)).toEqual(ECHO_MARKERS);
+    expect(echoed(resp.body)).toEqual([]);
     const surface = await send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, CALLER);
-    expect([lane(surface.resp), echoed(surface.resp.body)]).toEqual([LANES.SAFE_EMPTY, ECHO_MARKERS]);
+    expect([lane(surface.resp), echoed(surface.resp.body)]).toEqual([LANES.SAFE_EMPTY, []]);
   });
 
   test('on: the debug bundle\'s query is the caller\'s own text, never a metadata value (nb1_debug_raw)', async () => {
@@ -1068,10 +1069,10 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     }
   }, 180000);
 
-  test('off: metadata that is not an object is still spread exactly as main spreads it', async () => {
+  test('off: metadata that is not an object echoes nothing of it either', async () => {
     const { send } = boot();
     const { resp } = await send({ search: SURFACE_GIFT }, ['ARRAY_0', { x: 'ARRAY_1' }]);
-    expect([lane(resp), resp.body.metadata['0'], resp.body.metadata['1']]).toEqual([LANES.SAFE_EMPTY, 'ARRAY_0', { x: 'ARRAY_1' }]);
+    expect([lane(resp), resp.body.metadata['0'], resp.body.metadata['1']]).toEqual([LANES.SAFE_EMPTY, undefined, undefined]);
   });
 
   test('on (flip B3): query_understanding.source follows the top-level source allowlist decision', async () => {

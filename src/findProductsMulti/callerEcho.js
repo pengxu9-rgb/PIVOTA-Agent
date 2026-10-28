@@ -10,7 +10,9 @@
 //    is dropped before anything reads it: otherwise the caller picks the lane and the gateway echoes the
 //    pick back as its own. The one in-process hand-off that legitimately arrives with a contract (the
 //    public GET search route, which builds one and then calls the invoke handler) names that exact object
-//    in its route context; only that object is kept.
+//    in its route context; only that object is kept. The same holds for the routing flags
+//    `public_search_route` and `invoke_search_rail`: the GET route sets the first itself, and hands over
+//    the very metadata object it built; in any other request metadata they are the caller's and dropped.
 //
 // 2. A CALLER VALUE IS ECHOED ONLY WHEN IT IS A PLAIN, SHORT VALUE. The handler copies the caller's
 //    attribution values (creator id / name, trace id, source, market) into its metadata, and several lanes
@@ -18,8 +20,14 @@
 //    query_understanding.source / .market recorded from one, stay only when the value passes the allowlist
 //    below. A value the gateway set itself (a configured default creator, its default source) is not the
 //    caller's and is never touched.
+//
+// 3. A CALLER VALUE THAT FAILS ITS RULE NEVER COMES BACK IN ANY FORM. The gateway also records the
+//    caller's source and market in normalised forms (lower-cased and hyphenated, upper-cased, the string
+//    form of an array). Each such field holding the normalised form of a value that failed its rule is
+//    cleared, whatever the normalised form itself looks like.
 
 const { BUYER_REGION_CURRENCY } = require('../auroraBff/buyerRegion');
+const { isIso3166Alpha2 } = require('./iso3166Alpha2');
 
 const CALLER_SEARCH_CONTRACT_KEYS = Object.freeze([
   'search_request_contract',
@@ -28,6 +36,11 @@ const CALLER_SEARCH_CONTRACT_KEYS = Object.freeze([
   'supplement_lanes',
 ]);
 
+// Routing flags only the gateway may set: `public_search_route` (the public GET search route) and
+// `invoke_search_rail` (computed from the source). Sent by a caller, the first moved a POST search onto
+// the public lanes and the second was echoed as the gateway's own rail.
+const CALLER_ROUTING_KEYS = Object.freeze(['public_search_route', 'invoke_search_rail']);
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -35,19 +48,29 @@ function isPlainObject(value) {
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
 /**
- * The request metadata without the caller's search request contract fields. `gatewayContract` is the
- * contract an in-process route built and handed over: when the metadata carries exactly that object it is
- * the gateway's own, and the metadata is returned unchanged. Anything else under those keys came from the
- * request body. Returns the input itself when there is nothing to drop.
+ * True when `rawMetadata` is the very metadata object an in-process route built and handed over
+ * (`gatewayMetadata`): every key in it was set by the gateway, from parameters it validated itself.
  */
-function withoutCallerSearchRequestContract(rawMetadata, { gatewayContract = null } = {}) {
+function isGatewaySearchMetadata(rawMetadata, gatewayMetadata = null) {
+  return isPlainObject(rawMetadata) && isPlainObject(gatewayMetadata) && rawMetadata === gatewayMetadata;
+}
+
+/**
+ * The request metadata without the caller's search request contract fields and routing flags.
+ * `gatewayMetadata` is the metadata object an in-process route built and handed over, and
+ * `gatewayContract` the contract it built: metadata that is exactly that object is the gateway's own and
+ * is returned unchanged, and a contract that is exactly that object is kept. Anything else under those
+ * keys came from the request body. Returns the input itself when there is nothing to drop.
+ */
+function withoutCallerSearchRequestContract(rawMetadata, { gatewayContract = null, gatewayMetadata = null } = {}) {
   if (!isPlainObject(rawMetadata)) return rawMetadata;
-  if (isPlainObject(gatewayContract) && rawMetadata.search_request_contract === gatewayContract) {
-    return rawMetadata;
-  }
-  if (!CALLER_SEARCH_CONTRACT_KEYS.some((key) => hasOwn(rawMetadata, key))) return rawMetadata;
+  if (isGatewaySearchMetadata(rawMetadata, gatewayMetadata)) return rawMetadata;
+  const gatewayOwnContract =
+    isPlainObject(gatewayContract) && rawMetadata.search_request_contract === gatewayContract;
+  const callerKeys = [...(gatewayOwnContract ? [] : CALLER_SEARCH_CONTRACT_KEYS), ...CALLER_ROUTING_KEYS];
+  if (!callerKeys.some((key) => hasOwn(rawMetadata, key))) return rawMetadata;
   const out = { ...rawMetadata };
-  for (const key of CALLER_SEARCH_CONTRACT_KEYS) delete out[key];
+  for (const key of callerKeys) delete out[key];
   return out;
 }
 
@@ -58,8 +81,10 @@ const ECHO_NAME =
 const ECHO_ID = /^[\w.:-]{1,128}$/;
 const ECHO_SOURCE = /^[a-z0-9_.:-]{1,64}$/i;
 const ECHO_MARKET = Object.freeze({
-  // a market the gateway prices for, exactly as written ('us', 'USA' and unknown codes are not)
-  test: (value) => hasOwn(BUYER_REGION_CURRENCY, value),
+  // A market the gateway prices for, an officially assigned ISO 3166-1 alpha-2 country code, or EU, each
+  // exactly as written: 'us', 'USA', user-assigned codes (XX, ZZ) and anything else are not.
+  test: (value) =>
+    typeof value === 'string' && (hasOwn(BUYER_REGION_CURRENCY, value) || isIso3166Alpha2(value) || value === 'EU'),
 });
 
 const CALLER_ECHO_ALLOWLIST = Object.freeze({
@@ -89,15 +114,65 @@ const CALLER_PAYLOAD_ECHO_KEYS = Object.freeze([
 ]);
 const CALLER_SEARCH_ECHO_KEYS = Object.freeze(['creator_id', 'source', 'market']);
 
-// query_understanding records the source and market it was given, in this form.
+// query_understanding (and the search quality contract's hard constraints) record the source and market
+// they were given, in this form.
 const QUERY_UNDERSTANDING_RECORDED_FORM = Object.freeze({
   source: (value) => String(value).trim(),
   market: (value) => String(value).trim().toUpperCase(),
 });
 
+// The gateway's normalised forms of a source (normalizeAgentSource in src/server.js, the search request
+// contract's and the beauty delegation trace's normalizeSourceToken) all lower-case it and fold spaces,
+// underscores and hyphens to hyphens; this is the coarsest of them, so a field holding any of those forms
+// of a value maps to the same key.
+function sourceFormKey(value) {
+  try {
+    return String(value).trim().toLowerCase().replace(/[\s_-]+/g, '-');
+  } catch (_) {
+    return null;
+  }
+}
+
+// Fields that hold a normalised form of the source the handler used: [path from the body, ...].
+const SOURCE_FORM_FIELDS = Object.freeze([
+  Object.freeze(['metadata', 'search_request_contract', 'source']),
+  Object.freeze(['metadata', 'guard_source_normalized']),
+  Object.freeze(['beauty_expert_v1', 'delegation_trace', 'source_profile']),
+]);
+
 function isEchoableCallerValue(key, value) {
   const rule = hasOwn(CALLER_ECHO_ALLOWLIST, key) ? CALLER_ECHO_ALLOWLIST[key] : null;
   return Boolean(rule) && typeof value === 'string' && rule.test(value);
+}
+
+// True when `recorded` is `recordedForm` of a value the caller sent under `key` that fails its rule.
+function recordedFromRejectedValue(callerValues, key, recorded, recordedForm) {
+  return (callerValues.get(key) || []).some((sent) => {
+    if (isEchoableCallerValue(key, sent)) return false;
+    try {
+      return recordedForm(sent) === recorded;
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+// `body` with the value at `path` replaced by `next`, copying each object on the way; the body itself
+// when the path is not there.
+function withValueAt(body, path, next) {
+  const [head, ...rest] = path;
+  if (!isPlainObject(body) || !hasOwn(body, head)) return body;
+  const inner = rest.length ? withValueAt(body[head], rest, next) : next;
+  return inner === body[head] ? body : { ...body, [head]: inner };
+}
+
+function valueAt(body, path) {
+  let node = body;
+  for (const key of path) {
+    if (!isPlainObject(node) || !hasOwn(node, key)) return undefined;
+    node = node[key];
+  }
+  return node;
 }
 
 /**
@@ -155,20 +230,14 @@ function withoutHostileCallerEcho(body, callerValues) {
     delete nextMetadata[key];
   }
 
+  // query_understanding.source / .market: the recorded form of a caller value that fails its rule goes,
+  // whatever the recorded form looks like (an array ['X'] is recorded as 'X', 'zz' as 'ZZ').
   const understanding = metadata.query_understanding;
   if (isPlainObject(understanding)) {
     let kept = understanding;
     for (const [key, recordedForm] of Object.entries(QUERY_UNDERSTANDING_RECORDED_FORM)) {
       if (!hasOwn(kept, key)) continue;
-      const value = kept[key];
-      const recordedFromCaller = (callerValues.get(key) || []).some((sent) => {
-        try {
-          return recordedForm(sent) === value;
-        } catch (_) {
-          return false;
-        }
-      });
-      if (!recordedFromCaller || isEchoableCallerValue(key, value)) continue;
+      if (!recordedFromRejectedValue(callerValues, key, kept[key], recordedForm)) continue;
       if (kept === understanding) kept = { ...understanding };
       delete kept[key];
     }
@@ -178,12 +247,44 @@ function withoutHostileCallerEcho(body, callerValues) {
     }
   }
 
-  return nextMetadata === metadata ? body : { ...body, metadata: nextMetadata };
+  let out = nextMetadata === metadata ? body : { ...body, metadata: nextMetadata };
+
+  // search_quality_contract.hard_constraints.market: the same rule; cleared to null, its value when no
+  // market was given.
+  const marketPath = ['metadata', 'search_quality_contract', 'hard_constraints', 'market'];
+  const constraintMarket = valueAt(out, marketPath);
+  if (
+    constraintMarket !== undefined &&
+    constraintMarket !== null &&
+    recordedFromRejectedValue(callerValues, 'market', constraintMarket, QUERY_UNDERSTANDING_RECORDED_FORM.market)
+  ) {
+    out = withValueAt(out, marketPath, null);
+  }
+
+  // The normalised forms of a rejected source: cleared to null.
+  const rejectedSourceKeys = new Set(
+    (callerValues.get('source') || [])
+      .filter((sent) => !isEchoableCallerValue('source', sent))
+      .map(sourceFormKey)
+      .filter((key) => key !== null),
+  );
+  if (rejectedSourceKeys.size > 0) {
+    for (const path of SOURCE_FORM_FIELDS) {
+      const value = valueAt(out, path);
+      if (value === undefined || value === null) continue;
+      if (!rejectedSourceKeys.has(sourceFormKey(value))) continue;
+      out = withValueAt(out, path, null);
+    }
+  }
+
+  return out;
 }
 
 module.exports = {
   CALLER_SEARCH_CONTRACT_KEYS,
+  CALLER_ROUTING_KEYS,
   CALLER_ECHO_ALLOWLIST,
+  isGatewaySearchMetadata,
   withoutCallerSearchRequestContract,
   isEchoableCallerValue,
   collectCallerEchoValues,
