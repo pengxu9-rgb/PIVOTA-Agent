@@ -320,6 +320,8 @@ const {
 const { isBeautyDirectAfterContextEligible } = require('./findProductsMulti/beautyDirectGate');
 const { findOverlongSearchQuery, truncateSearchHistory } = require('./findProductsMulti/queryLengthCap');
 const {
+  CALLER_ECHO_ALLOWLIST,
+  isGatewaySearchMetadata,
   withoutCallerSearchRequestContract,
   collectCallerEchoValues,
   withoutHostileCallerEcho,
@@ -13578,22 +13580,9 @@ function buildServiceVersionMetadata() {
 // come back, and only as short plain values. A key the gateway added, or overwrote with its own value,
 // is the gateway's and stays.
 const { isDeepStrictEqual: callerMetadataValueUnchanged } = require('node:util');
-const { BUYER_REGION_CURRENCY: CALLER_METADATA_ECHO_MARKETS } = require('./auroraBff/buyerRegion');
-// A display name: no control, bidi-override or line/paragraph-separator characters, no markup brackets,
-// and no script-scheme prefix.
-const CALLER_METADATA_ECHO_NAME =
-  /^(?!\s*(?:javascript|vbscript|data):)[^\u0000-\u001f\u007f-\u009f<>\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]{1,128}$/i;
-const CALLER_METADATA_ECHO_ALLOWLIST = Object.freeze({
-  source: /^[a-z0-9_.:-]{1,64}$/i,
-  creator_id: /^[\w.:-]{1,128}$/,
-  creatorId: /^[\w.:-]{1,128}$/,
-  creator_name: CALLER_METADATA_ECHO_NAME,
-  creatorName: CALLER_METADATA_ECHO_NAME,
-  trace_id: /^[\w.:-]{1,128}$/,
-  traceId: /^[\w.:-]{1,128}$/,
-  // a market the gateway prices for, exactly as written (not 'us', 'usa' or an unknown 'XX')
-  market: { test: (value) => Object.prototype.hasOwnProperty.call(CALLER_METADATA_ECHO_MARKETS, value) },
-});
+// The one echo allowlist for caller attribution values (src/findProductsMulti/callerEcho.js): a short
+// plain source / creator id / trace id, a display name, and a market written exactly as a code.
+const CALLER_METADATA_ECHO_ALLOWLIST = CALLER_ECHO_ALLOWLIST;
 // normalizeMetadata copies these caller keys under a second spelling: the copy is the caller's too.
 const CALLER_METADATA_KEY_ALIASES = Object.freeze({
   creatorId: 'creator_id', creator_id: 'creatorId', creatorName: 'creator_name', creator_name: 'creatorName',
@@ -38874,9 +38863,11 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
   return handleInvokeRequest(req, res, {
     client_channel: 'shop',
     orchestrator_path: 'external_invoke_route',
-    // The contract prepareAgentProductsSearchRoute built from this request: the gateway's own, so the
-    // invoke handler keeps it (it drops any other contract found in request metadata).
+    // The contract prepareAgentProductsSearchRoute built from this request, and the metadata object this
+    // route built around it (public_search_route included): the gateway's own, so the invoke handler
+    // keeps them (it drops any other contract or routing flag found in request metadata).
     gateway_search_request_contract: req.body.metadata.search_request_contract || null,
+    gateway_search_metadata: req.body.metadata,
   });
 }
 
@@ -43137,16 +43128,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     const { operation, payload } = parsed.data;
-    // Every value the caller sent that the handler's metadata can carry, taken before the handler writes
-    // anything (the routing rewrite below, the merged metadata later): what a find_products_multi answer
-    // must not echo back when a routing flag is on, beyond the attribution allowlist.
-    const callerSentMetadataValues =
-      operation === 'find_products_multi' ? collectCallerMetadataValues(req?.body?.metadata, payload) : null;
-    // Product search: the search request contract (and the lane fields copied out of it) is the gateway's
-    // own, never the caller's. A contract in the request metadata is dropped here, before anything reads
-    // it, unless it is the very object an in-process route built and handed over (the public GET search
+    // Product search: the search request contract (and the lane fields copied out of it) and the routing
+    // flags public_search_route / invoke_search_rail are the gateway's own, never the caller's. Under
+    // those keys the request metadata is dropped here, before anything reads it, unless it is the very
+    // metadata (or contract) object an in-process route built and handed over (the public GET search
     // route; see handleAgentProductsSearchViaInvoke). And the caller's attribution values are taken now,
     // before the handler writes anything, so the answer can be checked against them on the way out.
+    let gatewayBuiltSearchMetadata = false;
     if (
       (operation === 'find_products' || operation === 'find_products_multi') &&
       req.body &&
@@ -43154,11 +43142,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       !Array.isArray(req.body)
     ) {
       callerEchoValues = collectCallerEchoValues(req.body.metadata, payload, req.body.payload);
+      const gatewayMetadata = routeContext?.gateway_search_metadata || null;
+      gatewayBuiltSearchMetadata = isGatewaySearchMetadata(req.body.metadata, gatewayMetadata);
       const ownMetadata = withoutCallerSearchRequestContract(req.body.metadata, {
         gatewayContract: routeContext?.gateway_search_request_contract || null,
+        gatewayMetadata,
       });
       if (ownMetadata !== req.body.metadata) req.body.metadata = ownMetadata;
     }
+    // Every value the caller sent that the handler's metadata can carry, taken before the handler writes
+    // anything (the routing rewrite below, the merged metadata later): what a find_products_multi
+    // safe-empty answer must not echo back, beyond the attribution allowlist. Taken after the drop above,
+    // so a contract or routing key the gateway later sets itself is not mistaken for the caller's. When
+    // the metadata is the gateway's own (the GET route's), only its attribution keys came from the caller.
+    const callerSentMetadataValues =
+      operation === 'find_products_multi'
+        ? collectCallerMetadataValues(
+            gatewayBuiltSearchMetadata
+              ? Object.fromEntries(
+                  Object.keys(CALLER_ECHO_ALLOWLIST)
+                    .filter((key) => Object.prototype.hasOwnProperty.call(req.body.metadata, key))
+                    .map((key) => [key, req.body.metadata[key]]),
+                )
+              : req?.body?.metadata,
+            payload,
+          )
+        : null;
     // Reject an over-long search query before any search code reads it (see queryLengthCap.js).
     const overlongQuery = findOverlongSearchQuery({ operation, payload });
     if (overlongQuery) {
@@ -43668,16 +43677,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(safeSearch.limit || safeSearch.page_size || 20) || 20)),
       );
       const safePage = Math.max(1, Math.floor(Number(safeSearch.page || 1) || 1));
-      // With a routing flag on, nothing the caller sent comes back in this answer unless it is on the echo
-      // allowlist (routing_original_query, a spoofed service_version.commit, nested keys all did). The
-      // handler's own fields (query_understanding*, supplement_lanes, source, ...) stay: they are the
-      // gateway's, not the caller's. service_version is the gateway's own. Both flags off or observe:
-      // unchanged, byte-identical to before.
-      const safeEmptyEchoesCallerMetadata =
-        strictIngredientQuery.bareIngredientRoutingMode() !== 'on' && multilingualBeautyTerms.multilingualRoutingMode() !== 'on';
-      const safeEmptyHandlerMetadata = safeEmptyEchoesCallerMetadata
-        ? metadata
-        : withoutCallerMetadataEcho(metadata, callerSentMetadataValues);
+      // Whatever the routing flags, nothing the caller sent comes back in this answer unless it is on the
+      // echo allowlist (routing_original_query, a spoofed service_version.commit, gateway_governance /
+      // retinoid_safety_net sub-keys, numbered and nested keys all did). The handler's own fields
+      // (query_understanding*, supplement_lanes, source, ...) stay: they are the gateway's, not the
+      // caller's. service_version is the gateway's own.
+      const safeEmptyHandlerMetadata = withoutCallerMetadataEcho(metadata, callerSentMetadataValues);
       const safeEmpty = normalizeAgentProductsListResponse(
         {
           status: 'success',
@@ -43757,7 +43762,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             contract_bridge: {
               legacy_fallback: false,
             },
-            service_version: completeServiceVersionMetadata(safeEmptyEchoesCallerMetadata ? metadata?.service_version : null),
+            service_version: completeServiceVersionMetadata(null),
           },
         },
         {
