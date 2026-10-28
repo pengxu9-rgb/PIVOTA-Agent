@@ -55,7 +55,8 @@ for 5 s.
    - `price_cache_warm` at boot (one per instance; `price_cache_warm_failed` when the first read did not answer in 5 s);
    - `price_cache_write_failed` (warning; `code: flush_timeout` means Firestore did not answer a flush within 10 s);
    - `price_cache_store_stats` (at most one a minute while anything moved: written / failed / dropped /
-     flush_timeouts / resets / abandoned / pending / inflight, and `disabled: true` once disabled);
+     flush_timeouts / resets / abandoned / reenabled / probes / clients_built / pending / inflight, and `disabled: true`
+     once disabled);
    - `price_cache_store_reset` / `price_cache_store_disabled` (warnings; see below);
    - the doc count in the database.
 3. `PRICE_HOST_BUDGET=shadow`, read `price_host_budget_shadow`, then `on`.
@@ -68,9 +69,9 @@ for 5 s.
 their unsettled writes counted as `abandoned` (a hung connection; the cache keeps writing on a new channel). A dropped
 client is never terminated (terminating one whose read the library is still retrying crashes the process).
 
-`price_cache_store_disabled` (warning, once per process): five resets with no write landing in between (Firestore refused
-or unreachable). The library keeps every dropped client alive while it retries, so the store stops rebuilding and
-DISABLES itself until the instance restarts: writes are dropped and counted (`price_cache_store_stats` keeps running,
+`price_cache_store_disabled` (warning, `reason: no_write_succeeded`): five resets with no write landing in between
+(Firestore refused or unreachable). The library keeps every dropped client alive while it retries, so the store stops
+rebuilding and DISABLES itself: writes are dropped and counted (`price_cache_store_stats` keeps running,
 with `disabled: true`), reads are misses, answers are what they would be with the cache off. It comes back by itself:
 - **proof of life**: a write from a dropped client finally lands (the library kept retrying it), so Firestore answers;
   the store re-enables at once (`price_cache_store_enabled`, `reason: write_landed`) and builds one fresh client. This
@@ -79,8 +80,17 @@ with `disabled: true`), reads are misses, answers are what they would be with th
   (cap), at most 6 per process (`reason: probe`); a probe that still fails disables again after one reset.
 A deploy or instance restart also re-enables it.
 
+**Client budget** (`price_cache_store_disabled`, `reason: client_budget`, once per process): the store builds at most
+**20 clients per process**. Every reset and every comeback builds one, and a dropped client the library is still
+retrying is never freed. Without a budget, a *flapping* Firestore (down for 5 resets, up just long enough for one late
+write to land) would come back and strand 5 more clients every cycle, without bound (controller r6). At the budget the
+store is disabled **until the instance restarts**: nothing that lands and no probe brings it back. A refused-forever
+outage needs 5 + 6 probes = 11, so the budget only stops a store that keeps coming back. `clients_built` is on the
+stats line.
+
 A slow-but-alive Firestore (a batch takes longer than the 10 s flush deadline) resets every ~30 s and its late writes
-are reported as `abandoned` although they land; because they land, the cap's count restarts and the store is not
-disabled. Read `abandoned` as "not confirmed in time", not "lost".
+are reported as `abandoned` although they land; because they land, the cap's count restarts and the reset cap does not
+disable it, but each reset spends one client, so after about 10 min of it the client budget does. Read `abandoned` as
+"not confirmed in time", not "lost".
 
 Rollback at any step: unset the flag (or set it to `off`).
