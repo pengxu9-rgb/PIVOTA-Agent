@@ -1130,3 +1130,48 @@ test('round 2 / item 5: a negated category word never sets a row\'s area; CJK ha
   });
   assert.deepEqual(page.body.products.map((row) => row.title), ['Shampoo-Free Bakuchiol Serum', 'Mystery Item']);
 });
+
+test('flip B4: only the negated word is removed; the word after it still names the row', () => {
+  const infer = normalizer.inferRowCategoryPath;
+  // "no" / "non" / "non-" / "not a" / "without" / "free of": the next word is the row's own category
+  for (const [title, expected] of [
+    ['No Rinse Shampoo', 'beauty/haircare/'],
+    ['No Frizz Hair Serum', 'beauty/haircare/'],
+    ['Non-Comedogenic Lip Balm', 'beauty/makeup/lip/'],
+    ['Non Comedogenic Lip Balm', 'beauty/makeup/lip/'],
+    ['Non-Toxic Nail Polish', 'beauty/makeup/nails/nail-polish/'],
+    ['Nontoxic Nail Polish', 'beauty/makeup/nails/nail-polish/'],
+    ['Without Sulfates Shampoo', 'beauty/haircare/'],
+    ['Free of Parabens Shampoo', 'beauty/haircare/'],
+    // the "...free" branch: the word before "free" goes, the words after it stay
+    ['Paraben-Free Lip Balm', 'beauty/makeup/lip/'],
+    ['Fragrance Free Nail Polish', 'beauty/makeup/nails/nail-polish/'],
+    ['Sulfate-Free Shampoo', 'beauty/haircare/'],
+    // and the negated word itself still names nothing
+    ['Shampoo-Free Bakuchiol Serum', 'beauty/skincare/treat/'],
+    ['Bakuchiol Serum (not a shampoo)', 'beauty/skincare/treat/'],
+    ['No Shampoo Bakuchiol Serum', 'beauty/skincare/treat/'],
+  ]) {
+    assert.equal(infer({ title }), expected, title);
+  }
+  // so a skincare-scoped exclusion drops them, as it drops any named non-skincare row
+  const page = strict.excludeIngredientsFromPage({ products: [{ title: 'No Rinse Shampoo' }, { title: 'Non-Comedogenic Lip Balm' },
+    { title: 'Non-Toxic Nail Polish' }, { title: 'No Frizz Hair Serum' }, { title: 'Daily Hydrating Serum' }] }, {
+    ingredientIds: ['retinol'], scopePrefix: 'beauty/skincare/', inferCategoryPath: infer,
+  });
+  assert.deepEqual(page.body.products.map((row) => row.title), ['Daily Hydrating Serum']);
+});
+
+test('flip B4: reading a row\'s category is linear in the title length', () => {
+  const infer = normalizer.inferRowCategoryPath;
+  // a long single word, a long word before a hyphen, and long words before "free": before the fix the
+  // "...free" branch retried every start inside a word (about 2 s at 40,000 characters)
+  const titles = ['a'.repeat(40000), `Serum ${'b'.repeat(40000)}-x`, `${'c'.repeat(40000)} frex`, `No ${'d'.repeat(40000)}`];
+  infer({ title: 'warm up' });
+  for (const title of titles) {
+    const started = process.hrtime.bigint();
+    infer({ title });
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    assert.ok(ms < 150, `${title.slice(0, 12)}... (${title.length} chars) took ${ms.toFixed(1)} ms`);
+  }
+});

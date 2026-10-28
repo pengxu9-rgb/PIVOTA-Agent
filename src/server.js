@@ -13573,26 +13573,64 @@ function buildServiceVersionMetadata() {
 // come back, and only as short plain values. A key the gateway added, or overwrote with its own value,
 // is the gateway's and stays.
 const { isDeepStrictEqual: callerMetadataValueUnchanged } = require('node:util');
+const { BUYER_REGION_CURRENCY: CALLER_METADATA_ECHO_MARKETS } = require('./auroraBff/buyerRegion');
+// A display name: no control, bidi-override or line/paragraph-separator characters, no markup brackets,
+// and no script-scheme prefix.
+const CALLER_METADATA_ECHO_NAME =
+  /^(?!\s*(?:javascript|vbscript|data):)[^\u0000-\u001f\u007f-\u009f<>\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]{1,128}$/i;
 const CALLER_METADATA_ECHO_ALLOWLIST = Object.freeze({
   source: /^[a-z0-9_.:-]{1,64}$/i,
   creator_id: /^[\w.:-]{1,128}$/,
   creatorId: /^[\w.:-]{1,128}$/,
-  creator_name: /^[^\u0000-\u001f<>]{1,128}$/,
-  creatorName: /^[^\u0000-\u001f<>]{1,128}$/,
+  creator_name: CALLER_METADATA_ECHO_NAME,
+  creatorName: CALLER_METADATA_ECHO_NAME,
   trace_id: /^[\w.:-]{1,128}$/,
   traceId: /^[\w.:-]{1,128}$/,
-  market: /^[A-Z]{2}$/,
+  // a market the gateway prices for, exactly as written (not 'us', 'usa' or an unknown 'XX')
+  market: { test: (value) => Object.prototype.hasOwnProperty.call(CALLER_METADATA_ECHO_MARKETS, value) },
 });
 // normalizeMetadata copies these caller keys under a second spelling: the copy is the caller's too.
 const CALLER_METADATA_KEY_ALIASES = Object.freeze({
   creatorId: 'creator_id', creator_id: 'creatorId', creatorName: 'creator_name', creator_name: 'creatorName',
   traceId: 'trace_id', trace_id: 'traceId',
 });
-function withoutCallerMetadataEcho(handlerMetadata, callerMetadata) {
+// Besides the request metadata, normalizeMetadata reads these attribution keys from the payload, and
+// creator_id from payload.search: a value found there is the caller's as much as one in the metadata.
+const CALLER_PAYLOAD_ATTRIBUTION_KEYS = Object.freeze(['creator_id', 'creatorId', 'creator_name', 'creatorName', 'trace_id', 'traceId', 'source']);
+const CALLER_PAYLOAD_SEARCH_ATTRIBUTION_KEYS = Object.freeze(['creator_id']);
+// query_understanding records the source and market it read, in this form. When the top-level value it
+// read was the caller's and failed the allowlist, the recorded copy goes too.
+const QUERY_UNDERSTANDING_RECORDED_FORM = Object.freeze({
+  source: (value) => String(value).trim(),
+  market: (value) => String(value).trim().toUpperCase(),
+});
+// Every value the caller sent that normalizeMetadata can copy into the handler's metadata, by key, taken
+// before the handler writes anything: what the metadata spread copies (an object's own keys; an array's
+// or a string's indices, which is how a non-object metadata arrives as numbered keys), and the payload
+// attribution keys above.
+function collectCallerMetadataValues(rawMetadata, payload) {
+  const sent = new Map();
+  const add = (key, value) => {
+    if (value === undefined) return;
+    if (!sent.has(key)) sent.set(key, []);
+    sent.get(key).push(value);
+  };
+  if (rawMetadata !== null && rawMetadata !== undefined) {
+    for (const [key, value] of Object.entries({ ...rawMetadata })) add(key, value);
+  }
+  const fromPayload = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  for (const key of CALLER_PAYLOAD_ATTRIBUTION_KEYS) add(key, fromPayload[key]);
+  const fromSearch =
+    fromPayload.search && typeof fromPayload.search === 'object' && !Array.isArray(fromPayload.search) ? fromPayload.search : {};
+  for (const key of CALLER_PAYLOAD_SEARCH_ATTRIBUTION_KEYS) add(key, fromSearch[key]);
+  return sent;
+}
+function withoutCallerMetadataEcho(handlerMetadata, callerValues) {
   const handler = handlerMetadata && typeof handlerMetadata === 'object' && !Array.isArray(handlerMetadata) ? handlerMetadata : {};
-  const caller = callerMetadata && typeof callerMetadata === 'object' && !Array.isArray(callerMetadata) ? callerMetadata : {};
-  const sentAs = (key, value) => Object.prototype.hasOwnProperty.call(caller, key) && callerMetadataValueUnchanged(caller[key], value);
+  const caller = callerValues instanceof Map ? callerValues : new Map();
+  const sentAs = (key, value) => (caller.get(key) || []).some((sent) => callerMetadataValueUnchanged(sent, value));
   const out = {};
+  const rejected = new Map();
   for (const [key, value] of Object.entries(handler)) {
     const fromCaller = sentAs(key, value) || (CALLER_METADATA_KEY_ALIASES[key] ? sentAs(CALLER_METADATA_KEY_ALIASES[key], value) : false);
     if (!fromCaller) {
@@ -13603,6 +13641,18 @@ function withoutCallerMetadataEcho(handlerMetadata, callerMetadata) {
       ? CALLER_METADATA_ECHO_ALLOWLIST[key]
       : null;
     if (allowed && typeof value === 'string' && allowed.test(value)) out[key] = value;
+    else rejected.set(key, value);
+  }
+  const understanding = out.query_understanding;
+  if (understanding && typeof understanding === 'object' && !Array.isArray(understanding)) {
+    let kept = understanding;
+    for (const [key, recordedForm] of Object.entries(QUERY_UNDERSTANDING_RECORDED_FORM)) {
+      if (!rejected.has(key) || !Object.prototype.hasOwnProperty.call(kept, key)) continue;
+      if (kept[key] !== recordedForm(rejected.get(key))) continue;
+      const { [key]: _dropped, ...rest } = kept;
+      kept = rest;
+    }
+    if (kept !== understanding) out.query_understanding = kept;
   }
   return out;
 }
@@ -36874,7 +36924,9 @@ function getDefaultCreatorId() {
   return first || null;
 }
 
-function normalizeMetadata(rawMetadata = {}, payload = {}) {
+function normalizeMetadata(metadataArg = {}, payload = {}) {
+  // A null metadata reads as none (it threw on the property reads below: a 500).
+  const rawMetadata = metadataArg === null ? {} : metadataArg;
   let creatorId =
     rawMetadata.creator_id ||
     rawMetadata.creatorId ||
@@ -42958,6 +43010,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     const { operation, payload } = parsed.data;
+    // Every value the caller sent that the handler's metadata can carry, taken before the handler writes
+    // anything (the routing rewrite below, the merged metadata later): what a find_products_multi answer
+    // must not echo back when a routing flag is on, beyond the attribution allowlist.
+    const callerSentMetadataValues =
+      operation === 'find_products_multi' ? collectCallerMetadataValues(req?.body?.metadata, payload) : null;
     // Reject an over-long search query before any search code reads it (see queryLengthCap.js).
     const overlongQuery = findOverlongSearchQuery({ operation, payload });
     if (overlongQuery) {
@@ -43061,9 +43118,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (CHECKOUT_TIMING_OPS.has(debugRuntime.operation)) {
       checkoutRuntime.checkoutTraceId = gatewayRequestId;
     }
-    // The metadata object exactly as the caller sent it (the handler later replaces req.body.metadata
-    // with its own merged copy): what an answer must not echo back when a routing flag is on.
-    const callerRequestMetadata = req?.body?.metadata;
     let metadata = normalizeMetadata(req.body.metadata, payload);
     const sourceContractPayload = applyFindProductsMultiSourceContract(
       payloadWithRequestContext,
@@ -43479,7 +43533,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         strictIngredientQuery.bareIngredientRoutingMode() !== 'on' && multilingualBeautyTerms.multilingualRoutingMode() !== 'on';
       const safeEmptyHandlerMetadata = safeEmptyEchoesCallerMetadata
         ? metadata
-        : withoutCallerMetadataEcho(metadata, callerRequestMetadata);
+        : withoutCallerMetadataEcho(metadata, callerSentMetadataValues);
       const safeEmpty = normalizeAgentProductsListResponse(
         {
           status: 'success',

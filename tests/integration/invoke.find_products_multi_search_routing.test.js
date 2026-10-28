@@ -1015,6 +1015,122 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       .toEqual([undefined, undefined, undefined, undefined, false]);
   }, 180000);
 
+  // Flip blockers B1-B3: the request metadata is not the only place the caller's attribution values come
+  // from. normalizeMetadata also copies creator_id / creatorId / creator_name / creatorName / trace_id /
+  // traceId / source from the payload, and creator_id from payload.search; those are the caller's too.
+  const SURFACE_GIFT = { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' };
+  const ATTRIBUTION_KEYS = ['source', 'creator_id', 'creatorId', 'creator_name', 'creatorName', 'trace_id', 'traceId'];
+  const attribution = (md) => Object.fromEntries(ATTRIBUTION_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(md, key)).map((key) => [key, md[key]]));
+
+  test('on (flip B1): an attribution value the caller sent in the payload passes the same allowlist', async () => {
+    const { send } = boot(BOTH_ON);
+    const LONG_NAME = `HOSTILE_LONG_${'n'.repeat(5000)}`;
+    const LONG_SOURCE = `HOSTILE_SOURCE_${'s'.repeat(298)}`;
+    // [where the caller put it, payload]: each value is outside the allowlist and must not come back
+    const cases = [
+      ['payload.creator_name (object)', { search: SURFACE_GIFT, creator_name: { nested: 'HOSTILE_PAYLOAD_NAME' } }],
+      ['payload.creatorName (5,000 chars)', { search: SURFACE_GIFT, creatorName: LONG_NAME }],
+      ['payload.trace_id (object)', { search: SURFACE_GIFT, trace_id: { nested: 'HOSTILE_PAYLOAD_TRACE' } }],
+      ['payload.traceId (markup)', { search: SURFACE_GIFT, traceId: 'HOSTILE<b>PTID' }],
+      ['payload.creator_id (markup)', { search: SURFACE_GIFT, creator_id: 'HOSTILE<b>PCID' }],
+      ['payload.creatorId (object)', { search: SURFACE_GIFT, creatorId: { nested: 'HOSTILE_PAYLOAD_CID' } }],
+      ['payload.search.creator_id (markup)', { search: { ...SURFACE_GIFT, creator_id: 'HOSTILE<b>SCID' } }],
+      ['payload.source (313 chars)', { search: SURFACE_GIFT, source: LONG_SOURCE }],
+    ];
+    for (const [where, payload] of cases) {
+      const { resp } = await send(payload);
+      const md = resp.body.metadata || {};
+      expect([where, lane(resp)]).toEqual([where, LANES.SAFE_EMPTY]);
+      expect([where, JSON.stringify(attribution(md)).includes('HOSTILE')]).toEqual([where, false]);
+    }
+    // a short plain payload value is on the allowlist and still comes back, under both spellings
+    const plain = await send({ search: { ...SURFACE_GIFT, creator_id: 'creator_s1' }, creator_name: 'Plain Name', traceId: 'trace-p1', source: 'agent-api-tests' });
+    expect(attribution(plain.resp.body.metadata)).toEqual({
+      source: 'agent-api-tests', creator_id: 'creator_s1', creatorId: 'creator_s1', creator_name: 'Plain Name', creatorName: 'Plain Name',
+      trace_id: 'trace-p1', traceId: 'trace-p1',
+    });
+    // the metadata still wins over the payload, as in normalizeMetadata, and both are the caller's
+    const both = await send({ search: SURFACE_GIFT, creator_name: 'Payload Name' }, { creator_name: { nested: 'HOSTILE_META_NAME' } });
+    expect(JSON.stringify(attribution(both.resp.body.metadata)).includes('HOSTILE')).toBe(false);
+  }, 180000);
+
+  test('on (flip B2): metadata that is not an object echoes nothing of it', async () => {
+    const { send } = boot(BOTH_ON);
+    for (const metadata of [['HOSTILE_ARRAY_0', { x: 'HOSTILE_ARRAY_1' }], 'HOSTILE_STRING_METADATA_23']) {
+      const { resp } = await send({ search: SURFACE_GIFT }, metadata);
+      const md = resp.body.metadata || {};
+      expect([metadata, lane(resp)]).toEqual([metadata, LANES.SAFE_EMPTY]);
+      expect([metadata, Object.keys(md).filter((key) => /^\d+$/.test(key))]).toEqual([metadata, []]);
+      expect([metadata, JSON.stringify(md).includes('HOSTILE_ARRAY')]).toEqual([metadata, false]);
+    }
+  }, 180000);
+
+  test('off: metadata that is not an object is still spread exactly as main spreads it', async () => {
+    const { send } = boot();
+    const { resp } = await send({ search: SURFACE_GIFT }, ['ARRAY_0', { x: 'ARRAY_1' }]);
+    expect([lane(resp), resp.body.metadata['0'], resp.body.metadata['1']]).toEqual([LANES.SAFE_EMPTY, 'ARRAY_0', { x: 'ARRAY_1' }]);
+  });
+
+  test('on (flip B3): query_understanding.source follows the top-level source allowlist decision', async () => {
+    const { send } = boot(BOTH_ON);
+    const rejected = [`HOSTILE_QU_${'s'.repeat(80)}`, 'HOSTILE<b>QU'];
+    for (const source of rejected) {
+      for (const [where, payload, metadata] of [
+        ['metadata.source', { search: SURFACE_GIFT }, { source }],
+        ['payload.source', { search: SURFACE_GIFT, source }, null],
+      ]) {
+        const { resp } = await send(payload, metadata);
+        const md = resp.body.metadata || {};
+        expect([where, lane(resp), md.source]).toEqual([where, LANES.SAFE_EMPTY, undefined]);
+        expect([where, md.query_understanding && typeof md.query_understanding === 'object']).toEqual([where, true]);
+        expect([where, Object.prototype.hasOwnProperty.call(md.query_understanding, 'source')]).toEqual([where, false]);
+        expect([where, JSON.stringify(md).includes('HOSTILE')]).toEqual([where, false]);
+      }
+    }
+    // an allowed source is kept in both places
+    const ok = await send({ search: SURFACE_GIFT }, { source: 'agent-api-tests' });
+    expect([ok.resp.body.metadata.source, ok.resp.body.metadata.query_understanding.source]).toEqual(['agent-api-tests', 'agent-api-tests']);
+  }, 180000);
+
+  test('on (flip X3): a market echoes only as a market code the gateway prices for, written as such', async () => {
+    const { send } = boot(BOTH_ON);
+    for (const market of ['us', 'usa', 'USA', 'Us', 'XX', 'ZZ', ' US', 'US\n']) {
+      const { resp } = await send({ search: SURFACE_GIFT }, { market });
+      const md = resp.body.metadata || {};
+      expect([market, lane(resp), Object.prototype.hasOwnProperty.call(md, 'market')]).toEqual([market, LANES.SAFE_EMPTY, false]);
+      // query_understanding records the market it read upcased; a rejected one goes there too
+      expect([market, md.query_understanding?.market]).toEqual([market, undefined]);
+    }
+    for (const market of ['US', 'GB', 'JP']) {
+      const { resp } = await send({ search: SURFACE_GIFT }, { market });
+      expect([market, resp.body.metadata.market, resp.body.metadata.query_understanding.market]).toEqual([market, market, market]);
+    }
+  }, 180000);
+
+  test('on (flip): a creator name with control, bidi or line-separator characters, or a script scheme, is not echoed', async () => {
+    const { send } = boot(BOTH_ON);
+    for (const name of ['Jane‮eoD', 'Jane Doe', 'Jane⁦Doe', 'Jane‏Doe', 'Jane\u0085Doe', 'javascript:alert(1)',
+      ' JavaScript:alert(1)', 'data:text/html,x']) {
+      for (const [where, payload, metadata] of [['metadata', { search: SURFACE_GIFT }, { creator_name: name }], ['payload', { search: SURFACE_GIFT, creatorName: name }, null]]) {
+        const { resp } = await send(payload, metadata);
+        const md = resp.body.metadata || {};
+        expect([where, name, md.creator_name, md.creatorName]).toEqual([where, name, undefined, undefined]);
+      }
+    }
+    const plain = await send({ search: SURFACE_GIFT }, { creator_name: 'Jane O\'Doe: Reviews' });
+    expect([plain.resp.body.metadata.creator_name, plain.resp.body.metadata.creatorName]).toEqual(['Jane O\'Doe: Reviews', 'Jane O\'Doe: Reviews']);
+  }, 180000);
+
+  test.each([
+    ['flags off', {}],
+    ['both flags on', BOTH_ON],
+  ])('%s: a null metadata reads as none (it was a 500)', async (_label, env) => {
+    const { app } = boot(env);
+    const resp = await owned(async () =>
+      request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload: { search: SURFACE_GIFT }, metadata: null }));
+    expect([resp.status, lane(resp)]).toEqual([200, LANES.SAFE_EMPTY]);
+  });
+
   test('on (round 2 / items 2-5): explicit list joiners, the shared family, budgets and unfiled rows', async () => {
     const { invoke } = boot(BOTH_ON);
     // 2: two ingredients side by side are not a list

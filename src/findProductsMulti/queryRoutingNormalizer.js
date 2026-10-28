@@ -285,9 +285,11 @@ function rewriteExclusionQuery(query) {
 // The category path a row WITHOUT one reads as, from its own title / product type / category text, for
 // the door's scope check (strictIngredientQuery.excludeIngredientsFromPage). '' when nothing is named.
 // A category word that is negated names nothing about the row: "Shampoo-Free Bakuchiol Serum",
-// "Bakuchiol Serum (not a shampoo)", "no conditioner needed". Removed before the area is read.
+// "Bakuchiol Serum (not a shampoo)", "no conditioner needed". Removed before the area is read; only the
+// negated word goes, never the word after it ("No Rinse Shampoo" is a shampoo, "Non-Toxic Nail Polish"
+// a nail polish). Each branch starts only where a word starts, so one pass is linear in the title.
 const NEGATED_CATEGORY_WORD_RE =
-  /(?<![\p{L}\p{N}])(?:not\s+(?:a|an|for)\s+|no\s+|non[\s-]?|without\s+|free\s+(?:of|from)\s+)[\p{L}]+(?:[\s-]+[\p{L}]+)?|[\p{L}]+[\s-]*free(?![\p{L}\p{N}])/giu;
+  /(?<![\p{L}\p{N}])(?:not\s+(?:a|an|for)\s+|no\s+|non[\s-]?|without\s+|free\s+(?:of|from)\s+)[\p{L}]+|(?<!\p{L})[\p{L}]+[\s-]*free(?![\p{L}\p{N}])/giu;
 function inferRowCategoryPath(product) {
   if (!product || typeof product !== 'object') return '';
   const text = [product.title, product.name, product.product_title, product.product_type, product.category]
