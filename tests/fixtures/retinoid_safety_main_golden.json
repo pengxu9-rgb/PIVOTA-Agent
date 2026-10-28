@@ -1,5 +1,6 @@
 {
  "generated_from": "origin/main 3dc23ea64 over tests/fixtures/retinoid_explicit_query_catalog.cjs, upstream empty",
+ "notes": "Regenerated on the percent-is-not-a-price-cap fix: \"none|10% niacinamide + retinol\", \"batch|0.3% retinol serum\" and \"none|0.3% retinol serum\" were [] only because main read the strength (\"10\", \"0.3\") as a price cap and emptied the page. None of them carries a safety signal, so serving these rows is the right answer. \"batch|10% niacinamide + retinol\" stays []: the strict ingredient lane finds no fixture row naming both.",
  "product_ids": {
   "batch|retinol serum teen": [
    "ext_ret_serum",
@@ -1742,9 +1743,22 @@
    "ext_skin_tint"
   ],
   "batch|10% niacinamide + retinol": [],
-  "none|10% niacinamide + retinol": [],
-  "batch|0.3% retinol serum": [],
-  "none|0.3% retinol serum": [],
+  "none|10% niacinamide + retinol": [
+   "ext_niacinamide_serum",
+   "ext_vitc_serum",
+   "ext_ret_serum",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_retinal_serum"
+  ],
+  "batch|0.3% retinol serum": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|0.3% retinol serum": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
   "batch|retinol 1%": [],
   "none|retinol 1%": [],
   "batch|used retinol for 2 years": [],
