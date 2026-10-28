@@ -356,15 +356,22 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
     p('Acne Gel for Adults Epiduo Forte', 'gel'), p('Prescription Cream for Acne: Tazorac 0.1%', 'cream'),
     p('Prescription Acne Cream — Not for use during pregnancy: Tazorac 0.1%', 'cream'),
     p("Epiduo Users' Choice Acne Gel", 'gel'), p('Tazorac Safe Strength 0.05% Cream', 'cream'),
-    p('Acne Gel for Adults Epiduo Treatment', 'gel'),
+    p('Acne Gel for Adults Epiduo Treatment', 'gel'), p('Moisturizer for Accutane', 'moisturizer'),
+    // a hyphenated accessory never clears a spaced name beside it
+    p('Tazorac-Safe Tazorac Safe Cream', 'cream'), p('Accutane-Safe Lip Balm with Tazorac Safe Strength 0.05% Cream', 'balm'),
+    // the brand field alone names it
+    p('Acne Gel 0.1%', 'gel', '', { brand: 'Differin' }),
     // a warning in the description never makes Differin something else
     p('Differin Gel', 'gel', 'Do not use with benzoyl peroxide products.'), p('Differin Gel', 'gel', 'Avoid salicylic acid while using.'),
     p('Differin Acne Kit', 'kit', 'Includes Differin Gel and a cleanser with benzoyl peroxide.'),
+    // nor does benzoyl peroxide / salicylic acid named as absent
+    p('Differin Gel with BPO-free formula', 'gel'), p('Differin Gel, Salicylic-Free', 'gel'), p('Differin Gel, no benzoyl peroxide', 'gel'),
     // nor makes vitamin A a protectant; A&D needs its protectant word in what the product is
     p('Vitamin A Night Cream', 'cream', 'Do not apply to nipples or the diaper area.'),
     p('Vitamin A Repair Cream', 'cream', 'Skin protectant, anti-aging.'), p('Vitamins A & D Anti-Aging Night Cream', 'cream'),
     p('Vitamins A & D Night Cream', 'cream', 'Not for the diaper area.'),
     p('Nipple Balm with Vitamin A', 'balm'), p('Vitamin A Diaper Area Barrier Cream', 'cream'),
+    p('Vitamin A&D Anti-Aging Face Ointment', 'ointment'),
     // directions to apply it make capsules topical
     p('Vitamin A Capsules 10000 IU', '', 'Twist open and apply to face at night.'),
   ];
@@ -379,6 +386,10 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
     p('A and D Diaper Rash Ointment', 'baby'), p('Vitamin A & D Ointment', 'first aid'),
     p('Cod Liver Oil Softgels with Vitamin A', 'health'), p('Vitamin A 25000 IU', ''), p('Daily Vitamins with Vitamin A', ''),
     p('Differin Benzoyl Peroxide 5% Acne Spot Treatment Gel', 'treatment'),
+    // a supplement's description about skin or night is not a direction to apply it
+    p('Vitamin A Softgels', 'supplements', 'Supports healthy skin and vision.'),
+    p('Vitamin A 10000 IU Softgels', 'supplements', 'Take two softgels at night with food.'),
+    p('Beauty Gummies with Vitamin A', 'supplements', 'For glowing facial skin from within.'),
     p('Vitamin A Free Moisturizer', 'moisturizer'), p('不含视黄醛的保湿面霜', 'cream'), p('レチナールフリー クリーム', 'cream'),
     p('ไม่มีเรตินอล ครีม', 'cream'), p('Night Cream', 'cream', 'Retinol-free formula.'),
     p('Hair, Skin & Nails Gummies with Vitamin A', 'Skin Care Supplements'), p('Vitamin A 10000 IU', 'Vitamins'),

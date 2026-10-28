@@ -20219,32 +20219,26 @@ const BEAUTY_RETINOID_BRAND_ACCESSORY_RE = new RegExp(
     `(?:users?|patients?|treatment|therapy|course|dryness|lips)(?![a-z0-9])`,
   'g',
 );
-// The hyphenated form. The candidate and safety texts read beside the raw text have lost their hyphens,
-// so its spaced twin ("accutane safe") is removed too, but only when the raw text carries the hyphen.
+// The hyphenated form. Only a text that keeps its hyphens can show it, so a product's brand is decided
+// once, from its raw fields (beautyRetinoidProductReading), never from the candidate and safety texts,
+// which have lost their hyphens ("Accutane-Safe" there reads "accutane safe").
 const BEAUTY_RETINOID_BRAND_SAFE_RE = new RegExp(
   `(?<![a-z0-9])(?:${BEAUTY_RETINOID_ANY_BRAND})-(?:safe|compatible|friendly)(?![a-z0-9])`,
   'g',
 );
-function beautyRetinoidTextWithoutBrandAccessories(lowered) {
-  const hyphenated = lowered.match(BEAUTY_RETINOID_BRAND_SAFE_RE) || [];
-  let out = lowered.replace(BEAUTY_RETINOID_BRAND_ACCESSORY_RE, ' ').replace(BEAUTY_RETINOID_BRAND_SAFE_RE, ' ');
-  for (const phrase of new Set(hyphenated)) {
-    out = out.replace(new RegExp(`(?<![a-z0-9])${phrase.replace('-', '\\s+')}(?![a-z0-9])`, 'g'), ' ');
-  }
-  return out;
-}
+const beautyRetinoidTextWithoutBrandAccessories = (lowered) =>
+  lowered.replace(BEAUTY_RETINOID_BRAND_ACCESSORY_RE, ' ').replace(BEAUTY_RETINOID_BRAND_SAFE_RE, ' ');
 const BEAUTY_RETINOID_NOT_VITAMIN_A_RE = /\bpro\s?vit(?:amin[ae]?s?)?\s+a\b|\bvit(?:amin[ae]?s?)?\s+a\s+(?:as\s+|from\s+)?beta\s+carotene\b|\bbeta\s+carotene\b/g;
 const BEAUTY_RETINOID_FAMILY_RU_RE = new RegExp(`(?<![а-яё])(?:${retinoidFamily.RETINOID_FAMILY_RUSSIAN.join('|')})(?![а-яё])`, 'i');
-function beautyTextNamesRetinoidFamily(text, { vitaminA = true, differin = true } = {}) {
+// `vitaminA` and `brand` are the product's own answers (beautyRetinoidProductReading); both fail closed.
+function beautyTextNamesRetinoidFamily(text, { vitaminA = true, brand = true } = {}) {
   const lowered = String(text || '').normalize('NFKC').toLowerCase();
   if (!lowered.trim()) return false;
   const latin = beautyRetinoidLatinView(lowered).replace(BEAUTY_RETINOID_NOT_VITAMIN_A_RE, ' ');
-  const brandLatin = beautyRetinoidLatinView(beautyRetinoidTextWithoutBrandAccessories(lowered));
   return (
     BEAUTY_RETINOID_FAMILY_LATIN_RE.test(latin) ||
     (vitaminA && BEAUTY_RETINOID_VITAMIN_A_RE.test(latin)) ||
-    BEAUTY_RETINOID_PRESCRIPTION_BRAND_RE.test(brandLatin) ||
-    (differin && BEAUTY_RETINOID_OTC_BRAND_RE.test(brandLatin)) ||
+    brand ||
     retinoidFamily.RETINOID_FAMILY_SCRIPT.some((name) => lowered.includes(name)) ||
     BEAUTY_RETINOID_FAMILY_RU_RE.test(lowered)
   );
@@ -20260,9 +20254,15 @@ const BEAUTY_RETINOID_TOPICAL_FORM_RE =
 // An A&D skin protectant: "A&D" / "A and D" TOGETHER with a protectant word, in what the product is.
 const BEAUTY_RETINOID_A_AND_D_RE = /\b(?:vitamins?\s+)?a\s*(?:&|\+|and)\s*d\b/;
 const BEAUTY_RETINOID_PROTECTANT_WORD_RE = /\b(?:ointments?|diaper|nappy|nipples?|skin\s+protectant)\b/;
-// Directions in the description that say the product goes on the skin ("twist open and apply to face").
-const BEAUTY_RETINOID_TOPICAL_USE_RE = /\b(?:apply|applied|applying|face|facial|skin|night|topical|topically|massage)\b/;
-const BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE = /\b(?:benzoyl\s+peroxide|bpo|salicylic(?:\s+acid)?)\b/;
+// A face product is never an A&D protectant ("Vitamin A&D Anti-Aging Face Ointment").
+const BEAUTY_RETINOID_FACE_PRODUCT_RE = /\b(?:face|facial|anti\s+aging|wrinkles?|night|serums?|creams?)\b/;
+// Directions in the description to put the product on ("twist open and apply to face"). Only application
+// verbs: "supports healthy skin" or "take at night" is said of a supplement too.
+const BEAUTY_RETINOID_TOPICAL_USE_RE = /\b(?:apply|applied|applying|topical|topically|massage)\b/;
+// A Differin product that names benzoyl peroxide or salicylic acid as what it IS, not as absent ("BPO-free",
+// "no salicylic acid").
+const BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE =
+  /(?<!\b(?:no|non|without)\s)\b(?:benzoyl\s+peroxide|bpo|salicylic(?:\s+acid)?)\b(?!\s+free\b)/;
 const BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE = /\b(?:cleansers?|cleansing|wash|moisturi[sz]ers?|spf|sunscreens?)\b/;
 function beautyRetinoidProductReading(product) {
   const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
@@ -20280,13 +20280,27 @@ function beautyRetinoidProductReading(product) {
     BEAUTY_RETINOID_TOPICAL_FORM_RE.test(what.replace(/\b(?:cod\s+liver|fish)\s+oils?\b/g, ' ')) ||
     BEAUTY_RETINOID_TOPICAL_USE_RE.test(beautyRetinoidLatinView(fields(['description'])));
   const ingested = BEAUTY_RETINOID_INGESTED_RE.test(what) && !topical;
-  const protectant = BEAUTY_RETINOID_A_AND_D_RE.test(whatRaw) && BEAUTY_RETINOID_PROTECTANT_WORD_RE.test(what);
+  const protectant =
+    BEAUTY_RETINOID_A_AND_D_RE.test(whatRaw) &&
+    BEAUTY_RETINOID_PROTECTANT_WORD_RE.test(what) &&
+    !BEAUTY_RETINOID_FACE_PRODUCT_RE.test(beautyRetinoidLatinView(fields(['title', 'name', 'product_name'])));
   // Differin is read by what the product is, never by a warning in its description ("do not use with
   // benzoyl peroxide").
   const differinIsOther =
     BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE.test(what) ||
     (BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE.test(what) && !/\bgels?\b/.test(what));
-  return { vitaminA: !(ingested || protectant), differin: !differinIsOther };
+  // The brand names, from every raw field the product check reads (hyphens kept), accessories removed.
+  const brandText = beautyRetinoidLatinView(
+    beautyRetinoidTextWithoutBrandAccessories(
+      [
+        buildBeautyProductRawSafetyText(product).toLowerCase(),
+        fields(['brand', 'vendor', 'display_name', 'product_type', 'category', 'external_domain', 'canonical_url', 'destination_url', 'external_url']),
+      ].join(' \n '),
+    ),
+  );
+  const brand =
+    BEAUTY_RETINOID_PRESCRIPTION_BRAND_RE.test(brandText) || (!differinIsOther && BEAUTY_RETINOID_OTC_BRAND_RE.test(brandText));
+  return { vitaminA: !(ingested || protectant), brand };
 }
 
 // A product's claim that it is free of a retinoid names what is ABSENT: "Retinol-Free", "no retinyl
