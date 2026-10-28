@@ -18,6 +18,13 @@
 //    with its effective_query and category prefix. It is dropped from all three before anything reads it.
 //    The gateway builds its own afterwards (buildFindProductsMultiContext writes it into the search block
 //    the later lanes read; the early mainline builds one from the query), so no hand-off is lost.
+//    The same holds for `query_understanding`: its readers (the beauty mainline, the canonical-chain
+//    answer, the policy step) take the one in the search block, else the metadata, so where the gateway
+//    had built none (the early beauty lane) one sent by the caller (in payload.search, the payload itself
+//    or the metadata) was echoed back whole as the gateway's metadata.query_understanding. It is dropped
+//    from all three too. The gateway's own (understandShoppingQuery, via buildFindProductsMultiContext)
+//    is written into the search block and the handler's metadata after this drop, so every reader still
+//    gets it.
 //
 // 2. A CALLER VALUE IS ECHOED ONLY WHEN IT IS A PLAIN, SHORT VALUE. The handler copies the caller's
 //    attribution values (creator id / name, trace id, source, market) into its metadata, and several lanes
@@ -33,6 +40,8 @@
 //    handler CHOSE (normalizeMetadata: the metadata's source, else the payload's): a source the caller sent
 //    elsewhere is not the request's, and a field holding the gateway's default, or a chosen source that
 //    passed its rule, is the gateway's own even when a rejected string normalises to the same form.
+//    The market is the same: the value compared is the market the request USED (callerChosenMarket:
+//    payload.search.market, else payload.market, else metadata.market), not any market the caller sent.
 
 const { BUYER_REGION_CURRENCY } = require('../auroraBff/buyerRegion');
 const { isIso3166Alpha2 } = require('./iso3166Alpha2');
@@ -51,6 +60,10 @@ const CALLER_ROUTING_KEYS = Object.freeze(['public_search_route', 'invoke_search
 
 // The search quality contract: written by the gateway (buildSearchQualityContract), never the caller's.
 const CALLER_QUALITY_CONTRACT_KEY = 'search_quality_contract';
+// The query understanding: written by the gateway (understandShoppingQuery), never the caller's.
+const CALLER_QUERY_UNDERSTANDING_KEY = 'query_understanding';
+// What a caller cannot put in the payload, at its top level or in its search block.
+const CALLER_PAYLOAD_GATEWAY_KEYS = Object.freeze([CALLER_QUALITY_CONTRACT_KEY, CALLER_QUERY_UNDERSTANDING_KEY]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -82,6 +95,7 @@ function withoutCallerSearchRequestContract(rawMetadata, { gatewayContract = nul
     ...(gatewayOwnContract ? [] : CALLER_SEARCH_CONTRACT_KEYS),
     ...CALLER_ROUTING_KEYS,
     CALLER_QUALITY_CONTRACT_KEY,
+    CALLER_QUERY_UNDERSTANDING_KEY,
   ];
   if (!callerKeys.some((key) => hasOwn(rawMetadata, key))) return rawMetadata;
   const out = { ...rawMetadata };
@@ -90,18 +104,18 @@ function withoutCallerSearchRequestContract(rawMetadata, { gatewayContract = nul
 }
 
 /**
- * Each payload without the caller's `search_quality_contract`, at its top level and in its search block.
- * The handler keeps two copies of the payload (the parsed one and the raw request body's, which lanes
- * also read) that share their search block: a block (or payload) seen twice is copied once, so the
- * copies still share it. A payload with nothing to drop is returned as it is.
+ * Each payload without the caller's `search_quality_contract` and `query_understanding`, at its top level
+ * and in its search block. The handler keeps two copies of the payload (the parsed one and the raw
+ * request body's, which lanes also read) that share their search block: a block (or payload) seen twice
+ * is copied once, so the copies still share it. A payload with nothing to drop is returned as it is.
  */
-function withoutCallerSearchQualityContract(...payloads) {
+function withoutCallerSearchGatewayKeys(...payloads) {
   const copies = new Map();
   const withoutKey = (obj) => {
-    if (!isPlainObject(obj) || !hasOwn(obj, CALLER_QUALITY_CONTRACT_KEY)) return obj;
+    if (!isPlainObject(obj) || !CALLER_PAYLOAD_GATEWAY_KEYS.some((key) => hasOwn(obj, key))) return obj;
     if (!copies.has(obj)) {
       const out = { ...obj };
-      delete out[CALLER_QUALITY_CONTRACT_KEY];
+      for (const key of CALLER_PAYLOAD_GATEWAY_KEYS) delete out[key];
       copies.set(obj, out);
     }
     return copies.get(obj);
@@ -190,18 +204,6 @@ function isEchoableCallerValue(key, value) {
   return Boolean(rule) && typeof value === 'string' && rule.test(value);
 }
 
-// True when `recorded` is `recordedForm` of a value the caller sent under `key` that fails its rule.
-function recordedFromRejectedValue(callerValues, key, recorded, recordedForm) {
-  return (callerValues.get(key) || []).some((sent) => {
-    if (isEchoableCallerValue(key, sent)) return false;
-    try {
-      return recordedForm(sent) === recorded;
-    } catch (_) {
-      return false;
-    }
-  });
-}
-
 // True when `recorded` is `recordedForm` of `value`, a value the caller sent under `key` that fails its rule.
 function recordedFromRejected(key, value, recorded, recordedForm) {
   if (value === undefined || value === null || isEchoableCallerValue(key, value)) return false;
@@ -223,6 +225,20 @@ function callerChosenSource(rawMetadata, payload) {
   if (fromMetadata) return fromMetadata;
   const fromPayload = isPlainObject(payload) ? payload.source : undefined;
   return fromPayload || undefined;
+}
+
+/**
+ * The market buildFindProductsMultiContext (src/findProductsMulti/policy.js) reads from the caller when it
+ * builds the query understanding and the search quality contract: the search block's market, else the
+ * payload's, else the metadata's (`search?.market || payload?.market || metadata?.market`); undefined when
+ * the request names none. This is the market those record, so the only caller market whose recorded form
+ * the answer's query_understanding.market and hard_constraints.market can hold.
+ */
+function callerChosenMarket(rawMetadata, payload) {
+  const body = isPlainObject(payload) ? payload : {};
+  const search = isPlainObject(body.search) ? body.search : {};
+  const metadata = isPlainObject(rawMetadata) ? rawMetadata : {};
+  return search.market || body.market || metadata.market || undefined;
 }
 
 // `body` with the value at `path` replaced by `next`, copying each object on the way; the body itself
@@ -278,12 +294,12 @@ function sameValue(a, b) {
 
 /**
  * The answer without any caller value that fails the allowlist: top-level metadata keys holding one, and
- * query_understanding.source / .market recorded from one. `chosenSource` is the source the request ran as
- * when it came from the caller (callerChosenSource); the source forms are checked against it alone.
- * Returns the body itself when nothing is dropped, so an answer to a clean request is the same object,
- * byte for byte.
+ * query_understanding.source / .market (and hard_constraints.market) recorded from one. `chosenSource` is
+ * the source the request ran as when it came from the caller (callerChosenSource), and `chosenMarket` the
+ * market it used (callerChosenMarket); the recorded forms are checked against those alone. Returns the
+ * body itself when nothing is dropped, so an answer to a clean request is the same object, byte for byte.
  */
-function withoutHostileCallerEcho(body, callerValues, { chosenSource } = {}) {
+function withoutHostileCallerEcho(body, callerValues, { chosenSource, chosenMarket } = {}) {
   if (!isPlainObject(body) || !isPlainObject(body.metadata)) return body;
   if (!(callerValues instanceof Map) || callerValues.size === 0) return body;
   const sentAs = (key, value) => (callerValues.get(key) || []).some((sent) => sameValue(sent, value));
@@ -301,18 +317,16 @@ function withoutHostileCallerEcho(body, callerValues, { chosenSource } = {}) {
   }
 
   // query_understanding.source / .market: the recorded form of a caller value that fails its rule goes,
-  // whatever the recorded form looks like (an array ['X'] is recorded as 'X', 'zz' as 'ZZ'). The source
-  // recorded is the chosen one, so only the chosen source is compared.
+  // whatever the recorded form looks like (an array ['X'] is recorded as 'X', 'zz' as 'ZZ'). The values
+  // recorded are the chosen source and the used market, so only those are compared: a rejected market
+  // the caller sent elsewhere was not read, and a field holding the same form holds a clean one.
+  const chosen = { source: chosenSource, market: chosenMarket };
   const understanding = metadata.query_understanding;
   if (isPlainObject(understanding)) {
     let kept = understanding;
     for (const [key, recordedForm] of Object.entries(QUERY_UNDERSTANDING_RECORDED_FORM)) {
       if (!hasOwn(kept, key)) continue;
-      const rejected =
-        key === 'source'
-          ? recordedFromRejected('source', chosenSource, kept[key], recordedForm)
-          : recordedFromRejectedValue(callerValues, key, kept[key], recordedForm);
-      if (!rejected) continue;
+      if (!recordedFromRejected(key, chosen[key], kept[key], recordedForm)) continue;
       if (kept === understanding) kept = { ...understanding };
       delete kept[key];
     }
@@ -324,14 +338,14 @@ function withoutHostileCallerEcho(body, callerValues, { chosenSource } = {}) {
 
   let out = nextMetadata === metadata ? body : { ...body, metadata: nextMetadata };
 
-  // search_quality_contract.hard_constraints.market: the same rule; cleared to null, its value when no
-  // market was given.
+  // search_quality_contract.hard_constraints.market: the same rule, against the used market; cleared to
+  // null, its value when no market was given.
   const marketPath = ['metadata', 'search_quality_contract', 'hard_constraints', 'market'];
   const constraintMarket = valueAt(out, marketPath);
   if (
     constraintMarket !== undefined &&
     constraintMarket !== null &&
-    recordedFromRejectedValue(callerValues, 'market', constraintMarket, QUERY_UNDERSTANDING_RECORDED_FORM.market)
+    recordedFromRejected('market', chosenMarket, constraintMarket, QUERY_UNDERSTANDING_RECORDED_FORM.market)
   ) {
     out = withValueAt(out, marketPath, null);
   }
@@ -361,8 +375,11 @@ module.exports = {
   CALLER_ECHO_ALLOWLIST,
   isGatewaySearchMetadata,
   withoutCallerSearchRequestContract,
-  withoutCallerSearchQualityContract,
+  withoutCallerSearchGatewayKeys,
+  // The name #2511 gave it, when it dropped the search quality contract alone.
+  withoutCallerSearchQualityContract: withoutCallerSearchGatewayKeys,
   callerChosenSource,
+  callerChosenMarket,
   isEchoableCallerValue,
   collectCallerEchoValues,
   withoutHostileCallerEcho,
