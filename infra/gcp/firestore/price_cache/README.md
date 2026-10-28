@@ -55,7 +55,7 @@ for 5 s.
    - `price_cache_warm` at boot (one per instance; `price_cache_warm_failed` when the first read did not answer in 5 s);
    - `price_cache_write_failed` (warning; `code: flush_timeout` means Firestore did not answer a flush within 10 s);
    - `price_cache_store_stats` (at most one a minute while anything moved: written / failed / dropped /
-     flush_timeouts / resets / abandoned / reenabled / probes / clients_built / pending / inflight, and `disabled: true`
+     flush_timeouts / resets / abandoned / reenabled / probes / clients_built / pending / inflight / live_clients, and `disabled: true`
      once disabled);
    - `price_cache_store_reset` / `price_cache_store_disabled` (warnings; see below);
    - the doc count in the database.
@@ -80,17 +80,17 @@ with `disabled: true`), reads are misses, answers are what they would be with th
   (cap), at most 6 per process (`reason: probe`); a probe that still fails disables again after one reset.
 A deploy or instance restart also re-enables it.
 
-**Client budget** (`price_cache_store_disabled`, `reason: client_budget`, once per process): the store builds at most
-**20 clients per process**. Every reset and every comeback builds one, and a dropped client the library is still
-retrying is never freed. Without a budget, a *flapping* Firestore (down for 5 resets, up just long enough for one late
-write to land) would come back and strand 5 more clients every cycle, without bound (controller r6). At the budget the
-store is disabled **until the instance restarts**: nothing that lands and no probe brings it back. A refused-forever
-outage needs 5 + 6 probes = 11, so the budget only stops a store that keeps coming back. `clients_built` is on the
-stats line.
+**Client budget** (`price_cache_store_disabled`, `reason: client_budget`, once per process): at most **20 live
+clients**, meaning the one in use plus every dropped client with a write or read still unsettled on it. The library keeps
+such a client alive while it retries; once all its operations have settled (landed or failed) it is free and stops
+counting. Without a budget, a *flapping* Firestore (down for 5 resets, up just long enough for one late write to land)
+would come back and strand more clients every cycle, without bound (controller r6). At the budget the store is
+disabled **until the instance restarts**: nothing that lands and no probe brings it back. A refused-forever outage
+needs at most 5 + 6 probes = 11. The stats line carries `live_clients` (now) and `clients_built` (lifetime).
 
 A slow-but-alive Firestore (a batch takes longer than the 10 s flush deadline) resets every ~30 s and its late writes
-are reported as `abandoned` although they land; because they land, the cap's count restarts and the reset cap does not
-disable it, but each reset spends one client, so after about 10 min of it the client budget does. Read `abandoned` as
+are reported as `abandoned` although they land. Because they land, the reset cap's count restarts, and each dropped
+client is freed as its writes settle, so neither the reset cap nor the client budget disables it. Read `abandoned` as
 "not confirmed in time", not "lost".
 
 Rollback at any step: unset the flag (or set it to `off`).
