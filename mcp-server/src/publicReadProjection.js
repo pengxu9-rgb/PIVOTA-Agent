@@ -12,6 +12,10 @@
 // contract tests additionally assert (defense-in-depth) that no denylisted field name and no ISO-timestamp
 // value survives.
 
+import { productPriceCheck } from './productPriceCheck.js';
+
+const PUBLIC_PRICE_CHECK_REASONS = new Set(['no_market', 'market_not_priced']);
+
 // Public canonical PDP base (the citable URL host). Overridable so a future domain move needs no code change.
 const DEFAULT_PDP_BASE = 'https://agent.pivota.cc';
 
@@ -384,6 +388,19 @@ function projectGetProduct(raw, { base = DEFAULT_PDP_BASE } = {}) {
   if (isObj(p.decision)) {
     const decision = decisionFrom(p.decision, p.decision.evidence);
     if (Object.keys(decision).length) detail.decision = decision;
+  }
+  // The live read's verdict on the price (UCP_LIVE_PRODUCT_READ=enforce only; off or shadow, absent), so a stored
+  // fallback does not pass for a merchant-confirmed price. Undated: this tier serves no timestamps (§3), and its
+  // read cache may replay a confirmed price for up to an hour, which the tool description says.
+  const check = detail.price ? productPriceCheck(p) : null;
+  if (check) {
+    detail.price_check = compact({
+      confirmed_with_merchant: check.live,
+      market: check.market,
+      // Only the reasons an agent can act on (state a market; this market is not priced). The rest are the
+      // reader's internals, and this tier serves no diagnostics (§3).
+      reason: !check.live && PUBLIC_PRICE_CHECK_REASONS.has(check.reason) ? check.reason : null,
+    });
   }
   return compact(detail);
 }

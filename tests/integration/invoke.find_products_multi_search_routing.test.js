@@ -237,6 +237,9 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
     delete process.env.FIND_PRODUCTS_BUYER_MARKET;
     for (const key of FLAG_KEYS) delete process.env[key];
+    // Pinned: the budget parser reads this flag on every call, and a shell that exports it must not
+    // change these lanes. Tests that care set it themselves.
+    delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
     // The backend text lane answers empty; it is only ever the lane a misrouted query falls to.
     nock('http://pivota.test')
       .persist()
@@ -464,16 +467,34 @@ describe('find_products_multi search routing: bare ingredients and non-English b
 
   test('on: decimals stay numbers -- "1.0%" asks for the ingredient and names it on a product', async () => {
     const { invoke } = boot(BOTH_ON);
-    // The query keeps its ingredient intent and is never read as "0% retinol". (Its rows are then emptied
-    // by the lane's budget filter, which reads the bare number "1.0" as a price cap -- the existing
-    // number-as-price behaviour, the same with the flags off; not part of these flags.)
-    for (const query of ['1.0% retinol serum', '2.0% salicylic acid', '10.0% niacinamide', '15.0% vitamin c']) {
-      const { resp, log } = await invoke(query);
-      expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
-      expect([query, log.fpm_excluded_ingredient_dropped_count]).toEqual([query, undefined]);
-      expect([query, log.fpm_routing_query_negation]).toEqual([query, undefined]);
-      expect([query, resp.body.metadata.ingredient_direct_budget_filtered_out_count > 0]).toEqual([query, true]);
+    // The query keeps its ingredient intent and is never read as "0% retinol" -- and, since the budget
+    // parser masks strengths (#2485), "1.0" is not a price cap either: no lane drops a row on a budget,
+    // with SEARCH_BUDGET_REQUIRE_MARKER on or off. Before #2485 the unset flag capped all four at the
+    // strength (ingredient lane, 0 rows); with the marker on (prod) they already answered as below, and
+    // now both states answer the same. ("15.0% vitamin c" is a safe-empty contract answer in both
+    // states, before and after -- not a budget.)
+    const expected = {
+      '1.0% retinol serum': [LANES.INGREDIENT, true],
+      '2.0% salicylic acid': [LANES.MAINLINE, true],
+      '10.0% niacinamide': [LANES.MAINLINE, true],
+      '15.0% vitamin c': [LANES.SAFE_EMPTY, false],
+    };
+    for (const marker of ['1', undefined]) {
+      if (marker === undefined) delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
+      else process.env.SEARCH_BUDGET_REQUIRE_MARKER = marker;
+      for (const [query, [expectedLane, served]] of Object.entries(expected)) {
+        const { resp, log } = await invoke(query);
+        const label = [query, marker || 'unset'];
+        expect([label, lane(resp)]).toEqual([label, expectedLane]);
+        expect([label, titles(resp).length > 0]).toEqual([label, served]);
+        expect([label, log.fpm_excluded_ingredient_dropped_count]).toEqual([label, undefined]);
+        expect([label, log.fpm_routing_query_negation]).toEqual([label, undefined]);
+        const dropped = Object.entries(resp.body.metadata || {})
+          .filter(([key, value]) => /budget_filtered_out_count$/.test(key) && value !== 0);
+        expect([label, dropped]).toEqual([label, []]);
+      }
     }
+    delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
     for (const [query, forbidden] of [['retinol-free serum', '1.0% Retinol Night Serum'], ['niacinamide-free serum', '10.0% Niacinamide Booster'],
       ['salicylic acid free cleanser', '2.0% Salicylic Acid Cleanser']]) {
       expect([query, titles((await invoke(query)).resp)]).not.toContainEqual([query, forbidden]);
@@ -931,9 +952,13 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   test('mixed modes: the door applied is the ON flag\'s, the observed one only logs (door_shadow_on)', async () => {
     // bare on, multilingual observe: the Korean negation is not mapped, so its door has no exclusion,
     // and the answer is the bare-only one.
+    // The English half uses a niacinamide exclusion: a retinol one ("retinol alternative serum") also
+    // carries a retinoid safety signal, so the beauty gate removes the retinoid rows before the door
+    // sees them and there is nothing left for the door to drop or count.
+    const DOOR_QUERY = 'niacinamide-free serum';
     const bareOnly = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on' });
     const bareOnlyKo = await bareOnly.invoke('레티놀 프리 크림');
-    const bareOnlyEn = await bareOnly.invoke('retinol alternative serum');
+    const bareOnlyEn = await bareOnly.invoke(DOOR_QUERY);
     jest.resetModules();
     for (const key of FLAG_KEYS) delete process.env[key];
     const mixed = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'on', FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'observe' });
@@ -941,18 +966,18 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     expect(normalize(mixedKo.resp.body)).toEqual(normalize(bareOnlyKo.resp.body));
     expect(mixedKo.log.fpm_routing_query_would_normalize).toBe(true);
     expect(mixedKo.log.fpm_routing_query_normalized).toBe(false);
-    const mixedEn = await mixed.invoke('retinol alternative serum');
+    const mixedEn = await mixed.invoke(DOOR_QUERY);
     expect(normalize(mixedEn.resp.body)).toEqual(normalize(bareOnlyEn.resp.body));
     expect(mixedEn.log.fpm_excluded_ingredient_dropped_count > 0).toBe(true);
     // bare observe, multilingual on: the door only counts (would_drop) and the body is the multilingual-only one.
     jest.resetModules();
     for (const key of FLAG_KEYS) delete process.env[key];
     const mlOnly = boot({ FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' });
-    const mlOnlyEn = await mlOnly.invoke('retinol alternative serum');
+    const mlOnlyEn = await mlOnly.invoke(DOOR_QUERY);
     jest.resetModules();
     for (const key of FLAG_KEYS) delete process.env[key];
     const shadow = boot({ FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING: 'observe', FIND_PRODUCTS_MULTI_MULTILINGUAL_ROUTING: 'on' });
-    const shadowEn = await shadow.invoke('retinol alternative serum');
+    const shadowEn = await shadow.invoke(DOOR_QUERY);
     expect(normalize(shadowEn.resp.body)).toEqual(normalize(mlOnlyEn.resp.body));
     expect(shadowEn.log.fpm_excluded_ingredient_would_drop_count > 0).toBe(true);
     expect(shadowEn.log.fpm_excluded_ingredient_dropped_count).toBeUndefined();
