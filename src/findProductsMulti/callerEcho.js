@@ -13,6 +13,11 @@
 //    in its route context; only that object is kept. The same holds for the routing flags
 //    `public_search_route` and `invoke_search_rail`: the GET route sets the first itself, and hands over
 //    the very metadata object it built; in any other request metadata they are the caller's and dropped.
+//    The SEARCH QUALITY contract (`search_quality_contract`) is the gateway's too: the beauty mainline
+//    adopted one sent by the caller (in payload.search, the payload itself or the metadata) and searched
+//    with its effective_query and category prefix. It is dropped from all three before anything reads it.
+//    The gateway builds its own afterwards (buildFindProductsMultiContext writes it into the search block
+//    the later lanes read; the early mainline builds one from the query), so no hand-off is lost.
 //
 // 2. A CALLER VALUE IS ECHOED ONLY WHEN IT IS A PLAIN, SHORT VALUE. The handler copies the caller's
 //    attribution values (creator id / name, trace id, source, market) into its metadata, and several lanes
@@ -24,7 +29,10 @@
 // 3. A CALLER VALUE THAT FAILS ITS RULE NEVER COMES BACK IN ANY FORM. The gateway also records the
 //    caller's source and market in normalised forms (lower-cased and hyphenated, upper-cased, the string
 //    form of an array). Each such field holding the normalised form of a value that failed its rule is
-//    cleared, whatever the normalised form itself looks like.
+//    cleared, whatever the normalised form itself looks like. For the source, that value is the one the
+//    handler CHOSE (normalizeMetadata: the metadata's source, else the payload's): a source the caller sent
+//    elsewhere is not the request's, and a field holding the gateway's default, or a chosen source that
+//    passed its rule, is the gateway's own even when a rejected string normalises to the same form.
 
 const { BUYER_REGION_CURRENCY } = require('../auroraBff/buyerRegion');
 const { isIso3166Alpha2 } = require('./iso3166Alpha2');
@@ -40,6 +48,9 @@ const CALLER_SEARCH_CONTRACT_KEYS = Object.freeze([
 // `invoke_search_rail` (computed from the source). Sent by a caller, the first moved a POST search onto
 // the public lanes and the second was echoed as the gateway's own rail.
 const CALLER_ROUTING_KEYS = Object.freeze(['public_search_route', 'invoke_search_rail']);
+
+// The search quality contract: written by the gateway (buildSearchQualityContract), never the caller's.
+const CALLER_QUALITY_CONTRACT_KEY = 'search_quality_contract';
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -67,11 +78,45 @@ function withoutCallerSearchRequestContract(rawMetadata, { gatewayContract = nul
   if (isGatewaySearchMetadata(rawMetadata, gatewayMetadata)) return rawMetadata;
   const gatewayOwnContract =
     isPlainObject(gatewayContract) && rawMetadata.search_request_contract === gatewayContract;
-  const callerKeys = [...(gatewayOwnContract ? [] : CALLER_SEARCH_CONTRACT_KEYS), ...CALLER_ROUTING_KEYS];
+  const callerKeys = [
+    ...(gatewayOwnContract ? [] : CALLER_SEARCH_CONTRACT_KEYS),
+    ...CALLER_ROUTING_KEYS,
+    CALLER_QUALITY_CONTRACT_KEY,
+  ];
   if (!callerKeys.some((key) => hasOwn(rawMetadata, key))) return rawMetadata;
   const out = { ...rawMetadata };
   for (const key of callerKeys) delete out[key];
   return out;
+}
+
+/**
+ * Each payload without the caller's `search_quality_contract`, at its top level and in its search block.
+ * The handler keeps two copies of the payload (the parsed one and the raw request body's, which lanes
+ * also read) that share their search block: a block (or payload) seen twice is copied once, so the
+ * copies still share it. A payload with nothing to drop is returned as it is.
+ */
+function withoutCallerSearchQualityContract(...payloads) {
+  const copies = new Map();
+  const withoutKey = (obj) => {
+    if (!isPlainObject(obj) || !hasOwn(obj, CALLER_QUALITY_CONTRACT_KEY)) return obj;
+    if (!copies.has(obj)) {
+      const out = { ...obj };
+      delete out[CALLER_QUALITY_CONTRACT_KEY];
+      copies.set(obj, out);
+    }
+    return copies.get(obj);
+  };
+  return payloads.map((payload) => {
+    if (!isPlainObject(payload)) return payload;
+    if (copies.has(payload)) return copies.get(payload);
+    const search = withoutKey(payload.search);
+    const top = withoutKey(payload);
+    if (search === payload.search) return top;
+    const out = top === payload ? { ...payload } : top;
+    out.search = search;
+    copies.set(payload, out);
+    return out;
+  });
 }
 
 // A display name: 1-128 characters, no control, zero-width, bidi or line/paragraph-separator character,
@@ -157,6 +202,29 @@ function recordedFromRejectedValue(callerValues, key, recorded, recordedForm) {
   });
 }
 
+// True when `recorded` is `recordedForm` of `value`, a value the caller sent under `key` that fails its rule.
+function recordedFromRejected(key, value, recorded, recordedForm) {
+  if (value === undefined || value === null || isEchoableCallerValue(key, value)) return false;
+  try {
+    return recordedForm(value) === recorded;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * The source normalizeMetadata (src/server.js) takes from the caller: the metadata's source, else the
+ * payload's (`rawMetadata.source || payload.source`); undefined when it falls back to the gateway's
+ * default. This is the source the request runs as, so the only caller source whose normalised forms
+ * the answer can hold.
+ */
+function callerChosenSource(rawMetadata, payload) {
+  const fromMetadata = isPlainObject(rawMetadata) ? rawMetadata.source : undefined;
+  if (fromMetadata) return fromMetadata;
+  const fromPayload = isPlainObject(payload) ? payload.source : undefined;
+  return fromPayload || undefined;
+}
+
 // `body` with the value at `path` replaced by `next`, copying each object on the way; the body itself
 // when the path is not there.
 function withValueAt(body, path, next) {
@@ -210,10 +278,12 @@ function sameValue(a, b) {
 
 /**
  * The answer without any caller value that fails the allowlist: top-level metadata keys holding one, and
- * query_understanding.source / .market recorded from one. Returns the body itself when nothing is dropped,
- * so an answer to a clean request is the same object, byte for byte.
+ * query_understanding.source / .market recorded from one. `chosenSource` is the source the request ran as
+ * when it came from the caller (callerChosenSource); the source forms are checked against it alone.
+ * Returns the body itself when nothing is dropped, so an answer to a clean request is the same object,
+ * byte for byte.
  */
-function withoutHostileCallerEcho(body, callerValues) {
+function withoutHostileCallerEcho(body, callerValues, { chosenSource } = {}) {
   if (!isPlainObject(body) || !isPlainObject(body.metadata)) return body;
   if (!(callerValues instanceof Map) || callerValues.size === 0) return body;
   const sentAs = (key, value) => (callerValues.get(key) || []).some((sent) => sameValue(sent, value));
@@ -231,13 +301,18 @@ function withoutHostileCallerEcho(body, callerValues) {
   }
 
   // query_understanding.source / .market: the recorded form of a caller value that fails its rule goes,
-  // whatever the recorded form looks like (an array ['X'] is recorded as 'X', 'zz' as 'ZZ').
+  // whatever the recorded form looks like (an array ['X'] is recorded as 'X', 'zz' as 'ZZ'). The source
+  // recorded is the chosen one, so only the chosen source is compared.
   const understanding = metadata.query_understanding;
   if (isPlainObject(understanding)) {
     let kept = understanding;
     for (const [key, recordedForm] of Object.entries(QUERY_UNDERSTANDING_RECORDED_FORM)) {
       if (!hasOwn(kept, key)) continue;
-      if (!recordedFromRejectedValue(callerValues, key, kept[key], recordedForm)) continue;
+      const rejected =
+        key === 'source'
+          ? recordedFromRejected('source', chosenSource, kept[key], recordedForm)
+          : recordedFromRejectedValue(callerValues, key, kept[key], recordedForm);
+      if (!rejected) continue;
       if (kept === understanding) kept = { ...understanding };
       delete kept[key];
     }
@@ -261,18 +336,18 @@ function withoutHostileCallerEcho(body, callerValues) {
     out = withValueAt(out, marketPath, null);
   }
 
-  // The normalised forms of a rejected source: cleared to null.
-  const rejectedSourceKeys = new Set(
-    (callerValues.get('source') || [])
-      .filter((sent) => !isEchoableCallerValue('source', sent))
-      .map(sourceFormKey)
-      .filter((key) => key !== null),
-  );
-  if (rejectedSourceKeys.size > 0) {
+  // The normalised forms of the chosen source, when it fails its rule: cleared to null. A rejected source
+  // the caller sent elsewhere (payload.search.source, or payload.source beside a metadata source) was not
+  // the request's, so a field holding the same form holds the gateway's own source.
+  const rejectedSourceKey =
+    chosenSource !== undefined && chosenSource !== null && !isEchoableCallerValue('source', chosenSource)
+      ? sourceFormKey(chosenSource)
+      : null;
+  if (rejectedSourceKey !== null) {
     for (const path of SOURCE_FORM_FIELDS) {
       const value = valueAt(out, path);
       if (value === undefined || value === null) continue;
-      if (!rejectedSourceKeys.has(sourceFormKey(value))) continue;
+      if (sourceFormKey(value) !== rejectedSourceKey) continue;
       out = withValueAt(out, path, null);
     }
   }
@@ -286,6 +361,8 @@ module.exports = {
   CALLER_ECHO_ALLOWLIST,
   isGatewaySearchMetadata,
   withoutCallerSearchRequestContract,
+  withoutCallerSearchQualityContract,
+  callerChosenSource,
   isEchoableCallerValue,
   collectCallerEchoValues,
   withoutHostileCallerEcho,
