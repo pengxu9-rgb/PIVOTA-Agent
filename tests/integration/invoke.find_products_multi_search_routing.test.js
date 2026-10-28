@@ -1052,6 +1052,9 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     // the metadata still wins over the payload, as in normalizeMetadata, and both are the caller's
     const both = await send({ search: SURFACE_GIFT, creator_name: 'Payload Name' }, { creator_name: { nested: 'HOSTILE_META_NAME' } });
     expect(JSON.stringify(attribution(both.resp.body.metadata)).includes('HOSTILE')).toBe(false);
+    // ... and an empty metadata value lets the payload's through: every value under a key is checked
+    const emptyFirst = await send({ search: SURFACE_GIFT, creator_name: 'HOSTILE<b>AFTER_EMPTY' }, { creator_name: '' });
+    expect(JSON.stringify(attribution(emptyFirst.resp.body.metadata)).includes('HOSTILE')).toBe(false);
   }, 180000);
 
   test('on (flip B2): metadata that is not an object echoes nothing of it', async () => {
