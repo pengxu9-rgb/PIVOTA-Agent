@@ -1064,8 +1064,10 @@ function createUcpLiveProductReader(deps = {}) {
     }
     const allAsked = (Array.isArray(product.variants) ? product.variants : []).every((v) => asked.has(numericVariantId(v && v.variant_id)));
     const anyInStock = out.variants.some((v) => v && v.availability && v.availability.in_stock === true && v.live_read);
-    if (anyInStock) out.availability = withLiveStock(product.availability, true);
-    else if (verified + gone > 0 && allAsked) out.availability = withLiveStock(product.availability, false);
+    // The top-level `in_stock` (the detail normalizer's flag, which the public and UCP doors read) moves with
+    // `availability`: a stored `in_stock: true` beside a live sold-out answer would sell a sold-out product.
+    if (anyInStock) { out.availability = withLiveStock(product.availability, true); out.in_stock = true; }
+    else if (verified + gone > 0 && allAsked) { out.availability = withLiveStock(product.availability, false); out.in_stock = false; }
     out.live_read = { ...summary, checked: asked.size, verified, gone };
     return out;
   }
