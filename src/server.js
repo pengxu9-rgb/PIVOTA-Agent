@@ -320,6 +320,11 @@ const {
 const { isBeautyDirectAfterContextEligible } = require('./findProductsMulti/beautyDirectGate');
 const { findOverlongSearchQuery, truncateSearchHistory } = require('./findProductsMulti/queryLengthCap');
 const {
+  withoutCallerSearchRequestContract,
+  collectCallerEchoValues,
+  withoutHostileCallerEcho,
+} = require('./findProductsMulti/callerEcho');
+const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
 } = require('./findProductsMulti/intent');
@@ -38869,6 +38874,9 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
   return handleInvokeRequest(req, res, {
     client_channel: 'shop',
     orchestrator_path: 'external_invoke_route',
+    // The contract prepareAgentProductsSearchRoute built from this request: the gateway's own, so the
+    // invoke handler keeps it (it drops any other contract found in request metadata).
+    gateway_search_request_contract: req.body.metadata.search_request_contract || null,
   });
 }
 
@@ -42528,6 +42536,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     );
   });
   let queryTooLongRejected = false;
+  // find_products / find_products_multi: the caller's own attribution values, taken at parse time, that an
+  // answer may carry back only when they pass the echo allowlist (src/findProductsMulti/callerEcho.js).
+  let callerEchoValues = null;
   // Every return path funnels through here, so this is the one place the FINAL body is known
   // -- capturing earlier would record a page that later filtering still changes. Telemetry must
   // never be able to fail a response, so the capture cannot throw: a failed record is logged as
@@ -42931,6 +42942,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation: finalOperation,
         gatewayRequestId,
       });
+      // Last, so no step above can put a caller value back. Cannot throw on any body shape.
+      if (callerEchoValues) finalBody = withoutHostileCallerEcho(finalBody, callerEchoValues);
       setInvokePerfHeaders();
       return originalJson(finalBody);
     };
@@ -43129,6 +43142,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // must not echo back when a routing flag is on, beyond the attribution allowlist.
     const callerSentMetadataValues =
       operation === 'find_products_multi' ? collectCallerMetadataValues(req?.body?.metadata, payload) : null;
+    // Product search: the search request contract (and the lane fields copied out of it) is the gateway's
+    // own, never the caller's. A contract in the request metadata is dropped here, before anything reads
+    // it, unless it is the very object an in-process route built and handed over (the public GET search
+    // route; see handleAgentProductsSearchViaInvoke). And the caller's attribution values are taken now,
+    // before the handler writes anything, so the answer can be checked against them on the way out.
+    if (
+      (operation === 'find_products' || operation === 'find_products_multi') &&
+      req.body &&
+      typeof req.body === 'object' &&
+      !Array.isArray(req.body)
+    ) {
+      callerEchoValues = collectCallerEchoValues(req.body.metadata, payload, req.body.payload);
+      const ownMetadata = withoutCallerSearchRequestContract(req.body.metadata, {
+        gatewayContract: routeContext?.gateway_search_request_contract || null,
+      });
+      if (ownMetadata !== req.body.metadata) req.body.metadata = ownMetadata;
+    }
     // Reject an over-long search query before any search code reads it (see queryLengthCap.js).
     const overlongQuery = findOverlongSearchQuery({ operation, payload });
     if (overlongQuery) {
