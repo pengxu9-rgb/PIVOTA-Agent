@@ -246,6 +246,46 @@ describe('the net keeps what is not a retinoid (seam on, look-alike rows)', () =
   });
 });
 
+// Retinoid rows named only by a brand or by vitamin A in a topical form outside the commonest ones:
+// every one must go under a signal.
+const BRAND_AND_VITAMIN_A_TITLES = [
+  'Differin Gel', 'Tazorac Cream 0.1%', 'Epiduo Forte Gel', 'Aklief Cream', 'Altreno Lotion', 'Vitamin A Facial Capsules',
+  'Vitamin A Skin Oil', 'Vitamin A Night Drops', 'Vitamin A Body Butter', 'Vitamin A Smoothing Primer', 'Vitamin A Peel Pads',
+  'Vitamin A Face Mist', 'Vitamin A Face Ointment (anti-aging)',
+];
+const BRAND_AND_VITAMIN_A_ROWS = [
+  ...BRAND_AND_VITAMIN_A_TITLES.map((title, i) => ({
+    ...SEAM_ROWS[0], id: `seam_brand_va_row_${i}`, product_id: `seam_brand_va_row_${i}`, title, description: 'Daily care.', product_type: 'Care',
+  })),
+  { ...SEAM_ROWS[0], id: 'seam_brand_va_supp_cat', product_id: 'seam_brand_va_supp_cat', title: 'Night Cream', description: 'With vitamin A.',
+    product_type: 'Health/Supplements', category: 'Health/Supplements' },
+  { ...SEAM_ROWS[1] },
+];
+
+describe('the net removes brand-only and topical vitamin A retinoids (seam on)', () => {
+  let app;
+  beforeAll(() => {
+    app = loadApp({ seam: true, rows: BRAND_AND_VITAMIN_A_ROWS });
+  });
+
+  test('control: with no signal the rows are served (the first page of 10)', async () => {
+    const resp = await invoke(app, 'night cream');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((p) => p.product_id)).toEqual(BRAND_AND_VITAMIN_A_ROWS.slice(0, 10).map((row) => row.product_id));
+  });
+
+  test.each([
+    { name: 'pregnancy profile', payload: { user_profile: { pregnancy_status: 'pregnant' } } },
+    { name: 'isotretinoin turn', payload: { messages: [{ role: 'user', content: 'I am on accutane' }, { role: 'user', content: 'night cream' }] } },
+  ])('HARD signal ($name): only the plain row is served', async ({ payload }) => {
+    const resp = await invoke(app, 'night cream', { payload });
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('beauty_discovery_mainline');
+    expect(resp.body.products.map((p) => p.product_id)).toEqual([SEAM_PLAIN_ID]);
+    for (const title of BRAND_AND_VITAMIN_A_TITLES) expect(JSON.stringify(resp.body)).not.toContain(title);
+  });
+});
+
 describe('the net fails closed when its detector throws (seam on, detector down)', () => {
   let app;
   beforeAll(() => {

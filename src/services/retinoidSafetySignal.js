@@ -54,7 +54,9 @@ function softTierEnabled(env = process.env) {
 // ("retinyl palmitate free" is a negation of the ester).
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // A request naming a prescription brand means the retinoid, so the brands are names here.
-const RETINOID_FAMILY_LATIN_SOURCES = [...retinoidFamily.RETINOID_FAMILY_LATIN, ...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS]
+const RETINOID_FAMILY_LATIN_SOURCES = [
+  ...retinoidFamily.RETINOID_FAMILY_LATIN, ...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS, ...retinoidFamily.RETINOID_OTC_BRANDS,
+]
   .map((name) => name.split(' ').map(escapeRegex).join('\\s'));
 const RETINOID_FAMILY_SCRIPT_SOURCES = retinoidFamily.RETINOID_FAMILY_SCRIPT.map(escapeRegex);
 const RETINOID_NAME_LATIN = new RegExp(
@@ -135,7 +137,7 @@ const RETINOID_NAME_FOR_NEGATION = `(?:${[
 // name: "what not to use with my retinol" asks how to pair it.
 const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,3}';
 const HARD_NEGATION_BEFORE_NAME_LATIN = [
-  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans',
+  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans', 'sem', 'senza',
   'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing', 'never', 'nope', 'no\\s+thanks',
   'stop(?:ped)?(?:\\s+using)?', 'quit(?:ting)?', 'no\\s+more', 'dont\\s+want', 'do\\s+not\\s+want', 'dont\\s+use',
   'do\\s+not\\s+use', 'cant\\s+use', 'cannot\\s+use', 'can\\s+not\\s+use', 'cant\\s+tolerate', 'cannot\\s+tolerate',
