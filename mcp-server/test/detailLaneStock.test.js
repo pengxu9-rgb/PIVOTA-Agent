@@ -72,6 +72,11 @@ test('precedence: an availability STRING still wins; the object outranks a top-l
   const p = (over) => ({ product: { ...detailOf(raw()).product, ...over } });
   // A string (search rows, older lanes) is read first, exactly as before.
   assert.equal(projectPublicReadResult('get_product', p({ availability: 'out_of_stock' })).availability, 'out_of_stock');
+  const stringVariant = shapeUcpGetProductResponse({ product: { ...detailOf(raw()).product, variants: [
+    { ...detailOf(raw()).product.variants[0], availability: 'out_of_stock' },
+    detailOf(raw()).product.variants[1],
+  ] } }, {});
+  assert.deepEqual(stringVariant.product.variants[0].availability, { available: false, status: 'out_of_stock' });
   // The object is the lane's own answer (and the one the live reader rewrites); a top-level boolean beside it
   // is the older, separately derived flag.
   assert.equal(projectPublicReadResult('get_product', p({ availability: { in_stock: false }, in_stock: true })).availability, 'out_of_stock');
