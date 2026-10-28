@@ -365,7 +365,14 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
     p('Differin Gel', 'gel', 'Do not use with benzoyl peroxide products.'), p('Differin Gel', 'gel', 'Avoid salicylic acid while using.'),
     p('Differin Acne Kit', 'kit', 'Includes Differin Gel and a cleanser with benzoyl peroxide.'),
     // nor does benzoyl peroxide / salicylic acid named as absent
-    p('Differin Gel with BPO-free formula', 'gel'), p('Differin Gel, Salicylic-Free', 'gel'), p('Differin Gel, no benzoyl peroxide', 'gel'),
+    // a Differin gel always; another form when the other active is named as absent
+    ...['BPO-free formula', 'Salicylic-Free', 'no benzoyl peroxide', 'without salicylic acid', 'salicylic acid free',
+      'salicylic-acid-free', '0% Benzoyl Peroxide', 'zero BPO', 'free of benzoyl peroxide', '(not BPO)', '0% salicylic acid',
+    ].flatMap((absent) => [p(`Differin Gel, ${absent}`, 'gel'), p(`Differin Spot Treatment, ${absent}`, 'treatment')]),
+    p('Differin Benzoyl Peroxide 5% Acne Spot Treatment Gel', 'treatment'),
+    // a brand only in a URL or a domain
+    p('Acne Gel 0.1%', 'gel', '', { destination_url: 'https://shop.invalid/products/epiduo-forte' }),
+    p('Acne Cream 0.05%', 'cream', '', { external_domain: 'tazorac.invalid' }),
     // nor makes vitamin A a protectant; A&D needs its protectant word in what the product is
     p('Vitamin A Night Cream', 'cream', 'Do not apply to nipples or the diaper area.'),
     p('Vitamin A Repair Cream', 'cream', 'Skin protectant, anti-aging.'), p('Vitamins A & D Anti-Aging Night Cream', 'cream'),
@@ -385,7 +392,7 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
     p('Moisturizer During Accutane Treatment', 'moisturizer'),
     p('A and D Diaper Rash Ointment', 'baby'), p('Vitamin A & D Ointment', 'first aid'),
     p('Cod Liver Oil Softgels with Vitamin A', 'health'), p('Vitamin A 25000 IU', ''), p('Daily Vitamins with Vitamin A', ''),
-    p('Differin Benzoyl Peroxide 5% Acne Spot Treatment Gel', 'treatment'),
+    p('Differin Benzoyl Peroxide 5% Acne Spot Treatment', 'treatment'), p('Differin Acne Wash with Salicylic Acid', 'cleanser'),
     // a supplement's description about skin or night is not a direction to apply it
     p('Vitamin A Softgels', 'supplements', 'Supports healthy skin and vision.'),
     p('Vitamin A 10000 IU Softgels', 'supplements', 'Take two softgels at night with food.'),

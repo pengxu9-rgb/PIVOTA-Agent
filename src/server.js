@@ -20260,9 +20260,9 @@ const BEAUTY_RETINOID_FACE_PRODUCT_RE = /\b(?:face|facial|anti\s+aging|wrinkles?
 // verbs: "supports healthy skin" or "take at night" is said of a supplement too.
 const BEAUTY_RETINOID_TOPICAL_USE_RE = /\b(?:apply|applied|applying|topical|topically|massage)\b/;
 // A Differin product that names benzoyl peroxide or salicylic acid as what it IS, not as absent ("BPO-free",
-// "no salicylic acid").
+// "salicylic acid free", "no / not / without / zero / free of ...", "0% ...").
 const BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE =
-  /(?<!\b(?:no|non|without)\s)\b(?:benzoyl\s+peroxide|bpo|salicylic(?:\s+acid)?)\b(?!\s+free\b)/;
+  /(?<!\b(?:no|non|not|without|zero|free\s+of|free\s+from)\s|\b0%\s)\b(?:benzoyl\s+peroxide|bpo|salicylic(?:\s+acid)?)\b(?!\s+(?:acid\s+)?free\b)/;
 const BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE = /\b(?:cleansers?|cleansing|wash|moisturi[sz]ers?|spf|sunscreens?)\b/;
 function beautyRetinoidProductReading(product) {
   const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
@@ -20285,10 +20285,11 @@ function beautyRetinoidProductReading(product) {
     BEAUTY_RETINOID_PROTECTANT_WORD_RE.test(what) &&
     !BEAUTY_RETINOID_FACE_PRODUCT_RE.test(beautyRetinoidLatinView(fields(['title', 'name', 'product_name'])));
   // Differin is read by what the product is, never by a warning in its description ("do not use with
-  // benzoyl peroxide").
+  // benzoyl peroxide"). A Differin gel is always a retinoid; another form is not when it is a benzoyl
+  // peroxide / salicylic acid product or a cleanser / moisturizer / SPF.
   const differinIsOther =
-    BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE.test(what) ||
-    (BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE.test(what) && !/\bgels?\b/.test(what));
+    !/\bgels?\b/.test(what) &&
+    (BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE.test(what) || BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE.test(what));
   // The brand names, from every raw field the product check reads (hyphens kept), accessories removed.
   const brandText = beautyRetinoidLatinView(
     beautyRetinoidTextWithoutBrandAccessories(
