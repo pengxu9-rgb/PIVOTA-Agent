@@ -61,7 +61,7 @@ function productIdsIn(body) {
   return ids;
 }
 
-function loadApp({ seam = true, detectorDown = false } = {}) {
+function loadApp({ seam = true, detectorDown = false, rows = SEAM_ROWS } = {}) {
   jest.resetModules();
   jest.doMock('../../src/db', () => ({
     query: async (sql) => (String(sql).includes('COUNT(*)::int AS total') ? { rows: [{ total: 0 }] } : { rows: [] }),
@@ -72,8 +72,8 @@ function loadApp({ seam = true, detectorDown = false } = {}) {
       return {
         ...actual,
         getDiscoveryFeed: jest.fn(async () => ({
-          products: SEAM_ROWS.map((row) => ({ ...row })),
-          total: SEAM_ROWS.length,
+          products: rows.map((row) => ({ ...row })),
+          total: rows.length,
           metadata: { candidate_source: 'seam_lane' },
         })),
       };
@@ -174,6 +174,46 @@ describe('the safety net on a lane that never calls the beauty gate (seam on)', 
     // no id list or generated text still points at it
     expect(JSON.stringify(resp.body)).not.toContain(SEAM_RETINOID_ID);
     expect(JSON.stringify(resp.body)).not.toMatch(/Retinol Night Serum/);
+  });
+});
+
+// Rows named only by the shared retinoid family (src/services/retinoidFamily.js): vitamin A and its
+// esters, prescription names, the non-English names, and a "retinol-free" row that names a retinoid.
+const FAMILY_ROW_TITLES = [
+  'Vitamin A Night Cream', 'Retinyl Palmitate Moisturizer', 'Differin Gel Moisturizer', '视黄醛晚霜', 'レチナール クリーム',
+  '아다팔렌 겔', 'Крем с ретинальдегидом', 'Retinol-Free Retinoid Night Cream (HPR)',
+];
+const FAMILY_ROWS = [
+  ...FAMILY_ROW_TITLES.map((title, i) => ({
+    ...SEAM_ROWS[0], id: `seam_family_row_${i}`, product_id: `seam_family_row_${i}`, title, description: 'Night cream.',
+    product_type: 'Moisturizer',
+  })),
+  { ...SEAM_ROWS[1], title: 'Hyaluronic Night Cream', description: 'Hydrating night cream.', product_type: 'Moisturizer' },
+];
+
+describe('the net reads the shared retinoid family (seam on, family-named rows)', () => {
+  let app;
+  beforeAll(() => {
+    app = loadApp({ seam: true, rows: FAMILY_ROWS });
+  });
+
+  test('control: with no signal every row is served', async () => {
+    const resp = await invoke(app, 'night cream');
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('beauty_discovery_mainline');
+    expect(resp.body.products.map((p) => p.product_id)).toEqual(FAMILY_ROWS.map((row) => row.product_id));
+  });
+
+  test.each([
+    { name: 'pregnancy profile', payload: { user_profile: { pregnancy_status: 'pregnant' } } },
+    { name: 'isotretinoin turn', payload: { messages: [{ role: 'user', content: 'I am on isotretinoin' }, { role: 'user', content: 'night cream' }] } },
+    { name: 'avoid list naming an ester', payload: { constraints: { avoid_ingredients: ['retinyl palmitate'] } } },
+  ])('HARD signal ($name): no family-named row is served; the plain row is', async ({ payload }) => {
+    const resp = await invoke(app, 'night cream', { payload });
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('beauty_discovery_mainline');
+    expect(resp.body.products.map((p) => p.product_id)).toEqual([FAMILY_ROWS[FAMILY_ROWS.length - 1].product_id]);
+    for (const title of FAMILY_ROW_TITLES) expect(JSON.stringify(resp.body)).not.toContain(title);
   });
 });
 

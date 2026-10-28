@@ -286,3 +286,40 @@ test('product detection: a retinoid named only in a stand-in phrase is not a ret
   assert.equal(beautyProductRetinoidMentionIsStandInOnly(p('Retinol Night Cream')), false);
   assert.equal(beautyProductRetinoidMentionIsStandInOnly(null), false);
 });
+
+test('product detection: the shared retinoid family, and a free claim never hides a retinoid named elsewhere', () => {
+  const retinoids = [
+    product('x', 'Vitamin A Night Cream', 'cream', ''), product('x', 'Retinyl Palmitate Moisturizer', 'cream', ''),
+    product('x', 'Rétinoïde Crème de Nuit', 'cream', ''), product('x', 'Retinoide Nachtcreme', 'cream', ''),
+    product('x', 'Differin Gel', 'gel', ''), product('x', 'Roaccutane Lip Balm', 'balm', ''),
+    product('x', 'Night Cream', 'cream', 'Ingredients: aqua, vitamin a palmitate, glycerin'),
+    product('x', '视黄醛精华', 'serum', ''), product('x', 'A醛晚霜', 'cream', ''), product('x', '维A醛面霜', 'cream', ''),
+    product('x', '视黄酸乳液', 'lotion', ''), product('x', '阿达帕林凝胶', 'gel', ''), product('x', '他扎罗汀乳膏', 'cream', ''),
+    product('x', '曲法罗汀', 'cream', ''), product('x', 'レチナール クリーム', 'cream', ''), product('x', 'トレチノイン', 'cream', ''),
+    product('x', 'アダパレン ゲル', 'gel', ''), product('x', 'レチノイド セラム', 'serum', ''), product('x', 'トリファロテン', 'cream', ''),
+    product('x', '아다팔렌 겔', 'gel', ''), product('x', '트레티노인 크림', 'cream', ''), product('x', '트리파로텐', 'cream', ''),
+    product('x', 'Крем с ретинальдегидом', 'cream', ''), product('x', 'адапален гель', 'gel', ''), product('x', 'третиноин крем', 'cream', ''),
+    product('x', 'трифаротен', 'cream', ''),
+    // a free claim names what is absent; the retinoid named elsewhere is still there
+    product('x', 'Retinol-Free Retinoid Serum (HPR)', 'serum', ''),
+    product('x', 'Retinol-Free Night Cream', 'cream', '', { inci: 'Water, Retinyl Palmitate' }),
+    product('x', 'Retinol-Free Vitamin A Serum', 'serum', ''),
+    // a stand-in title is a retinoid when the ingredients name a family member
+    product('x', 'Bakuchiol Retinol Alternative Serum', 'serum', '', { seed_data: { inci: ['Aqua', 'Vitamin A Palmitate'] } }),
+    product('x', 'Bio-Retinol Night Cream', 'cream', '', { seed_data: { key_ingredients: ['视黄醛'] } }),
+    // a free claim in the title, a script family name elsewhere
+    product('x', 'Retinol-Free Night Cream', 'cream', '含视黄醛的晚霜。'),
+  ];
+  for (const item of retinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, `${item.title} ${item.inci || item.description}`);
+  const notRetinoids = [
+    product('x', 'Retinol-Free Bakuchiol Serum', 'serum', ''), product('x', 'Bio-Retinol Night Cream', 'cream', ''),
+    product('x', 'Vitamin C Serum', 'serum', ''), product('x', 'Vitamin ACE Body Oil', 'oil', ''),
+    product('x', 'Retinol-Free Moisturizer, no retinyl palmitate', 'cream', ''), product('x', '不含视黄醇 面霜 retinol-free', 'cream', ''),
+    product('x', 'Retinol-free cream with bakuchiol, a gentler alternative to retinol', 'cream', ''),
+    product('x', 'Retinoid-free Vitamin A-free cream', 'cream', ''), product('x', 'Retinol-free レチノールフリー クリーム', 'cream', ''),
+    product('x', 'Retinol-Free 레티놀 프리 크림', 'cream', ''), product('x', 'Retinol-free крем без ретинола', 'cream', ''),
+    // the claim and a stand-in phrase only in the description
+    product('x', 'Bakuchiol Night Cream', 'cream', 'Retinol-free. A gentler alternative to retinol.'),
+  ];
+  for (const item of notRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), false, item.title);
+});
