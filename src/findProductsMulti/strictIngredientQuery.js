@@ -23,7 +23,13 @@
 //            5. A stand-in active (bakuchiol, STAND_IN_ACTIVE_ALIASES) is asked for like a table
 //              ingredient, and KNOWN_STAND_INS names the stand-in a bare "retinol alternative" asks for.
 //
-// Pure functions, no dependencies.
+// Pure functions; the only dependency is the shared retinoid family list (src/services/retinoidFamily.js).
+
+const {
+  RETINOID_FAMILY_LATIN,
+  RETINOID_FAMILY_SCRIPT,
+  RETINOID_FAMILY_RUSSIAN,
+} = require('../services/retinoidFamily');
 
 const BARE_INGREDIENT_ROUTING_FLAG = 'FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING';
 
@@ -325,9 +331,20 @@ function ingredientOccurrences(text, latinTerms, id, { hyphenLikeTerms = [], hyp
 // adjacent occurrences joined only by a list word (and / or / nor, in the languages the absence words
 // come from) or by nothing (a comma, which normalisation removed). A group whose qualified members
 // disagree (an absence and a stand-in) is left as it is.
-const LIST_JOINER_RE = /^\s+(?:(?:and|or|nor|und|oder|et|ou|y|o|e|и|или)\s+)?$/u;
+// A list needs an EXPLICIT joiner -- a list word, a comma or "&" (the last two are rewritten to "and"
+// before normalisation, see normalizeForRouting) -- the same joiners the raw canonicalisation below
+// reads (RAW_LIST_JOINER). Two ingredients side by side are not a list: in "niacinamide retinol-free
+// serum" only retinol is excluded. Single-letter joiners ("e", "o") are left out: "vitamin e" is an
+// ingredient, not a list.
+// A stand-in active is never a list member: "bakuchiol and retinol free serum" reads "bakuchiol, and
+// retinol-free" -- the stand-in named beside the ingredient it replaces is the ask, as in "retinol free
+// bakuchiol"; excluding the very stand-in the shopper typed would be the surprising reading.
+const LIST_JOIN_WORDS = Object.freeze(['and', 'or', 'nor', 'und', 'oder', 'et', 'ou', 'y', 'и', 'или']);
+const LIST_JOINER_RE = new RegExp(`^\\s+(?:${LIST_JOIN_WORDS.join('|')})\\s+$`, 'u');
 function distributeListQualifiers(normalized, occurrences) {
-  const sorted = occurrences.slice().sort((a, b) => a.start - b.start);
+  const standInActiveIds = Object.values(STAND_IN_ACTIVE_ALIASES);
+  const sorted = occurrences.filter((occurrence) => !standInActiveIds.includes(occurrence.id)).sort((a, b) => a.start - b.start);
+  const standIns = occurrences.filter((occurrence) => standInActiveIds.includes(occurrence.id));
   const groups = [];
   for (const occurrence of sorted) {
     const last = groups[groups.length - 1];
@@ -335,27 +352,38 @@ function distributeListQualifiers(normalized, occurrences) {
     if (previous && LIST_JOINER_RE.test(normalized.slice(previous.end, occurrence.start))) last.push(occurrence);
     else groups.push([occurrence]);
   }
-  return groups.flatMap((group) => {
+  return standIns.concat(groups.flatMap((group) => {
     const kinds = Array.from(new Set(group.map((occurrence) => occurrence.kind).filter(Boolean)));
     if (group.length < 2 || kinds.length !== 1) return group;
     return group.map((occurrence) => (occurrence.kind ? occurrence : { ...occurrence, qualified: true, kind: kinds[0] }));
-  });
+  }));
 }
 
 // Every strict-table / stand-in term occurrence in normalised query text (longest terms first, no
 // overlaps), with list qualifiers distributed.
+// Family names a QUERY may exclude an ingredient by ("retinoid free serum", "no retinal", "Retin-A
+// alternative"): read only when qualified away, as an exclusion of that ingredient. A family name asked
+// for positively ("retinal serum") is not a request for the ingredient, and is not read.
+const FAMILY_QUERY_TERMS = Object.freeze(
+  RETINOID_FAMILY_LATIN.map((term) => [normalizeForMatch(term), 'retinol'])
+    .filter(([term]) => term && !TERM_TO_ID.has(term))
+    .sort((a, b) => b[0].length - a[0].length),
+);
+
 function strictIngredientOccurrences(normalized) {
   const consumed = new Array(normalized.length).fill(false);
   const found = [];
+  const take = (occurrence, id, familyOnly) => {
+    for (let i = occurrence.start; i < occurrence.end; i += 1) if (consumed[i]) return;
+    for (let i = occurrence.start; i < occurrence.end; i += 1) consumed[i] = true;
+    found.push({ ...occurrence, id, ...(familyOnly ? { familyOnly: true } : {}) });
+  };
   for (const term of STRICT_TERMS_BY_LENGTH) {
     const id = TERM_TO_ID.get(term);
-    for (const occurrence of termOccurrences(normalized, term)) {
-      let overlaps = false;
-      for (let i = occurrence.start; i < occurrence.end; i += 1) if (consumed[i]) overlaps = true;
-      if (overlaps) continue;
-      for (let i = occurrence.start; i < occurrence.end; i += 1) consumed[i] = true;
-      found.push({ ...occurrence, id });
-    }
+    for (const occurrence of termOccurrences(normalized, term)) take(occurrence, id, false);
+  }
+  for (const [term, id] of FAMILY_QUERY_TERMS) {
+    for (const occurrence of termOccurrences(normalized, term, { id })) take(occurrence, id, true);
   }
   return distributeListQualifiers(normalized, found);
 }
@@ -363,11 +391,18 @@ function strictIngredientOccurrences(normalized) {
 // Query side: which table ingredients the text asks FOR, which it EXCLUDES (mentions only in a
 // qualified form), and which of those it excludes only as a STAND-IN ("retinol alternative"). A
 // positive mention anywhere wins. Ids in table order.
+// normalizeForMatch, after turning a comma or "&" into the list word "and" (normalisation would
+// otherwise delete them, and a comma list would read as two unrelated words).
+function normalizeForRouting(raw) {
+  return normalizeForMatch(String(raw || '').replace(/\s*[,&]\s*/g, ' and '));
+}
+
 function classifyStrictIngredientMentions(text) {
-  const normalized = normalizeForMatch(text);
+  const normalized = normalizeForRouting(text);
   const states = new Map();
   if (normalized) {
     for (const occurrence of strictIngredientOccurrences(normalized)) {
+      if (occurrence.familyOnly && !occurrence.kind) continue;
       const state = states.get(occurrence.id) || { positive: false, absence: false, standin: false };
       if (occurrence.kind === 'absence') state.absence = true;
       else if (occurrence.kind === 'standin') state.standin = true;
@@ -615,30 +650,13 @@ function admitIngredientLaneProducts(products = [], { ingredientIds = [] } = {})
 // (whole words, qualifiers, CJK compound and negation rules, bounded Russian endings), in titles and
 // structured fields, and any positive mention excludes the row (no INCI veto: an exclusion fails
 // toward excluding). Asking FOR an ingredient (lane admission) is unchanged: only its own name counts.
-//   retinol: the retinoids -- retinal / retinaldehyde, retinyl esters, hydroxypinacolone retinoate
-//            (HPR, Granactive Retinoid), retinoic acid / tretinoin / isotretinoin, adapalene,
-//            tazarotene, and the word "retinoid" itself.
+//   retinol: the retinoids, from the shared list in src/services/retinoidFamily.js (retinal, retinyl
+//            esters, vitamin A, HPR / Granactive Retinoid, tretinoin, adapalene, tazarotene,
+//            trifarotene, Retin-A, "retinoid" in four languages, in every script the tables know).
 //   others:  their structured INCI synonyms (salts, esters, derivatives), now read in titles too.
 // The tables have no AHA (glycolic / lactic / mandelic) or other acid family: none is a table ingredient.
-const RETINOID_FAMILY_LATIN = Object.freeze([
-  'retinal', 'retinaldehyde', 'retinyl palmitate', 'retinyl acetate', 'retinyl propionate', 'retinyl linoleate',
-  'retinyl retinoate', 'retinyl ester', 'retinyl esters', 'retinol palmitate', 'retinol acetate',
-  'hydroxypinacolone retinoate', 'hpr', 'granactive retinoid', 'retinoid', 'retinoids', 'retinoic acid',
-  'tretinoin', 'isotretinoin', 'adapalene', 'tazarotene',
-]);
 const INGREDIENT_FAMILY = Object.freeze({
-  retinol: {
-    latin: RETINOID_FAMILY_LATIN,
-    nonLatin: ['视黄醛', '視黃醛', '视黄醇棕榈酸酯', '視黃醇棕櫚酸酯', '视黄醇醋酸酯', '視黃醇醋酸酯', '视黄醇丙酸酯',
-      '羟基频哪酮视黄酸酯', '羥基頻哪酮視黃酸酯', '视黄酸', '視黃酸', '维a酸', '維a酸', '维甲酸', '維甲酸', '阿达帕林', '阿達帕林',
-      '他扎罗汀', '类视黄醇', '類視黃醇',
-      'レチナール', 'パルミチン酸レチノール', '酢酸レチノール', 'レチノイン酸', 'トレチノイン', 'アダパレン',
-      'ヒドロキシピナコロンレチノアート', 'レチノイド',
-      '레티날', '레티날데하이드', '레티닐팔미테이트', '레티닐 팔미테이트', '레티놀팔미테이트', '레티놀 팔미테이트',
-      '하이드록시피나코론레티노에이트', '아다팔렌', '트레티노인', '레티노이드'],
-    russian: [`ретинал(?:|ь|я|ю|ем|е)`, `ретинальдегид${RU_NOUN}`, `ретинилпальмитат${RU_NOUN}`, `ретинил\\s+пальмитат${RU_NOUN}`,
-      `адапален${RU_NOUN}`, `третиноин${RU_NOUN}`, `ретиноид${RU_NOUN}`],
-  },
+  retinol: { latin: RETINOID_FAMILY_LATIN, nonLatin: RETINOID_FAMILY_SCRIPT, russian: RETINOID_FAMILY_RUSSIAN },
 });
 
 function familyLatinTerms(id) {
@@ -736,9 +754,17 @@ function excludeIngredientsFromPage(body, { ingredientIds = [], requiredIds = []
 // forms only -- a stand-in ("retinol alternative") is not "free of" anything. Strict-table terms only.
 const RAW_TERM = `(${STRICT_TERM_ALTERNATION.replace(/ /g, '[\\s-]+')})`;
 // A list of terms ("retinol and niacinamide", "retinol, niacinamide or vitamin c"), one capture.
-const RAW_TERM_NC = `(?:${STRICT_TERM_ALTERNATION.replace(/ /g, '[\\s-]+')})`;
-const RAW_LIST_JOINER = '(?:\\s*,\\s*(?:(?:and|or)\\s+)?|\\s+(?:and|or)\\s+|\\s*&\\s*)';
-const RAW_TERM_LIST = `(${RAW_TERM_NC}(?:${RAW_LIST_JOINER}${RAW_TERM_NC})*)`;
+// List members are table ingredients only (a stand-in active is never a member, as above); a stand-in
+// active is still negated on its own ("bakuchiol-free").
+const TABLE_TERM_ALTERNATION = Object.keys(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES)
+  .map((term) => normalizeForMatch(term))
+  .sort((a, b) => b.length - a.length)
+  .map(escapeRegExp)
+  .join('|');
+const RAW_TABLE_TERM_NC = `(?:${TABLE_TERM_ALTERNATION.replace(/ /g, '[\\s-]+')})`;
+const RAW_STAND_IN_TERM_NC = `(?:${Object.keys(STAND_IN_ACTIVE_ALIASES).map(escapeRegExp).join('|')})`;
+const RAW_LIST_JOINER = `(?:\\s*[,&]\\s*(?:(?:${LIST_JOIN_WORDS.join('|')})\\s+)?|\\s+(?:${LIST_JOIN_WORDS.join('|')})\\s+)`;
+const RAW_TERM_LIST = `((?:${RAW_TABLE_TERM_NC}(?:${RAW_LIST_JOINER}${RAW_TABLE_TERM_NC})*)|${RAW_STAND_IN_TERM_NC})`;
 const RAW_LIST_SPLIT_RE = new RegExp(RAW_LIST_JOINER, 'i');
 // "0%" / "0.0%" only as its own number: never the tail of "1.0%" or "10%".
 const RAW_NEGATED_TERM_RE = new RegExp(
@@ -784,6 +810,7 @@ module.exports = {
   isBareIngredientRoutingEnabled,
   readMode,
   normalizeForMatch,
+  normalizeForRouting,
   stripNegatedStrictIngredientMentions,
   extractPositiveStrictIngredientIds,
   extractExcludedStrictIngredientIds,
