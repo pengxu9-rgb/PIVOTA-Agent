@@ -323,8 +323,9 @@ const {
   CALLER_ECHO_ALLOWLIST,
   isGatewaySearchMetadata,
   withoutCallerSearchRequestContract,
-  withoutCallerSearchQualityContract,
+  withoutCallerSearchGatewayKeys,
   callerChosenSource,
+  callerChosenMarket,
   collectCallerEchoValues,
   withoutHostileCallerEcho,
 } = require('./findProductsMulti/callerEcho');
@@ -13594,11 +13595,12 @@ const CALLER_METADATA_KEY_ALIASES = Object.freeze({
 // creator_id from payload.search: a value found there is the caller's as much as one in the metadata.
 const CALLER_PAYLOAD_ATTRIBUTION_KEYS = Object.freeze(['creator_id', 'creatorId', 'creator_name', 'creatorName', 'trace_id', 'traceId', 'source']);
 const CALLER_PAYLOAD_SEARCH_ATTRIBUTION_KEYS = Object.freeze(['creator_id']);
-// query_understanding records the source and market it read, in this form. When the top-level value it
-// read was the caller's and failed the allowlist, the recorded copy goes too.
+// query_understanding records the source it read, in this form. When the top-level value it read was the
+// caller's and failed the allowlist, the recorded copy goes too. (The market it records is not
+// necessarily the metadata's -- the search block's and the payload's come first -- so a recorded market is
+// checked once, against the market the request used, by withoutHostileCallerEcho on the way out.)
 const QUERY_UNDERSTANDING_RECORDED_FORM = Object.freeze({
   source: (value) => String(value).trim(),
-  market: (value) => String(value).trim().toUpperCase(),
 });
 // Every value the caller sent that normalizeMetadata can copy into the handler's metadata, by key, taken
 // before the handler writes anything: what the metadata spread copies (an object's own keys; an array's
@@ -42533,8 +42535,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // answer may carry back only when they pass the echo allowlist (src/findProductsMulti/callerEcho.js).
   let callerEchoValues = null;
   // ...and the source the request ran as, when normalizeMetadata took it from the caller: the one caller
-  // source whose normalised forms the answer can hold.
+  // source whose normalised forms the answer can hold; likewise the market it used.
   let callerEchoChosenSource;
+  let callerEchoChosenMarket;
   // Every return path funnels through here, so this is the one place the FINAL body is known
   // -- capturing earlier would record a page that later filtering still changes. Telemetry must
   // never be able to fail a response, so the capture cannot throw: a failed record is logged as
@@ -42940,7 +42943,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
       // Last, so no step above can put a caller value back. Cannot throw on any body shape.
       if (callerEchoValues) {
-        finalBody = withoutHostileCallerEcho(finalBody, callerEchoValues, { chosenSource: callerEchoChosenSource });
+        finalBody = withoutHostileCallerEcho(finalBody, callerEchoValues, {
+          chosenSource: callerEchoChosenSource,
+          chosenMarket: callerEchoChosenMarket,
+        });
       }
       setInvokePerfHeaders();
       return originalJson(finalBody);
@@ -43140,10 +43146,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // flags public_search_route / invoke_search_rail are the gateway's own, never the caller's. Under
     // those keys the request metadata is dropped here, before anything reads it, unless it is the very
     // metadata (or contract) object an in-process route built and handed over (the public GET search
-    // route; see handleAgentProductsSearchViaInvoke). The search QUALITY contract is the gateway's too: a
-    // `search_quality_contract` in the metadata, the payload or its search block is dropped here, from
-    // both copies of the payload; the gateway builds its own from the query (buildSearchQualityContract,
-    // via buildFindProductsMultiContext and the beauty mainline). And the caller's attribution values are
+    // route; see handleAgentProductsSearchViaInvoke). The search QUALITY contract and the query
+    // understanding are the gateway's too: a `search_quality_contract` or `query_understanding` in the
+    // metadata, the payload or its search block is dropped here, from both copies of the payload; the
+    // gateway builds its own from the query (buildSearchQualityContract / understandShoppingQuery, via
+    // buildFindProductsMultiContext and the beauty mainline). And the caller's attribution values are
     // taken now, before the handler writes anything, so the answer can be checked against them on the
     // way out.
     let gatewayBuiltSearchMetadata = false;
@@ -43161,10 +43168,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gatewayMetadata,
       });
       if (ownMetadata !== req.body.metadata) req.body.metadata = ownMetadata;
-      const [ownPayload, ownRawPayload] = withoutCallerSearchQualityContract(payload, req.body.payload);
+      const [ownPayload, ownRawPayload] = withoutCallerSearchGatewayKeys(payload, req.body.payload);
       payload = ownPayload;
       if (ownRawPayload !== req.body.payload) req.body.payload = ownRawPayload;
       callerEchoChosenSource = callerChosenSource(req.body.metadata, payload);
+      callerEchoChosenMarket = callerChosenMarket(req.body.metadata, payload);
     }
     // Every value the caller sent that the handler's metadata can carry, taken before the handler writes
     // anything (the routing rewrite below, the merged metadata later): what a find_products_multi
