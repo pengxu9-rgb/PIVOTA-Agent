@@ -100,6 +100,35 @@ test('loopback IP literals are allowed (that is how the stub and local-gateway t
   }
 });
 
+test('a server can bind the unspecified addresses; a lookup of an IP literal passes, a dial to one still does not', async () => {
+  // server.listen(port, '::') runs dns.lookup('::') inside node. The guard stays installed for every later
+  // file in the process, so refusing that lookup broke any later test that binds '::' or '0.0.0.0'.
+  for (const host of ['::', '0.0.0.0']) {
+    const server = net.createServer((socket) => socket.destroy());
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, host, resolve);
+    });
+    assert.ok(server.address().port > 0, host);
+    await new Promise((r) => server.close(r));
+  }
+  const blockedBefore = state.blocked.length;
+  for (const literal of ['::', '0.0.0.0', '192.0.2.1', '2001:db8::1']) {
+    const address = await new Promise((resolve, reject) => {
+      dns.lookup(literal, (err, addr) => (err ? reject(err) : resolve(addr)));
+    });
+    assert.equal(address, literal);
+    assert.equal((await dns.promises.lookup(literal)).address, literal);
+  }
+  assert.equal(state.blocked.length, blockedBefore, 'no refusal for a literal lookup');
+  await expectRefused('net.connect to a literal that looked up fine', () => net.connect({ host: '192.0.2.1', port: 9 }));
+  await expectRefused('dns.lookup of a name', () => dns.lookup('guard-check.invalid', () => {}));
+  await expectRefused('dns.promises.lookup of a name', () => dns.promises.lookup('guard-check.invalid'));
+  await expectRefused('dns.reverse of a literal', () => dns.reverse('192.0.2.1', () => {}));
+  await expectRefused('dns.lookupService of a literal', () => dns.lookupService('192.0.2.1', 9, () => {}));
+  await expectRefused('dns.resolve4 of a literal', () => dns.resolve4('192.0.2.1', () => {}));
+});
+
 test('throwingFetch counts and throws on any call', async () => {
   const f = throwingFetch();
   await assert.rejects(() => f('http://127.0.0.1:1/'), /must not be called/);
