@@ -19,8 +19,14 @@
 //           or after the request started.
 //   recent  the merchant answered BEFORE this request, within the surface's window (search and recommend
 //           15 min, get_product and the PDP 10 min, get_offers 0): a per-instance cache, or an MCP read-cache
-//           replay, which still says price_source 'merchant_live'.
+//           replay, which still says price_source 'merchant_live'. A replay is NEVER live, however fresh its
+//           stamp: the merchant answered the request that filled the cache, not this one.
 //   stored  everything else: Pivota's catalog copy, an older answer, or one with no time.
+//   A search card the `.json` overlay answered from its per-instance cache (another request's read) is never
+//   live either, even when that read landed after this request started (a concurrent burst): the overlay notes
+//   each such answer's stamp (noteSearchOverlay) and the line counts a matching fact as a replay.
+//   What dates an answer, and why `live` allows a reader memo's ~30 s: priceVerificationFacts (WHEN THE
+//   MERCHANT ANSWERED). Which prices a door counts at all: priceVerificationFacts (WHAT COUNTS).
 //
 // WHERE EACH LINE IS WRITTEN: at the door that answered the agent, once.
 //   MCP doors (mcp, ucp_mcp, public_mcp): from the facts the MCP surface read off the NATIVE tool value (the
@@ -34,7 +40,14 @@
 // REQUEST CONTEXT. An AsyncLocalStorage store opened at each door carries the door, the request id, the start
 // time and the req (its caller is resolved after the door opens, so tier and agent are read when a line is
 // written). The loopback call carries the context in X-Pivota-Price-Context, honoured only on a loopback
-// self-call (callerLogFields.isLoopbackSelfCall) and only as log labels.
+// self-call (callerLogFields.isLoopbackSelfCall) and only as log labels. The door is found by `door_key`, a
+// random id this process mints when the door opens, never by request_id: request_id is the Cloud Run trace id,
+// which a client can set, so two requests sending one trace id would otherwise share (and overwrite) one entry.
+//
+// FLIPPING THE FLAG ON. The public tier computes its facts with the answer and caches them with it
+// (publicReadToolSurface), so an entry computed while the flag was off carries none: its replays write no line
+// until it is recomputed, at most PUBLIC_READ_CACHE_STALE_MS (default 60 min) after the flip. The commerce
+// surface computes its facts from the value on every call, so its replays are counted at once.
 
 const { AsyncLocalStorage } = require('node:async_hooks');
 const crypto = require('node:crypto');
@@ -57,12 +70,15 @@ const TTL_MS = Object.freeze({
   get_offers: 0,
 });
 const TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
+const HOST = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
+const MAX_THROTTLED_HOSTS = 8;
 const MAX_ITEMS = 500;
 // Door contexts a loopback call may report to, by request id. Same process only; bounded.
 const OPEN_DOORS_MAX = 2000;
 
 const als = new AsyncLocalStorage();
-const openDoors = new Map(); // request_id -> store
+const openDoors = new Map(); // door_key -> store
+const DOOR_KEY = /^[a-f0-9]{24}$/;
 
 function token(v) {
   const s = typeof v === 'string' ? v.trim() : '';
@@ -103,6 +119,7 @@ function inheritedContext(req) {
       else if (k === 'caller_class') out.caller_class = v;
       else if (k === 'agent_id') out.agent_id = v;
       else if (k === 'request_id') out.request_id = v;
+      else if (k === 'door_key' && DOOR_KEY.test(v)) out.door_key = v;
       else if (k === 'started_at_ms' && /^\d{10,16}$/.test(v)) out.started_at_ms = Number(v);
     }
     return out.door ? out : null;
@@ -120,10 +137,10 @@ function storeFor(req, door) {
       via_loopback: true,
       started_at_ms: inherited.started_at_ms || Date.now(),
       // The door's own context, when that door is in this process and still open.
-      parent: (inherited.request_id && openDoors.get(inherited.request_id)) || null,
+      parent: (inherited.door_key && openDoors.get(inherited.door_key)) || null,
     };
   }
-  return { door, req, request_id: requestIdOf(req), started_at_ms: Date.now() };
+  return { door, req, request_id: requestIdOf(req), door_key: crypto.randomBytes(12).toString('hex'), started_at_ms: Date.now() };
 }
 
 /**
@@ -138,11 +155,11 @@ function runWithPriceDoor(req, door, fn) {
   } catch {
     return fn();
   }
-  if (store.via_loopback || !store.request_id) return als.run(store, fn);
-  openDoors.set(store.request_id, store);
+  if (store.via_loopback || !store.door_key) return als.run(store, fn);
+  openDoors.set(store.door_key, store);
   if (openDoors.size > OPEN_DOORS_MAX) openDoors.delete(openDoors.keys().next().value);
   const close = () => {
-    if (openDoors.get(store.request_id) === store) openDoors.delete(store.request_id);
+    if (openDoors.get(store.door_key) === store) openDoors.delete(store.door_key);
   };
   let out;
   try {
@@ -230,6 +247,63 @@ function trackSearchOverlay(result, { skipped = null } = {}) {
   }
 }
 
+/**
+ * What the search `.json` overlay saw that only the line needs (liveMerchantSearchPrice; never in the answer):
+ * per host, the reads refused with a 429 / 5xx or skipped for a host backoff; and the stamp (price_as_of) of
+ * each card it verified from its per-instance cache. Off or outside a context: nothing. Never throws.
+ */
+function noteSearchOverlay({ throttledHosts, cachedAnswerStamps } = {}) {
+  try {
+    if (!priceVerificationLogEnabled()) return;
+    const target = recordTarget();
+    if (!target) return;
+    if (isObj(throttledHosts)) {
+      for (const [host, n] of Object.entries(throttledHosts)) {
+        if (!HOST.test(host) || !(Number.isInteger(n) && n > 0)) continue;
+        if (!target.search_overlay_throttled_hosts) target.search_overlay_throttled_hosts = {};
+        const hosts = target.search_overlay_throttled_hosts;
+        if (!(host in hosts) && Object.keys(hosts).length >= 64) continue;
+        hosts[host] = (hosts[host] || 0) + n;
+      }
+    }
+    if (Array.isArray(cachedAnswerStamps)) {
+      if (!target.search_overlay_cached_at) target.search_overlay_cached_at = [];
+      for (const raw of cachedAnswerStamps) {
+        const at = typeof raw === 'string' ? Date.parse(raw) : NaN;
+        if (Number.isFinite(at) && target.search_overlay_cached_at.length < MAX_ITEMS) target.search_overlay_cached_at.push(at);
+      }
+    }
+  } catch {
+    /* measurement only */
+  }
+}
+
+/**
+ * A tag for this request's search overlay reads, kept on the context its overlay reports to (a loopback call's
+ * is its door's), so a cache entry this same request filled is not counted as another request's read. null when
+ * off or outside a context.
+ */
+function searchOverlayRequestTag() {
+  try {
+    if (!priceVerificationLogEnabled()) return null;
+    const target = recordTarget();
+    if (!target) return null;
+    if (!target.overlay_tag) target.overlay_tag = crypto.randomBytes(12).toString('hex');
+    return target.overlay_tag;
+  } catch {
+    return null;
+  }
+}
+
+/** The noted hosts as a log field: the 8 with the most refusals (ties by name), or null when none. */
+function throttledHostsField(hosts) {
+  if (!isObj(hosts)) return null;
+  const top = Object.entries(hosts)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, MAX_THROTTLED_HOSTS);
+  return top.length ? Object.fromEntries(top) : null;
+}
+
 function callerOf(store) {
   if (!store) return {};
   if (!store.req) {
@@ -275,7 +349,8 @@ function priceContextHeaders(env = process.env) {
     const c = callerOf(store);
     const parts = [
       ['door', store.door], ['tier', c.tier], ['caller_class', c.caller_class], ['agent_id', c.agent_id],
-      ['request_id', store.request_id], ['started_at_ms', String(store.started_at_ms || '')],
+      ['request_id', store.request_id], ['door_key', store.door_key],
+      ['started_at_ms', String(store.started_at_ms || '')],
     ].filter(([, v]) => token(v)).map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
     return { [CONTEXT_HEADER]: parts.join(';') };
   } catch {
@@ -287,11 +362,12 @@ function priceContextHeaders(env = process.env) {
  * 'live' | 'recent' | 'stored' for one fact (priceVerificationFacts.priceFactOf), or null when it carries no
  * price (not counted). Pure.
  */
-function classifyFact(fact, { startedAtMs, nowMs = Date.now(), ttlMs = 0 } = {}) {
+function classifyFact(fact, { startedAtMs, nowMs = Date.now(), ttlMs = 0, replay = false } = {}) {
   if (!isObj(fact) || fact.priced !== true) return null;
   if (fact.merchant !== true || !Number.isFinite(fact.at)) return 'stored';
-  // One second of slack: an answer stamped while the request was being admitted is still this request's.
-  if (Number.isFinite(startedAtMs) && fact.at >= startedAtMs - 1000) return 'live';
+  // One second of slack: an answer stamped while the request was being admitted is still this request's. A
+  // replay is never live: a cache entry filled half a second ago still answered another request.
+  if (!replay && Number.isFinite(startedAtMs) && fact.at >= startedAtMs - 1000) return 'live';
   return ttlMs > 0 && nowMs - fact.at <= ttlMs ? 'recent' : 'stored';
 }
 
@@ -300,13 +376,28 @@ function classifyPrice(item, o) {
   return classifyFact(priceFactOf(item), o);
 }
 
-/** { live, recent, stored, total } over facts. Pure. */
-function countFacts(facts, o) {
+/**
+ * { live, recent, stored, total } over facts. Pure. `o.cachedAt` (epoch ms, one per answer the search overlay
+ * served from its cache): a fact that would be live and carries one of those stamps is counted as a replay,
+ * each stamp once; `cache_not_live` says how many were.
+ */
+function countFacts(facts, o = {}) {
   const counts = { live: 0, recent: 0, stored: 0, total: 0 };
   if (!Array.isArray(facts)) return counts;
+  let cached = null;
+  if (Array.isArray(o.cachedAt) && o.cachedAt.length) {
+    cached = new Map();
+    for (const at of o.cachedAt) if (Number.isFinite(at)) cached.set(at, (cached.get(at) || 0) + 1);
+    counts.cache_not_live = 0;
+  }
   for (const fact of facts.slice(0, MAX_ITEMS)) {
-    const status = classifyFact(fact, o);
+    let status = classifyFact(fact, o);
     if (!status) continue;
+    if (status === 'live' && cached && cached.get(fact.at) > 0) {
+      cached.set(fact.at, cached.get(fact.at) - 1);
+      status = classifyFact(fact, { ...o, replay: true });
+      counts.cache_not_live += 1;
+    }
     counts[status] += 1;
     counts.total += 1;
   }
@@ -315,6 +406,21 @@ function countFacts(facts, o) {
 
 function nonNegInt(v) {
   return Number.isInteger(v) && v >= 0 ? v : undefined;
+}
+
+/**
+ * Why a search answer's prices were not overlaid in this request, or null when the overlay ran here and did not
+ * skip. `lane_not_overlaid` only when the answer carries no overlay outcome at all (the lane never calls the
+ * overlay). An answer that carries one although this request recorded no overlay call was overlaid by another
+ * request's compute (a cache revalidation, or a door context the loopback could not find): its own skip reason,
+ * else `overlay_not_observed`.
+ */
+function searchSkipReason(work, overlayOutcome) {
+  if (!work.overlay_calls) {
+    if (!isObj(overlayOutcome)) return 'lane_not_overlaid';
+    return token(overlayOutcome.skipped_reason) || 'overlay_not_observed';
+  }
+  return work.overlay_skipped || (isObj(overlayOutcome) ? token(overlayOutcome.skipped_reason) : null) || null;
 }
 
 /**
@@ -370,7 +476,8 @@ function recordedLiveWork(store) {
  *
  * @param {{ info: Function }} logger
  * @param {{ surface: string, items?: object[], facts?: object[], market?: string, added_ms?: number,
- *   skipped_reason?: string, extra?: object, door?: string, env?: object, nowMs?: number }} f
+ *   skipped_reason?: string, extra?: object, door?: string, env?: object, nowMs?: number, replay?: boolean }} f
+ *   replay: the facts are a read-cache replay's (never live).
  */
 function logPriceVerificationServed(logger, f = {}) {
   try {
@@ -383,7 +490,14 @@ function logPriceVerificationServed(logger, f = {}) {
     const facts = Array.isArray(f.facts)
       ? f.facts
       : (Array.isArray(f.items) ? f.items.slice(0, MAX_ITEMS).map(priceFactOf) : []);
-    const counts = countFacts(facts, { startedAtMs, nowMs, ttlMs: TTL_MS[f.surface] });
+    const replay = f.replay === true;
+    // What this request's search overlay noted (noteSearchOverlay). A replay ran no overlay of its own.
+    const overlay = f.surface === 'search' && !replay && store ? store : null;
+    const counts = countFacts(facts, {
+      startedAtMs, nowMs, ttlMs: TTL_MS[f.surface], replay,
+      cachedAt: overlay ? overlay.search_overlay_cached_at : null,
+    });
+    const throttled = overlay ? throttledHostsField(overlay.search_overlay_throttled_hosts) : null;
     const ctx = priceContextLogFields(env);
     const door = DOORS.has(f.door) ? f.door : (ctx.door || 'unknown');
     const market = token(f.market);
@@ -406,6 +520,10 @@ function logPriceVerificationServed(logger, f = {}) {
         added_ms: Number.isFinite(added) && added >= 0 ? Math.round(added) : 0,
         skipped_reason: token(f.skipped_reason),
         ...(isObj(f.extra) ? f.extra : {}),
+        // Search only, and only when non-zero: overlay answers from the per-instance cache counted as recent or
+        // stored instead of live; the hosts that refused (429 / 5xx) or were skipped for a backoff, by count.
+        ...(counts.cache_not_live ? { overlay_cache_not_live: counts.cache_not_live } : {}),
+        ...(throttled ? { overlay_throttled_hosts: throttled } : {}),
       },
       EVENT,
     );
@@ -447,9 +565,7 @@ function createMcpPriceCapture() {
         const replay = cacheHit === true || cacheHit === 'stale';
         let skipped = null;
         if (facts.surface === 'search') {
-          if (replay) skipped = 'mcp_read_cache_replay';
-          else if (!work.overlay_calls) skipped = 'lane_not_overlaid';
-          else skipped = work.overlay_skipped || (facts.overlay && facts.overlay.skipped_reason) || null;
+          skipped = replay ? 'mcp_read_cache_replay' : searchSkipReason(work, facts.overlay);
         } else if (replay) {
           skipped = 'mcp_read_cache_replay';
         }
@@ -458,8 +574,9 @@ function createMcpPriceCapture() {
           door,
           facts: facts.items,
           market: (!replay && store && store.search_market) || facts.market || market,
-          // A replay waited for nothing live.
+          // A replay waited for nothing live, and none of its prices is live.
           added_ms: replay ? 0 : work.added_ms,
+          replay,
           skipped_reason: skipped,
           extra: {
             ...(cacheHit !== undefined ? { cache_hit: cacheHit } : {}),
@@ -511,6 +628,8 @@ module.exports = {
   recordedLiveWork,
   trackLiveWork,
   trackSearchOverlay,
+  noteSearchOverlay,
+  searchOverlayRequestTag,
   priceContextLogFields,
   priceContextHeaders,
   inheritedContext,
@@ -518,6 +637,7 @@ module.exports = {
   classifyPrice,
   countFacts,
   searchOverlayLogFields,
+  searchSkipReason,
   logPriceVerificationServed,
   createMcpPriceCapture,
   mcpPriceCapture,

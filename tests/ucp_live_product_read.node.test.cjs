@@ -588,7 +588,7 @@ test('STRUCTURAL: only the frontend PDP reader is capped per store (3)', () => {
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
   const g = src.indexOf('function getUcpLivePdpReader()');
-  assert.match(src.slice(g, g + 900), /\.\.\.ucpLiveReaderDeps\(8, \{ maxPerHost: 3 \}\),/);
+  assert.match(src.slice(g, g + 900), /\.\.\.ucpLiveReaderDeps\(8, \{ maxPerHost: 3, readClass: 'pdp' \}\),/);
   for (const getter of ['getUcpLiveProductReader', 'getUcpLiveOfferReader', 'getUcpLiveSearchReader']) {
     const i = src.indexOf(`function ${getter}()`);
     assert.doesNotMatch(src.slice(i, i + 900), /maxPerHost/, getter);

@@ -1,0 +1,1940 @@
+{
+ "generated_from": "origin/main 3dc23ea64 over tests/fixtures/retinoid_explicit_query_catalog.cjs, upstream empty",
+ "product_ids": {
+  "batch|retinol serum teen": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum teen": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream teen": [],
+  "none|retinol cream teen": [],
+  "batch|acne treatment teen": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment teen": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum teens": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum teens": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream teens": [],
+  "none|retinol cream teens": [],
+  "batch|acne treatment teens": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment teens": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum middle school": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum middle school": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream middle school": [],
+  "none|retinol cream middle school": [],
+  "batch|acne treatment middle school": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment middle school": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum teenager": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum teenager": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream teenager": [],
+  "none|retinol cream teenager": [],
+  "batch|acne treatment teenager": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment teenager": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum teenage acne": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum teenage acne": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream teenage acne": [],
+  "none|retinol cream teenage acne": [],
+  "batch|acne treatment teenage acne": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment teenage acne": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum tween": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum tween": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream tween": [],
+  "none|retinol cream tween": [],
+  "batch|acne treatment tween": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment tween": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum minors": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum minors": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream minors": [],
+  "none|retinol cream minors": [],
+  "batch|acne treatment minors": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment minors": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum junior": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum junior": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream junior": [],
+  "none|retinol cream junior": [],
+  "batch|acne treatment junior": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment junior": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum student": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum student": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream student": [],
+  "none|retinol cream student": [],
+  "batch|acne treatment student": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment student": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum high school": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum high school": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream high school": [],
+  "none|retinol cream high school": [],
+  "batch|acne treatment high school": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment high school": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 13yo": [],
+  "none|retinol serum 13yo": [],
+  "batch|retinol cream 13yo": [],
+  "none|retinol cream 13yo": [],
+  "batch|acne treatment 13yo": [],
+  "none|acne treatment 13yo": [],
+  "batch|retinol serum 15 year old": [],
+  "none|retinol serum 15 year old": [],
+  "batch|retinol cream 15 year old": [],
+  "none|retinol cream 15 year old": [],
+  "batch|acne treatment 15 year old": [],
+  "none|acne treatment 15 year old": [],
+  "batch|retinol serum age 16": [],
+  "none|retinol serum age 16": [],
+  "batch|retinol cream age 16": [],
+  "none|retinol cream age 16": [],
+  "batch|acne treatment age 16": [],
+  "none|acne treatment age 16": [],
+  "batch|retinol serum aged 12": [],
+  "none|retinol serum aged 12": [],
+  "batch|retinol cream aged 12": [],
+  "none|retinol cream aged 12": [],
+  "batch|acne treatment aged 12": [],
+  "none|acne treatment aged 12": [],
+  "batch|retinol serum seventeen year old": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum seventeen year old": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream seventeen year old": [],
+  "none|retinol cream seventeen year old": [],
+  "batch|acne treatment seventeen year old": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment seventeen year old": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 青少年": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum 青少年": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream 青少年": [],
+  "none|retinol cream 青少年": [],
+  "batch|acne treatment 青少年": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment 青少年": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 学生": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum 学生": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream 学生": [],
+  "none|retinol cream 学生": [],
+  "batch|acne treatment 学生": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment 学生": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 16岁": [],
+  "none|retinol serum 16岁": [],
+  "batch|retinol cream 16岁": [],
+  "none|retinol cream 16岁": [],
+  "batch|acne treatment 16岁": [],
+  "none|acne treatment 16岁": [],
+  "batch|retinol serum redness": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum redness": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream redness": [],
+  "none|retinol cream redness": [],
+  "batch|acne treatment redness": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment redness": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum very dry": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum very dry": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream very dry": [],
+  "none|retinol cream very dry": [],
+  "batch|acne treatment very dry": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment very dry": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum thin skin": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum thin skin": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream thin skin": [],
+  "none|retinol cream thin skin": [],
+  "batch|acne treatment thin skin": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_ret_pro_cream",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment thin skin": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_ret_pro_cream",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum psoriasis": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum psoriasis": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream psoriasis": [],
+  "none|retinol cream psoriasis": [],
+  "batch|acne treatment psoriasis": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment psoriasis": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum sunburn": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum sunburn": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream sunburn": [],
+  "none|retinol cream sunburn": [],
+  "batch|acne treatment sunburn": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment sunburn": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum sunburned": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum sunburned": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream sunburned": [],
+  "none|retinol cream sunburned": [],
+  "batch|acne treatment sunburned": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment sunburned": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum post procedure": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum post procedure": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream post procedure": [],
+  "none|retinol cream post procedure": [],
+  "batch|acne treatment post procedure": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment post procedure": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum post-procedure": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum post-procedure": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream post-procedure": [],
+  "none|retinol cream post-procedure": [],
+  "batch|acne treatment post-procedure": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment post-procedure": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum broken skin": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum broken skin": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream broken skin": [],
+  "none|retinol cream broken skin": [],
+  "batch|acne treatment broken skin": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment broken skin": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum inflamed": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum inflamed": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream inflamed": [],
+  "none|retinol cream inflamed": [],
+  "batch|acne treatment inflamed": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment inflamed": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum itchy": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum itchy": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream itchy": [],
+  "none|retinol cream itchy": [],
+  "batch|acne treatment itchy": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment itchy": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum flaky": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum flaky": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream flaky": [],
+  "none|retinol cream flaky": [],
+  "batch|acne treatment flaky": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment flaky": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum atopic": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum atopic": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream atopic": [],
+  "none|retinol cream atopic": [],
+  "batch|acne treatment atopic": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment atopic": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum stinging": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum stinging": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream stinging": [],
+  "none|retinol cream stinging": [],
+  "batch|acne treatment stinging": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_hyaluronic_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment stinging": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_hyaluronic_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum peeling": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum peeling": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream peeling": [],
+  "none|retinol cream peeling": [],
+  "batch|acne treatment peeling": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_hyaluronic_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment peeling": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_hyaluronic_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum dermatitis": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum dermatitis": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream dermatitis": [],
+  "none|retinol cream dermatitis": [],
+  "batch|acne treatment dermatitis": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment dermatitis": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum eczema": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum eczema": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream eczema": [],
+  "none|retinol cream eczema": [],
+  "batch|acne treatment eczema": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment eczema": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum rosacea": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum rosacea": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream rosacea": [],
+  "none|retinol cream rosacea": [],
+  "batch|acne treatment rosacea": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment rosacea": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum reactive": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum reactive": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream reactive": [],
+  "none|retinol cream reactive": [],
+  "batch|acne treatment reactive": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment reactive": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum allergic": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum allergic": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream allergic": [],
+  "none|retinol cream allergic": [],
+  "batch|acne treatment allergic": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment allergic": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum intolerance": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum intolerance": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream intolerance": [],
+  "none|retinol cream intolerance": [],
+  "batch|acne treatment intolerance": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment intolerance": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 过敏": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum 过敏": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream 过敏": [],
+  "none|retinol cream 过敏": [],
+  "batch|acne treatment 过敏": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment 过敏": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 泛红": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum 泛红": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream 泛红": [],
+  "none|retinol cream 泛红": [],
+  "batch|acne treatment 泛红": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment 泛红": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 皮炎": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum 皮炎": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream 皮炎": [],
+  "none|retinol cream 皮炎": [],
+  "batch|acne treatment 皮炎": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment 皮炎": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 湿疹": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum 湿疹": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream 湿疹": [],
+  "none|retinol cream 湿疹": [],
+  "batch|acne treatment 湿疹": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment 湿疹": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum 玫瑰痤疮": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum 玫瑰痤疮": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream 玫瑰痤疮": [],
+  "none|retinol cream 玫瑰痤疮": [],
+  "batch|acne treatment 玫瑰痤疮": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment 玫瑰痤疮": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|retinol serum sensitive": [],
+  "none|retinol serum sensitive": [],
+  "batch|retinol cream sensitive": [],
+  "none|retinol cream sensitive": [],
+  "batch|acne treatment sensitive": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "none|acne treatment sensitive": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "batch|retinol serum sensitive skin": [],
+  "none|retinol serum sensitive skin": [],
+  "batch|retinol cream sensitive skin": [],
+  "none|retinol cream sensitive skin": [],
+  "batch|acne treatment sensitive skin": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "none|acne treatment sensitive skin": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "batch|retinol serum sensitized": [],
+  "none|retinol serum sensitized": [],
+  "batch|retinol cream sensitized": [],
+  "none|retinol cream sensitized": [],
+  "batch|acne treatment sensitized": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "none|acne treatment sensitized": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "batch|retinol serum sensitised": [],
+  "none|retinol serum sensitised": [],
+  "batch|retinol cream sensitised": [],
+  "none|retinol cream sensitised": [],
+  "batch|acne treatment sensitised": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "none|acne treatment sensitised": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "batch|retinol serum 敏感肌": [],
+  "none|retinol serum 敏感肌": [],
+  "batch|retinol cream 敏感肌": [],
+  "none|retinol cream 敏感肌": [],
+  "batch|acne treatment 敏感肌": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "none|acne treatment 敏感肌": [
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_vitc_serum"
+  ],
+  "batch|moisturizer": [
+   "ext_bakuchiol_cream",
+   "ext_barrier_moisturizer",
+   "ext_gel_cream",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_tinted_spf",
+   "ext_cream_cleanser"
+  ],
+  "none|moisturizer": [
+   "ext_bakuchiol_cream",
+   "ext_barrier_moisturizer",
+   "ext_gel_cream",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_tinted_spf",
+   "ext_cream_cleanser"
+  ],
+  "batch|retinol serum": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "none|retinol serum": [
+   "ext_ret_serum",
+   "ext_retinal_serum"
+  ],
+  "batch|retinol cream": [],
+  "none|retinol cream": [],
+  "batch|retinol": [],
+  "none|retinol": [],
+  "batch|night cream": [
+   "ext_peptide_night_cream",
+   "ext_bakuchiol_cream",
+   "ext_cream_cleanser",
+   "ext_gel_cream",
+   "ext_barrier_moisturizer",
+   "ext_lip_balm_spf",
+   "ext_preg_moisturizer",
+   "ext_tinted_spf"
+  ],
+  "none|night cream": [
+   "ext_peptide_night_cream",
+   "ext_bakuchiol_cream",
+   "ext_cream_cleanser",
+   "ext_gel_cream",
+   "ext_barrier_moisturizer",
+   "ext_lip_balm_spf",
+   "ext_preg_moisturizer",
+   "ext_tinted_spf"
+  ],
+  "batch|serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream"
+  ],
+  "none|serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream"
+  ],
+  "batch|acne treatment": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "none|acne treatment": [
+   "ext_adapalene_gel",
+   "ext_niacinamide_serum",
+   "ext_bakuchiol_cream",
+   "ext_granactive_emulsion",
+   "ext_hyaluronic_serum",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_ret_pro_cream",
+   "ext_retinal_serum",
+   "ext_retinal_cream",
+   "ext_ret_serum",
+   "ext_ret_creme_riche"
+  ],
+  "batch|acne cleanser": [
+   "ext_foam_cleanser",
+   "ext_cream_cleanser"
+  ],
+  "none|acne cleanser": [
+   "ext_foam_cleanser",
+   "ext_cream_cleanser"
+  ],
+  "batch|sunscreen spf 50": [
+   "ext_mineral_spf",
+   "ext_tinted_spf",
+   "ext_lip_balm_spf"
+  ],
+  "none|sunscreen spf 50": [
+   "ext_mineral_spf",
+   "ext_tinted_spf",
+   "ext_lip_balm_spf"
+  ],
+  "batch|for 18 year old": [],
+  "none|for 18 year old": [],
+  "batch|for my 18 year old": [],
+  "none|for my 18 year old": [],
+  "batch|25 year old skin": [],
+  "none|25 year old skin": [],
+  "batch|age 30": [],
+  "none|age 30": [],
+  "batch|gift for mom": [],
+  "none|gift for mom": [],
+  "batch|mother of pearl highlighter": [
+   "ext_skin_tint"
+  ],
+  "none|mother of pearl highlighter": [
+   "ext_skin_tint"
+  ],
+  "batch|10% niacinamide + retinol": [],
+  "none|10% niacinamide + retinol": [],
+  "batch|0.3% retinol serum": [],
+  "none|0.3% retinol serum": [],
+  "batch|retinol 1%": [],
+  "none|retinol 1%": [],
+  "batch|used retinol for 2 years": [],
+  "none|used retinol for 2 years": [],
+  "batch|anti aging serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream"
+  ],
+  "none|anti aging serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream"
+  ],
+  "batch|lip balm": [
+   "ext_lip_balm_spf",
+   "ext_red_lipstick"
+  ],
+  "none|lip balm": [
+   "ext_lip_balm_spf",
+   "ext_red_lipstick"
+  ],
+  "batch|red lipstick": [
+   "ext_red_lipstick"
+  ],
+  "none|red lipstick": [
+   "ext_red_lipstick"
+  ],
+  "batch|kidney bean mask": [],
+  "none|kidney bean mask": [],
+  "batch|skincare": [],
+  "none|skincare": [],
+  "batch|expectation": [],
+  "none|expectation": [],
+  "batch|nurse shark": [],
+  "none|nurse shark": [],
+  "batch|ammonium lactate lotion": [
+   "ext_bakuchiol_cream",
+   "ext_barrier_moisturizer",
+   "ext_caffeine_eye_cream",
+   "ext_cream_cleanser",
+   "ext_gel_cream",
+   "ext_lip_balm_spf",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_hand_cream",
+   "ext_tinted_spf"
+  ],
+  "none|ammonium lactate lotion": [
+   "ext_bakuchiol_cream",
+   "ext_barrier_moisturizer",
+   "ext_caffeine_eye_cream",
+   "ext_cream_cleanser",
+   "ext_gel_cream",
+   "ext_lip_balm_spf",
+   "ext_peptide_night_cream",
+   "ext_preg_moisturizer",
+   "ext_hand_cream",
+   "ext_tinted_spf"
+  ],
+  "batch|lactic acid serum": [
+   "ext_hyaluronic_serum",
+   "ext_vitc_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_peptide_night_cream"
+  ],
+  "none|lactic acid serum": [
+   "ext_hyaluronic_serum",
+   "ext_vitc_serum",
+   "ext_niacinamide_serum",
+   "ext_retinal_serum",
+   "ext_ret_serum",
+   "ext_peptide_night_cream"
+  ],
+  "batch|hydrating toner": [
+   "ext_glycolic_toner",
+   "ext_hyaluronic_serum",
+   "ext_cream_cleanser",
+   "ext_gel_cream",
+   "ext_adapalene_gel",
+   "ext_bakuchiol_cream",
+   "ext_barrier_moisturizer",
+   "ext_caffeine_eye_cream",
+   "ext_red_lipstick",
+   "ext_foam_cleanser",
+   "ext_mineral_spf",
+   "ext_granactive_emulsion"
+  ],
+  "none|hydrating toner": [
+   "ext_glycolic_toner",
+   "ext_hyaluronic_serum",
+   "ext_cream_cleanser",
+   "ext_gel_cream",
+   "ext_adapalene_gel",
+   "ext_bakuchiol_cream",
+   "ext_barrier_moisturizer",
+   "ext_caffeine_eye_cream",
+   "ext_red_lipstick",
+   "ext_foam_cleanser",
+   "ext_mineral_spf",
+   "ext_granactive_emulsion"
+  ],
+  "batch|spf 30": [
+   "ext_tinted_spf",
+   "ext_mineral_spf",
+   "ext_lip_balm_spf"
+  ],
+  "none|spf 30": [
+   "ext_tinted_spf",
+   "ext_mineral_spf",
+   "ext_lip_balm_spf"
+  ],
+  "batch|pregnancy safe retinol cream": [
+   "ext_preg_moisturizer",
+   "ext_bakuchiol_cream",
+   "ext_gel_cream",
+   "ext_peptide_night_cream",
+   "ext_barrier_moisturizer",
+   "ext_tinted_spf",
+   "ext_cream_cleanser"
+  ],
+  "none|pregnancy safe retinol cream": [],
+  "batch|pregnancy safe brightening serum sunscreen peptide moisturizer": [
+   "ext_peptide_night_cream",
+   "ext_tinted_spf",
+   "ext_preg_moisturizer",
+   "ext_bakuchiol_cream",
+   "ext_vitc_serum",
+   "ext_barrier_moisturizer",
+   "ext_mineral_spf",
+   "ext_gel_cream",
+   "ext_hyaluronic_serum",
+   "ext_cream_cleanser"
+  ],
+  "none|pregnancy safe brightening serum sunscreen peptide moisturizer": [
+   "ext_peptide_night_cream",
+   "ext_tinted_spf",
+   "ext_preg_moisturizer",
+   "ext_bakuchiol_cream",
+   "ext_vitc_serum",
+   "ext_barrier_moisturizer",
+   "ext_mineral_spf",
+   "ext_gel_cream",
+   "ext_hyaluronic_serum",
+   "ext_cream_cleanser"
+  ],
+  "batch|retinol-free cream": [
+   "ext_bakuchiol_cream",
+   "ext_preg_moisturizer",
+   "ext_gel_cream",
+   "ext_peptide_night_cream",
+   "ext_barrier_moisturizer",
+   "ext_lip_balm_spf",
+   "ext_tinted_spf",
+   "ext_cream_cleanser"
+  ],
+  "none|retinol-free cream": [],
+  "batch|retinol free moisturizer": [
+   "ext_bakuchiol_cream",
+   "ext_preg_moisturizer",
+   "ext_barrier_moisturizer",
+   "ext_gel_cream",
+   "ext_peptide_night_cream",
+   "ext_tinted_spf",
+   "ext_cream_cleanser"
+  ],
+  "none|retinol free moisturizer": [],
+  "batch|face serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream",
+   "ext_retinal_serum"
+  ],
+  "none|face serum": [
+   "ext_hyaluronic_serum",
+   "ext_niacinamide_serum",
+   "ext_ret_serum",
+   "ext_vitc_serum",
+   "ext_peptide_night_cream",
+   "ext_retinal_serum"
+  ]
+ }
+}

@@ -84,6 +84,7 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { isRestatedProductId, variantIdsFromProductRead } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { encodeUcpVariantItemId, isPublishableVariantId, realVariantsOf, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
+import { productPriceCheck } from "./productPriceCheck.js";
 
 export const UCP_RESPONSE_VERSION = "2026-04-08";
 
@@ -455,11 +456,49 @@ export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = 
       content_type: "plain",
     });
   }
+  // The live read's verdict on the price (UCP_LIVE_PRODUCT_READ=enforce only: off or shadow, no message). The
+  // shape above carries no live_read or price date, so a stored fallback must SAY it is one.
+  const check = productPriceCheck(row);
+  if (check) messages.push(priceCheckMessage(check));
   return compact({
     ucp: { version: UCP_RESPONSE_VERSION, status: "success" },
     product,
     messages: messages.length ? messages : undefined,
   });
+}
+
+function priceCheckMessage(check) {
+  const forMarket = check.market ? ` for ${check.market}` : "";
+  if (check.live && check.stored_variants > 0) {
+    // The range spans read and stored prices: only the default variant's is the merchant's.
+    return {
+      type: "warning",
+      code: "price.partially_verified",
+      path: "$.product.price_range",
+      content: `The merchant's own catalog${forMarket} (at ${check.as_of}) confirmed ${check.read_variants} of `
+        + `${check.read_variants + check.stored_variants} variants, the default among them; ${check.stored_variants === 1 ? "1 variant shows" : `${check.stored_variants} variants show`} `
+        + "Pivota's stored price, or the product price where it has none of its own. "
+        + "Before quoting a final price for any variant but the default, call get_offers and quote only an offer whose merchant_price_verified is true.",
+      content_type: "plain",
+    };
+  }
+  if (check.live) {
+    return {
+      type: "info",
+      code: "price.merchant_verified",
+      path: "$.product.price_range",
+      content: `The price was read from the merchant's own catalog${forMarket} at ${check.as_of}.`,
+      content_type: "plain",
+    };
+  }
+  return {
+    type: "warning",
+    code: "price.stored",
+    path: "$.product.price_range",
+    content: `This is Pivota's stored price; it was not confirmed with the merchant${forMarket}${check.reason ? ` (${check.reason})` : ""}. `
+      + "Treat it as discovery only: before quoting a final price, call get_offers and quote only an offer whose merchant_price_verified is true.",
+    content_type: "plain",
+  };
 }
 
 /**

@@ -10,6 +10,26 @@
 // price_as_of or live_read.checked_at; null when unknown). Classifying a fact as live / recent / stored needs
 // the request's start time and the surface's window, so it is done by the gateway when the line is written.
 // A fact is a few scalars, so a cached answer can carry its facts and a replay is classified honestly.
+//
+// WHAT COUNTS IS WHAT THE DOOR SERVES. A fact describes the NATIVE item; whether that item's price reaches the
+// agent depends on the door:
+//   /mcp, invoke, REST  the native value IS the answer, so a price the answer flags for verification
+//                       (commerce_verification.required, price_trusted: false) is still a price the agent was
+//                       quoted: it counts (as stored, unless the merchant answered it).
+//   /ucp/mcp            only the rows the UCP shaper publishes (commerceToolSurface): it drops a row that
+//                       needs a live quote, has no id, or has no ISO-currency price.
+//   /public/mcp         only the rows the public projection serves with a price (publicReadToolSurface).
+//
+// WHEN THE MERCHANT ANSWERED. `at` is read from price_as_of, then live_read.checked_at when that read is
+// `verified` (a failed or skipped read is stamped too, and dates nothing). On a get_offers signal,
+// price_as_of is the gateway's own live read on a verified offer, else the backend's price_checked_at (relayed
+// under the fresh-price contract, agentSignals/offerToSignal). So a backend-verified offer
+// (merchant_price_verified: true, no live read this request) is dated by the backend's last read when the
+// contract carries one, and is `stored` when nothing dates it. freshness.observed_at is deliberately NOT read:
+// without the contract it is the row's updated_at, a write, not a price read.
+// A live_read.checked_at is stamped when the reader settles, and a reader's lookup memo (request coalescing,
+// 30 s: services/ucpLiveOfferRead memoTtlMs) hands a second request the first one's answer with its own stamp.
+// So `live` means "the merchant answered during this request, or at most ~30 s before it".
 
 // PRICE_VERIFICATION_LOG (default off, read per call) gates every price line; off, no fact is computed.
 const FLAG = 'PRICE_VERIFICATION_LOG';
@@ -43,8 +63,11 @@ function amountOf(item) {
   return null;
 }
 
-function answeredAtMs(item) {
-  const lr = isObj(item.live_read) ? item.live_read : null;
+function answeredAtMs(item, { liveReadDates = true } = {}) {
+  // live_read.checked_at says when the reader SETTLED, whatever it found: the readers stamp it on a skipped,
+  // timed-out, failed, not-UCP, host-busy or variant-gone read too (ucpLiveOfferRead.applyRead). Only a
+  // `verified` read is a merchant answer of that time (as offerToSignal.priceFreshnessFields reads it).
+  const lr = liveReadDates && isObj(item.live_read) && item.live_read.status === 'verified' ? item.live_read : null;
   for (const raw of [item.price_as_of, lr && lr.checked_at]) {
     const t = typeof raw === 'string' ? Date.parse(raw) : NaN;
     if (Number.isFinite(t)) return t;
@@ -52,18 +75,20 @@ function answeredAtMs(item) {
   return null;
 }
 
-/** The fact of one priced object (search card, product, offer, recommendation product, PDP card). Pure. */
-function priceFactOf(item) {
+/**
+ * The fact of one priced object (search card, product, offer, recommendation product, PDP card). Pure.
+ * `o.liveReadDates: false` (get_product): a product's `live_read` sums up its VARIANTS' read, so a `verified`
+ * one does not date the headline price; the product reader stamps `price_as_of` when it read that price.
+ */
+function priceFactOf(item, o) {
   if (!isObj(item)) return null;
   const amount = amountOf(item);
-  // A price the answer itself tells the agent not to rely on (commerce verification required, price not
-  // trusted) is withheld by the UCP shaper and the public projection: on no door is it a served price.
-  const cv = isObj(item.commerce_verification) ? item.commerce_verification : null;
-  const withheld = Boolean(cv && (cv.required === true || cv.price_trusted === false));
+  // A price flagged for verification is still on the item: whether it is served is the door's call (see WHAT
+  // COUNTS above), so the fact does not withhold it.
   return {
-    priced: !withheld && amount !== null && amount > 0,
+    priced: amount !== null && amount > 0,
     merchant: item.price_source === 'merchant_live' || item.merchant_price_verified === true,
-    at: answeredAtMs(item),
+    at: answeredAtMs(item, o),
   };
 }
 
@@ -124,14 +149,18 @@ function priceFactsOf(tool, value, { limit } = {}) {
     if (!surface) return null;
     let items = pricedItemsOf(tool, value);
     if (Number.isInteger(limit) && limit >= 0) items = items.slice(0, limit);
-    const facts = items.slice(0, MAX_ITEMS).map(priceFactOf).filter(Boolean);
+    const factOptions = tool === 'get_product' ? { liveReadDates: false } : undefined;
+    const facts = items.slice(0, MAX_ITEMS).map((item) => priceFactOf(item, factOptions)).filter(Boolean);
+    // A product names the market its live read ran for (`live_read.market`, declared, never inferred).
+    const declared = isObj(value) && isObj(value.metadata) ? value.metadata.market : null;
+    const market = typeof declared === 'string' ? declared
+      : tool === 'get_product' && isObj(items[0]) && isObj(items[0].live_read) ? items[0].live_read.market : null;
     return {
       price_facts: {
         tool,
         surface,
         items: facts,
-        market: isObj(value) && isObj(value.metadata) && typeof value.metadata.market === 'string'
-          && /^[A-Za-z]{2}$/.test(value.metadata.market.trim()) ? value.metadata.market.trim().toUpperCase() : null,
+        market: typeof market === 'string' && /^[A-Za-z]{2}$/.test(market.trim()) ? market.trim().toUpperCase() : null,
         ...(tool === 'search_catalog' ? { overlay: overlayOutcomeOf(value) } : {}),
       },
     };

@@ -508,11 +508,35 @@ test('page exclusion with a category scope drops off-scope rows and keeps the to
     page_size: 6,
     total: 9,
   };
+  // A row with no category path is kept when it passes the exclusion (fail safe) ...
   const out = strict.excludeIngredientsFromPage(body, { ingredientIds: ['retinol'], scopePrefix: 'beauty/skincare/' });
-  assert.deepEqual(out.body.products.map((row) => row.title), ['Retinol-Free Barrier Moisturizer', 'Skincare Root Row']);
-  assert.equal(out.dropped_count, 4);
-  assert.equal(out.body.total, 5);
-  assert.equal(out.body.page_size, 2);
+  assert.deepEqual(out.body.products.map((row) => row.title), ['Retinol-Free Barrier Moisturizer', 'No Path Serum', 'Skincare Root Row']);
+  assert.equal(out.dropped_count, 3);
+  assert.equal(out.body.total, 6);
+  assert.equal(out.body.page_size, 3);
+  // ... and, with the door's inference, judged by what its own title / product type names.
+  const unfiled = {
+    products: [
+      { title: 'No Path Serum' },
+      { title: 'Strengthening Shampoo' },
+      { title: 'Mystery Item' },
+      { title: 'Daily Thing', product_type: 'Lipstick' },
+      { title: 'Retinol Night Serum' },
+      { title: 'Retinal 0.1% Night Serum' },
+    ],
+  };
+  const inferred = strict.excludeIngredientsFromPage(unfiled, {
+    ingredientIds: ['retinol'], scopePrefix: 'beauty/skincare/', inferCategoryPath: normalizer.inferRowCategoryPath,
+  });
+  assert.deepEqual(inferred.body.products.map((row) => row.title), ['No Path Serum', 'Mystery Item']);
+  const hair = strict.excludeIngredientsFromPage({ products: [{ title: 'Strong Hold Hair Gel' }, { title: 'Glycerin Hair Gel' },
+    { title: 'Repair Shampoo' }, { title: 'Hydrating Face Serum' }] }, {
+    ingredientIds: ['glycerin'], scopePrefix: 'beauty/haircare/', inferCategoryPath: normalizer.inferRowCategoryPath,
+  });
+  assert.deepEqual(hair.body.products.map((row) => row.title), ['Strong Hold Hair Gel', 'Repair Shampoo']);
+  assert.equal(normalizer.inferRowCategoryPath({ title: 'Repair Shampoo' }), 'beauty/haircare/');
+  assert.equal(normalizer.inferRowCategoryPath({ title: 'Mystery Item' }), '');
+  assert.equal(normalizer.inferRowCategoryPath(null), '');
 });
 
 test('stand-in and area rewrites: what each exclusion-only query asks for', () => {
@@ -837,4 +861,117 @@ test('locateRoutingQuery reads the routing query where the context build does', 
   c.write('cleanser');
   assert.equal(messages.messages[0].content, 'cleanser');
   assert.equal(normalizer.locateRoutingQuery({ search: { query: '' } }), null);
+});
+
+// ---- flag-on follow-ups --------------------------------------------------------------------------
+
+test('an exclusion of retinol excludes the whole retinoid family, in every script; an ask is unchanged', () => {
+  const product = (title, extra = {}) => ({ title, ...extra });
+  const family = [
+    'Retinal 0.1% Night Serum', 'Retinaldehyde Serum', 'Granactive Retinoid 2% Emulsion', 'Hydroxypinacolone Retinoate Serum',
+    'HPR Night Serum', 'Adapalene Gel 0.1%', 'Tretinoin Cream 0.025%', 'Isotretinoin Gel', 'Tazarotene Cream', 'Retinoic Acid Serum',
+    'Retinyl Palmitate Lotion', 'Retinyl Retinoate Cream', 'Retinol Palmitate Cream', 'Retinoid Night Cream',
+    '视黄醛精华', '視黃醛精華', '视黄醇棕榈酸酯面霜', '羟基频哪酮视黄酸酯精华', '阿达帕林凝胶', '维A酸乳膏', '类视黄醇面霜',
+    'レチナール美容液', 'パルミチン酸レチノール クリーム', 'トレチノイン クリーム', 'アダパレン ゲル', 'レチノイド クリーム',
+    '레티날 세럼', '레티닐팔미테이트 크림', '레티놀 팔미테이트 크림', '아다팔렌 겔', '트레티노인 크림', '레티노이드 크림',
+    'Крем с ретиналем', 'Гель с адапаленом', 'Крем с третиноином', 'Ретиноид сыворотка',
+  ];
+  for (const title of family) {
+    assert.equal(strict.productNamesIngredientFamily(product(title), 'retinol'), true, title);
+    assert.notEqual(strict.productIngredientMention(product(title), 'retinol'), 'named', title);
+  }
+  // structured fields too, with no INCI veto for an exclusion
+  assert.equal(strict.productNamesIngredientFamily(product('Night Serum', { ingredients_inci: 'Aqua, Hydroxypinacolone Retinoate' }), 'retinol'), true);
+  assert.equal(strict.productNamesIngredientFamily(product('Night Serum', { active_ingredients: ['retinal'] }), 'retinol'), true);
+  // stand-ins, qualified family words and unrelated rows are not the family
+  for (const title of ['Bakuchiol Retinol Alternative Serum', 'Retinoid-Free Night Cream', 'Retinal-Free Serum', 'Phyto-Retinol Serum',
+    'Vitamin E Serum', 'Retinoid Alternative Serum', 'Daily Moisturizing Cream']) {
+    assert.equal(strict.productNamesIngredientFamily(product(title), 'retinol'), false, title);
+  }
+  // other ingredients: their INCI synonyms, now read in titles for an exclusion only
+  assert.equal(strict.productNamesIngredientFamily(product('Sodium Hyaluronate Serum'), 'hyaluronic_acid'), true);
+  assert.equal(strict.productIngredientMention(product('Sodium Hyaluronate Serum'), 'hyaluronic_acid'), 'absent');
+  assert.equal(strict.productNamesIngredientFamily(product('Ascorbyl Glucoside Brightening Serum'), 'ascorbic_acid'), true);
+  assert.equal(strict.productNamesIngredientFamily(product('Daily Serum'), 'niacinamide'), false);
+  const page = strict.excludeProductsNamingIngredients(family.map((title) => product(title)).concat([product('Bakuchiol Night Oil')]),
+    { ingredientIds: ['retinol'] });
+  assert.deepEqual(page.products.map((row) => row.title), ['Bakuchiol Night Oil']);
+});
+
+test('follow-up 5: glued "-free" on a title, a spaced retinyl ester, a plural vitamin list, 不含', () => {
+  const product = (title) => ({ title });
+  assert.equal(strict.productIngredientMention(product('Retinol-Free Sample Cream'), 'retinol'), 'negated_only');
+  assert.equal(strict.productIngredientMention(product('Retinol‑Free Sample'), 'retinol'), 'negated_only');
+  // typed as words, "free sample" is still a free sample
+  assert.equal(strict.productIngredientMention(product('Retinol Free Sample Size'), 'retinol'), 'named');
+  assert.deepEqual(strict.extractPositiveStrictIngredientIds('retinol free sample'), ['retinol']);
+  assert.equal(strict.productIngredientMention(product('레티놀 팔미테이트 크림'), 'retinol'), 'absent');
+  assert.equal(strict.productIngredientMention(product('Retinol Palmitate Cream'), 'retinol'), 'absent');
+  assert.deepEqual(strict.extractPositiveStrictIngredientIds('retinol palmitate'), []);
+  for (const title of ['Витамины С и Е сыворотка', 'Комплекс витаминов С, Е и В', 'Сыворотка витамины С']) {
+    assert.equal(strict.productIngredientMention(product(title), 'ascorbic_acid'), 'named', title);
+  }
+  assert.equal(strict.productIngredientMention(product('Набор витаминов с алоэ'), 'ascorbic_acid'), 'absent');
+  for (const [title, id, kind] of [['不含视黄醇面霜', 'retinol', 'negated_only'], ['不含烟酰胺 精华', 'niacinamide', 'negated_only'],
+    ['不含酒精 视黄醇精华', 'retinol', 'named'], ['不含酒精视黄醇精华', 'retinol', 'named'], ['不含香精的烟酰胺精华', 'niacinamide', 'named'],
+    ['無添加 レチノール クリーム', 'retinol', 'negated_only']]) {
+    assert.equal(strict.productIngredientMention(product(title), id), kind, title);
+  }
+});
+
+test('follow-up 6: a qualifier on a list qualifies every member', () => {
+  const cases = {
+    'alternative to retinol and niacinamide': [[], ['niacinamide', 'retinol']],
+    'retinol and niacinamide alternative': [[], ['niacinamide', 'retinol']],
+    'without retinol or vitamin c': [[], ['retinol', 'ascorbic_acid']],
+    'retinol, niacinamide free serum': [[], ['niacinamide', 'retinol']],
+    'bakuchiol instead of retinol and niacinamide': [['bakuchiol'], ['niacinamide', 'retinol']],
+    // not a list: something else stands between them
+    'retinol serum and niacinamide free': [['retinol'], ['niacinamide']],
+    'niacinamide serum without retinol': [['niacinamide'], ['retinol']],
+    'retinol free bakuchiol': [['bakuchiol'], ['retinol']],
+    'retinol and niacinamide serum': [['niacinamide', 'retinol'], []],
+    // a list whose qualified members disagree (an absence and a stand-in) leaves its plain member alone
+    'without retinol, vitamin c and niacinamide alternative': [['ascorbic_acid'], ['niacinamide', 'retinol']],
+  };
+  for (const [query, [wanted, excluded]] of Object.entries(cases)) {
+    assert.deepEqual(strict.extractPositiveStrictIngredientIds(query).sort(), wanted.sort(), `wanted: ${query}`);
+    assert.deepEqual(strict.extractExcludedStrictIngredientIds(query).sort(), excluded.sort(), `excluded: ${query}`);
+  }
+  // canonicalisation keeps every member of a negated list
+  assert.equal(strict.canonicalizeEnglishIngredientNegations('serum without retinol, niacinamide or vitamin c').query,
+    'serum retinol-free niacinamide-free vitamin c-free');
+  assert.equal(strict.canonicalizeEnglishIngredientNegations('retinol and niacinamide free serum').query, 'retinol-free niacinamide-free serum');
+  assert.equal(strict.canonicalizeEnglishIngredientNegations('without retinol and niacinamide').query, 'retinol-free niacinamide-free');
+  // rewrites and doors
+  const out = (query) => normalizer.normalizeFindProductsMultiRoutingQuery(query, BOTH_ON);
+  assert.deepEqual([out('bakuchiol instead of retinol and niacinamide').query, out('bakuchiol instead of retinol and niacinamide').door],
+    ['bakuchiol', { excludedIds: ['niacinamide', 'retinol'], requiredIds: ['bakuchiol'], scopePrefix: 'beauty/skincare/' }]);
+  for (const query of ['alternative to retinol and niacinamide', 'retinol and niacinamide alternative']) {
+    assert.equal(out(query).changed, false, query);
+    assert.equal(normalizer.isBareIngredientNegationQuery(query), true, query);
+  }
+  assert.equal(out('without glycerin and panthenol for hair').query, 'glycerin-free panthenol-free hair care');
+});
+
+test('follow-up 3: face / skin are skincare, price words travel with the rewrite, premium is filler', () => {
+  const rw = (query) => normalizer.rewriteExclusionQuery(query);
+  for (const query of ['retinol alternative for face', 'retinol alternative for skin', 'retinol alternative for my face',
+    'facial retinol alternative', 'retinol alternative for my skin please']) {
+    assert.deepEqual(rw(query), { query: 'bakuchiol', kind: 'stand_in_known', requiredIds: ['bakuchiol'] }, query);
+  }
+  assert.deepEqual(rw('cheap retinol alternative under $20'), { query: 'cheap bakuchiol under $20', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
+  assert.deepEqual(rw('retinol alternative under 20 dollars'), { query: 'bakuchiol under 20 dollars', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
+  assert.deepEqual(rw('affordable bakuchiol instead of retinol'), { query: 'affordable bakuchiol', kind: 'stand_in_named', requiredIds: ['bakuchiol'] });
+  assert.deepEqual(rw('retinol alternative for hair under $15'), { query: 'retinol-free hair care under $15', kind: 'area', requiredIds: [] });
+  assert.deepEqual(rw('budget retinol alternative max 25 usd'), { query: 'budget bakuchiol max 25 usd', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
+  // a product word or another area still keeps the query as typed
+  for (const query of ['cheap retinol alternative serum', 'retinol alternative under eye', 'premium retinol alternative cream']) {
+    assert.deepEqual(rw(query), { query, kind: null, requiredIds: [] }, query);
+  }
+  assert.deepEqual(rw('premium retinol alternative'), { query: 'bakuchiol', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
+  for (const query of ['retinol 프리미엄', 'premium retinol', 'retinol プレミアム']) {
+    assert.equal(strict.isBareStrictIngredientQuery(query), true, query);
+  }
+  assert.equal(normalizer.normalizeFindProductsMultiRoutingQuery('레티놀 프리미엄', BOTH_ON).query, 'retinol 프리미엄');
 });
