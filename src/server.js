@@ -323,6 +323,8 @@ const {
   CALLER_ECHO_ALLOWLIST,
   isGatewaySearchMetadata,
   withoutCallerSearchRequestContract,
+  withoutCallerSearchQualityContract,
+  callerChosenSource,
   collectCallerEchoValues,
   withoutHostileCallerEcho,
 } = require('./findProductsMulti/callerEcho');
@@ -23424,16 +23426,16 @@ async function searchBeautyExternalSeedProductsMainline({
   marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
     search, metadata, markets: servingCurrency ? markets : null, buyerCurrency, servingCurrency,
   });
+  // The contract buildFindProductsMultiContext built for this request and wrote into its search block (the
+  // lanes after context build); before that (the early lane) there is none, and this builds its own from
+  // the query. Never one from the request metadata: the gateway writes none there, and the invoke handler
+  // drops a caller's (src/findProductsMulti/callerEcho.js).
   const requestSearchQualityContract =
     search?.search_quality_contract &&
     typeof search.search_quality_contract === 'object' &&
     !Array.isArray(search.search_quality_contract)
       ? search.search_quality_contract
-      : metadata?.search_quality_contract &&
-          typeof metadata.search_quality_contract === 'object' &&
-          !Array.isArray(metadata.search_quality_contract)
-        ? metadata.search_quality_contract
-        : null;
+      : null;
   const searchQualityContract = SEARCH_QUALITY_CONTRACT_V1_ENABLED
     ? requestSearchQualityContract ||
       buildSearchQualityContract({
@@ -42530,6 +42532,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // find_products / find_products_multi: the caller's own attribution values, taken at parse time, that an
   // answer may carry back only when they pass the echo allowlist (src/findProductsMulti/callerEcho.js).
   let callerEchoValues = null;
+  // ...and the source the request ran as, when normalizeMetadata took it from the caller: the one caller
+  // source whose normalised forms the answer can hold.
+  let callerEchoChosenSource;
   // Every return path funnels through here, so this is the one place the FINAL body is known
   // -- capturing earlier would record a page that later filtering still changes. Telemetry must
   // never be able to fail a response, so the capture cannot throw: a failed record is logged as
@@ -42934,7 +42939,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gatewayRequestId,
       });
       // Last, so no step above can put a caller value back. Cannot throw on any body shape.
-      if (callerEchoValues) finalBody = withoutHostileCallerEcho(finalBody, callerEchoValues);
+      if (callerEchoValues) {
+        finalBody = withoutHostileCallerEcho(finalBody, callerEchoValues, { chosenSource: callerEchoChosenSource });
+      }
       setInvokePerfHeaders();
       return originalJson(finalBody);
     };
@@ -43127,13 +43134,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     }
 
-    const { operation, payload } = parsed.data;
+    const { operation } = parsed.data;
+    let { payload } = parsed.data;
     // Product search: the search request contract (and the lane fields copied out of it) and the routing
     // flags public_search_route / invoke_search_rail are the gateway's own, never the caller's. Under
     // those keys the request metadata is dropped here, before anything reads it, unless it is the very
     // metadata (or contract) object an in-process route built and handed over (the public GET search
-    // route; see handleAgentProductsSearchViaInvoke). And the caller's attribution values are taken now,
-    // before the handler writes anything, so the answer can be checked against them on the way out.
+    // route; see handleAgentProductsSearchViaInvoke). The search QUALITY contract is the gateway's too: a
+    // `search_quality_contract` in the metadata, the payload or its search block is dropped here, from
+    // both copies of the payload; the gateway builds its own from the query (buildSearchQualityContract,
+    // via buildFindProductsMultiContext and the beauty mainline). And the caller's attribution values are
+    // taken now, before the handler writes anything, so the answer can be checked against them on the
+    // way out.
     let gatewayBuiltSearchMetadata = false;
     if (
       (operation === 'find_products' || operation === 'find_products_multi') &&
@@ -43149,6 +43161,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gatewayMetadata,
       });
       if (ownMetadata !== req.body.metadata) req.body.metadata = ownMetadata;
+      const [ownPayload, ownRawPayload] = withoutCallerSearchQualityContract(payload, req.body.payload);
+      payload = ownPayload;
+      if (ownRawPayload !== req.body.payload) req.body.payload = ownRawPayload;
+      callerEchoChosenSource = callerChosenSource(req.body.metadata, payload);
     }
     // Every value the caller sent that the handler's metadata can carry, taken before the handler writes
     // anything (the routing rewrite below, the merged metadata later): what a find_products_multi

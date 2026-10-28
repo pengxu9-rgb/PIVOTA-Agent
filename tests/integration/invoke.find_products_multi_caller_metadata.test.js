@@ -399,6 +399,65 @@ describe('find_products_multi: caller metadata follow-ups (routing flags, safe-e
     }
   });
 
+  // A rejected source the request did not run as (normalizeMetadata takes the metadata's source, else the
+  // payload's, else the gateway's default) is not the request's: a field holding the same normalised form
+  // holds the gateway's own source and stays. [name, metadata, clean payload extra, attacked payload extra]
+  const searchBlock = (query, source) => ({ search: { query, page: 1, page_size: 20, source } });
+  const NOT_CHOSEN = {
+    // F1: the gateway's default ('shopping-agent-ui') vs a rejected payload.search.source of the same form
+    F1: [
+      ['default + search.source', undefined, () => ({}), (q) => searchBlock(q, 'shopping agent ui')],
+      ['default + search.source (mixed)', undefined, () => ({}), (q) => searchBlock(q, 'Shopping_Agent UI')],
+    ],
+    // F2: a clean chosen source vs a rejected one of the same form elsewhere
+    F2: [
+      ['metadata + search.source', { source: 'agent-api' }, () => ({}), (q) => searchBlock(q, 'Agent API')],
+      ['metadata + payload.source', { source: 'agent-api' }, () => ({}), () => ({ source: 'Agent API' })],
+    ],
+    // F3: a trailing space
+    F3: [
+      ['metadata + search.source', { source: 'search' }, () => ({}), (q) => searchBlock(q, 'search ')],
+      ['payload.source + search.source', undefined, () => ({ source: 'search' }), (q) => ({ source: 'search', ...searchBlock(q, 'search ') })],
+    ],
+  };
+  const NOT_CHOSEN_TITLES = {
+    F1: 'a rejected payload.search.source does not clear the gateway\'s default source',
+    F2: 'a rejected source sent beside a clean chosen one does not clear it; a rejected CHOSEN source still is',
+    F3: 'a rejected source with a trailing space does not clear the clean source it normalises to',
+  };
+
+  for (const [finding, cases] of Object.entries(NOT_CHOSEN)) {
+    test(`(c) ${finding}: ${NOT_CHOSEN_TITLES[finding]}`, async () => {
+      const { search } = bootCatalog();
+      for (const query of ['retinol serum', 'laptop', 'Lidschatten']) {
+        for (const [name, metadata, cleanExtra, attackedExtra] of cases) {
+          const label = [query, finding, name];
+          const clean = await search(query, metadata, cleanExtra(query));
+          const attacked = await search(query, metadata, attackedExtra(query));
+          expect([...label, clean.status, attacked.status]).toEqual([...label, 200, 200]);
+          const want = sourceFields(clean.body);
+          // the clean answer records the gateway's own source in its contract, so there is something to keep
+          expect([...label, typeof want.contract]).toEqual([...label, 'string']);
+          expect([...label, sourceFields(attacked.body)]).toEqual([...label, want]);
+        }
+        if (finding !== 'F2') continue;
+        // The same rejected string, when it IS the source the request ran as (the payload's, no metadata
+        // source), is still cleared from every field.
+        const label = [query, 'chosen payload.source'];
+        const chosen = await search(query, undefined, { source: 'Agent API' });
+        expect([...label, chosen.status]).toEqual([...label, 200]);
+        const got = sourceFields(chosen.body);
+        for (const [field, value] of Object.entries(got)) {
+          if (value === undefined || value === null) continue;
+          expect([...label, field, String(value).trim().toLowerCase().replace(/[\s_-]+/g, '-')]).not.toEqual([
+            ...label, field, 'agent-api',
+          ]);
+        }
+        expect([...label, got.contract ?? null]).toEqual([...label, null]);
+      }
+    }, 300000);
+  }
+
   // ---------------------------------------------------------------------------------------------------
   // (d) market policy
   // ---------------------------------------------------------------------------------------------------
@@ -474,6 +533,42 @@ describe('callerEcho: the routing flags and the market code list', () => {
     // nothing to drop: the input itself
     const clean = { source: 'shopping_agent', market: 'US' };
     expect(callerEcho.withoutCallerSearchRequestContract(clean)).toBe(clean);
+  });
+
+  test('(c) withoutHostileCallerEcho clears the source forms of the CHOSEN source only', () => {
+    const body = (source, understanding = source) => ({
+      metadata: {
+        search_request_contract: { source },
+        guard_source_normalized: source,
+        query_understanding: { source: understanding },
+      },
+      beauty_expert_v1: { delegation_trace: { source_profile: source } },
+    });
+    const sent = (...values) => new Map([['source', values]]);
+    // F1: the gateway's default, a rejected caller string of the same form, nothing chosen
+    const f1 = body('shopping-agent-ui');
+    expect(callerEcho.withoutHostileCallerEcho(f1, sent('shopping agent ui'), { chosenSource: undefined })).toBe(f1);
+    // F2 / F3: a clean chosen source, a rejected one of the same form sent elsewhere
+    const f2 = body('agent-api');
+    expect(callerEcho.withoutHostileCallerEcho(f2, sent('agent-api', 'Agent API'), { chosenSource: 'agent-api' })).toBe(f2);
+    const f3 = body('search');
+    expect(callerEcho.withoutHostileCallerEcho(f3, sent('search', 'search '), { chosenSource: 'search' })).toBe(f3);
+    // the chosen source failed its rule: every form of it is cleared
+    expect(
+      callerEcho.withoutHostileCallerEcho(body('agent-api', 'Agent API'), sent('Agent API'), { chosenSource: 'Agent API' }),
+    ).toEqual({
+      metadata: { search_request_contract: { source: null }, guard_source_normalized: null, query_understanding: {} },
+      beauty_expert_v1: { delegation_trace: { source_profile: null } },
+    });
+  });
+
+  test('(c) callerChosenSource is normalizeMetadata\'s choice: the metadata\'s source, else the payload\'s', () => {
+    expect(callerEcho.callerChosenSource({ source: 'a' }, { source: 'b', search: { source: 'c' } })).toBe('a');
+    expect(callerEcho.callerChosenSource({}, { source: 'b', search: { source: 'c' } })).toBe('b');
+    expect(callerEcho.callerChosenSource({ source: '' }, { source: 'b' })).toBe('b');
+    expect(callerEcho.callerChosenSource(undefined, { search: { source: 'c' } })).toBe(undefined);
+    expect(callerEcho.callerChosenSource(null, {})).toBe(undefined);
+    expect(callerEcho.callerChosenSource({ source: ['x'] }, {})).toEqual(['x']);
   });
 
   test('(d) the market code list is the 249 officially assigned codes, fixed', () => {
