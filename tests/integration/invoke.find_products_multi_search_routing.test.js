@@ -1108,6 +1108,11 @@ describe('find_products_multi search routing: bare ingredients and non-English b
       const { resp } = await send({ search: SURFACE_GIFT }, { market });
       expect([market, resp.body.metadata.market, resp.body.metadata.query_understanding.market]).toEqual([market, market, market]);
     }
+    // only the recorded copy OF the rejected value goes: a market query_understanding read from the
+    // search itself stays
+    const fromSearch = await send({ search: { ...SURFACE_GIFT, market: 'GB' } }, { market: 'usa' });
+    expect([lane(fromSearch.resp), fromSearch.resp.body.metadata.market, fromSearch.resp.body.metadata.query_understanding.market])
+      .toEqual([LANES.SAFE_EMPTY, undefined, 'GB']);
   }, 180000);
 
   test('on (flip): a creator name with control, bidi or line-separator characters, or a script scheme, is not echoed', async () => {
