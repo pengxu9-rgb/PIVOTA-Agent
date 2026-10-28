@@ -196,10 +196,15 @@ function availabilityOf(p) {
   // stale on prod 2026-08-01, where rows with only in-stock offers served
   // `availability: "in_stock", in_stock: false` and surfaced here as
   // out_of_stock. When the string is absent or unrecognized (e.g. "unknown"),
-  // the boolean still carries signal, so fall back to it.
+  // the boolean still carries signal, so fall back to it. The get_product detail
+  // lane carries neither: pdpBuilder writes an availability OBJECT
+  // (`{ in_stock, available_quantity }`), so its `in_stock` is read next.
   const text = typeof p.availability === 'string' ? p.availability.trim().toLowerCase() : '';
   if (AVAILABILITY_IN_STOCK.has(text)) return 'in_stock';
   if (AVAILABILITY_OUT_OF_STOCK.has(text)) return 'out_of_stock';
+  const own = isObj(p.availability) ? p.availability.in_stock : undefined;
+  if (own === true) return 'in_stock';
+  if (own === false) return 'out_of_stock';
   if (p.in_stock === true) return 'in_stock';
   if (p.in_stock === false) return 'out_of_stock';
   return 'unknown';
