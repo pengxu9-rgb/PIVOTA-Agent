@@ -943,6 +943,16 @@ test('follow-up 6: a qualifier on a list qualifies every member', () => {
     'serum retinol-free niacinamide-free vitamin c-free');
   assert.equal(strict.canonicalizeEnglishIngredientNegations('retinol and niacinamide free serum').query, 'retinol-free niacinamide-free serum');
   assert.equal(strict.canonicalizeEnglishIngredientNegations('without retinol and niacinamide').query, 'retinol-free niacinamide-free');
+  // ...on its own, not only because the "x free" pass after it re-reads "retinol and niacinamide-free": that
+  // pass stands down before "shipping" / "gift" / "delivery", and the routed text must still say "retinol-free"
+  for (const [query, expected] of Object.entries({
+    'serum without retinol and niacinamide shipping': 'serum retinol-free niacinamide-free shipping',
+    'without retinol and niacinamide gift set': 'retinol-free niacinamide-free gift set',
+    'cream with no retinol or niacinamide delivery': 'cream with retinol-free niacinamide-free delivery',
+  })) {
+    assert.equal(strict.canonicalizeEnglishIngredientNegations(query).query, expected, query);
+    assert.equal(normalizer.normalizeFindProductsMultiRoutingQuery(query, BOTH_ON).query, expected, `routed: ${query}`);
+  }
   // rewrites and doors
   const out = (query) => normalizer.normalizeFindProductsMultiRoutingQuery(query, BOTH_ON);
   assert.deepEqual([out('bakuchiol instead of retinol and niacinamide').query, out('bakuchiol instead of retinol and niacinamide').door],
@@ -969,7 +979,11 @@ test('follow-up 3: face / skin are skincare, price words travel with the rewrite
   for (const query of ['cheap retinol alternative serum', 'retinol alternative under eye', 'premium retinol alternative cream']) {
     assert.deepEqual(rw(query), { query, kind: null, requiredIds: [] }, query);
   }
-  assert.deepEqual(rw('premium retinol alternative'), { query: 'bakuchiol', kind: 'stand_in_known', requiredIds: ['bakuchiol'] });
+  // the Korean and Japanese words are filler in the rewrite too, not only in the bare-query check below
+  for (const query of ['premium retinol alternative', '프리미엄 retinol alternative', 'retinol alternative 프리미엄',
+    'retinol alternative プレミアム']) {
+    assert.deepEqual(rw(query), { query: 'bakuchiol', kind: 'stand_in_known', requiredIds: ['bakuchiol'] }, query);
+  }
   for (const query of ['retinol 프리미엄', 'premium retinol', 'retinol プレミアム']) {
     assert.equal(strict.isBareStrictIngredientQuery(query), true, query);
   }
