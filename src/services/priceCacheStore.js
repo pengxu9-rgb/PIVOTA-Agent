@@ -54,6 +54,24 @@ const RESET_AFTER_FLUSH_TIMEOUTS = 3;
 // slow-but-alive Firestore is never disabled (it keeps resetting every ~30 s instead; its late writes are reported as
 // abandoned).
 const RESET_CAP_WITHOUT_SUCCESS = 5;
+// A disabled store comes back two ways (controller r5):
+//   - PROOF OF LIFE: a write from a dropped client finally lands (the library kept retrying it), so Firestore answers
+//     again. The store re-enables at once and the next flush builds one fresh client. It cannot fire while Firestore
+//     refuses, and fires within a retry or two of recovery.
+//   - A SLOW PROBE, for a hung connection whose dropped writes never land: one fresh client after 30 min, doubling to
+//     4 h, at most 6 per process. A probe gets exactly one more reset before the store disables again, so each probe
+//     can cost at most one more held client.
+const PROBE_INITIAL_MS = 30 * 60 * 1000;
+const PROBE_MAX_MS = 4 * 60 * 60 * 1000;
+const MAX_PROBES = 6;
+// A hard budget on LIVE clients (controller r6): the one in use plus every dropped one with a write or read still
+// unsettled on it, which the library keeps alive while it retries. A dropped client whose operations have all settled
+// (landed or failed) is free and stops counting, so a slow-but-alive Firestore, whose late writes land, never spends it.
+// A FLAPPING Firestore (down long enough for 5 resets, up just long enough for one late write to land) re-enables the
+// store again and again, each time stranding more clients (r6 sim: 107 clients and heap 32 -> 96 MB in 5 min): at this
+// many live clients the store is disabled until the process restarts, whatever lands or probes later. A refused-forever
+// outage needs at most 5 + MAX_PROBES = 11.
+const MAX_CLIENTS = 20;
 // gRPC channel options for every client this store builds. grpc-js shares subchannels PROCESS-WIDE by default, so a
 // rebuilt client would reuse the hung connection it was rebuilt to escape (controller r3 sim: 6 rebuilds, 0 writes,
 // 140 s after the backend recovered). A local pool gives each client its own connection.
@@ -105,6 +123,10 @@ function createFirestorePriceCacheStore(opts = {}) {
   const maxPending = Number.isInteger(opts.maxPending) && opts.maxPending > 0 ? opts.maxPending : MAX_PENDING;
   const flushTimeoutMs = Number(opts.flushTimeoutMs) > 0 ? Number(opts.flushTimeoutMs) : FLUSH_TIMEOUT_MS;
   const statsLogEveryMs = Number(opts.statsLogEveryMs) > 0 ? Number(opts.statsLogEveryMs) : STATS_LOG_EVERY_MS;
+  const probeInitialMs = Number(opts.probeInitialMs) > 0 ? Number(opts.probeInitialMs) : PROBE_INITIAL_MS;
+  const probeMaxMs = Number(opts.probeMaxMs) > 0 ? Number(opts.probeMaxMs) : PROBE_MAX_MS;
+  const maxProbes = Number.isInteger(opts.maxProbes) && opts.maxProbes >= 0 ? opts.maxProbes : MAX_PROBES;
+  const maxClients = Number.isInteger(opts.maxClients) && opts.maxClients > 0 ? opts.maxClients : MAX_CLIENTS;
   const now = typeof opts.now === 'function' ? opts.now : () => Date.now();
   const logSink = typeof opts.log === 'function' ? opts.log : () => {};
   const log = (event, fields) => {
@@ -119,15 +141,56 @@ function createFirestorePriceCacheStore(opts = {}) {
     return new Firestore({ ...extraSettings, ...GRPC_CHANNEL_OPTIONS, projectId, databaseId: database });
   });
   let db = opts.client || null;
+  let current = null; // { ops, dropped, freed } for the client in use, when this store built it
+  let liveClients = 0; // built and not known to be free: `current` plus every dropped client with an op unsettled
   const client = () => {
-    if (!db) db = clientFactory();
+    if (!db) {
+      db = clientFactory();
+      stats.clients_built += 1;
+      liveClients += 1;
+      current = { ops: 0, dropped: false, freed: false };
+    }
     return db;
   };
+  // No factory (an injected client, tests): nothing is ever built, so there is no budget to spend.
+  const budgetSpent = () => Boolean(clientFactory) && liveClients >= maxClients;
+
+  /** Count an operation against the client it runs on until it settles, landed, failed or rejected. */
+  function track(rec, promise) {
+    if (!rec) return;
+    rec.ops += 1;
+    const done = () => {
+      rec.ops -= 1;
+      if (rec.dropped && rec.ops === 0) free(rec);
+    };
+    promise.then(done, done);
+  }
+
+  function free(rec) {
+    if (rec.freed) return;
+    rec.freed = true;
+    liveClients -= 1;
+  }
+
+  /** Let the client and its BulkWriter go (never terminated); it stays live until its operations settle. */
+  function dropClient() {
+    writer = null;
+    if (!clientFactory) return; // an injected client is kept
+    db = null;
+    if (current) {
+      current.dropped = true;
+      if (current.ops === 0) free(current);
+      current = null;
+    }
+  }
 
   const pending = new Map(); // `${collection}/${id}` -> { collection, id, doc }
-  const stats = { queued: 0, written: 0, failed: 0, dropped: 0, flushes: 0, flush_timeouts: 0, resets: 0, abandoned: 0 };
+  const stats = { queued: 0, written: 0, failed: 0, dropped: 0, flushes: 0, flush_timeouts: 0, resets: 0, abandoned: 0, reenabled: 0, probes: 0, clients_built: 0 };
   let resetsSinceSuccess = 0;
   let disabled = false;
+  let retired = false; // disabled for good: the client budget is spent
+  let probeTimer = null;
+  let nextProbeMs = probeInitialMs;
   let inflight = 0; // handed to the current BulkWriter, not yet settled
   let generation = 0; // which BulkWriter an in-flight write belongs to
   let consecutiveTimeouts = 0;
@@ -177,14 +240,14 @@ function createFirestorePriceCacheStore(opts = {}) {
     if (t - lastStatsLogAt < STATS_LOG_EVERY_MS) return;
     const delta = {};
     let moved = false;
-    for (const k of ['written', 'failed', 'dropped', 'flush_timeouts', 'resets', 'abandoned']) {
+    for (const k of ['written', 'failed', 'dropped', 'flush_timeouts', 'resets', 'abandoned', 'reenabled', 'probes', 'clients_built']) {
       delta[k] = stats[k] - statsAtLastLog[k];
       if (delta[k]) moved = true;
     }
     if (!moved) return;
     lastStatsLogAt = t;
     statsAtLastLog = { ...stats };
-    log('price_cache_store_stats', { ...delta, pending: pending.size, inflight, ...(disabled ? { disabled: true } : {}) });
+    log('price_cache_store_stats', { ...delta, pending: pending.size, inflight, live_clients: liveClients, ...(disabled ? { disabled: true } : {}) });
   }
 
   /** The stats line on its own clock too: drops after traffic stops (no flush) still reach the log. */
@@ -207,21 +270,64 @@ function createFirestorePriceCacheStore(opts = {}) {
     inflight = 0;
     generation += 1;
     consecutiveTimeouts = 0;
-    writer = null;
-    if (clientFactory) db = null;
+    dropClient();
     log('price_cache_store_reset', { abandoned: stats.abandoned, resets: stats.resets });
-    if (resetsSinceSuccess >= RESET_CAP_WITHOUT_SUCCESS) disable();
+    if (budgetSpent()) retire();
+    else if (resetsSinceSuccess >= RESET_CAP_WITHOUT_SUCCESS) disable();
   }
 
-  /** No more clients, writes or reads until the process restarts (the cache is optional; answers fall back). */
+  /** No more clients, writes or reads until proof of life, a probe or a restart (the cache is optional; answers fall back). */
   function disable() {
     if (disabled) return;
+    stopWork();
+    log('price_cache_store_disabled', { resets: stats.resets, abandoned: stats.abandoned, reason: 'no_write_succeeded' });
+    scheduleProbe();
+  }
+
+  function stopWork() {
     disabled = true;
     stats.dropped += pending.size;
     pending.clear();
-    writer = null;
-    db = null;
-    log('price_cache_store_disabled', { resets: stats.resets, abandoned: stats.abandoned, reason: 'no_write_succeeded' });
+    dropClient();
+  }
+
+  /** The client budget is spent: disabled until the process restarts; no write that lands and no probe brings it back. */
+  function retire() {
+    if (retired) return;
+    retired = true;
+    if (!disabled) stopWork();
+    if (probeTimer) clearTimeout(probeTimer);
+    probeTimer = null;
+    log('price_cache_store_disabled', { resets: stats.resets, abandoned: stats.abandoned, clients_built: stats.clients_built, live_clients: liveClients, reason: 'client_budget' });
+  }
+
+  function scheduleProbe() {
+    if (probeTimer || closed || retired || stats.probes >= maxProbes) return;
+    const delay = nextProbeMs;
+    nextProbeMs = Math.min(nextProbeMs * 2, probeMaxMs);
+    probeTimer = setTimeout(() => {
+      probeTimer = null;
+      if (!disabled || closed) return;
+      stats.probes += 1;
+      enable('probe');
+      // One more reset (three more flush timeouts) and the store is disabled again.
+      resetsSinceSuccess = RESET_CAP_WITHOUT_SUCCESS - 1;
+    }, delay);
+    if (typeof probeTimer.unref === 'function') probeTimer.unref();
+  }
+
+  /** Back to work: the next flush builds a fresh client. */
+  function enable(reason) {
+    // Retired (the client budget is spent): nothing brings it back but a restart.
+    if (!disabled || retired) return;
+    disabled = false;
+    resetsSinceSuccess = 0;
+    if (reason === 'write_landed') {
+      stats.reenabled += 1;
+      if (probeTimer) clearTimeout(probeTimer);
+      probeTimer = null;
+    }
+    log('price_cache_store_enabled', { reason, resets: stats.resets });
   }
 
   function enqueue(collection, id, doc) {
@@ -263,15 +369,19 @@ function createFirestorePriceCacheStore(opts = {}) {
         return;
       }
       const gen = generation;
+      const rec = current;
       const results = batch.map(({ collection, id, doc }) => {
         try {
           const op = w.set(client().collection(collection).doc(id), doc);
+          track(rec, op);
           inflight += 1;
           return op.then(
             // An abandoned write was counted when it was abandoned, landing or not; but any write that lands means
             // Firestore is alive, so the reset cap's count starts again.
             () => {
               resetsSinceSuccess = 0;
+              nextProbeMs = probeInitialMs; // a future outage probes from the start again
+              if (disabled) enable('write_landed');
               if (gen === generation) stats.written += 1;
             },
             // An abandoned write was counted when it was abandoned.
@@ -315,7 +425,9 @@ function createFirestorePriceCacheStore(opts = {}) {
     if (!list.length || disabled) return out;
     const c = client();
     const refs = list.map((id) => c.collection(PRICES).doc(id));
-    const snaps = await withTimeout(Promise.resolve().then(() => c.getAll(...refs)), readTimeoutMs);
+    const read = Promise.resolve().then(() => c.getAll(...refs));
+    track(current, read);
+    const snaps = await withTimeout(read, readTimeoutMs);
     for (const snap of snaps) {
       if (snap && snap.id) out.set(snap.id, snap.exists ? snap.data() : null);
     }
@@ -325,7 +437,9 @@ function createFirestorePriceCacheStore(opts = {}) {
   async function getHostBackoff(host) {
     if (disabled) return null;
     const c = client();
-    const snap = await withTimeout(Promise.resolve().then(() => c.collection(BACKOFF).doc(host).get()), readTimeoutMs);
+    const read = Promise.resolve().then(() => c.collection(BACKOFF).doc(host).get());
+    track(current, read);
+    const snap = await withTimeout(read, readTimeoutMs);
     return snap && snap.exists ? snap.data() : null;
   }
 
@@ -338,6 +452,7 @@ function createFirestorePriceCacheStore(opts = {}) {
       bulkWriter();
       const read = Promise.resolve().then(() => c.getAll(c.collection(PRICES).doc(WARM_DOC_ID)));
       read.catch(() => {}); // the library keeps retrying after our timeout: its later rejection is handled here
+      track(current, read);
       await withTimeout(read, timeoutMs);
       return { ok: true, ms: now() - t };
     } catch (err) {
@@ -359,11 +474,13 @@ function createFirestorePriceCacheStore(opts = {}) {
       timer = null;
       if (statsTimer) clearInterval(statsTimer);
       statsTimer = null;
+      if (probeTimer) clearTimeout(probeTimer);
+      probeTimer = null;
       await flush();
       if (writer) await writer.close().catch(() => {});
       if (db && typeof db.terminate === 'function') await db.terminate().catch(() => {});
     },
-    stats: () => ({ ...stats, pending: pending.size, inflight, disabled }),
+    stats: () => ({ ...stats, pending: pending.size, inflight, live_clients: liveClients, disabled }),
     /** Tests: the client this store would use now (built on demand, no RPC). */
     _client: () => client(),
   };
@@ -381,6 +498,10 @@ module.exports = {
   FLUSH_TIMEOUT_MS,
   RESET_AFTER_FLUSH_TIMEOUTS,
   RESET_CAP_WITHOUT_SUCCESS,
+  PROBE_INITIAL_MS,
+  PROBE_MAX_MS,
+  MAX_PROBES,
+  MAX_CLIENTS,
   GRPC_CHANNEL_OPTIONS,
   WARM_DOC_ID,
 };

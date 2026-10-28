@@ -10,7 +10,7 @@
 // loopback get_pdp_v2 for PRODUCT_ID below.
 //
 // IT MUST RUN UNCHANGED ON A TREE WITHOUT PR-5 (the flag-off fixture is captured on one), so it requires nothing
-// PR-5 adds.
+// PR-5 adds (copy getProductDoorsProduct.cjs, the stored product, beside it).
 //
 // Usage: node tests/_support/getProductDoorsChild.cjs <port>   (env: the flags under test)
 
@@ -18,6 +18,7 @@ const crypto = require('node:crypto');
 const { mock } = require('node:test');
 const nock = require('nock');
 const { createPriceLogDoors, rpc, AGENT_META, maskIds } = require('./priceLogDoors.cjs');
+const { storedProduct } = require('./getProductDoorsProduct.cjs');
 
 const PRODUCT_ID = 'sig_pr5_tint';
 const STORE = 'store.price-log.test';
@@ -37,17 +38,7 @@ nock(doors.LOOPBACK, { allowUnmocked: true }).persist()
       type: 'canonical',
       data: {
         pdp_payload: {
-          product: {
-            product_id: PRODUCT_ID,
-            title: 'Tint',
-            brand: { name: 'Brand T' },
-            description: 'A lip tint.',
-            price: { current: { amount: 25, currency: 'USD' } },
-            availability: 'in_stock',
-            destination_url: `https://${STORE}/products/tint`,
-            default_variant_id: VARIANT,
-            variants: [{ variant_id: VARIANT, title: 'Rose', price: { current: { amount: 25, currency: 'USD' } }, availability: { in_stock: true } }],
-          },
+          product: storedProduct(PRODUCT_ID, STORE, VARIANT),
         },
       },
     }],
