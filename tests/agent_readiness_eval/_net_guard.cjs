@@ -14,7 +14,8 @@
 //     ::ffff:127.x) and IPC paths are allowed. A hostname — any hostname, including "localhost" — is refused
 //     BEFORE any DNS lookup, so not even a resolver packet leaves.
 //   * dns.lookup / dns.resolve* / dns.promises.* / dns.Resolver — refused for every name, so code that resolves
-//     first and connects later is stopped at the resolve.
+//     first and connects later is stopped at the resolve. A lookup of an IP literal passes (it resolves
+//     nothing): that is how server.listen(port, '::') binds, and a dial to the address meets the connect guard.
 //   * dgram sockets — send/connect refused unless the address is a loopback literal.
 //
 // A refusal THROWS synchronously (an Error with code ERR_READINESS_NET_GUARD) and is counted in
@@ -85,7 +86,11 @@ function install() {
   };
 
   // ---- DNS ------------------------------------------------------------------------------------------
+  // A lookup of an IP LITERAL answers with the literal itself and never reaches a resolver. It is how
+  // server.listen(port, '::') or '0.0.0.0' binds, so it passes; a dial to that address still meets the
+  // connect guard above. Names, lookupService, reverse and every resolve* stay refused.
   const guardName = (fnName, target) => {
+    if ((fnName === 'lookup' || fnName === 'promises.lookup') && typeof target === 'string' && net.isIP(target) !== 0) return;
     if (!isLoopbackLiteral(target)) refuse(`dns.${fnName}`, target);
   };
   const wrapDns = (obj, label) => {
