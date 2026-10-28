@@ -14,6 +14,13 @@
 // caller's own compound and negation rules. Russian forms are regex sources with bounded inflection
 // endings, written for normalised text (the breve is stripped, so "й" is "и").
 //
+// Brand names are kept apart from the family. A prescription-only brand (Tazorac, Epiduo, Accutane ...)
+// names a retinoid product, except in an accessory phrase ("Lip Repair Balm for Accutane Users",
+// "Accutane-safe"). Differin is also sold as a benzoyl peroxide cleanser and an SPF moisturizer, so the
+// product reader decides it by what the product is (src/server.js). A REQUEST naming any brand
+// ("differin free", an avoid list with Accutane) means the retinoid. The routing door reads the family
+// alone.
+//
 // Stand-ins are not in the family: "Bio-Retinol", "Phyto-Retinol", "plant retinol" are bakuchiol-type
 // actives. A reader that sees one strips the stand-in phrase first, and the product is a retinoid only
 // when a family name is left outside it.
@@ -27,13 +34,11 @@ const RETINOID_FAMILY_LATIN = Object.freeze([
   'retinyl ester', 'retinyl esters', 'retinol palmitate', 'retinol acetate',
   'vitamin a palmitate', 'vitamin a acetate',
   // vitamin A as an ingredient name
-  'vitamin a', 'vit a',
+  'vitamin a', 'vitamins a', 'vit a', 'vitamine a', 'vitamina a',
   // HPR
   'hydroxypinacolone retinoate', 'hpr', 'granactive retinoid',
-  // prescription and branded retinoids
-  'adapalene', 'tazarotene', 'trifarotene', 'retin a', 'accutane', 'roaccutane',
-  'differin', 'tazorac', 'aklief', 'epiduo', 'altreno', 'atralin', 'absorica', 'claravis', 'amnesteem', 'zenatane',
-  'myorisan',
+  // prescription retinoids by their active (and Retin-A, which every product so named is: tretinoin)
+  'adapalene', 'tazarotene', 'trifarotene', 'retin a',
   // the family word, English / French / German / Spanish (rétinoïde, Retinoide, retinoide, retinoides)
   'retinoid', 'retinoids', 'retinoide', 'retinoides',
 ]);
@@ -53,6 +58,13 @@ const RETINOID_FAMILY_SCRIPT = Object.freeze([
   'เรตินอล',
 ]);
 
+// Prescription-only brand names, and the over-the-counter one.
+const RETINOID_PRESCRIPTION_BRANDS = Object.freeze([
+  'tazorac', 'aklief', 'epiduo', 'altreno', 'atralin', 'accutane', 'roaccutane', 'absorica', 'claravis', 'amnesteem',
+  'zenatane', 'myorisan',
+]);
+const RETINOID_OTC_BRANDS = Object.freeze(['differin']);
+
 const RU_NOUN = '(?:|а|у|ом|е|ы|ов|ам|ами|ах)';
 const RETINOID_FAMILY_RUSSIAN = Object.freeze([
   'ретинал(?:|ь|я|ю|ем|е)', `ретинальдегид${RU_NOUN}`, `ретинилпальмитат${RU_NOUN}`, `ретинил\\s+пальмитат${RU_NOUN}`,
@@ -65,8 +77,7 @@ const RETINOID_FAMILY_RUSSIAN = Object.freeze([
 // the request side reads these: a product is named by the family above plus its own patterns.
 const RETINOID_SAFETY_LATIN_STEMS = Object.freeze([
   'retinol\\w*', 'retinal\\w*', 'retinoid\\w*', 'retinyl\\w*', 'retinoic', 'retinoate', 'tretinoin', 'isotretinoin',
-  'adapalene', 'tazarotene', 'trifarotene', 'retin\\s?a', 'vit(?:amin)?\\s?a', 'granactive', 'hydroxypinacolone', 'hpr',
-  'differin', 'accutane', 'roaccutane',
+  'adapalene', 'tazarotene', 'trifarotene', 'retin\\s?a', 'vit(?:amin)?\\s+a', 'granactive', 'hydroxypinacolone', 'hpr',
 ]);
 const RETINOID_SAFETY_SCRIPT_STEMS = Object.freeze([
   '视黄醇', '視黃醇', '维a', '維a', 'a醇', '维a醇', '維a醇', '维甲酸', '維甲酸', 'レチノール', '레티놀', '레틴', 'ретинол',
@@ -77,6 +88,8 @@ module.exports = {
   RETINOID_FAMILY_LATIN,
   RETINOID_FAMILY_SCRIPT,
   RETINOID_FAMILY_RUSSIAN,
+  RETINOID_PRESCRIPTION_BRANDS,
+  RETINOID_OTC_BRANDS,
   RETINOID_SAFETY_LATIN_STEMS,
   RETINOID_SAFETY_SCRIPT_STEMS,
 };

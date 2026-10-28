@@ -53,7 +53,11 @@ function softTierEnabled(env = process.env) {
 // request side reads. A family name of several words is read whole where what follows it decides
 // ("retinyl palmitate free" is a negation of the ester).
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const RETINOID_FAMILY_LATIN_SOURCES = retinoidFamily.RETINOID_FAMILY_LATIN.map((name) => name.split(' ').map(escapeRegex).join('\\s'));
+// A request naming a prescription brand means the retinoid, so the brands are names here.
+const RETINOID_FAMILY_LATIN_SOURCES = [
+  ...retinoidFamily.RETINOID_FAMILY_LATIN, ...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS, ...retinoidFamily.RETINOID_OTC_BRANDS,
+]
+  .map((name) => name.split(' ').map(escapeRegex).join('\\s'));
 const RETINOID_FAMILY_SCRIPT_SOURCES = retinoidFamily.RETINOID_FAMILY_SCRIPT.map(escapeRegex);
 const RETINOID_NAME_LATIN = new RegExp(
   `\\b(?:${[...RETINOID_FAMILY_LATIN_SOURCES, ...retinoidFamily.RETINOID_SAFETY_LATIN_STEMS].join('|')})\\b`,
@@ -126,14 +130,14 @@ const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 const RETINOID_NAME_FOR_NEGATION = `(?:${[
   ...RETINOID_FAMILY_LATIN_SOURCES,
   'retinol\\w*', 'retinal\\w*', 'retinoid\\w*', 'retinyl\\w*', 'retinoic', 'retinoate', 'tretinoin', 'isotretinoin', 'adapalene',
-  'tazarotene', 'trifarotene', 'retin\\s?a', 'vit(?:amin)?\\s?a', 'granactive', 'hydroxypinacolone', 'hpr', 'differin', 'accutane',
+  'tazarotene', 'trifarotene', 'retin\\s?a', 'vit(?:amin)?\\s+a', 'granactive', 'hydroxypinacolone', 'hpr', 'differin', 'accutane',
 ].join('|')})`;
 // Up to three filler words between the negation and the name: "no added retinol", "avoid any
 // retinoids", "nothing with retinol", "avoid using any more retinol". Four are not a negation of the
 // name: "what not to use with my retinol" asks how to pair it.
 const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,3}';
 const HARD_NEGATION_BEFORE_NAME_LATIN = [
-  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans',
+  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans', 'sem', 'senza',
   'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing', 'never', 'nope', 'no\\s+thanks',
   'stop(?:ped)?(?:\\s+using)?', 'quit(?:ting)?', 'no\\s+more', 'dont\\s+want', 'do\\s+not\\s+want', 'dont\\s+use',
   'do\\s+not\\s+use', 'cant\\s+use', 'cannot\\s+use', 'can\\s+not\\s+use', 'cant\\s+tolerate', 'cannot\\s+tolerate',
@@ -159,7 +163,7 @@ const RETINOID_PRODUCT_WORD = '(?:\\s+(?:serums?|creams?|products?|oils?|lotions
 //   - なし is "none" in レチノールなし, but part of はなし ("talk").
 const HARD_NEGATION_BEFORE_NAME_SCRIPT = [
   '不含', '无添加', '無添加', '无', '無', '没有', '沒有', '避开', '避開', '避免', '不要', '不加', '不用', '不想用', '不想要',
-  '不能用',
+  '不能用', 'ไม่มี', 'ปราศจาก', 'ไม่ใช้', 'ไม่เอา',
 ];
 const HARD_NEGATION_AFTER_NAME_SCRIPT = [
   'フリー', '不使用', '無添加', 'なし', '無し', 'が使えない', 'は使えない', '使えない', '없는', '없이', '무첨가',
