@@ -332,13 +332,15 @@ test('R4: default answered out of stock (available:false) is still read: re-pric
   assert.equal(p.price_source, 'merchant_live');
   assert.equal(p.price_as_of, '2026-10-27T09:00:00.000Z');
   assert.deepEqual(p.availability, { in_stock: true }, 'Plum is in stock, so the product stays buyable');
+  assert.equal(p.in_stock, true);
+  assert.equal(projectPublicReadResult('get_product', out).availability, 'in_stock');
   assert.deepEqual(productPriceCheck(p), { live: true, market: 'US', as_of: '2026-10-27T09:00:00.000Z', read_variants: 2, stored_variants: 0 });
   const msgs = priceMessages(shapeUcpGetProductResponse(out, {}));
   assert.deepEqual(msgs.map((m) => [m.type, m.code]), [['info', 'price.merchant_verified']]);
   assert.deepEqual(projectPublicReadResult('get_product', out).price_check, { confirmed_with_merchant: true, market: 'US' });
 });
 
-test('R4: every variant answered out of stock: still verified, and the product reads out of stock', async () => {
+test('R4: every variant answered out of stock: still verified, and the product reads out of stock on every door', async () => {
   const out = await enforced(() => answer({
     products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [
       { id: gid(ROSE), price: { amount: 2300, currency: 'USD' }, availability: { available: false } },
@@ -350,6 +352,8 @@ test('R4: every variant answered out of stock: still verified, and the product r
   assert.equal(p.price, 23);
   assert.equal(p.price_as_of, '2026-10-27T09:00:00.000Z');
   assert.equal(p.availability.in_stock, false, 'all asked, none in stock: out of stock');
+  assert.equal(p.in_stock, false, 'the top-level flag the doors read agrees: the stored in_stock: true is not left beside it');
+  assert.equal(projectPublicReadResult('get_product', out).availability, 'out_of_stock', 'public never sells a sold-out product as in stock');
   assert.equal(productPriceCheck(p).live, true);
   assert.equal(priceMessages(shapeUcpGetProductResponse(out, {}))[0].code, 'price.merchant_verified');
   assert.equal(projectPublicReadResult('get_product', out).price_check.confirmed_with_merchant, true);
