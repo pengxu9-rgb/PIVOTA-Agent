@@ -358,3 +358,11 @@ test('R4: every variant answered out of stock: still verified, and the product r
   assert.equal(priceMessages(shapeUcpGetProductResponse(out, {}))[0].code, 'price.merchant_verified');
   assert.equal(projectPublicReadResult('get_product', out).price_check.confirmed_with_merchant, true);
 });
+
+test('R4: a product stored sold out that the merchant answers in stock reads in stock on every door', async () => {
+  const out = await enforced(ROSE_SOLD_OUT, { market: 'US' }, { availability: 'out_of_stock', in_stock: false });
+  const p = out.product;
+  assert.deepEqual(p.availability, { in_stock: true }, 'Plum is in stock');
+  assert.equal(p.in_stock, true, 'the stored in_stock: false is not left beside it');
+  assert.equal(projectPublicReadResult('get_product', out).availability, 'in_stock');
+});
