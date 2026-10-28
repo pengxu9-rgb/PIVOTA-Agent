@@ -180,7 +180,7 @@ describe('the safety net on a lane that never calls the beauty gate (seam on)', 
 // Rows named only by the shared retinoid family (src/services/retinoidFamily.js): vitamin A and its
 // esters, prescription names, the non-English names, and a "retinol-free" row that names a retinoid.
 const FAMILY_ROW_TITLES = [
-  'Vitamin A Night Cream', 'Retinyl Palmitate Moisturizer', 'Differin Gel Moisturizer', '视黄醛晚霜', 'レチナール クリーム',
+  'Vitamin A Night Cream', 'Retinyl Palmitate Moisturizer', 'Differin Adapalene Gel Moisturizer', '视黄醛晚霜', 'レチナール クリーム',
   '아다팔렌 겔', 'Крем с ретинальдегидом', 'Retinol-Free Retinoid Night Cream (HPR)',
 ];
 const FAMILY_ROWS = [
@@ -214,6 +214,75 @@ describe('the net reads the shared retinoid family (seam on, family-named rows)'
     expect(resp.body.metadata?.query_source).toBe('beauty_discovery_mainline');
     expect(resp.body.products.map((p) => p.product_id)).toEqual([FAMILY_ROWS[FAMILY_ROWS.length - 1].product_id]);
     for (const title of FAMILY_ROW_TITLES) expect(JSON.stringify(resp.body)).not.toContain(title);
+  });
+});
+
+// Rows the net must NOT remove: a brand without its active, vitamin A that is not a topical beauty
+// product, a free claim in another script, "Vita". One real retinoid row rides along.
+const KEPT_ROW_TITLES = [
+  'Differin Daily Deep Cleanser', 'Differin Oil Absorbing Moisturizer SPF 30', 'Lip Repair Balm for Accutane Users',
+  'Cod Liver Oil Softgels Vitamin A & D', 'Vitamin A&D Ointment', 'Vitamin A Free Moisturizer', 'レチナールフリー クリーム',
+  'Vita Coco Hydrating Body Lotion',
+];
+const KEPT_ROWS = [
+  ...KEPT_ROW_TITLES.map((title, i) => ({
+    ...SEAM_ROWS[1], id: `seam_kept_row_${i}`, product_id: `seam_kept_row_${i}`, title, description: 'Daily care.', product_type: 'Care',
+  })),
+  { ...SEAM_ROWS[0], title: '1.0% Retinol Night Serum', description: 'Serum with 1.0% retinol. Free shipping.' },
+];
+
+describe('the net keeps what is not a retinoid (seam on, look-alike rows)', () => {
+  let app;
+  beforeAll(() => {
+    app = loadApp({ seam: true, rows: KEPT_ROWS });
+  });
+
+  test('HARD signal: every look-alike row is served; the decimal-strength retinol row is not', async () => {
+    const resp = await invoke(app, 'night cream', { payload: { user_profile: { pregnancy_status: 'pregnant' } } });
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('beauty_discovery_mainline');
+    expect(resp.body.products.map((p) => p.product_id)).toEqual(KEPT_ROWS.slice(0, -1).map((row) => row.product_id));
+    expect(JSON.stringify(resp.body)).not.toContain('1.0% Retinol Night Serum');
+  });
+});
+
+// Retinoid rows named only by a brand or by vitamin A in a topical form outside the commonest ones:
+// every one must go under a signal.
+const BRAND_AND_VITAMIN_A_TITLES = [
+  'Differin Gel', 'Tazorac Cream 0.1%', 'Epiduo Forte Gel', 'Aklief Cream', 'Altreno Lotion', 'Vitamin A Facial Capsules',
+  'Vitamin A Skin Oil', 'Vitamin A Night Drops', 'Vitamin A Body Butter', 'Vitamin A Smoothing Primer', 'Vitamin A Peel Pads',
+  'Vitamin A Face Mist', 'Vitamin A Face Ointment (anti-aging)',
+];
+const BRAND_AND_VITAMIN_A_ROWS = [
+  ...BRAND_AND_VITAMIN_A_TITLES.map((title, i) => ({
+    ...SEAM_ROWS[0], id: `seam_brand_va_row_${i}`, product_id: `seam_brand_va_row_${i}`, title, description: 'Daily care.', product_type: 'Care',
+  })),
+  { ...SEAM_ROWS[0], id: 'seam_brand_va_supp_cat', product_id: 'seam_brand_va_supp_cat', title: 'Night Cream', description: 'With vitamin A.',
+    product_type: 'Health/Supplements', category: 'Health/Supplements' },
+  { ...SEAM_ROWS[1] },
+];
+
+describe('the net removes brand-only and topical vitamin A retinoids (seam on)', () => {
+  let app;
+  beforeAll(() => {
+    app = loadApp({ seam: true, rows: BRAND_AND_VITAMIN_A_ROWS });
+  });
+
+  test('control: with no signal the rows are served (the first page of 10)', async () => {
+    const resp = await invoke(app, 'night cream');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((p) => p.product_id)).toEqual(BRAND_AND_VITAMIN_A_ROWS.slice(0, 10).map((row) => row.product_id));
+  });
+
+  test.each([
+    { name: 'pregnancy profile', payload: { user_profile: { pregnancy_status: 'pregnant' } } },
+    { name: 'isotretinoin turn', payload: { messages: [{ role: 'user', content: 'I am on accutane' }, { role: 'user', content: 'night cream' }] } },
+  ])('HARD signal ($name): only the plain row is served', async ({ payload }) => {
+    const resp = await invoke(app, 'night cream', { payload });
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('beauty_discovery_mainline');
+    expect(resp.body.products.map((p) => p.product_id)).toEqual([SEAM_PLAIN_ID]);
+    for (const title of BRAND_AND_VITAMIN_A_TITLES) expect(JSON.stringify(resp.body)).not.toContain(title);
   });
 });
 

@@ -414,3 +414,22 @@ test('the shared retinoid family: an ester, an acid, a prescription name or a no
     assert.ok(out.classes.includes('retinoid_negation'), name);
   }
 });
+
+test('the shared retinoid family: Thai negations, and "vita" / "vitamina" are not vitamin A', () => {
+  for (const text of ['ไม่มีเรตินอล', 'ปราศจากเรตินอล', 'ไม่ใช้เรตินอล', 'no vitamin a', 'vit a free', 'differin free', 'sin vitamina a',
+    'no vitamina a', 'senza vitamina a', 'sem vitamina a', 'sans vitamine a', 'no vitamins a']) {
+    assert.deepEqual(classes(text), ['retinoid_negation'], text);
+  }
+  for (const text of ['vita coco free', 'sin vitamina c', 'no vitamina c serum', 'vitamina c serum']) {
+    assert.deepEqual(classes(text), [], text);
+  }
+  for (const name of ['Vita Coco', 'vitamina C']) {
+    const out = signal.retinoidSafetyClassesForRequestContext({ payload: { constraints: { avoid_ingredients: [name] } } });
+    assert.ok(!out.classes.includes('retinoid_negation'), name);
+  }
+  // a brand in a request still means the retinoid
+  for (const name of ['Accutane', 'Differin', 'Aklief']) {
+    const out = signal.retinoidSafetyClassesForRequestContext({ payload: { constraints: { avoid_ingredients: [name] } } });
+    assert.ok(out.classes.includes('retinoid_negation'), name);
+  }
+});
