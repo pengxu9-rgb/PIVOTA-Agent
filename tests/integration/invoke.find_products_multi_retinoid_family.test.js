@@ -18,7 +18,7 @@ const SOURCES = ['beauty_cross_agent_batch', null];
 const FAMILY_ROWS = [
   ['fam_vitamin_a_cream', 'Vitamin A Night Cream', 'moisturizer', 'Face night cream with vitamin A.', ['vitamin a']],
   ['fam_palmitate_cream', 'Overnight Renewal Cream', 'moisturizer', 'Face night cream. Ingredients: aqua, retinyl palmitate, glycerin.', ['glycerin']],
-  ['fam_differin_cream', 'Differin Oil Absorbing Moisturizer', 'moisturizer', 'Daily face moisturizer.', ['glycerin']],
+  ['fam_acetate_cream', 'Vitamin A Acetate Night Cream', 'moisturizer', 'Face night cream.', ['glycerin']],
   ['fam_retinoide_cream', 'Rétinoïde Crème de Nuit', 'moisturizer', 'Crème de nuit visage.', ['glycerin']],
   ['fam_cn_retinal_cream', '视黄醛晚霜', 'moisturizer', '含视黄醛的面霜。', ['glycerin']],
   ['fam_jp_retinal_cream', 'レチナール ナイトクリーム', 'moisturizer', 'レチナール配合のクリーム。', ['glycerin']],

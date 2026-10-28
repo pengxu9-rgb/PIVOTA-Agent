@@ -20175,8 +20175,10 @@ const BEAUTY_RETINOID_STAND_IN_PHRASES = [
   /\b(?:retinol|retinoid)s?-like\b/g,
   /\b(?:alternatives?|substitutes?|replacements?)\s+(?:to|for)\s+(?:retinol|retinoids?)\b/g,
   /\b(?:gentler|better|kinder|softer)\s+than\s+retinol\b/g,
-  /\b(?:retinol|retinoid)s?[-\s]?free\b/g,
-  /\b(?:no|without|zero|0\s?%)\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
+  // "free" before "shipping" / "of parabens" ... is not this claim; "0%" is never the tail of "1.0%".
+  /\b(?:retinol|retinoid)s?[-\s]?free\b(?![\s-]+(?:of|from|shipping|delivery|returns?|gifts?|samples?|trials?|radicals?|sizes?)\b)/g,
+  /\b(?:no|without|zero)\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
+  /(?<![\d.])0\s?%\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
   /레티놀\s?(?:대체|프리(?!미엄))/g,
   /(?:植物)?(?:视黄醇|視黃醇|a醇)(?:平替|替代|代替)|植物(?:视黄醇|視黃醇|a醇)/g,
   /レチノール(?:代替|フリー|様)/g,
@@ -20185,62 +20187,104 @@ const BEAUTY_RETINOID_NAME_ANY_RE =
   /\b(?:retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|granactive\s+retinoid)\b|视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール|레티놀|레티날|레티노이드|레티닐 ?팔미테이트|(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])/i;
 
 // The shared retinoid family (src/services/retinoidFamily.js), read on a product's text on top of the
-// patterns above: vitamin A and its esters, retinoic acid, prescription names (Differin, Accutane ...),
-// rétinoïde, and the Chinese, Japanese, Korean, Thai and Russian names. Latin names are whole words on a
-// view with diacritics stripped and punctuation as a space ("Retin-A" is "retin a"); script names are
-// substrings of the lowercased text; Russian forms stand alone as words.
+// patterns above: vitamin A and its esters, retinoic acid, rétinoïde, and the Chinese, Japanese, Korean,
+// Thai and Russian names. Latin names are whole words on a view with diacritics stripped and
+// punctuation as a space ("Retin-A" is "retin a"); script names are substrings of the lowercased text;
+// Russian forms stand alone as words.
+//
+// "Vitamin A" names a retinoid only on a topical beauty product (a serum, cream, lotion ...). On a
+// supplement, a cod liver oil or an A&D ointment it does not; nor does "provitamin A" or "vitamin A
+// (as beta carotene)", which are not retinoids.
 const beautyRetinoidLatinView = (text) =>
   String(text || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9%]+/g, ' ');
-const BEAUTY_RETINOID_FAMILY_LATIN_SOURCE = [...retinoidFamily.RETINOID_FAMILY_LATIN]
-  .sort((a, b) => b.length - a.length)
-  .map((name) => name.split(' ').join('\\s+'))
-  .join('|');
-const BEAUTY_RETINOID_FAMILY_LATIN_RE = new RegExp(`(?:^|\\s)(?:${BEAUTY_RETINOID_FAMILY_LATIN_SOURCE})(?=\\s|$)`);
+const BEAUTY_RETINOID_IS_VITAMIN_A_NAME = (name) => /^vit(?:amin)? a(?: |$)/.test(name);
+const beautyRetinoidLatinSource = (names, joiner) =>
+  [...names].sort((a, b) => b.length - a.length).map((name) => name.split(' ').join(joiner)).join('|');
+const BEAUTY_RETINOID_FAMILY_LATIN_SOURCE = beautyRetinoidLatinSource(retinoidFamily.RETINOID_FAMILY_LATIN, '\\s+');
+const BEAUTY_RETINOID_FAMILY_LATIN_RES = {
+  topical: new RegExp(`(?:^|\\s)(?:${BEAUTY_RETINOID_FAMILY_LATIN_SOURCE})(?=\\s|$)`),
+  other: new RegExp(`(?:^|\\s)(?:${beautyRetinoidLatinSource(retinoidFamily.RETINOID_FAMILY_LATIN.filter((name) => !BEAUTY_RETINOID_IS_VITAMIN_A_NAME(name)), '\\s+')})(?=\\s|$)`),
+};
+const BEAUTY_RETINOID_NOT_VITAMIN_A_RE = /\bpro\s?vit(?:amin)?\s+a\b|\bvit(?:amin)?\s+a\s+(?:as\s+|from\s+)?beta\s+carotene\b|\bbeta\s+carotene\b/g;
 const BEAUTY_RETINOID_FAMILY_RU_RE = new RegExp(`(?<![а-яё])(?:${retinoidFamily.RETINOID_FAMILY_RUSSIAN.join('|')})(?![а-яё])`, 'i');
-function beautyTextNamesRetinoidFamily(text) {
+function beautyTextNamesRetinoidFamily(text, { topical = true } = {}) {
   const lowered = String(text || '').normalize('NFKC').toLowerCase();
   if (!lowered.trim()) return false;
+  const latin = beautyRetinoidLatinView(lowered).replace(BEAUTY_RETINOID_NOT_VITAMIN_A_RE, ' ');
   return (
-    BEAUTY_RETINOID_FAMILY_LATIN_RE.test(beautyRetinoidLatinView(lowered)) ||
+    BEAUTY_RETINOID_FAMILY_LATIN_RES[topical ? 'topical' : 'other'].test(latin) ||
     retinoidFamily.RETINOID_FAMILY_SCRIPT.some((name) => lowered.includes(name)) ||
     BEAUTY_RETINOID_FAMILY_RU_RE.test(lowered)
   );
 }
-const beautyTextNamesAnyRetinoid = (text) => BEAUTY_RETINOID_NAME_ANY_RE.test(text) || beautyTextNamesRetinoidFamily(text);
+const beautyTextNamesAnyRetinoid = (text, options) => BEAUTY_RETINOID_NAME_ANY_RE.test(text) || beautyTextNamesRetinoidFamily(text, options);
+
+// Is this a topical beauty product, for "vitamin A"? Read from what the product IS (title, category,
+// type): a skincare form, and nothing that is taken or is a drug-store ointment.
+const BEAUTY_RETINOID_INGESTED_OR_OINTMENT_RE =
+  /\b(?:supplements?|multi[-\s]?vitamins?|prenatals?|capsules?|softgels?|tablets?|caplets?|gumm(?:y|ies)|chewables?|lozenges?|cod\s+liver|fish\s+oil|dietary|ointments?)\b/;
+const BEAUTY_RETINOID_TOPICAL_FORM_RE =
+  /\b(?:serums?|creams?|cremes?|moisturi[sz]ers?|lotions?|emulsions?|essences?|ampoules?|toners?|cleansers?|face\s+wash|masks?|gels?|balms?|face\s+oils?|facial\s+oils?|sunscreens?|spf|skin\s?care|treatments?)\b|beauty\/(?:skincare|body|makeup|lip)/;
+function beautyProductIsTopicalForVitaminA(product) {
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
+  const what = [product, seedData]
+    .flatMap((holder) => ['title', 'name', 'product_name', 'category', 'product_type', 'catalog_category_path', 'category_path'].map((k) => holder[k]))
+    .flat()
+    .filter((value) => typeof value === 'string')
+    .join(' ')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return !BEAUTY_RETINOID_INGESTED_OR_OINTMENT_RE.test(what) && BEAUTY_RETINOID_TOPICAL_FORM_RE.test(what);
+}
 
 // A product's claim that it is free of a retinoid names what is ABSENT: "Retinol-Free", "no retinyl
-// palmitate", "without vitamin A", "不含视黄醇", "レチノールフリー", "레티놀 프리", "без ретинола". The claim is
-// removed before the text is read again, so a claim never hides a retinoid named elsewhere
+// palmitate", "without vitamin A", "Vitamin A Free", "不含视黄醇", "レチノールフリー", "레티놀 프리", "ไม่มีเรตินอล",
+// "без ретинола". Any such claim, in any script, sends the product through this rule: the claims are
+// removed and the text is read again, so a claim never hides a retinoid named elsewhere
 // ("Retinol-Free Retinoid Serum (HPR)", "retinol-free ... Ingredients: Retinyl Palmitate").
-const BEAUTY_RETINOID_CLAIM_NAME_LATIN = `(?:retinols?|retinoids?|${BEAUTY_RETINOID_FAMILY_LATIN_SOURCE})`;
+//
+// Latin claims are matched on the text WITH its punctuation (diacritics stripped), so a claim never
+// spans a sentence: "encapsulated retinol. Free shipping", "Retinol, Free From Parabens", "Retinol &
+// Free-Radical", "1.0% retinol" are not claims. (The candidate and safety texts read beside the raw
+// text have lost their punctuation; a claim they seem to carry counts only when the raw text, which
+// names the same product, carries it too.)
+const beautyRetinoidClaimView = (text) => String(text || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+const BEAUTY_RETINOID_CLAIM_NAME_LATIN = `(?:retinols?|retinoids?|${beautyRetinoidLatinSource(retinoidFamily.RETINOID_FAMILY_LATIN, '[\\s-]+')})`;
+const BEAUTY_RETINOID_FREE_NOT_ABSENCE = '(?:of|from|shipping|delivery|returns?|gifts?|samples?|trials?|radicals?|sizes?)';
 const BEAUTY_RETINOID_FREE_CLAIM_LATIN_RES = [
-  new RegExp(`(?:^|\\s)${BEAUTY_RETINOID_CLAIM_NAME_LATIN}\\s+free(?=\\s|$)`, 'g'),
-  new RegExp(`(?:^|\\s)(?:no|non|without|zero|0\\s?%|free\\s+of|free\\s+from)\\s+(?:added\\s+)?${BEAUTY_RETINOID_CLAIM_NAME_LATIN}(?=\\s|$)`, 'g'),
+  new RegExp(`(?<![a-z0-9])${BEAUTY_RETINOID_CLAIM_NAME_LATIN}[\\s-]*free(?![a-z0-9])(?![\\s-]+${BEAUTY_RETINOID_FREE_NOT_ABSENCE}(?![a-z0-9]))`, 'g'),
+  new RegExp(`(?<![a-z0-9])(?:no|non|without|zero|free[\\s-]+of|free[\\s-]+from)[\\s-]+(?:added[\\s-]+)?${BEAUTY_RETINOID_CLAIM_NAME_LATIN}(?![a-z0-9])`, 'g'),
+  // "0%" is never the tail of "1.0%" or "10%"
+  new RegExp(`(?<![\\d.])0\\s?%[\\s-]*(?:added[\\s-]+)?${BEAUTY_RETINOID_CLAIM_NAME_LATIN}(?![a-z0-9])`, 'g'),
 ];
 const BEAUTY_RETINOID_CLAIM_NAME_SCRIPT = `(?:${[...retinoidFamily.RETINOID_FAMILY_SCRIPT, '视黄醇', '視黃醇', '维a醇', '維a醇', 'a醇', 'レチノール', '레티놀']
   .sort((a, b) => b.length - a.length)
   .join('|')})`;
 const BEAUTY_RETINOID_FREE_CLAIM_SCRIPT_RES = [
-  new RegExp(`(?:不含|无添加|無添加|无|無)\\s*${BEAUTY_RETINOID_CLAIM_NAME_SCRIPT}`, 'g'),
+  new RegExp(`(?:不含|无添加|無添加|无|無|ไม่มี|ปราศจาก)\\s*${BEAUTY_RETINOID_CLAIM_NAME_SCRIPT}`, 'g'),
   new RegExp(`${BEAUTY_RETINOID_CLAIM_NAME_SCRIPT}\\s*(?:フリー|不使用|無添加|なし|無し|프리(?!미엄)|무첨가|없는)`, 'g'),
   /(?<![а-яё])(?:без|не\s+содержит)\s+(?:[а-яё]+\s+)?(?:ретин|третиноин|адапален|трифаротен)[а-яё]*/gi,
 ];
-function beautyTextNamesRetinoidOutsideFreeClaims(text) {
+// { claimed: the text carries a free claim; namesOutside: a retinoid is named outside every claim }.
+function beautyRetinoidFreeClaimReading(text, options) {
   const lowered = BEAUTY_RETINOID_STAND_IN_PHRASES.reduce(
     (out, re) => out.replace(re, ' '),
     String(text || '').normalize('NFKC').toLowerCase(),
   );
   const script = BEAUTY_RETINOID_FREE_CLAIM_SCRIPT_RES.reduce((out, re) => out.replace(re, ' '), lowered);
-  const latin = BEAUTY_RETINOID_FREE_CLAIM_LATIN_RES.reduce((out, re) => out.replace(re, ' '), beautyRetinoidLatinView(script));
+  const claimView = beautyRetinoidClaimView(script);
+  const latinClaimsRemoved = BEAUTY_RETINOID_FREE_CLAIM_LATIN_RES.reduce((out, re) => out.replace(re, ' '), claimView);
+  const latin = beautyRetinoidLatinView(latinClaimsRemoved);
   // Latin names on the latin view (scripts dropped), script names on the script text (Latin left as is).
-  return (
-    beautyTextNamesAnyRetinoid(latin) ||
+  const namesOutside =
+    beautyTextNamesAnyRetinoid(latin, options) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/.test(script) ||
     BEAUTY_PRODUCT_RETINOID_KO_RE.test(script) ||
     BEAUTY_PRODUCT_RETINOID_RU_RE.test(script) ||
     retinoidFamily.RETINOID_FAMILY_SCRIPT.some((name) => script.includes(name)) ||
-    BEAUTY_RETINOID_FAMILY_RU_RE.test(script)
-  );
+    BEAUTY_RETINOID_FAMILY_RU_RE.test(script);
+  return { claimed: script !== lowered || latinClaimsRemoved !== claimView, namesOutside };
 }
 
 function beautyProductRetinoidMentionIsStandInOnly(product) {
@@ -20267,7 +20311,8 @@ function beautyProductRetinoidMentionIsStandInOnly(product) {
   const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
   // The title must carry a stand-in phrase, and nothing anywhere may name a retinoid outside one.
   if (strip(title) === title) return false;
-  return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(strip(text)));
+  const options = { topical: beautyProductIsTopicalForVitaminA(product) };
+  return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(strip(text), options));
 }
 
 // A product the retinoid safety rules must keep out: it names a retinoid and does not say it is
@@ -20281,17 +20326,20 @@ function beautyProductIsRetinoidForSafety(product) {
   const rawText = buildBeautyProductRawSafetyText(product);
   const scriptText = [text, safetyText, rawText].join(' ');
   if (!scriptText.trim()) return false;
+  const options = { topical: beautyProductIsTopicalForVitaminA(product) };
   const hit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|hpr|granactive\s+retinoid)\b/i.test(scriptText) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/i.test(scriptText) ||
     BEAUTY_PRODUCT_RETINOID_KO_RE.test(rawText) ||
     BEAUTY_PRODUCT_RETINOID_RU_RE.test(rawText) ||
-    beautyTextNamesRetinoidFamily(scriptText);
+    beautyTextNamesRetinoidFamily(scriptText, options);
   if (!hit) return false;
   if (beautyProductRetinoidMentionIsStandInOnly(product)) return false;
-  if (!/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)) return true;
-  // A "retinol-free" product is a retinoid when it names one outside its free claims.
-  return beautyTextNamesRetinoidOutsideFreeClaims(scriptText);
+  // A product with a free claim (in any script, or an English "retinol-free" the stand-in phrases
+  // already read) is a retinoid when it names one outside its claims.
+  const claim = beautyRetinoidFreeClaimReading(scriptText, options);
+  const claimed = claim.claimed || /\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text);
+  return claimed ? claim.namesOutside : true;
 }
 
 // The last line of the retinoid safety rules: for a find_products_multi response to a request that

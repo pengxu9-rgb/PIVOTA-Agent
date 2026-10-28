@@ -291,7 +291,7 @@ test('product detection: the shared retinoid family, and a free claim never hide
   const retinoids = [
     product('x', 'Vitamin A Night Cream', 'cream', ''), product('x', 'Retinyl Palmitate Moisturizer', 'cream', ''),
     product('x', 'Rétinoïde Crème de Nuit', 'cream', ''), product('x', 'Retinoide Nachtcreme', 'cream', ''),
-    product('x', 'Differin Gel', 'gel', ''), product('x', 'Roaccutane Lip Balm', 'balm', ''),
+    product('x', 'Differin Adapalene Gel 0.1%', 'gel', ''), product('x', 'Vitamin A Acetate Lip Balm', 'balm', ''),
     product('x', 'Night Cream', 'cream', 'Ingredients: aqua, vitamin a palmitate, glycerin'),
     product('x', '视黄醛精华', 'serum', ''), product('x', 'A醛晚霜', 'cream', ''), product('x', '维A醛面霜', 'cream', ''),
     product('x', '视黄酸乳液', 'lotion', ''), product('x', '阿达帕林凝胶', 'gel', ''), product('x', '他扎罗汀乳膏', 'cream', ''),
@@ -322,4 +322,39 @@ test('product detection: the shared retinoid family, and a free claim never hide
     product('x', 'Bakuchiol Night Cream', 'cream', 'Retinol-free. A gentler alternative to retinol.'),
   ];
   for (const item of notRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), false, item.title);
+});
+
+test('product detection: vitamin A on topical beauty only, a brand by its active, and a free claim in any script', () => {
+  const p = (title, category, description = '', extra = {}) => product('x', title, category, description, extra);
+  const retinoids = [
+    p('Vitamin A Night Cream', 'cream'), p('Vit A Serum', 'serum'), p('Differin Adapalene Gel 0.1% Acne Treatment', 'treatment'),
+    p('Vitamin A Free Moisturizer with Retinyl Palmitate', 'moisturizer'),
+    // a decimal strength is never a "0% retinol" claim
+    p('Retinol 1.0% Serum', 'serum', 'Serum with 1.0% retinol.'), p('1.0% Retinol Night Serum', 'serum'),
+    // a claim never spans a sentence or names something else
+    p('Night Serum', 'serum', 'With encapsulated retinol. Free shipping on orders over $50.'),
+    p('Encapsulated Retinol, Free From Parabens', 'serum'), p('Retinol & Free-Radical Defense Cream', 'cream'),
+    p('Night Cream', 'cream', 'Contains retinol; free from parabens.'),
+    // a "no" far from the name is not about it
+    p('Night Cream', 'cream', 'No parabens. With retinyl palmitate.'),
+    p('Retinol-Free Night Cream', 'cream', 'No parabens. With retinyl palmitate.'),
+    // "free" that is not this claim, with or without punctuation
+    p('Retinol Free Shipping Night Serum', 'serum'), p('Retinol: Free Your Skin Night Serum', 'serum'),
+    // only the raw INCI names it
+    p('Night Cream', 'cream', '', { inci: 'Aqua, Glycerin, 1.0% Retinol' }),
+  ];
+  for (const item of retinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, `${item.title} | ${item.description}`);
+  const notRetinoids = [
+    p('Prenatal Multivitamin with Vitamin A', 'Supplements'), p('Cod Liver Oil Softgels, Vitamin A & D', 'Health'),
+    p('Vitamin A&D Ointment', 'Skin Protectant'), p('Prenatal Vitamins', 'Vitamins', 'Vitamin A (as beta carotene), folate'),
+    p('Beta Carotene Provitamin A Face Oil', 'face oil'), p('Vita Coco Hydrating Body Lotion', 'lotion'),
+    p('Differin Daily Deep Cleanser', 'cleanser', 'Benzoyl peroxide 5% cleanser'), p('Differin Oil Absorbing Moisturizer SPF 30', 'moisturizer'),
+    p('Lip Repair Balm for Accutane Users', 'lip balm'), p('Roaccutane Lip Balm', 'balm'),
+    p('Vitamin A Free Moisturizer', 'moisturizer'), p('不含视黄醛的保湿面霜', 'cream'), p('レチナールフリー クリーム', 'cream'),
+    p('ไม่มีเรตินอล ครีม', 'cream'), p('Night Cream', 'cream', 'Retinol-free formula.'),
+    p('Hair, Skin & Nails Gummies with Vitamin A', 'Skin Care Supplements'), p('Vitamin A 10000 IU', 'Vitamins'),
+    p('Retinol Alternative Skin Gummies', 'Supplements', 'With vitamin A.'), p('Pro-Vitamin A Face Oil', 'face oil'),
+    p('Night Cream with Vitamin A (as Beta Carotene)', 'cream'), p('Vitamin ACE Body Lotion', 'lotion'),
+  ];
+  for (const item of notRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), false, `${item.title} | ${item.description}`);
 });
