@@ -10,6 +10,9 @@ const request = require('supertest');
 
 const { createRetinoidFixtureQuery } = require('../fixtures/retinoid_explicit_query_catalog.cjs');
 const { HARD, HARD_NEGATION_PHRASES, SOFT, NEUTRAL } = require('../retinoid_safety_lexicon_phrases.cjs');
+// main's answers, captured once. Three entries were regenerated when a strength stopped being read as a
+// price cap ("10% niacinamide + retinol", "0.3% retinol serum" were empty only because of that cap);
+// the fixture's "notes" says which.
 const MAIN_GOLDEN = require('../fixtures/retinoid_safety_main_golden.json').product_ids;
 const signal = require('../../src/services/retinoidSafetySignal');
 

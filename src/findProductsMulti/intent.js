@@ -918,7 +918,8 @@ function inferRecentMissionFromHistory(recent_queries = [], recent_messages = []
   return null;
 }
 
-// Default OFF: the parser below is byte-identical to its pre-flag behaviour unless this is set.
+// Default OFF: the parser below is byte-identical to its pre-flag behaviour unless this is set,
+// except that a strength or size number is never a price in either state (maskStrengthNumbers).
 function budgetRequiresMarker() {
   return ['1', 'true', 'yes', 'on'].includes(
     String(process.env.SEARCH_BUDGET_REQUIRE_MARKER || '').trim().toLowerCase(),
@@ -942,8 +943,284 @@ const COUNT_WORD_AFTER_RE =
 const PLURAL_WORD_AFTER_RE = /^\s*-?\s*(?!(?:is|this|was|has|yes|plus|less|as|us)\b)[a-z]*s\b/i;
 const CURRENCY_WORD_AFTER_RE =
   /^\s*(?:s\$|sgd|usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|bucks|quid|元|块钱|块|円|刀|美元|美金|欧元|英镑|人民币|日元)/i;
+// The parser's budget-marker vocabulary. Each source string below is used verbatim by the parser
+// regex named next to it AND by the strength mask's bound-word check, so the two cannot drift:
+// a number the parser could read as a budget is never swallowed by a strength next to it.
+//   bound words before a number (boundedAmountMatch)
+const BOUNDED_PREFIX_WORDS_SRC =
+  '以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at';
+//   "budget" words before a number (budgetWordMatch)
+const BUDGET_WORD_PREFIX_SRC =
+  '\\b(?:max(?:imum)?\\s+)?budget(?:\\s+of)?(?:\\s*(?:is|:))?\\s*|预算(?:\\s*(?:是|在|大概|大约))?\\s*';
+//   soft bounds before a number (softBoundMatch)
+const SOFT_BOUND_PREFIX_SRC =
+  '\\b(?:max(?:imum)?|around|about|approx(?:imately)?|roughly)(?:\\s*(?:is|:))?\\s*|(?<![\\d.\\uE000]\\s?)[<~≈]\\s*';
+//   price words before a range (findMarkedBudgetRange)
+const RANGE_PRICE_WORD_SRC =
+  '(?:\\b(?:price|priced|budget|range|spend|cost|around|about|approx(?:imately)?|roughly)\\b|预算|价格|价位)\\s*(?:of|is|in|:|在|是)?\\s*';
+//   bounds after a number (postfixBound, cjkPostfixBound) and after a range (findMarkedBudgetRange)
+const POSTFIX_BOUND_SRC = 'bucks\\b|quid\\b|or less\\b|or under\\b|and under\\b|and below\\b|max\\b';
+const CJK_CURRENCY_SUFFIX_SRC = '元|块钱|块|美元|美金|日元|円|刀(?!片|头)';
+const CJK_BOUND_SUFFIX_SRC = '以内|以下|以上|左右|起';
+const RANGE_BOUND_SUFFIX_SRC = '之间';
+//   currency words after a number (currencyAmountMatch)
+const CURRENCY_SUFFIX_WORDS_SRC =
+  'sgd|usd|eur|gbp|cny|rmb|jpy|singapore dollars?|dollars?|euros?|pounds?|yuan|yen|新加坡元|美元|美金|欧元|英镑|人民币|日元|日圆|円';
+const CURRENCY_SUFFIX_AMOUNT_RE = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(?:${CURRENCY_SUFFIX_WORDS_SRC})`, 'i');
+const BOUNDED_AMOUNT_RE = new RegExp(
+  `(?:${BOUNDED_PREFIX_WORDS_SRC})\\s*(?:s\\$|[$€£¥￥]|sgd|usd|eur|gbp|cny|rmb|jpy)?\\s*(\\d+(?:\\.\\d+)?)`,
+  'i',
+);
+const BUDGET_WORD_AMOUNT_RE = new RegExp(
+  `(?:${BUDGET_WORD_PREFIX_SRC})(?:(?:s\\$|[$€£¥￥])\\s*)?(\\d+(?:\\.\\d+)?)`,
+  'i',
+);
+const SOFT_BOUND_AMOUNT_RE = new RegExp(
+  `(?:${SOFT_BOUND_PREFIX_SRC})(?:(?:s\\$|[$€£¥￥])\\s*)?(\\d+(?:\\.\\d+)?)`,
+  'i',
+);
+const RANGE_PRICE_WORD_BEFORE_RE = new RegExp(`${RANGE_PRICE_WORD_SRC}$`, 'i');
+const RANGE_BOUND_SUFFIX_RE = new RegExp(`^\\s*(?:${RANGE_BOUND_SUFFIX_SRC})`);
+const CJK_POSTFIX_BOUND_RE = new RegExp(
+  `(\\d+(?:\\.\\d+)?)\\s*(?:${CJK_CURRENCY_SUFFIX_SRC})?\\s*(?:${CJK_BOUND_SUFFIX_SRC})`,
+);
+const POSTFIX_BOUND_RE = new RegExp(`(?<![a-z\\d.])(\\d+(?:\\.\\d+)?)\\s*(?:${POSTFIX_BOUND_SRC})`, 'i');
+// "spf" must start a word -- with a masked number counted as the digit it replaced, so the masked
+// "50spf under 30" is not "spf under 30" (review r7, X2). On text without a mask this is exactly \b.
 const SPF_BEFORE_RE =
-  /\bspf\s*(?:(?:about|around|approx(?:imately)?|roughly|max(?:imum)?|over|above|under|below|at least|at most|more than|less than|[~<>≈≥≤]=?)\s*)?$/i;
+  /(?<![a-z\d_\uE000])spf\s*(?:(?:about|around|approx(?:imately)?|roughly|max(?:imum)?|over|above|under|below|at least|at most|more than|less than|[~<>≈≥≤]=?)\s*)?$/i;
+
+// A strength or a size is never a price, with the flag on or off. Before any budget regex runs,
+// every such number is masked out of the text the parser reads:
+//   * a number followed by "%" / "％" / "percent" / "per cent" / "pct" ("1.0% retinol", "10 ％",
+//     "under 2％") -- always;
+//   * a number followed by ml / mg / g / oz / fl oz / spf, glued to an "x" that no digit
+//     follows ("2x", "1.5x" -- not "x2", "20 x 2" or "30x 2", which count packs), or preceded by SPF
+//     ("50ml", "1.7 oz", "spf 30") -- unless the number carries a currency of its own ("$30 spf 50",
+//     "usd 30 spf 50" keep the 30);
+//   * ONE hop further, the bare partner of such a number across a TIGHT range join -- no space on
+//     either side of the separator ("5-10%", "10〜15％", "30-50ml", "spf 30-50") -- or across
+//     "between N and M" from either end ("between 5 and 10％", "between 5% and 10").
+// A spaced " - " / " ~ " / " to " reads as a clause separator ("under 30 - 50ml"), so nothing spreads
+// across it. Nothing spreads onto a number that is currency- or bound-marked -- by a currency, a bound
+// word before it ("under", "around", "预算"...) or a bound after it ("or less", "max", "以内"...) -- nor
+// onto an end of a range the parser itself reads as a budget ("$20-40-10%", "price 20 - 40-50ml").
+// Masking only rewrites those numbers to STRENGTH_MASK, so a query with none of them parses exactly
+// as before. Without it the flag-off parser fell back to the strength ("1.0% retinol serum" -> a
+// 1.00 cap that emptied the ingredient lane), and with the flag on a bound word before a full-width
+// "％" ("max 10％") or a range of strengths still became a cap.
+//
+// STRENGTH_MASK is a private-use character: a user never types it, so no query without a masked
+// number can contain it. The parser's "is a digit next to this?" checks treat it as the digit it
+// replaced (countsThings, the soft-bound and SPF lookbehinds, and the first-match probe in the parser),
+// so "spf 30 ~ 50" and "around 30-50ml" read as they did before masking.
+const STRENGTH_MASK = '\uE000';
+const STRENGTH_MASK_RE = /\uE000/g;
+const STRENGTH_NUMBER_RE = /\d+(?:\.\d+)?/g;
+// per[\s-]?cent covers "percent", "per cent" and "per-cent".
+const PERCENT_UNIT_SRC = '[%％]|(?:per[\\s-]?cent|pct)(?![a-z])';
+const PERCENT_AFTER_RE = new RegExp(`^\\s*(?:${PERCENT_UNIT_SRC})`, 'i');
+const SIZE_UNIT_SRC = '(?:ml|mg|g|oz|fl\\.?\\s*oz)(?![a-z])';
+const MULTIPLIER_X_SRC = 'x(?![a-z]|\\s*\\d)';
+// "50 spf" -- but not the 30 in "under 30 spf 50", where the SPF belongs to the 50. The mask leaves
+// that 30 as it found it: flag on, the parser's own unit guard (NOT_A_PRICE_UNIT_AFTER_RE) refuses a
+// number followed by "spf", as on main, and flag off main's legacy reading of it is kept.
+const SPF_UNIT_AFTER_RE = /^\s*spf(?![a-z])(?!\s*-?\s*\d)/i;
+// "spf-50": the parser's SPF_BEFORE_RE does not take a hyphen; the mask does, but only glued on both
+// sides ("spf - 30" is a clause separator) and only for a number with no currency, bound or budget
+// range of its own ("50 spf-30 or less", "50 spf-20 to 40 dollars" keep their budgets, as on main).
+const SPF_HYPHEN_BEFORE_RE = /\bspf-$/i;
+const SIZE_UNIT_AFTER_RE = new RegExp(`^\\s*(?:${SIZE_UNIT_SRC})|^${MULTIPLIER_X_SRC}`, 'i');
+// A currency symbol glued to the end of a number belongs to that number ("40€ 50ml": the € is
+// the 40's), so it marks the next number only when no digit precedes it ("S$30", "under $30").
+const CURRENCY_BEFORE_NUMBER_RE = /(?:(?<![\d.])[$€£¥￥]|\b(?:sgd|usd|eur|gbp|cny|rmb|jpy))\s*$/i;
+const CURRENCY_SYMBOL_SUFFIX_RE = /^[$€£¥￥]/;
+// ...and every currency word the parser reads after an amount ("30 singapore dollars", "300日圆").
+const CURRENCY_SUFFIX_WORD_AFTER_RE = new RegExp(`^\\s*(?:${CURRENCY_SUFFIX_WORDS_SRC})`, 'i');
+// The first number's own unit may sit in the gap ("5%-10%", "30ml-50").
+const STRENGTH_GAP_UNIT_SRC = `(?:\\s*(?:${PERCENT_UNIT_SRC}|${SIZE_UNIT_SRC}|spf(?![a-z])|${MULTIPLIER_X_SRC}))?`;
+const RANGE_SEPARATOR_SRC = '(?:-|~|—|–|〜|～|到)';
+// A tight join: the separator touches both numbers.
+const TIGHT_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}${RANGE_SEPARATOR_SRC}$`, 'i');
+// Any range join, spaced or not: a link for the whole-or-nothing rule, never a spread.
+const ANY_RANGE_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:${RANGE_SEPARATOR_SRC}|to)\\s*$`, 'i');
+const BETWEEN_AND_GAP_RE = new RegExp(`^${STRENGTH_GAP_UNIT_SRC}\\s*(?:and|&)\\s*$`, 'i');
+const STRENGTH_BETWEEN_BEFORE_RE = /\bbetween\s*$/i;
+// A number is bound-marked when the parser could read it as a budget through a marker word: built
+// from the parser's own vocabulary above (plus "between", "no more than", "price(s)", bare > and <),
+// so the mask never knows fewer markers than the parser does. As in the parser's soft bound, a
+// symbol right after a number is a range separator ("spf 30 ~ 50"), not a bound.
+const MASK_BOUND_BEFORE_SRC = [
+  `(?:${BOUNDED_PREFIX_WORDS_SRC})\\s*`,
+  BUDGET_WORD_PREFIX_SRC,
+  SOFT_BOUND_PREFIX_SRC,
+  RANGE_PRICE_WORD_SRC,
+  '\\b(?:no more than|prices?|priced)\\s*',
+  '(?<![\\d.]\\s?)[<>≤≥~≈＜＞]=?\\s*',
+].join('|');
+const BOUND_WORD_BEFORE_RE = new RegExp(`(?:${MASK_BOUND_BEFORE_SRC})$`, 'i');
+const BOUND_WORD_AFTER_RE = new RegExp(
+  `^\\s*(?:${POSTFIX_BOUND_SRC}|(?:${CJK_CURRENCY_SUFFIX_SRC})?\\s*(?:${CJK_BOUND_SUFFIX_SRC})|${RANGE_BOUND_SUFFIX_SRC}|or (?:below|more|above)\\b|and (?:up|above|over)\\b|maximum(?![a-z]))`,
+  'i',
+);
+
+// Returns the masked text, whether anything was masked, the value of every masked number in order, and
+// the parser's first marked range on the unmasked text with which of its ends were masked
+// (markedRangeAfterMask reads it).
+function maskStrengthNumbers(text) {
+  if (!/\d/.test(text)) return { text, masked: false, firstRange: null, values: [] };
+  const tokens = [];
+  for (const match of text.matchAll(STRENGTH_NUMBER_RE)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    // Both windows are bounded, so the pass stays linear in the (500-char-capped) query.
+    const before = text.slice(Math.max(0, start - 48), start);
+    const after = text.slice(end, end + 48);
+    const currencyWordAfter = CURRENCY_WORD_AFTER_RE.test(after) || CURRENCY_SUFFIX_WORD_AFTER_RE.test(after);
+    const currency =
+      CURRENCY_BEFORE_NUMBER_RE.test(before) || currencyWordAfter || CURRENCY_SYMBOL_SUFFIX_RE.test(after);
+    const boundOwn = BOUND_WORD_BEFORE_RE.test(before) || BOUND_WORD_AFTER_RE.test(after);
+    const between = STRENGTH_BETWEEN_BEFORE_RE.test(before);
+    let kind = null;
+    let spfHyphen = false;
+    if (PERCENT_AFTER_RE.test(after)) kind = 'percent';
+    else if (!currency && (SPF_UNIT_AFTER_RE.test(after) || SPF_BEFORE_RE.test(before))) kind = 'spf';
+    else if (!currency && !boundOwn && SPF_HYPHEN_BEFORE_RE.test(before)) {
+      kind = 'spf';
+      spfHyphen = true;
+    } else if (!currency && SIZE_UNIT_AFTER_RE.test(after)) kind = 'size';
+    tokens.push({ start, end, currency, currencyWordAfter, bound: boundOwn, between, kind, spfHyphen, spread: false });
+  }
+  const links = [];
+  for (let i = 0; i + 1 < tokens.length; i += 1) {
+    const a = tokens[i];
+    const b = tokens[i + 1];
+    const gap = text.slice(a.end, b.start);
+    // "40 spf-30" is no range: the hyphen belongs to the SPF ("$20-40 spf-30 serum" keeps its $20-40)
+    const type = SPF_HYPHEN_BEFORE_RE.test(gap)
+      ? null
+      : TIGHT_RANGE_GAP_RE.test(gap)
+        ? 'tight'
+        : ANY_RANGE_GAP_RE.test(gap)
+          ? 'spaced'
+          : a.between && BETWEEN_AND_GAP_RE.test(gap)
+            ? 'between'
+            : null;
+    if (type) links.push({ a, b, type });
+  }
+  // Every check below reads a number's OWN markers. Nothing is shared between a range's ends: a
+  // budget range the parser reads is protected whole, and a marker never travels into a strength
+  // range ("$15 to 5-10% serum" is the $15's budget and the 5-10% strength).
+  // Never swallow an end of a range the parser itself reads as a budget ("$20 - 40-10%",
+  // "price 20 – 40–50ml", "预算 200 - 300-50ml"). A budget range reads low to high: in
+  // "$30 - 5-10% niacinamide" the 5 opens the strength range, so of the "range" $30 - 5 the parser
+  // sees only the $30 is protected, and the answer is the $30 (markedRangeAfterMask).
+  let firstRange = null;
+  for (const range of markedBudgetRanges(text)) {
+    // Both range regexes end on their second number, so it ends the match: numberSpan's indexOf would
+    // find the FIRST end again when the two are equal ("price 30 - 30-50ml").
+    const secondStart = (range.index || 0) + range[0].length - range[2].length;
+    const ends = [numberSpan(range, 1).start, secondStart].map((at) => tokens.find((x) => x.start === at));
+    if (!firstRange) firstRange = { a: Number(range[1]), b: Number(range[2]), ends };
+    // A range read high to low keeps its high end only: its low end may open a strength range
+    // ("$30 - 5-10%": the 5 is the strength's), its high end never does ("5 spf~40~20元").
+    if (Number(range[1]) > Number(range[2])) {
+      if (ends[0]) ends[0].protected = true;
+      continue;
+    }
+    if (ends.some((t) => !t)) continue;
+    for (const t of ends) t.protected = true;
+  }
+  // The parser itself never reads "spf-N" as an SPF, so an "spf-" number that ends one of its budget
+  // ranges stays the budget's ("50 spf-20 to 40 dollars").
+  for (const t of tokens) if (t.spfHyphen && t.protected) t.kind = null;
+  // ...and a plain range whose second end names its currency in a word ("20 - 30 singapore dollars",
+  // which the flag-off parser reads as a range and the marker-mode range finder does not know), read
+  // low to high -- unless an end belongs to an SPF range ("spf 30 ~ 50 - 300元": the 50 is the SPF's).
+  // A range marked by a currency SYMBOL is the range finder's business above.
+  const inSpfRange = new Set();
+  for (const { a, b } of links) {
+    if (a.kind === 'spf') inSpfRange.add(b);
+    if (b.kind === 'spf') inSpfRange.add(a);
+  }
+  for (const { a, b } of links) {
+    if (a.kind || b.kind || inSpfRange.has(a) || inSpfRange.has(b)) continue;
+    if (!b.currencyWordAfter) continue;
+    if (Number(text.slice(a.start, a.end)) > Number(text.slice(b.start, b.end))) continue;
+    a.protected = true;
+    b.protected = true;
+  }
+  // One hop, from a number masked on its own to its bare partner.
+  for (const { a, b, type } of links) {
+    if (type === 'spaced' || Boolean(a.kind) === Boolean(b.kind)) continue;
+    if (type === 'between') {
+      // "between 5 and 10％" / "between 5% and 10": the "between" is the range's own marker, not a
+      // budget's, and the "between ... and" gap leaves no room for a marker of the first number's
+      // own, so when the second end is a strength the first end always takes the mask -- even when
+      // it is protected as an end of a range the parser reads ("between 5 and 10 per cent", or the
+      // high end of "between 5 and 2 per-cent": both are strength ranges, and have no budget). The
+      // second end keeps a currency, bound or protection of its own ("between 5% and 10 dollars").
+      if (b.kind) a.spread = true;
+      else if (!b.currency && !b.bound && !b.protected) b.spread = true;
+      continue;
+    }
+    const other = a.kind ? b : a;
+    if (!other.currency && !other.bound && !other.protected) other.spread = true;
+  }
+  // A size or SPF range is masked whole or not at all: if one of its ends stays bare and carries no
+  // marker of its own, the masked end goes back too, so the bare end cannot pair with the next number
+  // ("spf 30 ~ 50 - $15" keeps its $15, "spf 30-50 - 30 dollars" its 30). Next to a number that is
+  // itself a budget ("under 30 - 50ml", "50ml - 300以下") the size stays masked. A percentage is
+  // never a price, so it always stays masked.
+  for (const { a, b } of links) {
+    for (const [x, y] of [[a, b], [b, a]]) {
+      const bare = !y.kind && !y.spread && !y.currency && !y.bound && !y.protected;
+      if ((x.kind === 'spf' || x.kind === 'size') && bare) x.kind = null;
+    }
+  }
+  if (!tokens.some((t) => t.kind || t.spread)) return { text, masked: false, firstRange: null, values: [] };
+  const masks = (t) => Boolean(t && (t.kind || t.spread));
+  if (firstRange) firstRange = { a: firstRange.a, b: firstRange.b, masked: firstRange.ends.map(masks) };
+  let out = '';
+  let cursor = 0;
+  const values = [];
+  for (const t of tokens) {
+    if (!masks(t)) continue;
+    out += text.slice(cursor, t.start) + STRENGTH_MASK;
+    values.push(Number(text.slice(t.start, t.end)));
+    cursor = t.end;
+  }
+  return { text: out + text.slice(cursor), masked: true, firstRange, values };
+}
+
+// The range the parser answers with the flag on, as { min, max }, null for "no budget at all", or
+// undefined for "no range: read on". Main answers with its FIRST marked range on the unmasked text, and
+// so does this (review r7): masking never makes a later range the answer where main had none
+// ("between 2 & 30 ml - between 100 and 200" has no budget, as on main).
+//   * both ends unmasked: that range, as on main;
+//   * read high to low with only its low end masked ("budget 30 - 5-10%", "price 30 - 5-10%",
+//     "预算是250~50ml": main {5, 30}, {5, 30}, {50, 250}): the low end was the strength's, and the
+//     budget is the high end alone;
+//   * otherwise main answered with a strength range ("price 5-10％ then $20 - 40-10%": main {5, 10}),
+//     so any answer is no new budget: read the masked text on, as before.
+function markedRangeAfterMask(normalized, masked) {
+  if (!masked.masked) return rangeBudget(findMarkedBudgetRange(normalized));
+  const first = masked.firstRange;
+  if (!first) return undefined;
+  const { a, b } = first;
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+  if (!first.masked[0] && !first.masked[1]) return { min: Math.min(a, b), max: Math.max(a, b) };
+  if (a > b && !first.masked[0]) return { min: null, max: a };
+  return rangeBudget(findMarkedBudgetRange(normalized));
+}
+
+function rangeBudget(range) {
+  if (!range) return undefined;
+  const a = Number(range[1]);
+  const b = Number(range[2]);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+  return { min: Math.min(a, b), max: Math.max(a, b) };
+}
 
 function numberSpan(match, group = 1) {
   const start = (match.index || 0) + match[0].indexOf(match[group]);
@@ -963,10 +1240,17 @@ function isMarkedBudgetAmount(normalized, match) {
 // An unmarked range ("spf 30-50", "Olaplex No 4-5", "5-10 minute mask") is skipped, so a
 // real budget later in the query still wins.
 function findMarkedBudgetRange(normalized) {
+  const first = markedBudgetRanges(normalized).next();
+  return first.done ? null : first.value;
+}
+
+// Every range the parser would read as a budget, in the parser's own order (findMarkedBudgetRange
+// takes the first). The strength mask uses the whole list so it never swallows an end of one.
+function* markedBudgetRanges(normalized) {
   const between = normalized.match(
     /\bbetween\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)\s*(?:and|&|-|~|to)\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)/i,
   );
-  if (between && !NOT_A_PRICE_UNIT_AFTER_RE.test(normalized.slice(numberSpan(between, 2).end))) return between;
+  if (between && !NOT_A_PRICE_UNIT_AFTER_RE.test(normalized.slice(numberSpan(between, 2).end))) yield between;
   const re =
     /(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(?:s\$|[$€£¥￥])?\s*(\d+(?:\.\d+)?)(?![\d.])(?!\s*%)/gi;
   for (const match of normalized.matchAll(re)) {
@@ -979,14 +1263,13 @@ function findMarkedBudgetRange(normalized) {
     const marked =
       /s\$|[$€£¥￥]/.test(match[0]) ||
       CURRENCY_WORD_AFTER_RE.test(after) ||
-      /(?:\b(?:price|priced|budget|range|spend|cost|around|about|approx(?:imately)?|roughly)\b|预算|价格|价位)\s*(?:of|is|in|:|在|是)?\s*$/i.test(before) ||
-      /^\s*之间/.test(after);
+      RANGE_PRICE_WORD_BEFORE_RE.test(before) ||
+      RANGE_BOUND_SUFFIX_RE.test(after);
     if (!marked || NOT_A_PRICE_UNIT_AFTER_RE.test(after) || COUNT_WORD_AFTER_RE.test(after)) continue;
     // "about 2-3 serums under $30": a counting range must not override the real budget
     if (!CURRENCY_WORD_AFTER_RE.test(after) && PLURAL_WORD_AFTER_RE.test(after)) continue;
-    return match;
+    yield match;
   }
-  return null;
 }
 
 // The range, "N+" and currency-suffix regexes below backtrack quadratically on a long run of
@@ -1006,7 +1289,9 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Flag on: collapse whitespace first. Every regex below chains optional \s* runs, and on a
   // long whitespace run that backtracking is super-linear (review of #2275: "about" + 5,000
   // spaces took 29 s on the event loop). Collapsing it changes no match.
-  const normalized = budgetRequiresMarker() ? digitsNormalized.replace(/\s+/g, ' ') : digitsNormalized;
+  const unmasked = budgetRequiresMarker() ? digitsNormalized.replace(/\s+/g, ' ') : digitsNormalized;
+  const masked = maskStrengthNumbers(unmasked);
+  const normalized = masked.text;
   const hasSgd = /(?:s\$|sgd|singapore dollars?|新加坡元)/i.test(normalized);
   const hasUsd = /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
   const hasEur = /(?:€|eur|euros?|欧元)/i.test(normalized);
@@ -1039,21 +1324,38 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     /(?:以上)\b/.test(normalized) ||
     /ドル以上|円以上|以上/.test(normalized);
 
+  // Each budget regex below takes its FIRST match, as on main: it runs on a probe of the masked text
+  // with every masked number back as a digit, and a first match that lands on a masked number yields
+  // nothing -- it does not move on to a later phrase ("retinol serum up to 1% for women over 40" has no
+  // budget, as on main; it is not "max 40"). Positions in the probe and the masked text are the same.
+  // A match on a masked number carries the value it stood for: where main would have taken that
+  // number and it is 0, main has no budget, and neither does this ("0% alcohol toner max 20").
+  const probe = normalized.replace(STRENGTH_MASK_RE, '0');
+  const valueAt = (start, digits) =>
+    normalized[start] === STRENGTH_MASK
+      ? masked.values[normalized.slice(0, start).split(STRENGTH_MASK).length - 1]
+      : Number(digits);
+  const firstMatch = (re) => {
+    const found = probe.match(re);
+    if (!found) return { found: false, match: null };
+    const onMask = normalized.slice(found.index, found.index + found[0].length).includes(STRENGTH_MASK);
+    return { found: true, match: onMask ? null : found, raw: found, onMask, value: valueAt(numberSpan(found).start, found[1]) };
+  };
+  const picksZeroStrength = (pick) => Boolean(pick && pick.found && pick.onMask && !(pick.value > 0));
+
   // Range forms: "30-50", "30~50", "30 to 50", "30到50". Percentage
   // ranges are formulation strengths, not prices (for example niacinamide
   // 5%-10%), so never let them preempt a later explicit budget.
   if (budgetRequiresMarker()) {
-    const range = findMarkedBudgetRange(normalized);
-    if (range) {
-      const a = Number(range[1]);
-      const b = Number(range[2]);
-      if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
-      return { currency, min: Math.min(a, b), max: Math.max(a, b) };
-    }
+    const range = markedRangeAfterMask(normalized, masked);
+    if (range === null) return null;
+    if (range) return { currency, ...range };
   } else {
-    const rangeMatch = normalized.match(
-      /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
-    );
+    const legacyRange = /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i;
+    // main's first range with a 0 end is main's "no budget", strength or not ("0-10% under 20")
+    const legacyFirst = unmasked.match(legacyRange);
+    if (legacyFirst && !(Number(legacyFirst[1]) > 0 && Number(legacyFirst[2]) > 0)) return null;
+    const rangeMatch = normalized.match(legacyRange);
     if (rangeMatch) {
       const a = Number(rangeMatch[1]);
       const b = Number(rangeMatch[2]);
@@ -1066,16 +1368,12 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // Product names routinely contain concentrations and sizes before the
   // budget clause ("Niacinamide 10% + Zinc 1% under $8"). Falling back to the
   // first number silently turns the formulation strength into a price cap.
-  const currencyAmountMatch = normalized.match(
-    /(?:s\$\s*|[$€£¥￥]\s*|(?:sgd|usd|eur|gbp|cny|rmb|jpy)\s*)(\d+(?:\.\d+)?)/i,
-  ) || normalized.match(
-    /(\d+(?:\.\d+)?)\s*(?:sgd|usd|eur|gbp|cny|rmb|jpy|singapore dollars?|dollars?|euros?|pounds?|yuan|yen|新加坡元|美元|美金|欧元|英镑|人民币|日元|日圆|円)/i,
-  );
-  const boundedAmountMatch = maxOnly || minOnly
-    ? normalized.match(
-        /(?:以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at)\s*(?:s\$|[$€£¥￥]|sgd|usd|eur|gbp|cny|rmb|jpy)?\s*(\d+(?:\.\d+)?)/i,
-      )
-    : null;
+  // (each through the first-match probe above)
+  const currencySign = firstMatch(/(?:s\$\s*|[$€£¥￥]\s*|(?:sgd|usd|eur|gbp|cny|rmb|jpy)\s*)(\d+(?:\.\d+)?)/i);
+  const currencyFirst = currencySign.found ? currencySign : firstMatch(CURRENCY_SUFFIX_AMOUNT_RE);
+  const currencyAmountMatch = currencyFirst.match;
+  const boundedFirst = maxOnly || minOnly ? firstMatch(BOUNDED_AMOUNT_RE) : { found: false, match: null };
+  const boundedAmountMatch = boundedFirst.match;
   let m;
   if (budgetRequiresMarker()) {
     // SEARCH_BUDGET_REQUIRE_MARKER: a bare number is NEVER a budget. Measured on prod
@@ -1086,39 +1384,53 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     // bound word before the number ("under 40", "max 40", "budget 30", "< 30"), or a bound
     // after it ("100以内", "30 bucks", "30 or less"). An unmarked number followed by a
     // size/strength/age/duration unit, or preceded by SPF, is never a price.
-    const usable = (match) => (isMarkedBudgetAmount(normalized, match) ? match : null);
+    // Each check reads the masked text, or the probe (with the masked number's own value) when it
+    // replays main's choice below.
+    const usable = (match, text = normalized) => (match && isMarkedBudgetAmount(text, match) ? match : null);
     // A number that counts things is not a price, whatever marker precedes it:
     // "budget 2-in-1", "预算3步", "max 10 items", "about 20 reviews", "预算10个" -- nor is
     // one that opens a range the range pass refused ("about 5-10 minutes", "预算3-4步").
-    const countsThings = (match) => {
-      const tail = normalized.slice((match.index || 0) + match[0].length);
-      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*\d/.test(tail);
+    const countsThings = (match, text = normalized) => {
+      const tail = text.slice((match.index || 0) + match[0].length);
+      // A masked strength counts as the digit it replaced, so a soft bound or budget word before a
+      // strength range reads exactly as before masking: "about 5-10 ml", "around 5 - 10%",
+      // "budget 30 - 50ml" have no budget, as on main.
+      return COUNT_WORD_AFTER_RE.test(tail) || /^\s*[-~–—到]\s*[\d\uE000]/.test(tail);
     };
-    const hardUsable = (match) => (usable(match) && !countsThings(match) ? match : null);
+    const hardUsable = (match, text = normalized) => (usable(match, text) && !countsThings(match, text) ? match : null);
     // about / around / max / < / ~ / "or less" with no currency: also no plural noun after
     // the number ("about 5 products", "~50 reviews", "around 30s") and at least 5 ("<3",
     // "max 3 layers", "tell me about 2 serums").
-    const softUsable = (match) => {
-      if (!usable(match)) return null;
+    const softUsable = (match, text = normalized, value = Number(match && match[1])) => {
+      if (!usable(match, text)) return null;
       if (BUDGET_CURRENCY_MARKER_RE.test(match[0])) return match;
-      if (Number(match[1]) < 5 || countsThings(match)) return null;
-      const tail = normalized.slice((match.index || 0) + match[0].length);
+      if (value < 5 || countsThings(match, text)) return null;
+      const tail = text.slice((match.index || 0) + match[0].length);
       return PLURAL_WORD_AFTER_RE.test(tail) ? null : match;
     };
-    const budgetWordMatch = normalized.match(
-      /(?:\b(?:max(?:imum)?\s+)?budget(?:\s+of)?(?:\s*(?:is|:))?\s*|预算(?:\s*(?:是|在|大概|大约))?\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
-    );
+    const budgetWordFirst = firstMatch(BUDGET_WORD_AMOUNT_RE);
     // about / around / max / < / ~ with no currency also count things -- see softUsable.
-    const softBoundMatch = normalized.match(
-      /(?:\b(?:max(?:imum)?|around|about|approx(?:imately)?|roughly)(?:\s*(?:is|:))?\s*|(?<![\d.]\s?)[<~≈]\s*)(?:(?:s\$|[$€£¥￥])\s*)?(\d+(?:\.\d+)?)/i,
-    );
-    const cjkPostfixBound = normalized.match(
-      /(\d+(?:\.\d+)?)\s*(?:元|块钱|块|美元|美金|日元|円|刀(?!片|头))?\s*(?:以内|以下|以上|左右|起)/,
-    );
-    const cjkCurrencySuffix = normalized.match(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块|刀(?!片|头))(?!\s*以)/);
-    const postfixBound = normalized.match(
-      /(?<![a-z\d.])(\d+(?:\.\d+)?)\s*(?:bucks\b|quid\b|or less\b|or under\b|and under\b|and below\b|max\b)/i,
-    );
+    const softBoundFirst = firstMatch(SOFT_BOUND_AMOUNT_RE);
+    const cjkPostfixFirst = firstMatch(CJK_POSTFIX_BOUND_RE);
+    const cjkCurrencyFirst = firstMatch(/(\d+(?:\.\d+)?)\s*(?:元|块钱|块|刀(?!片|头))(?!\s*以)/);
+    const postfixFirst = firstMatch(POSTFIX_BOUND_RE);
+    // Replay main's choice on the probe: if main would take a masked number that is 0, main has no
+    // budget ("under 0％ alcohol max 20"), so neither does this.
+    const mainChoice = [
+      [currencyFirst, usable],
+      [boundedFirst, usable],
+      [budgetWordFirst, hardUsable],
+      [softBoundFirst, softUsable],
+      [cjkPostfixFirst, usable],
+      [cjkCurrencyFirst, usable],
+      [postfixFirst, softUsable],
+    ].find(([first, check]) => first.found && check(first.raw, probe, first.value));
+    if (mainChoice && picksZeroStrength(mainChoice[0])) return null;
+    const budgetWordMatch = budgetWordFirst.match;
+    const softBoundMatch = softBoundFirst.match;
+    const cjkPostfixBound = cjkPostfixFirst.match;
+    const cjkCurrencySuffix = cjkCurrencyFirst.match;
+    const postfixBound = postfixFirst.match;
     m =
       usable(currencyAmountMatch) ||
       usable(boundedAmountMatch) ||
@@ -1128,6 +1440,9 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
       usable(cjkCurrencySuffix) ||
       softUsable(postfixBound);
   } else {
+    // main takes the first of these that matches at all; a masked 0 there is main's "no budget"
+    const legacyPick = [currencyFirst, boundedFirst].find((first) => first.found) || firstMatch(/(\d+(?:\.\d+)?)/);
+    if (picksZeroStrength(legacyPick)) return null;
     m = currencyAmountMatch || boundedAmountMatch || normalized.match(/(\d+(?:\.\d+)?)/);
   }
   if (!m) return null;
@@ -1815,4 +2130,16 @@ module.exports = {
   INTENT_VERSION,
   QueryClassEnum,
   parseBudgetToPriceConstraint,
+  // for tests: the parser's budget-marker vocabulary and the strength mask built from it
+  __budgetMarkerVocabulary: {
+    BOUNDED_AMOUNT_RE,
+    BUDGET_WORD_AMOUNT_RE,
+    SOFT_BOUND_AMOUNT_RE,
+    RANGE_PRICE_WORD_BEFORE_RE,
+    POSTFIX_BOUND_RE,
+    CJK_POSTFIX_BOUND_RE,
+    RANGE_BOUND_SUFFIX_RE,
+    BOUND_WORD_BEFORE_RE,
+    BOUND_WORD_AFTER_RE,
+  },
 };
