@@ -1034,9 +1034,11 @@ test('round 2 / item 2: a list needs an explicit joiner, on both readings; a sta
 test('round 2 / item 3: the shared retinoid family, on products and in queries', () => {
   const family = require('../src/services/retinoidFamily');
   const product = (title) => ({ title });
+  // A prescription brand alone ("Accutane Aftercare Balm") is the retinoid safety gate's call, not this door's: the
+  // shared family list carries no brands.
   for (const title of ['Vitamin A Serum', 'Vitamin A Palmitate Cream', 'Trifarotene Cream', 'Retin-A 0.05% Cream', 'A醛精华', '维A醛面霜',
     '維A醛乳霜', 'Rétinoïde Crème de Nuit', 'Retinoide Nachtcreme', 'Crema con retinoides', 'トリファロテン クリーム', '트리파로텐 크림',
-    'Крем с трифаротеном', 'Accutane Aftercare Balm']) {
+    'Крем с трифаротеном']) {
     assert.equal(strict.productNamesIngredientFamily(product(title), 'retinol'), true, title);
   }
   // a family name qualified away is not the family (M65), in every script
