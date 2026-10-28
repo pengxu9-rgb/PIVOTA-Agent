@@ -20,8 +20,14 @@
 //   * dgram sockets — send/connect refused unless the address is a loopback literal.
 //
 // A refusal THROWS synchronously (an Error with code ERR_SEARCH_ROUTING_NET_GUARD) and is counted in
-// globalThis.__SEARCH_ROUTING_NET_GUARD__.blocked. `passed` counts connections handed to the real connect, all of
+// `state.blocked` (this module's export). `passed` counts connections handed to the real connect, all of
 // which are loopback by construction.
+//
+// ONE GUARD PER PROCESS, AND ITS STATE NEVER ON globalThis: under jest, globalThis is the test file's
+// sandbox, which jest 30 tears down after the file (globalsCleanup 'soft'), turning state left there into
+// a self-recursing setter that every later socket in the worker trips over. The state hangs off the
+// node:net module object instead (one per process, never sandboxed); see
+// tests/agent_readiness_eval/_net_guard.cjs, which has the same shape.
 
 const net = require('node:net');
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -29,13 +35,18 @@ const dns = require('node:dns');
 const dgram = require('node:dgram');
 
 const STATE_KEY = '__SEARCH_ROUTING_NET_GUARD__';
+const HOLDER = Symbol.for('searchRouting.netGuard');
+const ErrorCtor = Error;
+const StringCtor = String;
+const isArray = Array.isArray;
 
 // ATTRIBUTION. A refusal records the async context it happened in. A test file runs its own work inside
 // `attribution.run({ owner }, fn)` -- the app boot and every request -- and asserts on the refusals
 // that carry its owner: everything the routing code it drives tries, synchronously or later, carries
 // that context, while another suite's late timer in a shared Jest worker does not.
 // It lives ON the shared state object, so a preloaded guard (NODE_OPTIONS=--require) and a test file's
-// own require of this module -- which finds that state and installs nothing -- use ONE storage.
+// own require of this module -- which finds that state and installs nothing -- use ONE storage, as do
+// all the test files one jest worker runs.
 
 function isLoopbackLiteral(host) {
   if (typeof host !== 'string') return false;
@@ -47,15 +58,15 @@ function isLoopbackLiteral(host) {
 }
 
 function install() {
-  if (globalThis[STATE_KEY]) return globalThis[STATE_KEY];
+  if (net[HOLDER]) return net[HOLDER];
   const state = { installed: true, blocked: [], passed: 0, originalConnectCalls: 0, attribution: new AsyncLocalStorage() };
-  globalThis[STATE_KEY] = state;
+  Object.defineProperty(net, HOLDER, { value: state, enumerable: false, configurable: false, writable: false });
 
   const refuse = (what, target) => {
     const msg = `search-routing net guard: refused ${what} to ${target} (tests may only reach loopback IP literals)`;
     const store = state.attribution.getStore();
-    state.blocked.push({ what, target: String(target), owner: store && store.owner ? store.owner : null });
-    const err = new Error(msg);
+    state.blocked.push({ what, target: StringCtor(target), owner: store && store.owner ? store.owner : null });
+    const err = new ErrorCtor(msg);
     err.code = 'ERR_SEARCH_ROUTING_NET_GUARD';
     throw err;
   };
@@ -64,7 +75,7 @@ function install() {
   const originalConnect = net.Socket.prototype.connect;
   net.Socket.prototype.connect = function guardedConnect(...args) {
     let a = args;
-    if (Array.isArray(a[0])) a = a[0]; // net.connect() hands the prototype method its normalized [options, cb]
+    if (isArray(a[0])) a = a[0]; // net.connect() hands the prototype method its normalized [options, cb]
     let opts;
     if (a[0] !== null && typeof a[0] === 'object') opts = a[0];
     else if (typeof a[0] === 'string' && !/^\d+$/.test(a[0])) opts = { path: a[0] };
