@@ -11,8 +11,9 @@ const netGuard = require('../search_routing_net_guard.cjs');
  *      of the payload, before anything reads them; the gateway's own (understandShoppingQuery, written into
  *      the search block and the handler's metadata by the context build) still reaches every reader.
  *  (2) A rejected caller market clears query_understanding.market and hard_constraints.market only when it
- *      is the market the request USED (payload.search.market, else payload.market, else metadata.market).
- *      A rejected market sent beside a clean one that was used no longer clears the clean one.
+ *      is the market the request USED (the search block's market -- the payload's own when there is no
+ *      search block -- else metadata.market; a market beside a search block is not used by any lane). A
+ *      rejected market sent beside a clean one that was used no longer clears the clean one.
  */
 
 const nock = require('nock');
@@ -333,7 +334,7 @@ describe('find_products_multi: a caller query_understanding is never adopted; a 
   ];
   const searchBlock = (query, market) => ({ search: { query, page: 1, page_size: 20, ...(market !== undefined ? { market } : {}) } });
 
-  test('(2) a rejected metadata market does not clear a clean search.market (or payload.market) that was used; the same market, when used, is cleared', async () => {
+  test('(2) a rejected metadata market does not clear a clean search.market (or flat payload market) that was used; the same market, when used, is cleared', async () => {
     const { send } = bootCatalog();
     for (const [query, pairs] of MARKET_CASES) {
       for (const [cleanMarket, rejected] of pairs) {
@@ -347,8 +348,8 @@ describe('find_products_multi: a caller query_understanding is never adopted; a 
         expect([...label, 'search', beside.status, marketFields(beside.body)]).toEqual([
           ...label, 'search', 200, { understanding: cleanMarket, constraint: cleanMarket },
         ]);
-        // used: payload.market, rejected beside it in the metadata
-        const payloadUsed = await send({ ...searchBlock(query), market: cleanMarket }, { market: rejected });
+        // used: a flat payload's market (no search block), rejected beside it in the metadata
+        const payloadUsed = await send({ query, page: 1, page_size: 20, market: cleanMarket }, { market: rejected });
         expect([...label, 'payload', payloadUsed.status, marketFields(payloadUsed.body)]).toEqual([
           ...label, 'payload', 200, { understanding: cleanMarket, constraint: cleanMarket },
         ]);
@@ -361,11 +362,17 @@ describe('find_products_multi: a caller query_understanding is never adopted; a 
         expect([...label, 'used', used.status, hasOwn(used.body.metadata?.query_understanding, 'market'), marketFields(used.body).constraint ?? null]).toEqual([
           ...label, 'used', 200, false, null,
         ]);
+        // a clean payload market BESIDE a search block is not used: the rejected metadata market is, and is cleared
+        const besideBlock = await send({ ...searchBlock(query), market: cleanMarket }, { market: rejected });
+        expect([
+          ...label, 'beside block', besideBlock.status,
+          hasOwn(besideBlock.body.metadata?.query_understanding, 'market'), marketFields(besideBlock.body).constraint ?? null,
+        ]).toEqual([...label, 'beside block', 200, false, null]);
       }
     }
   }, 600000);
 
-  test('(2) a rejected payload market does not clear a clean search.market that was used; the same market, when used, is cleared', async () => {
+  test('(2) a rejected payload market does not clear a clean search.market that was used; a flat one, when used, is cleared; one beside a search block is never used', async () => {
     const { send } = bootCatalog();
     for (const [query, pairs] of MARKET_CASES) {
       for (const [cleanMarket, rejected] of pairs) {
@@ -377,14 +384,25 @@ describe('find_products_multi: a caller query_understanding is never adopted; a 
             ...label, JSON.stringify(metadata || null), 200, { understanding: cleanMarket, constraint: cleanMarket },
           ]);
         }
-        // used: the rejected payload market (the metadata's clean market comes after it): cleared from both
+        // used: the rejected flat payload market (the metadata's clean market comes after it): cleared from both
         for (const metadata of [undefined, { market: cleanMarket }]) {
-          const used = await send({ ...searchBlock(query), market: rejected }, metadata);
+          const used = await send({ query, page: 1, page_size: 20, market: rejected }, metadata);
           expect([
             ...label, 'used', JSON.stringify(metadata || null), used.status,
             hasOwn(used.body.metadata?.query_understanding, 'market'), marketFields(used.body).constraint ?? null,
           ]).toEqual([...label, 'used', JSON.stringify(metadata || null), 200, false, null]);
         }
+        // not used: the rejected payload market beside a search block; the metadata's clean market is, and stays
+        const notUsed = await send({ ...searchBlock(query), market: rejected }, { market: cleanMarket });
+        expect([...label, 'beside block', notUsed.status, marketFields(notUsed.body)]).toEqual([
+          ...label, 'beside block', 200, { understanding: cleanMarket, constraint: cleanMarket },
+        ]);
+        // ...and with no metadata market nothing was used, so nothing is recorded
+        const nothing = await send({ ...searchBlock(query), market: rejected });
+        expect([
+          ...label, 'beside block, alone', nothing.status,
+          hasOwn(nothing.body.metadata?.query_understanding, 'market'), marketFields(nothing.body).constraint ?? null,
+        ]).toEqual([...label, 'beside block, alone', 200, false, null]);
         // used: a rejected search.market, with clean payload and metadata markets after it: cleared
         const usedSearch = await send({ ...searchBlock(query, rejected), market: cleanMarket }, { market: cleanMarket });
         expect([
@@ -432,9 +450,11 @@ describe('callerEcho: query_understanding is dropped from the request; the used 
     expect(callerEcho.withoutCallerSearchQualityContract).toBe(callerEcho.withoutCallerSearchGatewayKeys);
   });
 
-  test('(2) callerChosenMarket is the context build\'s precedence: the search block\'s market, else the payload\'s, else the metadata\'s', () => {
+  test('(2) callerChosenMarket is the one reading every lane serves: the search block\'s market (a flat payload\'s own), else the metadata\'s', () => {
     expect(callerEcho.callerChosenMarket({ market: 'c' }, { market: 'b', search: { market: 'a' } })).toBe('a');
-    expect(callerEcho.callerChosenMarket({ market: 'c' }, { market: 'b', search: {} })).toBe('b');
+    // a market beside a search block is not read
+    expect(callerEcho.callerChosenMarket({ market: 'c' }, { market: 'b', search: {} })).toBe('c');
+    expect(callerEcho.callerChosenMarket({}, { market: 'b', search: {} })).toBe(undefined);
     expect(callerEcho.callerChosenMarket({ market: 'c' }, { search: { market: '' } })).toBe('c');
     expect(callerEcho.callerChosenMarket({ market: 'c' }, { market: '', search: { query: 'x' } })).toBe('c');
     expect(callerEcho.callerChosenMarket({ market: 'c' }, { market: 'b' })).toBe('b');
