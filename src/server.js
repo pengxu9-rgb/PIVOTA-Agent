@@ -20199,7 +20199,9 @@ const BEAUTY_RETINOID_NAME_ANY_RE =
 //     moisturizer / SPF that is not a gel (a product naming adapalene is a retinoid by that name).
 //   The topical form list decides only a product that also carries a word for something taken by
 //   mouth: "Vitamin A Facial Capsules" and a "Night Cream" filed under Supplements still count.
-// A prescription brand in an accessory phrase ("for Accutane users", "Accutane-safe") names no product.
+// A prescription brand in an accessory phrase names no product: "for Accutane users", "during Accutane
+// treatment" (a preposition, the brand, then an accessory noun), or "Accutane-safe" (hyphenated). Read
+// on the text with its punctuation, so "Tazorac Safe Strength" or "for Acne: Tazorac 0.1%" stay names.
 const beautyRetinoidLatinView = (text) =>
   String(text || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9%]+/g, ' ');
 const BEAUTY_RETINOID_IS_VITAMIN_A_NAME = (name) => /^vit(?:amin[ae]?s?)? a(?: |$)/.test(name);
@@ -20213,17 +20215,31 @@ const BEAUTY_RETINOID_PRESCRIPTION_BRAND_RE = beautyRetinoidWordRe(retinoidFamil
 const BEAUTY_RETINOID_OTC_BRAND_RE = beautyRetinoidWordRe(retinoidFamily.RETINOID_OTC_BRANDS);
 const BEAUTY_RETINOID_ANY_BRAND = beautyRetinoidLatinSource([...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS, ...retinoidFamily.RETINOID_OTC_BRANDS], '\\s+');
 const BEAUTY_RETINOID_BRAND_ACCESSORY_RE = new RegExp(
-  `\\b(?:for|during|while\\s+on|while\\s+taking|after|post)\\s+(?:[a-z]+\\s+){0,2}?(?:${BEAUTY_RETINOID_ANY_BRAND})(?:\\s+(?:users?|patients?|treatment|therapy|course))?\\b` +
-    `|\\b(?:${BEAUTY_RETINOID_ANY_BRAND})\\s+(?:safe|compatible|friendly|users?|patients?)\\b`,
+  `(?<![a-z0-9])(?:for|during|while\\s+on|while\\s+taking|after|post)\\s+(?:${BEAUTY_RETINOID_ANY_BRAND})\\s+` +
+    `(?:users?|patients?|treatment|therapy|course|dryness|lips)(?![a-z0-9])`,
   'g',
 );
+// The hyphenated form. The candidate and safety texts read beside the raw text have lost their hyphens,
+// so its spaced twin ("accutane safe") is removed too, but only when the raw text carries the hyphen.
+const BEAUTY_RETINOID_BRAND_SAFE_RE = new RegExp(
+  `(?<![a-z0-9])(?:${BEAUTY_RETINOID_ANY_BRAND})-(?:safe|compatible|friendly)(?![a-z0-9])`,
+  'g',
+);
+function beautyRetinoidTextWithoutBrandAccessories(lowered) {
+  const hyphenated = lowered.match(BEAUTY_RETINOID_BRAND_SAFE_RE) || [];
+  let out = lowered.replace(BEAUTY_RETINOID_BRAND_ACCESSORY_RE, ' ').replace(BEAUTY_RETINOID_BRAND_SAFE_RE, ' ');
+  for (const phrase of new Set(hyphenated)) {
+    out = out.replace(new RegExp(`(?<![a-z0-9])${phrase.replace('-', '\\s+')}(?![a-z0-9])`, 'g'), ' ');
+  }
+  return out;
+}
 const BEAUTY_RETINOID_NOT_VITAMIN_A_RE = /\bpro\s?vit(?:amin[ae]?s?)?\s+a\b|\bvit(?:amin[ae]?s?)?\s+a\s+(?:as\s+|from\s+)?beta\s+carotene\b|\bbeta\s+carotene\b/g;
 const BEAUTY_RETINOID_FAMILY_RU_RE = new RegExp(`(?<![а-яё])(?:${retinoidFamily.RETINOID_FAMILY_RUSSIAN.join('|')})(?![а-яё])`, 'i');
 function beautyTextNamesRetinoidFamily(text, { vitaminA = true, differin = true } = {}) {
   const lowered = String(text || '').normalize('NFKC').toLowerCase();
   if (!lowered.trim()) return false;
   const latin = beautyRetinoidLatinView(lowered).replace(BEAUTY_RETINOID_NOT_VITAMIN_A_RE, ' ');
-  const brandLatin = latin.replace(BEAUTY_RETINOID_BRAND_ACCESSORY_RE, ' ');
+  const brandLatin = beautyRetinoidLatinView(beautyRetinoidTextWithoutBrandAccessories(lowered));
   return (
     BEAUTY_RETINOID_FAMILY_LATIN_RE.test(latin) ||
     (vitaminA && BEAUTY_RETINOID_VITAMIN_A_RE.test(latin)) ||
@@ -20241,10 +20257,14 @@ const BEAUTY_RETINOID_INGESTED_RE =
   /\b(?:supplements?|multi\s?vitamins?|vitamins|prenatals?|capsules?|softgels?|tablets?|caplets?|gumm(?:y|ies)|chewables?|lozenges?|cod\s+liver|fish\s+oils?|dietary)\b|\b\d+\s?iu\b/;
 const BEAUTY_RETINOID_TOPICAL_FORM_RE =
   /\b(?:serums?|creams?|cremes?|moisturi[sz]ers?|lotions?|emulsions?|essences?|ampoules?|toners?|cleansers?|wash|masks?|gels?|balms?|oils?|drops|butters?|primers?|pads?|mists?|concentrates?|boosters?|patch(?:es)?|sticks?|sunscreens?|spf|(?:face|facial|serum|skin)\s+capsules?|(?:face|facial|eye|anti\s+aging|wrinkle)\s+ointments?)\b/;
-const BEAUTY_RETINOID_SKIN_PROTECTANT_RE = /\b(?:vitamins?\s+)?a\s*(?:&|\+|and)\s*d\b|\b(?:diaper|nappy|nipple|skin\s+protectant)\b/;
+// An A&D skin protectant: "A&D" / "A and D" TOGETHER with a protectant word, in what the product is.
+const BEAUTY_RETINOID_A_AND_D_RE = /\b(?:vitamins?\s+)?a\s*(?:&|\+|and)\s*d\b/;
+const BEAUTY_RETINOID_PROTECTANT_WORD_RE = /\b(?:ointments?|diaper|nappy|nipples?|skin\s+protectant)\b/;
+// Directions in the description that say the product goes on the skin ("twist open and apply to face").
+const BEAUTY_RETINOID_TOPICAL_USE_RE = /\b(?:apply|applied|applying|face|facial|skin|night|topical|topically|massage)\b/;
 const BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE = /\b(?:benzoyl\s+peroxide|bpo|salicylic(?:\s+acid)?)\b/;
 const BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE = /\b(?:cleansers?|cleansing|wash|moisturi[sz]ers?|spf|sunscreens?)\b/;
-function beautyRetinoidProductReading(product, scriptText) {
+function beautyRetinoidProductReading(product) {
   const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
   const fields = (keys) =>
     [product, seedData]
@@ -20256,10 +20276,15 @@ function beautyRetinoidProductReading(product, scriptText) {
       .toLowerCase();
   const whatRaw = fields(['title', 'name', 'product_name', 'category', 'product_type', 'catalog_category_path', 'category_path']);
   const what = beautyRetinoidLatinView(whatRaw);
-  const ingested = BEAUTY_RETINOID_INGESTED_RE.test(what) && !BEAUTY_RETINOID_TOPICAL_FORM_RE.test(what.replace(/\b(?:cod\s+liver|fish)\s+oils?\b/g, ' '));
-  const protectant = BEAUTY_RETINOID_SKIN_PROTECTANT_RE.test(`${whatRaw} ${fields(['description'])}`);
+  const topical =
+    BEAUTY_RETINOID_TOPICAL_FORM_RE.test(what.replace(/\b(?:cod\s+liver|fish)\s+oils?\b/g, ' ')) ||
+    BEAUTY_RETINOID_TOPICAL_USE_RE.test(beautyRetinoidLatinView(fields(['description'])));
+  const ingested = BEAUTY_RETINOID_INGESTED_RE.test(what) && !topical;
+  const protectant = BEAUTY_RETINOID_A_AND_D_RE.test(whatRaw) && BEAUTY_RETINOID_PROTECTANT_WORD_RE.test(what);
+  // Differin is read by what the product is, never by a warning in its description ("do not use with
+  // benzoyl peroxide").
   const differinIsOther =
-    BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE.test(beautyRetinoidLatinView(scriptText)) ||
+    BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE.test(what) ||
     (BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE.test(what) && !/\bgels?\b/.test(what));
   return { vitaminA: !(ingested || protectant), differin: !differinIsOther };
 }
@@ -20337,7 +20362,7 @@ function beautyProductRetinoidMentionIsStandInOnly(product) {
   const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
   // The title must carry a stand-in phrase, and nothing anywhere may name a retinoid outside one.
   if (strip(title) === title) return false;
-  const options = beautyRetinoidProductReading(product, [title, description, structured].join(' '));
+  const options = beautyRetinoidProductReading(product);
   return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(strip(text), options));
 }
 
@@ -20352,7 +20377,7 @@ function beautyProductIsRetinoidForSafety(product) {
   const rawText = buildBeautyProductRawSafetyText(product);
   const scriptText = [text, safetyText, rawText].join(' ');
   if (!scriptText.trim()) return false;
-  const options = beautyRetinoidProductReading(product, scriptText);
+  const options = beautyRetinoidProductReading(product);
   const hit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|hpr|granactive\s+retinoid)\b/i.test(scriptText) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/i.test(scriptText) ||

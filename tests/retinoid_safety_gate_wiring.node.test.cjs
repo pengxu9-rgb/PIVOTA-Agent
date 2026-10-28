@@ -352,6 +352,21 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
     p('Night Cream', 'Health/Supplements', 'With vitamin A.'), p('Vitamin A Concentrate', ''), p('Vitamin A Booster', ''),
     p('Vitamin A Eye Patches', 'patches'), p('Vitamin A Balm Stick', 'stick'), p('Crème à la vitamine A', 'crème'),
     p('Vitamins A, C & E Night Cream', 'cream'), p('Differin Gel + Moisturizer Kit', 'kit'),
+    // a brand next to a preposition is still a name unless an accessory noun follows it
+    p('Acne Gel for Adults Epiduo Forte', 'gel'), p('Prescription Cream for Acne: Tazorac 0.1%', 'cream'),
+    p('Prescription Acne Cream — Not for use during pregnancy: Tazorac 0.1%', 'cream'),
+    p("Epiduo Users' Choice Acne Gel", 'gel'), p('Tazorac Safe Strength 0.05% Cream', 'cream'),
+    p('Acne Gel for Adults Epiduo Treatment', 'gel'),
+    // a warning in the description never makes Differin something else
+    p('Differin Gel', 'gel', 'Do not use with benzoyl peroxide products.'), p('Differin Gel', 'gel', 'Avoid salicylic acid while using.'),
+    p('Differin Acne Kit', 'kit', 'Includes Differin Gel and a cleanser with benzoyl peroxide.'),
+    // nor makes vitamin A a protectant; A&D needs its protectant word in what the product is
+    p('Vitamin A Night Cream', 'cream', 'Do not apply to nipples or the diaper area.'),
+    p('Vitamin A Repair Cream', 'cream', 'Skin protectant, anti-aging.'), p('Vitamins A & D Anti-Aging Night Cream', 'cream'),
+    p('Vitamins A & D Night Cream', 'cream', 'Not for the diaper area.'),
+    p('Nipple Balm with Vitamin A', 'balm'), p('Vitamin A Diaper Area Barrier Cream', 'cream'),
+    // directions to apply it make capsules topical
+    p('Vitamin A Capsules 10000 IU', '', 'Twist open and apply to face at night.'),
   ];
   for (const item of retinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, `${item.title} | ${item.description}`);
   const notRetinoids = [
@@ -361,9 +376,9 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
     p('Differin Daily Deep Cleanser', 'cleanser', 'Benzoyl peroxide 5% cleanser'), p('Differin Oil Absorbing Moisturizer SPF 30', 'moisturizer'),
     p('Lip Repair Balm for Accutane Users', 'lip balm'), p('Accutane-Safe Lip Balm', 'lip balm'),
     p('Moisturizer During Accutane Treatment', 'moisturizer'),
-    p('A and D Diaper Rash Ointment', 'baby'), p('Nipple Balm with Vitamin A', 'balm'), p('Vitamin A & D Ointment', 'first aid'),
+    p('A and D Diaper Rash Ointment', 'baby'), p('Vitamin A & D Ointment', 'first aid'),
     p('Cod Liver Oil Softgels with Vitamin A', 'health'), p('Vitamin A 25000 IU', ''), p('Daily Vitamins with Vitamin A', ''),
-    p('Differin Acne Spot Treatment Gel', 'treatment', 'Benzoyl peroxide 5%.'),
+    p('Differin Benzoyl Peroxide 5% Acne Spot Treatment Gel', 'treatment'),
     p('Vitamin A Free Moisturizer', 'moisturizer'), p('不含视黄醛的保湿面霜', 'cream'), p('レチナールフリー クリーム', 'cream'),
     p('ไม่มีเรตินอล ครีม', 'cream'), p('Night Cream', 'cream', 'Retinol-free formula.'),
     p('Hair, Skin & Nails Gummies with Vitamin A', 'Skin Care Supplements'), p('Vitamin A 10000 IU', 'Vitamins'),
