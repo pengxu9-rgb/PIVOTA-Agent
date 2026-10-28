@@ -304,6 +304,31 @@ describe('find_products_multi: one reading of the caller\'s market, served and r
     }
   }, 600000);
 
+  test('FIND_PRODUCTS_BUYER_MARKET on: the early lane records the buyer\'s market, not the served list\'s head', async () => {
+    // Flag on, the early lane binds the served partitions (US first) and scopes the offers by the buyer's
+    // currency, so an SG buyer gets an SGD page. Its contract used to record markets[0] -- US -- beside it.
+    // Every lane now records the same market flag off and flag on.
+    const { send } = boot();
+    for (const [query, lane] of LANES) {
+      for (const [label, payload, metadata, served] of COMBINATIONS) {
+        const tag = [query, label];
+        delete process.env.FIND_PRODUCTS_BUYER_MARKET;
+        const off = observe(await send(payload(query), metadata));
+        process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+        const on = observe(await send(payload(query), metadata));
+        delete process.env.FIND_PRODUCTS_BUYER_MARKET;
+        const market = served || 'US';
+        expect([tag, on.status, on.lane, on.returned > 0, on.rowCurrencies]).toEqual([tag, 200, lane, true, [CURRENCY[market]]]);
+        expect([tag, on.constraint, on.understanding]).toEqual([tag, off.constraint, off.understanding]);
+        if (lane === LANE.EARLY) {
+          // what the early lane served flag on: the served partitions with the buyer's market added
+          expect([tag, on.bound]).toEqual([tag, served && served !== 'US' ? ['US', served] : ['US']]);
+          expect([tag, on.constraint]).toEqual([tag, market]);
+        }
+      }
+    }
+  }, 600000);
+
   test('safe-empty answers record the one reading too, and carry the carrier', async () => {
     const { send } = boot();
     for (const [label, payload, metadata, served, carrier, ignored] of COMBINATIONS) {

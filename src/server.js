@@ -23421,8 +23421,13 @@ async function searchBeautyExternalSeedProductsMainline({
   // `servingCurrency` is the currency every row on the page must carry, flag or no flag: a silent
   // request is a US request (USD), a named priced market is its own currency, and anything else
   // is null and served nothing. See resolveServingCurrency.
-  const { markets, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
+  const { markets, buyerMarket, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
   const market = markets[0];
+  // What the answer RECORDS as its market (search_quality_contract.hard_constraints.market): the buyer's
+  // market when the request named one read as such, else the lane market. With the flag on, `market` is the
+  // served list's head (US) for an SG buyer whose page is SGD; recording that would name a market the page was
+  // not served for. Flag off, `market` is already the named market, so the record is the same either way.
+  const recordedMarket = buyerMarket || market;
   // A market with no known currency runs no SQL (the early return below), so it bound nothing:
   // logging `markets` there would read ['US'] beside an empty page.
   marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
@@ -23442,7 +23447,7 @@ async function searchBeautyExternalSeedProductsMainline({
     ? requestSearchQualityContract ||
       buildSearchQualityContract({
           rawQuery: rawQueryText,
-          market,
+          market: recordedMarket,
           source: metadata?.source || search?.source || null,
           allowContextBinding: false,
         })
