@@ -59,7 +59,36 @@ test.before(async () => {
   const entries = Object.entries(COMBOS);
   const results = await Promise.all(entries.map(([, env], i) => runCombo(env, 4101 + i)));
   entries.forEach(([name], i) => { R[name] = results[i]; });
+  // The stock the UCP and public doors now read off the detail lane's availability OBJECT (main published none)
+  // is taken back out here, so every comparison below stays against main's bytes; the test after that pins it.
+  for (const cases of Object.values(R)) {
+    for (const c of Object.values(cases)) {
+      const { rest, stock } = revertStock(c.body);
+      c.stock = stock;
+      if (rest !== c.body) { c.body = rest; c.sha256 = sha(rest); }
+    }
+  }
 }, { timeout: 240000 });
+
+// UCP: `availability` on each published variant; public: `availability` in place of main's "unknown".
+function revertStock(body) {
+  const o = JSON.parse(body);
+  const r = o.result || {};
+  const stock = {};
+  if (r.structuredContent && typeof r.structuredContent.availability === 'string' && r.structuredContent.availability !== 'unknown') {
+    stock.public = r.structuredContent.availability;
+    r.structuredContent.availability = 'unknown';
+  } else if (Array.isArray(r.content) && r.content[0] && !r.isError && /^\{/.test(r.content[0].text)) {
+    const inner = JSON.parse(r.content[0].text);
+    const variants = inner.ucp && inner.product && Array.isArray(inner.product.variants) ? inner.product.variants : [];
+    if (variants.some((v) => 'availability' in v)) {
+      stock.ucp = variants.map((v) => v.availability);
+      for (const v of variants) delete v.availability;
+      r.content[0].text = JSON.stringify(inner, null, 2);
+    }
+  }
+  return Object.keys(stock).length ? { rest: JSON.stringify(o), stock } : { rest: body, stock };
+}
 
 const toolsOf = (c) => Object.fromEntries(JSON.parse(c.body).result.tools.map((t) => [t.name, t]));
 const productOf = (c) => JSON.parse(JSON.parse(c.body).result.content[0].text).product;
@@ -72,6 +101,37 @@ function assertSameAsMain(cases, combo, names) {
     assert.equal(cases[name].sha256, MAIN.combos[combo].cases[name].sha256, `${name}: byte-identical to origin/main (${combo})`);
   }
 }
+
+test('the detail lane\'s stock reaches UCP and public get_product on every combination, and nothing else does', () => {
+  const ucpCases = ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other', 'ucp_gp_ctx'];
+  for (const [combo, cases] of Object.entries(R)) {
+    for (const name of ucpCases) {
+      assert.deepEqual(cases[name].stock, { ucp: [{ available: true, status: 'in_stock' }] }, `${combo}/${name}`);
+    }
+    // public get_product with a market is refused while `market` is undeclared (read off): nothing to carry stock.
+    const publicCases = combo === 'base' || combo === 'fwd' ? ['public_gp'] : ['public_gp', 'public_gp_market'];
+    for (const name of publicCases) assert.deepEqual(cases[name].stock, { public: 'in_stock' }, `${combo}/${name}`);
+    for (const [name, c] of Object.entries(cases)) {
+      if (!ucpCases.includes(name) && !publicCases.includes(name)) assert.deepEqual(c.stock, {}, `${combo}/${name}: unchanged`);
+    }
+  }
+});
+
+test('the door fixture serves the stock shape pdpBuilder emits: availability objects, no top-level in_stock', () => {
+  const { buildPdpPayload } = require('../src/pdpBuilder.js');
+  const built = buildPdpPayload({ product: {
+    product_id: 'sig_shape', merchant_id: 'm', title: 'T', price: 25, currency: 'USD', in_stock: true, inventory_quantity: 4,
+    variants: [{ variant_id: '1', title: 'Rose', price: 25, currency: 'USD', in_stock: true, inventory_quantity: 4 }],
+  }, relatedProducts: [], entryPoint: 'agent' }).product;
+  const shape = (p) => ({
+    product: Object.keys(p.availability).sort(),
+    variant: Object.keys(p.variants[0].availability).sort(),
+    in_stock: 'in_stock' in p,
+  });
+  assert.deepEqual(shape(built), { product: ['available_quantity', 'in_stock'], variant: ['available_quantity', 'in_stock'], in_stock: false });
+  const { storedProduct } = require('./_support/getProductDoorsProduct.cjs');
+  assert.deepEqual(shape(storedProduct('sig_pr5_tint', 'store.price-log.test', '43734829564039')), shape(built));
+});
 
 test('both flags off: every get_product answer and every tools/list is byte-identical to origin/main', () => {
   assert.deepEqual(Object.keys(R.base).sort(), Object.keys(MAIN.combos.base.cases).sort());
@@ -138,7 +198,8 @@ test('shadow + forward: no answer changes, and the UCP door hands its declared m
 });
 
 // What enforce ADDS to an answer, taken back out: the UCP `price.*` message, the public `price_check`, and /mcp's
-// `price_as_of`. Re-serialized the way the doors serialize (inner text JSON.stringify(_, null, 2), outer
+// `price_as_of` and live `in_stock` (the reader sets the top-level flag with `availability` since #2503; the stored
+// detail-lane product carries none). Re-serialized the way the doors serialize (inner text JSON.stringify(_, null, 2), outer
 // JSON.stringify), so "the rest is byte-identical to main" is checked against main's sha, and `added` is the label.
 function stripEnforceLabels(body) {
   const o = JSON.parse(body);
@@ -158,9 +219,13 @@ function stripEnforceLabels(body) {
     if (inner.ucp) {
       // The UCP shaper publishes no price_as_of: the message carries the read time instead.
       assert.equal(inner.product && 'price_as_of' in inner.product, false, 'UCP never carries price_as_of');
-    } else if (inner.product && 'price_as_of' in inner.product) {
-      added.price_as_of = inner.product.price_as_of;
-      delete inner.product.price_as_of;
+    } else if (inner.product) {
+      for (const k of ['price_as_of', 'in_stock']) {
+        if (k in inner.product) {
+          added[k] = inner.product[k];
+          delete inner.product[k];
+        }
+      }
     }
     r.content[0].text = JSON.stringify(inner, null, 2);
   }
@@ -187,9 +252,9 @@ test('enforce, forward off: the UCP door reads nothing live, whatever context it
   }
 });
 
-test('enforce: /mcp adds only price_as_of to a verified product; /public/mcp adds only price_check', () => {
+test('enforce: /mcp adds only price_as_of and the live in_stock to a verified product; /public/mcp adds only price_check', () => {
   const { rest, added } = stripEnforceLabels(R.enforce.mcp_gp_market.body);
-  assert.deepEqual(added, { price_as_of: '2026-10-22T12:00:00.000Z' });
+  assert.deepEqual(added, { price_as_of: '2026-10-22T12:00:00.000Z', in_stock: true });
   assert.equal(sha(rest), MAIN.combos.enforce.cases.mcp_gp_market.sha256, 'otherwise main\'s enforce answer');
   const p = productOf(R.enforce.mcp_gp_market);
   assert.equal(p.price, 23);

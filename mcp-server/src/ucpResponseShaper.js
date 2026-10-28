@@ -166,13 +166,18 @@ const AVAILABILITY_OUT_OF_STOCK = new Set([
  * -> UCP variant.availability `{ available, status }` (status well-known values: in_stock | backorder |
  * preorder | out_of_stock | discontinued). Same precedence as the public projector: the availability STRING
  * wins over the `in_stock` boolean (the two are derived independently upstream and the boolean was verified
- * stale on prod 2026-08-01). Unknown -> omitted entirely rather than published as a guess.
+ * stale on prod 2026-08-01). The get_product detail lane carries neither: pdpBuilder writes an availability
+ * OBJECT (`{ in_stock, available_quantity }`) on the product and on every variant, so its `in_stock` is read
+ * next. Unknown -> omitted entirely rather than published as a guess.
  */
 function availabilityOf(p) {
   const text = typeof p.availability === "string" ? p.availability.trim().toLowerCase() : "";
   if (text === "discontinued") return { available: false, status: "discontinued" };
   if (AVAILABILITY_IN_STOCK.has(text)) return { available: true, status: "in_stock" };
   if (AVAILABILITY_OUT_OF_STOCK.has(text)) return { available: false, status: "out_of_stock" };
+  const own = isPlainObject(p.availability) ? p.availability.in_stock : undefined;
+  if (own === true) return { available: true, status: "in_stock" };
+  if (own === false) return { available: false, status: "out_of_stock" };
   if (p.in_stock === true) return { available: true, status: "in_stock" };
   if (p.in_stock === false) return { available: false, status: "out_of_stock" };
   return undefined;
