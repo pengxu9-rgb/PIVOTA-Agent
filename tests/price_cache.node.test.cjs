@@ -268,7 +268,8 @@ test('HOST BACKOFF: a failing store read keeps what this instance knows and is n
 
 // ---- the process cache: the flags ----------------------------------------------------------------------------
 
-const FLAGS = ['PRICE_CACHE_STORE', 'PRICE_CACHE_MODE', 'PRICE_CACHE_FIRESTORE_DATABASE'];
+const FLAGS = ['PRICE_CACHE_STORE', 'PRICE_CACHE_MODE', 'PRICE_CACHE_FIRESTORE_DATABASE', 'PRICE_CACHE_FIRESTORE_PROJECT', 'GOOGLE_CLOUD_PROJECT'];
+const PROJECT = 'cache-project-test';
 function withEnv(env, fn) {
   const saved = Object.fromEntries(FLAGS.map((k) => [k, process.env[k]]));
   for (const k of FLAGS) delete process.env[k];
@@ -282,13 +283,13 @@ function withEnv(env, fn) {
 }
 
 test('settings: both flags must be on; anything unrecognised is off; the database defaults to price-cache', () => {
-  assert.deepEqual(pc.priceCacheSettings({}), { store: 'off', mode: 'off', database: 'price-cache', active: false, read: false });
+  assert.deepEqual(pc.priceCacheSettings({}), { store: 'off', mode: 'off', database: 'price-cache', project: '', active: false, read: false });
   assert.equal(pc.priceCacheSettings({ PRICE_CACHE_STORE: 'firestore' }).active, false);
   assert.equal(pc.priceCacheSettings({ PRICE_CACHE_MODE: 'read' }).active, false);
   assert.equal(pc.priceCacheSettings({ PRICE_CACHE_STORE: 'redis', PRICE_CACHE_MODE: 'write' }).active, false);
   assert.equal(pc.priceCacheSettings({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'on' }).active, false);
   assert.deepEqual(pc.priceCacheSettings({ PRICE_CACHE_STORE: ' Firestore ', PRICE_CACHE_MODE: 'WRITE', PRICE_CACHE_FIRESTORE_DATABASE: 'x' }),
-    { store: 'firestore', mode: 'write', database: 'x', active: true, read: false });
+    { store: 'firestore', mode: 'write', database: 'x', project: '', active: true, read: false });
   assert.equal(pc.priceCacheSettings({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'read' }).read, true);
 });
 
@@ -308,14 +309,14 @@ test('FLAGS OFF: every API call is a no-op that builds no store; read mode only 
       });
     }
     assert.equal(built, 0, 'no store was ever built');
-    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write', PRICE_CACHE_FIRESTORE_DATABASE: 'price-cache-test' }, async () => {
+    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write', PRICE_CACHE_FIRESTORE_DATABASE: 'price-cache-test', PRICE_CACHE_FIRESTORE_PROJECT: PROJECT }, async () => {
       assert.equal(pc.recordVerifiedPrice(VERIFIED), true);
       assert.deepEqual(await pc.lookupRecentPrices([KEY], { ttlMs: pc.TTL_MS.search }), [null], 'write mode never answers');
       await pc.activePriceCache().store.flush();
     });
     assert.equal(built, 1);
     assert.equal(fake.calls.getAll.length, 0);
-    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'read' }, async () => {
+    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'read', PRICE_CACHE_FIRESTORE_PROJECT: PROJECT }, async () => {
       assert.equal((await pc.lookupRecentPrices([KEY], { ttlMs: pc.TTL_MS.search }))[0].amount, 23);
       assert.equal(pc.priceCacheReadEnabled(), true);
     });
@@ -350,7 +351,7 @@ test('S1 warmPriceCache: off builds and warms nothing; active builds the store a
   try {
     await withEnv({ PRICE_CACHE_STORE: 'firestore' }, async () => assert.deepEqual(await pc.warmPriceCache(), { skipped: true }));
     assert.deepEqual(warmed, []);
-    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write' }, async () => assert.deepEqual(await pc.warmPriceCache(), { ok: true, ms: 3 }));
+    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write', PRICE_CACHE_FIRESTORE_PROJECT: PROJECT }, async () => assert.deepEqual(await pc.warmPriceCache(), { ok: true, ms: 3 }));
     assert.deepEqual(warmed, [1]);
     assert.deepEqual(lines, [{ e: 'price_cache_warm', ok: true, ms: 3 }]);
   } finally {
@@ -391,4 +392,59 @@ test('write cost: an unchanged answer is not re-written within 5 min; a changed 
   await store.flush();
   assert.equal(fake.calls.batches.flat().length, 1, 'coalesced in the queue: one doc');
   assert.equal(fake.docs.size, 1);
+});
+
+test('N1: an AMOUNT change inside the 5-min window is written at once (so is compare-at, handle or tombstone)', async () => {
+  const { fake, c, store, cache } = harness();
+  assert.equal(cache.recordVerifiedPrice(VERIFIED), true);
+  c.add(MIN);
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, amount: 24 }), true, 'price changed: written');
+  c.add(MIN);
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, amount: 24, compare_at: 30 }), true, 'compare-at changed: written');
+  c.add(MIN);
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, amount: 24, compare_at: 30, handle: 'other' }), true, 'handle changed: written');
+  c.add(MIN);
+  assert.equal(cache.recordVariantGone({ ...KEY, source: 'merchant_ucp', writer: 'offers' }), true, 'gone: written');
+  await store.flush();
+  const d = [...fake.docs.values()][0];
+  assert.equal(d.status, 'variant_gone');
+});
+
+// ---- the Firestore project is the cache's own, never GOOGLE_CLOUD_PROJECT (write-mode incident 2026-10-27) ------
+
+test('PROJECT UNSET with the flags on: no store is built (never a guessed project), one price_cache_config_failed line', async () => {
+  let built = 0;
+  const lines = [];
+  pc._setStoreFactoryForTest(() => { built += 1; return { putPrice() {}, putHostBackoff() {}, async getPrices() { return new Map(); }, async warm() { return { ok: true, ms: 0 }; } }; });
+  pc.setPriceCacheLog((e, f) => lines.push({ e, ...f }));
+  try {
+    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write', GOOGLE_CLOUD_PROJECT: 'vertex-billing-project' }, async () => {
+      assert.equal(pc.activePriceCache(), null);
+      assert.equal(pc.recordVerifiedPrice(VERIFIED), false);
+      assert.equal(pc.noteHostRefusal('shop.example.com', 429), false);
+      assert.deepEqual(await pc.warmPriceCache(), { skipped: true });
+      assert.equal(pc.activePriceCache(), null);
+    });
+    assert.equal(built, 0);
+    assert.deepEqual(lines, [{ e: 'price_cache_config_failed', reason: 'project_unset', variable: 'PRICE_CACHE_FIRESTORE_PROJECT' }], 'logged once');
+  } finally {
+    pc._setStoreFactoryForTest(null);
+    pc.setPriceCacheLog(null);
+  }
+});
+
+test('the REAL client addresses PRICE_CACHE_FIRESTORE_PROJECT, never GOOGLE_CLOUD_PROJECT (built offline, no RPC)', async () => {
+  pc._setStoreFactoryForTest(null);
+  pc._resetForTest();
+  try {
+    await withEnv({ PRICE_CACHE_STORE: 'firestore', PRICE_CACHE_MODE: 'write', PRICE_CACHE_FIRESTORE_PROJECT: PROJECT, GOOGLE_CLOUD_PROJECT: 'vertex-billing-project' }, async () => {
+      const db = pc.activePriceCache().store._client();
+      assert.equal(db.projectId, PROJECT);
+      assert.equal(db.databaseId, 'price-cache');
+      assert.equal(db.collection('verified_prices').doc('x').formattedName, `projects/${PROJECT}/databases/price-cache/documents/verified_prices/x`);
+      await db.terminate();
+    });
+  } finally {
+    pc._resetForTest();
+  }
 });
