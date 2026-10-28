@@ -43,10 +43,13 @@ nock(doors.LOOPBACK, { allowUnmocked: true }).persist()
             brand: { name: 'Brand T' },
             description: 'A lip tint.',
             price: { current: { amount: 25, currency: 'USD' } },
-            availability: 'in_stock',
+            // The real lane's stock shape (src/pdpBuilder.js buildPdpPayload): an availability OBJECT on the product
+            // and on each variant, and no top-level in_stock (the detail normalizer leaves it undefined). The door
+            // test pins this shape against buildPdpPayload itself.
+            availability: { in_stock: true, available_quantity: 4 },
             destination_url: `https://${STORE}/products/tint`,
             default_variant_id: VARIANT,
-            variants: [{ variant_id: VARIANT, title: 'Rose', price: { current: { amount: 25, currency: 'USD' } }, availability: { in_stock: true } }],
+            variants: [{ variant_id: VARIANT, title: 'Rose', price: { current: { amount: 25, currency: 'USD' } }, availability: { in_stock: true, available_quantity: 4 } }],
           },
         },
       },

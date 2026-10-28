@@ -1,5 +1,5 @@
 {
-  "_comment": "get_product doors on origin/main e8847ce51 (before PR-5), per flag combination: each answer's status and sha256 (ids masked). Captured by running tests/_support/getProductDoorsChild.cjs on that tree under the loopback-only guard; read by tests/get_product_forward_market_doors.node.test.cjs.",
+  "_comment": "get_product doors on origin/main e8847ce51 (before PR-5), per flag combination: each answer's status and sha256 (ids masked). Captured by running tests/_support/getProductDoorsChild.cjs on that tree under the loopback-only guard, with the detail lane's real stock shape (availability objects, no top-level in_stock); read by tests/get_product_forward_market_doors.node.test.cjs.",
   "captured_on": "e8847ce51",
   "combos": {
     "base": {
@@ -7,23 +7,23 @@
       "cases": {
         "ucp_gp": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx_blank": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx_other": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "mcp_gp": {
           "status": 200,
-          "sha256": "b7f875b30fe9db97ae8f161265e690d6b1aeafc0b60fc9d15e88ac3629f7d747"
+          "sha256": "05aee21549de74fea38a6d505949963abfef080957b4638ef9b5cd7d5fbb6b0f"
         },
         "mcp_gp_market": {
           "status": 200,
@@ -31,7 +31,7 @@
         },
         "public_gp": {
           "status": 200,
-          "sha256": "7bb4e70048715fca0716dab7c66b705623e0d583403a6165c1881408d7f7b785"
+          "sha256": "4d7c219ad89af0f927709d8707d836dbb482631fe976760b140b403a6016ab10"
         },
         "public_gp_market": {
           "status": 200,
@@ -58,35 +58,35 @@
       "cases": {
         "ucp_gp": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx_blank": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx_other": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "mcp_gp": {
           "status": 200,
-          "sha256": "b7f875b30fe9db97ae8f161265e690d6b1aeafc0b60fc9d15e88ac3629f7d747"
+          "sha256": "05aee21549de74fea38a6d505949963abfef080957b4638ef9b5cd7d5fbb6b0f"
         },
         "mcp_gp_market": {
           "status": 200,
-          "sha256": "b7f875b30fe9db97ae8f161265e690d6b1aeafc0b60fc9d15e88ac3629f7d747"
+          "sha256": "05aee21549de74fea38a6d505949963abfef080957b4638ef9b5cd7d5fbb6b0f"
         },
         "public_gp": {
           "status": 200,
-          "sha256": "7bb4e70048715fca0716dab7c66b705623e0d583403a6165c1881408d7f7b785"
+          "sha256": "4d7c219ad89af0f927709d8707d836dbb482631fe976760b140b403a6016ab10"
         },
         "public_gp_market": {
           "status": 200,
-          "sha256": "7bb4e70048715fca0716dab7c66b705623e0d583403a6165c1881408d7f7b785"
+          "sha256": "4d7c219ad89af0f927709d8707d836dbb482631fe976760b140b403a6016ab10"
         },
         "mcp_tools": {
           "status": 200,
@@ -109,35 +109,35 @@
       "cases": {
         "ucp_gp": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx_blank": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx_other": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "ucp_gp_ctx": {
           "status": 200,
-          "sha256": "1e5c99ca3dc9af5800c7ae6fe15907a9b89cf32b6cf61b9121a39780f31de631"
+          "sha256": "4bd0d64ff186f8c72bea69ee843d48d52ff7863ed6b9e13fc33a1d61e599c5bd"
         },
         "mcp_gp": {
           "status": 200,
-          "sha256": "0e9b7e22a8ebdc67bdd6a95f584bfd17c3f36991c04505f952e682fbd91f029c"
+          "sha256": "2e504a829a4c2b6cdee1f7e637b6189e5e321294fd77adf6be092229df5d9ca1"
         },
         "mcp_gp_market": {
           "status": 200,
-          "sha256": "3dd598cc86af7676a0f2b6b6c6424c347adba8a1c281d0a0d0491c535814a5ca"
+          "sha256": "83d8d3edfa60469dd56beea706b7231391ad62d838051fdb28caeaa68d5b8fb0"
         },
         "public_gp": {
           "status": 200,
-          "sha256": "7bb4e70048715fca0716dab7c66b705623e0d583403a6165c1881408d7f7b785"
+          "sha256": "4d7c219ad89af0f927709d8707d836dbb482631fe976760b140b403a6016ab10"
         },
         "public_gp_market": {
           "status": 200,
-          "sha256": "2f2fe4836d492312fa006b313d0a0d7a65ff6b711147020f41b10b86f5242400"
+          "sha256": "77af3170b660fe1af62b2b46c29e816323a79cc9af3a29dac18948aae220daed"
         },
         "mcp_tools": {
           "status": 200,
