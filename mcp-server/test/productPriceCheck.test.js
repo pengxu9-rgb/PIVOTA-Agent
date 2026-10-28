@@ -310,3 +310,59 @@ test('R2 guard: a headline dated by a read while its listed default variant is n
   delete p.default_variant_id;
   assert.equal(productPriceCheck(p).live, true, 'no default named: the headline stamp decides');
 });
+
+// R4 (controller r5): "answered" means the merchant gave a price AND a stock flag, not that the variant is in
+// stock. A default variant priced but out of stock was read: it is re-priced, the headline follows it and is
+// dated, and the label is merchant_verified. Only a missing stock flag (R2 above) leaves it stored.
+const ROSE_SOLD_OUT = () => answer({
+  products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [
+    { id: gid(ROSE), price: { amount: 2300, currency: 'USD' }, availability: { available: false } },
+    v(PLUM, 2100, 'USD'),
+  ] }],
+  messages: [],
+});
+
+test('R4: default answered out of stock (available:false) is still read: re-priced, headline dated, merchant_verified', async () => {
+  const out = await enforced(ROSE_SOLD_OUT);
+  const p = out.product;
+  assert.equal(p.variants[0].live_read.status, 'verified', 'Rose was answered in full');
+  assert.equal(p.variants[0].price.current.amount, 23);
+  assert.equal(p.variants[0].availability.in_stock, false, 'the merchant\'s out-of-stock answer is kept');
+  assert.equal(p.price, 23, 'the headline follows its default variant');
+  assert.equal(p.price_source, 'merchant_live');
+  assert.equal(p.price_as_of, '2026-10-27T09:00:00.000Z');
+  assert.deepEqual(p.availability, { in_stock: true }, 'Plum is in stock, so the product stays buyable');
+  assert.equal(p.in_stock, true);
+  assert.equal(projectPublicReadResult('get_product', out).availability, 'in_stock');
+  assert.deepEqual(productPriceCheck(p), { live: true, market: 'US', as_of: '2026-10-27T09:00:00.000Z', read_variants: 2, stored_variants: 0 });
+  const msgs = priceMessages(shapeUcpGetProductResponse(out, {}));
+  assert.deepEqual(msgs.map((m) => [m.type, m.code]), [['info', 'price.merchant_verified']]);
+  assert.deepEqual(projectPublicReadResult('get_product', out).price_check, { confirmed_with_merchant: true, market: 'US' });
+});
+
+test('R4: every variant answered out of stock: still verified, and the product reads out of stock on every door', async () => {
+  const out = await enforced(() => answer({
+    products: [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [
+      { id: gid(ROSE), price: { amount: 2300, currency: 'USD' }, availability: { available: false } },
+      { id: gid(PLUM), price: { amount: 2100, currency: 'USD' }, availability: { available: false } },
+    ] }],
+    messages: [],
+  }));
+  const p = out.product;
+  assert.equal(p.price, 23);
+  assert.equal(p.price_as_of, '2026-10-27T09:00:00.000Z');
+  assert.equal(p.availability.in_stock, false, 'all asked, none in stock: out of stock');
+  assert.equal(p.in_stock, false, 'the top-level flag the doors read agrees: the stored in_stock: true is not left beside it');
+  assert.equal(projectPublicReadResult('get_product', out).availability, 'out_of_stock', 'public never sells a sold-out product as in stock');
+  assert.equal(productPriceCheck(p).live, true);
+  assert.equal(priceMessages(shapeUcpGetProductResponse(out, {}))[0].code, 'price.merchant_verified');
+  assert.equal(projectPublicReadResult('get_product', out).price_check.confirmed_with_merchant, true);
+});
+
+test('R4: a product stored sold out that the merchant answers in stock reads in stock on every door', async () => {
+  const out = await enforced(ROSE_SOLD_OUT, { market: 'US' }, { availability: 'out_of_stock', in_stock: false });
+  const p = out.product;
+  assert.deepEqual(p.availability, { in_stock: true }, 'Plum is in stock');
+  assert.equal(p.in_stock, true, 'the stored in_stock: false is not left beside it');
+  assert.equal(projectPublicReadResult('get_product', out).availability, 'in_stock');
+});
