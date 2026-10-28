@@ -74,8 +74,8 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
   const calls = { getAll: [], get: [], batches: [], writerOptions: [] };
   // writeHang: a commit that never answers (a blackholed Firestore) until release() is called.
   const faults = { getAllDelayMs: 0, getAllError: null, getDelayMs: 0, getError: null, writeFailures: 0, writeCode: 14, writeHang: false };
-  let releaseHang = () => {};
-  const hung = () => new Promise((resolve) => { releaseHang = resolve; });
+  const hangs = []; // every commit waiting on the blackhole
+  const hung = () => new Promise((resolve) => { hangs.push(resolve); });
   const pause = (ms) => new Promise((r) => (ms ? setTimeout(r, ms) : setImmediate(r)));
 
   function docRef(collection, id) {
@@ -122,7 +122,11 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
       async function send(batch) {
         calls.batches.push(batch.map((op) => op.ref.path));
         await pause(0);
-        if (faults.writeHang) await hung();
+        if (faults.writeHang && (await hung()) === 'fail') {
+          // The blackholed connection finally errors (after the client's own retries): every write on it fails.
+          for (const op of batch) op.reject(Object.assign(new Error('fake connection reset'), { code: 14, failedAttempts: 3, documentRef: op.ref }));
+          return;
+        }
         for (const op of batch) {
           if (faults.writeFailures > 0) {
             faults.writeFailures -= 1;
@@ -190,7 +194,7 @@ function createFakeFirestore({ databaseId = 'price-cache' } = {}) {
       db.terminated = true;
     },
   };
-  return { db, docs, calls, faults, FakeTimestamp, release: () => { faults.writeHang = false; releaseHang(); } };
+  return { db, docs, calls, faults, FakeTimestamp, release: ({ fail = false } = {}) => { faults.writeHang = false; hangs.splice(0).forEach((resolve) => resolve(fail ? 'fail' : 'ok')); } };
 }
 
 module.exports = { createFakeFirestore, FakeTimestamp };

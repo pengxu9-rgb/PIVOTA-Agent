@@ -16,6 +16,9 @@
  *     read   as write, and a consumer may serve an answer from the cache as `recent` inside its own window
  *            (search: 15 min; services/liveMerchantSearchPrice.js is the only consumer today)
  *   PRICE_CACHE_FIRESTORE_DATABASE  the Firestore database id (default price-cache)
+ *   PRICE_CACHE_FIRESTORE_PROJECT   the GCP project that holds it. REQUIRED, never inferred: the gateway's
+ *                                   GOOGLE_CLOUD_PROJECT is the Vertex/Gemini project, a different one. Unset with the
+ *                                   flags on: no store is built, and `price_cache_config_failed` is logged once.
  * Both STORE and MODE must be on, or nothing is built: no client is loaded and no connection is opened.
  *
  * KEY. host | market | variant_id | currency, hashed (sha256 hex) to the doc id. host: lowercased, a trailing dot
@@ -64,6 +67,11 @@ const BACKOFF_MAX_MS = 10 * 60 * 1000;
 // stock, handle and source) is not written again until that one is this old. The doc's read_at then lags the
 // truth by at most this much, well inside every consumer window (10 and 15 min).
 const UNCHANGED_REWRITE_MS = 5 * 60 * 1000;
+// KNOWN EDGE, TO SETTLE BEFORE PRICE_CACHE_MODE=read: the skip compares against what THIS instance last saw. When
+// instance A wrote $10, instance B then wrote $12, and A reads $10 again inside 5 min, A skips and the store keeps
+// B's $12 until A's window ends. Harmless in write mode (nothing reads the store); before read mode either compare
+// against the store's doc (L1-refreshed) or drop the skip for keys another writer touched.
+
 
 const SOURCES = new Set(['merchant_ucp', 'merchant_storefront', 'merchant_cart']);
 const WRITERS = new Set(['search', 'pdp', 'product', 'offers', 'cart']);
@@ -91,6 +99,7 @@ function priceCacheSettings(env = process.env) {
     store,
     mode,
     database: str(env && env.PRICE_CACHE_FIRESTORE_DATABASE) || 'price-cache',
+    project: str(env && env.PRICE_CACHE_FIRESTORE_PROJECT),
     active,
     read: active && mode === 'read',
   };
@@ -435,7 +444,7 @@ let storeFactory = null; // tests: (settings) => PriceCacheStore
 function defaultLog(event, fields) {
   try {
     // Failures are warnings (they reach error reporting); the stats and warm-up lines are info.
-    const level = /_failed$/.test(event) ? 'warn' : 'info';
+    const level = /_failed$|_reset$|_disabled$/.test(event) ? 'warn' : 'info';
     require('../logger')[level]({ event, ...fields }, event);
   } catch {
     /* ignored */
@@ -445,13 +454,25 @@ let runtimeLog = defaultLog;
 
 function defaultStoreFactory(settings) {
   const { createFirestorePriceCacheStore } = require('./priceCacheStore');
-  return createFirestorePriceCacheStore({ database: settings.database, log: runtimeLog });
+  return createFirestorePriceCacheStore({ database: settings.database, projectId: settings.project, log: runtimeLog });
 }
 
-/** The process cache, or null when the flags are off (then nothing is built, loaded or connected). */
+let configFailureLogged = false;
+
+/**
+ * The process cache, or null when the flags are off (then nothing is built, loaded or connected), and null when they
+ * are on but name no project (logged once; never a guessed project).
+ */
 function activePriceCache(env = process.env) {
   const settings = priceCacheSettings(env);
   if (!settings.active) return null;
+  if (!settings.project) {
+    if (!configFailureLogged) {
+      configFailureLogged = true;
+      runtimeLog('price_cache_config_failed', { reason: 'project_unset', variable: 'PRICE_CACHE_FIRESTORE_PROJECT' });
+    }
+    return null;
+  }
   if (!runtime) {
     const store = (storeFactory || defaultStoreFactory)(settings);
     runtime = createPriceCache({
@@ -530,8 +551,10 @@ module.exports = {
   _setStoreFactoryForTest(fn) {
     storeFactory = typeof fn === 'function' ? fn : null;
     runtime = null;
+    configFailureLogged = false;
   },
   _resetForTest() {
     runtime = null;
+    configFailureLogged = false;
   },
 };
