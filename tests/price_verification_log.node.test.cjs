@@ -1,0 +1,463 @@
+'use strict';
+
+// src/observability/priceVerificationLog.js + priceVerificationFacts.js, and the log-only HTTP status on the
+// UCP live readers' failures. Pure units; the doors themselves are pinned by
+// tests/price_verification_log_golden.node.test.cjs. No network: the readers get a fake UCP client.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const ORIGINAL_FLAG = process.env.PRICE_VERIFICATION_LOG;
+const facts = require('../src/observability/priceVerificationFacts');
+const pv = require('../src/observability/priceVerificationLog');
+const { createUcpLiveOfferReader, createUcpLiveProductReader } = require('../src/services/ucpLiveOfferRead');
+
+const on = () => { process.env.PRICE_VERIFICATION_LOG = 'on'; };
+const off = () => { delete process.env.PRICE_VERIFICATION_LOG; };
+test.afterEach(() => {
+  if (ORIGINAL_FLAG === undefined) delete process.env.PRICE_VERIFICATION_LOG;
+  else process.env.PRICE_VERIFICATION_LOG = ORIGINAL_FLAG;
+});
+
+const NOW = Date.parse('2026-10-22T12:00:00.000Z');
+const iso = (ms) => new Date(ms).toISOString();
+const MIN = 60 * 1000;
+
+function sink() {
+  const lines = [];
+  return { lines, info: (obj, msg) => lines.push({ ...obj, msg }) };
+}
+
+function loopbackReq(header, { xff } = {}) {
+  return {
+    socket: { remoteAddress: '127.0.0.1' },
+    headers: { ...(header ? { 'x-pivota-price-context': header } : {}), ...(xff ? { 'x-forwarded-for': xff } : {}) },
+  };
+}
+
+test('flag off: nothing is computed, labelled, sent or wrapped', async () => {
+  off();
+  assert.equal(facts.priceVerificationLogEnabled(), false);
+  assert.equal(facts.priceFactsOf('search_catalog', { products: [{ price: 1 }] }), null);
+  assert.equal(pv.createMcpPriceCapture(), null);
+  const p = Promise.resolve(7);
+  await pv.runWithPriceContext({ door: 'mcp' }, async () => {
+    assert.deepEqual(pv.priceContextLogFields(), {});
+    assert.deepEqual(pv.priceContextHeaders(), {});
+    assert.equal(pv.trackLiveWork(p), p, 'the same promise object, not a wrapper');
+    assert.equal(pv.trackSearchOverlay(p), p);
+    assert.equal(pv.mcpPriceCapture(), null);
+  });
+  let ranInside = null;
+  pv.runWithPriceDoor({ headers: {} }, 'mcp', () => { ranInside = pv.currentPriceContext(); });
+  assert.equal(ranInside, null, 'off: the door opens no context');
+  const s = sink();
+  assert.equal(pv.logPriceVerificationServed(s, { surface: 'search', items: [{ price: 1 }] }), false);
+  assert.deepEqual(s.lines, []);
+});
+
+test('flag values: on/1/true/yes/enabled turn it on; anything else is off', () => {
+  for (const v of ['on', '1', 'true', 'YES', 'enabled']) assert.equal(facts.priceVerificationLogEnabled({ PRICE_VERIFICATION_LOG: v }), true, v);
+  for (const v of ['', 'off', '0', 'shadow', undefined]) assert.equal(facts.priceVerificationLogEnabled({ PRICE_VERIFICATION_LOG: v }), false, String(v));
+});
+
+test('classifyFact: live during the request, recent inside the surface window, stored otherwise', () => {
+  const o = { startedAtMs: NOW, nowMs: NOW + 2000, ttlMs: 15 * MIN };
+  const fact = (at, extra = {}) => ({ priced: true, merchant: true, at, ...extra });
+  assert.equal(pv.classifyFact(fact(NOW + 500), o), 'live');
+  assert.equal(pv.classifyFact(fact(NOW - 900), o), 'live', 'stamped while the request was admitted (1s slack)');
+  assert.equal(pv.classifyFact(fact(NOW - 5 * MIN), o), 'recent');
+  assert.equal(pv.classifyFact(fact(NOW - 16 * MIN), o), 'stored', 'older than the window');
+  assert.equal(pv.classifyFact(fact(NOW - 5 * MIN), { ...o, ttlMs: 0 }), 'stored', 'get_offers accepts no recent answer');
+  assert.equal(pv.classifyFact(fact(null), o), 'stored', 'a merchant answer with no time is not provably fresh');
+  assert.equal(pv.classifyFact({ priced: true, merchant: false, at: NOW }, o), 'stored');
+  assert.equal(pv.classifyFact({ priced: false, merchant: true, at: NOW }, o), null, 'no price, not counted');
+  assert.deepEqual(pv.TTL_MS, { search: 15 * MIN, recommend_products: 15 * MIN, get_product: 10 * MIN, get_pdp_v2: 10 * MIN, get_offers: 0 });
+});
+
+test('priceFactOf: price spellings, answer times; a price flagged for verification is still on the item', () => {
+  assert.deepEqual(facts.priceFactOf({ price: 10, price_source: 'merchant_live', price_as_of: iso(NOW) }), { priced: true, merchant: true, at: NOW });
+  assert.deepEqual(facts.priceFactOf({ price: { current: { amount: 9, currency: 'USD' } }, live_read: { status: 'verified', checked_at: iso(NOW) }, price_source: 'merchant_live' }), { priced: true, merchant: true, at: NOW });
+  assert.deepEqual(facts.priceFactOf({ price_amount: '12.5' }), { priced: true, merchant: false, at: null });
+  assert.deepEqual(facts.priceFactOf({ price: 25, merchant_price_verified: true, live_read: { status: 'verified', checked_at: iso(NOW) } }), { priced: true, merchant: true, at: NOW });
+  assert.equal(facts.priceFactOf({ price: 0 }).priced, false, '0 is the not-buyable sentinel');
+  // /mcp, invoke and REST serve that price as it stands; the UCP shaper and the public projection withhold it,
+  // and their doors count only the rows they serve (golden: the per-door counts).
+  assert.equal(facts.priceFactOf({ price: 14, commerce_verification: { required: true } }).priced, true);
+  assert.equal(facts.priceFactOf({ price: 14, commerce_verification: { price_trusted: false } }).priced, true);
+  assert.equal(facts.priceFactOf(null), null);
+});
+
+test('only a VERIFIED live read dates a price: every other status is stamped too, and dates nothing', () => {
+  // ucpLiveOfferRead.applyRead stamps checked_at = now on every read it settles. A backend-verified offer whose
+  // read this request was skipped (host_busy is a skipped read), timed out or failed is the backend's answer,
+  // with no time of its own: stored.
+  const now = NOW;
+  for (const status of ['skipped', 'timeout', 'error', 'not_ucp', 'variant_gone', 'currency_mismatch', undefined]) {
+    const offer = { price: 27, merchant_price_verified: true, price_as_of: null, live_read: { ...(status ? { status } : {}), checked_at: iso(now), ...(status === 'skipped' ? { reason: 'host_busy' } : {}) } };
+    assert.equal(facts.priceFactOf(offer).at, null, `${status}: no answer time`);
+    assert.equal(pv.classifyPrice(offer, { startedAtMs: now - 200, nowMs: now, ttlMs: 0 }), 'stored', `${status}: stored, not live`);
+    assert.equal(pv.classifyPrice(offer, { startedAtMs: now - 200, nowMs: now, ttlMs: 15 * MIN }), 'stored', `${status}: not recent either`);
+  }
+  const verified = { price: 23, merchant_price_verified: true, live_read: { status: 'verified', checked_at: iso(now) } };
+  assert.equal(pv.classifyPrice(verified, { startedAtMs: now - 200, nowMs: now, ttlMs: 0 }), 'live');
+  // A backend date still dates a non-verified read's offer (price_as_of comes first).
+  assert.equal(facts.priceFactOf({ price: 27, merchant_price_verified: true, price_as_of: iso(now - MIN), live_read: { status: 'timeout', checked_at: iso(now) } }).at, now - MIN);
+});
+
+test('classifyFact: the 1 s admission slack is inclusive, and no wider', () => {
+  const o = { startedAtMs: NOW, nowMs: NOW + 5000, ttlMs: 15 * MIN };
+  assert.equal(pv.classifyFact({ priced: true, merchant: true, at: NOW - 1000 }, o), 'live');
+  assert.equal(pv.classifyFact({ priced: true, merchant: true, at: NOW - 1001 }, o), 'recent');
+});
+
+test('a backend-verified offer is dated by price_as_of (its price_checked_at), never by freshness.observed_at', () => {
+  // offerToSignal relays the backend's price_checked_at as price_as_of under the fresh-price contract.
+  assert.deepEqual(facts.priceFactOf({ price: 25, merchant_price_verified: true, price_as_of: iso(NOW - 2 * MIN) }), { priced: true, merchant: true, at: NOW - 2 * MIN });
+  // Without the contract, observed_at is the row's updated_at: a write, not a read. Nothing dates the answer.
+  assert.deepEqual(facts.priceFactOf({ price: 25, merchant_price_verified: true, freshness: { observed_at: iso(NOW) } }), { priced: true, merchant: true, at: null });
+  assert.equal(pv.classifyFact(facts.priceFactOf({ price: 25, merchant_price_verified: true, freshness: { observed_at: iso(NOW) } }), { startedAtMs: NOW, nowMs: NOW, ttlMs: 15 * MIN }), 'stored');
+});
+
+test('priceFactsOf: the priced objects of each tool, the overlay copy, the market, the page limit', () => {
+  on();
+  const search = facts.priceFactsOf('search_catalog', {
+    products: [{ price: 1, price_source: 'merchant_live', price_as_of: iso(NOW) }, { price: 2 }, 'junk'],
+    metadata: { market: 'us', live_merchant_price: { attempted: true, verified_count: 1, failure_reasons: { timeout: 2, 'bad key!': 1 }, ucp: { mode: 'enforce', planned_count: 3, by_status: { x: 1 } }, note: 'free text with spaces' } },
+  }).price_facts;
+  assert.equal(search.surface, 'search');
+  assert.equal(search.items.length, 2, 'a non-object row has no fact');
+  assert.equal(search.market, 'US');
+  assert.deepEqual(search.overlay, { attempted: true, verified_count: 1, failure_reasons: { timeout: 2 }, ucp: { mode: 'enforce', planned_count: 3 } });
+  assert.equal(facts.priceFactsOf('search_catalog', { products: [{ price: 1 }, { price: 2 }, { price: 3 }] }, { limit: 2 }).price_facts.items.length, 2);
+
+  assert.equal(facts.priceFactsOf('get_product', { product: { price: 5 } }).price_facts.items.length, 1);
+  assert.equal(facts.priceFactsOf('get_product', { price: 5 }).price_facts.items.length, 1, 'a bare product');
+  const offers = facts.priceFactsOf('get_offers', { signals: [{ value: { price: 25, merchant_price_verified: true, live_read: { status: 'verified', checked_at: iso(NOW) } } }, { value: { price: 27 } }], metadata: { market: 'SG' } }).price_facts;
+  assert.deepEqual(offers.items, [{ priced: true, merchant: true, at: NOW }, { priced: true, merchant: false, at: null }]);
+  assert.equal(offers.market, 'SG');
+  assert.equal(offers.overlay, undefined, 'only search carries an overlay');
+  const reco = facts.priceFactsOf('recommend_products', { signals: [{ value: { product: { price: 30, price_verified: true } } }] }).price_facts;
+  assert.deepEqual(reco.items, [{ priced: true, merchant: false, at: null }], 'price_verified (a PDP loopback) is not a merchant answer');
+  assert.equal(facts.priceFactsOf('get_intel', { price: 1 }), null);
+  assert.equal(facts.priceFactsOf('search_catalog', null).price_facts.items.length, 0);
+});
+
+test('the loopback context is honoured only on a loopback self-call, and only as known labels', () => {
+  const header = 'door=mcp;tier=authenticated;caller_class=api_key;agent_id=agent_1;request_id=abc123;started_at_ms=1792598400000';
+  assert.deepEqual(pv.inheritedContext(loopbackReq(header)), {
+    door: 'mcp', tier: 'authenticated', caller_class: 'api_key', agent_id: 'agent_1', request_id: 'abc123', started_at_ms: 1792598400000,
+  });
+  assert.equal(pv.inheritedContext(loopbackReq(header, { xff: '203.0.113.9' })), null, 'routed in from outside: ignored');
+  assert.equal(pv.inheritedContext({ ...loopbackReq(header), socket: { remoteAddress: '10.0.0.4' } }), null);
+  assert.deepEqual(pv.inheritedContext(loopbackReq('door=admin;tier=root;agent_id=a b;request_id=%ZZ')), null, 'unknown door: no context');
+  assert.deepEqual(pv.inheritedContext(loopbackReq('door=public_mcp;tier=root;agent_id=a%20b')), { door: 'public_mcp' }, 'bad values dropped');
+  assert.equal(pv.inheritedContext(loopbackReq('x'.repeat(600))), null);
+  // The bound is on the whole header: a valid one padded to 512 chars is read, to 513 is not.
+  const base = 'door=mcp;request_id=abc123;';
+  assert.equal(pv.inheritedContext(loopbackReq(base + 'x'.repeat(512 - base.length))).door, 'mcp');
+  assert.equal(pv.inheritedContext(loopbackReq(base + 'x'.repeat(513 - base.length))), null);
+});
+
+test('priceContextHeaders round-trips through inheritedContext', async () => {
+  on();
+  const req = { headers: {}, socket: { remoteAddress: '203.0.113.9' }, invokeAuth: { auth_mode: 'api_key', agent_id: 'agent_7' } };
+  await pv.runWithPriceDoor(req, 'ucp_mcp', async () => {
+    const { 'X-Pivota-Price-Context': header } = pv.priceContextHeaders();
+    const back = pv.inheritedContext(loopbackReq(header));
+    const mine = pv.currentPriceContext();
+    assert.equal(back.door, 'ucp_mcp');
+    assert.equal(back.tier, 'authenticated');
+    assert.equal(back.caller_class, 'api_key');
+    assert.equal(back.agent_id, 'agent_7');
+    assert.equal(back.request_id, mine.request_id);
+    assert.equal(back.door_key, mine.door_key);
+    assert.equal(back.started_at_ms, mine.started_at_ms);
+  });
+  assert.equal(pv.inheritedContext(loopbackReq('door=mcp;door_key=ABCDEF0123456789abcdef01')).door_key, undefined, 'a door key is 24 lowercase hex');
+  assert.equal(pv.inheritedContext(loopbackReq('door=mcp;door_key=abc')).door_key, undefined);
+});
+
+test('the door registry is keyed by a minted door key: one trace id sent twice is two doors, a forged key finds none', async () => {
+  on();
+  const trace = { 'x-cloud-trace-context': '0123456789abcdef0123456789abcdef/1' };
+  const doors = [];
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const both = ['mcp', 'ucp_mcp'].map((door) => pv.runWithPriceDoor({ headers: trace, socket: {} }, door, async () => {
+    doors.push(pv.currentPriceContext());
+    await held;
+  }));
+  assert.equal(doors.length, 2);
+  assert.equal(doors[0].request_id, doors[1].request_id, 'the same client-sent trace id');
+  assert.notEqual(doors[0].door_key, doors[1].door_key);
+  assert.equal(pv._openDoors.get(doors[0].door_key), doors[0], 'the first door is not overwritten by the second');
+  assert.equal(pv._openDoors.get(doors[1].door_key), doors[1]);
+  // A loopback carrying the first door's request id (all a client could know) but not its key reports nowhere.
+  await new Promise((resolve) => {
+    pv.priceContextMiddleware('invoke')(loopbackReq(`door=mcp;request_id=${doors[0].request_id};door_key=${'0'.repeat(24)}`), {}, () => {
+      assert.equal(pv.currentPriceContext().parent, null);
+      resolve();
+    });
+  });
+  release();
+  await Promise.all(both);
+  assert.equal(pv._openDoors.size, 0);
+});
+
+test('the door registry is bounded: past 2000 open doors the oldest is dropped', async () => {
+  on();
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const stores = [];
+  const runs = [];
+  for (let i = 0; i < 2001; i += 1) {
+    runs.push(pv.runWithPriceDoor({ headers: {}, socket: {} }, 'mcp', async () => { stores.push(pv.currentPriceContext()); await held; }));
+  }
+  assert.equal(pv._openDoors.size, 2000);
+  assert.equal(pv._openDoors.has(stores[0].door_key), false, 'the oldest door was dropped');
+  assert.equal(pv._openDoors.get(stores[2000].door_key), stores[2000]);
+  release();
+  await Promise.all(runs);
+  assert.equal(pv._openDoors.size, 0);
+});
+
+test('a door that fails (a rejected promise, or a throw) still releases its registry entry', async () => {
+  on();
+  let rejected;
+  await assert.rejects(pv.runWithPriceDoor({ headers: {}, socket: {} }, 'mcp', async () => {
+    rejected = pv.currentPriceContext();
+    assert.equal(pv._openDoors.get(rejected.door_key), rejected);
+    throw new Error('door failed');
+  }), /door failed/);
+  assert.equal(pv._openDoors.has(rejected.door_key), false, 'a rejected door is released');
+  let thrown;
+  assert.throws(() => pv.runWithPriceDoor({ headers: {}, socket: {} }, 'mcp', () => {
+    thrown = pv.currentPriceContext();
+    throw new Error('sync');
+  }), /sync/);
+  assert.equal(pv._openDoors.has(thrown.door_key), false, 'a throwing door is released');
+  assert.equal(pv._openDoors.size, 0);
+});
+
+test('a loopback request is never registered: it cannot overwrite (or release) its door\'s entry', async () => {
+  on();
+  let release;
+  const held = new Promise((r) => { release = r; });
+  let door;
+  const run = pv.runWithPriceDoor({ headers: {}, socket: {} }, 'mcp', async () => {
+    door = pv.currentPriceContext();
+    const header = pv.priceContextHeaders()['X-Pivota-Price-Context'];
+    // The same door key arriving over loopback, at an MCP door (runWithPriceDoor) and at invoke (middleware).
+    await pv.runWithPriceDoor(loopbackReq(header), 'mcp', async () => {
+      const lb = pv.currentPriceContext();
+      assert.equal(lb.via_loopback, true);
+      assert.equal(lb.parent, door);
+      assert.equal(pv._openDoors.get(door.door_key), door, 'still the door\'s own store');
+    });
+    assert.equal(pv._openDoors.get(door.door_key), door, 'the loopback\'s end did not release the door');
+    await new Promise((resolve) => pv.priceContextMiddleware('invoke')(loopbackReq(header), {}, () => {
+      assert.equal(pv._openDoors.get(door.door_key), door);
+      resolve();
+    }));
+    assert.equal(pv._openDoors.size, 1);
+    await held;
+  });
+  release();
+  await run;
+  assert.equal(pv._openDoors.size, 0);
+});
+
+test('searchSkipReason: lane_not_overlaid only when the answer carries no overlay outcome', () => {
+  const none = { overlay_calls: 0, overlay_skipped: null };
+  assert.equal(pv.searchSkipReason(none, null), 'lane_not_overlaid');
+  assert.equal(pv.searchSkipReason(none, { attempted: true }), 'overlay_not_observed', 'overlaid by another request\'s compute');
+  assert.equal(pv.searchSkipReason(none, { attempted: false, skipped_reason: 'budget_constraint' }), 'budget_constraint');
+  assert.equal(pv.searchSkipReason({ overlay_calls: 1, overlay_skipped: 'page_gt_1' }, { attempted: true }), 'page_gt_1');
+  assert.equal(pv.searchSkipReason({ overlay_calls: 1, overlay_skipped: null }, { attempted: true }), null);
+  assert.equal(pv.searchSkipReason({ overlay_calls: 1, overlay_skipped: null }, { skipped_reason: 'no eligible rows' }), null, 'labels are tokens');
+});
+
+test('a loopback call reports its overlay to its door, which closes its registry entry when done', async () => {
+  on();
+  const doorReq = { headers: { 'x-cloud-trace-context': 'ABCDEF0123456789/1;o=1' }, socket: { remoteAddress: '203.0.113.9' } };
+  let doorStore;
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const done = pv.runWithPriceDoor(doorReq, 'mcp', async () => {
+    doorStore = pv.currentPriceContext();
+    assert.equal(doorStore.request_id, 'abcdef0123456789', 'Cloud Run trace id is the request id');
+    const header = pv.priceContextHeaders()['X-Pivota-Price-Context'];
+    // The loopback invoke, as priceContextMiddleware('invoke') runs it.
+    await new Promise((resolve) => {
+      pv.priceContextMiddleware('invoke')(loopbackReq(header), {}, async () => {
+        const store = pv.currentPriceContext();
+        assert.equal(store.via_loopback, true);
+        assert.equal(store.door, 'mcp', 'labelled with the door that asked');
+        assert.equal(store.parent, doorStore);
+        assert.deepEqual(pv.priceContextLogFields().door, 'mcp');
+        pv.trackSearchOverlay(null, { skipped: 'page_gt_1' });
+        await pv.trackLiveWork(new Promise((r) => setTimeout(r, 15)));
+        resolve();
+      });
+    });
+    await held;
+  });
+  assert.match(doorStore.door_key, /^[a-f0-9]{24}$/, 'a door key this process minted');
+  assert.equal(pv._openDoors.get(doorStore.door_key), doorStore, 'open while the door works, under its door key');
+  assert.equal(pv._openDoors.has('abcdef0123456789'), false, 'never under the client-settable trace id');
+  release();
+  await done;
+  assert.equal(pv._openDoors.has(doorStore.door_key), false, 'closed when it is done');
+  const work = pv.recordedLiveWork(doorStore);
+  assert.equal(work.overlay_calls, 1);
+  assert.equal(work.overlay_skipped, 'page_gt_1');
+  assert.ok(work.added_ms >= 10, `the loopback's live work counts on the door: ${work.added_ms}`);
+});
+
+test('added_ms is the span live work covered, not the sum of parallel reads', async () => {
+  on();
+  await pv.runWithPriceContext({ door: 'mcp' }, async () => {
+    const t = (ms) => pv.trackLiveWork(new Promise((r) => setTimeout(r, ms)));
+    await Promise.all([t(30), t(30), t(30)]);
+    const { added_ms: added } = pv.recordedLiveWork(pv.currentPriceContext());
+    assert.ok(added >= 25 && added < 80, `three parallel 30ms reads add ~30ms, got ${added}`);
+    await assert.rejects(pv.trackLiveWork(Promise.reject(new Error('boom'))), /boom/, 'a failure passes through');
+  });
+});
+
+test('the MCP capture: one line per priced tool result; a cache replay is recent and waited for nothing', async () => {
+  on();
+  const s = sink();
+  const ok = { body: { jsonrpc: '2.0', id: 1, result: { content: [] } } };
+  await pv.runWithPriceContext({ door: 'public_mcp', tier: 'public', started_at_ms: Date.now() }, async () => {
+    const store = pv.currentPriceContext();
+    const capture = pv.mcpPriceCapture();
+    assert.equal(pv.mcpPriceCapture(), capture, 'one per request');
+    capture.note({ cache_hit: 'stale' });
+    capture.note({ price_facts: {
+      tool: 'search_catalog', surface: 'search', market: null,
+      items: [{ priced: true, merchant: true, at: Date.now() - 4 * MIN }, { priced: true, merchant: false, at: null }],
+      overlay: { attempted: true, verified_count: 1 },
+    } });
+    store.live_first_ms = 1;
+    store.live_last_ms = 500;
+    assert.equal(pv.logMcpPriceVerificationServed(s, ok, { market: 'us' }), true);
+  });
+  const [line] = s.lines;
+  assert.equal(line.msg, 'price_verification_served');
+  assert.equal(line.event, 'price_verification_served');
+  assert.deepEqual(
+    { surface: line.surface, door: line.door, tier: line.tier, market: line.market, live: line.live, recent: line.recent, stored: line.stored, verified_count: line.verified_count, total: line.total, added_ms: line.added_ms, skipped_reason: line.skipped_reason, cache_hit: line.cache_hit, overlay_ran: line.overlay_ran, overlay_verified: line.overlay_verified },
+    { surface: 'search', door: 'public_mcp', tier: 'public', market: 'US', live: 0, recent: 1, stored: 1, verified_count: 1, total: 2, added_ms: 0, skipped_reason: 'mcp_read_cache_replay', cache_hit: 'stale', overlay_ran: true, overlay_verified: 1 },
+  );
+
+  const s2 = sink();
+  await pv.runWithPriceContext({ door: 'mcp' }, async () => {
+    const capture = pv.mcpPriceCapture();
+    capture.note({ price_facts: { tool: 'search_catalog', surface: 'search', items: [] } });
+    pv.logMcpPriceVerificationServed(s2, ok);
+    pv.logMcpPriceVerificationServed(s2, { body: { result: { isError: true } } });
+  });
+  assert.equal(s2.lines.length, 2 - 1, 'a tool error writes no line');
+  assert.equal(s2.lines[0].skipped_reason, 'lane_not_overlaid', 'no overlay ran for this answer');
+
+  const s3 = sink();
+  await pv.runWithPriceContext({ door: 'mcp' }, async () => {
+    pv.mcpPriceCapture().note({ cache_hit: false });
+    pv.logMcpPriceVerificationServed(s3, ok);
+  });
+  assert.deepEqual(s3.lines, [], 'a tool that handed over no facts (not priced) writes no line');
+});
+
+test('a cache replay is never live, however fresh its stamp; a miss stamped during the request is', async () => {
+  on();
+  const ok = { body: { jsonrpc: '2.0', id: 1, result: { content: [] } } };
+  const lineFor = async (cacheHit, tool = 'get_product', surface = 'get_product') => {
+    const s = sink();
+    const startedAt = Date.now();
+    await pv.runWithPriceContext({ door: 'mcp', started_at_ms: startedAt }, async () => {
+      const capture = pv.mcpPriceCapture();
+      capture.note({ cache_hit: cacheHit });
+      // Stamped 400 ms before the request started: inside the 1 s admission slack, so a fresh read would be live.
+      capture.note({ price_facts: { tool, surface, items: [{ priced: true, merchant: true, at: startedAt - 400 }] } });
+      pv.logMcpPriceVerificationServed(s, ok);
+    });
+    const [l] = s.lines;
+    return { live: l.live, recent: l.recent, stored: l.stored, skipped_reason: l.skipped_reason };
+  };
+  assert.deepEqual(await lineFor(true), { live: 0, recent: 1, stored: 0, skipped_reason: 'mcp_read_cache_replay' });
+  assert.deepEqual(await lineFor('stale'), { live: 0, recent: 1, stored: 0, skipped_reason: 'mcp_read_cache_replay' });
+  assert.deepEqual(await lineFor(true, 'search_catalog', 'search'), { live: 0, recent: 1, stored: 0, skipped_reason: 'mcp_read_cache_replay' });
+  assert.deepEqual(await lineFor(false), { live: 1, recent: 0, stored: 0, skipped_reason: null });
+  assert.equal(pv.classifyFact({ priced: true, merchant: true, at: NOW }, { startedAtMs: NOW, nowMs: NOW, ttlMs: 0, replay: true }), 'stored', 'get_offers has no recent window');
+});
+
+test('logPriceVerificationServed: only known surfaces; labels are tokens; door falls back to the context', async () => {
+  on();
+  const s = sink();
+  await pv.runWithPriceContext({ door: 'rest', tier: 'unauthenticated' }, async () => {
+    assert.equal(pv.logPriceVerificationServed(s, { surface: 'nope', items: [] }), false);
+    pv.logPriceVerificationServed(s, { surface: 'get_pdp_v2', items: [{ price: 3 }], market: 'u s', skipped_reason: 'has space', added_ms: -4 });
+  });
+  assert.equal(s.lines.length, 1);
+  assert.equal(s.lines[0].door, 'rest');
+  assert.equal(s.lines[0].market, null);
+  assert.equal(s.lines[0].skipped_reason, null);
+  assert.equal(s.lines[0].added_ms, 0);
+  assert.equal(s.lines[0].stored, 1);
+});
+
+test('searchOverlayLogFields: the overlay outcome as flat fields, why it did not run included', () => {
+  assert.deepEqual(pv.searchOverlayLogFields(undefined), { overlay_ran: false });
+  assert.deepEqual(pv.searchOverlayLogFields({ attempted: false, skipped_reason: 'budget_constraint' }), { overlay_ran: false, overlay_skipped_reason: 'budget_constraint' });
+  assert.deepEqual(
+    pv.searchOverlayLogFields({ attempted: true, eligible_count: 4, fetch_attempt_count: 3, cache_hit_count: 1, verified_count: 2, drift_count: 1, gone_count: 0, dropped_gone_count: 0, deadline_exceeded: true, failure_reasons: { http_429: 1 }, ucp: { mode: 'shadow', planned_count: 2, settled_count: 0, verified_count: 0 } }),
+    { overlay_ran: true, overlay_eligible: 4, overlay_fetch_attempts: 3, overlay_cache_hits: 1, overlay_verified: 2, overlay_drifted: 1, overlay_gone: 0, overlay_dropped_gone: 0, overlay_deadline_exceeded: true, overlay_failure_reasons: { http_429: 1 }, overlay_ucp: { mode: 'shadow', planned: 2, settled: 0, verified: 0 } },
+  );
+});
+
+// --- the HTTP status of a failed lookup, on the reader lines (ucpLiveOfferRead) -----------------------------
+
+function failingClient(status) {
+  return {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; },
+    async lookupCatalog() { return { ok: false, status, error: 'rate_limited' }; },
+  };
+}
+
+const OFFER = {
+  offer_id: 'of:x:1', merchant_id: 'm', price: 25, currency: 'USD', in_stock: true,
+  execution_spec: { merchant_domain: 'store.test', variant_id: '43734829564039' },
+};
+
+test('get_offers reader: a 429 lookup is logged with its status (flag on) and as before (flag off)', async () => {
+  for (const flag of [false, true]) {
+    if (flag) on(); else off();
+    const logs = [];
+    const r = createUcpLiveOfferReader({ ucpClient: failingClient(429), mode: 'enforce', log: (event, fields) => logs.push({ event, ...fields }) });
+    const { offers } = await r.readOffers([OFFER], { market: 'US', currency: 'USD' });
+    assert.equal(offers[0].live_read.status, 'error');
+    assert.equal(offers[0].live_read.http_status, undefined, 'never in the answer');
+    const host = logs.find((l) => l.event === 'get_offers_ucp_live_read').hosts[0];
+    assert.equal(host.reason, 'lookup_failed');
+    assert.equal(host.http_status, flag ? 429 : undefined, `flag ${flag ? 'on' : 'off'}`);
+  }
+});
+
+test('get_product reader: a 503 lookup is logged with its status (flag on) and never reaches the product', async () => {
+  for (const flag of [false, true]) {
+    if (flag) on(); else off();
+    const logs = [];
+    const r = createUcpLiveProductReader({ ucpClient: failingClient(503), mode: 'enforce', log: (event, fields) => logs.push({ event, ...fields }) });
+    const product = {
+      product_id: 'p1', currency: 'USD', price: 25, destination_url: 'https://store.test/products/tint',
+      variants: [{ variant_id: '43734829564039', price: { current: { amount: 25, currency: 'USD' } } }],
+    };
+    const served = await r.readProduct({ product }, { market: 'US' });
+    const line = logs.find((l) => l.event === 'get_product_ucp_live_read');
+    assert.equal(line.status, 'error');
+    assert.equal(line.http_status, flag ? 503 : undefined);
+    assert.equal(JSON.stringify(served).includes('503'), false, 'the status is a log field only');
+  }
+});

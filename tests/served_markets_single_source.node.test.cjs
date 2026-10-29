@@ -283,8 +283,13 @@ test('every lane takes its markets from laneMarkets, not by re-deriving from the
   // Stage 0a routes the mainline's resolution through buyerMarket.js, whose unchanged path IS
   // marketsForRequest and whose buyer path is the served LIST (plus the named partition) --
   // both pinned below, and at runtime by tests/buyer_market.node.test.cjs.
-  assert.ok(/const \{ markets, buyerCurrency, servingCurrency \} = resolveBuyerMarketScope\(search\.market \|\| metadata\.market\)/.test(src),
+  // `buyerMarket` may be destructured beside them: the lane RECORDS the buyer's market (its contract's
+  // hard_constraints.market) while `markets` stays the list it binds. What this pins is unchanged -- the list
+  // comes from the resolver, never re-derived -- and the lane market every bind uses is still `markets[0]`.
+  assert.ok(/const \{ markets, (?:buyerMarket, )?buyerCurrency, servingCurrency \} = resolveBuyerMarketScope\(search\.market \|\| metadata\.market\);\n  const market = markets\[0\];/.test(src),
     'the beauty mainline no longer resolves a LIST before handing it down.');
+  assert.ok(/marketId: buyerCurrency \? null : market,/.test(src),
+    'the beauty mainline\'s canonical marketId is no longer the lane market.');
   const buyer = fs.readFileSync(path.join(ROOT, 'src/services/buyerMarket.js'), 'utf8');
   assert.ok(/markets: marketsForRequest\(requested, env\)/.test(buyer),
     'buyerMarket.js no longer falls back to marketsForRequest for an unpriced or silent request.');

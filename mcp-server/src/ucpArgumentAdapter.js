@@ -1448,6 +1448,21 @@ const GET_PRODUCT_DESCRIPTION = [
   "`catalog.selected` / `preferences` are accepted and not read.",
 ].join(" ");
 
+// UCP_GET_PRODUCT_FORWARD_MARKET (default off, read per call like the Reap dials): get_product reads
+// `catalog.context.address_country` into the native `market`, and `tools/list` says so. Off, the mapper's
+// output, the published schema and the description are exactly what they were.
+export function ucpGetProductForwardMarketEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env.UCP_GET_PRODUCT_FORWARD_MARKET) || "").trim());
+}
+const GET_PRODUCT_MARKET_SENTENCE = [
+  "Send `catalog.context.address_country` (the buyer market, ISO 3166-1 alpha-2) when you know it: the",
+  "price and stock may then be read live from the merchant for that market. It is never inferred, and without",
+  "it the price is Pivota's stored one; `messages` says which it is (`price.merchant_verified`,",
+  "`price.partially_verified` when the default variant's price was read but not every variant's, or `price.stored`).",
+  "A stored price is for discovery only: before quoting a final price, call `get_offers` for the product and",
+  "market and quote only an offer whose `merchant_price_verified` is true.",
+].join(" ");
+
 const SEARCH_CATALOG_DESCRIPTION = [
   "Search Pivota's normalized multi-merchant catalog with free text. Send `{ meta, catalog: { query } }` —",
   "the query is NESTED under `catalog`. Read-only; no money, no state change. Returns Pivota product ids",
@@ -1848,7 +1863,7 @@ const SPECS = Object.freeze({
         },
       },
     },
-    map(args) {
+    map(args, env = process.env) {
       // A read: UNKNOWN_PRODUCT_ID carries the right recovery ("re-run search to obtain a valid product_id")
       // and the right retriable:false, and the curated message below is what the caller actually sees.
       const code = "UNKNOWN_PRODUCT_ID";
@@ -1869,7 +1884,23 @@ const SPECS = Object.freeze({
       }
       // -> the NATIVE get_product tool args. No merchant_id exists in the UCP shape, so this reads the
       // unscoped lane, which is the same lane an ACP-feed `sig_*` id resolves through.
-      return { product_id: id.trim() };
+      const native = { product_id: id.trim() };
+      // The buyer market the platform DECLARED (`context.address_country`, as on search_catalog) is the one
+      // input the live variant read needs (native `market`; src/services/ucpLiveOfferRead). Off, `context`
+      // stays accepted-and-unread and the args are exactly `{ product_id }`. Never defaulted: absent or
+      // blank, no market is sent and nothing is read live.
+      //
+      // A null `address_country` is ABSENT (platforms serialize unset optional fields as null). A non-string is a
+      // malformed envelope around a valid id, so it is refused as search refuses it (OPERATION_NOT_ALLOWED), never
+      // as UNKNOWN_PRODUCT_ID, whose "no product matches, search again" would send the agent round in a loop.
+      if (ucpGetProductForwardMarketEnabled(env)) {
+        const context = own(catalog, "context");
+        const country = isPlainObject(context) && own(context, "address_country") === null
+          ? undefined
+          : readSearchCountry(context, SEARCH_REFUSAL_CODE);
+        if (country !== undefined) native.market = country;
+      }
+      return native;
     },
   }),
 
@@ -2162,6 +2193,31 @@ export function ucpToolDescriptionsFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ARMED_DESCRIPTIONS;
   return reapAgenticCreateEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
 }
+
+// get_product as `tools/list` publishes it under UCP_GET_PRODUCT_FORWARD_MARKET (the Reap dials never touch it,
+// so one variant serves every one of theirs): `catalog.context` declares the member the mapper reads.
+const GET_PRODUCT_BASE_CATALOG = SPECS.get_product.inputSchema.properties.catalog;
+export const UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA = Object.freeze({
+  ...SPECS.get_product.inputSchema,
+  properties: {
+    ...SPECS.get_product.inputSchema.properties,
+    catalog: {
+      ...GET_PRODUCT_BASE_CATALOG,
+      properties: {
+        ...GET_PRODUCT_BASE_CATALOG.properties,
+        context: {
+          type: "object",
+          additionalProperties: true,
+          description: "Buyer context. `address_country` selects the buyer market the price and stock may be read live for. Other members are accepted and NOT read.",
+          properties: {
+            address_country: { type: "string", description: "Buyer market, ISO 3166-1 alpha-2. Read; never inferred." },
+          },
+        },
+      },
+    },
+  },
+});
+export const UCP_GET_PRODUCT_MARKET_DESCRIPTION = [GET_PRODUCT_DESCRIPTION, GET_PRODUCT_MARKET_SENTENCE].join(" ");
 
 /** canonical op id -> the UCP-dialect tool description (the NATIVE one names fields UCP does not have). */
 export const UCP_TOOL_DESCRIPTIONS = Object.freeze(

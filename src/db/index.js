@@ -928,11 +928,18 @@ function recordingFailures(label, fn) {
   };
 }
 
+// The pool if one exists, WITHOUT creating it: for readers of its census (load shedding) that must not
+// open connections just to look.
+function peekPool() {
+  return pool;
+}
+
 // Boot-time check, so a refused configuration is in the logs at startup, not at the first request.
 isDbLaneDeadlinesEnabled();
 
 module.exports = {
   DB_BUDGET_ACQUIRE_TIMEOUT,
+  peekPool,
   DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,

@@ -1,6 +1,6 @@
 # Log-based counter: find_products_multi LLM model breaker openings (src/findProductsMulti/llmModelBreaker.js).
-# One line per opening or re-opening after a failed cooldown probe (that line alone carries severity WARNING; the
-# filter keys on its event, not on severity). A steady count means a
+# One line per opening or re-opening after a failed cooldown probe, logged at WARN (severity WARNING); the filter
+# keys on its event, not on severity. A steady count means a
 # configured model id does not exist for its provider: the pass (rerank / semantic rewrite) is being skipped and
 # `env_hint` on the line names the variable to change.
 #   gcloud logging metrics create llm_model_breaker_opens --project=$PROJECT \

@@ -1841,7 +1841,8 @@ const keepClaims = {
 
 // why_candidate is user-visible; stripping must never leave its summary empty or its reasons list
 // empty.
-const DEFAULT_REASONS_USER_VISIBLE = ['Category/use-case evidence is aligned.', 'Source provenance is available.'];
+// One definition, shared with the edge reader's quote sanitiser (relationshipQuoteSafety).
+const { DEFAULT_REASONS_USER_VISIBLE } = require('./relationshipQuoteSafety');
 
 function withSummaryFallback(why, fallbackSummary, fallbackReasons = DEFAULT_REASONS_USER_VISIBLE) {
   if (!isPlainObject(why)) return { summary: fallbackSummary, reasons_user_visible: fallbackReasons };

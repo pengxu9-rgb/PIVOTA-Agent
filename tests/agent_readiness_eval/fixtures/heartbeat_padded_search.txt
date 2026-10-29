@@ -1,0 +1,4 @@
+
+
+
+{"jsonrpc":"2.0","id":11,"result":{"structuredContent":{"products":[],"returned":0,"empty_reason":"no_match","note":"No products matched this search."},"content":[{"type":"text","text":"No products matched this search."}]}}

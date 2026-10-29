@@ -1,0 +1,28 @@
+# Distribution: milliseconds the response spent on live price reads (`added_ms`; 0 when nothing was read live).
+# Source line: jsonPayload.msg="price_verification_served" (src/observability/priceVerificationLog.js), one per
+#   priced agent response while PRICE_VERIFICATION_LOG is on. Fields: surface, door, tier, caller_class,
+#   market, live, recent, stored, verified_count (= live + recent), total, added_ms, skipped_reason.
+# Coverage = sum(price_prices_verified) / sum(price_prices_served), per surface / door.
+# Excludes tier=first_party, like mcp_tool_outcomes/, so Pivota's own CI and probe traffic on the service key
+# cannot move a ratio.
+#   gcloud logging metrics create price_live_added_ms --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/price_verification/metric.price_live_added_ms.yaml
+description: Milliseconds added by live price reads, by surface / door
+filter: >-
+  resource.type="cloud_run_revision"
+  AND resource.labels.service_name="gateway"
+  AND jsonPayload.msg="price_verification_served"
+  AND jsonPayload.tier!="first_party"
+valueExtractor: EXTRACT(jsonPayload.added_ms)
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: ms
+  labels:
+    - {key: surface, valueType: STRING}
+    - {key: door, valueType: STRING}
+labelExtractors:
+  surface: EXTRACT(jsonPayload.surface)
+  door: EXTRACT(jsonPayload.door)
+bucketOptions:
+  exponentialBuckets: {numFiniteBuckets: 16, growthFactor: 1.6, scale: 10}

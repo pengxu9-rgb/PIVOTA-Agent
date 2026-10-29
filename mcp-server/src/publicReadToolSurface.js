@@ -9,7 +9,8 @@
 // listings, which the app-directory sourcing policy excludes (docs/openai_apps_v1_plan.md §1, §5).
 
 import { createCommerceToolSurface, UnknownToolError, commerceToolParamsKey } from "./commerceToolSurface.js";
-import { projectPublicReadResult, MAX_SEARCH_RESULTS } from "./publicReadProjection.js";
+import { projectPublicReadResult, productSummary, MAX_SEARCH_RESULTS } from "./publicReadProjection.js";
+import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
 import {
   filterFirstPartyRows,
   isResellerRow,
@@ -189,6 +190,15 @@ const PUBLIC_DESCRIPTIONS = Object.freeze({
     "Read-only.",
 });
 
+// get_product's public description while the commerce schema declares `market` (it does exactly while the live
+// product read is on, UCP_LIVE_PRODUCT_READ). get_offers is not on this tier, so the price rule names no tool. This
+// tier replays an answer from its read cache for up to an hour, so a confirmed price is not claimed as current.
+const PUBLIC_GET_PRODUCT_MARKET_SENTENCES =
+  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: Pivota may then confirm the " +
+  "price with the merchant for that market, and when it has, `price_check.confirmed_with_merchant` is true (an " +
+  "answer may be up to an hour old). Without it the price is Pivota's stored one. A price here is for " +
+  "discovery only: never quote it to a buyer as the final price.";
+
 // Apply the public presentation to a read tool: the de-marketed description, and — for get_product only —
 // relax the schema so it resolves by the single public sig id alone (the backend product cache matches by
 // product_id when merchant_id is absent; routes/agent_shop_gateway.py _load_product_by_id). Annotations are
@@ -198,6 +208,7 @@ function publicPresentation(tool) {
   if (PUBLIC_DESCRIPTIONS[tool.name]) next.description = PUBLIC_DESCRIPTIONS[tool.name];
   if (tool.name === "get_product" && tool.inputSchema) {
     next.inputSchema = { ...tool.inputSchema, required: ["product_id"] };
+    if (tool.inputSchema.properties && tool.inputSchema.properties.market) next.description += PUBLIC_GET_PRODUCT_MARKET_SENTENCES;
   }
   return next;
 }
@@ -269,7 +280,39 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
         })
       : await computeTool(toolName, args);
     noteToolCall(observe, () => computed.observed);
+    // The price facts of what this tier served, computed with the answer and replayed with it from the cache
+    // (gateway price_verification_served line; null unless PRICE_VERIFICATION_LOG). Not recomputed at replay:
+    // that needs the raw upstream rows, which the cache does not keep. So an entry computed while the flag was
+    // off replays with no line until it is recomputed (at most PUBLIC_READ_CACHE_STALE_MS after the flip).
+    noteToolCall(observe, () => computed.priceFacts || null);
     return computed.value;
+  }
+
+  // The price facts of the rows THIS tier serves: after its filters, aligned to the projected page (the
+  // projector keeps a row only when it summarizes, then slices), and a price the projection withholds
+  // (commerce verification required, untrusted price) is not a served price. Log only; never throws.
+  function publicPriceFacts(toolName, raw, value) {
+    try {
+      // Off: not even the alignment pass (productSummary per raw row) runs.
+      if (!priceVerificationFacts.priceVerificationLogEnabled()) return null;
+      if (toolName === "search_catalog") {
+        const served = value && Array.isArray(value.products) ? value.products : [];
+        const rows = (raw && Array.isArray(raw.products) ? raw.products : [])
+          .filter((p) => productSummary(p, PUBLIC_PDP_BASE))
+          .slice(0, served.length);
+        const out = priceVerificationFacts.priceFactsOf(toolName, { ...raw, products: rows });
+        if (out) out.price_facts.items = out.price_facts.items.map((f, i) => (served[i] && served[i].price != null ? f : { ...f, priced: false }));
+        return out;
+      }
+      if (toolName === "get_product") {
+        const out = priceVerificationFacts.priceFactsOf(toolName, raw);
+        if (out && !(value && value.price != null)) out.price_facts.items = out.price_facts.items.map((f) => ({ ...f, priced: false }));
+        return out;
+      }
+    } catch {
+      // measurement only
+    }
+    return null;
   }
 
   async function computeTool(toolName, toolArgs) {
@@ -371,7 +414,14 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const value = projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit, emptyReason });
     const emptySearchPage =
       toolName === "search_catalog" && Array.isArray(value.products) && value.products.length === 0;
-    return { value, cacheable: !upstreamDegraded && !upstreamPartial, emptySearchPage, chainFilterFailedOpen, observed };
+    return {
+      value,
+      cacheable: !upstreamDegraded && !upstreamPartial,
+      emptySearchPage,
+      chainFilterFailedOpen,
+      observed,
+      priceFacts: publicPriceFacts(toolName, raw, value),
+    };
   }
 
   function isPublicReadTool(name) {

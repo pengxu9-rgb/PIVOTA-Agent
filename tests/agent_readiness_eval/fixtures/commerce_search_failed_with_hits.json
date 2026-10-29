@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"status\": \"failed\",\n  \"success\": false,\n  \"products\": [\n    {\n      \"product_id\": \"sig_fx_201\",\n      \"merchant_id\": \"merch_fixture_a\",\n      \"title\": \"Cream Blush - Peach\",\n      \"brand\": \"Fixture Cosmetics\",\n      \"category\": \"Makeup > Cheeks > Blush\",\n      \"product_type\": \"blush\",\n      \"price\": 15,\n      \"currency\": \"USD\",\n      \"availability\": \"in_stock\",\n      \"in_stock\": true,\n      \"url\": \"https://shop.fixture.example/products/sig_fx_201\",\n      \"pivota_url\": \"https://agent.fixture.example/products/sig_fx_201\"\n    }\n  ],\n  \"metadata\": {\n    \"route_health\": {\n      \"fallback_triggered\": true\n    }\n  }\n}"
+      }
+    ]
+  }
+}
