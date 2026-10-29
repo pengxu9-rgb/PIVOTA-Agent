@@ -712,6 +712,16 @@ test('server: the overlay is enforce-only, and the background read is claimed on
   const builder = path.join(__dirname, '..', 'src', 'pdpBuilder.js');
   const run = (env) => {
     const code = `
+      // ".invalid never resolves" -- but only after a real DNS query has left the box. Answer it here,
+      // offline (tests/_support/netGuard.cjs fails this child when a query goes out).
+      const dns = require('node:dns');
+      const realLookup = dns.lookup;
+      dns.lookup = (host, opts, cb) => {
+        if (!String(host).endsWith('.invalid')) return realLookup(host, opts, cb);
+        const done = typeof opts === 'function' ? opts : cb;
+        const err = Object.assign(new Error('getaddrinfo ENOTFOUND ' + host), { code: 'ENOTFOUND', hostname: host });
+        setImmediate(() => done(err));
+      };
       const { livePdpOverlay, ucpLivePdpCache, shadowPdpLiveRead } = require(${JSON.stringify(server)})._debug;
       const { buildPdpPayload } = require(${JSON.stringify(builder)});
       const pdp = buildPdpPayload({ relatedProducts: [], entryPoint: 'agent', product: {

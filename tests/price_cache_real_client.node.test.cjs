@@ -15,12 +15,32 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+
+// The client is the real one, so it looks for credentials like the gateway does. With none on the machine (CI), it
+// falls back to the GCP metadata server: a probe of 169.254.169.254 and metadata.google.internal, and an unhandled
+// MetadataLookupWarning rejection when that fails. A placeholder service account ends the search before that, and
+// METADATA_SERVER_DETECTION=none rules the metadata server out for anything that looks anyway. (A machine with gcloud
+// application-default credentials never gets that far, which is why only CI saw it.) Nothing signs with the
+// placeholder: the loopback servers are plaintext gRPC (ssl: false), where the client sends no auth.
+const credsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'price-cache-real-client-'));
+const fakeCredentials = path.join(credsDir, 'service-account.json');
+fs.writeFileSync(fakeCredentials, JSON.stringify({
+  type: 'service_account',
+  project_id: 'cache-project-test',
+  private_key_id: 'placeholder',
+  private_key: '-----BEGIN PRIVATE KEY-----\nplaceholder\n-----END PRIVATE KEY-----\n',
+  client_email: 'price-cache-test@cache-project-test.iam.gserviceaccount.com',
+  client_id: '0',
+}));
+test.after(() => fs.rmSync(credsDir, { recursive: true, force: true }));
 
 function sim(scenario) {
   const r = spawnSync(process.execPath, [...process.execArgv.filter((a) => !a.startsWith('--test')), path.join(__dirname, '_support', 'priceCacheRealClientSim.cjs'), scenario], {
     cwd: path.join(__dirname, '..'), encoding: 'utf8', timeout: 60000,
-    env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: '', FIRESTORE_EMULATOR_HOST: '' },
+    env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: fakeCredentials, METADATA_SERVER_DETECTION: 'none', FIRESTORE_EMULATOR_HOST: '' },
   });
   const lines = String(r.stdout || '').split('\n').filter(Boolean);
   const json = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).find((x) => x && x.scenario === scenario);

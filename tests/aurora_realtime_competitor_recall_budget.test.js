@@ -1,28 +1,15 @@
 'use strict';
 
 const nock = require('nock');
+const { guardFileNetwork } = require('./nock_file_net_guard.cjs');
 
 // Nothing here may reach a real host: every request must hit a nock interceptor or loopback. A request no
-// interceptor matched is recorded and fails the test that made it -- the reco code swallows fetch errors, so
+// interceptor matched fails the test that made it -- the reco code swallows fetch errors, so
 // disableNetConnect alone would let an unmocked fetch pass silently (and, before it, reach the live site).
-const unmatchedRequests = [];
-const recordUnmatched = (req) => {
-  unmatchedRequests.push(`${req.method} ${req.options ? `${req.options.protocol}//${req.options.host}` : req.host || ''}${req.path || ''}`);
-};
+guardFileNetwork(test, nock);
 
 describe('aurora realtime competitor recall budget control', () => {
   const ORIGINAL_ENV = process.env;
-
-  beforeAll(() => {
-    nock.disableNetConnect();
-    nock.enableNetConnect((host) => /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(String(host || '')));
-    nock.emitter.on('no match', recordUnmatched);
-  });
-
-  afterEach(() => {
-    const unmatched = unmatchedRequests.splice(0);
-    expect(unmatched).toEqual([]);
-  });
 
   beforeEach(() => {
     jest.resetModules();
@@ -38,8 +25,6 @@ describe('aurora realtime competitor recall budget control', () => {
 
   afterAll(() => {
     process.env = ORIGINAL_ENV;
-    nock.emitter.removeListener('no match', recordUnmatched);
-    nock.enableNetConnect();
   });
 
   test('main path stops additional query fanout once enough candidates are found', async () => {

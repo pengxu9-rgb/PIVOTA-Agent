@@ -1,4 +1,5 @@
 const nock = require('nock');
+const { guardFileNetwork } = require('./nock_file_net_guard.cjs');
 const request = require('supertest');
 const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../src/services/catalogEntityResolutionSqlTag');
 
@@ -40,6 +41,11 @@ function eligibleServingRow(overrides = {}) {
 }
 
 describe('external seed product detail hydration', () => {
+  // Tests that do not mock the backend's group-resolve / invoke calls see it as down, offline,
+  // instead of a DNS query for backend.test; any other unmatched request fails the test
+  // (tests/nock_file_net_guard.cjs).
+  guardFileNetwork(test, nock, { down: ['backend.test'] });
+
   afterEach(() => {
     nock.cleanAll();
   });
