@@ -204,10 +204,13 @@ describe('find_products_multi: one reading of the caller\'s market, served and r
     const recorder = statements;
     jest.doMock('../../src/db', () => ({
       query: async (sql, params) => {
-        recorder.push({ sql: String(sql || ''), params: flatten(params) });
+        recorder.push({ sql: String(sql || ''), params: flatten(params), rawParams: Array.isArray(params) ? params : [params] });
         if (!String(sql || '').includes(CANONICAL_MARKER)) return { rows: [] };
         const bound = flatten(params);
-        return { rows: catalogIn(bound.includes('SGD') || bound.includes('SG') ? 'SGD' : 'USD') };
+        // The offer currency the statement scopes by, when it names one (a buyer currency); else the partition.
+        // A US buyer over a US,SG served list binds both partitions and USD.
+        const currency = bound.includes('SGD') ? 'SGD' : bound.includes('USD') ? 'USD' : bound.includes('SG') ? 'SGD' : 'USD';
+        return { rows: catalogIn(currency) };
       },
     }));
     const app = listen(owned(() => require('../../src/server')));
@@ -252,6 +255,9 @@ describe('find_products_multi: one reading of the caller\'s market, served and r
       understanding: hasOwn(meta.query_understanding, 'market') ? meta.query_understanding.market : null,
       hasUnderstanding: Boolean(meta.query_understanding),
       constraint: meta.search_quality_contract?.hard_constraints?.market ?? null,
+      // canonical's marketId, when one was bound: its served-listing rank compares each offer's market with it
+      marketId: canonical.map((s) => (s.sql.match(/upper\(coalesce\(o\.market, ''\)\) = \$(\d+)/) || [])[1])
+        .map((n, i) => (n ? canonical[i].rawParams[Number(n) - 1] : null)),
       carrier: line.market_carrier,
       ignored: hasOwn(line, 'ignored_payload_market') ? line.ignored_payload_market : '<absent>',
     };
@@ -328,6 +334,45 @@ describe('find_products_multi: one reading of the caller\'s market, served and r
       }
     }
   }, 600000);
+
+  test('FIND_PRODUCTS_BUYER_MARKET on, served list US,SG: a US buyer records US, an SG buyer SG (L3)', async () => {
+    const { send } = boot();
+    process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'US,SG';
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    for (const [buyer, currency] of [['US', 'USD'], ['SG', 'SGD']]) {
+      for (const [label, payload, metadata] of [
+        ['search block', block('sunscreen', { search: { market: buyer } }), undefined],
+        ['flat', flat('sunscreen', buyer), undefined],
+        ['metadata', block('sunscreen'), { market: buyer }],
+      ]) {
+        const got = observe(await send(payload, metadata));
+        const tag = [buyer, label];
+        expect([tag, got.status, got.lane, got.returned > 0, got.rowCurrencies, got.bound, got.constraint]).toEqual([
+          tag, 200, LANE.EARLY, true, [currency], ['US', 'SG'], buyer,
+        ]);
+      }
+    }
+  }, 300000);
+
+  test('the early lane\'s canonical marketId is the lane market as before: null under a buyer currency (L4)', async () => {
+    const { send } = boot();
+    for (const [flag, want] of [[undefined, 'SG'], ['on', null]]) {
+      if (flag) process.env.FIND_PRODUCTS_BUYER_MARKET = flag;
+      else delete process.env.FIND_PRODUCTS_BUYER_MARKET;
+      for (const [label, payload, metadata] of [
+        ['search block', block('sunscreen', { search: { market: 'SG' } }), undefined],
+        ['flat', flat('sunscreen', 'SG'), undefined],
+        ['metadata', block('sunscreen'), { market: 'SG' }],
+      ]) {
+        const got = observe(await send(payload, metadata));
+        const tag = [flag || 'off', label];
+        expect([tag, got.lane, got.constraint]).toEqual([tag, LANE.EARLY, 'SG']);
+        expect(got.marketId.length).toBeGreaterThan(0);
+        expect([tag, [...new Set(got.marketId)]]).toEqual([tag, [want]]);
+      }
+    }
+    delete process.env.FIND_PRODUCTS_BUYER_MARKET;
+  }, 300000);
 
   test('safe-empty answers record the one reading too, and carry the carrier', async () => {
     const { send } = boot();
