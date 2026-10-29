@@ -91,6 +91,24 @@ const {
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
+// Read off the module object, not destructured: many suites mock ./db with only
+// { query, withClient }, and both helpers must degrade to today's behaviour there.
+const dbModuleForLaneDeadlines = require('./db');
+function runWithDbDeadline(options, fn) {
+  return typeof dbModuleForLaneDeadlines.runWithDbDeadline === 'function'
+    ? dbModuleForLaneDeadlines.runWithDbDeadline(options, fn)
+    : fn();
+}
+function isDbUnavailableError(err) {
+  return typeof dbModuleForLaneDeadlines.isDbUnavailableError === 'function'
+    ? dbModuleForLaneDeadlines.isDbUnavailableError(err)
+    : false;
+}
+function markClientForDestroy(client) {
+  if (typeof dbModuleForLaneDeadlines.markClientForDestroy === 'function') {
+    dbModuleForLaneDeadlines.markClientForDestroy(client);
+  }
+}
 const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
@@ -4073,6 +4091,11 @@ const FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = Math.max(
   500,
   parseTimeoutMs(process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS, 6000),
 );
+// 0/unset = no deadline on the beauty mainline's canonical recall leg (today's behaviour); see its call site.
+const FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS = Math.max(
+  0,
+  Math.trunc(Number(process.env.FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS || 0) || 0),
+);
 // FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH: off | observe (default off). Classification only — see
 // src/findProductsMulti/zeroResultFallthrough.js. Any other value runs as off, with one warning here.
 const FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH =
@@ -5803,6 +5826,53 @@ const RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS = Math.max(
 );
 const RESOLVE_CATALOG_SIGNATURE_COOLDOWN = new Map(); // cacheKey -> expiresAtMs
 
+// Fast-fail after the database could not answer a resolve
+// (CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE). Without it, an outage that fails
+// fast still sends every PDP and every public-search row to the database --
+// and each transient failure in src/db query() resets the whole pool. Two
+// tiers, both for RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS
+// (default 3000, 0 disables):
+//   - per signature: the sig that failed answers the same retryable error
+//     without a query;
+//   - instance-wide: only once RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS
+//     (default 3) DISTINCT sigs failed within one window. One sig whose own
+//     query keeps dropping its connection must not black out every other
+//     resolve on the instance; several failing at once is the outage.
+// Cache hits are still served.
+function readNonNegativeIntEnv(name, fallback, max) {
+  const raw = String(process.env[name] ?? '').trim();
+  const n = Number(raw);
+  return raw !== '' && Number.isFinite(n) && n >= 0 ? Math.min(max, Math.trunc(n)) : fallback;
+}
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS = readNonNegativeIntEnv(
+  'RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS', 3_000, 60_000);
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS = Math.max(
+  1, readNonNegativeIntEnv('RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS', 3, 1_000));
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE = {
+  untilMs: 0, // instance-wide
+  perSig: new Map(), // sig -> untilMs (also the record of recent distinct failures)
+};
+
+function noteCatalogSignatureUnavailable(normalizedProductId) {
+  if (!(RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS > 0)) return;
+  const state = RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+  const now = Date.now();
+  for (const [sig, untilMs] of state.perSig) if (untilMs <= now) state.perSig.delete(sig);
+  state.perSig.delete(normalizedProductId); // re-insert: Map order = recency, for the size cap below
+  state.perSig.set(normalizedProductId, now + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS);
+  while (state.perSig.size > 1_000) state.perSig.delete(state.perSig.keys().next().value);
+  if (state.perSig.size >= RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS) {
+    state.untilMs = now + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS;
+  }
+}
+
+// Marks a resolved ref that is SERVABLE but incomplete because an optional
+// sub-read (identity listing, identity-group members) could not reach the
+// database. It is returned to this caller and never memoized, so a blip cannot
+// pin a members-less ref for the whole cache TTL. Non-enumerable: invisible to
+// spreads and JSON.
+const RESOLVE_CATALOG_SIGNATURE_DEGRADED = Symbol('resolveCatalogSignatureDegraded');
+
 // NOTE: the budget above only stops us WAITING. What actually releases the
 // pinned connection is the pool-level `statement_timeout` / `query_timeout` in
 // src/db/index.js — set there, not per-query, because the per-query helper
@@ -6192,11 +6262,14 @@ function normalizeCatalogSignatureResolveOptions(options = {}) {
  * outage, not a slow request.
  */
 function resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey) {
-  return withStageBudget(
-    resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions),
+  return withStageBudgetDb(
+    () => resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions),
     RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
     'resolve_catalog_signature',
   ).catch((err) => {
+    if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE') {
+      noteCatalogSignatureUnavailable(normalizedProductId);
+    }
     if (err?.code === 'STAGE_TIMEOUT') {
       // Trip the cooldown so we stop launching new copies of a query that is
       // already pinning a pool connection.
@@ -6240,6 +6313,94 @@ function buildCatalogSignatureTimeoutError(normalizedProductId) {
   return err;
 }
 
+function buildCatalogSignatureUnavailableError(normalizedProductId, cause) {
+  const err = new Error(
+    `Catalog signature resolve unavailable (${normalizedProductId}): database unavailable`,
+  );
+  err.code = 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE';
+  err.cause = cause;
+  return err;
+}
+
+// A get_pdp_v2 request whose signature ref is PARTIAL: an optional sub-read
+// (identity listing, identity-group members) could not reach the database.
+//
+// THE RULE, for every JSON body the request sends after the mark:
+//   1. it carries `degraded_reads` (what was missing), error bodies included,
+//      and the response is `Cache-Control: no-store`;
+//   2. it is never a not-found verdict. A 404 (PRODUCT_NOT_FOUND,
+//      PRODUCT_NOT_SERVABLE, ...) is rewritten to the retryable
+//      503 TEMPORARY_UNAVAILABLE / CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE, with the
+//      verdict that was about to be sent kept in `details.withheld_verdict`.
+//
+// Why (2): the database was unreachable during THIS request, so any later read
+// it swallowed (product detail, serving eligibility, identity rescue) may have
+// failed the same way, and the handler cannot tell that from "no such
+// product". A healthy product would otherwise get a 404 that crawlers and the
+// agent-ui ISR cache store as settled. A wrong 503 self-heals on retry; a wrong
+// 404 deindexes. Other 4xx (input errors) and 5xx pass through, marked.
+function markInvokeResponseDegraded(res, reason) {
+  if (!res || typeof res.json !== 'function') return;
+  if (res.__pivotaDegradedReads instanceof Set) {
+    res.__pivotaDegradedReads.add(reason);
+    return;
+  }
+  const reasons = new Set([reason]);
+  res.__pivotaDegradedReads = reasons;
+  if (typeof res.set === 'function') res.set('Cache-Control', 'no-store');
+  const sendJson = res.json.bind(res);
+  res.json = (body) => {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(body);
+    if (Number(res.statusCode) === 404) {
+      res.status(503);
+      return sendJson({
+        error: 'TEMPORARY_UNAVAILABLE',
+        message: 'Product is temporarily unavailable. Please retry shortly.',
+        reason_code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+        ...(body.gateway_request_id ? { gateway_request_id: body.gateway_request_id } : {}),
+        details: {
+          reason: 'catalog_signature_partial_read',
+          withheld_verdict: {
+            status: 404,
+            error: body.error || null,
+            reason_code: body.reason_code || null,
+            reason: (body.details && typeof body.details === 'object' && body.details.reason) || null,
+          },
+        },
+        ...(body.metadata ? { metadata: body.metadata } : {}),
+        degraded_reads: [...reasons],
+      });
+    }
+    return sendJson({ ...body, degraded_reads: [...reasons] });
+  };
+}
+
+// The reason a retryable resolve failure is reported under.
+function describeCatalogSignatureResolveFailure(err) {
+  if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE') {
+    return {
+      reasonCode: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+      reason: 'catalog_signature_resolve_unavailable',
+      logMessage: 'get_pdp_v2 signature resolve could not reach the database; returning retryable 503',
+    };
+  }
+  return {
+    reasonCode: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT',
+    reason: 'catalog_signature_resolve_timeout',
+    logMessage: 'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
+  };
+}
+
+// Both mean "could not look", never "looked and found nothing": the PDP lanes
+// answer them with a retryable 503 rather than a 404.
+function isCatalogSignatureResolveRetryableError(err) {
+  return (
+    err?.code === 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' ||
+    err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE' ||
+    err?.code === 'STAGE_TIMEOUT'
+  );
+}
+
 async function resolveCatalogProductRefFromPivotaSignature(productId, options = {}) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
@@ -6259,12 +6420,14 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
     if (readCatalogSignatureCooldown(cacheKey)) {
       throw buildCatalogSignatureTimeoutError(normalizedProductId);
     }
+    throwIfCatalogSignatureUnavailableCooldown(normalizedProductId);
 
     const inflight = RESOLVE_CATALOG_SIGNATURE_INFLIGHT.get(cacheKey);
     if (inflight) return inflight;
 
     const promise = resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey)
       .then((value) => {
+        if (value && value[RESOLVE_CATALOG_SIGNATURE_DEGRADED] === true) return value;
         if (RESOLVE_CATALOG_SIGNATURE_CACHE.size >= RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES) {
           const firstKey = RESOLVE_CATALOG_SIGNATURE_CACHE.keys().next().value;
           if (firstKey !== undefined) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(firstKey);
@@ -6285,7 +6448,18 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
   // Cache-bypass path (debug probes, cache_bypass=true). Still bounded — an
   // unbounded await here would hang the request just as hard, it simply would
   // not poison the sig for everyone else.
+  throwIfCatalogSignatureUnavailableCooldown(normalizedProductId);
   return resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey);
+}
+
+function throwIfCatalogSignatureUnavailableCooldown(normalizedProductId) {
+  const now = Date.now();
+  const state = RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+  if (state.untilMs > now || (state.perSig.get(normalizedProductId) || 0) > now) {
+    const err = buildCatalogSignatureUnavailableError(normalizedProductId, null);
+    err.cooldown = true;
+    throw err;
+  }
 }
 
 // content_canonical_election is created by pivota-backend migration 181, whose
@@ -6643,6 +6817,9 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       mintedSeedRouteProductId || String(exactRow?.source_product_id || '').trim();
     if (exactMerchantId && exactSourceProductId) {
       let exactIdentityRow = null;
+      // An optional sub-read below could not reach the database: serve the ref,
+      // but never memoize it (RESOLVE_CATALOG_SIGNATURE_DEGRADED).
+      let exactRefDegradedByUnavailableDb = false;
       if (
         options.hydrateIdentityListing !== false &&
         isExternalSeedListingMerchantId(exactMerchantId) &&
@@ -6676,6 +6853,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           );
           exactIdentityRow = Array.isArray(identityResult?.rows) ? identityResult.rows[0] : null;
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           const message = String(err?.message || err || '');
           if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
             logger.debug?.(
@@ -6820,6 +6998,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             };
           }
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           const message = String(err?.message || err || '');
           if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
             logger.debug?.(
@@ -6844,6 +7023,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             queryFn: query,
           });
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           logger.debug?.(
             {
               err: err?.message || String(err),
@@ -6863,7 +7043,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         exactIdentityGroupId,
         normalizedProductId,
       );
-      return {
+      const exactRef = {
         merchant_id: exactMerchantId,
         product_id: exactSourceProductId,
         ...(exactRow?.platform ? { platform: String(exactRow.platform).trim() } : {}),
@@ -6959,6 +7139,10 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         ]),
         source: 'catalog_products_signature_exact',
       };
+      if (exactRefDegradedByUnavailableDb) {
+        Object.defineProperty(exactRef, RESOLVE_CATALOG_SIGNATURE_DEGRADED, { value: true });
+      }
+      return exactRef;
     }
 
     const canonicalGroup = await resolveCanonicalCatalogEntityGroup({
@@ -7033,6 +7217,16 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       { err: err?.message || String(err), product_id: normalizedProductId },
       'Failed to resolve catalog product ref from pivota signature',
     );
+    // A database that could not answer (pool checkout timeout, statement
+    // timeout, dropped connection) is NOT "this sig resolves to nothing". A null
+    // here is memoized by the single-flight cache for its whole TTL, served as
+    // PRODUCT_NOT_FOUND by the PDP lanes, and read as "provably dead" by the
+    // public-search chain filter, which then DROPS the row -- three wrong
+    // answers from one full pool. Throw the same retryable shape the budget
+    // path uses instead: never cached, 503 at the PDP, row kept by the filter.
+    if (isDbUnavailableError(err)) {
+      throw buildCatalogSignatureUnavailableError(normalizedProductId, err);
+    }
     return null;
   }
 }
@@ -16215,6 +16409,22 @@ function normalizeSearchQueryParams(rawQuery) {
   return { queryText, queryParams };
 }
 
+// withStageBudget for a stage whose work is DB reads: the work is STARTED inside
+// a lane deadline (src/db runWithDbDeadline) matching the budget, so the
+// statements it issues stop holding pool connections -- and, with
+// DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS, stop running on the primary -- once
+// the caller has given up. Takes a thunk, not a promise: the deadline context
+// has to be active when the queries are issued. With DB_LANE_DEADLINES_ENABLED
+// off this is exactly withStageBudget(fn(), ...).
+function withStageBudgetDb(fn, timeoutMs, timeoutLabel) {
+  const budgetMs = Math.max(1, Number(timeoutMs || 0) || 0);
+  return withStageBudget(
+    runWithDbDeadline({ budgetMs, label: timeoutLabel }, fn),
+    timeoutMs,
+    timeoutLabel,
+  );
+}
+
 async function withStageBudget(promise, timeoutMs, timeoutLabel) {
   const budgetMs = Math.max(1, Number(timeoutMs || 0) || 0);
   if (!budgetMs) return promise;
@@ -17070,8 +17280,11 @@ const BEAUTY_RECALL_TIMEOUT_MESSAGES = [
   /^Connection terminated due to connection timeout$/i,
   /^Query read timeout$/i,
 ];
+// src/db's budgeted-query codes (a lane deadline or queryWithBudget ran out) are the same event as a
+// statement timeout, raised client-side.
+const BEAUTY_RECALL_TIMEOUT_CODES = new Set(['57014', 'DB_BUDGET_ACQUIRE_TIMEOUT', 'DB_BUDGET_QUERY_TIMEOUT']);
 function isBeautyRecallQueryTimeout(err) {
-  if (String(err?.code || '').trim() === '57014') return true;
+  if (BEAUTY_RECALL_TIMEOUT_CODES.has(String(err?.code || '').trim())) return true;
   if (err?.code) return false;
   const message = String(err?.message || '').trim();
   return BEAUTY_RECALL_TIMEOUT_MESSAGES.some((pattern) => pattern.test(message));
@@ -17085,7 +17298,13 @@ async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1
       await client.query(`SET statement_timeout = ${boundedTimeoutMs}`);
       return await client.query(sql, params);
     } finally {
-      await client.query('SET statement_timeout = 0').catch(() => {});
+      // RESET, never `= 0`: this is a POOLED connection. `0` means "no limit",
+      // so it stripped the pool's connection-level statement_timeout backstop
+      // (src/db) from the socket and handed it to the next caller unbounded.
+      // RESET restores the value the connection was opened with. If even the
+      // RESET fails, the session still carries this helper's short timeout (or
+      // worse), so the connection is destroyed rather than returned.
+      await client.query('RESET statement_timeout').catch(() => markClientForDestroy(client));
     }
   });
 }
@@ -23659,7 +23878,7 @@ async function searchBeautyExternalSeedProductsMainline({
   // 2026-09-26).
   const servedOfferCurrency = servingCurrency;
   const primaryOfferScope = { currency: servedOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
-  const canonicalRowsPromise = fetchCanonicalChainRows({
+  const canonicalRowsArgs = {
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
     // Deliberate category-browse: mainline recalls the bucket and then runs
@@ -23725,7 +23944,20 @@ async function searchBeautyExternalSeedProductsMainline({
     brandFilter: canonicalBrandFilter,
     searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
     deps: { query },
-  })
+  };
+  // Optional DB deadline on this leg (FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS, needs DB_LANE_DEADLINES_ENABLED).
+  // The leg has no stage budget of its own: only the pool's 30s statement_timeout bounds it, so under load
+  // it keeps a connection (and the primary) busy long after the caller's own deadline has passed. With the
+  // deadline set, an overrun ends like any other timed-out arm -- the seed arm's rows are served, and only
+  // an empty merge is reported as the primary failure -- and its connection is released at the deadline.
+  // Unset keeps today's unbounded leg. Called directly when unset so the canonical call site stays in this
+  // function (the stored-name-norm invariant script identifies the mainline by its stack frame).
+  const canonicalRowsPromise = (FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS > 0
+    ? runWithDbDeadline(
+      { budgetMs: FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS, label: 'beauty_canonical_recall' },
+      () => fetchCanonicalChainRows(canonicalRowsArgs),
+    )
+    : fetchCanonicalChainRows(canonicalRowsArgs))
     .then((rows) => ({
       rows: Array.isArray(rows) ? rows : [],
       error: null,
@@ -29194,8 +29426,8 @@ async function enrichSimilarProductsForPdpCards({
   let officialSeedCardSourcesById = new Map();
   if (officialSeedHydrationProductIds.length > 0) {
     metadata.card_enrichment_official_seed_attempted_count = officialSeedHydrationCandidates.length;
-    officialSeedCardSourcesById = await withStageBudget(
-      fetchExternalSeedSimilarCardSourcesFromDb(officialSeedHydrationProductIds),
+    officialSeedCardSourcesById = await withStageBudgetDb(
+      () => fetchExternalSeedSimilarCardSourcesFromDb(officialSeedHydrationProductIds),
       normalizedOfficialSeedBudgetMs,
       'pdp_similar_card_official_seed_sources',
     ).catch((err) => {
@@ -31998,11 +32230,16 @@ function buildCommerceKernelDb() {
 // get_product_detail callers expect. Flattens brand {name} → string and price {current:{amount,currency}} →
 // price/currency scalars; every other field passes through (the adapters' sanitizer/projection handle it).
 function normalizePdpV2ToProductDetail(body) {
+  // get_pdp_v2's `degraded_reads` (a page built while part of the database could not answer) must survive
+  // the projection: every cache downstream of it decides on the body, and none of them sees headers.
+  const degraded = Array.isArray(body?.degraded_reads) && body.degraded_reads.length > 0
+    ? { degraded_reads: body.degraded_reads.map(String) }
+    : {};
   try {
     const modules = Array.isArray(body?.modules) ? body.modules : [];
     const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
     const p = canonical?.data?.pdp_payload?.product;
-    if (!p || typeof p !== 'object') return { product: null };
+    if (!p || typeof p !== 'object') return { product: null, ...degraded };
     const current = p.price && typeof p.price === 'object' && p.price.current && typeof p.price.current === 'object'
       ? p.price.current
       : null;
@@ -32017,9 +32254,10 @@ function normalizePdpV2ToProductDetail(body) {
           ? /in.?stock|available/.test(availability)
           : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
       },
+      ...degraded,
     };
   } catch {
-    return { product: null };
+    return { product: null, ...degraded };
   }
 }
 
@@ -33433,12 +33671,27 @@ function isPublicReadChainFilterEnabled() {
 
 // The decision itself lives in services/publicReadChainResolvability so it is unit-testable without a DB —
 // see that file for the drop-only-what-is-provably-dead rationale and the fail-open lanes.
+// The verdict reads only the exact row's own columns (merchant/product/platform/source_system and the
+// external_seed_* pair) -- never the identity listing or the identity-group members, which the resolver
+// fetches with up to three MORE queries per row when asked for the default 'rich' shape. This filter runs
+// on every cache-miss public search, up to a page of rows at 8-way concurrency, so the rich shape cost up
+// to 3 extra pool checkouts per row for columns nobody here reads. The 'lite' shape returns the same
+// verdict columns from the same exact query. PUBLIC_READ_CHAIN_FILTER_LITE_RESOLVE=false restores 'rich'.
+function isPublicReadChainFilterLiteResolveEnabled() {
+  const raw = String(process.env.PUBLIC_READ_CHAIN_FILTER_LITE_RESOLVE ?? '').trim().toLowerCase();
+  if (raw === '') return true;
+  return !['0', 'false', 'off', 'no'].includes(raw);
+}
+
 async function publicReadDetailResolves(productId) {
   const pid = String(productId || '').trim();
   if (!pid) return false;
   // Skip the DB round-trip entirely for ids the detail lane cannot resolve by construction.
   if (!isPivotaSignatureProductId(pid)) return false;
-  const ref = await resolveCatalogProductRefFromPivotaSignature(pid);
+  const ref = await resolveCatalogProductRefFromPivotaSignature(
+    pid,
+    isPublicReadChainFilterLiteResolveEnabled() ? { hydrateIdentityListing: false } : {},
+  );
   return chainRowResolvable(pid, ref, isPivotaSignatureProductId);
 }
 
@@ -33448,6 +33701,9 @@ async function filterPublicReadChainResolvableRows(rows) {
     return { kept: list, droppedCount: 0 };
   }
   const verdicts = new Array(list.length).fill(true);
+  // Rows kept only because their probe failed (fail-open). The page is then a degraded answer, and the
+  // public-read cache stores it on its short clock instead of the normal one (publicReadCachePolicy).
+  let failedOpenCount = 0;
   let cursor = 0;
   const worker = async () => {
     for (let i = cursor++; i < list.length; i = cursor++) {
@@ -33462,6 +33718,7 @@ async function filterPublicReadChainResolvableRows(rows) {
           'public_read chain filter: resolvability probe failed (row kept)',
         );
         verdicts[i] = true;
+        failedOpenCount += 1;
       }
     }
   };
@@ -33469,7 +33726,7 @@ async function filterPublicReadChainResolvableRows(rows) {
     Array.from({ length: Math.min(PUBLIC_READ_CHAIN_FILTER_CONCURRENCY, list.length) }, worker),
   );
   const kept = list.filter((_, i) => verdicts[i]);
-  return { kept, droppedCount: list.length - kept.length };
+  return { kept, droppedCount: list.length - kept.length, failedOpenCount };
 }
 
 function isPublicReadMcpEnabled() {
@@ -44771,10 +45028,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             });
         } catch (err) {
           noteSwallowedPdpFailure('get_pdp_v2');
-          if (
-            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
-            err?.code !== 'STAGE_TIMEOUT'
-          ) {
+          if (!isCatalogSignatureResolveRetryableError(err)) {
             throw err;
           }
           // Bounded failure, NOT "no such product". Answer 503 so the PDP
@@ -44784,23 +45038,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // Deliberately not 404: a 404 here would deindex a product whose only
           // problem is a slow identity-group query.
           markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+          // Two retryable causes, reported as what they are. Both stay
+          // `error: TEMPORARY_UNAVAILABLE` with HTTP 503, which is what agent-ui
+          // classifies as a degraded (retry) read, never as not-found.
+          const signatureResolveFailure = describeCatalogSignatureResolveFailure(err);
           logger.warn(
             {
               product_id: productId,
               merchant_id: requestedMerchantId || null,
               wants_offers: wantsOffers,
               budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+              err_code: err?.code || null,
               phase_timings: pdpV2PhaseTimings,
             },
-            'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
+            signatureResolveFailure.logMessage,
           );
           return res.status(503).json({
             ...buildPdpV2ErrorBody({
               error: 'TEMPORARY_UNAVAILABLE',
               message: 'Product is temporarily unavailable. Please retry shortly.',
-              reasonCode: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT',
+              reasonCode: signatureResolveFailure.reasonCode,
               details: {
-                reason: 'catalog_signature_resolve_timeout',
+                reason: signatureResolveFailure.reason,
                 budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
               },
               requestedProductId: requestedProductIdForDiagnostics || null,
@@ -44808,6 +45067,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
         }
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+		        if (signatureProductRef && signatureProductRef[RESOLVE_CATALOG_SIGNATURE_DEGRADED] === true) {
+		          // Served, but built from a ref missing what an unavailable database could not
+		          // answer: say so, and keep every cache that honours headers from storing it.
+		          markInvokeResponseDegraded(res, 'catalog_signature_partial');
+		        }
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
               requestedSigDedupeKeeperSigId = String(
@@ -45215,8 +45479,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            : null;
 	        try {
 	          if (!externalSeedRouteStatus) {
-	            externalSeedRouteStatus = await withStageBudget(
-	              fetchExternalSeedRouteStatusFromDb({
+	            externalSeedRouteStatus = await withStageBudgetDb(
+	              () => fetchExternalSeedRouteStatusFromDb({
 	                productId: entryProductId,
 	              }),
 	              PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
@@ -46994,8 +47258,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         canonicalProductRef, offersGateBuyerMarket(payload, metadata) || primaryMarket(), pdpServingCurrency,
       )) {
         try {
-          canonicalOwnMoney = await withStageBudget(
-            readCanonicalOwnMoney({ ref: canonicalProductRef, query }),
+          canonicalOwnMoney = await withStageBudgetDb(
+            () => readCanonicalOwnMoney({ ref: canonicalProductRef, query }),
             PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS,
             'pdp_current_own_money',
           );
@@ -47697,8 +47961,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (offersData && canonicalOwnMoney && options.allow_read_only === true) {
           let verifiedByListing = new Map();
           try {
-            verifiedByListing = await withStageBudget(
-              readCanonicalSellerOffersMoney({
+            verifiedByListing = await withStageBudgetDb(
+              () => readCanonicalSellerOffersMoney({
                 listings: (offersData.offers || []).filter((offer) => !(
                   offer?.merchant_id === canonicalProductRef.merchant_id && offer?.product_id === canonicalProductRef.product_id)),
                 query,
@@ -48965,10 +49229,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             bypassCache,
           });
         } catch (err) {
-          if (
-            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
-            err?.code !== 'STAGE_TIMEOUT'
-          ) {
+          if (!isCatalogSignatureResolveRetryableError(err)) {
             throw err;
           }
           // Mirror get_pdp_v2's sig-lane semantics: a bounded resolver failure
@@ -48977,7 +49238,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           return res.status(503).json({
             error: 'TEMPORARY_UNAVAILABLE',
             message: 'Signature resolution is temporarily unavailable. Please retry shortly.',
-            details: { reason: 'catalog_signature_resolve_timeout' },
+            details: { reason: describeCatalogSignatureResolveFailure(err).reason },
           });
         }
         const sigMerchantId = String(signatureProductRef?.merchant_id || '').trim();
@@ -49646,8 +49907,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // in the handler with no withStageBudget wrapper. STAGE_TIMEOUT flows
         // into the .catch below and surfaces as canonical_error in telemetry;
         // the lane then serves seed-only results instead of hanging.
-        const canonicalIngredientRowsPromise = withStageBudget(
-          fetchCanonicalChainRows({
+        const canonicalIngredientRowsPromise = withStageBudgetDb(
+          () => fetchCanonicalChainRows({
           query: rawUserQuery || queryText,
           categoryPathPrefix: canonicalIngredientCategoryPathPrefix,
           // Always true for the ingredient_recall_direct path: by definition
@@ -54398,6 +54659,12 @@ module.exports._debug = {
   RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
   RESOLVE_CATALOG_SIGNATURE_CACHE,
   RESOLVE_CATALOG_SIGNATURE_COOLDOWN,
+  RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE,
+  filterPublicReadChainResolvableRows,
+  markInvokeResponseDegraded,
+  noteCatalogSignatureUnavailable,
+  normalizePdpV2ToProductDetail,
+  queryBeautyExternalSeedRowsWithTimeout,
   buildCatalogSignatureGroupMemberFromIdentityRow,
   buildGroupMemberCatalogOfferLateralJoinSql,
   filterGroupMembersByCatalogSourceQuarantine,

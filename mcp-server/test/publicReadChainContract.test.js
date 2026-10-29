@@ -155,3 +155,60 @@ test("a filter that throws must not blank the search (fail-open is the caller's 
     /db down/,
   );
 });
+
+test("a page the chain filter could only fail open on is cached on the SHORT clock, not the normal one", async () => {
+  // The filter kept rows it could not check (database unavailable). That page may advertise dead ids and
+  // must not be replayed for the normal 10-minute clock once the database is back.
+  process.env.PUBLIC_READ_EMPTY_TTL_MS = "1";
+  let calls = 0;
+  let failOpen = true;
+  const filter = async (rows) => (failOpen
+    ? { kept: rows, droppedCount: 0, failedOpenCount: rows.length }
+    : filterLiveOnly(rows));
+  const surface = createPublicReadToolSurface(
+    executorReturning([row("sig_live_a"), row("sig_dead_b")], { onCall: () => { calls += 1; } }),
+    { filterChainResolvableRows: filter },
+  );
+  delete process.env.PUBLIC_READ_EMPTY_TTL_MS;
+
+  const degraded = await surface.callTool("search_catalog", { query: "serum", page_size: 10 });
+  assert.equal(degraded.products.length, 2, "fixture precondition: fail-open kept both rows");
+
+  failOpen = false;
+  await new Promise((r) => setTimeout(r, 15)); // past the short clock
+  const healthy = await surface.callTool("search_catalog", { query: "serum", page_size: 10 });
+  assert.deepEqual(healthy.products.map((p) => p.product_id), ["sig_live_a"], "the fail-open page outlived its short clock");
+  assert.equal(calls, 2, "an expired fail-open page must recompute");
+
+  // A fully checked page is cached on the normal clock.
+  await surface.callTool("search_catalog", { query: "serum", page_size: 10 });
+  assert.equal(calls, 2, "a checked page must still be served from cache");
+});
+
+test("get_product on a degraded (partial) PDP is served but never cached", async () => {
+  // get_pdp_v2 marks a page built while part of the database could not answer with `degraded_reads`, and
+  // normalizePdpV2ToProductDetail carries it. The public cache ignores headers, so the body is the only signal.
+  let calls = 0;
+  let degraded = true;
+  const executor = {
+    async execute(opId) {
+      assert.equal(opId, "get_product");
+      calls += 1;
+      return {
+        product: { product_id: "sig_live_a", merchant_id: "external_seed", title: "Title", price: 10, currency: "USD" },
+        ...(degraded ? { degraded_reads: ["catalog_signature_partial"] } : {}),
+      };
+    },
+  };
+  const surface = createPublicReadToolSurface(executor, {});
+  const first = await surface.callTool("get_product", { product_id: "sig_live_a" });
+  assert.ok(first && !first.note, "the partial product is still served");
+  assert.equal(first.degraded_reads, undefined, "the internal marker is not part of the public shape");
+  await surface.callTool("get_product", { product_id: "sig_live_a" });
+  assert.equal(calls, 2, "a degraded product must not be served from cache");
+
+  degraded = false;
+  await surface.callTool("get_product", { product_id: "sig_live_a" });
+  await surface.callTool("get_product", { product_id: "sig_live_a" });
+  assert.equal(calls, 3, "a complete product is cached as before");
+});

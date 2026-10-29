@@ -112,6 +112,15 @@ function cacheKeyFor(toolName, toolArgs) {
 //     negative. Closing this properly needs a top-level degradation marker on the search envelope; until
 //     one exists, do not invent a deeper heuristic here — an unvalidated guess about metadata shape is how
 //     a confident-sounding wrong answer gets built a second time.
+// A COMPLETE answer from the lane, but assembled while part of the database could not answer (get_pdp_v2's
+// `degraded_reads`, carried through normalizePdpV2ToProductDetail). It is served, never stored: replaying a
+// partial product for the normal clock is exactly the cached-degraded failure the gateway marks it to prevent.
+// Kept apart from isDegradedUpstream on purpose -- that one also decides the empty-page note, and a partial
+// product is not an empty one.
+function hasDegradedReads(raw) {
+  return Boolean(raw && typeof raw === "object" && Array.isArray(raw.degraded_reads) && raw.degraded_reads.length > 0);
+}
+
 function isDegradedUpstream(raw) {
   if (!raw || typeof raw !== "object") return false;
   if (typeof raw.status === "string" && !["success", "ok"].includes(raw.status.trim().toLowerCase())) return true;
@@ -141,10 +150,13 @@ function isDegradedUpstream(raw) {
 //                        flood of identical zero-result queries still collapses onto one lane run. The
 //                        stale window is deliberately zero: serving a STALE empty is precisely the
 //                        confident-false-negative behaviour this whole change exists to end.
+//   fail-open page    -> the SAME short clock as an empty page. The chain filter could not check some rows
+//                        (database unavailable) and kept them; the page may advertise ids get_product cannot
+//                        resolve, and must not be replayed for the normal clock once the database is back.
 //   everything else   -> the normal clock, exactly as before.
 function publicReadCachePolicy(computed, { ttlMs, staleMs, emptyTtlMs }) {
   if (!computed || typeof computed !== "object" || computed.cacheable !== true) return null;
-  if (computed.emptySearchPage) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
+  if (computed.emptySearchPage || computed.chainFilterFailedOpen) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
   return { ttlMs, staleMs };
 }
 
@@ -332,6 +344,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const upstreamMatchedCount =
       toolName === "search_catalog" && raw && Array.isArray(raw.products) ? raw.products.length : 0;
     const upstreamDegraded = isDegradedUpstream(raw);
+    const upstreamPartial = hasDegradedReads(raw);
     // Lane + degradation markers for the completion log, read before the projector strips the metadata.
     const observed = describeUpstreamEnvelope(raw);
 
@@ -357,6 +370,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       }
     }
 
+    let chainFilterFailedOpen = false;
     // The chain contract: never advertise a product_id that get_product cannot resolve, and never mint a
     // pivota_url that renders a shell. Runs on the raw rows (the projector strips the identity the probe
     // needs) and BEFORE the slice, so survivors backfill the page. Fail-open lives in the injected filter.
@@ -372,7 +386,8 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       if (truncated > 0 && logger) {
         logger.info({ tool: toolName, truncated_unexamined_rows: truncated }, "public_read chain filter cap");
       }
-      const { kept, droppedCount: dropped } = await filterChainResolvableRows(examined);
+      const { kept, droppedCount: dropped, failedOpenCount } = await filterChainResolvableRows(examined);
+      chainFilterFailedOpen = Number(failedOpenCount) > 0;
       const droppedCount = dropped + truncated;
       if (droppedCount > 0) {
         // No silent caps: an id dropped here is a catalog-coverage gap, not a search-quality choice.
@@ -399,7 +414,14 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const value = projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit, emptyReason });
     const emptySearchPage =
       toolName === "search_catalog" && Array.isArray(value.products) && value.products.length === 0;
-    return { value, cacheable: !upstreamDegraded, emptySearchPage, observed, priceFacts: publicPriceFacts(toolName, raw, value) };
+    return {
+      value,
+      cacheable: !upstreamDegraded && !upstreamPartial,
+      emptySearchPage,
+      chainFilterFailedOpen,
+      observed,
+      priceFacts: publicPriceFacts(toolName, raw, value),
+    };
   }
 
   function isPublicReadTool(name) {
