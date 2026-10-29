@@ -1,0 +1,42 @@
+# Log-based counter: answered MCP tools/calls that failed ON OUR SIDE (error_class=server: a retriable taxonomy
+# code such as MERCHANT_UNAVAILABLE, an uncurated UNEXPECTED_ERROR, an internal error). Caller and policy
+# errors (UNKNOWN_TOOL, INVALID_ARGUMENTS, UNKNOWN_PRODUCT_ID, USER_AUTH_REQUIRED, OPERATION_NOT_ALLOWED,
+# protocol errors) are excluded: a caller sending bad ids is not an outage. So is SHEDDING: a caller-limit 503
+# written before dispatch (outcome=shed, error_class=capacity, error_code=MCP_CALLER_SHED: pool saturated, or the
+# anonymous or unregistered-OAuth tier full or over its rate, including that rate cut to a per-instance share
+# while the shared store is down or stale) is the limits working under load, counted by
+# mcp_caller_limit_decisions and alerted on by monitoring/alerts/mcp_caller_limits/; the outcome clause
+# below keeps it out even if its class ever changes. Numerator of the error-rate alert.
+# These all answer HTTP 200 on the wire, so no 5xx metric sees them.
+# Every metric here counts only the gateway service's lines that carry `outcome` (lines written before the field
+# existed are ignored) and excludes tier=first_party, so Pivota's own CI and probe traffic on the service key
+# cannot move a ratio.
+#   gcloud logging metrics create mcp_tool_call_server_errors --project=$PROJECT \
+#     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_tool_call_server_errors.yaml
+description: MCP tools/call server-class failures, by tool / door / tier / error_code (first-party excluded)
+filter: >-
+  resource.type="cloud_run_revision"
+  AND resource.labels.service_name="gateway"
+  AND jsonPayload.msg="mcp tools/call complete"
+  AND jsonPayload.outcome:*
+  AND jsonPayload.tier!="first_party"
+  AND jsonPayload.error_class="server"
+  AND jsonPayload.outcome!="shed"
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: tool
+      valueType: STRING
+    - key: door
+      valueType: STRING
+    - key: tier
+      valueType: STRING
+    - key: error_code
+      valueType: STRING
+labelExtractors:
+  tool: EXTRACT(jsonPayload.tool)
+  door: EXTRACT(jsonPayload.door)
+  tier: EXTRACT(jsonPayload.tier)
+  error_code: EXTRACT(jsonPayload.error_code)

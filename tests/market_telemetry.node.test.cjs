@@ -188,6 +188,8 @@ test('the record is emitted for find_products_multi ONLY, and its keys are all n
   assert.deepEqual(record, {
     market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'], market_buyer_currency: null,
     market_serving_currency: null,
+    // no payload or metadata handed in: no carrier
+    market_carrier: 'none',
     served_currencies: ['SGD'], served_currency_mismatch: false, served_price_sources: { canonical_chain: 1 },
     lane: 'early_indexed',
     query_source: 'agent_products_beauty_external_seed_mainline', primary_path_used: 'beauty_external_seed_mainline',

@@ -12611,7 +12611,7 @@ async function fetchRetailProductPage({
       reason: 'retail_source_no_match',
       html: '',
       fetch_meta: null,
-      url: urlText,
+      url: normalisedProductUrlOrNull(urlText),
     };
   }
   const fetchOut = await fetchProductHtmlWithUnblockChain({
@@ -12625,7 +12625,8 @@ async function fetchRetailProductPage({
     reason: fetchOut.ok ? null : String(fetchOut.failure_code || 'retail_source_no_match'),
     html: fetchOut.ok ? String(fetchOut.html || '') : '',
     fetch_meta: fetchOut,
-    url: urlText,
+    // The normalised href (null when the input gate refused it), never the caller's raw text.
+    url: normalisedProductUrlOrNull(urlText),
   };
 }
 
@@ -16660,6 +16661,32 @@ async function runSingleUrlFetchAttempt({
   }
 }
 
+// Log-safe forms of product urls: the HOST only, never a path, a query or the caller's raw text.
+function urlHostForLog(url) {
+  try {
+    return new URL(String(url || '')).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+function attemptsForLog(attempts) {
+  return (Array.isArray(attempts) ? attempts : []).map((attempt) => {
+    if (!attempt || typeof attempt !== 'object') return attempt;
+    const { __url, ...rest } = attempt;
+    return __url === undefined ? rest : { ...rest, url_host: urlHostForLog(__url) };
+  });
+}
+
+// The normalised href of a product url, or null when the input gate would refuse it. Never the raw text.
+function normalisedProductUrlOrNull(url) {
+  try {
+    return parsePublicHttpUrl(String(url || '').trim()).toString();
+  } catch {
+    return null;
+  }
+}
+
 async function fetchProductHtmlWithUnblockChain({
   productUrl,
   timeoutMs = PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
@@ -16681,21 +16708,18 @@ async function fetchProductHtmlWithUnblockChain({
     };
   }
 
-  // Refuse a non-public URL ONCE, here, instead of three times at the sink. This is an optimisation and
-  // a partial vendor guard, NOT the fence: runSingleUrlFetchAttempt refuses independently, and deleting
-  // this block leaves the lane just as closed — verified by mutation (reverting the sink to a bare
-  // axios.get IS caught; neutering this block is not, because the sink's own refusal now produces the
-  // same failure_code). No test pins this block, deliberately: there is no behaviour left to pin once
-  // the sink refuses.
-  //
-  // What it adds is (a) refusing before three identical attempts, and (b) PARTIAL cover for the zenrows
-  // branch, which never reaches the fenced transport — it hands `productUrl` to a paid vendor as a query
-  // parameter. "Partial" is exact: this gate is parsePublicHttpUrl, which sees LITERALS only. A hostname
-  // whose DNS answer is private passes it, fails the three direct attempts, and is still handed to the
-  // vendor when AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED is false (it defaults true). Low impact — zenrows
-  // fetches from its own network, not ours — but the guard is not the whole door.
+  // THE INPUT GATE, and the one place the caller's text is read. parsePublicHttpUrl refuses non-http
+  // schemes, userinfo and non-public LITERALS before any attempt runs (instead of three identical refusals at
+  // the sink, which refuses independently anyway), and its href is `normalizedUrl`: the only string used from
+  // here on — the direct attempts, the www variant, the vendor precheck's DNS lookup, the evidence match, both
+  // vendor calls and the log. The caller's text and the href can name different HOSTS:
+  // `http://cosrx.com\@127.0.0.1/` is host cosrx.com to Node's parser (a backslash is a path delimiter for
+  // http) and host 127.0.0.1 to Python's urllib, and we do not control the vendor's parser. Normalising needs
+  // no lookup, so no race below can fall back to the raw string. A HOSTNAME whose DNS answer is private passes
+  // this gate; the transport refuses it for our own fetches, and the vendor precheck below for the vendor.
+  let normalizedUrl;
   try {
-    parsePublicHttpUrl(urlText);
+    normalizedUrl = parsePublicHttpUrl(urlText).toString();
   } catch (err) {
     return {
       ok: false,
@@ -16724,7 +16748,7 @@ async function fetchProductHtmlWithUnblockChain({
     {
       strategy: 'axios_default',
       provider: 'native',
-      url: urlText,
+      url: normalizedUrl,
       headers: {
         Accept: 'text/html,application/xhtml+xml',
       },
@@ -16732,15 +16756,15 @@ async function fetchProductHtmlWithUnblockChain({
     {
       strategy: 'curl_ua',
       provider: 'native',
-      url: urlText,
+      url: normalizedUrl,
       headers: {
         'User-Agent': 'curl/8.7.1',
         Accept: 'text/html,application/xhtml+xml',
       },
     },
   ];
-  const hostVariantUrl = allowHostVariant ? buildAlternateHostVariantUrl(urlText) : '';
-  if (hostVariantUrl && hostVariantUrl !== urlText) {
+  const hostVariantUrl = allowHostVariant ? buildAlternateHostVariantUrl(normalizedUrl) : '';
+  if (hostVariantUrl && hostVariantUrl !== normalizedUrl) {
     directAttemptsPlan.push({
       strategy: 'host_variant_default',
       provider: 'native',
@@ -16766,7 +16790,7 @@ async function fetchProductHtmlWithUnblockChain({
       headers: plan.headers,
     });
     // Tagged with WHICH url produced it. The evidence guard below must not treat a refusal on the
-    // `www.` host VARIANT as evidence about `urlText` — they are different hosts, and a merchant whose
+    // `www.` host VARIANT as evidence about `normalizedUrl` — they are different hosts, and a merchant whose
     // www label CNAMEs into private space would otherwise lose the vendor fallback for a perfectly
     // public canonical URL. Measured: that false positive withheld the vendor for https://cosrx.com/p/x.
     out.attempt.__url = plan.url;
@@ -16809,7 +16833,7 @@ async function fetchProductHtmlWithUnblockChain({
    * A test kills each separately.
    */
   const fenceRefusedAddress = attempts.some(
-    (attempt) => attempt?.__url === urlText
+    (attempt) => attempt?.__url === normalizedUrl
       && String(attempt?.error_code || '').trim().toLowerCase().startsWith('pivota_ssrf'),
   );
 
@@ -16819,20 +16843,32 @@ async function fetchProductHtmlWithUnblockChain({
     URL_UNBLOCK_PROVIDER === 'zenrows' &&
     (!URL_UNBLOCK_ONLY_ON_BLOCKED || shouldTryUnblockVendor(attempts));
 
-  // The exact string the vendor will be sent. Set by the precheck to the NORMALISED href, so the URL we
-  // judged is the URL we transmit — see below.
-  let vendorUrl = urlText;
+  // The exact string the vendor will be sent: the normalised href the gate judged (see `normalizedUrl`).
+  const vendorUrl = normalizedUrl;
 
-  if (shouldRunVendor) {
+  // NO KEY, NO PRECHECK. Without a vendor key `fetchViaZenRows` answers vendor_not_configured before any
+  // request is built, so nothing is handed to anyone and there is no address to vouch for: a lookup would
+  // only add latency and, when it is slow, a refusal record that relabels the request (a 403 reported as a
+  // timeout). The vendor attempts below still record vendor_not_configured, exactly as before the precheck.
+  if (shouldRunVendor && URL_UNBLOCK_ZENROWS_API_KEY) {
     // Only here, so the happy path never pays for a lookup: this runs only when a vendor call — far more
     // expensive than a resolve — is about to happen anyway. Measured: a 200 on the first direct attempt
     // performs zero lookups through this path.
     //
     // BOUNDED, because a bare `await` here sits OUTSIDE the deadline this function was given: measured,
     // a stalling resolver returned at 4006 ms against a declared 900 ms budget, and the deadline is only
-    // consulted on the next statement. It also holds a libuv threadpool slot. A lookup that outlives the
-    // budget is treated as "not proven bad" rather than "bad" — same direction as `unresolved` below,
-    // and the direct attempts have already resolved this name anyway.
+    // consulted on the next statement. It also holds a libuv threadpool slot.
+    //
+    // FAIL CLOSED ON SILENCE. A lookup that has not answered when the timer fires withholds the vendor: it
+    // would otherwise receive a URL whose address was never checked. (It used to be waved through as
+    // "not proven bad", and that branch also carried no url, so the vendor was handed the caller's raw
+    // string — the CI-only F1 failure.) The record is `pivota_precheck_timeout`, deliberately OUTSIDE the
+    // `pivota_ssrf*` family: a slow resolver is not a forbidden address, and buildUrlFetchFailureCode maps
+    // `pivota_ssrf*` to url_forbidden_address, which would mislabel the user payload and the address dial.
+    // It classifies as a timeout instead (url_fetch_timeout, unless a status ranks first).
+    // A lookup that ANSWERS "no such name" is a different fact and is still allowed through — see
+    // createPublicHostCheck: the vendor exists to reach hosts our resolver cannot see, and an unresolvable
+    // name cannot reach OUR private space through the vendor.
     // Wrapped, because an unexpected throw would otherwise escape fetchProductHtmlWithUnblockChain
     // entirely; a failure to CHECK must never become a failure to serve, but it must not open the door
     // either, so it fails closed. UNTESTED AND UNPINNED, deliberately stated: nothing reachable makes
@@ -16844,9 +16880,9 @@ async function fetchProductHtmlWithUnblockChain({
     let vendorHostCheck;
     try {
       vendorHostCheck = await Promise.race([
-        checkPublicProductHost(urlText),
+        checkPublicProductHost(normalizedUrl),
         new Promise((resolve) => setTimeout(
-          () => resolve({ ok: true, code: null, reason: 'unresolved', url: null }),
+          () => resolve({ ok: false, code: 'pivota_precheck_timeout', reason: 'lookup_timeout', url: null }),
           Math.max(150, Math.min(1500, remainingMs)),
         )),
       ]);
@@ -16860,17 +16896,6 @@ async function fetchProductHtmlWithUnblockChain({
         provider: 'zenrows',
         error_code: String(vendorHostCheck.code || 'pivota_ssrf_refused').trim().toLowerCase(),
       });
-    } else if (vendorHostCheck.url) {
-      /*
-       * SEND THE STRING WE VALIDATED, not the one the caller typed. Our own fetches already go out
-       * normalised (`parsePublicHttpUrl(...).toString()` inside the pinned transport); the vendor was
-       * getting the raw input, and the two can disagree about the HOST. Measured:
-       * `http://cosrx.com\@127.0.0.1/` is host `cosrx.com` to Node's WHATWG parser (backslash is a path
-       * delimiter for special schemes) and host `127.0.0.1` to Python's urllib. We do not control the
-       * vendor's parser, so handing it anything other than the form we judged is validating one string
-       * and transmitting another.
-       */
-      vendorUrl = vendorHostCheck.url;
     }
   }
 
@@ -16910,7 +16935,9 @@ async function fetchProductHtmlWithUnblockChain({
 
   const failureCode = buildUrlFetchFailureCode(attempts);
   logger?.debug?.(
-    { url: urlText, attempts, failure_code: failureCode },
+    // Hosts only: the normalised url's host, and each attempt's host in place of the url it tried. Never the
+    // caller's raw string, and no path or query.
+    { url_host: urlHostForLog(normalizedUrl), attempts: attemptsForLog(attempts), failure_code: failureCode },
     'aurora bff: product url fetch fallback failed',
   );
   return {
@@ -16954,9 +16981,9 @@ async function fetchProductPageHtmlForReco({
   if (!out.ok) {
     logger?.debug?.(
       {
-        url: String(productUrl || ''),
+        url_host: urlHostForLog(normalisedProductUrlOrNull(productUrl)),
         failure_code: out.failure_code,
-        attempts: out.attempts,
+        attempts: attemptsForLog(out.attempts),
       },
       'aurora bff: reco blocks on-page html fetch failed',
     );
@@ -18263,9 +18290,9 @@ async function buildProductAnalysisFromUrlIngredients({
   if (!fetchOut.ok) {
     logger?.warn?.(
       {
-        url: parsedUrl.toString(),
+        url_host: urlHostForLog(parsedUrl.toString()),
         failure_code: fetchOut.failure_code,
-        attempts: fetchOut.attempts,
+        attempts: attemptsForLog(fetchOut.attempts),
       },
       'aurora bff: product URL ingredient extraction failed',
     );
@@ -106006,6 +106033,7 @@ const __internal = {
   detectBotChallengePage,
   fetchProductHtmlWithUnblockChain,
   fetchProductHtmlWithFallback,
+  fetchProductPageHtmlForReco,
   fetchIncidecoderSearchCandidates,
   extractIncidecoderProductUrls,
   fetchIncidecoderProductPage,

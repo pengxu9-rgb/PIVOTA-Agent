@@ -233,6 +233,10 @@ async function verify(c, r, invBefore) {
 }
 
 async function main() {
+  // CRAWL_FRESH: this script re-derives catalog_row_trust (through the trust
+  // upserter), so it logs the switch it runs with -- the flip must be the same on
+  // every writer (see catalogRowTrustUpserter's CRAWL_FRESH block).
+  require('../src/services/catalogRowTrustUpserter').logCrawlFreshConfig('retire-demo-fixtures-and-stores', { stream: process.stderr });
   if (!process.env.DATABASE_URL) abort('DATABASE_URL is required');
   const c = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 30000 });
   await c.connect();

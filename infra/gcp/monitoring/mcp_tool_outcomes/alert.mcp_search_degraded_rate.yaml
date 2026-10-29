@@ -1,0 +1,31 @@
+# Alert: more than 10% of search_catalog answers came from an upstream that said it DEGRADED, over 30 minutes,
+# sustained 10 minutes, with at least 10 degraded answers. These answers are logged outcome=ok (the public tier
+# turns a failed envelope into an empty page with an 'upstream_degraded' note), so the error-rate alert never
+# sees them. 10% is a STARTING threshold: there is no baseline for this field yet; tune it after a week.
+# Needs the mcp_search_answers and mcp_search_degraded log metrics.
+#   gcloud alpha monitoring policies create --project=$PROJECT \
+#     --policy-from-file=infra/gcp/monitoring/mcp_tool_outcomes/alert.mcp_search_degraded_rate.yaml
+displayName: MCP search degraded-answer rate > 10% (30m)
+combiner: OR
+conditions:
+  - displayName: search_catalog degraded answers > 10% over 30m (>= 10 degraded)
+    conditionPrometheusQueryLanguage:
+      query: |
+        (
+          sum(increase(logging_googleapis_com:user_mcp_search_degraded[30m]))
+            / sum(increase(logging_googleapis_com:user_mcp_search_answers[30m]))
+        ) > 0.10
+        and
+        sum(increase(logging_googleapis_com:user_mcp_search_degraded[30m])) >= 10
+      duration: 600s
+      evaluationInterval: 300s
+alertStrategy:
+  autoClose: 3600s
+documentation:
+  mimeType: text/markdown
+  content: |
+    The search lane is answering MCP searches with a degraded envelope. On the public tier the caller sees an
+    empty page with the 'upstream_degraded' note. Query
+    `jsonPayload.msg="mcp tools/call complete" AND jsonPayload.upstream_degraded=true` and group by
+    `upstream_status` and `door`. Runbook: docs/runbooks/mcp_tool_outcome_monitoring.md
+notificationChannels: []

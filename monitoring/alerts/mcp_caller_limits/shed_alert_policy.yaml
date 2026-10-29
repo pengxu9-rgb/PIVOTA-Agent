@@ -1,0 +1,54 @@
+# Alert: the MCP caller limits are SHEDDING tools/calls (ENFORCE mode only: a 503 written before dispatch).
+#
+# Why: a shed call is logged outcome=shed / error_class=capacity, so the tool error-rate alert
+# (infra/gcp/monitoring/mcp_tool_outcomes/) deliberately never counts it. Without this policy a saturated
+# database would show only as shedding and page nobody.
+#
+# What counts: mcp_caller_limit_decisions with action=reject and one of the three 503 reasons
+# (src/guardrails/mcpCallerLimits.js firstViolation):
+#   shed              the database pool has waiters at or above its threshold;
+#   tier_concurrency  the anonymous or the unregistered-OAuth-client tier is full on one instance;
+#   tier_rate         one of those tiers spent its requests per minute, including a rate cut to the per-instance
+#                     share while the shared store is down or stale (limit_split=true on the line).
+# The per-caller 429s (rate, concurrency) are excluded: one caller over its own budget is not an incident.
+# Observe mode (action=would_reject) is excluded: nothing was refused.
+#
+# Threshold, conservative on purpose: any such reject (> 0) in a 5-minute window, holding for 10 minutes. A burst
+# that the limiter absorbs in seconds is the limits doing their job and must not page; a pool that keeps its
+# waiters for 10 minutes is a sustained saturation someone has to look at. A count threshold above zero would
+# need a traffic baseline this repo does not record; zero-plus-duration needs none. Same units and aligner as
+# zombie_alert_policy.yaml (per-window ALIGN_SUM, summed across series).
+#
+# Needs the mcp_caller_limit_decisions log metric (decisions_metric.yaml). Create (not applied by this repo; fill
+# notificationChannels first):
+#   gcloud alpha monitoring policies create --project=$PROJECT --policy-from-file=shed_alert_policy.yaml
+displayName: MCP caller limit - shedding tools/calls (503) for 10 minutes
+documentation:
+  content: >-
+    The MCP caller limits have been refusing tools/calls with 503 (shed, tier_concurrency or tier_rate) for at
+    least 10 minutes. Break the count down by the metric's reason, tier and door labels, or query
+    jsonPayload.event="mcp_caller_limit" AND jsonPayload.action="reject". reason=shed means the database pool
+    is saturated: look at the primary's load and what holds its connections. tier_concurrency or tier_rate on
+    tier=anonymous (or oauth_unregistered=true) means one tier is flooding. tier_rate with limit_split=true while
+    the store alert fires means the shared counter store is down or stale and the tier is on its per-instance
+    share: fix the store first. Runbook: docs/runbooks/mcp_tool_outcome_monitoring.md (Shed 503s).
+  mimeType: text/markdown
+combiner: OR
+conditions:
+  - displayName: shed / tier_concurrency / tier_rate rejects in every 5 minutes, for 10 minutes
+    conditionThreshold:
+      filter: >-
+        metric.type="logging.googleapis.com/user/mcp_caller_limit_decisions"
+        resource.type="cloud_run_revision"
+        metric.label.action="reject"
+        metric.label.reason=one_of("shed", "tier_concurrency", "tier_rate")
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 600s
+      aggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_SUM
+          crossSeriesReducer: REDUCE_SUM
+alertStrategy:
+  autoClose: 3600s
+notificationChannels: []

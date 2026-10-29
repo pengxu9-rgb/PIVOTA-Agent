@@ -35,7 +35,7 @@ import { deriveUserRef } from "../auth/userRef.js";
 import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
-import { shapeUcpResult } from "./ucpResponseShaper.js";
+import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong } from "./ucpCheckoutEscalation.js";
 import {
   assertExpectedSeller,
@@ -58,6 +58,9 @@ import {
   ucpResumeToNativeToolArgs,
   UCP_REAP_RECOVER_INPUT_SCHEMA,
   UCP_REAP_RESUME_INPUT_SCHEMA,
+  UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA,
+  UCP_GET_PRODUCT_MARKET_DESCRIPTION,
+  ucpGetProductForwardMarketEnabled,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 import {
@@ -69,6 +72,26 @@ import {
   startPurchaseArgumentProblems,
 } from "./orchestratedPurchaseTool.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
+import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
+import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
+
+// THE PRICE FACTS OF WHAT THIS DOOR SERVES (gateway price_verification_served line; null unless
+// PRICE_VERIFICATION_LOG). /mcp serves the native value, so every native row counts. The UCP dialect publishes a
+// search row only when shapeUcpProduct keeps it (an id, an ISO-currency price, no live quote required), so only
+// those rows count there; a get_product it cannot publish is a tool error and writes no line. Reads `value` and
+// never writes it: the same object is shaped and returned (or is a cache entry). Never throws.
+function servedPriceFacts(toolId, value, dialect) {
+  try {
+    if (!priceVerificationFacts.priceVerificationLogEnabled()) return null;
+    if (dialect === TOOL_DIALECTS.ucp && toolId === "search_catalog" && isPlainObject(value)) {
+      const rows = (Array.isArray(value.products) ? value.products : []).filter((row) => shapeUcpProduct(row).product);
+      return priceVerificationFacts.priceFactsOf(toolId, { ...value, products: rows });
+    }
+    return priceVerificationFacts.priceFactsOf(toolId, value);
+  } catch {
+    return null;
+  }
+}
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -189,6 +212,11 @@ function liveReadMode(name) {
 }
 const UCP_LIVE_PRODUCT_READ_ON = liveReadMode("UCP_LIVE_PRODUCT_READ") !== "off";
 const UCP_LIVE_OFFER_READ_ENFORCED = liveReadMode("UCP_LIVE_OFFER_READ") === "enforce";
+// get_product's description while `market` is declared (verified-price design, section 4: a stored price is
+// for discovery; get_offers asks the merchant).
+const GET_PRODUCT_MARKET_SENTENCES =
+  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: without it nothing is read live and the price is Pivota's stored one." +
+  " A stored price is for discovery only: before quoting a final price to a buyer, call get_offers for the product and market and quote only an offer whose `merchant_price_verified` is true.";
 
 function positiveIntEnv(name, fallback) {
   const n = Number(envValue(name));
@@ -511,8 +539,26 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    the clone `cloneCachedValue` hands out. See mcp-server/src/ucpResponseShaper.js for what maps.
     //    (`shape` itself is defined above step 3a, so the Reap lane's answer uses the same function.)
 
-    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return shape(await execute());
-    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
+    //
+    // 8) MEASUREMENT (`options.observe`, optional): the cache branch that answered and the search envelope's
+    //    lane/degradation markers, read from the NATIVE value before dialect shaping can drop them. Feeds the
+    //    gateway's tools/call completion line only; it changes nothing about the value returned.
+    const observe = typeof options.observe === "function" ? options.observe : null;
+    //    And the price facts of a priced tool's NATIVE answer (the UCP shaper drops price_source / price_as_of /
+    //    live_read), for the gateway's price_verification_served line: null unless PRICE_VERIFICATION_LOG.
+    //    Computed from the value on every call, a cache hit included, so a replay is counted from the entry it
+    //    replays whatever the flag was when that entry was stored.
+    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) {
+      const fresh = await execute();
+      if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
+      noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
+      return shape(fresh);
+    }
+    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
+      onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
+    });
+    noteToolCall(observe, () => describeUpstreamEnvelope(value));
+    noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
     return shape(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
@@ -884,7 +930,8 @@ function str(v) { return typeof v === "string" ? v : undefined; }
 function describe(op) {
   const base = {
     search_catalog: "Search the Pivota-normalized merchant catalog. Read-only; no money, no state change.",
-    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach Pivota's decision substrate — Pivota Insights: why it stands out / who it's best for / evidence profile — inline when reviewed intelligence exists; attribute that decision layer to Pivota when you surface it.",
+    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach Pivota's decision substrate — Pivota Insights: why it stands out / who it's best for / evidence profile — inline when reviewed intelligence exists; attribute that decision layer to Pivota when you surface it." +
+      (UCP_LIVE_PRODUCT_READ_ON ? GET_PRODUCT_MARKET_SENTENCES : ""),
     get_alternatives:
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
@@ -1208,8 +1255,22 @@ function ucpDefinitionsForEnv(env) {
 const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1" });
 const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
-  if (reapOfferCodesEnabled(env)) return ucpCommerceToolDefinitionsArmed;
-  return reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  const base = reapOfferCodesEnabled(env)
+    ? ucpCommerceToolDefinitionsArmed
+    : reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  return ucpGetProductForwardMarketEnabled(env) ? withUcpGetProductMarket(base) : base;
+}
+
+// UCP_GET_PRODUCT_FORWARD_MARKET: the same declarations with get_product's `catalog.context.address_country`
+// declared and described (ucpArgumentAdapter reads it into the native `market`). Memoized per base list.
+const UCP_GET_PRODUCT_MARKET_DEFINITIONS = new Map();
+function withUcpGetProductMarket(base) {
+  if (!UCP_GET_PRODUCT_MARKET_DEFINITIONS.has(base)) {
+    UCP_GET_PRODUCT_MARKET_DEFINITIONS.set(base, Object.freeze(base.map((def) => (def.name === "get_product"
+      ? Object.freeze({ ...def, description: UCP_GET_PRODUCT_MARKET_DESCRIPTION, inputSchema: UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA })
+      : def))));
+  }
+  return UCP_GET_PRODUCT_MARKET_DEFINITIONS.get(base);
 }
 
 // UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
@@ -1280,14 +1341,18 @@ export function ucpDialectSurface(surface) {
         inputSchema:UCP_REAP_RECOVER_INPUT_SCHEMA,
       }] : tools;
     },
-    callTool: async (name, args, sessionContext) =>
-      name === "resume_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapResumeOnly: true })
+    // `options.observe` (measurement only) is the one caller option forwarded; the dialect and Reap-mode flags
+    // are this projection's own and are never taken from the caller.
+    callTool: async (name, args, sessionContext, options) => {
+      const measure = options && typeof options.observe === "function" ? { observe: options.observe } : {};
+      return name === "resume_checkout"
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapResumeOnly: true })
         : name === "prepare_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
         : name === "recover_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
-        : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
+        : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp }));
+    },
     isCommerceTool: (name) => name === "resume_checkout" || name === "prepare_checkout" || name === "recover_checkout" || (
       typeof surface.isCommerceTool === "function"
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)

@@ -39,6 +39,7 @@ const { currencyExponent, majorUnitsOf, isRestatedProductId } = require('./merch
 const { unwrapToolPayload } = require('./ucpBuyerAgentClient');
 
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
+const { priceVerificationLogEnabled } = require('../observability/priceVerificationFacts');
 
 const MODES = Object.freeze({ OFF: 'off', SHADOW: 'shadow', ENFORCE: 'enforce' });
 const STATUS = Object.freeze({
@@ -51,6 +52,19 @@ const STATUS = Object.freeze({
   SKIPPED: 'skipped',
 });
 const MAX_IDS_PER_LOOKUP = 10;
+
+// LOG-ONLY: the HTTP status a failed discovery or lookup answered (a 429 is not just `lookup_failed`), kept
+// BESIDE the read and never in it, so nothing that builds an answer (or the PDP cache's record) can see it.
+// Logged as `http_status` under PRICE_VERIFICATION_LOG only.
+const readHttpStatus = new WeakMap();
+function withHttpStatus(read, e) {
+  const s = e && Number(e.status);
+  if (Number.isInteger(s) && s >= 100 && s <= 599) readHttpStatus.set(read, s);
+  return read;
+}
+function httpStatusLogField(read) {
+  return read && readHttpStatus.has(read) && priceVerificationLogEnabled() ? { http_status: readHttpStatus.get(read) } : {};
+}
 
 function readMode(env = process.env, key = 'UCP_LIVE_OFFER_READ') {
   const v = String(env[key] || '').trim().toLowerCase();
@@ -305,9 +319,29 @@ const DISCOVERY_FAILURE_TTL_MS = 60 * 1000;
 
 function createLookupCore({
   ucpClient, now, endpointTtlMs, memoTtlMs, maxConcurrent = MAX_CONCURRENT_LOOKUPS, endpointCache, discoveryInFlight, maxPerHost,
-  discoveryFailures, discoveryFailureTtlMs = DISCOVERY_FAILURE_TTL_MS, log,
+  discoveryFailures, discoveryFailureTtlMs = DISCOVERY_FAILURE_TTL_MS, log, hostGate, readClass,
 }) {
   const logLine = typeof log === 'function' ? (event, fields) => { try { log(event, fields); } catch { /* never costs a read */ } } : () => {};
+  // THE MERCHANT POLITENESS GATE (optional; services/priceHostBudget.js, PRICE_HOST_BUDGET): asked before a lookup
+  // is SENT (a memoized one sends nothing and is not asked), and told of every 429 / 430 / 5xx a discovery or a
+  // lookup drew, so the fleet's shared backoff (services/priceCache.js) hears of it. `readClass` names whose read
+  // this core makes (offers reads may spend the reserved quarter). Absent or admitting, nothing changes.
+  const admitRead = (host) => {
+    try {
+      return hostGate && typeof hostGate.admit === 'function' ? hostGate.admit(host, readClass) : null;
+    } catch {
+      return null;
+    }
+  };
+  const noteRefusal = (host, status) => {
+    const s = Number(status);
+    if (!(s === 429 || s === 430 || (s >= 500 && s <= 599))) return;
+    try {
+      if (hostGate && typeof hostGate.noteRefusal === 'function') hostGate.noteRefusal(host, s);
+    } catch {
+      /* the backoff is a courtesy; the read's own outcome stands */
+    }
+  };
   // PER-STORE cap (optional): at most `maxPerHost` lookups to one merchant host in flight from this core.
   // One over it is REFUSED at once (code `host_busy`), never queued: a burst of pages for one store
   // (a bot sweeping its catalogue) must not stack on it, and a read that does not happen is only
@@ -424,6 +458,7 @@ function createLookupCore({
     const d = await ucpClient.discoverEndpoint(`https://${host}`);
     const status = Number(d && d.status);
     const endpoint = (d && d.mcpEndpoint) || null;
+    if (!endpoint) noteRefusal(host, status);
     if (!endpoint && (status === 429 || status >= 500 || !Number.isFinite(status))) {
       throw Object.assign(new Error(`discovery_${Number.isFinite(status) ? status : 'unanswered'}`), {
         code: 'discovery_transient',
@@ -452,6 +487,9 @@ function createLookupCore({
     if (perHostCap !== null && (hostInFlight.get(host) || 0) >= perHostCap) {
       return Promise.reject(Object.assign(new Error('host_busy'), { code: 'host_busy' }));
     }
+    // Over this store's budget, or the fleet has it backed off: not sent, and refused like a full store.
+    const refused = admitRead(host);
+    if (refused) return Promise.reject(Object.assign(new Error(refused), { code: 'host_busy' }));
     if (perHostCap !== null) hostInFlight.set(host, (hostInFlight.get(host) || 0) + 1);
     const promise = withSlot(async () => {
       const res = await ucpClient.lookupCatalog(endpoint, {
@@ -461,6 +499,7 @@ function createLookupCore({
       if (!res || res.error || !res.ok) {
         const err = new Error('lookup_failed');
         err.status = res && res.status;
+        noteRefusal(host, err.status);
         throw err;
       }
       return unwrapToolPayload(res);
@@ -493,6 +532,39 @@ function createLookupCore({
   }
 
   return { endpointFor, lookup, hostHasRoom, isInFlight, endpoints, memo, discoveryFailures: failures, stats: () => ({ inFlight, waiting: waiting.length, hostsInFlight: hostInFlight.size }) };
+}
+
+/*
+ * THE SHARED VERIFIED-PRICE CACHE (services/priceCache.js; PRICE_CACHE_STORE / PRICE_CACHE_MODE, default off): a
+ * reader hands it each variant a VERIFIED read answered (the merchant's own currency, for the declared market)
+ * and each variant the merchant said it does not have (a 10-minute tombstone). The cache applies the currency
+ * rule itself and does nothing while its flags are off. Optional (`deps.priceCache`); never costs a read.
+ */
+function cacheRecorder(deps, writer) {
+  const cache = deps && deps.priceCache;
+  if (!cache || typeof cache.recordVerifiedPrice !== 'function') return null;
+  return {
+    verified(host, market, id, live) {
+      try {
+        if (!live || live.amount === null) return;
+        cache.recordVerifiedPrice({
+          host, market, variant_id: id, currency: live.currency, amount: live.amount,
+          available: live.available, handle: live.handle, source: 'merchant_ucp', writer,
+        });
+      } catch {
+        /* the record is optional */
+      }
+    },
+    gone(host, market, id) {
+      try {
+        if (typeof cache.recordVariantGone === 'function') {
+          cache.recordVariantGone({ host, market, variant_id: id, source: 'merchant_ucp', writer });
+        }
+      } catch {
+        /* the record is optional */
+      }
+    },
+  };
 }
 
 function withDeadline(promise, deadline, now) {
@@ -536,6 +608,7 @@ function createUcpLiveOfferReader(deps = {}) {
 
   const core = deps.core || createLookupCore({ ucpClient, now, endpointTtlMs, memoTtlMs });
   const { endpointFor, lookup } = core;
+  const record = cacheRecorder(deps, 'offers');
 
   /** The live read of one offer: { status, live?, liveVariants? }. Never throws. */
   async function readOne(offer, { country, currency, deadline }) {
@@ -575,7 +648,7 @@ function createUcpLiveOfferReader(deps = {}) {
       if (own.amount === null || own.available === null || !own.currency) return { status: STATUS.ERROR, host, reason: 'unreadable_variant' };
       return { status: STATUS.VERIFIED, host, variantId: ids[0], live: own, liveVariants };
     } catch (e) {
-      return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, reason: str(e && e.message).slice(0, 80) };
+      return withHttpStatus({ status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, reason: str(e && e.message).slice(0, 80) }, e);
     }
   }
 
@@ -685,6 +758,12 @@ function createUcpLiveOfferReader(deps = {}) {
     const deadline = now() + budgetMs;
     const targets = list.slice(0, Math.max(0, maxOffers));
     const reads = await Promise.all(targets.map((o) => readOne(o, { country, currency, deadline })));
+    if (record) {
+      reads.forEach((r, i) => {
+        if (r.status === STATUS.VERIFIED && r.liveVariants) for (const [id, v] of r.liveVariants) record.verified(r.host, country, id, v);
+        else if (r.status === STATUS.VARIANT_GONE) record.gone(r.host, country, lookupIdsFor(targets[i])[0]);
+      });
+    }
     const stats = { mode, market: country, currency, read: reads.length, by_status: {}, price_changed: 0, stock_changed: 0 };
     reads.forEach((r, i) => {
       stats.by_status[r.status] = (stats.by_status[r.status] || 0) + 1;
@@ -697,7 +776,7 @@ function createUcpLiveOfferReader(deps = {}) {
     });
     log('get_offers_ucp_live_read', {
       ...stats,
-      hosts: reads.map((r, i) => ({ host: r.host || hostOf(targets[i]), status: r.status, ...(r.reason ? { reason: r.reason } : {}) })),
+      hosts: reads.map((r, i) => ({ host: r.host || hostOf(targets[i]), status: r.status, ...(r.reason ? { reason: r.reason } : {}), ...httpStatusLogField(r) })),
     });
     return { reads, stats };
   }
@@ -824,8 +903,19 @@ function createUcpLiveProductReader(deps = {}) {
     memoTtlMs: Number.isFinite(deps.memoTtlMs) ? deps.memoTtlMs : 30 * 1000,
   });
 
-  /** { status, country, currency, host, live: Map, askedIds } — never throws. */
+  const record = cacheRecorder(deps, typeof deps.priceCacheWriter === 'string' ? deps.priceCacheWriter : 'product');
+
+  /** { status, country, currency, host, live: Map, askedIds } — never throws. Every read path comes through here. */
   async function readLive(product, ctx) {
+    const read = await readLiveUncached(product, ctx);
+    if (record && (read.status === STATUS.VERIFIED || read.status === STATUS.VARIANT_GONE)) {
+      if (read.status === STATUS.VERIFIED) for (const [id, v] of read.live) record.verified(read.host, read.country, id, v);
+      for (const id of read.notFound || []) record.gone(read.host, read.country, id);
+    }
+    return read;
+  }
+
+  async function readLiveUncached(product, ctx) {
     const declared = str(ctx && ctx.market).toUpperCase();
     const homeCurrency = productCurrency(product);
     if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) {
@@ -896,7 +986,7 @@ function createUcpLiveProductReader(deps = {}) {
       return { status: STATUS.VERIFIED, host, country, currency, basis, live, notFound, askedIds: ids };
     } catch (e) {
       if (e && e.code === 'host_busy') return { status: STATUS.SKIPPED, reason: 'host_busy', host, country, currency, basis };
-      return { status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, basis, reason: str(e && e.message).slice(0, 80) };
+      return withHttpStatus({ status: e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR, host, country, currency, basis, reason: str(e && e.message).slice(0, 80) }, e);
     }
   }
 
@@ -962,15 +1052,22 @@ function createUcpLiveProductReader(deps = {}) {
     const defaultId = numericVariantId(product.default_variant_id) || (out.variants[0] && numericVariantId(out.variants[0].variant_id));
     const defaultLive = defaultId ? read.live.get(defaultId) : null;
     const defaultVariant = (out.variants || []).find((v) => numericVariantId(v && v.variant_id) === defaultId);
-    if (defaultLive && defaultLive.amount !== null && sameProduct(defaultVariant || { variant_id: defaultId }, defaultLive)) {
+    // The headline is re-priced on exactly the terms its variant is (above: a price AND a stock answer), so the
+    // headline and the default variant never disagree about whether the merchant answered them.
+    if (defaultLive && defaultLive.amount !== null && defaultLive.available !== null
+      && sameProduct(defaultVariant || { variant_id: defaultId }, defaultLive)) {
       out.price = roundTo(defaultLive.amount, read.currency);
       out.currency = read.currency;
       out.price_source = 'merchant_live';
+      // When the HEADLINE price was read: only here, so a verified read that left it stored never dates it.
+      out.price_as_of = checkedAt;
     }
     const allAsked = (Array.isArray(product.variants) ? product.variants : []).every((v) => asked.has(numericVariantId(v && v.variant_id)));
     const anyInStock = out.variants.some((v) => v && v.availability && v.availability.in_stock === true && v.live_read);
-    if (anyInStock) out.availability = withLiveStock(product.availability, true);
-    else if (verified + gone > 0 && allAsked) out.availability = withLiveStock(product.availability, false);
+    // The top-level `in_stock` (the detail normalizer's flag, which the public and UCP doors read) moves with
+    // `availability`: a stored `in_stock: true` beside a live sold-out answer would sell a sold-out product.
+    if (anyInStock) { out.availability = withLiveStock(product.availability, true); out.in_stock = true; }
+    else if (verified + gone > 0 && allAsked) { out.availability = withLiveStock(product.availability, false); out.in_stock = false; }
     out.live_read = { ...summary, checked: asked.size, verified, gone };
     return out;
   }
@@ -993,7 +1090,14 @@ function createUcpLiveProductReader(deps = {}) {
       readAndLog(result, product, ctx).catch(() => {});
       return null;
     }
-    return readAndLog(result, product, ctx);
+    // Enforce: whatever fails here, the agent still gets the stored product, with `live_read` saying it was not
+    // verified (the executor's own catch would serve it with no explanation at all).
+    try {
+      return await readAndLog(result, product, ctx);
+    } catch {
+      const annotated = applyProductRead(product, { status: STATUS.ERROR, reason: 'reader_error' });
+      return result.product && typeof result.product === 'object' ? { ...result, product: annotated } : annotated;
+    }
   }
 
   async function readAndLog(result, product, ctx) {
@@ -1016,6 +1120,7 @@ function createUcpLiveProductReader(deps = {}) {
       status: read.status,
       reason: read.reason || null,
       market_basis: read.basis || null,
+      ...httpStatusLogField(read),
     };
     if (read.status === STATUS.VERIFIED || read.status === STATUS.VARIANT_GONE) {
       const preview = applyProductRead(product, read);
@@ -1146,6 +1251,7 @@ function createUcpLiveSearchReader(deps = {}) {
   const log = typeof deps.log === 'function' ? deps.log : () => {};
   // Search fans out per page: its own, smaller lookup pool, so it cannot starve the offer/product reads.
   const core = deps.core || createLookupCore({ ucpClient, now, endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000, maxConcurrent: 8 });
+  const record = cacheRecorder(deps, 'search');
   // A store whose discovery failed to ANSWER (timeout, 5xx; never cached by the core) is not planned for a
   // minute, so one hanging well-known does not cost every search page the whole budget.
   const DISCOVERY_BACKOFF_MS = 60 * 1000;
@@ -1226,9 +1332,15 @@ function createUcpLiveSearchReader(deps = {}) {
           return;
         }
         const live = new Map();
-        for (const p of parsed) for (const [id, v] of p.variants) live.set(id, v);
+        const notFound = new Set();
+        for (const p of parsed) {
+          for (const [id, v] of p.variants) live.set(id, v);
+          for (const id of p.notFound) notFound.add(id);
+        }
         for (const it of g.items) {
           const v = live.get(it.id);
+          if (record && v && v.handle && v.handle === it.handle && v.available !== null) record.verified(g.host, g.country, it.id, v);
+          else if (record && !v && notFound.has(it.id)) record.gone(g.host, g.country, it.id);
           const base = { market: it.country, market_basis: it.basis };
           if (!v) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'variant_not_answered' });
           else if (!it.handle || !v.handle) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'handle_unknown' });
