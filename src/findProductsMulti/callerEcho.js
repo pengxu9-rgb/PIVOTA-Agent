@@ -41,10 +41,12 @@
 //    elsewhere is not the request's, and a field holding the gateway's default, or a chosen source that
 //    passed its rule, is the gateway's own even when a rejected string normalises to the same form.
 //    The market is the same: the value compared is the market the request USED (callerChosenMarket:
-//    payload.search.market, else payload.market, else metadata.market), not any market the caller sent.
+//    the search block's market, else a flat payload's, else the metadata's -- the one every lane serves),
+//    not any market the caller sent.
 
 const { BUYER_REGION_CURRENCY } = require('../auroraBff/buyerRegion');
 const { isIso3166Alpha2 } = require('./iso3166Alpha2');
+const { requestedMarketOf } = require('../services/servingCurrencyGuard');
 
 const CALLER_SEARCH_CONTRACT_KEYS = Object.freeze([
   'search_request_contract',
@@ -228,17 +230,15 @@ function callerChosenSource(rawMetadata, payload) {
 }
 
 /**
- * The market buildFindProductsMultiContext (src/findProductsMulti/policy.js) reads from the caller when it
- * builds the query understanding and the search quality contract: the search block's market, else the
- * payload's, else the metadata's (`search?.market || payload?.market || metadata?.market`); undefined when
- * the request names none. This is the market those record, so the only caller market whose recorded form
- * the answer's query_understanding.market and hard_constraints.market can hold.
+ * The market the request used: the one every find_products_multi lane serves and
+ * buildFindProductsMultiContext (src/findProductsMulti/policy.js) records into the query understanding and
+ * the search quality contract -- servingCurrencyGuard.requestedMarketOf: the search block's market (the
+ * payload itself when there is no search block), else the metadata's. A `market` beside a search block is
+ * not it. Undefined when the request names none. This is the only caller market whose recorded form the
+ * answer's query_understanding.market and hard_constraints.market can hold.
  */
 function callerChosenMarket(rawMetadata, payload) {
-  const body = isPlainObject(payload) ? payload : {};
-  const search = isPlainObject(body.search) ? body.search : {};
-  const metadata = isPlainObject(rawMetadata) ? rawMetadata : {};
-  return search.market || body.market || metadata.market || undefined;
+  return requestedMarketOf(payload, rawMetadata) || undefined;
 }
 
 // `body` with the value at `path` replaced by `next`, copying each object on the way; the body itself

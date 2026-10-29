@@ -469,11 +469,27 @@ describe('find_products_multi: caller metadata follow-ups (routing flags, safe-e
   });
 
   test('(d) DE / NZ / CN / EU (and priced markets) echo exactly as sent; XX / ZZ / USA / us / markup do not, hard_constraints included', async () => {
-    const { search } = bootCatalog();
+    const { search, send } = bootCatalog();
     const ECHOED = ['DE', 'NZ', 'CN', 'EU', 'US', 'GB', 'SG'];
     const DROPPED = ['XX', 'ZZ', 'AA', 'QM', 'XK', 'USA', 'us', 'de', 'Eu', ' DE', '<b>US</b>', 'toString', '__proto__'];
     for (const query of ['laptop', 'Lidschatten']) {
-      for (const where of ['metadata', 'payload', 'search']) {
+      // 'payload' is a market beside the search block: no lane reads it, so it is never recorded (and so
+      // never echoed); the market a lane reads from the payload is a flat payload's ('flat').
+      for (const where of ['metadata', 'payload', 'search', 'flat']) {
+        if (where === 'flat') {
+          for (const market of [...ECHOED, ...DROPPED]) {
+            const label = [query, where, market];
+            const resp = await send({ query, page: 1, page_size: 20, market });
+            expect([...label, resp.status]).toEqual([...label, 200]);
+            const got = marketFields(resp.body);
+            if (ECHOED.includes(market)) {
+              expect([...label, got.understanding, got.constraint]).toEqual([...label, market, market]);
+            } else {
+              expect([...label, got.constraint ?? null, hasOwn(resp.body.metadata?.query_understanding, 'market')]).toEqual([...label, null, false]);
+            }
+          }
+          continue;
+        }
         const build = (market) =>
           where === 'metadata'
             ? [market === undefined ? undefined : { market }, {}]
@@ -487,7 +503,8 @@ describe('find_products_multi: caller metadata follow-ups (routing flags, safe-e
           const got = marketFields(resp.body);
           // top-level market is echoed only by the safe-empty answer, and only from the metadata
           if (query === 'Lidschatten' && where === 'metadata') expect([...label, got.top]).toEqual([...label, market]);
-          expect([...label, got.understanding, got.constraint]).toEqual([...label, market, market]);
+          const recorded = where === 'payload' ? [undefined, null] : [market, market];
+          expect([...label, got.understanding, got.constraint ?? null]).toEqual([...label, ...recorded]);
         }
         for (const market of DROPPED) {
           const label = [query, where, market];

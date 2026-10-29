@@ -5,6 +5,7 @@ const {
 } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { isExternalSeedRow } = require('../externalSeedIdentity');
+const { requestedMarketOf } = require('../services/servingCurrencyGuard');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
 const { buildClarification } = require('./clarification');
@@ -4627,6 +4628,11 @@ async function buildFindProductsMultiContext({ payload, metadata, routingOrigina
     ...(payload?.price_max != null ? { price_max: payload.price_max } : {}),
     ...(payload?.min_price != null ? { min_price: payload.min_price } : {}),
     ...(payload?.max_price != null ? { max_price: payload.max_price } : {}),
+    // A flat payload's market (the caller sent no search block): the lanes after this build read the search
+    // block written below, so without it they bound the metadata's market (or none) while the early lane,
+    // the serving-currency guard and this build's own record read the flat one. Copied as sent, and only
+    // without a search block: a `market` beside a search block is not the request's market on any lane.
+    ...(!isPlainObject(payload?.search) && payload?.market != null ? { market: payload.market } : {}),
   };
   const legacyRecentQueries = payload?.user?.recent_queries || [];
   const sessionRecentQueries = payload?.user?.session_recent_queries || legacyRecentQueries;
@@ -4644,18 +4650,20 @@ async function buildFindProductsMultiContext({ payload, metadata, routingOrigina
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
+  // The caller's market, read the way every lane serves it (servingCurrencyGuard.requestedMarketOf: the
+  // search block's, else a flat payload's, else the metadata's), so what is recorded is what is served.
   const queryUnderstanding = understandShoppingQuery({
     rawQuery: rawLatestUserQuery,
     conversationMessages: recentMessages,
     sessionRecentQueries,
-    market: search?.market || payload?.market || metadata?.market,
+    market: requestedMarketOf(payload, metadata),
     source: metadata?.source || search?.source || payload?.source,
   });
   const searchQualityContract = buildSearchQualityContract({
     rawQuery: rawLatestUserQuery,
     conversationMessages: recentMessages,
     sessionRecentQueries,
-    market: search?.market || payload?.market || metadata?.market,
+    market: requestedMarketOf(payload, metadata),
     source: metadata?.source || search?.source || payload?.source,
     // Honour a DECLARED step family as a fill-in when the text yields no category prefix. Before this,
     // the declared family was carried on `search` and then dropped: the prefix was a function of query
