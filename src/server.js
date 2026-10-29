@@ -489,6 +489,7 @@ const {
   buildIngredientIntentDirectEmptyResponse,
   buildIngredientIntentDirectHitResponse,
 } = require('./findProductsIngredientIntentDirectResponse');
+const zeroResultFallthrough = require('./findProductsMulti/zeroResultFallthrough');
 const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
@@ -4095,6 +4096,19 @@ const FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS = Math.max(
   0,
   Math.trunc(Number(process.env.FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS || 0) || 0),
 );
+// FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH: off | observe (default off). Classification only — see
+// src/findProductsMulti/zeroResultFallthrough.js. Any other value runs as off, with one warning here.
+const FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH =
+  zeroResultFallthrough.resolveZeroResultFallthroughConfig(process.env);
+if (FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH.invalidValue) {
+  logger.warn(
+    {
+      value: FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH.invalidValue,
+      accepted: zeroResultFallthrough.MODES,
+    },
+    'FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH has an unsupported value; running as off',
+  );
+}
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
 const FPM_CLARIFY_NEVER_EMPTY =
@@ -42491,6 +42505,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // response body is known (res.json below) and emitted on the completion log line. Nothing
   // reads it; it exists because no data exists on how often callers name a market.
   let marketTelemetryRecord = {};
+  // Zero-result classification (observe only): what the ingredient lane recorded for this request, and
+  // the completion-line fields built from it and the final body. Both stay empty unless observing.
+  let zeroResultRecord = null;
+  let zeroResultLogFields = {};
   // enterWith, not run(): this handler's body is ~8000 lines and wrapping it in a callback to set
   // one store would be a large, risky reshape of a live payments-adjacent path for a telemetry
   // field. enterWith binds the store for the remainder of this async context, which is exactly the
@@ -42745,6 +42763,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
         ...marketTelemetryRecord,
+        ...zeroResultLogFields,
         ...(fpmStageBreakdown.length > 0
           ? {
               fpm_stage_breakdown: fpmStageBreakdown,
@@ -42816,6 +42835,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     } catch (telemetryErr) {
       marketTelemetryRecord = { market_telemetry_error: String(telemetryErr?.message || telemetryErr).slice(0, 120) };
+    }
+    try {
+      zeroResultLogFields = zeroResultFallthrough.buildZeroResultLogFields({
+        config: FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH,
+        operation: String(debugRuntime.operation || req?.body?.operation || ''),
+        record: zeroResultRecord,
+        body,
+      });
+    } catch (_) {
+      zeroResultLogFields = {};
     }
     logInvokePriceVerification({
       operation: String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase(),
@@ -50152,6 +50181,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ingredientIntentIds,
                 ingredientIntentDetected: true,
               });
+        // Zero-result classification, observe only (src/findProductsMulti/zeroResultFallthrough.js). Reads
+        // the lane's own stage counts; changes nothing the lane serves.
+        if (zeroResultFallthrough.isObserving(FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH)) {
+          zeroResultRecord =
+            filteredDirectProducts.length === 0
+              ? {
+                  lane: zeroResultFallthrough.LANES.INGREDIENT_DIRECT,
+                  emptyReason: zeroResultFallthrough.classifyIngredientDirectEmpty({
+                    seedPrefetchCount: Array.isArray(directProducts) ? directProducts.length : 0,
+                    canonicalRecalledCount: canonicalIngredientRecalledProducts.length,
+                    canonicalError: canonicalIngredientResult?.error || null,
+                    mergedCount: mergedIngredientRecallProducts.length,
+                    categoryFilteredCount: strictIngredientCategoryFilter.products.length,
+                    budgetFilteredCount: directBudgetFilter.products.length,
+                    finalCount: filteredDirectProducts.length,
+                  }),
+                }
+              : {
+                  lane: zeroResultFallthrough.LANES.INGREDIENT_DIRECT,
+                  legMs: strictIngredientPrefetchMs,
+                  legCapMs: zeroResultFallthrough.proposedIngredientLegCapMs(
+                    strictIngredientPrefetchStartedAt - invokeStartedAtMs,
+                  ),
+                };
+        }
         return res.json(directResponse);
       }
       // No beauty direct call here. The one after the creator lanes (creator_direct) takes every
