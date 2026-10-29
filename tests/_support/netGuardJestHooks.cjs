@@ -32,7 +32,7 @@ function setContext() {
   const { testPath, currentTestName } = expect.getState();
   s.testPath = currentTestName ? `${testPath} > ${currentTestName}` : testPath;
   // A child process inherits the worker's real env: tell it whose work it is doing.
-  realProcess.env[guard.ORIGIN_ENV] = thisFile;
+  guard.setOwnOrigin(thisFile);
 }
 
 // Takes this file's attempts out of the record and leaves other files' to the reporter. With no

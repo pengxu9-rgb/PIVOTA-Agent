@@ -292,6 +292,124 @@ test('UDP to a public address literal is refused and recorded; loopback UDP is a
   assert.equal(await got, 'loop');
 });
 
+// What one UDP send came to: the callback's error, the socket's 'error' event (a refused send
+// with no callback), or 'no error' -- after a moment, so a send that got through cannot hang the test.
+function udpOutcome(socket, send) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('no error'), 300);
+    const done = (v) => {
+      clearTimeout(timer);
+      resolve(v);
+    };
+    socket.once('error', done);
+    send((err) => done(err || 'no error'));
+  });
+}
+
+async function boundUdpSocket() {
+  const s = dgram.createSocket('udp4');
+  await new Promise((resolve) => s.bind(0, resolve));
+  return s;
+}
+
+test('UDP: every send() form is judged by where it goes, also with a string port and no callback', async (t) => {
+  const receiver = dgram.createSocket('udp4');
+  t.after(() => receiver.close());
+  await new Promise((resolve) => receiver.bind(0, '127.0.0.1', resolve));
+  const loopPort = receiver.address().port;
+  const m = Buffer.from('ab');
+  // [form, send(socket, port, address, callback)]. The sockets are BOUND: an unbound socket
+  // queues its send and replays it later in the 4-argument form, which would hide a misread.
+  const forms = [
+    ['(msg, port, addr)', (s, p, a) => s.send(m, p, a)],
+    ['(msg, port, addr, cb)', (s, p, a, cb) => s.send(m, p, a, cb)],
+    ['(msg, "port", addr, cb)', (s, p, a, cb) => s.send(m, String(p), a, cb)],
+    ['([msg], port, addr, cb)', (s, p, a, cb) => s.send([m], p, a, cb)],
+    ['(msg, off, len, port, addr)', (s, p, a) => s.send(m, 0, 1, p, a)],
+    ['(msg, off, len, port, addr, cb)', (s, p, a, cb) => s.send(m, 0, 1, p, a, cb)],
+  ];
+  for (const [form, send] of forms) {
+    const blocked = await boundUdpSocket();
+    const err = await udpOutcome(blocked, (cb) => send(blocked, 53, BLOCKED_IP, cb));
+    blocked.close();
+    assert.equal(err && err.code, guard.BLOCKED_CODE, `send${form} to ${BLOCKED_IP}`);
+    assert.deepEqual(guard.drain().map((v) => `${v.kind} ${v.target}`), [`udp send ${BLOCKED_IP}`], form);
+
+    const allowed = await boundUdpSocket();
+    const got = new Promise((resolve) => receiver.once('message', resolve));
+    assert.equal(await udpOutcome(allowed, (cb) => send(allowed, loopPort, '127.0.0.1', cb)), 'no error', form);
+    assert.ok((await got).length > 0, `send${form} to loopback is delivered`);
+    allowed.close();
+  }
+  // No address at all goes to loopback (dgram's default), as on an unguarded socket.
+  const bare = await boundUdpSocket();
+  const got = new Promise((resolve) => receiver.once('message', resolve));
+  bare.send(m, loopPort);
+  assert.equal(String(await got), 'ab');
+  bare.close();
+});
+
+test('UDP: a connected socket\'s sends go to its peer, which is checked even if connect() was not', async (t) => {
+  const receiver = dgram.createSocket('udp4');
+  t.after(() => receiver.close());
+  await new Promise((resolve) => receiver.bind(0, '127.0.0.1', resolve));
+  const m = Buffer.from('ab');
+  // A socket connected before the guard was installed would have a public peer that connect()
+  // never judged. Stand one in without dialling anything: really connected (to loopback), but
+  // reporting a public peer through remoteAddress(), which is what the guard reads.
+  const sock = dgram.createSocket('udp4');
+  t.after(() => sock.close());
+  await new Promise((resolve, reject) => sock.connect(receiver.address().port, '127.0.0.1', (e) => (e ? reject(e) : resolve())));
+  sock.remoteAddress = () => ({ address: BLOCKED_IP, family: 'IPv4', port: 53 });
+  for (const [form, send] of [
+    ['(msg)', () => sock.send(m)],
+    ['(msg, cb)', (cb) => sock.send(m, cb)],
+    ['(msg, off, len, cb)', (cb) => sock.send(m, 0, 1, cb)],
+  ]) {
+    const err = await udpOutcome(sock, send);
+    assert.equal(err && err.code, guard.BLOCKED_CODE, `connected send${form}`);
+    assert.deepEqual(guard.drain().map((v) => `${v.kind} ${v.target}`), [`udp send ${BLOCKED_IP}:53`], form);
+  }
+
+  const loop = dgram.createSocket('udp4');
+  t.after(() => loop.close());
+  await new Promise((resolve, reject) => loop.connect(receiver.address().port, '127.0.0.1', (e) => (e ? reject(e) : resolve())));
+  const got = new Promise((resolve) => receiver.once('message', resolve));
+  loop.send(m);
+  assert.equal(String(await got), 'ab');
+});
+
+test('UDP: a socket\'s own lookup is judged by WHERE IT POINTS, for send and connect', async (t) => {
+  // Maps one name; everything else (the bind address) goes to the real resolver, as real ones do.
+  const toPublic = (name, opts, cb) => (name === 'anywhere.example.test' ? cb(null, BLOCKED_IP, 4) : dns.lookup(name, opts, cb));
+  const sender = dgram.createSocket({ type: 'udp4', lookup: toPublic });
+  const connector = dgram.createSocket({ type: 'udp4', lookup: toPublic });
+  t.after(() => {
+    sender.close();
+    connector.close();
+  });
+  const sendErr = await new Promise((resolve) => sender.send(Buffer.from('x'), 53, 'anywhere.example.test', resolve));
+  assert.equal(sendErr && sendErr.code, guard.BLOCKED_CODE);
+  const connectErr = await new Promise((resolve) => connector.connect(53, 'anywhere.example.test', resolve));
+  assert.equal(connectErr && connectErr.code, guard.BLOCKED_CODE);
+  const target = `anywhere.example.test (resolved to ${BLOCKED_IP})`;
+  assert.deepEqual(guard.drain().map((v) => `${v.kind} ${v.target}`), [`udp ${target}`, `udp ${target}`]);
+
+  const receiver = dgram.createSocket('udp4');
+  t.after(() => receiver.close());
+  await new Promise((resolve) => receiver.bind(0, '127.0.0.1', resolve));
+  const local = dgram.createSocket({
+    type: 'udp4',
+    lookup: (name, opts, cb) => (name === 'internal.example' ? cb(null, '127.0.0.1', 4) : dns.lookup(name, opts, cb)),
+  });
+  t.after(() => local.close());
+  const got = new Promise((resolve) => receiver.once('message', resolve));
+  await new Promise((resolve, reject) =>
+    local.send(Buffer.from('mapped'), receiver.address().port, 'internal.example', (e) => (e ? reject(e) : resolve())),
+  );
+  assert.equal(String(await got), 'mapped');
+});
+
 test('*.localhost is loopback without asking a resolver, and a fetch to it reaches a local listener', async () => {
   assert.deepEqual(await dns.promises.lookup('api.netguard.localhost'), { address: '127.0.0.1', family: 4 });
   assert.deepEqual(await dns.promises.lookup('api.netguard.localhost', { family: 6, all: true }), [{ address: '::1', family: 6 }]);
@@ -350,6 +468,26 @@ test('run log: an attempt by a child the suite ignored is logged, unreported, an
   }
 });
 
+test('a suite process\'s own attempt names the suite, and not as a child process', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-'));
+  try {
+    const fixture = path.join('tests', '_support', 'fixtures', 'netGuardSuiteAttempt.fixture.cjs');
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec', fixture], {
+      cwd: ROOT,
+      env: cleanEnv({ NODE_OPTIONS: guard.withGuardPreload(''), [guard.RUN_DIR_ENV]: dir }),
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    const out = `${r.stdout}\n${r.stderr}`;
+    assert.equal(r.status, 1, out);
+    assert.match(out, /connect -> 192\.0\.2\.10:80 {2}\(started by tests\/_support\/fixtures\/netGuardSuiteAttempt\.fixture\.cjs\)/);
+    assert.doesNotMatch(out, /in a child process/);
+    assert.deepEqual(readRunLog(dir), []); // the suite failed on it itself: nothing left over
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the runner fails a run on an attempt no suite caught, naming the suite', () => {
   const runner = path.join(ROOT, 'scripts', 'run_node_test_suites.cjs');
   const fixture = path.join('tests', '_support', 'fixtures', 'netGuardChildEscape.fixture.cjs');
@@ -364,7 +502,7 @@ test('the runner fails a run on an attempt no suite caught, naming the suite', (
   assert.match(out, /connect -> 192\.0\.2\.8:80 {2}\(started by tests\/_support\/fixtures\/netGuardChildEscape\.fixture\.cjs; in a child process/);
 });
 
-function runJestFixtures(fixtures, args) {
+function runJestFixtures(fixtures, args, env = {}) {
   const jestBin = path.join(ROOT, 'node_modules', 'jest', 'bin', 'jest.js');
   const files = fixtures.map((f) => path.join(__dirname, '_support', 'fixtures', f));
   // As CI starts jest: with no preload in jest's own process. (The guard's spawn wrapper would
@@ -375,7 +513,7 @@ function runJestFixtures(fixtures, args) {
     jestBin, '--config', path.join(ROOT, 'jest.config.js'), '--watchman=false', '--ci', ...args,
     '--testSequencer', path.join(__dirname, '_support', 'fixtures', 'byPathSequencer.fixture.cjs'),
     '--testMatch=**/*.fixture.cjs', '--runTestsByPath', ...files,
-  ], { cwd: ROOT, env: cleanEnv(), encoding: 'utf8', timeout: 120_000 });
+  ], { cwd: ROOT, env: cleanEnv(env), encoding: 'utf8', timeout: 120_000 });
   return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
 }
 
@@ -390,6 +528,8 @@ for (const [mode, args] of [['CI worker', ['--maxWorkers=1', '--workerIdleMemory
     assert.match(out, /PASS .*netGuardLeftoverA\.fixture\.cjs/);
     assert.match(out, /PASS .*netGuardLeftoverB\.fixture\.cjs/);
     assert.match(out, /connect -> 192\.0\.2\.7:80 {2}\(started by \S*netGuardLeftoverA\.fixture\.cjs/);
+    // With the stack of the call, though the file that made it was torn down by then.
+    assert.match(out, /\| at .*netGuardLeftoverA\.fixture\.cjs:\d+/);
   });
 
   test(`jest (${mode}): an attempt that fires after the worker's last file still fails the run`, () => {
@@ -398,7 +538,30 @@ for (const [mode, args] of [['CI worker', ['--maxWorkers=1', '--workerIdleMemory
     assert.match(out, /Tests: +1 passed, 1 total/);
     assert.match(out, /connect -> 192\.0\.2\.7:80 {2}\(started by \S*netGuardLeftoverA\.fixture\.cjs/);
   });
+
+  test(`jest (${mode}): worker threads a test starts with inherited flags or a shared env are guarded, and fail the run`, () => {
+    const { status, out } = runJestFixtures(['netGuardWorker.fixture.cjs'], args);
+    assert.equal(status, 1, out);
+    assert.match(out, /Tests: +2 passed, 2 total/); // each worker's connect was refused...
+    for (const ip of ['192\\.0\\.2\\.20', '192\\.0\\.2\\.27']) {
+      // ...and recorded against the file that started it.
+      assert.match(out, new RegExp(`connect -> ${ip}:80 {2}\\(started by \\S*netGuardWorker\\.fixture\\.cjs; in a child process or worker`));
+    }
+  });
 }
+
+test('jest: a run dir inherited from the environment is not used; a stale row in it does not fail a clean run', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-'));
+  try {
+    const stale = { id: '1:0:1', kind: 'connect', target: '192.0.2.99:80', origin: 'tests/old.test.js' };
+    fs.writeFileSync(path.join(dir, '1-0.jsonl'), `${JSON.stringify(stale)}\n`);
+    const { status, out } = runJestFixtures([NEXT], ['--runInBand'], { [guard.RUN_DIR_ENV]: dir });
+    assert.equal(status, 0, out);
+    assert.doesNotMatch(out, /192\.0\.2\.99/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('jest (in band): an attempt that fires after the run was reported still fails it', () => {
   const { status, out } = runJestFixtures(['netGuardLeftoverAfterRun.fixture.cjs'], ['--runInBand']);

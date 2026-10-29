@@ -28,12 +28,14 @@
 // method), http/https agents, http2, undici and therefore global fetch, nock/msw passthrough,
 // pg, ioredis. dns.lookup / dns.resolve* / dns.Resolver and their promise twins are patched
 // too, because a DNS query is itself traffic and is how a fixture host leaks; and so are
-// dgram send/connect, for UDP to an address literal (a hostname goes through dns.lookup).
+// dgram send/connect, for UDP to an address literal (a hostname goes through dns.lookup, or
+// through the socket's own `lookup`, which dgram.createSocket gets wrapped like connect's).
 //
-// CHILDREN. A worker thread started with its own `execArgv`, or a child process started with
-// an `env` that has no NODE_OPTIONS, would run without the preload. The Worker constructor and
-// the child_process entry points are wrapped to put the preload (and the reporting env below)
-// back. Not covered: a child that is not node, or node started with --no-node-options / -e
+// CHILDREN. A worker thread inherits its parent's startup flags, which under jest do not
+// include the guard (jest installs it from setupFiles, after start), and a child process
+// started with an `env` that has no NODE_OPTIONS runs without the preload. The Worker
+// constructor and the child_process entry points are wrapped to put the preload (and the
+// reporting env below) back. Not covered: a child that is not node, or node started with --no-node-options / -e
 // code that deletes NODE_OPTIONS before spawning; and an internal call that bypasses the
 // exported functions (none in this repo).
 //
@@ -71,15 +73,18 @@ const BLOCKED_CODE = 'ERR_TEST_NETWORK_BLOCKED';
 // The run log (NETGUARD_RUN_DIR) and the report format, shared with the runners that read them.
 const { RUN_DIR_ENV, ORIGIN_ENV, readRunLog, formatViolations, withGuardPreload } = require('./netGuardRunLog.cjs');
 
-// The worker's own `process`. Under jest the module-level `process` is the sandbox copy of the
-// test file that happened to load this module first, and the patches below outlive that file.
-const realProcess = (() => {
+// The worker's own `process` and `Error`. Under jest the module-level ones belong to the sandbox
+// of the test file that happened to load this module first, and the patches below outlive that
+// file: an attempt that fires after its teardown got an empty stack from the sandbox's Error.
+function fromMainRealm(name, fallback) {
   try {
-    return require('node:vm').runInThisContext('process') || process;
+    return require('node:vm').runInThisContext(name) || fallback;
   } catch (_) {
-    return process;
+    return fallback;
   }
-})();
+}
+const realProcess = fromMainRealm('process', process);
+const RealError = fromMainRealm('Error', Error);
 
 // For a test that needs an upstream which is DOWN. A `.test` hostname "never resolves" only
 // after a real DNS query has gone out; a loopback port nothing listens on refuses at once,
@@ -110,6 +115,14 @@ function state() {
 function currentOrigin() {
   const store = state().attribution.getStore();
   return (store && store.origin) || realProcess.env[ORIGIN_ENV] || null;
+}
+
+// The test file THIS process or thread runs (a jest file, a node:test suite file). It goes into
+// the env so children inherit it, and is remembered so this process's own attempts are not
+// labelled as a child's.
+function setOwnOrigin(origin) {
+  realProcess.env[ORIGIN_ENV] = origin;
+  state().ownOrigin = origin;
 }
 
 // One file per process AND thread: appends from two writers never interleave inside a line.
@@ -166,10 +179,10 @@ function isLocalhostName(hostname) {
 }
 
 function captureStack() {
-  const limit = Error.stackTraceLimit;
-  Error.stackTraceLimit = 50;
-  const raw = new Error().stack;
-  Error.stackTraceLimit = limit;
+  const limit = RealError.stackTraceLimit;
+  RealError.stackTraceLimit = 50;
+  const raw = new RealError().stack;
+  RealError.stackTraceLimit = limit;
   const frames = String(raw || '').split('\n').slice(1).map((l) => l.trim());
   const own = frames.filter((l) => !l.includes(__filename));
   // Prefer the caller's frames; an async transport (fetch, a DNS callback) may have none, in
@@ -193,7 +206,9 @@ function blockedError(kind, target) {
   return err;
 }
 
-function record(kind, target) {
+// `stack`, when given, is where the attempt was made: a lookup often runs on a later tick than
+// the connect() or send() that needs it, where the stack is nothing but node internals.
+function record(kind, target, stack) {
   const s = state();
   s.seq += 1;
   const entry = {
@@ -201,13 +216,16 @@ function record(kind, target) {
     kind,
     target,
     at: Date.now(),
-    stack: captureStack(),
+    stack: stack || s.pendingStack || captureStack(),
     // The test file whose work made the attempt (see `attribution`); under node:test, the
     // suite file a child process was spawned for, or null in the suite process itself.
     origin: currentOrigin(),
     // True when the origin came from the env a parent handed this process (a child or worker),
     // not from this process's own test file.
-    inChild: !(s.attribution.getStore() || {}).origin && Boolean(realProcess.env[ORIGIN_ENV]),
+    inChild:
+      !(s.attribution.getStore() || {}).origin &&
+      Boolean(realProcess.env[ORIGIN_ENV]) &&
+      realProcess.env[ORIGIN_ENV] !== s.ownOrigin,
     // Set by the jest hooks (tests/_support/netGuardJestHooks.cjs): what was RUNNING when the
     // attempt happened, which is not always what started it. Null under node:test.
     testPath: s.testPath || null,
@@ -231,33 +249,36 @@ function addressesOf(address) {
   return [address];
 }
 
-// Wrap a lookup function (the real dns.lookup or a caller's own) so the connect proceeds
-// only if EVERY address it produced is loopback.
+// Wrap a lookup function (the real dns.lookup or a caller's own) so the connect or UDP send
+// proceeds only if EVERY address it produced is loopback. `describe(name)` names the target in
+// the report.
 //
-// `connectStack` is captured when connect() is CALLED. The lookup itself often runs on a later
-// tick (Happy Eyeballs defers it), where the stack is nothing but node internals.
-function loopbackOnlyLookup(lookup, hostname, port, connectStack) {
+// `stack` is captured when connect() is CALLED. The lookup itself often runs on a later tick
+// (Happy Eyeballs defers it), where the stack is nothing but node internals; a refusal inside
+// the lookup (guarded dns.lookup records synchronously) picks it up from `pendingStack`.
+function loopbackOnlyLookup(lookup, kind, describe, stack) {
   return function guardedLookup(name, opts, cb) {
     if (typeof opts === 'function') {
       cb = opts;
       opts = {};
     }
-    lookup(name, opts, (err, address, family) => {
-      if (err) {
-        if (err.code === BLOCKED_CODE && err.netGuardEntry && connectStack) {
-          err.netGuardEntry.stack = connectStack;
+    const s = state();
+    const outer = s.pendingStack;
+    s.pendingStack = stack || outer;
+    try {
+      lookup(name, opts, (err, address, family) => {
+        if (err) return cb(err);
+        const outside = addressesOf(address).find((a) => !isLoopbackIp(a));
+        if (outside) {
+          const target = `${describe(name)} (resolved to ${outside})`;
+          record(kind, target, stack);
+          return cb(blockedError(kind, target));
         }
-        return cb(err);
-      }
-      const outside = addressesOf(address).find((a) => !isLoopbackIp(a));
-      if (outside) {
-        const target = `${hostname}:${port} (resolved to ${outside})`;
-        const entry = record('connect', target);
-        if (connectStack) entry.stack = connectStack;
-        return cb(blockedError('connect', target));
-      }
-      return cb(null, address, family);
-    });
+        return cb(null, address, family);
+      });
+    } finally {
+      s.pendingStack = outer;
+    }
   };
 }
 
@@ -288,7 +309,7 @@ function patchSocketConnect(originals) {
 
     const lookup = typeof options.lookup === 'function' ? options.lookup : dns.lookup;
     const connectStack = isLocalhostName(host) && !options.lookup ? null : captureStack();
-    const guarded = { ...options, lookup: loopbackOnlyLookup(lookup, host, port, connectStack) };
+    const guarded = { ...options, lookup: loopbackOnlyLookup(lookup, 'connect', () => `${host}:${port}`, connectStack) };
     return cb ? originalConnect.call(this, guarded, cb) : originalConnect.call(this, guarded);
   };
 }
@@ -329,8 +350,8 @@ function patchLookup(originals) {
         return cb(null, address, family);
       });
     }
+    record('dns', String(hostname));
     const err = blockedError('dns lookup', String(hostname));
-    Object.defineProperty(err, 'netGuardEntry', { value: record('dns', String(hostname)), enumerable: false });
     later(() => cb(err));
     return undefined;
   };
@@ -386,16 +407,40 @@ function patchResolvers(originals) {
   }
 }
 
-// UDP. A hostname target goes through dns.lookup (guarded above); an address literal does not,
-// so it is checked here. Fails the way a send to a dead address fails: on the callback, or as
-// an 'error' event on the socket when there is no callback.
-function udpTarget(args) {
-  // send(msg[, offset, length], port[, address][, callback]); the address is the one string
-  // after the message, and the port the number before it.
-  const rest = args.slice(1);
-  const address = rest.find((x) => typeof x === 'string');
-  const cb = rest.find((x) => typeof x === 'function');
-  return { address, cb };
+// UDP. A hostname target goes through the socket's lookup (dns.lookup, guarded above, or the
+// caller's own, wrapped in createSocket below); an address literal does not, so it is checked
+// here. Fails the way a send to a dead address fails: on the callback, or as an 'error' event on
+// the socket when there is no callback.
+//
+// Where an unconnected send goes, read the way dgram's own send() reads its arguments:
+// send(msg[, offset, length], port[, address][, callback]). The port may be a numeric string, so
+// "the first string" is not the address. No address means loopback (dgram's default).
+function udpSendTarget(args) {
+  const [, offset, length, port, address, callback] = args;
+  let target;
+  let cb;
+  if (address || (port && typeof port !== 'function')) {
+    target = address;
+    cb = callback;
+  } else {
+    target = length;
+    cb = port;
+  }
+  if (typeof target === 'function') {
+    cb = target;
+    target = undefined;
+  }
+  return { address: target, cb: typeof cb === 'function' ? cb : undefined };
+}
+
+// The peer of a connected socket, or null. A connected send takes no address: it goes to the
+// peer, which connect() checked -- unless the socket was connected before the guard was installed.
+function udpPeer(socket) {
+  try {
+    return socket.remoteAddress();
+  } catch (_) {
+    return null;
+  }
 }
 
 function failUdp(socket, kind, target, cb) {
@@ -408,9 +453,15 @@ function patchDgram(originals) {
   const proto = dgram.Socket.prototype;
   originals.udpSend = proto.send;
   proto.send = function guardedUdpSend(...args) {
-    const { address, cb } = udpTarget(args);
-    // No address on a connected socket: connect() already checked it.
-    if (address !== undefined && net.isIP(stripBrackets(address)) && !isLoopbackIp(address)) {
+    const peer = udpPeer(this);
+    if (peer) {
+      if (!isLoopbackIp(peer.address)) {
+        return failUdp(this, 'udp send', `${peer.address}:${peer.port}`, args.slice(1).find((x) => typeof x === 'function'));
+      }
+      return originals.udpSend.apply(this, args);
+    }
+    const { address, cb } = udpSendTarget(args);
+    if (typeof address === 'string' && net.isIP(stripBrackets(address)) && !isLoopbackIp(address)) {
       return failUdp(this, 'udp send', address, cb);
     }
     return originals.udpSend.apply(this, args);
@@ -426,6 +477,19 @@ function patchDgram(originals) {
       return originals.udpConnect.apply(this, arguments);
     };
   }
+  // createSocket({ lookup }) resolves every hostname send/connect through the caller's function,
+  // which may map any name anywhere: judge where it points, as for a TCP connect. The same
+  // function resolves the BIND address ('0.0.0.0' unless given), so an IP literal passes through
+  // unjudged: as a destination it was already judged above, as itself.
+  originals.createSocket = dgram.createSocket;
+  dgram.createSocket = function guardedCreateSocket(type, listener) {
+    if (type && typeof type === 'object' && typeof type.lookup === 'function') {
+      const own = type.lookup;
+      const judged = loopbackOnlyLookup(own, 'udp', (name) => String(name), null);
+      type = { ...type, lookup: (name, ...rest) => (isPassThroughName(name) ? own(name, ...rest) : judged(name, ...rest)) };
+    }
+    return originals.createSocket.call(this, type, listener);
+  };
 }
 
 // CHILDREN AND WORKERS: put the preload (and the run dir / origin) back into an `env` or
@@ -493,13 +557,23 @@ function patchWorkers(originals) {
   class GuardedWorker extends OriginalWorker {
     constructor(filename, options = {}) {
       const opts = { ...options };
-      // An explicit execArgv replaces the parent's, preload included.
-      if (Array.isArray(opts.execArgv) && !opts.execArgv.some((a) => String(a).includes(__filename))) {
-        opts.execArgv = [...opts.execArgv, `--require=${__filename}`];
-      }
+      const preload = `--require=${__filename}`;
+      // An explicit execArgv replaces the parent's, preload included. With none, the worker
+      // inherits the flags this process STARTED with, which under jest do not include the guard
+      // (it comes from setupFiles): pass them explicitly, plus the preload.
+      const inherited = !Array.isArray(opts.execArgv);
+      const execArgv = inherited ? realProcess.execArgv : opts.execArgv;
+      if (!execArgv.some((a) => String(a).includes(__filename))) opts.execArgv = [...execArgv, preload];
       // A worker's own env object (not SHARE_ENV) gets the run dir and origin too.
       if (opts.env && typeof opts.env === 'object') opts.env = { ...reportingEnv(), ...opts.env };
-      super(filename, opts);
+      try {
+        super(filename, opts);
+      } catch (err) {
+        // Some startup flags (--expose-gc, ...) are process-wide and a worker refuses them when
+        // passed explicitly, though it inherits them silently. Keep the preload, drop the rest.
+        if (!inherited || !err || err.code !== 'ERR_WORKER_INVALID_EXEC_ARGV') throw err;
+        super(filename, { ...opts, execArgv: [preload] });
+      }
     }
   }
   wt.Worker = GuardedWorker;
@@ -531,6 +605,7 @@ function uninstall() {
   for (const [obj, method, fn] of o.resolvers) obj[method] = fn;
   dgram.Socket.prototype.send = o.udpSend;
   if (o.udpConnect) dgram.Socket.prototype.connect = o.udpConnect;
+  dgram.createSocket = o.createSocket;
   Object.assign(require('node:child_process'), o.childProcess);
   require('node:worker_threads').Worker = o.Worker;
   s.installed = false;
@@ -560,7 +635,7 @@ function installExitReporter() {
   s.exitReporter = true;
   const isSuiteProcess = Boolean(process.env.NODE_TEST_CONTEXT) && !process.env[ORIGIN_ENV];
   if (isSuiteProcess && process.argv[1]) {
-    process.env[ORIGIN_ENV] = path.relative(process.cwd(), process.argv[1]) || process.argv[1];
+    setOwnOrigin(path.relative(process.cwd(), process.argv[1]) || process.argv[1]);
   }
   process.on('exit', (code) => {
     const list = drain();
@@ -621,6 +696,7 @@ module.exports = {
   violations,
   drain,
   markReported,
+  setOwnOrigin,
   readRunLog,
   attribution: () => state().attribution,
   RUN_DIR_ENV,
