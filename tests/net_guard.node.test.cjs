@@ -410,6 +410,19 @@ test('UDP: a socket\'s own lookup is judged by WHERE IT POINTS, for send and con
   assert.equal(String(await got), 'mapped');
 });
 
+test('UDP: a socket\'s own lookup is judged for a loopback literal and the default address too; binding still works', async (t) => {
+  // dgram sends even an address literal through the socket's lookup, so this one moves loopback away.
+  const moved = (name, opts, cb) => (name === '127.0.0.1' ? cb(null, BLOCKED_IP, 4) : dns.lookup(name, opts, cb));
+  const sock = dgram.createSocket({ type: 'udp4', lookup: moved });
+  t.after(() => sock.close());
+  await new Promise((resolve) => sock.bind(0, resolve)); // the wildcard bind address passes through
+  const literal = await udpOutcome(sock, (cb) => sock.send(Buffer.from('x'), 53, '127.0.0.1', cb));
+  const byDefault = await udpOutcome(sock, (cb) => sock.send(Buffer.from('x'), 53, cb));
+  assert.deepEqual([literal, byDefault].map((o) => o && o.code), [guard.BLOCKED_CODE, guard.BLOCKED_CODE]);
+  const target = `127.0.0.1 (resolved to ${BLOCKED_IP})`;
+  assert.deepEqual(guard.drain().map((v) => `${v.kind} ${v.target}`), [`udp ${target}`, `udp ${target}`]);
+});
+
 test('*.localhost is loopback without asking a resolver, and a fetch to it reaches a local listener', async () => {
   assert.deepEqual(await dns.promises.lookup('api.netguard.localhost'), { address: '127.0.0.1', family: 4 });
   assert.deepEqual(await dns.promises.lookup('api.netguard.localhost', { family: 6, all: true }), [{ address: '::1', family: 6 }]);
@@ -449,6 +462,47 @@ test('a worker thread started with execArgv: [] is still guarded', async () => {
   await worker.terminate();
   assert.equal(code, guard.BLOCKED_CODE);
 });
+
+// The refused flag alone (--expose-gc), and one whose value is a separate entry (--title x)
+// followed by an accepted one that also takes a separate value (--conditions custom): only the
+// refused flag and its own value may go.
+for (const { refused, kept, expected } of [
+  { refused: ['--expose-gc'], kept: [], expected: { gc: 'function' } },
+  { refused: ['--title', 'x'], kept: ['--conditions', 'custom'], expected: { condition: 'custom' } },
+]) {
+  test(`a worker inheriting a flag workers refuse (${refused.join(' ')}) keeps the other flags and the guard`, (t) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const marker = path.join(dir, 'marker.cjs');
+    fs.writeFileSync(marker, 'globalThis.__netGuardMarker = true;\n');
+    // A package whose export depends on --conditions.
+    const pkg = path.join(dir, 'node_modules', 'netguard-condition');
+    fs.mkdirSync(pkg, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkg, 'package.json'),
+      JSON.stringify({ name: 'netguard-condition', exports: { custom: './custom.cjs', default: './default.cjs' } }),
+    );
+    fs.writeFileSync(path.join(pkg, 'custom.cjs'), "module.exports = 'custom';\n");
+    fs.writeFileSync(path.join(pkg, 'default.cjs'), "module.exports = 'default';\n");
+    const inWorker =
+      "require('node:worker_threads').parentPort.postMessage({ marker: globalThis.__netGuardMarker === true, " +
+      "guarded: require('node:net').Socket.prototype.connect.name === 'guardedConnect', gc: typeof gc, " +
+      `condition: require(require.resolve('netguard-condition', { paths: [${JSON.stringify(dir)}] })) })`;
+    const script =
+      "const { Worker } = require('node:worker_threads');" +
+      `const w = new Worker(${JSON.stringify(inWorker)}, { eval: true });` +
+      "w.once('message', (m) => { process.stdout.write(JSON.stringify(m)); w.terminate(); });";
+    // The guard comes from NODE_OPTIONS, as the runner preloads it, so the worker gets it only
+    // through the execArgv the guard passes; the startup flags are what the worker inherits.
+    const r = spawnSync(process.execPath, [...refused, ...kept, `--require=${marker}`, '-e', script], {
+      cwd: ROOT, env: cleanEnv({ NODE_OPTIONS: guard.withGuardPreload('') }), encoding: 'utf8', timeout: 30_000,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout), {
+      marker: true, guarded: true, gc: 'undefined', condition: 'default', ...expected,
+    });
+  });
+}
 
 test('run log: an attempt by a child the suite ignored is logged, unreported, and names the suite', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-'));
@@ -502,18 +556,22 @@ test('the runner fails a run on an attempt no suite caught, naming the suite', (
   assert.match(out, /connect -> 192\.0\.2\.8:80 {2}\(started by tests\/_support\/fixtures\/netGuardChildEscape\.fixture\.cjs; in a child process/);
 });
 
-function runJestFixtures(fixtures, args, env = {}) {
+// As CI starts jest: with no preload in jest's own process. (The guard's spawn wrapper would add
+// one to the env given here, and in band the preloaded exit reporter would then catch what the
+// jest reporter is under test for.) `env -u` drops it after the wrapper has run.
+function jestArgv(fixtures, args) {
   const jestBin = path.join(ROOT, 'node_modules', 'jest', 'bin', 'jest.js');
   const files = fixtures.map((f) => path.join(__dirname, '_support', 'fixtures', f));
-  // As CI starts jest: with no preload in jest's own process. (The guard's spawn wrapper would
-  // add one to the env given here, and in band the preloaded exit reporter would then catch what
-  // the jest reporter is under test for.) `env -u` drops it after the wrapper has run.
-  const r = spawnSync('/usr/bin/env', [
+  return [
     '-u', 'NODE_OPTIONS', process.execPath,
     jestBin, '--config', path.join(ROOT, 'jest.config.js'), '--watchman=false', '--ci', ...args,
     '--testSequencer', path.join(__dirname, '_support', 'fixtures', 'byPathSequencer.fixture.cjs'),
     '--testMatch=**/*.fixture.cjs', '--runTestsByPath', ...files,
-  ], { cwd: ROOT, env: cleanEnv(env), encoding: 'utf8', timeout: 120_000 });
+  ];
+}
+
+function runJestFixtures(fixtures, args, env = {}) {
+  const r = spawnSync('/usr/bin/env', jestArgv(fixtures, args), { cwd: ROOT, env: cleanEnv(env), encoding: 'utf8', timeout: 120_000 });
   return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
 }
 
@@ -562,6 +620,32 @@ test('jest: a run dir inherited from the environment is not used; a stale row in
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  test(`jest: a run stopped by ${signal} removes its run dir and still dies of the signal`, async (t) => {
+    // jest's own tmpdir, so the reporter's dir is the only netguard-jest-* there could be.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    const runDirs = () => fs.readdirSync(tmp).filter((n) => n.startsWith('netguard-jest-'));
+    const { spawn } = require('node:child_process');
+    const child = spawn('/usr/bin/env', jestArgv(['netGuardHold.fixture.cjs'], ['--runInBand']), {
+      cwd: ROOT, env: cleanEnv({ TMPDIR: tmp }), stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.stderr.on('data', (d) => { out += d; });
+    const closed = new Promise((resolve) => child.once('close', (code, sig) => resolve({ code, sig })));
+    const deadline = Date.now() + 60_000;
+    while (!runDirs().length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(runDirs().length, 1, `the reporter made no run dir\n${out}`);
+    child.kill(signal);
+    const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
+    const { code, sig } = await closed;
+    clearTimeout(timer);
+    assert.deepEqual({ code, sig }, { code: null, sig: signal }, out);
+    assert.deepEqual(runDirs(), [], out);
+  });
+}
 
 test('jest (in band): an attempt that fires after the run was reported still fails it', () => {
   const { status, out } = runJestFixtures(['netGuardLeftoverAfterRun.fixture.cjs'], ['--runInBand']);
