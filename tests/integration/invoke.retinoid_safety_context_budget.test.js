@@ -1,5 +1,5 @@
 // The loopback-only network guard goes first, so nothing below can reach a real host.
-require('../agent_readiness_eval/_net_guard.cjs');
+const netGuard = require('../agent_readiness_eval/_net_guard.cjs');
 
 const v8 = require('node:v8');
 const vm = require('node:vm');
@@ -28,8 +28,7 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
   let prevEnv;
   const calls = [];
   let actualSignal;
-  // When true, the wrapped reader answers without reading the body: the baseline for what the rest of
-  // the gateway retains per request (see the memory test).
+  // When true, the wrapped reader answers without reading the body: the baseline arm of the memory test.
   let readerOff = false;
   // When true, the wrapped reader throws, as a reader bug would.
   let readerThrows = false;
@@ -158,9 +157,15 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
       v8.setFlagsFromString('--expose-gc');
       gc = vm.runInNewContext('gc');
     }
-    // The gateway itself keeps about 1 MB per request with a large body, with or without this reader
-    // (measured on main as well; reported separately). So the reader's share is measured as the
-    // difference between the same 30 requests with the reader on and with it answering blind.
+    // The 30 requests go out with nock's interception switched off. With it on, every request
+    // supertest sends runs over nock 14's MockHttpSocket (@mswjs/interceptors), whose response parser
+    // is a global handle until the socket is destroyed, and that parser reaches the request's error
+    // listener, whose closure holds supertest's Test._data, the whole payload. So each 1 MB body stayed
+    // reachable until socket teardown, about 31 MB in BOTH arms, and the difference between the arms
+    // was teardown timing (it reached 18.9 MB on CI shard 4). That was the test client, not the
+    // gateway. The reader's share is still measured as the difference from the same 30 requests with
+    // the reader answering blind. With nock off, the loopback net guard (top of file) still refuses any
+    // connection that is not loopback, and the count of refusals must not move.
     const batch = async (tag) => {
       for (let i = 0; i < 5; i += 1) await post('find_products_multi', { messages: [{ role: 'user', content: `warm ${tag} ${i}` }], search: { query: 'serum' } });
       gc();
@@ -175,17 +180,32 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
       gc();
       return { retainedMb: (process.memoryUsage().heapUsed - heapBefore) / (1024 * 1024), runs: calls.slice(start) };
     };
-    readerOff = true;
-    const blind = await batch('blind');
-    readerOff = false;
-    const reading = await batch('reading');
+    const refusedBefore = netGuard.state.blocked.length;
+    let blind;
+    let reading;
+    nock.restore();
+    try {
+      readerOff = true;
+      blind = await batch('blind');
+      readerOff = false;
+      reading = await batch('reading');
+    } finally {
+      readerOff = false;
+      nock.activate();
+    }
+    expect(netGuard.state.blocked.length).toBe(refusedBefore);
+    // The blind arm keeps about 1 MB of the 30 MB that went through it (0.3-1.6 MB over 9 runs on
+    // Node 20). If it ever keeps tens of MB again, something is pinning the request bodies, and the
+    // difference below means nothing until that is found.
+    expect(blind.retainedMb).toBeLessThan(5);
     expect(reading.runs).toHaveLength(30);
     for (const run of reading.runs) {
       expect(run.classes).toEqual([actualSignal.OVER_LIMIT_CLASS]);
       expect(run.ms).toBeLessThan(25);
     }
-    // 30 MB of distinct text went through the reader; it may keep at most a few MB of it.
-    expect(reading.retainedMb - blind.retainedMb).toBeLessThan(5);
+    // 30 MB of distinct text went through the reader; it may keep at most a few MB of it. The
+    // difference was -0.7 to +1.0 MB over 9 runs; a reader that caches every turn makes it about 30 MB.
+    expect(reading.retainedMb - blind.retainedMb).toBeLessThan(3);
     const keys = actualSignal._internal.classifyCacheKeys();
     expect(keys.every((k) => k.length <= 256)).toBe(true);
     expect(actualSignal._internal.classifyCacheSize()).toBeLessThanOrEqual(2000);
