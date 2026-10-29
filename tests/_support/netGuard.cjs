@@ -443,6 +443,9 @@ function udpPeer(socket) {
   }
 }
 
+// What dgram binds to when bind() is given no address (udp4, udp6).
+const UDP_BIND_ANY = new Set(['0.0.0.0', '::']);
+
 function failUdp(socket, kind, target, cb) {
   record(kind, target);
   const err = blockedError(kind, target);
@@ -478,15 +481,16 @@ function patchDgram(originals) {
     };
   }
   // createSocket({ lookup }) resolves every hostname send/connect through the caller's function,
-  // which may map any name anywhere: judge where it points, as for a TCP connect. The same
-  // function resolves the BIND address ('0.0.0.0' unless given), so an IP literal passes through
-  // unjudged: as a destination it was already judged above, as itself.
+  // which may map any name anywhere: judge where it points, as for a TCP connect. Unlike TCP, an
+  // address literal goes through it too, so a loopback literal (or the default send address) is
+  // judged by where the function maps it. Only the wildcard BIND address passes through: the same
+  // function resolves it when the socket binds, and binding sends nothing.
   originals.createSocket = dgram.createSocket;
   dgram.createSocket = function guardedCreateSocket(type, listener) {
     if (type && typeof type === 'object' && typeof type.lookup === 'function') {
       const own = type.lookup;
       const judged = loopbackOnlyLookup(own, 'udp', (name) => String(name), null);
-      type = { ...type, lookup: (name, ...rest) => (isPassThroughName(name) ? own(name, ...rest) : judged(name, ...rest)) };
+      type = { ...type, lookup: (name, ...rest) => (UDP_BIND_ANY.has(name) ? own(name, ...rest) : judged(name, ...rest)) };
     }
     return originals.createSocket.call(this, type, listener);
   };
@@ -570,13 +574,29 @@ function patchWorkers(originals) {
         super(filename, opts);
       } catch (err) {
         // Some startup flags (--expose-gc, ...) are process-wide and a worker refuses them when
-        // passed explicitly, though it inherits them silently. Keep the preload, drop the rest.
+        // passed explicitly, though it inherits them silently. Drop the ones it refused and keep
+        // the rest (another --require, --conditions, ...); keep only the preload if the refusal
+        // cannot be read.
         if (!inherited || !err || err.code !== 'ERR_WORKER_INVALID_EXEC_ARGV') throw err;
-        super(filename, { ...opts, execArgv: [preload] });
+        const kept = withoutRefusedFlags(opts.execArgv, err.message);
+        super(filename, { ...opts, execArgv: kept.length < opts.execArgv.length ? kept : [preload] });
       }
     }
   }
   wt.Worker = GuardedWorker;
+}
+
+// `execArgv` without the flags ERR_WORKER_INVALID_EXEC_ARGV names ("...: --expose-gc, --title"),
+// each with its value when that was given as the next entry (execArgv holds no positionals).
+function withoutRefusedFlags(execArgv, message) {
+  const refused = String(message).replace(/^[^:]*: /, '').split(', ');
+  const out = [];
+  for (let i = 0; i < execArgv.length; i += 1) {
+    const arg = String(execArgv[i]);
+    if (!refused.includes(arg)) out.push(execArgv[i]);
+    else if (!arg.includes('=') && i + 1 < execArgv.length && !String(execArgv[i + 1]).startsWith('-')) i += 1;
+  }
+  return out;
 }
 
 function install() {

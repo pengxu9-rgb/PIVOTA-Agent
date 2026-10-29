@@ -24,6 +24,8 @@ const path = require('node:path');
 // The run-log reader, not the guard: this runs in jest's parent process, which must not be patched.
 const guard = require('./netGuardRunLog.cjs');
 
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM'];
+
 class NetGuardJestReporter {
   constructor() {
     this._error = null;
@@ -34,6 +36,14 @@ class NetGuardJestReporter {
     // fire after onRunComplete: jest waits for the event loop to drain before exiting. Look once
     // more at exit. (jest's own exit handler only ever raises the exit code, never lowers it.)
     process.once('exit', () => this._atExit());
+    // A run stopped by Ctrl-C or a TERM never gets to 'exit'. Remove the dir then, and die of
+    // the signal as before -- unless something else (jest's --watch) has its own handler.
+    const onSignal = (signal) => {
+      for (const s of STOP_SIGNALS) process.removeListener(s, onSignal);
+      fs.rmSync(this._dir, { recursive: true, force: true });
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+    };
+    for (const s of STOP_SIGNALS) process.on(s, onSignal);
   }
 
   // Rows not reported by an earlier run (--watch) or an earlier look at this one.
