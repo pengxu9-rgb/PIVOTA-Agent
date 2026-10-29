@@ -463,25 +463,46 @@ test('a worker thread started with execArgv: [] is still guarded', async () => {
   assert.equal(code, guard.BLOCKED_CODE);
 });
 
-test('a worker inheriting a flag workers refuse (--expose-gc) keeps the other flags and the guard', (t) => {
-  const marker = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-')), 'marker.cjs');
-  t.after(() => fs.rmSync(path.dirname(marker), { recursive: true, force: true }));
-  fs.writeFileSync(marker, 'globalThis.__netGuardMarker = true;\n');
-  const inWorker =
-    "require('node:worker_threads').parentPort.postMessage({ marker: globalThis.__netGuardMarker === true, " +
-    "guarded: require('node:net').Socket.prototype.connect.name === 'guardedConnect', gc: typeof gc })";
-  const script =
-    "const { Worker } = require('node:worker_threads');" +
-    `const w = new Worker(${JSON.stringify(inWorker)}, { eval: true });` +
-    "w.once('message', (m) => { process.stdout.write(JSON.stringify(m)); w.terminate(); });";
-  // The guard comes from NODE_OPTIONS, as the runner preloads it, so the worker gets it only
-  // through the execArgv the guard passes; the startup flags are what the worker inherits.
-  const r = spawnSync(process.execPath, ['--expose-gc', `--require=${marker}`, '-e', script], {
-    cwd: ROOT, env: cleanEnv({ NODE_OPTIONS: guard.withGuardPreload('') }), encoding: 'utf8', timeout: 30_000,
+// The refused flag alone (--expose-gc), and one whose value is a separate entry (--title x)
+// followed by an accepted one that also takes a separate value (--conditions custom): only the
+// refused flag and its own value may go.
+for (const { refused, kept, expected } of [
+  { refused: ['--expose-gc'], kept: [], expected: { gc: 'function' } },
+  { refused: ['--title', 'x'], kept: ['--conditions', 'custom'], expected: { condition: 'custom' } },
+]) {
+  test(`a worker inheriting a flag workers refuse (${refused.join(' ')}) keeps the other flags and the guard`, (t) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const marker = path.join(dir, 'marker.cjs');
+    fs.writeFileSync(marker, 'globalThis.__netGuardMarker = true;\n');
+    // A package whose export depends on --conditions.
+    const pkg = path.join(dir, 'node_modules', 'netguard-condition');
+    fs.mkdirSync(pkg, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkg, 'package.json'),
+      JSON.stringify({ name: 'netguard-condition', exports: { custom: './custom.cjs', default: './default.cjs' } }),
+    );
+    fs.writeFileSync(path.join(pkg, 'custom.cjs'), "module.exports = 'custom';\n");
+    fs.writeFileSync(path.join(pkg, 'default.cjs'), "module.exports = 'default';\n");
+    const inWorker =
+      "require('node:worker_threads').parentPort.postMessage({ marker: globalThis.__netGuardMarker === true, " +
+      "guarded: require('node:net').Socket.prototype.connect.name === 'guardedConnect', gc: typeof gc, " +
+      `condition: require(require.resolve('netguard-condition', { paths: [${JSON.stringify(dir)}] })) })`;
+    const script =
+      "const { Worker } = require('node:worker_threads');" +
+      `const w = new Worker(${JSON.stringify(inWorker)}, { eval: true });` +
+      "w.once('message', (m) => { process.stdout.write(JSON.stringify(m)); w.terminate(); });";
+    // The guard comes from NODE_OPTIONS, as the runner preloads it, so the worker gets it only
+    // through the execArgv the guard passes; the startup flags are what the worker inherits.
+    const r = spawnSync(process.execPath, [...refused, ...kept, `--require=${marker}`, '-e', script], {
+      cwd: ROOT, env: cleanEnv({ NODE_OPTIONS: guard.withGuardPreload('') }), encoding: 'utf8', timeout: 30_000,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout), {
+      marker: true, guarded: true, gc: 'undefined', condition: 'default', ...expected,
+    });
   });
-  assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout), { marker: true, guarded: true, gc: 'function' });
-});
+}
 
 test('run log: an attempt by a child the suite ignored is logged, unreported, and names the suite', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-selftest-'));
