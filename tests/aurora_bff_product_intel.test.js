@@ -1,6 +1,6 @@
 const request = require('supertest');
 const nock = require('nock');
-const { nockOffline } = require('./_support/nockOffline.cjs');
+const { guardFileNetwork } = require('./nock_file_net_guard.cjs');
 const path = require('path');
 
 // Commit 3e19cc76 emptied BUILTIN_STABLE_PRODUCT_REFS and productGroundingStableAliases.json;
@@ -19,24 +19,20 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
   // The URL-analysis lanes reach past the mocked backend to INCIDecoder, four retailer search
   // pages, DailyMed, the product page and the anchor's brand site. Tests that do not mock one of
   // those used to send it to the real site. Here they are down unless a test mocks them, and any
-  // other unmocked host fails the test (tests/_support/nockOffline.cjs).
-  let restoreNock;
-  beforeAll(() => {
-    restoreNock = nockOffline(nock, {
-      down: [
-        'incidecoder.com',
-        'www.sephora.com',
-        'www.ulta.com',
-        'www.target.com',
-        'www.walmart.com',
-        'dailymed.nlm.nih.gov',
-        'theordinary.com',
-        'brand.example',
-        'catalog.test',
-      ],
-    });
+  // other request no interceptor matched fails the test (tests/nock_file_net_guard.cjs).
+  guardFileNetwork(test, nock, {
+    down: [
+      'incidecoder.com',
+      'www.sephora.com',
+      'www.ulta.com',
+      'www.target.com',
+      'www.walmart.com',
+      'dailymed.nlm.nih.gov',
+      'theordinary.com',
+      'brand.example',
+      'catalog.test',
+    ],
   });
-  afterAll(() => restoreNock());
 
   beforeEach(() => {
     jest.resetModules();

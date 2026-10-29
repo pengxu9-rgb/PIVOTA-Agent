@@ -4,31 +4,37 @@
 // Several suites set DATABASE_URL to a made-up host (`postgres://something.test/...`) so that
 // code which reaches for its own pool "fails like an outage". It does fail -- after a real DNS
 // query for that host has gone out, on every run, and slowly if the resolver is slow. This keeps
-// the outage and drops the network: every query and connect rejects at once with a connection-
-// refused error, which is the shape pg itself produces for a database that is not there.
+// the outage and drops the network: every query and connect rejects at once with the error a
+// host that does not resolve produces.
+//
+// ENOTFOUND by default because that is what those made-up hosts gave the code before: it is one
+// of src/db's TRANSIENT_DB_ERROR_CODES, so the retry path the tests used to run still runs (an
+// ECONNREFUSED would skip it). Pass another code to model a different outage.
 
-function refused() {
-  const err = new Error('connect ECONNREFUSED (test: database unreachable)');
-  err.code = 'ECONNREFUSED';
-  err.errno = -61;
-  err.syscall = 'connect';
+function unreachableError(code = 'ENOTFOUND') {
+  const err = new Error(
+    code === 'ENOTFOUND' ? 'getaddrinfo ENOTFOUND (test: database unreachable)' : `connect ${code} (test: database unreachable)`,
+  );
+  err.code = code;
+  err.errno = code === 'ENOTFOUND' ? -3008 : -61;
+  err.syscall = code === 'ENOTFOUND' ? 'getaddrinfo' : 'connect';
   return err;
 }
 
-function unreachablePg() {
+function unreachablePg({ code = 'ENOTFOUND' } = {}) {
   const actual = jest.requireActual('pg');
   class Client {
     constructor(config) {
       this.config = config;
     }
     connect(cb) {
-      if (typeof cb === 'function') return setImmediate(() => cb(refused()));
-      return Promise.reject(refused());
+      if (typeof cb === 'function') return setImmediate(() => cb(unreachableError(code)));
+      return Promise.reject(unreachableError(code));
     }
     query(text, params, cb) {
       const done = typeof params === 'function' ? params : cb;
-      if (typeof done === 'function') return setImmediate(() => done(refused()));
-      return Promise.reject(refused());
+      if (typeof done === 'function') return setImmediate(() => done(unreachableError(code)));
+      return Promise.reject(unreachableError(code));
     }
     end(cb) {
       if (typeof cb === 'function') return setImmediate(cb);
@@ -49,4 +55,4 @@ function unreachablePg() {
   return { ...actual, Client, Pool, default: { ...actual, Client, Pool } };
 }
 
-module.exports = { unreachablePg, refused };
+module.exports = { unreachablePg, unreachableError };

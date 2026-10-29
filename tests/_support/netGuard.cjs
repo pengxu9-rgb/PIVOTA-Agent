@@ -2,8 +2,8 @@
 // Loopback-only network guard for the test suites.
 //
 // WHY. On 2026-10-20 a full jest run under a hand-rolled version of this guard blocked 347
-// outbound connects: incidecoder, walmart, ulta, target, sephora, open-meteo, the Gemini API,
-// Google's OAuth token endpoint, and .test/.example fixture hosts that only fail because DNS
+// outbound connects: an ingredient database, retailer search pages, the weather API, the Gemini
+// API, Google's OAuth token endpoint, and .test/.example fixture hosts that only fail because DNS
 // says no. Every one of those tests was green, because the code under test swallows a failed
 // fetch and falls back. So "the suite passes" said nothing about whether it reached the
 // internet, and a test that reaches the internet is a test whose result depends on a third
@@ -12,34 +12,74 @@
 //
 // WHAT IT ALLOWS. A socket may go to 127.0.0.0/8, ::1 (or ::ffff:127.x), or a unix socket /
 // named pipe. A hostname is allowed only if it resolves to one of those: `localhost` through
-// the real resolver, or any name through a caller-supplied `lookup` (an SSRF test that maps
-// `internal.example` to 127.0.0.1 is still loopback). Every other connect, and every DNS query
-// for any other name, is refused with ERR_TEST_NETWORK_BLOCKED and recorded.
+// the real resolver, `*.localhost` answered as loopback without asking any resolver (RFC 6761
+// reserves the whole zone for loopback), or any name through a caller-supplied `lookup` (an SSRF
+// test that maps `internal.example` to 127.0.0.1 is still loopback). Every other connect, UDP
+// send/connect, and DNS query for any other name is refused with ERR_TEST_NETWORK_BLOCKED and
+// recorded.
+//
+// Deliberately NOT treated as loopback (refused, harmlessly -- no test needs them): the
+// shorthand and numeric spellings 127.1 and 2130706433 (net.isIP says they are not addresses,
+// so they go to the resolver and are refused there), the hex-mapped ::ffff:7f00:1, and 0.0.0.0
+// (a bind address; dialling it is a platform quirk, not a loopback dial).
 //
 // WHERE IT HOOKS. net.Socket.prototype.connect is the one door every TCP client walks
 // through: net.connect, tls.connect (a TLSSocket IS a net.Socket and connects through the same
 // method), http/https agents, http2, undici and therefore global fetch, nock/msw passthrough,
 // pg, ioredis. dns.lookup / dns.resolve* / dns.Resolver and their promise twins are patched
-// too, because a DNS query is itself traffic and is how a fixture host leaks.
+// too, because a DNS query is itself traffic and is how a fixture host leaks; and so are
+// dgram send/connect, for UDP to an address literal (a hostname goes through dns.lookup).
+//
+// CHILDREN. A worker thread started with its own `execArgv`, or a child process started with
+// an `env` that has no NODE_OPTIONS, would run without the preload. The Worker constructor and
+// the child_process entry points are wrapped to put the preload (and the reporting env below)
+// back. Not covered: a child that is not node, or node started with --no-node-options / -e
+// code that deletes NODE_OPTIONS before spawning; and an internal call that bypasses the
+// exported functions (none in this repo).
 //
 // HOW IT FAILS. Refusing the connect is not enough: most callers catch the error and fall
 // back, which is exactly how 347 attempts hid behind green tests. So every refusal is
 // RECORDED, and the runners turn a non-empty record into a failure:
-//   - jest:      tests/_support/netGuardJestHooks.cjs fails the test that was running.
+//   - jest:      tests/_support/netGuardJestHooks.cjs fails the test that was running, for
+//                attempts that FILE started. An attempt a file started and left running (a
+//                timer, an un-awaited fetch) that fires after the file is done -- in the next
+//                file, or after the worker's last file -- is reported against the file that
+//                started it by tests/_support/netGuardJestReporter.cjs, which fails the run.
 //   - node:test: when this file is preloaded (`node --require`), the process exits non-zero
 //                at exit with the list, which fails that suite file.
+//   - anywhere:  when NETGUARD_RUN_DIR is set (the jest reporter and the node runner set it),
+//                every attempt is also appended there as it happens, from any process or
+//                thread, so one that a parent swallowed (a child's exit code, a worker, a
+//                worker recycled by --workerIdleMemoryLimit) still fails the run at the end.
 //
 // OPT-OUT. TEST_ALLOW_NETWORK=1 disables the guard for a local run of an opt-in integration
 // test. It is IGNORED when CI=true: CI must never reach the internet.
 
 const net = require('node:net');
 const dns = require('node:dns');
+const dgram = require('node:dgram');
+const fs = require('node:fs');
+const path = require('node:path');
+const { AsyncLocalStorage } = require('node:async_hooks');
 // From the core module, not the global: under jest this file is evaluated inside a test
 // file's sandbox, and the patches it installs outlive that sandbox. Core modules do not.
 const { setImmediate: later } = require('node:timers');
 
 const STATE_KEY = Symbol.for('pivota.tests.netGuard');
 const BLOCKED_CODE = 'ERR_TEST_NETWORK_BLOCKED';
+
+// The run log (NETGUARD_RUN_DIR) and the report format, shared with the runners that read them.
+const { RUN_DIR_ENV, ORIGIN_ENV, readRunLog, formatViolations, withGuardPreload } = require('./netGuardRunLog.cjs');
+
+// The worker's own `process`. Under jest the module-level `process` is the sandbox copy of the
+// test file that happened to load this module first, and the patches below outlive that file.
+const realProcess = (() => {
+  try {
+    return require('node:vm').runInThisContext('process') || process;
+  } catch (_) {
+    return process;
+  }
+})();
 
 // For a test that needs an upstream which is DOWN. A `.test` hostname "never resolves" only
 // after a real DNS query has gone out; a loopback port nothing listens on refuses at once,
@@ -57,7 +97,42 @@ function state() {
       enumerable: false,
     });
   }
-  return net[STATE_KEY];
+  const s = net[STATE_KEY];
+  // Added lazily: a review harness may pre-create the state with only the three fields above.
+  // `attribution` carries the test file that STARTED the async work an attempt comes from: the
+  // jest hooks enter it once per file, and timers, sockets and promises created by that file
+  // keep it after the file is done.
+  if (!s.attribution) s.attribution = new AsyncLocalStorage();
+  if (!s.seq) s.seq = 0;
+  return s;
+}
+
+function currentOrigin() {
+  const store = state().attribution.getStore();
+  return (store && store.origin) || realProcess.env[ORIGIN_ENV] || null;
+}
+
+// One file per process AND thread: appends from two writers never interleave inside a line.
+function runLogPath() {
+  const dir = realProcess.env[RUN_DIR_ENV];
+  if (!dir) return null;
+  const threadId = require('node:worker_threads').threadId;
+  return path.join(dir, `${process.pid}-${threadId}.jsonl`);
+}
+
+function appendRunLog(obj) {
+  const file = runLogPath();
+  if (!file) return;
+  try {
+    fs.appendFileSync(file, `${JSON.stringify(obj)}\n`);
+  } catch (_) {
+    // The run dir is gone (the run ended while a straggler fired). Nothing left to fail.
+  }
+}
+
+// The ids a test failed on, so the end-of-run check does not report them a second time.
+function markReported(list) {
+  for (const v of list) if (v.id) appendRunLog({ reported: v.id });
 }
 
 function isCi() {
@@ -119,15 +194,35 @@ function blockedError(kind, target) {
 }
 
 function record(kind, target) {
+  const s = state();
+  s.seq += 1;
   const entry = {
+    id: `${process.pid}:${require('node:worker_threads').threadId}:${s.seq}`,
     kind,
     target,
     at: Date.now(),
     stack: captureStack(),
-    // Set by the jest hooks (tests/_support/netGuardJestHooks.cjs); null under node:test.
-    testPath: state().testPath || null,
+    // The test file whose work made the attempt (see `attribution`); under node:test, the
+    // suite file a child process was spawned for, or null in the suite process itself.
+    origin: currentOrigin(),
+    // True when the origin came from the env a parent handed this process (a child or worker),
+    // not from this process's own test file.
+    inChild: !(s.attribution.getStore() || {}).origin && Boolean(realProcess.env[ORIGIN_ENV]),
+    // Set by the jest hooks (tests/_support/netGuardJestHooks.cjs): what was RUNNING when the
+    // attempt happened, which is not always what started it. Null under node:test.
+    testPath: s.testPath || null,
   };
-  state().violations.push(entry);
+  s.violations.push(entry);
+  appendRunLog({
+    id: entry.id,
+    kind,
+    target,
+    origin: entry.origin,
+    inChild: entry.inChild,
+    testPath: entry.testPath,
+    argv: process.argv.slice(1, 3).join(' '),
+    stack: entry.stack,
+  });
   return entry;
 }
 
@@ -212,6 +307,16 @@ function patchLookup(originals) {
     }
     // An IP literal never leaves the process.
     if (isPassThroughName(hostname)) return originalLookup.call(dns, hostname, opts, cb);
+    // `x.localhost` is loopback by definition (RFC 6761), but the system resolver may still
+    // send it to a DNS server. Answer it here instead.
+    if (isLocalhostName(hostname) && String(hostname).toLowerCase().replace(/\.$/, '') !== 'localhost') {
+      const options = typeof opts === 'number' ? { family: opts } : opts || {};
+      const v6 = options.family === 6 || options.family === 'IPv6';
+      const address = v6 ? '::1' : '127.0.0.1';
+      const family = v6 ? 6 : 4;
+      later(() => (options.all ? cb(null, [{ address, family }]) : cb(null, address, family)));
+      return undefined;
+    }
     if (isLocalhostName(hostname)) {
       return originalLookup.call(dns, hostname, opts, (err, address, family) => {
         if (err) return cb(err);
@@ -281,6 +386,125 @@ function patchResolvers(originals) {
   }
 }
 
+// UDP. A hostname target goes through dns.lookup (guarded above); an address literal does not,
+// so it is checked here. Fails the way a send to a dead address fails: on the callback, or as
+// an 'error' event on the socket when there is no callback.
+function udpTarget(args) {
+  // send(msg[, offset, length], port[, address][, callback]); the address is the one string
+  // after the message, and the port the number before it.
+  const rest = args.slice(1);
+  const address = rest.find((x) => typeof x === 'string');
+  const cb = rest.find((x) => typeof x === 'function');
+  return { address, cb };
+}
+
+function failUdp(socket, kind, target, cb) {
+  record(kind, target);
+  const err = blockedError(kind, target);
+  later(() => (cb ? cb(err) : socket.emit('error', err)));
+}
+
+function patchDgram(originals) {
+  const proto = dgram.Socket.prototype;
+  originals.udpSend = proto.send;
+  proto.send = function guardedUdpSend(...args) {
+    const { address, cb } = udpTarget(args);
+    // No address on a connected socket: connect() already checked it.
+    if (address !== undefined && net.isIP(stripBrackets(address)) && !isLoopbackIp(address)) {
+      return failUdp(this, 'udp send', address, cb);
+    }
+    return originals.udpSend.apply(this, args);
+  };
+  originals.udpConnect = proto.connect;
+  if (typeof originals.udpConnect === 'function') {
+    proto.connect = function guardedUdpConnect(port, address, cb) {
+      const callback = typeof address === 'function' ? address : cb;
+      const host = typeof address === 'string' ? address : null;
+      if (host && net.isIP(stripBrackets(host)) && !isLoopbackIp(host)) {
+        return failUdp(this, 'udp connect', `${host}:${port}`, callback);
+      }
+      return originals.udpConnect.apply(this, arguments);
+    };
+  }
+}
+
+// CHILDREN AND WORKERS: put the preload (and the run dir / origin) back into an `env` or
+// `execArgv` the caller replaced. Without them a child runs unguarded, and a blocked attempt
+// inside one shows up, at best, as its exit code.
+function reportingEnv() {
+  const out = {};
+  for (const key of [RUN_DIR_ENV, ORIGIN_ENV]) {
+    if (realProcess.env[key]) out[key] = realProcess.env[key];
+  }
+  const origin = currentOrigin();
+  if (origin) out[ORIGIN_ENV] = origin;
+  return out;
+}
+
+function guardedEnv(env) {
+  if (!env || typeof env !== 'object') return env;
+  return { ...reportingEnv(), ...env, NODE_OPTIONS: withGuardPreload(env.NODE_OPTIONS) };
+}
+
+const CHILD_ENTRY_POINTS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
+
+// The options object is the one plain object among the arguments. With no `env` the child
+// inherits the real process env, which already carries the preload and origin.
+function withGuardedOptions(args) {
+  const i = args.findIndex((a) => a && typeof a === 'object' && !Array.isArray(a));
+  if (i >= 0 && args[i].env) {
+    const copy = args.slice();
+    copy[i] = { ...args[i], env: guardedEnv(args[i].env) };
+    return copy;
+  }
+  return args;
+}
+
+function patchChildProcess(originals) {
+  const cp = require('node:child_process');
+  const { promisify } = require('node:util');
+  originals.childProcess = {};
+  for (const name of CHILD_ENTRY_POINTS) {
+    const original = cp[name];
+    if (typeof original !== 'function') continue;
+    originals.childProcess[name] = original;
+    const guarded = function guardedChildEntry(...args) {
+      return original.apply(this, withGuardedOptions(args));
+    };
+    // exec and execFile carry a util.promisify.custom that resolves {stdout, stderr}; a wrapper
+    // without it would promisify to a bare stdout string. Keep it, guarded the same way.
+    const custom = original[promisify.custom];
+    if (typeof custom === 'function') {
+      Object.defineProperty(guarded, promisify.custom, {
+        value: function guardedPromisified(...args) {
+          return custom.apply(this, withGuardedOptions(args));
+        },
+        configurable: true,
+      });
+    }
+    cp[name] = guarded;
+  }
+}
+
+function patchWorkers(originals) {
+  const wt = require('node:worker_threads');
+  const OriginalWorker = wt.Worker;
+  originals.Worker = OriginalWorker;
+  class GuardedWorker extends OriginalWorker {
+    constructor(filename, options = {}) {
+      const opts = { ...options };
+      // An explicit execArgv replaces the parent's, preload included.
+      if (Array.isArray(opts.execArgv) && !opts.execArgv.some((a) => String(a).includes(__filename))) {
+        opts.execArgv = [...opts.execArgv, `--require=${__filename}`];
+      }
+      // A worker's own env object (not SHARE_ENV) gets the run dir and origin too.
+      if (opts.env && typeof opts.env === 'object') opts.env = { ...reportingEnv(), ...opts.env };
+      super(filename, opts);
+    }
+  }
+  wt.Worker = GuardedWorker;
+}
+
 function install() {
   const s = state();
   if (s.installed || networkAllowed()) return s.installed;
@@ -288,6 +512,9 @@ function install() {
   patchSocketConnect(originals);
   patchLookup(originals);
   patchResolvers(originals);
+  patchDgram(originals);
+  patchChildProcess(originals);
+  patchWorkers(originals);
   s.originals = originals;
   s.installed = true;
   return true;
@@ -302,14 +529,12 @@ function uninstall() {
   dns.lookup = o.lookup;
   dns.promises.lookup = o.promiseLookup;
   for (const [obj, method, fn] of o.resolvers) obj[method] = fn;
+  dgram.Socket.prototype.send = o.udpSend;
+  if (o.udpConnect) dgram.Socket.prototype.connect = o.udpConnect;
+  Object.assign(require('node:child_process'), o.childProcess);
+  require('node:worker_threads').Worker = o.Worker;
   s.installed = false;
   s.originals = null;
-}
-
-// For helpers that refuse a request before it reaches a socket (nockOffline.cjs) but still
-// want it reported as a test that tried to reach the network.
-function recordViolation(kind, target) {
-  return record(kind, target);
 }
 
 function violations() {
@@ -322,34 +547,26 @@ function drain() {
   return s.violations.splice(0, s.violations.length);
 }
 
-function formatViolations(list) {
-  const lines = [
-    `[netGuard] ${list.length} outbound network attempt(s) blocked. Tests may only reach loopback.`,
-  ];
-  list.forEach((v, i) => {
-    lines.push(`  ${i + 1}. ${v.kind} -> ${v.target}${v.testPath ? `  (during ${v.testPath})` : ''}`);
-    // `| ` keeps jest from mistaking these for its own stack frames and filtering them out.
-    if (v.stack) lines.push(v.stack.split('\n').map((l) => `       | ${l}`).join('\n'));
-  });
-  lines.push(
-    'Fix: mock the call (nock / msw without passthrough / dependency injection), or make the test ' +
-      'an opt-in integration test skipped unless an env var is set. TEST_ALLOW_NETWORK=1 turns the ' +
-      'guard off for a local run (never in CI).',
-  );
-  return lines.join('\n');
-}
-
 // `node --require tests/_support/netGuard.cjs` (the node:test runner): report and fail the
 // process at exit. Under jest this file runs inside a test context where the `jest` object is
 // injected, and the jest hooks do the reporting instead.
+//
+// A suite file's own process fails itself, so what it prints is marked reported. A process it
+// spawned (no NODE_TEST_CONTEXT of its own, or an origin already set) fails only itself, which
+// its parent may ignore; those attempts stay in the run dir for the runner's end-of-run check.
 function installExitReporter() {
   const s = state();
   if (s.exitReporter) return;
   s.exitReporter = true;
+  const isSuiteProcess = Boolean(process.env.NODE_TEST_CONTEXT) && !process.env[ORIGIN_ENV];
+  if (isSuiteProcess && process.argv[1]) {
+    process.env[ORIGIN_ENV] = path.relative(process.cwd(), process.argv[1]) || process.argv[1];
+  }
   process.on('exit', (code) => {
     const list = drain();
     if (!list.length) return;
     process.stderr.write(`\n${formatViolations(list)}\n`);
+    if (isSuiteProcess) markReported(list);
     if (!code) process.exitCode = 1;
   });
 }
@@ -373,24 +590,11 @@ function scrubProviderCredentials(env) {
   return removed;
 }
 
-// `--require=<this file>` appended to a NODE_OPTIONS value, once. NODE_OPTIONS splits on
-// whitespace, so a checkout path containing a space cannot be carried; that is refused loudly
-// rather than silently running children unguarded.
-function withGuardPreload(nodeOptions) {
-  const preload = `--require=${__filename}`;
-  if (/\s/.test(__filename)) {
-    throw new Error(`[netGuard] cannot preload from a path with whitespace: ${__filename}`);
-  }
-  const existing = String(nodeOptions || '').trim();
-  return existing.includes(preload) ? existing : [existing, preload].filter(Boolean).join(' ');
-}
-
 // Under jest, `process` is a per-file sandbox copy; a child process a test spawns inherits the
 // worker's REAL environment instead. Give that environment the preload and the scrub too, so a
 // `node` child of a jest test (a script test) is guarded and fails the same way. vm's main
 // context is the worker's own realm, where `process` is the real one.
 function guardRealProcessEnv() {
-  const realProcess = require('node:vm').runInThisContext('process');
   if (!realProcess || !realProcess.env || realProcess === process) return;
   realProcess.env.NODE_OPTIONS = withGuardPreload(realProcess.env.NODE_OPTIONS);
   scrubProviderCredentials(realProcess.env);
@@ -415,8 +619,12 @@ module.exports = {
   install,
   uninstall,
   violations,
-  recordViolation,
   drain,
+  markReported,
+  readRunLog,
+  attribution: () => state().attribution,
+  RUN_DIR_ENV,
+  ORIGIN_ENV,
   formatViolations,
   isLoopbackIp,
   isLocalhostName,
