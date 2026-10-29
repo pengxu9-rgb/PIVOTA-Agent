@@ -209,6 +209,22 @@ test("search/product price never serves an amount without its currency, across e
 
 // ---- get_product -----------------------------------------------------------------------------------------
 
+test("get_product: a degraded upstream (no product) says temporarily unavailable, never not found", () => {
+  const degraded = { error: "TEMPORARY_UNAVAILABLE", reason_code: "CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE",
+    details: { reason: "catalog_signature_partial_read", withheld_verdict: { status: 404, error: "PRODUCT_NOT_FOUND" } },
+    degraded_reads: ["catalog_signature_partial"] };
+  const out = projectGetProduct(degraded, { emptyReason: "upstream_degraded" });
+  assert.deepEqual(out, { note: "Product is temporarily unavailable. Please retry shortly." });
+  assert.equal(JSON.stringify(out).includes("withheld_verdict"), false);
+  assert.equal(JSON.stringify(out).includes("degraded_reads"), false);
+  // Same envelope through the dispatcher, as the surface calls it.
+  assert.deepEqual(projectPublicReadResult("get_product", degraded, { emptyReason: "upstream_degraded" }), out);
+  // A healthy lane that found nothing is still a not-found note.
+  assert.deepEqual(projectGetProduct({}, { emptyReason: "no_match" }), { note: "Product not found." });
+  assert.deepEqual(projectGetProduct({}), { note: "Product not found." });
+});
+
+
 test("get_product projects detail + decision, drops merchant routing + diagnostics", () => {
   const raw = {
     product: {

@@ -1,7 +1,15 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { withClient } = require('../db');
+const db = require('../db');
+
+const { withClient } = db;
+
+// RESET failed: the session may still carry this lookup's short timeout, so the connection must be
+// destroyed on release, not returned to the pool (src/db withClient honours the mark).
+function destroyOnRelease(client) {
+  if (typeof db.markClientForDestroy === 'function') db.markClientForDestroy(client);
+}
 const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
   resolveExternalSeedRecallDoc,
@@ -938,7 +946,9 @@ async function fetchCandidatesViaProductsCache({
       try {
         return await client.query(sql, params);
       } finally {
-        await client.query('SET statement_timeout = 0');
+        // RESET, not `= 0` (no limit): the connection goes back to the shared
+        // pool and must keep the pool's statement_timeout backstop.
+        await client.query('RESET statement_timeout').catch(() => destroyOnRelease(client));
       }
     });
 
@@ -1178,7 +1188,8 @@ async function fetchCandidatesViaExternalSeedRecall({
         }
         return { rows };
       } finally {
-        await client.query('SET statement_timeout = 0');
+        // RESET, not `= 0`: see the note on the first lookup above.
+        await client.query('RESET statement_timeout').catch(() => destroyOnRelease(client));
       }
     });
     const rows = Array.isArray(res?.rows) ? res.rows : [];

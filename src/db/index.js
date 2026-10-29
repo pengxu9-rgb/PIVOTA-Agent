@@ -1,3 +1,4 @@
+const { AsyncLocalStorage } = require('async_hooks');
 const logger = require('../logger');
 
 let pool = null;
@@ -60,6 +61,28 @@ function isTransientDbError(err) {
   );
 }
 
+// pg-pool's and pg's own timeouts carry no SQLSTATE, only these messages.
+const DB_UNAVAILABLE_MESSAGES = [
+  /^timeout exceeded when trying to connect$/i,
+  /^Connection terminated due to connection timeout$/i,
+  /^Query read timeout$/i,
+];
+
+// "The database could not answer in time / at all", as opposed to "the database
+// answered and the answer is no". A caller that turns a failed lookup into a
+// negative answer (null -> not found, row dropped) must not do it for these:
+// a pool that is momentarily full says nothing about whether a row exists.
+function isDbUnavailableError(err) {
+  if (!err) return false;
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (code === DB_BUDGET_ACQUIRE_TIMEOUT || code === DB_BUDGET_QUERY_TIMEOUT) return true;
+  // query_canceled (statement_timeout), too_many_connections, cannot_connect_now.
+  if (code === '57014' || code === '53300' || code === '57P03') return true;
+  if (isTransientDbError(err)) return true;
+  const message = String(err?.message || '').trim();
+  return DB_UNAVAILABLE_MESSAGES.some((pattern) => pattern.test(message));
+}
+
 function buildNoDatabaseError() {
   const err = new Error('DATABASE_URL not configured or pg driver unavailable');
   err.code = 'NO_DATABASE';
@@ -120,6 +143,28 @@ function shouldUseSsl(databaseUrl) {
   );
 }
 
+// Server-side reaping of statements whose client has gone away.
+//
+// When a budgeted caller gives up, queryWithBudget DESTROYS the connection so
+// the pool slot comes back at once. That frees the client, not the server: a
+// backend busy executing does not read its socket, so the statement keeps
+// burning primary CPU until it finishes or `statement_timeout` (30s) fires --
+// orphaned work behind a caller whose budget was a few seconds.
+// `client_connection_check_interval` (PostgreSQL 14+, user-settable) makes the
+// backend poll its socket while it executes and cancel the statement once the
+// client has hung up. Sent in the startup packet like statement_timeout, so it
+// costs zero round-trips. Unset/0 keeps today's behaviour. A DATABASE_URL that
+// carries its own `options=` wins over this (pg merges the URL last).
+function getClientConnectionCheckIntervalMs() {
+  return parseIntegerEnv(process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS, 0, { min: 0, max: 60_000 });
+}
+
+function buildConnectionStartupOptions() {
+  const intervalMs = getClientConnectionCheckIntervalMs();
+  if (!(intervalMs > 0)) return {};
+  return { options: `-c client_connection_check_interval=${intervalMs}` };
+}
+
 function getPool() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) return null;
@@ -163,6 +208,9 @@ function getPool() {
       // itself is wedged.
       statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS || 30000),
       query_timeout: Number(process.env.DB_QUERY_TIMEOUT_MS || 35000),
+      // Off unless DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS is set; see
+      // buildConnectionStartupOptions.
+      ...buildConnectionStartupOptions(),
       ssl:
         useSsl
           ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
@@ -178,6 +226,7 @@ function getPool() {
         } catch {
           // a frozen/mock client is not worth failing a connection over
         }
+        probeServerCheckInterval(client);
       });
       nextPool.on('error', (err) => {
         logger.warn(
@@ -197,7 +246,7 @@ function getPool() {
   return pool;
 }
 
-async function query(text, params) {
+async function queryPooled(text, params) {
   const maxRetries = getDbQueryRetries();
   const backoffMs = getDbRetryBackoffMs();
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
@@ -223,6 +272,215 @@ async function query(text, params) {
     }
   }
   throw new Error('unreachable');
+}
+
+// ---------------------------------------------------------------------------
+// Lane deadlines: bound every plain `query()` issued inside a caller's budget.
+//
+// The interactive lanes (signature resolve, PDP prechecks, recall) wrap their
+// work in a wall-clock stage budget, but the statements underneath go through
+// plain `query()` = `pool.query`, which has no idea a budget exists. When the
+// budget fires the caller moves on and the statement does not: it keeps its
+// pooled connection until it ends or the 30s pool-level statement_timeout
+// fires. With a handful of connections per instance, a few of those pin the
+// whole pool, and every later checkout on the instance -- including lanes that
+// were fast -- queues until pg-pool's connect timeout. That is the shape of the
+// "timeout exceeded when trying to connect" bursts that follow
+// first-paint-budget misses on an otherwise idle database.
+//
+// runWithDbDeadline(options, fn) runs fn inside an AsyncLocalStorage context
+// that carries an absolute deadline. While it is active, `query()` routes
+// through queryWithBudget with whatever budget remains, so a checkout never
+// waits past the caller, a late checkout is handed straight back, and a
+// statement still running at the deadline has its connection destroyed (and,
+// with DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS, cancelled server-side). Nested
+// deadlines take the earlier of the two. Zero extra round-trips: the routed
+// path is the same checkout + query + release that pool.query does.
+//
+// The deadline sits a small grace (DB_LANE_DEADLINE_GRACE_MS) AFTER the stage
+// budget, so the caller's own STAGE_TIMEOUT still wins the race and the error a
+// caller sees is unchanged; the deadline only stops the work it left behind.
+//
+// Off unless DB_LANE_DEADLINES_ENABLED is set: with it off, runWithDbDeadline
+// is a plain call and query() behaves exactly as before.
+// ---------------------------------------------------------------------------
+const DB_DEADLINE_CONTEXT = new AsyncLocalStorage();
+
+function isDbLaneDeadlinesRequested() {
+  return /^(1|true|yes|on)$/i.test(String(process.env.DB_LANE_DEADLINES_ENABLED || '').trim());
+}
+
+// Why the requested deadlines cannot be honoured, or null when they can.
+//
+// A lane deadline DESTROYS the connection of a statement still running at the deadline. Without
+// client_connection_check_interval the server never notices: the backend keeps executing until
+// statement_timeout while the pool opens a replacement, so per-instance SERVER connections climb past
+// DB_POOL_MAX -- the pinned pool becomes orphan backends plus fresh connections, which is worse for the
+// primary than what the deadline was meant to fix. So the deadlines are refused unless the EFFECTIVE
+// interval the connection is opened with is > 0:
+//   - DATABASE_URL is parsed the way pg parses it (pg-connection-string); a URL it cannot parse refuses.
+//   - pg merges the URL's own `options=` OVER the pool config, so when the URL carries options, they are
+//     what the server sees: the interval must be set there, and set > 0 (`=0` is "off").
+//   - otherwise DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS must be > 0 (it is what buildConnectionStartupOptions
+//     sends).
+// And once a pooled connection exists, the SERVER's own answer (SHOW client_connection_check_interval on
+// the first connection, see getPool) can still refuse: a proxy or pooler may drop startup options.
+const PG_URL_SCHEME = /^\s*(postgres(?:ql)?:\/\/|socket:)/i;
+const INTERVAL_UNIT_MS = { ms: 1, s: 1_000, min: 60_000, h: 3_600_000 };
+
+// The setting is an integer number of milliseconds on the server: a value under 1ms (`0.4ms`, `0.0004s`)
+// is stored as 0, which is "off". Count it as 0 here too, rather than as the > 0 it looks like.
+function parseIntervalSettingMs(text) {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|min|h)?\s*$/i.exec(String(text ?? ''));
+  if (!m) return null;
+  const ms = Number(m[1]) * INTERVAL_UNIT_MS[(m[2] || 'ms').toLowerCase()];
+  return ms < 1 ? 0 : ms;
+}
+
+// The interval a libpq-style options string sets (last occurrence wins, as on the server), undefined when it
+// does not mention it, null when it mentions it with a value that cannot be read.
+function checkIntervalFromOptionsMs(options) {
+  // GUC names are case-insensitive and `-c` accepts dashes for underscores, as the server does.
+  const re = /(?:-c\s*|--)client[-_]connection[-_]check[-_]interval\s*=\s*(\S+)/gi;
+  let last;
+  for (let m = re.exec(options); m; m = re.exec(options)) last = m[1];
+  return last === undefined ? undefined : parseIntervalSettingMs(last);
+}
+
+// pg's own parser, resolved from pg's location: it is pg's dependency, not this package's, so a bare
+// require would only work while npm happens to hoist it.
+let pgConnectionStringParse = null;
+function loadPgConnectionStringParser() {
+  if (pgConnectionStringParse) return pgConnectionStringParse;
+  const path = require('path');
+  const mod = require(require.resolve('pg-connection-string', { paths: [path.dirname(require.resolve('pg'))] }));
+  pgConnectionStringParse = typeof mod.parse === 'function' ? mod.parse : mod;
+  return pgConnectionStringParse;
+}
+
+function staticLaneDeadlineBlockedReason() {
+  const url = String(process.env.DATABASE_URL || '');
+  if (!PG_URL_SCHEME.test(url)) return 'database_url_unparseable';
+  let parsed;
+  try {
+    parsed = loadPgConnectionStringParser()(url);
+  } catch {
+    return 'database_url_unparseable';
+  }
+  if (!parsed || typeof parsed !== 'object') return 'database_url_unparseable';
+  const urlOptions = typeof parsed.options === 'string' ? parsed.options.trim() : '';
+  if (urlOptions) {
+    const fromUrl = checkIntervalFromOptionsMs(urlOptions);
+    if (fromUrl === undefined) return 'database_url_options_override_check_interval';
+    if (!(fromUrl > 0)) return 'database_url_options_check_interval_off';
+    return null;
+  }
+  if (!(getClientConnectionCheckIntervalMs() > 0)) return 'client_connection_check_interval_unset';
+  return null;
+}
+
+// Memoized on its inputs: runWithDbDeadline asks on every stage.
+let staticBlockedMemo = { key: null, reason: null };
+// Set when the first pooled connection reports the interval off (see getPool).
+let serverReportedCheckIntervalOff = false;
+function laneDeadlinesBlockedReason() {
+  const key = `${process.env.DATABASE_URL || ''}\u0000${process.env.DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS || ''}`;
+  if (staticBlockedMemo.key !== key) staticBlockedMemo = { key, reason: staticLaneDeadlineBlockedReason() };
+  if (staticBlockedMemo.reason) return staticBlockedMemo.reason;
+  if (serverReportedCheckIntervalOff) return serverReportedCheckIntervalOff;
+  return null;
+}
+
+let laneDeadlinesRefusalWarned = false;
+function warnLaneDeadlinesRefused(reason) {
+  if (laneDeadlinesRefusalWarned) return;
+  laneDeadlinesRefusalWarned = true;
+  logger.warn(
+    { reason, db_lane_deadlines_enabled: process.env.DB_LANE_DEADLINES_ENABLED },
+    'DB_LANE_DEADLINES_ENABLED is set but lane deadlines are REFUSED: they need an effective '
+      + 'client_connection_check_interval > 0 on the connection, or abandoned statements become orphan backends '
+      + 'plus new connections',
+  );
+}
+
+function isDbLaneDeadlinesEnabled() {
+  if (!isDbLaneDeadlinesRequested()) return false;
+  const blocked = laneDeadlinesBlockedReason();
+  if (!blocked) return true;
+  warnLaneDeadlinesRefused(blocked);
+  return false;
+}
+
+// Asks the server on the first pooled connection, only when deadlines are requested. One answer settles it.
+// A probe that FAILS is retried once, on the next connection; if that fails too the deadlines are refused
+// (server_check_interval_unverified) -- an interval nobody could confirm is not one to rely on.
+const SERVER_CHECK_INTERVAL_PROBE_ATTEMPTS = 2;
+let serverCheckIntervalProbe = { inflight: false, settled: false, failures: 0 };
+function refuseFromServerProbe(reason) {
+  serverReportedCheckIntervalOff = reason;
+  laneDeadlinesRefusalWarned = false; // a new reason deserves its own warning
+  warnLaneDeadlinesRefused(reason);
+}
+function probeServerCheckInterval(client) {
+  const probe = serverCheckIntervalProbe;
+  if (probe.settled || probe.inflight || !isDbLaneDeadlinesRequested() || !client || typeof client.query !== 'function') return;
+  probe.inflight = true;
+  Promise.resolve()
+    .then(() => client.query('SHOW client_connection_check_interval'))
+    .then((result) => {
+      probe.settled = true;
+      const raw = result?.rows?.[0]?.client_connection_check_interval;
+      if (!(parseIntervalSettingMs(raw) > 0)) refuseFromServerProbe('server_reports_check_interval_off');
+    })
+    .catch(() => {
+      probe.failures += 1;
+      if (probe.failures >= SERVER_CHECK_INTERVAL_PROBE_ATTEMPTS) {
+        probe.settled = true;
+        refuseFromServerProbe('server_check_interval_unverified');
+      }
+    })
+    .finally(() => {
+      probe.inflight = false;
+    });
+}
+
+function getDbLaneDeadlineGraceMs() {
+  return parseIntegerEnv(process.env.DB_LANE_DEADLINE_GRACE_MS, 100, { min: 0, max: 5_000 });
+}
+
+function runWithDbDeadline(options, fn) {
+  const budgetMs = Number(options?.budgetMs);
+  if (!isDbLaneDeadlinesEnabled() || !Number.isFinite(budgetMs) || budgetMs <= 0) return fn();
+  let deadlineAtMs = Date.now() + Math.trunc(budgetMs) + getDbLaneDeadlineGraceMs();
+  const outer = DB_DEADLINE_CONTEXT.getStore();
+  if (outer && Number.isFinite(outer.deadlineAtMs)) {
+    deadlineAtMs = Math.min(deadlineAtMs, outer.deadlineAtMs);
+  }
+  const label = String(options?.label || outer?.label || '').trim() || null;
+  return DB_DEADLINE_CONTEXT.run({ deadlineAtMs, label }, fn);
+}
+
+// Remaining ms of the active lane deadline, or null when no deadline applies.
+function remainingDbDeadlineMs() {
+  const store = DB_DEADLINE_CONTEXT.getStore();
+  if (!store || !Number.isFinite(store.deadlineAtMs)) return null;
+  return store.deadlineAtMs - Date.now();
+}
+
+function buildDeadlineExpiredError() {
+  const store = DB_DEADLINE_CONTEXT.getStore();
+  // Same code as a budgeted checkout that ran out of time: the caller's budget
+  // was spent before this statement could even be queued. Nothing touched the
+  // pool, which is the point -- an abandoned caller must not take a slot.
+  const err = buildBudgetTimeoutError(DB_BUDGET_ACQUIRE_TIMEOUT, { budgetMs: 0, waitedMs: 0 });
+  err.lane = store?.label || null;
+  return err;
+}
+
+async function query(text, params) {
+  if (remainingDbDeadlineMs() === null) return queryPooled(text, params);
+  // queryWithBudget takes its budget from the active lane deadline.
+  return queryWithBudget(text, params, {});
 }
 
 function normalizeLocalTimeoutMs(value) {
@@ -332,8 +590,14 @@ function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt, diag
 // The distinct error codes matter as much as the fix; `pool starvation` and
 // `slow query` need different remedies and used to look identical from outside.
 async function queryWithBudget(text, params, options = {}) {
-  const budgetMs = normalizeLocalTimeoutMs(options.timeoutMs);
-  if (!budgetMs) return query(text, params);
+  let budgetMs = normalizeLocalTimeoutMs(options.timeoutMs);
+  // An explicit budget inside a lane deadline gets the earlier of the two.
+  const laneRemainingMs = remainingDbDeadlineMs();
+  if (laneRemainingMs !== null) {
+    if (laneRemainingMs < 1) throw buildDeadlineExpiredError();
+    budgetMs = Math.min(budgetMs || Infinity, normalizeLocalTimeoutMs(laneRemainingMs));
+  }
+  if (!budgetMs) return queryPooled(text, params);
 
   const p = getPool();
   if (!p) throw buildNoDatabaseError();
@@ -590,6 +854,18 @@ function captureCheckedOutClientErrors(client) {
   };
 }
 
+// A helper that changed session state on a checked-out client and could not restore it (for example a
+// failed `RESET statement_timeout`) marks the client so withClient DESTROYS it on release instead of
+// handing the next caller a connection in an unknown state.
+const DESTROY_ON_RELEASE = Symbol('pivota.db.destroyOnRelease');
+function markClientForDestroy(client) {
+  try {
+    if (client && typeof client === 'object') client[DESTROY_ON_RELEASE] = true;
+  } catch {
+    // a frozen/mock client cannot be marked; nothing else to do
+  }
+}
+
 async function withClient(fn) {
   const { client, pool: sourcePool } = await connectWithRetry();
   let released = false;
@@ -613,7 +889,7 @@ async function withClient(fn) {
     const checkedOutClientError = clientErrorCapture.getError();
     try {
       if (!released) {
-        client.release(Boolean(checkedOutClientError));
+        client.release(Boolean(checkedOutClientError) || client?.[DESTROY_ON_RELEASE] === true);
         released = true;
       }
     } finally {
@@ -658,13 +934,21 @@ function peekPool() {
   return pool;
 }
 
+// Boot-time check, so a refused configuration is in the logs at startup, not at the first request.
+isDbLaneDeadlinesEnabled();
+
 module.exports = {
   DB_BUDGET_ACQUIRE_TIMEOUT,
   peekPool,
   DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,
+  isDbLaneDeadlinesEnabled,
+  isDbUnavailableError,
   isTransientDbError,
+  markClientForDestroy,
+  remainingDbDeadlineMs,
+  runWithDbDeadline,
   query: recordingFailures('db_query', query),
   queryWithBudget: recordingFailures('db_query_with_budget', queryWithBudget),
   queryWithStatementTimeout: recordingFailures('db_query_with_statement_timeout', queryWithStatementTimeout),
