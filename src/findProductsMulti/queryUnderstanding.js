@@ -39,6 +39,24 @@ function categoryRouteFlagEnabled(flag, env = process.env) {
   return /^(1|true|on|yes)$/i.test(String(env[flag] || '').trim());
 }
 
+// THE SETTING SPRAY's words, ONE copy for the gateway: this route, the external-seed label
+// (services/externalSeedProducts.js) and the path-less row check (server.js) all build on these. They
+// mirror pivota-backend services/pdp_category_classifier.py ("Setting Spray" and
+// SETTING_SPRAY_FACE_ONLY):
+// - the phrases that NAME the product: setting spray/mist, fixing spray/mist, fix(er) mist, mist & fix,
+//   makeup (setting) fixer, setting fixer. Not a bare "fix"/"fixer" SPRAY ("Quick Fix Spray", "Stain Fix
+//   Spray"), a bare "finishing spray" (hair) or a bare "mist" (a face mist is a toner);
+// - only for the FACE: text naming lashes, brows, hair, curls, a wig or lace, edges, a tattoo, a wrap or
+//   scarf, styling, nails or a beard is declined; body, hands and feet too unless the face is named.
+const SETTING_SPRAY_PHRASES = String.raw`setting\s+(?:spray|mist)s?|fixing\s+(?:spray|mist)s?|fix(?:er)?\s+mists?|mist\s*(?:&|and|\+)\s*fix|make[\s-]?up\s+(?:setting\s+)?fix(?:er|ing)s?|setting\s+fixers?`;
+const SETTING_SPRAY_FACE_ONLY = String.raw`(?![\s\S]*\b(?:mascaras?|(?:eye\s?)?lash(?:es)?|(?:eye)?brows?|hair\w*|curl(?:s|y|ing|ers?)?|wigs?|lace|edges?|tattoos?|wraps?|scarf|scarves|styl(?:e|es|ing)|nails?|beards?)\b)(?:(?=[\s\S]*\b(?:face|facial)\b)|(?![\s\S]*\b(?:body|hands?|foot|feet)\b))`;
+const SETTING_SPRAY_CHINESE = '定妆喷雾|定妝噴霧';
+// A product's (or a seed's) own text names a face setting spray.
+const SETTING_SPRAY_TEXT_RE = new RegExp(
+  `^${SETTING_SPRAY_FACE_ONLY}(?:[\\s\\S]*\\b(?:${SETTING_SPRAY_PHRASES})\\b|[\\s\\S]*(?:${SETTING_SPRAY_CHINESE}))`,
+  'i',
+);
+
 const CATEGORY_ALIAS_RULES = Object.freeze([
   // Self-tan. MEASURED GAP, 2026-09-24: `self tanner` (even with
   // category=beauty/body/tanning) classified other/ambiguous and answered
@@ -84,18 +102,19 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     pattern:
       /^(?!.*\b(?:mascaras?|serums?|lifts?|lifting|curlers?|tints?|primers?|conditioners?|growth|removers?)\b)(?:.*\b(?:false|fake|faux|mink|magnetic|strip|individual|cluster|wispy)\s+(?:eye\s?)?lash(?:es)?\b|.*\b(?:eye\s?)?lash\s+(?:clusters?|wisps?|strips?|bands?|glue|adhesives?)\b|.*\bstriplash(?:es)?\b|.*\b(?:impress|kiss)\s+falsies\b|.*\bfalsies\s+(?:press[-\s]?on|lash(?:es)?|clusters?)\b|.*\bpress[-\s]?on\s+(?:eye\s?)?lash(?:es)?\b|.*\bdiy\s+lash\s+extensions?\b|.*\bfalscara\b|.*(?:假睫毛|睫毛胶|睫毛膠))/is,
   },
-  // Setting spray, behind SEARCH_SETTING_SPRAY_CATEGORY_ROUTE. The phrases the backend classifier files
-  // under this leaf (pivota-backend services/pdp_category_classifier.py "Setting Spray"): setting
-  // spray/mist, fixer/fixing spray/mist, mist & fix, makeup (setting) fixer, setting fixer. A bare
-  // `finishing spray` is not claimed (hair finishing sprays), nor a bare `mist` (a face mist is a
-  // toner), and any query naming hair is declined so `hair fixing spray` keeps the haircare rule.
+  // Setting spray, behind SEARCH_SETTING_SPRAY_CATEGORY_ROUTE: SETTING_SPRAY_TEXT_RE's words (above), so
+  // `hair fixing spray` keeps the haircare rule and `brow setting spray` routes nowhere new. A query that
+  // also asks for sun protection is a sunscreen ask ("setting spray spf"): the backend files "... Setting
+  // Spray SPF 30" on sun/sunscreen, so this rule declines it and the sunscreen rule below takes it.
   // Sits before fragrance so no later rule's noun claims it first.
   {
     category: 'setting_spray',
     categoryPathPrefix: 'beauty/makeup/face/setting-spray/',
     flag: SETTING_SPRAY_CATEGORY_ROUTE_FLAG,
-    pattern:
-      /^(?!.*\bhair)(?:.*\b(?:setting\s+(?:spray|mist)s?|fix(?:er|ing)?\s+(?:spray|mist)s?|mist\s*(?:&|and|\+)\s*fix|make[\s-]?up\s+(?:setting\s+)?fix(?:er|ing)s?|setting\s+fixers?)\b|.*(?:定妆喷雾|定妝噴霧))/is,
+    pattern: new RegExp(
+      `^(?![\\s\\S]*\\b(?:spf|sunscreen|sun\\s*screen|sunblock|uv)\\b)${SETTING_SPRAY_TEXT_RE.source.slice(1)}`,
+      'i',
+    ),
   },
   {
     category: 'fragrance',
@@ -1223,6 +1242,8 @@ module.exports = {
   resolveBeautyCategoryPathPrefixFromDeclaredStepFamily,
   LASH_CATEGORY_ROUTE_FLAG,
   SETTING_SPRAY_CATEGORY_ROUTE_FLAG,
+  SETTING_SPRAY_TEXT_RE,
+  categoryRouteFlagEnabled,
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
   isStrictLipstickQuery,

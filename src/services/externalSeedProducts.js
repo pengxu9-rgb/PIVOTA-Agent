@@ -37,6 +37,9 @@ const {
 } = require('./catalogImageCacheStorage');
 const {
   resolveBeautyCategoryPathPrefixFromText,
+  SETTING_SPRAY_CATEGORY_ROUTE_FLAG,
+  SETTING_SPRAY_TEXT_RE,
+  categoryRouteFlagEnabled,
 } = require('../findProductsMulti/queryUnderstanding');
 
 // TWO AXES THAT SHARE A STRING, and must not share a NAME.
@@ -58,10 +61,8 @@ const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const EXTERNAL_SEED_PLATFORM = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
   /\b(sunscreen|sun\s*screen|broad\s+spectrum|spf\s*\d{2,3}\+?|pa\s*\+{2,4}|sun\s+(?:serum|fluid|cream|gel|milk|stick)|uv\s*(?:protection|shield|defen[cs]e|lock))\b/i;
-// The backend classifier's "Setting Spray" phrases (pivota-backend services/pdp_category_classifier.py),
-// declining any text that names hair ("Hair Fixing Spray").
-const SETTING_SPRAY_CATEGORY_RE =
-  /^(?![\s\S]*\bhair)[\s\S]*\b(?:setting\s+(?:spray|mist)s?|fix(?:er|ing)?\s+(?:spray|mist)s?|mist\s*(?:&|and|\+)\s*fix|make[\s-]?up\s+(?:setting\s+)?fix(?:er|ing)s?|setting\s+fixers?)\b/i;
+// The backend classifier's "Setting Spray" phrases, face only (queryUnderstanding.SETTING_SPRAY_TEXT_RE).
+const SETTING_SPRAY_CATEGORY_RE = SETTING_SPRAY_TEXT_RE;
 const BEAUTY_CATEGORY_PATTERNS = [
   ['Brush', /\b(brush|makeup brush|foundation brush|powder brush|blush brush|shader brush|kabuki)\b/i],
   ['Shampoo', /\b(shampoo|dry shampoo|clarifying shampoo)\b/i],
@@ -73,7 +74,11 @@ const BEAUTY_CATEGORY_PATTERNS = [
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
   // Setting spray (2026-10-10, pivota-backend#2547), ABOVE Toner: every loop over this list is
   // first-match, so a "Makeup Fixing Mist" is labelled a setting spray instead of a toner. Toner's own
-  // pattern is unchanged, so a query loop that skips this label (below) routes exactly as before.
+  // pattern is unchanged. The label is read only through beautyCategoryPatterns(), which leaves this
+  // arm out unless SEARCH_SETTING_SPRAY_CATEGORY_ROUTE is on: a seed's `category` reaches search
+  // filters, routine steps, PDP intel and partner payloads, so with the flag off every seed keeps the
+  // label it had before the leaf. Descriptions never read it (BEAUTY_CATEGORY_DESCRIPTION_PATTERNS):
+  // many face mists say "use as a setting spray".
   ['Setting Spray', SETTING_SPRAY_CATEGORY_RE],
   ['Toner', /\b(toner|mist|pad)\b/i],
   [
@@ -94,7 +99,20 @@ const BEAUTY_CATEGORY_PATTERNS = [
   ['Lipstick', /\b(lipsticks?|lip colors?|lip colours?|liquid lips?|lip luxe|lip lacquers?|lip gloss(?:es)?)\b/i],
   ['Moisturizer', /\b(moisturizer|moisturiser|cream|lotion|gel cream|gel-cream|barrier cream)\b/i],
 ];
-const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS.map(([label, pattern]) => {
+// The list before the setting-spray leaf, which is what every seed reads with the flag off.
+const BEAUTY_CATEGORY_PATTERNS_BEFORE_SETTING_SPRAY = BEAUTY_CATEGORY_PATTERNS.filter(([label]) => label !== 'Setting Spray');
+
+function beautyCategoryLabelPattern(label) {
+  return (BEAUTY_CATEGORY_PATTERNS.find(([name]) => name === label) || [null, /$^/])[1];
+}
+
+function beautyCategoryPatterns(env = process.env) {
+  return categoryRouteFlagEnabled(SETTING_SPRAY_CATEGORY_ROUTE_FLAG, env)
+    ? BEAUTY_CATEGORY_PATTERNS
+    : BEAUTY_CATEGORY_PATTERNS_BEFORE_SETTING_SPRAY;
+}
+
+const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS_BEFORE_SETTING_SPRAY.map(([label, pattern]) => {
   if (label === 'Powder') {
     return ['Powder', /\b(setting powder|pressed powder|loose powder|blurring powder|finishing powder)\b/i];
   }
@@ -973,7 +991,7 @@ function normalizeExplicitBeautyCategory(...values) {
     const text = String(value || '').trim();
     if (!text) continue;
     if (/^external$/i.test(text)) continue;
-    for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+    for (const [label, pattern] of beautyCategoryPatterns()) {
       if (pattern.test(text)) return label;
     }
     return text;
@@ -1154,6 +1172,13 @@ function inferExternalSeedBeautyCategory({
     ? ingredientIds.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
     : [];
   if (explicit) {
+    if (explicit === 'Setting Spray' && beautyCategoryLabelPattern('Powder').test(String(explicitCategory || ''))) {
+      // A shelf that names both ("Setting Spray and Powder"), as pivota-backend's curated feed reads it
+      // (_COMBINED_SHELVES): only a title naming the spray, and not the powder, leaves the powder that
+      // the shelf read as before the leaf existed.
+      const powder = beautyCategoryLabelPattern('Powder');
+      return SETTING_SPRAY_CATEGORY_RE.test(primarySurfaceText) && !powder.test(primarySurfaceText) ? 'Setting Spray' : 'Powder';
+    }
     if (explicit === 'Sunscreen' && primaryMakeupFormFactor) return primaryMakeupFormFactor;
     if (explicit === 'Fragrance' && SUNSCREEN_CATEGORY_RE.test(primarySurfaceText)) return 'Sunscreen';
     if (
@@ -1185,7 +1210,7 @@ function inferExternalSeedBeautyCategory({
 
   if (primaryMakeupFormFactor) return primaryMakeupFormFactor;
 
-  for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+  for (const [label, pattern] of beautyCategoryPatterns()) {
     if (pattern.test(primarySurfaceText)) return label;
   }
 

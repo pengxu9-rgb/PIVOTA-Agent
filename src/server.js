@@ -402,6 +402,7 @@ const {
   SEARCH_QUALITY_CONTRACT_VERSION,
   isStrictShaveQuery,
   productTextNamesShaving,
+  SETTING_SPRAY_TEXT_RE,
 } = require('./findProductsMulti/queryUnderstanding');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const { mountAgentCenterLlmProbe } = require('./internal/agentCenterLlmProbe');
@@ -22599,10 +22600,10 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
   }
   if (prefix.startsWith('beauty/makeup/face/setting-spray')) {
-    // A path-less row must name a setting spray: the generic face test below would admit any
-    // foundation or powder into a setting-spray browse, and a hair fixing spray is not one.
-    return /\b(?:setting\s+(?:spray|mist)s?|fix(?:er|ing)?\s+(?:spray|mist)s?|mist\s*(?:&|and|\+)\s*fix|make[\s-]?up\s+(?:setting\s+)?fix(?:er|ing)s?|setting\s+fixers?)\b|定妆喷雾|定妝噴霧/i.test(text)
-      && !/\bhair/i.test(text);
+    // A path-less row must name a FACE setting spray (queryUnderstanding.SETTING_SPRAY_TEXT_RE): the
+    // generic face test below would admit any foundation or powder into a setting-spray browse, and a
+    // hair, brow or wig fixing spray is not one.
+    return SETTING_SPRAY_TEXT_RE.test(text);
   }
   if (prefix.startsWith('beauty/makeup/face/blush') || prefix.startsWith('beauty/makeup/cheek')) {
     return /\b(blush|blusher|cheek\s*(?:color|colour|tint|stain|balm)?|liquid\s*blush|cream\s*blush|powder\s*blush|luminizer|highlighter)\b|腮红|腮紅/i.test(text);
