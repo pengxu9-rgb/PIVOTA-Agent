@@ -2,8 +2,8 @@
 
 // The relationship graph obeys the catalog's serving gate.
 //
-// WHY (2026-10-21). The targeted rebuild proposed fentybeauty.com's "Donate To The Clara Lionel
-// Foundation" as a competitive_alternative for 8 anchors. Its catalog row was stale and its seed
+// WHY (2026-10-21). The targeted rebuild proposed a store's charity-donation listing as a
+// competitive_alternative for 8 anchors. Its catalog row was stale and its seed
 // active, and nothing in the graph looked at the catalog row: the seed lane reads
 // external_product_seeds.status only, the products_cache and affected-anchor lanes join
 // catalog_products without a suppression filter, the review queue reads label_state only, and

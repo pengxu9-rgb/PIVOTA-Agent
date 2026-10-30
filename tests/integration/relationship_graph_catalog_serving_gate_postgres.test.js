@@ -22,8 +22,8 @@ const suite = url ? describe : describe.skip;
 const MIGRATIONS = ['046_relationship_candidate_labels', '048_relationship_label_prefilter_reasons',
   '050_relationship_review_priority', '051_product_relationship_edges_ai_label_state'];
 
-// 2026-10-21: the relgraph rebuild proposed fentybeauty.com's "Donate To The Clara Lionel
-// Foundation" (catalog row stale, seed active) as a competitive alternative for 8 anchors. The
+// 2026-10-21: the relgraph rebuild proposed a store's charity-donation listing (catalog row
+// stale, seed active) as a competitive alternative for 8 anchors. The
 // graph read no catalog state anywhere but target recall. Here every reader is driven against
 // PostgreSQL with what the real producer emits: the seed lane's own SQL and normalizer, the
 // builder's edge, the label writer's row, migration 051's view.
