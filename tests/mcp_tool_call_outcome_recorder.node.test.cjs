@@ -104,6 +104,45 @@ test('with no answer recorded, the status decides: 4xx refused, 5xx internal, 2x
   });
 });
 
+// The refusals come from the real producer (src/guardrails/mcpCallerLimits.js limitRejectionResponse), one per
+// reason it can refuse for, so a status the limiter starts writing for a reason is classified as it really is.
+test('a caller-limit refusal: every 503 reason is shed / capacity; a rate or concurrency 429 stays refused / client', () => {
+  const { limitRejectionResponse } = require('../src/guardrails/mcpCallerLimits');
+  const SHED = ['shed', 'tier_concurrency', 'tier_rate'];
+  const STATUS = { shed: 503, tier_concurrency: 503, tier_rate: 503, rate: 429, concurrency: 429 };
+  for (const reason of [...SHED, 'rate', 'concurrency']) {
+    const refusal = limitRejectionResponse({ reason, status: STATUS[reason], retryAfterSec: 3 }, { rpcId: 1, tier: 'anonymous' });
+    assert.equal(refusal.status, STATUS[reason], reason);
+    const r = createMcpToolCallRecorder();
+    r.recordCallerLimitRefusal(refusal);
+    if (SHED.includes(reason)) {
+      assert.deepEqual(r.fields(refusal.status), {
+        outcome: 'shed', is_error: true, error_code: 'MCP_CALLER_SHED', error_class: 'capacity', degraded: false,
+      }, reason);
+    } else {
+      assert.deepEqual(r.fields(refusal.status), {
+        outcome: 'refused', is_error: true, error_code: 'HTTP_429', error_class: 'client', degraded: false,
+      }, reason);
+    }
+  }
+});
+
+test('shedding is never a server error; the door\'s own 503 after a failed dispatch still is', () => {
+  const shed = createMcpToolCallRecorder();
+  shed.recordCallerLimitRefusal({ status: 503 });
+  assert.notEqual(shed.fields(503).error_class, 'server');
+  assert.notEqual(shed.fields(503).outcome, 'internal_error');
+  const failed = createMcpToolCallRecorder();
+  failed.recordInternalError();
+  assert.equal(failed.fields(503).outcome, 'internal_error');
+  assert.equal(failed.fields(503).error_class, 'server');
+  // A hostile or empty refusal never throws and never turns a 503 into shedding by accident.
+  const odd = createMcpToolCallRecorder();
+  odd.recordCallerLimitRefusal(null);
+  odd.recordCallerLimitRefusal({ status: 'not a number' });
+  assert.equal(odd.fields(503).outcome, 'internal_error');
+});
+
 test('a door-written tool error (the kill-switch refusal) is logged with its code', () => {
   const r = createMcpToolCallRecorder();
   r.recordToolError('OPERATION_NOT_ALLOWED');

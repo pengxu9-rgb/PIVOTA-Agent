@@ -14,18 +14,32 @@
 //     ::ffff:127.x) and IPC paths are allowed. A hostname — any hostname, including "localhost" — is refused
 //     BEFORE any DNS lookup, so not even a resolver packet leaves.
 //   * dns.lookup / dns.resolve* / dns.promises.* / dns.Resolver — refused for every name, so code that resolves
-//     first and connects later is stopped at the resolve.
+//     first and connects later is stopped at the resolve. A lookup of an IP literal passes (it resolves
+//     nothing): that is how server.listen(port, '::') binds, and a dial to the address meets the connect guard.
 //   * dgram sockets — send/connect refused unless the address is a loopback literal.
 //
 // A refusal THROWS synchronously (an Error with code ERR_READINESS_NET_GUARD) and is counted in
-// globalThis.__READINESS_NET_GUARD__.blocked. `passed` counts connections handed to the real connect, all of
+// `state.blocked` (this module's export). `passed` counts connections handed to the real connect, all of
 // which are loopback by construction.
+//
+// ONE GUARD PER PROCESS, AND ITS STATE NEVER ON globalThis. Under jest, globalThis is the test FILE's
+// sandbox, but the patched net.Socket.prototype.connect is shared by every file the worker runs. With the
+// state on the sandbox global, jest 30 (globalsCleanup 'soft', Node 20) turned it into a self-recursing
+// setter at file teardown, and every later socket in that worker died with "Maximum call stack size
+// exceeded" (RangeError at Reflect.set <- jest-util originalSetter) in files that never load this guard.
+// So the state hangs off the node:net module object (a core module: one per process, never sandboxed),
+// install() returns it when it is already there, and the wrappers use only intrinsics captured at install
+// time, never a global looked up later.
 
 const net = require('node:net');
 const dns = require('node:dns');
 const dgram = require('node:dgram');
 
 const STATE_KEY = '__READINESS_NET_GUARD__';
+const HOLDER = Symbol.for('readiness.netGuard');
+const ErrorCtor = Error;
+const StringCtor = String;
+const isArray = Array.isArray;
 
 function isLoopbackLiteral(host) {
   if (typeof host !== 'string') return false;
@@ -37,14 +51,14 @@ function isLoopbackLiteral(host) {
 }
 
 function install() {
-  if (globalThis[STATE_KEY]) return globalThis[STATE_KEY];
+  if (net[HOLDER]) return net[HOLDER];
   const state = { installed: true, blocked: [], passed: 0, originalConnectCalls: 0 };
-  globalThis[STATE_KEY] = state;
+  Object.defineProperty(net, HOLDER, { value: state, enumerable: false, configurable: false, writable: false });
 
   const refuse = (what, target) => {
     const msg = `readiness-eval net guard: refused ${what} to ${target} (tests may only reach loopback IP literals)`;
-    state.blocked.push({ what, target: String(target) });
-    const err = new Error(msg);
+    state.blocked.push({ what, target: StringCtor(target) });
+    const err = new ErrorCtor(msg);
     err.code = 'ERR_READINESS_NET_GUARD';
     throw err;
   };
@@ -53,7 +67,7 @@ function install() {
   const originalConnect = net.Socket.prototype.connect;
   net.Socket.prototype.connect = function guardedConnect(...args) {
     let a = args;
-    if (Array.isArray(a[0])) a = a[0]; // net.connect() hands the prototype method its normalized [options, cb]
+    if (isArray(a[0])) a = a[0]; // net.connect() hands the prototype method its normalized [options, cb]
     let opts;
     if (a[0] !== null && typeof a[0] === 'object') opts = a[0];
     else if (typeof a[0] === 'string' && !/^\d+$/.test(a[0])) opts = { path: a[0] };
@@ -72,7 +86,11 @@ function install() {
   };
 
   // ---- DNS ------------------------------------------------------------------------------------------
+  // A lookup of an IP LITERAL answers with the literal itself and never reaches a resolver. It is how
+  // server.listen(port, '::') or '0.0.0.0' binds, so it passes; a dial to that address still meets the
+  // connect guard above. Names, lookupService, reverse and every resolve* stay refused.
   const guardName = (fnName, target) => {
+    if ((fnName === 'lookup' || fnName === 'promises.lookup') && typeof target === 'string' && net.isIP(target) !== 0) return;
     if (!isLoopbackLiteral(target)) refuse(`dns.${fnName}`, target);
   };
   const wrapDns = (obj, label) => {

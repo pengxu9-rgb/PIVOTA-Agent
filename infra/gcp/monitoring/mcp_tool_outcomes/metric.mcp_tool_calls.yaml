@@ -1,11 +1,13 @@
 # Log-based counter: every MCP tools/call the gateway ANSWERED (refusals before dispatch excluded: a rate-limit
-# flood or an auth challenge is not a tool outcome). Denominator of the tool error-rate alert.
+# flood, an auth challenge or a caller-limit shed is not a tool outcome). Denominator of the tool error-rate
+# alert. Shedding happens exactly when the database is struggling; counting its instant refusals here would
+# dilute the server-error ratio at the moment it matters.
 # Every metric here counts only the gateway service's lines that carry `outcome` (lines written before the field
 # existed are ignored) and excludes tier=first_party, so Pivota's own CI and probe traffic on the service key
 # cannot move a ratio.
 #   gcloud logging metrics create mcp_tool_calls --project=$PROJECT \
 #     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_tool_calls.yaml
-description: MCP tools/call completions, by tool / door / tier / outcome (refused and first-party excluded)
+description: MCP tools/call completions, by tool / door / tier / outcome (refused, shed and first-party excluded)
 filter: >-
   resource.type="cloud_run_revision"
   AND resource.labels.service_name="gateway"
@@ -13,6 +15,7 @@ filter: >-
   AND jsonPayload.outcome:*
   AND jsonPayload.tier!="first_party"
   AND jsonPayload.outcome!="refused"
+  AND jsonPayload.outcome!="shed"
 metricDescriptor:
   metricKind: DELTA
   valueType: INT64

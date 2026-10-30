@@ -8689,6 +8689,8 @@ describe('discovery feed service', () => {
     process.env.CATALOG_SERVING_INDEX_BASE_URL = '';
     process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED = 'true';
     process.env.DATABASE_URL = 'postgres://catalog-shadow.test/pivota';
+    // A configured-but-down database, offline: unmocked, the db pool dialled the host above.
+    jest.doMock('pg', () => require('./_support/unreachablePg.cjs').unreachablePg());
 
     const searchCatalogServingIndexMock = jest.fn(async () => ({
       items: [{ doc_id: 'source:external_seed:serum_1' }],
@@ -8748,6 +8750,7 @@ describe('discovery feed service', () => {
       expect(response.metadata.shadow_serving_summary).toBeUndefined();
     } finally {
       jest.dontMock('../src/services/catalogServingIndex');
+      jest.dontMock('pg');
       if (prevBaseUrl === undefined) delete process.env.CATALOG_SERVING_INDEX_BASE_URL;
       else process.env.CATALOG_SERVING_INDEX_BASE_URL = prevBaseUrl;
       if (prevShadowReadEnabled === undefined) delete process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED;

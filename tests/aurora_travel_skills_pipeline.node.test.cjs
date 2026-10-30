@@ -1,5 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const nock = require('nock');
+const { guardFileNetwork } = require('./nock_file_net_guard.cjs');
+
+// No test here may reach the public geocoder: a test that needs it mocks it (or replaces global.fetch),
+// and any request that reaches no interceptor fails the test that made it.
+guardFileNetwork(test, nock);
+
+const GEOCODE_ORIGIN = 'https://geocoding-api.open-meteo.com';
 
 const ROOT_CONTRACTS = '../src/auroraBff/travelSkills/contracts';
 const ROOT_KB_STORE = '../src/auroraBff/travelKbStore';
@@ -303,7 +311,8 @@ test('travel skills pipeline: failed final rewrite uses phase-plan brief instead
   );
 });
 
-test('travel skills pipeline: destination-present request triggers llm skill with prompt telemetry', async () => {
+test('travel skills pipeline: destination-present request triggers llm skill with prompt telemetry', async (t) => {
+  t.after(() => nock.cleanAll());
   await withEnv(
     {
       TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
@@ -364,6 +373,26 @@ test('travel skills pipeline: destination-present request triggers llm skill wit
           },
         },
         async () => {
+          // The destination arrives as a resolved place, but the profile's home region does not, so live
+          // weather on sends the origin to the geocoder.
+          nock(GEOCODE_ORIGIN)
+            .get('/v1/search')
+            .query((q) => q.name === 'San Francisco, CA')
+            .reply(200, {
+              results: [
+                {
+                  name: 'San Francisco',
+                  latitude: 37.77493,
+                  longitude: -122.41942,
+                  feature_code: 'PPLA2',
+                  country_code: 'US',
+                  country: 'United States',
+                  admin1: 'California',
+                  timezone: 'America/Los_Angeles',
+                  population: 864816,
+                },
+              ],
+            });
           const { runTravelPipeline } = loadFreshPipeline();
           const out = await runTravelPipeline(buildInput('Tokyo weather?', { travelWeatherLiveEnabled: true }));
           assert.equal(out.ok, true);

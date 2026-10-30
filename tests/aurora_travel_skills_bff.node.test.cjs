@@ -2,6 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const supertest = require('supertest');
+const nock = require('nock');
+const { guardFileNetwork } = require('./nock_file_net_guard.cjs');
+
+// No test here may reach the public geocoder or forecast API: a test that needs one mocks it,
+// and any request that reaches no interceptor fails the test that made it.
+guardFileNetwork(test, nock);
+
+const GEOCODE_ORIGIN = 'https://geocoding-api.open-meteo.com';
 
 function withEnv(patch, fn) {
   const keys = Object.keys(patch || {});
@@ -299,6 +307,15 @@ test('/v1/chat: travel pipeline userLocale falls back to X-Lang when Accept-Lang
         };
         await seedTravelProfile(app, headers, '新加坡');
 
+        // With the pipeline stubbed to ok=false and live weather on, the route's local weather path geocodes
+        // the destination it reads from the message: once per language attempt (zh, none, en). No place
+        // comes back, so it falls back to the climate template without asking for a forecast.
+        nock(GEOCODE_ORIGIN)
+          .get('/v1/search')
+          .query((q) => q.name === '新加坡的旅行计划给护肤建议')
+          .times(3)
+          .reply(200, { generationtime_ms: 0.1 });
+
         await supertest(app)
           .post('/v1/chat')
           .set(headers)
@@ -311,6 +328,7 @@ test('/v1/chat: travel pipeline userLocale falls back to X-Lang when Accept-Lang
 
         assert.equal(capturedLocale, 'CN');
       } finally {
+        nock.cleanAll();
         contracts.runTravelPipeline = originalRunTravelPipeline;
         delete require.cache[routesModuleId];
         delete require.cache[contractsModuleId];

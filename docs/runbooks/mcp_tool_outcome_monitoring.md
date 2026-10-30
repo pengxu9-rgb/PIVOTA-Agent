@@ -23,10 +23,10 @@ written once per `tools/call`, on response `finish`, on every door:
 | `tier` | `public` · `first_party` (the configured service key) · `authenticated` (any other resolved caller) · `unauthenticated` (refused before a caller was resolved) |
 | `status` | HTTP status written (200 for every dispatched call) |
 | `latency_ms` | handler entry to response finish |
-| `outcome` | `ok` · `tool_error` (`result.isError`) · `rpc_error` (JSON-RPC `error`) · `internal_error` (the adapter threw, or a 5xx) · `refused` (4xx before dispatch: door off, body too large, rate limit, auth challenge) · `unknown` (should not occur) |
+| `outcome` | `ok` · `tool_error` (`result.isError`) · `rpc_error` (JSON-RPC `error`) · `internal_error` (the adapter threw, or a 5xx) · `refused` (4xx before dispatch: door off, body too large, rate limit, auth challenge, a caller-limit rate or concurrency 429) · `shed` (a caller-limit 503 before dispatch, see [Shed 503s](#shed-503s)) · `unknown` (should not occur) |
 | `is_error` | `outcome !== "ok"` |
-| `error_class` | `server`: a fault on our side. That is a retriable taxonomy code (for example `MERCHANT_UNAVAILABLE`), `UNEXPECTED_ERROR` from an uncurated exception, an internal error, `JSONRPC_INTERNAL_ERROR`, or a 5xx. `client`: the call will not succeed as sent. That is `UNKNOWN_TOOL`, `INVALID_ARGUMENTS`, `UNKNOWN_PRODUCT_ID`, `USER_AUTH_REQUIRED`, `OPERATION_NOT_ALLOWED`, any other non-retriable code, a protocol error, or a refusal. `null` when the call is ok |
-| `error_code` | the code the caller saw: the tool code (`UNKNOWN_TOOL`, `MERCHANT_UNAVAILABLE`, `OPERATION_NOT_ALLOWED`, ...), `JSONRPC_<NAME>` (`JSONRPC_INVALID_PARAMS`, ...), `INTERNAL_ERROR`, or `HTTP_<status>` for a refusal. `null` when ok |
+| `error_class` | `server`: a fault on our side. That is a retriable taxonomy code (for example `MERCHANT_UNAVAILABLE`), `UNEXPECTED_ERROR` from an uncurated exception, an internal error, `JSONRPC_INTERNAL_ERROR`, or a 5xx. `client`: the call will not succeed as sent. That is `UNKNOWN_TOOL`, `INVALID_ARGUMENTS`, `UNKNOWN_PRODUCT_ID`, `USER_AUTH_REQUIRED`, `OPERATION_NOT_ALLOWED`, any other non-retriable code, a protocol error, or a refusal. `capacity`: the caller limits shed the call (`outcome="shed"`); the limits working under load, not a fault. `null` when the call is ok |
+| `error_code` | the code the caller saw: the tool code (`UNKNOWN_TOOL`, `MERCHANT_UNAVAILABLE`, `OPERATION_NOT_ALLOWED`, ...), `JSONRPC_<NAME>` (`JSONRPC_INVALID_PARAMS`, ...), `INTERNAL_ERROR`, `HTTP_<status>` for a refusal, or `MCP_CALLER_SHED` for a shed call. `null` when ok |
 | `result_count` | rows in the result the caller received, after the public tier's sourcing and chain filters. Present only for list results (search, offers, alternatives); absent on errors |
 | `cache_hit` | `true` · `false` · `"stale"` (served stale, refresh started). Present only when a result cache was consulted (search) |
 | `lane`, `lane_source` | the search envelope's `metadata.primary_lane` / `metadata.query_source`, short tokens only. A cache hit reports the lane that produced the cached answer |
@@ -43,6 +43,31 @@ A search can answer `status:"failed"` with rows attached. That logs `outcome="ok
 
 Nothing in the line comes from the tool arguments. String fields are short tokens checked against a strict
 pattern, so a query or a product title cannot reach the log.
+
+### Shed 503s
+
+A caller-limit 503 (`outcome="shed"`, `error_class="capacity"`, `error_code="MCP_CALLER_SHED"`) is one of three
+refusals in `src/guardrails/mcpCallerLimits.js` (`firstViolation`), all written before dispatch:
+
+| reason (on the `mcp caller limit` line) | when |
+|---|---|
+| `shed` | the database pool has at least the configured number of waiters. Anonymous callers shed at their threshold; every other limited caller, unregistered OAuth clients included, at the partner threshold |
+| `tier_concurrency` | a tier's in-flight cap on this instance is full |
+| `tier_rate` | a tier's requests per minute are spent |
+
+A tier is the anonymous tier or the **unregistered-OAuth-client tier**: an OAuth client with no override of its
+own shares one tier budget (`policyFor`). Its 503s are shedding like the anonymous tier's; its line carries
+`tier="partner"` and `oauth_unregistered=true`.
+
+The tier rate is a shared count across instances. While the shared counter store is down, its snapshot is
+stale, or a key has not been synced yet, the limit is cut to this instance's share (limit /
+`MCP_CALLER_LIMITS_EXPECTED_INSTANCES`, `effectiveLimit`). So **the per-instance fallback** can raise
+`tier_rate` 503s on its own, with no load change: the line says `limit_split=true` and the store alert
+(`monitoring/alerts/mcp_caller_limits/`) should be firing too. The same fallback also tightens the per-caller
+rate and concurrency limits, whose 429s stay `refused` / `client`.
+
+Shedding is alerted on by `monitoring/alerts/mcp_caller_limits/shed_alert_policy.yaml`, not by the tool
+error-rate alert below.
 
 ## Metrics and alerts
 
@@ -66,11 +91,24 @@ Every `mcp_*` metric applies three filters:
 - only lines that carry `outcome`, so lines from before this change are ignored;
 - not `tier="first_party"`, so CI and probe traffic on Pivota's own service key cannot move a ratio.
 
+`mcp_tool_calls`, `mcp_tool_call_latency` and `mcp_tool_call_server_errors` also exclude `outcome="shed"`. A
+shed call never reached a tool: counting it as a server error would page on the limits doing their job, and
+counting its instant refusal as an answered call would dilute the error ratio and the latency exactly while the
+database is struggling. Shedding is counted by `mcp_caller_limit_decisions` (`monitoring/alerts/mcp_caller_limits/`).
+If these metrics were created before that exclusion, update them in place:
+
+```sh
+D=infra/gcp/monitoring/mcp_tool_outcomes
+for m in mcp_tool_calls mcp_tool_call_server_errors mcp_tool_call_latency; do
+  gcloud logging metrics update "$m" --project="$PROJECT" --config-from-file="$D/metric.$m.yaml"
+done
+```
+
 Anonymous probes of the public tier cannot be told apart from real callers and are still counted.
 
 | alert | condition | why |
 |---|---|---|
-| `alert.mcp_tool_error_rate` | per tool, server-class errors / answered calls > 2% over 30m, for 10m, with at least 15 server errors and 50 calls | the only signal that sees a failing tool. Caller and policy errors and refusals are excluded, so a caller sending bad ids or a rate-limit flood cannot page as an outage |
+| `alert.mcp_tool_error_rate` | per tool, server-class errors / answered calls > 2% over 30m, for 10m, with at least 15 server errors and 50 calls | the only signal that sees a failing tool. Caller and policy errors, refusals and shed calls are excluded, so a caller sending bad ids, a rate-limit flood or the caller limits shedding load cannot page as an outage |
 | `alert.mcp_search_zero_result_rate` | `search_catalog` zero-result answers / answers > 40% over 30m, for 10m, with at least 50 answers | a lane or filter regression shows up as empty pages, not errors |
 | `alert.mcp_search_degraded_rate` | `search_catalog` answers whose envelope said it degraded / answers > 10% over 30m, for 10m, with at least 10 degraded | the public tier turns a `status:"failed"` envelope into an empty page logged `outcome=ok`. Without this, a degrading lane is visible to neither of the alerts above. 10% is a starting threshold |
 | `alert.mcp_tool_latency_p95` | per tool p95 > 15s for 10m | a starting threshold below the edge's first-byte deadline. Tune it per tool after a week of data |

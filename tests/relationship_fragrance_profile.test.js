@@ -250,8 +250,10 @@ describe('the reviewer validator applies the fragrance rule to approvals', () =>
     const sage = product('Henry Rose', "Jake's House Eau de Parfum", 'fragrance', { description: 'rosemary and clary sage' });
     const roseJasmine = product('Maison X', 'Rose Jasmin Eau de Parfum', 'fragrance', { description: 'rose and jasmine' });
     const e = edge(sage, roseJasmine);
+    // The anchor's only "rose" is inside "rosemary" and in the brand. Since validator v3 (2026-10-20)
+    // grounding is whole-word and never reads the brand, so the quote is refused before the scent rule.
     expect(validateRecommendationDecision(e, approval([{ anchor_fact: 'rose', candidate_fact: 'rose and jasmine' }])).utility_rejection)
-      .toBe('fragrance_scent_profile_unmatched');
+      .toBe('recommendation_facts_not_supplied');
     expect(validateRecommendationDecision(e, approval([{ anchor_fact: 'Henry Rose', candidate_fact: 'rose and jasmine' }])).verdict).toBe('reject');
   });
   test('a quote that is not in the product text is still refused by grounding first', () => {

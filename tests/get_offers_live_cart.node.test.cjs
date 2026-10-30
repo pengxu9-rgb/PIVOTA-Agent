@@ -786,3 +786,52 @@ test('GOLDEN end to end (on): the real reader verifies the flagged offer, signs 
   assert.equal(logs[0].cart_minted, 1);
   assert.deepEqual(logs[0].backend, { received: 1, accepted: 1, rejected: 0 });
 });
+
+// ------------------------------------------------------------- the shared verified-price cache (PR-3)
+
+test('on: a minted cart is recorded in the shared price cache as merchant_cart at the asserted price; shadow, no cart, or no cache: nothing', async () => {
+  const recorded = [];
+  const priceCache = { recordVerifiedPrice: (e) => { recorded.push(e); return true; } };
+  const { run } = getOffers([flaggedOffer(), freshOffer()], { mode: 'on', priceCache });
+  const first = (await realReader()([flaggedOffer()], { market: 'US', currency: 'USD' })).offers[0];
+  await run();
+  assert.equal(recorded.length, 1);
+  const { read_at: readAt, ...rest } = recorded[0];
+  assert.deepEqual(rest, {
+    host: RB, market: 'US', variant_id: BLISS, currency: 'USD', amount: 25, available: true,
+    handle: 'soft-pinch-liquid-blush', source: 'merchant_cart', writer: 'cart',
+  });
+  assert.equal(typeof readAt, 'string', 'dated when the merchant answered (the live read), not when the cart came back');
+  assert.equal(Date.parse(readAt) <= Date.now(), true);
+  assert.equal(first.live_read.status, 'verified');
+
+  recorded.length = 0;
+  const shadow = getOffers([flaggedOffer()], { mode: 'shadow', priceCache });
+  await shadow.run();
+  await settle();
+  assert.deepEqual(recorded, [], 'shadow serves no cart: nothing recorded');
+
+  const gated = (o, c) => ({ ...mintedOffer(o, c), execution_spec: { merchant_domain: RB, variant_id: null, cart_url: null } });
+  const noCart = getOffers([flaggedOffer()], { mode: 'on', priceCache, backend: { mint: gated } });
+  await noCart.run();
+  assert.deepEqual(recorded, [], 'accepted but no cart minted: not a merchant_cart answer');
+
+  const throwing = getOffers([flaggedOffer()], { mode: 'on', priceCache: { recordVerifiedPrice: () => { throw new Error('boom'); } } });
+  const res = await throwing.run();
+  assert.equal(res.best_offer.value.affiliate_url, 'https://api.pivota.cc/r?token=minted', 'a failing record never costs the cart');
+});
+
+test('on: the cart writer goes through the real cache\'s currency rule (a cart in the market currency, a declared market)', async () => {
+  const pc = require('../src/services/priceCache');
+  const { createFirestorePriceCacheStore } = require('../src/services/priceCacheStore');
+  const { createFakeFirestore } = require('./_support/fakeFirestore.cjs');
+  const fake = createFakeFirestore();
+  const store = createFirestorePriceCacheStore({ client: fake.db, flushMs: 60000 });
+  const cache = pc.createPriceCache({ store });
+  const { run } = getOffers([flaggedOffer()], { mode: 'on', priceCache: { recordVerifiedPrice: (e) => cache.recordVerifiedPrice(e) } });
+  await run();
+  await store.flush();
+  const docs = [...fake.docs.values()];
+  assert.equal(docs.length, 1);
+  assert.deepEqual([docs[0].host, docs[0].market, docs[0].variant_id, docs[0].amount, docs[0].source, docs[0].writer], ['rarebeauty.com', 'US', BLISS, '25.00', 'merchant_cart', 'cart']);
+});
