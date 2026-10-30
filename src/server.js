@@ -1038,10 +1038,11 @@ const INVOKE_MARKET_CONTEXT = new AsyncLocalStorage();
 // once at the top of handleInvokeRequest and read by inferBeautyMainlineIntent, so every beauty
 // lane that infers intent from the query also sees what the rest of the request said.
 const INVOKE_RETINOID_SAFETY_CONTEXT = new AsyncLocalStorage();
-// The invoke operations whose beauty lanes and response net read the retinoid safety context. Every
-// other operation never runs the context reader (find_products, the single-merchant search, never
-// reaches the beauty gate: it is on the follow-up list of operations the gate does not cover yet).
-const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi']);
+// The invoke operations whose responses the retinoid safety net filters, and so the only ones that
+// run the retinoid safety context reader: the multi-merchant search (whose beauty lanes also read
+// the context), the single-merchant search and the discovery feed (neither reaches the beauty gate;
+// the net is their only retinoid rule). Every other operation never runs the reader.
+const RETINOID_SAFETY_CONTEXT_OPERATIONS = new Set(['find_products_multi', 'find_products', 'get_discovery_feed']);
 
 // Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
 // scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum
@@ -20445,6 +20446,18 @@ const BEAUTY_PRODUCT_RAW_SAFETY_FIELDS = [
   'ingredients_inci', 'active_ingredients', 'key_ingredients', 'raw_ingredient_text_clean', 'pdp_ingredients_raw',
   'pdp_active_ingredients_raw', 'pdp_description_raw', 'inci_normalized',
 ];
+function beautyProductRawSafetySources(product) {
+  const sources = [product];
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : null;
+  if (seedData) {
+    sources.push(seedData);
+    if (seedData.snapshot && typeof seedData.snapshot === 'object') sources.push(seedData.snapshot);
+  }
+  for (const holder of [product, seedData]) {
+    if (holder && holder.ingredient_intel && typeof holder.ingredient_intel === 'object') sources.push(holder.ingredient_intel);
+  }
+  return sources;
+}
 function buildBeautyProductRawSafetyText(product) {
   const parts = [];
   const append = (value, depth = 0) => {
@@ -20461,19 +20474,66 @@ function buildBeautyProductRawSafetyText(product) {
       for (const key of ['name', 'title', 'inci', 'ingredient', 'label']) append(value[key], depth + 1);
     }
   };
-  const sources = [product];
-  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : null;
-  if (seedData) {
-    sources.push(seedData);
-    if (seedData.snapshot && typeof seedData.snapshot === 'object') sources.push(seedData.snapshot);
-  }
-  for (const holder of [product, seedData]) {
-    if (holder && holder.ingredient_intel && typeof holder.ingredient_intel === 'object') sources.push(holder.ingredient_intel);
-  }
-  for (const source of sources) {
+  for (const source of beautyProductRawSafetySources(product)) {
     for (const field of BEAUTY_PRODUCT_RAW_SAFETY_FIELDS) append(source[field]);
   }
   return parts.join(' \n ').normalize('NFKC');
+}
+
+// A second, wider reading of the same product, read AS WELL AS the one above and never instead of it
+// (beautyProductIsRetinoidForSafety counts a product when either reading names a retinoid): brand,
+// tags, highlights, attributes, variants, actives and URLs too, every value of an object, and HTML
+// tags taken out (inline tags can split a word: "re<span>tinol</span>"). Only real tags are removed,
+// so prose like "pH <5.5 ... aged >25" keeps its words; the reading above keeps them in any case.
+const BEAUTY_PRODUCT_WIDE_RAW_SAFETY_FIELDS = [
+  'title', 'name', 'product_name', 'display_name', 'brand', 'vendor', 'product_type', 'category', 'description',
+  'short_description', 'body_html', 'pdp_description_raw', 'highlights', 'benefits', 'claims', 'tags', 'attributes',
+  'variants', 'options', 'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients',
+  'actives', 'key_ingredients', 'ingredient_tokens', 'raw_ingredient_text_clean', 'pdp_ingredients_raw',
+  'pdp_active_ingredients_raw', 'external_url', 'canonical_url', 'destination_url',
+];
+const BEAUTY_PRODUCT_INLINE_TAG_RE = /<\/?(?:span|b|i|em|strong|u|small|sup|sub|font|a|mark)\b[^<>]*>/gi;
+// The tag name runs to a space, "/" or ">" before the attributes, so a long run of letters with no
+// ">" is scanned once, not once per letter. Comments are removed by stripHtmlComments (linear).
+const BEAUTY_PRODUCT_BLOCK_TAG_RE = /<\/?[a-z][a-z0-9-]*(?=[\s/>])[^<>]*>/gi;
+// Each "<!--" to its "-->" becomes a space, in one pass; an unterminated "<!--" and what follows it are
+// left as they are.
+function stripHtmlComments(text) {
+  let out = '';
+  let from = 0;
+  for (;;) {
+    const open = text.indexOf('<!--', from);
+    if (open === -1) break;
+    const close = text.indexOf('-->', open + 4);
+    if (close === -1) break;
+    out += `${text.slice(from, open)} `;
+    from = close + 3;
+  }
+  return from === 0 ? text : out + text.slice(from);
+}
+function buildBeautyProductWideRawSafetyText(product) {
+  const parts = [];
+  const append = (value, depth = 0) => {
+    if (depth > 3 || parts.length > 400 || value == null) return;
+    if (typeof value === 'string') {
+      if (value.trim()) parts.push(value.length > 20000 ? value.slice(0, 20000) : value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 100)) append(item, depth + 1);
+      return;
+    }
+    if (typeof value === 'object') {
+      for (const item of Object.values(value).slice(0, 100)) append(item, depth + 1);
+    }
+  };
+  for (const source of beautyProductRawSafetySources(product)) {
+    for (const field of BEAUTY_PRODUCT_WIDE_RAW_SAFETY_FIELDS) append(source[field]);
+  }
+  return stripHtmlComments(parts.join(' \n '))
+    .replace(BEAUTY_PRODUCT_INLINE_TAG_RE, '')
+    .replace(BEAUTY_PRODUCT_BLOCK_TAG_RE, ' ')
+    .normalize('NFKC');
 }
 
 // Korean and Russian retinoid names, matched on the raw text: Korean as written, with or without
@@ -20585,7 +20645,7 @@ const BEAUTY_RETINOID_TOPICAL_USE_RE = /\b(?:apply|applied|applying|topical|topi
 const BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE =
   /(?<!\b(?:no|non|not|without|zero|free\s+of|free\s+from)\s|\b0%\s)\b(?:benzoyl\s+peroxide|bpo|salicylic(?:\s+acid)?)\b(?!\s+(?:acid\s+)?free\b)/;
 const BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE = /\b(?:cleansers?|cleansing|wash|moisturi[sz]ers?|spf|sunscreens?)\b/;
-function beautyRetinoidProductReading(product) {
+function beautyRetinoidProductReading(product, rawText = buildBeautyProductRawSafetyText(product)) {
   const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
   const fields = (keys) =>
     [product, seedData]
@@ -20615,7 +20675,7 @@ function beautyRetinoidProductReading(product) {
   const brandText = beautyRetinoidLatinView(
     beautyRetinoidTextWithoutBrandAccessories(
       [
-        buildBeautyProductRawSafetyText(product).toLowerCase(),
+        String(rawText).toLowerCase(),
         fields(['brand', 'vendor', 'display_name', 'product_type', 'category', 'external_domain', 'canonical_url', 'destination_url', 'external_url']),
       ].join(' \n '),
     ),
@@ -20676,8 +20736,25 @@ function beautyRetinoidFreeClaimReading(text, options) {
 
 function beautyProductRetinoidMentionIsStandInOnly(product) {
   if (!product || typeof product !== 'object') return false;
+  // Exempt only when both readings agree: the joined reading over the original fields, and a reading
+  // that strips stand-in phrases inside each field's own text before joining, over those fields plus
+  // `actives`. Joined text lets a stand-in phrase span two fields ("... 0%" then "Retinol 0.1%") and
+  // strip a real retinoid name from the next one; the per-field reading never does.
+  return (
+    beautyProductRetinoidStandInReading(product, BEAUTY_RETINOID_STAND_IN_STRUCTURED_FIELDS, false) &&
+    beautyProductRetinoidStandInReading(product, [...BEAUTY_RETINOID_STAND_IN_STRUCTURED_FIELDS, 'actives'], true)
+  );
+}
+const BEAUTY_RETINOID_STAND_IN_STRUCTURED_FIELDS = [
+  'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients', 'key_ingredients',
+  'raw_ingredient_text_clean', 'pdp_ingredients_raw', 'pdp_active_ingredients_raw', 'ingredient_tokens',
+];
+function beautyProductRetinoidStandInReading(product, structuredFields, perField) {
   const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
   const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
+  const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
+  // { raw, stripped }: the fields' text joined, and the same with stand-in phrases removed (from the
+  // joined text, or from each field's text before the join)
   const pick = (holders, fields) => {
     const parts = [];
     const add = (value) => {
@@ -20686,20 +20763,18 @@ function beautyProductRetinoidMentionIsStandInOnly(product) {
       else if (value && typeof value === 'object') ['name', 'title', 'inci', 'ingredient', 'label'].forEach((k) => add(value[k]));
     };
     for (const holder of holders) for (const field of fields) add(holder[field]);
-    return parts.join(' \n ').normalize('NFKC').toLowerCase();
+    const norm = (text) => text.normalize('NFKC').toLowerCase();
+    const raw = norm(parts.join(' \n '));
+    return { raw, stripped: perField ? parts.map((part) => strip(norm(part))).join(' \n ') : strip(raw) };
   };
   const intelHolders = [product.ingredient_intel, seedData.ingredient_intel].filter((v) => v && typeof v === 'object');
   const title = pick([product, seedData, snapshot], ['title', 'name', 'product_name', 'display_name']);
   const description = pick([product, seedData, snapshot], ['description', 'pdp_description_raw']);
-  const structured = pick([product, seedData, snapshot, ...intelHolders], [
-    'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients', 'key_ingredients',
-    'raw_ingredient_text_clean', 'pdp_ingredients_raw', 'pdp_active_ingredients_raw', 'ingredient_tokens',
-  ]);
-  const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
+  const structured = pick([product, seedData, snapshot, ...intelHolders], structuredFields);
   // The title must carry a stand-in phrase, and nothing anywhere may name a retinoid outside one.
-  if (strip(title) === title) return false;
+  if (title.stripped === title.raw) return false;
   const options = beautyRetinoidProductReading(product);
-  return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(strip(text), options));
+  return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(text.stripped, options));
 }
 
 // A product the retinoid safety rules must keep out: it names a retinoid and does not say it is
@@ -20708,12 +20783,19 @@ function beautyProductRetinoidMentionIsStandInOnly(product) {
 // requests use it, so it never changes a request without a signal.
 function beautyProductIsRetinoidForSafety(product) {
   if (!product || typeof product !== 'object') return false;
+  // Two readings of the product's own text; it is a retinoid when either says so, so the wider one
+  // can only add products, never release one the first reading keeps out.
+  return (
+    beautyProductIsRetinoidForSafetyOn(product, buildBeautyProductRawSafetyText(product)) ||
+    beautyProductIsRetinoidForSafetyOn(product, buildBeautyProductWideRawSafetyText(product))
+  );
+}
+function beautyProductIsRetinoidForSafetyOn(product, rawText) {
   const text = buildFallbackCandidateText(product);
   const safetyText = buildBeautyProductSafetyText(product, text);
-  const rawText = buildBeautyProductRawSafetyText(product);
   const scriptText = [text, safetyText, rawText].join(' ');
   if (!scriptText.trim()) return false;
-  const options = beautyRetinoidProductReading(product);
+  const options = beautyRetinoidProductReading(product, rawText);
   const hit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|hpr|granactive\s+retinoid)\b/i.test(scriptText) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/i.test(scriptText) ||
@@ -20776,11 +20858,20 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
   let next = walk(body, 0);
   if (removed === 0) return body;
   // What is left that still points at a removed product: an id in a plain id list (next_actions'
-  // product_ids), and the generated prose (reply, assistant_text, assistant_message.content ...)
-  // that names one. The prose was written for the list before the net; it is cleared, not rewritten.
+  // product_ids), a card or reference object carrying its product_id (or its id, with a name) anywhere
+  // in the body (a bundle's pick cards), and the generated prose (reply, assistant_text,
+  // assistant_message.content ...) that names one. The prose was written for the list before the
+  // net; it is cleared, not rewritten. A card is judged by the product it points at, never by its
+  // own text, which can be just a name.
   let proseCleared = 0;
+  let referencesRemoved = 0;
+  const pointsAtRemoved = (item) =>
+    item && typeof item === 'object' && !Array.isArray(item) &&
+    ((item.product_id != null && removedIds.has(String(item.product_id))) ||
+      (item.sku_id != null && removedIds.has(String(item.sku_id))) ||
+      (item.id != null && removedIds.has(String(item.id)) && (item.title != null || item.name != null || item.product_name != null)));
   const scrub = (value, key, depth) => {
-    if (depth > 8 || value == null) return value;
+    if (depth > 10 || value == null) return value;
     if (typeof value === 'string') {
       if (!RETINOID_SAFETY_NET_PROSE_KEYS.has(key)) return value;
       const lowered = value.toLowerCase();
@@ -20794,11 +20885,25 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
     }
     if (typeof value !== 'object') return value;
     if (Array.isArray(value)) {
-      const kept = value.filter((item) => !((typeof item === 'string' || typeof item === 'number') && removedIds.has(String(item))));
+      const kept = value.filter((item) => {
+        if ((typeof item === 'string' || typeof item === 'number') && removedIds.has(String(item))) return false;
+        if (pointsAtRemoved(item)) {
+          referencesRemoved += 1;
+          return false;
+        }
+        return true;
+      });
       return kept.map((item) => scrub(item, key, depth + 1));
     }
     const out = {};
-    for (const [k, child] of Object.entries(value)) out[k] = scrub(child, k, depth + 1);
+    for (const [k, child] of Object.entries(value)) {
+      if (pointsAtRemoved(child)) {
+        referencesRemoved += 1;
+        out[k] = null;
+      } else {
+        out[k] = scrub(child, k, depth + 1);
+      }
+    }
     return out;
   };
   next = scrub(next, '', 0);
@@ -20807,7 +20912,11 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
   }
   next.metadata = {
     ...(next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata) ? next.metadata : {}),
-    retinoid_safety_net: { removed_count: removed, classes: classes.slice(), ...(proseCleared ? { prose_cleared: proseCleared } : {}) },
+    retinoid_safety_net: {
+      removed_count: removed, classes: classes.slice(),
+      ...(proseCleared ? { prose_cleared: proseCleared } : {}),
+      ...(referencesRemoved ? { references_removed: referencesRemoved } : {}),
+    },
   };
   return next;
 }
@@ -42900,7 +43009,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     // Retinoid safety net: the last line of the retinoid safety rules (see
     // applyRetinoidSafetyNetForInvokeResponse). It fails closed on its own.
-    if (String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase() === 'find_products_multi') {
+    const bodyBeforeRetinoidNet = finalBody;
+    if (RETINOID_SAFETY_CONTEXT_OPERATIONS.has(String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase())) {
       const payloadBody =
         req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
           ? req.body.payload
@@ -42934,7 +43044,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const debugBundle = buildSearchDebugBundle({
             requestId: gatewayRequestId,
             req,
-            responseBody: body,
+            // What was served: when the retinoid safety net removed products, the bundle describes
+            // the body after it, so it never lists a removed product. Otherwise as before.
+            responseBody: finalBody !== bodyBeforeRetinoidNet ? finalBody : body,
             context: debugRuntime,
           });
           if (debugBundle) {
