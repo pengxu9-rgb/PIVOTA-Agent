@@ -1,0 +1,989 @@
+{
+ "_source": "pivota-backend services/index_pipeline_state_service.py (#2664); regenerate with scripts/dev/gen-non-product-listing-parity.py",
+ "rows": [
+  {
+   "titles": [
+    "Heart To Tarte Donation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Donate To The Clara Lionel Foundation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Add-on Donation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Round Up Donation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "GIFT VOUCHER"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Shipping Protection by Route"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "SavedBy Package Protection"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Green Package Protection"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Delivery Guarantee"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gift Certificate"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "$50 E-Voucher"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Route Insurance"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Order Protection"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Shipping Insurance"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Tip"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Add a Tip"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Tips"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gratuity"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Booking Deposit"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Pre-Order Deposit"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Deposit"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Deposit for Custom Order"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Deposit - $50"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Deposit: Custom Order"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Deposit - For Bridal Makeup"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Store Credit"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Tip Jar"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "$25 Gift Card"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gift Card"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Pixi E-Gift Card 25"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Pro Filt'r Soft Matte Longwear Foundation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Liquid Foundation Brush"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Q-Tip Precision Tips Swabs"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Fingertip Blending Sponge"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lip Tip Liquid Lipstick"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Tip Top Nail Polish"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Colour Deposit Mask"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Color Depositing Conditioner"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lipstick (10% of Proceeds Donated to Charity)"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Charity Pot Body Lotion"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Holiday Gift Set"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Route 66 Eau de Parfum"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Buy One, Donate One Lip Balm"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Deposit Only Hair Color"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Deposit-Only Color Gloss"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Deposit (Color Mask) Red"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lip Gloss + $1 Donation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Pink Lip Balm (Donation Edition)"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Ocean Donation Edition Sunscreen"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gift Card Holder Pouch"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gift Cards Holders Set"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gift Cardigan Scent Candle"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Rose Voucher Balm"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Store Creditcard Holder"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Tipé"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "éTip"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Donation édition"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Café Tip"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "— Tip —"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Tip "
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Donationé"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "éDonation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Deposit - ٥"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Lip Gloss + ١ Donation"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Donateé Serum"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Deposit foré"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Deluxe Sample Lip Oil"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": true,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Enamel Stickers Set"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": true,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Floral Eau De Parfum Sample Vials"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": true,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Free Gift With Purchase Pouch"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": true,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Serum Packette"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": true,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Donation",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Gift Card",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "gift_card",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Gift Cards",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "e-gift card",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Insurance",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "  Gift Card  ",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Gift Set",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Gifts",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "makeup",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Beauty Product",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Tools",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Tips",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "tip",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Gel-X Sculpted Almond"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "Deposit",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Lip Balm"
+   ],
+   "url": "https://example.com/collections/donations/products/lip-balm",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lip Balm"
+   ],
+   "url": "https://example.com/collections/order-protection/products/lip-balm",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lip Balm"
+   ],
+   "url": "https://example.com/products/gift-voucher-lip-balm",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lip Balm"
+   ],
+   "url": "https://example.com/products/gift-card",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Lip Balm"
+   ],
+   "url": "https://example.com/products/shippingprotection",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Lip Balm"
+   ],
+   "url": "https://example.com/products/gift-card-holder",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lip Balm"
+   ],
+   "url": "https://example.com/donate",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Lip Gloss",
+    "Lip Gloss"
+   ],
+   "url": "https://example.com/donate",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Brush",
+    "Tip"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": true,
+   "graph_keeps": false,
+   "expected": true
+  },
+  {
+   "titles": [
+    "Glow Serum",
+    "Shipping"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  },
+  {
+   "titles": [
+    "Order",
+    "Protection Serum"
+   ],
+   "url": "https://example.com/products/listing",
+   "product_type": "",
+   "backend": false,
+   "graph_keeps": false,
+   "expected": false
+  }
+ ]
+}

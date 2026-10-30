@@ -10,7 +10,7 @@ const {
   readApprovedRelationshipEdgesForAnchorUncollapsed,
   upsertRelationshipCandidateLabel,
 } = require('../../src/auroraBff/productRelationshipGraph');
-const { fetchCandidates } = require('../../scripts/review-relationship-candidate-labels');
+const { fetchCandidates, selectReviewCandidates } = require('../../scripts/review-relationship-candidate-labels');
 const {
   catalogGateKeys,
   catalogGateKeysSql,
@@ -122,16 +122,20 @@ suite('relationship graph obeys the catalog serving gate, on PostgreSQL', () => 
     return written;
   }
   const keyOf = (ref) => ref.replace(/^product:ext_/, '');
-  const review = async () => (await fetchCandidates({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 100, queryFn }))
-    .map((row) => keyOf(row.candidate_product_ref)).sort();
+  // The review queue: fetchCandidates' page, gated per page by selectReviewCandidates.
+  const select = async (fetchOptions = {}, limit = 100) => selectReviewCandidates({ limit, queryFn,
+    fetchOptions: { cutoff: '2026-01-01T00:00:00Z', minScore: 0, ...fetchOptions }, supplementsFn: async () => new Map() });
+  const review = async (fetchOptions) => (await select(fetchOptions)).rows.map((row) => keyOf(row.candidate_product_ref)).sort();
 
   test('review: labels whose candidate fails the gate are skipped, both queue orders, and come back when it passes', async () => {
     await seedCohort();
     await writeGeneratedLabels();
     const passingCandidates = PASSING.filter((k) => k !== 'anchor').sort();
     expect(await review()).toEqual(passingCandidates);
-    const uncovered = await fetchCandidates({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 100, queryFn, uncoveredFirst: true });
-    expect(uncovered.map((row) => keyOf(row.candidate_product_ref)).sort()).toEqual(passingCandidates);
+    expect(await review({ uncoveredFirst: true })).toEqual(passingCandidates);
+    // The page itself is ungated (that predicate cost a five-arm lookup per generated label).
+    expect((await fetchCandidates({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 100, queryFn })).length)
+      .toBe(Object.keys(FAILING).length + passingCandidates.length);
     // Skipped, not moved: nothing was written to the skipped labels.
     const { rows } = await db.query(`SELECT count(*)::int AS n FROM relationship_candidate_labels WHERE label_state = 'generated'`);
     expect(rows[0].n).toBe(Object.keys(FAILING).length + passingCandidates.length);
@@ -152,8 +156,20 @@ suite('relationship graph obeys the catalog serving gate, on PostgreSQL', () => 
     await writeGeneratedLabels();
     // applyCanonicalAnchorRefs re-keys product_ref onto product:pg_<id> and keeps the snapshot's ids.
     await db.query(`UPDATE relationship_candidate_labels SET candidate_product_ref = 'product:pg_family_' || id`);
-    expect((await fetchCandidates({ cutoff: '2026-01-01T00:00:00Z', minScore: 0, limit: 100, queryFn })).length)
-      .toBe(PASSING.length - 1);
+    expect((await select()).rows.length).toBe(PASSING.length - 1);
+  });
+
+  test('review: failing labels do not take the batch; the next page fills it', async () => {
+    await seedCohort();
+    await writeGeneratedLabels();
+    const passingCandidates = PASSING.filter((k) => k !== 'anchor');
+    // Every failing label outranks every passing one, so the first pages hold nothing reviewable.
+    await db.query(`UPDATE relationship_candidate_labels SET score_total = CASE WHEN candidate_product_ref = ANY($1::text[])
+      THEN 0.99 ELSE 0.01 END`, [Object.keys(FAILING).map((k) => `product:ext_${k}`)]);
+    const selection = await select({}, passingCandidates.length);
+    expect(selection.rows.map((row) => keyOf(row.candidate_product_ref)).sort()).toEqual([...passingCandidates].sort());
+    expect(selection.catalogGateSkippedIds.length).toBe(Object.keys(FAILING).length);
+    expect(selection.truncated).toBe(false);
   });
 
   test('every resolution arm: sig, source id, product_key, seed external id, seed id', async () => {
