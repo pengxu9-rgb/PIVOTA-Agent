@@ -1,5 +1,7 @@
 'use strict';
 
+const retinoidFamily = require('./retinoidFamily');
+
 // Does a shopping request carry a reason to keep retinoids out of the answer?
 //
 // The beauty search gate (isBeautyProductContraindicatedForQuery in src/server.js) drops retinoid
@@ -47,9 +49,22 @@ function softTierEnabled(env = process.env) {
 
 // ---------------------------------------------------------------------------------------------
 // Retinoid names: used by the negation class and by ingredient constraints. Latin view / script view.
-const RETINOID_NAME_LATIN =
-  /\b(?:retinol\w*|retinal\w*|retinoid\w*|retinyl\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\s?a|vitamin\s?a|granactive|hydroxypinacolone|hpr|accutane|roaccutane)\b/;
-const RETINOID_NAME_SCRIPT = /视黄醇|視黃醇|维a|維a|a醇|维甲酸|維甲酸|レチノール|레티놀|레틴|ретинол|ретиноид|เรตินอล/;
+// Built from the shared family list (src/services/retinoidFamily.js): its names plus the wider stems the
+// request side reads. A family name of several words is read whole where what follows it decides
+// ("retinyl palmitate free" is a negation of the ester).
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// A request naming a prescription brand means the retinoid, so the brands are names here.
+const RETINOID_FAMILY_LATIN_SOURCES = [
+  ...retinoidFamily.RETINOID_FAMILY_LATIN, ...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS, ...retinoidFamily.RETINOID_OTC_BRANDS,
+]
+  .map((name) => name.split(' ').map(escapeRegex).join('\\s'));
+const RETINOID_FAMILY_SCRIPT_SOURCES = retinoidFamily.RETINOID_FAMILY_SCRIPT.map(escapeRegex);
+const RETINOID_NAME_LATIN = new RegExp(
+  `\\b(?:${[...RETINOID_FAMILY_LATIN_SOURCES, ...retinoidFamily.RETINOID_SAFETY_LATIN_STEMS].join('|')})\\b`,
+);
+const RETINOID_NAME_SCRIPT = new RegExp(
+  [...RETINOID_FAMILY_SCRIPT_SOURCES, ...retinoidFamily.RETINOID_SAFETY_SCRIPT_STEMS.map(escapeRegex), ...retinoidFamily.RETINOID_FAMILY_RUSSIAN].join('|'),
+);
 
 // ---------------------------------------------------------------------------------------------
 // HARD tier lists.
@@ -112,14 +127,17 @@ const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 // "retinol free shipping", "retinol stopped working" all still ask for one.
 // Matched on the latin view, where apostrophes are dropped and punctuation is a space
 // ("retinol-free" is "retinol free", "don't" is "dont").
-const RETINOID_NAME_FOR_NEGATION =
-  '(?:retinol\\w*|retinal\\w*|retinoid\\w*|retinyl\\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|vit(?:amin)?\\s?a|granactive|hydroxypinacolone|hpr|differin|accutane)';
+const RETINOID_NAME_FOR_NEGATION = `(?:${[
+  ...RETINOID_FAMILY_LATIN_SOURCES,
+  'retinol\\w*', 'retinal\\w*', 'retinoid\\w*', 'retinyl\\w*', 'retinoic', 'retinoate', 'tretinoin', 'isotretinoin', 'adapalene',
+  'tazarotene', 'trifarotene', 'retin\\s?a', 'vit(?:amin)?\\s+a', 'granactive', 'hydroxypinacolone', 'hpr', 'differin', 'accutane',
+].join('|')})`;
 // Up to three filler words between the negation and the name: "no added retinol", "avoid any
 // retinoids", "nothing with retinol", "avoid using any more retinol". Four are not a negation of the
 // name: "what not to use with my retinol" asks how to pair it.
 const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,3}';
 const HARD_NEGATION_BEFORE_NAME_LATIN = [
-  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans',
+  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans', 'sem', 'senza',
   'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing', 'never', 'nope', 'no\\s+thanks',
   'stop(?:ped)?(?:\\s+using)?', 'quit(?:ting)?', 'no\\s+more', 'dont\\s+want', 'do\\s+not\\s+want', 'dont\\s+use',
   'do\\s+not\\s+use', 'cant\\s+use', 'cannot\\s+use', 'can\\s+not\\s+use', 'cant\\s+tolerate', 'cannot\\s+tolerate',
@@ -145,19 +163,22 @@ const RETINOID_PRODUCT_WORD = '(?:\\s+(?:serums?|creams?|products?|oils?|lotions
 //   - なし is "none" in レチノールなし, but part of はなし ("talk").
 const HARD_NEGATION_BEFORE_NAME_SCRIPT = [
   '不含', '无添加', '無添加', '无', '無', '没有', '沒有', '避开', '避開', '避免', '不要', '不加', '不用', '不想用', '不想要',
-  '不能用',
+  '不能用', 'ไม่มี', 'ปราศจาก', 'ไม่ใช้', 'ไม่เอา',
 ];
 const HARD_NEGATION_AFTER_NAME_SCRIPT = [
   'フリー', '不使用', '無添加', 'なし', '無し', 'が使えない', 'は使えない', '使えない', '없는', '없이', '무첨가',
   '프리(?!미엄)', '대체', '代替', '替代', '平替', '过敏', '過敏', '안 ?쓰', '못 ?쓰',
 ];
-const RETINOID_NAME_NEXT_TO_NEGATION =
-  '(?:视黄醇|視黃醇|维a醇|維a醇|a醇|维甲酸|維甲酸|レチノール|레티놀|레티날|레티노이드|레티닐 ?팔미테이트|retinol|retinal|retinoids?|tretinoin|adapalene)';
+const RETINOID_NAME_NEXT_TO_NEGATION = `(?:${[
+  ...RETINOID_FAMILY_SCRIPT_SOURCES,
+  '视黄醇', '視黃醇', '维a醇', '維a醇', 'a醇', '维甲酸', '維甲酸', 'レチノール', '레티놀', '레티날', '레티노이드', '레티닐 ?팔미테이트',
+  'retinol', 'retinal', 'retinoids?', 'tretinoin', 'adapalene',
+].join('|')})`;
 const SCRIPT_NEGATION_RES = [
   new RegExp(`(?:${HARD_NEGATION_BEFORE_NAME_SCRIPT.join('|')})\\s*${RETINOID_NAME_NEXT_TO_NEGATION}`),
   new RegExp(`${RETINOID_NAME_NEXT_TO_NEGATION}\\s*(?:${HARD_NEGATION_AFTER_NAME_SCRIPT.join('|')})`),
   // Russian: без / не содержит as a word of its own, before the name (ретинола, ретиноидов ...).
-  /(?<![а-яё])(?:без|не\s+содержит)\s+(?:[а-яё]+\s+)?ретин[а-яё]*/,
+  /(?<![а-яё])(?:без|не\s+содержит)\s+(?:[а-яё]+\s+)?(?:ретин|третиноин|адапален|трифаротен)[а-яё]*/,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -204,8 +225,14 @@ function scriptView(text) {
     .toLowerCase();
 }
 
+// A decimal percentage is read as its value before punctuation becomes a space, so "1.0%" is "1%",
+// never "1 0%" with a "0%" absence in it; "0.0%" and "0.00%" are "0%". Only a point is a decimal
+// mark here: "spf 30,0% retinol" may be a list, and a missed "no" is the costlier mistake.
+const DECIMAL_PERCENT_RE = /(?<![\d.])(\d+)\.(\d+)(?=\s?%)/g;
+
 function latinView(script) {
   return script
+    .replace(DECIMAL_PERCENT_RE, (m, whole, fraction) => String(Number(`${whole}.${fraction}`)))
     .replace(CONFUSABLE_RE, (ch) => CONFUSABLES[ch] || ch)
     .normalize('NFKD')
     .replace(/[\u0300-\u036F]/g, '')

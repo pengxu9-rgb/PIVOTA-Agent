@@ -36,6 +36,22 @@ test('a negation gates only when it binds to the retinoid term itself', () => {
   }
 });
 
+test('a decimal strength is a strength, never a "0%" absence', () => {
+  // "1.0%" once read as "1 0%", and its "0%" as a "no" to the retinoid after it.
+  for (const query of [
+    '1.0% retinol serum', '1.0% retinol', '10.0% retinol cream', '2.0 % retinol', '２.０％ retinol', '0.5% retinol',
+    'retinol serum 1.0%', 'retinol 1.0 % cream', 'retinal 0.10% serum',
+  ]) {
+    assert.ok(!classes(query).includes('retinoid_negation'), query);
+  }
+  // A zero is still an absence, however it is written.
+  for (const query of ['0% retinol', '0.0% retinol', '0.00% retinol', 'retinol 0%', 'retinol serum 0.0%', 'spf 30, 0% retinol']) {
+    assert.ok(classes(query).includes('retinoid_negation'), query);
+  }
+  // A comma is not read as a decimal mark: "30,0%" may be a list, so its "0%" still gates.
+  assert.ok(classes('spf 30,0% retinol').includes('retinoid_negation'));
+});
+
 
 test('a negation written only in another script gates when that text names a retinoid', () => {
   for (const query of ['不要视黄醇精华', '不含A醇的面霜', '避开视黄醇', 'レチノールフリー 美容液', 'レチノール不使用', '레티놀 없는 크림', 'без ретинола']) {
@@ -257,12 +273,19 @@ test('budgets: a huge or numerous context is never read in full, and gates inste
     const out = fn();
     return { out, ms: Number(process.hrtime.bigint() - t) / 1e6 };
   };
-  // one 5 MB message
-  let r = time(() => signal.retinoidSafetyClassesForRequestContext({ payload: { messages: [{ role: 'user', content: 'x'.repeat(5 * 1024 * 1024) }] } }));
+  // Only the reader is timed: the bodies are built before the clock starts (building 200k turns alone
+  // takes ~90 ms on a CI runner). Bounded, the reader stops at the first cap and takes well under 1 ms.
+  // A reader that reads the whole body before (or instead of) applying its caps pays at least one pass of
+  // the text views over it: ~80 ms for the 8 MB turn and seconds for the 200k turns on a laptop, more on
+  // a runner. 50 ms separates the two.
+  // one 8 MB message (the JSON body limit is 10 MB)
+  const bigTurn = { payload: { messages: [{ role: 'user', content: 'x'.repeat(8 * 1024 * 1024) }] } };
+  let r = time(() => signal.retinoidSafetyClassesForRequestContext(bigTurn));
   assert.deepEqual(r.out, over);
-  assert.ok(r.ms < 50, `5 MB message took ${r.ms} ms`);
+  assert.ok(r.ms < 50, `8 MB message took ${r.ms} ms`);
   // 200k short messages
-  r = time(() => signal.retinoidSafetyClassesForRequestContext({ payload: { messages: Array.from({ length: 200000 }, (_, i) => ({ role: 'user', content: `hi ${i}` })) } }));
+  const manyTurns = { payload: { messages: Array.from({ length: 200000 }, (_, i) => ({ role: 'user', content: `hi ${i}` })) } };
+  r = time(() => signal.retinoidSafetyClassesForRequestContext(manyTurns));
   assert.deepEqual(r.out, over);
   assert.ok(r.ms < 50, `200k messages took ${r.ms} ms`);
   // a signal past the turn cap still gates (overflow), it is not dropped
@@ -370,4 +393,43 @@ test('the classification cache never keeps a long text', () => {
   const keys = signal._internal.classifyCacheKeys();
   assert.ok(keys.every((k) => k.length <= 256), `longest cached key: ${Math.max(...keys.map((k) => k.length))}`);
   assert.ok(signal._internal.classifyCacheSize() <= 2000);
+});
+
+test('the shared retinoid family: an ester, an acid, a prescription name or a non-English name can be negated too', () => {
+  for (const text of [
+    'retinyl palmitate free', 'retinyl palmitate free moisturizer', 'no retinyl palmitate', 'retinoic acid free',
+    'retinoic acid free cream', 'vitamin a palmitate free', 'serum without vitamin a palmitate', 'differin free', 'tazorac free',
+    'rétinoïde free cream', '不含视黄醛', '无阿达帕林', 'レチナールフリー', 'トレチノインなし', '아다팔렌 없는', '트레티노인 프리',
+    'без третиноина', 'без адапалена',
+  ]) {
+    assert.deepEqual(classes(text), ['retinoid_negation'], text);
+  }
+  // still an ask, as on main
+  for (const text of ['retinyl palmitate serum', 'vitamin a palmitate cream', 'retinyl palmitate free shipping', 'retinoic acid cream']) {
+    assert.deepEqual(classes(text), [], text);
+  }
+  // an avoid list naming any family member
+  for (const name of ['vitamin A palmitate', 'Differin', 'Epiduo', 'Tazorac', '阿达帕林', 'レチナール', '트레티노인', 'адапален', 'Rétinoïde']) {
+    const out = signal.retinoidSafetyClassesForRequestContext({ payload: { constraints: { avoid_ingredients: [name] } } });
+    assert.ok(out.classes.includes('retinoid_negation'), name);
+  }
+});
+
+test('the shared retinoid family: Thai negations, and "vita" / "vitamina" are not vitamin A', () => {
+  for (const text of ['ไม่มีเรตินอล', 'ปราศจากเรตินอล', 'ไม่ใช้เรตินอล', 'no vitamin a', 'vit a free', 'differin free', 'sin vitamina a',
+    'no vitamina a', 'senza vitamina a', 'sem vitamina a', 'sans vitamine a', 'no vitamins a']) {
+    assert.deepEqual(classes(text), ['retinoid_negation'], text);
+  }
+  for (const text of ['vita coco free', 'sin vitamina c', 'no vitamina c serum', 'vitamina c serum']) {
+    assert.deepEqual(classes(text), [], text);
+  }
+  for (const name of ['Vita Coco', 'vitamina C']) {
+    const out = signal.retinoidSafetyClassesForRequestContext({ payload: { constraints: { avoid_ingredients: [name] } } });
+    assert.ok(!out.classes.includes('retinoid_negation'), name);
+  }
+  // a brand in a request still means the retinoid
+  for (const name of ['Accutane', 'Differin', 'Aklief']) {
+    const out = signal.retinoidSafetyClassesForRequestContext({ payload: { constraints: { avoid_ingredients: [name] } } });
+    assert.ok(out.classes.includes('retinoid_negation'), name);
+  }
 });

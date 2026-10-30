@@ -140,6 +140,14 @@ const CATALOG = [
   // rows with NO category path (as backend-lane rows often arrive): judged by their own title
   row('nopath_hair_oil', 'Bakuchiol Hair Oil', null, { actives: ['bakuchiol'], productType: 'Hair Oil' }),
   row('nopath_drops', 'Bakuchiol Booster Drops', null, { actives: ['bakuchiol'], productType: 'Booster' }),
+  // round 2: more of the retinoid family, and unfiled rows whose titles negate or name a category
+  row('vitamin_a', 'Vitamin A Serum', SERUM, { productType: 'Serum' }),
+  row('trifarotene', 'Trifarotene Cream', CREAM, { productType: 'Moisturizer' }),
+  row('retin_a', 'Retin-A 0.05% Cream', CREAM, { productType: 'Moisturizer' }),
+  row('zh_a_aldehyde', 'A醛精华', SERUM, { productType: 'Serum' }),
+  row('fr_retinoide', 'Rétinoïde Crème de Nuit', CREAM, { productType: 'Moisturizer' }),
+  row('nopath_shampoo_free', 'Shampoo-Free Bakuchiol Serum', null, { actives: ['bakuchiol'], productType: 'Serum' }),
+  row('nopath_ko_shampoo', '바쿠치올 데일리 샴푸', null, { actives: ['bakuchiol'], productType: '' }),
   row('brand_retinol', 'Night Retinol Cream', CREAM, { actives: ['retinol'], productType: 'Moisturizer', brand: 'CeraVe' }),
   row('brand_niacinamide', 'Hydrating Niacinamide Lotion', CREAM, { actives: ['niacinamide'], productType: 'Moisturizer', brand: 'CeraVe' }),
 ];
@@ -153,7 +161,8 @@ const REAL_VITAMIN_C = ['Vitamin C 15% Serum', 'Vitamin C+E Ferulic Serum', 'Nat
   'Vitamin C Free Radical Defense Serum', 'Витамины С и Е сыворотка'];
 // Retinoids that are not retinol by name: a retinol exclusion excludes them too.
 const RETINOID_FAMILY = ['Retinal 0.1% Night Serum', 'Granactive Retinoid 2% Emulsion', 'Adapalene Gel 0.1%',
-  'Retinyl Palmitate Night Cream', '레티날 크림', '레티놀 팔미테이트 크림', '视黄醇棕榈酸酯面霜'];
+  'Retinyl Palmitate Night Cream', '레티날 크림', '레티놀 팔미테이트 크림', '视黄醇棕榈酸酯面霜', 'Vitamin A Serum', 'Trifarotene Cream',
+  'Retin-A 0.05% Cream', 'A醛精华', 'Rétinoïde Crème de Nuit'];
 const SKINCARE_PATH = /^beauty\/skincare(\/|$)/;
 
 const OWNER = 'invoke.find_products_multi_search_routing';
@@ -228,6 +237,9 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
     delete process.env.FIND_PRODUCTS_BUYER_MARKET;
     for (const key of FLAG_KEYS) delete process.env[key];
+    // Pinned: the budget parser reads this flag on every call, and a shell that exports it must not
+    // change these lanes. Tests that care set it themselves.
+    delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
     // The backend text lane answers empty; it is only ever the lane a misrouted query falls to.
     nock('http://pivota.test')
       .persist()
@@ -455,16 +467,34 @@ describe('find_products_multi search routing: bare ingredients and non-English b
 
   test('on: decimals stay numbers -- "1.0%" asks for the ingredient and names it on a product', async () => {
     const { invoke } = boot(BOTH_ON);
-    // The query keeps its ingredient intent and is never read as "0% retinol". (Its rows are then emptied
-    // by the lane's budget filter, which reads the bare number "1.0" as a price cap -- the existing
-    // number-as-price behaviour, the same with the flags off; not part of these flags.)
-    for (const query of ['1.0% retinol serum', '2.0% salicylic acid', '10.0% niacinamide', '15.0% vitamin c']) {
-      const { resp, log } = await invoke(query);
-      expect([query, lane(resp)]).toEqual([query, LANES.INGREDIENT]);
-      expect([query, log.fpm_excluded_ingredient_dropped_count]).toEqual([query, undefined]);
-      expect([query, log.fpm_routing_query_negation]).toEqual([query, undefined]);
-      expect([query, resp.body.metadata.ingredient_direct_budget_filtered_out_count > 0]).toEqual([query, true]);
+    // The query keeps its ingredient intent and is never read as "0% retinol" -- and, since the budget
+    // parser masks strengths (#2485), "1.0" is not a price cap either: no lane drops a row on a budget,
+    // with SEARCH_BUDGET_REQUIRE_MARKER on or off. Before #2485 the unset flag capped all four at the
+    // strength (ingredient lane, 0 rows); with the marker on (prod) they already answered as below, and
+    // now both states answer the same. ("15.0% vitamin c" is a safe-empty contract answer in both
+    // states, before and after -- not a budget.)
+    const expected = {
+      '1.0% retinol serum': [LANES.INGREDIENT, true],
+      '2.0% salicylic acid': [LANES.MAINLINE, true],
+      '10.0% niacinamide': [LANES.MAINLINE, true],
+      '15.0% vitamin c': [LANES.SAFE_EMPTY, false],
+    };
+    for (const marker of ['1', undefined]) {
+      if (marker === undefined) delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
+      else process.env.SEARCH_BUDGET_REQUIRE_MARKER = marker;
+      for (const [query, [expectedLane, served]] of Object.entries(expected)) {
+        const { resp, log } = await invoke(query);
+        const label = [query, marker || 'unset'];
+        expect([label, lane(resp)]).toEqual([label, expectedLane]);
+        expect([label, titles(resp).length > 0]).toEqual([label, served]);
+        expect([label, log.fpm_excluded_ingredient_dropped_count]).toEqual([label, undefined]);
+        expect([label, log.fpm_routing_query_negation]).toEqual([label, undefined]);
+        const dropped = Object.entries(resp.body.metadata || {})
+          .filter(([key, value]) => /budget_filtered_out_count$/.test(key) && value !== 0);
+        expect([label, dropped]).toEqual([label, []]);
+      }
     }
+    delete process.env.SEARCH_BUDGET_REQUIRE_MARKER;
     for (const [query, forbidden] of [['retinol-free serum', '1.0% Retinol Night Serum'], ['niacinamide-free serum', '10.0% Niacinamide Booster'],
       ['salicylic acid free cleanser', '2.0% Salicylic Acid Cleanser']]) {
       expect([query, titles((await invoke(query)).resp)]).not.toContainEqual([query, forbidden]);
@@ -854,8 +884,15 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   });
 
   // Follow-up item 1: no response a routing flag can reach spreads the caller's request metadata.
-  const CALLER = { routing_original_query: '洗面奶', routingOriginalQuery: 'レチノール', routingUserQuery: 'crème', zz_caller_sentinel: 'zz' };
-  const echoed = (body) => Object.keys(CALLER).filter((key) => JSON.stringify(body).includes(key));
+  const CALLER = {
+    routing_original_query: '洗面奶', routingOriginalQuery: 'レチノール', routingUserQuery: 'crème', zz_caller_sentinel: 'zz',
+    // round 2: a spoofed service_version and nested keys
+    service_version: { commit: 'HOSTILE_COMMIT', nested: { deep: 'HOSTILE_NESTED' } },
+    zz_nested: { inner: { deeper: 'HOSTILE_DEEP' } },
+  };
+  const ECHO_MARKERS = ['routing_original_query', 'routingOriginalQuery', 'routingUserQuery', 'zz_caller_sentinel', 'HOSTILE_COMMIT',
+    'HOSTILE_NESTED', 'zz_nested', 'HOSTILE_DEEP'];
+  const echoed = (body) => ECHO_MARKERS.filter((marker) => JSON.stringify(body).includes(marker));
   const ECHO_QUERIES = ['retinol free', 'without retinol', 'retinolfrei', 'retinol 0%', 'niacinamide alternative',
     'retinol alternative for body', 'gift', 'return policy', '선크림 return policy', '洗面奶 return policy', 'retinol',
     'retinol alternative', 'crème hydratante', 'retinol-free cream', '레티놀 프리미엄', 'laptop', 'Lidschatten'];
@@ -884,14 +921,15 @@ describe('find_products_multi search routing: bare ingredients and non-English b
   test.each([
     ['flags off', {}],
     ['both observe', BOTH_OBSERVE],
-  ])('%s: the safe-empty still echoes the caller metadata exactly as main does', async (_label, env) => {
+  ])('%s: the safe-empty echoes none of the caller metadata either', async (_label, env) => {
     const { send } = boot(env);
-    // the handler's contract safe-empty (the one answer on main that spreads request metadata)
+    // the handler's contract safe-empty (the one answer that spreads request metadata): filtered by the
+    // same allowlist whatever the routing flags (it echoed every caller key with them off)
     const { resp } = await send({ search: { query: 'Lidschatten', page: 1, page_size: 20 } }, CALLER);
     expect(lane(resp)).toBe(LANES.SAFE_EMPTY);
-    expect(echoed(resp.body)).toEqual(Object.keys(CALLER));
+    expect(echoed(resp.body)).toEqual([]);
     const surface = await send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, CALLER);
-    expect([lane(surface.resp), echoed(surface.resp.body)]).toEqual([LANES.SAFE_EMPTY, Object.keys(CALLER)]);
+    expect([lane(surface.resp), echoed(surface.resp.body)]).toEqual([LANES.SAFE_EMPTY, []]);
   });
 
   test('on: the debug bundle\'s query is the caller\'s own text, never a metadata value (nb1_debug_raw)', async () => {
@@ -944,6 +982,196 @@ describe('find_products_multi search routing: bare ingredients and non-English b
     expect(normalize(shadowEn.resp.body)).toEqual(normalize(mlOnlyEn.resp.body));
     expect(shadowEn.log.fpm_excluded_ingredient_would_drop_count > 0).toBe(true);
     expect(shadowEn.log.fpm_excluded_ingredient_dropped_count).toBeUndefined();
+  }, 180000);
+
+  test('on (round 2 / item 1): the safe-empty keeps the gateway\'s own fields and drops every caller value', async () => {
+    const off = boot();
+    const offAnswer = await off.send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, CALLER);
+    jest.resetModules();
+    for (const key of FLAG_KEYS) delete process.env[key];
+    const on = boot(BOTH_ON);
+    const caller = { ...CALLER, source: 'agent-api-tests', market: 'US', creator_id: 'creator_123', query_understanding: { hostile: 'HOSTILE_QU' } };
+    const onAnswer = await on.send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } }, caller);
+    const md = onAnswer.resp.body.metadata;
+    expect(lane(onAnswer.resp)).toBe(LANES.SAFE_EMPTY);
+    // the handler's own fields are all there ...
+    for (const key of ['query_understanding', 'query_understanding_executed', 'query_understanding_decision', 'supplement_lanes',
+      'search_request_contract', 'primary_lane', 'service_version', 'source']) {
+      expect([key, Object.prototype.hasOwnProperty.call(md, key)]).toEqual([key, true]);
+    }
+    expect(Object.keys(md).filter((key) => !Object.prototype.hasOwnProperty.call(offAnswer.resp.body.metadata, key))
+      .filter((key) => !['market', 'creator_id', 'creatorId'].includes(key))).toEqual([]);
+    // ... with the gateway's values, never the caller's
+    expect(md.service_version.commit).not.toBe('HOSTILE_COMMIT');
+    expect(JSON.stringify(md.query_understanding)).not.toContain('HOSTILE_QU');
+    expect(echoed(onAnswer.resp.body)).toEqual([]);
+    // the attribution allowlist: short plain values only
+    expect([md.source, md.market, md.creator_id]).toEqual(['agent-api-tests', 'US', 'creator_123']);
+    const spoofed = await on.send({ search: { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' } },
+      { source: 'x'.repeat(65), market: 'NOT A MARKET', creator_id: { nested: 'HOSTILE_ID' } });
+    // (the gateway's own query_understanding / search_request_contract record the source it used, on
+    // every lane and with the flags off too; that is not an echo of the caller's metadata object)
+    const spoofedMd = spoofed.resp.body.metadata;
+    expect([spoofedMd.market, spoofedMd.source, spoofedMd.creator_id, spoofedMd.creatorId, JSON.stringify(spoofed.resp.body).includes('HOSTILE_ID')])
+      .toEqual([undefined, undefined, undefined, undefined, false]);
+  }, 180000);
+
+  // Flip blockers B1-B3: the request metadata is not the only place the caller's attribution values come
+  // from. normalizeMetadata also copies creator_id / creatorId / creator_name / creatorName / trace_id /
+  // traceId / source from the payload, and creator_id from payload.search; those are the caller's too.
+  const SURFACE_GIFT = { query: 'gift', page: 1, page_size: 20, catalog_surface: 'agent_api' };
+  const ATTRIBUTION_KEYS = ['source', 'creator_id', 'creatorId', 'creator_name', 'creatorName', 'trace_id', 'traceId'];
+  const attribution = (md) => Object.fromEntries(ATTRIBUTION_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(md, key)).map((key) => [key, md[key]]));
+
+  test('on (flip B1): an attribution value the caller sent in the payload passes the same allowlist', async () => {
+    const { send } = boot(BOTH_ON);
+    const LONG_NAME = `HOSTILE_LONG_${'n'.repeat(5000)}`;
+    const LONG_SOURCE = `HOSTILE_SOURCE_${'s'.repeat(298)}`;
+    // [where the caller put it, payload]: each value is outside the allowlist and must not come back
+    const cases = [
+      ['payload.creator_name (object)', { search: SURFACE_GIFT, creator_name: { nested: 'HOSTILE_PAYLOAD_NAME' } }],
+      ['payload.creatorName (5,000 chars)', { search: SURFACE_GIFT, creatorName: LONG_NAME }],
+      ['payload.trace_id (object)', { search: SURFACE_GIFT, trace_id: { nested: 'HOSTILE_PAYLOAD_TRACE' } }],
+      ['payload.traceId (markup)', { search: SURFACE_GIFT, traceId: 'HOSTILE<b>PTID' }],
+      ['payload.creator_id (markup)', { search: SURFACE_GIFT, creator_id: 'HOSTILE<b>PCID' }],
+      ['payload.creatorId (object)', { search: SURFACE_GIFT, creatorId: { nested: 'HOSTILE_PAYLOAD_CID' } }],
+      ['payload.search.creator_id (markup)', { search: { ...SURFACE_GIFT, creator_id: 'HOSTILE<b>SCID' } }],
+      ['payload.source (313 chars)', { search: SURFACE_GIFT, source: LONG_SOURCE }],
+    ];
+    for (const [where, payload] of cases) {
+      const { resp } = await send(payload);
+      const md = resp.body.metadata || {};
+      expect([where, lane(resp)]).toEqual([where, LANES.SAFE_EMPTY]);
+      expect([where, JSON.stringify(attribution(md)).includes('HOSTILE')]).toEqual([where, false]);
+    }
+    // a short plain payload value is on the allowlist and still comes back, under both spellings
+    const plain = await send({ search: { ...SURFACE_GIFT, creator_id: 'creator_s1' }, creator_name: 'Plain Name', traceId: 'trace-p1', source: 'agent-api-tests' });
+    expect(attribution(plain.resp.body.metadata)).toEqual({
+      source: 'agent-api-tests', creator_id: 'creator_s1', creatorId: 'creator_s1', creator_name: 'Plain Name', creatorName: 'Plain Name',
+      trace_id: 'trace-p1', traceId: 'trace-p1',
+    });
+    // the metadata still wins over the payload, as in normalizeMetadata, and both are the caller's
+    const both = await send({ search: SURFACE_GIFT, creator_name: 'Payload Name' }, { creator_name: { nested: 'HOSTILE_META_NAME' } });
+    expect(JSON.stringify(attribution(both.resp.body.metadata)).includes('HOSTILE')).toBe(false);
+    // ... and an empty metadata value lets the payload's through: every value under a key is checked
+    const emptyFirst = await send({ search: SURFACE_GIFT, creator_name: 'HOSTILE<b>AFTER_EMPTY' }, { creator_name: '' });
+    expect(JSON.stringify(attribution(emptyFirst.resp.body.metadata)).includes('HOSTILE')).toBe(false);
+  }, 180000);
+
+  test('on (flip B2): metadata that is not an object echoes nothing of it', async () => {
+    const { send } = boot(BOTH_ON);
+    for (const metadata of [['HOSTILE_ARRAY_0', { x: 'HOSTILE_ARRAY_1' }], 'HOSTILE_STRING_METADATA_23']) {
+      const { resp } = await send({ search: SURFACE_GIFT }, metadata);
+      const md = resp.body.metadata || {};
+      expect([metadata, lane(resp)]).toEqual([metadata, LANES.SAFE_EMPTY]);
+      expect([metadata, Object.keys(md).filter((key) => /^\d+$/.test(key))]).toEqual([metadata, []]);
+      expect([metadata, JSON.stringify(md).includes('HOSTILE_ARRAY')]).toEqual([metadata, false]);
+    }
+  }, 180000);
+
+  test('off: metadata that is not an object echoes nothing of it either', async () => {
+    const { send } = boot();
+    const { resp } = await send({ search: SURFACE_GIFT }, ['ARRAY_0', { x: 'ARRAY_1' }]);
+    expect([lane(resp), resp.body.metadata['0'], resp.body.metadata['1']]).toEqual([LANES.SAFE_EMPTY, undefined, undefined]);
+  });
+
+  test('on (flip B3): query_understanding.source follows the top-level source allowlist decision', async () => {
+    const { send } = boot(BOTH_ON);
+    const rejected = [`HOSTILE_QU_${'s'.repeat(80)}`, 'HOSTILE<b>QU'];
+    for (const source of rejected) {
+      for (const [where, payload, metadata] of [
+        ['metadata.source', { search: SURFACE_GIFT }, { source }],
+        ['payload.source', { search: SURFACE_GIFT, source }, null],
+      ]) {
+        const { resp } = await send(payload, metadata);
+        const md = resp.body.metadata || {};
+        expect([where, lane(resp), md.source]).toEqual([where, LANES.SAFE_EMPTY, undefined]);
+        expect([where, md.query_understanding && typeof md.query_understanding === 'object']).toEqual([where, true]);
+        expect([where, Object.prototype.hasOwnProperty.call(md.query_understanding, 'source')]).toEqual([where, false]);
+        expect([where, JSON.stringify(md).includes('HOSTILE')]).toEqual([where, false]);
+      }
+    }
+    // an allowed source is kept in both places
+    const ok = await send({ search: SURFACE_GIFT }, { source: 'agent-api-tests' });
+    expect([ok.resp.body.metadata.source, ok.resp.body.metadata.query_understanding.source]).toEqual(['agent-api-tests', 'agent-api-tests']);
+  }, 180000);
+
+  test('on (flip X3): a market echoes only as a market code the gateway prices for, written as such', async () => {
+    const { send } = boot(BOTH_ON);
+    for (const market of ['us', 'usa', 'USA', 'Us', 'XX', 'ZZ', ' US', 'US\n']) {
+      const { resp } = await send({ search: SURFACE_GIFT }, { market });
+      const md = resp.body.metadata || {};
+      expect([market, lane(resp), Object.prototype.hasOwnProperty.call(md, 'market')]).toEqual([market, LANES.SAFE_EMPTY, false]);
+      // query_understanding records the market it read upcased; a rejected one goes there too
+      expect([market, md.query_understanding?.market]).toEqual([market, undefined]);
+    }
+    for (const market of ['US', 'GB', 'JP']) {
+      const { resp } = await send({ search: SURFACE_GIFT }, { market });
+      expect([market, resp.body.metadata.market, resp.body.metadata.query_understanding.market]).toEqual([market, market, market]);
+    }
+    // only the recorded copy OF the rejected value goes: a market query_understanding read from the
+    // search itself stays
+    const fromSearch = await send({ search: { ...SURFACE_GIFT, market: 'GB' } }, { market: 'usa' });
+    expect([lane(fromSearch.resp), fromSearch.resp.body.metadata.market, fromSearch.resp.body.metadata.query_understanding.market])
+      .toEqual([LANES.SAFE_EMPTY, undefined, 'GB']);
+  }, 180000);
+
+  test('on (flip): a creator name with control, bidi or line-separator characters, or a script scheme, is not echoed', async () => {
+    const { send } = boot(BOTH_ON);
+    for (const name of ['Jane‮eoD', 'Jane Doe', 'Jane⁦Doe', 'Jane‏Doe', 'Jane\u0085Doe', 'javascript:alert(1)',
+      ' JavaScript:alert(1)', 'data:text/html,x']) {
+      for (const [where, payload, metadata] of [['metadata', { search: SURFACE_GIFT }, { creator_name: name }], ['payload', { search: SURFACE_GIFT, creatorName: name }, null]]) {
+        const { resp } = await send(payload, metadata);
+        const md = resp.body.metadata || {};
+        expect([where, name, md.creator_name, md.creatorName]).toEqual([where, name, undefined, undefined]);
+      }
+    }
+    const plain = await send({ search: SURFACE_GIFT }, { creator_name: 'Jane O\'Doe: Reviews' });
+    expect([plain.resp.body.metadata.creator_name, plain.resp.body.metadata.creatorName]).toEqual(['Jane O\'Doe: Reviews', 'Jane O\'Doe: Reviews']);
+  }, 180000);
+
+  test.each([
+    ['flags off', {}],
+    ['both flags on', BOTH_ON],
+  ])('%s: a null metadata reads as none (it was a 500)', async (_label, env) => {
+    const { app } = boot(env);
+    const resp = await owned(async () =>
+      request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi', payload: { search: SURFACE_GIFT }, metadata: null }));
+    expect([resp.status, lane(resp)]).toEqual([200, LANES.SAFE_EMPTY]);
+  });
+
+  test('on (round 2 / items 2-5): explicit list joiners, the shared family, budgets and unfiled rows', async () => {
+    const { invoke } = boot(BOTH_ON);
+    // 2: two ingredients side by side are not a list
+    for (const [query, mustContain] of [['niacinamide retinol-free serum', REAL_NIACINAMIDE], ['vitamin c retinol-free serum', REAL_VITAMIN_C]]) {
+      const got = titles((await invoke(query)).resp);
+      expect([query, got.some((title) => mustContain.includes(title))]).toEqual([query, true]);
+      for (const title of got) expect([query, title, REAL_RETINOL.includes(title) || RETINOID_FAMILY.includes(title)]).toEqual([query, title, false]);
+    }
+    const standInSerum = await invoke('bakuchiol retinol alternative serum');
+    expect(titles(standInSerum.resp).length > 0 && standInSerum.resp.body.products.every(namesBakuchiol)).toBe(true);
+    // "bakuchiol, and retinol-free": bakuchiol is the ask (the ingredient lane), retinol the exclusion. (Its
+    // one bakuchiol serum is then removed by main's retinoid safety gate, which reads "retinol-free" as
+    // avoid-retinoids and the title's "Retinol Alternative" as a retinoid: not this change.)
+    const listed = await invoke('bakuchiol and retinol free serum');
+    expect(lane(listed.resp)).toBe(LANES.INGREDIENT);
+    for (const product of listed.resp.body.products) expect([product.title, namesBakuchiol(product)]).toEqual([product.title, true]);
+    // 3: the shared family, by a family word in the query too
+    for (const query of ['retinoid free serum', 'retinol alternative serum', 'retinol-free cream', 'sans rétinoïde crème']) {
+      for (const title of titles((await invoke(query)).resp)) {
+        expect([query, title, RETINOID_FAMILY.includes(title) || REAL_RETINOL.includes(title)]).toEqual([query, title, false]);
+      }
+    }
+    // 4: the budget travels (every fixture row costs 24.00)
+    for (const [query, empty] of [['retinol alternative 20 dollars', true], ['retinol alternative under €20', true], ['retinol alternative $15', true],
+      ['retinol alternative 30 dollars', false], ['low price retinol alternative', false]]) {
+      const { resp, log } = await invoke(query);
+      expect([query, lane(resp), log.fpm_routing_query_rewrite, titles(resp).length === 0]).toEqual([query, LANES.INGREDIENT, 'stand_in_known', empty]);
+    }
+    // 5: an unfiled row is judged by what its title names, never by a negated category word
+    const ask = titles((await invoke('retinol alternative')).resp);
+    expect(ask).toContain('Shampoo-Free Bakuchiol Serum');
+    expect(ask).not.toContain('바쿠치올 데일리 샴푸');
   }, 180000);
 
   test('on (follow-up 2): a retinol stand-in or exclusion excludes the whole retinoid family', async () => {

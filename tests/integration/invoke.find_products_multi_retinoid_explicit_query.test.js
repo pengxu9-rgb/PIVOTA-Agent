@@ -1,5 +1,6 @@
 // The loopback-only network guard goes first, so nothing below can reach a real host.
-require('../agent_readiness_eval/_net_guard.cjs');
+const NET_GUARD = require('../agent_readiness_eval/_net_guard.cjs').state;
+const NET_GUARD_BLOCKED_AT_START = NET_GUARD.blocked.length;
 
 const nock = require('nock');
 const request = require('supertest');
@@ -267,8 +268,7 @@ describe('/agent/shop/v1/invoke find_products_multi: a query that asks for a ret
   });
 
   test('no connection was refused by the loopback guard', () => {
-    const guard = globalThis.__READINESS_NET_GUARD__;
-    expect(guard && guard.installed).toBe(true);
-    expect(guard.blocked).toEqual([]);
+    expect(NET_GUARD.installed).toBe(true);
+    expect(NET_GUARD.blocked.slice(NET_GUARD_BLOCKED_AT_START)).toEqual([]);
   });
 });

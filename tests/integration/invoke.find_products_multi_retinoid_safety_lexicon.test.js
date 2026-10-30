@@ -1,11 +1,18 @@
 // The loopback-only network guard goes first, so nothing below can reach a real host.
 require('../agent_readiness_eval/_net_guard.cjs');
+// The guard is one per process (a jest worker runs many files), so this file judges only the refusals
+// recorded after it started.
+const NET_GUARD = require('../agent_readiness_eval/_net_guard.cjs').state;
+const NET_GUARD_BLOCKED_AT_START = NET_GUARD.blocked.length;
 
 const nock = require('nock');
 const request = require('supertest');
 
 const { createRetinoidFixtureQuery } = require('../fixtures/retinoid_explicit_query_catalog.cjs');
 const { HARD, HARD_NEGATION_PHRASES, SOFT, NEUTRAL } = require('../retinoid_safety_lexicon_phrases.cjs');
+// main's answers, captured once. Three entries were regenerated when a strength stopped being read as a
+// price cap ("10% niacinamide + retinol", "0.3% retinol serum" were empty only because of that cap);
+// the fixture's "notes" says which.
 const MAIN_GOLDEN = require('../fixtures/retinoid_safety_main_golden.json').product_ids;
 const signal = require('../../src/services/retinoidSafetySignal');
 
@@ -94,7 +101,7 @@ describe('/agent/shop/v1/invoke find_products_multi: retinoid safety lexicon', (
       payload: { ...payload, search: { query, page: 1, limit: 12, in_stock_only: true } },
       metadata: { ...(source ? { source, market: 'US' } : { market: 'US' }), ...metadata },
     });
-    expect(resp.status).toBe(200);
+    expect({ query, source, status: resp.status, error: resp.status === 200 ? null : resp.body }).toEqual({ query, source, status: 200, error: null });
     return { body: resp.body, ids: (resp.body.products || []).map((p) => p.product_id) };
   }
   const retinoidsIn = (ids) => ids.filter((id) => RETINOID_IDS.has(id));
@@ -316,8 +323,7 @@ describe('/agent/shop/v1/invoke find_products_multi: retinoid safety lexicon', (
   });
 
   test('no connection was refused by the loopback guard', () => {
-    const guard = globalThis.__READINESS_NET_GUARD__;
-    expect(guard && guard.installed).toBe(true);
-    expect(guard.blocked).toEqual([]);
+    expect(NET_GUARD.installed).toBe(true);
+    expect(NET_GUARD.blocked.slice(NET_GUARD_BLOCKED_AT_START)).toEqual([]);
   });
 });

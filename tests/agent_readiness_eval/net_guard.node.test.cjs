@@ -100,6 +100,35 @@ test('loopback IP literals are allowed (that is how the stub and local-gateway t
   }
 });
 
+test('a server can bind the unspecified addresses; a lookup of an IP literal passes, a dial to one still does not', async () => {
+  // server.listen(port, '::') runs dns.lookup('::') inside node. The guard stays installed for every later
+  // file in the process, so refusing that lookup broke any later test that binds '::' or '0.0.0.0'.
+  for (const host of ['::', '0.0.0.0']) {
+    const server = net.createServer((socket) => socket.destroy());
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, host, resolve);
+    });
+    assert.ok(server.address().port > 0, host);
+    await new Promise((r) => server.close(r));
+  }
+  const blockedBefore = state.blocked.length;
+  for (const literal of ['::', '0.0.0.0', '192.0.2.1', '2001:db8::1']) {
+    const address = await new Promise((resolve, reject) => {
+      dns.lookup(literal, (err, addr) => (err ? reject(err) : resolve(addr)));
+    });
+    assert.equal(address, literal);
+    assert.equal((await dns.promises.lookup(literal)).address, literal);
+  }
+  assert.equal(state.blocked.length, blockedBefore, 'no refusal for a literal lookup');
+  await expectRefused('net.connect to a literal that looked up fine', () => net.connect({ host: '192.0.2.1', port: 9 }));
+  await expectRefused('dns.lookup of a name', () => dns.lookup('guard-check.invalid', () => {}));
+  await expectRefused('dns.promises.lookup of a name', () => dns.promises.lookup('guard-check.invalid'));
+  await expectRefused('dns.reverse of a literal', () => dns.reverse('192.0.2.1', () => {}));
+  await expectRefused('dns.lookupService of a literal', () => dns.lookupService('192.0.2.1', 9, () => {}));
+  await expectRefused('dns.resolve4 of a literal', () => dns.resolve4('192.0.2.1', () => {}));
+});
+
 test('throwingFetch counts and throws on any call', async () => {
   const f = throwingFetch();
   await assert.rejects(() => f('http://127.0.0.1:1/'), /must not be called/);
@@ -117,4 +146,55 @@ test('every eval test file installs the guard as its first statement', () => {
     assert.equal(code[0], "'use strict';", f);
     assert.equal(code[1], "require('./_net_guard.cjs');", `${f}: the guard must be the first require`);
   }
+});
+
+test('one guard per process, its state never on globalThis (jest shares the patched prototype across test files)', () => {
+  // A second load (a jest worker loads the module once per test file) finds the installed guard: the same
+  // state, and net.Socket.prototype.connect is not wrapped again.
+  const guardPath = require.resolve('./_net_guard.cjs');
+  const routingGuardPath = require.resolve('../search_routing_net_guard.cjs');
+  const connectBefore = net.Socket.prototype.connect;
+  delete require.cache[guardPath];
+  const again = require('./_net_guard.cjs');
+  assert.equal(again.state, state);
+  assert.equal(net.Socket.prototype.connect, connectBefore);
+  // The search-routing guard has the same shape.
+  const routing = require('../search_routing_net_guard.cjs');
+  const connectWithRouting = net.Socket.prototype.connect;
+  delete require.cache[routingGuardPath];
+  const routingAgain = require('../search_routing_net_guard.cjs');
+  assert.equal(routingAgain.state, routing.state);
+  assert.equal(net.Socket.prototype.connect, connectWithRouting);
+  // Nothing either guard keeps is reachable from globalThis, where jest's teardown of a test file's
+  // sandbox would turn it into a self-recursing setter for every later socket in the worker.
+  for (const key of Object.getOwnPropertyNames(globalThis)) {
+    let value;
+    try {
+      value = globalThis[key];
+    } catch (_) {
+      continue;
+    }
+    assert.notEqual(value, state, `globalThis.${key} holds the readiness guard state`);
+    assert.notEqual(value, routing.state, `globalThis.${key} holds the search-routing guard state`);
+  }
+  assert.equal(globalThis.__READINESS_NET_GUARD__, undefined);
+  assert.equal(globalThis.__SEARCH_ROUTING_NET_GUARD__, undefined);
+  // Counting still works through the shared state.
+  const passed = state.passed;
+  const server = net.createServer();
+  return new Promise((resolve, reject) => {
+    server.listen(0, '127.0.0.1', () => {
+      const socket = net.connect(server.address().port, '127.0.0.1', () => {
+        socket.destroy();
+        server.close();
+        try {
+          assert.ok(state.passed > passed);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+      socket.on('error', reject);
+    });
+  });
 });

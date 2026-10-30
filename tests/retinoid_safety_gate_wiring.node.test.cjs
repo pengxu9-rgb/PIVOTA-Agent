@@ -286,3 +286,122 @@ test('product detection: a retinoid named only in a stand-in phrase is not a ret
   assert.equal(beautyProductRetinoidMentionIsStandInOnly(p('Retinol Night Cream')), false);
   assert.equal(beautyProductRetinoidMentionIsStandInOnly(null), false);
 });
+
+test('product detection: the shared retinoid family, and a free claim never hides a retinoid named elsewhere', () => {
+  const retinoids = [
+    product('x', 'Vitamin A Night Cream', 'cream', ''), product('x', 'Retinyl Palmitate Moisturizer', 'cream', ''),
+    product('x', 'Rétinoïde Crème de Nuit', 'cream', ''), product('x', 'Retinoide Nachtcreme', 'cream', ''),
+    product('x', 'Differin Adapalene Gel 0.1%', 'gel', ''), product('x', 'Vitamin A Acetate Lip Balm', 'balm', ''),
+    product('x', 'Night Cream', 'cream', 'Ingredients: aqua, vitamin a palmitate, glycerin'),
+    product('x', '视黄醛精华', 'serum', ''), product('x', 'A醛晚霜', 'cream', ''), product('x', '维A醛面霜', 'cream', ''),
+    product('x', '视黄酸乳液', 'lotion', ''), product('x', '阿达帕林凝胶', 'gel', ''), product('x', '他扎罗汀乳膏', 'cream', ''),
+    product('x', '曲法罗汀', 'cream', ''), product('x', 'レチナール クリーム', 'cream', ''), product('x', 'トレチノイン', 'cream', ''),
+    product('x', 'アダパレン ゲル', 'gel', ''), product('x', 'レチノイド セラム', 'serum', ''), product('x', 'トリファロテン', 'cream', ''),
+    product('x', '아다팔렌 겔', 'gel', ''), product('x', '트레티노인 크림', 'cream', ''), product('x', '트리파로텐', 'cream', ''),
+    product('x', 'Крем с ретинальдегидом', 'cream', ''), product('x', 'адапален гель', 'gel', ''), product('x', 'третиноин крем', 'cream', ''),
+    product('x', 'трифаротен', 'cream', ''),
+    // a free claim names what is absent; the retinoid named elsewhere is still there
+    product('x', 'Retinol-Free Retinoid Serum (HPR)', 'serum', ''),
+    product('x', 'Retinol-Free Night Cream', 'cream', '', { inci: 'Water, Retinyl Palmitate' }),
+    product('x', 'Retinol-Free Vitamin A Serum', 'serum', ''),
+    // a stand-in title is a retinoid when the ingredients name a family member
+    product('x', 'Bakuchiol Retinol Alternative Serum', 'serum', '', { seed_data: { inci: ['Aqua', 'Vitamin A Palmitate'] } }),
+    product('x', 'Bio-Retinol Night Cream', 'cream', '', { seed_data: { key_ingredients: ['视黄醛'] } }),
+    // a free claim in the title, a script family name elsewhere
+    product('x', 'Retinol-Free Night Cream', 'cream', '含视黄醛的晚霜。'),
+  ];
+  for (const item of retinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, `${item.title} ${item.inci || item.description}`);
+  const notRetinoids = [
+    product('x', 'Retinol-Free Bakuchiol Serum', 'serum', ''), product('x', 'Bio-Retinol Night Cream', 'cream', ''),
+    product('x', 'Vitamin C Serum', 'serum', ''), product('x', 'Vitamin ACE Body Oil', 'oil', ''),
+    product('x', 'Retinol-Free Moisturizer, no retinyl palmitate', 'cream', ''), product('x', '不含视黄醇 面霜 retinol-free', 'cream', ''),
+    product('x', 'Retinol-free cream with bakuchiol, a gentler alternative to retinol', 'cream', ''),
+    product('x', 'Retinoid-free Vitamin A-free cream', 'cream', ''), product('x', 'Retinol-free レチノールフリー クリーム', 'cream', ''),
+    product('x', 'Retinol-Free 레티놀 프리 크림', 'cream', ''), product('x', 'Retinol-free крем без ретинола', 'cream', ''),
+    // the claim and a stand-in phrase only in the description
+    product('x', 'Bakuchiol Night Cream', 'cream', 'Retinol-free. A gentler alternative to retinol.'),
+  ];
+  for (const item of notRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), false, item.title);
+});
+
+test('product detection: vitamin A unless taken by mouth or an A&D protectant, brands unless an accessory, and a free claim in any script', () => {
+  const p = (title, category, description = '', extra = {}) => product('x', title, category, description, extra);
+  const retinoids = [
+    p('Vitamin A Night Cream', 'cream'), p('Vit A Serum', 'serum'), p('Differin Adapalene Gel 0.1% Acne Treatment', 'treatment'),
+    p('Vitamin A Free Moisturizer with Retinyl Palmitate', 'moisturizer'),
+    // a decimal strength is never a "0% retinol" claim
+    p('Retinol 1.0% Serum', 'serum', 'Serum with 1.0% retinol.'), p('1.0% Retinol Night Serum', 'serum'),
+    // a claim never spans a sentence or names something else
+    p('Night Serum', 'serum', 'With encapsulated retinol. Free shipping on orders over $50.'),
+    p('Encapsulated Retinol, Free From Parabens', 'serum'), p('Retinol & Free-Radical Defense Cream', 'cream'),
+    p('Night Cream', 'cream', 'Contains retinol; free from parabens.'),
+    // a "no" far from the name is not about it
+    p('Night Cream', 'cream', 'No parabens. With retinyl palmitate.'),
+    p('Retinol-Free Night Cream', 'cream', 'No parabens. With retinyl palmitate.'),
+    // "free" that is not this claim, with or without punctuation
+    p('Retinol Free Shipping Night Serum', 'serum'), p('Retinol: Free Your Skin Night Serum', 'serum'),
+    // only the raw INCI names it
+    p('Night Cream', 'cream', '', { inci: 'Aqua, Glycerin, 1.0% Retinol' }),
+    // a prescription brand names a retinoid product; Differin does unless the product shows it is not one
+    p('Differin Gel', 'gel'), p('Tazorac Cream 0.1%', 'cream'), p('Epiduo Forte Gel', 'gel'), p('Aklief Cream', 'cream'),
+    p('Altreno Lotion', 'lotion'), p('Roaccutane Lip Balm', 'balm'),
+    // vitamin A fails closed: every topical form, and a topical title whatever its category
+    p('Vitamin A Facial Capsules', 'serum capsules'), p('Vitamin A Skin Oil', 'oil'), p('Vitamin A Night Drops', 'drops'),
+    p('Vitamin A Body Butter', 'body butter'), p('Vitamin A Smoothing Primer', 'primer'), p('Vitamin A Peel Pads', 'pads'),
+    p('Vitamin A Face Mist', 'mist'), p('Vitamin A Face Ointment (anti-aging)', 'ointment'), p('Vitamin A Ointment', 'ointment'),
+    p('Night Cream', 'Health/Supplements', 'With vitamin A.'), p('Vitamin A Concentrate', ''), p('Vitamin A Booster', ''),
+    p('Vitamin A Eye Patches', 'patches'), p('Vitamin A Balm Stick', 'stick'), p('Crème à la vitamine A', 'crème'),
+    p('Vitamins A, C & E Night Cream', 'cream'), p('Differin Gel + Moisturizer Kit', 'kit'),
+    // a brand next to a preposition is still a name unless an accessory noun follows it
+    p('Acne Gel for Adults Epiduo Forte', 'gel'), p('Prescription Cream for Acne: Tazorac 0.1%', 'cream'),
+    p('Prescription Acne Cream — Not for use during pregnancy: Tazorac 0.1%', 'cream'),
+    p("Epiduo Users' Choice Acne Gel", 'gel'), p('Tazorac Safe Strength 0.05% Cream', 'cream'),
+    p('Acne Gel for Adults Epiduo Treatment', 'gel'), p('Moisturizer for Accutane', 'moisturizer'),
+    // a hyphenated accessory never clears a spaced name beside it
+    p('Tazorac-Safe Tazorac Safe Cream', 'cream'), p('Accutane-Safe Lip Balm with Tazorac Safe Strength 0.05% Cream', 'balm'),
+    // the brand field alone names it
+    p('Acne Gel 0.1%', 'gel', '', { brand: 'Differin' }),
+    // a warning in the description never makes Differin something else
+    p('Differin Gel', 'gel', 'Do not use with benzoyl peroxide products.'), p('Differin Gel', 'gel', 'Avoid salicylic acid while using.'),
+    p('Differin Acne Kit', 'kit', 'Includes Differin Gel and a cleanser with benzoyl peroxide.'),
+    // nor does benzoyl peroxide / salicylic acid named as absent
+    // a Differin gel always; another form when the other active is named as absent
+    ...['BPO-free formula', 'Salicylic-Free', 'no benzoyl peroxide', 'without salicylic acid', 'salicylic acid free',
+      'salicylic-acid-free', '0% Benzoyl Peroxide', 'zero BPO', 'free of benzoyl peroxide', '(not BPO)', '0% salicylic acid',
+    ].flatMap((absent) => [p(`Differin Gel, ${absent}`, 'gel'), p(`Differin Spot Treatment, ${absent}`, 'treatment')]),
+    p('Differin Benzoyl Peroxide 5% Acne Spot Treatment Gel', 'treatment'),
+    // a brand only in a URL or a domain
+    p('Acne Gel 0.1%', 'gel', '', { destination_url: 'https://shop.invalid/products/epiduo-forte' }),
+    p('Acne Cream 0.05%', 'cream', '', { external_domain: 'tazorac.invalid' }),
+    // nor makes vitamin A a protectant; A&D needs its protectant word in what the product is
+    p('Vitamin A Night Cream', 'cream', 'Do not apply to nipples or the diaper area.'),
+    p('Vitamin A Repair Cream', 'cream', 'Skin protectant, anti-aging.'), p('Vitamins A & D Anti-Aging Night Cream', 'cream'),
+    p('Vitamins A & D Night Cream', 'cream', 'Not for the diaper area.'),
+    p('Nipple Balm with Vitamin A', 'balm'), p('Vitamin A Diaper Area Barrier Cream', 'cream'),
+    p('Vitamin A&D Anti-Aging Face Ointment', 'ointment'),
+    // directions to apply it make capsules topical
+    p('Vitamin A Capsules 10000 IU', '', 'Twist open and apply to face at night.'),
+  ];
+  for (const item of retinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, `${item.title} | ${item.description}`);
+  const notRetinoids = [
+    p('Prenatal Multivitamin with Vitamin A', 'Supplements'), p('Cod Liver Oil Softgels, Vitamin A & D', 'Health'),
+    p('Vitamin A&D Ointment', 'Skin Protectant'), p('Prenatal Vitamins', 'Vitamins', 'Vitamin A (as beta carotene), folate'),
+    p('Beta Carotene Provitamin A Face Oil', 'face oil'), p('Vita Coco Hydrating Body Lotion', 'lotion'),
+    p('Differin Daily Deep Cleanser', 'cleanser', 'Benzoyl peroxide 5% cleanser'), p('Differin Oil Absorbing Moisturizer SPF 30', 'moisturizer'),
+    p('Lip Repair Balm for Accutane Users', 'lip balm'), p('Accutane-Safe Lip Balm', 'lip balm'),
+    p('Moisturizer During Accutane Treatment', 'moisturizer'),
+    p('A and D Diaper Rash Ointment', 'baby'), p('Vitamin A & D Ointment', 'first aid'),
+    p('Cod Liver Oil Softgels with Vitamin A', 'health'), p('Vitamin A 25000 IU', ''), p('Daily Vitamins with Vitamin A', ''),
+    p('Differin Benzoyl Peroxide 5% Acne Spot Treatment', 'treatment'), p('Differin Acne Wash with Salicylic Acid', 'cleanser'),
+    // a supplement's description about skin or night is not a direction to apply it
+    p('Vitamin A Softgels', 'supplements', 'Supports healthy skin and vision.'),
+    p('Vitamin A 10000 IU Softgels', 'supplements', 'Take two softgels at night with food.'),
+    p('Beauty Gummies with Vitamin A', 'supplements', 'For glowing facial skin from within.'),
+    p('Vitamin A Free Moisturizer', 'moisturizer'), p('不含视黄醛的保湿面霜', 'cream'), p('レチナールフリー クリーム', 'cream'),
+    p('ไม่มีเรตินอล ครีม', 'cream'), p('Night Cream', 'cream', 'Retinol-free formula.'),
+    p('Hair, Skin & Nails Gummies with Vitamin A', 'Skin Care Supplements'), p('Vitamin A 10000 IU', 'Vitamins'),
+    p('Retinol Alternative Skin Gummies', 'Supplements', 'With vitamin A.'), p('Pro-Vitamin A Face Oil', 'face oil'),
+    p('Night Cream with Vitamin A (as Beta Carotene)', 'cream'), p('Vitamin ACE Body Lotion', 'lotion'),
+  ];
+  for (const item of notRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), false, `${item.title} | ${item.description}`);
+});

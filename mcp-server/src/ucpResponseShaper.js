@@ -84,6 +84,7 @@ import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { isRestatedProductId, variantIdsFromProductRead } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { encodeUcpVariantItemId, isPublishableVariantId, realVariantsOf, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
+import { productPriceCheck } from "./productPriceCheck.js";
 
 export const UCP_RESPONSE_VERSION = "2026-04-08";
 
@@ -165,13 +166,18 @@ const AVAILABILITY_OUT_OF_STOCK = new Set([
  * -> UCP variant.availability `{ available, status }` (status well-known values: in_stock | backorder |
  * preorder | out_of_stock | discontinued). Same precedence as the public projector: the availability STRING
  * wins over the `in_stock` boolean (the two are derived independently upstream and the boolean was verified
- * stale on prod 2026-08-01). Unknown -> omitted entirely rather than published as a guess.
+ * stale on prod 2026-08-01). The get_product detail lane carries neither: pdpBuilder writes an availability
+ * OBJECT (`{ in_stock, available_quantity }`) on the product and on every variant, so its `in_stock` is read
+ * next. Unknown -> omitted entirely rather than published as a guess.
  */
 function availabilityOf(p) {
   const text = typeof p.availability === "string" ? p.availability.trim().toLowerCase() : "";
   if (text === "discontinued") return { available: false, status: "discontinued" };
   if (AVAILABILITY_IN_STOCK.has(text)) return { available: true, status: "in_stock" };
   if (AVAILABILITY_OUT_OF_STOCK.has(text)) return { available: false, status: "out_of_stock" };
+  const own = isPlainObject(p.availability) ? p.availability.in_stock : undefined;
+  if (own === true) return { available: true, status: "in_stock" };
+  if (own === false) return { available: false, status: "out_of_stock" };
   if (p.in_stock === true) return { available: true, status: "in_stock" };
   if (p.in_stock === false) return { available: false, status: "out_of_stock" };
   return undefined;
@@ -455,11 +461,49 @@ export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = 
       content_type: "plain",
     });
   }
+  // The live read's verdict on the price (UCP_LIVE_PRODUCT_READ=enforce only: off or shadow, no message). The
+  // shape above carries no live_read or price date, so a stored fallback must SAY it is one.
+  const check = productPriceCheck(row);
+  if (check) messages.push(priceCheckMessage(check));
   return compact({
     ucp: { version: UCP_RESPONSE_VERSION, status: "success" },
     product,
     messages: messages.length ? messages : undefined,
   });
+}
+
+function priceCheckMessage(check) {
+  const forMarket = check.market ? ` for ${check.market}` : "";
+  if (check.live && check.stored_variants > 0) {
+    // The range spans read and stored prices: only the default variant's is the merchant's.
+    return {
+      type: "warning",
+      code: "price.partially_verified",
+      path: "$.product.price_range",
+      content: `The merchant's own catalog${forMarket} (at ${check.as_of}) confirmed ${check.read_variants} of `
+        + `${check.read_variants + check.stored_variants} variants, the default among them; ${check.stored_variants === 1 ? "1 variant shows" : `${check.stored_variants} variants show`} `
+        + "Pivota's stored price, or the product price where it has none of its own. "
+        + "Before quoting a final price for any variant but the default, call get_offers and quote only an offer whose merchant_price_verified is true.",
+      content_type: "plain",
+    };
+  }
+  if (check.live) {
+    return {
+      type: "info",
+      code: "price.merchant_verified",
+      path: "$.product.price_range",
+      content: `The price was read from the merchant's own catalog${forMarket} at ${check.as_of}.`,
+      content_type: "plain",
+    };
+  }
+  return {
+    type: "warning",
+    code: "price.stored",
+    path: "$.product.price_range",
+    content: `This is Pivota's stored price; it was not confirmed with the merchant${forMarket}${check.reason ? ` (${check.reason})` : ""}. `
+      + "Treat it as discovery only: before quoting a final price, call get_offers and quote only an offer whose merchant_price_verified is true.",
+    content_type: "plain",
+  };
 }
 
 /**

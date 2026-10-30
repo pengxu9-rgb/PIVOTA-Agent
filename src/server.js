@@ -91,10 +91,32 @@ const {
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
+// Read off the module object, not destructured: many suites mock ./db with only
+// { query, withClient }, and both helpers must degrade to today's behaviour there.
+const dbModuleForLaneDeadlines = require('./db');
+function runWithDbDeadline(options, fn) {
+  return typeof dbModuleForLaneDeadlines.runWithDbDeadline === 'function'
+    ? dbModuleForLaneDeadlines.runWithDbDeadline(options, fn)
+    : fn();
+}
+function isDbUnavailableError(err) {
+  return typeof dbModuleForLaneDeadlines.isDbUnavailableError === 'function'
+    ? dbModuleForLaneDeadlines.isDbUnavailableError(err)
+    : false;
+}
+function markClientForDestroy(client) {
+  if (typeof dbModuleForLaneDeadlines.markClientForDestroy === 'function') {
+    dbModuleForLaneDeadlines.markClientForDestroy(client);
+  }
+}
 const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices } = require('./services/liveMerchantSearchPrice');
+// The shared verified-price cache (PRICE_CACHE_STORE + PRICE_CACHE_MODE) and the merchant politeness gate
+// (PRICE_HOST_BUDGET): every live merchant read records into the first and asks the second. Both default off, and
+// off they build nothing, load no Firestore client and change no answer (see priceHostGate below).
+const priceCacheHooks = require('./services/priceCache');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -316,6 +338,16 @@ const {
 const { isBeautyDirectAfterContextEligible } = require('./findProductsMulti/beautyDirectGate');
 const { findOverlongSearchQuery, truncateSearchHistory } = require('./findProductsMulti/queryLengthCap');
 const {
+  CALLER_ECHO_ALLOWLIST,
+  isGatewaySearchMetadata,
+  withoutCallerSearchRequestContract,
+  withoutCallerSearchGatewayKeys,
+  callerChosenSource,
+  callerChosenMarket,
+  collectCallerEchoValues,
+  withoutHostileCallerEcho,
+} = require('./findProductsMulti/callerEcho');
+const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
 } = require('./findProductsMulti/intent');
@@ -399,6 +431,7 @@ const {
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
 const retinoidSafetySignal = require('./services/retinoidSafetySignal');
+const retinoidFamily = require('./services/retinoidFamily');
 const marketTelemetry = require('./services/marketTelemetry');
 const {
   enforceServingCurrency,
@@ -439,6 +472,7 @@ const {
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
 } = require('./services/catalogEntityResolution');
+const { resolveReferralContentKey } = require('./services/referralContentKeyResolution');
 const {
   resolveExternalSeedLocalityFacts,
   applyLocalityFactsToSeedData,
@@ -455,6 +489,7 @@ const {
   buildIngredientIntentDirectEmptyResponse,
   buildIngredientIntentDirectHitResponse,
 } = require('./findProductsIngredientIntentDirectResponse');
+const zeroResultFallthrough = require('./findProductsMulti/zeroResultFallthrough');
 const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
@@ -4056,6 +4091,24 @@ const FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = Math.max(
   500,
   parseTimeoutMs(process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS, 6000),
 );
+// 0/unset = no deadline on the beauty mainline's canonical recall leg (today's behaviour); see its call site.
+const FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS = Math.max(
+  0,
+  Math.trunc(Number(process.env.FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS || 0) || 0),
+);
+// FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH: off | observe (default off). Classification only — see
+// src/findProductsMulti/zeroResultFallthrough.js. Any other value runs as off, with one warning here.
+const FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH =
+  zeroResultFallthrough.resolveZeroResultFallthroughConfig(process.env);
+if (FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH.invalidValue) {
+  logger.warn(
+    {
+      value: FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH.invalidValue,
+      accepted: zeroResultFallthrough.MODES,
+    },
+    'FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH has an unsupported value; running as off',
+  );
+}
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
 const FPM_CLARIFY_NEVER_EMPTY =
@@ -5773,6 +5826,53 @@ const RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS = Math.max(
 );
 const RESOLVE_CATALOG_SIGNATURE_COOLDOWN = new Map(); // cacheKey -> expiresAtMs
 
+// Fast-fail after the database could not answer a resolve
+// (CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE). Without it, an outage that fails
+// fast still sends every PDP and every public-search row to the database --
+// and each transient failure in src/db query() resets the whole pool. Two
+// tiers, both for RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS
+// (default 3000, 0 disables):
+//   - per signature: the sig that failed answers the same retryable error
+//     without a query;
+//   - instance-wide: only once RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS
+//     (default 3) DISTINCT sigs failed within one window. One sig whose own
+//     query keeps dropping its connection must not black out every other
+//     resolve on the instance; several failing at once is the outage.
+// Cache hits are still served.
+function readNonNegativeIntEnv(name, fallback, max) {
+  const raw = String(process.env[name] ?? '').trim();
+  const n = Number(raw);
+  return raw !== '' && Number.isFinite(n) && n >= 0 ? Math.min(max, Math.trunc(n)) : fallback;
+}
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS = readNonNegativeIntEnv(
+  'RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS', 3_000, 60_000);
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS = Math.max(
+  1, readNonNegativeIntEnv('RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS', 3, 1_000));
+const RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE = {
+  untilMs: 0, // instance-wide
+  perSig: new Map(), // sig -> untilMs (also the record of recent distinct failures)
+};
+
+function noteCatalogSignatureUnavailable(normalizedProductId) {
+  if (!(RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS > 0)) return;
+  const state = RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+  const now = Date.now();
+  for (const [sig, untilMs] of state.perSig) if (untilMs <= now) state.perSig.delete(sig);
+  state.perSig.delete(normalizedProductId); // re-insert: Map order = recency, for the size cap below
+  state.perSig.set(normalizedProductId, now + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS);
+  while (state.perSig.size > 1_000) state.perSig.delete(state.perSig.keys().next().value);
+  if (state.perSig.size >= RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_TRIP_KEYS) {
+    state.untilMs = now + RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_COOLDOWN_MS;
+  }
+}
+
+// Marks a resolved ref that is SERVABLE but incomplete because an optional
+// sub-read (identity listing, identity-group members) could not reach the
+// database. It is returned to this caller and never memoized, so a blip cannot
+// pin a members-less ref for the whole cache TTL. Non-enumerable: invisible to
+// spreads and JSON.
+const RESOLVE_CATALOG_SIGNATURE_DEGRADED = Symbol('resolveCatalogSignatureDegraded');
+
 // NOTE: the budget above only stops us WAITING. What actually releases the
 // pinned connection is the pool-level `statement_timeout` / `query_timeout` in
 // src/db/index.js — set there, not per-query, because the per-query helper
@@ -6162,11 +6262,14 @@ function normalizeCatalogSignatureResolveOptions(options = {}) {
  * outage, not a slow request.
  */
 function resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey) {
-  return withStageBudget(
-    resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions),
+  return withStageBudgetDb(
+    () => resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions),
     RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
     'resolve_catalog_signature',
   ).catch((err) => {
+    if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE') {
+      noteCatalogSignatureUnavailable(normalizedProductId);
+    }
     if (err?.code === 'STAGE_TIMEOUT') {
       // Trip the cooldown so we stop launching new copies of a query that is
       // already pinning a pool connection.
@@ -6210,6 +6313,94 @@ function buildCatalogSignatureTimeoutError(normalizedProductId) {
   return err;
 }
 
+function buildCatalogSignatureUnavailableError(normalizedProductId, cause) {
+  const err = new Error(
+    `Catalog signature resolve unavailable (${normalizedProductId}): database unavailable`,
+  );
+  err.code = 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE';
+  err.cause = cause;
+  return err;
+}
+
+// A get_pdp_v2 request whose signature ref is PARTIAL: an optional sub-read
+// (identity listing, identity-group members) could not reach the database.
+//
+// THE RULE, for every JSON body the request sends after the mark:
+//   1. it carries `degraded_reads` (what was missing), error bodies included,
+//      and the response is `Cache-Control: no-store`;
+//   2. it is never a not-found verdict. A 404 (PRODUCT_NOT_FOUND,
+//      PRODUCT_NOT_SERVABLE, ...) is rewritten to the retryable
+//      503 TEMPORARY_UNAVAILABLE / CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE, with the
+//      verdict that was about to be sent kept in `details.withheld_verdict`.
+//
+// Why (2): the database was unreachable during THIS request, so any later read
+// it swallowed (product detail, serving eligibility, identity rescue) may have
+// failed the same way, and the handler cannot tell that from "no such
+// product". A healthy product would otherwise get a 404 that crawlers and the
+// agent-ui ISR cache store as settled. A wrong 503 self-heals on retry; a wrong
+// 404 deindexes. Other 4xx (input errors) and 5xx pass through, marked.
+function markInvokeResponseDegraded(res, reason) {
+  if (!res || typeof res.json !== 'function') return;
+  if (res.__pivotaDegradedReads instanceof Set) {
+    res.__pivotaDegradedReads.add(reason);
+    return;
+  }
+  const reasons = new Set([reason]);
+  res.__pivotaDegradedReads = reasons;
+  if (typeof res.set === 'function') res.set('Cache-Control', 'no-store');
+  const sendJson = res.json.bind(res);
+  res.json = (body) => {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(body);
+    if (Number(res.statusCode) === 404) {
+      res.status(503);
+      return sendJson({
+        error: 'TEMPORARY_UNAVAILABLE',
+        message: 'Product is temporarily unavailable. Please retry shortly.',
+        reason_code: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+        ...(body.gateway_request_id ? { gateway_request_id: body.gateway_request_id } : {}),
+        details: {
+          reason: 'catalog_signature_partial_read',
+          withheld_verdict: {
+            status: 404,
+            error: body.error || null,
+            reason_code: body.reason_code || null,
+            reason: (body.details && typeof body.details === 'object' && body.details.reason) || null,
+          },
+        },
+        ...(body.metadata ? { metadata: body.metadata } : {}),
+        degraded_reads: [...reasons],
+      });
+    }
+    return sendJson({ ...body, degraded_reads: [...reasons] });
+  };
+}
+
+// The reason a retryable resolve failure is reported under.
+function describeCatalogSignatureResolveFailure(err) {
+  if (err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE') {
+    return {
+      reasonCode: 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE',
+      reason: 'catalog_signature_resolve_unavailable',
+      logMessage: 'get_pdp_v2 signature resolve could not reach the database; returning retryable 503',
+    };
+  }
+  return {
+    reasonCode: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT',
+    reason: 'catalog_signature_resolve_timeout',
+    logMessage: 'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
+  };
+}
+
+// Both mean "could not look", never "looked and found nothing": the PDP lanes
+// answer them with a retryable 503 rather than a 404.
+function isCatalogSignatureResolveRetryableError(err) {
+  return (
+    err?.code === 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' ||
+    err?.code === 'CATALOG_SIGNATURE_RESOLVE_UNAVAILABLE' ||
+    err?.code === 'STAGE_TIMEOUT'
+  );
+}
+
 async function resolveCatalogProductRefFromPivotaSignature(productId, options = {}) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
@@ -6229,12 +6420,14 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
     if (readCatalogSignatureCooldown(cacheKey)) {
       throw buildCatalogSignatureTimeoutError(normalizedProductId);
     }
+    throwIfCatalogSignatureUnavailableCooldown(normalizedProductId);
 
     const inflight = RESOLVE_CATALOG_SIGNATURE_INFLIGHT.get(cacheKey);
     if (inflight) return inflight;
 
     const promise = resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey)
       .then((value) => {
+        if (value && value[RESOLVE_CATALOG_SIGNATURE_DEGRADED] === true) return value;
         if (RESOLVE_CATALOG_SIGNATURE_CACHE.size >= RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES) {
           const firstKey = RESOLVE_CATALOG_SIGNATURE_CACHE.keys().next().value;
           if (firstKey !== undefined) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(firstKey);
@@ -6255,7 +6448,18 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
   // Cache-bypass path (debug probes, cache_bypass=true). Still bounded — an
   // unbounded await here would hang the request just as hard, it simply would
   // not poison the sig for everyone else.
+  throwIfCatalogSignatureUnavailableCooldown(normalizedProductId);
   return resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey);
+}
+
+function throwIfCatalogSignatureUnavailableCooldown(normalizedProductId) {
+  const now = Date.now();
+  const state = RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE;
+  if (state.untilMs > now || (state.perSig.get(normalizedProductId) || 0) > now) {
+    const err = buildCatalogSignatureUnavailableError(normalizedProductId, null);
+    err.cooldown = true;
+    throw err;
+  }
 }
 
 // content_canonical_election is created by pivota-backend migration 181, whose
@@ -6613,6 +6817,9 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       mintedSeedRouteProductId || String(exactRow?.source_product_id || '').trim();
     if (exactMerchantId && exactSourceProductId) {
       let exactIdentityRow = null;
+      // An optional sub-read below could not reach the database: serve the ref,
+      // but never memoize it (RESOLVE_CATALOG_SIGNATURE_DEGRADED).
+      let exactRefDegradedByUnavailableDb = false;
       if (
         options.hydrateIdentityListing !== false &&
         isExternalSeedListingMerchantId(exactMerchantId) &&
@@ -6646,6 +6853,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           );
           exactIdentityRow = Array.isArray(identityResult?.rows) ? identityResult.rows[0] : null;
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           const message = String(err?.message || err || '');
           if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
             logger.debug?.(
@@ -6790,6 +6998,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             };
           }
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           const message = String(err?.message || err || '');
           if (!(err?.code === 'NO_DATABASE' || (message.includes('pdp_identity_listing') && message.includes('does not exist')))) {
             logger.debug?.(
@@ -6814,6 +7023,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             queryFn: query,
           });
         } catch (err) {
+          if (isDbUnavailableError(err)) exactRefDegradedByUnavailableDb = true;
           logger.debug?.(
             {
               err: err?.message || String(err),
@@ -6833,7 +7043,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         exactIdentityGroupId,
         normalizedProductId,
       );
-      return {
+      const exactRef = {
         merchant_id: exactMerchantId,
         product_id: exactSourceProductId,
         ...(exactRow?.platform ? { platform: String(exactRow.platform).trim() } : {}),
@@ -6929,6 +7139,10 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         ]),
         source: 'catalog_products_signature_exact',
       };
+      if (exactRefDegradedByUnavailableDb) {
+        Object.defineProperty(exactRef, RESOLVE_CATALOG_SIGNATURE_DEGRADED, { value: true });
+      }
+      return exactRef;
     }
 
     const canonicalGroup = await resolveCanonicalCatalogEntityGroup({
@@ -7003,6 +7217,16 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       { err: err?.message || String(err), product_id: normalizedProductId },
       'Failed to resolve catalog product ref from pivota signature',
     );
+    // A database that could not answer (pool checkout timeout, statement
+    // timeout, dropped connection) is NOT "this sig resolves to nothing". A null
+    // here is memoized by the single-flight cache for its whole TTL, served as
+    // PRODUCT_NOT_FOUND by the PDP lanes, and read as "provably dead" by the
+    // public-search chain filter, which then DROPS the row -- three wrong
+    // answers from one full pool. Throw the same retryable shape the budget
+    // path uses instead: never cached, 503 at the PDP, row kept by the filter.
+    if (isDbUnavailableError(err)) {
+      throw buildCatalogSignatureUnavailableError(normalizedProductId, err);
+    }
     return null;
   }
 }
@@ -13561,6 +13785,84 @@ function buildServiceVersionMetadata() {
   };
 }
 
+// The handler's metadata (caller metadata merged with what the gateway computed) without the caller's
+// own values. A key the caller sent and the gateway left untouched is the caller's, and is dropped,
+// whatever it holds (a nested object, a spoofed service_version); only the attribution keys below may
+// come back, and only as short plain values. A key the gateway added, or overwrote with its own value,
+// is the gateway's and stays.
+const { isDeepStrictEqual: callerMetadataValueUnchanged } = require('node:util');
+// The one echo allowlist for caller attribution values (src/findProductsMulti/callerEcho.js): a short
+// plain source / creator id / trace id, a display name, and a market written exactly as a code.
+const CALLER_METADATA_ECHO_ALLOWLIST = CALLER_ECHO_ALLOWLIST;
+// normalizeMetadata copies these caller keys under a second spelling: the copy is the caller's too.
+const CALLER_METADATA_KEY_ALIASES = Object.freeze({
+  creatorId: 'creator_id', creator_id: 'creatorId', creatorName: 'creator_name', creator_name: 'creatorName',
+  traceId: 'trace_id', trace_id: 'traceId',
+});
+// Besides the request metadata, normalizeMetadata reads these attribution keys from the payload, and
+// creator_id from payload.search: a value found there is the caller's as much as one in the metadata.
+const CALLER_PAYLOAD_ATTRIBUTION_KEYS = Object.freeze(['creator_id', 'creatorId', 'creator_name', 'creatorName', 'trace_id', 'traceId', 'source']);
+const CALLER_PAYLOAD_SEARCH_ATTRIBUTION_KEYS = Object.freeze(['creator_id']);
+// query_understanding records the source it read, in this form. When the top-level value it read was the
+// caller's and failed the allowlist, the recorded copy goes too. (The market it records is not
+// necessarily the metadata's -- the search block's and the payload's come first -- so a recorded market is
+// checked once, against the market the request used, by withoutHostileCallerEcho on the way out.)
+const QUERY_UNDERSTANDING_RECORDED_FORM = Object.freeze({
+  source: (value) => String(value).trim(),
+});
+// Every value the caller sent that normalizeMetadata can copy into the handler's metadata, by key, taken
+// before the handler writes anything: what the metadata spread copies (an object's own keys; an array's
+// or a string's indices, which is how a non-object metadata arrives as numbered keys), and the payload
+// attribution keys above.
+function collectCallerMetadataValues(rawMetadata, payload) {
+  const sent = new Map();
+  const add = (key, value) => {
+    if (value === undefined) return;
+    if (!sent.has(key)) sent.set(key, []);
+    sent.get(key).push(value);
+  };
+  if (rawMetadata !== null && rawMetadata !== undefined) {
+    for (const [key, value] of Object.entries({ ...rawMetadata })) add(key, value);
+  }
+  const fromPayload = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  for (const key of CALLER_PAYLOAD_ATTRIBUTION_KEYS) add(key, fromPayload[key]);
+  const fromSearch =
+    fromPayload.search && typeof fromPayload.search === 'object' && !Array.isArray(fromPayload.search) ? fromPayload.search : {};
+  for (const key of CALLER_PAYLOAD_SEARCH_ATTRIBUTION_KEYS) add(key, fromSearch[key]);
+  return sent;
+}
+function withoutCallerMetadataEcho(handlerMetadata, callerValues) {
+  const handler = handlerMetadata && typeof handlerMetadata === 'object' && !Array.isArray(handlerMetadata) ? handlerMetadata : {};
+  const caller = callerValues instanceof Map ? callerValues : new Map();
+  const sentAs = (key, value) => (caller.get(key) || []).some((sent) => callerMetadataValueUnchanged(sent, value));
+  const out = {};
+  const rejected = new Map();
+  for (const [key, value] of Object.entries(handler)) {
+    const fromCaller = sentAs(key, value) || (CALLER_METADATA_KEY_ALIASES[key] ? sentAs(CALLER_METADATA_KEY_ALIASES[key], value) : false);
+    if (!fromCaller) {
+      out[key] = value;
+      continue;
+    }
+    const allowed = Object.prototype.hasOwnProperty.call(CALLER_METADATA_ECHO_ALLOWLIST, key)
+      ? CALLER_METADATA_ECHO_ALLOWLIST[key]
+      : null;
+    if (allowed && typeof value === 'string' && allowed.test(value)) out[key] = value;
+    else rejected.set(key, value);
+  }
+  const understanding = out.query_understanding;
+  if (understanding && typeof understanding === 'object' && !Array.isArray(understanding)) {
+    let kept = understanding;
+    for (const [key, recordedForm] of Object.entries(QUERY_UNDERSTANDING_RECORDED_FORM)) {
+      if (!rejected.has(key) || !Object.prototype.hasOwnProperty.call(kept, key)) continue;
+      if (kept[key] !== recordedForm(rejected.get(key))) continue;
+      const { [key]: _dropped, ...rest } = kept;
+      kept = rest;
+    }
+    if (kept !== understanding) out.query_understanding = kept;
+  }
+  return out;
+}
+
 function completeServiceVersionMetadata(existing = null) {
   const base = buildServiceVersionMetadata();
   const current =
@@ -14049,6 +14351,8 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
   );
 }
 
+// Tests only (app._debug.useSearchOverlayFetchForTest, NODE_ENV=test): the storefront fetch the `.json` overlay uses.
+let _searchOverlayFetchForTest = null;
 function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
   // trackSearchOverlay: the price_verification_served line's record of this run (log only; it returns its
   // argument unchanged, and with PRICE_VERIFICATION_LOG off does nothing at all).
@@ -14073,6 +14377,9 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
   return trackSearchOverlay(overlayLiveMerchantSearchPrices(response, {
     // The merchant's own UCP catalog first (price and stock, for the buyer's market); UCP_LIVE_SEARCH_READ.
     ucpSearchReader: getUcpLiveSearchReader(),
+    priceCache: priceCacheHooks,
+    hostGate: priceHostGate,
+    ...(_searchOverlayFetchForTest ? { fetchImpl: _searchOverlayFetchForTest } : {}),
     // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
     market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
   }));
@@ -16102,6 +16409,22 @@ function normalizeSearchQueryParams(rawQuery) {
   return { queryText, queryParams };
 }
 
+// withStageBudget for a stage whose work is DB reads: the work is STARTED inside
+// a lane deadline (src/db runWithDbDeadline) matching the budget, so the
+// statements it issues stop holding pool connections -- and, with
+// DB_CLIENT_CONNECTION_CHECK_INTERVAL_MS, stop running on the primary -- once
+// the caller has given up. Takes a thunk, not a promise: the deadline context
+// has to be active when the queries are issued. With DB_LANE_DEADLINES_ENABLED
+// off this is exactly withStageBudget(fn(), ...).
+function withStageBudgetDb(fn, timeoutMs, timeoutLabel) {
+  const budgetMs = Math.max(1, Number(timeoutMs || 0) || 0);
+  return withStageBudget(
+    runWithDbDeadline({ budgetMs, label: timeoutLabel }, fn),
+    timeoutMs,
+    timeoutLabel,
+  );
+}
+
 async function withStageBudget(promise, timeoutMs, timeoutLabel) {
   const budgetMs = Math.max(1, Number(timeoutMs || 0) || 0);
   if (!budgetMs) return promise;
@@ -16957,8 +17280,11 @@ const BEAUTY_RECALL_TIMEOUT_MESSAGES = [
   /^Connection terminated due to connection timeout$/i,
   /^Query read timeout$/i,
 ];
+// src/db's budgeted-query codes (a lane deadline or queryWithBudget ran out) are the same event as a
+// statement timeout, raised client-side.
+const BEAUTY_RECALL_TIMEOUT_CODES = new Set(['57014', 'DB_BUDGET_ACQUIRE_TIMEOUT', 'DB_BUDGET_QUERY_TIMEOUT']);
 function isBeautyRecallQueryTimeout(err) {
-  if (String(err?.code || '').trim() === '57014') return true;
+  if (BEAUTY_RECALL_TIMEOUT_CODES.has(String(err?.code || '').trim())) return true;
   if (err?.code) return false;
   const message = String(err?.message || '').trim();
   return BEAUTY_RECALL_TIMEOUT_MESSAGES.some((pattern) => pattern.test(message));
@@ -16972,7 +17298,13 @@ async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1
       await client.query(`SET statement_timeout = ${boundedTimeoutMs}`);
       return await client.query(sql, params);
     } finally {
-      await client.query('SET statement_timeout = 0').catch(() => {});
+      // RESET, never `= 0`: this is a POOLED connection. `0` means "no limit",
+      // so it stripped the pool's connection-level statement_timeout backstop
+      // (src/db) from the socket and handed it to the next caller unbounded.
+      // RESET restores the value the connection was opened with. If even the
+      // RESET fails, the session still carries this helper's short timeout (or
+      // worse), so the connection is destroyed rather than returned.
+      await client.query('RESET statement_timeout').catch(() => markClientForDestroy(client));
     }
   });
 }
@@ -20164,14 +20496,183 @@ const BEAUTY_RETINOID_STAND_IN_PHRASES = [
   /\b(?:retinol|retinoid)s?-like\b/g,
   /\b(?:alternatives?|substitutes?|replacements?)\s+(?:to|for)\s+(?:retinol|retinoids?)\b/g,
   /\b(?:gentler|better|kinder|softer)\s+than\s+retinol\b/g,
-  /\b(?:retinol|retinoid)s?[-\s]?free\b/g,
-  /\b(?:no|without|zero|0\s?%)\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
+  // "free" before "shipping" / "of parabens" ... is not this claim; "0%" is never the tail of "1.0%".
+  /\b(?:retinol|retinoid)s?[-\s]?free\b(?![\s-]+(?:of|from|shipping|delivery|returns?|gifts?|samples?|trials?|radicals?|sizes?)\b)/g,
+  /\b(?:no|without|zero)\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
+  /(?<![\d.])0\s?%\s+(?:added\s+)?(?:retinol|retinoids?)\b/g,
   /레티놀\s?(?:대체|프리(?!미엄))/g,
   /(?:植物)?(?:视黄醇|視黃醇|a醇)(?:平替|替代|代替)|植物(?:视黄醇|視黃醇|a醇)/g,
   /レチノール(?:代替|フリー|様)/g,
 ];
 const BEAUTY_RETINOID_NAME_ANY_RE =
   /\b(?:retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|granactive\s+retinoid)\b|视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール|레티놀|레티날|레티노이드|레티닐 ?팔미테이트|(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])/i;
+
+// The shared retinoid family (src/services/retinoidFamily.js), read on a product's text on top of the
+// patterns above: vitamin A and its esters, retinoic acid, rétinoïde, the prescription brands, and the
+// Chinese, Japanese, Korean, Thai and Russian names. Latin names are whole words on a view with
+// diacritics stripped and punctuation as a space ("Retin-A" is "retin a"); script names are substrings
+// of the lowercased text; Russian forms stand alone as words.
+//
+// What the product IS can take two names out, and only on positive evidence (the default counts both):
+//   - vitamin A, when the product is taken by mouth (a supplement word and no topical form word) or is
+//     an A&D / diaper / nipple skin protectant; "provitamin A" and "beta carotene" never count;
+//   - Differin, when the product is a benzoyl peroxide / salicylic acid product, or a cleanser /
+//     moisturizer / SPF that is not a gel (a product naming adapalene is a retinoid by that name).
+//   The topical form list decides only a product that also carries a word for something taken by
+//   mouth: "Vitamin A Facial Capsules" and a "Night Cream" filed under Supplements still count.
+// A prescription brand in an accessory phrase names no product: "for Accutane users", "during Accutane
+// treatment" (a preposition, the brand, then an accessory noun), or "Accutane-safe" (hyphenated). Read
+// on the text with its punctuation, so "Tazorac Safe Strength" or "for Acne: Tazorac 0.1%" stay names.
+const beautyRetinoidLatinView = (text) =>
+  String(text || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9%]+/g, ' ');
+const BEAUTY_RETINOID_IS_VITAMIN_A_NAME = (name) => /^vit(?:amin[ae]?s?)? a(?: |$)/.test(name);
+const beautyRetinoidLatinSource = (names, joiner) =>
+  [...names].sort((a, b) => b.length - a.length).map((name) => name.split(' ').join(joiner)).join('|');
+const beautyRetinoidWordRe = (names) => new RegExp(`(?:^|\\s)(?:${beautyRetinoidLatinSource(names, '\\s+')})(?=\\s|$)`);
+const BEAUTY_RETINOID_FAMILY_LATIN_SOURCE = beautyRetinoidLatinSource(retinoidFamily.RETINOID_FAMILY_LATIN, '\\s+');
+const BEAUTY_RETINOID_FAMILY_LATIN_RE = beautyRetinoidWordRe(retinoidFamily.RETINOID_FAMILY_LATIN.filter((name) => !BEAUTY_RETINOID_IS_VITAMIN_A_NAME(name)));
+const BEAUTY_RETINOID_VITAMIN_A_RE = beautyRetinoidWordRe(retinoidFamily.RETINOID_FAMILY_LATIN.filter(BEAUTY_RETINOID_IS_VITAMIN_A_NAME));
+const BEAUTY_RETINOID_PRESCRIPTION_BRAND_RE = beautyRetinoidWordRe(retinoidFamily.RETINOID_PRESCRIPTION_BRANDS);
+const BEAUTY_RETINOID_OTC_BRAND_RE = beautyRetinoidWordRe(retinoidFamily.RETINOID_OTC_BRANDS);
+const BEAUTY_RETINOID_ANY_BRAND = beautyRetinoidLatinSource([...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS, ...retinoidFamily.RETINOID_OTC_BRANDS], '\\s+');
+const BEAUTY_RETINOID_BRAND_ACCESSORY_RE = new RegExp(
+  `(?<![a-z0-9])(?:for|during|while\\s+on|while\\s+taking|after|post)\\s+(?:${BEAUTY_RETINOID_ANY_BRAND})\\s+` +
+    `(?:users?|patients?|treatment|therapy|course|dryness|lips)(?![a-z0-9])`,
+  'g',
+);
+// The hyphenated form. Only a text that keeps its hyphens can show it, so a product's brand is decided
+// once, from its raw fields (beautyRetinoidProductReading), never from the candidate and safety texts,
+// which have lost their hyphens ("Accutane-Safe" there reads "accutane safe").
+const BEAUTY_RETINOID_BRAND_SAFE_RE = new RegExp(
+  `(?<![a-z0-9])(?:${BEAUTY_RETINOID_ANY_BRAND})-(?:safe|compatible|friendly)(?![a-z0-9])`,
+  'g',
+);
+const beautyRetinoidTextWithoutBrandAccessories = (lowered) =>
+  lowered.replace(BEAUTY_RETINOID_BRAND_ACCESSORY_RE, ' ').replace(BEAUTY_RETINOID_BRAND_SAFE_RE, ' ');
+const BEAUTY_RETINOID_NOT_VITAMIN_A_RE = /\bpro\s?vit(?:amin[ae]?s?)?\s+a\b|\bvit(?:amin[ae]?s?)?\s+a\s+(?:as\s+|from\s+)?beta\s+carotene\b|\bbeta\s+carotene\b/g;
+const BEAUTY_RETINOID_FAMILY_RU_RE = new RegExp(`(?<![а-яё])(?:${retinoidFamily.RETINOID_FAMILY_RUSSIAN.join('|')})(?![а-яё])`, 'i');
+// `vitaminA` and `brand` are the product's own answers (beautyRetinoidProductReading); both fail closed.
+function beautyTextNamesRetinoidFamily(text, { vitaminA = true, brand = true } = {}) {
+  const lowered = String(text || '').normalize('NFKC').toLowerCase();
+  if (!lowered.trim()) return false;
+  const latin = beautyRetinoidLatinView(lowered).replace(BEAUTY_RETINOID_NOT_VITAMIN_A_RE, ' ');
+  return (
+    BEAUTY_RETINOID_FAMILY_LATIN_RE.test(latin) ||
+    (vitaminA && BEAUTY_RETINOID_VITAMIN_A_RE.test(latin)) ||
+    brand ||
+    retinoidFamily.RETINOID_FAMILY_SCRIPT.some((name) => lowered.includes(name)) ||
+    BEAUTY_RETINOID_FAMILY_RU_RE.test(lowered)
+  );
+}
+const beautyTextNamesAnyRetinoid = (text, options) => BEAUTY_RETINOID_NAME_ANY_RE.test(text) || beautyTextNamesRetinoidFamily(text, options);
+
+// What the product IS, for the two names above: read from its title, category and type (a category path
+// never outweighs a topical title: "Night Cream" filed under Health/Supplements is a cream).
+const BEAUTY_RETINOID_INGESTED_RE =
+  /\b(?:supplements?|multi\s?vitamins?|vitamins|prenatals?|capsules?|softgels?|tablets?|caplets?|gumm(?:y|ies)|chewables?|lozenges?|cod\s+liver|fish\s+oils?|dietary)\b|\b\d+\s?iu\b/;
+const BEAUTY_RETINOID_TOPICAL_FORM_RE =
+  /\b(?:serums?|creams?|cremes?|moisturi[sz]ers?|lotions?|emulsions?|essences?|ampoules?|toners?|cleansers?|wash|masks?|gels?|balms?|oils?|drops|butters?|primers?|pads?|mists?|concentrates?|boosters?|patch(?:es)?|sticks?|sunscreens?|spf|(?:face|facial|serum|skin)\s+capsules?|(?:face|facial|eye|anti\s+aging|wrinkle)\s+ointments?)\b/;
+// An A&D skin protectant: "A&D" / "A and D" TOGETHER with a protectant word, in what the product is.
+const BEAUTY_RETINOID_A_AND_D_RE = /\b(?:vitamins?\s+)?a\s*(?:&|\+|and)\s*d\b/;
+const BEAUTY_RETINOID_PROTECTANT_WORD_RE = /\b(?:ointments?|diaper|nappy|nipples?|skin\s+protectant)\b/;
+// A face product is never an A&D protectant ("Vitamin A&D Anti-Aging Face Ointment").
+const BEAUTY_RETINOID_FACE_PRODUCT_RE = /\b(?:face|facial|anti\s+aging|wrinkles?|night|serums?|creams?)\b/;
+// Directions in the description to put the product on ("twist open and apply to face"). Only application
+// verbs: "supports healthy skin" or "take at night" is said of a supplement too.
+const BEAUTY_RETINOID_TOPICAL_USE_RE = /\b(?:apply|applied|applying|topical|topically|massage)\b/;
+// A Differin product that names benzoyl peroxide or salicylic acid as what it IS, not as absent ("BPO-free",
+// "salicylic acid free", "no / not / without / zero / free of ...", "0% ...").
+const BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE =
+  /(?<!\b(?:no|non|not|without|zero|free\s+of|free\s+from)\s|\b0%\s)\b(?:benzoyl\s+peroxide|bpo|salicylic(?:\s+acid)?)\b(?!\s+(?:acid\s+)?free\b)/;
+const BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE = /\b(?:cleansers?|cleansing|wash|moisturi[sz]ers?|spf|sunscreens?)\b/;
+function beautyRetinoidProductReading(product) {
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
+  const fields = (keys) =>
+    [product, seedData]
+      .flatMap((holder) => keys.map((k) => holder[k]))
+      .flat()
+      .filter((value) => typeof value === 'string')
+      .join(' \n ')
+      .normalize('NFKC')
+      .toLowerCase();
+  const whatRaw = fields(['title', 'name', 'product_name', 'category', 'product_type', 'catalog_category_path', 'category_path']);
+  const what = beautyRetinoidLatinView(whatRaw);
+  const topical =
+    BEAUTY_RETINOID_TOPICAL_FORM_RE.test(what.replace(/\b(?:cod\s+liver|fish)\s+oils?\b/g, ' ')) ||
+    BEAUTY_RETINOID_TOPICAL_USE_RE.test(beautyRetinoidLatinView(fields(['description'])));
+  const ingested = BEAUTY_RETINOID_INGESTED_RE.test(what) && !topical;
+  const protectant =
+    BEAUTY_RETINOID_A_AND_D_RE.test(whatRaw) &&
+    BEAUTY_RETINOID_PROTECTANT_WORD_RE.test(what) &&
+    !BEAUTY_RETINOID_FACE_PRODUCT_RE.test(beautyRetinoidLatinView(fields(['title', 'name', 'product_name'])));
+  // Differin is read by what the product is, never by a warning in its description ("do not use with
+  // benzoyl peroxide"). A Differin gel is always a retinoid; another form is not when it is a benzoyl
+  // peroxide / salicylic acid product or a cleanser / moisturizer / SPF.
+  const differinIsOther =
+    !/\bgels?\b/.test(what) &&
+    (BEAUTY_RETINOID_DIFFERIN_OTHER_ACTIVE_RE.test(what) || BEAUTY_RETINOID_DIFFERIN_CARE_FORM_RE.test(what));
+  // The brand names, from every raw field the product check reads (hyphens kept), accessories removed.
+  const brandText = beautyRetinoidLatinView(
+    beautyRetinoidTextWithoutBrandAccessories(
+      [
+        buildBeautyProductRawSafetyText(product).toLowerCase(),
+        fields(['brand', 'vendor', 'display_name', 'product_type', 'category', 'external_domain', 'canonical_url', 'destination_url', 'external_url']),
+      ].join(' \n '),
+    ),
+  );
+  const brand =
+    BEAUTY_RETINOID_PRESCRIPTION_BRAND_RE.test(brandText) || (!differinIsOther && BEAUTY_RETINOID_OTC_BRAND_RE.test(brandText));
+  return { vitaminA: !(ingested || protectant), brand };
+}
+
+// A product's claim that it is free of a retinoid names what is ABSENT: "Retinol-Free", "no retinyl
+// palmitate", "without vitamin A", "Vitamin A Free", "不含视黄醇", "レチノールフリー", "레티놀 프리", "ไม่มีเรตินอล",
+// "без ретинола". Any such claim, in any script, sends the product through this rule: the claims are
+// removed and the text is read again, so a claim never hides a retinoid named elsewhere
+// ("Retinol-Free Retinoid Serum (HPR)", "retinol-free ... Ingredients: Retinyl Palmitate").
+//
+// Latin claims are matched on the text WITH its punctuation (diacritics stripped), so a claim never
+// spans a sentence: "encapsulated retinol. Free shipping", "Retinol, Free From Parabens", "Retinol &
+// Free-Radical", "1.0% retinol" are not claims. (The candidate and safety texts read beside the raw
+// text have lost their punctuation; a claim they seem to carry counts only when the raw text, which
+// names the same product, carries it too.)
+const beautyRetinoidClaimView = (text) => String(text || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+const BEAUTY_RETINOID_CLAIM_NAME_LATIN = `(?:retinols?|retinoids?|${beautyRetinoidLatinSource(retinoidFamily.RETINOID_FAMILY_LATIN, '[\\s-]+')})`;
+const BEAUTY_RETINOID_FREE_NOT_ABSENCE = '(?:of|from|shipping|delivery|returns?|gifts?|samples?|trials?|radicals?|sizes?)';
+const BEAUTY_RETINOID_FREE_CLAIM_LATIN_RES = [
+  new RegExp(`(?<![a-z0-9])${BEAUTY_RETINOID_CLAIM_NAME_LATIN}[\\s-]*free(?![a-z0-9])(?![\\s-]+${BEAUTY_RETINOID_FREE_NOT_ABSENCE}(?![a-z0-9]))`, 'g'),
+  new RegExp(`(?<![a-z0-9])(?:no|non|without|zero|free[\\s-]+of|free[\\s-]+from)[\\s-]+(?:added[\\s-]+)?${BEAUTY_RETINOID_CLAIM_NAME_LATIN}(?![a-z0-9])`, 'g'),
+  // "0%" is never the tail of "1.0%" or "10%"
+  new RegExp(`(?<![\\d.])0\\s?%[\\s-]*(?:added[\\s-]+)?${BEAUTY_RETINOID_CLAIM_NAME_LATIN}(?![a-z0-9])`, 'g'),
+];
+const BEAUTY_RETINOID_CLAIM_NAME_SCRIPT = `(?:${[...retinoidFamily.RETINOID_FAMILY_SCRIPT, '视黄醇', '視黃醇', '维a醇', '維a醇', 'a醇', 'レチノール', '레티놀']
+  .sort((a, b) => b.length - a.length)
+  .join('|')})`;
+const BEAUTY_RETINOID_FREE_CLAIM_SCRIPT_RES = [
+  new RegExp(`(?:不含|无添加|無添加|无|無|ไม่มี|ปราศจาก)\\s*${BEAUTY_RETINOID_CLAIM_NAME_SCRIPT}`, 'g'),
+  new RegExp(`${BEAUTY_RETINOID_CLAIM_NAME_SCRIPT}\\s*(?:フリー|不使用|無添加|なし|無し|프리(?!미엄)|무첨가|없는)`, 'g'),
+  /(?<![а-яё])(?:без|не\s+содержит)\s+(?:[а-яё]+\s+)?(?:ретин|третиноин|адапален|трифаротен)[а-яё]*/gi,
+];
+// { claimed: the text carries a free claim; namesOutside: a retinoid is named outside every claim }.
+function beautyRetinoidFreeClaimReading(text, options) {
+  const lowered = BEAUTY_RETINOID_STAND_IN_PHRASES.reduce(
+    (out, re) => out.replace(re, ' '),
+    String(text || '').normalize('NFKC').toLowerCase(),
+  );
+  const script = BEAUTY_RETINOID_FREE_CLAIM_SCRIPT_RES.reduce((out, re) => out.replace(re, ' '), lowered);
+  const claimView = beautyRetinoidClaimView(script);
+  const latinClaimsRemoved = BEAUTY_RETINOID_FREE_CLAIM_LATIN_RES.reduce((out, re) => out.replace(re, ' '), claimView);
+  const latin = beautyRetinoidLatinView(latinClaimsRemoved);
+  // Latin names on the latin view (scripts dropped), script names on the script text (Latin left as is).
+  const namesOutside =
+    beautyTextNamesAnyRetinoid(latin, options) ||
+    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/.test(script) ||
+    BEAUTY_PRODUCT_RETINOID_KO_RE.test(script) ||
+    BEAUTY_PRODUCT_RETINOID_RU_RE.test(script) ||
+    retinoidFamily.RETINOID_FAMILY_SCRIPT.some((name) => script.includes(name)) ||
+    BEAUTY_RETINOID_FAMILY_RU_RE.test(script);
+  return { claimed: script !== lowered || latinClaimsRemoved !== claimView, namesOutside };
+}
 
 function beautyProductRetinoidMentionIsStandInOnly(product) {
   if (!product || typeof product !== 'object') return false;
@@ -20197,7 +20698,8 @@ function beautyProductRetinoidMentionIsStandInOnly(product) {
   const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
   // The title must carry a stand-in phrase, and nothing anywhere may name a retinoid outside one.
   if (strip(title) === title) return false;
-  return [title, description, structured].every((text) => !BEAUTY_RETINOID_NAME_ANY_RE.test(strip(text)));
+  const options = beautyRetinoidProductReading(product);
+  return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(strip(text), options));
 }
 
 // A product the retinoid safety rules must keep out: it names a retinoid and does not say it is
@@ -20211,14 +20713,20 @@ function beautyProductIsRetinoidForSafety(product) {
   const rawText = buildBeautyProductRawSafetyText(product);
   const scriptText = [text, safetyText, rawText].join(' ');
   if (!scriptText.trim()) return false;
+  const options = beautyRetinoidProductReading(product);
   const hit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinaldehyde|retinoids?|retinyl|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin[-\s]?a|hydroxypinacolone|hpr|granactive\s+retinoid)\b/i.test(scriptText) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇|レチノール/i.test(scriptText) ||
     BEAUTY_PRODUCT_RETINOID_KO_RE.test(rawText) ||
-    BEAUTY_PRODUCT_RETINOID_RU_RE.test(rawText);
+    BEAUTY_PRODUCT_RETINOID_RU_RE.test(rawText) ||
+    beautyTextNamesRetinoidFamily(scriptText, options);
   if (!hit) return false;
   if (beautyProductRetinoidMentionIsStandInOnly(product)) return false;
-  return !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text);
+  // A product with a free claim (in any script, or an English "retinol-free" the stand-in phrases
+  // already read) is a retinoid when it names one outside its claims.
+  const claim = beautyRetinoidFreeClaimReading(scriptText, options);
+  const claimed = claim.claimed || /\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text);
+  return claimed ? claim.namesOutside : true;
 }
 
 // The last line of the retinoid safety rules: for a find_products_multi response to a request that
@@ -23220,28 +23728,33 @@ async function searchBeautyExternalSeedProductsMainline({
   // `servingCurrency` is the currency every row on the page must carry, flag or no flag: a silent
   // request is a US request (USD), a named priced market is its own currency, and anything else
   // is null and served nothing. See resolveServingCurrency.
-  const { markets, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
+  const { markets, buyerMarket, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
   const market = markets[0];
+  // What the answer RECORDS as its market (search_quality_contract.hard_constraints.market): the buyer's
+  // market when the request named one read as such, else the lane market. With the flag on, `market` is the
+  // served list's head (US) for an SG buyer whose page is SGD; recording that would name a market the page was
+  // not served for. Flag off, `market` is already the named market, so the record is the same either way.
+  const recordedMarket = buyerMarket || market;
   // A market with no known currency runs no SQL (the early return below), so it bound nothing:
   // logging `markets` there would read ['US'] beside an empty page.
   marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), {
     search, metadata, markets: servingCurrency ? markets : null, buyerCurrency, servingCurrency,
   });
+  // The contract buildFindProductsMultiContext built for this request and wrote into its search block (the
+  // lanes after context build); before that (the early lane) there is none, and this builds its own from
+  // the query. Never one from the request metadata: the gateway writes none there, and the invoke handler
+  // drops a caller's (src/findProductsMulti/callerEcho.js).
   const requestSearchQualityContract =
     search?.search_quality_contract &&
     typeof search.search_quality_contract === 'object' &&
     !Array.isArray(search.search_quality_contract)
       ? search.search_quality_contract
-      : metadata?.search_quality_contract &&
-          typeof metadata.search_quality_contract === 'object' &&
-          !Array.isArray(metadata.search_quality_contract)
-        ? metadata.search_quality_contract
-        : null;
+      : null;
   const searchQualityContract = SEARCH_QUALITY_CONTRACT_V1_ENABLED
     ? requestSearchQualityContract ||
       buildSearchQualityContract({
           rawQuery: rawQueryText,
-          market,
+          market: recordedMarket,
           source: metadata?.source || search?.source || null,
           allowContextBinding: false,
         })
@@ -23439,7 +23952,7 @@ async function searchBeautyExternalSeedProductsMainline({
   // 2026-09-26).
   const servedOfferCurrency = servingCurrency;
   const primaryOfferScope = { currency: servedOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
-  const canonicalRowsPromise = fetchCanonicalChainRows({
+  const canonicalRowsArgs = {
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
     // Deliberate category-browse: mainline recalls the bucket and then runs
@@ -23505,7 +24018,20 @@ async function searchBeautyExternalSeedProductsMainline({
     brandFilter: canonicalBrandFilter,
     searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
     deps: { query },
-  })
+  };
+  // Optional DB deadline on this leg (FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS, needs DB_LANE_DEADLINES_ENABLED).
+  // The leg has no stage budget of its own: only the pool's 30s statement_timeout bounds it, so under load
+  // it keeps a connection (and the primary) busy long after the caller's own deadline has passed. With the
+  // deadline set, an overrun ends like any other timed-out arm -- the seed arm's rows are served, and only
+  // an empty merge is reported as the primary failure -- and its connection is released at the deadline.
+  // Unset keeps today's unbounded leg. Called directly when unset so the canonical call site stays in this
+  // function (the stored-name-norm invariant script identifies the mainline by its stack frame).
+  const canonicalRowsPromise = (FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS > 0
+    ? runWithDbDeadline(
+      { budgetMs: FPM_BEAUTY_CANONICAL_DB_DEADLINE_MS, label: 'beauty_canonical_recall' },
+      () => fetchCanonicalChainRows(canonicalRowsArgs),
+    )
+    : fetchCanonicalChainRows(canonicalRowsArgs))
     .then((rows) => ({
       rows: Array.isArray(rows) ? rows : [],
       error: null,
@@ -28974,8 +29500,8 @@ async function enrichSimilarProductsForPdpCards({
   let officialSeedCardSourcesById = new Map();
   if (officialSeedHydrationProductIds.length > 0) {
     metadata.card_enrichment_official_seed_attempted_count = officialSeedHydrationCandidates.length;
-    officialSeedCardSourcesById = await withStageBudget(
-      fetchExternalSeedSimilarCardSourcesFromDb(officialSeedHydrationProductIds),
+    officialSeedCardSourcesById = await withStageBudgetDb(
+      () => fetchExternalSeedSimilarCardSourcesFromDb(officialSeedHydrationProductIds),
       normalizedOfficialSeedBudgetMs,
       'pdp_similar_card_official_seed_sources',
     ).catch((err) => {
@@ -31329,12 +31855,20 @@ function getUcpLiveShared() {
   _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
   return _ucpLiveShared;
 }
-function ucpLiveReaderDeps(maxConcurrent, { maxPerHost } = {}) {
+// Whose merchant reads a lookup core makes (`readClass`): get_offers may spend the budget's reserved quarter.
+const priceHostGate = {
+  admit: (host, klass) => require('./services/priceHostBudget').processHostReadGate().admit(host, klass),
+  noteRefusal: (host, status) => priceCacheHooks.noteHostRefusal(host, status),
+};
+function ucpLiveReaderDeps(maxConcurrent, { maxPerHost, readClass } = {}) {
   const { createLookupCore } = require('./services/ucpLiveOfferRead');
   const shared = getUcpLiveShared();
   return {
     ucpClient: shared.ucpClient,
+    priceCache: priceCacheHooks,
     core: createLookupCore({
+      hostGate: priceHostGate,
+      readClass: readClass || 'search',
       ucpClient: shared.ucpClient, now: () => Date.now(), endpointTtlMs: 60 * 60 * 1000, memoTtlMs: 30 * 1000,
       maxConcurrent, endpointCache: shared.endpoints, discoveryInFlight: shared.discovering,
       discoveryFailures: shared.discoveryFailures,
@@ -31353,7 +31887,7 @@ function getUcpLiveSearchReader() {
   if (readMode(process.env, 'UCP_LIVE_SEARCH_READ') === MODES.OFF) return null;
   _ucpLiveSearchReader = createUcpLiveSearchReader({
     // Search fans out per page: the smallest pool (8).
-    ...ucpLiveReaderDeps(8),
+    ...ucpLiveReaderDeps(8, { readClass: 'search' }),
     log: logUcpLiveRead,
   });
   return _ucpLiveSearchReader;
@@ -31367,7 +31901,8 @@ function getUcpLiveProductReader() {
   const { createUcpLiveProductReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode(process.env, 'UCP_LIVE_PRODUCT_READ') === MODES.OFF) return null;
   _ucpLiveProductReader = createUcpLiveProductReader({
-    ...ucpLiveReaderDeps(16),
+    ...ucpLiveReaderDeps(16, { readClass: 'product' }),
+    priceCacheWriter: 'product',
     log: logUcpLiveRead,
   });
   return _ucpLiveProductReader;
@@ -31388,7 +31923,8 @@ function getUcpLivePdpReader() {
   _ucpLivePdpReader = createUcpLiveProductReader({
     // The frontend PDP is the highest-volume surface: at most 3 lookups to one store in flight -- one
     // product's full read (up to 30 variants = 3 chunks of 10), never a stack of several products.
-    ...ucpLiveReaderDeps(8, { maxPerHost: 3 }),
+    ...ucpLiveReaderDeps(8, { maxPerHost: 3, readClass: 'pdp' }),
+    priceCacheWriter: 'pdp',
     mode: MODES.SHADOW,
     event: 'get_pdp_v2_ucp_live_read',
     log: logUcpLiveRead,
@@ -31537,7 +32073,7 @@ function getUcpLiveOfferReader() {
   const { createUcpLiveOfferReader, readMode, MODES } = require('./services/ucpLiveOfferRead');
   if (readMode() === MODES.OFF) return null;
   _ucpLiveOfferReader = createUcpLiveOfferReader({
-    ...ucpLiveReaderDeps(16),
+    ...ucpLiveReaderDeps(16, { readClass: 'offers' }),
     log: logUcpLiveRead,
   });
   return _ucpLiveOfferReader;
@@ -31768,11 +32304,16 @@ function buildCommerceKernelDb() {
 // get_product_detail callers expect. Flattens brand {name} → string and price {current:{amount,currency}} →
 // price/currency scalars; every other field passes through (the adapters' sanitizer/projection handle it).
 function normalizePdpV2ToProductDetail(body) {
+  // get_pdp_v2's `degraded_reads` (a page built while part of the database could not answer) must survive
+  // the projection: every cache downstream of it decides on the body, and none of them sees headers.
+  const degraded = Array.isArray(body?.degraded_reads) && body.degraded_reads.length > 0
+    ? { degraded_reads: body.degraded_reads.map(String) }
+    : {};
   try {
     const modules = Array.isArray(body?.modules) ? body.modules : [];
     const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
     const p = canonical?.data?.pdp_payload?.product;
-    if (!p || typeof p !== 'object') return { product: null };
+    if (!p || typeof p !== 'object') return { product: null, ...degraded };
     const current = p.price && typeof p.price === 'object' && p.price.current && typeof p.price.current === 'object'
       ? p.price.current
       : null;
@@ -31787,9 +32328,10 @@ function normalizePdpV2ToProductDetail(body) {
           ? /in.?stock|available/.test(availability)
           : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
       },
+      ...degraded,
     };
   } catch {
-    return { product: null };
+    return { product: null, ...degraded };
   }
 }
 
@@ -32911,6 +33453,8 @@ async function getCommerceRemoteMcpAdapter() {
           // OFFER_LIVE_VERIFICATION_SECRET (>= 32 bytes).
           liveCartMode: () => require('./services/offerLiveVerification').liveCartMode(),
           liveVerificationSecret: () => require('./services/offerLiveVerification').readOfferLiveVerificationSecret(),
+          // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
+          priceCache: priceCacheHooks,
           log: logUcpLiveRead,
           fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
@@ -33201,12 +33745,27 @@ function isPublicReadChainFilterEnabled() {
 
 // The decision itself lives in services/publicReadChainResolvability so it is unit-testable without a DB —
 // see that file for the drop-only-what-is-provably-dead rationale and the fail-open lanes.
+// The verdict reads only the exact row's own columns (merchant/product/platform/source_system and the
+// external_seed_* pair) -- never the identity listing or the identity-group members, which the resolver
+// fetches with up to three MORE queries per row when asked for the default 'rich' shape. This filter runs
+// on every cache-miss public search, up to a page of rows at 8-way concurrency, so the rich shape cost up
+// to 3 extra pool checkouts per row for columns nobody here reads. The 'lite' shape returns the same
+// verdict columns from the same exact query. PUBLIC_READ_CHAIN_FILTER_LITE_RESOLVE=false restores 'rich'.
+function isPublicReadChainFilterLiteResolveEnabled() {
+  const raw = String(process.env.PUBLIC_READ_CHAIN_FILTER_LITE_RESOLVE ?? '').trim().toLowerCase();
+  if (raw === '') return true;
+  return !['0', 'false', 'off', 'no'].includes(raw);
+}
+
 async function publicReadDetailResolves(productId) {
   const pid = String(productId || '').trim();
   if (!pid) return false;
   // Skip the DB round-trip entirely for ids the detail lane cannot resolve by construction.
   if (!isPivotaSignatureProductId(pid)) return false;
-  const ref = await resolveCatalogProductRefFromPivotaSignature(pid);
+  const ref = await resolveCatalogProductRefFromPivotaSignature(
+    pid,
+    isPublicReadChainFilterLiteResolveEnabled() ? { hydrateIdentityListing: false } : {},
+  );
   return chainRowResolvable(pid, ref, isPivotaSignatureProductId);
 }
 
@@ -33216,6 +33775,9 @@ async function filterPublicReadChainResolvableRows(rows) {
     return { kept: list, droppedCount: 0 };
   }
   const verdicts = new Array(list.length).fill(true);
+  // Rows kept only because their probe failed (fail-open). The page is then a degraded answer, and the
+  // public-read cache stores it on its short clock instead of the normal one (publicReadCachePolicy).
+  let failedOpenCount = 0;
   let cursor = 0;
   const worker = async () => {
     for (let i = cursor++; i < list.length; i = cursor++) {
@@ -33230,6 +33792,7 @@ async function filterPublicReadChainResolvableRows(rows) {
           'public_read chain filter: resolvability probe failed (row kept)',
         );
         verdicts[i] = true;
+        failedOpenCount += 1;
       }
     }
   };
@@ -33237,7 +33800,7 @@ async function filterPublicReadChainResolvableRows(rows) {
     Array.from({ length: Math.min(PUBLIC_READ_CHAIN_FILTER_CONCURRENCY, list.length) }, worker),
   );
   const kept = list.filter((_, i) => verdicts[i]);
-  return { kept, droppedCount: list.length - kept.length };
+  return { kept, droppedCount: list.length - kept.length, failedOpenCount };
 }
 
 function isPublicReadMcpEnabled() {
@@ -36823,7 +37386,9 @@ function getDefaultCreatorId() {
   return first || null;
 }
 
-function normalizeMetadata(rawMetadata = {}, payload = {}) {
+function normalizeMetadata(metadataArg = {}, payload = {}) {
+  // A null metadata reads as none (it threw on the property reads below: a 500).
+  const rawMetadata = metadataArg === null ? {} : metadataArg;
   let creatorId =
     rawMetadata.creator_id ||
     rawMetadata.creatorId ||
@@ -38652,6 +39217,11 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
   return handleInvokeRequest(req, res, {
     client_channel: 'shop',
     orchestrator_path: 'external_invoke_route',
+    // The contract prepareAgentProductsSearchRoute built from this request, and the metadata object this
+    // route built around it (public_search_route included): the gateway's own, so the invoke handler
+    // keeps them (it drops any other contract or routing flag found in request metadata).
+    gateway_search_request_contract: req.body.metadata.search_request_contract || null,
+    gateway_search_metadata: req.body.metadata,
   });
 }
 
@@ -42009,6 +42579,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // response body is known (res.json below) and emitted on the completion log line. Nothing
   // reads it; it exists because no data exists on how often callers name a market.
   let marketTelemetryRecord = {};
+  // Zero-result classification (observe only): what the ingredient lane recorded for this request, and
+  // the completion-line fields built from it and the final body. Both stay empty unless observing.
+  let zeroResultRecord = null;
+  let zeroResultLogFields = {};
   // enterWith, not run(): this handler's body is ~8000 lines and wrapping it in a callback to set
   // one store would be a large, risky reshape of a live payments-adjacent path for a telemetry
   // field. enterWith binds the store for the remainder of this async context, which is exactly the
@@ -42263,6 +42837,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
         ...marketTelemetryRecord,
+        ...zeroResultLogFields,
         ...(fpmStageBreakdown.length > 0
           ? {
               fpm_stage_breakdown: fpmStageBreakdown,
@@ -42311,6 +42886,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     );
   });
   let queryTooLongRejected = false;
+  // find_products / find_products_multi: the caller's own attribution values, taken at parse time, that an
+  // answer may carry back only when they pass the echo allowlist (src/findProductsMulti/callerEcho.js).
+  let callerEchoValues = null;
+  // ...and the source the request ran as, when normalizeMetadata took it from the caller: the one caller
+  // source whose normalised forms the answer can hold; likewise the market it used.
+  let callerEchoChosenSource;
+  let callerEchoChosenMarket;
   // Every return path funnels through here, so this is the one place the FINAL body is known
   // -- capturing earlier would record a page that later filtering still changes. Telemetry must
   // never be able to fail a response, so the capture cannot throw: a failed record is logged as
@@ -42327,6 +42909,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     } catch (telemetryErr) {
       marketTelemetryRecord = { market_telemetry_error: String(telemetryErr?.message || telemetryErr).slice(0, 120) };
+    }
+    try {
+      zeroResultLogFields = zeroResultFallthrough.buildZeroResultLogFields({
+        config: FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH,
+        operation: String(debugRuntime.operation || req?.body?.operation || ''),
+        record: zeroResultRecord,
+        body,
+      });
+    } catch (_) {
+      zeroResultLogFields = {};
     }
     logInvokePriceVerification({
       operation: String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase(),
@@ -42714,6 +43306,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation: finalOperation,
         gatewayRequestId,
       });
+      // Last, so no step above can put a caller value back. Cannot throw on any body shape.
+      if (callerEchoValues) {
+        finalBody = withoutHostileCallerEcho(finalBody, callerEchoValues, {
+          chosenSource: callerEchoChosenSource,
+          chosenMarket: callerEchoChosenMarket,
+        });
+      }
       setInvokePerfHeaders();
       return originalJson(finalBody);
     };
@@ -42906,7 +43505,58 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     }
 
-    const { operation, payload } = parsed.data;
+    const { operation } = parsed.data;
+    let { payload } = parsed.data;
+    // Product search: the search request contract (and the lane fields copied out of it) and the routing
+    // flags public_search_route / invoke_search_rail are the gateway's own, never the caller's. Under
+    // those keys the request metadata is dropped here, before anything reads it, unless it is the very
+    // metadata (or contract) object an in-process route built and handed over (the public GET search
+    // route; see handleAgentProductsSearchViaInvoke). The search QUALITY contract and the query
+    // understanding are the gateway's too: a `search_quality_contract` or `query_understanding` in the
+    // metadata, the payload or its search block is dropped here, from both copies of the payload; the
+    // gateway builds its own from the query (buildSearchQualityContract / understandShoppingQuery, via
+    // buildFindProductsMultiContext and the beauty mainline). And the caller's attribution values are
+    // taken now, before the handler writes anything, so the answer can be checked against them on the
+    // way out.
+    let gatewayBuiltSearchMetadata = false;
+    if (
+      (operation === 'find_products' || operation === 'find_products_multi') &&
+      req.body &&
+      typeof req.body === 'object' &&
+      !Array.isArray(req.body)
+    ) {
+      callerEchoValues = collectCallerEchoValues(req.body.metadata, payload, req.body.payload);
+      const gatewayMetadata = routeContext?.gateway_search_metadata || null;
+      gatewayBuiltSearchMetadata = isGatewaySearchMetadata(req.body.metadata, gatewayMetadata);
+      const ownMetadata = withoutCallerSearchRequestContract(req.body.metadata, {
+        gatewayContract: routeContext?.gateway_search_request_contract || null,
+        gatewayMetadata,
+      });
+      if (ownMetadata !== req.body.metadata) req.body.metadata = ownMetadata;
+      const [ownPayload, ownRawPayload] = withoutCallerSearchGatewayKeys(payload, req.body.payload);
+      payload = ownPayload;
+      if (ownRawPayload !== req.body.payload) req.body.payload = ownRawPayload;
+      callerEchoChosenSource = callerChosenSource(req.body.metadata, payload);
+      callerEchoChosenMarket = callerChosenMarket(req.body.metadata, payload);
+    }
+    // Every value the caller sent that the handler's metadata can carry, taken before the handler writes
+    // anything (the routing rewrite below, the merged metadata later): what a find_products_multi
+    // safe-empty answer must not echo back, beyond the attribution allowlist. Taken after the drop above,
+    // so a contract or routing key the gateway later sets itself is not mistaken for the caller's. When
+    // the metadata is the gateway's own (the GET route's), only its attribution keys came from the caller.
+    const callerSentMetadataValues =
+      operation === 'find_products_multi'
+        ? collectCallerMetadataValues(
+            gatewayBuiltSearchMetadata
+              ? Object.fromEntries(
+                  Object.keys(CALLER_ECHO_ALLOWLIST)
+                    .filter((key) => Object.prototype.hasOwnProperty.call(req.body.metadata, key))
+                    .map((key) => [key, req.body.metadata[key]]),
+                )
+              : req?.body?.metadata,
+            payload,
+          )
+        : null;
     // Reject an over-long search query before any search code reads it (see queryLengthCap.js).
     const overlongQuery = findOverlongSearchQuery({ operation, payload });
     if (overlongQuery) {
@@ -43422,12 +44072,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(safeSearch.limit || safeSearch.page_size || 20) || 20)),
       );
       const safePage = Math.max(1, Math.floor(Number(safeSearch.page || 1) || 1));
-      // With a routing flag on, the caller's request metadata is not echoed into this answer (it carried
-      // hostile routing_original_query / routingOriginalQuery / routingUserQuery values straight back),
-      // the same as the contract safe-empty in the mainline helper, which never spreads it. Both flags
-      // off or observe: unchanged, byte-identical to before.
-      const safeEmptyEchoesCallerMetadata =
-        strictIngredientQuery.bareIngredientRoutingMode() !== 'on' && multilingualBeautyTerms.multilingualRoutingMode() !== 'on';
+      // Whatever the routing flags, nothing the caller sent comes back in this answer unless it is on the
+      // echo allowlist (routing_original_query, a spoofed service_version.commit, gateway_governance /
+      // retinoid_safety_net sub-keys, numbered and nested keys all did). The handler's own fields
+      // (query_understanding*, supplement_lanes, source, ...) stay: they are the gateway's, not the
+      // caller's. service_version is the gateway's own.
+      const safeEmptyHandlerMetadata = withoutCallerMetadataEcho(metadata, callerSentMetadataValues);
       const safeEmpty = normalizeAgentProductsListResponse(
         {
           status: 'success',
@@ -43440,7 +44090,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? 'Please search for a product, brand, category, or skin concern.'
             : null,
           metadata: {
-            ...(safeEmptyEchoesCallerMetadata ? metadata : {}),
+            ...safeEmptyHandlerMetadata,
             ...buildInvokeSearchRailMetadata('authoritative_shopping'),
             query_source: 'search_quality_contract_v1_safe_empty',
             fetched_at: new Date().toISOString(),
@@ -43507,7 +44157,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             contract_bridge: {
               legacy_fallback: false,
             },
-            service_version: completeServiceVersionMetadata(metadata?.service_version),
+            service_version: completeServiceVersionMetadata(null),
           },
         },
         {
@@ -44095,6 +44745,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // signature lane). Read by every identity_resolution this request emits, so a pg_ request that
       // now reports its sig as requested_product_id still says which group the caller asked for.
       let pdpV2ProductGroupSubjectId = null;
+      let pdpV2ContentKeyResolution = null;
       const buildPdpV2IdentityResolution = ({
         requestedProductId = null,
         requestedMerchantId = null,
@@ -44114,6 +44765,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         entry_precheck_missing: Boolean(entryPrecheckMissing),
         resolution_source: resolutionSource || null,
         ...(pdpV2ProductGroupSubjectId ? { requested_product_group_id: pdpV2ProductGroupSubjectId } : {}),
+        ...(pdpV2ContentKeyResolution ? { content_key_resolution: pdpV2ContentKeyResolution } : {}),
       });
       const buildPdpV2RouteHealth = ({
         requestedProductId = null,
@@ -44394,6 +45046,53 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let pdpServingEligibility = null;
           let pdpServingEligibilityChecked = false;
           let signaturePrefetchedPdpContentProductId = null;
+
+          // An anonymous, unminted referral content key names an existing
+          // catalog row. Keep its actual seller and content key through the
+          // normal seed/serving checks instead of falling back to a sellerless
+          // ck_ lookup (400) or the legacy seed merchant (false eligibility miss).
+          // The caller's id and seller were frozen above for response binding.
+          if (
+            /^ck_[a-f0-9]{32}$/.test(productId) &&
+            !requestedMerchantId && !variantId && !offerId && !payload.subject &&
+            process.env.DATABASE_URL
+          ) {
+            const contentKeyStartedAt = Date.now();
+            let contentRef;
+            try {
+              contentRef = await withStageBudget(
+                resolveReferralContentKey(productId, { queryFn: query }),
+                RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+                'resolve_referral_content_key',
+              );
+            } catch (err) {
+              markPdpV2Phase('resolve_referral_content_key', contentKeyStartedAt);
+              logger.warn({ code: err?.code || null, product_id: productId },
+                'get_pdp_v2 referral content-key resolution unavailable');
+              return res.status(503).json(buildPdpV2ErrorBody({
+                error: 'TEMPORARY_UNAVAILABLE',
+                message: 'Product is temporarily unavailable. Please retry shortly.',
+                reasonCode: 'CONTENT_KEY_RESOLVE_UNAVAILABLE',
+                requestedProductId: requestedProductIdForDiagnostics,
+                requestedMerchantId: requestedMerchantIdForDiagnostics,
+              }));
+            }
+            markPdpV2Phase('resolve_referral_content_key', contentKeyStartedAt);
+            if (contentRef) {
+              canonicalProductRef = contentRef;
+              pdpV2ContentKeyResolution = {
+                content_key: contentRef.content_key,
+                product_key: contentRef.product_key,
+                merchant_id: contentRef.merchant_id,
+                product_id: contentRef.product_id,
+              };
+              productId = contentRef.product_id;
+              requestedMerchantId = contentRef.merchant_id;
+              canonicalizationApplied = true;
+              canonicalizationReasonCode = 'CATALOG_CONTENT_KEY';
+              identityResolutionSource = 'catalog_content_key';
+            }
+          }
 		      if (
 			        productId &&
 			        String(productId).trim().toLowerCase().startsWith('sig_') &&
@@ -44409,10 +45108,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             });
         } catch (err) {
           noteSwallowedPdpFailure('get_pdp_v2');
-          if (
-            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
-            err?.code !== 'STAGE_TIMEOUT'
-          ) {
+          if (!isCatalogSignatureResolveRetryableError(err)) {
             throw err;
           }
           // Bounded failure, NOT "no such product". Answer 503 so the PDP
@@ -44422,23 +45118,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // Deliberately not 404: a 404 here would deindex a product whose only
           // problem is a slow identity-group query.
           markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+          // Two retryable causes, reported as what they are. Both stay
+          // `error: TEMPORARY_UNAVAILABLE` with HTTP 503, which is what agent-ui
+          // classifies as a degraded (retry) read, never as not-found.
+          const signatureResolveFailure = describeCatalogSignatureResolveFailure(err);
           logger.warn(
             {
               product_id: productId,
               merchant_id: requestedMerchantId || null,
               wants_offers: wantsOffers,
               budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+              err_code: err?.code || null,
               phase_timings: pdpV2PhaseTimings,
             },
-            'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
+            signatureResolveFailure.logMessage,
           );
           return res.status(503).json({
             ...buildPdpV2ErrorBody({
               error: 'TEMPORARY_UNAVAILABLE',
               message: 'Product is temporarily unavailable. Please retry shortly.',
-              reasonCode: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT',
+              reasonCode: signatureResolveFailure.reasonCode,
               details: {
-                reason: 'catalog_signature_resolve_timeout',
+                reason: signatureResolveFailure.reason,
                 budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
               },
               requestedProductId: requestedProductIdForDiagnostics || null,
@@ -44446,6 +45147,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
         }
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+		        if (signatureProductRef && signatureProductRef[RESOLVE_CATALOG_SIGNATURE_DEGRADED] === true) {
+		          // Served, but built from a ref missing what an unavailable database could not
+		          // answer: say so, and keep every cache that honours headers from storing it.
+		          markInvokeResponseDegraded(res, 'catalog_signature_partial');
+		        }
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
               requestedSigDedupeKeeperSigId = String(
@@ -44853,8 +45559,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            : null;
 	        try {
 	          if (!externalSeedRouteStatus) {
-	            externalSeedRouteStatus = await withStageBudget(
-	              fetchExternalSeedRouteStatusFromDb({
+	            externalSeedRouteStatus = await withStageBudgetDb(
+	              () => fetchExternalSeedRouteStatusFromDb({
 	                productId: entryProductId,
 	              }),
 	              PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
@@ -46632,8 +47338,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         canonicalProductRef, offersGateBuyerMarket(payload, metadata) || primaryMarket(), pdpServingCurrency,
       )) {
         try {
-          canonicalOwnMoney = await withStageBudget(
-            readCanonicalOwnMoney({ ref: canonicalProductRef, query }),
+          canonicalOwnMoney = await withStageBudgetDb(
+            () => readCanonicalOwnMoney({ ref: canonicalProductRef, query }),
             PDP_CURRENT_OWN_MONEY_READ_BUDGET_MS,
             'pdp_current_own_money',
           );
@@ -47335,8 +48041,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (offersData && canonicalOwnMoney && options.allow_read_only === true) {
           let verifiedByListing = new Map();
           try {
-            verifiedByListing = await withStageBudget(
-              readCanonicalSellerOffersMoney({
+            verifiedByListing = await withStageBudgetDb(
+              () => readCanonicalSellerOffersMoney({
                 listings: (offersData.offers || []).filter((offer) => !(
                   offer?.merchant_id === canonicalProductRef.merchant_id && offer?.product_id === canonicalProductRef.product_id)),
                 query,
@@ -48603,10 +49309,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             bypassCache,
           });
         } catch (err) {
-          if (
-            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
-            err?.code !== 'STAGE_TIMEOUT'
-          ) {
+          if (!isCatalogSignatureResolveRetryableError(err)) {
             throw err;
           }
           // Mirror get_pdp_v2's sig-lane semantics: a bounded resolver failure
@@ -48615,7 +49318,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           return res.status(503).json({
             error: 'TEMPORARY_UNAVAILABLE',
             message: 'Signature resolution is temporarily unavailable. Please retry shortly.',
-            details: { reason: 'catalog_signature_resolve_timeout' },
+            details: { reason: describeCatalogSignatureResolveFailure(err).reason },
           });
         }
         const sigMerchantId = String(signatureProductRef?.merchant_id || '').trim();
@@ -49284,8 +49987,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // in the handler with no withStageBudget wrapper. STAGE_TIMEOUT flows
         // into the .catch below and surfaces as canonical_error in telemetry;
         // the lane then serves seed-only results instead of hanging.
-        const canonicalIngredientRowsPromise = withStageBudget(
-          fetchCanonicalChainRows({
+        const canonicalIngredientRowsPromise = withStageBudgetDb(
+          () => fetchCanonicalChainRows({
           query: rawUserQuery || queryText,
           categoryPathPrefix: canonicalIngredientCategoryPathPrefix,
           // Always true for the ingredient_recall_direct path: by definition
@@ -49558,6 +50261,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ingredientIntentIds,
                 ingredientIntentDetected: true,
               });
+        // Zero-result classification, observe only (src/findProductsMulti/zeroResultFallthrough.js). Reads
+        // the lane's own stage counts; changes nothing the lane serves.
+        if (zeroResultFallthrough.isObserving(FIND_PRODUCTS_MULTI_ZERO_RESULT_FALLTHROUGH)) {
+          zeroResultRecord =
+            filteredDirectProducts.length === 0
+              ? {
+                  lane: zeroResultFallthrough.LANES.INGREDIENT_DIRECT,
+                  emptyReason: zeroResultFallthrough.classifyIngredientDirectEmpty({
+                    seedPrefetchCount: Array.isArray(directProducts) ? directProducts.length : 0,
+                    canonicalRecalledCount: canonicalIngredientRecalledProducts.length,
+                    canonicalError: canonicalIngredientResult?.error || null,
+                    mergedCount: mergedIngredientRecallProducts.length,
+                    categoryFilteredCount: strictIngredientCategoryFilter.products.length,
+                    budgetFilteredCount: directBudgetFilter.products.length,
+                    finalCount: filteredDirectProducts.length,
+                  }),
+                }
+              : {
+                  lane: zeroResultFallthrough.LANES.INGREDIENT_DIRECT,
+                  legMs: strictIngredientPrefetchMs,
+                  legCapMs: zeroResultFallthrough.proposedIngredientLegCapMs(
+                    strictIngredientPrefetchStartedAt - invokeStartedAtMs,
+                  ),
+                };
+        }
         return res.json(directResponse);
       }
       // No beauty direct call here. The one after the creator lanes (creator_direct) takes every
@@ -54011,6 +54739,12 @@ module.exports._debug = {
   RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
   RESOLVE_CATALOG_SIGNATURE_CACHE,
   RESOLVE_CATALOG_SIGNATURE_COOLDOWN,
+  RESOLVE_CATALOG_SIGNATURE_UNAVAILABLE_STATE,
+  filterPublicReadChainResolvableRows,
+  markInvokeResponseDegraded,
+  noteCatalogSignatureUnavailable,
+  normalizePdpV2ToProductDetail,
+  queryBeautyExternalSeedRowsWithTimeout,
   buildCatalogSignatureGroupMemberFromIdentityRow,
   buildGroupMemberCatalogOfferLateralJoinSql,
   filterGroupMembersByCatalogSourceQuarantine,
@@ -54213,6 +54947,10 @@ module.exports._debug = {
   pdpLiveRefresh,
   withPdpLiveRefreshDescriptor,
   // Tests only: the live readers' UCP client, set before any reader is built (no store is ever contacted).
+  useSearchOverlayFetchForTest(fetchImpl) {
+    if (process.env.NODE_ENV !== 'test') throw new Error('useSearchOverlayFetchForTest is for tests only');
+    _searchOverlayFetchForTest = typeof fetchImpl === 'function' ? fetchImpl : null;
+  },
   useUcpLiveClientForTest(ucpClient) {
     if (_ucpLiveShared) throw new Error('the UCP live client is already built');
     _ucpLiveShared = { ucpClient, endpoints: new Map(), discovering: new Map(), discoveryFailures: new Map() };
@@ -54286,6 +55024,10 @@ if (require.main === module) {
       await runMigrations();
       logger.info('DB migrations complete');
     }
+
+    // The shared verified-price cache, when its flags are on: the Firestore client is loaded and its first read made
+    // NOW, before traffic, not inside a request's flush timer (src/services/priceCache.js). Off: nothing. At most ~5 s.
+    await priceCacheHooks.warmPriceCache();
 
     const server = app.listen(PORT, () => {
       const auroraChatContract = resolveAuroraChatContractConfig();
