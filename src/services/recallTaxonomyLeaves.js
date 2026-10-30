@@ -33,7 +33,11 @@
  *
  * REGENERATED 2026-10-10 from pivota-backend#2547: 78 leaves (beauty 48). It had sat at the 72 above since
  * 2026-09-12 and was missing #2364's four nail leaves and false-lashes; #2547 adds
- * `beauty/makeup/face/setting-spray`. Four production nail paths changed door verdict with it.
+ * `beauty/makeup/face/setting-spray`. Four production nail paths changed door verdict with it
+ * (nail-polish, nail-polish-remover, cuticle-oil, nail-stickers): pivota-backend's has_category_door
+ * has answered true for them since #2364, so this copy was the stale side. Nothing in src/ calls
+ * categoryPathHasDoor at request time (only the import-time canonicalTargetsWithoutADoor check), so
+ * the flip moves the parity fixtures, not what search serves.
  *
  * HOW TO REGENERATE, when pivota-backend's taxonomy changes:
  *
