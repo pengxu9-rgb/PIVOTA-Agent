@@ -572,14 +572,13 @@ const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
 const NEUTRAL_VALUE_RE =
   /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|not[\s_-].*|non[\s_-].*|never)$/;
-// A value is neutral only if every part of it is: "not pregnant, breastfeeding" and "non-pregnant but
-// nursing" say yes to something.
+// A value is neutral only if it is neutral as a whole (as before) AND every part of it is: "not
+// pregnant, breastfeeding" and "non-pregnant but nursing" say yes to something. Never neutral where
+// the whole-value test alone would say it is not.
 function valueIsNeutral(text) {
-  return String(text)
-    .trim()
-    .toLowerCase()
-    .split(/\s*(?:[,;/&+|]|\bbut\b|\band\b)\s*/)
-    .every((part) => NEUTRAL_VALUE_RE.test(part));
+  const whole = String(text).trim().toLowerCase();
+  if (!NEUTRAL_VALUE_RE.test(whole)) return false;
+  return whole.split(/\s*(?:[,;/&+|]|\bbut\b|\band\b)\s*/).every((part) => NEUTRAL_VALUE_RE.test(part));
 }
 
 function valueIsAffirmative(value) {
@@ -605,10 +604,6 @@ const PROFILE_AGE_KEY_RE = /^(?:age|age_years|ageyears|user_age|years_old|age_ra
 const AVOID_KEY_RE = /avoid|allerg|exclu|contraindicat|sensitiv\w*_ingredients|intoleran|blacklist|block/i;
 const BIRTH_KEY_RE = /^(?:birth_?year|year_?of_?birth|dob|date_?of_?birth|birth_?date|birthday)$/i;
 const PRESCRIPTION_KEY_RE = /prescri|medication|medicine|^rx$|^drugs?$/i;
-// How many children someone has is not who they are shopping for.
-const HOUSEHOLD_KEY_RE = /household|family|children_count|num_children|number_of_(?:kids|children)|kids_count|dependents/i;
-const HOUSEHOLD_PHRASE_RE =
-  /\b(?:i\s+have|i'?ve\s+got|we\s+have|mom\s+of|mum\s+of|mother\s+of|dad\s+of|father\s+of|parent\s+of)\s+(?:\d+|one|two|three|four|five|six|a\s+few|several)\s+(?:little\s+|young\s+)?(?:kids|children|toddlers|boys|girls)\b/gi;
 
 function collectStrings(value, out) {
   if (!visit()) return;
@@ -654,11 +649,11 @@ function classesForProfile(profile, sink) {
       if (c) sink.add(c);
       continue;
     }
+    // Birth dates and prescriptions add what they say, then the value is read as any other key's.
     if (BIRTH_KEY_RE.test(key)) {
       const year = String(value).match(/(?:19|20)\d\d/);
       const c = year && ageClass(String(new Date().getUTCFullYear() - Number(year[0])));
       if (c) sink.add(c);
-      continue;
     }
     if (PRESCRIPTION_KEY_RE.test(key)) {
       // on a prescription retinoid: layering context
@@ -670,9 +665,7 @@ function classesForProfile(profile, sink) {
         classes.forEach((c) => sink.add(c));
         if (namesRetinoid(s)) sink.add('isotretinoin_layering');
       }
-      continue;
     }
-    if (HOUSEHOLD_KEY_RE.test(key)) continue;
     if (AVOID_KEY_RE.test(key)) {
       classesForAvoidList(value, sink);
       continue;
@@ -727,9 +720,6 @@ function classesForConstraints(constraints, sink) {
   }
 }
 
-const SAFETY_FLAG_NAME_RE =
-  /^safety_flag$|retin|pregnan|lactat|breast|nursing|fertil|ttc|conceiv|partum|natal|child|kid|minor|infant|toddler|baby|isotret|accutane|teratogen|contraindicat|prescri|derm|medical|doctor|physician|vitamin_?a/i;
-
 // Any safety flag that is set is a safety signal. A flag object's false values are not set.
 function classesForSafetyFlags(flags, sink) {
   if (flags == null || flags === false) return;
@@ -747,30 +737,23 @@ function classesForSafetyFlags(flags, sink) {
     if (valueIsNeutral(name)) continue;
     const classes = scanClasses(String(name).replace(/[_-]+/g, ' '));
     if (classes.size > 0) classes.forEach((c) => sink.add(c));
-    // A flag gates by what it is about, not by being set: high_value_order or vip does not.
-    else if (!SCAN.overflow && SAFETY_FLAG_NAME_RE.test(String(name))) sink.add('safety_flag');
+    else if (!SCAN.overflow) sink.add('safety_flag');
   }
 }
 
-// Only what the user said is read. System, developer and tool turns are instructions or data, and an
-// assistant (model) turn is the agent talking: a generic "avoid retinol if pregnant" disclaimer there
-// would otherwise gate the rest of the session. Facts about the user are in the user's own turns,
-// the profile, the constraints and the flags.
-const NON_USER_ROLE_RE = /^(?:system|developer|tool|function|assistant|model|bot|ai|agent)$/;
+// Every turn but a system turn is read, whoever wrote it: a tool or function result is how an
+// integrator passes stored user facts, and an assistant turn can restate one.
 function messageText(message) {
-  if (typeof message === 'string') return stripHousehold(message);
+  if (typeof message === 'string') return message;
   if (!isObj(message)) return '';
-  const role = String(message.role || message.author || '').toLowerCase();
-  if (NON_USER_ROLE_RE.test(role)) return '';
+  const role = String(message.role || '').toLowerCase();
+  if (role === 'system') return '';
   // OpenAI / Anthropic content, Gemini parts, plain text, a recent-query object
   const content = [message.content, message.text, message.parts, message.query].find((v) => v != null);
-  if (typeof content === 'string') return stripHousehold(content);
+  if (typeof content === 'string') return content;
   const parts = [];
   collectStrings(content, parts);
-  return stripHousehold(parts.join(' '));
-}
-function stripHousehold(text) {
-  return String(text).replace(HOUSEHOLD_PHRASE_RE, ' ');
+  return parts.join(' ');
 }
 
 const MESSAGE_KEYS = [
@@ -782,6 +765,8 @@ const PROFILE_KEYS = ['user_profile', 'userProfile', 'profile', 'skin_profile', 
 // Objects whose keys say what they hold (avoid lists, statuses) and whose other strings are read.
 const CONSTRAINT_OBJECT_KEYS = ['constraints', 'filters', 'attributes', 'conditions', 'health_conditions'];
 const AVOID_LIST_KEYS = ['avoid_ingredients', 'avoidIngredients', 'exclude_ingredients', 'excludeIngredients', 'excluded_ingredients'];
+// Every constraint key read (the name code written before the split still reads).
+const CONSTRAINT_KEYS = [...CONSTRAINT_OBJECT_KEYS, ...AVOID_LIST_KEYS];
 const FLAG_KEYS = ['safety_flags', 'safetyFlags', 'safety', 'health_flags', 'healthFlags'];
 
 function requestContainers(body) {
@@ -889,5 +874,6 @@ module.exports = {
   classifyText,
   retinoidSafetyClassesForText,
   retinoidSafetyClassesForRequestContext,
+  CONSTRAINT_KEYS,
   _internal: { scriptView, latinView, compactView, latinTokens, withinOneEdit, agesIn, classifyCacheSize: () => CLASSIFY_CACHE.size, classifyCacheKeys: () => Array.from(CLASSIFY_CACHE.keys()) },
 };
