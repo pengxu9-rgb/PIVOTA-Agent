@@ -31,11 +31,12 @@ const RETINOL_ROW = { ...BASE_ROW, id: 'strict_retinol', product_id: 'strict_ret
 const PLAIN_ROW = { ...BASE_ROW, id: 'strict_plain', product_id: 'strict_plain', title: 'Hyaluronic Hydrating Serum', description: 'Hydrating serum.' };
 const manyVariants = (n) =>
   Array.from({ length: n }, (_, i) => ({ id: `v${i}`, title: `Shade ${i}`, sku: `SKU-${i}`, option1: `Shade ${i}`, option2: '30 ml', barcode: `0000${i}` }));
-// Products that name their retinoid only in a script the search texts drop, behind many variants or tags.
+// Products that name their retinoid only in a script the search texts drop, behind enough variants or
+// tags (80 six-field variants) to fill a 400-part text budget before the ingredients are reached.
 const PRODUCT_CASES = [
-  ['korean ingredients, 40 variants', { title: 'Glow Cushion Foundation SPF 50', description: 'Cushion foundation.', ingredients: '정제수, 사이클로펜타실록세인, 레티놀, 글리세린', variants: manyVariants(40) }],
-  ['russian ingredients, 100 tags, 40 variants', { title: 'Night Serum C', description: 'Night serum.', ingredients: 'вода, глицерин, ретинол', tags: Array.from({ length: 100 }, (_, i) => `tag-${i}`), variants: manyVariants(40) }],
-  ['thai inci, 40 variants', { title: 'Night Serum D', description: 'Night serum.', inci: 'น้ำ, เรตินอล', variants: manyVariants(40) }],
+  ['korean ingredients, 80 variants', { title: 'Glow Cushion Foundation SPF 50', description: 'Cushion foundation.', ingredients: '정제수, 사이클로펜타실록세인, 레티놀, 글리세린', variants: manyVariants(80) }],
+  ['russian ingredients, 100 tags, 80 variants', { title: 'Night Serum C', description: 'Night serum.', ingredients: 'вода, глицерин, ретинол', tags: Array.from({ length: 100 }, (_, i) => `tag-${i}`), variants: manyVariants(80) }],
+  ['thai inci, 80 variants', { title: 'Night Serum D', description: 'Night serum.', inci: 'น้ำ, เรตินอล', variants: manyVariants(80) }],
   ['korean name between "<" and ">" in prose', { title: 'Night Serum E', description: 'Gentle pH <5.5 formula with 레티놀 0.1% for skin aged >25.' }],
 ].map(([label, fields], i) => [label, { ...BASE_ROW, id: `strict_p${i}`, product_id: `strict_p${i}`, ...fields }]);
 
