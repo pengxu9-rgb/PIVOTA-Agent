@@ -162,7 +162,8 @@ describe('flag OFF: byte-identical to the legacy parser (bug pinned, not fixed)'
     ['K18', max(null, 18)],
     ['retinol 0.5', max(null, 0.5)],
     ['3CE lip tint', max(null, 3)],
-    ['niacinamide 10% serum', max(null, 10)],
+    // "niacinamide 10% serum" used to be pinned here as max 10: a strength is no longer a price
+    // in either flag state -- see budget_strength_is_not_a_price.test.js.
     ['serum 20-40', { currency: null, min: 20, max: 40 }],
     ['between 20 and 40', max(null, 20)],
     ['$20-$40 serum', max('USD', 20)],

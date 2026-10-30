@@ -135,6 +135,21 @@ test('requestedMarketOf reads the door\'s precedence: search.market || metadata.
   assert.strictEqual(requestedMarketOf(null, null), undefined);
 });
 
+test('requestedMarketOf ignores a payload market beside a search block; a flat payload\'s market counts', () => {
+  // Beside a search block, payload.market is never read: the block's market wins, else the metadata's, else none.
+  assert.strictEqual(requestedMarketOf({ search: { query: 'serum', market: 'US' }, market: 'SG' }, {}), 'US');
+  assert.strictEqual(requestedMarketOf({ search: { query: 'serum' }, market: 'SG' }, { market: 'US' }), 'US');
+  assert.strictEqual(requestedMarketOf({ search: { query: 'serum' }, market: 'SG' }, {}), undefined);
+  // With no search block, the payload is the search, so its own market counts and beats the metadata's.
+  assert.strictEqual(requestedMarketOf({ query: 'serum', market: 'SG' }, { market: 'US' }), 'SG');
+  // And a guarded page follows the same reading: beside a block, SG is not the serving market.
+  const page = { products: [{ product_id: 'u', currency: 'USD' }, { product_id: 's', currency: 'SGD' }], total: 2 };
+  const beside = enforceServingCurrency({ operation: 'find_products_multi', payload: { search: { query: 'serum' }, market: 'SG' }, body: page });
+  assert.deepStrictEqual(beside.products.map((p) => p.product_id), ['u']);
+  const flat = enforceServingCurrency({ operation: 'find_products_multi', payload: { query: 'serum', market: 'SG' }, body: page });
+  assert.deepStrictEqual(flat.products.map((p) => p.product_id), ['s']);
+});
+
 // The recommendation surfaces' filter (similar products): every product there is NEW to the buyer.
 test('a similar card is kept only when every currency it states is the serving one', () => {
   const cards = [

@@ -39,11 +39,14 @@ const {
   extractStandInOnlyStrictIngredientIds,
   isBareStrictIngredientQuery,
   normalizeForMatch,
+  normalizeForRouting,
   stripNegatedStrictIngredientMentions,
   strictIngredientNamingTerms,
 } = require('./strictIngredientQuery');
 const { buildSearchQualityContract, resolveBeautyCategoryPathPrefixFromText } = require('./queryUnderstanding');
 const { resolveBeautyBrandBrowseQuery } = require('./brandLexicon');
+const { parseBudgetToPriceConstraint } = require('./intent');
+const { isDeepStrictEqual } = require('node:util');
 
 // What the response door enforces for this query (see server.js): rows naming an excluded ingredient
 // are dropped, rows not naming a required one (a stand-in the query asked for) are dropped, and rows
@@ -155,22 +158,67 @@ const EXCLUSION_QUALIFIER_WORDS = new Set([
   // face and skin ARE skincare, the default area: "retinol alternative for my face" is a bare stand-in ask
   'face', 'faces', 'facial', 'skin', 'complexion',
 ]);
-// Price words and budgets are not something to serve, and they travel with the rewrite (below), so the
-// price cap the rest of the pipeline reads from them still applies.
+// Price words and budgets are not something to serve. They travel with a rewrite, as typed, and the
+// rewrite is only made when the budget parser (intent.js parseBudgetToPriceConstraint, the one the rest
+// of the pipeline reads) reads the SAME budget from it as from the query as typed -- so every budget form
+// that parser knows ("under $20", "20 dollars", "under €20", "s$15", "20€", "100元以内", a bare "30" when
+// bare numbers are budgets, "between 20 and 40") is carried, and a form it does not know can never be
+// dropped silently: the query is then left as typed.
 const PRICE_WORDS = new Set([
-  'cheap', 'cheaper', 'cheapest', 'affordable', 'budget', 'inexpensive', 'low', 'cost', 'priced', 'price',
-  'under', 'below', 'less', 'than', 'max', 'maximum', 'up', 'to', 'dollar', 'dollars', 'usd', 'bucks',
+  'cheap', 'cheaper', 'cheapest', 'affordable', 'budget', 'inexpensive', 'low', 'lowest', 'cost', 'priced', 'price',
+  'under', 'below', 'less', 'than', 'max', 'maximum', 'up', 'to', 'around', 'about', 'between', 'within',
+  'dollar', 'dollars', 'usd', 'sgd', 'eur', 'euro', 'euros', 'gbp', 'pound', 'pounds', 'jpy', 'yen', 'cny', 'rmb', 'yuan',
+  'bucks', 's',
+  // lower bounds and bound phrasing ("over $20", "from $20", "at least 20", "30 or less", "budget of 30")
+  'over', 'above', 'from', 'at', 'least', 'more', 'min', 'minimum', 'starting', 'each', 'per', 'or', 'of',
 ]);
-const PRICE_ADJECTIVE_RE = /(?<![\p{L}\p{N}])(?:cheap|cheaper|cheapest|affordable|budget|inexpensive|low[-\s]cost)(?![\p{L}\p{N}])/giu;
-const BUDGET_PHRASE_RE =
-  /(?<![\p{L}\p{N}])(?:under|below|less\s+than|max(?:imum)?|up\s+to)\s*(?:\$|usd\s*)?\d+(?:\.\d+)?\s*(?:\$|usd|dollars?|bucks)?(?![\p{L}\p{N}])|\$\s*\d+(?:\.\d+)?/giu;
+const PRICE_NUMBER_RE = /^(?:预算|价格)?\d+(?:\.\d+)?(?:元|円|块|以内|以下|以上|k)*$/u;
+// A raw token is part of a price phrase when, without surrounding punctuation, it is a price word, a
+// currency, or a number with an optional currency or budget mark on either side.
+const RAW_PRICE_AMOUNT = '(?:预算|价格|[<>≤≥]=?)?(?:s\\$|[$€£¥￥])?\\d+(?:[.,]\\d+)?(?:[$€£¥￥元円块]|usd|sgd|eur|gbp|jpy|cny|rmb|k)?\\+?';
+const RAW_PRICE_TOKEN_RE = new RegExp(
+  `^(?:${RAW_PRICE_AMOUNT}(?:[-~–—到]${RAW_PRICE_AMOUNT})?(?:以内|以下|以上)?|s\\$|[$€£¥￥]|cheap|cheaper|cheapest|affordable|budget|inexpensive|low|lowest|cost|low-cost|low-priced|priced|price|under|below|less|than|max|maximum|up|to|around|about|between|within|dollars?|usd|sgd|eur|euros?|gbp|pounds?|jpy|yen|cny|rmb|yuan|bucks|over|above|from|at|least|more|min|minimum|starting|each|per|[<>≤≥]=?)$`,
+  'iu',
+);
+const RAW_PRICE_JOINER_RE = /^(?:and|or|of|to|-|~|–|—|到)$/iu;
 
-// The price words and budget phrases of a raw query, in order, to carry onto a rewrite.
-function pricePhrases(rawQuery) {
-  const raw = String(rawQuery || '');
-  const adjectives = (raw.match(PRICE_ADJECTIVE_RE) || []).map((value) => value.trim().toLowerCase());
-  const budgets = (raw.match(BUDGET_PHRASE_RE) || []).map((value) => value.trim().replace(/\s+/g, ' '));
-  return { before: adjectives.join(' '), after: budgets.join(' ') };
+// The price phrases of a raw query, as typed and in order: runs of price tokens (a joiner such as "and"
+// or "-" only inside a run). A run is kept only when it carries an amount or a price word of its own
+// ("cheap", "low price", "20 dollars", "under $20"): a lone "to" or "under" is not a price ("alternative
+// to retinol").
+const RAW_PRICE_STRONG_RE = new RegExp(
+  `^(?:${RAW_PRICE_AMOUNT}(?:[-~–—到]${RAW_PRICE_AMOUNT})?(?:以内|以下|以上)?|s\\$|[$€£¥￥]|cheap|cheaper|cheapest|affordable|budget|inexpensive|low-cost|low-priced|price|priced|cost|dollars?|usd|sgd|eur|euros?|gbp|pounds?|jpy|yen|cny|rmb|yuan|bucks)$`,
+  'iu',
+);
+function pricePhrase(rawQuery) {
+  const tokens = String(rawQuery || '').split(/\s+/).filter(Boolean);
+  const bare = (token) => token.replace(/^[^\p{L}\p{N}$€£¥￥]+|[^\p{L}\p{N}$€£¥￥元円块以内下上]+$/gu, '');
+  // a bare zero is the absence qualifier ("retinol 0"), never an amount
+  const isPrice = (token) => !/^0(?:\.0+)?%?$/.test(bare(token)) && RAW_PRICE_TOKEN_RE.test(bare(token));
+  const runs = [];
+  let run = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const joiner = RAW_PRICE_JOINER_RE.test(tokens[i]) && run.length > 0 && i < tokens.length - 1 && isPrice(tokens[i + 1]);
+    if (isPrice(tokens[i]) || joiner) {
+      run.push(tokens[i]);
+      continue;
+    }
+    if (run.length) runs.push(run);
+    run = [];
+  }
+  if (run.length) runs.push(run);
+  return runs
+    .filter((tokensOfRun) => tokensOfRun.some((token) => RAW_PRICE_STRONG_RE.test(bare(token))))
+    .map((tokensOfRun) => tokensOfRun.join(' '))
+    .join(' ');
+}
+
+// The rewrite with the query's price phrase appended, or null when the budget parser would read a
+// different budget from it than from the query as typed.
+function withBudgetOf(rawQuery, rewritten) {
+  const phrase = pricePhrase(rawQuery);
+  const candidate = phrase ? `${rewritten} ${phrase}` : rewritten;
+  return isDeepStrictEqual(parseBudgetToPriceConstraint(rawQuery), parseBudgetToPriceConstraint(candidate)) ? candidate : null;
 }
 const INGREDIENT_ENGLISH_NAME = Object.freeze({ ascorbic_acid: 'vitamin c', ceramide_np: 'ceramide' });
 const ingredientName = (id) => INGREDIENT_ENGLISH_NAME[id] || id.replace(/_/g, ' ');
@@ -189,7 +237,7 @@ function exclusionRemainderWords(normalized, ids) {
 // The remainder words that name something to serve: price words and plain numbers (a budget, a bare
 // zero left by "retinol 0") are not.
 function servableRemainderWords(words) {
-  return words.filter((word) => !PRICE_WORDS.has(word) && !/^\d+(?:\.\d+)?$/.test(word));
+  return words.filter((word) => !PRICE_WORDS.has(word) && !PRICE_NUMBER_RE.test(word));
 }
 
 // A query that EXCLUDES ingredients and names nothing else to serve but, at most, a body area or a
@@ -214,36 +262,44 @@ function rewriteExclusionQuery(query) {
   const wanted = extractPositiveStrictIngredientIds(query);
   const standInActives = Object.values(STAND_IN_ACTIVE_ALIASES);
   if (wanted.some((id) => !standInActives.includes(id))) return unchanged;
-  const normalized = normalizeForMatch(query);
+  const normalized = normalizeForRouting(query);
   const rest = servableRemainderWords(exclusionRemainderWords(normalized, [...excluded, ...wanted]));
   const area = areaOf(rest.join(' '));
   if (area === 'mixed' || area === 'other') return unchanged;
   const restWithoutArea = rest.filter((word) => !(area && AREA_ONLY_WORDS[area].includes(word)));
   if (restWithoutArea.length > 0) return unchanged;
-  const price = pricePhrases(query);
-  const withArea = (text) => [price.before, area ? `${text} ${AREA_NOUN[area]}` : text, price.after].filter(Boolean).join(' ');
-  if (wanted.length > 0) {
-    return { query: withArea(wanted.map(ingredientName).join(' ')), kind: 'stand_in_named', requiredIds: wanted };
-  }
+  const rewrite = (text, kind, requiredIds) => {
+    const candidate = withBudgetOf(query, area ? `${text} ${AREA_NOUN[area]}` : text);
+    return candidate ? { query: candidate, kind, requiredIds } : unchanged;
+  };
+  if (wanted.length > 0) return rewrite(wanted.map(ingredientName).join(' '), 'stand_in_named', wanted);
   const standInOnly = extractStandInOnlyStrictIngredientIds(query);
   if (!area && standInOnly.length === excluded.length && excluded.every((id) => KNOWN_STAND_INS[id])) {
     const standIns = Array.from(new Set(excluded.flatMap((id) => KNOWN_STAND_INS[id])));
-    return { query: withArea(standIns.join(' ')), kind: 'stand_in_known', requiredIds: standIns };
+    return rewrite(standIns.join(' '), 'stand_in_known', standIns);
   }
-  if (area) {
-    return { query: withArea(excluded.map((id) => `${ingredientName(id)}-free`).join(' ')), kind: 'area', requiredIds: [] };
-  }
+  if (area) return rewrite(excluded.map((id) => `${ingredientName(id)}-free`).join(' '), 'area', []);
   return unchanged;
 }
 
 // The category path a row WITHOUT one reads as, from its own title / product type / category text, for
 // the door's scope check (strictIngredientQuery.excludeIngredientsFromPage). '' when nothing is named.
+// A category word that is negated names nothing about the row: "Shampoo-Free Bakuchiol Serum",
+// "Bakuchiol Serum (not a shampoo)", "no conditioner needed". Removed before the area is read; only the
+// negated word goes, never the word after it ("No Rinse Shampoo" is a shampoo, "Non-Toxic Nail Polish"
+// a nail polish). Each branch starts only where a word starts, so one pass is linear in the title.
+const NEGATED_CATEGORY_WORD_RE =
+  /(?<![\p{L}\p{N}])(?:not\s+(?:a|an|for)\s+|no\s+|non[\s-]?|without\s+|free\s+(?:of|from)\s+)[\p{L}]+|(?<!\p{L})[\p{L}]+[\s-]*free(?![\p{L}\p{N}])/giu;
 function inferRowCategoryPath(product) {
   if (!product || typeof product !== 'object') return '';
   const text = [product.title, product.name, product.product_title, product.product_type, product.category]
     .filter((value) => typeof value === 'string' && value.trim())
-    .join(' ');
-  return text ? resolveBeautyCategoryPathPrefixFromText(text) || '' : '';
+    .join(' ')
+    .replace(NEGATED_CATEGORY_WORD_RE, ' ');
+  if (!text.trim()) return '';
+  // Titles in the other scripts the multilingual table knows ("데일리 샴푸", "シャンプー") read through it.
+  const english = normalizeMultilingualBeautyTerms(text, { contextAvailable: true }).query;
+  return resolveBeautyCategoryPathPrefixFromText(text) || resolveBeautyCategoryPathPrefixFromText(english) || '';
 }
 
 // The category scope a query that excludes an ingredient keeps the page in:
@@ -257,7 +313,7 @@ const EXCLUSION_DEFAULT_SCOPE = 'beauty/skincare/';
 function exclusionCategoryScope(text) {
   const raw = String(text || '');
   if (extractExcludedStrictIngredientIds(raw).length === 0) return null;
-  const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw));
+  const remainder = stripNegatedStrictIngredientMentions(normalizeForRouting(raw));
   if (resolveBeautyCategoryPathPrefixFromText(remainder)) return null;
   const area = areaOf(remainder);
   if (area === 'mixed') return null;
@@ -288,7 +344,7 @@ function isBareIngredientNegationQuery(text) {
   if (extractPositiveStrictIngredientIds(raw).length > 0) return false;
   // The qualifier words left behind ("without", "free", "alternative") name nothing to serve, so they
   // need no removal: none of them is a product type, a brand, a concern or a skincare word.
-  const remainder = stripNegatedStrictIngredientMentions(normalizeForMatch(raw));
+  const remainder = stripNegatedStrictIngredientMentions(normalizeForRouting(raw));
   if (!remainder) return true;
   if (resolveBeautyCategoryPathPrefixFromText(remainder)) return false;
   if (PRODUCT_FORM_RE.test(remainder) || SKIN_CONCERN_RE.test(remainder) || areaOf(remainder)) return false;

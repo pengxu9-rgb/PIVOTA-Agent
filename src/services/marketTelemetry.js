@@ -50,6 +50,12 @@
 //                             stage and set no `lane` (discovery bridge, ingredient direct, early
 //                             exits). `lane` says which stage ran; this says what the page claims
 //   primary_path_used         the response's metadata.route_health.primary_path_used
+//   market_carrier            where the market every lane serves came from, read off the request
+//                             (servingCurrencyGuard.requestedMarketOf): search_block | flat_payload
+//                             (no search block; the payload's own `market`) | metadata | none. Bound or
+//                             not, find_products_multi only
+//   ignored_payload_market    true when the payload carried a `market` beside a search block, which no
+//                             lane reads; ABSENT otherwise
 
 const MAX_CURRENCIES = 8;
 const MAX_PRICE_SOURCES = 6;
@@ -207,6 +213,27 @@ function servingCurrencyDrops(body) {
   return { serving_currency_dropped: dropped, serving_currency_dropped_currencies: currencies };
 }
 
+const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * Which carrier supplied the market the lanes serve (servingCurrencyGuard.requestedMarketOf: the search
+ * block's market -- the payload itself when there is no search block -- else the metadata's, JavaScript
+ * truthiness), and whether a payload `market` beside a search block was left unread. Constants only.
+ */
+function describeMarketCarrier(payload, metadata) {
+  const body = isPlainObject(payload) ? payload : {};
+  const hasSearchBlock = isPlainObject(body.search);
+  const search = hasSearchBlock ? body.search : body;
+  const meta = isPlainObject(metadata) ? metadata : {};
+  let carrier = 'none';
+  if (search.market) carrier = hasSearchBlock ? 'search_block' : 'flat_payload';
+  else if (meta.market) carrier = 'metadata';
+  return {
+    market_carrier: carrier,
+    ...(hasSearchBlock && body.market ? { ignored_payload_market: true } : {}),
+  };
+}
+
 function buildMarketTelemetry({ operation, observation, payload, metadata, body, stages } = {}) {
   const op = String(operation || '').trim().toLowerCase();
   if (op !== 'find_products_multi') return GUARDED_OPERATIONS.has(op) ? servingCurrencyDrops(body) : {};
@@ -224,6 +251,7 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
   const lane = laneFromStageBreakdown(stages);
   return {
     ...market,
+    ...describeMarketCarrier(payload, metadata),
     ...summariseServedProducts(products),
     ...servingCurrencyDrops(body),
     ...(lane ? { lane } : {}),
@@ -234,6 +262,7 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
 module.exports = {
   MAX_REQUESTED_CHARS,
   buildMarketTelemetry,
+  describeMarketCarrier,
   describeRequested,
   describeUnboundRequest,
   laneFromStageBreakdown,

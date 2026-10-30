@@ -1,6 +1,8 @@
 // The loopback-only network guard goes first, so nothing below can reach a real host.
 require('../agent_readiness_eval/_net_guard.cjs');
 
+const http = require('node:http');
+const net = require('node:net');
 const v8 = require('node:v8');
 const vm = require('node:vm');
 const nock = require('nock');
@@ -28,8 +30,7 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
   let prevEnv;
   const calls = [];
   let actualSignal;
-  // When true, the wrapped reader answers without reading the body: the baseline for what the rest of
-  // the gateway retains per request (see the memory test).
+  // When true, the wrapped reader answers without reading the body: the baseline arm of the memory test.
   let readerOff = false;
   // When true, the wrapped reader throws, as a reader bug would.
   let readerThrows = false;
@@ -87,6 +88,37 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
 
   const post = (operation, payload, metadata = { source: 'search' }) =>
     request(app).post('/agent/shop/v1/invoke').send({ operation, payload, metadata });
+  // The same request over a plain loopback TCP socket, not http.request (see the memory test). Reads
+  // the whole response until the server closes and resolves to { status, body }.
+  const rawPost = (port, operation, payload) => new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify({ operation, payload, metadata: { source: 'search' } }));
+    const head = `POST /agent/shop/v1/invoke HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n`;
+    const chunks = [];
+    const socket = net.connect({ host: '127.0.0.1', port });
+    const fail = (err) => {
+      socket.destroy();
+      reject(err);
+    };
+    socket.setTimeout(30000, () => fail(new Error('raw loopback request timed out')));
+    socket.on('error', fail);
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.on('end', () => {
+      socket.destroy();
+      // The gateway answers with a Content-Length body and closes (Connection: close), so the body is
+      // everything after the headers.
+      const raw = Buffer.concat(chunks);
+      const split = raw.indexOf('\r\n\r\n');
+      const status = Number((/^HTTP\/1\.1 (\d{3})/.exec(raw.toString('latin1', 0, split)) || [])[1]);
+      const text = raw.subarray(split + 4).toString('utf8');
+      try {
+        resolve({ status, body: JSON.parse(text) });
+      } catch (err) {
+        reject(new Error(`raw loopback request: status ${status}, body is not JSON: ${text.slice(0, 200)}`));
+      }
+    });
+    socket.write(head);
+    socket.write(body);
+  });
   const bigMessages = (mb) => [{ role: 'user', content: 'x'.repeat(mb * 1024 * 1024) }];
 
   test('operations other than product search never run the reader, whatever the body carries', async () => {
@@ -152,40 +184,72 @@ describe('retinoid safety context reader: operations, budgets and fail-closed ov
     expect((resp.body.products || []).map((p) => p.product_id)).toEqual([RETINOID_ID, PLAIN_ID]);
   });
 
-  test('time and memory: the reader keeps nothing of a 1 MB turn, over 30 requests, and stays within its time budget', async () => {
+  test('time and memory: 30 distinct 1 MB turns grow what the reader retains by under 3 MB, and it stays within its time budget', async () => {
     let gc = global.gc;
     if (typeof gc !== 'function') {
       v8.setFlagsFromString('--expose-gc');
       gc = vm.runInNewContext('gc');
     }
-    // The gateway itself keeps about 1 MB per request with a large body, with or without this reader
-    // (measured on main as well; reported separately). So the reader's share is measured as the
-    // difference between the same 30 requests with the reader on and with it answering blind.
+    // These requests go over a plain TCP socket, not supertest. Through http.request, every request
+    // runs over nock 14's MockHttpSocket (@mswjs/interceptors), whose response parser is a global
+    // handle until the socket is destroyed, and that parser reaches the request's error listener, whose
+    // closure holds supertest's Test._data, the whole payload. So each 1 MB body stayed reachable until
+    // socket teardown, about 31 MB in BOTH arms, and the difference between the arms was teardown
+    // timing (it reached 18.9 MB on CI shard 4). That was the test client, not the gateway.
+    // nock.restore() is not enough: it removes only this file's layer, and any earlier test file in the
+    // same jest worker that loaded nock leaves its own patch on the shared http module. The interceptor
+    // does not patch net, and the loopback net guard (top of file) still applies to this socket.
+    // The reader's share is still measured as the difference from the same 30 requests with the
+    // reader answering blind.
+    const server = http.createServer(app).listen(0, '127.0.0.1');
+    await new Promise((resolve) => server.once('listening', resolve));
+    const { port } = server.address();
     const batch = async (tag) => {
-      for (let i = 0; i < 5; i += 1) await post('find_products_multi', { messages: [{ role: 'user', content: `warm ${tag} ${i}` }], search: { query: 'serum' } });
+      for (let i = 0; i < 5; i += 1) expect((await rawPost(port, 'find_products_multi', { messages: [{ role: 'user', content: `warm ${tag} ${i}` }], search: { query: 'serum' } })).status).toBe(200);
+      // Each arm also warms up on a 1 MB turn, so one-off growth from the first large body is not
+      // counted against the blind arm alone.
+      expect((await rawPost(port, 'find_products_multi', { messages: [{ role: 'user', content: `warm ${tag} ${'x'.repeat(1024 * 1024)}` }], search: { query: 'serum' } })).status).toBe(200);
       gc();
       const heapBefore = process.memoryUsage().heapUsed;
       const start = calls.length;
       for (let i = 0; i < 30; i += 1) {
         // A DIFFERENT 1 MB turn every time: a cache keyed by text would keep every one of them.
         const content = `${tag} ${i} ${'x'.repeat(1024 * 1024)}`;
-        const resp = await post('find_products_multi', { messages: [{ role: 'user', content }], search: { query: 'serum', page: 1, limit: 10, in_stock_only: true } });
+        const resp = await rawPost(port, 'find_products_multi', { messages: [{ role: 'user', content }], search: { query: 'serum', page: 1, limit: 10, in_stock_only: true } });
         expect(resp.status).toBe(200);
+        // Over the limit in both arms, so the retinoid is gated out either way.
+        const ids = (resp.body.products || []).map((p) => p.product_id);
+        expect(ids).not.toContain(RETINOID_ID);
+        expect(ids).toContain(PLAIN_ID);
       }
       gc();
       return { retainedMb: (process.memoryUsage().heapUsed - heapBefore) / (1024 * 1024), runs: calls.slice(start) };
     };
-    readerOff = true;
-    const blind = await batch('blind');
-    readerOff = false;
-    const reading = await batch('reading');
+    let blind;
+    let reading;
+    try {
+      readerOff = true;
+      blind = await batch('blind');
+      readerOff = false;
+      reading = await batch('reading');
+    } finally {
+      readerOff = false;
+      await new Promise((resolve) => server.close(resolve));
+    }
+    // The blind arm keeps about 1 MB of the 30 MB that went through it (0.77-1.00 MB over 10 runs on
+    // Node 20, alone and after a file that loaded nock). If it ever keeps tens of MB again, something
+    // is pinning the request bodies, and the difference below means nothing until that is found.
+    expect(blind.retainedMb).toBeLessThan(5);
     expect(reading.runs).toHaveLength(30);
     for (const run of reading.runs) {
       expect(run.classes).toEqual([actualSignal.OVER_LIMIT_CLASS]);
       expect(run.ms).toBeLessThan(25);
     }
-    // 30 MB of distinct text went through the reader; it may keep at most a few MB of it.
-    expect(reading.retainedMb - blind.retainedMb).toBeLessThan(5);
+    // 30 MB of distinct text went through the reader; what it keeps may grow by at most a few MB. The
+    // difference was -1.5 to -1.2 MB over 10 runs; a reader that caches every turn makes it about
+    // 29 MB, one that caches every fifth turn about 5 MB. A cache capped at a few entries that was
+    // already full before the batch does not grow, and is not what this measures.
+    expect(reading.retainedMb - blind.retainedMb).toBeLessThan(3);
     const keys = actualSignal._internal.classifyCacheKeys();
     expect(keys.every((k) => k.length <= 256)).toBe(true);
     expect(actualSignal._internal.classifyCacheSize()).toBeLessThanOrEqual(2000);

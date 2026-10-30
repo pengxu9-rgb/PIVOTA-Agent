@@ -1,7 +1,14 @@
 const { reviewAvailability } = require('./pdpPublicEvidence');
 const { createHash, randomUUID } = require('crypto');
 const logger = require('../logger');
-const { getPool, query, withClient } = require('../db');
+const dbModule = require('../db');
+
+const { getPool, query, withClient } = dbModule;
+
+// Read off the module object: suites that mock ../db without it keep today's behaviour.
+function isDbUnavailable(err) {
+  return typeof dbModule.isDbUnavailableError === 'function' ? dbModule.isDbUnavailableError(err) : false;
+}
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
@@ -4306,7 +4313,12 @@ async function resolveLivePdpIdentityGroupForPdp({
         productId: groupId,
         productGroupId: groupId,
         queryFn,
-      }).catch(() => null);
+      }).catch((err) => {
+        // A database that could not answer is not "no catalog group". Rethrow it so the caller can serve
+        // a degraded ref WITHOUT memoizing it, instead of caching a members-less group for its TTL.
+        if (isDbUnavailable(err)) throw err;
+        return null;
+      });
       if (catalogGroup?.canonical_product_ref && Array.isArray(catalogGroup.group_members)) {
         return {
           product_group_id: catalogGroup.product_group_id || groupId,

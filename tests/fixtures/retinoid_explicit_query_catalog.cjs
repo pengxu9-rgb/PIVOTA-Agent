@@ -41,8 +41,8 @@ const ROWS = [
   ['red_lipstick', 'Classic Red Lipstick', 'lipstick', 'Matte red lipstick.', ['castor oil']],
 ];
 
-function buildRetinoidFixtureSeedRows(now = '2026-10-01T00:00:00.000Z') {
-  return ROWS.map(([key, title, category, description, ingredientTokens], index) => ({
+function buildRetinoidFixtureSeedRows(now = '2026-10-01T00:00:00.000Z', extraRows = []) {
+  return [...ROWS, ...extraRows].map(([key, title, category, description, ingredientTokens], index) => ({
     id: `seed-${key}`,
     external_product_id: `ext_${key}`,
     market: 'US',
@@ -69,8 +69,9 @@ function buildRetinoidFixtureSeedRows(now = '2026-10-01T00:00:00.000Z') {
 
 // The db.query the route sees: every external_product_seeds read returns the whole fixture catalog, the
 // other reads return nothing. Each call is recorded, so a replay can compare the SQL two builds issue.
-function createRetinoidFixtureQuery({ calls = null, now } = {}) {
-  const rows = buildRetinoidFixtureSeedRows(now);
+// extraRows (same shape as ROWS) are appended for one file's own cases; the default catalog is unchanged.
+function createRetinoidFixtureQuery({ calls = null, now, extraRows = [] } = {}) {
+  const rows = buildRetinoidFixtureSeedRows(now, extraRows);
   return async (sql, params) => {
     const text = String(sql || '');
     if (Array.isArray(calls)) calls.push({ sql: text, params: params === undefined ? null : params });

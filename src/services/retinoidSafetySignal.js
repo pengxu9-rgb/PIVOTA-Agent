@@ -1,5 +1,7 @@
 'use strict';
 
+const retinoidFamily = require('./retinoidFamily');
+
 // Does a shopping request carry a reason to keep retinoids out of the answer?
 //
 // The beauty search gate (isBeautyProductContraindicatedForQuery in src/server.js) drops retinoid
@@ -47,9 +49,27 @@ function softTierEnabled(env = process.env) {
 
 // ---------------------------------------------------------------------------------------------
 // Retinoid names: used by the negation class and by ingredient constraints. Latin view / script view.
-const RETINOID_NAME_LATIN =
-  /\b(?:retinol\w*|retinal\w*|retinoid\w*|retinyl\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\s?a|vit(?:amin)?s?\s+a|granactive|hydroxypinacolone|hpr|accutane|roaccutane|differin|tazorac|arazlo|aklief|epiduo|altreno|atralin|renova|absorica|claravis)\b/;
-const RETINOID_NAME_SCRIPT = /视黄醇|視黃醇|视黄醛|視黃醛|维a|維a|a醇|a醛|维甲酸|維甲酸|レチノール|レチナール|레티놀|레티날|레틴|레티노이드|ретинол|ретинал|ретиноид|เรตินอล|เรตินัล/;
+// Built from the shared family list (src/services/retinoidFamily.js): its names plus the wider stems the
+// request side reads. A family name of several words is read whole where what follows it decides
+// ("retinyl palmitate free" is a negation of the ester).
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// A request naming a prescription brand means the retinoid, so the brands are names here.
+// Two more prescription retinoid brands (a tazarotene lotion, a tretinoin cream) and the Thai for
+// "retinal" are read on the request side only: as a product word either can mean something else.
+const RETINOID_SIGNAL_EXTRA_LATIN = ['arazlo', 'renova'];
+const RETINOID_SIGNAL_EXTRA_SCRIPT = ['เรตินัล'];
+const RETINOID_FAMILY_LATIN_SOURCES = [
+  ...retinoidFamily.RETINOID_FAMILY_LATIN, ...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS, ...retinoidFamily.RETINOID_OTC_BRANDS,
+  ...RETINOID_SIGNAL_EXTRA_LATIN,
+]
+  .map((name) => name.split(' ').map(escapeRegex).join('\\s'));
+const RETINOID_FAMILY_SCRIPT_SOURCES = [...retinoidFamily.RETINOID_FAMILY_SCRIPT, ...RETINOID_SIGNAL_EXTRA_SCRIPT].map(escapeRegex);
+const RETINOID_NAME_LATIN = new RegExp(
+  `\\b(?:${[...RETINOID_FAMILY_LATIN_SOURCES, ...retinoidFamily.RETINOID_SAFETY_LATIN_STEMS].join('|')})\\b`,
+);
+const RETINOID_NAME_SCRIPT = new RegExp(
+  [...RETINOID_FAMILY_SCRIPT_SOURCES, ...retinoidFamily.RETINOID_SAFETY_SCRIPT_STEMS.map(escapeRegex), ...retinoidFamily.RETINOID_FAMILY_RUSSIAN].join('|'),
+);
 
 // ---------------------------------------------------------------------------------------------
 // HARD tier lists.
@@ -143,14 +163,17 @@ const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 // "retinol free shipping", "retinol stopped working" all still ask for one.
 // Matched on the latin view, where apostrophes are dropped and punctuation is a space
 // ("retinol-free" is "retinol free", "don't" is "dont").
-const RETINOID_NAME_FOR_NEGATION =
-  '(?:retinol\\w*|retinal\\w*|retinoid\\w*|retinyl\\w*|retinoic|tretinoin|isotretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|vit(?:amin)?s?\\s+a|granactive|hydroxypinacolone|hpr|differin|accutane)';
+const RETINOID_NAME_FOR_NEGATION = `(?:${[
+  ...RETINOID_FAMILY_LATIN_SOURCES,
+  'retinol\\w*', 'retinal\\w*', 'retinoid\\w*', 'retinyl\\w*', 'retinoic', 'retinoate', 'tretinoin', 'isotretinoin', 'adapalene',
+  'tazarotene', 'trifarotene', 'retin\\s?a', 'vit(?:amin)?\\s+a', 'granactive', 'hydroxypinacolone', 'hpr', 'differin', 'accutane',
+].join('|')})`;
 // Up to three filler words between the negation and the name: "no added retinol", "avoid any
 // retinoids", "nothing with retinol", "avoid using any more retinol". Four are not a negation of the
 // name: "what not to use with my retinol" asks how to pair it.
 const NEGATION_FILLER = '(?:\\s+(?:any|a|an|the|added|more|my|with|to|use|using|products?\\s+with|anything\\s+with)){0,3}';
 const HARD_NEGATION_BEFORE_NAME_LATIN = [
-  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans',
+  'no', 'non', 'not', 'without', 'w\\s?o', 'zero', '0\\s?%', 'avoid\\w*', 'skip\\w*', 'minus', 'excluding', 'except', 'sans', 'sem', 'senza',
   'sin', 'ohne', 'free\\s+(?:of|from)', 'anything\\s+but', 'other\\s+than', 'instead\\s+of', 'nothing', 'never', 'nope', 'no\\s+thanks',
   'stop(?:ped)?(?:\\s+using)?', 'quit(?:ting)?', 'no\\s+more', 'dont\\s+want', 'do\\s+not\\s+want', 'dont\\s+use',
   'do\\s+not\\s+use', 'cant\\s+use', 'cannot\\s+use', 'can\\s+not\\s+use', 'cant\\s+tolerate', 'cannot\\s+tolerate',
@@ -176,19 +199,22 @@ const RETINOID_PRODUCT_WORD = '(?:\\s+(?:serums?|creams?|products?|oils?|lotions
 //   - なし is "none" in レチノールなし, but part of はなし ("talk").
 const HARD_NEGATION_BEFORE_NAME_SCRIPT = [
   '不含', '无添加', '無添加', '无', '無', '没有', '沒有', '避开', '避開', '避免', '不要', '不加', '不用', '不想用', '不想要',
-  '不能用',
+  '不能用', 'ไม่มี', 'ปราศจาก', 'ไม่ใช้', 'ไม่เอา',
 ];
 const HARD_NEGATION_AFTER_NAME_SCRIPT = [
   'フリー', '不使用', '無添加', 'なし', '無し', 'が使えない', 'は使えない', '使えない', '없는', '없이', '무첨가',
   '프리(?!미엄)', '대체', '代替', '替代', '平替', '过敏', '過敏', '안 ?쓰', '못 ?쓰',
 ];
-const RETINOID_NAME_NEXT_TO_NEGATION =
-  '(?:视黄醇|視黃醇|维a醇|維a醇|a醇|维甲酸|維甲酸|レチノール|레티놀|레티날|레티노이드|레티닐 ?팔미테이트|retinol|retinal|retinoids?|tretinoin|adapalene)';
+const RETINOID_NAME_NEXT_TO_NEGATION = `(?:${[
+  ...RETINOID_FAMILY_SCRIPT_SOURCES,
+  '视黄醇', '視黃醇', '维a醇', '維a醇', 'a醇', '维甲酸', '維甲酸', 'レチノール', '레티놀', '레티날', '레티노이드', '레티닐 ?팔미테이트',
+  'retinol', 'retinal', 'retinoids?', 'tretinoin', 'adapalene',
+].join('|')})`;
 const SCRIPT_NEGATION_RES = [
   new RegExp(`(?:${HARD_NEGATION_BEFORE_NAME_SCRIPT.join('|')})\\s*${RETINOID_NAME_NEXT_TO_NEGATION}`),
   new RegExp(`${RETINOID_NAME_NEXT_TO_NEGATION}\\s*(?:${HARD_NEGATION_AFTER_NAME_SCRIPT.join('|')})`),
   // Russian: без / не содержит as a word of its own, before the name (ретинола, ретиноидов ...).
-  /(?<![а-яё])(?:без|не\s+содержит)\s+(?:[а-яё]+\s+)?ретин[а-яё]*/,
+  /(?<![а-яё])(?:без|не\s+содержит)\s+(?:[а-яё]+\s+)?(?:ретин|третиноин|адапален|трифаротен)[а-яё]*/,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -253,9 +279,15 @@ function scriptView(text) {
     .toLowerCase();
 }
 
+// A decimal percentage is read as its value before punctuation becomes a space, so "1.0%" is "1%",
+// never "1 0%" with a "0%" absence in it; "0.0%" and "0.00%" are "0%". Only a point is a decimal
+// mark here: "spf 30,0% retinol" may be a list, and a missed "no" is the costlier mistake.
+const DECIMAL_PERCENT_RE = /(?<![\d.])(\d+)\.(\d+)(?=\s?%)/g;
+
 const SYMBOL_LETTERS = { '@': 'a', '€': 'e', $: 's', '!': 'i', '|': 'l' };
 function latinView(script) {
   return script
+    .replace(DECIMAL_PERCENT_RE, (m, whole, fraction) => String(Number(`${whole}.${fraction}`)))
     .replace(CONFUSABLE_RE, (ch) => CONFUSABLES[ch] || ch)
     .normalize('NFKD')
     .replace(/[\u0300-\u036F]/g, '')
@@ -826,59 +858,7 @@ function readRequestContext(body, options) {
   return { classes: Array.from(all).sort(), sources: Array.from(sources).sort() };
 }
 
-// ---------------------------------------------------------------------------------------------
-// Products: does a product's own text name a real retinoid?
-//
-// Read on the script view (NFKC, zero-width removed, lowercased), so a retinoid named in another
-// script, behind a zero-width character, or with a digit glued on ("Retinol0.3") is still seen.
-// Stand-in and free-of phrases are removed first ("Bakuchiol Retinol Alternative", "retinol-free",
-// "no retinol irritation", "without retinol side effects"); whatever retinoid name is left after that,
-// anywhere on the product, makes it a retinoid. So "Retinol-Free Retinoid Serum (HPR)" and "Retinal
-// serum, without retinol side effects" stay retinoids, and "Bakuchiol Retinol Alternative Serum" is
-// not one unless its ingredients name a real retinoid.
-const PRODUCT_STAND_IN_RES = [
-  /\b(?:bio|phyto|plant|botanical|herbal)[-\s]?retinol\b/g,
-  /\bplant[-\s]based[-\s]+retinol\b/g,
-  /\b(?:retinol|retinoid)s?[-\s]+(?:alternatives?|substitutes?|replacements?|dupes?)\b/g,
-  /\b(?:retinol|retinoid)s?-like\b/g,
-  /\b(?:alternatives?|substitutes?|replacements?)[-\s]+(?:to|for)[-\s]+(?:retinol|retinoids?)\b/g,
-  /\b(?:gentler|better|kinder|softer)[-\s]+than[-\s]+retinol\b/g,
-  /\b(?:retinol|retinoid)s?[-\s]?free\b/g,
-  /\bfree[-\s]+(?:of|from)[-\s]+(?:retinol|retinoids?)\b/g,
-  /\b(?:no|without|zero|0[-\s]?%)[-\s]+(?:added[-\s]+)?(?:retinol|retinoids?)\b/g,
-  /레티놀[-\s]?(?:대체|프리(?!미엄))/g,
-  /(?:植物)?(?:视黄醇|視黃醇|a醇)(?:平替|替代|代替)|植物(?:视黄醇|視黃醇|a醇)/g,
-  /レチノール(?:代替|フリー|様)/g,
-];
-// Latin view of de-leeted tokens: generic names, prescription brands sold under their own name,
-// French / Italian / Spanish forms (rétinol, retinolo, rétinoïde fold to these).
-const PRODUCT_RETINOID_LATIN_RE = new RegExp(
-  '(?:^|\\s)(?:retinol\\w*|retinal\\w*|retinaldehyde|retinoid\\w*|retinyl\\w*|retinoic|retinoate|tretinoin\\w*|isotretinoin\\w*|' +
-    'adapalene|tazarotene|trifarotene|retin\\s+a|vit(?:amin)?s?\\s+a|vitamina\\s+a|granactive|hydroxypinacolone|hpr|' +
-    'differin|tazorac|arazlo|aklief|epiduo|altreno|atralin|refissa|avita|fabior|absorica|claravis|amnesteem|myorisan|zenatane|' +
-    'accutane|roaccutane)(?=\\s|$)',
-);
-const PRODUCT_RETINOID_SCRIPT_RE = new RegExp(
-  [
-    '视黄醇', '視黃醇', '视黄醛', '視黃醛', '维a醇', '維a醇', '维a酸', '維a酸', '维甲酸', '維甲酸', 'a醇', 'a醛', 'レチノール', 'レチナール',
-    'レチノイン酸', '레티놀', '레티날', '레티노이드', '레티닐 ?팔미테이트', '트레티노인', 'เรตินอล', 'เรตินัล', 'ريتينول', 'رتينول',
-    'רטינול', 'रेटिनॉल', 'रेटिनोल',
-    // Russian, with up to four inflection letters (ретинолом), not ретинолоподобный ("retinol-like")
-    '(?<![а-яё])(?:ретинол|ретинал|ретиналь|ретиноид)[а-яё]{0,4}(?![а-яё])',
-  ].join('|'),
-);
-function productTextNamesRetinoid(text) {
-  const script = scriptView(text);
-  if (!script.trim()) return false;
-  const stripped = PRODUCT_STAND_IN_RES.reduce((out, re) => out.replace(re, ' '), script);
-  if (PRODUCT_RETINOID_SCRIPT_RE.test(stripped)) return true;
-  const latin = deLeet(latinView(stripped));
-  // as written ("vitamin a c e") and with single letters joined ("r e t i n o l")
-  return PRODUCT_RETINOID_LATIN_RE.test(` ${latin} `) || PRODUCT_RETINOID_LATIN_RE.test(` ${latinTokens(latin).join(' ')} `);
-}
-
 module.exports = {
-  productTextNamesRetinoid,
   SOFT_TIER_ENV,
   OVER_LIMIT_CLASS,
   MAX_SCAN_STRING_CHARS,

@@ -19,6 +19,7 @@
 
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -53,7 +54,21 @@ const SUITE_ROOTS = Object.freeze([
 //
 // The CI job this replaces set no such flag over its 110 suites, so inheriting is also
 // the faithful choice. A suite that needs the mock sets it for itself.
-const TEST_ENV = { ...process.env };
+//
+// One addition: the loopback-only network guard (tests/_support/netGuard.cjs) is preloaded
+// into every suite through NODE_OPTIONS, which `node --test` hands to each per-file child
+// process (and which any `node` a suite spawns inherits). An attempt to reach anything but
+// loopback is refused, and the suite's process exits non-zero listing the target and stack,
+// even when the code under test swallowed the error.
+const NET_GUARD = path.join(TESTS_DIR, '_support', 'netGuard.cjs');
+// The run-log reader only: requiring the guard itself would patch this runner's own process.
+const { RUN_DIR_ENV, readRunLog, formatViolations, withGuardPreload } = require(path.join(TESTS_DIR, '_support', 'netGuardRunLog.cjs'));
+
+function buildTestEnv(baseEnv = process.env) {
+  return { ...baseEnv, NODE_OPTIONS: withGuardPreload(baseEnv.NODE_OPTIONS) };
+}
+
+const TEST_ENV = buildTestEnv();
 
 // Generous: the observed gated batch is ~2.5 minutes. This exists so a hang fails with a
 // signal rather than eating the workflow's own timeout with no output.
@@ -126,16 +141,35 @@ function discoverSuites(roots = SUITE_ROOTS, root = ROOT) {
 }
 
 // One `node --test` invocation for the whole set. Returns the exit code.
+//
+// A suite's own blocked network attempt fails that suite (its process exits non-zero). One made
+// by a process the suite spawned -- a child whose exit code the test ignores, a worker thread --
+// fails only that process. The guard also appends every attempt to NETGUARD_RUN_DIR, and suites
+// mark the ones they failed on, so whatever is left there after the batch escaped every suite
+// and fails the run here. Only the gated batch gets a run dir: quarantined suites are known to
+// leak and are judged by their own exit code.
 function runSuites(files) {
   if (!files.length) return 0;
-  const result = spawnSync(process.execPath, ['--test', ...files], {
-    cwd: ROOT,
-    env: TEST_ENV,
-    stdio: 'inherit',
-    // A hung gated suite should not silently consume the whole job budget.
-    timeout: GATED_BATCH_TIMEOUT_MS,
-  });
-  return result.status == null ? 1 : result.status;
+  const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'netguard-node-'));
+  try {
+    const result = spawnSync(process.execPath, ['--test', ...files], {
+      cwd: ROOT,
+      env: { ...TEST_ENV, [RUN_DIR_ENV]: runDir },
+      stdio: 'inherit',
+      // A hung gated suite should not silently consume the whole job budget.
+      timeout: GATED_BATCH_TIMEOUT_MS,
+    });
+    const status = result.status == null ? 1 : result.status;
+    const escaped = readRunLog(runDir);
+    if (!escaped.length) return status;
+    console.error(
+      `\n${formatViolations(escaped)}\n(reported by the runner: made by a process a suite spawned, ` +
+        'which no suite failed on)\n',
+    );
+    return status || 1;
+  } finally {
+    fs.rmSync(runDir, { recursive: true, force: true });
+  }
 }
 
 // Per file, quietly — used only to ask whether a quarantined suite has started passing.
@@ -232,6 +266,9 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  buildTestEnv,
+  runSuites,
+  NET_GUARD,
   discoverSuites,
   readQuarantine,
   readQuarantineEntries,

@@ -1,6 +1,12 @@
 'use strict';
 
 const nock = require('nock');
+const { guardFileNetwork } = require('./nock_file_net_guard.cjs');
+
+// Nothing here may reach a real host: every request must hit a nock interceptor or loopback. A request no
+// interceptor matched fails the test that made it -- the reco code swallows fetch errors, so
+// disableNetConnect alone would let an unmocked fetch pass silently (and, before it, reach the live site).
+guardFileNetwork(test, nock);
 
 describe('aurora realtime competitor recall budget control', () => {
   const ORIGINAL_ENV = process.env;
@@ -423,9 +429,19 @@ describe('aurora realtime competitor recall budget control', () => {
         ],
       });
 
+    // The product page is handed in, never fetched (it used to be fetched from the live site, which made this
+    // test's timing depend on a third party): two same-site related-product links for the on-page block.
+    const html = [
+      '<html><body><h1>Multi-Peptide + Copper Peptides 1% Serum</h1>',
+      '<a href="/en-al/copper-peptide-barrier-serum-200001.html">Copper Peptide Barrier Serum</a>',
+      '<a href="/en-al/peptide-firming-serum-200002.html">Peptide Firming Serum</a>',
+      '</body></html>',
+    ].join('');
+
     const { __internal } = require('../src/auroraBff/routes');
     const out = await __internal.runRecoBlocksForUrl({
       productUrl: 'https://theordinary.com/en-al/multi-peptide-copper-peptides-1-serum-100625.html',
+      html,
       anchorProduct: {
         product_id: 'anchor_1',
         sku_id: 'anchor_1',
@@ -452,5 +468,11 @@ describe('aurora realtime competitor recall budget control', () => {
     expect(
       competitors.some((row) => String(row?.source?.type || row?.source_type || '').toLowerCase() === 'on_page_related'),
     ).toBe(false);
+    // The page was read: its own links land in related products, and only there.
+    const related = Array.isArray(out?.related_products?.candidates) ? out.related_products.candidates : [];
+    expect(related.filter((row) => row?.source_type === 'on_page_related').map((row) => row.name).sort()).toEqual([
+      'Copper Peptide Barrier Serum',
+      'Peptide Firming Serum',
+    ]);
   }, 20000);
 });

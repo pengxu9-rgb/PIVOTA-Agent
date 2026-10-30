@@ -13,6 +13,9 @@
 //     carry the price context (door, tier, caller_class, agent_id, request_id, via_loopback, http_status) and
 //     nothing else new;
 //   - the loopback calls: flag off, none carries X-Pivota-Price-Context.
+// The find_products_multi completion line's market_carrier / ignored_payload_market (marketTelemetry
+// describeMarketCarrier) came after the capture. They are stripped before the comparison and checked on their own,
+// against what each case sends, so nothing else on that line can change unseen.
 //
 // RECAPTURE (only when an answer is MEANT to change, in the same PR as that change):
 //   git worktree add --detach <dir> <commit before the price log, or the change's parent>
@@ -40,6 +43,16 @@ const VOLATILE_KEYS = new Set(['time', 'build_id', 'gateway_request_id']);
 // What PRICE_VERIFICATION_LOG adds to a live-read line, by design (priceVerificationLog.priceContextLogFields,
 // ucpLiveOfferRead.httpStatusLogField).
 const PRICE_CONTEXT_KEYS = ['door', 'tier', 'caller_class', 'agent_id', 'request_id', 'via_loopback', 'http_status'];
+// Added to the find_products_multi completion line after the capture; nothing else was.
+const MARKET_CARRIER_KEYS = ['market_carrier', 'ignored_payload_market'];
+const isSearchCompletion = (l) => l.msg === 'invoke request complete' && l.operation === 'find_products_multi';
+// What each case's find_products_multi completion lines must carry, in order: rest_search sends no market;
+// the other two put it in a search block. No case sends a `market` beside a search block.
+const EXPECTED_CARRIERS = {
+  rest_search: [{ market_carrier: 'none' }],
+  mcp_real_loopback_search: [{ market_carrier: 'search_block' }],
+  invoke_overlaid_elsewhere: [{ market_carrier: 'search_block' }],
+};
 
 function pinnedLines(lines, { flag }) {
   return lines
@@ -48,6 +61,7 @@ function pinnedLines(lines, { flag }) {
       const out = {};
       for (const [k, v] of Object.entries(l)) if (!VOLATILE_KEYS.has(k)) out[k] = v;
       if (flag && READER_LINE.test(String(l.event || ''))) for (const k of PRICE_CONTEXT_KEYS) delete out[k];
+      if (isSearchCompletion(l)) for (const k of MARKET_CARRIER_KEYS) delete out[k];
       return out;
     });
 }
@@ -56,13 +70,21 @@ const snapshot = (r, { flag }) => ({
   status: r.status,
   text: maskIds(r.text),
   lines: pinnedLines(r.lines, { flag }),
+  carriers: r.lines.filter(isSearchCompletion).map((l) => {
+    const out = {};
+    for (const k of MARKET_CARRIER_KEYS) if (k in l) out[k] = l[k];
+    return out;
+  }),
   loopback: r.headers.map((h) => ({ operation: h.operation, price_context: flag ? undefined : h.price_context })),
 });
 
 if (WRITE) {
   test('capture the door answers (PRICE_LOG_FIXTURE_WRITE)', async () => {
     const cases = {};
-    for (const [name, request] of Object.entries(doors.CASES)) cases[name] = snapshot(await doors.send(request, { flag: false }), { flag: false });
+    for (const [name, request] of Object.entries(doors.CASES)) {
+      cases[name] = snapshot(await doors.send(request, { flag: false }), { flag: false });
+      delete cases[name].carriers; // checked against EXPECTED_CARRIERS, never pinned
+    }
     fs.mkdirSync(path.dirname(WRITE), { recursive: true });
     fs.writeFileSync(WRITE, `${JSON.stringify({ captured_from: process.env.PRICE_LOG_FIXTURE_COMMIT || null, cases }, null, 2)}\n`);
   });
@@ -72,6 +94,9 @@ if (WRITE) {
   test('the fixture covers every door case, and was captured before the price log', () => {
     assert.deepEqual(Object.keys(fixture.cases).sort(), Object.keys(doors.CASES).sort());
     assert.match(String(fixture.captured_from), /^[0-9a-f]{40}$/);
+    for (const [name, want] of Object.entries(fixture.cases)) {
+      for (const line of want.lines) for (const k of MARKET_CARRIER_KEYS) assert.ok(!(k in line), `${name}: the fixture predates ${k}`);
+    }
   });
 
   for (const name of Object.keys(doors.CASES)) {
@@ -84,6 +109,7 @@ if (WRITE) {
         assert.equal(got.status, want.status, `${label}: status`);
         assert.equal(got.text, want.text, `${label}: the answer must be the pre-log answer, byte for byte`);
         assert.deepEqual(got.lines, want.lines, `${label}: live-read and completion lines`);
+        assert.deepEqual(got.carriers, EXPECTED_CARRIERS[name] || [], `${label}: market_carrier / ignored_payload_market`);
         assert.deepEqual(got.loopback.map((h) => h.operation), want.loopback.map((h) => h.operation), `${label}: the same loopback calls`);
         if (!flag) assert.deepEqual(got.loopback, want.loopback, `${label}: no loopback call carries a price context`);
       }
