@@ -20493,7 +20493,24 @@ const BEAUTY_PRODUCT_WIDE_RAW_SAFETY_FIELDS = [
   'pdp_active_ingredients_raw', 'external_url', 'canonical_url', 'destination_url',
 ];
 const BEAUTY_PRODUCT_INLINE_TAG_RE = /<\/?(?:span|b|i|em|strong|u|small|sup|sub|font|a|mark)\b[^<>]*>/gi;
-const BEAUTY_PRODUCT_BLOCK_TAG_RE = /<(?:\/?[a-z][a-z0-9-]*\b[^<>]*|!--[\s\S]*?--)>/gi;
+// The tag name runs to a space, "/" or ">" before the attributes, so a long run of letters with no
+// ">" is scanned once, not once per letter. Comments are removed by stripHtmlComments (linear).
+const BEAUTY_PRODUCT_BLOCK_TAG_RE = /<\/?[a-z][a-z0-9-]*(?=[\s/>])[^<>]*>/gi;
+// Each "<!--" to its "-->" becomes a space, in one pass; an unterminated "<!--" and what follows it are
+// left as they are.
+function stripHtmlComments(text) {
+  let out = '';
+  let from = 0;
+  for (;;) {
+    const open = text.indexOf('<!--', from);
+    if (open === -1) break;
+    const close = text.indexOf('-->', open + 4);
+    if (close === -1) break;
+    out += `${text.slice(from, open)} `;
+    from = close + 3;
+  }
+  return from === 0 ? text : out + text.slice(from);
+}
 function buildBeautyProductWideRawSafetyText(product) {
   const parts = [];
   const append = (value, depth = 0) => {
@@ -20513,8 +20530,7 @@ function buildBeautyProductWideRawSafetyText(product) {
   for (const source of beautyProductRawSafetySources(product)) {
     for (const field of BEAUTY_PRODUCT_WIDE_RAW_SAFETY_FIELDS) append(source[field]);
   }
-  return parts
-    .join(' \n ')
+  return stripHtmlComments(parts.join(' \n '))
     .replace(BEAUTY_PRODUCT_INLINE_TAG_RE, '')
     .replace(BEAUTY_PRODUCT_BLOCK_TAG_RE, ' ')
     .normalize('NFKC');
@@ -20720,8 +20736,25 @@ function beautyRetinoidFreeClaimReading(text, options) {
 
 function beautyProductRetinoidMentionIsStandInOnly(product) {
   if (!product || typeof product !== 'object') return false;
+  // Exempt only when both readings agree: the joined reading over the original fields, and a reading
+  // that strips stand-in phrases inside each field's own text before joining, over those fields plus
+  // `actives`. Joined text lets a stand-in phrase span two fields ("... 0%" then "Retinol 0.1%") and
+  // strip a real retinoid name from the next one; the per-field reading never does.
+  return (
+    beautyProductRetinoidStandInReading(product, BEAUTY_RETINOID_STAND_IN_STRUCTURED_FIELDS, false) &&
+    beautyProductRetinoidStandInReading(product, [...BEAUTY_RETINOID_STAND_IN_STRUCTURED_FIELDS, 'actives'], true)
+  );
+}
+const BEAUTY_RETINOID_STAND_IN_STRUCTURED_FIELDS = [
+  'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients', 'key_ingredients',
+  'raw_ingredient_text_clean', 'pdp_ingredients_raw', 'pdp_active_ingredients_raw', 'ingredient_tokens',
+];
+function beautyProductRetinoidStandInReading(product, structuredFields, perField) {
   const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
   const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
+  const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
+  // { raw, stripped }: the fields' text joined, and the same with stand-in phrases removed (from the
+  // joined text, or from each field's text before the join)
   const pick = (holders, fields) => {
     const parts = [];
     const add = (value) => {
@@ -20730,20 +20763,18 @@ function beautyProductRetinoidMentionIsStandInOnly(product) {
       else if (value && typeof value === 'object') ['name', 'title', 'inci', 'ingredient', 'label'].forEach((k) => add(value[k]));
     };
     for (const holder of holders) for (const field of fields) add(holder[field]);
-    return parts.join(' \n ').normalize('NFKC').toLowerCase();
+    const norm = (text) => text.normalize('NFKC').toLowerCase();
+    const raw = norm(parts.join(' \n '));
+    return { raw, stripped: perField ? parts.map((part) => strip(norm(part))).join(' \n ') : strip(raw) };
   };
   const intelHolders = [product.ingredient_intel, seedData.ingredient_intel].filter((v) => v && typeof v === 'object');
   const title = pick([product, seedData, snapshot], ['title', 'name', 'product_name', 'display_name']);
   const description = pick([product, seedData, snapshot], ['description', 'pdp_description_raw']);
-  const structured = pick([product, seedData, snapshot, ...intelHolders], [
-    'ingredients', 'inci', 'inci_list', 'ingredients_inci', 'inci_normalized', 'active_ingredients', 'actives', 'key_ingredients',
-    'raw_ingredient_text_clean', 'pdp_ingredients_raw', 'pdp_active_ingredients_raw', 'ingredient_tokens',
-  ]);
-  const strip = (text) => BEAUTY_RETINOID_STAND_IN_PHRASES.reduce((out, re) => out.replace(re, ' '), text);
+  const structured = pick([product, seedData, snapshot, ...intelHolders], structuredFields);
   // The title must carry a stand-in phrase, and nothing anywhere may name a retinoid outside one.
-  if (strip(title) === title) return false;
+  if (title.stripped === title.raw) return false;
   const options = beautyRetinoidProductReading(product);
-  return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(strip(text), options));
+  return [title, description, structured].every((text) => !beautyTextNamesAnyRetinoid(text.stripped, options));
 }
 
 // A product the retinoid safety rules must keep out: it names a retinoid and does not say it is
@@ -20827,11 +20858,20 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
   let next = walk(body, 0);
   if (removed === 0) return body;
   // What is left that still points at a removed product: an id in a plain id list (next_actions'
-  // product_ids), and the generated prose (reply, assistant_text, assistant_message.content ...)
-  // that names one. The prose was written for the list before the net; it is cleared, not rewritten.
+  // product_ids), a card or reference object carrying its product_id (or its id, with a name) anywhere
+  // in the body (a bundle's pick cards), and the generated prose (reply, assistant_text,
+  // assistant_message.content ...) that names one. The prose was written for the list before the
+  // net; it is cleared, not rewritten. A card is judged by the product it points at, never by its
+  // own text, which can be just a name.
   let proseCleared = 0;
+  let referencesRemoved = 0;
+  const pointsAtRemoved = (item) =>
+    item && typeof item === 'object' && !Array.isArray(item) &&
+    ((item.product_id != null && removedIds.has(String(item.product_id))) ||
+      (item.sku_id != null && removedIds.has(String(item.sku_id))) ||
+      (item.id != null && removedIds.has(String(item.id)) && (item.title != null || item.name != null || item.product_name != null)));
   const scrub = (value, key, depth) => {
-    if (depth > 8 || value == null) return value;
+    if (depth > 10 || value == null) return value;
     if (typeof value === 'string') {
       if (!RETINOID_SAFETY_NET_PROSE_KEYS.has(key)) return value;
       const lowered = value.toLowerCase();
@@ -20845,11 +20885,25 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
     }
     if (typeof value !== 'object') return value;
     if (Array.isArray(value)) {
-      const kept = value.filter((item) => !((typeof item === 'string' || typeof item === 'number') && removedIds.has(String(item))));
+      const kept = value.filter((item) => {
+        if ((typeof item === 'string' || typeof item === 'number') && removedIds.has(String(item))) return false;
+        if (pointsAtRemoved(item)) {
+          referencesRemoved += 1;
+          return false;
+        }
+        return true;
+      });
       return kept.map((item) => scrub(item, key, depth + 1));
     }
     const out = {};
-    for (const [k, child] of Object.entries(value)) out[k] = scrub(child, k, depth + 1);
+    for (const [k, child] of Object.entries(value)) {
+      if (pointsAtRemoved(child)) {
+        referencesRemoved += 1;
+        out[k] = null;
+      } else {
+        out[k] = scrub(child, k, depth + 1);
+      }
+    }
     return out;
   };
   next = scrub(next, '', 0);
@@ -20858,7 +20912,11 @@ function applyRetinoidSafetyNetToSearchBody(body, classes = []) {
   }
   next.metadata = {
     ...(next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata) ? next.metadata : {}),
-    retinoid_safety_net: { removed_count: removed, classes: classes.slice(), ...(proseCleared ? { prose_cleared: proseCleared } : {}) },
+    retinoid_safety_net: {
+      removed_count: removed, classes: classes.slice(),
+      ...(proseCleared ? { prose_cleared: proseCleared } : {}),
+      ...(referencesRemoved ? { references_removed: referencesRemoved } : {}),
+    },
   };
   return next;
 }

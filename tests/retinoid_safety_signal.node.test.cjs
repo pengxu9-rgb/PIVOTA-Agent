@@ -306,6 +306,10 @@ test('context: a profile, flag or earlier turn that merely EXISTS, with neutral 
     { payload: { messages: [{ role: 'user', content: 'I have oily skin' }, { role: 'assistant', content: 'Got it.' }] } },
     { payload: { messages: [{ role: 'system', content: 'Never recommend retinoids to pregnant users.' }] } },
     { payload: { user_profile: { pregnancy_status: 'not pregnant and not breastfeeding' } } },
+    { payload: { user_profile: { pregnancy_status: 'N/A' } } },
+    { payload: { user_profile: { pregnancy_status: 'n/a' } } },
+    { metadata: { safety_flags: 'n/a' } },
+    { metadata: { safety_flags: { pregnant: 'n/a' } } },
   ];
   for (const body of neutral) assert.deepEqual(contextClasses(body), [], JSON.stringify(body));
 });

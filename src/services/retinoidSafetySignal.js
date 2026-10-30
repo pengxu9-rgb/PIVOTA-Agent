@@ -572,12 +572,17 @@ const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
 const NEUTRAL_VALUE_RE =
   /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|not[\s_-].*|non[\s_-].*|never)$/;
-// A value is neutral only if it is neutral as a whole (as before) AND every part of it is: "not
-// pregnant, breastfeeding" and "non-pregnant but nursing" say yes to something. Never neutral where
-// the whole-value test alone would say it is not.
+// One of the listed neutral answers, as the whole value ("n/a", "none", "not applicable").
+const EXACT_NEUTRAL_VALUE_RE =
+  /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|never)$/;
+// A value is neutral only if it is neutral as a whole (as before) AND, when only the "not ..." /
+// "non ..." catch-alls made it so, every part of it is: "not pregnant, breastfeeding" and
+// "non-pregnant but nursing" say yes to something. Never neutral where the whole-value test alone
+// would say it is not.
 function valueIsNeutral(text) {
   const whole = String(text).trim().toLowerCase();
   if (!NEUTRAL_VALUE_RE.test(whole)) return false;
+  if (EXACT_NEUTRAL_VALUE_RE.test(whole)) return true;
   return whole.split(/\s*(?:[,;/&+|]|\bbut\b|\band\b)\s*/).every((part) => NEUTRAL_VALUE_RE.test(part));
 }
 

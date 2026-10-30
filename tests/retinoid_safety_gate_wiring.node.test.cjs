@@ -453,3 +453,29 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
   ];
   for (const item of notRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), false, `${item.title} | ${item.description}`);
 });
+
+test('product reading: a flood of unterminated HTML comments is read in linear time', () => {
+  const flood = {
+    // no retinoid in it, so both product readings run in full
+    product_id: 'flood', title: 'Night Serum', description: 'Night serum.', ingredients: 'water, glycerin',
+    tags: Array.from({ length: 20 }, () => '<!--'.repeat(5000)),
+  };
+  beautyProductIsRetinoidForSafety(flood); // warm
+  const started = process.hrtime.bigint();
+  assert.equal(beautyProductIsRetinoidForSafety(flood), false);
+  assert.ok(Number(process.hrtime.bigint() - started) / 1e6 < 200);
+});
+
+test('product reading: a stand-in phrase never strips a retinoid named in the next field', () => {
+  const cases = [
+    { title: 'Retinol Alternative Night Cream', actives: ['Fragrance 0%'], key_ingredients: ['Retinol 0.1%', 'Bakuchiol'] },
+    { title: 'Retinol Alternative Night Cream', actives: ['Parabens: without'], key_ingredients: ['Retinol'] },
+    { title: 'Bakuchiol Retinol Alternative Serum', active_ingredients: 'Bakuchiol, Retinol', actives: 'Alternatives: rosehip oil' },
+    { title: 'Retinol Alternative Night Cream', active_ingredients: ['Fragrance 0%'], key_ingredients: ['Retinol 0.1%'] },
+  ];
+  for (const fields of cases) {
+    assert.equal(beautyProductIsRetinoidForSafety({ product_id: 'x', description: 'Night cream.', ...fields }), true, JSON.stringify(fields));
+  }
+  // a real stand-in product stays exempt
+  assert.equal(beautyProductIsRetinoidForSafety({ product_id: 'y', title: 'Bakuchiol Retinol Alternative Serum', description: 'Night serum.', key_ingredients: ['Bakuchiol'] }), false);
+});

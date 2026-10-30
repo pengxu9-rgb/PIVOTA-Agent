@@ -43,6 +43,12 @@ const PRODUCT_CASES = [
   ['stand-in title, a real retinoid in actives', { title: 'Bakuchiol Retinol Alternative Serum', description: 'Night serum.', actives: ['retinal'] }],
   ['retinol split by an inline tag', { title: 'Night Serum F', description: 'Night serum with re<span>tinol</span> for smoother skin.' }],
   ['retinol only in a variant option', { title: 'Night Serum G', description: 'Night serum.', variants: [{ id: 'v1', sku: 'S1', option1: 'Retinol 0.3%' }] }],
+  // a stand-in title, and a real retinoid named in a structured field right after one whose text
+  // could join a stand-in phrase across the field boundary ("... 0%" + "Retinol", "without" + "Retinol")
+  ['stand-in title; actives "0%" then a retinoid in key ingredients', { title: 'Retinol Alternative Night Cream', description: 'Night cream.', actives: ['Fragrance 0%'], key_ingredients: ['Retinol 0.1%', 'Bakuchiol'] }],
+  ['stand-in title; actives "without" then a retinoid in key ingredients', { title: 'Retinol Alternative Night Cream', description: 'Night cream.', actives: ['Parabens: without'], key_ingredients: ['Retinol'] }],
+  ['stand-in title; a retinoid in active ingredients, then actives "Alternatives: ..."', { title: 'Bakuchiol Retinol Alternative Serum', description: 'Night serum.', active_ingredients: 'Bakuchiol, Retinol', actives: 'Alternatives: rosehip oil' }],
+  ['stand-in title; active ingredients "0%" then a retinoid in key ingredients', { title: 'Retinol Alternative Night Cream', description: 'Night cream.', active_ingredients: ['Fragrance 0%'], key_ingredients: ['Retinol 0.1%'] }],
 ].map(([label, fields], i) => [label, { ...BASE_ROW, id: `strict_p${i}`, product_id: `strict_p${i}`, ...fields }]);
 
 const turn = (role, content) => ({ role, content });
@@ -68,10 +74,32 @@ const SIGNALLED = [
   ['profile household shopping for an 8 year old', { user_profile: { household: 'shopping for my 8 year old' } }],
   ['profile pregnancy_status "not pregnant, breastfeeding"', { user_profile: { pregnancy_status: 'not pregnant, breastfeeding' } }],
   ['nested conversation, pregnancy in a tool turn', { conversation: { messages: [turn('tool', 'pregnant: yes'), turn('user', 'serum')] } }],
-  // every row is [label, payload, metadata]: test.each passes a callback for a missing column
+  // fields and shapes read on the request side
+  ['pregnancy in Gemini contents parts', { contents: [{ role: 'user', parts: [{ text: 'I am 20 weeks pregnant' }] }] }],
+  ['breastfeeding in a string input', { input: 'serum while breastfeeding' }],
+  ['a child by birth year', { user_profile: { birth_year: new Date().getUTCFullYear() - 8 } }],
+  ['a prescription retinoid in medications', { user_profile: { medications: ['Differin'] } }],
+  ['pregnancy in payload filters', { filters: { life_stage: 'pregnancy' } }],
+  ['pregnancy in a metadata safety object', null, { safety: { pregnant: true } }],
+  ['a child in search.context turns', null, null, { context: { messages: [turn('user', 'for my toddler')] } }],
+  ['age group "child"', { user_profile: { age_group: 'child' } }],
+  ['pregnancy in a turn carried as parts', { messages: [{ role: 'user', parts: [{ text: 'I am pregnant' }] }, turn('user', 'serum')] }],
+  ['pregnancy in a recent-query object', { recent_queries: [{ query: 'pregnancy safe moisturizer' }] }],
+  ['Thai "retinal" in an avoid list', { avoid_ingredients: ['เรตินัล'] }],
+  // every row is [label, payload, metadata, searchExtra]: test.each passes a callback for a missing column
+].map(([label, payload = null, metadata = null, searchExtra = null]) => [label, payload, metadata, searchExtra]);
+
+// Neutral answers stay neutral, as before: the retinoid is still served.
+const NEUTRAL = [
+  ['pregnancy_status "N/A"', { user_profile: { pregnancy_status: 'N/A' } }],
+  ['pregnancy_status "n/a"', { user_profile: { pregnancy_status: 'n/a' } }],
+  ['safety_flags "n/a"', null, { safety_flags: 'n/a' }],
+  ['safety_flags { pregnant: "n/a" }', null, { safety_flags: { pregnant: 'n/a' } }],
+  ['pregnancy_status "not applicable"', { user_profile: { pregnancy_status: 'not applicable' } }],
 ].map(([label, payload = null, metadata = null]) => [label, payload, metadata]);
 
 let savedEnv;
+let upstreamRows = [];
 beforeAll(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   nock.disableNetConnect();
@@ -81,8 +109,9 @@ beforeAll(() => {
     FIND_PRODUCTS_MULTI_VECTOR_ENABLED: 'false', AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false', GATEWAY_RATE_LIMIT_ENABLED: 'false',
   });
   delete process.env.BEAUTY_RETINOID_SOFT_SAFETY_TIER;
-  nock(UPSTREAM).persist().get(/.*/).reply(200, { status: 'success', success: true, products: [], total: 0 });
-  nock(UPSTREAM).persist().post(/.*/).reply(200, { status: 'success', success: true, products: [], total: 0 });
+  const upstreamBody = () => ({ status: 'success', success: true, products: upstreamRows.map((r) => JSON.parse(JSON.stringify(r))), total: upstreamRows.length });
+  nock(UPSTREAM).persist().get(/.*/).reply(200, upstreamBody);
+  nock(UPSTREAM).persist().post(/.*/).reply(200, upstreamBody);
 });
 afterAll(() => {
   nock.cleanAll();
@@ -118,10 +147,14 @@ function loadGateLanes() {
   return require('../../src/server');
 }
 
-async function servedIds(app, { query, payload = {}, metadata = {} }) {
-  const body = { operation: 'find_products_multi', payload: { ...payload, search: { query, page: 1, limit: 12, in_stock_only: true } }, metadata };
+async function invoke(app, { operation = 'find_products_multi', query, payload = {}, metadata = {}, searchExtra = {} }) {
+  const body = { operation, payload: { ...payload, search: { query, page: 1, limit: 12, in_stock_only: true, ...(searchExtra || {}) }, query }, metadata };
   const resp = await request(app).post('/agent/shop/v1/invoke').send(body);
   expect(resp.status).toBe(200);
+  return resp;
+}
+async function servedIds(app, args) {
+  const resp = await invoke(app, args);
   return (resp.body.products || []).map((p) => String(p.product_id || p.id));
 }
 
@@ -133,10 +166,49 @@ describe('discovery lane: the safety net hides the retinoid', () => {
   test('control: with no signal the retinoid is served', async () => {
     expect(await servedIds(app, { query: 'serum', metadata: { source: 'search' } })).toContain(RETINOL_ROW.id);
   });
-  test.each(SIGNALLED)('%s', async (_label, payload, metadata) => {
-    const ids = await servedIds(app, { query: 'serum', payload: payload || {}, metadata: { source: 'search', ...(metadata || {}) } });
+  test.each(SIGNALLED)('%s', async (_label, payload, metadata, searchExtra) => {
+    const ids = await servedIds(app, { query: 'serum', payload: payload || {}, metadata: { source: 'search', ...(metadata || {}) }, searchExtra });
     expect(ids).not.toContain(RETINOL_ROW.id);
     expect(ids).toContain(PLAIN_ROW.id);
+  });
+  test.each(NEUTRAL)('neutral: %s', async (_label, payload, metadata) => {
+    const ids = await servedIds(app, { query: 'serum', payload: payload || {}, metadata: { source: 'search', ...(metadata || {}) } });
+    expect(ids).toContain(RETINOL_ROW.id);
+  });
+});
+
+describe('discovery lane: a product whose text is a flood of unterminated HTML comments', () => {
+  test('a signalled request over it answers promptly', async () => {
+    // no retinoid in it, so both product readings run in full
+    const flood = { ...BASE_ROW, id: 'strict_flood', product_id: 'strict_flood', title: 'Night Serum H', description: 'Night serum.', ingredients: 'water, glycerin', tags: Array.from({ length: 20 }, () => '<!--'.repeat(5000)) };
+    const app = loadDiscoveryLane([flood, PLAIN_ROW]);
+    await servedIds(app, { query: 'serum', metadata: { source: 'search' } }); // warm
+    const started = Date.now();
+    const ids = await servedIds(app, { query: 'serum', payload: { user_profile: { pregnancy_status: 'pregnant' } }, metadata: { source: 'search' } });
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(ids).toContain(flood.id);
+  });
+});
+
+describe('find_products: the net also drops every card that points at a removed product', () => {
+  const KO_ROW = { ...BASE_ROW, id: 'strict_fp_ko', product_id: 'strict_fp_ko', title: 'Premium Night Serum', description: 'Night serum.', ingredients: '정제수, 글리세린, 레티놀, 나이아신아마이드' };
+  let app;
+  beforeAll(() => {
+    upstreamRows = [KO_ROW, PLAIN_ROW];
+    app = loadDiscoveryLane([KO_ROW, PLAIN_ROW]);
+  });
+  afterAll(() => {
+    upstreamRows = [];
+  });
+  test('control: with no signal the product is served', async () => {
+    const resp = await invoke(app, { operation: 'find_products', query: 'serum', metadata: { source: 'search' } });
+    expect(JSON.stringify(resp.body)).toContain(KO_ROW.id);
+  });
+  test('with a pregnancy profile the product is in no list and no card anywhere in the body', async () => {
+    const resp = await invoke(app, { operation: 'find_products', query: 'serum', payload: { user_profile: { pregnancy_status: 'pregnant' } }, metadata: { source: 'search' } });
+    expect(JSON.stringify(resp.body)).not.toContain(KO_ROW.id);
+    expect(JSON.stringify(resp.body)).not.toContain(KO_ROW.title);
+    expect((resp.body.products || []).map((p) => String(p.product_id || p.id))).toContain(PLAIN_ROW.id);
   });
 });
 
@@ -160,12 +232,18 @@ describe('beauty gate lanes: retinol serum', () => {
     const ids = await servedIds(app, { query: 'retinol serum', metadata: { source: 'beauty_cross_agent_batch', market: 'US' } });
     expect(retinoidIdsIn(ids).length).toBeGreaterThan(0);
   });
-  test.each(SIGNALLED)('%s', async (_label, payload, metadata) => {
+  test.each(SIGNALLED)('%s', async (_label, payload, metadata, searchExtra) => {
     const p = JSON.parse(JSON.stringify(payload || {}));
     for (const list of [p.messages, p.conversation && p.conversation.messages]) {
       if (Array.isArray(list)) for (const m of list) if (m.role === 'user' && m.content === 'serum') m.content = 'retinol serum';
     }
-    const ids = await servedIds(app, { query: 'retinol serum', payload: p, metadata: { source: 'beauty_cross_agent_batch', market: 'US', ...(metadata || {}) } });
+    const sx = JSON.parse(JSON.stringify(searchExtra || {}));
+    for (const m of (sx.context && sx.context.messages) || []) if (m.role === 'user' && m.content === 'serum') m.content = 'retinol serum';
+    const ids = await servedIds(app, { query: 'retinol serum', payload: p, metadata: { source: 'beauty_cross_agent_batch', market: 'US', ...(metadata || {}) }, searchExtra: sx });
     expect(retinoidIdsIn(ids)).toEqual([]);
+  });
+  test.each(NEUTRAL)('neutral: %s', async (_label, payload, metadata) => {
+    const ids = await servedIds(app, { query: 'retinol serum', payload: payload || {}, metadata: { source: 'beauty_cross_agent_batch', market: 'US', ...(metadata || {}) } });
+    expect(retinoidIdsIn(ids).length).toBeGreaterThan(0);
   });
 });
