@@ -28,6 +28,7 @@ const {
   catalogProductPricedOnlyInCurrencySql,
   seedNativeCurrencySql,
 } = require('./seedSearchOfferScope');
+const { resolveOfferScopeCurrency } = require('./buyerMarketOfferScope');
 
 // The currency every recommended product must be priced in (Peng 2026-09-26: a result priced in
 // another currency must never reach the agent frontend). A caller that says nothing gets the rule's
@@ -2936,7 +2937,9 @@ async function fetchCatalogCandidates({
       -- Only products priced in the buyer's currency (a blank one is refused): the eps_catalog
       -- join above prices only mirror rows, so a minted product priced by its attached SGD seed
       -- would otherwise reach a US buyer as a 'USD' card.
-      WHERE ${catalogProductPricedOnlyInCurrencySql('currency_head', servingCurrencyParam)}
+      WHERE ${catalogProductPricedOnlyInCurrencySql('currency_head', servingCurrencyParam, {
+        allowOtherCurrencyOffers: Boolean(resolveOfferScopeCurrency(recommendationCurrency)),
+      })}
       ORDER BY currency_head.currency_head_rank
       LIMIT ${limitParam}
     `;
@@ -5657,7 +5660,7 @@ ${EXTERNAL_SEED_SEMANTIC_SELECT}
           FROM external_product_seeds
           WHERE status = 'active'
             AND external_product_id = ANY($1::text[])
-          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id
           LIMIT 1
         `,
         [externalProductIds],
@@ -5670,7 +5673,13 @@ ${EXTERNAL_SEED_SEMANTIC_SELECT}
     for (const externalProductId of externalProductIds) {
       params.push(externalProductId);
       const bind = `$${params.length}`;
-      clauses.push(`(seed_data->>'external_product_id' = ${bind} OR seed_data->>'product_id' = ${bind})`);
+      // Guarded arms: migration 040's expression indexes are partial on
+      // `seed_data ? 'k'`; without the guard the planner cannot use them and
+      // seq-scans every active seed (detoasting seed_data) on a miss.
+      clauses.push(
+        `((seed_data ? 'external_product_id' AND seed_data->>'external_product_id' = ${bind})` +
+          ` OR (seed_data ? 'product_id' AND seed_data->>'product_id' = ${bind}))`,
+      );
     }
     if (!clauses.length) return null;
 
@@ -5681,7 +5690,7 @@ ${EXTERNAL_SEED_SEMANTIC_SELECT}
         FROM external_product_seeds
         WHERE status = 'active'
           AND (${clauses.join(' OR ')})
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id
         LIMIT 1
       `,
       params,
@@ -6511,8 +6520,22 @@ async function recommend({
     : result;
 }
 
+// The exclusion rule recall applies to options.exclude_items / exclude_ids ("load more": the cards
+// already shown), for callers that serve candidates from elsewhere (the graph-only similar rails).
+function filterExcludedRecommendationCandidates(candidates, options = {}) {
+  const excludeItems = Array.isArray(options?.exclude_items)
+    ? options.exclude_items
+    : Array.isArray(options?.exclude_ids)
+      ? options.exclude_ids.map((productId) => ({ product_id: String(productId || '').trim() }))
+      : [];
+  const extra = Array.isArray(options?.also_exclude) ? options.also_exclude : [];
+  if (!excludeItems.length && !extra.length) return Array.isArray(candidates) ? candidates : [];
+  return filterCandidateCollection(candidates, buildExcludedCandidateState([...excludeItems, ...extra]));
+}
+
 module.exports = {
   recommend,
+  filterExcludedRecommendationCandidates,
   pickLayeredRecommendations,
   getCacheStats,
   hydrateRecommendationItemsWithReviewedProductIntel,
@@ -6528,6 +6551,7 @@ module.exports = {
       PDP_RECS_CACHE_METRICS.rejected_unavailable_hits = 0;
       PDP_RECS_CACHE_METRICS.skipped_unavailable_sets = 0;
     },
+    loadExternalSeedSemanticRecord,
     normalizeText,
     tokenize,
     jaccard,

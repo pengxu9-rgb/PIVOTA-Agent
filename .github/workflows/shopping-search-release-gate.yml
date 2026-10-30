@@ -25,6 +25,7 @@ on:
       - "scripts/check_budget_fx_freshness.js"
       - "scripts/catalog_serving_shadow_acceptance.js"
       - "scripts/search_stability_matrix.js"
+      - "scripts/wait_for_prod_probe_window.sh"
       - "scripts/smoke_discovery_feed_prod.sh"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
       - "scripts/run_discovery_feed_smoke.cjs"
@@ -105,6 +106,7 @@ on:
       - "tests/pdp_product_intel_modules.test.js"
       - "tests/pdp_product_intel_kb_hydration.test.js"
       - "tests/verify_deployed_commit_matches_script.test.js"
+      - "tests/prod_probe_pacing.node.test.cjs"
   pull_request:
     branches:
       - main
@@ -118,6 +120,7 @@ on:
       - "scripts/check_budget_fx_freshness.js"
       - "scripts/catalog_serving_shadow_acceptance.js"
       - "scripts/search_stability_matrix.js"
+      - "scripts/wait_for_prod_probe_window.sh"
       - "scripts/smoke_discovery_feed_prod.sh"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
       - "scripts/run_discovery_feed_smoke.cjs"
@@ -198,6 +201,7 @@ on:
       - "tests/pdp_product_intel_modules.test.js"
       - "tests/pdp_product_intel_kb_hydration.test.js"
       - "tests/verify_deployed_commit_matches_script.test.js"
+      - "tests/prod_probe_pacing.node.test.cjs"
 
 concurrency:
   group: shopping-search-release-gate-${{ github.event_name }}-${{ github.ref_name }}
@@ -242,6 +246,8 @@ jobs:
           bash -n scripts/smoke_discovery_feed_prod.sh
           bash -n scripts/smoke_find_products_multi_skincare_prod.sh
           bash -n scripts/verify_deployed_commit_matches.sh
+          bash -n scripts/wait_for_prod_probe_window.sh
+          node --test tests/prod_probe_pacing.node.test.cjs
 
       - name: Shared search + discovery regressions
         env:
@@ -295,16 +301,28 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit]
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
+    # Shares one group with the readiness audit in celestial-commerce-core-readiness.yml so that
+    # production probes take turns on pivota-pg. That file's readiness_audit job says why.
+    concurrency:
+      group: prod-probe
+      cancel-in-progress: false
     env:
+      # The skincare smoke runs scripts/search_stability_matrix.js; space its production searches.
+      SEARCH_MATRIX_DELAY_MS: "6000"
       BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
       PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
       COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
       COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
-    timeout-minutes: 30
+    # 30 for the smoke, plus up to 50 waiting out the 10:30-11:20 UTC quiet window.
+    timeout-minutes: 80
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Wait out the pivota-pg quiet window
+        shell: bash
+        run: bash scripts/wait_for_prod_probe_window.sh
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -315,8 +333,12 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      # workflow_dispatch only, as in celestial-commerce-core-readiness.yml (its header has the
+      # history). The gateway deploys by hand, never on merge, so on push this waited 14-18 minutes
+      # for a commit nothing was deploying, failed, and skipped the smoke behind it
+      # (2026-10-15 01:49 and 07:41 pushes). On push the smoke reports on whatever is live.
       - name: Verify deployed commit via /version
-        if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
+        if: github.event_name == 'workflow_dispatch' && inputs.wait_for_commit == true
         shell: bash
         run: |
           set -euo pipefail
@@ -390,18 +412,29 @@ jobs:
   runtime_smoke_discovery:
     name: Shopping Discovery Runtime Smoke
     runs-on: ubuntu-latest
-    needs: [unit]
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
+    # After the search smoke, not beside it. GitHub keeps one waiting job per concurrency group,
+    # so two jobs from the same push waiting on `prod-probe` would cancel each other. Still runs
+    # when the search smoke fails, as it did while the two ran side by side.
+    needs: [unit, runtime_smoke_search]
+    if: ${{ !cancelled() && needs.unit.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')) }}
+    concurrency:
+      group: prod-probe
+      cancel-in-progress: false
     env:
       BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
       PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
       COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
       COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
-    timeout-minutes: 30
+    # 30 for the smoke, plus up to 50 waiting out the 10:30-11:20 UTC quiet window.
+    timeout-minutes: 80
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Wait out the pivota-pg quiet window
+        shell: bash
+        run: bash scripts/wait_for_prod_probe_window.sh
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -412,8 +445,12 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      # workflow_dispatch only, as in celestial-commerce-core-readiness.yml (its header has the
+      # history). The gateway deploys by hand, never on merge, so on push this waited 14-18 minutes
+      # for a commit nothing was deploying, failed, and skipped the smoke behind it
+      # (2026-10-15 01:49 and 07:41 pushes). On push the smoke reports on whatever is live.
       - name: Verify deployed commit via /version
-        if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
+        if: github.event_name == 'workflow_dispatch' && inputs.wait_for_commit == true
         shell: bash
         run: |
           set -euo pipefail

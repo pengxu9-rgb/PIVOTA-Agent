@@ -37,6 +37,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { foldQuoteText, normalizeQuoteText, quoteWords, quotePartIsSpecific, hasQuoteShape, isShowableQuote, brandAliases } = require('../src/auroraBff/relationshipQuoteSafety');
 const { closePool, query } = require('../src/db');
 const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
 const { factualQuoteTable } = require('../src/llm/relationshipReviewFacts');
@@ -47,6 +48,7 @@ const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, val
 
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
+const { fragranceAlternativeRejection } = require('../src/auroraBff/relationshipFragranceProfile');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v4';
@@ -55,12 +57,32 @@ const RUBRIC_VERSION = 'v4';
 // reused under the same validator, model and rubric that produced it.
 // v2: inferRelationship's treatment-function, accessory, set, brush and routine-role rules (#2382) refuse
 // some pairs v1 approved and admit complements v1 refused, so no v1 negative verdict is reused.
-const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v2';
+// The fragrance scent rule (relationshipFragranceProfile) only REFUSES approvals v2 allowed, so the
+// validator version is unchanged. Its prompt line does change reviewPairFingerprint (the fingerprint
+// hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
+// v3 (2026-10-20): quotes are grounded as the facts they quote, not as the JSON they were copied from.
+const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v3';
+// A validator change releases only the memos whose rejection it could change. v2 -> v3 changed quote
+// grounding alone, so a v2 memo stays remembered unless it was recommendation_facts_not_supplied: on
+// 2026-10-20 that released 7,310 of 22,074 live v2 memos, not all of them, and kept 14,764 model
+// verdicts out of tonight's queue. A version with no entry here releases every older memo.
+const VALIDATOR_COMPATIBLE_MEMOS = Object.freeze({
+  'relgraph_review_validator.v2': Object.freeze({ releases: new Set(['recommendation_facts_not_supplied']) }),
+});
+function memoValidatorStillApplies(memo) {
+  if (memo.validator_version === REVIEW_VALIDATOR_VERSION) return true;
+  const compatible = VALIDATOR_COMPATIBLE_MEMOS[memo.validator_version];
+  return Boolean(compatible && memo.rationale_code && !compatible.releases.has(memo.rationale_code));
+}
 const PRIMARY_REASON = 'valid_relationship';
 const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const MIN_AI_APPROVAL_CONFIDENCE = 0.70;
 const DEFAULT_LIMIT = 250;
-const MAX_LIMIT = 5000;
+// The sync cron, sync routine and routine job cap --review-limit at the same 10,000.
+const MAX_LIMIT = 10000;
+// An inline --ids list stays at 5,000: it rides on the job's command line, and its bound is about
+// argument size, not about how many labels a run may review.
+const MAX_INLINE_IDS = 5000;
 const TEXT_LIMIT = 900;
 const DEFAULT_LLM_ATTEMPTS = 2;
 const MAX_LLM_ATTEMPTS = 5;
@@ -116,7 +138,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--concurrency <n>] [--max-consecutive-transport-errors <n>] [--min-approval-confidence <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--uncovered-first] [--ids-file <path>] [--ids <id,id,...>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     '--review-mode consensus (or RELGRAPH_AI_REVIEW_MODE=consensus) requires explicitly pinned GPT and Gemini models.',
@@ -156,6 +178,16 @@ function parseRelationTypes(value, { optionName = 'relation-types' } = {}) {
   return out;
 }
 
+// The run every write is stamped with, so one night's verdicts can be found and undone with a single
+// UPDATE on provenance (2026-10-20: a 10,000-review night serves its approvals on commit through the
+// product_relationship_edges view). The routine job passes its own run id; a bare run makes one.
+function normalizeReviewRunId(value) {
+  const text = normalizeString(value, 200);
+  if (!text) return '';
+  if (!/^[A-Za-z0-9_.:-]{1,160}$/.test(text)) throw new Error(`invalid --run-id: ${text.slice(0, 40)}`);
+  return text;
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
   if (hasFlag(argv, 'help') || hasFlag(argv, 'h')) {
     return { help: true };
@@ -165,12 +197,20 @@ function parseArgs(argv = process.argv.slice(2)) {
   const minScore = parseNumber(argValue(argv, 'min-score'), 0, { min: 0, max: 1 });
   const limit = Math.trunc(parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: MAX_LIMIT }));
   const idsFile = String(argValue(argv, 'ids-file') || '').trim();
+  // Inline label ids (comma-separated), merged with --ids-file: a Cloud Run job can pin its rows in its
+  // args without a shell wrapper writing a file first. Label ids are [A-Za-z0-9_-]; anything else is refused.
+  if (argv.some((arg) => String(arg).startsWith('--ids='))) throw new Error('--ids takes a separate value: --ids <id,id,...>');
+  const ids = parseInlineIds(argValue(argv, 'ids'));
+  // Passing --ids at all asks for an id scope, even if its value is missing or empty: that must review
+  // nothing, never fall through to the global backlog (with --apply that would approve unrelated rows).
+  const idsScopeRequested = argv.includes('--ids') || argv.includes('--ids-file') || Boolean(idsFile);
   // Scope the review to the anchors a build produced: an explicit newline file of anchor_refs, and/or a
   // build report JSON (relationship_graph_build.json) whose edges' anchor_refs define the scope.
   const anchorRefsFile = String(argValue(argv, 'anchor-refs-file') || '').trim();
   const anchorRefsFromBuild = String(argValue(argv, 'anchor-refs-from-build') || '').trim();
   const verdictsFile = String(argValue(argv, 'verdicts-file') || '').trim();
   const out = String(argValue(argv, 'out') || '').trim();
+  const runId = normalizeReviewRunId(argValue(argv, 'run-id'));
   const apply = hasFlag(argv, 'apply');
   const llmAttempts = Math.trunc(parseNumber(argValue(argv, 'llm-attempts'), DEFAULT_LLM_ATTEMPTS, {
     min: 1,
@@ -203,14 +243,18 @@ function parseArgs(argv = process.argv.slice(2)) {
       { min: 1, max: 1000 },
     )),
     idsFile,
+    ids,
+    idsScopeRequested,
     anchorRefsFile,
     anchorRefsFromBuild,
     verdictsFile,
     out,
+    runId,
     apply,
     llmAttempts,
     relationTypes,
     excludeRelationTypes,
+    uncoveredFirst: hasFlag(argv, 'uncovered-first'),
     allowDupeAiApproval,
     reviewMode,
   };
@@ -220,6 +264,16 @@ function resolvePathMaybeRelative(filePath, cwd = process.cwd()) {
   const text = String(filePath || '').trim();
   if (!text) return '';
   return path.isAbsolute(text) ? text : path.join(cwd, text);
+}
+
+function parseInlineIds(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  const ids = Array.from(new Set(raw.split(',').map((id) => id.trim()).filter(Boolean)));
+  const invalid = ids.find((id) => !/^[A-Za-z0-9_-]{1,128}$/.test(id));
+  if (invalid) throw new Error(`--ids: invalid label id ${JSON.stringify(invalid.slice(0, 40))}`);
+  if (ids.length > MAX_INLINE_IDS) throw new Error(`--ids: ${ids.length} ids exceeds ${MAX_INLINE_IDS}`);
+  return ids;
 }
 
 function readIdsFile(filePath) {
@@ -578,6 +632,7 @@ async function fetchCandidates({
   anchorRefs = [],
   relationTypes = [],
   excludeRelationTypes = [],
+  uncoveredFirst = false,
   offset = 0,
   queryFn = query,
 }) {
@@ -613,28 +668,57 @@ async function fetchCandidates({
     offsetSql = `\n      OFFSET $${params.length}::int`;
   }
 
-  const res = await queryFn(
-    `
-      SELECT
+  const columns = `
         id, edge_id, anchor_type, anchor_ref, anchor_snapshot,
         candidate_product_ref, candidate_snapshot, relation_type,
         display_label, market, vertical, category_taxonomy, use_case,
         label_state, score_total, score_breakdown, price_evidence,
         source_refs, evidence_grade, why_candidate, tradeoffs, watchouts,
-        provenance, created_at, updated_at, updated_at::text AS review_row_version
-      FROM relationship_candidate_labels
+        provenance, created_at, updated_at, updated_at::text AS review_row_version`;
+  const where = `
       WHERE label_state = 'generated'
         AND COALESCE(updated_at, created_at) >= $1::timestamptz
         AND COALESCE(score_total, 0) >= $2::double precision
         ${idsSql}
         ${anchorRefsSql}
         ${relationTypesSql}
-        ${excludeRelationTypesSql}
+        ${excludeRelationTypesSql}`;
+  // UNCOVERED FIRST (2026-10-20). Of 26,617 generated competitive_alternative labels only 5,933 sat on
+  // the 2,616 anchors with no served alternative; score order spent a night's reviews on anchors that
+  // already had a rail. With uncoveredFirst the labels of anchors with no served label of the same
+  // relation type and market come first, one per anchor per round (best score first), and the
+  // covered anchors follow in the old score order. The served predicate is the serving view's
+  // (approved, verified, unexpired). Selection completes before any write, so it is stable per run.
+  const sql = uncoveredFirst
+    ? `
+      WITH served AS (
+        SELECT DISTINCT lower(anchor_ref) AS served_ref, relation_type AS served_relation_type,
+          upper(market) AS served_market
+        FROM relationship_candidate_labels
+        WHERE label_state IN ('ai_approved', 'human_approved')
+          AND last_verified_at IS NOT NULL AND expires_at > now()
+      ), queue AS (
+        SELECT l.*,
+          (s.served_ref IS NOT NULL) AS anchor_covered,
+          row_number() OVER (PARTITION BY lower(l.anchor_ref), l.relation_type, upper(l.market)
+            ORDER BY l.score_total DESC NULLS LAST, l.created_at ASC, l.id ASC) AS anchor_rank
+        FROM relationship_candidate_labels l
+        LEFT JOIN served s ON s.served_ref = lower(l.anchor_ref) AND s.served_relation_type = l.relation_type
+          AND s.served_market = upper(l.market)${where}
+      )
+      SELECT ${columns}
+      FROM queue
+      ORDER BY anchor_covered ASC, CASE WHEN anchor_covered THEN 0 ELSE anchor_rank END ASC,
+        score_total DESC NULLS LAST, created_at ASC, id ASC
+      LIMIT $3::int${offsetSql}
+    `
+    : `
+      SELECT ${columns}
+      FROM relationship_candidate_labels${where}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
       LIMIT $3::int${offsetSql}
-    `,
-    params,
-  );
+    `;
+  const res = await queryFn(sql, params);
   return Array.isArray(res && res.rows) ? res.rows : [];
 }
 
@@ -762,6 +846,7 @@ function buildReviewPrompt(evidence, { factualQuotes = false } = {}) {
     '- niche_specialist means candidate is a more focused/specialized answer to the anchor or need use case.',
     '- related_product must be a complement: explain the different step or area and evidence for using them alongside one another. Same brand/line/routine alone is insufficient. Distinct-line substitutes belong to competitive_alternative, not related_product.',
     '- competitive_alternative may be same-brand when it is a distinct line/formulation. Another colour/style of one collection is still a variant.',
+    '- Fragrance (eau de parfum/toilette, perfume, cologne, body mist): a shared category is not a substitute. Approve only when both products\' supplied facts name scent notes or a scent family in common (for example woody, floral, citrus, amber, gourmand), and quote those notes as shared_evidence. Otherwise reject. A fragrance and a non-fragrance product are never alternatives.',
     '- A dupe requires concrete formula/ingredient or curated pair/performance evidence, plus fresh comparable price evidence. Similar names/categories alone cannot establish a dupe or equivalent performance.',
     '- For every approval choose shared_evidence as objects with anchor_fact and candidate_fact, each an exact quoted span copied from the supplied facts for that product. These attributed facts explain the choice.',
     '- Copy recommendation_reason, tradeoffs and watchouts EXACTLY from consumer_copy_by_kind[relationship_kind]. Do not add, rewrite or omit text. Shopper copy is deterministic: source quotes carry supported differences; formula/performance/safety equivalence remains unknown. Your rationale is internal and must never be copied into shopper fields.',
@@ -848,7 +933,7 @@ function negativeRationaleCode(decision = {}) {
   return normalizeString(raw, 80).toLowerCase().replace(/[^a-z0-9_:-]+/g, '_');
 }
 
-function buildNegativeReviewMemo(decision, { fingerprint, model = null, reviewedAt, minApprovalConfidence = null } = {}) {
+function buildNegativeReviewMemo(decision, { fingerprint, model = null, reviewedAt, minApprovalConfidence = null, runId = '' } = {}) {
   return {
     verdict: decision.verdict,
     confidence: Number.isFinite(Number(decision.confidence)) ? Number(Number(decision.confidence).toFixed(4)) : null,
@@ -864,6 +949,7 @@ function buildNegativeReviewMemo(decision, { fingerprint, model = null, reviewed
       : {}),
     reviewed_at: reviewedAt,
     pair_fingerprint: fingerprint,
+    ...(runId ? { run_id: runId } : {}),
   };
 }
 
@@ -880,7 +966,7 @@ function isRememberedNegative(row, fingerprint, {
   // Another model, validator or rubric may well decide differently; an unknown
   // current model never matches a recorded one.
   if ((memo.model || null) !== (normalizeString(model, 120) || null)) return false;
-  if (memo.validator_version !== REVIEW_VALIDATOR_VERSION || memo.rubric !== RUBRIC_VERSION) return false;
+  if (!memoValidatorStillApplies(memo) || memo.rubric !== RUBRIC_VERSION) return false;
   if (memo.verdict === 'low_confidence' && Number.isFinite(Number(memo.min_approval_confidence))
       && minApprovalConfidence < Number(memo.min_approval_confidence)) {
     return false;
@@ -1073,36 +1159,241 @@ function consensusCas(row, startIndex) {
   return { sql: clauses.join(' AND '), params };
 }
 
-async function applyConsensusDisposition(row, decision, queryFn) {
+async function applyConsensusDisposition(row, decision, queryFn, { runId = '' } = {}) {
   const cas = consensusCas(row, 4);
+  const runIndex = 4 + cas.params.length;
   const reason = decision.verdict === 'human_review' ? 'cross_agent_human_review' : 'cross_agent_rejected';
   const res = await queryFn(`UPDATE relationship_candidate_labels SET label_state = 'needs_evidence',
     reason_flags = ARRAY(SELECT DISTINCT flag FROM unnest(COALESCE(reason_flags, '{}'::text[]) || ARRAY[$2::text]) AS flags(flag)),
-    provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{cross_agent_review}', $3::jsonb, true), updated_at = now()
+    provenance = jsonb_set(jsonb_set(COALESCE(provenance, '{}'::jsonb), '{cross_agent_review}', $3::jsonb, true),
+      '{ai_review_run}', $${runIndex}::jsonb, true), updated_at = now()
     WHERE id = $1 AND label_state = 'generated' AND ${cas.sql}
     RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state`,
-  [row.id, reason, JSON.stringify(decision.cross_agent_review), ...cas.params]);
+  [row.id, reason, JSON.stringify(decision.cross_agent_review), ...cas.params,
+    JSON.stringify({ run_id: runId || null, decision: decision.verdict })]);
   return res.rows?.[0] || null;
 }
 
+// QUOTES ARE THE FACTS, NOT THE JSON THEY CAME FROM (validator v3, 2026-10-20). The evidence reaches the
+// model as JSON, and it copies quotes in that shape ('category": "toner', 'best_for": [ "dry skin",
+// "oily skin" ]'), elides with an ellipsis, or differs only in spacing around punctuation. Of 37
+// approvals v2 overturned on a prod dry run (uncovered anchors), most pass these rules; the rest quote
+// text the products do not hold, or nothing specific. A quote may never say more than one fact the
+// product carries:
+// - Each item of an array fragment is its own quote, found whole-word in one descriptive fact of that
+//   product (QUOTE_FACT_FIELDS: what the model is shown about the product, never ids, refs, URLs,
+//   prices, currency or review status).
+// - An ellipsis quote is one elided passage of ONE fact: at most six parts, each at least two words, in
+//   order, each gap at most 160 characters and free of negating or contrasting words
+//   (ELISION_FORBIDDEN_GAP; "oil-free" style compounds are not negations). What is kept is the fact's own
+//   text from the first part to the last, in its own case, never the model's stitched words.
+// - A leading key is dropped only when it names a fact field, and then every part must be found IN that
+//   field ('best_for": "oily skin' needs oily skin under best_for, not "not for oily skin" elsewhere).
+//   Any other "word:" stays part of the quote ("Retinol: 1%" is not "Salicylic acid 1%"). A known key
+//   with nothing after it is a failed quote, not an empty one.
+// - Whitespace only normalises around punctuation ("bouncy ." = "bouncy."); words never merge; curly
+//   apostrophes fold to straight ones.
+// - A part that is not specific and showable (relationshipQuoteSafety: generic words, stopwords, the
+//   brand, too short) proves nothing: it neither grounds a quote nor sinks one. At least one quote must
+//   ground something specific on both sides, and only those parts are stored and shown.
+// Negation inside a fact ("not for oily skin" quoted as "oily skin") was already possible in v2 and is
+// not fixed here.
+// field -> null (every string under it) or the sub-keys that are descriptive text.
+const QUOTE_FACT_FIELDS = Object.freeze({
+  title: null, category: null, category_taxonomy: null, tags: null, description: null, ingredient_text: null,
+  ingredient_evidence: ['ingredient_text'], routine_fit: null, best_for: null, watchouts: null, why_it_stands_out: null,
+  beauty_attrs: null, catalog: ['title', 'category', 'category_path', 'use_case_tags', 'tags'], external_seed: ['title'],
+  // Not market_signal_badges / external_highlight_signals: their claims can be sponsored, rejected or
+  // weak, and the prompt's own factual sources (src/llm/relationshipReviewFacts.js) exclude them.
+});
+// key -> { field: null (all of it) | the sub-keys that key names }. A key names one fact, so it never
+// reaches a sibling field: title": "x' is looked for in titles, not in catalog.tags.
+const QUOTE_KEY_FIELDS = Object.freeze({
+  title: { title: null, catalog: ['title'], external_seed: ['title'] },
+  name: { title: null, catalog: ['title'], external_seed: ['title'] },
+  product_name: { title: null, catalog: ['title'], external_seed: ['title'] },
+  category: { category: null, category_taxonomy: null, catalog: ['category', 'category_path'] },
+  category_taxonomy: { category_taxonomy: null, category: null },
+  category_path: { category_taxonomy: null, catalog: ['category_path'] },
+  product_type: { category: null, category_taxonomy: null, catalog: ['category'] },
+  tags: { tags: null, catalog: ['tags'] }, use_case_tags: { catalog: ['use_case_tags'] },
+  description: { description: null },
+  ingredients: { ingredient_text: null, ingredient_evidence: ['ingredient_text'] },
+  ingredient_text: { ingredient_text: null, ingredient_evidence: ['ingredient_text'] },
+  inci: { ingredient_text: null, ingredient_evidence: ['ingredient_text'] },
+  best_for: { best_for: null }, watchouts: { watchouts: null }, why_it_stands_out: { why_it_stands_out: null },
+  routine_fit: { routine_fit: null }, pairing_notes: { routine_fit: null }, step: { routine_fit: null },
+  beauty_attrs: { beauty_attrs: null },
+  // A brand quote is recognised so it can be ignored (a brand is never specific), not failed as unknown text.
+  brand: {},
+});
+// Never descriptive, wherever they sit.
+const QUOTE_EVIDENCE_META_KEYS = new Set(['table', 'observed_at', 'review_status', 'audit_status', 'source_refs',
+  'ingredient_text_truncated', 'canonical_url', 'url', 'domain', 'price_amount', 'price_currency', 'availability', 'status',
+  'type', 'source_type', 'claim_type', 'evidence_strength', 'sponsorship_status', 'confidence', 'freshness',
+  'independence_count', 'sponsored', 'decision', 'tier']);
+// { norm, raw } for every descriptive string, or only those under one key (a mapped field, or a key
+// nested inside a descriptive field such as beauty_attrs.product_form).
+function quoteFactValues(product, key = null) {
+  const out = [];
+  const collect = (value, keyMatch) => {
+    if (typeof value === 'string') { if (keyMatch) out.push({ norm: normalizeQuoteText(value), raw: foldQuoteText(value) }); return; }
+    if (Array.isArray(value)) { value.forEach((item) => collect(item, keyMatch)); return; }
+    if (!value || typeof value !== 'object') return;
+    for (const [name, child] of Object.entries(value)) {
+      if (QUOTE_EVIDENCE_META_KEYS.has(name)) continue;
+      collect(child, keyMatch || (key && name === key));
+    }
+  };
+  const mapped = key ? QUOTE_KEY_FIELDS[key] : null;
+  const fields = mapped || QUOTE_FACT_FIELDS;
+  const keyMatch = !key || Boolean(mapped);
+  for (const [field, subKeys] of Object.entries(fields)) {
+    const value = product && product[field];
+    if (!subKeys) { collect(value, keyMatch); continue; }
+    for (const item of Array.isArray(value) ? value : [value]) {
+      for (const sub of subKeys) if (item && typeof item === 'object') collect(item[sub], keyMatch);
+    }
+  }
+  return out;
+}
+function quoteKnownKey(key, product) {
+  if (QUOTE_KEY_FIELDS[key]) return true;
+  return quoteFactValues(product, key).length > 0; // a key nested inside a descriptive field
+}
+// { items, key } for one side of one quote: items are array items, each the parts an ellipsis separates.
+// null when the quote is malformed (a known key with no fact after it).
+function parseQuote(value, product) {
+  let text = foldQuoteText(normalizeString(value, 350));
+  let key = null;
+  const match = text.match(/^\s*[{\[]?\s*"?([A-Za-z][A-Za-z_]{0,40})"?\s*:\s*/);
+  if (match && quoteKnownKey(match[1].toLowerCase(), product)) {
+    key = match[1].toLowerCase();
+    text = text.slice(match[0].length);
+  }
+  const trim = (span) => span.replace(/^[\s"\[{]+|[\s"\]},]+$/g, '');
+  const items = trim(text).split(/"\s*,\s*"/).map((item) => item.split(/\s*(?:\.\.\.|\u2026)\s*/).map(trim).filter(Boolean))
+    .filter((parts) => parts.length);
+  if (!items.length) return null;
+  return { items, key };
+}
+// Whole-word positions of needle in haystack, at or after `from`.
+function wholeWordPositions(haystack, needle, from = 0) {
+  const out = [];
+  if (!needle) return out;
+  for (let at = haystack.indexOf(needle, from); at >= 0; at = haystack.indexOf(needle, at + 1)) {
+    const before = at === 0 ? '' : haystack[at - 1];
+    const after = haystack[at + needle.length] || '';
+    if (/[\p{L}\p{N}]/u.test(before) || /[\p{L}\p{N}]/u.test(after)) continue;
+    // An affix that flips the fact is part of the word: "vitamin c" is not in "vitamin c-free", nor
+    // "comedogenic" in "non-comedogenic".
+    if (/^-(?:free|less)\b/.test(haystack.slice(at + needle.length)) || /\b(?:non|anti|un)-$/.test(haystack.slice(0, at))) continue;
+    out.push(at);
+  }
+  return out;
+}
+const ELISION_MAX_PARTS = 6;
+const ELISION_MAX_GAP = 160;
+// A skipped stretch may not carry a negation, a contrast or a caveat ("but too heavy for oily skin",
+// "yet unsuitable", "while it can clog"); "oil-free"-style compounds alone are not negations.
+const ELISION_FORBIDDEN_GAP = new RegExp("\\b(?:not|no|never|except|excluding|without|non|avoid|unless|however|instead|nor|"
+  + "but|yet|while|whilst|too|problematic|cannot|can't|won't|isn't|aren't|doesn't|don't|unlike|although|though|whereas|"
+  + "other than|rather than|un\\w+able)\\b|(?<!-)\\bfree\\b");
+// The fact's own text spanning every part in order, or ''. Memoised on (part, position): linear in the
+// candidate positions, so a many-part quote cannot stall the review.
+function elidedPassage(values, parts) {
+  const needles = parts.map(normalizeQuoteText);
+  for (const { norm: fact, raw } of values) {
+    const memo = new Map();
+    const endOf = (index, at) => { // end of a chain from part `index` at `at`, or -1
+      const key = `${index}:${at}`;
+      if (memo.has(key)) return memo.get(key);
+      const end = at + needles[index].length;
+      let result = -1;
+      if (index === needles.length - 1) result = end;
+      else {
+        for (const next of wholeWordPositions(fact, needles[index + 1], end)) {
+          const gap = fact.slice(end, next);
+          if (gap.length > ELISION_MAX_GAP) break;
+          if (ELISION_FORBIDDEN_GAP.test(gap)) continue;
+          result = endOf(index + 1, next);
+          if (result >= 0) break;
+        }
+      }
+      memo.set(key, result);
+      return result;
+    };
+    for (const start of wholeWordPositions(fact, needles[0])) {
+      const end = endOf(0, start);
+      if (end >= 0) return originalPassage(raw, fact.slice(start, end));
+    }
+  }
+  return '';
+}
+// The same passage in the fact's own case and spacing (normalisation only lowercases and respaces).
+function originalPassage(raw, passage) {
+  const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = passage.split(/\s+/).map((word) => {
+    const [, core, punct] = word.match(/^(.*?)([.,;:!?]*)$/);
+    return escape(core) + (punct ? `\\s*${escape(punct)}` : '');
+  }).join('\\s*');
+  const match = raw.match(new RegExp(pattern, 'iu'));
+  return match ? match[0].replace(/\s+/g, ' ').trim() : passage;
+}
+// One side of one quote: false (a part is not the product's), or the specific, showable facts it grounds.
+function groundQuoteSide(product, value) {
+  const parsed = parseQuote(value, product);
+  if (!parsed) return false;
+  const brand = brandAliases(product);
+  const values = quoteFactValues(product, parsed.key);
+  const specific = [];
+  for (const parts of parsed.items) {
+    if (parts.length > 1) {
+      // Too many parts, or a part too thin to place (one generic or short word): the quote proves nothing,
+      // so it is ignored rather than sinking a pair whose other quotes hold.
+      if (parts.length > ELISION_MAX_PARTS
+        || parts.some((part) => quoteWords(part).length < 2 && !quotePartIsSpecific(part, brand))) {
+        // ...but an ignored quote is still checked: every specific part must be the product's own text,
+        // or the model invented a fact and the pair is refused ("cream … clinically proven to erase wrinkles").
+        if (parts.some((part) => quotePartIsSpecific(part, brand)
+          && !values.some(({ norm }) => wholeWordPositions(norm, normalizeQuoteText(part)).length))) return false;
+        continue;
+      }
+      const passage = elidedPassage(values, parts);
+      if (!passage) return false;
+      // A fact that itself carries an ellipsis or brackets cannot be shown, so it cannot be the evidence.
+      if (isShowableQuote(passage, brand)) specific.push(passage);
+      continue;
+    }
+    const [part] = parts;
+    // Still JSON-shaped after parsing (an unknown key, a stray bracket): not a fact, so the quote fails.
+    if (!hasQuoteShape(part)) return false;
+    if (!quotePartIsSpecific(part, brand)) continue; // generic: proves nothing either way
+    if (!values.some(({ norm }) => wholeWordPositions(norm, normalizeQuoteText(part)).length)) return false;
+    specific.push(part);
+  }
+  return specific;
+}
 function quotedEvidence(value) {
   return asArray(value).slice(0, 6).map((item) => ({
     anchor_fact: normalizeString(item?.anchor_fact, 350),
     candidate_fact: normalizeString(item?.candidate_fact, 350),
   })).filter((item) => item.anchor_fact && item.candidate_fact);
 }
-function factGrounded(product, quote) {
-  const norm = (value) => String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
-  const needle = norm(quote);
-  if (!needle || needle === norm(product.brand) || /^(?:beauty|skincare|makeup|cosmetics|face|body|skin|cream|serum)$/.test(needle)) return false;
-  const values = [];
-  const collect = (value) => {
-    if (typeof value === 'string') values.push(norm(value));
-    else if (Array.isArray(value)) value.forEach(collect);
-    else if (value && typeof value === 'object') Object.values(value).forEach(collect);
-  };
-  collect(product);
-  return values.some((value) => value.includes(needle));
+// Every quote must hold on both sides; returns the specific grounded quotes (each part its own fact,
+// paired in order), or null. The returned quotes are what an approval stores and shows.
+function groundedQuotes(quotes, evidence) {
+  const kept = [];
+  for (const quote of quotes) {
+    const anchor = groundQuoteSide(evidence.anchor, quote.anchor_fact);
+    const candidate = groundQuoteSide(evidence.candidate, quote.candidate_fact);
+    if (anchor === false || candidate === false) return null;
+    if (!anchor.length || !candidate.length) continue;
+    for (let i = 0; i < Math.max(anchor.length, candidate.length); i += 1) {
+      kept.push({ anchor_fact: anchor[Math.min(i, anchor.length - 1)], candidate_fact: candidate[Math.min(i, candidate.length - 1)] });
+    }
+  }
+  return kept.length ? kept.slice(0, 6) : null;
 }
 function validateRecommendationDecision(row, decision, suppliedEvidence = null) {
   if (decision.verdict !== 'approve') return decision;
@@ -1112,10 +1403,11 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
   };
   const evidence = suppliedEvidence || buildEvidence(row, new Map());
   const quotes = quotedEvidence(decision.shared_evidence);
+  let grounded = null;
   let reason = '';
   if (!(allowed[row.relation_type] || []).includes(decision.relationship_kind)) reason = 'relation_semantics_mismatch';
   else if (!normalizeString(decision.recommendation_reason, 700) || !quotes.length) reason = 'recommendation_utility_evidence_missing';
-  else if (!quotes.every((quote) => factGrounded(evidence.anchor, quote.anchor_fact) && factGrounded(evidence.candidate, quote.candidate_fact))) reason = 'recommendation_facts_not_supplied';
+  else if (!(grounded = groundedQuotes(quotes, evidence))) reason = 'recommendation_facts_not_supplied';
   else if (decision.relationship_kind !== 'complement' && !compactArray(decision.tradeoffs, 6).length) reason = 'substitution_tradeoffs_missing';
   if (!reason && ['dupe', 'competitive_alternative'].includes(row.relation_type)) {
     const inferred = inferRelationship(row.anchor_snapshot || {}, row.candidate_snapshot || {}, {
@@ -1124,6 +1416,12 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     });
     if (!['dupe', 'competitive_alternative'].includes(inferred.relation_type) ||
         (row.relation_type === 'dupe' && inferred.relation_type !== 'dupe')) reason = 'structural_or_dupe_evidence_mismatch';
+  }
+  // A perfume is chosen by its scent: an alternative between fragrances must quote notes that share a
+  // scent family, each a whole-word span of that product's own scent text (not taxonomy, tags or brand).
+  if (!reason && ['dupe', 'competitive_alternative', 'niche_specialist'].includes(row.relation_type)) {
+    reason = fragranceAlternativeRejection(row.anchor_snapshot || {}, row.candidate_snapshot || {}, grounded || quotes,
+      { anchor: evidence.anchor, candidate: evidence.candidate }) || '';
   }
   let suggestedRelationType = '';
   if (!reason && row.relation_type === 'related_product') {
@@ -1162,7 +1460,8 @@ function validateRecommendationDecision(row, decision, suppliedEvidence = null) 
     }
   }
   if (!reason && !matchesConsumerCopy(decision)) reason = 'consumer_copy_not_verified_contract';
-  if (!reason) return decision;
+  // An approval keeps only the quotes that grounded something specific, as single facts.
+  if (!reason) return { ...decision, shared_evidence: grounded };
   return { ...decision, verdict: 'reject', utility_rejection: reason,
     ...(suggestedRelationType ? { suggested_relation_type: suggestedRelationType } : {}),
     rationale: `${reason}: ${normalizeString(decision.rationale, 600)}` };
@@ -1190,11 +1489,14 @@ function matchesConsumerCopy(decision) {
     JSON.stringify(decision.watchouts) === JSON.stringify(expected.watchouts));
 }
 function recommendationFields(decision) {
+  // Called with a validated decision (applyApproval), whose shared_evidence is the grounded quotes only.
+  // Defence in depth for any other caller: nothing stitched, JSON-shaped or generic-only is shown.
+  const quotes = quotedEvidence(decision.shared_evidence).filter((item) => isShowableQuote(item.anchor_fact) && isShowableQuote(item.candidate_fact));
   return {
     relationship_kind: decision.relationship_kind,
     summary: consumerCopyForKind(decision.relationship_kind)?.recommendation_reason || '',
-    reasons_user_visible: quotedEvidence(decision.shared_evidence).map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
-    shared_evidence: quotedEvidence(decision.shared_evidence),
+    reasons_user_visible: quotes.map((item) => `${item.anchor_fact} / ${item.candidate_fact}`),
+    shared_evidence: quotes,
   };
 }
 
@@ -1245,7 +1547,7 @@ function servingGuardReasonsIfApproved(row, { allowDupeAiApproval = false } = {}
   return allowDupeAiApproval ? reasons.filter((reason) => reason !== DUPE_QUARANTINE_REASON) : reasons;
 }
 
-async function applyGuardBlock(row, reasons, queryFn = query) {
+async function applyGuardBlock(row, reasons, queryFn = query, { runId = '' } = {}) {
   const reasonFlags = reasons.map((reason) => `serving_guard:${normalizeString(reason, 150).toLowerCase()}`);
   const stamp = {
     action: 'relationship_graph_review_serving_guard_block',
@@ -1253,6 +1555,7 @@ async function applyGuardBlock(row, reasons, queryFn = query) {
     reviewer: REVIEWER_ID,
     rubric: RUBRIC_VERSION,
     blocked_at: new Date().toISOString(),
+    ...(runId ? { run_id: runId, decision: 'guard_blocked' } : {}),
   };
   const res = await queryFn(
     `
@@ -1281,7 +1584,7 @@ async function applyGuardBlock(row, reasons, queryFn = query) {
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
 
-async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE, evidence = null, requireConsensus = false } = {}) {
+async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE, evidence = null, requireConsensus = false, runId = '' } = {}) {
   if (requireConsensus) {
     assertConsensusApproval(row, decision, evidence);
   } else if (decision.cross_agent_review) {
@@ -1305,12 +1608,15 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
     err.reasons = guardReasons;
     throw err;
   }
-  if (validateRecommendationDecision(row, { ...decision, verdict: 'approve' }, evidence).verdict !== 'approve') {
+  const validated = validateRecommendationDecision(row, { ...decision, verdict: 'approve' }, evidence);
+  if (validated.verdict !== 'approve') {
     const err = new Error('AI approval lacks matching recommendation utility evidence');
     err.code = 'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED';
     throw err;
   }
-  const aiReview = buildAiReview(decision);
+  // Whoever calls this, what is stored and shown is the grounded quotes, never the model's raw ones.
+  decision = { ...decision, shared_evidence: validated.shared_evidence };
+  const aiReview = { ...buildAiReview(decision), ...(runId ? { run_id: runId, decision: 'approve' } : {}) };
   const cas = requireConsensus ? consensusCas(row, 7) : null;
   const res = await queryFn(
     `
@@ -1368,10 +1674,13 @@ async function runReview({
   minScore,
   limit,
   idsFile = '',
+  ids: inlineIds = [],
+  idsScopeRequested = false,
   anchorRefsFile = '',
   anchorRefsFromBuild = '',
   verdictsFile = '',
   out = '',
+  runId = '',
   apply = false,
   concurrency = 1,
   minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE,
@@ -1379,6 +1688,7 @@ async function runReview({
   llmAttempts = DEFAULT_LLM_ATTEMPTS,
   relationTypes = [],
   excludeRelationTypes = DEFAULT_EXCLUDED_RELATION_TYPES,
+  uncoveredFirst = false,
   allowDupeAiApproval = false,
   queryFn = query,
   provider = null,
@@ -1390,6 +1700,7 @@ async function runReview({
   if (apply && process.env.RELGRAPH_AI_REVIEW_APPLY !== '1') {
     throw new Error('--apply requested but RELGRAPH_AI_REVIEW_APPLY=1 is not set');
   }
+  const reviewRunId = normalizeReviewRunId(runId) || `relgraph_review_${new Date(clock()).toISOString().replace(/[-:.]/g, '')}_${process.pid}`;
 
   if (!['single', 'consensus'].includes(reviewMode)) throw new Error('review-mode must be single or consensus');
   const consensus = reviewMode === 'consensus';
@@ -1401,7 +1712,11 @@ async function runReview({
   }
   const confidenceFloor = Math.max(consensus ? CONSENSUS_MIN_CONFIDENCE : 0,
     parseNumber(minApprovalConfidence, MIN_AI_APPROVAL_CONFIDENCE, { min: 0.5, max: 0.99 }));
-  const ids = readIdsFile(idsFile);
+  const ids = Array.from(new Set([...readIdsFile(idsFile), ...(Array.isArray(inlineIds) ? inlineIds : [])]));
+  const idScopeRequested = Boolean(idsScopeRequested || String(idsFile || '').trim() || (Array.isArray(inlineIds) && inlineIds.length));
+  // Pinned ids are the whole request: the limit never truncates them (a 1,000-id batch under the default
+  // limit of 250 would otherwise review 250 and report nothing about the rest).
+  const effectiveLimit = ids.length ? Math.max(limit, Math.min(ids.length, MAX_LIMIT)) : limit;
   // An anchor scope was REQUESTED if either source was passed (even if it resolves to empty — e.g. a
   // build that produced 0 edges, or a missing/unreadable report).
   const anchorScopeRequested = Boolean(String(anchorRefsFile || '').trim() || String(anchorRefsFromBuild || '').trim());
@@ -1423,6 +1738,7 @@ async function runReview({
     anchorRefs,
     relationTypes: includedRelationTypes,
     excludeRelationTypes: excludedRelationTypes,
+    uncoveredFirst: uncoveredFirst === true,
   };
   // Negative memory is a single-mode mechanism: consensus records its own
   // dispositions (needs_evidence), and a single-model verdict must not stop
@@ -1449,10 +1765,11 @@ async function runReview({
     ? { ttlDays: memoryTtlDays, nowMs: clock(), minApprovalConfidence: confidenceFloor, model: currentModel }
     : null;
   let selection = { rows: [], prepared: new Map(), skippedIds: [], scanned: 0, truncated: false };
-  if (!(anchorScopeRequested && anchorRefs.length === 0)) {
+  // FAIL CLOSED on an id scope that resolved to nothing, exactly like the anchor scope.
+  if (!(anchorScopeRequested && anchorRefs.length === 0) && !(idScopeRequested && ids.length === 0)) {
     selection = consensus
-      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit, queryFn }) }
-      : await selectReviewCandidates({ limit, fetchOptions, queryFn, memory });
+      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit: effectiveLimit, queryFn }) }
+      : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
   }
   const { rows } = selection;
   const independentProviders = consensus && rows.length ? (consensusProviders || createConsensusProviders()) : null;
@@ -1510,14 +1827,14 @@ async function runReview({
     let appliedRow = null;
     if (apply && decision.verdict === 'approve') {
       // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor, evidence, requireConsensus: consensus });
+      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor, evidence, requireConsensus: consensus, runId: reviewRunId });
       if (appliedRow) appliedCount += 1;
     } else if (apply && decision.verdict === 'guard_blocked') {
       // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyGuardBlock(row, decision.serving_guard_reasons, queryFn);
+      appliedRow = await applyGuardBlock(row, decision.serving_guard_reasons, queryFn, { runId: reviewRunId });
       if (appliedRow) guardBlockedAppliedCount += 1;
     } else if (apply && consensus && ['human_review', 'consensus_reject'].includes(decision.verdict)) {
-      appliedRow = await applyConsensusDisposition(row, decision, queryFn);
+      appliedRow = await applyConsensusDisposition(row, decision, queryFn, { runId: reviewRunId });
       if (appliedRow) consensusDispositionAppliedCount += 1;
     }
     let negativeMemoryRecorded = false;
@@ -1536,6 +1853,7 @@ async function runReview({
           model: llmProvider && llmProvider.__meta && llmProvider.__meta.model,
           reviewedAt: new Date(clock()).toISOString(),
           minApprovalConfidence: confidenceFloor,
+          runId: reviewRunId,
         }), queryFn);
         if (remembered) {
           negativeMemoryRecorded = true;
@@ -1647,15 +1965,21 @@ async function runReview({
   const approvals = completed.filter((row) => row.verdict === 'approve');
   const approvalRate = completed.length ? approvedCount / completed.length : 0;
   const summary = {
+    run_id: reviewRunId,
     dry_run: !apply,
     cutoff,
     min_score: minScore,
-    limit,
+    limit: effectiveLimit,
     ids_filter_count: ids.length,
+    ids_scope_requested: idScopeRequested,
+    // Pinned ids not selected: no longer generated, before the cutoff, below min-score, filtered by
+    // relation type, or skipped by negative memory.
+    ids_not_selected_count: ids.length ? Math.max(0, ids.length - rows.length) : 0,
     anchor_refs_scope_requested: anchorScopeRequested,
     anchor_refs_scope_count: anchorRefs.length,
     relation_types_filter: includedRelationTypes,
     excluded_relation_types: excludedRelationTypes,
+    uncovered_first: uncoveredFirst === true,
     dupe_ai_approval_allowed: allowDupeAiApproval,
     review_mode: reviewMode,
     cross_agent_approved_count: consensus ? approvedCount : 0,
@@ -1753,6 +2077,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  // Exposed for tests of the v3 grounding rules (tests/scripts/relationship_review_quote_grounding.test.js).
+  __quoteGrounding: { quoteFactValues, parseQuote, groundQuoteSide, elidedPassage },
   DEFAULT_NEGATIVE_REVIEW_TTL_DAYS,
   REVIEW_VALIDATOR_VERSION,
   MIN_AI_APPROVAL_CONFIDENCE,
@@ -1762,6 +2088,7 @@ module.exports = {
   AI_APPROVAL_FRESHNESS_INTERVAL,
   VerdictSchema,
   applyApproval,
+  applyConsensusDisposition,
   applyGuardBlock,
   buildEvidence,
   buildReviewPrompt,
@@ -1779,6 +2106,7 @@ module.exports = {
   isRememberedNegative,
   negativeReviewTtlDays,
   parseArgs,
+  parseInlineIds,
   rememberNegativeVerdict,
   reviewPairFingerprint,
   selectReviewCandidates,

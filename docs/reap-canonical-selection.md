@@ -20,12 +20,47 @@ variant's own amount/currency. Changed price, SKU, market, quantity, seller or
 source refuses before any checkout POST. A preparation timeout or refusal offers
 no alternate checkout route.
 
-`recover_checkout` sends the identical original selection, body and key. With
-this witness, it consults no current catalog, variant, price, proof or source
-configuration. The backend's owner and immutable request hash decide whether the
+The create body carries the storefront id as `variant_id`, never the witness's
+SKU: the backend resolves it by the same rule `/purchases/prepare` used, so the
+witness and the purchase agree on variant and price whichever SKU spells it. A
+SKU named in the body would be refused for a sole variant priced only on its
+`::canonical` placeholder beside an unpriced real SKU, which preparation reaches
+through the backend's no-key path.
+
+`recover_checkout` sends the original selection, body and key. A witness attempt
+created before creates sent `variant_id` carried the witness's SKU as
+`variant_key`, so recovery probes `variant_id` first and then that SKU, exactly
+as for a numeric-only attempt below. With this witness, it consults no current
+catalog, variant, price, proof or source configuration. The backend's owner and immutable request hash decide whether the
 original purchase matches. Invalid or missing mappings remain unknown; they do
-not authorize another create. Legacy numeric-only recovery retains its exact
-historic key derivation and never guesses a new hashed key.
+not authorize another create.
+
+## Numeric-only selection (no witness)
+
+A selected `cart_link` create without `checkout.reap.selection` still runs the
+same strict preparation (price, quantity, seller and market must agree), but its
+body carries the storefront id as `variant_id` and no `variant_key`. The backend
+resolves the id to its own SKU and requires the proven variant to be that id
+(pivota-backend#2605); its fingerprint holds `variant_id:<n>`, the id as sent.
+The gateway never spells a key itself: the catalog writes one variant as
+`::sku_<hash>`, `::v:<n>`, `::v::<n>` or `::v:retailer-<hash>`.
+
+Recovery and resume of a numeric-only attempt cannot know which gateway created
+it, so in the cart-link key namespace they probe the two spellings an attempt
+may carry under one idempotency key: `variant_id` first, then the historic
+`<product_key>::v::<id>` (mirror) or `::v:<id>` key sent before this change.
+The backend stored one fingerprint per key, so at most one spelling matches;
+the other answers `idempotency_conflict` and is passed over. No match under
+either spelling, or a conflict with no match, stays unknown. The matched body
+is the one a resume continues with. A witness attempt probes `variant_id`, then
+the witness's own SKU (never a guessed key). The variant-lane namespace probes
+exactly one spelling, as before. A selector over 20 digits was
+never prepared, so only its historic key is probed.
+
+**Deploy gate.** A backend without #2605 ignores `variant_id` and can open a
+cart for another variant at the same price. Deploy this gateway change only
+after #2605 serves 100% of `web`, and never roll the backend below it while
+this change is live.
 
 The new witness protocol supports selected `cart_link` only. Unsupported selected
 sources refuse before a checkout POST. Existing unselected native checkouts and

@@ -1420,7 +1420,14 @@ const GET_OFFERS_DESCRIPTION = [
   "`{ subject, best_offer, signals[], metadata }` — real competition only when it exists; a single-offer product",
   "answers with its best_offer and no competing signals. Read: `insights.currency` (ISO 4217 preference),",
   "`insights.market` (the buyer's market, ISO-3166-1 alpha-2, only when known: offers and their cart links are",
-  "then decided for that market; absent, no market is claimed), `insights.limit` (1..10).",
+  "then decided for that market, and only offers priced in its currency are returned; absent, no market is",
+  "claimed), `insights.limit` (1..10). An offer carrying `price_stale: true` has a price not read recently:",
+  "relay it only as last seen, never as current; `price_as_of` is when it was last read (null = no read on",
+  "record). When `metadata.best_price` is present, best_offer is the top-ranked fresh comparable offer (same",
+  "item and size, one currency, not known out of stock), ranked by sellability, then primary seller, stock",
+  "confidence, then price -- not necessarily the lowest number; `best_price.offer_id: null` (best_offer null)",
+  "means no offer has a fresh comparable price, so name no best price. `best_price.offers_resolve_offer_id` is",
+  "diagnostic only; act on `best_price.offer_id`.",
 ].join(" ");
 
 const GET_INTEL_DESCRIPTION = [
@@ -1439,6 +1446,21 @@ const GET_PRODUCT_DESCRIPTION = [
   "is the product id — the id a `create_checkout` line item accepts; a `messages` warning says so when the",
   "product has several purchasable variants, because a variant choice cannot yet be expressed on this door.",
   "`catalog.selected` / `preferences` are accepted and not read.",
+].join(" ");
+
+// UCP_GET_PRODUCT_FORWARD_MARKET (default off, read per call like the Reap dials): get_product reads
+// `catalog.context.address_country` into the native `market`, and `tools/list` says so. Off, the mapper's
+// output, the published schema and the description are exactly what they were.
+export function ucpGetProductForwardMarketEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env.UCP_GET_PRODUCT_FORWARD_MARKET) || "").trim());
+}
+const GET_PRODUCT_MARKET_SENTENCE = [
+  "Send `catalog.context.address_country` (the buyer market, ISO 3166-1 alpha-2) when you know it: the",
+  "price and stock may then be read live from the merchant for that market. It is never inferred, and without",
+  "it the price is Pivota's stored one; `messages` says which it is (`price.merchant_verified`,",
+  "`price.partially_verified` when the default variant's price was read but not every variant's, or `price.stored`).",
+  "A stored price is for discovery only: before quoting a final price, call `get_offers` for the product and",
+  "market and quote only an offer whose `merchant_price_verified` is true.",
 ].join(" ");
 
 const SEARCH_CATALOG_DESCRIPTION = [
@@ -1841,7 +1863,7 @@ const SPECS = Object.freeze({
         },
       },
     },
-    map(args) {
+    map(args, env = process.env) {
       // A read: UNKNOWN_PRODUCT_ID carries the right recovery ("re-run search to obtain a valid product_id")
       // and the right retriable:false, and the curated message below is what the caller actually sees.
       const code = "UNKNOWN_PRODUCT_ID";
@@ -1862,7 +1884,23 @@ const SPECS = Object.freeze({
       }
       // -> the NATIVE get_product tool args. No merchant_id exists in the UCP shape, so this reads the
       // unscoped lane, which is the same lane an ACP-feed `sig_*` id resolves through.
-      return { product_id: id.trim() };
+      const native = { product_id: id.trim() };
+      // The buyer market the platform DECLARED (`context.address_country`, as on search_catalog) is the one
+      // input the live variant read needs (native `market`; src/services/ucpLiveOfferRead). Off, `context`
+      // stays accepted-and-unread and the args are exactly `{ product_id }`. Never defaulted: absent or
+      // blank, no market is sent and nothing is read live.
+      //
+      // A null `address_country` is ABSENT (platforms serialize unset optional fields as null). A non-string is a
+      // malformed envelope around a valid id, so it is refused as search refuses it (OPERATION_NOT_ALLOWED), never
+      // as UNKNOWN_PRODUCT_ID, whose "no product matches, search again" would send the agent round in a loop.
+      if (ucpGetProductForwardMarketEnabled(env)) {
+        const context = own(catalog, "context");
+        const country = isPlainObject(context) && own(context, "address_country") === null
+          ? undefined
+          : readSearchCountry(context, SEARCH_REFUSAL_CODE);
+        if (country !== undefined) native.market = country;
+      }
+      return native;
     },
   }),
 
@@ -2155,6 +2193,31 @@ export function ucpToolDescriptionsFor(env = process.env) {
   if (reapOfferCodesEnabled(env)) return ARMED_DESCRIPTIONS;
   return reapAgenticCreateEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
 }
+
+// get_product as `tools/list` publishes it under UCP_GET_PRODUCT_FORWARD_MARKET (the Reap dials never touch it,
+// so one variant serves every one of theirs): `catalog.context` declares the member the mapper reads.
+const GET_PRODUCT_BASE_CATALOG = SPECS.get_product.inputSchema.properties.catalog;
+export const UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA = Object.freeze({
+  ...SPECS.get_product.inputSchema,
+  properties: {
+    ...SPECS.get_product.inputSchema.properties,
+    catalog: {
+      ...GET_PRODUCT_BASE_CATALOG,
+      properties: {
+        ...GET_PRODUCT_BASE_CATALOG.properties,
+        context: {
+          type: "object",
+          additionalProperties: true,
+          description: "Buyer context. `address_country` selects the buyer market the price and stock may be read live for. Other members are accepted and NOT read.",
+          properties: {
+            address_country: { type: "string", description: "Buyer market, ISO 3166-1 alpha-2. Read; never inferred." },
+          },
+        },
+      },
+    },
+  },
+});
+export const UCP_GET_PRODUCT_MARKET_DESCRIPTION = [GET_PRODUCT_DESCRIPTION, GET_PRODUCT_MARKET_SENTENCE].join(" ");
 
 /** canonical op id -> the UCP-dialect tool description (the NATIVE one names fields UCP does not have). */
 export const UCP_TOOL_DESCRIPTIONS = Object.freeze(

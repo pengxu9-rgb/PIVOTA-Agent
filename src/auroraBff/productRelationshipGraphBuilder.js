@@ -23,6 +23,7 @@ const {
   neutralizeSnapshotClaims,
 } = require('./relationshipClaimPhrases');
 const { readPriceWithCurrency, comparablePriceRatio } = require('./relationshipPriceCurrency');
+const { foldTokenText } = require('./relationshipTokenText');
 
 // One candidate may serve at most this many anchors as a dupe / competitive_alternative in ONE
 // BUILD. 2026-09-26 JP/AU dry run: ALBION Excia Replant Whitening Cream was the alternative for
@@ -181,7 +182,7 @@ function toNumberOrNull(value) {
 
 function normalizeTokens(value) {
   const rawItems = Array.isArray(value) ? value : [value];
-  const items = rawItems.flatMap((item) => String(item == null ? '' : item).split(/[>,/|;:_\s-]+/g));
+  const items = rawItems.flatMap((item) => foldTokenText(item).split(/[>,/|;:_\s-]+/g));
   const out = [];
   const seen = new Set();
   for (const raw of items) {
@@ -1840,7 +1841,8 @@ const keepClaims = {
 
 // why_candidate is user-visible; stripping must never leave its summary empty or its reasons list
 // empty.
-const DEFAULT_REASONS_USER_VISIBLE = ['Category/use-case evidence is aligned.', 'Source provenance is available.'];
+// One definition, shared with the edge reader's quote sanitiser (relationshipQuoteSafety).
+const { DEFAULT_REASONS_USER_VISIBLE } = require('./relationshipQuoteSafety');
 
 function withSummaryFallback(why, fallbackSummary, fallbackReasons = DEFAULT_REASONS_USER_VISIBLE) {
   if (!isPlainObject(why)) return { summary: fallbackSummary, reasons_user_visible: fallbackReasons };

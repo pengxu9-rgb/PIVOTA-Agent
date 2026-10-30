@@ -211,6 +211,25 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(routineArgs).toContain('--skip-need-nodes');
   });
 
+  test('the uncovered backfill limit and its cooldown reach the selector', () => {
+    const options = parseArgs(['--cutoff', CUTOFF, '--select-updated-since', '2026-06-07T00:00:00Z', '--prioritize-uncovered',
+      '--uncovered-backfill-limit', '150', '--uncovered-cooldown-days', '5', '--out-dir', '/tmp/relgraph-sync-routine'], { now: NOW });
+    const selectorArgs = buildSyncRoutineSteps(options).steps.find((step) => step.id === 'affected_product_selector').args.join(' ');
+    expect(selectorArgs).toContain('--uncovered-backfill-limit 150');
+    expect(selectorArgs).toContain('--uncovered-cooldown-days 5');
+  });
+
+  test('a backfill-only drain batch may use up to 400 (target recall\'s maximum)', () => {
+    const options = parseArgs(['--cutoff', CUTOFF, '--select-updated-since', '2026-06-07T00:00:00Z', '--prioritize-uncovered',
+      '--uncovered-backfill-limit', '900', '--out-dir', '/tmp/relgraph-sync-routine'], { now: NOW });
+    expect(options.uncoveredBackfillLimit).toBe(400);
+  });
+
+  test('the sync routine refuses a backfill without the prioritize-uncovered build', () => {
+    expect(() => parseArgs(['--cutoff', CUTOFF, '--select-updated-since', '2026-06-07T00:00:00Z', '--uncovered-backfill-limit', '150'], { now: NOW }))
+      .toThrow(/requires --prioritize-uncovered/);
+  });
+
   test('buildSyncRoutineSteps wires selector before the guarded routine', () => {
     const options = parseArgs([
       '--cutoff',
@@ -241,6 +260,7 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(selectorArgs).toContain('--sources catalog_products');
     expect(selectorArgs).toContain('--limit 50');
     expect(selectorArgs).toContain('--allow-empty-selection');
+    expect(selectorArgs).not.toContain('--uncovered-backfill-limit');
 
     const routineArgs = steps[2].args.join(' ');
     expect(routineArgs).toContain('--affected-products-file /tmp/relgraph-sync-routine/affected-products.json');

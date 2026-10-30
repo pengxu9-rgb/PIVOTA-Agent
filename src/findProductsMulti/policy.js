@@ -5,6 +5,7 @@ const {
 } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { isExternalSeedRow } = require('../externalSeedIdentity');
+const { requestedMarketOf } = require('../services/servingCurrencyGuard');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
 const { buildClarification } = require('./clarification');
@@ -56,6 +57,13 @@ const resolveKnownStableLookupAlias =
   typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
     ? productGroundingResolverInternals.resolveKnownStableProductRef
     : null;
+const {
+  bareIngredientRoutingMode,
+  isBareIngredientRoutingEnabled,
+  isBareStrictIngredientQuery,
+} = require('./strictIngredientQuery');
+const { detectLanguage: detectQueryLanguage } = require('./intent');
+const { multilingualRoutingMode } = require('./multilingualBeautyTerms');
 const strictFindProductsMultiRuntime = createStrictFindProductsMultiRuntime({
   buildBeautyQueryProfile,
 });
@@ -263,12 +271,19 @@ const COMPAT_CRITICAL_STRICT =
 const WEAK_QUOTA_DEFAULT = Number(
   process.env.FIND_PRODUCTS_MULTI_WEAK_QUOTA_DEFAULT || '2',
 );
+// USD per unit. Translates a shopper's stated BUDGET into each offer currency for recall and the budget
+// gate; it never prices an offer and never produces a displayed amount (ADR-024 commitment 5). Every SERVED
+// market's currency must be here: without SGD, an SG buyer's "under USD 25" resolved no SGD range, so the
+// mainline recall (offer scope = SGD) returned nothing (ADR-026 P0). SGD/AUD approximate 2026-10 (USD/SGD
+// ~1.27; AUD/SGD 0.888); FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES overrides any entry.
 const DEFAULT_BUDGET_FX_USD_RATES = Object.freeze({
   USD: 1,
   EUR: 1.09,
   GBP: 1.27,
   CNY: 0.14,
   JPY: 0.0067,
+  SGD: 0.79,
+  AUD: 0.7,
 });
 const FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES = (() => {
   const raw = String(process.env.FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES || '').trim();
@@ -4597,7 +4612,7 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
     .join('\n');
 }
 
-async function buildFindProductsMultiContext({ payload, metadata }) {
+async function buildFindProductsMultiContext({ payload, metadata, routingOriginalQuery: gatewayRoutingOriginalQuery = null }) {
   const search = payload?.search || {};
   const topLevelSearchCompat = {
     ...(payload?.query != null ? { query: payload.query } : {}),
@@ -4613,6 +4628,11 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ...(payload?.price_max != null ? { price_max: payload.price_max } : {}),
     ...(payload?.min_price != null ? { min_price: payload.min_price } : {}),
     ...(payload?.max_price != null ? { max_price: payload.max_price } : {}),
+    // A flat payload's market (the caller sent no search block): the lanes after this build read the search
+    // block written below, so without it they bound the metadata's market (or none) while the early lane,
+    // the serving-currency guard and this build's own record read the flat one. Copied as sent, and only
+    // without a search block: a `market` beside a search block is not the request's market on any lane.
+    ...(!isPlainObject(payload?.search) && payload?.market != null ? { market: payload.market } : {}),
   };
   const legacyRecentQueries = payload?.user?.recent_queries || [];
   const sessionRecentQueries = payload?.user?.session_recent_queries || legacyRecentQueries;
@@ -4630,18 +4650,20 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
+  // The caller's market, read the way every lane serves it (servingCurrencyGuard.requestedMarketOf: the
+  // search block's, else a flat payload's, else the metadata's), so what is recorded is what is served.
   const queryUnderstanding = understandShoppingQuery({
     rawQuery: rawLatestUserQuery,
     conversationMessages: recentMessages,
     sessionRecentQueries,
-    market: search?.market || payload?.market || metadata?.market,
+    market: requestedMarketOf(payload, metadata),
     source: metadata?.source || search?.source || payload?.source,
   });
   const searchQualityContract = buildSearchQualityContract({
     rawQuery: rawLatestUserQuery,
     conversationMessages: recentMessages,
     sessionRecentQueries,
-    market: search?.market || payload?.market || metadata?.market,
+    market: requestedMarketOf(payload, metadata),
     source: metadata?.source || search?.source || payload?.source,
     // Honour a DECLARED step family as a fill-in when the text yields no category prefix. Before this,
     // the declared family was carried on `search` and then dropped: the prefix was a function of query
@@ -4930,10 +4952,18 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   ) {
     queryClass = 'exploratory';
   }
+  // FIND_PRODUCTS_MULTI_BARE_INGREDIENT_ROUTING on: a query that is ONLY a known ingredient ("retinol",
+  // "hyaluronic acid") keeps its own words. Without this the beauty semantic rewrite below replaced it
+  // with its step-family phrase ("anti aging treatment", "treatment treatment"), which names no
+  // ingredient, so the gateway's strict ingredient detector found none and the query never reached the
+  // ingredient lane: it fell to the safe-empty clarify or the backend text lane instead. Off: unchanged.
+  const preserveBareIngredientQuery =
+    isBareIngredientRoutingEnabled() && isBareStrictIngredientQuery(latestUserQuery);
   const preserveLiteralConstraintQueryExpansion =
-    Boolean(strictQueryOwnerDecision?.strictConstraintQuery) &&
-    semanticContractIsBeautyDiscovery &&
-    ['lookup', 'attribute'].includes(String(queryClass || '').trim().toLowerCase());
+    preserveBareIngredientQuery ||
+    (Boolean(strictQueryOwnerDecision?.strictConstraintQuery) &&
+      semanticContractIsBeautyDiscovery &&
+      ['lookup', 'attribute'].includes(String(queryClass || '').trim().toLowerCase()));
   const ambiguityScorePre = computeAmbiguityScorePre(intent, queryClass);
   const associationPlan = SEARCH_SCENARIO_ASSOCIATION_ENABLED
     ? buildScenarioAssociationPlan({
@@ -5475,7 +5505,19 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     },
   };
 
-  return { intent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
+  // FIND_PRODUCTS_MULTI_*_ROUTING on: the gateway routed on a normalised (English) form of the query
+  // and handed the caller's own text in as `routingOriginalQuery` -- a gateway-internal argument, never
+  // anything from the request (a caller's metadata is ignored, flag or no flag). Replies and
+  // clarifications speak the caller's language, so the intent's language is read from that original
+  // text, and only while a routing flag is on or observing. Routing above used the normalised form.
+  const routingFlagActive = bareIngredientRoutingMode() !== 'off' || multilingualRoutingMode() !== 'off';
+  const routingOriginalQuery =
+    routingFlagActive && typeof gatewayRoutingOriginalQuery === 'string' ? gatewayRoutingOriginalQuery.trim() : '';
+  const replyIntent =
+    routingOriginalQuery && intent && typeof intent === 'object'
+      ? { ...intent, language: detectQueryLanguage(routingOriginalQuery) }
+      : intent;
+  return { intent: replyIntent, adjustedPayload, rawUserQuery: latestUserQuery, expansion_meta: expansionMeta };
 }
 
 function applyFindProductsMultiPolicy({ response, intent, requestPayload, metadata, rawUserQuery }) {

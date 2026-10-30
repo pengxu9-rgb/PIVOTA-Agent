@@ -46,6 +46,8 @@ function createLegacyRecoPostMainlineRuntime(deps = {}) {
     includeAlternatives = false,
     upstreamDebug = null,
     ingredientContext = null,
+    needText = '',
+    catalogFillerRows = [],
   } = {}) {
     let mapped =
       structured && typeof structured === 'object' && !Array.isArray(structured)
@@ -65,6 +67,8 @@ function createLegacyRecoPostMainlineRuntime(deps = {}) {
         ctx,
         logger,
         defaultTargetContext: targetContext,
+        needText,
+        catalogFillerRows,
       });
       mapped = {
         ...mapped,
@@ -88,6 +92,16 @@ function createLegacyRecoPostMainlineRuntime(deps = {}) {
       targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0,
     );
     const norm = normalizeRecoGenerate(mapped);
+    // Items the grounding pass dropped from a step-aware answer because nothing in the catalog could
+    // stand for them. normalizeRecoGenerate keeps an allowlist, so they are set after it; the agent
+    // door reports them as metadata.unresolved_archetypes rather than as a bare empty list. Agent door
+    // only (it is the one door with needText): the chat and typed payloads gain no new field.
+    if (needText && Array.isArray(groundingResult?.withheld_archetypes) && groundingResult.withheld_archetypes.length) {
+      norm.payload.unresolved_archetypes = groundingResult.withheld_archetypes.slice();
+    }
+    if (needText && Number(groundingResult?.withheld_count) > 0) {
+      norm.payload.withheld_item_count = Math.trunc(Number(groundingResult.withheld_count));
+    }
     const viablePoolState = isPlainObject(catalogCandidateState)
       ? catalogCandidateState
       : frameworkMode

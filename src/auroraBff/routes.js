@@ -411,6 +411,7 @@ const {
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
 const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
+const { judgeRecoReboundCandidate, readCatalogCategoryPath } = require('./recoReboundCategoryGate');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -4839,6 +4840,9 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.product_type === 'string' && base.product_type) ||
     (typeof base.productType === 'string' && base.productType) ||
     '';
+  // The reviewed taxonomy leaf. Kept apart from `category`/`product_type`, which on a seed row are a
+  // guess from the title ("Santal Blush Eau de Parfum" -> Blush); see recoReboundCategoryGate.js.
+  const catalogCategoryPath = readCatalogCategoryPath(base);
   const sourceToken =
     (typeof base.source === 'string' && base.source) ||
     (base.source && typeof base.source === 'object' && !Array.isArray(base.source) && typeof base.source.type === 'string'
@@ -5014,6 +5018,9 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
     ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
     ...(String(productType || '').trim() ? { product_type: String(productType).trim() } : {}),
+    ...(catalogCategoryPath ? { catalog_category_path: catalogCategoryPath } : {}),
+    // The search filled this row's path -- and possibly its empty category/type -- from the QUERY.
+    ...(base.category_path_inferred_from_query === true ? { category_path_inferred_from_query: true } : {}),
     ...(String(sourceToken || '').trim() ? { source: String(sourceToken).trim() } : {}),
     ...(normalizedRetrievalSource ? { retrieval_source: normalizedRetrievalSource } : {}),
     ...(String(retrievalReasonRaw || '').trim() ? { retrieval_reason: String(retrievalReasonRaw).trim() } : {}),
@@ -12604,7 +12611,7 @@ async function fetchRetailProductPage({
       reason: 'retail_source_no_match',
       html: '',
       fetch_meta: null,
-      url: urlText,
+      url: normalisedProductUrlOrNull(urlText),
     };
   }
   const fetchOut = await fetchProductHtmlWithUnblockChain({
@@ -12618,7 +12625,8 @@ async function fetchRetailProductPage({
     reason: fetchOut.ok ? null : String(fetchOut.failure_code || 'retail_source_no_match'),
     html: fetchOut.ok ? String(fetchOut.html || '') : '',
     fetch_meta: fetchOut,
-    url: urlText,
+    // The normalised href (null when the input gate refused it), never the caller's raw text.
+    url: normalisedProductUrlOrNull(urlText),
   };
 }
 
@@ -16653,6 +16661,32 @@ async function runSingleUrlFetchAttempt({
   }
 }
 
+// Log-safe forms of product urls: the HOST only, never a path, a query or the caller's raw text.
+function urlHostForLog(url) {
+  try {
+    return new URL(String(url || '')).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+function attemptsForLog(attempts) {
+  return (Array.isArray(attempts) ? attempts : []).map((attempt) => {
+    if (!attempt || typeof attempt !== 'object') return attempt;
+    const { __url, ...rest } = attempt;
+    return __url === undefined ? rest : { ...rest, url_host: urlHostForLog(__url) };
+  });
+}
+
+// The normalised href of a product url, or null when the input gate would refuse it. Never the raw text.
+function normalisedProductUrlOrNull(url) {
+  try {
+    return parsePublicHttpUrl(String(url || '').trim()).toString();
+  } catch {
+    return null;
+  }
+}
+
 async function fetchProductHtmlWithUnblockChain({
   productUrl,
   timeoutMs = PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
@@ -16674,21 +16708,18 @@ async function fetchProductHtmlWithUnblockChain({
     };
   }
 
-  // Refuse a non-public URL ONCE, here, instead of three times at the sink. This is an optimisation and
-  // a partial vendor guard, NOT the fence: runSingleUrlFetchAttempt refuses independently, and deleting
-  // this block leaves the lane just as closed — verified by mutation (reverting the sink to a bare
-  // axios.get IS caught; neutering this block is not, because the sink's own refusal now produces the
-  // same failure_code). No test pins this block, deliberately: there is no behaviour left to pin once
-  // the sink refuses.
-  //
-  // What it adds is (a) refusing before three identical attempts, and (b) PARTIAL cover for the zenrows
-  // branch, which never reaches the fenced transport — it hands `productUrl` to a paid vendor as a query
-  // parameter. "Partial" is exact: this gate is parsePublicHttpUrl, which sees LITERALS only. A hostname
-  // whose DNS answer is private passes it, fails the three direct attempts, and is still handed to the
-  // vendor when AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED is false (it defaults true). Low impact — zenrows
-  // fetches from its own network, not ours — but the guard is not the whole door.
+  // THE INPUT GATE, and the one place the caller's text is read. parsePublicHttpUrl refuses non-http
+  // schemes, userinfo and non-public LITERALS before any attempt runs (instead of three identical refusals at
+  // the sink, which refuses independently anyway), and its href is `normalizedUrl`: the only string used from
+  // here on — the direct attempts, the www variant, the vendor precheck's DNS lookup, the evidence match, both
+  // vendor calls and the log. The caller's text and the href can name different HOSTS:
+  // `http://cosrx.com\@127.0.0.1/` is host cosrx.com to Node's parser (a backslash is a path delimiter for
+  // http) and host 127.0.0.1 to Python's urllib, and we do not control the vendor's parser. Normalising needs
+  // no lookup, so no race below can fall back to the raw string. A HOSTNAME whose DNS answer is private passes
+  // this gate; the transport refuses it for our own fetches, and the vendor precheck below for the vendor.
+  let normalizedUrl;
   try {
-    parsePublicHttpUrl(urlText);
+    normalizedUrl = parsePublicHttpUrl(urlText).toString();
   } catch (err) {
     return {
       ok: false,
@@ -16717,7 +16748,7 @@ async function fetchProductHtmlWithUnblockChain({
     {
       strategy: 'axios_default',
       provider: 'native',
-      url: urlText,
+      url: normalizedUrl,
       headers: {
         Accept: 'text/html,application/xhtml+xml',
       },
@@ -16725,15 +16756,15 @@ async function fetchProductHtmlWithUnblockChain({
     {
       strategy: 'curl_ua',
       provider: 'native',
-      url: urlText,
+      url: normalizedUrl,
       headers: {
         'User-Agent': 'curl/8.7.1',
         Accept: 'text/html,application/xhtml+xml',
       },
     },
   ];
-  const hostVariantUrl = allowHostVariant ? buildAlternateHostVariantUrl(urlText) : '';
-  if (hostVariantUrl && hostVariantUrl !== urlText) {
+  const hostVariantUrl = allowHostVariant ? buildAlternateHostVariantUrl(normalizedUrl) : '';
+  if (hostVariantUrl && hostVariantUrl !== normalizedUrl) {
     directAttemptsPlan.push({
       strategy: 'host_variant_default',
       provider: 'native',
@@ -16759,7 +16790,7 @@ async function fetchProductHtmlWithUnblockChain({
       headers: plan.headers,
     });
     // Tagged with WHICH url produced it. The evidence guard below must not treat a refusal on the
-    // `www.` host VARIANT as evidence about `urlText` — they are different hosts, and a merchant whose
+    // `www.` host VARIANT as evidence about `normalizedUrl` — they are different hosts, and a merchant whose
     // www label CNAMEs into private space would otherwise lose the vendor fallback for a perfectly
     // public canonical URL. Measured: that false positive withheld the vendor for https://cosrx.com/p/x.
     out.attempt.__url = plan.url;
@@ -16802,7 +16833,7 @@ async function fetchProductHtmlWithUnblockChain({
    * A test kills each separately.
    */
   const fenceRefusedAddress = attempts.some(
-    (attempt) => attempt?.__url === urlText
+    (attempt) => attempt?.__url === normalizedUrl
       && String(attempt?.error_code || '').trim().toLowerCase().startsWith('pivota_ssrf'),
   );
 
@@ -16812,20 +16843,32 @@ async function fetchProductHtmlWithUnblockChain({
     URL_UNBLOCK_PROVIDER === 'zenrows' &&
     (!URL_UNBLOCK_ONLY_ON_BLOCKED || shouldTryUnblockVendor(attempts));
 
-  // The exact string the vendor will be sent. Set by the precheck to the NORMALISED href, so the URL we
-  // judged is the URL we transmit — see below.
-  let vendorUrl = urlText;
+  // The exact string the vendor will be sent: the normalised href the gate judged (see `normalizedUrl`).
+  const vendorUrl = normalizedUrl;
 
-  if (shouldRunVendor) {
+  // NO KEY, NO PRECHECK. Without a vendor key `fetchViaZenRows` answers vendor_not_configured before any
+  // request is built, so nothing is handed to anyone and there is no address to vouch for: a lookup would
+  // only add latency and, when it is slow, a refusal record that relabels the request (a 403 reported as a
+  // timeout). The vendor attempts below still record vendor_not_configured, exactly as before the precheck.
+  if (shouldRunVendor && URL_UNBLOCK_ZENROWS_API_KEY) {
     // Only here, so the happy path never pays for a lookup: this runs only when a vendor call — far more
     // expensive than a resolve — is about to happen anyway. Measured: a 200 on the first direct attempt
     // performs zero lookups through this path.
     //
     // BOUNDED, because a bare `await` here sits OUTSIDE the deadline this function was given: measured,
     // a stalling resolver returned at 4006 ms against a declared 900 ms budget, and the deadline is only
-    // consulted on the next statement. It also holds a libuv threadpool slot. A lookup that outlives the
-    // budget is treated as "not proven bad" rather than "bad" — same direction as `unresolved` below,
-    // and the direct attempts have already resolved this name anyway.
+    // consulted on the next statement. It also holds a libuv threadpool slot.
+    //
+    // FAIL CLOSED ON SILENCE. A lookup that has not answered when the timer fires withholds the vendor: it
+    // would otherwise receive a URL whose address was never checked. (It used to be waved through as
+    // "not proven bad", and that branch also carried no url, so the vendor was handed the caller's raw
+    // string — the CI-only F1 failure.) The record is `pivota_precheck_timeout`, deliberately OUTSIDE the
+    // `pivota_ssrf*` family: a slow resolver is not a forbidden address, and buildUrlFetchFailureCode maps
+    // `pivota_ssrf*` to url_forbidden_address, which would mislabel the user payload and the address dial.
+    // It classifies as a timeout instead (url_fetch_timeout, unless a status ranks first).
+    // A lookup that ANSWERS "no such name" is a different fact and is still allowed through — see
+    // createPublicHostCheck: the vendor exists to reach hosts our resolver cannot see, and an unresolvable
+    // name cannot reach OUR private space through the vendor.
     // Wrapped, because an unexpected throw would otherwise escape fetchProductHtmlWithUnblockChain
     // entirely; a failure to CHECK must never become a failure to serve, but it must not open the door
     // either, so it fails closed. UNTESTED AND UNPINNED, deliberately stated: nothing reachable makes
@@ -16837,9 +16880,9 @@ async function fetchProductHtmlWithUnblockChain({
     let vendorHostCheck;
     try {
       vendorHostCheck = await Promise.race([
-        checkPublicProductHost(urlText),
+        checkPublicProductHost(normalizedUrl),
         new Promise((resolve) => setTimeout(
-          () => resolve({ ok: true, code: null, reason: 'unresolved', url: null }),
+          () => resolve({ ok: false, code: 'pivota_precheck_timeout', reason: 'lookup_timeout', url: null }),
           Math.max(150, Math.min(1500, remainingMs)),
         )),
       ]);
@@ -16853,17 +16896,6 @@ async function fetchProductHtmlWithUnblockChain({
         provider: 'zenrows',
         error_code: String(vendorHostCheck.code || 'pivota_ssrf_refused').trim().toLowerCase(),
       });
-    } else if (vendorHostCheck.url) {
-      /*
-       * SEND THE STRING WE VALIDATED, not the one the caller typed. Our own fetches already go out
-       * normalised (`parsePublicHttpUrl(...).toString()` inside the pinned transport); the vendor was
-       * getting the raw input, and the two can disagree about the HOST. Measured:
-       * `http://cosrx.com\@127.0.0.1/` is host `cosrx.com` to Node's WHATWG parser (backslash is a path
-       * delimiter for special schemes) and host `127.0.0.1` to Python's urllib. We do not control the
-       * vendor's parser, so handing it anything other than the form we judged is validating one string
-       * and transmitting another.
-       */
-      vendorUrl = vendorHostCheck.url;
     }
   }
 
@@ -16903,7 +16935,9 @@ async function fetchProductHtmlWithUnblockChain({
 
   const failureCode = buildUrlFetchFailureCode(attempts);
   logger?.debug?.(
-    { url: urlText, attempts, failure_code: failureCode },
+    // Hosts only: the normalised url's host, and each attempt's host in place of the url it tried. Never the
+    // caller's raw string, and no path or query.
+    { url_host: urlHostForLog(normalizedUrl), attempts: attemptsForLog(attempts), failure_code: failureCode },
     'aurora bff: product url fetch fallback failed',
   );
   return {
@@ -16947,9 +16981,9 @@ async function fetchProductPageHtmlForReco({
   if (!out.ok) {
     logger?.debug?.(
       {
-        url: String(productUrl || ''),
+        url_host: urlHostForLog(normalisedProductUrlOrNull(productUrl)),
         failure_code: out.failure_code,
-        attempts: out.attempts,
+        attempts: attemptsForLog(out.attempts),
       },
       'aurora bff: reco blocks on-page html fetch failed',
     );
@@ -18256,9 +18290,9 @@ async function buildProductAnalysisFromUrlIngredients({
   if (!fetchOut.ok) {
     logger?.warn?.(
       {
-        url: parsedUrl.toString(),
+        url_host: urlHostForLog(parsedUrl.toString()),
         failure_code: fetchOut.failure_code,
-        attempts: fetchOut.attempts,
+        attempts: attemptsForLog(fetchOut.attempts),
       },
       'aurora bff: product URL ingredient extraction failed',
     );
@@ -29466,10 +29500,11 @@ function deriveRecoPlanQueryTerms(item, lang = 'EN') {
     }
   }
   if (productType) out.push(productType);
-  if (String(lang || '').toUpperCase() === 'CN' && productType) {
-    out.push(`${productType} 护肤`);
-  } else if (productType) {
-    out.push(`${productType} skincare`);
+  // "bronzer skincare" is not a query a bronzer is titled by. The suffix is for the skincare lane this
+  // was written for; a makeup or fragrance type gets no domain word at all.
+  const suffixDomain = resolveRecoStepDomain(productType);
+  if (productType && suffixDomain !== 'makeup' && suffixDomain !== 'fragrance') {
+    out.push(String(lang || '').toUpperCase() === 'CN' ? `${productType} 护肤` : `${productType} skincare`);
   }
   return normalizeRecoPlanQueryTerms(out, 4);
 }
@@ -29561,10 +29596,13 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
   // Grounding can substitute a different catalog product. Carry only the requested slot/category,
   // not the old product's URL, identity, notes, formula claims, or nested evidence bundles.
   // Same-identity rationale may survive; all identity and catalog fields still come from the candidate.
+  // THE REQUESTED TYPE IS NOT THE SUBSTITUTE'S TYPE. Stamping plan.product_type onto a different product
+  // lets a lip balm grounded for a bronzer read as a bronzer (live 2026-10-14), and the agent door then
+  // reports that label as the product's own. A substitute carries its own catalog type or none.
   const planning = {
     slot: plan.slot,
     step: plan.step,
-    product_type: plan.product_type,
+    ...(sameProduct ? { product_type: plan.product_type } : {}),
     query_terms: sameProduct ? plan.query_terms : [],
     score: sameProduct ? plan.score : null,
     ...(sameProduct
@@ -29604,7 +29642,12 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     name: pickFirstTrimmed(normalizedProduct.name, normalizedProduct.title),
     title: pickFirstTrimmed(normalizedProduct.title, normalizedProduct.name),
     display_name: pickFirstTrimmed(normalizedProduct.display_name, normalizedProduct.displayName, normalizedProduct.name),
-    category: pickFirstTrimmed(normalizedProduct.category, normalizedProduct.category_name, normalizedProduct.product_type, plan.product_type),
+    category: pickFirstTrimmed(
+      normalizedProduct.category,
+      normalizedProduct.category_name,
+      normalizedProduct.product_type,
+      sameProduct ? plan.product_type : '',
+    ) || null,
     retrieval_source: pickFirstTrimmed(normalizedProduct.retrieval_source, normalizedProduct.retrievalSource, 'catalog'),
     retrieval_reason: pickFirstTrimmed(normalizedProduct.retrieval_reason, normalizedProduct.retrievalReason, 'catalog_query_match'),
     ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
@@ -29614,7 +29657,7 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     reasons: mergedReasons,
     sku: {
       ...normalizedProduct,
-      ...(plan.product_type ? { product_type: plan.product_type } : {}),
+      ...(sameProduct && plan.product_type ? { product_type: plan.product_type } : {}),
     },
   };
 }
@@ -29624,9 +29667,33 @@ async function groundRecoRecommendationsFromCatalog({
   ctx,
   logger,
   defaultTargetContext = null,
+  // The buyer's need, when the door has one (agent door only); a substitute must not contradict it.
+  needText = '',
+  // The rows applyStrictConformingTopUp appended, by object identity (see the loop below).
+  catalogFillerRows = [],
+  // Tests only: stands in for the catalog search on the live (non-cache) recall path.
+  searchFn = null,
 } = {}) {
+  const trustedFillerItems = new Set(Array.isArray(catalogFillerRows) ? catalogFillerRows : []);
+  // rec -> the catalog row it was normalized from, for filler only.
+  const fillerSourceByRec = new WeakMap();
+  // The name the MODEL gave each item, before normalization fills a blank one from its use case or a
+  // humanized type ("skincare product"). Only a model-given name is reported as a withheld archetype.
+  const modelNameByRec = new WeakMap();
+  const catalogFillerRecs = new WeakSet();
   const recs = (Array.isArray(recommendations) ? recommendations : [])
-    .map((item, index) => normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index }))
+    .map((item, index) => {
+      const rec = normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index });
+      // Catalog filler appended before grounding (applyStrictConformingTopUp stamps it 'positional') is
+      // not a model pick: its title names a buyable product, and reporting it as a withheld archetype
+      // would hand a partner the exact substitute the gate refused.
+      const catalogFiller = isPlainObject(item) && item.__pivota_score_basis === 'positional';
+      const modelName = isPlainObject(item) && !catalogFiller ? pickFirstTrimmed(item.display_name, item.name, item.title) : '';
+      if (isPlainObject(rec) && modelName) modelNameByRec.set(rec, modelName);
+      if (isPlainObject(rec) && catalogFiller) catalogFillerRecs.add(rec);
+      if (isPlainObject(rec) && trustedFillerItems.has(item)) fillerSourceByRec.set(rec, item);
+      return rec;
+    })
     .filter((item) => isPlainObject(item));
 
   if (!recs.length) {
@@ -29703,8 +29770,32 @@ async function groundRecoRecommendationsFromCatalog({
   let sameFamilyViableCount = 0;
   let softMismatchCount = 0;
   let hardRejectCount = 0;
+  const reboundRejectedByReason = {};
 
   for (const rec of recs) {
+    // CATALOG FILLER GROUNDS AS ITSELF. The strict top-up appended this row from the lane's own catalog
+    // answer, so it already IS a catalog product; searching for it again by name lost it. Each item's
+    // search keeps a short, price-blind shortlist, so the cheap rows a price ceiling's filler exists to
+    // supply were rarely on it: live 2026-10-14, "a gentle cleanser for sensitive skin" under $20 got
+    // its conforming cleansers appended and then dropped as ungrounded, and the buyer was served only
+    // the model's over-ceiling picks. A product an earlier item already grounded to is a duplicate, not
+    // a withheld pick, and is left out.
+    const fillerSource = fillerSourceByRec.get(rec);
+    if (fillerSource) {
+      // The lane's catalog row keeps the raw product (group id, sku id) under `sku`; its own top-level
+      // fields win where both carry one.
+      const normalized = normalizeRecoCatalogProduct({
+        ...(isPlainObject(fillerSource.sku) ? fillerSource.sku : {}),
+        ...fillerSource,
+      });
+      const productId = isPlainObject(normalized) ? pickFirstTrimmed(normalized.product_id, normalized.productId) : '';
+      if (productId && !usedProductIds.has(productId)) {
+        usedProductIds.add(productId);
+        candidateCountAfterFilter += 1;
+        next.push(mergeRecoPlanWithGroundedCandidate(rec, normalized));
+      }
+      continue;
+    }
     const seedTerms = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
     const itemTargetContext = resolveRecommendationTargetContext({
       explicitStep: pickFirstTrimmed(rec.product_type, rec.step, defaultTargetContext && defaultTargetContext.resolved_target_step),
@@ -29767,6 +29858,7 @@ async function groundRecoRecommendationsFromCatalog({
         limit: 6,
         usePurchasableFallback: false,
         authHeaders: ctx?.backend_auth_headers || null,
+        searchFn,
       });
       if (itemPoolCacheKey) {
         const itemPool = extractRecoRecallPoolForCache(collected);
@@ -29799,12 +29891,24 @@ async function groundRecoRecommendationsFromCatalog({
       candidateCountBeforeFilter += products.length;
     }
     const viableCandidates = Array.isArray(poolState.selected_recommendations) ? poolState.selected_recommendations : [];
+    // The type this item asked for, for judging a SUBSTITUTE (recoReboundCategoryGate.js): the step the
+    // grounding pass already resolved for it (its product_type, else its name and query terms).
+    const requestedStep = itemTargetContext?.resolved_target_step || '';
+    const requestedText = [rec.product_type, rec.name, rec.display_name].filter(Boolean).join(' ');
     let groundedProduct = null;
     for (const candidate of viableCandidates) {
       const normalized = normalizeRecoCatalogProduct(candidate);
       if (!isPlainObject(normalized)) continue;
       const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
       if (productId && usedProductIds.has(productId)) continue;
+      // The model's own pick (same catalog id) is not a substitute; anything else is, and must pass.
+      if (!sameRecommendationProduct(rec, normalized)) {
+        const verdict = judgeRecoReboundCandidate({ requestedStep, requestedText, needText, candidate: normalized });
+        if (!verdict.accept) {
+          reboundRejectedByReason[verdict.reason] = (reboundRejectedByReason[verdict.reason] || 0) + 1;
+          continue;
+        }
+      }
       groundedProduct = normalized;
       if (productId) usedProductIds.add(productId);
       candidateCountAfterFilter += 1;
@@ -29820,6 +29924,14 @@ async function groundRecoRecommendationsFromCatalog({
     defaultTargetContext && defaultTargetContext.step_aware_intent
       ? next.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded')
       : next;
+  // WHAT THE STEP-AWARE FILTER DROPS IS STILL AN ANSWER. Those items are the products the model chose
+  // that the catalog could not supply (makeup and fragrance never take a substitute), and the agent
+  // door promises to name them in unresolved_archetypes. Dropped silently, a bronzer need came back as a
+  // bare empty list (live 2026-10-14).
+  const withheldItems = next.filter((item) => !nextForDisplay.includes(item) && !catalogFillerRecs.has(item));
+  const withheldArchetypes = withheldItems
+    .map((item) => modelNameByRec.get(item) || '')
+    .filter(Boolean);
   const groundedCount = nextForDisplay.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
   const ungroundedCount = Math.max(0, nextForDisplay.length - groundedCount);
   const groundingStatus =
@@ -29841,6 +29953,9 @@ async function groundRecoRecommendationsFromCatalog({
 
   return {
     recommendations: nextForDisplay,
+    withheld_archetypes: withheldArchetypes,
+    // Every withheld model item, named or not: an unnamed one still means "answered, nothing buyable".
+    withheld_count: withheldItems.length,
     grounding_status: groundingStatus,
     grounded_count: groundedCount,
     ungrounded_count: ungroundedCount,
@@ -29859,6 +29974,7 @@ async function groundRecoRecommendationsFromCatalog({
       soft_mismatch_count: softMismatchCount,
       hard_reject_count: hardRejectCount,
       pool_cache_served_item_count: poolCacheServedItemCount,
+      rebound_rejected_by_reason: reboundRejectedByReason,
       fail_fast_open: failFastOpen,
       step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
       viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
@@ -105917,6 +106033,7 @@ const __internal = {
   detectBotChallengePage,
   fetchProductHtmlWithUnblockChain,
   fetchProductHtmlWithFallback,
+  fetchProductPageHtmlForReco,
   fetchIncidecoderSearchCandidates,
   extractIncidecoderProductUrls,
   fetchIncidecoderProductPage,
@@ -105960,6 +106077,7 @@ const __internal = {
   buildRecoGenerateFromCatalog,
   groundRecoRecommendationsFromCatalog,
   mergeRecoPlanWithGroundedCandidate,
+  deriveRecoPlanQueryTerms,
   buildRecoCollectedFromCachedPool,
   extractRecoRecallPoolForCache,
   getRecoRecallPoolCache,

@@ -1,20 +1,90 @@
 'use strict';
 
-// Read-only price verification for a served search page. Only a merchant PDP URL may select
-// the storefront. A variant id must match exactly, or every variant must publish the same
-// price and currency; a product-level minimum is not an offer for an arbitrary variant.
+// Read-only price verification for a served search page. One failure is not a price question: a 404 that Shopify
+// itself served means the product page is gone (storefrontProductPage.js); behind SERVE_LIVE_MERCHANT_PRICE_DROP_GONE
+// that card leaves the page instead of being served in stock at its stored price.
+//
+// Only a merchant PDP URL may select the storefront. A variant id must match exactly, or every variant must publish
+// the same price and currency; a product-level minimum is not an offer for an arbitrary variant.
 const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
 const { isRestatedProductId } = require('./merchantVariantSource');
+const storefrontProductPage = require('./storefrontProductPage');
+const { noteSearchOverlay, searchOverlayRequestTag } = require('../observability/priceVerificationLog');
 
 const publicFetch = createPublicNetworkFetch();
 const cache = new Map();
 const TTL_MS = 120000;
 const TIMEOUT_MS = 1800;
 const PAGE_DEADLINE_MS = 2500;
+// A card whose product page SHOPIFY says is gone (storefrontProductPage.js) is dropped from the page instead of being
+// kept at its stored price. Default OFF; read per call. Off, the read is still counted (`gone_count`) and shared with
+// the checkout's own check, and the card is kept exactly as before.
+const DROP_GONE_FLAG = 'SERVE_LIVE_MERCHANT_PRICE_DROP_GONE';
+// A STORE THAT REFUSED US IS LEFT ALONE FOR A WHILE, by every request on this instance (not only this page).
+// Shopify's local_rate_limited 429 is per store, not per IP: 16 parallel searches on 2026-10-22 drew ten 429s from
+// one store in 6 s, because the 4-reader cap holds per page and nothing held across requests. Behind
+// SEARCH_OVERLAY_HOST_BACKOFF (default OFF, read per call), a 429, a 430 (Shopify's bot-protection refusal) or a
+// 5xx from a host skips that host for 60 s; a repeat within 10 min of the last backoff ending doubles it, up to
+// 10 min. A 2xx clears it only when that read STARTED after the backoff was set: in a burst, reads already in
+// flight when the first 429 lands may still come back 200, and they say nothing about the store's limit now. A
+// refusal that lands while the host is backed off (a read in flight) does not double it either. A backoff that
+// ends more than 10 min from now (the clock stepped back) has expired. The order for a card is fixed: a fresh
+// cache entry, then the gone memo (a page Shopify said is gone stays gone, and DROP_GONE still drops it), then the
+// backoff. A skipped card fails as `host_backoff` and keeps its stored price, like any failed read. One store is
+// one key: `www.` and a trailing dot are dropped (hostKey). Per process only: the fleet-wide backoff (Firestore
+// `host_backoff`) is PR-3 of the verified-price plan. Off, nothing is read or written here.
+const HOST_BACKOFF_FLAG = 'SEARCH_OVERLAY_HOST_BACKOFF';
+const HOST_BACKOFF_BASE_MS = 60000;
+const HOST_BACKOFF_MAX_MS = 600000;
+const HOST_BACKOFF_MAX_HOSTS = 1000;
+const hostBackoff = new Map(); // hostKey -> { until, ms, status, setAt }
+// The failures the price line reports per host (`overlay_throttled_hosts`): a refusal that backs off, a backoff skip,
+// and a read our own per-host budget refused (PRICE_HOST_BUDGET=on; services/priceHostBudget.js).
+const THROTTLE_REASON = /^(?:http_429|http_430|http_5\d\d|host_backoff|host_budget)$/;
+// THE SHARED VERIFIED-PRICE CACHE (services/priceCache.js; PRICE_CACHE_STORE / PRICE_CACHE_MODE, default off), when
+// the caller hands it in (`options.priceCache`): every card a FRESH `.json` read verified is recorded for the fleet
+// (each variant the verdict covered, in the merchant's currency, for the declared market only). Under
+// PRICE_CACHE_MODE=read a card the fleet verified within SHARED_TTL_MS is served from it, before any read, as a
+// `recent` answer (price_as_of = when the merchant answered; counted as a replay on the price line). The order for
+// a card is: this instance's fresh read, the gone memo, the fleet's answer, then a read. Off, none of it runs.
+// `options.hostGate` (services/priceHostBudget.js, PRICE_HOST_BUDGET) may refuse a read before it is sent, and is
+// told of each 429 / 430 / 5xx so the fleet's shared backoff hears of it.
+const SHARED_TTL_MS = 15 * 60 * 1000;
 const MERCHANT_HEADERS = Object.freeze({
   'User-Agent': 'PivotaCatalog/1.0',
   Accept: 'application/json',
 });
+
+function backsOff(status) {
+  return status === 429 || status === 430 || (status >= 500 && status <= 599);
+}
+
+/** One store, one key: `www.shop.com`, `shop.com` and `shop.com.` are the same storefront. */
+function hostKey(url) {
+  return new URL(url).hostname.toLowerCase().replace(/\.+$/, '').replace(/^www\./, '');
+}
+
+function hostBackedOff(host, now = Date.now()) {
+  const entry = hostBackoff.get(host);
+  return Boolean(entry && entry.until > now && entry.until - now <= HOST_BACKOFF_MAX_MS);
+}
+
+function noteHostRefusal(host, status, now = Date.now()) {
+  const prev = hostBackoff.get(host);
+  if (prev && hostBackedOff(host, now)) return;
+  const sinceEnd = prev ? now - prev.until : -1;
+  const repeat = sinceEnd >= 0 && sinceEnd < HOST_BACKOFF_MAX_MS;
+  const ms = repeat ? Math.min(prev.ms * 2, HOST_BACKOFF_MAX_MS) : HOST_BACKOFF_BASE_MS;
+  hostBackoff.delete(host);
+  hostBackoff.set(host, { until: now + ms, ms, status, setAt: now });
+  if (hostBackoff.size > HOST_BACKOFF_MAX_HOSTS) hostBackoff.delete(hostBackoff.keys().next().value);
+}
+
+/** A 2xx clears the host, unless the read started before the backoff was set (it was in flight). */
+function noteHostAnswer(host, startedAt) {
+  const entry = hostBackoff.get(host);
+  if (entry && startedAt >= entry.setAt) hostBackoff.delete(host);
+}
 
 function targetOf(card) {
   const raw = card?.destination_url || card?.merchant_canonical_url || card?.source_url;
@@ -40,6 +110,34 @@ function targetOf(card) {
     return { url: `${url.origin}/products/${match[1]}.json`, variant };
   } catch {
     return null;
+  }
+}
+
+function handleOf(jsonUrl) {
+  const m = String(jsonUrl || '').match(/\/products\/([a-z0-9][a-z0-9-]*)\.json$/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+/** Record a fresh `.json` verdict: each variant it covered (one, or every variant when they all agree). */
+function recordJsonAnswer(priceCache, target, body, market, readAt) {
+  try {
+    if (!priceCache || typeof priceCache.recordVerifiedPrice !== 'function') return;
+    const variants = Array.isArray(body?.product?.variants) ? body.product.variants : [];
+    const matching = target.variant
+      ? variants.filter((v) => String(v?.id || '') === target.variant || String(v?.admin_graphql_api_id || '') === target.variant)
+      : variants;
+    const host = hostKey(target.url);
+    const handle = handleOf(target.url);
+    for (const v of matching.slice(0, 30)) {
+      priceCache.recordVerifiedPrice({
+        host, market, variant_id: String(v?.id || ''), currency: String(v?.price_currency || '').trim().toUpperCase(),
+        amount: Number(v?.price), compare_at: v?.compare_at_price != null && v.compare_at_price !== '' ? Number(v.compare_at_price) : null,
+        available: typeof v?.available === 'boolean' ? v.available : null,
+        handle, source: 'merchant_storefront', writer: 'search', read_at: readAt,
+      });
+    }
+  } catch {
+    /* the record never costs the card */
   }
 }
 
@@ -73,10 +171,16 @@ function unverifiedPriceReason(body, variantId) {
   return 'unverifiable_price';
 }
 
-async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal) {
+async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal, backoffHost = null, requestTag = null, hostGate = null) {
   const now = Date.now();
   const cached = cache.get(target.url);
-  if (cached && cached.expires > now) return { ...cached.value, cacheHit: true };
+  // ownRead: this request filled the entry (an overlay that ran twice in one request); log only.
+  if (cached && cached.expires > now) {
+    return { ...cached.value, cacheHit: true, ownRead: Boolean(requestTag) && cached.by === requestTag };
+  }
+  const gone = storefrontProductPage.knownGone(target.url, now);
+  if (gone) return { reason: `http_${gone.status}`, gone: true, cacheHit: true };
+  if (backoffHost && hostBackedOff(backoffHost, now)) return { reason: 'host_backoff' };
   const controller = new AbortController();
   const onPageAbort = () => controller.abort();
   if (pageSignal?.aborted) return { reason: 'deadline_exceeded' };
@@ -89,8 +193,23 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal) {
     if (controller.signal.aborted) return { reason: pageSignal?.aborted ? 'deadline_exceeded' : 'timeout' };
     if (!response.ok) {
       const status = Number(response.status);
-      return { reason: Number.isInteger(status) && status >= 400 && status <= 599 ? `http_${status}` : 'http_error' };
+      const reason = Number.isInteger(status) && status >= 400 && status <= 599 ? `http_${status}` : 'http_error';
+      if (backoffHost && backsOff(status)) noteHostRefusal(backoffHost, status);
+      if (hostGate && backsOff(status)) {
+        try {
+          hostGate.noteRefusal(hostKey(target.url), status);
+        } catch {
+          /* a courtesy to the fleet; this read's outcome stands */
+        }
+      }
+      // THE ONE FAILURE THAT IS AN ANSWER: Shopify itself said this product page does not exist.
+      if (storefrontProductPage.shopifySaysGone(response)) {
+        storefrontProductPage.noteGone(target.url, status);
+        return { reason, gone: true };
+      }
+      return { reason };
     }
+    if (backoffHost) noteHostAnswer(backoffHost, now);
     let body;
     try {
       body = await response.json();
@@ -99,7 +218,7 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal) {
     }
     if (controller.signal.aborted) return { reason: pageSignal?.aborted ? 'deadline_exceeded' : 'timeout' };
     const value = { body, asOf: new Date().toISOString() };
-    cache.set(target.url, { value, expires: Date.now() + TTL_MS });
+    cache.set(target.url, { value, expires: Date.now() + TTL_MS, by: requestTag });
     if (cache.size > 1000) cache.delete(cache.keys().next().value);
     return value;
   } catch {
@@ -113,13 +232,22 @@ async function fetchPrice(target, fetchImpl, timeoutMs, pageSignal) {
 async function overlayLiveMerchantSearchPrices(response, options = {}) {
   if (!response || !Array.isArray(response.products) || !response.products.length) return response;
   const fetchImpl = options.fetchImpl || publicFetch;
+  const env = options.env || process.env;
+  const dropGone = /^(1|true|yes|on|enabled)$/i.test(String(env[DROP_GONE_FLAG] || '').trim());
+  const backoff = /^(1|true|yes|on|enabled)$/i.test(String(env[HOST_BACKOFF_FLAG] || '').trim());
+  const requestTag = searchOverlayRequestTag();
+  const priceCache = options.priceCache && typeof options.priceCache === 'object' ? options.priceCache : null;
+  const hostGate = options.hostGate && typeof options.hostGate.admit === 'function' ? options.hostGate : null;
+  const readShared = Boolean(priceCache && typeof priceCache.lookupRecentPrices === 'function'
+    && typeof priceCache.priceCacheReadEnabled === 'function' && priceCache.priceCacheReadEnabled());
+  let sharedCacheHits = 0;
+  const goneIndexes = new Set();
   const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : TIMEOUT_MS;
   const pageDeadlineMs = Number(options.pageDeadlineMs) > 0 ? Number(options.pageDeadlineMs) : PAGE_DEADLINE_MS;
   const pageController = new AbortController();
   let expirePage;
   const pageExpired = new Promise((resolve) => { expirePage = resolve; });
   const pageTimer = setTimeout(() => { pageController.abort(); expirePage(); }, pageDeadlineMs);
-  const perHost = new Map();
   const pageFetches = new Map();
   const eligible = new Set();
   const processed = new Set();
@@ -129,6 +257,10 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   let attempted = 0;
   let cacheHits = 0;
   let closed = false;
+  // For the price_verification_served line only (noteSearchOverlay; never in the answer): the hosts that refused
+  // or were skipped, and when each answer served from the per-instance cache was read (another request's read).
+  const throttledHosts = {};
+  const cachedAnswerStamps = [];
   const countFailure = (reason) => {
     const code = reason || 'unverifiable_price';
     failureReasons[code] = (failureReasons[code] || 0) + 1;
@@ -136,9 +268,18 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   const getProductJson = (target) => {
     if (!pageFetches.has(target.url)) {
       const cached = cache.get(target.url);
-      if (!(cached && cached.expires > Date.now())) attempted += 1;
-      pageFetches.set(target.url, fetchPrice(
-        target, fetchImpl, timeoutMs, pageController.signal,
+      const fresh = (cached && cached.expires > Date.now()) || storefrontProductPage.knownGone(target.url);
+      const host = backoff ? hostKey(target.url) : null;
+      const wouldRead = !fresh && !(host && hostBackedOff(host));
+      let refused = null;
+      try {
+        refused = wouldRead && hostGate ? hostGate.admit(hostKey(target.url), 'search') : null;
+      } catch {
+        refused = null;
+      }
+      if (wouldRead && !refused) attempted += 1;
+      pageFetches.set(target.url, refused ? Promise.resolve({ reason: refused }) : fetchPrice(
+        target, fetchImpl, timeoutMs, pageController.signal, host, requestTag, hostGate,
       ));
     }
     return pageFetches.get(target.url);
@@ -146,32 +287,127 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   // Limit both page size and per-domain concurrency. All jobs are awaited before the response
   // leaves unless the whole-page deadline expires. A failed read keeps stored-price provenance.
   const cards = [...response.products];
+  const jsonTargets = new Map(); // index -> { card, target } for cards the `.json` read can check
   for (let index = 0; index < Math.min(20, cards.length); index += 1) {
     const card = cards[index];
     if (!card || typeof card !== 'object') continue;
     const target = targetOf(card);
     if (!target || !(Number(card.price) > 0) || !/^[A-Z]{3}$/.test(String(card.currency || ''))) continue;
-    eligible.add(index);
-    const host = new URL(target.url).hostname;
-    if (!perHost.has(host)) perHost.set(host, []);
-    perHost.get(host).push({ index, card, target });
+    jsonTargets.set(index, { card, target });
   }
-  await Promise.race([Promise.all([...perHost.values()].map(async (queue) => {
-    let cursor = 0;
-    async function worker() {
-      while (cursor < queue.length && !closed && !pageController.signal.aborted) {
-        const { index, card, target } = queue[cursor++];
+  // READ MODE: the fleet's answers (one store read, at most 150 ms; a failure is a miss), for cards this instance
+  // has neither read nor seen gone. A hit is a `recent` answer: verified, dated when the merchant answered.
+  const sharedHits = new Set();
+  if (readShared) {
+    const keyed = [...jsonTargets].filter(([, { target }]) => {
+      if (!target.variant || storefrontProductPage.knownGone(target.url)) return false;
+      const local = cache.get(target.url);
+      return !(local && local.expires > Date.now());
+    });
+    let answers = [];
+    try {
+      answers = await priceCache.lookupRecentPrices(keyed.map(([, { card, target }]) => ({
+        host: hostKey(target.url), market: options.market, variant_id: target.variant,
+        currency: String(card.currency).toUpperCase(),
+      })), { ttlMs: SHARED_TTL_MS });
+    } catch {
+      answers = [];
+    }
+    keyed.forEach(([index, { card, target }], i) => {
+      const a = Array.isArray(answers) ? answers[i] : null;
+      // The merchant's answer for THIS product page, in the card's own currency, or nothing.
+      if (!a || !a.handle || a.handle !== handleOf(target.url) || a.currency !== String(card.currency).toUpperCase()) return;
+      const asOf = new Date(a.read_at_ms).toISOString();
+      eligible.add(index);
+      processed.add(index);
+      verified += 1;
+      sharedCacheHits += 1;
+      cachedAnswerStamps.push(asOf);
+      if (Math.abs(Number(card.price) - a.amount) > 0.01) drifted += 1;
+      cards[index] = {
+        ...card, price: a.amount, price_amount: a.amount, currency: a.currency, price_currency: a.currency,
+        price_source: 'merchant_live', price_as_of: asOf,
+      };
+      jsonTargets.delete(index);
+      sharedHits.add(index);
+    });
+  }
+  // THE MERCHANT'S OWN UCP CATALOG (services/ucpLiveOfferRead, UCP_LIVE_SEARCH_READ). It CONFIRMS or
+  // CORRECTS the card's variant price in the card's own currency and may RAISE a card to in stock; it never
+  // lowers or drops a card (review of #2439). `plan` names the cards it will try, synchronously, so every
+  // other card's `.json` read starts NOW, alongside it; a planned card it does not settle takes its `.json`
+  // read afterwards. Shadow and off settle nothing.
+  const given = options.ucpSearchReader && typeof options.ucpSearchReader.plan === 'function' ? options.ucpSearchReader : null;
+  // SHADOW IS PURE: the page is built exactly as with the read off (every card's `.json` read starts now,
+  // no `ucp` metadata), and the merchant read runs beside it, unawaited, only to log what it would have
+  // changed (PR controller review of #2439). `readCards` snapshots the cards before it returns.
+  if (given && given.mode === 'shadow') {
+    try {
+      Promise.resolve(given.readCards(cards, { market: options.market })).catch(() => {});
+    } catch {
+      /* a reader that throws costs the measurement, never the page */
+    }
+  }
+  const reader = given && given.mode !== 'shadow' ? given : null;
+  let planned = new Map();
+  try {
+    if (reader) planned = reader.plan(cards, { market: options.market }) || new Map();
+  } catch {
+    planned = new Map();
+  }
+  for (const index of sharedHits) planned.delete(index);
+  const ucp = { planned: planned.size, verified: 0, drifted: 0, stockRaised: 0, byStatus: {} };
+  const settled = new Set();
+  // ONE queue per host for the page, fed by both phases (unplanned cards now, unsettled planned cards after
+  // the UCP read), drained by at most 4 workers: the per-domain cap holds across phases (review round 2).
+  // `active` counts workers still in their loop and drops in the SAME tick a worker sees the queue empty, so
+  // a later enqueue never counts an exiting worker as alive (lost wakeup, review round 3 of #2439).
+  const hostQueues = new Map(); // host -> { queue, cursor, active, workers: Set<Promise> }
+  const enqueueJson = (entries) => {
+    const hosts = new Set();
+    for (const [index, { target }] of entries) {
+      eligible.add(index);
+      const host = new URL(target.url).hostname;
+      if (!hostQueues.has(host)) hostQueues.set(host, { queue: [], cursor: 0, active: 0, workers: new Set() });
+      hostQueues.get(host).queue.push({ index, target });
+      hosts.add(host);
+    }
+    const waits = [];
+    for (const host of hosts) {
+      const q = hostQueues.get(host);
+      while (q.active < 4 && q.active < q.queue.length - q.cursor) {
+        q.active += 1;
+        const w = jsonWorker(q).finally(() => q.workers.delete(w));
+        q.workers.add(w);
+      }
+      waits.push(...q.workers);
+    }
+    return Promise.all(waits);
+  };
+  async function jsonWorker(q) {
+    // The decrement runs in the same tick the loop sees the queue empty (no await between them).
+    try {
+      while (q.cursor < q.queue.length && !closed && !pageController.signal.aborted) {
+        const { index, target } = q.queue[q.cursor++];
+        const card = cards[index];
         const fetched = await getProductJson(target);
         if (closed || pageController.signal.aborted) return;
         processed.add(index);
         if (fetched.cacheHit) cacheHits += 1;
+        if (fetched.gone) goneIndexes.add(index);
         const price = fetched.body && verifiedPrice(fetched.body, target.variant);
         if (!price || price.currency !== String(card.currency).toUpperCase()) {
           cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
           countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
+          if (THROTTLE_REASON.test(fetched.reason || '')) {
+            const host = hostKey(target.url);
+            throttledHosts[host] = (throttledHosts[host] || 0) + 1;
+          }
           continue;
         }
         verified += 1;
+        if (fetched.cacheHit && !fetched.ownRead) cachedAnswerStamps.push(fetched.asOf);
+        if (priceCache && !fetched.cacheHit) recordJsonAnswer(priceCache, target, fetched.body, options.market, fetched.asOf);
         if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
         cards[index] = {
           ...card, price: price.amount, price_amount: price.amount,
@@ -179,12 +415,69 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
           price_source: 'merchant_live', price_as_of: fetched.asOf,
         };
       }
+    } finally {
+      q.active -= 1;
     }
-    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
-  })), pageExpired]);
+  }
+  const ucpThenJson = async () => {
+    if (!planned.size) return;
+    let reads = null;
+    try {
+      reads = await reader.readCards(cards, { market: options.market }, planned);
+    } catch {
+      reads = null;
+    }
+    if (closed || pageController.signal.aborted) return;
+    const asOf = new Date().toISOString();
+    for (const [index, read] of reads instanceof Map ? reads : []) {
+      const card = cards[index];
+      // A page the storefront already said is gone (this or another read's 404/410, shared memo) is never
+      // confirmed by the catalog: it takes the `.json` read, which marks it gone (and DROP_GONE drops it).
+      const json = jsonTargets.get(index);
+      const status = read.status === 'verified' && json && storefrontProductPage.knownGone(json.target.url)
+        ? 'known_gone' : read.status;
+      ucp.byStatus[status] = (ucp.byStatus[status] || 0) + 1;
+      if (!card || typeof card !== 'object' || status !== 'verified') continue;
+      ucp.verified += 1;
+      if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
+      const raise = read.available === true && card.in_stock !== true;
+      if (raise) ucp.stockRaised += 1;
+      const next = {
+        ...card, price: read.amount, price_amount: read.amount,
+        price_source: 'merchant_live', price_as_of: asOf,
+        // variant_in_stock is the merchant's answer for THIS variant only; the card speaks for the product
+        // (any shade), so a false answer is reported here and never written over the card.
+        live_read: {
+          status: read.status, market: read.market || null, market_basis: read.market_basis || null,
+          variant_in_stock: read.available, source: 'merchant_ucp_lookup_catalog', checked_at: asOf,
+        },
+      };
+      if (raise) {
+        // Every stock field the availability contract reads must agree, not only the first one it checks.
+        next.in_stock = true;
+        next.availability = 'in_stock';
+        if (typeof card.available === 'boolean') next.available = true;
+        for (const k of ['inventory_quantity', 'inventoryQuantity', 'quantity']) {
+          if (k in next && !(Number(next[k]) > 0)) delete next[k];
+        }
+      }
+      cards[index] = next;
+      settled.add(index);
+    }
+    await enqueueJson([...planned.keys()].filter((i) => !settled.has(i) && jsonTargets.has(i)).map((i) => [i, jsonTargets.get(i)]));
+  };
+  await Promise.race([
+    Promise.all([
+      enqueueJson([...jsonTargets].filter(([i]) => !planned.has(i))),
+      ucpThenJson(),
+    ]),
+    pageExpired,
+  ]);
   closed = true;
   clearTimeout(pageTimer);
   if (pageController.signal.aborted) {
+    // A planned card still waiting on the UCP read when the page expired is as unchecked as a queued one.
+    for (const index of planned.keys()) if (!settled.has(index) && jsonTargets.has(index)) eligible.add(index);
     for (const index of eligible) {
       if (processed.has(index)) continue;
       const card = cards[index];
@@ -192,18 +485,34 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
       countFailure('deadline_exceeded');
     }
   }
+  const served = dropGone ? cards.filter((_, index) => !goneIndexes.has(index)) : cards;
+  noteSearchOverlay({ throttledHosts, cachedAnswerStamps });
   return {
     ...response,
-    products: cards,
+    products: served,
     metadata: {
       ...(response.metadata || {}),
       live_merchant_price: {
-        attempted: eligible.size > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
+        attempted: eligible.size > 0 || ucp.planned > 0, eligible_count: eligible.size, fetch_attempt_count: attempted,
         cache_hit_count: cacheHits, verified_count: verified, drift_count: drifted,
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
+        gone_count: goneIndexes.size, dropped_gone_count: cards.length - served.length,
+        ...(readShared ? { shared_cache_hit_count: sharedCacheHits } : {}),
+        ...(reader
+          ? {
+            ucp: {
+              mode: reader.mode || null, planned_count: ucp.planned, settled_count: settled.size,
+              verified_count: ucp.verified, drift_count: ucp.drifted, stock_raised_count: ucp.stockRaised,
+              by_status: ucp.byStatus,
+            },
+          }
+          : {}),
       },
     },
   };
 }
 
-module.exports = { targetOf, verifiedPrice, overlayLiveMerchantSearchPrices };
+module.exports = {
+  DROP_GONE_FLAG, HOST_BACKOFF_FLAG, HOST_BACKOFF_MAX_HOSTS, targetOf, verifiedPrice, overlayLiveMerchantSearchPrices,
+  hostKey, _hostBackoff: hostBackoff,
+};

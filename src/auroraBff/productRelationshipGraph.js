@@ -1,5 +1,7 @@
+const { sanitizeWhyCandidateQuotes } = require('./relationshipQuoteSafety');
 const crypto = require('node:crypto');
 const { compareProductIdentity, RELATIONS: IDENTITY } = require('./relationshipProductIdentity');
+const { fragranceServingSuppressionReason } = require('./relationshipFragranceProfile');
 const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
@@ -7,6 +9,7 @@ const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
 const { refKeyMatchSql, productGroupRefKeyMatchSql } = require('../services/relationshipGraphRefKeySql');
+const { seedProjectedOfferCurrencyGuardSql } = require('../services/seedSearchOfferScope');
 const productRelationshipGraphSources = require('./productRelationshipGraphSources');
 const { normalizeCurrencyCode, readPriceWithCurrency } = require('./relationshipPriceCurrency');
 const { EXTERNAL_SEED_PLATFORM } = require('../services/pdpRenderability');
@@ -447,8 +450,12 @@ function coerceRelationshipEdge(input = {}, options = {}) {
     source_refs: normalizeSourceRefs(src.source_refs || src.sourceRefs),
     evidence_grade: normalizeUpperEvidenceGrade(src.evidence_grade || src.evidenceGrade),
     review_status: normalizeLower(src.review_status || src.reviewStatus || 'pending', 32),
+    // Quotes reach shoppers from here (similar items, PDP rails, signals): only specific, unstitched ones.
     why_candidate: isPlainObject(src.why_candidate || src.whyCandidate)
-      ? { ...(src.why_candidate || src.whyCandidate) }
+      ? sanitizeWhyCandidateQuotes({ ...(src.why_candidate || src.whyCandidate) }, {
+        anchor: src.anchor_snapshot || src.anchorSnapshot || {},
+        candidate: src.candidate_snapshot || src.candidateSnapshot || {},
+      })
       : {},
     tradeoffs: normalizeArray(src.tradeoffs, 12),
     watchouts: normalizeArray(src.watchouts, 12),
@@ -586,6 +593,15 @@ function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
   if (edge.label_state === 'ai_approved' && ['related_product', 'competitive_alternative'].includes(edge.relation_type)) {
     const identityReason = identitySuppressionReason(edge);
     if (identityReason) reasons.push(`${edge.relation_type}_${identityReason}`);
+  }
+
+  // A perfume is chosen by its scent: hide AI-approved alternatives between a fragrance and a
+  // non-fragrance, or between fragrances whose own text shares no scent family. Human decisions stay.
+  // Product anchors only: a niche_specialist anchor is a NEED object ({need_id, label, ...}), not a product.
+  if (edge.label_state === 'ai_approved' && edge.anchor_type === 'product' &&
+      ['dupe', 'competitive_alternative', 'niche_specialist'].includes(edge.relation_type)) {
+    const fragranceReason = fragranceServingSuppressionReason(edge.anchor_snapshot || {}, edge.candidate_snapshot || {});
+    if (fragranceReason) reasons.push(`${edge.relation_type}_${fragranceReason}`);
   }
 
   if (edge.label_state === 'ai_approved' && edge.relation_type === 'related_product') {
@@ -1016,6 +1032,9 @@ function buildCollapsedRelationshipFamilyEdge(bucket) {
     candidate_offer_group_id: candidateContext.product_group_id || null,
     anchor_offer_group_id: bucket.anchorContext.product_group_id || null,
     candidate_display_snapshot: candidateSnapshot,
+    // Whether the card shows the representative edge's own member, whose price evidence the edge
+    // carries. The collapse knows it; ids cannot always tell (a merchant ref carries no ext_/sig_).
+    candidate_display_is_representative: candidateContext === representative.candidateContext,
     candidate_display_snapshot_source: candidateContext.display_snapshot_source || null,
     candidate_product_group_id: candidateContext.product_group_id || null,
     candidate_pivota_signature_id: candidateContext.pivota_signature_id || null,
@@ -1265,13 +1284,50 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   const imageUrl = pickFirstString(snap.image_url, snap.image, Array.isArray(snap.images) ? snap.images[0] : '');
   const name = extractProductName(snap);
   const reason = pickFirstString(edge.why_candidate.summary, edge.display_label, edge.relation_type);
-  const money = getCandidateMoneyPair(
-    edge,
-    isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot],
-  );
+  // A collapsed card shows its DISPLAY member (title, image, link), which family collapse can pick
+  // apart from the representative edge whose candidate_product_ref and price evidence the edge
+  // carries (family keys strip shade/size: a 1.5ml mini and a 3ml full size share one bucket). Its
+  // price is the display member's own: the representative's evidence applies only when the display
+  // member IS the representative.
+  const candidateRef = stripRelationshipRefPrefix(edge.candidate_product_ref);
+  const seedRef = (value) => {
+    const ref = stripRelationshipRefPrefix(value);
+    return /^(?:ext_|sig_)/i.test(ref) ? ref : '';
+  };
+  const seedIds = (...values) => Array.from(new Set(values.map(seedRef).filter(Boolean).map((id) => id.toLowerCase())));
+  const isExt = (id) => id.startsWith('ext_');
+  const listingRef = (ids) => ids.find(isExt) || '';
+  const hasDisplaySnap = Object.keys(displaySnap).length > 0;
+  const displayIds = isCollapsedEdge && hasDisplaySnap
+    ? seedIds(
+        src.candidate_pivota_signature_id || src.candidatePivotaSignatureId,
+        displaySnap.pivota_signature_id,
+        displaySnap.source_product_id,
+        displaySnap.external_product_id,
+        displaySnap.product_id,
+      )
+    : [];
+  // The collapse stamps whether the card shows the representative edge's own member (ids cannot always
+  // tell: a merchant ref carries no ext_/sig_). Unstamped, an edge keeps main's behaviour.
+  const stampedRepresentative = src.candidate_display_is_representative ?? src.candidateDisplayIsRepresentative;
+  const displayIsRepresentative = !hasDisplaySnap || stampedRepresentative !== false;
+  const money = isCollapsedEdge && !displayIsRepresentative
+    ? getCandidateMoneyPair({ ...edge, price_evidence: {} }, [snap])
+    : getCandidateMoneyPair(edge, isCollapsedEdge ? [edge.candidate_snapshot, snap] : [edge.candidate_snapshot]);
+  // The seed card enrichment prices an unpriced card from (the shown member, never another one):
+  // collapsed -> the display member's ids; otherwise the card's own id, else the edge candidate.
+  // Internal only: stripSimilarInternalKeys removes it before any response.
+  // A card showing the representative whose display snapshot names no seed id falls back to the edge's
+  // own candidate (the same member).
+  // Only an exact listing (ext_) prices a card: a sig_ names a product, and its seed lookup answers
+  // with the newest seed of ANY retailer carrying it - not necessarily the listing shown.
+  const priceRef = isCollapsedEdge && hasDisplaySnap
+    ? listingRef(displayIds) || (displayIsRepresentative ? listingRef(seedIds(candidateRef)) : '')
+    : listingRef(seedIds(productId, candidateRef));
   return {
     product_id: productId,
     external_product_id: productId,
+    ...(priceRef ? { relationship_price_ref: priceRef } : {}),
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     ...(name ? { title: name } : {}),
     ...(brand ? { brand } : {}),
@@ -1607,7 +1663,7 @@ async function listCatalogOfferPricesForRefs(refs = [], { queryFn = query } = {}
         FROM matched m
         JOIN catalog_offers o ON o.product_key = m.product_key
         WHERE o.suppressed_at IS NULL
-          AND o.currency IS NOT NULL
+          AND o.currency IS NOT NULL${seedProjectedOfferCurrencyGuardSql('o', 'o.product_key', { prefix: '\n          ' })}
         LIMIT 5000
       `,
       [inputs],

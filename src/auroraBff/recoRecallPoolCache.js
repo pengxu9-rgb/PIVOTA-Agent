@@ -163,6 +163,9 @@ const RECO_RECALL_POOL_CACHE_CANDIDATE_FIELDS = Object.freeze([
   'product_id', 'productId', 'merchant_id', 'merchantId', 'variant_id', 'variantId',
   'name', 'title', 'display_name', 'displayName', 'brand', 'brand_name', 'brandName',
   'category', 'category_name', 'categoryName', 'product_type', 'productType', 'type',
+  // The reviewed taxonomy leaf, read by recoReboundCategoryGate.js. A string, so it survives the
+  // scalar-only copy below; the `category_path` ARRAY would not, and is folded into this on normalize.
+  'catalog_category_path', 'category_path_inferred_from_query',
   'price', 'price_amount', 'priceAmount', 'currency', 'price_currency', 'priceCurrency',
   'image', 'image_url', 'imageUrl', 'canonical_pdp_url', 'canonicalPdpUrl', 'url',
   'purchase_path', 'purchasePath', 'source_system', 'sourceSystem',

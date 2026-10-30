@@ -58,9 +58,11 @@
 
 'use strict';
 
-const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql');
+const { buildCanonicalSearchQualitySql, storedNameNormEnabled } = require('./canonicalSearchQualitySql');
+const { storedFoldVerified } = require('./storedNameNormProbe');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
+const { seedProjectedOfferCurrencyGuardSql } = require('./seedSearchOfferScope');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 const logger = require('../logger');
 
@@ -274,6 +276,25 @@ function isSinglePayloadReadEnabled(env = process.env) {
 // `\b` before `p` keeps `np.product_payload` (the name-evidence carrier CTE) and similar aliases out.
 function readPayloadOnce(fragment) {
   return String(fragment ?? '').replace(/\bp\.product_payload\b/g, 'pp.product_payload');
+}
+
+// RANK NARROW, FETCH WIDE (CANONICAL_CATALOG_NARROW_RANK, default off).
+// The candidate CTE used to project every display column -- product_payload, description,
+// freshness_json, the fashion fields -- for EVERY row the WHERE admitted, and carry them through the
+// rank sort, the set-quota window and the cut. Prod EXPLAIN ANALYZE (2026-10-19, gateway-00735-koh's
+// exact statements): a generic beauty query admits ~1,800-2,300 rows to keep 210, and that sort ran as
+// an external merge spilling ~20MB to disk (1,422-3,469 temp blocks per statement), about 130 ms of a
+// 900 ms statement on an otherwise idle primary.
+// Flag on, the scoring CTE projects only what ranking and cutting read (product_key, the legacy
+// updated_at tie-break, the set and name-evidence marks, rank_score); the cut happens on those narrow
+// rows; and `candidate_products` re-reads the display columns for the survivors only, by primary key
+// (catalog_products.product_key, catalog_merchants.merchant_id -- both unique, so the re-read is 1:1
+// and adds or drops no row). Same rows, same order, same columns for everything downstream.
+const NARROW_RANK_ON_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
+
+function isNarrowRankEnabled(env = process.env) {
+  const raw = String(env.CANONICAL_CATALOG_NARROW_RANK ?? '').trim().toLowerCase();
+  return NARROW_RANK_ON_VALUES.has(raw);
 }
 
 // WHEN THE SERVED PRICE WAS LAST READ, taken off the served offer row as
@@ -1607,8 +1628,12 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
   } else {
     whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
   }
+  // The stored own-name fold (#2404) is read only when the flag is on AND the database's fold
+  // function provably equals identitySql on the probe's sample set (storedNameNormProbe: cached per
+  // process, re-checked every 10 min, fail-closed to today's expression). Flag off: no probe, no change.
+  const storedNameNorm = storedNameNormEnabled() ? await storedFoldVerified(pgQuery) : false;
   const qualityScope = buildCanonicalSearchQualitySql({ contract: searchQualityContract, params,
-    categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere });
+    categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere, storedNameNorm });
   // Same idiom as `$2::text IS NOT NULL`: keep a typed, always-true reference to
   // every text-arm bind the contract's WHERE no longer contains. Params cannot be
   // removed instead — later binds (brand identity, offer scope) are numbered after them.
@@ -1769,6 +1794,12 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
     }
   }
   const scopedOfferWhere = offerScopeClauses.length ? `AND ${offerScopeClauses.join('\n        AND ')}` : '';
+  // On EVERY surface, scoped or not, and in the candidate EXISTS as well as both offer picks: an
+  // offer copied off a seed is a price only in the currency that seed states (seedSearchOfferScope.
+  // seedProjectedOfferInSeedCurrencySql). Not an offer-scope clause, because it is not a buyer
+  // constraint: it says which rows are prices at all. `p` is the listing the offer prices in all three.
+  // Interpolated at the END of the line before it, so the kill switch (off) adds not even a blank line.
+  const seedCurrencyOfferWhere = seedProjectedOfferCurrencyGuardSql('o', 'p.product_key');
   const candidateOfferWhere = offerScope ? `
         AND EXISTS (
           SELECT 1 FROM catalog_offers o
@@ -1776,7 +1807,7 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
           WHERE ${joinSkuOffers ? 'scoped_sku.product_key' : 'o.product_key'} = p.product_key
             AND o.suppressed_at IS NULL
             AND COALESCE(o.merchant_effective_price, o.list_price) > 0
-            ${scopedOfferWhere}
+            ${scopedOfferWhere}${seedCurrencyOfferWhere}
         )` : '';
   const skuOfferColumns = joinSkuOffers
     ? `
@@ -1937,7 +1968,7 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
         AND s.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
-        ${scopedOfferWhere}
+        ${scopedOfferWhere}${seedCurrencyOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
@@ -1962,7 +1993,7 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
         AND o.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
-        ${scopedOfferWhere}
+        ${scopedOfferWhere}${seedCurrencyOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
         ${bestOfferAvailabilityOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
@@ -2127,18 +2158,9 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
       LIMIT $3
     )`;
   }
-  const candidateCteName = setDiversityEnabled ? 'matched_products' : 'candidate_products';
-
-  // Rank score weights mirror pivot_query_service.py exactly so canonical
-  // recall ranks identically across the backend's HTTP API and this gateway
-  // helper. Drift here would surface as inconsistent top-N between the two.
-  // The +200 multi_merchant_canonical bonus is the dominant term — UNLESS
-  // CANONICAL_CATALOG_RANK_V2 is enabled, in which case the pdp_scope arm is
-  // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
-  // the gateway intentionally diverges from the backend's legacy weights.
-  const sql = `
-    WITH ${nameEvidenceCteSql}${candidateCteName} AS (
-      SELECT
+  // See isNarrowRankEnabled. Flag off, every string below is exactly what this statement always carried.
+  const narrowRank = isNarrowRankEnabled();
+  const wideColumnsSql = `
         COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
         m.merchant_name         AS merchant_name,
         m.primary_platform      AS merchant_primary_platform,
@@ -2177,7 +2199,48 @@ async function queryCanonicalChainRows(args = {}, { priceAsOf = false } = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,${pl(setDiversityProjectionSql)}${pl(nameEvidenceProjectionSql)}
+        p.updated_at            AS product_updated_at,`;
+  const rankColumnsSql = narrowRank
+    ? `
+        p.product_key,
+        p.updated_at            AS product_updated_at,`
+    : wideColumnsSql;
+  if (narrowRank) {
+    // The cut moves to `candidate_keys` (narrow rows); `candidate_products` keeps its name and its
+    // columns, so candidate_slots and the outer SELECT read it unchanged.
+    setDiversityCteSql = setDiversityCteSql.replace('\n    candidate_products AS (', '\n    candidate_keys AS (');
+    // THE FENCE. Narrow columns alone did not narrow the set-quota sort: `matched_products` is inlined,
+    // and the window's CASE over `m.is_multi_product_set` is evaluated ABOVE the sort, so the planner
+    // carried that expression's inputs -- pp.product_payload, already decompressed by the single read,
+    // plus title/product_type/category_path for the name-evidence mark -- through the sort of every
+    // admitted row. Review of #2465 measured it at prod's flags on a 32k-row catalog (6.4KB payloads,
+    // work_mem 4MB): 71MB / 17,781 temp blocks with the flag on against 80MB off. `OFFSET 0` keeps the
+    // scoring CTE from being pulled up, so its marks reach the window as plain columns: 0 temp blocks,
+    // and no tuplestore write (which MATERIALIZED would add). Only the set-quota form needs it: without
+    // set diversity the cut is the scoring CTE's own ORDER BY / LIMIT, a bounded top-N.
+    if (setDiversityEnabled) innerOrderLimitSql = '\n      OFFSET 0';
+    setDiversityCteSql += `,
+    candidate_products AS (
+      -- Display columns for the survivors only, by primary key (1:1). See isNarrowRankEnabled.
+      SELECT${wideColumnsSql}${setDiversityEnabled ? '\n        k.is_multi_product_set,' : ''}${nameEvidence ? '\n        k.name_evidence_admitted,' : ''}
+        k.rank_score${setDiversityEnabled ? ',\n        k.set_quota_demoted' : ''}
+      FROM candidate_keys k
+      JOIN catalog_products p ON p.product_key = k.product_key
+      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
+    )`;
+  }
+  const candidateCteName = setDiversityEnabled ? 'matched_products' : (narrowRank ? 'candidate_keys' : 'candidate_products');
+
+  // Rank score weights mirror pivot_query_service.py exactly so canonical
+  // recall ranks identically across the backend's HTTP API and this gateway
+  // helper. Drift here would surface as inconsistent top-N between the two.
+  // The +200 multi_merchant_canonical bonus is the dominant term — UNLESS
+  // CANONICAL_CATALOG_RANK_V2 is enabled, in which case the pdp_scope arm is
+  // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
+  // the gateway intentionally diverges from the backend's legacy weights.
+  const sql = `
+    WITH ${nameEvidenceCteSql}${candidateCteName} AS (
+      SELECT${rankColumnsSql}${pl(setDiversityProjectionSql)}${pl(nameEvidenceProjectionSql)}
         (
           ${pl(skuIdentityScore)}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
@@ -2287,6 +2350,7 @@ module.exports = {
   // Exported so a caller can stamp whether the candidate-key prefilter was on for its request.
   isCandidateKeyPrefilterEnabled,
   isSinglePayloadReadEnabled,
+  isNarrowRankEnabled,
   // Exported so the card mapper publishes the freshness fields only when the SQL carries them.
   isServedPriceAsOfEnabled,
   // Exported so callers whose lane preserves recall order (the

@@ -1,0 +1,53 @@
+# Alert: the MCP caller limits' shared state is unavailable for 15 minutes: the counter store failing or
+# slow, the shared daily salt unavailable, or the shared snapshot stale because syncs keep being skipped.
+#
+# Why: while any of these holds, every global limit falls back to this instance's share (limit /
+# MCP_CALLER_LIMITS_EXPECTED_INSTANCES; anonymous keys on a per-process salt get only that share), so callers
+# are refused earlier than configured: more 429s, and tier_rate 503s that are not load at all. Nothing else
+# says so.
+#
+# What counts: mcp_caller_limit_store (store_metric.yaml), i.e. the three lines src/guardrails/mcpCallerLimits.js
+# writes for this, each labelled by `code`:
+#   mcp_caller_limit_store  a sync failed or was slow (the store's error code, SYNC_SLOW, SYNC_POOL_BUSY, ...);
+#   mcp_caller_limit_salt   the shared salt could not be read or created (SALT_UNAVAILABLE or the error code);
+#   mcp_caller_limit_stale  the shared snapshot is older than 30 s because syncs keep being skipped (SNAPSHOT_STALE).
+# Each line is throttled to at most one a minute per instance, and is written only while that instance has
+# callers to limit, so mode off and an idle service never fire it.
+#
+# Threshold, conservative on purpose: any such line (> 0) in a 5-minute window, holding for 15 minutes. One
+# failed sync logs one line and the next sync usually recovers, so a transient blip cannot hold the condition;
+# a store that is down, a missing table, or a pool held full keeps logging every minute while traffic flows.
+# 15 minutes (longer than the shed alert's 10) because the fallback is a tighter limit, not an outage. Same
+# units and aligner as zombie_alert_policy.yaml.
+#
+# Needs the mcp_caller_limit_store log metric (store_metric.yaml). Create (not applied by this repo; fill
+# notificationChannels first):
+#   gcloud alpha monitoring policies create --project=$PROJECT --policy-from-file=store_alert_policy.yaml
+displayName: MCP caller limit - shared store, salt or snapshot unavailable for 15 minutes
+documentation:
+  content: >-
+    The MCP caller limits have been running on per-instance shares for at least 15 minutes: the shared counter
+    store is failing, the shared salt is unavailable, or the snapshot is stale. Break the count down by the
+    metric's event and code labels, or query jsonPayload.event=~"^mcp_caller_limit_(store|salt|stale)$".
+    42P01: the counter table is missing (migration not applied). SYNC_POOL_BUSY / SYNC_ACQUIRE_TIMEOUT: the
+    database pool has no free connection for the sync. SNAPSHOT_STALE: syncs keep being skipped (pool busy, or
+    backing off after failures). SYNC_SLOW or 57014: the primary is slow. Expect extra caller-limit 429s and tier_rate 503s with limit_split=true until it recovers.
+    Runbook: docs/runbooks/mcp_tool_outcome_monitoring.md (Shed 503s).
+  mimeType: text/markdown
+combiner: OR
+conditions:
+  - displayName: store / salt / stale lines in every 5 minutes, for 15 minutes
+    conditionThreshold:
+      filter: >-
+        metric.type="logging.googleapis.com/user/mcp_caller_limit_store"
+        resource.type="cloud_run_revision"
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 900s
+      aggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_SUM
+          crossSeriesReducer: REDUCE_SUM
+alertStrategy:
+  autoClose: 3600s
+notificationChannels: []

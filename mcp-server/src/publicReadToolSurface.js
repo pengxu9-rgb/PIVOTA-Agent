@@ -9,7 +9,8 @@
 // listings, which the app-directory sourcing policy excludes (docs/openai_apps_v1_plan.md §1, §5).
 
 import { createCommerceToolSurface, UnknownToolError, commerceToolParamsKey } from "./commerceToolSurface.js";
-import { projectPublicReadResult, MAX_SEARCH_RESULTS } from "./publicReadProjection.js";
+import { projectPublicReadResult, productSummary, MAX_SEARCH_RESULTS } from "./publicReadProjection.js";
+import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
 import {
   filterFirstPartyRows,
   isResellerRow,
@@ -17,6 +18,7 @@ import {
   isFirstPartyOnlyEnabled,
 } from "./publicReadSourcing.js";
 import { createPublicReadCache } from "./publicReadCache.js";
+import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
 
 export const PUBLIC_READ_TOOL_NAMES = Object.freeze([
   "search_catalog",
@@ -110,6 +112,15 @@ function cacheKeyFor(toolName, toolArgs) {
 //     negative. Closing this properly needs a top-level degradation marker on the search envelope; until
 //     one exists, do not invent a deeper heuristic here — an unvalidated guess about metadata shape is how
 //     a confident-sounding wrong answer gets built a second time.
+// A COMPLETE answer from the lane, but assembled while part of the database could not answer (get_pdp_v2's
+// `degraded_reads`, carried through normalizePdpV2ToProductDetail). It is served, never stored: replaying a
+// partial product for the normal clock is exactly the cached-degraded failure the gateway marks it to prevent.
+// Kept apart from isDegradedUpstream on purpose -- that one also decides the empty-page note, and a partial
+// product is not an empty one.
+function hasDegradedReads(raw) {
+  return Boolean(raw && typeof raw === "object" && Array.isArray(raw.degraded_reads) && raw.degraded_reads.length > 0);
+}
+
 function isDegradedUpstream(raw) {
   if (!raw || typeof raw !== "object") return false;
   if (typeof raw.status === "string" && !["success", "ok"].includes(raw.status.trim().toLowerCase())) return true;
@@ -139,10 +150,13 @@ function isDegradedUpstream(raw) {
 //                        flood of identical zero-result queries still collapses onto one lane run. The
 //                        stale window is deliberately zero: serving a STALE empty is precisely the
 //                        confident-false-negative behaviour this whole change exists to end.
+//   fail-open page    -> the SAME short clock as an empty page. The chain filter could not check some rows
+//                        (database unavailable) and kept them; the page may advertise ids get_product cannot
+//                        resolve, and must not be replayed for the normal clock once the database is back.
 //   everything else   -> the normal clock, exactly as before.
 function publicReadCachePolicy(computed, { ttlMs, staleMs, emptyTtlMs }) {
   if (!computed || typeof computed !== "object" || computed.cacheable !== true) return null;
-  if (computed.emptySearchPage) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
+  if (computed.emptySearchPage || computed.chainFilterFailedOpen) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
   return { ttlMs, staleMs };
 }
 
@@ -176,6 +190,15 @@ const PUBLIC_DESCRIPTIONS = Object.freeze({
     "Read-only.",
 });
 
+// get_product's public description while the commerce schema declares `market` (it does exactly while the live
+// product read is on, UCP_LIVE_PRODUCT_READ). get_offers is not on this tier, so the price rule names no tool. This
+// tier replays an answer from its read cache for up to an hour, so a confirmed price is not claimed as current.
+const PUBLIC_GET_PRODUCT_MARKET_SENTENCES =
+  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: Pivota may then confirm the " +
+  "price with the merchant for that market, and when it has, `price_check.confirmed_with_merchant` is true (an " +
+  "answer may be up to an hour old). Without it the price is Pivota's stored one. A price here is for " +
+  "discovery only: never quote it to a buyer as the final price.";
+
 // Apply the public presentation to a read tool: the de-marketed description, and — for get_product only —
 // relax the schema so it resolves by the single public sig id alone (the backend product cache matches by
 // product_id when merchant_id is absent; routes/agent_shop_gateway.py _load_product_by_id). Annotations are
@@ -185,6 +208,7 @@ function publicPresentation(tool) {
   if (PUBLIC_DESCRIPTIONS[tool.name]) next.description = PUBLIC_DESCRIPTIONS[tool.name];
   if (tool.name === "get_product" && tool.inputSchema) {
     next.inputSchema = { ...tool.inputSchema, required: ["product_id"] };
+    if (tool.inputSchema.properties && tool.inputSchema.properties.market) next.description += PUBLIC_GET_PRODUCT_MARKET_SENTENCES;
   }
   return next;
 }
@@ -240,13 +264,55 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       })
     : null;
 
-  async function callTool(toolName, toolArgs = {}) {
+  // `options.observe` (optional) receives measurement fields for the gateway's tools/call completion line: the
+  // cache branch that answered and the upstream envelope's lane/degradation markers. The markers are captured
+  // at compute time and travel WITH the cached entry, so a cache hit reports the lane that produced the answer
+  // it replays. The session context is ignored on this tier by construction (see computeTool).
+  async function callTool(toolName, toolArgs = {}, _sessionContext = {}, options = {}) {
     if (!PUBLIC_READ_TOOL_NAMES.includes(toolName)) {
       throw new UnknownToolError(toolName);
     }
+    const observe = options && typeof options.observe === "function" ? options.observe : null;
     const args = canonicalizeToolArgs(toolArgs);
-    if (!cache) return (await computeTool(toolName, args)).value;
-    return (await cache.getOrCompute(cacheKeyFor(toolName, args), () => computeTool(toolName, args))).value;
+    const computed = cache
+      ? await cache.getOrCompute(cacheKeyFor(toolName, args), () => computeTool(toolName, args), {
+          onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
+        })
+      : await computeTool(toolName, args);
+    noteToolCall(observe, () => computed.observed);
+    // The price facts of what this tier served, computed with the answer and replayed with it from the cache
+    // (gateway price_verification_served line; null unless PRICE_VERIFICATION_LOG). Not recomputed at replay:
+    // that needs the raw upstream rows, which the cache does not keep. So an entry computed while the flag was
+    // off replays with no line until it is recomputed (at most PUBLIC_READ_CACHE_STALE_MS after the flip).
+    noteToolCall(observe, () => computed.priceFacts || null);
+    return computed.value;
+  }
+
+  // The price facts of the rows THIS tier serves: after its filters, aligned to the projected page (the
+  // projector keeps a row only when it summarizes, then slices), and a price the projection withholds
+  // (commerce verification required, untrusted price) is not a served price. Log only; never throws.
+  function publicPriceFacts(toolName, raw, value) {
+    try {
+      // Off: not even the alignment pass (productSummary per raw row) runs.
+      if (!priceVerificationFacts.priceVerificationLogEnabled()) return null;
+      if (toolName === "search_catalog") {
+        const served = value && Array.isArray(value.products) ? value.products : [];
+        const rows = (raw && Array.isArray(raw.products) ? raw.products : [])
+          .filter((p) => productSummary(p, PUBLIC_PDP_BASE))
+          .slice(0, served.length);
+        const out = priceVerificationFacts.priceFactsOf(toolName, { ...raw, products: rows });
+        if (out) out.price_facts.items = out.price_facts.items.map((f, i) => (served[i] && served[i].price != null ? f : { ...f, priced: false }));
+        return out;
+      }
+      if (toolName === "get_product") {
+        const out = priceVerificationFacts.priceFactsOf(toolName, raw);
+        if (out && !(value && value.price != null)) out.price_facts.items = out.price_facts.items.map((f) => ({ ...f, priced: false }));
+        return out;
+      }
+    } catch {
+      // measurement only
+    }
+    return null;
   }
 
   async function computeTool(toolName, toolArgs) {
@@ -278,6 +344,9 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const upstreamMatchedCount =
       toolName === "search_catalog" && raw && Array.isArray(raw.products) ? raw.products.length : 0;
     const upstreamDegraded = isDegradedUpstream(raw);
+    const upstreamPartial = hasDegradedReads(raw);
+    // Lane + degradation markers for the completion log, read before the projector strips the metadata.
+    const observed = describeUpstreamEnvelope(raw);
 
     // First-party / brand-official sourcing filter (docs/openai_apps_v1_plan.md §5): drop reseller-sourced
     // rows BEFORE projection (the projector strips the destination host the filter needs). ON by default
@@ -296,11 +365,12 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
         if (isResellerRow(detail, resellerHostSet(extraHostsCsv))) {
           if (logger) logger.info({ tool: toolName }, "public_read sourcing filter: reseller product withheld");
           // A withheld reseller product is a deterministic policy verdict, not a lane failure: cacheable.
-          return { value: { note: "Product not found." }, cacheable: true };
+          return { value: { note: "Product not found." }, cacheable: true, observed };
         }
       }
     }
 
+    let chainFilterFailedOpen = false;
     // The chain contract: never advertise a product_id that get_product cannot resolve, and never mint a
     // pivota_url that renders a shell. Runs on the raw rows (the projector strips the identity the probe
     // needs) and BEFORE the slice, so survivors backfill the page. Fail-open lives in the injected filter.
@@ -316,7 +386,8 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       if (truncated > 0 && logger) {
         logger.info({ tool: toolName, truncated_unexamined_rows: truncated }, "public_read chain filter cap");
       }
-      const { kept, droppedCount: dropped } = await filterChainResolvableRows(examined);
+      const { kept, droppedCount: dropped, failedOpenCount } = await filterChainResolvableRows(examined);
+      chainFilterFailedOpen = Number(failedOpenCount) > 0;
       const droppedCount = dropped + truncated;
       if (droppedCount > 0) {
         // No silent caps: an id dropped here is a catalog-coverage gap, not a search-quality choice.
@@ -343,7 +414,14 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const value = projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit, emptyReason });
     const emptySearchPage =
       toolName === "search_catalog" && Array.isArray(value.products) && value.products.length === 0;
-    return { value, cacheable: !upstreamDegraded, emptySearchPage };
+    return {
+      value,
+      cacheable: !upstreamDegraded && !upstreamPartial,
+      emptySearchPage,
+      chainFilterFailedOpen,
+      observed,
+      priceFacts: publicPriceFacts(toolName, raw, value),
+    };
   }
 
   function isPublicReadTool(name) {

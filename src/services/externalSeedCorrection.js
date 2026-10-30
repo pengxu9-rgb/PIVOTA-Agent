@@ -6,7 +6,7 @@ const {
   collectSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
-  canonicalizeExternalSeedSnapshot,
+  canonicalizeExternalSeedSnapshotForPersistence,
 } = require('./externalSeedProducts');
 const {
   buildPdpImageDedupeKey,
@@ -623,7 +623,11 @@ function applyBeautyMinorUnitPriceNormalization(row) {
 function applyVariantDisplayContractNormalization(row) {
   const nextRow = cloneJson(row);
   const before = JSON.stringify(ensureJsonObject(nextRow.seed_data));
-  nextRow.seed_data = canonicalizeExternalSeedSnapshot(nextRow.seed_data, nextRow, { stripLegacy: false });
+  // Persisted by applySeedCorrectionAction: normalize the snapshot copy only and never
+  // rewrite the main list (seed_data.variants) from the snapshot-first read.
+  nextRow.seed_data = canonicalizeExternalSeedSnapshotForPersistence(nextRow.seed_data, nextRow, {
+    stripLegacy: false,
+  });
   const after = JSON.stringify(ensureJsonObject(nextRow.seed_data));
   return {
     changed: before !== after,

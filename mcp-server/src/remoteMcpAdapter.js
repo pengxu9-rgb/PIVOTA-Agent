@@ -1,4 +1,5 @@
-import { toToolError, toToolResult } from "./commerceToolSurface.js";
+import { UnknownToolError, toToolError, toToolResult } from "./commerceToolSurface.js";
+import { describeToolError, noteToolCall, resultCountOf, toolErrorFieldsOf } from "./toolCallOutcome.js";
 
 const DEFAULT_PROTOCOL_VERSION = "2025-03-26";
 
@@ -75,11 +76,26 @@ export function createRemoteMcpAdapter(surface, opts = {}) {
         const sessionContext = typeof resolveSessionContext === "function"
           ? await resolveSessionContext(req, authResult)
           : defaultSessionContext(req, authResult);
+        // `req.observe` (optional, measurement only): the host's sink for its tools/call completion line. It is
+        // forwarded to the surface ONLY when present, so a host that passes none makes the exact call it always
+        // made. What reaches it is the row count the caller receives, on failure the code the caller sees, and
+        // whether the surface recognised the tool name (so the host never has to label a line with a name the
+        // caller made up).
+        const observe = typeof req?.observe === "function" ? req.observe : null;
+        const callArgs = [params.name, params.arguments ?? {}, sessionContext ?? {}];
+        if (observe) callArgs.push({ observe: (fields) => noteToolCall(observe, fields) });
         try {
-          const value = await surface.callTool(params.name, params.arguments ?? {}, sessionContext ?? {});
+          const value = await surface.callTool(...callArgs);
+          noteToolCall(observe, () => ({ tool_registered: true, ...resultCountOf(value) }));
           return ok(id, formatResult(value, params.name));
         } catch (error) {
-          return ok(id, toToolError(error));
+          const result = toToolError(error);
+          noteToolCall(observe, () => ({
+            tool_registered: !(error instanceof UnknownToolError),
+            ...toolErrorFieldsOf(result),
+            ...describeToolError(error),
+          }));
+          return ok(id, result);
         }
       }
 

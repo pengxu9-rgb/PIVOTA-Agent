@@ -105,12 +105,14 @@ describe('#1935 sargable text WHERE flag', () => {
     const source = require('node:fs').readFileSync(SERVER_PATH, 'utf8');
     const liveCallSite = /^[ \t]*sargableTextWhere: PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,$/m;
     expect(source).toMatch(liveCallSite);
-    // ...and it must sit inside the mainline's fetchCanonicalChainRows call,
-    // not somewhere unrelated that happens to match.
-    const mainlineCall = source.slice(
-      source.indexOf('const canonicalRowsPromise = fetchCanonicalChainRows({'),
-    ).slice(0, 4000);
+    // ...and it must sit inside the args of the mainline's fetchCanonicalChainRows
+    // call, not somewhere unrelated that happens to match. The args are built as
+    // `canonicalRowsArgs` so the call can optionally run inside a DB lane deadline.
+    const argsStart = source.indexOf('const canonicalRowsArgs = {');
+    expect(argsStart).toBeGreaterThan(-1);
+    const mainlineCall = source.slice(argsStart).slice(0, 4000);
     expect(mainlineCall).toMatch(liveCallSite);
+    expect(source.slice(argsStart, argsStart + 8000)).toMatch(/^[ \t]*: fetchCanonicalChainRows\(canonicalRowsArgs\)\)$/m);
   });
 });
 

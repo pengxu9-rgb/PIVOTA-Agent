@@ -113,6 +113,12 @@ suite('name-evidence admission keeps the category browse on its index (PostgreSQ
         return `${col} ${type}`;
       });
       await db.query(`CREATE TABLE ${table} (${defs.join(', ')})`);
+      // Prod's index and statistics on the seeds the offer guard probes (seedSearchOfferScope): an
+      // unindexed, never-analyzed table makes the planner cost the probe as a scan per offer (35k -> 365k),
+      // past CI Postgres's jit_above_cost, and every statement then JIT-compiles for seconds.
+      if (table === 'external_product_seeds') {
+        await db.query('CREATE INDEX ON external_product_seeds(attached_product_key); ANALYZE external_product_seeds');
+      }
     }
     // 243's index, as prod has it.
     await db.query(`CREATE INDEX ${CATEGORY_INDEX} ON catalog_products (category_path varchar_pattern_ops)`);

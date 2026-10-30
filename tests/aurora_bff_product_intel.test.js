@@ -1,5 +1,6 @@
 const request = require('supertest');
 const nock = require('nock');
+const { guardFileNetwork } = require('./nock_file_net_guard.cjs');
 const path = require('path');
 
 // Commit 3e19cc76 emptied BUILTIN_STABLE_PRODUCT_REFS and productGroundingStableAliases.json;
@@ -14,6 +15,24 @@ const STABLE_ALIAS_FIXTURE_PATH = path.join(
 
 describe('Aurora BFF product intelligence (structured upstream)', () => {
   jest.setTimeout(30000);
+
+  // The URL-analysis lanes reach past the mocked backend to INCIDecoder, four retailer search
+  // pages, DailyMed, the product page and the anchor's brand site. Tests that do not mock one of
+  // those used to send it to the real site. Here they are down unless a test mocks them, and any
+  // other request no interceptor matched fails the test (tests/nock_file_net_guard.cjs).
+  guardFileNetwork(test, nock, {
+    down: [
+      'incidecoder.com',
+      'www.sephora.com',
+      'www.ulta.com',
+      'www.target.com',
+      'www.walmart.com',
+      'dailymed.nlm.nih.gov',
+      'theordinary.com',
+      'brand.example',
+      'catalog.test',
+    ],
+  });
 
   beforeEach(() => {
     jest.resetModules();
@@ -630,13 +649,29 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query((q) => String(q.url || '') === 'https://blocked.example/product' && String(q.js_render || '') === 'false')
       .reply(200, '<html><body>Ingredients: Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate</body></html>');
 
-    const { __internal } = require('../src/auroraBff/routes');
-    const out = await __internal.fetchProductHtmlWithFallback({
-      productUrl: 'https://blocked.example/product',
-      timeoutMs: 3200,
-      allowHostVariant: false,
-      logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+    // The vendor precheck resolves the host and refuses when the resolver stays SILENT past its budget, so
+    // the real resolver would make this a test of the runner's network. Answer NXDOMAIN at once, as the real
+    // one does for this name: a prompt "no such name" is still escalated. Installed before the require
+    // because the host check captures dns.lookup when the module loads.
+    const nodeDns = require('node:dns');
+    const lookupSpy = jest.spyOn(nodeDns, 'lookup').mockImplementation((hostname, options, callback) => {
+      const cb = typeof options === 'function' ? options : callback;
+      const err = new Error(`getaddrinfo ENOTFOUND ${hostname}`);
+      err.code = 'ENOTFOUND';
+      setImmediate(() => cb(err));
     });
+    let out;
+    try {
+      const { __internal } = require('../src/auroraBff/routes');
+      out = await __internal.fetchProductHtmlWithFallback({
+        productUrl: 'https://blocked.example/product',
+        timeoutMs: 3200,
+        allowHostVariant: false,
+        logger: { debug: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() },
+      });
+    } finally {
+      lookupSpy.mockRestore();
+    }
 
     expect(out.ok).toBe(true);
     expect(out.final_strategy).toBe('zenrows_http');
@@ -5132,12 +5167,22 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query(true)
       .reply(200, { products: [] });
 
-    const app = require('../src/server');
-    const res = await request(app)
-      .post('/v1/product/analyze')
-      .set('X-Aurora-UID', 'uid_test_url_fetch_blocked_1')
-      .send({ url: 'https://brand.example/blocked-all.html' })
-      .expect(200);
+    // DNS answers NOTHING, deterministically: this request must not depend on the runner's resolver, and a
+    // resolver that stays silent is exactly the case that used to relabel this 403 as a forbidden address.
+    // Installed before the require: the lane's host check captures dns.lookup when its module loads.
+    const nodeDns = require('node:dns');
+    const lookupSpy = jest.spyOn(nodeDns, 'lookup').mockImplementation(() => {});
+    let res;
+    try {
+      const app = require('../src/server');
+      res = await request(app)
+        .post('/v1/product/analyze')
+        .set('X-Aurora-UID', 'uid_test_url_fetch_blocked_1')
+        .send({ url: 'https://brand.example/blocked-all.html' })
+        .expect(200);
+    } finally {
+      lookupSpy.mockRestore();
+    }
 
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();

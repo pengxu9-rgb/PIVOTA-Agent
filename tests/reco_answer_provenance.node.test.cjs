@@ -38,7 +38,9 @@
 process.env.AURORA_BFF_USE_MOCK = 'false';
 process.env.USE_AURORA_BFF_MOCK = 'false';
 process.env.AURORA_DECISION_BASE_URL = 'https://decision.test';
-process.env.PIVOTA_BACKEND_BASE_URL = 'https://pivota-backend.test';
+// A backend that is DOWN, offline: a refused loopback port, not a .test host whose
+// "never resolves" costs a real DNS query (tests/_support/netGuard.cjs).
+process.env.PIVOTA_BACKEND_BASE_URL = require('./_support/netGuard.cjs').UNREACHABLE_LOOPBACK_URL;
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

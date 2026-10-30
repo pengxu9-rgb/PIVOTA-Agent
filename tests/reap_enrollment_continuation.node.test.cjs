@@ -64,7 +64,9 @@ for (const state of ['resolving', 'needs_enrollment', 'quoting']) {
     assert.equal(content(out, 'reap.contact_reentry_required'), 'false');
     assert.equal(ctx.calls.length, 2); assert.equal(resumes(ctx).length, 1);
     assert.deepEqual(ctx.calls[1].body, ctx.calls[0].body);
-    assert.equal(ctx.calls[1].body.variant_key, SKU);
+    // A witness attempt's first recovery spelling is `variant_id` (this fake matches any body; the two-spelling
+    // probe of a legacy witness attempt is pinned in reap_variant_id_selector.node.test.cjs).
+    assert.equal(ctx.calls[1].body.variant_id, VARIANT); assert.equal(Object.hasOwn(ctx.calls[1].body, 'variant_key'), false);
     assert.equal(ctx.calls[1].body.expected_unit_price_minor, 2800);
     assert.equal(ctx.calls[1].body.expected_currency, 'USD');
     assert.equal(ctx.calls[1].body.merchant_domain, 'kravebeauty.com');

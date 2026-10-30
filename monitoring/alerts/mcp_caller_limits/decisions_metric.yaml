@@ -1,0 +1,26 @@
+description: MCP caller-limit decisions (observe would_reject / enforce reject), by reason, tier, door and per-instance split.
+filter: >-
+  resource.type="cloud_run_revision"
+  resource.labels.service_name="gateway"
+  jsonPayload.event="mcp_caller_limit"
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: action
+      valueType: STRING
+    - key: reason
+      valueType: STRING
+    - key: tier
+      valueType: STRING
+    - key: door
+      valueType: STRING
+    - key: limit_split
+      valueType: STRING
+labelExtractors:
+  action: EXTRACT(jsonPayload.action)
+  reason: EXTRACT(jsonPayload.reason)
+  tier: EXTRACT(jsonPayload.tier)
+  door: EXTRACT(jsonPayload.door)
+  limit_split: EXTRACT(jsonPayload.limit_split)

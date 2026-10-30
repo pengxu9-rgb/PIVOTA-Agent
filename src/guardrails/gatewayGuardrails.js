@@ -1,5 +1,6 @@
 const { createHash } = require('crypto');
 const { isIP } = require('net');
+const { enforcedLoopbackCaller } = require('./loopbackCallerAssertion');
 
 const RATE_LIMIT_ENABLED = process.env.GATEWAY_RATE_LIMIT_ENABLED !== 'false';
 const RATE_LIMIT_TTL_MS = Math.max(
@@ -109,6 +110,28 @@ function clientIpFromRequest(req) {
 }
 
 function classifyClient({ req } = {}) {
+  // An MCP tool's call back into this process authenticates with the gateway's own key, which every MCP
+  // caller and every first-party user of that key would otherwise share as ONE bucket. When the MCP door
+  // signed the caller it resolved (loopbackCallerAssertion.js: per-process secret, loopback socket only,
+  // MCP_CALLER_LIMITS_MODE=enforce only), the bucket is that caller's. Its agent id was verified at the
+  // door, so the operator bypass list still applies to it by name. A FAN-OUT sub-call (one of several a
+  // single tool call makes) is keyed on that one tool call, so the call's own fan-out cannot drain the
+  // caller's per-operation budget; the door already bounded how many tool calls the caller may make.
+  const loopback = enforcedLoopbackCaller(req);
+  if (loopback && loopback.call_id) {
+    return {
+      tier: 'mcp_fanout',
+      key: `mcp_fanout:${sha256Hex(`call:${loopback.call_id}`).slice(0, 16)}`,
+      agent_id: loopback.agent_id,
+    };
+  }
+  if (loopback) {
+    return {
+      tier: `mcp_${loopback.tier}`,
+      key: `mcp_${loopback.tier}:${sha256Hex(`loopback:${loopback.key}`).slice(0, 16)}`,
+      agent_id: loopback.agent_id,
+    };
+  }
   const verified = verifiedClientIdentity(req?.invokeAuth);
   if (verified) {
     return {
@@ -137,6 +160,31 @@ function shouldBypassRateLimit({ client }) {
   return bypassAgentIds.includes(client.agent_id);
 }
 
+function envNumber(raw, min, max, fallback) {
+  const text = String(raw ?? '').trim();
+  const n = Number(text);
+  if (!text || !Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+// pdp_live_read (the browser's first-view live price refresh, src/services/pdpLiveRefresh.js) is WIDER than
+// get_pdp_v2 on purpose. The storefront's /api/gateway proxy calls the gateway with ONE storefront key, so
+// every shopper shares this bucket: get_pdp_v2's 180 burst / 3 per second (fine behind a 1 h ISR cache)
+// would 429 one call per page view at launch traffic. A call's cost is bounded without the bucket: a cache
+// hit or a coalesced read does no merchant work; merchant reads are deduped per product x market by the
+// PDP cache's claim and capped at 3 per store and 8 in flight; the page slice is capped at 256 KB.
+// Per-shopper limiting needs the proxy to forward a verifiable client identity (a follow-up).
+// Env: GATEWAY_RATE_LIMIT_PDP_LIVE_READ_CAPACITY (default 1200), ..._REFILL_PER_SEC (default 20).
+const PDP_LIVE_READ_CAPACITY = 1200;
+const PDP_LIVE_READ_REFILL_PER_SEC = 20;
+
+function pdpLiveReadRateLimit(env = process.env) {
+  return {
+    capacity: Math.trunc(envNumber(env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_CAPACITY, 10, 100_000, PDP_LIVE_READ_CAPACITY)),
+    refill_per_sec: envNumber(env.GATEWAY_RATE_LIMIT_PDP_LIVE_READ_REFILL_PER_SEC, 0.1, 1000, PDP_LIVE_READ_REFILL_PER_SEC),
+  };
+}
+
 function operationRateLimit(operation, client) {
   const op = String(operation || '').trim();
   const base = {
@@ -148,6 +196,7 @@ function operationRateLimit(operation, client) {
     if (op === 'find_products_multi') return { capacity: 60, refill_per_sec: 1 };
     if (op === 'find_products') return { capacity: 120, refill_per_sec: 2 };
     if (op === 'get_pdp_v2' || op === 'resolve_product_candidates') return { capacity: 180, refill_per_sec: 3 };
+    if (op === 'pdp_live_read') return pdpLiveReadRateLimit();
     return base;
   })();
 

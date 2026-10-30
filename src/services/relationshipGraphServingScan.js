@@ -1,4 +1,5 @@
 const { query, getPool } = require('../db');
+const { pacedDbCall } = require('../auroraBff/relationshipGraphDbPacing');
 
 // Id-only keyset avoids renewal's timestamp microsecond cursor trap. Full snapshots
 // live for one batch, avoiding the unbounded materialization that caused a 4GB OOM.
@@ -58,7 +59,8 @@ async function scanServingLabels({ market = 'US', queryFn = query, batchSize = 5
     let rows;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        const result = await queryPage(SERVING_SCAN_SQL, [String(market).toUpperCase(), cursor, size]);
+        // Off unless RELGRAPH_DB_DUTY_CYCLE: a sleep after each page frees the core.
+        const result = await pacedDbCall(() => queryPage(SERVING_SCAN_SQL, [String(market).toUpperCase(), cursor, size]));
         rows = Array.isArray(result?.rows) ? result.rows : [];
         break;
       } catch (error) {

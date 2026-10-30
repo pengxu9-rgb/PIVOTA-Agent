@@ -10,6 +10,8 @@ const { relationshipEdgesToSignals } = require('./relationshipEdgeToSignal');
 const { offersToSignals } = require('./offerToSignal');
 const { intelToSignal } = require('./intelToSignal');
 const { normalizeBuyerRegion, currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
+const liveVerification = require('../services/offerLiveVerification');
+const { numericVariantId } = require('../services/ucpLiveOfferRead');
 
 const DEFAULT_RELATIONS = Object.freeze(['competitive_alternative', 'niche_specialist', 'related_product']);
 
@@ -318,20 +320,265 @@ function makeGetAlternatives(deps = {}) {
  *   with `offers_source_unavailable` (no fabricated competition) until the backend op is wired.
  */
 /**
+ * THE MARKET A get_offers CALLER DECLARED, whether or not anything is priced for it: the ISO-2 code,
+ * or null when the caller declared none or sent something that is not a market at all ('USA', 'en-US',
+ * a list). Invalid input is absent input (buyerRegion.js); a well-formed code is a declaration.
+ */
+function getOffersDeclaredMarket(p) {
+  const raw = p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
+  return normalizeBuyerRegion(raw) || null;
+}
+
+/**
  * THE BUYER MARKET A get_offers CALLER STATED, or null. ISO-2 and priceable only (the repo's one
  * normaliser, ADR-024): a locale, a list, a three-letter code or a well-formed code nothing is priced
- * for is not a market. Never defaulted: get_offers resolves offers through the backend's
+ * for is never forwarded (makeGetOffers answers the last with no offers). Never defaulted: get_offers resolves offers through the backend's
  * `offers.resolve`, whose cart-minting gate (pivota-backend #2411) keys on `payload.market`, and a
  * caller that states none gets the referral-only answer it always got.
  */
 function getOffersBuyerMarket(p) {
-  const raw = p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
-  const region = normalizeBuyerRegion(raw);
+  const region = getOffersDeclaredMarket(p);
   return region && currencyForBuyerRegion(region) ? region : null;
 }
 
+/**
+ * THE OFFERS A DECLARED BUYER MARKET MAY BE SHOWN (ADR-026): only those priced in that market's
+ * currency. The backend's offers.resolve does not filter on `payload.market` — it keys only its
+ * cart-minting gate on it — so before this a market=US caller was handed a GBP seed's offer, and a KRW
+ * one, each as `buyer_safe`. The offer's OWN currency is compared against the market's; a market is
+ * never inferred from the currency. An offer with no currency cannot be shown to be in the market's
+ * currency, and is withheld with the others.
+ *
+ * `marketCurrency` comes from `currencyForBuyerRegion`, the gateway's one market -> currency map
+ * (ADR-024; equal to the registry's pricing-region currencies, and the function the generated
+ * registry projection replaces under ADR-026 P1).
+ */
+function offersInMarketCurrency(offers, marketCurrency) {
+  const kept = [];
+  let withheld = 0;
+  for (const offer of offers) {
+    const currency = offer && typeof offer.currency === 'string' ? offer.currency.trim().toUpperCase() : '';
+    if (currency && currency === marketCurrency) kept.push(offer);
+    else withheld += 1;
+  }
+  return { kept, withheld };
+}
+
+/**
+ * Does this offer sell exactly variant `vid`? What the offer would BUY decides: the variant its cart is built
+ * for (execution_spec.variant_id, else the cart permalink's own /cart/<id>:<qty>). With no cart, the
+ * backend's `source.variant_match: 'exact'` statement, or every internal checkout item naming it.
+ * `source.variant_id` alone never counts: the seed lane's fallback offer for an unmatched sku_id copies the
+ * requested id there while selling no particular variant.
+ */
+// A cart that names no single variant we can read (several lines, a token cart, an add-to-cart form) is
+// still a cart: it decides, and it is not the named variant.
+const UNREADABLE_CART = '\u0000unreadable-cart';
+
+function offerCartVariant(offer) {
+  const spec = (offer && offer.execution_spec) || {};
+  const named = spec.variant_id != null ? String(spec.variant_id).trim() : '';
+  const raw = String(spec.cart_url || '').trim();
+  if (named) {
+    // BOTH SAY WHICH VARIANT: they must agree, or the offer names no readable cart (a cart on B beside
+    // `variant_id: A` would otherwise match a request for A; controller review of #2453).
+    if (!raw) return named;
+    const inCart = cartUrlVariant(raw);
+    return inCart !== UNREADABLE_CART && sameVariant(inCart, named) ? named : UNREADABLE_CART;
+  }
+  if (!raw) return '';
+  return cartUrlVariant(raw);
+}
+
+/** The variant a one-line cart permalink (`/cart/<id>:<qty>`) carries, or UNREADABLE_CART. */
+function cartUrlVariant(raw) {
+  let path = '';
+  try {
+    path = new URL(raw).pathname;
+  } catch {
+    return UNREADABLE_CART;
+  }
+  const m = path.match(/^\/cart\/(\d{1,20}):\d+\/?$/); // exactly ONE line: /cart/<id>:<qty>
+  return m ? m[1] : UNREADABLE_CART;
+}
+
+/**
+ * One variant, however it is spelled: the same string, or the same Shopify variant number through a gid, bare
+ * digits or a URL-shaped id (`/products/x?variant=N#offer`, the JSON-LD offer @id stored entries carry; the
+ * backend's `source.variant_id` is often that form while an agent names the bare number).
+ */
+function sameVariant(a, b) {
+  const x = String(a == null ? '' : a).trim();
+  const y = String(b == null ? '' : b).trim();
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const nx = numericVariantId(x);
+  return Boolean(nx) && nx === numericVariantId(y);
+}
+
+function offerIsVariant(offer, vid) {
+  if (!offer || typeof offer !== 'object') return false;
+  const cart = offerCartVariant(offer);
+  // WHEN THERE IS A CART, THE CART DECIDES: it is what the buyer would buy. An attached seed can build its
+  // cart from the operator's attached variant whatever shade was asked for, while the backend still calls
+  // the offer an `exact` match -- so a different cart is never this variant (review round 4 of #2438).
+  if (cart) return cart !== UNREADABLE_CART && sameVariant(cart, vid);
+  // No cart (sold out, a non-Shopify store, a referral-only downgrade): the backend's own statement that
+  // the offer IS the named variant, `source.variant_match: 'exact'` (pivota-backend #2622). Its fallback
+  // offer for an unmatched sku_id says 'fallback' and is withheld (review round 3 of #2438).
+  if (offer.source && offer.source.variant_match === 'exact' && sameVariant(offer.source.variant_id, vid)) return true;
+  const items = Array.isArray(offer.internal_checkout_items) ? offer.internal_checkout_items : [];
+  return items.length > 0 && items.every((it) => it && sameVariant(it.variant_id, vid));
+}
+
 function makeGetOffers(deps = {}) {
-  const { fetchOffers } = deps;
+  // `readOffersLive` (optional): the merchant's own live read of the offers this answer returns, for a
+  // DECLARED market (services/ucpLiveOfferRead). Absent, or answering nothing, the answer is unchanged.
+  // `variantIdEnabled`: honour `variant_id` (GET_OFFERS_VARIANT_ID; needs pivota-backend #2622 live). Off,
+  // the argument is ignored entirely: not forwarded, not filtered on.
+  const { fetchOffers, readOffersLive, variantIdEnabled = false } = deps;
+  // `liveVerificationOptIn` (optional, () => boolean): ask offers.resolve for FRESHNESS-GATED seed offers,
+  // flagged `requires_live_verification` (pivota-backend #2629) -- true only while the live read
+  // ENFORCES, because only a live `verified` read may serve one. Absent or false: today's fetch.
+  const liveVerificationOptIn = typeof deps.liveVerificationOptIn === 'function' ? deps.liveVerificationOptIn : () => false;
+  // GET_OFFERS_LIVE_CART (`liveCartMode`, () => 'off'|'shadow'|'on'; default off) with
+  // `liveVerificationSecret` (() => OFFER_LIVE_VERIFICATION_SECRET, or '' to send nothing): a flagged offer
+  // the live read just verified is asked for again with a signed assertion, so the backend mints its cart.
+  const liveCartMode = typeof deps.liveCartMode === 'function' ? deps.liveCartMode : () => liveVerification.MODES.OFF;
+  const liveVerificationSecret = typeof deps.liveVerificationSecret === 'function' ? deps.liveVerificationSecret : () => '';
+  const liveCartTimeoutMs = Number.isFinite(deps.liveCartTimeoutMs) ? deps.liveCartTimeoutMs : 2500;
+  // `priceCache` (optional; services/priceCache.js, PRICE_CACHE_*): under `on`, each cart the backend minted from
+  // a signed assertion is recorded as `merchant_cart`, the strongest source, at the asserted price. A no-op while
+  // the cache flags are off.
+  const priceCache = deps.priceCache && typeof deps.priceCache.recordVerifiedPrice === 'function' ? deps.priceCache : null;
+  const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
+  const logSink = typeof deps.log === 'function' ? deps.log : () => {};
+  // A log line never costs the answer.
+  const log = (event, fields) => {
+    try {
+      logSink(event, fields);
+    } catch {
+      // ignored
+    }
+  };
+
+  /**
+   * The served offers, with each flagged offer the live read verified in stock (exactly those #2445 serves,
+   * less the out-of-stock ones, which can never get a cart) replaced, under `on`, by the backend's own offer
+   * for it once it has accepted a signed assertion of the merchant's answer. ONE more offers.resolve call with
+   * the same arguments plus `live_verifications`, ABORTED after `liveCartTimeoutMs`. Anything else -- off, no
+   * secret, nothing to assert, a failed or slow second call, an offer the backend still flags -- serves
+   * `offers` unchanged.
+   *
+   * SHADOW never waits: the second call (a dry run, so the backend records no issued clicks) is fired and
+   * logged when it settles, and the first pass is returned at once.
+   */
+  async function mintLiveCarts(offers, { fetchArgs, market, currency, mode, secret }) {
+    // No secret: the signer signs nothing, so nothing is asserted and no second call is made.
+    if (mode !== liveVerification.MODES.SHADOW && mode !== liveVerification.MODES.ON) return offers;
+    const shadow = mode === liveVerification.MODES.SHADOW;
+    const asserted = [];
+    const t0 = now();
+    // At most 10 (offers.resolve's cap): a declared market's answer is cut to 10 before the live read.
+    offers.forEach((offer, index) => {
+      const claims = liveVerification.offerLiveVerificationClaims(offer, { market, currency });
+      const token = claims && liveVerification.signOfferLiveVerification(claims, { secret, now: t0 });
+      if (token) asserted.push({ index, claims, token });
+    });
+    if (!asserted.length) return offers;
+    const settled = secondPass({
+      ...fetchArgs,
+      live_verifications: asserted.map((x) => x.token),
+      ...(shadow ? { live_verifications_dry_run: true } : {}),
+    }).then(({ second, failure }) => {
+      const ms = now() - t0;
+      if (!second || !Array.isArray(second.offers)) {
+        log('get_offers_live_cart', { mode, asserted: asserted.length, accepted: 0, cart_minted: 0, ms, error: failure || 'no_offers' });
+        return offers;
+      }
+      const replacements = [];
+      for (const x of asserted) {
+        const accepted = liveVerification.acceptedSecondPassOffer(second.offers, x.claims);
+        if (!accepted) continue;
+        replacements.push({ index: x.index, offer: liveVerification.adoptLiveCartOffer(offers[x.index], accepted, { market }) });
+      }
+      log('get_offers_live_cart', {
+        mode,
+        asserted: asserted.length,
+        accepted: replacements.length,
+        cart_minted: replacements.filter((r) => liveVerification.hasCart(r.offer)).length,
+        ms,
+        ...(second.live_verification_assertions ? { backend: second.live_verification_assertions } : {}),
+        ...(shadow
+          ? {
+              would_replace: replacements.map((r) => {
+                const spec = r.offer.execution_spec || {};
+                return {
+                  seed_id: r.offer.source && r.offer.source.seed_id,
+                  cart_minted: liveVerification.hasCart(r.offer),
+                  expected_item_total: spec.expected_item_total ?? null,
+                  expected_currency: spec.expected_currency ?? null,
+                };
+              }),
+            }
+          : {}),
+      });
+      // (Shadow never serves this: its caller has already returned the first pass.)
+      if (!replacements.length) return offers;
+      if (priceCache && !shadow) {
+        for (const r of replacements) {
+          if (!liveVerification.hasCart(r.offer)) continue;
+          const x = asserted.find((a) => a.index === r.index);
+          const lr = offers[r.index] && offers[r.index].live_read;
+          try {
+            priceCache.recordVerifiedPrice({
+              host: x.claims.h, market: x.claims.m, variant_id: x.claims.vid, currency: x.claims.c,
+              amount: x.claims.a, available: x.claims.av, handle: lr && lr.handle, source: 'merchant_cart', writer: 'cart',
+              read_at: lr && lr.checked_at,
+            });
+          } catch {
+            /* the record never costs the cart */
+          }
+        }
+      }
+      const out = offers.slice();
+      for (const r of replacements) out[r.index] = r.offer;
+      return out;
+    }).catch(() => offers);
+    if (shadow) return offers;
+    return settled;
+  }
+
+  /**
+   * The second offers.resolve call: `{ second }`, or `{ failure }` ('timeout' | 'fetch_failed'). Never rejects.
+   * At the timeout the request itself is ABORTED (its `signal`), not merely abandoned.
+   */
+  function secondPass(args) {
+    const controller = new AbortController();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        controller.abort();
+        resolve({ failure: 'timeout' });
+      }, liveCartTimeoutMs);
+      let call;
+      try {
+        call = Promise.resolve(fetchOffers({ ...args, signal: controller.signal }));
+      } catch (e) {
+        call = Promise.reject(e);
+      }
+      call.then(
+        (second) => {
+          clearTimeout(timer);
+          resolve({ second });
+        },
+        () => {
+          clearTimeout(timer);
+          resolve({ failure: 'fetch_failed' });
+        },
+      );
+    });
+  }
+
   return async function getOffers(params = {}) {
     const p = (params && params.payload) || params || {};
     const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
@@ -339,23 +586,130 @@ function makeGetOffers(deps = {}) {
       return { subject, best_offer: null, signals: [], metadata: { reason: 'offers_source_unavailable' } };
     }
     const limit = Number.isInteger(p.limit) ? p.limit : 10;
+    const declared = getOffersDeclaredMarket(p);
+    const marketCurrency = declared ? currencyForBuyerRegion(declared) : '';
+    // A declared market nothing is priced in has no offer it may be shown (the door serves it nothing,
+    // as search does: buyerMarket.resolveServingCurrency). Answered here, without a backend call.
+    if (declared && !marketCurrency) {
+      return {
+        subject,
+        best_offer: null,
+        signals: [],
+        metadata: {
+          offer_count: 0,
+          product_group_id: p.product_group_id || null,
+          market: declared,
+          market_currency: null,
+          reason: 'market_not_priced',
+        },
+      };
+    }
     const market = getOffersBuyerMarket(p);
-    const res = await fetchOffers({
+    const fetchArgs = {
       merchant_id: p.merchant_id,
       product_id: p.product_id,
+      // A listing's option named for its own cart (one offer per listing lists them in `variants`).
+      ...(variantIdEnabled && nonEmpty(p.variant_id) ? { variant_id: String(p.variant_id).trim() } : {}),
       product_group_id: p.product_group_id,
       currency: p.currency,
+      // The caller's limit, market or not. The filter runs after the backend's cut, so a declared market
+      // can get fewer in-currency offers than exist; over-fetching would fix that here but the backend
+      // records every link offers.resolve returns as issued to the agent (ADR-025), withheld ones too.
+      // Filtering before the cut belongs inside offers.resolve.
       limit,
       // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
       ...(market ? { market } : {}),
+      // Only when a live read will run and enforce (a declared market and the reader in enforce).
+      ...(market && liveVerificationOptIn() ? { include_live_verification: true } : {}),
+    };
+    const res = await fetchOffers(fetchArgs);
+    const fetchedAll = res && Array.isArray(res.offers) ? res.offers : [];
+    // A NAMED VARIANT gets only offers that ARE that variant. offers.resolve does not guarantee it: a seed
+    // with no matching variant falls back to a variant-less offer at the row price, and the internal lane
+    // picks its own first eligible variant -- either would hand the agent another shade's cart (review of
+    // #2438). Matched on the offer's own variant (execution_spec / source) or its checkout items.
+    const namedVariant = variantIdEnabled && nonEmpty(p.variant_id) ? String(p.variant_id).trim() : '';
+    const fetched = namedVariant ? fetchedAll.filter((o) => offerIsVariant(o, namedVariant)) : fetchedAll;
+    const withheldOtherVariant = fetchedAll.length - fetched.length;
+    // No market declared: today's referral-only answer, every offer the backend returned.
+    const { kept, withheld } = market
+      ? offersInMarketCurrency(fetched, marketCurrency)
+      : { kept: fetched, withheld: 0 };
+    // A declared market's offers are cut to the caller's limit BEFORE projecting: offersToSignals picks
+    // best_offer from every offer it is handed and only then caps signals, so an uncut list can name a
+    // best_offer that is not among the signals returned. offer_count is then the count returned. (No
+    // market: the list is passed as it always was.)
+    const cut = market ? kept.slice(0, Math.max(1, Math.min(limit, 10))) : kept;
+    // THE MERCHANT'S OWN ANSWER, at decision time. After the cut (only what this answer returns is read)
+    // and before projection (so best_offer ranks on what the merchant said). Fail-open: a reader that
+    // throws costs the live read, never the answer.
+    let offers = cut;
+    let liveRead = null;
+    if (market && typeof readOffersLive === 'function' && cut.length) {
+      try {
+        const res = await readOffersLive(cut, { market, currency: marketCurrency });
+        if (res && Array.isArray(res.offers) && res.offers.length === cut.length) offers = res.offers;
+        liveRead = (res && res.stats) || null;
+      } catch {
+        liveRead = { error: 'live_read_failed' };
+      }
+    }
+    // A FLAGGED offer (its stored facts are stale; pivota-backend #2629) is served only when the merchant's
+    // live read just verified it; otherwise it is withheld exactly as offers.resolve used to drop it.
+    const beforeUnverified = offers.length;
+    offers = offers.filter((o) => !(o && o.requires_live_verification) || (o.live_read && o.live_read.status === 'verified'));
+    const withheldUnverified = beforeUnverified - offers.length;
+    // THE CART FOR A STALE OFFER THE LIVE READ JUST VERIFIED (GET_OFFERS_LIVE_CART). Fail-open: any failure
+    // serves the answer above. (No declared market: no live read ran, so nothing can be asserted.)
+    offers = await mintLiveCarts(offers, {
+      fetchArgs, market, currency: marketCurrency, mode: liveCartMode(), secret: liveVerificationSecret(),
     });
-    const offers = res && Array.isArray(res.offers) ? res.offers : [];
-    const { best_offer, signals } = offersToSignals(offers, { productId: p.product_id, limit });
+    const { best_offer, signals, best_price } = offersToSignals(offers, {
+      productId: p.product_id,
+      limit,
+      now,
+      // FRESH BEST PRICE (pivota-backend #2635): the backend's pick, passed only when it sent one (null
+      // included), so an answer without it is byte-identical.
+      ...(res && Object.prototype.hasOwnProperty.call(res, 'best_price_offer_id')
+        ? { bestPriceOfferId: res.best_price_offer_id }
+        : {}),
+    });
+    // ONE reason for an empty answer, in filter order: the variant filter runs first, so when it left
+    // nothing the currency filter had nothing to judge.
+    let emptyReason = null;
+    if (offers.length === 0) {
+      if (namedVariant && fetched.length === 0 && withheldOtherVariant > 0) emptyReason = 'variant_not_offered';
+      // The LAST filter that emptied the answer names it: the live-verification one runs after currency.
+      else if (withheldUnverified > 0) emptyReason = 'offer_needs_live_verification';
+      else if (market && withheld > 0) emptyReason = 'no_offer_in_market_currency';
+    }
     return {
       subject,
       best_offer,
       signals,
-      metadata: { offer_count: offers.length, product_group_id: (res && res.product_group_id) || p.product_group_id || null },
+      metadata: {
+        offer_count: offers.length,
+        product_group_id: (res && res.product_group_id) || p.product_group_id || null,
+        ...(namedVariant
+          ? {
+              variant_id: namedVariant,
+              withheld_other_variant_count: withheldOtherVariant,
+            }
+          : {}),
+        ...(market
+          ? {
+              market,
+              market_currency: marketCurrency,
+              withheld_other_currency_count: withheld,
+              ...(withheldUnverified > 0 ? { withheld_unverified_count: withheldUnverified } : {}),
+              ...(liveRead ? { live_read: liveRead } : {}),
+            }
+          : {}),
+        ...(emptyReason ? { reason: emptyReason } : {}),
+        // Under the fresh-price contract only: which offer is the best price, and who said so (offerToSignal
+        // bestFreshComparable). `offer_id: null` + `reason` when no served offer is a fresh comparable price.
+        ...(best_price ? { best_price } : {}),
+      },
     };
   };
 }
@@ -515,7 +869,20 @@ function mapOffersResolveResponse(res, fallbackGroupId = null) {
     (res && res.product_group_id) ||
     fallbackGroupId ||
     null;
-  return { offers, product_group_id: groupId };
+  // What the backend made of get_offers' signed live verifications (logged only; GET_OFFERS_LIVE_CART).
+  const assertions = res && res.metadata && res.metadata.live_verification_assertions;
+  // The cheapest FRESH offer in one currency (pivota-backend #2635), relayed only when the backend sent the
+  // key (its value may be null: no fresh priced offer). Absent, the result is the shape it always was.
+  const bestPrice =
+    res && Object.prototype.hasOwnProperty.call(res, 'best_price_offer_id')
+      ? { best_price_offer_id: res.best_price_offer_id == null ? null : String(res.best_price_offer_id) }
+      : {};
+  return {
+    offers,
+    product_group_id: groupId,
+    ...bestPrice,
+    ...(assertions ? { live_verification_assertions: assertions } : {}),
+  };
 }
 
 module.exports = {

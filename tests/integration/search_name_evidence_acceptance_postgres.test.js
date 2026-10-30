@@ -66,6 +66,12 @@ suite('name-evidence admission over the acceptance fixture, real PostgreSQL', ()
         return `${col} ${type}`;
       });
       await db.query(`CREATE TABLE ${table} (${definitions.join(',')})`);
+      // Prod's index and statistics on the seeds the offer guard probes (seedSearchOfferScope): an
+      // unindexed, never-analyzed table makes the planner cost the probe as a scan per offer (35k -> 365k),
+      // past CI Postgres's jit_above_cost, and every statement then JIT-compiles for seconds.
+      if (table === 'external_product_seeds') {
+        await db.query('CREATE INDEX ON external_product_seeds(attached_product_key); ANALYZE external_product_seeds');
+      }
     }
     const merchants = [...new Set(ROWS.map((r) => r.merchant_id))];
     for (const m of merchants) {

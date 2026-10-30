@@ -1081,10 +1081,15 @@ test('makeGetOffers: a stated market reaches fetchOffers as `market`; absent or 
   await handler({ payload: { product_id: 'p1', merchant_id: 'm1' } });
   assert.deepEqual(seen[1], today);
   assert.equal(Object.prototype.hasOwnProperty.call(seen[1], 'market'), false, 'no market key at all when none is stated');
-  for (const junk of ['USA', 'en-US', 'ZZ', '']) {
+  for (const junk of ['USA', 'en-US', '']) {
     await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: junk } });
     assert.deepEqual(seen[seen.length - 1], today, junk);
   }
+  // A well-formed market nothing is priced in is a declaration, not junk: answered with no offers, no fetch.
+  const before = seen.length;
+  const zz = await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: 'ZZ' } });
+  assert.equal(seen.length, before, 'no fetch for an unpriced market');
+  assert.equal(zz.metadata.reason, 'market_not_priced');
   await handler({ payload: { product_id: 'p1', merchant_id: 'm1', buyer_market: 'JP' } });
   assert.equal(seen[seen.length - 1].market, 'JP');
 });
@@ -1095,8 +1100,12 @@ test('STRUCTURAL: the wired fetchOffers forwards the stated market into the offe
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
   const start = src.indexOf('get_offers: makeGetOffers({');
   assert.ok(start > 0, 'the get_offers wiring moved');
-  const block = src.slice(start, start + 2500);
-  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market \}\)/);
+  const block = src.slice(start, start + 3200);
+  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal \}\)/);
+  // variant_id is honoured only with GET_OFFERS_VARIANT_ID on (it needs pivota-backend #2622 live).
+  assert.match(block, /variantIdEnabled: \/\^\(1\|true\|yes\|on\|enabled\)\$\/i\.test\(String\(process\.env\.GET_OFFERS_VARIANT_ID \|\| ''\)\.trim\(\)\),/);
+  // A named variant rides as the product's sku_id, and only when named.
+  assert.match(block, /product: \{ product_id, merchant_id, \.\.\.\(variant_id \? \{ sku_id: variant_id \} : \{\}\) \}/);
   assert.match(block, /invokeCommerceKernelRawUpstream\('offers\.resolve', \{[\s\S]*?\.\.\.\(market \? \{ market \} : \{\}\),/);
 });
 

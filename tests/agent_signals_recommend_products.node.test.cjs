@@ -1562,22 +1562,77 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   assert.ok(/`fit` is a DEPRECATED alias/.test(src),
     'the alias must be advertised as deprecated, or partners never migrate off it');
   // THE DOMAIN SENTENCE IS CHECKED AGAINST THE PROMPT THE DOOR ACTUALLY LOADS, not against itself.
-  // #2162 widened this to beauty and had to be rolled back: AURORA_DECISION_BASE_URL validates
-  // PROMPT_TEMPLATE_ID and answered 400 for reco_main_v1_3, killing the LLM leg in prod. The wide
-  // template is default-off, so the door is back on the skincare-bounded reco_main_v1_2 and the
-  // description says so again. Reading the file the scope RESOLVES TO keeps the two honest: when the
-  // id is registered upstream and the default flips, this fails until the sentence is updated with
-  // it — which is the point.
-  // THE DESCRIPTION DESCRIBES THE DOOR, NOT THE PROMPT. Those are different today: the loaded prompt
-  // allows makeup and fragrance, and buildRecoGenerateUserAsk (routes.js:71251) still frames every
-  // request as "Recommend a few skincare products for me" — a FIFTH copy of the domain rule, and the
-  // one nobody threaded. Live probes 2026-09-10: four consecutive makeup/fragrance needs returned
-  // zero, each citing that framing. Promising partners the prompt's domain would be the description
-  // running ahead of the code again, which is what this test exists to stop.
-  assert.ok(/SKINCARE IS THE ONLY CATEGORY THIS DOOR CURRENTLY SERVES/.test(src),
+  // #2162 widened this to beauty and had to be rolled back once (the decision service 400'd on an id it
+  // did not know), so the wide template is still default-off in code. Prod pins
+  // RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3, so the door loads it, and the description now
+  // carries a fallback clause for the day that pin is lost. Reading the file the scope RESOLVES TO,
+  // under the armed config below, keeps the sentence and the prompt honest with each other.
+  // THE DESCRIPTION DESCRIBES THE DOOR, NOT THE PROMPT. Until #2177 they differed: the loaded prompt
+  // allowed makeup and fragrance, but buildRecoGenerateUserAsk framed every request as "Recommend a few
+  // skincare products for me", and four makeup/fragrance needs came back empty (live, 2026-09-10).
+  // #2177 made the ask follow the grant; this sentence stayed on the old behaviour for a month because
+  // this test pinned it. So the domain claim is now checked against the ask the ARMED door builds, not
+  // against the prompt alone: if the framing ever narrows again, this fails until the sentence does.
+  assert.ok(/THIS DOOR SERVES SKINCARE \(INCLUDING BODY CARE\), MAKEUP AND FRAGRANCE/.test(src),
     'the description must state what the door SERVES, not merely what its prompt allows');
-  assert.ok(/frames every request to the model as/.test(src),
-    'and it must name the cause, or the next reader will "fix" the prompt and change nothing');
+  assert.ok(!/SKINCARE IS THE ONLY CATEGORY THIS DOOR CURRENTLY SERVES/.test(src)
+    && !/frames every request to the model as/.test(src),
+    'the pre-#2177 claim that makeup and fragrance come back empty must not return while the ask says beauty');
+  const armedAsk = withRoutesEnv(
+    { RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: 'reco_main_v1_3' },
+    (internal) => internal.buildRecoGenerateUserAsk({ focus: 'a bronzer', lang: 'EN', promptDomainScope: 'beauty' }),
+  );
+  assert.match(armedAsk, /^Recommend a few beauty products for me/,
+    'the door the description promises makeup for must actually ask the model for beauty, not skincare');
+  // THE REBOUND CLAIMS ARE CHECKED AGAINST THE GATE, not against themselves. Live 2026-10-14 four
+  // makeup/fragrance needs each carried a rebound of the wrong kind (a lip balm labelled "Bronzer"), and
+  // the description told agents to distrust rebound rows. recoReboundCategoryGate.js now refuses every
+  // makeup and fragrance substitute and judges a skincare one by the catalog's own category path, and
+  // the merge no longer stamps the requested type on a substitute -- so the description promises that
+  // instead. If either half is loosened, this fails until the sentence is.
+  assert.ok(/A MAKEUP OR FRAGRANCE ITEM IS NEVER A `catalog_rebound`/.test(src)
+    && /its name appears in `metadata.unresolved_archetypes`/.test(src)
+    && /the catalog product the model itself picked, by its catalog id/.test(src)
+    && /A `catalog_rebound` row is always face or body skincare/.test(src)
+    && /Grounding does not copy the requested type onto the row's `product_type` or `category`/.test(src)
+    && /Nothing is substituted when your need asks for a makeup, fragrance, lash or brow product \(a setting spray, body mist or lash serum counts\), or when the model's item or the candidate names makeup, fragrance, hair, lips, lashes, brows, nails or self-tan/.test(src),
+    'the description must state the rebound rule the gate enforces');
+  assert.ok(!/on a rebound row they may repeat the type that was ASKED FOR/.test(src)
+    && !/drop or re-check `catalog_rebound` rows/.test(src),
+    'the pre-gate caveat that a rebound row carries the requested type must not return while the gate holds');
+  {
+    const { STEP_DOMAIN_MAP } = require('../src/auroraBff/recoTargetStep');
+    const { judgeRecoReboundCandidate } = require('../src/auroraBff/recoReboundCategoryGate');
+    const shadeOrScentSteps = Object.keys(STEP_DOMAIN_MAP);
+    assert.ok(shadeOrScentSteps.includes('fragrance') && shadeOrScentSteps.includes('lip_colour'));
+    for (const step of shadeOrScentSteps) {
+      // A candidate filed under the very step asked for: even the best-case substitute is refused.
+      const verdict = judgeRecoReboundCandidate({ requestedStep: step, candidate: { category: step } });
+      assert.equal(verdict.accept, false, `"never a catalog_rebound" is false for ${step}`);
+    }
+    // "Always face or body skincare": a fragrance mist that resolves to the toner step is still refused
+    // a facial toner.
+    assert.equal(judgeRecoReboundCandidate({
+      requestedStep: 'toner', requestedText: 'body mist Fragrance Mist', candidate: { catalog_category_path: 'beauty/skincare/tone/toner' },
+    }).accept, false);
+    // "When your need ... names makeup": a setting-mist NEED refuses a toner even for a facial-mist item.
+    assert.equal(judgeRecoReboundCandidate({
+      requestedStep: 'toner', requestedText: 'toner Facial Mist', needText: 'a setting mist that keeps makeup in place',
+      candidate: { catalog_category_path: 'beauty/skincare/tone/toner', name: 'Hydrating Toner' },
+    }).accept, false);
+    // ...and a serum foundation, typed "serum", is still refused a serum.
+    assert.equal(judgeRecoReboundCandidate({
+      requestedStep: 'serum', requestedText: 'serum Liquid Touch Serum Foundation',
+      candidate: { catalog_category_path: 'beauty/skincare/treat/serum', name: 'Niacinamide 10% + Zinc 1%' },
+    }).accept, false);
+    const merged = withRoutesEnv({}, (internal) => internal.mergeRecoPlanWithGroundedCandidate(
+      { name: 'Hoola Matte Bronzer', product_type: 'bronzer' },
+      { product_id: 'sig_3388a5e139e21623163e558d86e66741', merchant_id: 'external_seed', name: 'Lip Moisturising Stick' },
+    ));
+    assert.equal(merged.__pivota_score_basis, 'catalog_rebound');
+    assert.ok(merged.category !== 'bronzer' && merged.sku.product_type !== 'bronzer' && merged.product_type !== 'bronzer',
+      '"never from the request" is false: the substitute carries the requested type');
+  }
   // THE TWO LIMITS ARE LOAD-BEARING and must not be quietly dropped when someone tightens the prose.
   // Measured on the live agent door 2026-09-10: four consecutive calls answered from the CATALOG path,
   // which reads no prompt, and a makeup / haircare / fragrance need each came back with cleansers. A
@@ -1588,12 +1643,12 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     'the category promise must stay bounded to the path that actually reads the prompt');
   assert.ok(/a bare empty answer is treated as a gap the catalog may fill/.test(src),
     'the empty-answer promise must say what it requires, since a bare empty answer does not qualify');
-  // AND THE OTHER TWO CLAIMS GO WITH IT. v1_2 — the template the door actually loads while the wide
-  // one is inert — has no CATEGORY FIDELITY block and no empty-answer instruction: its whole domain
+  // AND THE OTHER TWO CLAIMS GO WITH IT (history: when the wide template was inert, the door loaded
+  // v1_2, which has no CATEGORY FIDELITY block and no empty-answer instruction: its whole domain
   // section is "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices,
   // fragrance, haircare, or supplements." So promising a partner that the lane answers in the category
   // it names, or answers a tool request empty rather than off-category, would be exactly the
-  // description-ahead-of-the-prompt defect this file exists to prevent. They return when v1_3 does.
+  // description-ahead-of-the-prompt defect this file exists to prevent. They returned with v1_3.)
   // INVERTED 2026-09-10. These were negative because v1_3 was default-off and the promises would have
   // been ahead of the loaded prompt. Prod now pins RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3
   // and the door resolves to it, so the promises are BEHIND the prompt instead — the description had
@@ -1648,7 +1703,7 @@ test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — i
   // lane to "skincare only … never makeup, brushes, beauty tools, devices, fragrance, haircare, or
   // supplements" — NARROWER than the beauty/skincare this tool advertises. So it emits that same
   // sentence for a bronzer or a brush set (this axis must stay out however the prompt is pointed —
-  // #2162's widening is shipped but default-off), and acting on it emptied the shortlist for in-vertical
+  // #2162's widening is default-off in code and pinned on in prod), and acting on it emptied the shortlist for in-vertical
   // buyers while telling them their beauty need was not beauty.
   for (const [need, warning] of [
     ['a bronzer for contouring', 'Makeup items such as bronzer fall outside the skincare domain; returning skincare picks instead.'],
@@ -1838,4 +1893,55 @@ test('8k. `fit` is a deprecated alias of `lane_confidence` and cannot drift from
   // tautology that passes against a stub and proved nothing about the field. Test 4i drives the real
   // SafetyKernel -> commerce surface -> sanitizeResult path and asserts `lane_confidence` there,
   // which is the only place that claim can honestly be made.
+});
+
+// A LIVE CHECK THAT CHANGES THE CURRENCY WITHHOLDS THE ROW. Live 2026-10-14 (gateway-00675-kis), a USD
+// buyer's "gentle cleanser" under $20 served a catalog filler row at rank 3 with "price updated by live
+// check: 11.9 USD -> 11.9 AUD": the row's USD label had passed the ceiling, and the live check then
+// relabelled it into a currency the buyer's market does not use.
+test('6n. a live check that moves the price to another currency withholds the row, model pick or filler; the slot backfills', async () => {
+  const pick = { ...ITEM_FULL, sku: { product_id: 'sig_pick_aud', name: 'Model Pick' }, price: { amount: 30, currency: 'USD' } };
+  const filler = { ...ITEM_FULL, sku: { product_id: 'sig_fill_aud', name: 'Filler' }, price: { amount: 11.9, currency: 'USD' }, __pivota_score_basis: 'positional' };
+  for (const constraints of [{ price_max: 40 }, undefined]) {
+    const h = makeRecommendProducts({
+      generate: async () => laneResult([pick, filler, ITEM_FULL, ITEM_INTERNAL]),
+      isEnabled: () => true,
+      verifyPrice: async ({ product_id }) => (product_id.endsWith('_aud')
+        ? { price: product_id === 'sig_pick_aud' ? 30 : 11.9, currency: 'AUD' }
+        : { price: product_id === 'sig_int' ? 18.5 : 35, currency: 'USD' }),
+    });
+    const res = await h({ payload: { need: 'exfoliant', limit: 2, ...(constraints ? { constraints } : {}) } }, { agent_id: 'agent_a' });
+    const label = constraints ? 'with a ceiling' : 'without a ceiling';
+    assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_abc', 'sig_int'], `${label}: both switched rows are withheld and the next grounded items take the slots`);
+    assert.equal(JSON.stringify(res.signals).includes('AUD'), false, `${label}: no AUD price is served`);
+    assert.equal(res.metadata.price_verification.currency_switched, 2, label);
+    assert.equal(res.metadata.price_verification.updated, 0, `${label}: a currency switch is not counted as an update`);
+  }
+});
+
+test('6o. a currency the snapshot lacked is filled by the live check, and the same unit in another case is no switch', async () => {
+  const bare = { ...ITEM_FULL, sku: { product_id: 'sig_bare' }, price: { amount: 35 } };
+  const lower = { ...ITEM_FULL, sku: { product_id: 'sig_lower' }, price: { amount: 35, currency: 'usd' } };
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([bare, lower]),
+    isEnabled: () => true,
+    verifyPrice: async () => ({ price: 35, currency: 'USD' }),
+  });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_bare', 'sig_lower']);
+  assert.equal(res.signals[0].value.product.currency, 'USD');
+  assert.equal(res.metadata.price_verification.currency_switched, undefined, 'the key appears only when a row was withheld');
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+});
+
+test('6p. a shortlist emptied by currency switches says so', async () => {
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => ({ price: 35, currency: 'AUD' }),
+  });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals, []);
+  assert.equal(res.metadata.products_empty_reason, 'live_price_currency_changed');
+  assert.equal(res.metadata.price_verification.currency_switched, 1);
 });

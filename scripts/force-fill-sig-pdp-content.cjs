@@ -575,23 +575,35 @@ function dropPlaceholderVariantsWhenSafe(variants) {
   };
 }
 
+// Main-list freeze: buildPlan decides about each variant list (main seed_data.variants and
+// snapshot.variants) from that list alone. The snapshot-first (seedData, snapshot) forms below
+// are kept for callers outside buildPlan only.
+function isOnlyNonDisplayableVariantList(variants) {
+  const list = asArray(variants);
+  return list.length > 1 && !hasDisplayableVariantOptions(list);
+}
+
 function hasOnlyNonDisplayableVariants(seedData, snapshot) {
   const root = asArray(seedData.variants);
   const snap = asArray(snapshot.variants);
-  const variants = snap.length ? snap : root;
-  return variants.length > 1 && !hasDisplayableVariantOptions(variants);
+  return isOnlyNonDisplayableVariantList(snap.length ? snap : root);
 }
 
-function isSingleUndisplayableVariant(seedData, snapshot) {
-  const variants = asArray(snapshot.variants).length ? asArray(snapshot.variants) : asArray(seedData.variants);
-  if (variants.length !== 1) return false;
-  if (hasDisplayableVariantOptions(variants)) return false;
-  const title = text(variants[0]?.title).toLowerCase();
-  return !title || /^(default|default title|single|variant \d+)$/.test(title) || asArray(variants[0]?.options).length === 0;
+function isSingleUndisplayableVariantList(variants) {
+  const list = asArray(variants);
+  if (list.length !== 1) return false;
+  if (hasDisplayableVariantOptions(list)) return false;
+  const title = text(list[0]?.title).toLowerCase();
+  return !title || /^(default|default title|single|variant \d+)$/.test(title) || asArray(list[0]?.options).length === 0;
 }
 
 function shouldPatchSingleLocaleOrGenericVariant(seedData, snapshot) {
   const variants = asArray(snapshot.variants).length ? asArray(snapshot.variants) : asArray(seedData.variants);
+  return shouldPatchSingleLocaleOrGenericVariantList(variants, seedData, snapshot);
+}
+
+function shouldPatchSingleLocaleOrGenericVariantList(list, seedData, snapshot) {
+  const variants = asArray(list);
   if (variants.length !== 1) return false;
   const variant = variants[0] || {};
   const entries = [
@@ -796,64 +808,54 @@ async function inferSize(row, seedData, snapshot, { fetchSource = false } = {}) 
   return inferSingleSkuSpecFromTitle(row, seedData, snapshot);
 }
 
+// Display-gate fallback rule: PDP readers take the FIRST quality summary object (root, then
+// snapshot) and do not merge them (externalSeedProducts buildExternalSeedProduct,
+// catalogPdpContentFields readFirstObject, server.js, pdpBuilder). Creating a root summary
+// would hide the snapshot's blocked statuses and surface gated fields. So a root summary is
+// only extended when it already exists; otherwise the entry goes to the snapshot summary.
+function hasQualitySummaryObject(target) {
+  const summary = target?.pdp_field_quality_summary;
+  return Boolean(summary) && typeof summary === 'object' && !Array.isArray(summary);
+}
+
+function mergeRootQuality(seedData, snapshot, key, sourceQualityStatus, reasonCode) {
+  mergeQualityOn(hasQualitySummaryObject(seedData) ? seedData : snapshot, key, sourceQualityStatus, reasonCode);
+}
+
+// Each side is written from its own stored summary: snapshot-only keys never reach the root.
 function mergeQuality(seedData, snapshot, key, sourceQualityStatus, reasonCode) {
-  const now = new Date().toISOString();
-  const quality = {
-    ...asObject(snapshot.pdp_field_quality_summary),
-    ...asObject(seedData.pdp_field_quality_summary),
-  };
-  quality[key] = {
-    source_origin: 'pivota_force_fill',
-    source_quality_status: sourceQualityStatus,
-    source_kinds: ['force_fill'],
-    reason_codes: [reasonCode],
-    updated_at: now,
-  };
-  seedData.pdp_field_quality_summary = quality;
-  snapshot.pdp_field_quality_summary = quality;
+  if (hasQualitySummaryObject(seedData)) mergeQualityOn(seedData, key, sourceQualityStatus, reasonCode);
+  mergeQualityOn(snapshot, key, sourceQualityStatus, reasonCode);
 }
 
 function mergeSnapshotContract(seedData, snapshot) {
   const now = new Date().toISOString();
-  const contract = {
-    ...asObject(snapshot.external_seed_snapshot_contract),
-    ...asObject(seedData.external_seed_snapshot_contract),
-    contract_version: SNAPSHOT_CONTRACT_VERSION,
-    authoritative: true,
-    structured_fields_authoritative: true,
-    legacy_fields_quarantined: true,
-    replace_strategy: 'replace_not_merge',
-    updated_at: now,
-  };
-  seedData.external_seed_snapshot_contract = contract;
-  snapshot.external_seed_snapshot_contract = contract;
+  for (const target of [seedData, snapshot]) {
+    target.external_seed_snapshot_contract = {
+      ...asObject(target.external_seed_snapshot_contract),
+      contract_version: SNAPSHOT_CONTRACT_VERSION,
+      authoritative: true,
+      structured_fields_authoritative: true,
+      legacy_fields_quarantined: true,
+      replace_strategy: 'replace_not_merge',
+      updated_at: now,
+    };
+  }
 }
 
 function mergeForceFillMeta(seedData, snapshot, field, meta) {
-  const existing = {
-    ...asObject(snapshot.pdp_force_fill_v1),
-    ...asObject(seedData.pdp_force_fill_v1),
-  };
-  const next = {
-    ...existing,
-    contract_version: FORCE_FILL_CONTRACT_VERSION,
-    updated_at: new Date().toISOString(),
-    fields: {
-      ...asObject(existing.fields),
-      [field]: meta,
-    },
-  };
-  seedData.pdp_force_fill_v1 = next;
-  snapshot.pdp_force_fill_v1 = next;
+  mergeForceFillMetaOn(seedData, field, meta);
+  mergeForceFillMetaOn(snapshot, field, meta);
 }
 
-function patchSingleVariantSpec(seedData, snapshot, spec) {
+// Patches the option fields of a one-entry list in place; every other field of the entry
+// (price, stock, url, images, ...) is kept.
+function patchSingleVariantSpecList(list, spec) {
   const value = text(spec?.value || spec?.size);
-  if (!value) return;
+  if (!value || asArray(list).length !== 1) return list;
   const optionName = text(spec?.optionName || spec?.option_name || 'Size') || 'Size';
   const axisKind = text(spec?.axisKind || spec?.axis_kind || optionName).toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'size';
-  const patchList = (list) =>
-    asArray(list).map((variant) => ({
+  return asArray(list).map((variant) => ({
       ...asObject(variant),
       title: value,
       options: [{ name: optionName, value, axis_kind: axisKind }],
@@ -863,12 +865,6 @@ function patchSingleVariantSpec(seedData, snapshot, spec) {
       axis_kind: axisKind,
       source_quality_status: 'captured',
     }));
-  if (asArray(seedData.variants).length === 1) seedData.variants = patchList(seedData.variants);
-  if (asArray(snapshot.variants).length === 1) snapshot.variants = patchList(snapshot.variants);
-}
-
-function patchSingleVariantSize(seedData, snapshot, size) {
-  patchSingleVariantSpec(seedData, snapshot, { value: size, optionName: 'Size', axisKind: 'size' });
 }
 
 function buildSingleVariantFromSpec(row, spec) {
@@ -889,26 +885,53 @@ function buildSingleVariantFromSpec(row, spec) {
   };
 }
 
-function applyVariantSpecLabels(seedData, snapshot, spec) {
+// Side-scoped writers for the variant blocks of buildPlan. Each writes to one target only (the
+// seed root or the snapshot), so data inferred for one side never lands on the other.
+function applyVariantSpecLabelsOn(target, spec) {
   const optionName = spec.optionName || 'Size';
   const axisKind = spec.axisKind || 'size';
   const value = spec.value || spec.size;
-  seedData.variant_detail_label = `${optionName}: ${value}`;
-  snapshot.variant_detail_label = `${optionName}: ${value}`;
+  target.variant_detail_label = `${optionName}: ${value}`;
   if (axisKind === 'size') {
-    seedData.size_detail_label = value;
-    snapshot.size_detail_label = value;
-    if (spec.measured !== false) {
-      seedData.net_size = value;
-      snapshot.net_size = value;
-    }
+    target.size_detail_label = value;
+    if (spec.measured !== false) target.net_size = value;
   } else if (axisKind === 'shade') {
-    seedData.shade_detail_label = value;
-    snapshot.shade_detail_label = value;
+    target.shade_detail_label = value;
   } else if (axisKind === 'format') {
-    seedData.format_detail_label = value;
-    snapshot.format_detail_label = value;
+    target.format_detail_label = value;
   }
+}
+
+function mergeQualityOn(target, key, sourceQualityStatus, reasonCode) {
+  target.pdp_field_quality_summary = {
+    ...asObject(target.pdp_field_quality_summary),
+    [key]: {
+      source_origin: 'pivota_force_fill',
+      source_quality_status: sourceQualityStatus,
+      source_kinds: ['force_fill'],
+      reason_codes: [reasonCode],
+      updated_at: new Date().toISOString(),
+    },
+  };
+}
+
+function mergeForceFillMetaOn(target, field, meta) {
+  const existing = asObject(target.pdp_force_fill_v1);
+  target.pdp_force_fill_v1 = {
+    ...existing,
+    contract_version: FORCE_FILL_CONTRACT_VERSION,
+    updated_at: new Date().toISOString(),
+    fields: {
+      ...asObject(existing.fields),
+      [field]: meta,
+    },
+  };
+}
+
+function inferredSourceQuality(inferred) {
+  if (inferred.source === 'official_source_page') return 'high';
+  if (inferred.source === 'force_filled_single_sku_default') return 'force_filled_reviewed_pattern';
+  return 'medium';
 }
 
 async function buildPlan(row, kbKeysWithIntel, opts) {
@@ -937,58 +960,86 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
     changedFields.push('ingredients_inci');
   }
 
-  const rootVariantHydration = hydrateFlatVariantOptions(seedData.variants);
-  const snapshotVariantHydration = hydrateFlatVariantOptions(snapshot.variants);
-  if (rootVariantHydration.changed || snapshotVariantHydration.changed) {
-    if (rootVariantHydration.changed) seedData.variants = rootVariantHydration.variants;
-    if (snapshotVariantHydration.changed) snapshot.variants = snapshotVariantHydration.variants;
-    mergeQuality(seedData, snapshot, 'variants', 'force_filled_reviewed_pattern', 'flat_variant_options_hydrated');
-    mergeForceFillMeta(seedData, snapshot, 'variant_options_hydrated', {
-      source: 'deterministic_flat_option_hydration',
-      root_changed: rootVariantHydration.changed,
-      snapshot_changed: snapshotVariantHydration.changed,
-      content_review_state: 'assistant_reviewed',
-    });
+  // Each list is decided from its own entries and written only when it changed. Labels, quality
+  // and force-fill meta for a variant change go to the side whose list changed. A main-list
+  // (root) change is inferred from row, seed top-level and main-list data only, never from the
+  // snapshot, and the main list is never replaced by a fabricated variant or created.
+  const variantListsChanged = { root: false, snapshot: false };
+  planned.variant_lists_changed = variantListsChanged;
+  const sides = () => [
+    ['root', seedData],
+    ['snapshot', snapshot],
+  ];
+  const mergeSideQuality = (side, key, sourceQualityStatus, reasonCode) =>
+    side === 'root'
+      ? mergeRootQuality(seedData, snapshot, key, sourceQualityStatus, reasonCode)
+      : mergeQualityOn(snapshot, key, sourceQualityStatus, reasonCode);
+  // Snapshot-side inference may use every stored field; root-side inference gets no snapshot.
+  const inferForSide = (side) =>
+    side === 'root'
+      ? inferSize(row, seedData, {}, { fetchSource: opts.fetchSource })
+      : inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
+
+  const hydration = {
+    root: hydrateFlatVariantOptions(seedData.variants),
+    snapshot: hydrateFlatVariantOptions(snapshot.variants),
+  };
+  if (hydration.root.changed || hydration.snapshot.changed) {
+    for (const [side, target] of sides()) {
+      if (!hydration[side].changed) continue;
+      target.variants = hydration[side].variants;
+      variantListsChanged[side] = true;
+      mergeSideQuality(side, 'variants', 'force_filled_reviewed_pattern', 'flat_variant_options_hydrated');
+      mergeForceFillMetaOn(target, 'variant_options_hydrated', {
+        source: 'deterministic_flat_option_hydration',
+        root_changed: hydration.root.changed,
+        snapshot_changed: hydration.snapshot.changed,
+        content_review_state: 'assistant_reviewed',
+      });
+    }
     changedFields.push('variant_sanitized');
   }
 
-  const rootVariantCleanup = dropPlaceholderVariantsWhenSafe(seedData.variants);
-  const snapshotVariantCleanup = dropPlaceholderVariantsWhenSafe(snapshot.variants);
-  if (rootVariantCleanup.removed > 0 || snapshotVariantCleanup.removed > 0) {
-    if (rootVariantCleanup.removed > 0) seedData.variants = rootVariantCleanup.variants;
-    if (snapshotVariantCleanup.removed > 0) snapshot.variants = snapshotVariantCleanup.variants;
-    mergeQuality(seedData, snapshot, 'variants', 'force_filled_reviewed_pattern', 'placeholder_variant_removed');
-    mergeForceFillMeta(seedData, snapshot, 'variant_sanitized', {
-      source: 'deterministic_placeholder_filter',
-      root_removed: rootVariantCleanup.removed,
-      snapshot_removed: snapshotVariantCleanup.removed,
-      content_review_state: 'assistant_reviewed',
-    });
+  const cleanup = {
+    root: dropPlaceholderVariantsWhenSafe(seedData.variants),
+    snapshot: dropPlaceholderVariantsWhenSafe(snapshot.variants),
+  };
+  if (cleanup.root.removed > 0 || cleanup.snapshot.removed > 0) {
+    for (const [side, target] of sides()) {
+      if (!(cleanup[side].removed > 0)) continue;
+      target.variants = cleanup[side].variants;
+      variantListsChanged[side] = true;
+      mergeSideQuality(side, 'variants', 'force_filled_reviewed_pattern', 'placeholder_variant_removed');
+      mergeForceFillMetaOn(target, 'variant_sanitized', {
+        source: 'deterministic_placeholder_filter',
+        root_removed: cleanup.root.removed,
+        snapshot_removed: cleanup.snapshot.removed,
+        content_review_state: 'assistant_reviewed',
+      });
+    }
     changedFields.push('variant_sanitized');
   }
 
-  if (hasOnlyNonDisplayableVariants(seedData, snapshot)) {
-    const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
+  // Collapsing a non-displayable list into one fabricated variant (no price, stock or url) is
+  // applied to the snapshot copy only, with its labels. A non-displayable main list is left as stored.
+  if (isOnlyNonDisplayableVariantList(seedData.variants)) {
+    planned.root_variant_collapse_skipped = true;
+  }
+  if (isOnlyNonDisplayableVariantList(snapshot.variants)) {
+    const inferred = await inferForSide('snapshot');
     if (inferred?.size) {
       const optionName = inferred.optionName || 'Format';
       const axisKind = inferred.axisKind || 'format';
       const value = inferred.value || inferred.size;
       const spec = { ...inferred, optionName, axisKind, value };
-      applyVariantSpecLabels(seedData, snapshot, spec);
-      const variant = buildSingleVariantFromSpec(row, spec);
-      seedData.variants = [variant];
-      snapshot.variants = [variant];
-      const sourceQuality =
-        inferred.source === 'official_source_page'
-          ? 'high'
-          : inferred.source === 'force_filled_single_sku_default'
-            ? 'force_filled_reviewed_pattern'
-            : 'medium';
-      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'non_displayable_variant_list_collapsed');
-      mergeForceFillMeta(seedData, snapshot, 'variant_sanitized', {
+      applyVariantSpecLabelsOn(snapshot, spec);
+      snapshot.variants = [buildSingleVariantFromSpec(row, spec)];
+      variantListsChanged.snapshot = true;
+      mergeQualityOn(snapshot, 'variants', inferredSourceQuality(inferred), 'non_displayable_variant_list_collapsed');
+      mergeForceFillMetaOn(snapshot, 'variant_sanitized', {
         source: 'deterministic_non_displayable_variant_collapse',
-        previous_root_count: rootVariantCleanup.variants.length,
-        previous_snapshot_count: snapshotVariantCleanup.variants.length,
+        previous_root_count: cleanup.root.variants.length,
+        previous_snapshot_count: cleanup.snapshot.variants.length,
         value,
         option_name: optionName,
         axis_kind: axisKind,
@@ -1000,17 +1051,33 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
     }
   }
 
-  if (shouldPatchSingleLocaleOrGenericVariant(seedData, snapshot)) {
-    const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
-    if (inferred?.size && inferred.source !== 'force_filled_single_sku_default') {
+  const localePatch = {
+    root: shouldPatchSingleLocaleOrGenericVariantList(seedData.variants, seedData, snapshot),
+    snapshot: shouldPatchSingleLocaleOrGenericVariantList(snapshot.variants, seedData, snapshot),
+  };
+  if (localePatch.root || localePatch.snapshot) {
+    let applied = false;
+    // Snapshot first, so its labels are never visible to the root-side inference.
+    for (const [side, target] of [...sides()].reverse()) {
+      if (!localePatch[side]) continue;
+      const inferred = await inferForSide(side);
+      if (!inferred?.size || inferred.source === 'force_filled_single_sku_default') {
+        planned.variant_size_blocked = true;
+        continue;
+      }
       const optionName = inferred.optionName || 'Format';
       const axisKind = inferred.axisKind || 'format';
       const value = inferred.value || inferred.size;
-      applyVariantSpecLabels(seedData, snapshot, { ...inferred, optionName, axisKind, value });
-      patchSingleVariantSpec(seedData, snapshot, { value, optionName, axisKind });
-      const sourceQuality = inferred.source === 'official_source_page' ? 'high' : 'force_filled_reviewed_pattern';
-      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'single_locale_variant_axis_corrected');
-      mergeForceFillMeta(seedData, snapshot, 'variant_sanitized', {
+      applyVariantSpecLabelsOn(target, { ...inferred, optionName, axisKind, value });
+      target.variants = patchSingleVariantSpecList(target.variants, { value, optionName, axisKind });
+      variantListsChanged[side] = true;
+      mergeSideQuality(
+        side,
+        'variants',
+        inferred.source === 'official_source_page' ? 'high' : 'force_filled_reviewed_pattern',
+        'single_locale_variant_axis_corrected',
+      );
+      mergeForceFillMetaOn(target, 'variant_sanitized', {
         source: 'deterministic_single_locale_variant_axis_correction',
         evidence: inferred.evidence,
         value,
@@ -1018,31 +1085,37 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
         axis_kind: axisKind,
         content_review_state: inferred.source === 'official_source_page' ? 'source_verified' : 'assistant_reviewed',
       });
-      changedFields.push('variant_sanitized');
-    } else {
-      planned.variant_size_blocked = true;
+      applied = true;
     }
+    if (applied) changedFields.push('variant_sanitized');
   }
 
-  if (
-    isSingleUndisplayableVariant(seedData, snapshot)
-  ) {
-    const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
-    if (inferred?.size) {
+  const singleUndisplayable = {
+    root: isSingleUndisplayableVariantList(seedData.variants),
+    snapshot: isSingleUndisplayableVariantList(snapshot.variants),
+  };
+  if (singleUndisplayable.root || singleUndisplayable.snapshot) {
+    let applied = false;
+    for (const [side, target] of [...sides()].reverse()) {
+      if (!singleUndisplayable[side]) continue;
+      const inferred = await inferForSide(side);
+      // The main entry is relabelled only from real evidence, never from the generic default.
+      const usable =
+        inferred?.size && !(side === 'root' && inferred.source === 'force_filled_single_sku_default');
+      if (!usable) {
+        planned.variant_size_blocked = true;
+        continue;
+      }
       const optionName = inferred.optionName || 'Size';
       const axisKind = inferred.axisKind || 'size';
       const value = inferred.value || inferred.size;
-      applyVariantSpecLabels(seedData, snapshot, { ...inferred, optionName, axisKind, value });
-      patchSingleVariantSpec(seedData, snapshot, { value, optionName, axisKind });
-      const sourceQuality =
-        inferred.source === 'official_source_page'
-          ? 'high'
-          : inferred.source === 'force_filled_single_sku_default'
-            ? 'force_filled_reviewed_pattern'
-            : 'medium';
-      mergeQuality(seedData, snapshot, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'single_sku_variant_clarity_inferred');
-      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'single_sku_variant_clarity_inferred');
-      mergeForceFillMeta(seedData, snapshot, 'variant_size', {
+      applyVariantSpecLabelsOn(target, { ...inferred, optionName, axisKind, value });
+      target.variants = patchSingleVariantSpecList(target.variants, { value, optionName, axisKind });
+      variantListsChanged[side] = true;
+      const sourceQuality = inferredSourceQuality(inferred);
+      mergeSideQuality(side, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'single_sku_variant_clarity_inferred');
+      mergeSideQuality(side, 'variants', sourceQuality, 'single_sku_variant_clarity_inferred');
+      mergeForceFillMetaOn(target, 'variant_size', {
         source: inferred.source,
         evidence: inferred.evidence,
         value,
@@ -1050,36 +1123,31 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
         axis_kind: axisKind,
         content_review_state: inferred.source === 'official_source_page' ? 'source_verified' : 'assistant_reviewed',
       });
-      changedFields.push('variant_size');
-    } else {
-      planned.variant_size_blocked = true;
+      applied = true;
     }
+    if (applied) changedFields.push('variant_size');
   }
 
+  // No variants anywhere: a force-filled variant and its labels go into the snapshot copy only.
+  // The main list is never fabricated; it stays absent (or empty) as stored.
   if (
     asArray(seedData.variants).length === 0 &&
     asArray(snapshot.variants).length === 0 &&
     !hasField(seedData, snapshot, 'variant_detail_label', 'size_detail_label', 'net_size', 'net_content')
   ) {
-    const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
+    const inferred = await inferForSide('snapshot');
     if (inferred?.size) {
       const optionName = inferred.optionName || 'Format';
       const axisKind = inferred.axisKind || 'format';
       const value = inferred.value || inferred.size;
       const spec = { ...inferred, optionName, axisKind, value };
-      applyVariantSpecLabels(seedData, snapshot, spec);
-      const variant = buildSingleVariantFromSpec(row, spec);
-      seedData.variants = [variant];
-      snapshot.variants = [variant];
-      const sourceQuality =
-        inferred.source === 'official_source_page'
-          ? 'high'
-          : inferred.source === 'force_filled_single_sku_default'
-            ? 'force_filled_reviewed_pattern'
-            : 'medium';
-      mergeQuality(seedData, snapshot, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'missing_variant_force_filled');
-      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'missing_variant_force_filled');
-      mergeForceFillMeta(seedData, snapshot, 'variant_size', {
+      applyVariantSpecLabelsOn(snapshot, spec);
+      snapshot.variants = [buildSingleVariantFromSpec(row, spec)];
+      variantListsChanged.snapshot = true;
+      const sourceQuality = inferredSourceQuality(inferred);
+      mergeQualityOn(snapshot, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'missing_variant_force_filled');
+      mergeQualityOn(snapshot, 'variants', sourceQuality, 'missing_variant_force_filled');
+      mergeForceFillMetaOn(snapshot, 'variant_size', {
         source: inferred.source,
         evidence: inferred.evidence,
         value,
@@ -1191,14 +1259,14 @@ async function fetchKbIntelKeys(client, rows) {
   return new Set((res.rows || []).map((row) => row.kb_key));
 }
 
-function buildForceFillServingPayloadPatch(seedData, changedFields) {
+function buildForceFillServingPayloadPatch(seedData, changedFields, variantListsChanged) {
   const changed = new Set(Array.isArray(changedFields) ? changedFields : []);
   const patch = {};
   const includeVariantPatch =
     changed.has('variant_size') ||
     changed.has('variant_sanitized');
   if (includeVariantPatch) {
-    Object.assign(patch, buildVariantOnlySeedPatch(seedData).rootPatch);
+    Object.assign(patch, buildVariantOnlySeedPatch(seedData, variantListsChanged).rootPatch);
   }
   if (changed.has('ingredients')) {
     for (const key of ['pdp_ingredients_raw', 'raw_ingredient_text_clean', 'ingredients_inci']) {
@@ -1218,8 +1286,8 @@ function buildForceFillServingPayloadPatch(seedData, changedFields) {
   return patch;
 }
 
-async function syncServingMirrors(client, externalProductId, seedData, changedFields) {
-  const payloadPatch = buildForceFillServingPayloadPatch(seedData, changedFields);
+async function syncServingMirrors(client, externalProductId, seedData, changedFields, variantListsChanged) {
+  const payloadPatch = buildForceFillServingPayloadPatch(seedData, changedFields, variantListsChanged);
   if (Object.keys(payloadPatch).length === 0) {
     return { catalog_products: 0, pdp_identity_listing: 0 };
   }
@@ -1258,10 +1326,12 @@ async function applyPlans(client, plans) {
     pdp_identity_listing: 0,
   };
   for (const plan of plans) {
+    // A plan without list-change flags writes neither variant list.
+    const variantListsChanged = plan.variant_lists_changed || { root: false, snapshot: false };
     if (plan.changed && plan.changed_fields.some((field) => field !== 'product_intel')) {
       try {
         if (plan.changed_fields.every((field) => field === 'variant_size' || field === 'variant_sanitized')) {
-          const patch = buildVariantOnlySeedPatch(plan.next_seed_data);
+          const patch = buildVariantOnlySeedPatch(plan.next_seed_data, variantListsChanged);
           await client.query(
             `
               UPDATE external_product_seeds
@@ -1291,6 +1361,7 @@ async function applyPlans(client, plans) {
           plan.external_product_id,
           plan.next_seed_data,
           plan.changed_fields,
+          variantListsChanged,
         );
         mirrorSync.catalog_products += syncResult.catalog_products;
         mirrorSync.pdp_identity_listing += syncResult.pdp_identity_listing;
@@ -1328,7 +1399,10 @@ function pickDefined(source, keys) {
   return out;
 }
 
-function buildVariantOnlySeedPatch(seedData) {
+// A variant list goes into the patch only when that list changed, and always as full entries:
+// `seed_data || patch` replaces the whole array, so a whitelisted subset would drop fields
+// (stock, url, images, refreshed_at) from entries the plan never touched.
+function buildVariantOnlySeedPatch(seedData, variantListsChanged = { root: true, snapshot: true }) {
   const snapshot = asObject(seedData.snapshot);
   const patchKeys = [
     'variants',
@@ -1341,35 +1415,18 @@ function buildVariantOnlySeedPatch(seedData) {
     'pdp_force_fill_v1',
     'external_seed_snapshot_contract',
   ];
+  // Variant blocks write labels, quality and meta only on the side whose list changed, so an
+  // unchanged side contributes nothing (and nothing is mirrored from it).
+  // A root change whose quality entry went to the snapshot summary (root had none, see the
+  // display-gate fallback rule) carries that snapshot summary along.
+  const snapshotPatch = variantListsChanged?.snapshot
+    ? pickDefined(snapshot, patchKeys)
+    : variantListsChanged?.root && !hasQualitySummaryObject(seedData)
+      ? pickDefined(snapshot, ['pdp_field_quality_summary'])
+      : {};
   return {
-    rootPatch: compactVariantPatch(pickDefined(seedData, patchKeys)),
-    snapshotPatch: compactVariantPatch(pickDefined(snapshot, patchKeys)),
-  };
-}
-
-function compactVariantPatch(patch) {
-  if (!Array.isArray(patch.variants)) return patch;
-  return {
-    ...patch,
-    variants: patch.variants.map((variant) => pickDefined(asObject(variant), [
-      'variant_id',
-      'sku_id',
-      'sku',
-      'title',
-      'options',
-      'option_name',
-      'option_value',
-      'display_label',
-      'axis_kind',
-      'source_quality_status',
-      'force_filled',
-      'price',
-      'currency',
-      'stock',
-      'availability',
-      'image_url',
-      'label_image_url',
-    ])),
+    rootPatch: variantListsChanged?.root ? pickDefined(seedData, patchKeys) : {},
+    snapshotPatch,
   };
 }
 
@@ -1438,6 +1495,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildPlan,
+  applyPlans,
   _internals: {
     extractSize,
     fetchSourceEvidence,

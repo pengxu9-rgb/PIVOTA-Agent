@@ -12,6 +12,10 @@
 // contract tests additionally assert (defense-in-depth) that no denylisted field name and no ISO-timestamp
 // value survives.
 
+import { productPriceCheck } from './productPriceCheck.js';
+
+const PUBLIC_PRICE_CHECK_REASONS = new Set(['no_market', 'market_not_priced']);
+
 // Public canonical PDP base (the citable URL host). Overridable so a future domain move needs no code change.
 const DEFAULT_PDP_BASE = 'https://agent.pivota.cc';
 
@@ -192,10 +196,15 @@ function availabilityOf(p) {
   // stale on prod 2026-08-01, where rows with only in-stock offers served
   // `availability: "in_stock", in_stock: false` and surfaced here as
   // out_of_stock. When the string is absent or unrecognized (e.g. "unknown"),
-  // the boolean still carries signal, so fall back to it.
+  // the boolean still carries signal, so fall back to it. The get_product detail
+  // lane carries neither: pdpBuilder writes an availability OBJECT
+  // (`{ in_stock, available_quantity }`), so its `in_stock` is read next.
   const text = typeof p.availability === 'string' ? p.availability.trim().toLowerCase() : '';
   if (AVAILABILITY_IN_STOCK.has(text)) return 'in_stock';
   if (AVAILABILITY_OUT_OF_STOCK.has(text)) return 'out_of_stock';
+  const own = isObj(p.availability) ? p.availability.in_stock : undefined;
+  if (own === true) return 'in_stock';
+  if (own === false) return 'out_of_stock';
   if (p.in_stock === true) return 'in_stock';
   if (p.in_stock === false) return 'out_of_stock';
   return 'unknown';
@@ -369,11 +378,17 @@ function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit, emptyReason
   };
 }
 
-function projectGetProduct(raw, { base = DEFAULT_PDP_BASE } = {}) {
+function projectGetProduct(raw, { base = DEFAULT_PDP_BASE, emptyReason } = {}) {
   const r = isObj(raw) ? raw : {};
   const p = isObj(r.product) ? r.product : r;
   const summary = productSummary(p, base);
-  if (!summary) return { note: 'Product not found.' };
+  // A lane that did not answer (e.g. a degraded 503 during a database outage) learned nothing about the
+  // product: telling the caller "not found" would be a false verdict. Say it is temporarily unavailable.
+  if (!summary) {
+    return emptyReason === 'upstream_degraded'
+      ? { note: 'Product is temporarily unavailable. Please retry shortly.' }
+      : { note: 'Product not found.' };
+  }
   const detail = { ...summary };
   const description = clamp(p.description, DESCRIPTION_MAX);
   if (description) detail.description = description;
@@ -384,6 +399,19 @@ function projectGetProduct(raw, { base = DEFAULT_PDP_BASE } = {}) {
   if (isObj(p.decision)) {
     const decision = decisionFrom(p.decision, p.decision.evidence);
     if (Object.keys(decision).length) detail.decision = decision;
+  }
+  // The live read's verdict on the price (UCP_LIVE_PRODUCT_READ=enforce only; off or shadow, absent), so a stored
+  // fallback does not pass for a merchant-confirmed price. Undated: this tier serves no timestamps (§3), and its
+  // read cache may replay a confirmed price for up to an hour, which the tool description says.
+  const check = detail.price ? productPriceCheck(p) : null;
+  if (check) {
+    detail.price_check = compact({
+      confirmed_with_merchant: check.live,
+      market: check.market,
+      // Only the reasons an agent can act on (state a market; this market is not priced). The rest are the
+      // reader's internals, and this tier serves no diagnostics (§3).
+      reason: !check.live && PUBLIC_PRICE_CHECK_REASONS.has(check.reason) ? check.reason : null,
+    });
   }
   return compact(detail);
 }
@@ -516,6 +544,7 @@ export {
   projectGetProduct,
   projectGetIntel,
   projectGetAlternatives,
+  productSummary,
   publicIdFromRef,
   findLeakedFields,
   DENYLIST_FIELDS,

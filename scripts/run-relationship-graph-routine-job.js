@@ -209,9 +209,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     maxReviewErrorRate: parseNumber(argValue(argv, 'max-review-error-rate'), 0.25, { min: 0, max: 1 }),
     minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
-    reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 5000 }),
+    reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 10000 }),
     reviewMinScore: parseNumber(argValue(argv, 'review-min-score'), DEFAULT_REVIEW_MIN_SCORE, { min: 0, max: 1 }),
     reviewRelationTypes: normalizeString(argValue(argv, 'review-relation-types'), 1000),
+    reviewUncoveredFirst: hasFlag(argv, 'review-uncovered-first'),
     reviewExcludeRelationTypes,
     servingAuditLimit: parseNumber(argValue(argv, 'serving-audit-limit'), 0, { min: 0, max: 250000 }),
     servingAuditExamples: parseNumber(argValue(argv, 'serving-audit-examples'), DEFAULT_SERVING_AUDIT_EXAMPLES, {
@@ -380,9 +381,11 @@ function buildRoutineSteps(options) {
       artifacts.review,
     ];
     pushArg(args, 'concurrency', options.reviewConcurrency);
+    pushArg(args, 'run-id', options.reviewRunId);
     pushArg(args, 'review-mode', options.reviewMode);
     pushArg(args, 'min-approval-confidence', options.minApprovalConfidence);
     pushArg(args, 'relation-types', options.reviewRelationTypes);
+    if (options.reviewUncoveredFirst) args.push('--uncovered-first');
     pushArg(args, 'exclude-relation-types', options.reviewExcludeRelationTypes);
     // Single-pass scoping: review only the anchors this run's build produced (its build report).
     // The review step runs AFTER the build, so artifacts.build exists by then.
@@ -893,9 +896,10 @@ async function runRoutineJob(
 ) {
   const outDir = resolvePathMaybeRelative(options.outDir);
   fs.mkdirSync(outDir, { recursive: true });
-  const { artifacts, steps } = buildRoutineSteps({ ...options, outDir });
-  const lockDir = buildLockPath({ ...options, outDir });
   const runId = `relgraph_routine_${dateStamp(now)}`;
+  // The review stamps every row it writes with this run id (provenance.ai_review.run_id, ...).
+  const { artifacts, steps } = buildRoutineSteps({ ...options, outDir, reviewRunId: runId });
+  const lockDir = buildLockPath({ ...options, outDir });
   const releaseLock = options.skipLock
     ? null
     : acquireRoutineLock(lockDir, {
@@ -1144,14 +1148,28 @@ async function runRoutineJob(
   }
 }
 
-async function main(argv = process.argv.slice(2)) {
+// The build writes its evidence-readiness status as its last stderr line, but a step's output is
+// kept only in this job's summary file (in the container's /tmp). The sync routine that spawns
+// this job logs only our own stderr tail, so the line is re-emitted here, or it never reaches the
+// logs or the run ledger (2026-10-16: absent from both on the first build that printed it).
+const EVIDENCE_READINESS_LINE = /^relgraph evidence readiness: .*$/gm;
+function evidenceReadinessRelayLine(summary) {
+  const build = Array.isArray(summary?.steps) ? summary.steps.find((step) => step && step.id === 'build') : null;
+  const lines = String(build?.stderr_tail || '').match(EVIDENCE_READINESS_LINE);
+  return lines ? lines[lines.length - 1] : '';
+}
+
+async function main(argv = process.argv.slice(2), deps = {}) {
   const options = parseArgs(argv);
   if (options.help) {
     process.stdout.write(`${usage()}\n`);
     return null;
   }
-  const summary = await runRoutineJob(options);
+  const summary = await runRoutineJob(options, deps);
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  // Last on stderr, so it ends the tail the sync routine keeps.
+  const readiness = evidenceReadinessRelayLine(summary);
+  if (readiness) process.stderr.write(`${readiness}\n`);
   return summary;
 }
 
@@ -1163,6 +1181,10 @@ if (require.main === module) {
       // here or they die with the container along with the /tmp summary. Before
       // this, a cron failure reported "failed at step: pba_sig_refresh" and
       // nothing about why that step exited non-zero.
+      // A later step can fail after the build reported readiness: relay it first, so the failure
+      // report stays at the end of the tail.
+      const readiness = evidenceReadinessRelayLine(err && err.summary);
+      if (readiness) process.stderr.write(`${readiness}\n`);
       process.stderr.write(`${formatRoutineFailure(err)}\n`);
       process.exitCode = 1;
     })
@@ -1173,6 +1195,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  evidenceReadinessRelayLine,
+  main,
   APPLY_CONFIRM_TOKEN,
   RUN_SCOPE_CLOCK_SKEW_MS,
   acquireRoutineLock,

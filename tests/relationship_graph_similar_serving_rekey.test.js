@@ -1,3 +1,12 @@
+
+// These cases exercise dynamic recall beside the graph: the PDP_SIMILAR_GRAPH_ONLY_ENABLED=false kill-switch
+// path. The default graph-only contract is tests/integration/invoke.pdp_similar_graph_only.test.js.
+const PRIOR_PDP_SIMILAR_GRAPH_ONLY = process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+beforeAll(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false'; });
+afterAll(() => {
+  if (PRIOR_PDP_SIMILAR_GRAPH_ONLY === undefined) delete process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED;
+  else process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = PRIOR_PDP_SIMILAR_GRAPH_ONLY;
+});
 // Relationship-graph cards must reach the similar surfaces with production-shaped data.
 //
 // Prod 2026-10-08 (read-only census + live debug on gateway c80daa230): 7,364 of 9,478 servable edges
@@ -107,7 +116,13 @@ const defaultQuery = async (sql, params = []) => {
   }
   const ids = (params || []).flat().filter((value) => typeof value === 'string' && value.startsWith('ext_0000'));
   if (text.includes('FROM external_product_seeds') && !text.includes('pdp_identity_listing')) {
-    return { rows: ids.map(seedRow) };
+    if (state.seedDelayMs) await new Promise((resolve) => setTimeout(resolve, state.seedDelayMs));
+    // A sig_ ref resolves through its catalog row to the seed (matched_signature_product_id).
+    const sigRows = state.seedSignatures
+      ? (Array.isArray(params[1]) ? params[1] : []).map((sig) => ({ ...seedRow(state.seedSignatures[sig]), matched_signature_product_id: sig,
+        ...(typeof state.seed === 'function' ? state.seed(sig) : {}) }))
+      : [];
+    return { rows: [...ids.map((id) => ({ ...seedRow(id), ...(typeof state.seed === 'function' ? state.seed(id) : {}) })), ...sigRows] };
   }
   if (text.includes('FROM catalog_products') && text.includes('source_product_id = ANY')) {
     // Re-keyed data: no row is still under the sentinel merchant.
@@ -171,6 +186,9 @@ beforeEach(() => {
   state.catalog = (ids) => ids.map((id) => catalogRow(id));
   state.render = () => [];
   state.groups = () => [];
+  state.seed = null;
+  state.seedSignatures = null;
+  state.seedDelayMs = 0;
   state.recommend = null;
   state.sql = [];
   delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_RELATION_TYPES;
@@ -187,6 +205,66 @@ async function findSimilar() {
     .expect(200);
   return res.body;
 }
+
+describe('find_similar_products keeps at most one card of the anchor brand, after the cross-brand cards', () => {
+  // The cap is a graph-only rule (the default serving path); this file otherwise runs the kill switch.
+  beforeEach(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'true'; });
+  afterEach(() => { process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false'; });
+  test('two higher-scored same-brand edges: only the best is served, and it comes last', async () => {
+    state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
+      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' }, score_total: 0.99 - Number(edge.id.slice(-1)) / 100 }
+      : edge));
+    const body = await findSimilar();
+    const served = body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id);
+    expect(served).toEqual(['prel_rekey_4', 'prel_rekey_5', 'prel_rekey_2']);
+    // Measurable live: recall tagged two, none dropped for an earlier page.
+    expect(body.metadata).toMatchObject({ relationship_graph_same_brand_count: 2, relationship_graph_same_brand_spent_dropped_count: 0 });
+  });
+
+  test('with graph-only off the recall reads and serves exactly as with the cap off (main): same SQL, same order, no tag', async () => {
+    process.env.PDP_SIMILAR_GRAPH_ONLY_ENABLED = 'false';
+    state.edges = state.edges.map((edge) => (['prel_rekey_2', 'prel_rekey_3'].includes(edge.id)
+      ? { ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' }, score_total: 0.99 - Number(edge.id.slice(-1)) / 100 }
+      : edge));
+    const run = async () => {
+      state.sql = [];
+      const body = await findSimilar();
+      const read = state.sql.find(({ text }) => text.includes('FROM product_relationship_edges'));
+      return { params: read.params, served: body.products.map((product) => product.relationship_edge_id || product.product_id), body };
+    };
+    const capped = await run();
+    const saved = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = '-1';
+    try {
+      const main = await run();
+      expect(capped.params).toEqual(main.params);
+      expect(capped.served).toEqual(main.served);
+    } finally {
+      if (saved === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_SIMILAR_SAME_BRAND_MAX = saved;
+    }
+    // Score order, same-brand first as before: no reorder.
+    expect(capped.served.filter((id) => String(id).startsWith('prel_')).slice(0, 2)).toEqual(['prel_rekey_2', 'prel_rekey_3']);
+    expect(JSON.stringify(capped.body)).not.toContain('similar_same_brand');
+    expect(capped.body.metadata.relationship_graph_same_brand_count).toBeUndefined();
+  });
+
+  test('a rail of only same-brand cards whose best card is unrenderable serves the next one, not nothing (review)', async () => {
+    state.edges = state.edges
+      .filter((edge) => ['prel_rekey_2', 'prel_rekey_3', 'prel_rekey_4'].includes(edge.id))
+      .map((edge) => ({ ...edge, candidate_snapshot: { ...edge.candidate_snapshot, brand: 'Dear Barber' } }));
+    // The renderability gate says sig 2's product page will not serve (prod: no_us_offer).
+    state.render = () => [{
+      pivota_signature_id: sigOf(2), merchant_id: 'merch_obs_x', platform: 'external_seed', source_system: 'external_product_seeds_mirror_v1',
+      source_product_id: 'ext_x', content_key: 'ck_x', product_key: 'pk_x', sync_status: 'live', pdp_lifecycle_stage: 'published',
+      source_active: true, pdp_seed_route_ok: true, serving_eligible: false, blocker_code: 'no_us_offer', blocker_detail: null,
+      content_quality_score: 90, active_external_seed_source_match: true, mirror_seed_inactive: false,
+    }];
+    const body = await findSimilar();
+    expect(body.products.filter((product) => product.relationship_edge_id).map((product) => product.relationship_edge_id)).toEqual(['prel_rekey_3']);
+    expect(JSON.stringify(body)).not.toContain('similar_same_brand');
+  });
+});
 
 describe('find_similar_products serves re-keyed external-seed graph candidates', () => {
   test('prod-shaped candidates resolve to their observed seller and public signature, priced as a pair', async () => {
@@ -578,3 +656,177 @@ describe('similar-surface relation allowlist', () => {
     })).toEqual(['dupe', 'competitive_alternative', 'niche_specialist']);
   });
 });
+
+describe('a collapsed graph card is priced from its own candidate seed', () => {
+  // Prod 2026-10-12: 72 of 137 graph cards on 40 rails had no price. A collapsed edge's public id is
+  // its canonical group (pg_), which no seed lookup answers; its candidate ref names the seed.
+  const collapsed = (i, overrides = {}) => ({
+    product_id: `pg_catalog_card${i}`, external_product_id: `pg_catalog_card${i}`, relationship_price_ref: candidateId(i),
+    merchant_id: 'external_seed', title: `Matte Clay Pomade ${i}`, image_url: `https://cdn.example.test/c${i}.jpg`,
+    card_highlight: 'Strong hold', url: `https://agent.pivota.cc/products/pg_catalog_card${i}`,
+    source: 'relationship_graph', recommendation_source: 'relationship_graph', relationship_edge_id: `edge_c${i}`, ...overrides,
+  });
+  const enrich = (items) => app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, bypassCache: true });
+
+  test('price and currency come from the seed as a pair; ids, link and presentation stay the card own', async () => {
+    const [card] = await enrich([collapsed(1)]);
+    expect(card).toMatchObject({ product_id: 'pg_catalog_card1', external_product_id: 'pg_catalog_card1', url: 'https://agent.pivota.cc/products/pg_catalog_card1',
+      title: 'Matte Clay Pomade 1', price: 39, currency: 'USD', price_source: 'relationship_candidate_seed' });
+  });
+
+  test('a seed without a known currency prices nothing', async () => {
+    state.seed = () => ({ price_currency: '' });
+    const [card] = await enrich([collapsed(2)]);
+    expect(card.price).toBeUndefined();
+    expect(card.currency).toBeUndefined();
+  });
+
+  test('an already-priced graph card keeps its own pair and costs no lookup', async () => {
+    state.sql = [];
+    const [card] = await enrich([collapsed(3, { price: 12, currency: 'USD' })]);
+    expect(card).toMatchObject({ price: 12, currency: 'USD' });
+    expect(card.price_source).toBeUndefined();
+    expect(state.sql.some(({ text }) => text.includes('FROM external_product_seeds'))).toBe(false);
+  });
+
+  test('a heuristic card is not priced through this path', async () => {
+    const [card] = await enrich([collapsed(4, { source: 'external', recommendation_source: undefined, relationship_edge_id: undefined })]);
+    expect(card.price_source).toBeUndefined();
+  });
+
+  test('the priced card survives the enrichment early exit (nothing else to enrich)', async () => {
+    const out = await enrich([collapsed(5)]);
+    expect(out[0]).toMatchObject({ price: 39, currency: 'USD' });
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 1, card_enrichment_graph_price_hit_count: 1 });
+  });
+
+  test('on a mixed rail the priced graph card keeps its price through the full enrichment pass', async () => {
+    // The second card is a heuristic seed card without an image: it sends the rail down the full
+    // per-card enrichment path instead of the early exit.
+    const heuristic = { product_id: candidateId(6), merchant_id: 'external_seed', title: 'Matte Clay Pomade 6', card_highlight: 'Strong hold', source: 'external' };
+    const out = await enrich([collapsed(1), heuristic]);
+    expect(out[0]).toMatchObject({ product_id: 'pg_catalog_card1', price: 39, currency: 'USD', price_source: 'relationship_candidate_seed' });
+    expect(out[1].image_url).toBe(`https://cdn.example.test/${candidateId(6)}.jpg`);
+  });
+
+  test('a sig_ price ref prices nothing: a sig_ names a product, not the listing shown (controller review of #2416)', async () => {
+    // The lookup would answer it with the newest seed of ANY retailer carrying that signature.
+    state.seedSignatures = { [sigOf(7)]: candidateId(7) };
+    const out = await enrich([collapsed(7, { relationship_price_ref: sigOf(7) })]);
+    expect(out[0].price).toBeUndefined();
+    expect(out._enrichmentMetadata.card_enrichment_graph_price_attempted_count).toBe(0);
+  });
+
+  test('a seed lookup past its budget leaves the card unpriced and counts a graph-price timeout', async () => {
+    state.seedDelayMs = 200;
+    const out = await app._debug.enrichSimilarProductsForPdpCards({ items: [collapsed(8)], maxItems: 6, bypassCache: true, budgetMs: 40, detailBudgetMs: 40 });
+    expect(out[0].price).toBeUndefined();
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 1, card_enrichment_graph_price_hit_count: 0, card_enrichment_graph_price_timeout_count: 1 });
+  });
+
+  test('a graph-price timeout marks the rail budget_exceeded and is cached only briefly', async () => {
+    state.seedDelayMs = 200;
+    const items = [collapsed(9)];
+    const slow = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 40, detailBudgetMs: 40 });
+    expect(slow._enrichmentMetadata.card_enrichment_status).toBe('budget_exceeded');
+    state.seedDelayMs = 0;
+    // Within the short window the degraded result is served (a slow primary is not re-hit per view).
+    const cached = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 2000, detailBudgetMs: 2000 });
+    expect(cached[0].price).toBeUndefined();
+    const realNow = Date.now;
+    const later = realNow() + 11_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => later);
+    try {
+      const next = await app._debug.enrichSimilarProductsForPdpCards({ items, maxItems: 6, budgetMs: 2000, detailBudgetMs: 2000 });
+      expect(next[0]).toMatchObject({ price: 39, currency: 'USD' });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  test('a graph-price timeout on the full enrichment pass (a heuristic seed card beside it) reports budget_exceeded', async () => {
+    state.seedDelayMs = 200;
+    const heuristic = { product_id: candidateId(6), merchant_id: 'external_seed', title: 'Matte Clay Pomade 6', card_highlight: 'Strong hold', source: 'external' };
+    const out = await app._debug.enrichSimilarProductsForPdpCards({ items: [collapsed(8), heuristic], maxItems: 6, bypassCache: true, budgetMs: 40, detailBudgetMs: 40 });
+    expect(out[0].price).toBeUndefined();
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_timeout_count: 1, card_enrichment_status: 'budget_exceeded' });
+  });
+
+  test('a graph ref past the seed lookup cap is not counted as attempted', async () => {
+    const heuristic = (i) => ({ product_id: `ext_0000000000000000000${String(i).padStart(5, '0')}`, merchant_id: 'external_seed',
+      title: `Pomade ${i}`, card_highlight: 'Strong hold', source: 'external' });
+    const out = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [...Array.from({ length: 24 }, (_, i) => heuristic(i + 10)), collapsed(1)], maxItems: 30, bypassCache: true,
+    });
+    expect(out._enrichmentMetadata).toMatchObject({ card_enrichment_graph_price_attempted_count: 0, card_enrichment_graph_price_hit_count: 0 });
+  });
+
+  test.each([
+    ['US', 'USD'], ['US', 'SGD'], ['US', 'JPY'],
+    ['SG', 'USD'], ['SG', 'SGD'], ['SG', 'JPY'],
+    ['JP', 'USD'], ['JP', 'SGD'], ['JP', 'JPY'],
+  ])('a %s rail with graph cards whose own listing is priced in %s: priced when it is the market currency, else dropped as on main (controller B1)', async (market, currency) => {
+    // The listing shown is a foreign store: never serve it unpriced (Peng 2026-10-09, JP pages).
+    const marketCurrency = { US: 'USD', SG: 'SGD', JP: 'JPY' }[market];
+    state.edges = state.edges.map((edge) => ({ ...edge, price_evidence: {} }));
+    state.seed = () => ({ price_amount: '52', price_currency: currency });
+    const find = await request(app).post('/agent/shop/v1/invoke')
+      .send({ operation: 'find_similar_products', payload: { product_id: ANCHOR, limit: 12, options: { cache_bypass: true } }, metadata: { market } });
+    const graphCards = (find.body.products || []).filter((product) => product.relationship_edge_id);
+    if (currency === marketCurrency) {
+      expect(graphCards.length).toBeGreaterThan(0);
+      expect(graphCards.every((card) => card.currency === currency)).toBe(true);
+    } else {
+      expect(graphCards).toEqual([]);
+    }
+  });
+
+  test('a graph card matched to its official seed by signature takes its presentation, never its price (controller B2)', async () => {
+    // A sig_ key resolves to the newest seed of ANY retailer carrying the signature.
+    state.seedSignatures = { [sigOf(7)]: candidateId(7) };
+    const bySig = (overrides) => ({ product_id: sigOf(7), external_product_id: sigOf(7), merchant_id: 'external_seed', title: 'Matte Clay Pomade 7',
+      source: 'relationship_graph', recommendation_source: 'relationship_graph', relationship_edge_id: 'edge_sig7', ...overrides });
+    const [uncollapsed, collapsedCard] = await enrich([bySig({}), bySig({ relationship_edge_id: 'edge_sig7b', candidate_family_key: 'family:x' })]);
+    for (const card of [uncollapsed, collapsedCard]) {
+      expect(card.price).toBeUndefined();
+      expect(card.currency).toBeUndefined();
+      expect(card.image_url).toBe(`https://cdn.example.test/${candidateId(7)}.jpg`);
+    }
+  });
+
+  test('a graph card matched to its official seed by its OWN listing (ext_) takes that listing\'s price, as on main', async () => {
+    const [card] = await enrich([{ product_id: candidateId(6), external_product_id: candidateId(6), merchant_id: 'external_seed', title: 'Matte Clay Pomade 6',
+      source: 'relationship_graph', recommendation_source: 'relationship_graph', relationship_edge_id: 'edge_own6' }]);
+    expect(card).toMatchObject({ currency: 'USD' });
+    expect(Number(card.price?.amount ?? card.price)).toBe(39);
+  });
+
+  test('a heuristic card matched by signature keeps main\'s merge (its price rule is unchanged)', async () => {
+    state.seedSignatures = { [sigOf(7)]: candidateId(7) };
+    const [card] = await enrich([{ product_id: sigOf(7), merchant_id: 'external_seed', title: 'Matte Clay Pomade 7', card_highlight: 'Strong hold', source: 'external' }]);
+    expect(card).toMatchObject({ currency: 'USD' });
+  });
+
+  test('the enrichment cache key tells apart two cards that differ only in the member they price', () => {
+    const key = (ref) => app._debug.buildSimilarCardEnrichmentCacheKey({ items: [collapsed(1, { relationship_price_ref: ref })], maxItems: 6 });
+    expect(key(candidateId(1))).toBeTruthy();
+    expect(key(candidateId(1))).not.toBe(key(candidateId(2)));
+  });
+});
+
+describe('relationship_price_ref never leaves the gateway', () => {
+  test('find_similar_products answers without it', async () => {
+    const body = await findSimilar();
+    expect(body.products.some((product) => product.relationship_edge_id)).toBe(true);
+    expect(JSON.stringify(body)).not.toContain('relationship_price_ref');
+  });
+
+  test('the public filter drops it, and the module sanitizer drops it even when it hides nothing', () => {
+    const card = { product_id: sigOf(1), merchant_id: 'external_seed', title: 'Card', price: 39, currency: 'USD', relationship_price_ref: candidateId(1) };
+    expect(app._debug.filterPublicVisibleSimilarProducts([card], { servingCurrency: 'USD' })[0]).not.toHaveProperty('relationship_price_ref');
+    const [module] = app._debug.sanitizePdpSimilarResponseModules([{ type: 'similar', data: { items: [card] } }], { servingCurrency: 'USD' });
+    expect(module.data.items).toHaveLength(1);
+    expect(module.data.items[0]).not.toHaveProperty('relationship_price_ref');
+  });
+});
+

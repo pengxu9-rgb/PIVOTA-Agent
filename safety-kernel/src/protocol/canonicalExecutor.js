@@ -105,6 +105,63 @@ function refusalFor(opId) {
  *   mintAp2CheckoutJwt?: (input:{checkout_session_id:string, expires_at?:string}) => Promise<string>|string,
  * }} deps
  */
+// A rail purchase id: the backend's rail-neutral `pp_` id (pivota-backend db/agent_purchase_ledger.py), or a
+// rail's own id (Reap `rp_`, the A2A token rail `ap_`), which the backend read accepts too. Identical to
+// src/services/agentPurchaseReadClient.js (a test holds the two together).
+export const AGENT_PURCHASE_ID_RE = /^(?:pp|rp|ap)_[0-9a-f]{24}$/;
+
+// Marks a get_order result that THIS mapper built from the backend's rail purchase read. A Symbol (registry key,
+// so the tool surface can read it without importing this module) cannot arrive in any JSON upstream body, so a
+// kernel order result can never claim it; the surface preserves buyer handoff URLs only on marked results.
+export const AGENT_PURCHASE_RESULT = Symbol.for('pivota.commerce.agentPurchaseResult');
+
+/**
+ * Map a rail-neutral purchase read onto get_order's answer. `answered` is the read client's
+ * `{ kind, purchase?, code? }` (src/services/agentPurchaseReadClient.js).
+ *
+ * Exported for the commerce surface's `start_purchase`, which answers with the SAME shape (so an agent polls the
+ * purchase it just opened with get_order and reads one vocabulary throughout).
+ *
+ * not_found is QUOTE_NOT_FOUND / order_not_found: the SAME answer an untracked kernel order gets, so
+ * the two id spaces cannot be told apart by probing. unavailable is retriable and says nothing about
+ * the purchase; it must never read as "gone", or an agent would start a second purchase.
+ */
+export function agentPurchaseOrder(orderId, answered) {
+  switch (answered.kind) {
+    case 'accepted': {
+      const purchase = answered.purchase;
+      const out = { ...purchase, order_id: purchase.purchase_id, status: purchase.state, source: 'agent_purchase' };
+      // `next_action.url` is re-keyed `action_url`, a key the result sanitizer recognises as a buyer handoff:
+      // under a plain `url` key the approval link would have its query scrubbed and the buyer could not act.
+      if (isPlainObjectValue(purchase.next_action)) {
+        const { url, ...rest } = purchase.next_action;
+        out.next_action = typeof url === 'string' ? { ...rest, action_url: url } : rest;
+      }
+      Object.defineProperty(out, AGENT_PURCHASE_RESULT, { value: true, enumerable: false });
+      return out;
+    }
+    case 'not_found':
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id: orderId });
+    case 'unauthenticated':
+      // The rail read needs the calling agent's API key and the buyer's token. A door that authenticates
+      // differently (MCP OAuth, a checkout token) has no such key: that is not "sign in again" (which would
+      // loop), it is a read this door cannot make.
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'agent_api_key_required' });
+    case 'rejected':
+      // The backend refused the caller's credentials (401). Non-retriable: retrying the same token cannot work.
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'caller_credentials_rejected' });
+    case 'identity_mismatch':
+      throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id: orderId, reason: 'agent_mismatch' });
+    default:
+      // No backend detail: "unavailable" must say nothing about the purchase or about the backend's dials.
+      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'agent_purchase_read_unavailable' });
+  }
+}
+
+function isPlainObjectValue(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
 export function createCanonicalExecutor({
   kernel,
   upstream,
@@ -114,6 +171,7 @@ export function createCanonicalExecutor({
   submitDelegatedPayment,
   mintAp2CheckoutJwt,
   delegatedTokenHandoffEnabled = false,
+  readAgentPurchase,
 } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
@@ -165,7 +223,11 @@ export function createCanonicalExecutor({
         return read(merchantScoped ? 'find_products' : 'find_products_multi', searchPayload);
       }
       case 'get_product': {
-        const result = await read('get_product_detail', params.payload ?? params);
+        // `market` is the live read's (below), not the upstream read's: the detail request stays byte-identical.
+        const detailParams = params.payload ?? params;
+        const { market: _liveReadMarket, ...detailPayload } =
+          detailParams && typeof detailParams === 'object' ? detailParams : {};
+        let result = await read('get_product_detail', detailParams && typeof detailParams === 'object' ? detailPayload : detailParams);
         // Optional inline decision substrate (why/fit/evidence) attached when the caller asks for it via
         // include:['decision']. Double-gated: the get_intel localRead is itself flag-gated (returns no
         // signal when the intel surface is off), and the caller must opt in. Read-only + best-effort — a
@@ -198,6 +260,27 @@ export function createCanonicalExecutor({
           }
         } catch {
           /* decision block is best-effort; the base product result is unaffected */
+        }
+        // Optional LIVE READ of the variants from the merchant's own catalog (UCP lookup_catalog), for the
+        // caller's DECLARED market only (ADR-026: never one inferred from the listing; no market, no read).
+        // Injected as localReads.live_product_read
+        // (services/ucpLiveOfferRead); null means "serve the result unchanged". Best-effort like the
+        // decision block: a failure never affects the product result.
+        try {
+          // OPT-IN per call (`params.live_read === true`, set by the agent's own get_product tool call). Never
+          // for internal reads through this executor -- checkout's default-variant resolver
+          // (buyerIntake.createDefaultVariantResolver) runs get_product under a 3s deadline, and a merchant
+          // round trip inside it would refuse creates with `resolution_unavailable` (review of #2438).
+          const liveRead = params && params.live_read === true && localReads && typeof localReads.live_product_read === 'function'
+            ? localReads.live_product_read
+            : null;
+          if (liveRead && result && typeof result === 'object') {
+            const market = typeof _liveReadMarket === 'string' ? _liveReadMarket : undefined;
+            const served = await liveRead(result, { market });
+            if (served && typeof served === 'object') result = served;
+          }
+        } catch {
+          /* live read is best-effort; the base product result is unaffected */
         }
         return result;
       }
@@ -250,6 +333,15 @@ export function createCanonicalExecutor({
 
       case 'get_order': {
         if (!nonEmpty(params.order_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_order_id' });
+        // A RAIL PURCHASE (`pp_…`/`rp_…`, the backend's rail-neutral ledger) is not a kernel order, so the kernel
+        // ownership proof below cannot answer it. The backend's read is owner-scoped in SQL on the calling
+        // agent AND buyer (the caller's own credentials, never the internal key), which is the same proof.
+        // `readAgentPurchase` returns null when it does not handle the id (its dial is off): then the id
+        // falls through to the kernel path exactly as before this lane existed.
+        if (typeof readAgentPurchase === 'function' && AGENT_PURCHASE_ID_RE.test(params.order_id)) {
+          const answered = await readAgentPurchase(params.order_id, ctx);
+          if (answered != null) return agentPurchaseOrder(params.order_id, answered);
+        }
         // Fail CLOSED (Codex P0): prove kernel ownership before any read. _requireOrder throws
         // QUOTE_NOT_FOUND (untracked) or STATE_LINKAGE_MISMATCH (cross-user/session) — both propagate, so a
         // verified user can never read an order the kernel does not know to be theirs (no fail-open on an

@@ -16,9 +16,9 @@ const { recommendationIdentityConflict } = require('../shared/recoProductIdentit
 //    for SKINCARE. This bridge asks for the wider beauty prompt (promptDomainScope 'beauty'), but that ask
 //    is INERT until RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names a template DIFFERENT from the chat lane's
 //    (it inherits that id, so they match unless someone sets it) — the decision service 400s on an id it
-//    does not know, so v1_3 stays off by default (see the constant in routes.js). Until then a
-//    makeup/haircare/fragrance need still comes back with skincare picks, which is what the tool
-//    description says;
+//    does not know, so v1_3 is off by default in code (see the constant in routes.js). Prod pins it on,
+//    so makeup and fragrance needs are served; haircare is still out. The tool description says so, and
+//    tells the agent to route to search_catalog if a makeup need ever comes back empty citing skincare;
 //    An off-vertical need answers with an empty shortlist + `missing_info`, not with fabricated products —
 //    and that is ENFORCED here (offVerticalMarker), not merely hoped for: the lane itself is a recommender
 //    and will happily answer a trading-card need with a cleanser;
@@ -947,8 +947,14 @@ function makeRecommendProducts(deps = {}) {
     //      the id is checked on its own terms.
     //
     // Lane order is preserved among the survivors.
-    const suppressed = { ungrounded: 0, unidentified: 0 };
-    const unresolvedArchetypes = [];
+    // Names the lane withheld before projection (a step-aware answer drops items the catalog could not
+    // supply; see groundRecoRecommendationsFromCatalog). They are ungrounded items like the ones dropped
+    // below, and are counted as such.
+    const laneWithheld = asStringArray(payload.unresolved_archetypes, MAX_UNRESOLVED_ARCHETYPES);
+    // Unnamed withheld items count too (the model gave no name to report).
+    const laneWithheldCount = Math.max(laneWithheld.length, Number.isInteger(payload.withheld_item_count) ? payload.withheld_item_count : 0);
+    const suppressed = { ungrounded: laneWithheldCount, unidentified: 0 };
+    const unresolvedArchetypes = laneWithheld.slice();
     let groundedSignals = [];
     for (const s of projected) {
       if (s.value.grounding !== 'catalog') {
@@ -1005,6 +1011,7 @@ function makeRecommendProducts(deps = {}) {
       ));
       verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 };
       const unresolvableSignals = new Set();
+      const currencySwitchedSignals = new Set();
       await Promise.all(toVerify.map(async (s) => {
         const product = s.value.product;
         const probe = async () => {
@@ -1044,7 +1051,21 @@ function makeRecommendProducts(deps = {}) {
           verification.unavailable += 1;
           return;
         }
-        const changed = product.price !== livePrice || str(product.currency).toUpperCase() !== liveCurrency;
+        // A LIVE CHECK THAT CHANGES THE CURRENCY IS WITHHELD, NOT RELABELLED. The snapshot and the live
+        // read are two reads of one product's price, and they disagree on its UNIT -- so neither is a
+        // price this buyer can be quoted. Live 2026-10-14 (gateway-00675-kis): a USD buyer's cleanser
+        // shortlist served "11.9 USD -> 11.9 AUD" at rank 3, the catalog row's USD label having passed
+        // the ceiling and the live check then moving it to the currency the store actually sells in.
+        // Rewriting the currency served an AUD price into a USD market; keeping the snapshot would
+        // quote a USD figure the store never charges. Every grounded row is checked here, the model's
+        // own picks and the price ceiling's catalog filler alike, and the slot backfills below. A
+        // snapshot with NO currency that the live check fills is not a change of unit and is updated.
+        const snapshotCurrency = str(product.currency).toUpperCase();
+        if (snapshotCurrency && snapshotCurrency !== liveCurrency) {
+          currencySwitchedSignals.add(s);
+          return;
+        }
+        const changed = product.price !== livePrice || snapshotCurrency !== liveCurrency;
         if (changed) {
           // Said out loud on the item: a partner that cached the snapshot price learns it moved.
           s.value.watchouts = dedupe([
@@ -1070,6 +1091,17 @@ function makeRecommendProducts(deps = {}) {
           'recommend_products dropped items unresolvable on the read chain',
         );
         groundedSignals = groundedSignals.filter((s) => !unresolvableSignals.has(s));
+      }
+      if (currencySwitchedSignals.size > 0) {
+        // Counted only when it happens, so every answer without one is unchanged.
+        verification.currency_switched = currencySwitchedSignals.size;
+        logger?.warn?.(
+          {
+            product_ids: [...currencySwitchedSignals].map((s) => s.value.product?.product_id ?? null),
+          },
+          'recommend_products withheld items whose live check changed the price currency',
+        );
+        groundedSignals = groundedSignals.filter((s) => !currencySwitchedSignals.has(s));
       }
     }
 
@@ -1201,8 +1233,13 @@ function makeRecommendProducts(deps = {}) {
         // When the shortlist emptied because the resolvability pass dropped everything, say THAT —
         // 'no_recommendations' would blame the lane for items it actually produced.
         products_empty_reason: signals.length === 0
-          ? firstString(payload.products_empty_reason, result?.upstreamFailureCode)
+          // The lane's own step-aware reason ('no_viable_candidates_for_target') is computed over the
+          // list AFTER grounding withheld these items, so it blames the catalog's pool for what was a
+          // refusal to substitute. Withheld items mean the lane answered and nothing was buyable.
+          ? (laneWithheldCount > 0 ? 'no_grounded_recommendations' : null)
+            || firstString(payload.products_empty_reason, result?.upstreamFailureCode)
             || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : null)
+            || (verification && verification.currency_switched > 0 ? 'live_price_currency_changed' : null)
             // The lane DID answer, but every item it produced was an archetype it could not resolve
             // (or carried no id). 'no_recommendations' would blame it for producing nothing when the
             // truth is that nothing it produced was buyable — a different problem with a different fix.
@@ -1232,9 +1269,10 @@ function makeRecommendProducts(deps = {}) {
         ...(suppressed.unidentified > 0 ? { unidentified_suppressed: suppressed.unidentified } : {}),
         ...(identityMismatchSuppressed > 0 ? { identity_mismatch_suppressed: identityMismatchSuppressed } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
-        // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
-        // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
-        // price_verified: false; `unresolvable` items were DROPPED — the loopback proved their id
+        // checked = confirmed + updated + unavailable + unresolvable (+ currency_switched, present only
+        // when non-zero: items WITHHELD because the live check moved their price to another currency);
+        // `updated` items carry the corrected price and a watchout naming the move; `unavailable` items
+        // keep the snapshot with price_verified: false; `unresolvable` items were DROPPED — the loopback proved their id
         // answers PRODUCT_NOT_FOUND on the read chain get_product serves, so they never reach the
         // shortlist (the count is the only trace, deliberately: an agent must not be handed a dead id
         // even in a diagnostic field).

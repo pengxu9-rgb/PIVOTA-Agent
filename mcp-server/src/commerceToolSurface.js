@@ -35,7 +35,7 @@ import { deriveUserRef } from "../auth/userRef.js";
 import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
-import { shapeUcpResult } from "./ucpResponseShaper.js";
+import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong } from "./ucpCheckoutEscalation.js";
 import {
   assertExpectedSeller,
@@ -58,9 +58,40 @@ import {
   ucpResumeToNativeToolArgs,
   UCP_REAP_RECOVER_INPUT_SCHEMA,
   UCP_REAP_RESUME_INPUT_SCHEMA,
+  UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA,
+  UCP_GET_PRODUCT_MARKET_DESCRIPTION,
+  ucpGetProductForwardMarketEnabled,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
+import {
+  START_PURCHASE_INPUT_SCHEMA,
+  START_PURCHASE_TOOL,
+  START_PURCHASE_TOOL_DEFINITION,
+  orchestratedPurchaseToolEnabled,
+  startOrchestratedPurchase,
+  startPurchaseArgumentProblems,
+} from "./orchestratedPurchaseTool.js";
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
+import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
+import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
+
+// THE PRICE FACTS OF WHAT THIS DOOR SERVES (gateway price_verification_served line; null unless
+// PRICE_VERIFICATION_LOG). /mcp serves the native value, so every native row counts. The UCP dialect publishes a
+// search row only when shapeUcpProduct keeps it (an id, an ISO-currency price, no live quote required), so only
+// those rows count there; a get_product it cannot publish is a tool error and writes no line. Reads `value` and
+// never writes it: the same object is shaped and returned (or is a cache entry). Never throws.
+function servedPriceFacts(toolId, value, dialect) {
+  try {
+    if (!priceVerificationFacts.priceVerificationLogEnabled()) return null;
+    if (dialect === TOOL_DIALECTS.ucp && toolId === "search_catalog" && isPlainObject(value)) {
+      const rows = (Array.isArray(value.products) ? value.products : []).filter((row) => shapeUcpProduct(row).product);
+      return priceVerificationFacts.priceFactsOf(toolId, { ...value, products: rows });
+    }
+    return priceVerificationFacts.priceFactsOf(toolId, value);
+  } catch {
+    return null;
+  }
+}
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -165,6 +196,28 @@ function envValue(name) {
   return (typeof process !== "undefined" && process.env && process.env[name]) || "";
 }
 
+// get_offers `variant_id` (one seller listing's option -> that variant's own offer and cart) rests on the
+// backend stating which variant an offer sells (`source.variant_match`, pivota-backend #2622). Off until that
+// backend is live: the argument is then neither declared, described nor forwarded. Read once at load.
+const GET_OFFERS_VARIANT_ID = /^(1|true|yes|on|enabled)$/i.test(envValue("GET_OFFERS_VARIANT_ID").trim());
+
+// The UCP live reads (src/services/ucpLiveOfferRead; off | shadow | enforce, as its readMode parses them).
+// With a read off, the tool surface is exactly what it was without it. get_product's `market` is
+// declared while UCP_LIVE_PRODUCT_READ is on at all (shadow needs a declared market to measure anything,
+// ADR-026); get_offers names `live_read` only under UCP_LIVE_OFFER_READ=enforce, the one mode that can
+// put it on an offer. Read once at load.
+function liveReadMode(name) {
+  const v = envValue(name).trim().toLowerCase();
+  return v === "shadow" || v === "enforce" ? v : "off";
+}
+const UCP_LIVE_PRODUCT_READ_ON = liveReadMode("UCP_LIVE_PRODUCT_READ") !== "off";
+const UCP_LIVE_OFFER_READ_ENFORCED = liveReadMode("UCP_LIVE_OFFER_READ") === "enforce";
+// get_product's description while `market` is declared (verified-price design, section 4: a stored price is
+// for discovery; get_offers asks the merchant).
+const GET_PRODUCT_MARKET_SENTENCES =
+  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: without it nothing is read live and the price is Pivota's stored one." +
+  " A stored price is for discovery only: before quoting a final price to a buyer, call get_offers for the product and market and quote only an offer whose `merchant_price_verified` is true.";
+
 function positiveIntEnv(name, fallback) {
   const n = Number(envValue(name));
   return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -216,7 +269,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic, merchantDoor } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -274,6 +327,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   async function callTool(toolName, toolArgs = {}, sessionContext = {}, options = {}) {
     // dialect defaults to MCP, so every existing caller is unchanged.
     const dialect = normalizeDialect(options.dialect);
+    // `start_purchase` (native MCP only; dark unless ORCHESTRATED_PURCHASE_TOOL_ENABLED, read per call). Off, the
+    // name falls through to the op lookup below and is an unknown tool, exactly as before it existed.
+    if (dialect === TOOL_DIALECTS.mcp && toolName === START_PURCHASE_TOOL && orchestratedPurchaseToolEnabled(process.env)) {
+      return callStartPurchase(toolArgs, sessionContext);
+    }
     const op = (dialect === TOOL_DIALECTS.ucp ? OP_BY_UCP_TOOL : OP_BY_MCP)[toolName];
     if (!op) throw new UnknownToolError(toolName);
 
@@ -453,7 +511,13 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //    handoff URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`,
       //    Stripe 3DS `client_secret` must reach the buyer intact). For discovery/order results a
       //    redirect-named field is NOT a payment handoff and is scrubbed aggressively.
-      return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" });
+      //    A rail purchase read by get_order (marked by the executor's mapper with a registry Symbol, which no
+      //    JSON upstream body can carry, from the backend's owner-scoped read) carries the rail's buyer step (`next_action.action_url`,
+      //    `detail.hosted_url`), already vetted by the backend against the rail's https host allowlist; it
+      //    is the same kind of handoff a checkout op returns, so it is preserved the same way.
+      const purchaseHandoff = op.id === "get_order" && isPlainObject(result)
+        && result[Symbol.for("pivota.commerce.agentPurchaseResult")] === true;
+      return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff });
     };
 
     // 6) cache read-only, caller-independent results. Gated on the op being cacheable — never on anything
@@ -475,8 +539,26 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    the clone `cloneCachedValue` hands out. See mcp-server/src/ucpResponseShaper.js for what maps.
     //    (`shape` itself is defined above step 3a, so the Reap lane's answer uses the same function.)
 
-    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return shape(await execute());
-    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
+    //
+    // 8) MEASUREMENT (`options.observe`, optional): the cache branch that answered and the search envelope's
+    //    lane/degradation markers, read from the NATIVE value before dialect shaping can drop them. Feeds the
+    //    gateway's tools/call completion line only; it changes nothing about the value returned.
+    const observe = typeof options.observe === "function" ? options.observe : null;
+    //    And the price facts of a priced tool's NATIVE answer (the UCP shaper drops price_source / price_as_of /
+    //    live_read), for the gateway's price_verification_served line: null unless PRICE_VERIFICATION_LOG.
+    //    Computed from the value on every call, a cache hit included, so a replay is counted from the entry it
+    //    replays whatever the flag was when that entry was stored.
+    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) {
+      const fresh = await execute();
+      if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
+      noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
+      return shape(fresh);
+    }
+    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
+      onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
+    });
+    noteToolCall(observe, () => describeUpstreamEnvelope(value));
+    noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
     return shape(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
@@ -487,11 +569,58 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     }));
   }
 
+  /**
+   * `start_purchase`: the same door discipline as every other op, in the same order — the declared schema
+   * (undeclared arguments refused by name), the semantic checks, then the VERIFIED buyer (user_ref AND a verified
+   * session, as for every user-scoped op), then the purchase. Its answer takes the same money filter as a checkout
+   * result, with the buyer handoff (the rail's page) preserved. See orchestratedPurchaseTool.js.
+   */
+  async function callStartPurchase(toolArgs, sessionContext) {
+    if (toolArgs === undefined) toolArgs = {};
+    if (!isPlainObject(toolArgs)) throw new ToolValidationError("Tool arguments must be an object.");
+    const undeclared = findUndeclaredArguments(START_PURCHASE_INPUT_SCHEMA, toolArgs);
+    if (undeclared.length > 0) {
+      throw new ToolValidationError(
+        `${START_PURCHASE_TOOL}: unknown argument${undeclared.length > 1 ? "s" : ""} ` +
+          `${undeclared.map(({ path }) => `"${path}"`).join(", ")} — undeclared arguments are refused rather than ` +
+          `silently ignored. Accepted top-level arguments: ${Object.keys(START_PURCHASE_INPUT_SCHEMA.properties).join(", ")}.`,
+      );
+    }
+    const problems = startPurchaseArgumentProblems(toolArgs);
+    if (problems.length > 0) {
+      throw new ToolValidationError(
+        `${START_PURCHASE_TOOL}: ${problems.map(({ field, message }) => `${field} ${message}`).join("; ")}.`,
+      );
+    }
+    const ctx = buildContext(sessionContext);
+    if (!nonEmpty(ctx.user_ref) || !nonEmpty(ctx.acp_session_id)) throw new IdentityRequiredError();
+    const result = await startOrchestratedPurchase({
+      args: toolArgs,
+      ctx,
+      attested: attestedBuyerFromSession(sessionContext),
+      executor: memoizedProductReads(executor),
+      createClient: orchestratedPurchase && orchestratedPurchase.createClient,
+      readClient: orchestratedPurchase && orchestratedPurchase.readClient,
+      log: logger,
+    });
+    return sanitizeResult(result, { handoffAllowed: true });
+  }
+
   function isCommerceTool(name, dialect) {
+    if (name === START_PURCHASE_TOOL && normalizeDialect(dialect) === TOOL_DIALECTS.mcp) {
+      return orchestratedPurchaseToolEnabled(process.env);
+    }
     return Object.prototype.hasOwnProperty.call(opIndexFor(dialect), name);
   }
 
-  return { tools, callTool, isCommerceTool };
+  return {
+    // Read per `tools/list`, so `start_purchase` is listed exactly while its dial is on.
+    get tools() {
+      return orchestratedPurchaseToolEnabled(process.env) ? [...tools, { ...START_PURCHASE_TOOL_DEFINITION }] : tools;
+    },
+    callTool,
+    isCommerceTool,
+  };
 }
 
 // --- identity ---------------------------------------------------------------------------------------------
@@ -618,12 +747,18 @@ function toParams(op, toolArgs) {
         payload: {
           product: pick(a, ["merchant_id", "product_id", "sku_id"]),
           ...(Array.isArray(a.include) ? { include: a.include } : {}),
+          ...(typeof a.market === "string" && a.market.trim() ? { market: a.market.trim() } : {}),
         },
+        // The agent's own get_product: the executor may read variants live from the merchant
+        // (localReads.live_product_read). Internal executor reads never set this.
+        live_read: true,
       };
     case "get_alternatives":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
     case "get_offers":
-      return { payload: pick(a, ["merchant_id", "product_id", "product_group_id", "currency", "market", "limit"]) };
+      return {
+        payload: pick(a, ["merchant_id", "product_id", "product_group_id", ...(GET_OFFERS_VARIANT_ID ? ["variant_id"] : []), "currency", "market", "limit"]),
+      };
     case "get_intel":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "pivota_signature_id"]) };
     case "recommend_products":
@@ -795,13 +930,22 @@ function str(v) { return typeof v === "string" ? v : undefined; }
 function describe(op) {
   const base = {
     search_catalog: "Search the Pivota-normalized merchant catalog. Read-only; no money, no state change.",
-    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach Pivota's decision substrate — Pivota Insights: why it stands out / who it's best for / evidence profile — inline when reviewed intelligence exists; attribute that decision layer to Pivota when you surface it.",
+    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach Pivota's decision substrate — Pivota Insights: why it stands out / who it's best for / evidence profile — inline when reviewed intelligence exists; attribute that decision layer to Pivota when you surface it." +
+      (UCP_LIVE_PRODUCT_READ_ON ? GET_PRODUCT_MARKET_SENTENCES : ""),
     get_alternatives:
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
-      "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. An external offer may carry `cart_prefilled`, which says what following its `affiliate_url` actually does: true = the buyer lands on the merchant's own checkout with the item already in the cart; false = a bare product page they must add from themselves; null = Pivota does not know. Treat null as unknown and say nothing about where the link lands — only an explicit false licenses telling a buyer to expect a product page. An offer may also carry `stock_verified` and `merchant_price_verified`: true means Pivota asked the MERCHANT'S own storefront moments ago and it agreed, false means it disagreed or could not be compared, null means we did not check this one. They are separate because they fail separately — stock can be confirmed while price cannot. When `merchant_price_verified` is true the spec carries `expected_item_total` with its `expected_currency` and `expected_quantity`, valid until `expected_total_expires_at`; abort the handoff rather than proceeding if the merchant's checkout shows a different total. If `rank_one_unverified` is true, NOTHING in the shortlist could be confirmed this turn — say so rather than presenting the top result as checked. Note the two flags differ on false as well as true: here false means we asked the merchant and could not confirm, while null means we did not ask. Never present an offer as price-checked on the strength of `price_verified` from another surface — that one means consistent with Pivota's own records rather than with the merchant, and its false covers unchecked and failed alike. Read-only; surfaces real cross-merchant competition only when it exists.",
+      "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. An external offer may carry `cart_prefilled`, which says what following its `affiliate_url` actually does: true = the buyer lands on the merchant's own checkout with the item already in the cart; false = a bare product page they must add from themselves; null = Pivota does not know. Treat null as unknown and say nothing about where the link lands — only an explicit false licenses telling a buyer to expect a product page. An offer may also carry `stock_verified` and `merchant_price_verified`: true means Pivota asked the MERCHANT'S own storefront moments ago and it agreed, false means it disagreed or could not be compared, null means we did not check this one. They are separate because they fail separately — stock can be confirmed while price cannot. When `merchant_price_verified` is true the spec carries `expected_item_total` with its `expected_currency` and `expected_quantity`, valid until `expected_total_expires_at`; abort the handoff rather than proceeding if the merchant's checkout shows a different total. If `rank_one_unverified` is true, NOTHING in the shortlist could be confirmed this turn — say so rather than presenting the top result as checked. Note the two flags differ on false as well as true: here false means we asked the merchant and could not confirm, while null means we did not ask. Never present an offer as price-checked on the strength of `price_verified` from another surface — that one means consistent with Pivota's own records rather than with the merchant, and its false covers unchecked and failed alike." +
+      (GET_OFFERS_VARIANT_ID
+        ? " One offer per seller listing: its shades/sizes are in `variants` (each with price and stock); pass one as `variant_id` to get only offers that sell exactly that variant (a cart built for it); metadata.withheld_other_variant_count counts the rest, and reason variant_not_offered means no seller offers it."
+        : "") +
+      (UCP_LIVE_OFFER_READ_ENFORCED
+        ? " With a market stated, an offer may carry `live_read`: `verified` means its price and stock were just read from the merchant's own catalog for that market (replacing our stored ones), `currency_mismatch` that the merchant does not price for that market, `variant_gone` that the merchant no longer has it."
+        : "") +
+      " An offer whose stored price has not been read recently carries `price_stale: true`: relay its price only as last seen, never as the current price. `price_as_of`, when present, is when the price was last read (null = no read on record). When `metadata.best_price` is present, best_offer is the top-ranked fresh comparable offer (same item and size, one currency, not known out of stock), ranked by sellability, then primary seller, stock confidence, then price; it is not necessarily the lowest number. `best_price.offer_id: null` (best_offer null) means no offer has a fresh comparable price, so name no best price. `best_price.offers_resolve_offer_id` is diagnostic only (what the backend named); act on `best_price.offer_id`." +
+      " Read-only; surfaces real cross-merchant competition only when it exists.",
     recommend_products:
-      "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Each item also carries a `recommendation_id`, and the response a `metadata.recommendation_set_id`: opaque keys identifying this recommendation. Retain the `recommendation_id` of whatever you act on: it is how a purchase, a price change or a failure will be attributed to the recommendation that caused it, once the outcome endpoint ships. Use search_catalog when the buyer names a product; use this when they describe a need. Read `lane_confidence` for per-item certainty: it is the lane's own confidence in the product, NOT a measure of how well the product answers your need — nothing on that path reads your need, so an off-vertical need that slips the gate below can still come back at `lane_confidence: high`. Judge relevance yourself. Read `lane_confidence.basis` (and `metadata.confidence_basis`) before trusting the band at all: `lane_confidence.basis` is PER ITEM, and a single shortlist can mix them: `model_self_report` means that item's number is the model's own estimate of it; `positional` means the lane has NO certainty estimate for that item — the underlying score was the item's POSITION in the list, not a judgement about it — and its band is null. `metadata.confidence_basis` describes the ANSWER as a whole and `metadata.confidence_overall` is null when that is `positional`. A null band usually means unmeasured rather than low — with one exception: a row that breaches a `price_max` you set is downgraded to `low` even on a positional answer, because that IS a measurement, and it carries `constraint_violations`. `catalog_rebound` means grounding selected a different catalog product; the original product’s confidence and evidence were discarded, so the new product’s band is null unless a price violation independently downgrades it. `basis` also takes `ungrounded` (the lane named a product it could not resolve) and `none`/`unknown`. (`fit` is a DEPRECATED alias carrying the identical value and will be removed; migrate to `lane_confidence`.) SKINCARE IS THE ONLY CATEGORY THIS DOOR CURRENTLY SERVES, and not for the reason you might guess. The prompt it loads does allow skincare (including body care), makeup and fragrance — but the lane still frames every request to the model as 'Recommend a few skincare products for me', so a makeup or fragrance need reads as self-contradictory and comes back with an EMPTY shortlist and the reason in `metadata.missing_info`, not with a substitute and not with the product you asked for. Measured against the live door on 2026-09-10: four consecutive lipstick, bronzer, blush and eau-de-toilette needs each returned zero, each citing the skincare framing; a moisturizer need served normally. Route makeup and fragrance to `search_catalog` until this says otherwise. Haircare, beauty tools, brushes, sponges, devices and anything outside beauty are not covered either, and answer the same way — empty with a stated reason. Two further limits on what an empty answer means: the category rules bind the MODEL-AUTHORED path only, and this lane can also answer straight from the catalog, which reads no prompt at all — read `metadata.confidence_basis`, where `positional` means the catalog path answered and nothing consulted those rules; and an empty answer is returned only where the model STATES a reason, since a bare empty answer is treated as a gap the catalog may fill. Detection of off-vertical needs is best-effort, not exhaustive: a RECOGNISED off-vertical need answers with an empty shortlist and `metadata.products_empty_reason: 'off_vertical'`, but an unrecognised one may still come back with beauty products — so check that the shortlist actually matches the need before presenting it. Every returned item IS a catalog product with a non-null `product_id`: that one holds unconditionally, and products the lane named but could not resolve are never returned as items — they appear only as plain text in `metadata.unresolved_archetypes`, and are not buyable. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
+      "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Each item also carries a `recommendation_id`, and the response a `metadata.recommendation_set_id`: opaque keys identifying this recommendation. Retain the `recommendation_id` of whatever you act on: it is how a purchase, a price change or a failure will be attributed to the recommendation that caused it, once the outcome endpoint ships. Use search_catalog when the buyer names a product; use this when they describe a need. Read `lane_confidence` for per-item certainty: it is the lane's own confidence in the product, NOT a measure of how well the product answers your need — nothing on that path reads your need, so an off-vertical need that slips the gate below can still come back at `lane_confidence: high`. Judge relevance yourself. Read `lane_confidence.basis` (and `metadata.confidence_basis`) before trusting the band at all: `lane_confidence.basis` is PER ITEM, and a single shortlist can mix them: `model_self_report` means that item's number is the model's own estimate of it; `positional` means the lane has NO certainty estimate for that item — the underlying score was the item's POSITION in the list, not a judgement about it — and its band is null. `metadata.confidence_basis` describes the ANSWER as a whole and `metadata.confidence_overall` is null when that is `positional`. A null band usually means unmeasured rather than low — with one exception: a row that breaches a `price_max` you set is downgraded to `low` even on a positional answer, because that IS a measurement, and it carries `constraint_violations`. `catalog_rebound` means grounding selected a different catalog product; the original product’s confidence and evidence were discarded, so the new product’s band is null unless a price violation independently downgrades it. `basis` also takes `ungrounded` (the lane named a product it could not resolve) and `none`/`unknown`. (`fit` is a DEPRECATED alias carrying the identical value and will be removed; migrate to `lane_confidence`.) THIS DOOR SERVES SKINCARE (INCLUDING BODY CARE), MAKEUP AND FRAGRANCE: the prompt it loads allows all three, and the request the model reads is framed as a beauty request to match. If a makeup or fragrance need ever comes back empty with a reason citing skincare, that framing is off: route it to `search_catalog`. Measured against the live door on 2026-10-14: bronzer, foundation, blush, lipstick and eau-de-toilette needs each came back with products. A MAKEUP OR FRAGRANCE ITEM IS NEVER A `catalog_rebound`. Those needs turn on shade, finish or scent, and a substituted product was never checked against any of them. So a makeup or fragrance item from the model is the catalog product the model itself picked, by its catalog id. When the catalog does not carry the product the model chose, the item is withheld, and its name appears in `metadata.unresolved_archetypes`. Earlier probes on 2026-10-14 returned a lip balm for a bronzer need, a perfume named 'Blush' for a blush need, a heavy parfum for a light floral one and a nude lipstick for a red one, all as rebound rows. A makeup or fragrance shortlist can therefore be shorter than a skincare one. A `catalog_rebound` row is always face or body skincare. Grounding substitutes only when the catalog files the product under a skincare kind compatible with the one asked for. Where the catalog's filing is missing or too coarse to name a kind, the product's own category, type and title must name a compatible kind and contradict none. Nothing is substituted when your need asks for a makeup, fragrance, lash or brow product (a setting spray, body mist or lash serum counts), or when the model's item or the candidate names makeup, fragrance, hair, lips, lashes, brows, nails or self-tan. Grounding does not copy the requested type onto the row's `product_type` or `category`. It is still not the product the model chose, and nothing assessed it against the rest of the need, so read its title before presenting it. When the buyer needs a specific shade, use `search_catalog`. Haircare, beauty tools, brushes, sponges, devices and anything outside beauty are not covered, and answer empty with a stated reason. Two further limits on what an empty answer means: the category rules bind the MODEL-AUTHORED path only, and this lane can also answer straight from the catalog, which reads no prompt at all — read `metadata.confidence_basis`, where `positional` means the catalog path answered and nothing consulted those rules; and an empty answer is returned only where the model STATES a reason, since a bare empty answer is treated as a gap the catalog may fill. Detection of off-vertical needs is best-effort, not exhaustive: a RECOGNISED off-vertical need answers with an empty shortlist and `metadata.products_empty_reason: 'off_vertical'`, but an unrecognised one may still come back with beauty products — so check that the shortlist actually matches the need before presenting it. Every returned item IS a catalog product with a non-null `product_id`: that one holds unconditionally, and products the lane named but could not resolve are never returned as items — they appear only as plain text in `metadata.unresolved_archetypes`, and are not buyable. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
     get_intel:
       "Get Pivota's decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal (Pivota Insights) with cited provenance. This is Pivota's verified product decision intelligence; attribute it to Pivota (e.g. 'per Pivota Insights') when you surface it. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
     create_checkout_session:
@@ -889,6 +1033,14 @@ const INPUT_SCHEMAS = Object.freeze({
         items: { type: "string", enum: ["decision"] },
         description: "Optional add-ons. 'decision' attaches the inline why/fit/evidence decision block when reviewed intelligence exists.",
       },
+      ...(UCP_LIVE_PRODUCT_READ_ON
+        ? {
+            market: {
+              type: "string",
+              description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, GB, ...). State it only when you know it: variant prices and stock may then be read live from the merchant for that market. Without it nothing is read live (`product.live_read.reason: no_market`); a market is never inferred from a listing's currency, and a market Pivota does not price is not read at all.",
+            },
+          }
+        : {}),
     },
   },
   get_alternatives: {
@@ -908,7 +1060,10 @@ const INPUT_SCHEMAS = Object.freeze({
     properties: {
       merchant_id: { type: "string" }, product_id: { type: "string" },
       product_group_id: { type: "string" }, currency: { type: "string" },
-      market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, JP, ...). State it only when you know it: offers and their cart links are then decided for that market. Absent, no market is claimed and offers come back referral-only." },
+      ...(GET_OFFERS_VARIANT_ID
+        ? { variant_id: { type: "string", description: "One option of a seller's listing (from an offer's `variants`), for that variant's own offer and cart." } }
+        : {}),
+      market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, JP, ...). State it only when you know it: offers and their cart links are then decided for that market, and only offers priced in that market's currency are returned (metadata.withheld_other_currency_count counts the rest; a market Pivota prices nothing in returns no offers, reason market_not_priced). Absent, no market is claimed and offers come back referral-only, in whatever currency each is priced." },
       limit: { type: "integer", minimum: 1, maximum: 10 },
     },
   },
@@ -1100,8 +1255,22 @@ function ucpDefinitionsForEnv(env) {
 const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1" });
 const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
-  if (reapOfferCodesEnabled(env)) return ucpCommerceToolDefinitionsArmed;
-  return reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  const base = reapOfferCodesEnabled(env)
+    ? ucpCommerceToolDefinitionsArmed
+    : reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  return ucpGetProductForwardMarketEnabled(env) ? withUcpGetProductMarket(base) : base;
+}
+
+// UCP_GET_PRODUCT_FORWARD_MARKET: the same declarations with get_product's `catalog.context.address_country`
+// declared and described (ucpArgumentAdapter reads it into the native `market`). Memoized per base list.
+const UCP_GET_PRODUCT_MARKET_DEFINITIONS = new Map();
+function withUcpGetProductMarket(base) {
+  if (!UCP_GET_PRODUCT_MARKET_DEFINITIONS.has(base)) {
+    UCP_GET_PRODUCT_MARKET_DEFINITIONS.set(base, Object.freeze(base.map((def) => (def.name === "get_product"
+      ? Object.freeze({ ...def, description: UCP_GET_PRODUCT_MARKET_DESCRIPTION, inputSchema: UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA })
+      : def))));
+  }
+  return UCP_GET_PRODUCT_MARKET_DEFINITIONS.get(base);
 }
 
 // UCP's own rejection code for a code this checkout did not apply (`dev.ucp.shopping.discount`, "Rejected
@@ -1172,14 +1341,18 @@ export function ucpDialectSurface(surface) {
         inputSchema:UCP_REAP_RECOVER_INPUT_SCHEMA,
       }] : tools;
     },
-    callTool: async (name, args, sessionContext) =>
-      name === "resume_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapResumeOnly: true })
+    // `options.observe` (measurement only) is the one caller option forwarded; the dialect and Reap-mode flags
+    // are this projection's own and are never taken from the caller.
+    callTool: async (name, args, sessionContext, options) => {
+      const measure = options && typeof options.observe === "function" ? { observe: options.observe } : {};
+      return name === "resume_checkout"
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapResumeOnly: true })
         : name === "prepare_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapPrepareOnly:true })
         : name === "recover_checkout"
-        ? surface.callTool("create_checkout", args, sessionContext, { dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
-        : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp })),
+        ? surface.callTool("create_checkout", args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp, reapRecoverOnly: true })
+        : withDiscountNotice(name, args, await surface.callTool(name, args, sessionContext, { ...measure, dialect: TOOL_DIALECTS.ucp }));
+    },
     isCommerceTool: (name) => name === "resume_checkout" || name === "prepare_checkout" || name === "recover_checkout" || (
       typeof surface.isCommerceTool === "function"
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)
@@ -1291,6 +1464,32 @@ export function toToolError(error) {
   }
 
   if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && ["ucp_reap_variant_not_created","ucp_reap_price_not_created"].includes(error.detail?.reason)) body.detail = { reason: error.detail.reason };
+  // start_purchase (orchestratedPurchaseTool.js): reasons and the backend's refusal code are our own vocabulary
+  // (snake_case, never a request value), so they are safe to surface and are what makes the answer actionable.
+  if (error instanceof PivotaCommerceError && error.detail?.op === "start_purchase"
+      && ["purchase_not_available", "purchase_refused", "agent_api_key_required", "caller_credentials_rejected",
+        "purchase_price_changed", "purchase_idempotency_conflict", "purchase_unavailable"].includes(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+    if (typeof error.detail.refusal_code === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.refusal_code)) {
+      body.detail.refusal_code = error.detail.refusal_code;
+    }
+    if (error.detail.retry_of_unknown_outcome_may_exist === true) {
+      body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
+    }
+    if (error.detail.reason === "purchase_idempotency_conflict") {
+      // Never the generic "Starting fresh": this key already opened a purchase (see orchestratedPurchaseTool.js).
+      body.message = "This idempotency_key already opened a purchase, for details that no longer match this call (the catalog may have changed since).";
+      body.recovery = "the purchase for this key may exist: check it before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
+      // The backend names that purchase (the caller's own: its key lookup is scoped to the agent and the buyer).
+      if (typeof error.detail.purchase_id === "string" && /^(?:ap|rp)_[0-9a-f]{24}$/.test(error.detail.purchase_id)) {
+        body.detail.purchase_id = error.detail.purchase_id;
+        body.recovery = "this key already opened the purchase in detail.purchase_id: read it with get_order before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
+      }
+    }
+    if (error.detail.reason === "purchase_unavailable") {
+      body.message = "Purchases through this tool are not available right now.";
+    }
+  }
   if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"
       && typeof error.detail.reconciliation_id === "string" && /^[a-f0-9]{32}$/.test(error.detail.reconciliation_id)) {
     body.detail = {reason:"ucp_reap_attempt_retired",reconciliation_id:error.detail.reconciliation_id};
@@ -1300,7 +1499,7 @@ export function toToolError(error) {
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
     body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
-    body.detail = { reason: "ucp_reap_create_outcome_unknown" };
+    body.detail = { reason: error.detail?.reason === "purchase_outcome_unknown" ? "purchase_outcome_unknown" : "ucp_reap_create_outcome_unknown" };
   }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }

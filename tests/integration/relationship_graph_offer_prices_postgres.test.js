@@ -26,8 +26,11 @@ suite('relationship graph offer prices on PostgreSQL', () => {
         is_primary boolean, PRIMARY KEY (merchant_id, platform, platform_product_id));
       CREATE TABLE catalog_offers(offer_id text PRIMARY KEY, product_key text, currency varchar(8),
         list_price numeric(12,2), merchant_effective_price numeric(12,2), estimated_best_price numeric(12,2),
-        suppressed_at timestamptz);
+        suppressed_at timestamptz, source_system text);
       CREATE INDEX ON catalog_offers(product_key);
+      CREATE TABLE external_product_seeds(id text PRIMARY KEY, attached_product_key text, status text,
+        price_currency text, seed_data jsonb);
+      CREATE INDEX ON external_product_seeds(attached_product_key);
     `);
     const product = (key, source, sig = null, merchant = 'merch_a') => db.query(
       `INSERT INTO catalog_products(product_key, merchant_id, platform, source_product_id, pivota_signature_id)
@@ -57,6 +60,23 @@ suite('relationship graph offer prices on PostgreSQL', () => {
     await offer('o4', 'P4', 'USD', 9.5);
     await offer('o5', 'P5', 'USD', 20);
     await offer('o6', 'P6', 'SGD', 20);
+    // skintific.com's shape (2026-10-19): a USD row the variant backfill copied off a seed since re-read
+    // in AUD is no price (seedSearchOfferScope.seedProjectedOfferInSeedCurrencySql); the store's own US
+    // read beside it is.
+    await product('P7', 'ext_skin', 'sig_skin');
+    await db.query(`INSERT INTO catalog_offers(offer_id, product_key, currency, list_price, source_system) VALUES
+      ('o7_copied', 'P7', 'USD', 23.56, 'variant_identity_backfill_v1'),
+      ('o7_markets', 'P7', 'USD', 39, 'us_market_capture')`);
+    await db.query(`INSERT INTO external_product_seeds VALUES
+      ('eps_skin', 'P7', 'active', 'AUD', '{"snapshot": {"price_currency": "AUD"}}')`);
+    // Column USD, page read GBP (483 such seeds on 10-19): either may be the wrong one, so the seed
+    // states no currency and the GBP row copied off it is no price either; the store's own read is.
+    await product('P8', 'ext_gbp', 'sig_gbp');
+    await db.query(`INSERT INTO catalog_offers(offer_id, product_key, currency, list_price, source_system) VALUES
+      ('o8_copied', 'P8', 'GBP', 30, 'external_product_seeds_mirror_v1'),
+      ('o8_markets', 'P8', 'USD', 35, 'us_market_capture')`);
+    await db.query(`INSERT INTO external_product_seeds VALUES
+      ('eps_gbp', 'P8', 'active', 'USD', '{"snapshot": {"price_currency": "GBP"}}')`);
   });
 
   afterAll(async () => {
@@ -99,6 +119,12 @@ suite('relationship graph offer prices on PostgreSQL', () => {
       { currency: 'USD', amounts: [20] },
     ]);
     expect(out.has('product:nomatch')).toBe(false);
+  });
+
+  test('an offer copied off a seed in another currency names no price; the store\'s own read does', async () => {
+    const out = await read(['product:sig_skin']);
+    expect(out.get('product:sig_skin')).toEqual([{ currency: 'USD', amounts: [39] }]);
+    expect(read(['product:sig_gbp']).then((o) => o.get('product:sig_gbp'))).resolves.toEqual([{ currency: 'USD', amounts: [35] }]);
   });
 
   test('a mixed-case ref reads the same offers, keyed by its lowercased form', async () => {

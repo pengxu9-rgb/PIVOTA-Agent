@@ -232,7 +232,10 @@ describe('negative review memory', () => {
       validator_version: REVIEW_VALIDATOR_VERSION,
       reviewed_at: new Date(T0).toISOString(),
       pair_fingerprint: reviewPairFingerprint(buildEvidence(pairRow('rej', { score_total: 0.9 }), new Map())),
+      // The run that wrote the memo (2026-10-20), so a night's verdicts can be found and undone together.
+      run_id: result.summary.run_id,
     });
+    expect(result.summary.run_id).toMatch(/^relgraph_review_/);
     expect(byId.rej.reviewed_at).toBe(new Date(T0).toISOString());
     expect(byId.unc.provenance.ai_review_last).toEqual(expect.objectContaining({ verdict: 'uncertain', rationale_code: 'model_uncertain_none' }));
     expect(byId.low.provenance.ai_review_last).toEqual(expect.objectContaining({
