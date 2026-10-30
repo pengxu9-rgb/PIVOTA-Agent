@@ -49,6 +49,7 @@ const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, val
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
 const { fragranceAlternativeRejection } = require('../src/auroraBff/relationshipFragranceProfile');
+const { catalogGateKeys, isNonProductListing, loadCatalogServingGateFailures } = require('../src/auroraBff/relationshipCatalogServingGate');
 
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v4';
@@ -675,6 +676,9 @@ async function fetchCandidates({
         label_state, score_total, score_breakdown, price_evidence,
         source_refs, evidence_grade, why_candidate, tradeoffs, watchouts,
         provenance, created_at, updated_at, updated_at::text AS review_row_version`;
+  // The catalog serving gate is applied to each fetched page (catalogGateFailingLabelIds), not here:
+  // as a correlated predicate it ran its five-arm lookup for every generated label before the
+  // ORDER BY / LIMIT (13 s against 52 ms on 30k labels locally).
   const where = `
       WHERE label_state = 'generated'
         AND COALESCE(updated_at, created_at) >= $1::timestamptz
@@ -714,7 +718,7 @@ async function fetchCandidates({
     `
     : `
       SELECT ${columns}
-      FROM relationship_candidate_labels${where}
+      FROM relationship_candidate_labels l${where}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
       LIMIT $3::int${offsetSql}
     `;
@@ -1011,6 +1015,8 @@ async function selectReviewCandidates({
   const rows = [];
   const prepared = new Map();
   const skippedIds = [];
+  const nonProductSkippedIds = [];
+  const catalogGateSkippedIds = [];
   const seen = new Set();
   let scanned = 0;
   let offset = 0;
@@ -1024,10 +1030,21 @@ async function selectReviewCandidates({
     for (const row of fresh) seen.add(row.id);
     scanned += fresh.length;
     if (fresh.length) {
+      const titled = fresh.filter((row) => !isNonProductLabel(row));
       // eslint-disable-next-line no-await-in-loop
-      const supplements = await supplementsFn(fresh, queryFn);
+      const gateFailures = await catalogGateFailingLabelIds(titled, queryFn);
+      // eslint-disable-next-line no-await-in-loop
+      const supplements = await supplementsFn(titled.filter((row) => !gateFailures.has(row.id)), queryFn);
       for (const row of fresh) {
         if (rows.length >= limit) break;
+        if (isNonProductLabel(row)) {
+          nonProductSkippedIds.push(row.id);
+          continue;
+        }
+        if (gateFailures.has(row.id)) {
+          catalogGateSkippedIds.push(row.id);
+          continue;
+        }
         const evidence = buildEvidence(row, supplements);
         const fingerprint = reviewPairFingerprint(evidence);
         if (memory && isRememberedNegative(row, fingerprint, memory)) {
@@ -1038,13 +1055,46 @@ async function selectReviewCandidates({
         prepared.set(row.id, { evidence, fingerprint });
       }
     }
-    if (!memory || rows.length >= limit || page.length < limit || fresh.length === 0) break;
+    if ((!memory && !nonProductSkippedIds.length && !catalogGateSkippedIds.length) || rows.length >= limit
+      || page.length < limit || fresh.length === 0) break;
     if (offset >= maxScan) {
       truncated = true;
       break;
     }
   }
-  return { rows, prepared, skippedIds, scanned, truncated };
+  return { rows, prepared, skippedIds, nonProductSkippedIds, catalogGateSkippedIds, scanned, truncated };
+}
+
+// CATALOG SERVING GATE (2026-10-21). A label whose candidate or anchor names a suppressed, not-live
+// or IPS-ineligible listing is SKIPPED: left 'generated', not selected, not reviewed. Not moved to
+// needs_evidence, deliberately: a catalog state is transient (a stale row re-syncs live) and
+// nothing moves needs_evidence back, so a move would retire labels on a passing state; and a move
+// is a write to relationship_candidate_labels on every review run after deploy, i.e. label
+// cleanup through a side door. Skipping writes nothing; selectReviewCandidates pages on, so the
+// run's LIMIT goes to real pairs. One gate query per fetched page (both sides of every label), with
+// the same keys the generation lanes use; a query error propagates (never "nothing failed").
+async function catalogGateFailingLabelIds(rows, queryFn = query) {
+  const subjects = [];
+  const labelBySubject = new Map();
+  for (const row of rows) {
+    if (!row || !row.id) continue;
+    for (const [side, snapshot, ref] of [['candidate', row.candidate_snapshot, row.candidate_product_ref],
+      ['anchor', row.anchor_snapshot, row.anchor_ref]]) {
+      const subjectId = `${row.id}\t${side}`;
+      labelBySubject.set(subjectId, row.id);
+      subjects.push({ subject_id: subjectId, keys: catalogGateKeys(snapshot, ref) });
+    }
+  }
+  const failures = await loadCatalogServingGateFailures({ queryFn, subjects });
+  return new Set([...failures.keys()].filter((subjectId) => labelBySubject.has(subjectId))
+    .map((subjectId) => labelBySubject.get(subjectId)));
+}
+
+// A donation, voucher, protection fee, tip or deposit on either side is skipped like a catalog-gate
+// failure (see fetchCandidates): left 'generated', never reviewed. The title rule lives in JS only
+// (relationshipCatalogServingGate.js), so it runs on the fetched page rather than in the SELECT.
+function isNonProductLabel(row) {
+  return isNonProductListing(row && row.candidate_snapshot) || isNonProductListing(row && row.anchor_snapshot);
 }
 
 function reviewErrorCode(err) {
@@ -1764,11 +1814,16 @@ async function runReview({
   const memory = memoryTtlDays > 0
     ? { ttlDays: memoryTtlDays, nowMs: clock(), minApprovalConfidence: confidenceFloor, model: currentModel }
     : null;
-  let selection = { rows: [], prepared: new Map(), skippedIds: [], scanned: 0, truncated: false };
+  let selection = { rows: [], prepared: new Map(), skippedIds: [], nonProductSkippedIds: [], catalogGateSkippedIds: [],
+    scanned: 0, truncated: false };
   // FAIL CLOSED on an id scope that resolved to nothing, exactly like the anchor scope.
   if (!(anchorScopeRequested && anchorRefs.length === 0) && !(idScopeRequested && ids.length === 0)) {
+    // Consensus pages exactly like single mode, minus negative memory: skipped labels stay
+    // 'generated' and keep their rank, so without the refill the same failing labels would take the
+    // head of every run. Its evidence carries no catalog supplement (as before), so none is fetched.
     selection = consensus
-      ? { ...selection, rows: await fetchCandidates({ ...fetchOptions, limit: effectiveLimit, queryFn }) }
+      ? { ...await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory: null,
+        supplementsFn: async () => new Map() }), prepared: new Map() }
       : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
   }
   const { rows } = selection;
@@ -2019,6 +2074,8 @@ async function runReview({
     negative_memory_ttl_days: memoryTtlDays,
     negative_memory_scanned_count: selection.scanned,
     negative_memory_skipped_count: selection.skippedIds.length,
+    non_product_listing_skipped_count: selection.nonProductSkippedIds.length,
+    catalog_gate_skipped_count: selection.catalogGateSkippedIds.length,
     negative_memory_scan_truncated: Boolean(selection.truncated),
     negative_memory_recorded_count: negativeMemoryRecordedCount,
     negative_memory_write_errors: negativeMemoryWriteErrors,
@@ -2101,6 +2158,7 @@ module.exports = {
   reviewWithConsensus,
   consensusCas,
   buildNegativeReviewMemo,
+  catalogGateFailingLabelIds,
   fetchCandidates,
   fetchSupplementsForRows,
   isRememberedNegative,

@@ -13,6 +13,7 @@ const { Client } = require('pg');
 const { LlmError } = require('../../src/llm/provider');
 const { upsertRelationshipCandidateLabel } = require('../../src/auroraBff/productRelationshipGraph');
 const { runReview } = require('../../scripts/review-relationship-candidate-labels');
+const { RELGRAPH_CATALOG_GATE_TABLES_SQL } = require('../_support/relgraphCatalogGateTables.cjs');
 
 const REJECT = {
   verdict: 'reject',
@@ -73,6 +74,7 @@ pgDescribe('negative review memory survives the nightly rebuild (isolated local 
       const file = fs.readdirSync(path.join(__dirname, '../../src/db/migrations')).find((n) => n.startsWith(`${number}_`));
       await client.query(fs.readFileSync(path.join(__dirname, '../../src/db/migrations', file), 'utf8'));
     }
+    await client.query(RELGRAPH_CATALOG_GATE_TABLES_SQL);
   }, 30000);
   afterAll(async () => {
     try {
@@ -144,9 +146,7 @@ pgDescribe('negative review memory survives the nightly rebuild (isolated local 
 
   test('a signature sold by two sellers: touching one seller row does not flip the supplement or the memory', async () => {
     await q('DELETE FROM relationship_candidate_labels');
-    await q(`CREATE TABLE catalog_products (product_key text primary key, source_product_id text, pivota_signature_id text, title text,
-      description text, brand text, product_type text, category text, category_path text, category_label text, canonical_url text,
-      pivota_canonical_url text, tags jsonb, use_case_tags jsonb, updated_at timestamptz default now())`);
+    // catalog_products comes from RELGRAPH_CATALOG_GATE_TABLES_SQL (beforeAll), empty until here.
     try {
       await q(`INSERT INTO catalog_products (product_key, pivota_signature_id, title, brand) VALUES
         ('m1:p1', 'sig_anchor_ms', 'Impress Falsies Lashes - Seller One', 'Impress'),
@@ -162,7 +162,7 @@ pgDescribe('negative review memory survives the nightly rebuild (isolated local 
       expect(second.analyzeTextToJson).not.toHaveBeenCalled();
       expect(result.summary.negative_memory_skipped_count).toBe(1);
     } finally {
-      await q('DROP TABLE catalog_products');
+      await q('TRUNCATE catalog_products');
     }
   });
 });

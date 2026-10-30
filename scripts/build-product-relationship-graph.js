@@ -42,6 +42,7 @@ const {
   normalizeKey,
 } = require('../src/auroraBff/productBeautyAttributes');
 const { computeReviewPriority } = require('../src/auroraBff/relationshipReviewPriority');
+const { filterProductsByCatalogServingGate } = require('../src/auroraBff/relationshipCatalogServingGate');
 const {
   isRelationshipGraphCanonicalAnchorEnabled,
   applyCanonicalAnchorRefs,
@@ -989,7 +990,7 @@ async function buildInputsFromDb({
   // 2026-09-27 they came from the whole source pool regardless of --affected-*, so every shard
   // re-emitted the same ~86 global niche edges (0 of them in its own scope) and per-shard counts
   // could not be summed. A run with no affected refs keeps the whole pool.
-  const candidatesByAnchor = buildCandidatesByAnchorFromSources({
+  const candidatesByAnchorBuilt = buildCandidatesByAnchorFromSources({
       anchors,
       // Keep the second pass scoped to the admitted baseline candidates and
       // bounded catalog opportunities. Evidence rows enrich; they do not expand
@@ -1001,6 +1002,14 @@ async function buildInputsFromDb({
       intelRows: [],
       ...candidateOptions,
     });
+  // The source pool already passed the catalog serving gate; legacy explicit dupes, target recall
+  // and transitive hops did not come through it, so the final candidates pass it here.
+  const candidateGate = await filterProductsByCatalogServingGate(
+    Object.values(candidatesByAnchorBuilt).flat(), { queryFn: query });
+  const candidatesByAnchor = candidateGate.dropped.size
+    ? Object.fromEntries(Object.entries(candidatesByAnchorBuilt).map(([ref, rows]) =>
+      [ref, rows.filter((row) => !candidateGate.dropped.has(row))]))
+    : candidatesByAnchorBuilt;
   let evidenceReadiness;
   if (expandTargetRecall) {
     const { summarizeRelationshipEvidenceReadiness } = require('../src/services/relationshipEvidenceReadiness');
@@ -1041,6 +1050,7 @@ async function buildInputsFromDb({
       need_candidate_pool: affectedScoped ? 'affected' : 'all',
       need_candidate_pool_size: needCandidatePool.length,
       source_counts: sourceInputs.source_counts,
+      candidate_catalog_serving_gate: { dropped: candidateGate.dropped.size, dropped_by_reason: candidateGate.counts },
       targeted_evidence: targetedEvidence?.diagnostics || null,
       ...(expandTargetRecall ? { evidence_readiness: evidenceReadiness || null } : {}),
       ...(expandTargetRecall ? { target_recall: targetRecall?.diagnostics || { enabled: true, selected_anchor_count: 0 } } : {}),
