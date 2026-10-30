@@ -3,6 +3,7 @@ const {
   catalogGateKeys,
   filterProductsByCatalogServingGate,
   isNonProductListing,
+  loadCatalogServingGateFailures,
   nonProductListingReason,
   relationshipServingCatalogGateMode,
 } = require('../src/auroraBff/relationshipCatalogServingGate');
@@ -73,6 +74,10 @@ describe('catalog gate keys', () => {
       seed_data: { snapshot: { title: 'Serum' } } });
     expect(catalogGateKeys(product).sort()).toEqual(['ext_1']);
   });
+  test('a numeric snapshot id counts as its text, as jsonb ->> reads it', () => {
+    expect(catalogGateKeys({ product_id: 12345, source_product_id: 0, product_key: Number.NaN }, 'product:pg_1').sort())
+      .toEqual(['0', '12345', 'pg_1']);
+  });
   test('a stored snapshot under a re-keyed ref contributes its listing ids', () => {
     expect(catalogGateKeys({ product_id: 'ext_1', pivota_signature_id: 'sig_1', product_key: 'cp_1', source_product_id: '' },
       'product:pg_family').sort()).toEqual(['cp_1', 'ext_1', 'pg_family', 'sig_1']);
@@ -90,6 +95,20 @@ describe('generation: the gate decides, and a gate error is never read as "nothi
     expect(gate.kept).toEqual([live]);
     expect(gate.counts).toEqual({ catalog_not_live: 1, non_product_listing: 1 });
     expect(JSON.parse(queryFn.mock.calls[0][1][0]).map((s) => s.keys)).toEqual([['ext_live'], ['ext_stale']]);
+  });
+  test('a result row the gate did not ask about drops nothing and counts nothing', async () => {
+    const queryFn = jest.fn(async () => ({ rows: [{ subject_id: '7', reason: 'catalog_not_live' }, { reason: 'catalog_suppressed' }] }));
+    const gate = await filterProductsByCatalogServingGate([{ product_ref: 'product:ext_live', name: 'Serum' }], { queryFn });
+    expect(gate.kept).toHaveLength(1);
+    expect(gate.counts).toEqual({});
+  });
+  test('more than one batch: every subject is asked about, and a failure in a later batch counts', async () => {
+    const subjects = Array.from({ length: 4501 }, (_, i) => ({ subject_id: `s${i}`, keys: [`ext_${i}`] }));
+    const queryFn = jest.fn(async (_sql, [batch]) => ({ rows: JSON.parse(batch)
+      .filter((s) => ['ext_0', 'ext_2000', 'ext_4500'].includes(s.keys[0])).map((s) => ({ subject_id: s.subject_id, reason: 'catalog_not_live' })) }));
+    const failures = await loadCatalogServingGateFailures({ queryFn, subjects });
+    expect(queryFn.mock.calls.map(([, [batch]]) => JSON.parse(batch).length)).toEqual([2000, 2000, 501]);
+    expect([...failures.keys()].sort()).toEqual(['s0', 's2000', 's4500']);
   });
   test('the source loader propagates a gate query error', async () => {
     const queryFn = jest.fn(async (sql) => {
@@ -229,10 +248,13 @@ describe('review: the catalog gate runs once per fetched page, never in the page
 
   test('a failing label is skipped without a write and the next page fills its slot', async () => {
     const queryFn = queryFnFor(staleFails);
+    const supplementsFn = jest.fn(async () => new Map());
     const selection = await selectReviewCandidates({ limit: 2, queryFn, fetchOptions: { cutoff: '2026-01-01', minScore: 0 },
-      supplementsFn: async () => new Map() });
+      supplementsFn });
     expect(selection.rows.map((r) => r.id)).toEqual(['l2', 'l3']);
     expect(selection.catalogGateSkippedIds).toEqual(['l1']);
+    // Supplements are read only for the labels that can still be reviewed.
+    expect(supplementsFn.mock.calls.flatMap(([rows]) => rows.map((r) => r.id))).toEqual(['l2', 'l3']);
     const gateCalls = queryFn.mock.calls.filter(([sql]) => sql === CATALOG_GATE_FAILURES_SQL);
     const pageCalls = queryFn.mock.calls.filter(([sql]) => /FROM relationship_candidate_labels/.test(sql));
     expect(gateCalls).toHaveLength(pageCalls.length);
@@ -252,6 +274,48 @@ describe('review: the catalog gate runs once per fetched page, never in the page
     const selection = await selectReviewCandidates({ limit: 3, queryFn: queryFnFor(stray),
       fetchOptions: { cutoff: '2026-01-01', minScore: 0 }, supplementsFn: async () => new Map() });
     expect(selection.rows.map((r) => r.id)).toEqual(['l1', 'l2', 'l3']);
+  });
+  test('a label whose snapshot names no id is resolved through its ref column alone', async () => {
+    const bare = { ...label('l9', 'ext_stale'), candidate_snapshot: { name: 'Barrier Serum' } };
+    const queryFn = jest.fn(async (sql, params) => {
+      if (sql === CATALOG_GATE_FAILURES_SQL) return staleFails(params);
+      if (/FROM relationship_candidate_labels/.test(sql)) return { rows: /OFFSET/.test(sql) ? [] : [bare] };
+      return { rows: [] };
+    });
+    const selection = await selectReviewCandidates({ limit: 1, queryFn, fetchOptions: { cutoff: '2026-01-01', minScore: 0 },
+      supplementsFn: async () => new Map() });
+    expect(selection.catalogGateSkippedIds).toEqual(['l9']);
+  });
+  test('a page of a review batch above 2000 subjects is gated in full', async () => {
+    const many = Array.from({ length: 1200 }, (_, i) => label(`m${i}`, i === 1100 ? 'ext_stale' : `ext_${i}`));
+    const queryFn = jest.fn(async (sql, params) => {
+      if (sql === CATALOG_GATE_FAILURES_SQL) return staleFails(params);
+      if (/FROM relationship_candidate_labels/.test(sql)) {
+        const offset = /OFFSET/.test(sql) ? params[params.length - 1] : 0;
+        return { rows: many.slice(offset, offset + params[2]) };
+      }
+      return { rows: [] };
+    });
+    const selection = await selectReviewCandidates({ limit: 1200, queryFn, fetchOptions: { cutoff: '2026-01-01', minScore: 0 },
+      supplementsFn: async () => new Map() });
+    expect(selection.catalogGateSkippedIds).toEqual(['m1100']);
+    expect(queryFn.mock.calls.filter(([sql]) => sql === CATALOG_GATE_FAILURES_SQL).length).toBeGreaterThan(1);
+  });
+  test('gate skips stop at the scan budget and say so', async () => {
+    const failing = Array.from({ length: 30 }, (_, i) => label(`f${i}`, 'ext_stale'));
+    const queryFn = jest.fn(async (sql, params) => {
+      if (sql === CATALOG_GATE_FAILURES_SQL) return staleFails(params);
+      if (/FROM relationship_candidate_labels/.test(sql)) {
+        const offset = /OFFSET/.test(sql) ? params[params.length - 1] : 0;
+        return { rows: failing.slice(offset, offset + params[2]) };
+      }
+      return { rows: [] };
+    });
+    const selection = await selectReviewCandidates({ limit: 1, queryFn, fetchOptions: { cutoff: '2026-01-01', minScore: 0 },
+      supplementsFn: async () => new Map() });
+    expect(selection.rows).toEqual([]);
+    expect(selection.truncated).toBe(true);
+    expect(selection.scanned).toBe(20); // NEGATIVE_MEMORY_MAX_SCAN_PAGES x limit
   });
   test('a gate query error fails the selection', async () => {
     const broken = () => { throw new Error('gate down'); };
@@ -286,5 +350,35 @@ describe('consensus review skips a catalog-gate failure before either reviewer s
       consensusProviders: providers, queryFn, apply: true });
     expect(providers[0].analyzeTextToJson).not.toHaveBeenCalled();
     expect(result.summary.catalog_gate_skipped_count).toBe(1);
+  });
+  test('the batch refills: top-ranked failing labels do not starve the passing ones', async () => {
+    const make = (id, candidate, title, score) => ({ id, anchor_type: 'product', anchor_ref: 'product:a',
+      candidate_product_ref: `product:${candidate}`, anchor_snapshot: { product_id: 'a', title: 'Barrier Peptide Face Cream' },
+      candidate_snapshot: { product_id: candidate, title }, relation_type: 'competitive_alternative', market: 'US',
+      vertical: 'beauty', score_total: score, label_state: 'generated', source_refs: [] });
+    const queue = [make('f1', 'ext_stale', 'Stale Cream One', 0.99), make('f2', 'ext_stale', 'Stale Cream Two', 0.98),
+      make('p1', 'ext_p1', 'Passing Cream One', 0.5), make('p2', 'ext_p2', 'Passing Cream Two', 0.4)];
+    const providers = [['openai', 'gpt-fixture'], ['gemini', 'gemini-2.5-flash']].map(([provider, model]) => ({
+      __meta: { provider, model }, analyzeTextToJson: jest.fn(async () => { throw new Error('fixture: no verdict'); }) }));
+    const queryFn = jest.fn(async (sql, params) => {
+      if (sql === CATALOG_GATE_FAILURES_SQL) {
+        return { rows: JSON.parse(params[0]).filter((s) => s.keys.includes('ext_stale'))
+          .map((s) => ({ subject_id: s.subject_id, reason: 'catalog_not_live' })) };
+      }
+      if (/FROM relationship_candidate_labels/.test(sql) && /LIMIT/.test(sql)) {
+        const offset = /OFFSET/.test(sql) ? params[params.length - 1] : 0;
+        return { rows: queue.slice(offset, offset + params[2]) };
+      }
+      return { rows: [] };
+    });
+    const result = await runReview({ cutoff: '2026-01-01', minScore: 0, limit: 2, reviewMode: 'consensus',
+      consensusProviders: providers, queryFn, apply: false });
+    expect(result.summary.catalog_gate_skipped_count).toBe(2);
+    const prompts = providers[0].analyzeTextToJson.mock.calls.map((call) => JSON.stringify(call));
+    expect(prompts.some((p) => p.includes('Passing Cream One'))).toBe(true);
+    expect(prompts.some((p) => p.includes('Passing Cream Two'))).toBe(true);
+    expect(prompts.some((p) => p.includes('Stale Cream'))).toBe(false);
+    // Consensus evidence carries no catalog supplement, so selection reads none.
+    expect(queryFn.mock.calls.filter(([sql]) => sql !== CATALOG_GATE_FAILURES_SQL && /catalog_products/.test(sql))).toEqual([]);
   });
 });

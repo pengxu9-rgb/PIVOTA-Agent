@@ -30,9 +30,10 @@
 // measured; failing them closed would be a blind cut of the candidate pool. Only an explicit
 // non-serving state fails.
 //
-// ONE PREDICATE, THREE READERS. catalogGateFailsSql is the only definition; candidate
-// generation (loadCatalogServingGateFailures), the review queue and the serving read all
-// splice it, so the three cannot drift apart.
+// ONE PREDICATE, THREE READERS. catalogGateFailsSql is the only definition, and all three readers
+// reach it through loadCatalogServingGateFailures with keys from catalogGateKeys: candidate
+// generation (per source pool), the review queue (per fetched page, both sides of each label) and
+// the serving read. So the three cannot drift apart.
 
 const MAX_KEY_LENGTH = 260;
 
@@ -49,11 +50,11 @@ const MAX_KEY_LENGTH = 260;
 // - _NON_PRODUCT_LISTING_RE, the donation rule and _NON_PRODUCT_TITLE_START_RE read each TITLE on its
 //   own, never the URL and never the titles joined: a real product filed under /collections/donations/
 //   is still a product, and one title's last word next to another's first is not a phrase.
-// - The compact gift-card / protection-fee arms read the titles AND the canonical URL joined, as the
-//   backend's _NON_CORE_COMPACT_RE does ("E-Gift Card" and a /products/shippingprotection slug both
-//   compact onto them). This also covers the backend's normalized gift-card / protection arms of
-//   _NON_CORE_PRODUCT_RE: every string they match compacts onto one of these, behind the same
-//   holder / case / wallet / sleeve / cardigan exceptions.
+// - The gift-card / protection-fee arms read the titles AND the canonical URL joined, as the backend
+//   does, in both of its forms: the normalized arms of _NON_CORE_PRODUCT_RE (NON_PRODUCT_NORMALIZED_RE)
+//   and the compact _NON_CORE_COMPACT_RE ("E-Gift Card" and a /products/shippingprotection slug both
+//   compact onto it). Both are needed: their exceptions differ ("E-Gift Card Holder" and "Gift Card
+//   Holderless Wallet" pass the compact exception and still match a normalized arm).
 // - The product type is an exact match on the merchant's product_type only (not the category).
 //
 // One deliberate difference: the old rule's sample / GWP / packette / sticker / "100% off" /
@@ -62,6 +63,15 @@ const MAX_KEY_LENGTH = 260;
 // index_pipeline_state.serving_eligible, which the catalog gate below reads. The parity fixture
 // marks those rows.
 // Never the description: "10% of proceeds donated" in a description is a product.
+
+// _NON_CORE_PRODUCT_RE's gift-card and protection-fee arms only (its sample / GWP arms: see above).
+const NON_PRODUCT_NORMALIZED_RE = new RegExp(
+  '\\b(?:'
+  + 'gift\\s+card(?!s?\\s+(?:holder|case|wallet|sleeve)s?\\b)|e\\s*gift\\s+card|'
+  + 'shipping\\s+protection|route\\s+package\\s+protection|delivery\\s+protection'
+  + ')\\b',
+  'i',
+);
 
 const NON_PRODUCT_COMPACT_RE = new RegExp(
   '(?:'
@@ -83,19 +93,25 @@ const NON_PRODUCT_LISTING_RE = new RegExp(
   'i',
 );
 
-// Python's \w, \W, \b and \d are Unicode-aware; JS's are ASCII. The patterns read on the RAW title
-// ("Café Tip", "Tipé") therefore spell Python's classes out: WORD is [\p{L}\p{N}_] (str.isalnum or
-// "_"), and a \b next to an ASCII letter is the matching lookaround. The patterns read on the
-// normalized title see only [a-z0-9% ], where the two engines agree, and stay verbatim.
+// Python's \w, \W, \b, \d and \s are Unicode-aware and differ from JS's, and its IGNORECASE matches
+// "i" to dotted and dotless I (U+0130, U+0131), which JS's "iu" does not. The patterns read on the
+// RAW title ("Café Tip", "Tipé", "TİP") therefore spell Python's classes out:
+// - WORD is [\p{L}\p{N}_] (str.isalnum or "_"); a \b next to an ASCII letter is the matching lookaround;
+// - SPACE is Python's \s (str.isspace): JS's \s plus U+001C-001F and U+0085, minus U+FEFF;
+// - every "i" in a word is [iİı].
+// The patterns read on the normalized or compact text see only [a-z0-9% ], where the two engines
+// agree, and stay verbatim.
 const WORD = '[\\p{L}\\p{N}_]';
 const NOT_WORD = '[^\\p{L}\\p{N}_]';
 const END = `(?!${WORD})`;
+const SPACE = '[\\t\\n\\v\\f\\r\\x1c-\\x20\\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]';
+const ci = (word) => word.replace(/i/g, '[i\\u0130\\u0131]');
 
 // A donation listing, read on the raw title. A charity EDITION of a product ("Pink Lip Balm
 // (Donation Edition)") and a product with a donation added on ("Lip Gloss + $1 Donation") are products.
 // Python: \bdonations?\b(?!\s+edition\b)  and  \+\s*\$?\s*\d+(?:[.,]\d+)?\s*donations?\b
-const DONATION_RE = new RegExp(`(?<!${WORD})donations?${END}(?!\\s+edition${END})`, 'iu');
-const DONATION_ADD_ON_RE = new RegExp(`\\+\\s*\\$?\\s*\\p{Nd}+(?:[.,]\\p{Nd}+)?\\s*donations?${END}`, 'iu');
+const DONATION_RE = new RegExp(`(?<!${WORD})${ci('donation')}s?${END}(?!${SPACE}+${ci('edition')}${END})`, 'iu');
+const DONATION_ADD_ON_RE = new RegExp(`\\+${SPACE}*\\$?${SPACE}*\\p{Nd}+(?:[.,]\\p{Nd}+)?${SPACE}*${ci('donation')}s?${END}`, 'iu');
 
 // Only at the START of ONE title: "Q-Tip Precision Swabs", "Fingertip Blender", "Proceeds Donated To
 // ...", "Colour Deposit Mask", "Deposit-Only Color Gloss" and "Deposit (Color Mask) Red" are products.
@@ -103,8 +119,8 @@ const DONATION_ADD_ON_RE = new RegExp(`\\+\\s*\\$?\\s*\\p{Nd}+(?:[.,]\\p{Nd}+)?\
 const NON_PRODUCT_TITLE_START_RE = new RegExp(
   `^${NOT_WORD}*(?:`
   + `donate${END}|`
-  + `deposit\\s*(?:$|for${END}|[:(-]\\s*(?:for${END}|custom${END}|booking${END}|\\$|\\p{Nd}))|`
-  + `(?:add\\s+(?:a\\s+)?)?tips?${NOT_WORD}*$`
+  + `${ci('deposit')}${SPACE}*(?:$|for${END}|[:(-]${SPACE}*(?:for${END}|custom${END}|${ci('booking')}${END}|\\$|\\p{Nd}))|`
+  + `(?:add${SPACE}+(?:a${SPACE}+)?)?${ci('tip')}s?${NOT_WORD}*$`
   + ')',
   'iu',
 );
@@ -131,10 +147,12 @@ function snapshotUrls(snapshot) {
   return [snapshot.canonical_url, snapshot.url, snapshot.canonicalUrl].map(text).filter(Boolean);
 }
 
-// The backend reads catalog_products.product_type, separators folded to one space.
+// The backend reads catalog_products.product_type, separators (Python's \s, "_", "-") folded to one
+// space, then stripped.
+const TYPE_SEPARATORS_RE = new RegExp(`(?:${SPACE}|[_-])+`, 'gu');
 function snapshotTypes(snapshot) {
   return [snapshot.product_type, snapshot.productType].map(text).filter(Boolean)
-    .map((value) => value.replace(/[\s_-]+/g, ' ').trim().toLowerCase());
+    .map((value) => value.replace(TYPE_SEPARATORS_RE, ' ').replace(/^ +| +$/g, '').toLowerCase());
 }
 
 // One title names a listing that is not merchandise (backend _is_non_product_title).
@@ -148,8 +166,9 @@ function isNonProductTitle(title) {
 function nonProductListingReason(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return '';
   const titles = snapshotTitles(snapshot);
-  const compact = [...titles, ...snapshotUrls(snapshot)].join(' ').toLowerCase().replace(/[^a-z0-9%]+/g, '');
-  if (NON_PRODUCT_COMPACT_RE.test(compact)) return 'non_product_listing';
+  const raw = [...titles, ...snapshotUrls(snapshot)].join(' ').toLowerCase();
+  if (NON_PRODUCT_NORMALIZED_RE.test(raw.replace(/[^a-z0-9%]+/g, ' '))
+    || NON_PRODUCT_COMPACT_RE.test(raw.replace(/[^a-z0-9%]+/g, ''))) return 'non_product_listing';
   if (titles.some(isNonProductTitle)) return 'non_product_listing';
   if (snapshotTypes(snapshot).some((type) => NON_PRODUCT_TYPES.has(type))) return 'non_product_type';
   return '';
@@ -161,8 +180,15 @@ function isNonProductListing(snapshot) {
 
 // ---- Catalog serving gate ----------------------------------------------------------------------
 
+// A numeric id in a stored snapshot counts as its text, as jsonb ->> reads it.
+function idText(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value === 'bigint') return String(value);
+  return text(value);
+}
+
 function stripProductPrefix(ref) {
-  return text(ref).trim().replace(/^product:/i, '');
+  return idText(ref).trim().replace(/^product:/i, '');
 }
 
 // The ids a graph product (a normalized source row, or a stored label snapshot) names.
@@ -215,11 +241,6 @@ function catalogGateFailsSql(keysSql) {
       LEFT JOIN index_pipeline_state ips ON ips.content_key = r.content_key) IS FALSE)`;
 }
 
-// For a stored label column pair, e.g. ('l.candidate_product_ref', 'l.candidate_snapshot').
-function labelRefFailsCatalogGateSql(refSql, snapshotSql) {
-  return catalogGateFailsSql(catalogGateKeysSql(refSql, snapshotSql));
-}
-
 // Why each failing subject failed, for diagnostics; the verdict itself is catalogGateFailsSql's.
 const CATALOG_GATE_FAILURES_SQL = `
   SELECT s.subject_id,
@@ -266,7 +287,8 @@ async function filterProductsByCatalogServingGate(products, { queryFn } = {}) {
     subjects.push({ subject_id: String(index), keys: catalogGateKeys(product) });
   });
   const failures = await loadCatalogServingGateFailures({ queryFn, subjects });
-  for (const [subjectId, reason] of failures) dropped.set(list[Number(subjectId)], reason);
+  const sent = new Set(subjects.map((subject) => subject.subject_id));
+  for (const [subjectId, reason] of failures) if (sent.has(subjectId)) dropped.set(list[Number(subjectId)], reason);
   for (const reason of dropped.values()) counts[reason] = (counts[reason] || 0) + 1;
   return { kept: list.filter((product) => !dropped.has(product)), dropped, counts };
 }
@@ -290,7 +312,6 @@ module.exports = {
   catalogGateKeysSql,
   filterProductsByCatalogServingGate,
   isNonProductListing,
-  labelRefFailsCatalogGateSql,
   loadCatalogServingGateFailures,
   nonProductListingReason,
   relationshipServingCatalogGateMode,

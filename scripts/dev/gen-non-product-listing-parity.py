@@ -50,12 +50,28 @@ TITLES = [
     "Tipé", "éTip", "Donation édition", "Café Tip", "— Tip —",
     "Tip ", "Donationé", "éDonation", "Deposit - ٥", "Lip Gloss + ١ Donation",
     "Donateé Serum", "Deposit foré",
+    # Every listing-phrase arm, and the deposit separators.
+    "Preorder Deposit", "Pre Order Deposit", "Parcel Protection", "Shipment Insurance", "Parcel Guarantee",
+    "Appointment Deposit", "Reservation Deposit", "Security Deposit", "Deposit (Booking Fee)",
+    "Deposit (For Bridal)", "Deposit: 50%", "Deposit - Custom", "Deposit Refund",
+    # Gift-card exceptions, in both the normalized and the compact form, and where the two differ.
+    "Gift Card Case", "Gift Card Wallet", "Gift Card Sleeve", "Gift Cards Cases", "E-Gift Card Holder",
+    "Gift Card Holderless Wallet", "Gift Card Holder2",
+    # Compact and normalized protection-fee arms.
+    "Narvar Delivery Protection", "Delivery Protection", "Route Package Protection", "Shipping-Protection",
+    # Python's \s (U+0085, U+001F in, U+FEFF out) and IGNORECASE (dotted / dotless I).
+    "Pink Lip Balm (Donation\u0085Edition)", "Pink Lip Balm (Donation﻿Edition)", "Deposit﻿",
+    "Deposit\u001f- $50", "DONATİON", "TİP", "Tıp", "Add a Tip", "Lip Gloss + $1 Donation",
     # Sample-family rows the graph keeps (GRAPH_KEEPS).
     *sorted(GRAPH_KEEPS),
 ]
 
 TYPES = ["Donation", "Gift Card", "gift_card", "Gift Cards", "e-gift card", "Insurance", "  Gift Card  ",
-         "", "Gift Set", "Gifts", "makeup", "Beauty Product", "Tools", "Tips", "tip", "Deposit"]
+         "", "Gift Set", "Gifts", "makeup", "Beauty Product", "Tools", "Tips", "tip", "Deposit",
+         # The rest of the type list, and Python's separator fold.
+         "giftcard", "giftcards", "e gift cards", "egift card", "gift certificate", "gift voucher", "donations",
+         "shipping protection", "package protection", "gratuity",
+         "\ufeffGift Card", "Gift\u001fCard", "Gift\u0085Card", "G\u0130FT CARD"]
 
 URLS = [
     "https://example.com/collections/donations/products/lip-balm",

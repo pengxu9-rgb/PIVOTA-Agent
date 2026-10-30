@@ -1030,10 +1030,11 @@ async function selectReviewCandidates({
     for (const row of fresh) seen.add(row.id);
     scanned += fresh.length;
     if (fresh.length) {
+      const titled = fresh.filter((row) => !isNonProductLabel(row));
       // eslint-disable-next-line no-await-in-loop
-      const gateFailures = await catalogGateFailingLabelIds(fresh.filter((row) => !isNonProductLabel(row)), queryFn);
+      const gateFailures = await catalogGateFailingLabelIds(titled, queryFn);
       // eslint-disable-next-line no-await-in-loop
-      const supplements = await supplementsFn(fresh, queryFn);
+      const supplements = await supplementsFn(titled.filter((row) => !gateFailures.has(row.id)), queryFn);
       for (const row of fresh) {
         if (rows.length >= limit) break;
         if (isNonProductLabel(row)) {
@@ -1817,16 +1818,13 @@ async function runReview({
     scanned: 0, truncated: false };
   // FAIL CLOSED on an id scope that resolved to nothing, exactly like the anchor scope.
   if (!(anchorScopeRequested && anchorRefs.length === 0) && !(idScopeRequested && ids.length === 0)) {
-    if (consensus) {
-      const fetched = await fetchCandidates({ ...fetchOptions, limit: effectiveLimit, queryFn });
-      const titled = fetched.filter((row) => !isNonProductLabel(row));
-      const gateFailures = await catalogGateFailingLabelIds(titled, queryFn);
-      selection = { ...selection, rows: titled.filter((row) => !gateFailures.has(row.id)),
-        nonProductSkippedIds: fetched.filter(isNonProductLabel).map((row) => row.id),
-        catalogGateSkippedIds: titled.filter((row) => gateFailures.has(row.id)).map((row) => row.id) };
-    } else {
-      selection = await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
-    }
+    // Consensus pages exactly like single mode, minus negative memory: skipped labels stay
+    // 'generated' and keep their rank, so without the refill the same failing labels would take the
+    // head of every run. Its evidence carries no catalog supplement (as before), so none is fetched.
+    selection = consensus
+      ? { ...await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory: null,
+        supplementsFn: async () => new Map() }), prepared: new Map() }
+      : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
   }
   const { rows } = selection;
   const independentProviders = consensus && rows.length ? (consensusProviders || createConsensusProviders()) : null;
