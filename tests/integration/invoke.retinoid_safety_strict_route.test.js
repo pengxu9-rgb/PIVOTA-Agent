@@ -38,6 +38,11 @@ const PRODUCT_CASES = [
   ['russian ingredients, 100 tags, 80 variants', { title: 'Night Serum C', description: 'Night serum.', ingredients: 'вода, глицерин, ретинол', tags: Array.from({ length: 100 }, (_, i) => `tag-${i}`), variants: manyVariants(80) }],
   ['thai inci, 80 variants', { title: 'Night Serum D', description: 'Night serum.', inci: 'น้ำ, เรตินอล', variants: manyVariants(80) }],
   ['korean name between "<" and ">" in prose', { title: 'Night Serum E', description: 'Gentle pH <5.5 formula with 레티놀 0.1% for skin aged >25.' }],
+  // what the wider reading adds: a stand-in title with a real retinoid in its actives, a name split
+  // by an inline tag, a name only in a variant's option value
+  ['stand-in title, a real retinoid in actives', { title: 'Bakuchiol Retinol Alternative Serum', description: 'Night serum.', actives: ['retinal'] }],
+  ['retinol split by an inline tag', { title: 'Night Serum F', description: 'Night serum with re<span>tinol</span> for smoother skin.' }],
+  ['retinol only in a variant option', { title: 'Night Serum G', description: 'Night serum.', variants: [{ id: 'v1', sku: 'S1', option1: 'Retinol 0.3%' }] }],
 ].map(([label, fields], i) => [label, { ...BASE_ROW, id: `strict_p${i}`, product_id: `strict_p${i}`, ...fields }]);
 
 const turn = (role, content) => ({ role, content });
@@ -61,6 +66,7 @@ const SIGNALLED = [
   ['profile family_status pregnant', { user_profile: { family_status: 'pregnant' } }],
   ['profile family_planning trying to conceive', { user_profile: { family_planning: 'trying to conceive' } }],
   ['profile household shopping for an 8 year old', { user_profile: { household: 'shopping for my 8 year old' } }],
+  ['profile pregnancy_status "not pregnant, breastfeeding"', { user_profile: { pregnancy_status: 'not pregnant, breastfeeding' } }],
   ['nested conversation, pregnancy in a tool turn', { conversation: { messages: [turn('tool', 'pregnant: yes'), turn('user', 'serum')] } }],
   // every row is [label, payload, metadata]: test.each passes a callback for a missing column
 ].map(([label, payload = null, metadata = null]) => [label, payload, metadata]);
