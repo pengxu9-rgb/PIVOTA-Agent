@@ -8,6 +8,7 @@ const { Client } = require('pg');
 const { runReview, consumerCopyForKind } = require('../../scripts/review-relationship-candidate-labels');
 const { listApprovedRelationshipEdgesForAnchorUncollapsed } = require('../../src/auroraBff/productRelationshipGraph');
 const { scanServingLabels } = require('../../src/services/relationshipGraphServingScan');
+const { RELGRAPH_CATALOG_GATE_TABLES_SQL } = require('../_support/relgraphCatalogGateTables.cjs');
 
 const DATABASE_URL = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const pgDescribe = DATABASE_URL || process.env.RELGRAPH_TEST_POSTGRES === '1' ? describe : describe.skip;
@@ -37,6 +38,7 @@ pgDescribe('consensus apply and serving on throwaway PostgreSQL', () => {
       const file = fs.readdirSync(path.join(__dirname, '../../src/db/migrations')).find((name) => name.startsWith(`${number}_`));
       await client.query(fs.readFileSync(path.join(__dirname, '../../src/db/migrations', file), 'utf8'));
     }
+    await client.query(RELGRAPH_CATALOG_GATE_TABLES_SQL);
   }, 30000);
   afterAll(async () => {
     try { if (client) { await client.query('DROP SCHEMA IF EXISTS relgraph_consensus_test CASCADE'); await client.end(); } } finally {
