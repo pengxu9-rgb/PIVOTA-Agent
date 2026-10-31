@@ -848,7 +848,59 @@ function readRequestContext(body, options) {
   return { classes: Array.from(all).sort(), sources: Array.from(sources).sort() };
 }
 
+// Does the request carry ANYTHING beyond its query: an earlier turn that is not the query itself,
+// a profile, constraints, safety flags, or a user goal that differs from the query? Presence is
+// enough; this does not judge what the context says. Used to keep an explicit-ask exemption to
+// requests that are only the query.
+function requestCarriesContextBeyondQuery(body) {
+  // Same budget as the reader: a body too big to look through counts as carrying context (fail
+  // closed: the explicit-ask allowlist then does not apply). Over a cap, or once the node budget is
+  // spent, nonEmpty answers true.
+  SCAN = { strings: 0, chars: 0, nodes: 0, overflow: false };
+  return carriesContextBeyondQuery(body);
+}
+
+function carriesContextBeyondQuery(body) {
+  const b = isObj(body) ? body : {};
+  const payload = isObj(b.payload) ? b.payload : {};
+  const search = isObj(payload.search) ? payload.search : {};
+  const query = String(search.query || payload.query || '').trim().toLowerCase();
+  const nonEmpty = (value) => {
+    if (!visit()) return true;
+    if (value == null || value === false || value === '') return false;
+    if (Array.isArray(value) || isObj(value)) {
+      const children = childrenOf(value);
+      if (!children) {
+        overLimit();
+        return true;
+      }
+      return children.some(nonEmpty);
+    }
+    return true;
+  };
+  for (const container of requestContainers(body)) {
+    for (const key of MESSAGE_KEYS) {
+      const value = container[key];
+      if (!Array.isArray(value)) continue;
+      if (value.length > MAX_SCAN_ARRAY_ITEMS) return true;
+      if (value.some((m) => {
+        const text = messageText(m).trim().toLowerCase();
+        return text !== '' && text !== query;
+      })) return true;
+    }
+    for (const key of GOAL_KEYS) {
+      const value = container[key];
+      if (typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== query) return true;
+    }
+    for (const key of [...PROFILE_KEYS, ...CONSTRAINT_KEYS, ...FLAG_KEYS]) {
+      if (nonEmpty(container[key])) return true;
+    }
+  }
+  return false;
+}
+
 module.exports = {
+  requestCarriesContextBeyondQuery,
   SOFT_TIER_ENV,
   OVER_LIMIT_CLASS,
   MAX_SCAN_STRING_CHARS,
