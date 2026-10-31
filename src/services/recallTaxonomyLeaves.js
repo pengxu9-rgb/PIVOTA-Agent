@@ -31,6 +31,14 @@
  * which vendors THIS repo's INTENTIONALLY_DISTINCT for the same reason, after a 2026-09-10 incident
  * where a one-sided diff collapsed seven paths in production.
  *
+ * REGENERATED 2026-10-10 from pivota-backend#2547: 78 leaves (beauty 48). It had sat at the 72 above since
+ * 2026-09-12 and was missing #2364's four nail leaves and false-lashes; #2547 adds
+ * `beauty/makeup/face/setting-spray`. Four production nail paths changed door verdict with it
+ * (nail-polish, nail-polish-remover, cuticle-oil, nail-stickers): pivota-backend's has_category_door
+ * has answered true for them since #2364, so this copy was the stale side. Nothing in src/ calls
+ * categoryPathHasDoor at request time (only the import-time canonicalTargetsWithoutADoor check), so
+ * the flip moves the parity fixtures, not what search serves.
+ *
  * HOW TO REGENERATE, when pivota-backend's taxonomy changes:
  *
  *     python - <<'EOF'
@@ -52,7 +60,7 @@
 
 // Sorted, and grouped by root purely for reading. Order is not semantic.
 const TAXONOMY_LEAVES = Object.freeze([
-  // --- beauty (42) ------------------------------------------------------
+  // --- beauty (48) ------------------------------------------------------
   'beauty/body/care',
   'beauty/body/tanning',
   'beauty/devices/facial-cleansing',
@@ -68,6 +76,7 @@ const TAXONOMY_LEAVES = Object.freeze([
   'beauty/makeup/eye/brow',
   'beauty/makeup/eye/eyeliner',
   'beauty/makeup/eye/eyeshadow',
+  'beauty/makeup/eye/false-lashes',
   'beauty/makeup/eye/mascara',
   'beauty/makeup/face/blush',
   'beauty/makeup/face/bronzer',
@@ -76,12 +85,17 @@ const TAXONOMY_LEAVES = Object.freeze([
   'beauty/makeup/face/highlighter',
   'beauty/makeup/face/powder',
   'beauty/makeup/face/primer',
+  'beauty/makeup/face/setting-spray',
   'beauty/makeup/lip/balm',
   'beauty/makeup/lip/gloss',
   'beauty/makeup/lip/liner',
   'beauty/makeup/lip/lipstick',
   'beauty/makeup/lip/oil',
   'beauty/makeup/lip/tint',
+  'beauty/makeup/nails/cuticle-oil',
+  'beauty/makeup/nails/nail-polish',
+  'beauty/makeup/nails/nail-polish-remover',
+  'beauty/makeup/nails/press-on-nails',
   'beauty/sets/gift-set',
   'beauty/skincare/cleanse/cleanser',
   'beauty/skincare/moisturize/cream',
