@@ -54,11 +54,16 @@ function softTierEnabled(env = process.env) {
 // ("retinyl palmitate free" is a negation of the ester).
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // A request naming a prescription brand means the retinoid, so the brands are names here.
+// Two more prescription retinoid brands (a tazarotene lotion, a tretinoin cream) and the Thai for
+// "retinal" are read on the request side only: as a product word either can mean something else.
+const RETINOID_SIGNAL_EXTRA_LATIN = ['arazlo', 'renova'];
+const RETINOID_SIGNAL_EXTRA_SCRIPT = ['เรตินัล'];
 const RETINOID_FAMILY_LATIN_SOURCES = [
   ...retinoidFamily.RETINOID_FAMILY_LATIN, ...retinoidFamily.RETINOID_PRESCRIPTION_BRANDS, ...retinoidFamily.RETINOID_OTC_BRANDS,
+  ...RETINOID_SIGNAL_EXTRA_LATIN,
 ]
   .map((name) => name.split(' ').map(escapeRegex).join('\\s'));
-const RETINOID_FAMILY_SCRIPT_SOURCES = retinoidFamily.RETINOID_FAMILY_SCRIPT.map(escapeRegex);
+const RETINOID_FAMILY_SCRIPT_SOURCES = [...retinoidFamily.RETINOID_FAMILY_SCRIPT, ...RETINOID_SIGNAL_EXTRA_SCRIPT].map(escapeRegex);
 const RETINOID_NAME_LATIN = new RegExp(
   `\\b(?:${[...RETINOID_FAMILY_LATIN_SOURCES, ...retinoidFamily.RETINOID_SAFETY_LATIN_STEMS].join('|')})\\b`,
 );
@@ -82,6 +87,13 @@ const HARD_PREGNANCY_LACTATION_FERTILITY_LATIN = [
   'mang\\s+thai', 'cho\\s+con\\s+bu', 'gebelik', 'hamile', 'emzirme', 'zwanger\\w*', 'borstvoeding',
   'embaraz\\w*', 'gestac\\w*', 'stillen', 'mang\\s+bau', 'co\\s+bau', 'knocked\\s+up', 'eating\\s+for\\s+two',
   'baby\\s+bump', 'with\\s+child',
+  // Vietnamese, Spanish, Turkish, Indonesian (accents folded)
+  'ba\\s+bau', 'me\\s+bau', 'co\\s+thai', 'sau\\s+sinh', 'posparto', '(?<!ich\\s)gebe', 'bumil', 'busui',
+  // English
+  '(?:mother|mommy|mummy|mommie|mamma)s?\\s?to\\s?be', 'soon\\s?to\\s?be\\s+(?:mom|mum|mama|mommy|mummy|mother|parents?)s?',
+  'pregs?', 'pregnate', 'pregnet', 'pregnent', 'chest\\s?feed\\w*', 'egg\\s+retrieval', 'egg\\s+freezing',
+  'in\\s+the\\s+family\\s+way', '(?<!(?:delivery|shipping|order|payment|return|invoice|billing)\\s)due\\s+date',
+  '(?:1st|2nd|3rd|first|second|third)\\s+tri',
 ];
 // Script view, substring.
 const HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT = [
@@ -90,6 +102,14 @@ const HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT = [
   'マタニティ', '喂奶', '餵奶', '母乳',
   '妊婦', '妊活', '産後', '産婦', '妊娠', '授乳', '孕', '哺乳', '坐月子', '月子', '产后', '產後', '宝妈', '寶媽',
   '🤰', '🤱', '🫃', '🫄',
+  '准妈', '准媽', '產婦', '产妇', '孕妇', '산모', 'คนท้อง', 'แม่ท้อง', 'หลังคลอด', 'ให้นมลูก',
+];
+// Script view, as regexes: words that need a boundary or a following-word check.
+const HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT_RES = [
+  // Russian "в положении" (pregnant), but not a body position ("в положении лёжа")
+  /(?<![а-яё])в\s+положении(?!\s+(?:лёжа|лежа|сидя|стоя))/,
+  // Russian ГВ (breastfeeding), as a word of its own
+  /(?<![а-яёa-z])гв(?![а-яёa-z])/,
 ];
 // Compact view, substring. Only long, distinctive stems: these match across separators.
 const HARD_PREGNANCY_LACTATION_FERTILITY_COMPACT = [
@@ -106,18 +126,34 @@ const HARD_CHILD_UNDER_12_LATIN = [
   'kids?', 'kiddos?', 'child', 'children', 'childrens', 'infants?', 'toddlers?', 'newborns?', 'bab(?:y|ies)',
   'ninos', 'ninas', 'bebe', 'bebes', 'enfants?', 'kinder', 'crianca', 'criancas', 'elementary\\s+school',
   'primary\\s+school', 'grade\\s?school(?:ers?)?', 'preschool(?:ers?)?', 'kindergarten',
+  'kidz', 'pre\\s?teens?', 'pre\\s?tweens?', 'little\\s+ones?',
+  'for\\s+my\\s+(?:little\\s+)?(?:son|daughter|boy|girl)s?',
+  '(?:1st|2nd|3rd|4th|5th|6th|first|second|third|fourth|fifth|sixth)\\s+grade(?:rs?)?',
+  // "under 12" as an age; a bare "under 12" is a price cap
+  '(?:kids?|children|child|ages?|aged)\\s+(?:under|below)\\s+(?:1[0-2]|[1-9])',
+  '(?:under|below)\\s+(?:age\\s+)?(?:1[0-2]|[1-9])\\s?(?:s|yrs?|years?|yo|y\\s?o)',
+  // Vietnamese, Spanish, German, Italian, Dutch, Turkish, Indonesian (accents folded)
+  'tre\\s+em', 'em\\s+be', 'infantil', '(?:fur|fuer|mein(?:em)?|unser(?:em)?|kleines?)\\s+kind', 'bambin[oaie]',
+  'kinderen', 'cocuk\\w*', 'bebek', 'anak', 'anak\\s+anak', 'bayi',
 ];
 const HARD_CHILD_UNDER_12_SCRIPT = [
   '👶', '🍼', '孩子', '小孩', '宝宝', '寶寶', '婴', '嬰', '儿童', '兒童', '幼儿', '幼兒', '赤ちゃん', '子供', '子ども', 'こども', '幼児',
-  '아기', '어린이', '유아', 'ребен', 'ребён', 'детск', 'дети',
+  '아기', '어린이', '유아', 'ребен', 'ребён', 'детск', 'дети', 'детей', 'малыш',
+  'เด็ก', 'ทารก', '小朋友', '孩童', '小学生', '小學生', '키즈', '초등학생', 'キッズ', 'ベビー',
+];
+const HARD_CHILD_UNDER_12_SCRIPT_RES = [
+  // 아이 (child) as a word, with its particles; never 아이크림, 아이섀도 ("eye")
+  /(?<![가-힣])아이(?:들|용|가|를|에게|한테|도|의|는)?(?![가-힣])/,
+  // niño / niña, with the tilde (folded, "nina" is a name)
+  /(?<![\p{L}])niñ[oa]s?(?![\p{L}])/u,
 ];
 
 // Isotretinoin, or being on a prescription retinoid: layering / contraindication context, never an ask.
 const HARD_ISOTRETINOIN_LAYERING_LATIN = [
-  'accutane', 'roaccutane', 'isotretinoin\\w*',
-  '(?:on|use|uses|using|taking|prescribed|started|starting)\\s+(?:a\\s+|my\\s+)?(?:tretinoin|adapalene|tazarotene|trifarotene|retin\\s?a|prescription\\s+retinoids?)',
+  'accutane', 'roaccutane', 'isotretinoin\\w*', 'isotret', 'absorica', 'claravis', 'amnesteem', 'myorisan', 'zenatane',
+  '(?:on|use|uses|using|taking|prescribed|started|starting)\\s+(?:a\\s+|my\\s+)?(?:tretinoin|tret|adapalene|differin|tazarotene|tazorac|arazlo|trifarotene|aklief|epiduo|altreno|atralin|renova|avita|retin\\s?a|prescription\\s+retinoids?)',
 ];
-const HARD_ISOTRETINOIN_LAYERING_COMPACT = ['accutane', 'isotretinoin'];
+const HARD_ISOTRETINOIN_LAYERING_COMPACT = ['accutane', 'isotretinoin', 'isotret'];
 const HARD_ISOTRETINOIN_LAYERING_FUZZY = ['accutane', 'isotretinoin'];
 
 // The user saying no to retinoids. A negation counts only when it binds to the retinoid term itself:
@@ -214,11 +250,29 @@ const CONFUSABLES = {
   'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ꜰ': 'f', 'ɢ': 'g', 'ʜ': 'h', 'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k',
   'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 'ʀ': 'r', 'ꜱ': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w',
   'ʏ': 'y', 'ᴢ': 'z',
+  'ɑ': 'a', 'ɩ': 'i', 'ɵ': 'o', 'ʋ': 'u',
 };
+// Cherokee letters that look like Latin capitals (Unicode confusables), in both cases.
+for (const [cherokee, latin] of Object.entries({
+  'Ꭺ': 'a', 'Ᏼ': 'b', 'Ꮯ': 'c', 'Ꭰ': 'd', 'Ꭼ': 'e', 'Ꮐ': 'g', 'Ꮋ': 'h', 'Ꭻ': 'j', 'Ꮶ': 'k', 'Ꮮ': 'l', 'Ꮇ': 'm',
+  'Ꮲ': 'p', 'Ꭱ': 'r', 'Ꮪ': 's', 'Ꭲ': 't', 'Ꮩ': 'v', 'Ꮃ': 'w', 'Ꮓ': 'z', 'Ꭹ': 'y',
+})) {
+  CONFUSABLES[cherokee] = latin;
+  CONFUSABLES[cherokee.toLowerCase()] = latin;
+}
 const CONFUSABLE_RE = new RegExp(`[${Object.keys(CONFUSABLES).join('')}]`, 'g');
+
+// Enclosed letters NFKC leaves alone (negative circled / squared, regional indicators): letters.
+const ENCLOSED_LETTER_RE = /[\u{1F150}-\u{1F169}\u{1F170}-\u{1F189}\u{1F1E6}-\u{1F1FF}]/gu;
+function enclosedLetter(ch) {
+  const cp = ch.codePointAt(0);
+  const base = cp >= 0x1f1e6 ? 0x1f1e6 : cp >= 0x1f170 ? 0x1f170 : 0x1f150;
+  return String.fromCharCode(97 + cp - base);
+}
 
 function scriptView(text) {
   return String(text == null ? '' : text)
+    .replace(ENCLOSED_LETTER_RE, enclosedLetter)
     .normalize('NFKC')
     .replace(ZERO_WIDTH_RE, '')
     .replace(TAG_CHAR_RE, '')
@@ -230,6 +284,7 @@ function scriptView(text) {
 // mark here: "spf 30,0% retinol" may be a list, and a missed "no" is the costlier mistake.
 const DECIMAL_PERCENT_RE = /(?<![\d.])(\d+)\.(\d+)(?=\s?%)/g;
 
+const SYMBOL_LETTERS = { '@': 'a', '€': 'e', $: 's', '!': 'i', '|': 'l' };
 function latinView(script) {
   return script
     .replace(DECIMAL_PERCENT_RE, (m, whole, fraction) => String(Number(`${whole}.${fraction}`)))
@@ -237,6 +292,8 @@ function latinView(script) {
     .normalize('NFKD')
     .replace(/[\u0300-\u036F]/g, '')
     .replace(/[’'`´]/g, '')
+    // a symbol standing for a letter inside a word: pregn@nt, pr€gnant, k!ds, $kin
+    .replace(/(?<=[a-z])[@€$!|](?=[a-z])/g, (ch) => SYMBOL_LETTERS[ch])
     .replace(/[^a-z0-9%]+/g, ' ')
     .trim();
 }
@@ -315,6 +372,8 @@ const AGE_PATTERNS = [
   new RegExp(`(?:^|\\s)aged?\\s+${AGE_NUMBER}(?=\\s|$)`, 'g'),
   new RegExp(`(?:^|\\s)(?:son|daughter|kid|child|boy|girl|niece|nephew)\\s+(?:is|who\\s+is|turning|turned)\\s+${AGE_NUMBER}(?=\\s|$)`, 'g'),
 ];
+// "8yrs", "8yr" written as one word (spaced, "8 years" is as often a duration)
+AGE_PATTERNS.push(new RegExp(`(?:^|\\s)(\\d{1,2})yrs?(?=\\s|$)`, 'g'));
 const INFANT_AGE_PATTERN = /(?:^|\s)\d{1,2}\s?(?:months?|mos?|weeks?|wks?)\s+old(?=\s|$)/;
 const SCRIPT_AGE_PATTERN = /(\d{1,3})\s?(?:岁|歲|歳|살|세)/g;
 
@@ -374,7 +433,10 @@ function classifyText(text) {
 
   if (
     RE.pregnancyLatin.test(joined) ||
+    // digits as written ("3rd tri"); the joined view is de-leeted
+    RE.pregnancyLatin.test(padded) ||
     scriptHas(script, HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT) ||
+    HARD_PREGNANCY_LACTATION_FERTILITY_SCRIPT_RES.some((re) => re.test(script)) ||
     HARD_PREGNANCY_LACTATION_FERTILITY_COMPACT.some((stem) => compact.includes(stem)) ||
     fuzzyHit(tokens, HARD_PREGNANCY_LACTATION_FERTILITY_FUZZY)
   ) {
@@ -388,7 +450,14 @@ function classifyText(text) {
     classes.add('isotretinoin_layering');
   }
   const ages = agesIn(padded, script);
-  if (RE.childLatin.test(padded) || scriptHas(script, HARD_CHILD_UNDER_12_SCRIPT) || ages.some((n) => n <= 11)) {
+  if (
+    RE.childLatin.test(padded) ||
+    // de-leeted, single letters joined: k1ds, ch1ld, "c h i l d"
+    RE.childLatin.test(joined) ||
+    scriptHas(script, HARD_CHILD_UNDER_12_SCRIPT) ||
+    HARD_CHILD_UNDER_12_SCRIPT_RES.some((re) => re.test(script)) ||
+    ages.some((n) => n <= 11)
+  ) {
     classes.add('child_under_12');
   }
   if (
@@ -503,6 +572,19 @@ const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
 const NEUTRAL_VALUE_RE =
   /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|not[\s_-].*|non[\s_-].*|never)$/;
+// One of the listed neutral answers, as the whole value ("n/a", "none", "not applicable").
+const EXACT_NEUTRAL_VALUE_RE =
+  /^(?:|no|n|none|false|0|null|undefined|unknown|n\/a|na|not[\s_-]?applicable|prefer[\s_-]?not[\s_-]?to[\s_-]?say|never)$/;
+// A value is neutral only if it is neutral as a whole (as before) AND, when only the "not ..." /
+// "non ..." catch-alls made it so, every part of it is: "not pregnant, breastfeeding" and
+// "non-pregnant but nursing" say yes to something. Never neutral where the whole-value test alone
+// would say it is not.
+function valueIsNeutral(text) {
+  const whole = String(text).trim().toLowerCase();
+  if (!NEUTRAL_VALUE_RE.test(whole)) return false;
+  if (EXACT_NEUTRAL_VALUE_RE.test(whole)) return true;
+  return whole.split(/\s*(?:[,;/&+|]|\bbut\b|\band\b)\s*/).every((part) => NEUTRAL_VALUE_RE.test(part));
+}
 
 function valueIsAffirmative(value) {
   // Over the node budget: treated as affirmative (fail closed; the request gates as over the limit).
@@ -519,12 +601,14 @@ function valueIsAffirmative(value) {
     }
     return children.some(valueIsAffirmative);
   }
-  return !NEUTRAL_VALUE_RE.test(String(value).trim().toLowerCase());
+  return !valueIsNeutral(value);
 }
 
 const PROFILE_STATUS_KEY_RE = /pregnan|breast|lactat|nursing|ttc|fertility|conceiv|postpartum|trimester|expecting|maternity/i;
 const PROFILE_AGE_KEY_RE = /^(?:age|age_years|ageyears|user_age|years_old|age_range|age_group|age_bracket|agerange|agegroup)$/i;
 const AVOID_KEY_RE = /avoid|allerg|exclu|contraindicat|sensitiv\w*_ingredients|intoleran|blacklist|block/i;
+const BIRTH_KEY_RE = /^(?:birth_?year|year_?of_?birth|dob|date_?of_?birth|birth_?date|birthday)$/i;
+const PRESCRIPTION_KEY_RE = /prescri|medication|medicine|^rx$|^drugs?$/i;
 
 function collectStrings(value, out) {
   if (!visit()) return;
@@ -538,7 +622,13 @@ function collectStrings(value, out) {
 
 function ageClass(value) {
   const nums = String(value).match(/\d{1,3}/g);
-  if (!nums) return null;
+  if (!nums) {
+    // a word, not a number: age_group 'child', 'kids', 'toddler', 'teen'
+    const classes = scanClasses(value);
+    if (classes.has('child_under_12')) return 'child_under_12';
+    if (classes.has('teen_12_17')) return 'teen_12_17';
+    return null;
+  }
   const upper = Math.max(...nums.map(Number));
   if (upper <= 11) return 'child_under_12';
   if (upper <= 17) return 'teen_12_17';
@@ -564,6 +654,23 @@ function classesForProfile(profile, sink) {
       if (c) sink.add(c);
       continue;
     }
+    // Birth dates and prescriptions add what they say, then the value is read as any other key's.
+    if (BIRTH_KEY_RE.test(key)) {
+      const year = String(value).match(/(?:19|20)\d\d/);
+      const c = year && ageClass(String(new Date().getUTCFullYear() - Number(year[0])));
+      if (c) sink.add(c);
+    }
+    if (PRESCRIPTION_KEY_RE.test(key)) {
+      // on a prescription retinoid: layering context
+      const strings = [];
+      collectStrings(value, strings);
+      for (const s of strings) {
+        const classes = scanClasses(s);
+        if (SCAN.overflow) return;
+        classes.forEach((c) => sink.add(c));
+        if (namesRetinoid(s)) sink.add('isotretinoin_layering');
+      }
+    }
     if (AVOID_KEY_RE.test(key)) {
       classesForAvoidList(value, sink);
       continue;
@@ -578,6 +685,11 @@ function classesForProfile(profile, sink) {
   }
 }
 
+function namesRetinoid(text) {
+  const script = scriptView(text);
+  return RETINOID_NAME_LATIN.test(` ${latinView(script)} `) || RETINOID_NAME_SCRIPT.test(script);
+}
+
 function classesForAvoidList(value, sink) {
   const strings = [];
   collectStrings(value, strings);
@@ -586,10 +698,7 @@ function classesForAvoidList(value, sink) {
     const classes = scanClasses(s);
     if (SCAN.overflow) return;
     classes.forEach((c) => sink.add(c));
-    const script = scriptView(s);
-    if (RETINOID_NAME_LATIN.test(` ${latinView(script)} `) || RETINOID_NAME_SCRIPT.test(script)) {
-      sink.add('retinoid_negation');
-    }
+    if (namesRetinoid(s)) sink.add('retinoid_negation');
   }
 }
 
@@ -630,35 +739,49 @@ function classesForSafetyFlags(flags, sink) {
     for (const [key, value] of Object.entries(flags)) if (valueIsAffirmative(value)) named.push(key);
   } else if (flags === true) named.push('safety_flag');
   for (const name of named) {
-    if (NEUTRAL_VALUE_RE.test(String(name).trim().toLowerCase())) continue;
+    if (valueIsNeutral(name)) continue;
     const classes = scanClasses(String(name).replace(/[_-]+/g, ' '));
     if (classes.size > 0) classes.forEach((c) => sink.add(c));
     else if (!SCAN.overflow) sink.add('safety_flag');
   }
 }
 
+// Every turn but a system turn is read, whoever wrote it: a tool or function result is how an
+// integrator passes stored user facts, and an assistant turn can restate one.
 function messageText(message) {
   if (typeof message === 'string') return message;
   if (!isObj(message)) return '';
   const role = String(message.role || '').toLowerCase();
   if (role === 'system') return '';
-  const content = message.content != null ? message.content : message.text;
+  // OpenAI / Anthropic content, Gemini parts, plain text, a recent-query object
+  const content = [message.content, message.text, message.parts, message.query].find((v) => v != null);
   if (typeof content === 'string') return content;
   const parts = [];
   collectStrings(content, parts);
   return parts.join(' ');
 }
 
-const MESSAGE_KEYS = ['messages', 'conversation', 'history', 'chat_history', 'conversation_messages', 'session_recent_queries', 'recent_queries'];
+const MESSAGE_KEYS = [
+  'messages', 'conversation', 'history', 'chat_history', 'conversation_messages', 'session_recent_queries', 'recent_queries',
+  'contents', 'input',
+];
 const GOAL_KEYS = ['raw_user_goal', 'user_goal'];
-const PROFILE_KEYS = ['user_profile', 'userProfile', 'profile', 'skin_profile', 'skinProfile'];
-const CONSTRAINT_KEYS = ['constraints', 'avoid_ingredients', 'avoidIngredients'];
-const FLAG_KEYS = ['safety_flags', 'safetyFlags'];
+const PROFILE_KEYS = ['user_profile', 'userProfile', 'profile', 'skin_profile', 'skinProfile', 'user'];
+// Objects whose keys say what they hold (avoid lists, statuses) and whose other strings are read.
+const CONSTRAINT_OBJECT_KEYS = ['constraints', 'filters', 'attributes', 'conditions', 'health_conditions'];
+const AVOID_LIST_KEYS = ['avoid_ingredients', 'avoidIngredients', 'exclude_ingredients', 'excludeIngredients', 'excluded_ingredients'];
+// Every constraint key read (the name code written before the split still reads).
+const CONSTRAINT_KEYS = [...CONSTRAINT_OBJECT_KEYS, ...AVOID_LIST_KEYS];
+const FLAG_KEYS = ['safety_flags', 'safetyFlags', 'safety', 'health_flags', 'healthFlags'];
 
 function requestContainers(body) {
   const b = isObj(body) ? body : {};
   const payload = isObj(b.payload) ? b.payload : {};
-  const out = [b, payload, b.metadata, b.context, b.user, payload.search, payload.context, payload.metadata, payload.user];
+  const search = isObj(payload.search) ? payload.search : {};
+  const out = [b, payload, b.metadata, b.context, b.user, payload.search, payload.context, payload.metadata, payload.user, search.context];
+  for (const c of [b.context, payload.context, search.context]) {
+    if (isObj(c) && isObj(c.session)) out.push(c.session);
+  }
   for (const c of [b.context, payload.context]) {
     if (isObj(c) && isObj(c.normalized_need)) {
       out.push(c.normalized_need);
@@ -690,7 +813,10 @@ function readRequestContext(body, options) {
   };
   for (const container of requestContainers(body)) {
     for (const key of MESSAGE_KEYS) {
-      const value = container[key];
+      let value = container[key];
+      // { conversation: { messages: [...] } }, and a bare string input
+      if (isObj(value) && Array.isArray(value.messages)) value = value.messages;
+      if (typeof value === 'string' && key === 'input') value = [value];
       if (!Array.isArray(value)) continue;
       record('messages', (sink) => {
         if (value.length > MAX_SCAN_ARRAY_ITEMS) {
@@ -705,11 +831,13 @@ function readRequestContext(body, options) {
       record('goal', (sink) => scanClasses(container[key]).forEach((c) => sink.add(c)));
     }
     for (const key of PROFILE_KEYS) record('profile', (sink) => classesForProfile(container[key], sink));
-    for (const key of CONSTRAINT_KEYS) {
+    for (const key of CONSTRAINT_OBJECT_KEYS) {
       if (container[key] == null) continue;
-      record('constraints', (sink) =>
-        key === 'constraints' ? classesForConstraints(container[key], sink) : classesForAvoidList(container[key], sink),
-      );
+      record('constraints', (sink) => classesForConstraints(container[key], sink));
+    }
+    for (const key of AVOID_LIST_KEYS) {
+      if (container[key] == null) continue;
+      record('constraints', (sink) => classesForAvoidList(container[key], sink));
     }
     for (const key of FLAG_KEYS) record('safety_flags', (sink) => classesForSafetyFlags(container[key], sink));
   }
@@ -751,5 +879,6 @@ module.exports = {
   classifyText,
   retinoidSafetyClassesForText,
   retinoidSafetyClassesForRequestContext,
+  CONSTRAINT_KEYS,
   _internal: { scriptView, latinView, compactView, latinTokens, withinOneEdit, agesIn, classifyCacheSize: () => CLASSIFY_CACHE.size, classifyCacheKeys: () => Array.from(CLASSIFY_CACHE.keys()) },
 };

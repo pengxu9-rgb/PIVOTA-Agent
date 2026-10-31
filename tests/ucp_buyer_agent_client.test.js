@@ -205,12 +205,21 @@ describe('buildUcpBuyerAgentProfile', () => {
       'dev.ucp.shopping.order',
       'dev.ucp.shopping.ap2_mandate',
     ];
+    // Vendor extensions are not in the UCP spec, so they are held to the VENDOR's published vocabulary on
+    // the same terms: transcribed from Shopify's sample agent profile for this line
+    // (shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json, fetched 2026-10-31), never
+    // from the module under test.
+    const SHOPIFY_PUBLISHED_EXTENSIONS = [
+      'dev.shopify.catalog',
+      'dev.shopify.catalog.global',
+    ];
+    const KNOWN = [...SPEC_SHOPPING_CAPABILITIES, ...SHOPIFY_PUBLISHED_EXTENSIONS];
     const p = buildUcpBuyerAgentProfile();
     for (const id of Object.keys(p.ucp.capabilities)) {
-      expect(SPEC_SHOPPING_CAPABILITIES).toContain(id);
+      expect(KNOWN).toContain(id);
     }
     for (const id of p.agent.requested_scopes) {
-      expect(SPEC_SHOPPING_CAPABILITIES).toContain(id);
+      expect(KNOWN).toContain(id);
     }
     // The capability block and the requested scopes must not drift apart either: a merchant reads one or
     // the other depending on implementation, and a mismatch grants a different set than we advertise.
@@ -244,6 +253,28 @@ describe('buildUcpBuyerAgentProfile', () => {
     expect(caps).toContain('dev.ucp.shopping.catalog.lookup');
     // and the id that never existed is gone
     expect(caps).not.toContain('dev.ucp.shopping.catalog');
+  });
+
+  test('Shopify Global Catalog extension is declared exactly as Shopify publishes it', () => {
+    // Without this extension Shopify's Global Catalog strips seller, checkout_url, eligible, condition and
+    // rating from every variant — measured 2026-10-31 on 2026-04-08: our profile got none of them, Shopify's
+    // 2026-04-08 sample profile (which declares this entry) got all five. The expected entry below is
+    // Shopify's sample, copied literally, so a drift in any member fails here rather than silently at
+    // catalog.shopify.com.
+    const p = buildUcpBuyerAgentProfile();
+    expect(p.ucp.capabilities['dev.shopify.catalog.global']).toEqual([{
+      version: '2026-04-08',
+      spec: 'https://shopify.dev/docs/agents/catalog/global-catalog',
+      schema: 'https://shopify.dev/ucp/schemas/2026-04-08/shopify_catalog_global.json',
+      extends: ['dev.ucp.shopping.catalog.lookup', 'dev.ucp.shopping.catalog.search'],
+    }]);
+    // Both parents are requested, so the extension cannot be pruned as an orphan by our own profile.
+    for (const parent of p.ucp.capabilities['dev.shopify.catalog.global'][0].extends) {
+      expect(Object.keys(p.ucp.capabilities)).toContain(parent);
+    }
+    expect(p.agent.requested_scopes).toContain('dev.shopify.catalog.global');
+    // The version pin it rides on is the shared one; adding the extension must not have bumped it.
+    expect(p.ucp.version).toBe('2026-04-08');
   });
 
   test('requests catalog+cart+checkout scopes but NOT purchase-completion / payment', () => {

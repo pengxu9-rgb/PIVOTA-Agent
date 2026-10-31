@@ -14,7 +14,6 @@ const {
   applyRetinoidSafetyNetForInvokeResponse,
   applyRetinoidSafetyNetToSearchBody,
   beautyProductIsRetinoidForSafety,
-  beautyProductRetinoidMentionIsStandInOnly,
   buildBeautyMainlineRetrievalQueries,
   getSearchQualityContractHardConstraintResult,
   inferBeautyMainlineIntent,
@@ -185,9 +184,12 @@ test('safety net: removes retinoids from every product list in a body, and nothi
   assert.deepEqual(bare, { products: [], metadata: { retinoid_safety_net: { removed_count: 1, classes: ['x'] } } });
   assert.equal(applyRetinoidSafetyNetToSearchBody(null, ['x']), null);
   assert.deepEqual(applyRetinoidSafetyNetToSearchBody([RETINOL_SERUM], ['x']), [RETINOL_SERUM]);
-  // variants are not product lists
-  const withVariants = { products: [{ ...PLAIN_SERUM, variants: [{ id: 'v1', title: 'Retinol add-on' }] }] };
+  // variants are not product lists (a variant list is never filtered on its own) ...
+  const withVariants = { products: [{ ...PLAIN_SERUM, variants: [{ id: 'v1', title: 'Travel size' }, { id: 'v2', title: 'Full size' }] }] };
   assert.equal(applyRetinoidSafetyNetToSearchBody(withVariants, ['x']), withVariants);
+  // ... but a product whose variant names a retinoid is a retinoid product, and goes as a whole
+  const retinoidVariant = { products: [{ ...PLAIN_SERUM, variants: [{ id: 'v1', title: 'Retinol add-on' }] }] };
+  assert.deepEqual(applyRetinoidSafetyNetToSearchBody(retinoidVariant, ['x']).products, []);
 });
 
 test('ranking: pregnancy-safe boosts follow the pregnancy class only', () => {
@@ -270,10 +272,7 @@ test('product detection: a retinoid named only in a stand-in phrase is not a ret
     p('Gentle Alternative to Retinol Cream', 'Gentler than retinol.'), p('Retinol Alternative Serum', '', { key_ingredients: ['bakuchiol'] }),
     p('레티놀 대체 세럼'), p('视黄醇平替精华'), p('レチノール代替 美容液'),
   ];
-  for (const item of standIns) {
-    assert.equal(beautyProductRetinoidMentionIsStandInOnly(item), true, item.title);
-    assert.equal(beautyProductIsRetinoidForSafety(item), false, item.title);
-  }
+  for (const item of standIns) assert.equal(beautyProductIsRetinoidForSafety(item), false, item.title);
   const realRetinoids = [
     p('Bakuchiol Retinol Alternative Serum', '', { inci: ['Aqua', 'Retinol'] }),
     p('Bakuchiol Retinol Alternative Serum', 'Contains 0.1% retinol.'),
@@ -283,8 +282,57 @@ test('product detection: a retinoid named only in a stand-in phrase is not a ret
     p('Retinol Night Cream'), p('레티놀 프리미엄 세럼'), p('Phyto Night Cream with Retinol'),
   ];
   for (const item of realRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, item.title);
-  assert.equal(beautyProductRetinoidMentionIsStandInOnly(p('Retinol Night Cream')), false);
-  assert.equal(beautyProductRetinoidMentionIsStandInOnly(null), false);
+});
+
+test('product detection: a real retinoid named anywhere wins over any free-of or stand-in phrasing', () => {
+  const p = (title, description = '', extra = {}) => ({ title, description, category: 'serum', ...extra });
+  for (const item of [
+    p('Retinol-Free Retinoid Serum (HPR)'),
+    p('Advanced Retinol Serum', 'Visible results with no retinol irritation.'),
+    p('Night Serum', 'Encapsulated retinal, without retinol side effects.'),
+    p('Retinol-Free Night Cream', '', { inci: ['Aqua', 'Retinyl Palmitate'] }),
+    p('Bakuchiol Retinol Alternative Serum', '', { ingredient_intel: { actives: ['retinal'] } }),
+  ]) {
+    assert.equal(beautyProductIsRetinoidForSafety(item), true, `${item.title} / ${item.description}`);
+  }
+  for (const item of [p('Retinol-Free Night Cream', 'Free of retinoids.'), p('Gentle Serum', 'An alternative to retinol, without retinol.')]) {
+    assert.equal(beautyProductIsRetinoidForSafety(item), false, item.title);
+  }
+});
+
+test('product detection: names, brands, scripts and fields review found missed', () => {
+  const p = (title, extra = {}) => ({ title, category: 'serum', ...extra });
+  const retinoids = [
+    p('Vitamin A Serum'), p('Vit A Night Cream'), p('Vitamins A, C & E Body Oil'),
+    p('Differin Gel'), p('Tazorac Cream'), p('Aklief Cream'), p('Epiduo Forte'), p('Altreno Lotion'), p('Acne Gel', { brand: 'Differin' }),
+    p('视黄醛精华'), p('A醛面霜'), p('维A酸乳膏'), p('レチナール美容液'), p('เรตินอล เซรั่ม'), p('Crème rétinoïde'),
+    p('Night Cream', { tags: ['retinol', 'anti-aging'] }), p('Night Cream', { body_html: '<p>With re<span class="x">tinol</span>.</p>' }),
+    p('Night Cream', { variants: [{ title: 'Retinol 0.5% / 30ml' }] }), p('Night Cream', { short_description: 'A retinal cream.' }),
+    p('Night Cream', { highlights: ['Contains adapalene'] }), p('Night Cream', { attributes: { key_active: 'Retinyl palmitate' } }),
+    p('Night Cream', { ingredient_intel: { actives: [{ name: 'Hydroxypinacolone Retinoate' }] } }),
+    p('Night Cream', { seed_data: { snapshot: { tags: ['tretinoin'] } } }),
+  ];
+  for (const item of retinoids) assert.equal(beautyProductIsRetinoidForSafety(item), true, JSON.stringify(item));
+  for (const item of [p('Vita Coco Body Oil'), p('Aqua Vita Serum'), p('Vitamin C Serum'),
+    p('Night Cream', { tags: ['hydrating'], variants: [{ title: '50ml' }] })]) {
+    assert.equal(beautyProductIsRetinoidForSafety(item), false, JSON.stringify(item));
+  }
+});
+
+// Not yet read by main's product check (the shared-family reader, #2507/#2508): this PR's own product
+// reader caught these, but it was not carried over in the merge with main, because replacing main's
+// reader would undo its reviewed exemptions (a Differin cleanser, vitamin A taken by mouth, an
+// accessory phrase, a free claim in another script). Porting these onto main's reader is a follow-up.
+test('product detection: names main\'s product check does not read yet', { todo: 'port onto the family reader' }, () => {
+  const p = (title, extra = {}) => ({ title, category: 'serum', ...extra });
+  for (const item of [
+    p('Granactive Emulsion 2%'), p('سيروم ريتينول'), p('סרום רטינול'), p('रेटिनॉल सीरम'), p('Sérum au rétinol pur'),
+    p('Crema al retinolo'), p('Retinol0.3 Serum'), p('Retin0l Cream'), p('Ret\u200Binol Serum'), p('Re\u00ADtinol Serum'),
+    p('R E T I N O L Night Serum'),
+  ]) {
+    assert.equal(beautyProductIsRetinoidForSafety(item), true, JSON.stringify(item));
+  }
+  assert.equal(beautyProductIsRetinoidForSafety(p('Retina Display Cloth')), false);
 });
 
 test('product detection: the shared retinoid family, and a free claim never hides a retinoid named elsewhere', () => {
@@ -404,4 +452,30 @@ test('product detection: vitamin A unless taken by mouth or an A&D protectant, b
     p('Night Cream with Vitamin A (as Beta Carotene)', 'cream'), p('Vitamin ACE Body Lotion', 'lotion'),
   ];
   for (const item of notRetinoids) assert.equal(beautyProductIsRetinoidForSafety(item), false, `${item.title} | ${item.description}`);
+});
+
+test('product reading: a flood of unterminated HTML comments is read in linear time', () => {
+  const flood = {
+    // no retinoid in it, so both product readings run in full
+    product_id: 'flood', title: 'Night Serum', description: 'Night serum.', ingredients: 'water, glycerin',
+    tags: Array.from({ length: 20 }, () => '<!--'.repeat(5000)),
+  };
+  beautyProductIsRetinoidForSafety(flood); // warm
+  const started = process.hrtime.bigint();
+  assert.equal(beautyProductIsRetinoidForSafety(flood), false);
+  assert.ok(Number(process.hrtime.bigint() - started) / 1e6 < 200);
+});
+
+test('product reading: a stand-in phrase never strips a retinoid named in the next field', () => {
+  const cases = [
+    { title: 'Retinol Alternative Night Cream', actives: ['Fragrance 0%'], key_ingredients: ['Retinol 0.1%', 'Bakuchiol'] },
+    { title: 'Retinol Alternative Night Cream', actives: ['Parabens: without'], key_ingredients: ['Retinol'] },
+    { title: 'Bakuchiol Retinol Alternative Serum', active_ingredients: 'Bakuchiol, Retinol', actives: 'Alternatives: rosehip oil' },
+    { title: 'Retinol Alternative Night Cream', active_ingredients: ['Fragrance 0%'], key_ingredients: ['Retinol 0.1%'] },
+  ];
+  for (const fields of cases) {
+    assert.equal(beautyProductIsRetinoidForSafety({ product_id: 'x', description: 'Night cream.', ...fields }), true, JSON.stringify(fields));
+  }
+  // a real stand-in product stays exempt
+  assert.equal(beautyProductIsRetinoidForSafety({ product_id: 'y', title: 'Bakuchiol Retinol Alternative Serum', description: 'Night serum.', key_ingredients: ['Bakuchiol'] }), false);
 });

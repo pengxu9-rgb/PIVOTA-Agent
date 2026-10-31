@@ -1,5 +1,6 @@
 const { Client } = require('pg');
 const { fetchCandidates } = require('../../scripts/review-relationship-candidate-labels');
+const { RELGRAPH_CATALOG_GATE_TABLES_SQL } = require('../_support/relgraphCatalogGateTables.cjs');
 
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -24,6 +25,7 @@ suite('review queue: uncovered anchors first, on PostgreSQL', () => {
         created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(),
         last_verified_at timestamptz, expires_at timestamptz);
     `);
+    await db.query(RELGRAPH_CATALOG_GATE_TABLES_SQL);
   });
   afterAll(async () => { if (db) { await db.query(`DROP SCHEMA ${schema} CASCADE`); await db.end(); } });
   beforeEach(async () => { await db.query('TRUNCATE relationship_candidate_labels'); });

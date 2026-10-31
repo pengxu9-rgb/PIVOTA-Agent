@@ -2,6 +2,12 @@ jest.mock('../../src/db', () => ({
   query: jest.fn(async () => { throw new Error('unexpected database access'); }),
   closePool: jest.fn(), withClient: jest.fn(),
 }));
+// The build reads the catalog serving gate once for its final candidates; these pair-scope tests
+// forbid DB access, so the gate passes everything through (it has its own suites).
+jest.mock('../../src/auroraBff/relationshipCatalogServingGate', () => ({
+  ...jest.requireActual('../../src/auroraBff/relationshipCatalogServingGate'),
+  filterProductsByCatalogServingGate: jest.fn(async (products) => ({ kept: products, dropped: new Map(), counts: {} })),
+}));
 jest.mock('../../src/auroraBff/productRelationshipGraphSources', () => {
   const actual = jest.requireActual('../../src/auroraBff/productRelationshipGraphSources');
   return { ...actual, loadProductRelationshipGraphSourceInputs: jest.fn(),

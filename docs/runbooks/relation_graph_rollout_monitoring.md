@@ -12,6 +12,7 @@ is inert; this runbook is for the operator who turns it on.
 | `AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED` | off | Read-time collapse of served edges to the parent-family key. No-op while master is off. |
 | `AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED` | off | Family-dedupes the whole "similar" widget (curated + dynamic recall). Independent of master. |
 | `AURORA_BFF_RELATIONSHIP_GRAPH_PG_COLLAPSE_ENABLED` | off | Legacy alias for the collapse flag. |
+| `RELATIONSHIP_GRAPH_SERVING_CATALOG_GATE_MODE` | off | `off` / `shadow` / `enforce`. Served edges whose candidate's catalog row is suppressed, not live or `index_pipeline_state.serving_eligible=false`, or whose candidate is a donation / voucher / protection fee / tip / deposit. `shadow` logs `aurora_bff_relationship_graph_serving_catalog_gate_failed` and drops nothing; `enforce` drops them. Measure in shadow before enforcing. (Generation and the review queue apply the same gate unconditionally.) |
 
 Flag-off is byte-identical to pre-buildout behavior on every path.
 
@@ -30,6 +31,7 @@ Flag-off is byte-identical to pre-buildout behavior on every path.
 | Metric name | Watch | Healthy |
 |---|---|---|
 | `aurora_bff_relationship_graph_family_collapse` | `collapsed_edge_count`/`raw_edge_count` ratio; `dropped_self_edge_count`; `unresolved_ref_count`; `fallback_ref_count` | collapse ratio steady; fallback/unresolved low |
+| `aurora_bff_relationship_graph_serving_catalog_gate_failed` | `failed_count` per read, `mode`; `…_serving_catalog_gate_error` in shadow | ~0 once stale labels are cleaned; errors 0 |
 | `aurora_bff_similar_family_resolution_failed` | rate | < ~1–2% (else recall items fall back to title-only dedupe) |
 | `aurora_bff_relationship_graph_sibling_expansion_failed` | rate | ~0 (spikes = `product_group_members` DB trouble; collapse degrades to base refs, never breaks PDP) |
 | `relationship_graph_curated_count` / `relationship_graph_served_count` | curated cards fetched vs served per PDP | served > 0 when master on |
