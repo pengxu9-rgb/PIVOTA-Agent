@@ -7,6 +7,8 @@ const {
 } = require('../../scripts/review-relationship-candidate-labels');
 const { reviewMetrics, reviewErrorGateExceeded } = require('../../src/services/relationshipGraphServingProgress');
 const { runRoutineJob, parseArgs: routineArgs } = require('../../scripts/run-relationship-graph-routine-job');
+const { runSyncRoutine, parseArgs: syncArgs } = require('../../scripts/run-relationship-graph-sync-routine');
+const { normalizeQuoteText } = require('../../src/auroraBff/relationshipQuoteSafety');
 
 // 2026-10-31: the nightly review aborted at apply with "AI approval lacks matching recommendation
 // utility evidence". The review validates the model's approval (grounding its quotes in the products'
@@ -19,14 +21,20 @@ const INGREDIENTS = 'Water, Niacinamide, Allantoin, Panthenol, Squalane, Ceramid
 const toner = (brand, title, other = {}) => product(brand, title, { category: 'toner', ingredient_text: INGREDIENTS, ...other });
 
 // Anchor: three sentences an elided quote spans across two long, neutral stretches (a 380-character
-// passage whose 350-character cut lands mid-word).
+// passage whose 350-character cut lands inside its last part, mid-word).
 const GAP = 'Lightweight daily formula that layers easily under makeup and sunscreen and sinks in within seconds leaving comfortable finish on cheeks';
 const LONG_DESCRIPTION = `Gently calms visible redness. ${GAP}. Panthenol supports the moisture barrier. ${GAP}. Allantoin soothes after cleansing.`;
 const LONG_PASSAGE = LONG_DESCRIPTION.slice(0, -1);
 const ELIDED_QUOTE = 'Gently calms visible redness ... Panthenol supports the moisture barrier ... Allantoin soothes after cleansing';
-// The same shape whose last sentence carries a caveat: cutting it off would change what it says.
-const CAVEAT_DESCRIPTION = `Gently calms visible redness. ${GAP}. Panthenol supports the moisture barrier. ${GAP}. Allantoin soothes irritated skin without stinging.`;
-const CAVEAT_QUOTE = 'Gently calms visible redness ... Panthenol supports the moisture barrier ... Allantoin soothes irritated skin without stinging';
+const FIRST_PART = 'Gently calms visible redness';
+const SECOND_PART = 'Panthenol supports the moisture barrier';
+// The longest whole-part prefix of LONG_PASSAGE that fits the cap: its first two parts.
+const TWO_PART_PREFIX = LONG_PASSAGE.slice(0, LONG_PASSAGE.indexOf(SECOND_PART) + SECOND_PART.length);
+const threePart = (lastPart) => ({
+  description: `${FIRST_PART}. ${GAP}. ${SECOND_PART}. ${GAP}. ${lastPart}.`,
+  quote: `${FIRST_PART} ... ${SECOND_PART} ... ${lastPart}`,
+  parts: [FIRST_PART, SECOND_PART, lastPart],
+});
 // Candidate: a passage over the cap whose 350-character cut lands on a word boundary.
 const CGAP = 'Pairs well with light serums and emulsions and absorbs within a minute leaving skin balanced and comfortable through the afternoon';
 const BOUNDARY_DESCRIPTION = `Balances oily zones swift. ${CGAP}. Rice water brightens dull areas. ${CGAP}. Ceramides help the barrier overnight.`;
@@ -58,42 +66,63 @@ const twice = (row, decision) => {
 };
 
 describe('validating an approved decision again gives the same result (idempotent)', () => {
-  test('an over-cap passage cut mid-word on a second read is stored cut at its last whole word, and stays so', () => {
+  test('an over-cap passage cut mid-word on a second read is stored as a whole-part prefix, and stays so', () => {
     const [first, second] = twice(labelRow('mid_word'), approve([LONG_QUOTE]));
     // Before the fix: first = approve with the 380-character passage, second = reject.
     expect(LONG_PASSAGE.length).toBeGreaterThan(350);
     expect(LONG_PASSAGE[350]).toMatch(/\p{L}/u);
     expect(first.verdict).toBe('approve');
-    const stored = first.shared_evidence[0].anchor_fact;
-    expect(stored.length).toBeLessThanOrEqual(350);
-    expect(LONG_PASSAGE.startsWith(stored)).toBe(true);
-    expect(LONG_PASSAGE[stored.length]).toBe(' ');
-    expect(stored).toMatch(/^Gently calms visible redness\. .* on cheeks\.$/);
+    // Kept as its longest prefix ending on a whole quoted part: never a cut inside the last part.
+    expect(first.shared_evidence).toEqual([{ anchor_fact: TWO_PART_PREFIX, candidate_fact: 'Soothing Toner' }]);
+    expect(TWO_PART_PREFIX.length).toBeLessThanOrEqual(350);
     expect(second).toEqual(first);
   });
 
-  test('candidate side: an over-cap passage whose 350 cut lands on a word boundary keeps exactly that cut, on both passes', () => {
+  test('candidate side: an over-cap passage whose 350 cut lands on a word boundary keeps a whole-part prefix, on both passes', () => {
     const passage = BOUNDARY_DESCRIPTION.slice(0, -1);
     expect(passage.length).toBeGreaterThan(350);
     expect(passage[350]).toBe(' ');
     const [first, second] = twice(labelRow('boundary'), approve([{ anchor_fact: 'Calming Toner', candidate_fact: BOUNDARY_QUOTE }]));
     expect(first.verdict).toBe('approve');
-    // What main wrote for this shape (its 350-character cut), now also what the review keeps.
-    expect(first.shared_evidence).toEqual([{ anchor_fact: 'Calming Toner', candidate_fact: passage.slice(0, 350) }]);
+    // main wrote passage.slice(0, 350), which ends inside the last part ("... help the barrier"); the
+    // review keeps the first two whole parts instead.
+    const prefix = passage.slice(0, passage.indexOf('Rice water brightens dull areas') + 'Rice water brightens dull areas'.length);
+    expect(first.shared_evidence).toEqual([{ anchor_fact: 'Calming Toner', candidate_fact: prefix }]);
     expect(second).toEqual(first);
   });
 
-  test('a cut that would drop a caveat is refused: the pair is not kept, alone it is a reject on both passes', () => {
-    const row = labelRow('caveat', toner('Fixture Brand A', 'Calming Toner', { description: CAVEAT_DESCRIPTION }));
-    expect(capPassage(CAVEAT_DESCRIPTION.slice(0, -1))).toBe('');
-    const caveat = { anchor_fact: CAVEAT_QUOTE, candidate_fact: 'Soothing Toner' };
-    const [first, second] = twice(row, approve([caveat]));
+  // Each of these last parts, cut at a word within the cap, reads as a different fact.
+  test.each([
+    ['is not fragranced', 'The formula is gentle and is not fragranced'],
+    ['no added alcohol', 'Made with no added alcohol'],
+    ['non comedogenic', 'The texture is non comedogenic'],
+    ['10 mg niacinamide', 'Each dose contains 10 mg niacinamide'],
+    ['vitamin c serum', 'A daily vitamin c serum'],
+    ['for adults only', 'Formulated as suitable for adults only'],
+    ['may irritate eyes', 'Feels gentle; may irritate eyes'],
+  ])('an over-cap last part (%s) is never stored as a fragment: whole parts or nothing', (_label, lastPart) => {
+    const shape = threePart(lastPart);
+    const passage = shape.description.slice(0, -1);
+    expect(passage.length).toBeGreaterThan(350);
+    expect(passage.lastIndexOf(lastPart)).toBeLessThan(350); // the 350 cut lands inside the last part
+    expect(capPassage(passage, shape.parts)).toBe(TWO_PART_PREFIX);
+    const row = labelRow(`probe_${_label}`, toner('Fixture Brand A', 'Calming Toner', { description: shape.description }));
+    const [first, second] = twice(row, approve([{ anchor_fact: shape.quote, candidate_fact: 'Soothing Toner' }]));
+    expect(second).toEqual(first);
+    for (const { anchor_fact: stored } of first.verdict === 'approve' ? first.shared_evidence : []) {
+      expect(shape.parts.some((part) => normalizeQuoteText(stored).endsWith(normalizeQuoteText(part)))).toBe(true);
+      expect(stored === passage || stored === TWO_PART_PREFIX || stored === FIRST_PART).toBe(true);
+    }
+  });
+
+  test('a passage that is not showable is refused whole: a prefix never makes it showable', () => {
+    // main and the first revision reject this; cutting the braced last part off must not admit it.
+    const shape = threePart('Allantoin soothes after {cleansing} gently');
+    const row = labelRow('braced', toner('Fixture Brand A', 'Calming Toner', { description: shape.description }),
+      toner('Fixture Brand B', 'Soothing Toner', { description: 'Gently calms visible redness.' }));
+    const [first, second] = twice(row, approve([{ anchor_fact: shape.quote, candidate_fact: 'Gently calms visible redness' }]));
     expect(first).toEqual(expect.objectContaining({ verdict: 'reject', utility_rejection: 'recommendation_facts_not_supplied' }));
     expect(second.verdict).toBe('reject');
-    const [kept, again] = twice(row, approve([caveat, SHORT_QUOTE]));
-    expect(kept.verdict).toBe('approve');
-    expect(kept.shared_evidence).toEqual([SHORT_QUOTE]);
-    expect(again).toEqual(kept);
   });
 
   test('candidate side: a fact that re-reads as a different fact is not kept (the read-back backstop)', () => {
@@ -303,5 +332,50 @@ describe('a row whose approval is refused at apply does not abort the review', (
     const queryFn = jest.fn(async (sql) => (/^\s*SELECT[\s\S]*FROM relationship_candidate_labels/i.test(sql) ? { rows: [ROWS[0]] } : { rows: [] }));
     const result = await runReview({ cutoff: '2026-06-01T00:00:00Z', minScore: 0, limit: 10, verdictsFile, queryFn, negativeTtlDays: 0 });
     expect(result.summary).toEqual(expect.objectContaining({ verdicts_file_count: 1, approved_count: 1 }));
+  });
+});
+
+describe('the sync routine relays refused approvals to its own stderr (the review\'s is a piped child)', () => {
+  let dirs = [];
+  afterEach(() => { jest.restoreAllMocks(); dirs.forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })); dirs = []; });
+  const syncRun = async (reviewSummary, decisions) => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-relay-')); dirs.push(outDir);
+    const options = syncArgs(['--skip-review', '--select-hours', '24', '--out-dir', outDir], { now: new Date('2026-10-31T10:37:00.000Z') });
+    const runner = jest.fn(async (_command, args) => {
+      if (args[0].endsWith('run-relationship-graph-routine-job.js')) {
+        const routineOut = args[args.indexOf('--out-dir') + 1];
+        fs.mkdirSync(routineOut, { recursive: true });
+        const review = path.join(routineOut, 'relationship_graph_ai_review.json');
+        fs.writeFileSync(review, JSON.stringify({ summary: reviewSummary, decisions }));
+        fs.writeFileSync(path.join(routineOut, 'routine_summary.json'), JSON.stringify({ ok: true, artifacts: { review } }));
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const summary = await runSyncRoutine(options, { runner, now: new Date('2026-10-31T10:37:00.000Z'),
+      progressReader: async () => ({ servedEdges: 0, anchors: new Set() }) });
+    const lines = stderr.mock.calls.map(([line]) => String(line))
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
+    stderr.mockRestore();
+    return { summary, lines };
+  };
+
+  test('one single-line summary with counts by code and label ids, marked as a revalidation mismatch', async () => {
+    const byCode = { RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED: 1, LOW_CONFIDENCE_AI_APPROVAL_BLOCKED: 1 };
+    const { summary, lines } = await syncRun({ reviewed_count: 30, review_error_count: 2, approval_blocked_count: 2, approval_blocked_by_code: byCode },
+      [{ id: 'label_1', verdict: 'approval_blocked' }, { id: 'label_2', verdict: 'approve' }, { id: 'label_3', verdict: 'approval_blocked' }]);
+    expect(summary).toEqual(expect.objectContaining({ ok: true, approval_blocked_count: 2, approval_blocked_by_code: byCode }));
+    const relayed = lines.filter((line) => /RELGRAPH_REVIEW_/.test(line.message || ''));
+    expect(relayed).toEqual([{ severity: 'ERROR', message: REVALIDATION_MISMATCH_MARKER, run_id: summary.run_id,
+      approval_blocked_count: 2, approval_blocked_by_code: byCode, label_ids: ['label_1', 'label_3'] }]);
+  });
+
+  test('other refusals only are relayed as an approval-blocked warning; none, nothing is relayed', async () => {
+    const { lines } = await syncRun({ reviewed_count: 30, approval_blocked_count: 1,
+      approval_blocked_by_code: { LOW_CONFIDENCE_AI_APPROVAL_BLOCKED: 1 } }, [{ id: 'label_1', verdict: 'approval_blocked' }]);
+    expect(lines.filter((line) => /RELGRAPH_REVIEW_/.test(line.message || '')))
+      .toEqual([expect.objectContaining({ severity: 'WARNING', message: 'RELGRAPH_REVIEW_APPROVAL_BLOCKED', label_ids: ['label_1'] })]);
+    const quiet = await syncRun({ reviewed_count: 30, approval_blocked_count: 0, approval_blocked_by_code: {} }, []);
+    expect(quiet.lines.filter((line) => /RELGRAPH_REVIEW_/.test(line.message || ''))).toEqual([]);
   });
 });

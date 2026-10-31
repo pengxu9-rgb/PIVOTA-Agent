@@ -45,6 +45,7 @@ const { getRelationshipEdgeServingSuppressionReasons, coerceRelationshipEdge, va
   __internal: { getPriceRatio, getPriceObservedAt },
 } = require('../src/auroraBff/productRelationshipGraph');
 const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, validReviewerIdentity } = require('../src/services/relationshipCrossAgentReview');
+const { REVALIDATION_MISMATCH_MARKER } = require('../src/services/relationshipGraphServingProgress');
 
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
@@ -63,11 +64,12 @@ const RUBRIC_VERSION = 'v4';
 // hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
 // v3 (2026-10-20): quotes are grounded as the facts they quote, not as the JSON they were copied from.
 // 2026-10-31: a grounded quote must read back as itself (groundedQuotes), and an elided passage over the
-// 350-character quote cap is cut at its last whole word (capPassage) instead of being cut mid-word on the
-// next read. Against v3's first pass this only REFUSES: a pair that still does not read back is dropped
-// (a cut that would drop a negation or caveat, a passage that re-reads as several facts). Against what
-// v3 applied it also admits the over-cap passages apply refused, stored cut. No v3 negative memo comes
-// from those rows (the throw stopped the run before any memo), so the validator version is unchanged.
+// 350-character quote cap is kept as its longest prefix that ends on a whole quoted part (capPassage)
+// instead of being cut mid-word on the next read. What is kept is v3's own grounded text or a whole-part
+// prefix of that same text, and the full passage must still be showable, so against v3's first pass this
+// only REFUSES (a prefix that is not showable, a pair that does not read back). Against what v3
+// APPLIED it also admits over-cap passages that apply refused, stored as the prefix; those rows threw
+// before any negative memo was written, so the validator version is unchanged.
 const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v3';
 // A validator change releases only the memos whose rejection it could change. v2 -> v3 changed quote
 // grounding alone, so a v2 memo stays remembered unless it was recommendation_facts_not_supplied: on
@@ -1389,17 +1391,18 @@ function elidedPassage(values, parts) {
   }
   return '';
 }
-// A passage over the quote cap, cut at its last whole word within the cap so that what is stored is the
-// fact's own text and reads back intact ('' when it cannot be cut so). Never when the cut would drop a
-// negation, contrast or caveat (the elision rule's own words): "... soothes skin without stinging" is not
-// stored as "... soothes skin".
-function capPassage(passage) {
+// A passage over the quote cap, kept as its longest prefix that ends on a whole quoted part and fits
+// the cap, so every stored word run is a whole part, exactly as the elision rule builds a passage of
+// fewer parts ('' when none fits). Never a cut inside a part: "... and is not fragranced" is not stored
+// as "... and is not". The prefix is found inside the passage itself, so it is the same text.
+function capPassage(passage, parts) {
   if (passage.length <= QUOTE_MAX_CHARS) return passage;
-  const space = passage.slice(0, QUOTE_MAX_CHARS + 1).search(/\s\S*$/);
-  if (space <= 0) return '';
-  const cut = passage.slice(0, space).replace(/[\s"\]},;:(\[{-]+$/, '');
-  if (!cut || ELISION_FORBIDDEN_GAP.test(normalizeQuoteText(passage.slice(cut.length)))) return '';
-  return cut;
+  const own = [{ norm: normalizeQuoteText(passage), raw: foldQuoteText(passage) }];
+  for (let count = parts.length - 1; count >= 1; count -= 1) {
+    const prefix = elidedPassage(own, parts.slice(0, count));
+    if (prefix && prefix.length <= QUOTE_MAX_CHARS && own[0].norm.startsWith(normalizeQuoteText(prefix))) return prefix;
+  }
+  return '';
 }
 // The same passage in the fact's own case and spacing (normalisation only lowercases and respaces).
 function originalPassage(raw, passage) {
@@ -1432,9 +1435,11 @@ function groundQuoteSide(product, value) {
       }
       const passage = elidedPassage(values, parts);
       if (!passage) return false;
-      // Over the cap it is kept cut at a whole word, or not at all (it then neither grounds nor sinks).
-      const kept = capPassage(passage);
-      // A fact that itself carries an ellipsis or brackets cannot be shown, so it cannot be the evidence.
+      // A fact that itself carries an ellipsis or brackets cannot be shown, so it cannot be the evidence:
+      // judged on the whole passage, so a prefix never makes showable what v3 refused.
+      if (!isShowableQuote(passage, brand)) continue;
+      // Over the cap it is kept as a whole-part prefix, or not at all (it then neither grounds nor sinks).
+      const kept = capPassage(passage, parts);
       if (kept && isShowableQuote(kept, brand)) specific.push(kept);
       continue;
     }
@@ -1474,10 +1479,10 @@ function groundQuotePairs(quotes, evidence) {
 // An elided passage is the fact's own text from its first part to its last, so it can outgrow the cap
 // (six parts, gaps of up to 160 characters); cut mid-word on the second read it no longer grounded,
 // and the second validation refused an approval the first had passed (2026-10-31: the nightly review
-// aborted at apply). capPassage now cuts such a passage at a whole word; this check is the backstop
-// for any shape that still does not read back (a cut capPassage refuses, a passage that re-reads as
-// several facts). Such a pair is not kept, like a passage that cannot be shown: it neither grounds
-// the pair nor sinks it.
+// aborted at apply). capPassage now keeps such a passage as a whole-part prefix; this check is the
+// backstop for any shape that still does not read back (a fact that re-reads under another key, a
+// passage that re-reads as several facts). Such a pair is not kept, like a passage that cannot be
+// shown: it neither grounds the pair nor sinks it.
 function readsBackAsItself(pair, evidence) {
   const [read] = quotedEvidence([pair]);
   if (!read || read.anchor_fact !== pair.anchor_fact || read.candidate_fact !== pair.candidate_fact) return false;
@@ -1696,8 +1701,10 @@ const APPROVAL_BLOCKED_CODES = Object.freeze(new Set([
 ]));
 
 // A RECOMMENDATION_UTILITY refusal means the validator disagreed with itself on one row, which cannot
-// happen while validation is idempotent: this marker line is what a log-based metric counts.
-const REVALIDATION_MISMATCH_MARKER = 'RELGRAPH_REVIEW_REVALIDATION_MISMATCH';
+// happen while validation is idempotent. These per-row lines are for local runs: in prod the review's
+// stderr is a piped child two levels down (sync routine -> routine job -> review) and is kept only as a
+// tail in a /tmp summary, so they never reach the logs. The sync routine re-emits one summary line
+// with the counts (approvalBlockedRelayLine), and that is what a log-based metric counts.
 function approvalBlockedLogLines({ runId = '', labelId = '', code = '' } = {}) {
   const lines = [{ severity: 'WARNING', message: 'relationship graph AI review: approval refused at apply',
     run_id: runId, label_id: labelId, code }];
