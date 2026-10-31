@@ -32,6 +32,12 @@ The minimum-count threshold uses that same review_error_denominator. For 250 rev
 before the routine reports ai_review as failed, including schema-invalid responses. Exactly 25%, 6%, and fewer than 20 eligible reviews pass this
 gate; the separate transport breaker still fails on sustained timeout/request failures.
 `--min-reviews-for-error-gate` and `--max-review-error-rate` override the thresholds.
+`review_error_count` (and so `review_error_rate`) is not provider-only: it also counts approvals
+the reviewer passed and apply refused (`approval_blocked`, also reported on its own as
+`approval_blocked_count` / `approval_blocked_by_code`). One such row does not fail a run, but they
+share the gate with provider errors, so a borderline run can tip over (5 transport errors and 1
+refused approval in 20 is 0.30). The sync routine logs one `RELGRAPH_REVIEW_REVALIDATION_MISMATCH`
+(or `RELGRAPH_REVIEW_APPROVAL_BLOCKED`) line with the counts when there are any.
 Cron forwards `RELGRAPH_SYNC_MAX_REVIEW_ERROR_RATE` (and the optional
 `RELGRAPH_SYNC_MIN_REVIEWS_FOR_ERROR_GATE`) through sync to routine-job.
 With Cloud Run `--max-retries 1`, a failed step reruns the whole task. This is acceptable;

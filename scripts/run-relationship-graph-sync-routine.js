@@ -5,7 +5,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
-const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics } = require('../src/services/relationshipGraphServingProgress');
+const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, approvalBlockedRelayLine } = require('../src/services/relationshipGraphServingProgress');
 
 const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
@@ -368,6 +368,24 @@ function surfaceServingAuditScope(summary, routine = {}) {
   })}\n`);
 }
 
+// Approvals the review refused at apply are logged per row by the review itself, but that stderr is
+// two piped children down and survives only as a tail in the routine's /tmp summary (the same loss
+// as the 2026-10-16 evidence-readiness line). One summary line is re-emitted here, where the
+// container's log sink sees it: RELGRAPH_REVIEW_REVALIDATION_MISMATCH when any was a
+// RECOMMENDATION_UTILITY refusal (a log-based metric counts it), counts by code and label ids only.
+function surfaceApprovalBlocked(summary, reviewArtifactPath) {
+  let labelIds = [];
+  try {
+    const artifact = reviewArtifactPath && fs.existsSync(reviewArtifactPath) ? JSON.parse(fs.readFileSync(reviewArtifactPath, 'utf8')) : null;
+    labelIds = (Array.isArray(artifact && artifact.decisions) ? artifact.decisions : [])
+      .filter((row) => row && row.verdict === 'approval_blocked').map((row) => String(row.id));
+  } catch (_err) {
+    labelIds = []; // the counts still go out
+  }
+  const line = approvalBlockedRelayLine(summary, { runId: summary.run_id, labelIds });
+  if (line) process.stderr.write(line);
+}
+
 function buildSyncRoutineSteps(options = {}) {
   const node = process.execPath;
   const steps = [];
@@ -685,6 +703,7 @@ async function runSyncRoutine(
         const routine = JSON.parse(fs.readFileSync(routinePath, 'utf8'));
         Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
         surfaceServingAuditScope(summary, routine);
+        surfaceApprovalBlocked(summary, routine.artifacts && routine.artifacts.review);
       }
     } catch (error) {
       summary.ok = false;
