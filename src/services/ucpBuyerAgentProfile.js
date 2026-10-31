@@ -89,12 +89,24 @@ const DEFAULT_SERVICE_SCHEMA_BASE = UCP_SERVICE_SCHEMA_BASE;
 // `fulfillment.groups[].options[]`, so an unpopulated fulfillment block is inert rather than breaking).
 // Mapping `checkout.fulfillment` — destination selection, the single-destination bound, and what the in-chat
 // priced preview does with real shipping/tax — is the follow-up this unblocks, not something it completes.
+//
+// SHOPIFY GLOBAL CATALOG is requested for the same silent-intersection reason, one vendor out. Shopify's
+// Global Catalog (catalog.shopify.com/api/ucp/mcp) adds its cross-shop variant fields — `seller`,
+// `checkout_url`, `eligible.native_checkout`, `condition`, `rating` — only for agents whose profile declares
+// the `dev.shopify.catalog.global` extension (shopify.dev/docs/agents/catalog/global-catalog-extension,
+// "Versions: 2026-04-08, 2026-08-25, and draft"). MEASURED 2026-10-31, same query + saved catalog_id, both
+// on 2026-04-08: our live profile got variant keys {availability, description, handle, id, media, options,
+// price, title, url}; Shopify's 2026-04-08 sample profile, which differs from ours by declaring this
+// extension, got those PLUS {checkout_url, condition, eligible, rating, seller}. So the extension, not a
+// spec bump, is what unlocks them — which is why the shared version pin in ucpSpecVersion.cjs is untouched.
+// It is discovery-only (filters, similarity search, read-only variant fields); nothing in it moves money.
 const SHOPPING_SERVICE = 'dev.ucp.shopping';
 const CATALOG_SEARCH_CAPABILITY = 'dev.ucp.shopping.catalog.search';
 const CATALOG_LOOKUP_CAPABILITY = 'dev.ucp.shopping.catalog.lookup';
 const CART_CAPABILITY = 'dev.ucp.shopping.cart';
 const CHECKOUT_CAPABILITY = 'dev.ucp.shopping.checkout';
 const FULFILLMENT_CAPABILITY = 'dev.ucp.shopping.fulfillment';
+const SHOPIFY_GLOBAL_CATALOG_CAPABILITY = 'dev.shopify.catalog.global';
 
 // Any capability whose name implies completing a purchase / moving money. Requesting these is forbidden here.
 const FORBIDDEN_CAPABILITY_PATTERN = /(complete|payment|charge|purchase)/i;
@@ -179,6 +191,9 @@ const ALLOWED_BUYER_CAPABILITIES = Object.freeze(new Set([
   'dev.ucp.shopping.cart',
   'dev.ucp.shopping.checkout',
   'dev.ucp.shopping.fulfillment',
+  // Discovery fields only (see SHOPIFY_GLOBAL_CATALOG_CAPABILITY above). Vetted 2026-10-31 against the
+  // extension doc: filters, similarity search, inferred fields and read-only variant fields; no payment.
+  'dev.shopify.catalog.global',
 ]));
 
 function assertNoPurchaseCompletion(capabilityNames) {
@@ -230,7 +245,7 @@ function buildUcpBuyerAgentProfile(config = {}) {
   // NOT complete.
   const capabilityNames = [
     CATALOG_SEARCH_CAPABILITY, CATALOG_LOOKUP_CAPABILITY, CART_CAPABILITY, CHECKOUT_CAPABILITY,
-    FULFILLMENT_CAPABILITY,
+    FULFILLMENT_CAPABILITY, SHOPIFY_GLOBAL_CATALOG_CAPABILITY,
   ];
   assertNoPurchaseCompletion(capabilityNames);
 
@@ -263,6 +278,18 @@ function buildUcpBuyerAgentProfile(config = {}) {
       spec: capabilitySpec('fulfillment'),
       schema: capabilitySchema('fulfillment'),
       extends: CHECKOUT_CAPABILITY,
+    }],
+    // A vendor extension, so its spec/schema live on shopify.dev rather than under the ucp.dev bases. Every
+    // member is transcribed from Shopify's own sample profile for this line
+    // (shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json); spec and schema both
+    // measured 200 on 2026-10-31. The ARRAY `extends` is deliberate here, unlike fulfillment's string: the
+    // extension decorates both catalog tools, so it must survive an intersection that keeps either half —
+    // a merchant granting lookup but not search should still get the extended lookup fields.
+    [SHOPIFY_GLOBAL_CATALOG_CAPABILITY]: [{
+      version,
+      spec: 'https://shopify.dev/docs/agents/catalog/global-catalog',
+      schema: `https://shopify.dev/ucp/schemas/${version}/shopify_catalog_global.json`,
+      extends: [CATALOG_LOOKUP_CAPABILITY, CATALOG_SEARCH_CAPABILITY],
     }],
   };
 
@@ -339,5 +366,6 @@ module.exports = {
   CART_CAPABILITY,
   CHECKOUT_CAPABILITY,
   FULFILLMENT_CAPABILITY,
+  SHOPIFY_GLOBAL_CATALOG_CAPABILITY,
   FORBIDDEN_CAPABILITY_PATTERN,
 };
