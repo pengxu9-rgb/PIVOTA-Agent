@@ -62,8 +62,12 @@ const RUBRIC_VERSION = 'v4';
 // validator version is unchanged. Its prompt line does change reviewPairFingerprint (the fingerprint
 // hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
 // v3 (2026-10-20): quotes are grounded as the facts they quote, not as the JSON they were copied from.
-// 2026-10-31: a grounded quote must read back as itself (groundedQuotes). That only REFUSES approvals
-// v3 allowed (and that apply already refused), so the validator version is unchanged.
+// 2026-10-31: a grounded quote must read back as itself (groundedQuotes), and an elided passage over the
+// 350-character quote cap is cut at its last whole word (capPassage) instead of being cut mid-word on the
+// next read. Against v3's first pass this only REFUSES: a pair that still does not read back is dropped
+// (a cut that would drop a negation or caveat, a passage that re-reads as several facts). Against what
+// v3 applied it also admits the over-cap passages apply refused, stored cut. No v3 negative memo comes
+// from those rows (the throw stopped the run before any memo), so the validator version is unchanged.
 const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v3';
 // A validator change releases only the memos whose rejection it could change. v2 -> v3 changed quote
 // grounding alone, so a v2 memo stays remembered unless it was recommendation_facts_not_supplied: on
@@ -1385,6 +1389,18 @@ function elidedPassage(values, parts) {
   }
   return '';
 }
+// A passage over the quote cap, cut at its last whole word within the cap so that what is stored is the
+// fact's own text and reads back intact ('' when it cannot be cut so). Never when the cut would drop a
+// negation, contrast or caveat (the elision rule's own words): "... soothes skin without stinging" is not
+// stored as "... soothes skin".
+function capPassage(passage) {
+  if (passage.length <= QUOTE_MAX_CHARS) return passage;
+  const space = passage.slice(0, QUOTE_MAX_CHARS + 1).search(/\s\S*$/);
+  if (space <= 0) return '';
+  const cut = passage.slice(0, space).replace(/[\s"\]},;:(\[{-]+$/, '');
+  if (!cut || ELISION_FORBIDDEN_GAP.test(normalizeQuoteText(passage.slice(cut.length)))) return '';
+  return cut;
+}
 // The same passage in the fact's own case and spacing (normalisation only lowercases and respaces).
 function originalPassage(raw, passage) {
   const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1416,8 +1432,10 @@ function groundQuoteSide(product, value) {
       }
       const passage = elidedPassage(values, parts);
       if (!passage) return false;
+      // Over the cap it is kept cut at a whole word, or not at all (it then neither grounds nor sinks).
+      const kept = capPassage(passage);
       // A fact that itself carries an ellipsis or brackets cannot be shown, so it cannot be the evidence.
-      if (isShowableQuote(passage, brand)) specific.push(passage);
+      if (kept && isShowableQuote(kept, brand)) specific.push(kept);
       continue;
     }
     const [part] = parts;
@@ -1456,8 +1474,10 @@ function groundQuotePairs(quotes, evidence) {
 // An elided passage is the fact's own text from its first part to its last, so it can outgrow the cap
 // (six parts, gaps of up to 160 characters); cut mid-word on the second read it no longer grounded,
 // and the second validation refused an approval the first had passed (2026-10-31: the nightly review
-// aborted at apply). A pair that does not read back is not kept, like a passage that cannot be shown:
-// it neither grounds the pair nor sinks it.
+// aborted at apply). capPassage now cuts such a passage at a whole word; this check is the backstop
+// for any shape that still does not read back (a cut capPassage refuses, a passage that re-reads as
+// several facts). Such a pair is not kept, like a passage that cannot be shown: it neither grounds
+// the pair nor sinks it.
 function readsBackAsItself(pair, evidence) {
   const [read] = quotedEvidence([pair]);
   if (!read || read.anchor_fact !== pair.anchor_fact || read.candidate_fact !== pair.candidate_fact) return false;
@@ -1674,6 +1694,18 @@ const APPROVAL_BLOCKED_CODES = Object.freeze(new Set([
   'SERVING_GUARD_AI_APPROVAL_BLOCKED',
   'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED',
 ]));
+
+// A RECOMMENDATION_UTILITY refusal means the validator disagreed with itself on one row, which cannot
+// happen while validation is idempotent: this marker line is what a log-based metric counts.
+const REVALIDATION_MISMATCH_MARKER = 'RELGRAPH_REVIEW_REVALIDATION_MISMATCH';
+function approvalBlockedLogLines({ runId = '', labelId = '', code = '' } = {}) {
+  const lines = [{ severity: 'WARNING', message: 'relationship graph AI review: approval refused at apply',
+    run_id: runId, label_id: labelId, code }];
+  if (code === 'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED') {
+    lines.push({ severity: 'ERROR', message: REVALIDATION_MISMATCH_MARKER, run_id: runId, label_id: labelId, code });
+  }
+  return lines.map((line) => `${JSON.stringify(line)}\n`);
+}
 
 function approvalBlockedDecision(decision, err) {
   const code = err.code;
@@ -1940,8 +1972,7 @@ async function runReview({
         if (!APPROVAL_BLOCKED_CODES.has(err && err.code)) throw err;
         // Fail closed for this row only: nothing was written, and it is not approved.
         decision = approvalBlockedDecision(decision, err);
-        process.stderr.write(`${JSON.stringify({ severity: 'WARNING', message: 'relationship graph AI review: approval refused at apply',
-          run_id: reviewRunId, label_id: row.id, code: err.code })}\n`);
+        for (const line of approvalBlockedLogLines({ runId: reviewRunId, labelId: row.id, code: err.code })) process.stderr.write(line);
       }
       if (appliedRow) appliedCount += 1;
     } else if (apply && decision.verdict === 'guard_blocked') {
@@ -2065,7 +2096,11 @@ async function runReview({
 
   const approvedCount = completed.filter((row) => row.verdict === 'approve').length;
   const rejectedCount = completed.filter((row) => ['reject', 'consensus_reject'].includes(row.verdict)).length;
-  const reviewErrorCount = completed.filter((row) => row.verdict === 'error' || row.review_error).length;
+  // An approval refused at apply counts as a review error too: one such row does not stop the run, but
+  // a high share of them trips the routine's review error gate (a validator that disagrees with itself,
+  // a provider that stops sending confidence) instead of exiting 0 with nothing approved.
+  const reviewErrorCount = completed.filter((row) => row.verdict === 'error' || row.review_error
+    || row.verdict === 'approval_blocked').length;
   const guardBlocked = completed.filter((row) => row.verdict === 'guard_blocked');
   const lowConfidenceCount = completed.filter((row) => row.verdict === 'low_confidence').length;
   const approvalBlocked = completed.filter((row) => row.verdict === 'approval_blocked');
@@ -2135,7 +2170,8 @@ async function runReview({
     guard_blocked_count: guardBlocked.length,
     guard_blocked_by_reason: guardBlockedByReason,
     guard_blocked_applied_count: guardBlockedAppliedCount,
-    // Approvals the review passed and apply refused (left generated, never written as approved).
+    // Approvals the review passed and apply refused (left generated, never written as approved; also
+    // counted in review_error_count).
     approval_blocked_count: approvalBlocked.length,
     approval_blocked_by_code: approvalBlockedByCode,
     approved_applied_count: appliedCount,
@@ -2206,7 +2242,7 @@ if (require.main === module) {
 
 module.exports = {
   // Exposed for tests of the v3 grounding rules (tests/scripts/relationship_review_quote_grounding.test.js).
-  __quoteGrounding: { quoteFactValues, parseQuote, groundQuoteSide, elidedPassage },
+  __quoteGrounding: { quoteFactValues, parseQuote, groundQuoteSide, elidedPassage, capPassage, groundQuotePairs },
   DEFAULT_NEGATIVE_REVIEW_TTL_DAYS,
   REVIEW_VALIDATOR_VERSION,
   MIN_AI_APPROVAL_CONFIDENCE,
@@ -2216,6 +2252,8 @@ module.exports = {
   AI_APPROVAL_FRESHNESS_INTERVAL,
   VerdictSchema,
   APPROVAL_BLOCKED_CODES,
+  REVALIDATION_MISMATCH_MARKER,
+  approvalBlockedLogLines,
   applyApproval,
   applyConsensusDisposition,
   applyGuardBlock,
