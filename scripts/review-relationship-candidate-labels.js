@@ -62,6 +62,8 @@ const RUBRIC_VERSION = 'v4';
 // validator version is unchanged. Its prompt line does change reviewPairFingerprint (the fingerprint
 // hashes the prompt), so every remembered negative verdict misses once and that pair is reviewed again.
 // v3 (2026-10-20): quotes are grounded as the facts they quote, not as the JSON they were copied from.
+// 2026-10-31: a grounded quote must read back as itself (groundedQuotes). That only REFUSES approvals
+// v3 allowed (and that apply already refused), so the validator version is unchanged.
 const REVIEW_VALIDATOR_VERSION = 'relgraph_review_validator.v3';
 // A validator change releases only the memos whose rejection it could change. v2 -> v3 changed quote
 // grounding alone, so a v2 memo stays remembered unless it was recommendation_facts_not_supplied: on
@@ -326,7 +328,8 @@ function readVerdictsFile(filePath) {
     const verdict = normalizeString(row.verdict, 20).toLowerCase();
     // guard_blocked rows come from a previous --out file; runReview re-asks the guard before it
     // ever consults a replay, so they carry no verdict to replay.
-    if (verdict === 'error' || verdict === 'guard_blocked') continue;
+    // approval_blocked rows carry the refused approval, not a verdict to replay (like error rows).
+    if (verdict === 'error' || verdict === 'guard_blocked' || verdict === 'approval_blocked') continue;
     if (!['approve', 'reject', 'low_confidence'].includes(verdict)) {
       throw new Error(`invalid verdict for ${id}: ${row.verdict}`);
     }
@@ -1277,6 +1280,8 @@ const QUOTE_KEY_FIELDS = Object.freeze({
   // A brand quote is recognised so it can be ignored (a brand is never specific), not failed as unknown text.
   brand: {},
 });
+// The longest quote side that is read, stored or shown (the verdict schema's own bound).
+const QUOTE_MAX_CHARS = 350;
 // Never descriptive, wherever they sit.
 const QUOTE_EVIDENCE_META_KEYS = new Set(['table', 'observed_at', 'review_status', 'audit_status', 'source_refs',
   'ingredient_text_truncated', 'canonical_url', 'url', 'domain', 'price_amount', 'price_currency', 'availability', 'status',
@@ -1314,7 +1319,7 @@ function quoteKnownKey(key, product) {
 // { items, key } for one side of one quote: items are array items, each the parts an ellipsis separates.
 // null when the quote is malformed (a known key with no fact after it).
 function parseQuote(value, product) {
-  let text = foldQuoteText(normalizeString(value, 350));
+  let text = foldQuoteText(normalizeString(value, QUOTE_MAX_CHARS));
   let key = null;
   const match = text.match(/^\s*[{\[]?\s*"?([A-Za-z][A-Za-z_]{0,40})"?\s*:\s*/);
   if (match && quoteKnownKey(match[1].toLowerCase(), product)) {
@@ -1426,13 +1431,13 @@ function groundQuoteSide(product, value) {
 }
 function quotedEvidence(value) {
   return asArray(value).slice(0, 6).map((item) => ({
-    anchor_fact: normalizeString(item?.anchor_fact, 350),
-    candidate_fact: normalizeString(item?.candidate_fact, 350),
+    anchor_fact: normalizeString(item?.anchor_fact, QUOTE_MAX_CHARS),
+    candidate_fact: normalizeString(item?.candidate_fact, QUOTE_MAX_CHARS),
   })).filter((item) => item.anchor_fact && item.candidate_fact);
 }
-// Every quote must hold on both sides; returns the specific grounded quotes (each part its own fact,
-// paired in order), or null. The returned quotes are what an approval stores and shows.
-function groundedQuotes(quotes, evidence) {
+// Every quote must hold on both sides; returns the specific grounded pairs (each part its own fact,
+// paired in order), [] when nothing specific grounded, or null when a quote failed.
+function groundQuotePairs(quotes, evidence) {
   const kept = [];
   for (const quote of quotes) {
     const anchor = groundQuoteSide(evidence.anchor, quote.anchor_fact);
@@ -1443,7 +1448,31 @@ function groundedQuotes(quotes, evidence) {
       kept.push({ anchor_fact: anchor[Math.min(i, anchor.length - 1)], candidate_fact: candidate[Math.min(i, candidate.length - 1)] });
     }
   }
-  return kept.length ? kept.slice(0, 6) : null;
+  return kept;
+}
+// A grounded pair is stored, and the approval is validated again on it: applyApproval re-checks the
+// decision it is handed, and a verdict replay of an --out file reads the stored quotes back. So a pair
+// must read back as itself: intact under the quote cap, and grounding alone as exactly that pair.
+// An elided passage is the fact's own text from its first part to its last, so it can outgrow the cap
+// (six parts, gaps of up to 160 characters); cut mid-word on the second read it no longer grounded,
+// and the second validation refused an approval the first had passed (2026-10-31: the nightly review
+// aborted at apply). A pair that does not read back is not kept, like a passage that cannot be shown:
+// it neither grounds the pair nor sinks it.
+function readsBackAsItself(pair, evidence) {
+  const [read] = quotedEvidence([pair]);
+  if (!read || read.anchor_fact !== pair.anchor_fact || read.candidate_fact !== pair.candidate_fact) return false;
+  const again = groundQuotePairs([read], evidence);
+  return Boolean(again && again.length === 1
+    && again[0].anchor_fact === pair.anchor_fact && again[0].candidate_fact === pair.candidate_fact);
+}
+// The specific grounded quotes that read back as themselves, or null. They are what an approval stores
+// and shows, and validating a decision that carries them grounds them unchanged.
+function groundedQuotes(quotes, evidence) {
+  const kept = groundQuotePairs(quotes, evidence);
+  if (!kept) return null;
+  // Filtered after the cap, so what is kept is always a subset of what v3 kept.
+  const stable = kept.slice(0, 6).filter((pair) => readsBackAsItself(pair, evidence));
+  return stable.length ? stable : null;
 }
 function validateRecommendationDecision(row, decision, suppliedEvidence = null) {
   if (decision.verdict !== 'approve') return decision;
@@ -1632,6 +1661,29 @@ async function applyGuardBlock(row, reasons, queryFn = query, { runId = '' } = {
     [row.id, reasonFlags, JSON.stringify(stamp)],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
+}
+
+// applyApproval's own re-checks of one approval. The review applies the same rules before it calls
+// applyApproval, so one of these firing means the two passes disagree about ONE row: that row is not
+// approved (left generated, verdict approval_blocked, counted by code) and the run goes on. On
+// 2026-10-31 a single such row aborted the nightly review. Anything else thrown at apply (a database
+// error, a consensus proof that does not hold) still stops the run.
+const APPROVAL_BLOCKED_CODES = Object.freeze(new Set([
+  'LOW_CONFIDENCE_AI_APPROVAL_BLOCKED',
+  'DUPE_AI_APPROVAL_BLOCKED',
+  'SERVING_GUARD_AI_APPROVAL_BLOCKED',
+  'RECOMMENDATION_UTILITY_AI_APPROVAL_BLOCKED',
+]));
+
+function approvalBlockedDecision(decision, err) {
+  const code = err.code;
+  return {
+    ...decision,
+    verdict: 'approval_blocked',
+    confidence: Number.isFinite(decision.confidence) ? decision.confidence : 0,
+    approval_blocked: { code, message: normalizeString(err.message, 300) },
+    rationale: `approval refused at apply (${code}); candidate left generated: ${normalizeString(decision.rationale, 600)}`,
+  };
 }
 
 async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false, minApprovalConfidence = MIN_AI_APPROVAL_CONFIDENCE, evidence = null, requireConsensus = false, runId = '' } = {}) {
@@ -1881,8 +1933,16 @@ async function runReview({
     }
     let appliedRow = null;
     if (apply && decision.verdict === 'approve') {
-      // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor, evidence, requireConsensus: consensus, runId: reviewRunId });
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval, minApprovalConfidence: confidenceFloor, evidence, requireConsensus: consensus, runId: reviewRunId });
+      } catch (err) {
+        if (!APPROVAL_BLOCKED_CODES.has(err && err.code)) throw err;
+        // Fail closed for this row only: nothing was written, and it is not approved.
+        decision = approvalBlockedDecision(decision, err);
+        process.stderr.write(`${JSON.stringify({ severity: 'WARNING', message: 'relationship graph AI review: approval refused at apply',
+          run_id: reviewRunId, label_id: row.id, code: err.code })}\n`);
+      }
       if (appliedRow) appliedCount += 1;
     } else if (apply && decision.verdict === 'guard_blocked') {
       // eslint-disable-next-line no-await-in-loop
@@ -1944,6 +2004,7 @@ async function runReview({
       ...(negativeMemoryRecorded ? { negative_memory_recorded: true } : {}),
       ...(decision.review_error ? { review_error: decision.review_error } : {}),
       ...(decision.serving_guard_reasons ? { serving_guard_reasons: decision.serving_guard_reasons } : {}),
+      ...(decision.approval_blocked ? { approval_blocked: decision.approval_blocked } : {}),
     };
     decisions[index] = outputRow;
     lines[index] = `${verdictToLine(row, decision, appliedRow, { apply })}\n`;
@@ -1975,6 +2036,7 @@ async function runReview({
         await reviewRow(rows[index], index);
       } catch (err) {
         // A thrown row (DB error, missing replay row) stops new claims; rows already in flight finish.
+        // An approval refused at apply is not thrown: it is that row's verdict (approval_blocked).
         stop = true;
         throw err;
       }
@@ -2006,6 +2068,12 @@ async function runReview({
   const reviewErrorCount = completed.filter((row) => row.verdict === 'error' || row.review_error).length;
   const guardBlocked = completed.filter((row) => row.verdict === 'guard_blocked');
   const lowConfidenceCount = completed.filter((row) => row.verdict === 'low_confidence').length;
+  const approvalBlocked = completed.filter((row) => row.verdict === 'approval_blocked');
+  const approvalBlockedByCode = {};
+  for (const row of approvalBlocked) {
+    const code = (row.approval_blocked && row.approval_blocked.code) || 'unknown';
+    approvalBlockedByCode[code] = (approvalBlockedByCode[code] || 0) + 1;
+  }
   const reviewErrorDenominator = Math.max(0, completed.length - guardBlocked.length - lowConfidenceCount);
   const guardBlockedByReason = {};
   for (const row of guardBlocked) {
@@ -2067,6 +2135,9 @@ async function runReview({
     guard_blocked_count: guardBlocked.length,
     guard_blocked_by_reason: guardBlockedByReason,
     guard_blocked_applied_count: guardBlockedAppliedCount,
+    // Approvals the review passed and apply refused (left generated, never written as approved).
+    approval_blocked_count: approvalBlocked.length,
+    approval_blocked_by_code: approvalBlockedByCode,
     approved_applied_count: appliedCount,
     consensus_disposition_applied_count: consensusDispositionAppliedCount,
     applied_count: appliedCount + guardBlockedAppliedCount + consensusDispositionAppliedCount,
@@ -2144,6 +2215,7 @@ module.exports = {
   PRIMARY_REASON,
   AI_APPROVAL_FRESHNESS_INTERVAL,
   VerdictSchema,
+  APPROVAL_BLOCKED_CODES,
   applyApproval,
   applyConsensusDisposition,
   applyGuardBlock,

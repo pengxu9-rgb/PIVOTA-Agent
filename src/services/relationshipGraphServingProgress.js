@@ -42,7 +42,9 @@ function reviewMetrics(summary = {}) {
     guard_blocked_count: guardBlocked,
     // Additive JSON metrics; preserve old artifact shape and eligible denominator.
     ...Object.fromEntries(['useful_approval_by_kind', 'semantic_rejected_count', 'variant_rejected_count',
-      'candidate_brand_distribution', 'approved_brand_distribution', 'approved_cross_brand_count']
+      'candidate_brand_distribution', 'approved_brand_distribution', 'approved_cross_brand_count',
+      // Approvals refused at apply (one row each, the run carries on): surfaced in the routine summary.
+      'approval_blocked_count', 'approval_blocked_by_code']
       .filter((key) => summary[key] != null).map((key) => [key, summary[key]])),
   };
 }
