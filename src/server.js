@@ -604,6 +604,7 @@ const {
   syntheticRequestRefusal,
   syntheticTrafficMode,
   withSyntheticAssertion,
+  assertSyntheticConfig,
 } = require('./guardrails/syntheticCallers');
 const {
   recommend: recommendPdpProducts,
@@ -54804,6 +54805,11 @@ module.exports._debug = {
   // predicate reads AsyncLocalStorage, so it has to be driven inside a store the test controls.
   shouldPreferInternalInvokeUpstreamAuth,
   INVOKE_AUTH_CONTEXT,
+  // Exported so the synthetic marker is asserted on EVERY branch of the one builder all backend hops share,
+  // and the door's request id on the context the backend body carries: each branch is a hop whose writes
+  // would look real without it.
+  buildInvokeUpstreamAuthHeaders,
+  buildInvokeRequestContext,
   // Exported so the issuing-agent assertion is asserted on the REAL upstream request (headers as sent).
   invokeCommerceKernelRawUpstream,
   // Telemetry property: `metadata.route_trace.node_timings_ms` was read by the prod smoke and written
@@ -55145,6 +55151,10 @@ if (require.main === module) {
     // running on a fail-closed guess, and that state must not take traffic silently.
     const platformInfo = requirePlatformEnv();
     logger.info({ event: 'platform_detected', ...platformInfo }, 'platform environment resolved');
+
+    // A broken synthetic-callers config refuses the boot rather than letting the eval client run as an
+    // ordinary caller (src/guardrails/syntheticCallers.js). Unset, it is a no-op.
+    assertSyntheticConfig({ ownIssuers: commerceMcpOAuth.authorizationServers(), logger });
 
     if (AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady) {
       logger.error(

@@ -42,15 +42,24 @@ delete process.env.DATABASE_URL;
 const app = require('../src/server');
 const logger = require('../src/logger');
 const { keyFingerprint } = require('../src/guardrails/syntheticCallers');
+const { LOOPBACK_SYNTHETIC_HEADER, signLoopbackSynthetic } = require('../src/guardrails/loopbackCallerAssertion');
+const { INVOKE_AUTH_CONTEXT, buildInvokeUpstreamAuthHeaders, buildInvokeRequestContext } = app._debug;
 
 const lines = [];
-for (const level of ['info', 'warn']) {
-  const real = logger[level].bind(logger);
-  logger[level] = (obj, msg, ...rest) => {
-    if (obj && typeof obj === 'object') lines.push({ level, msg, ...obj });
-    return real(obj, msg, ...rest);
-  };
+function captureLevels(target, bindings = {}) {
+  for (const level of ['info', 'warn']) {
+    const real = target[level].bind(target);
+    target[level] = (obj, msg, ...rest) => {
+      if (obj && typeof obj === 'object') lines.push({ level, msg, ...bindings, ...obj });
+      return real(obj, msg, ...rest);
+    };
+  }
+  return target;
 }
+captureLevels(logger);
+// Lines written through a child logger (the price-verification line) carry the child's bindings.
+const realChild = logger.child.bind(logger);
+logger.child = (bindings, ...rest) => captureLevels(realChild(bindings, ...rest), bindings);
 
 test.after(() => {
   nock.cleanAll();
@@ -296,10 +305,122 @@ test('enforce, real loopback: every backend hop of a synthetic search carries th
     assert.equal(search.body?.request_context?.request_id, line.gateway_request_id);
   } finally {
     nock.cleanAll();
-    nock.disableNetConnect();
+    nock.enableNetConnect(); // back to the file's starting state; the net guard still allows loopback only
     if (savedBase === undefined) delete process.env.SELF_INVOKE_BASE;
     else process.env.SELF_INVOKE_BASE = savedBase;
     if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
     await new Promise((resolve) => server.close(() => resolve()));
   }
 });
+
+// ---------------------------------------------------------------------------------------------------------
+// Every branch of the one header builder all backend hops share, and the door's id in the backend body.
+
+const SYN_CTX = { synthetic: true, synthetic_caller: `${ISS}|${EVAL_CID}`, gw_request_id: 'door-request-id' };
+
+test('every branch of buildInvokeUpstreamAuthHeaders carries the assertion for a synthetic context', () => {
+  setSynthetic();
+  const branches = {
+    checkout_token: [{}, { checkoutToken: 'ct_1' }, null],
+    caller_key: [{ api_key: 'caller-own-key' }, {}, 'caller-own-key'],
+    forced_internal: [{}, { forceInternalFallback: true }, GATEWAY_KEY],
+    service_fallback: [{}, {}, GATEWAY_KEY],
+    forwarded_only: [{}, { allowInternalFallback: false }, null],
+  };
+  for (const [name, [ctx, opts, key]] of Object.entries(branches)) {
+    const headers = INVOKE_AUTH_CONTEXT.run({ ...SYN_CTX, ...ctx }, () => buildInvokeUpstreamAuthHeaders(opts));
+    assert.equal(headers['X-API-Key'], key || undefined, `${name}: the branch under test`);
+    const value = headers['X-Pivota-Synthetic-Assertion'];
+    assert.ok(value, `${name}: carries the assertion`);
+    const p = decodeAssertion(value);
+    assert.equal(p.r, SYN_CTX.gw_request_id, name);
+    assert.equal(p.kfp, key ? keyFingerprint(key) : null, `${name}: bound to the key this branch sends`);
+    const real = INVOKE_AUTH_CONTEXT.run({ ...ctx }, () => buildInvokeUpstreamAuthHeaders(opts));
+    assert.equal(real['X-Pivota-Synthetic-Assertion'], undefined, `${name}: never on a real context`);
+  }
+});
+
+test('a synthetic call\'s id overrides the payload\'s request id in the backend body; a real one keeps it', () => {
+  const args = { payload: { context: { request_id: 'from-payload' } }, gatewayRequestId: 'minted-here' };
+  assert.equal(INVOKE_AUTH_CONTEXT.run(SYN_CTX, () => buildInvokeRequestContext(args)).request_id, 'door-request-id');
+  assert.equal(INVOKE_AUTH_CONTEXT.run({}, () => buildInvokeRequestContext(args)).request_id, 'from-payload');
+});
+
+test('the UCP dialect door refuses a listed caller outright, even for tools/list', async (t) => {
+  setSynthetic();
+  const savedDoor = process.env.AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED;
+  process.env.AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED = '1';
+  t.after(() => {
+    if (savedDoor === undefined) delete process.env.AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED;
+    else process.env.AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED = savedDoor;
+  });
+  const token = await tokenFor({ client_id: EVAL_CID });
+  lines.length = 0;
+  const res = await supertest(app)
+    .post('/ucp/mcp')
+    .set('Authorization', `Bearer ${token}`)
+    .set('Accept', 'application/json, text/event-stream')
+    .send(rpc('tools/list'));
+  assert.equal(res.status, 200);
+  assert.equal(toolErrorCode(res), 'OPERATION_NOT_ALLOWED');
+  const refused = lines.find((l) => l.msg === 'synthetic caller request refused');
+  assert.equal(refused?.reason, 'dialect_not_allowed');
+  assert.equal(refused?.door, 'ucp_mcp');
+});
+
+test('enforce: the price-verification line of a synthetic call is marked; a real one is not', async () => {
+  const saved = process.env.PRICE_VERIFICATION_LOG;
+  process.env.PRICE_VERIFICATION_LOG = 'on';
+  try {
+    for (const [cid, expected] of [[EVAL_CID, true], ['mcpc_partner_1', false]]) {
+      setSynthetic();
+      captureBackend();
+      lines.length = 0;
+      await call(supertest(app), await tokenFor({ client_id: cid }), GET_OFFERS);
+      nock.cleanAll();
+      const priceLines = lines.filter((l) => l.msg === 'price_verification_served');
+      assert.ok(priceLines.length > 0, `${cid}: a price-verification line`);
+      // (A child logger's line is also echoed through the patched parent without its bindings.)
+      assert.equal(priceLines.some((l) => l.synthetic === true), expected === true, cid);
+    }
+  } finally {
+    if (saved === undefined) delete process.env.PRICE_VERIFICATION_LOG;
+    else process.env.PRICE_VERIFICATION_LOG = saved;
+  }
+});
+
+// The loopback hop rebuilds a synthetic context from the marker in enforce only, and adopts the door's id.
+for (const mode of ['enforce', 'observe']) {
+  test(`${mode}: a loopback invoke carrying the marker is ${mode === 'enforce' ? 'synthetic, under the door\'s id' : 'an ordinary call'}`, async () => {
+    setSynthetic({ mode });
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    nock.enableNetConnect('127.0.0.1');
+    try {
+      const seen = captureBackend();
+      lines.length = 0;
+      const marker = signLoopbackSynthetic({ caller: `${ISS}|${EVAL_CID}`, requestId: 'door-id-from-marker' });
+      await supertest(server)
+        .post('/agent/shop/v1/invoke')
+        .set('X-API-Key', GATEWAY_KEY)
+        .set(LOOPBACK_SYNTHETIC_HEADER, marker)
+        .send({ operation: 'find_products_multi', payload: { search: { query: 'stainless steel water bottle' } } });
+      nock.cleanAll();
+      assert.ok(seen.length > 0, 'the invoke reached the backend');
+      const done = lines.filter((l) => l.msg === 'invoke request complete');
+      assert.ok(done.length > 0, 'an invoke completion line');
+      if (mode === 'enforce') {
+        for (const r of seen) assert.equal(decodeAssertion(r.headers['x-pivota-synthetic-assertion']).r, 'door-id-from-marker');
+        assert.equal(done[done.length - 1].gateway_request_id, 'door-id-from-marker', 'the hop adopts the door\'s id');
+      } else {
+        for (const r of seen) assert.equal(r.headers['x-pivota-synthetic-assertion'], undefined);
+        assert.notEqual(done[done.length - 1].gateway_request_id, 'door-id-from-marker');
+      }
+    } finally {
+      nock.cleanAll();
+      nock.enableNetConnect(); // back to the file's starting state; the net guard still allows loopback only
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      await new Promise((resolve) => server.close(() => resolve()));
+    }
+  });
+}

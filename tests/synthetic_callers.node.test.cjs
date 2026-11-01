@@ -14,7 +14,9 @@ const {
   classifySyntheticCaller,
   filterToolsListForSynthetic,
   keyFingerprint,
+  assertSyntheticConfig,
   parseSyntheticCallers,
+  syntheticConfigStatus,
   syntheticCarrierReady,
   syntheticRequestRefusal,
   syntheticTrafficMode,
@@ -43,18 +45,77 @@ test('mode: off unless exactly observe or enforce', () => {
   assert.equal(syntheticTrafficMode({ SYNTHETIC_TRAFFIC_MODE: 'on' }), 'off');
 });
 
-test('config: an entry on a foreign or missing issuer is kept as invalid, never dropped', () => {
+test('config: every malformed entry is kept as invalid, never dropped', () => {
   const { entries } = parseSyntheticCallers(
-    { SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: OWN, client_id: 'a' }, { iss: OTHER, client_id: 'b' }, { client_id: 'c' }, { iss: OWN }]) },
+    {
+      SYNTHETIC_CALLERS_JSON: JSON.stringify([
+        { iss: OWN, client_id: 'a' },
+        { iss: OTHER, client_id: 'b' },
+        { client_id: 'c' },
+        { iss: OWN },
+        { iss: OWN, clientId: 'd' },
+        'e',
+      ]),
+    },
     { ownIssuers: [OWN] },
   );
   assert.deepEqual(entries.map((e) => [e.client_id, e.valid, e.reason]), [
     ['a', true, null],
     ['b', false, 'issuer_not_own'],
     ['c', false, 'missing_iss'],
+    [null, false, 'missing_client_id'],
+    [null, false, 'unknown_key'],
+    [null, false, 'entry_not_object'],
   ]);
   assert.match(parseSyntheticCallers({ SYNTHETIC_CALLERS_JSON: '{' }).error, /not valid JSON/);
   assert.match(parseSyntheticCallers({ SYNTHETIC_CALLERS_JSON: '{}' }).error, /JSON array/);
+});
+
+const LONG_SECRET = 's'.repeat(32);
+
+test('boot: a config a typo could produce refuses the boot with one ERROR line; unset or valid boots', () => {
+  const broken = {
+    trailing_comma: { SYNTHETIC_CALLERS_JSON: `[{"iss":"${OWN}","client_id":"${CID}"},]` },
+    not_array: { SYNTHETIC_CALLERS_JSON: JSON.stringify({ iss: OWN, client_id: CID }) },
+    empty_array: { SYNTHETIC_CALLERS_JSON: '[]' },
+    misspelt_key: { SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: OWN, clientId: CID }]) },
+    missing_client_id: { SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: OWN }]) },
+    foreign_issuer: { SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: OTHER, client_id: CID }]) },
+    one_bad_of_two: { SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: OWN, client_id: CID }, { iss: OWN }]) },
+    mode_typo: listed({ SYNTHETIC_TRAFFIC_MODE: 'enforced' }),
+    short_secret: listed({ SYNTHETIC_ASSERTION_SECRET: 'short' }),
+  };
+  for (const [name, env] of Object.entries(broken)) {
+    const logged = [];
+    const logger = { error: (obj, msg) => logged.push({ obj, msg }), info: () => assert.fail(`${name}: no info`) };
+    assert.throws(() => assertSyntheticConfig({ env, ownIssuers: [OWN], logger }), /SYNTHETIC_CONFIG_INVALID/, name);
+    assert.equal(logged.length, 1, name);
+    assert.equal(logged[0].msg, 'synthetic_config_invalid');
+    assert.equal(logged[0].obj.event, 'synthetic_config_invalid');
+    assert.ok(!JSON.stringify(logged[0].obj).includes(CID), `${name}: the client id is never logged`);
+  }
+  assert.deepEqual(
+    syntheticConfigStatus(broken.trailing_comma, { ownIssuers: [OWN] }).parse_status,
+    'invalid_json',
+  );
+  assert.deepEqual(syntheticConfigStatus(broken.not_array, { ownIssuers: [OWN] }).parse_status, 'not_array');
+  assert.deepEqual(syntheticConfigStatus(broken.one_bad_of_two, { ownIssuers: [OWN] }).invalid_entries, [
+    { index: 1, reason: 'missing_client_id' },
+  ]);
+
+  const quiet = { error: () => assert.fail('no error'), info: () => assert.fail('no info when unset') };
+  assert.equal(assertSyntheticConfig({ env: {}, ownIssuers: [OWN], logger: quiet }).ok, true);
+  assert.equal(
+    assertSyntheticConfig({ env: { SYNTHETIC_TRAFFIC_MODE: 'enforce' }, ownIssuers: [OWN], logger: quiet }).ok,
+    true,
+  );
+  const loaded = [];
+  const status = assertSyntheticConfig({
+    env: listed({ SYNTHETIC_TRAFFIC_MODE: 'enforce', SYNTHETIC_ASSERTION_SECRET: LONG_SECRET }),
+    ownIssuers: [OWN],
+    logger: { error: () => assert.fail('valid'), info: (obj, msg) => loaded.push(msg) },
+  });
+  assert.deepEqual([status.ok, status.entry_count, status.mode, loaded], [true, 1, 'enforce', ['synthetic_config_loaded']]);
 });
 
 test('classify: only the verified (iss, client_id) pair matches, and synthetic only in enforce', () => {
@@ -190,4 +251,20 @@ test('loopback marker: refused from outside, forged, expired or malformed', () =
   assert.equal(verifyLoopbackSynthetic(loopbackReq({ [h]: old })), null, 'outside the window');
   assert.equal(verifyLoopbackSynthetic(loopbackReq({ [h]: 'v1.e30.AAAA' })), null);
   assert.equal(verifyLoopbackSynthetic(loopbackReq({})), null);
+});
+
+test('boot: the real server refuses to start on a broken synthetic-callers config', () => {
+  const { spawnSync } = require('child_process');
+  const path = require('path');
+  const env = { ...process.env, NODE_ENV: 'test', SYNTHETIC_CALLERS_JSON: '[{"iss":"x","client_id":"y"},]', PORT: '0' };
+  delete env.DATABASE_URL;
+  delete env.K_SERVICE;
+  const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], {
+    env,
+    encoding: 'utf8',
+    timeout: 120000,
+  });
+  assert.equal(r.status, 1, `exit status (signal ${r.signal})`);
+  assert.match(`${r.stdout}${r.stderr}`, /synthetic_config_invalid/);
+  assert.doesNotMatch(`${r.stdout}${r.stderr}`, /Gateway listening|listening on/i);
 });

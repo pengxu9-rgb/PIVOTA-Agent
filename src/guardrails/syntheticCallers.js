@@ -12,10 +12,14 @@
 // client sends can make a call synthetic, and `azp` never matches on its own: another issuer the door
 // accepts could mint a token whose azp equals our eval client's id.
 //
-// A LISTED BUT INVALID ENTRY FAILS CLOSED. An entry whose issuer is not one of this gateway's own
-// authorization servers is kept, not dropped: dropping it would turn the eval client into an ordinary caller
-// whose calls write real rows. Every tools/call from it is refused instead, and the config error is logged.
-// The same holds for a token from a listed client that carries the id only as azp.
+// A BROKEN CONFIG NEVER TAKES TRAFFIC. Any config that is not exactly a list of {iss, client_id} entries on
+// our own issuers (unparseable JSON, a non-array, a non-object entry, a missing or misspelt key, an issuer
+// that is not ours, an unknown mode) refuses the BOOT: assertSyntheticConfig, called first thing at startup,
+// logs synthetic_config_invalid at ERROR and throws. A config only changes with a new revision, so a typo
+// leaves traffic on the previous one instead of silently turning the eval client into an ordinary caller with
+// the full tool surface and real writes. At runtime an invalid entry is still kept, not dropped (every
+// tools/call from it is refused), and a token from a listed client that carries the id only as azp is
+// refused too.
 //
 // WHAT. A listed caller is restricted in EVERY mode, off included: one JSON-RPC object per request, the
 // handshake methods, and tools/call for the five read tools only. Anything else is refused before any
@@ -41,6 +45,11 @@ const SYNTHETIC_RPC_METHODS = Object.freeze(
 );
 
 const SYNTHETIC_DIALECTS = Object.freeze(new Set(['mcp']));
+
+const ENTRY_KEYS = new Set(['iss', 'client_id']);
+
+// A shared HMAC secret shorter than this is refused at boot.
+const MIN_SECRET_LENGTH = 32;
 
 function text(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -69,15 +78,67 @@ function parseSyntheticCallers(env = process.env, { ownIssuers = [] } = {}) {
   const own = new Set((Array.isArray(ownIssuers) ? ownIssuers : []).map(text).filter(Boolean));
   const entries = [];
   for (const item of parsed) {
-    const iss = text(item?.iss);
-    const clientId = text(item?.client_id);
-    if (!clientId) continue; // nothing a token could match
+    const isObject = Boolean(item) && typeof item === 'object' && !Array.isArray(item);
+    const iss = isObject ? text(item.iss) : null;
+    const clientId = isObject ? text(item.client_id) : null;
     let reason = null;
-    if (!iss) reason = 'missing_iss';
+    if (!isObject) reason = 'entry_not_object';
+    else if (Object.keys(item).some((k) => !ENTRY_KEYS.has(k))) reason = 'unknown_key';
+    else if (!clientId) reason = 'missing_client_id';
+    else if (!iss) reason = 'missing_iss';
     else if (!own.has(iss)) reason = 'issuer_not_own';
+    // Kept even when it can match nothing (no client_id): the boot check counts it.
     entries.push({ iss, client_id: clientId, valid: reason === null, reason });
   }
   return { entries, error: null };
+}
+
+/**
+ * Whether the configuration may take traffic. `ok` is false for any config a typo could have produced:
+ * the caller refuses to boot (assertSyntheticConfig). Unset is ok: nobody is listed.
+ */
+function syntheticConfigStatus(env = process.env, { ownIssuers = [] } = {}) {
+  const rawMode = String(env.SYNTHETIC_TRAFFIC_MODE || '').trim().toLowerCase();
+  const modeValid = rawMode === '' || MODES.has(rawMode);
+  const configured = Boolean(text(env.SYNTHETIC_CALLERS_JSON));
+  const { entries, error } = parseSyntheticCallers(env, { ownIssuers });
+  const invalid = entries
+    .map((e, index) => (e.valid ? null : { index, reason: e.reason }))
+    .filter(Boolean);
+  let parseStatus = 'unset';
+  if (configured) parseStatus = error ? (/array/.test(error) ? 'not_array' : 'invalid_json') : 'ok';
+  const secret = syntheticAssertionSecret(env);
+  const secretValid = !secret || secret.length >= MIN_SECRET_LENGTH;
+  const ok =
+    modeValid &&
+    secretValid &&
+    (parseStatus === 'unset' || (parseStatus === 'ok' && entries.length > 0 && invalid.length === 0));
+  return {
+    ok,
+    parse_status: parseStatus,
+    mode: syntheticTrafficMode(env),
+    mode_valid: modeValid,
+    secret_valid: secretValid,
+    entry_count: entries.length,
+    invalid_entries: invalid,
+  };
+}
+
+/**
+ * Called first thing at boot. A config that is not ok logs `synthetic_config_invalid` at ERROR and throws,
+ * so the revision never takes traffic; a valid non-empty one logs `synthetic_config_loaded`. Never logs
+ * the client ids.
+ */
+function assertSyntheticConfig({ env = process.env, ownIssuers = [], logger } = {}) {
+  const status = syntheticConfigStatus(env, { ownIssuers });
+  if (!status.ok) {
+    logger?.error?.({ event: 'synthetic_config_invalid', ...status }, 'synthetic_config_invalid');
+    throw new Error(`SYNTHETIC_CONFIG_INVALID: ${status.parse_status}`);
+  }
+  if (status.parse_status === 'ok') {
+    logger?.info?.({ event: 'synthetic_config_loaded', ...status }, 'synthetic_config_loaded');
+  }
+  return status;
 }
 
 /**
@@ -221,6 +282,8 @@ function syntheticCarrierReady(env = process.env) {
 }
 
 module.exports = {
+  assertSyntheticConfig,
+  syntheticConfigStatus,
   SYNTHETIC_ASSERTION_HEADER,
   SYNTHETIC_READ_TOOLS,
   SYNTHETIC_RPC_METHODS,

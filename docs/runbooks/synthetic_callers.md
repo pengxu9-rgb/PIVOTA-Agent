@@ -19,8 +19,16 @@ The gateway half (this repo) decides who is synthetic and carries a signed marke
 Rules:
 - **Matching:** a call is listed only when the verified access token's `iss` and `client_id` both equal an entry. `azp` alone never matches.
 - **Our issuer naming the eval client only as `azp`:** refused.
-- **Invalid entries:** an entry whose `iss` is not one of `MCP_OAUTH_AUTHORIZATION_SERVERS` is kept, and every tools/call from it is refused.
-- **Eval client setup:** OAuth only, read scopes only, no API key.
+- **A broken config refuses the boot.** The revision logs `synthetic_config_invalid` at ERROR (parse status, mode, entry count, the index and reason of each bad entry, never a client id) and exits, so traffic stays on the previous revision. Broken means any of:
+  - `SYNTHETIC_CALLERS_JSON` that is not valid JSON, not an array, or an empty array;
+  - an entry that is not an object, has a key other than `iss` and `client_id`, or lacks either;
+  - an `iss` that is not one of `MCP_OAUTH_AUTHORIZATION_SERVERS`;
+  - a `SYNTHETIC_TRAFFIC_MODE` other than empty, `off`, `observe` or `enforce`;
+  - a `SYNTHETIC_ASSERTION_SECRET` shorter than 32 characters.
+
+  A valid config logs `synthetic_config_loaded` with the mode and entry count. After any change, check for one of the two lines on the new revision before anything else.
+- **Eval client setup:** OAuth only, read scopes only, no API key, and **never a client registered to a partner agent.** The gateway cannot see that registry, so check it before listing a client (read-only, in the backend database): `SELECT agent_id FROM agent_oauth_clients WHERE client_id = '<eval client id>' AND disabled_at IS NULL;` must return no rows. A partner client listed by mistake would be restricted to five tools in every mode, and in enforce would lose its writes and attribution. The backend also refuses the marker for such a client (`partner_client`).
+- **Commerce host only.** The harness calls `commerce.mcp.pivota.cc`. The branded host and `/public/mcp` serve the anonymous public tier, where a token is not identity: a listed token there runs as an ordinary anonymous call.
 
 ## What a listed caller may do, in every mode (`off` included)
 - One JSON-RPC object per request. Batches and non-objects are refused.
@@ -52,6 +60,11 @@ Every log-based metric under `infra/gcp/monitoring/mcp_tool_outcomes/` and `pric
 ```bash
 gcloud logging metrics update <name> --project=<project> --config-from-file=infra/gcp/monitoring/<dir>/metric.<name>.yaml
 ```
+
+## Before the first harness call
+The harness refuses to run unless:
+- `tools/list` returns exactly the five read tools (anything else means the caller is not listed, or the config is not the one you deployed);
+- the configured host is the commerce host.
 
 ## Rollback
 1. Stop the harness.
