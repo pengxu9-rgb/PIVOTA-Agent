@@ -654,7 +654,11 @@ test('STRUCTURAL: the server sends liveVerifications only when makeGetOffers bui
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
   const start = src.indexOf('get_offers: makeGetOffers({');
   const block = src.slice(start, start + 5000);
-  assert.match(block, /liveCartMode: \(\) => require\('\.\/services\/offerLiveVerification'\)\.liveCartMode\(\),/);
+  // Wired through getOffersLiveCartMode, which reads the flag per call (and is 'off' for a synthetic call,
+  // src/guardrails/syntheticContext.js).
+  assert.match(block, /liveCartMode: getOffersLiveCartMode,/);
+  const cartMode = src.slice(src.indexOf('function getOffersLiveCartMode() {'));
+  assert.match(cartMode.slice(0, 300), /if \(!syntheticLiveReadsAllowed\(\)\) return 'off';\s+return require\('\.\/services\/offerLiveVerification'\)\.liveCartMode\(\);/);
   assert.match(block, /liveVerificationSecret: \(\) => require\('\.\/services\/offerLiveVerification'\)\.readOfferLiveVerificationSecret\(\),/);
   assert.match(block, /\.\.\.\(Array\.isArray\(live_verifications\) && live_verifications\.length\s*\?\s*\{\s*liveVerifications: live_verifications,/);
   // The dry-run marker rides only with assertions, and only when makeGetOffers asked for it (shadow).

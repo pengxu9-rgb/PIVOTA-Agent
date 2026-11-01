@@ -598,6 +598,7 @@ const {
 } = require('./guardrails/mcpCallerLimits');
 const { loopbackAssertionStatus, loopbackCallerHeaders, verifyLoopbackSynthetic } = require('./guardrails/loopbackCallerAssertion');
 const {
+  SYNTHETIC_ASSERTION_HEADER,
   classifySyntheticCaller,
   filterToolsListForSynthetic,
   syntheticCarrierReady,
@@ -606,6 +607,13 @@ const {
   withSyntheticAssertion,
   assertSyntheticConfig,
 } = require('./guardrails/syntheticCallers');
+// The invoke context store and the gateway-side synthetic gates (src/guardrails/syntheticContext.js).
+const {
+  INVOKE_AUTH_CONTEXT,
+  isSyntheticCall,
+  sharedCacheWritesAllowed,
+  syntheticLiveReadsAllowed,
+} = require('./guardrails/syntheticContext');
 const {
   recommend: recommendPdpProducts,
   filterExcludedRecommendationCandidates,
@@ -1025,7 +1033,6 @@ const AGENT_AUTH_INTROSPECT_COOLDOWN_MS = AGENT_AUTH_INTROSPECT_COOLDOWN_DISABLE
       min: 100,
       max: 60_000,
     });
-const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
 // Makes the in-flight request's fpm_stage_breakdown reachable from withSearchDiagnostics, which is
 // a module-level function and cannot see handleInvokeRequest's closure.
@@ -4430,6 +4437,8 @@ function setProductDetailCache(
 ) {
   const key = String(cacheKey || '');
   if (!key) return;
+  // Read-through only for a synthetic call (src/guardrails/syntheticContext.js): it stores nothing.
+  if (!sharedCacheWritesAllowed()) return;
 
   const ttl = Number(ttlMs) || PRODUCT_DETAIL_CACHE_TTL_MS;
   const now = Date.now();
@@ -4555,6 +4564,8 @@ function setResolveProductGroupCache(
 ) {
   const key = String(cacheKey || '');
   if (!key) return;
+  // Read-through only for a synthetic call (src/guardrails/syntheticContext.js): it stores nothing.
+  if (!sharedCacheWritesAllowed()) return;
   const ttl = Number(ttlMs) || RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS;
   RESOLVE_PRODUCT_GROUP_CACHE_METRICS.sets += 1;
   RESOLVE_PRODUCT_GROUP_CACHE.set(key, {
@@ -9817,7 +9828,10 @@ async function fetchProductDetailForOffers(args) {
     `offer_detail:${merchantId}:${productId}`,
   );
 
-  if (!useMemoryCache) {
+  // A synthetic call (src/guardrails/syntheticContext.js) never LEADS this join: a real request must not be
+  // answered with a detail built for it (a cache-only not-found, links marked synthetic). It may still have
+  // joined a real leader above.
+  if (!useMemoryCache || !sharedCacheWritesAllowed()) {
     return guardedLoadPromise;
   }
 
@@ -11781,6 +11795,7 @@ function setCachedShopifyMerchantCurrency(merchantId, currency, ttlMs = SHOPIFY_
   const mid = String(merchantId || '').trim();
   const cur = String(currency || '').trim().toUpperCase();
   if (!mid) return;
+  if (!sharedCacheWritesAllowed()) return;
   SHOPIFY_MERCHANT_CURRENCY_CACHE.set(mid, {
     currency: cur || null,
     expiresAtMs: Date.now() + (Number(ttlMs) > 0 ? Number(ttlMs) : SHOPIFY_MERCHANT_CURRENCY_TTL_MS),
@@ -11807,6 +11822,9 @@ function parseShopifyAccessToken(apiKeyRaw) {
 async function fetchShopifyMerchantCurrency(merchantId) {
   const cached = getCachedShopifyMerchantCurrency(merchantId);
   if (cached) return cached;
+  // A synthetic call makes no Shopify Admin call and stores nothing (src/guardrails/syntheticContext.js): the
+  // cached currency or none, as the backend does for it.
+  if (!syntheticLiveReadsAllowed()) return null;
 
   if (!process.env.DATABASE_URL) return null;
 
@@ -14369,6 +14387,8 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
   // trackSearchOverlay: the price_verification_served line's record of this run (log only; it returns its
   // argument unchanged, and with PRICE_VERIFICATION_LOG off does nothing at all).
   if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return trackSearchOverlay(response, { skipped: 'flag_off' });
+  // A synthetic call makes no live merchant read (src/guardrails/syntheticContext.js): the stored price stands.
+  if (!syntheticLiveReadsAllowed()) return trackSearchOverlay(response, { skipped: 'synthetic_no_live_reads' });
   if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return trackSearchOverlay(response, { skipped: 'page_gt_1' });
   // The mainline has already applied this constraint to stored prices. Repricing now
   // could return an offer outside the buyer's bound. Use the same resolved intent as
@@ -27404,7 +27424,9 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
   let attempt = 0;
   while (true) {
     try {
-      return await axios(axiosConfig);
+      // Every attempt carries a freshly signed synthetic assertion: one signed for the first attempt can be
+      // past the backend's 60 s window by a late retry, and the backend serves an expired one as a real call.
+      return await axios(withFreshSyntheticAssertion(axiosConfig));
     } catch (err) {
       attempt += 1;
 
@@ -31681,6 +31703,24 @@ function shouldPreferInternalInvokeUpstreamAuth(preferInternalFallback = false) 
   );
 }
 
+// The same request config with its synthetic assertion re-signed now (src/guardrails/syntheticCallers.js), for an
+// upstream RETRY. Unchanged when it carries none, or when this context cannot sign one.
+function withFreshSyntheticAssertion(axiosConfig) {
+  try {
+    const headers = axiosConfig?.headers;
+    if (!headers || typeof headers !== 'object') return axiosConfig;
+    const wanted = SYNTHETIC_ASSERTION_HEADER.toLowerCase();
+    const name = Object.keys(headers).find((k) => k.toLowerCase() === wanted);
+    if (!name) return axiosConfig;
+    const { [name]: _stale, ...rest } = headers;
+    const refreshed = withSyntheticAssertion(rest, getInvokeAuthContext());
+    if (!refreshed || !refreshed[SYNTHETIC_ASSERTION_HEADER]) return axiosConfig;
+    return { ...axiosConfig, headers: refreshed };
+  } catch (_) {
+    return axiosConfig;
+  }
+}
+
 function buildInvokeUpstreamAuthHeaders({
   checkoutToken,
   allowInternalFallback = true,
@@ -32032,6 +32072,9 @@ function ucpLivePdpEnforced(env = process.env) {
  */
 function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, random = Math.random } = {}) {
   try {
+    // A synthetic call makes no live merchant read, and fills no PDP cache a later view is served from
+    // (src/guardrails/syntheticContext.js).
+    if (!syntheticLiveReadsAllowed()) return false;
     const reader = getUcpLivePdpReader();
     if (!reader || !(random() < ucpLivePdpSample())) return false;
     const detail = normalizePdpV2ToProductDetail(responsePayload);
@@ -32124,6 +32167,8 @@ function pdpLiveRefresh() {
 function withPdpLiveRefreshDescriptor(responsePayload, { optedIn = false, market, cardListingId = '' } = {}) {
   try {
     if (optedIn !== true || !responsePayload || typeof responsePayload !== 'object') return responsePayload;
+    // No live-refresh token for a synthetic call: it would only lead to a live read.
+    if (!syntheticLiveReadsAllowed()) return responsePayload;
     const descriptor = pdpLiveRefresh().descriptor(responsePayload, { optedIn, market, cardListingId });
     return descriptor ? { ...responsePayload, live_refresh: descriptor } : responsePayload;
   } catch {
@@ -32146,6 +32191,38 @@ function getUcpLiveOfferReader() {
   return _ucpLiveOfferReader;
 }
 
+// THE LIVE READS OF get_product AND get_offers, as the commerce executor's local reads. A synthetic call
+// (src/guardrails/syntheticContext.js) makes none: no reader is used, the seed offers that are served only behind
+// an enforcing live read are not asked for (they would answer empty), and no cart is minted.
+function liveProductRead(result, ctx) {
+  if (!syntheticLiveReadsAllowed()) return null;
+  const reader = getUcpLiveProductReader();
+  // trackLiveWork: the answer's added_ms on its price line (log only; off, the same promise).
+  return reader ? trackLiveWork(reader.readProduct(result, ctx)) : null;
+}
+
+function readOffersLive(offers, ctx) {
+  if (!syntheticLiveReadsAllowed()) return null;
+  const reader = getUcpLiveOfferReader();
+  return reader ? trackLiveWork(reader.readOffers(offers, ctx)) : null;
+}
+
+function liveOfferVerificationOptIn() {
+  if (!syntheticLiveReadsAllowed()) return false;
+  const reader = getUcpLiveOfferReader();
+  return Boolean(reader && reader.mode === 'enforce');
+}
+
+function getOffersLiveCartMode() {
+  if (!syntheticLiveReadsAllowed()) return 'off';
+  return require('./services/offerLiveVerification').liveCartMode();
+}
+
+// Merchant variant sourcing calls the merchant's own endpoint: armed by its flag, and never for a synthetic call.
+function merchantVariantSourcingLive() {
+  return isMerchantVariantSourcingEnabled() && syntheticLiveReadsAllowed();
+}
+
 let _merchantVariantSource = null;
 function buildMerchantVariantSource(logger) {
   if (_merchantVariantSource) return _merchantVariantSource;
@@ -32164,7 +32241,8 @@ function buildMerchantVariantSource(logger) {
     // Thunk, not a boolean: the surface is built once for the process, so a boolean would freeze the flag at
     // construction and make the kill switch un-flippable without a redeploy. For a capability justified as
     // "adds a third-party call to the checkout intake path", disarming must not require one.
-    isEnabled: isMerchantVariantSourcingEnabled,
+    // Off for a synthetic call too (merchantVariantSourcingLive).
+    isEnabled: merchantVariantSourcingLive,
     // Read per call for the same reason — a pilot's brand list changes without a redeploy.
     isBrandAllowed: (host) => merchantVariantSourcingBrands().isAllowed(host),
     // Our own hosts can appear on a product read (`url`/`canonical_url` point at agent.pivota.cc); naming
@@ -33449,11 +33527,7 @@ async function getCommerceRemoteMcpAdapter() {
       const localReads = {
         // The merchant's own live price/stock for a product's variants (UCP lookup_catalog,
         // services/ucpLiveOfferRead). UCP_LIVE_PRODUCT_READ=off (default) | shadow | enforce.
-        live_product_read: (result, ctx) => {
-          const reader = getUcpLiveProductReader();
-          // trackLiveWork: the answer's added_ms on its price line (log only; off, the same promise).
-          return reader ? trackLiveWork(reader.readProduct(result, ctx)) : null;
-        },
+        live_product_read: liveProductRead,
         get_alternatives: makeGetAlternatives({
           listApprovedRelationshipEdgesForAnchor,
           buildAnchorRefsFromProduct,
@@ -33510,20 +33584,14 @@ async function getCommerceRemoteMcpAdapter() {
           variantIdEnabled: /^(1|true|yes|on|enabled)$/i.test(String(process.env.GET_OFFERS_VARIANT_ID || '').trim()),
           // The merchant's own live price/stock for the offers this answer returns (UCP lookup_catalog,
           // services/ucpLiveOfferRead). UCP_LIVE_OFFER_READ=off (default) | shadow | enforce.
-          readOffersLive: (offers, ctx) => {
-            const reader = getUcpLiveOfferReader();
-            return reader ? trackLiveWork(reader.readOffers(offers, ctx)) : null;
-          },
+          readOffersLive: readOffersLive,
           // Freshness-gated seed offers (pivota-backend #2629) only while the live offer read ENFORCES.
-          liveVerificationOptIn: () => {
-            const reader = getUcpLiveOfferReader();
-            return Boolean(reader && reader.mode === 'enforce');
-          },
+          liveVerificationOptIn: liveOfferVerificationOptIn,
           // A flagged offer the live read just verified is asked for again with a signed assertion of the
           // merchant's answer, so offers.resolve mints its cart (services/offerLiveVerification).
           // GET_OFFERS_LIVE_CART=off (default) | shadow | on; nothing is signed without
           // OFFER_LIVE_VERIFICATION_SECRET (>= 32 bytes).
-          liveCartMode: () => require('./services/offerLiveVerification').liveCartMode(),
+          liveCartMode: getOffersLiveCartMode,
           liveVerificationSecret: () => require('./services/offerLiveVerification').readOfferLiveVerificationSecret(),
           // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
           priceCache: priceCacheHooks,
@@ -33712,6 +33780,8 @@ async function getCommerceRemoteMcpAdapter() {
       commerceSharedExecutor = executor;
       const surface = createCommerceToolSurface(executor, {
         log: logger,
+        // G1: a synthetic call (src/guardrails/syntheticContext.js) answers search uncached and stores nothing.
+        bypassReadCache: isSyntheticCall,
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
@@ -34331,7 +34401,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
           dialect: door === 'ucp_mcp' ? 'ucp' : 'mcp',
           classification: req.syntheticCaller,
         }) || (req.syntheticCaller.synthetic === true
-          && (!syntheticCarrierReady() || !loopbackAssertionStatus(selfInvokeBase()).active)
+          && (!syntheticCarrierReady() || !loopbackAssertionStatus(selfInvokeBase(), { expectedPort: process.env.PORT }).active)
           ? { code: 'OPERATION_NOT_ALLOWED', reason: 'carrier_not_ready', message: 'This operation is not available to this client.' }
           : null);
         if (refusal) {
@@ -55091,6 +55161,20 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   maybeOverlayLiveSearchPrice,
+  // The gateway-side synthetic gates (src/guardrails/syntheticContext.js).
+  setCachedShopifyMerchantCurrency,
+  getCachedShopifyMerchantCurrency,
+  liveProductRead,
+  readOffersLive,
+  liveOfferVerificationOptIn,
+  getOffersLiveCartMode,
+  merchantVariantSourcingLive,
+  buildMerchantVariantSource,
+  withFreshSyntheticAssertion,
+  getProductDetailCacheEntry,
+  setProductDetailCache,
+  getResolveProductGroupCacheEntry,
+  setResolveProductGroupCache,
   logInvokePriceVerification,
   shadowPdpLiveRead,
   livePdpOverlay,

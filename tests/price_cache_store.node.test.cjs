@@ -677,3 +677,21 @@ test('the client budget: 20 by default, above what a refused-forever outage need
   assert.equal(MAX_CLIENTS, 20);
   assert.ok(MAX_CLIENTS > RESET_CAP_WITHOUT_SUCCESS + MAX_PROBES);
 });
+
+test('a synthetic call writes no fleet state: no verified price and no host backoff', async () => {
+  // src/guardrails/syntheticContext.js (G3): our own eval traffic must never back a store off for real buyers.
+  const { INVOKE_AUTH_CONTEXT } = require('../src/guardrails/syntheticContext');
+  const fake = createFakeFirestore();
+  const store = createFirestorePriceCacheStore({ client: fake.db, flushMs: 60000 });
+  INVOKE_AUTH_CONTEXT.run({ synthetic: true }, () => {
+    store.putPrice(id(7), doc(T0));
+    store.putHostBackoff('shop.example.test', doc(T0, { status: 429 }));
+  });
+  await store.flush();
+  assert.equal(fake.docs.has(`verified_prices/${id(7)}`), false);
+  assert.equal(fake.docs.has('host_backoff/shop.example.test'), false);
+  INVOKE_AUTH_CONTEXT.run({ synthetic: false }, () => store.putPrice(id(7), doc(T0)));
+  await store.flush();
+  assert.equal(fake.docs.has(`verified_prices/${id(7)}`), true, 'a real call still writes');
+  await store.close();
+});

@@ -61,6 +61,8 @@ const RESET_CAP_WITHOUT_SUCCESS = 5;
 //   - A SLOW PROBE, for a hung connection whose dropped writes never land: one fresh client after 30 min, doubling to
 //     4 h, at most 6 per process. A probe gets exactly one more reset before the store disables again, so each probe
 //     can cost at most one more held client.
+const { isSyntheticCall } = require('../guardrails/syntheticContext');
+
 const PROBE_INITIAL_MS = 30 * 60 * 1000;
 const PROBE_MAX_MS = 4 * 60 * 60 * 1000;
 const MAX_PROBES = 6;
@@ -332,6 +334,9 @@ function createFirestorePriceCacheStore(opts = {}) {
 
   function enqueue(collection, id, doc) {
     if (closed) return;
+    // A synthetic call (our own eval traffic, src/guardrails/syntheticContext.js) writes no fleet state: no
+    // verified price and no host_backoff (G3). It makes no live read in phase 1, so nothing should reach here.
+    if (isSyntheticCall()) return;
     startStatsTimer();
     if (disabled) {
       stats.dropped += 1;

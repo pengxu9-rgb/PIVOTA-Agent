@@ -2,6 +2,7 @@ const { reviewAvailability } = require('./pdpPublicEvidence');
 const { createHash, randomUUID } = require('crypto');
 const logger = require('../logger');
 const dbModule = require('../db');
+const { sharedCacheWritesAllowed } = require('../guardrails/syntheticContext');
 
 const { getPool, query, withClient } = dbModule;
 
@@ -263,8 +264,27 @@ function readLiveSyntheticPdpCache(cacheKey) {
   return cloneJsonSafe(cached.value);
 }
 
+// Registers `promise` as the in-flight read every concurrent caller for `cacheKey` joins, and evicts it when it
+// settles. A synthetic call (src/guardrails/syntheticContext.js) never LEADS: it awaits its own read unregistered,
+// so no real caller is handed a page built for it. It may still have joined a real leader.
+async function leadLiveSyntheticPdpJoin(cacheKey, promise) {
+  if (!sharedCacheWritesAllowed()) return promise;
+  trimLiveSyntheticPdpInflight();
+  liveSyntheticPdpInflight.set(cacheKey, promise);
+  try {
+    return await promise;
+  } finally {
+    if (liveSyntheticPdpInflight.get(cacheKey) === promise) {
+      liveSyntheticPdpInflight.delete(cacheKey);
+    }
+  }
+}
+
 function writeLiveSyntheticPdpCache(cacheKey, value) {
   if (!cacheKey) return value;
+  // Read-through only for a synthetic call (our own eval traffic, src/guardrails/syntheticContext.js): the
+  // composed page can carry a product detail the backend built for it, and the key is shared with real callers.
+  if (!sharedCacheWritesAllowed()) return value;
   liveSyntheticPdpCache.set(cacheKey, {
     cachedAt: Date.now(),
     value: cloneJsonSafe(value),
@@ -4252,15 +4272,7 @@ async function maybeBuildLiveSyntheticPdp({
       }),
       cacheKey,
     );
-    trimLiveSyntheticPdpInflight();
-    liveSyntheticPdpInflight.set(cacheKey, promise);
-    try {
-      return await promise;
-    } finally {
-      if (liveSyntheticPdpInflight.get(cacheKey) === promise) {
-        liveSyntheticPdpInflight.delete(cacheKey);
-      }
-    }
+    return leadLiveSyntheticPdpJoin(cacheKey, promise);
   }
 
   try {
@@ -6056,6 +6068,13 @@ async function applyPdpIdentityOverride({
 }
 
 module.exports = {
+  // Tests only: the request-path cache and in-flight join the synthetic gates cover.
+  __liveSyntheticPdpForTests: {
+    read: readLiveSyntheticPdpCache,
+    write: writeLiveSyntheticPdpCache,
+    lead: leadLiveSyntheticPdpJoin,
+    inflight: (key) => liveSyntheticPdpInflight.get(key),
+  },
   buildSourceListingRef,
   buildIdentityListingFromProduct,
   composeSyntheticCanonicalProduct,

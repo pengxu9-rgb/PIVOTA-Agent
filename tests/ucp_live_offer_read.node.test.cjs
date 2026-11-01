@@ -656,9 +656,11 @@ test('STRUCTURAL: the server opts in only while the offer reader enforces, as in
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
-  const i = src.indexOf('liveVerificationOptIn: () => {');
+  assert.match(src, /liveVerificationOptIn: liveOfferVerificationOptIn,/);
+  const i = src.indexOf('function liveOfferVerificationOptIn() {');
   assert.ok(i > 0);
-  assert.match(src.slice(i, i + 200), /const reader = getUcpLiveOfferReader\(\);\s+return Boolean\(reader && reader\.mode === 'enforce'\);/);
+  // Never for a synthetic call (src/guardrails/syntheticContext.js), then only while the reader enforces.
+  assert.match(src.slice(i, i + 300), /if \(!syntheticLiveReadsAllowed\(\)\) return false;\s+const reader = getUcpLiveOfferReader\(\);\s+return Boolean\(reader && reader\.mode === 'enforce'\);/);
   assert.match(src, /\.\.\.\(include_live_verification \? \{ includeLiveVerificationOffers: true \} : \{\}\),/);
 });
 

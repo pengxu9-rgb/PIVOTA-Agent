@@ -50,6 +50,9 @@ const ENTRY_KEYS = new Set(['iss', 'client_id']);
 
 // A shared HMAC secret shorter than this is refused at boot.
 const MIN_SECRET_LENGTH = 32;
+// The backend reads `<iss>|<client_id>` with each part at most 512 characters (the agent_oauth_clients columns);
+// a longer one would be refused there and the call served as real, so it is invalid here (the boot refuses).
+const MAX_ENTRY_VALUE_LENGTH = 512;
 
 function text(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -87,6 +90,7 @@ function parseSyntheticCallers(env = process.env, { ownIssuers = [] } = {}) {
     else if (!clientId) reason = 'missing_client_id';
     else if (!iss) reason = 'missing_iss';
     else if (!own.has(iss)) reason = 'issuer_not_own';
+    else if (iss.length > MAX_ENTRY_VALUE_LENGTH || clientId.length > MAX_ENTRY_VALUE_LENGTH) reason = 'value_too_long';
     // Kept even when it can match nothing (no client_id): the boot check counts it.
     entries.push({ iss, client_id: clientId, valid: reason === null, reason });
   }
@@ -169,6 +173,17 @@ function classifySyntheticCaller(claims, { env = process.env, ownIssuers = [] } 
     }
     return null;
   } catch (_) {
+    // Fails CLOSED for a client the configuration names: an unexpected error must not turn our eval client into
+    // an ordinary caller with the full tool surface. Any other caller is unaffected.
+    try {
+      const raw = String(env?.SYNTHETIC_CALLERS_JSON || '');
+      const ids = [claims?.client_id, claims?.azp].map(text).filter(Boolean);
+      if (raw && ids.some((id) => raw.includes(JSON.stringify(id)))) {
+        return { listed: true, valid: false, reason: 'classify_error' };
+      }
+    } catch (_) {
+      // Nothing more to decide.
+    }
     return null;
   }
 }
