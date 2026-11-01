@@ -51,9 +51,10 @@ function signLoopbackCaller({ tier, key, agentId = null, callId = null }, { nowS
 }
 
 /**
- * Headers for one loopback invoke call: the signed caller the MCP door resolved, or {} when limits are
+ * Headers for one loopback invoke call: the signed caller the MCP door resolved, or none when limits are
  * off, there is no resolved caller (not an MCP request), or the caller is first-party (whose invoke keying
- * stays exactly as it was). Never throws.
+ * stays exactly as it was); plus, for a synthetic call, the synthetic marker (below), whatever the limits
+ * mode. Never throws.
  *
  * `fanout: true` marks one of SEVERAL sub-calls a single tool call makes (recommend_products' per-item
  * price checks): it also carries the door's per-call id, and the invoke limiter keys such sub-calls on
@@ -62,6 +63,10 @@ function signLoopbackCaller({ tier, key, agentId = null, callId = null }, { nowS
  * under the caller's rate and concurrency limits.
  */
 function loopbackCallerHeaders(invokeContext, { env = process.env, nowSec, fanout = false } = {}) {
+  return { ...limitCallerHeaders(invokeContext, { env, nowSec, fanout }), ...loopbackSyntheticHeaders(invokeContext, { nowSec }) };
+}
+
+function limitCallerHeaders(invokeContext, { env = process.env, nowSec, fanout = false } = {}) {
   try {
     if (callerLimitsMode(env) === 'off') return {};
     const caller = invokeContext && typeof invokeContext === 'object' ? invokeContext.limit_caller : null;
@@ -112,6 +117,60 @@ function verifyLoopbackCaller(req, { nowSec, secret = PROCESS_SECRET } = {}) {
   }
 }
 
+// THE LOOPBACK SYNTHETIC MARKER (src/guardrails/syntheticCallers.js). A synthetic MCP call's search, unscoped
+// get_product and price checks re-enter this gateway over loopback, and the backend hops that write rows are
+// made from THAT request. Without this the loopback request would rebuild its invoke context from the
+// service key alone and every hop after it would look like a real call. Same secret, same loopback-socket
+// rule and same window as the caller assertion above, but independent of MCP_CALLER_LIMITS_MODE: the limits
+// header is not sent at all when limits are off, and the synthetic marker must be. It also carries the door's
+// request id, which the loopback adopts, so one id names the call on every hop.
+const LOOPBACK_SYNTHETIC_HEADER = 'X-Pivota-Loopback-Synthetic';
+
+function signLoopbackSynthetic({ caller, requestId }, { nowSec, secret = PROCESS_SECRET } = {}) {
+  const ts = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
+  const signingInput = `${VERSION}.${b64url(JSON.stringify({ s: 1, c: caller, r: requestId, ts }))}`;
+  return `${signingInput}.${b64url(mac(signingInput, secret))}`;
+}
+
+function loopbackSyntheticHeaders(invokeContext, { nowSec } = {}) {
+  try {
+    if (!invokeContext || invokeContext.synthetic !== true) return {};
+    const caller = invokeContext.synthetic_caller;
+    const requestId = invokeContext.gw_request_id;
+    if (typeof caller !== 'string' || !caller || typeof requestId !== 'string' || !requestId) return {};
+    return { [LOOPBACK_SYNTHETIC_HEADER]: signLoopbackSynthetic({ caller, requestId }, { nowSec }) };
+  } catch (_) {
+    return {};
+  }
+}
+
+/**
+ * { synthetic_caller, gw_request_id } from a VALID loopback synthetic marker, or null. Null for: no header,
+ * a request that did not come over loopback (or carries X-Forwarded-For), a bad signature, or a timestamp
+ * outside the window.
+ */
+function verifyLoopbackSynthetic(req, { nowSec, secret = PROCESS_SECRET } = {}) {
+  try {
+    const raw = req?.headers?.[LOOPBACK_SYNTHETIC_HEADER.toLowerCase()];
+    if (typeof raw !== 'string' || !raw || raw.length > MAX_HEADER_LENGTH) return null;
+    if (!isLoopbackSelfCall(req)) return null;
+    const parts = raw.split('.');
+    if (parts.length !== 3 || parts[0] !== VERSION) return null;
+    const expected = mac(`${parts[0]}.${parts[1]}`, secret);
+    const given = Buffer.from(parts[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    const now = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
+    if (!Number.isInteger(payload?.ts) || Math.abs(now - payload.ts) > MAX_AGE_SEC) return null;
+    if (payload.s !== 1 || typeof payload.c !== 'string' || !payload.c || typeof payload.r !== 'string' || !payload.r) {
+      return null;
+    }
+    return { synthetic_caller: payload.c, gw_request_id: payload.r };
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
  * The invoke limiter's view: the asserted caller, only when limits are ENFORCED. In observe mode the
  * invoke route keeps its old keying, so observe changes no response anywhere.
@@ -136,6 +195,10 @@ function loopbackAssertionStatus(selfInvokeBase) {
 
 module.exports = {
   LOOPBACK_CALLER_HEADER,
+  LOOPBACK_SYNTHETIC_HEADER,
+  loopbackSyntheticHeaders,
+  signLoopbackSynthetic,
+  verifyLoopbackSynthetic,
   loopbackAssertionStatus,
   enforcedLoopbackCaller,
   loopbackCallerHeaders,

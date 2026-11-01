@@ -4,7 +4,8 @@
 # dilute the server-error ratio at the moment it matters.
 # Every metric here counts only the gateway service's lines that carry `outcome` (lines written before the field
 # existed are ignored) and excludes tier=first_party, so Pivota's own CI and probe traffic on the service key
-# cannot move a ratio.
+# cannot move a ratio. It also excludes `synthetic: true` lines (our own eval caller, src/guardrails/syntheticCallers.js),
+# so an eval run cannot fire or mask an alert.
 #   gcloud logging metrics create mcp_tool_calls --project=$PROJECT \
 #     --config-from-file=infra/gcp/monitoring/mcp_tool_outcomes/metric.mcp_tool_calls.yaml
 description: MCP tools/call completions, by tool / door / tier / outcome (refused, shed and first-party excluded)
@@ -14,6 +15,7 @@ filter: >-
   AND jsonPayload.msg="mcp tools/call complete"
   AND jsonPayload.outcome:*
   AND jsonPayload.tier!="first_party"
+  AND NOT jsonPayload.synthetic=true
   AND jsonPayload.outcome!="refused"
   AND jsonPayload.outcome!="shed"
 metricDescriptor:

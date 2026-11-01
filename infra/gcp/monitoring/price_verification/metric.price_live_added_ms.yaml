@@ -4,7 +4,8 @@
 #   market, live, recent, stored, verified_count (= live + recent), total, added_ms, skipped_reason.
 # Coverage = sum(price_prices_verified) / sum(price_prices_served), per surface / door.
 # Excludes tier=first_party, like mcp_tool_outcomes/, so Pivota's own CI and probe traffic on the service key
-# cannot move a ratio.
+# cannot move a ratio. It also excludes `synthetic: true` lines (our own eval caller, src/guardrails/syntheticCallers.js),
+# so an eval run cannot fire or mask an alert.
 #   gcloud logging metrics create price_live_added_ms --project=$PROJECT \
 #     --config-from-file=infra/gcp/monitoring/price_verification/metric.price_live_added_ms.yaml
 description: Milliseconds added by live price reads, by surface / door
@@ -13,6 +14,7 @@ filter: >-
   AND resource.labels.service_name="gateway"
   AND jsonPayload.msg="price_verification_served"
   AND jsonPayload.tier!="first_party"
+  AND NOT jsonPayload.synthetic=true
 valueExtractor: EXTRACT(jsonPayload.added_ms)
 metricDescriptor:
   metricKind: DELTA
