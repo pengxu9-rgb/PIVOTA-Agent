@@ -42,7 +42,10 @@ function literal(raw) {
 function matches(filter, entry) {
   const clauses = filter.split(/\s+AND\s+/).map((c) => c.trim()).filter(Boolean);
   return clauses.every((clause) => {
-    let m = clause.match(/^([A-Za-z_][\w.]*):\*$/);
+    // `NOT field=value` matches when the field is absent too (Cloud Logging negation), unlike `!=`.
+    let m = clause.match(/^NOT\s+([A-Za-z_][\w.]*)=(.+)$/);
+    if (m) return get(entry, m[1]) !== literal(m[2].trim());
+    m = clause.match(/^([A-Za-z_][\w.]*):\*$/);
     if (m) return get(entry, m[1]) !== undefined && get(entry, m[1]) !== null;
     m = clause.match(/^([A-Za-z_][\w.]*)\s*(!=|>=|<=|=)\s*(.+)$/);
     if (!m) throw new Error(`unrecognised clause: ${clause}`);
@@ -138,3 +141,41 @@ for (const reason of ['rate', 'concurrency']) {
     for (const name of [SERVER_ERRORS, CALLS, LATENCY]) assert.equal(matches(loadFilter(name), line), false, name);
   });
 }
+
+// Our own eval traffic (src/guardrails/syntheticCallers.js) carries `synthetic: true` on its completion line.
+// Real tool traffic is near zero, so an eval run would otherwise BE these metrics and fire (or mask) the alerts.
+// Every MCP outcome metric excludes it, and an unmarked line (no field at all) is still counted.
+const ALL_MCP_METRICS = fs.readdirSync(DIR).filter((f) => /^metric\.mcp_.*\.yaml$/.test(f)).map((f) => f.slice(7, -5));
+
+test('a synthetic line is excluded from every MCP outcome metric; the same line unmarked is counted', () => {
+  assert.ok(ALL_MCP_METRICS.length >= 6, ALL_MCP_METRICS.join(','));
+  const zero = () => {
+    const r = createMcpToolCallRecorder();
+    r.recordRpcResponse({ status: 200, body: { jsonrpc: '2.0', id: 1, result: { content: [] } } });
+    r.observe({ result_count: 0, upstream_degraded: true });
+    return entry(r, 200);
+  };
+  const lines = [zero(), internalErrorLine(), answeredLine()];
+  for (const name of ALL_MCP_METRICS) {
+    const filter = loadFilter(name);
+    assert.match(filter, /AND NOT jsonPayload\.synthetic=true/, `${name} excludes synthetic traffic`);
+    const counted = lines.filter((l) => matches(filter, l));
+    assert.ok(counted.length > 0, `${name}: some real line is counted (control)`);
+    for (const l of counted) {
+      const marked = { ...l, jsonPayload: { ...l.jsonPayload, synthetic: true } };
+      assert.equal(matches(filter, marked), false, `${name}: the same line marked synthetic is not counted`);
+    }
+  }
+});
+
+test('the price verification metrics exclude synthetic traffic too', () => {
+  const PV = path.join(__dirname, '..', 'infra', 'gcp', 'monitoring', 'price_verification');
+  const names = fs.readdirSync(PV).filter((f) => /^metric\..*\.yaml$/.test(f));
+  assert.ok(names.length >= 3);
+  for (const f of names) {
+    const filter = YAML.parse(fs.readFileSync(path.join(PV, f), 'utf8')).filter;
+    const line = { resource: { type: 'cloud_run_revision', labels: { service_name: 'gateway' } }, jsonPayload: { msg: 'price_verification_served', tier: 'authenticated' } };
+    assert.equal(matches(filter, line), true, `${f}: a real line is counted`);
+    assert.equal(matches(filter, { ...line, jsonPayload: { ...line.jsonPayload, synthetic: true } }), false, `${f}: synthetic is not`);
+  }
+});

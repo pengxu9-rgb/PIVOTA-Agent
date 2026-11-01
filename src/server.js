@@ -596,7 +596,16 @@ const {
   invokeContextLimitCaller,
   logMcpCallerLimitsBootStatus,
 } = require('./guardrails/mcpCallerLimits');
-const { loopbackCallerHeaders } = require('./guardrails/loopbackCallerAssertion');
+const { loopbackAssertionStatus, loopbackCallerHeaders, verifyLoopbackSynthetic } = require('./guardrails/loopbackCallerAssertion');
+const {
+  classifySyntheticCaller,
+  filterToolsListForSynthetic,
+  syntheticCarrierReady,
+  syntheticRequestRefusal,
+  syntheticTrafficMode,
+  withSyntheticAssertion,
+  assertSyntheticConfig,
+} = require('./guardrails/syntheticCallers');
 const {
   recommend: recommendPdpProducts,
   filterExcludedRecommendationCandidates,
@@ -2381,7 +2390,8 @@ function buildInvokeRequestContext({
   });
   return pruneEmptyFields({
     tenant_id: firstNonEmptyString(payload?.tenant_id, context?.tenant_id, metadata?.tenant_id),
-    request_id: firstNonEmptyString(context?.request_id, gatewayRequestId),
+    // A synthetic call's id overrides the payload's, so the id the backend sees is the door's.
+    request_id: firstNonEmptyString(syntheticInvokeRequestId(), context?.request_id, gatewayRequestId),
     channel:
       creatorCheckoutSource ||
       firstNonEmptyString(context?.channel, metadata?.source, clientChannel),
@@ -31649,6 +31659,12 @@ function getInvokeAuthContext() {
   return INVOKE_AUTH_CONTEXT.getStore() || null;
 }
 
+// The door's request id when the current invoke context is a synthetic call, else null.
+function syntheticInvokeRequestId() {
+  const store = getInvokeAuthContext();
+  return store?.synthetic === true ? firstNonEmptyString(store.gw_request_id) || null : null;
+}
+
 function getInvokeAuthApiKey() {
   const store = getInvokeAuthContext();
   const key = String(store?.api_key || '').trim();
@@ -31687,12 +31703,15 @@ function buildInvokeUpstreamAuthHeaders({
       ? { 'X-Buyer-Ref': firstNonEmptyString(getInvokeAuthContext()?.buyer_ref) }
       : {}),
   });
+  // A synthetic call (src/guardrails/syntheticCallers.js) carries its signed marker on EVERY branch: this is
+  // the one builder every backend hop shares, and a branch without it is a hop whose writes look real.
+  const synthetic = (headers) => withSyntheticAssertion(headers, getInvokeAuthContext());
   const normalizedCheckoutToken = String(checkoutToken || '').trim();
   if (normalizedCheckoutToken) {
-    return {
+    return synthetic({
       'X-Checkout-Token': normalizedCheckoutToken,
       ...forwardedHeaders,
-    };
+    });
   }
 
   const callerApiKey = getInvokeAuthApiKey();
@@ -31700,31 +31719,31 @@ function buildInvokeUpstreamAuthHeaders({
     preferInternalFallback,
   );
   if (forceInternalFallback && allowInternalFallback && PIVOTA_API_KEY) {
-    return {
+    return synthetic({
       'X-API-Key': PIVOTA_API_KEY,
       Authorization: `Bearer ${PIVOTA_API_KEY}`,
       ...forwardedHeaders,
-    };
+    });
   }
   if (
     callerApiKey &&
     !(shouldUseInternalFallback && allowInternalFallback && PIVOTA_API_KEY)
   ) {
-    return {
+    return synthetic({
       'X-API-Key': callerApiKey,
       Authorization: `Bearer ${callerApiKey}`,
       ...forwardedHeaders,
-    };
+    });
   }
 
   if (allowInternalFallback && PIVOTA_API_KEY) {
-    return {
+    return synthetic({
       'X-API-Key': PIVOTA_API_KEY,
       Authorization: `Bearer ${PIVOTA_API_KEY}`,
       ...forwardedHeaders,
-    };
+    });
   }
-  return forwardedHeaders;
+  return synthetic(forwardedHeaders);
 }
 
 const AGENT_CHECKOUT_STRICT_MONEY_OPS = new Set([
@@ -33076,6 +33095,11 @@ function buildExternalInvokeContext(req) {
     // tool's loopback invoke call can be keyed on it instead of on this gateway's own key. Null off the MCP
     // doors and when MCP_CALLER_LIMITS_MODE is off.
     limit_caller: invokeContextLimitCaller(req),
+    // The door's request id, and whether this call is synthetic (src/guardrails/syntheticCallers.js). Set
+    // only by the MCP door; `synthetic` is true only in enforce, and every hop after the door reads it here.
+    gw_request_id: req?.mcpGatewayRequestId || null,
+    synthetic: req?.syntheticCaller?.synthetic === true,
+    synthetic_caller: req?.syntheticCaller?.synthetic === true ? req.syntheticCaller.caller : null,
     agent_user_jwt: firstNonEmptyString(
       req?.header('X-Agent-User-JWT'),
       req?.header('x-agent-user-jwt'),
@@ -33978,6 +34002,7 @@ function logMcpToolCallOnFinish(req, res, door) {
             latency_ms: Math.max(0, Date.now() - startedAtMs),
             ...recorder.fields(res.statusCode),
             ...callerLogFields(req),
+            ...syntheticLogFields(req),
           },
           'mcp tools/call complete',
         );
@@ -33989,6 +34014,29 @@ function logMcpToolCallOnFinish(req, res, door) {
   } catch (_) {
     // Same.
     return null;
+  }
+}
+
+// The request id the MCP door minted (every commerce-door call) and, for a listed synthetic caller, which
+// state it is in: `synthetic: true` in enforce (every metric and alert filter excludes it, and the eval
+// scorecard reads only it), `synthetic_classified: true` in observe, and `synthetic_listed_invalid: true` plus
+// `synthetic: true` when its config entry failed validation (every such call is refused, and it is still our
+// eval client, so it stays out of the metrics). Never throws.
+function syntheticLogFields(req) {
+  try {
+    const out = {};
+    // Same name as the invoke completion line's: a synthetic loopback hop logs the same id under it.
+    if (req?.mcpGatewayRequestId) out.gateway_request_id = req.mcpGatewayRequestId;
+    const c = req?.syntheticCaller;
+    if (!c) return out;
+    if (c.valid === false) {
+      out.synthetic_listed_invalid = true;
+      out.synthetic = true;
+    } else if (c.synthetic === true) out.synthetic = true;
+    else if (c.mode === 'observe') out.synthetic_classified = true;
+    return out;
+  } catch (_) {
+    return {};
   }
 }
 
@@ -34028,7 +34076,9 @@ function logMcpToolCallPriceVerification(req, out) {
   const declared = args && typeof args === 'object'
     ? firstNonEmptyString(args.market, args.context?.address_country, args.context?.country)
     : null;
-  logMcpPriceVerificationServed(logger, out, { market: declared || undefined });
+  const synthetic = syntheticLogFields(req);
+  const log = synthetic.synthetic || synthetic.synthetic_classified ? logger.child(synthetic) : logger;
+  logMcpPriceVerificationServed(log, out, { market: declared || undefined });
 }
 
 // THE RULE, keyed on the CANONICAL operation id — never on one dialect's spelling of it.
@@ -34248,6 +34298,8 @@ function registerCommerceRemoteMcpRoute() {
  * nothing here can accidentally re-open a door its own route decided to keep shut.
  */
 async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel, door }) {
+    // One id for this call on every hop (the outcome line, the loopback, the backend assertion).
+    req.mcpGatewayRequestId = randomUUID();
     const toolCallRecorder = logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
     // MCP OAuth front door (additive, gated by MCP_OAUTH_ENABLED). Lets a native frontier MCP
     // client (Claude/ChatGPT/Gemini) connect with an OAuth access token instead of a commerce
@@ -34269,6 +34321,36 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
     }
 
     const runMcp = async () => {
+      // A LISTED synthetic caller (src/guardrails/syntheticCallers.js) is restricted in every mode, before
+      // any resolver, adapter or name-routed handler reads the body: handshake methods and the five read
+      // tools only, on the mcp dialect only. A synthetic call whose marker could not reach every hop is refused
+      // too, because it would write real rows: no assertion secret (the backend would not recognise it), or a
+      // SELF_INVOKE_BASE that is not this host's loopback (the loopback hop would drop the marker).
+      if (req.syntheticCaller) {
+        const refusal = syntheticRequestRefusal(req.body, {
+          dialect: door === 'ucp_mcp' ? 'ucp' : 'mcp',
+          classification: req.syntheticCaller,
+        }) || (req.syntheticCaller.synthetic === true
+          && (!syntheticCarrierReady() || !loopbackAssertionStatus(selfInvokeBase()).active)
+          ? { code: 'OPERATION_NOT_ALLOWED', reason: 'carrier_not_ready', message: 'This operation is not available to this client.' }
+          : null);
+        if (refusal) {
+          logger.warn(
+            { door, reason: refusal.reason, ...syntheticLogFields(req) },
+            'synthetic caller request refused',
+          );
+          toolCallRecorder?.recordToolError(refusal.code);
+          const rpcBody = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+          return res.status(200).json(mcpToolErrorBody({
+            id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
+            code: refusal.code,
+            message: refusal.message,
+          }));
+        }
+        if (req.syntheticCaller.mode === 'observe') {
+          logger.info({ door, gateway_request_id: req.mcpGatewayRequestId, method: req.body?.method }, 'synthetic_classified');
+        }
+      }
       // Identity is known only now, after the auth channel. Resolved BEFORE the invoke context is built so
       // the context (and through it every loopback call) carries it; admission happens below.
       attachMcpLimitCaller(req);
@@ -34347,12 +34429,15 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
             const sessionContext = mcpOAuthOutcome.mode === 'oauth'
               ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
               : await deriveStrictCommerceCtxAsync(req);
-            const out = await adapter.handleJsonRpc(withMcpToolCallObserver({
+            let out = await adapter.handleJsonRpc(withMcpToolCallObserver({
               headers: req.headers || {},
               body: req.body,
               authInfo: buildStrictSessionAuthInfo(req, sessionContext),
               sessionContext,
             }, toolCallRecorder));
+            // A listed synthetic caller is shown only the tools it may call: an LLM simulator would otherwise
+            // try the rest, be refused, and count those refusals as tool errors.
+            if (req.syntheticCaller && req.body?.method === 'tools/list') out = filterToolsListForSynthetic(out);
             toolCallRecorder?.recordRpcResponse(out);
             logMcpToolCallPriceVerification(req, out);
             if (heartbeat.finish(out)) {
@@ -34393,6 +34478,10 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
         // agent for link attribution; an unregistered one stays agent-less (issuingAgentAssertion.js).
         ...oauthClientFromClaims(mcpOAuthOutcome.claims),
       };
+      // Only an OAuth caller can be listed: the match is on the verified token's issuer and client_id.
+      req.syntheticCaller = classifySyntheticCaller(mcpOAuthOutcome.claims, {
+        ownIssuers: commerceMcpOAuth.authorizationServers(),
+      });
       return runMcp();
     }
     return requireExternalInvokeAuth(req, res, runMcp);
@@ -42560,7 +42649,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   });
   const routeKeyFingerprint =
     routeContext.key_fingerprint || req?.invokeAuth?.key_fingerprint || null;
-  const gatewayRequestId = randomUUID();
+  // A synthetic loopback hop keeps the MCP door's request id, so one id names the call on every hop.
+  const gatewayRequestId = syntheticInvokeRequestId() || randomUUID();
   const invokeStartedAtMs = Date.now();
   const debugRuntime = {
     operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
@@ -54478,6 +54568,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 }
 
+// A synthetic MCP call's loopback hop (src/guardrails/loopbackCallerAssertion.js verifyLoopbackSynthetic): the
+// same synthetic fields the door set, so the backend hops made from this request carry the marker too. Only
+// a valid marker on a loopback socket, and only in enforce; anything else is an ordinary invoke call.
+function loopbackSyntheticInvokeContext(req) {
+  if (syntheticTrafficMode() !== 'enforce') return {};
+  const marker = verifyLoopbackSynthetic(req);
+  if (!marker) return {};
+  return { synthetic: true, synthetic_caller: marker.synthetic_caller, gw_request_id: marker.gw_request_id };
+}
+
 function authenticateExternalInvokeRoute(req, res, next) {
   return requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken: isCheckoutTokenInvokeOperation });
 }
@@ -54503,6 +54603,7 @@ function registerExternalInvokeRoute(path, clientChannel) {
           req?.header('X-Buyer-Ref'),
           req?.header('x-buyer-ref'),
         ),
+        ...loopbackSyntheticInvokeContext(req),
       },
       () =>
         handleInvokeRequest(req, res, {
@@ -54704,6 +54805,11 @@ module.exports._debug = {
   // predicate reads AsyncLocalStorage, so it has to be driven inside a store the test controls.
   shouldPreferInternalInvokeUpstreamAuth,
   INVOKE_AUTH_CONTEXT,
+  // Exported so the synthetic marker is asserted on EVERY branch of the one builder all backend hops share,
+  // and the door's request id on the context the backend body carries: each branch is a hop whose writes
+  // would look real without it.
+  buildInvokeUpstreamAuthHeaders,
+  buildInvokeRequestContext,
   // Exported so the issuing-agent assertion is asserted on the REAL upstream request (headers as sent).
   invokeCommerceKernelRawUpstream,
   // Telemetry property: `metadata.route_trace.node_timings_ms` was read by the prod smoke and written
@@ -55045,6 +55151,10 @@ if (require.main === module) {
     // running on a fail-closed guess, and that state must not take traffic silently.
     const platformInfo = requirePlatformEnv();
     logger.info({ event: 'platform_detected', ...platformInfo }, 'platform environment resolved');
+
+    // A broken synthetic-callers config refuses the boot rather than letting the eval client run as an
+    // ordinary caller (src/guardrails/syntheticCallers.js). Unset, it is a no-op.
+    assertSyntheticConfig({ ownIssuers: commerceMcpOAuth.authorizationServers(), logger });
 
     if (AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady) {
       logger.error(
