@@ -221,7 +221,9 @@ describe('persistEdgesWithGlobalFanInCap (write path)', () => {
           : /FROM relationship_candidate_labels/.test(row.text) ? 'count'
             : /INSERT INTO relationship_candidate_labels/.test(row.text) ? 'upsert'
               : row.text));
-    expect(kinds).toEqual(['direct-upsert', 'begin', 'lock', 'count', 'upsert', 'COMMIT']);
+    // Each row in the candidate's transaction has its own savepoint (row containment, 2026-11-02).
+    expect(kinds).toEqual(['direct-upsert', 'begin', 'lock', 'count', 'SAVEPOINT relgraph_label_row', 'upsert',
+      'RELEASE SAVEPOINT relgraph_label_row', 'COMMIT']);
     expect(db.log[2].params).toEqual([fanInLockKey('product:hub')]);
     const upsertRow = db.log.find((row) => !row.text.startsWith('DIRECT') && /INSERT INTO relationship_candidate_labels/.test(row.text));
     expect(upsertRow.params).toContain('product:a2');
