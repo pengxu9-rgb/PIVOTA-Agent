@@ -376,8 +376,9 @@ merchant id, and an ordinary merchant's scope goes straight to the backend. The 
 the gateway serves on its unscoped detail lane, over the loopback: the hop the synthetic marker has to survive.
 The rule is the gateway's own (`isSeedSupplyUnservableUpstream`, `src/services/externalSeedLane.js`). Run the tools in the order of
 [the rollout](synthetic_callers.md#order-of-rollout), and check each tool's log lines before the next.
-Exit 0 means the call answered. 1 means it failed or the tool answered an error (`error_code`). 3 means the
-answer was not marked `enforce`.
+It prints `result`: `items` with their count, `empty` with its reason, or `refusal`. Exit 0 means items came back.
+1 means the call failed, or the answer was a refusal (`error_code`) or empty. 3 means the answer was not marked
+`enforce`.
 
 ```bash
 npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \

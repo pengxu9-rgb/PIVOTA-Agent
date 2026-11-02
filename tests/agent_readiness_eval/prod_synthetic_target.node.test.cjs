@@ -610,9 +610,27 @@ async function runCanary(extra, { door = fakeDoor(), gcloud = fakeGcloud() } = {
   return { code, c, door, gcloud, printed: code === 2 ? null : JSON.parse(c.out.join('')) };
 }
 
+// A door whose tools/call answers with the given structured content.
+function doorAnswering(structuredContent) {
+  const base = fakeDoor();
+  return {
+    seen: base.seen,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      base.seen.push({ method: body.method });
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: '{}' }], structuredContent } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' },
+      });
+    },
+  };
+}
+const ONE_OFFER = { signals: [{ value: { merchant_id: 'm', price: { amount: 10, currency: 'USD' }, in_stock: true } }] };
+
 test('canary: after the full preflight, exactly one tools/call with exactly the given ids, and its times are printed', async () => {
   const bodies = [];
-  const base = fakeDoor();
+  const base = doorAnswering(ONE_OFFER);
   const door = { seen: base.seen, fetchImpl: async (url, init) => { bodies.push(JSON.parse(init.body)); return base.fetchImpl(url, init); } };
   const r = await runCanary(['--canary', 'get_offers', ...IDS], { door });
   assert.equal(r.code, 0, r.c.err.join(''));
@@ -622,6 +640,7 @@ test('canary: after the full preflight, exactly one tools/call with exactly the 
   assert.equal(r.printed.canary, 'get_offers');
   assert.equal(r.printed.state, 'enforce');
   assert.equal(r.printed.is_error, false);
+  assert.deepEqual(r.printed.result, { kind: 'items', count: 1, empty_class: null, links: { total: 0, r_links: 0, r_syn: 0 } });
   assert.ok(Date.parse(r.printed.started_at) <= Date.parse(r.printed.finished_at));
   assert.equal(r.printed.preflight.state, 'enforce');
   assert.doesNotMatch(r.c.out.join(''), /at-old|rt-old/);
@@ -657,6 +676,32 @@ test('canary: an unmarked answer to the call exits 3; a tool error exits 1 with 
   assert.equal(err.code, 1);
   assert.equal(err.printed.is_error, true);
   assert.equal(err.printed.error_code, 'PRODUCT_NOT_FOUND');
+  assert.equal(err.printed.result.kind, 'refusal');
+});
+
+test('canary: each tool reports how many items came back; an empty answer exits 1 with its reason', async () => {
+  const cases = [
+    ['get_alternatives', IDS, { signals: [{ value: { related: { product_id: 'a1', title: 'Alt one' } } }, { value: { related: { product_id: 'a2', title: 'Alt two' } } }] }, 2],
+    ['get_product', SEED_IDS, { product: { product_id: 'prod_test_1', title: 'Test Serum' } }, 1],
+    // total (the catalogue's count) differs from what came back: the canary counts what came back.
+    ['search_catalog', ['--canary-query', 'moisturizer'], { status: 'success', products: [{ product_id: 'p1', title: 'One' }, { product_id: 'p2', title: 'Two' }, { product_id: 'p3', title: 'Three' }], total: 50 }, 3],
+    // Two offers, and an alternatives field: get_offers is counted by the offers reader, not another one.
+    ['get_offers', IDS, { ...ONE_OFFER, signals: [...ONE_OFFER.signals, ...ONE_OFFER.signals], alternatives: [] }, 2],
+  ];
+  for (const [tool, args, content, n] of cases) {
+    const r = await runCanary(['--canary', tool, ...args], { door: doorAnswering(content) });
+    assert.equal(r.code, 0, tool);
+    const { links, ...result } = r.printed.result;
+    assert.deepEqual(result, { kind: 'items', count: n, empty_class: null }, tool);
+    assert.equal(links !== undefined, tool === 'get_offers', `${tool}: link facts only for get_offers`);
+    assert.doesNotMatch(JSON.stringify(r.printed), /Alt one|Test Serum/, 'counts only, never the items');
+  }
+  const empty = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering({ signals: [], metadata: { reason: 'no_offers' } }) });
+  assert.equal(empty.code, 1);
+  assert.deepEqual(empty.printed.result, { kind: 'empty', count: 0, empty_class: 'no_offers', links: { total: 0, r_links: 0, r_syn: 0 } });
+  const noPdp = await runCanary(['--canary', 'get_product', ...SEED_IDS], { door: doorAnswering({ note: 'not found' }) });
+  assert.equal(noPdp.code, 1);
+  assert.deepEqual(noPdp.printed.result, { kind: 'empty', count: 0, empty_class: 'not_found' });
 });
 
 test('canary get_product: only a seed-supply pair the gateway serves unscoped (the loopback lane), never a merchant scope', () => {
@@ -782,4 +827,29 @@ test('a check or a canary uses a stored token with a few minutes left, without a
   const run = preflightSetup(left(oauth.SHORT_JOB_MIN_SECONDS + 60));
   assert.match((await prodSynthetic.preflight({ config: run.config, env: {}, deps: run.deps })).problems.join('\n'), /CLIENT_ID/);
   assert.equal(run.door.seen.length + run.gcloud.calls.length, 0);
+});
+
+test('offerLinkFacts: counts the /r links an offer answer carries and how many say syn: 1, never printing one', () => {
+  const tok = (body) => `${Buffer.from(JSON.stringify(body)).toString('base64url')}.c2ln`;
+  const r = (body) => `https://api.example.test/r?token=${tok(body)}`;
+  const value = {
+    signals: [
+      { value: { merchant_id: 'm1', affiliate_url: r({ t: 'redirect', syn: 1 }), pdp_url: 'https://shop.example.test/p/1', title: 'x' } },
+      { value: { merchant_id: 'm2', cart_url: r({ t: 'redirect' }), url: r({ t: 'redirect', syn: true }) } },
+      { value: { merchant_id: 'm3', url: 'https://api.example.test/r?token=not-base64.x', image: 'https://img.example.test/1.png' } },
+      { value: { merchant_id: 'm4', url: 'https://api.example.test/redirect?token=' + tok({ syn: 1 }) } },
+      { value: { merchant_id: 'm5', url: 'not a url' } },
+    ],
+  };
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value }), { total: 7, r_links: 4, r_syn: 1 });
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value: null }), { total: 0, r_links: 0, r_syn: 0 });
+});
+
+test('canary get_offers: the printed summary says whether its /r links are marked syn: 1, without the links', async () => {
+  const token = `${Buffer.from(JSON.stringify({ t: 'redirect', syn: 1, ctx: 'SECRETCTX' })).toString('base64url')}.c2ln`;
+  const offers = { signals: [{ value: { merchant_id: 'm', price: { amount: 10, currency: 'USD' }, in_stock: true, affiliate_url: `https://api.example.test/r?token=${token}` } }] };
+  const res = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering(offers) });
+  assert.equal(res.code, 0);
+  assert.deepEqual(res.printed.result.links, { total: 1, r_links: 1, r_syn: 1 });
+  assert.doesNotMatch(res.c.out.join(''), /token=|SECRETCTX|api\.example\.test/);
 });
