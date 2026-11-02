@@ -49,6 +49,9 @@ test('the routing truth-table the fork encodes, expressed through the canonical 
   assert.equal(reroutes(EXTERNAL_SEED_MERCHANT_ID, 'sig_2c7636bb109fc25526b6bd799a5f08a9'), true);
   // The intel contract case: legacy bucket + ext_ id — upstream CAN serve it and must keep it.
   assert.equal(reroutes(EXTERNAL_SEED_MERCHANT_ID, 'ext_real_intel_1'), false);
+  // Only the sig_ PREFIX reroutes: an id that merely starts with "sig" is not a signature.
+  assert.equal(reroutes(EXTERNAL_SEED_MERCHANT_ID, 'sigx_1'), false);
+  assert.equal(reroutes(EXTERNAL_SEED_MERCHANT_ID, 'sig1'), false);
   // Observed sellers never serve upstream, whatever the id shape.
   assert.equal(reroutes('merch_obs_abc123', 'ext_whatever'), true);
   assert.equal(reroutes('merch_obs_abc123', 'sig_whatever'), true);

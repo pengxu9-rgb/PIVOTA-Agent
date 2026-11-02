@@ -32,8 +32,9 @@ const REDIRECT_URI = `http://${OAUTH.redirectHost}:${OAUTH.redirectPort}${OAUTH.
 const DEFAULT_TOKEN_FILE = path.join(os.homedir(), '.pivota-eval', 'oauth-token.json');
 // Refresh when less than this is left; a production synthetic run lasts at most 3000 s (safety.cjs).
 const MIN_FRESH_SECONDS = 3300;
-// A classification check or a canary takes seconds: it needs only this much of the stored token.
-const SHORT_JOB_MIN_SECONDS = 300;
+// A classification check or a canary needs only this much of the stored token: its gcloud read (60 s) and its
+// requests (each up to the 120 s timeout cap) fit, so it never meets a token that expires under it.
+const SHORT_JOB_MIN_SECONDS = 600;
 
 function b64url(buf) {
   return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

@@ -231,6 +231,9 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
   // as market-less too, so a currency check never holds a call to a market it did not state.
   const queries = selectQueries(querySet.queries, config).map((q) => (config.targetKind === 'prod-synthetic' ? withoutMarket(q) : q));
   out.market_declared = config.targetKind !== 'prod-synthetic';
+  // Every later journey reads a query back by id from THESE queries, never from the query set: the set's own
+  // copy still carries the market dropped above.
+  const servedById = new Map(queries.map((q) => [q.id, q]));
   const journeys = new Set(config.journeys);
   const searchArgs = (q) => ({ query: q.text, market: q.market || undefined, page_size: config.pageSize, ...(q.args || {}) });
 
@@ -275,11 +278,11 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
 
   // ---- follow-through ---------------------------------------------------------------------------------
   if (journeys.has('follow') && !out.aborted) {
-    const followable = out.discovery.filter((d) => d.result_count > 0 && !(querySet.byId.get(d.query_id).expect || {}).negative);
+    const followable = out.discovery.filter((d) => d.result_count > 0 && !(servedById.get(d.query_id).expect || {}).negative);
     const sampled = followable.filter(() => rng() < config.followSample);
     const tasks = [];
     for (const d of sampled) {
-      for (const p of d._products.slice(0, config.followTop)) tasks.push({ d, p, q: querySet.byId.get(d.query_id) });
+      for (const p of d._products.slice(0, config.followTop)) tasks.push({ d, p, q: servedById.get(d.query_id) });
     }
     await runPool(tasks, config.concurrency, config.pacingMs, async ({ d, p, q }) => {
       const meta = { phase: 'follow', query_id: d.query_id, class: d.class, lang: d.lang, market: d.market, product_id: p.id };
@@ -363,7 +366,7 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
     const pool = out.discovery.filter((d) => d.result_count > 0);
     const picked = shuffle(pool, rng).slice(0, config.consistencySample);
     await runPool(picked, 1, config.pacingMs, async (d) => {
-      const q = querySet.byId.get(d.query_id);
+      const q = servedById.get(d.query_id);
       const lists = [(d._products || []).map((p) => p.id || `${p.brand}|${p.title}`)];
       for (let i = 0; i < config.consistencyRepeats; i += 1) {
         const r = await call('search_catalog', searchArgs(q), { phase: 'consistency', query_id: q.id, class: q.class, lang: q.lang, market: q.market });

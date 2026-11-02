@@ -104,6 +104,8 @@ function computeMetrics(run, config) {
       started_at: run.started_at,
       finished_at: run.finished_at,
       aborted: run.aborted,
+      // false on the production synthetic target: no call stated a market (lib/journeys.cjs).
+      market_declared: run.market_declared !== false,
       handshake: run.handshake,
       skipped_tools: run.skipped_tools,
     },
