@@ -108,7 +108,10 @@ async function preflight({ config, env = process.env, deps = {}, log = () => {} 
   const report = { target: config.endpoint, stage: config.checkClassification ? 'check' : 'run' };
   let token;
   try {
-    const fresh = await oauth.ensureFreshToken({ file: config.oauthTokenFile || oauth.DEFAULT_TOKEN_FILE, env, fetchImpl: deps.oauthFetch });
+    // A run must not outlive its token; a check or a canary takes seconds, so the stored token serves while it has
+    // a few minutes left, and no refresh (which needs the client secret) is made for it.
+    const minSeconds = config.checkClassification || config.canary ? oauth.SHORT_JOB_MIN_SECONDS : oauth.MIN_FRESH_SECONDS;
+    const fresh = await oauth.ensureFreshToken({ file: config.oauthTokenFile || oauth.DEFAULT_TOKEN_FILE, env, fetchImpl: deps.oauthFetch, minSeconds });
     token = fresh.token;
     report.token = { refreshed: fresh.refreshed, expires_at: new Date(token.expires_at * 1000).toISOString(), client_id: token.client_id };
     log(`eval token ${fresh.refreshed ? 'refreshed' : 'fresh'}, expires ${report.token.expires_at}`);

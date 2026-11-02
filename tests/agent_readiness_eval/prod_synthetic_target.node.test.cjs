@@ -748,3 +748,23 @@ test('withoutMarket: a query loses its market and any market among its own argum
   assert.deepEqual(q.args, { market: 'GB', price_max: 30 }, 'the query set itself is untouched');
   assert.deepEqual(withoutMarket({ id: 'q2', text: 't', market: null }), { id: 'q2', text: 't', market: null, args: {} });
 });
+
+test('a check or a canary uses a stored token with a few minutes left, without a refresh; a run refreshes it', async () => {
+  const left = (secs) => ({ tokenFields: { expires_at: Math.floor(Date.now() / 1000) + secs } });
+  for (const extra of [{ checkClassification: true, door: fakeDoor({ state: 'observe' }) }, {}]) {
+    const s = preflightSetup({ ...extra, ...left(oauth.SHORT_JOB_MIN_SECONDS + 60) });
+    const config = extra.checkClassification ? s.config : { ...s.config, canary: 'get_alternatives', canaryArgs: { merchant_id: 'm', product_id: 'p', query: null } };
+    let refreshes = 0;
+    const r = await prodSynthetic.preflight({ config, env: {}, deps: { ...s.deps, oauthFetch: async () => { refreshes += 1; throw new Error('no refresh expected'); } } });
+    assert.deepEqual(r.problems, [], JSON.stringify(r.problems));
+    assert.equal(refreshes, 0);
+    assert.equal(r.report.token.refreshed, false);
+  }
+  // Below the short window, even a check refreshes (and without client credentials it is refused).
+  const low = preflightSetup({ checkClassification: true, ...left(oauth.SHORT_JOB_MIN_SECONDS - 1) });
+  assert.match((await prodSynthetic.preflight({ config: low.config, env: {}, deps: low.deps })).problems.join('\n'), /CLIENT_ID/);
+  // A run keeps the long window: the same token is refreshed first.
+  const run = preflightSetup(left(oauth.SHORT_JOB_MIN_SECONDS + 60));
+  assert.match((await prodSynthetic.preflight({ config: run.config, env: {}, deps: run.deps })).problems.join('\n'), /CLIENT_ID/);
+  assert.equal(run.door.seen.length + run.gcloud.calls.length, 0);
+});
