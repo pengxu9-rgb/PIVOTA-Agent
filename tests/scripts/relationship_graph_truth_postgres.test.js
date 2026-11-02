@@ -5,6 +5,7 @@ const { Client } = require('pg');
 const { readServingSnapshot, servingProgress, SERVING_PROGRESS_SQL } = require('../../src/services/relationshipGraphServingProgress');
 const { persistEdgesWithGlobalFanInCap } = require('../../scripts/build-product-relationship-graph');
 const { upsertRelationshipCandidateLabel } = require('../../src/auroraBff/productRelationshipGraph');
+const { normalizeProductsCacheRow } = require('../../src/auroraBff/productRelationshipGraphSources');
 
 const DATABASE_URL = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const BIN = process.env.RELGRAPH_TEST_POSTGRES_BIN || '/opt/homebrew/opt/postgresql@15/bin';
@@ -236,4 +237,25 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     fs.mkdirSync(path.join(__dirname, '../../work'), { recursive: true });
     fs.writeFileSync(path.join(__dirname, '../../work/relgraph-metric-plan.json'), JSON.stringify({ plan, snapshot_ms: timing, approved_rows: snapshot.servedEdges }, null, 2));
   }, 30000);
+
+  // 2026-11-02: one label whose snapshot carried half an emoji (a 512-character description cut
+  // through 🌿) was refused with "invalid input syntax for type json" and aborted the nightly build.
+  test('Postgres refuses a lone surrogate in jsonb, which is why the writer must never send one', async () => {
+    await expect(client.query('SELECT $1::jsonb', ['{"t":"\\ud83c"}'])).rejects.toMatchObject({ code: '22P02' });
+    await expect(client.query('SELECT $1::jsonb', ['{"t":"\\u0000"}'])).rejects.toMatchObject({ code: '22P05' });
+  });
+  test.each(['related_product', 'competitive_alternative'])('%s: a label built from text cut through an emoji, or arriving malformed, is written', async (relation) => {
+    const cut = normalizeProductsCacheRow({ product_id: 'leaf', merchant_id: 'm1',
+      product_data: { title: 'Leaf Serum', brand: 'Brand', description: `${'a'.repeat(511)}\u{1F33F} more` } });
+    const row = { ...edge('emoji', 'candidate', relation), candidate_snapshot: { ...cut, title: 'Glow \uD83C', brand: 'Other\u0000' },
+      anchor_snapshot: { brand: 'Brand', title: `Leaf \u{1F33F} Cream`, ['key\uDF3F']: 'v' },
+      source_refs: [{ type: 'catalog_products', name: 'half \uD83C', authoritative: true }] };
+    const result = await persistEdgesWithGlobalFanInCap({ edges: [row], cap: 8, queryFn, runInClient });
+    expect(result.applied).toBe(1);
+    const stored = (await client.query('SELECT anchor_snapshot, candidate_snapshot, source_refs FROM relationship_candidate_labels')).rows[0];
+    expect(stored.candidate_snapshot).toMatchObject({ title: 'Glow \uFFFD', brand: 'Other' });
+    expect(stored.candidate_snapshot.description).toBe(cut.description);
+    expect(stored.anchor_snapshot).toEqual({ brand: 'Brand', title: 'Leaf \u{1F33F} Cream', 'key\uFFFD': 'v' });
+    expect(stored.source_refs[0].name).toBe('half \uFFFD');
+  });
 });

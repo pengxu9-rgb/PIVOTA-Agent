@@ -3,6 +3,7 @@
 
 const path = require('node:path');
 const { appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
+const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const {
   WRAPPER_CONFIRM_TOKEN,
@@ -25,7 +26,7 @@ const DEFAULT_RETRY_RUN_SCOPE_LOOKBACK_MINUTES = 6 * 60;
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function parseBooleanEnv(value, fallback = false) {

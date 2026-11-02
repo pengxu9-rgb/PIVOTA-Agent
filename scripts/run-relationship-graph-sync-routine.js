@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
 const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, approvalBlockedRelayLine } = require('../src/services/relationshipGraphServingProgress');
+const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
 const { formatRoutineFailure } = require('./lib/format-routine-failure');
@@ -44,7 +45,7 @@ const OUTPUT_TAIL_CHARS = 12000;
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function argValue(argv, name, fallback = '') {

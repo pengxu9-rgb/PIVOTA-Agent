@@ -1,6 +1,7 @@
 const { runScopedTable, runScopedTablesDisabled, configuredDbPoolMax, withRunScopedConnection } = require('./relationshipGraphRunScopedTable');
 const { pacedDbCall } = require('./relationshipGraphDbPacing');
 const { brand: pairBrand, sharedSpecificNameWords } = require('./relationshipPairPolicy');
+const { truncateText, safeJsonbParam } = require('./relationshipSafeText');
 const {
   isSameProductOrVariant,
   normalizeFamilyKeySegment,
@@ -116,7 +117,7 @@ function asPlainObject(value) {
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function normalizeLower(value, max = 512) {
@@ -1705,7 +1706,7 @@ async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT, t
       ORDER BY last_success_at DESC NULLS LAST, updated_at DESC NULLS LAST, kb_key ASC
       LIMIT $1
     `, targets, shared ? { documentIdentityTable: documentIdentity.table } : {}),
-    targets.length ? [5, JSON.stringify(targets)] : [normalizeLimit(limit)],
+    targets.length ? [5, safeJsonbParam(targets)] : [normalizeLimit(limit)],
   );
   const publicRows = boundedEvidenceRows(rows, targets.length).map((row) => {
     const intel = normalizeProductIntelKbRow(row);
@@ -1728,7 +1729,7 @@ async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT, t
     WHERE ${hasPublicSellerProtection ? `NOT EXISTS(SELECT 1 FROM public.aurora_product_intel_kb public_kb WHERE ${publicSellerCollisionSql("proof#>'{source,identity}'","proof#>>'{source,source_url}'")} AND ${publicSellerProtectedSql()}) AND` : ''} proof @> '{"schema":"relgraph.reviewed_seller_evidence.v1","graph_only":true,"public_insights_eligible":false}'::jsonb
     ORDER BY source_observed_at DESC,evidence_id ASC LIMIT $1
   `, sellerTargets, 'identity_key = ANY(target.reviewed_identity_keys)', true),
-  targets.length ? [5, JSON.stringify(sellerTargets)] : [normalizeLimit(limit)]);
+  targets.length ? [5, safeJsonbParam(sellerTargets)] : [normalizeLimit(limit)]);
   const normalizedSellerRows = boundedEvidenceRows(sellerRows, targets.length).map(row => {
     let proof;try { proof=validateGraphSellerEvidence(coerceJson(row.proof),{requireCurrent:false});
       if(proof.evidence_id!==row.evidence_id||proof.identity_key!==row.identity_key||proof.source.source_url!==row.source_url||
@@ -1783,7 +1784,7 @@ async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMI
       AND (COALESCE(target.variant_detail_label, '') = '' OR variant_detail_label = '' OR lower(variant_detail_label) = target.variant_detail_label)
       AND (product_id !~* '^ext_' OR cardinality(target.ids) = 0 OR product_id = ANY(target.ids))
       AND (source_product_id !~* '^ext_' OR cardinality(target.ids) = 0 OR source_product_id = ANY(target.ids))`, true),
-    targets.length ? [5, JSON.stringify(reviewedTargets)] : [perTableLimit]);
+    targets.length ? [5, safeJsonbParam(reviewedTargets)] : [perTableLimit]);
     out.push(...boundedEvidenceRows(rows, targets.length).map(row => {
       let proof;
       try {
@@ -1838,7 +1839,7 @@ async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMI
             AND (sku_key = ANY(target.ids) OR sku_key = ANY(target.refs))))
         AND (target.product_key = '' OR COALESCE(product_key, '') IN ('', target.product_key))
         AND (target.merchant_id = '' OR COALESCE(merchant_id, '') IN ('', target.merchant_id))`),
-      targets.length ? [5, JSON.stringify(targets)] : [perTableLimit],
+      targets.length ? [5, safeJsonbParam(targets)] : [perTableLimit],
     );
     out.push(...boundedEvidenceRows(rows, targets.length).map((row) => {
       const ingredient = normalizeIngredientKbRow(row, { table: 'public.beauty_sku_ingredients' });
@@ -1879,7 +1880,7 @@ async function loadIngredientKbCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMI
           OR regexp_replace(sku_key, '^product:', '', 'i') = target.signature)
         AND (target.brand = '' OR lower(btrim(COALESCE(brand, ''))) IN ('', target.brand))
         AND upper(COALESCE(market, '')) IN ('', target.market)`),
-      targets.length ? [5, JSON.stringify(targets)] : [perTableLimit],
+      targets.length ? [5, safeJsonbParam(targets)] : [perTableLimit],
     );
     out.push(...boundedEvidenceRows(rows, targets.length).map((row) => {
       const ingredient = normalizeIngredientKbRow(row, { table: 'pci_kb.sku_ingredients' });

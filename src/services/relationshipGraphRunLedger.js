@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 
 const { query } = require('../db');
+const { safeJsonbParam } = require('../auroraBff/relationshipSafeText');
 
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
@@ -324,7 +325,7 @@ async function recordRelationshipGraphRun(summary, {
       record.failed_step,
       record.out_dir,
       record.summary_path,
-      JSON.stringify(record.summary),
+      safeJsonbParam(record.summary),
       record.generated_at,
       record.completed_at,
     ],

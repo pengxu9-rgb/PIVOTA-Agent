@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
 const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded } = require('../src/services/relationshipGraphServingProgress');
+const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const { query } = require('../src/db');
 const { requireAnchorAttemptsTable } = require('../src/auroraBff/relationshipGraphCoverage');
@@ -51,7 +52,7 @@ const DEFAULT_DB_LOCK_KEY = 'pivota.relationship_graph.routine';
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function normalizeKey(value, max = 160) {
