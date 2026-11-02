@@ -131,9 +131,14 @@ function toIsoOrNull(value) {
   return date.toISOString();
 }
 
-// Every jsonb parameter of the label upsert: well-formed text, or Postgres refuses the row.
+// Every jsonb parameter of the label upsert: well-formed text, or Postgres refuses the row. A value
+// that cannot be serialised (a cycle) is stored as null, as this helper always did.
 function stableJson(value) {
-  return safeJsonbParam(value == null ? null : value, null);
+  try {
+    return safeJsonbParam(value == null ? null : value, null);
+  } catch {
+    return 'null';
+  }
 }
 
 function normalizeJsonbParam(value, fallback) {

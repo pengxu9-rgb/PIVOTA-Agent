@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { safeJsonbParam } = require('./relationshipSafeText');
 
 const BEAUTY_ATTRIBUTE_FIELDS = [
   'product_form',
@@ -194,7 +195,8 @@ async function upsertBeautyAttributes(input = {}, { queryFn = query } = {}) {
   placeholders.push(`$${idx}`, `$${idx + 1}::jsonb`, `$${idx + 2}`, `$${idx + 3}`, `$${idx + 4}::timestamptz`);
   params.push(
     input.extractor_version ?? null,
-    input.raw_extraction == null ? null : JSON.stringify(input.raw_extraction),
+    // Model extraction output: repaired to well-formed text, or Postgres refuses the row.
+    input.raw_extraction == null ? null : safeJsonbParam(input.raw_extraction),
     input.audit_status ?? 'pending',
     input.audit_notes ?? null,
     input.extracted_at ?? null,

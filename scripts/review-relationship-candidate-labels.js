@@ -363,7 +363,9 @@ function normalizeString(value, max = 512) {
 }
 
 function truncateText(value, max = TEXT_LIMIT) {
-  const text = normalizeString(value, max + 1);
+  // Whether the text was cut is judged on the whole text: a cut at max + 1 that would split an emoji
+  // drops the pair and lands on max, which used to read as "not cut" and lost the "...".
+  const text = normalizeString(value, Infinity);
   if (text.length <= max) return text;
   return safeTruncate(text, Math.max(0, max - 3)).trimEnd() + '...';
 }
