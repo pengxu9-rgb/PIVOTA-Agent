@@ -10,7 +10,8 @@ const http = require('node:http');
 const axios = require('axios');
 
 const { INVOKE_AUTH_CONTEXT } = require('../src/guardrails/syntheticContext');
-const { hopFields, backendHosts, installSyntheticHopLog, BACKEND_BASE_ENVS } = require('../src/guardrails/syntheticHops');
+const diagnosticsChannel = require('node:diagnostics_channel');
+const { hopFields, backendHosts, installSyntheticHopLog, BACKEND_BASE_ENVS, DEFAULT_PIVOTA_API_BASE } = require('../src/guardrails/syntheticHops');
 
 const SYN = { synthetic: true, synthetic_caller: 'iss|mcpc_eval', gw_request_id: 'gw-hop-1' };
 const hop = (origin, path, headers = {}, method = 'GET') => ({
@@ -120,4 +121,78 @@ test('a hop line that cannot be written never fails the request; installing twic
   const body = await INVOKE_AUTH_CONTEXT.run(SYN, () => fetch(`http://127.0.0.1:${server.address().port}/`).then((r) => r.text()));
   assert.equal(body, 'ok');
   assert.equal(calls, 1, 'one subscriber, and it was asked');
+});
+
+test('backendHosts: lists split like the routes do, a trailing dot is the same host, unset PIVOTA_API_BASE is its default', () => {
+  assert.ok(BACKEND_BASE_ENVS.includes('AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS'));
+  const hosts = backendHosts({ AURORA_BFF_RECO_BACKEND_BASE_URLS: 'https://a.test;https://b.test | https://c.test\nhttps://d.test.', REVIEWS_API_BASE: '' });
+  for (const h of ['a.test', 'b.test', 'c.test', 'd.test']) assert.ok(hosts.has(h), h);
+  assert.equal(DEFAULT_PIVOTA_API_BASE, 'http://localhost:8080');
+  assert.ok(hosts.has('localhost:8080'), 'the code default when PIVOTA_API_BASE is unset');
+  assert.equal(backendHosts({ PIVOTA_API_BASE: 'https://api.test' }).has('localhost:8080'), false, 'only when unset');
+  const at = (origin, env) => INVOKE_AUTH_CONTEXT.run(SYN, () => hopFields(hop(origin, '/x'), { env }).target);
+  assert.equal(at('https://api.test./x', { PIVOTA_API_BASE: 'https://api.test' }), 'backend', 'a trailing dot on the request');
+  assert.equal(at('https://api.test', { PIVOTA_API_BASE: 'https://API.test.' }), 'backend', 'and on the base');
+  assert.equal(at('http://localhost:8080', {}), 'backend');
+});
+
+test('backendHosts is memoised on the variables\' values', () => {
+  const env = { PIVOTA_API_BASE: 'https://m1.test' };
+  const first = backendHosts(env);
+  assert.equal(backendHosts({ ...env }), first, 'same values: the same set, not recomputed');
+  const changed = backendHosts({ PIVOTA_API_BASE: 'https://m2.test' });
+  assert.notEqual(changed, first);
+  assert.ok(changed.has('m2.test') && !changed.has('m1.test'));
+});
+
+test('undici headers are read only as the flat array Node hands over; anything else is no header', () => {
+  const at = (headers) => INVOKE_AUTH_CONTEXT.run(SYN, () => {
+    const logged = [];
+    const handle = installSyntheticHopLog({ log: { info: (f) => logged.push(f) }, env: { PIVOTA_API_BASE: 'https://api.test' } });
+    try {
+      diagnosticsChannel.channel('undici:request:create').publish({ request: { method: 'POST', origin: 'https://api.test', path: '/x', headers } });
+    } finally {
+      handle.uninstall();
+    }
+    return logged.map((f) => f.marker);
+  });
+  assert.deepEqual(at(['x-pivota-synthetic-assertion', 'v1.a.b', 'accept', '*/*']), ['attached']);
+  assert.deepEqual(at(['accept', '*/*']), ['missing']);
+  assert.deepEqual(at('x-pivota-synthetic-assertion: v1.a.b\r\n'), ['missing'], 'a string is not read');
+  assert.deepEqual(at({ 'x-pivota-synthetic-assertion': 'v1.a.b' }), ['missing'], 'nor an object');
+});
+
+test('a real request is not touched: the subscribers back out on the store before reading anything', () => {
+  let touched = 0;
+  const spy = new Proxy({}, { get: () => { touched += 1; return undefined; }, has: () => { touched += 1; return false; } });
+  const handle = installSyntheticHopLog({ log: { info: () => {} } });
+  try {
+    for (const name of ['http.client.request.start', 'undici:request:create']) {
+      diagnosticsChannel.channel(name).publish({ request: spy });
+      INVOKE_AUTH_CONTEXT.run({ synthetic: false }, () => diagnosticsChannel.channel(name).publish({ request: spy }));
+    }
+    assert.equal(touched, 0, 'outside a synthetic call, the request object is never read');
+    INVOKE_AUTH_CONTEXT.run(SYN, () => diagnosticsChannel.channel('undici:request:create').publish({ request: spy }));
+    assert.ok(touched > 0, 'inside one, it is');
+  } finally {
+    handle.uninstall();
+  }
+});
+
+test('a request object that throws never escapes the subscriber (it would be an uncaughtException)', async () => {
+  const hostile = new Proxy({}, { get: () => { throw new Error('hostile request'); } });
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err);
+  process.on('uncaughtException', onUncaught);
+  const handle = installSyntheticHopLog({ log: { info: () => {} } });
+  try {
+    for (const name of ['http.client.request.start', 'undici:request:create']) {
+      INVOKE_AUTH_CONTEXT.run(SYN, () => diagnosticsChannel.channel(name).publish({ request: hostile }));
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(uncaught, []);
+  } finally {
+    handle.uninstall();
+    process.off('uncaughtException', onUncaught);
+  }
 });

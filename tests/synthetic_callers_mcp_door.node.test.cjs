@@ -579,3 +579,24 @@ test('a loopback invoke carrying a marker that does not verify is logged as reje
   for (const r of seen) assert.equal(r.headers['x-pivota-synthetic-assertion'], undefined);
   assert.deepEqual(lines.filter((l) => l.msg === 'synthetic_hop'), []);
 });
+
+test('outside enforce, a loopback invoke carrying a marker is logged not_enforce, and runs as an ordinary call', async () => {
+  for (const mode of ['off', 'observe']) {
+    setSynthetic({ mode });
+    const seen = captureBackend();
+    lines.length = 0;
+    await supertest(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-API-Key', GATEWAY_KEY)
+      .set(LOOPBACK_SYNTHETIC_HEADER, signLoopbackSynthetic({ caller: `${ISS}|${EVAL_CID}`, requestId: 'door-id-x' }))
+      .send({ operation: 'offers.resolve', payload: { product: { merchant_id: 'm_1', product_id: 'p_1' } } });
+    nock.cleanAll();
+    const done = lines.filter((l) => l.msg === 'invoke request complete');
+    assert.ok(done.length > 0, mode);
+    for (const l of done) {
+      assert.equal(l.loopback_marker, 'not_enforce', mode);
+      assert.equal(l.synthetic, undefined, mode);
+    }
+    for (const r of seen) assert.equal(r.headers['x-pivota-synthetic-assertion'], undefined, mode);
+  }
+});
