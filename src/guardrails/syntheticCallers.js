@@ -50,6 +50,12 @@ const ENTRY_KEYS = new Set(['iss', 'client_id']);
 
 // A shared HMAC secret shorter than this is refused at boot.
 const MIN_SECRET_LENGTH = 32;
+// The backend reads `<iss>|<client_id>` with each part at most 512 characters (the agent_oauth_clients columns)
+// and splits it on the one `|`; a value it would refuse, split wrongly or measure differently would serve the call
+// as real. So each part must be printable ASCII (no space, no `|`), where characters and bytes agree, and at
+// most 512 of them; anything else is invalid here (the boot refuses).
+const MAX_ENTRY_VALUE_LENGTH = 512;
+const ENTRY_VALUE = /^[\x21-\x7b\x7d\x7e]+$/; // printable ASCII without space and without `|` (0x7c)
 
 function text(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -87,6 +93,8 @@ function parseSyntheticCallers(env = process.env, { ownIssuers = [] } = {}) {
     else if (!clientId) reason = 'missing_client_id';
     else if (!iss) reason = 'missing_iss';
     else if (!own.has(iss)) reason = 'issuer_not_own';
+    else if (!ENTRY_VALUE.test(iss) || !ENTRY_VALUE.test(clientId)) reason = 'value_not_plain_ascii';
+    else if (iss.length > MAX_ENTRY_VALUE_LENGTH || clientId.length > MAX_ENTRY_VALUE_LENGTH) reason = 'value_too_long';
     // Kept even when it can match nothing (no client_id): the boot check counts it.
     entries.push({ iss, client_id: clientId, valid: reason === null, reason });
   }
@@ -169,6 +177,20 @@ function classifySyntheticCaller(claims, { env = process.env, ownIssuers = [] } 
     }
     return null;
   } catch (_) {
+    // Fails CLOSED for a client the configuration names: an unexpected error must not turn our eval client into
+    // an ordinary caller with the full tool surface. Any other caller is unaffected.
+    try {
+      const raw = String(env?.SYNTHETIC_CALLERS_JSON || '');
+      const ids = [claims?.client_id, claims?.azp].map(text).filter(Boolean);
+      // A `"client_id": "<id>"` pair in the raw text: never a key name, and never an issuer that happens to
+      // equal the id.
+      const named = (id) => new RegExp(`"client_id"\\s*:\\s*${JSON.stringify(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(raw);
+      if (raw && ids.some(named)) {
+        return { listed: true, valid: false, reason: 'classify_error' };
+      }
+    } catch (_) {
+      // Nothing more to decide.
+    }
     return null;
   }
 }

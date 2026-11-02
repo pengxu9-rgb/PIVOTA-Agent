@@ -19,6 +19,7 @@ const {
   recordModelFailure,
   recordModelSuccess,
 } = require('./llmModelBreaker');
+const { acquireSyntheticLlmSlot } = require('../guardrails/syntheticContext');
 
 const BREAKER_FEATURE = 'semantic_rewrite';
 const { extractJsonObject, parseJsonOnlyObject } = require('../auroraBff/jsonExtract');
@@ -968,6 +969,22 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
     fallback.meta = applyIntentExecutionMeta(fallback.meta, plan, null);
     return fallback;
   }
+  // G6: a synthetic call (src/guardrails/syntheticContext.js) runs this pass only within its own cap, one in
+  // flight per instance and an hourly budget; past it, the deterministic intent, as on any LLM failure.
+  const syntheticSlot = acquireSyntheticLlmSlot();
+  if (syntheticSlot === false) {
+    const fallback = buildDeterministicIntentWithMeta(latest_user_query, recent_queries, recent_messages, 'llm_synthetic_cap');
+    fallback.meta = applyIntentExecutionMeta(fallback.meta, plan, null);
+    return fallback;
+  }
+  try {
+    return await runIntentLlmPlan(plan, latest_user_query, recent_queries, recent_messages, options);
+  } finally {
+    if (syntheticSlot) syntheticSlot();
+  }
+}
+
+async function runIntentLlmPlan(plan, latest_user_query, recent_queries, recent_messages, options) {
   try {
     const primary = plan.primaryProvider;
     const fallback = plan.fallbackProvider;

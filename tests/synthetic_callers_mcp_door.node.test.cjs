@@ -424,3 +424,54 @@ for (const mode of ['enforce', 'observe']) {
     }
   });
 }
+
+test('enforce with a loopback self-invoke base on another port than PORT refuses the call: that is another process', async () => {
+  setSynthetic();
+  const saved = { base: process.env.SELF_INVOKE_BASE, port: process.env.PORT };
+  process.env.PORT = '8080';
+  process.env.SELF_INVOKE_BASE = 'http://127.0.0.1:9090';
+  try {
+    const seen = captureBackend();
+    lines.length = 0;
+    const res = await call(supertest(app), await tokenFor({ client_id: EVAL_CID }), GET_OFFERS);
+    nock.cleanAll();
+    assert.equal(toolErrorCode(res), 'OPERATION_NOT_ALLOWED');
+    assert.equal(seen.length, 0);
+    assert.ok(lines.some((l) => l.msg === 'synthetic caller request refused' && l.reason === 'carrier_not_ready'));
+  } finally {
+    for (const [k, v] of [['SELF_INVOKE_BASE', saved.base], ['PORT', saved.port]]) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
+test('enforce, real loopback: a synthetic search is never answered from, or stored in, the search result cache', async () => {
+  setSynthetic();
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const savedBase = process.env.SELF_INVOKE_BASE;
+  process.env.SELF_INVOKE_BASE = `http://127.0.0.1:${server.address().port}`;
+  nock.enableNetConnect('127.0.0.1');
+  const searchHops = (seen) => seen.filter((r) => String(r.path).startsWith('/agent/v2/products/search')).length;
+  const SEARCH = rpc('tools/call', { name: 'search_catalog', arguments: { query: `bamboo toothbrush ${Date.now()}` } });
+  try {
+    const token = await tokenFor({ client_id: EVAL_CID });
+    const seen = captureBackend();
+    await call(supertest(server), token, SEARCH);
+    const first = searchHops(seen);
+    assert.ok(first > 0, 'the first synthetic search reached the backend');
+    await call(supertest(server), token, SEARCH);
+    assert.equal(searchHops(seen), 2 * first, 'the second identical synthetic search was computed again, not served from cache');
+    // Nothing was stored for a real caller either: the same query from an unlisted client computes too.
+    await call(supertest(server), await tokenFor({ client_id: 'mcpc_partner_1' }), SEARCH);
+    assert.equal(searchHops(seen), 3 * first);
+  } finally {
+    nock.cleanAll();
+    nock.enableNetConnect();
+    if (savedBase === undefined) delete process.env.SELF_INVOKE_BASE;
+    else process.env.SELF_INVOKE_BASE = savedBase;
+    if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+    await new Promise((resolve) => server.close(() => resolve()));
+  }
+});

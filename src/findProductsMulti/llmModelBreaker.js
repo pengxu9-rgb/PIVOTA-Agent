@@ -24,8 +24,13 @@
 //
 // KEYED PER FEATURE. Rerank and semantic rewrite send different requests; one feature's breaker must not switch
 // off the other.
+//
+// A SYNTHETIC CALL (our own eval traffic, src/guardrails/syntheticContext.js) reads the breaker and respects it
+// when open, but never moves it: it is never granted the half-open probe, and its successes and failures are not
+// reported. Eval must not open, hold open or close a breaker real searches depend on.
 
 const logger = require('../logger');
+const { isSyntheticCall } = require('../guardrails/syntheticContext');
 
 const DEFAULT_COOLDOWN_MS = 15 * 60 * 1000;
 const MIN_COOLDOWN_MS = 10 * 60 * 1000;
@@ -111,6 +116,8 @@ function isModelBreakerOpen(feature, provider, model) {
 function acquireModelCall(feature, provider, model) {
   const state = stateOf(feature, provider, model);
   if (!state) return true;
+  // Open, or half-open: a synthetic call is never the probe.
+  if (isSyntheticCall()) return false;
   if (isModelBreakerOpen(feature, provider, model)) return false;
   state.probeStartedAt = clock();
   return true;
@@ -118,6 +125,7 @@ function acquireModelCall(feature, provider, model) {
 
 /** A call through this pair answered: close the breaker. */
 function recordModelSuccess(feature, provider, model) {
+  if (isSyntheticCall()) return;
   breakers.delete(keyOf(feature, provider, model));
 }
 
@@ -130,6 +138,7 @@ function recordModelSuccess(feature, provider, model) {
 function recordModelFailure({ feature, provider, model, err, envHint } = {}) {
   const key = keyOf(feature, provider, model);
   const state = breakers.get(key) || null;
+  if (isSyntheticCall()) return Boolean(state);
   const now = clock();
   if (!isModelUnavailableError(err)) {
     if (state && state.probeStartedAt != null) {

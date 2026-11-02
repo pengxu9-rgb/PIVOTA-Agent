@@ -43,6 +43,16 @@ function mac(input, secret) {
   return crypto.createHmac('sha256', secret).update(input).digest();
 }
 
+// The synthetic marker below is signed under its OWN key and version, derived from the same process secret: a
+// caller assertion can never verify as a synthetic marker, nor the reverse, whatever their payloads hold.
+const SYNTHETIC_VERSION = 'sv1';
+// A caller is `<iss>|<client_id>`, each up to 512 characters, so a marker can be about 1.6 KiB; one over the
+// caller assertion's 1024 would fail to verify and turn the loopback hop into a real call.
+const SYNTHETIC_MAX_HEADER_LENGTH = 4096;
+function syntheticMarkerKey(secret) {
+  return mac('pivota-loopback-synthetic-marker', secret);
+}
+
 function signLoopbackCaller({ tier, key, agentId = null, callId = null }, { nowSec, secret = PROCESS_SECRET } = {}) {
   const ts = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
   const payload = { t: tier, k: key, ts, ...(agentId ? { a: agentId } : {}), ...(callId ? { c: callId } : {}) };
@@ -128,8 +138,8 @@ const LOOPBACK_SYNTHETIC_HEADER = 'X-Pivota-Loopback-Synthetic';
 
 function signLoopbackSynthetic({ caller, requestId }, { nowSec, secret = PROCESS_SECRET } = {}) {
   const ts = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
-  const signingInput = `${VERSION}.${b64url(JSON.stringify({ s: 1, c: caller, r: requestId, ts }))}`;
-  return `${signingInput}.${b64url(mac(signingInput, secret))}`;
+  const signingInput = `${SYNTHETIC_VERSION}.${b64url(JSON.stringify({ s: 1, c: caller, r: requestId, ts }))}`;
+  return `${signingInput}.${b64url(mac(signingInput, syntheticMarkerKey(secret)))}`;
 }
 
 function loopbackSyntheticHeaders(invokeContext, { nowSec } = {}) {
@@ -152,11 +162,11 @@ function loopbackSyntheticHeaders(invokeContext, { nowSec } = {}) {
 function verifyLoopbackSynthetic(req, { nowSec, secret = PROCESS_SECRET } = {}) {
   try {
     const raw = req?.headers?.[LOOPBACK_SYNTHETIC_HEADER.toLowerCase()];
-    if (typeof raw !== 'string' || !raw || raw.length > MAX_HEADER_LENGTH) return null;
+    if (typeof raw !== 'string' || !raw || raw.length > SYNTHETIC_MAX_HEADER_LENGTH) return null;
     if (!isLoopbackSelfCall(req)) return null;
     const parts = raw.split('.');
-    if (parts.length !== 3 || parts[0] !== VERSION) return null;
-    const expected = mac(`${parts[0]}.${parts[1]}`, secret);
+    if (parts.length !== 3 || parts[0] !== SYNTHETIC_VERSION) return null;
+    const expected = mac(`${parts[0]}.${parts[1]}`, syntheticMarkerKey(secret));
     const given = Buffer.from(parts[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64');
     if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
     const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
@@ -183,11 +193,21 @@ function enforcedLoopbackCaller(req, { env = process.env } = {}) {
 // Whether a loopback call can carry the assertion at all: only when the self-invoke base is this host's
 // own loopback interface. A SELF_INVOKE_BASE pointing anywhere else lands on another process (or arrives
 // with X-Forwarded-For), so the assertion would be silently ignored there. Logged once at boot.
+// `expectedPort` (optional; the synthetic door passes the PORT it listens on, when set): a loopback base on
+// another port is another process too, and is not active either.
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
-function loopbackAssertionStatus(selfInvokeBase) {
+function loopbackAssertionStatus(selfInvokeBase, { expectedPort } = {}) {
   try {
-    const host = new URL(String(selfInvokeBase)).hostname.toLowerCase();
-    return { active: LOOPBACK_HOSTS.has(host), self_invoke_host_is_loopback: LOOPBACK_HOSTS.has(host) };
+    const url = new URL(String(selfInvokeBase));
+    const loopback = LOOPBACK_HOSTS.has(url.hostname.toLowerCase());
+    const want = Number(String(expectedPort ?? '').trim());
+    const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
+    const portMatches = !(Number.isInteger(want) && want > 0) || port === want;
+    return {
+      active: loopback && portMatches,
+      self_invoke_host_is_loopback: loopback,
+      ...(Number.isInteger(want) && want > 0 ? { self_invoke_port_matches: portMatches } : {}),
+    };
   } catch (_) {
     return { active: false, self_invoke_host_is_loopback: false };
   }

@@ -226,3 +226,27 @@ test("one caller cannot mutate another caller's cached result", async () => {
   assert.equal(b.injected, undefined, "a later caller must not see a field another caller added");
   assert.notEqual(b.products[0].title, "ATTACKER CONTROLLED");
 });
+
+test("bypassReadCache: a bypassed call neither reads nor stores an entry, and a later call is a miss", async () => {
+  // The gateway passes it for a synthetic call (our own eval traffic): search measures the uncached path, and
+  // an answer built for eval never becomes the entry a real caller is served.
+  let bypass = false;
+  const ex = recordingExecutor((n) => ({ status: "success", products: [{ id: `p${n}` }] }));
+  const s = createCommerceToolSurface(ex, { bypassReadCache: () => bypass });
+
+  await s.callTool("search_catalog", ARGS, {}); // real: computed and stored
+  bypass = true;
+  const synthetic = await s.callTool("search_catalog", ARGS, {}); // bypassed: computed again, the entry unread
+  assert.equal(ex.calls.length, 2);
+  assert.equal(synthetic.products[0].id, "p2");
+
+  const other = { query: "retinol cream" };
+  await s.callTool("search_catalog", other, {}); // bypassed: computed, NOT stored
+  bypass = false;
+  const real = await s.callTool("search_catalog", other, {});
+  assert.equal(ex.calls.length, 4, "the bypassed answer was not stored, so the real call computes its own");
+  assert.equal(real.products[0].id, "p4");
+  const hit = await s.callTool("search_catalog", ARGS, {});
+  assert.equal(ex.calls.length, 4, "the real entry stored before the bypass is still served");
+  assert.equal(hit.products[0].id, "p1");
+});

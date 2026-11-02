@@ -264,12 +264,12 @@ function cloneCachedValue(value, onCloneFailure) {
 /**
  * Build the MCP commerce tool surface over an already-composed canonical executor.
  * @param {{ execute: (opId:string, params:object, ctx:object)=>Promise<any> }} executor
- * @param {{ log?: object, cache?: boolean }} [opts] pass cache:false when the CALLER already caches this
+ * @param {{ log?: object, cache?: boolean, bypassReadCache?: () => boolean }} [opts] pass cache:false when the CALLER already caches this
  *   surface's results (the public read tier does). Two stacked caches would put the public tier's own
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -548,7 +548,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    live_read), for the gateway's price_verification_served line: null unless PRICE_VERIFICATION_LOG.
     //    Computed from the value on every call, a cache hit included, so a replay is counted from the entry it
     //    replays whatever the flag was when that entry was stored.
-    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) {
+    //    `bypassReadCache` (optional, read per call): true answers this call uncached, neither reading nor
+    //    storing an entry nor starting a revalidation. The gateway passes it for a synthetic call (our own eval
+    //    traffic, src/guardrails/syntheticContext.js), so eval measures the uncached path and never fills an
+    //    entry a real caller is later served.
+    if (!cache || !CACHEABLE_TOOLS.includes(op.id) || (typeof bypassReadCache === "function" && bypassReadCache() === true)) {
       const fresh = await execute();
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
       noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));

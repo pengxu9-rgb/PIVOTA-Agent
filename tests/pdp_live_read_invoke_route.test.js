@@ -98,3 +98,11 @@ test('a malformed token is a 400 INVALID_LIVE_REFRESH_TOKEN', async () => {
   const missing = await invoke({ page: page() });
   expect(missing.status).toBe(400);
 });
+
+test('a synthetic call is given no live-refresh token: it would only lead to a live read', () => {
+  // src/guardrails/syntheticContext.js (decision A2: no live reads for our own eval traffic).
+  const p = page();
+  const run = (store) => app._debug.INVOKE_AUTH_CONTEXT.run(store, () => app._debug.withPdpLiveRefreshDescriptor(p, { optedIn: true, market: 'US', cardListingId: 'ext_lsm' }));
+  expect(run({ synthetic: true, synthetic_caller: 'iss|mcpc_eval', gw_request_id: 'gw-1' })).toBe(p);
+  expect(run({ synthetic: false }).live_refresh).toMatchObject({ v: 1, market: 'US' });
+});

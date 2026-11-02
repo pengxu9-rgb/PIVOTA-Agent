@@ -17,6 +17,7 @@ const {
   recordModelFailure,
   recordModelSuccess,
 } = require('./llmModelBreaker');
+const { acquireSyntheticLlmSlot } = require('../guardrails/syntheticContext');
 
 const DEFAULT_PROMPT_PATH = path.join(__dirname, '..', '..', 'prompts', 'product_rerank_prompt_v1.txt');
 // OpenAI model for the rerank pass: PIVOTA_RERANK_MODEL_OPENAI, else the legacy shared PIVOTA_RERANK_MODEL, else
@@ -371,6 +372,10 @@ async function callRerankChain({ prompt, providers, signal, deadlineAt }) {
 // than its budget. When the deadline fires the chain is CANCELLED: the in-flight provider call is aborted
 // through its signal and the loop dials no further provider.
 function callRerankLlm({ prompt, providers }) {
+  // G6: a synthetic call (src/guardrails/syntheticContext.js) reranks only within its own cap, one in flight
+  // per instance and an hourly budget; past it, the deterministic order, as on any rerank failure.
+  const syntheticSlot = acquireSyntheticLlmSlot();
+  if (syntheticSlot === false) return Promise.reject(new Error('rerank_llm_failed: synthetic_llm_cap'));
   const controller = new AbortController();
   const deadlineAt = Date.now() + RERANK_LLM_TIMEOUT_MS;
   let timer = null;
@@ -381,7 +386,10 @@ function callRerankLlm({ prompt, providers }) {
     }, RERANK_LLM_TIMEOUT_MS);
     if (timer && typeof timer.unref === 'function') timer.unref();
   });
-  return Promise.race([callRerankChain({ prompt, providers, signal: controller.signal, deadlineAt }), deadline])
+  const chain = callRerankChain({ prompt, providers, signal: controller.signal, deadlineAt });
+  // The slot is held until the chain itself settles (the deadline aborts it), not only until the race does.
+  if (syntheticSlot) chain.then(syntheticSlot, syntheticSlot);
+  return Promise.race([chain, deadline])
     .finally(() => clearTimeout(timer));
 }
 

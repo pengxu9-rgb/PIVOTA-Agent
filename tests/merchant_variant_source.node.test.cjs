@@ -226,8 +226,10 @@ test('the server wiring consumes this module — the delivery line is pinned', (
     'the commerce surface must receive the source');
   assert.match(server, /createMerchantVariantSource\(\{/, 'the builder must construct the real source');
   assert.match(server, /unwrap: unwrapToolPayload/, 'and unwrap with the client\'s own envelope reader, not a copy');
-  assert.match(server, /isEnabled: isMerchantVariantSourcingEnabled/,
+  assert.match(server, /isEnabled: merchantVariantSourcingLive,/,
     'the flag must be a THUNK so it stays a live kill switch, not frozen at construction');
+  assert.match(server, /function merchantVariantSourcingLive\(\) \{\s+return isMerchantVariantSourcingEnabled\(\) && syntheticLiveReadsAllowed\(\);/,
+    'read per call: the flag, and never for a synthetic call (src/guardrails/syntheticContext.js)');
   const surface = fs.readFileSync(require.resolve('../mcp-server/src/commerceToolSurface'), 'utf8');
   // BOTH doors: native create_checkout_session and the UCP checkout door. UCP needs it more — a UCP item.id
   // carries a product id only — and the first revision threaded only the native one.
