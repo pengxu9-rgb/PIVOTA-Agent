@@ -59,6 +59,7 @@ Exit codes:
 | 2 | Refused: config or safety check failed |
 | 3 | Aborted: kill switch, failed handshake, missing attestation, a redirect, the wall-clock limit, or the call budget |
 | 4 | Fatal error |
+| 130 | A second Ctrl-C or SIGTERM: exited at once |
 
 ## What it does
 
@@ -376,9 +377,12 @@ merchant id, and an ordinary merchant's scope goes straight to the backend. The 
 the gateway serves on its unscoped detail lane, over the loopback: the hop the synthetic marker has to survive.
 The rule is the gateway's own (`isSeedSupplyUnservableUpstream`, `src/services/externalSeedLane.js`). Run the tools in the order of
 [the rollout](synthetic_callers.md#order-of-rollout), and check each tool's log lines before the next.
-It prints `result`: `items` with their count, `empty` with its reason, or `refusal`. Exit 0 means items came back.
-1 means the call failed, or the answer was a refusal (`error_code`) or empty. 3 means the answer was not marked
-`enforce`.
+It prints `result`: `items` with their count, `empty` with its reason, or `refusal`, and for `get_offers` its
+`links` (`top_level_urls`, `r_links`, `r_syn`: how many `/r` links the offers carry and how many say `syn: 1`).
+Exit codes: 0 items came back; 1 the call failed or the answer was a refusal (`error_code`); 3 the answer was not
+marked `enforce`, or was a redirect (refused); 5 the answer was empty. A full run exits as in the table above (0, 1,
+2, 3, 4, 130); a run that halts on its last call exits 3 too. Read `result.kind` before any re-run: an empty answer means the id
+pair did not exercise the path, so take the next pair from the lookup instead of calling again with the same one.
 
 ```bash
 npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \
@@ -398,6 +402,8 @@ After that, the first response not marked `enforce` halts the run, and nothing m
 lower than the hard caps: at most 2 workers, 1 rps, 200 queries and 3000 s (one access token). There is no
 load mode, and no `recommend` journey (`recommend_products` is not a synthetic tool).
 
+- **`--per-class N`** takes the first N queries of each class, interleaved, before `--limit`. Without it,
+  `--limit` takes the query set's first queries, which are all one class.
 - **200 queries is not 200 calls.** The follow and consistency journeys multiply each query (`--follow-top`,
   `--consistency-repeats`). The real bound on what a run sends is 1 call per second times its wall time:
   at most 3000 tool calls in 3000 s. Read the dry run's `calls_upper_bound` before a run.
@@ -408,7 +414,7 @@ load mode, and no `recommend` journey (`recommend_products` is not a synthetic t
 ```bash
 npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \
   --base-url https://commerce.mcp.pivota.cc \
-  --journeys discovery,follow,consistency --rps 1 --concurrency 1 --limit 20 --max-wall-seconds 1800
+  --journeys discovery,follow,consistency --rps 1 --concurrency 1 --per-class 4 --limit 40 --max-wall-seconds 1800
 ```
 
 **Sign out** when the eval work is done. This deletes the stored token; the access token in it lapses within

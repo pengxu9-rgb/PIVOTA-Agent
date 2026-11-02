@@ -180,7 +180,10 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
   let run;
   try {
     log(`target ${config.endpoint} tier=${config.tier} kind=${config.targetKind}; ${querySet.queries.length} queries in set`);
-    run = await runJourneys({ config, client: makeClient(null), querySet, judgeFn, killSwitch, log, callBudget: deps.callBudget });
+    const client = makeClient(null);
+    run = await runJourneys({ config, client, querySet, judgeFn, killSwitch, log, callBudget: deps.callBudget });
+    // A halted client always aborts the run, whichever call halted it.
+    if (client.halted && !run.aborted) run.aborted = client.halted;
     run.query_set_version = querySet.version;
     if (config.load.enabled && !run.aborted) {
       log('load mode: starting');
