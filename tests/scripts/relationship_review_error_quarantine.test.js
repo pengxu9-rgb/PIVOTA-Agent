@@ -1,6 +1,6 @@
 const { LlmError } = require('../../src/llm/provider');
 const review = require('../../scripts/review-relationship-candidate-labels');
-const { reviewMetrics, reviewErrorGateExceeded, reviewGateFailureLine, reviewQuarantineShare } = require('../../src/services/relationshipGraphServingProgress');
+const { reviewMetrics, reviewErrorGateExceeded, reviewGateFailureLine } = require('../../src/services/relationshipGraphServingProgress');
 
 const { runReview, buildReviewErrorMemo, isQuarantinedForErrors, reviewErrorQuarantineDays, REVIEW_VALIDATOR_VERSION } = review;
 
@@ -95,9 +95,10 @@ describe('a row whose review keeps erroring is quarantined, then retried', () =>
 
     // 7-day window from the last error: on day 8 after it the row is reviewed again.
     const n4 = await night(db, prov, T0 + DAY + 7 * DAY + 60000);
-    // Its next error re-quarantines it, and is counted as such.
-    expect(n4.summary).toMatchObject({ reviewed_count: 1, review_error_count: 1, error_quarantine_skipped_count: 0, error_quarantine_entered_count: 1 });
-    expect(n4.decisions.find((d) => d.id === 'prel_0')).toMatchObject({ error_quarantined: true });
+    // Its next error re-quarantines it, and is counted as such: as a retry, not a fresh error.
+    expect(n4.summary).toMatchObject({ reviewed_count: 1, review_error_count: 0, error_quarantine_skipped_count: 0, error_quarantine_entered_count: 1,
+      error_quarantine_retried_count: 1, error_quarantine_retry_error_count: 1 });
+    expect(n4.decisions.find((d) => d.id === 'prel_0')).toMatchObject({ error_quarantined: true, error_quarantine_retry: true });
     expect(db.byId.get('prel_0').provenance.ai_review_error.consecutive).toBe(3);
   });
 
@@ -221,78 +222,98 @@ test('with negative memory off, the selection still pages past quarantined rows 
   expect(decisions.map((d) => d.id)).toEqual(['prel_3']);
 });
 
-describe('a model that fails every row cannot go quiet behind the quarantine', () => {
-  // Controller simulation (2026-11-02): with the quarantine alone, a fully broken model quarantined the
-  // whole queue by night 2 and passed from night 3 on 0 reviews.
-  test('a broken model on a static queue trips the gate every night, including on 0 reviews', async () => {
+// Multi-night runs on the fake: `bad` rows always error, `perNight` new good rows arrive each night
+// (and are rejected, so memoed and not seen again). Returns the gate result and line per night.
+async function nights(db, { count, perNight = 0, bad = () => false, firstNew = 1000 }) {
+  let next = firstNew;
+  const out = [];
+  const prov = provider((prompt) => {
+    const m = prompt.match(/product:a(\d+)"/); const i = m ? Number(m[1]) : -1;
+    if (bad(i)) throw new LlmError('LLM_PARSE_FAILED', 'x');
+    return reject;
+  });
+  for (let day = 0; day < count; day += 1) {
+    for (let k = 0; k < perNight; k += 1) { db.byId.set(`prel_${next}`, label(next)); next += 1; }
+    // eslint-disable-next-line no-await-in-loop
+    const { summary } = await night(db, prov, T0 + day * DAY, { limit: 250 });
+    const metrics = reviewMetrics(summary);
+    out.push({ night: day + 1, trips: reviewErrorGateExceeded(metrics), line: reviewGateFailureLine(metrics), summary });
+  }
+  return out;
+}
+
+describe('the gate with the quarantine in place', () => {
+  test('a broken model on a static queue trips every night for 12 nights, including 0-review and retry nights', async () => {
     const db = fakeDb(Array.from({ length: 30 }, (_, i) => label(i)));
-    const broken = provider(() => { throw new LlmError('LLM_PARSE_FAILED', 'x'); });
-    const lines = [];
-    for (let day = 0; day < 4; day += 1) {
-      // eslint-disable-next-line no-await-in-loop
-      const { summary } = await night(db, broken, T0 + day * DAY, { limit: 250 });
-      const metrics = reviewMetrics(summary);
-      expect(reviewErrorGateExceeded(metrics)).toBe(true);
-      lines.push(reviewGateFailureLine(metrics));
-    }
-    expect(lines[0]).toBe('review error rate 1 exceeds 0.25');
-    expect(lines[1]).toBe('review error rate 1 exceeds 0.25');
-    expect(lines[2]).toBe('error-quarantined share 1 exceeds 0.5 (30 skipped, 0 reviewed)');
-    expect(lines[3]).toBe(lines[2]);
+    const runs = await nights(db, { count: 12, bad: () => true });
+    expect(runs.map((r) => r.trips)).toEqual(Array(12).fill(true));
+    expect(runs[0].line).toBe('review error rate 1 exceeds 0.25');
+    expect(runs[2].line).toBe('nothing fresh to measure: 0 fresh reviews, 30 held back by the error quarantine (30 skipped, 0 retried)');
+    // Night 9: the window from night 2's error has ended; the rows are retried, error, and re-quarantine.
+    expect(runs[8].summary).toMatchObject({ reviewed_count: 30, error_quarantine_retried_count: 30, error_quarantine_retry_error_count: 30,
+      review_error_count: 0, error_quarantine_entered_count: 30 });
+    expect(runs[8].line).toBe('nothing fresh to measure: 0 fresh reviews, 30 held back by the error quarantine (0 skipped, 30 retried)');
   });
 
-  test('a short night (fewer than 20 reviews) behind a big quarantine still trips', () => {
-    const metrics = reviewMetrics({ reviewed_count: 10, review_error_count: 10, error_quarantine_skipped_count: 50 });
-    expect(reviewQuarantineShare(metrics)).toBeCloseTo(50 / 60);
+  test('a healthy model beside a static bad residue passes on nights 3-12, including the night their windows end together', async () => {
+    const db = fakeDb(Array.from({ length: 40 }, (_, i) => label(i)));
+    const runs = await nights(db, { count: 12, perNight: 30, bad: (i) => i < 40 });
+    // Nights 1-2: the residue's first two errors are fresh errors (40 of 70).
+    expect(runs.slice(0, 2).map((r) => r.trips)).toEqual([true, true]);
+    expect(runs.slice(2).map((r) => r.trips)).toEqual(Array(10).fill(false));
+    expect(runs[2].line).toBe('error quarantine held back 40 (40 skipped, 0 retried)');
+    expect(runs[8].summary).toMatchObject({ error_quarantine_retried_count: 40, error_quarantine_retry_error_count: 40, review_error_count: 0 });
+    expect(runs[8].line).toBe('error quarantine held back 40 (0 skipped, 40 retried)');
+    expect(reviewMetrics(runs[8].summary)).toMatchObject({ review_error_denominator: 30, review_error_rate: 0 });
+  });
+
+  test('half-broken model with fresh rows each night: the rate catches it every night', async () => {
+    const db = fakeDb([]);
+    const runs = await nights(db, { count: 10, perNight: 40, bad: (i) => i % 2 === 0 });
+    expect(runs.map((r) => r.trips)).toEqual(Array(10).fill(true));
+  });
+
+  test('a short night (fewer than 20 fresh reviews) behind a big quarantine trips', () => {
+    const metrics = reviewMetrics({ reviewed_count: 10, review_error_count: 10, review_error_denominator: 10, error_quarantine_skipped_count: 50 });
     expect(reviewErrorGateExceeded(metrics)).toBe(true);
-    expect(reviewGateFailureLine(metrics)).toBe('error-quarantined share 0.8333 exceeds 0.5 (50 skipped, 10 reviewed)');
+    expect(reviewGateFailureLine(metrics)).toBe('nothing fresh to measure: 10 fresh reviews, 50 held back by the error quarantine (50 skipped, 0 retried)');
   });
 
-  test('a stable residue beside a normal night does not trip; the line still names it', () => {
-    const metrics = reviewMetrics({ reviewed_count: 250, review_error_count: 10, error_quarantine_skipped_count: 107 });
-    expect(reviewErrorGateExceeded(metrics)).toBe(false);
-    expect(reviewGateFailureLine(metrics)).toBe('error-quarantined rows skipped 107');
-    const both = reviewMetrics({ reviewed_count: 30, review_error_count: 20, error_quarantine_skipped_count: 107 });
-    expect(reviewGateFailureLine(both)).toBe('review error rate 0.6666666666666666 exceeds 0.25; error-quarantined share 0.781 exceeds 0.5 (107 skipped, 30 reviewed)');
+  test('thresholds: 20 held and fewer than 20 fresh', () => {
+    const at = (held, fresh, errors = 0) => reviewErrorGateExceeded(reviewMetrics({ reviewed_count: fresh, review_error_count: errors,
+      review_error_denominator: fresh, error_quarantine_skipped_count: held }));
+    expect(at(19, 0)).toBe(false);
+    expect(at(20, 19)).toBe(true);
+    expect(at(20, 20)).toBe(false);
+    expect(at(500, 20)).toBe(false);
+    expect(at(0, 20, 6)).toBe(true); // the rate, unchanged
+    const both = reviewMetrics({ reviewed_count: 30, review_error_count: 20, review_error_denominator: 30, error_quarantine_skipped_count: 107 });
+    expect(reviewGateFailureLine(both)).toBe('review error rate 0.6666666666666666 exceeds 0.25; error quarantine held back 107 (107 skipped, 0 retried)');
   });
 
-  test('below the minimum of skipped rows the share alone does not trip; the threshold is configurable', () => {
-    expect(reviewErrorGateExceeded(reviewMetrics({ reviewed_count: 0, error_quarantine_skipped_count: 19 }))).toBe(false);
-    expect(reviewErrorGateExceeded(reviewMetrics({ reviewed_count: 0, error_quarantine_skipped_count: 20 }))).toBe(true);
-    const half = reviewMetrics({ reviewed_count: 40, error_quarantine_skipped_count: 40 });
-    expect(reviewErrorGateExceeded(half)).toBe(false);
-    expect(reviewErrorGateExceeded(half, { maxReviewQuarantineShare: 0.4 })).toBe(true);
+  test('the routine summary uses the review\'s fresh denominator; older artifacts are recomputed as before', () => {
+    expect(reviewMetrics({ reviewed_count: 100, review_error_count: 5, review_error_denominator: 60, error_quarantine_retried_count: 40 }))
+      .toMatchObject({ review_error_denominator: 60, review_error_rate: 5 / 60, error_quarantine_retried_count: 40 });
+    expect(reviewMetrics({ reviewed_count: 30, review_error_count: 6, guard_blocked_count: 10 })).toMatchObject({ review_error_denominator: 20, review_error_rate: 0.3 });
   });
 
-  test('the routine job fails the night on the quarantine share and says so', async () => {
+  test('the routine job fails the night when nothing fresh was measured and says so', async () => {
     const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
     const { runRoutineJob, parseArgs } = require('../../scripts/run-relationship-graph-routine-job');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-quarantine-gate-'));
     try {
       const options = parseArgs(['--cutoff', cutoff, '--skip-build', '--skip-validation', '--skip-serving-audit', '--out-dir', dir]);
-      expect(options.maxReviewQuarantineShare).toBe(0.5);
-      expect(parseArgs(['--cutoff', cutoff, '--max-review-quarantine-share', '0.3', '--out-dir', dir]).maxReviewQuarantineShare).toBe(0.3);
       const runner = async (_command, args) => {
-        fs.writeFileSync(args[args.indexOf('--out') + 1], JSON.stringify({ summary: { reviewed_count: 0, review_error_count: 0, approved_count: 0,
-          error_quarantine_skipped_count: 202, review_error_by_code: {} }, decisions: [] }));
+        fs.writeFileSync(args[args.indexOf('--out') + 1], JSON.stringify({ summary: { reviewed_count: 0, review_error_count: 0, review_error_denominator: 0,
+          approved_count: 0, error_quarantine_skipped_count: 202, review_error_by_code: {} }, decisions: [] }));
         return { exitCode: 0, stdout: '', stderr: '' };
       };
       const summary = await runRoutineJob(options, { runner, progressReader: async () => ({ servedEdges: 0, anchors: new Set() }) })
         .then(() => null, (e) => e.summary);
       expect(summary).toMatchObject({ failed_step: 'ai_review', error_quarantine_skipped_count: 202 });
-      expect(summary.steps.find((st) => st.id === 'ai_review').stderr_tail).toBe('error-quarantined share 1 exceeds 0.5 (202 skipped, 0 reviewed)');
+      expect(summary.steps.find((st) => st.id === 'ai_review').stderr_tail)
+        .toBe('nothing fresh to measure: 0 fresh reviews, 202 held back by the error quarantine (202 skipped, 0 retried)');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-  });
-
-  test('the option reaches the routine from the sync routine and the cron env', () => {
-    const { buildCronArgs } = require('../../scripts/run-relationship-graph-sync-routine-cron');
-    const sync = require('../../scripts/run-relationship-graph-sync-routine');
-    const now = new Date('2026-11-03T10:37:00Z');
-    expect(buildCronArgs({ RELGRAPH_SYNC_MAX_REVIEW_QUARANTINE_SHARE: '0.4' }, { now }).args.join(' ')).toContain('--max-review-quarantine-share 0.4');
-    const opts = sync.parseArgs(['--cutoff', cutoff, '--external-product-ids', 'seed_1', '--max-review-quarantine-share', '0.4', '--out-dir', '/tmp/rq'], { now });
-    expect(opts.maxReviewQuarantineShare).toBe(0.4);
-    const routineStep = sync.buildSyncRoutineSteps(opts).steps.find((st) => st.id === 'relationship_graph_routine');
-    expect(routineStep.args.join(' ')).toContain('--max-review-quarantine-share 0.4');
   });
 });
 

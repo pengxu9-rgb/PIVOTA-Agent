@@ -1031,15 +1031,22 @@ function buildReviewErrorMemo(row, decision, { fingerprint, model = null, review
   };
 }
 
-// True while a row's error run has reached the threshold for this exact evidence and model and its
-// last error is inside the quarantine window. After the window the row is reviewed again.
-function isQuarantinedForErrors(row, fingerprint, { days = DEFAULT_ERROR_QUARANTINE_DAYS, nowMs = Date.now(), model = null } = {}) {
-  if (!(days > 0) || !fingerprint) return false;
+// True when the row's error run has reached the threshold for this exact evidence and model (window
+// aside): the row is a known-bad one, quarantined now or retried after its window.
+function hasQuarantinedErrorRun(row, fingerprint, { model = null } = {}) {
+  if (!fingerprint) return false;
   const memo = asObject(asObject(row && row.provenance).ai_review_error);
   if (!(Number(memo.consecutive) >= CONSECUTIVE_ERRORS_TO_QUARANTINE)) return false;
   if (memo.pair_fingerprint !== fingerprint) return false;
   if ((memo.model || null) !== (normalizeString(model, 120) || null)) return false;
-  if (memo.validator_version !== REVIEW_VALIDATOR_VERSION || memo.rubric !== RUBRIC_VERSION) return false;
+  return memo.validator_version === REVIEW_VALIDATOR_VERSION && memo.rubric === RUBRIC_VERSION;
+}
+
+// True while a row's error run has reached the threshold for this exact evidence and model and its
+// last error is inside the quarantine window. After the window the row is reviewed again.
+function isQuarantinedForErrors(row, fingerprint, { days = DEFAULT_ERROR_QUARANTINE_DAYS, nowMs = Date.now(), model = null } = {}) {
+  if (!(days > 0) || !hasQuarantinedErrorRun(row, fingerprint, { model })) return false;
+  const memo = asObject(asObject(row && row.provenance).ai_review_error);
   const lastMs = new Date(memo.last_at || '').getTime();
   if (!Number.isFinite(lastMs) || lastMs > nowMs + DAY_MS) return false;
   return nowMs - lastMs < days * DAY_MS;
@@ -1056,7 +1063,8 @@ async function rememberReviewError(row, memo, queryFn = query) {
       SET provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review_error}', $2::jsonb, true)
       WHERE id = $1
         AND label_state = 'generated'
-        AND (provenance -> 'ai_review_error') IS NOT DISTINCT FROM $3::jsonb
+        -- An absent key and a JSON-null key both read back as "no run" in JS.
+        AND COALESCE(provenance -> 'ai_review_error', 'null'::jsonb) = COALESCE($3::jsonb, 'null'::jsonb)
       RETURNING id
     `,
     [row.id, safeJsonbParam(memo), previous == null ? null : safeJsonbParam(previous)],
@@ -2117,6 +2125,8 @@ async function runReview({
       }
     }
     let errorQuarantined = false;
+    // A row reviewed again after its quarantine window: its outcome is not a fresh review's (below).
+    const quarantineRetry = Boolean(quarantine && prepared && hasQuarantinedErrorRun(row, prepared.fingerprint, quarantine));
     // A row-specific error (not a transport error) extends the row's error run; the run's second
     // consecutive error quarantines it (see CONSECUTIVE_ERRORS_TO_QUARANTINE). Same scope as the
     // negative memo: this model's own verdict, applied, single mode.
@@ -2167,6 +2177,7 @@ async function runReview({
       applied: Boolean(appliedRow),
       ...(negativeMemoryRecorded ? { negative_memory_recorded: true } : {}),
       ...(errorQuarantined ? { error_quarantined: true } : {}),
+      ...(quarantineRetry ? { error_quarantine_retry: true } : {}),
       ...(decision.review_error ? { review_error: decision.review_error } : {}),
       ...(decision.serving_guard_reasons ? { serving_guard_reasons: decision.serving_guard_reasons } : {}),
       ...(decision.approval_blocked ? { approval_blocked: decision.approval_blocked } : {}),
@@ -2233,8 +2244,14 @@ async function runReview({
   // An approval refused at apply counts as a review error too: one such row does not stop the run, but
   // a high share of them trips the routine's review error gate (a validator that disagrees with itself,
   // a provider that stops sending confidence) instead of exiting 0 with nothing approved.
-  const reviewErrorCount = completed.filter((row) => row.verdict === 'error' || row.review_error
-    || row.verdict === 'approval_blocked').length;
+  // Rows retried after their error-quarantine window are known-bad rows: an error re-quarantines them
+  // and a verdict clears them, but neither is a fresh review's outcome, so they stay out of the error
+  // rate (else a stable residue whose windows end together trips the gate once a week). They are
+  // counted on their own, and the gate fails when they and the skipped rows leave too few fresh reviews.
+  const isReviewError = (row) => row.verdict === 'error' || row.review_error || row.verdict === 'approval_blocked';
+  const retried = completed.filter((row) => row.error_quarantine_retry);
+  const fresh = completed.filter((row) => !row.error_quarantine_retry);
+  const reviewErrorCount = fresh.filter(isReviewError).length;
   const guardBlocked = completed.filter((row) => row.verdict === 'guard_blocked');
   const lowConfidenceCount = completed.filter((row) => row.verdict === 'low_confidence').length;
   const approvalBlocked = completed.filter((row) => row.verdict === 'approval_blocked');
@@ -2248,14 +2265,16 @@ async function runReview({
   // messages stay in the --out file, where the sync routine reads a few into one bounded log line
   // (2026-11-02: 156 of 426 reviews errored, the gate failed the night, and no record said why).
   // (Codes are allowlisted where review_error is built: buildReviewErrorDecision, and per provider in
-  // reviewWithConsensus; a verdict replay refuses error rows.)
+  // reviewWithConsensus; a verdict replay refuses error rows.) Every error is counted here, quarantine
+  // retries included, so review_error_by_code can sum to more than the fresh review_error_count.
   const reviewErrorByCode = {};
   for (const row of completed) {
     if (!row.review_error) continue;
     const code = row.review_error.code;
     reviewErrorByCode[code] = (reviewErrorByCode[code] || 0) + 1;
   }
-  const reviewErrorDenominator = Math.max(0, completed.length - guardBlocked.length - lowConfidenceCount);
+  const reviewErrorDenominator = Math.max(0, fresh.length - fresh.filter((row) => row.verdict === 'guard_blocked').length
+    - fresh.filter((row) => row.verdict === 'low_confidence').length);
   const guardBlockedByReason = {};
   for (const row of guardBlocked) {
     for (const reason of row.serving_guard_reasons || []) {
@@ -2338,6 +2357,8 @@ async function runReview({
     error_quarantine_days: quarantineDays,
     error_quarantine_skipped_count: (selection.errorQuarantinedIds || []).length,
     error_quarantine_entered_count: errorQuarantineEnteredCount,
+    error_quarantine_retried_count: retried.length,
+    error_quarantine_retry_error_count: retried.filter(isReviewError).length,
     error_memo_recorded_count: errorMemoRecordedCount,
     error_memo_write_errors: errorMemoWriteErrors,
     reviewer: consensus ? 'gpt-gemini-consensus' : REVIEWER_ID,
@@ -2433,6 +2454,7 @@ module.exports = {
   rememberReviewError,
   buildReviewErrorMemo,
   isQuarantinedForErrors,
+  hasQuarantinedErrorRun,
   reviewErrorQuarantineDays,
   reviewPairFingerprint,
   selectReviewCandidates,

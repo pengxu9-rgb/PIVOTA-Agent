@@ -199,7 +199,6 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushArg(args, 'review-concurrency', env.RELGRAPH_SYNC_REVIEW_CONCURRENCY);
   pushArg(args, 'review-mode', env.RELGRAPH_AI_REVIEW_MODE);
   pushArg(args, 'max-review-error-rate', env.RELGRAPH_SYNC_MAX_REVIEW_ERROR_RATE);
-  pushArg(args, 'max-review-quarantine-share', env.RELGRAPH_SYNC_MAX_REVIEW_QUARANTINE_SHARE);
   pushArg(args, 'min-reviews-for-error-gate', env.RELGRAPH_SYNC_MIN_REVIEWS_FOR_ERROR_GATE);
   pushArg(args, 'min-approval-confidence', env.RELGRAPH_SYNC_MIN_APPROVAL_CONFIDENCE);
   pushArg(args, 'review-min-score', env.RELGRAPH_SYNC_REVIEW_MIN_SCORE);

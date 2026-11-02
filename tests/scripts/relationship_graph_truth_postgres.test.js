@@ -306,6 +306,9 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
       .toEqual({ id: row.id });
     const stored = (await client.query('SELECT provenance FROM relationship_candidate_labels WHERE id = $1', [row.id])).rows[0].provenance;
     expect(stored.ai_review_error).toEqual({ consecutive: 2, last_code: 'LLM_PARSE_FAILED' });
+    // A JSON-null key reads back as "no run" (null) and must still be writable.
+    await client.query(`UPDATE relationship_candidate_labels SET provenance = provenance || '{"ai_review_error": null}'::jsonb WHERE id = $1`, [row.id]);
+    expect(await rememberReviewError({ id: row.id, provenance: { ai_review_error: null } }, { consecutive: 1, last_code: 'OTHER' }, queryFn)).toEqual({ id: row.id });
   });
   test('an error memo is written only on a generated row', async () => {
     const row = edge('quarantine_approved', 'candidate', 'competitive_alternative', 'ai_approved');

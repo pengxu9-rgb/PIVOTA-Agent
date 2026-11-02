@@ -32,7 +32,11 @@ function reviewMetrics(summary = {}) {
   const errors = Number(summary.review_error_count) || 0;
   const guardBlocked = Number(summary.guard_blocked_count) || 0;
   const lowConfidence = Number(summary.low_confidence_count) || 0;
-  const denominator = Math.max(0, reviewed - guardBlocked - lowConfidence);
+  // The review reports its own denominator (fresh reviews only: without guard-blocked, low-confidence
+  // and quarantine-retry rows); older artifacts did not, and are recomputed as before.
+  const reported = Number(summary.review_error_denominator);
+  const denominator = Number.isFinite(reported) && summary.review_error_denominator != null
+    ? Math.max(0, reported) : Math.max(0, reviewed - guardBlocked - lowConfidence);
   return {
     reviewed_count: reviewed,
     review_error_denominator: denominator,
@@ -52,7 +56,8 @@ function reviewMetrics(summary = {}) {
       // code only; sample messages can quote model output and stay in the review's own log summary.
       'review_error_by_code',
       // Rows quarantined for repeated review errors (2026-11-02): skipped, so not in the error rate.
-      'error_quarantine_skipped_count', 'error_quarantine_entered_count']
+      'error_quarantine_skipped_count', 'error_quarantine_entered_count', 'error_quarantine_retried_count',
+      'error_quarantine_retry_error_count']
       .filter((key) => summary[key] != null).map((key) => [key, summary[key]])),
   };
 }
@@ -112,43 +117,43 @@ function reviewErrorRelayLine(decisions = [], { runId = null } = {}) {
     review_error_count: rows.length, review_error_by_code: byCode, samples })}\n`;
 }
 
-// The share of the night's selected work that sat in error quarantine instead of being reviewed.
-function reviewQuarantineShare(metrics = {}) {
-  const skipped = Number(metrics.error_quarantine_skipped_count) || 0;
-  const reviewed = Number(metrics.reviewed_count) || 0;
-  return skipped + reviewed > 0 ? skipped / (skipped + reviewed) : 0;
+// Rows the error quarantine held back from the night's error rate: skipped inside their window, or
+// reviewed again after it (a known-bad row's retry re-quarantines it or clears it; it is not a fresh
+// error, or a stable residue would trip the rate every time its window ends together).
+function reviewQuarantineHeld(metrics = {}) {
+  return (Number(metrics.error_quarantine_skipped_count) || 0) + (Number(metrics.error_quarantine_retried_count) || 0);
 }
 
 // The review gate. Two ways to fail:
-// - the error rate of the reviews that ran is above maxReviewErrorRate (after minReviewsForErrorGate);
-// - the error quarantine holds at least minReviewsForErrorGate rows AND more than
-//   maxReviewQuarantineShare of the night's selected work. Without this a model that fails every row
-//   would quarantine the whole queue by night 2 and pass from night 3 on 0 reviews (2026-11-02
-//   review of the quarantine). A stable residue beside a normal night's reviews stays under it.
-function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25, maxReviewQuarantineShare = 0.5 } = {}) {
+// - the error rate of the fresh reviews is above maxReviewErrorRate (after minReviewsForErrorGate);
+// - NOTHING FRESH TO MEASURE: at least minReviewsForErrorGate rows were held back by the quarantine
+//   and fewer than minReviewsForErrorGate fresh reviews ran. A model that fails every row quarantines
+//   the queue by night 2; from night 3 the rate has nothing to measure and this trips instead (2026-11-02
+//   review of the quarantine). A stable residue beside enough fresh reviews passes, however large it is.
+function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25 } = {}) {
   const rateExceeded = metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
-  const skipped = Number(metrics.error_quarantine_skipped_count) || 0;
-  const quarantineExceeded = skipped >= minReviewsForErrorGate && reviewQuarantineShare(metrics) > maxReviewQuarantineShare;
-  return rateExceeded || quarantineExceeded;
+  const nothingFresh = reviewQuarantineHeld(metrics) >= minReviewsForErrorGate && metrics.review_error_denominator < minReviewsForErrorGate;
+  return rateExceeded || nothingFresh;
 }
 
-// The gate's failure line: what tripped it, and how many rows the error quarantine skipped.
-function reviewGateFailureLine(metrics = {}, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25, maxReviewQuarantineShare = 0.5 } = {}) {
+// The gate's failure line: what tripped it, and how many rows the error quarantine held back.
+function reviewGateFailureLine(metrics = {}, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25 } = {}) {
   const parts = [];
   if (metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate) {
     parts.push(`review error rate ${metrics.review_error_rate} exceeds ${maxReviewErrorRate}`);
   }
   const skipped = Number(metrics.error_quarantine_skipped_count) || 0;
-  const share = reviewQuarantineShare(metrics);
-  if (skipped >= minReviewsForErrorGate && share > maxReviewQuarantineShare) {
-    parts.push(`error-quarantined share ${Number(share.toFixed(4))} exceeds ${maxReviewQuarantineShare} (${skipped} skipped, ${Number(metrics.reviewed_count) || 0} reviewed)`);
-  } else if (skipped > 0) {
-    parts.push(`error-quarantined rows skipped ${skipped}`);
+  const retried = Number(metrics.error_quarantine_retried_count) || 0;
+  const held = skipped + retried;
+  if (held >= minReviewsForErrorGate && metrics.review_error_denominator < minReviewsForErrorGate) {
+    parts.push(`nothing fresh to measure: ${metrics.review_error_denominator} fresh reviews, ${held} held back by the error quarantine (${skipped} skipped, ${retried} retried)`);
+  } else if (held > 0) {
+    parts.push(`error quarantine held back ${held} (${skipped} skipped, ${retried} retried)`);
   }
   return parts.join('; ');
 }
 
 module.exports = { SERVING_PROGRESS_SQL: SERVING_SCAN_SQL, readServingSnapshot, servingProgress, readReviewMetrics, reviewMetrics, reviewErrorGateExceeded,
-  reviewQuarantineShare, reviewGateFailureLine,
+  reviewQuarantineHeld, reviewGateFailureLine,
   REVALIDATION_MISMATCH_MARKER, APPROVAL_BLOCKED_MARKER, approvalBlockedRelayLine,
   REVIEW_ERRORS_MARKER, reviewErrorCodeKey, reviewErrorRelayLine };
