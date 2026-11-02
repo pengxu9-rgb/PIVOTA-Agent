@@ -62,8 +62,9 @@ Rules:
 - The UCP dialect door refuses it outright.
 
 ## Modes
+Every `/mcp` response to a listed caller carries `X-Pivota-Synthetic: <mode>` (`off`, `observe` or `enforce`), or `invalid` when the door refuses it as listed but malformed (for example, the id only as `azp`). Nobody else ever sees the header. The harness halts on the first response of a run not marked `enforce`.
 - **off:** nobody is synthetic. Listed callers are still restricted (above).
-- **observe:** a listed caller is logged (`synthetic_classified`, and `synthetic_classified: true` on its outcome line), and its calls run as ordinary ones. **Run observe with no eval traffic.** It proves no real caller is ever classified; the expected count is 0.
+- **observe:** a listed caller is logged (`synthetic_classified`, and `synthetic_classified: true` on its outcome line), and its calls run as ordinary ones. **Run no tool calls in observe.** With no eval traffic it proves no real caller is ever classified: the expected count is 0. The harness's classification check (`initialize` and `tools/list` only, no tool call) is the one eval traffic observe takes.
 - **enforce:** the call is marked and carried:
   - `synthetic: true` on the outcome and price-verification lines;
   - the loopback marker (`X-Pivota-Loopback-Synthetic`) on every self-invoke;
@@ -93,8 +94,8 @@ Decision A2 for phase 1: **no live reads.** A synthetic call answers from what w
 ## Order of rollout
 1. The backend's gates are live (pivota-backend#2686, #2688) and its `SYNTHETIC_ASSERTION_SECRET` is mounted, pinned.
 2. The gateway runs this code with the same secret, mode `off`, and `synthetic_config_loaded` on the new revision.
-3. `observe` with no eval traffic: 0 `synthetic_classified` lines.
-4. `enforce`, then the harness, canaries first: `get_alternatives`, unscoped `get_product`, `search_catalog`, `get_offers`.
+3. `observe` with no eval traffic: 0 `synthetic_classified` lines. Then the harness's classification check, once (`--check-classification`, [agent readiness eval](agent_readiness_eval.md), target C): it must pass with `X-Pivota-Synthetic: observe`, and the only new `synthetic_classified` lines are its own.
+4. `enforce`, then the harness, canaries first, one `--canary` call each: `get_alternatives`, unscoped `get_product` (no `market`), `search_catalog`, `get_offers` (it mints `/r` links, so it goes last). Check each tool's lines before the next.
 
 ## One id per call
 The MCP door mints a request id for every commerce-door call and logs it as `gateway_request_id` on `mcp tools/call complete`, the same field name the invoke completion line uses. For a synthetic call:
@@ -111,9 +112,14 @@ gcloud logging metrics update <name> --project=<project> --config-from-file=infr
 ```
 
 ## Before the first harness call
-The harness refuses to run unless:
-- `tools/list` returns exactly the five read tools (anything else means the caller is not listed, or the config is not the one you deployed);
-- the configured host is the commerce host.
+The harness (`scripts/agent-readiness-eval/lib/prodSynthetic.cjs`) refuses to call a tool unless:
+- the configured host is the commerce host, over https;
+- the eval client's token is fresh enough for the whole run;
+- `gcloud run services describe` shows the gateway in `enforce`, and the gateway and the backend mounting the same pinned version of `SYNTHETIC_ASSERTION_SECRET`, each from its latest revision, Ready and serving all traffic;
+- `initialize` carries `X-Pivota-Synthetic: enforce`;
+- `tools/list` returns exactly the five read tools (anything else means the caller is not listed, or the config is not the one you deployed).
+
+During the run, the first response not marked `enforce` stops it, and nothing more is sent.
 
 ## Rollback
 1. Stop the harness.

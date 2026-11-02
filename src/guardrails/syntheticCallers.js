@@ -246,6 +246,8 @@ function filterToolsListForSynthetic(out) {
 // anyone else using one.
 
 const SYNTHETIC_ASSERTION_HEADER = 'X-Pivota-Synthetic-Assertion';
+// The state a LISTED caller is served in (off | observe | enforce | invalid), on every /mcp response to it.
+const SYNTHETIC_STATE_HEADER = 'X-Pivota-Synthetic';
 const SYNTHETIC_ASSERTION_VERSION = 'v1';
 
 function b64url(buf) {
@@ -309,6 +311,7 @@ module.exports = {
   assertSyntheticConfig,
   syntheticConfigStatus,
   SYNTHETIC_ASSERTION_HEADER,
+  SYNTHETIC_STATE_HEADER,
   SYNTHETIC_READ_TOOLS,
   SYNTHETIC_RPC_METHODS,
   classifySyntheticCaller,

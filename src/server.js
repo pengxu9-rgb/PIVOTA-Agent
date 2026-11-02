@@ -605,6 +605,7 @@ const {
 } = require('./guardrails/loopbackCallerAssertion');
 const {
   SYNTHETIC_ASSERTION_HEADER,
+  SYNTHETIC_STATE_HEADER,
   classifySyntheticCaller,
   filterToolsListForSynthetic,
   syntheticCarrierReady,
@@ -34599,6 +34600,12 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
       req.syntheticCaller = classifySyntheticCaller(mcpOAuthOutcome.claims, {
         ownIssuers: commerceMcpOAuth.authorizationServers(),
       });
+      // A LISTED caller is told which state it is served in (src/guardrails/syntheticCallers.js), so the eval harness
+      // can halt on the first response that is not marked `enforce` (a mode turned off mid-run would make its calls
+      // ordinary ones, with real writes). Nobody else is listed, so nobody else sees the header.
+      if (req.syntheticCaller && typeof res.setHeader === 'function') {
+        res.setHeader(SYNTHETIC_STATE_HEADER, req.syntheticCaller.valid === false ? 'invalid' : req.syntheticCaller.mode);
+      }
       return runMcp();
     }
     return requireExternalInvokeAuth(req, res, runMcp);

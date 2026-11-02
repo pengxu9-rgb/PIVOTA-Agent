@@ -5,13 +5,16 @@ HTTP to `/public/mcp` or `/mcp`, sends realistic beauty-shopping queries, follow
 and scores the answers against SLOs. Use it to check readiness ourselves instead of waiting for a partner to
 find the gaps.
 
-> **Never point it at production.** A production `search_catalog` / `get_product` / `get_offers` call can
-> mint attribution links and click rows, and can trigger live reads against merchant stores. That happens
-> whoever calls, so synthetic traffic would corrupt attribution and hit merchants.
+> **Production only as our eval client.** For an ordinary caller, a production `search_catalog` /
+> `get_product` / `get_offers` call can mint attribution links and click rows, and can trigger live reads
+> against merchant stores. Production skips all of that only for our own eval OAuth client, and only in
+> `enforce` ([synthetic callers](synthetic_callers.md)).
 >
-> The harness therefore only addresses targets on a compiled-in **allowlist**: loopback IP literals, plus an
-> exact-hostname eval-clone list that is **empty today**. Every response must also carry the deployment
-> attestation header `X-Pivota-Deployment: eval-clone`, or the run halts. See [Safety](#safety-caps).
+> The harness therefore only addresses targets on a compiled-in **allowlist**: loopback IP literals, an
+> exact-hostname eval-clone list that is **empty today**, and the production commerce door as the eval client
+> ([target C](#c-production-as-our-eval-client---target-kind-prod-synthetic)). Every response must also carry
+> the target's attestation header, or the run halts: `X-Pivota-Deployment: eval-clone` for loopback and the
+> clone, `X-Pivota-Synthetic: enforce` for production. See [Safety](#safety-caps).
 >
 > On 2026-10-20 a test reached production after its refusal was mutated away. Every eval test now installs
 > a loopback-only network guard first (`tests/agent_readiness_eval/_net_guard.cjs`).
@@ -233,8 +236,12 @@ Every metric is also broken down **per tool**, **per query class**, **per langua
     - URLs carrying credentials
   - The final endpoint is judged, not just the base URL, so an MCP path cannot move the host.
   - The client re-checks the endpoint at construction, so removing one guard does not open the network.
-  - `--target-kind` must match: `local` for loopback, `prod-clone` for a clone host.
-- **Deployment attestation:** every response must carry `X-Pivota-Deployment: eval-clone`.
+  - Allowed: `commerce.mcp.pivota.cc` (`PROD_SYNTHETIC_HOSTS`), https, no port, as the eval client only
+    ([target C](#c-production-as-our-eval-client---target-kind-prod-synthetic)).
+  - `--target-kind` must match: `local` for loopback, `prod-clone` for a clone host, `prod-synthetic` for
+    production.
+- **Deployment attestation:** every response must carry `X-Pivota-Deployment: eval-clone` (loopback and
+  clone) or `X-Pivota-Synthetic: enforce` (production).
   - The first response without it halts the client, and nothing more is sent. One request reaches the
     target at most.
   - This is what defeats a loopback port that is forwarded or tunnelled to production.
@@ -260,7 +267,8 @@ Every metric is also broken down **per tool**, **per query class**, **per langua
 
   Every numeric option is range-checked, and out-of-range or negative values are refused.
 - **Tool allowlist:** `McpClient.callTool` will only ever call `search_catalog`, `get_product`, `get_offers`,
-  `get_alternatives` and `recommend_products`. The list is compiled in and checked before any I/O.
+  `get_alternatives` and `recommend_products`; on production, only the first four. The list is compiled in and
+  checked before any I/O.
 - **Kill switch:** any of these stops the run.
   - Create the KILL file printed at start (or `--kill-file`).
   - Press Ctrl-C or send SIGTERM.
@@ -314,26 +322,90 @@ READINESS_EVAL_BASE_URL=https://<clone-host> READINESS_EVAL_API_KEY=… \
   npm run eval:agent-readiness -- --tier commerce --target-kind prod-clone
 ```
 
-### B. Production with a synthetic-traffic designation (not supported)
+### B. Production with a synthetic-traffic designation
 
-This option is not supported, and the harness has no target kind for it. It would need a server-side
-designation of a synthetic API key or agent, so that its calls:
+This is target C below: production marks our own eval OAuth client synthetic
+([synthetic callers](synthetic_callers.md)), rather than an API key or agent.
 
-1. Mint no counted click or attribution rows. Either issue none, or tag them and filter the tag everywhere
-   clicks or attribution are counted.
-2. Never trigger a live merchant read, so answers are served from the catalog only.
+### C. Production as our eval client (`--target-kind prod-synthetic`)
 
-The gateway work is roughly:
+The harness calls the production commerce door, `https://commerce.mcp.pivota.cc/mcp`, with an access token
+our authorization server issued to the eval client listed in the gateway's `SYNTHETIC_CALLERS_JSON`. In
+`enforce`, production serves that client read tools only, with no writes and no live merchant reads, and says
+so on every response with `X-Pivota-Synthetic: enforce`. Prices, offers and latency from such a run are not
+representative of live reads (decision A2).
 
-- Resolve the designation from the verified caller and record it on the invoke context.
-- Have the live-reader getters return nothing for a synthetic caller.
-- Bypass the shared search cache for that caller.
-- Carry the designation on the signed issuing-agent assertion, so the backend skips or tags the clicks it
-  issues.
+**Sign in once.** The authorization server grants `authorization_code` and `refresh_token` only, so a person
+signs the eval client in through a browser. The issuer, the endpoints, the resource and the loopback redirect
+(`http://127.0.0.1:8765/callback`) are compiled into `lib/oauth.cjs`. The client id and secret come from the
+environment only. The token is stored at `~/.pivota-eval/oauth-token.json` (0600, refused inside any git
+checkout; `--token-file` to move it), and nothing secret is printed.
 
-Until that ships and is verified, production is not on the allowlist. Even after it ships, adding a
-production host would need its own review, and production would also have to send the attestation header,
-which it must never do for normal traffic. So a dedicated synthetic deployment is the likelier route.
+```bash
+READINESS_EVAL_OAUTH_CLIENT_ID=<eval client id> \
+READINESS_EVAL_OAUTH_CLIENT_SECRET="$(gcloud secrets versions access <version> --secret=<eval client secret> --project=<project>)" \
+  node scripts/agent-readiness-eval/oauth-login.cjs
+```
+
+Later runs refresh the token themselves when less than 55 minutes of it is left, so a run never outlives its
+token. The refresh needs the same two variables.
+
+**Check the classification (observe or enforce).** This sends `initialize` and `tools/list` only, and never
+calls a tool. It passes when every response carries `X-Pivota-Synthetic: observe` or `enforce`, and
+`tools/list` offers exactly the five read tools. Run it in `observe` to prove the token is the listed client
+before `enforce`: it adds `synthetic_classified` lines, and nothing else.
+
+```bash
+npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \
+  --base-url https://commerce.mcp.pivota.cc --check-classification
+```
+
+**Canaries first (enforce only).** `--canary <tool>` makes ONE `tools/call` after the full preflight below,
+prints when it ran and what came back (never the payload), and stops. The arguments are flags, and each tool
+takes exactly these. `market` is never sent.
+
+| Tool | Flags |
+|---|---|
+| `get_alternatives` | `--canary-merchant-id`, `--canary-product-id` |
+| `get_product` | `--canary-merchant-id`, `--canary-product-id` |
+| `search_catalog` | `--canary-query` |
+| `get_offers` | `--canary-merchant-id`, `--canary-product-id` |
+
+Take the ids from a read-only database lookup, never from a production search. Run the tools in the order of
+[the rollout](synthetic_callers.md#order-of-rollout), and check each tool's log lines before the next.
+Exit 0 means the call answered. 1 means it failed or the tool answered an error (`error_code`). 3 means the
+answer was not marked `enforce`.
+
+```bash
+npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \
+  --base-url https://commerce.mcp.pivota.cc \
+  --canary get_alternatives --canary-merchant-id <merchant id> --canary-product-id <product id>
+```
+
+**Run (enforce only).** Before any tool call, the preflight (`lib/prodSynthetic.cjs`) refuses unless:
+
+1. the token is fresh;
+2. `gcloud run services describe`, under your own credentials, shows the gateway in `enforce`, and the gateway
+   and the backend mounting the **same pinned version** of `SYNTHETIC_ASSERTION_SECRET`, each from its latest
+   revision, Ready and serving all traffic;
+3. `initialize` carries `X-Pivota-Synthetic: enforce`, and `tools/list` offers exactly the five read tools.
+
+After that, the first response not marked `enforce` halts the run, and nothing more is sent. The run caps are
+lower than the hard caps: at most 2 workers, 1 rps, 200 queries and 3000 s (one access token). There is no
+load mode, and no `recommend` journey (`recommend_products` is not a synthetic tool).
+
+```bash
+npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \
+  --base-url https://commerce.mcp.pivota.cc \
+  --journeys discovery,follow,consistency --rps 1 --concurrency 1 --limit 20 --max-wall-seconds 1800
+```
+
+**Reconcile afterwards**, over the run's start and finish times (`results.json`):
+
+- the gateway's `mcp tools/call complete` lines with `synthetic: true` equal the tool calls the run made;
+- the backend's `synthetic_assertion_accepted` lines are at least that many (one call can make several hops);
+- the backend's `synthetic_assertion_rejected` count is 0;
+- no outcome line from the eval client lacks `synthetic: true`.
 
 ## Tests
 
@@ -349,3 +421,4 @@ node --test tests/agent_readiness_eval/*.node.test.cjs
 | `safety_config_queryset` | Target allowlist (including every bypass seen on 2026-10-20), hard caps, kill switch, secret redaction, schema-driven arguments, read-only tool policy, SLO evaluation, judge data boundary, query-set composition and builder sync. |
 | `stub_mcp_e2e` | The CLI over HTTP against a stub server built from the gateway's own MCP adapter and tool surfaces, over an invented catalog with planted defects. Proves each defect is caught, checkout tools are never called, no link is fetched, per-caller 429s are attributed, and dry-run makes no requests. |
 | `real_gateway_e2e` | The CLI against the real `src/server.js` on a local port. Only the loopback search hop is stubbed with nock, and all external network is disabled. |
+| `prod_synthetic_target` | Target C against a fake door, a fake token endpoint and a fake `gcloud`: the allowlist entry and its caps, the `X-Pivota-Synthetic` halt, the four-tool restriction, PKCE, the token exchange, refresh and file, the loopback callback, every preflight refusal, the canary's arguments and its single call, and the CLI's check and refusal paths. Nothing reaches production. |
