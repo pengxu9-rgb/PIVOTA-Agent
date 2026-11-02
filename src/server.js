@@ -596,7 +596,13 @@ const {
   invokeContextLimitCaller,
   logMcpCallerLimitsBootStatus,
 } = require('./guardrails/mcpCallerLimits');
-const { loopbackAssertionStatus, loopbackCallerHeaders, verifyLoopbackSynthetic } = require('./guardrails/loopbackCallerAssertion');
+const {
+  LOOPBACK_SYNTHETIC_HEADER,
+  loopbackAssertionStatus,
+  loopbackCallerHeaders,
+  loopbackSyntheticHeaders,
+  verifyLoopbackSynthetic,
+} = require('./guardrails/loopbackCallerAssertion');
 const {
   SYNTHETIC_ASSERTION_HEADER,
   classifySyntheticCaller,
@@ -31703,19 +31709,40 @@ function shouldPreferInternalInvokeUpstreamAuth(preferInternalFallback = false) 
   );
 }
 
-// The same request config with its synthetic assertion re-signed now (src/guardrails/syntheticCallers.js), for an
-// upstream RETRY. Unchanged when it carries none, or when this context cannot sign one.
+// A rerank that did not apply: a failure (logged), or a synthetic call over its own LLM cap
+// (src/guardrails/syntheticContext.js), which is a skip and is not logged as a failure.
+function llmRerankFailureOutcome(err) {
+  if (/synthetic_llm_cap/.test(String(err?.message || ''))) return { applied: false, skipped_reason: 'llm_synthetic_cap' };
+  return { applied: false, error: true };
+}
+
+// The same request config with its synthetic markers re-signed now, for an upstream RETRY: the backend
+// assertion (src/guardrails/syntheticCallers.js) and, on a loopback call, the loopback marker
+// (src/guardrails/loopbackCallerAssertion.js). Each is checked within 60 s of its signing, and busy retries can
+// outlast that; an expired one is read as a real call. Unchanged when it carries neither, or when this context
+// cannot sign one.
 function withFreshSyntheticAssertion(axiosConfig) {
   try {
     const headers = axiosConfig?.headers;
     if (!headers || typeof headers !== 'object') return axiosConfig;
-    const wanted = SYNTHETIC_ASSERTION_HEADER.toLowerCase();
-    const name = Object.keys(headers).find((k) => k.toLowerCase() === wanted);
-    if (!name) return axiosConfig;
-    const { [name]: _stale, ...rest } = headers;
-    const refreshed = withSyntheticAssertion(rest, getInvokeAuthContext());
-    if (!refreshed || !refreshed[SYNTHETIC_ASSERTION_HEADER]) return axiosConfig;
-    return { ...axiosConfig, headers: refreshed };
+    const invokeContext = getInvokeAuthContext();
+    const nameOf = (wanted) => Object.keys(headers).find((k) => k.toLowerCase() === wanted.toLowerCase());
+    let out = headers;
+    const backend = nameOf(SYNTHETIC_ASSERTION_HEADER);
+    if (backend) {
+      const { [backend]: _stale, ...rest } = out;
+      const refreshed = withSyntheticAssertion(rest, invokeContext);
+      if (refreshed && refreshed[SYNTHETIC_ASSERTION_HEADER]) out = refreshed;
+    }
+    const loop = nameOf(LOOPBACK_SYNTHETIC_HEADER);
+    if (loop) {
+      const fresh = loopbackSyntheticHeaders(invokeContext)[LOOPBACK_SYNTHETIC_HEADER];
+      if (fresh) {
+        const { [loop]: _stale, ...rest } = out;
+        out = { ...rest, [LOOPBACK_SYNTHETIC_HEADER]: fresh };
+      }
+    }
+    return out === headers ? axiosConfig : { ...axiosConfig, headers: out };
   } catch (_) {
     return axiosConfig;
   }
@@ -53985,8 +54012,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         }
       } catch (err) {
-        llmRerankOutcome = { applied: false, error: true };
-        logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
+        llmRerankOutcome = llmRerankFailureOutcome(err);
+        if (llmRerankOutcome.error) {
+          logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
+        }
       }
       recordFpmStage('llm_rerank', llmRerankStartedAt, {
         applied: Boolean(llmRerankOutcome?.applied),
@@ -55171,6 +55200,7 @@ module.exports._debug = {
   merchantVariantSourcingLive,
   buildMerchantVariantSource,
   withFreshSyntheticAssertion,
+  llmRerankFailureOutcome,
   getProductDetailCacheEntry,
   setProductDetailCache,
   getResolveProductGroupCacheEntry,

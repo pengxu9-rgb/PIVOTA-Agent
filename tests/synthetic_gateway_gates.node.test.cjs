@@ -456,3 +456,55 @@ test('with the live readers built, a real call uses them and a synthetic one doe
     sourcing_syn: 0, sourcing_real: 1,
   });
 });
+
+test('a marker signed with the raw process secret (no derived key) is refused', () => {
+  const crypto = require('crypto');
+  const secret = Buffer.alloc(32, 9);
+  const payload = Buffer.from(JSON.stringify({ s: 1, c: 'iss|mcpc_eval', r: 'gw-1', ts: Math.floor(Date.now() / 1000) })).toString('base64url');
+  const input = `sv1.${payload}`;
+  const raw = `${input}.${crypto.createHmac('sha256', secret).update(input).digest('base64url')}`;
+  const req = { headers: { [loopback.LOOPBACK_SYNTHETIC_HEADER.toLowerCase()]: raw }, socket: { remoteAddress: '127.0.0.1' }, ip: '127.0.0.1' };
+  assert.equal(loopback.verifyLoopbackSynthetic(req, { secret }), null);
+  const good = loopback.signLoopbackSynthetic({ caller: 'iss|mcpc_eval', requestId: 'gw-1' }, { secret });
+  req.headers[loopback.LOOPBACK_SYNTHETIC_HEADER.toLowerCase()] = good;
+  assert.deepEqual(loopback.verifyLoopbackSynthetic(req, { secret }), { synthetic_caller: 'iss|mcpc_eval', gw_request_id: 'gw-1' });
+});
+
+test('a retry re-signs the loopback marker too, and the fresh one verifies on this process', () => {
+  const H = loopback.LOOPBACK_SYNTHETIC_HEADER;
+  const first = loopback.loopbackSyntheticHeaders(SYNTHETIC, { nowSec: Math.floor(Date.now() / 1000) - 3600 })[H];
+  const config = { url: 'http://127.0.0.1:8080/agent/shop/v1/invoke', headers: { 'X-API-Key': GATEWAY_KEY, [H]: first } };
+  const req = (value) => ({ headers: { [H.toLowerCase()]: value }, socket: { remoteAddress: '127.0.0.1' }, ip: '127.0.0.1' });
+  assert.equal(loopback.verifyLoopbackSynthetic(req(first)), null, 'an hour old: past the window');
+  const fresh = inContext(SYNTHETIC, () => D.withFreshSyntheticAssertion(config));
+  assert.notEqual(fresh.headers[H], first);
+  assert.deepEqual(loopback.verifyLoopbackSynthetic(req(fresh.headers[H])), { synthetic_caller: SYNTHETIC.synthetic_caller, gw_request_id: SYNTHETIC.gw_request_id });
+  assert.equal(inContext(REAL, () => D.withFreshSyntheticAssertion(config)), config, 'nothing to re-sign it with');
+});
+
+test('an entry that is not plain ASCII, or carries the caller separator, is invalid and refuses the boot', () => {
+  for (const clientId of ['mcpc_éval', 'mcpc|eval', 'mcpc eval', 'mcpc\teval']) {
+    const env = { SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: 'https://as.pivota.test', client_id: clientId }]) };
+    const { entries } = callers.parseSyntheticCallers(env, { ownIssuers: ['https://as.pivota.test'] });
+    assert.equal(entries[0].reason, 'value_not_plain_ascii', JSON.stringify(clientId));
+    assert.equal(callers.syntheticConfigStatus(env, { ownIssuers: ['https://as.pivota.test'] }).ok, false);
+  }
+});
+
+test('the fail-closed match names a listed client_id only, never a key name or the issuer', () => {
+  const env = {
+    SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: 'https://as.pivota.test', client_id: 'mcpc_eval' }]),
+    SYNTHETIC_TRAFFIC_MODE: 'enforce',
+  };
+  const exploding = (clientId) => ({ get iss() { throw new Error('boom'); }, client_id: clientId });
+  for (const id of ['iss', 'client_id', 'https://as.pivota.test', 'mcpc_eval2']) {
+    assert.equal(callers.classifySyntheticCaller(exploding(id), { env, ownIssuers: ['https://as.pivota.test'] }), null, id);
+  }
+  assert.equal(callers.classifySyntheticCaller(exploding('mcpc_eval'), { env, ownIssuers: ['https://as.pivota.test'] }).reason, 'classify_error');
+});
+
+test('a rerank over the synthetic cap is a skip, not a logged failure', () => {
+  assert.deepEqual(D.llmRerankFailureOutcome(new Error('rerank_llm_failed: synthetic_llm_cap')), { applied: false, skipped_reason: 'llm_synthetic_cap' });
+  assert.deepEqual(D.llmRerankFailureOutcome(new Error('rerank_llm_failed: deadline 1800ms exceeded')), { applied: false, error: true });
+  assert.deepEqual(D.llmRerankFailureOutcome(null), { applied: false, error: true });
+});

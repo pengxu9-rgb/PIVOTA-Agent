@@ -17,7 +17,18 @@ The gateway half (this repo) decides who is synthetic, carries a signed marker t
 | `SYNTHETIC_ASSERTION_SECRET` | HMAC secret shared with the backend only. Mount it from Secret Manager, **pinned to a version**, never `:latest`. |
 | `SYNTHETIC_LLM_MAX_CALLS_PER_HOUR` | Synthetic LLM passes per instance per hour (default 120; `0` turns them off). |
 
-**Pin the secret version** on the gateway and on the backend `web` service alike. With `:latest`, a new version reaches each instance only when it starts: during a scale-out some instances sign with the new secret while the backend verifies with the old one, and every such hop is served as a real call. A new version shorter than 32 characters also stops every new gateway instance from booting. Rotate by setting the old value as the backend's `SYNTHETIC_ASSERTION_SECRET_PREVIOUS`, then moving both services to the new version.
+**Pin the secret version** on the gateway and on the backend `web` service alike. With `:latest`, a new version reaches each instance only when it starts: during a scale-out some instances sign with the new secret while the backend verifies with the old one, and every such hop is served as a real call. A new version shorter than 32 characters also stops every new gateway instance from booting. `<secret>` is the Secret Manager secret holding the value and `<N>` its version number:
+```bash
+gcloud run services update gateway --project=<project> --region=<region> --update-secrets=SYNTHETIC_ASSERTION_SECRET=<secret>:<N>
+gcloud run services update web --project=<project> --region=<region> --update-secrets=SYNTHETIC_ASSERTION_SECRET=<secret>:<N>
+```
+**Rotate backend first.** The backend accepts either value while the gateway moves:
+1. Add the new version (`<N+1>`) to the secret.
+2. Backend `web`: `SYNTHETIC_ASSERTION_SECRET=<secret>:<N+1>` and `SYNTHETIC_ASSERTION_SECRET_PREVIOUS=<secret>:<N>` in one update. Confirm that revision is serving all traffic.
+3. Gateway: `SYNTHETIC_ASSERTION_SECRET=<secret>:<N+1>`. Confirm it is serving and logged `synthetic_config_loaded`.
+4. Backend `web`: remove `SYNTHETIC_ASSERTION_SECRET_PREVIOUS` (`--remove-secrets=SYNTHETIC_ASSERTION_SECRET_PREVIOUS`).
+
+Moving the gateway first would sign with a value the backend does not know yet, and every hop in that window would be served as real.
 
 Rules:
 - **Matching:** a call is listed only when the verified access token's `iss` and `client_id` both equal an entry. `azp` alone never matches.
@@ -28,7 +39,7 @@ Rules:
   - an `iss` that is not one of `MCP_OAUTH_AUTHORIZATION_SERVERS`;
   - a `SYNTHETIC_TRAFFIC_MODE` other than empty, `off`, `observe` or `enforce`;
   - a `SYNTHETIC_ASSERTION_SECRET` shorter than 32 characters;
-  - an `iss` or `client_id` longer than 512 characters (the backend would refuse the marker and serve the call as real).
+  - an `iss` or `client_id` that is not printable ASCII without spaces, contains `|` (the separator the backend splits the caller on), or is longer than 512 characters. The backend would refuse or mis-split such a caller and serve the call as real.
 
   A valid config logs `synthetic_config_loaded` with the mode and entry count. After any change, check for one of the two lines on the new revision before anything else.
 - **Eval client setup:** OAuth only, read scopes only, no API key, and **never a client registered to a partner agent.**
@@ -67,10 +78,17 @@ Decision A2 for phase 1: **no live reads.** A synthetic call answers from what w
   - get_product: the UCP product read, the get_pdp_v2 background read, its live-refresh token, and merchant variant sourcing;
   - get_offers: the UCP offer read, and the freshness-gated seed offers, which are served only behind an enforcing live read and would otherwise answer empty. No live cart is minted.
 - **No fleet state:** no verified price and no `host_backoff` document in Firestore.
-- **Shared caches are read-through:** it may read the product-detail, product-group and other request-path caches, but never writes one (positive or negative entries) and never leads an in-flight join. A real request is never answered with something built for a synthetic one, such as links marked synthetic or a cache-only not-found.
+- **Shared caches that can hold a backend answer are read-through.** It may read them, but never writes one (positive or negative entries) and never leads their in-flight join. A real request is therefore never answered with something built for a synthetic one, such as links marked synthetic or a cache-only not-found. The caches covered: the product-detail cache and its join, the product-group cache, the shop-currency cache, and the PDP identity cache and its join.
+
+  **A synthetic call still writes these**, all filled from our own database or from reads that carry no synthetic marker, so they hold what a real call would have stored:
+  - the catalog-signature cache. A synthetic call whose database read times out also sets that cache's cooldown, which real callers then honour. That is deliberate: the cooldown records that the query is pinning a pool connection, whoever asked;
+  - the identity-group rescue cache;
+  - the PDP review-summary cache, negative entries included (not on the five tools' paths today: `get_product` asks for `product_overview` only);
+  - the relationship-graph anchor and reference caches, and the embedding cache;
+  - the shared price cache's in-process copies. Phase 1 cannot reach them: they are filled only by the live reads above, and the Firestore write behind them is refused.
 - **The search result cache is bypassed:** no read, no write, no revalidation. Search latency is a cold-path number.
 - **LLM passes** (the search intent rewrite and the rerank): one synthetic pass in flight per instance, within `SYNTHETIC_LLM_MAX_CALLS_PER_HOUR`. Past either it takes the deterministic fallback (`llm_synthetic_cap`). It reads the shared model breaker and respects it when open, never takes its half-open probe, and never reports a success or failure into it.
-- **Retries** re-sign the backend assertion on every attempt, so a late retry is never refused as expired.
+- **Retries** re-sign the backend assertion and, on a loopback call, the loopback marker on every attempt, so a late retry is never refused as expired. A capped rerank is logged as `skipped_reason: llm_synthetic_cap`, not as a failure.
 
 ## Order of rollout
 1. The backend's gates are live (pivota-backend#2686, #2688) and its `SYNTHETIC_ASSERTION_SECRET` is mounted, pinned.
@@ -103,8 +121,13 @@ The harness refuses to run unless:
    ```bash
    gcloud run services update gateway --project=<project> --region=<region> --update-env-vars=SYNTHETIC_TRAFFIC_MODE=off
    ```
-3. Confirm the new revision is Ready **and** serving all traffic, and that it logged `synthetic_config_loaded` with `mode: off`. A revision that is created but not serving leaves the old mode live.
+3. Confirm the revision this update **created** is Ready **and** serving all traffic, and that it logged `synthetic_config_loaded` with `mode: off`. A revision that is created but not serving leaves the old mode live.
    ```bash
-   gcloud run services describe gateway --project=<project> --region=<region> --format='value(status.latestReadyRevisionName,status.traffic)'
+   gcloud run services describe gateway --project=<project> --region=<region> \
+     --format='value(status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)'
+   ```
+   The created and ready names must be the same, and that revision must carry 100% of the traffic. If traffic is pinned to an older revision, move it:
+   ```bash
+   gcloud run services update-traffic gateway --project=<project> --region=<region> --to-latest
    ```
 4. Hard stop: disable the eval OAuth client at the authorization server.

@@ -101,4 +101,17 @@ describe('find_products_multi LLM passes under the synthetic cap', () => {
     expect(JSON.stringify(out.meta)).toContain('llm_synthetic_cap');
     ctx.__resetSyntheticLlmStateForTests();
   });
+
+  test('intent rewrite: a synthetic pass within the cap gives its slot back however it ends', async () => {
+    const ctx = require('../src/guardrails/syntheticContext');
+    const { extractIntentWithMeta } = require('../src/findProductsMulti/intentLlm');
+    ctx.__resetSyntheticLlmStateForTests();
+    // The mocked provider answers a rerank body, which is not an intent: the pass fails and falls back.
+    await ctx.INVOKE_AUTH_CONTEXT.run(SYNTHETIC, () => extractIntentWithMeta('red lipstick under 20', [], []));
+    expect(posts).toBe(1);
+    const next = ctx.INVOKE_AUTH_CONTEXT.run(SYNTHETIC, () => ctx.acquireSyntheticLlmSlot());
+    expect(typeof next).toBe('function');
+    next();
+    ctx.__resetSyntheticLlmStateForTests();
+  });
 });
