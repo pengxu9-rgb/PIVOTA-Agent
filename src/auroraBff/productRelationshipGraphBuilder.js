@@ -1,6 +1,7 @@
 const { optionRole } = require('./relationshipPairPolicy');
 const { compareProductIdentity, RELATIONS: IDENTITY } = require('./relationshipProductIdentity');
 const { classifyComplementPair, routineRole } = require('./relationshipComplementPolicy');
+const { truncateText } = require('./relationshipSafeText');
 const {
   DUPE_MIN_SCORE_TOTAL,
   coerceRelationshipEdge,
@@ -157,7 +158,7 @@ function isPlainObject(value) {
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function normalizeLower(value, max = 512) {

@@ -6,7 +6,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
-const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded } = require('../src/services/relationshipGraphServingProgress');
+const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded, reviewErrorCodeKey } = require('../src/services/relationshipGraphServingProgress');
+const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const { query } = require('../src/db');
 const { requireAnchorAttemptsTable } = require('../src/auroraBff/relationshipGraphCoverage');
@@ -48,10 +49,24 @@ const ROUTINE_LOCK_DIRNAME = 'relationship_graph_routine.lock';
 const RUN_SCOPE_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const DEFAULT_DB_LOCK_KEY = 'pivota.relationship_graph.routine';
 
+// What the review error gate counted, by code: provider/validation errors and approvals refused at
+// apply (both count toward the gate). '' when the review reported neither breakdown.
+function reviewErrorCodesSuffix(summary = {}) {
+  const counts = {};
+  for (const source of [summary.review_error_by_code, summary.approval_blocked_by_code]) {
+    if (!source || typeof source !== 'object') continue;
+    for (const [code, n] of Object.entries(source)) {
+      const key = reviewErrorCodeKey(code);
+      counts[key] = (counts[key] || 0) + (Number(n) || 0);
+    }
+  }
+  return Object.keys(counts).length ? `; errors by code ${JSON.stringify(counts)}` : '';
+}
+
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function normalizeKey(value, max = 160) {
@@ -997,7 +1012,8 @@ async function runRoutineJob(
             reviewGateFailed = true;
             summary.ok = false;
             summary.failed_step = 'ai_review';
-            record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`;
+            record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`
+              + reviewErrorCodesSuffix(summary);
           }
         } catch (error) {
           record.status = 'failed';

@@ -5,6 +5,7 @@ const { fragranceServingSuppressionReason } = require('./relationshipFragrancePr
 const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
+const { truncateText, safeJsonbParam } = require('./relationshipSafeText');
 const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
@@ -90,7 +91,7 @@ function buildPublicProductUrl(entityId) {
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function normalizeLower(value, max = 512) {
@@ -130,12 +131,9 @@ function toIsoOrNull(value) {
   return date.toISOString();
 }
 
+// Every jsonb parameter of the label upsert: well-formed text, or Postgres refuses the row.
 function stableJson(value) {
-  try {
-    return JSON.stringify(value == null ? null : value);
-  } catch {
-    return 'null';
-  }
+  return safeJsonbParam(value == null ? null : value, null);
 }
 
 function normalizeJsonbParam(value, fallback) {
