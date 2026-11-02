@@ -115,6 +115,15 @@ const DEFAULT_MAX_CONSECUTIVE_TRANSPORT_ERRORS = 8;
 const NEGATIVE_MEMORY_VERDICTS = new Set(['reject', 'uncertain', 'low_confidence']);
 const DEFAULT_NEGATIVE_REVIEW_TTL_DAYS = 30;
 const MAX_NEGATIVE_REVIEW_TTL_DAYS = 365;
+// ERROR QUARANTINE (2026-11-02). An error verdict writes no negative memo, so a row the model cannot
+// answer for (unparseable or schema-invalid output, deterministic at temperature 0) stays first in
+// line every night. As the queue drained, ~107 such rows became half of a ~200-row night and the review
+// error gate failed every attempt. A row that errors on CONSECUTIVE_ERRORS_TO_QUARANTINE consecutive
+// reviews of the same evidence and model is skipped for the quarantine window, then retried.
+// Transport errors (timeouts, failed requests) are the provider's, not the row's: never counted.
+const DEFAULT_ERROR_QUARANTINE_DAYS = 7;
+const MAX_ERROR_QUARANTINE_DAYS = 90;
+const CONSECUTIVE_ERRORS_TO_QUARANTINE = 2;
 // Remembered rows are paged past so they do not eat the review limit; this caps
 // how far past them one run looks (pages of --limit rows).
 const NEGATIVE_MEMORY_MAX_SCAN_PAGES = 20;
@@ -993,6 +1002,63 @@ function isRememberedNegative(row, fingerprint, {
   return nowMs - reviewedMs < ttlDays * DAY_MS;
 }
 
+function reviewErrorQuarantineDays(env = process.env) {
+  return parseNumber(env.RELGRAPH_REVIEW_ERROR_QUARANTINE_DAYS, DEFAULT_ERROR_QUARANTINE_DAYS, {
+    min: 0,
+    max: MAX_ERROR_QUARANTINE_DAYS,
+  });
+}
+
+// The error memo after this review's error: the run of consecutive errors grows only while the
+// evidence (fingerprint) and model are the same as the last error's; anything else starts a new run.
+function buildReviewErrorMemo(row, decision, { fingerprint, model = null, reviewedAt, runId = '' } = {}) {
+  const previous = asObject(asObject(row && row.provenance).ai_review_error);
+  const sameRun = previous.pair_fingerprint === fingerprint && (previous.model || null) === (normalizeString(model, 120) || null)
+    && previous.validator_version === REVIEW_VALIDATOR_VERSION && previous.rubric === RUBRIC_VERSION;
+  const consecutive = (sameRun && Number.isInteger(previous.consecutive) && previous.consecutive > 0 ? previous.consecutive : 0) + 1;
+  return {
+    consecutive,
+    last_code: reviewErrorCodeKey(decision && decision.review_error && decision.review_error.code),
+    first_at: sameRun && previous.first_at ? previous.first_at : reviewedAt,
+    last_at: reviewedAt,
+    model: normalizeString(model, 120) || null,
+    rubric: RUBRIC_VERSION,
+    validator_version: REVIEW_VALIDATOR_VERSION,
+    pair_fingerprint: fingerprint,
+    ...(runId ? { run_id: runId } : {}),
+  };
+}
+
+// True while a row's error run has reached the threshold for this exact evidence and model and its
+// last error is inside the quarantine window. After the window the row is reviewed again.
+function isQuarantinedForErrors(row, fingerprint, { days = DEFAULT_ERROR_QUARANTINE_DAYS, nowMs = Date.now(), model = null } = {}) {
+  if (!(days > 0) || !fingerprint) return false;
+  const memo = asObject(asObject(row && row.provenance).ai_review_error);
+  if (!(Number(memo.consecutive) >= CONSECUTIVE_ERRORS_TO_QUARANTINE)) return false;
+  if (memo.pair_fingerprint !== fingerprint) return false;
+  if ((memo.model || null) !== (normalizeString(model, 120) || null)) return false;
+  if (memo.validator_version !== REVIEW_VALIDATOR_VERSION || memo.rubric !== RUBRIC_VERSION) return false;
+  const lastMs = new Date(memo.last_at || '').getTime();
+  if (!Number.isFinite(lastMs) || lastMs > nowMs + DAY_MS) return false;
+  return nowMs - lastMs < days * DAY_MS;
+}
+
+// Records the error run on a still-generated row. Like the negative memo, a cost and stability saver
+// rather than part of any verdict: label_state and updated_at are untouched.
+async function rememberReviewError(row, memo, queryFn = query) {
+  const res = await queryFn(
+    `
+      UPDATE relationship_candidate_labels
+      SET provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review_error}', $2::jsonb, true)
+      WHERE id = $1
+        AND label_state = 'generated'
+      RETURNING id
+    `,
+    [row.id, safeJsonbParam(memo)],
+  );
+  return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
+}
+
 // Leaves label_state, updated_at and everything the reviewer reads untouched:
 // the row is still a generated candidate, only now with its last verdict. The
 // fingerprint makes the record self-checking — if the row has changed since,
@@ -1002,7 +1068,8 @@ async function rememberNegativeVerdict(row, memo, queryFn = query) {
     `
       UPDATE relationship_candidate_labels
       SET
-        provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review_last}', $2::jsonb, true),
+        -- A verdict ends any run of review errors on the row.
+        provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb) - 'ai_review_error', '{ai_review_last}', $2::jsonb, true),
         reviewed_at = $3::timestamptz
       WHERE id = $1
         AND label_state = 'generated'
@@ -1022,11 +1089,13 @@ async function selectReviewCandidates({
   fetchOptions = {},
   queryFn = query,
   memory = null,
+  quarantine = null,
   supplementsFn = fetchSupplementsForRows,
 }) {
   const rows = [];
   const prepared = new Map();
   const skippedIds = [];
+  const errorQuarantinedIds = [];
   const nonProductSkippedIds = [];
   const catalogGateSkippedIds = [];
   const seen = new Set();
@@ -1063,18 +1132,22 @@ async function selectReviewCandidates({
           skippedIds.push(row.id);
           continue;
         }
+        if (quarantine && isQuarantinedForErrors(row, fingerprint, quarantine)) {
+          errorQuarantinedIds.push(row.id);
+          continue;
+        }
         rows.push(row);
         prepared.set(row.id, { evidence, fingerprint });
       }
     }
-    if ((!memory && !nonProductSkippedIds.length && !catalogGateSkippedIds.length) || rows.length >= limit
+    if ((!memory && !quarantine && !nonProductSkippedIds.length && !catalogGateSkippedIds.length) || rows.length >= limit
       || page.length < limit || fresh.length === 0) break;
     if (offset >= maxScan) {
       truncated = true;
       break;
     }
   }
-  return { rows, prepared, skippedIds, nonProductSkippedIds, catalogGateSkippedIds, scanned, truncated };
+  return { rows, prepared, skippedIds, errorQuarantinedIds, nonProductSkippedIds, catalogGateSkippedIds, scanned, truncated };
 }
 
 // CATALOG SERVING GATE (2026-10-21). A label whose candidate or anchor names a suppressed, not-live
@@ -1778,7 +1851,7 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
       UPDATE relationship_candidate_labels
       SET
         label_state = 'ai_approved',
-        provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review}', $2::jsonb, true),
+        provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb) - 'ai_review_error', '{ai_review}', $2::jsonb, true),
         why_candidate = $4::jsonb,
         tradeoffs = $5::jsonb,
         watchouts = $6::jsonb,
@@ -1850,6 +1923,7 @@ async function runReview({
   reviewMode = process.env.RELGRAPH_AI_REVIEW_MODE || 'single',
   consensusProviders = null,
   negativeTtlDays = negativeReviewTtlDays(),
+  errorQuarantineDays = reviewErrorQuarantineDays(),
   clock = () => Date.now(),
 } = {}) {
   if (apply && process.env.RELGRAPH_AI_REVIEW_APPLY !== '1') {
@@ -1919,7 +1993,10 @@ async function runReview({
   const memory = memoryTtlDays > 0
     ? { ttlDays: memoryTtlDays, nowMs: clock(), minApprovalConfidence: confidenceFloor, model: currentModel }
     : null;
-  let selection = { rows: [], prepared: new Map(), skippedIds: [], nonProductSkippedIds: [], catalogGateSkippedIds: [],
+  // Single mode only, like the negative memo (consensus has its own human-review disposition).
+  const quarantineDays = consensus ? 0 : parseNumber(errorQuarantineDays, DEFAULT_ERROR_QUARANTINE_DAYS, { min: 0, max: MAX_ERROR_QUARANTINE_DAYS });
+  const quarantine = quarantineDays > 0 ? { days: quarantineDays, nowMs: clock(), model: currentModel } : null;
+  let selection = { rows: [], prepared: new Map(), skippedIds: [], errorQuarantinedIds: [], nonProductSkippedIds: [], catalogGateSkippedIds: [],
     scanned: 0, truncated: false };
   // FAIL CLOSED on an id scope that resolved to nothing, exactly like the anchor scope.
   if (!(anchorScopeRequested && anchorRefs.length === 0) && !(idScopeRequested && ids.length === 0)) {
@@ -1929,7 +2006,7 @@ async function runReview({
     selection = consensus
       ? { ...await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory: null,
         supplementsFn: async () => new Map() }), prepared: new Map() }
-      : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory });
+      : await selectReviewCandidates({ limit: effectiveLimit, fetchOptions, queryFn, memory, quarantine });
   }
   const { rows } = selection;
   const independentProviders = consensus && rows.length ? (consensusProviders || createConsensusProviders()) : null;
@@ -1945,6 +2022,9 @@ async function runReview({
   const decisions = [];
   let negativeMemoryRecordedCount = 0;
   let negativeMemoryWriteErrors = 0;
+  let errorMemoRecordedCount = 0;
+  let errorQuarantineEnteredCount = 0;
+  let errorMemoWriteErrors = 0;
   let appliedCount = 0;
   let guardBlockedAppliedCount = 0;
   let consensusDispositionAppliedCount = 0;
@@ -2031,6 +2111,32 @@ async function runReview({
         process.stderr.write(`relationship graph AI review: negative memory write failed for ${row.id}: ${normalizeString(err && err.message, 300)}\n`);
       }
     }
+    let errorQuarantined = false;
+    // A row-specific error (not a transport error) extends the row's error run; the run's second
+    // consecutive error quarantines it (see CONSECUTIVE_ERRORS_TO_QUARANTINE). Same scope as the
+    // negative memo: this model's own verdict, applied, single mode.
+    if (apply && !consensus && !verdictReplay && prepared && decision.verdict === 'error' && decision.review_error
+        && !TRANSPORT_REVIEW_ERROR_CODES.has(decision.review_error.code)) {
+      try {
+        const memo = buildReviewErrorMemo(row, decision, {
+          fingerprint: prepared.fingerprint,
+          model: llmProvider && llmProvider.__meta && llmProvider.__meta.model,
+          reviewedAt: new Date(clock()).toISOString(),
+          runId: reviewRunId,
+        });
+        // eslint-disable-next-line no-await-in-loop
+        if (await rememberReviewError(row, memo, queryFn)) {
+          errorMemoRecordedCount += 1;
+          if (memo.consecutive === CONSECUTIVE_ERRORS_TO_QUARANTINE) {
+            errorQuarantined = true;
+            errorQuarantineEnteredCount += 1;
+          }
+        }
+      } catch (err) {
+        errorMemoWriteErrors += 1;
+        process.stderr.write(`relationship graph AI review: error memo write failed for ${row.id}: ${normalizeString(err && err.message, 300)}\n`);
+      }
+    }
     const outputRow = {
       id: row.id,
       anchor_ref: row.anchor_ref,
@@ -2054,6 +2160,7 @@ async function runReview({
       new_label_state: targetLabelState(decision.verdict),
       applied: Boolean(appliedRow),
       ...(negativeMemoryRecorded ? { negative_memory_recorded: true } : {}),
+      ...(errorQuarantined ? { error_quarantined: true } : {}),
       ...(decision.review_error ? { review_error: decision.review_error } : {}),
       ...(decision.serving_guard_reasons ? { serving_guard_reasons: decision.serving_guard_reasons } : {}),
       ...(decision.approval_blocked ? { approval_blocked: decision.approval_blocked } : {}),
@@ -2220,6 +2327,13 @@ async function runReview({
     negative_memory_scan_truncated: Boolean(selection.truncated),
     negative_memory_recorded_count: negativeMemoryRecordedCount,
     negative_memory_write_errors: negativeMemoryWriteErrors,
+    // Rows whose review errored on consecutive nights on the same evidence: skipped this run (not
+    // reviewed, so not in the error rate), newly quarantined by this run's errors, and memo writes.
+    error_quarantine_days: quarantineDays,
+    error_quarantine_skipped_count: (selection.errorQuarantinedIds || []).length,
+    error_quarantine_entered_count: errorQuarantineEnteredCount,
+    error_memo_recorded_count: errorMemoRecordedCount,
+    error_memo_write_errors: errorMemoWriteErrors,
     reviewer: consensus ? 'gpt-gemini-consensus' : REVIEWER_ID,
     rubric: RUBRIC_VERSION,
   };
@@ -2310,6 +2424,10 @@ module.exports = {
   parseArgs,
   parseInlineIds,
   rememberNegativeVerdict,
+  rememberReviewError,
+  buildReviewErrorMemo,
+  isQuarantinedForErrors,
+  reviewErrorQuarantineDays,
   reviewPairFingerprint,
   selectReviewCandidates,
   runReview,

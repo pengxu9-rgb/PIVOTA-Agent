@@ -201,6 +201,9 @@ function extractRelationshipGraphRunRecord(summary = {}, {
         // Why reviews errored, kept with the run (the review's own file is lost with the container).
         // Codes only: error messages can quote model output, which the ledger does not keep.
         review_error_by_code: codeCounts(reviewSummary.review_error_by_code),
+        // Rows skipped because their review kept erroring, and rows this run quarantined.
+        error_quarantine_skipped_count: Number(reviewSummary.error_quarantine_skipped_count) || 0,
+        error_quarantine_entered_count: Number(reviewSummary.error_quarantine_entered_count) || 0,
         decisions: review.decisions.map((row) => ({
           id: row.id, verdict: row.verdict, applied: row.applied === true,
           new_label_state: row.new_label_state, relationship_kind: row.relationship_kind || null,

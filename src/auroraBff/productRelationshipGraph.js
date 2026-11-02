@@ -2011,15 +2011,27 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         prefilter_reasons = EXCLUDED.prefilter_reasons,
         source_report = EXCLUDED.source_report,
         -- The reviewer's last negative verdict (and the evidence fingerprint it
-        -- was given on) lives in provenance.ai_review_last. A rebuild replaces
-        -- provenance; carry that one key over unless the new provenance sets
-        -- its own, or every nightly rebuild would erase the memory and the
-        -- reviewer would re-pay for the same rejected pairs.
+        -- was given on) lives in provenance.ai_review_last, and a run of review
+        -- errors in provenance.ai_review_error. A rebuild replaces provenance;
+        -- carry those keys over unless the new provenance sets its own, or every
+        -- nightly rebuild would erase the memory (the reviewer re-pays for the
+        -- same rejected pairs) and lift the error quarantine (the uncovered
+        -- anchors the build favours are rebuilt night after night). Both are
+        -- self-checking: their fingerprint stops matching if the evidence changes.
         provenance = CASE
-          WHEN relationship_candidate_labels.provenance ? 'ai_review_last'
-            AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? 'ai_review_last')
+          WHEN (relationship_candidate_labels.provenance ? 'ai_review_last'
+              AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? 'ai_review_last'))
+            OR (relationship_candidate_labels.provenance ? 'ai_review_error'
+              AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? 'ai_review_error'))
           THEN COALESCE(EXCLUDED.provenance, '{}'::jsonb)
-            || jsonb_build_object('ai_review_last', relationship_candidate_labels.provenance -> 'ai_review_last')
+            || CASE WHEN relationship_candidate_labels.provenance ? 'ai_review_last'
+                  AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? 'ai_review_last')
+                THEN jsonb_build_object('ai_review_last', relationship_candidate_labels.provenance -> 'ai_review_last')
+                ELSE '{}'::jsonb END
+            || CASE WHEN relationship_candidate_labels.provenance ? 'ai_review_error'
+                  AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? 'ai_review_error')
+                THEN jsonb_build_object('ai_review_error', relationship_candidate_labels.provenance -> 'ai_review_error')
+                ELSE '{}'::jsonb END
           ELSE EXCLUDED.provenance
         END,
         reviewed_at = EXCLUDED.reviewed_at,

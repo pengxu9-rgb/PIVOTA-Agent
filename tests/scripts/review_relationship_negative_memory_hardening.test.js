@@ -319,17 +319,20 @@ describe('guards the CI suite did not cover', () => {
     expect(t.memoWrites()).toHaveLength(0);
   });
 
-  test('the build upsert carries ai_review_last over (SQL the CI suite can see)', async () => {
+  test('the build upsert carries ai_review_last (and ai_review_error) over (SQL the CI suite can see)', async () => {
     const queryFn = jest.fn(async () => ({ rows: [{ id: 'x' }] }));
     await upsertRelationshipCandidateLabel({ ...pairRow('ups'), provenance: { generated_at: '2026-10-09T10:40:00.000Z' } }, { queryFn });
     const [sql, params] = queryFn.mock.calls[0];
     const set = sql.slice(sql.indexOf('DO UPDATE SET'), sql.indexOf('WHERE NOT'));
     const provenanceClause = set.slice(set.indexOf('provenance ='), set.indexOf('reviewed_at ='));
-    expect(provenanceClause.replace(/\s+/g, ' ')).toContain(
-      "WHEN relationship_candidate_labels.provenance ? 'ai_review_last' AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? 'ai_review_last') "
-      + "THEN COALESCE(EXCLUDED.provenance, '{}'::jsonb) || jsonb_build_object('ai_review_last', relationship_candidate_labels.provenance -> 'ai_review_last') "
-      + 'ELSE EXCLUDED.provenance END',
-    );
+    // Since 2026-11-02 the error-quarantine memo is carried the same way (behaviour pinned on real
+    // Postgres in relationship_graph_truth_postgres.test.js).
+    const clause = provenanceClause.replace(/\s+/g, ' ');
+    for (const key of ['ai_review_last', 'ai_review_error']) {
+      expect(clause).toContain(`relationship_candidate_labels.provenance ? '${key}' AND NOT (COALESCE(EXCLUDED.provenance, '{}'::jsonb) ? '${key}')`);
+      expect(clause).toContain(`THEN jsonb_build_object('${key}', relationship_candidate_labels.provenance -> '${key}') ELSE '{}'::jsonb END`);
+    }
+    expect(clause).toMatch(/ELSE EXCLUDED\.provenance END,?\s*$/);
     expect(set).not.toMatch(/provenance = EXCLUDED\.provenance,/);
     // The build's own provenance is passed through untouched.
     expect(params.map((p) => (typeof p === 'string' && p.includes('generated_at') ? JSON.parse(p) : null)).filter(Boolean))

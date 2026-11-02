@@ -50,7 +50,9 @@ function reviewMetrics(summary = {}) {
       'approval_blocked_count', 'approval_blocked_by_code',
       // Why reviews errored (2026-11-02): without it the routine summary had only a count. Counts by
       // code only; sample messages can quote model output and stay in the review's own log summary.
-      'review_error_by_code']
+      'review_error_by_code',
+      // Rows quarantined for repeated review errors (2026-11-02): skipped, so not in the error rate.
+      'error_quarantine_skipped_count', 'error_quarantine_entered_count']
       .filter((key) => summary[key] != null).map((key) => [key, summary[key]])),
   };
 }

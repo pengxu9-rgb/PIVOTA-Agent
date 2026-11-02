@@ -21,6 +21,7 @@ all of it.
 | Serving-guard block | `generated` -> `needs_evidence` | `provenance.review_serving_guard.run_id`, `decision: 'guard_blocked'`; the old flags are kept in `previous_reason_flags` |
 | Cross-agent consensus reject / human review | `generated` -> `needs_evidence`, adds flag `cross_agent_rejected` or `cross_agent_human_review` | `provenance.ai_review_run` `{run_id, decision}` |
 | Reject / uncertain / low-confidence memo | stays `generated` | `provenance.ai_review_last.run_id` |
+| Review error (not a timeout or failed request) | stays `generated`; after 2 consecutive errors on the same evidence and model the row is skipped for `RELGRAPH_REVIEW_ERROR_QUARANTINE_DAYS` (default 7) | `provenance.ai_review_error.run_id` (the latest error's run), `consecutive` |
 
 ## Find the run ids: one per attempt
 
@@ -49,7 +50,7 @@ SELECT run_id, kind, count(*) FROM (
 ) s WHERE run_id IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2;
 ```
 
-Run the four queries below **once per attempt id**.
+Run the five queries below **once per attempt id**.
 
 ## Undo
 
@@ -86,7 +87,18 @@ UPDATE relationship_candidate_labels
 UPDATE relationship_candidate_labels
    SET provenance = provenance - 'ai_review_last'
  WHERE label_state = 'generated' AND provenance->'ai_review_last'->>'run_id' = :run;
+
+-- 5. Error memos (they only defer re-review for the quarantine window). This releases every row whose
+--    LATEST error came from the run, including rows whose error run started on an earlier night.
+UPDATE relationship_candidate_labels
+   SET provenance = provenance - 'ai_review_error'
+ WHERE label_state = 'generated' AND provenance->'ai_review_error'->>'run_id' = :run;
 ```
+
+To release the whole quarantine at once (for example after a parser or prompt fix), drop the key from
+every generated row whose error run reached 2: `... WHERE label_state = 'generated' AND
+(provenance->'ai_review_error'->>'consecutive')::int >= 2`. Setting
+`RELGRAPH_REVIEW_ERROR_QUARANTINE_DAYS=0` on the job stops skipping without touching rows.
 
 Re-running the approval undo is safe: a later approval replaces `ai_review` whole, with its own
 run id.
