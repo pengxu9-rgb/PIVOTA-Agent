@@ -621,6 +621,9 @@ const {
   sharedCacheWritesAllowed,
   syntheticLiveReadsAllowed,
 } = require('./guardrails/syntheticContext');
+// One `synthetic_hop` line per outgoing HTTP request a synthetic call makes, from Node's own client-request
+// channels, so no helper's hop escapes it (src/guardrails/syntheticHops.js). Outside a synthetic call, nothing.
+require('./guardrails/syntheticHops').installSyntheticHopLog({ log: logger });
 const {
   recommend: recommendPdpProducts,
   filterExcludedRecommendationCandidates,
@@ -42768,6 +42771,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
     client_channel: clientChannel,
   });
+  const syntheticLogFieldsAtStart = syntheticInvokeLogFields(req);
   const routeKeyFingerprint =
     routeContext.key_fingerprint || req?.invokeAuth?.key_fingerprint || null;
   // A synthetic loopback hop keeps the MCP door's request id, so one id names the call on every hop.
@@ -43090,6 +43094,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // free text at length.
         ...requestSourceLogFields(req),
         ...routingQueryLogFields,
+        ...syntheticLogFieldsAtStart,
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -54686,11 +54691,40 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 // A synthetic MCP call's loopback hop (src/guardrails/loopbackCallerAssertion.js verifyLoopbackSynthetic): the
 // same synthetic fields the door set, so the backend hops made from this request carry the marker too. Only
 // a valid marker on a loopback socket, and only in enforce; anything else is an ordinary invoke call.
+// The verdict on a loopback marker the request CARRIED, for its completion line (`loopback_marker`):
+// `verified`, `rejected` (it does not verify: a forgery, an expired marker, or not a loopback socket), or
+// `not_enforce`. A request without the marker gets no verdict: the hop that should have carried it is
+// logged as `synthetic_hop ... marker: missing` by the process that made it.
 function loopbackSyntheticInvokeContext(req) {
-  if (syntheticTrafficMode() !== 'enforce') return {};
+  const carried = typeof req?.headers?.[LOOPBACK_SYNTHETIC_HEADER.toLowerCase()] === 'string';
+  if (syntheticTrafficMode() !== 'enforce') {
+    if (carried && req) req.loopbackSyntheticMarker = 'not_enforce';
+    return {};
+  }
   const marker = verifyLoopbackSynthetic(req);
-  if (!marker) return {};
+  if (!marker) {
+    if (carried && req) req.loopbackSyntheticMarker = 'rejected';
+    return {};
+  }
+  if (req) req.loopbackSyntheticMarker = 'verified';
   return { synthetic: true, synthetic_caller: marker.synthetic_caller, gw_request_id: marker.gw_request_id };
+}
+
+// The completion line's synthetic fields, read when the request starts (the invoke context it runs in):
+// `synthetic: true` and the door's id for a synthetic call, and the loopback marker's verdict when one came.
+function syntheticInvokeLogFields(req) {
+  const out = {};
+  try {
+    const store = INVOKE_AUTH_CONTEXT.getStore();
+    if (store && store.synthetic === true) {
+      out.synthetic = true;
+      if (typeof store.gw_request_id === 'string') out.synthetic_gw_request_id = store.gw_request_id;
+    }
+    if (req?.loopbackSyntheticMarker) out.loopback_marker = req.loopbackSyntheticMarker;
+  } catch (_) {
+    // A log field never fails a request.
+  }
+  return out;
 }
 
 function authenticateExternalInvokeRoute(req, res, next) {

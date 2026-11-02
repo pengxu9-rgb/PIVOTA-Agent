@@ -496,3 +496,107 @@ test('enforce, real loopback: a synthetic search is never answered from, or stor
     await new Promise((resolve) => server.close(() => resolve()));
   }
 });
+
+// THE HOP LINE (src/guardrails/syntheticHops.js), over the real door and a real loopback, for each of the five
+// tools: every request that reached the backend has its `synthetic_hop` line with the assertion attached, under
+// the door's id, and every loopback hop carries its marker. A helper's hop cannot escape the line: the line is
+// emitted below every HTTP client, and this compares it against what the backend actually received.
+test('enforce: every hop of each of the five tools is logged, marked, under the door\'s id', async () => {
+  setSynthetic();
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const savedBase = process.env.SELF_INVOKE_BASE;
+  process.env.SELF_INVOKE_BASE = `http://127.0.0.1:${server.address().port}`;
+  nock.enableNetConnect('127.0.0.1');
+  const calls = {
+    search_catalog: { query: 'stainless steel water bottle' },
+    get_product: { merchant_id: 'm_1', product_id: 'p_1' },
+    get_offers: { merchant_id: 'm_1', product_id: 'p_1' },
+    get_alternatives: { merchant_id: 'm_1', product_id: 'p_1' },
+    get_intel: { merchant_id: 'm_1', product_id: 'p_1' },
+  };
+  try {
+    const token = await tokenFor({ client_id: EVAL_CID });
+    for (const [name, args] of Object.entries(calls)) {
+      const seen = captureBackend();
+      lines.length = 0;
+      await call(supertest(server), token, rpc('tools/call', { name, arguments: args }));
+      nock.cleanAll();
+      const outcome = outcomeLine(name);
+      assert.equal(outcome.synthetic, true, name);
+      const hops = lines.filter((l) => l.msg === 'synthetic_hop');
+      const backendHops = hops.filter((l) => l.target === 'backend');
+      assert.equal(backendHops.length, seen.length, `${name}: one backend hop line per backend request (${seen.length})`);
+      // Not vacuous: these three reach the backend, and search does it from its loopback request.
+      if (['search_catalog', 'get_product', 'get_offers'].includes(name)) assert.ok(seen.length > 0, `${name} reached the backend`);
+      if (name === 'search_catalog') assert.ok(hops.some((h) => h.target === 'loopback'), 'search took the loopback');
+      for (const h of hops) {
+        assert.equal(h.gateway_request_id, outcome.gateway_request_id, `${name}: ${h.target} ${h.path}`);
+        if (h.target !== 'external') assert.equal(h.marker, 'attached', `${name}: ${h.target} ${h.path}`);
+      }
+      for (const r of seen) assert.ok(r.headers['x-pivota-synthetic-assertion'], `${name}: ${r.path} carries the assertion`);
+      for (const l of lines.filter((x) => x.msg === 'invoke request complete')) {
+        assert.equal(l.synthetic, true, `${name}: the loopback's completion line`);
+        assert.equal(l.synthetic_gw_request_id, outcome.gateway_request_id);
+        assert.equal(l.loopback_marker, 'verified');
+      }
+    }
+    // A real caller's identical calls log no hop line at all.
+    const other = await tokenFor({ client_id: 'mcpc_partner_7' });
+    for (const [name, args] of Object.entries(calls)) {
+      captureBackend();
+      lines.length = 0;
+      await call(supertest(server), other, rpc('tools/call', { name, arguments: args }));
+      nock.cleanAll();
+      assert.deepEqual(lines.filter((l) => l.msg === 'synthetic_hop'), [], name);
+      for (const l of lines.filter((x) => x.msg === 'invoke request complete')) {
+        assert.equal(l.synthetic, undefined, name);
+        assert.equal(l.loopback_marker, undefined, name);
+      }
+    }
+  } finally {
+    process.env.SELF_INVOKE_BASE = savedBase;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('a loopback invoke carrying a marker that does not verify is logged as rejected, and runs as an ordinary call', async () => {
+  setSynthetic();
+  const seen = captureBackend();
+  lines.length = 0;
+  await supertest(app)
+    .post('/agent/shop/v1/invoke')
+    .set('X-API-Key', GATEWAY_KEY)
+    .set(LOOPBACK_SYNTHETIC_HEADER, 'sv1.forged.mac')
+    .send({ operation: 'offers.resolve', payload: { product: { merchant_id: 'm_1', product_id: 'p_1' } } });
+  nock.cleanAll();
+  const done = lines.filter((l) => l.msg === 'invoke request complete');
+  assert.ok(done.length > 0);
+  for (const l of done) {
+    assert.equal(l.loopback_marker, 'rejected');
+    assert.equal(l.synthetic, undefined);
+  }
+  for (const r of seen) assert.equal(r.headers['x-pivota-synthetic-assertion'], undefined);
+  assert.deepEqual(lines.filter((l) => l.msg === 'synthetic_hop'), []);
+});
+
+test('outside enforce, a loopback invoke carrying a marker is logged not_enforce, and runs as an ordinary call', async () => {
+  for (const mode of ['off', 'observe']) {
+    setSynthetic({ mode });
+    const seen = captureBackend();
+    lines.length = 0;
+    await supertest(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-API-Key', GATEWAY_KEY)
+      .set(LOOPBACK_SYNTHETIC_HEADER, signLoopbackSynthetic({ caller: `${ISS}|${EVAL_CID}`, requestId: 'door-id-x' }))
+      .send({ operation: 'offers.resolve', payload: { product: { merchant_id: 'm_1', product_id: 'p_1' } } });
+    nock.cleanAll();
+    const done = lines.filter((l) => l.msg === 'invoke request complete');
+    assert.ok(done.length > 0, mode);
+    for (const l of done) {
+      assert.equal(l.loopback_marker, 'not_enforce', mode);
+      assert.equal(l.synthetic, undefined, mode);
+    }
+    for (const r of seen) assert.equal(r.headers['x-pivota-synthetic-assertion'], undefined, mode);
+  }
+});
