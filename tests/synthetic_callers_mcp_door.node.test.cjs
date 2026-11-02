@@ -203,6 +203,27 @@ test('a listed caller sees only the five read tools in tools/list; anyone else s
   assert.ok(names.includes('create_checkout_session') && names.length > 5, 'the full surface for a real caller');
 });
 
+for (const mode of ['off', 'observe', 'enforce']) {
+  test(`${mode}: a listed caller is told X-Pivota-Synthetic: ${mode} on every /mcp response; anyone else never sees it`, async () => {
+    setSynthetic({ mode });
+    const listed = await tokenFor({ client_id: EVAL_CID });
+    for (const body of [rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } }), rpc('tools/list'), GET_OFFERS]) {
+      captureBackend();
+      const res = await call(supertest(app), listed, body);
+      nock.cleanAll();
+      assert.equal(res.headers['x-pivota-synthetic'], mode, body.method);
+    }
+    const other = await call(supertest(app), await tokenFor({ client_id: 'mcpc_partner_7' }), rpc('tools/list'));
+    assert.equal(other.headers['x-pivota-synthetic'], undefined, 'an unlisted caller');
+  });
+}
+
+test('a listed client the door refuses is told X-Pivota-Synthetic: invalid', async () => {
+  setSynthetic();
+  const res = await call(supertest(app), await tokenFor({ azp: EVAL_CID }), rpc('tools/list'));
+  assert.equal(res.headers['x-pivota-synthetic'], 'invalid');
+});
+
 test('a batch body from a listed caller is refused before anything reads it', async () => {
   setSynthetic();
   const seen = captureBackend();

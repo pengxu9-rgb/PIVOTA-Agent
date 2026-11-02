@@ -17,6 +17,7 @@ const path = require('node:path');
 const { resolveConfig, validateConfig, redactConfig } = require('./lib/config.cjs');
 const { checkTarget, checkLoad, createKillSwitch, HARD_CAPS } = require('./lib/safety.cjs');
 const { McpClient } = require('./lib/mcpClient.cjs');
+const prodSynthetic = require('./lib/prodSynthetic.cjs');
 const { runJourneys, loadQuerySet, planCalls } = require('./lib/journeys.cjs');
 const { runLoad } = require('./lib/load.cjs');
 const { loadJudge } = require('./lib/judge.cjs');
@@ -132,6 +133,23 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
     return 2;
   }
 
+  // THE PRODUCTION SYNTHETIC TARGET: nothing is called until production is shown to mark these calls
+  // (lib/prodSynthetic.cjs). The classification check stops there.
+  let bearerToken = config.secrets.bearerToken;
+  if (config.targetKind === 'prod-synthetic') {
+    const pre = await prodSynthetic.preflight({ config, env, deps, log: (msg) => io.err.write(`[readiness-eval] ${msg}\n`) });
+    if (pre.problems.length) {
+      io.err.write(`REFUSED (production synthetic preflight):\n${pre.problems.map((p) => `  - ${p}`).join('\n')}\n`);
+      if (pre.report.state !== undefined) io.err.write(`  (X-Pivota-Synthetic: ${pre.report.state === null ? 'none' : pre.report.state})\n`);
+      return 2;
+    }
+    if (config.checkClassification) {
+      io.out.write(`${JSON.stringify({ classification_check: 'pass', ...pre.report }, null, 2)}\n`);
+      return 0;
+    }
+    bearerToken = pre.bearerToken;
+  }
+
   const judgeFn = loadJudge(config.judgeModule);
   const runDir = createRunDir(config.outDir);
   const killFile = config.killFile || path.join(runDir, 'KILL');
@@ -142,7 +160,7 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
       endpoint: config.endpoint,
       auth: identity ? identity.auth : config.auth,
       apiKey: identity ? (identity.auth === 'api_key' ? identity.secret : null) : config.secrets.apiKey,
-      bearerToken: identity ? (identity.auth === 'bearer' ? identity.secret : null) : config.secrets.bearerToken,
+      bearerToken: identity ? (identity.auth === 'bearer' ? identity.secret : null) : bearerToken,
       timeoutMs: config.timeoutMs,
       protocolVersion: config.protocolVersion,
       clientInfo: { name: config.clientName, version: config.clientVersion },

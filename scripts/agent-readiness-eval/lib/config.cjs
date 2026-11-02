@@ -19,8 +19,9 @@ const TIERS = Object.freeze({
 });
 
 const AUTH_MODES = Object.freeze(['none', 'api_key', 'bearer']);
-// 'prod-synthetic' is deliberately absent: no server-side synthetic-traffic designation exists (see safety.cjs).
-const TARGET_KINDS = Object.freeze(['local', 'prod-clone']);
+// 'prod-synthetic': production's commerce door as our eval OAuth client, which production marks synthetic
+// (safety.cjs PROD_SYNTHETIC_HOSTS; docs/runbooks/synthetic_callers.md).
+const TARGET_KINDS = Object.freeze(['local', 'prod-clone', 'prod-synthetic']);
 
 // SLO defaults. Every one is overridable with --slo key=value (or READINESS_EVAL_SLO_<KEY>).
 const DEFAULT_SLOS = Object.freeze({
@@ -179,6 +180,10 @@ function resolveConfig(argv = [], env = process.env) {
     mcpPath,
     endpoint: baseUrl ? `${baseUrl}${mcpPath.startsWith('/') ? '' : '/'}${mcpPath}` : '',
     targetKind: String(pick('target-kind', 'READINESS_EVAL_TARGET_KIND') || DEFAULTS.targetKind).trim(),
+    // prod-synthetic only: initialize + tools/list, no tool call; production may be in observe or enforce.
+    checkClassification: bool(pick('check-classification', 'READINESS_EVAL_CHECK_CLASSIFICATION')),
+    // prod-synthetic only: the eval client's token (lib/oauth.cjs), refreshed before the run.
+    oauthTokenFile: String(pick('oauth-token-file', 'READINESS_EVAL_OAUTH_TOKEN_FILE') || '').trim() || null,
     // Fixed, not configurable: a configurable header NAME is a way to smuggle a Host (or auth) header.
     syntheticHeader: DEFAULTS.syntheticHeader,
     syntheticHeaderValue: DEFAULTS.syntheticHeaderValue,
@@ -264,7 +269,11 @@ function validateConfig(config) {
     if (config.auth === 'api_key' && !config.secrets.apiKey && config.secrets.callerKeys.length === 0) {
       problems.push('auth=api_key needs READINESS_EVAL_API_KEY (or READINESS_EVAL_CALLER_KEYS)');
     }
-    if (config.auth === 'bearer' && !config.secrets.bearerToken) problems.push('auth=bearer needs READINESS_EVAL_BEARER_TOKEN');
+    // The production synthetic target takes its bearer from the eval client's token file (lib/oauth.cjs).
+    if (config.auth === 'bearer' && !config.secrets.bearerToken && config.targetKind !== 'prod-synthetic') {
+      problems.push('auth=bearer needs READINESS_EVAL_BEARER_TOKEN');
+    }
+    if (config.checkClassification && config.targetKind !== 'prod-synthetic') problems.push('--check-classification is for --target-kind prod-synthetic');
   }
   for (const removed of config.removedFlags) {
     problems.push(`--${removed} is not supported (removed: the target allowlist in safety.cjs is the only way to choose a target)`);

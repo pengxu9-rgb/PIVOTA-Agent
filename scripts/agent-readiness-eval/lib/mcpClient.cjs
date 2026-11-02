@@ -20,7 +20,7 @@
 // NEVER LOGS A SECRET. Auth headers are built per request from the injected credential; nothing here
 // writes them anywhere.
 
-const { classifyTarget, ATTESTATION } = require('./safety.cjs');
+const { classifyTarget, attestationFor, PROD_SYNTHETIC_TOOLS } = require('./safety.cjs');
 
 const DEFAULT_ACCEPT = 'application/json, text/event-stream';
 
@@ -47,6 +47,15 @@ class McpClient {
     const target = classifyTarget(opts.endpoint);
     if (!target.ok) throw new Error(`McpClient refuses this endpoint: ${target.problem}`);
     this.endpoint = opts.endpoint;
+    this.targetKind = target.kind;
+    // What every response must say about the deployment it came from (safety.attestationFor): the eval clone's
+    // header, or, on the production synthetic target, the state production serves our eval client in. A
+    // classification check (`stage: 'check'`) accepts `observe` and never calls a tool.
+    this.stage = opts.stage === 'check' ? 'check' : 'run';
+    this.attestation = attestationFor(target.kind, { stage: this.stage });
+    // On production the client calls only the read tools production allows the eval client.
+    this.allowedTools = target.kind === 'prod-synthetic' ? PROD_SYNTHETIC_TOOLS : ALLOWED_TOOLS;
+    if (target.kind === 'prod-synthetic' && opts.auth !== 'bearer') throw new Error('McpClient: the production synthetic target needs the eval OAuth bearer');
     this.auth = opts.auth || 'none';
     this.apiKey = opts.apiKey || null;
     this.bearerToken = opts.bearerToken || null;
@@ -121,9 +130,10 @@ class McpClient {
       });
       ttfb = this.now() - started;
       record.http_status = res.status;
-      const attested = res.headers && typeof res.headers.get === 'function' ? res.headers.get(ATTESTATION.header) : null;
-      const halt = attested !== ATTESTATION.value
-        ? ['attestation_missing', `response lacks ${ATTESTATION.header}: ${ATTESTATION.value} (got ${attested === null ? 'none' : JSON.stringify(String(attested).slice(0, 40))}); not provably the eval deployment`]
+      const attested = res.headers && typeof res.headers.get === 'function' ? res.headers.get(this.attestation.header) : null;
+      record.attested = attested === null ? null : String(attested).slice(0, 40);
+      const halt = !this.attestation.values.includes(attested)
+        ? ['attestation_missing', `response lacks ${this.attestation.header}: ${this.attestation.values.join('|')} (got ${attested === null ? 'none' : JSON.stringify(String(attested).slice(0, 40))}); not provably the eval deployment`]
         : res.status >= 300 && res.status < 400
           ? ['redirect_refused', `HTTP ${res.status} redirect refused (redirects are never followed)`]
           : null;
@@ -190,8 +200,9 @@ class McpClient {
   }
 
   async callTool(name, args) {
-    if (!ALLOWED_TOOLS.includes(name)) {
-      throw new Error(`McpClient.callTool: "${name}" is not an allowed tool (allowed: ${ALLOWED_TOOLS.join(', ')})`);
+    if (this.stage === 'check') throw new Error('McpClient.callTool: a classification check calls no tool');
+    if (!this.allowedTools.includes(name)) {
+      throw new Error(`McpClient.callTool: "${name}" is not an allowed tool (allowed: ${this.allowedTools.join(', ')})`);
     }
     const rec = await this.send('tools/call', { name, arguments: args || {} });
     rec.tool = name;

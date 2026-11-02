@@ -97,7 +97,7 @@ test('removed flags (--host-header, --allow-remote-target, --synthetic-flag-ack)
     assert.match(validateConfig(cfg(argv)).join('\n'), /is not supported/, argv[0]);
   }
   assert.match(validateConfig(cfg([], { READINESS_EVAL_HOST_HEADER: 'x' })).join('\n'), /host-header is not supported/);
-  assert.match(validateConfig(cfg(['--target-kind', 'prod-synthetic'])).join('\n'), /unknown target kind/);
+  assert.match(validateConfig(cfg(['--target-kind', 'prod'])).join('\n'), /unknown target kind/);
 });
 
 test('load settings beyond the compiled-in caps are refused', () => {

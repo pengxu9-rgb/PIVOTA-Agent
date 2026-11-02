@@ -16,6 +16,10 @@ const net = require('node:net');
 //   2. EVAL_CLONE_HOSTS: exact hostnames of the prod-data clone, https only, compiled in. EMPTY TODAY. A host
 //      is added here in a reviewed change once the clone exists and is verified to have its own attribution
 //      tables and no merchant egress.
+//   3. PROD_SYNTHETIC_HOSTS: the production commerce door, for OUR OWN EVAL CLIENT ONLY (`--target-kind
+//      prod-synthetic`). Production marks that client's calls synthetic (src/guardrails/syntheticCallers.js,
+//      docs/runbooks/synthetic_callers.md): read tools only, no writes, no live merchant reads. https, the /mcp
+//      path, an OAuth bearer, no load mode, and its own lower caps (PROD_SYNTHETIC_CAPS).
 //
 // Being allowed is necessary, not sufficient: EVERY response must also carry the deployment attestation
 // header below, which only the clone (or a local test stub) sets; the client halts the run on the first
@@ -41,6 +45,27 @@ const EVAL_CLONE_HOSTS = Object.freeze([]);
 
 // The positive server attestation every response must carry. Header names are case-insensitive on the wire.
 const ATTESTATION = Object.freeze({ header: 'x-pivota-deployment', value: 'eval-clone' });
+
+// Exact hostnames of the production synthetic target. See (3) above.
+const PROD_SYNTHETIC_HOSTS = Object.freeze(['commerce.mcp.pivota.cc']);
+const PROD_SYNTHETIC_PATH = '/mcp';
+// What production says about the eval client on every /mcp response: the state it is served in. A run needs
+// `enforce` on EVERY response (any other value means its calls are ordinary ones, with real writes); the
+// classification check (initialize + tools/list only, no tool call) accepts `observe` too.
+const SYNTHETIC_STATE = Object.freeze({ header: 'x-pivota-synthetic', run: Object.freeze(['enforce']), check: Object.freeze(['observe', 'enforce']) });
+// The read tools production allows the eval client, less get_intel (no journey calls it).
+const PROD_SYNTHETIC_TOOLS = Object.freeze(['search_catalog', 'get_product', 'get_offers', 'get_alternatives']);
+// Lower than HARD_CAPS. A run fits inside one access token (an hour): it is refreshed right before the run.
+const PROD_SYNTHETIC_CAPS = Object.freeze({ maxConcurrency: 2, maxRps: 1, maxLimit: 200, maxRunSeconds: 3000 });
+
+/**
+ * The header and values a response must carry for this target kind. `stage` is "run" or "check".
+ * @returns {{ header: string, values: readonly string[] }}
+ */
+function attestationFor(kind, { stage = 'run' } = {}) {
+  if (kind === 'prod-synthetic') return { header: SYNTHETIC_STATE.header, values: stage === 'check' ? SYNTHETIC_STATE.check : SYNTHETIC_STATE.run };
+  return { header: ATTESTATION.header, values: [ATTESTATION.value] };
+}
 
 function isLoopbackLiteral(host) {
   if (typeof host !== 'string') return false;
@@ -70,7 +95,7 @@ function hostOf(url) {
  * @param {{ cloneHosts?: readonly string[] }} [opts] cloneHosts defaults to the compiled-in list (tests inject one).
  * @returns {{ ok: boolean, kind: 'loopback'|'clone'|null, host: string|null, problem: string|null }}
  */
-function classifyTarget(url, { cloneHosts = EVAL_CLONE_HOSTS } = {}) {
+function classifyTarget(url, { cloneHosts = EVAL_CLONE_HOSTS, prodSyntheticHosts = PROD_SYNTHETIC_HOSTS } = {}) {
   let u;
   try {
     u = new URL(String(url));
@@ -86,9 +111,14 @@ function classifyTarget(url, { cloneHosts = EVAL_CLONE_HOSTS } = {}) {
     if (u.protocol !== 'https:') return refuse(`eval clone ${host} must be addressed over https`);
     return { ok: true, kind: 'clone', host, problem: null };
   }
+  if (prodSyntheticHosts.includes(host)) {
+    if (u.protocol !== 'https:') return refuse(`production synthetic target ${host} must be addressed over https`);
+    if (u.port) return refuse(`production synthetic target ${host} takes no port`);
+    return { ok: true, kind: 'prod-synthetic', host, problem: null };
+  }
   return refuse(
-    `target ${host || '(empty)'} is not allowed: only loopback IP literals (127.0.0.0/8, ::1) and the compiled-in ` +
-      'EVAL_CLONE_HOSTS (empty today) may be addressed',
+    `target ${host || '(empty)'} is not allowed: only loopback IP literals (127.0.0.0/8, ::1), the compiled-in ` +
+      'EVAL_CLONE_HOSTS (empty today) and, as our eval client, PROD_SYNTHETIC_HOSTS may be addressed',
   );
 }
 
@@ -99,7 +129,7 @@ const MCP_PATH_RE = /^\/[A-Za-z0-9_\-/]*$/;
  * + MCP path), so a crafted path cannot move the host.
  * @returns {{ ok: boolean, problems: string[], notes: string[] }}
  */
-function checkTarget(config, { cloneHosts = EVAL_CLONE_HOSTS } = {}) {
+function checkTarget(config, { cloneHosts = EVAL_CLONE_HOSTS, prodSyntheticHosts = PROD_SYNTHETIC_HOSTS } = {}) {
   const problems = [];
   const notes = [];
   if (!config.baseUrl) {
@@ -107,14 +137,16 @@ function checkTarget(config, { cloneHosts = EVAL_CLONE_HOSTS } = {}) {
     return { ok: problems.length === 0, problems, notes };
   }
   if (!MCP_PATH_RE.test(String(config.mcpPath || ''))) problems.push(`MCP path "${config.mcpPath}" must be a plain absolute path`);
-  const base = classifyTarget(config.baseUrl, { cloneHosts });
-  const endpoint = classifyTarget(config.endpoint, { cloneHosts });
+  const base = classifyTarget(config.baseUrl, { cloneHosts, prodSyntheticHosts });
+  const endpoint = classifyTarget(config.endpoint, { cloneHosts, prodSyntheticHosts });
   for (const c of [base, endpoint]) if (!c.ok && !problems.includes(c.problem)) problems.push(c.problem);
   if (base.ok && endpoint.ok && base.host !== endpoint.host) problems.push('the MCP path moved the target host');
   if (endpoint.ok) {
-    const wanted = endpoint.kind === 'loopback' ? 'local' : 'prod-clone';
+    const wanted = { loopback: 'local', clone: 'prod-clone', 'prod-synthetic': 'prod-synthetic' }[endpoint.kind];
     if (config.targetKind !== wanted) problems.push(`target ${endpoint.host} is a ${endpoint.kind} target: --target-kind must be ${wanted}`);
-    notes.push(`target ${endpoint.host} is an allowed ${endpoint.kind} target; every response must carry ${ATTESTATION.header}: ${ATTESTATION.value}`);
+    const att = attestationFor(endpoint.kind, { stage: config.checkClassification ? 'check' : 'run' });
+    notes.push(`target ${endpoint.host} is an allowed ${endpoint.kind} target; every response must carry ${att.header}: ${att.values.join('|')}`);
+    if (endpoint.kind === 'prod-synthetic') problems.push(...checkProdSynthetic(config));
   }
   if (config.timeoutMs < HARD_CAPS.minTimeoutMs || config.timeoutMs > HARD_CAPS.maxTimeoutMs) {
     problems.push(`timeout ${config.timeoutMs}ms outside [${HARD_CAPS.minTimeoutMs}, ${HARD_CAPS.maxTimeoutMs}]`);
@@ -123,6 +155,27 @@ function checkTarget(config, { cloneHosts = EVAL_CLONE_HOSTS } = {}) {
     problems.push(`concurrency ${config.concurrency} exceeds hard cap ${HARD_CAPS.maxConcurrency}`);
   }
   return { ok: problems.length === 0, problems, notes };
+}
+
+/** What a production synthetic run may be: the eval client on the commerce door, reading, gently. Pure. */
+function checkProdSynthetic(config) {
+  const problems = [];
+  if (config.tier !== 'commerce') problems.push('a production synthetic run uses --tier commerce');
+  if (config.mcpPath !== PROD_SYNTHETIC_PATH) problems.push(`a production synthetic run uses the ${PROD_SYNTHETIC_PATH} path`);
+  if (config.auth !== 'bearer') problems.push('a production synthetic run authenticates as the eval OAuth client (--auth bearer)');
+  if (config.load && config.load.enabled) problems.push('load mode never runs against production');
+  // The classification check makes two requests (initialize, tools/list) and calls no tool: the run caps are moot.
+  if (config.checkClassification) return problems;
+  for (const j of config.journeys || []) {
+    if (j === 'recommend') problems.push('the recommend journey is not a production synthetic journey (recommend_products is not allowed)');
+  }
+  if (config.concurrency > PROD_SYNTHETIC_CAPS.maxConcurrency) problems.push(`concurrency ${config.concurrency} exceeds the production synthetic cap ${PROD_SYNTHETIC_CAPS.maxConcurrency}`);
+  if (config.discoveryRps > PROD_SYNTHETIC_CAPS.maxRps) problems.push(`rps ${config.discoveryRps} exceeds the production synthetic cap ${PROD_SYNTHETIC_CAPS.maxRps}`);
+  if (!(config.limit > 0) || config.limit > PROD_SYNTHETIC_CAPS.maxLimit) problems.push(`a production synthetic run takes --limit 1..${PROD_SYNTHETIC_CAPS.maxLimit} queries`);
+  if (!(config.maxWallSeconds > 0) || config.maxWallSeconds > PROD_SYNTHETIC_CAPS.maxRunSeconds) {
+    problems.push(`a production synthetic run takes --max-wall-seconds 1..${PROD_SYNTHETIC_CAPS.maxRunSeconds} (one access token)`);
+  }
+  return problems;
 }
 
 /** Load-mode settings vs the compiled-in caps. Pure. */
@@ -214,6 +267,13 @@ module.exports = {
   HARD_CAPS,
   EVAL_CLONE_HOSTS,
   ATTESTATION,
+  PROD_SYNTHETIC_HOSTS,
+  PROD_SYNTHETIC_PATH,
+  PROD_SYNTHETIC_TOOLS,
+  PROD_SYNTHETIC_CAPS,
+  SYNTHETIC_STATE,
+  attestationFor,
+  checkProdSynthetic,
   isLoopbackLiteral,
   hostOf,
   classifyTarget,
