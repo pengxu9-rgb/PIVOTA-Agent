@@ -5,7 +5,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
-const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, approvalBlockedRelayLine } = require('../src/services/relationshipGraphServingProgress');
+const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, approvalBlockedRelayLine, reviewErrorRelayLine } = require('../src/services/relationshipGraphServingProgress');
 const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
@@ -387,6 +387,21 @@ function surfaceApprovalBlocked(summary, reviewArtifactPath) {
   if (line) process.stderr.write(line);
 }
 
+// Why reviews errored, read from the review's own --out file (in the container's /tmp, lost with it)
+// and written as one bounded stderr line. Never added to the summary: the summary is recorded in the
+// run ledger, and the messages can quote model output.
+function surfaceReviewErrors(summary, reviewArtifactPath) {
+  let decisions = [];
+  try {
+    const artifact = reviewArtifactPath && fs.existsSync(reviewArtifactPath) ? JSON.parse(fs.readFileSync(reviewArtifactPath, 'utf8')) : null;
+    decisions = Array.isArray(artifact && artifact.decisions) ? artifact.decisions : [];
+  } catch (_err) {
+    decisions = []; // the counts are still in the summary
+  }
+  const line = reviewErrorRelayLine(decisions, { runId: summary.run_id });
+  if (line) process.stderr.write(line);
+}
+
 function buildSyncRoutineSteps(options = {}) {
   const node = process.execPath;
   const steps = [];
@@ -705,6 +720,7 @@ async function runSyncRoutine(
         Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
         surfaceServingAuditScope(summary, routine);
         surfaceApprovalBlocked(summary, routine.artifacts && routine.artifacts.review);
+        surfaceReviewErrors(summary, routine.artifacts && routine.artifacts.review);
       }
     } catch (error) {
       summary.ok = false;
@@ -822,6 +838,7 @@ module.exports = {
   SYNC_CONFIRM_TOKEN,
   WRAPPER_CONFIRM_TOKEN,
   buildSyncRoutineSteps,
+  surfaceReviewErrors,
   formatRoutineFailure,
   parseArgs,
   recordRunLedgerSafe,

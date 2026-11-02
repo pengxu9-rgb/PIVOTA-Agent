@@ -46,7 +46,7 @@ const { getRelationshipEdgeServingSuppressionReasons, coerceRelationshipEdge, va
   __internal: { getPriceRatio, getPriceObservedAt },
 } = require('../src/auroraBff/productRelationshipGraph');
 const { combineReviews, hasValidConsensusApproval, CONSENSUS_MIN_CONFIDENCE, validReviewerIdentity } = require('../src/services/relationshipCrossAgentReview');
-const { REVALIDATION_MISMATCH_MARKER } = require('../src/services/relationshipGraphServingProgress');
+const { REVALIDATION_MISMATCH_MARKER, reviewErrorCodeKey } = require('../src/services/relationshipGraphServingProgress');
 
 const { __internal: { inferRelationship } } = require('../src/auroraBff/productRelationshipGraphBuilder');
 const { classifyComplementPair, SAME_JOB_REASON } = require('../src/auroraBff/relationshipComplementPolicy');
@@ -1621,7 +1621,9 @@ function buildAiReview(decision) {
 }
 
 function buildReviewErrorDecision(err) {
-  const code = reviewErrorCode(err) || 'LLM_REVIEW_FAILED';
+  // The code is echoed in the rationale (stdout) and counted in the summary, so it is allowlisted;
+  // whatever else the error said stays in review_error.message, in the --out file only.
+  const code = reviewErrorCodeKey(reviewErrorCode(err) || 'LLM_REVIEW_FAILED');
   const message = normalizeString(err && err.message ? err.message : String(err || ''), 500);
   return {
     verdict: 'error',
@@ -2117,6 +2119,18 @@ async function runReview({
     const code = (row.approval_blocked && row.approval_blocked.code) || 'unknown';
     approvalBlockedByCode[code] = (approvalBlockedByCode[code] || 0) + 1;
   }
+  // Why reviews errored, as a count per code. Codes only: messages can quote model output and must not
+  // reach this summary, which travels on into the routine summary and the run ledger. The per-row
+  // messages stay in the --out file, where the sync routine reads a few into one bounded log line
+  // (2026-11-02: 156 of 426 reviews errored, the gate failed the night, and no record said why).
+  // (Codes are allowlisted where the error decision is built, buildReviewErrorDecision, the only
+  // producer of review_error; a verdict replay refuses error rows.)
+  const reviewErrorByCode = {};
+  for (const row of completed) {
+    if (!row.review_error) continue;
+    const code = row.review_error.code;
+    reviewErrorByCode[code] = (reviewErrorByCode[code] || 0) + 1;
+  }
   const reviewErrorDenominator = Math.max(0, completed.length - guardBlocked.length - lowConfidenceCount);
   const guardBlockedByReason = {};
   for (const row of guardBlocked) {
@@ -2175,6 +2189,7 @@ async function runReview({
     review_error_count: reviewErrorCount,
     review_error_denominator: reviewErrorDenominator,
     review_error_rate: reviewErrorDenominator ? reviewErrorCount / reviewErrorDenominator : 0,
+    review_error_by_code: reviewErrorByCode,
     guard_blocked_count: guardBlocked.length,
     guard_blocked_by_reason: guardBlockedByReason,
     guard_blocked_applied_count: guardBlockedAppliedCount,
