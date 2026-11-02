@@ -155,6 +155,22 @@ async function preflight({ config, env = process.env, deps = {}, log = () => {} 
   return { problems: [], bearerToken: token.access_token, report, client };
 }
 
+// Server text in a canary summary is printed only in a safe shape: an error code as a plain token (else "other"),
+// an error message with URLs and token values blanked, no control characters, at most 160 characters.
+const ERROR_CODE_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+function cappedErrorCode(value) {
+  if (value === null || value === undefined) return null;
+  return ERROR_CODE_RE.test(String(value)) ? String(value) : 'other';
+}
+function sanitizedError(value) {
+  if (!value) return null;
+  return String(value)
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
+    .replace(/token=[^\s&"']+/gi, 'token=<redacted>')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .slice(0, 160);
+}
+
 function toolErrorCode(result) {
   if (!result || result.isError !== true) return null;
   try {
@@ -254,8 +270,8 @@ async function canary({ config, client, now = () => new Date() }) {
     state: rec.attested === undefined ? null : rec.attested,
     latency_ms: rec.latency_ms,
     is_error: result ? result.isError === true : null,
-    error_code: toolErrorCode(result),
-    error: rec.error || null,
+    error_code: cappedErrorCode(toolErrorCode(result)),
+    error: sanitizedError(rec.error),
     // How many alternatives, products or offers came back; never the items themselves.
     result: canaryResult(config.canary, rec),
   };

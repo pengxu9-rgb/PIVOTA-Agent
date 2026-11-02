@@ -59,6 +59,7 @@ Exit codes:
 | 2 | Refused: config or safety check failed |
 | 3 | Aborted: kill switch, failed handshake, missing attestation, a redirect, the wall-clock limit, or the call budget |
 | 4 | Fatal error |
+| 130 | A second Ctrl-C or SIGTERM: exited at once |
 
 ## What it does
 
@@ -379,7 +380,8 @@ The rule is the gateway's own (`isSeedSupplyUnservableUpstream`, `src/services/e
 It prints `result`: `items` with their count, `empty` with its reason, or `refusal`, and for `get_offers` its
 `links` (`top_level_urls`, `r_links`, `r_syn`: how many `/r` links the offers carry and how many say `syn: 1`).
 Exit codes: 0 items came back; 1 the call failed or the answer was a refusal (`error_code`); 3 the answer was not
-marked `enforce`; 5 the answer was empty. Read `result.kind` before any re-run: an empty answer means the id
+marked `enforce`, or was a redirect (refused); 5 the answer was empty. A full run exits as in the table above (0, 1,
+2, 3, 4, 130); a run that halts on its last call exits 3 too. Read `result.kind` before any re-run: an empty answer means the id
 pair did not exercise the path, so take the next pair from the lookup instead of calling again with the same one.
 
 ```bash
