@@ -107,6 +107,14 @@ const CART_CAPABILITY = 'dev.ucp.shopping.cart';
 const CHECKOUT_CAPABILITY = 'dev.ucp.shopping.checkout';
 const FULFILLMENT_CAPABILITY = 'dev.ucp.shopping.fulfillment';
 const SHOPIFY_GLOBAL_CATALOG_CAPABILITY = 'dev.shopify.catalog.global';
+// DISCOUNT CODES, requested for the same silent-intersection reason as fulfillment. Without it a merchant
+// that advertises `dev.ucp.shopping.discount` (cosrx did, measured 2026-08-13) never grants it, and a
+// checkout carries no `discounts` block: we could neither submit a code nor read which discounts applied.
+// ucp.dev/2026-04-08/specification/discount: it extends BOTH cart and checkout, the request is
+// `discounts.codes` (case-insensitive; replaces earlier codes; [] clears), and the response lists
+// `discounts.applied` (code, title, amount in minor units, automatic, allocations by JSON path) with
+// rejected codes reported in `messages[]` as `discount_code_*`. It moves no money (ADR-027, ADR-028).
+const DISCOUNT_CAPABILITY = 'dev.ucp.shopping.discount';
 
 // Any capability whose name implies completing a purchase / moving money. Requesting these is forbidden here.
 const FORBIDDEN_CAPABILITY_PATTERN = /(complete|payment|charge|purchase)/i;
@@ -194,6 +202,9 @@ const ALLOWED_BUYER_CAPABILITIES = Object.freeze(new Set([
   // Discovery fields only (see SHOPIFY_GLOBAL_CATALOG_CAPABILITY above). Vetted 2026-10-31 against the
   // extension doc: filters, similarity search, inferred fields and read-only variant fields; no payment.
   'dev.shopify.catalog.global',
+  // Submits codes and reads applied discounts on a cart or checkout (see DISCOUNT_CAPABILITY above).
+  // Vetted 2026-11-03 against the extension spec: no payment, no completion, no instrument.
+  'dev.ucp.shopping.discount',
 ]));
 
 function assertNoPurchaseCompletion(capabilityNames) {
@@ -245,7 +256,7 @@ function buildUcpBuyerAgentProfile(config = {}) {
   // NOT complete.
   const capabilityNames = [
     CATALOG_SEARCH_CAPABILITY, CATALOG_LOOKUP_CAPABILITY, CART_CAPABILITY, CHECKOUT_CAPABILITY,
-    FULFILLMENT_CAPABILITY, SHOPIFY_GLOBAL_CATALOG_CAPABILITY,
+    FULFILLMENT_CAPABILITY, SHOPIFY_GLOBAL_CATALOG_CAPABILITY, DISCOUNT_CAPABILITY,
   ];
   assertNoPurchaseCompletion(capabilityNames);
 
@@ -290,6 +301,15 @@ function buildUcpBuyerAgentProfile(config = {}) {
       spec: 'https://shopify.dev/docs/agents/catalog/global-catalog',
       schema: `https://shopify.dev/ucp/schemas/${version}/shopify_catalog_global.json`,
       extends: [CATALOG_LOOKUP_CAPABILITY, CATALOG_SEARCH_CAPABILITY],
+    }],
+    // The ARRAY `extends` is the spec's own declaration for this extension ("extends":
+    // ["dev.ucp.shopping.cart", "dev.ucp.shopping.checkout"]), and the spec lets a business advertise it
+    // for cart only, checkout only, or both. So it must survive an intersection that keeps either parent.
+    [DISCOUNT_CAPABILITY]: [{
+      version,
+      spec: capabilitySpec('discount'),
+      schema: capabilitySchema('discount'),
+      extends: [CART_CAPABILITY, CHECKOUT_CAPABILITY],
     }],
   };
 
@@ -367,5 +387,6 @@ module.exports = {
   CHECKOUT_CAPABILITY,
   FULFILLMENT_CAPABILITY,
   SHOPIFY_GLOBAL_CATALOG_CAPABILITY,
+  DISCOUNT_CAPABILITY,
   FORBIDDEN_CAPABILITY_PATTERN,
 };

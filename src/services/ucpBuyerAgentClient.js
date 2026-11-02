@@ -1029,12 +1029,13 @@ function createUcpBuyerAgentClient(options = {}) {
    * i.e. arguments = { meta, cart: { line_items: [...] } }. Cart tools accept unauthenticated (anonymous)
    * requests per the spec, and the returned cart carries a storefront `continue_url` (warm handoff).
    */
-  async function createCart(mcpEndpoint, { lineItems, context, attribution } = {}) {
+  async function createCart(mcpEndpoint, { lineItems, context, attribution, discountCodes } = {}) {
     if (!Array.isArray(lineItems) || lineItems.length === 0) {
       throw new Error('createCart requires a non-empty lineItems array');
     }
     const cart = { line_items: lineItems };
     if (context) cart.context = context;
+    if (discountCodes !== undefined) cart.discounts = { codes: normalizeDiscountCodes(discountCodes) };
     const args = { cart };
     if (attribution) args.attribution = attribution;
     return callTool(mcpEndpoint, TOOL.CREATE_CART, args);
@@ -1077,8 +1078,8 @@ function createUcpBuyerAgentClient(options = {}) {
    * @param {{ cartId?: string, lineItems?: Array, buyer?: object, context?: object, attribution?: object,
    *          checkout?: object }} params
    */
-  async function createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context, attribution, checkout } = {}) {
-    const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout });
+  async function createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context, attribution, checkout, discountCodes } = {}) {
+    const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout, discountCodes });
     return callTool(mcpEndpoint, TOOL.CREATE_CHECKOUT, args);
   }
 
@@ -1088,9 +1089,9 @@ function createUcpBuyerAgentClient(options = {}) {
    * @param {{ checkoutId: string, cartId?: string, lineItems?: Array, buyer?: object, context?: object,
    *          attribution?: object, checkout?: object }} params
    */
-  async function updateCheckout(mcpEndpoint, { checkoutId, cartId, lineItems, buyer, context, attribution, checkout } = {}) {
+  async function updateCheckout(mcpEndpoint, { checkoutId, cartId, lineItems, buyer, context, attribution, checkout, discountCodes } = {}) {
     if (!checkoutId) throw new Error('updateCheckout requires checkoutId');
-    const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout });
+    const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout, discountCodes });
     args.id = checkoutId; // top-level `id` per the live update_checkout schema.
     return callTool(mcpEndpoint, TOOL.UPDATE_CHECKOUT, args);
   }
@@ -1344,13 +1345,15 @@ function isPlainObjectLocal(v) {
  * delivery address on the storefront (so shipping/tax quotes are not returned at this step). We NEVER attach the
  * `payment` field (payment instruments/tokens are the gated bottom half — out of scope).
  */
-function buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout } = {}) {
+function buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout, discountCodes } = {}) {
   const checkoutBody = isPlainObjectLocal(checkout) ? { ...checkout } : {};
   if (cartId && checkoutBody.cart_id === undefined) checkoutBody.cart_id = cartId;
   if (Array.isArray(lineItems) && checkoutBody.line_items === undefined) checkoutBody.line_items = lineItems;
   if (isPlainObjectLocal(buyer) && checkoutBody.buyer === undefined) checkoutBody.buyer = buyer;
   if (isPlainObjectLocal(context) && checkoutBody.context === undefined) checkoutBody.context = context;
   if (isPlainObjectLocal(attribution) && checkoutBody.attribution === undefined) checkoutBody.attribution = attribution;
+  // `discounts.codes` (dev.ucp.shopping.discount). Passed only when the caller names codes; [] clears them.
+  if (discountCodes !== undefined) checkoutBody.discounts = { codes: normalizeDiscountCodes(discountCodes) };
   // HARD BOUND: never emit a `payment` field from this client (no instruments, no tokens, no card).
   delete checkoutBody.payment;
   return { checkout: checkoutBody };
@@ -1385,7 +1388,8 @@ function normalizePricedCheckout(toolResult) {
   if (!payload || typeof payload !== 'object') {
     return {
       item: null, shipping_options: [], tax: null, total: null, subtotal: null, shipping: null,
-      currency: null, continue_url: null, checkout_id: null, status: null, messages: [], raw: null,
+      currency: null, continue_url: null, checkout_id: null, status: null, messages: [],
+      discounts: { submitted_codes: [], applied: [], rejected: [], unreadable: [] }, raw: null,
     };
   }
   const lineItems = Array.isArray(payload.line_items) ? payload.line_items
@@ -1447,7 +1451,129 @@ function normalizePricedCheckout(toolResult) {
       : null)).filter(Boolean)
     : [];
 
-  return { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, checkout_id, status, messages, raw: payload };
+  const discounts = normalizeDiscounts(payload);
+
+  return { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, checkout_id, status, messages, discounts, raw: payload };
+}
+
+// ---- discounts (dev.ucp.shopping.discount, ucp.dev/2026-04-08/specification/discount) -------------
+
+// Bounds on what we submit. The spec sets no maximum, so these are ours: a code is a short merchant token,
+// and one checkout tries a handful at most (ADR-027 / ADR-028 try one deal code per attempt).
+const MAX_DISCOUNT_CODES = 5;
+const MAX_DISCOUNT_CODE_LENGTH = 255;
+
+// The rejection codes the spec defines. Any other `discount_code_*` code is kept as-is: a merchant may add one.
+const DISCOUNT_REJECTION_PREFIX = 'discount_code_';
+
+/**
+ * The codes to submit, trimmed, de-duplicated case-insensitively (the spec matches case-insensitively) and
+ * bounded. Throws on anything else, so a malformed caller never reaches the merchant. [] is valid: it clears.
+ */
+function normalizeDiscountCodes(codes) {
+  if (!Array.isArray(codes)) throw new Error('discountCodes must be an array of strings');
+  const out = [];
+  const seen = new Set();
+  for (const raw of codes) {
+    if (typeof raw !== 'string') throw new Error('discountCodes must be an array of strings');
+    const code = raw.trim();
+    if (!code || code.length > MAX_DISCOUNT_CODE_LENGTH) {
+      throw new Error(`a discount code must be 1..${MAX_DISCOUNT_CODE_LENGTH} characters`);
+    }
+    const key = code.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(code);
+  }
+  if (out.length > MAX_DISCOUNT_CODES) throw new Error(`at most ${MAX_DISCOUNT_CODES} discount codes per request`);
+  return out;
+}
+
+/** Where an allocation lands, from its JSON path: a line item, shipping, or anything else (the order). */
+function allocationTarget(path) {
+  const p = String(path || '');
+  if (/^\$\.line_items\[\d+\]/.test(p)) return 'line';
+  if (/shipping|fulfillment/i.test(p)) return 'shipping';
+  return 'order';
+}
+
+function minorAmount(value) {
+  // The spec types every amount here as an integer in minor units. Anything else is not trusted.
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+/**
+ * The checkout's `discounts` block, normalized. FAIL CLOSED: an applied entry whose amount or any allocation
+ * amount is not a safe integer is reported in `unreadable` instead of `applied`, so a caller deciding whether
+ * a code applied never reads a guessed number.
+ *
+ * Returns { submitted_codes, applied, rejected, unreadable } where
+ *   applied[]  = { code (null for automatic), title, automatic, amount_minor, method, allocations[] },
+ *   allocations[] = { path, target: 'line' | 'shipping' | 'order', amount_minor },
+ *   rejected[] = { code (from the message path, when it names one), reason (the spec's code), content }.
+ */
+function normalizeDiscounts(payload) {
+  const block = isPlainObjectLocal(payload && payload.discounts) ? payload.discounts : {};
+  const submitted = Array.isArray(block.codes) ? block.codes.filter((c) => typeof c === 'string') : [];
+  const applied = [];
+  const unreadable = [];
+  for (const entry of Array.isArray(block.applied) ? block.applied : []) {
+    if (!isPlainObjectLocal(entry)) continue;
+    const amount = minorAmount(entry.amount);
+    const allocations = [];
+    let allocationsReadable = true;
+    for (const a of Array.isArray(entry.allocations) ? entry.allocations : []) {
+      const allocationAmount = isPlainObjectLocal(a) ? minorAmount(a.amount) : null;
+      if (allocationAmount === null) {
+        allocationsReadable = false;
+        continue;
+      }
+      allocations.push({ path: a.path || null, target: allocationTarget(a.path), amount_minor: allocationAmount });
+    }
+    const normalized = {
+      code: typeof entry.code === 'string' && entry.code ? entry.code : null,
+      title: typeof entry.title === 'string' ? entry.title : null,
+      automatic: entry.automatic === true,
+      amount_minor: amount,
+      method: entry.method || null,
+      allocations,
+    };
+    if (amount === null || amount <= 0 || !allocationsReadable) unreadable.push(normalized);
+    else applied.push(normalized);
+  }
+  const rejected = [];
+  for (const m of Array.isArray(payload && payload.messages) ? payload.messages : []) {
+    if (!isPlainObjectLocal(m) || !String(m.code || '').startsWith(DISCOUNT_REJECTION_PREFIX)) continue;
+    // `path` points at the rejected entry, e.g. "$.discounts.codes[0]"; map it back to the code we sent.
+    const index = /^\$\.discounts\.codes\[(\d+)\]$/.exec(String(m.path || ''));
+    const code = index && submitted[Number(index[1])] !== undefined ? submitted[Number(index[1])] : null;
+    rejected.push({ code, reason: String(m.code), content: typeof m.content === 'string' ? m.content : null });
+  }
+  return { submitted_codes: submitted, applied, rejected, unreadable };
+}
+
+/**
+ * What one submitted code did on this checkout, for a verifier or a completion flow. `applied` is true only
+ * when the code appears in `applied` (case-insensitive) with a positive amount and was not also rejected.
+ * Automatic discounts are reported apart: they are part of the price, never the code's saving (ADR-027 D4).
+ */
+function discountCodeOutcome(discounts, code) {
+  const key = String(code || '').trim().toUpperCase();
+  const d = discounts || { applied: [], rejected: [], unreadable: [] };
+  const mine = d.applied.filter((a) => a.code && a.code.toUpperCase() === key);
+  const rejection = d.rejected.find((r) => r.code && r.code.toUpperCase() === key) || null;
+  const unreadable = d.unreadable.some((a) => a.code && a.code.toUpperCase() === key);
+  const automatic = d.applied.filter((a) => a.automatic);
+  const codeAmount = mine.reduce((sum, a) => sum + a.amount_minor, 0);
+  return {
+    code: String(code || '').trim(),
+    applied: mine.length > 0 && !rejection && !unreadable && codeAmount > 0,
+    amount_minor: mine.length ? codeAmount : 0,
+    allocations: mine.flatMap((a) => a.allocations),
+    rejected_reason: rejection ? rejection.reason : null,
+    unreadable,
+    automatic: automatic.map((a) => ({ title: a.title, amount_minor: a.amount_minor, allocations: a.allocations })),
+  };
 }
 
 /**
@@ -1732,6 +1858,10 @@ module.exports = {
   signUcpRequest,
   normalizePricedCheckout,
   buildCheckoutArgs,
+  normalizeDiscountCodes,
+  normalizeDiscounts,
+  discountCodeOutcome,
+  MAX_DISCOUNT_CODES,
   // Exported so the profile ROUTE applies the identical rule to its Host-header fallback, and so a test can
   // pin the rule itself rather than one caller's behaviour.
   agentProfileUrlFromOrigin,
