@@ -168,6 +168,9 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
     }
     budget -= 1;
     const raw = await client.callTool(toolName, args);
+    // A halt on THIS call aborts the run now, not only when a later call sees it: the run's last call can be
+    // the one that was not provably marked.
+    if (client.halted) out.aborted = out.aborted || client.halted;
     const payload = raw.outcome === 'ok' ? toolPayload(raw) : null;
     const rec = { ...meta, ...baseCallFields(raw, payload), dropped_args: dropped.length ? dropped : undefined };
     calls.push(rec);
@@ -404,6 +407,18 @@ function selectQueries(all, config) {
   if (config.classes) qs = qs.filter((q) => config.classes.includes(q.class));
   if (config.langs) qs = qs.filter((q) => config.langs.includes(q.lang));
   if (config.markets) qs = qs.filter((q) => config.markets.includes(q.market === null ? 'none' : q.market));
+  if (config.perClass > 0) {
+    // The first N of each class, then interleaved class by class, so a --limit below the total still spans
+    // every class.
+    const byClass = new Map();
+    for (const q of qs) {
+      if (!byClass.has(q.class)) byClass.set(q.class, []);
+      byClass.get(q.class).push(q);
+    }
+    const lists = [...byClass.values()];
+    qs = [];
+    for (let i = 0; i < config.perClass; i += 1) for (const list of lists) if (list[i]) qs.push(list[i]);
+  }
   if (config.limit > 0) qs = qs.slice(0, config.limit);
   return qs;
 }
@@ -446,7 +461,8 @@ function planCalls(config, querySet) {
   const queries = selectQueries(querySet.queries, config);
   const j = new Set(config.journeys);
   const inCatalog = queries.filter((q) => !(q.expect && q.expect.negative)).length;
-  const followMax = j.has('follow') ? Math.round(inCatalog * config.followSample) * config.followTop : 0;
+  // The follow journey samples each query with probability followSample, so the bound is every in-catalog query.
+  const followMax = j.has('follow') && config.followSample > 0 ? inCatalog * config.followTop : 0;
   const count = (k) => queries.reduce((m, q) => ((m[k(q)] = (m[k(q)] || 0) + 1), m), {});
   return {
     queries: queries.length,
@@ -454,7 +470,9 @@ function planCalls(config, querySet) {
     by_lang: count((q) => q.lang),
     by_market: count((q) => (q.market === null ? 'none' : q.market)),
     calls_upper_bound: {
-      handshake: 2,
+      // initialize, notifications/initialized and tools/list, per client: the run's, and on the production target the
+      // preflight's too.
+      handshake: 3 * (config.targetKind === 'prod-synthetic' ? 2 : 1),
       search_catalog: queries.length + (j.has('consistency') ? Math.min(config.consistencySample, queries.length) * config.consistencyRepeats : 0),
       get_product: followMax,
       get_offers: followMax,

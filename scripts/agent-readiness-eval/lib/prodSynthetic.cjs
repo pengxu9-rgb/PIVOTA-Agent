@@ -19,6 +19,7 @@
 const { execFile } = require('node:child_process');
 const { McpClient } = require('./mcpClient.cjs');
 const { canaryArguments } = require('./safety.cjs');
+const { toolPayload, readSearch, readProduct, readOffers, readAlternatives } = require('./responses.cjs');
 const oauth = require('./oauth.cjs');
 
 // What production's tools/list shows our eval client (src/guardrails/syntheticCallers.js SYNTHETIC_READ_TOOLS).
@@ -154,6 +155,22 @@ async function preflight({ config, env = process.env, deps = {}, log = () => {} 
   return { problems: [], bearerToken: token.access_token, report, client };
 }
 
+// Server text in a canary summary is printed only in a safe shape: an error code as a plain token (else "other"),
+// an error message with URLs and token values blanked, no control characters, at most 160 characters.
+const ERROR_CODE_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+function cappedErrorCode(value) {
+  if (value === null || value === undefined) return null;
+  return ERROR_CODE_RE.test(String(value)) ? String(value) : 'other';
+}
+function sanitizedError(value) {
+  if (!value) return null;
+  return String(value)
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
+    .replace(/token=[^\s&"']+/gi, 'token=<redacted>')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .slice(0, 160);
+}
+
 function toolErrorCode(result) {
   if (!result || result.isError !== true) return null;
   try {
@@ -165,9 +182,78 @@ function toolErrorCode(result) {
 }
 
 /**
+ * The links an offer answer carries, counted, never printed: every *_url / url field of each offer, how many are
+ * /r redirects (`/r?token=<payload>.<signature>`), and how many of those say `syn: 1` in their token payload (the
+ * backend stamps it on every link it mints for a synthetic call). The payload is decoded, not verified.
+ */
+function offerLinkFacts(payload) {
+  const v = payload && payload.value && typeof payload.value === 'object' ? payload.value : {};
+  const offers = Array.isArray(v.signals) ? v.signals.map((s) => (s && typeof s.value === 'object' && s.value) || s) : [];
+  // top_level_urls: the offer's own *_url / url fields only (not nested objects, arrays or best_offer); the /r
+  // links the backend mints sit there.
+  const facts = { top_level_urls: 0, r_links: 0, r_syn: 0 };
+  for (const o of offers) {
+    if (!o || typeof o !== 'object') continue;
+    for (const [k, raw] of Object.entries(o)) {
+      if (!/(^|_)url$/.test(k) || typeof raw !== 'string' || !raw) continue;
+      facts.top_level_urls += 1;
+      let u;
+      try {
+        u = new URL(raw);
+      } catch {
+        continue;
+      }
+      const token = u.searchParams.get('token');
+      if (!/\/r\/?$/.test(u.pathname) || !token) continue;
+      facts.r_links += 1;
+      try {
+        const body = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8'));
+        if (body && body.syn === 1) facts.r_syn += 1;
+      } catch {
+        // An unreadable token says nothing about the flag.
+      }
+    }
+  }
+  return facts;
+}
+
+// An empty answer's reason comes from the server: printed only when it is a plain short token, else `other`.
+const EMPTY_CLASS_RE = /^[a-z0-9_]{1,48}$/;
+function cappedEmptyClass(value) {
+  const v = typeof value === 'string' ? value : '';
+  return EMPTY_CLASS_RE.test(v) ? v : 'other';
+}
+
+/** What a canary's answer held: a refusal, an empty answer, or items (and how many). Null when no answer came. */
+function canaryResult(tool, rec) {
+  if (rec.outcome !== 'ok') return null;
+  const payload = toolPayload(rec);
+  if (payload.isError) return { kind: 'refusal', count: 0, empty_class: null };
+  let count;
+  let emptyClass;
+  if (tool === 'search_catalog') {
+    const s = readSearch(payload);
+    [count, emptyClass] = [s.products.length, s.empty_class];
+  } else if (tool === 'get_product') {
+    const p = readProduct(payload);
+    [count, emptyClass] = [p.found ? 1 : 0, p.found ? null : 'not_found'];
+  } else if (tool === 'get_offers') {
+    const o = readOffers(payload);
+    [count, emptyClass] = [o.offers.length, o.empty_class];
+  } else {
+    const a = readAlternatives(payload);
+    [count, emptyClass] = [a.items.length, a.empty_class];
+  }
+  const out = { kind: count > 0 ? 'items' : 'empty', count, empty_class: count > 0 ? null : cappedEmptyClass(emptyClass || 'unspecified') };
+  if (tool === 'get_offers') out.links = offerLinkFacts(payload);
+  return out;
+}
+
+/**
  * THE CANARY: one tools/call on the preflight's client, then stop. Prints when it ran (for the log reconciliation),
  * what came back, and nothing of the payload.
- * @returns {Promise<{ code: number, summary: object }>} 0 ok, 1 the call failed or the tool answered an error, 3 halted.
+ * @returns {Promise<{ code: number, summary: object }>} 0 items came back, 1 the call failed or the answer was a
+ *   refusal, 3 halted (not marked enforce), 5 the answer was empty.
  */
 async function canary({ config, client, now = () => new Date() }) {
   const args = canaryArguments(config.canary, config.canaryArgs);
@@ -184,11 +270,16 @@ async function canary({ config, client, now = () => new Date() }) {
     state: rec.attested === undefined ? null : rec.attested,
     latency_ms: rec.latency_ms,
     is_error: result ? result.isError === true : null,
-    error_code: toolErrorCode(result),
-    error: rec.error || null,
+    error_code: cappedErrorCode(toolErrorCode(result)),
+    error: sanitizedError(rec.error),
+    // How many alternatives, products or offers came back; never the items themselves.
+    result: canaryResult(config.canary, rec),
   };
-  const code = client.halted ? 3 : rec.outcome === 'ok' && summary.is_error === false ? 0 : 1;
+  // 0 only for an answer with items. An empty answer (5) is not a failed call (1): read result.kind before any
+  // re-run, and take the next id pair from the lookup rather than re-calling with the same one.
+  const kind = summary.result && summary.result.kind;
+  const code = client.halted ? 3 : kind === 'items' ? 0 : kind === 'empty' ? 5 : 1;
   return { code, summary };
 }
 
-module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight, canary, runGcloud, gcloudEnv };
+module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight, canary, offerLinkFacts, runGcloud, gcloudEnv };

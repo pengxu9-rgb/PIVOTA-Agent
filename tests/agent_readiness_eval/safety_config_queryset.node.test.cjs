@@ -237,4 +237,9 @@ test('dry-run plan counts calls without making any', () => {
   assert.equal(plan.queries, 10);
   assert.equal(plan.calls_upper_bound.search_catalog, 16);
   assert.equal(plan.calls_upper_bound.get_product, 10);
+  assert.equal(plan.calls_upper_bound.handshake, 3, 'initialize, notifications/initialized, tools/list');
+  // Follow samples each query with probability follow-sample: the bound is every in-catalog query, not a rounding.
+  const sampled = planCalls(cfg(['--limit', '10', '--follow-top', '1', '--follow-sample', '0.3']), set);
+  assert.equal(sampled.calls_upper_bound.get_product, 10);
+  assert.equal(planCalls(cfg(['--limit', '10', '--follow-sample', '0']), set).calls_upper_bound.get_product, 0);
 });

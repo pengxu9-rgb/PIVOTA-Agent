@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { isWellFormedJsonValue } = require('../auroraBff/relationshipSafeText');
 const TABLE = 'public.relgraph_reviewed_ingredient_evidence';
 const MAX_RECORDS = 17;
 const DAY = 86400000;
@@ -94,6 +95,9 @@ function validateReviewedIngredientEvidence(input, { nowMs = Date.now(), require
     formula_sha256: formulaHash, raw_source_sha256: input.raw_source_sha256, source_url: url, source_observed_at: observedAt,
     source_capture: { ...capture, identity: identity(capture.identity) }, reviews: reviews.map(review => ({ ...review, identity: identity(review.identity) })),
     parse_status: 'OK', review_status: 'APPROVED', audit_status: 'PASS', ingest_allowed: true };
+  // Malformed text (a lone surrogate half, NUL) is refused, not repaired: the formula and capture
+  // hashes were computed over it, and Postgres would refuse the jsonb proof and the text column.
+  assert(isWellFormedJsonValue(record), 'ingredient_evidence_text_malformed');
   // Bind complete independent proof, not just an owner/formula pair.
   const snapshot = JSON.parse(JSON.stringify(record));
   return freeze({ ...snapshot, evidence_id: sha256(canonicalJson(snapshot)) });

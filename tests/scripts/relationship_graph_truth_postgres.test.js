@@ -258,4 +258,13 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     expect(stored.anchor_snapshot).toEqual({ brand: 'Brand', title: 'Leaf \u{1F33F} Cream', 'key\uFFFD': 'v' });
     expect(stored.source_refs[0].name).toBe('half \uFFFD');
   });
+
+  test('Postgres refuses NUL in a text parameter (22021); a label with NUL in its text fields is still written', async () => {
+    await expect(client.query('SELECT $1::text', ['a\u0000b'])).rejects.toMatchObject({ code: '22021' });
+    const row = { ...edge('nul_text', 'candidate', 'related_product'), use_case: 'barrier\u0000 serum', display_label: 'budget\u0000',
+      reason_flags: ['flag\u0000'] };
+    expect(await upsertRelationshipCandidateLabel(row, { queryFn })).toMatchObject({ written: true });
+    const stored = (await client.query("SELECT use_case, display_label, reason_flags FROM relationship_candidate_labels WHERE id = $1", [row.id])).rows[0];
+    expect(stored).toEqual({ use_case: 'barrier serum', display_label: 'budget', reason_flags: ['flag'] });
+  });
 });

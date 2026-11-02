@@ -610,9 +610,27 @@ async function runCanary(extra, { door = fakeDoor(), gcloud = fakeGcloud() } = {
   return { code, c, door, gcloud, printed: code === 2 ? null : JSON.parse(c.out.join('')) };
 }
 
+// A door whose tools/call answers with the given structured content.
+function doorAnswering(structuredContent) {
+  const base = fakeDoor();
+  return {
+    seen: base.seen,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      base.seen.push({ method: body.method });
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: '{}' }], structuredContent } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' },
+      });
+    },
+  };
+}
+const ONE_OFFER = { signals: [{ value: { merchant_id: 'm', price: { amount: 10, currency: 'USD' }, in_stock: true } }] };
+
 test('canary: after the full preflight, exactly one tools/call with exactly the given ids, and its times are printed', async () => {
   const bodies = [];
-  const base = fakeDoor();
+  const base = doorAnswering(ONE_OFFER);
   const door = { seen: base.seen, fetchImpl: async (url, init) => { bodies.push(JSON.parse(init.body)); return base.fetchImpl(url, init); } };
   const r = await runCanary(['--canary', 'get_offers', ...IDS], { door });
   assert.equal(r.code, 0, r.c.err.join(''));
@@ -622,6 +640,7 @@ test('canary: after the full preflight, exactly one tools/call with exactly the 
   assert.equal(r.printed.canary, 'get_offers');
   assert.equal(r.printed.state, 'enforce');
   assert.equal(r.printed.is_error, false);
+  assert.deepEqual(r.printed.result, { kind: 'items', count: 1, empty_class: null, links: { top_level_urls: 0, r_links: 0, r_syn: 0 } });
   assert.ok(Date.parse(r.printed.started_at) <= Date.parse(r.printed.finished_at));
   assert.equal(r.printed.preflight.state, 'enforce');
   assert.doesNotMatch(r.c.out.join(''), /at-old|rt-old/);
@@ -657,6 +676,32 @@ test('canary: an unmarked answer to the call exits 3; a tool error exits 1 with 
   assert.equal(err.code, 1);
   assert.equal(err.printed.is_error, true);
   assert.equal(err.printed.error_code, 'PRODUCT_NOT_FOUND');
+  assert.equal(err.printed.result.kind, 'refusal');
+});
+
+test('canary: each tool reports how many items came back; an empty answer exits 5 with its reason', async () => {
+  const cases = [
+    ['get_alternatives', IDS, { signals: [{ value: { related: { product_id: 'a1', title: 'Alt one' } } }, { value: { related: { product_id: 'a2', title: 'Alt two' } } }] }, 2],
+    ['get_product', SEED_IDS, { product: { product_id: 'prod_test_1', title: 'Test Serum' } }, 1],
+    // total (the catalogue's count) differs from what came back: the canary counts what came back.
+    ['search_catalog', ['--canary-query', 'moisturizer'], { status: 'success', products: [{ product_id: 'p1', title: 'One' }, { product_id: 'p2', title: 'Two' }, { product_id: 'p3', title: 'Three' }], total: 50 }, 3],
+    // Two offers, and an alternatives field: get_offers is counted by the offers reader, not another one.
+    ['get_offers', IDS, { ...ONE_OFFER, signals: [...ONE_OFFER.signals, ...ONE_OFFER.signals], alternatives: [] }, 2],
+  ];
+  for (const [tool, args, content, n] of cases) {
+    const r = await runCanary(['--canary', tool, ...args], { door: doorAnswering(content) });
+    assert.equal(r.code, 0, tool);
+    const { links, ...result } = r.printed.result;
+    assert.deepEqual(result, { kind: 'items', count: n, empty_class: null }, tool);
+    assert.equal(links !== undefined, tool === 'get_offers', `${tool}: link facts only for get_offers`);
+    assert.doesNotMatch(JSON.stringify(r.printed), /Alt one|Test Serum/, 'counts only, never the items');
+  }
+  const empty = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering({ signals: [], metadata: { reason: 'no_offers' } }) });
+  assert.equal(empty.code, 5, "empty is not a failed call");
+  assert.deepEqual(empty.printed.result, { kind: 'empty', count: 0, empty_class: 'no_offers', links: { top_level_urls: 0, r_links: 0, r_syn: 0 } });
+  const noPdp = await runCanary(['--canary', 'get_product', ...SEED_IDS], { door: doorAnswering({ note: 'not found' }) });
+  assert.equal(noPdp.code, 5);
+  assert.deepEqual(noPdp.printed.result, { kind: 'empty', count: 0, empty_class: 'not_found' });
 });
 
 test('canary get_product: only a seed-supply pair the gateway serves unscoped (the loopback lane), never a merchant scope', () => {
@@ -782,4 +827,143 @@ test('a check or a canary uses a stored token with a few minutes left, without a
   const run = preflightSetup(left(oauth.SHORT_JOB_MIN_SECONDS + 60));
   assert.match((await prodSynthetic.preflight({ config: run.config, env: {}, deps: run.deps })).problems.join('\n'), /CLIENT_ID/);
   assert.equal(run.door.seen.length + run.gcloud.calls.length, 0);
+});
+
+test('offerLinkFacts: counts the /r links an offer answer carries and how many say syn: 1, never printing one', () => {
+  const tok = (body) => `${Buffer.from(JSON.stringify(body)).toString('base64url')}.c2ln`;
+  const r = (body) => `https://api.example.test/r?token=${tok(body)}`;
+  const value = {
+    signals: [
+      { value: { merchant_id: 'm1', affiliate_url: r({ t: 'redirect', syn: 1 }), pdp_url: 'https://shop.example.test/p/1', title: 'x' } },
+      { value: { merchant_id: 'm2', cart_url: r({ t: 'redirect' }), url: r({ t: 'redirect', syn: true }) } },
+      { value: { merchant_id: 'm3', url: 'https://api.example.test/r?token=not-base64.x', image: 'https://img.example.test/1.png' } },
+      { value: { merchant_id: 'm4', url: 'https://api.example.test/redirect?token=' + tok({ syn: 1 }) } },
+      { value: { merchant_id: 'm5', url: 'not a url' } },
+    ],
+  };
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value }), { top_level_urls: 7, r_links: 4, r_syn: 1 });
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value: null }), { top_level_urls: 0, r_links: 0, r_syn: 0 });
+});
+
+test('canary get_offers: the printed summary says whether its /r links are marked syn: 1, without the links', async () => {
+  const token = `${Buffer.from(JSON.stringify({ t: 'redirect', syn: 1, ctx: 'SECRETCTX' })).toString('base64url')}.c2ln`;
+  const offers = { signals: [{ value: { merchant_id: 'm', price: { amount: 10, currency: 'USD' }, in_stock: true, affiliate_url: `https://api.example.test/r?token=${token}` } }] };
+  const res = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering(offers) });
+  assert.equal(res.code, 0);
+  assert.deepEqual(res.printed.result.links, { top_level_urls: 1, r_links: 1, r_syn: 1 });
+  assert.doesNotMatch(res.c.out.join(''), /token=|SECRETCTX|api\.example\.test/);
+});
+
+test('canary: an empty reason from the server is printed only as a plain short token; /r/ with a trailing slash counts', async () => {
+  for (const [reason, printed] of [['no_offers', 'no_offers'], ['market_not_priced', 'market_not_priced'], ['Some Free Text!', 'other'], ['x'.repeat(49), 'other'], ['a\nb', 'other']]) {
+    const r = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering({ signals: [], metadata: { reason } }) });
+    assert.equal(r.code, 5);
+    assert.equal(r.printed.result.empty_class, printed, JSON.stringify(reason));
+  }
+  const token = `${Buffer.from(JSON.stringify({ syn: 1 })).toString('base64url')}.c2ln`;
+  const value = { signals: [{ value: { affiliate_url: `https://api.example.test/r/?token=${token}` } }] };
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value }), { top_level_urls: 1, r_links: 1, r_syn: 1 });
+});
+
+test('--per-class takes the first N of each class, interleaved, before --limit', () => {
+  const { selectQueries } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const all = [];
+  for (const cls of ['a', 'b', 'c']) for (let i = 0; i < 5; i += 1) all.push({ id: `${cls}${i}`, class: cls, lang: 'en', market: null });
+  const ids = (extra) => selectQueries(all, { ...cfg([]), ...extra }).map((q) => q.id);
+  assert.deepEqual(ids({ perClass: 2, limit: 0 }), ['a0', 'b0', 'c0', 'a1', 'b1', 'c1']);
+  assert.deepEqual(ids({ perClass: 2, limit: 4 }), ['a0', 'b0', 'c0', 'a1'], 'the limit still spans every class');
+  assert.deepEqual(ids({ perClass: 0, limit: 4 }), ['a0', 'a1', 'a2', 'a3'], 'without it, file order');
+  assert.equal(cfg(['--per-class', '4']).perClass, 4);
+  assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1', '--per-class', '-1'])).join('\n'), /per-class/);
+  // The real query set: 4 of each of its classes.
+  const { loadQuerySet } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const qs = loadQuerySet(cfg([]).querySet);
+  const picked = selectQueries(qs.queries, { ...cfg([]), perClass: 4, limit: 40 });
+  const classes = new Set(qs.queries.map((q) => q.class));
+  assert.equal(picked.length, Math.min(40, classes.size * 4));
+  for (const c of classes) assert.equal(picked.filter((q) => q.class === c).length, 4, c);
+});
+
+test('a run whose LAST tools/call is not marked enforce is aborted (exit 3), not a pass', async () => {
+  // discovery --limit 1: the run's one and only tools/call is its last.
+  const door = fakeDoor({ stateFor: (method) => (method === 'tools/call' ? 'observe' : 'enforce') });
+  const s = preflightSetup({ door });
+  const c = capture();
+  let runDir;
+  const code = await main([...RUN_ARGV, '--journeys', 'discovery', '--limit', '1', '--oauth-token-file', s.config.oauthTokenFile, '--out', tmp('re-out-')], CREDS, c.io, { ...s.deps, onRunDir: (d) => { runDir = d; } });
+  assert.equal(door.seen.filter((x) => x.method === 'tools/call').length, 1);
+  assert.equal(code, 3, c.err.join(''));
+  const results = JSON.parse(fs.readFileSync(path.join(runDir, 'results.json'), 'utf8'));
+  assert.match(String(results.metrics.run.aborted), /attestation_missing/);
+  assert.equal(results.verdict, 'aborted');
+});
+
+test('canary: server text in error_code and error is printed only in a safe shape', async () => {
+  const leak = 'https://api.example.test/r?token=eyJzeW4iOjF9.c2ln';
+  const base = fakeDoor();
+  const door = {
+    seen: base.seen,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      base.seen.push({ method: body.method });
+      const result = { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: { code: `see ${leak}` } }) }] };
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
+    },
+  };
+  const r = await runCanary(['--canary', 'get_offers', ...IDS], { door });
+  assert.equal(r.code, 1);
+  assert.equal(r.printed.error_code, 'other');
+  assert.doesNotMatch(r.c.out.join(''), /token=ey|api\.example\.test/);
+  // A JSON-RPC error message from the server goes through the same filter.
+  const rpcErr = {
+    seen: [],
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message: `upstream failed: ${leak}\nline two` } }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
+    },
+  };
+  const r2 = await runCanary(['--canary', 'get_offers', ...IDS], { door: rpcErr });
+  assert.equal(r2.code, 1);
+  assert.doesNotMatch(r2.c.out.join(''), /token=ey|api\.example\.test/);
+  assert.equal(r2.printed.error, 'JSON-RPC -32000: upstream failed: <url> line two', 'URL blanked, newline flattened');
+  const long = await runCanary(['--canary', 'get_offers', ...IDS], {
+    door: {
+      fetchImpl: async (url, init) => {
+        const body = JSON.parse(init.body);
+        if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message: 'x'.repeat(500) } }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
+      },
+    },
+  });
+  assert.ok(long.printed.error.length <= 160);
+});
+
+test('--per-class takes only a plain decimal count; a class shorter than N gives what it has', () => {
+  assert.equal(cfg(['--per-class', '4']).perClass, 4);
+  for (const bad of [['--per-class'], ['--per-class', 'abc'], ['--per-class', '0x4'], ['--per-class', '4.5'], ['--per-class', '-1']]) {
+    assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1', ...bad])).join('\n'), /per-class must be an integer/, bad.join(' '));
+  }
+  assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1'], { READINESS_EVAL_PER_CLASS: '0x4' })).join('\n'), /per-class/);
+  const { selectQueries } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const all = [
+    ...['a0', 'a1', 'a2', 'a3', 'a4'].map((id) => ({ id, class: 'a', lang: 'en', market: null })),
+    { id: 'b0', class: 'b', lang: 'en', market: null },
+    ...['c0', 'c1'].map((id) => ({ id, class: 'c', lang: 'en', market: null })),
+  ];
+  const ids = (perClass, limit) => selectQueries(all, { ...cfg([]), perClass, limit }).map((q) => q.id);
+  assert.deepEqual(ids(3, 0), ['a0', 'b0', 'c0', 'a1', 'c1', 'a2']);
+  assert.deepEqual(ids(3, 5), ['a0', 'b0', 'c0', 'a1', 'c1']);
+  assert.deepEqual(ids(1, 0), ['a0', 'b0', 'c0']);
+});
+
+test('runJourneys itself records the abort when its last call halts the client', async () => {
+  const { runJourneys, loadQuerySet: load } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const door = fakeDoor({ stateFor: (method) => (method === 'tools/call' ? 'observe' : 'enforce') });
+  const c = client(door);
+  const config = cfg([...RUN_ARGV, '--journeys', 'discovery', '--limit', '1']);
+  const out = await runJourneys({ config, client: c, querySet: load(config.querySet), judgeFn: null, killSwitch: null, log: () => {} });
+  assert.equal(door.seen.filter((x) => x.method === 'tools/call').length, 1);
+  assert.match(String(out.aborted), /attestation_missing/);
 });

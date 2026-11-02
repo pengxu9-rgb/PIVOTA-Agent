@@ -1417,12 +1417,14 @@ async function persistEdgesWithGlobalFanInCap({
 }
 
 // The database's own account of a failed statement (node-pg puts it on the error), and the row a
-// failed label write was for. A stack alone does not say which value Postgres refused.
+// failed label write was for. A stack alone does not say which value Postgres refused. Not `where`:
+// for a refused JSON value it quotes the value's text (product copy), and this line reaches the logs
+// and the run ledger; the row's ids say where to look.
 function describeFailure(err) {
   if (!err || typeof err !== 'object') return null;
   const fields = {};
-  for (const key of ['code', 'detail', 'where', 'hint', 'column', 'table', 'constraint', 'routine']) {
-    if (err[key] != null && err[key] !== '') fields[key] = String(err[key]).slice(0, 500);
+  for (const key of ['code', 'detail', 'hint', 'column', 'table', 'constraint', 'routine']) {
+    if (err[key] != null && err[key] !== '') fields[key] = truncateText(String(err[key]), 200);
   }
   if (err.relgraph_write) fields.relgraph_write = err.relgraph_write;
   return Object.keys(fields).length ? fields : null;
