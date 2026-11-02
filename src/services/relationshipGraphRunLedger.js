@@ -184,9 +184,14 @@ function extractRelationshipGraphRunRecord(summary = {}, {
         applied_approval_count: Number(reviewSummary.approved_applied_count ??
           (Number(reviewSummary.applied_count || 0) - review.decisions.filter(row => row.applied === true && row.verdict === 'guard_blocked').length)),
         snapshot_semantics: 'identities_only_export_current_rows_for_review',
+        // Why reviews errored, kept with the run (the review's own file is lost with the container).
+        // Codes only: error messages can quote model output, which the ledger does not keep.
+        review_error_by_code: ensureJsonSerializable(reviewSummary.review_error_by_code) || null,
         decisions: review.decisions.map((row) => ({
           id: row.id, verdict: row.verdict, applied: row.applied === true,
           new_label_state: row.new_label_state, relationship_kind: row.relationship_kind || null,
+          ...(row.review_error?.code ? { review_error_code: row.review_error.code } : {}),
+          ...(row.approval_blocked?.code ? { approval_blocked_code: row.approval_blocked.code } : {}),
           ...(row.cross_agent_review ? { review_basis: 'independent_cross_provider_agreement',
             review_fingerprint: row.cross_agent_review.review_fingerprint,
             escalation_reason: row.cross_agent_review.escalation_reason,

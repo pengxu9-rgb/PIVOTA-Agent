@@ -1620,6 +1620,8 @@ function buildAiReview(decision) {
   };
 }
 
+const REVIEW_ERROR_SAMPLE_LIMIT = 8;
+
 function buildReviewErrorDecision(err) {
   const code = reviewErrorCode(err) || 'LLM_REVIEW_FAILED';
   const message = normalizeString(err && err.message ? err.message : String(err || ''), 500);
@@ -2117,6 +2119,22 @@ async function runReview({
     const code = (row.approval_blocked && row.approval_blocked.code) || 'unknown';
     approvalBlockedByCode[code] = (approvalBlockedByCode[code] || 0) + 1;
   }
+  // Why reviews errored: a count per code and a few sample messages. The per-row reasons are kept
+  // only in this script's --out file, which in prod lives in the container's /tmp and is lost with it;
+  // this summary goes to stdout, so it reaches the job's logs and the run ledger. (2026-11-02: 156 of
+  // 426 reviews errored, the review error gate failed the night, and no surviving record said why.)
+  const reviewErrorByCode = {};
+  const reviewErrorSamples = [];
+  for (const row of completed) {
+    if (!row.review_error) continue;
+    const code = normalizeString(row.review_error.code, 80) || 'unknown';
+    reviewErrorByCode[code] = (reviewErrorByCode[code] || 0) + 1;
+    const message = normalizeString(row.review_error.message, 240);
+    if (reviewErrorSamples.length < REVIEW_ERROR_SAMPLE_LIMIT
+      && !reviewErrorSamples.some((sample) => sample.code === code && sample.message === message)) {
+      reviewErrorSamples.push({ code, message, label_id: row.id });
+    }
+  }
   const reviewErrorDenominator = Math.max(0, completed.length - guardBlocked.length - lowConfidenceCount);
   const guardBlockedByReason = {};
   for (const row of guardBlocked) {
@@ -2175,6 +2193,8 @@ async function runReview({
     review_error_count: reviewErrorCount,
     review_error_denominator: reviewErrorDenominator,
     review_error_rate: reviewErrorDenominator ? reviewErrorCount / reviewErrorDenominator : 0,
+    review_error_by_code: reviewErrorByCode,
+    review_error_samples: reviewErrorSamples,
     guard_blocked_count: guardBlocked.length,
     guard_blocked_by_reason: guardBlockedByReason,
     guard_blocked_applied_count: guardBlockedAppliedCount,

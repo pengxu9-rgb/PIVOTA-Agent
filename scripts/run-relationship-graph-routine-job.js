@@ -998,7 +998,8 @@ async function runRoutineJob(
             reviewGateFailed = true;
             summary.ok = false;
             summary.failed_step = 'ai_review';
-            record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`;
+            record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`
+              + (summary.review_error_by_code ? `; errors by code ${JSON.stringify(summary.review_error_by_code)}` : '');
           }
         } catch (error) {
           record.status = 'failed';

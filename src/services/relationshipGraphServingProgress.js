@@ -46,7 +46,10 @@ function reviewMetrics(summary = {}) {
     ...Object.fromEntries(['useful_approval_by_kind', 'semantic_rejected_count', 'variant_rejected_count',
       'candidate_brand_distribution', 'approved_brand_distribution', 'approved_cross_brand_count',
       // Approvals refused at apply (one row each, the run carries on): surfaced in the routine summary.
-      'approval_blocked_count', 'approval_blocked_by_code']
+      'approval_blocked_count', 'approval_blocked_by_code',
+      // Why reviews errored (2026-11-02): without it the routine summary had only a count. Counts by
+      // code only; sample messages can quote model output and stay in the review's own log summary.
+      'review_error_by_code']
       .filter((key) => summary[key] != null).map((key) => [key, summary[key]])),
   };
 }
