@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const { query } = require('../db');
 const { scanServingLabels, SERVING_SCAN_SQL } = require('./relationshipGraphServingScan');
+const { truncateText } = require('../auroraBff/relationshipSafeText');
 
 async function readServingSnapshot({ market = 'US', queryFn = query } = {}) {
   const { servedEdges, anchors } = await scanServingLabels({ market, queryFn, collectAnchors: true });
@@ -75,9 +76,43 @@ function approvalBlockedRelayLine(metrics = {}, { runId = null, labelIds = [] } 
   })}\n`;
 }
 
+// A review error code as it may be counted or stored: an upper-case identifier, or OTHER. Provider and
+// API errors can carry arbitrary text in .code; nothing but a known shape reaches a summary or the ledger.
+function reviewErrorCodeKey(code) {
+  const text = typeof code === 'string' ? code.trim() : '';
+  return /^[A-Z0-9_]{1,80}$/.test(text) ? text : 'OTHER';
+}
+
+const REVIEW_ERRORS_MARKER = 'RELGRAPH_REVIEW_ERRORS';
+const REVIEW_ERROR_SAMPLE_LIMIT = 8;
+const REVIEW_ERROR_SAMPLE_CHARS = 240;
+
+// One single-line JSON account of why reviews errored, read from the review's own --out file, or ''
+// when none did: counts by code and up to 8 distinct (code, message) samples, each message cut to 240
+// characters. The messages can quote model output, so this line goes to the sync routine's stderr
+// (the job's logs) and never into a summary or the run ledger.
+function reviewErrorRelayLine(decisions = [], { runId = null } = {}) {
+  const rows = (Array.isArray(decisions) ? decisions : []).filter((row) => row && row.review_error);
+  if (!rows.length) return '';
+  const byCode = {};
+  const samples = [];
+  for (const row of rows) {
+    const code = reviewErrorCodeKey(row.review_error.code);
+    byCode[code] = (byCode[code] || 0) + 1;
+    const raw = typeof row.review_error.message === 'string' ? row.review_error.message.replace(/\s+/g, ' ').trim() : '';
+    const message = truncateText(raw, REVIEW_ERROR_SAMPLE_CHARS);
+    if (samples.length < REVIEW_ERROR_SAMPLE_LIMIT && !samples.some((s) => s.code === code && s.message === message)) {
+      samples.push({ code, message, label_id: truncateText(String(row.id || ''), 160) });
+    }
+  }
+  return `${JSON.stringify({ severity: 'WARNING', message: REVIEW_ERRORS_MARKER, run_id: runId,
+    review_error_count: rows.length, review_error_by_code: byCode, samples })}\n`;
+}
+
 function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25 } = {}) {
   return metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
 }
 
 module.exports = { SERVING_PROGRESS_SQL: SERVING_SCAN_SQL, readServingSnapshot, servingProgress, readReviewMetrics, reviewMetrics, reviewErrorGateExceeded,
-  REVALIDATION_MISMATCH_MARKER, APPROVAL_BLOCKED_MARKER, approvalBlockedRelayLine };
+  REVALIDATION_MISMATCH_MARKER, APPROVAL_BLOCKED_MARKER, approvalBlockedRelayLine,
+  REVIEW_ERRORS_MARKER, reviewErrorCodeKey, reviewErrorRelayLine };

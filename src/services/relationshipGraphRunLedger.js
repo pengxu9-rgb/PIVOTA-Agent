@@ -2,6 +2,7 @@ const fs = require('node:fs');
 
 const { query } = require('../db');
 const { safeJsonbParam } = require('../auroraBff/relationshipSafeText');
+const { reviewErrorCodeKey } = require('./relationshipGraphServingProgress');
 
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
@@ -113,6 +114,19 @@ function artifactSummary(value) {
   return value || {};
 }
 
+// A code -> count map with every code allowlisted (anything else is counted as OTHER), or null.
+function codeCounts(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const out = {};
+  for (const [code, count] of Object.entries(value)) {
+    const n = Number(count);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    const key = reviewErrorCodeKey(code);
+    out[key] = (out[key] || 0) + n;
+  }
+  return out;
+}
+
 function extractRelationshipGraphRunRecord(summary = {}, {
   runKind = 'sync_routine',
   trigger = '',
@@ -186,12 +200,12 @@ function extractRelationshipGraphRunRecord(summary = {}, {
         snapshot_semantics: 'identities_only_export_current_rows_for_review',
         // Why reviews errored, kept with the run (the review's own file is lost with the container).
         // Codes only: error messages can quote model output, which the ledger does not keep.
-        review_error_by_code: ensureJsonSerializable(reviewSummary.review_error_by_code) || null,
+        review_error_by_code: codeCounts(reviewSummary.review_error_by_code),
         decisions: review.decisions.map((row) => ({
           id: row.id, verdict: row.verdict, applied: row.applied === true,
           new_label_state: row.new_label_state, relationship_kind: row.relationship_kind || null,
-          ...(row.review_error?.code ? { review_error_code: row.review_error.code } : {}),
-          ...(row.approval_blocked?.code ? { approval_blocked_code: row.approval_blocked.code } : {}),
+          ...(row.review_error ? { review_error_code: reviewErrorCodeKey(row.review_error.code) } : {}),
+          ...(row.approval_blocked ? { approval_blocked_code: reviewErrorCodeKey(row.approval_blocked.code) } : {}),
           ...(row.cross_agent_review ? { review_basis: 'independent_cross_provider_agreement',
             review_fingerprint: row.cross_agent_review.review_fingerprint,
             escalation_reason: row.cross_agent_review.escalation_reason,
