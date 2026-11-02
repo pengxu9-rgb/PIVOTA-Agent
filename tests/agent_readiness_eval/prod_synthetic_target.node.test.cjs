@@ -663,7 +663,7 @@ test('canary get_product: only a seed-supply pair the gateway serves unscoped (t
   const problems = (m, pid) => safety.checkTarget(cfg([...CANARY_BASE, '--canary', 'get_product', '--canary-merchant-id', m, '--canary-product-id', pid])).problems;
   assert.deepEqual(problems('merch_obs_test1', 'ext_test_1'), [], 'an observed seller, any id');
   assert.deepEqual(problems('external_seed', 'sig_test1'), [], 'the shared bucket with a sig_ id');
-  for (const [m, pid] of [['merch_test_1', 'prod_test_1'], ['merch_test_1', 'sig_test1'], ['external_seed', 'ext_test_1'], ['merch_obsx', 'sig_test1']]) {
+  for (const [m, pid] of [['merch_test_1', 'prod_test_1'], ['merch_test_1', 'sig_test1'], ['external_seed', 'ext_test_1'], ['external_seed', 'sigx_1'], ['external_seed', 'sig1'], ['merch_obsx', 'sig_test1']]) {
     assert.match(problems(m, pid).join('\n'), /takes a seed-supply pair/, `${m} ${pid}`);
   }
   // The same rule the gateway's get_product_detail routes on.
@@ -696,12 +696,17 @@ test('prod-synthetic journeys declare no market on any call, search or follow, e
   };
   const s = preflightSetup({ door });
   const c = capture();
-  const code = await main([...RUN_ARGV, '--journeys', 'discovery,follow', '--markets', 'US,GB', '--limit', '3', '--follow-sample', '1', '--follow-top', '1',
-    '--oauth-token-file', s.config.oauthTokenFile, '--out', tmp('re-out-')], CREDS, c.io, s.deps);
+  let runDir;
+  const code = await main([...RUN_ARGV, '--journeys', 'discovery,follow,consistency', '--markets', 'US,GB', '--limit', '3', '--follow-sample', '1', '--follow-top', '1',
+    '--consistency-sample', '3', '--consistency-repeats', '1',
+    '--oauth-token-file', s.config.oauthTokenFile, '--out', tmp('re-out-')], CREDS, c.io, { ...s.deps, onRunDir: (d) => { runDir = d; } });
   assert.ok([0, 1].includes(code), c.err.join(''));
   const calls = bodies.filter((b) => b.method === 'tools/call');
   assert.ok(calls.some((b) => b.params.name === 'search_catalog') && calls.some((b) => b.params.name === 'get_offers'), calls.map((b) => b.params.name).join(','));
+  const results = JSON.parse(fs.readFileSync(path.join(runDir, 'results.json'), 'utf8'));
+  assert.ok(results.calls.some((r) => r.phase === 'consistency'), 'the consistency journey ran');
   for (const b of calls) assert.equal('market' in b.params.arguments, false, `${b.params.name}: ${JSON.stringify(b.params.arguments)}`);
+  assert.equal(results.metrics.run.market_declared, false);
 });
 
 test('gcloud runs without the harness\'s secrets in its environment', async () => {
@@ -716,7 +721,10 @@ test('gcloud runs without the harness\'s secrets in its environment', async () =
   });
   assert.equal(out, '{}');
   assert.equal(seen.cmd, 'gcloud');
-  assert.deepEqual(seen.opts.env, { PATH: '/bin', HOME: '/h', READINESS_EVAL_LIMIT: '3' });
+  assert.deepEqual(seen.opts.env, { PATH: '/bin', HOME: '/h' });
+  // An allowlist: unrelated shell secrets stay out too; gcloud's own config, the locale and the proxy pass.
+  const passed = prodSynthetic.gcloudEnv({ OPENAI_API_KEY: 'x', GITHUB_TOKEN: 'y', AWS_SECRET_ACCESS_KEY: 'z', CLOUDSDK_CONFIG: '/c', CLOUDSDK_CORE_PROJECT: 'p', LC_ALL: 'C', HTTPS_PROXY: 'http://127.0.0.1:1', no_proxy: 'localhost', GOOGLE_APPLICATION_CREDENTIALS: '/adc.json' });
+  assert.deepEqual(Object.keys(passed).sort(), ['CLOUDSDK_CONFIG', 'CLOUDSDK_CORE_PROJECT', 'GOOGLE_APPLICATION_CREDENTIALS', 'HTTPS_PROXY', 'LC_ALL', 'no_proxy']);
 });
 
 test('oauth-login --logout deletes the stored eval token, and only an eval token', async () => {
@@ -760,6 +768,13 @@ test('a check or a canary uses a stored token with a few minutes left, without a
     assert.equal(refreshes, 0);
     assert.equal(r.report.token.refreshed, false);
   }
+  // The short window covers a canary's worst case (a 60 s gcloud read, requests up to the 120 s timeout cap), and
+  // stays short of a run's.
+  assert.equal(oauth.SHORT_JOB_MIN_SECONDS, 600);
+  assert.ok(oauth.SHORT_JOB_MIN_SECONDS < oauth.MIN_FRESH_SECONDS);
+  // A token with a few minutes left but under the window is refreshed even for a check.
+  const few = preflightSetup({ checkClassification: true, ...left(oauth.SHORT_JOB_MIN_SECONDS - 120) });
+  assert.match((await prodSynthetic.preflight({ config: few.config, env: {}, deps: few.deps })).problems.join('\n'), /CLIENT_ID/);
   // Below the short window, even a check refreshes (and without client credentials it is refused).
   const low = preflightSetup({ checkClassification: true, ...left(oauth.SHORT_JOB_MIN_SECONDS - 1) });
   assert.match((await prodSynthetic.preflight({ config: low.config, env: {}, deps: low.deps })).problems.join('\n'), /CLIENT_ID/);
