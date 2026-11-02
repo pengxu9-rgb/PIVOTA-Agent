@@ -26,9 +26,15 @@ const PRODUCTION_SYNTHETIC_TOOLS = Object.freeze(['get_alternatives', 'get_intel
 const GCP = Object.freeze({ project: 'pivota-prod', region: 'us-west1', gateway: 'gateway', backend: 'web' });
 const SECRET_ENV = 'SYNTHETIC_ASSERTION_SECRET';
 
-function runGcloud(args) {
+// gcloud runs with the operator's environment LESS the harness's secrets: it needs none of them.
+const SECRET_ENV_RE = /^READINESS_EVAL_(OAUTH_CLIENT_SECRET|OAUTH_CLIENT_ID|BEARER_TOKEN|API_KEY|CALLER_KEYS)$/;
+function gcloudEnv(env = process.env) {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !SECRET_ENV_RE.test(k)));
+}
+
+function runGcloud(args, { execFileImpl = execFile, env = process.env } = {}) {
   return new Promise((resolve, reject) => {
-    execFile('gcloud', args, { timeout: 60000, maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+    execFileImpl('gcloud', args, { timeout: 60000, maxBuffer: 32 * 1024 * 1024, env: gcloudEnv(env) }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
   });
 }
 
@@ -179,4 +185,4 @@ async function canary({ config, client, now = () => new Date() }) {
   return { code, summary };
 }
 
-module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight, canary };
+module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight, canary, runGcloud, gcloudEnv };

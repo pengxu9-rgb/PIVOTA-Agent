@@ -132,6 +132,14 @@ function writeToken(file, token) {
   fs.renameSync(tmp, file);
 }
 
+/** Delete the stored token. Only a file that reads as an eval token is removed. @returns {boolean} */
+function deleteToken(file) {
+  if (!fs.existsSync(file)) return false;
+  readToken(file);
+  fs.unlinkSync(file);
+  return true;
+}
+
 function readToken(file) {
   const token = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!token || token.issuer !== OAUTH.issuer || typeof token.access_token !== 'string') {
@@ -209,6 +217,7 @@ module.exports = {
   refreshToken,
   writeToken,
   readToken,
+  deleteToken,
   ensureFreshToken,
   awaitCallback,
 };

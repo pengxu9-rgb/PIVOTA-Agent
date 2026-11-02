@@ -226,7 +226,11 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
   }
 
   // ---- discovery --------------------------------------------------------------------------------------
-  const queries = selectQueries(querySet.queries, config);
+  // On production as the eval client, no call declares a market: a declared market is what turns offers into
+  // carts, and the backend's checkout preflight for a cart is a live merchant read (decision A2: none). Scored
+  // as market-less too, so a currency check never holds a call to a market it did not state.
+  const queries = selectQueries(querySet.queries, config).map((q) => (config.targetKind === 'prod-synthetic' ? withoutMarket(q) : q));
+  out.market_declared = config.targetKind !== 'prod-synthetic';
   const journeys = new Set(config.journeys);
   const searchArgs = (q) => ({ query: q.text, market: q.market || undefined, page_size: config.pageSize, ...(q.args || {}) });
 
@@ -385,6 +389,11 @@ function shuffle(xs, rng) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+function withoutMarket(q) {
+  const { market: _dropped, ...args } = q.args || {};
+  return { ...q, market: null, args };
 }
 
 function selectQueries(all, config) {

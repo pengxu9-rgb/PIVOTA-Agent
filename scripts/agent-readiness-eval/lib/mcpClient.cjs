@@ -133,7 +133,7 @@ class McpClient {
       const attested = res.headers && typeof res.headers.get === 'function' ? res.headers.get(this.attestation.header) : null;
       record.attested = attested === null ? null : String(attested).slice(0, 40);
       const halt = !this.attestation.values.includes(attested)
-        ? ['attestation_missing', `response lacks ${this.attestation.header}: ${this.attestation.values.join('|')} (got ${attested === null ? 'none' : JSON.stringify(String(attested).slice(0, 40))}); not provably the eval deployment`]
+        ? ['attestation_missing', `response lacks ${this.attestation.header}: ${this.attestation.values.join('|')} (got ${attested === null ? 'none' : JSON.stringify(String(attested).slice(0, 40))}); ${this.targetKind === 'prod-synthetic' ? 'not marked as a synthetic call' : 'not provably the eval deployment'}`]
         : res.status >= 300 && res.status < 400
           ? ['redirect_refused', `HTTP ${res.status} redirect refused (redirects are never followed)`]
           : null;
