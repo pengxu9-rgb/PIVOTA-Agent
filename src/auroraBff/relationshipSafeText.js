@@ -78,6 +78,16 @@ function safeJsonbParam(value, fallback = null) {
   return JSON.stringify(wellFormedJsonValue(value === undefined ? fallback : value));
 }
 
+// A statement's bound parameters with every text parameter (and each string in a text[] parameter)
+// made well-formed and NUL-free. Postgres refuses NUL in text (22021, "invalid byte sequence for
+// encoding UTF8: 0x00"), which would abort the night like the 2026-11-02 jsonb refusal; a lone half
+// would be stored as U+FFFD. jsonb parameters are JSON text, where both only ever appear escaped, so
+// they pass through unchanged. Applied once per row at the upsert, not on every builder cut.
+function safeTextParams(params) {
+  const fix = (value) => (typeof value === 'string' ? wellFormedText(value) : value);
+  return params.map((value) => (Array.isArray(value) ? value.map(fix) : fix(value)));
+}
+
 // True when every string (and key) in a JSON-shaped value is well-formed and NUL-free.
 function isWellFormedJsonValue(value, ancestors = new Set()) {
   if (typeof value === 'string') return isWellFormedText(value);
@@ -91,4 +101,4 @@ function isWellFormedJsonValue(value, ancestors = new Set()) {
   return ok;
 }
 
-module.exports = { wellFormedText, truncateText, wellFormedJsonValue, safeJsonbParam, isWellFormedJsonValue };
+module.exports = { wellFormedText, truncateText, wellFormedJsonValue, safeJsonbParam, isWellFormedJsonValue, safeTextParams };

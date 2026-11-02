@@ -6,7 +6,8 @@ const { loadProductRelationshipGraphTargetRecall } = require('../src/auroraBff/p
 const { filterProductsByCatalogServingGate } = require('../src/auroraBff/relationshipCatalogServingGate');
 const { upsertBeautyAttributes } = require('../src/auroraBff/productBeautyAttributes');
 const { writeManifestBatch } = require('../src/services/relgraphOpsManifest');
-const { upsertRelationshipCandidateLabel } = require('../src/auroraBff/productRelationshipGraph');
+const { upsertRelationshipCandidateLabel, upsertRelationshipEdge } = require('../src/auroraBff/productRelationshipGraph');
+const { reviewErrorRelayLine } = require('../src/services/relationshipGraphServingProgress');
 
 // Every relationship-graph writer that binds product or model text to a parameter, fed text with a
 // lone surrogate half (what a code-unit cut through an emoji leaves). None may hand Postgres one: in a
@@ -98,5 +99,67 @@ test('the label upsert still stores an unserialisable value as JSON null rather 
   const params = calls[0].params;
   expect(params).toContain('null');
   expect(params.filter((p) => typeof p === 'string').every((p) => !LONE_ESCAPE.test(p))).toBe(true);
+});
+
+// NUL is refused in a TEXT parameter too (22021, "invalid byte sequence for encoding UTF8: 0x00"):
+// the label and edge upserts bind ids, labels, use_case, flags and reasons as text, and one refused
+// row would abort the build exactly as the 2026-11-02 jsonb refusal did.
+const NUL = '\u0000';
+const NOW_MS = Date.now();
+const edgeFixture = (overrides = {}) => ({
+  anchor_type: 'product', anchor_ref: 'product:anchor_1',
+  anchor_snapshot: { product_id: 'anchor_1', brand: 'Top Brand', name: 'Luxury Barrier Serum', category_taxonomy: ['skincare', 'serum'], price: 100 },
+  candidate_product_ref: 'product:candidate_1',
+  candidate_snapshot: { product_id: 'candidate_1', brand: 'Value Brand', name: 'Barrier Serum Alternative', category_taxonomy: ['skincare', 'serum'],
+    price: 80, url: 'https://example.test/candidate' },
+  relation_type: 'dupe', market: 'US', category_taxonomy: ['skincare', 'serum'], use_case: 'barrier serum', score_total: 0.86,
+  score_breakdown: { category_use_case_match: 0.91, ingredient_functional_similarity: 0.84, score_total: 0.86 },
+  price_evidence: { anchor_price_amount: 100, candidate_price_amount: 80, price_ratio: 0.8, observed_at: new Date(NOW_MS).toISOString() },
+  source_refs: [{ type: 'products_cache', authoritative: true }], evidence_grade: 'A', review_status: 'approved',
+  why_candidate: { summary: 'Similar product type and function at a lower price.', reasons_user_visible: ['Category and price evidence are present.'] },
+  last_verified_at: new Date(NOW_MS).toISOString(), expires_at: new Date(NOW_MS + 7 * 86400000).toISOString(), ...overrides,
+});
+const noNulOrHalf = (params) => {
+  for (const value of params.flatMap((p) => (Array.isArray(p) ? p : [p]))) {
+    if (typeof value !== 'string') continue;
+    expect(value).not.toContain(NUL);
+    expect(value).not.toMatch(LONE_CHAR);
+  }
+};
+
+test.each([
+  ['use_case', { use_case: `barrier${NUL} serum` }],
+  ['display_label', { display_label: `budget${NUL}` }],
+  ['source_report', { source_report: `report${NUL}` }],
+  ['reason_flags', { reason_flags: [`flag${NUL}`, `half ${HALF}`] }],
+  ['anchor_ref', { anchor_ref: `product:anchor${NUL}_w` }],
+])('the label upsert binds no NUL or lone half in a text parameter (%s)', async (_field, extra) => {
+  const { calls, queryFn } = capture();
+  await upsertRelationshipCandidateLabel({ ...labelRow(), label_state: 'generated', ...extra }, { queryFn });
+  expect(calls).toHaveLength(1);
+  noNulOrHalf(calls[0].params);
+});
+
+test.each([
+  ['use_case', { use_case: `barrier${NUL} serum` }],
+  ['evidence_grade', { evidence_grade: `A${NUL}` }],
+])('the edge upsert binds no NUL in a text parameter (%s)', async (_field, extra) => {
+  const { calls, queryFn } = capture();
+  await upsertRelationshipEdge(edgeFixture(extra), { queryFn, nowMs: NOW_MS });
+  expect(calls).toHaveLength(1);
+  noNulOrHalf(calls[0].params);
+});
+
+test('jsonb parameters pass through the text repair unchanged', async () => {
+  const { calls, queryFn } = capture();
+  await upsertRelationshipEdge(edgeFixture({ anchor_snapshot: { product_id: 'anchor_1', brand: 'Top Brand', name: `Serum ${NUL}${HALF}`,
+    category_taxonomy: ['skincare', 'serum'], price: 100 } }), { queryFn, nowMs: NOW_MS });
+  const snapshot = calls[0].params[3];
+  expect(JSON.parse(snapshot).name).toBe('Serum \uFFFD');
+});
+
+test('the review-errors relay repairs a provider message cut through an emoji', () => {
+  const parsed = JSON.parse(reviewErrorRelayLine([{ id: 'a', verdict: 'error', review_error: { code: 'LLM_PARSE_FAILED', message: `output ${HALF}` } }]));
+  expect(parsed.samples[0].message).toBe('output \uFFFD');
 });
 

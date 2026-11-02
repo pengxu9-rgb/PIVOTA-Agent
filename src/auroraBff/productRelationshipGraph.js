@@ -5,7 +5,7 @@ const { fragranceServingSuppressionReason } = require('./relationshipFragrancePr
 const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
-const { truncateText, safeJsonbParam } = require('./relationshipSafeText');
+const { truncateText, safeJsonbParam, safeTextParams } = require('./relationshipSafeText');
 const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
@@ -1819,7 +1819,7 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
         expires_at = EXCLUDED.expires_at,
         updated_at = now()
     `,
-    [
+    safeTextParams([
       edge.id,
       edge.anchor_type,
       edge.anchor_ref,
@@ -1844,7 +1844,7 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
       normalizeJsonbParam(edge.provenance, {}),
       edge.last_verified_at,
       edge.expires_at,
-    ],
+    ]),
   );
   return edge;
 }
@@ -2040,7 +2040,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
       )
       RETURNING id
     `,
-    [
+    safeTextParams([
       id,
       edgeId,
       anchorType,
@@ -2071,7 +2071,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
       input.reviewed_at || null,
       edge.last_verified_at || null,
       edge.expires_at || null,
-    ],
+    ]),
   );
   return { id, edge_id: edgeId, label_state: labelState, written: Boolean(result && result.rows && result.rows.length) };
 }

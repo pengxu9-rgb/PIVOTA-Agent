@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const { query } = require('../db');
 const { scanServingLabels, SERVING_SCAN_SQL } = require('./relationshipGraphServingScan');
-const { truncateText } = require('../auroraBff/relationshipSafeText');
+const { truncateText, wellFormedText } = require('../auroraBff/relationshipSafeText');
 
 async function readServingSnapshot({ market = 'US', queryFn = query } = {}) {
   const { servedEdges, anchors } = await scanServingLabels({ market, queryFn, collectAnchors: true });
@@ -100,7 +100,8 @@ function reviewErrorRelayLine(decisions = [], { runId = null } = {}) {
     const code = reviewErrorCodeKey(row.review_error.code);
     byCode[code] = (byCode[code] || 0) + 1;
     const raw = typeof row.review_error.message === 'string' ? row.review_error.message.replace(/\s+/g, ' ').trim() : '';
-    const message = truncateText(raw, REVIEW_ERROR_SAMPLE_CHARS);
+    // The provider quotes model output with its own code-unit slice, which can leave a lone half.
+    const message = truncateText(wellFormedText(raw), REVIEW_ERROR_SAMPLE_CHARS);
     if (samples.length < REVIEW_ERROR_SAMPLE_LIMIT && !samples.some((s) => s.code === code && s.message === message)) {
       samples.push({ code, message, label_id: truncateText(String(row.id || ''), 160) });
     }
