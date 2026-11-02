@@ -120,7 +120,9 @@ const MAX_NEGATIVE_REVIEW_TTL_DAYS = 365;
 // line every night. As the queue drained, ~107 such rows became half of a ~200-row night and the review
 // error gate failed every attempt. A row that errors on CONSECUTIVE_ERRORS_TO_QUARANTINE consecutive
 // reviews of the same evidence and model is skipped for the quarantine window, then retried.
-// Transport errors (timeouts, failed requests) are the provider's, not the row's: never counted.
+// Transport errors (timeouts, failed requests) are the provider's, not the row's: they neither count
+// nor end a run. Neither does approval_blocked (the model answered; apply refused it and writes
+// nothing): a run only ends on a verdict that is written, the negative memo or an approval.
 const DEFAULT_ERROR_QUARANTINE_DAYS = 7;
 const MAX_ERROR_QUARANTINE_DAYS = 90;
 const CONSECUTIVE_ERRORS_TO_QUARANTINE = 2;
@@ -1044,17 +1046,20 @@ function isQuarantinedForErrors(row, fingerprint, { days = DEFAULT_ERROR_QUARANT
 }
 
 // Records the error run on a still-generated row. Like the negative memo, a cost and stability saver
-// rather than part of any verdict: label_state and updated_at are untouched.
+// rather than part of any verdict: label_state and updated_at are untouched. Compare-and-set on the
+// memo this review read, so a concurrent writer's run is not overwritten with a stale count.
 async function rememberReviewError(row, memo, queryFn = query) {
+  const previous = asObject(row && row.provenance).ai_review_error;
   const res = await queryFn(
     `
       UPDATE relationship_candidate_labels
       SET provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review_error}', $2::jsonb, true)
       WHERE id = $1
         AND label_state = 'generated'
+        AND (provenance -> 'ai_review_error') IS NOT DISTINCT FROM $3::jsonb
       RETURNING id
     `,
-    [row.id, safeJsonbParam(memo)],
+    [row.id, safeJsonbParam(memo), previous == null ? null : safeJsonbParam(previous)],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
@@ -2127,7 +2132,8 @@ async function runReview({
         // eslint-disable-next-line no-await-in-loop
         if (await rememberReviewError(row, memo, queryFn)) {
           errorMemoRecordedCount += 1;
-          if (memo.consecutive === CONSECUTIVE_ERRORS_TO_QUARANTINE) {
+          // At or past the threshold: newly quarantined, or re-quarantined after its window.
+          if (memo.consecutive >= CONSECUTIVE_ERRORS_TO_QUARANTINE) {
             errorQuarantined = true;
             errorQuarantineEnteredCount += 1;
           }

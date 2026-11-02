@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
-const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded, reviewErrorCodeKey } = require('../src/services/relationshipGraphServingProgress');
+const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded, reviewGateFailureLine, reviewErrorCodeKey } = require('../src/services/relationshipGraphServingProgress');
 const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const { query } = require('../src/db');
@@ -172,7 +172,8 @@ function usage() {
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
     'Use --serving-audit-timeout-minutes N to override the serving-audit child timeout separately.',
     'Use --db-lock-heartbeat-ms N to keep the advisory-lock connection active during long child steps.',
-    'Review fails above --max-review-error-rate (default 0.25) after --min-reviews-for-error-gate (default 20).',
+    'Review fails above --max-review-error-rate (default 0.25) after --min-reviews-for-error-gate (default 20),',
+    'or when at least that many rows sat in error quarantine and above --max-review-quarantine-share (default 0.5) of the night.',
     'Use --min-approval-confidence (default 0.70, range 0.5..0.99) for AI approvals.',
     'Use --skip-need-nodes for a product-anchor-only canary that does not generate curated need-node candidates.',
   ].join('\n');
@@ -222,6 +223,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     anchorOffset: parseNumber(argValue(argv, 'anchor-offset'), 0, { min: 0, max: 1000000 }),
     minReviewsForErrorGate: Math.trunc(parseNumber(argValue(argv, 'min-reviews-for-error-gate'), 20, { min: 1, max: 5000 })),
     maxReviewErrorRate: parseNumber(argValue(argv, 'max-review-error-rate'), 0.25, { min: 0, max: 1 }),
+    maxReviewQuarantineShare: parseNumber(argValue(argv, 'max-review-quarantine-share'), 0.5, { min: 0, max: 1 }),
     minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
     reviewLimit: parseNumber(argValue(argv, 'review-limit'), DEFAULT_REVIEW_LIMIT, { min: 1, max: 10000 }),
@@ -858,6 +860,7 @@ function serializableOptions(options) {
     market: options.market,
     min_reviews_for_error_gate: options.minReviewsForErrorGate,
     max_review_error_rate: options.maxReviewErrorRate,
+    max_review_quarantine_share: options.maxReviewQuarantineShare,
     min_approval_confidence: options.minApprovalConfidence,
     cutoff: options.cutoff,
     limit: options.limit,
@@ -1012,8 +1015,7 @@ async function runRoutineJob(
             reviewGateFailed = true;
             summary.ok = false;
             summary.failed_step = 'ai_review';
-            record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`
-              + reviewErrorCodesSuffix(summary);
+            record.stderr_tail = reviewGateFailureLine(summary, options) + reviewErrorCodesSuffix(summary);
           }
         } catch (error) {
           record.status = 'failed';

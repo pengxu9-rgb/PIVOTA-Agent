@@ -237,6 +237,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
     minReviewsForErrorGate: Math.trunc(parseNumber(argValue(argv, 'min-reviews-for-error-gate'), 20, { min: 1, max: 5000 })),
     maxReviewErrorRate: parseNumber(argValue(argv, 'max-review-error-rate'), 0.25, { min: 0, max: 1 }),
+    maxReviewQuarantineShare: parseNumber(argValue(argv, 'max-review-quarantine-share'), 0.5, { min: 0, max: 1 }),
     minApprovalConfidence: parseNumber(argValue(argv, 'min-approval-confidence'), 0.70, { min: 0.5, max: 0.99 }),
     reviewMode,
     reviewConcurrency: argValue(argv, 'review-concurrency') ? Math.trunc(parseNumber(argValue(argv, 'review-concurrency'), 1, { min: 1, max: 16 })) : '',
@@ -310,6 +311,7 @@ function serializableOptions(options = {}) {
     market: options.market,
     min_reviews_for_error_gate: options.minReviewsForErrorGate,
     max_review_error_rate: options.maxReviewErrorRate,
+    max_review_quarantine_share: options.maxReviewQuarantineShare,
     min_approval_confidence: options.minApprovalConfidence,
     review_mode: options.reviewMode,
     cutoff: options.cutoff || null,
@@ -548,6 +550,7 @@ function buildSyncRoutineSteps(options = {}) {
   pushArg(routineArgs, 'review-mode', options.reviewMode);
   pushArg(routineArgs, 'min-reviews-for-error-gate', options.minReviewsForErrorGate);
   pushArg(routineArgs, 'max-review-error-rate', options.maxReviewErrorRate);
+  pushArg(routineArgs, 'max-review-quarantine-share', options.maxReviewQuarantineShare);
   pushArg(routineArgs, 'min-approval-confidence', options.minApprovalConfidence);
   pushArg(routineArgs, 'source-limit', options.sourceLimit || '');
   appendTargetRecallArgs(routineArgs, options);

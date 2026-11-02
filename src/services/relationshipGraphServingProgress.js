@@ -112,10 +112,43 @@ function reviewErrorRelayLine(decisions = [], { runId = null } = {}) {
     review_error_count: rows.length, review_error_by_code: byCode, samples })}\n`;
 }
 
-function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25 } = {}) {
-  return metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
+// The share of the night's selected work that sat in error quarantine instead of being reviewed.
+function reviewQuarantineShare(metrics = {}) {
+  const skipped = Number(metrics.error_quarantine_skipped_count) || 0;
+  const reviewed = Number(metrics.reviewed_count) || 0;
+  return skipped + reviewed > 0 ? skipped / (skipped + reviewed) : 0;
+}
+
+// The review gate. Two ways to fail:
+// - the error rate of the reviews that ran is above maxReviewErrorRate (after minReviewsForErrorGate);
+// - the error quarantine holds at least minReviewsForErrorGate rows AND more than
+//   maxReviewQuarantineShare of the night's selected work. Without this a model that fails every row
+//   would quarantine the whole queue by night 2 and pass from night 3 on 0 reviews (2026-11-02
+//   review of the quarantine). A stable residue beside a normal night's reviews stays under it.
+function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25, maxReviewQuarantineShare = 0.5 } = {}) {
+  const rateExceeded = metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
+  const skipped = Number(metrics.error_quarantine_skipped_count) || 0;
+  const quarantineExceeded = skipped >= minReviewsForErrorGate && reviewQuarantineShare(metrics) > maxReviewQuarantineShare;
+  return rateExceeded || quarantineExceeded;
+}
+
+// The gate's failure line: what tripped it, and how many rows the error quarantine skipped.
+function reviewGateFailureLine(metrics = {}, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25, maxReviewQuarantineShare = 0.5 } = {}) {
+  const parts = [];
+  if (metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate) {
+    parts.push(`review error rate ${metrics.review_error_rate} exceeds ${maxReviewErrorRate}`);
+  }
+  const skipped = Number(metrics.error_quarantine_skipped_count) || 0;
+  const share = reviewQuarantineShare(metrics);
+  if (skipped >= minReviewsForErrorGate && share > maxReviewQuarantineShare) {
+    parts.push(`error-quarantined share ${Number(share.toFixed(4))} exceeds ${maxReviewQuarantineShare} (${skipped} skipped, ${Number(metrics.reviewed_count) || 0} reviewed)`);
+  } else if (skipped > 0) {
+    parts.push(`error-quarantined rows skipped ${skipped}`);
+  }
+  return parts.join('; ');
 }
 
 module.exports = { SERVING_PROGRESS_SQL: SERVING_SCAN_SQL, readServingSnapshot, servingProgress, readReviewMetrics, reviewMetrics, reviewErrorGateExceeded,
+  reviewQuarantineShare, reviewGateFailureLine,
   REVALIDATION_MISMATCH_MARKER, APPROVAL_BLOCKED_MARKER, approvalBlockedRelayLine,
   REVIEW_ERRORS_MARKER, reviewErrorCodeKey, reviewErrorRelayLine };

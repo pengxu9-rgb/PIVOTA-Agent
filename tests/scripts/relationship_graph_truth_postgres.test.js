@@ -295,6 +295,18 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     expect(after).not.toHaveProperty('ai_review_error');
     expect(after.ai_review_last.reviewed_at).toBe('2026-11-03T11:00:00Z');
   });
+  test('the error memo write is a compare-and-set on the memo the review read', async () => {
+    const row = edge('quarantine_cas', 'candidate', 'competitive_alternative');
+    await upsertRelationshipCandidateLabel(row, { queryFn });
+    const first = { consecutive: 1, last_code: 'LLM_PARSE_FAILED' };
+    expect(await rememberReviewError({ id: row.id, provenance: {} }, first, queryFn)).toEqual({ id: row.id });
+    // A review that read the row before that write (no memo) must not overwrite the newer run.
+    expect(await rememberReviewError({ id: row.id, provenance: {} }, { consecutive: 1, last_code: 'OTHER' }, queryFn)).toBeNull();
+    expect(await rememberReviewError({ id: row.id, provenance: { ai_review_error: first } }, { consecutive: 2, last_code: 'LLM_PARSE_FAILED' }, queryFn))
+      .toEqual({ id: row.id });
+    const stored = (await client.query('SELECT provenance FROM relationship_candidate_labels WHERE id = $1', [row.id])).rows[0].provenance;
+    expect(stored.ai_review_error).toEqual({ consecutive: 2, last_code: 'LLM_PARSE_FAILED' });
+  });
   test('an error memo is written only on a generated row', async () => {
     const row = edge('quarantine_approved', 'candidate', 'competitive_alternative', 'ai_approved');
     await upsertRelationshipCandidateLabel(row, { queryFn });
