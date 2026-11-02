@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseTargetRecallOptions, appendTargetRecallArgs } = require('./lib/relationship-graph-target-recall-options');
-const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded, reviewErrorCodeKey } = require('../src/services/relationshipGraphServingProgress');
+const { readServingSnapshot, servingProgress, reviewMetrics, readReviewMetrics, reviewErrorGateExceeded, reviewGateFailureLine, reviewErrorCodeKey } = require('../src/services/relationshipGraphServingProgress');
 const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const { query } = require('../src/db');
@@ -172,7 +172,8 @@ function usage() {
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
     'Use --serving-audit-timeout-minutes N to override the serving-audit child timeout separately.',
     'Use --db-lock-heartbeat-ms N to keep the advisory-lock connection active during long child steps.',
-    'Review fails above --max-review-error-rate (default 0.25) after --min-reviews-for-error-gate (default 20).',
+    'Review fails above --max-review-error-rate (default 0.25) after --min-reviews-for-error-gate (default 20),',
+    'or when at least that many rows were held back by the error quarantine and fewer fresh reviews ran.',
     'Use --min-approval-confidence (default 0.70, range 0.5..0.99) for AI approvals.',
     'Use --skip-need-nodes for a product-anchor-only canary that does not generate curated need-node candidates.',
   ].join('\n');
@@ -1012,8 +1013,7 @@ async function runRoutineJob(
             reviewGateFailed = true;
             summary.ok = false;
             summary.failed_step = 'ai_review';
-            record.stderr_tail = `review error rate ${summary.review_error_rate} exceeds ${options.maxReviewErrorRate}`
-              + reviewErrorCodesSuffix(summary);
+            record.stderr_tail = reviewGateFailureLine(summary, options) + reviewErrorCodesSuffix(summary);
           }
         } catch (error) {
           record.status = 'failed';

@@ -6,6 +6,7 @@ const { readServingSnapshot, servingProgress, SERVING_PROGRESS_SQL } = require('
 const { persistEdgesWithGlobalFanInCap } = require('../../scripts/build-product-relationship-graph');
 const { upsertRelationshipCandidateLabel } = require('../../src/auroraBff/productRelationshipGraph');
 const { normalizeProductsCacheRow } = require('../../src/auroraBff/productRelationshipGraphSources');
+const { rememberNegativeVerdict, rememberReviewError } = require('../../scripts/review-relationship-candidate-labels');
 
 const DATABASE_URL = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const BIN = process.env.RELGRAPH_TEST_POSTGRES_BIN || '/opt/homebrew/opt/postgresql@15/bin';
@@ -266,5 +267,52 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     expect(await upsertRelationshipCandidateLabel(row, { queryFn })).toMatchObject({ written: true });
     const stored = (await client.query("SELECT use_case, display_label, reason_flags FROM relationship_candidate_labels WHERE id = $1", [row.id])).rows[0];
     expect(stored).toEqual({ use_case: 'barrier serum', display_label: 'budget', reason_flags: ['flag'] });
+  });
+
+  // Error quarantine (2026-11-02): a rebuild must not lift it, a verdict ends it.
+  test('a rebuild carries ai_review_error (and ai_review_last) over; its own value wins; a verdict clears the error run', async () => {
+    const errorMemo = { consecutive: 2, last_code: 'LLM_PARSE_FAILED', pair_fingerprint: 'f'.repeat(64), last_at: '2026-11-02T16:19:00Z' };
+    const lastMemo = { verdict: 'reject', pair_fingerprint: 'e'.repeat(64), reviewed_at: '2026-10-30T11:00:00Z' };
+    const row = edge('quarantine', 'candidate', 'competitive_alternative');
+    await upsertRelationshipCandidateLabel({ ...row, provenance: { builder: 'v1' } }, { queryFn });
+    expect(await rememberReviewError({ id: row.id }, errorMemo, queryFn)).toEqual({ id: row.id });
+    const read = async () => (await client.query('SELECT provenance FROM relationship_candidate_labels WHERE id = $1', [row.id])).rows[0].provenance;
+
+    await upsertRelationshipCandidateLabel({ ...row, provenance: { builder: 'v2' } }, { queryFn });
+    expect(await read()).toEqual({ builder: 'v2', ai_review_error: errorMemo });
+
+    await client.query(`UPDATE relationship_candidate_labels SET provenance = provenance || jsonb_build_object('ai_review_last', $2::jsonb) WHERE id = $1`,
+      [row.id, JSON.stringify(lastMemo)]);
+    await upsertRelationshipCandidateLabel({ ...row, provenance: { builder: 'v3' } }, { queryFn });
+    expect(await read()).toEqual({ builder: 'v3', ai_review_error: errorMemo, ai_review_last: lastMemo });
+
+    const ownError = { consecutive: 1, last_code: 'OTHER' };
+    await upsertRelationshipCandidateLabel({ ...row, provenance: { builder: 'v4', ai_review_error: ownError } }, { queryFn });
+    expect(await read()).toEqual({ builder: 'v4', ai_review_error: ownError, ai_review_last: lastMemo });
+
+    await rememberNegativeVerdict({ id: row.id }, { ...lastMemo, reviewed_at: '2026-11-03T11:00:00Z' }, queryFn);
+    const after = await read();
+    expect(after).not.toHaveProperty('ai_review_error');
+    expect(after.ai_review_last.reviewed_at).toBe('2026-11-03T11:00:00Z');
+  });
+  test('the error memo write is a compare-and-set on the memo the review read', async () => {
+    const row = edge('quarantine_cas', 'candidate', 'competitive_alternative');
+    await upsertRelationshipCandidateLabel(row, { queryFn });
+    const first = { consecutive: 1, last_code: 'LLM_PARSE_FAILED' };
+    expect(await rememberReviewError({ id: row.id, provenance: {} }, first, queryFn)).toEqual({ id: row.id });
+    // A review that read the row before that write (no memo) must not overwrite the newer run.
+    expect(await rememberReviewError({ id: row.id, provenance: {} }, { consecutive: 1, last_code: 'OTHER' }, queryFn)).toBeNull();
+    expect(await rememberReviewError({ id: row.id, provenance: { ai_review_error: first } }, { consecutive: 2, last_code: 'LLM_PARSE_FAILED' }, queryFn))
+      .toEqual({ id: row.id });
+    const stored = (await client.query('SELECT provenance FROM relationship_candidate_labels WHERE id = $1', [row.id])).rows[0].provenance;
+    expect(stored.ai_review_error).toEqual({ consecutive: 2, last_code: 'LLM_PARSE_FAILED' });
+    // A JSON-null key reads back as "no run" (null) and must still be writable.
+    await client.query(`UPDATE relationship_candidate_labels SET provenance = provenance || '{"ai_review_error": null}'::jsonb WHERE id = $1`, [row.id]);
+    expect(await rememberReviewError({ id: row.id, provenance: { ai_review_error: null } }, { consecutive: 1, last_code: 'OTHER' }, queryFn)).toEqual({ id: row.id });
+  });
+  test('an error memo is written only on a generated row', async () => {
+    const row = edge('quarantine_approved', 'candidate', 'competitive_alternative', 'ai_approved');
+    await upsertRelationshipCandidateLabel(row, { queryFn });
+    expect(await rememberReviewError({ id: row.id }, { consecutive: 1 }, queryFn)).toBeNull();
   });
 });
