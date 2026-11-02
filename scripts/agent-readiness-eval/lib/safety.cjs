@@ -55,6 +55,15 @@ const PROD_SYNTHETIC_PATH = '/mcp';
 const SYNTHETIC_STATE = Object.freeze({ header: 'x-pivota-synthetic', run: Object.freeze(['enforce']), check: Object.freeze(['observe', 'enforce']) });
 // The read tools production allows the eval client, less get_intel (no journey calls it).
 const PROD_SYNTHETIC_TOOLS = Object.freeze(['search_catalog', 'get_product', 'get_offers', 'get_alternatives']);
+// A canary (`--canary <tool>`) is ONE call of one tool, with exactly these arguments, given as flags. The ids come
+// from a read-only lookup, never from a production search. `market` is never sent, so nothing asks for a live read.
+const CANARY_ARGS = Object.freeze({
+  get_alternatives: Object.freeze(['merchant_id', 'product_id']),
+  get_product: Object.freeze(['merchant_id', 'product_id']),
+  search_catalog: Object.freeze(['query']),
+  get_offers: Object.freeze(['merchant_id', 'product_id']),
+});
+const CANARY_ID_RE = /^[A-Za-z0-9_.:-]{1,200}$/;
 // Lower than HARD_CAPS. A run fits inside one access token (an hour): it is refreshed right before the run.
 const PROD_SYNTHETIC_CAPS = Object.freeze({ maxConcurrency: 2, maxRps: 1, maxLimit: 200, maxRunSeconds: 3000 });
 
@@ -164,6 +173,12 @@ function checkProdSynthetic(config) {
   if (config.mcpPath !== PROD_SYNTHETIC_PATH) problems.push(`a production synthetic run uses the ${PROD_SYNTHETIC_PATH} path`);
   if (config.auth !== 'bearer') problems.push('a production synthetic run authenticates as the eval OAuth client (--auth bearer)');
   if (config.load && config.load.enabled) problems.push('load mode never runs against production');
+  if (config.canary) {
+    if (config.checkClassification) problems.push('--canary and --check-classification are separate steps');
+    problems.push(...checkCanary(config.canary, config.canaryArgs || {}));
+    // One call: the run caps are moot.
+    return problems;
+  }
   // The classification check makes two requests (initialize, tools/list) and calls no tool: the run caps are moot.
   if (config.checkClassification) return problems;
   for (const j of config.journeys || []) {
@@ -176,6 +191,30 @@ function checkProdSynthetic(config) {
     problems.push(`a production synthetic run takes --max-wall-seconds 1..${PROD_SYNTHETIC_CAPS.maxRunSeconds} (one access token)`);
   }
   return problems;
+}
+
+/** A canary's tool and arguments. Pure. */
+function checkCanary(tool, args) {
+  const want = Object.prototype.hasOwnProperty.call(CANARY_ARGS, tool) ? CANARY_ARGS[tool] : null;
+  if (!want) return [`--canary must be one of ${Object.keys(CANARY_ARGS).join(', ')}`];
+  const problems = [];
+  for (const key of ['merchant_id', 'product_id', 'query']) {
+    const flag = `--canary-${key.replace(/_/g, '-')}`;
+    const v = args[key] === undefined ? null : args[key];
+    if (!want.includes(key)) {
+      if (v !== null) problems.push(`--canary ${tool} takes no ${flag}`);
+    } else if (v === null) {
+      problems.push(`--canary ${tool} needs ${flag}`);
+    } else if (key === 'query' ? v.length > 200 || /[\u0000-\u001f\u007f]/.test(v) : !CANARY_ID_RE.test(v)) {
+      problems.push(`${flag} must be ${key === 'query' ? 'at most 200 printable characters' : 'an id of letters, digits and _.:- (at most 200)'}`);
+    }
+  }
+  return problems;
+}
+
+/** The arguments a canary sends: exactly its tool's keys. */
+function canaryArguments(tool, args) {
+  return Object.fromEntries(CANARY_ARGS[tool].map((k) => [k, args[k]]));
 }
 
 /** Load-mode settings vs the compiled-in caps. Pure. */
@@ -272,8 +311,11 @@ module.exports = {
   PROD_SYNTHETIC_TOOLS,
   PROD_SYNTHETIC_CAPS,
   SYNTHETIC_STATE,
+  CANARY_ARGS,
   attestationFor,
   checkProdSynthetic,
+  checkCanary,
+  canaryArguments,
   isLoopbackLiteral,
   hostOf,
   classifyTarget,

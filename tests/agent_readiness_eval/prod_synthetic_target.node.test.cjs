@@ -385,7 +385,10 @@ test('oauth-login: signs in, stores the token, and prints neither the token nor 
   assert.equal(crypto.createHash('sha256').update(ep.seen[0].form.code_verifier).digest('base64url'), url.searchParams.get('code_challenge'));
   assert.equal(oauth.readToken(file).access_token, 'at-SECRETVALUE');
 
-  assert.equal(await oauthLogin.main(['--token-file', file], {}, io, {}), 2, 'no client credentials');
+  const unreachable = () => {
+    throw new Error('no sign-in may start without client credentials');
+  };
+  assert.equal(await oauthLogin.main(['--token-file', file], {}, io, { awaitCallback: unreachable }), 2, 'no client credentials');
   assert.equal(await oauthLogin.main(['--token-file', path.join(dir, 't2.json')], CREDS, io, {
     awaitCallback: () => ({ code: Promise.reject(new Error('sign-in timed out')), close() {} }),
   }), 1);
@@ -563,4 +566,92 @@ test('run.cjs, run: a run whose state drops mid-run halts at the first unmarked 
   const toolCalls = door.seen.filter((x) => x.method === 'tools/call');
   assert.equal(toolCalls.length, 2, 'one marked call, then the unmarked one that halted the run');
   assert.ok(door.seen.every((x) => x.auth === 'Bearer at-old'));
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The canary: one call of one tool, with fixed ids, after the full preflight.
+
+const CANARY_BASE = ['--target-kind', 'prod-synthetic', '--tier', 'commerce', '--auth', 'bearer', '--base-url', PROD];
+const IDS = ['--canary-merchant-id', 'merch_test_1', '--canary-product-id', 'prod_test_1'];
+
+test('canary config: each tool takes exactly its arguments, and the run caps do not apply', () => {
+  const problems = (argv) => safety.checkTarget(cfg([...CANARY_BASE, ...argv])).problems;
+  for (const tool of ['get_alternatives', 'get_product', 'get_offers']) {
+    assert.deepEqual(problems(['--canary', tool, ...IDS]), [], tool);
+    assert.match(problems(['--canary', tool, '--canary-merchant-id', 'merch_test_1']).join('\n'), /needs --canary-product-id/);
+    assert.match(problems(['--canary', tool, ...IDS, '--canary-query', 'q']).join('\n'), /takes no --canary-query/);
+  }
+  assert.deepEqual(problems(['--canary', 'search_catalog', '--canary-query', 'vitamin c serum']), []);
+  assert.match(problems(['--canary', 'search_catalog', ...IDS, '--canary-query', 'q']).join('\n'), /takes no --canary-merchant-id[\s\S]*takes no --canary-product-id/);
+  assert.match(problems(['--canary', 'search_catalog']).join('\n'), /needs --canary-query/);
+  for (const tool of ['get_intel', 'recommend_products', 'create_checkout_session', 'constructor', '__proto__']) {
+    assert.match(problems(['--canary', tool, ...IDS]).join('\n'), /--canary must be one of get_alternatives, get_product, search_catalog, get_offers/, tool);
+  }
+  assert.match(problems(['--canary', 'get_product', '--canary-merchant-id', 'a b', '--canary-product-id', 'p']).join('\n'), /--canary-merchant-id must be an id/);
+  assert.match(problems(['--canary', 'get_product', '--canary-merchant-id', 'm', '--canary-product-id', 'x'.repeat(201)]).join('\n'), /--canary-product-id must be an id/);
+  assert.match(problems(['--canary', 'search_catalog', '--canary-query', 'q'.repeat(201)]).join('\n'), /at most 200 printable/);
+  assert.match(problems(['--canary', 'search_catalog', '--canary-query', 'a\u0007b']).join('\n'), /at most 200 printable/);
+  assert.match(problems(['--canary', 'get_product', ...IDS, '--check-classification']).join('\n'), /separate steps/);
+  // The tier/path/auth/load rules still apply.
+  assert.match(problems(['--canary', 'get_product', ...IDS, '--auth', 'none']).join('\n'), /--auth bearer/);
+  // Only for the production target, and canary arguments need --canary.
+  assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1', '--canary', 'get_product'])).join('\n'), /--canary is for --target-kind prod-synthetic/);
+  assert.match(validateConfig(cfg([...CANARY_BASE, ...IDS])).join('\n'), /--canary-\* arguments need --canary <tool>/);
+  assert.deepEqual(safety.canaryArguments('get_offers', { merchant_id: 'm', product_id: 'p', query: 'q', market: 'US' }), { merchant_id: 'm', product_id: 'p' });
+});
+
+async function runCanary(extra, { door = fakeDoor(), gcloud = fakeGcloud() } = {}) {
+  const s = preflightSetup({ door, gcloud });
+  const c = capture();
+  const code = await main([...CANARY_BASE, '--oauth-token-file', s.config.oauthTokenFile, '--out', tmp('re-out-'), ...extra], CREDS, c.io, s.deps);
+  return { code, c, door, gcloud, printed: code === 2 ? null : JSON.parse(c.out.join('')) };
+}
+
+test('canary: after the full preflight, exactly one tools/call with exactly the given ids, and its times are printed', async () => {
+  const bodies = [];
+  const base = fakeDoor();
+  const door = { seen: base.seen, fetchImpl: async (url, init) => { bodies.push(JSON.parse(init.body)); return base.fetchImpl(url, init); } };
+  const r = await runCanary(['--canary', 'get_offers', ...IDS], { door });
+  assert.equal(r.code, 0, r.c.err.join(''));
+  assert.deepEqual(door.seen.map((x) => x.method), ['initialize', 'notifications/initialized', 'tools/list', 'tools/call']);
+  assert.deepEqual(bodies[3].params, { name: 'get_offers', arguments: { merchant_id: 'merch_test_1', product_id: 'prod_test_1' } });
+  assert.equal(r.gcloud.calls.length, 2, 'the deployment was read');
+  assert.equal(r.printed.canary, 'get_offers');
+  assert.equal(r.printed.state, 'enforce');
+  assert.equal(r.printed.is_error, false);
+  assert.ok(Date.parse(r.printed.started_at) <= Date.parse(r.printed.finished_at));
+  assert.equal(r.printed.preflight.state, 'enforce');
+  assert.doesNotMatch(r.c.out.join(''), /at-old|rt-old/);
+});
+
+test('canary: a deployment not in enforce, or a door not saying enforce, makes no tool call', async () => {
+  const a = await runCanary(['--canary', 'get_alternatives', ...IDS], { gcloud: fakeGcloud({ gateway: service({ mode: 'observe' }) }) });
+  assert.equal(a.code, 2);
+  assert.equal(a.door.seen.length, 0);
+  const b = await runCanary(['--canary', 'get_alternatives', ...IDS], { door: fakeDoor({ state: 'observe' }) });
+  assert.equal(b.code, 2);
+  assert.equal(b.door.seen.filter((x) => x.method === 'tools/call').length, 0);
+});
+
+test('canary: an unmarked answer to the call exits 3; a tool error exits 1 with its code', async () => {
+  const halted = await runCanary(['--canary', 'get_product', ...IDS], { door: fakeDoor({ stateFor: (m) => (m === 'tools/call' ? 'observe' : 'enforce') }) });
+  assert.equal(halted.code, 3);
+  assert.equal(halted.printed.outcome, 'attestation_missing');
+  assert.equal(halted.printed.state, 'observe');
+
+  const base = fakeDoor();
+  const erroring = {
+    seen: base.seen,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      base.seen.push({ method: body.method });
+      const result = { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: { code: 'PRODUCT_NOT_FOUND' } }) }] };
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
+    },
+  };
+  const err = await runCanary(['--canary', 'get_product', ...IDS], { door: erroring });
+  assert.equal(err.code, 1);
+  assert.equal(err.printed.is_error, true);
+  assert.equal(err.printed.error_code, 'PRODUCT_NOT_FOUND');
 });

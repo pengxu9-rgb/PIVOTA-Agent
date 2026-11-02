@@ -360,6 +360,28 @@ npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --a
   --base-url https://commerce.mcp.pivota.cc --check-classification
 ```
 
+**Canaries first (enforce only).** `--canary <tool>` makes ONE `tools/call` after the full preflight below,
+prints when it ran and what came back (never the payload), and stops. The arguments are flags, and each tool
+takes exactly these. `market` is never sent.
+
+| Tool | Flags |
+|---|---|
+| `get_alternatives` | `--canary-merchant-id`, `--canary-product-id` |
+| `get_product` | `--canary-merchant-id`, `--canary-product-id` |
+| `search_catalog` | `--canary-query` |
+| `get_offers` | `--canary-merchant-id`, `--canary-product-id` |
+
+Take the ids from a read-only database lookup, never from a production search. Run the tools in the order of
+[the rollout](synthetic_callers.md#order-of-rollout), and check each tool's log lines before the next.
+Exit 0 means the call answered. 1 means it failed or the tool answered an error (`error_code`). 3 means the
+answer was not marked `enforce`.
+
+```bash
+npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \
+  --base-url https://commerce.mcp.pivota.cc \
+  --canary get_alternatives --canary-merchant-id <merchant id> --canary-product-id <product id>
+```
+
 **Run (enforce only).** Before any tool call, the preflight (`lib/prodSynthetic.cjs`) refuses unless:
 
 1. the token is fresh;
@@ -399,4 +421,4 @@ node --test tests/agent_readiness_eval/*.node.test.cjs
 | `safety_config_queryset` | Target allowlist (including every bypass seen on 2026-10-20), hard caps, kill switch, secret redaction, schema-driven arguments, read-only tool policy, SLO evaluation, judge data boundary, query-set composition and builder sync. |
 | `stub_mcp_e2e` | The CLI over HTTP against a stub server built from the gateway's own MCP adapter and tool surfaces, over an invented catalog with planted defects. Proves each defect is caught, checkout tools are never called, no link is fetched, per-caller 429s are attributed, and dry-run makes no requests. |
 | `real_gateway_e2e` | The CLI against the real `src/server.js` on a local port. Only the loopback search hop is stubbed with nock, and all external network is disabled. |
-| `prod_synthetic_target` | Target C against a fake door, a fake token endpoint and a fake `gcloud`: the allowlist entry and its caps, the `X-Pivota-Synthetic` halt, the four-tool restriction, PKCE, the token exchange, refresh and file, the loopback callback, every preflight refusal, and the CLI's check and refusal paths. Nothing reaches production. |
+| `prod_synthetic_target` | Target C against a fake door, a fake token endpoint and a fake `gcloud`: the allowlist entry and its caps, the `X-Pivota-Synthetic` halt, the four-tool restriction, PKCE, the token exchange, refresh and file, the loopback callback, every preflight refusal, the canary's arguments and its single call, and the CLI's check and refusal paths. Nothing reaches production. |

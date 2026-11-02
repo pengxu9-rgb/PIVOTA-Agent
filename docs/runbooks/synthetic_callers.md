@@ -95,7 +95,7 @@ Decision A2 for phase 1: **no live reads.** A synthetic call answers from what w
 1. The backend's gates are live (pivota-backend#2686, #2688) and its `SYNTHETIC_ASSERTION_SECRET` is mounted, pinned.
 2. The gateway runs this code with the same secret, mode `off`, and `synthetic_config_loaded` on the new revision.
 3. `observe` with no eval traffic: 0 `synthetic_classified` lines. Then the harness's classification check, once (`--check-classification`, [agent readiness eval](agent_readiness_eval.md), target C): it must pass with `X-Pivota-Synthetic: observe`, and the only new `synthetic_classified` lines are its own.
-4. `enforce`, then the harness, canaries first: `get_alternatives`, unscoped `get_product`, `search_catalog`, `get_offers`.
+4. `enforce`, then the harness, canaries first, one `--canary` call each: `get_alternatives`, unscoped `get_product` (no `market`), `search_catalog`, `get_offers` (it mints `/r` links, so it goes last). Check each tool's lines before the next.
 
 ## One id per call
 The MCP door mints a request id for every commerce-door call and logs it as `gateway_request_id` on `mcp tools/call complete`, the same field name the invoke completion line uses. For a synthetic call:

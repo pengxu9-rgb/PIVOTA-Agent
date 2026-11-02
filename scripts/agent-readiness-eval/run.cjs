@@ -147,6 +147,11 @@ async function main(argv = process.argv.slice(2), env = process.env, io = { out:
       io.out.write(`${JSON.stringify({ classification_check: 'pass', ...pre.report }, null, 2)}\n`);
       return 0;
     }
+    if (config.canary) {
+      const { code, summary } = await prodSynthetic.canary({ config, client: pre.client });
+      io.out.write(`${JSON.stringify({ ...summary, preflight: pre.report }, null, 2)}\n`);
+      return code;
+    }
     bearerToken = pre.bearerToken;
   }
 

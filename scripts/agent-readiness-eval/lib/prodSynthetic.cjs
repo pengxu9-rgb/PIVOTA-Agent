@@ -18,6 +18,7 @@
 
 const { execFile } = require('node:child_process');
 const { McpClient } = require('./mcpClient.cjs');
+const { canaryArguments } = require('./safety.cjs');
 const oauth = require('./oauth.cjs');
 
 // What production's tools/list shows our eval client (src/guardrails/syntheticCallers.js SYNTHETIC_READ_TOOLS).
@@ -138,7 +139,44 @@ async function preflight({ config, env = process.env, deps = {}, log = () => {} 
       report,
     };
   }
-  return { problems: [], bearerToken: token.access_token, report };
+  return { problems: [], bearerToken: token.access_token, report, client };
 }
 
-module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight };
+function toolErrorCode(result) {
+  if (!result || result.isError !== true) return null;
+  try {
+    const parsed = JSON.parse(result.content[0].text);
+    return String(parsed.error.code || parsed.error || 'unknown').slice(0, 80);
+  } catch {
+    return 'unparsed';
+  }
+}
+
+/**
+ * THE CANARY: one tools/call on the preflight's client, then stop. Prints when it ran (for the log reconciliation),
+ * what came back, and nothing of the payload.
+ * @returns {Promise<{ code: number, summary: object }>} 0 ok, 1 the call failed or the tool answered an error, 3 halted.
+ */
+async function canary({ config, client, now = () => new Date() }) {
+  const args = canaryArguments(config.canary, config.canaryArgs);
+  const startedAt = now().toISOString();
+  const rec = await client.callTool(config.canary, args);
+  const result = rec.rpc && rec.rpc.result ? rec.rpc.result : null;
+  const summary = {
+    canary: config.canary,
+    args,
+    started_at: startedAt,
+    finished_at: now().toISOString(),
+    outcome: rec.outcome,
+    http_status: rec.http_status,
+    state: rec.attested === undefined ? null : rec.attested,
+    latency_ms: rec.latency_ms,
+    is_error: result ? result.isError === true : null,
+    error_code: toolErrorCode(result),
+    error: rec.error || null,
+  };
+  const code = client.halted ? 3 : rec.outcome === 'ok' && summary.is_error === false ? 0 : 1;
+  return { code, summary };
+}
+
+module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight, canary };

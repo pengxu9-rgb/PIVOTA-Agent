@@ -130,6 +130,12 @@ function num(v, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function str(v) {
+  if (v === undefined || v === null || v === true) return null;
+  const s = String(v).trim();
+  return s || null;
+}
+
 function bool(v, fallback = false) {
   if (v === undefined || v === null || v === '') return fallback;
   if (v === true) return true;
@@ -184,6 +190,13 @@ function resolveConfig(argv = [], env = process.env) {
     checkClassification: bool(pick('check-classification', 'READINESS_EVAL_CHECK_CLASSIFICATION')),
     // prod-synthetic only: the eval client's token (lib/oauth.cjs), refreshed before the run.
     oauthTokenFile: String(pick('oauth-token-file', 'READINESS_EVAL_OAUTH_TOKEN_FILE') || '').trim() || null,
+    // prod-synthetic only: ONE tools/call of this tool with the ids given here, then stop (safety.cjs CANARY_ARGS).
+    canary: str(pick('canary', 'READINESS_EVAL_CANARY')),
+    canaryArgs: {
+      merchant_id: str(pick('canary-merchant-id', 'READINESS_EVAL_CANARY_MERCHANT_ID')),
+      product_id: str(pick('canary-product-id', 'READINESS_EVAL_CANARY_PRODUCT_ID')),
+      query: str(pick('canary-query', 'READINESS_EVAL_CANARY_QUERY')),
+    },
     // Fixed, not configurable: a configurable header NAME is a way to smuggle a Host (or auth) header.
     syntheticHeader: DEFAULTS.syntheticHeader,
     syntheticHeaderValue: DEFAULTS.syntheticHeaderValue,
@@ -274,6 +287,8 @@ function validateConfig(config) {
       problems.push('auth=bearer needs READINESS_EVAL_BEARER_TOKEN');
     }
     if (config.checkClassification && config.targetKind !== 'prod-synthetic') problems.push('--check-classification is for --target-kind prod-synthetic');
+    if (config.canary && config.targetKind !== 'prod-synthetic') problems.push('--canary is for --target-kind prod-synthetic');
+    if (!config.canary && Object.values(config.canaryArgs).some((v) => v !== null)) problems.push('--canary-* arguments need --canary <tool>');
   }
   for (const removed of config.removedFlags) {
     problems.push(`--${removed} is not supported (removed: the target allowlist in safety.cjs is the only way to choose a target)`);
