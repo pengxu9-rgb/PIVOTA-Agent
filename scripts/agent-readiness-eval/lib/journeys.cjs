@@ -461,4 +461,4 @@ function planCalls(config, querySet) {
   };
 }
 
-module.exports = { runJourneys, argsForSchema, classifyTools, selectQueries, loadQuerySet, planCalls, runPool, mulberry32 };
+module.exports = { runJourneys, argsForSchema, classifyTools, selectQueries, withoutMarket, loadQuerySet, planCalls, runPool, mulberry32 };

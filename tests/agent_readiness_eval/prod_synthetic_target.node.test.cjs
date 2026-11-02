@@ -740,3 +740,11 @@ test('a production halt says the call was not marked synthetic', async () => {
   const local = new McpClient({ endpoint: 'http://127.0.0.1:1/mcp', fetchImpl: fakeDoor({ state: null }).fetchImpl });
   assert.match((await local.initialize()).error, /not provably the eval deployment$/);
 });
+
+test('withoutMarket: a query loses its market and any market among its own arguments, and keeps the rest', () => {
+  const { withoutMarket } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const q = { id: 'q1', text: 'serum', market: 'GB', args: { market: 'GB', price_max: 30 } };
+  assert.deepEqual(withoutMarket(q), { id: 'q1', text: 'serum', market: null, args: { price_max: 30 } });
+  assert.deepEqual(q.args, { market: 'GB', price_max: 30 }, 'the query set itself is untouched');
+  assert.deepEqual(withoutMarket({ id: 'q2', text: 't', market: null }), { id: 'q2', text: 't', market: null, args: {} });
+});
