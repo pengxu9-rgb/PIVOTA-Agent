@@ -180,12 +180,14 @@ function classifySyntheticCaller(claims, { env = process.env, ownIssuers = [] } 
     // Fails CLOSED for a client the configuration names: an unexpected error must not turn our eval client into
     // an ordinary caller with the full tool surface. Any other caller is unaffected.
     try {
-      const raw = String(env?.SYNTHETIC_CALLERS_JSON || '');
       const ids = [claims?.client_id, claims?.azp].map(text).filter(Boolean);
-      // A `"client_id": "<id>"` pair in the raw text: never a key name, and never an issuer that happens to
-      // equal the id.
-      const named = (id) => new RegExp(`"client_id"\\s*:\\s*${JSON.stringify(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(raw);
-      if (raw && ids.some(named)) {
+      // The `client_id` values the configuration names, read as JSON (escapes included): never a key name, and
+      // never an issuer that happens to equal the id. A config that does not parse refuses the boot anyway.
+      const parsed = JSON.parse(String(env?.SYNTHETIC_CALLERS_JSON || '[]'));
+      const listed = new Set((Array.isArray(parsed) ? parsed : [])
+        .map((e) => (e && typeof e === 'object' && !Array.isArray(e) ? text(e.client_id) : null))
+        .filter(Boolean));
+      if (ids.some((id) => listed.has(id))) {
         return { listed: true, valid: false, reason: 'classify_error' };
       }
     } catch (_) {

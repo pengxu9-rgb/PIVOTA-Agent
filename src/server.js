@@ -31716,6 +31716,26 @@ function llmRerankFailureOutcome(err) {
   return { applied: false, error: true };
 }
 
+// `llmRerankFailureOutcome`, and the WARN a real failure gets (a skip gets none).
+function noteLlmRerankFailure(err, log) {
+  const outcome = llmRerankFailureOutcome(err);
+  if (outcome.error) {
+    log?.warn?.({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
+  }
+  return outcome;
+}
+
+// The `llm_rerank` stage of the find_products_multi breakdown, from the rerank's outcome: a skip says why.
+function llmRerankStageFields(outcome) {
+  return {
+    applied: Boolean(outcome?.applied),
+    provider: outcome?.provider,
+    error: outcome?.error,
+    breaker_open: outcome?.breaker_open,
+    skipped_reason: outcome?.skipped_reason,
+  };
+}
+
 // The same request config with its synthetic markers re-signed now, for an upstream RETRY: the backend
 // assertion (src/guardrails/syntheticCallers.js) and, on a loopback call, the loopback marker
 // (src/guardrails/loopbackCallerAssertion.js). Each is checked within 60 s of its signing, and busy retries can
@@ -54012,17 +54032,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         }
       } catch (err) {
-        llmRerankOutcome = llmRerankFailureOutcome(err);
-        if (llmRerankOutcome.error) {
-          logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
-        }
+        llmRerankOutcome = noteLlmRerankFailure(err, logger);
       }
-      recordFpmStage('llm_rerank', llmRerankStartedAt, {
-        applied: Boolean(llmRerankOutcome?.applied),
-        provider: llmRerankOutcome?.provider,
-        error: llmRerankOutcome?.error,
-        breaker_open: llmRerankOutcome?.breaker_open,
-      });
+      recordFpmStage('llm_rerank', llmRerankStartedAt, llmRerankStageFields(llmRerankOutcome));
     }
 
     if (operation === 'find_products_multi') {
@@ -55201,6 +55213,8 @@ module.exports._debug = {
   buildMerchantVariantSource,
   withFreshSyntheticAssertion,
   llmRerankFailureOutcome,
+  noteLlmRerankFailure,
+  llmRerankStageFields,
   getProductDetailCacheEntry,
   setProductDetailCache,
   getResolveProductGroupCacheEntry,

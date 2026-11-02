@@ -508,3 +508,41 @@ test('a rerank over the synthetic cap is a skip, not a logged failure', () => {
   assert.deepEqual(D.llmRerankFailureOutcome(new Error('rerank_llm_failed: deadline 1800ms exceeded')), { applied: false, error: true });
   assert.deepEqual(D.llmRerankFailureOutcome(null), { applied: false, error: true });
 });
+
+test('the rerank stage records why a synthetic call skipped it, and a skip is never a WARN', () => {
+  assert.equal(D.llmRerankStageFields({ applied: false, skipped_reason: 'llm_synthetic_cap' }).skipped_reason, 'llm_synthetic_cap');
+  assert.equal(D.llmRerankStageFields({ applied: false, error: true }).error, true);
+  assert.equal(D.llmRerankStageFields(undefined).applied, false);
+  const warned = [];
+  const log = { warn: (obj, msg) => warned.push(msg) };
+  assert.deepEqual(D.noteLlmRerankFailure(new Error('rerank_llm_failed: synthetic_llm_cap'), log), { applied: false, skipped_reason: 'llm_synthetic_cap' });
+  assert.deepEqual(warned, [], 'a capped rerank is not a failure');
+  assert.deepEqual(D.noteLlmRerankFailure(new Error('rerank_llm_failed: deadline 1800ms exceeded'), log), { applied: false, error: true });
+  assert.equal(warned.length, 1, 'a real failure is logged');
+});
+
+test('an issuer that is not plain ASCII is invalid too', () => {
+  const env = { SYNTHETIC_CALLERS_JSON: JSON.stringify([{ iss: 'https://as.pivota.tést', client_id: 'mcpc_eval' }]) };
+  const { entries } = callers.parseSyntheticCallers(env, { ownIssuers: ['https://as.pivota.tést'] });
+  assert.equal(entries[0].reason, 'value_not_plain_ascii');
+});
+
+test('the fail-closed match reads the listed ids as JSON: exact, escapes included', () => {
+  const exploding = (clientId) => ({ get iss() { throw new Error('boom'); }, client_id: clientId });
+  const classify = (raw, id) => callers.classifySyntheticCaller(exploding(id), {
+    env: { SYNTHETIC_CALLERS_JSON: raw, SYNTHETIC_TRAFFIC_MODE: 'enforce' }, ownIssuers: ['https://as.pivota.test'],
+  });
+  const dotted = JSON.stringify([{ iss: 'https://as.pivota.test', client_id: 'mcpc_a.b' }]);
+  assert.equal(classify(dotted, 'mcpc_a.b').reason, 'classify_error');
+  assert.equal(classify(dotted, 'mcpc_aXb'), null, 'a dot is a dot, not any character');
+  // The same id written with JSON escapes in the raw config is the same id.
+  const escaped = '[{"iss": "https:\\/\\/as.pivota.test", "client_id": "mcpc_\\u0065val"}]';
+  assert.equal(classify(escaped, 'mcpc_eval').reason, 'classify_error');
+  assert.equal(classify('not json', 'mcpc_eval'), null);
+});
+
+test('STRUCTURAL: the rerank stage and its failure go through the helpers above', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  assert.match(src, /llmRerankOutcome = noteLlmRerankFailure\(err, logger\);/);
+  assert.match(src, /recordFpmStage\('llm_rerank', llmRerankStartedAt, llmRerankStageFields\(llmRerankOutcome\)\);/);
+});
