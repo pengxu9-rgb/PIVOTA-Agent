@@ -165,6 +165,40 @@ function toolErrorCode(result) {
   }
 }
 
+/**
+ * The links an offer answer carries, counted, never printed: every *_url / url field of each offer, how many are
+ * /r redirects (`/r?token=<payload>.<signature>`), and how many of those say `syn: 1` in their token payload (the
+ * backend stamps it on every link it mints for a synthetic call). The payload is decoded, not verified.
+ */
+function offerLinkFacts(payload) {
+  const v = payload && payload.value && typeof payload.value === 'object' ? payload.value : {};
+  const offers = Array.isArray(v.signals) ? v.signals.map((s) => (s && typeof s.value === 'object' && s.value) || s) : [];
+  const facts = { total: 0, r_links: 0, r_syn: 0 };
+  for (const o of offers) {
+    if (!o || typeof o !== 'object') continue;
+    for (const [k, raw] of Object.entries(o)) {
+      if (!/(^|_)url$/.test(k) || typeof raw !== 'string' || !raw) continue;
+      facts.total += 1;
+      let u;
+      try {
+        u = new URL(raw);
+      } catch {
+        continue;
+      }
+      const token = u.searchParams.get('token');
+      if (!/\/r$/.test(u.pathname) || !token) continue;
+      facts.r_links += 1;
+      try {
+        const body = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8'));
+        if (body && body.syn === 1) facts.r_syn += 1;
+      } catch {
+        // An unreadable token says nothing about the flag.
+      }
+    }
+  }
+  return facts;
+}
+
 /** What a canary's answer held: a refusal, an empty answer, or items (and how many). Null when no answer came. */
 function canaryResult(tool, rec) {
   if (rec.outcome !== 'ok') return null;
@@ -185,7 +219,9 @@ function canaryResult(tool, rec) {
     const a = readAlternatives(payload);
     [count, emptyClass] = [a.items.length, a.empty_class];
   }
-  return { kind: count > 0 ? 'items' : 'empty', count, empty_class: count > 0 ? null : emptyClass || 'unspecified' };
+  const out = { kind: count > 0 ? 'items' : 'empty', count, empty_class: count > 0 ? null : emptyClass || 'unspecified' };
+  if (tool === 'get_offers') out.links = offerLinkFacts(payload);
+  return out;
 }
 
 /**
@@ -219,4 +255,4 @@ async function canary({ config, client, now = () => new Date() }) {
   return { code, summary };
 }
 
-module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight, canary, runGcloud, gcloudEnv };
+module.exports = { PRODUCTION_SYNTHETIC_TOOLS, GCP, deploymentProblems, preflight, canary, offerLinkFacts, runGcloud, gcloudEnv };
