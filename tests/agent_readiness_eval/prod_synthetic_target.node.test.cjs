@@ -640,7 +640,7 @@ test('canary: after the full preflight, exactly one tools/call with exactly the 
   assert.equal(r.printed.canary, 'get_offers');
   assert.equal(r.printed.state, 'enforce');
   assert.equal(r.printed.is_error, false);
-  assert.deepEqual(r.printed.result, { kind: 'items', count: 1, empty_class: null, links: { total: 0, r_links: 0, r_syn: 0 } });
+  assert.deepEqual(r.printed.result, { kind: 'items', count: 1, empty_class: null, links: { top_level_urls: 0, r_links: 0, r_syn: 0 } });
   assert.ok(Date.parse(r.printed.started_at) <= Date.parse(r.printed.finished_at));
   assert.equal(r.printed.preflight.state, 'enforce');
   assert.doesNotMatch(r.c.out.join(''), /at-old|rt-old/);
@@ -697,10 +697,10 @@ test('canary: each tool reports how many items came back; an empty answer exits 
     assert.doesNotMatch(JSON.stringify(r.printed), /Alt one|Test Serum/, 'counts only, never the items');
   }
   const empty = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering({ signals: [], metadata: { reason: 'no_offers' } }) });
-  assert.equal(empty.code, 1);
-  assert.deepEqual(empty.printed.result, { kind: 'empty', count: 0, empty_class: 'no_offers', links: { total: 0, r_links: 0, r_syn: 0 } });
+  assert.equal(empty.code, 5, "empty is not a failed call");
+  assert.deepEqual(empty.printed.result, { kind: 'empty', count: 0, empty_class: 'no_offers', links: { top_level_urls: 0, r_links: 0, r_syn: 0 } });
   const noPdp = await runCanary(['--canary', 'get_product', ...SEED_IDS], { door: doorAnswering({ note: 'not found' }) });
-  assert.equal(noPdp.code, 1);
+  assert.equal(noPdp.code, 5);
   assert.deepEqual(noPdp.printed.result, { kind: 'empty', count: 0, empty_class: 'not_found' });
 });
 
@@ -841,8 +841,8 @@ test('offerLinkFacts: counts the /r links an offer answer carries and how many s
       { value: { merchant_id: 'm5', url: 'not a url' } },
     ],
   };
-  assert.deepEqual(prodSynthetic.offerLinkFacts({ value }), { total: 7, r_links: 4, r_syn: 1 });
-  assert.deepEqual(prodSynthetic.offerLinkFacts({ value: null }), { total: 0, r_links: 0, r_syn: 0 });
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value }), { top_level_urls: 7, r_links: 4, r_syn: 1 });
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value: null }), { top_level_urls: 0, r_links: 0, r_syn: 0 });
 });
 
 test('canary get_offers: the printed summary says whether its /r links are marked syn: 1, without the links', async () => {
@@ -850,6 +850,36 @@ test('canary get_offers: the printed summary says whether its /r links are marke
   const offers = { signals: [{ value: { merchant_id: 'm', price: { amount: 10, currency: 'USD' }, in_stock: true, affiliate_url: `https://api.example.test/r?token=${token}` } }] };
   const res = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering(offers) });
   assert.equal(res.code, 0);
-  assert.deepEqual(res.printed.result.links, { total: 1, r_links: 1, r_syn: 1 });
+  assert.deepEqual(res.printed.result.links, { top_level_urls: 1, r_links: 1, r_syn: 1 });
   assert.doesNotMatch(res.c.out.join(''), /token=|SECRETCTX|api\.example\.test/);
+});
+
+test('canary: an empty reason from the server is printed only as a plain short token; /r/ with a trailing slash counts', async () => {
+  for (const [reason, printed] of [['no_offers', 'no_offers'], ['market_not_priced', 'market_not_priced'], ['Some Free Text!', 'other'], ['x'.repeat(49), 'other'], ['a\nb', 'other']]) {
+    const r = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering({ signals: [], metadata: { reason } }) });
+    assert.equal(r.code, 5);
+    assert.equal(r.printed.result.empty_class, printed, JSON.stringify(reason));
+  }
+  const token = `${Buffer.from(JSON.stringify({ syn: 1 })).toString('base64url')}.c2ln`;
+  const value = { signals: [{ value: { affiliate_url: `https://api.example.test/r/?token=${token}` } }] };
+  assert.deepEqual(prodSynthetic.offerLinkFacts({ value }), { top_level_urls: 1, r_links: 1, r_syn: 1 });
+});
+
+test('--per-class takes the first N of each class, interleaved, before --limit', () => {
+  const { selectQueries } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const all = [];
+  for (const cls of ['a', 'b', 'c']) for (let i = 0; i < 5; i += 1) all.push({ id: `${cls}${i}`, class: cls, lang: 'en', market: null });
+  const ids = (extra) => selectQueries(all, { ...cfg([]), ...extra }).map((q) => q.id);
+  assert.deepEqual(ids({ perClass: 2, limit: 0 }), ['a0', 'b0', 'c0', 'a1', 'b1', 'c1']);
+  assert.deepEqual(ids({ perClass: 2, limit: 4 }), ['a0', 'b0', 'c0', 'a1'], 'the limit still spans every class');
+  assert.deepEqual(ids({ perClass: 0, limit: 4 }), ['a0', 'a1', 'a2', 'a3'], 'without it, file order');
+  assert.equal(cfg(['--per-class', '4']).perClass, 4);
+  assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1', '--per-class', '-1'])).join('\n'), /per-class/);
+  // The real query set: 4 of each of its classes.
+  const { loadQuerySet } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const qs = loadQuerySet(cfg([]).querySet);
+  const picked = selectQueries(qs.queries, { ...cfg([]), perClass: 4, limit: 40 });
+  const classes = new Set(qs.queries.map((q) => q.class));
+  assert.equal(picked.length, Math.min(40, classes.size * 4));
+  for (const c of classes) assert.equal(picked.filter((q) => q.class === c).length, 4, c);
 });
