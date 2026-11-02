@@ -679,7 +679,7 @@ test('canary: an unmarked answer to the call exits 3; a tool error exits 1 with 
   assert.equal(err.printed.result.kind, 'refusal');
 });
 
-test('canary: each tool reports how many items came back; an empty answer exits 1 with its reason', async () => {
+test('canary: each tool reports how many items came back; an empty answer exits 5 with its reason', async () => {
   const cases = [
     ['get_alternatives', IDS, { signals: [{ value: { related: { product_id: 'a1', title: 'Alt one' } } }, { value: { related: { product_id: 'a2', title: 'Alt two' } } }] }, 2],
     ['get_product', SEED_IDS, { product: { product_id: 'prod_test_1', title: 'Test Serum' } }, 1],
@@ -882,4 +882,88 @@ test('--per-class takes the first N of each class, interleaved, before --limit',
   const classes = new Set(qs.queries.map((q) => q.class));
   assert.equal(picked.length, Math.min(40, classes.size * 4));
   for (const c of classes) assert.equal(picked.filter((q) => q.class === c).length, 4, c);
+});
+
+test('a run whose LAST tools/call is not marked enforce is aborted (exit 3), not a pass', async () => {
+  // discovery --limit 1: the run's one and only tools/call is its last.
+  const door = fakeDoor({ stateFor: (method) => (method === 'tools/call' ? 'observe' : 'enforce') });
+  const s = preflightSetup({ door });
+  const c = capture();
+  let runDir;
+  const code = await main([...RUN_ARGV, '--journeys', 'discovery', '--limit', '1', '--oauth-token-file', s.config.oauthTokenFile, '--out', tmp('re-out-')], CREDS, c.io, { ...s.deps, onRunDir: (d) => { runDir = d; } });
+  assert.equal(door.seen.filter((x) => x.method === 'tools/call').length, 1);
+  assert.equal(code, 3, c.err.join(''));
+  const results = JSON.parse(fs.readFileSync(path.join(runDir, 'results.json'), 'utf8'));
+  assert.match(String(results.metrics.run.aborted), /attestation_missing/);
+  assert.equal(results.verdict, 'aborted');
+});
+
+test('canary: server text in error_code and error is printed only in a safe shape', async () => {
+  const leak = 'https://api.example.test/r?token=eyJzeW4iOjF9.c2ln';
+  const base = fakeDoor();
+  const door = {
+    seen: base.seen,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      base.seen.push({ method: body.method });
+      const result = { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: { code: `see ${leak}` } }) }] };
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
+    },
+  };
+  const r = await runCanary(['--canary', 'get_offers', ...IDS], { door });
+  assert.equal(r.code, 1);
+  assert.equal(r.printed.error_code, 'other');
+  assert.doesNotMatch(r.c.out.join(''), /token=ey|api\.example\.test/);
+  // A JSON-RPC error message from the server goes through the same filter.
+  const rpcErr = {
+    seen: [],
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message: `upstream failed: ${leak}\nline two` } }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
+    },
+  };
+  const r2 = await runCanary(['--canary', 'get_offers', ...IDS], { door: rpcErr });
+  assert.equal(r2.code, 1);
+  assert.doesNotMatch(r2.c.out.join(''), /token=ey|api\.example\.test/);
+  assert.equal(r2.printed.error, 'JSON-RPC -32000: upstream failed: <url> line two', 'URL blanked, newline flattened');
+  const long = await runCanary(['--canary', 'get_offers', ...IDS], {
+    door: {
+      fetchImpl: async (url, init) => {
+        const body = JSON.parse(init.body);
+        if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message: 'x'.repeat(500) } }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
+      },
+    },
+  });
+  assert.ok(long.printed.error.length <= 160);
+});
+
+test('--per-class takes only a plain decimal count; a class shorter than N gives what it has', () => {
+  assert.equal(cfg(['--per-class', '4']).perClass, 4);
+  for (const bad of [['--per-class'], ['--per-class', 'abc'], ['--per-class', '0x4'], ['--per-class', '4.5'], ['--per-class', '-1']]) {
+    assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1', ...bad])).join('\n'), /per-class must be an integer/, bad.join(' '));
+  }
+  assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1'], { READINESS_EVAL_PER_CLASS: '0x4' })).join('\n'), /per-class/);
+  const { selectQueries } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const all = [
+    ...['a0', 'a1', 'a2', 'a3', 'a4'].map((id) => ({ id, class: 'a', lang: 'en', market: null })),
+    { id: 'b0', class: 'b', lang: 'en', market: null },
+    ...['c0', 'c1'].map((id) => ({ id, class: 'c', lang: 'en', market: null })),
+  ];
+  const ids = (perClass, limit) => selectQueries(all, { ...cfg([]), perClass, limit }).map((q) => q.id);
+  assert.deepEqual(ids(3, 0), ['a0', 'b0', 'c0', 'a1', 'c1', 'a2']);
+  assert.deepEqual(ids(3, 5), ['a0', 'b0', 'c0', 'a1', 'c1']);
+  assert.deepEqual(ids(1, 0), ['a0', 'b0', 'c0']);
+});
+
+test('runJourneys itself records the abort when its last call halts the client', async () => {
+  const { runJourneys, loadQuerySet: load } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const door = fakeDoor({ stateFor: (method) => (method === 'tools/call' ? 'observe' : 'enforce') });
+  const c = client(door);
+  const config = cfg([...RUN_ARGV, '--journeys', 'discovery', '--limit', '1']);
+  const out = await runJourneys({ config, client: c, querySet: load(config.querySet), judgeFn: null, killSwitch: null, log: () => {} });
+  assert.equal(door.seen.filter((x) => x.method === 'tools/call').length, 1);
+  assert.match(String(out.aborted), /attestation_missing/);
 });
