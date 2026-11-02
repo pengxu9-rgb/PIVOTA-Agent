@@ -712,6 +712,17 @@ async function runSyncRoutine(
 
   let beforeSnapshot;
   async function finishProgress() {
+    // Why reviews errored goes out first and on its own: it reads only the review's file, so a failing
+    // database read below (the serving snapshot) must not swallow it.
+    try {
+      const routinePath = artifacts.routine_summary;
+      if (routinePath && fs.existsSync(routinePath)) {
+        const routine = JSON.parse(fs.readFileSync(routinePath, 'utf8'));
+        surfaceReviewErrors(summary, routine.artifacts && routine.artifacts.review);
+      }
+    } catch (_error) {
+      // a missing or unreadable routine summary is reported by the block below
+    }
     try {
       if (beforeSnapshot) Object.assign(summary, servingProgress(beforeSnapshot, await progressReader({ market: options.market })));
       const routinePath = artifacts.routine_summary;
@@ -720,7 +731,6 @@ async function runSyncRoutine(
         Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
         surfaceServingAuditScope(summary, routine);
         surfaceApprovalBlocked(summary, routine.artifacts && routine.artifacts.review);
-        surfaceReviewErrors(summary, routine.artifacts && routine.artifacts.review);
       }
     } catch (error) {
       summary.ok = false;

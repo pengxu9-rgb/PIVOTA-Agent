@@ -5,7 +5,7 @@ const { fragranceServingSuppressionReason } = require('./relationshipFragrancePr
 const { hasValidConsensusApproval } = require('../services/relationshipCrossAgentReview');
 const { query } = require('../db');
 const logger = require('../logger');
-const { truncateText, safeJsonbParam } = require('./relationshipSafeText');
+const { truncateText, safeJsonbParam, safeTextParams } = require('./relationshipSafeText');
 const {
   resolveRelationshipGraphRefsToCanonicalEntities,
 } = require('../services/catalogEntityResolution');
@@ -131,9 +131,14 @@ function toIsoOrNull(value) {
   return date.toISOString();
 }
 
-// Every jsonb parameter of the label upsert: well-formed text, or Postgres refuses the row.
+// Every jsonb parameter of the label upsert: well-formed text, or Postgres refuses the row. A value
+// that cannot be serialised (a cycle) is stored as null, as this helper always did.
 function stableJson(value) {
-  return safeJsonbParam(value == null ? null : value, null);
+  try {
+    return safeJsonbParam(value == null ? null : value, null);
+  } catch {
+    return 'null';
+  }
 }
 
 function normalizeJsonbParam(value, fallback) {
@@ -1814,7 +1819,7 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
         expires_at = EXCLUDED.expires_at,
         updated_at = now()
     `,
-    [
+    safeTextParams([
       edge.id,
       edge.anchor_type,
       edge.anchor_ref,
@@ -1839,7 +1844,7 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
       normalizeJsonbParam(edge.provenance, {}),
       edge.last_verified_at,
       edge.expires_at,
-    ],
+    ]),
   );
   return edge;
 }
@@ -2035,7 +2040,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
       )
       RETURNING id
     `,
-    [
+    safeTextParams([
       id,
       edgeId,
       anchorType,
@@ -2066,7 +2071,7 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
       input.reviewed_at || null,
       edge.last_verified_at || null,
       edge.expires_at || null,
-    ],
+    ]),
   );
   return { id, edge_id: edgeId, label_state: labelState, written: Boolean(result && result.rows && result.rows.length) };
 }

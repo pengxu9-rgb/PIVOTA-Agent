@@ -2,6 +2,7 @@
 
 const { identityKey, sha256, __internal: { identity, groundingText } } = require('./relationshipReviewedIngredientEvidence');
 const { assessPivotaInsightReplacement, isProtectedPivotaInsight } = require('./pivotaInsightsQuality');
+const { isWellFormedJsonValue } = require('../auroraBff/relationshipSafeText');
 const TABLE = 'public.relgraph_reviewed_seller_evidence';
 const MAX_RECORDS = 17;
 const DAY = 86400000;
@@ -157,6 +158,9 @@ function makeGraphSellerEvidence(prepared, reviews, { nowMs=Date.now() }={}) {
   const record={schema:'relgraph.reviewed_seller_evidence.v1',identity_key:identityKey(source.identity),source,
     draft:prepared.bundle,claims:prepared.claims,bundle_sha256:prepared.bundle_sha256,source_sha256:prepared.source_sha256,reviews,
     graph_only:true,public_insights_eligible:false};
+  // Refused, not repaired: the record is hashed (evidence_id) and Postgres would refuse a lone
+  // surrogate half or NUL in the jsonb proof.
+  check(isWellFormedJsonValue(record),'insights_graph_text_malformed');
   const snapshot=JSON.parse(JSON.stringify(record));
   return {status:'approved',record:freeze({...snapshot,evidence_id:hashValue(snapshot)})};
 }

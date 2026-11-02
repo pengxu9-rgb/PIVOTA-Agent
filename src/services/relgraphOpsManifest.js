@@ -27,6 +27,7 @@
 
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
+const { safeJsonbParam } = require('../auroraBff/relationshipSafeText');
 
 const LEDGER_TABLE = 'relationship_graph_routine_runs';
 const MANIFEST_RUN_KIND = 'routine';
@@ -39,8 +40,10 @@ function normalizeString(value, max = 512) {
   return text.length > max ? text.slice(0, max) : text;
 }
 
+// Manifest rows are written as jsonb and hashed; both read this one serialisation, so the digest is
+// over exactly what is stored. Byte-identical to JSON.stringify for well-formed text.
 function stableJson(value) {
-  return JSON.stringify(value);
+  return safeJsonbParam(value);
 }
 
 function sha256(text) {
