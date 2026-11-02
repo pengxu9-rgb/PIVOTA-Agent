@@ -7,6 +7,7 @@ const { parseTargetRecallOptions } = require('./lib/relationship-graph-target-re
 const { loadProductRelationshipGraphTargetRecall, normalizeTargetRecallOptions } = require('../src/auroraBff/productRelationshipGraphTargetRecall');
 const { withoutRelationshipPairContext } = require('../src/auroraBff/relationshipCandidatePairContext');
 const { compareProductIdentity, RELATIONS: IDENTITY } = require('../src/auroraBff/relationshipProductIdentity');
+const { truncateText } = require('../src/auroraBff/relationshipSafeText');
 
 const { closePool, query, withClient } = require('../src/db');
 const {
@@ -309,7 +310,7 @@ function collectAffectedRefsFromArgs() {
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function normalizeLower(value, max = 512) {
@@ -1336,12 +1337,24 @@ async function persistEdgesWithGlobalFanInCap({
   // that land in a counting state may spend a fan-in slot.
   const classified = edges.map((edge) => ({ edge, classification: classify(edge) }));
   const upsert = async ({ edge, classification }, queryFnForRow) => {
-    const result = await upsertRelationshipCandidateLabel({
-      ...edge,
-      edge_id: edge.id,
-      label_state: classification.label_state,
-      prefilter_reasons: classification.prefilter_reasons,
-    }, { queryFn: queryFnForRow });
+    let result;
+    try {
+      result = await upsertRelationshipCandidateLabel({
+        ...edge,
+        edge_id: edge.id,
+        label_state: classification.label_state,
+        prefilter_reasons: classification.prefilter_reasons,
+      }, { queryFn: queryFnForRow });
+    } catch (err) {
+      // Name the row that failed, so the night's log says which pair and why (2026-11-02: the
+      // failure printed only "invalid input syntax for type json" and a stack).
+      if (err && typeof err === 'object' && !err.relgraph_write) {
+        err.relgraph_write = { edge_id: edge.id || null, anchor_ref: edge.anchor_ref || null,
+          candidate_ref: edge.candidate_product_ref || null, relation_type: edge.relation_type || null,
+          label_state: classification.label_state || null };
+      }
+      throw err;
+    }
     if (result.written) applied += 1;
     else skippedProtected += 1;
   };
@@ -1403,11 +1416,25 @@ async function persistEdgesWithGlobalFanInCap({
   return { applied, written: applied, skipped_protected: skippedProtected, dropped, skipped };
 }
 
+// The database's own account of a failed statement (node-pg puts it on the error), and the row a
+// failed label write was for. A stack alone does not say which value Postgres refused.
+function describeFailure(err) {
+  if (!err || typeof err !== 'object') return null;
+  const fields = {};
+  for (const key of ['code', 'detail', 'where', 'hint', 'column', 'table', 'constraint', 'routine']) {
+    if (err[key] != null && err[key] !== '') fields[key] = String(err[key]).slice(0, 500);
+  }
+  if (err.relgraph_write) fields.relgraph_write = err.relgraph_write;
+  return Object.keys(fields).length ? fields : null;
+}
+
 async function runCli({ runMain = main, closeDbPool = closePool } = {}) {
   try {
     await runMain();
   } catch (err) {
     process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
+    const failure = describeFailure(err);
+    if (failure) process.stderr.write(`relgraph build failure: ${JSON.stringify(failure)}\n`);
     process.exitCode = 1;
   } finally {
     try {
@@ -1425,7 +1452,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
-  __internal: { sampleEvidenceReadiness, listingIdentity, evidenceReadinessStatusLine },
+  __internal: { sampleEvidenceReadiness, listingIdentity, evidenceReadinessStatusLine, describeFailure },
   affectedScopeProvided,
   persistEdgesWithGlobalFanInCap,
   buildInputsFromDb,

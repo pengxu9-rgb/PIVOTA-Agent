@@ -35,6 +35,8 @@
 // generation (per source pool), the review queue (per fetched page, both sides of each label) and
 // the serving read. So the three cannot drift apart.
 
+const { safeJsonbParam } = require('./relationshipSafeText');
+
 const MAX_KEY_LENGTH = 260;
 
 // ---- Non-product listings: JS twin of pivota-backend _is_non_core_product ---------------------
@@ -264,7 +266,7 @@ async function loadCatalogServingGateFailures({ queryFn, subjects = [], batchSiz
   for (let i = 0; i < usable.length; i += batchSize) {
     const batch = usable.slice(i, i + batchSize);
     // eslint-disable-next-line no-await-in-loop
-    const res = await queryFn(CATALOG_GATE_FAILURES_SQL, [JSON.stringify(batch)]);
+    const res = await queryFn(CATALOG_GATE_FAILURES_SQL, [safeJsonbParam(batch)]);
     for (const row of Array.isArray(res?.rows) ? res.rows : []) failures.set(row.subject_id, row.reason);
   }
   return failures;

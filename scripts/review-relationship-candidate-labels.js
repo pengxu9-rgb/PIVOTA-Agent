@@ -38,6 +38,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { foldQuoteText, normalizeQuoteText, quoteWords, quotePartIsSpecific, hasQuoteShape, isShowableQuote, brandAliases } = require('../src/auroraBff/relationshipQuoteSafety');
+const { truncateText: safeTruncate, safeJsonbParam } = require('../src/auroraBff/relationshipSafeText');
 const { closePool, query } = require('../src/db');
 const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
 const { factualQuoteTable } = require('../src/llm/relationshipReviewFacts');
@@ -358,13 +359,13 @@ function readVerdictsFile(filePath) {
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return safeTruncate(text, max);
 }
 
 function truncateText(value, max = TEXT_LIMIT) {
   const text = normalizeString(value, max + 1);
   if (text.length <= max) return text;
-  return text.slice(0, Math.max(0, max - 3)).trimEnd() + '...';
+  return safeTruncate(text, Math.max(0, max - 3)).trimEnd() + '...';
 }
 
 function asObject(value) {
@@ -1005,7 +1006,7 @@ async function rememberNegativeVerdict(row, memo, queryFn = query) {
         AND label_state = 'generated'
       RETURNING id
     `,
-    [row.id, JSON.stringify(memo), memo.reviewed_at],
+    [row.id, safeJsonbParam(memo), memo.reviewed_at],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
@@ -1210,10 +1211,10 @@ function consensusCas(row, startIndex) {
     'use_case', 'score_total', 'score_breakdown', 'price_evidence', 'source_refs', 'evidence_grade'];
   for (const key of fields) {
     const cast = jsonFields.has(key) ? '::jsonb' : key === 'score_total' ? '::double precision' : '';
-    params.push(jsonFields.has(key) && row[key] != null ? JSON.stringify(row[key]) : (row[key] ?? null));
+    params.push(jsonFields.has(key) && row[key] != null ? safeJsonbParam(row[key]) : (row[key] ?? null));
     clauses.push(`${key} IS NOT DISTINCT FROM $${startIndex + params.length - 1}${cast}`);
   }
-  params.push(JSON.stringify(row.provenance?.curated_pair_evidence ?? null));
+  params.push(safeJsonbParam(row.provenance?.curated_pair_evidence ?? null));
   clauses.push(`COALESCE(provenance->'curated_pair_evidence', 'null'::jsonb) = $${startIndex + params.length - 1}::jsonb`);
   return { sql: clauses.join(' AND '), params };
 }
@@ -1228,8 +1229,8 @@ async function applyConsensusDisposition(row, decision, queryFn, { runId = '' } 
       '{ai_review_run}', $${runIndex}::jsonb, true), updated_at = now()
     WHERE id = $1 AND label_state = 'generated' AND ${cas.sql}
     RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state`,
-  [row.id, reason, JSON.stringify(decision.cross_agent_review), ...cas.params,
-    JSON.stringify({ run_id: runId || null, decision: decision.verdict })]);
+  [row.id, reason, safeJsonbParam(decision.cross_agent_review), ...cas.params,
+    safeJsonbParam({ run_id: runId || null, decision: decision.verdict })]);
   return res.rows?.[0] || null;
 }
 
@@ -1683,7 +1684,7 @@ async function applyGuardBlock(row, reasons, queryFn = query, { runId = '' } = {
         AND label_state = 'generated'
       RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state
     `,
-    [row.id, reasonFlags, JSON.stringify(stamp)],
+    [row.id, reasonFlags, safeJsonbParam(stamp)],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
@@ -1776,9 +1777,9 @@ async function applyApproval(row, decision, queryFn = query, { allowDupeAiApprov
         ${cas ? `AND ${cas.sql}` : ''}
       RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state
     `,
-    [row.id, JSON.stringify(aiReview), AI_APPROVAL_FRESHNESS_INTERVAL,
-      JSON.stringify(recommendationFields(decision)), JSON.stringify(consumerCopyForKind(decision.relationship_kind).tradeoffs),
-      JSON.stringify(consumerCopyForKind(decision.relationship_kind).watchouts),
+    [row.id, safeJsonbParam(aiReview), AI_APPROVAL_FRESHNESS_INTERVAL,
+      safeJsonbParam(recommendationFields(decision)), safeJsonbParam(consumerCopyForKind(decision.relationship_kind).tradeoffs),
+      safeJsonbParam(consumerCopyForKind(decision.relationship_kind).watchouts),
       ...(cas ? cas.params : [])],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;

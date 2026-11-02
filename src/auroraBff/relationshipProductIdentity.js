@@ -16,6 +16,7 @@
 // functional constraint keeps the pair distinct.
 
 const { optionRole, normalizedTitle, title: snapshotTitle, COSMETIC_ROLES } = require('./relationshipPairPolicy');
+const { truncateText } = require('./relationshipSafeText');
 
 const RELATIONS = Object.freeze({
   SAME_PRODUCT: 'same_product',
@@ -27,7 +28,7 @@ const RELATIONS = Object.freeze({
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
   if (!text) return '';
-  return text.length > max ? text.slice(0, max) : text;
+  return truncateText(text, max);
 }
 
 function isPlainObject(value) {
