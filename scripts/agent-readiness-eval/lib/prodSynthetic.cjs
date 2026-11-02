@@ -19,6 +19,7 @@
 const { execFile } = require('node:child_process');
 const { McpClient } = require('./mcpClient.cjs');
 const { canaryArguments } = require('./safety.cjs');
+const { toolPayload, readSearch, readProduct, readOffers, readAlternatives } = require('./responses.cjs');
 const oauth = require('./oauth.cjs');
 
 // What production's tools/list shows our eval client (src/guardrails/syntheticCallers.js SYNTHETIC_READ_TOOLS).
@@ -164,10 +165,34 @@ function toolErrorCode(result) {
   }
 }
 
+/** What a canary's answer held: a refusal, an empty answer, or items (and how many). Null when no answer came. */
+function canaryResult(tool, rec) {
+  if (rec.outcome !== 'ok') return null;
+  const payload = toolPayload(rec);
+  if (payload.isError) return { kind: 'refusal', count: 0, empty_class: null };
+  let count;
+  let emptyClass;
+  if (tool === 'search_catalog') {
+    const s = readSearch(payload);
+    [count, emptyClass] = [s.products.length, s.empty_class];
+  } else if (tool === 'get_product') {
+    const p = readProduct(payload);
+    [count, emptyClass] = [p.found ? 1 : 0, p.found ? null : 'not_found'];
+  } else if (tool === 'get_offers') {
+    const o = readOffers(payload);
+    [count, emptyClass] = [o.offers.length, o.empty_class];
+  } else {
+    const a = readAlternatives(payload);
+    [count, emptyClass] = [a.items.length, a.empty_class];
+  }
+  return { kind: count > 0 ? 'items' : 'empty', count, empty_class: count > 0 ? null : emptyClass || 'unspecified' };
+}
+
 /**
  * THE CANARY: one tools/call on the preflight's client, then stop. Prints when it ran (for the log reconciliation),
  * what came back, and nothing of the payload.
- * @returns {Promise<{ code: number, summary: object }>} 0 ok, 1 the call failed or the tool answered an error, 3 halted.
+ * @returns {Promise<{ code: number, summary: object }>} 0 items came back, 1 the call failed or the answer was a refusal or
+ *   empty, 3 halted.
  */
 async function canary({ config, client, now = () => new Date() }) {
   const args = canaryArguments(config.canary, config.canaryArgs);
@@ -186,8 +211,11 @@ async function canary({ config, client, now = () => new Date() }) {
     is_error: result ? result.isError === true : null,
     error_code: toolErrorCode(result),
     error: rec.error || null,
+    // How many alternatives, products or offers came back; never the items themselves.
+    result: canaryResult(config.canary, rec),
   };
-  const code = client.halted ? 3 : rec.outcome === 'ok' && summary.is_error === false ? 0 : 1;
+  // 0 only for an answer with items: an empty answer says nothing about the path the canary is for.
+  const code = client.halted ? 3 : summary.result && summary.result.kind === 'items' ? 0 : 1;
   return { code, summary };
 }
 

@@ -610,9 +610,27 @@ async function runCanary(extra, { door = fakeDoor(), gcloud = fakeGcloud() } = {
   return { code, c, door, gcloud, printed: code === 2 ? null : JSON.parse(c.out.join('')) };
 }
 
+// A door whose tools/call answers with the given structured content.
+function doorAnswering(structuredContent) {
+  const base = fakeDoor();
+  return {
+    seen: base.seen,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'tools/call') return base.fetchImpl(url, init);
+      base.seen.push({ method: body.method });
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: '{}' }], structuredContent } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' },
+      });
+    },
+  };
+}
+const ONE_OFFER = { signals: [{ value: { merchant_id: 'm', price: { amount: 10, currency: 'USD' }, in_stock: true } }] };
+
 test('canary: after the full preflight, exactly one tools/call with exactly the given ids, and its times are printed', async () => {
   const bodies = [];
-  const base = fakeDoor();
+  const base = doorAnswering(ONE_OFFER);
   const door = { seen: base.seen, fetchImpl: async (url, init) => { bodies.push(JSON.parse(init.body)); return base.fetchImpl(url, init); } };
   const r = await runCanary(['--canary', 'get_offers', ...IDS], { door });
   assert.equal(r.code, 0, r.c.err.join(''));
@@ -622,6 +640,7 @@ test('canary: after the full preflight, exactly one tools/call with exactly the 
   assert.equal(r.printed.canary, 'get_offers');
   assert.equal(r.printed.state, 'enforce');
   assert.equal(r.printed.is_error, false);
+  assert.deepEqual(r.printed.result, { kind: 'items', count: 1, empty_class: null });
   assert.ok(Date.parse(r.printed.started_at) <= Date.parse(r.printed.finished_at));
   assert.equal(r.printed.preflight.state, 'enforce');
   assert.doesNotMatch(r.c.out.join(''), /at-old|rt-old/);
@@ -657,6 +676,28 @@ test('canary: an unmarked answer to the call exits 3; a tool error exits 1 with 
   assert.equal(err.code, 1);
   assert.equal(err.printed.is_error, true);
   assert.equal(err.printed.error_code, 'PRODUCT_NOT_FOUND');
+  assert.equal(err.printed.result.kind, 'refusal');
+});
+
+test('canary: each tool reports how many items came back; an empty answer exits 1 with its reason', async () => {
+  const cases = [
+    ['get_alternatives', IDS, { signals: [{ value: { related: { product_id: 'a1', title: 'Alt one' } } }, { value: { related: { product_id: 'a2', title: 'Alt two' } } }] }, 2],
+    ['get_product', SEED_IDS, { product: { product_id: 'prod_test_1', title: 'Test Serum' } }, 1],
+    ['search_catalog', ['--canary-query', 'moisturizer'], { status: 'success', products: [{ product_id: 'p1', title: 'One' }, { product_id: 'p2', title: 'Two' }, { product_id: 'p3', title: 'Three' }], total: 3 }, 3],
+    ['get_offers', IDS, ONE_OFFER, 1],
+  ];
+  for (const [tool, args, content, n] of cases) {
+    const r = await runCanary(['--canary', tool, ...args], { door: doorAnswering(content) });
+    assert.equal(r.code, 0, tool);
+    assert.deepEqual(r.printed.result, { kind: 'items', count: n, empty_class: null }, tool);
+    assert.doesNotMatch(JSON.stringify(r.printed), /Alt one|Test Serum/, 'counts only, never the items');
+  }
+  const empty = await runCanary(['--canary', 'get_offers', ...IDS], { door: doorAnswering({ signals: [], metadata: { reason: 'no_offers' } }) });
+  assert.equal(empty.code, 1);
+  assert.deepEqual(empty.printed.result, { kind: 'empty', count: 0, empty_class: 'no_offers' });
+  const noPdp = await runCanary(['--canary', 'get_product', ...SEED_IDS], { door: doorAnswering({ note: 'not found' }) });
+  assert.equal(noPdp.code, 1);
+  assert.deepEqual(noPdp.printed.result, { kind: 'empty', count: 0, empty_class: 'not_found' });
 });
 
 test('canary get_product: only a seed-supply pair the gateway serves unscoped (the loopback lane), never a merchant scope', () => {
