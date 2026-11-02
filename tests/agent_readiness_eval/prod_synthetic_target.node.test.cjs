@@ -573,13 +573,16 @@ test('run.cjs, run: a run whose state drops mid-run halts at the first unmarked 
 
 const CANARY_BASE = ['--target-kind', 'prod-synthetic', '--tier', 'commerce', '--auth', 'bearer', '--base-url', PROD];
 const IDS = ['--canary-merchant-id', 'merch_test_1', '--canary-product-id', 'prod_test_1'];
+// get_product takes only a pair the gateway serves on its unscoped detail lane.
+const SEED_IDS = ['--canary-merchant-id', 'merch_obs_test1', '--canary-product-id', 'prod_test_1'];
+const idsFor = (tool) => (tool === 'get_product' ? SEED_IDS : IDS);
 
 test('canary config: each tool takes exactly its arguments, and the run caps do not apply', () => {
   const problems = (argv) => safety.checkTarget(cfg([...CANARY_BASE, ...argv])).problems;
   for (const tool of ['get_alternatives', 'get_product', 'get_offers']) {
-    assert.deepEqual(problems(['--canary', tool, ...IDS]), [], tool);
+    assert.deepEqual(problems(['--canary', tool, ...idsFor(tool)]), [], tool);
     assert.match(problems(['--canary', tool, '--canary-merchant-id', 'merch_test_1']).join('\n'), /needs --canary-product-id/);
-    assert.match(problems(['--canary', tool, ...IDS, '--canary-query', 'q']).join('\n'), /takes no --canary-query/);
+    assert.match(problems(['--canary', tool, ...idsFor(tool), '--canary-query', 'q']).join('\n'), /takes no --canary-query/);
   }
   assert.deepEqual(problems(['--canary', 'search_catalog', '--canary-query', 'vitamin c serum']), []);
   assert.match(problems(['--canary', 'search_catalog', ...IDS, '--canary-query', 'q']).join('\n'), /takes no --canary-merchant-id[\s\S]*takes no --canary-product-id/);
@@ -591,9 +594,9 @@ test('canary config: each tool takes exactly its arguments, and the run caps do 
   assert.match(problems(['--canary', 'get_product', '--canary-merchant-id', 'm', '--canary-product-id', 'x'.repeat(201)]).join('\n'), /--canary-product-id must be an id/);
   assert.match(problems(['--canary', 'search_catalog', '--canary-query', 'q'.repeat(201)]).join('\n'), /at most 200 printable/);
   assert.match(problems(['--canary', 'search_catalog', '--canary-query', 'a\u0007b']).join('\n'), /at most 200 printable/);
-  assert.match(problems(['--canary', 'get_product', ...IDS, '--check-classification']).join('\n'), /separate steps/);
+  assert.match(problems(['--canary', 'get_product', ...SEED_IDS, '--check-classification']).join('\n'), /separate steps/);
   // The tier/path/auth/load rules still apply.
-  assert.match(problems(['--canary', 'get_product', ...IDS, '--auth', 'none']).join('\n'), /--auth bearer/);
+  assert.match(problems(['--canary', 'get_product', ...SEED_IDS, '--auth', 'none']).join('\n'), /--auth bearer/);
   // Only for the production target, and canary arguments need --canary.
   assert.match(validateConfig(cfg(['--base-url', 'http://127.0.0.1:1', '--canary', 'get_product'])).join('\n'), /--canary is for --target-kind prod-synthetic/);
   assert.match(validateConfig(cfg([...CANARY_BASE, ...IDS])).join('\n'), /--canary-\* arguments need --canary <tool>/);
@@ -634,7 +637,7 @@ test('canary: a deployment not in enforce, or a door not saying enforce, makes n
 });
 
 test('canary: an unmarked answer to the call exits 3; a tool error exits 1 with its code', async () => {
-  const halted = await runCanary(['--canary', 'get_product', ...IDS], { door: fakeDoor({ stateFor: (m) => (m === 'tools/call' ? 'observe' : 'enforce') }) });
+  const halted = await runCanary(['--canary', 'get_product', ...SEED_IDS], { door: fakeDoor({ stateFor: (m) => (m === 'tools/call' ? 'observe' : 'enforce') }) });
   assert.equal(halted.code, 3);
   assert.equal(halted.printed.outcome, 'attestation_missing');
   assert.equal(halted.printed.state, 'observe');
@@ -650,8 +653,118 @@ test('canary: an unmarked answer to the call exits 3; a tool error exits 1 with 
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { status: 200, headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' } });
     },
   };
-  const err = await runCanary(['--canary', 'get_product', ...IDS], { door: erroring });
+  const err = await runCanary(['--canary', 'get_product', ...SEED_IDS], { door: erroring });
   assert.equal(err.code, 1);
   assert.equal(err.printed.is_error, true);
   assert.equal(err.printed.error_code, 'PRODUCT_NOT_FOUND');
+});
+
+test('canary get_product: only a seed-supply pair the gateway serves unscoped (the loopback lane), never a merchant scope', () => {
+  const problems = (m, pid) => safety.checkTarget(cfg([...CANARY_BASE, '--canary', 'get_product', '--canary-merchant-id', m, '--canary-product-id', pid])).problems;
+  assert.deepEqual(problems('merch_obs_test1', 'ext_test_1'), [], 'an observed seller, any id');
+  assert.deepEqual(problems('external_seed', 'sig_test1'), [], 'the shared bucket with a sig_ id');
+  for (const [m, pid] of [['merch_test_1', 'prod_test_1'], ['merch_test_1', 'sig_test1'], ['external_seed', 'ext_test_1'], ['merch_obsx', 'sig_test1']]) {
+    assert.match(problems(m, pid).join('\n'), /takes a seed-supply pair/, `${m} ${pid}`);
+  }
+  // The same rule the gateway's get_product_detail routes on.
+  const { isSeedSupplyUnservableUpstream } = require('../../src/services/externalSeedLane');
+  assert.equal(isSeedSupplyUnservableUpstream('merch_obs_a', 'p'), true);
+  assert.equal(isSeedSupplyUnservableUpstream('external_seed', 'sig_a'), true);
+  assert.equal(isSeedSupplyUnservableUpstream('external_seed', 'ext_a'), false);
+  assert.equal(isSeedSupplyUnservableUpstream('', 'sig_a'), false);
+  assert.equal(isSeedSupplyUnservableUpstream('merch_a', 'sig_a'), false);
+});
+
+test('prod-synthetic journeys declare no market on any call, search or follow, even for a market query', async () => {
+  const bodies = [];
+  const base = fakeDoor();
+  const door = {
+    seen: base.seen,
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(init.body);
+      bodies.push(body);
+      if (body.method === 'tools/call' && body.params.name === 'search_catalog') {
+        base.seen.push({ method: body.method, auth: init.headers.authorization });
+        const products = [{ product_id: 'prod_test_1', merchant_id: 'merch_test_1', title: 'Test Serum', brand: 'Test', price: { amount: 10, currency: 'USD' } }];
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: '{}' }], structuredContent: { status: 'success', products, total: 1 } } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json', 'x-pivota-synthetic': 'enforce' },
+        });
+      }
+      return base.fetchImpl(url, init);
+    },
+  };
+  const s = preflightSetup({ door });
+  const c = capture();
+  const code = await main([...RUN_ARGV, '--journeys', 'discovery,follow', '--markets', 'US,GB', '--limit', '3', '--follow-sample', '1', '--follow-top', '1',
+    '--oauth-token-file', s.config.oauthTokenFile, '--out', tmp('re-out-')], CREDS, c.io, s.deps);
+  assert.ok([0, 1].includes(code), c.err.join(''));
+  const calls = bodies.filter((b) => b.method === 'tools/call');
+  assert.ok(calls.some((b) => b.params.name === 'search_catalog') && calls.some((b) => b.params.name === 'get_offers'), calls.map((b) => b.params.name).join(','));
+  for (const b of calls) assert.equal('market' in b.params.arguments, false, `${b.params.name}: ${JSON.stringify(b.params.arguments)}`);
+});
+
+test('gcloud runs without the harness\'s secrets in its environment', async () => {
+  const env = { PATH: '/bin', HOME: '/h', READINESS_EVAL_OAUTH_CLIENT_SECRET: 's', READINESS_EVAL_OAUTH_CLIENT_ID: CID, READINESS_EVAL_BEARER_TOKEN: 't', READINESS_EVAL_API_KEY: 'k', READINESS_EVAL_CALLER_KEYS: 'a,b', READINESS_EVAL_LIMIT: '3' };
+  let seen;
+  const out = await prodSynthetic.runGcloud(['run', 'services', 'describe', 'x'], {
+    env,
+    execFileImpl: (cmd, args, opts, cb) => {
+      seen = { cmd, args, opts };
+      cb(null, '{}');
+    },
+  });
+  assert.equal(out, '{}');
+  assert.equal(seen.cmd, 'gcloud');
+  assert.deepEqual(seen.opts.env, { PATH: '/bin', HOME: '/h', READINESS_EVAL_LIMIT: '3' });
+});
+
+test('oauth-login --logout deletes the stored eval token, and only an eval token', async () => {
+  const dir = tmp('re-logout-');
+  const file = storedToken(dir);
+  const c = capture();
+  assert.equal(await oauthLogin.main(['--logout', '--token-file', file], {}, c.io), 0);
+  assert.equal(fs.existsSync(file), false);
+  assert.match(c.out.join(''), /Deleted the eval token/);
+  assert.equal(await oauthLogin.main(['--logout', '--token-file', file], {}, c.io), 0);
+  assert.match(c.out.join(''), /No eval token/);
+  const other = path.join(dir, 'other.json');
+  fs.writeFileSync(other, '{"not":"a token"}');
+  await assert.rejects(oauthLogin.main(['--logout', '--token-file', other], {}, c.io), /not an eval token/);
+  assert.equal(fs.existsSync(other), true);
+});
+
+test('a production halt says the call was not marked synthetic', async () => {
+  const c = client(fakeDoor({ state: 'observe' }));
+  assert.match((await c.initialize()).error, /not marked as a synthetic call$/);
+  const local = new McpClient({ endpoint: 'http://127.0.0.1:1/mcp', fetchImpl: fakeDoor({ state: null }).fetchImpl });
+  assert.match((await local.initialize()).error, /not provably the eval deployment$/);
+});
+
+test('withoutMarket: a query loses its market and any market among its own arguments, and keeps the rest', () => {
+  const { withoutMarket } = require('../../scripts/agent-readiness-eval/lib/journeys.cjs');
+  const q = { id: 'q1', text: 'serum', market: 'GB', args: { market: 'GB', price_max: 30 } };
+  assert.deepEqual(withoutMarket(q), { id: 'q1', text: 'serum', market: null, args: { price_max: 30 } });
+  assert.deepEqual(q.args, { market: 'GB', price_max: 30 }, 'the query set itself is untouched');
+  assert.deepEqual(withoutMarket({ id: 'q2', text: 't', market: null }), { id: 'q2', text: 't', market: null, args: {} });
+});
+
+test('a check or a canary uses a stored token with a few minutes left, without a refresh; a run refreshes it', async () => {
+  const left = (secs) => ({ tokenFields: { expires_at: Math.floor(Date.now() / 1000) + secs } });
+  for (const extra of [{ checkClassification: true, door: fakeDoor({ state: 'observe' }) }, {}]) {
+    const s = preflightSetup({ ...extra, ...left(oauth.SHORT_JOB_MIN_SECONDS + 60) });
+    const config = extra.checkClassification ? s.config : { ...s.config, canary: 'get_alternatives', canaryArgs: { merchant_id: 'm', product_id: 'p', query: null } };
+    let refreshes = 0;
+    const r = await prodSynthetic.preflight({ config, env: {}, deps: { ...s.deps, oauthFetch: async () => { refreshes += 1; throw new Error('no refresh expected'); } } });
+    assert.deepEqual(r.problems, [], JSON.stringify(r.problems));
+    assert.equal(refreshes, 0);
+    assert.equal(r.report.token.refreshed, false);
+  }
+  // Below the short window, even a check refreshes (and without client credentials it is refused).
+  const low = preflightSetup({ checkClassification: true, ...left(oauth.SHORT_JOB_MIN_SECONDS - 1) });
+  assert.match((await prodSynthetic.preflight({ config: low.config, env: {}, deps: low.deps })).problems.join('\n'), /CLIENT_ID/);
+  // A run keeps the long window: the same token is refreshed first.
+  const run = preflightSetup(left(oauth.SHORT_JOB_MIN_SECONDS + 60));
+  assert.match((await prodSynthetic.preflight({ config: run.config, env: {}, deps: run.deps })).problems.join('\n'), /CLIENT_ID/);
+  assert.equal(run.door.seen.length + run.gcloud.calls.length, 0);
 });

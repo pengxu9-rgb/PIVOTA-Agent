@@ -367,11 +367,14 @@ takes exactly these. `market` is never sent.
 | Tool | Flags |
 |---|---|
 | `get_alternatives` | `--canary-merchant-id`, `--canary-product-id` |
-| `get_product` | `--canary-merchant-id`, `--canary-product-id` |
+| `get_product` | `--canary-merchant-id`, `--canary-product-id`: a seed-supply pair only (an observed seller, or the shared seed bucket with a `sig_` id) |
 | `search_catalog` | `--canary-query` |
 | `get_offers` | `--canary-merchant-id`, `--canary-product-id` |
 
-Take the ids from a read-only database lookup, never from a production search. Run the tools in the order of
+Take the ids from a read-only database lookup, never from a production search. `get_product`'s schema requires a
+merchant id, and an ordinary merchant's scope goes straight to the backend. The canary therefore takes only a pair
+the gateway serves on its unscoped detail lane, over the loopback: the hop the synthetic marker has to survive.
+The rule is the gateway's own (`isSeedSupplyUnservableUpstream`, `src/services/externalSeedLane.js`). Run the tools in the order of
 [the rollout](synthetic_callers.md#order-of-rollout), and check each tool's log lines before the next.
 Exit 0 means the call answered. 1 means it failed or the tool answered an error (`error_code`). 3 means the
 answer was not marked `enforce`.
@@ -394,10 +397,24 @@ After that, the first response not marked `enforce` halts the run, and nothing m
 lower than the hard caps: at most 2 workers, 1 rps, 200 queries and 3000 s (one access token). There is no
 load mode, and no `recommend` journey (`recommend_products` is not a synthetic tool).
 
+- **200 queries is not 200 calls.** The follow and consistency journeys multiply each query (`--follow-top`,
+  `--consistency-repeats`). The real bound on what a run sends is 1 call per second times its wall time:
+  at most 3000 tool calls in 3000 s. Read the dry run's `calls_upper_bound` before a run.
+- **No call declares a market.** A declared market turns offers into carts, and the backend's checkout
+  preflight for a cart is a live merchant read (decision A2: none). Queries are sent and scored market-less,
+  and `results.json` records `market_declared: false`, so currency checks say nothing about market pricing.
+
 ```bash
 npm run eval:agent-readiness -- --target-kind prod-synthetic --tier commerce --auth bearer \
   --base-url https://commerce.mcp.pivota.cc \
   --journeys discovery,follow,consistency --rps 1 --concurrency 1 --limit 20 --max-wall-seconds 1800
+```
+
+**Sign out** when the eval work is done. This deletes the stored token; the access token in it lapses within
+the hour. Ending the eval client's access on the server is its owner's step.
+
+```bash
+node scripts/agent-readiness-eval/oauth-login.cjs --logout
 ```
 
 **Reconcile afterwards**, over the run's start and finish times (`results.json`):

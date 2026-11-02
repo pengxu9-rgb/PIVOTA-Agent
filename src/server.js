@@ -208,7 +208,7 @@ const {
   isSeedRoutedLane,
   pdpRouteResolvableFromRow,
 } = require('./services/pdpRenderability');
-const { isExternalSeedSupplyMerchantId, isObservedSellerMerchantId } = require('./services/externalSeedLane');
+const { isExternalSeedSupplyMerchantId, isSeedSupplyUnservableUpstream } = require('./services/externalSeedLane');
 const {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
   SEED_DATA_UNGUARDED_MATCH_CLAUSE,
@@ -32618,10 +32618,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       //    2026-08-27) — reroute.
       // The predicates come from services/externalSeedLane so the seller-shape knowledge stays in
       // its one watched place (the sentinel-literal ratchet exists because twins of it regressed).
-      const seedSupplyUnservableUpstream =
-        rawDetailMerchant !== '' &&
-        isExternalSeedSupplyMerchantId(rawDetailMerchant) &&
-        (isObservedSellerMerchantId(rawDetailMerchant) || pid.startsWith('sig_'));
+      const seedSupplyUnservableUpstream = isSeedSupplyUnservableUpstream(rawDetailMerchant, pid);
       const merchantScoped = rawDetailMerchant !== '' && !seedSupplyUnservableUpstream;
       if (!merchantScoped && pid) {
         pdpV2Detail = true;

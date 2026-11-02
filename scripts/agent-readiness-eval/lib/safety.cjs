@@ -1,6 +1,8 @@
 'use strict';
 
 const net = require('node:net');
+// The gateway's own rule for which get_product scope is served on its unscoped detail lane.
+const { isSeedSupplyUnservableUpstream } = require('../../../src/services/externalSeedLane');
 
 // WHERE THE HARNESS MAY POINT, AND HOW HARD IT MAY PUSH.
 //
@@ -57,6 +59,9 @@ const SYNTHETIC_STATE = Object.freeze({ header: 'x-pivota-synthetic', run: Objec
 const PROD_SYNTHETIC_TOOLS = Object.freeze(['search_catalog', 'get_product', 'get_offers', 'get_alternatives']);
 // A canary (`--canary <tool>`) is ONE call of one tool, with exactly these arguments, given as flags. The ids come
 // from a read-only lookup, never from a production search. `market` is never sent, so nothing asks for a live read.
+// get_product's schema requires a merchant_id, and an ordinary merchant's scope goes straight to the backend: its
+// canary takes only a seed-supply pair the gateway serves on its unscoped detail lane (get_pdp_v2, over the
+// loopback), the lane the synthetic marker has to survive.
 const CANARY_ARGS = Object.freeze({
   get_alternatives: Object.freeze(['merchant_id', 'product_id']),
   get_product: Object.freeze(['merchant_id', 'product_id']),
@@ -208,6 +213,9 @@ function checkCanary(tool, args) {
     } else if (key === 'query' ? v.length > 200 || /[\u0000-\u001f\u007f]/.test(v) : !CANARY_ID_RE.test(v)) {
       problems.push(`${flag} must be ${key === 'query' ? 'at most 200 printable characters' : 'an id of letters, digits and _.:- (at most 200)'}`);
     }
+  }
+  if (tool === 'get_product' && problems.length === 0 && !isSeedSupplyUnservableUpstream(args.merchant_id, args.product_id)) {
+    problems.push('--canary get_product takes a seed-supply pair (an observed seller, or the shared seed bucket with a sig_ id): any other merchant scope goes straight to the backend, not through the unscoped detail lane');
   }
   return problems;
 }
