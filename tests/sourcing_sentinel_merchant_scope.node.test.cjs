@@ -25,17 +25,25 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
   isExternalSeedSupplyMerchantId,
   isObservedSellerMerchantId,
+  isSeedSupplyUnservableUpstream,
 } = require('../src/services/externalSeedLane');
 
 test('the routing truth-table the fork encodes, expressed through the canonical predicates', () => {
   // The fork's condition is: supply-seller AND (observed seller OR sig_ pid). This table is the
-  // contract in one place — each row names who must serve the lookup and why.
-  const reroutes = (merchantId, pid) =>
+  // contract in one place — each row names who must serve the lookup and why. It runs against the
+  // predicate the fork calls (isSeedSupplyUnservableUpstream), and every row must also agree with that
+  // condition spelled out through the two canonical predicates.
+  const spelledOut = (merchantId, pid) =>
     Boolean(
       String(merchantId || '').trim() !== '' &&
       isExternalSeedSupplyMerchantId(merchantId) &&
       (isObservedSellerMerchantId(merchantId) || String(pid || '').startsWith('sig_')),
     );
+  const reroutes = (merchantId, pid) => {
+    const got = isSeedSupplyUnservableUpstream(merchantId, pid);
+    assert.equal(got, spelledOut(merchantId, pid), `${merchantId} ${pid}: the predicate and its spelled-out condition differ`);
+    return got;
+  };
 
   // The live kill case: legacy bucket + sig id — upstream provably cannot resolve it.
   assert.equal(reroutes(EXTERNAL_SEED_MERCHANT_ID, 'sig_2c7636bb109fc25526b6bd799a5f08a9'), true);
@@ -64,13 +72,13 @@ test('the server.js routing fork consumes the canonical predicates — the deliv
   const server = fs.readFileSync(require.resolve('../src/server'), 'utf8');
   assert.match(
     server,
-    /isExternalSeedSupplyMerchantId, isObservedSellerMerchantId \} = require\('\.\/services\/externalSeedLane'\)/,
-    'server.js must import BOTH canonical predicates — a local twin is how this class regressed before',
+    /isSeedSupplyUnservableUpstream \} = require\('\.\/services\/externalSeedLane'\)/,
+    'server.js must import the canonical predicate — a local twin is how this class regressed before',
   );
   assert.match(
     server,
-    /isExternalSeedSupplyMerchantId\(rawDetailMerchant\) &&\s*\n\s*\(isObservedSellerMerchantId\(rawDetailMerchant\) \|\| pid\.startsWith\('sig_'\)\)/,
-    'the fork must encode: supply-seller AND (observed seller OR sig_ pid)',
+    /const seedSupplyUnservableUpstream = isSeedSupplyUnservableUpstream\(rawDetailMerchant, pid\);/,
+    'the fork must decide on the canonical predicate, with the scope and the id it routes',
   );
   assert.match(
     server,

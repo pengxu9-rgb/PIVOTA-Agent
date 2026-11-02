@@ -204,12 +204,23 @@ function isObservedSellerMerchantId(merchantId) {
   return firstNonEmptyString(merchantId).startsWith('merch_obs_');
 }
 
+// get_product's detail lane. A seed-supply seller the upstream per-merchant catalog cannot serve: an observed
+// seller (no upstream catalog at all), or the shared bucket with a sig_ id (the upstream cannot resolve one).
+// Such a scope is detail on this gateway's own get_pdp_v2 lane, like no scope at all (server.js
+// get_product_detail). The eval harness's get_product canary takes only such a pair, so it exercises that lane.
+function isSeedSupplyUnservableUpstream(merchantId, productId) {
+  const mid = firstNonEmptyString(merchantId);
+  if (!mid || !isExternalSeedSupplyMerchantId(mid)) return false;
+  return isObservedSellerMerchantId(mid) || firstNonEmptyString(productId).startsWith('sig_');
+}
+
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   SEED_ROUTED_SOURCE_SYSTEMS,
   isExternalSeedLaneProduct,
   isExternalSeedSupplyMerchantId,
   isObservedSellerMerchantId,
+  isSeedSupplyUnservableUpstream,
   readSeedLaneFields,
   readSeedLaneIdCandidates,
   // Re-exported so a SQL call site needs one import, and so the JS and SQL
