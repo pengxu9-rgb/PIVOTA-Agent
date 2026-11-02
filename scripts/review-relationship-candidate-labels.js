@@ -1175,6 +1175,7 @@ function validateConsensusDecision(row, decision, evidence) {
 
 async function reviewWithConsensus(row, evidence, providers, { attempts, confidenceFloor }) {
   // Each provider sees the same frozen facts, never its peer's verdict or rationale.
+  const messages = new Map();
   const reviews = await Promise.all(providers.map(async (provider) => {
     const identity = { provider: provider.__meta?.provider, model: provider.__meta?.model };
     try {
@@ -1182,10 +1183,18 @@ async function reviewWithConsensus(row, evidence, providers, { attempts, confide
       const decision = VerdictSchema.parse(raw);
       return { ...identity, decision, validation_error: validateConsensusDecision(row, decision, evidence) };
     } catch (err) {
-      return { ...identity, error: { code: reviewErrorCode(err) || 'LLM_REVIEW_FAILED' } };
+      // The code is allowlisted: it goes into the cross-agent proof (stored and fingerprinted) and the
+      // summary's counts. The message can quote model output, so it stays out of the proof.
+      messages.set(identity.provider, normalizeString(err && err.message, 240));
+      return { ...identity, error: { code: reviewErrorCodeKey(reviewErrorCode(err) || 'LLM_REVIEW_FAILED') } };
     }
   }));
-  return combineReviews(coerceRelationshipEdge(row), reviews, confidenceFloor);
+  const combined = combineReviews(coerceRelationshipEdge(row), reviews, confidenceFloor);
+  if (!combined.review_error) return combined;
+  // The failed provider's own message, for the review's --out file only (the sync routine relays a few
+  // to the job's logs, bounded); combineReviews' constant says nothing about why.
+  const failed = reviews.find((review) => review.error && review.error.code === combined.review_error.code && messages.get(review.provider));
+  return failed ? { ...combined, review_error: { ...combined.review_error, message: messages.get(failed.provider) } } : combined;
 }
 
 function assertConsensusApproval(row, decision, evidence) {
@@ -2125,8 +2134,8 @@ async function runReview({
   // reach this summary, which travels on into the routine summary and the run ledger. The per-row
   // messages stay in the --out file, where the sync routine reads a few into one bounded log line
   // (2026-11-02: 156 of 426 reviews errored, the gate failed the night, and no record said why).
-  // (Codes are allowlisted where the error decision is built, buildReviewErrorDecision, the only
-  // producer of review_error; a verdict replay refuses error rows.)
+  // (Codes are allowlisted where review_error is built: buildReviewErrorDecision, and per provider in
+  // reviewWithConsensus; a verdict replay refuses error rows.)
   const reviewErrorByCode = {};
   for (const row of completed) {
     if (!row.review_error) continue;

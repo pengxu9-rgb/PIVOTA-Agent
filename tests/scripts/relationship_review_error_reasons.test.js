@@ -219,3 +219,78 @@ test('a sync run relays the reasons on its own stderr, and neither its summary n
     expect(recorded.join('')).not.toContain(MODEL_TEXT);
   } finally { fs.rmSync(outDir, { recursive: true, force: true }); }
 });
+
+describe('#2529 review follow-ups', () => {
+  test('consensus: a provider error code is allowlisted in the proof and the counts; its message reaches only review_error', async () => {
+    const providers = [['openai', 'gpt-4.1'], ['gemini', 'gemini-3-flash-preview']].map(([provider, model]) => ({
+      __meta: { provider, model },
+      analyzeTextToJson: jest.fn(async () => {
+        if (provider === 'openai') throw Object.assign(new Error(`socket hang up ${MODEL_TEXT}`), { code: `socket hang up ${MODEL_TEXT}` });
+        return reject;
+      }),
+    }));
+    const queryFn = jest.fn(async (sql) => (/label_state = 'generated'/.test(sql) && /SELECT/.test(sql) ? { rows: [row(0)] } : { rows: [] }));
+    jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const { summary, decisions } = await runReview({ cutoff, minScore: 0, limit: 5, queryFn, reviewMode: 'consensus',
+      consensusProviders: providers, llmAttempts: 1, negativeTtlDays: 0 });
+    jest.restoreAllMocks();
+    const decision = decisions[0];
+    expect(summary.review_error_by_code).toEqual({ OTHER: 1 });
+    expect(decision.cross_agent_review.reviews.find((r) => r.provider === 'openai').error).toEqual({ code: 'OTHER' });
+    expect(JSON.stringify(decision.cross_agent_review)).not.toContain(MODEL_TEXT);
+    expect(JSON.stringify(summary)).not.toContain(MODEL_TEXT);
+    expect(decision.review_error).toEqual({ code: 'OTHER', message: `socket hang up ${MODEL_TEXT}` });
+  });
+
+  test('consensus: the failed provider message is bounded', async () => {
+    const providers = [['openai', 'gpt-4.1'], ['gemini', 'gemini-3-flash-preview']].map(([provider, model]) => ({
+      __meta: { provider, model },
+      analyzeTextToJson: jest.fn(async () => { if (provider === 'gemini') throw new LlmError('LLM_TIMEOUT', 'x'.repeat(500)); return reject; }),
+    }));
+    const queryFn = jest.fn(async (sql) => (/label_state = 'generated'/.test(sql) && /SELECT/.test(sql) ? { rows: [row(0)] } : { rows: [] }));
+    jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const { decisions } = await runReview({ cutoff, minScore: 0, limit: 5, queryFn, reviewMode: 'consensus',
+      consensusProviders: providers, llmAttempts: 1, negativeTtlDays: 0 });
+    jest.restoreAllMocks();
+    expect(decisions[0].review_error).toEqual({ code: 'LLM_TIMEOUT', message: 'x'.repeat(240) });
+  });
+
+  test('a relay label_id is bounded to 160 characters', () => {
+    const parsed = JSON.parse(reviewErrorRelayLine([{ id: 'p'.repeat(300), verdict: 'error', review_error: { code: 'LLM_TIMEOUT', message: 'm' } }]));
+    expect(parsed.samples[0].label_id).toBe('p'.repeat(160));
+  });
+
+  test('the relay still goes out when the serving-progress database read fails', async () => {
+    const outDir = temp();
+    try {
+      const options = syncArgs(['--skip-review', '--select-hours', '24', '--out-dir', outDir], { now: new Date('2026-11-02T10:37:00.000Z') });
+      const runner = jest.fn(async (_command, args) => {
+        if (args[0].endsWith('run-relationship-graph-routine-job.js')) {
+          const routineOut = args[args.indexOf('--out-dir') + 1];
+          fs.mkdirSync(routineOut, { recursive: true });
+          const review = path.join(routineOut, 'relationship_graph_ai_review.json');
+          fs.writeFileSync(review, JSON.stringify({ summary: { reviewed_count: 30, review_error_count: 1, review_error_by_code: { LLM_TIMEOUT: 1 } },
+            decisions: [{ id: 'label_1', verdict: 'error', review_error: { code: 'LLM_TIMEOUT', message: 'timed out' } }] }));
+          fs.writeFileSync(path.join(routineOut, 'routine_summary.json'), JSON.stringify({ ok: true, artifacts: { review } }));
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+      let reads = 0;
+      const progressReader = async () => { reads += 1; if (reads > 1) throw new Error('connection terminated'); return { servedEdges: 0, anchors: new Set() }; };
+      const writes = [];
+      const spy = jest.spyOn(process.stderr, 'write').mockImplementation((chunk) => { writes.push(String(chunk)); return true; });
+      let summary;
+      try {
+        summary = await runSyncRoutine(options, { runner, now: new Date('2026-11-02T10:37:00.000Z'), progressReader,
+          ledgerRecorder: async () => ({ recorded: true }) }).catch((err) => err.summary);
+      } finally { spy.mockRestore(); }
+      expect(reads).toBe(2);
+      expect(summary.serving_progress_error).toBe('connection terminated');
+      const relayed = writes.map((line) => { try { return JSON.parse(line); } catch { return null; } })
+        .filter((line) => line && line.message === REVIEW_ERRORS_MARKER);
+      expect(relayed).toHaveLength(1);
+      expect(relayed[0].review_error_by_code).toEqual({ LLM_TIMEOUT: 1 });
+    } finally { fs.rmSync(outDir, { recursive: true, force: true }); }
+  });
+});
+
