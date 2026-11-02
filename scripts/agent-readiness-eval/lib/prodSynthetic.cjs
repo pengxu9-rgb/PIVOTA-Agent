@@ -173,12 +173,14 @@ function toolErrorCode(result) {
 function offerLinkFacts(payload) {
   const v = payload && payload.value && typeof payload.value === 'object' ? payload.value : {};
   const offers = Array.isArray(v.signals) ? v.signals.map((s) => (s && typeof s.value === 'object' && s.value) || s) : [];
-  const facts = { total: 0, r_links: 0, r_syn: 0 };
+  // top_level_urls: the offer's own *_url / url fields only (not nested objects, arrays or best_offer); the /r
+  // links the backend mints sit there.
+  const facts = { top_level_urls: 0, r_links: 0, r_syn: 0 };
   for (const o of offers) {
     if (!o || typeof o !== 'object') continue;
     for (const [k, raw] of Object.entries(o)) {
       if (!/(^|_)url$/.test(k) || typeof raw !== 'string' || !raw) continue;
-      facts.total += 1;
+      facts.top_level_urls += 1;
       let u;
       try {
         u = new URL(raw);
@@ -186,7 +188,7 @@ function offerLinkFacts(payload) {
         continue;
       }
       const token = u.searchParams.get('token');
-      if (!/\/r$/.test(u.pathname) || !token) continue;
+      if (!/\/r\/?$/.test(u.pathname) || !token) continue;
       facts.r_links += 1;
       try {
         const body = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8'));
@@ -197,6 +199,13 @@ function offerLinkFacts(payload) {
     }
   }
   return facts;
+}
+
+// An empty answer's reason comes from the server: printed only when it is a plain short token, else `other`.
+const EMPTY_CLASS_RE = /^[a-z0-9_]{1,48}$/;
+function cappedEmptyClass(value) {
+  const v = typeof value === 'string' ? value : '';
+  return EMPTY_CLASS_RE.test(v) ? v : 'other';
 }
 
 /** What a canary's answer held: a refusal, an empty answer, or items (and how many). Null when no answer came. */
@@ -219,7 +228,7 @@ function canaryResult(tool, rec) {
     const a = readAlternatives(payload);
     [count, emptyClass] = [a.items.length, a.empty_class];
   }
-  const out = { kind: count > 0 ? 'items' : 'empty', count, empty_class: count > 0 ? null : emptyClass || 'unspecified' };
+  const out = { kind: count > 0 ? 'items' : 'empty', count, empty_class: count > 0 ? null : cappedEmptyClass(emptyClass || 'unspecified') };
   if (tool === 'get_offers') out.links = offerLinkFacts(payload);
   return out;
 }
@@ -227,8 +236,8 @@ function canaryResult(tool, rec) {
 /**
  * THE CANARY: one tools/call on the preflight's client, then stop. Prints when it ran (for the log reconciliation),
  * what came back, and nothing of the payload.
- * @returns {Promise<{ code: number, summary: object }>} 0 items came back, 1 the call failed or the answer was a refusal or
- *   empty, 3 halted.
+ * @returns {Promise<{ code: number, summary: object }>} 0 items came back, 1 the call failed or the answer was a
+ *   refusal, 3 halted (not marked enforce), 5 the answer was empty.
  */
 async function canary({ config, client, now = () => new Date() }) {
   const args = canaryArguments(config.canary, config.canaryArgs);
@@ -250,8 +259,10 @@ async function canary({ config, client, now = () => new Date() }) {
     // How many alternatives, products or offers came back; never the items themselves.
     result: canaryResult(config.canary, rec),
   };
-  // 0 only for an answer with items: an empty answer says nothing about the path the canary is for.
-  const code = client.halted ? 3 : summary.result && summary.result.kind === 'items' ? 0 : 1;
+  // 0 only for an answer with items. An empty answer (5) is not a failed call (1): read result.kind before any
+  // re-run, and take the next id pair from the lookup rather than re-calling with the same one.
+  const kind = summary.result && summary.result.kind;
+  const code = client.halted ? 3 : kind === 'items' ? 0 : kind === 'empty' ? 5 : 1;
   return { code, summary };
 }
 

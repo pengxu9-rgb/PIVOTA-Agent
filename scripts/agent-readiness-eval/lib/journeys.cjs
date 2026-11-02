@@ -404,6 +404,18 @@ function selectQueries(all, config) {
   if (config.classes) qs = qs.filter((q) => config.classes.includes(q.class));
   if (config.langs) qs = qs.filter((q) => config.langs.includes(q.lang));
   if (config.markets) qs = qs.filter((q) => config.markets.includes(q.market === null ? 'none' : q.market));
+  if (config.perClass > 0) {
+    // The first N of each class, then interleaved class by class, so a --limit below the total still spans
+    // every class.
+    const byClass = new Map();
+    for (const q of qs) {
+      if (!byClass.has(q.class)) byClass.set(q.class, []);
+      byClass.get(q.class).push(q);
+    }
+    const lists = [...byClass.values()];
+    qs = [];
+    for (let i = 0; i < config.perClass; i += 1) for (const list of lists) if (list[i]) qs.push(list[i]);
+  }
   if (config.limit > 0) qs = qs.slice(0, config.limit);
   return qs;
 }

@@ -215,6 +215,9 @@ function resolveConfig(argv = [], env = process.env) {
     priceAgreementTolerance: num(pick('price-tolerance', 'READINESS_EVAL_PRICE_TOLERANCE'), DEFAULTS.priceAgreementTolerance),
     journeys: list(pick('journeys', 'READINESS_EVAL_JOURNEYS'), DEFAULTS.journeys),
     limit: num(pick('limit', 'READINESS_EVAL_LIMIT'), DEFAULTS.limit),
+    // At most this many queries of each class (0 = no per-class cap), taken before --limit: a limited run
+    // otherwise takes the query set's first classes only.
+    perClass: num(pick('per-class', 'READINESS_EVAL_PER_CLASS'), 0),
     classes: list(pick('classes', 'READINESS_EVAL_CLASSES'), null),
     langs: list(pick('langs', 'READINESS_EVAL_LANGS'), null),
     markets: list(pick('markets', 'READINESS_EVAL_MARKETS'), null),
@@ -317,6 +320,7 @@ function validateConfig(config) {
   intIn('consistency-repeats', config.consistencyRepeats, 0, 5);
   numIn('price-tolerance', config.priceAgreementTolerance, 0, 1);
   intIn('limit', config.limit, 0, 100000);
+  intIn('per-class', config.perClass, 0, 1000);
   return problems;
 }
 
