@@ -731,6 +731,11 @@ async function runSyncRoutine(
         Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
         surfaceServingAuditScope(summary, routine);
         surfaceApprovalBlocked(summary, routine.artifacts && routine.artifacts.review);
+        // The build's contained write failures, from the routine summary, so the ledger keeps them.
+        for (const key of ['build_write_failed_count', 'build_attempted_write_count', 'build_write_integrity_violation_count',
+          'build_write_failed_by_code']) {
+          if (routine[key] != null) summary[key] = routine[key];
+        }
       }
     } catch (error) {
       summary.ok = false;

@@ -1,4 +1,4 @@
-const { persistEdgesWithGlobalFanInCap, __internal: { isRowDataError, writeFailureGateExceeded, writeFailureLine } } =
+const { persistEdgesWithGlobalFanInCap, __internal: { isRowDataError, isIntegrityViolation, writeFailureGateExceeded, writeFailureLine } } =
   require('../../scripts/build-product-relationship-graph');
 
 // 2026-11-02: one label with half an emoji in its snapshot was refused by Postgres and aborted the
@@ -84,11 +84,25 @@ test('which errors are the row\'s', () => {
     'INVALID_PRODUCT_RELATIONSHIP_EDGE', 'MISSING_PREFILTER_REASONS']) expect(isRowDataError(pgError(code))).toBe(true);
   for (const code of ['08006', '57P01', '57014', '40001', '25P02', '53300', 'ECONNRESET', '', undefined]) expect(isRowDataError(pgError(code))).toBe(false);
   expect(isRowDataError(null)).toBe(false);
+  // Class 23 is contained per row but marked: it fails the build at the end (a code bug, not bad data).
+  for (const code of ['23505', '23503', '23502', '23514']) expect(isIntegrityViolation(pgError(code))).toBe(true);
+  for (const code of ['22P02', '22021', 'INVALID_LABEL_STATE', '08006']) expect(isIntegrityViolation(pgError(code))).toBe(false);
+});
+
+test('an integrity violation is rolled back per row and marked; the other rows still write', async () => {
+  const db = fakeDb({ failFor: new Map([['dup', pgError('23505', 'duplicate key value violates unique constraint "relationship_candidate_labels_pkey"')]]) });
+  const result = await persistEdgesWithGlobalFanInCap({ edges: [edge('ok'), edge('dup')], cap: 8, queryFn: db.queryFn, runInClient: db.runInClient });
+  expect(result.applied).toBe(1);
+  expect(result.failed).toEqual([expect.objectContaining({ edge_id: 'dup', code: '23505', integrity: true })]);
 });
 
 test('many row failures still fail the build: at least 20 and more than 5% of the writes', () => {
-  expect(writeFailureGateExceeded({ failed: 19, attempted: 19 })).toBe(false);
+  expect(writeFailureGateExceeded({ failed: 19, attempted: 400 })).toBe(false);
   expect(writeFailureGateExceeded({ failed: 20, attempted: 100 })).toBe(true);
+  // Every write failed: not "a few bad rows", however small the build.
+  expect(writeFailureGateExceeded({ failed: 19, attempted: 19 })).toBe(true);
+  expect(writeFailureGateExceeded({ failed: 1, attempted: 1 })).toBe(true);
+  expect(writeFailureGateExceeded({ failed: 4, attempted: 5 })).toBe(false);
   expect(writeFailureGateExceeded({ failed: 20, attempted: 400 })).toBe(false);
   expect(writeFailureGateExceeded({ failed: 21, attempted: 400 })).toBe(true);
   expect(writeFailureGateExceeded({ failed: 0, attempted: 0 })).toBe(false);
@@ -106,5 +120,8 @@ test('the failure line is one bounded line of ids and codes, no product text', (
   expect(parsed.samples).toHaveLength(20);
   expect(Object.keys(parsed.samples[0]).sort()).toEqual(['anchor_ref', 'candidate_ref', 'code', 'edge_id', 'relation_type']);
   expect(JSON.parse(writeFailureLine(failed, { attempted: 30, gateFailed: true })).severity).toBe('ERROR');
+  expect(parsed.write_integrity_violation_count).toBe(0);
+  const withIntegrity = JSON.parse(writeFailureLine([{ ...failed[0], code: '23505', integrity: true }], { attempted: 500 }));
+  expect(withIntegrity).toMatchObject({ severity: 'ERROR', write_integrity_violation_count: 1 });
   expect(writeFailureLine([])).toBe('');
 });

@@ -87,3 +87,26 @@ test('many refused rows (at least 20 and over 5%) still fail the build, after re
   const line = stderr.mock.calls.map(([c]) => String(c)).find((c) => c.includes('RELGRAPH_BUILD_WRITE_FAILED'));
   expect(JSON.parse(line).severity).toBe('ERROR');
 });
+
+test('an integrity violation: the other rows are written, the build fails loudly, no attempts are stamped', async () => {
+  catalog(1, 2);
+  failLabelWrites(Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' }), { onlyFirst: true });
+  await expect(builder.main()).rejects.toMatchObject({ code: 'RELGRAPH_BUILD_INTEGRITY_VIOLATION' });
+  const summary = summaryOut();
+  expect(summary).toMatchObject({ write_failed_count: 1, write_integrity_violation_count: 1 });
+  expect(statements().filter((s) => s === 'INSERT INTO relationship_candidate_labels').length).toBeGreaterThanOrEqual(2);
+  expect(statements()).not.toContain('INSERT INTO relationship_graph_anchor_attempts');
+  const line = stderr.mock.calls.map(([c]) => String(c)).find((c) => c.includes('RELGRAPH_BUILD_WRITE_FAILED'));
+  expect(JSON.parse(line)).toMatchObject({ severity: 'ERROR', write_integrity_violation_count: 1 });
+});
+
+test('a small build whose every write fails fails, and stamps no attempts', async () => {
+  catalog(1, 2);
+  failLabelWrites(Object.assign(new Error('invalid input syntax for type json'), { code: '22P02' }));
+  await expect(builder.main()).rejects.toMatchObject({ code: 'RELGRAPH_BUILD_WRITE_FAILURE_RATE' });
+  const summary = summaryOut();
+  expect(summary.write_failed_count).toBe(summary.attempted_write_count);
+  expect(summary.attempted_write_count).toBeLessThan(20);
+  expect(statements()).not.toContain('INSERT INTO relationship_graph_anchor_attempts');
+});
+

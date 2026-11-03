@@ -1243,9 +1243,12 @@ async function main() {
     fanInCappedAtWrite = persisted.dropped.length;
     writeFailed = persisted.failed || [];
     attemptedWrites = persisted.attempted || 0;
-    // Stamped after the writes: a build that dies mid-write leaves its anchors unstamped, so they are
-    // not put in the uncovered cooldown (7 days) with no labels to show for it.
-    if (hasFlag('prioritize-uncovered')) {
+    // Stamped after the writes, and only when the build will pass: a build that dies mid-write, or fails
+    // its write gates below, leaves its anchors unstamped, so they are not put in the uncovered cooldown
+    // (7 days) with no labels to show for it.
+    const writesFailTheBuild = writeFailureGateExceeded({ failed: writeFailed.length, attempted: attemptedWrites })
+      || writeFailed.some((row) => row.integrity);
+    if (hasFlag('prioritize-uncovered') && !writesFailTheBuild) {
       await recordAnchorAttempts({ anchors: payload.anchors || [], market, queryFn: query });
     }
     const removedAtWrite = [...persisted.dropped, ...persisted.skipped,
@@ -1294,10 +1297,12 @@ async function main() {
       fan_in_queued_fresh_days: fanInQueuedFreshDays,
       write_failed_count: writeFailed.length,
       attempted_write_count: attemptedWrites,
+      write_integrity_violation_count: writeFailed.filter((row) => row.integrity).length,
       write_failed_by_code: writeFailed.reduce((acc, row) => { acc[row.code] = (acc[row.code] || 0) + 1; return acc; }, {}),
     },
   };
   const writeGateFailed = writeFailureGateExceeded({ failed: writeFailed.length, attempted: attemptedWrites });
+  const integrityViolations = writeFailed.filter((row) => row.integrity);
   const failureLine = writeFailureLine(writeFailed, { attempted: attemptedWrites, gateFailed: writeGateFailed });
   if (hasFlag('require-anchors') && Number(finalReport.summary.anchor_count || 0) <= 0) {
     const err = new Error('product_relationship_graph_builder_zero_anchors');
@@ -1320,9 +1325,16 @@ async function main() {
   // output, so the readiness status gets one line of its own on stderr, last (stderr_tail).
   const evidenceLine = evidenceReadinessStatusLine(finalReport.summary.source_diagnostics?.evidence_readiness);
   if (evidenceLine) process.stderr.write(`${evidenceLine}\n`);
+  if (integrityViolations.length) {
+    const err = new Error(`relationship graph build: ${integrityViolations.length} label writes hit an integrity violation `
+      + `(${[...new Set(integrityViolations.map((row) => row.code))].join(', ')}); the other rows were written. A code bug, not bad data`);
+    err.code = 'RELGRAPH_BUILD_INTEGRITY_VIOLATION';
+    err.summary = finalReport.summary;
+    throw err;
+  }
   if (writeGateFailed) {
     const err = new Error(`relationship graph build: ${writeFailed.length} of ${attemptedWrites} label writes failed `
-      + `(more than ${WRITE_FAILURE_MAX_RATE * 100}% and at least ${WRITE_FAILURE_MIN_ROWS}); not a few bad rows`);
+      + `(every write, or more than ${WRITE_FAILURE_MAX_RATE * 100}% and at least ${WRITE_FAILURE_MIN_ROWS}); not a few bad rows`);
     err.code = 'RELGRAPH_BUILD_WRITE_FAILURE_RATE';
     err.summary = finalReport.summary;
     throw err;
@@ -1342,23 +1354,31 @@ function edgePairKey(anchorRef, candidateRef, relationType) {
 const COUNTING_LABEL_STATES = new Set(['generated', 'review_ready']);
 
 // ONE BAD ROW DOES NOT FAIL THE NIGHT (2026-11-02). A label write that fails because of the row's own
-// data is skipped and counted: Postgres data exceptions (class 22: bad JSON, NUL, out-of-range) and
-// integrity violations (class 23), and the writer's own validation refusals. Anything else (a lost
-// connection, a timeout, an aborted transaction, out of resources) is the database's or the job's and
-// still fails the build. On 2026-11-02 one label with half an emoji in its snapshot aborted the build
-// and so the whole night.
+// DATA is skipped and counted: Postgres data exceptions (class 22: bad JSON, NUL, out-of-range) and the
+// writer's own validation refusals. Integrity violations (class 23: a unique, foreign-key, not-null or
+// check violation) are rolled back per row too, so the rest still writes, but they point at a code bug
+// (two pairs sharing one id hit the primary key, which ON CONFLICT does not cover), so any of them
+// FAILS the build at the end, loudly. Anything else (a lost connection, a timeout, an aborted
+// transaction, out of resources) is the database's or the job's and fails the build at once. On
+// 2026-11-02 one label with half an emoji in its snapshot aborted the build and so the whole night.
 const ROW_DATA_ERROR_CODES = new Set(['INVALID_LABEL_STATE', 'LABEL_MISSING_IDENTITY', 'INVALID_PRODUCT_RELATIONSHIP_EDGE',
   'MISSING_PREFILTER_REASONS']);
+function isIntegrityViolation(err) {
+  const code = err && typeof err.code === 'string' ? err.code : '';
+  return /^23[0-9A-Z]{3}$/.test(code);
+}
 function isRowDataError(err) {
   const code = err && typeof err.code === 'string' ? err.code : '';
-  return ROW_DATA_ERROR_CODES.has(code) || /^2[23][0-9A-Z]{3}$/.test(code);
+  return ROW_DATA_ERROR_CODES.has(code) || /^22[0-9A-Z]{3}$/.test(code) || isIntegrityViolation(err);
 }
 // The build fails anyway when row failures stop looking like a few bad rows: at least
-// WRITE_FAILURE_MIN_ROWS of them AND more than WRITE_FAILURE_MAX_RATE of the attempted writes.
+// WRITE_FAILURE_MIN_ROWS of them AND more than WRITE_FAILURE_MAX_RATE of the attempted writes, or
+// every write failed (a small build that wrote nothing is not "a few bad rows" either).
 const WRITE_FAILURE_MIN_ROWS = 20;
 const WRITE_FAILURE_MAX_RATE = 0.05;
 const WRITE_FAILURE_SAMPLE_LIMIT = 20;
 function writeFailureGateExceeded({ failed = 0, attempted = 0 } = {}, { minRows = WRITE_FAILURE_MIN_ROWS, maxRate = WRITE_FAILURE_MAX_RATE } = {}) {
+  if (attempted > 0 && failed === attempted) return true;
   return failed >= minRows && attempted > 0 && failed / attempted > maxRate;
 }
 
@@ -1399,7 +1419,10 @@ async function persistEdgesWithGlobalFanInCap({
         label_state: classification.label_state || null };
       if (isRowDataError(err)) {
         if (inTransaction) await queryFnForRow('ROLLBACK TO SAVEPOINT relgraph_label_row');
-        failed.push({ ...row, code: err.code });
+        // Known cost: a capped row that fails here already spent its fan-in slot (the cap was decided
+        // for the group first), so the candidate gets one fewer new anchor this run; the next build
+        // recounts from what is stored.
+        failed.push({ ...row, code: err.code, ...(isIntegrityViolation(err) ? { integrity: true } : {}) });
         return;
       }
       // Name the row that failed, so the night's log says which pair and why (2026-11-02: the
@@ -1475,8 +1498,9 @@ function writeFailureLine(failed = [], { attempted = 0, gateFailed = false } = {
   if (!failed.length) return '';
   const byCode = {};
   for (const row of failed) byCode[row.code] = (byCode[row.code] || 0) + 1;
-  return `${JSON.stringify({ severity: gateFailed ? 'ERROR' : 'WARNING', message: 'RELGRAPH_BUILD_WRITE_FAILED',
-    write_failed_count: failed.length, attempted_write_count: attempted, write_failed_by_code: byCode,
+  const integrity = failed.filter((row) => row.integrity).length;
+  return `${JSON.stringify({ severity: gateFailed || integrity > 0 ? 'ERROR' : 'WARNING', message: 'RELGRAPH_BUILD_WRITE_FAILED',
+    write_failed_count: failed.length, attempted_write_count: attempted, write_integrity_violation_count: integrity, write_failed_by_code: byCode,
     samples: failed.slice(0, WRITE_FAILURE_SAMPLE_LIMIT).map(({ edge_id, anchor_ref, candidate_ref, relation_type, code }) => ({
       edge_id, anchor_ref, candidate_ref, relation_type, code })) })}\n`;
 }
@@ -1519,7 +1543,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
-  __internal: { sampleEvidenceReadiness, listingIdentity, evidenceReadinessStatusLine, describeFailure, isRowDataError,
+  __internal: { sampleEvidenceReadiness, listingIdentity, evidenceReadinessStatusLine, describeFailure, isRowDataError, isIntegrityViolation,
     writeFailureGateExceeded, writeFailureLine },
   affectedScopeProvided,
   persistEdgesWithGlobalFanInCap,
