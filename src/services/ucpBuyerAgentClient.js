@@ -1493,14 +1493,16 @@ function normalizeDiscountCodes(codes) {
 }
 
 /**
- * Where an allocation lands, from its JSON path: a line item, shipping, or the order. A missing or empty path
- * is NOT guessed as the order: it returns null, and the entry carrying it is unreadable.
+ * Where an allocation lands, from its JSON path. The spec types `path` as a free JSONPath and shows only
+ * `$.line_items[i]` and `$.totals.shipping`; its totals vocabulary names `fulfillment` and `fee` too. Only those
+ * are recognized. Any other path, and a missing one, returns null: the entry is unreadable, never guessed.
  */
 function allocationTarget(path) {
-  if (typeof path !== 'string' || !path.trim()) return null;
-  if (/^\$\.line_items\[\d+\]/.test(path)) return 'line';
-  if (/shipping|fulfillment/i.test(path)) return 'shipping';
-  return 'order';
+  if (typeof path !== 'string') return null;
+  if (/^\$\.line_items\[\d+\]$/.test(path)) return 'line';
+  if (/^\$\.totals\.(shipping|fulfillment)$/.test(path)) return 'shipping';
+  if (/^\$\.totals\.fee$/.test(path)) return 'fee';
+  return null;
 }
 
 function positiveMinor(value) {
@@ -1508,7 +1510,14 @@ function positiveMinor(value) {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
-/** One `applied` entry, normalized, or null when any part of it cannot be read exactly. */
+/**
+ * One `applied` entry, normalized, or null when any part of it cannot be read exactly.
+ *
+ * An entry with NO allocations is valid in the spec: "Discounts without allocations ... contribute to
+ * `discount`" — a discount on the order as a whole, and the spec's own free-shipping example has none either.
+ * So it is read, as one allocation targeted `unallocated`: it lowers the checkout total, but nothing says
+ * whether it lowered the item, the order or shipping, so it never counts as the item's saving.
+ */
 function readAppliedEntry(entry) {
   if (!isPlainObjectLocal(entry)) return null;
   const amount = positiveMinor(entry.amount);
@@ -1516,18 +1525,24 @@ function readAppliedEntry(entry) {
   // `automatic` is "applied without platform action" and carries no code. Both at once is contradictory.
   if (entry.automatic === true && code) return null;
   if (!code && entry.automatic !== true) return null;
-  if (!Array.isArray(entry.allocations) || entry.allocations.length === 0) return null;
+  if (amount === null) return null;
+  if (entry.allocations !== undefined && !Array.isArray(entry.allocations)) return null;
+  const rawAllocations = Array.isArray(entry.allocations) ? entry.allocations : [];
   const allocations = [];
-  for (const a of entry.allocations) {
-    const allocationAmount = isPlainObjectLocal(a) ? positiveMinor(a.amount) : null;
-    const target = isPlainObjectLocal(a) ? allocationTarget(a.path) : null;
-    if (allocationAmount === null || target === null) return null;
-    allocations.push({ path: a.path, target, amount_minor: allocationAmount });
+  if (rawAllocations.length === 0) {
+    allocations.push({ path: null, target: 'unallocated', amount_minor: amount });
+  } else {
+    for (const a of rawAllocations) {
+      const allocationAmount = isPlainObjectLocal(a) ? positiveMinor(a.amount) : null;
+      const target = isPlainObjectLocal(a) ? allocationTarget(a.path) : null;
+      if (allocationAmount === null || target === null) return null;
+      allocations.push({ path: a.path, target, amount_minor: allocationAmount });
+    }
+    // "Sum of allocation amounts equals total amount" (spec). A mismatch, or an allocation larger than its
+    // entry, means we cannot say where the discount landed.
+    const allocated = allocations.reduce((sum, a) => sum + a.amount_minor, 0);
+    if (allocated !== amount) return null;
   }
-  // "Sum of allocation amounts equals total amount" (spec). A mismatch, or an allocation larger than its
-  // entry, means we cannot say where the discount landed.
-  const allocated = allocations.reduce((sum, a) => sum + a.amount_minor, 0);
-  if (amount === null || allocated !== amount) return null;
   return {
     code,
     title: typeof entry.title === 'string' ? entry.title : null,
@@ -1545,8 +1560,10 @@ function readAppliedEntry(entry) {
  * Returns { currency, submitted_codes, applied, rejected, unmapped_rejections, unreadable } where
  *   currency    = the checkout's ISO-4217 currency, or null when it is absent or not a 3-letter code (every
  *                 amount is in it; the entries carry none of their own);
+ *   subtotal_minor = the checkout's one `subtotal` total, or null when absent, repeated or not a
+ *                 non-negative integer;
  *   applied[]   = { code (null for automatic), title, automatic, amount_minor, method, allocations[] },
- *   allocations[] = { path, target: 'line' | 'shipping' | 'order', amount_minor };
+ *   allocations[] = { path, target: 'line' | 'shipping' | 'fee' | 'unallocated', amount_minor };
  *   rejected[]  = { code, reason (the spec's code), content }, mapped to a submitted code by its path;
  *   unmapped_rejections[] = a `discount_code_*` message that names no submitted code (no echo, no path, an
  *                 index past the end): it may concern any code we sent;
@@ -1556,7 +1573,16 @@ function normalizeDiscounts(payload) {
   const rawCurrency = payload && (payload.currency || payload.currency_code || payload.presentment_currency);
   const currency = typeof rawCurrency === 'string' && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : null;
   const block = isPlainObjectLocal(payload && payload.discounts) ? payload.discounts : {};
-  const submitted = Array.isArray(block.codes) ? block.codes.filter((c) => typeof c === 'string') : [];
+  // The echo is kept UNFILTERED for mapping: a rejection's path index points into the merchant's array as it
+  // was sent back, and dropping a non-string slot first would shift every later index onto the wrong code.
+  const echo = Array.isArray(block.codes) ? block.codes : [];
+  const submitted = echo.filter((c) => typeof c === 'string');
+  const subtotalEntry = Array.isArray(payload && payload.totals)
+    ? payload.totals.filter((t) => isPlainObjectLocal(t) && t.type === 'subtotal')
+    : [];
+  const subtotal = subtotalEntry.length === 1 && Number.isSafeInteger(subtotalEntry[0].amount) && subtotalEntry[0].amount >= 0
+    ? subtotalEntry[0].amount
+    : null;
   const applied = [];
   const unreadable = [];
   for (const entry of Array.isArray(block.applied) ? block.applied : []) {
@@ -1573,12 +1599,16 @@ function normalizeDiscounts(payload) {
     if (!isPlainObjectLocal(m) || !String(m.code || '').startsWith(DISCOUNT_REJECTION_PREFIX)) continue;
     // `path` points at the rejected entry, e.g. "$.discounts.codes[0]"; map it back to the code we sent.
     const index = /^\$\.discounts\.codes\[(\d+)\]$/.exec(String(m.path || ''));
-    const code = index && submitted[Number(index[1])] !== undefined ? submitted[Number(index[1])] : null;
+    const slot = index ? echo[Number(index[1])] : undefined;
+    const code = typeof slot === 'string' && slot.trim() ? slot : null;
     const row = { code, reason: String(m.code), content: typeof m.content === 'string' ? m.content : null };
     if (code) rejected.push(row);
     else unmappedRejections.push(row);
   }
-  return { currency, submitted_codes: submitted, applied, rejected, unmapped_rejections: unmappedRejections, unreadable };
+  return {
+    currency, subtotal_minor: subtotal, submitted_codes: submitted, applied, rejected,
+    unmapped_rejections: unmappedRejections, unreadable,
+  };
 }
 
 /**
@@ -1589,24 +1619,29 @@ function normalizeDiscounts(payload) {
  *   - no `discount_code_*` rejection is unmapped (it may concern this code);
  *   - this code is not rejected, and no unreadable entry names it;
  *   - exactly ONE applied entry carries this code (two are ambiguous, never summed);
- *   - its line and order allocations are positive.
+ *   - its line-item allocations are positive and, when the checkout states a subtotal, no larger than it.
  *
- * `amount_minor` is the code's saving on the item and the order only (line + order allocations). A shipping
- * allocation is reported apart in `shipping_minor` and never counts toward the saving (ADR-028 D8). Automatic
- * discounts are reported apart too: they are part of the price, never the code's saving (ADR-027 D4).
+ * `amount_minor` is the code's saving on the line items only. Shipping and fee allocations are reported in
+ * `shipping_minor` and `fee_minor`; an entry with no allocations (the spec's order-level form, which may also be
+ * shipping) is reported in `unallocated_minor` with reason `unallocated`. None of those is the item's saving
+ * (ADR-028 D8); a completion flow reads the checkout's own total instead. Automatic discounts are reported
+ * apart too: they are part of the price, never the code's saving (ADR-027 D4). Every amount is 0 unless applied
+ * or, for `unallocated_minor`, unless the reason is `unallocated`.
  */
 function discountCodeOutcome(discounts, code) {
   const key = String(code || '').trim().toUpperCase();
   const d = discounts || {
-    currency: null, applied: [], rejected: [], unmapped_rejections: [], unreadable: [],
+    currency: null, subtotal_minor: null, applied: [], rejected: [], unmapped_rejections: [], unreadable: [],
   };
   const mine = d.applied.filter((a) => a.code && a.code.toUpperCase() === key);
   const rejection = d.rejected.find((r) => r.code && r.code.toUpperCase() === key) || null;
   const unreadable = d.unreadable.some((u) => u.code && u.code.toUpperCase() === key);
   const unmapped = (d.unmapped_rejections || []).length > 0;
   const allocations = mine.length === 1 ? mine[0].allocations : [];
-  const amountMinor = allocations.filter((a) => a.target !== 'shipping').reduce((sum, a) => sum + a.amount_minor, 0);
-  const shippingMinor = allocations.filter((a) => a.target === 'shipping').reduce((sum, a) => sum + a.amount_minor, 0);
+  const sumOf = (target) => allocations.filter((a) => a.target === target).reduce((sum, a) => sum + a.amount_minor, 0);
+  const lineMinor = sumOf('line');
+  const unallocatedMinor = sumOf('unallocated');
+  const subtotal = Number.isSafeInteger(d.subtotal_minor) ? d.subtotal_minor : null;
   let reason = null;
   if (!d.currency) reason = 'currency_unreadable';
   else if (unmapped) reason = 'unmapped_rejection';
@@ -1614,15 +1649,20 @@ function discountCodeOutcome(discounts, code) {
   else if (unreadable) reason = 'unreadable';
   else if (mine.length === 0) reason = 'not_applied';
   else if (mine.length > 1) reason = 'ambiguous';
-  else if (amountMinor <= 0) reason = 'no_item_or_order_saving';
+  else if (unallocatedMinor > 0) reason = 'unallocated';
+  else if (lineMinor <= 0) reason = 'no_item_saving';
+  else if (subtotal !== null && lineMinor > subtotal) reason = 'exceeds_subtotal';
+  const ok = reason === null;
   return {
     code: String(code || '').trim(),
-    applied: reason === null,
+    applied: ok,
     not_applied_reason: reason,
     currency: d.currency,
-    amount_minor: reason === null ? amountMinor : 0,
-    shipping_minor: reason === null ? shippingMinor : 0,
-    allocations: reason === null ? allocations : [],
+    amount_minor: ok ? lineMinor : 0,
+    shipping_minor: ok ? sumOf('shipping') : 0,
+    fee_minor: ok ? sumOf('fee') : 0,
+    unallocated_minor: reason === 'unallocated' ? unallocatedMinor : 0,
+    allocations: ok ? allocations : [],
     rejected_reason: rejection ? rejection.reason : null,
     unreadable,
     automatic: d.applied.filter((a) => a.automatic)
