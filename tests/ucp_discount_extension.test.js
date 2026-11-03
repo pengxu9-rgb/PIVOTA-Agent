@@ -124,8 +124,9 @@ describe('codes are submitted as discounts.codes', () => {
     expect(args.checkout).not.toHaveProperty('payment');
   });
 
-  test('omitted codes leave the request exactly as before; [] clears', () => {
+  test('omitted (or null) codes leave the request exactly as before; [] clears', () => {
     expect(buildCheckoutArgs({ cartId: 'cart_1' })).toEqual({ checkout: { cart_id: 'cart_1' } });
+    expect(buildCheckoutArgs({ cartId: 'cart_1', discountCodes: null })).toEqual({ checkout: { cart_id: 'cart_1' } });
     expect(buildCheckoutArgs({ cartId: 'cart_1', discountCodes: [] }).checkout.discounts).toEqual({ codes: [] });
   });
 
@@ -160,14 +161,21 @@ describe('codes are submitted as discounts.codes', () => {
     const client = createUcpBuyerAgentClient({ fetchImpl });
     await client.createCart(ENDPOINT, { lineItems: [{ item: { id: '4401' }, quantity: 1 }] });
     expect(sentArguments(fetchImpl).cart).not.toHaveProperty('discounts');
+    await client.createCart(ENDPOINT, { lineItems: [{ item: { id: '4401' }, quantity: 1 }], discountCodes: null });
+    expect(sentArguments(fetchImpl).cart).not.toHaveProperty('discounts');
   });
 });
 
 // ---- reading what applied ------------------------------------------------------------------------------------
 
+const line = (amount, path = '$.line_items[0]') => ({ path, amount });
+const codeEntry = (overrides = {}) => ({ code: 'GLOW10', title: '10% off', amount: 400, allocations: [line(400)], ...overrides });
+const read = (applied, extra = {}) => normalizeDiscounts({ currency: 'USD', discounts: { codes: ['GLOW10'], applied }, ...extra });
+
 describe('the response is read without guessing', () => {
   test('applied discounts, their allocations and the rejected code', () => {
     const d = normalizePricedCheckout(CHECKOUT).discounts;
+    expect(d.currency).toBe('USD');
     expect(d.submitted_codes).toEqual(['glow10', 'OLDCODE']);
     expect(d.applied).toEqual([
       {
@@ -181,45 +189,65 @@ describe('the response is read without guessing', () => {
     ]);
     // Mapped back to the code we sent through the message path; non-discount messages are ignored.
     expect(d.rejected).toEqual([{ code: 'OLDCODE', reason: 'discount_code_expired', content: 'Code OLDCODE has expired' }]);
+    expect(d.unmapped_rejections).toEqual([]);
     expect(d.unreadable).toEqual([]);
   });
 
   test('an allocation that is neither a line nor shipping is the order', () => {
-    const d = normalizeDiscounts({ discounts: { applied: [
-      { code: 'ORDER5', title: '$5 off', amount: 500, allocations: [{ path: '$.totals.subtotal', amount: 500 }] },
-    ] } });
+    const d = read([codeEntry({ amount: 500, allocations: [{ path: '$.totals.subtotal', amount: 500 }] })]);
     expect(d.applied[0].allocations[0].target).toBe('order');
   });
 
   test.each([
-    ['a fractional amount', { amount: 4.5 }],
+    ['a fractional amount', { amount: 4.5, allocations: [line(4.5)] }],
     ['a string amount', { amount: '400' }],
-    ['a zero amount', { amount: 0 }],
-    ['a negative amount', { amount: -400 }],
-    ['an unsafe amount', { amount: Number.MAX_SAFE_INTEGER + 1 }],
-    ['an unreadable allocation', { amount: 400, allocations: [{ path: '$.line_items[0]', amount: 'x' }] }],
+    ['a zero amount', { amount: 0, allocations: [line(0)] }],
+    ['a negative amount', { amount: -400, allocations: [line(-400)] }],
+    ['an unsafe amount', { amount: Number.MAX_SAFE_INTEGER + 1, allocations: [line(Number.MAX_SAFE_INTEGER + 1)] }],
+    ['an unreadable allocation amount', { allocations: [{ path: '$.line_items[0]', amount: 'x' }] }],
+    ['a negative allocation', { allocations: [line(800), line(-400)] }],
+    ['an allocation larger than its entry', { allocations: [line(500)] }],
+    ['allocations summing to less than the entry', { allocations: [line(300)] }],
+    ['an allocation with no path', { allocations: [{ amount: 400 }] }],
+    ['an allocation with an empty path', { allocations: [{ path: ' ', amount: 400 }] }],
+    ['no allocations', { allocations: [] }],
+    ['a missing allocations list', { allocations: undefined }],
+    ['automatic yet carrying a code', { automatic: true }],
   ])('%s is unreadable, never applied', (_label, overrides) => {
-    const d = normalizeDiscounts({ discounts: { applied: [{ code: 'GLOW10', title: 't', ...overrides }] } });
+    const d = read([codeEntry(overrides)]);
     expect(d.applied).toEqual([]);
     expect(d.unreadable).toHaveLength(1);
+    expect(d.unreadable[0].code).toBe('GLOW10');
   });
 
-  test('a rejection whose path names no code we sent is kept, with no code', () => {
+  test('a code entry that names no code and is not automatic is unreadable', () => {
+    expect(read([codeEntry({ code: undefined })]).unreadable).toHaveLength(1);
+  });
+
+  test.each([
+    ['no echo of the submitted codes', { discounts: { applied: [] } }, '$.discounts.codes[0]'],
+    ['no path', { discounts: { codes: ['A'] } }, undefined],
+    ['an index past the end', { discounts: { codes: ['A'] } }, '$.discounts.codes[3]'],
+  ])('a discount rejection with %s is unmapped, not dropped', (_label, payload, path) => {
     const d = normalizeDiscounts({
-      discounts: { codes: ['A'] },
-      messages: [
-        { type: 'warning', code: 'discount_code_user_ineligible', path: '$.discounts.codes[3]', content: 'x' },
-        { type: 'warning', code: 'discount_code_combination_disallowed', content: 'y' },
-      ],
+      currency: 'USD', ...payload,
+      messages: [{ type: 'warning', code: 'discount_code_user_ineligible', path, content: 'x' }],
     });
-    expect(d.rejected.map((r) => [r.code, r.reason])).toEqual([
-      [null, 'discount_code_user_ineligible'],
-      [null, 'discount_code_combination_disallowed'],
-    ]);
+    expect(d.rejected).toEqual([]);
+    expect(d.unmapped_rejections.map((r) => r.reason)).toEqual(['discount_code_user_ineligible']);
+  });
+
+  test.each([
+    ['absent', undefined],
+    ['numeric', 840],
+    ['lower-case', 'usd'],
+    ['not three letters', 'US'],
+  ])('a %s checkout currency reads as null', (_label, currency) => {
+    expect(normalizeDiscounts({ currency, discounts: {} }).currency).toBeNull();
   });
 
   test('no discounts block reads as empty, and an empty checkout carries the same shape', () => {
-    const empty = { submitted_codes: [], applied: [], rejected: [], unreadable: [] };
+    const empty = { currency: null, submitted_codes: [], applied: [], rejected: [], unmapped_rejections: [], unreadable: [] };
     expect(normalizeDiscounts({})).toEqual(empty);
     expect(normalizePricedCheckout(null).discounts).toEqual(empty);
   });
@@ -230,7 +258,10 @@ describe('the response is read without guessing', () => {
 describe('what one code did', () => {
   test('applied, matched case-insensitively, with automatic discounts reported apart', () => {
     const outcome = discountCodeOutcome(normalizeDiscounts(CHECKOUT), 'glow10');
-    expect(outcome).toMatchObject({ applied: true, amount_minor: 400, rejected_reason: null, unreadable: false });
+    expect(outcome).toMatchObject({
+      applied: true, not_applied_reason: null, currency: 'USD', amount_minor: 400, shipping_minor: 0,
+      rejected_reason: null, unreadable: false,
+    });
     expect(outcome.allocations).toEqual([{ path: '$.line_items[0]', target: 'line', amount_minor: 400 }]);
     expect(outcome.automatic).toEqual([{
       title: 'Free shipping over $35', amount_minor: 599,
@@ -238,19 +269,56 @@ describe('what one code did', () => {
     }]);
   });
 
-  test('rejected, absent or unreadable is never applied', () => {
-    const d = normalizeDiscounts(CHECKOUT);
-    expect(discountCodeOutcome(d, 'OLDCODE')).toMatchObject({ applied: false, rejected_reason: 'discount_code_expired' });
-    expect(discountCodeOutcome(d, 'NOPE')).toMatchObject({ applied: false, amount_minor: 0 });
-    const unreadable = normalizeDiscounts({ discounts: { applied: [{ code: 'GLOW10', title: 't', amount: '400' }] } });
-    expect(discountCodeOutcome(unreadable, 'GLOW10')).toMatchObject({ applied: false, unreadable: true });
+  test('only line and order allocations count as the code\'s saving; shipping is reported apart', () => {
+    const mixed = read([codeEntry({ amount: 700, allocations: [line(400), { path: '$.totals.shipping', amount: 300 }] })]);
+    expect(discountCodeOutcome(mixed, 'GLOW10')).toMatchObject({ applied: true, amount_minor: 400, shipping_minor: 300 });
+    const shippingOnly = read([codeEntry({ amount: 599, allocations: [{ path: '$.totals.shipping', amount: 599 }] })]);
+    expect(discountCodeOutcome(shippingOnly, 'GLOW10')).toMatchObject({
+      applied: false, not_applied_reason: 'no_item_or_order_saving', amount_minor: 0,
+    });
+  });
+
+  test.each([
+    ['rejected', CHECKOUT, 'OLDCODE', 'rejected'],
+    ['absent', CHECKOUT, 'NOPE', 'not_applied'],
+  ])('%s is never applied', (_label, payload, code, reason) => {
+    expect(discountCodeOutcome(normalizeDiscounts(payload), code)).toMatchObject({
+      applied: false, not_applied_reason: reason, amount_minor: 0,
+    });
+  });
+
+  test('without a readable checkout currency nothing is applied', () => {
+    for (const currency of [undefined, 840, 'usd']) {
+      const d = normalizeDiscounts({ ...CHECKOUT, currency });
+      expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'currency_unreadable' });
+    }
+  });
+
+  test('an unmapped discount rejection leaves every submitted code not applied', () => {
+    const d = read([codeEntry()], { messages: [{ type: 'warning', code: 'discount_code_invalid', content: 'x' }] });
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'unmapped_rejection' });
+  });
+
+  test('two applied entries for one code are ambiguous, never summed', () => {
+    const d = read([codeEntry({ amount: 500, allocations: [line(500)] }), codeEntry({ amount: 500, allocations: [line(500)] })]);
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'ambiguous', amount_minor: 0 });
+  });
+
+  test('a readable entry beside an unreadable one for the same code is not applied', () => {
+    const d = read([codeEntry(), codeEntry({ amount: '400' })]);
+    expect(d.applied).toHaveLength(1);
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'unreadable', unreadable: true });
   });
 
   test('a code both applied and rejected is not applied', () => {
-    const both = normalizeDiscounts({
-      discounts: { codes: ['GLOW10'], applied: [{ code: 'GLOW10', title: 't', amount: 400, allocations: [] }] },
+    const both = read([codeEntry()], {
       messages: [{ type: 'warning', code: 'discount_code_already_applied', path: '$.discounts.codes[0]' }],
     });
-    expect(discountCodeOutcome(both, 'GLOW10').applied).toBe(false);
+    expect(discountCodeOutcome(both, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'rejected' });
+  });
+
+  test('an automatic discount never counts as the code', () => {
+    const d = read([{ title: 'Autumn', automatic: true, amount: 400, allocations: [line(400)] }]);
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'not_applied' });
   });
 });

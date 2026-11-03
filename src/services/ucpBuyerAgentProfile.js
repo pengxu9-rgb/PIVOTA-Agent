@@ -108,9 +108,9 @@ const CHECKOUT_CAPABILITY = 'dev.ucp.shopping.checkout';
 const FULFILLMENT_CAPABILITY = 'dev.ucp.shopping.fulfillment';
 const SHOPIFY_GLOBAL_CATALOG_CAPABILITY = 'dev.shopify.catalog.global';
 // DISCOUNT CODES, requested for the same silent-intersection reason as fulfillment. Without it a merchant
-// that advertises `dev.ucp.shopping.discount` (cosrx did, measured 2026-08-13) never grants it, and a
-// checkout carries no `discounts` block: we could neither submit a code nor read which discounts applied.
-// ucp.dev/2026-04-08/specification/discount: it extends BOTH cart and checkout, the request is
+// that advertises `dev.ucp.shopping.discount` (a live merchant did, measured 2026-08-13) never grants it,
+// and a checkout carries no `discounts` block: we could neither submit a code nor read which discounts
+// applied. Per the discount extension spec (capabilitySpec below): it extends BOTH cart and checkout, the request is
 // `discounts.codes` (case-insensitive; replaces earlier codes; [] clears), and the response lists
 // `discounts.applied` (code, title, amount in minor units, automatic, allocations by JSON path) with
 // rejected codes reported in `messages[]` as `discount_code_*`. It moves no money (ADR-027, ADR-028).

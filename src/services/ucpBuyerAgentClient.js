@@ -1035,7 +1035,7 @@ function createUcpBuyerAgentClient(options = {}) {
     }
     const cart = { line_items: lineItems };
     if (context) cart.context = context;
-    if (discountCodes !== undefined) cart.discounts = { codes: normalizeDiscountCodes(discountCodes) };
+    if (discountCodes !== undefined && discountCodes !== null) cart.discounts = { codes: normalizeDiscountCodes(discountCodes) };
     const args = { cart };
     if (attribution) args.attribution = attribution;
     return callTool(mcpEndpoint, TOOL.CREATE_CART, args);
@@ -1352,8 +1352,11 @@ function buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, che
   if (isPlainObjectLocal(buyer) && checkoutBody.buyer === undefined) checkoutBody.buyer = buyer;
   if (isPlainObjectLocal(context) && checkoutBody.context === undefined) checkoutBody.context = context;
   if (isPlainObjectLocal(attribution) && checkoutBody.attribution === undefined) checkoutBody.attribution = attribution;
-  // `discounts.codes` (dev.ucp.shopping.discount). Passed only when the caller names codes; [] clears them.
-  if (discountCodes !== undefined) checkoutBody.discounts = { codes: normalizeDiscountCodes(discountCodes) };
+  // `discounts.codes` (dev.ucp.shopping.discount). Passed only when the caller names codes (undefined or null
+  // = omitted, the request exactly as before); [] clears them.
+  if (discountCodes !== undefined && discountCodes !== null) {
+    checkoutBody.discounts = { codes: normalizeDiscountCodes(discountCodes) };
+  }
   // HARD BOUND: never emit a `payment` field from this client (no instruments, no tokens, no card).
   delete checkoutBody.payment;
   return { checkout: checkoutBody };
@@ -1389,7 +1392,7 @@ function normalizePricedCheckout(toolResult) {
     return {
       item: null, shipping_options: [], tax: null, total: null, subtotal: null, shipping: null,
       currency: null, continue_url: null, checkout_id: null, status: null, messages: [],
-      discounts: { submitted_codes: [], applied: [], rejected: [], unreadable: [] }, raw: null,
+      discounts: normalizeDiscounts(null), raw: null,
     };
   }
   const lineItems = Array.isArray(payload.line_items) ? payload.line_items
@@ -1489,90 +1492,141 @@ function normalizeDiscountCodes(codes) {
   return out;
 }
 
-/** Where an allocation lands, from its JSON path: a line item, shipping, or anything else (the order). */
+/**
+ * Where an allocation lands, from its JSON path: a line item, shipping, or the order. A missing or empty path
+ * is NOT guessed as the order: it returns null, and the entry carrying it is unreadable.
+ */
 function allocationTarget(path) {
-  const p = String(path || '');
-  if (/^\$\.line_items\[\d+\]/.test(p)) return 'line';
-  if (/shipping|fulfillment/i.test(p)) return 'shipping';
+  if (typeof path !== 'string' || !path.trim()) return null;
+  if (/^\$\.line_items\[\d+\]/.test(path)) return 'line';
+  if (/shipping|fulfillment/i.test(path)) return 'shipping';
   return 'order';
 }
 
-function minorAmount(value) {
-  // The spec types every amount here as an integer in minor units. Anything else is not trusted.
-  return Number.isSafeInteger(value) ? value : null;
+function positiveMinor(value) {
+  // The spec types every amount here as a positive integer in minor units. Anything else is not trusted.
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+/** One `applied` entry, normalized, or null when any part of it cannot be read exactly. */
+function readAppliedEntry(entry) {
+  if (!isPlainObjectLocal(entry)) return null;
+  const amount = positiveMinor(entry.amount);
+  const code = typeof entry.code === 'string' && entry.code.trim() ? entry.code.trim() : null;
+  // `automatic` is "applied without platform action" and carries no code. Both at once is contradictory.
+  if (entry.automatic === true && code) return null;
+  if (!code && entry.automatic !== true) return null;
+  if (!Array.isArray(entry.allocations) || entry.allocations.length === 0) return null;
+  const allocations = [];
+  for (const a of entry.allocations) {
+    const allocationAmount = isPlainObjectLocal(a) ? positiveMinor(a.amount) : null;
+    const target = isPlainObjectLocal(a) ? allocationTarget(a.path) : null;
+    if (allocationAmount === null || target === null) return null;
+    allocations.push({ path: a.path, target, amount_minor: allocationAmount });
+  }
+  // "Sum of allocation amounts equals total amount" (spec). A mismatch, or an allocation larger than its
+  // entry, means we cannot say where the discount landed.
+  const allocated = allocations.reduce((sum, a) => sum + a.amount_minor, 0);
+  if (amount === null || allocated !== amount) return null;
+  return {
+    code,
+    title: typeof entry.title === 'string' ? entry.title : null,
+    automatic: entry.automatic === true,
+    amount_minor: amount,
+    method: entry.method || null,
+    allocations,
+  };
 }
 
 /**
- * The checkout's `discounts` block, normalized. FAIL CLOSED: an applied entry whose amount or any allocation
- * amount is not a safe integer is reported in `unreadable` instead of `applied`, so a caller deciding whether
- * a code applied never reads a guessed number.
+ * The checkout's `discounts` block, normalized. FAIL CLOSED throughout: nothing is guessed, and anything that
+ * cannot be read exactly is set aside where `discountCodeOutcome` treats it as not applied.
  *
- * Returns { submitted_codes, applied, rejected, unreadable } where
- *   applied[]  = { code (null for automatic), title, automatic, amount_minor, method, allocations[] },
- *   allocations[] = { path, target: 'line' | 'shipping' | 'order', amount_minor },
- *   rejected[] = { code (from the message path, when it names one), reason (the spec's code), content }.
+ * Returns { currency, submitted_codes, applied, rejected, unmapped_rejections, unreadable } where
+ *   currency    = the checkout's ISO-4217 currency, or null when it is absent or not a 3-letter code (every
+ *                 amount is in it; the entries carry none of their own);
+ *   applied[]   = { code (null for automatic), title, automatic, amount_minor, method, allocations[] },
+ *   allocations[] = { path, target: 'line' | 'shipping' | 'order', amount_minor };
+ *   rejected[]  = { code, reason (the spec's code), content }, mapped to a submitted code by its path;
+ *   unmapped_rejections[] = a `discount_code_*` message that names no submitted code (no echo, no path, an
+ *                 index past the end): it may concern any code we sent;
+ *   unreadable[] = raw applied entries that failed `readAppliedEntry`, with the code they named, if any.
  */
 function normalizeDiscounts(payload) {
+  const rawCurrency = payload && (payload.currency || payload.currency_code || payload.presentment_currency);
+  const currency = typeof rawCurrency === 'string' && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : null;
   const block = isPlainObjectLocal(payload && payload.discounts) ? payload.discounts : {};
   const submitted = Array.isArray(block.codes) ? block.codes.filter((c) => typeof c === 'string') : [];
   const applied = [];
   const unreadable = [];
   for (const entry of Array.isArray(block.applied) ? block.applied : []) {
-    if (!isPlainObjectLocal(entry)) continue;
-    const amount = minorAmount(entry.amount);
-    const allocations = [];
-    let allocationsReadable = true;
-    for (const a of Array.isArray(entry.allocations) ? entry.allocations : []) {
-      const allocationAmount = isPlainObjectLocal(a) ? minorAmount(a.amount) : null;
-      if (allocationAmount === null) {
-        allocationsReadable = false;
-        continue;
-      }
-      allocations.push({ path: a.path || null, target: allocationTarget(a.path), amount_minor: allocationAmount });
+    const read = readAppliedEntry(entry);
+    if (read) applied.push(read);
+    else {
+      const named = isPlainObjectLocal(entry) && typeof entry.code === 'string' ? entry.code.trim() : null;
+      unreadable.push({ code: named || null, raw: entry });
     }
-    const normalized = {
-      code: typeof entry.code === 'string' && entry.code ? entry.code : null,
-      title: typeof entry.title === 'string' ? entry.title : null,
-      automatic: entry.automatic === true,
-      amount_minor: amount,
-      method: entry.method || null,
-      allocations,
-    };
-    if (amount === null || amount <= 0 || !allocationsReadable) unreadable.push(normalized);
-    else applied.push(normalized);
   }
   const rejected = [];
+  const unmappedRejections = [];
   for (const m of Array.isArray(payload && payload.messages) ? payload.messages : []) {
     if (!isPlainObjectLocal(m) || !String(m.code || '').startsWith(DISCOUNT_REJECTION_PREFIX)) continue;
     // `path` points at the rejected entry, e.g. "$.discounts.codes[0]"; map it back to the code we sent.
     const index = /^\$\.discounts\.codes\[(\d+)\]$/.exec(String(m.path || ''));
     const code = index && submitted[Number(index[1])] !== undefined ? submitted[Number(index[1])] : null;
-    rejected.push({ code, reason: String(m.code), content: typeof m.content === 'string' ? m.content : null });
+    const row = { code, reason: String(m.code), content: typeof m.content === 'string' ? m.content : null };
+    if (code) rejected.push(row);
+    else unmappedRejections.push(row);
   }
-  return { submitted_codes: submitted, applied, rejected, unreadable };
+  return { currency, submitted_codes: submitted, applied, rejected, unmapped_rejections: unmappedRejections, unreadable };
 }
 
 /**
- * What one submitted code did on this checkout, for a verifier or a completion flow. `applied` is true only
- * when the code appears in `applied` (case-insensitive) with a positive amount and was not also rejected.
- * Automatic discounts are reported apart: they are part of the price, never the code's saving (ADR-027 D4).
+ * What one submitted code did on this checkout, for a verifier or a completion flow.
+ *
+ * `applied` is true only when ALL of these hold; otherwise `not_applied_reason` says which failed first:
+ *   - the checkout's currency is readable (amounts mean nothing without it);
+ *   - no `discount_code_*` rejection is unmapped (it may concern this code);
+ *   - this code is not rejected, and no unreadable entry names it;
+ *   - exactly ONE applied entry carries this code (two are ambiguous, never summed);
+ *   - its line and order allocations are positive.
+ *
+ * `amount_minor` is the code's saving on the item and the order only (line + order allocations). A shipping
+ * allocation is reported apart in `shipping_minor` and never counts toward the saving (ADR-028 D8). Automatic
+ * discounts are reported apart too: they are part of the price, never the code's saving (ADR-027 D4).
  */
 function discountCodeOutcome(discounts, code) {
   const key = String(code || '').trim().toUpperCase();
-  const d = discounts || { applied: [], rejected: [], unreadable: [] };
+  const d = discounts || {
+    currency: null, applied: [], rejected: [], unmapped_rejections: [], unreadable: [],
+  };
   const mine = d.applied.filter((a) => a.code && a.code.toUpperCase() === key);
   const rejection = d.rejected.find((r) => r.code && r.code.toUpperCase() === key) || null;
-  const unreadable = d.unreadable.some((a) => a.code && a.code.toUpperCase() === key);
-  const automatic = d.applied.filter((a) => a.automatic);
-  const codeAmount = mine.reduce((sum, a) => sum + a.amount_minor, 0);
+  const unreadable = d.unreadable.some((u) => u.code && u.code.toUpperCase() === key);
+  const unmapped = (d.unmapped_rejections || []).length > 0;
+  const allocations = mine.length === 1 ? mine[0].allocations : [];
+  const amountMinor = allocations.filter((a) => a.target !== 'shipping').reduce((sum, a) => sum + a.amount_minor, 0);
+  const shippingMinor = allocations.filter((a) => a.target === 'shipping').reduce((sum, a) => sum + a.amount_minor, 0);
+  let reason = null;
+  if (!d.currency) reason = 'currency_unreadable';
+  else if (unmapped) reason = 'unmapped_rejection';
+  else if (rejection) reason = 'rejected';
+  else if (unreadable) reason = 'unreadable';
+  else if (mine.length === 0) reason = 'not_applied';
+  else if (mine.length > 1) reason = 'ambiguous';
+  else if (amountMinor <= 0) reason = 'no_item_or_order_saving';
   return {
     code: String(code || '').trim(),
-    applied: mine.length > 0 && !rejection && !unreadable && codeAmount > 0,
-    amount_minor: mine.length ? codeAmount : 0,
-    allocations: mine.flatMap((a) => a.allocations),
+    applied: reason === null,
+    not_applied_reason: reason,
+    currency: d.currency,
+    amount_minor: reason === null ? amountMinor : 0,
+    shipping_minor: reason === null ? shippingMinor : 0,
+    allocations: reason === null ? allocations : [],
     rejected_reason: rejection ? rejection.reason : null,
     unreadable,
-    automatic: automatic.map((a) => ({ title: a.title, amount_minor: a.amount_minor, allocations: a.allocations })),
+    automatic: d.applied.filter((a) => a.automatic)
+      .map((a) => ({ title: a.title, amount_minor: a.amount_minor, allocations: a.allocations })),
   };
 }
 
