@@ -132,8 +132,10 @@ describe('a failed build names what Postgres refused', () => {
     expect(long.detail).toBe('d'.repeat(199));
   });
 
-  test.each(['related_product', 'competitive_alternative'])('a refused %s label write carries its pair and still throws', async (relation) => {
-    const refused = Object.assign(new Error('invalid input syntax for type json'), { code: '22P02' });
+  // A refusal of the row's own data (22P02 and the like) is contained since 2026-11-02 (see
+  // relationship_graph_build_row_containment.test.js); a database failure still throws, naming the pair.
+  test.each(['related_product', 'competitive_alternative'])('a %s label write that fails on the database carries its pair and still throws', async (relation) => {
+    const refused = Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' });
     const queryFn = async (sql) => {
       if (/INSERT INTO relationship_candidate_labels/.test(sql)) throw refused;
       return { rows: [] };

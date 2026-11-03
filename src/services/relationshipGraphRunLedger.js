@@ -189,6 +189,14 @@ function extractRelationshipGraphRunRecord(summary = {}, {
     summary_path: normalizeString(summary.summary_path || summary?.artifacts?.summary, 2000),
     summary: {
       ...(ensureJsonSerializable(summary) || {}),
+      // The build's label writes that were refused and skipped (row data) or hit an integrity violation;
+      // ids and codes only, from the build's own report (lost with the container's /tmp).
+      ...(buildSummary && buildSummary.attempted_write_count != null ? { build_write_failures: {
+        write_failed_count: parseNumber(buildSummary.write_failed_count) || 0,
+        attempted_write_count: parseNumber(buildSummary.attempted_write_count) || 0,
+        write_integrity_violation_count: parseNumber(buildSummary.write_integrity_violation_count) || 0,
+        write_failed_by_code: ensureJsonSerializable(buildSummary.write_failed_by_code) || {},
+      } } : {}),
       // Preserve exact batch identity after the container's temporary artifacts disappear.
       ...(Array.isArray(review?.decisions) ? { recommendation_review_batch: {
         schema_version: 'relgraph_review_batch.v1',
