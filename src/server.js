@@ -436,6 +436,7 @@ const retinoidFamily = require('./services/retinoidFamily');
 const marketTelemetry = require('./services/marketTelemetry');
 const {
   enforceServingCurrency,
+  withholdOffMarketMoney,
   filterProductsToServingCurrency,
   requestedMarketOf,
   servingCurrencyFor,
@@ -47634,6 +47635,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalProductForPdp = stripSavingsPresentationFields(withholdCanonicalProductMoney(canonicalProductForPdp));
         }
       }
+      // THE BUYER'S CURRENCY ON THE PAGE (servingCurrencyGuard; Peng 2026-09-26: a price in another currency than
+      // the buyer's is a wrong price). The projection above serves only US/USD own money, but a page it does not
+      // cover -- a mirror seed, the identity-graph group page -- carries the selected listing's price in that
+      // listing's own currency (an SG store's SGD on a US page). Only that money is withheld, never converted: the
+      // page, its stock and its actions stay, so the card is still priced from an offer in the buyer's currency
+      // when one exists (hydrateCanonicalPdpPayloadFromOffers). Own money and an own-money gap are untouched.
+      let pdpCurrencyGuard = null;
+      if (!canonicalOwnMoney && !canonicalOwnMoneyGap) {
+        const guarded = withholdOffMarketMoney(canonicalProductForPdp, pdpServingCurrency);
+        if (guarded.withheld.length) {
+          canonicalProductForPdp = stripSavingsPresentationFields(guarded.product);
+          // The response names only what was withheld: a body that states no price must not state a currency
+          // either (the gw#2458 contract checks for an invented "USD" anywhere). The log carries the buyer's.
+          pdpCurrencyGuard = { withheld_currencies: guarded.withheld };
+          logger.info(
+            {
+              event: 'pdp_currency_not_serving_market',
+              serving_currency: pdpServingCurrency,
+              ...pdpCurrencyGuard,
+              merchant_id: canonicalProductRef?.merchant_id || null,
+              source_system: canonicalProductRef?.source_system || null,
+            },
+            'PDP money in another currency than the buyer market was withheld',
+          );
+        }
+      }
 
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
@@ -48878,6 +48905,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(canonicalOwnMoneyGap
             ? { current_own_offer_status: 'unavailable', current_own_offer_reason_code: canonicalOwnMoneyGap }
             : {}),
+          ...(pdpCurrencyGuard ? { serving_currency_guard: pdpCurrencyGuard } : {}),
         },
       };
       logger.info(

@@ -4332,7 +4332,7 @@ describe('get_pdp_v2 seed currency (gw#2458)', () => {
 
   // gw#2458 review: the main PDP door (include ['offers'], the default) rehydrated the page price
   // from offers minted with USD defaults, so a currency-less seed still showed $ in 6 places.
-  const pdpForSeed = async ({ priceCurrency }) => {
+  const pdpForSeed = async ({ priceCurrency, market = null }) => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
       PIVOTA_API_KEY: 'test-token',
@@ -4381,7 +4381,7 @@ describe('get_pdp_v2 seed currency (gw#2458)', () => {
       .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
-      .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: 'ext_seed_cur_1' } } })
+      .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: 'ext_seed_cur_1' } }, ...(market ? { metadata: { market } } : {}) })
       .expect(200);
     return res.body;
   };
@@ -4395,11 +4395,23 @@ describe('get_pdp_v2 seed currency (gw#2458)', () => {
     expect(pdp.actions).toEqual([]);
   });
 
-  test('get_pdp_v2 still prices a seed in the currency it declares', async () => {
-    const body = await pdpForSeed({ priceCurrency: 'GBP' });
+  test('get_pdp_v2 still prices a seed in the currency it declares, for a buyer in that currency', async () => {
+    const body = await pdpForSeed({ priceCurrency: 'GBP', market: 'GB' });
     const pdp = body.modules?.find((m) => m?.type === 'canonical')?.data?.pdp_payload;
-    expect(JSON.stringify(body)).toContain('"GBP"');
+    expect(pdp.product?.price?.current?.currency).toBe('GBP');
     expect(JSON.stringify(body)).not.toContain('"USD"');
     expect(pdp.actions.length).toBeGreaterThan(0);
+  });
+
+  test('a GBP seed on a page with no market (US) is unpriced and offers no Buy: never GBP, never invented USD', async () => {
+    // servingCurrencyGuard (Peng 2026-09-26): a price in another currency than the buyer's never reaches the page.
+    const body = await pdpForSeed({ priceCurrency: 'GBP' });
+    const pdp = body.modules?.find((m) => m?.type === 'canonical')?.data?.pdp_payload;
+    expect(pdp?.product?.product_id).toBe('ext_seed_cur_1');
+    expect(pdp.product?.price).toBeUndefined();
+    expect(JSON.stringify(pdp)).not.toContain('"GBP"');
+    expect(JSON.stringify(body)).not.toContain('"USD"');
+    expect(pdp.actions).toEqual([]);
+    expect(body.metadata?.serving_currency_guard).toEqual({ withheld_currencies: ['GBP'] });
   });
 });

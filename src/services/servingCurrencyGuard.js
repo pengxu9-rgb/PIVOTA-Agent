@@ -129,6 +129,69 @@ function isPricedInServingCurrency(product, servingCurrency) {
 }
 
 /**
+ * The PDP's reading of the same rule: the currencies a product page's product quotes that are NOT the serving
+ * currency, across its own price fields and every priced variant's (statedCurrencies, as a card is read). Empty
+ * when every quoted price is in the serving currency, or when nothing is priced at all. A null servingCurrency --
+ * a market nothing is priced for -- makes every quoted currency off-market. The page itself is never dropped:
+ * get_pdp_v2 withholds the off-market money (src/server.js, after the own-money projection).
+ */
+function offMarketCurrencies(product, servingCurrency) {
+  if (!isPlainObject(product)) return [];
+  const currency = String(servingCurrency || '').trim().toUpperCase();
+  const off = new Set();
+  const judge = (record) => {
+    for (const stated of offMarketOf(record, currency)) off.add(stated);
+  };
+  judge(withoutVariants(product));
+  for (const variant of Array.isArray(product.variants) ? product.variants : []) judge(variant);
+  return [...off].sort().slice(0, MAX_REPORTED_CURRENCIES);
+}
+
+// The currencies one record (a product without its variants, or one variant) quotes beside the serving one.
+function offMarketOf(record, currency) {
+  if (!isPlainObject(record)) return [];
+  if (!resolveCanonicalSearchProductPrice(record) && !quotesAPrice(record)) return [];
+  return [...statedCurrencies(record)].filter((stated) => stated !== currency);
+}
+
+function withoutVariants(product) {
+  const { variants: _variants, ...rest } = product;
+  return rest;
+}
+
+// The money a record quotes: every amount field and the price objects. Currency labels stay (they price nothing).
+const PDP_MONEY_FIELDS = ['price', 'price_amount', 'priceAmount', 'current_price', 'currentPrice', 'price_min', 'price_max',
+  'pricing', 'compare_at_price', 'compareAtPrice', 'original_price', 'originalPrice', 'list_price'];
+
+function withoutMoney(record) {
+  const next = { ...record };
+  for (const field of PDP_MONEY_FIELDS) delete next[field];
+  return next;
+}
+
+/**
+ * get_pdp_v2's guard: the product (and each variant) with any money it quotes in another currency than the serving
+ * one removed, and the currencies removed. Only the off-market money goes: the page, its listing, its stock and its
+ * actions stay, so a lane that prices the card from an offer in the buyer's currency still does. With no serving
+ * currency (an unkeyable market: 'en-US', 'US,SG') nothing is judged, so the page is returned as is.
+ * @returns {{ product: object, withheld: string[] }}
+ */
+function withholdOffMarketMoney(product, servingCurrency) {
+  const currency = String(servingCurrency || '').trim().toUpperCase();
+  if (!currency || !isPlainObject(product)) return { product, withheld: [] };
+  const withheld = new Set();
+  const strip = (record) => {
+    const off = offMarketOf(record, currency);
+    for (const stated of off) withheld.add(stated);
+    return off.length ? withoutMoney(record) : record;
+  };
+  let next = strip(withoutVariants(product));
+  if (Array.isArray(product.variants)) next = { ...next, variants: product.variants.map((v) => (isPlainObject(v) ? strip(v) : v)) };
+  if (!withheld.size) return { product, withheld: [] };
+  return { product: next, withheld: [...withheld].sort().slice(0, MAX_REPORTED_CURRENCIES) };
+}
+
+/**
  * Returns the body to send. Untouched unless it is a guarded operation's body with a `products`
  * list holding a row not priced in the serving currency; then those rows are removed, `total`
  * shrinks by as many, and `metadata.serving_currency_guard` says what was dropped.
@@ -173,6 +236,8 @@ module.exports = {
   enforceServingCurrency,
   filterProductsToServingCurrency,
   isPricedInServingCurrency,
+  offMarketCurrencies,
+  withholdOffMarketMoney,
   requestedMarketOf,
   servingCurrencyFor,
 };
