@@ -1497,9 +1497,11 @@ function normalizeDiscountCodes(codes) {
  * `$.line_items[i]` and `$.totals.shipping`; its totals vocabulary names `fulfillment` and `fee` too. Only those
  * are recognized. Any other path, and a missing one, returns null: the entry is unreadable, never guessed.
  */
-function allocationTarget(path) {
+function allocationTarget(path, lineCount) {
   if (typeof path !== 'string') return null;
-  if (/^\$\.line_items\[\d+\]$/.test(path)) return 'line';
+  const lineIndex = /^\$\.line_items\[(\d+)\]$/.exec(path);
+  // A line allocation must name a line this checkout has; `$.line_items[99]` on a one-line checkout is not one.
+  if (lineIndex) return Number(lineIndex[1]) < lineCount ? 'line' : null;
   if (/^\$\.totals\.(shipping|fulfillment)$/.test(path)) return 'shipping';
   if (/^\$\.totals\.fee$/.test(path)) return 'fee';
   return null;
@@ -1518,7 +1520,7 @@ function positiveMinor(value) {
  * So it is read, as one allocation targeted `unallocated`: it lowers the checkout total, but nothing says
  * whether it lowered the item, the order or shipping, so it never counts as the item's saving.
  */
-function readAppliedEntry(entry) {
+function readAppliedEntry(entry, lineCount) {
   if (!isPlainObjectLocal(entry)) return null;
   const amount = positiveMinor(entry.amount);
   const code = typeof entry.code === 'string' && entry.code.trim() ? entry.code.trim() : null;
@@ -1534,7 +1536,7 @@ function readAppliedEntry(entry) {
   } else {
     for (const a of rawAllocations) {
       const allocationAmount = isPlainObjectLocal(a) ? positiveMinor(a.amount) : null;
-      const target = isPlainObjectLocal(a) ? allocationTarget(a.path) : null;
+      const target = isPlainObjectLocal(a) ? allocationTarget(a.path, lineCount) : null;
       if (allocationAmount === null || target === null) return null;
       allocations.push({ path: a.path, target, amount_minor: allocationAmount });
     }
@@ -1560,8 +1562,8 @@ function readAppliedEntry(entry) {
  * Returns { currency, submitted_codes, applied, rejected, unmapped_rejections, unreadable } where
  *   currency    = the checkout's ISO-4217 currency, or null when it is absent or not a 3-letter code (every
  *                 amount is in it; the entries carry none of their own);
- *   subtotal_minor = the checkout's one `subtotal` total, or null when absent, repeated or not a
- *                 non-negative integer;
+ *   subtotal_minor = the checkout's one `subtotal` total, or null;
+ *   subtotal_unreadable = true when a subtotal is present but cannot be read exactly (then no code applies);
  *   applied[]   = { code (null for automatic), title, automatic, amount_minor, method, allocations[] },
  *   allocations[] = { path, target: 'line' | 'shipping' | 'fee' | 'unallocated', amount_minor };
  *   rejected[]  = { code, reason (the spec's code), content }, mapped to a submitted code by its path;
@@ -1577,16 +1579,28 @@ function normalizeDiscounts(payload) {
   // was sent back, and dropping a non-string slot first would shift every later index onto the wrong code.
   const echo = Array.isArray(block.codes) ? block.codes : [];
   const submitted = echo.filter((c) => typeof c === 'string');
-  const subtotalEntry = Array.isArray(payload && payload.totals)
-    ? payload.totals.filter((t) => isPlainObjectLocal(t) && t.type === 'subtotal')
-    : [];
-  const subtotal = subtotalEntry.length === 1 && Number.isSafeInteger(subtotalEntry[0].amount) && subtotalEntry[0].amount >= 0
-    ? subtotalEntry[0].amount
-    : null;
+  const lineItems = payload && (Array.isArray(payload.line_items) ? payload.line_items : payload.items);
+  const lineCount = Array.isArray(lineItems) ? lineItems.length : 0;
+  // The subtotal bound. ABSENT (no totals, or no subtotal entry) means no bound. PRESENT BUT UNREADABLE fails
+  // closed: totals that are not a list, a subtotal entry whatever its letter case, more than one, or an amount
+  // that is not a non-negative integer. A bound we cannot read is never treated as no bound.
+  const totals = payload && payload.totals;
+  let subtotal = null;
+  let subtotalUnreadable = false;
+  if (totals !== undefined && totals !== null) {
+    if (!Array.isArray(totals)) subtotalUnreadable = true;
+    else {
+      const entries = totals.filter((t) => isPlainObjectLocal(t) && String(t.type || '').toLowerCase() === 'subtotal');
+      if (entries.length === 1 && entries[0].type === 'subtotal'
+        && Number.isSafeInteger(entries[0].amount) && entries[0].amount >= 0) {
+        subtotal = entries[0].amount;
+      } else if (entries.length > 0) subtotalUnreadable = true;
+    }
+  }
   const applied = [];
   const unreadable = [];
   for (const entry of Array.isArray(block.applied) ? block.applied : []) {
-    const read = readAppliedEntry(entry);
+    const read = readAppliedEntry(entry, lineCount);
     if (read) applied.push(read);
     else {
       const named = isPlainObjectLocal(entry) && typeof entry.code === 'string' ? entry.code.trim() : null;
@@ -1600,13 +1614,14 @@ function normalizeDiscounts(payload) {
     // `path` points at the rejected entry, e.g. "$.discounts.codes[0]"; map it back to the code we sent.
     const index = /^\$\.discounts\.codes\[(\d+)\]$/.exec(String(m.path || ''));
     const slot = index ? echo[Number(index[1])] : undefined;
-    const code = typeof slot === 'string' && slot.trim() ? slot : null;
+    // Trimmed, as the outcome's key is: a padded echo must still name the code it rejected.
+    const code = typeof slot === 'string' && slot.trim() ? slot.trim() : null;
     const row = { code, reason: String(m.code), content: typeof m.content === 'string' ? m.content : null };
     if (code) rejected.push(row);
     else unmappedRejections.push(row);
   }
   return {
-    currency, subtotal_minor: subtotal, submitted_codes: submitted, applied, rejected,
+    currency, subtotal_minor: subtotal, subtotal_unreadable: subtotalUnreadable, submitted_codes: submitted, applied, rejected,
     unmapped_rejections: unmappedRejections, unreadable,
   };
 }
@@ -1619,7 +1634,8 @@ function normalizeDiscounts(payload) {
  *   - no `discount_code_*` rejection is unmapped (it may concern this code);
  *   - this code is not rejected, and no unreadable entry names it;
  *   - exactly ONE applied entry carries this code (two are ambiguous, never summed);
- *   - its line-item allocations are positive and, when the checkout states a subtotal, no larger than it.
+ *   - its line-item allocations are positive and, when the checkout states a subtotal, no larger than it;
+ *     a subtotal that is present but unreadable means not applied.
  *
  * `amount_minor` is the code's saving on the line items only. Shipping and fee allocations are reported in
  * `shipping_minor` and `fee_minor`; an entry with no allocations (the spec's order-level form, which may also be
@@ -1631,7 +1647,8 @@ function normalizeDiscounts(payload) {
 function discountCodeOutcome(discounts, code) {
   const key = String(code || '').trim().toUpperCase();
   const d = discounts || {
-    currency: null, subtotal_minor: null, applied: [], rejected: [], unmapped_rejections: [], unreadable: [],
+    currency: null, subtotal_minor: null, subtotal_unreadable: false, applied: [], rejected: [], unmapped_rejections: [],
+    unreadable: [],
   };
   const mine = d.applied.filter((a) => a.code && a.code.toUpperCase() === key);
   const rejection = d.rejected.find((r) => r.code && r.code.toUpperCase() === key) || null;
@@ -1651,6 +1668,7 @@ function discountCodeOutcome(discounts, code) {
   else if (mine.length > 1) reason = 'ambiguous';
   else if (unallocatedMinor > 0) reason = 'unallocated';
   else if (lineMinor <= 0) reason = 'no_item_saving';
+  else if (d.subtotal_unreadable) reason = 'subtotal_unreadable';
   else if (subtotal !== null && lineMinor > subtotal) reason = 'exceeds_subtotal';
   const ok = reason === null;
   return {
