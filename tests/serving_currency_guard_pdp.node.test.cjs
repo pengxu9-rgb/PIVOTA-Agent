@@ -194,3 +194,13 @@ test('pdp metrics: a page left unjudged for want of a serving currency is counte
   metrics.__resetPdpMetricsForTest();
   assert.doesNotMatch(metrics.renderPdpMetricsPrometheus(), /pdp_currency_guard_unjudged_total\{/);
 });
+
+test('a variant quoting only a sale price, in the product\'s currency, is judged by it', () => {
+  const product = { currency: 'SGD', price: 18, variants: [{ variant_id: 'v1', sale_price: 16 }] };
+  const { product: next, withheld } = withholdOffMarketMoney(product, 'USD');
+  assert.deepEqual(withheld, ['SGD']);
+  assert.deepEqual(next.variants, [{ variant_id: 'v1' }]);
+  // The headline is in the serving currency: the variant's sale price is the product's, and stays.
+  const usd = { currency: 'USD', price: 18, variants: [{ variant_id: 'v1', sale_price: 16 }] };
+  assert.equal(withholdOffMarketMoney(usd, 'USD').product, usd);
+});
