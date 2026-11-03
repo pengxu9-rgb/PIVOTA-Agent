@@ -115,6 +115,9 @@ test('a headline withheld beside a variant kept in the serving currency relabels
   // nothing kept: the labels stay as they were (there is no money left to label)
   const lone = { currency: 'CAD', price: 42, variants: [{ variant_id: 'v1', price: 42 }] };
   assert.equal(withholdOffMarketMoney(lone, 'USD').product.currency, 'CAD');
+  // an unpriced variant kept as is holds no money either: no relabel
+  const unpricedVariant = { currency: 'CAD', price: 42, variants: [{ variant_id: 'v1', title: 'Small' }] };
+  assert.equal(withholdOffMarketMoney(unpricedVariant, 'USD').product.currency, 'CAD');
 });
 
 test('a currency only the source snapshot or the offers state is not this page\'s money', () => {

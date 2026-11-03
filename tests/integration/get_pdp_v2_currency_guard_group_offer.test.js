@@ -32,6 +32,8 @@ jest.mock('../../src/db', () => ({
 const ORIGINAL_ENV = process.env;
 const ORIGINAL_FETCH = global.fetch;
 let CUR = 'SGD';
+// The member offer's own currency, when a case gives it one apart from the page's.
+let OFFER_CUR = null;
 
 // Unroutable on purpose (as in get_pdp_v2_caller_requested_merchant): every upstream leg on the
 // PDP route is wrapped in a catch, so a dead base proves the page came from the mocked DB. The ops
@@ -275,8 +277,8 @@ function testBrandListingRow(destination) {
     source_payload: {
       title: 'Test Headphone',
       brand: 'Test Brand',
-      price: { amount: 229.99, currency: CUR },
-      currency: CUR,
+      price: { amount: 229.99, currency: OFFER_CUR || CUR },
+      currency: OFFER_CUR || CUR,
       in_stock: true,
       destination_url: destination,
       catalog_offer_v1: { offer_id: 'co_1', sku_key: 'sku_1', source_system: 'x', source_ref: 'y' },
@@ -394,6 +396,23 @@ describe('get_pdp_v2 currency guard: the group page is not re-priced from an off
       expect(JSON.stringify({ card: page.card, actions: page.actions, offers: page.offerPrices })).not.toContain(cur);
     });
   }
+
+  test('an offer in a third currency loses its money and is named in the guard too', async () => {
+    CUR = 'SGD'; OFFER_CUR = 'JPY';
+    try {
+      const { app, db } = loadServer({ MERCHANT_PURCHASABILITY_GATE_ENABLED: 'false' });
+      installOpsBackend({ enforced: false });
+      installGroupDb(db, { destination: TEST_BRAND_PDP });
+      const res = await testBrandPdp(app, {});
+      expect(res.status).toBe(200);
+      const page = pageOf(res);
+      expect(page.guard).toEqual({ withheld_currencies: ['JPY', 'SGD'] });
+      expect(page.offerPrices).toEqual([null]);
+      expect(page.card).toBeUndefined();
+    } finally {
+      OFFER_CUR = null;
+    }
+  });
 
   test('SGD member offer for an SG buyer: priced in SGD, no guard', async () => {
     CUR = 'SGD';
