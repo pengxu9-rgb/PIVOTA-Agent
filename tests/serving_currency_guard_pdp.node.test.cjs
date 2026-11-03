@@ -1,10 +1,12 @@
 'use strict';
 
-// offMarketCurrencies (src/services/servingCurrencyGuard.js): the PDP's reading of the serving-currency rule.
+// withholdOffMarketMoney (src/services/servingCurrencyGuard.js): get_pdp_v2's reading of the serving-currency rule.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { offMarketCurrencies, withholdOffMarketMoney } = require('../src/services/servingCurrencyGuard');
+const { withholdOffMarketMoney } = require('../src/services/servingCurrencyGuard');
+
+const offMarketCurrencies = (product, servingCurrency) => withholdOffMarketMoney(product, servingCurrency).withheld;
 
 test('a product priced only in the serving currency has no off-market currency', () => {
   assert.deepEqual(offMarketCurrencies({ price: 16, currency: 'SGD', variants: [{ price: 16, currency: 'SGD' }] }, 'SGD'), []);
@@ -18,9 +20,9 @@ test('every stated currency other than the serving one is reported, product and 
   assert.deepEqual(offMarketCurrencies({ price: 1, currency: 'SGD', price_currency: 'USD' }, 'USD'), ['SGD'], 'a mixed record is off-market');
 });
 
-test('nothing priced, nothing judged; a market nothing is priced for makes every price off-market', () => {
+test('nothing priced, nothing judged; with no serving currency nothing is judged either', () => {
   assert.deepEqual(offMarketCurrencies({ title: 'x', variants: [{ sku: 'a' }] }, 'USD'), []);
-  assert.deepEqual(offMarketCurrencies({ price: 5, currency: 'USD' }, null), ['USD']);
+  assert.deepEqual(offMarketCurrencies({ price: 5, currency: 'USD' }, null), []);
   assert.deepEqual(offMarketCurrencies(null, 'USD'), []);
   assert.deepEqual(offMarketCurrencies({ price: 5 }, 'USD'), [], 'a price with no currency is left to the builder (toVariantPrice drops it)');
 });
@@ -72,6 +74,80 @@ test('an unpriced record that only states a currency withholds nothing and repor
 
 test('server.js builds the unscoped detail hop with that helper (the market forward is not an inline twin)', () => {
   const source = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
-  assert.match(source, /requestBody = unscopedDetailPdpRequest\(pid, payload\);/);
+  assert.match(source, /requestBody = unscopedDetailPdpRequest\(pid, payload, options\?\.market\);/);
   assert.doesNotMatch(source, /operation: 'get_pdp_v2',\s*\n\s*payload: \{ product_ref: \{ product_id: pid \}, include: \['product_overview'\] \},/);
+});
+
+test('the hop takes the market the executor declared beside the payload, then the payload\'s own', () => {
+  const { unscopedDetailPdpRequest } = require('../src/services/pdpDetailHop');
+  assert.equal(unscopedDetailPdpRequest('sig_x', {}, ' SG ').payload.market, 'SG');
+  assert.equal(unscopedDetailPdpRequest('sig_x', { market: 'US' }, 'SG').payload.market, 'SG');
+  assert.equal(unscopedDetailPdpRequest('sig_x', { market: 'SG' }, '  ').payload.market, 'SG');
+  assert.equal(unscopedDetailPdpRequest('sig_x', { market: 'SG' }, undefined).payload.market, 'SG');
+});
+
+test('a variant that states no currency is priced in the product\'s, and is withheld with it', () => {
+  const product = {
+    currency: 'CAD', price: { amount: 42, currency: 'CAD' },
+    variants: [{ variant_id: 'v1', price: 42 }, { variant_id: 'v2', price: '55.00' }],
+  };
+  const { product: next, withheld } = withholdOffMarketMoney(product, 'USD');
+  assert.deepEqual(withheld, ['CAD']);
+  assert.equal(next.price, undefined);
+  assert.deepEqual(next.variants.map((v) => v.price), [undefined, undefined]);
+  // ...but a product in the serving currency leaves its currency-less variants priced.
+  const usd = { currency: 'USD', price: 42, variants: [{ variant_id: 'v1', price: 42 }] };
+  assert.equal(withholdOffMarketMoney(usd, 'USD').product, usd);
+});
+
+test('a headline withheld beside a variant kept in the serving currency relabels the product, never the money', () => {
+  const product = {
+    currency: 'CAD', price_currency: 'CAD', price: { amount: 42, currency: 'CAD' },
+    variants: [{ variant_id: 'v1', price: 42, currency: 'CAD' }, { variant_id: 'v2', price: 30, currency: 'USD' }],
+  };
+  const { product: next, withheld } = withholdOffMarketMoney(product, 'USD');
+  assert.deepEqual(withheld, ['CAD']);
+  assert.equal(next.price, undefined);
+  assert.equal(next.currency, 'USD', 'the builder labels the kept variant with the product currency');
+  assert.equal(next.price_currency, 'USD');
+  assert.equal(next.variants[0].price, undefined);
+  assert.deepEqual([next.variants[1].price, next.variants[1].currency], [30, 'USD']);
+  // nothing kept: the labels stay as they were (there is no money left to label)
+  const lone = { currency: 'CAD', price: 42, variants: [{ variant_id: 'v1', price: 42 }] };
+  assert.equal(withholdOffMarketMoney(lone, 'USD').product.currency, 'CAD');
+});
+
+test('a currency only the source snapshot or the offers state is not this page\'s money', () => {
+  const product = {
+    title: 'T', price: 20, currency: 'USD',
+    seed_data: { snapshot: { price_amount: 27.9, price_currency: 'SGD' } },
+    offers: [{ price: 27.9, currency: 'SGD' }],
+  };
+  const { product: next, withheld } = withholdOffMarketMoney(product, 'USD');
+  assert.equal(next, product);
+  assert.deepEqual(withheld, []);
+  const unpriced = { title: 'T', seed_data: { snapshot: { price_amount: 27.9, price_currency: 'SGD' } } };
+  assert.deepEqual(withholdOffMarketMoney(unpriced, 'USD').withheld, []);
+});
+
+test('every money field of a withheld record goes: compare-at, original and list prices too', () => {
+  const product = {
+    currency: 'SGD', price: 16, price_min: 12, price_max: 20, compare_at_price: 20, compareAtPrice: 20,
+    original_price: 22, originalPrice: 22, list_price: 22, current_price: 16, price_amount: 16,
+    pricing: { current: { amount: 16, currency: 'SGD' } }, title: 'T',
+  };
+  const { product: next } = withholdOffMarketMoney(product, 'USD');
+  for (const field of ['price', 'price_min', 'price_max', 'compare_at_price', 'compareAtPrice', 'original_price',
+    'originalPrice', 'list_price', 'current_price', 'price_amount', 'pricing']) {
+    assert.equal(next[field], undefined, field);
+  }
+  assert.equal(next.title, 'T');
+});
+
+test('the withheld currencies are reported sorted and de-duplicated', () => {
+  const product = {
+    currency: 'SGD', price: 1,
+    variants: [{ price: 1, currency: 'JPY' }, { price: 1, currency: 'AUD' }, { price: 1, currency: 'JPY' }],
+  };
+  assert.deepEqual(withholdOffMarketMoney(product, 'USD').withheld, ['AUD', 'JPY', 'SGD']);
 });

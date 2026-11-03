@@ -128,36 +128,19 @@ function isPricedInServingCurrency(product, servingCurrency) {
   return stated.size > 0 && [...stated].every((value) => value === currency);
 }
 
-/**
- * The PDP's reading of the same rule: the currencies a product page's product quotes that are NOT the serving
- * currency, across its own price fields and every priced variant's (statedCurrencies, as a card is read). Empty
- * when every quoted price is in the serving currency, or when nothing is priced at all. A null servingCurrency --
- * a market nothing is priced for -- makes every quoted currency off-market. The page itself is never dropped:
- * get_pdp_v2 withholds the off-market money (src/server.js, after the own-money projection).
- */
-function offMarketCurrencies(product, servingCurrency) {
-  if (!isPlainObject(product)) return [];
-  const currency = String(servingCurrency || '').trim().toUpperCase();
-  const off = new Set();
-  const judge = (record) => {
-    for (const stated of offMarketOf(record, currency)) off.add(stated);
-  };
-  judge(withoutVariants(product));
-  for (const variant of Array.isArray(product.variants) ? product.variants : []) judge(variant);
-  return [...off].sort().slice(0, MAX_REPORTED_CURRENCIES);
-}
-
-// The currencies one record (a product without its variants, or one variant) quotes beside the serving one.
-function offMarketOf(record, currency) {
-  if (!isPlainObject(record)) return [];
-  if (!resolveCanonicalSearchProductPrice(record) && !quotesAPrice(record)) return [];
-  return [...statedCurrencies(record)].filter((stated) => stated !== currency);
-}
-
 function withoutVariants(product) {
   const { variants: _variants, ...rest } = product;
   return rest;
 }
+
+// The product's own money and labels, without what it carries from elsewhere: its variants (judged one by one),
+// its offers (other listings' money) and a seed row's source snapshot.
+function ownRecord(product) {
+  const { variants: _variants, offers: _offers, seed_data: _seedData, external_seed: _externalSeed, ...rest } = product;
+  return rest;
+}
+
+const PRODUCT_CURRENCY_LABELS = ['currency', 'currency_code', 'price_currency', 'priceCurrency'];
 
 // The money a record quotes: every amount field and the price objects. Currency labels stay (they price nothing).
 const PDP_MONEY_FIELDS = ['price', 'price_amount', 'priceAmount', 'current_price', 'currentPrice', 'price_min', 'price_max',
@@ -172,22 +155,56 @@ function withoutMoney(record) {
 /**
  * get_pdp_v2's guard: the product (and each variant) with any money it quotes in another currency than the serving
  * one removed, and the currencies removed. Only the off-market money goes: the page, its listing, its stock and its
- * actions stay, so a lane that prices the card from an offer in the buyer's currency still does. With no serving
- * currency (an unkeyable market: 'en-US', 'US,SG') nothing is judged, so the page is returned as is.
+ * actions stay, so a lane that prices the card from an offer in the buyer's currency still does. A variant that
+ * states no currency is priced in the product's (the builder labels it so), and is judged by it.
+ *
+ * NO SERVING CURRENCY, NOTHING JUDGED. servingCurrencyFor answers null both for an unkeyable market ('en-US',
+ * 'US,SG') and for a named market no currency is mapped for ('DE'); the page is then returned as is. The
+ * recommendation and sibling-offer filters keep NOTHING on a null (they add rows to a page; dropping them all costs
+ * the page nothing). Here the money is the page's own listing's, and withholding every price on every page for a
+ * market the gateway does not serve would unprice the page outright, which get_pdp_v2's purchasability contract for
+ * an unkeyable market does not do. So this guard covers a market with a currency, and only that.
  * @returns {{ product: object, withheld: string[] }}
  */
 function withholdOffMarketMoney(product, servingCurrency) {
   const currency = String(servingCurrency || '').trim().toUpperCase();
   if (!currency || !isPlainObject(product)) return { product, withheld: [] };
   const withheld = new Set();
-  const strip = (record) => {
-    const off = offMarketOf(record, currency);
-    for (const stated of off) withheld.add(stated);
+  // The product is judged on its OWN fields: its offers, and the source snapshot a seed row carries, are
+  // not money this page quotes, so a currency only they state is not withheld (nor reported).
+  const own = ownRecord(product);
+  // A variant that states no currency is priced in the product's: the builder labels it with that one.
+  const inherited = [...statedCurrencies(own)];
+  const offOf = (record, fallback) => {
+    if (!isPlainObject(record) || (!resolveCanonicalSearchProductPrice(record) && !quotesAPrice(record))) return [];
+    const stated = [...statedCurrencies(record)];
+    return (stated.length ? stated : fallback).filter((code) => code !== currency);
+  };
+  const strip = (record, fallback) => {
+    const off = offOf(record, fallback);
+    for (const code of off) withheld.add(code);
     return off.length ? withoutMoney(record) : record;
   };
-  let next = strip(withoutVariants(product));
-  if (Array.isArray(product.variants)) next = { ...next, variants: product.variants.map((v) => (isPlainObject(v) ? strip(v) : v)) };
+  const headlineOffCurrencies = offOf(own, []);
+  for (const code of headlineOffCurrencies) withheld.add(code);
+  const headlineOff = headlineOffCurrencies.length > 0;
+  const next = headlineOff ? withoutMoney(withoutVariants(product)) : withoutVariants(product);
+  let variantKeptMoney = false;
+  if (Array.isArray(product.variants)) {
+    next.variants = product.variants.map((variant) => {
+      if (!isPlainObject(variant)) return variant;
+      const kept = strip(variant, inherited);
+      if (kept === variant && (resolveCanonicalSearchProductPrice(variant) || quotesAPrice(variant))) variantKeptMoney = true;
+      return kept;
+    });
+  }
   if (!withheld.size) return { product, withheld: [] };
+  // The headline went but a variant kept its money, in the serving currency by construction: the product's
+  // labels now name that currency, so the builder does not label the kept money with the withheld one.
+  if (headlineOff && variantKeptMoney) {
+    for (const field of PRODUCT_CURRENCY_LABELS) if (field in next) next[field] = currency;
+    next.currency = currency;
+  }
   return { product: next, withheld: [...withheld].sort().slice(0, MAX_REPORTED_CURRENCIES) };
 }
 
@@ -236,7 +253,6 @@ module.exports = {
   enforceServingCurrency,
   filterProductsToServingCurrency,
   isPricedInServingCurrency,
-  offMarketCurrencies,
   withholdOffMarketMoney,
   requestedMarketOf,
   servingCurrencyFor,

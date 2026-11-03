@@ -4404,7 +4404,7 @@ describe('get_pdp_v2 seed currency (gw#2458)', () => {
   });
 
   test('a GBP seed on a page with no market (US) is unpriced and offers no Buy: never GBP, never invented USD', async () => {
-    // servingCurrencyGuard (Peng 2026-09-26): a price in another currency than the buyer's never reaches the page.
+    // servingCurrencyGuard: a price in another currency than the buyer's never reaches the page.
     const body = await pdpForSeed({ priceCurrency: 'GBP' });
     const pdp = body.modules?.find((m) => m?.type === 'canonical')?.data?.pdp_payload;
     expect(pdp?.product?.product_id).toBe('ext_seed_cur_1');

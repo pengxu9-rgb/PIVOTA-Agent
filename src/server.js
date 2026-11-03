@@ -10155,13 +10155,17 @@ function findPositiveOfferById(offers, offerId) {
 // buyer must not be quoted. What can remain outside the serving currency is only the opened product's
 // own offer, which the offers module keeps as a by-id read (#2301); with nothing else priced it is
 // still the card's offer, exactly as before.
-function pickOfferForCanonicalPdpPrice(offersData, { servingCurrency = null } = {}) {
+// `onlyServingCurrency`: the page's own money was withheld for being in another currency than the buyer's
+// (servingCurrencyGuard), so an offer in such a currency may not price the card either. With it, an offer outside
+// the serving currency is never picked: no offer in that currency prices nothing.
+function pickOfferForCanonicalPdpPrice(offersData, { servingCurrency = null, onlyServingCurrency = false } = {}) {
   const allOffers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   if (!allOffers.length) return null;
   const currency = String(servingCurrency || '').trim().toUpperCase();
   const inServingCurrency = currency
     ? allOffers.filter((offer) => readOfferCurrency(offer) === currency && readPositiveOfferMoney(offer))
     : [];
+  if (onlyServingCurrency && currency && !inServingCurrency.length) return null;
   const offers = inServingCurrency.length ? inServingCurrency : allOffers;
 
   const defaultOffer = findPositiveOfferById(offers, offersData?.default_offer_id);
@@ -10499,7 +10503,7 @@ function projectCanonicalCardSellerFromOffer(product, offer, money, fallbackList
 function hydrateCanonicalPdpPayloadFromOffers(
   pdpPayload,
   offersData,
-  { servingCurrency = null, cardListingId = '', withholdCardMoney = false } = {},
+  { servingCurrency = null, cardListingId = '', withholdCardMoney = false, onlyServingCurrency = false } = {},
 ) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
   let product = pdpPayload.product && typeof pdpPayload.product === 'object'
@@ -10510,7 +10514,7 @@ function hydrateCanonicalPdpPayloadFromOffers(
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   // Price and media are picked separately: media is product content and may be borrowed from any
   // offer, but the price must come from the offer whose seller the card then names.
-  const selectedOffer = pickOfferForCanonicalPdpPrice(offersData, { servingCurrency });
+  const selectedOffer = pickOfferForCanonicalPdpPrice(offersData, { servingCurrency, onlyServingCurrency });
   let selectedOfferImageUrls = collectOfferImageUrls(selectedOffer);
   if (!selectedOfferImageUrls.length) {
     const imageBearingOffer = offers.find((offer) => collectOfferImageUrls(offer).length > 0);
@@ -32632,7 +32636,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
         // has not been measured is a change without evidence.
         url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
         // The agent's declared market rides along (src/services/pdpDetailHop.js).
-        requestBody = unscopedDetailPdpRequest(pid, payload);
+        requestBody = unscopedDetailPdpRequest(pid, payload, options?.market);
       } else if (merchantScoped && pid.startsWith('sig_')) {
         // A merchant-scoped signature: the upstream per-merchant catalog is keyed by the PLATFORM product
         // id and cannot resolve a sig_, so translate it to THIS merchant's own source id before asking.
@@ -33540,7 +33544,7 @@ async function getCommerceRemoteMcpAdapter() {
         buildIntelKbKeys,
         intelIdentityProductId,
       } = require('./agentSignals/intelligenceReads');
-      const { makeRecommendProducts, classifyVerifyPriceResponse } = require('./agentSignals/recommendProducts');
+      const { makeRecommendProducts, classifyVerifyPriceResponse, withheldPriceOfVerifyResponse } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
@@ -33728,7 +33732,8 @@ async function getCommerceRemoteMcpAdapter() {
           // PDP's, not a catalog snapshot. Identity-free on purpose (no buyer_ref, no agent JWT): this
           // is a cached-read-class lookup and the upstream should see one identity, same rationale as
           // the cached search lane. The bridge bounds concurrency/latency and treats null as
-          // "unavailable" — so this function only ever answers {price, currency, in_stock} or null.
+          // "unavailable" — so this function only ever answers {price, currency, in_stock},
+          // {withheld_currency} (the page withheld a price in that currency) or null.
           verifyPrice: !['0', 'false', 'off'].includes(String(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_ENABLED || '').trim().toLowerCase())
             ? async ({ product_id: productId }) => {
               const pid = String(productId || '').trim();
@@ -33768,7 +33773,9 @@ async function getCommerceRemoteMcpAdapter() {
               const classified = classifyVerifyPriceResponse(response.status, response.data);
               if (classified !== undefined) return classified;
               const { product } = normalizePdpV2ToProductDetail(response.data);
-              if (!product || typeof product.price !== 'number') return null;
+              // No price: the page may have withheld one in another currency than the buyer's. Its unit is
+              // still a live read, and the shortlist's currency-switch rule needs it.
+              if (!product || typeof product.price !== 'number') return withheldPriceOfVerifyResponse(response.data);
               return { price: product.price, currency: product.currency, in_stock: product.in_stock };
             }
             : undefined,
@@ -47634,8 +47641,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalProductForPdp = stripSavingsPresentationFields(withholdCanonicalProductMoney(canonicalProductForPdp));
         }
       }
-      // THE BUYER'S CURRENCY ON THE PAGE (servingCurrencyGuard; Peng 2026-09-26: a price in another currency than
-      // the buyer's is a wrong price). The projection above serves only US/USD own money, but a page it does not
+      // THE BUYER'S CURRENCY ON THE PAGE (servingCurrencyGuard: a price in another currency than the buyer's is a
+      // wrong price). The projection above serves only US/USD own money, but a page it does not
       // cover -- a mirror seed, the identity-graph group page -- carries the selected listing's price in that
       // listing's own currency (an SG store's SGD on a US page). Only that money is withheld, never converted: the
       // page, its stock and its actions stay, so the card is still priced from an offer in the buyer's currency
@@ -48360,6 +48367,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             };
           }
         }
+        // The guard withheld this page's money for its currency: an offer quoting one in such a currency (the
+        // opened group member's own offer is kept whatever its currency) loses that money too, by the same rule.
+        // Its listing stays in the module; the card is not re-priced from it (hydrate's onlyServingCurrency).
+        if (offersData && pdpCurrencyGuard && Array.isArray(offersData.offers)) {
+          const offerCurrencies = new Set(pdpCurrencyGuard.withheld_currencies);
+          offersData = {
+            ...offersData,
+            offers: offersData.offers.map((offer) => {
+              const guardedOffer = withholdOffMarketMoney(offer, pdpServingCurrency);
+              if (!guardedOffer.withheld.length) return offer;
+              for (const code of guardedOffer.withheld) offerCurrencies.add(code);
+              return stripSavingsPresentationFields(guardedOffer.product);
+            }),
+          };
+          pdpCurrencyGuard = { withheld_currencies: [...offerCurrencies].sort() };
+        }
 
         if (offersData) {
           const offersCount = Number(offersData.offers_count);
@@ -48425,6 +48448,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData, {
             servingCurrency: pdpServingCurrency,
             withholdCardMoney: Boolean(canonicalOwnMoneyGap),
+            // The guard withheld this page's money for its currency: no offer in that currency re-prices it.
+            onlyServingCurrency: Boolean(pdpCurrencyGuard),
             // A sig_ card may carry no listing id of its own; the row it was resolved from names it.
             cardListingId:
               [canonicalProductForPdp?.source_product_id, canonicalProductRef?.product_id]

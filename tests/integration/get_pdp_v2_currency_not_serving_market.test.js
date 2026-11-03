@@ -125,6 +125,25 @@ describe('get_pdp_v2: money in another currency than the buyer market is withhel
     expect(res.body?.metadata?.current_own_offer_reason_code).toBeUndefined();
   });
 
+  test('the withholding is logged once, with ids and codes only', async () => {
+    const { app, db } = loadServer();
+    install(db, seedRow('SGD', 16));
+    const logger = require('../../src/logger');
+    const info = jest.spyOn(logger, 'info');
+    await pdp(app, {});
+    const lines = info.mock.calls.filter(([fields]) => fields?.event === 'pdp_currency_not_serving_market');
+    expect(lines).toHaveLength(1);
+    const [fields] = lines[0];
+    expect(fields).toEqual({
+      event: 'pdp_currency_not_serving_market',
+      serving_currency: 'USD',
+      withheld_currencies: ['SGD'],
+      merchant_id: OBS_MERCHANT,
+      source_system: expect.any(String),
+    });
+    info.mockRestore();
+  });
+
   test('the same seed for an SG buyer (market SG, SGD): priced in SGD, nothing withheld', async () => {
     const res = await servedPage('SGD', 'SG');
     expect(res.status).toBe(200);

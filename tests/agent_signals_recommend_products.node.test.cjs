@@ -935,7 +935,7 @@ test('6r. the server.js wiring actually consumes the classifier — the delivery
     'the verifyPrice wiring must classify through the exported function');
   assert.match(server, /if \(classified !== undefined\) return classified;/,
     'the wiring must RETURN the classification — reading it without returning is the no-op mutant');
-  assert.match(server, /makeRecommendProducts, classifyVerifyPriceResponse \} = require\('\.\/agentSignals\/recommendProducts'\)/,
+  assert.match(server, /makeRecommendProducts, classifyVerifyPriceResponse, withheldPriceOfVerifyResponse \} = require\('\.\/agentSignals\/recommendProducts'\)/,
     'the classifier must be the exported one, not a local copy that can drift');
 });
 
@@ -1917,6 +1917,40 @@ test('6n. a live check that moves the price to another currency withholds the ro
     assert.equal(res.metadata.price_verification.currency_switched, 2, label);
     assert.equal(res.metadata.price_verification.updated, 0, `${label}: a currency switch is not counted as an update`);
   }
+});
+
+// The same switch when the live page WITHHELD the price for its currency (get_pdp_v2's serving-currency guard):
+// the loopback names no market, so an AUD page answers no price, only `withheld_currency: 'AUD'`. That is still a
+// live read in AUD, so the USD-labelled row is withheld exactly as when the live price itself came back in AUD.
+test('6n-bis. a live page that withheld its price in another currency is the same currency switch', async () => {
+  const pick = { ...ITEM_FULL, sku: { product_id: 'sig_pick_aud', name: 'Model Pick' }, price: { amount: 30, currency: 'USD' } };
+  const filler = { ...ITEM_FULL, sku: { product_id: 'sig_fill_aud', name: 'Filler' }, price: { amount: 11.9, currency: 'USD' }, __pivota_score_basis: 'positional' };
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([pick, filler, ITEM_FULL, ITEM_INTERNAL]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => (product_id.endsWith('_aud')
+      ? { withheld_currency: 'AUD' }
+      : { price: product_id === 'sig_int' ? 18.5 : 35, currency: 'USD' }),
+  });
+  const res = await h({ payload: { need: 'exfoliant', limit: 2, constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_abc', 'sig_int']);
+  assert.equal(res.metadata.price_verification.currency_switched, 2);
+  assert.equal(res.metadata.price_verification.unavailable, 0, 'a withheld price in a known unit is not "unavailable"');
+});
+
+test('6n-ter. the loopback body maps to {withheld_currency} only when the page withheld exactly one currency', () => {
+  const { withheldPriceOfVerifyResponse } = require('../src/agentSignals/recommendProducts');
+  const guarded = (codes) => ({ metadata: { serving_currency_guard: { withheld_currencies: codes } } });
+  assert.deepEqual(withheldPriceOfVerifyResponse(guarded(['aud'])), { withheld_currency: 'AUD' });
+  assert.equal(withheldPriceOfVerifyResponse(guarded(['AUD', 'SGD'])), null, 'two units: which one is unknown');
+  assert.equal(withheldPriceOfVerifyResponse(guarded([])), null);
+  assert.equal(withheldPriceOfVerifyResponse(guarded([' '])), null);
+  for (const body of [null, {}, { metadata: {} }, { metadata: { serving_currency_guard: {} } }, 'x']) {
+    assert.equal(withheldPriceOfVerifyResponse(body), null);
+  }
+  // The server wiring reads this function, not a copy.
+  const source = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(source, /if \(!product \|\| typeof product\.price !== 'number'\) return withheldPriceOfVerifyResponse\(response\.data\);/);
 });
 
 test('6o. a currency the snapshot lacked is filled by the live check, and the same unit in another case is no switch', async () => {
