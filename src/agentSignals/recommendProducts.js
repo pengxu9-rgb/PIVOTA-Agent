@@ -700,7 +700,7 @@ function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {})
  *   generate: (args:object) => Promise<object>,   // Aurora routes.__internal.generateProductRecommendations
  *   buildAsk?: ({focus, constraints, lang}) => string, // routes.__internal.buildRecoGenerateUserAsk
  *   isEnabled?: () => boolean,                     // agent-surface flag (fail-closed when absent)
- *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|{withheld_currency}|{unresolvable:true}|null>,
+ *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|{withheld_currencies}|{unresolvable:true}|null>,
  *     // live PDP/offer lookup for a grounded item (server.js wires get_pdp_v2 over loopback); absent =
  *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all.
  *     // `{unresolvable:true}` means the lookup answered a DEFINITIVE not-found (the id is dead on the
@@ -1039,11 +1039,13 @@ function makeRecommendProducts(deps = {}) {
           return;
         }
         // The live page priced it in another currency than the buyer's, and withheld that price
-        // (get_pdp_v2's serving-currency guard): the live read's UNIT is still known, so a snapshot in
-        // another unit is the currency switch below, not an unavailable price.
-        const withheldCurrency = isPlainObject(live) ? str(live.withheld_currency).toUpperCase() : '';
+        // (get_pdp_v2's serving-currency guard): the live read's UNITS are still known, so a snapshot in
+        // none of them is the currency switch below, not an unavailable price.
+        const withheldCurrencies = isPlainObject(live) && Array.isArray(live.withheld_currencies)
+          ? live.withheld_currencies.map((code) => str(code).toUpperCase()).filter(Boolean)
+          : [];
         const snapshotUnit = str(product.currency).toUpperCase();
-        if (withheldCurrency && snapshotUnit && snapshotUnit !== withheldCurrency) {
+        if (withheldCurrencies.length && snapshotUnit && !withheldCurrencies.includes(snapshotUnit)) {
           currencySwitchedSignals.add(s);
           return;
         }
@@ -1359,20 +1361,20 @@ function classifyVerifyPriceResponse(status, body) {
 }
 
 /**
- * The verifyPrice answer for a 2xx loopback get_pdp_v2 body that carries no price: `{withheld_currency}` when
- * the page withheld exactly one currency's price (its serving-currency guard: the loopback names no market, so
- * the page is judged as the default market's), otherwise null ("price unavailable"). Pure, and exported so the
- * server.js wiring and its tests read the same line.
+ * The verifyPrice answer for a 2xx loopback get_pdp_v2 body that carries no price: `{withheld_currencies}` when
+ * the page withheld a price in one or more currencies (its serving-currency guard: the loopback names no market,
+ * so the page is judged as the default market's), otherwise null ("price unavailable"). Every withheld currency is
+ * named: a page that withheld AUD and JPY was still read live in units the snapshot may not share. Pure, and
+ * exported so the server.js wiring and its tests read the same line.
  * @param {any} body
- * @returns {{withheld_currency: string}|null}
+ * @returns {{withheld_currencies: string[]}|null}
  */
 function withheldPriceOfVerifyResponse(body) {
   const withheld = isPlainObject(body) && isPlainObject(body.metadata) && isPlainObject(body.metadata.serving_currency_guard)
     ? body.metadata.serving_currency_guard.withheld_currencies
     : null;
-  return Array.isArray(withheld) && withheld.length === 1 && str(withheld[0])
-    ? { withheld_currency: str(withheld[0]).toUpperCase() }
-    : null;
+  const codes = Array.isArray(withheld) ? [...new Set(withheld.map((code) => str(code).toUpperCase()).filter(Boolean))] : [];
+  return codes.length ? { withheld_currencies: codes } : null;
 }
 
 // markPriceViolation/markPriceUnverifiable are exported ONLY so a test can pin that they mutate

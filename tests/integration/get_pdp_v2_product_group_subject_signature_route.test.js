@@ -139,7 +139,7 @@ function seedDetailRow() {
   };
 }
 
-function install(db, { groupQueryThrows = false, signatureRowOverrides = {}, currentOwnMoneyRows } = {}) {
+function install(db, { groupQueryThrows = false, signatureRowOverrides = {}, currentOwnMoneyRows, seedRowOverrides = {} } = {}) {
   const seen = [];
   db.query.mockImplementation(async (sql, params) => {
     seen.push({ sql: String(sql || ''), params });
@@ -157,7 +157,7 @@ function install(db, { groupQueryThrows = false, signatureRowOverrides = {}, cur
     if (isExactSigQuery(sql)) {
       return { rows: params?.[0] === MINTED_SIG ? [{ ...mintedSignatureRow(), ...signatureRowOverrides }] : [] };
     }
-    if (isSeedDetailQuery(sql)) return { rows: [seedDetailRow()] };
+    if (isSeedDetailQuery(sql)) return { rows: [{ ...seedDetailRow(), ...seedRowOverrides }] };
     return { rows: [] };
   });
   return seen;
@@ -247,6 +247,31 @@ describe('get_pdp_v2 product_group subject -> member signature lane', () => {
       expect(JSON.stringify(res.body.modules)).not.toMatch(/"(amount|price|price_amount)":\s*"?62(\.0+)?"?[,}]/);
       expect(res.body.modules.some((m) => m?.type === 'price_promo')).toBe(false);
     }
+  });
+
+  // get_pdp_v2's serving-currency guard (servingCurrencyGuard.withholdOffMarketMoney) never runs on a page priced
+  // from the current own offer: that money is US/USD by construction, and the projection rewrites only the price
+  // fields, so a stale foreign label the seed still carries (a captured pricing.current, a price_currency) would
+  // make the guard withhold the page's own USD price.
+  test('a page priced from the current own offer keeps its USD price beside a stale SGD label', async () => {
+    const { app, db } = loadServerWithDb();
+    install(db, { seedRowOverrides: { seed_data: { brand: 'Tom Ford', description: 'lip color',
+      price_currency: 'SGD', pricing: { current: { amount: 80, currency: 'SGD' } } } } });
+    const res = await invoke(app, { product_ref: { product_id: MINTED_SIG } });
+    expect(res.status).toBe(200);
+    expect(res.body?.metadata?.serving_currency_guard).toBeUndefined();
+    const product = res.body.modules.find((m) => m?.type === 'canonical')?.data?.pdp_payload?.product;
+    expect(product?.price?.current).toEqual(expect.objectContaining({ amount: 62, currency: 'USD' }));
+  });
+
+  test('a page with no current own offer is not judged by the currency guard either', async () => {
+    const { app, db } = loadServerWithDb();
+    install(db, { currentOwnMoneyRows: [], seedRowOverrides: { seed_data: { brand: 'Tom Ford', description: 'lip color',
+      price_currency: 'SGD', pricing: { current: { amount: 80, currency: 'SGD' } } } } });
+    const res = await invoke(app, { product_ref: { product_id: MINTED_SIG } });
+    expect(res.status).toBe(200);
+    expect(res.body.metadata).toMatchObject({ current_own_offer_status: 'unavailable' });
+    expect(res.body?.metadata?.serving_currency_guard).toBeUndefined();
   });
 
   test('kill switch off restores the group lane (the pre-fix 404 on the slug)', async () => {

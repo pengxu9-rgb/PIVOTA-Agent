@@ -38,6 +38,6 @@ describe('the card is priced only from an offer in the buyer\'s currency once th
 
   test('get_pdp_v2 passes the guard\'s verdict to the hydrate step', () => {
     const source = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
-    expect(source).toMatch(/onlyServingCurrency: Boolean\(pdpCurrencyGuard\),/);
+    expect(source).toMatch(/onlyServingCurrency: Boolean\(pdpServingCurrency\),/);
   });
 });

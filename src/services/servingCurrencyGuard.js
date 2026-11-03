@@ -142,14 +142,37 @@ function ownRecord(product) {
 
 const PRODUCT_CURRENCY_LABELS = ['currency', 'currency_code', 'price_currency', 'priceCurrency'];
 
-// The money a record quotes: every amount field and the price objects. Currency labels stay (they price nothing).
+// The money a record quotes: every amount field and the price objects, and an offer's shipping cost (shipping.cost,
+// below). Currency labels stay (they price nothing).
 const PDP_MONEY_FIELDS = ['price', 'price_amount', 'priceAmount', 'current_price', 'currentPrice', 'price_min', 'price_max',
-  'pricing', 'compare_at_price', 'compareAtPrice', 'original_price', 'originalPrice', 'list_price'];
+  'pricing', 'compare_at_price', 'compareAtPrice', 'original_price', 'originalPrice', 'list_price', 'sale_price', 'salePrice',
+  'shipping_cost'];
+
+function withoutShippingCost(record) {
+  if (!isPlainObject(record.shipping) || !('cost' in record.shipping)) return record;
+  const { cost: _cost, ...shipping } = record.shipping;
+  return { ...record, shipping };
+}
 
 function withoutMoney(record) {
-  const next = { ...record };
+  const next = withoutShippingCost({ ...record });
   for (const field of PDP_MONEY_FIELDS) delete next[field];
   return next;
+}
+
+// A record quotes money when it has a price, or a sale price alone.
+function quotesPdpMoney(record) {
+  return Boolean(resolveCanonicalSearchProductPrice(record)) || quotesAPrice(record)
+    || present(record.sale_price) || present(record.salePrice);
+}
+
+// The currency an offer's shipping cost states, when it is not the serving one (the offer builder writes the cost as
+// {amount, currency}, in the offer's currency unless the seller named its own).
+function offMarketShippingCurrency(record, currency) {
+  const cost = isPlainObject(record.shipping) ? record.shipping.cost : null;
+  if (!isPlainObject(cost) || !present(cost.currency) || !present(cost.amount)) return null;
+  const code = String(cost.currency).trim().toUpperCase();
+  return code !== currency ? code : null;
 }
 
 /**
@@ -176,7 +199,7 @@ function withholdOffMarketMoney(product, servingCurrency) {
   // A variant that states no currency is priced in the product's: the builder labels it with that one.
   const inherited = [...statedCurrencies(own)];
   const offOf = (record, fallback) => {
-    if (!isPlainObject(record) || (!resolveCanonicalSearchProductPrice(record) && !quotesAPrice(record))) return [];
+    if (!isPlainObject(record) || !quotesPdpMoney(record)) return [];
     const stated = [...statedCurrencies(record)];
     return (stated.length ? stated : fallback).filter((code) => code !== currency);
   };
@@ -188,13 +211,19 @@ function withholdOffMarketMoney(product, servingCurrency) {
   const headlineOffCurrencies = offOf(own, []);
   for (const code of headlineOffCurrencies) withheld.add(code);
   const headlineOff = headlineOffCurrencies.length > 0;
-  const next = headlineOff ? withoutMoney(withoutVariants(product)) : withoutVariants(product);
+  let next = headlineOff ? withoutMoney(withoutVariants(product)) : withoutVariants(product);
+  // A price in the serving currency with a shipping cost in another: the cost goes, the price stays.
+  const shippingOff = headlineOff ? null : offMarketShippingCurrency(own, currency);
+  if (shippingOff) {
+    withheld.add(shippingOff);
+    next = withoutShippingCost(next);
+  }
   let variantKeptMoney = false;
   if (Array.isArray(product.variants)) {
     next.variants = product.variants.map((variant) => {
       if (!isPlainObject(variant)) return variant;
       const kept = strip(variant, inherited);
-      if (kept === variant && (resolveCanonicalSearchProductPrice(variant) || quotesAPrice(variant))) variantKeptMoney = true;
+      if (kept === variant && quotesPdpMoney(variant)) variantKeptMoney = true;
       return kept;
     });
   }

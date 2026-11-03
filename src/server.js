@@ -501,6 +501,7 @@ const {
 const {
   recordPdpV2ModuleLatency,
   recordSimilarDeferred,
+  recordPdpCurrencyGuardUnjudged,
 } = require('./observability/pdpMetrics');
 const { normalizeQueryStepStrength } = require('./shared/recommendationDecisionCapability');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
@@ -33733,7 +33734,7 @@ async function getCommerceRemoteMcpAdapter() {
           // is a cached-read-class lookup and the upstream should see one identity, same rationale as
           // the cached search lane. The bridge bounds concurrency/latency and treats null as
           // "unavailable" — so this function only ever answers {price, currency, in_stock},
-          // {withheld_currency} (the page withheld a price in that currency) or null.
+          // {withheld_currencies} (the page withheld a price in those currencies) or null.
           verifyPrice: !['0', 'false', 'off'].includes(String(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_ENABLED || '').trim().toLowerCase())
             ? async ({ product_id: productId }) => {
               const pid = String(productId || '').trim();
@@ -47649,6 +47650,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // when one exists (hydrateCanonicalPdpPayloadFromOffers). Own money and an own-money gap are untouched.
       let pdpCurrencyGuard = null;
       if (!canonicalOwnMoney && !canonicalOwnMoneyGap) {
+        // No serving currency (withholdOffMarketMoney's doc): nothing on this page is judged. Counted.
+        if (!pdpServingCurrency) recordPdpCurrencyGuardUnjudged({ reason: 'no_serving_currency' });
         const guarded = withholdOffMarketMoney(canonicalProductForPdp, pdpServingCurrency);
         if (guarded.withheld.length) {
           canonicalProductForPdp = stripSavingsPresentationFields(guarded.product);
@@ -48367,11 +48370,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             };
           }
         }
-        // The guard withheld this page's money for its currency: an offer quoting one in such a currency (the
-        // opened group member's own offer is kept whatever its currency) loses that money too, by the same rule.
-        // Its listing stays in the module; the card is not re-priced from it (hydrate's onlyServingCurrency).
-        if (offersData && pdpCurrencyGuard && Array.isArray(offersData.offers)) {
-          const offerCurrencies = new Set(pdpCurrencyGuard.withheld_currencies);
+        // An offer quoting money in another currency than the buyer's loses it, by the guard's rule, whether or not
+        // the card's own money was withheld: the opened group member's own offer is kept whatever its currency
+        // (an UNPRICED card would otherwise be priced from it). Its listing stays in the module; the card is not
+        // re-priced from it (hydrate's onlyServingCurrency).
+        if (offersData && pdpServingCurrency && Array.isArray(offersData.offers)) {
+          const cardCurrencies = pdpCurrencyGuard ? pdpCurrencyGuard.withheld_currencies : [];
+          const offerCurrencies = new Set();
           offersData = {
             ...offersData,
             offers: offersData.offers.map((offer) => {
@@ -48381,7 +48386,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               return stripSavingsPresentationFields(guardedOffer.product);
             }),
           };
-          pdpCurrencyGuard = { withheld_currencies: [...offerCurrencies].sort() };
+          if (offerCurrencies.size) {
+            pdpCurrencyGuard = { withheld_currencies: [...new Set([...cardCurrencies, ...offerCurrencies])].sort() };
+            logger.info(
+              {
+                event: 'pdp_currency_not_serving_market',
+                scope: 'offers',
+                serving_currency: pdpServingCurrency,
+                withheld_currencies: [...offerCurrencies].sort(),
+                merchant_id: canonicalProductRef?.merchant_id || null,
+                source_system: canonicalProductRef?.source_system || null,
+              },
+              'PDP offer money in another currency than the buyer market was withheld',
+            );
+          }
         }
 
         if (offersData) {
@@ -48448,8 +48466,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData, {
             servingCurrency: pdpServingCurrency,
             withholdCardMoney: Boolean(canonicalOwnMoneyGap),
-            // The guard withheld this page's money for its currency: no offer in that currency re-prices it.
-            onlyServingCurrency: Boolean(pdpCurrencyGuard),
+            // The buyer's currency is known: no offer in another one prices the card (priced or not).
+            onlyServingCurrency: Boolean(pdpServingCurrency),
             // A sig_ card may carry no listing id of its own; the row it was resolved from names it.
             cardListingId:
               [canonicalProductForPdp?.source_product_id, canonicalProductRef?.product_id]

@@ -93,6 +93,17 @@ describe('get_pdp_v2 currency guard: product-level currency', () => {
     expect(page.card).toEqual(expect.objectContaining({ current: { amount: 42, currency: 'CAD' } }));
   });
 
+  test('a market with no serving currency judges nothing, and the page is counted as unjudged', async () => {
+    const metrics = require('../../src/observability/pdpMetrics');
+    metrics.__resetPdpMetricsForTest();
+    const page = await pdpFor(productOf('cad_variants_without_currency'), { market: 'DE' });
+    expect(page.guard).toBeUndefined();
+    expect(page.card).toEqual(expect.objectContaining({ current: { amount: 42, currency: 'CAD' } }));
+    expect(metrics.renderPdpMetricsPrometheus()).toMatch(/^pdp_currency_guard_unjudged_total\{reason="no_serving_currency"\} 1$/m);
+    await pdpFor(productOf('usd_control'));
+    expect(metrics.renderPdpMetricsPrometheus()).toMatch(/^pdp_currency_guard_unjudged_total\{reason="no_serving_currency"\} 1$/m);
+  });
+
   test('a USD product is untouched', async () => {
     const page = await pdpFor(productOf('usd_control'));
     expect(page.guard).toBeUndefined();

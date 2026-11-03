@@ -154,3 +154,43 @@ test('the withheld currencies are reported sorted and de-duplicated', () => {
   };
   assert.deepEqual(withholdOffMarketMoney(product, 'USD').withheld, ['AUD', 'JPY', 'SGD']);
 });
+
+test('an offer quoting only a sale price is judged, and its sale price goes', () => {
+  const { product: next, withheld } = withholdOffMarketMoney({ offer_id: 'o', sale_price: 16, salePrice: 16, currency: 'SGD' }, 'USD');
+  assert.deepEqual(withheld, ['SGD']);
+  assert.equal(next.sale_price, undefined);
+  assert.equal(next.salePrice, undefined);
+  assert.equal(next.offer_id, 'o');
+  assert.deepEqual(withholdOffMarketMoney({ offer_id: 'o', sale_price: 16, currency: 'USD' }, 'USD').withheld, []);
+});
+
+test('a withheld offer loses its shipping cost; the rest of its shipping stays', () => {
+  const offer = { offer_id: 'o', price: { amount: 16, currency: 'SGD' }, shipping_cost: 5,
+    shipping: { method_label: 'Standard', eta_days_range: [3, 5], cost: { amount: 5, currency: 'SGD' } } };
+  const { product: next, withheld } = withholdOffMarketMoney(offer, 'USD');
+  assert.deepEqual(withheld, ['SGD']);
+  assert.deepEqual(next.shipping, { method_label: 'Standard', eta_days_range: [3, 5] });
+  assert.equal(next.shipping_cost, undefined);
+});
+
+test('a price in the serving currency with a shipping cost in another: only the cost goes, and it is reported', () => {
+  const offer = { offer_id: 'o', price: { amount: 10, currency: 'USD' }, shipping: { method_label: 'Air', cost: { amount: 5, currency: 'SGD' } } };
+  const { product: next, withheld } = withholdOffMarketMoney(offer, 'USD');
+  assert.deepEqual(withheld, ['SGD']);
+  assert.deepEqual(next.price, { amount: 10, currency: 'USD' });
+  assert.deepEqual(next.shipping, { method_label: 'Air' });
+  const usdShipping = { ...offer, shipping: { cost: { amount: 5, currency: 'usd' } } };
+  assert.equal(withholdOffMarketMoney(usdShipping, 'USD').product, usdShipping, 'a cost in the serving currency is untouched');
+  const unlabelled = { ...offer, shipping: { cost: { amount: 5 } } };
+  assert.equal(withholdOffMarketMoney(unlabelled, 'USD').product, unlabelled, 'a cost stating no currency is not judged');
+});
+
+test('pdp metrics: a page left unjudged for want of a serving currency is counted', () => {
+  const metrics = require('../src/observability/pdpMetrics');
+  metrics.__resetPdpMetricsForTest();
+  metrics.recordPdpCurrencyGuardUnjudged({ reason: 'no_serving_currency' });
+  metrics.recordPdpCurrencyGuardUnjudged();
+  assert.match(metrics.renderPdpMetricsPrometheus(), /^pdp_currency_guard_unjudged_total\{reason="no_serving_currency"\} 2$/m);
+  metrics.__resetPdpMetricsForTest();
+  assert.doesNotMatch(metrics.renderPdpMetricsPrometheus(), /pdp_currency_guard_unjudged_total\{/);
+});

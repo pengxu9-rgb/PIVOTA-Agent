@@ -34,6 +34,10 @@ const ORIGINAL_FETCH = global.fetch;
 let CUR = 'SGD';
 // The member offer's own currency, when a case gives it one apart from the page's.
 let OFFER_CUR = null;
+// false: the card itself quotes no price (the seed and the group row carry none); only the member offer does.
+let CARD_PRICED = true;
+// Savings copy (pdp SAVINGS_PRESENTATION_FIELDS) on the card and on the member offer, when a case asks for it.
+let SAVINGS = null;
 
 // Unroutable on purpose (as in get_pdp_v2_caller_requested_merchant): every upstream leg on the
 // PDP route is wrapped in a catch, so a dead base proves the page came from the mocked DB. The ops
@@ -224,7 +228,12 @@ function testBrandGroupRow() {
     category_path: null,
     canonical_url: TEST_BRAND_PDP,
     product_image_url: 'https://cdn.example.com/headphone.png',
-    product_payload: { title: 'Test Headphone', brand: 'Test Brand', price_amount: 229.99, currency: CUR },
+    product_payload: {
+      ...(CARD_PRICED
+        ? { title: 'Test Headphone', brand: 'Test Brand', price_amount: 229.99, currency: CUR }
+        : { title: 'Test Headphone', brand: 'Test Brand' }),
+      ...(SAVINGS || {}),
+    },
     pdp_lifecycle_stage: 'published',
     pivota_signature_id: 'sig_ca228ffe2b666f5c9e73a364c7bb30ba',
     pivota_canonical_url: null,
@@ -247,8 +256,8 @@ function testBrandSeedRow(destination) {
     domain: TEST_BRAND_HOST,
     title: 'Test Headphone',
     image_url: 'https://cdn.example.com/headphone.png',
-    price_amount: 229.99,
-    price_currency: CUR,
+    price_amount: CARD_PRICED ? 229.99 : null,
+    price_currency: CARD_PRICED ? CUR : null,
     availability: 'in_stock',
     attached_product_key: `prod::${OBS_MERCHANT}::external_seed::${OBS_PRODUCT}`,
     seed_data: { title: 'Test Headphone', brand: 'Test Brand', description: 'Bone conduction.', category: 'electronics' },
@@ -282,6 +291,7 @@ function testBrandListingRow(destination) {
       in_stock: true,
       destination_url: destination,
       catalog_offer_v1: { offer_id: 'co_1', sku_key: 'sku_1', source_system: 'x', source_ref: 'y' },
+      ...(SAVINGS || {}),
     },
     variant_axes: {},
     source_meta: {},
@@ -413,6 +423,81 @@ describe('get_pdp_v2 currency guard: the group page is not re-priced from an off
       OFFER_CUR = null;
     }
   });
+
+  // The card quotes no price of its own, so the guard has nothing of the card's to withhold: the member offer
+  // is judged on its own, and it is not what prices the card (a US or market-less buyer used to get SGD 229.99
+  // with Buy here, and no guard metadata at all).
+  for (const metadata of [undefined, { market: 'US' }]) {
+    test(`an unpriced card is not priced from an SGD member offer, ${metadata ? 'market US' : 'no market'}`, async () => {
+      CUR = 'SGD'; CARD_PRICED = false;
+      try {
+        const { app, db } = loadServer({ MERCHANT_PURCHASABILITY_GATE_ENABLED: 'false' });
+        installOpsBackend({ enforced: false });
+        installGroupDb(db, { destination: TEST_BRAND_PDP });
+        const res = await testBrandPdp(app, { metadata });
+        expect(res.status).toBe(200);
+        const page = pageOf(res);
+        expect(page.guard).toEqual({ withheld_currencies: ['SGD'] });
+        expect(page.card).toBeUndefined();
+        expect(page.actions).toEqual([]);
+        expect(page.offerPrices).toEqual([null]);
+        expect(JSON.stringify(res.body.modules)).not.toContain('229.99');
+      } finally {
+        CARD_PRICED = true;
+      }
+    });
+  }
+
+  test('an unpriced card for an SG buyer is still priced from the SGD member offer', async () => {
+    CUR = 'SGD'; CARD_PRICED = false;
+    try {
+      const { app, db } = loadServer({ MERCHANT_PURCHASABILITY_GATE_ENABLED: 'false' });
+      installOpsBackend({ enforced: false });
+      installGroupDb(db, { destination: TEST_BRAND_PDP });
+      const res = await testBrandPdp(app, { metadata: { market: 'SG' } });
+      expect(res.status).toBe(200);
+      const page = pageOf(res);
+      expect(page.guard).toBeUndefined();
+      expect(page.card).toEqual(expect.objectContaining({ current: expect.objectContaining({ amount: 229.99, currency: 'SGD' }) }));
+      expect(page.offerPrices).toEqual([{ amount: 229.99, currency: 'SGD' }]);
+    } finally {
+      CARD_PRICED = true;
+    }
+  });
+
+  // The savings copy is money talk in the withheld currency ("save SGD 20 with card X"): it goes with the card's
+  // money. For an SG buyer it stays, which shows the fixture carries it to the card. (A seed member's offer never
+  // carries it: projectExternalSeedOfferPayload strips it when the offer is built.)
+  const SAVINGS_COPY = {
+    payment_offer_summary: { headline: 'Save SGD 20 with a partner card' },
+    promotion_lines: ['SGD 20 off orders over SGD 200'],
+  };
+  const cardSavingsOf = (res) => {
+    const pdp = (res.body.modules || []).find((m) => m.type === 'canonical')?.data?.pdp_payload || {};
+    return Object.keys(SAVINGS_COPY).filter((k) => pdp.product && pdp.product[k] !== undefined);
+  };
+  for (const [market, expectGuard] of [[undefined, true], ['SG', false]]) {
+    test(`savings copy on an SGD card: ${expectGuard ? 'withheld with the money' : 'kept for an SG buyer'}`, async () => {
+      CUR = 'SGD'; SAVINGS = SAVINGS_COPY;
+      try {
+        const { app, db } = loadServer({ MERCHANT_PURCHASABILITY_GATE_ENABLED: 'false' });
+        installOpsBackend({ enforced: false });
+        installGroupDb(db, { destination: TEST_BRAND_PDP });
+        const res = await testBrandPdp(app, { metadata: market ? { market } : undefined });
+        expect(res.status).toBe(200);
+        if (expectGuard) {
+          expect(res.body?.metadata?.serving_currency_guard).toEqual({ withheld_currencies: ['SGD'] });
+          expect(cardSavingsOf(res)).toEqual([]);
+          expect(JSON.stringify(res.body.modules)).not.toContain('Save SGD 20');
+        } else {
+          expect(res.body?.metadata?.serving_currency_guard).toBeUndefined();
+          expect(cardSavingsOf(res)).toEqual(Object.keys(SAVINGS_COPY));
+        }
+      } finally {
+        SAVINGS = null;
+      }
+    });
+  }
 
   test('SGD member offer for an SG buyer: priced in SGD, no guard', async () => {
     CUR = 'SGD';
