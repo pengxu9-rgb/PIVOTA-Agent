@@ -1003,6 +1003,12 @@ async function runRoutineJob(
         stderr_tail: tailOutput(result.stderr),
       };
       summary.steps.push(record);
+      if (step.id === 'build') {
+        // The build's contained write failures (rows refused for their data, integrity violations):
+        // copied up so the sync summary and the run ledger carry them; the build's own report lives in
+        // this container's /tmp. Read on failure too: the build writes its report before failing.
+        Object.assign(summary, buildWriteFailureMetrics(step.artifact));
+      }
       if (step.id === 'ai_review') {
         try {
           Object.assign(summary, reviewReader(step.artifact, { required: result.exitCode === 0 }));
@@ -1164,6 +1170,27 @@ async function runRoutineJob(
   }
 }
 
+const BUILD_WRITE_FAILURE_KEYS = ['write_failed_count', 'attempted_write_count', 'write_integrity_violation_count', 'write_failed_by_code'];
+function buildWriteFailureMetrics(artifactPath) {
+  try {
+    const report = artifactPath ? readJsonFile(artifactPath) : null;
+    const buildSummary = report && report.summary ? report.summary : {};
+    return Object.fromEntries(BUILD_WRITE_FAILURE_KEYS.filter((key) => buildSummary[key] != null)
+      .map((key) => [`build_${key}`, buildSummary[key]]));
+  } catch (_err) {
+    return {}; // no report (a dry run, or a build that died before writing one): nothing to copy
+  }
+}
+
+// The build's RELGRAPH_BUILD_WRITE_FAILED line (contained row failures), relayed from its stderr tail
+// for the same reason as the readiness line below: otherwise it never reaches the container's logs.
+const BUILD_WRITE_FAILURE_LINE = /^\{"severity":"(?:WARNING|ERROR)","message":"RELGRAPH_BUILD_WRITE_FAILED".*\}$/gm;
+function buildWriteFailureRelayLine(summary) {
+  const build = Array.isArray(summary?.steps) ? summary.steps.find((step) => step && step.id === 'build') : null;
+  const lines = String(build?.stderr_tail || '').match(BUILD_WRITE_FAILURE_LINE);
+  return lines ? lines[lines.length - 1] : '';
+}
+
 // The build writes its evidence-readiness status as its last stderr line, but a step's output is
 // kept only in this job's summary file (in the container's /tmp). The sync routine that spawns
 // this job logs only our own stderr tail, so the line is re-emitted here, or it never reaches the
@@ -1183,6 +1210,8 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   }
   const summary = await runRoutineJob(options, deps);
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  const writeFailures = buildWriteFailureRelayLine(summary);
+  if (writeFailures) process.stderr.write(`${writeFailures}\n`);
   // Last on stderr, so it ends the tail the sync routine keeps.
   const readiness = evidenceReadinessRelayLine(summary);
   if (readiness) process.stderr.write(`${readiness}\n`);
@@ -1199,6 +1228,8 @@ if (require.main === module) {
       // nothing about why that step exited non-zero.
       // A later step can fail after the build reported readiness: relay it first, so the failure
       // report stays at the end of the tail.
+      const writeFailures = buildWriteFailureRelayLine(err && err.summary);
+      if (writeFailures) process.stderr.write(`${writeFailures}\n`);
       const readiness = evidenceReadinessRelayLine(err && err.summary);
       if (readiness) process.stderr.write(`${readiness}\n`);
       process.stderr.write(`${formatRoutineFailure(err)}\n`);
@@ -1212,6 +1243,8 @@ if (require.main === module) {
 
 module.exports = {
   evidenceReadinessRelayLine,
+  buildWriteFailureRelayLine,
+  buildWriteFailureMetrics,
   main,
   APPLY_CONFIRM_TOKEN,
   RUN_SCOPE_CLOCK_SKEW_MS,

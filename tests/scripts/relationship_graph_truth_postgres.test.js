@@ -315,4 +315,18 @@ postgresDescribe('truthful writes and serving metrics on throwaway local Postgre
     await upsertRelationshipCandidateLabel(row, { queryFn });
     expect(await rememberReviewError({ id: row.id }, { consecutive: 1 }, queryFn)).toBeNull();
   });
+
+  // Row containment (2026-11-02): one refused row in a candidate's transaction must not abort it.
+  test('in a real transaction a refused row rolls back to its savepoint and the rest of the group commits', async () => {
+    const rows = ['ok1', 'bad', 'ok2'].map((id) => ({ ...edge(`contain_${id}`, 'shared_candidate', 'competitive_alternative') }));
+    // The real refusal: hand Postgres malformed JSON for the bad row's candidate_snapshot ($7).
+    const injecting = { query: (sql, params) => client.query(sql, /INSERT INTO relationship_candidate_labels/.test(sql) && params[0] === rows[1].id
+      ? params.map((p, i) => (i === 6 ? '{"title": "broken' : p)) : params) };
+    const result = await persistEdgesWithGlobalFanInCap({ edges: rows, cap: 8, queryFn, runInClient: async (fn) => fn(injecting) });
+    expect(result.failed).toEqual([expect.objectContaining({ edge_id: rows[1].id, code: '22P02' })]);
+    expect(result.applied).toBe(2);
+    const stored = (await client.query('SELECT id FROM relationship_candidate_labels ORDER BY id')).rows.map((r) => r.id);
+    expect(stored).toEqual([rows[0].id, rows[2].id].sort());
+    expect((await client.query('SELECT 1 AS alive')).rows).toEqual([{ alive: 1 }]);
+  });
 });

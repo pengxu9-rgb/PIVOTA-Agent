@@ -1216,10 +1216,9 @@ async function main() {
   let prefilterPassed = 0;
   let prefilterSkipped = 0;
   let fanInCappedAtWrite = 0;
+  let writeFailed = [];
+  let attemptedWrites = 0;
   if (hasFlag('apply')) {
-    if (hasFlag('prioritize-uncovered')) {
-      await recordAnchorAttempts({ anchors: payload.anchors || [], market, queryFn: query });
-    }
     const classify = (edge) => {
       const classification = classifyEdgeForPrefilter({
         edge,
@@ -1242,7 +1241,19 @@ async function main() {
     applied = persisted.applied;
     skippedProtected = persisted.skipped_protected;
     fanInCappedAtWrite = persisted.dropped.length;
-    const removedAtWrite = [...persisted.dropped, ...persisted.skipped];
+    writeFailed = persisted.failed || [];
+    attemptedWrites = persisted.attempted || 0;
+    // Stamped after the writes, and only when the build will pass: a build that dies mid-write, or fails
+    // its write gates below, leaves its anchors unstamped, so they are not put in the uncovered cooldown
+    // (7 days) with no labels to show for it.
+    const writesFailTheBuild = writeFailureGateExceeded({ failed: writeFailed.length, attempted: attemptedWrites })
+      || writeFailed.some((row) => row.integrity);
+    if (hasFlag('prioritize-uncovered') && !writesFailTheBuild) {
+      await recordAnchorAttempts({ anchors: payload.anchors || [], market, queryFn: query });
+    }
+    const removedAtWrite = [...persisted.dropped, ...persisted.skipped,
+      ...writeFailed.map((row) => ({ anchor_ref: row.anchor_ref, candidate_ref: row.candidate_ref, errors: [`write_failed:${row.code}`],
+        metrics: { relation_type: row.relation_type } }))];
     if (removedAtWrite.length) {
       const keys = new Set(removedAtWrite.map((row) => edgePairKey(row.anchor_ref, row.candidate_ref, row.metrics.relation_type)));
       report.edges = report.edges.filter((edge) => !keys.has(edgePairKey(edge.anchor_ref, edge.candidate_product_ref, edge.relation_type)));
@@ -1284,8 +1295,15 @@ async function main() {
       fan_in_capped_at_write_count_global: fanInCappedAtWrite,
       fan_in_skipped_unwritable_count_global: globalCap.skipped.length,
       fan_in_queued_fresh_days: fanInQueuedFreshDays,
+      write_failed_count: writeFailed.length,
+      attempted_write_count: attemptedWrites,
+      write_integrity_violation_count: writeFailed.filter((row) => row.integrity).length,
+      write_failed_by_code: writeFailed.reduce((acc, row) => { acc[row.code] = (acc[row.code] || 0) + 1; return acc; }, {}),
     },
   };
+  const writeGateFailed = writeFailureGateExceeded({ failed: writeFailed.length, attempted: attemptedWrites });
+  const integrityViolations = writeFailed.filter((row) => row.integrity);
+  const failureLine = writeFailureLine(writeFailed, { attempted: attemptedWrites, gateFailed: writeGateFailed });
   if (hasFlag('require-anchors') && Number(finalReport.summary.anchor_count || 0) <= 0) {
     const err = new Error('product_relationship_graph_builder_zero_anchors');
     err.summary = finalReport.summary;
@@ -1302,10 +1320,25 @@ async function main() {
     fs.writeFileSync(outPath, `${JSON.stringify(finalReport, null, 2)}\n`, 'utf8');
   }
   process.stdout.write(`${JSON.stringify(finalReport.summary, null, 2)}\n`);
+  if (failureLine) process.stderr.write(failureLine);
   // The summary above carries evidence_readiness, but a routine keeps only the tail of each step's
   // output, so the readiness status gets one line of its own on stderr, last (stderr_tail).
   const evidenceLine = evidenceReadinessStatusLine(finalReport.summary.source_diagnostics?.evidence_readiness);
   if (evidenceLine) process.stderr.write(`${evidenceLine}\n`);
+  if (integrityViolations.length) {
+    const err = new Error(`relationship graph build: ${integrityViolations.length} label writes hit an integrity violation `
+      + `(${[...new Set(integrityViolations.map((row) => row.code))].join(', ')}); the other rows were written. A code bug, not bad data`);
+    err.code = 'RELGRAPH_BUILD_INTEGRITY_VIOLATION';
+    err.summary = finalReport.summary;
+    throw err;
+  }
+  if (writeGateFailed) {
+    const err = new Error(`relationship graph build: ${writeFailed.length} of ${attemptedWrites} label writes failed `
+      + `(every write, or more than ${WRITE_FAILURE_MAX_RATE * 100}% and at least ${WRITE_FAILURE_MIN_ROWS}); not a few bad rows`);
+    err.code = 'RELGRAPH_BUILD_WRITE_FAILURE_RATE';
+    err.summary = finalReport.summary;
+    throw err;
+  }
 }
 
 // Write path for one build. Non-capped relations (related_product, niche_specialist) upsert
@@ -1320,6 +1353,35 @@ function edgePairKey(anchorRef, candidateRef, relationType) {
 
 const COUNTING_LABEL_STATES = new Set(['generated', 'review_ready']);
 
+// ONE BAD ROW DOES NOT FAIL THE NIGHT (2026-11-02). A label write that fails because of the row's own
+// DATA is skipped and counted: Postgres data exceptions (class 22: bad JSON, NUL, out-of-range) and the
+// writer's own validation refusals. Integrity violations (class 23: a unique, foreign-key, not-null or
+// check violation) are rolled back per row too, so the rest still writes, but they point at a code bug
+// (two pairs sharing one id hit the primary key, which ON CONFLICT does not cover), so any of them
+// FAILS the build at the end, loudly. Anything else (a lost connection, a timeout, an aborted
+// transaction, out of resources) is the database's or the job's and fails the build at once. On
+// 2026-11-02 one label with half an emoji in its snapshot aborted the build and so the whole night.
+const ROW_DATA_ERROR_CODES = new Set(['INVALID_LABEL_STATE', 'LABEL_MISSING_IDENTITY', 'INVALID_PRODUCT_RELATIONSHIP_EDGE',
+  'MISSING_PREFILTER_REASONS']);
+function isIntegrityViolation(err) {
+  const code = err && typeof err.code === 'string' ? err.code : '';
+  return /^23[0-9A-Z]{3}$/.test(code);
+}
+function isRowDataError(err) {
+  const code = err && typeof err.code === 'string' ? err.code : '';
+  return ROW_DATA_ERROR_CODES.has(code) || /^22[0-9A-Z]{3}$/.test(code) || isIntegrityViolation(err);
+}
+// The build fails anyway when row failures stop looking like a few bad rows: at least
+// WRITE_FAILURE_MIN_ROWS of them AND more than WRITE_FAILURE_MAX_RATE of the attempted writes, or
+// every write failed (a small build that wrote nothing is not "a few bad rows" either).
+const WRITE_FAILURE_MIN_ROWS = 20;
+const WRITE_FAILURE_MAX_RATE = 0.05;
+const WRITE_FAILURE_SAMPLE_LIMIT = 20;
+function writeFailureGateExceeded({ failed = 0, attempted = 0 } = {}, { minRows = WRITE_FAILURE_MIN_ROWS, maxRate = WRITE_FAILURE_MAX_RATE } = {}) {
+  if (attempted > 0 && failed === attempted) return true;
+  return failed >= minRows && attempted > 0 && failed / attempted > maxRate;
+}
+
 async function persistEdgesWithGlobalFanInCap({
   edges = [],
   market = 'US',
@@ -1331,13 +1393,19 @@ async function persistEdgesWithGlobalFanInCap({
 } = {}) {
   let applied = 0;
   let skippedProtected = 0;
+  let attempted = 0;
   const dropped = [];
   const skipped = [];
+  const failed = [];
   // Classification comes first: it decides the label_state a row will land in, and only rows
   // that land in a counting state may spend a fan-in slot.
   const classified = edges.map((edge) => ({ edge, classification: classify(edge) }));
-  const upsert = async ({ edge, classification }, queryFnForRow) => {
+  // inTransaction: the row is written inside a candidate group's transaction, where a failed statement
+  // aborts the whole transaction, so each row gets a savepoint and a bad row rolls back only itself.
+  const upsert = async ({ edge, classification }, queryFnForRow, { inTransaction = false } = {}) => {
+    attempted += 1;
     let result;
+    if (inTransaction) await queryFnForRow('SAVEPOINT relgraph_label_row');
     try {
       result = await upsertRelationshipCandidateLabel({
         ...edge,
@@ -1346,15 +1414,23 @@ async function persistEdgesWithGlobalFanInCap({
         prefilter_reasons: classification.prefilter_reasons,
       }, { queryFn: queryFnForRow });
     } catch (err) {
+      const row = { edge_id: edge.id || null, anchor_ref: edge.anchor_ref || null,
+        candidate_ref: edge.candidate_product_ref || null, relation_type: edge.relation_type || null,
+        label_state: classification.label_state || null };
+      if (isRowDataError(err)) {
+        if (inTransaction) await queryFnForRow('ROLLBACK TO SAVEPOINT relgraph_label_row');
+        // Known cost: a capped row that fails here already spent its fan-in slot (the cap was decided
+        // for the group first), so the candidate gets one fewer new anchor this run; the next build
+        // recounts from what is stored.
+        failed.push({ ...row, code: err.code, ...(isIntegrityViolation(err) ? { integrity: true } : {}) });
+        return;
+      }
       // Name the row that failed, so the night's log says which pair and why (2026-11-02: the
       // failure printed only "invalid input syntax for type json" and a stack).
-      if (err && typeof err === 'object' && !err.relgraph_write) {
-        err.relgraph_write = { edge_id: edge.id || null, anchor_ref: edge.anchor_ref || null,
-          candidate_ref: edge.candidate_product_ref || null, relation_type: edge.relation_type || null,
-          label_state: classification.label_state || null };
-      }
+      if (err && typeof err === 'object' && !err.relgraph_write) err.relgraph_write = row;
       throw err;
     }
+    if (inTransaction) await queryFnForRow('RELEASE SAVEPOINT relgraph_label_row');
     if (result.written) applied += 1;
     else skippedProtected += 1;
   };
@@ -1385,7 +1461,7 @@ async function persistEdgesWithGlobalFanInCap({
         const decision = capCandidateFanInGlobal(counting, stored, { cap });
         for (const edge of decision.kept) {
           // eslint-disable-next-line no-await-in-loop
-          await upsert(byKey.get(edgePairKey(edge.anchor_ref, edge.candidate_product_ref, edge.relation_type)), clientQuery);
+          await upsert(byKey.get(edgePairKey(edge.anchor_ref, edge.candidate_product_ref, edge.relation_type)), clientQuery, { inTransaction: true });
         }
         // Non-counting rows (prefilter_rejected) take no slot; they are written unless the stored
         // row cannot be changed by a builder write (then the upsert would no-op anyway).
@@ -1397,7 +1473,7 @@ async function persistEdgesWithGlobalFanInCap({
             continue;
           }
           // eslint-disable-next-line no-await-in-loop
-          await upsert(row, clientQuery);
+          await upsert(row, clientQuery, { inTransaction: true });
         }
         dropped.push(...decision.dropped);
         skipped.push(...decision.skipped);
@@ -1413,7 +1489,20 @@ async function persistEdgesWithGlobalFanInCap({
       }
     });
   }
-  return { applied, written: applied, skipped_protected: skippedProtected, dropped, skipped };
+  return { applied, written: applied, skipped_protected: skippedProtected, dropped, skipped, failed, attempted };
+}
+
+// One bounded line on stderr for the night's log: counts by code and up to 20 failed pairs (ids only,
+// no product text). The build's stdout summary carries the same counts.
+function writeFailureLine(failed = [], { attempted = 0, gateFailed = false } = {}) {
+  if (!failed.length) return '';
+  const byCode = {};
+  for (const row of failed) byCode[row.code] = (byCode[row.code] || 0) + 1;
+  const integrity = failed.filter((row) => row.integrity).length;
+  return `${JSON.stringify({ severity: gateFailed || integrity > 0 ? 'ERROR' : 'WARNING', message: 'RELGRAPH_BUILD_WRITE_FAILED',
+    write_failed_count: failed.length, attempted_write_count: attempted, write_integrity_violation_count: integrity, write_failed_by_code: byCode,
+    samples: failed.slice(0, WRITE_FAILURE_SAMPLE_LIMIT).map(({ edge_id, anchor_ref, candidate_ref, relation_type, code }) => ({
+      edge_id, anchor_ref, candidate_ref, relation_type, code })) })}\n`;
 }
 
 // The database's own account of a failed statement (node-pg puts it on the error), and the row a
@@ -1454,7 +1543,8 @@ if (require.main === module) {
 
 module.exports = {
   main,
-  __internal: { sampleEvidenceReadiness, listingIdentity, evidenceReadinessStatusLine, describeFailure },
+  __internal: { sampleEvidenceReadiness, listingIdentity, evidenceReadinessStatusLine, describeFailure, isRowDataError, isIntegrityViolation,
+    writeFailureGateExceeded, writeFailureLine },
   affectedScopeProvided,
   persistEdgesWithGlobalFanInCap,
   buildInputsFromDb,
