@@ -157,3 +157,31 @@ describe('get_pdp_v2: money in another currency than the buyer market is withhel
     expect(guardOf(res)).toBeUndefined();
   });
 });
+
+// get_product (MCP) reaches get_pdp_v2 through the unscoped detail hop (server.js get_product_detail), which now
+// forwards the agent's market as payload.market (src/services/pdpDetailHop.js, unit-tested). get_pdp_v2 reads it.
+describe('get_pdp_v2 reads the market the get_product hop forwards (payload.market)', () => {
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  async function hopShaped(market) {
+    const { app, db } = loadServer();
+    install(db, seedRow('SGD', 16));
+    const { unscopedDetailPdpRequest } = require('../../src/services/pdpDetailHop');
+    return request(app).post('/agent/shop/v1/invoke').send(unscopedDetailPdpRequest(SIG_ID, market ? { market } : {}));
+  }
+
+  test('market SG: the SGD price is served', async () => {
+    const res = await hopShaped('SG');
+    expect(res.status).toBe(200);
+    expect(canonical(res).product?.price?.current).toEqual({ amount: 16, currency: 'SGD' });
+  });
+
+  test('no market: the SGD price is withheld', async () => {
+    const res = await hopShaped(null);
+    expect(res.status).toBe(200);
+    expect(canonical(res).product?.price).toBeUndefined();
+    expect(guardOf(res)).toEqual({ withheld_currencies: ['SGD'] });
+  });
+});

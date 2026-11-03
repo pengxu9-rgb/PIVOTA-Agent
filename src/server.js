@@ -441,6 +441,7 @@ const {
   requestedMarketOf,
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
+const { unscopedDetailPdpRequest } = require('./services/pdpDetailHop');
 const { resolveOfferScopeCurrency } = require('./services/buyerMarketOfferScope');
 const {
   collapseSearchResponseBodyByShadeLine,
@@ -32630,10 +32631,8 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
         // there is no doubled execution to remove here, and widening a budget for a path whose latency
         // has not been measured is a change without evidence.
         url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
-        requestBody = {
-          operation: 'get_pdp_v2',
-          payload: { product_ref: { product_id: pid }, include: ['product_overview'] },
-        };
+        // The agent's declared market rides along (src/services/pdpDetailHop.js).
+        requestBody = unscopedDetailPdpRequest(pid, payload);
       } else if (merchantScoped && pid.startsWith('sig_')) {
         // A merchant-scoped signature: the upstream per-merchant catalog is keyed by the PLATFORM product
         // id and cannot resolve a sig_, so translate it to THIS merchant's own source id before asking.

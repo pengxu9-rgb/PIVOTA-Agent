@@ -51,3 +51,27 @@ test('withholdOffMarketMoney: the same object back when nothing is off-market, o
   assert.equal(withholdOffMarketMoney(sgd, '').product, sgd);
   assert.equal(withholdOffMarketMoney(null, 'USD').product, null);
 });
+
+test('get_product_detail\'s unscoped hop forwards the agent\'s market to get_pdp_v2, and only a real one', () => {
+  const { unscopedDetailPdpRequest } = require('../src/services/pdpDetailHop');
+  assert.deepEqual(unscopedDetailPdpRequest('sig_x', { market: ' SG ' }), {
+    operation: 'get_pdp_v2', payload: { product_ref: { product_id: 'sig_x' }, include: ['product_overview'], market: 'SG' },
+  });
+  for (const payload of [{}, { market: '' }, { market: '  ' }, { market: 7 }, null, undefined]) {
+    assert.deepEqual(unscopedDetailPdpRequest('sig_x', payload).payload, { product_ref: { product_id: 'sig_x' }, include: ['product_overview'] });
+  }
+});
+
+test('an unpriced record that only states a currency withholds nothing and reports nothing', () => {
+  const product = { title: 'T', currency: 'SGD', variants: [{ sku: 'a', currency: 'SGD' }] };
+  const { product: next, withheld } = withholdOffMarketMoney(product, 'USD');
+  assert.equal(next, product, 'returned as is');
+  assert.deepEqual(withheld, []);
+  assert.deepEqual(offMarketCurrencies(product, 'USD'), []);
+});
+
+test('server.js builds the unscoped detail hop with that helper (the market forward is not an inline twin)', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(source, /requestBody = unscopedDetailPdpRequest\(pid, payload\);/);
+  assert.doesNotMatch(source, /operation: 'get_pdp_v2',\s*\n\s*payload: \{ product_ref: \{ product_id: pid \}, include: \['product_overview'\] \},/);
+});
