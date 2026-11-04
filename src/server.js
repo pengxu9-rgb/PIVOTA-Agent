@@ -9063,6 +9063,20 @@ function stripSavingsPresentationFields(source) {
   return out;
 }
 
+// get_pdp_v2's offer strip: each offer quoting money in another currency than the serving one loses that money
+// (withholdOffMarketMoney) and its savings copy, which quotes the same money in words; an offer in the serving
+// currency is returned as is. Returns the offers and the currencies withheld.
+function withholdOffMarketOfferMoney(offers, servingCurrency) {
+  const withheld = new Set();
+  const out = (Array.isArray(offers) ? offers : []).map((offer) => {
+    const guardedOffer = withholdOffMarketMoney(offer, servingCurrency);
+    if (!guardedOffer.withheld.length) return offer;
+    for (const code of guardedOffer.withheld) withheld.add(code);
+    return stripSavingsPresentationFields(guardedOffer.product);
+  });
+  return { offers: out, withheld: [...withheld].sort() };
+}
+
 function projectExternalSeedOfferVariant(variant) {
   if (!variant || typeof variant !== 'object') return null;
   return stripSavingsPresentationFields({
@@ -10089,6 +10103,8 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
 function computeOfferTotal(offer) {
   const amount = Number(offer?.price?.amount ?? offer?.price?.current?.amount);
   if (!Number.isFinite(amount) || amount <= 0) return Number.POSITIVE_INFINITY;
+  // A withheld shipping cost (servingCurrencyGuard) is unknown, not free: so is the total.
+  if (offer?.shipping?.cost_withheld === true) return Number.POSITIVE_INFINITY;
   const shipping = Number(offer?.shipping?.cost?.amount ?? 0) || 0;
   return amount + shipping;
 }
@@ -48376,16 +48392,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // re-priced from it (hydrate's onlyServingCurrency).
         if (offersData && pdpServingCurrency && Array.isArray(offersData.offers)) {
           const cardCurrencies = pdpCurrencyGuard ? pdpCurrencyGuard.withheld_currencies : [];
-          const offerCurrencies = new Set();
-          offersData = {
-            ...offersData,
-            offers: offersData.offers.map((offer) => {
-              const guardedOffer = withholdOffMarketMoney(offer, pdpServingCurrency);
-              if (!guardedOffer.withheld.length) return offer;
-              for (const code of guardedOffer.withheld) offerCurrencies.add(code);
-              return stripSavingsPresentationFields(guardedOffer.product);
-            }),
-          };
+          const guardedOffers = withholdOffMarketOfferMoney(offersData.offers, pdpServingCurrency);
+          const offerCurrencies = new Set(guardedOffers.withheld);
+          offersData = { ...offersData, offers: guardedOffers.offers };
           if (offerCurrencies.size) {
             pdpCurrencyGuard = { withheld_currencies: [...new Set([...cardCurrencies, ...offerCurrencies])].sort() };
             logger.info(
@@ -55122,6 +55131,8 @@ module.exports._debug = {
   resolveMissingIdentityGroupMembers,
   resetIdentityGroupRescueCache,
   hydrateCanonicalPdpPayloadFromOffers,
+  withholdOffMarketOfferMoney,
+  computeOfferTotal,
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,

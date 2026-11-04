@@ -148,10 +148,12 @@ const PDP_MONEY_FIELDS = ['price', 'price_amount', 'priceAmount', 'current_price
   'pricing', 'compare_at_price', 'compareAtPrice', 'original_price', 'originalPrice', 'list_price', 'sale_price', 'salePrice',
   'shipping_cost'];
 
+// The cost goes and `cost_withheld` says so: a shipping object with no cost reads as free shipping to the offer
+// totals (offersPriority.computeOfferTotal and server.js's), which would rank this offer cheapest.
 function withoutShippingCost(record) {
   if (!isPlainObject(record.shipping) || !('cost' in record.shipping)) return record;
   const { cost: _cost, ...shipping } = record.shipping;
-  return { ...record, shipping };
+  return { ...record, shipping: { ...shipping, cost_withheld: true } };
 }
 
 function withoutMoney(record) {

@@ -169,7 +169,7 @@ test('a withheld offer loses its shipping cost; the rest of its shipping stays',
     shipping: { method_label: 'Standard', eta_days_range: [3, 5], cost: { amount: 5, currency: 'SGD' } } };
   const { product: next, withheld } = withholdOffMarketMoney(offer, 'USD');
   assert.deepEqual(withheld, ['SGD']);
-  assert.deepEqual(next.shipping, { method_label: 'Standard', eta_days_range: [3, 5] });
+  assert.deepEqual(next.shipping, { method_label: 'Standard', eta_days_range: [3, 5], cost_withheld: true });
   assert.equal(next.shipping_cost, undefined);
 });
 
@@ -178,7 +178,7 @@ test('a price in the serving currency with a shipping cost in another: only the 
   const { product: next, withheld } = withholdOffMarketMoney(offer, 'USD');
   assert.deepEqual(withheld, ['SGD']);
   assert.deepEqual(next.price, { amount: 10, currency: 'USD' });
-  assert.deepEqual(next.shipping, { method_label: 'Air' });
+  assert.deepEqual(next.shipping, { method_label: 'Air', cost_withheld: true });
   const usdShipping = { ...offer, shipping: { cost: { amount: 5, currency: 'usd' } } };
   assert.equal(withholdOffMarketMoney(usdShipping, 'USD').product, usdShipping, 'a cost in the serving currency is untouched');
   const unlabelled = { ...offer, shipping: { cost: { amount: 5 } } };
@@ -203,4 +203,28 @@ test('a variant quoting only a sale price, in the product\'s currency, is judged
   // The headline is in the serving currency: the variant's sale price is the product's, and stays.
   const usd = { currency: 'USD', price: 18, variants: [{ variant_id: 'v1', sale_price: 16 }] };
   assert.equal(withholdOffMarketMoney(usd, 'USD').product, usd);
+});
+
+test('an off-market headline with a shipping cost in a third currency reports the headline currency only', () => {
+  // The shipping cost goes with the rest of the record's money; it is reported only when it is the one off-market
+  // amount beside an on-market price (P14 in the PR controller's #2541 mutant set).
+  const offer = { offer_id: 'o', price: { amount: 16, currency: 'SGD' }, shipping: { cost: { amount: 500, currency: 'JPY' } } };
+  const { product: next, withheld } = withholdOffMarketMoney(offer, 'USD');
+  assert.deepEqual(withheld, ['SGD']);
+  assert.equal(next.price, undefined);
+  assert.deepEqual(next.shipping, { cost_withheld: true });
+});
+
+test('a withheld shipping cost is an unknown total, never free shipping (offersPriority)', () => {
+  const { computeOfferTotal } = require('../src/offers/offersPriority');
+  const known = { offer_id: 'k', price: { amount: 11, currency: 'USD' }, shipping: { cost: { amount: 2, currency: 'USD' } } };
+  const withheldCost = withholdOffMarketMoney(
+    { offer_id: 'w', price: { amount: 10, currency: 'USD' }, shipping: { cost: { amount: 5, currency: 'SGD' } } }, 'USD',
+  ).product;
+  assert.equal(computeOfferTotal(known), 13);
+  assert.equal(computeOfferTotal(withheldCost), Number.POSITIVE_INFINITY);
+  assert.equal(computeOfferTotal({ offer_id: 'n', price: { amount: 10, currency: 'USD' }, shipping: {} }), 10,
+    'an offer that never stated a cost is unchanged');
+  const { prioritizeOffers } = require('../src/offers/offersPriority');
+  assert.deepEqual(prioritizeOffers([withheldCost, known]).map((o) => o.offer_id), ['k', 'w']);
 });

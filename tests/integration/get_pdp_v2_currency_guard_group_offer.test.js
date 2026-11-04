@@ -407,6 +407,32 @@ describe('get_pdp_v2 currency guard: the group page is not re-priced from an off
     });
   }
 
+  test('a USD card with an SGD member offer: only the offer is withheld, and the log line says scope offers', async () => {
+    CUR = 'USD'; OFFER_CUR = 'SGD';
+    try {
+      const { app, db } = loadServer({ MERCHANT_PURCHASABILITY_GATE_ENABLED: 'false' });
+      installOpsBackend({ enforced: false });
+      installGroupDb(db, { destination: TEST_BRAND_PDP });
+      const logger = require('../../src/logger');
+      const info = jest.spyOn(logger, 'info');
+      const res = await testBrandPdp(app, {});
+      expect(res.status).toBe(200);
+      expect(pageOf(res).guard).toEqual({ withheld_currencies: ['SGD'] });
+      const lines = info.mock.calls.filter(([fields]) => fields?.event === 'pdp_currency_not_serving_market');
+      expect(lines.map(([fields]) => fields)).toEqual([{
+        event: 'pdp_currency_not_serving_market',
+        scope: 'offers',
+        serving_currency: 'USD',
+        withheld_currencies: ['SGD'],
+        merchant_id: expect.any(String),
+        source_system: null,
+      }]);
+      info.mockRestore();
+    } finally {
+      OFFER_CUR = null;
+    }
+  });
+
   test('an offer in a third currency loses its money and is named in the guard too', async () => {
     CUR = 'SGD'; OFFER_CUR = 'JPY';
     try {
