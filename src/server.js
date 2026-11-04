@@ -10103,8 +10103,13 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
 function computeOfferTotal(offer) {
   const amount = Number(offer?.price?.amount ?? offer?.price?.current?.amount);
   if (!Number.isFinite(amount) || amount <= 0) return Number.POSITIVE_INFINITY;
-  // A withheld shipping cost (servingCurrencyGuard) is unknown, not free: so is the total.
+  // A withheld shipping cost (servingCurrencyGuard) is unknown, not free, and one in another currency than the
+  // price cannot be added to it: either way the total is unknown (as offersPriority.computeOfferTotal).
   if (offer?.shipping?.cost_withheld === true) return Number.POSITIVE_INFINITY;
+  const shippingCurrency = String(offer?.shipping?.cost?.currency || '').trim().toUpperCase();
+  const priceCurrency = String(offer?.price?.currency ?? offer?.price?.current?.currency ?? offer?.currency ?? '')
+    .trim().toUpperCase();
+  if (shippingCurrency && priceCurrency && shippingCurrency !== priceCurrency) return Number.POSITIVE_INFINITY;
   const shipping = Number(offer?.shipping?.cost?.amount ?? 0) || 0;
   return amount + shipping;
 }
@@ -11680,6 +11685,9 @@ async function buildOffersFromGroupMembers(args) {
                 && shipCostCurrency
                 ? { cost: normalizeOfferMoney(shipCostAmount, shipCostCurrency) }
                 : {}),
+              // The card's own guard withheld this member's cost (servingCurrencyGuard): the rebuilt offer keeps
+              // saying so, or its total would read as free shipping and rank it cheapest.
+              ...(p.shipping?.cost_withheld === true ? { cost_withheld: true } : {}),
             }
           : undefined,
       returns: p.returns || undefined,

@@ -768,9 +768,13 @@ function computeOfferTotal(offer) {
   if (!o) return Number.POSITIVE_INFINITY;
   const price = Number(o?.price?.amount ?? o?.price?.current?.amount);
   if (!Number.isFinite(price) || price <= 0) return Number.POSITIVE_INFINITY;
-  // A shipping cost the PDP currency guard withheld (another currency than the buyer's) is unknown, not free:
-  // the total is unknown, so the offer never wins on it.
+  // A shipping cost the PDP currency guard withheld (another currency than the buyer's) is unknown, not free; one
+  // stated in another currency than the price cannot be added to it. Either way the total is unknown, so the offer
+  // never wins on it.
   if (o?.shipping?.cost_withheld === true) return Number.POSITIVE_INFINITY;
+  const shippingCurrency = String(o?.shipping?.cost?.currency || '').trim().toUpperCase();
+  const priceCurrency = String(o?.price?.currency ?? o?.price?.current?.currency ?? o?.currency ?? '').trim().toUpperCase();
+  if (shippingCurrency && priceCurrency && shippingCurrency !== priceCurrency) return Number.POSITIVE_INFINITY;
   const shipping = Number(o?.shipping?.cost?.amount ?? 0) || 0;
   return price + shipping;
 }

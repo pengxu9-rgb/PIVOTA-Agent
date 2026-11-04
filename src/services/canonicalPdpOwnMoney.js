@@ -495,7 +495,12 @@ function projectSellerOffersMoneyWith(data, ref, verifiedByListing) {
 function rankCanonicalOffers(data, offers) {
   const prioritized = prioritizeOffers(offers);
   const priced = prioritized.filter(offer => offer?.price?.currency === 'USD');
-  const best = [...priced].sort((left, right) => computeOfferTotal(left) - computeOfferTotal(right))[0];
+  // Compared, never subtracted: two unknown (infinite) totals would subtract to NaN.
+  const best = [...priced].sort((left, right) => {
+    const l = computeOfferTotal(left);
+    const r = computeOfferTotal(right);
+    return l === r ? 0 : l < r ? -1 : 1;
+  })[0];
   return { ...data, offers: prioritized, best_price_offer_id: best?.offer_id || null };
 }
 
