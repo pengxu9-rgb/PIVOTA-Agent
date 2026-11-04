@@ -170,7 +170,10 @@ describe('codes are submitted as discounts.codes', () => {
 
 const line = (amount, path = '$.line_items[0]') => ({ path, amount });
 const codeEntry = (overrides = {}) => ({ code: 'GLOW10', title: '10% off', amount: 400, allocations: [line(400)], ...overrides });
-const read = (applied, extra = {}) => normalizeDiscounts({ currency: 'USD', discounts: { codes: ['GLOW10'], applied }, ...extra });
+const THREE_LINES = [{ item: { id: 'a' } }, { item: { id: 'b' } }, { item: { id: 'c' } }];
+const read = (applied, extra = {}) => normalizeDiscounts({
+  currency: 'USD', line_items: THREE_LINES, discounts: { codes: ['GLOW10'], applied }, ...extra,
+});
 
 describe('the response is read without guessing', () => {
   test('applied discounts, their allocations and the rejected code', () => {
@@ -269,13 +272,40 @@ describe('the response is read without guessing', () => {
   });
 
   test.each([
-    [[{ type: 'subtotal', amount: 4000 }], 4000],
-    [[{ type: 'subtotal', amount: 4000 }, { type: 'subtotal', amount: 1 }], null],
-    [[{ type: 'subtotal', amount: -1 }], null],
-    [[{ type: 'subtotal', amount: '4000' }], null],
-    [undefined, null],
-  ])('the subtotal bound reads only one clean subtotal (%#)', (totals, expected) => {
-    expect(normalizeDiscounts({ currency: 'USD', totals, discounts: {} }).subtotal_minor).toBe(expected);
+    ['one clean subtotal', [{ type: 'subtotal', amount: 4000 }], 4000, false],
+    ['no totals', undefined, null, false],
+    ['totals with no subtotal entry', [{ type: 'total', amount: 4000 }], null, false],
+    ['two subtotal entries', [{ type: 'subtotal', amount: 4000 }, { type: 'subtotal', amount: 1 }], null, true],
+    ['a negative subtotal', [{ type: 'subtotal', amount: -1 }], null, true],
+    ['a string subtotal', [{ type: 'subtotal', amount: '4000' }], null, true],
+    ['a fractional subtotal', [{ type: 'subtotal', amount: 40.5 }], null, true],
+    ['a differently cased type', [{ type: 'Subtotal', amount: 4000 }], null, true],
+    ['totals given as an object', { subtotal: 4000 }, null, true],
+  ])('the subtotal: %s', (_label, totals, expected, unreadable) => {
+    const d = normalizeDiscounts({ currency: 'USD', totals, discounts: {} });
+    expect([d.subtotal_minor, d.subtotal_unreadable]).toEqual([expected, unreadable]);
+  });
+
+  test('a line allocation must name a line the checkout has', () => {
+    expect(read([codeEntry({ allocations: [line(400, '$.line_items[2]')] })]).applied).toHaveLength(1);
+    expect(read([codeEntry({ allocations: [line(400, '$.line_items[99]')] })]).unreadable).toHaveLength(1);
+    const noLines = normalizeDiscounts({ currency: 'USD', discounts: { codes: ['GLOW10'], applied: [codeEntry()] } });
+    expect(noLines.unreadable).toHaveLength(1);
+  });
+
+  test('a padded echo still names the code it rejected', () => {
+    const d = read([codeEntry()], {
+      discounts: { codes: [' GLOW10 '], applied: [codeEntry()] },
+      messages: [{ type: 'warning', code: 'discount_code_expired', path: '$.discounts.codes[0]' }],
+    });
+    expect(d.rejected.map((r) => r.code)).toEqual(['GLOW10']);
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'rejected', amount_minor: 0 });
+  });
+
+  test('an unreadable amount on an entry with no allocations is unreadable, not unallocated (P09)', () => {
+    const d = read([codeEntry({ amount: 'x', allocations: undefined })]);
+    expect(d.unreadable).toHaveLength(1);
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ not_applied_reason: 'unreadable', unallocated_minor: 0 });
   });
 
   test.each([
@@ -289,7 +319,7 @@ describe('the response is read without guessing', () => {
 
   test('no discounts block reads as empty, and an empty checkout carries the same shape', () => {
     const empty = {
-      currency: null, subtotal_minor: null, submitted_codes: [], applied: [], rejected: [], unmapped_rejections: [], unreadable: [],
+      currency: null, subtotal_minor: null, subtotal_unreadable: false, submitted_codes: [], applied: [], rejected: [], unmapped_rejections: [], unreadable: [],
     };
     expect(normalizeDiscounts({})).toEqual(empty);
     expect(normalizePricedCheckout(null).discounts).toEqual(empty);
@@ -329,6 +359,33 @@ describe('what one code did', () => {
     const d = read([codeEntry({ amount: 1000, allocations: undefined })]);
     expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({
       applied: false, not_applied_reason: 'unallocated', amount_minor: 0, unallocated_minor: 1000,
+    });
+  });
+
+  test.each([
+    ['a string', [{ type: 'subtotal', amount: '2000' }]],
+    ['a negative', [{ type: 'subtotal', amount: -2000 }]],
+    ['two', [{ type: 'subtotal', amount: 2000 }, { type: 'subtotal', amount: 2000 }]],
+    ['an object form', { subtotal: 2000 }],
+  ])('%s subtotal fails closed: 9999 off is never applied', (_label, totals) => {
+    const d = read([codeEntry({ amount: 9999, allocations: [line(9999)] })], { totals });
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({
+      applied: false, not_applied_reason: 'subtotal_unreadable', amount_minor: 0,
+    });
+  });
+
+  test('every amount is 0 on a not-applied outcome, fee and unallocated included (P10, P16)', () => {
+    const withFee = read([codeEntry({ amount: 500, allocations: [line(400), { path: '$.totals.fee', amount: 100 }] })], {
+      messages: [{ type: 'warning', code: 'discount_code_invalid', path: '$.discounts.codes[0]' }],
+    });
+    expect(discountCodeOutcome(withFee, 'GLOW10')).toMatchObject({
+      applied: false, amount_minor: 0, shipping_minor: 0, fee_minor: 0, unallocated_minor: 0,
+    });
+    const unallocatedRejected = read([codeEntry({ amount: 1000, allocations: undefined })], {
+      messages: [{ type: 'warning', code: 'discount_code_invalid', path: '$.discounts.codes[0]' }],
+    });
+    expect(discountCodeOutcome(unallocatedRejected, 'GLOW10')).toMatchObject({
+      applied: false, not_applied_reason: 'rejected', unallocated_minor: 0,
     });
   });
 
