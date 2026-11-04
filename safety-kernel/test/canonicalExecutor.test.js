@@ -316,3 +316,29 @@ test('cancel: cancels a created order; refuses to cancel a paid one', async () =
   await exec('complete_checkout_session', { idempotency_key: 'idem-paid-1', session_id: s2, payment_authorization: { token: 't' } }, CTX);
   await assert.rejects(exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-2', order_id: 'o_exec' }, CTX), (e) => e.code === 'OPERATION_NOT_ALLOWED');
 });
+
+// get_product's declared market goes BESIDE the detail payload: the upstream request stays byte-identical, and
+// the gateway's unscoped detail hop prices the page in that market's currency (src/services/pdpDetailHop.js).
+test('get_product hands the declared market to the upstream beside the detail payload, never inside it', async () => {
+  const kernel = { previewQuote() {} };
+  const calls = [];
+  const upstream = async (...args) => { calls.push(args); return { product: { product_id: 'sig_x' } }; };
+  const exec = createCanonicalExecutor({ kernel, upstream }).execute;
+  // the params the MCP adapter builds for get_product { product_id, market: 'SG' }
+  await exec('get_product', { payload: { product: { product_id: 'sig_x' }, market: ' SG ' } }, {});
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], ['get_product_detail', { product: { product_id: 'sig_x' } }, {}, { market: 'SG' }]);
+
+  // ...and the gateway hop reads it from there.
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const { unscopedDetailPdpRequest } = require('../../src/services/pdpDetailHop.js');
+  assert.equal(unscopedDetailPdpRequest('sig_x', calls[0][1], calls[0][3].market).payload.market, 'SG');
+
+  // No declared market: the upstream is called exactly as before, with two arguments.
+  for (const market of [undefined, '', '  ', 7]) {
+    calls.length = 0;
+    await exec('get_product', { payload: { product: { product_id: 'sig_x' }, ...(market === undefined ? {} : { market }) } }, {});
+    assert.deepEqual(calls[0], ['get_product_detail', { product: { product_id: 'sig_x' } }], String(market));
+  }
+});

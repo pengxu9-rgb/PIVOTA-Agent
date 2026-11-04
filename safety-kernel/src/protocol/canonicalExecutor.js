@@ -177,11 +177,13 @@ export function createCanonicalExecutor({
     throw new Error('createCanonicalExecutor requires a kernel');
   }
 
-  const read = async (backendOp, payload) => {
+  // `options` travel BESIDE the payload (the upstream's fourth argument), so the request body stays what the
+  // caller's payload says. Only get_product passes any: the caller's declared market.
+  const read = async (backendOp, payload, options) => {
     if (typeof upstream !== 'function') {
       throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'no_upstream_for_reads', op: backendOp });
     }
-    return upstream(backendOp, payload || {});
+    return options ? upstream(backendOp, payload || {}, {}, options) : upstream(backendOp, payload || {});
   };
 
   async function execute(opId, params = {}, ctx = {}) {
@@ -223,11 +225,19 @@ export function createCanonicalExecutor({
         return read(merchantScoped ? 'find_products' : 'find_products_multi', searchPayload);
       }
       case 'get_product': {
-        // `market` is the live read's (below), not the upstream read's: the detail request stays byte-identical.
+        // `market` is not part of the detail request, which stays byte-identical. It goes beside it (read's
+        // options): the gateway's unscoped hop prices the page in that market's currency (src/services/
+        // pdpDetailHop.js), and the live read below asks for that market.
         const detailParams = params.payload ?? params;
         const { market: _liveReadMarket, ...detailPayload } =
           detailParams && typeof detailParams === 'object' ? detailParams : {};
-        let result = await read('get_product_detail', detailParams && typeof detailParams === 'object' ? detailPayload : detailParams);
+        const declaredMarket =
+          typeof _liveReadMarket === 'string' && _liveReadMarket.trim() ? _liveReadMarket.trim() : undefined;
+        let result = await read(
+          'get_product_detail',
+          detailParams && typeof detailParams === 'object' ? detailPayload : detailParams,
+          declaredMarket ? { market: declaredMarket } : undefined,
+        );
         // Optional inline decision substrate (why/fit/evidence) attached when the caller asks for it via
         // include:['decision']. Double-gated: the get_intel localRead is itself flag-gated (returns no
         // signal when the intel surface is off), and the caller must opt in. Read-only + best-effort — a

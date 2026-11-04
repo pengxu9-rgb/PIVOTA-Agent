@@ -3,6 +3,7 @@ const HISTOGRAM_BUCKETS_MS = [50, 100, 250, 500, 1000, 1200, 2000, 5000, 10000];
 const moduleLatency = new Map();
 const recsTimeouts = new Map();
 const similarDeferred = new Map();
+const currencyGuardUnjudged = new Map();
 
 function sanitizeLabelValue(value, fallback = 'unknown') {
   const text = String(value || '').trim();
@@ -76,6 +77,12 @@ function recordSimilarDeferred({ source = 'unknown' } = {}) {
   incrementCounter(similarDeferred, { source: String(source || 'unknown') });
 }
 
+// get_pdp_v2's serving-currency guard judges nothing when the request's market has no serving currency (an
+// unkeyable market, or one no currency is mapped for): counted, so a share of pages left unjudged is visible.
+function recordPdpCurrencyGuardUnjudged({ reason = 'no_serving_currency' } = {}) {
+  incrementCounter(currencyGuardUnjudged, { reason: String(reason || 'unknown') });
+}
+
 function renderHistogram(name, help, map) {
   const lines = [
     `# HELP ${name} ${help}`,
@@ -120,6 +127,11 @@ function renderPdpMetricsPrometheus() {
       'PDP similar module responses deferred from first paint.',
       similarDeferred,
     ),
+    renderCounter(
+      'pdp_currency_guard_unjudged_total',
+      'PDP v2 pages the serving-currency guard left unjudged because the request has no serving currency.',
+      currencyGuardUnjudged,
+    ),
   ].join('');
 }
 
@@ -127,12 +139,14 @@ function __resetPdpMetricsForTest() {
   moduleLatency.clear();
   recsTimeouts.clear();
   similarDeferred.clear();
+  currencyGuardUnjudged.clear();
 }
 
 module.exports = {
   recordPdpV2ModuleLatency,
   recordPdpRecsTimeout,
   recordSimilarDeferred,
+  recordPdpCurrencyGuardUnjudged,
   renderPdpMetricsPrometheus,
   __resetPdpMetricsForTest,
 };
