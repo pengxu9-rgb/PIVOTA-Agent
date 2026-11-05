@@ -99,3 +99,69 @@ test('the sync routine keeps the counts from the routine summary (and so the led
     expect(extractRelationshipGraphRunRecord(summary).summary).toMatchObject({ build_write_failed_count: 2, build_write_integrity_violation_count: 1 });
   } finally { fs.rmSync(outDir, { recursive: true, force: true }); }
 });
+
+// The sync routine keeps the routine job's stderr only as a tail inside its summary, so on a passing
+// night (contained failures under the gate) the line never became a log entry of its own.
+async function syncNight({ routineStderr = '', routine = {}, progressReader }) {
+  const { runSyncRoutine, parseArgs: syncArgs } = require('../../scripts/run-relationship-graph-sync-routine');
+  const outDir = temp();
+  const writes = [];
+  try {
+    const options = syncArgs(['--skip-review', '--select-hours', '24', '--out-dir', outDir], { now: new Date('2026-11-05T10:37:00Z') });
+    const runner = async (_command, args) => {
+      if (args[0].endsWith('run-relationship-graph-routine-job.js')) {
+        const routineOut = args[args.indexOf('--out-dir') + 1];
+        fs.mkdirSync(routineOut, { recursive: true });
+        fs.writeFileSync(path.join(routineOut, 'routine_summary.json'), JSON.stringify({ ok: true, artifacts: {}, ...routine }));
+        return { exitCode: 0, stdout: '', stderr: routineStderr };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    };
+    const spy = jest.spyOn(process.stderr, 'write').mockImplementation((c) => { writes.push(String(c)); return true; });
+    let summary;
+    try {
+      summary = await runSyncRoutine(options, { runner, now: new Date('2026-11-05T10:37:00Z'),
+        progressReader: progressReader || (async () => ({ servedEdges: 0, anchors: new Set() })), ledgerRecorder: async () => ({ recorded: true }) });
+    } catch (error) {
+      summary = error.summary;
+    } finally { spy.mockRestore(); }
+    const lines = writes.join('').split('\n').filter((line) => line.includes('RELGRAPH_BUILD_WRITE_FAILED'));
+    return { summary, lines };
+  } finally { fs.rmSync(outDir, { recursive: true, force: true }); }
+}
+
+const COUNTS = { build_write_failed_count: 2, build_attempted_write_count: 40, build_write_integrity_violation_count: 1,
+  build_write_failed_by_code: { '22P02': 1, 23505: 1 } };
+
+test('on a passing night the sync routine re-emits the build line as its own log line', async () => {
+  const { lines } = await syncNight({ routineStderr: `noise\n${LINE}\nrelgraph evidence readiness: ok\n`, routine: COUNTS });
+  expect(lines).toEqual([LINE]);
+});
+
+test('a line the tail cut is replaced by a counts-only line from the routine summary', async () => {
+  const { lines } = await syncNight({ routineStderr: `${LINE.slice(40)}\nrelgraph evidence readiness: ok\n`, routine: COUNTS });
+  expect(lines).toHaveLength(1);
+  expect(JSON.parse(lines[0])).toEqual({ severity: 'ERROR', message: 'RELGRAPH_BUILD_WRITE_FAILED', run_id: expect.any(String),
+    write_failed_count: 2, attempted_write_count: 40, write_integrity_violation_count: 1, write_failed_by_code: { '22P02': 1, 23505: 1 },
+    samples_omitted: true });
+});
+
+test('a contained night with no integrity violation is a WARNING, and no failures means no line', async () => {
+  const warn = await syncNight({ routine: { ...COUNTS, build_write_integrity_violation_count: 0 } });
+  expect(JSON.parse(warn.lines[0]).severity).toBe('WARNING');
+  const clean = await syncNight({ routine: { build_write_failed_count: 0, build_attempted_write_count: 321 } });
+  expect(clean.lines).toEqual([]);
+});
+
+test('a failing serving read no longer drops the build counts or the line', async () => {
+  let calls = 0;
+  const progressReader = async () => {
+    calls += 1;
+    if (calls > 1) throw new Error('serving read timed out');
+    return { servedEdges: 0, anchors: new Set() };
+  };
+  const { summary, lines } = await syncNight({ routineStderr: `${LINE}\n`, routine: COUNTS, progressReader });
+  expect(summary.serving_progress_error).toBe('serving read timed out');
+  expect(summary).toMatchObject(COUNTS);
+  expect(lines).toEqual([LINE]);
+});
