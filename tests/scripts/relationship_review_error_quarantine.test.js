@@ -200,12 +200,14 @@ test('the run ledger keeps the quarantine counts with the batch', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-quarantine-ledger-'));
   try {
     const reviewPath = path.join(dir, 'review.json');
-    fs.writeFileSync(reviewPath, JSON.stringify({ summary: { reviewed_count: 1, error_quarantine_skipped_count: 107, error_quarantine_entered_count: 3 },
+    fs.writeFileSync(reviewPath, JSON.stringify({ summary: { reviewed_count: 1, error_quarantine_skipped_count: 107, error_quarantine_entered_count: 3,
+      error_quarantine_retried_count: 12, error_quarantine_retry_error_count: 9 },
       decisions: [{ id: 'a', verdict: 'reject', applied: false, new_label_state: 'generated' }] }));
     const routinePath = path.join(dir, 'routine_summary.json');
     fs.writeFileSync(routinePath, JSON.stringify({ ok: true, artifacts: { review: reviewPath } }));
     const record = extractRelationshipGraphRunRecord({ run_id: 'relgraph_sync_routine_q', ok: true, out_dir: dir, artifacts: { routine_summary: routinePath } });
-    expect(record.summary.recommendation_review_batch).toMatchObject({ error_quarantine_skipped_count: 107, error_quarantine_entered_count: 3 });
+    expect(record.summary.recommendation_review_batch).toMatchObject({ error_quarantine_skipped_count: 107, error_quarantine_entered_count: 3,
+      error_quarantine_retried_count: 12, error_quarantine_retry_error_count: 9 });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -324,5 +326,24 @@ test('the error memo carries codes and hashes, never model text', async () => {
   const memo = db.byId.get('prel_0').provenance.ai_review_error;
   expect(JSON.stringify(memo)).not.toContain('PRIVATE');
   expect(Object.keys(memo).sort()).toEqual(['consecutive', 'first_at', 'last_at', 'last_code', 'model', 'pair_fingerprint', 'rubric', 'run_id', 'validator_version'].filter((k) => k !== 'run_id' || 'run_id' in memo).sort());
+});
+
+test('the gate line says when the code counts include quarantine-retry errors', async () => {
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const { runRoutineJob, parseArgs } = require('../../scripts/run-relationship-graph-routine-job');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-quarantine-codes-'));
+  try {
+    const options = parseArgs(['--cutoff', cutoff, '--skip-build', '--skip-validation', '--skip-serving-audit', '--out-dir', dir]);
+    const runner = async (_command, args) => {
+      fs.writeFileSync(args[args.indexOf('--out') + 1], JSON.stringify({ summary: { reviewed_count: 40, review_error_count: 15, review_error_denominator: 30,
+        approved_count: 0, error_quarantine_retried_count: 10, error_quarantine_retry_error_count: 10,
+        review_error_by_code: { LLM_PARSE_FAILED: 25 } }, decisions: [] }));
+      return { exitCode: 0, stdout: '', stderr: '' };
+    };
+    const summary = await runRoutineJob(options, { runner, progressReader: async () => ({ servedEdges: 0, anchors: new Set() }) })
+      .then(() => null, (e) => e.summary);
+    expect(summary.steps.find((st) => st.id === 'ai_review').stderr_tail).toBe('review error rate 0.5 exceeds 0.25; error quarantine held back 10 '
+      + '(0 skipped, 10 retried); errors by code {"LLM_PARSE_FAILED":25} (incl. 10 quarantine-retry errors)');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
