@@ -130,6 +130,8 @@ function reviewQuarantineHeld(metrics = {}) {
 //   and fewer than minReviewsForErrorGate fresh reviews ran. A model that fails every row quarantines
 //   the queue by night 2; from night 3 the rate has nothing to measure and this trips instead (2026-11-02
 //   review of the quarantine). A stable residue beside enough fresh reviews passes, however large it is.
+//   Known cost: a healthy LOW-VOLUME night (fewer than the minimum fresh reviews) beside a residue of at
+//   least the minimum also trips; that is deliberate, as the two cannot be told apart from one night.
 function reviewErrorGateExceeded(metrics, { minReviewsForErrorGate = 20, maxReviewErrorRate = 0.25 } = {}) {
   const rateExceeded = metrics.review_error_denominator >= minReviewsForErrorGate && metrics.review_error_rate > maxReviewErrorRate;
   const nothingFresh = reviewQuarantineHeld(metrics) >= minReviewsForErrorGate && metrics.review_error_denominator < minReviewsForErrorGate;

@@ -106,6 +106,12 @@ every generated row whose error run reached 2: `... WHERE label_state = 'generat
 are still WRITTEN while it is 0, so turning it back on quarantines at once every row whose error run has
 reached 2 inside the window; release them first if that is not wanted.
 
+The review gate counts only fresh reviews: quarantined rows that are skipped, and quarantined rows
+retried after their window, are held back from the error rate. The gate also fails when at least
+`--min-reviews-for-error-gate` rows were held back and fewer fresh reviews than that ran ("nothing fresh
+to measure"). So a quiet night (few new labels) beside a quarantine of 20 or more rows fails even if the
+model is healthy: the line says how many were fresh and how many were held back.
+
 What does not end an error run: a timeout or failed request (neither counts nor resets), and an
 approval refused at apply (`approval_blocked`, which writes nothing). A run ends only on a verdict that is
 written: the negative memo or an approval.
