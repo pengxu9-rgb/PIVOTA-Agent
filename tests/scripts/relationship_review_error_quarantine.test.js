@@ -347,3 +347,26 @@ test('the gate line says when the code counts include quarantine-retry errors', 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+
+describe('what the selection skipped reaches the routine summary', () => {
+  // 2026-11-06: fresh verdicts fell 445 -> 117 overnight and nothing downstream could say whether the
+  // pool shrank or the 30-day negative memo was skipping last night's rejects: the review counted its
+  // skips, but reviewMetrics dropped them before the routine summary and the run ledger.
+  test('remembered negatives skipped by the real review are in reviewMetrics', async () => {
+    const db = fakeDb([label(0), label(1), label(2)]);
+    const prov = provider(() => reject);
+    await night(db, prov, T0);
+    const second = await night(db, prov, T0 + DAY);
+    const summary = second.summary || second;
+
+    expect(summary.negative_memory_skipped_count).toBe(3);
+    expect(reviewMetrics(summary)).toMatchObject({
+      reviewed_count: 0,
+      negative_memory_skipped_count: 3,
+      negative_memory_scanned_count: summary.negative_memory_scanned_count,
+      negative_memory_scan_truncated: false,
+      catalog_gate_skipped_count: summary.catalog_gate_skipped_count,
+      non_product_listing_skipped_count: summary.non_product_listing_skipped_count,
+    });
+  });
+});
