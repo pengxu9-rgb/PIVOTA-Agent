@@ -402,6 +402,34 @@ function surfaceReviewErrors(summary, reviewArtifactPath) {
   if (line) process.stderr.write(line);
 }
 
+// The build's RELGRAPH_BUILD_WRITE_FAILED line (contained row failures). The routine job relays it to
+// its own stderr, but this routine keeps that stderr only as a tail inside its summary, so on a night
+// that passed (failures under the gate) the line never became a log entry the sink could count. It is
+// re-emitted here; if the tail cut it, a counts-only line (no samples) from the routine summary.
+const BUILD_WRITE_FAILURE_LINE = /^\{"severity":"(?:WARNING|ERROR)","message":"RELGRAPH_BUILD_WRITE_FAILED".*\}$/gm;
+function surfaceBuildWriteFailures(summary, routine = {}) {
+  const step = (Array.isArray(summary.steps) ? summary.steps : []).find((row) => row && row.id === 'relationship_graph_routine');
+  const lines = String((step && step.stderr_tail) || '').match(BUILD_WRITE_FAILURE_LINE);
+  if (lines) {
+    process.stderr.write(`${lines[lines.length - 1]}\n`);
+    return;
+  }
+  const failed = Number(routine && routine.build_write_failed_count) || 0;
+  if (!failed) return;
+  const integrity = Number(routine.build_write_integrity_violation_count) || 0;
+  process.stderr.write(`${JSON.stringify({
+    // ERROR as the build marks it: an integrity violation, or a night the routine step failed on.
+    severity: integrity > 0 || summary.failed_step === 'relationship_graph_routine' ? 'ERROR' : 'WARNING',
+    message: 'RELGRAPH_BUILD_WRITE_FAILED',
+    run_id: summary.run_id,
+    write_failed_count: failed,
+    attempted_write_count: Number(routine.build_attempted_write_count) || 0,
+    write_integrity_violation_count: integrity,
+    write_failed_by_code: routine.build_write_failed_by_code || {},
+    samples_omitted: true,
+  })}\n`);
+}
+
 function buildSyncRoutineSteps(options = {}) {
   const node = process.execPath;
   const steps = [];
@@ -712,13 +740,19 @@ async function runSyncRoutine(
 
   let beforeSnapshot;
   async function finishProgress() {
-    // Why reviews errored goes out first and on its own: it reads only the review's file, so a failing
-    // database read below (the serving snapshot) must not swallow it.
+    // Why reviews errored, and the build's contained write failures, go out first and on their own: they
+    // read only files, so a failing database read below (the serving snapshot) must not swallow them.
     try {
       const routinePath = artifacts.routine_summary;
       if (routinePath && fs.existsSync(routinePath)) {
         const routine = JSON.parse(fs.readFileSync(routinePath, 'utf8'));
         surfaceReviewErrors(summary, routine.artifacts && routine.artifacts.review);
+        // The build's contained write failures, from the routine summary, so the ledger keeps them.
+        for (const key of ['build_write_failed_count', 'build_attempted_write_count', 'build_write_integrity_violation_count',
+          'build_write_failed_by_code']) {
+          if (routine[key] != null) summary[key] = routine[key];
+        }
+        surfaceBuildWriteFailures(summary, routine);
       }
     } catch (_error) {
       // a missing or unreadable routine summary is reported by the block below
@@ -731,11 +765,6 @@ async function runSyncRoutine(
         Object.assign(summary, readReviewMetrics(routine.artifacts && routine.artifacts.review));
         surfaceServingAuditScope(summary, routine);
         surfaceApprovalBlocked(summary, routine.artifacts && routine.artifacts.review);
-        // The build's contained write failures, from the routine summary, so the ledger keeps them.
-        for (const key of ['build_write_failed_count', 'build_attempted_write_count', 'build_write_integrity_violation_count',
-          'build_write_failed_by_code']) {
-          if (routine[key] != null) summary[key] = routine[key];
-        }
       }
     } catch (error) {
       summary.ok = false;
@@ -853,6 +882,7 @@ module.exports = {
   SYNC_CONFIRM_TOKEN,
   WRAPPER_CONFIRM_TOKEN,
   buildSyncRoutineSteps,
+  surfaceBuildWriteFailures,
   surfaceReviewErrors,
   formatRoutineFailure,
   parseArgs,
