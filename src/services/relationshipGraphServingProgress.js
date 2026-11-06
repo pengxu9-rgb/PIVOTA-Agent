@@ -57,7 +57,13 @@ function reviewMetrics(summary = {}) {
       'review_error_by_code',
       // Rows quarantined for repeated review errors (2026-11-02): skipped, so not in the error rate.
       'error_quarantine_skipped_count', 'error_quarantine_entered_count', 'error_quarantine_retried_count',
-      'error_quarantine_retry_error_count']
+      'error_quarantine_retry_error_count',
+      // What the review's selection skipped before reviewing (2026-11-06): remembered negative verdicts
+      // (30-day memo on the same evidence), catalog-gate and non-product rows, and how many rows it
+      // scanned. Without them a smaller night (fresh verdicts 445 -> 117 on 11-05) could not be told
+      // apart from a shrinking pool.
+      'negative_memory_skipped_count', 'negative_memory_scanned_count', 'negative_memory_scan_truncated',
+      'catalog_gate_skipped_count', 'non_product_listing_skipped_count']
       .filter((key) => summary[key] != null).map((key) => [key, summary[key]])),
   };
 }
