@@ -60,7 +60,11 @@ function reviewErrorCodesSuffix(summary = {}) {
       counts[key] = (counts[key] || 0) + (Number(n) || 0);
     }
   }
-  return Object.keys(counts).length ? `; errors by code ${JSON.stringify(counts)}` : '';
+  if (!Object.keys(counts).length) return '';
+  // review_error_by_code counts every error, quarantine retries included; say so when there were any,
+  // since the codes then sum to more than the fresh error count the rate was taken on.
+  const retryErrors = Number(summary.error_quarantine_retry_error_count) || 0;
+  return `; errors by code ${JSON.stringify(counts)}${retryErrors > 0 ? ` (incl. ${retryErrors} quarantine-retry errors)` : ''}`;
 }
 
 function normalizeString(value, max = 512) {

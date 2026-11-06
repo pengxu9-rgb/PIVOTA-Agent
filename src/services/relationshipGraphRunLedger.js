@@ -212,6 +212,9 @@ function extractRelationshipGraphRunRecord(summary = {}, {
         // Rows skipped because their review kept erroring, and rows this run quarantined.
         error_quarantine_skipped_count: Number(reviewSummary.error_quarantine_skipped_count) || 0,
         error_quarantine_entered_count: Number(reviewSummary.error_quarantine_entered_count) || 0,
+        // Rows reviewed again after their window, and how many of them errored (not fresh errors).
+        error_quarantine_retried_count: Number(reviewSummary.error_quarantine_retried_count) || 0,
+        error_quarantine_retry_error_count: Number(reviewSummary.error_quarantine_retry_error_count) || 0,
         decisions: review.decisions.map((row) => ({
           id: row.id, verdict: row.verdict, applied: row.applied === true,
           new_label_state: row.new_label_state, relationship_kind: row.relationship_kind || null,
