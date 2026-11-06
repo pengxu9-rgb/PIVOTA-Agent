@@ -770,9 +770,12 @@ whose only URL is the product page keeps it, because that link *is* the fallback
 `purchase_route` becomes `affiliate_outbound`, `checkout_handoff` becomes `redirect`, and
 `commerce_mode` is computed **after** the strip (`links_out`). All three are the repo's existing
 links-out vocabulary — `isCurrentPolicyDirect` refuses each of them, `inferStructuredDataMode` maps
-the mode to `product_snippet`, and `offerIsInternalCheckoutCandidate` (which `src/server.js`
-`compareOffersForDefaultSelection` ranks on) reads the route, so a declined offer can no longer be
-promoted to `default_offer_id`. Computing the mode BEFORE the strip — what the first cut did, then
+the mode to `product_snippet`, and `offerIsInternalCheckoutCandidate` (`src/server.js`) reads the
+route, so a declined offer no longer counts as an internal-checkout offer. `default_offer_id` itself
+is not ranked on purchasability: `pickDefaultOfferId` (`src/offers/offersPriority.js`, via
+`prioritizeOffers` → `compareOffersForPresentation`) ranks on stock, currency match and total and
+deliberately ignores checkout transport, so the strip leaves the default pick to ordinary
+price/stock ranking. Computing the mode BEFORE the strip — what the first cut did, then
 froze with a flag — reads the very signals the strip removes and answers
 `merchant_embedded_checkout` for a merchant we have just declined to sell for. There is no label to
 freeze now: `purchase_route` makes the row externally-routed, so a later pass recomputes the same

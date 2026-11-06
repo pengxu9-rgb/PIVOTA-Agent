@@ -1160,9 +1160,9 @@ test('N2: a declined offer loses the INTERNAL preference that could make it the 
   assert.equal(isInternalOffer(keptOut), true, 'the purchasable peer is untouched');
   assert.equal(keptOut.merchant_checkout_url, 'https://good-shop.test/cart/9:1');
 
-  // ⚠️ WHAT THIS DOES AND DOES NOT ASSERT. `src/server.js::compareOffersForDefaultSelection` ranks
-  // `offerIsInternalCheckoutCandidate` FIRST, and that predicate reads `purchase_route ===
-  // 'internal_checkout'` — which this row no longer says. That preference is what the gate removes.
+  // ⚠️ WHAT THIS DOES AND DOES NOT ASSERT. `src/server.js::offerIsInternalCheckoutCandidate` reads
+  // `purchase_route === 'internal_checkout'` — which this row no longer says, so the declined row
+  // is no longer an internal-checkout candidate. That claim is what the gate removes.
   assert.notEqual(declinedOut.purchase_route, 'internal_checkout');
   // It does NOT make the module's own picker rank by purchasability: `compareOffersForPresentation`
   // deliberately ignores checkout transport (pinned by `prioritizeOffers does not rank by checkout

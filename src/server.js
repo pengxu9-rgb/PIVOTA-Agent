@@ -10135,25 +10135,6 @@ function offerHasAvailableInventory(offer) {
   return inStock !== false;
 }
 
-function compareOffersForDefaultSelection(a, b) {
-  const aInternal = offerIsInternalCheckoutCandidate(a) ? 1 : 0;
-  const bInternal = offerIsInternalCheckoutCandidate(b) ? 1 : 0;
-  if (aInternal !== bInternal) return bInternal - aInternal;
-
-  const aInStock = offerHasAvailableInventory(a) ? 1 : 0;
-  const bInStock = offerHasAvailableInventory(b) ? 1 : 0;
-  if (aInStock !== bInStock) return bInStock - aInStock;
-
-  const aCurrency = readOfferCurrency(a);
-  const bCurrency = readOfferCurrency(b);
-  if (aCurrency && bCurrency && aCurrency === bCurrency) {
-    const totalOrder = compareOfferTotals(a, b);
-    if (totalOrder) return totalOrder;
-  }
-
-  return 0;
-}
-
 function findPositiveOfferById(offers, offerId) {
   const id = String(offerId || '').trim();
   if (!id) return null;
