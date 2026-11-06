@@ -225,10 +225,15 @@ test('a withheld shipping cost is an unknown total, never free shipping (offersP
   assert.equal(computeOfferTotal(withheldCost), Number.POSITIVE_INFINITY);
   assert.equal(computeOfferTotal({ offer_id: 'n', price: { amount: 10, currency: 'USD' }, shipping: {} }), 10,
     'an offer that never stated a cost is unchanged');
-  // An unknown cost is not free, and not a reason to lose: the two compare on price (10 before 11) ...
+  // An unknown cost is never added as zero (the total stays unknown above). For ranking, the offer's key is its price,
+  // the least the buyer pays, against the other offer's TOTAL (Peng, review of #2543: one key per offer, so the order
+  // is transitive). 10 before 11 + 2 = 13 ...
   const { prioritizeOffers } = require('../src/offers/offersPriority');
   assert.deepEqual(prioritizeOffers([known, withheldCost]).map((o) => o.offer_id), ['w', 'k']);
-  // ... so a dearer price with a withheld cost still loses to a cheaper known one.
+  // ... and 12 before 13 too (it used to lose on price, 12 after 11: the pairwise rule that cycled) ...
   const dearer = { ...withheldCost, offer_id: 'd', price: { amount: 12, currency: 'USD' } };
-  assert.deepEqual(prioritizeOffers([dearer, known]).map((o) => o.offer_id), ['k', 'd']);
+  assert.deepEqual(prioritizeOffers([dearer, known]).map((o) => o.offer_id), ['d', 'k']);
+  // ... while a price above the known total still loses: 14 after 13.
+  const dearest = { ...withheldCost, offer_id: 'e', price: { amount: 14, currency: 'USD' } };
+  assert.deepEqual(prioritizeOffers([dearest, known]).map((o) => o.offer_id), ['k', 'e']);
 });

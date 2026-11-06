@@ -88,7 +88,12 @@ describe('group offers: a total the buyer currency cannot state never wins best 
     expect(out.best_price_offer_id).toBe(offerOf(out, 'merch_a').offer_id);
   });
 
-  test("the opened member whose shipping the card's guard withheld keeps the marker, and does not win on free shipping", async () => {
+  // Ranking rule (Peng, review of #2543): an offer whose shipping is unknown ranks on its PRICE, the least the buyer
+  // pays, against the others' totals; one key per offer keeps the order transitive (see the cycle below). So USD 100
+  // with a withheld cost ranks before USD 95 + USD 10 = 105. It used to compare on the other's price (100 after 95),
+  // the pairwise rule that made three offers cycle. What must hold is that the withheld cost is never ADDED as zero:
+  // its total stays unknown, and it is never summed into a total in another currency.
+  test("the opened member whose shipping the card's guard withheld keeps the marker, its total stays unknown, and it ranks on its price", async () => {
     const card = withholdOffMarketMoney(
       listing('merch_a', 'p1', 100, { method_label: 'Std', cost: { amount: 30, currency: 'SGD' } }), 'USD',
     ).product;
@@ -101,7 +106,7 @@ describe('group offers: a total the buyer currency cannot state never wins best 
     expect(offerOf(out, 'merch_a').shipping).toEqual(expect.objectContaining({ cost_withheld: true }));
     expect(computeOfferTotal(offerOf(out, 'merch_a'))).toBe(Number.POSITIVE_INFINITY);
     expect(computeOfferTotal(offerOf(out, 'merch_b'))).toBe(105);
-    expect(out.best_price_offer_id).toBe(offerOf(out, 'merch_b').offer_id);
+    expect(out.best_price_offer_id).toBe(offerOf(out, 'merch_a').offer_id);
   });
 
   test('equal offers: the best price is the same whatever the member order (lowest offer id, never list order)', async () => {
@@ -146,12 +151,15 @@ describe('offer totals (offersPriority.offerTotalParts via computeOfferTotal / c
     expect(total({ price: { amount: 10, currency: 'USD' }, shipping: { cost: { amount: 0, currency: 'SGD' } } })).toBe(10);
   });
 
-  test('known totals compare as totals; with either unknown they compare on price; ties go to the lower price, then the id', () => {
+  test('one key per offer: the total when known, else the price; ties go to the lower price, then the id', () => {
     const known = (id, price, ship) => ({ offer_id: id, price: { amount: price, currency: 'USD' }, shipping: { cost: { amount: ship, currency: 'USD' } } });
     const foreign = (id, price) => ({ offer_id: id, price: { amount: price, currency: 'USD' }, shipping: { cost: { amount: 1, currency: 'GBP' } } });
     expect(compareOfferTotals(known('a', 10, 5), known('b', 12, 1))).toBe(1);
     expect(compareOfferTotals(foreign('a', 10), known('b', 11, 0))).toBe(-1);
-    expect(compareOfferTotals(foreign('a', 12), known('b', 11, 5))).toBe(1);
+    // An unknown total ranks on its price against the other's TOTAL: 12 before 11 + 5 = 16. (It used to compare on
+    // the other's price, 12 after 11, which is the pairwise key that made the order cyclic; see the cycle below.)
+    expect(compareOfferTotals(foreign('a', 12), known('b', 11, 5))).toBe(-1);
+    expect(compareOfferTotals(foreign('a', 17), known('b', 11, 5))).toBe(1);
     expect(compareOfferTotals(known('a', 9, 3), known('b', 11, 1))).toBe(-1);
     expect(compareOfferTotals(known('a', 11, 1), known('b', 9, 3))).toBe(1);
     expect(compareOfferTotals({ offer_id: 'u', price: {} }, known('b', 11, 1))).toBe(1);
@@ -163,5 +171,57 @@ describe('offer totals (offersPriority.offerTotalParts via computeOfferTotal / c
     const offer = (price) => ({ price: { amount: price, currency: 'USD' }, shipping: { cost: { amount: 1, currency: 'GBP' } } });
     expect(offerTotalChanged(offer(10), offer(9))).toBe(true);
     expect(offerTotalChanged(offer(10), offer(10))).toBe(false);
+  });
+});
+
+// PR controller review of #2543 (delta fcf754a05): "totals when both are known, prices otherwise" chose the key per
+// PAIR, and three offers made a cycle, so the best price, the default and the strip order followed the input order.
+describe('a three-offer cycle: every ranking picks the same offer in every input order', () => {
+  const { compareOfferTotals, compareOfferTotalsThenId, prioritizeOffers, pickDefaultOfferId } = offersPriority;
+  const offer = (id, price, shipping) => ({
+    offer_id: id, merchant_id: `merch_${id}`, price: { amount: price, currency: 'USD' },
+    inventory: { in_stock: true }, ...(shipping ? { shipping } : {}),
+  });
+  const A = offer('A', 90, { cost: { amount: 10, currency: 'USD' } }); // total 100
+  const B = offer('B', 95, { cost: { amount: 4, currency: 'GBP' } }); // total unknown: ranks on 95
+  const C = offer('C', 96); // total 96
+  const orders = [[A, B, C], [A, C, B], [B, A, C], [B, C, A], [C, A, B], [C, B, A]];
+  const ids = (offers) => offers.map((o) => o.offer_id).join('');
+
+  test('the comparator is transitive on the triple that cycled: B before C before A, and B before A', () => {
+    expect(compareOfferTotals(B, C)).toBe(-1);
+    expect(compareOfferTotals(C, A)).toBe(-1);
+    expect(compareOfferTotals(B, A)).toBe(-1);
+    expect(compareOfferTotals(A, B)).toBe(1);
+  });
+
+  test.each(orders.map((o) => [ids(o), o]))('input order %s: sort, linear scan, strip order and default agree', (_name, input) => {
+    expect([...input].sort(compareOfferTotalsThenId)[0].offer_id).toBe('B');
+    let best = null;
+    for (const x of input) if (!best || compareOfferTotalsThenId(x, best) < 0) best = x; // pdpLiveOverlay's scan
+    expect(best.offer_id).toBe('B');
+    expect(ids(prioritizeOffers(input))).toBe('BCA');
+    expect(pickDefaultOfferId(input)).toBe('B');
+  });
+
+  test.each(orders.map((o) => [ids(o), o]))('input order %s: the group lane picks the same best and default', async (_name, input) => {
+    const listing = (o) => ({
+      merchant_id: o.merchant_id, product_id: `p${o.offer_id}`, platform: 'shopify', platform_product_id: `p${o.offer_id}`,
+      title: 'T', in_stock: true, price: o.price, currency: 'USD', ...(o.shipping ? { shipping: o.shipping } : {}),
+    });
+    const out = await buildOffersFromGroupMembers({
+      productGroupId: 'pg_cycle', servingCurrency: 'USD', buyerMarket: 'US',
+      members: input.map((o) => ({ merchant_id: o.merchant_id, product_id: `p${o.offer_id}`, platform: 'shopify' })),
+      prefetchedProducts: input.map(listing),
+    });
+    const merchantOf = (offerId) => out.offers.find((o) => o.offer_id === offerId)?.merchant_id;
+    expect(merchantOf(out.best_price_offer_id)).toBe('merch_B');
+    expect(merchantOf(out.default_offer_id)).toBe('merch_B');
+    expect(out.offers.map((o) => o.merchant_id)).toEqual(['merch_B', 'merch_C', 'merch_A']);
+  });
+
+  test('the default ranks on totals, not prices: USD 96 is the default over USD 90 + USD 10', () => {
+    expect(pickDefaultOfferId([A, C])).toBe('C');
+    expect(pickDefaultOfferId([C, A])).toBe('C');
   });
 });

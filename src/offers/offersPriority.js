@@ -793,29 +793,37 @@ function offerTotalParts(offer) {
 }
 
 // The total, or +Infinity when the offer is unpriced or its total is unknown (offerTotalParts). Rankings compare
-// offers with compareOfferTotals, which still orders offers whose totals are unknown by their price.
+// offers with compareOfferTotals, which ranks an offer whose total is unknown on its price.
 function computeOfferTotal(offer) {
   const { total } = offerTotalParts(offer);
   return total == null ? Number.POSITIVE_INFINITY : total;
 }
 
 /**
- * Cheaper first, never by subtraction: two known totals compare as totals; when either total is unknown (a
- * cross-border or withheld shipping cost) the two compare by price alone, so an unknown cost is neither free nor a
- * reason to lose to a dearer offer. Equal: the lower price first, then 0 (the caller breaks a remaining tie on its
- * own key, e.g. offer id). Unpriced offers sort last.
+ * Cheaper first, never by subtraction, on ONE KEY PER OFFER: its total when known, else its price (the least the
+ * buyer pays when the shipping cost is unknown: cross-border or withheld). So an unknown cost is neither free money
+ * added to nothing nor a reason to lose to a dearer offer, and it is still compared against the other offers'
+ * totals. Equal keys: the lower price first, then 0 (the caller breaks a remaining tie on its own key, e.g. offer
+ * id). Unpriced offers sort last.
+ *
+ * A key per offer is what makes this a total order. Comparing "totals when both are known, prices otherwise" chose
+ * the key per PAIR and was not transitive: USD 90 + USD 10 (100) beat USD 95 + GBP 4 (unknown, compared on 95 vs
+ * 90), which beat USD 96 (95 vs 96), which beat the first (96 vs 100), so a sort's first offer depended on the
+ * input order.
  */
+function offerRankKey(offer) {
+  const { price, total } = offerTotalParts(offer);
+  return { price, key: total == null ? price : total };
+}
+
 function compareOfferTotals(a, b) {
-  const left = offerTotalParts(a);
-  const right = offerTotalParts(b);
+  const left = offerRankKey(a);
+  const right = offerRankKey(b);
   if (left.price == null || right.price == null) {
     if (left.price == null && right.price == null) return 0;
     return left.price == null ? 1 : -1;
   }
-  const bothKnown = left.total != null && right.total != null;
-  const l = bothKnown ? left.total : left.price;
-  const r = bothKnown ? right.total : right.price;
-  if (l !== r) return l < r ? -1 : 1;
+  if (left.key !== right.key) return left.key < right.key ? -1 : 1;
   if (left.price !== right.price) return left.price < right.price ? -1 : 1;
   return 0;
 }
