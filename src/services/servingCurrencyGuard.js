@@ -148,10 +148,13 @@ const PDP_MONEY_FIELDS = ['price', 'price_amount', 'priceAmount', 'current_price
   'pricing', 'compare_at_price', 'compareAtPrice', 'original_price', 'originalPrice', 'list_price', 'sale_price', 'salePrice',
   'shipping_cost'];
 
+// The cost goes and `cost_withheld` says so: a shipping object with no cost reads as free shipping to the offer
+// totals (offersPriority.offerTotalParts, which every offer ranking reads), so the offer would rank on a total it
+// does not have. Only a record that has a `cost` key is marked: one that never stated a cost has nothing withheld.
 function withoutShippingCost(record) {
   if (!isPlainObject(record.shipping) || !('cost' in record.shipping)) return record;
   const { cost: _cost, ...shipping } = record.shipping;
-  return { ...record, shipping };
+  return { ...record, shipping: { ...shipping, cost_withheld: true } };
 }
 
 function withoutMoney(record) {

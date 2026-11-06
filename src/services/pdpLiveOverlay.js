@@ -37,7 +37,7 @@ const {
   STATUS,
 } = require('./ucpLiveOfferRead');
 const { isRestatedProductId } = require('./merchantVariantSource');
-const { compareOffersForPresentation, computeOfferTotal, prioritizeOffers } = require('../offers/offersPriority');
+const { compareOffersForPresentation, compareOfferTotalsThenId, offerTotalChanged, prioritizeOffers } = require('../offers/offersPriority');
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 // A read that got no answer (timeout, error, no endpoint) may be tried again sooner: a cold store's first
@@ -473,14 +473,14 @@ function inPresentationOrder(offers) {
  * whose total (price + shipping) or stock ACTUALLY changed -- a confirmed price changes nothing:
  *   - order: the producer's comparator (`prioritizeOffers`: in stock first, then total) re-run, only when
  *     the list was in that order to begin with;
- *   - best price: the lowest `computeOfferTotal` among the offers in the page currency, re-checked only when
+ *   - best price: the cheapest by `compareOfferTotals` among the offers in the page currency, re-checked only when
  *     a row's total changed.
  */
 function patchOffersModule(data, isCardOffer, card, o) {
   const before = data.offers;
   const patched = before.map((offer) => (isObj(offer) && isCardOffer(card, offer) ? patchOffer(offer, o) : offer));
   if (patched.every((x, j) => x === before[j])) return { data, moved: false };
-  const totalChanged = patched.some((x, j) => x !== before[j] && computeOfferTotal(x) !== computeOfferTotal(before[j]));
+  const totalChanged = patched.some((x, j) => x !== before[j] && offerTotalChanged(x, before[j]));
   const stockChanged = patched.some((x, j) => x !== before[j] && offerInStock(x) !== offerInStock(before[j]));
   let offers = patched;
   if ((totalChanged || stockChanged) && offers.length > 1 && inPresentationOrder(before)) offers = prioritizeOffers(patched);
@@ -490,8 +490,11 @@ function patchOffersModule(data, isCardOffer, card, o) {
     const inCurrency = offers.filter((x) => isObj(x) && priceCurrencyOf(x.price, x.currency) === o.currency);
     const candidates = inCurrency.length ? inCurrency : offers.filter(isObj);
     let best = null;
-    for (const x of candidates) if (!best || computeOfferTotal(x) < computeOfferTotal(best)) best = x;
-    if (best && Number.isFinite(computeOfferTotal(best)) && str(best.offer_id) && str(best.offer_id) !== str(data.best_price_offer_id)) {
+    for (const x of candidates) if (!best || compareOfferTotalsThenId(x, best) < 0) best = x;
+    // Priced, not "finite total": an offer whose shipping is unknown still ranks on its price (compareOfferTotals).
+    if (best && Number.isFinite(Number(best?.price?.amount ?? best?.price?.current?.amount))
+      && Number(best?.price?.amount ?? best?.price?.current?.amount) > 0
+      && str(best.offer_id) && str(best.offer_id) !== str(data.best_price_offer_id)) {
       next.best_price_offer_id = str(best.offer_id);
       moved = true;
     }

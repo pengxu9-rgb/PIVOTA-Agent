@@ -763,13 +763,83 @@ function offerHasAvailableInventory(offer) {
   return inStock !== false;
 }
 
-function computeOfferTotal(offer) {
+function nonEmptyUpper(...values) {
+  for (const value of values) {
+    const code = String(value ?? '').trim().toUpperCase();
+    if (code) return code;
+  }
+  return '';
+}
+
+/**
+ * An offer's price, and its total in the price's currency when its shipping can be added to it.
+ *   price: the positive amount, or null (unpriced);
+ *   total: price + shipping, or null when the shipping is UNKNOWN in the price's currency: withheld by the PDP
+ *          currency guard (`cost_withheld`), or stated in another currency than the price, or stated in a currency
+ *          while the price states none. A zero cost is zero whatever its label; an unlabelled cost is the price's.
+ */
+function offerTotalParts(offer) {
   const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
-  if (!o) return Number.POSITIVE_INFINITY;
   const price = Number(o?.price?.amount ?? o?.price?.current?.amount);
-  if (!Number.isFinite(price) || price <= 0) return Number.POSITIVE_INFINITY;
-  const shipping = Number(o?.shipping?.cost?.amount ?? 0) || 0;
-  return price + shipping;
+  if (!o || !Number.isFinite(price) || price <= 0) return { price: null, total: null };
+  if (o?.shipping?.cost_withheld === true) return { price, total: null };
+  const cost = o?.shipping?.cost;
+  const shipping = Number(cost?.amount ?? 0) || 0;
+  if (shipping === 0) return { price, total: price };
+  const shippingCurrency = nonEmptyUpper(cost?.currency);
+  const priceCurrency = nonEmptyUpper(o?.price?.currency, o?.price?.current?.currency, o?.currency);
+  if (shippingCurrency && shippingCurrency !== priceCurrency) return { price, total: null };
+  return { price, total: price + shipping };
+}
+
+// The total, or +Infinity when the offer is unpriced or its total is unknown (offerTotalParts). Rankings compare
+// offers with compareOfferTotals, which ranks an offer whose total is unknown on its price.
+function computeOfferTotal(offer) {
+  const { total } = offerTotalParts(offer);
+  return total == null ? Number.POSITIVE_INFINITY : total;
+}
+
+/**
+ * Cheaper first, never by subtraction, on ONE KEY PER OFFER: its total when known, else its price (the least the
+ * buyer pays when the shipping cost is unknown: cross-border or withheld). So an unknown cost is neither free money
+ * added to nothing nor a reason to lose to a dearer offer, and it is still compared against the other offers'
+ * totals. Equal keys: the lower price first, then 0 (the caller breaks a remaining tie on its own key, e.g. offer
+ * id). Unpriced offers sort last.
+ *
+ * A key per offer is what makes this a total order. Comparing "totals when both are known, prices otherwise" chose
+ * the key per PAIR and was not transitive: USD 90 + USD 10 (100) beat USD 95 + GBP 4 (unknown, compared on 95 vs
+ * 90), which beat USD 96 (95 vs 96), which beat the first (96 vs 100), so a sort's first offer depended on the
+ * input order.
+ */
+function offerRankKey(offer) {
+  const { price, total } = offerTotalParts(offer);
+  return { price, key: total == null ? price : total };
+}
+
+function compareOfferTotals(a, b) {
+  const left = offerRankKey(a);
+  const right = offerRankKey(b);
+  if (left.price == null || right.price == null) {
+    if (left.price == null && right.price == null) return 0;
+    return left.price == null ? 1 : -1;
+  }
+  if (left.key !== right.key) return left.key < right.key ? -1 : 1;
+  if (left.price !== right.price) return left.price < right.price ? -1 : 1;
+  return 0;
+}
+
+// Did an offer's money move? Price and total both: two unknown totals are equal as numbers (+Infinity), so a total
+// alone would miss a price change on an offer whose shipping is unknown.
+function offerTotalChanged(a, b) {
+  const left = offerTotalParts(a);
+  const right = offerTotalParts(b);
+  return left.price !== right.price || left.total !== right.total;
+}
+
+// compareOfferTotals, then the offer id: a best-price pick never depends on list order.
+function compareOfferTotalsThenId(a, b) {
+  return compareOfferTotals(a, b)
+    || String(a?.offer_id || a?.id || '').localeCompare(String(b?.offer_id || b?.id || ''));
 }
 
 function readExpectedCurrency(offer) {
@@ -815,9 +885,8 @@ function compareOffersForPresentation(a, b) {
   const bCurrencyMatch = offerMatchesExpectedCurrency(b) ? 1 : 0;
   if (aCurrencyMatch !== bCurrencyMatch) return bCurrencyMatch - aCurrencyMatch;
 
-  const aTotal = computeOfferTotal(a);
-  const bTotal = computeOfferTotal(b);
-  if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
+  const totalOrder = compareOfferTotals(a, b);
+  if (totalOrder) return totalOrder;
 
   const completenessDelta = scoreCommerceFactsCompleteness(b) - scoreCommerceFactsCompleteness(a);
   if (completenessDelta !== 0) return completenessDelta;
@@ -917,7 +986,10 @@ module.exports = {
   annotateOffersWithCommerceMetadata,
   enrichOfferCommerceMetadata,
   compareOffersForPresentation,
+  compareOfferTotals,
+  compareOfferTotalsThenId,
   computeOfferTotal,
+  offerTotalChanged,
   isInternalOffer,
   pickDefaultOfferId,
   prioritizeOffers,

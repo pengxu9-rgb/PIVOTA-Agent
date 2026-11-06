@@ -164,6 +164,10 @@ const {
   prioritizeOffers,
   isInternalOffer,
   pickDefaultOfferId,
+  // One total rule for every ranking here (offersPriority.offerTotalParts): an unknown shipping cost is never free.
+  computeOfferTotal,
+  compareOfferTotals,
+  compareOfferTotalsThenId,
 } = require('./offers/offersPriority');
 const {
   buildPdpPayload,
@@ -9063,6 +9067,20 @@ function stripSavingsPresentationFields(source) {
   return out;
 }
 
+// get_pdp_v2's offer strip: each offer quoting money in another currency than the serving one loses that money
+// (withholdOffMarketMoney) and its savings copy, which quotes the same money in words; an offer in the serving
+// currency is returned as is. Returns the offers and the currencies withheld.
+function withholdOffMarketOfferMoney(offers, servingCurrency) {
+  const withheld = new Set();
+  const out = (Array.isArray(offers) ? offers : []).map((offer) => {
+    const guardedOffer = withholdOffMarketMoney(offer, servingCurrency);
+    if (!guardedOffer.withheld.length) return offer;
+    for (const code of guardedOffer.withheld) withheld.add(code);
+    return stripSavingsPresentationFields(guardedOffer.product);
+  });
+  return { offers: out, withheld: [...withheld].sort() };
+}
+
 function projectExternalSeedOfferVariant(variant) {
   if (!variant || typeof variant !== 'object') return null;
   return stripSavingsPresentationFields({
@@ -10086,13 +10104,6 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
   return normalizeOfferMoney(normalizedAmount, context.currency);
 }
 
-function computeOfferTotal(offer) {
-  const amount = Number(offer?.price?.amount ?? offer?.price?.current?.amount);
-  if (!Number.isFinite(amount) || amount <= 0) return Number.POSITIVE_INFINITY;
-  const shipping = Number(offer?.shipping?.cost?.amount ?? 0) || 0;
-  return amount + shipping;
-}
-
 function readPositiveOfferMoney(offer) {
   if (!offer || typeof offer !== 'object') return null;
   const amount = readPriceAmountForNormalization(offer.price);
@@ -10136,9 +10147,8 @@ function compareOffersForDefaultSelection(a, b) {
   const aCurrency = readOfferCurrency(a);
   const bCurrency = readOfferCurrency(b);
   if (aCurrency && bCurrency && aCurrency === bCurrency) {
-    const aTotal = computeOfferTotal(a);
-    const bTotal = computeOfferTotal(b);
-    if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
+    const totalOrder = compareOfferTotals(a, b);
+    if (totalOrder) return totalOrder;
   }
 
   return 0;
@@ -11128,11 +11138,7 @@ function compareOffersForSameMerchantCollapse(a, b) {
   const bInStock = offerHasAvailableInventory(b) ? 1 : 0;
   if (aInStock !== bInStock) return bInStock - aInStock;
 
-  const aTotal = computeOfferTotal(a);
-  const bTotal = computeOfferTotal(b);
-  if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
-
-  return 0;
+  return compareOfferTotals(a, b);
 }
 
 function collapseSameInternalMerchantOffers(offers) {
@@ -11664,6 +11670,9 @@ async function buildOffersFromGroupMembers(args) {
                 && shipCostCurrency
                 ? { cost: normalizeOfferMoney(shipCostAmount, shipCostCurrency) }
                 : {}),
+              // The card's own guard withheld this member's cost (servingCurrencyGuard): the rebuilt offer keeps
+              // saying so, or its total would read as free shipping and rank it cheapest.
+              ...(p.shipping?.cost_withheld === true ? { cost_withheld: true } : {}),
             }
           : undefined,
       returns: p.returns || undefined,
@@ -11733,12 +11742,7 @@ async function buildOffersFromGroupMembers(args) {
     ? prioritizedOffers.filter((offer) => readOfferCurrency(offer) === String(offerServingCurrency).toUpperCase())
     : [];
   const defaultCandidateOffers = servingCurrencyOffers.length ? servingCurrencyOffers : prioritizedOffers;
-  const sortedByTotal = [...defaultCandidateOffers].sort((a, b) => {
-    const aTotal = computeOfferTotal(a);
-    const bTotal = computeOfferTotal(b);
-    if (aTotal === bTotal) return 0;
-    return aTotal < bTotal ? -1 : 1;
-  });
+  const sortedByTotal = [...defaultCandidateOffers].sort(compareOfferTotalsThenId);
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
   const preferredOffer =
     (preferredProductId
@@ -48376,16 +48380,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // re-priced from it (hydrate's onlyServingCurrency).
         if (offersData && pdpServingCurrency && Array.isArray(offersData.offers)) {
           const cardCurrencies = pdpCurrencyGuard ? pdpCurrencyGuard.withheld_currencies : [];
-          const offerCurrencies = new Set();
-          offersData = {
-            ...offersData,
-            offers: offersData.offers.map((offer) => {
-              const guardedOffer = withholdOffMarketMoney(offer, pdpServingCurrency);
-              if (!guardedOffer.withheld.length) return offer;
-              for (const code of guardedOffer.withheld) offerCurrencies.add(code);
-              return stripSavingsPresentationFields(guardedOffer.product);
-            }),
-          };
+          const guardedOffers = withholdOffMarketOfferMoney(offersData.offers, pdpServingCurrency);
+          const offerCurrencies = new Set(guardedOffers.withheld);
+          offersData = { ...offersData, offers: guardedOffers.offers };
           if (offerCurrencies.size) {
             pdpCurrencyGuard = { withheld_currencies: [...new Set([...cardCurrencies, ...offerCurrencies])].sort() };
             logger.info(
@@ -55122,6 +55119,8 @@ module.exports._debug = {
   resolveMissingIdentityGroupMembers,
   resetIdentityGroupRescueCache,
   hydrateCanonicalPdpPayloadFromOffers,
+  withholdOffMarketOfferMoney,
+  computeOfferTotal,
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
