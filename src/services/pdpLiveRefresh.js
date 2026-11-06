@@ -21,7 +21,7 @@
  */
 
 const { applyPdpLiveOverlay, canonicalCard, cardHandle, pageCurrency, offerInStock } = require('./pdpLiveOverlay');
-const { computeOfferTotal } = require('../offers/offersPriority');
+const { offerTotalChanged } = require('../offers/offersPriority');
 const { commerceBlocked, productHost, productVariantIds, STATUS } = require('./ucpLiveOfferRead');
 const { signRefreshToken, verifyRefreshToken, DEFAULT_TTL_S } = require('./pdpLiveRefreshToken');
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
@@ -143,7 +143,7 @@ function offerRowMoved(before, after) {
     if (!isObj(x)) return false;
     const b = prior.get(str(x.offer_id));
     if (!b || b === x) return false;
-    return computeOfferTotal(b) !== computeOfferTotal(x) || offerInStock(b) !== offerInStock(x);
+    return offerTotalChanged(b, x) || offerInStock(b) !== offerInStock(x);
   });
 }
 

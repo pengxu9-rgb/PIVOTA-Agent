@@ -60,14 +60,31 @@ describe('group offers: a total the buyer currency cannot state never wins best 
   });
   const offerOf = (out, merchant) => out.offers.find((o) => o.merchant_id === merchant);
 
-  test('a USD price with a GBP shipping cost is an unknown total: the USD 100 offer is best, not USD 95 + 4 GBP', async () => {
+  test('a USD price with GBP shipping is never summed: the two compare on price, USD 95 before USD 100', async () => {
     const out = await buildOffersFromGroupMembers({
       productGroupId: 'pg_1', members: [member('merch_a', 'p1'), member('merch_b', 'p2')],
       servingCurrency: 'USD', buyerMarket: 'US',
       prefetchedProducts: [listing('merch_a', 'p1', 100), listing('merch_b', 'p2', 95, { cost: { amount: 4, currency: 'GBP' } })],
     });
+    // Never 95 + 4 = 99 (a GBP amount added to a USD one): B's total is unknown, so A and B compare on price.
     expect(computeOfferTotal(offerOf(out, 'merch_b'))).toBe(Number.POSITIVE_INFINITY);
     expect(offersPriority.computeOfferTotal(offerOf(out, 'merch_b'))).toBe(Number.POSITIVE_INFINITY);
+    expect(out.best_price_offer_id).toBe(offerOf(out, 'merch_b').offer_id);
+  });
+
+  test('an SG buyer: SGD 50 + USD 5 shipping is best over SGD 80 + SGD 5 (the unknown total compares on price)', async () => {
+    const sgd = (merchant, product, amount, shipping) => ({ ...listing(merchant, product, amount, shipping),
+      price: { amount, currency: 'SGD' }, currency: 'SGD' });
+    const build = (products, members) => buildOffersFromGroupMembers({
+      productGroupId: 'pg_1', members, servingCurrency: 'SGD', buyerMarket: 'SG', prefetchedProducts: products,
+    });
+    const a = sgd('merch_a', 'p1', 50, { cost: { amount: 5, currency: 'USD' } });
+    const b = sgd('merch_b', 'p2', 80, { cost: { amount: 5, currency: 'SGD' } });
+    let out = await build([a, b], [member('merch_a', 'p1'), member('merch_b', 'p2')]);
+    expect(out.best_price_offer_id).toBe(offerOf(out, 'merch_a').offer_id);
+    // Every total unknown: still the cheaper price, whatever the member order.
+    const b2 = sgd('merch_b', 'p2', 80, { cost: { amount: 1, currency: 'USD' } });
+    out = await build([b2, a], [member('merch_b', 'p2'), member('merch_a', 'p1')]);
     expect(out.best_price_offer_id).toBe(offerOf(out, 'merch_a').offer_id);
   });
 
@@ -87,9 +104,64 @@ describe('group offers: a total the buyer currency cannot state never wins best 
     expect(out.best_price_offer_id).toBe(offerOf(out, 'merch_b').offer_id);
   });
 
+  test('equal offers: the best price is the same whatever the member order (lowest offer id, never list order)', async () => {
+    const pick = async (order) => {
+      const products = { a: listing('merch_a', 'p1', 50), b: listing('merch_b', 'p2', 50) };
+      const out = await buildOffersFromGroupMembers({
+        productGroupId: 'pg_1', members: order.map((k) => member(`merch_${k}`, k === 'a' ? 'p1' : 'p2')),
+        servingCurrency: 'USD', buyerMarket: 'US', prefetchedProducts: order.map((k) => products[k]),
+      });
+      return out.best_price_offer_id;
+    };
+    const forward = await pick(['a', 'b']);
+    expect(await pick(['b', 'a'])).toBe(forward);
+    expect(forward).toMatch(/merch_a/);
+  });
+
   test('shipping in the price currency still adds up, and an unlabelled cost is the price currency', () => {
     expect(computeOfferTotal({ price: { amount: 95, currency: 'USD' }, shipping: { cost: { amount: 10, currency: 'usd' } } })).toBe(105);
     expect(computeOfferTotal({ price: { amount: 95, currency: 'USD' }, shipping: { cost: { amount: 10 } } })).toBe(105);
     expect(offersPriority.computeOfferTotal({ price: { amount: 95, currency: 'USD' }, shipping: { cost: { amount: 10 } } })).toBe(105);
+  });
+});
+
+describe('offer totals (offersPriority.offerTotalParts via computeOfferTotal / compareOfferTotals)', () => {
+  const { compareOfferTotals, compareOfferTotalsThenId, offerTotalChanged } = offersPriority;
+  const total = offersPriority.computeOfferTotal;
+
+  test('currency codes compare case- and space-insensitively; the price currency falls back to price.current, then the offer', () => {
+    expect(total({ price: { amount: 10, currency: 'usd' }, shipping: { cost: { amount: 2, currency: ' USD ' } } })).toBe(12);
+    expect(total({ price: { current: { amount: 10, currency: 'USD' } }, shipping: { cost: { amount: 2, currency: 'USD' } } })).toBe(12);
+    expect(total({ price: { current: { amount: 10, currency: 'USD' } }, shipping: { cost: { amount: 2, currency: 'SGD' } } }))
+      .toBe(Number.POSITIVE_INFINITY);
+    expect(total({ price: { amount: 10 }, currency: 'USD', shipping: { cost: { amount: 2, currency: 'USD' } } })).toBe(12);
+    expect(total({ price: { amount: 10, currency: '' }, currency: 'USD', shipping: { cost: { amount: 2, currency: 'USD' } } })).toBe(12);
+    expect(total({ price: { amount: 10, currency: '' }, currency: 'USD', shipping: { cost: { amount: 2, currency: 'SGD' } } }))
+      .toBe(Number.POSITIVE_INFINITY);
+  });
+
+  test('a price stating no currency with a labelled shipping cost is unknown; a zero cost is zero whatever its label', () => {
+    expect(total({ price: { amount: 10 }, shipping: { cost: { amount: 2, currency: 'SGD' } } })).toBe(Number.POSITIVE_INFINITY);
+    expect(total({ price: { amount: 10 }, shipping: { cost: { amount: 2 } } })).toBe(12);
+    expect(total({ price: { amount: 10, currency: 'USD' }, shipping: { cost: { amount: 0, currency: 'SGD' } } })).toBe(10);
+  });
+
+  test('known totals compare as totals; with either unknown they compare on price; ties go to the lower price, then the id', () => {
+    const known = (id, price, ship) => ({ offer_id: id, price: { amount: price, currency: 'USD' }, shipping: { cost: { amount: ship, currency: 'USD' } } });
+    const foreign = (id, price) => ({ offer_id: id, price: { amount: price, currency: 'USD' }, shipping: { cost: { amount: 1, currency: 'GBP' } } });
+    expect(compareOfferTotals(known('a', 10, 5), known('b', 12, 1))).toBe(1);
+    expect(compareOfferTotals(foreign('a', 10), known('b', 11, 0))).toBe(-1);
+    expect(compareOfferTotals(foreign('a', 12), known('b', 11, 5))).toBe(1);
+    expect(compareOfferTotals(known('a', 9, 3), known('b', 11, 1))).toBe(-1);
+    expect(compareOfferTotals(known('a', 11, 1), known('b', 9, 3))).toBe(1);
+    expect(compareOfferTotals({ offer_id: 'u', price: {} }, known('b', 11, 1))).toBe(1);
+    expect(compareOfferTotalsThenId(foreign('b', 10), foreign('a', 10))).toBe(1);
+    expect([foreign('b', 10), foreign('a', 10)].sort(compareOfferTotalsThenId).map((o) => o.offer_id)).toEqual(['a', 'b']);
+  });
+
+  test('a price move on an offer whose total is unknown is still a change', () => {
+    const offer = (price) => ({ price: { amount: price, currency: 'USD' }, shipping: { cost: { amount: 1, currency: 'GBP' } } });
+    expect(offerTotalChanged(offer(10), offer(9))).toBe(true);
+    expect(offerTotalChanged(offer(10), offer(10))).toBe(false);
   });
 });

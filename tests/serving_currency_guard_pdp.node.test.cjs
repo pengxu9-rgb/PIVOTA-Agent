@@ -225,6 +225,10 @@ test('a withheld shipping cost is an unknown total, never free shipping (offersP
   assert.equal(computeOfferTotal(withheldCost), Number.POSITIVE_INFINITY);
   assert.equal(computeOfferTotal({ offer_id: 'n', price: { amount: 10, currency: 'USD' }, shipping: {} }), 10,
     'an offer that never stated a cost is unchanged');
+  // An unknown cost is not free, and not a reason to lose: the two compare on price (10 before 11) ...
   const { prioritizeOffers } = require('../src/offers/offersPriority');
-  assert.deepEqual(prioritizeOffers([withheldCost, known]).map((o) => o.offer_id), ['k', 'w']);
+  assert.deepEqual(prioritizeOffers([known, withheldCost]).map((o) => o.offer_id), ['w', 'k']);
+  // ... so a dearer price with a withheld cost still loses to a cheaper known one.
+  const dearer = { ...withheldCost, offer_id: 'd', price: { amount: 12, currency: 'USD' } };
+  assert.deepEqual(prioritizeOffers([dearer, known]).map((o) => o.offer_id), ['k', 'd']);
 });

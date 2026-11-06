@@ -164,6 +164,10 @@ const {
   prioritizeOffers,
   isInternalOffer,
   pickDefaultOfferId,
+  // One total rule for every ranking here (offersPriority.offerTotalParts): an unknown shipping cost is never free.
+  computeOfferTotal,
+  compareOfferTotals,
+  compareOfferTotalsThenId,
 } = require('./offers/offersPriority');
 const {
   buildPdpPayload,
@@ -10100,20 +10104,6 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
   return normalizeOfferMoney(normalizedAmount, context.currency);
 }
 
-function computeOfferTotal(offer) {
-  const amount = Number(offer?.price?.amount ?? offer?.price?.current?.amount);
-  if (!Number.isFinite(amount) || amount <= 0) return Number.POSITIVE_INFINITY;
-  // A withheld shipping cost (servingCurrencyGuard) is unknown, not free, and one in another currency than the
-  // price cannot be added to it: either way the total is unknown (as offersPriority.computeOfferTotal).
-  if (offer?.shipping?.cost_withheld === true) return Number.POSITIVE_INFINITY;
-  const shippingCurrency = String(offer?.shipping?.cost?.currency || '').trim().toUpperCase();
-  const priceCurrency = String(offer?.price?.currency ?? offer?.price?.current?.currency ?? offer?.currency ?? '')
-    .trim().toUpperCase();
-  if (shippingCurrency && priceCurrency && shippingCurrency !== priceCurrency) return Number.POSITIVE_INFINITY;
-  const shipping = Number(offer?.shipping?.cost?.amount ?? 0) || 0;
-  return amount + shipping;
-}
-
 function readPositiveOfferMoney(offer) {
   if (!offer || typeof offer !== 'object') return null;
   const amount = readPriceAmountForNormalization(offer.price);
@@ -10157,9 +10147,8 @@ function compareOffersForDefaultSelection(a, b) {
   const aCurrency = readOfferCurrency(a);
   const bCurrency = readOfferCurrency(b);
   if (aCurrency && bCurrency && aCurrency === bCurrency) {
-    const aTotal = computeOfferTotal(a);
-    const bTotal = computeOfferTotal(b);
-    if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
+    const totalOrder = compareOfferTotals(a, b);
+    if (totalOrder) return totalOrder;
   }
 
   return 0;
@@ -11149,11 +11138,7 @@ function compareOffersForSameMerchantCollapse(a, b) {
   const bInStock = offerHasAvailableInventory(b) ? 1 : 0;
   if (aInStock !== bInStock) return bInStock - aInStock;
 
-  const aTotal = computeOfferTotal(a);
-  const bTotal = computeOfferTotal(b);
-  if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
-
-  return 0;
+  return compareOfferTotals(a, b);
 }
 
 function collapseSameInternalMerchantOffers(offers) {
@@ -11757,12 +11742,7 @@ async function buildOffersFromGroupMembers(args) {
     ? prioritizedOffers.filter((offer) => readOfferCurrency(offer) === String(offerServingCurrency).toUpperCase())
     : [];
   const defaultCandidateOffers = servingCurrencyOffers.length ? servingCurrencyOffers : prioritizedOffers;
-  const sortedByTotal = [...defaultCandidateOffers].sort((a, b) => {
-    const aTotal = computeOfferTotal(a);
-    const bTotal = computeOfferTotal(b);
-    if (aTotal === bTotal) return 0;
-    return aTotal < bTotal ? -1 : 1;
-  });
+  const sortedByTotal = [...defaultCandidateOffers].sort(compareOfferTotalsThenId);
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
   const preferredOffer =
     (preferredProductId
