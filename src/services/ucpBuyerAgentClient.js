@@ -1497,11 +1497,12 @@ function normalizeDiscountCodes(codes) {
  * `$.line_items[i]` and `$.totals.shipping`; its totals vocabulary names `fulfillment` and `fee` too. Only those
  * are recognized. Any other path, and a missing one, returns null: the entry is unreadable, never guessed.
  */
-function allocationTarget(path, lineCount) {
+function allocationTarget(path, lines) {
   if (typeof path !== 'string') return null;
   const lineIndex = /^\$\.line_items\[(\d+)\]$/.exec(path);
-  // A line allocation must name a line this checkout has; `$.line_items[99]` on a one-line checkout is not one.
-  if (lineIndex) return Number(lineIndex[1]) < lineCount ? 'line' : null;
+  // A line allocation must name a line this checkout has; `$.line_items[99]` on a one-line checkout is not one,
+  // and neither is a slot that holds no line object (`[null]` has no line at index 0).
+  if (lineIndex) return isPlainObjectLocal(lines[Number(lineIndex[1])]) ? 'line' : null;
   if (/^\$\.totals\.(shipping|fulfillment)$/.test(path)) return 'shipping';
   if (/^\$\.totals\.fee$/.test(path)) return 'fee';
   return null;
@@ -1520,7 +1521,7 @@ function positiveMinor(value) {
  * So it is read, as one allocation targeted `unallocated`: it lowers the checkout total, but nothing says
  * whether it lowered the item, the order or shipping, so it never counts as the item's saving.
  */
-function readAppliedEntry(entry, lineCount) {
+function readAppliedEntry(entry, lines) {
   if (!isPlainObjectLocal(entry)) return null;
   const amount = positiveMinor(entry.amount);
   const code = typeof entry.code === 'string' && entry.code.trim() ? entry.code.trim() : null;
@@ -1536,7 +1537,7 @@ function readAppliedEntry(entry, lineCount) {
   } else {
     for (const a of rawAllocations) {
       const allocationAmount = isPlainObjectLocal(a) ? positiveMinor(a.amount) : null;
-      const target = isPlainObjectLocal(a) ? allocationTarget(a.path, lineCount) : null;
+      const target = isPlainObjectLocal(a) ? allocationTarget(a.path, lines) : null;
       if (allocationAmount === null || target === null) return null;
       allocations.push({ path: a.path, target, amount_minor: allocationAmount });
     }
@@ -1579,18 +1580,21 @@ function normalizeDiscounts(payload) {
   // was sent back, and dropping a non-string slot first would shift every later index onto the wrong code.
   const echo = Array.isArray(block.codes) ? block.codes : [];
   const submitted = echo.filter((c) => typeof c === 'string');
-  const lineItems = payload && (Array.isArray(payload.line_items) ? payload.line_items : payload.items);
-  const lineCount = Array.isArray(lineItems) ? lineItems.length : 0;
+  // `items` is read ONLY when `line_items` is absent. A `line_items` that is present but not a list is
+  // unreadable, never a cue to look elsewhere: no line allocation can then be placed.
+  const rawLines = payload ? (payload.line_items !== undefined ? payload.line_items : payload.items) : undefined;
+  const lines = Array.isArray(rawLines) ? rawLines : [];
   // The subtotal bound. ABSENT (no totals, or no subtotal entry) means no bound. PRESENT BUT UNREADABLE fails
-  // closed: totals that are not a list, a subtotal entry whatever its letter case, more than one, or an amount
-  // that is not a non-negative integer. A bound we cannot read is never treated as no bound.
+  // closed: totals that are not a list, a list holding anything that is not an entry object (`['subtotal',
+  // 2000]`, `null`), a subtotal entry whatever its letter case or padding, more than one, or an amount that is
+  // not a non-negative integer. A bound we cannot read is never treated as no bound.
   const totals = payload && payload.totals;
   let subtotal = null;
   let subtotalUnreadable = false;
   if (totals !== undefined && totals !== null) {
-    if (!Array.isArray(totals)) subtotalUnreadable = true;
+    if (!Array.isArray(totals) || totals.some((t) => !isPlainObjectLocal(t))) subtotalUnreadable = true;
     else {
-      const entries = totals.filter((t) => isPlainObjectLocal(t) && String(t.type || '').toLowerCase() === 'subtotal');
+      const entries = totals.filter((t) => String(t.type || '').trim().toLowerCase() === 'subtotal');
       if (entries.length === 1 && entries[0].type === 'subtotal'
         && Number.isSafeInteger(entries[0].amount) && entries[0].amount >= 0) {
         subtotal = entries[0].amount;
@@ -1600,7 +1604,7 @@ function normalizeDiscounts(payload) {
   const applied = [];
   const unreadable = [];
   for (const entry of Array.isArray(block.applied) ? block.applied : []) {
-    const read = readAppliedEntry(entry, lineCount);
+    const read = readAppliedEntry(entry, lines);
     if (read) applied.push(read);
     else {
       const named = isPlainObjectLocal(entry) && typeof entry.code === 'string' ? entry.code.trim() : null;
@@ -1766,6 +1770,41 @@ function pickMoney(...values) {
 }
 
 // ---- helpers ---------------------------------------------------------------
+
+/**
+ * Does this business profile advertise capability `name`? UCP profiles key `ucp.capabilities` by capability name
+ * (`{ "dev.ucp.shopping.discount": [{ version, spec, schema, extends }] }`, the shape this repo's own profile
+ * publishes); a list of `{ name }` entries is read too. Anything else, or no profile, is false: a capability the
+ * profile does not plainly state is not one we act on.
+ */
+function profileAdvertisesCapability(businessProfile, name) {
+  if (!isPlainObjectLocal(businessProfile) || typeof name !== 'string') return false;
+  const ucp = isPlainObjectLocal(businessProfile.ucp) ? businessProfile.ucp : businessProfile;
+  const capabilities = ucp.capabilities;
+  if (isPlainObjectLocal(capabilities)) {
+    return Object.prototype.hasOwnProperty.call(capabilities, name) && capabilities[name] !== null
+      && capabilities[name] !== false;
+  }
+  if (Array.isArray(capabilities)) {
+    return capabilities.some((c) => isPlainObjectLocal(c) && c.name === name);
+  }
+  return false;
+}
+
+/**
+ * Does this business profile advertise capability `name` as extending `parent`? The discount extension "MAY" be
+ * advertised for cart only, checkout only, or both (ucp.dev 2026-04-08 discount spec), so a caller that sends codes on
+ * a CART must see `parent` in an advertised entry's `extends` (a string or a list). Keyed form only, as UCP profiles
+ * publish it; an entry with no `extends` is not taken to extend anything.
+ */
+function profileCapabilityExtends(businessProfile, name, parent) {
+  if (!profileAdvertisesCapability(businessProfile, name)) return false;
+  const ucp = isPlainObjectLocal(businessProfile.ucp) ? businessProfile.ucp : businessProfile;
+  const entry = isPlainObjectLocal(ucp.capabilities) ? ucp.capabilities[name] : undefined;
+  const entries = Array.isArray(entry) ? entry : [entry];
+  return entries.some((e) => isPlainObjectLocal(e)
+    && (e.extends === parent || (Array.isArray(e.extends) && e.extends.includes(parent))));
+}
 
 function extractMcpEndpoint(businessProfile) {
   if (!businessProfile || typeof businessProfile !== 'object') return undefined;
@@ -1974,6 +2013,8 @@ module.exports = {
   normalizeDiscounts,
   discountCodeOutcome,
   MAX_DISCOUNT_CODES,
+  profileAdvertisesCapability,
+  profileCapabilityExtends,
   // Exported so the profile ROUTE applies the identical rule to its Host-header fallback, and so a test can
   // pin the rule itself rather than one caller's behaviour.
   agentProfileUrlFromOrigin,

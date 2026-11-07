@@ -158,6 +158,7 @@ import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // from this module, so this cannot cycle.
 import { reapAgenticLaneEnabled, reapAgenticCreateEnabled, reapOfferCodesEnabled, REAP_CHECKOUT_ID_MAX_CHARS } from "./ucpReapAgenticLane.js";
 import { canonicalReapMerchantDomain } from "./ucpExpectedSeller.js";
+import { storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
 // The pinned UCP line (CommonJS, so the named exports arrive on the default import).
 import ucpSpecVersion from "../../safety-kernel/src/protocol/ucpSpecVersion.cjs";
 
@@ -809,6 +810,27 @@ const DISCOUNTS_SCHEMA = {
   },
 };
 
+// The same member when STOREFRONT checkouts take a code (`storefrontDiscountCodesEnabled`), alone or beside the Reap
+// lane's offer codes. Same shape and bounds; only the description changes, because a code on a storefront checkout
+// is judged by the seller's own storefront, not by Reap.
+const STOREFRONT_CODE_DESCRIPTION =
+  "Optional. ONE discount (coupon) code the buyer entered, sent ONLY on create_checkout. On a checkout that completes"
+  + " on the seller's own storefront, it rides on the cart Pivota builds there when that storefront advertises UCP"
+  + " discount codes: `discounts.applied` lists it when the storefront applied it, and otherwise a warning at"
+  + " `$.discounts.codes[0]` says why (`discount_code_*`: the storefront's own refusal such as"
+  + " `discount_code_invalid`, or `discount_code_not_evaluated` / `discount_code_not_confirmed`). The total shown is"
+  + " always the storefront's own.";
+function discountsSchemaDescribed(description) {
+  return {
+    ...DISCOUNTS_SCHEMA,
+    properties: { codes: { ...DISCOUNTS_SCHEMA.properties.codes, description } },
+  };
+}
+const STOREFRONT_DISCOUNTS_SCHEMA = discountsSchemaDescribed(STOREFRONT_CODE_DESCRIPTION);
+const BOTH_DISCOUNTS_SCHEMA = discountsSchemaDescribed(
+  `${STOREFRONT_CODE_DESCRIPTION} On the Reap route instead: ${DISCOUNTS_SCHEMA.properties.codes.description.replace(/^Optional\. /, "")}`,
+);
+
 /** The longest host name DNS allows; the lane's own host rule (`canonicalReapMerchantDomain`) bounds it again. */
 const EXPECTED_MERCHANT_DOMAIN_MAX_LENGTH = 253;
 
@@ -1104,7 +1126,10 @@ function requireCheckoutObject(args, tool, env = process.env, { recovery = false
   // ACCEPTED on create AND update while armed (review of #2323, S2): the discount capability is advertised,
   // so a platform may send `discounts` on either. It is only ever APPLIED at creation -- an update answers a
   // `discount_code_invalid` warning (not a Reap checkout) or the Reap update refusal naming the create-only rule.
-  const offerCodes = (tool === "create_checkout" || tool === "update_checkout") && (recovery || reapOfferCodesEnabled(env));
+  // Storefront checkouts take ONE code too while that lane's switches are on (`storefrontDiscountCodesEnabled`):
+  // the seller's own storefront judges it when it prices the cart (ucpMerchantDoorPricing.js).
+  const offerCodes = (tool === "create_checkout" || tool === "update_checkout")
+    && (recovery || reapOfferCodesEnabled(env) || storefrontDiscountCodesEnabled(env));
   // The expected seller: create only, and only while the Reap lane is on (the one reader).
   const expectedSeller = tool === "create_checkout" && (recovery || reapAgenticLaneEnabled(env));
   const allowed = [...CHECKOUT_FIELDS, ...(offerCodes ? ["discounts"] : []), ...(expectedSeller ? ["reap"] : [])];
@@ -1367,6 +1392,12 @@ const CREATE_CHECKOUT_OFFER_CODE_SENTENCE = [
   "On the Reap route the buyer's ONE offer code may be sent as `checkout.discounts.codes`; a code the merchant",
   "refuses is dropped (warning `discount_code_invalid` / `discount_code_expired`), and a code sent on a checkout",
   "that is not a Reap one is not applied (warning `discount_code_invalid`).",
+].join(" ");
+
+const CREATE_CHECKOUT_STOREFRONT_CODE_SENTENCE = [
+  "On a checkout that completes on the seller's own storefront, the buyer's ONE discount code may be sent as",
+  "`checkout.discounts.codes`: it is applied only if that storefront accepts it (listed in `discounts.applied`),",
+  "and otherwise a `discount_code_*` warning at `$.discounts.codes[0]` says why. The total is the storefront's own.",
 ].join(" ");
 
 const UPDATE_CHECKOUT_DESCRIPTION = [
@@ -2156,10 +2187,10 @@ export const UCP_INPUT_SCHEMAS = Object.freeze(
  *   - lane ON: create_checkout's `checkout` also advertises `reap` (the expected seller).
  *   - offer codes ARMED (`reapOfferCodesEnabled`, which implies the lane): also `discounts` on create/update.
  */
-function variantInputSchemas({ seller, codes }) {
+function variantInputSchemas({ seller, codes, discounts = DISCOUNTS_SCHEMA }) {
   return Object.fromEntries(Object.entries(SPECS).map(([id, spec]) => {
     const extra = {};
-    if (codes && (id === "create_checkout_session" || id === "update_checkout_session")) extra.discounts = DISCOUNTS_SCHEMA;
+    if (codes && (id === "create_checkout_session" || id === "update_checkout_session")) extra.discounts = discounts;
     if (seller && id === "create_checkout_session") extra.reap = REAP_EXPECTED_SELLER_SCHEMA;
     if (Object.keys(extra).length === 0) return [id, Object.freeze(spec.inputSchema)];
     const base = spec.inputSchema;
@@ -2185,11 +2216,28 @@ function variantDescriptions(sentences) {
 const LANE_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE]);
 const ARMED_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE, CREATE_CHECKOUT_OFFER_CODE_SENTENCE]);
 
+// Storefront codes on (`storefrontDiscountCodesEnabled`): `discounts` is declared with the storefront description,
+// beside whatever the Reap dials add. Three more memoized variants; with storefront codes off nothing below changes.
+const STOREFRONT_CODES_INPUT_SCHEMAS = Object.freeze(variantInputSchemas({ seller: false, codes: true, discounts: STOREFRONT_DISCOUNTS_SCHEMA }));
+const LANE_STOREFRONT_CODES_INPUT_SCHEMAS = Object.freeze(variantInputSchemas({ seller: true, codes: true, discounts: STOREFRONT_DISCOUNTS_SCHEMA }));
+const ARMED_STOREFRONT_CODES_INPUT_SCHEMAS = Object.freeze(variantInputSchemas({ seller: true, codes: true, discounts: BOTH_DISCOUNTS_SCHEMA }));
+const STOREFRONT_CODES_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_STOREFRONT_CODE_SENTENCE]);
+const LANE_STOREFRONT_CODES_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE, CREATE_CHECKOUT_STOREFRONT_CODE_SENTENCE]);
+const ARMED_STOREFRONT_CODES_DESCRIPTIONS = variantDescriptions([CREATE_CHECKOUT_SELLER_SENTENCE, CREATE_CHECKOUT_OFFER_CODE_SENTENCE, CREATE_CHECKOUT_STOREFRONT_CODE_SENTENCE]);
+
 export function ucpInputSchemasFor(env = process.env) {
+  if (storefrontDiscountCodesEnabled(env)) {
+    if (reapOfferCodesEnabled(env)) return ARMED_STOREFRONT_CODES_INPUT_SCHEMAS;
+    return reapAgenticCreateEnabled(env) ? LANE_STOREFRONT_CODES_INPUT_SCHEMAS : STOREFRONT_CODES_INPUT_SCHEMAS;
+  }
   if (reapOfferCodesEnabled(env)) return ARMED_INPUT_SCHEMAS;
   return reapAgenticCreateEnabled(env) ? LANE_INPUT_SCHEMAS : UCP_INPUT_SCHEMAS;
 }
 export function ucpToolDescriptionsFor(env = process.env) {
+  if (storefrontDiscountCodesEnabled(env)) {
+    if (reapOfferCodesEnabled(env)) return ARMED_STOREFRONT_CODES_DESCRIPTIONS;
+    return reapAgenticCreateEnabled(env) ? LANE_STOREFRONT_CODES_DESCRIPTIONS : STOREFRONT_CODES_DESCRIPTIONS;
+  }
   if (reapOfferCodesEnabled(env)) return ARMED_DESCRIPTIONS;
   return reapAgenticCreateEnabled(env) ? LANE_DESCRIPTIONS : UCP_TOOL_DESCRIPTIONS;
 }
