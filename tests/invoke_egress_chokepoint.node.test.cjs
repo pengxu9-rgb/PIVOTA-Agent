@@ -270,13 +270,13 @@ test('a projector that transforms conditionally is still honoured', () => {
   assert.deepEqual(sent[0], { id: 'x', tagged: true });
 });
 
-test('this change removes no field — the projector is the identity, for EVERY operation', () => {
-  // Pins the scope of this PR. Ranges over the real operation vocabulary, not one example:
+test('a body without seed_data is untouched — the projector is the identity there, for EVERY operation', () => {
+  // Pins the scope of the policy. Ranges over the real operation vocabulary, not one example:
   // a projector that drops a field only when ctx.operation === 'get_product' is invisible to a
   // single-shape test, and exactly that mutant survived the first version of this assertion.
-  // Policy comes later and separately — destination_url carries Pivota click attribution and
-  // platform/source feed the UI's external-seed predicate, so shrinking the surface has
-  // consumers to settle first.
+  // The only policy so far is the seed_data allowlist (next test). destination_url carries Pivota
+  // click attribution and platform/source feed the UI's external-seed predicate, so shrinking the
+  // rest of the surface has consumers to settle first.
   const { OperationEnum } = require('../src/schema');
   const operations = OperationEnum.options || OperationEnum._def.values;
   assert.ok(operations.length > 20, `expected the full operation vocabulary, saw ${operations.length}`);
@@ -308,6 +308,46 @@ test('this change removes no field — the projector is the identity, for EVERY 
     for (const field of ['platform', 'source', 'destination_url', 'external_product_id']) {
       assert.ok(field in out.products[0], `${operation}: ${field} must survive`);
     }
+    assert.equal(out, body, `${operation}: a body with no seed_data is returned as the same object`);
+  }
+});
+
+test('seed_data is reduced to its allowlist for EVERY operation, and nothing else changes', () => {
+  // Same vocabulary sweep as above, so a projector keyed on ctx.operation cannot skip one.
+  const { OperationEnum } = require('../src/schema');
+  const operations = OperationEnum.options || OperationEnum._def.values;
+
+  for (const operation of operations) {
+    const body = {
+      products: [
+        {
+          id: 'p1',
+          platform: 'external_seed',
+          source: 'canonical_chain',
+          destination_url: 'https://x/y',
+          external_product_id: 'eps_1',
+          seed_data: {
+            image_urls: ['https://cdn.example.com/a.jpg'],
+            price_read: { source: 'refresh_job' },
+            snapshot: { description: 'd', price_read: { source: 'crawl' } },
+          },
+        },
+      ],
+      metadata: { gateway_request_id: 'r1' },
+    };
+    const before = JSON.stringify(body);
+    const out = projectInvokeResponse(body, { operation });
+
+    assert.equal(JSON.stringify(body), before, `${operation}: the input must not be mutated`);
+    assert.deepEqual(
+      out.products[0].seed_data,
+      { image_urls: ['https://cdn.example.com/a.jpg'], snapshot: { description: 'd' } },
+      `${operation}: seed_data must be projected`,
+    );
+    const { seed_data: _projected, ...rest } = out.products[0];
+    const { seed_data: _raw, ...restBefore } = body.products[0];
+    assert.deepEqual(rest, restBefore, `${operation}: every other product field is unchanged`);
+    assert.equal(out.metadata, body.metadata, `${operation}: untouched subtrees keep their identity`);
   }
 });
 

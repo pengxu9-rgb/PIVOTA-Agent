@@ -17,9 +17,9 @@
 // resurfaces at the next site. That is the mechanism behind fixing this class of bug
 // repeatedly and watching it reappear somewhere else.
 //
-// This module does not change any response. `projectInvokeResponse` is deliberately the
-// IDENTITY today. Its entire value in this change is that from here on there is exactly one
-// place to answer the question, and a test that fails if a 97th exit ever bypasses it.
+// `projectInvokeResponse` holds the policy. Today that is one rule (see below): `seed_data` is
+// reduced to an allowlist. Its other value is that there is exactly one place to answer the
+// question, and a test that fails if a 97th exit ever bypasses it.
 //
 // WHY A WRAP RATHER THAN 96 EDITS. Converting every call site to `sendProductsResponse(res, …)`
 // carries real regression risk across 13,000 lines and buys a guarantee that lasts only until
@@ -29,18 +29,27 @@
 // the route (no send/end/write/redirect/sendStatus/jsonp, no manual writeHead), and
 // tests/invoke_egress_chokepoint.node.test.cjs fails if that stops being true.
 
+const { projectSeedDataDeep } = require('./services/seedDataEgressProjection');
+
 const INSTALLED = Symbol('pivotaInvokeEgressInstalled');
 
 // The one place to decide what may leave the invoke route.
 //
-// IDENTITY BY DESIGN, for now. Shrinking the surface is a separate change with a separate
-// blast radius: `destination_url` carries Pivota click attribution (the backend stamps it in
-// _attach_connected_product_redirects and the UI reads it for the buy link, JSON-LD, and the
-// SEO canonical), and `platform`/`source` feed the UI's own external-seed predicate in
-// ProductDetailClient.tsx. Removing fields here without settling those consumers would break
-// attribution and the PDP. Land the chokepoint first; decide policy behind it second.
+// ONE POLICY, deliberately narrow: every `seed_data` value, at any depth, is reduced to an
+// allowlist (src/services/seedDataEgressProjection.js has the list and the consumer each field
+// is kept for). The stored external-seed blob rides on every built product, and several of this
+// route's exits serialize the product whole, so this is the one place that sees all of them.
+//
+// Everything else is still the identity, on purpose. Shrinking the rest of the surface is a
+// separate change with a separate blast radius: `destination_url` carries Pivota click
+// attribution (the backend stamps it in _attach_connected_product_redirects and the UI reads it
+// for the buy link, JSON-LD, and the SEO canonical), and `platform`/`source` feed the UI's own
+// external-seed predicate in ProductDetailClient.tsx. Removing those without settling their
+// consumers would break attribution and the PDP.
+//
+// A body with no `seed_data` in it is returned as the same object, unchanged.
 function projectInvokeResponse(body, _ctx = {}) {
-  return body;
+  return projectSeedDataDeep(body);
 }
 
 // Route every response for this request through `projectInvokeResponse`.
