@@ -19,6 +19,7 @@ import {
   priceOnMerchantDoor,
   readSellerCart,
   readSellerDiscounts,
+  createMerchantDoor,
 } from '../src/ucpMerchantDoorPricing.js';
 import {
   UCP_ESCALATION_FLAG,
@@ -144,6 +145,14 @@ describe('the switch is three switches', () => {
     assert.equal(JSON.stringify(withCode.out), JSON.stringify(without.out));
     assert.equal(sentArgs(withCode.door)[0].discountCodes, undefined);
     assert.equal(withCode.out.discounts, undefined);
+  });
+
+  test('code switch OFF and the seller never priced: the catalog answer says nothing about a code, bytes as before', async () => {
+    const down = () => fakeDoor({ create: () => ({ ok: false, status: 503, error: { message: 'down' } }) });
+    const withCode = await create({ env: PRICING, door: down() });
+    const without = await create({ env: PRICING, door: down(), code: null });
+    assert.equal(withCode.out.messages[0].code, 'checkout.completes_on_seller_storefront');
+    assert.equal(JSON.stringify(withCode.out), JSON.stringify(without.out));
   });
 
   test('code switch ON but no code asked for: no `discounts` member, bytes as before', async () => {
@@ -327,6 +336,36 @@ describe('the pure readers', () => {
     const p = payloadOf(sellerCart({ discount: 100, discounts: appliedCode(100, '$.line_items[0]', ' WELCOME10 ') }));
     const read = readSellerCart(p, wanted, 'comfortzone.us', { discountCodesOn: true });
     assert.equal(readSellerDiscounts(p, wanted, read, { requested: CODE }).outcomes[0].status, 'applied');
+  });
+
+  test('a RE-READ reports the codes on the seller cart, never a code handed to it', async () => {
+    const door = fakeDoor({ get: () => sellerCart({ discount: 100, discounts: appliedCode(100, '$.line_items[0]', 'CARTCODE') }) });
+    const priced = await priceOnMerchantDoor({
+      items: [{ product_id: SEED.product_id, quantity: 2 }], rows: new Map([[SEED.product_id, SEED]]),
+      sellerHost: 'comfortzone.us', cartId: 'gid://shopify/Cart/c1', discountCode: CODE, env: ON, merchantDoor: door,
+    });
+    assert.deepEqual(priced.discounts.codes, ['CARTCODE']);
+    assert.deepEqual(priced.discounts.outcomes, [{ code: 'CARTCODE', status: 'applied', reason: null }]);
+  });
+
+  test('the REAL door sends the code only when the seller profile it discovered advertises codes', async () => {
+    for (const [capabilities, expectSent] of [[{ 'dev.ucp.shopping.discount': [{}] }, true], [{}, false]]) {
+      const sent = [];
+      const client = {
+        async discoverEndpoint(origin) {
+          return { mcpEndpoint: ENDPOINT, businessProfile: { ucp: { capabilities } }, wellKnownUrl: `${origin}/.well-known/ucp`, status: 200 };
+        },
+        async createCart(ep, args) { sent.push(args); return sellerCart(); },
+        async callTool() { return sellerCart(); },
+      };
+      const door = createMerchantDoor({ client, catalogQuery: async () => ({ rows: [{ shop_ids: 1 }] }) });
+      const priced = await priceOnMerchantDoor({
+        items: [{ product_id: SEED.product_id, quantity: 2 }], rows: new Map([[SEED.product_id, SEED]]),
+        sellerHost: 'comfortzone.us', discountCode: CODE, env: ON, merchantDoor: door,
+      });
+      assert.ok(priced, JSON.stringify(capabilities));
+      assert.deepEqual(sent[0].discountCodes, expectSent ? [CODE] : undefined, JSON.stringify(capabilities));
+    }
   });
 
   test('priceOnMerchantDoor without the code switch never reads discounts', async () => {
