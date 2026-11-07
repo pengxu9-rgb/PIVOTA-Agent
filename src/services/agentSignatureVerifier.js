@@ -36,8 +36,10 @@
 // default: the commerce door hosts).
 //
 // REPLAY. Nonces are remembered per instance (in-memory, bounded). With several gateway instances a
-// replay that lands on a different instance is not caught — acceptable while the result only feeds
-// logs (observe mode); a shared store is a precondition for ever enforcing on it.
+// replay that lands on a different instance is not caught. That is acceptable while the result only feeds
+// logs (observe), and for enforce on route groups (agentSignatureEnforcement.js: a replay can at worst carry
+// an identity the agent really signed for, onto the same authority and path within its 8-minute window). A
+// shared store is a precondition for turning on a merchant's `tap_only` in prod.
 //
 // FAILS QUIET, NEVER OPEN. Every outcome is a result object with `verified: true|false` and a reason;
 // nothing here throws into the request path, and a failure is never reported as verified.
@@ -81,7 +83,8 @@ const NEGATIVE_TTL_MS = 30_000;
 const MIN_FORCED_REFRESH_GAP_MS = 60_000;
 const NONCE_STORE_MAX = 50_000;
 
-const MODES = new Set(['off', 'observe']);
+// enforce: see agentSignatureEnforcement.js. With no route groups and no merchant opt-ins it is observe.
+const MODES = new Set(['off', 'observe', 'enforce']);
 
 function agentSignatureMode(env = process.env) {
   const raw = String(env.AGENT_SIGNATURE_VERIFY_MODE || 'off').trim().toLowerCase();
@@ -457,6 +460,8 @@ function createAgentSignatureVerifier({ env = process.env, fetchImpl = globalThi
       reason: 'ok',
       agent: source.id,
       agent_url: source.url,
+      // The authority the signature was made for (and checked against our hosts above).
+      authority: view.authority,
       alg: check.alg,
       keys_stale: keysStale,
       covered,

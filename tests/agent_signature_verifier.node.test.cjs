@@ -351,7 +351,9 @@ test('unsigned, malformed, unknown-tag and multi-label requests', async () => {
 test('config: mode parsing and key-source loading fail safe', () => {
   assert.equal(agentSignatureMode({}), 'off');
   assert.equal(agentSignatureMode({ AGENT_SIGNATURE_VERIFY_MODE: 'observe' }), 'observe');
-  assert.equal(agentSignatureMode({ AGENT_SIGNATURE_VERIFY_MODE: 'enforce' }), 'off', 'no enforce mode exists yet');
+  assert.equal(agentSignatureMode({ AGENT_SIGNATURE_VERIFY_MODE: 'enforce' }), 'enforce');
+  assert.equal(agentSignatureMode({ AGENT_SIGNATURE_VERIFY_MODE: ' Enforce ' }), 'enforce');
+  assert.equal(agentSignatureMode({ AGENT_SIGNATURE_VERIFY_MODE: 'block' }), 'off', 'an unknown mode is off, never enforce');
   assert.deepEqual(loadKeySources({}), DEFAULT_KEY_SOURCES.slice());
   assert.deepEqual(loadKeySources({ AGENT_SIGNATURE_TRUSTED_KEY_SOURCES_JSON: '{nope' }), DEFAULT_KEY_SOURCES.slice());
   const loaded = loadKeySources({

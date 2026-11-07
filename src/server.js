@@ -32459,14 +32459,20 @@ function maybeApplyStrictMcpHostedPaymentDefaults(payment, invokeContext = {}) {
   });
 }
 
-function applyStrictHostedOrderMetadata(order) {
+// `invokeContext.agent_signature` is the Visa TAP identity the door VERIFIED (enforce mode only). It is
+// written as `metadata.agent_signature` on the order — the backend keeps unknown top-level metadata keys on
+// the order row, so no migration — and any `agent_signature` already on the payload is dropped first: the
+// only writer of that key is the verifier, never a caller.
+function applyStrictHostedOrderMetadata(order, invokeContext = null) {
   if (!isPlainObject(order)) return order;
-  const existingMetadata = isPlainObject(order.metadata) ? order.metadata : {};
+  const { agent_signature: _callerSuppliedAgentSignature, ...existingMetadata } = isPlainObject(order.metadata) ? order.metadata : {};
   const existingAgentV2 = isPlainObject(existingMetadata.agent_v2) ? existingMetadata.agent_v2 : {};
+  const verifiedAgent = isPlainObject(invokeContext?.agent_signature) ? invokeContext.agent_signature : null;
   return {
     ...order,
     metadata: pruneEmptyFields({
       ...existingMetadata,
+      ...(verifiedAgent ? { agent_signature: { ...verifiedAgent } } : {}),
       // TEST-PSP probe lever (default OFF): set at the TOP LEVEL of order.metadata because the backend's
       // live-readiness gate reads metadata.allow_test_psp_surfaces there (not nested). Only emitted when the
       // agent flag is on; still inert unless the backend's own probe gate + merchant allowlist are also open.
@@ -32688,7 +32694,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
     }
     case 'create_order': {
       url = `${PIVOTA_API_BASE}/agent/v2/orders`;
-      const order = applyStrictHostedOrderMetadata(isPlainObject(payload?.order) ? payload.order : {});
+      const order = applyStrictHostedOrderMetadata(isPlainObject(payload?.order) ? payload.order : {}, invokeContext);
       requestBody = buildCreateOrderV2Body({
         payload,
         order,
@@ -33214,6 +33220,9 @@ function buildExternalInvokeContext(req) {
     // The door's request id, and whether this call is synthetic (src/guardrails/syntheticCallers.js). Set
     // only by the MCP door; `synthetic` is true only in enforce, and every hop after the door reads it here.
     gw_request_id: req?.mcpGatewayRequestId || null,
+    // A VERIFIED Visa TAP identity (authority, keyid, tag, …), set only by agentSignatureMiddleware in enforce
+    // mode; the order path records it on order metadata. Never read from a header or body here.
+    agent_signature: req?.agentIdentity || null,
     synthetic: req?.syntheticCaller?.synthetic === true,
     synthetic_caller: req?.syntheticCaller?.synthetic === true ? req.syntheticCaller.caller : null,
     agent_user_jwt: firstNonEmptyString(
@@ -33913,6 +33922,14 @@ async function getCommerceConfirmationActionHandler() {
 const { chainRowResolvable } = require('./services/publicReadChainResolvability');
 const { describeCaller } = require('./services/callerIdentity');
 const { agentSignatureMode, createAgentSignatureVerifier } = require('./services/agentSignatureVerifier');
+const {
+  ROUTE_GROUP: AGENT_SIGNATURE_ROUTE_GROUP,
+  claimsTapTag,
+  loadEnforcementConfig: loadAgentSignatureEnforcementConfig,
+  merchantIdFromRpcBody,
+  decideAgentSignatureEnforcement,
+  enforcementErrorBody: agentSignatureEnforcementErrorBody,
+} = require('./services/agentSignatureEnforcement');
 const { decideUiChatAccess } = require('./services/uiChatAccessGuard');
 const { decideAuroraSurfaceAccess, isAuroraSurfacePath } = require('./services/auroraSurfaceHostGuard');
 const { decideAuroraSurfaceAuth } = require('./services/auroraSurfaceAuth');
@@ -38294,6 +38311,11 @@ app.use((req, res, next) => {
         agent_sig_agent: req.agentSignature.agent || null,
         agent_sig_reason: req.agentSignature.reason,
       } : {}),
+      // Present only in enforce mode, when the enforcement decision ran.
+      ...(req.agentSignatureDecision ? {
+        agent_sig_enforce: req.agentSignatureDecision.action,
+        agent_sig_enforce_reason: req.agentSignatureDecision.reason,
+      } : {}),
       build_id: SERVICE_BUILD_ID,
       service_commit: SERVICE_GIT_SHA_SHORT,
     });
@@ -38308,13 +38330,20 @@ app.use((req, res, next) => {
 // verifies those signatures on the commerce doors and records the result on req.agentSignature and in
 // the access log above (agentSignatureVerifier.js has the profiles and the allowlisted key sources).
 //
-// OBSERVE ONLY. AGENT_SIGNATURE_VERIFY_MODE=off (default) does nothing; =observe verifies and logs. In
-// no mode does this middleware change a response or refuse a request: an unsigned, unverifiable or
-// badly signed request reaches the door exactly as before. Any later use of the result (policy,
-// attribution, forwarding to the merchant) is its own change, gated on what observe mode measures.
+// MODES. AGENT_SIGNATURE_VERIFY_MODE=off (default) does nothing. =observe verifies and logs, and in observe
+// no response ever changes: an unsigned, unverifiable or badly signed request reaches the door exactly as
+// before. =enforce (agentSignatureEnforcement.js has the policy) additionally:
+//   - refuses (401) a request CLAIMING a TAP tag that does not verify, on the route groups named in
+//     AGENT_SIGNATURE_ENFORCE_ROUTE_GROUPS (merchant_doors, checkout) or for a merchant opted in through
+//     AGENT_SIGNATURE_ENFORCE_MERCHANTS_JSON;
+//   - refuses anything but a verified TAP request for a merchant opted into `tap_only`;
+//   - attaches a verified TAP identity to the request (req.agentIdentity → invoke context → order metadata).
+// Unsigned requests still pass unchanged everywhere else. Enforce with neither variable set is observe.
 //
-// Unsigned requests cost nothing: no Signature-Input header ⇒ next() immediately, no log line. delegate_payment is excluded on purpose — that route reads nothing from the request
-// (see registerCommerceDelegatePaymentRefusalRoute), and this does not get to be the exception.
+// Unsigned requests cost nothing: no Signature-Input header ⇒ next() immediately, no log line — unless a
+// merchant opted into tap_only, the one case an unsigned request can be refused. delegate_payment is excluded
+// on purpose — that route reads nothing from the request (see registerCommerceDelegatePaymentRefusalRoute),
+// and this does not get to be the exception.
 let agentSignatureVerifier = null;
 function isAgentSignatureDoorPath(req) {
   // Matched the way Express routes (case-insensitive, trailing slash ignored), so a door reached as
@@ -38329,52 +38358,125 @@ function agentSignatureBudgetMs() {
   const n = Number.parseInt(process.env.AGENT_SIGNATURE_VERIFY_BUDGET_MS || '', 10);
   return Number.isFinite(n) && n > 0 ? Math.min(n, 5000) : 1500;
 }
+// Which enforcement route group a door request belongs to. `checkout` = the ACP checkout_sessions routes and
+// an MCP / UCP-dialect tools/call of an operation whose canonical capability is checkout (looked up in the
+// canonical contract, never a local list of names); every other door request is `merchant_doors`.
+async function agentSignatureRouteGroup(req) {
+  const p = String(req.path || '').toLowerCase().replace(/\/+$/, '') || '/';
+  if (p === `${COMMERCE_ACP_BASE_PATH}/checkout_sessions` || p.startsWith(`${COMMERCE_ACP_BASE_PATH}/checkout_sessions/`)) {
+    return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
+  }
+  if (p === '/mcp' || p === '/ucp/mcp') {
+    const calls = Array.isArray(req.body) ? req.body : [req.body];
+    const names = calls.map((c) => mcpToolNameFromRpcBody(c)).filter((n) => typeof n === 'string' && n);
+    if (names.length) {
+      // A contract that cannot load must not quietly move a checkout call out of the checkout group: it is
+      // classified as checkout (the group an operator enforces first), so the failure can only refuse more.
+      const contract = await getCommerceCanonicalContractModule().catch(() => null);
+      if (!contract) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
+      const opFor = (name) => (p === '/ucp/mcp'
+        ? contract.canonicalOpForUcpTool(name)
+        : contract.CANONICAL_OPERATIONS.find((o) => o.mcp === name));
+      if (names.some((n) => opFor(n)?.capability === 'checkout')) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
+    }
+  }
+  return AGENT_SIGNATURE_ROUTE_GROUP.MERCHANT_DOORS;
+}
+// Parsed once per distinct env value, not per request.
+let agentSignatureEnforcementConfigCache = { key: null, config: null };
+function agentSignatureEnforcementConfig() {
+  const key = `${process.env.AGENT_SIGNATURE_ENFORCE_ROUTE_GROUPS || ''}\u0000${process.env.AGENT_SIGNATURE_ENFORCE_MERCHANTS_JSON || ''}`;
+  if (agentSignatureEnforcementConfigCache.key !== key) {
+    agentSignatureEnforcementConfigCache = { key, config: loadAgentSignatureEnforcementConfig(process.env, logger) };
+  }
+  return agentSignatureEnforcementConfigCache.config;
+}
 app.use(async function agentSignatureMiddleware(req, res, next) {
   const mode = agentSignatureMode();
   if (mode === 'off' || !isAgentSignatureDoorPath(req)) return next();
   // Signature-Input marks an RFC 9421 signature; a lone `Signature` header is the ACP adapter's HMAC.
-  if (req.headers['signature-input'] === undefined) return next();
+  const signed = req.headers['signature-input'] !== undefined;
+  const enforcement = mode === 'enforce' ? agentSignatureEnforcementConfig() : null;
+  if (!signed && !enforcement?.hasTapOnly) return next();
   // Express 4 does not catch a rejected async middleware: everything below runs inside try/finally so
-  // the request always continues, whatever happens here.
+  // the request always continues (or is answered), whatever happens here.
   let timer;
+  let refusal = null;
   try {
-    if (!agentSignatureVerifier) agentSignatureVerifier = createAgentSignatureVerifier({ log: logger });
-    const result = await Promise.race([
-      agentSignatureVerifier.verifyRequest(req),
-      new Promise((resolve) => {
-        timer = setTimeout(() => resolve({ present: true, verified: false, reason: 'verification_timeout' }), agentSignatureBudgetMs());
-      }),
-    ]).catch(() => ({ present: true, verified: false, reason: 'verifier_error' }));
-    req.agentSignature = Object.freeze(result);
-    const caller = describeCaller(req);
-    logger.info(
-      {
-        event: 'agent_signature',
-        mode,
-        path: req.path,
-        method: req.method,
-        verified: result.verified,
-        reason: result.reason,
-        profile: result.profile || null,
-        tag: result.tag || null,
-        agent: result.agent || null,
-        // The Signature-Agent the request CLAIMED when we did not resolve it — a count of who is signing
-        // that we do not trust yet, never an identity (draft-ietf-webbotauth-httpsig-protocol §4.1).
-        claimed_agent: result.claimed_agent || null,
-        keyid: result.keyid ? String(result.keyid).slice(0, 100) : null,
-        alg: result.alg || null,
-        // Verified with a key set that has not refreshed since its source last failed (draft: never evict).
-        keys_stale: result.keys_stale || false,
-        caller_class: caller.caller_class,
-        caller_ua: caller.ua,
-      },
-      'agent signature',
-    );
+    let result = null;
+    if (signed) {
+      if (!agentSignatureVerifier) agentSignatureVerifier = createAgentSignatureVerifier({ log: logger });
+      result = await Promise.race([
+        agentSignatureVerifier.verifyRequest(req),
+        new Promise((resolve) => {
+          timer = setTimeout(() => resolve({ present: true, verified: false, reason: 'verification_timeout' }), agentSignatureBudgetMs());
+        }),
+      ]).catch(() => ({ present: true, verified: false, reason: 'verifier_error' }));
+      req.agentSignature = Object.freeze(result);
+    }
+    let decision = null;
+    let routeGroup = null;
+    let merchantId = null;
+    let tapClaimed = false;
+    if (enforcement) {
+      routeGroup = await agentSignatureRouteGroup(req);
+      merchantId = merchantIdFromRpcBody(req.body);
+      tapClaimed = claimsTapTag(req.headers);
+      decision = decideAgentSignatureEnforcement({ mode, config: enforcement, routeGroup, merchantId, result, tapClaimed });
+      req.agentSignatureDecision = Object.freeze({ action: decision.action, reason: decision.reason });
+      if (decision.identity) req.agentIdentity = decision.identity;
+      if (decision.action === 'reject') refusal = decision;
+    }
+    // An unsigned request that tap_only did not refuse logs nothing, as in observe.
+    if (signed || refusal) {
+      const r = result || { verified: false, reason: 'no_signature' };
+      const caller = describeCaller(req);
+      logger.info(
+        {
+          event: 'agent_signature',
+          mode,
+          path: req.path,
+          method: req.method,
+          verified: r.verified,
+          reason: r.reason,
+          profile: r.profile || null,
+          tag: r.tag || null,
+          agent: r.agent || null,
+          // The Signature-Agent the request CLAIMED when we did not resolve it — a count of who is signing
+          // that we do not trust yet, never an identity (draft-ietf-webbotauth-httpsig-protocol §4.1).
+          claimed_agent: r.claimed_agent || null,
+          keyid: r.keyid ? String(r.keyid).slice(0, 100) : null,
+          alg: r.alg || null,
+          // Verified with a key set that has not refreshed since its source last failed (draft: never evict).
+          keys_stale: r.keys_stale || false,
+          caller_class: caller.caller_class,
+          caller_ua: caller.ua,
+          // Enforce-mode fields only: observe lines keep exactly the shape above.
+          ...(decision ? {
+            authority: r.authority || null,
+            tap_claimed: tapClaimed,
+            route_group: routeGroup,
+            merchant_resolved: merchantId !== null,
+            merchant_policy: decision.merchant_policy,
+            enforced: decision.enforced,
+            enforce_action: decision.action,
+            enforce_reason: decision.reason,
+          } : {}),
+        },
+        'agent signature',
+      );
+    }
   } catch {
-    // Never let verification or logging break the request; the access log still records the call.
+    // Never let verification or logging break the request; the access log still records the call. A failure
+    // here attaches no identity, so the request continues as an unverified one.
   } finally {
     clearTimeout(timer);
-    next();
+    if (refusal) {
+      if (refusal.status === 503) res.setHeader('Retry-After', '5');
+      res.status(refusal.status).json(agentSignatureEnforcementErrorBody(refusal));
+    } else {
+      next();
+    }
   }
 });
 
