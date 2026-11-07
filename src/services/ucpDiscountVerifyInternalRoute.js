@@ -26,6 +26,8 @@ const crypto = require('crypto');
 
 const ROUTE_FLAG_ENV = 'UCP_DISCOUNT_VERIFY_ROUTE_ENABLED';
 const INTERNAL_KEY_ENV = 'UCP_DISCOUNT_VERIFY_INTERNAL_KEY';
+// At least 32 random bytes, base64/hex encoded: 43+ characters. Anything shorter keeps the route dark.
+const MIN_KEY_CHARS = 43;
 const BODY_FIELDS = new Set(['seller_host', 'discovery_host', 'variant_gid', 'market', 'code', 'expected_currency']);
 const HOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}$/;
 
@@ -78,8 +80,15 @@ function createUcpDiscountVerifyInternalHandler(deps = {}) {
   return async function handle({ headers, body } = {}) {
     const env = deps.env || process.env;
     const key = String(env[INTERNAL_KEY_ENV] || '').trim();
-    if (!isFlagOn(env[ROUTE_FLAG_ENV]) || !key) return { status: 404, body: { error: 'not_found' } };
-    if (!timingSafeKeyMatch(headerValue(headers, 'x-internal-key'), key)) return { status: 401, body: { error: 'unauthorized' } };
+    // A key shorter than MIN_KEY_CHARS is treated as no key: a guessable key on a public URL prefix is not a lock.
+    if (!isFlagOn(env[ROUTE_FLAG_ENV]) || key.length < MIN_KEY_CHARS) return { status: 404, body: { error: 'not_found' } };
+    if (!timingSafeKeyMatch(headerValue(headers, 'x-internal-key'), key)) {
+      // WARN, so a burst of wrong keys is visible to log-based alerting (there is no throttle on this route).
+      if (logger && typeof logger.warn === 'function') {
+        try { logger.warn({ event: 'ucp_discount_verify_unauthorized' }, 'ucp discount verify: wrong or missing key'); } catch { /* never throw */ }
+      }
+      return { status: 401, body: { error: 'unauthorized' } };
+    }
     if (!isPlainObject(body)) return { status: 400, body: { error: 'invalid_request', reason: 'body_not_object' } };
     const unknown = Object.keys(body).find((k) => !BODY_FIELDS.has(k));
     if (unknown) return { status: 400, body: { error: 'invalid_request', reason: 'unknown_field', field: unknown } };
@@ -97,7 +106,7 @@ function createUcpDiscountVerifyInternalHandler(deps = {}) {
     const problem = await problemOf(args);
     if (problem) return { status: 400, body: { error: 'invalid_request', reason: problem } };
     const startedAt = Date.now();
-    const out = await verify(args);
+    const out = await verify(logger ? { ...args, log: logger } : args);
     if (logger && typeof logger.info === 'function') {
       // Counts and outcome only: never the code, never the variant.
       try {
@@ -112,4 +121,5 @@ module.exports = {
   createUcpDiscountVerifyInternalHandler,
   ROUTE_FLAG_ENV,
   INTERNAL_KEY_ENV,
+  MIN_KEY_CHARS,
 };

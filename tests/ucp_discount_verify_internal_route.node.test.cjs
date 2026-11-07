@@ -9,9 +9,9 @@ const assert = require('node:assert/strict');
 const { describe } = test;
 const { createUcpDiscountVerifyInternalHandler } = require('../src/services/ucpDiscountVerifyInternalRoute');
 
-const KEY = 'k_internal_verify_fixture';
+const KEY = 'k_internal_verify_fixture_0123456789abcdefghijklmnopqrstuvwxyz';  // 43+ chars
 const ENV = { UCP_DISCOUNT_VERIFY_ROUTE_ENABLED: '1', UCP_DISCOUNT_VERIFY_INTERNAL_KEY: KEY };
-const BODY = { seller_host: 'brand.example', variant_gid: '44012345678901', market: 'US', code: 'Save10' };
+const BODY = { seller_host: 'brand.example', variant_gid: '44012345678901', market: 'US', code: 'Save10', expected_currency: 'USD' };
 
 function build({ env = ENV, verify, problem } = {}) {
   const calls = [];
@@ -20,7 +20,7 @@ function build({ env = ENV, verify, problem } = {}) {
     env,
     verify: verify || (async (args) => { calls.push(args); return { result: 'applied', reason: null }; }),
     ...(problem ? { problem } : {}),
-    logger: { info: (o) => logs.push(o) },
+    logger: { info: (o) => logs.push(o), warn: (o) => logs.push({ level: 'warn', ...o }) },
   });
   return { handler, calls, logs };
 }
@@ -32,6 +32,7 @@ describe('dark unless switched on and keyed', () => {
     ['flag 0', { ...ENV, UCP_DISCOUNT_VERIFY_ROUTE_ENABLED: '0' }],
     ['no key', { UCP_DISCOUNT_VERIFY_ROUTE_ENABLED: '1' }],
     ['blank key', { ...ENV, UCP_DISCOUNT_VERIFY_INTERNAL_KEY: '   ' }],
+    ['a key shorter than 43 chars', { ...ENV, UCP_DISCOUNT_VERIFY_INTERNAL_KEY: 'short-but-not-empty-key-0123456789' }],
   ]) {
     test(`${label}: 404 and the verifier never runs`, async () => {
       const { handler, calls } = build({ env });
@@ -49,6 +50,15 @@ describe('auth', () => {
       assert.equal(calls.length, 0);
     });
   }
+  test('a wrong key is logged as a warning (for alerting) and is answered before the body is looked at', async () => {
+    const { handler, logs, calls } = build();
+    const out = await handler({ headers: auth('wrong'), body: { junk: true } });
+    assert.equal(out.status, 401);
+    assert.equal(calls.length, 0);
+    assert.ok(logs.some((l) => l.level === 'warn' && l.event === 'ucp_discount_verify_unauthorized'));
+    assert.equal(JSON.stringify(logs).includes(KEY), false);
+  });
+
   test('the header is read whatever the case the transport hands over (lowercased by node)', async () => {
     const { handler } = build();
     assert.equal((await handler({ headers: { 'x-internal-key': [KEY] }, body: BODY })).status, 200);
@@ -64,6 +74,10 @@ describe('strict body, checked before the verifier', () => {
     ['a bad seller host', { ...BODY, seller_host: 'localhost' }, 'seller_host_invalid'],
     ['a code with invisible characters', { ...BODY, code: 'SAVE​10' }, 'code_invalid'],
     ['a lowercase market', { ...BODY, market: 'us' }, 'market_invalid'],
+    ['our own host', { ...BODY, seller_host: 'gateway-42ogcsuwxq-uw.a.run.app' }, 'seller_host_refused'],
+    ['a discovery host that is not the seller', { ...BODY, discovery_host: 'other.example' }, 'discovery_host_mismatch'],
+    ['a numeric variant', { ...BODY, variant_gid: 44012345678901 }, 'variant_invalid'],
+    ['no currency', (({ expected_currency, ...rest }) => rest)(BODY), 'currency_invalid'],
   ]) {
     test(`${label}: 400`, async () => {
       const { handler, calls } = build();
@@ -79,7 +93,10 @@ test('a valid call maps the body to the verifier and answers its result with 200
   const { handler, calls } = build();
   const out = await handler({ headers: auth(), body: { ...BODY, discovery_host: 'www.brand.example', expected_currency: 'USD' } });
   assert.deepEqual(out, { status: 200, body: { result: 'applied', reason: null } });
-  assert.deepEqual(calls, [{ sellerHost: 'brand.example', discoveryHost: 'www.brand.example', variantGid: '44012345678901', market: 'US', code: 'Save10', expectedCurrency: 'USD' }]);
+  assert.equal(calls.length, 1);
+  const { log, ...args } = calls[0];
+  assert.deepEqual(args, { sellerHost: 'brand.example', discoveryHost: 'www.brand.example', variantGid: '44012345678901', market: 'US', code: 'Save10', expectedCurrency: 'USD' });
+  assert.equal(typeof log.info, 'function', 'the route hands its logger to the verifier');
 });
 
 test('the log carries the outcome, never the code or the variant', async () => {

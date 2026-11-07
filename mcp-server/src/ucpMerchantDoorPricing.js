@@ -61,7 +61,7 @@ const MAX_CART_ID_LENGTH = 512;
 const SELLER_OUT_OF_STOCK_RE = /out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|insufficient inventory/i;
 
 const { toVariantGid } = shopifyVariantResolver;
-const { classifyUcpFailure, FAILURE_REASON, normalizeDiscountCodes, normalizeDiscounts } = buyerAgentClientModule;
+const { classifyUcpFailure, FAILURE_REASON, normalizeDiscountCodes, normalizeDiscounts, forbiddenHostName } = buyerAgentClientModule;
 
 export const SELLER_DISCOUNT_CODES_FLAG = "AGENT_CHECKOUT_UCP_SELLER_DISCOUNT_CODES_ENABLED";
 // The rejection family UCP's discount extension defines (`discount_code_expired`, `discount_code_invalid`, …); a
@@ -587,8 +587,8 @@ function withBudget(promise, ms) {
  * The seller door, built once per process: ONE buyer-agent client and ONE bounded, TTL'd endpoint-discovery cache
  * (the warm-handoff service's), so every checkout for a seller reuses one discovery. Tests inject their own.
  */
-export function createMerchantDoor({ client, discover, logger, catalogQuery } = {}) {
-  const realClient = client || buyerAgentClientModule.createUcpBuyerAgentClient({ timeoutMs: MERCHANT_CALL_TIMEOUT_MS, retryAttempts: 1 });
+export function createMerchantDoor({ client, discover, logger, catalogQuery, clientOptions } = {}) {
+  const realClient = client || buyerAgentClientModule.createUcpBuyerAgentClient({ timeoutMs: MERCHANT_CALL_TIMEOUT_MS, retryAttempts: 1, ...(clientOptions || {}) });
   const service = discover ? null : warmHandoffModule.createWarmHandoffService({ client: realClient, logger: logger || null });
   return {
     // The endpoint string, or `{ mcpEndpoint, acceptsDiscountCodes }` when the seller's profile was read (the real
@@ -798,26 +798,55 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
 const SELLER_HOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}$/;
 export const VERIFY_BUDGET_MS = 6000;
 
+// THE VERIFIER'S OWN DOOR, never the checkout door's: (1) its client is capped below the TOKEN tier, so a bearer
+// credential configured for buyer checkouts can never ride a request to an endpoint a seller's profile names (the
+// verifier fans out to stores we have no relationship with); (2) no retry, so a timed-out create_cart is never
+// sent twice; (3) its own discovery cache, so verifying many stores never evicts the checkout door's entries.
+export const VERIFY_DOOR_CLIENT_OPTIONS = Object.freeze({ allowTokenTier: false, retryAttempts: 0, timeoutMs: MERCHANT_CALL_TIMEOUT_MS });
+let defaultVerifyDoor = null;
+function verifyDoor(deps, factory) {
+  if (deps) return deps;
+  if (factory) return factory();
+  if (!defaultVerifyDoor) {
+    defaultVerifyDoor = createMerchantDoor({ clientOptions: VERIFY_DOOR_CLIENT_OPTIONS });
+  }
+  return defaultVerifyDoor;
+}
+
+/** A host this verifier never contacts: our own, or a name that is never a merchant (see forbiddenHostName). */
+function refusedHost(host) {
+  const h = String(host || "").toLowerCase();
+  return SELF_HOST_RE.test(h) || forbiddenHostName(h);
+}
+
 /** Input problems, or null. Pure; the route answers 400 with the first one. */
-export function verifyInputProblem({ sellerHost, variantGid, market, code, expectedCurrency } = {}) {
+export function verifyInputProblem({ sellerHost, discoveryHost, variantGid, market, code, expectedCurrency } = {}) {
   if (typeof sellerHost !== "string" || !SELLER_HOST_RE.test(sellerHost)) return "seller_host_invalid";
-  if (!toVariantGid(typeof variantGid === "string" ? variantGid.trim() : String(variantGid ?? ""))) return "variant_invalid";
-  if (typeof variantGid === "string" && !/^(\d{6,20}|gid:\/\/shopify\/ProductVariant\/\d{6,20})$/.test(variantGid.trim())) return "variant_invalid";
+  if (refusedHost(sellerHost)) return "seller_host_refused";
+  if (discoveryHost !== undefined) {
+    // The seller's own storefront name, or its www. form: never a third host that merely answers for it.
+    if (typeof discoveryHost !== "string" || !SELLER_HOST_RE.test(discoveryHost)) return "discovery_host_invalid";
+    const bare = (h) => h.replace(/^www\./, "");
+    if (bare(discoveryHost) !== bare(sellerHost)) return "discovery_host_mismatch";
+  }
+  // A string only: an array or a number would pass a looser check (and a large number loses precision).
+  if (typeof variantGid !== "string" || !/^(\d{6,20}|gid:\/\/shopify\/ProductVariant\/\d{6,20})$/.test(variantGid.trim())) return "variant_invalid";
   if (typeof market !== "string" || !/^[A-Z]{2}$/.test(market)) return "market_invalid";
   if (!isAcceptableDiscountCode(code)) return "code_invalid";
-  if (expectedCurrency !== undefined && expectedCurrency !== null && !(typeof expectedCurrency === "string" && /^[A-Z]{3}$/.test(expectedCurrency))) return "currency_invalid";
+  // REQUIRED: the market's currency. A seller answering in another currency is not a price for this buyer.
+  if (!(typeof expectedCurrency === "string" && /^[A-Z]{3}$/.test(expectedCurrency))) return "currency_invalid";
   return null;
 }
 
 export async function verifyCodeOnMerchantDoor({ sellerHost, discoveryHost, variantGid, market, code, expectedCurrency, merchantDoor, doorFactory, budgetMs = VERIFY_BUDGET_MS, log } = {}) {
-  const problem = verifyInputProblem({ sellerHost, variantGid, market, code, expectedCurrency });
+  const problem = verifyInputProblem({ sellerHost, discoveryHost, variantGid, market, code, expectedCurrency });
   if (problem) return { result: "invalid", reason: problem };
   const gid = toVariantGid(String(variantGid).trim());
   const wanted = [{ product_id: gid, quantity: 1, gid }];
   const host = sellerHost.toLowerCase();
   const say = (detail) => emit(log, "info", { outcome: "verify", seller_host: host, ...detail });
   let d;
-  try { d = door(merchantDoor, doorFactory); } catch { say({ result: "not_priced", reason: "door_unavailable" }); return { result: "not_priced", reason: "door_unavailable" }; }
+  try { d = verifyDoor(merchantDoor, doorFactory); } catch { say({ result: "not_priced", reason: "door_unavailable" }); return { result: "not_priced", reason: "door_unavailable" }; }
   const startedAt = Date.now();
   const left = () => budgetMs - (Date.now() - startedAt);
 
@@ -833,6 +862,11 @@ export async function verifyCodeOnMerchantDoor({ sellerHost, discoveryHost, vari
   } catch { endpoint = null; }
   const done = (out) => { say({ result: out.result, reason: out.reason || null }); return out; };
   if (!endpoint) return done({ result: "not_priced", reason: "no_seller_door" });
+  // The endpoint the seller's PROFILE names is checked before any cart: https only, never our own host or a name
+  // that is never a merchant (the transport refuses those too; this keeps the reason explicit and the call unmade).
+  let endpointHost = null;
+  try { const ep = new URL(endpoint); endpointHost = ep.protocol === "https:" ? ep.hostname.toLowerCase() : null; } catch { endpointHost = null; }
+  if (!endpointHost || refusedHost(endpointHost)) return done({ result: "not_priced", reason: "endpoint_refused" });
   if (!accepts) return done({ result: "not_evaluated", reason: "seller_does_not_advertise" });
   if (left() <= 0) return done({ result: "not_priced", reason: FAILURE_REASON.TIMEOUT });
 
@@ -855,7 +889,7 @@ export async function verifyCodeOnMerchantDoor({ sellerHost, discoveryHost, vari
   if (sellerErrorCodes(payload).some((c) => SELLER_OUT_OF_STOCK_CODE_RE.test(c))) return done({ result: "not_priced", reason: FAILURE_REASON.OUT_OF_STOCK });
   let doorHost = null;
   try { const ep = new URL(endpoint); if (ep.protocol === "https:") doorHost = ep.hostname.toLowerCase(); } catch { doorHost = null; }
-  const read = readSellerCart(payload, wanted, host, { expectedCurrency: expectedCurrency || undefined, doorHost, discountCodesOn: true });
+  const read = readSellerCart(payload, wanted, host, { expectedCurrency, doorHost, discountCodesOn: true });
   if (!read) return done({ result: "not_priced", reason: "cart_mismatch" });
   const discounts = readSellerDiscounts(payload, wanted, read, { requested: code });
   const outcome = discounts ? discounts.outcomes[0] : { status: "not_confirmed", reason: "seller_did_not_apply" };

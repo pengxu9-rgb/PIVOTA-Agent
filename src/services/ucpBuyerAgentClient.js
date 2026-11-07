@@ -193,6 +193,18 @@ function inIpv6Range(value, base, prefix) {
 // Measured 2026-09-04: https://[::ffff:169.254.169.254] produced a live
 // connection attempt at the cloud metadata address. v4-mapped literals are the
 // sharp end, because they ride the v4 stack even where IPv6 is unrouted.
+// NAMES THAT ARE NEVER A MERCHANT. The public-only DNS lookup already refuses a name that RESOLVES to a private
+// address; these are refused by name before any lookup, because some resolve publicly yet reach our own estate or
+// the platform: Cloud Run service URLs (*.run.app, public DNS, reached through our own VPC egress), the metadata
+// server and cluster names (*.internal, *.local, *.cluster.local), localhost names, and wildcard-IP DNS services
+// (*.nip.io, *.sslip.io map any name to any IP). A merchant's UCP door is never on one of these.
+const FORBIDDEN_HOST_NAME_RE = /(^|\.)(localhost|localdomain|local|internal|run\.app|nip\.io|sslip\.io|home\.arpa|in-addr\.arpa|ip6\.arpa)\.?$/i;
+
+function forbiddenHostName(hostname) {
+  const host = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
+  return FORBIDDEN_HOST_NAME_RE.test(host);
+}
+
 function forbiddenLiteralHost(hostname) {
   const literal = String(hostname || '').replace(/^\[|\]$/g, '');
   return Boolean(nodeNet.isIP(literal)) && isForbiddenNetworkAddress(literal);
@@ -322,6 +334,10 @@ function createPublicNetworkFetch(lookup) {
     const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
     if (forbiddenLiteralHost(parsed.hostname)) {
       reject(codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL'));
+      return;
+    }
+    if (forbiddenHostName(parsed.hostname)) {
+      reject(codedError('merchant endpoint host is never a merchant', 'PIVOTA_SSRF_NAME'));
       return;
     }
     const request = nodeHttps.request(parsed, {
@@ -625,6 +641,9 @@ function createUcpBuyerAgentClient(options = {}) {
       // request is built. Both carry the code, or the pre-flight path is the one
       // that lands in the threw=unknown bucket.
       throw codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL');
+    }
+    if (forbiddenHostName(parsed.hostname)) {
+      throw codedError('merchant endpoint host is never a merchant', 'PIVOTA_SSRF_NAME');
     }
     return merchantFetch(parsed.toString(), options);
   }
@@ -2032,6 +2051,7 @@ module.exports = {
   // applies the IDENTICAL literal rule instead of a twin that drifts. The bracket-stripping in here is
   // exactly the subtlety a re-implementation gets wrong — see the note above the function.
   forbiddenLiteralHost,
+  forbiddenHostName,
   createPublicOnlyLookup,
   createPublicNetworkFetch,
   toFetchResponse,

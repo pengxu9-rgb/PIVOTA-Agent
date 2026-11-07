@@ -9,7 +9,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { verifyCodeOnMerchantDoor, verifyInputProblem } from '../src/ucpMerchantDoorPricing.js';
+import { verifyCodeOnMerchantDoor, verifyInputProblem, VERIFY_DOOR_CLIENT_OPTIONS } from '../src/ucpMerchantDoorPricing.js';
 
 const GID = (n) => `gid://shopify/ProductVariant/${n}`;
 const V = '44012345678901';
@@ -46,18 +46,23 @@ function fakeLog() {
   const lines = [];
   return { lines, info: (o) => lines.push(o), warn: (o) => lines.push(o) };
 }
-const base = { sellerHost: 'brand.example', variantGid: V, market: 'US', code: CODE };
+const base = { sellerHost: 'brand.example', variantGid: V, market: 'US', code: CODE, expectedCurrency: 'USD' };
 const run = (over = {}, door = fakeDoor(), log) => verifyCodeOnMerchantDoor({ ...base, ...over, merchantDoor: door, log }).then((out) => ({ out, door }));
 
 describe('input is refused before any seller is contacted', () => {
   const cases = {
     seller_host_invalid: [{ sellerHost: '10.0.0.1' }, { sellerHost: 'localhost' }, { sellerHost: 'https://brand.example' }, { sellerHost: 'Brand.example' }, { sellerHost: 'brand.example/x' }],
-    variant_invalid: [{ variantGid: '123' }, { variantGid: '12345' }, { variantGid: 'gid://shopify/Product/44012345678901' }, { variantGid: 'abc' }, { variantGid: undefined },
+    // Our own estate and names that are never a merchant (review of gw#2552, P2-2).
+    seller_host_refused: [{ sellerHost: 'mcp.pivota.cc' }, { sellerHost: 'gateway-42ogcsuwxq-uw.a.run.app' }, { sellerHost: 'metadata.google.internal' },
+      { sellerHost: 'svc.default.svc.cluster.local' }, { sellerHost: 'printer.local' }, { sellerHost: 'app.localhost' }, { sellerHost: '169.254.169.254.nip.io' }, { sellerHost: 'x.sslip.io' }],
+    discovery_host_mismatch: [{ discoveryHost: 'other.example' }, { discoveryHost: 'shop.brand.example' }],
+    discovery_host_invalid: [{ discoveryHost: '10.0.0.1' }, { discoveryHost: 7 }],
+    variant_invalid: [{ variantGid: 44012345678901 }, { variantGid: ['44012345678901'] }, { variantGid: '123' }, { variantGid: '12345' }, { variantGid: 'gid://shopify/Product/44012345678901' }, { variantGid: 'abc' }, { variantGid: undefined },
       // a gid buried in a longer string is not the variant (the shared parser would fish it out)
       { variantGid: 'https://x.example/?v=gid://shopify/ProductVariant/44012345678901' }, { variantGid: '44012345678901x' }],
     market_invalid: [{ market: 'us' }, { market: 'USA' }, { market: undefined }],
     code_invalid: [{ code: '   ' }, { code: 'A‮B' }, { code: 'X'.repeat(129) }, { code: 7 }],
-    currency_invalid: [{ expectedCurrency: 'usd' }, { expectedCurrency: 'DOLLARS' }],
+    currency_invalid: [{ expectedCurrency: 'usd' }, { expectedCurrency: 'DOLLARS' }, { expectedCurrency: undefined }, { expectedCurrency: null }],
   };
   for (const [reason, overs] of Object.entries(cases)) {
     test(reason, async () => {
@@ -69,9 +74,11 @@ describe('input is refused before any seller is contacted', () => {
       }
     });
   }
-  test('a store variant gid or its bare id are both accepted', () => {
+  test('a store variant gid or its bare id are both accepted; the www. form of the seller host is its discovery host', () => {
     assert.equal(verifyInputProblem({ ...base, variantGid: GID(V) }), null);
     assert.equal(verifyInputProblem(base), null);
+    assert.equal(verifyInputProblem({ ...base, discoveryHost: 'www.brand.example' }), null);
+    assert.equal(verifyInputProblem({ ...base, sellerHost: 'www.brand.example', discoveryHost: 'brand.example' }), null);
   });
 });
 
@@ -88,6 +95,21 @@ describe('no cart unless the seller has a door that takes codes on carts', () =>
       assert.deepEqual(door.calls.map((c) => c[0]), ['discover']);
     }
   });
+  test('an endpoint the profile names on our own estate, a never-merchant name or plain http: no cart', async () => {
+    for (const mcpEndpoint of ['https://svc-abc-uw.a.run.app/mcp', 'https://mcp.pivota.cc/ucp/mcp', 'http://brand.example/api/ucp/mcp',
+      'https://metadata.google.internal/computeMetadata/v1', 'not a url']) {
+      const { out, door } = await run({}, fakeDoor({ endpoint: { mcpEndpoint, acceptsDiscountCodes: true } }));
+      assert.deepEqual(out, { result: 'not_priced', reason: 'endpoint_refused' }, mcpEndpoint);
+      assert.deepEqual(door.calls.map((c) => c[0]), ['discover'], mcpEndpoint);
+    }
+  });
+
+  test("the verifier's own client never carries the token tier and never retries", () => {
+    assert.equal(VERIFY_DOOR_CLIENT_OPTIONS.allowTokenTier, false);
+    assert.equal(VERIFY_DOOR_CLIENT_OPTIONS.retryAttempts, 0);
+    assert.ok(Object.isFrozen(VERIFY_DOOR_CLIENT_OPTIONS));
+  });
+
   test('discovery uses the discovery host when given, else the seller host', async () => {
     const a = await run({ discoveryHost: 'www.brand.example' });
     assert.equal(a.door.calls[0][1], 'www.brand.example');

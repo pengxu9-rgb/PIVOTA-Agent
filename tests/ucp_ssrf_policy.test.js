@@ -9,6 +9,7 @@ const {
   isForbiddenNetworkAddress,
   toFetchResponse,
   MAX_MERCHANT_RESPONSE_BYTES,
+  forbiddenHostName,
 } = require('../src/services/ucpBuyerAgentClient');
 
 test.each([
@@ -487,5 +488,48 @@ describe('causeCode budget — fixtures that separate the loop from a slice', ()
     ]) {
       expect((await reasonFor(codes)).length).toBeLessThanOrEqual(60);
     }
+  });
+});
+
+
+describe('names that are never a merchant are refused before any lookup (review of gw#2552, P2-2)', () => {
+  const NEVER = ['metadata.google.internal', 'svc.default.svc.cluster.local', 'printer.local', 'localhost', 'app.localhost',
+    'gateway-42ogcsuwxq-uw.a.run.app', 'web-184498324954.us-west1.run.app', '169.254.169.254.nip.io', 'x.sslip.io',
+    'box.localdomain', 'router.home.arpa', '1.0.0.127.in-addr.arpa', 'METADATA.GOOGLE.INTERNAL', 'metadata.google.internal.'];
+  const MERCHANTS = ['cosrx.com', 'brand.example', 'shop-runapp.com', 'internal-brand.com', 'localshop.co', 'nip.io.shop.com',
+    'x.myshopify.com', 'www.local.com'];
+
+  test.each(NEVER)('%s is never a merchant', (host) => {
+    expect(forbiddenHostName(host)).toBe(true);
+  });
+  test.each(MERCHANTS)('%s may be one', (host) => {
+    expect(forbiddenHostName(host)).toBe(false);
+  });
+
+  test('createPublicNetworkFetch refuses such a name on its own, before any request', async () => {
+    const called = jest.fn();
+    const spy = jest.spyOn(nodeHttps, 'request').mockImplementation(() => {
+      called();
+      const request = new EventEmitter();
+      request.end = jest.fn(() => request.emit('error', new Error('stopped here')));
+      request.destroy = jest.fn();
+      return request;
+    });
+    try {
+      // The lookup would answer a PUBLIC address: a *.run.app name passes the address fence, so the name fence is it.
+      const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '34.143.73.2', family: 4 }]));
+      await expect(fetchImpl('https://svc-abc-uw.a.run.app/mcp')).rejects.toMatchObject({ code: 'PIVOTA_SSRF_NAME' });
+      expect(called).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('fetchMerchantEndpoint refuses it even when the fenced transport is replaced', async () => {
+    const fetchImpl = jest.fn();
+    const client = createUcpBuyerAgentClient({ forceAnonymous: true, fetchImpl });
+    await expect(client.discoverEndpoint('https://metadata.google.internal')).rejects.toMatchObject({ code: 'PIVOTA_SSRF_NAME' });
+    await expect(client.callTool('https://svc-abc-uw.a.run.app/mcp', 'create_cart', {})).rejects.toMatchObject({ code: 'PIVOTA_SSRF_NAME' });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
