@@ -520,7 +520,9 @@ describe('does a seller advertise discount codes?', () => {
     expect(profileCapabilityExtends(p([{ extends: [CART, 'dev.ucp.shopping.checkout'] }]), CAP, CART)).toBe(true);
     expect(profileCapabilityExtends(p([{ extends: CART }]), CAP, CART)).toBe(true);
     expect(profileCapabilityExtends(p({ extends: [CART] }), CAP, CART)).toBe(true);
-    for (const entry of [[{ extends: ['dev.ucp.shopping.checkout'] }], [{}], [{ extends: null }], [null], 'x']) {
+    // A string `extends` is compared whole: a name that merely CONTAINS the parent is another capability.
+    for (const entry of [[{ extends: ['dev.ucp.shopping.checkout'] }], [{}], [{ extends: null }], [null], 'x',
+      [{ extends: 'dev.ucp.shopping.cart.v2' }], [{ extends: 'xdev.ucp.shopping.cart' }], [{ extends: ['dev.ucp.shopping.cart.v2'] }]]) {
       expect(profileCapabilityExtends(p(entry), CAP, CART)).toBe(false);
     }
     expect(profileCapabilityExtends({ ucp: { capabilities: {} } }, CAP, CART)).toBe(false);

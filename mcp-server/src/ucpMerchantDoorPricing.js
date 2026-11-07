@@ -70,14 +70,17 @@ const DISCOUNT_MESSAGE_RE = /^discount_code_[a-z0-9_]{1,48}$/;
 // The UCP applied-entry `method` vocabulary (discount.json): how an amount is spread over the lines.
 const DISCOUNT_METHODS = new Set(["each", "across"]);
 const MAX_REPORTED_CODES = 5;
-// THE ONE CONTENT RULE for a code this door sends, echoes or reports: the adapter's bound (1..128 characters, at most
-// one) plus no control characters and no invisible/bidirectional formatting characters (a code is a short merchant
-// token; those characters can only disguise it). Applied to the buyer's code before any seller sees it AND to every
-// code the seller's cart answers with, so neither side can put one in the answer.
+// THE ONE CONTENT RULE for a code this door sends, echoes or reports: non-blank, at most 128 UTF-16 code units (the
+// unit the client's own 255 bound counts, so a code the door accepts is never one the client refuses), and no
+// character that is invisible or can disguise text: every control, format (bidi marks, zero-width, soft hyphen, TAG
+// characters U+E0000-E007F, interlinear annotation), surrogate, private-use, unassigned, line or paragraph separator,
+// plus the invisible letters and marks that are not in those categories (combining grapheme joiner, Mongolian free
+// variation selectors, Hangul fillers, braille blank, variation selectors). Applied to the buyer's code before any
+// seller sees it AND to every code the seller's cart answers with, so neither side can put one in the answer.
 export const DISCOUNT_CODE_MAX_LENGTH = 128;
-const DISCOUNT_CODE_FORBIDDEN_RE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+const DISCOUNT_CODE_FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\u034f\u115f\u1160\u180b-\u180d\u180f\u2800\u3164\uffa0\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/u;
 export function isAcceptableDiscountCode(code) {
-  return typeof code === "string" && code.trim() !== "" && [...code].length <= DISCOUNT_CODE_MAX_LENGTH
+  return typeof code === "string" && code.trim() !== "" && code.length <= DISCOUNT_CODE_MAX_LENGTH
     && !DISCOUNT_CODE_FORBIDDEN_RE.test(code);
 }
 

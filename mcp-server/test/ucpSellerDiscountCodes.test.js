@@ -20,6 +20,7 @@ import {
   readSellerCart,
   readSellerDiscounts,
   createMerchantDoor,
+  isAcceptableDiscountCode,
 } from '../src/ucpMerchantDoorPricing.js';
 import {
   UCP_ESCALATION_FLAG,
@@ -184,7 +185,7 @@ describe('the code reaches the seller', () => {
   });
 
   test('a code no storefront could take (blank, control or invisible/bidi characters) is REFUSED before any seller is contacted', async () => {
-    for (const bad of ['   ', 'SAVE\u202e01', 'SA\u0007VE', '\u200bSAVE', 'X'.repeat(129)]) {
+    for (const bad of ['   ', 'SAVE\u202e01', 'SA\u0007VE', '\u200bSAVE', 'X'.repeat(129), 'SAVE\u{e0041}', '\u{1f600}'.repeat(65)]) {
       const door = fakeDoor();
       const err = await create({ code: bad, door }).then(() => null, (e) => e);
       assert.ok(err, JSON.stringify(bad));
@@ -316,7 +317,7 @@ describe('what the seller said about it', () => {
   });
 
   test('codes the seller echoes or names that break the content rule are never repeated to the agent', async () => {
-    const BIDI = 'EVIL\u202eCODE';
+    const BIDI = 'EVIL\u{e0041}\u202eCODE';
     const door = fakeDoor({ get: () => sellerCart({ discount: 100, discounts: { codes: [BIDI, 'GOOD1'], applied: [{ code: BIDI, amount: 100 }] } }) });
     const priced = await priceOnMerchantDoor({
       items: [{ product_id: SEED.product_id, quantity: 2 }], rows: new Map([[SEED.product_id, SEED]]),
@@ -351,6 +352,32 @@ describe('what never leaves the door', () => {
     assert.equal(JSON.stringify(log.lines).includes(CODE), false);
     assert.equal(JSON.stringify(log.lines).toLowerCase().includes(CODE.toLowerCase()), false);
     assert.ok(log.lines.some((l) => l.outcome === 'discount_codes' && l.sent === true));
+  });
+});
+
+describe('the code content rule', () => {
+  // Each range pinned on its own: one class edit can drop one without the others noticing.
+  const REFUSED = {
+    'DEL': 'A\u007fB', 'C1 control': 'A\u0085B', 'NUL': 'A\u0000B',
+    'word joiner range (U+2060-206F)': 'A\u2061B', 'U+206F': 'A\u206fB', 'BOM': '\ufeffAB', 'Arabic letter mark': 'A\u061cB',
+    'RLO': 'A\u202eB', 'zero-width space': 'A\u200bB', 'line separator': 'A\u2028B', 'paragraph separator': 'A\u2029B',
+    'TAG letter (U+E0041)': 'AB\u{e0041}', 'TAG cancel (U+E007F)': 'AB\u{e007f}', 'soft hyphen': 'A\u00adB',
+    'combining grapheme joiner': 'A\u034fB', 'Mongolian vowel separator': 'A\u180eB', 'Mongolian FVS1': 'A\u180bB', 'Mongolian FVS4': 'A\u180fB',
+    'variation selector 16': 'A\ufe0fB', 'variation selector 17': 'A\u{e0100}B', 'Hangul choseong filler': 'A\u115fB',
+    'Hangul jungseong filler': 'A\u1160B', 'Hangul filler': 'A\u3164B', 'halfwidth Hangul filler': 'A\uffa0B',
+    'braille blank': 'A\u2800B', 'interlinear annotation anchor': 'A\ufff9B', 'lone high surrogate': 'A\ud800B',
+    'lone low surrogate': 'A\udc00B', 'private use': 'A\ue000B', 'unassigned (U+0378)': 'A\u0378B', 'blank': '   ', 'empty': '',
+  };
+  for (const [name, code] of Object.entries(REFUSED)) {
+    test(`refused: ${name}`, () => assert.equal(isAcceptableDiscountCode(code), false));
+  }
+  test('accepted: ordinary codes, accented and CJK letters, emoji', () => {
+    for (const code of ['SAVE10', 'save-10_x', 'Café10', '日本10', 'A\u{1f600}', 'A'.repeat(128)]) assert.equal(isAcceptableDiscountCode(code), true, code);
+  });
+  test('length is counted in UTF-16 units, the unit the client bounds: 64 astral characters pass, 65 do not', () => {
+    assert.equal(isAcceptableDiscountCode('\u{1f600}'.repeat(64)), true);
+    assert.equal(isAcceptableDiscountCode('\u{1f600}'.repeat(65)), false);
+    assert.equal(isAcceptableDiscountCode('A'.repeat(129)), false);
   });
 });
 

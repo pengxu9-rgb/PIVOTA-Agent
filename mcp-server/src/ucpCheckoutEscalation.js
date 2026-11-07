@@ -707,7 +707,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     if (discountCode !== undefined && !isAcceptableDiscountCode(discountCode)) {
       throw intakeRefusal("QUOTE_REQUIRED", "ucp_discount_code_invalid", [
         "`checkout.discounts.codes[0]` is not a usable discount code: it must be 1 to",
-        `${DISCOUNT_CODE_MAX_LENGTH} visible characters, with no control or formatting characters. Send the code exactly as`,
+        `${DISCOUNT_CODE_MAX_LENGTH} UTF-16 code units of visible characters, with no control, formatting or invisible characters. Send the code exactly as`,
         "the buyer entered it, or send the checkout without `checkout.discounts`.",
       ].join(" "), { rejected_field: "checkout.discounts.codes" });
     }
