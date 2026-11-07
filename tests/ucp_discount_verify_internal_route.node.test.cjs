@@ -59,6 +59,27 @@ describe('auth', () => {
     assert.equal(JSON.stringify(logs).includes(KEY), false);
   });
 
+  test('a presented key is never logged: not a near-miss on the 401 WARN, not the right one on success', async () => {
+    const nearMiss = KEY.slice(0, -1) + (KEY.endsWith('z') ? 'y' : 'z');
+    const a = build();
+    await a.handler({ headers: auth(nearMiss), body: BODY });
+    const b = build();
+    await b.handler({ headers: auth(), body: BODY });
+    const text = JSON.stringify([...a.logs, ...b.logs]);
+    assert.equal(text.includes(nearMiss), false);
+    assert.equal(text.includes(KEY), false);
+    assert.equal(text.includes(KEY.slice(0, 20)), false, 'not even a prefix');
+  });
+
+  test('the key minimum is 43 characters: 42 keeps the route dark, 43 opens it', async () => {
+    const k42 = 'k'.repeat(42);
+    const k43 = 'k'.repeat(43);
+    const dark = build({ env: { UCP_DISCOUNT_VERIFY_ROUTE_ENABLED: '1', UCP_DISCOUNT_VERIFY_INTERNAL_KEY: k42 } });
+    assert.equal((await dark.handler({ headers: auth(k42), body: BODY })).status, 404);
+    const open = build({ env: { UCP_DISCOUNT_VERIFY_ROUTE_ENABLED: '1', UCP_DISCOUNT_VERIFY_INTERNAL_KEY: k43 } });
+    assert.equal((await open.handler({ headers: auth(k43), body: BODY })).status, 200);
+  });
+
   test('the header is read whatever the case the transport hands over (lowercased by node)', async () => {
     const { handler } = build();
     assert.equal((await handler({ headers: { 'x-internal-key': [KEY] }, body: BODY })).status, 200);

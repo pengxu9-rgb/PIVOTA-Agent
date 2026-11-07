@@ -495,9 +495,10 @@ describe('causeCode budget — fixtures that separate the loop from a slice', ()
 describe('names that are never a merchant are refused before any lookup (review of gw#2552, P2-2)', () => {
   const NEVER = ['metadata.google.internal', 'svc.default.svc.cluster.local', 'printer.local', 'localhost', 'app.localhost',
     'gateway-42ogcsuwxq-uw.a.run.app', 'web-184498324954.us-west1.run.app', '169.254.169.254.nip.io', 'x.sslip.io',
-    'box.localdomain', 'router.home.arpa', '1.0.0.127.in-addr.arpa', 'METADATA.GOOGLE.INTERNAL', 'metadata.google.internal.'];
+    'box.localdomain', 'router.home.arpa', '1.0.0.127.in-addr.arpa', 'METADATA.GOOGLE.INTERNAL', 'metadata.google.internal.',
+    'x.run.app..', 'svc.run.app...', 'us-central1-proj.cloudfunctions.net', 'proj.appspot.com', 'a.b.APPSPOT.COM.'];
   const MERCHANTS = ['cosrx.com', 'brand.example', 'shop-runapp.com', 'internal-brand.com', 'localshop.co', 'nip.io.shop.com',
-    'x.myshopify.com', 'www.local.com'];
+    'x.myshopify.com', 'www.local.com', 'evilrun.app', 'run.app.brand.com', 'myappspot.com', 'notcloudfunctions.net'];
 
   test.each(NEVER)('%s is never a merchant', (host) => {
     expect(forbiddenHostName(host)).toBe(true);

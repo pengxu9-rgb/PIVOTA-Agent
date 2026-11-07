@@ -195,10 +195,11 @@ function inIpv6Range(value, base, prefix) {
 // sharp end, because they ride the v4 stack even where IPv6 is unrouted.
 // NAMES THAT ARE NEVER A MERCHANT. The public-only DNS lookup already refuses a name that RESOLVES to a private
 // address; these are refused by name before any lookup, because some resolve publicly yet reach our own estate or
-// the platform: Cloud Run service URLs (*.run.app, public DNS, reached through our own VPC egress), the metadata
+// the platform: Cloud Run, Cloud Functions and App Engine URLs (*.run.app, *.cloudfunctions.net, *.appspot.com: public
+// DNS, reached through our own VPC egress), the metadata
 // server and cluster names (*.internal, *.local, *.cluster.local), localhost names, and wildcard-IP DNS services
 // (*.nip.io, *.sslip.io map any name to any IP). A merchant's UCP door is never on one of these.
-const FORBIDDEN_HOST_NAME_RE = /(^|\.)(localhost|localdomain|local|internal|run\.app|nip\.io|sslip\.io|home\.arpa|in-addr\.arpa|ip6\.arpa)\.?$/i;
+const FORBIDDEN_HOST_NAME_RE = /(^|\.)(localhost|localdomain|local|internal|run\.app|cloudfunctions\.net|appspot\.com|nip\.io|sslip\.io|home\.arpa|in-addr\.arpa|ip6\.arpa)\.*$/i;
 
 function forbiddenHostName(hostname) {
   const host = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
