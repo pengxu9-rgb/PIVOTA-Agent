@@ -1617,7 +1617,12 @@ function normalizeDiscounts(payload) {
     if (!isPlainObjectLocal(m) || !String(m.code || '').startsWith(DISCOUNT_REJECTION_PREFIX)) continue;
     // `path` points at the rejected entry, e.g. "$.discounts.codes[0]"; map it back to the code we sent.
     const index = /^\$\.discounts\.codes\[(\d+)\]$/.exec(String(m.path || ''));
-    const slot = index ? echo[Number(index[1])] : undefined;
+    // NO PATH AT ALL, ONE CODE ON THE CART: that code. Shopify's UCP door sends the rejection with no `path`
+    // (measured 2026-11-07 on two Shopify stores: `{type: "warning", code: "discount_code_invalid", content}` beside a
+    // one-code echo), so with exactly one code echoed there is nothing else it can concern. A path that is PRESENT but
+    // not `$.discounts.codes[i]`, or an echo of zero or several codes, still maps to nothing (unmapped, never guessed).
+    const pathless = m.path === undefined || m.path === null;
+    const slot = index ? echo[Number(index[1])] : (pathless && echo.length === 1 ? echo[0] : undefined);
     // Trimmed, as the outcome's key is: a padded echo must still name the code it rejected.
     const code = typeof slot === 'string' && slot.trim() ? slot.trim() : null;
     const row = { code, reason: String(m.code), content: typeof m.content === 'string' ? m.content : null };

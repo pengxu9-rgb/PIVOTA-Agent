@@ -251,6 +251,17 @@ describe('what the seller said about it', () => {
     assert.equal(out.totals.at(-1).amount, 25800);
   });
 
+  test('REJECTED the way Shopify says it (no path, one code on the cart): the store\'s own code, the cart still priced', async () => {
+    const door = fakeDoor({
+      create: () => sellerCart({ discounts: { codes: [CODE], applied: [] }, messages: [{ type: 'warning', code: 'discount_code_invalid', content: SELLER_TEXT }] }),
+    });
+    const { out } = await create({ door });
+    assert.equal(out.messages[0].code, 'checkout.priced_by_seller_storefront');
+    const msgs = codeMessages(out);
+    assert.deepEqual(msgs.map((m) => [m.type, m.code, m.path]), [['warning', 'discount_code_invalid', '$.discounts.codes[0]']]);
+    assert.equal(JSON.stringify(out).includes(SELLER_TEXT), false);
+  });
+
   test('a seller that sends the rejection as an ERROR still prices the cart while codes are on — and falls back with them off', async () => {
     const reply = () => sellerCart({ discounts: { codes: [CODE], applied: [] }, messages: [{ type: 'error', code: 'discount_code_invalid', path: '$.discounts.codes[0]' }] });
     const on = await create({ door: fakeDoor({ create: reply }) });
@@ -265,7 +276,7 @@ describe('what the seller said about it', () => {
       seller_did_not_apply: sellerCart({ discounts: { codes: [CODE], applied: [] } }),
       ambiguous: sellerCart({ discount: 200, discounts: { codes: [CODE], applied: [{ code: CODE, amount: 100 }, { code: CODE.toUpperCase(), amount: 100 }] } }),
       unreadable: sellerCart({ discount: 100, discounts: { codes: [CODE], applied: [{ code: CODE, amount: -100 }] } }),
-      unmapped_rejection: sellerCart({ discount: 100, discounts: appliedCode(100), messages: [{ type: 'warning', code: 'discount_code_invalid' }] }),
+      unmapped_rejection: sellerCart({ discount: 100, discounts: appliedCode(100), messages: [{ type: 'warning', code: 'discount_code_invalid', path: '$.discounts.codes[3]' }] }),
       totals_show_no_discount: sellerCart({ discounts: appliedCode(100) }),
       amounts_disagree: sellerCart({ discount: 150, discounts: appliedCode(100) }),
       // An unreadable entry for ANOTHER code means the seller's discount rows cannot be reconciled either.

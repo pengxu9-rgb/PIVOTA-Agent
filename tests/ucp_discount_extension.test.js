@@ -252,7 +252,10 @@ describe('the response is read without guessing', () => {
 
   test.each([
     ['no echo of the submitted codes', { discounts: { applied: [] } }, '$.discounts.codes[0]'],
-    ['no path', { discounts: { codes: ['A'] } }, undefined],
+    ['no path and TWO codes echoed', { discounts: { codes: ['A', 'B'] } }, undefined],
+    ['no path and NO codes echoed', { discounts: { codes: [] } }, undefined],
+    ['a path present but not a code slot', { discounts: { codes: ['A'] } }, '$.discounts'],
+    ['an empty path', { discounts: { codes: ['A'] } }, ''],
     ['an index past the end', { discounts: { codes: ['A'] } }, '$.discounts.codes[3]'],
   ])('a discount rejection with %s is unmapped, not dropped', (_label, payload, path) => {
     const d = normalizeDiscounts({
@@ -417,8 +420,24 @@ describe('what one code did', () => {
     }
   });
 
+  test('a rejection with NO path and ONE code echoed is that code\'s (the shape Shopify sends)', () => {
+    // Transcribed from a live Shopify UCP create_cart (2026-11-07): a one-code echo, no applied entry, and a warning
+    // with no `path`.
+    const shopify = {
+      currency: 'USD', totals: [{ type: 'subtotal', amount: 2500 }, { type: 'total', amount: 2500 }],
+      discounts: { codes: ['PIVOTAE2EINVALID7Q'], applied: [] },
+      messages: [{ type: 'warning', code: 'discount_code_invalid', content: 'Enter a valid discount code' }],
+    };
+    const d = normalizeDiscounts(shopify);
+    expect(d.unmapped_rejections).toEqual([]);
+    expect(d.rejected).toEqual([{ code: 'PIVOTAE2EINVALID7Q', reason: 'discount_code_invalid', content: 'Enter a valid discount code' }]);
+    expect(discountCodeOutcome(d, 'pivotae2einvalid7q')).toMatchObject({ applied: false, not_applied_reason: 'rejected', rejected_reason: 'discount_code_invalid' });
+    // `path: null` is absent too.
+    expect(normalizeDiscounts({ ...shopify, messages: [{ ...shopify.messages[0], path: null }] }).rejected).toHaveLength(1);
+  });
+
   test('an unmapped discount rejection leaves every submitted code not applied', () => {
-    const d = read([codeEntry()], { messages: [{ type: 'warning', code: 'discount_code_invalid', content: 'x' }] });
+    const d = read([codeEntry()], { messages: [{ type: 'warning', code: 'discount_code_invalid', path: '$.discounts.codes[7]', content: 'x' }] });
     expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'unmapped_rejection', amount_minor: 0 });
   });
 
