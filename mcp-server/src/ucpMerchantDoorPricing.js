@@ -61,7 +61,7 @@ const MAX_CART_ID_LENGTH = 512;
 const SELLER_OUT_OF_STOCK_RE = /out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|insufficient inventory/i;
 
 const { toVariantGid } = shopifyVariantResolver;
-const { classifyUcpFailure, FAILURE_REASON, normalizeDiscountCodes, normalizeDiscounts } = buyerAgentClientModule;
+const { classifyUcpFailure, FAILURE_REASON, normalizeDiscountCodes, normalizeDiscounts, forbiddenHostName } = buyerAgentClientModule;
 
 export const SELLER_DISCOUNT_CODES_FLAG = "AGENT_CHECKOUT_UCP_SELLER_DISCOUNT_CODES_ENABLED";
 // The rejection family UCP's discount extension defines (`discount_code_expired`, `discount_code_invalid`, …); a
@@ -587,8 +587,8 @@ function withBudget(promise, ms) {
  * The seller door, built once per process: ONE buyer-agent client and ONE bounded, TTL'd endpoint-discovery cache
  * (the warm-handoff service's), so every checkout for a seller reuses one discovery. Tests inject their own.
  */
-export function createMerchantDoor({ client, discover, logger, catalogQuery } = {}) {
-  const realClient = client || buyerAgentClientModule.createUcpBuyerAgentClient({ timeoutMs: MERCHANT_CALL_TIMEOUT_MS, retryAttempts: 1 });
+export function createMerchantDoor({ client, discover, logger, catalogQuery, clientOptions } = {}) {
+  const realClient = client || buyerAgentClientModule.createUcpBuyerAgentClient({ timeoutMs: MERCHANT_CALL_TIMEOUT_MS, retryAttempts: 1, ...(clientOptions || {}) });
   const service = discover ? null : warmHandoffModule.createWarmHandoffService({ client: realClient, logger: logger || null });
   return {
     // The endpoint string, or `{ mcpEndpoint, acceptsDiscountCodes }` when the seller's profile was read (the real
@@ -780,3 +780,133 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   return read;
 }
 
+
+// ---- verify ONE code on a seller's door (the coupon verifier's route) -------------------------------------------
+//
+// The same pieces the checkout door uses — endpoint discovery (with the seller's advertised discount capability),
+// `create_cart` with the code, readSellerCart, readSellerDiscounts — for ONE store variant at quantity 1, with no
+// catalog row: the verifier names the seller host and the store's own variant. So a verification and a buyer's
+// checkout read a seller's answer the same way and cannot disagree. Never a checkout, never a payment; the cart is
+// the same anonymous cart one buyer's checkout makes. The code is never logged.
+//
+// Result `result`:
+//   applied        the seller applied it: `discount` carries the amount (minor) and allocations; `totals` are the seller's
+//   rejected       the seller refused it: `reason` is its `discount_code_*` code
+//   not_confirmed  the seller priced the cart but its answer does not confirm the code (`reason` says why)
+//   not_evaluated  the code was not sent (`reason`: seller_does_not_advertise)
+//   not_priced     no seller-priced cart (`reason`: no_seller_door, timeout, out_of_stock, variant_invalid, cart_mismatch, …)
+const SELLER_HOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}$/;
+export const VERIFY_BUDGET_MS = 6000;
+
+// THE VERIFIER'S OWN DOOR, never the checkout door's: (1) its client is capped below the TOKEN tier, so a bearer
+// credential configured for buyer checkouts can never ride a request to an endpoint a seller's profile names (the
+// verifier fans out to stores we have no relationship with); (2) no retry, so a timed-out create_cart is never
+// sent twice; (3) its own discovery cache, so verifying many stores never evicts the checkout door's entries.
+export const VERIFY_DOOR_CLIENT_OPTIONS = Object.freeze({ allowTokenTier: false, retryAttempts: 0, timeoutMs: MERCHANT_CALL_TIMEOUT_MS });
+let defaultVerifyDoor = null;
+function verifyDoor(deps, factory) {
+  if (deps) return deps;
+  if (factory) return factory();
+  if (!defaultVerifyDoor) {
+    defaultVerifyDoor = createMerchantDoor({ clientOptions: VERIFY_DOOR_CLIENT_OPTIONS });
+  }
+  return defaultVerifyDoor;
+}
+
+/** A host this verifier never contacts: our own, or a name that is never a merchant (see forbiddenHostName). */
+function refusedHost(host) {
+  const h = String(host || "").toLowerCase();
+  return SELF_HOST_RE.test(h) || forbiddenHostName(h);
+}
+
+/** Input problems, or null. Pure; the route answers 400 with the first one. */
+export function verifyInputProblem({ sellerHost, discoveryHost, variantGid, market, code, expectedCurrency } = {}) {
+  if (typeof sellerHost !== "string" || !SELLER_HOST_RE.test(sellerHost)) return "seller_host_invalid";
+  if (refusedHost(sellerHost)) return "seller_host_refused";
+  if (discoveryHost !== undefined) {
+    // The seller's own storefront name, or its www. form: never a third host that merely answers for it.
+    if (typeof discoveryHost !== "string" || !SELLER_HOST_RE.test(discoveryHost)) return "discovery_host_invalid";
+    const bare = (h) => h.replace(/^www\./, "");
+    if (bare(discoveryHost) !== bare(sellerHost)) return "discovery_host_mismatch";
+  }
+  // A string only: an array or a number would pass a looser check (and a large number loses precision).
+  if (typeof variantGid !== "string" || !/^(\d{6,20}|gid:\/\/shopify\/ProductVariant\/\d{6,20})$/.test(variantGid.trim())) return "variant_invalid";
+  if (typeof market !== "string" || !/^[A-Z]{2}$/.test(market)) return "market_invalid";
+  if (!isAcceptableDiscountCode(code)) return "code_invalid";
+  // REQUIRED: the market's currency. A seller answering in another currency is not a price for this buyer.
+  if (!(typeof expectedCurrency === "string" && /^[A-Z]{3}$/.test(expectedCurrency))) return "currency_invalid";
+  return null;
+}
+
+export async function verifyCodeOnMerchantDoor({ sellerHost, discoveryHost, variantGid, market, code, expectedCurrency, merchantDoor, doorFactory, budgetMs = VERIFY_BUDGET_MS, log } = {}) {
+  const problem = verifyInputProblem({ sellerHost, discoveryHost, variantGid, market, code, expectedCurrency });
+  if (problem) return { result: "invalid", reason: problem };
+  const gid = toVariantGid(String(variantGid).trim());
+  const wanted = [{ product_id: gid, quantity: 1, gid }];
+  const host = sellerHost.toLowerCase();
+  const say = (detail) => emit(log, "info", { outcome: "verify", seller_host: host, ...detail });
+  let d;
+  try { d = verifyDoor(merchantDoor, doorFactory); } catch { say({ result: "not_priced", reason: "door_unavailable" }); return { result: "not_priced", reason: "door_unavailable" }; }
+  const startedAt = Date.now();
+  const left = () => budgetMs - (Date.now() - startedAt);
+
+  let endpoint = null;
+  let accepts = false;
+  try {
+    const found = await withBudget(d.endpointFor(discoveryHost || host), left());
+    if (typeof found === "string") endpoint = found;
+    else if (isPlainObject(found) && !found.timedOut && typeof found.mcpEndpoint === "string") {
+      endpoint = found.mcpEndpoint;
+      accepts = found.acceptsDiscountCodes === true;
+    }
+  } catch { endpoint = null; }
+  const done = (out) => { say({ result: out.result, reason: out.reason || null }); return out; };
+  if (!endpoint) return done({ result: "not_priced", reason: "no_seller_door" });
+  // The endpoint the seller's PROFILE names is checked before any cart: https only, never our own host or a name
+  // that is never a merchant (the transport refuses those too; this keeps the reason explicit and the call unmade).
+  let endpointHost = null;
+  try { const ep = new URL(endpoint); endpointHost = ep.protocol === "https:" ? ep.hostname.toLowerCase() : null; } catch { endpointHost = null; }
+  if (!endpointHost || refusedHost(endpointHost)) return done({ result: "not_priced", reason: "endpoint_refused" });
+  if (!accepts) return done({ result: "not_evaluated", reason: "seller_does_not_advertise" });
+  if (left() <= 0) return done({ result: "not_priced", reason: FAILURE_REASON.TIMEOUT });
+
+  let res;
+  try {
+    res = await withBudget(d.createCart(endpoint, {
+      lineItems: [{ item: { id: gid }, quantity: 1 }],
+      context: { address_country: market },
+      discountCodes: [code],
+    }), left());
+  } catch (err) {
+    return done({ result: "not_priced", reason: classifyUcpFailure({ thrown: err, phase: "create_cart" }) });
+  }
+  if (!res || res.timedOut) return done({ result: "not_priced", reason: FAILURE_REASON.TIMEOUT });
+  if (!res.ok || res.error) {
+    const errorText = res.error && (res.error.message || res.error.code);
+    return done({ result: "not_priced", reason: classifyUcpFailure({ status: res.status, errorMessage: errorText, phase: "create_cart" }) });
+  }
+  const payload = unwrapPayload(res);
+  if (sellerErrorCodes(payload).some((c) => SELLER_OUT_OF_STOCK_CODE_RE.test(c))) return done({ result: "not_priced", reason: FAILURE_REASON.OUT_OF_STOCK });
+  let doorHost = null;
+  try { const ep = new URL(endpoint); if (ep.protocol === "https:") doorHost = ep.hostname.toLowerCase(); } catch { doorHost = null; }
+  const read = readSellerCart(payload, wanted, host, { expectedCurrency, doorHost, discountCodesOn: true });
+  if (!read) return done({ result: "not_priced", reason: "cart_mismatch" });
+  const discounts = readSellerDiscounts(payload, wanted, read, { requested: code });
+  const outcome = discounts ? discounts.outcomes[0] : { status: "not_confirmed", reason: "seller_did_not_apply" };
+  const mine = outcome.status === "applied" ? discounts.applied.find((a) => a.code) : null;
+  const totalOf = (type) => (read.totals.find((t) => t.type === type) || {}).amount;
+  const discountRows = read.totals.filter((t) => t.type === "discount" || t.type === "items_discount");
+  return done({
+    result: outcome.status,
+    reason: outcome.reason || null,
+    currency: read.currency,
+    totals: {
+      subtotal: totalOf("subtotal"),
+      discount: discountRows.length ? -discountRows.reduce((s, t) => s + t.amount, 0) : 0,
+      total: totalOf("total"),
+    },
+    unit_price: read.lineItems[0].item.price,
+    discount: mine ? { amount: mine.amount, ...(mine.method ? { method: mine.method } : {}), ...(mine.allocations ? { allocations: mine.allocations } : {}) } : null,
+    automatic: (discounts ? discounts.applied : []).filter((a) => a.automatic).map((a) => ({ amount: a.amount })),
+  });
+}

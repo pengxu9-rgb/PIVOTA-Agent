@@ -35563,6 +35563,27 @@ function registerUcpWarmHandoffInternalRoute() {
   });
 }
 
+function registerUcpDiscountVerifyInternalRoute() {
+  // INTERNAL: check ONE discount code on a seller's own UCP door (the coupon verifier; design 2026-11-07). Same
+  // discovery, create_cart and readers as the storefront checkout door (ucpMerchantDoorPricing.verifyCodeOnMerchantDoor).
+  // Fail-closed dark: 404 unless UCP_DISCOUNT_VERIFY_ROUTE_ENABLED and UCP_DISCOUNT_VERIFY_INTERNAL_KEY are set;
+  // X-Internal-Key auth; NEVER mounted publicly. A handler failure answers 200 { result: 'not_priced', reason: 'error' }.
+  const { createUcpDiscountVerifyInternalHandler } = require('./services/ucpDiscountVerifyInternalRoute');
+  const handler = createUcpDiscountVerifyInternalHandler({ logger });
+  app.post('/internal/ucp/discount-code/verify', async (req, res) => {
+    try {
+      const out = await handler({ headers: req.headers, body: req.body });
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      logger.error(
+        { err: err?.message || String(err), surface: 'ucp_discount_verify_internal' },
+        'UCP discount verify internal route failed',
+      );
+      return res.status(200).json({ result: 'not_priced', reason: 'error' });
+    }
+  });
+}
+
 function registerCommercePaymentWebhookRoute() {
   app.post('/agent/shop/v1/payment-webhook', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
     if (!isAgentCheckoutStrictEnabled()) {
@@ -54933,6 +54954,7 @@ registerCommerceUcpMcpRoute();
 registerUcpOrderWebhookRoutes();
 registerUcpBuyerAgentProfileRoute();
 registerUcpWarmHandoffInternalRoute();
+registerUcpDiscountVerifyInternalRoute();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
 registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
 // Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
