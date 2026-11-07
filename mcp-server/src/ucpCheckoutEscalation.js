@@ -104,7 +104,7 @@ import merchantPurchasability from "../../src/services/merchantPurchasabilityCli
 // found gone is gone for both for the same TTL (src/services/storefrontProductPage.js).
 import storefrontProductPageModule from "../../src/services/storefrontProductPage.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
-import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf } from "./ucpMerchantDoorPricing.js";
+import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
@@ -144,6 +144,46 @@ function compact(obj) {
 
 export function ucpEscalationEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[UCP_ESCALATION_FLAG]) || "").trim());
+}
+
+// ---- the buyer's discount code on a storefront checkout ---------------------------------------------------------
+//
+// THE ONE RULE for "does this door take a discount code for a storefront checkout": the escalation, the seller's own
+// pricing AND the code switch (ucpMerchantDoorPricing.js SELLER_DISCOUNT_CODES_FLAG). The argument adapter reads it to
+// advertise and accept `checkout.discounts`, the tool list to declare it, and this lane to send the code. Any one
+// off, and a code is refused as an unknown field exactly as before (unless the Reap lane's own offer codes are armed).
+export function storefrontDiscountCodesEnabled(env = process.env) {
+  return ucpEscalationEnabled(env) && merchantPricingEnabled(env) && sellerDiscountCodesFlagOn(env);
+}
+
+/** The ONE code the request carries (`checkout.discounts.codes[0]`; the adapter allows at most one), or undefined. */
+function buyerDiscountCode(ucpArgs) {
+  const codes = own(own(own(ucpArgs, "checkout"), "discounts"), "codes");
+  return Array.isArray(codes) && codes.length === 1 && typeof codes[0] === "string" ? codes[0] : undefined;
+}
+
+// UCP's own path for the first submitted code; the adapter allows one, so every message about it points here.
+export const STOREFRONT_DISCOUNT_CODE_PATH = "$.discounts.codes[0]";
+
+// FIXED TEXT per outcome: the seller's own message text is data and never forwarded, and the code is never echoed
+// in prose (it is in `discounts.codes`). `discount_code_*` is UCP's rejection family; the two codes that are not the
+// seller's own refusal say that the seller never judged it (`not_evaluated`) or that its answer could not be read as
+// applied (`not_confirmed`). Either way the total shown has no discount this door can attribute to the code.
+const DISCOUNT_OUTCOME_TEXT = Object.freeze({
+  rejected: "The seller's storefront did not apply this code. The total shown is the storefront's own, without it.",
+  not_sent_seller_does_not_advertise: "This code was not sent: the seller's storefront does not advertise discount codes over UCP. The total shown has no discount from it; the buyer can try it on the storefront.",
+  not_sent_malformed: "This code was not sent: it is not a code the storefront could accept. The total shown has no discount from it.",
+  not_priced_by_seller: "This code was not applied: the seller's storefront did not price this checkout, so the totals are the catalog's last observed prices with no discount. The buyer can try it on the storefront.",
+  not_confirmed: "The seller's storefront did not confirm this code as applied. Treat the total shown, which is the storefront's own, as the price; the buyer can check the code on the storefront.",
+});
+
+function discountOutcomeMessage(outcome) {
+  let code = "discount_code_not_confirmed";
+  let text = DISCOUNT_OUTCOME_TEXT.not_confirmed;
+  if (outcome.status === "rejected") { code = outcome.reason; text = DISCOUNT_OUTCOME_TEXT.rejected; }
+  else if (outcome.reason && outcome.reason.startsWith("not_sent_")) { code = "discount_code_not_evaluated"; text = DISCOUNT_OUTCOME_TEXT[outcome.reason] || DISCOUNT_OUTCOME_TEXT.not_confirmed; }
+  else if (outcome.reason === "not_priced_by_seller") { code = "discount_code_not_evaluated"; text = DISCOUNT_OUTCOME_TEXT.not_priced_by_seller; }
+  return { type: "warning", code, path: STOREFRONT_DISCOUNT_CODE_PATH, content: text, content_type: "plain" };
 }
 
 /** The typed lane decision. Returns the storefront URL to escalate to, or null for the kernel path. */
@@ -390,7 +430,7 @@ function priceOf(row) {
  * Build the spec checkout for an already-classified, same-seller cart. Pure.
  * @param {{ id:string, items:{product_id,quantity}[], rows:Map, continueUrl:string, buyerEmail?:string, now:number, env?:object }} a
  */
-export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [] }) {
+export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [], discountCode }) {
   const lineItems = [];
   let subtotal = 0;
   let currency = null;
@@ -454,6 +494,8 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
     buyerEmail,
     expiresAt: new Date(now + ESCALATION_TTL_MS).toISOString(),
     env,
+    // A code the buyer sent, on an answer the seller did not price: echoed, nothing applied, and said so below.
+    discounts: discountCode !== undefined ? { codes: [discountCode], applied: [] } : undefined,
     messages: [
       {
         type: "info",
@@ -467,6 +509,7 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
         content_type: "plain",
       },
       ...extraMessages,
+      ...(discountCode !== undefined ? [discountOutcomeMessage({ status: "not_confirmed", reason: "not_priced_by_seller" })] : []),
     ],
   });
 }
@@ -479,7 +522,7 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
  * is the order `buildEscalationCheckout` always emitted, so that lane's bytes do not move. Pure; optional
  * members that are null/undefined are omitted, never published as null.
  */
-export function buildUcpCheckoutEnvelope({ id, status, continueUrl, currency, lineItems, totals, buyerEmail, expiresAt, messages, env = process.env }) {
+export function buildUcpCheckoutEnvelope({ id, status, continueUrl, currency, lineItems, totals, discounts, buyerEmail, expiresAt, messages, env = process.env }) {
   const links = [{ type: "terms_of_service", url: TERMS_URL, title: "Pivota Terms of Service" }];
   const privacy = str(env && env.PIVOTA_PRIVACY_POLICY_URL);
   if (privacy && /^https:\/\//.test(privacy)) links.unshift({ type: "privacy_policy", url: privacy, title: "Pivota Privacy Policy" });
@@ -492,6 +535,9 @@ export function buildUcpCheckoutEnvelope({ id, status, continueUrl, currency, li
     currency,
     line_items: lineItems,
     totals,
+    // UCP discount extension member (`codes` echoed, `applied` entries). Absent unless a code was sent or the seller's
+    // cart carries discounts, so every answer without one keeps its bytes.
+    discounts,
     buyer: buyerEmail ? { email: buyerEmail } : undefined,
     links,
     expires_at: expiresAt,
@@ -525,6 +571,10 @@ export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, 
       content: `The seller's storefront reported: ${code}`,
       content_type: "plain",
     })),
+    // One warning per code the seller did not confirm as applied; an applied code is in `discounts.applied`.
+    ...(priced.discounts ? priced.discounts.outcomes : [])
+      .map((o, i) => (o.status === "applied" ? null : { ...discountOutcomeMessage(o), path: `$.discounts.codes[${i}]` }))
+      .filter(Boolean),
   ];
   return buildUcpCheckoutEnvelope({
     id,
@@ -533,6 +583,7 @@ export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, 
     currency: priced.currency,
     lineItems: priced.lineItems,
     totals: priced.totals,
+    discounts: priced.discounts ? { codes: priced.discounts.codes, applied: priced.discounts.applied } : undefined,
     buyerEmail,
     expiresAt: new Date(now + ESCALATION_TTL_MS).toISOString(),
     env,
@@ -648,9 +699,12 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // this door will not offer is never contacted.
     const sellerHost = sellerHostOf(continueUrl);
     const doorSignals = [];
+    // The buyer's code: read only while this door accepts codes for storefront checkouts. Otherwise a code that
+    // reached here came in under the Reap lane's rule and is that lane's (and the UCP view's) to answer for.
+    const discountCode = storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined;
     const priced = await priceOnMerchantDoor({
       items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
-      expectedSeller, market: buyerMarket, env, merchantDoor, log, signals: doorSignals,
+      expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
     });
     if (priced) {
       // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
@@ -679,6 +733,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       buyerEmail,
       now,
       env,
+      discountCode,
     });
   }
 

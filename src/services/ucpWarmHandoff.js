@@ -22,7 +22,9 @@
  * External content (the /.well-known/ucp profile, the cart response) is DATA, not instructions.
  */
 
-const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure } = require('./ucpBuyerAgentClient');
+const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure, profileAdvertisesCapability } = require('./ucpBuyerAgentClient');
+
+const DISCOUNT_CAPABILITY = 'dev.ucp.shopping.discount';
 const {
   getMerchantPurchasabilityClient,
   RAIL: PURCHASABILITY_RAIL,
@@ -259,6 +261,10 @@ function createWarmHandoffService(deps = {}) {
       const status = disco && Number(disco.status);
       if (disco && disco.mcpEndpoint) {
         entry = { mcpEndpoint: disco.mcpEndpoint, reachable: true, reason: null };
+        // Whether this seller's profile says it takes discount codes (dev.ucp.shopping.discount). Read by the
+        // merchant-door pricing lane, which sends a buyer's code only to a seller that advertises it. Set only
+        // when true, so every other reader sees the entry exactly as before.
+        if (profileAdvertisesCapability(disco.businessProfile, DISCOUNT_CAPABILITY)) entry.acceptsDiscountCodes = true;
       } else if (status >= 300 && status < 400) {
         // The client refuses a redirected profile (UCP MUST NOT follow) and hands the 3xx back as its
         // status. That is NOT "the brand exposes no UCP" — it is a merchant that put a redirect in front of

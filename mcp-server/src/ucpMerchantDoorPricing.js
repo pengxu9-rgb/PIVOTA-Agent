@@ -30,6 +30,20 @@
 //
 // KILL-SWITCH. AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED, default OFF, read per call. It only matters while the
 // storefront escalation itself is on. Off, nothing here runs and no seller is contacted.
+//
+// THE BUYER'S DISCOUNT CODE (AGENT_CHECKOUT_UCP_SELLER_DISCOUNT_CODES_ENABLED, default OFF, read per call). With it on,
+// ONE code the buyer's agent sent (`checkout.discounts.codes`) rides on the cart this door builds, as UCP's discount
+// extension spells it (`discounts.codes`), and the seller's answer about it comes back with the price:
+//   - it is sent ONLY to a seller whose own profile advertises `dev.ucp.shopping.discount`. A seller that does not
+//     might refuse the unknown member and fail the whole cart, so the code is held back and reported not evaluated;
+//   - it is sent on CREATE only. A re-read (`get_cart`) reads whatever codes the seller's cart already holds;
+//   - the seller's totals stay the only price: a discount shows up as the seller's own negative `discount` /
+//     `items_discount` total, which readSellerCart already checks adds up. The code's outcome is reported beside
+//     the price, never used to change it;
+//   - a code counts as APPLIED only when exactly one readable applied entry names it, no rejection could concern it,
+//     and the seller's totals carry a discount. Everything else is rejected (the seller said so) or not confirmed;
+//   - the seller's discount TEXT (titles, message content) is data and is never forwarded, only its codes;
+//   - the code itself is never logged.
 
 import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
@@ -47,7 +61,15 @@ const MAX_CART_ID_LENGTH = 512;
 const SELLER_OUT_OF_STOCK_RE = /out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|insufficient inventory/i;
 
 const { toVariantGid } = shopifyVariantResolver;
-const { classifyUcpFailure, FAILURE_REASON } = buyerAgentClientModule;
+const { classifyUcpFailure, FAILURE_REASON, normalizeDiscountCodes, normalizeDiscounts } = buyerAgentClientModule;
+
+export const SELLER_DISCOUNT_CODES_FLAG = "AGENT_CHECKOUT_UCP_SELLER_DISCOUNT_CODES_ENABLED";
+// The rejection family UCP's discount extension defines (`discount_code_expired`, `discount_code_invalid`, …); a
+// merchant may add its own member. Messages in it are about a CODE, not about the cart's price.
+const DISCOUNT_MESSAGE_RE = /^discount_code_[a-z0-9_]{1,48}$/;
+// The UCP applied-entry `method` vocabulary (discount.json): how an amount is spread over the lines.
+const DISCOUNT_METHODS = new Set(["each", "across"]);
+const MAX_REPORTED_CODES = 5;
 
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
@@ -59,6 +81,11 @@ function own(src, key) {
 
 export function merchantPricingEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[MERCHANT_PRICING_FLAG]) || "").trim());
+}
+
+/** This lane's own discount-code switch ALONE. The door accepts codes only with the escalation and pricing on too. */
+export function sellerDiscountCodesFlagOn(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[SELLER_DISCOUNT_CODES_FLAG]) || "").trim());
 }
 
 /** A merchant cart id this door will carry in its checkout id and hand back to that seller's `get_cart`. */
@@ -280,11 +307,13 @@ function sellerErrorCodes(payload) {
 
 const SELLER_OUT_OF_STOCK_CODE_RE = /^(out_of_stock|sold_out|insufficient_inventory)$/;
 
-function sellerMessageCodes(payload) {
+function sellerMessageCodes(payload, { discountCodesOn = false } = {}) {
   const messages = Array.isArray(own(payload, "messages")) ? own(payload, "messages") : [];
   const codes = [];
   for (const m of messages) {
     const code = isPlainObject(m) && typeof m.code === "string" ? m.code.trim().toLowerCase() : "";
+    // With codes on, a `discount_code_*` message is reported in the code's own outcome, not as a cart message.
+    if (discountCodesOn && DISCOUNT_MESSAGE_RE.test(code)) continue;
     if (/^[a-z0-9][a-z0-9_.-]{0,63}$/.test(code) && !codes.includes(code)) codes.push(code);
     if (codes.length >= MAX_SELLER_MESSAGE_CODES) break;
   }
@@ -299,11 +328,14 @@ function sellerMessageCodes(payload) {
  * @param {{product_id:string, quantity:number, gid:string}[]} wanted
  * @param {string} sellerHost
  */
-export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost } = {}) {
+export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn = false } = {}) {
   if (!isPlainObject(payload)) return null;
   // A cart the seller itself flags with an ERROR message is not a price to show (out of stock is handled by the
-  // caller, from the same messages, before this is reached).
-  if (sellerErrorCodes(payload).length) return null;
+  // caller, from the same messages, before this is reached). With codes on, a `discount_code_*` error is about the
+  // CODE (the spec sends rejections as warnings, a merchant may send them as errors): the code is reported not
+  // applied, and the cart's own totals still have to add up below before any price is shown.
+  const errors = sellerErrorCodes(payload).filter((code) => !(discountCodesOn && DISCOUNT_MESSAGE_RE.test(code)));
+  if (errors.length) return null;
   const currency = str(own(payload, "currency"));
   if (!currency || !/^[A-Z]{3}$/.test(currency)) return null;
   // The market's currency, as the catalog states it for these rows: a seller answering in another currency (a
@@ -383,8 +415,89 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, 
     lineItems,
     totals,
     cartId,
-    sellerMessageCodes: sellerMessageCodes(payload),
+    sellerMessageCodes: sellerMessageCodes(payload, { discountCodesOn }),
   };
+}
+
+// ---- the buyer's discount code ---------------------------------------------------------------------------------
+
+/**
+ * What the seller's cart says about discount codes, in THIS door's terms. Pure. Called only on a cart readSellerCart
+ * already accepted (`read`), so every seller line maps to exactly one wanted line.
+ *
+ * @param {object} payload the unwrapped seller cart
+ * @param {{gid:string}[]} wanted the lines this door asked for, in this door's line order
+ * @param {object} read readSellerCart's answer for the same payload
+ * @param {{ requested?: string, notSentReason?: string|null }} opts
+ *   `requested` = the code the buyer sent on this create (undefined on a re-read, which reports the seller's echo);
+ *   `notSentReason` = why it never reached the seller (then nothing the seller said can be about it).
+ * @returns {{ codes: string[], applied: object[], outcomes: {code:string, status:string, reason:string|null}[] } | null}
+ *   null when there is nothing to say (no code asked for, none on the seller's cart, nothing applied).
+ *   `status` is `applied`, `rejected` (the seller refused it; `reason` is its `discount_code_*` code), or
+ *   `not_confirmed` (`reason`: not_sent_* / seller_did_not_apply / unmapped_rejection / unreadable / ambiguous /
+ *   totals_show_no_discount).
+ */
+export function readSellerDiscounts(payload, wanted, read, { requested, notSentReason = null } = {}) {
+  const d = normalizeDiscounts(payload);
+  // The buyer's code is echoed as sent (UCP echoes the submitted codes); matching below ignores case and padding.
+  const reported = requested !== undefined
+    ? [String(requested)]
+    : [...new Set(d.submitted_codes.map((c) => c.trim()).filter(Boolean))].slice(0, MAX_REPORTED_CODES);
+  // Seller line k -> this door's line index, by variant gid (readSellerCart matched them one to one).
+  const sellerLines = Array.isArray(own(payload, "line_items")) ? own(payload, "line_items") : [];
+  const ourIndex = sellerLines.map((line) => {
+    const item = isPlainObject(line) && isPlainObject(line.item) ? line.item : {};
+    const gid = toVariantGid(typeof item.id === "string" ? item.id : String(item.id ?? ""));
+    return wanted.findIndex((w) => w.gid === gid);
+  });
+  const remap = (entry) => {
+    const allocations = [];
+    for (const a of entry.allocations) {
+      if (a.target === "unallocated") continue; // the spec's order-level form: an entry with no allocations
+      if (a.target === "line") {
+        const k = Number(/^\$\.line_items\[(\d+)\]$/.exec(a.path)[1]);
+        if (!(ourIndex[k] >= 0)) return null;
+        allocations.push({ path: `$.line_items[${ourIndex[k]}]`, amount: a.amount_minor });
+      } else {
+        allocations.push({ path: a.path, amount: a.amount_minor });
+      }
+    }
+    return {
+      ...(entry.automatic ? { automatic: true } : { code: entry.code }),
+      amount: entry.amount_minor,
+      ...(DISCOUNT_METHODS.has(entry.method) ? { method: entry.method } : {}),
+      ...(allocations.length ? { allocations } : {}),
+    };
+  };
+  const hasDiscountTotal = read.totals.some((t) => t.type === "discount" || t.type === "items_discount");
+  const key = (c) => String(c || "").trim().toUpperCase();
+  const outcomes = [];
+  const applied = [];
+  for (const code of reported) {
+    let status = "not_confirmed";
+    let reason = null;
+    const mine = d.applied.filter((a) => a.code && key(a.code) === key(code));
+    const rejection = d.rejected.find((r) => key(r.code) === key(code));
+    if (notSentReason) reason = notSentReason;
+    else if (rejection) { status = "rejected"; reason = DISCOUNT_MESSAGE_RE.test(rejection.reason) ? rejection.reason : "discount_code_invalid"; }
+    else if (d.unmapped_rejections.length) reason = "unmapped_rejection";
+    else if (d.unreadable.some((u) => u.code && key(u.code) === key(code))) reason = "unreadable";
+    else if (mine.length === 0) reason = "seller_did_not_apply";
+    else if (mine.length > 1) reason = "ambiguous";
+    else if (!hasDiscountTotal) reason = "totals_show_no_discount";
+    else {
+      const entry = remap(mine[0]);
+      if (entry) { status = "applied"; applied.push(entry); } else reason = "unreadable";
+    }
+    outcomes.push({ code, status, reason });
+  }
+  // Automatic discounts are part of the seller's price; shown beside the codes so the totals' discount is explained.
+  for (const a of d.applied.filter((x) => x.automatic)) {
+    const entry = remap(a);
+    if (entry) applied.push(entry);
+  }
+  if (!reported.length && !applied.length) return null;
+  return { codes: reported, applied, outcomes };
 }
 
 // ---- attribution ---------------------------------------------------------------------------------------------------
@@ -450,10 +563,14 @@ export function createMerchantDoor({ client, discover, logger, catalogQuery } = 
   const realClient = client || buyerAgentClientModule.createUcpBuyerAgentClient({ timeoutMs: MERCHANT_CALL_TIMEOUT_MS, retryAttempts: 1 });
   const service = discover ? null : warmHandoffModule.createWarmHandoffService({ client: realClient, logger: logger || null });
   return {
+    // The endpoint string, or `{ mcpEndpoint, acceptsDiscountCodes }` when the seller's profile was read (the real
+    // door); priceOnMerchantDoor reads both. An injected `discover` may return either.
     async endpointFor(discoveryHost) {
       if (discover) return discover(discoveryHost);
       const detailed = await service.discoverBrandEndpointDetailed(`https://${discoveryHost}`);
-      return detailed && detailed.mcpEndpoint ? detailed.mcpEndpoint : null;
+      return detailed && detailed.mcpEndpoint
+        ? { mcpEndpoint: detailed.mcpEndpoint, acceptsDiscountCodes: detailed.acceptsDiscountCodes === true }
+        : null;
     },
     createCart: (endpoint, args) => realClient.createCart(endpoint, args),
     getCart: (endpoint, cartId) => realClient.callTool(endpoint, "get_cart", { id: cartId }, { retry: true }),
@@ -492,10 +609,21 @@ function emit(log, level, detail) {
  *   `signals` (optional out-param array): what the seller SAID while this door fell back, for the caller to act on.
  *   Today one signal: `{ reason: "variant_invalid", lines }` — the seller's own door answered a create_cart with a
  *   STRUCTURED tool error naming the variant as unknown (see ucpCheckoutEscalation.js, the variant_invalid policy).
+ *   `discountCode` (create only, with SELLER_DISCOUNT_CODES_FLAG on): the buyer's ONE code, sent to a seller whose
+ *   profile advertises the discount capability. With the flag on, the answer carries `discounts`
+ *   (readSellerDiscounts) whenever there is something to say about codes.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
+  const discountCodesOn = sellerDiscountCodesFlagOn(env);
+  // The code to send, or why it is not sent. A re-read never sends one: the seller's cart already holds its codes.
+  const codeRequested = discountCodesOn && cartId === undefined && typeof discountCode === "string";
+  let codeToSend = null;
+  let notSentReason = null;
+  if (codeRequested) {
+    try { [codeToSend] = normalizeDiscountCodes([discountCode]); } catch { notSentReason = "not_sent_malformed"; }
+  }
   // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
   const currencies = new Set(items.map((it) => str(own(rows.get(it.product_id), "currency"))?.toUpperCase()).filter(Boolean));
   const expectedCurrency = currencies.size === 1 ? [...currencies][0] : null;
@@ -532,14 +660,20 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   }
 
   let endpoint;
+  let acceptsDiscountCodes = false;
   try {
     // Discovered on the storefront's OWN hostname (`www.` kept): discovery refuses redirects, so a store whose bare
     // domain 301s to www would otherwise never be found.
     const found = await withBudget(d.endpointFor(discoveryHost || sellerHost), left());
-    endpoint = found && !found.timedOut ? found : null;
+    if (typeof found === "string") endpoint = found;
+    else if (isPlainObject(found) && !found.timedOut && typeof found.mcpEndpoint === "string") {
+      endpoint = found.mcpEndpoint;
+      acceptsDiscountCodes = found.acceptsDiscountCodes === true;
+    } else endpoint = null;
   } catch { endpoint = null; }
   if (!endpoint) { emit(log, "info", { outcome: "fallback", reason: "no_seller_door", seller_host: sellerHost }); return null; }
   if (left() <= 0) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
+  if (codeToSend !== null && !acceptsDiscountCodes) { codeToSend = null; notSentReason = "not_sent_seller_does_not_advertise"; }
 
   let result;
   try {
@@ -548,6 +682,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
       : d.createCart(endpoint, {
         lineItems: wanted.map((w) => ({ item: { id: w.gid }, quantity: w.quantity })),
         ...(market ? { context: { address_country: market } } : {}),
+        ...(codeToSend !== null ? { discountCodes: [codeToSend] } : {}),
       });
     result = await withBudget(call, left());
   } catch (err) {
@@ -586,8 +721,20 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   }
   let doorHost = null;
   try { const ep = new URL(endpoint); if (ep.protocol === "https:") doorHost = ep.hostname.toLowerCase(); } catch { doorHost = null; }
-  const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost });
+  const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn });
   if (!read) { emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost }); return null; }
+  if (discountCodesOn) {
+    const discounts = readSellerDiscounts(payload, wanted, read, { requested: codeRequested ? discountCode : undefined, notSentReason });
+    if (discounts) {
+      read.discounts = discounts;
+      // Counts and statuses only: the code is the buyer's and is never logged.
+      emit(log, "info", {
+        outcome: "discount_codes", seller_host: sellerHost, sent: codeToSend !== null,
+        statuses: discounts.outcomes.map((o) => (o.reason ? `${o.status}:${o.reason}` : o.status)),
+        applied_entries: discounts.applied.length,
+      });
+    }
+  }
   // THE ONE VALUE HANDED TO THE BUYER, judged as the lane judges its own link: when the platform named the seller it
   // showed (`checkout.reap.expected_merchant_domain`), a cart URL that is not provably that seller falls back.
   // A cart URL on the answering door's own host was vouched for by the seller's profile, discovered from the seller

@@ -21,7 +21,9 @@ const {
   normalizePricedCheckout,
   discountCodeOutcome,
   MAX_DISCOUNT_CODES,
+  profileAdvertisesCapability,
 } = require('../src/services/ucpBuyerAgentClient');
+const { createWarmHandoffService } = require('../src/services/ucpWarmHandoff');
 
 const ENDPOINT = 'https://shop.example.myshopify.com/api/ucp/mcp';
 
@@ -442,5 +444,88 @@ describe('what one code did', () => {
   test('an automatic discount never counts as the code', () => {
     const d = read([{ title: 'Autumn', automatic: true, amount: 400, allocations: [line(400)] }]);
     expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'not_applied' });
+  });
+});
+
+// ---- folded from the gw#2540 review (P3s), and the seller-capability read the merchant-door lane uses ------------
+
+describe('lines and totals are read only in the shape the spec gives them', () => {
+  const bare = (extra) => normalizeDiscounts({ currency: 'USD', discounts: { codes: ['GLOW10'], applied: [codeEntry()] }, ...extra });
+
+  test('`items` is the line list ONLY when `line_items` is absent (R03)', () => {
+    expect(bare({ items: THREE_LINES }).applied).toHaveLength(1);
+    expect(discountCodeOutcome(bare({ items: THREE_LINES }), 'GLOW10')).toMatchObject({ applied: true, amount_minor: 400 });
+  });
+
+  test('a `line_items` that is present but not a list is unreadable, never a cue to read `items`', () => {
+    for (const lineItems of [{}, 'x', 0, null]) {
+      const d = bare({ line_items: lineItems, items: THREE_LINES });
+      expect(d.applied).toHaveLength(0);
+      expect(d.unreadable).toHaveLength(1);
+    }
+  });
+
+  test('a slot that holds no line object is not a line (`[null]`)', () => {
+    const d = bare({ line_items: [null, ...THREE_LINES.slice(1)] });
+    expect(d.applied).toHaveLength(0);
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'unreadable' });
+    // index 1 is a real line in the same list
+    const ok = bare({ line_items: [null, ...THREE_LINES.slice(1)], discounts: { codes: ['GLOW10'], applied: [codeEntry({ allocations: [line(400, '$.line_items[1]')] })] } });
+    expect(ok.applied).toHaveLength(1);
+  });
+
+  test('a padded or re-cased subtotal type is unreadable, not absent', () => {
+    for (const type of [' subtotal ', 'Subtotal', 'SUBTOTAL\t']) {
+      const d = read([codeEntry()], { totals: [{ type, amount: 5000 }, { type: 'total', amount: 4600 }] });
+      expect(d.subtotal_unreadable).toBe(true);
+      expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: false, not_applied_reason: 'subtotal_unreadable' });
+    }
+  });
+
+  test('a totals list holding anything that is not an entry object leaves the subtotal unreadable', () => {
+    for (const odd of [['subtotal', 5000], null, 'subtotal', 5000]) {
+      const d = read([codeEntry()], { totals: [{ type: 'subtotal', amount: 5000 }, odd] });
+      expect(d.subtotal_unreadable).toBe(true);
+      expect(d.subtotal_minor).toBe(null);
+    }
+  });
+
+  test('a well-formed subtotal still bounds the saving', () => {
+    const d = read([codeEntry()], { totals: [{ type: 'subtotal', amount: 5000 }, { type: 'total', amount: 4600 }] });
+    expect(d.subtotal_unreadable).toBe(false);
+    expect(d.subtotal_minor).toBe(5000);
+    expect(discountCodeOutcome(d, 'GLOW10')).toMatchObject({ applied: true, amount_minor: 400 });
+  });
+});
+
+describe('does a seller advertise discount codes?', () => {
+  const CAP = 'dev.ucp.shopping.discount';
+  test('the keyed form UCP profiles use, under `ucp` or at the top', () => {
+    expect(profileAdvertisesCapability({ ucp: { capabilities: { [CAP]: [{ version: '2026-04-08' }] } } }, CAP)).toBe(true);
+    expect(profileAdvertisesCapability({ capabilities: { [CAP]: [{}] } }, CAP)).toBe(true);
+    expect(profileAdvertisesCapability({ ucp: { capabilities: [{ name: CAP }] } }, CAP)).toBe(true);
+  });
+  test('anything not plainly stating it is false', () => {
+    for (const profile of [null, undefined, 'x', {}, { ucp: {} }, { ucp: { capabilities: { 'dev.ucp.shopping.checkout': [{}] } } },
+      { ucp: { capabilities: { [CAP]: null } } }, { ucp: { capabilities: { [CAP]: false } } }, { ucp: { capabilities: [CAP] } },
+      { ucp: { capabilities: { ['__proto__']: {} } } }]) {
+      expect(profileAdvertisesCapability(profile, CAP)).toBe(false);
+    }
+  });
+
+  test('the discovery cache records it only when the profile states it', async () => {
+    const profiles = {
+      'https://yes.example': { ucp: { services: { 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: 'https://yes.example/api/ucp/mcp' }] }, capabilities: { [CAP]: [{}] } } },
+      'https://no.example': { ucp: { services: { 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: 'https://no.example/api/ucp/mcp' }] }, capabilities: {} } },
+    };
+    const client = {
+      async discoverEndpoint(origin) {
+        const businessProfile = profiles[origin];
+        return { mcpEndpoint: `${origin}/api/ucp/mcp`, businessProfile, wellKnownUrl: `${origin}/.well-known/ucp`, status: 200 };
+      },
+    };
+    const svc = createWarmHandoffService({ client });
+    expect(await svc.discoverBrandEndpointDetailed('https://yes.example')).toEqual({ mcpEndpoint: 'https://yes.example/api/ucp/mcp', reachable: true, reason: null, acceptsDiscountCodes: true });
+    expect(await svc.discoverBrandEndpointDetailed('https://no.example')).toEqual({ mcpEndpoint: 'https://no.example/api/ucp/mcp', reachable: true, reason: null });
   });
 });

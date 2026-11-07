@@ -36,7 +36,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
-import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong } from "./ucpCheckoutEscalation.js";
+import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong, storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
 import {
   assertExpectedSeller,
   prepareReapCheckout,
@@ -1258,10 +1258,20 @@ function ucpDefinitionsForEnv(env) {
 }
 const ucpCommerceToolDefinitionsLane = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1" });
 const ucpCommerceToolDefinitionsArmed = ucpDefinitionsForEnv({ REAP_AGENTIC_LANE_ENABLED: "1", REAP_AGENTIC_CART_LINK_LANE_ENABLED: "1" });
+// Storefront discount codes on (`storefrontDiscountCodesEnabled`): the adapter's storefront-code variants, one per
+// Reap-dial combination, memoized on first use. Off, the three lists above are returned exactly as before.
+const UCP_STOREFRONT_CODE_DEFINITIONS = new Map();
+function storefrontCodeDefinitions(env) {
+  const key = `${reapOfferCodesEnabled(env)}|${reapAgenticCreateEnabled(env)}`;
+  if (!UCP_STOREFRONT_CODE_DEFINITIONS.has(key)) UCP_STOREFRONT_CODE_DEFINITIONS.set(key, ucpDefinitionsForEnv(env));
+  return UCP_STOREFRONT_CODE_DEFINITIONS.get(key);
+}
 export function ucpCommerceToolDefinitionsFor(env = process.env) {
-  const base = reapOfferCodesEnabled(env)
-    ? ucpCommerceToolDefinitionsArmed
-    : reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
+  const base = storefrontDiscountCodesEnabled(env)
+    ? storefrontCodeDefinitions(env)
+    : reapOfferCodesEnabled(env)
+      ? ucpCommerceToolDefinitionsArmed
+      : reapAgenticCreateEnabled(env) ? ucpCommerceToolDefinitionsLane : ucpCommerceToolDefinitions;
   return ucpGetProductForwardMarketEnabled(env) ? withUcpGetProductMarket(base) : base;
 }
 
@@ -1287,6 +1297,12 @@ export const DISCOUNT_CODE_NOT_APPLIED_MESSAGE = Object.freeze({
   content_type: "plain",
 });
 
+// The same notice while storefront checkouts also take codes: the Reap-only wording would be false then.
+export const DISCOUNT_CODE_NOT_APPLIED_ANY_LANE_MESSAGE = Object.freeze({
+  ...DISCOUNT_CODE_NOT_APPLIED_MESSAGE,
+  content: "The offer code was NOT applied: codes are honoured only when a checkout is CREATED through the Reap payment partner or priced by a seller's own storefront that accepts codes, and this answer is neither. The total shown has no discount from it.",
+});
+
 /**
  * A create_checkout that CARRIED a code and whose answer is not a Reap checkout (the lane declined, a native or
  * storefront row, a refusal the lane fell through on) says so, once: before offer codes this door REFUSED the
@@ -1298,10 +1314,16 @@ function withDiscountNotice(name, args, out) {
   // -- where it is never applied (codes are set at creation only), and the answer says so.
   if ((name !== "create_checkout" && name !== "update_checkout") || reapOfferCode(args) === undefined) return out;
   if (!isPlainObject(out)) return out;
-  if (typeof out.id === "string" && out.id.startsWith(REAP_CHECKOUT_ID_PREFIX)) return out;
+  // A Reap checkout carried the code only while Reap's offer codes are armed. With storefront codes on and Reap's
+  // off, a code can reach a Reap answer that never forwarded it, and that answer must say so like any other.
+  if (typeof out.id === "string" && out.id.startsWith(REAP_CHECKOUT_ID_PREFIX) && reapOfferCodesEnabled(process.env)) return out;
   const messages = Array.isArray(out.messages) ? out.messages : [];
   if (messages.some((m) => isPlainObject(m) && m.path === DISCOUNT_CODE_PATH)) return out;
-  return { ...out, messages: [...messages, DISCOUNT_CODE_NOT_APPLIED_MESSAGE] };
+  // An answer that reports the code itself (a storefront checkout's UCP `discounts` member: `applied` when the seller
+  // applied it, with a warning at the code's path when it did not) is left as it is.
+  if (isPlainObject(out.discounts) && Array.isArray(out.discounts.codes)) return out;
+  const notice = storefrontDiscountCodesEnabled(process.env) ? DISCOUNT_CODE_NOT_APPLIED_ANY_LANE_MESSAGE : DISCOUNT_CODE_NOT_APPLIED_MESSAGE;
+  return { ...out, messages: [...messages, notice] };
 }
 
 /** Declarations for a dialect; defaults to MCP. */
