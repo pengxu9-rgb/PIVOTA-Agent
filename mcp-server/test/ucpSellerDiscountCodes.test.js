@@ -267,6 +267,8 @@ describe('what the seller said about it', () => {
       unmapped_rejection: sellerCart({ discount: 100, discounts: appliedCode(100), messages: [{ type: 'warning', code: 'discount_code_invalid' }] }),
       totals_show_no_discount: sellerCart({ discounts: appliedCode(100) }),
       amounts_disagree: sellerCart({ discount: 150, discounts: appliedCode(100) }),
+      // An unreadable entry for ANOTHER code means the seller's discount rows cannot be reconciled either.
+      amounts_disagree_other_unreadable: sellerCart({ discount: 100, discounts: { codes: [CODE], applied: [{ code: CODE, amount: 100 }, { code: 'OTHER', amount: 'x' }] } }),
     };
     for (const [reason, reply] of Object.entries(cases)) {
       const log = fakeLog();
@@ -275,9 +277,10 @@ describe('what the seller said about it', () => {
       assert.equal(msgs.length, 1, reason);
       assert.equal(msgs[0].code, 'discount_code_not_confirmed', reason);
       assert.equal(out.discounts.applied.filter((a) => a.code).length, 0, reason);
-      if (reason === 'amounts_disagree') assert.deepEqual(out.discounts.applied, [], 'no amount shown that the totals do not carry');
+      const expected = reason.startsWith('amounts_disagree') ? 'amounts_disagree' : reason;
+      if (expected === 'amounts_disagree') assert.deepEqual(out.discounts.applied, [], 'no amount shown that the totals do not carry');
       const line = log.lines.find((l) => l.outcome === 'discount_codes');
-      assert.deepEqual(line.statuses, [`not_confirmed:${reason}`], reason);
+      assert.deepEqual(line.statuses, [`not_confirmed:${expected}`], reason);
     }
   });
 
@@ -500,6 +503,22 @@ describe('through the UCP door', () => {
       const msgs = codeMessages(out);
       assert.equal(msgs.length, 1);
       assert.equal(msgs[0].content, DISCOUNT_CODE_NOT_APPLIED_MESSAGE.content);
+    });
+  });
+
+  test('storefront codes ON: an answer that is neither lane (a native row) gets the both-lanes wording', async () => {
+    await withEnv(ON, async () => {
+      const NATIVE = { product_id: 'p_native_1', title: 'Native Serum', price: 20, currency: 'USD', merchant_id: 'merchant_native',
+        canonical_url: 'https://native.example/products/serum', product_key: 'prod::merchant_native::shopify::77', variants: [{ variant_id: '48930014462260' }] };
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executorWith({ [NATIVE.product_id]: NATIVE }), { cache: false, merchantDoor: fakeDoor() }));
+      const out = await ucp.callTool('create_checkout', {
+        meta: META,
+        checkout: { line_items: [{ item: { id: NATIVE.product_id }, quantity: 1 }], buyer: { email: 'shopper@example.test' }, context: { address_country: 'US' }, discounts: { codes: [CODE] } },
+      }, SESSION).then((v) => v, (e) => ({ error: e }));
+      assert.equal(out.error, undefined, String(out.error && (out.error.detail?.reason || out.error.message)));
+      const msgs = codeMessages(out);
+      assert.equal(msgs.length, 1);
+      assert.equal(msgs[0].content, DISCOUNT_CODE_NOT_APPLIED_ANY_LANE_MESSAGE.content);
     });
   });
 
