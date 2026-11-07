@@ -31,6 +31,7 @@ import {
   ucpDialectSurface,
   ucpCommerceToolDefinitionsFor,
   DISCOUNT_CODE_NOT_APPLIED_ANY_LANE_MESSAGE,
+  DISCOUNT_CODE_NOT_APPLIED_MESSAGE,
   toToolError,
 } from '../src/commerceToolSurface.js';
 
@@ -38,19 +39,19 @@ const PRICING = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: '1' };
 const ON = { ...PRICING, [SELLER_DISCOUNT_CODES_FLAG]: '1' };
 const NOW = Date.UTC(2026, 10, 8, 12, 0, 0);
 const GID = (n) => `gid://shopify/ProductVariant/${n}`;
-const ENDPOINT = 'https://comfortzone.us/api/ucp/mcp';
-const CART_URL = 'https://comfortzone.us/cart/c/abc123?key=k';
+const ENDPOINT = 'https://brand.example/api/ucp/mcp';
+const CART_URL = 'https://brand.example/cart/c/abc123?key=k';
 const CODE = 'Welcome10';
 const SELLER_TEXT = 'SELLER-FREE-TEXT-NEVER-FORWARDED';
 
 const SEED = Object.freeze({
   product_id: 'sig_seed_a', title: 'Vitamin C Serum', price: 131, currency: 'USD',
-  external_redirect_url: 'https://comfortzone.us/products/vitamin-c-serum',
+  external_redirect_url: 'https://brand.example/products/vitamin-c-serum',
   variants: [{ variant_id: 'sig_seed_a', source_variant_id: '44012345678901' }],
 });
 const SEED_B = Object.freeze({
   ...SEED, product_id: 'sig_seed_b', title: 'Toner', price: 24.5,
-  external_redirect_url: 'https://comfortzone.us/products/toner',
+  external_redirect_url: 'https://brand.example/products/toner',
   variants: [{ variant_id: 'sig_seed_b', source_variant_id: '44012345678902' }],
 });
 
@@ -182,11 +183,16 @@ describe('the code reaches the seller', () => {
     }
   });
 
-  test('a code no storefront could take (blank) is not sent, and said so', async () => {
-    const { out, door } = await create({ code: '   ' });
-    assert.equal(sentArgs(door)[0].discountCodes, undefined);
-    assert.equal(codeMessages(out)[0].code, 'discount_code_not_evaluated');
-    assert.match(codeMessages(out)[0].content, /not a code the storefront could accept/);
+  test('a code no storefront could take (blank, control or invisible/bidi characters) is REFUSED before any seller is contacted', async () => {
+    for (const bad of ['   ', 'SAVE\u202e01', 'SA\u0007VE', '\u200bSAVE', 'X'.repeat(129)]) {
+      const door = fakeDoor();
+      const err = await create({ code: bad, door }).then(() => null, (e) => e);
+      assert.ok(err, JSON.stringify(bad));
+      assert.equal(err.detail && err.detail.reason, 'ucp_discount_code_invalid', JSON.stringify(bad));
+      assert.equal(door.calls.length, 0, JSON.stringify(bad));
+    }
+    const ok = await create({ code: 'X'.repeat(128) });
+    assert.deepEqual(sentArgs(ok.door)[0].discountCodes, ['X'.repeat(128)]);
   });
 
   test('a re-read never sends a code; it reports the codes the seller cart already holds', async () => {
@@ -260,6 +266,7 @@ describe('what the seller said about it', () => {
       unreadable: sellerCart({ discount: 100, discounts: { codes: [CODE], applied: [{ code: CODE, amount: -100 }] } }),
       unmapped_rejection: sellerCart({ discount: 100, discounts: appliedCode(100), messages: [{ type: 'warning', code: 'discount_code_invalid' }] }),
       totals_show_no_discount: sellerCart({ discounts: appliedCode(100) }),
+      amounts_disagree: sellerCart({ discount: 150, discounts: appliedCode(100) }),
     };
     for (const [reason, reply] of Object.entries(cases)) {
       const log = fakeLog();
@@ -268,6 +275,7 @@ describe('what the seller said about it', () => {
       assert.equal(msgs.length, 1, reason);
       assert.equal(msgs[0].code, 'discount_code_not_confirmed', reason);
       assert.equal(out.discounts.applied.filter((a) => a.code).length, 0, reason);
+      if (reason === 'amounts_disagree') assert.deepEqual(out.discounts.applied, [], 'no amount shown that the totals do not carry');
       const line = log.lines.find((l) => l.outcome === 'discount_codes');
       assert.deepEqual(line.statuses, [`not_confirmed:${reason}`], reason);
     }
@@ -280,6 +288,39 @@ describe('what the seller said about it', () => {
     const { out } = await create({ door });
     assert.deepEqual(out.discounts.applied, [{ automatic: true, amount: 500 }]);
     assert.equal(codeMessages(out)[0].code, 'discount_code_not_confirmed');
+  });
+
+  test('an automatic discount whose amount the totals do not carry is not shown', async () => {
+    const door = fakeDoor({ create: () => sellerCart({ discount: 400, discounts: { codes: [CODE], applied: [{ automatic: true, amount: 500 }] } }) });
+    const { out } = await create({ door });
+    assert.deepEqual(out.discounts.applied, []);
+  });
+
+  test('a seller rejection code outside UCP\'s `discount_code_*` shape is reported as discount_code_invalid, never repeated', async () => {
+    const door = fakeDoor({
+      create: () => sellerCart({ discounts: { codes: [CODE], applied: [] }, messages: [{ type: 'warning', code: 'discount_code_Expired-Now!', path: '$.discounts.codes[0]' }] }),
+    });
+    const { out } = await create({ door });
+    assert.equal(codeMessages(out)[0].code, 'discount_code_invalid');
+    assert.equal(JSON.stringify(out).includes('Expired-Now'), false);
+  });
+
+  test('code switch OFF: a seller discount_code_* message stays an ordinary storefront message, as before', async () => {
+    const door = fakeDoor({ create: () => sellerCart({ messages: [{ type: 'warning', code: 'discount_code_expired', path: '$.discounts.codes[0]' }] }) });
+    const { out } = await create({ env: PRICING, door });
+    assert.ok(out.messages.some((m) => m.code === 'seller.storefront_message' && m.content.endsWith('discount_code_expired')));
+    assert.equal(codeMessages(out).length, 0);
+  });
+
+  test('codes the seller echoes or names that break the content rule are never repeated to the agent', async () => {
+    const BIDI = 'EVIL\u202eCODE';
+    const door = fakeDoor({ get: () => sellerCart({ discount: 100, discounts: { codes: [BIDI, 'GOOD1'], applied: [{ code: BIDI, amount: 100 }] } }) });
+    const priced = await priceOnMerchantDoor({
+      items: [{ product_id: SEED.product_id, quantity: 2 }], rows: new Map([[SEED.product_id, SEED]]),
+      sellerHost: 'brand.example', cartId: 'gid://shopify/Cart/c1', env: ON, merchantDoor: door,
+    });
+    assert.deepEqual(priced.discounts.codes, ['GOOD1']);
+    assert.equal(JSON.stringify(priced.discounts).includes('EVIL'), false);
   });
 
   test('the seller never priced the cart: catalog answer, the code echoed, nothing applied, and said so', async () => {
@@ -316,17 +357,17 @@ describe('the pure readers', () => {
 
   test('readSellerCart: a discount_code_* error blocks the price only while codes are off', () => {
     const p = payloadOf(sellerCart({ messages: [{ type: 'error', code: 'discount_code_invalid' }] }));
-    assert.equal(readSellerCart(p, wanted, 'comfortzone.us'), null);
-    assert.ok(readSellerCart(p, wanted, 'comfortzone.us', { discountCodesOn: true }));
+    assert.equal(readSellerCart(p, wanted, 'brand.example'), null);
+    assert.ok(readSellerCart(p, wanted, 'brand.example', { discountCodesOn: true }));
     const other = payloadOf(sellerCart({ messages: [{ type: 'error', code: 'cart_invalid' }] }));
-    assert.equal(readSellerCart(other, wanted, 'comfortzone.us', { discountCodesOn: true }), null, 'any other error still blocks');
+    assert.equal(readSellerCart(other, wanted, 'brand.example', { discountCodesOn: true }), null, 'any other error still blocks');
   });
 
   test('readSellerDiscounts: nothing to say is null; a not-sent reason wins over anything the seller said', () => {
     const plain = payloadOf(sellerCart());
-    assert.equal(readSellerDiscounts(plain, wanted, readSellerCart(plain, wanted, 'comfortzone.us'), {}), null);
+    assert.equal(readSellerDiscounts(plain, wanted, readSellerCart(plain, wanted, 'brand.example'), {}), null);
     const p = payloadOf(sellerCart({ discount: 100, discounts: appliedCode(100) }));
-    const read = readSellerCart(p, wanted, 'comfortzone.us', { discountCodesOn: true });
+    const read = readSellerCart(p, wanted, 'brand.example', { discountCodesOn: true });
     const d = readSellerDiscounts(p, wanted, read, { requested: CODE, notSentReason: 'not_sent_seller_does_not_advertise' });
     assert.deepEqual(d.outcomes, [{ code: CODE, status: 'not_confirmed', reason: 'not_sent_seller_does_not_advertise' }]);
     assert.deepEqual(d.applied, []);
@@ -334,7 +375,7 @@ describe('the pure readers', () => {
 
   test('matching ignores case and padding, as UCP matches codes', () => {
     const p = payloadOf(sellerCart({ discount: 100, discounts: appliedCode(100, '$.line_items[0]', ' WELCOME10 ') }));
-    const read = readSellerCart(p, wanted, 'comfortzone.us', { discountCodesOn: true });
+    const read = readSellerCart(p, wanted, 'brand.example', { discountCodesOn: true });
     assert.equal(readSellerDiscounts(p, wanted, read, { requested: CODE }).outcomes[0].status, 'applied');
   });
 
@@ -342,14 +383,21 @@ describe('the pure readers', () => {
     const door = fakeDoor({ get: () => sellerCart({ discount: 100, discounts: appliedCode(100, '$.line_items[0]', 'CARTCODE') }) });
     const priced = await priceOnMerchantDoor({
       items: [{ product_id: SEED.product_id, quantity: 2 }], rows: new Map([[SEED.product_id, SEED]]),
-      sellerHost: 'comfortzone.us', cartId: 'gid://shopify/Cart/c1', discountCode: CODE, env: ON, merchantDoor: door,
+      sellerHost: 'brand.example', cartId: 'gid://shopify/Cart/c1', discountCode: CODE, env: ON, merchantDoor: door,
     });
     assert.deepEqual(priced.discounts.codes, ['CARTCODE']);
     assert.deepEqual(priced.discounts.outcomes, [{ code: 'CARTCODE', status: 'applied', reason: null }]);
   });
 
   test('the REAL door sends the code only when the seller profile it discovered advertises codes', async () => {
-    for (const [capabilities, expectSent] of [[{ 'dev.ucp.shopping.discount': [{}] }, true], [{}, false]]) {
+    const D = 'dev.ucp.shopping.discount';
+    for (const [capabilities, expectSent] of [
+      [{ [D]: [{ extends: ['dev.ucp.shopping.cart', 'dev.ucp.shopping.checkout'] }] }, true],
+      [{ [D]: [{ extends: 'dev.ucp.shopping.cart' }] }, true],
+      [{ [D]: [{ extends: ['dev.ucp.shopping.checkout'] }] }, false], // checkout only: codes are not sent on a cart
+      [{ [D]: [{}] }, false],
+      [{}, false],
+    ]) {
       const sent = [];
       const client = {
         async discoverEndpoint(origin) {
@@ -361,7 +409,7 @@ describe('the pure readers', () => {
       const door = createMerchantDoor({ client, catalogQuery: async () => ({ rows: [{ shop_ids: 1 }] }) });
       const priced = await priceOnMerchantDoor({
         items: [{ product_id: SEED.product_id, quantity: 2 }], rows: new Map([[SEED.product_id, SEED]]),
-        sellerHost: 'comfortzone.us', discountCode: CODE, env: ON, merchantDoor: door,
+        sellerHost: 'brand.example', discountCode: CODE, env: ON, merchantDoor: door,
       });
       assert.ok(priced, JSON.stringify(capabilities));
       assert.deepEqual(sent[0].discountCodes, expectSent ? [CODE] : undefined, JSON.stringify(capabilities));
@@ -372,7 +420,7 @@ describe('the pure readers', () => {
     const door = fakeDoor({ create: () => sellerCart({ discount: 100, discounts: appliedCode(100) }) });
     const priced = await priceOnMerchantDoor({
       items: [{ product_id: SEED.product_id, quantity: 2 }], rows: new Map([[SEED.product_id, SEED]]),
-      sellerHost: 'comfortzone.us', discountCode: CODE, env: PRICING, merchantDoor: door,
+      sellerHost: 'brand.example', discountCode: CODE, env: PRICING, merchantDoor: door,
     });
     assert.equal(priced.discounts, undefined);
     assert.equal(sentArgs(door)[0].discountCodes, undefined);
@@ -441,6 +489,17 @@ describe('through the UCP door', () => {
     await withEnv(ON, async () => {
       const err = await rejected(surface(fakeDoor()).callTool('create_checkout', createArgs({ codes: ['A1', 'B2'] }), SESSION));
       assert.ok(err);
+    });
+  });
+
+  test('storefront codes OFF (partner codes armed): a storefront answer gets the partner-only wording, exactly as before', async () => {
+    await withEnv({ ...PRICING, REAP_AGENTIC_LANE_ENABLED: '1', REAP_AGENTIC_CART_LINK_LANE_ENABLED: '1' }, async () => {
+      const door = fakeDoor();
+      const out = await surface(door).callTool('create_checkout', createArgs({ codes: [CODE] }), SESSION);
+      assert.equal(sentArgs(door)[0].discountCodes, undefined);
+      const msgs = codeMessages(out);
+      assert.equal(msgs.length, 1);
+      assert.equal(msgs[0].content, DISCOUNT_CODE_NOT_APPLIED_MESSAGE.content);
     });
   });
 

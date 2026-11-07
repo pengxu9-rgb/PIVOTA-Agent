@@ -1957,6 +1957,20 @@ async function createReapCheckout({ params, ctx, executor, ucpArgs, attested, cl
     ...expectedMoney,
   };
   if (selector !== undefined) Object.assign(body, selector);
+  // A CODE THIS LANE WILL NOT FORWARD IS REFUSED, BEFORE DISPATCH. `checkout.discounts` can reach this lane while
+  // Reap's own offer codes are NOT armed: the door also accepts it for storefront checkouts
+  // (ucpCheckoutEscalation.js `storefrontDiscountCodesEnabled`). Creating the purchase without it would drop the
+  // buyer's code silently, and recover/resume rebuild the ORIGINAL body WITH the code, so its stored hash would never
+  // match and the purchase could never be recovered. Refusing keeps one rule: a Reap purchase carries the code it was
+  // asked with, or does not exist.
+  if (!reapOfferCodesEnabled(env) && reapOfferCode(ucpArgs) !== undefined) {
+    throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", {
+      reason: "ucp_reap_offer_code_not_accepted",
+      dialect: "ucp",
+      acp_message: "This item is checked out through the Reap payment partner, which is not taking offer codes right now. Nothing was created. Create the checkout again WITHOUT checkout.discounts to buy it without the code.",
+      acp_detail: { reason: "reap_offer_codes_not_armed", rejected_field: "checkout.discounts.codes" },
+    });
+  }
   const offerCode = reapOfferCodesEnabled(env) ? reapOfferCode(ucpArgs) : undefined;
   if (offerCode !== undefined) body.offer_code = offerCode;
   // The selected cart-link source has one stable body and key namespace. A refusal

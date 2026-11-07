@@ -1791,6 +1791,21 @@ function profileAdvertisesCapability(businessProfile, name) {
   return false;
 }
 
+/**
+ * Does this business profile advertise capability `name` as extending `parent`? The discount extension "MAY" be
+ * advertised for cart only, checkout only, or both (ucp.dev 2026-04-08 discount spec), so a caller that sends codes on
+ * a CART must see `parent` in an advertised entry's `extends` (a string or a list). Keyed form only, as UCP profiles
+ * publish it; an entry with no `extends` is not taken to extend anything.
+ */
+function profileCapabilityExtends(businessProfile, name, parent) {
+  if (!profileAdvertisesCapability(businessProfile, name)) return false;
+  const ucp = isPlainObjectLocal(businessProfile.ucp) ? businessProfile.ucp : businessProfile;
+  const entry = isPlainObjectLocal(ucp.capabilities) ? ucp.capabilities[name] : undefined;
+  const entries = Array.isArray(entry) ? entry : [entry];
+  return entries.some((e) => isPlainObjectLocal(e)
+    && (e.extends === parent || (Array.isArray(e.extends) && e.extends.includes(parent))));
+}
+
 function extractMcpEndpoint(businessProfile) {
   if (!businessProfile || typeof businessProfile !== 'object') return undefined;
   const services = businessProfile.services ?? businessProfile.ucp?.services;
@@ -1999,6 +2014,7 @@ module.exports = {
   discountCodeOutcome,
   MAX_DISCOUNT_CODES,
   profileAdvertisesCapability,
+  profileCapabilityExtends,
   // Exported so the profile ROUTE applies the identical rule to its Host-header fallback, and so a test can
   // pin the rule itself rather than one caller's behaviour.
   agentProfileUrlFromOrigin,

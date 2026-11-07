@@ -104,7 +104,7 @@ import merchantPurchasability from "../../src/services/merchantPurchasabilityCli
 // found gone is gone for both for the same TTL (src/services/storefrontProductPage.js).
 import storefrontProductPageModule from "../../src/services/storefrontProductPage.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
-import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn } from "./ucpMerchantDoorPricing.js";
+import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
@@ -702,6 +702,15 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // The buyer's code: read only while this door accepts codes for storefront checkouts. Otherwise a code that
     // reached here came in under the Reap lane's rule and is that lane's (and the UCP view's) to answer for.
     const discountCode = storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined;
+    // A code no storefront could take (blank, control or invisible/bidirectional characters) is REFUSED here, before
+    // any seller is contacted: it is never sent, and never echoed back raw.
+    if (discountCode !== undefined && !isAcceptableDiscountCode(discountCode)) {
+      throw intakeRefusal("QUOTE_REQUIRED", "ucp_discount_code_invalid", [
+        "`checkout.discounts.codes[0]` is not a usable discount code: it must be 1 to",
+        `${DISCOUNT_CODE_MAX_LENGTH} visible characters, with no control or formatting characters. Send the code exactly as`,
+        "the buyer entered it, or send the checkout without `checkout.discounts`.",
+      ].join(" "), { rejected_field: "checkout.discounts.codes" });
+    }
     const priced = await priceOnMerchantDoor({
       items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
       expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,

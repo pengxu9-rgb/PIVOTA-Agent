@@ -22,6 +22,7 @@ const {
   discountCodeOutcome,
   MAX_DISCOUNT_CODES,
   profileAdvertisesCapability,
+  profileCapabilityExtends,
 } = require('../src/services/ucpBuyerAgentClient');
 const { createWarmHandoffService } = require('../src/services/ucpWarmHandoff');
 
@@ -513,10 +514,24 @@ describe('does a seller advertise discount codes?', () => {
     }
   });
 
-  test('the discovery cache records it only when the profile states it', async () => {
+  test('a CART caller needs the capability to extend cart (a business may advertise it for checkout only)', () => {
+    const CART = 'dev.ucp.shopping.cart';
+    const p = (entry) => ({ ucp: { capabilities: { [CAP]: entry } } });
+    expect(profileCapabilityExtends(p([{ extends: [CART, 'dev.ucp.shopping.checkout'] }]), CAP, CART)).toBe(true);
+    expect(profileCapabilityExtends(p([{ extends: CART }]), CAP, CART)).toBe(true);
+    expect(profileCapabilityExtends(p({ extends: [CART] }), CAP, CART)).toBe(true);
+    for (const entry of [[{ extends: ['dev.ucp.shopping.checkout'] }], [{}], [{ extends: null }], [null], 'x']) {
+      expect(profileCapabilityExtends(p(entry), CAP, CART)).toBe(false);
+    }
+    expect(profileCapabilityExtends({ ucp: { capabilities: {} } }, CAP, CART)).toBe(false);
+  });
+
+  test('the discovery cache records it only when the profile states it for carts', async () => {
+    const svcOf = (origin) => ({ 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: `${origin}/api/ucp/mcp` }] });
     const profiles = {
-      'https://yes.example': { ucp: { services: { 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: 'https://yes.example/api/ucp/mcp' }] }, capabilities: { [CAP]: [{}] } } },
-      'https://no.example': { ucp: { services: { 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: 'https://no.example/api/ucp/mcp' }] }, capabilities: {} } },
+      'https://yes.example': { ucp: { services: svcOf('https://yes.example'), capabilities: { [CAP]: [{ extends: ['dev.ucp.shopping.cart', 'dev.ucp.shopping.checkout'] }] } } },
+      'https://no.example': { ucp: { services: svcOf('https://no.example'), capabilities: {} } },
+      'https://checkoutonly.example': { ucp: { services: svcOf('https://checkoutonly.example'), capabilities: { [CAP]: [{ extends: ['dev.ucp.shopping.checkout'] }] } } },
     };
     const client = {
       async discoverEndpoint(origin) {
@@ -527,5 +542,6 @@ describe('does a seller advertise discount codes?', () => {
     const svc = createWarmHandoffService({ client });
     expect(await svc.discoverBrandEndpointDetailed('https://yes.example')).toEqual({ mcpEndpoint: 'https://yes.example/api/ucp/mcp', reachable: true, reason: null, acceptsDiscountCodes: true });
     expect(await svc.discoverBrandEndpointDetailed('https://no.example')).toEqual({ mcpEndpoint: 'https://no.example/api/ucp/mcp', reachable: true, reason: null });
+    expect(await svc.discoverBrandEndpointDetailed('https://checkoutonly.example')).toEqual({ mcpEndpoint: 'https://checkoutonly.example/api/ucp/mcp', reachable: true, reason: null });
   });
 });

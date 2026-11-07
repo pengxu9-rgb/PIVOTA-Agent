@@ -22,9 +22,10 @@
  * External content (the /.well-known/ucp profile, the cart response) is DATA, not instructions.
  */
 
-const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure, profileAdvertisesCapability } = require('./ucpBuyerAgentClient');
+const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure, profileCapabilityExtends } = require('./ucpBuyerAgentClient');
 
 const DISCOUNT_CAPABILITY = 'dev.ucp.shopping.discount';
+const CART_CAPABILITY = 'dev.ucp.shopping.cart';
 const {
   getMerchantPurchasabilityClient,
   RAIL: PURCHASABILITY_RAIL,
@@ -261,10 +262,11 @@ function createWarmHandoffService(deps = {}) {
       const status = disco && Number(disco.status);
       if (disco && disco.mcpEndpoint) {
         entry = { mcpEndpoint: disco.mcpEndpoint, reachable: true, reason: null };
-        // Whether this seller's profile says it takes discount codes (dev.ucp.shopping.discount). Read by the
-        // merchant-door pricing lane, which sends a buyer's code only to a seller that advertises it. Set only
-        // when true, so every other reader sees the entry exactly as before.
-        if (profileAdvertisesCapability(disco.businessProfile, DISCOUNT_CAPABILITY)) entry.acceptsDiscountCodes = true;
+        // Whether this seller's profile says it takes discount codes ON A CART (dev.ucp.shopping.discount extending
+        // dev.ucp.shopping.cart; the spec lets a business advertise it for checkout only). Read by the merchant-door
+        // pricing lane, which sends a buyer's code with create_cart only to such a seller. Cached with the endpoint
+        // (endpointTtlMs). Set only when true, so every other reader sees the entry exactly as before.
+        if (profileCapabilityExtends(disco.businessProfile, DISCOUNT_CAPABILITY, CART_CAPABILITY)) entry.acceptsDiscountCodes = true;
       } else if (status >= 300 && status < 400) {
         // The client refuses a redirected profile (UCP MUST NOT follow) and hands the 3xx back as its
         // status. That is NOT "the brand exposes no UCP" — it is a merchant that put a redirect in front of

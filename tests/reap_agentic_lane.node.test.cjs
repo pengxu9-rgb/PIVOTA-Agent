@@ -1542,22 +1542,26 @@ test('offer code: checkout.discounts.codes[0] is forwarded VERBATIM as offer_cod
   }
 });
 
-test('storefront codes on, Reap offer codes NOT armed: a code that reaches a Reap answer is not forwarded, and the answer SAYS so', async () => {
+test('storefront codes on, Reap offer codes NOT armed: a code on a Reap row is REFUSED before anything is created', async () => {
   // `checkout.discounts` is accepted under the storefront rule (escalation + seller pricing + seller codes), but the
-  // Reap lane forwards a code only while ITS codes are armed. Its answer must then carry the not-applied notice,
-  // in the wording that names both lanes, instead of dropping the code silently.
+  // Reap lane forwards a code only while ITS codes are armed. Creating without it would drop the code silently and
+  // strand the purchase (recover/resume rebuild the body WITH the code, so the stored hash never matches).
   const env = {
     ...ON, [ESCALATION_FLAG]: '1',
     AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED: '1', AGENT_CHECKOUT_UCP_SELLER_DISCOUNT_CODES_ENABLED: '1',
   };
   const backend = fakeBackend();
-  const { out, m } = await createReap(env, { backend, args: { discounts: { codes: ['SAVE10'] } } });
-  assert.match(out.id, REAP_ID_RE);
+  const ctx = await build({ backend });
+  const r = keep(await withEnv(env, () => outcome(ctx.m, ctx.ucp.callTool('create_checkout', createArgs({ discounts: { codes: ['SAVE10'] } }), SESSION))));
+  const err = JSON.parse(r.err.content[0].text).error;
+  assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
+  assert.equal(err.detail.reason, 'reap_offer_codes_not_armed');
+  assert.equal(err.detail.rejected_field, 'checkout.discounts.codes');
+  assert.equal(backend.calls.length, 0, 'nothing dispatched');
+  // The same request without the code still creates the purchase.
+  const ok = await withEnv(env, () => ctx.ucp.callTool('create_checkout', createArgs({ key: 'idem-reap-0009' }), SESSION));
+  assert.match(keep(ok).id, REAP_ID_RE);
   assert.equal(Object.hasOwn(backend.calls[0].body, 'offer_code'), false);
-  const notice = (out.messages || []).filter((msg) => msg.path === '$.discounts.codes[0]');
-  assert.equal(notice.length, 1);
-  assert.equal(notice[0].code, 'discount_code_invalid');
-  assert.equal(notice[0].content, m.surface.DISCOUNT_CODE_NOT_APPLIED_ANY_LANE_MESSAGE.content);
 });
 
 test('offer code NOT armed (lane on, cart-link dial off; or lane off): `discounts` is refused as on base, and not advertised', async () => {
@@ -1672,11 +1676,13 @@ test('Tier B keys: explicit initial cart source is stable and differs from every
 });
 
 test('the lane itself never forwards a code unless armed, even if handed one directly (belt and braces behind the adapter, G8)', async () => {
-  for (const [env, expected] of [[ON, false], [CODES_ON, true]]) {
+  // Unarmed, a code handed to the lane is REFUSED before dispatch (it can now reach the lane under the storefront
+  // rule): creating without it would drop it silently and strand recovery, whose rebuilt body carries it.
+  for (const [env, expected] of [[ON, 'refused'], [CODES_ON, true]]) {
     const ctx = await build();
     const backend = fakeBackend();
     const client = createReapAgenticPurchaseClient({ baseUrl: 'https://backend.example', fetchImpl: backend.fetchImpl, authHeaders: FULL_AUTH, logger: fakeLogger() });
-    await withEnv(env, () => ctx.m.lane.tryReapAgenticCheckout({
+    const run = () => withEnv(env, () => ctx.m.lane.tryReapAgenticCheckout({
       op: { id: 'create_checkout_session' },
       params: { idempotency_key: 'idem-direct', quote: { items: [{ product_id: REAP_ROW.product_id, quantity: 1 }], customer_email: EMAIL } },
       ctx: { user_ref: 'buyer_1', acp_session_id: 'sess_1' },
@@ -1685,6 +1691,13 @@ test('the lane itself never forwards a code unless armed, even if handed one dir
       client,
       now: NOW,
     }));
+    if (expected === 'refused') {
+      const err = await run().then(() => null, (e) => e);
+      assert.equal(err && err.detail && err.detail.reason, 'ucp_reap_offer_code_not_accepted', JSON.stringify(env));
+      assert.equal(backend.calls.length, 0, JSON.stringify(env));
+      continue;
+    }
+    await run();
     assert.equal(backend.calls.length, 1, JSON.stringify(env));
     assert.equal(Object.hasOwn(backend.calls[0].body, 'offer_code'), expected, JSON.stringify(env));
   }

@@ -1297,7 +1297,8 @@ export const DISCOUNT_CODE_NOT_APPLIED_MESSAGE = Object.freeze({
   content_type: "plain",
 });
 
-// The same notice while storefront checkouts also take codes: the Reap-only wording would be false then.
+// The same notice while storefront checkouts also take codes: the Reap-only wording would be false then. (A Reap
+// checkout never carries it: the Reap lane refuses a code it will not forward, before creating anything.)
 export const DISCOUNT_CODE_NOT_APPLIED_ANY_LANE_MESSAGE = Object.freeze({
   ...DISCOUNT_CODE_NOT_APPLIED_MESSAGE,
   content: "The offer code was NOT applied: codes are honoured only when a checkout is CREATED through the Reap payment partner or priced by a seller's own storefront that accepts codes, and this answer is neither. The total shown has no discount from it.",
@@ -1314,9 +1315,7 @@ function withDiscountNotice(name, args, out) {
   // -- where it is never applied (codes are set at creation only), and the answer says so.
   if ((name !== "create_checkout" && name !== "update_checkout") || reapOfferCode(args) === undefined) return out;
   if (!isPlainObject(out)) return out;
-  // A Reap checkout carried the code only while Reap's offer codes are armed. With storefront codes on and Reap's
-  // off, a code can reach a Reap answer that never forwarded it, and that answer must say so like any other.
-  if (typeof out.id === "string" && out.id.startsWith(REAP_CHECKOUT_ID_PREFIX) && reapOfferCodesEnabled(process.env)) return out;
+  if (typeof out.id === "string" && out.id.startsWith(REAP_CHECKOUT_ID_PREFIX)) return out;
   const messages = Array.isArray(out.messages) ? out.messages : [];
   if (messages.some((m) => isPlainObject(m) && m.path === DISCOUNT_CODE_PATH)) return out;
   // An answer that reports the code itself (a storefront checkout's UCP `discounts` member: `applied` when the seller

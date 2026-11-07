@@ -70,6 +70,16 @@ const DISCOUNT_MESSAGE_RE = /^discount_code_[a-z0-9_]{1,48}$/;
 // The UCP applied-entry `method` vocabulary (discount.json): how an amount is spread over the lines.
 const DISCOUNT_METHODS = new Set(["each", "across"]);
 const MAX_REPORTED_CODES = 5;
+// THE ONE CONTENT RULE for a code this door sends, echoes or reports: the adapter's bound (1..128 characters, at most
+// one) plus no control characters and no invisible/bidirectional formatting characters (a code is a short merchant
+// token; those characters can only disguise it). Applied to the buyer's code before any seller sees it AND to every
+// code the seller's cart answers with, so neither side can put one in the answer.
+export const DISCOUNT_CODE_MAX_LENGTH = 128;
+const DISCOUNT_CODE_FORBIDDEN_RE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+export function isAcceptableDiscountCode(code) {
+  return typeof code === "string" && code.trim() !== "" && [...code].length <= DISCOUNT_CODE_MAX_LENGTH
+    && !DISCOUNT_CODE_FORBIDDEN_RE.test(code);
+}
 
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
@@ -435,14 +445,16 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, 
  *   null when there is nothing to say (no code asked for, none on the seller's cart, nothing applied).
  *   `status` is `applied`, `rejected` (the seller refused it; `reason` is its `discount_code_*` code), or
  *   `not_confirmed` (`reason`: not_sent_* / seller_did_not_apply / unmapped_rejection / unreadable / ambiguous /
- *   totals_show_no_discount).
+ *   totals_show_no_discount / amounts_disagree).
  */
 export function readSellerDiscounts(payload, wanted, read, { requested, notSentReason = null } = {}) {
   const d = normalizeDiscounts(payload);
-  // The buyer's code is echoed as sent (UCP echoes the submitted codes); matching below ignores case and padding.
+  // The buyer's code is echoed as sent (UCP echoes the submitted codes; the door already refused one that breaks the
+  // content rule); matching below ignores case and padding. A re-read reports the seller's echo, bounded by the
+  // same rule: a code the seller sends back that breaks it is not repeated to the agent.
   const reported = requested !== undefined
     ? [String(requested)]
-    : [...new Set(d.submitted_codes.map((c) => c.trim()).filter(Boolean))].slice(0, MAX_REPORTED_CODES);
+    : [...new Set(d.submitted_codes.map((c) => c.trim()).filter(isAcceptableDiscountCode))].slice(0, MAX_REPORTED_CODES);
   // Seller line k -> this door's line index, by variant gid (readSellerCart matched them one to one).
   const sellerLines = Array.isArray(own(payload, "line_items")) ? own(payload, "line_items") : [];
   const ourIndex = sellerLines.map((line) => {
@@ -451,6 +463,7 @@ export function readSellerDiscounts(payload, wanted, read, { requested, notSentR
     return wanted.findIndex((w) => w.gid === gid);
   });
   const remap = (entry) => {
+    if (!entry.automatic && !isAcceptableDiscountCode(entry.code)) return null;
     const allocations = [];
     for (const a of entry.allocations) {
       if (a.target === "unallocated") continue; // the spec's order-level form: an entry with no allocations
@@ -469,14 +482,22 @@ export function readSellerDiscounts(payload, wanted, read, { requested, notSentR
       ...(allocations.length ? { allocations } : {}),
     };
   };
-  const hasDiscountTotal = read.totals.some((t) => t.type === "discount" || t.type === "items_discount");
+  const discountRows = read.totals.filter((t) => t.type === "discount" || t.type === "items_discount");
+  const hasDiscountTotal = discountRows.length > 0;
+  // THE AMOUNTS MUST BE THE SELLER'S OWN DISCOUNT ROWS. The applied entries this door would show (every readable one:
+  // codes and automatic) must add up to exactly what the seller's totals take off (its `discount` + `items_discount`
+  // rows, negative). Anything unreadable, or any disagreement, and no amount is shown and no code counts as applied:
+  // the total stays the seller's, and nothing beside it claims a saving the total does not carry.
+  const rowsOff = -discountRows.reduce((sum, t) => sum + t.amount, 0);
+  const entriesOff = d.applied.reduce((sum, a) => sum + a.amount_minor, 0);
+  const amountsAgree = d.unreadable.length === 0 && Number.isSafeInteger(entriesOff) && entriesOff === rowsOff;
   const key = (c) => String(c || "").trim().toUpperCase();
   const outcomes = [];
   const applied = [];
   for (const code of reported) {
     let status = "not_confirmed";
     let reason = null;
-    const mine = d.applied.filter((a) => a.code && key(a.code) === key(code));
+    const mine = d.applied.filter((a) => a.code && isAcceptableDiscountCode(a.code) && key(a.code) === key(code));
     const rejection = d.rejected.find((r) => key(r.code) === key(code));
     if (notSentReason) reason = notSentReason;
     else if (rejection) { status = "rejected"; reason = DISCOUNT_MESSAGE_RE.test(rejection.reason) ? rejection.reason : "discount_code_invalid"; }
@@ -485,16 +506,20 @@ export function readSellerDiscounts(payload, wanted, read, { requested, notSentR
     else if (mine.length === 0) reason = "seller_did_not_apply";
     else if (mine.length > 1) reason = "ambiguous";
     else if (!hasDiscountTotal) reason = "totals_show_no_discount";
+    else if (!amountsAgree) reason = "amounts_disagree";
     else {
       const entry = remap(mine[0]);
       if (entry) { status = "applied"; applied.push(entry); } else reason = "unreadable";
     }
     outcomes.push({ code, status, reason });
   }
-  // Automatic discounts are part of the seller's price; shown beside the codes so the totals' discount is explained.
-  for (const a of d.applied.filter((x) => x.automatic)) {
-    const entry = remap(a);
-    if (entry) applied.push(entry);
+  // Automatic discounts are part of the seller's price; shown beside the codes so the totals' discount is explained,
+  // and only when the amounts agree with the seller's discount rows (above).
+  if (amountsAgree) {
+    for (const a of d.applied.filter((x) => x.automatic)) {
+      const entry = remap(a);
+      if (entry) applied.push(entry);
+    }
   }
   if (!reported.length && !applied.length) return null;
   return { codes: reported, applied, outcomes };
@@ -623,6 +648,8 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   let notSentReason = null;
   if (codeRequested) {
     try { [codeToSend] = normalizeDiscountCodes([discountCode]); } catch { notSentReason = "not_sent_malformed"; }
+    // Defensive: the escalation refuses such a code first, but this door never sends one whatever its caller did.
+    if (codeToSend !== null && !isAcceptableDiscountCode(codeToSend)) { codeToSend = null; notSentReason = "not_sent_malformed"; }
   }
   // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
   const currencies = new Set(items.map((it) => str(own(rows.get(it.product_id), "currency"))?.toUpperCase()).filter(Boolean));
