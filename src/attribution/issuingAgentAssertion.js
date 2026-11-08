@@ -25,10 +25,20 @@
 // credits an OAuth client only if it is a CONFIDENTIAL client Pivota provisioned for a partner (its
 // secret is checked at the token endpoint), and only then trusts the subject.
 //
+// PARTNER IDENTITY ON THE MONEY OPS (FIX_PLAN O-04), behind PARTNER_IDENTITY_FORWARDING_ENABLED
+// (default OFF). The same token, unchanged, is also signed on the ops in PARTNER_IDENTITY_OPS: the
+// kernel's money calls (quote, order, hosted link, payment, after-sales, order read) and the
+// per-response seed-link mint (SEED_LINK_MINT_OP, made AFTER the search cache for one caller). With
+// the backend's flag of the same name on, the backend makes the asserted agent the OWNER of what
+// those routes write (pivota-backend routes/agent_forwarded_owner.py), so two partners calling
+// through this one gateway are two owners, with their own scope, limits and clicks. Off, nothing
+// here changes: only ISSUING_OPS is signed.
+//
 // What is NEVER asserted:
 //   - a cached read lane: its results are shared across callers and must stay caller-independent
 //     (see COMMERCE_CACHED_READ_OPS and mcp-server/src/commerceToolSurface.js). Only ops in
-//     ISSUING_OPS are signed, and none of them is cached;
+//     ISSUING_OPS (and, with the flag on, PARTNER_IDENTITY_OPS) are signed, and none of them is
+//     cached: the seed-link mint is signed only on the per-response call made after the cache;
 //   - a degraded or fallback identity: emergency / service fallbacks and configured service keys
 //     name the gateway or an operator, not an agent;
 //   - anything taken from a request body or header the caller controls. The subject comes from
@@ -42,6 +52,33 @@ const ISSUING_AGENT_ASSERTION_VERSION = 'v1';
 // The operations whose backend handler issues click ids. Allowlist: a new op carries no identity
 // until someone decides it should.
 const ISSUING_OPS = Object.freeze(new Set(['offers.resolve']));
+
+// The operation name of the per-response seed-link mint (src/server.js, after the search cache).
+const SEED_LINK_MINT_OP = 'external_seed_links.mint';
+
+// Signed only while PARTNER_IDENTITY_FORWARDING_ENABLED is on. Each name is the op this gateway
+// sends upstream, and the backend verifies the token against the op of the route it lands on.
+const PARTNER_IDENTITY_OPS = Object.freeze(new Set([
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'create_payment_link',
+  'request_after_sales',
+  'get_order_status',
+  SEED_LINK_MINT_OP,
+]));
+
+const PARTNER_IDENTITY_FORWARDING_ENV = 'PARTNER_IDENTITY_FORWARDING_ENABLED';
+
+function partnerIdentityForwardingEnabled(env = process.env) {
+  const raw = env ? env[PARTNER_IDENTITY_FORWARDING_ENV] : undefined;
+  return /^(1|true|yes|on)$/i.test(String(raw === undefined || raw === null ? '' : raw).trim());
+}
+
+function isSignedOp(operation, env = process.env) {
+  if (ISSUING_OPS.has(operation)) return true;
+  return PARTNER_IDENTITY_OPS.has(operation) && partnerIdentityForwardingEnabled(env);
+}
 
 // Identities that name a service or an operator, never an agent (see adoptInvokeEmergencyAuthFallback
 // and resolveConfiguredInvokeAuthFastPath in src/server.js, and the backend's internal-trusted keys).
@@ -122,7 +159,7 @@ function signIssuingAgentAssertion({ subject, op, secret, nowSec }) {
 function issuingAgentAssertionHeaders({ op, invokeContext, env = process.env, nowSec } = {}) {
   try {
     const operation = text(op);
-    if (!ISSUING_OPS.has(operation)) return {};
+    if (!isSignedOp(operation, env)) return {};
     const secret = readSecret(env);
     if (!secret) return {};
     const subject = issuingSubjectFromInvokeContext(invokeContext, env);
@@ -153,6 +190,10 @@ function oauthClientFromClaims(claims) {
 module.exports = {
   ISSUING_AGENT_ASSERTION_HEADER,
   ISSUING_OPS,
+  PARTNER_IDENTITY_OPS,
+  PARTNER_IDENTITY_FORWARDING_ENV,
+  SEED_LINK_MINT_OP,
+  partnerIdentityForwardingEnabled,
   NON_AGENT_AUTH_SOURCES,
   issuingSubjectFromInvokeContext,
   signIssuingAgentAssertion,

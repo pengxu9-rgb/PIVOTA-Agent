@@ -296,7 +296,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -589,8 +589,23 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    storing an entry nor starting a revalidation. The gateway passes it for a synthetic call (our own eval
     //    traffic, src/guardrails/syntheticContext.js), so eval measures the uncached path and never fills an
     //    entry a real caller is later served.
+    //
+    // 9) PER-RESPONSE ATTRIBUTION (`attributeSearchResult`, optional; FIX_PLAN O-04): search_catalog's seed links
+    //    are minted for THIS response, after the cache, on this response's own value (a clone on the cached
+    //    branch). Returns true when it changed the value, which then takes the same sanitizer pass a fresh
+    //    result took. The gateway's hook is a no-op unless PARTNER_IDENTITY_FORWARDING_ENABLED.
+    const attributeOwn = async (value) => {
+      if (op.id !== "search_catalog" || typeof attributeSearchResult !== "function") return value;
+      let changed = false;
+      try {
+        changed = (await attributeSearchResult(value, params)) === true;
+      } catch (err) {
+        if (logger) logger.warn({ err: err?.message || String(err), tool: op.id }, "per-response search attribution failed");
+      }
+      return changed ? sanitizeResult(value, { handoffAllowed: false }) : value;
+    };
     if (!cache || !CACHEABLE_TOOLS.includes(op.id) || (typeof bypassReadCache === "function" && bypassReadCache() === true)) {
-      const fresh = await execute();
+      const fresh = await attributeOwn(await execute());
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
       noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
       return shape(doorListPriceTiers(op.id, fresh, dialect, callStartedAtMs));
@@ -600,14 +615,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     });
     noteToolCall(observe, () => describeUpstreamEnvelope(value));
     noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
-    return shape(doorListPriceTiers(op.id, cloneCachedValue(value, (err) => {
+    return shape(doorListPriceTiers(op.id, await attributeOwn(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
           { err: err?.message || String(err), tool: op.id },
           "commerce read cache: value not cloneable, serving shared reference",
         );
       }
-    }), dialect, callStartedAtMs));
+    })), dialect, callStartedAtMs));
   }
 
   /**

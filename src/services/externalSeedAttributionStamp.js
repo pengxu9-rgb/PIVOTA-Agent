@@ -28,6 +28,17 @@ const MAX_SEED_LINK_CANDIDATES = 50;
 const DEFAULT_ATTRIBUTION_TIMEOUT_MS = 800;
 const SEED_LINK_PATH = '/agent/shop/v1/attribution/external-seed-links';
 
+// PER-RESPONSE MINT (FIX_PLAN O-04, PARTNER_IDENTITY_FORWARDING_ENABLED, default OFF). A link
+// minted inside a cached search is served to every later caller with ONE click id, so two partners'
+// clicks cannot be told apart and the first caller's click is credited for everyone's. With the
+// flag on, the MCP commerce surface's cached search asks its loopback find_products_multi NOT to
+// mint (this header), caches the raw cards, and mints AFTER the cache for each response, signed for
+// the caller of that response (stampSearchResultPerResponse). The invoke handler honours the header
+// only on a loopback self-call and only with the flag on; honoured anywhere it could cost a caller
+// nothing but its own links, never another caller's.
+const SEED_ATTRIBUTION_DEFER_HEADER = 'X-Pivota-Seed-Attribution';
+const SEED_ATTRIBUTION_DEFERRED = 'deferred';
+
 // Fields copied straight through from the card onto the mint candidate when
 // present. All are optional; the backend treats an absent/null one as unknown.
 const PASSTHROUGH_CANDIDATE_FIELDS = [
@@ -317,7 +328,46 @@ function createBackendSeedLinkFetcher({
   };
 }
 
+function isSeedAttributionDeferred(value) {
+  return typeof value === 'string' && value.trim().toLowerCase() === SEED_ATTRIBUTION_DEFERRED;
+}
+
+// The product list of a search body: `products` at the top (the invoke body) or under `data`.
+function searchResultContainer(value) {
+  if (!isPlainObject(value)) return null;
+  if (Array.isArray(value.products)) return value;
+  if (isPlainObject(value.data) && Array.isArray(value.data.products)) return value.data;
+  return null;
+}
+
+// Stamps ONE response's seed cards in place (the caller hands its own copy, never a cached entry) and
+// records the counts on its metadata, exactly as the invoke handler does for an undeferred search.
+// Fail-soft like stampExternalSeedAttribution: never throws, and a failure leaves raw urls.
+async function stampSearchResultPerResponse(
+  value,
+  { fetchLinks, market = null, tool = null, logger = null, env = process.env } = {},
+) {
+  try {
+    const container = searchResultContainer(value);
+    if (!container) return { candidates: 0, stamped: 0 };
+    const counts = await stampExternalSeedAttribution(container.products, {
+      fetchLinks, market, tool, logger, env,
+    });
+    applyExternalSeedAttributionMetadata(value, counts);
+    return counts;
+  } catch (err) {
+    if (logger?.warn) {
+      logger.warn({ err: err?.message || String(err) }, 'per-response external seed attribution failed');
+    }
+    return { candidates: 0, stamped: 0, error: err?.message || String(err) };
+  }
+}
+
 module.exports = {
+  SEED_ATTRIBUTION_DEFER_HEADER,
+  SEED_ATTRIBUTION_DEFERRED,
+  isSeedAttributionDeferred,
+  stampSearchResultPerResponse,
   SEED_LANE_SOURCE,
   SEED_LANE_PLATFORM,
   MAX_SEED_LINK_CANDIDATES,

@@ -37,6 +37,8 @@ const { installInvokeEgress } = require('./invokeEgress');
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
+  partnerIdentityForwardingEnabled,
+  SEED_LINK_MINT_OP,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
@@ -425,6 +427,10 @@ const {
   stampExternalSeedAttribution,
   applyExternalSeedAttributionMetadata,
   createBackendSeedLinkFetcher,
+  SEED_ATTRIBUTION_DEFER_HEADER,
+  SEED_ATTRIBUTION_DEFERRED,
+  isSeedAttributionDeferred,
+  stampSearchResultPerResponse,
 } = require('./services/externalSeedAttributionStamp');
 const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
@@ -32896,6 +32902,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // upstream key above is always the gateway's own, so without this the backend can name no MCP agent.
       // Empty for every cached read lane: ISSUING_OPS holds no cached op (issuingAgentAssertion.js).
       ...(COMMERCE_CACHED_READ_OPS.has(op) ? {} : issuingAgentAssertionHeaders({ op, invokeContext })),
+      // FIX_PLAN O-04: the cached loopback search mints no seed link; the commerce surface mints one per
+      // response, AFTER its cache, for that response's caller (attributeCommerceSearchPerResponse).
+      ...(op === 'find_products_multi' && selfInvoked && partnerIdentityForwardingEnabled()
+        ? { [SEED_ATTRIBUTION_DEFER_HEADER]: SEED_ATTRIBUTION_DEFERRED }
+        : {}),
       // A call back into THIS process carries the caller the MCP door resolved, signed with a per-process
       // secret, so the invoke limiter keys on that caller rather than on this gateway's own key (see
       // src/guardrails/loopbackCallerAssertion.js). It names a rate-limit bucket only: the response, and so
@@ -33018,6 +33029,41 @@ function recordCommerceKernelAudit(entry) {
     },
     'agent checkout audit event',
   );
+}
+
+// FIX_PLAN O-04 (PARTNER_IDENTITY_FORWARDING_ENABLED, default OFF): the seed links of ONE search response,
+// minted after the commerce read cache for the caller of that response. The cached entry holds raw cards
+// (the loopback search was told to defer), so every response gets its own click ids, and the mint carries
+// the caller's signed assertion (SEED_LINK_MINT_OP) so the backend records the click as issued to that
+// partner. The upstream key is the gateway's internal one, as for the in-search mint; no internal key, no
+// mint (a caller-key mint is exactly what the in-search mint refuses). `value` is this response's own
+// clone. Flag off: a no-op, never called on the old path's bytes.
+async function attributeCommerceSearchPerResponse(value, params) {
+  if (!partnerIdentityForwardingEnabled()) return false;
+  // The surface's allowlisted search params: { payload: { search: { query, market, … } } } (toParams).
+  const search = isPlainObject(params?.payload?.search) ? params.payload.search : {};
+  const invokeContext = getInvokeAuthContext() || {};
+  const counts = await stampSearchResultPerResponse(value, {
+    fetchLinks: createBackendSeedLinkFetcher({
+      apiBase: PIVOTA_API_BASE,
+      buildHeaders: () =>
+        (PIVOTA_API_KEY
+          ? {
+            ...buildInvokeUpstreamAuthHeaders({
+              forceInternalFallback: true,
+              forwardAgentUserJwt: false,
+              forwardBuyerRef: false,
+            }),
+            ...issuingAgentAssertionHeaders({ op: SEED_LINK_MINT_OP, invokeContext }),
+          }
+          : null),
+    }),
+    market: firstNonEmptyString(search.market) || null,
+    tool: 'find_products_multi',
+    logger,
+  });
+  // true = this response's value changed (links stamped and/or metadata.external_seed_attribution written).
+  return Number(counts?.candidates) > 0;
 }
 
 async function getCommerceMount() {
@@ -33940,6 +33986,8 @@ async function getCommerceRemoteMcpAdapter() {
         log: logger,
         // G1: a synthetic call (src/guardrails/syntheticContext.js) answers search uncached and stores nothing.
         bypassReadCache: isSyntheticCall,
+        // FIX_PLAN O-04: a search's seed links minted per response, after the cache, for this caller.
+        attributeSearchResult: attributeCommerceSearchPerResponse,
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
@@ -43852,8 +43900,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       let seedAttributionContainer = null;
       let seedAttributionCards = [];
+      // FIX_PLAN O-04: a cached MCP search mints after its cache, per response (see the kernel upstream).
+      const seedAttributionDeferred =
+        finalOperation === 'find_products_multi' &&
+        partnerIdentityForwardingEnabled() &&
+        isLoopbackSelfCall(req) &&
+        isSeedAttributionDeferred(req.get(SEED_ATTRIBUTION_DEFER_HEADER));
       try {
-        if (finalOperation === 'find_products_multi') {
+        if (finalOperation === 'find_products_multi' && !seedAttributionDeferred) {
           seedAttributionContainer = Array.isArray(finalBody?.products)
             ? finalBody
             : finalBody?.data && Array.isArray(finalBody.data.products)
