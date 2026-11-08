@@ -142,10 +142,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // 2026-10-16: +2, pdp_live_read — its answer (200, or 400 on a bad token) and its 500 when the
   // refresh throws unexpectedly.
   // 2026-10-27: +1, a retryable 503 when the referral content-key lookup cannot answer.
+  // 2026-11-08: +1, get_product_detail answers a legacy `<slug>:<hex>` seed id from the seed-DB lane
+  // (FIX_PLAN D-06). It is a plain res.json, wrapped like the rest.
   assert.equal(
     exits.length,
-    106,
-    `expected 106 response exits in handleInvokeRequest, saw ${exits.length}`,
+    107,
+    `expected 107 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
@@ -270,7 +272,7 @@ test('a projector that transforms conditionally is still honoured', () => {
   assert.deepEqual(sent[0], { id: 'x', tagged: true });
 });
 
-test('this change removes no field — the projector is the identity, for EVERY operation', () => {
+test('the projector removes no field from a body with no legacy seed rows, for EVERY operation', () => {
   // Pins the scope of this PR. Ranges over the real operation vocabulary, not one example:
   // a projector that drops a field only when ctx.operation === 'get_product' is invisible to a
   // single-shape test, and exactly that mutant survived the first version of this assertion.

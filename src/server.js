@@ -33,7 +33,7 @@ const OpenAI = require('openai');
 const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
-const { installInvokeEgress } = require('./invokeEgress');
+const { finalizeInvokeSearchBody, installInvokeEgress, projectInvokeResponse } = require('./invokeEgress');
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
@@ -217,6 +217,7 @@ const {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
   SEED_DATA_UNGUARDED_MATCH_CLAUSE,
   SEED_EXACT_MATCHES,
+  confirmNoActiveSeedMatches,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
 } = require('./services/signatureSeedNotActive');
@@ -32579,7 +32580,42 @@ function resolveSelfInvokeBudget(defaultTimeoutMs) {
 // tool's results and shares them across callers). Both lanes are listed: the unscoped multi-merchant one
 // and the merchant-scoped one, which goes to the Python backend where we cannot audit per-buyer behaviour.
 const COMMERCE_CACHED_READ_OPS = new Set(['find_products_multi', 'find_products']);
-const { dropUnopenableLegacySeedRows } = require('./services/legacySeedIdServability');
+const { dropUnopenableLegacySeedRows, routesToLegacySeedLane } = require('./services/legacySeedIdServability');
+
+// The search-side probe: true only when the database answers that no active seed matches the id on the seed
+// lane's own match set. It throws when it cannot ask (no database, an error), and the row is then kept.
+function legacySeedNoActiveSeed(productId) {
+  return confirmNoActiveSeedMatches(productId, { queryFn: process.env.DATABASE_URL ? query : undefined });
+}
+
+// D-06 / G-4: a legacy `<slug>:<hex>` seed id opens on THIS gateway's seed-DB detail lane, the lane that
+// already resolves it (exact match on external_product_id), instead of the backend products_cache read that
+// cannot. Null when the pair is not a legacy seed ref or the lane has no active seed for it; the caller then
+// keeps its own route, so nothing that resolved before stops resolving.
+async function readLegacySeedDetail(merchantId, productId) {
+  if (!routesToLegacySeedLane(merchantId, productId)) return null;
+  try {
+    const seedDetail = await fetchExternalSeedProductDetailFromDb({ productId: String(productId).trim() });
+    return seedDetail && seedDetail.product ? seedDetail : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function legacySeedDetailResponse(seedDetail) {
+  return {
+    status: 'success',
+    success: true,
+    product: seedDetail.product,
+    metadata: {
+      query_source: 'external_seed_db',
+      detail_source: 'external_seed_db',
+      matched_via: seedDetail.matched_via || null,
+      legacy_seed_route: true,
+    },
+  };
+}
+
 
 // `options.signal` (an AbortSignal) cancels the upstream request itself: get_offers' second offers.resolve
 // call aborts at its own deadline instead of abandoning a request that keeps running.
@@ -32620,6 +32656,10 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       //    2026-08-27) — reroute.
       // The predicates come from services/externalSeedLane so the seller-shape knowledge stays in
       // its one watched place (the sentinel-literal ratchet exists because twins of it regressed).
+      // A legacy `<slug>:<hex>` seed id with the shared seller (or none) opens on the seed-DB lane first;
+      // neither the backend products_cache read nor the unscoped signature lane can resolve it.
+      const legacySeedDetail = await readLegacySeedDetail(rawDetailMerchant, pid);
+      if (legacySeedDetail) return legacySeedDetailResponse(legacySeedDetail);
       const seedSupplyUnservableUpstream = isSeedSupplyUnservableUpstream(rawDetailMerchant, pid);
       const merchantScoped = rawDetailMerchant !== '' && !seedSupplyUnservableUpstream;
       if (!merchantScoped && pid) {
@@ -32861,16 +32901,18 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
     typeof normalizedBody.data === 'object'
       ? normalizedBody.data
       : normalizedBody;
-  if (!COMMERCE_CACHED_READ_OPS.has(op)) return result;
-  // D-06: a search row whose id get_product cannot open is not served (services/legacySeedIdServability).
-  const { body: served, droppedCount, droppedIds } = dropUnopenableLegacySeedRows(result);
-  if (droppedCount > 0) {
+  // D-06: the kernel's merchant-scoped find_products goes to the backend, outside the invoke egress, so the
+  // search projection runs here too (idempotent on a body the loopback egress already projected).
+  const projected = projectInvokeResponse(result, { operation: op, door: 'commerce_kernel' });
+  if (!COMMERCE_CACHED_READ_OPS.has(op)) return projected;
+  const dropped = await dropUnopenableLegacySeedRows(projected, { noActiveSeed: legacySeedNoActiveSeed });
+  if (dropped.droppedIds.length) {
     logger.info(
-      { op, dropped_legacy_seed_rows: droppedCount, product_ids: droppedIds.slice(0, 10) },
-      'commerce search: dropped rows with legacy seed ids get_product cannot open',
+      { op, door: 'commerce_kernel', dropped_legacy_seed_rows: dropped.droppedIds.length, product_ids: dropped.droppedIds.slice(0, 10) },
+      'search: legacy seed rows no lane can open were dropped',
     );
   }
-  return served;
+  return dropped.body;
 }
 
 // The upstream-failure -> shared-taxonomy mapping lives in services/commerceKernelErrorMapping so it is
@@ -42888,14 +42930,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // reaching here. Installed first, because this function has 96 response exits
   // spread over ~13,000 lines and every one of them is `res.json` — so wrapping it once at the
   // ingress covers all of them, and every exit added later, by construction rather than by
-  // convention. Changes no response today: projectInvokeResponse is the identity. What it buys
+  // convention. Its one policy so far is the legacy seed-id search projection. What it buys
   // is that "what may leave the invoke route" finally has ONE owner instead of 96, so the next
   // field question is answered in a single place rather than re-derived at whichever call site
   // the bug was noticed in. See src/invokeEgress.js.
-  installInvokeEgress(res, {
-    operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
-    client_channel: clientChannel,
-  });
+  installInvokeEgress(
+    res,
+    {
+      operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
+      client_channel: clientChannel,
+    },
+    {
+      // D-06: on a search response, legacy seed rows no lane can open are dropped once the database says so.
+      // With no database there is nothing to ask, so the response is sent synchronously as before.
+      finalize: (body, ctx) =>
+        process.env.DATABASE_URL ? finalizeInvokeSearchBody(body, ctx, { noActiveSeed: legacySeedNoActiveSeed }) : null,
+    },
+  );
   const syntheticLogFieldsAtStart = syntheticInvokeLogFields(req);
   const routeKeyFingerprint =
     routeContext.key_fingerprint || req?.invokeAuth?.key_fingerprint || null;
@@ -51947,6 +51998,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             error: 'MISSING_PARAMETERS',
             message: 'merchant_id and product_id are required'
           });
+        }
+        // D-06 / G-4: a legacy seed id with the shared seller opens on the seed-DB lane, not the backend
+        // products_cache read below (which cannot resolve it). Same rule as the commerce kernel.
+        {
+          const legacySeedDetail = await readLegacySeedDetail(merchantId, productId);
+          if (legacySeedDetail) return res.json(legacySeedDetailResponse(legacySeedDetail));
         }
         productDetailCacheKey = JSON.stringify({
           merchantId,

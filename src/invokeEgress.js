@@ -17,9 +17,9 @@
 // resurfaces at the next site. That is the mechanism behind fixing this class of bug
 // repeatedly and watching it reappear somewhere else.
 //
-// This module does not change any response. `projectInvokeResponse` is deliberately the
-// IDENTITY today. Its entire value in this change is that from here on there is exactly one
-// place to answer the question, and a test that fails if a 97th exit ever bypasses it.
+// `projectInvokeResponse` carries one policy (legacy seed ids on search responses, below) and is
+// the identity for every other body. Its value is that there is exactly one place to answer the
+// question, and a test that fails if a 97th exit ever bypasses it.
 //
 // WHY A WRAP RATHER THAN 96 EDITS. Converting every call site to `sendProductsResponse(res, …)`
 // carries real regression risk across 13,000 lines and buys a guarantee that lasts only until
@@ -28,6 +28,13 @@
 // construction rather than by convention. `res.json` is verified to be the ONLY exit shape in
 // the route (no send/end/write/redirect/sendStatus/jsonp, no manual writeHead), and
 // tests/invoke_egress_chokepoint.node.test.cjs fails if that stops being true.
+
+const logger = require('./logger');
+const {
+  dropUnopenableLegacySeedRows,
+  isLegacySeedProjectedOp,
+  projectLegacySeedRows,
+} = require('./services/legacySeedIdServability');
 
 const INSTALLED = Symbol('pivotaInvokeEgressInstalled');
 
@@ -39,8 +46,49 @@ const INSTALLED = Symbol('pivotaInvokeEgressInstalled');
 // SEO canonical), and `platform`/`source` feed the UI's own external-seed predicate in
 // ProductDetailClient.tsx. Removing fields here without settling those consumers would break
 // attribution and the PDP. Land the chokepoint first; decide policy behind it second.
-function projectInvokeResponse(body, _ctx = {}) {
-  return body;
+//
+// ONE POLICY SO FAR, on search responses only (find_products_multi / find_products), for rows with a
+// legacy `<slug>:<hex>` seed id under the shared seed seller (src/services/legacySeedIdServability.js,
+// FIX_PLAN D-06). The sync projector below makes such a row advertise an id that opens and removes no
+// field. The async `finalizeInvokeSearchBody` drops only a row that no detail lane can open, and only once
+// the database has said so. Every other body leaves unchanged.
+function logLegacySeedProjection(ctx, counts) {
+  if (!counts.droppedCount && !counts.rekeyedCount && !counts.linkedCount) return;
+  try {
+    logger.info(
+      {
+        op: ctx && ctx.operation,
+        door: (ctx && ctx.door) || 'invoke_egress',
+        dropped_legacy_seed_rows: counts.droppedCount || 0,
+        rekeyed_legacy_seed_rows: counts.rekeyedCount || 0,
+        linked_legacy_seed_rows: counts.linkedCount || 0,
+        legacy_seed_probe_failed_open: counts.failedOpenCount || 0,
+        product_ids: (counts.droppedIds || []).slice(0, 10),
+      },
+      'search: legacy seed rows projected to ids that open',
+    );
+  } catch (_) {
+    // never let a log line fail a response
+  }
+}
+
+function projectInvokeResponse(body, ctx = {}) {
+  if (!isLegacySeedProjectedOp(ctx && ctx.operation)) return body;
+  const r = projectLegacySeedRows(body);
+  logLegacySeedProjection(ctx, r);
+  return r.body;
+}
+
+// The async half, for installInvokeEgress's `finalize`: null (send now, nothing to ask) unless the body is a
+// search response holding legacy rows to probe; then a promise of the body with only the truly unopenable
+// rows removed. `noActiveSeed(id)` must THROW when it cannot ask, so a probe failure keeps the row.
+function finalizeInvokeSearchBody(body, ctx = {}, { noActiveSeed, env = process.env } = {}) {
+  if (!isLegacySeedProjectedOp(ctx && ctx.operation) || typeof noActiveSeed !== 'function') return null;
+  if (!projectLegacySeedRows(body).probeIds.length) return null;
+  return dropUnopenableLegacySeedRows(body, { noActiveSeed, env }).then((r) => {
+    logLegacySeedProjection(ctx, { droppedCount: r.droppedIds.length, ...r });
+    return r.body;
+  });
 }
 
 // Route every response for this request through `projectInvokeResponse`.
@@ -52,10 +100,15 @@ function projectInvokeResponse(body, _ctx = {}) {
 // internals. Replacing the export would not work — the default is bound here, lexically, so a
 // swapped export table is a seam the code under test never goes through, and a test built on
 // one passes with the defect restored.
+//
+// `finalize` (optional) runs after `project`. It returns null/undefined to send at once, a body to send
+// instead, or a PROMISE of one: the response is then sent when it settles, with the projected body if it
+// rejects. Only a finalize that has real work returns a promise (legacy seed rows on a search response), so
+// every other response is sent synchronously exactly as before.
 function installInvokeEgress(
   res,
   ctx = {},
-  { project = projectInvokeResponse, onProjectError = null } = {},
+  { project = projectInvokeResponse, finalize = null, onProjectError = null } = {},
 ) {
   if (!res || typeof res.json !== 'function') {
     // Nothing to wrap (a test double, a closed socket). Degrade to a no-op rather than
@@ -87,6 +140,23 @@ function installInvokeEgress(
           // nothing left to do; never rethrow from an egress hook
         }
       }
+      if (typeof finalize === 'function') {
+        let pending = null;
+        try {
+          pending = finalize(projected, ctx);
+        } catch (_) {
+          pending = null;
+        }
+        if (pending && typeof pending.then === 'function') {
+          const sendProjected = projected;
+          pending.then(
+            (finalBody) => originalJson(finalBody === undefined || finalBody === null ? sendProjected : finalBody),
+            () => originalJson(sendProjected),
+          );
+          return res;
+        }
+        if (pending !== undefined && pending !== null) projected = pending;
+      }
       return originalJson(projected);
     };
   }
@@ -94,4 +164,4 @@ function installInvokeEgress(
   return (body) => res.json(body);
 }
 
-module.exports = { installInvokeEgress, projectInvokeResponse, INSTALLED };
+module.exports = { finalizeInvokeSearchBody, installInvokeEgress, projectInvokeResponse, INSTALLED };
