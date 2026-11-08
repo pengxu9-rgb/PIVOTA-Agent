@@ -31766,6 +31766,9 @@ function withFreshSyntheticAssertion(axiosConfig) {
 
 function buildInvokeUpstreamAuthHeaders({
   checkoutToken,
+  // The invoke operation this hop serves. A checkout token goes upstream only for the token-lane
+  // operations (CHECKOUT_TOKEN_INVOKE_OPERATIONS) or when the caller has no key of its own; see below.
+  operation = null,
   allowInternalFallback = true,
   preferInternalFallback = false,
   forceInternalFallback = false,
@@ -31790,14 +31793,23 @@ function buildInvokeUpstreamAuthHeaders({
   // the one builder every backend hop shares, and a branch without it is a hop whose writes look real.
   const synthetic = (headers) => withSyntheticAssertion(headers, getInvokeAuthContext());
   const normalizedCheckoutToken = String(checkoutToken || '').trim();
-  if (normalizedCheckoutToken) {
+  const callerApiKey = getInvokeAuthApiKey();
+  // pivota-backend checks X-Checkout-Token BEFORE an API key, and lets a token reach only the hosted
+  // checkout routes for its own order (be#2760 CHECKOUT_TOKEN_ROUTES). So the token goes upstream only
+  // for the token-lane operations. A caller that presented its own key is served on that key everywhere
+  // else (search, product reads, after-sales, photos), where the token would be a 403. A token-only
+  // caller keeps sending its token: it has no other credential, and the door admits it only for the
+  // token lane anyway.
+  const forwardCheckoutToken =
+    Boolean(normalizedCheckoutToken) &&
+    (!callerApiKey || CHECKOUT_TOKEN_INVOKE_OPERATIONS.has(String(operation || '').trim()));
+  if (forwardCheckoutToken) {
     return synthetic({
       'X-Checkout-Token': normalizedCheckoutToken,
       ...forwardedHeaders,
     });
   }
 
-  const callerApiKey = getInvokeAuthApiKey();
   const shouldUseInternalFallback = shouldPreferInternalInvokeUpstreamAuth(
     preferInternalFallback,
   );
@@ -52372,14 +52384,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       url: `${url}${queryString}`,
       headers: {
         ...(upstreamMethod !== 'GET' && { 'Content-Type': 'application/json' }),
-        // request_after_sales (cancel -> /agent/v1/orders/{id}/cancel, refund -> /agent/v2/orders/{id}/refunds)
-        // runs on the caller's own agent key, never on an X-Checkout-Token beside it: pivota-backend lets a
-        // checkout token reach only the hosted checkout page's routes (be#2760), so the token would be a 403
-        // there, and it would win over the key. A token-only caller never gets here (the door accepts a token
-        // alone only for CHECKOUT_TOKEN_INVOKE_OPERATIONS). No fallback to the gateway's own service key either:
-        // the backend's agent-ownership check must run against the caller, not against this gateway.
+        // The token goes upstream only for the token-lane operations; a caller with its own key is served on
+        // that key everywhere else (see buildInvokeUpstreamAuthHeaders). request_after_sales (cancel ->
+        // /agent/v1/orders/{id}/cancel, refund -> /agent/v2/orders/{id}/refunds) also never falls back to the
+        // gateway's own service key: the backend's agent-ownership check must run against the caller.
         ...buildInvokeUpstreamAuthHeaders({
-          checkoutToken: operation === 'request_after_sales' ? null : checkoutToken,
+          checkoutToken,
+          operation,
           allowInternalFallback: operation !== 'request_after_sales',
           preferInternalFallback: operation === 'get_product_detail',
         }),
@@ -52741,7 +52752,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               url: quoteUrl,
               headers: {
                 'Content-Type': 'application/json',
-                ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+                // The create_order re-quote is part of the token lane: same credential as the create.
+                ...buildInvokeUpstreamAuthHeaders({ checkoutToken, operation: 'create_order' }),
               },
               timeout: getUpstreamTimeoutMs('preview_quote'),
               data: quoteBody,
@@ -55096,6 +55108,9 @@ module.exports._debug = {
   // X-Checkout-Token verification: the verdict cache (cleared between tests; its TTL clamp to the
   // token's own expiry is asserted directly) and the scope rule.
   checkoutTokenVerdictCache,
+  CHECKOUT_TOKEN_INVOKE_OPERATIONS,
+  // Which credential each backend hop carries (checkout token vs the caller's key), asserted per caller shape.
+  buildInvokeUpstreamAuthHeaders,
   putCachedCheckoutTokenVerdict,
   getCachedCheckoutTokenVerdict,
   invokeAuthCache,

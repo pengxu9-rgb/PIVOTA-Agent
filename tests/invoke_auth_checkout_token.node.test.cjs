@@ -447,3 +447,199 @@ test('a checkout token alone cannot request a cancel: 401 at the door, no intros
   assert.equal(dials.length, 0);
   assert.equal(upstream.isDone(), false);
 });
+
+// ---- 8. which credential reaches which backend route, for every token-carrying operation -------------------
+//
+// The tests above mock the backend, so they could not see that a token forwarded to /agent/v2/... was going
+// to be a 403 there. This section pins the contract on both sides: pivota-backend's checkout-token allowlist
+// (routes/agent_auth.py CHECKOUT_TOKEN_ROUTES, be#2760) is mirrored below, every backend call a token-lane
+// operation makes with a token must land on one of those routes, and every other operation from a caller with
+// its own key goes upstream on that key with no token at all.
+
+const BACKEND_CHECKOUT_TOKEN_ROUTES = [
+  ['POST', /^\/agent\/v1\/quotes\/preview$/],
+  ['POST', /^\/agent\/v1\/orders\/create$/],
+  ['POST', /^\/agent\/v1\/orders\/payment-offer-evidence$/],
+  ['POST', /^\/agent\/v1\/payments$/],
+  ['POST', /^\/agent\/v1\/orders\/[^/]+\/confirm-payment$/],
+  ['GET', /^\/agent\/v1\/orders\/[^/]+\/track$/],
+  ['GET', /^\/agent\/v1\/checkout\/prefill$/],
+  ['POST', /^\/agent\/v2\/quotes\/preview$/],
+  ['POST', /^\/agent\/v2\/orders$/],
+  ['POST', /^\/agent\/v2\/payments\/checkout-sessions$/],
+  ['GET', /^\/agent\/v2\/orders\/[^/]+\/tracking$/],
+];
+const tokenMayCall = (method, path) =>
+  BACKEND_CHECKOUT_TOKEN_ROUTES.some(([m, re]) => m === method && re.test(path.split('?')[0]));
+
+// Records every call to the backend (not the introspect host) with the credential it carried.
+function recordBackendCalls() {
+  const calls = [];
+  const reply = function reply(uri, body) {
+    calls.push({ method: this.req.method, path: uri, headers: { ...this.req.headers } });
+    return [200, upstreamReplyFor(this.req.method, uri, body)];
+  };
+  const scope = nock(BACKEND_BASE).persist();
+  scope.get(/.*/).reply(reply);
+  scope.post(/.*/).reply(reply);
+  return calls;
+}
+
+function upstreamReplyFor(method, uri) {
+  if (/quotes\/preview/.test(uri)) {
+    return { status: 'success', quote: { quote_id: 'q_1', merchant_id: 'merch_a', currency: 'USD', price_breakdown: { total: '10.00', currency: 'USD' } }, quote_id: 'q_1', pricing: { total: 10 } };
+  }
+  if (/\/orders$/.test(uri) || /orders\/create/.test(uri)) return { status: 'success', order: { order_id: 'ord_1' }, order_id: 'ord_1' };
+  if (/checkout-sessions/.test(uri)) return { status: 'success', checkout_session: { checkout_session_id: 'ci_1', hosted_url: 'https://pay.test/x' } };
+  if (/tracking|track/.test(uri)) return { status: 'success', tracking: {}, order_id: 'ord_1' };
+  if (/confirm-payment/.test(uri)) return { status: 'success', order_id: 'ord_1', payment_status: 'paid' };
+  return { status: 'success', products: [], order_id: 'ord_1' };
+}
+
+const TOKEN_LANE_REQUESTS = {
+  preview_quote: { quote: { merchant_id: 'merch_a', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } },
+  create_order: {
+    order: {
+      merchant_id: 'merch_a',
+      quote_id: 'q_1',
+      customer_email: 'buyer@example.com',
+      items: [{ merchant_id: 'merch_a', product_id: 'p1', variant_id: 'v1', quantity: 1, unit_price: 10, subtotal: 10 }],
+      shipping_address: { name: 'B', address_line1: '1 Main', city: 'SF', country: 'US', postal_code: '94105' },
+    },
+  },
+  submit_payment: { payment: { order_id: 'ord_1', quote_id: 'q_1', expected_amount: 10, currency: 'USD' } },
+  confirm_payment: { order_id: 'ord_1' },
+  get_order_status: { status: { order_id: 'ord_1' } },
+};
+
+test('the token lane in this file is exactly the gateway token lane', () => {
+  assert.deepEqual(Object.keys(TOKEN_LANE_REQUESTS).sort(), [...app._debug.CHECKOUT_TOKEN_INVOKE_OPERATIONS].sort());
+});
+
+// submit_payment has two upstream shapes: the existing-order PSP surface (/agent/v1/payments, above) and,
+// with a payment handler, a hosted checkout session (/agent/v2/payments/checkout-sessions).
+const TOKEN_LANE_CASES = [
+  ...Object.entries(TOKEN_LANE_REQUESTS),
+  ['submit_payment', { payment: { order_id: 'ord_1', quote_id: 'q_1', expected_amount: 10, currency: 'USD', payment_handler_id: 'ph_hosted' } }],
+];
+
+for (const [operation, payload] of TOKEN_LANE_CASES) {
+  for (const withKey of [false, true]) {
+    test(`${operation}${payload?.payment?.payment_handler_id ? ' via a payment handler' : ''} (${withKey ? 'key + token' : 'token only'}): the token goes upstream, only to a route the backend lets a token call`, async () => {
+      delete process.env.AGENT_CHECKOUT_STRICT;
+      if (withKey) introspectApiKey();
+      else introspectCheckoutToken(REAL_TOKEN, validVerdict());
+      const calls = recordBackendCalls();
+
+      const res = await send(
+        { method: 'post', path: '/agent/shop/v1/invoke', body: { operation, payload } },
+        withKey ? { 'X-Checkout-Token': REAL_TOKEN, Authorization: `Bearer ${API_KEY}` } : { 'X-Checkout-Token': REAL_TOKEN },
+      );
+
+      assert.equal(isAuthRefusal(res), false, `${res.status} ${JSON.stringify(res.body)}`);
+      assert.ok(calls.length > 0, `${operation}: no backend call (${res.status} ${JSON.stringify(res.body)})`);
+      for (const call of calls) {
+        assert.equal(call.headers['x-checkout-token'], REAL_TOKEN, `${call.method} ${call.path}`);
+        assert.ok(tokenMayCall(call.method, call.path), `token sent to ${call.method} ${call.path}, which the backend refuses`);
+        // The token is the credential: no key beside it, the gateway's own least of all.
+        assert.equal(call.headers['x-api-key'], undefined, `${call.method} ${call.path}`);
+      }
+    });
+  }
+}
+
+const KEY_LANE_REQUESTS = {
+  find_products_multi: { search: { query: 'hiking boots' } },
+  find_products: { search: { query: 'serum', merchant_id: 'merch_a' } },
+  get_product_detail: { product: { merchant_id: 'merch_a', product_id: 'p1' } },
+  request_after_sales: { status: { order_id: 'ord_1', requested_action: 'cancel' } },
+};
+
+for (const [operation, payload] of Object.entries(KEY_LANE_REQUESTS)) {
+  test(`${operation} (key + token): every backend call carries the caller's key and no token`, async () => {
+    delete process.env.AGENT_CHECKOUT_STRICT;
+    introspectApiKey();
+    const calls = recordBackendCalls();
+
+    const res = await send(
+      { method: 'post', path: '/agent/shop/v1/invoke', body: { operation, payload } },
+      { 'X-Checkout-Token': REAL_TOKEN, Authorization: `Bearer ${API_KEY}` },
+    );
+
+    assert.equal(isAuthRefusal(res), false, `${res.status} ${JSON.stringify(res.body)}`);
+    assert.ok(calls.length > 0, `${operation}: no backend call (${res.status} ${JSON.stringify(res.body)})`);
+    for (const call of calls) {
+      assert.equal(call.headers['x-checkout-token'], undefined, `token sent to ${call.method} ${call.path}`);
+      assert.equal(call.headers['x-api-key'], API_KEY, `${call.method} ${call.path}`);
+    }
+  });
+}
+
+// The rule itself, on the one builder every backend hop shares: which credential for each caller shape.
+test('buildInvokeUpstreamAuthHeaders: the token goes up only on the token lane or when it is the only credential', () => {
+  const { buildInvokeUpstreamAuthHeaders, INVOKE_AUTH_CONTEXT } = app._debug;
+  const withCaller = (store, fn) => INVOKE_AUTH_CONTEXT.run(store, fn);
+  const keyCaller = { api_key: API_KEY, auth_mode: 'api_key' };
+  const tokenCaller = { api_key: null, auth_mode: 'checkout_token' };
+
+  for (const operation of app._debug.CHECKOUT_TOKEN_INVOKE_OPERATIONS) {
+    for (const caller of [keyCaller, tokenCaller]) {
+      const h = withCaller(caller, () => buildInvokeUpstreamAuthHeaders({ checkoutToken: REAL_TOKEN, operation }));
+      assert.equal(h['X-Checkout-Token'], REAL_TOKEN, `${operation} ${caller.auth_mode}`);
+      assert.equal(h['X-API-Key'], undefined, `${operation} ${caller.auth_mode}`);
+    }
+  }
+  for (const operation of ['find_products_multi', 'get_product_detail', 'request_after_sales', null]) {
+    const keyed = withCaller(keyCaller, () => buildInvokeUpstreamAuthHeaders({ checkoutToken: REAL_TOKEN, operation }));
+    assert.equal(keyed['X-Checkout-Token'], undefined, `${operation} with a key`);
+    assert.equal(keyed['X-API-Key'], API_KEY, `${operation} with a key`);
+    assert.equal(keyed.Authorization, `Bearer ${API_KEY}`, `${operation} with a key`);
+    // A token-only caller has nothing else: it keeps sending the token (today's behaviour).
+    const tokenOnly = withCaller(tokenCaller, () => buildInvokeUpstreamAuthHeaders({ checkoutToken: REAL_TOKEN, operation }));
+    assert.equal(tokenOnly['X-Checkout-Token'], REAL_TOKEN, `${operation} token only`);
+    assert.equal(tokenOnly['X-API-Key'], undefined, `${operation} token only`);
+  }
+  // No token: unchanged, the caller's key.
+  const plain = withCaller(keyCaller, () => buildInvokeUpstreamAuthHeaders({ operation: 'preview_quote' }));
+  assert.equal(plain['X-API-Key'], API_KEY);
+  assert.equal(plain['X-Checkout-Token'], undefined);
+});
+
+// create_order re-quotes once on QUOTE_EXPIRED; that hop is part of the token lane and keeps the token.
+for (const withKey of [false, true]) {
+  test(`create_order re-quote (${withKey ? 'key + token' : 'token only'}) carries the token to /agent/v2/quotes/preview`, async () => {
+    delete process.env.AGENT_CHECKOUT_STRICT;
+    if (withKey) introspectApiKey();
+    else introspectCheckoutToken(REAL_TOKEN, validVerdict());
+    const calls = [];
+    const record = function record(uri) {
+      calls.push({ method: this.req.method, path: uri, headers: { ...this.req.headers } });
+    };
+    nock(BACKEND_BASE)
+      .post('/agent/v2/orders')
+      .reply(function reply(uri) {
+        record.call(this, uri);
+        return [409, { status: 'error', error: { code: 'QUOTE_EXPIRED', message: 'expired' } }];
+      })
+      .post('/agent/v2/quotes/preview')
+      .reply(function reply(uri, body) {
+        record.call(this, uri);
+        return [200, upstreamReplyFor('POST', uri, body)];
+      })
+      .post('/agent/v2/orders')
+      .reply(function reply(uri, body) {
+        record.call(this, uri);
+        return [200, upstreamReplyFor('POST', uri, body)];
+      });
+
+    await send(
+      { method: 'post', path: '/agent/shop/v1/invoke', body: { operation: 'create_order', payload: TOKEN_LANE_REQUESTS.create_order } },
+      withKey ? { 'X-Checkout-Token': REAL_TOKEN, Authorization: `Bearer ${API_KEY}` } : { 'X-Checkout-Token': REAL_TOKEN },
+    );
+
+    const requote = calls.find((c) => c.path === '/agent/v2/quotes/preview');
+    assert.ok(requote, `no re-quote; calls: ${calls.map((c) => c.path).join(', ')}`);
+    assert.equal(requote.headers['x-checkout-token'], REAL_TOKEN);
+    assert.equal(requote.headers['x-api-key'], undefined);
+  });
+}
