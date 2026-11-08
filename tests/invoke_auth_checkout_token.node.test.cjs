@@ -362,3 +362,88 @@ test('API key + token still refuses an invalid key (the token cannot rescue it)'
   assert.equal(res.status, 401);
   assert.equal(res.body.message, 'Missing or invalid API key');
 });
+
+// ---- 7. after-sales runs on the caller's own agent key, never on the token beside it ----------------------
+//
+// pivota-backend (be#2760) lets a checkout token reach only the seven routes the hosted checkout page calls.
+// /agent/v1/orders/{id}/cancel and /agent/v2/orders/{id}/refunds are not among them, so forwarding the token
+// there (it used to win over the caller's key) is a 403 for every caller that sends both. The caller's key
+// goes instead, and the backend's agent-ownership check on that key decides. The gateway's own service key
+// never stands in: it would make every order this gateway created cancellable by any key holder.
+
+function introspectApiKey(agentId = 'agent_ui') {
+  nock(INTROSPECT_BASE)
+    .post(INTROSPECT_PATH, (body) => body?.api_key === API_KEY && body?.checkout_token === undefined)
+    .reply(200, { valid: true, agent_id: agentId, is_active: true, auth_source: 'api_keys' });
+}
+
+const AFTER_SALES = [
+  { action: 'cancel', path: '/agent/v1/orders/ord_1/cancel' },
+  { action: 'refund', path: '/agent/v2/orders/ord_1/refunds' },
+];
+
+for (const { action, path } of AFTER_SALES) {
+  test(`API key + token: request_after_sales ${action} goes upstream on the caller's key, without the token`, async () => {
+    delete process.env.AGENT_CHECKOUT_STRICT;
+    introspectApiKey();
+    const seen = [];
+    const upstream = nock(BACKEND_BASE)
+      .post(path)
+      .reply(function reply() {
+        seen.push({ ...this.req.headers });
+        return [200, { status: 'success', order_id: 'ord_1' }];
+      });
+
+    const res = await send(
+      {
+        method: 'post',
+        path: '/agent/shop/v1/invoke',
+        body: { operation: 'request_after_sales', payload: { status: { order_id: 'ord_1', requested_action: action } } },
+      },
+      { 'X-Checkout-Token': REAL_TOKEN, Authorization: `Bearer ${API_KEY}` },
+    );
+
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(upstream.isDone(), true);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]['x-checkout-token'], undefined);
+    assert.equal(seen[0]['x-api-key'], API_KEY);
+    assert.equal(seen[0].authorization, `Bearer ${API_KEY}`);
+  });
+}
+
+test('the token stays forwarded on the checkout ops beside a key (only after-sales drops it)', async () => {
+  delete process.env.AGENT_CHECKOUT_STRICT;
+  introspectApiKey();
+  const seen = [];
+  nock(BACKEND_BASE)
+    .post('/agent/v1/orders/ord_1/confirm-payment')
+    .reply(function reply() {
+      seen.push({ ...this.req.headers });
+      return [200, { order_id: 'ord_1', status: 'paid' }];
+    });
+  const res = await send(
+    { method: 'post', path: '/agent/shop/v1/invoke', body: { operation: 'confirm_payment', payload: { order_id: 'ord_1' } } },
+    { 'X-Checkout-Token': REAL_TOKEN, Authorization: `Bearer ${API_KEY}` },
+  );
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(seen[0]['x-checkout-token'], REAL_TOKEN);
+});
+
+test('a checkout token alone cannot request a cancel: 401 at the door, no introspect, no backend call', async () => {
+  delete process.env.AGENT_CHECKOUT_STRICT;
+  const { dials } = introspectCheckoutToken(REAL_TOKEN, validVerdict());
+  const upstream = nock(BACKEND_BASE).post(/.*/).reply(200, {});
+  const res = await send(
+    {
+      method: 'post',
+      path: '/agent/shop/v1/invoke',
+      body: { operation: 'request_after_sales', payload: { status: { order_id: 'ord_1', requested_action: 'cancel' } } },
+    },
+    { 'X-Checkout-Token': REAL_TOKEN },
+  );
+  assert.equal(res.status, 401);
+  assert.equal(res.body.error, 'UNAUTHORIZED');
+  assert.equal(dials.length, 0);
+  assert.equal(upstream.isDone(), false);
+});

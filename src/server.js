@@ -52372,8 +52372,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       url: `${url}${queryString}`,
       headers: {
         ...(upstreamMethod !== 'GET' && { 'Content-Type': 'application/json' }),
+        // request_after_sales (cancel -> /agent/v1/orders/{id}/cancel, refund -> /agent/v2/orders/{id}/refunds)
+        // runs on the caller's own agent key, never on an X-Checkout-Token beside it: pivota-backend lets a
+        // checkout token reach only the hosted checkout page's routes (be#2760), so the token would be a 403
+        // there, and it would win over the key. A token-only caller never gets here (the door accepts a token
+        // alone only for CHECKOUT_TOKEN_INVOKE_OPERATIONS). No fallback to the gateway's own service key either:
+        // the backend's agent-ownership check must run against the caller, not against this gateway.
         ...buildInvokeUpstreamAuthHeaders({
-          checkoutToken,
+          checkoutToken: operation === 'request_after_sales' ? null : checkoutToken,
+          allowInternalFallback: operation !== 'request_after_sales',
           preferInternalFallback: operation === 'get_product_detail',
         }),
         ...(searchPrimaryContract === 'internal_products_search_primitive'
