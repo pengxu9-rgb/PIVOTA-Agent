@@ -19,23 +19,33 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const supertest = require('supertest');
 
+const http = require('node:http');
 const {
   LEGACY_SEED_PROBE_HEADER,
+  LEGACY_SEED_PROBE_HOP_HEADER,
   finalizeInvokeSearchBody,
   installInvokeEgress,
   isInvokeResponseCommitted,
+  isLegacySeedProbeHop,
+  legacySeedProbeHopHeaders,
 } = require('../src/invokeEgress');
 const {
+  LEGACY_SEED_DETAIL_MATCH_CLAUSE,
+  LEGACY_SEED_OPENABLE_BATCH_SQL,
+  LEGACY_SEED_OPENABLE_CLAUSE,
+  SERVED_SEED_CURRENCIES,
+  confirmNoOpenableLegacySeeds,
+  createLegacySeedProbeBackoff,
   createLegacySeedProbeCache,
   dropUnopenableLegacySeedRows,
   legacySeedProbeDeadlineMs,
   legacySeedProbeCacheTtlMs,
+  legacySeedProbeFailureBackoffMs,
+  legacySeedDetailDbBudgetMs,
   projectLegacySeedRows,
+  __internal: legacySeedInternal,
 } = require('../src/services/legacySeedIdServability');
-const {
-  confirmNoActiveSeedMatchesBatch,
-  __internal: { ACTIVE_SEED_MATCH_BATCH_SQL, ACTIVE_SEED_MATCH_BRANCHES },
-} = require('../src/services/signatureSeedNotActive');
+const { seedCurrencySql } = require('../src/services/seedSearchOfferScope');
 
 const SHARED = 'external_seed';
 const legacyRow = (n) => ({
@@ -54,6 +64,12 @@ process.on('unhandledRejection', onUnhandled);
 test.after(() => process.off('unhandledRejection', onUnhandled));
 
 const tick = (ms = 0) => new Promise((ok) => setTimeout(ok, ms));
+
+// The drop remembers answers and failures per process (GD-2, P3-b); each test starts with neither.
+test.beforeEach(() => {
+  legacySeedInternal.PROCESS_PROBE_CACHE.clear();
+  legacySeedInternal.PROCESS_PROBE_BACKOFF.clear();
+});
 
 function deferred() {
   let resolve;
@@ -78,11 +94,13 @@ function appFor(handler, probe) {
   const app = express();
   app.use(express.json());
   app.post('/invoke', async (req, res, next) => {
-    installInvokeEgress(res, { operation: 'find_products_multi' }, {
+    // As server.js installs it: the hop flag comes from the request itself.
+    installInvokeEgress(res, { operation: 'find_products_multi', legacy_seed_probe_hop: isLegacySeedProbeHop(req) }, {
       finalize: (body, ctx) => finalizeInvokeSearchBody(body, ctx, {
         noActiveSeeds: probe.noActiveSeeds,
         env: {},
         cache: null,
+        backoff: null,
         deadlineMs: 2000,
       }),
     });
@@ -113,7 +131,7 @@ async function expectOneSearchResponse(handler) {
   assert.equal(unhandled.length, before, `no unhandled rejection: ${unhandled.slice(before).map(String).join('; ')}`);
   assert.equal(res.status, 200, `the FIRST answer (the search) is what the client gets: ${JSON.stringify(res.body)}`);
   assert.deepEqual(res.body.products.map((p) => p.product_id), [OPEN.product_id], 'and it is the dropped page');
-  assert.equal(res.headers[LEGACY_SEED_PROBE_HEADER.toLowerCase()], '1');
+  assert.equal(res.headers[LEGACY_SEED_PROBE_HEADER.toLowerCase()], undefined, 'an outside caller never gets the hop marker');
   return res;
 }
 
@@ -162,7 +180,9 @@ test('GD-1: something writes the socket directly while the probe is pending: the
   test.after(() => { logger.warn = originalWarn; });
   const settled = supertest(appFor(async (req, res) => {
     res.json(SEARCH);
-    res.status(503).end('written elsewhere');
+    // Around the response object: the one writer the egress cannot hold (P3-a).
+    res.statusCode = 503;
+    http.ServerResponse.prototype.end.call(res, 'written elsewhere');
   }, probe)).post('/invoke').send({}).then((r) => r);
   await tick(30);
   probe.release();
@@ -174,6 +194,69 @@ test('GD-1: something writes the socket directly while the probe is pending: the
   logger.warn = originalWarn;
   assert.ok(warned.some((m) => m.includes('not sent twice')), `it stood down rather than trying: ${warned.join(' | ')}`);
   assert.ok(!warned.some((m) => m.includes('failed to send')), 'it never tried to write a sent response');
+});
+
+test('P3-a: after a commit, res.json again, res.send, res.end, res.write, res.redirect, res.sendStatus and next(err) to the default handler: the first answer wins', async () => {
+  const cases = {
+    json: (req, res) => res.json(SEARCH),
+    send: (req, res) => res.status(502).send('text answer'),
+    end: (req, res) => { res.statusCode = 204; res.end(); },
+    write: (req, res) => { res.write('partial'); res.end('rest'); },
+    redirect: (req, res) => res.redirect('https://elsewhere.example/'),
+    sendStatus: (req, res) => res.sendStatus(503),
+  };
+  for (const [name, after] of Object.entries(cases)) {
+    const r = await expectOneSearchResponse(async (req, res) => {
+      res.json(SEARCH);
+      after(req, res);
+    });
+    assert.equal(r.headers.location, undefined, `${name}: the later step's headers are not merged in`);
+    assert.match(String(r.headers['content-type']), /application\/json/, name);
+  }
+  // Express's own finalhandler (no app error handler): it writes with res.end.
+  const probe = heldProbe();
+  const before = unhandled.length;
+  const app = express();
+  app.post('/invoke', (req, res, next) => {
+    installInvokeEgress(res, { operation: 'find_products_multi' }, {
+      finalize: (body, ctx) => finalizeInvokeSearchBody(body, ctx, { noActiveSeeds: probe.noActiveSeeds, env: {}, cache: null, backoff: null }),
+    });
+    res.json(SEARCH);
+    next(new Error('after the commit'));
+  });
+  const settled = supertest(app).post('/invoke').send({}).then((r) => r);
+  await tick(30);
+  probe.release();
+  const res = await settled;
+  await tick(30);
+  assert.equal(unhandled.length, before);
+  assert.equal(res.status, 200, res.text.slice(0, 200));
+  assert.deepEqual(res.body.products.map((p) => p.product_id), [OPEN.product_id]);
+});
+
+test('P3-c: the probe marker goes ONLY to this process\'s own loopback hop', async () => {
+  const run = async (headers) => {
+    const probe = heldProbe();
+    let r = supertest(appFor(async (req, res) => { res.json(SEARCH); }, probe)).post('/invoke');
+    for (const [k, v] of Object.entries(headers)) r = r.set(k, v);
+    const settled = r.send({}).then((x) => x);
+    await tick(20);
+    probe.release();
+    return settled;
+  };
+  const hop = await run(legacySeedProbeHopHeaders());
+  assert.equal(hop.headers[LEGACY_SEED_PROBE_HEADER.toLowerCase()], '1', 'the loopback hop is told');
+  const outside = await run({});
+  assert.equal(outside.headers[LEGACY_SEED_PROBE_HEADER.toLowerCase()], undefined, 'a caller without the token is not');
+  const forwarded = await run({ ...legacySeedProbeHopHeaders(), 'X-Forwarded-For': '203.0.113.7' });
+  assert.equal(forwarded.headers[LEGACY_SEED_PROBE_HEADER.toLowerCase()], undefined, 'nor one routed in from outside');
+  const forged = await run({ [LEGACY_SEED_PROBE_HOP_HEADER]: 'f'.repeat(48) });
+  assert.equal(forged.headers[LEGACY_SEED_PROBE_HEADER.toLowerCase()], undefined, 'nor a guessed token');
+  for (const body of [hop.body, outside.body]) {
+    assert.deepEqual(body.products.map((p) => p.product_id), [OPEN.product_id], 'the page is the same either way');
+  }
+  assert.equal(isLegacySeedProbeHop({ headers: legacySeedProbeHopHeaders(), socket: { remoteAddress: '203.0.113.9' } }), false);
+  assert.equal(isLegacySeedProbeHop(null), false);
 });
 
 test('GD-1: a deferred body that cannot be serialised is a 500, not a rejection', async () => {
@@ -221,6 +304,7 @@ for (const n of [4, 20, 50]) {
       noActiveSeeds: () => { calls += 1; return hung(); },
       env: {},
       cache: createLegacySeedProbeCache(),
+      backoff: createLegacySeedProbeBackoff(),
       deadlineMs: 120,
     });
     const elapsed = Date.now() - startedAt;
@@ -230,6 +314,7 @@ for (const n of [4, 20, 50]) {
       noActiveSeeds: async () => { throw new Error('no database'); },
       env: {},
       cache: createLegacySeedProbeCache(),
+      backoff: createLegacySeedProbeBackoff(),
     });
     assert.equal(JSON.stringify(r.body), JSON.stringify(failOpen.body), 'the hung page equals the fail-open page');
     assert.equal(r.body, body, 'and that is the page as sent with no check');
@@ -313,30 +398,78 @@ test('GD-2: an id the database did not answer is kept; only a literal true drops
   assert.equal(r.failedOpenCount, 2);
 });
 
-test('GD-2: the batch statement is the per-id match set, one row per requested id', async () => {
-  const sql = ACTIVE_SEED_MATCH_BATCH_SQL;
+test('P2-N1: the drop statement is the route\'s own gate, one row per id, any served currency in place of the buyer\'s', async () => {
+  const sql = LEGACY_SEED_OPENABLE_BATCH_SQL;
   assert.match(sql, /FROM unnest\(\$1::text\[\]\) AS req\(id\)/);
-  assert.doesNotMatch(sql, /\$1\b(?!::text\[\])/, '$1 is the array only; every branch is bound to req.id');
-  for (const [name, clause] of ACTIVE_SEED_MATCH_BRANCHES) {
-    assert.ok(sql.includes(`${clause.replace(/\$1\b/g, 'req.id')}) AS ${name}`), name);
-  }
+  assert.doesNotMatch(sql, /\$1\b(?!::text\[\])|\$2/, '$1 is the array only; every term is bound to req.id');
+  // The SAME clause as the route, with only the id and the currency term substituted.
+  const currencyEq = `AND ${seedCurrencySql('external_product_seeds')} = $2`;
+  assert.ok(LEGACY_SEED_DETAIL_MATCH_CLAUSE.includes(currencyEq));
+  const served = `AND ${seedCurrencySql('external_product_seeds')} IN (${SERVED_SEED_CURRENCIES.map((c) => `'${c}'`).join(', ')})`;
+  const expected = LEGACY_SEED_DETAIL_MATCH_CLAUSE.replace('external_product_id = $1', 'external_product_id = req.id').replace(currencyEq, served);
+  assert.equal(LEGACY_SEED_OPENABLE_CLAUSE, expected);
+  assert.ok(sql.includes(`EXISTS (SELECT 1 FROM external_product_seeds WHERE status = 'active' AND ${LEGACY_SEED_OPENABLE_CLAUSE}) AS openable`));
+  assert.ok(SERVED_SEED_CURRENCIES.includes('USD') && SERVED_SEED_CURRENCIES.includes('SGD'));
+
   const calls = [];
-  const row = (id, hit) => ({ product_id: id, ...Object.fromEntries(ACTIVE_SEED_MATCH_BRANCHES.map(([n]) => [n, n === 'seed_id' && hit])) });
-  const answers = await confirmNoActiveSeedMatchesBatch([OPEN.product_id, DEAD.product_id, OPEN.product_id, ''], {
+  const answers = await confirmNoOpenableLegacySeeds([OPEN.product_id, DEAD.product_id, OPEN.product_id, ''], {
     queryFn: async (text, params) => {
       calls.push(params);
-      return { rows: [row(OPEN.product_id, true), row(DEAD.product_id, false)] };
+      return { rows: [{ product_id: OPEN.product_id, openable: true }, { product_id: DEAD.product_id, openable: false }] };
     },
   });
   assert.deepEqual(calls, [[[OPEN.product_id, DEAD.product_id]]], 'deduplicated, blanks dropped, one call');
-  assert.equal(answers.get(OPEN.product_id), false, 'any branch active: not dead');
+  assert.equal(answers.get(OPEN.product_id), false, 'openable: not dead');
   assert.equal(answers.get(DEAD.product_id), true);
-  await assert.rejects(confirmNoActiveSeedMatchesBatch([OPEN.product_id], { queryFn: async () => ({ rows: [{ product_id: OPEN.product_id }] }) }));
-  await assert.rejects(confirmNoActiveSeedMatchesBatch([OPEN.product_id], { queryFn: async () => ({ rows: [row('other', false)] }) }));
-  await assert.rejects(confirmNoActiveSeedMatchesBatch([OPEN.product_id], { queryFn: async () => null }));
-  await assert.rejects(confirmNoActiveSeedMatchesBatch([OPEN.product_id], {}));
-  const partial = await confirmNoActiveSeedMatchesBatch([OPEN.product_id, DEAD.product_id], {
-    queryFn: async () => ({ rows: [row(DEAD.product_id, false)] }),
+  await assert.rejects(confirmNoOpenableLegacySeeds([OPEN.product_id], { queryFn: async () => ({ rows: [{ product_id: OPEN.product_id }] }) }));
+  await assert.rejects(confirmNoOpenableLegacySeeds([OPEN.product_id], { queryFn: async () => ({ rows: [{ product_id: OPEN.product_id, openable: 'false' }] }) }));
+  await assert.rejects(confirmNoOpenableLegacySeeds([OPEN.product_id], { queryFn: async () => ({ rows: [{ product_id: 'other', openable: false }] }) }));
+  await assert.rejects(confirmNoOpenableLegacySeeds([OPEN.product_id], { queryFn: async () => null }));
+  await assert.rejects(confirmNoOpenableLegacySeeds([OPEN.product_id], {}));
+  const partial = await confirmNoOpenableLegacySeeds([OPEN.product_id, DEAD.product_id], {
+    queryFn: async () => ({ rows: [{ product_id: DEAD.product_id, openable: false }] }),
   });
   assert.equal(partial.has(OPEN.product_id), false, 'an id with no answer row is unknown');
+});
+
+test('P3-b: a failed ask backs off: the next pages do not ask, keep their rows, then ask again', async () => {
+  let clock = 1000;
+  const backoff = createLegacySeedProbeBackoff({ now: () => clock });
+  let calls = 0;
+  const failing = async () => { calls += 1; throw new Error('deadline'); };
+  const answering = async (ids) => { calls += 1; return new Map(ids.map((id) => [id, id === DEAD.product_id])); };
+  const opts = { env: {}, cache: null, backoff, backoffMs: 5000 };
+  const first = await dropUnopenableLegacySeedRows(SEARCH, { ...opts, noActiveSeeds: failing });
+  assert.equal(first.body, SEARCH);
+  assert.equal(calls, 1);
+  const during = await dropUnopenableLegacySeedRows(SEARCH, { ...opts, noActiveSeeds: answering });
+  assert.equal(calls, 1, 'nothing is asked while backing off');
+  assert.equal(during.body, SEARCH, 'the page is the fail-open page');
+  assert.equal(during.backedOff, true);
+  clock += 5001;
+  const after = await dropUnopenableLegacySeedRows(SEARCH, { ...opts, noActiveSeeds: answering });
+  assert.equal(calls, 2, 'asked again once the backoff is over');
+  assert.deepEqual(after.droppedIds, [DEAD.product_id]);
+  // A hung probe trips it too (the deadline is a failure).
+  const hungBackoff = createLegacySeedProbeBackoff();
+  await dropUnopenableLegacySeedRows(SEARCH, { env: {}, cache: null, backoff: hungBackoff, backoffMs: 5000, deadlineMs: 20, noActiveSeeds: hung });
+  assert.equal(hungBackoff.active(), true);
+  // Cached answers still apply while backing off.
+  const cache = createLegacySeedProbeCache();
+  cache.set(DEAD.product_id, true, 60000);
+  const cachedDuring = await dropUnopenableLegacySeedRows(SEARCH, { env: {}, cache, cacheTtlMs: 60000, backoff: hungBackoff, noActiveSeeds: answering });
+  assert.deepEqual(cachedDuring.droppedIds, [DEAD.product_id]);
+  // 0 turns it off.
+  const off = createLegacySeedProbeBackoff();
+  await dropUnopenableLegacySeedRows(SEARCH, { env: {}, cache: null, backoff: off, backoffMs: 0, noActiveSeeds: failing });
+  assert.equal(off.active(), false);
+});
+
+test('P3-b / P3-f: the knobs and their clamps', () => {
+  assert.equal(legacySeedProbeFailureBackoffMs({}), 5000);
+  assert.equal(legacySeedProbeFailureBackoffMs({ SEARCH_LEGACY_SEED_PROBE_FAILURE_BACKOFF_MS: '0' }), 0);
+  assert.equal(legacySeedProbeFailureBackoffMs({ SEARCH_LEGACY_SEED_PROBE_FAILURE_BACKOFF_MS: '999999' }), 60000);
+  assert.equal(legacySeedDetailDbBudgetMs({}), 800);
+  assert.equal(legacySeedDetailDbBudgetMs({ LEGACY_SEED_DETAIL_DB_BUDGET_MS: '1' }), 50);
+  assert.equal(legacySeedDetailDbBudgetMs({ LEGACY_SEED_DETAIL_DB_BUDGET_MS: '99999' }), 5000);
 });

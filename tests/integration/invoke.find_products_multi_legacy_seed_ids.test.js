@@ -95,18 +95,14 @@ describe('legacy seed ids on the invoke and REST search doors', () => {
     process.env.DATABASE_URL = 'postgres://127.0.0.1:1/legacy_seed_stub';
     const realDb = jest.requireActual('../../src/db');
     const probes = [];
-    // One statement per page since review GD-2: $1 is the array of ids, one answer row per id.
+    // One statement per page since review GD-2: $1 is the array of ids, one answer row per id (`openable`: the
+    // legacy route's own gate passes for some buyer, P2-N1).
     const fakeQuery = async (sql, params) => {
       const text = String(sql || '');
-      if (/EXISTS \(SELECT 1 FROM external_product_seeds WHERE status = 'active'/.test(text)) {
+      if (/FROM unnest\(\$1::text\[\]\) AS req\(id\)/.test(text)) {
         const asked = params && Array.isArray(params[0]) ? params[0] : [];
         probes.push(...asked);
-        return {
-          rows: asked.map((id) => ({
-            product_id: id, external_product_id: id === LEGACY_OPEN, seed_id: false, seed_data_external_product_id: false,
-            seed_data_product_id: false, seed_snapshot_product_id: false,
-          })),
-        };
+        return { rows: asked.map((id) => ({ product_id: id, openable: id === LEGACY_OPEN })) };
       }
       return { rows: [] };
     };
@@ -127,6 +123,8 @@ describe('legacy seed ids on the invoke and REST search doors', () => {
     expect(served).toContain(LEGACY_OPEN);
     expect(served).toContain(SIG);
     expect(served).not.toContain(LEGACY_DEAD);
+    // P3-c: the probe marker is an internal hop marker; a direct caller never sees it.
+    expect(resp.headers['x-pivota-legacy-seed-probe']).toBeUndefined();
   });
 
   // Review GD-2: one statement per page under one total deadline. With a database that never answers, a page
@@ -170,6 +168,32 @@ describe('legacy seed ids on the invoke and REST search doors', () => {
     expect(ids(hung.resp.body)).toEqual(ids(failOpen.resp.body));
     expect(ids(hung.resp.body).length).toBeGreaterThan(0);
     expect(hung.elapsed - failOpen.elapsed).toBeLessThan(100 + 600);
+  });
+
+  it('REST GET /agent/v1/products/search: with the database answering, the probe marker does not leave (P3-c)', async () => {
+    process.env.DATABASE_URL = 'postgres://127.0.0.1:1/legacy_seed_stub';
+    const realDb = jest.requireActual('../../src/db');
+    let probes = 0;
+    const fakeQuery = async (sql, params) => {
+      if (/FROM unnest\(\$1::text\[\]\) AS req\(id\)/.test(String(sql || ''))) {
+        probes += 1;
+        return { rows: (params[0] || []).map((id) => ({ product_id: id, openable: id === LEGACY_OPEN })) };
+      }
+      return { rows: [] };
+    };
+    jest.doMock('../../src/db', () => ({
+      ...realDb,
+      query: fakeQuery,
+      queryWithBudget: (sql, params) => fakeQuery(sql, params),
+      withClient: async (fn) => fn({ query: async () => ({ rows: [] }), release() {} }),
+    }));
+    mockUpstream(ROWS());
+    const app = require('../../src/server');
+    const resp = await request(app).get('/agent/v1/products/search').query({ query: 'Brand A', limit: 10 });
+    expect(resp.status).toBe(200);
+    expect(probes).toBe(1);
+    expect(ids(resp.body)).not.toContain(LEGACY_DEAD);
+    expect(resp.headers['x-pivota-legacy-seed-probe']).toBeUndefined();
   });
 
   it('REST GET /agent/v1/products/search goes through the same egress', async () => {

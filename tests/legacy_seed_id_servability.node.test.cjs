@@ -62,6 +62,11 @@ const SEED_ROW = {
 const LEGACY_QUARANTINED = 'shop-q:00000000000000e1';
 const LEGACY_ATTACHED = 'shop-t:00000000000000e2';
 const LEGACY_SGD = 'shop-s:00000000000000e3';
+// P2-N1: a seed that holds a legacy id only in seed_data (a re-keyed seed that kept its old id there), and an
+// inactive one.
+const LEGACY_SEED_DATA_ONLY = 'shop-r:00000000000000e5';
+const LEGACY_INACTIVE = 'shop-i:00000000000000e6';
+const LEGACY_CART = 'shop-k:00000000000000e7';
 const QUARANTINED_DOMAINS = new Set(['shop-q.example']);
 const seedFor = (id, overrides) => ({
   ...SEED_ROW,
@@ -81,7 +86,30 @@ const SEEDS = [
     price_currency: 'SGD',
     seed_data: { brand: 'Brand S', title: 'Brand S sunscreen 50ml', snapshot: { price_currency: 'SGD' } },
   }),
+  seedFor('ext_rekeyed_placeholder_2', {
+    domain: 'shop-r.example',
+    title: 'Brand R re-keyed cleanser',
+    seed_data: { brand: 'Brand R', title: 'Brand R re-keyed cleanser', product_id: LEGACY_SEED_DATA_ONLY },
+  }),
+  seedFor(LEGACY_INACTIVE, { domain: 'shop-i.example', title: 'Brand I retired mist', status: 'inactive' }),
+  // P3-e: a seed whose variant links into the merchant's cart (what a declined merchant must not be handed).
+  seedFor(LEGACY_CART, {
+    domain: 'shop-k.example',
+    destination_url: 'https://shop-k.example/products/kit',
+    title: 'Brand K starter kit',
+    price_amount: 20,
+    seed_data: { brand: 'Brand K', title: 'Brand K starter kit', variants: [{ id: 'v1', price: 20, currency: 'USD', url: 'https://shop-k.example/cart/111:1' }] },
+  }),
 ];
+const SERVED_CURRENCIES = new Set(['AUD', 'CAD', 'EUR', 'GBP', 'HKD', 'JPY', 'KRW', 'SEK', 'SGD', 'USD']);
+// The legacy gate as the statement states it: each term is emulated only when the statement carries it, so a
+// term removed from the SQL lets the row through here exactly as it would in the database.
+function seedsPassingGate(text, pid, currencyOk) {
+  return SEEDS.filter((r) => r.status === 'active' && r.external_product_id === pid)
+    .filter((r) => !/attached_product_key IS NULL/.test(text) || r.attached_product_key == null)
+    .filter((r) => !/catalog_source_quarantine/.test(text) || !QUARANTINED_DOMAINS.has(String(r.domain).toLowerCase()))
+    .filter(currencyOk);
+}
 // The seed's own currency, as seedSearchOfferScope.seedCurrencySql reads it (column, else the page read).
 const seedCurrency = (r) => String(r.price_currency || r.seed_data?.snapshot?.price_currency || '').trim().toUpperCase();
 const seedQueries = [];
@@ -89,33 +117,28 @@ const budgetedQueries = [];
 process.env.DATABASE_URL = 'postgres://127.0.0.1:1/legacy_seed_stub';
 const dbPath = require.resolve('../src/db/index.js');
 const realDb = require('../src/db');
-const MATCH_BRANCHES = ['external_product_id', 'seed_id', 'seed_data_external_product_id', 'seed_data_product_id', 'seed_snapshot_product_id'];
 let probeFails = false;
 async function fakeQuery(sql, params) {
   const text = String(sql || '');
-  // The search-side probe: signatureSeedNotActive's ACTIVE_SEED_MATCH_SQL, one boolean per match branch.
-  // Since review GD-2 it is ONE statement per page: $1 is the array of ids, one answer row per id.
-  if (/EXISTS \(SELECT 1 FROM external_product_seeds WHERE status = 'active'/.test(text)) {
+  // The search-side probe (P2-N1: the route's own gate for any served currency), ONE statement per page: $1 is
+  // the array of ids, one answer row per id.
+  if (/FROM unnest\(\$1::text\[\]\) AS req\(id\)/.test(text)) {
     seedQueries.push({ sql: 'probe', params });
     if (probeFails) throw new Error('connection refused');
     const ids = Array.isArray(params) && Array.isArray(params[0]) ? params[0] : [];
+    const servedOnly = /END\) IN \(/.test(text);
     return {
-      rows: ids.map((id) => {
-        const row = { product_id: id, ...Object.fromEntries(MATCH_BRANCHES.map((name) => [name, false])) };
-        if (id === LEGACY_OPEN) row.external_product_id = true;
-        return row;
-      }),
+      rows: ids.map((id) => ({
+        product_id: id,
+        openable: seedsPassingGate(text.replace(/req\.id/g, '$1'), id, (r) => !servedOnly || SERVED_CURRENCIES.has(seedCurrency(r))).length > 0,
+      })),
     };
   }
-  // The re-routed legacy read (review GD-3): its gates are emulated only when the statement carries them, so a
-  // gate removed from the SQL lets the row through here exactly as it would in the database.
+  // The re-routed legacy read (review GD-3).
   if (/FROM\s+external_product_seeds/i.test(text) && Array.isArray(params) && params.length === 2) {
     seedQueries.push({ sql: text, params, gated: true });
     const [pid, currency] = params;
-    const rows = SEEDS.filter((r) => r.status === 'active' && r.external_product_id === pid)
-      .filter((r) => !/attached_product_key IS NULL/.test(text) || r.attached_product_key == null)
-      .filter((r) => !/catalog_source_quarantine/.test(text) || !QUARANTINED_DOMAINS.has(String(r.domain).toLowerCase()))
-      .filter((r) => !/END\) = \$2/.test(text) || seedCurrency(r) === currency);
+    const rows = seedsPassingGate(text, pid, (r) => !/END\) = \$2/.test(text) || seedCurrency(r) === currency);
     return { rows: rows.slice(0, 1) };
   }
   // The seed-DB detail lane.
@@ -149,21 +172,32 @@ const {
   legacyRowDecision,
   projectLegacySeedRows,
   routesToLegacySeedLane,
+  confirmNoOpenableLegacySeeds,
   LEGACY_SEED_DETAIL_MATCH_CLAUSE,
   isLegacySeedDetailServable,
   legacySeedDetailGate,
   __internal: legacySeedInternal,
 } = require('../src/services/legacySeedIdServability');
 const { seedCurrencySql } = require('../src/services/seedSearchOfferScope');
-const { finalizeInvokeSearchBody, installInvokeEgress, projectInvokeResponse } = require('../src/invokeEgress');
+const {
+  LEGACY_SEED_PROBE_HOP_HEADER,
+  finalizeInvokeSearchBody,
+  installInvokeEgress,
+  legacySeedProbeHopHeaders,
+  projectInvokeResponse,
+} = require('../src/invokeEgress');
 const app = require('../src/server');
 
 test.after(() => {
   nock.cleanAll();
   process.env = { ...ORIGINAL_ENV };
 });
-// The drop remembers the database's answers for a few seconds (review GD-2); each test starts with none.
-test.beforeEach(() => legacySeedInternal.PROCESS_PROBE_CACHE.clear());
+// The drop remembers the database's answers (review GD-2) and its failures (P3-b) for a few seconds; each test
+// starts with neither.
+test.beforeEach(() => {
+  legacySeedInternal.PROCESS_PROBE_CACHE.clear();
+  legacySeedInternal.PROCESS_PROBE_BACKOFF.clear();
+});
 
 // ---- rows, as search hands them back -----------------------------------------------------------------
 const SHARED = 'external_seed';
@@ -453,18 +487,23 @@ test('GD-2 E2E /mcp: the whole page is asked about in ONE statement', async () =
 
 test('GD-2 E2E /mcp: a page the loopback egress already probed is not probed again by the kernel', async () => {
   nock.cleanAll();
+  const hopHeaders = [];
   nock(process.env.SELF_INVOKE_BASE)
     .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
-    .reply(200, { status: 'success', products: [ROUTED, DEAD] }, { 'X-Pivota-Legacy-Seed-Probe': '1' });
+    .reply(function reply() {
+      hopHeaders.push(this.req.headers[LEGACY_SEED_PROBE_HOP_HEADER.toLowerCase()]);
+      return [200, { status: 'success', products: [ROUTED, DEAD] }, { 'X-Pivota-Legacy-Seed-Probe': '1' }];
+    });
   const token = await tokenFor();
   seedQueries.length = 0;
   const search = JSON.stringify(await mcpCall(token, 'search_catalog', { query: 'already probed placeholder e2e' }));
   nock.cleanAll();
+  assert.deepEqual(hopHeaders, [legacySeedProbeHopHeaders()[LEGACY_SEED_PROBE_HOP_HEADER]], 'the hop carries this process\'s token (P3-c)');
   assert.equal(seedQueries.filter((q) => q.sql === 'probe').length, 0, 'the second pass is skipped');
   assert.ok(search.includes(DEAD.product_id), 'the loopback hop decided what this page holds');
 });
 
-test('GD-4: a re-keyed id already on the page is served once, the first one kept; nothing else is deduplicated', () => {
+test('GD-4 / P3-g: a re-keyed id already on the page is served once, as the row that was not re-keyed, in the first slot', () => {
   const sig = WITH_SIG.pivota_signature_id;
   const observed = { id: sig, product_id: sig, merchant_id: 'merch_obs_0000000000000004', title: 'observed row' };
   const twinA = { product_id: 'brand-x', merchant_id: 'merch_0000000000000005' };
@@ -473,8 +512,14 @@ test('GD-4: a re-keyed id already on the page is served once, the first one kept
   assert.deepEqual(first.body.products.map((p) => p.title || p.product_id), ['observed row', 'brand-x', 'a pre-existing duplicate', ROUTED.title]);
   assert.equal(first.dedupedCount, 1);
   assert.equal(first.body.total, 4, 'total follows');
-  const rekeyedFirst = projectLegacySeedRows({ products: [WITH_SIG, observed] });
-  assert.deepEqual(rekeyedFirst.body.products.map((p) => p.merchant_id), [SHARED], 'the first of the two stays');
+  const rekeyedFirst = projectLegacySeedRows({ products: [ROUTED, WITH_SIG, CONNECTED, observed] });
+  assert.deepEqual(
+    rekeyedFirst.body.products.map((p) => p.title || p.product_id),
+    [ROUTED.title, 'observed row', CONNECTED.product_id],
+    'the observed seller\'s row is kept, in the slot the re-keyed copy held',
+  );
+  const onlyCopies = projectLegacySeedRows({ products: [WITH_SIG, { ...WITH_SIG, title: 'second copy' }] });
+  assert.deepEqual(onlyCopies.body.products.map((p) => p.merchant_id + (p.title ? `:${p.title}` : '')), [SHARED], 'only copies: the first stays');
   const noRekey = { products: [twinA, twinB] };
   assert.equal(projectLegacySeedRows(noRekey).body, noRekey, 'a page with no re-key is the same object');
 });
@@ -624,8 +669,9 @@ test('GD-3: the normal US path is unchanged: a declared US buyer gets what silen
   assert.equal(silent.status, 200);
   assert.equal(silent.body.product?.title, 'Brand A barrier cream 50ml');
   assert.equal(String(silent.body.product?.currency).toUpperCase(), 'USD');
-  const stable = (v) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'generated_at' ? undefined : x)));
-  assert.deepEqual(stable(declared.body), stable(silent.body));
+  const stable = (v) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'generated_at' || k === 'market_assumed' ? undefined : x)));
+  assert.deepEqual(stable(declared.body), stable(silent.body), 'the same answer; only the label differs (D-10)');
+  assert.equal(declared.body.market_assumed, undefined, 'a declared US is not an assumed one');
 
   const kernelSilent = await kernelDetail(LEGACY_OPEN);
   const kernelUs = await kernelDetail(LEGACY_OPEN, 'US');
@@ -645,7 +691,7 @@ test('GD-4: the direct door answers a legacy id through its normal detail flow (
   assert.equal(hits.length, 0);
 });
 
-// Last in the file: it leaves detail cache entries behind. The shared seller's detail is not cached by default
+// It leaves detail cache entries behind (the tests after it tolerate a cached US answer). The shared seller's detail is not cached by default
 // (TTL 0); with a TTL configured, a US answer must not be replayed to an SG buyer.
 test('GD-3: with the detail cache on, a cached US answer is never replayed to an SG buyer', async () => {
   nock.cleanAll();
@@ -664,6 +710,170 @@ test('GD-3: with the detail cache on, a cached US answer is never replayed to an
     refusedByTheSeedLane(JSON.stringify(sg.body), hits, 'SG after a cached US answer');
   } finally {
     delete process.env.PRODUCT_DETAIL_CACHE_TTL_MS_EXTERNAL_SEED;
+    nock.cleanAll();
+  }
+});
+
+// ---- second delta review ----------------------------------------------------------------------------------
+
+const ALL_MARKETS = ['US', 'GB', 'JP', 'FR', 'AU', 'SE', 'KR', 'HK', 'SG', 'CA'];
+
+test('P2-N1: the drop and the route are one rule: kept exactly when some buyer is served it; refused for a non-currency reason means dropped', async () => {
+  const ids = [LEGACY_OPEN, LEGACY_SGD, LEGACY_QUARANTINED, LEGACY_ATTACHED, LEGACY_SEED_DATA_ONLY, LEGACY_INACTIVE, DEAD.product_id];
+  const dead = await confirmNoOpenableLegacySeeds(ids, { queryFn: fakeQuery });
+  nock.cleanAll();
+  backendDetailTrap();
+  for (const id of ids) {
+    const servedIn = [];
+    for (const market of ALL_MARKETS) {
+      const r = await kernelDetail(id, market).catch(() => null);
+      if (r && r.metadata && r.metadata.legacy_seed_route === true) servedIn.push(market);
+    }
+    assert.equal(dead.get(id), servedIn.length === 0, `${id}: dropped=${dead.get(id)} but served in [${servedIn}]`);
+  }
+  nock.cleanAll();
+  for (const id of [LEGACY_QUARANTINED, LEGACY_ATTACHED, LEGACY_SEED_DATA_ONLY, LEGACY_INACTIVE]) {
+    assert.equal(dead.get(id), true, `${id} cannot open, so search drops it`);
+  }
+  assert.equal(dead.get(LEGACY_OPEN), false);
+  assert.equal(dead.get(LEGACY_SGD), false, 'an SGD seed opens for an SG buyer, so it stays');
+});
+
+test('P2-N1 E2E /mcp: search no longer serves the quarantined, attached or seed_data-only legacy row', async () => {
+  nock.cleanAll();
+  const row = (pid) => ({ id: pid, product_id: pid, merchant_id: SHARED, title: `row ${pid}` });
+  nock(process.env.SELF_INVOKE_BASE)
+    .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+    .reply(200, { status: 'success', products: [ROUTED, row(LEGACY_QUARANTINED), row(LEGACY_ATTACHED), row(LEGACY_SEED_DATA_ONLY)] });
+  const token = await tokenFor();
+  const search = JSON.stringify(await mcpCall(token, 'search_catalog', { query: 'aligned drop placeholder e2e' }));
+  nock.cleanAll();
+  assert.ok(search.includes(LEGACY_OPEN), search.slice(0, 400));
+  for (const id of [LEGACY_QUARANTINED, LEGACY_ATTACHED, LEGACY_SEED_DATA_ONLY]) assert.ok(!search.includes(id), id);
+});
+
+test('P3-f: the re-routed detail statement runs under its own short budget', async () => {
+  nock.cleanAll();
+  backendDetailTrap();
+  budgetedQueries.length = 0;
+  const r = await kernelDetail(LEGACY_OPEN, 'US');
+  nock.cleanAll();
+  assert.equal(r.product?.title, 'Brand A barrier cream 50ml');
+  const gated = budgetedQueries.filter((q) => q.sql.includes('attached_product_key IS NULL') && !q.sql.includes('unnest('));
+  assert.equal(gated.length, 1);
+  assert.equal(gated[0].options && gated[0].options.timeoutMs, 800);
+});
+
+test('P3-d: a legacy answer to a request that named no market says it was answered as US (D-10); a named one does not', async () => {
+  const { MARKET_ASSUMED_MESSAGE } = require('../src/services/requestMarket');
+  nock.cleanAll();
+  backendDetailTrap();
+  const silent = await directDetail({ merchant_id: SHARED, product_id: LEGACY_OPEN });
+  const blank = await directDetail({ merchant_id: SHARED, product_id: LEGACY_OPEN }, { payload: { market: '  ' } });
+  const us = await directDetail({ merchant_id: SHARED, product_id: LEGACY_OPEN }, { payload: { market: 'US' } });
+  const usMeta = await directDetail({ merchant_id: SHARED, product_id: LEGACY_OPEN }, { metadata: { market: 'US' } });
+  const sg = await directDetail({ merchant_id: SHARED, product_id: LEGACY_SGD }, { payload: { market: 'SG' } });
+  const refused = await directDetail({ merchant_id: SHARED, product_id: DEAD.product_id });
+  nock.cleanAll();
+  for (const r of [silent, blank]) {
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.market_assumed, { code: 'US', message: MARKET_ASSUMED_MESSAGE });
+  }
+  for (const r of [us, usMeta, sg]) assert.equal(r.body.market_assumed, undefined, JSON.stringify(r.body).slice(0, 200));
+  assert.equal(refused.body.market_assumed, undefined, 'only an answer the re-route gave is labelled');
+
+  // A legacy pair the seed lane does not hold, answered 200 by its old route: not a re-route answer, no label.
+  nock(process.env.PIVOTA_API_BASE)
+    .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'get_product_detail')
+    .reply(200, { status: 'success', success: true, product: { product_id: DEAD.product_id, merchant_id: SHARED, title: 'old route answer' } });
+  const oldRoute = await directDetail({ merchant_id: SHARED, product_id: DEAD.product_id });
+  nock.cleanAll();
+  assert.equal(oldRoute.body.product?.title, 'old route answer', JSON.stringify(oldRoute.body).slice(0, 300));
+  assert.equal(oldRoute.body.market_assumed, undefined);
+});
+
+test('P3-e: with the gate off, the offer seam is not even asked', async () => {
+  const { applyLegacySeedPurchasabilityGate } = require('../src/services/legacySeedIdServability');
+  let asked = 0;
+  const offersPriority = {
+    readOfferMerchantDomain: () => { asked += 1; return 'shop-k.example'; },
+    resolveOfferPurchasabilityDecisions: async () => { asked += 1; return new Set(['shop-k.example']); },
+    enrichOfferCommerceMetadata: (o) => { asked += 1; return o; },
+  };
+  const product = { title: 'k', destination_url: 'https://shop-k.example/products/kit' };
+  assert.equal(await applyLegacySeedPurchasabilityGate(product, { market: 'US', env: {}, deps: { offersPriority } }), product);
+  assert.equal(asked, 0);
+  const armed = await applyLegacySeedPurchasabilityGate(product, { market: 'US', env: { MERCHANT_PURCHASABILITY_GATE_ENABLED: '1' }, deps: { offersPriority } });
+  assert.ok(asked > 0 && armed !== product, 'armed: the seam is asked and its decline applied');
+});
+
+test('P3-e: with the purchasability gate armed, a declined merchant\'s re-routed detail loses its cart link; allowed or off, it is unchanged', async () => {
+  const client = require('../src/services/merchantPurchasabilityClient');
+  const fact = (tier) => ({ domain: 'shop-k.example', market: 'US', tier, human_handoff_tier: tier, enforced: true, sweep_enabled: true });
+  const run = async (answer) => {
+    client.resetMerchantPurchasabilityClientForTest();
+    nock.cleanAll();
+    backendDetailTrap();
+    const asked = [];
+    if (answer) {
+      nock(process.env.PIVOTA_API_BASE)
+        .get('/ops/merchant-purchasability')
+        .query((q) => { asked.push(q); return true; })
+        .reply(200, answer);
+    }
+    const r = await kernelDetail(LEGACY_CART, 'US');
+    nock.cleanAll();
+    return { r, asked };
+  };
+  const off = await run(null);
+  assert.equal(off.r.product.variants[0].url, 'https://shop-k.example/cart/111:1', 'gate off: the detail as it was');
+  assert.equal(off.r.product.purchase_route, undefined);
+
+  process.env[client.GATE_FLAG_ENV] = '1';
+  process.env[client.OPS_TOKEN_ENV] = 'ops-token-fixture';
+  try {
+    const declined = await run(fact('browse_only'));
+    assert.deepEqual(declined.asked.map((q) => [q.domain, q.market]), [['shop-k.example', 'US']], 'asked once, for the seed merchant and the buyer market');
+    const p = declined.r.product;
+    assert.equal(p.title, 'Brand K starter kit', 'the page itself is still served');
+    assert.ok(!JSON.stringify(p).includes('/cart/111:1'), 'the cart link is gone');
+    assert.equal(p.destination_url, 'https://shop-k.example/products/kit', 'the browse link stays');
+    assert.equal(p.purchase_route, 'affiliate_outbound');
+    assert.deepEqual(p.merchant_purchasability, { offer: false, market: 'US' });
+
+    const allowed = await run(fact('purchase'));
+    assert.equal(allowed.asked.length, 1);
+    assert.equal(allowed.r.product.variants[0].url, 'https://shop-k.example/cart/111:1', 'allowed: unchanged');
+    assert.equal(allowed.r.product.merchant_purchasability, undefined);
+
+    const silent = await (async () => {
+      client.resetMerchantPurchasabilityClientForTest();
+      nock.cleanAll();
+      backendDetailTrap();
+      const asked = [];
+      nock(process.env.PIVOTA_API_BASE).get('/ops/merchant-purchasability').query((q) => { asked.push(q); return true; }).reply(200, fact('browse_only'));
+      const r = await kernelDetail(LEGACY_CART);
+      nock.cleanAll();
+      return { r, asked };
+    })();
+    assert.deepEqual(silent.asked.map((q) => q.market), ['US'], 'no market named: asked as US, the market it is answered for');
+
+    client.resetMerchantPurchasabilityClientForTest();
+    nock.cleanAll();
+    backendDetailTrap();
+    const sgAsked = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/ops/merchant-purchasability')
+      .query((q) => { sgAsked.push(q); return true; })
+      .reply(200, { ...fact('purchase'), domain: 'shop-s.example', market: 'SG' });
+    const sg = await kernelDetail(LEGACY_SGD, 'SG');
+    nock.cleanAll();
+    assert.equal(sg.product?.title, 'Brand S sunscreen 50ml');
+    assert.deepEqual(sgAsked.map((q) => [q.domain, q.market]), [['shop-s.example', 'SG']], 'the buyer market is the one asked about');
+  } finally {
+    delete process.env[client.GATE_FLAG_ENV];
+    delete process.env[client.OPS_TOKEN_ENV];
+    client.resetMerchantPurchasabilityClientForTest();
     nock.cleanAll();
   }
 });

@@ -29,7 +29,9 @@
 // the route (no send/end/write/redirect/sendStatus/jsonp, no manual writeHead), and
 // tests/invoke_egress_chokepoint.node.test.cjs fails if that stops being true.
 
+const crypto = require('crypto');
 const logger = require('./logger');
+const { isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const {
   dropUnopenableLegacySeedRows,
   isLegacySeedProjectedOp,
@@ -41,9 +43,37 @@ const INSTALLED = Symbol('pivotaInvokeEgressInstalled');
 // answer, even though `res.headersSent` still reads false until the send happens.
 const COMMITTED = Symbol('pivotaInvokeEgressCommitted');
 
+// While a deferred send is being written (and only then), the writes below go through (P3-a).
+const DELIVERING = Symbol('pivotaInvokeEgressDelivering');
+
 // On a search response whose legacy seed rows this door asked the database about: the commerce kernel's
 // loopback hop reads it and does not ask again for the same page (review GD-2).
+//
+// P3-c: ONLY on that hop. It is an internal hop marker, so it is set only when the request carries this
+// process's own hop token (LEGACY_SEED_PROBE_HOP_HEADER, minted at process start, never configured, logged or
+// sent anywhere but this process's own loopback search) over a loopback socket with no X-Forwarded-For (the
+// same socket rule as the loopback caller assertion). Every other caller, direct invoke and REST search
+// included, never sees it. It is never trusted inbound: the kernel reads it only off its own loopback response.
 const LEGACY_SEED_PROBE_HEADER = 'X-Pivota-Legacy-Seed-Probe';
+const LEGACY_SEED_PROBE_HOP_HEADER = 'X-Pivota-Legacy-Seed-Probe-Hop';
+const LEGACY_SEED_PROBE_HOP_TOKEN = crypto.randomBytes(24).toString('hex');
+
+/** The request headers the kernel's loopback search hop carries (src/server.js invokeCommerceKernelRawUpstream). */
+function legacySeedProbeHopHeaders() {
+  return { [LEGACY_SEED_PROBE_HOP_HEADER]: LEGACY_SEED_PROBE_HOP_TOKEN };
+}
+
+/** Is this request this process's own loopback search hop? Never throws. */
+function isLegacySeedProbeHop(req) {
+  try {
+    const raw = req && req.headers ? req.headers[LEGACY_SEED_PROBE_HOP_HEADER.toLowerCase()] : null;
+    if (typeof raw !== 'string' || raw.length !== LEGACY_SEED_PROBE_HOP_TOKEN.length) return false;
+    if (!isLoopbackSelfCall(req)) return false;
+    return crypto.timingSafeEqual(Buffer.from(raw), Buffer.from(LEGACY_SEED_PROBE_HOP_TOKEN));
+  } catch (_) {
+    return false;
+  }
+}
 
 /**
  * Has this response been answered? True once headers are out or the stream has ended, AND while the egress
@@ -141,8 +171,47 @@ function finalizeInvokeSearchBody(body, ctx = {}, { noActiveSeeds, noActiveSeed,
 //   - the response is COMMITTED (isInvokeResponseCommitted): a later `res.json` on it is dropped, and the
 //     status a later `res.status(n)` wrote is put back, so the client gets the FIRST answer, exactly as it did
 //     when every send was synchronous;
+//   - P3-a: the same holds for the other public writers: `res.send`, `res.end` and `res.write` (and so
+//     `res.redirect`, `res.sendStatus` and Express's default error handler, which all write through them) are
+//     dropped too, until the deferred send writes, and the status and headers a later step set are put back to
+//     what they were at the commit. Only a writer that goes around the response object (the
+//     http.ServerResponse prototype, the raw socket) can still answer first, and then:
 //   - the deferred send never sends twice: if anything else wrote to the socket meanwhile, it stands down;
 //   - nothing it does can reject: every step is caught.
+// P3-a: the response is answered as it stood when it was committed. A later step's headers (a redirect's
+// Location, a text answer's Content-Type) are not merged into it.
+function snapshotHeaders(res) {
+  try {
+    return typeof res.getHeaders === 'function' ? { ...res.getHeaders() } : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function restoreHeaders(res, snapshot) {
+  if (!snapshot || typeof res.getHeaderNames !== 'function') return;
+  for (const name of res.getHeaderNames()) {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, name)) res.removeHeader(name);
+  }
+  for (const [name, value] of Object.entries(snapshot)) res.setHeader(name, value);
+}
+
+// P3-a: once committed, the response's other public writers answer nothing until the deferred send writes.
+function holdOtherWrites(res, ctx) {
+  for (const name of ['send', 'end', 'write']) {
+    const original = res[name];
+    if (typeof original !== 'function') continue;
+    res[name] = function heldWrite(...args) {
+      if (res[DELIVERING]) return original.apply(this, args);
+      warnEgress(
+        { op: ctx && ctx.operation, door: 'invoke_egress', method: name },
+        'invoke egress: a write to a response already answered was dropped',
+      );
+      return name === 'write' ? true : res;
+    };
+  }
+}
+
 function installInvokeEgress(
   res,
   ctx = {},
@@ -196,7 +265,17 @@ function installInvokeEgress(
         if (pending && typeof pending.then === 'function') {
           const sendProjected = projected;
           Object.defineProperty(res, COMMITTED, { value: true, enumerable: false, configurable: true });
+          holdOtherWrites(res, ctx);
           const statusAtCommit = res.statusCode;
+          const headersAtCommit = snapshotHeaders(res);
+          const writeThrough = (body) => {
+            res[DELIVERING] = true;
+            try {
+              return originalJson(body);
+            } finally {
+              res[DELIVERING] = false;
+            }
+          };
           const deliver = (finalBody) => {
             if (res.headersSent || res.writableEnded) {
               warnEgress(
@@ -207,8 +286,11 @@ function installInvokeEgress(
             }
             try {
               res.statusCode = statusAtCommit;
-              if (typeof res.setHeader === 'function') res.setHeader(LEGACY_SEED_PROBE_HEADER, '1');
-              originalJson(finalBody === undefined || finalBody === null ? sendProjected : finalBody);
+              restoreHeaders(res, headersAtCommit);
+              if (ctx && ctx.legacy_seed_probe_hop === true && typeof res.setHeader === 'function') {
+                res.setHeader(LEGACY_SEED_PROBE_HEADER, '1');
+              }
+              writeThrough(finalBody === undefined || finalBody === null ? sendProjected : finalBody);
             } catch (err) {
               warnEgress(
                 { op: ctx && ctx.operation, door: 'invoke_egress', err: err && err.message },
@@ -217,7 +299,7 @@ function installInvokeEgress(
               if (res.headersSent || res.writableEnded) return;
               try {
                 res.statusCode = 500;
-                originalJson({ error: 'INTERNAL_ERROR', message: 'Internal Server Error' });
+                writeThrough({ error: 'INTERNAL_ERROR', message: 'Internal Server Error' });
               } catch (_) {
                 // nothing left to do; never reject from an egress hook
               }
@@ -241,8 +323,11 @@ module.exports = {
   COMMITTED,
   INSTALLED,
   LEGACY_SEED_PROBE_HEADER,
+  LEGACY_SEED_PROBE_HOP_HEADER,
   finalizeInvokeSearchBody,
   installInvokeEgress,
   isInvokeResponseCommitted,
+  isLegacySeedProbeHop,
+  legacySeedProbeHopHeaders,
   projectInvokeResponse,
 };

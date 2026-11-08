@@ -25,16 +25,22 @@
 //      - otherwise the legacy id is kept, because route 1 opens it, and a row with no link gets its
 //        destination page as `url`;
 //      - `drop` (async, dropUnopenableLegacySeedRows): TRULY CANNOT OPEN = no signature on the row AND the
-//        database answers that no ACTIVE seed matches the id on any branch of the seed lane's own match set
-//        (signatureSeedNotActive.confirmNoActiveSeedMatches, the twin of the lane's lookup). A probe that
-//        cannot be asked (no database, an error, a timeout) keeps the row. Only this case is dropped, and
-//        only while SEARCH_DROP_LEGACY_SEED_IDS is on (default on).
+//        database answers that no seed passes the route's own gate for ANY buyer (confirmNoOpenableLegacySeeds,
+//        built from the same clause as the route, below). A probe that cannot be asked (no database, an error,
+//        a timeout, the failure backoff) keeps the row. Only this case is dropped, and only while
+//        SEARCH_DROP_LEGACY_SEED_IDS is on (default on).
 //
 // Everything else (`ext_…`/`ext:…`, `sig_`, observed sellers, connected merchants) is not touched.
 //
-// REVIEW GD-2: the drop asks the database ONCE per page (signatureSeedNotActive.confirmNoActiveSeedMatchesBatch),
-// under one TOTAL deadline that fails open (the page is sent as it would be with no check), and remembers each
-// answer for a few seconds (createLegacySeedProbeCache), so a slow or hung database adds at most the deadline.
+// REVIEW GD-2: the drop asks the database ONCE per page (confirmNoOpenableLegacySeeds), under one TOTAL deadline
+// that fails open (the page is sent as it would be with no check), remembers each answer for a few seconds
+// (createLegacySeedProbeCache), and after a failed ask does not ask again for a few seconds
+// (createLegacySeedProbeBackoff), so a slow or hung database adds at most the deadline, and an incident does
+// not leave one more orphaned statement per search page.
+//
+// REVIEW P2-N1 (second delta): the drop and the route are ONE rule. The drop keeps a row exactly when the route
+// can open it for some buyer: both statements are built from the same clause parts (LEGACY_SEED_GATE_PARTS),
+// the route binding the buyer's currency and the drop accepting any currency a market is served in.
 //
 // REVIEW GD-3: the route opens a legacy id only through `legacySeedDetailGate`, the gates a normal seed detail
 // read is held to: no seed from a quarantined source, no seed attached to a catalog product (that product is
@@ -46,6 +52,8 @@ const { resolveServingCurrency } = require('./buyerMarket');
 const { filterProductsToServingCurrency } = require('./servingCurrencyGuard');
 const { seedCurrencySql } = require('./seedSearchOfferScope');
 const { buildQuarantineAntiJoinSql } = require('./sourceQuarantine');
+const { BUYER_REGION_CURRENCY } = require('../auroraBff/buyerRegion');
+const { isGateEnabled: isPurchasabilityGateEnabled } = require('./merchantPurchasabilityClient');
 
 // `<slug>:<16 lowercase hex>`. The slug is `_normalize_token(domain)` with spaces turned to '-', so only
 // [a-z0-9] runs joined by single '-'.
@@ -159,23 +167,43 @@ function projectLegacySeedRows(body) {
   });
   if (!rekeyedCount && !linkedCount) return { ...none, probeIds };
   // GD-4: a re-keyed row can now carry the same id as a row already on the page (a shared-seller legacy row
-  // with sig X next to the observed seller's own row for sig X). One id is one result: the first one stays.
-  // Only ids a re-key produced are judged, so a page with no re-key, or its other rows, is not touched.
+  // with sig X next to the observed seller's own row for sig X). One id is one result. The row that was NOT
+  // re-keyed is preferred (P3-g: the observed seller's own row is the listing; the re-keyed one is the shared
+  // seller's copy of it), and it takes the place of the first occurrence, so the product keeps its rank. With
+  // only re-keyed copies, the first stays. Only ids a re-key produced are judged, so a page with no re-key, or
+  // its other rows, is not touched.
   const rekeyedIds = new Set();
-  holder.products.forEach((row) => {
-    if (legacyRowDecision(row) === 'rekey') rekeyedIds.add(rowSignature(row));
+  const rekeyedIndexes = new Set();
+  holder.products.forEach((row, index) => {
+    if (legacyRowDecision(row) === 'rekey') {
+      rekeyedIds.add(rowSignature(row));
+      rekeyedIndexes.add(index);
+    }
+  });
+  const preferred = new Map();
+  products.forEach((row, index) => {
+    const pid = row && typeof row === 'object' ? rowProductId(row) : '';
+    if (!pid || !rekeyedIds.has(pid)) return;
+    const current = preferred.get(pid);
+    if (!current || (current.rekeyed && !rekeyedIndexes.has(index))) {
+      preferred.set(pid, { row, rekeyed: rekeyedIndexes.has(index) });
+    }
   });
   const seen = new Set();
   let dedupedCount = 0;
-  const unique = products.filter((row) => {
+  const unique = [];
+  products.forEach((row) => {
     const pid = row && typeof row === 'object' ? rowProductId(row) : '';
-    if (!pid || !rekeyedIds.has(pid)) return true;
+    if (!pid || !rekeyedIds.has(pid)) {
+      unique.push(row);
+      return;
+    }
     if (seen.has(pid)) {
       dedupedCount += 1;
-      return false;
+      return;
     }
     seen.add(pid);
-    return true;
+    unique.push(preferred.get(pid).row);
   });
   const extra = dedupedCount && typeof holder.total === 'number'
     ? { total: Math.max(unique.length, holder.total - dedupedCount) }
@@ -190,6 +218,14 @@ const DEFAULT_PROBE_DEADLINE_MS = 250;
 // turns the cache off.
 const DEFAULT_PROBE_CACHE_TTL_MS = 30000;
 const PROBE_CACHE_MAX_ENTRIES = 5000;
+// P3-b: after a failed ask (the deadline, an error), how long the drop does not ask at all and keeps every
+// unanswered row. A timed-out statement keeps running server-side until statement_timeout; without this, each
+// search page during a database incident would leave one more of them. SEARCH_LEGACY_SEED_PROBE_FAILURE_BACKOFF_MS,
+// clamped to [0, 60000]; 0 turns it off.
+const DEFAULT_PROBE_FAILURE_BACKOFF_MS = 5000;
+// P3-f: the budget of the re-routed detail statement (the route's own read). Past it the pair keeps the route it
+// had before. LEGACY_SEED_DETAIL_DB_BUDGET_MS, clamped to [50, 5000].
+const DEFAULT_DETAIL_DB_BUDGET_MS = 800;
 
 function clampedIntEnv(raw, fallback, min, max) {
   const text = String(raw ?? '').trim();
@@ -205,6 +241,30 @@ function legacySeedProbeDeadlineMs(env = process.env) {
 
 function legacySeedProbeCacheTtlMs(env = process.env) {
   return clampedIntEnv(env.SEARCH_LEGACY_SEED_PROBE_CACHE_TTL_MS, DEFAULT_PROBE_CACHE_TTL_MS, 0, 300000);
+}
+
+function legacySeedProbeFailureBackoffMs(env = process.env) {
+  return clampedIntEnv(env.SEARCH_LEGACY_SEED_PROBE_FAILURE_BACKOFF_MS, DEFAULT_PROBE_FAILURE_BACKOFF_MS, 0, 60000);
+}
+
+function legacySeedDetailDbBudgetMs(env = process.env) {
+  return clampedIntEnv(env.LEGACY_SEED_DETAIL_DB_BUDGET_MS, DEFAULT_DETAIL_DB_BUDGET_MS, 50, 5000);
+}
+
+/** P3-b: per process, "a recent ask failed: do not ask again until then". */
+function createLegacySeedProbeBackoff({ now = () => Date.now() } = {}) {
+  let until = 0;
+  return {
+    active() {
+      return now() < until;
+    },
+    trip(ms) {
+      if (ms > 0) until = Math.max(until, now() + ms);
+    },
+    clear() {
+      until = 0;
+    },
+  };
 }
 
 /** A small per-process TTL cache of the database's answers: id -> true (no active seed) | false (one is active). */
@@ -236,6 +296,7 @@ function createLegacySeedProbeCache({ maxEntries = PROBE_CACHE_MAX_ENTRIES, now 
 }
 
 const PROCESS_PROBE_CACHE = createLegacySeedProbeCache();
+const PROCESS_PROBE_BACKOFF = createLegacySeedProbeBackoff();
 
 function withDeadline(promise, ms) {
   let timer = null;
@@ -271,7 +332,10 @@ function batchFromPerId(noActiveSeed) {
  *
  * GD-2: ONE call per page, under ONE total deadline (`deadlineMs`); past it, or on any failure, every
  * unanswered row is kept, so the page is exactly the fail-open page. Answers are remembered for `cacheTtlMs`.
- * @returns {Promise<{ body: any, droppedIds: string[], failedOpenCount: number, cachedCount: number }>}
+ * P3-b: a failed ask trips `backoff` for `backoffMs`; while it is active nothing is asked (cached answers still
+ * apply) and the unanswered rows are kept.
+ * @returns {Promise<{ body: any, droppedIds: string[], failedOpenCount: number, cachedCount: number,
+ *   backedOff: boolean }>}
  */
 async function dropUnopenableLegacySeedRows(
   body,
@@ -282,10 +346,12 @@ async function dropUnopenableLegacySeedRows(
     deadlineMs = legacySeedProbeDeadlineMs(env),
     cache = PROCESS_PROBE_CACHE,
     cacheTtlMs = legacySeedProbeCacheTtlMs(env),
+    backoff = PROCESS_PROBE_BACKOFF,
+    backoffMs = legacySeedProbeFailureBackoffMs(env),
   } = {},
 ) {
   const holder = productsHolder(body);
-  const none = { body, droppedIds: [], failedOpenCount: 0, cachedCount: 0 };
+  const none = { body, droppedIds: [], failedOpenCount: 0, cachedCount: 0, backedOff: false };
   const ask = typeof noActiveSeeds === 'function'
     ? noActiveSeeds
     : typeof noActiveSeed === 'function' ? batchFromPerId(noActiveSeed) : null;
@@ -309,7 +375,8 @@ async function dropUnopenableLegacySeedRows(
     }
   }
   const toAsk = Array.from(new Set(candidates.map((c) => c.pid).filter((pid) => !answers.has(pid))));
-  if (toAsk.length) {
+  const backedOff = toAsk.length > 0 && Boolean(backoff) && backoff.active();
+  if (toAsk.length && !backedOff) {
     try {
       const fresh = await withDeadline(ask(toAsk), deadlineMs);
       if (fresh instanceof Map) {
@@ -321,7 +388,9 @@ async function dropUnopenableLegacySeedRows(
         }
       }
     } catch (_) {
-      // could not ask (no database, an error, the deadline): every unanswered row is kept
+      // could not ask (no database, an error, the deadline): every unanswered row is kept, and the next pages
+      // do not ask for a while (P3-b)
+      if (backoff) backoff.trip(backoffMs);
     }
   }
 
@@ -332,7 +401,7 @@ async function dropUnopenableLegacySeedRows(
     if (value === true) dead.add(index);
     else if (value !== false) failedOpenCount += 1;
   }
-  if (!dead.size) return { body, droppedIds: [], failedOpenCount, cachedCount };
+  if (!dead.size) return { body, droppedIds: [], failedOpenCount, cachedCount, backedOff };
   const droppedIds = [];
   const products = holder.products.filter((row, index) => {
     if (!dead.has(index)) return true;
@@ -342,7 +411,7 @@ async function dropUnopenableLegacySeedRows(
   const extra = typeof holder.total === 'number'
     ? { total: Math.max(products.length, holder.total - droppedIds.length) }
     : {};
-  return { body: withProducts(body, holder, products, extra), droppedIds, failedOpenCount, cachedCount };
+  return { body: withProducts(body, holder, products, extra), droppedIds, failedOpenCount, cachedCount, backedOff };
 }
 
 // ---- GD-3: the gates a re-routed legacy detail read is held to -------------------------------------------
@@ -357,19 +426,67 @@ async function dropUnopenableLegacySeedRows(
 //   - its source is not quarantined. external_product_seeds carries only a domain, so only `domain`
 //     quarantines can match a seed row (the backend's seed seam passes NULL for the other three for the same
 //     reason); the domain expression is table-qualified, as the backend's is.
+//
+// P2-N1: the search drop is built from the SAME parts (`openableClause`), with the currency term widened from "the
+// buyer's" to "a currency some market is served in" (BUYER_REGION_CURRENCY, the map resolveServingCurrency reads),
+// because the drop answers for every buyer at once. So "the drop keeps it" is exactly "the route opens it for
+// some buyer", and a quarantined, attached, seed_data-only, seed-id-only, inactive or currency-less seed leaves
+// search instead of being served as a link that 404s.
 const SEED_TABLE = 'external_product_seeds';
-const LEGACY_SEED_DETAIL_MATCH_CLAUSE = [
-  'external_product_id = $1',
-  'AND attached_product_key IS NULL',
-  `AND ${seedCurrencySql(SEED_TABLE)} = $2`,
-  buildQuarantineAntiJoinSql({
-    domainExpr: `${SEED_TABLE}.domain`,
-    merchantExpr: 'NULL',
-    platformExpr: 'NULL',
-    sourceSystemExpr: 'NULL',
-    sourceRefExpr: 'NULL',
-  }),
-].join('\n      ');
+const SEED_CURRENCY_SQL = seedCurrencySql(SEED_TABLE);
+const SERVED_SEED_CURRENCIES = Object.freeze(
+  Array.from(new Set(Object.values(BUYER_REGION_CURRENCY).map((c) => String(c).trim().toUpperCase())))
+    .filter((c) => /^[A-Z]{3}$/.test(c))
+    .sort(),
+);
+function legacySeedGateClause(idExpr, currencyTerm) {
+  return [
+    `external_product_id = ${idExpr}`,
+    'AND attached_product_key IS NULL',
+    `AND ${SEED_CURRENCY_SQL} ${currencyTerm}`,
+    buildQuarantineAntiJoinSql({
+      domainExpr: `${SEED_TABLE}.domain`,
+      merchantExpr: 'NULL',
+      platformExpr: 'NULL',
+      sourceSystemExpr: 'NULL',
+      sourceRefExpr: 'NULL',
+    }),
+  ].join('\n      ');
+}
+const LEGACY_SEED_DETAIL_MATCH_CLAUSE = legacySeedGateClause('$1', '= $2');
+const LEGACY_SEED_SERVED_CURRENCY_TERM = `IN (${SERVED_SEED_CURRENCIES.map((c) => `'${c}'`).join(', ')})`;
+const LEGACY_SEED_OPENABLE_CLAUSE = legacySeedGateClause('req.id', LEGACY_SEED_SERVED_CURRENCY_TERM);
+
+// The drop's statement: one row per requested id, `openable` = the route opens it for some buyer.
+const LEGACY_SEED_OPENABLE_BATCH_SQL = `
+  SELECT
+    req.id AS product_id,
+    EXISTS (SELECT 1 FROM ${SEED_TABLE} WHERE status = 'active' AND ${LEGACY_SEED_OPENABLE_CLAUSE}) AS openable
+  FROM unnest($1::text[]) AS req(id)
+`;
+
+/**
+ * The drop's question for a page of ids, in ONE statement: Map id -> true when NO seed passes the route's gate
+ * for any buyer (no lane can open it), false when one does. An id the statement did not answer is absent
+ * (unknown: the row is kept). Throws on a failed query or a malformed answer.
+ */
+async function confirmNoOpenableLegacySeeds(productIds, { queryFn }) {
+  const ids = Array.from(new Set((Array.isArray(productIds) ? productIds : []).map((v) => text(v)).filter(Boolean)));
+  if (!ids.length) return new Map();
+  if (typeof queryFn !== 'function') throw new Error('no database is configured');
+  const res = await queryFn(LEGACY_SEED_OPENABLE_BATCH_SQL, [ids]);
+  if (!res || !Array.isArray(res.rows)) throw new Error('legacy seed openable batch returned no rows');
+  const requested = new Set(ids);
+  const out = new Map();
+  for (const row of res.rows) {
+    if (!row || typeof row !== 'object') throw new Error('legacy seed openable batch returned a malformed row');
+    const id = typeof row.product_id === 'string' ? row.product_id : '';
+    if (!requested.has(id)) throw new Error('legacy seed openable batch answered an id it was not asked');
+    if (typeof row.openable !== 'boolean') throw new Error('legacy seed openable column is not boolean');
+    out.set(id, row.openable === false);
+  }
+  return out;
+}
 
 /**
  * What a re-routed legacy read may serve for this buyer: null when the buyer's market has no single serving
@@ -391,6 +508,48 @@ function isLegacySeedDetailServable(product, gate) {
   return filterProductsToServingCurrency([product], gate.servingCurrency).length === 1;
 }
 
+function hostOf(url) {
+  try {
+    return new URL(text(url)).hostname.toLowerCase().replace(/^www\./, '');
+  } catch (_) {
+    return '';
+  }
+}
+
+/**
+ * P3-e: the merchant-purchasability gate, as a re-routed detail meets it. Off (MERCHANT_PURCHASABILITY_GATE_ENABLED,
+ * the default) nothing is asked and the product is returned AS IS. Armed, the seed's merchant (its destination
+ * page's host) is asked about for `market` through the SAME seam every offer path uses
+ * (offersPriority.resolveOfferPurchasabilityDecisions, rail human, fail open); when it declines, the product goes
+ * through the same decline (enrichOfferCommerceMetadata: every checkout URL on the merchant's host and every
+ * "buyable here" claim removed, `purchase_route` the referral one) and keeps its browse link.
+ * `deps` is injectable for a test; the defaults are the real seam.
+ */
+async function applyLegacySeedPurchasabilityGate(product, { market, env = process.env, deps = {} } = {}) {
+  if (!product || typeof product !== 'object' || !isPurchasabilityGateEnabled(env)) return product;
+  const offersPriority = deps.offersPriority || require('../offers/offersPriority');
+  const domain = hostOf(product.destination_url) || hostOf(product.url) || hostOf(product.source_url);
+  if (!domain) return product;
+  const asked = { execution_spec: { merchant_domain: domain } };
+  const key = offersPriority.readOfferMerchantDomain(asked);
+  let declined = null;
+  try {
+    declined = await offersPriority.resolveOfferPurchasabilityDecisions([asked], {
+      market,
+      env,
+      ...(typeof deps.shouldOfferPurchase === 'function' ? { shouldOfferPurchase: deps.shouldOfferPurchase } : {}),
+    });
+  } catch (_) {
+    return product; // the seam does not throw; if it ever does, the previous behaviour
+  }
+  if (!(declined instanceof Set) || !key || !declined.has(key)) return product;
+  const gated = offersPriority.enrichOfferCommerceMetadata({ ...product, execution_spec: asked.execution_spec }, {
+    declinedDomains: declined,
+  });
+  const { execution_spec: _spec, ...out } = gated;
+  return { ...out, merchant_purchasability: { offer: false, market: market || null } };
+}
+
 const SEARCH_OPS = new Set(['find_products_multi', 'find_products']);
 
 /** The search ops whose responses this projection applies to (invoke egress and the commerce kernel). */
@@ -400,7 +559,13 @@ function isLegacySeedProjectedOp(op) {
 
 module.exports = {
   LEGACY_SEED_DETAIL_MATCH_CLAUSE,
+  LEGACY_SEED_OPENABLE_BATCH_SQL,
+  LEGACY_SEED_OPENABLE_CLAUSE,
   LEGACY_SEED_PRODUCT_ID_RE,
+  SERVED_SEED_CURRENCIES,
+  applyLegacySeedPurchasabilityGate,
+  confirmNoOpenableLegacySeeds,
+  createLegacySeedProbeBackoff,
   createLegacySeedProbeCache,
   dropUnopenableLegacySeedRows,
   isLegacySeedDetailServable,
@@ -409,10 +574,12 @@ module.exports = {
   isLegacySeedProjectedOp,
   isSharedSeedSeller,
   legacyRowDecision,
+  legacySeedDetailDbBudgetMs,
   legacySeedDetailGate,
   legacySeedProbeCacheTtlMs,
   legacySeedProbeDeadlineMs,
+  legacySeedProbeFailureBackoffMs,
   projectLegacySeedRows,
   routesToLegacySeedLane,
-  __internal: { PROCESS_PROBE_CACHE },
+  __internal: { PROCESS_PROBE_BACKOFF, PROCESS_PROBE_CACHE },
 };

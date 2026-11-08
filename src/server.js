@@ -38,8 +38,11 @@ const {
   finalizeInvokeSearchBody,
   installInvokeEgress,
   isInvokeResponseCommitted,
+  isLegacySeedProbeHop,
+  legacySeedProbeHopHeaders,
   projectInvokeResponse,
 } = require('./invokeEgress');
+const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('./services/requestMarket');
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
@@ -223,7 +226,6 @@ const {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
   SEED_DATA_UNGUARDED_MATCH_CLAUSE,
   SEED_EXACT_MATCHES,
-  confirmNoActiveSeedMatchesBatch,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
 } = require('./services/signatureSeedNotActive');
@@ -5608,10 +5610,12 @@ async function fetchExternalSeedProductDetailFromDb(args) {
     const exactMatches = legacySeedGate ? [] : SEED_EXACT_MATCHES;
 
     if (legacySeedGate) {
-      const res = await query(selectColumns.replace('%%MATCH_CLAUSE%%', legacySeedGate.matchClause), [
-        productId,
-        String(legacySeedGate.servingCurrency || '').trim().toUpperCase(),
-      ]);
+      // P3-f: under its own short budget, so a hung database answers a legacy pair with its old route quickly.
+      const gatedSql = selectColumns.replace('%%MATCH_CLAUSE%%', legacySeedGate.matchClause);
+      const gatedParams = [productId, String(legacySeedGate.servingCurrency || '').trim().toUpperCase()];
+      const res = typeof dbModuleForLaneDeadlines.queryWithBudget === 'function'
+        ? await dbModuleForLaneDeadlines.queryWithBudget(gatedSql, gatedParams, { timeoutMs: legacySeedDetailDbBudgetMs() })
+        : await query(gatedSql, gatedParams);
       row = Array.isArray(res?.rows) ? res.rows[0] : null;
       if (!row) return null;
     }
@@ -32604,16 +32608,20 @@ function resolveSelfInvokeBudget(defaultTimeoutMs) {
 // and the merchant-scoped one, which goes to the Python backend where we cannot audit per-buyer behaviour.
 const COMMERCE_CACHED_READ_OPS = new Set(['find_products_multi', 'find_products']);
 const {
+  applyLegacySeedPurchasabilityGate,
+  confirmNoOpenableLegacySeeds,
   dropUnopenableLegacySeedRows,
   isLegacySeedDetailServable,
+  legacySeedDetailDbBudgetMs,
   legacySeedDetailGate,
   legacySeedProbeDeadlineMs,
   routesToLegacySeedLane,
 } = require('./services/legacySeedIdServability');
 
 // The search-side probe, for a whole page in ONE statement (review GD-2): a Map id -> true only when the
-// database answers that no active seed matches that id on the seed lane's own match set. It throws when it
-// cannot ask (no database, an error), and the rows are then kept. The statement runs under the drop's own
+// database answers that no seed passes the legacy route's own gate for any buyer (P2-N1: the drop and the route
+// are one rule, legacySeedIdServability.confirmNoOpenableLegacySeeds). It throws when it cannot ask (no
+// database, an error), and the rows are then kept. The statement runs under the drop's own
 // deadline (queryWithBudget), so a hung one hands its connection back instead of holding a pool slot.
 function legacySeedProbeQuery(sql, params) {
   const budgeted = dbModuleForLaneDeadlines.queryWithBudget;
@@ -32623,7 +32631,7 @@ function legacySeedProbeQuery(sql, params) {
 }
 
 function legacySeedNoActiveSeeds(productIds) {
-  return confirmNoActiveSeedMatchesBatch(productIds, {
+  return confirmNoOpenableLegacySeeds(productIds, {
     queryFn: process.env.DATABASE_URL ? legacySeedProbeQuery : undefined,
   });
 }
@@ -32648,7 +32656,13 @@ async function readLegacySeedDetail(merchantId, productId, { requestedMarket } =
       legacySeedGate,
     });
     if (!seedDetail || !seedDetail.product) return null;
-    return isLegacySeedDetailServable(seedDetail.product, legacySeedGate) ? seedDetail : null;
+    if (!isLegacySeedDetailServable(seedDetail.product, legacySeedGate)) return null;
+    // P3-e: the merchant-purchasability gate, as every offer path meets it (a no-op while it is off). An
+    // unnamed market is asked about as US, the market it is answered for (D-10).
+    const product = await applyLegacySeedPurchasabilityGate(seedDetail.product, {
+      market: resolveRequestMarket(requestedMarket).market,
+    });
+    return product === seedDetail.product ? seedDetail : { ...seedDetail, product };
   } catch (_) {
     return null;
   }
@@ -32902,6 +32916,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // The door, caller and request id this call is made for, so the loopback invoke's price lines name
       // them (src/observability/priceVerificationLog.js). Log labels only; {} unless PRICE_VERIFICATION_LOG.
       ...(url.startsWith(`${selfInvokeBase()}/`) ? priceContextHeaders() : {}),
+      // The loopback search hop asks this process's invoke egress to say whether it probed the page's legacy seed
+      // rows (LEGACY_SEED_PROBE_HEADER, read below). A per-process token: outside callers never get the header.
+      ...(selfInvoked && op === 'find_products_multi' ? legacySeedProbeHopHeaders() : {}),
       ...headers,
     },
     data: requestBody,
@@ -42997,6 +43014,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     {
       operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
       client_channel: clientChannel,
+      // P3-c: only this process's own loopback search hop is told that its page was probed.
+      legacy_seed_probe_hop: isLegacySeedProbeHop(req),
     },
     {
       // D-06: on a search response, legacy seed rows no lane can open are dropped once the database says so.
@@ -53792,6 +53811,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...upstreamData,
           cache: productDetailCacheMeta,
         };
+      }
+      // D-10 / P3-d: a legacy seed answer for a request that named no market was answered as US; it says so.
+      // Added after the detail cache, never into it, so a declared-US read of the same entry is not labelled.
+      if (
+        productDetailLegacySeedRoute &&
+        marketIsUnnamed(productDetailLegacySeedMarket) &&
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        upstreamData.metadata &&
+        upstreamData.metadata.legacy_seed_route === true
+      ) {
+        upstreamData = { ...upstreamData, market_assumed: marketAssumedLabel() };
       }
     }
 
