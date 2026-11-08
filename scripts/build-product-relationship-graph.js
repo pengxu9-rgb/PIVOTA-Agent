@@ -33,6 +33,7 @@ const {
   interleaveCandidateHydrationTargets,
   loadProductRelationshipGraphSourceInputs,
   normalizeProductCandidateSnapshot,
+  candidatePriceCheckedAtField,
   __internal: sourceInternals,
 } = require('../src/auroraBff/productRelationshipGraphSources');
 const {
@@ -569,6 +570,8 @@ function normalizeProductDataRow(row, sourceType) {
     price,
     source_refs: [{ type: sourceType, authoritative: true }],
     price_observed_at: row.updated_at || row.cached_at || row.created_at || new Date().toISOString(),
+    // The price READ time, never the row-write time above (RELGRAPH_CANDIDATE_PRICE_CHECKED_AT; off: absent).
+    ...candidatePriceCheckedAtField(row, row && typeof row.seed_data === 'object' ? row.seed_data : {}),
     evidence_grade: 'B',
   };
 }

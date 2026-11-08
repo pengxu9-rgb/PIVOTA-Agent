@@ -1124,6 +1124,9 @@ function makeRecommendProducts(deps = {}) {
     }
 
     let signals;
+    // With a ceiling: each served item's rung (ok | unverifiable | violation), so the list price tiers reorder
+    // only inside a rung and freshness never lifts a known violator over an item that honours the ceiling.
+    const ceilingRung = new Map();
     let violationsReturned = 0;
     let unverifiedReturned = 0;
     if (!enforcing) {
@@ -1135,18 +1138,24 @@ function makeRecommendProducts(deps = {}) {
       // they are suppressed above instead.
       const verdicts = new Map(groundedSignals.map((s) => [s, checkPriceMax(s, ceiling)]));
       signals = groundedSignals.filter((s) => verdicts.get(s) === 'ok').slice(0, limit);
+      for (const s of signals) ceilingRung.set(s, 'ok');
       for (const rung of ['unverifiable', 'violation']) {
         for (const s of groundedSignals) {
           if (signals.length >= limit) break;
           if (verdicts.get(s) !== rung) continue;
-          if (rung === 'violation') { signals.push(markPriceViolation(s, ceiling)); violationsReturned += 1; }
-          else { signals.push(markPriceUnverifiable(s, ceiling)); unverifiedReturned += 1; }
+          const marked = rung === 'violation' ? markPriceViolation(s, ceiling) : markPriceUnverifiable(s, ceiling);
+          ceilingRung.set(marked, rung);
+          signals.push(marked);
+          if (rung === 'violation') violationsReturned += 1;
+          else unverifiedReturned += 1;
         }
       }
     }
     // THE LIST PRICE TIERS (services/listPriceTiers.js): each item's price_as_of + price_source, and the 7-day
-    // staleness demote. A ceiling (or a need that asks for the cheapest) guards the answer: a stale price is never
-    // the first item while a fresh one is in the shortlist. Applied BEFORE the ranks are numbered, so `rank` is
+    // staleness demote. A ceiling (or a need that asks for the cheapest) guards the answer: inside each ceiling
+    // rung, a stale price is never ahead of a fresh one; the rungs themselves (conforming, unverifiable, known
+    // violation) never move. `live` means the PDP check read the merchant during THIS call: the PDP overlay
+    // serves answers up to 10 min old, which are `cache`. Applied BEFORE the ranks are numbered, so `rank` is
     // the served order. Both flags off: `signals` is untouched.
     if (listPriceTiers.listPriceTiersActive()) {
       try {
@@ -1156,6 +1165,9 @@ function makeRecommendProducts(deps = {}) {
           withNode: (s, product) => { s.value.product = product; return s; },
           hint: (s) => (priceStamps && priceStamps.get(s)) || null,
           answerGuard: enforcing || listPriceTiers.isCheapestQuery(need),
+          group: enforcing ? (s) => ceilingRung.get(s) || 'ok' : undefined,
+          nowMs: now(),
+          liveFromMs: startedAt - listPriceTiers.LIVE_SLACK_MS,
           log: (event, fields) => logger?.info?.({ event, ...fields }, event),
         });
         signals = tiered.rows;
@@ -1395,6 +1407,27 @@ function classifyVerifyPriceResponse(status, body) {
  * @param {any} body
  * @returns {{withheld_currencies: string[]}|null}
  */
+/**
+ * The verifyPrice answer for one get_pdp_v2 product (normalizePdpV2ToProductDetail's `product`):
+ * { price, currency, in_stock }, plus what only the list price tiers read -- `merchant_live: true` when the PDP
+ * live overlay served the merchant's answer, and `price_as_of`, WHEN THAT PRICE WAS READ: the overlay's own
+ * live_read.checked_at (the read time of the answer it cached, not when the page was served) for a merchant
+ * answer, else the page's stored price_as_of. A merchant-priced card keeps the canonical lane's stored
+ * price_as_of beside the merchant's price, so that stamp never dates a merchant answer. Pure.
+ */
+function verifyPriceAnswerOfPdpProduct(product) {
+  const p = isPlainObject(product) ? product : {};
+  const out = { price: p.price, currency: p.currency, in_stock: p.in_stock };
+  const merchant = p.price_source === 'merchant_live';
+  const lr = isPlainObject(p.live_read) ? p.live_read : null;
+  const asOf = merchant
+    ? (lr && lr.status === 'verified' && typeof lr.checked_at === 'string' ? lr.checked_at : null)
+    : (typeof p.price_as_of === 'string' ? p.price_as_of : null);
+  if (asOf) out.price_as_of = asOf;
+  if (merchant) out.merchant_live = true;
+  return out;
+}
+
 function withheldPriceOfVerifyResponse(body) {
   const withheld = isPlainObject(body) && isPlainObject(body.metadata) && isPlainObject(body.metadata.serving_currency_guard)
     ? body.metadata.serving_currency_guard.withheld_currencies
@@ -1407,4 +1440,4 @@ function withheldPriceOfVerifyResponse(body) {
 // `signal.value` in place rather than rebuilding it. That is not an implementation detail — the
 // join-key mint above is ordered after them precisely because of it, and without a direct
 // assertion the ordering is unfalsifiable (verified: moving the mint earlier left every test green).
-module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, classifyVerifyPriceResponse, withheldPriceOfVerifyResponse, offVerticalMarker };
+module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, classifyVerifyPriceResponse, withheldPriceOfVerifyResponse, verifyPriceAnswerOfPdpProduct, offVerticalMarker };

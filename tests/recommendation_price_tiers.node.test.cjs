@@ -123,21 +123,59 @@ test('1c READ MODE settles the write skip: an own write vouches for nothing; a f
   assert.equal(w.cache.recordVerifiedPrice(VERIFIED), true);
   w.clock.add(4 * MIN);
   assert.equal(w.cache.recordVerifiedPrice(VERIFIED), false, 'write mode: skipped');
-  // Read mode: instance A wrote $23; another instance may have written since, so A's repeat is written.
+  // Read mode: instance A wrote $23; another instance may have written since, so A's repeat asks the STORE (in the
+  // background) and writes only when the store holds something else.
   const r = cacheHarness({ read: true });
   assert.equal(r.cache.recordVerifiedPrice(VERIFIED), true);
-  r.clock.add(4 * MIN);
-  assert.equal(r.cache.recordVerifiedPrice(VERIFIED), true, 'read mode: an own write proves nothing about the store');
   await r.store.flush();
-  // ...but an answer the STORE just gave this instance (inside the 30 s L1 window) is not repeated.
+  const batchesAfterFirst = r.fake.calls.batches.length;
+  r.clock.add(4 * MIN);
+  const readsBefore = r.fake.calls.getAll.length;
+  assert.equal(r.cache.recordVerifiedPrice(VERIFIED), false, 'read mode: not written at once');
+  for (let i = 0; i < 5; i += 1) await new Promise((res) => setImmediate(res));
+  await r.store.flush();
+  assert.equal(r.fake.calls.getAll.length, readsBefore + 1, 'one store read checked it');
+  assert.equal(r.fake.calls.batches.length, batchesAfterFirst, 'the store holds this answer: nothing written');
+  // Another instance writes $25 into the store; A's repeat of $23 inside 5 min is then written.
+  const other = pc.createPriceCache({ store: r.store, now: r.clock.now, read: () => false });
+  r.clock.add(MIN);
+  other.recordVerifiedPrice({ ...VERIFIED, amount: 25, read_at: r.clock.now() - 1 });
+  await r.store.flush();
+  r.clock.add(31 * 1000);
+  const batches2 = r.fake.calls.batches.length;
+  r.cache.recordVerifiedPrice({ ...VERIFIED, read_at: r.clock.now() });
+  for (let i = 0; i < 5; i += 1) await new Promise((res) => setImmediate(res));
+  await r.store.flush();
+  assert.ok(r.fake.calls.batches.length > batches2, 'the store held another answer: A writes its own');
+  // An answer the STORE just gave this instance (inside the 30 s L1 window) is not repeated, nor even checked.
   r.clock.add(31 * 1000);
   const got = await r.cache.lookup([VKEY], { ttlMs: pc.TTL_MS.search });
   assert.equal(got[0].amount, 23);
   r.clock.add(10 * 1000);
   const later = { ...VERIFIED, read_at: r.clock.now() };
+  const readsNow = r.fake.calls.getAll.length;
   assert.equal(r.cache.recordVerifiedPrice(later), false, 'the store holds this answer (read 10 s ago): skipped');
-  r.clock.add(31 * 1000);
-  assert.equal(r.cache.recordVerifiedPrice({ ...VERIFIED, read_at: r.clock.now() }), true, 'the store read is past its 30 s window: written');
+  for (let i = 0; i < 5; i += 1) await new Promise((res) => setImmediate(res));
+  assert.equal(r.fake.calls.getAll.length, readsNow, 'vouched for by a fresh store read: no check either');
+});
+
+test('1e READ MODE write volume: an unchanged hot key re-recorded every 40 s for 10 min writes as often as write mode', async () => {
+  const count = async (read) => {
+    const h = cacheHarness({ read });
+    let writes = 0;
+    for (let t = 0; t <= 10 * MIN; t += 40 * 1000) {
+      const before = h.fake.calls.batches.flat().length;
+      h.cache.recordVerifiedPrice({ ...VERIFIED, read_at: h.clock.now() });
+      for (let i = 0; i < 5; i += 1) await new Promise((res) => setImmediate(res));
+      await h.store.flush();
+      writes += h.fake.calls.batches.flat().length - before;
+      h.clock.add(40 * 1000);
+    }
+    return writes;
+  };
+  const w = await count(false);
+  const r = await count(true);
+  assert.ok(r <= w, `read mode wrote ${r}, write mode ${w}`);
 });
 
 test('1d SYNTHETIC: a synthetic call writes nothing to the shared cache (no record, no tombstone, no backoff)', () => {
@@ -412,7 +450,7 @@ test('5c SHADOW: nothing served changes; one counts-only line says what would mo
   assert.ok(lines[0].moved > 0);
   const text = JSON.stringify(lines);
   for (const leak of ['secret-host', 'products/', 'canon', 'seed', 'price_as_of', '"price"', 'USD']) assert.equal(text.includes(leak), false, leak);
-  assert.deepEqual(Object.keys(lines[0]).sort(), ['answer_guard', 'as_of', 'by_source', 'event', 'mode', 'moved', 'no_fresh_row', 'priced', 'rows', 'stale', 'surface', 'top_was_stale', 'undated'],
+  assert.deepEqual(Object.keys(lines[0]).sort(), ['answer_guard', 'as_of', 'by_source', 'event', 'mode', 'moved', 'no_fresh_row', 'priced', 'reordered', 'rows', 'stale', 'surface', 'top_was_stale', 'undated'],
     'counts and flags only');
 });
 
@@ -443,11 +481,57 @@ function recoHandler({ verify }) {
     verifyPrice: verify,
   });
 }
+// THE VERIFY ANSWERS ARE BUILT BY THE REAL PRODUCERS: a get_pdp_v2 page from pdpBuilder, the PDP live overlay
+// (applyPdpLiveOverlay over its own cache, which the merchant answered PDP_READ_AGO before this call), the
+// gateway's own normalizePdpV2ToProductDetail, then the wiring's mapper (verifyPriceAnswerOfPdpProduct).
+const { applyPdpLiveOverlay, createPdpLiveCache } = require('../src/services/pdpLiveOverlay');
+const { buildPdpPayload } = require('../src/pdpBuilder');
+const { verifyPriceAnswerOfPdpProduct } = require('../src/agentSignals/recommendProducts');
+const PDP_HOST = 'tiers-pdp.example.com';
+const PDP_READ_AGO = 2 * MIN;
 const OLD = new Date(Date.now() - 20 * DAY).toISOString();
+const PDP_VARIANT = '48087970185268';
+const pdpHandle = (id) => `item-${id.replace(/_/g, '-')}`;
+function pdpPage(id, amount, { priceAsOf } = {}) {
+  const variant = { variant_id: PDP_VARIANT, title: 'One', options: [{ name: 'Size', value: 'One' }], price: { amount, currency: 'USD' }, in_stock: true, inventory_quantity: 3 };
+  const product = {
+    product_id: id, merchant_id: 'merch_obs_tiers', source: 'external_seed', title: `Item ${id}`, image_url: 'https://cdn.example/x.jpg',
+    price: { amount, currency: 'USD' }, currency: 'USD', destination_url: `https://${PDP_HOST}/products/${pdpHandle(id)}`,
+    default_variant_id: PDP_VARIANT, variants: [variant],
+  };
+  const pdp = buildPdpPayload({ product, relatedProducts: [], entryPoint: 'agent' });
+  // The canonical lane's stored as-of (CANONICAL_CATALOG_SERVED_PRICE_AS_OF) rides on the card as built.
+  if (priceAsOf) pdp.product = { ...pdp.product, price_as_of: priceAsOf };
+  return { status: 'success', pdp_version: '2.0', modules: [{ type: 'canonical', required: true, data: { pdp_payload: pdp } }], metadata: {} };
+}
+function overlaid(id, amount, merchantAmount) {
+  let t = Date.now() - PDP_READ_AGO;
+  const cache = createPdpLiveCache({ now: () => t });
+  cache.record({
+    status: 'verified', host: PDP_HOST, country: 'US', currency: 'USD',
+    live: new Map([[PDP_VARIANT, { handle: pdpHandle(id), amount: merchantAmount, currency: 'USD', available: true }]]),
+    notFound: new Set(), askedIds: [PDP_VARIANT],
+  });
+  t = Date.now();
+  const out = applyPdpLiveOverlay(pdpPage(id, amount, { priceAsOf: OLD }), { market: 'US', cache });
+  assert.ok(out, 'the overlay served the merchant answer');
+  return out.payload;
+}
+let PDP_BODIES = null;
+function pdpBodies() {
+  if (!PDP_BODIES) {
+    PDP_BODIES = {
+      sig_a: pdpPage('sig_a', 30, { priceAsOf: OLD }), // stored, 20 days old (canonical as-of)
+      sig_b: overlaid('sig_b', 21, 20), // the merchant's answer from the overlay's cache, read 2 min ago
+    };
+  }
+  return PDP_BODIES;
+}
 const VERIFY = async ({ product_id: id }) => {
-  if (id === 'sig_a') return { price: 30, currency: 'USD', price_as_of: OLD };
-  if (id === 'sig_b') return { price: 20, currency: 'USD', price_as_of: new Date().toISOString(), merchant_live: true };
-  return null; // sig_c: unavailable -> the lane's snapshot, undated
+  const body = pdpBodies()[id];
+  if (!body) return null; // sig_c: unavailable -> the lane's snapshot, undated
+  const { product } = server()._debug.normalizePdpV2ToProductDetail(body);
+  return verifyPriceAnswerOfPdpProduct(product);
 };
 
 test('4c recommend_products: flags off, the shortlist is the one served today (no new keys)', async () => {
@@ -461,14 +545,30 @@ test('4c recommend_products: flags off, the shortlist is the one served today (n
   assert.deepEqual(off.signals.map((s) => s.value.product.product_id), ['sig_a', 'sig_b', 'sig_c']);
 });
 
+test('4d0 the verify mapper: a merchant-priced PDP is dated by the overlay\'s read (live_read.checked_at), never the stored as-of beside it', () => {
+  const merchant = server()._debug.normalizePdpV2ToProductDetail(pdpBodies().sig_b).product;
+  assert.equal(merchant.price_source, 'merchant_live');
+  assert.equal(merchant.price_as_of, OLD, 'the real card keeps the canonical stored as-of beside the merchant price');
+  const a = verifyPriceAnswerOfPdpProduct(merchant);
+  assert.equal(a.merchant_live, true);
+  assert.equal(a.price, 20);
+  assert.equal(a.price_as_of, merchant.live_read.checked_at);
+  assert.ok(Math.abs(Date.parse(a.price_as_of) - (Date.now() - PDP_READ_AGO)) < 5000, 'when the merchant answered');
+  const stored = verifyPriceAnswerOfPdpProduct(server()._debug.normalizePdpV2ToProductDetail(pdpBodies().sig_a).product);
+  assert.equal(stored.price, 30);
+  assert.equal(stored.price_as_of, OLD, 'a stored PDP price: the page\'s own stored as-of');
+  assert.equal('merchant_live' in stored, false);
+});
+
 test('4d + 5d recommend_products: as-of and source per item; stale items demoted; a ceiling guards the answer', async () => {
   const stamped = await withEnv({ LIST_ROW_PRICE_AS_OF: 'on' }, () => recoHandler({ verify: VERIFY })({ payload: { need: 'vitamin c serum', limit: 3 } }, { agent_id: 'a' }));
+  const bAsOf = server()._debug.normalizePdpV2ToProductDetail(pdpBodies().sig_b).product.live_read.checked_at;
   assert.deepEqual(stamped.signals.map((s) => [s.value.product.product_id, s.value.product.price_source, s.value.product.price_as_of]), [
     ['sig_a', 'stored', OLD],
-    ['sig_b', 'live', stamped.signals[1].value.product.price_as_of],
+    // The PDP overlay answered from its 10-min cache: a merchant answer, but not read during this call.
+    ['sig_b', 'cache', bAsOf],
     ['sig_c', 'stored', null],
   ]);
-  assert.ok(Date.parse(stamped.signals[1].value.product.price_as_of) > Date.now() - MIN);
   const on = await withEnv({ LIST_ROW_PRICE_AS_OF: 'on', PRICE_STALENESS_DEMOTE: 'on' }, () => recoHandler({ verify: VERIFY })({ payload: { need: 'vitamin c serum', limit: 3 } }, { agent_id: 'a' }));
   assert.deepEqual(on.signals.map((s) => s.value.product.product_id), ['sig_b', 'sig_a', 'sig_c'], 'penalty: the stale #1 falls behind the fresh #2');
   assert.deepEqual(on.signals.map((s) => s.value.rank), [1, 2, 3], 'ranks are the served order');
@@ -480,25 +580,64 @@ test('4d + 5d recommend_products: as-of and source per item; stale items demoted
   assert.equal(cheapest.signals[0].value.product.product_id, 'sig_b');
 });
 
-const ALT_EDGE = (ref, price, observedAt, score) => ({
+test('5f recommend_products with a ceiling: a known violator never outranks a conforming item, however fresh', async () => {
+  // A $30 and a $35 item, both priced 20 days ago; a $55 item the merchant just answered; ceiling $40.
+  const items = [recoItem('sig_ca', 30), recoItem('sig_cb', 35), recoItem('sig_cc', 55)];
+  const verify = async ({ product_id: id }) => (id === 'sig_cc'
+    ? { price: 55, currency: 'USD', price_as_of: new Date().toISOString(), merchant_live: true }
+    : { price: id === 'sig_ca' ? 30 : 35, currency: 'USD', price_as_of: OLD });
+  const h = makeRecommendProducts({
+    generate: async () => ({ norm: { payload: { recommendations: items, confidence: 0.7, missing_info: [], warnings: [], grounding_status: 'grounded', recommendation_meta: { source_mode: 'catalog_grounded' } } } }),
+    isEnabled: () => true,
+    verifyPrice: verify,
+  });
+  const args = { payload: { need: 'vitamin c serum', constraints: { price_max: 40 }, limit: 3 } };
+  const off = await withEnv({}, () => h(args, { agent_id: 'a' }));
+  const on = await withEnv({ PRICE_STALENESS_DEMOTE: 'on', LIST_ROW_PRICE_AS_OF: 'on' }, () => h(args, { agent_id: 'a' }));
+  assert.deepEqual(off.signals.map((s) => s.value.product.product_id), ['sig_ca', 'sig_cb', 'sig_cc']);
+  assert.deepEqual(on.signals.map((s) => s.value.product.product_id), ['sig_ca', 'sig_cb', 'sig_cc'], 'the violator stays last');
+  assert.ok(on.signals[2].value.constraint_violations, 'and stays marked');
+  assert.equal(on.signals[2].value.product.price_source, 'live');
+  // Inside the conforming rung, freshness still orders: a fresh conforming item outranks a stale one.
+  const verify2 = async ({ product_id: id }) => (id === 'sig_cb'
+    ? { price: 35, currency: 'USD', price_as_of: new Date().toISOString(), merchant_live: true }
+    : { price: id === 'sig_ca' ? 30 : 55, currency: 'USD', price_as_of: OLD });
+  const h2 = makeRecommendProducts({
+    generate: async () => ({ norm: { payload: { recommendations: items.map((x) => ({ ...x })), confidence: 0.7, missing_info: [], warnings: [], grounding_status: 'grounded', recommendation_meta: { source_mode: 'catalog_grounded' } } } }),
+    isEnabled: () => true,
+    verifyPrice: verify2,
+  });
+  const on2 = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => h2(args, { agent_id: 'a' }));
+  assert.deepEqual(on2.signals.map((s) => s.value.product.product_id), ['sig_cb', 'sig_ca', 'sig_cc']);
+});
+
+// price_evidence.observed_at is a ROW-WRITE time (the build's updated_at / build time), and dates nothing; the
+// price read is candidate_snapshot.price_checked_at, which the graph build copies (see 4i).
+const ALT_EDGE = (ref, price, observedAt, score, priceCheckedAt) => ({
   anchor_ref: 'product:sig_anchor', anchor_snapshot: { price: 30, currency: 'USD' },
-  candidate_product_ref: ref, candidate_snapshot: { title: ref, brand: 'B', price, currency: 'USD' },
+  candidate_product_ref: ref,
+  candidate_snapshot: { title: ref, brand: 'B', price, currency: 'USD', ...(priceCheckedAt ? { price_checked_at: priceCheckedAt } : {}) },
   relation_type: 'competitive_alternative', score_total: score,
   price_evidence: { observed_at: observedAt, price_ratio: price / 30, anchor_price_amount: 30, candidate_price_amount: price },
   source_refs: [], evidence_grade: 'B',
 });
 const ALT_T0 = Date.now();
-function altHandler(log) {
+function altHandler(log, { reorderAllowed } = {}) {
+  const fresh = new Date(ALT_T0 - DAY).toISOString();
   const edges = [
-    ALT_EDGE('product:sig_old', 10, new Date(ALT_T0 - 40 * DAY).toISOString(), 0.95),
-    ALT_EDGE('product:sig_new', 12, new Date(ALT_T0 - DAY).toISOString(), 0.9),
-    ALT_EDGE('product:sig_mid', 14, new Date(ALT_T0 - 3 * DAY).toISOString(), 0.8),
+    // Price read 40 days ago, on a row the build wrote yesterday.
+    ALT_EDGE('product:sig_old', 10, fresh, 0.95, new Date(ALT_T0 - 40 * DAY).toISOString()),
+    ALT_EDGE('product:sig_new', 12, fresh, 0.9, fresh),
+    ALT_EDGE('product:sig_mid', 14, fresh, 0.8, new Date(ALT_T0 - 3 * DAY).toISOString()),
+    // No price read on record: undated, whatever observed_at says.
+    ALT_EDGE('product:sig_undated', 9, fresh, 0.7),
   ];
   return makeGetAlternatives({
     listApprovedRelationshipEdgesForAnchor: async () => edges.map((e) => structuredClone(e)),
     buildAnchorRefsFromProduct: () => ['product:sig_anchor'],
     isEnabled: () => true,
     log,
+    ...(reorderAllowed ? { reorderAllowed } : {}),
   });
 }
 
@@ -509,19 +648,59 @@ test('4e + 5e get_alternatives: stored as-of from the edge; flags off byte-ident
   assert.equal(JSON.stringify(off), JSON.stringify(offAgain));
   for (const s of off.signals) assert.equal('price_as_of' in s.value.related, false);
   const on = await withEnv({ LIST_ROW_PRICE_AS_OF: 'on' }, () => altHandler()(args));
-  assert.deepEqual(on.signals.map((s) => [s.value.related.ref, s.value.related.price_source]), [
-    ['product:sig_old', 'stored'], ['product:sig_new', 'stored'], ['product:sig_mid', 'stored'],
-  ]);
-  for (const s of on.signals) assert.match(s.value.related.price_as_of, /Z$/);
+  assert.deepEqual(on.signals.map((s) => [s.value.related.ref, s.value.related.price_source, s.value.related.price_as_of]), [
+    ['product:sig_old', 'stored', new Date(ALT_T0 - 40 * DAY).toISOString()],
+    ['product:sig_new', 'stored', new Date(ALT_T0 - DAY).toISOString()],
+    ['product:sig_mid', 'stored', new Date(ALT_T0 - 3 * DAY).toISOString()],
+    ['product:sig_undated', 'stored', null],
+  ], 'dated by the price read only; observed_at (a write time, 1 day) never dates a price');
   const lines = [];
   const shadow = await withEnv({ PRICE_STALENESS_DEMOTE: 'shadow' }, () => altHandler((e, f) => lines.push({ e, ...f }))(args));
   assert.equal(JSON.stringify(shadow), JSON.stringify(off), 'shadow serves exactly what off serves');
   assert.equal(lines.length, 1);
   assert.equal(lines[0].surface, 'get_alternatives');
   const ratio = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => altHandler()({ payload: { product_id: 'sig_anchor', market: 'US', max_price_ratio: 1 } }));
-  assert.deepEqual(ratio.signals.map((s) => s.value.related.ref), ['product:sig_new', 'product:sig_mid', 'product:sig_old'],
-    'equal-or-cheaper ask: the 40-day-old cheapest is never the answer');
+  assert.deepEqual(ratio.signals.map((s) => s.value.related.ref), ['product:sig_new', 'product:sig_mid', 'product:sig_old', 'product:sig_undated'],
+    'equal-or-cheaper ask: the 40-day-old cheapest is never the answer, nor the undated one');
   assert.equal(ratio.signals[2].value.related.price_may_have_changed, true);
+  assert.equal(ratio.signals[3].value.related.price_may_have_changed, true);
+  // The public tier's projection drops the label: labelled, never reordered there.
+  const pub = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => altHandler(undefined, { reorderAllowed: () => false })({ payload: { product_id: 'sig_anchor', market: 'US', max_price_ratio: 1 } }));
+  assert.deepEqual(pub.signals.map((s) => s.value.related.ref), off.signals.map((s) => s.value.related.ref));
+});
+
+test('4i GRAPH BUILD: the candidate snapshot carries the seed\'s price READ time (flag on), never a write time', () => {
+  const sources = require('../src/auroraBff/productRelationshipGraphSources');
+  const { buildEdgeForCandidate } = require('../src/auroraBff/productRelationshipGraphBuilder');
+  const readAt = '2026-10-01T08:00:00.000Z';
+  const anchor = { product_ref: 'product:sig_anchor', product_key: 'anchor', name: 'Gentle Hyaluronic Face Serum',
+    brand: 'House', category: 'Face Serum', description: 'Gentle hydrating hyaluronic acid serum', price: 40, price_currency: 'USD' };
+  const seedRow = {
+    id: 'eps_t1', external_product_id: 'ext_t1', product_ref: 'product:sig_t1', title: 'Gentle Hyaluronic Face Serum',
+    brand: 'Brand T', category: 'Face Serum', description: 'Gentle hydrating hyaluronic acid serum',
+    price_amount: '25.00', price_currency: 'USD', market: 'US',
+    updated_at: '2026-11-07T00:00:00.000Z', created_at: '2026-01-01T00:00:00.000Z',
+    seed_data: { brand: 'Brand T', category: 'Face Serum', snapshot: { price_amount: '25.00', price_currency: 'USD', extracted_at: readAt } },
+  };
+  const off = withEnv({}, () => sources.normalizeProductCandidateSnapshot(seedRow, { sourceType: 'external_product_seeds' }));
+  assert.equal('price_checked_at' in off, false, 'off: the snapshot is exactly as before');
+  process.env.RELGRAPH_CANDIDATE_PRICE_CHECKED_AT = 'on';
+  try {
+    const on = sources.normalizeProductCandidateSnapshot(seedRow, { sourceType: 'external_product_seeds' });
+    assert.equal(on.price_checked_at, readAt);
+    assert.notEqual(on.price_observed_at, readAt, 'price_observed_at stays the write-time fallback it always was');
+    const { price_checked_at: _drop, ...rest } = on;
+    assert.deepEqual(rest, off, 'the one key it adds');
+    const noRead = sources.normalizeProductCandidateSnapshot({ ...seedRow, seed_data: { ...seedRow.seed_data, snapshot: { price_amount: '25.00' } } }, { sourceType: 'external_product_seeds' });
+    assert.equal('price_checked_at' in noRead, false, 'no read on record: no field (undated)');
+    const [candidate] = sources.buildCandidatesByAnchorFromSources({ anchors: [anchor], products: [on], includeTransitiveRecall: false })[anchor.product_ref];
+    const { edge } = buildEdgeForCandidate({ anchor, candidate, nowIso: '2026-11-08T00:00:00.000Z' });
+    assert.ok(edge && edge.candidate_snapshot, 'the builder made the edge');
+    assert.equal(edge.candidate_snapshot.price_checked_at, readAt, 'the edge snapshot keeps it');
+    assert.notEqual(edge.price_evidence && edge.price_evidence.observed_at, readAt);
+  } finally {
+    delete process.env.RELGRAPH_CANDIDATE_PRICE_CHECKED_AT;
+  }
 });
 
 // ---- through the server: search exits, projection, synthetic --------------------------------------------
@@ -610,4 +789,146 @@ test('4h PRICE LINE: a fleet-cache answer and the list tokens live / cache count
   for (const source of ['stored', 'catalog_offer', undefined]) {
     assert.equal(priceFactOf({ price: 9, price_source: source, price_as_of: at }).merchant, false, String(source));
   }
+});
+
+// ---- review round 1 (P2-1, P3-1, P3-2, P3-6, P3-7) ---------------------------------------------------------
+
+test('3g TOP-K FALLBACK only when the read got no answer: a merchant that answered (gone, variant missing) is never overridden by the cache', async () => {
+  const storefrontProductPage = require('../src/services/storefrontProductPage');
+  storefrontProductPage.resetForTests();
+  const { host, response } = page(3);
+  const fleet = fakeFleet(new Map([
+    [`${host}|1000`, fleetAnswer(11, Date.now() - MIN, 'item-0')], // gone in this request
+    [`${host}|1001`, fleetAnswer(12, Date.now() - MIN, 'item-1')], // variant missing in this request
+    [`${host}|1002`, fleetAnswer(13, Date.now() - MIN, 'item-2')], // a 503 in this request: falls back
+  ]));
+  const fetchImpl = async (url) => {
+    if (url.includes('item-0')) return new Response('{"errors":"Not Found"}', { status: 404, headers: { 'powered-by': 'Shopify' } });
+    if (url.includes('item-1')) return { ok: true, json: async () => json(9999, 22) };
+    return { ok: false, status: 503, headers: { get: () => null } };
+  };
+  const out = await overlay.overlayLiveMerchantSearchPrices(response, { market: 'US', priceCache: fleet, topK: 3, liveBudgetMs: 600, fetchImpl });
+  assert.deepEqual(out.products.map((p) => [p.price_source, p.price]), [
+    ['catalog_offer', 20], // gone: keeps the verdict, never the fleet's answer
+    ['catalog_offer', 20], // the merchant answered without this variant
+    ['merchant_cache', 13], // no answer (503): the fleet's
+  ]);
+  assert.equal(out.metadata.live_merchant_price.gone_count, 1);
+  assert.equal(out.metadata.live_merchant_price.top_k.cache_fallback_count, 1);
+  storefrontProductPage.resetForTests();
+});
+
+test('2b P2-1 LIVE MEANS THIS REQUEST: a merchant answer read before the request started is `cache`, price_as_of kept', async () => {
+  const t = NOW;
+  const rows = [
+    { product_id: 'now', price: 9, price_source: 'merchant_live', price_as_of: iso(t - 200) },
+    { product_id: 'page_cache', price: 9, price_source: 'merchant_live', price_as_of: iso(t - 90 * 1000) },
+    { product_id: 'token_live_old', price: 9, price_source: 'live', price_as_of: iso(t - 5 * MIN) },
+    { product_id: 'undated_merchant', price: 9, price_source: 'merchant_live' },
+  ];
+  const out = withEnv({ LIST_ROW_PRICE_AS_OF: 'on' }, () => tiers.applyListPriceTiers(rows, { nowMs: t, liveFromMs: t - 1000 }).rows);
+  assert.deepEqual(out.map((r) => [r.price_source, r.price_as_of]), [
+    ['live', iso(t - 200)], ['cache', iso(t - 90 * 1000)], ['cache', iso(t - 5 * MIN)], ['cache', null],
+  ]);
+  // No request start known: within the last 30 s.
+  const fb = withEnv({ LIST_ROW_PRICE_AS_OF: 'on' }, () => tiers.applyListPriceTiers(rows, { nowMs: t }).rows);
+  assert.deepEqual(fb.map((r) => r.price_source), ['live', 'cache', 'cache', 'cache']);
+  // A door replay: `live` rows read before the call are relabelled; the same array when nothing changes.
+  const stamped = [{ price_source: 'live', price_as_of: iso(t - 10) }, { price_source: 'live', price_as_of: iso(t - MIN) }, { price_source: 'stored', price_as_of: null }];
+  assert.deepEqual(tiers.relabelReplayedRows(stamped, { liveFromMs: t - 1000 }).map((r) => r.price_source), ['live', 'cache', 'stored']);
+  const none = [{ price_source: 'merchant_live', price_as_of: iso(t - MIN) }];
+  assert.equal(tiers.relabelReplayedRows(none, { liveFromMs: t }), none, 'internal names (flags off) are never touched');
+});
+
+test('2c P2-1 through the server: a search served from this instance\'s `.json` page cache is `cache` on the next request', async () => {
+  const a = server();
+  a._debug.useSearchOverlayFetchForTest(async (url) => ({ ok: true, json: async () => json(Number(url.match(/item-(\d)/)[1]) + 1000, 22) }));
+  try {
+    const { response } = page(1, { host: 'page-cache-tiers.example.com' });
+    const env = { SERVE_LIVE_MERCHANT_PRICE: 'on', LIST_ROW_PRICE_AS_OF: 'on' };
+    const first = await withEnv(env, () => a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }));
+    assert.equal(first.products[0].price_source, 'live');
+    await new Promise((res) => setTimeout(res, 1100));
+    const second = await withEnv(env, () => a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }));
+    assert.equal(second.metadata.live_merchant_price.cache_hit_count, 1, 'answered from the page cache');
+    assert.equal(second.products[0].price_source, 'cache');
+    assert.equal(second.products[0].price_as_of, first.products[0].price_as_of, 'dated by the original read');
+  } finally {
+    a._debug.useSearchOverlayFetchForTest(null);
+  }
+});
+
+test('5g P3-7 SHADOW WITH AS-OF ON: rows are stamped, never reordered or labelled', () => {
+  const rows = [
+    { product_id: 's0', price: 9, price_as_of: iso(NOW - 8 * DAY) },
+    { product_id: 'f1', price: 9, price_as_of: iso(NOW - DAY) },
+    { product_id: 'f2', price: 9, price_as_of: iso(NOW - DAY) },
+  ];
+  const lines = [];
+  const out = withEnv({ LIST_ROW_PRICE_AS_OF: 'on', PRICE_STALENESS_DEMOTE: 'shadow' }, () => tiers.applyListPriceTiers(rows, { nowMs: NOW, log: (e, f) => lines.push(f) }));
+  assert.deepEqual(out.rows.map((r) => r.product_id), ['s0', 'f1', 'f2']);
+  assert.deepEqual(out.rows.map((r) => r.price_source), ['stored', 'stored', 'stored']);
+  assert.equal(out.rows.some((r) => 'price_may_have_changed' in r), false);
+  assert.equal(lines.length, 1);
+  assert.ok(lines[0].moved > 0);
+  assert.equal(lines[0].reordered, false);
+});
+
+test('5h GROUPS and REORDER: rows move only inside their group; reorder:false labels without moving', () => {
+  const t = (stale) => ({ stale });
+  // groups: [ok, ok, violation]; the violation is fresh, both ok rows stale.
+  assert.deepEqual(tiers.stalenessOrder([t(true), t(true), t(false)], { answerGuard: true, groups: ['ok', 'ok', 'violation'] }), [0, 1, 2]);
+  assert.deepEqual(tiers.stalenessOrder([t(true), t(false), t(false)], { answerGuard: true, groups: ['ok', 'ok', 'violation'] }), [1, 0, 2]);
+  assert.deepEqual(tiers.stalenessOrder([t(true), t(false), t(false), t(false)], { groups: ['a', 'a', 'a', 'b'] }), [1, 2, 0, 3], 'the penalty counts inside the group');
+  const rows = [{ product_id: 's', price: 9 }, { product_id: 'f', price: 9, price_as_of: iso(NOW) }];
+  const kept = withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => tiers.applyListPriceTiers(rows, { nowMs: NOW, reorder: false }));
+  assert.deepEqual(kept.rows.map((r) => [r.product_id, r.price_may_have_changed === true]), [['s', true], ['f', false]]);
+  assert.equal(kept.summary.reordered, false);
+  // The door orders by the label it serves.
+  assert.deepEqual(tiers.orderByStalenessLabel(kept.rows).map((r) => r.product_id), ['f', 's']);
+  const fresh = [{ product_id: 'a' }, { product_id: 'b' }];
+  assert.equal(tiers.orderByStalenessLabel(fresh), fresh);
+});
+
+test('4j P3-1/P3-2 SEARCH through the server: one shadow line per search; a loopback search (an MCP door\'s) is labelled, not reordered', async () => {
+  const a = server();
+  const logger = require('../src/logger');
+  const original = logger.info;
+  const lines = [];
+  logger.info = (obj, msg) => { if (obj && obj.event === 'list_price_staleness_shadow') lines.push(obj); return undefined; };
+  const t0 = Date.now();
+  const body = () => ({
+    status: 'success',
+    products: [
+      { product_id: 'p_stale', title: 'S', price: 9, currency: 'USD', price_source: 'catalog_offer', seed_data: { snapshot: { extracted_at: iso(t0 - 20 * DAY) } } },
+      { product_id: 'p_fresh', title: 'F', price: 8, currency: 'USD', price_as_of: iso(t0 - DAY) },
+    ],
+    metadata: {},
+  });
+  try {
+    const shadowed = await withEnv({ PRICE_STALENESS_DEMOTE: 'shadow' }, async () => {
+      const r = await a._debug.maybeOverlayLiveSearchPrice(body(), { query: 'serum' }, {});
+      return a._debug.projectFindProductsMultiTransportResponse({ ...r, metadata: { ...(r.metadata || {}) } }, { operation: 'find_products_multi' });
+    });
+    assert.equal(lines.length, 1, 'the overlay exit and the projection share one line');
+    assert.deepEqual(shadowed.products.map((p) => p.product_id), ['p_stale', 'p_fresh']);
+    const loop = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => a._debug.__agentCheckoutStrict.runInInvokeAuthContextForTest({ loopback_self_call: true },
+      () => a._debug.maybeOverlayLiveSearchPrice(body(), { query: 'serum' }, {})));
+    assert.deepEqual(loop.products.map((p) => [p.product_id, p.price_may_have_changed === true]), [['p_stale', true], ['p_fresh', false]]);
+    assert.equal(loop.metadata.price_staleness.reordered, false);
+    const direct = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => a._debug.__agentCheckoutStrict.runInInvokeAuthContextForTest({ loopback_self_call: false },
+      () => a._debug.maybeOverlayLiveSearchPrice(body(), { query: 'serum' }, {})));
+    assert.deepEqual(direct.products.map((p) => p.product_id), ['p_fresh', 'p_stale']);
+    assert.equal(direct.metadata.price_staleness.reordered, true);
+  } finally {
+    logger.info = original;
+  }
+});
+
+test('4k P3-8 the projection allowlist is gated: flags off, a token arriving from upstream is not projected', () => {
+  const dbg = server()._debug;
+  const body = { status: 'success', products: [{ product_id: 'p', title: 'T', price: 9, currency: 'USD', price_source: 'live', price_may_have_changed: true }], metadata: {} };
+  const off = withEnv({}, () => dbg.projectFindProductsMultiTransportResponse(JSON.parse(JSON.stringify(body)), { operation: 'find_products_multi' }));
+  assert.equal('price_source' in off.products[0], false);
+  assert.equal('price_may_have_changed' in off.products[0], false);
 });

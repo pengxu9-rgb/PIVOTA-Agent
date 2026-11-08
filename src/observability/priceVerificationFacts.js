@@ -174,4 +174,60 @@ function priceFactsOf(tool, value, { limit } = {}) {
   }
 }
 
-module.exports = { FLAG, priceVerificationLogEnabled, TOOL_SURFACES, priceFactOf, priceFactsOf, pricedItemsOf, overlayOutcomeOf };
+// ---- the door caches' price-freshness cap (FIX_PLAN 1.17, P2-5) ------------------------------------------------
+//
+// Shopify's limit for keeping a price or stock answer is 15 minutes, and the fleet price cache honours it
+// (services/priceCache.js MAX_PRICE_WINDOW_MS). The DOOR caches replay whole answers on top of that: the /mcp and
+// /ucp/mcp read cache up to 15 min (stale-served), the public tier up to 60 min, so a merchant answer could be
+// served ~30 min (or more) after it was read. DOOR_CACHE_PRICE_FRESHNESS_CAP (off | on, default off, read per
+// store): on, an entry holding a MERCHANT ANSWER (a fact with merchant: true and a read time) is kept only until
+// its EARLIEST such answer is 15 minutes old -- its ttl and its stale window both end there, and an entry already
+// past it is not stored. Entries with stored prices only keep their own clocks (they carry no merchant answer;
+// their age is the 7-day staleness rule's business). Off: every door cache's TTLs exactly as before.
+const DOOR_CAP_FLAG = 'DOOR_CACHE_PRICE_FRESHNESS_CAP';
+const DOOR_CAP_WINDOW_MS = 15 * 60 * 1000;
+
+function doorCachePriceFreshnessCapEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[DOOR_CAP_FLAG]) || '').trim());
+}
+
+/** The earliest merchant-answer read time (epoch ms) among `items` (priced objects), or null. Pure. */
+function earliestMerchantAnswerMsOfItems(items, o) {
+  let min = null;
+  for (const item of Array.isArray(items) ? items : []) {
+    const f = priceFactOf(item, o);
+    if (f && f.priced && f.merchant && Number.isFinite(f.at)) min = min === null ? f.at : Math.min(min, f.at);
+  }
+  return min;
+}
+
+/** As above, for a priced tool's native value. Pure; independent of PRICE_VERIFICATION_LOG. */
+function earliestMerchantAnswerMs(tool, value) {
+  try {
+    return earliestMerchantAnswerMsOfItems(pricedItemsOf(tool, value), tool === 'get_product' ? { liveReadDates: false } : undefined);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `policy` ({ ttlMs, staleMs } measured from now) capped so the entry ends when its earliest merchant answer is
+ * 15 min old; null (do not store) when that is already past; `policy` itself when there is no merchant answer or
+ * no policy. Pure.
+ */
+function capCachePolicyAtPriceAge(policy, earliestMs, nowMs = Date.now()) {
+  if (!policy || !Number.isFinite(earliestMs)) return policy;
+  const left = earliestMs + DOOR_CAP_WINDOW_MS - nowMs;
+  if (!(left > 0)) return null;
+  return {
+    ...policy,
+    ttlMs: Math.min(Number.isFinite(policy.ttlMs) ? policy.ttlMs : left, left),
+    staleMs: Math.min(Number.isFinite(policy.staleMs) ? policy.staleMs : left, left),
+  };
+}
+
+module.exports = {
+  FLAG, priceVerificationLogEnabled, TOOL_SURFACES, priceFactOf, priceFactsOf, pricedItemsOf, overlayOutcomeOf,
+  DOOR_CAP_FLAG, DOOR_CAP_WINDOW_MS, doorCachePriceFreshnessCapEnabled, earliestMerchantAnswerMs,
+  earliestMerchantAnswerMsOfItems, capCachePolicyAtPriceAge,
+};

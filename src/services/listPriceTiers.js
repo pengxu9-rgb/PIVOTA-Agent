@@ -12,10 +12,14 @@
  *   LIST_ROW_PRICE_AS_OF     off | on
  *     on   every list row carries `price_as_of` (ISO-8601 UTC, or null when nothing dates the price) and
  *          `price_source`, one token:
- *            live    the merchant answered during this request (search: the `.json` overlay or the UCP catalog
- *                    read, internal price_source 'merchant_live'; recommend: the PDP's merchant answer);
- *            cache   the fleet's verified-price cache answered (services/priceCache.js, PRICE_CACHE_MODE=read;
- *                    internal price_source 'merchant_cache'), read within its 15-min window;
+ *            live    the merchant answered DURING THIS REQUEST: a merchant answer (internal 'merchant_live', or
+ *                    the PDP's merchant answer on recommend) whose read time is at or after the request's start
+ *                    (`liveFromMs`: the caller's start minus 1 s of slack; a caller that knows no start gets
+ *                    "within the last 30 s", the UCP lookup memo's span);
+ *            cache   any other merchant answer: the fleet's verified-price cache (internal 'merchant_cache',
+ *                    PRICE_CACHE_MODE=read), this instance's `.json` page cache (another request's read, <=120 s),
+ *                    the PDP overlay's 10-min cache, or a door cache replaying a whole answer
+ *                    (relabelReplayedRows). price_as_of stays the ORIGINAL read time;
  *            stored  anything else: our stored copy, dated by the freshest read the backend gave us, in this
  *                    order: the row's own `price_as_of` (the canonical lane's catalog_offers.price_checked_at,
  *                    CANONICAL_CATALOG_SERVED_PRICE_AS_OF), its `price_checked_at`, then a seed row's
@@ -27,14 +31,24 @@
  *   PRICE_STALENESS_DEMOTE   off | shadow | on
  *     A PRICED row is STALE when its price_as_of is older than STALE_AFTER_MS (7 days), or when nothing dates it
  *     (an undated stored price cannot be shown to be fresh; the shadow line counts those apart, `undated`).
- *     on      a stale row carries `price_may_have_changed: true`, and is DEMOTED: its rank key is its position
+ *     on      a stale row carries `price_may_have_changed: true`, and (where the caller allows it, `reorder`) is
+ *             DEMOTED: its rank key is its position
  *             plus STALE_RANK_PENALTY (2.5), then a stable sort -- so it falls behind at most the next two fresh
  *             rows and never past a third (a small penalty: relevance still dominates). On a CHEAPEST or
  *             PRICE-CAPPED query a stale row is never the answer: every fresh row is served ahead of every stale
  *             one (stable partition). If no row is fresh the order stands (the answer is never emptied) and the
  *             summary says `no_fresh_row`.
- *     shadow  nothing served changes; one `list_price_staleness_shadow` line per list says what would move:
- *             counts and positions only, never a price, a host or a product id (the price-log rules).
+ *             GROUPS (`group`) come first: rows are only ever reordered WITHIN their group, and the groups keep
+ *             their order. recommend_products' price ceiling uses it: conforming, then unverifiable, then known
+ *             violations, so freshness never lifts a known violator over an item that honours the ceiling.
+ *             WHERE THE LABEL IS NOT SERVED, NOTHING IS REORDERED. The /ucp/mcp shaper and the /public/mcp
+ *             projection drop `price_may_have_changed`, so a demote there would move rows for a reason the
+ *             answer cannot show. The gateway search lane reorders only for a caller that is not this process
+ *             (a direct invoke or REST call); the /mcp door reorders its own search answer by the label
+ *             (orderByStalenessLabel); get_alternatives does not reorder on the public tier.
+ *     shadow  nothing served changes (with LIST_ROW_PRICE_AS_OF=on the rows are stamped, never reordered); one
+ *             `list_price_staleness_shadow` line per list says what would move: counts and positions only,
+ *             never a price, a host or a product id (the price-log rules).
  *
  * WHAT A CHEAPEST OR PRICE-CAPPED QUERY IS (the callers decide; isCheapestQuery is the text half):
  *   search             a budget constraint (price_min / price_max, or one the intent parser read from the query,
@@ -56,6 +70,10 @@ const CLOCK_SKEW_MS = 5 * 1000;
 const TOKENS = new Set(['live', 'cache', 'stored']);
 const INTERNAL_LIVE = new Set(['merchant_live']);
 const INTERNAL_CACHE = new Set(['merchant_cache']);
+// An answer stamped while the request was being admitted is still this request's (the price log's own slack).
+const LIVE_SLACK_MS = 1000;
+// No request start known: "live" means read within the last 30 s (the UCP lookup memo's span).
+const LIVE_FALLBACK_WINDOW_MS = 30 * 1000;
 
 function str(v) {
   return v === undefined || v === null ? '' : String(v).trim();
@@ -121,13 +139,12 @@ function amountOf(node) {
  * The tier of one priced node: { price_source, price_as_of, priced, stale, undated }. Pure.
  * `hint` (optional) is what the caller knows that the node does not say: { live?: boolean, as_of?: string }.
  */
-function priceTierOf(node, { nowMs = Date.now(), hint = null } = {}) {
+function priceTierOf(node, { nowMs = Date.now(), hint = null, liveFromMs } = {}) {
   const n = isObj(node) ? node : {};
   const internal = str(n.price_source);
   let source;
-  if (TOKENS.has(internal)) source = internal;
-  else if (INTERNAL_LIVE.has(internal) || (hint && hint.live === true)) source = 'live';
-  else if (INTERNAL_CACHE.has(internal)) source = 'cache';
+  if (internal === 'live' || INTERNAL_LIVE.has(internal) || (hint && hint.live === true)) source = 'live';
+  else if (internal === 'cache' || INTERNAL_CACHE.has(internal)) source = 'cache';
   else source = 'stored';
   const candidates = source === 'stored'
     ? [hint && hint.as_of, n.price_as_of, n.price_checked_at, seedReadAt(n)]
@@ -136,6 +153,11 @@ function priceTierOf(node, { nowMs = Date.now(), hint = null } = {}) {
   for (const raw of candidates) {
     asOf = isoOrNull(raw, nowMs);
     if (asOf) break;
+  }
+  // A merchant answer is `live` only when it was read during this request; any earlier one is a cached answer.
+  if (source === 'live') {
+    const from = Number.isFinite(liveFromMs) ? liveFromMs : nowMs - LIVE_FALLBACK_WINDOW_MS;
+    if (!asOf || Date.parse(asOf) < from) source = 'cache';
   }
   const amount = amountOf(n);
   const priced = amount !== null && amount > 0;
@@ -149,17 +171,29 @@ function priceTierOf(node, { nowMs = Date.now(), hint = null } = {}) {
  * `answerGuard` (cheapest / price-capped): every fresh row ahead of every stale row. Otherwise the positional
  * penalty: key = index + STALE_RANK_PENALTY for a stale row, stable.
  */
-function stalenessOrder(tiers, { answerGuard = false } = {}) {
-  const idx = tiers.map((_, i) => i);
-  if (answerGuard) {
-    const fresh = idx.filter((i) => !tiers[i].stale);
-    if (!fresh.length) return idx;
-    return [...fresh, ...idx.filter((i) => tiers[i].stale)];
+function stalenessOrder(tiers, { answerGuard = false, groups = null } = {}) {
+  const orderOne = (idx) => {
+    if (answerGuard) {
+      const fresh = idx.filter((i) => !tiers[i].stale);
+      if (!fresh.length) return idx;
+      return [...fresh, ...idx.filter((i) => tiers[i].stale)];
+    }
+    // The penalty counts positions inside the group.
+    return idx
+      .map((i, pos) => ({ i, key: pos + (tiers[i].stale ? STALE_RANK_PENALTY : 0) }))
+      .sort((a, b) => a.key - b.key || a.i - b.i)
+      .map((x) => x.i);
+  };
+  const all = tiers.map((_, i) => i);
+  if (!Array.isArray(groups)) return orderOne(all);
+  // Each group in the order it first appears; rows move only inside their own group.
+  const byGroup = new Map();
+  for (const i of all) {
+    const g = groups[i];
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(i);
   }
-  return idx
-    .map((i) => ({ i, key: i + (tiers[i].stale ? STALE_RANK_PENALTY : 0) }))
-    .sort((a, b) => a.key - b.key || a.i - b.i)
-    .map((x) => x.i);
+  return [...byGroup.values()].flatMap(orderOne);
 }
 
 /**
@@ -173,6 +207,9 @@ function stalenessOrder(tiers, { answerGuard = false } = {}) {
  *   withNode?: (row, node) => object,     a copy of `row` carrying `node`
  *   hint?: (row, index) => object|null,   see priceTierOf
  *   answerGuard?: boolean,                a cheapest / price-capped list
+ *   group?: (row, index) => any,          rows reorder only inside their group (see GROUPS above)
+ *   reorder?: boolean,                    false: label only, never reorder (a door that drops the label)
+ *   liveFromMs?: number,                  the request's start minus the slack (see `live` above)
  *   surface?: string, env?: object, nowMs?: number, log?: (event, fields) => void,
  * }} opts
  */
@@ -192,9 +229,20 @@ function applyListPriceTiers(rows, opts = {}) {
     } catch {
       hint = null;
     }
-    return priceTierOf(nodeOf(row), { nowMs, hint });
+    return priceTierOf(nodeOf(row), { nowMs, hint, liveFromMs: opts.liveFromMs });
   });
-  const order = mode === 'off' ? null : stalenessOrder(tiers, { answerGuard });
+  let groups = null;
+  if (typeof opts.group === 'function') {
+    groups = rows.map((row, i) => {
+      try {
+        return opts.group(row, i);
+      } catch {
+        return null;
+      }
+    });
+  }
+  const reorder = opts.reorder !== false;
+  const order = mode === 'off' ? null : stalenessOrder(tiers, { answerGuard, groups });
   const moved = order ? order.reduce((n, from, to) => n + (from !== to ? 1 : 0), 0) : 0;
   const summary = {
     surface: str(opts.surface) || null,
@@ -206,6 +254,7 @@ function applyListPriceTiers(rows, opts = {}) {
     undated: tiers.filter((t) => t.undated).length,
     by_source: tiers.reduce((acc, t) => { acc[t.price_source] = (acc[t.price_source] || 0) + 1; return acc; }, {}),
     answer_guard: answerGuard,
+    reordered: mode === 'on' && reorder,
     moved,
     top_was_stale: tiers.length > 0 && tiers[0].stale,
     no_fresh_row: tiers.some((t) => t.priced) && tiers.every((t) => !t.priced || t.stale),
@@ -230,7 +279,38 @@ function applyListPriceTiers(rows, opts = {}) {
     if (mode === 'on' && tiers[i].stale) next.price_may_have_changed = true;
     return withNode(row, next);
   });
-  return { rows: mode === 'on' ? order.map((i) => stamped[i]) : stamped, summary };
+  return { rows: mode === 'on' && reorder ? order.map((i) => stamped[i]) : stamped, summary };
+}
+
+/**
+ * A door that REPLAYS an answer (the /mcp read cache): a row the answer called `live` whose read time is before
+ * this call's start (minus the slack) answered another request, so it is served as `cache`, price_as_of kept.
+ * Rows without the token are untouched; returns `rows` itself when nothing changes. Pure.
+ */
+function relabelReplayedRows(rows, { liveFromMs, node = (row) => row } = {}) {
+  if (!Array.isArray(rows) || !Number.isFinite(liveFromMs)) return rows;
+  let changed = false;
+  const out = rows.map((row) => {
+    const n = node(row);
+    if (!isObj(n) || n.price_source !== 'live') return row;
+    const at = typeof n.price_as_of === 'string' ? Date.parse(n.price_as_of) : NaN;
+    if (Number.isFinite(at) && at >= liveFromMs) return row;
+    changed = true;
+    return { ...n, price_source: 'cache' };
+  });
+  return changed ? out : rows;
+}
+
+/**
+ * The staleness order of a list that already carries the label (`price_may_have_changed: true`), for a door that
+ * serves the label (the /mcp door's own search answer). Returns `rows` itself when nothing moves. Pure.
+ */
+function orderByStalenessLabel(rows, { answerGuard = false } = {}) {
+  if (!Array.isArray(rows)) return rows;
+  const tiers = rows.map((r) => ({ stale: isObj(r) && r.price_may_have_changed === true }));
+  if (!tiers.some((t) => t.stale)) return rows;
+  const order = stalenessOrder(tiers, { answerGuard });
+  return order.every((from, to) => from === to) ? rows : order.map((i) => rows[i]);
 }
 
 module.exports = {
@@ -246,4 +326,8 @@ module.exports = {
   priceTierOf,
   stalenessOrder,
   applyListPriceTiers,
+  relabelReplayedRows,
+  orderByStalenessLabel,
+  LIVE_SLACK_MS,
+  LIVE_FALLBACK_WINDOW_MS,
 };

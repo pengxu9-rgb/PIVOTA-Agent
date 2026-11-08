@@ -38,7 +38,7 @@ const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
 } = require('./attribution/issuingAgentAssertion');
-const { callerLogFields } = require('./attribution/callerLogFields');
+const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
 const {
   priceContextMiddleware,
@@ -12923,8 +12923,10 @@ function projectSearchTransportProduct(product, stats = null) {
   ]);
   // The list contract's provenance token and staleness label (services/listPriceTiers.js), projected only as the
   // contract spells them: an internal price_source (merchant_live, catalog_offer, ...) is never projected.
-  if (LIST_PRICE_SOURCE_TOKENS.has(product.price_source)) projected.price_source = product.price_source;
-  if (product.price_may_have_changed === true) projected.price_may_have_changed = true;
+  if (listPriceTiers.listPriceTiersActive()) {
+    if (LIST_PRICE_SOURCE_TOKENS.has(product.price_source)) projected.price_source = product.price_source;
+    if (product.price_may_have_changed === true) projected.price_may_have_changed = true;
+  }
 
   if (typeof product.description === 'string') {
     projected.description = truncateTransportText(product.description);
@@ -14402,20 +14404,31 @@ let _searchOverlayFetchForTest = null;
 // untouched. A cheapest or price-capped search guards its answer: the mainline filtered the cap on STORED prices
 // and ranks by relevance, so a stale row is never the first one served while a fresh one exists. Applied once: an
 // answer that already carries `metadata.price_staleness` (on) is returned as it is. Never throws.
-function applySearchListPriceTiers(response, { search = {}, intent = null, budgetConstraint = null } = {}) {
+// The product lists already tiered in this process (shadow included), so one search is tiered and logged ONCE
+// even when it leaves through both the overlay wrapper and the transport projection.
+const listPriceTieredLists = new WeakSet();
+function applySearchListPriceTiers(response, { search = {}, intent = null, budgetConstraint = null, liveFromMs = undefined } = {}) {
   try {
     if (!listPriceTiers.listPriceTiersActive()) return response;
     if (!response || typeof response !== 'object' || Array.isArray(response) || !Array.isArray(response.products)) return response;
     const meta = isPlainObject(response.metadata) ? response.metadata : null;
-    if (meta && meta.price_staleness) return response;
+    if ((meta && meta.price_staleness) || listPriceTieredLists.has(response.products)) return response;
+    // Reordered only for a caller outside this process. A loopback search is an MCP door's (/mcp, /ucp/mcp,
+    // /public/mcp, one shared answer cache): /ucp and /public drop the label, so the /mcp door reorders its own
+    // answer by the label instead (mcp-server/src/commerceToolSurface.js).
+    const invokeStore = INVOKE_AUTH_CONTEXT.getStore();
+    const reorder = !(invokeStore && invokeStore.loopback_self_call === true);
     const queryText = extractSearchQueryText(search || {});
     const budget = budgetConstraint || resolveBeautyMainlineBudgetConstraint({ search: search || {}, intent, queryText });
     const capped = Boolean(budget && (budget.min != null || budget.max != null));
     const { rows, summary } = listPriceTiers.applyListPriceTiers(response.products, {
       surface: 'search',
       answerGuard: capped || listPriceTiers.isCheapestQuery(queryText),
+      reorder,
+      liveFromMs,
       log: (event, fields) => logger.info({ event, ...fields, ...priceContextLogFields() }, event),
     });
+    listPriceTieredLists.add(rows);
     if (rows === response.products) return response;
     const out = { ...response, products: rows };
     if (summary && summary.mode === 'on') {
@@ -14428,6 +14441,7 @@ function applySearchListPriceTiers(response, { search = {}, intent = null, budge
           undated_count: summary.undated,
           moved_count: summary.moved,
           answer_guard: summary.answer_guard,
+          reordered: summary.reordered,
           no_fresh_row: summary.no_fresh_row,
         },
       };
@@ -14439,10 +14453,16 @@ function applySearchListPriceTiers(response, { search = {}, intent = null, budge
 }
 
 function maybeOverlayLiveSearchPrice(response, search = {}, opts = {}) {
+  // Every live read this overlay makes starts after this instant: an older merchant answer (this instance's
+  // `.json` page cache, another request's read) is served as `cache`, not `live`.
+  const startedAtMs = Date.now();
   const out = maybeOverlayLiveSearchPriceRaw(response, search, opts);
   // Both list flags off: exactly the value (or promise) the overlay returned.
   if (!listPriceTiers.listPriceTiersActive()) return out;
-  const finish = (r) => applySearchListPriceTiers(r, { search, intent: opts.intent || null, budgetConstraint: opts.budgetConstraint || null });
+  const finish = (r) => applySearchListPriceTiers(r, {
+    search, intent: opts.intent || null, budgetConstraint: opts.budgetConstraint || null,
+    liveFromMs: startedAtMs - listPriceTiers.LIVE_SLACK_MS,
+  });
   return out && typeof out.then === 'function' ? out.then(finish) : finish(out);
 }
 
@@ -33606,6 +33626,7 @@ async function getCommerceRemoteMcpAdapter() {
         intelIdentityProductId,
       } = require('./agentSignals/intelligenceReads');
       const { makeRecommendProducts, classifyVerifyPriceResponse, withheldPriceOfVerifyResponse } = require('./agentSignals/recommendProducts');
+      const { verifyPriceAnswerOfPdpProduct } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
@@ -33647,6 +33668,11 @@ async function getCommerceRemoteMcpAdapter() {
           isEnabled: agentRelationshipGraphEnabled,
           // The list price tiers' shadow line (PRICE_STALENESS_DEMOTE=shadow): counts only, never a price or host.
           log: (event, fields) => logger.info({ event, ...fields }, event),
+          // The public tier's projection drops `price_may_have_changed`: its answer is labelled-only, never reordered.
+          reorderAllowed: () => {
+            const store = getInvokeAuthContext();
+            return !(store && store.surface === 'mcp_public');
+          },
           // Resolve the queried product to its full identity set (sig + grouped source ids) so the
           // agent's source-id query matches both sig-keyed and ext_/ulta:-keyed edges. Flag-gated
           // (AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_HYDRATION_ENABLED) + fail-open in the resolver.
@@ -33839,15 +33865,9 @@ async function getCommerceRemoteMcpAdapter() {
               // No price: the page may have withheld one in another currency than the buyer's. Its unit is
               // still a live read, and the shortlist's currency-switch rule needs it.
               if (!product || typeof product.price !== 'number') return withheldPriceOfVerifyResponse(response.data);
-              return {
-                price: product.price,
-                currency: product.currency,
-                in_stock: product.in_stock,
-                // For the list price tiers only (LIST_ROW_PRICE_AS_OF / PRICE_STALENESS_DEMOTE): when the page's
-                // price was read, and whether the merchant answered it (the PDP live overlay). Read by nothing else.
-                ...(typeof product.price_as_of === 'string' ? { price_as_of: product.price_as_of } : {}),
-                ...(product.price_source === 'merchant_live' ? { merchant_live: true } : {}),
-              };
+              // { price, currency, in_stock }, plus, for the list price tiers only, when the page's price was
+              // read and whether the merchant answered it (the PDP live overlay's live_read.checked_at).
+              return verifyPriceAnswerOfPdpProduct(product);
             }
             : undefined,
         }),
@@ -55000,6 +55020,8 @@ function registerExternalInvokeRoute(path, clientChannel) {
           req?.header('x-buyer-ref'),
         ),
         ...loopbackSyntheticInvokeContext(req),
+        // This process calling itself (an MCP door's search): the list price tiers label but do not reorder.
+        loopback_self_call: isLoopbackSelfCall(req),
       },
       () =>
         handleInvokeRequest(req, res, {

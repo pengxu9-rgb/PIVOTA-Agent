@@ -15,15 +15,16 @@ const { numericVariantId } = require('../services/ucpLiveOfferRead');
 // Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
 const listPriceTiers = require('../services/listPriceTiers');
 
-// When a get_alternatives row's stored price was last read, as the graph edge carries it: the candidate snapshot's
-// own price_checked_at / price_as_of, else price_evidence.observed_at (when the graph builder observed the
-// comparison prices it copied the candidate's price with). The builder writes neither of the first two today, so
-// in practice the row is dated by observed_at or not at all (see the FIX_PLAN 1.17 report: the backend graph
-// build should copy catalog_offers.price_checked_at onto candidate_snapshot.price_checked_at).
+// When a get_alternatives row's stored price was last READ, as the graph edge carries it: the candidate snapshot's
+// price_checked_at (the graph build copies it from the source row's price read under
+// RELGRAPH_CANDIDATE_PRICE_CHECKED_AT; productRelationshipGraphSources.candidatePriceCheckedAt) or price_as_of.
+// NEVER price_evidence.observed_at: the build fills it from the row's updated_at / cached_at / created_at or the
+// build time (scripts/build-product-relationship-graph.js), a write time, not a price read, so a 40-day-old
+// price on a row written yesterday would pass for fresh. No read time: null (undated, which the staleness rule
+// treats as stale).
 function alternativeEdgePriceAsOf(edge) {
   const snap = edge && edge.candidate_snapshot && typeof edge.candidate_snapshot === 'object' ? edge.candidate_snapshot : {};
-  const pe = edge && edge.price_evidence && typeof edge.price_evidence === 'object' ? edge.price_evidence : {};
-  for (const raw of [snap.price_checked_at, snap.price_as_of, pe.observed_at]) {
+  for (const raw of [snap.price_checked_at, snap.price_as_of]) {
     if (typeof raw === 'string' && raw.trim()) return raw.trim();
   }
   return null;
@@ -331,6 +332,8 @@ function makeGetAlternatives(deps = {}) {
           withNode: (sig, related) => ({ ...sig, value: { ...sig.value, related } }),
           hint: (sig) => ({ as_of: asOfByRef.get(sig && sig.value && sig.value.related && sig.value.related.ref) || null }),
           answerGuard: typeof p.max_price_ratio === 'number' || includeDupes,
+          // A door whose projection drops the label (the public tier) is labelled, never reordered.
+          reorder: typeof deps.reorderAllowed === 'function' ? deps.reorderAllowed() !== false : true,
           log: typeof deps.log === 'function' ? deps.log : undefined,
         }).rows;
       } catch {

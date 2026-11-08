@@ -81,9 +81,10 @@ const UNCHANGED_REWRITE_MS = 5 * 60 * 1000;
 // THE SKIP AND READ MODE (settled for PRICE_CACHE_MODE=read): the skip compares against what THIS instance last saw.
 // When instance A wrote $10, instance B then wrote $12, and A reads $10 again inside 5 min, a skip would leave B's
 // $12 in the store. Harmless in write mode (nothing reads the store), so write mode keeps the skip exactly as it
-// was. In READ mode an answer is skipped only when the L1 entry it matches came FROM THE STORE within the L1 window
-// (L1_TTL_MS): then the store holds this answer and the write would repeat it. An L1 entry this instance wrote
-// itself proves nothing about the store, so the answer is written.
+// was. In READ mode an answer is skipped at once only when the L1 entry it matches came FROM THE STORE within the
+// L1 window (L1_TTL_MS): then the store holds this answer and the write would repeat it. An L1 entry this instance
+// wrote itself proves nothing about the store, so the store is asked in the background (verifyThenWrite) and the
+// answer is written only when the store holds something else.
 
 
 const SOURCES = new Set(['merchant_ucp', 'merchant_storefront', 'merchant_cart']);
@@ -281,6 +282,7 @@ function createPriceCache({ store, now = () => Date.now(), log = () => {}, read 
   const l1 = new Map(); // docId -> { doc|null, at }
   const backoffL1 = new Map(); // host -> { until, ms, status, at, remote }
   const refreshing = new Map(); // host -> promise
+  const verifying = new Set(); // doc ids with a read-mode store check in flight
   let readsPausedUntil = -Infinity;
   let lastReadFailureLogAt = -Infinity;
   let readFailuresSinceLog = 0;
@@ -306,13 +308,7 @@ function createPriceCache({ store, now = () => Date.now(), log = () => {}, read 
     return prev.src === 'store' && now() - prev.at <= L1_TTL_MS;
   }
 
-  function put(built) {
-    if (!built) return false;
-    const id = priceCacheDocId(built.key);
-    const prev = l1.get(id);
-    if (prev && prev.doc && msOf(prev.doc.read_at) > msOf(built.doc.read_at)) return false;
-    if (prev && prev.doc && sameAnswer(prev.doc, built.doc)
-      && msOf(built.doc.read_at) - msOf(prev.doc.read_at) < UNCHANGED_REWRITE_MS && vouchesForStore(prev)) return false;
+  function write(id, built) {
     l1Set(l1, id, { doc: built.doc, at: now() });
     try {
       store.putPrice(id, built.doc);
@@ -320,6 +316,48 @@ function createPriceCache({ store, now = () => Date.now(), log = () => {}, read 
       return false;
     }
     return true;
+  }
+
+  // READ MODE, an unchanged answer this instance cannot vouch for: ask the store (one read per key in flight,
+  // in the background; the answer never waits). The store holding this answer: nothing is written, and the store's
+  // doc becomes the L1 entry that vouches for the next 30 s. Holding another answer, none, or not answering: written.
+  // A read instead of a write per repeat (review of the read-mode write volume, about 2.5x per hot key).
+  function verifyThenWrite(id, built) {
+    if (verifying.has(id)) return;
+    if (now() < readsPausedUntil || typeof store.getPrices !== 'function') {
+      write(id, built);
+      return;
+    }
+    verifying.add(id);
+    Promise.resolve()
+      .then(() => store.getPrices([id]))
+      .then((got) => {
+        const cur = l1.get(id);
+        // A newer answer arrived meanwhile: it was handled on its own.
+        if (cur && cur.doc && msOf(cur.doc.read_at) > msOf(built.doc.read_at)) return;
+        const doc = got instanceof Map ? got.get(id) || null : null;
+        if (doc && doc.status === built.doc.status && sameAnswer(doc, built.doc)) {
+          l1Set(l1, id, { doc, at: now(), src: 'store' });
+          return;
+        }
+        write(id, built);
+      })
+      .catch(() => { write(id, built); })
+      .finally(() => verifying.delete(id));
+  }
+
+  function put(built) {
+    if (!built) return false;
+    const id = priceCacheDocId(built.key);
+    const prev = l1.get(id);
+    if (prev && prev.doc && msOf(prev.doc.read_at) > msOf(built.doc.read_at)) return false;
+    if (prev && prev.doc && sameAnswer(prev.doc, built.doc)
+      && msOf(built.doc.read_at) - msOf(prev.doc.read_at) < UNCHANGED_REWRITE_MS) {
+      if (vouchesForStore(prev)) return false;
+      verifyThenWrite(id, built);
+      return false;
+    }
+    return write(id, built);
   }
 
   function noteReadFailure(err, n) {

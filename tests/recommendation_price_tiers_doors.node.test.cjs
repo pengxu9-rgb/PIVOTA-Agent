@@ -22,7 +22,9 @@ const { spawn } = require('node:child_process');
 const MAIN = require('./fixtures/price_tiers_doors_main.json');
 const CHILD = path.join(__dirname, '_support', 'priceTiersDoorsChild.cjs');
 const NEW_FLAGS = ['LIST_ROW_PRICE_AS_OF', 'PRICE_STALENESS_DEMOTE', 'UCP_LIVE_SEARCH_READ_TOP_K', 'UCP_LIVE_SEARCH_READ_BUDGET_MS'];
-const ALL_FLAGS = [...NEW_FLAGS, 'UCP_LIVE_SEARCH_READ', 'PRICE_CACHE_STORE', 'PRICE_CACHE_MODE', 'PRICE_HOST_BUDGET', 'PRICE_VERIFICATION_LOG'];
+const ALL_FLAGS = [...NEW_FLAGS, 'DOOR_CACHE_PRICE_FRESHNESS_CAP', 'RELGRAPH_CANDIDATE_PRICE_CHECKED_AT',
+  'UCP_LIVE_SEARCH_READ', 'PRICE_CACHE_STORE', 'PRICE_CACHE_MODE', 'PRICE_HOST_BUDGET', 'PRICE_VERIFICATION_LOG',
+  'COMMERCE_READ_CACHE_ENABLED', 'PUBLIC_READ_CACHE_ENABLED'];
 
 const COMBOS = {
   base: {},
@@ -33,6 +35,13 @@ const COMBOS = {
   staleness_shadow: { PRICE_STALENESS_DEMOTE: 'shadow' },
   staleness_on: { PRICE_STALENESS_DEMOTE: 'on' },
   enforce_k1: { UCP_LIVE_SEARCH_READ: 'enforce', UCP_LIVE_SEARCH_READ_TOP_K: '1' },
+  // Prod's door caches (both read caches ON) and search read shadow; then the same with the door cap explicitly
+  // off and the graph-build flag set (it changes no serving path).
+  prod_like: { COMMERCE_READ_CACHE_ENABLED: '1', PUBLIC_READ_CACHE_ENABLED: '1', UCP_LIVE_SEARCH_READ: 'shadow' },
+  prod_like_cap_off: {
+    COMMERCE_READ_CACHE_ENABLED: '1', PUBLIC_READ_CACHE_ENABLED: '1', UCP_LIVE_SEARCH_READ: 'shadow',
+    DOOR_CACHE_PRICE_FRESHNESS_CAP: 'off', RELGRAPH_CANDIDATE_PRICE_CHECKED_AT: 'on',
+  },
 };
 
 function runCombo(env, port) {
@@ -72,10 +81,11 @@ const shas = (cases) => Object.fromEntries(Object.entries(cases).map(([k, v]) =>
 const changed = (a, b) => Object.keys(a).filter((k) => a[k].sha256 !== (b[k] || {}).sha256).sort();
 
 test('DEFAULTS: every answer byte-identical to origin/main, search read unset / shadow / enforce', () => {
-  for (const combo of ['base', 'search_shadow', 'search_enforce']) {
+  for (const combo of ['base', 'search_shadow', 'search_enforce', 'prod_like']) {
     assert.deepEqual(shas(R[combo]), MAIN.combos[combo], `${combo}: byte-identical to origin/main`);
     for (const c of Object.values(R[combo])) assert.equal(c.status, 200);
   }
+  assert.deepEqual(shas(R.prod_like_cap_off), MAIN.combos.prod_like, 'the door cap off and the graph-build flag: identical');
   assert.ok(Object.keys(MAIN.combos.base).length >= 20, 'the fixture covers the doors and the list surfaces');
 });
 

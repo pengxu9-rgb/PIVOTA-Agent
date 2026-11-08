@@ -59,10 +59,14 @@ const SHARED_TTL_MS = Math.min(15 * 60 * 1000, MAX_PRICE_WINDOW_MS);
 // K > 0: only the first K SHOWN cards are read live (the merchant's UCP catalog, then their `.json`), inside a
 // total budget (`liveBudgetMs`, default 600 ms, 100..1500, and never past the page deadline). Every other card is
 // served from the fleet cache (PRICE_CACHE_MODE=read) or at its stored price, and is not read. A top-K card whose
-// live read fails, times out or runs out of budget keeps the fleet cache's answer when there is one, else its
-// stored price: the page is never held past the budget and never emptied. The per-host budget and backoff
+// live read got NO answer (timed out, ran out of budget, refused by the host budget or backoff, a 429 / 430 /
+// 5xx, a network error) keeps the fleet cache's answer when there is one, else its stored price; a card the
+// merchant DID answer for in this request (variant missing, unreadable, other currency, a 4xx, gone) never takes
+// a cached answer over that. The page is never held past the budget and never emptied. The per-host budget and backoff
 // (priceHostBudget.js, via `options.hostGate`) gate each of those reads exactly as before.
 const TOP_K_MAX = 10;
+// The failures a top-K card may fall back to the fleet cache from: the read never got an answer.
+const TOP_K_FALLBACK_REASON = /^(?:timeout|deadline_exceeded|network_error|invalid_json|http_error|host_backoff|host_budget|http_429|http_430|http_5\d\d)$/;
 const TOP_K_BUDGET_DEFAULT_MS = 600;
 const TOP_K_BUDGET_MIN_MS = 100;
 const TOP_K_BUDGET_MAX_MS = 1500;
@@ -334,6 +338,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   // K is never read, so it takes the fleet's answer now or keeps its stored price.
   const topKFallback = new Map(); // index -> the fleet answer (servableAnswer shape)
   const liveSettled = new Set(); // top-K indexes a live read verified
+  const readFailure = new Map(); // index -> why this request's read did not verify the card
   const topKStats = { cache_fallback: 0 };
   const applySharedAnswer = (index, card, a) => {
     const asOf = new Date(a.read_at_ms).toISOString();
@@ -450,7 +455,9 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
         const price = fetched.body && verifiedPrice(fetched.body, target.variant);
         if (!price || price.currency !== String(card.currency).toUpperCase()) {
           cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
-          countFailure(fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant)));
+          const failure = fetched.reason || (price ? 'currency_mismatch' : unverifiedPriceReason(fetched.body, target.variant));
+          readFailure.set(index, failure);
+          countFailure(failure);
           if (THROTTLE_REASON.test(fetched.reason || '')) {
             const host = hostKey(target.url);
             throttledHosts[host] = (throttledHosts[host] || 0) + 1;
@@ -536,6 +543,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
       if (processed.has(index)) continue;
       const card = cards[index];
       cards[index] = { ...card, price_source: card.price_source || 'catalog_offer' };
+      readFailure.set(index, 'deadline_exceeded');
       countFailure('deadline_exceeded');
     }
   }
@@ -544,6 +552,10 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   // storefront said is gone keeps that verdict.
   for (const [index, a] of topKFallback) {
     if (liveSettled.has(index) || goneIndexes.has(index)) continue;
+    // Only a read that did not ANSWER falls back. A merchant that answered (the variant is missing, the price
+    // is unreadable or in another currency, a 4xx) spoke for this card in this request: a 15-min-old fleet
+    // answer never overrides it.
+    if (readFailure.has(index) && !TOP_K_FALLBACK_REASON.test(readFailure.get(index))) continue;
     const card = cards[index];
     if (!card || typeof card !== 'object') continue;
     // Its failure stays counted in failure_reasons; the card is answered from the cache instead of its stored price.

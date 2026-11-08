@@ -24,7 +24,10 @@ const { mock } = require('node:test');
 
 const { createPriceLogDoors, maskIds, NOW } = fromRoot('tests/_support/priceLogDoors.cjs');
 const port = Number(process.argv[2]) || 4201;
-const doors = createPriceLogDoors({ port });
+// The door read caches as the env says (prod runs both ON; the harness default is off).
+const cacheEnv = {};
+for (const k of ['COMMERCE_READ_CACHE_ENABLED', 'PUBLIC_READ_CACHE_ENABLED']) if (process.env[k] !== undefined) cacheEnv[k] = process.env[k];
+const doors = createPriceLogDoors({ port, env: cacheEnv });
 const supertest = require(path.join(ROOT, 'node_modules', 'supertest'));
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -61,14 +64,51 @@ const RECO = [
   { slot: 'serum', step: 'serum', brand: 'B', name: 'Serum A', display_name: 'Serum A', reasons: ['fits'], sku: { brand: 'B', name: 'Serum A', product_id: 'sig_ra', category: 'Serum' }, merchant_id: 'm', price: { amount: 30, currency: 'USD', unknown: false }, grounding_status: 'grounded' },
   { slot: 'serum', step: 'serum', brand: 'B', name: 'Serum B', display_name: 'Serum B', reasons: ['fits'], sku: { brand: 'B', name: 'Serum B', product_id: 'sig_rb', category: 'Serum' }, merchant_id: 'm', price: { amount: 20, currency: 'USD', unknown: false }, grounding_status: 'grounded' },
 ];
-const recoHandler = () => fromRoot('src/agentSignals/recommendProducts').makeRecommendProducts({
-  generate: async () => ({ norm: { payload: { recommendations: JSON.parse(JSON.stringify(RECO)), confidence: 0.7, missing_info: [], warnings: [], grounding_status: 'grounded', recommendation_meta: { source_mode: 'catalog_grounded' } } } }),
-  isEnabled: () => true,
-  // Extra fields (price_as_of, merchant_live) are what this PR's wiring adds; main's handler ignores them.
-  verifyPrice: async ({ product_id: id }) => (id === 'sig_ra'
-    ? { price: 30, currency: 'USD', price_as_of: iso(NOW - 20 * DAY) }
-    : { price: 20, currency: 'USD', price_as_of: iso(NOW), merchant_live: true }),
-});
+// recommend's price checks, answered by the REAL producers: a get_pdp_v2 page from pdpBuilder, the PDP live overlay
+// over its own cache (the merchant answered 2 min before), the gateway's normalizePdpV2ToProductDetail, then the
+// wiring's mapper -- this tree's verifyPriceAnswerOfPdpProduct when it has one, else the { price, currency,
+// in_stock } the wiring returned before it existed.
+const PDP_HOST = 'tiers-pdp.test';
+const PDP_VARIANT = '48087970185268';
+function pdpBody(id, amount, merchantAmount) {
+  const { buildPdpPayload } = fromRoot('src/pdpBuilder');
+  const { applyPdpLiveOverlay, createPdpLiveCache } = fromRoot('src/services/pdpLiveOverlay');
+  const handle = `item-${id.replace(/_/g, '-')}`;
+  const variant = { variant_id: PDP_VARIANT, title: 'One', options: [{ name: 'Size', value: 'One' }], price: { amount, currency: 'USD' }, in_stock: true, inventory_quantity: 3 };
+  const product = {
+    product_id: id, merchant_id: 'merch_obs_tiers', source: 'external_seed', title: id, image_url: 'https://cdn.example/x.jpg',
+    price: { amount, currency: 'USD' }, currency: 'USD', destination_url: `https://${PDP_HOST}/products/${handle}`,
+    default_variant_id: PDP_VARIANT, variants: [variant],
+  };
+  const pdp = buildPdpPayload({ product, relatedProducts: [], entryPoint: 'agent' });
+  pdp.product = { ...pdp.product, price_as_of: iso(NOW - 20 * DAY) };
+  const body = { status: 'success', pdp_version: '2.0', modules: [{ type: 'canonical', required: true, data: { pdp_payload: pdp } }], metadata: {} };
+  if (merchantAmount === undefined) return body;
+  let t = NOW - 2 * 60 * 1000;
+  const cache = createPdpLiveCache({ now: () => t });
+  cache.record({
+    status: 'verified', host: PDP_HOST, country: 'US', currency: 'USD',
+    live: new Map([[PDP_VARIANT, { handle, amount: merchantAmount, currency: 'USD', available: true }]]), notFound: new Set(), askedIds: [PDP_VARIANT],
+  });
+  t = NOW;
+  const out = applyPdpLiveOverlay(body, { market: 'US', cache, now: () => t });
+  return out ? out.payload : body;
+}
+const recoHandler = () => {
+  const reco = fromRoot('src/agentSignals/recommendProducts');
+  const map = typeof reco.verifyPriceAnswerOfPdpProduct === 'function'
+    ? reco.verifyPriceAnswerOfPdpProduct
+    : (p) => ({ price: p.price, currency: p.currency, in_stock: p.in_stock });
+  const bodies = { sig_ra: pdpBody('sig_ra', 30), sig_rb: pdpBody('sig_rb', 21, 20) };
+  return reco.makeRecommendProducts({
+    generate: async () => ({ norm: { payload: { recommendations: JSON.parse(JSON.stringify(RECO)), confidence: 0.7, missing_info: [], warnings: [], grounding_status: 'grounded', recommendation_meta: { source_mode: 'catalog_grounded' } } } }),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id: id }) => {
+      const { product } = doors.app._debug.normalizePdpV2ToProductDetail(bodies[id]);
+      return product && typeof product.price === 'number' ? map(product) : null;
+    },
+  });
+};
 const EDGE = (ref, price, observedAt, score) => ({
   anchor_ref: 'product:sig_anchor', anchor_snapshot: { price: 30, currency: 'USD' },
   candidate_product_ref: ref, candidate_snapshot: { title: ref, brand: 'B', price, currency: 'USD' },
