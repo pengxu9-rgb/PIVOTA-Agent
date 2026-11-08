@@ -71,7 +71,8 @@
 // shipped once.
 //
 // STATELESS BY DESIGN. The checkout `id` is `esc_` + base64url({v, i:[[product_id, qty]…]}) — product ids and
-// quantities ONLY, never buyer data (a seller-priced id adds `c`, the seller's own cart id). `get_checkout` on such an id re-reads the rows and re-answers; there is
+// quantities ONLY, never buyer data (a seller-priced id adds `c`, the seller's own cart id; a create for a market other
+// than US adds `m`, and one that named no market adds `a`: see encodeEscalationId). `get_checkout` on such an id re-reads the rows and re-answers; there is
 // no session store because there is nothing to hold: no quote, no lock, no inventory, no charge. `update_` and
 // `complete_checkout` on such an id are refused with a curated message — an escalated checkout changes and
 // completes on the seller's storefront, and pretending otherwise here would advertise an operation this door
@@ -106,6 +107,8 @@ import storefrontProductPageModule from "../../src/services/storefrontProductPag
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
+// THE NO-MARKET RULE (decision D-10): the same helper the read tools resolve their market through.
+import requestMarket from "../../src/services/requestMarket.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
@@ -208,10 +211,19 @@ export function escalationTargetOf(product) {
 // BOUND TO THE SELLER THAT ISSUED IT (`h`). A cart id is the issuing seller's bearer handle; a re-read whose rows now
 // resolve to a DIFFERENT seller (the row was re-pointed, or the id was forged) must not hand seller A's cart id to
 // seller B. On a host mismatch the re-read does not call the seller at all and falls back to the catalog answer.
-export function encodeEscalationId(items, cartId, sellerHost) {
+//
+// THE MARKET THE CHECKOUT WAS CREATED FOR (decision D-10). `get_checkout` carries no market on the wire, so the id
+// carries it: `m` (ISO-2) when the create's market was not US, and `a: 1` when the create named no market and was
+// answered as US, assumed. An id with neither re-reads as US, which is what such a create was for (a declared US, or
+// a create before this change) -- so a create that declared US mints exactly the id it always did. The members are
+// additive: a build without them ignores them, and an id without them parses here as it always did.
+export function encodeEscalationId(items, cartId, sellerHost, market) {
   // A chosen variant rides as a third member of its line: [product_id, quantity, variant_id].
   const i = items.map((it) => (it.variant_id ? [it.product_id, it.quantity, it.variant_id] : [it.product_id, it.quantity]));
   const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId, h: sellerHost } : { v: 1, i };
+  const code = isPlainObject(market) && typeof market.code === "string" ? market.code : null;
+  if (code && /^[A-Z]{2}$/.test(code) && code !== requestMarket.ASSUMED_MARKET) body.m = code;
+  if (isPlainObject(market) && market.assumed === true) body.a = 1;
   return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
 }
 
@@ -222,6 +234,11 @@ function parseEscalationId(id) {
     parsed = JSON.parse(Buffer.from(id.slice(ESCALATION_ID_PREFIX.length), "base64url").toString("utf8"));
   } catch { return null; }
   if (!isPlainObject(parsed)) return null;
+  // The market members, when present, are exactly what encodeEscalationId writes (a forged one is no id of ours).
+  const m = own(parsed, "m");
+  if (m !== undefined && (typeof m !== "string" || !/^[A-Z]{2}$/.test(m) || m === requestMarket.ASSUMED_MARKET)) return null;
+  const a = own(parsed, "a");
+  if (a !== undefined && (a !== 1 || m !== undefined)) return null;
   if (parsed.v === 2
     ? (!isCarriableCartId(parsed.c) || typeof parsed.h !== "string" || !/^[a-z0-9.-]{1,253}$/.test(parsed.h))
     : (parsed.v !== 1 || own(parsed, "c") !== undefined || own(parsed, "h") !== undefined)) return null;
@@ -232,6 +249,16 @@ function parseEscalationId(id) {
 export function escalationCartIdOf(id) {
   const parsed = parseEscalationId(id);
   return parsed && parsed.v === 2 && decodeEscalationId(id) ? parsed.c : undefined;
+}
+
+/**
+ * The market an escalation id's checkout was created for: `{ market, assumed }`, or null for no id of ours. An id
+ * with no market member is US (see encodeEscalationId); `assumed` is true only when the create named no market.
+ */
+export function escalationMarketOf(id) {
+  const parsed = parseEscalationId(id);
+  if (!parsed || !decodeEscalationId(id)) return null;
+  return { market: typeof parsed.m === "string" ? parsed.m : requestMarket.ASSUMED_MARKET, assumed: parsed.a === 1 };
 }
 
 /** The seller host a seller-priced escalation id is bound to, or undefined. */
@@ -357,6 +384,32 @@ export function escalationBuyerMarket(ucpArgs) {
   const raw = str(own(context, "address_country"));
   if (!raw || !/^[A-Za-z]{2}$/.test(raw)) return null;
   return raw.toUpperCase();
+}
+
+/**
+ * The market a storefront checkout CREATE is answered for (decision D-10): `{ market, assumed }`. A create that names
+ * no market (`checkout.context.address_country` absent, null or blank) is answered as US, and the gate and the
+ * seller's door are asked about US; one that names a market keeps exactly the market escalationBuyerMarket reads
+ * (null for a malformed one, which stays unkeyable as before). Still never buyer address data.
+ */
+export function escalationRequestMarket(ucpArgs) {
+  const context = own(own(ucpArgs, "checkout"), "context");
+  if (requestMarket.marketIsUnnamed(own(context, "address_country"))) {
+    return { market: requestMarket.ASSUMED_MARKET, assumed: true };
+  }
+  return { market: escalationBuyerMarket(ucpArgs), assumed: false };
+}
+
+/** A checkout answered for an assumed market says so: `market_assumed`, and the same notice in `messages`. */
+function withAssumedMarket(checkout, assumed) {
+  if (!assumed || !isPlainObject(checkout)) return checkout;
+  return {
+    ...checkout,
+    market_assumed: requestMarket.marketAssumedLabel(),
+    messages: [...(Array.isArray(checkout.messages) ? checkout.messages : []), {
+      type: "info", code: "market_assumed", path: "$", content: requestMarket.MARKET_ASSUMED_MESSAGE, content_type: "plain",
+    }],
+  };
 }
 
 export const ESCALATION_GATE_MAX_MS = 800;
@@ -628,8 +681,11 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     ? timeoutMs
     : DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS;
   const gateBudgetMs = () => doorBudgetMs - (gateClock() - doorStartedAt);
-  // The REQUEST's market, from the raw UCP body. Null means no fact can be read: under enforcement, a decline.
-  const buyerMarket = escalationBuyerMarket(ucpArgs);
+  // The REQUEST's market, from the raw UCP body: a create that names none is answered as US (decision D-10), so the
+  // gate and the seller's door are asked about US. Null (a malformed one) means no fact can be read: under
+  // enforcement, a decline. A re-read takes the market its id carries instead (below).
+  const requested = escalationRequestMarket(ucpArgs);
+  const buyerMarket = requested.market;
   // A gate decline still returns null (the contract above), but the caller must be able to tell it from "not an
   // escalation cart": both used to fall through to the kernel, and only the second belongs there. `declines` is an
   // optional out-param (like the Reap lane's `hints`); see refuseUnservedStorefrontCheckout below.
@@ -718,17 +774,17 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     if (priced) {
       // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
       // id: such a cart is not offered at all, and the catalog answer below is given instead.
-      const id = encodeEscalationId(normalized, priced.cartId, sellerHost);
+      const id = encodeEscalationId(normalized, priced.cartId, sellerHost, { code: buyerMarket, assumed: requested.assumed });
       if (escalationCartIdOf(id) === priced.cartId) {
-        return buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env });
+        return withAssumedMarket(buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env }), requested.assumed);
       }
     }
     const checked = await checkStorefrontPages({
       items: normalized, links: normalized.map((it) => targets.get(it.product_id)), rows, continueUrl,
       env, storefrontPage, log, doorSignals,
     });
-    return buildEscalationCheckout({
-      id: encodeEscalationId(normalized),
+    return withAssumedMarket(buildEscalationCheckout({
+      id: encodeEscalationId(normalized, undefined, undefined, { code: buyerMarket, assumed: requested.assumed }),
       items: normalized,
       rows,
       continueUrl: checked.continueUrl,
@@ -743,7 +799,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       now,
       env,
       discountCode,
-    });
+    }), requested.assumed);
   }
 
   const sessionId = str(own(params, "session_id"));
@@ -763,14 +819,16 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     if (!sellerGroupingOf(new Map(decoded.map((it, i) => [it.product_id, targets[i]]))).oneSeller) {
       throw new PivotaCommerceError("QUOTE_NOT_FOUND", { reason: "ucp_escalation_row_changed", dialect: "ucp" });
     }
-    // The same seam on the re-read, deliberately symmetrical: the UCP `get_checkout` wire body carries no
-    // `checkout.context`, so this lane is always `unkeyable`. Unenforced that keeps the previous behaviour;
-    // under ENFORCEMENT it is a decline (`unkeyable_enforced`) and the re-read falls through like the create
-    // does — so arming the gate with escalation on needs a market carrier on this lane first (see
-    // docs/merchant-purchasability-gate.md §8). An asymmetry here would be a purchase offered on no fact.
+    // The same seam on the re-read, deliberately symmetrical. The UCP `get_checkout` wire body carries no
+    // `checkout.context`, so the market is the one the id carries: the market the checkout was CREATED for
+    // (escalationMarketOf; US for an id with none, decision D-10). Before the id carried it this lane was always
+    // `unkeyable`, and under ENFORCEMENT every re-read declined (`unkeyable_enforced`), including a checkout that
+    // passed the gate at create. An asymmetry here would be a purchase offered on no fact.
     // The SAME link create handed out (handedOutLinkOf): a re-read must not swap Pivota's hop for a direct link.
     const link = handedOutLinkOf(targets);
-    if (!(await mayOfferStorefrontCheckout(link, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
+    const created = escalationMarketOf(sessionId);
+    const rereadMarket = created.market;
+    if (!(await mayOfferStorefrontCheckout(link, rereadMarket, gate, gateEnabled, gateBudgetMs()))) return declined();
     // A seller-priced checkout is re-read from the SELLER's cart (`get_cart` on the id's cart), never re-created.
     // The seller is the one the re-read rows resolve to; a cart the seller no longer answers for falls back to the
     // catalog answer, which says so.
@@ -779,14 +837,14 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     if (cartId !== undefined && sellerHost && escalationSellerHostOf(sessionId) === sellerHost) {
       const priced = await priceOnMerchantDoor({
         items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(link), catalogLink: link,
-        market: buyerMarket, cartId, env, merchantDoor, log,
+        market: rereadMarket, cartId, env, merchantDoor, log,
       });
-      if (priced) return buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env });
+      if (priced) return withAssumedMarket(buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env }), created.assumed);
     }
     const checked = await checkStorefrontPages({ items: decoded, links: targets, rows, continueUrl: link, env, storefrontPage, log });
-    return buildEscalationCheckout({
+    return withAssumedMarket(buildEscalationCheckout({
       id: sessionId, items: decoded, rows, continueUrl: checked.continueUrl, now, env, extraMessages: checked.messages,
-    });
+    }), created.assumed);
   }
 
   if (opId === "update_checkout_session" || opId === "complete_checkout_session") {
@@ -823,7 +881,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
 //     No storefront page is handed out: the gate exists to stop recommending that checkout.
 // An escalation id this door did not answer is refused rather than sent to the kernel as an unknown session id:
 // `ucp_storefront_checkout_unavailable` with the switch off, `ucp_escalation_reread_unconfirmed` on a gate decline
-// (a re-read carries no market, so the decline says nothing about the seller).
+// (for the market the id carries: the one the checkout was created for).
 //
 // It reads through the SAME per-call memoizing executor view as the lanes before it, so a cart they already read is
 // not read again. No flag: it only replaces a refusal with a truthful one, and never opens anything.
@@ -837,11 +895,10 @@ export async function refuseUnservedStorefrontCheckout({ op, params, ctx, execut
   const sessionId = str(own(params, "session_id"));
   if (opId !== "create_checkout_session" && sessionId && decodeEscalationId(sessionId)) {
     if (declined) {
-      // A decline on a RE-READ is not a fact about the seller: UCP `get_checkout` carries no market, so under
-      // enforcement every re-read is unkeyable and declines — including a checkout that passed the gate at create.
-      // Say what is true (no market to confirm against), not "this seller is not purchasable".
+      // A decline on a RE-READ: the re-read asked the gate about the market the checkout was created for (the one
+      // its id carries, decision D-10), and the seller is not offered there now. Same reason code as before.
       throw intakeRefusal("OPERATION_NOT_ALLOWED", "ucp_escalation_reread_unconfirmed",
-        "This storefront checkout cannot be re-confirmed here: get_checkout carries no buyer market to check the seller against. Retrying will not change this; use the continue_url from the create, or create a new checkout with checkout.context.address_country.",
+        "This storefront checkout cannot be re-confirmed here: its seller is not currently offered for agent checkout in the market this checkout was created for. Retrying will not change this; create a new checkout, or send the buyer to the product's storefront page.",
         {});
     }
     throw intakeRefusal("OPERATION_NOT_ALLOWED", "ucp_storefront_checkout_unavailable",

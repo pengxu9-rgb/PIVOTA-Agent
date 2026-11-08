@@ -160,14 +160,19 @@ test('an offer with no currency is never shown to a declared market', async () =
   assert.equal(out.metadata.withheld_other_currency_count, 2);
 });
 
-test('no market declared: today\'s referral-only answer, every currency, and no market fields', async () => {
+test('no market declared: answered as US (decision D-10) — the US offer only, US on the backend call, and the answer says so', async () => {
   const { out, upstream } = await callGetOffers({ merchant_id: 'ext_seed_gb', product_id: 'p_seed' }, [GBP, KRW, USD]);
-  assert.equal(Object.prototype.hasOwnProperty.call(upstream.payload, 'market'), false);
-  assert.deepEqual(currencies(out).sort(), ['GBP', 'KRW', 'USD']);
-  assert.equal(out.metadata.offer_count, 3);
-  for (const k of ['market', 'market_currency', 'withheld_other_currency_count', 'reason']) {
-    assert.equal(Object.prototype.hasOwnProperty.call(out.metadata, k), false, k);
-  }
+  assert.equal(upstream.payload.market, 'US', 'the assumed market rides to the backend, as a declared one does');
+  assert.deepEqual(currencies(out), ['USD']);
+  assert.equal(out.metadata.market, 'US');
+  assert.equal(out.metadata.market_currency, 'USD');
+  assert.equal(out.metadata.withheld_other_currency_count, 2);
+  assert.equal(out.market_assumed.code, 'US');
+  // ...and byte-for-byte the answer a declared US gets, plus the label
+  const declared = await callGetOffers({ merchant_id: 'ext_seed_gb', product_id: 'p_seed', market: 'US' }, [GBP, KRW, USD]);
+  const { market_assumed: _label, ...rest } = out;
+  assert.deepEqual(rest, declared.out);
+  assert.equal('market_assumed' in declared.out, false);
 });
 
 test('a declared market nothing is priced in returns no offer and makes no backend call', async () => {

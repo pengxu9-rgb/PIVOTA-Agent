@@ -79,7 +79,8 @@ test("reads require no identity (search_catalog / get_product run without a buye
   await surface.callTool("get_product", { merchant_id: "m", product_id: "p" }, {});
   assert.deepEqual(reads.map((r) => r.op), ["find_products_multi", "get_product_detail"]);
   // args are wrapped into the discovery payload shape
-  assert.deepEqual(reads[0].payload, { search: { query: "socks" } });
+  // no market named: the search is answered as US (decision D-10), so US is what the lane is sent
+  assert.deepEqual(reads[0].payload, { search: { query: "socks", market: "US" } });
   assert.deepEqual(reads[1].payload, { product: { merchant_id: "m", product_id: "p" } });
 });
 

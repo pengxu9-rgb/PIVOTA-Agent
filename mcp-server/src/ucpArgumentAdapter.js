@@ -1451,8 +1451,8 @@ const GET_OFFERS_DESCRIPTION = [
   "`{ subject, best_offer, signals[], metadata }` — real competition only when it exists; a single-offer product",
   "answers with its best_offer and no competing signals. Read: `insights.currency` (ISO 4217 preference),",
   "`insights.market` (the buyer's market, ISO-3166-1 alpha-2, only when known: offers and their cart links are",
-  "then decided for that market, and only offers priced in its currency are returned; absent, no market is",
-  "claimed), `insights.limit` (1..10). An offer carrying `price_stale: true` has a price not read recently:",
+  "then decided for that market, and only offers priced in its currency are returned; absent, they are",
+  "decided for a US buyer and the answer carries `market_assumed`), `insights.limit` (1..10). An offer carrying `price_stale: true` has a price not read recently:",
   "relay it only as last seen, never as current; `price_as_of` is when it was last read (null = no read on",
   "record). When `metadata.best_price` is present, best_offer is the top-ranked fresh comparable offer (same",
   "item and size, one currency, not known out of stock), ranked by sellability, then primary seller, stock",
@@ -1485,10 +1485,24 @@ const GET_PRODUCT_DESCRIPTION = [
 export function ucpGetProductForwardMarketEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env.UCP_GET_PRODUCT_FORWARD_MARKET) || "").trim());
 }
+
+/**
+ * True when a UCP call NAMED a market that its mapper does not forward: get_product's
+ * `catalog.context.address_country` while UCP_GET_PRODUCT_FORWARD_MARKET is off. The no-market rule (decision D-10,
+ * commerceToolSurface marketAssumedFor) must not answer such a call "as US, assumed": the caller named a market, and
+ * its answer stays exactly what it was. Null and blank are no market, as the mapper reads them when the dial is on.
+ */
+export function ucpNamesUnforwardedMarket(op, args, env = process.env) {
+  if (!op || op.id !== "get_product" || ucpGetProductForwardMarketEnabled(env)) return false;
+  const catalog = own(args, "catalog");
+  const context = isPlainObject(catalog) ? own(catalog, "context") : undefined;
+  const country = isPlainObject(context) ? own(context, "address_country") : undefined;
+  return !(country === undefined || country === null || (typeof country === "string" && country.trim() === ""));
+}
 const GET_PRODUCT_MARKET_SENTENCE = [
   "Send `catalog.context.address_country` (the buyer market, ISO 3166-1 alpha-2) when you know it: the",
-  "price and stock may then be read live from the merchant for that market. It is never inferred, and without",
-  "it the price is Pivota's stored one; `messages` says which it is (`price.merchant_verified`,",
+  "price and stock may then be read live from the merchant for that market. It is never inferred; without",
+  "it the product is answered for a US buyer (`market_assumed` says so); `messages` says which it is (`price.merchant_verified`,",
   "`price.partially_verified` when the default variant's price was read but not every variant's, or `price.stored`).",
   "A stored price is for discovery only: before quoting a final price, call `get_offers` for the product and",
   "market and quote only an offer whose `merchant_price_verified` is true.",
@@ -1781,7 +1795,7 @@ const SPECS = Object.freeze({
               additionalProperties: true,
               description: "Buyer context. `address_country` selects the buyer market; `currency` selects offer currency and the minor unit of filters.price. Other members are accepted and NOT read.",
               properties: {
-                address_country: { type: "string", description: "Buyer market, ISO 3166-1 alpha-2. Read." },
+                address_country: { type: "string", description: "Buyer market, ISO 3166-1 alpha-2. Read. Absent, the search is answered for a US buyer and the answer carries `market_assumed`." },
                 address_region: { type: "string", description: "Accepted and NOT read." },
                 postal_code: { type: "string", description: "Accepted and NOT read." },
                 language: { type: "string", description: "Accepted and NOT read." },
