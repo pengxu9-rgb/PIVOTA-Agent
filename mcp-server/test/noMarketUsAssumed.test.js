@@ -394,6 +394,61 @@ describe("storefront escalation: the create's market, and the re-read carries it
   });
 });
 
+describe("P3-N3: the re-read refusal of an ASSUMED checkout says it was decided for US", () => {
+  test("the re-read decline is tagged market_assumed, and its refusal carries the sentence and the member", async () => {
+    const gate = recordingGate((a) => ({ offer: gate.asked.length === 1, source: "fact" })); // create allowed, re-read declined
+    const made = await create({}, gate);
+    const declines = [];
+    assert.equal(await reread(made.id, gate, declines), null);
+    assert.deepEqual(gate.asked, ["US", "US"]);
+    assert.deepEqual(declines, ["merchant_not_purchasable", "market_assumed"]);
+    const err = await refuseUnservedStorefrontCheckout({ op: GET, params: { session_id: made.id }, ctx: {}, executor: seedExecutor, declined: true, declineReasons: declines }).then(() => null, (e) => e);
+    assert.equal(err.detail.acp_detail.reason, "ucp_escalation_reread_unconfirmed");
+    assert.match(err.detail.acp_message, /decided for a US buyer/);
+    assert.equal(JSON.parse(toToolError(err).content[0].text).error.market_assumed.code, "US");
+  });
+});
+
+describe("P2-N1: only this gateway may assume a market (the invoke ingress rule)", () => {
+  test("a client-supplied market_assumed is stripped beside any market; a vouched one survives only beside US", async () => {
+    const m = await import("../../src/guardrails/loopbackCallerAssertion.js");
+    const { loopbackMarketAssumedHeaders, stripUnvouchedMarketAssumed } = m.default || m;
+    const loopbackReq = (payload, headers = {}) => ({
+      body: { payload: structuredClone(payload) },
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      socket: { remoteAddress: "127.0.0.1" }, ip: "127.0.0.1",
+    });
+    const us = { search: { query: "q", market: "US", market_assumed: true } };
+    const unsigned = loopbackReq(us);
+    stripUnvouchedMarketAssumed(unsigned);
+    assert.equal("market_assumed" in unsigned.body.payload.search, false, "no marker: stripped");
+    const signed = loopbackReq(us, loopbackMarketAssumedHeaders(us));
+    stripUnvouchedMarketAssumed(signed);
+    assert.equal(signed.body.payload.search.market_assumed, true, "vouched, beside US: kept");
+    const sg = { search: { query: "q", market: "SG", market_assumed: true } };
+    const sgSigned = loopbackReq(sg, loopbackMarketAssumedHeaders(us));
+    stripUnvouchedMarketAssumed(sgSigned);
+    assert.equal("market_assumed" in sgSigned.body.payload.search, false, "a marker never vouches for SG");
+    assert.deepEqual(loopbackMarketAssumedHeaders(sg), {}, "and none is minted for it");
+    const offers = loopbackReq({ product: { product_id: "p" }, market: "SG", marketAssumed: true, market_assumed: true }, loopbackMarketAssumedHeaders(us));
+    stripUnvouchedMarketAssumed(offers);
+    assert.equal("marketAssumed" in offers.body.payload, false, "the offers.resolve spelling never passes this route");
+    assert.equal("market_assumed" in offers.body.payload, false);
+    // The surface's own assumed search params are exactly the shape the marker vouches for, and the loopback hop
+    // sends the marker (invokeCommerceKernelRawUpstream).
+    const ex = recordingExecutor();
+    await createCommerceToolSurface(ex, { cache: false }).callTool("search_catalog", { query: "q" }, SESSION);
+    assert.ok(Object.keys(loopbackMarketAssumedHeaders(ex.calls[0].params.payload)).length === 1, "the surface's own payload is vouchable");
+    const fs = await import("node:fs");
+    const server = fs.readFileSync(new URL("../../src/server.js", import.meta.url), "utf8");
+    assert.match(server, /\.\.\.\(url\.startsWith\(`\$\{selfInvokeBase\(\)\}\/`\) \? loopbackMarketAssumedHeaders\(payload\) : \{\}\),/);
+    assert.match(server, /async function handleInvokeRequest\(req, res, routeContext = \{\}\) \{[\s\S]{0,600}stripUnvouchedMarketAssumed\(req\);/);
+    const forwarded = loopbackReq(us, { ...loopbackMarketAssumedHeaders(us), "X-Forwarded-For": "203.0.113.9" });
+    stripUnvouchedMarketAssumed(forwarded);
+    assert.equal("market_assumed" in forwarded.body.payload.search, false, "routed in from outside: not loopback");
+  });
+});
+
 describe("refusals and the completion line", () => {
   test("a read refused under an assumed US carries market_assumed on the error; a declared one does not", async () => {
     const failing = { async execute() { throw new PivotaCommerceError("NO_MERCHANT_OFFER", { reason: "test" }); } };

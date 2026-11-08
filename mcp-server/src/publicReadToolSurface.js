@@ -286,7 +286,8 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     // off replays with no line until it is recomputed (at most PUBLIC_READ_CACHE_STALE_MS after the flip).
     noteToolCall(observe, () => computed.priceFacts || null);
     // A read that named no market was answered as US (decision D-10) and says so. Added per call, AFTER this tier's
-    // cache: the key is commerceToolParamsKey, under which a no-market call and a declared-US call are one entry.
+    // cache, never into it: the key is commerceToolParamsKey, under which a no-market and a declared-US get_product
+    // are still one entry (a search is not: its assumed params carry `market_assumed`, so the keys differ).
     if (commerceToolMarketAssumed(toolName, args)) {
       noteToolCall(observe, { market_assumed: true });
       if (computed.value && typeof computed.value === "object" && !Array.isArray(computed.value)) {

@@ -892,12 +892,18 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
   // DECISION D-10: a search that named no market reaches this lane as `market: "US"` + `market_assumed: true` (the
   // MCP/UCP doors answer it as US). The mint must NOT be told US: the backend stamps a link `market_observed` from
   // the market it is sent, a claim that the buyer named it. A declared US is sent exactly as before.
+  // P2-N1: the flag DOWNGRADES provenance, so only this gateway's own vouched loopback search may carry it; a
+  // client-supplied `market_assumed` is stripped at the invoke ingress, beside any market.
+  const vouched = () => require('../../src/guardrails/loopbackCallerAssertion').loopbackMarketAssumedHeaders({ search: { market: 'US', market_assumed: true } });
   test.each([
-    ['declared US', { market: 'US' }, 'US'],
-    ['no market', {}, null],
-    ['assumed US (exactly what a market-less search sent before D-10)', { market: 'US', market_assumed: true }, null],
-  ])('the mint is sent the market only when the buyer named it (%s)', async (_label, search, sentMarket) => {
-    mockDbRows([seedRow()]);
+    ['declared US', { market: 'US' }, {}, 'US'],
+    ['no market', {}, {}, null],
+    ['assumed US, vouched (exactly what a market-less search sent before D-10)', { market: 'US', market_assumed: true }, null, null],
+    ['a CLIENT-supplied flag beside US is stripped', { market: 'US', market_assumed: true }, {}, 'US'],
+    ['a CLIENT-supplied flag beside SG is stripped', { market: 'SG', market_assumed: true }, {}, 'SG'],
+    ['a vouched marker never rescues a flag beside SG', { market: 'SG', market_assumed: true }, null, 'SG'],
+  ])('the mint is sent the market only when the buyer named it (%s)', async (_label, search, headers, sentMarket) => {
+    mockDbRows([seedRow(search.market === 'SG' ? { price_currency: 'SGD' } : {})]);
     let mintBody = null;
     const mint = nock('http://pivota.test')
       .post('/agent/shop/v1/attribution/external-seed-links')
@@ -906,9 +912,20 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         return { links: [] };
       });
     const app = require('../../src/server');
-    await runIngredientDirectSearch(app, { search });
+    await runIngredientDirectSearch(app, { search, headers: headers === null ? vouched() : headers });
     expect(mint.isDone()).toBe(true);
     expect(mintBody.market).toBe(sentMarket);
+  });
+
+  test('the mint market drops only an assumed US, never a market beside a forged flag', () => {
+    const { seedAttributionMintMarket } = require('../../src/server')._debug;
+    expect(seedAttributionMintMarket({ market: 'US', market_assumed: true }, {}, {})).toBe(null);
+    expect(seedAttributionMintMarket({ market: 'SG', market_assumed: true }, {}, {})).toBe('SG');
+    expect(seedAttributionMintMarket({ market: 'US', market_assumed: 'true' }, {}, {})).toBe('US');
+    expect(seedAttributionMintMarket({ market: 'US' }, {}, {})).toBe('US');
+    expect(seedAttributionMintMarket({}, { market: 'JP' }, {})).toBe('JP');
+    expect(seedAttributionMintMarket({}, {}, { market: 'GB' })).toBe('GB');
+    expect(seedAttributionMintMarket({}, {}, {})).toBe(null);
   });
 
   test('the backend search body carries market_assumed only for an assumed market (provenance for its minters)', () => {
@@ -920,6 +937,9 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect('market_assumed' in declared).toBe(false);
     const forged = buildSearchProductsV2Body({ search: { query: 'serum', market: 'US', market_assumed: 'yes' } });
     expect('market_assumed' in forged).toBe(false);
+    const besideSg = buildSearchProductsV2Body({ search: { query: 'serum', market: 'SG', market_assumed: true } });
+    expect('market_assumed' in besideSg).toBe(false);
+    expect(besideSg.market).toBe('SG');
   });
 
   test('a failing mint endpoint leaves the seed card on its raw destination and still returns 200', async () => {
