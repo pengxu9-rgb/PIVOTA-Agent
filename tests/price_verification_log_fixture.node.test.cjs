@@ -95,12 +95,27 @@ function stripMarketAssumed(text) {
   return { text: JSON.stringify(o), label };
 }
 
+// ...and their `mcp tools/call complete` line records `market_assumed: true` (the production count of calls that
+// relied on the default), which is taken back out of the pinned lines (and asserted) the same way.
+function assumedOnCompletionLines(lines, name) {
+  if (!NO_MARKET_CASES.has(name)) return { lines, assumed: undefined };
+  let assumed = false;
+  const out = lines.map((l) => {
+    if (l.msg !== 'mcp tools/call complete' || !('market_assumed' in l)) return l;
+    assumed = l.market_assumed === true;
+    const { market_assumed: _m, ...rest } = l;
+    return rest;
+  });
+  return { lines: out, assumed };
+}
+
 const snapshot = (r, { flag, name } = {}) => ({
   status: r.status,
+  completion_market_assumed: assumedOnCompletionLines(pinnedLines(r.lines, { flag }), name).assumed,
   // The tool list: D-10's description edits (and only those) reversed before the byte comparison.
   text: NO_MARKET_CASES.has(name) ? stripMarketAssumed(maskIds(r.text)).text : name === 'public_tools_list' ? revertNoMarketDescriptionEdits(maskIds(r.text)) : maskIds(r.text),
   market_assumed: NO_MARKET_CASES.has(name) ? stripMarketAssumed(maskIds(r.text)).label : undefined,
-  lines: pinnedLines(r.lines, { flag }),
+  lines: assumedOnCompletionLines(pinnedLines(r.lines, { flag }), name).lines,
   carriers: r.lines.filter(isSearchCompletion).map((l) => {
     const out = {};
     for (const k of MARKET_CARRIER_KEYS) if (k in l) out[k] = l[k];
@@ -138,7 +153,10 @@ if (WRITE) {
         const got = snapshot(await doors.send(doors.CASES[name], { flag }), { flag, name });
         const label = `${name} (PRICE_VERIFICATION_LOG ${flag ? 'on' : 'off'})`;
         assert.equal(got.status, want.status, `${label}: status`);
-        if (NO_MARKET_CASES.has(name)) assert.equal(got.market_assumed && got.market_assumed.code, 'US', `${label}: no market named, so US assumed and said`);
+        if (NO_MARKET_CASES.has(name)) {
+          assert.equal(got.market_assumed && got.market_assumed.code, 'US', `${label}: no market named, so US assumed and said`);
+          assert.equal(got.completion_market_assumed, true, `${label}: and the completion line counts it`);
+        }
         else assert.equal(got.market_assumed, undefined);
         assert.equal(got.text, want.text, `${label}: the answer must be the pre-log answer, byte for byte`);
         assert.deepEqual(got.lines, want.lines, `${label}: live-read and completion lines`);

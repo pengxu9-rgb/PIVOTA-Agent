@@ -341,10 +341,10 @@ for (const [name, opts] of [
   });
 }
 
-test('path2/escalation GET: the re-read asks about the market its id carries (US for an id with none) and declines the same way', async () => {
-  // The UCP `get_checkout` body carries no `checkout.context`; the id carries the create's market (decision D-10),
-  // and an id with no market member is US. Under enforcement a browse_only US fact is a decline, handled by the
-  // same `return null` as the create branch.
+test('path2/escalation GET: a LEGACY id (no market member) re-reads unkeyable, and takes the SAME fall-through under enforcement', async () => {
+  // The UCP `get_checkout` body carries no `checkout.context`; a new id carries the create's market (decision D-10),
+  // but an id minted before that carries none, and is never read as US: its re-read is unkeyable, exactly as every
+  // re-read was before. Under enforcement that is a decline, handled by the same `return null` as the create branch.
   const { tryEscalateUcpCheckout, encodeEscalationId } = await escalation();
   const sessionId = encodeEscalationId([{ product_id: 'p1', quantity: 1 }]);
   const run = (env, shouldOfferPurchase) => tryEscalateUcpCheckout({
@@ -361,7 +361,7 @@ test('path2/escalation GET: the re-read asks about the market its id carries (US
 
   const enforcing = fakeBackend(BROWSE_ONLY);
   assert.equal(await run(env, realGate({ env, backend: enforcing, logger: fakeLogger() })), null);
-  assert.equal(new URL(enforcing.calls[0].url).searchParams.get('market'), 'US');
+  assert.equal(new URL(enforcing.calls[0].url).searchParams.has('market'), false, 'no market: never a defaulted US');
 
   const unenforced = fakeBackend(NOT_ENFORCED);
   const kept = await run(env, realGate({ env, backend: unenforced, logger: fakeLogger() }));

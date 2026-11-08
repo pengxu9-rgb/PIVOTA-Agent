@@ -17,7 +17,9 @@ const {
   ucpDialectSurface,
   commerceToolMarketAssumed,
   commerceToolParamsKey,
+  toToolError,
 } = await import("../src/commerceToolSurface.js");
+const { PivotaCommerceError } = await import("../../safety-kernel/src/errors.js");
 const { createPublicReadToolSurface } = await import("../src/publicReadToolSurface.js");
 const {
   encodeEscalationId,
@@ -109,20 +111,39 @@ describe("native /mcp: every read is answered for one market", () => {
     assert.equal(commerceToolMarketAssumed("get_checkout_session", { session_id: "q_1" }), false);
   });
 
-  test("the search cache: a no-market and a declared-US search share ONE entry, and only the no-market answer is labelled", async () => {
+  test("the search cache: an assumed and a declared-US search are SEPARATE entries (their links differ in provenance); a replay stays labelled", async () => {
     const ex = recordingExecutor();
     const surface = createCommerceToolSurface(ex, { cache: true });
     const assumed = await surface.callTool("search_catalog", { query: "serum" }, SESSION);
     const declared = await surface.callTool("search_catalog", { query: "serum", market: "US" }, SESSION);
     const assumedAgain = await surface.callTool("search_catalog", { query: "serum" }, SESSION);
-    assert.equal(ex.calls.length, 1, "the same params: one upstream call");
+    assert.equal(ex.calls.length, 2, "one upstream call each, the replay from the cache");
     assert.equal(assumed.market_assumed.code, "US");
     assert.equal("market_assumed" in declared, false, "the label never enters the cache");
     assert.equal(assumedAgain.market_assumed.code, "US");
-    assert.equal(
+    assert.notEqual(
       commerceToolParamsKey("search_catalog", { query: "serum" }),
       commerceToolParamsKey("search_catalog", { query: "serum", market: "US" }),
     );
+  });
+
+  test("P2-B1: the assumed US travels as ASSUMED to the reads whose answers carry backend-minted links (search, get_offers); a declared one adds nothing", async () => {
+    for (const [tool, args, at] of [
+      ["search_catalog", { query: "serum" }, (c) => c.params.payload.search],
+      ["get_offers", { product_id: "sig_1" }, (c) => c.params.payload],
+    ]) {
+      const ex = recordingExecutor();
+      const surface = createCommerceToolSurface(ex, { cache: false });
+      await surface.callTool(tool, args, SESSION);
+      assert.equal(at(ex.calls[0]).market_assumed, true, tool);
+      await surface.callTool(tool, { ...args, market: "US" }, SESSION);
+      assert.equal("market_assumed" in at(ex.calls[1]), false, `${tool}: declared US is byte-identical`);
+    }
+    for (const [tool, args] of [["get_product", { merchant_id: "m1", product_id: "sig_1" }], ["get_alternatives", { product_id: "sig_1" }]]) {
+      const ex = recordingExecutor();
+      await createCommerceToolSurface(ex, { cache: false }).callTool(tool, args, SESSION);
+      assert.equal("market_assumed" in ex.calls[0].params.payload, false, `${tool}: no links minted from its market`);
+    }
   });
 });
 
@@ -184,7 +205,7 @@ describe("public tier", () => {
     const pub = createPublicReadToolSurface(ex, {});
     const assumed = await pub.callTool("search_catalog", { query: "serum" });
     const declared = await pub.callTool("search_catalog", { query: "serum", market: "US" });
-    assert.equal(ex.calls.length, 1, "one entry for both");
+    assert.equal(ex.calls.length, 2, "separate entries: their links differ in provenance");
     assert.equal(ex.calls[0].params.payload.search.market, "US");
     assert.equal(assumed.market_assumed.code, "US");
     assert.equal("market_assumed" in declared, false);
@@ -210,6 +231,20 @@ const create = (ucpArgs, gate, env = ESC) => tryEscalateUcpCheckout({
   op: CREATE, params: { idempotency_key: "k", quote: { items: [{ product_id: SEED.product_id, quantity: 1 }] } },
   ctx: {}, executor: seedExecutor, ucpArgs, env, now: NOW, shouldOfferPurchase: gate,
 });
+function sellerDoor() {
+  const cart = () => {
+    const payload = { id: "gid://shopify/Cart/c1", currency: "USD", continue_url: "https://store.example/cart/c/abc?key=k",
+      line_items: [{ id: "line_0", item: { id: "gid://shopify/ProductVariant/44012345678901", title: "Seller title", price: 13100 }, quantity: 1,
+        totals: [{ type: "subtotal", amount: 13100 }, { type: "total", amount: 13100 }] }],
+      totals: [{ type: "subtotal", amount: 13100 }, { type: "total", amount: 13100 }] };
+    return { ok: true, status: 200, response: { result: { content: [{ type: "text", text: JSON.stringify(payload) }] } } };
+  };
+  const calls = [];
+  return { calls,
+    async endpointFor(host) { calls.push(["discover", host]); return "https://store.example/api/ucp/mcp"; },
+    async createCart(ep, a) { calls.push(["create_cart", ep, structuredClone(a)]); return cart(); },
+    async getCart(ep, id) { calls.push(["get_cart", ep, id]); return cart(); } };
+}
 const reread = (id, gate, declines, env = ESC) => tryEscalateUcpCheckout({
   op: GET, params: { session_id: id }, ctx: {}, executor: seedExecutor, ucpArgs: { id }, env, now: NOW, shouldOfferPurchase: gate, declines,
 });
@@ -238,17 +273,17 @@ describe("storefront escalation: the create's market, and the re-read carries it
     assert.deepEqual(gate.asked, ["US"]);
     assert.equal(out.market_assumed.code, "US");
     assert.ok(out.messages.some((m) => m.code === "market_assumed"));
-    assert.deepEqual(idBody(out.id), { v: 1, i: [[SEED.product_id, 1]], a: 1 });
+    assert.deepEqual(idBody(out.id), { v: 1, i: [[SEED.product_id, 1]], m: "US", a: 1 });
     const again = await reread(out.id, gate);
     assert.deepEqual(gate.asked, ["US", "US"], "the re-read asks about the market the checkout was created for");
     assert.equal(again.id, out.id);
     assert.equal(again.market_assumed.code, "US");
   });
 
-  test("declared US: the id is byte-identical to the one minted before this change, and the re-read asks about US", async () => {
+  test("declared US: the id carries `m: US` (never read as a legacy id), the re-read asks about US, and nothing is labelled", async () => {
     const gate = recordingGate();
     const out = await create({ checkout: { context: { address_country: "US" } } }, gate);
-    assert.equal(out.id, encodeEscalationId(ITEMS), "no market member for a US create");
+    assert.deepEqual(idBody(out.id), { v: 1, i: [[SEED.product_id, 1]], m: "US" });
     assert.equal("market_assumed" in out, false);
     assert.equal(out.messages.some((m) => m.code === "market_assumed"), false);
     const again = await reread(out.id, gate);
@@ -262,7 +297,15 @@ describe("storefront escalation: the create's market, and the re-read carries it
     assert.deepEqual(idBody(out.id), { v: 1, i: [[SEED.product_id, 1]], m: "SG" });
     await reread(out.id, gate);
     assert.deepEqual(gate.asked, ["SG", "SG"]);
-    assert.deepEqual(escalationMarketOf(out.id), { market: "SG", assumed: false });
+    assert.deepEqual(escalationMarketOf(out.id), { market: "SG", assumed: false, legacy: false });
+  });
+
+  test("a malformed create market is unkeyable at create AND at re-read: its id carries no market (as every id did before)", async () => {
+    const gate = recordingGate();
+    const out = await create({ checkout: { context: { address_country: "USA" } } }, gate);
+    assert.equal(out.id, encodeEscalationId(ITEMS), "the pre-D-10 bytes");
+    await reread(out.id, gate);
+    assert.deepEqual(gate.asked, [undefined, undefined], "no market asked, at create or re-read");
   });
 
   test("C-03: under an ENFORCING gate a re-read is keyable, so a checkout that passed at create re-reads; one that would not, declines", async () => {
@@ -275,21 +318,114 @@ describe("storefront escalation: the create's market, and the re-read carries it
     const declines = [];
     assert.equal(await reread(forge({ v: 1, i: [[SEED.product_id, 1]], m: "JP" }), enforcing, declines), null);
     assert.deepEqual(declines, ["merchant_not_purchasable"]);
-    const err = await refuseUnservedStorefrontCheckout({ op: GET, params: { session_id: forge({ v: 1, i: [[SEED.product_id, 1]], m: "JP" }) }, ctx: {}, executor: seedExecutor, declined: true }).then(() => null, (e) => e);
+    const err = await refuseUnservedStorefrontCheckout({ op: GET, params: { session_id: forge({ v: 1, i: [[SEED.product_id, 1]], m: "JP" }) }, ctx: {}, executor: seedExecutor, declined: true, declineReasons: declines }).then(() => null, (e) => e);
     assert.equal(err.detail.acp_detail.reason, "ucp_escalation_reread_unconfirmed");
-    assert.match(err.detail.acp_message || err.message, /market this checkout was created for/);
+    assert.match(err.detail.acp_message, /market this checkout was created for/);
+    assert.equal(err.marketAssumed, undefined);
   });
 
-  test("an id from before this change (no market member) re-reads as US; a forged market member is no id of ours", () => {
-    assert.deepEqual(escalationMarketOf(encodeEscalationId(ITEMS)), { market: "US", assumed: false });
-    for (const bad of [{ m: "US" }, { m: "sg" }, { m: "SGP" }, { m: 65 }, { a: 2 }, { a: true }, { a: 1, m: "SG" }]) {
+  test("P2-G1: a LEGACY id (minted before ids carried a market) is never read as US: its re-read is unkeyable and fails safe", async () => {
+    const legacy = encodeEscalationId(ITEMS); // the bytes every create minted before this change, SG or US alike
+    assert.deepEqual(escalationMarketOf(legacy), { market: null, assumed: false, legacy: true });
+    const enforcing = recordingGate((a) => (a.market ? { offer: true, source: "fact" } : { offer: false, source: "unkeyable_enforced" }));
+    const declines = [];
+    assert.equal(await reread(legacy, enforcing, declines), null, "under enforcement: a decline, as before this change");
+    assert.deepEqual(enforcing.asked, [undefined], "the gate is asked about NO market, never US");
+    assert.deepEqual(declines, ["merchant_not_purchasable", "market_unrecorded"]);
+    const err = await refuseUnservedStorefrontCheckout({ op: GET, params: { session_id: legacy }, ctx: {}, executor: seedExecutor, declined: true, declineReasons: declines }).then(() => null, (e) => e);
+    assert.equal(err.detail.acp_detail.reason, "ucp_escalation_reread_unconfirmed");
+    assert.match(err.detail.acp_message, /no buyer market to check the seller against/);
+    // unenforced (the gate answers without a market): the re-read is the old unlabelled answer
+    const open = recordingGate(() => ({ offer: true, source: "unkeyable_unenforced" }));
+    const again = await reread(legacy, open);
+    assert.equal(again.status, "requires_escalation");
+    assert.equal("market_assumed" in again, false);
+  });
+
+  test("a forged market member is no id of ours", () => {
+    for (const bad of [{ m: "sg" }, { m: "SGP" }, { m: 65 }, { a: 1 }, { a: 2, m: "US" }, { a: true, m: "US" }, { a: 1, m: "SG" }]) {
       const id = forge({ v: 1, i: [[SEED.product_id, 1]], ...bad });
       assert.equal(decodeEscalationId(id), null, JSON.stringify(bad));
       assert.equal(escalationMarketOf(id), null, JSON.stringify(bad));
     }
     // a seller-priced (v2) id carries the market the same way
     const v2 = encodeEscalationId(ITEMS, "gid://shopify/Cart/c1", "store.example", { code: "JP", assumed: false });
-    assert.deepEqual(escalationMarketOf(v2), { market: "JP", assumed: false });
+    assert.deepEqual(escalationMarketOf(v2), { market: "JP", assumed: false, legacy: false });
     assert.deepEqual(decodeEscalationId(v2), ITEMS);
+  });
+
+  test("P3-G4: a SELLER-PRICED re-read of an assumed checkout says US assumed; a declared one does not", async () => {
+    const env = { ...ESC, AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED: "1" };
+    const door = sellerDoor();
+    const gate = recordingGate();
+    const run = (op, params, ucpArgs) => tryEscalateUcpCheckout({ op, params, ctx: {}, executor: seedExecutor, ucpArgs, env, now: NOW, shouldOfferPurchase: gate, merchantDoor: door });
+    const made = await run(CREATE, { idempotency_key: "k", quote: { items: ITEMS } }, {});
+    assert.equal(made.messages[0].code, "checkout.priced_by_seller_storefront", "the seller priced it");
+    assert.deepEqual(idBody(made.id).m, "US");
+    assert.equal(idBody(made.id).a, 1);
+    const again = await run(GET, { session_id: made.id }, { id: made.id });
+    assert.ok(door.calls.some((c) => c[0] === "get_cart"), "the re-read asked the seller for its cart");
+    assert.equal(again.messages[0].code, "checkout.priced_by_seller_storefront");
+    assert.equal(again.market_assumed.code, "US");
+    assert.ok(again.messages.some((m) => m.code === "market_assumed"));
+    const declared = await run(CREATE, { idempotency_key: "k", quote: { items: ITEMS } }, { checkout: { context: { address_country: "US" } } });
+    const declaredAgain = await run(GET, { session_id: declared.id }, { id: declared.id });
+    assert.equal("market_assumed" in declaredAgain, false);
+  });
+
+  test("P3-G3: a gate refusal decided on the assumed US says so (message + market_assumed); a declared one does not", async () => {
+    const refuse = recordingGate(() => ({ offer: false, source: "fact" }));
+    const declines = [];
+    assert.equal(await tryEscalateUcpCheckout({
+      op: CREATE, params: { idempotency_key: "k", quote: { items: ITEMS } }, ctx: {}, executor: seedExecutor, ucpArgs: {},
+      env: ESC, now: NOW, shouldOfferPurchase: refuse, declines,
+    }), null);
+    assert.deepEqual(declines, ["merchant_not_purchasable", "market_assumed"]);
+    const params = { idempotency_key: "k", quote: { items: ITEMS } };
+    const err = await refuseUnservedStorefrontCheckout({ op: CREATE, params, ctx: {}, executor: seedExecutor, declined: true, declineReasons: declines, env: ESC }).then(() => null, (e) => e);
+    assert.equal(err.detail.acp_detail.reason, "merchant_not_purchasable");
+    assert.match(err.detail.acp_message, /decided for a US buyer; send checkout\.context\.address_country/);
+    assert.equal(err.marketAssumed, true);
+    const wire = JSON.parse(toToolError(err).content[0].text);
+    assert.equal(wire.error.market_assumed.code, "US");
+    const declared = await refuseUnservedStorefrontCheckout({ op: CREATE, params, ctx: {}, executor: seedExecutor, declined: true, declineReasons: ["merchant_not_purchasable"], env: ESC }).then(() => null, (e) => e);
+    assert.doesNotMatch(declared.detail.acp_message, /decided for a US buyer/);
+    assert.equal("market_assumed" in JSON.parse(toToolError(declared).content[0].text).error, false);
+  });
+});
+
+describe("refusals and the completion line", () => {
+  test("a read refused under an assumed US carries market_assumed on the error; a declared one does not", async () => {
+    const failing = { async execute() { throw new PivotaCommerceError("NO_MERCHANT_OFFER", { reason: "test" }); } };
+    const surface = createCommerceToolSurface(failing, { cache: false });
+    const err = await surface.callTool("get_offers", { product_id: "sig_1" }, SESSION).then(() => null, (e) => e);
+    assert.equal(JSON.parse(toToolError(err).content[0].text).error.market_assumed.code, "US");
+    const err2 = await surface.callTool("get_offers", { product_id: "sig_1", market: "US" }, SESSION).then(() => null, (e) => e);
+    assert.equal("market_assumed" in JSON.parse(toToolError(err2).content[0].text).error, false);
+  });
+
+  test("P3-G6: every call answered for an assumed US reports market_assumed to the completion line; a declared one does not", async () => {
+    const seen = [];
+    const observe = (f) => seen.push(f);
+    const ex = recordingExecutor();
+    const surface = createCommerceToolSurface(ex, { cache: false });
+    await surface.callTool("search_catalog", { query: "serum" }, SESSION, { observe });
+    assert.ok(seen.some((f) => f.market_assumed === true));
+    seen.length = 0;
+    await surface.callTool("search_catalog", { query: "serum", market: "US" }, SESSION, { observe });
+    assert.equal(seen.some((f) => "market_assumed" in f), false);
+    const pub = createPublicReadToolSurface(recordingExecutor(), {});
+    await pub.callTool("get_product", { product_id: "sig_1" }, {}, { observe });
+    assert.ok(seen.some((f) => f.market_assumed === true), "the public tier too");
+    // ...and the line itself keeps it (and only `true`).
+    const { default: outcome } = await import("../../src/observability/mcpToolCallOutcome.js");
+    const rec = outcome.createMcpToolCallRecorder();
+    rec.observe({ market_assumed: true });
+    rec.recordRpcResponse({ body: { result: {} } });
+    assert.equal(rec.fields(200).market_assumed, true);
+    const plain = outcome.createMcpToolCallRecorder();
+    plain.observe({ market_assumed: "yes" });
+    plain.recordRpcResponse({ body: { result: {} } });
+    assert.equal("market_assumed" in plain.fields(200), false);
   });
 });

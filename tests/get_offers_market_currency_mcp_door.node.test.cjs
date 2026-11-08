@@ -163,6 +163,7 @@ test('an offer with no currency is never shown to a declared market', async () =
 test('no market declared: answered as US (decision D-10) — the US offer only, US on the backend call, and the answer says so', async () => {
   const { out, upstream } = await callGetOffers({ merchant_id: 'ext_seed_gb', product_id: 'p_seed' }, [GBP, KRW, USD]);
   assert.equal(upstream.payload.market, 'US', 'the assumed market rides to the backend, as a declared one does');
+  assert.equal(upstream.payload.marketAssumed, true, '...marked ASSUMED, so its links are never stamped market_observed');
   assert.deepEqual(currencies(out), ['USD']);
   assert.equal(out.metadata.market, 'US');
   assert.equal(out.metadata.market_currency, 'USD');
@@ -172,6 +173,7 @@ test('no market declared: answered as US (decision D-10) — the US offer only, 
   const declared = await callGetOffers({ merchant_id: 'ext_seed_gb', product_id: 'p_seed', market: 'US' }, [GBP, KRW, USD]);
   const { market_assumed: _label, ...rest } = out;
   assert.deepEqual(rest, declared.out);
+  assert.equal('marketAssumed' in declared.upstream.payload, false, 'a declared market adds nothing to the backend call');
   assert.equal('market_assumed' in declared.out, false);
 });
 

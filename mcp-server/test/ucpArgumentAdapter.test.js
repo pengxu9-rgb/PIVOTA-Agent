@@ -634,13 +634,13 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
 
     const call = executor.only('search_catalog');
     // toParams' allowlist wraps the native args as payload.search; the query survives, nothing else appears.
-    assert.deepEqual(call.params.payload.search, { query: 'niacinamide serum', market: 'US' });
+    assert.deepEqual(call.params.payload.search, { query: 'niacinamide serum', market: 'US', market_assumed: true });
 
     // …and it is trimmed on the way through, as `catalog.id` is: the cache key downstream is the allowlisted
     // params, so " retinol" and "retinol" must be one entry, not two.
     const { executor: ex2, ucp: ucp2 } = ucpSurface();
     await ucp2.callTool('search_catalog', { meta: AGENT_META, catalog: { query: '  retinol  ' } }, SESSION);
-    assert.deepEqual(ex2.only('search_catalog').params.payload.search, { query: 'retinol', market: 'US' });
+    assert.deepEqual(ex2.only('search_catalog').params.payload.search, { query: 'retinol', market: 'US', market_assumed: true });
     assert.equal(call.params.payload.search.merchant_id, undefined, 'the UCP shape names no merchant');
     // The executor selects the lane from the ABSENCE of merchant_id (canonicalExecutor: unscoped ->
     // find_products_multi). The op id it receives is the canonical one, so the dialect forked nothing.
@@ -713,7 +713,7 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
     }
     assert.match(wire, /vitamin c/);
     // …and nothing but the query reached the lane from that body: no page_size, no filter, no currency.
-    assert.deepEqual(executor.only('search_catalog').params.payload.search, { query: 'vitamin c', market: 'US' });
+    assert.deepEqual(executor.only('search_catalog').params.payload.search, { query: 'vitamin c', market: 'US', market_assumed: true });
   });
 
   test('`meta` is required on the read, exactly as on every other UCP call', async () => {
@@ -809,11 +809,11 @@ describe('search_catalog reads the live filters, pagination and currency the way
   });
 
   test('`pagination.limit` becomes `page_size`, capped at the native ceiling', async () => {
-    assert.deepEqual(await search({ query: 'q', pagination: { limit: 24 } }), { query: 'q', market: 'US', page_size: 24 });
-    assert.deepEqual(await search({ query: 'q', pagination: { limit: 1 } }), { query: 'q', market: 'US', page_size: 1 });
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 24 } }), { query: 'q', market: 'US', market_assumed: true, page_size: 24 });
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 1 } }), { query: 'q', market: 'US', market_assumed: true, page_size: 1 });
     // The live schema declares no maximum; the native tool publishes 50. Capped, not refused.
-    assert.deepEqual(await search({ query: 'q', pagination: { limit: 500 } }), { query: 'q', page_size: 50, market: 'US' });
-    assert.deepEqual(await search({ query: 'q', pagination: { limit: 50 } }), { query: 'q', page_size: 50, market: 'US' });
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 500 } }), { query: 'q', page_size: 50, market: 'US', market_assumed: true });
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 50 } }), { query: 'q', page_size: 50, market: 'US', market_assumed: true });
     for (const bad of [0, -1, 1.5, '10', true, null]) {
       assert.match(await refused({ query: 'q', pagination: { limit: bad } }), /pagination\.limit/);
     }
@@ -821,13 +821,13 @@ describe('search_catalog reads the live filters, pagination and currency the way
 
   test('`pagination.cursor` is OUR token and decodes to the native `page`; anything else is refused, never page 1', async () => {
     // A cursor minted by the response shaper for page 2 / page 7 comes back as exactly that page.
-    assert.deepEqual(await search({ query: 'q', pagination: { cursor: encodeSearchCursor(2) } }), { query: 'q', market: 'US', page: 2 });
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: encodeSearchCursor(2) } }), { query: 'q', market: 'US', market_assumed: true, page: 2 });
     assert.deepEqual(
       await search({ query: 'q', pagination: { cursor: encodeSearchCursor(7), limit: 10 } }),
-      { query: 'q', market: 'US', page: 7, page_size: 10 },
+      { query: 'q', market: 'US', market_assumed: true, page: 7, page_size: 10 },
     );
     // The schema's published example IS a real cursor (page 2) — the fixture relies on it.
-    assert.deepEqual(await search({ query: 'q', pagination: { cursor: SEARCH_CURSOR_EXAMPLE } }), { query: 'q', market: 'US', page: 2 });
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: SEARCH_CURSOR_EXAMPLE } }), { query: 'q', market: 'US', market_assumed: true, page: 2 });
     // Junk, a foreign token, a tampered page, an empty string, a non-string: refused. Treating any of these as
     // "start over" is the infinite-page loop, and it looks exactly like an infinite catalog.
     const forged = Buffer.from(JSON.stringify({ v: 1, page: 1 }), 'utf8').toString('base64url');   // page 1 is not a continuation
@@ -836,15 +836,15 @@ describe('search_catalog reads the live filters, pagination and currency the way
       assert.match(await refused({ query: 'q', pagination: { cursor: bad } }), /pagination\.cursor/);
     }
     // A BLANK cursor is not a token — it is a first-page request, and is absent, as for query/currency.
-    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '' } }), { query: 'q', market: 'US' });
-    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '   ', limit: 5 } }), { query: 'q', page_size: 5, market: 'US' });
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '' } }), { query: 'q', market: 'US', market_assumed: true });
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '   ', limit: 5 } }), { query: 'q', page_size: 5, market: 'US', market_assumed: true });
   });
 
   test('`filters.available` becomes `in_stock_only` verbatim, and only when supplied', async () => {
-    assert.deepEqual(await search({ query: 'q', filters: { available: false } }), { query: 'q', market: 'US', in_stock_only: false });
-    assert.deepEqual(await search({ query: 'q', filters: { available: true } }), { query: 'q', market: 'US', in_stock_only: true });
+    assert.deepEqual(await search({ query: 'q', filters: { available: false } }), { query: 'q', market: 'US', market_assumed: true, in_stock_only: false });
+    assert.deepEqual(await search({ query: 'q', filters: { available: true } }), { query: 'q', market: 'US', market_assumed: true, in_stock_only: true });
     // Omitted => the native default (in-stock only) applies downstream; nothing is minted here.
-    assert.deepEqual(await search({ query: 'q', filters: {} }), { query: 'q', market: 'US' });
+    assert.deepEqual(await search({ query: 'q', filters: {} }), { query: 'q', market: 'US', market_assumed: true });
     for (const bad of ['true', 1, null]) {
       assert.match(await refused({ query: 'q', filters: { available: bad } }), /filters\.available/);
     }
@@ -854,18 +854,18 @@ describe('search_catalog reads the live filters, pagination and currency the way
     // USD (default when context.currency is absent): cents -> dollars.
     assert.deepEqual(
       await search({ query: 'q', filters: { price: { min: 500, max: 2599 } } }),
-      { query: 'q', price_min: 5, price_max: 25.99, market: 'US' },
+      { query: 'q', price_min: 5, price_max: 25.99, market: 'US', market_assumed: true },
     );
     // JPY is ZERO-decimal: 1500 minor units IS 1500 yen. A ÷100 mapper would filter to ¥15 — every real
     // product silently gone.
     assert.deepEqual(
       await search({ query: 'q', context: { currency: 'JPY' }, filters: { price: { min: 1500, max: 8000 } } }),
-      { query: 'q', currency: 'JPY', price_min: 1500, price_max: 8000, market: 'US' },
+      { query: 'q', currency: 'JPY', price_min: 1500, price_max: 8000, market: 'US', market_assumed: true },
     );
     // BHD is THREE-decimal: 1500 fils is 1.5 dinar.
     assert.deepEqual(
       await search({ query: 'q', context: { currency: 'BHD' }, filters: { price: { max: 1500 } } }),
-      { query: 'q', currency: 'BHD', price_max: 1.5, market: 'US' },
+      { query: 'q', currency: 'BHD', price_max: 1.5, market: 'US', market_assumed: true },
     );
     // UGX and ISK are exponent 0 in ISO 4217 but 2 in the kernel's CHARGE table (Stripe divisibility). A UCP
     // filter is a counterparty amount "in minor units" = ISO, so 5000 UGX minor units is 5000 shillings — the
@@ -873,26 +873,26 @@ describe('search_catalog reads the live filters, pagination and currency the way
     // minorUnitExponent, and this line is why.
     assert.deepEqual(
       await search({ query: 'q', context: { currency: 'UGX' }, filters: { price: { min: 5000, max: 20000 } } }),
-      { query: 'q', currency: 'UGX', price_min: 5000, price_max: 20000, market: 'US' },
+      { query: 'q', currency: 'UGX', price_min: 5000, price_max: 20000, market: 'US', market_assumed: true },
     );
     assert.deepEqual(
       await search({ query: 'q', context: { currency: 'ISK' }, filters: { price: { max: 3000 } } }),
-      { query: 'q', currency: 'ISK', price_max: 3000, market: 'US' },
+      { query: 'q', currency: 'ISK', price_max: 3000, market: 'US', market_assumed: true },
     );
     // …and LOWERCASE, because the currency is forwarded verbatim: a case-sensitive ISO table would fall
     // back to the charge exponent and reproduce the ×100 under-read one commit after fixing it.
     assert.deepEqual(
       await search({ query: 'q', context: { currency: 'ugx' }, filters: { price: { min: 5000 } } }),
-      { query: 'q', currency: 'ugx', price_min: 5000, market: 'US' },
+      { query: 'q', currency: 'ugx', price_min: 5000, market: 'US', market_assumed: true },
     );
     // Lower-case currency: the exponent lookup is case-insensitive; the code itself is forwarded trimmed,
     // otherwise verbatim (the native lane normalizes).
     assert.deepEqual(
       await search({ query: 'q', context: { currency: ' jpy ' }, filters: { price: { min: 300 } } }),
-      { query: 'q', currency: 'jpy', price_min: 300, market: 'US' },
+      { query: 'q', currency: 'jpy', price_min: 300, market: 'US', market_assumed: true },
     );
     // One bound alone is fine; zero is a legal bound.
-    assert.deepEqual(await search({ query: 'q', filters: { price: { min: 0 } } }), { query: 'q', price_min: 0, market: 'US' });
+    assert.deepEqual(await search({ query: 'q', filters: { price: { min: 0 } } }), { query: 'q', price_min: 0, market: 'US', market_assumed: true });
   });
 
   test('a price bound that is not a non-negative integer, or an inverted range, is refused — not answered empty', async () => {
@@ -902,25 +902,25 @@ describe('search_catalog reads the live filters, pagination and currency the way
     }
     assert.match(await refused({ query: 'q', filters: { price: { min: 2000, max: 1000 } } }), /min.*max|max.*min/);
     // …but an equal pair is a legal (point) range.
-    assert.deepEqual(await search({ query: 'q', filters: { price: { min: 1000, max: 1000 } } }), { query: 'q', price_min: 10, price_max: 10, market: 'US' });
+    assert.deepEqual(await search({ query: 'q', filters: { price: { min: 1000, max: 1000 } } }), { query: 'q', price_min: 10, price_max: 10, market: 'US', market_assumed: true });
     for (const bad of ['500-2000', 5, [5, 20], null]) {
       assert.match(await refused({ query: 'q', filters: { price: bad } }), /filters\.price/);
     }
   });
 
   test('`context.currency` and `address_country` reach the lane; other context members do not', async () => {
-    assert.deepEqual(await search({ query: 'q', context: { currency: 'EUR' } }), { query: 'q', currency: 'EUR', market: 'US' });
+    assert.deepEqual(await search({ query: 'q', context: { currency: 'EUR' } }), { query: 'q', currency: 'EUR', market: 'US', market_assumed: true });
     assert.deepEqual(
       await search({ query: 'q', context: { currency: 'EUR', address_country: 'FR', language: 'fr-FR', intent: 'gift' } }),
       { query: 'q', currency: 'EUR', market: 'FR' },
     );
     // Blank is ABSENT, as for `query` — the schema types it as a string and a blank string is a string.
-    assert.deepEqual(await search({ query: 'q', context: { currency: '' } }), { query: 'q', market: 'US' });
-    assert.deepEqual(await search({ query: 'q', context: { currency: '   ' } }), { query: 'q', market: 'US' });
+    assert.deepEqual(await search({ query: 'q', context: { currency: '' } }), { query: 'q', market: 'US', market_assumed: true });
+    assert.deepEqual(await search({ query: 'q', context: { currency: '   ' } }), { query: 'q', market: 'US', market_assumed: true });
     // …and with a blank currency the price exponent is the default (USD), not something minted from ''.
     assert.deepEqual(
       await search({ query: 'q', context: { currency: '' }, filters: { price: { min: 500 } } }),
-      { query: 'q', price_min: 5, market: 'US' },
+      { query: 'q', price_min: 5, market: 'US', market_assumed: true },
     );
     for (const bad of [840, null, ['USD'], { code: 'USD' }]) {
       assert.match(await refused({ query: 'q', context: { currency: bad } }), /context\.currency/);
@@ -928,7 +928,7 @@ describe('search_catalog reads the live filters, pagination and currency the way
     assert.deepEqual(await search({ query: 'q', context: { address_country: ' sg ', currency: 'USD' } }),
       { query: 'q', currency: 'USD', market: 'sg' });
     // A blank country names no market: answered as US (decision D-10), exactly as an absent one.
-    assert.deepEqual(await search({ query: 'q', context: { address_country: '  ' } }), { query: 'q', market: 'US' });
+    assert.deepEqual(await search({ query: 'q', context: { address_country: '  ' } }), { query: 'q', market: 'US', market_assumed: true });
     for (const bad of [65, null, ['SG']]) {
       assert.match(await refused({ query: 'q', context: { address_country: bad } }), /context\.address_country/);
     }
@@ -937,12 +937,12 @@ describe('search_catalog reads the live filters, pagination and currency the way
   test('`filters.categories` and `signals` are accepted and NEVER forwarded, whatever they carry', async () => {
     assert.deepEqual(
       await search({ query: 'q', filters: { categories: ['skincare', 'Serums'] } }),
-      { query: 'q', market: 'US' },
+      { query: 'q', market: 'US', market_assumed: true },
     );
     // Signals are caller-identifying. The shared cache key is the allowlisted params, so if either of these
     // ever reached the params two shoppers' searches would stop sharing an entry — and an IP would sit in it.
     const params = await search({ query: 'q', signals: { 'dev.ucp.buyer_ip': '203.0.113.7', 'dev.ucp.user_agent': 'Minds/1.0' } });
-    assert.deepEqual(params, { query: 'q', market: 'US' });
+    assert.deepEqual(params, { query: 'q', market: 'US', market_assumed: true });
     assert.equal(JSON.stringify(params).includes('203.0.113.7'), false);
   });
 

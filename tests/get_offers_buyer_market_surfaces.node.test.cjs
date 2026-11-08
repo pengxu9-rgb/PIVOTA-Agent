@@ -29,7 +29,7 @@ test('native MCP get_offers: `market` is declared, picked into the payload when 
   assert.deepEqual(calls[0].params, { payload: { product_id: 'p1', merchant_id: 'm1', market: 'sg', limit: 3 } });
   // No market named: answered as US, so US is what the lane is sent (and the answer says so).
   const assumed = await surface.callTool('get_offers', { product_id: 'p1', merchant_id: 'm1', limit: 3 }, { agent_id: 'agent_a' });
-  assert.deepEqual(calls[1].params, { payload: { product_id: 'p1', merchant_id: 'm1', market: 'US', limit: 3 } });
+  assert.deepEqual(calls[1].params, { payload: { product_id: 'p1', merchant_id: 'm1', market: 'US', limit: 3, market_assumed: true } });
   assert.equal(assumed.market_assumed.code, 'US');
 });
 

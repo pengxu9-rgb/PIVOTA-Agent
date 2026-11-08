@@ -796,7 +796,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum' +
     '?utm_source=pivota&utm_medium=find_products_multi&utm_campaign=US&pvt_click_id=clk_1&utm_content=clk_1';
 
-  async function runIngredientDirectSearch(app, { headers = {}, status = 200 } = {}) {
+  async function runIngredientDirectSearch(app, { headers = {}, status = 200, search = {} } = {}) {
     const pending = request(app).post('/agent/shop/v1/invoke');
     for (const [name, value] of Object.entries(headers)) pending.set(name, value);
     return pending
@@ -807,6 +807,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
             query: 'niacinamide serum under €30',
             limit: 10,
             in_stock_only: true,
+            ...search,
           },
         },
         metadata: { source: 'shopping_agent' },
@@ -886,6 +887,39 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(mintHeaders['x-api-key']).toBe('test-token');
     expect(mintHeaders['x-api-key']).not.toBe('caller_key_probe');
     expect(mintHeaders.authorization).toBe('Bearer test-token');
+  });
+
+  // DECISION D-10: a search that named no market reaches this lane as `market: "US"` + `market_assumed: true` (the
+  // MCP/UCP doors answer it as US). The mint must NOT be told US: the backend stamps a link `market_observed` from
+  // the market it is sent, a claim that the buyer named it. A declared US is sent exactly as before.
+  test.each([
+    ['declared US', { market: 'US' }, 'US'],
+    ['no market', {}, null],
+    ['assumed US (exactly what a market-less search sent before D-10)', { market: 'US', market_assumed: true }, null],
+  ])('the mint is sent the market only when the buyer named it (%s)', async (_label, search, sentMarket) => {
+    mockDbRows([seedRow()]);
+    let mintBody = null;
+    const mint = nock('http://pivota.test')
+      .post('/agent/shop/v1/attribution/external-seed-links')
+      .reply(200, (_uri, body) => {
+        mintBody = body;
+        return { links: [] };
+      });
+    const app = require('../../src/server');
+    await runIngredientDirectSearch(app, { search });
+    expect(mint.isDone()).toBe(true);
+    expect(mintBody.market).toBe(sentMarket);
+  });
+
+  test('the backend search body carries market_assumed only for an assumed market (provenance for its minters)', () => {
+    const { buildSearchProductsV2Body } = require('../../src/server')._debug;
+    const assumed = buildSearchProductsV2Body({ search: { query: 'serum', market: 'US', market_assumed: true } });
+    expect(assumed.market).toBe('US');
+    expect(assumed.market_assumed).toBe(true);
+    const declared = buildSearchProductsV2Body({ search: { query: 'serum', market: 'US' } });
+    expect('market_assumed' in declared).toBe(false);
+    const forged = buildSearchProductsV2Body({ search: { query: 'serum', market: 'US', market_assumed: 'yes' } });
+    expect('market_assumed' in forged).toBe(false);
   });
 
   test('a failing mint endpoint leaves the seed card on its raw destination and still returns 200', async () => {

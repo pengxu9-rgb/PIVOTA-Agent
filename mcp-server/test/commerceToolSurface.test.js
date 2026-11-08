@@ -80,7 +80,8 @@ test("reads require no identity (search_catalog / get_product run without a buye
   assert.deepEqual(reads.map((r) => r.op), ["find_products_multi", "get_product_detail"]);
   // args are wrapped into the discovery payload shape
   // no market named: the search is answered as US (decision D-10), so US is what the lane is sent
-  assert.deepEqual(reads[0].payload, { search: { query: "socks", market: "US" } });
+  // (and says the market was assumed, so the backend never stamps its links `market_observed`)
+  assert.deepEqual(reads[0].payload, { search: { query: "socks", market: "US", market_assumed: true } });
   assert.deepEqual(reads[1].payload, { product: { merchant_id: "m", product_id: "p" } });
 });
 

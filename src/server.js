@@ -2879,6 +2879,9 @@ function buildSearchProductsV2Body({
     search_all_merchants: searchAllMerchants,
     query: search?.query != null ? String(search.query || '') : undefined,
     market: firstNonEmptyString(search?.market, metadata?.market),
+    // Decision D-10: the search market was ASSUMED (US, for a call that named none). Provenance only, for the
+    // backend's `/r` minters; absent for every other call, so their bodies are byte-identical.
+    market_assumed: search?.market_assumed === true ? true : undefined,
     category: firstNonEmptyString(search?.category),
     catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
     catalog_entity_mode: firstNonEmptyString(
@@ -33643,7 +33646,7 @@ async function getCommerceRemoteMcpAdapter() {
           // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
           priceCache: priceCacheHooks,
           log: logUcpLiveRead,
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, market_assumed, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
@@ -33655,6 +33658,8 @@ async function getCommerceRemoteMcpAdapter() {
                 // (pivota-backend #2411 `payload.market`), so a named market lets a positive merchant keep
                 // its cart; absent, the payload is byte-identical to before and the answer referral-only.
                 ...(market ? { market } : {}),
+                // Decision D-10: an ASSUMED market (pivota-backend `marketAssumed`): its links are not stamped observed.
+                ...(market && market_assumed === true ? { marketAssumed: true } : {}),
                 ...(include_live_verification ? { includeLiveVerificationOffers: true } : {}),
                 // Only ever built by makeGetOffers from its own signed assertions; no agent argument reaches it.
                 ...(Array.isArray(live_verifications) && live_verifications.length
@@ -43782,13 +43787,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !Array.isArray(seedAttributionPayload.search)
             ? seedAttributionPayload.search
             : seedAttributionPayload;
+        // An ASSUMED search market (decision D-10, `search.market_assumed`) is not the buyer's: the mint is sent no
+        // market, exactly as a market-less search was before, so its links are not stamped `market_observed`.
         const seedAttributionMarket =
-          String(
-            seedAttributionSearch.market ||
-              seedAttributionPayload.market ||
-              req?.body?.metadata?.market ||
-              '',
-          ).trim() || null;
+          seedAttributionSearch.market_assumed === true
+            ? null
+            : String(
+              seedAttributionSearch.market ||
+                seedAttributionPayload.market ||
+                req?.body?.metadata?.market ||
+                '',
+            ).trim() || null;
         seedAttributionSettled = stampExternalSeedAttribution(seedAttributionContainer.products, {
           // Caller-independent by construction: search results are cached and
           // shared across callers, so the mint carries only the internal key —

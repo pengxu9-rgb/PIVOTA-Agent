@@ -619,6 +619,9 @@ function makeGetOffers(deps = {}) {
       limit,
       // Only when the caller stated one: the fetch's argument shape is byte-identical otherwise.
       ...(market ? { market } : {}),
+      // Decision D-10: a market the door ASSUMED (US, for a call that named none) is sent as such, so the backend
+      // keys its cart gate on it without stamping the links `market_observed`. Absent for a declared market.
+      ...(market && p.market_assumed === true ? { market_assumed: true } : {}),
       // Only when a live read will run and enforce (a declared market and the reader in enforce).
       ...(market && liveVerificationOptIn() ? { include_live_verification: true } : {}),
     };

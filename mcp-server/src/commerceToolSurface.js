@@ -327,7 +327,22 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
    * @returns {Promise<object>}     sanitized result; THROWS PivotaCommerceError / IdentityRequiredError /
    *                                UnknownToolError on failure (the MCP server formats these).
    */
+  // A REFUSAL decided for an assumed US says so too (decision D-10): a read that named no market and is refused
+  // carries `market_assumed` on its error, which toToolError publishes beside the code. `call.marketAssumed` is set
+  // by callToolOnce as soon as it is decided. Errors only, and only the curated classes toToolError trusts.
   async function callTool(toolName, toolArgs = {}, sessionContext = {}, options = {}) {
+    const call = { marketAssumed: false };
+    try {
+      return await callToolOnce(toolName, toolArgs, sessionContext, options, call);
+    } catch (err) {
+      if (call.marketAssumed && err && typeof err === "object" && SAFE_ERROR_CLASSES.some((C) => err instanceof C)) {
+        Object.defineProperty(err, "marketAssumed", { value: true, enumerable: false, configurable: true });
+      }
+      throw err;
+    }
+  }
+
+  async function callToolOnce(toolName, toolArgs, sessionContext, options, call) {
     // dialect defaults to MCP, so every existing caller is unchanged.
     const dialect = normalizeDialect(options.dialect);
     // `start_purchase` (native MCP only; dark unless ORCHESTRATED_PURCHASE_TOOL_ENABLED, read per call). Off, the
@@ -396,6 +411,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       namedElsewhere: dialect === TOOL_DIALECTS.ucp && ucpNamesUnforwardedMarket(op, toolArgs),
     });
     const params = toParams(op, nativeArgs, { assumeMarket: marketAssumed && MARKET_READ_OPS.includes(op.id) });
+    call.marketAssumed = marketAssumed;
+    // The tools/call completion line records every call answered for an assumed US (`market_assumed: true`), so how
+    // many partners rely on the default is measured in production, not only by the synthetic eval.
+    const observeEarly = typeof options.observe === "function" ? options.observe : null;
+    if (marketAssumed) noteToolCall(observeEarly, { market_assumed: true });
     const label = (value) => withMarketAssumed(value, marketAssumed, dialect);
 
     // 3a) UCP CHECKOUT ESCALATION (path 2 — rows Pivota does not transact). On the UCP dialect only, for the
@@ -459,6 +479,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       }
       const escalationDeclines = [];
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger });
+      if (escalated && isPlainObject(escalated.market_assumed)) noteToolCall(typeof options.observe === "function" ? options.observe : null, { market_assumed: true });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
       if (escalated) {
@@ -470,7 +491,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     kernel, which cannot price a seller Pivota has no connection to and answered a retriable
       //     MERCHANT_UNAVAILABLE for it. A cart with no storefront row passes through untouched. See
       //     refuseUnservedStorefrontCheckout in ucpCheckoutEscalation.js.
-      await refuseUnservedStorefrontCheckout({ op, params, ctx, executor: reads, declined: escalationDeclines.length > 0 });
+      await refuseUnservedStorefrontCheckout({ op, params, ctx, executor: reads, declined: escalationDeclines.length > 0, declineReasons: escalationDeclines });
       // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
       // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which
@@ -779,7 +800,12 @@ function withMarketAssumed(value, assumed, dialect) {
 function toParams(op, toolArgs, { assumeMarket = false } = {}) {
   const a = asObj(toolArgs);
   // `assumeMarket` is decided by the caller (marketAssumedFor), so the cache key and the executor see one market.
+  // An assumed market also travels as `market_assumed: true` (search and get_offers, the reads whose answers carry
+  // backend-minted `/r` links): the backend keys its gates on the US it is sent, but must not stamp a link
+  // `market_observed`, a claim that the buyer named it. It also keeps those answers out of the declared-US cache
+  // entry, whose links say the opposite. A declared market adds nothing.
   const market = assumeMarket ? requestMarket.ASSUMED_MARKET : a.market;
+  const assumedMember = assumeMarket ? { market_assumed: true } : {};
   switch (op.id) {
     case "search_catalog": {
       // Same limit the invoke route enforces (QUERY_TOO_LONG). Refused HERE so the agent gets an
@@ -792,7 +818,7 @@ function toParams(op, toolArgs, { assumeMarket = false } = {}) {
             "Send the product, brand or need in a few words.",
         );
       }
-      return { payload: { search: pick({ ...a, market }, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]) } };
+      return { payload: { search: { ...pick({ ...a, market }, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]), ...assumedMember } } };
     }
     case "get_product":
       return {
@@ -809,7 +835,7 @@ function toParams(op, toolArgs, { assumeMarket = false } = {}) {
       return { payload: pick({ ...a, market }, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
     case "get_offers":
       return {
-        payload: pick({ ...a, market }, ["merchant_id", "product_id", "product_group_id", ...(GET_OFFERS_VARIANT_ID ? ["variant_id"] : []), "currency", "market", "limit"]),
+        payload: { ...pick({ ...a, market }, ["merchant_id", "product_id", "product_group_id", ...(GET_OFFERS_VARIANT_ID ? ["variant_id"] : []), "currency", "market", "limit"]), ...assumedMember },
       };
     case "get_intel":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "pivota_signature_id"]) };
@@ -1556,6 +1582,8 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // A refusal decided for an assumed US (decision D-10) says so, in the same member an answer would carry.
+  if (error.marketAssumed === true) body.market_assumed = requestMarket.marketAssumedLabel();
   if (code === "OPERATION_NOT_ALLOWED" && ["ucp_reap_create_refused", "ucp_reap_create_not_available", "reap_create_paused"].includes(error.detail?.reason)) {
     body.detail = { reason: error.detail.reason };
     body.recovery = "correct this selected Reap request; no alternate checkout route will be opened";

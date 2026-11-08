@@ -287,8 +287,11 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     noteToolCall(observe, () => computed.priceFacts || null);
     // A read that named no market was answered as US (decision D-10) and says so. Added per call, AFTER this tier's
     // cache: the key is commerceToolParamsKey, under which a no-market call and a declared-US call are one entry.
-    if (commerceToolMarketAssumed(toolName, args) && computed.value && typeof computed.value === "object" && !Array.isArray(computed.value)) {
-      return { ...computed.value, market_assumed: marketAssumedMember() };
+    if (commerceToolMarketAssumed(toolName, args)) {
+      noteToolCall(observe, { market_assumed: true });
+      if (computed.value && typeof computed.value === "object" && !Array.isArray(computed.value)) {
+        return { ...computed.value, market_assumed: marketAssumedMember() };
+      }
     }
     return computed.value;
   }
