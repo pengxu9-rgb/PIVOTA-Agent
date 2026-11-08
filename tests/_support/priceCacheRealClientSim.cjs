@@ -19,7 +19,7 @@ const { startFirestoreServer, startFreezableProxy, refusedPort } = require('./fi
 
 const scenario = process.argv[2];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const doc = () => ({ amount: '23.00', read_at: new Date(), expire_at: new Date(Date.now() + 3600e3) });
+const doc = () => ({ amount: '23.00', read_at: new Date(), expire_at: new Date(Date.now() + 900e3) });
 let seq = 0;
 const nextId = () => String(seq += 1).padStart(64, 'b');
 

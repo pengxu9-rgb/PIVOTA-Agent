@@ -2,6 +2,8 @@
 
 const { recordAuroraRecoAnswerPath } = require('../auroraBff/visionMetrics');
 const { recommendationIdentityConflict } = require('../shared/recoProductIdentity');
+// Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
+const listPriceTiers = require('../services/listPriceTiers');
 
 // recommend_products — a NEED in natural language → a reasoned shortlist, as agent-facing Signals.
 //
@@ -997,6 +999,7 @@ function makeRecommendProducts(deps = {}) {
     // proven envelope buys a drop; a timeout or error must never buy a delisting. Each signal
     // records the outcome so a partner agent knows what it is holding.
     let verification = null;
+    let priceStamps = null;
     if (typeof verifyPrice === 'function' && groundedSignals.length > 0) {
       // The window is sized to what can actually RETURN: without a ceiling the first `limit` grounded
       // items ARE the shortlist, so nothing beyond them is checked (each check is a loopback invoke —
@@ -1010,6 +1013,9 @@ function makeRecommendProducts(deps = {}) {
         PRICE_VERIFY_MAX_CHECKS,
       ));
       verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 };
+      // What each confirmed check said about WHEN the price was read and whether the merchant answered it (the
+      // PDP's own price_as_of / merchant overlay), for the list price tiers below; read only when those flags are on.
+      priceStamps = new Map();
       const unresolvableSignals = new Set();
       const currencySwitchedSignals = new Set();
       await Promise.all(toVerify.map(async (s) => {
@@ -1090,6 +1096,7 @@ function makeRecommendProducts(deps = {}) {
           verification.confirmed += 1;
         }
         product.price_verified = true;
+        priceStamps.set(s, { live: live.merchant_live === true, as_of: typeof live.price_as_of === 'string' ? live.price_as_of : null });
         if (isPlainObject(live) && live.in_stock === false) {
           s.value.watchouts = dedupe(['live availability check: out of stock', ...s.value.watchouts]).slice(0, 6);
         }
@@ -1135,6 +1142,25 @@ function makeRecommendProducts(deps = {}) {
           if (rung === 'violation') { signals.push(markPriceViolation(s, ceiling)); violationsReturned += 1; }
           else { signals.push(markPriceUnverifiable(s, ceiling)); unverifiedReturned += 1; }
         }
+      }
+    }
+    // THE LIST PRICE TIERS (services/listPriceTiers.js): each item's price_as_of + price_source, and the 7-day
+    // staleness demote. A ceiling (or a need that asks for the cheapest) guards the answer: a stale price is never
+    // the first item while a fresh one is in the shortlist. Applied BEFORE the ranks are numbered, so `rank` is
+    // the served order. Both flags off: `signals` is untouched.
+    if (listPriceTiers.listPriceTiersActive()) {
+      try {
+        const tiered = listPriceTiers.applyListPriceTiers(signals, {
+          surface: 'recommend_products',
+          node: (s) => s.value.product,
+          withNode: (s, product) => { s.value.product = product; return s; },
+          hint: (s) => (priceStamps && priceStamps.get(s)) || null,
+          answerGuard: enforcing || listPriceTiers.isCheapestQuery(need),
+          log: (event, fields) => logger?.info?.({ event, ...fields }, event),
+        });
+        signals = tiered.rows;
+      } catch {
+        /* the tiers never cost the shortlist */
       }
     }
     signals.forEach((s, i) => { s.value.rank = i + 1; });

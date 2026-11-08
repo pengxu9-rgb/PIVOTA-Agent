@@ -49,7 +49,37 @@ const THROTTLE_REASON = /^(?:http_429|http_430|http_5\d\d|host_backoff|host_budg
 // a card is: this instance's fresh read, the gone memo, the fleet's answer, then a read. Off, none of it runs.
 // `options.hostGate` (services/priceHostBudget.js, PRICE_HOST_BUDGET) may refuse a read before it is sent, and is
 // told of each 429 / 430 / 5xx so the fleet's shared backoff hears of it.
-const SHARED_TTL_MS = 15 * 60 * 1000;
+// A cache answer served as `recent` (price_source 'merchant_cache', the list contract's `cache` token,
+// services/listPriceTiers.js) is never older than Shopify's 15-min limit: the window is capped by the cache's own
+// constant, which no env var reaches.
+const { MAX_PRICE_WINDOW_MS } = require('./priceCache');
+const SHARED_TTL_MS = Math.min(15 * 60 * 1000, MAX_PRICE_WINDOW_MS);
+// TOP-K LIVE READ (UCP_LIVE_SEARCH_READ_TOP_K, D-16; read by the caller and passed as `options.topK` /
+// `options.liveBudgetMs`, only while UCP_LIVE_SEARCH_READ=enforce). 0, the default, is the overlay exactly as before.
+// K > 0: only the first K SHOWN cards are read live (the merchant's UCP catalog, then their `.json`), inside a
+// total budget (`liveBudgetMs`, default 600 ms, 100..1500, and never past the page deadline). Every other card is
+// served from the fleet cache (PRICE_CACHE_MODE=read) or at its stored price, and is not read. A top-K card whose
+// live read fails, times out or runs out of budget keeps the fleet cache's answer when there is one, else its
+// stored price: the page is never held past the budget and never emptied. The per-host budget and backoff
+// (priceHostBudget.js, via `options.hostGate`) gate each of those reads exactly as before.
+const TOP_K_MAX = 10;
+const TOP_K_BUDGET_DEFAULT_MS = 600;
+const TOP_K_BUDGET_MIN_MS = 100;
+const TOP_K_BUDGET_MAX_MS = 1500;
+
+/** { topK, liveBudgetMs } for this request: K is 0 unless the UCP search read ENFORCES. Pure. */
+function searchTopKSettings(env = process.env, readerMode = null) {
+  if (String(readerMode || '') !== 'enforce') return { topK: 0, liveBudgetMs: null };
+  const rawK = String((env && env.UCP_LIVE_SEARCH_READ_TOP_K) || '').trim();
+  const k = /^\d{1,3}$/.test(rawK) ? Number(rawK) : 0;
+  if (!(k > 0)) return { topK: 0, liveBudgetMs: null };
+  const rawB = String((env && env.UCP_LIVE_SEARCH_READ_BUDGET_MS) || '').trim();
+  const b = /^\d{1,6}$/.test(rawB) ? Number(rawB) : TOP_K_BUDGET_DEFAULT_MS;
+  return {
+    topK: Math.min(k, TOP_K_MAX),
+    liveBudgetMs: Math.min(Math.max(b, TOP_K_BUDGET_MIN_MS), TOP_K_BUDGET_MAX_MS),
+  };
+}
 const MERCHANT_HEADERS = Object.freeze({
   'User-Agent': 'PivotaCatalog/1.0',
   Accept: 'application/json',
@@ -242,8 +272,13 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     && typeof priceCache.priceCacheReadEnabled === 'function' && priceCache.priceCacheReadEnabled());
   let sharedCacheHits = 0;
   const goneIndexes = new Set();
+  const topK = Number.isInteger(options.topK) && options.topK > 0 ? Math.min(options.topK, TOP_K_MAX) : 0;
+  const liveBudgetMs = topK
+    ? Math.min(Math.max(Number(options.liveBudgetMs) > 0 ? Number(options.liveBudgetMs) : TOP_K_BUDGET_DEFAULT_MS, TOP_K_BUDGET_MIN_MS), TOP_K_BUDGET_MAX_MS)
+    : null;
   const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : TIMEOUT_MS;
-  const pageDeadlineMs = Number(options.pageDeadlineMs) > 0 ? Number(options.pageDeadlineMs) : PAGE_DEADLINE_MS;
+  const basePageDeadlineMs = Number(options.pageDeadlineMs) > 0 ? Number(options.pageDeadlineMs) : PAGE_DEADLINE_MS;
+  const pageDeadlineMs = topK ? Math.min(basePageDeadlineMs, liveBudgetMs) : basePageDeadlineMs;
   const pageController = new AbortController();
   let expirePage;
   const pageExpired = new Promise((resolve) => { expirePage = resolve; });
@@ -295,6 +330,26 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     if (!target || !(Number(card.price) > 0) || !/^[A-Z]{3}$/.test(String(card.currency || ''))) continue;
     jsonTargets.set(index, { card, target });
   }
+  // TOP-K: the fleet's answer for a top-K card is kept as its FALLBACK (the card is read live first); a card past
+  // K is never read, so it takes the fleet's answer now or keeps its stored price.
+  const topKFallback = new Map(); // index -> the fleet answer (servableAnswer shape)
+  const liveSettled = new Set(); // top-K indexes a live read verified
+  const topKStats = { cache_fallback: 0 };
+  const applySharedAnswer = (index, card, a) => {
+    const asOf = new Date(a.read_at_ms).toISOString();
+    eligible.add(index);
+    processed.add(index);
+    verified += 1;
+    sharedCacheHits += 1;
+    cachedAnswerStamps.push(asOf);
+    if (Math.abs(Number(card.price) - a.amount) > 0.01) drifted += 1;
+    cards[index] = {
+      ...card, price: a.amount, price_amount: a.amount, currency: a.currency, price_currency: a.currency,
+      // The fleet's answer, not this request's read: dated when the merchant answered (the list contract's
+      // `cache` token). Counted as a merchant answer by the price line (priceVerificationFacts).
+      price_source: 'merchant_cache', price_as_of: asOf,
+    };
+  };
   // READ MODE: the fleet's answers (one store read, at most 150 ms; a failure is a miss), for cards this instance
   // has neither read nor seen gone. A hit is a `recent` answer: verified, dated when the merchant answered.
   const sharedHits = new Set();
@@ -317,21 +372,17 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
       const a = Array.isArray(answers) ? answers[i] : null;
       // The merchant's answer for THIS product page, in the card's own currency, or nothing.
       if (!a || !a.handle || a.handle !== handleOf(target.url) || a.currency !== String(card.currency).toUpperCase()) return;
-      const asOf = new Date(a.read_at_ms).toISOString();
-      eligible.add(index);
-      processed.add(index);
-      verified += 1;
-      sharedCacheHits += 1;
-      cachedAnswerStamps.push(asOf);
-      if (Math.abs(Number(card.price) - a.amount) > 0.01) drifted += 1;
-      cards[index] = {
-        ...card, price: a.amount, price_amount: a.amount, currency: a.currency, price_currency: a.currency,
-        price_source: 'merchant_live', price_as_of: asOf,
-      };
+      if (topK && index < topK) {
+        topKFallback.set(index, a);
+        return;
+      }
+      applySharedAnswer(index, card, a);
       jsonTargets.delete(index);
       sharedHits.add(index);
     });
   }
+  // TOP-K: a card past K is not read live (no `.json`, no UCP lookup).
+  if (topK) for (const index of [...jsonTargets.keys()]) if (index >= topK) jsonTargets.delete(index);
   // THE MERCHANT'S OWN UCP CATALOG (services/ucpLiveOfferRead, UCP_LIVE_SEARCH_READ). It CONFIRMS or
   // CORRECTS the card's variant price in the card's own currency and may RAISE a card to in stock; it never
   // lowers or drops a card (review of #2439). `plan` names the cards it will try, synchronously, so every
@@ -356,6 +407,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
     planned = new Map();
   }
   for (const index of sharedHits) planned.delete(index);
+  if (topK) for (const index of [...planned.keys()]) if (index >= topK) planned.delete(index);
   const ucp = { planned: planned.size, verified: 0, drifted: 0, stockRaised: 0, byStatus: {} };
   const settled = new Set();
   // ONE queue per host for the page, fed by both phases (unplanned cards now, unsettled planned cards after
@@ -406,6 +458,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
           continue;
         }
         verified += 1;
+        liveSettled.add(index);
         if (fetched.cacheHit && !fetched.ownRead) cachedAnswerStamps.push(fetched.asOf);
         if (priceCache && !fetched.cacheHit) recordJsonAnswer(priceCache, target, fetched.body, options.market, fetched.asOf);
         if (Math.abs(Number(card.price) - price.amount) > 0.01) drifted += 1;
@@ -463,6 +516,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
       }
       cards[index] = next;
       settled.add(index);
+      liveSettled.add(index);
     }
     await enqueueJson([...planned.keys()].filter((i) => !settled.has(i) && jsonTargets.has(i)).map((i) => [i, jsonTargets.get(i)]));
   };
@@ -485,6 +539,17 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
       countFailure('deadline_exceeded');
     }
   }
+  // TOP-K FALLBACK: a top-K card the live read did not verify (failed, timed out, out of budget, refused by the host
+  // budget) takes the fleet's answer when there is one; otherwise it keeps its stored price, as above. A card the
+  // storefront said is gone keeps that verdict.
+  for (const [index, a] of topKFallback) {
+    if (liveSettled.has(index) || goneIndexes.has(index)) continue;
+    const card = cards[index];
+    if (!card || typeof card !== 'object') continue;
+    // Its failure stays counted in failure_reasons; the card is answered from the cache instead of its stored price.
+    applySharedAnswer(index, card, a);
+    topKStats.cache_fallback += 1;
+  }
   const served = dropGone ? cards.filter((_, index) => !goneIndexes.has(index)) : cards;
   noteSearchOverlay({ throttledHosts, cachedAnswerStamps });
   return {
@@ -498,6 +563,14 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
         failure_reasons: failureReasons, deadline_exceeded: pageController.signal.aborted,
         gone_count: goneIndexes.size, dropped_gone_count: cards.length - served.length,
         ...(readShared ? { shared_cache_hit_count: sharedCacheHits } : {}),
+        ...(topK
+          ? {
+            top_k: {
+              k: topK, budget_ms: liveBudgetMs, live_verified_count: liveSettled.size,
+              cache_fallback_count: topKStats.cache_fallback,
+            },
+          }
+          : {}),
         ...(reader
           ? {
             ucp: {
@@ -514,5 +587,6 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
 
 module.exports = {
   DROP_GONE_FLAG, HOST_BACKOFF_FLAG, HOST_BACKOFF_MAX_HOSTS, targetOf, verifiedPrice, overlayLiveMerchantSearchPrices,
-  hostKey, _hostBackoff: hostBackoff,
+  hostKey, searchTopKSettings, SHARED_TTL_MS, TOP_K_MAX, TOP_K_BUDGET_DEFAULT_MS, TOP_K_BUDGET_MAX_MS,
+  _hostBackoff: hostBackoff,
 };

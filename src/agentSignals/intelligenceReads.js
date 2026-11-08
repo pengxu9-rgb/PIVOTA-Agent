@@ -12,6 +12,22 @@ const { intelToSignal } = require('./intelToSignal');
 const { normalizeBuyerRegion, currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 const liveVerification = require('../services/offerLiveVerification');
 const { numericVariantId } = require('../services/ucpLiveOfferRead');
+// Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
+const listPriceTiers = require('../services/listPriceTiers');
+
+// When a get_alternatives row's stored price was last read, as the graph edge carries it: the candidate snapshot's
+// own price_checked_at / price_as_of, else price_evidence.observed_at (when the graph builder observed the
+// comparison prices it copied the candidate's price with). The builder writes neither of the first two today, so
+// in practice the row is dated by observed_at or not at all (see the FIX_PLAN 1.17 report: the backend graph
+// build should copy catalog_offers.price_checked_at onto candidate_snapshot.price_checked_at).
+function alternativeEdgePriceAsOf(edge) {
+  const snap = edge && edge.candidate_snapshot && typeof edge.candidate_snapshot === 'object' ? edge.candidate_snapshot : {};
+  const pe = edge && edge.price_evidence && typeof edge.price_evidence === 'object' ? edge.price_evidence : {};
+  for (const raw of [snap.price_checked_at, snap.price_as_of, pe.observed_at]) {
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  }
+  return null;
+}
 
 const DEFAULT_RELATIONS = Object.freeze(['competitive_alternative', 'niche_specialist', 'related_product']);
 
@@ -292,13 +308,35 @@ function makeGetAlternatives(deps = {}) {
 
     const servingCurrency =
       typeof servingCurrencyForMarket === 'function' ? servingCurrencyForMarket(market) || null : undefined;
-    const signals = relationshipEdgesToSignals(edges, {
+    let signals = relationshipEdgesToSignals(edges, {
       anchorId,
       maxPriceRatio: typeof p.max_price_ratio === 'number' ? p.max_price_ratio : null,
       includeDupes,
       limit,
       servingCurrency,
     });
+    // THE LIST PRICE TIERS (services/listPriceTiers.js). There is no live or cached price on this path (an edge
+    // names no merchant host + variant, so PRICE_CACHE_MODE=read has nothing to key): every row is `stored`. An
+    // equal-or-cheaper ask (max_price_ratio) or a dupe ask guards its answer against a stale price.
+    if (listPriceTiers.listPriceTiersActive() && signals.length) {
+      try {
+        const asOfByRef = new Map();
+        for (const e of Array.isArray(edges) ? edges : []) {
+          const ref = e && e.candidate_product_ref;
+          if (ref && !asOfByRef.has(ref)) asOfByRef.set(ref, alternativeEdgePriceAsOf(e));
+        }
+        signals = listPriceTiers.applyListPriceTiers(signals, {
+          surface: 'get_alternatives',
+          node: (sig) => sig && sig.value && sig.value.related,
+          withNode: (sig, related) => ({ ...sig, value: { ...sig.value, related } }),
+          hint: (sig) => ({ as_of: asOfByRef.get(sig && sig.value && sig.value.related && sig.value.related.ref) || null }),
+          answerGuard: typeof p.max_price_ratio === 'number' || includeDupes,
+          log: typeof deps.log === 'function' ? deps.log : undefined,
+        }).rows;
+      } catch {
+        /* the tiers never cost the answer */
+      }
+    }
     return {
       subject,
       signals,

@@ -63,6 +63,11 @@ function amountOf(item) {
   return null;
 }
 
+// A merchant's answer, by the price_source that names it: this request's live read ('merchant_live'), the fleet
+// cache's answer ('merchant_cache', PRICE_CACHE_MODE=read), or the list contract's tokens for those two when
+// LIST_ROW_PRICE_AS_OF relabels a row (services/listPriceTiers.js: 'live', 'cache'). 'stored' is not one.
+const MERCHANT_SOURCES = new Set(['merchant_live', 'merchant_cache', 'live', 'cache']);
+
 function answeredAtMs(item, { liveReadDates = true } = {}) {
   // live_read.checked_at says when the reader SETTLED, whatever it found: the readers stamp it on a skipped,
   // timed-out, failed, not-UCP, host-busy or variant-gone read too (ucpLiveOfferRead.applyRead). Only a
@@ -87,7 +92,7 @@ function priceFactOf(item, o) {
   // COUNTS above), so the fact does not withhold it.
   return {
     priced: amount !== null && amount > 0,
-    merchant: item.price_source === 'merchant_live' || item.merchant_price_verified === true,
+    merchant: MERCHANT_SOURCES.has(item.price_source) || item.merchant_price_verified === true,
     at: answeredAtMs(item, o),
   };
 }
