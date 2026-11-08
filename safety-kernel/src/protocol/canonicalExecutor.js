@@ -115,6 +115,59 @@ export const AGENT_PURCHASE_ID_RE = /^(?:pp|rp|ap)_[0-9a-f]{24}$/;
 // kernel order result can never claim it; the surface preserves buyer handoff URLs only on marked results.
 export const AGENT_PURCHASE_RESULT = Symbol.for('pivota.commerce.agentPurchaseResult');
 
+// The UCP storefront escalation's checkout id prefix (mcp-server/src/ucpCheckoutEscalation.js ESCALATION_ID_PREFIX).
+export const STOREFRONT_HANDOFF_ID_PREFIX = 'esc_';
+
+/**
+ * Map a storefront hand-off read (src/services/storefrontHandoffRecord.js `read`, plus `unrecorded` for an esc id
+ * that carries no record) onto get_order's answer.
+ *
+ *   accepted    the hand-off, as recorded, with what is known of it since (`status`: handed_off,
+ *               buyer_followed_link or seller_order_observed). `source: 'storefront_handoff'`: Pivota neither charges
+ *               nor ships it, so there is no Pivota order behind it.
+ *   unrecorded  a well-formed esc id with no record in it: issued before the record existed, or its write failed.
+ *               Never "not found" (the id may well be real): a terminal statement that no status is kept for it.
+ *   not_found   the record does not exist under this exact id: an id nobody issued (forged, or altered).
+ *   not_owner   recorded for another partner.
+ *   unattributed  the request names no partner: refused, never read.
+ *   otherwise   retriable, says nothing about the hand-off.
+ */
+export function storefrontHandoffOrder(orderId, answered) {
+  switch (answered.kind) {
+    case 'accepted': {
+      const h = answered.handoff;
+      const out = {
+        order_id: orderId,
+        status: h.status,
+        source: 'storefront_handoff',
+        completes_on: 'seller_storefront',
+        handoff: {
+          handed_off_at: h.handed_off_at ?? null,
+          seller_host: h.seller_host ?? null,
+          buyer_market: h.buyer_market ?? null,
+          quote_source: h.quote_source ?? null,
+          price_as_of: h.price_as_of ?? null,
+          quoted_total: isPlainObjectValue(h.quoted_total) ? { amount: h.quoted_total.amount, currency: h.quoted_total.currency } : null,
+        },
+      };
+      if (typeof h.link_followed_at === 'string') out.handoff.link_followed_at = h.link_followed_at;
+      if (typeof h.seller_order_observed_at === 'string') out.handoff.seller_order_observed_at = h.seller_order_observed_at;
+      return out;
+    }
+    case 'unrecorded':
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'storefront_handoff_unrecorded', order_id: orderId });
+    case 'unattributed':
+      // The request names no partner (no verified agent behind it), and a hand-off is answered only to its partner.
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'storefront_handoff_partner_required' });
+    case 'not_found':
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'storefront_handoff_not_found', order_id: orderId });
+    case 'not_owner':
+      throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id: orderId, reason: 'agent_mismatch' });
+    default:
+      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'storefront_handoff_read_unavailable' });
+  }
+}
+
 /**
  * Map a rail-neutral purchase read onto get_order's answer. `answered` is the read client's
  * `{ kind, purchase?, code? }` (src/services/agentPurchaseReadClient.js).
@@ -172,6 +225,7 @@ export function createCanonicalExecutor({
   mintAp2CheckoutJwt,
   delegatedTokenHandoffEnabled = false,
   readAgentPurchase,
+  readStorefrontHandoff,
 } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
@@ -351,6 +405,14 @@ export function createCanonicalExecutor({
         if (typeof readAgentPurchase === 'function' && AGENT_PURCHASE_ID_RE.test(params.order_id)) {
           const answered = await readAgentPurchase(params.order_id, ctx);
           if (answered != null) return agentPurchaseOrder(params.order_id, answered);
+        }
+        // A UCP STOREFRONT HAND-OFF (`esc_…`, FIX_PLAN O-02) is not a kernel order either: the buyer completes it on
+        // the seller's own storefront. Its record (the backend's, for the partner that asked) is read by
+        // `readStorefrontHandoff`, which returns null while its switches are off: the id then takes the kernel path
+        // exactly as before (QUOTE_NOT_FOUND).
+        if (typeof readStorefrontHandoff === 'function' && params.order_id.startsWith(STOREFRONT_HANDOFF_ID_PREFIX)) {
+          const answered = await readStorefrontHandoff(params.order_id, ctx);
+          if (answered != null) return storefrontHandoffOrder(params.order_id, answered);
         }
         // Fail CLOSED (Codex P0): prove kernel ownership before any read. _requireOrder throws
         // QUOTE_NOT_FOUND (untracked) or STATE_LINKAGE_MISMATCH (cross-user/session) — both propagate, so a

@@ -296,7 +296,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -485,7 +485,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "ucp_reap_create_not_available" });
       }
       const escalationDeclines = [];
-      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger });
+      // `storefrontHandoff` (FIX_PLAN O-02): the recorder of each hand-off this lane issues, for the partner that asked.
+      // Inert unless UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (ucpCheckoutEscalation.js).
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger, handoffRecorder: storefrontHandoff });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
       if (escalated) {
@@ -1541,6 +1543,19 @@ export function toToolError(error) {
   }
 
   if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && ["ucp_reap_variant_not_created","ucp_reap_price_not_created"].includes(error.detail?.reason)) body.detail = { reason: error.detail.reason };
+  // get_order on a UCP storefront hand-off (FIX_PLAN O-02; only ever raised with UCP_STOREFRONT_HANDOFF_RECORD_ENABLED on):
+  // a fixed reason and a fixed recovery, never a value from the request.
+  if (error instanceof PivotaCommerceError && code === "OPERATION_NOT_ALLOWED" && error.detail?.op === "get_order"
+      && ["storefront_handoff_unrecorded", "storefront_handoff_partner_required"].includes(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+    if (error.detail.reason === "storefront_handoff_unrecorded") {
+      body.message = "This checkout completes on the seller's own storefront, and no status was recorded for it.";
+      body.recovery = "read it with get_checkout on the UCP door, or ask the buyer whether they completed it on the storefront";
+    } else {
+      body.message = "A storefront hand-off's status is answered only to the partner it was issued to.";
+      body.recovery = "call with the agent credentials the checkout was created with";
+    }
+  }
   // start_purchase (orchestratedPurchaseTool.js): reasons and the backend's refusal code are our own vocabulary
   // (snake_case, never a request value), so they are safe to surface and are what makes the answer actionable.
   if (error instanceof PivotaCommerceError && error.detail?.op === "start_purchase"

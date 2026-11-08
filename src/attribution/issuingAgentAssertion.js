@@ -75,8 +75,29 @@ function partnerIdentityForwardingEnabled(env = process.env) {
   return /^(1|true|yes|on)$/i.test(String(raw === undefined || raw === null ? '' : raw).trim());
 }
 
+// THE UCP STOREFRONT HAND-OFF RECORD (FIX_PLAN O-02), behind UCP_STOREFRONT_HANDOFF_RECORD_ENABLED (default
+// OFF). The gateway writes one record per `esc_` hand-off it issues and reads it back for get_order, both for
+// the partner that made the call (src/services/storefrontHandoffRecord.js; the backend's
+// routes/agent_storefront_handoffs.py). Signed only while BOTH this flag and PARTNER_IDENTITY_FORWARDING_ENABLED
+// are on: the record names its partner through the same adoption the money ops use.
+const STOREFRONT_HANDOFF_RECORD_ENV = 'UCP_STOREFRONT_HANDOFF_RECORD_ENABLED';
+const STOREFRONT_HANDOFF_RECORD_OP = 'ucp_storefront_handoff.record';
+const STOREFRONT_HANDOFF_READ_OP = 'ucp_storefront_handoff.read';
+const STOREFRONT_HANDOFF_OPS = Object.freeze(new Set([STOREFRONT_HANDOFF_RECORD_OP, STOREFRONT_HANDOFF_READ_OP]));
+
+function storefrontHandoffFlagOn(env = process.env) {
+  const raw = env ? env[STOREFRONT_HANDOFF_RECORD_ENV] : undefined;
+  return /^(1|true|yes|on)$/i.test(String(raw === undefined || raw === null ? '' : raw).trim());
+}
+
+/** Is the hand-off record written and read (its own flag AND partner identity forwarding)? */
+function storefrontHandoffRecordEnabled(env = process.env) {
+  return storefrontHandoffFlagOn(env) && partnerIdentityForwardingEnabled(env);
+}
+
 function isSignedOp(operation, env = process.env) {
   if (ISSUING_OPS.has(operation)) return true;
+  if (STOREFRONT_HANDOFF_OPS.has(operation)) return storefrontHandoffRecordEnabled(env);
   return PARTNER_IDENTITY_OPS.has(operation) && partnerIdentityForwardingEnabled(env);
 }
 
@@ -194,6 +215,12 @@ module.exports = {
   PARTNER_IDENTITY_FORWARDING_ENV,
   SEED_LINK_MINT_OP,
   partnerIdentityForwardingEnabled,
+  STOREFRONT_HANDOFF_RECORD_ENV,
+  STOREFRONT_HANDOFF_RECORD_OP,
+  STOREFRONT_HANDOFF_READ_OP,
+  STOREFRONT_HANDOFF_OPS,
+  storefrontHandoffFlagOn,
+  storefrontHandoffRecordEnabled,
   NON_AGENT_AUTH_SOURCES,
   issuingSubjectFromInvokeContext,
   signIssuingAgentAssertion,

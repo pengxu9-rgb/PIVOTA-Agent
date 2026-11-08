@@ -32076,6 +32076,47 @@ function buildReadAgentPurchase(client) {
   };
 }
 
+// THE UCP STOREFRONT HAND-OFF RECORD (FIX_PLAN O-02; src/services/storefrontHandoffRecord.js). Dark unless
+// UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (read per call). The backend is
+// called with this gateway's OWN key (the record route accepts only a service that vouches) and the partner's signed
+// assertion for that call's op; a request bound to no partner signs nothing, and the client then sends nothing.
+let storefrontHandoffClient = null;
+function getStorefrontHandoffClient(deps = {}) {
+  if (storefrontHandoffClient && !deps.fresh) return storefrontHandoffClient;
+  const { createStorefrontHandoffClient } = require('./services/storefrontHandoffRecord');
+  const client = createStorefrontHandoffClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    authHeaders: (op) => {
+      if (!PIVOTA_API_KEY) return null;
+      const assertion = issuingAgentAssertionHeaders({ op, invokeContext: getInvokeAuthContext() || {} });
+      if (!Object.keys(assertion).length) return null;
+      return {
+        ...buildInvokeUpstreamAuthHeaders({ forceInternalFallback: true, forwardAgentUserJwt: false, forwardBuyerRef: false }),
+        ...assertion,
+      };
+    },
+    logger,
+  });
+  if (!deps.fresh) storefrontHandoffClient = client;
+  return client;
+}
+
+// The executor's `readStorefrontHandoff`: null (= not handled, kernel path) while the switches are off. An esc id that
+// does not decode is not one of ours (null: kernel path, as before); one that decodes but carries no record is
+// `unrecorded`, never "not found".
+function buildReadStorefrontHandoff(client) {
+  return async (orderId) => {
+    const { storefrontHandoffRecordEnabled } = require('./services/storefrontHandoffRecord');
+    if (!storefrontHandoffRecordEnabled()) return null;
+    const { decodeEscalationId, escalationRecordIdOf } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+    if (!decodeEscalationId(orderId)) return null;
+    const recordId = escalationRecordIdOf(orderId);
+    if (!recordId) return { kind: 'unrecorded' };
+    return client.read(recordId, orderId);
+  };
+}
+
 function buildReapAgenticPurchaseClient(log, deps = {}) {
   const { createReapAgenticPurchaseClient } = require('./services/reapAgenticPurchaseClient');
   return createReapAgenticPurchaseClient({
@@ -33938,6 +33979,8 @@ async function getCommerceRemoteMcpAdapter() {
         localReads,
         // get_order for a rail purchase (`pp_…`); dark unless AGENT_PURCHASE_ORDER_READ_ENABLED.
         readAgentPurchase: buildReadAgentPurchase(buildAgentPurchaseReadClient(logger)),
+        // FIX_PLAN O-02: get_order on a UCP storefront hand-off (`esc_…`) reads its record; null while dark.
+        readStorefrontHandoff: buildReadStorefrontHandoff(getStorefrontHandoffClient()),
         // AP2: checkout sessions carry the merchant-signed Checkout JWT a wallet hashes into
         // its mandate. Best-effort inside the executor; a mint failure logs here and costs
         // only AP2 (which then fails closed at verification), never the session.
@@ -33988,6 +34031,8 @@ async function getCommerceRemoteMcpAdapter() {
         bypassReadCache: isSyntheticCall,
         // FIX_PLAN O-04: a search's seed links minted per response, after the cache, for this caller.
         attributeSearchResult: attributeCommerceSearchPerResponse,
+        // FIX_PLAN O-02: each UCP storefront hand-off recorded for the partner that asked (dark by default).
+        storefrontHandoff: getStorefrontHandoffClient(),
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
