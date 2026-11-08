@@ -32579,6 +32579,7 @@ function resolveSelfInvokeBudget(defaultTimeoutMs) {
 // tool's results and shares them across callers). Both lanes are listed: the unscoped multi-merchant one
 // and the merchant-scoped one, which goes to the Python backend where we cannot audit per-buyer behaviour.
 const COMMERCE_CACHED_READ_OPS = new Set(['find_products_multi', 'find_products']);
+const { dropUnopenableLegacySeedRows } = require('./services/legacySeedIdServability');
 
 // `options.signal` (an AbortSignal) cancels the upstream request itself: get_offers' second offers.resolve
 // call aborts at its own deadline instead of abandoning a request that keeps running.
@@ -32853,15 +32854,23 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
         : pdpV2Detail
           ? normalizePdpV2ToProductDetail(body)
           : body;
-  if (
+  const result =
     normalizedBody &&
     normalizedBody.ok === true &&
     normalizedBody.data &&
     typeof normalizedBody.data === 'object'
-  ) {
-    return normalizedBody.data;
+      ? normalizedBody.data
+      : normalizedBody;
+  if (!COMMERCE_CACHED_READ_OPS.has(op)) return result;
+  // D-06: a search row whose id get_product cannot open is not served (services/legacySeedIdServability).
+  const { body: served, droppedCount, droppedIds } = dropUnopenableLegacySeedRows(result);
+  if (droppedCount > 0) {
+    logger.info(
+      { op, dropped_legacy_seed_rows: droppedCount, product_ids: droppedIds.slice(0, 10) },
+      'commerce search: dropped rows with legacy seed ids get_product cannot open',
+    );
   }
-  return normalizedBody;
+  return served;
 }
 
 // The upstream-failure -> shared-taxonomy mapping lives in services/commerceKernelErrorMapping so it is
