@@ -468,6 +468,9 @@ const BACKEND_CHECKOUT_TOKEN_ROUTES = [
   ['POST', /^\/agent\/v2\/orders$/],
   ['POST', /^\/agent\/v2\/payments\/checkout-sessions$/],
   ['GET', /^\/agent\/v2\/orders\/[^/]+\/tracking$/],
+  // Read-only catalog lookups of the offer rewrite, bound by the backend to the token's own items (be#2766).
+  ['GET', /^\/agent\/v1\/product-groups\/[^/]+$/],
+  ['GET', /^\/agent\/v1\/products\/[^/]+\/[^/]+$/],
 ];
 const tokenMayCall = (method, path) =>
   BACKEND_CHECKOUT_TOKEN_ROUTES.some(([m, re]) => m === method && re.test(path.split('?')[0]));
@@ -643,3 +646,61 @@ for (const withKey of [false, true]) {
     assert.equal(requote.headers['x-api-key'], undefined);
   });
 }
+
+// A token-only preview_quote with an offer_id rewrites its items for the offer's seller
+// (rewriteCheckoutItemsForOfferSelection): it reads the offer's product group and that seller's product. Those
+// reads carry the token, and land only on the catalog routes the backend binds to the token's items.
+test('token-only preview_quote with an offer_id: the offer-rewrite catalog reads carry the token to mirrored routes', async () => {
+  delete process.env.AGENT_CHECKOUT_STRICT;
+  introspectCheckoutToken(REAL_TOKEN, validVerdict());
+  const calls = [];
+  const record = function record(uri) {
+    calls.push({ method: this.req.method, path: uri, headers: { ...this.req.headers } });
+  };
+  const groupId = 'pg:shopify:p_item';
+  nock(BACKEND_BASE)
+    .get(`/agent/v1/product-groups/${encodeURIComponent(groupId)}`)
+    .reply(function reply(uri) {
+      record.call(this, uri);
+      return [200, { status: 'success', product_group_id: groupId, members: [{ merchant_id: 'merch_a', product_id: 'p_item' }] }];
+    })
+    .get(/^\/agent\/v1\/products\/merch_a\/p_item/)
+    .times(3)
+    .reply(function reply(uri) {
+      record.call(this, uri);
+      return [200, { status: 'success', product: { id: 'p_item', variants: [{ id: 'v_item', sku: 'SKU-ITEM' }] } }];
+    })
+    .post('/agent/v2/quotes/preview')
+    .reply(function reply(uri, body) {
+      record.call(this, uri);
+      return [200, upstreamReplyFor('POST', uri, body)];
+    });
+
+  const res = await send(
+    {
+      method: 'post',
+      path: '/agent/shop/v1/invoke',
+      body: {
+        operation: 'preview_quote',
+        payload: {
+          quote: {
+            offer_id: `of:v1:merch_a:${groupId}:merchant:default`,
+            items: [{ product_id: 'p_item', variant_id: 'v_item', quantity: 1 }],
+          },
+        },
+      },
+    },
+    { 'X-Checkout-Token': REAL_TOKEN },
+  );
+
+  assert.equal(isAuthRefusal(res), false, `${res.status} ${JSON.stringify(res.body)}`);
+  const catalogReads = calls.filter((c) => /^\/agent\/v1\/(product-groups|products)\//.test(c.path));
+  assert.ok(catalogReads.some((c) => c.path.startsWith('/agent/v1/product-groups/')), `no group read: ${calls.map((c) => c.path).join(', ')}`);
+  assert.ok(catalogReads.some((c) => c.path.startsWith('/agent/v1/products/merch_a/p_item')), `no product read: ${calls.map((c) => c.path).join(', ')}`);
+  assert.ok(calls.some((c) => c.path === '/agent/v2/quotes/preview'), 'the quote itself still ran');
+  for (const call of calls) {
+    assert.equal(call.headers['x-checkout-token'], REAL_TOKEN, `${call.method} ${call.path}`);
+    assert.equal(call.headers['x-api-key'], undefined, `${call.method} ${call.path}`);
+    assert.ok(tokenMayCall(call.method, call.path), `token sent to ${call.method} ${call.path}, which the backend refuses`);
+  }
+});
