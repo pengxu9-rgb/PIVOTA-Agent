@@ -4,7 +4,7 @@
 //
 // THE COHORT. pivota-backend's enrichment ingest mints a seed's external_product_id as
 // `<host-slug>:<16 hex>` (services/catalog_enrichment_agent/ingestion.py `_build_seed_inserts`:
-// `f"{merchant_slug}:{seed_id.split(':')[-1]}"`, e.g. `daebak-co:4263b7e739ebca01`). A seed whose
+// `f"{merchant_slug}:{seed_id.split(':')[-1]}"`, e.g. `shop-a:4263b7e739ebca01`). A seed whose
 // catalog mirror row was re-keyed (ADR-009) is served under its observed seller (`merch_obs_…`) and a
 // `sig_` id, and opens. A seed with NO mirror row is served as the retired shared bucket
 // (the sentinel seller id), with that raw id, no signature and no link.
@@ -15,7 +15,7 @@
 // (routes/agent_shop_gateway.py `_handle_get_product_detail`), never external_product_seeds, so it answers
 // PRODUCT_NOT_FOUND, which maps to NO_MERCHANT_OFFER. Measured on the 11-02 synthetic run: 6 such rows
 // on 4 hosts from one query, 2 followed, 2 NO_MERCHANT_OFFER. The unscoped lane cannot open them either:
-// it reads signature ids only (publicReadChainResolvability, 0 of 5 sampled `rejuran:…` ids resolved).
+// it reads signature ids only (publicReadChainResolvability, 0 of 5 sampled `brand-x:…` ids resolved).
 // There is no current row to re-key them to (no mirror row, so no signature), so the answer is to stop
 // serving them, not to resolve them.
 //

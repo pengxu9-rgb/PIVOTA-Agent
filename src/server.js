@@ -33920,7 +33920,7 @@ async function getCommerceConfirmationActionHandler() {
 // resolve, rather than re-deriving a second predicate over catalog_products: services/pdpRenderability.js
 // documents at length what re-derivation costs when the twins drift (rows advertised renderable that then
 // 404). Two measured cohorts are removed, both decided off the resolver's own row:
-//   1. a non-signature id (e.g. `rejuran:...`) never resolves on the unscoped lane at all — 0 of 5 sampled;
+//   1. a non-signature id (e.g. `brand-x:...`) never resolves on the unscoped lane at all — 0 of 5 sampled;
 //   2. a seed-routed row with no acceptable seed on its content route.
 // Everything else is KEPT — see the drop-only-what-is-provably-dead note on publicReadDetailResolves.
 //

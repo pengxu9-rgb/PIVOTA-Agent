@@ -22,31 +22,31 @@ const {
 } = require('../src/services/legacySeedIdServability');
 
 // The rows the 11-02 run served (results.json, query ingredient_bare.003), as search hands them back.
-const LEGACY = { id: 'daebak-co:4263b7e739ebca01', product_id: 'daebak-co:4263b7e739ebca01', merchant_id: 'external_seed', title: 'AXIS-Y Spot The Difference Blemish Treatment 15ml' };
-const LEGACY_2 = { product_id: 'takashimashop-com:66563cb9c1bee069', merchant_id: 'external_seed', title: 'DECORTE mask' };
+const LEGACY = { id: 'shop-a:4263b7e739ebca01', product_id: 'shop-a:4263b7e739ebca01', merchant_id: 'external_seed', title: 'Brand A blemish treatment 15ml' };
+const LEGACY_2 = { product_id: 'shop-b-com:66563cb9c1bee069', merchant_id: 'external_seed', title: 'Brand B mask' };
 // What must keep serving.
 const SIG_ROW = { id: 'sig_56000735cdebc73371ccd6c59675adf5', product_id: 'sig_56000735cdebc73371ccd6c59675adf5', merchant_id: 'merch_obs_62bf44c42a24ec23' };
-const REKEYED = { product_id: 'flower-beauty:eb5ff15f3e267039', merchant_id: 'merch_obs_0e4ea7ad6e6d9e43' };
+const REKEYED = { product_id: 'shop-d:eb5ff15f3e267039', merchant_id: 'merch_obs_0e4ea7ad6e6d9e43' };
 const EXT_ID = { product_id: 'ext_bf55156550aa86a7eb921ff2', merchant_id: 'external_seed' };
 const EXT_COLON = { product_id: 'ext:4263b7e739ebca01', merchant_id: 'external_seed' };
 const LEGACY_WITH_SIG = { ...LEGACY, pivota_signature_id: 'sig_4a5a7718f93574113807861f20099f22' };
 const CONNECTED = { product_id: '9854988910809', merchant_id: 'merch_c5e24a8d3738d73b' };
 
 test('the legacy id shape: <slug>:<16 hex>, and nothing else', () => {
-  for (const id of ['daebak-co:4263b7e739ebca01', 'shopseoulia-com:3b93f5355854213d', 'merchant:0123456789abcdef']) {
+  for (const id of ['shop-a:4263b7e739ebca01', 'shop-c-com:3b93f5355854213d', 'merchant:0123456789abcdef']) {
     assert.equal(isLegacySeedProductId(id), true, id);
   }
   for (const id of [
     'ext:4263b7e739ebca01', // the seed-routed prefix
     'ext_bf55156550aa86a7eb921ff2',
     'sig_4263b7e739ebca01',
-    'daebak-co:4263b7e739ebca0', // 15 hex
-    'daebak-co:4263b7e739ebca012', // 17 hex
-    'daebak-co:4263B7E739EBCA01', // the writer emits lowercase hex
-    'daebak-co:4263b7e739ebca01::canonical', // a variant id, not a product id
-    'daebak--co:4263b7e739ebca01',
-    '-daebak:4263b7e739ebca01',
-    'rejuran',
+    'shop-a:4263b7e739ebca0', // 15 hex
+    'shop-a:4263b7e739ebca012', // 17 hex
+    'shop-a:4263B7E739EBCA01', // the writer emits lowercase hex
+    'shop-a:4263b7e739ebca01::canonical', // a variant id, not a product id
+    'shop--a:4263b7e739ebca01',
+    '-shop:4263b7e739ebca01',
+    'brand-x',
     '',
     null,
   ]) {
