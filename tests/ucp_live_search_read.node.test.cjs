@@ -617,10 +617,13 @@ test('STRUCTURAL: search gets its own 8-slot pool and the buyer market the searc
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
-  const start = src.indexOf('function maybeOverlayLiveSearchPrice(');
-  const block = src.slice(start, start + 2600);
+  // The overlay itself (maybeOverlayLiveSearchPrice is the list price tiers' wrapper around it).
+  const start = src.indexOf('function maybeOverlayLiveSearchPriceRaw(');
+  assert.ok(start > 0);
+  const block = src.slice(start, start + 3200);
   assert.match(block, /buyerMarket = undefined/);
-  assert.match(block, /ucpSearchReader: getUcpLiveSearchReader\(\),/);
+  assert.match(block, /const ucpSearchReader = getUcpLiveSearchReader\(\);/);
+  assert.match(block, /\n    ucpSearchReader,\n/);
   assert.match(block, /market: typeof buyerMarket === 'string' && buyerMarket\.trim\(\) \? buyerMarket\.trim\(\)/);
   assert.match(src, /buyerMarket: search\.market \|\| metadata\.market \}/);
   assert.match(src, /buyerMarket: publicBeautySearch\.market \|\| metadata\.market \}/);
