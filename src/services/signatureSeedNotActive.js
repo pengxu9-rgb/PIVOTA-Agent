@@ -160,6 +160,44 @@ async function confirmNoActiveSeedMatches(productId, { queryFn }) {
   return ACTIVE_SEED_MATCH_BRANCHES.every(([name]) => row[name] === false);
 }
 
+// THE SAME MATCH SET FOR MANY IDS IN ONE STATEMENT, for the search-side drop
+// (legacySeedIdServability.dropUnopenableLegacySeedRows): one round trip per page, not one per row.
+// Each requested id is one row of `unnest($1::text[])`, and each branch is the SAME clause as
+// ACTIVE_SEED_MATCH_BRANCHES with `$1` bound to that row's id, so the two cannot drift and each
+// correlated EXISTS can still use its migration-040 partial index.
+const ACTIVE_SEED_MATCH_BATCH_SQL = `
+  SELECT
+    req.id AS product_id,
+    ${ACTIVE_SEED_MATCH_BRANCHES.map(
+      ([name, clause]) =>
+        `EXISTS (SELECT 1 FROM external_product_seeds WHERE status = 'active' AND ${clause.replace(/\$1\b/g, 'req.id')}) AS ${name}`,
+    ).join(',\n    ')}
+  FROM unnest($1::text[]) AS req(id)
+`;
+
+// Map<id, true|false>: true ONLY when that id's row came back and every branch answered an explicit
+// `false`. An id the statement did not answer is absent (unknown: the caller keeps the row). Throws on
+// a failed query or a malformed answer, like confirmNoActiveSeedMatches.
+async function confirmNoActiveSeedMatchesBatch(productIds, { queryFn }) {
+  const ids = Array.from(new Set((Array.isArray(productIds) ? productIds : []).map((v) => String(v || '').trim()).filter(Boolean)));
+  if (!ids.length) return new Map();
+  if (typeof queryFn !== 'function') throw new Error('no database is configured');
+  const res = await queryFn(ACTIVE_SEED_MATCH_BATCH_SQL, [ids]);
+  if (!res || !Array.isArray(res.rows)) throw new Error('active seed match batch returned no rows');
+  const requested = new Set(ids);
+  const out = new Map();
+  for (const row of res.rows) {
+    if (!row || typeof row !== 'object') throw new Error('active seed match batch returned a malformed row');
+    const id = typeof row.product_id === 'string' ? row.product_id : '';
+    if (!requested.has(id)) throw new Error('active seed match batch answered an id it was not asked');
+    for (const [name] of ACTIVE_SEED_MATCH_BRANCHES) {
+      if (typeof row[name] !== 'boolean') throw new Error(`active seed match column ${name} is not boolean`);
+    }
+    out.set(id, ACTIVE_SEED_MATCH_BRANCHES.every(([name]) => row[name] === false));
+  }
+  return out;
+}
+
 /**
  * @returns {Promise<object|null>} the details to put on the 404, or null to keep it reason-less.
  */
@@ -207,7 +245,9 @@ module.exports = {
   // The non-catching match-set check, for a caller that must tell "no active seed" from "could not ask"
   // (legacySeedIdServability: a search row is dropped only on the first).
   confirmNoActiveSeedMatches,
+  // The same check for a page of ids in one statement (the search-side drop).
+  confirmNoActiveSeedMatchesBatch,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
-  __internal: { ACTIVE_SEED_MATCH_BRANCHES, ACTIVE_SEED_MATCH_SQL, confirmNoActiveSeedMatches },
+  __internal: { ACTIVE_SEED_MATCH_BRANCHES, ACTIVE_SEED_MATCH_BATCH_SQL, ACTIVE_SEED_MATCH_SQL, confirmNoActiveSeedMatches },
 };

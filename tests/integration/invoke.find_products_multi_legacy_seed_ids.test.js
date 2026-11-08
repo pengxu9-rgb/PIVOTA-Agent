@@ -95,22 +95,25 @@ describe('legacy seed ids on the invoke and REST search doors', () => {
     process.env.DATABASE_URL = 'postgres://127.0.0.1:1/legacy_seed_stub';
     const realDb = jest.requireActual('../../src/db');
     const probes = [];
+    // One statement per page since review GD-2: $1 is the array of ids, one answer row per id.
+    const fakeQuery = async (sql, params) => {
+      const text = String(sql || '');
+      if (/EXISTS \(SELECT 1 FROM external_product_seeds WHERE status = 'active'/.test(text)) {
+        const asked = params && Array.isArray(params[0]) ? params[0] : [];
+        probes.push(...asked);
+        return {
+          rows: asked.map((id) => ({
+            product_id: id, external_product_id: id === LEGACY_OPEN, seed_id: false, seed_data_external_product_id: false,
+            seed_data_product_id: false, seed_snapshot_product_id: false,
+          })),
+        };
+      }
+      return { rows: [] };
+    };
     jest.doMock('../../src/db', () => ({
       ...realDb,
-      query: async (sql, params) => {
-        const text = String(sql || '');
-        if (/EXISTS \(SELECT 1 FROM external_product_seeds WHERE status = 'active'/.test(text)) {
-          probes.push(params && params[0]);
-          const open = params && params[0] === LEGACY_OPEN;
-          return {
-            rows: [{
-              external_product_id: open, seed_id: false, seed_data_external_product_id: false,
-              seed_data_product_id: false, seed_snapshot_product_id: false,
-            }],
-          };
-        }
-        return { rows: [] };
-      },
+      query: fakeQuery,
+      queryWithBudget: (sql, params) => fakeQuery(sql, params),
       withClient: async (fn) => fn({ query: async () => ({ rows: [] }), release() {} }),
     }));
     mockUpstream(ROWS());
@@ -124,6 +127,49 @@ describe('legacy seed ids on the invoke and REST search doors', () => {
     expect(served).toContain(LEGACY_OPEN);
     expect(served).toContain(SIG);
     expect(served).not.toContain(LEGACY_DEAD);
+  });
+
+  // Review GD-2: one statement per page under one total deadline. With a database that never answers, a page
+  // of 20 legacy rows waits about the deadline (it used to wait 1.5 s per 4 rows: 7.5 s), and the page is the
+  // page a probe that fails at once gives.
+  it('direct invoke: a hung database adds at most the deadline, and the page is the fail-open page', async () => {
+    const page = Array.from({ length: 20 }, (_, i) => v2Row(`shop-d:${(0xd00 + i).toString(16).padStart(16, '0')}`));
+    const run = async (probe) => {
+      jest.resetModules();
+      process.env.DATABASE_URL = 'postgres://127.0.0.1:1/legacy_seed_stub';
+      process.env.SEARCH_LEGACY_SEED_PROBE_DEADLINE_MS = '100';
+      const realDb = jest.requireActual('../../src/db');
+      let probes = 0;
+      const fakeQuery = async (sql) => {
+        if (/FROM unnest\(\$1::text\[\]\)/.test(String(sql || ''))) {
+          probes += 1;
+          return probe();
+        }
+        return { rows: [] };
+      };
+      jest.doMock('../../src/db', () => ({
+        ...realDb,
+        query: fakeQuery,
+        queryWithBudget: (sql, params) => fakeQuery(sql, params),
+        withClient: async (fn) => fn({ query: async () => ({ rows: [] }), release() {} }),
+      }));
+      mockUpstream(page);
+      const app = require('../../src/server');
+      const startedAt = Date.now();
+      const resp = await request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({ operation: 'find_products_multi', payload: { search: { query: 'Brand A', page: 1, limit: 20 } } });
+      nock.cleanAll();
+      return { resp, elapsed: Date.now() - startedAt, probes };
+    };
+    const failOpen = await run(async () => { throw new Error('connection refused'); });
+    const hung = await run(() => new Promise(() => {}));
+    expect(hung.resp.status).toBe(200);
+    expect(failOpen.probes).toBe(1);
+    expect(hung.probes).toBe(1);
+    expect(ids(hung.resp.body)).toEqual(ids(failOpen.resp.body));
+    expect(ids(hung.resp.body).length).toBeGreaterThan(0);
+    expect(hung.elapsed - failOpen.elapsed).toBeLessThan(100 + 600);
   });
 
   it('REST GET /agent/v1/products/search goes through the same egress', async () => {

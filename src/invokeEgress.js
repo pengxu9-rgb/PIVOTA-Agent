@@ -37,6 +37,30 @@ const {
 } = require('./services/legacySeedIdServability');
 
 const INSTALLED = Symbol('pivotaInvokeEgressInstalled');
+// Set the moment a response is handed to a DEFERRED send (review GD-1). From then on this request has its
+// answer, even though `res.headersSent` still reads false until the send happens.
+const COMMITTED = Symbol('pivotaInvokeEgressCommitted');
+
+// On a search response whose legacy seed rows this door asked the database about: the commerce kernel's
+// loopback hop reads it and does not ask again for the same page (review GD-2).
+const LEGACY_SEED_PROBE_HEADER = 'X-Pivota-Legacy-Seed-Probe';
+
+/**
+ * Has this response been answered? True once headers are out or the stream has ended, AND while the egress
+ * holds a deferred send for it. A guard that asks "may I still send?" must ask this, not `res.headersSent`
+ * alone: a search response waiting on its legacy seed probe has no headers out yet, but it IS the response.
+ */
+function isInvokeResponseCommitted(res) {
+  return Boolean(res && (res[COMMITTED] || res.headersSent || res.writableEnded));
+}
+
+function warnEgress(fields, message) {
+  try {
+    logger.warn(fields, message);
+  } catch (_) {
+    // never let a log line fail a response
+  }
+}
 
 // The one place to decide what may leave the invoke route.
 //
@@ -53,13 +77,14 @@ const INSTALLED = Symbol('pivotaInvokeEgressInstalled');
 // field. The async `finalizeInvokeSearchBody` drops only a row that no detail lane can open, and only once
 // the database has said so. Every other body leaves unchanged.
 function logLegacySeedProjection(ctx, counts) {
-  if (!counts.droppedCount && !counts.rekeyedCount && !counts.linkedCount) return;
+  if (!counts.droppedCount && !counts.rekeyedCount && !counts.linkedCount && !counts.failedOpenCount) return;
   try {
     logger.info(
       {
         op: ctx && ctx.operation,
         door: (ctx && ctx.door) || 'invoke_egress',
         dropped_legacy_seed_rows: counts.droppedCount || 0,
+        deduped_legacy_seed_rows: counts.dedupedCount || 0,
         rekeyed_legacy_seed_rows: counts.rekeyedCount || 0,
         linked_legacy_seed_rows: counts.linkedCount || 0,
         legacy_seed_probe_failed_open: counts.failedOpenCount || 0,
@@ -81,11 +106,14 @@ function projectInvokeResponse(body, ctx = {}) {
 
 // The async half, for installInvokeEgress's `finalize`: null (send now, nothing to ask) unless the body is a
 // search response holding legacy rows to probe; then a promise of the body with only the truly unopenable
-// rows removed. `noActiveSeed(id)` must THROW when it cannot ask, so a probe failure keeps the row.
-function finalizeInvokeSearchBody(body, ctx = {}, { noActiveSeed, env = process.env } = {}) {
-  if (!isLegacySeedProjectedOp(ctx && ctx.operation) || typeof noActiveSeed !== 'function') return null;
+// rows removed. `noActiveSeeds(ids)` asks about the page in one call (per-id `noActiveSeed(id)` is still
+// accepted) and must THROW when it cannot ask, so a probe failure keeps the rows. The drop's own total
+// deadline bounds how long the response waits (legacySeedIdServability, review GD-2).
+function finalizeInvokeSearchBody(body, ctx = {}, { noActiveSeeds, noActiveSeed, env = process.env, ...rest } = {}) {
+  if (!isLegacySeedProjectedOp(ctx && ctx.operation)) return null;
+  if (typeof noActiveSeeds !== 'function' && typeof noActiveSeed !== 'function') return null;
   if (!projectLegacySeedRows(body).probeIds.length) return null;
-  return dropUnopenableLegacySeedRows(body, { noActiveSeed, env }).then((r) => {
+  return dropUnopenableLegacySeedRows(body, { noActiveSeeds, noActiveSeed, env, ...rest }).then((r) => {
     logLegacySeedProjection(ctx, { droppedCount: r.droppedIds.length, ...r });
     return r.body;
   });
@@ -105,6 +133,16 @@ function finalizeInvokeSearchBody(body, ctx = {}, { noActiveSeed, env = process.
 // instead, or a PROMISE of one: the response is then sent when it settles, with the projected body if it
 // rejects. Only a finalize that has real work returns a promise (legacy seed rows on a search response), so
 // every other response is sent synchronously exactly as before.
+//
+// THE DEFERRED SEND (review GD-1). While it waits, `res.headersSent` reads false, so code that answers
+// meanwhile (a catch block, the error middleware) would send its own body and the deferred send would then
+// throw ERR_HTTP_HEADERS_SENT as an unhandled rejection, which kills this process (it installs no handler).
+// So, from the moment a response is deferred:
+//   - the response is COMMITTED (isInvokeResponseCommitted): a later `res.json` on it is dropped, and the
+//     status a later `res.status(n)` wrote is put back, so the client gets the FIRST answer, exactly as it did
+//     when every send was synchronous;
+//   - the deferred send never sends twice: if anything else wrote to the socket meanwhile, it stands down;
+//   - nothing it does can reject: every step is caught.
 function installInvokeEgress(
   res,
   ctx = {},
@@ -120,6 +158,14 @@ function installInvokeEgress(
     const originalJson = res.json.bind(res);
     Object.defineProperty(res, INSTALLED, { value: true, enumerable: false });
     res.json = function patchedJson(body) {
+      if (res[COMMITTED]) {
+        // A deferred send already holds this request's answer (see above). Exactly one response leaves.
+        warnEgress(
+          { op: ctx && ctx.operation, door: 'invoke_egress' },
+          'invoke egress: a second response for a request already answered was dropped',
+        );
+        return res;
+      }
       let projected = body;
       try {
         projected = project(body, ctx);
@@ -149,10 +195,37 @@ function installInvokeEgress(
         }
         if (pending && typeof pending.then === 'function') {
           const sendProjected = projected;
-          pending.then(
-            (finalBody) => originalJson(finalBody === undefined || finalBody === null ? sendProjected : finalBody),
-            () => originalJson(sendProjected),
-          );
+          Object.defineProperty(res, COMMITTED, { value: true, enumerable: false, configurable: true });
+          const statusAtCommit = res.statusCode;
+          const deliver = (finalBody) => {
+            if (res.headersSent || res.writableEnded) {
+              warnEgress(
+                { op: ctx && ctx.operation, door: 'invoke_egress' },
+                'invoke egress: the response was written elsewhere while the search was finishing; not sent twice',
+              );
+              return;
+            }
+            try {
+              res.statusCode = statusAtCommit;
+              if (typeof res.setHeader === 'function') res.setHeader(LEGACY_SEED_PROBE_HEADER, '1');
+              originalJson(finalBody === undefined || finalBody === null ? sendProjected : finalBody);
+            } catch (err) {
+              warnEgress(
+                { op: ctx && ctx.operation, door: 'invoke_egress', err: err && err.message },
+                'invoke egress: the deferred search response failed to send',
+              );
+              if (res.headersSent || res.writableEnded) return;
+              try {
+                res.statusCode = 500;
+                originalJson({ error: 'INTERNAL_ERROR', message: 'Internal Server Error' });
+              } catch (_) {
+                // nothing left to do; never reject from an egress hook
+              }
+            }
+          };
+          Promise.resolve(pending)
+            .then(deliver, () => deliver(sendProjected))
+            .catch(() => {});
           return res;
         }
         if (pending !== undefined && pending !== null) projected = pending;
@@ -164,4 +237,12 @@ function installInvokeEgress(
   return (body) => res.json(body);
 }
 
-module.exports = { finalizeInvokeSearchBody, installInvokeEgress, projectInvokeResponse, INSTALLED };
+module.exports = {
+  COMMITTED,
+  INSTALLED,
+  LEGACY_SEED_PROBE_HEADER,
+  finalizeInvokeSearchBody,
+  installInvokeEgress,
+  isInvokeResponseCommitted,
+  projectInvokeResponse,
+};

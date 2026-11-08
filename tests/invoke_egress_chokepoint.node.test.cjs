@@ -144,10 +144,12 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // 2026-10-27: +1, a retryable 503 when the referral content-key lookup cannot answer.
   // 2026-11-08: +1, get_product_detail answers a legacy `<slug>:<hex>` seed id from the seed-DB lane
   // (FIX_PLAN D-06). It is a plain res.json, wrapped like the rest.
+  // 2026-11-08: -1, that early return is gone again: the legacy seed answer now runs through the normal
+  // detail flow (detail cache, include handling) and leaves by its ordinary exit (review GD-4).
   assert.equal(
     exits.length,
-    107,
-    `expected 107 response exits in handleInvokeRequest, saw ${exits.length}`,
+    106,
+    `expected 106 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
