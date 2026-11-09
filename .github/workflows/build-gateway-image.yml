@@ -1,0 +1,81 @@
+# Build and push gateway:<sha> on every push to main. BUILD ONLY: it deploys nothing.
+#
+# The gateway service still never deploys on merge (pivota-backend infra/gcp/deploy_gateway.sh is
+# the deploy). What this removes is the hand BUILD: every Cloud Run Job on the gateway image
+# (relgraph-sync, relgraph-health, the seed sentinel, ...) is re-imaged with
+# `pivota-backend infra/gcp/reimage_jobs.sh prod gateway <sha>`, which refuses a sha with no image,
+# and until now that image existed only if someone had run
+# `gcloud builds submit --config infra/gcp/cloudbuild.gateway.yaml` from a laptop checkout.
+#
+# Same image as that hand build: the root Dockerfile, `--build-arg COMMIT_SHA=<sha>` (stamps
+# /app/.image_commit_sha), tag `:<sha>` (and `:latest` when the sha is still main's tip), pushed to
+# us-west1-docker.pkg.dev/pivota-shared/pivota/gateway.
+#
+# DARK UNTIL ARMED. The job is skipped unless the repository variable GATEWAY_IMAGE_BUILD_ENABLED is
+# `true`. The identity it authenticates as (provider github-gateway, sa-gateway-image-build, which may
+# push to the `pivota` Artifact Registry repository and do nothing else) is created by
+# pivota-backend infra/gcp/setup_gateway_image_build_identity.sh; set the variable after that has
+# run, or every push would fail at the auth step.
+name: Build gateway image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write   # mints the OIDC token Workload Identity Federation exchanges
+
+# One build per commit; a newer push does not cancel an older one (each sha needs its own image).
+concurrency:
+  group: build-gateway-image-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  REGION: us-west1
+  IMAGE: us-west1-docker.pkg.dev/pivota-shared/pivota/gateway
+
+jobs:
+  build:
+    if: ${{ vars.GATEWAY_IMAGE_BUILD_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The provider's attribute condition already pins refs/heads/main; this check is the
+      # readable error for a workflow_dispatch from another branch, not the security boundary.
+      - name: Verify the commit is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::${GITHUB_SHA} is not on main"; exit 1; }
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/371394967380/locations/global/workloadIdentityPools/github-actions/providers/github-gateway
+          service_account: sa-gateway-image-build@pivota-shared.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # A sha is a commit: an image already pushed for it (a hand build, a re-run) is kept as-is
+      # rather than rebuilt from different base-image layers under the same tag.
+      - name: Build and push
+        run: |
+          if gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" >/dev/null 2>&1; then
+            echo "${IMAGE}:${GITHUB_SHA} already exists; keeping it"; exit 0
+          fi
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build --build-arg "COMMIT_SHA=${GITHUB_SHA}" -t "${IMAGE}:${GITHUB_SHA}" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          # `:latest` follows main's TIP only: two pushes build in parallel, and the older one must
+          # not finish last and move `latest` backwards. Nothing deploys `latest` (deploy_gateway.sh
+          # and reimage_jobs.sh refuse it); it is kept for parity with the hand build.
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" = "${GITHUB_SHA}" ]; then
+            docker tag "${IMAGE}:${GITHUB_SHA}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          fi
+          echo "pushed ${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
