@@ -107,3 +107,29 @@ test("only search_catalog is handed to the hook", async () => {
   await surface.callTool("search_catalog", ARGS, CALLER_A);
   assert.equal(seen.length, 1);
 });
+
+test("a cached entry that cannot be cloned is served unstamped, never stamped in place", async () => {
+  const calls = [];
+  // Records BEFORE anything that could throw on the unclonable value, then stamps it in place.
+  const hook = async (value) => {
+    calls.push(value);
+    value.products[0].tracking = { click_id: `clk_${calls.length}` };
+    return true;
+  };
+  // A function makes structuredClone throw, so the cache hands back its SHARED entry.
+  const page = () => ({ ...structuredClone(PAGE), cloneBreaker: () => null });
+  const kernel = new SafetyKernel({ upstream: async () => ({}), secret: "commerce-cache-secret-0123456789", log: { info() {}, warn() {}, error() {} } });
+  const executor = createCanonicalExecutor({ kernel, upstream: async () => page() });
+  // The sanitizer would drop the function; keep it by stubbing the surface's executor result after sanitize.
+  const surface = createCommerceToolSurface({
+    execute: async (opId, params, ctx) => {
+      const v = await executor.execute(opId, params, ctx);
+      return { ...v, cloneBreaker: () => null };
+    },
+  }, { attributeSearchResult: hook });
+  const a = await surface.callTool("search_catalog", { query: "unclonable probe" }, CALLER_A);
+  const b = await surface.callTool("search_catalog", { query: "unclonable probe" }, CALLER_B);
+  assert.equal(calls.length, 0, "never stamps a shared reference");
+  assert.equal(a.products[0].tracking, undefined);
+  assert.equal(b.products[0].tracking, undefined);
+});

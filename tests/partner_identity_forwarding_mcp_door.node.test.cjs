@@ -82,13 +82,21 @@ function introspect() {
   }
 }
 
-function assertionOf(headers) {
+// The REQUEST-BOUND (v2) assertion on one captured request, checked against that request: its path, and the
+// hash of the exact body bytes (re-serialised from nock's parsed body, which reproduces the sent string).
+function assertionOf(headers, { path, body } = {}) {
   const token = headers['x-pivota-issuing-agent'];
   if (!token) return null;
-  const [version, body, mac] = String(token).split('.');
-  assert.equal(version, 'v1');
-  assert.equal(mac, crypto.createHmac('sha256', SECRET).update(`${version}.${body}`).digest('base64url'), 'signed with the shared secret');
-  return JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+  const [version, encoded, mac] = String(token).split('.');
+  assert.equal(version, 'v2');
+  assert.equal(mac, crypto.createHmac('sha256', SECRET).update(`${version}.${encoded}`).digest('base64url'), 'signed with the shared secret');
+  const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+  if (path !== undefined) assert.equal(payload.p, path, 'bound to the path it was sent to');
+  if (body !== undefined) {
+    const raw = typeof body === 'string' ? body : JSON.stringify(body);
+    assert.equal(payload.bh, crypto.createHash('sha256').update(raw, 'utf8').digest('hex'), 'bound to the exact body');
+  }
+  return payload;
 }
 
 const rpc = (name, args, id = 1) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
@@ -174,7 +182,8 @@ test('flag on: two partners served one cached search each get their own click id
     assert.equal(state.loopbackHeaders[0]['x-pivota-issuing-agent'], undefined, 'the cached lane names no caller');
 
     assert.equal(state.mints.length, 2, 'one mint per response, after the cache');
-    const [ma, mb] = state.mints.map((m) => assertionOf(m.headers));
+    const [ma, mb] = state.mints.map((m) => assertionOf(m.headers, { path: '/agent/shop/v1/attribution/external-seed-links', body: m.body }));
+    assert.notEqual(ma.jti, mb.jti, 'one nonce per mint');
     assert.deepEqual([ma.kind, ma.sub, ma.op], ['agent', PARTNER_A, 'external_seed_links.mint']);
     assert.deepEqual([mb.kind, mb.sub, mb.op], ['agent', PARTNER_B, 'external_seed_links.mint']);
     for (const m of state.mints) {
@@ -229,8 +238,8 @@ test('flag off: the cached search is not deferred and no per-response mint is ma
 function interceptMoney() {
   const calls = [];
   let n = 0;
-  const record = (path) => function reply(_uri, body) {
-    calls.push({ path, headers: { ...this.req.headers }, body });
+  const record = (path) => function reply(uri, body) {
+    calls.push({ path, uri, headers: { ...this.req.headers }, body });
     n += 1;
     if (path === 'quote') {
       return [200, { quote: {
@@ -294,17 +303,24 @@ test('flag on: each partner\'s quote, order and hosted link reach the backend si
     assert.match(linkB.checkout_url, /^https:\/\/checkout\.example\.com\//);
 
     const seen = calls.map((c) => {
-      const a = assertionOf(c.headers);
-      return [c.path, a && a.sub, a && a.op, c.headers['x-api-key']];
+      const a = assertionOf(c.headers, { path: c.uri.split('?')[0], body: c.body });
+      return [c.path, a && a.sub, a && a.op, a && a.rid, c.headers['x-api-key']];
     });
-    const steps = (partner) => [
-      ['quote', partner, 'preview_quote', 'gateway-service-key'],
-      ['order', partner, 'create_order', 'gateway-service-key'],
-      ['session', partner, 'create_payment_link', 'gateway-service-key'],
-      ['order_read', partner, 'get_order_status', 'gateway-service-key'],
-      ['after_sales', partner, 'request_after_sales', 'gateway-service-key'],
+    const orderOf = (i) => calls.filter((c) => c.path === 'order')[i];
+    const ridOf = (i) => JSON.parse(JSON.stringify(orderOf(i).body)).quote_id;
+    const steps = (partner, i) => [
+      ['quote', partner, 'preview_quote', null, 'gateway-service-key'],
+      ['order', partner, 'create_order', ridOf(i), 'gateway-service-key'],
+      ['session', partner, 'create_payment_link', calls.filter((c) => c.path === 'session')[i].body.order_id, 'gateway-service-key'],
+      // The kernel's order read goes to the backend's invoke route, which reads no assertion: unsigned.
+      ['order_read', null, null, null, 'gateway-service-key'],
+      ['after_sales', partner, 'request_after_sales', calls.filter((c) => c.path === 'after_sales')[i].uri.split('/')[4], 'gateway-service-key'],
     ];
-    assert.deepEqual(seen, [...steps(PARTNER_A), ...steps(PARTNER_B)]);
+    assert.deepEqual(seen, [...steps(PARTNER_A, 0), ...steps(PARTNER_B, 1)]);
+    assert.ok(ridOf(0) && ridOf(1), 'the order names the quote it is created from');
+    const nonces = calls.map((c) => c.headers['x-pivota-issuing-agent']).filter(Boolean)
+      .map((t) => JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString('utf8')).jti);
+    assert.equal(new Set(nonces).size, nonces.length, 'every signed call has its own nonce');
   } finally {
     nock.cleanAll();
     setFlag(false);

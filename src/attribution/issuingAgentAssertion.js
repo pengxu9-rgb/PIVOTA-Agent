@@ -26,13 +26,26 @@
 // secret is checked at the token endpoint), and only then trusts the subject.
 //
 // PARTNER IDENTITY ON THE MONEY OPS (FIX_PLAN O-04), behind PARTNER_IDENTITY_FORWARDING_ENABLED
-// (default OFF). The same token, unchanged, is also signed on the ops in PARTNER_IDENTITY_OPS: the
-// kernel's money calls (quote, order, hosted link, payment, after-sales, order read) and the
-// per-response seed-link mint (SEED_LINK_MINT_OP, made AFTER the search cache for one caller). With
-// the backend's flag of the same name on, the backend makes the asserted agent the OWNER of what
-// those routes write (pivota-backend routes/agent_forwarded_owner.py), so two partners calling
-// through this one gateway are two owners, with their own scope, limits and clicks. Off, nothing
-// here changes: only ISSUING_OPS is signed.
+// (default OFF). The ops in PARTNER_IDENTITY_OPS (the kernel's quote, order, hosted link, payment and
+// after-sales calls, and the per-response seed-link mint, SEED_LINK_MINT_OP) carry a REQUEST-BOUND v2
+// token instead (boundIssuingAgentAssertionHeaders). With the backend's flag of the same name on, the
+// backend makes the asserted agent the OWNER of what those routes write (pivota-backend
+// routes/agent_forwarded_owner.py), so two partners calling through this one gateway are two owners,
+// with their own scope, limits and clicks. Because the token then names an OWNER, a v1 shape would be
+// a bearer capability ("act as this partner for this op, any body, 10 minutes"), so v2 binds it to one
+// request:
+//
+//   X-Pivota-Issuing-Agent: v2.<b64url(JSON payload)>.<b64url(HMAC-SHA256(secret, "v2." + part1))>
+//
+//   payload = { v: 2, kind, sub | iss+cid, op, ts, jti, m, p, rid, bh }
+//     m   HTTP method (upper case)      p   request path as sent, no query
+//     rid the order or quote id the op acts on, or null     bh  sha256 hex of the EXACT body bytes
+//     jti random single-use nonce (the backend refuses a second sighting)
+//
+// The backend accepts it within 60 s and once. It is signed per ATTEMPT (withBoundIssuingAssertion in
+// src/server.js), so a transport retry carries a fresh nonce and is hashed over the body it actually
+// sends. offers.resolve keeps v1: there a replay can at most misattribute a click. Off, nothing here
+// changes: only ISSUING_OPS is signed, as v1.
 //
 // What is NEVER asserted:
 //   - a cached read lane: its results are shared across callers and must stay caller-independent
@@ -58,15 +71,17 @@ const SEED_LINK_MINT_OP = 'external_seed_links.mint';
 
 // Signed only while PARTNER_IDENTITY_FORWARDING_ENABLED is on. Each name is the op this gateway
 // sends upstream, and the backend verifies the token against the op of the route it lands on.
+// get_order_status is NOT here: the kernel reads it through the backend's invoke route, which has no
+// such operation and reads no assertion (O-04 review, P3-G4). Add it back with the read's reroute.
 const PARTNER_IDENTITY_OPS = Object.freeze(new Set([
   'preview_quote',
   'create_order',
   'submit_payment',
   'create_payment_link',
   'request_after_sales',
-  'get_order_status',
   SEED_LINK_MINT_OP,
 ]));
+const ISSUING_AGENT_ASSERTION_VERSION_V2 = 'v2';
 
 const PARTNER_IDENTITY_FORWARDING_ENV = 'PARTNER_IDENTITY_FORWARDING_ENABLED';
 
@@ -75,8 +90,7 @@ function partnerIdentityForwardingEnabled(env = process.env) {
   return /^(1|true|yes|on)$/i.test(String(raw === undefined || raw === null ? '' : raw).trim());
 }
 
-function isSignedOp(operation, env = process.env) {
-  if (ISSUING_OPS.has(operation)) return true;
+function isBoundOp(operation, env = process.env) {
   return PARTNER_IDENTITY_OPS.has(operation) && partnerIdentityForwardingEnabled(env);
 }
 
@@ -159,7 +173,7 @@ function signIssuingAgentAssertion({ subject, op, secret, nowSec }) {
 function issuingAgentAssertionHeaders({ op, invokeContext, env = process.env, nowSec } = {}) {
   try {
     const operation = text(op);
-    if (!isSignedOp(operation, env)) return {};
+    if (!ISSUING_OPS.has(operation)) return {};
     const secret = readSecret(env);
     if (!secret) return {};
     const subject = issuingSubjectFromInvokeContext(invokeContext, env);
@@ -167,6 +181,51 @@ function issuingAgentAssertionHeaders({ op, invokeContext, env = process.env, no
     const ts = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
     return {
       [ISSUING_AGENT_ASSERTION_HEADER]: signIssuingAgentAssertion({ subject, op: operation, secret, nowSec: ts }),
+    };
+  } catch (_) {
+    return {};
+  }
+}
+
+function signBoundIssuingAgentAssertion({ subject, op, secret, nowSec, jti, method, path, rid, bodyHash }) {
+  const head = subject.kind === 'agent'
+    ? { v: 2, kind: 'agent', sub: subject.sub }
+    : { v: 2, kind: 'oauth', iss: subject.iss, cid: subject.cid };
+  const payload = { ...head, op, ts: nowSec, jti, m: method, p: path, rid: rid == null ? null : String(rid), bh: bodyHash };
+  const signingInput = `${ISSUING_AGENT_ASSERTION_VERSION_V2}.${b64url(JSON.stringify(payload))}`;
+  const mac = crypto.createHmac('sha256', secret).update(signingInput).digest();
+  return `${signingInput}.${b64url(mac)}`;
+}
+
+/**
+ * The v2 header for ONE outbound request: `{ 'X-Pivota-Issuing-Agent': token }`, or `{}` when the op is
+ * not a partner-identity op, the flag is off, no secret is configured, or the caller is not one agent.
+ * `rawBody` must be the exact string that is sent ('' for no body). Never throws.
+ */
+function boundIssuingAgentAssertionHeaders({
+  op, invokeContext, method, url, rid = null, rawBody = '', env = process.env, nowSec, jti,
+} = {}) {
+  try {
+    const operation = text(op);
+    if (!isBoundOp(operation, env)) return {};
+    const secret = readSecret(env);
+    if (!secret) return {};
+    const subject = issuingSubjectFromInvokeContext(invokeContext, env);
+    if (!subject) return {};
+    const path = new URL(String(url || '')).pathname;
+    const bodyHash = crypto.createHash('sha256').update(Buffer.from(String(rawBody ?? ''), 'utf8')).digest('hex');
+    return {
+      [ISSUING_AGENT_ASSERTION_HEADER]: signBoundIssuingAgentAssertion({
+        subject,
+        op: operation,
+        secret,
+        nowSec: Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000),
+        jti: typeof jti === 'string' && jti ? jti : crypto.randomBytes(18).toString('base64url'),
+        method: String(method || 'GET').toUpperCase(),
+        path,
+        rid,
+        bodyHash,
+      }),
     };
   } catch (_) {
     return {};
@@ -194,6 +253,9 @@ module.exports = {
   PARTNER_IDENTITY_FORWARDING_ENV,
   SEED_LINK_MINT_OP,
   partnerIdentityForwardingEnabled,
+  isBoundOp,
+  signBoundIssuingAgentAssertion,
+  boundIssuingAgentAssertionHeaders,
   NON_AGENT_AUTH_SOURCES,
   issuingSubjectFromInvokeContext,
   signIssuingAgentAssertion,
