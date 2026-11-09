@@ -215,4 +215,6 @@ module.exports = {
   seedNativeCurrencySql, seedProjectedOfferInSeedCurrencySql, seedProjectedOfferCurrencyGuardSql,
   isSeedProjectedOfferCurrencyGuardEnabled, SEED_OWN_BRAND_SQL, SEED_PROJECTED_OFFER_CURRENCY_GUARD_FLAG,
   SEED_PROJECTED_OFFER_SOURCE_SYSTEMS,
+  // A seed's own currency (column and page read agree), for legacySeedIdServability's detail gate.
+  seedCurrencySql,
 };

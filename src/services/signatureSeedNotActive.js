@@ -204,6 +204,9 @@ module.exports = {
   SEED_DATA_FALLBACK_MATCH_CLAUSE,
   SEED_DATA_UNGUARDED_MATCH_CLAUSE,
   SEED_EXACT_MATCHES,
+  // The non-catching match-set check, for a caller that must tell "no active seed" from "could not ask"
+  // (legacySeedIdServability: a search row is dropped only on the first).
+  confirmNoActiveSeedMatches,
   readSignatureSeedNotActive,
   settleSignatureSeedNotActive,
   __internal: { ACTIVE_SEED_MATCH_BRANCHES, ACTIVE_SEED_MATCH_SQL, confirmNoActiveSeedMatches },
