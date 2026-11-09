@@ -93,10 +93,16 @@ function parseJson(text) {
 }
 
 /**
+ * THE PARTNER ASSERTION IS REQUEST-BOUND (v2, O-04 review P2-2): `signRequest` is called once per send, over the
+ * exact body string this client then sends, its method, URL and `rid`, and returns the X-Pivota-Issuing-Agent header
+ * (src/attribution/issuingAgentAssertion.js boundIssuingAgentAssertionHeaders). `rid` is the hand-off RECORD ID on
+ * both calls (the body's `record_id`), which is what the backend's routes bind (`resource=("body", "record_id")`).
+ * No header from it means the request names no partner, and nothing is sent.
+ *
  * @param {{
  *   baseUrl: string,
- *   authHeaders: (op: string) => (object|null),  // the gateway's own key + the partner's signed assertion for `op`,
- *                                                // or null when the request names no partner (nothing is sent)
+ *   authHeaders: () => (object|null),     // the gateway's own key; null when it has none (nothing is sent)
+ *   signRequest: ({ op, method, url, rid, rawBody }) => object,
  *   fetchImpl?: Function,
  *   timeoutMs?: number,
  *   logger?: { info?: Function, warn?: Function },
@@ -106,6 +112,7 @@ function createStorefrontHandoffClient(deps = {}) {
   const baseUrl = String(deps.baseUrl || '').trim().replace(/\/+$/, '');
   const fetchImpl = typeof deps.fetchImpl === 'function' ? deps.fetchImpl : globalThis.fetch;
   const authHeaders = typeof deps.authHeaders === 'function' ? deps.authHeaders : () => null;
+  const signRequest = typeof deps.signRequest === 'function' ? deps.signRequest : () => ({});
   const timeoutMs = clampTimeout(deps.timeoutMs);
   const logger = deps.logger && typeof deps.logger.warn === 'function' ? deps.logger : null;
 
@@ -120,20 +127,28 @@ function createStorefrontHandoffClient(deps = {}) {
   }
 
   async function post(op, path, body) {
-    let headers;
-    try { headers = authHeaders(op); } catch { headers = null; }
+    if (!baseUrl || typeof fetchImpl !== 'function') return { kind: OUTCOME.unavailable, code: 'unconfigured' };
+    const url = `${baseUrl}${path}`;
+    // Serialised ONCE: the assertion is hashed over exactly these bytes, and exactly these bytes are sent.
+    const rawBody = JSON.stringify(body);
+    let base;
+    let signed;
+    try { base = authHeaders(); } catch { base = null; }
+    try { signed = signRequest({ op, method: 'POST', url, rid: body.record_id, rawBody }); } catch { signed = null; }
     // No partner assertion on this request: the backend would refuse it (partner_identity_required), so it is
     // never sent. The record is a partner's or nobody's.
-    if (!isPlainObject(headers) || !headers[ISSUING_AGENT_ASSERTION_HEADER]) return { kind: OUTCOME.unattributed };
-    if (!baseUrl || typeof fetchImpl !== 'function') return { kind: OUTCOME.unavailable, code: 'unconfigured' };
+    if (!isPlainObject(base) || !isPlainObject(signed) || !signed[ISSUING_AGENT_ASSERTION_HEADER]) {
+      return { kind: OUTCOME.unattributed };
+    }
+    const headers = { ...base, [ISSUING_AGENT_ASSERTION_HEADER]: signed[ISSUING_AGENT_ASSERTION_HEADER] };
     const controller = new AbortController();
     // NOT unref()'d: an unref'd timer behind an awaited fetch lets the loop drain and the deadline never fires.
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetchImpl(`${baseUrl}${path}`, {
+      const res = await fetchImpl(url, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(body),
+        body: rawBody,
         signal: controller.signal,
         redirect: 'error',
       });

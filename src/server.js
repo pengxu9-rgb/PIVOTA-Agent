@@ -32114,7 +32114,7 @@ function buildReadAgentPurchase(client) {
 // THE UCP STOREFRONT HAND-OFF RECORD (FIX_PLAN O-02; src/services/storefrontHandoffRecord.js). Dark unless
 // UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (read per call). The backend is
 // called with this gateway's OWN key (the record route accepts only a service that vouches) and the partner's signed
-// assertion for that call's op; a request bound to no partner signs nothing, and the client then sends nothing.
+// REQUEST-BOUND (v2) assertion for that call; a request bound to no partner signs nothing, and nothing is sent.
 let storefrontHandoffClient = null;
 function getStorefrontHandoffClient(deps = {}) {
   if (storefrontHandoffClient && !deps.fresh) return storefrontHandoffClient;
@@ -32122,15 +32122,12 @@ function getStorefrontHandoffClient(deps = {}) {
   const client = createStorefrontHandoffClient({
     baseUrl: deps.baseUrl || PIVOTA_API_BASE,
     fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
-    authHeaders: (op) => {
-      if (!PIVOTA_API_KEY) return null;
-      const assertion = issuingAgentAssertionHeaders({ op, invokeContext: getInvokeAuthContext() || {} });
-      if (!Object.keys(assertion).length) return null;
-      return {
-        ...buildInvokeUpstreamAuthHeaders({ forceInternalFallback: true, forwardAgentUserJwt: false, forwardBuyerRef: false }),
-        ...assertion,
-      };
-    },
+    authHeaders: () => (PIVOTA_API_KEY
+      ? buildInvokeUpstreamAuthHeaders({ forceInternalFallback: true, forwardAgentUserJwt: false, forwardBuyerRef: false })
+      : null),
+    // The partner's REQUEST-BOUND (v2) assertion, signed per send over the exact body it sends (O-04 review P2-2).
+    signRequest: ({ op, method, url, rid, rawBody }) =>
+      boundIssuingAgentAssertionHeaders({ op, invokeContext: getInvokeAuthContext() || {}, method, url, rid, rawBody }),
     logger,
   });
   if (!deps.fresh) storefrontHandoffClient = client;

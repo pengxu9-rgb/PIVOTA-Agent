@@ -17,7 +17,8 @@
 // adapter -> the commerce surface -> the escalation lane and its memoized product reads -> the canonical executor ->
 // invokeCommerceKernelRawUpstream; for get_order, the same executor's get_order. Stubbed are only the network edges:
 // introspection, the loopback product page (nock on this process's own origin) and the Python backend's hand-off
-// routes (nock on PIVOTA_API_BASE; the backend's own behaviour is tested in pivota-backend
+// routes (nock on PIVOTA_API_BASE, which checks the v2 binding as the backend does; the backend's own behaviour is
+// tested in pivota-backend
 // tests/test_storefront_handoff_record.py, and this stub answers the way those routes do).
 
 const test = require('node:test');
@@ -90,13 +91,30 @@ function introspect() {
   }
 }
 
-function assertionOf(headers) {
+// The REQUEST-BOUND (v2) assertion on one captured request, checked the way pivota-backend
+// services/bound_issuing_assertion.py checks it: MAC, method, the path as sent, rid = the body's record_id, the hash
+// of the exact body bytes (re-serialised from nock's parsed body, which reproduces the sent string), a nonce, 60 s.
+const seenNonces = new Set();
+function assertionOf(headers, { path, body } = {}) {
   const token = headers['x-pivota-issuing-agent'];
   if (!token) return null;
-  const [version, body, mac] = String(token).split('.');
-  assert.equal(version, 'v1');
-  assert.equal(mac, crypto.createHmac('sha256', SECRET).update(`${version}.${body}`).digest('base64url'), 'signed with the shared secret');
-  return JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+  const [version, encoded, mac] = String(token).split('.');
+  assert.equal(version, 'v2', 'the hand-off ops carry the request-bound token, never v1');
+  assert.equal(mac, crypto.createHmac('sha256', SECRET).update(`${version}.${encoded}`).digest('base64url'), 'signed with the shared secret');
+  const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+  assert.equal(payload.v, 2);
+  assert.equal(payload.m, 'POST');
+  if (path !== undefined) assert.equal(payload.p, path, 'bound to the path it was sent to');
+  if (body !== undefined) {
+    const raw = typeof body === 'string' ? body : JSON.stringify(body);
+    assert.equal(payload.bh, crypto.createHash('sha256').update(raw, 'utf8').digest('hex'), 'bound to the exact body');
+    assert.equal(payload.rid, (typeof body === 'string' ? JSON.parse(body) : body).record_id, 'rid = the record id');
+  }
+  assert.match(payload.jti, /^[A-Za-z0-9_-]{16,128}$/);
+  assert.ok(!seenNonces.has(payload.jti), 'a fresh nonce per request');
+  seenNonces.add(payload.jti);
+  assert.ok(Math.abs(Date.now() / 1000 - payload.ts) <= 60);
+  return payload;
 }
 
 // ---- the storefront row ---------------------------------------------------------------------------------------
@@ -138,8 +156,8 @@ function interceptHandoffBackend() {
   nock(BACKEND)
     .persist()
     .post('/agent/v2/storefront-handoffs')
-    .reply(function reply(_uri, body) {
-      const assertion = assertionOf(this.req.headers);
+    .reply(function reply(uri, body) {
+      const assertion = assertionOf(this.req.headers, { path: uri.split('?')[0], body });
       state.records.push({ headers: { ...this.req.headers }, assertion, body });
       if (!assertion || assertion.op !== 'ucp_storefront_handoff.record') return refuse(403, 'partner_identity_required');
       const existing = state.rows.get(body.record_id);
@@ -148,8 +166,8 @@ function interceptHandoffBackend() {
       return [200, { record_id: body.record_id, status: 'handed_off' }];
     })
     .post('/agent/v2/storefront-handoffs/read')
-    .reply(function reply(_uri, body) {
-      const assertion = assertionOf(this.req.headers);
+    .reply(function reply(uri, body) {
+      const assertion = assertionOf(this.req.headers, { path: uri.split('?')[0], body });
       state.reads.push({ headers: { ...this.req.headers }, assertion, body });
       if (!assertion || assertion.op !== 'ucp_storefront_handoff.read') return refuse(403, 'partner_identity_required');
       const row = state.rows.get(body.record_id);

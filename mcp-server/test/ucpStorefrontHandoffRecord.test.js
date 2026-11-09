@@ -376,14 +376,17 @@ describe('get_order mapping', () => {
 // ---- the backend client --------------------------------------------------------------------------------------------
 
 describe('storefront hand-off client', () => {
-  const HEADERS = { 'X-API-Key': 'gateway-key', 'X-Pivota-Issuing-Agent': 'v1.x.y' };
-  function client({ status = 200, body, headers = HEADERS, throws } = {}) {
+  const BASE = { 'X-API-Key': 'gateway-key' };
+  const SIGNED = { 'X-Pivota-Issuing-Agent': 'v2.x.y' };
+  function client({ status = 200, body, headers = BASE, signed = SIGNED, throws } = {}) {
     const calls = [];
     const c = handoffModule.createStorefrontHandoffClient({
       baseUrl: 'http://backend.example.com/',
-      authHeaders: (op) => { calls.push(['auth', op]); return headers; },
+      authHeaders: () => headers,
+      signRequest: (req) => { calls.push(['auth', req.op, req.method, req.url, req.rid, req.rawBody]); return signed; },
       fetchImpl: async (url, init) => {
         calls.push(['fetch', url, init.method, JSON.parse(init.body), init.redirect]);
+        calls.push(['sent', init.body, init.headers['X-Pivota-Issuing-Agent'], init.headers['X-API-Key']]);
         if (throws) throw throws;
         return { status, text: async () => JSON.stringify(body) };
       },
@@ -395,9 +398,12 @@ describe('storefront hand-off client', () => {
   test('record: posts the fields with the record op, confirms only the echo of its own id', async () => {
     const ok = client({ body: { record_id: FIELDS.record_id, status: 'handed_off' } });
     assert.deepEqual(await ok.c.record(FIELDS), { kind: 'recorded' });
+    const URL_ = 'http://backend.example.com/agent/v2/storefront-handoffs';
     assert.deepEqual(ok.calls, [
-      ['auth', 'ucp_storefront_handoff.record'],
-      ['fetch', 'http://backend.example.com/agent/v2/storefront-handoffs', 'POST', FIELDS, 'error'],
+      ['auth', 'ucp_storefront_handoff.record', 'POST', URL_, FIELDS.record_id, JSON.stringify(FIELDS)],
+      ['fetch', URL_, 'POST', FIELDS, 'error'],
+      // The bytes signed are the bytes sent, with the bound header beside the gateway key.
+      ['sent', JSON.stringify(FIELDS), 'v2.x.y', 'gateway-key'],
     ]);
     assert.equal((await client({ body: { record_id: 'esh_other', status: 'handed_off' } }).c.record(FIELDS)).kind, 'refused');
     assert.deepEqual(await client({ status: 409, body: { detail: { error: 'handoff_conflict' } } }).c.record(FIELDS), { kind: 'refused', code: 'handoff_conflict' });
@@ -406,8 +412,8 @@ describe('storefront hand-off client', () => {
   });
 
   test('no partner assertion: nothing is sent', async () => {
-    for (const headers of [null, { 'X-API-Key': 'gateway-key' }]) {
-      const none = client({ headers });
+    for (const [headers, signed] of [[null, SIGNED], [BASE, {}], [BASE, null]]) {
+      const none = client({ headers, signed });
       assert.deepEqual(await none.c.record(FIELDS), { kind: 'unattributed' });
       assert.deepEqual(await none.c.read(FIELDS.record_id, 'esc_x'), { kind: 'unattributed' });
       assert.equal(none.calls.filter((c) => c[0] === 'fetch').length, 0);
@@ -418,7 +424,7 @@ describe('storefront hand-off client', () => {
     const ok = client({ body: { record_id: FIELDS.record_id, status: 'handed_off' } });
     assert.equal((await ok.c.read(FIELDS.record_id, 'esc_abc')).kind, 'accepted');
     assert.deepEqual(ok.calls[1][3], { record_id: FIELDS.record_id, binding: sha('esc_abc') });
-    assert.equal(ok.calls[0][1], 'ucp_storefront_handoff.read');
+    assert.deepEqual(ok.calls[0].slice(1, 5), ['ucp_storefront_handoff.read', 'POST', 'http://backend.example.com/agent/v2/storefront-handoffs/read', FIELDS.record_id]);
     const wrapped = (code) => ({ detail: { error: code }, error: { code: 'X', message: code, details: { error: code } }, status: 'error' });
     assert.equal((await client({ status: 404, body: wrapped('handoff_not_found') }).c.read(FIELDS.record_id, 'e')).kind, 'not_found');
     assert.equal((await client({ status: 403, body: wrapped('not_owner') }).c.read(FIELDS.record_id, 'e')).kind, 'not_owner');
@@ -442,19 +448,32 @@ describe('storefront hand-off client', () => {
 describe('issuing-agent assertion on the hand-off ops', () => {
   const invokeContext = { auth_mode: 'api_key', agent_id: 'agent_partner_a' };
   const base = { ISSUING_AGENT_ASSERTION_SECRET: 'fake_test_secret' };
-  const headersFor = (op, env) => assertionModule.issuingAgentAssertionHeaders({ op, invokeContext, env, nowSec: 1794100000 });
-  test('signed only with BOTH switches on, for the op of the call', () => {
+  const URL_ = 'http://backend.example.com/agent/v2/storefront-handoffs/read';
+  const rawBody = '{"record_id":"esh_x","binding":"f"}';
+  const bound = (op, env) => assertionModule.boundIssuingAgentAssertionHeaders({
+    op, invokeContext, env, method: 'post', url: URL_, rid: 'esh_x', rawBody, nowSec: 1794100000, jti: 'j'.repeat(24),
+  });
+  test('the request-bound (v2) token, only with BOTH switches on, bound to method, path, record id and body', () => {
     for (const op of ['ucp_storefront_handoff.record', 'ucp_storefront_handoff.read']) {
-      assert.deepEqual(headersFor(op, base), {}, op);
-      assert.deepEqual(headersFor(op, { ...base, [RECORD]: '1' }), {}, op);
-      assert.deepEqual(headersFor(op, { ...base, [FORWARDING]: '1' }), {}, op);
-      const token = headersFor(op, { ...base, ...ALL })['X-Pivota-Issuing-Agent'];
+      assert.deepEqual(bound(op, base), {}, op);
+      assert.deepEqual(bound(op, { ...base, [RECORD]: '1' }), {}, op);
+      assert.deepEqual(bound(op, { ...base, [FORWARDING]: '1' }), {}, op);
+      const token = bound(op, { ...base, ...ALL })['X-Pivota-Issuing-Agent'];
+      assert.ok(token.startsWith('v2.'));
       const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
-      assert.deepEqual(payload, { v: 1, kind: 'agent', sub: 'agent_partner_a', op, ts: 1794100000 });
+      assert.deepEqual(payload, {
+        v: 2, kind: 'agent', sub: 'agent_partner_a', op, ts: 1794100000, jti: 'j'.repeat(24), m: 'POST',
+        p: '/agent/v2/storefront-handoffs/read', rid: 'esh_x', bh: sha(rawBody),
+      });
     }
   });
-  test('the hand-off switch signs nothing else', () => {
-    assert.deepEqual(headersFor('create_order', { ...base, [RECORD]: '1' }), {});
-    assert.deepEqual(headersFor('ucp_storefront_handoff.other', { ...base, ...ALL }), {});
+  test('never the unbound v1 token, whatever the switches', () => {
+    for (const op of ['ucp_storefront_handoff.record', 'ucp_storefront_handoff.read']) {
+      assert.deepEqual(assertionModule.issuingAgentAssertionHeaders({ op, invokeContext, env: { ...base, ...ALL } }), {});
+    }
+  });
+  test('the hand-off switch binds nothing else', () => {
+    assert.deepEqual(bound('create_order', { ...base, [RECORD]: '1' }), {});
+    assert.deepEqual(bound('ucp_storefront_handoff.other', { ...base, ...ALL }), {});
   });
 });
