@@ -416,6 +416,25 @@ function sourceStrength(sourceRefs) {
   return strength;
 }
 
+// WHEN A CANDIDATE'S PRICE WAS LAST READ, for get_alternatives' list price tiers (src/services/listPriceTiers.js,
+// served as price_as_of). Behind RELGRAPH_CANDIDATE_PRICE_CHECKED_AT (default off, read per call; off, the
+// snapshot is exactly as before). Only a price READ counts: the row's own price_checked_at (catalog_offers'
+// column, when a source selects it), else a seed's seed_data.snapshot.extracted_at (the seed refresh sets it when
+// it re-reads the price and removes it when it refuses one). Never price_observed_at, which falls back to
+// updated_at / cached_at / created_at, row-write times. No read on record: no field.
+function candidatePriceCheckedAt(row = {}, seedData = {}) {
+  const snap = seedData && typeof seedData === 'object' && seedData.snapshot && typeof seedData.snapshot === 'object'
+    ? seedData.snapshot
+    : {};
+  return toIsoOrNull(row.price_checked_at || row.priceCheckedAt) || toIsoOrNull(snap.extracted_at) || null;
+}
+
+function candidatePriceCheckedAtField(row, seedData, env = process.env) {
+  if (!/^(1|true|yes|on|enabled)$/i.test(String((env && env.RELGRAPH_CANDIDATE_PRICE_CHECKED_AT) || '').trim())) return {};
+  const at = candidatePriceCheckedAt(row, seedData);
+  return at ? { price_checked_at: at } : {};
+}
+
 function normalizeProductCandidateSnapshot(input = {}, options = {}) {
   const row = asPlainObject(input) || {};
   const productPayload = firstObject(row.product_payload, row.productPayload);
@@ -728,6 +747,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     ),
     observed_at: observedAt,
     price_observed_at: toIsoOrNull(row.price_observed_at || row.priceObservedAt) || observedAt,
+    ...candidatePriceCheckedAtField(row, seedData),
     product_family_id: pickFirstString(
       row.product_family_id,
       row.productFamilyId,
@@ -3260,6 +3280,8 @@ async function loadProductRelationshipGraphSourceInputs({
 
 module.exports = {
   isSourceMissingError,
+  candidatePriceCheckedAt,
+  candidatePriceCheckedAtField,
   normalizeProductCandidateSnapshot,
   normalizeProductsCacheRow,
   normalizeExternalProductSeedRow,

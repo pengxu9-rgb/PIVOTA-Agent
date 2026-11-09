@@ -77,6 +77,33 @@ import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCal
 import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
 // THE NO-MARKET RULE (decision D-10): one shared helper, CommonJS so the gateway's own routes read the same one.
 import requestMarket from "../../src/services/requestMarket.js";
+import listPriceTiers from "../../src/services/listPriceTiers.js";
+
+// THE LIST PRICE TIERS AT THIS DOOR (src/services/listPriceTiers.js; LIST_ROW_PRICE_AS_OF / PRICE_STALENESS_DEMOTE,
+// both default off: a value with no tier token and no label passes through as the same object).
+//   - A REPLAY IS NEVER LIVE. The read cache below replays a whole search answer for up to its stale window;
+//     a row the answer called `live` that was read before this call started is served as `cache`, its
+//     price_as_of (the original read time) kept. A fresh answer's live rows were read during this call.
+//   - THE DEMOTE RUNS WHERE THE LABEL IS SERVED. The gateway labels the rows of a search this door asked for
+//     but does not reorder them (`price_staleness.reordered: false`): the answer is shared with /ucp/mcp, whose
+//     shaper drops the label. The native /mcp dialect serves the label, so it reorders its own answer here.
+function doorListPriceTiers(opId, value, dialect, callStartedAtMs) {
+  if (opId !== "search_catalog" || !isPlainObject(value) || !Array.isArray(value.products)) return value;
+  let products = listPriceTiers.relabelReplayedRows(value.products, { liveFromMs: callStartedAtMs - listPriceTiers.LIVE_SLACK_MS });
+  let metadata = value.metadata;
+  const ps = isPlainObject(metadata) && isPlainObject(metadata.price_staleness) ? metadata.price_staleness : null;
+  if (dialect === TOOL_DIALECTS.mcp && ps && ps.mode === "on" && ps.reordered === false) {
+    products = listPriceTiers.orderByStalenessLabel(products, { answerGuard: ps.answer_guard === true });
+    metadata = { ...metadata, price_staleness: { ...ps, reordered: true } };
+  }
+  if (products === value.products && metadata === value.metadata) return value;
+  return {
+    ...value,
+    products,
+    ...(Array.isArray(value.results) && value.results === value.products ? { results: products } : {}),
+    metadata,
+  };
+}
 
 // THE PRICE FACTS OF WHAT THIS DOOR SERVES (gateway price_verification_served line; null unless
 // PRICE_VERIFICATION_LOG). /mcp serves the native value, so every native row counts. The UCP dialect publishes a
@@ -314,7 +341,15 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
             );
           }
         },
-        shouldCache: isCacheableSearchResult,
+        // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price is kept only until that price is
+        // 15 min old (priceVerificationFacts.capCachePolicyAtPriceAge). Off (default): exactly the shouldCache
+        // policy this cache always had ({ ttlMs, staleMs } for a cacheable search result, else not stored).
+        cachePolicy: (value) => {
+          if (!isCacheableSearchResult(value)) return null;
+          const base = { ttlMs, staleMs };
+          if (!priceVerificationFacts.doorCachePriceFreshnessCapEnabled()) return base;
+          return priceVerificationFacts.capCachePolicyAtPriceAge(base, priceVerificationFacts.earliestMerchantAnswerMs("search_catalog", value));
+        },
       })
     : null;
 
@@ -343,6 +378,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   }
 
   async function callToolOnce(toolName, toolArgs, sessionContext, options, call) {
+    // When this call started: a `live` row read before it is a replay (doorListPriceTiers).
+    const callStartedAtMs = Date.now();
     // dialect defaults to MCP, so every existing caller is unchanged.
     const dialect = normalizeDialect(options.dialect);
     // `start_purchase` (native MCP only; dark unless ORCHESTRATED_PURCHASE_TOOL_ENABLED, read per call). Off, the
@@ -587,7 +624,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       const fresh = await execute();
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
       noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
-      return label(shape(fresh));
+      return label(shape(doorListPriceTiers(op.id, fresh, dialect, callStartedAtMs)));
     }
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
       onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
@@ -596,14 +633,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
     // The label goes on AFTER the cache, never into it: a no-market call and a declared-US call share one entry
     // (they are the same params), and only the first was assumed for.
-    return label(shape(cloneCachedValue(value, (err) => {
+    return label(shape(doorListPriceTiers(op.id, cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
           { err: err?.message || String(err), tool: op.id },
           "commerce read cache: value not cloneable, serving shared reference",
         );
       }
-    })));
+    }), dialect, callStartedAtMs)));
   }
 
   /**

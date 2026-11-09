@@ -12,7 +12,7 @@ const { createFakeFirestore } = require('./_support/fakeFirestore.cjs');
 
 const T0 = Date.parse('2026-10-27T10:00:00.000Z');
 const id = (n) => String(n).padStart(64, 'a');
-const doc = (readAtMs, extra = {}) => ({ amount: '23.00', read_at: new Date(readAtMs), expire_at: new Date(readAtMs + 3600e3), ...extra });
+const doc = (readAtMs, extra = {}) => ({ amount: '23.00', read_at: new Date(readAtMs), expire_at: new Date(readAtMs + 900e3), ...extra });
 
 test('getPrices: ONE getAll of at most 20 refs in verified_prices; absent docs are null; Timestamps come back', async () => {
   const fake = createFakeFirestore();

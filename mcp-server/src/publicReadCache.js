@@ -40,9 +40,10 @@ function createPublicReadCache({
   //             it outright removes caching from whatever share of traffic legitimately returns nothing —
   //             measured at 27-33% on this tier in 2026-08 — and hands an anonymous caller a free
   //             recompute of an 8-15s lane on every request.
-  // Retained and still honored: the commerce surface (the AUTHENTICATED door) constructs this same cache
-  // with `shouldCache: isCacheableSearchResult`. Renaming this option out from under it would not fail
-  // loudly — the option would simply be ignored and degraded commerce responses would start being cached.
+  // Retained and still honored: the commerce surface (the AUTHENTICATED door) used to construct this same cache
+  // with `shouldCache: isCacheableSearchResult`; it now passes a `cachePolicy` that refuses exactly what that
+  // refused (and, under DOOR_CACHE_PRICE_FRESHNESS_CAP, shortens a priced entry's clock). Renaming this option
+  // out from under a caller would not fail loudly — the option would simply be ignored.
   // `cachePolicy` defaults to expressing `shouldCache`, so every existing caller keeps its exact behaviour
   // and only a caller that wants per-value clocks needs to know the new option exists.
   shouldCache = () => true,

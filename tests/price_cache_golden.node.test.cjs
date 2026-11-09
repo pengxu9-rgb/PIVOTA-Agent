@@ -126,7 +126,7 @@ test('WRITE MODE wrote what the get_offers live read verified: the doors\' merch
     { host: d.host, market: d.market, currency: d.currency, amount: d.amount, status: d.status, source: d.source, writer: d.writer, handle: d.handle },
     { host: 'store.price-log.test', market: 'US', currency: 'USD', amount: '23.00', status: 'verified', source: 'merchant_ucp', writer: 'offers', handle: 'tint' },
   );
-  assert.equal(d.expire_at.toMillis() - d.read_at.toMillis(), 60 * 60 * 1000);
+  assert.equal(d.expire_at.toMillis() - d.read_at.toMillis(), 15 * 60 * 1000);
 });
 
 const supertest = require('supertest');

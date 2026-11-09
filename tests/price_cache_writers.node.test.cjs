@@ -109,7 +109,7 @@ test('get_offers: a verified read records the offer\'s variant and every option 
     const bliss = (await h.written()).find((d) => d.variant_id === BLISS);
     assert.equal(bliss.available, true);
     assert.equal(bliss.handle, HANDLE);
-    assert.equal(bliss.expire_at - bliss.read_at, 60 * 60 * 1000);
+    assert.equal(bliss.expire_at - bliss.read_at, 15 * 60 * 1000);
   }
 });
 
@@ -378,7 +378,8 @@ test('READ MODE: a card the fleet verified within 15 min is served from the cach
   assert.deepEqual(sf.calls.map((u) => new URL(u).pathname), ['/products/p-1.json'], 'the cached card is not read');
   assert.deepEqual(
     { price: out.products[0].price, price_amount: out.products[0].price_amount, currency: out.products[0].currency, src: out.products[0].price_source, asOf: out.products[0].price_as_of },
-    { price: 26, price_amount: 26, currency: 'USD', src: 'merchant_live', asOf: new Date(readAt).toISOString() },
+    // The fleet's answer is marked as such (the list contract's `cache` token), not as this request's live read.
+    { price: 26, price_amount: 26, currency: 'USD', src: 'merchant_cache', asOf: new Date(readAt).toISOString() },
   );
   assert.equal(out.products[1].price, 30);
   const m = out.metadata.live_merchant_price;

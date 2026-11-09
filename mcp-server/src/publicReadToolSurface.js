@@ -157,6 +157,12 @@ function isDegradedUpstream(raw) {
 function publicReadCachePolicy(computed, { ttlMs, staleMs, emptyTtlMs }) {
   if (!computed || typeof computed !== "object" || computed.cacheable !== true) return null;
   if (computed.emptySearchPage || computed.chainFilterFailedOpen) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
+  // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price is kept only until that price is
+  // 15 min old (priceVerificationFacts.capCachePolicyAtPriceAge). The public answer itself still carries no
+  // timestamp; only its clock changes. Off (default): the clocks above exactly.
+  if (priceVerificationFacts.doorCachePriceFreshnessCapEnabled() && Number.isFinite(computed.priceEarliestMs)) {
+    return priceVerificationFacts.capCachePolicyAtPriceAge({ ttlMs, staleMs }, computed.priceEarliestMs);
+  }
   return { ttlMs, staleMs };
 }
 
@@ -430,7 +436,32 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       chainFilterFailedOpen,
       observed,
       priceFacts: publicPriceFacts(toolName, raw, value),
+      // Only for the cache's clock (never served), and only while the door cap is on.
+      ...(priceVerificationFacts.doorCachePriceFreshnessCapEnabled()
+        ? { priceEarliestMs: publicEarliestMerchantAnswerMs(toolName, raw, value) }
+        : {}),
     };
+  }
+
+  // The earliest merchant-answer read time among the rows THIS tier serves with a price (aligned as
+  // publicPriceFacts aligns them), or null. Never throws.
+  function publicEarliestMerchantAnswerMs(toolName, raw, value) {
+    try {
+      if (toolName === "search_catalog") {
+        const served = value && Array.isArray(value.products) ? value.products : [];
+        const rows = (raw && Array.isArray(raw.products) ? raw.products : [])
+          .filter((p) => productSummary(p, PUBLIC_PDP_BASE))
+          .slice(0, served.length)
+          .filter((_, i) => served[i] && served[i].price != null);
+        return priceVerificationFacts.earliestMerchantAnswerMsOfItems(rows);
+      }
+      if (toolName === "get_product" && value && value.price != null) {
+        return priceVerificationFacts.earliestMerchantAnswerMs(toolName, raw);
+      }
+    } catch {
+      // the clock keeps its own TTL
+    }
+    return null;
   }
 
   function isPublicReadTool(name) {
