@@ -1,5 +1,5 @@
 {
-  "captured_from": "origin/main db5745937 (before the recommendation price tiers), by tests/_support/priceTiersDoorsChild.cjs run against that tree with every new flag unset",
+  "captured_from": "the D-10 gateway head 61f9b6feb (no-market US assumed, before the recommendation price tiers merged in), by tests/_support/priceTiersDoorsChild.cjs run against that tree with every new flag unset; recaptured when gw#2553 merged main, because D-10 labels no-market answers and adds market to the tool schemas",
   "combos": {
     "base": {
       "mcp_search": {
@@ -8,11 +8,11 @@
       },
       "ucp_search": {
         "status": 200,
-        "sha256": "c1c4491b9f46ed82218a1ceec2eaddfad3ef69408ead2827000030f00b1526c2"
+        "sha256": "cd7c0c84a883b34c1575ba269eaa7c21d1aa8af0bcae9fec4428d311bc08167c"
       },
       "public_search": {
         "status": 200,
-        "sha256": "ee4790b899d06621c4aa0e37dcfd5d6b16b225cf0dd7a6a0e82463799e525f0e"
+        "sha256": "fd7d873e3b4f3334614f41d2e8521198c06d88a2a60f7588f0f06c6fdf39e072"
       },
       "mcp_get_offers": {
         "status": 200,
@@ -20,7 +20,7 @@
       },
       "mcp_recommend": {
         "status": 200,
-        "sha256": "ddef8a520b6fd669accc4907618dfc8b9d3391aa3b6c63f63600a60685dfe21a"
+        "sha256": "aafd7d168110d57536f6b195c4647d1cf4b65675abe8bc54e675cf47adc74947"
       },
       "rest_search": {
         "status": 200,
@@ -32,7 +32,7 @@
       },
       "public_tools_list": {
         "status": 200,
-        "sha256": "13a449d28895227b44281d3966097f7f5c990b2c558fd318f86e2195037cb538"
+        "sha256": "3fc3be7f5eaa3d20897826520a6fb3b9678db0fc054c41ce35f053f203a70db3"
       },
       "invoke_overlaid_elsewhere": {
         "status": 200,
@@ -40,11 +40,11 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "9a6c021731b91341f9bb652b0245c62754b22debab80d698d4223ee96fec92f9"
+        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
       },
       "ucp_tools_list": {
         "status": 200,
-        "sha256": "77788904b19ee22f58295c3e1abc2d34a47a89b54ad2e1dc2ef4d0cc94647fc5"
+        "sha256": "4784494094ce6479ce76f5109b41698cd2e9d4395c2e04bbe31457aa2094562b"
       },
       "overlay_search": {
         "status": 200,
@@ -94,11 +94,11 @@
       },
       "ucp_search": {
         "status": 200,
-        "sha256": "c1c4491b9f46ed82218a1ceec2eaddfad3ef69408ead2827000030f00b1526c2"
+        "sha256": "cd7c0c84a883b34c1575ba269eaa7c21d1aa8af0bcae9fec4428d311bc08167c"
       },
       "public_search": {
         "status": 200,
-        "sha256": "ee4790b899d06621c4aa0e37dcfd5d6b16b225cf0dd7a6a0e82463799e525f0e"
+        "sha256": "fd7d873e3b4f3334614f41d2e8521198c06d88a2a60f7588f0f06c6fdf39e072"
       },
       "mcp_get_offers": {
         "status": 200,
@@ -106,7 +106,7 @@
       },
       "mcp_recommend": {
         "status": 200,
-        "sha256": "ddef8a520b6fd669accc4907618dfc8b9d3391aa3b6c63f63600a60685dfe21a"
+        "sha256": "aafd7d168110d57536f6b195c4647d1cf4b65675abe8bc54e675cf47adc74947"
       },
       "rest_search": {
         "status": 200,
@@ -118,7 +118,7 @@
       },
       "public_tools_list": {
         "status": 200,
-        "sha256": "13a449d28895227b44281d3966097f7f5c990b2c558fd318f86e2195037cb538"
+        "sha256": "3fc3be7f5eaa3d20897826520a6fb3b9678db0fc054c41ce35f053f203a70db3"
       },
       "invoke_overlaid_elsewhere": {
         "status": 200,
@@ -126,11 +126,11 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "9a6c021731b91341f9bb652b0245c62754b22debab80d698d4223ee96fec92f9"
+        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
       },
       "ucp_tools_list": {
         "status": 200,
-        "sha256": "77788904b19ee22f58295c3e1abc2d34a47a89b54ad2e1dc2ef4d0cc94647fc5"
+        "sha256": "4784494094ce6479ce76f5109b41698cd2e9d4395c2e04bbe31457aa2094562b"
       },
       "overlay_search": {
         "status": 200,
@@ -180,11 +180,11 @@
       },
       "ucp_search": {
         "status": 200,
-        "sha256": "c1c4491b9f46ed82218a1ceec2eaddfad3ef69408ead2827000030f00b1526c2"
+        "sha256": "cd7c0c84a883b34c1575ba269eaa7c21d1aa8af0bcae9fec4428d311bc08167c"
       },
       "public_search": {
         "status": 200,
-        "sha256": "ee4790b899d06621c4aa0e37dcfd5d6b16b225cf0dd7a6a0e82463799e525f0e"
+        "sha256": "fd7d873e3b4f3334614f41d2e8521198c06d88a2a60f7588f0f06c6fdf39e072"
       },
       "mcp_get_offers": {
         "status": 200,
@@ -192,7 +192,7 @@
       },
       "mcp_recommend": {
         "status": 200,
-        "sha256": "ddef8a520b6fd669accc4907618dfc8b9d3391aa3b6c63f63600a60685dfe21a"
+        "sha256": "aafd7d168110d57536f6b195c4647d1cf4b65675abe8bc54e675cf47adc74947"
       },
       "rest_search": {
         "status": 200,
@@ -204,7 +204,7 @@
       },
       "public_tools_list": {
         "status": 200,
-        "sha256": "13a449d28895227b44281d3966097f7f5c990b2c558fd318f86e2195037cb538"
+        "sha256": "3fc3be7f5eaa3d20897826520a6fb3b9678db0fc054c41ce35f053f203a70db3"
       },
       "invoke_overlaid_elsewhere": {
         "status": 200,
@@ -212,11 +212,11 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "9a6c021731b91341f9bb652b0245c62754b22debab80d698d4223ee96fec92f9"
+        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
       },
       "ucp_tools_list": {
         "status": 200,
-        "sha256": "77788904b19ee22f58295c3e1abc2d34a47a89b54ad2e1dc2ef4d0cc94647fc5"
+        "sha256": "4784494094ce6479ce76f5109b41698cd2e9d4395c2e04bbe31457aa2094562b"
       },
       "overlay_search": {
         "status": 200,
@@ -266,11 +266,11 @@
       },
       "ucp_search": {
         "status": 200,
-        "sha256": "c1c4491b9f46ed82218a1ceec2eaddfad3ef69408ead2827000030f00b1526c2"
+        "sha256": "cd7c0c84a883b34c1575ba269eaa7c21d1aa8af0bcae9fec4428d311bc08167c"
       },
       "public_search": {
         "status": 200,
-        "sha256": "ee4790b899d06621c4aa0e37dcfd5d6b16b225cf0dd7a6a0e82463799e525f0e"
+        "sha256": "fd7d873e3b4f3334614f41d2e8521198c06d88a2a60f7588f0f06c6fdf39e072"
       },
       "mcp_get_offers": {
         "status": 200,
@@ -278,7 +278,7 @@
       },
       "mcp_recommend": {
         "status": 200,
-        "sha256": "ddef8a520b6fd669accc4907618dfc8b9d3391aa3b6c63f63600a60685dfe21a"
+        "sha256": "aafd7d168110d57536f6b195c4647d1cf4b65675abe8bc54e675cf47adc74947"
       },
       "rest_search": {
         "status": 200,
@@ -290,7 +290,7 @@
       },
       "public_tools_list": {
         "status": 200,
-        "sha256": "13a449d28895227b44281d3966097f7f5c990b2c558fd318f86e2195037cb538"
+        "sha256": "3fc3be7f5eaa3d20897826520a6fb3b9678db0fc054c41ce35f053f203a70db3"
       },
       "invoke_overlaid_elsewhere": {
         "status": 200,
@@ -298,11 +298,11 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "9a6c021731b91341f9bb652b0245c62754b22debab80d698d4223ee96fec92f9"
+        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
       },
       "ucp_tools_list": {
         "status": 200,
-        "sha256": "77788904b19ee22f58295c3e1abc2d34a47a89b54ad2e1dc2ef4d0cc94647fc5"
+        "sha256": "4784494094ce6479ce76f5109b41698cd2e9d4395c2e04bbe31457aa2094562b"
       },
       "overlay_search": {
         "status": 200,

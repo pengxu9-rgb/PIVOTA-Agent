@@ -1101,11 +1101,24 @@ test('STRUCTURAL: the wired fetchOffers forwards the stated market into the offe
   const start = src.indexOf('get_offers: makeGetOffers({');
   assert.ok(start > 0, 'the get_offers wiring moved');
   const block = src.slice(start, start + 3200);
-  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal \}\)/);
+  assert.match(block, /fetchOffers: async \(\{ merchant_id, product_id, product_group_id, limit, market, market_assumed, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal \}\)/);
   // variant_id is honoured only with GET_OFFERS_VARIANT_ID on (it needs pivota-backend #2622 live).
   assert.match(block, /variantIdEnabled: \/\^\(1\|true\|yes\|on\|enabled\)\$\/i\.test\(String\(process\.env\.GET_OFFERS_VARIANT_ID \|\| ''\)\.trim\(\)\),/);
   // A named variant rides as the product's sku_id, and only when named.
   assert.match(block, /product: \{ product_id, merchant_id, \.\.\.\(variant_id \? \{ sku_id: variant_id \} : \{\}\) \}/);
   assert.match(block, /invokeCommerceKernelRawUpstream\('offers\.resolve', \{[\s\S]*?\.\.\.\(market \? \{ market \} : \{\}\),/);
+  // Decision D-10: an ASSUMED market is marked so (pivota-backend `marketAssumed`), and only beside a market.
+  assert.match(block, /\.\.\.\(market && market_assumed === true \? \{ marketAssumed: true \} : \{\}\),/);
+});
+
+test('D-10: makeGetOffers forwards market_assumed to the fetch only beside the market it assumed', async () => {
+  const seen = [];
+  const getOffers = makeGetOffers({ fetchOffers: async (args) => { seen.push(args); return { offers: [] }; } });
+  await getOffers({ payload: { product_id: 'p1', market: 'US', market_assumed: true } });
+  await getOffers({ payload: { product_id: 'p1', market: 'US' } });
+  await getOffers({ payload: { product_id: 'p1', market_assumed: true } });
+  assert.equal(seen[0].market_assumed, true);
+  assert.equal('market_assumed' in seen[1], false, 'a declared market: the fetch is byte-identical');
+  assert.equal('market_assumed' in seen[2], false, 'no market: nothing to have assumed');
 });
 

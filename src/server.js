@@ -611,6 +611,8 @@ const {
   loopbackCallerHeaders,
   loopbackSyntheticHeaders,
   verifyLoopbackSynthetic,
+  loopbackMarketAssumedHeaders,
+  stripUnvouchedMarketAssumed,
 } = require('./guardrails/loopbackCallerAssertion');
 const {
   SYNTHETIC_ASSERTION_HEADER,
@@ -2881,6 +2883,10 @@ function buildSearchProductsV2Body({
     search_all_merchants: searchAllMerchants,
     query: search?.query != null ? String(search.query || '') : undefined,
     market: firstNonEmptyString(search?.market, metadata?.market),
+    // Decision D-10: the search market was ASSUMED (US, for a call that named none). Provenance only, for the
+    // backend's `/r` minters; absent for every other call, so their bodies are byte-identical.
+    // ...and only beside the US it assumed (defence in depth: the invoke route already strips an unvouched one).
+    market_assumed: search?.market_assumed === true && String(search?.market || '').trim().toUpperCase() === 'US' ? true : undefined,
     category: firstNonEmptyString(search?.category),
     catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
     catalog_entity_mode: firstNonEmptyString(
@@ -32904,6 +32910,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // The door, caller and request id this call is made for, so the loopback invoke's price lines name
       // them (src/observability/priceVerificationLog.js). Log labels only; {} unless PRICE_VERIFICATION_LOG.
       ...(url.startsWith(`${selfInvokeBase()}/`) ? priceContextHeaders() : {}),
+      // Decision D-10: a search this gateway answered for an ASSUMED US vouches for its own `search.market_assumed`
+      // (the invoke route strips the flag from every request that cannot): see loopbackCallerAssertion.js.
+      ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackMarketAssumedHeaders(payload) : {}),
       ...headers,
     },
     data: requestBody,
@@ -33749,7 +33758,7 @@ async function getCommerceRemoteMcpAdapter() {
           // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
           priceCache: priceCacheHooks,
           log: logUcpLiveRead,
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, market_assumed, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
@@ -33761,6 +33770,8 @@ async function getCommerceRemoteMcpAdapter() {
                 // (pivota-backend #2411 `payload.market`), so a named market lets a positive merchant keep
                 // its cart; absent, the payload is byte-identical to before and the answer referral-only.
                 ...(market ? { market } : {}),
+                // Decision D-10: an ASSUMED market (pivota-backend `marketAssumed`): its links are not stamped observed.
+                ...(market && market_assumed === true ? { marketAssumed: true } : {}),
                 ...(include_live_verification ? { includeLiveVerificationOffers: true } : {}),
                 // Only ever built by makeGetOffers from its own signed assertions; no agent argument reaches it.
                 ...(Array.isArray(live_verifications) && live_verifications.length
@@ -42979,8 +42990,24 @@ function buildCheckoutServerTimingHeader({ totalMs, upstreamMs, checkoutRuntime 
 // the decision is unit-testable without booting the app — the same pattern as publicReadChainResolvability.
 const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObservation');
 
+/**
+ * The market the seed-attribution mint is sent for one search: the request's, raw, or null. An ASSUMED US (decision
+ * D-10, `search.market_assumed` beside `market: "US"`, which only this gateway's own vouched loopback search can
+ * carry past the invoke ingress) is not the buyer's: the mint is sent no market, exactly as a market-less search
+ * was before, so its links are never stamped `market_observed`. The flag beside any other market is ignored.
+ */
+function seedAttributionMintMarket(search, payload, metadata) {
+  const s = search && typeof search === 'object' ? search : {};
+  if (s.market_assumed === true && String(s.market || '').trim().toUpperCase() === 'US') return null;
+  return String(s.market || (payload && payload.market) || (metadata && metadata.market) || '').trim() || null;
+}
+
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
+  // Decision D-10: `market_assumed` DOWNGRADES a market's provenance (its links are never stamped observed), so a
+  // client may not set it. Kept only on this gateway's own vouched loopback search (loopbackCallerAssertion.js),
+  // stripped from every other request before anything reads the payload.
+  stripUnvouchedMarketAssumed(req);
 
   // EGRESS CHOKEPOINT for this function's responses — NOT for every /invoke response: the
   // strict-invoke handler, the auth middleware and the body-size middleware all answer without
@@ -43890,13 +43917,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !Array.isArray(seedAttributionPayload.search)
             ? seedAttributionPayload.search
             : seedAttributionPayload;
-        const seedAttributionMarket =
-          String(
-            seedAttributionSearch.market ||
-              seedAttributionPayload.market ||
-              req?.body?.metadata?.market ||
-              '',
-          ).trim() || null;
+        const seedAttributionMarket = seedAttributionMintMarket(seedAttributionSearch, seedAttributionPayload, req?.body?.metadata);
         seedAttributionSettled = stampExternalSeedAttribution(seedAttributionContainer.products, {
           // Caller-independent by construction: search results are cached and
           // shared across callers, so the mint carries only the internal key —
@@ -55428,6 +55449,7 @@ module.exports._debug = {
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
   buildSearchProductsV2Body,
+  seedAttributionMintMarket,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,

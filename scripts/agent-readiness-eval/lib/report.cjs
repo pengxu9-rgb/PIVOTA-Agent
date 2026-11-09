@@ -8,7 +8,8 @@ const { summarizeLoad } = require('./load.cjs');
 function sumRows(list) {
   const out = {
     rows: 0, missing_price: 0, non_positive_price: 0, invalid_currency: 0, currency_market_mismatch: 0, currency_checked: 0,
-    missing_link: 0, link_problems: {}, no_market_rows: 0, no_market_currency: {}, mixed_currency_pages: 0,
+    missing_link: 0, link_problems: {}, no_market_rows: 0, no_market_currency: {}, no_market_labeled_rows: 0,
+    assumed_market_mismatch: 0, mixed_currency_pages: 0,
   };
   for (const r of list) {
     if (!r) continue;
@@ -168,14 +169,22 @@ function findingsOf(m) {
   const out = [];
   const nm = m.rows_gated;
   if (nm.no_market_rows > 0) {
+    // A no-market row whose answer SAID which market it assumed (`market_assumed`, decision D-10) is a labelled
+    // default, not a silent one: only the UNLABELLED rows can make the "silently" finding.
+    const labeled = nm.no_market_labeled_rows || 0;
+    const unlabeled = nm.no_market_rows - labeled;
     const usd = nm.no_market_currency.USD || 0;
-    const share = usd / nm.no_market_rows;
+    const silent = unlabeled > 0 && usd / nm.no_market_rows >= 0.9;
     out.push({
       key: 'no_market_currency',
-      severity: share >= 0.9 ? 'warn' : 'info',
-      text: `Queries that named NO market were answered with ${nm.no_market_rows} priced rows: ${Object.entries(nm.no_market_currency).map(([c, n]) => `${c} ×${n}`).join(', ')}.`
-        + (share >= 0.9 ? ' The service appears to default to the US market silently: a partner that sends no market is shown US prices.' : ''),
+      severity: silent ? 'warn' : 'info',
+      text: `Queries that named NO market were answered with ${nm.no_market_rows} priced rows: ${Object.entries(nm.no_market_currency).map(([c, n]) => `${c} ×${n}`).join(', ')}`
+        + (labeled ? ` (${labeled} of them in answers labelled with the market they assumed).` : '.')
+        + (silent ? ` The service appears to default to the US market silently: a partner that sends no market is shown US prices${labeled ? ` (${unlabeled} rows arrived with no market_assumed label)` : ''}.` : ''),
     });
+  }
+  if (nm.assumed_market_mismatch > 0) {
+    out.push({ key: 'assumed_market_mismatch', severity: 'warn', text: `${nm.assumed_market_mismatch} rows were priced in another currency than the market their answer said it assumed.` });
   }
   if (nm.mixed_currency_pages > 0) {
     out.push({ key: 'mixed_currency_pages', severity: 'warn', text: `${nm.mixed_currency_pages} answers mixed currencies on one page.` });

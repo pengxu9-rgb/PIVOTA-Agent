@@ -111,6 +111,31 @@ test('/public/mcp: an entry stored while off replays with no line; one stored wh
   assert.deepEqual(counts(h), { live: 0, recent: 2, stored: 2, verified_count: 2, total: 4 });
 });
 
+function stripMarketAssumed(text) {
+  const o = JSON.parse(text);
+  const r = (o && o.result) || {};
+  let found = false;
+  const take = (inner) => {
+    if (!inner || typeof inner !== 'object' || !('market_assumed' in inner)) return false;
+    assert.equal(inner.market_assumed.code, 'US');
+    found = true;
+    delete inner.market_assumed;
+    if (Array.isArray(inner.messages)) {
+      const rest = inner.messages.filter((m) => m.code !== 'market_assumed');
+      if (rest.length) inner.messages = rest;
+      else delete inner.messages;
+    }
+    return true;
+  };
+  if (r.structuredContent) take(r.structuredContent);
+  if (Array.isArray(r.content) && r.content[0] && /^\{/.test(r.content[0].text)) {
+    const inner = JSON.parse(r.content[0].text);
+    if (take(inner)) r.content[0].text = JSON.stringify(inner, null, 2);
+  }
+  assert.ok(found, 'a no-market answer says US was assumed');
+  return JSON.stringify(o);
+}
+
 for (const name of ['mcp_search', 'ucp_search', 'public_search']) {
   test(`${name} with the cache on: the miss and the replay are the pre-log answer, flag off and on`, async () => {
     const want = FIXTURE.cases[name].text;
@@ -120,7 +145,10 @@ for (const name of ['mcp_search', 'ucp_search', 'public_search']) {
     const hitOff = await doors.send(doors.CASES[name], { flag: false });
     assert.equal(hitOn.headers.length + hitOff.headers.length, 0, 'replays');
     for (const [label, r] of [['miss, off', missOff], ['replay, on', hitOn], ['replay, off', hitOff]]) {
-      assert.equal(maskIds(r.text), want, `${name} ${label}: the pre-log answer, byte for byte`);
+      // mcp_search names US; the other two name no market (D-10): the pre-log answer plus `market_assumed`, which
+      // is taken back out here, and must ride on the replay too (it is added per call, never cached).
+      const text = name === 'mcp_search' ? maskIds(r.text) : stripMarketAssumed(maskIds(r.text));
+      assert.equal(text, want, `${name} ${label}: the pre-log answer, byte for byte`);
     }
   });
 }

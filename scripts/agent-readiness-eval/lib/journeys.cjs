@@ -266,7 +266,8 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
         });
         if (judgeFn) entry.judge = await runJudge(judgeFn, q, s.products, { topK: config.relevanceTopK });
       }
-      entry.rows = scorers.scoreRows(s.products, { market: q.market });
+      entry.assumed_market = s.assumed_market;
+      entry.rows = scorers.scoreRows(s.products, { market: q.market, assumedMarket: s.assumed_market });
       entry.duplicates = scorers.findDuplicates(s.products).length;
       if (q.expect && q.expect.shade) {
         entry.shade = s.products.slice(0, config.relevanceTopK).map((p) => scorers.shadePresence(p));
@@ -299,7 +300,7 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
             const pr = readProduct(r.payload);
             entry.product = {
               resolved: pr.found,
-              rows: pr.product ? scorers.scoreRows([pr.product], { market: d.market }) : null,
+              rows: pr.product ? scorers.scoreRows([pr.product], { market: d.market, assumedMarket: pr.assumed_market }) : null,
               shade: q.expect && q.expect.shade ? scorers.shadePresence(pr.product || p) : undefined,
               id_matches: pr.product ? !pr.product.id || pr.product.id === p.id : null,
             };
@@ -311,7 +312,7 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
         if (r && r.payload && !r.payload.isError) {
           const o = readOffers(r.payload);
           const offerRows = o.offers.map((x) => ({ price: x.price, link: x.link }));
-          const rows = scorers.scoreRows(offerRows, { market: d.market });
+          const rows = scorers.scoreRows(offerRows, { market: d.market, assumedMarket: o.assumed_market });
           const reference = o.best_offer || o.offers[0] || null;
           entry.offers = {
             count: o.offers.length,
@@ -331,7 +332,7 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
         const r = await call('get_alternatives', { ...idArgs, limit: 5 }, { ...meta, tool_step: 'get_alternatives' });
         if (r && r.payload && !r.payload.isError) {
           const a = readAlternatives(r.payload);
-          entry.alternatives = { count: a.items.length, empty_class: a.empty_class, rows: scorers.scoreRows(a.items, { market: d.market }) };
+          entry.alternatives = { count: a.items.length, empty_class: a.empty_class, rows: scorers.scoreRows(a.items, { market: d.market, assumedMarket: a.assumed_market }) };
         } else if (r && r.payload && r.payload.isError) entry.alternatives = { tool_error_code: r.payload.errorCode };
       }
       out.follow.push(entry);
@@ -357,7 +358,7 @@ async function runJourneys({ config, client, querySet, judgeFn = null, killSwitc
         entry.empty_class = rec.empty_class;
         entry.confidence_basis = rec.confidence_basis;
         entry.relevance = scorers.scoreRelevance(rec.items, n.expect, { topK: config.relevanceTopK, passThreshold: config.relevanceQueryPassThreshold });
-        entry.rows = scorers.scoreRows(rec.items, {});
+        entry.rows = scorers.scoreRows(rec.items, { assumedMarket: rec.assumed_market });
         entry.items = rec.items.slice(0, 5).map(compactProduct);
       } else if (r.payload && r.payload.isError) entry.tool_error_code = r.payload.errorCode;
       out.recommend.push(entry);
