@@ -571,7 +571,10 @@ test('GD-3: a quarantined legacy id is not served with a price, on /mcp or the d
   const text = JSON.stringify(detail);
   nock.cleanAll();
   assert.equal(detail.result?.isError, true, text.slice(0, 400));
-  assert.ok(!text.includes('Brand Q quarantined serum') && !text.includes('31'), `no quarantined title or price: ${text.slice(0, 400)}`);
+  // The price is matched as a price/amount value, not as the bare digits: the D-10 market_assumed message on a
+  // no-market refusal names "ISO 3166-1", which contains "31".
+  assert.ok(!text.includes('Brand Q quarantined serum') && !/(price|amount)[^0-9a-z]{0,24}31\b/i.test(text),
+    `no quarantined title or price: ${text.slice(0, 400)}`);
   assert.equal(hits.length, 1);
 
   hits = backendDetailTrap();

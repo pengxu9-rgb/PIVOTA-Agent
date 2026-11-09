@@ -8,7 +8,7 @@
 // get_offers is deliberately NOT on the v1 surface: cross-merchant offers concentrate reseller-sourced
 // listings, which the app-directory sourcing policy excludes (docs/openai_apps_v1_plan.md §1, §5).
 
-import { createCommerceToolSurface, UnknownToolError, commerceToolParamsKey } from "./commerceToolSurface.js";
+import { createCommerceToolSurface, UnknownToolError, commerceToolParamsKey, commerceToolMarketAssumed, marketAssumedMember } from "./commerceToolSurface.js";
 import { projectPublicReadResult, productSummary, MAX_SEARCH_RESULTS } from "./publicReadProjection.js";
 import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
 import {
@@ -157,6 +157,12 @@ function isDegradedUpstream(raw) {
 function publicReadCachePolicy(computed, { ttlMs, staleMs, emptyTtlMs }) {
   if (!computed || typeof computed !== "object" || computed.cacheable !== true) return null;
   if (computed.emptySearchPage || computed.chainFilterFailedOpen) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
+  // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price is kept only until that price is
+  // 15 min old (priceVerificationFacts.capCachePolicyAtPriceAge). The public answer itself still carries no
+  // timestamp; only its clock changes. Off (default): the clocks above exactly.
+  if (priceVerificationFacts.doorCachePriceFreshnessCapEnabled() && Number.isFinite(computed.priceEarliestMs)) {
+    return priceVerificationFacts.capCachePolicyAtPriceAge({ ttlMs, staleMs }, computed.priceEarliestMs);
+  }
   return { ttlMs, staleMs };
 }
 
@@ -196,7 +202,7 @@ const PUBLIC_DESCRIPTIONS = Object.freeze({
 const PUBLIC_GET_PRODUCT_MARKET_SENTENCES =
   " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: Pivota may then confirm the " +
   "price with the merchant for that market, and when it has, `price_check.confirmed_with_merchant` is true (an " +
-  "answer may be up to an hour old). Without it the price is Pivota's stored one. A price here is for " +
+  "answer may be up to an hour old). Without it the product is answered for a US buyer, and the answer says so in `market_assumed`. A price here is for " +
   "discovery only: never quote it to a buyer as the final price.";
 
 // Apply the public presentation to a read tool: the de-marketed description, and — for get_product only —
@@ -285,6 +291,15 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     // that needs the raw upstream rows, which the cache does not keep. So an entry computed while the flag was
     // off replays with no line until it is recomputed (at most PUBLIC_READ_CACHE_STALE_MS after the flip).
     noteToolCall(observe, () => computed.priceFacts || null);
+    // A read that named no market was answered as US (decision D-10) and says so. Added per call, AFTER this tier's
+    // cache, never into it: the key is commerceToolParamsKey, under which a no-market and a declared-US get_product
+    // are still one entry (a search is not: its assumed params carry `market_assumed`, so the keys differ).
+    if (commerceToolMarketAssumed(toolName, args)) {
+      noteToolCall(observe, { market_assumed: true });
+      if (computed.value && typeof computed.value === "object" && !Array.isArray(computed.value)) {
+        return { ...computed.value, market_assumed: marketAssumedMember() };
+      }
+    }
     return computed.value;
   }
 
@@ -421,7 +436,32 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       chainFilterFailedOpen,
       observed,
       priceFacts: publicPriceFacts(toolName, raw, value),
+      // Only for the cache's clock (never served), and only while the door cap is on.
+      ...(priceVerificationFacts.doorCachePriceFreshnessCapEnabled()
+        ? { priceEarliestMs: publicEarliestMerchantAnswerMs(toolName, raw, value) }
+        : {}),
     };
+  }
+
+  // The earliest merchant-answer read time among the rows THIS tier serves with a price (aligned as
+  // publicPriceFacts aligns them), or null. Never throws.
+  function publicEarliestMerchantAnswerMs(toolName, raw, value) {
+    try {
+      if (toolName === "search_catalog") {
+        const served = value && Array.isArray(value.products) ? value.products : [];
+        const rows = (raw && Array.isArray(raw.products) ? raw.products : [])
+          .filter((p) => productSummary(p, PUBLIC_PDP_BASE))
+          .slice(0, served.length)
+          .filter((_, i) => served[i] && served[i].price != null);
+        return priceVerificationFacts.earliestMerchantAnswerMsOfItems(rows);
+      }
+      if (toolName === "get_product" && value && value.price != null) {
+        return priceVerificationFacts.earliestMerchantAnswerMs(toolName, raw);
+      }
+    } catch {
+      // the clock keeps its own TTL
+    }
+    return null;
   }
 
   function isPublicReadTool(name) {

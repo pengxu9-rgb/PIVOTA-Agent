@@ -47,7 +47,7 @@ const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
 } = require('./attribution/issuingAgentAssertion');
-const { callerLogFields } = require('./attribution/callerLogFields');
+const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
 const {
   priceContextMiddleware,
@@ -121,7 +121,9 @@ function markClientForDestroy(client) {
 const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
-const { overlayLiveMerchantSearchPrices } = require('./services/liveMerchantSearchPrice');
+const { overlayLiveMerchantSearchPrices, searchTopKSettings } = require('./services/liveMerchantSearchPrice');
+// Recommendation price tiers on list rows (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off).
+const listPriceTiers = require('./services/listPriceTiers');
 // The shared verified-price cache (PRICE_CACHE_STORE + PRICE_CACHE_MODE) and the merchant politeness gate
 // (PRICE_HOST_BUDGET): every live merchant read records into the first and asks the second. Both default off, and
 // off they build nothing, load no Firestore client and change no answer (see priceHostGate below).
@@ -618,6 +620,8 @@ const {
   loopbackCallerHeaders,
   loopbackSyntheticHeaders,
   verifyLoopbackSynthetic,
+  loopbackMarketAssumedHeaders,
+  stripUnvouchedMarketAssumed,
 } = require('./guardrails/loopbackCallerAssertion');
 const {
   SYNTHETIC_ASSERTION_HEADER,
@@ -2888,6 +2892,10 @@ function buildSearchProductsV2Body({
     search_all_merchants: searchAllMerchants,
     query: search?.query != null ? String(search.query || '') : undefined,
     market: firstNonEmptyString(search?.market, metadata?.market),
+    // Decision D-10: the search market was ASSUMED (US, for a call that named none). Provenance only, for the
+    // backend's `/r` minters; absent for every other call, so their bodies are byte-identical.
+    // ...and only beside the US it assumed (defence in depth: the invoke route already strips an unvouched one).
+    market_assumed: search?.market_assumed === true && String(search?.market || '').trim().toUpperCase() === 'US' ? true : undefined,
     category: firstNonEmptyString(search?.category),
     catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
     catalog_entity_mode: firstNonEmptyString(
@@ -12871,6 +12879,8 @@ function projectSearchTransportVariant(variant) {
   ]);
 }
 
+const LIST_PRICE_SOURCE_TOKENS = new Set(['live', 'cache', 'stored']);
+
 function projectSearchTransportProduct(product, stats = null) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const projected = copyDefinedFields({}, product, [
@@ -12945,6 +12955,12 @@ function projectSearchTransportProduct(product, stats = null) {
     'payment_offer_summary',
     'payment_offer_evidence',
   ]);
+  // The list contract's provenance token and staleness label (services/listPriceTiers.js), projected only as the
+  // contract spells them: an internal price_source (merchant_live, catalog_offer, ...) is never projected.
+  if (listPriceTiers.listPriceTiersActive()) {
+    if (LIST_PRICE_SOURCE_TOKENS.has(product.price_source)) projected.price_source = product.price_source;
+    if (product.price_may_have_changed === true) projected.price_may_have_changed = true;
+  }
 
   if (typeof product.description === 'string') {
     projected.description = truncateTransportText(product.description);
@@ -13361,16 +13377,19 @@ function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '')
   return responseBody;
 }
 
-function projectFindProductsMultiTransportResponse(responseBody, { operation = null } = {}) {
+function projectFindProductsMultiTransportResponse(rawResponseBody, { operation = null, search = null } = {}) {
   if (
     String(operation || '').trim() !== 'find_products_multi' ||
-    !responseBody ||
-    typeof responseBody !== 'object' ||
-    Array.isArray(responseBody) ||
-    !Array.isArray(responseBody.products)
+    !rawResponseBody ||
+    typeof rawResponseBody !== 'object' ||
+    Array.isArray(rawResponseBody) ||
+    !Array.isArray(rawResponseBody.products)
   ) {
-    return responseBody;
+    return rawResponseBody;
   }
+  // The list price tiers, on the rows before the allowlist drops their internal provenance (both flags off: the
+  // body itself).
+  const responseBody = applySearchListPriceTiers(rawResponseBody, { search: isPlainObject(search) ? search : {} });
   const stats = { trimmed_offers: 0, trimmed_variants: 0 };
   const products = responseBody.products
     .map((product) => promoteVisibleSimilarProductSigId(product))
@@ -14413,7 +14432,75 @@ function buildFindProductsMultiDiscoveryBridgeResponse({
 
 // Tests only (app._debug.useSearchOverlayFetchForTest, NODE_ENV=test): the storefront fetch the `.json` overlay uses.
 let _searchOverlayFetchForTest = null;
-function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
+
+// THE LIST PRICE TIERS OF A SEARCH ANSWER (services/listPriceTiers.js): every row's `price_as_of` + `price_source`
+// (LIST_ROW_PRICE_AS_OF) and the 7-day staleness demote (PRICE_STALENESS_DEMOTE). Both off: `response` itself,
+// untouched. A cheapest or price-capped search guards its answer: the mainline filtered the cap on STORED prices
+// and ranks by relevance, so a stale row is never the first one served while a fresh one exists. Applied once: an
+// answer that already carries `metadata.price_staleness` (on) is returned as it is. Never throws.
+// The product lists already tiered in this process (shadow included), so one search is tiered and logged ONCE
+// even when it leaves through both the overlay wrapper and the transport projection.
+const listPriceTieredLists = new WeakSet();
+function applySearchListPriceTiers(response, { search = {}, intent = null, budgetConstraint = null, liveFromMs = undefined } = {}) {
+  try {
+    if (!listPriceTiers.listPriceTiersActive()) return response;
+    if (!response || typeof response !== 'object' || Array.isArray(response) || !Array.isArray(response.products)) return response;
+    const meta = isPlainObject(response.metadata) ? response.metadata : null;
+    if ((meta && meta.price_staleness) || listPriceTieredLists.has(response.products)) return response;
+    // Reordered only for a caller outside this process. A loopback search is an MCP door's (/mcp, /ucp/mcp,
+    // /public/mcp, one shared answer cache): /ucp and /public drop the label, so the /mcp door reorders its own
+    // answer by the label instead (mcp-server/src/commerceToolSurface.js).
+    const invokeStore = INVOKE_AUTH_CONTEXT.getStore();
+    const reorder = !(invokeStore && invokeStore.loopback_self_call === true);
+    const queryText = extractSearchQueryText(search || {});
+    const budget = budgetConstraint || resolveBeautyMainlineBudgetConstraint({ search: search || {}, intent, queryText });
+    const capped = Boolean(budget && (budget.min != null || budget.max != null));
+    const { rows, summary } = listPriceTiers.applyListPriceTiers(response.products, {
+      surface: 'search',
+      answerGuard: capped || listPriceTiers.isCheapestQuery(queryText),
+      reorder,
+      liveFromMs,
+      log: (event, fields) => logger.info({ event, ...fields, ...priceContextLogFields() }, event),
+    });
+    listPriceTieredLists.add(rows);
+    if (rows === response.products) return response;
+    const out = { ...response, products: rows };
+    if (summary && summary.mode === 'on') {
+      out.metadata = {
+        ...(meta || {}),
+        price_staleness: {
+          mode: 'on',
+          stale_after_days: Math.round(listPriceTiers.STALE_AFTER_MS / 86400000),
+          stale_count: summary.stale,
+          undated_count: summary.undated,
+          moved_count: summary.moved,
+          answer_guard: summary.answer_guard,
+          reordered: summary.reordered,
+          no_fresh_row: summary.no_fresh_row,
+        },
+      };
+    }
+    return out;
+  } catch (_) {
+    return response;
+  }
+}
+
+function maybeOverlayLiveSearchPrice(response, search = {}, opts = {}) {
+  // Every live read this overlay makes starts after this instant: an older merchant answer (this instance's
+  // `.json` page cache, another request's read) is served as `cache`, not `live`.
+  const startedAtMs = Date.now();
+  const out = maybeOverlayLiveSearchPriceRaw(response, search, opts);
+  // Both list flags off: exactly the value (or promise) the overlay returned.
+  if (!listPriceTiers.listPriceTiersActive()) return out;
+  const finish = (r) => applySearchListPriceTiers(r, {
+    search, intent: opts.intent || null, budgetConstraint: opts.budgetConstraint || null,
+    liveFromMs: startedAtMs - listPriceTiers.LIVE_SLACK_MS,
+  });
+  return out && typeof out.then === 'function' ? out.then(finish) : finish(out);
+}
+
+function maybeOverlayLiveSearchPriceRaw(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
   // trackSearchOverlay: the price_verification_served line's record of this run (log only; it returns its
   // argument unchanged, and with PRICE_VERIFICATION_LOG off does nothing at all).
   if (!parseBooleanEnv(process.env.SERVE_LIVE_MERCHANT_PRICE, false)) return trackSearchOverlay(response, { skipped: 'flag_off' });
@@ -14436,9 +14523,14 @@ function maybeOverlayLiveSearchPrice(response, search = {}, { intent = null, bud
       },
     };
   }
+  const ucpSearchReader = getUcpLiveSearchReader();
+  // D-16: under UCP_LIVE_SEARCH_READ=enforce, UCP_LIVE_SEARCH_READ_TOP_K (default 0 = today) live-reads only the
+  // first K shown cards inside UCP_LIVE_SEARCH_READ_BUDGET_MS (default 600, 100..1500); see liveMerchantSearchPrice.
+  const { topK, liveBudgetMs } = searchTopKSettings(process.env, ucpSearchReader && ucpSearchReader.mode);
   return trackSearchOverlay(overlayLiveMerchantSearchPrices(response, {
     // The merchant's own UCP catalog first (price and stock, for the buyer's market); UCP_LIVE_SEARCH_READ.
-    ucpSearchReader: getUcpLiveSearchReader(),
+    ucpSearchReader,
+    ...(topK ? { topK, liveBudgetMs } : {}),
     priceCache: priceCacheHooks,
     hostGate: priceHostGate,
     ...(_searchOverlayFetchForTest ? { fetchImpl: _searchOverlayFetchForTest } : {}),
@@ -31794,6 +31886,9 @@ function withFreshSyntheticAssertion(axiosConfig) {
 
 function buildInvokeUpstreamAuthHeaders({
   checkoutToken,
+  // The invoke operation this hop serves. A checkout token goes upstream only for the token-lane
+  // operations (CHECKOUT_TOKEN_INVOKE_OPERATIONS) or when the caller has no key of its own; see below.
+  operation = null,
   allowInternalFallback = true,
   preferInternalFallback = false,
   forceInternalFallback = false,
@@ -31818,14 +31913,23 @@ function buildInvokeUpstreamAuthHeaders({
   // the one builder every backend hop shares, and a branch without it is a hop whose writes look real.
   const synthetic = (headers) => withSyntheticAssertion(headers, getInvokeAuthContext());
   const normalizedCheckoutToken = String(checkoutToken || '').trim();
-  if (normalizedCheckoutToken) {
+  const callerApiKey = getInvokeAuthApiKey();
+  // pivota-backend checks X-Checkout-Token BEFORE an API key, and lets a token reach only the hosted
+  // checkout routes for its own order (be#2760 CHECKOUT_TOKEN_ROUTES). So the token goes upstream only
+  // for the token-lane operations. A caller that presented its own key is served on that key everywhere
+  // else (search, product reads, after-sales, photos), where the token would be a 403. A token-only
+  // caller keeps sending its token: it has no other credential, and the door admits it only for the
+  // token lane anyway.
+  const forwardCheckoutToken =
+    Boolean(normalizedCheckoutToken) &&
+    (!callerApiKey || CHECKOUT_TOKEN_INVOKE_OPERATIONS.has(String(operation || '').trim()));
+  if (forwardCheckoutToken) {
     return synthetic({
       'X-Checkout-Token': normalizedCheckoutToken,
       ...forwardedHeaders,
     });
   }
 
-  const callerApiKey = getInvokeAuthApiKey();
   const shouldUseInternalFallback = shouldPreferInternalInvokeUpstreamAuth(
     preferInternalFallback,
   );
@@ -32919,6 +33023,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // The loopback search hop asks this process's invoke egress to say whether it probed the page's legacy seed
       // rows (LEGACY_SEED_PROBE_HEADER, read below). A per-process token: outside callers never get the header.
       ...(selfInvoked && op === 'find_products_multi' ? legacySeedProbeHopHeaders() : {}),
+      // Decision D-10: a search this gateway answered for an ASSUMED US vouches for its own `search.market_assumed`
+      // (the invoke route strips the flag from every request that cannot): see loopbackCallerAssertion.js.
+      ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackMarketAssumedHeaders(payload) : {}),
       ...headers,
     },
     data: requestBody,
@@ -33666,6 +33773,7 @@ async function getCommerceRemoteMcpAdapter() {
         intelIdentityProductId,
       } = require('./agentSignals/intelligenceReads');
       const { makeRecommendProducts, classifyVerifyPriceResponse, withheldPriceOfVerifyResponse } = require('./agentSignals/recommendProducts');
+      const { verifyPriceAnswerOfPdpProduct } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
@@ -33705,6 +33813,13 @@ async function getCommerceRemoteMcpAdapter() {
           listApprovedRelationshipEdgesForAnchor,
           buildAnchorRefsFromProduct,
           isEnabled: agentRelationshipGraphEnabled,
+          // The list price tiers' shadow line (PRICE_STALENESS_DEMOTE=shadow): counts only, never a price or host.
+          log: (event, fields) => logger.info({ event, ...fields }, event),
+          // The public tier's projection drops `price_may_have_changed`: its answer is labelled-only, never reordered.
+          reorderAllowed: () => {
+            const store = getInvokeAuthContext();
+            return !(store && store.surface === 'mcp_public');
+          },
           // Resolve the queried product to its full identity set (sig + grouped source ids) so the
           // agent's source-id query matches both sig-keyed and ext_/ulta:-keyed edges. Flag-gated
           // (AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_HYDRATION_ENABLED) + fail-open in the resolver.
@@ -33769,7 +33884,7 @@ async function getCommerceRemoteMcpAdapter() {
           // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
           priceCache: priceCacheHooks,
           log: logUcpLiveRead,
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, market_assumed, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
@@ -33781,6 +33896,8 @@ async function getCommerceRemoteMcpAdapter() {
                 // (pivota-backend #2411 `payload.market`), so a named market lets a positive merchant keep
                 // its cart; absent, the payload is byte-identical to before and the answer referral-only.
                 ...(market ? { market } : {}),
+                // Decision D-10: an ASSUMED market (pivota-backend `marketAssumed`): its links are not stamped observed.
+                ...(market && market_assumed === true ? { marketAssumed: true } : {}),
                 ...(include_live_verification ? { includeLiveVerificationOffers: true } : {}),
                 // Only ever built by makeGetOffers from its own signed assertions; no agent argument reaches it.
                 ...(Array.isArray(live_verifications) && live_verifications.length
@@ -33897,7 +34014,9 @@ async function getCommerceRemoteMcpAdapter() {
               // No price: the page may have withheld one in another currency than the buyer's. Its unit is
               // still a live read, and the shortlist's currency-switch rule needs it.
               if (!product || typeof product.price !== 'number') return withheldPriceOfVerifyResponse(response.data);
-              return { price: product.price, currency: product.currency, in_stock: product.in_stock };
+              // { price, currency, in_stock }, plus, for the list price tiers only, when the page's price was
+              // read and whether the merchant answered it (the PDP live overlay's live_read.checked_at).
+              return verifyPriceAnswerOfPdpProduct(product);
             }
             : undefined,
         }),
@@ -42997,8 +43116,24 @@ function buildCheckoutServerTimingHeader({ totalMs, upstreamMs, checkoutRuntime 
 // the decision is unit-testable without booting the app — the same pattern as publicReadChainResolvability.
 const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObservation');
 
+/**
+ * The market the seed-attribution mint is sent for one search: the request's, raw, or null. An ASSUMED US (decision
+ * D-10, `search.market_assumed` beside `market: "US"`, which only this gateway's own vouched loopback search can
+ * carry past the invoke ingress) is not the buyer's: the mint is sent no market, exactly as a market-less search
+ * was before, so its links are never stamped `market_observed`. The flag beside any other market is ignored.
+ */
+function seedAttributionMintMarket(search, payload, metadata) {
+  const s = search && typeof search === 'object' ? search : {};
+  if (s.market_assumed === true && String(s.market || '').trim().toUpperCase() === 'US') return null;
+  return String(s.market || (payload && payload.market) || (metadata && metadata.market) || '').trim() || null;
+}
+
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
+  // Decision D-10: `market_assumed` DOWNGRADES a market's provenance (its links are never stamped observed), so a
+  // client may not set it. Kept only on this gateway's own vouched loopback search (loopbackCallerAssertion.js),
+  // stripped from every other request before anything reads the payload.
+  stripUnvouchedMarketAssumed(req);
 
   // EGRESS CHOKEPOINT for this function's responses — NOT for every /invoke response: the
   // strict-invoke handler, the auth middleware and the body-size middleware all answer without
@@ -43919,13 +44054,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !Array.isArray(seedAttributionPayload.search)
             ? seedAttributionPayload.search
             : seedAttributionPayload;
-        const seedAttributionMarket =
-          String(
-            seedAttributionSearch.market ||
-              seedAttributionPayload.market ||
-              req?.body?.metadata?.market ||
-              '',
-          ).trim() || null;
+        const seedAttributionMarket = seedAttributionMintMarket(seedAttributionSearch, seedAttributionPayload, req?.body?.metadata);
         seedAttributionSettled = stampExternalSeedAttribution(seedAttributionContainer.products, {
           // Caller-independent by construction: search results are cached and
           // shared across callers, so the mint carries only the internal key —
@@ -52525,8 +52654,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       url: `${url}${queryString}`,
       headers: {
         ...(upstreamMethod !== 'GET' && { 'Content-Type': 'application/json' }),
+        // The token goes upstream only for the token-lane operations; a caller with its own key is served on
+        // that key everywhere else (see buildInvokeUpstreamAuthHeaders). request_after_sales (cancel ->
+        // /agent/v1/orders/{id}/cancel, refund -> /agent/v2/orders/{id}/refunds) also never falls back to the
+        // gateway's own service key: the backend's agent-ownership check must run against the caller.
         ...buildInvokeUpstreamAuthHeaders({
           checkoutToken,
+          operation,
+          allowInternalFallback: operation !== 'request_after_sales',
           preferInternalFallback: operation === 'get_product_detail',
         }),
         ...(searchPrimaryContract === 'internal_products_search_primitive'
@@ -52906,7 +53041,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               url: quoteUrl,
               headers: {
                 'Content-Type': 'application/json',
-                ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+                // The create_order re-quote is part of the token lane: same credential as the create.
+                ...buildInvokeUpstreamAuthHeaders({ checkoutToken, operation: 'create_order' }),
               },
               timeout: getUpstreamTimeoutMs('preview_quote'),
               data: quoteBody,
@@ -54841,7 +54977,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
 
     return res.status(response.status).json(
-      projectFindProductsMultiTransportResponse(enrichedWithBeautyExpert, { operation }),
+      projectFindProductsMultiTransportResponse(enrichedWithBeautyExpert, { operation, search: queryParams }),
     );
 
 	  } catch (err) {
@@ -54953,7 +55089,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : [],
           });
           return res.status(200).json(
-          projectFindProductsMultiTransportResponse(diagnosedWithBeautyExpert, { operation }),
+          projectFindProductsMultiTransportResponse(diagnosedWithBeautyExpert, { operation, search: queryParams }),
         );
 	    }
 	    if (err.response) {
@@ -55109,6 +55245,8 @@ function registerExternalInvokeRoute(path, clientChannel) {
           req?.header('x-buyer-ref'),
         ),
         ...loopbackSyntheticInvokeContext(req),
+        // This process calling itself (an MCP door's search): the list price tiers label but do not reorder.
+        loopback_self_call: isLoopbackSelfCall(req),
       },
       () =>
         handleInvokeRequest(req, res, {
@@ -55274,6 +55412,9 @@ module.exports._debug = {
   // X-Checkout-Token verification: the verdict cache (cleared between tests; its TTL clamp to the
   // token's own expiry is asserted directly) and the scope rule.
   checkoutTokenVerdictCache,
+  CHECKOUT_TOKEN_INVOKE_OPERATIONS,
+  // Which credential each backend hop carries (checkout token vs the caller's key), asserted per caller shape.
+  buildInvokeUpstreamAuthHeaders,
   putCachedCheckoutTokenVerdict,
   getCachedCheckoutTokenVerdict,
   invokeAuthCache,
@@ -55493,6 +55634,7 @@ module.exports._debug = {
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
   buildSearchProductsV2Body,
+  seedAttributionMintMarket,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,

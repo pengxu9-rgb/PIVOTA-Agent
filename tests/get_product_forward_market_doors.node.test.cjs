@@ -11,6 +11,14 @@
 //     without one (absent, blank, other context members only) nothing is read and the stored price is served.
 //   - price_verification_served counts get_product `live` only when this request verified its price.
 //
+// DECISION D-10 (2026-11-08): a get_product that names no market is answered AS US and says so (`market_assumed`, and
+// on the UCP door the same notice in `messages`). So the cases split in two:
+//   - DECLARED (a market named: `ucp_gp_ctx`, `mcp_gp_market`, `public_gp_market`) and every tools/list: byte-identical
+//     to origin/main, exactly as before;
+//   - NO MARKET (`ucp_gp`, `ucp_gp_ctx_blank`, `ucp_gp_ctx_other`, `mcp_gp`, `public_gp`): the label, and otherwise
+//     main's answer while no live read runs (off, shadow), or the DECLARED-US answer of the same door under enforce
+//     (the read now runs as US).
+//
 // Each combination runs in its own process (tests/_support/getProductDoorsChild.cjs): the tool surfaces read
 // the flags when they load. Nothing leaves the process (see the child's header).
 
@@ -20,6 +28,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const MAIN = require('./fixtures/get_product_forward_market_main.json');
+const { revertNoMarketDescriptionEdits } = require('./_support/noMarketDescriptionEdits.cjs');
 const CHILD = path.join(__dirname, '_support', 'getProductDoorsChild.cjs');
 const GP_CASES = ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other', 'ucp_gp_ctx', 'mcp_gp', 'mcp_gp_market', 'public_gp', 'public_gp_market'];
 const sha = (text) => require('node:crypto').createHash('sha256').update(text).digest('hex');
@@ -66,6 +75,9 @@ test.before(async () => {
       const { rest, stock } = revertStock(c.body);
       c.stock = stock;
       if (rest !== c.body) { c.body = rest; c.sha256 = sha(rest); }
+      // The tool lists: D-10's description edits (and only those) are reversed, so the rest compares with main.
+      const reverted = revertNoMarketDescriptionEdits(c.body);
+      if (reverted !== c.body) { c.d10_descriptions_edited = true; c.body = reverted; c.sha256 = sha(reverted); }
     }
   }
 }, { timeout: 240000 });
@@ -94,6 +106,46 @@ const toolsOf = (c) => Object.fromEntries(JSON.parse(c.body).result.tools.map((t
 const productOf = (c) => JSON.parse(JSON.parse(c.body).result.content[0].text).product;
 const ucpMinor = (c) => productOf(c).price_range.min.amount;
 const served = (c) => c.served.map((l) => ({ live: l.live, recent: l.recent, stored: l.stored, market: l.market, surface: l.surface }));
+
+const DECLARED = ['ucp_gp_ctx', 'mcp_gp_market', 'public_gp_market'];
+const NO_MARKET = ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other', 'mcp_gp', 'public_gp'];
+const UCP_NO_MARKET = ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other'];
+// The declared-US twin of each no-market case, on the same door.
+const TWIN = { ucp_gp: 'ucp_gp_ctx', ucp_gp_ctx_blank: 'ucp_gp_ctx', ucp_gp_ctx_other: 'ucp_gp_ctx', mcp_gp: 'mcp_gp_market', public_gp: 'public_gp_market' };
+
+// What the no-market rule adds, taken back out (and re-serialized the way the doors serialize): `market_assumed`, and
+// the UCP `market_assumed` notice. Returns the label it took.
+function stripAssumed(body) {
+  const o = JSON.parse(body);
+  const r = o.result || {};
+  let label = null;
+  const take = (inner) => {
+    if (!inner || typeof inner !== 'object' || !('market_assumed' in inner)) return false;
+    label = inner.market_assumed;
+    delete inner.market_assumed;
+    if (Array.isArray(inner.messages)) {
+      const rest = inner.messages.filter((m) => m.code !== 'market_assumed');
+      if (rest.length) inner.messages = rest;
+      else delete inner.messages;
+    }
+    return true;
+  };
+  if (r.structuredContent) take(r.structuredContent);
+  if (Array.isArray(r.content) && r.content[0] && /^\{/.test(r.content[0].text)) {
+    const inner = JSON.parse(r.content[0].text);
+    if (take(inner)) r.content[0].text = JSON.stringify(inner, null, 2);
+  }
+  return { rest: JSON.stringify(o), label };
+}
+
+/** No-market cases: labelled US, and otherwise byte-identical to main's answer for the same case. */
+function assertAssumedOtherwiseMain(cases, combo, names) {
+  for (const name of names) {
+    const { rest, label } = stripAssumed(cases[name].body);
+    assert.equal(label && label.code, 'US', `${name}: says US was assumed (${combo})`);
+    assert.equal(sha(rest), MAIN.combos[combo].cases[name].sha256, `${name}: otherwise main's answer (${combo})`);
+  }
+}
 
 function assertSameAsMain(cases, combo, names) {
   for (const name of names) {
@@ -133,9 +185,10 @@ test('the door fixture serves the stock shape pdpBuilder emits: availability obj
   assert.deepEqual(shape(storedProduct('sig_pr5_tint', 'store.price-log.test', '43734829564039')), shape(built));
 });
 
-test('both flags off: every get_product answer and every tools/list is byte-identical to origin/main', () => {
+test('both flags off: every declared answer and every tools/list is byte-identical to origin/main; no market is labelled US', () => {
   assert.deepEqual(Object.keys(R.base).sort(), Object.keys(MAIN.combos.base.cases).sort());
-  assertSameAsMain(R.base, 'base', Object.keys(MAIN.combos.base.cases));
+  assertSameAsMain(R.base, 'base', [...DECLARED, 'mcp_tools', 'ucp_tools', 'public_tools']);
+  assertAssumedOtherwiseMain(R.base, 'base', NO_MARKET);
   for (const name of GP_CASES) {
     assert.deepEqual(R.base[name].lookups, [], `${name}: the merchant is never asked`);
     assert.deepEqual(R.base[name].reads, [], `${name}: no reader runs`);
@@ -143,8 +196,8 @@ test('both flags off: every get_product answer and every tools/list is byte-iden
 });
 
 test('UCP_GET_PRODUCT_FORWARD_MARKET alone: only the UCP get_product declaration changes', () => {
-  const all = Object.keys(MAIN.combos.base.cases);
-  assertSameAsMain(R.fwd, 'base', all.filter((n) => n !== 'ucp_tools'));
+  assertSameAsMain(R.fwd, 'base', [...DECLARED, 'mcp_tools', 'public_tools']);
+  assertAssumedOtherwiseMain(R.fwd, 'base', NO_MARKET);
   const before = toolsOf(R.base.ucp_tools);
   const after = toolsOf(R.fwd.ucp_tools);
   assert.deepEqual(Object.keys(after), Object.keys(before), 'the same tools, in the same order');
@@ -166,8 +219,16 @@ test('UCP_GET_PRODUCT_FORWARD_MARKET alone: only the UCP get_product declaration
   assert.deepEqual(strip(now.inputSchema), strip(was.inputSchema));
 });
 
-test('shadow: no get_product answer changes; /mcp and /public/mcp ask for the `market` they declare, nothing else changes', () => {
-  assertSameAsMain(R.shadow, 'shadow', [...GP_CASES, 'ucp_tools']);
+test('shadow: no get_product answer changes but the label; /mcp and /public/mcp ask for the `market` they declare, nothing else changes', () => {
+  assertSameAsMain(R.shadow, 'shadow', [...DECLARED, 'ucp_tools']);
+  // The descriptions now say what a no-market call gets (D-10): those edits were made, and were the only ones.
+  for (const door of ['mcp_tools', 'public_tools']) assert.equal(R.shadow[door].d10_descriptions_edited, true, door);
+  assertAssumedOtherwiseMain(R.shadow, 'shadow', NO_MARKET);
+  // No market named: the shadow read runs, as US (D-10); a market named but not forwarded (forward off) reads nothing.
+  for (const name of NO_MARKET) {
+    assert.deepEqual(R.shadow[name].reads.map((r) => [r.mode, r.market]), [['shadow', 'US']], name);
+  }
+  assert.deepEqual(R.shadow.ucp_gp_ctx.reads, [{ mode: 'shadow', market: null, status: 'skipped', reason: 'no_market' }], 'forward off: the named context is not read, and not assumed over');
   for (const door of ['mcp_tools', 'public_tools']) {
     const base = toolsOf(R.base[door]).get_product;
     const shadowTool = toolsOf(R.shadow[door]).get_product;
@@ -187,13 +248,15 @@ test('shadow: no get_product answer changes; /mcp and /public/mcp ask for the `m
 });
 
 test('shadow + forward: no answer changes, and the UCP door hands its declared market to the shadow read', () => {
-  assertSameAsMain(R.shadowfwd, 'shadow', GP_CASES);
+  assertSameAsMain(R.shadowfwd, 'shadow', DECLARED);
+  assertAssumedOtherwiseMain(R.shadowfwd, 'shadow', NO_MARKET);
   assert.deepEqual(R.shadowfwd.ucp_gp_ctx.reads, [{ mode: 'shadow', market: 'US', status: 'verified', reason: null }]);
-  assert.equal(R.shadowfwd.ucp_gp_ctx.lookups.length, 1, 'one lookup, for the UCP door');
-  for (const name of ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other']) {
-    assert.deepEqual(R.shadowfwd[name].reads, [{ mode: 'shadow', market: null, status: 'skipped', reason: 'no_market' }], `${name}: never a defaulted market`);
-    assert.deepEqual(R.shadowfwd[name].lookups, [], name);
+  // No market named: read as US (D-10). The UCP no-market cases run first, so the first of them asks the merchant
+  // and the rest share its 30 s lookup memo.
+  for (const name of UCP_NO_MARKET) {
+    assert.deepEqual(R.shadowfwd[name].reads, [{ mode: 'shadow', market: 'US', status: 'verified', reason: null }], `${name}: read as US`);
   }
+  assert.equal(R.shadowfwd.ucp_gp.lookups.length, 1, 'the first UCP read asks the merchant once');
   assert.deepEqual(R.shadow.ucp_gp_ctx.reads, [{ mode: 'shadow', market: null, status: 'skipped', reason: 'no_market' }], 'forward off: the context is not read');
 });
 
@@ -237,18 +300,31 @@ const ucpPriceMessage = (c) => {
   return added.messages[0];
 };
 
-test('enforce, forward off: the UCP door reads nothing live, whatever context it is sent, and labels the stored price', () => {
-  for (const name of GP_CASES) {
+test('enforce, forward off: a NAMED UCP context is not read and labels the stored price; no market is read live as US', () => {
+  for (const name of DECLARED) {
     const { rest } = stripEnforceLabels(R.enforce[name].body);
     assert.equal(sha(rest), MAIN.combos.enforce.cases[name].sha256, `${name}: main's enforce answer, once the label is taken out`);
   }
-  for (const name of ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other', 'ucp_gp_ctx']) {
-    assert.equal(ucpMinor(R.enforce[name]), 2500, `${name}: the stored price`);
-    assert.deepEqual(R.enforce[name].lookups, [], name);
-    assert.deepEqual(served(R.enforce[name]), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }], name);
-    const m = ucpPriceMessage(R.enforce[name]);
-    assert.deepEqual([m.type, m.code, m.path], ['warning', 'price.stored', '$.product.price_range'], name);
-    assert.match(m.content, /not confirmed with the merchant \(no_market\)/);
+  const named = R.enforce.ucp_gp_ctx;
+  assert.equal(ucpMinor(named), 2500, 'the stored price');
+  assert.deepEqual(named.lookups, []);
+  assert.deepEqual(served(named), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }]);
+  const m = ucpPriceMessage(named);
+  assert.deepEqual([m.type, m.code, m.path], ['warning', 'price.stored', '$.product.price_range']);
+  assert.match(m.content, /not confirmed with the merchant \(no_market\)/);
+  // No market named (D-10): the same answer the door gives a declared US that is read live, plus the label.
+  for (const name of UCP_NO_MARKET) {
+    const { rest, label } = stripAssumed(R.enforce[name].body);
+    assert.equal(label.code, 'US', name);
+    assert.equal(sha(rest), R.enforcefwd.ucp_gp_ctx.sha256, `${name}: the declared-US live answer, plus the label`);
+    assert.equal(ucpMinor(R.enforce[name]), 2300, `${name}: the merchant's live price`);
+    assert.deepEqual(R.enforce[name].reads, [{ mode: 'enforce', market: 'US', status: 'verified', reason: null }], name);
+    assert.deepEqual(served(R.enforce[name]), [{ live: 1, recent: 0, stored: 0, market: 'US', surface: 'get_product' }], name);
+  }
+  for (const name of ['mcp_gp', 'public_gp']) {
+    const { rest, label } = stripAssumed(R.enforce[name].body);
+    assert.equal(label.code, 'US', name);
+    assert.equal(sha(rest), R.enforce[TWIN[name]].sha256, `${name}: the declared-US answer of the same door, plus the label`);
   }
 });
 
@@ -261,22 +337,22 @@ test('enforce: /mcp adds only price_as_of and the live in_stock to a verified pr
   assert.equal(p.live_read.status, 'verified');
   assert.equal(p.price_as_of, p.live_read.checked_at);
   assert.deepEqual(served(R.enforce.mcp_gp_market), [{ live: 1, recent: 0, stored: 0, market: 'US', surface: 'get_product' }]);
-  const stored = productOf(R.enforce.mcp_gp);
-  assert.equal(stored.price, 25, 'no market: the stored price, never blanked');
-  assert.deepEqual(stored.live_read && [stored.live_read.status, stored.live_read.reason], ['skipped', 'no_market']);
-  assert.equal(stored.price_as_of, undefined, 'an unread price is not dated');
-  assert.deepEqual(stripEnforceLabels(R.enforce.mcp_gp.body).added, {}, '/mcp already carries live_read: nothing is added');
-  assert.deepEqual(served(R.enforce.mcp_gp), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }]);
+  // No market named (D-10): read live as US, exactly as the declared-US call is.
+  const assumed = productOf(R.enforce.mcp_gp);
+  assert.equal(assumed.price, 23, 'no market: answered as US, so the merchant\'s US price');
+  assert.deepEqual([assumed.live_read.status, assumed.live_read.market], ['verified', 'US']);
+  assert.deepEqual(served(R.enforce.mcp_gp), [{ live: 1, recent: 0, stored: 0, market: 'US', surface: 'get_product' }]);
   assert.deepEqual(stripEnforceLabels(R.enforce.public_gp_market.body).added, { price_check: { confirmed_with_merchant: true, market: 'US' } });
-  assert.deepEqual(stripEnforceLabels(R.enforce.public_gp.body).added, { price_check: { confirmed_with_merchant: false, reason: 'no_market' } }, 'an actionable reason is kept');
+  assert.deepEqual(stripEnforceLabels(stripAssumed(R.enforce.public_gp.body).rest).added, { price_check: { confirmed_with_merchant: true, market: 'US' } }, 'no market: confirmed for US');
   assert.doesNotMatch(R.enforce.public_gp_market.body, /\d{4}-\d{2}-\d{2}T\d{2}:/, 'the public tier serves no timestamp');
 });
 
-test('enforce + forward: a declared UCP market is read live and says so; none, blank or other context members read nothing and say so', () => {
+test('enforce + forward: a declared UCP market is read live and says so; none, blank or other context members are read as US and say so', () => {
   const ctx = R.enforcefwd.ucp_gp_ctx;
   assert.equal(ucpMinor(ctx), 2300, 'the merchant\'s live price, in minor units');
   assert.deepEqual(ctx.reads, [{ mode: 'enforce', market: 'US', status: 'verified', reason: null }]);
-  assert.equal(ctx.lookups.length, 1);
+  // The no-market UCP cases run first and are read as US too (D-10): the first asks the merchant, the rest share the memo.
+  assert.equal(R.enforcefwd.ucp_gp.lookups.length + ctx.lookups.length, 1, 'one merchant lookup for the UCP door');
   assert.deepEqual(served(ctx), [{ live: 1, recent: 0, stored: 0, market: 'US', surface: 'get_product' }], 'counted live, for US');
   const m = ucpPriceMessage(ctx);
   assert.deepEqual([m.type, m.code], ['info', 'price.merchant_verified']);
@@ -287,17 +363,19 @@ test('enforce + forward: a declared UCP market is read live and says so; none, b
     MAIN.combos.enforce.cases.ucp_gp_ctx.sha256,
     'only the amounts moved',
   );
-  for (const name of ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other']) {
-    assert.equal(R.enforcefwd[name].sha256, R.enforce[name].sha256, `${name}: as under enforce alone (stored, labelled)`);
-    assert.equal(ucpMinor(R.enforcefwd[name]), 2500, `${name}: stored`);
-    assert.deepEqual(R.enforcefwd[name].reads, [{ mode: 'enforce', market: null, status: 'skipped', reason: 'no_market' }], name);
-    assert.deepEqual(served(R.enforcefwd[name]), [{ live: 0, recent: 0, stored: 1, market: null, surface: 'get_product' }], name);
+  // No market named (D-10): read live as US, the declared-US answer plus the label (forward on or off alike).
+  for (const name of UCP_NO_MARKET) {
+    assert.equal(R.enforcefwd[name].sha256, R.enforce[name].sha256, `${name}: as under enforce alone`);
+    assert.equal(sha(stripAssumed(R.enforcefwd[name].body).rest), ctx.sha256, `${name}: the declared-US answer, plus the label`);
+    assert.equal(ucpMinor(R.enforcefwd[name]), 2300, `${name}: live, for US`);
+    assert.deepEqual(R.enforcefwd[name].reads, [{ mode: 'enforce', market: 'US', status: 'verified', reason: null }], name);
+    assert.deepEqual(served(R.enforcefwd[name]), [{ live: 1, recent: 0, stored: 0, market: 'US', surface: 'get_product' }], name);
   }
   for (const name of ['mcp_gp', 'mcp_gp_market', 'public_gp', 'public_gp_market']) {
     assert.equal(R.enforcefwd[name].sha256, R.enforce[name].sha256, name);
   }
   assert.equal(JSON.parse(R.enforcefwd.public_gp_market.body).result.structuredContent.price.amount, 23, 'public: live with a market');
-  assert.equal(JSON.parse(R.enforcefwd.public_gp.body).result.structuredContent.price.amount, 25, 'public: stored without');
+  assert.equal(JSON.parse(R.enforcefwd.public_gp.body).result.structuredContent.price.amount, 23, 'public: live as US without one (D-10)');
 });
 
 test('PRICE_VERIFICATION_LOG stays log-only on every get_product door and combination', () => {
