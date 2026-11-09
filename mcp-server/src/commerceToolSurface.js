@@ -617,14 +617,18 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     });
     noteToolCall(observe, () => describeUpstreamEnvelope(value));
     noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
-    return shape(doorListPriceTiers(op.id, await attributeOwn(cloneCachedValue(value, (err) => {
+    const own = cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
           { err: err?.message || String(err), tool: op.id },
           "commerce read cache: value not cloneable, serving shared reference",
         );
       }
-    })), dialect, callStartedAtMs));
+    });
+    // A failed clone hands back the SHARED entry: stamping it would write this caller's links into what
+    // every later caller is served (O-04 review, P3-G2). Serve it unstamped instead.
+    const shared = own === value && value !== null && typeof value === "object";
+    return shape(doorListPriceTiers(op.id, shared ? own : await attributeOwn(own), dialect, callStartedAtMs));
   }
 
   /**

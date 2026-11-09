@@ -645,3 +645,52 @@ describe('stampSearchResultPerResponse / isSeedAttributionDeferred', () => {
     }
   });
 });
+
+// FIX_PLAN O-04, P2-2: the per-response mint's partner assertion is signed over the EXACT request.
+describe('createBackendSeedLinkFetcher with signRequest', () => {
+  beforeEach(() => {
+    axios.mockClear();
+    axios.mockImplementation(async () => ({ data: { links: [] } }));
+  });
+
+  const card = () => ({
+    product_id: 'ext_x', source: 'external_seed', platform: 'external', external_seed_id: 'seed_x',
+    destination_url: 'https://shop-a.example.com/products/x',
+  });
+
+  test('sends the exact string the signer was handed, with the signed header beside the key', async () => {
+    const signed = [];
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+      signRequest: (req) => { signed.push(req); return { 'X-Pivota-Issuing-Agent': 'v2.signed.token' }; },
+    });
+    await stampExternalSeedAttribution([card()], { fetchLinks, market: 'US', tool: 'find_products_multi' });
+    const sent = axios.mock.calls[0][0];
+    expect(signed).toHaveLength(1);
+    expect(signed[0]).toEqual({ method: 'POST', url: sent.url, rawBody: sent.data });
+    expect(typeof sent.data).toBe('string');
+    expect(JSON.parse(sent.data)).toEqual(expect.objectContaining({ market: 'US', tool: 'find_products_multi' }));
+    expect(sent.headers['X-Pivota-Issuing-Agent']).toBe('v2.signed.token');
+    expect(sent.headers['X-API-Key']).toBe('internal-key');
+  });
+
+  test('a signer that signs nothing sends the request unsigned, never a stale header', async () => {
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+      signRequest: () => ({}),
+    });
+    await stampExternalSeedAttribution([card()], { fetchLinks, market: 'US', tool: 'find_products_multi' });
+    expect(axios.mock.calls[0][0].headers).not.toHaveProperty('X-Pivota-Issuing-Agent');
+  });
+
+  test('without a signer the body is the object, exactly as before', async () => {
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+    });
+    await stampExternalSeedAttribution([card()], { fetchLinks, market: 'US', tool: 'find_products_multi' });
+    expect(typeof axios.mock.calls[0][0].data).toBe('object');
+  });
+});

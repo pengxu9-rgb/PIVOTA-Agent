@@ -296,6 +296,9 @@ function createBackendSeedLinkFetcher({
   buildHeaders,
   timeoutMs = null,
   env = process.env,
+  // FIX_PLAN O-04: optional ({ method, url, rawBody }) => headers, for a header signed over the exact
+  // request (the per-response mint's request-bound partner assertion). Absent: the request is as before.
+  signRequest = null,
 } = {}) {
   return async function fetchExternalSeedLinks(candidates, { market = null, tool = null } = {}) {
     const base = String(apiBase || '').trim().replace(/\/+$/, '');
@@ -307,22 +310,28 @@ function createBackendSeedLinkFetcher({
     // served from cache. Failing here lands on the fail-soft path: raw
     // destination urls, cards untouched.
     if (!isPlainObject(headers)) throw new Error('internal_key_unavailable');
+    const url = `${base}${SEED_LINK_PATH}`;
+    const body = {
+      market: nonEmptyString(market),
+      tool: nonEmptyString(tool),
+      candidates,
+    };
+    // Signed: send the exact string the signature covers. Unsigned: the object, exactly as before.
+    const rawBody = typeof signRequest === 'function' ? JSON.stringify(body) : null;
+    const signed = rawBody !== null ? signRequest({ method: 'POST', url, rawBody }) : null;
     const resp = await axios({
       method: 'POST',
-      url: `${base}${SEED_LINK_PATH}`,
+      url,
       headers: {
         'Content-Type': 'application/json',
         ...headers,
+        ...(isPlainObject(signed) ? signed : {}),
       },
       timeout:
         Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
           ? Number(timeoutMs)
           : externalSeedAttributionTimeoutMs(env),
-      data: {
-        market: nonEmptyString(market),
-        tool: nonEmptyString(tool),
-        candidates,
-      },
+      data: rawBody !== null ? rawBody : body,
     });
     return Array.isArray(resp?.data?.links) ? resp.data.links : null;
   };

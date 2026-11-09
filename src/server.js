@@ -39,6 +39,8 @@ const {
   oauthClientFromClaims,
   partnerIdentityForwardingEnabled,
   SEED_LINK_MINT_OP,
+  isBoundOp,
+  boundIssuingAgentAssertionHeaders,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
@@ -27520,7 +27522,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
     try {
       // Every attempt carries a freshly signed synthetic assertion: one signed for the first attempt can be
       // past the backend's 60 s window by a late retry, and the backend serves an expired one as a real call.
-      return await axios(withFreshSyntheticAssertion(axiosConfig));
+      return await axios(withFreshSyntheticAssertion(withBoundIssuingAssertion(axiosConfig)));
     } catch (err) {
       attempt += 1;
 
@@ -31829,6 +31831,39 @@ function llmRerankStageFields(outcome) {
 // (src/guardrails/loopbackCallerAssertion.js). Each is checked within 60 s of its signing, and busy retries can
 // outlast that; an expired one is read as a real call. Unchanged when it carries neither, or when this context
 // cannot sign one.
+// FIX_PLAN O-04, P2-2: a request-bound (v2) partner assertion, signed per ATTEMPT. The kernel upstream marks
+// a config with BOUND_ASSERTION_SPEC ({ op, invokeContext, rid }) for the partner-identity ops; here, just
+// before each send, the body is serialised ONCE into the string that is sent, the token is signed over
+// that string, the method, the path and the resource id, with a fresh nonce. A retry (busy, timeout, or the
+// create_order `order_request` wrapper, which swaps the body) therefore never reuses a nonce the backend
+// may already have seen, and is always hashed over what it sends. A config without the spec is returned
+// untouched, so every other call is byte-identical.
+const BOUND_ASSERTION_SPEC = Symbol.for('pivota.issuingAssertion.boundSpec');
+function withBoundIssuingAssertion(axiosConfig) {
+  try {
+    const spec = axiosConfig && axiosConfig[BOUND_ASSERTION_SPEC];
+    if (!spec) return axiosConfig;
+    const data = axiosConfig.data;
+    const rawBody = typeof data === 'string' ? data : (data === undefined || data === null ? '' : JSON.stringify(data));
+    const signed = boundIssuingAgentAssertionHeaders({
+      op: spec.op,
+      invokeContext: spec.invokeContext,
+      method: axiosConfig.method || 'GET',
+      url: axiosConfig.url,
+      rid: spec.rid,
+      rawBody,
+    });
+    if (!Object.keys(signed).length) return axiosConfig;
+    return {
+      ...axiosConfig,
+      ...(rawBody === '' ? {} : { data: rawBody }),
+      headers: { ...(axiosConfig.headers || {}), ...signed },
+    };
+  } catch (_) {
+    return axiosConfig;
+  }
+}
+
 function withFreshSyntheticAssertion(axiosConfig) {
   try {
     const headers = axiosConfig?.headers;
@@ -32962,6 +32997,10 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
     timeout: selfInvoked ? resolveSelfInvokeBudget(timeout) : timeout,
     ...(options && options.signal ? { signal: options.signal } : {}),
   };
+  // FIX_PLAN O-04: the partner's request-bound assertion, signed per attempt (withBoundIssuingAssertion).
+  if (!COMMERCE_CACHED_READ_OPS.has(op) && isBoundOp(op)) {
+    axiosConfig[BOUND_ASSERTION_SPEC] = { op, invokeContext, rid: boundAssertionResourceId(op, requestBody, payload) };
+  }
 
   let resp;
   try {
@@ -33012,6 +33051,25 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
     return normalizedBody.data;
   }
   return normalizedBody;
+}
+
+// The resource a partner-identity op acts on, as the backend reads it for the binding
+// (pivota-backend routes/agent_v2.py forwarded_owner_context(..., resource=...)): the quote id an order is
+// created from, the order a checkout session or after-sales request is for; none for a quote preview.
+function boundAssertionResourceId(op, requestBody, payload) {
+  switch (op) {
+    case 'create_order':
+      return firstNonEmptyString(requestBody?.quote_id) || null;
+    case 'submit_payment':
+    case 'create_payment_link':
+      return firstNonEmptyString(requestBody?.order_id) || null;
+    case 'request_after_sales': {
+      const status = isPlainObject(payload?.status) ? payload.status : {};
+      return firstNonEmptyString(status.order_id, status.orderId) || null;
+    }
+    default:
+      return null;
+  }
 }
 
 // The upstream-failure -> shared-taxonomy mapping lives in services/commerceKernelErrorMapping so it is
@@ -33095,9 +33153,11 @@ async function attributeCommerceSearchPerResponse(value, params) {
               forwardAgentUserJwt: false,
               forwardBuyerRef: false,
             }),
-            ...issuingAgentAssertionHeaders({ op: SEED_LINK_MINT_OP, invokeContext }),
           }
           : null),
+      // The caller's request-bound assertion, over the exact body the fetcher sends.
+      signRequest: ({ method, url, rawBody }) =>
+        boundIssuingAgentAssertionHeaders({ op: SEED_LINK_MINT_OP, invokeContext, method, url, rawBody }),
     }),
     market: firstNonEmptyString(search.market) || null,
     tool: 'find_products_multi',
