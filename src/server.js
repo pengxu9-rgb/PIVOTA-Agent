@@ -32812,8 +32812,20 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // there and the canonical module is normalized back to the { product } contract below.
       // Merchant-scoped detail keeps the Python backend unchanged (commerce in-store flows).
       const prod = isPlainObject(payload?.product) ? payload.product : {};
-      const pid = typeof prod.product_id === 'string' ? prod.product_id.trim() : '';
+      let pid = typeof prod.product_id === 'string' ? prod.product_id.trim() : '';
       const rawDetailMerchant = typeof prod.merchant_id === 'string' ? prod.merchant_id.trim() : '';
+      // PARTNER_DOOR_ONE_PRODUCT_ID: an identity GROUP id (`sig_` + 24 hex) is answered as the catalog signature
+      // of the one product its live members are, so the read below takes the signature lane; a group that
+      // names several products, or none, is refused by name. Never NO_MERCHANT_OFFER for it.
+      const partnerDoorOn = partnerDoorOneProductId.partnerDoorOneProductIdEnabled();
+      if (partnerDoorOn && partnerDoorOneProductId.isIdentityGroupIdShape(pid)) {
+        const groupMember = await partnerDoorOneProductId.resolveGroupIdToProductId({ groupId: pid, queryFn: query });
+        if (groupMember.status !== 'resolved') {
+          await throwPartnerDoorError(...partnerDoorOneProductId.groupIdFailure(groupMember, op));
+        }
+        pid = groupMember.productId;
+        requestBody = { operation: op, payload: { ...payload, product: { ...prod, product_id: pid } } };
+      }
       // Seed-supply sellers are the merchant_ids every seed product ADVERTISES, and get_product's
       // schema REQUIRES merchant_id — so agents echo them back as a scope on every seed call. But
       // an upstream per-merchant lookup cannot serve them:
@@ -32858,6 +32870,14 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
             operation: op,
             payload: { ...payload, product: { ...prod, product_id: sourceProductId } },
           };
+        } else if (partnerDoorOn) {
+          // PARTNER_DOOR_ONE_PRODUCT_ID: this seller has no row under the signature, and the per-merchant
+          // catalog cannot open a signature at all. When the catalog knows the signature under OTHER sellers
+          // only, say that, instead of an upstream not-found that reads as a statement about the product.
+          const sellers = await partnerDoorOneProductId.listSignatureSellerIds({ productId: pid, queryFn: query });
+          if (sellers && sellers.length > 0 && !sellers.includes(rawDetailMerchant)) {
+            await throwPartnerDoorError('MERCHANT_PRODUCT_MISMATCH', { reason: 'merchant_not_seller_of_product', operation: op });
+          }
         }
       }
       break;
@@ -33060,7 +33080,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       }
     }
     if (!resp) {
-      await throwCommerceKernelUpstreamError(op, err);
+      await throwCommerceKernelUpstreamError(op, err, { pdpV2Detail });
     }
   }
 
@@ -33102,6 +33122,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
 // by every kernel op including the money ops, and `retriable` is a promise that costs real money when wrong
 // in either direction.
 const { mapUpstreamErrorToKernelCode } = require('./services/commerceKernelErrorMapping');
+// PARTNER_DOOR_ONE_PRODUCT_ID (default off): a group id resolves to its product or is refused by name, a named
+// seller is checked, and a read failure names one fact. See services/partnerDoorOneProductId.
+const partnerDoorOneProductId = require('./services/partnerDoorOneProductId');
 
 let commerceKernelErrorsPromise = null;
 // The upstream-response normalizer (safety-kernel/src/upstreamAdapter.js). The kernel's own money ops get it
@@ -33109,12 +33132,33 @@ let commerceKernelErrorsPromise = null;
 // `_upstream`, so its dispatcher applies the same normalizer explicitly. Memoized ESM import only.
 let commerceKernelUpstreamAdapterPromise = null;
 
-async function throwCommerceKernelUpstreamError(operation, err) {
+// A partner-door refusal decided in THIS process (a group id, a seller that is not the product's): the same
+// error class the upstream mapping throws, so every door surfaces it the same way.
+async function throwPartnerDoorError(code, detail = {}) {
   const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
-  const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
+  throw new PivotaCommerceError(code, detail);
+}
+
+async function throwCommerceKernelUpstreamError(operation, err, { pdpV2Detail = false } = {}) {
+  const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
+  const extractedUpstreamError = extractUpstreamErrorCode(err);
+  const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractedUpstreamError;
   const status = err?.response?.status || null;
-  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status });
+  // PARTNER_DOOR_ONE_PRODUCT_ID: null while off, so the mapping and the detail below are exactly as before.
+  const partnerDoorFailure = partnerDoorOneProductId.partnerDoorOneProductIdEnabled()
+    ? partnerDoorOneProductId.describePartnerDoorReadFailure({ extracted: extractedUpstreamError, pdpV2Detail })
+    : null;
+  const kernelCode = mapUpstreamErrorToKernelCode({
+    operation,
+    upstreamCode,
+    status,
+    ...(partnerDoorFailure ? { partnerDoorRead: partnerDoorFailure.partnerDoorRead } : {}),
+  });
+  const partnerDoorReason = partnerDoorFailure && operation === 'get_product_detail'
+    ? partnerDoorOneProductId.partnerDoorReadFailureReason(kernelCode, partnerDoorFailure.reason)
+    : null;
   throw new PivotaCommerceError(kernelCode, {
+    ...(partnerDoorReason ? { reason: partnerDoorReason } : {}),
     operation,
     upstream_status: status,
     upstream_code: upstreamCode || null,
@@ -33228,7 +33272,13 @@ function statusForCommerceKernelError(code) {
     case 'NO_MERCHANT_OFFER':
     // Persistent "there is no such id" — same HTTP answer, different fact (see errors.js).
     case 'UNKNOWN_PRODUCT_ID':
+    // PARTNER_DOOR_ONE_PRODUCT_ID: the product exists and is withheld from serving.
+    case 'PRODUCT_NOT_SERVABLE':
       return 404;
+    // PARTNER_DOOR_ONE_PRODUCT_ID: the id, or the seller beside it, is the wrong argument.
+    case 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID':
+    case 'MERCHANT_PRODUCT_MISMATCH':
+      return 400;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
       return 409;
@@ -34021,6 +34071,13 @@ async function getCommerceRemoteMcpAdapter() {
             : undefined,
         }),
       };
+      // PARTNER_DOOR_ONE_PRODUCT_ID (default off: the read above is called as is). On, a group id passed as
+      // the product id is resolved or refused by name, and an empty answer says why.
+      localReads.get_offers = partnerDoorOneProductId.makePartnerDoorGetOffers({
+        getOffers: localReads.get_offers,
+        queryFn: query,
+        fail: throwPartnerDoorError,
+      });
       const executor = createCanonicalExecutor({
         kernel: commerce.kernel,
         upstream: invokeCommerceKernelRawUpstream,
@@ -34102,7 +34159,10 @@ async function getCommerceRemoteMcpAdapter() {
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
       rememberMcpToolNames(surface);
-      return createRemoteMcpAdapter(surface, {
+      // PARTNER_DOOR_ONE_PRODUCT_ID: the `/mcp` door's own view of the surface (the surface itself while off).
+      // The UCP door keeps projecting `surface`, above.
+      const { partnerDoorSurface } = await import('../mcp-server/src/partnerDoorOneProductId.js');
+      return createRemoteMcpAdapter(partnerDoorSurface(surface), {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
           if (req?.authInfo?.invoke_authenticated !== true) {

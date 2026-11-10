@@ -1658,6 +1658,13 @@ export function toToolError(error) {
     body.detail = {reason:"ucp_reap_attempt_retired",reconciliation_id:error.detail.reconciliation_id};
     body.recovery = "the original attempt is permanently closed; explicitly start a new checkout with a fresh idempotency_key";
   }
+  // PARTNER_DOOR_ONE_PRODUCT_ID's read refusals: the reason is our own vocabulary (snake_case, never a request
+  // value), and for PRODUCT_NOT_SERVABLE it is the serving gate's reason code, the fact the code exists to carry.
+  if (error instanceof PivotaCommerceError
+      && ["PRODUCT_NOT_SERVABLE", "PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "MERCHANT_PRODUCT_MISMATCH"].includes(code)
+      && typeof error.detail?.reason === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+  }
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {

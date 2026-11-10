@@ -3,7 +3,7 @@
 // so the codes/recovery are identical across Claude/ChatGPT/Gemini surfaces.
 // Mirrors §5 of docs/agent-checkout/safety-kernel-contract.md.
 
-/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'} PivotaErrorCode */
+/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'PRODUCT_NOT_SERVABLE'|'PRODUCT_GROUP_ID_NOT_PRODUCT_ID'|'MERCHANT_PRODUCT_MISMATCH'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'} PivotaErrorCode */
 
 /**
  * code -> { retriable, userMessage, recovery }
@@ -45,6 +45,16 @@ export const ERROR_CATALOG = Object.freeze({
   // shapes returned MERCHANT_UNAVAILABLE / retriable:true — "try again shortly" for an id that will never
   // resolve. retriable:false is the load-bearing bit; the honest message is the rest of it.
   UNKNOWN_PRODUCT_ID:     { retriable: false, recovery: 'do not retry; re-run search to obtain a valid product_id', userMessage: 'No product matches that id. Retrying will not change this — search again to get a valid product_id.' },
+  // PARTNER DOOR, ONE PRODUCT ID (PARTNER_DOOR_ONE_PRODUCT_ID; never thrown while it is off). Three read
+  // outcomes that used to be reported as NO_MERCHANT_OFFER or UNKNOWN_PRODUCT_ID, each now naming its one fact.
+  // The id IS a product, and a serving gate withholds it: `detail.reason` carries the gate's own reason code.
+  PRODUCT_NOT_SERVABLE:   { retriable: false, recovery: 'do not retry; the product exists but is withheld from serving (detail.reason); offer alternatives', userMessage: 'This product id is known, but the product is not servable right now (see detail.reason). This will not change on retry.' },
+  // The id is an identity GROUP id (`sig_` + 24 hex), not a product id (`sig_` + 32 hex). Same prefix, another
+  // namespace: it is refused by name instead of being answered as a product with no offer.
+  PRODUCT_GROUP_ID_NOT_PRODUCT_ID: { retriable: false, recovery: 'do not retry; pass the product_id of a search_catalog row (sig_ + 32 hex), not a group id', userMessage: 'That id is a product group id, not a product id. Pass the product_id from a search_catalog row instead. This will not change on retry.' },
+  // The seller named beside the product id is not the product's seller. Refused rather than dropped, so one
+  // seller's row is never served under another seller's name.
+  MERCHANT_PRODUCT_MISMATCH: { retriable: false, recovery: 'do not retry as sent; omit merchant_id, or pass the merchant_id returned with this product', userMessage: 'The merchant_id does not match this product\'s seller. Omit merchant_id, or pass the merchant_id returned with the product. This will not change on retry.' },
   USER_AUTH_REQUIRED:     { retriable: false, recovery: 'trigger OAuth',                            userMessage: 'Please sign in so I can place this order on your behalf.' },
   STATE_LINKAGE_MISMATCH: { retriable: false, recovery: 're-quote in this session',                userMessage: 'Something about this session does not line up. Let me start the order over.' },
   OPERATION_NOT_ALLOWED:  { retriable: false, recovery: 'use the correct tool for this operation',  userMessage: 'That action is not available here.' },
