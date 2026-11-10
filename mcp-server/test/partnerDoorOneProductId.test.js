@@ -209,8 +209,20 @@ test("on: a group-shaped id is refused as a group id only when today's path AND 
   const refusedWith = (status) => door({ get_product: notFound }, { groups: { [GROUP]: { status } } }).callTool("get_product", { product_id: GROUP });
   await assert.rejects(refusedWith("none"), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_has_no_servable_product"));
   await assert.rejects(refusedWith("no_database"), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_id_not_resolvable"));
-  // The kernel's other not-found code counts as not found too.
-  await assert.rejects(door({ get_product: () => kernelRefusal({ error: "PRODUCT_NOT_FOUND" }) }).callTool("get_product", { product_id: GROUP }), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_has_no_servable_product"));
+});
+
+test("on: when today's path already answers NO_MERCHANT_OFFER for a group-shaped id and the lookup finds nothing, that same error is the answer", async () => {
+  for (const status of ["none", "no_database"]) {
+    const original = kernelRefusal({ error: "PRODUCT_NOT_FOUND" });
+    await assert.rejects(door({ get_product: original }, { groups: { [GROUP]: { status } } }).callTool("get_product", { product_id: GROUP }), (e) => {
+      assert.equal(e, original, "the very error the flag-off door gives");
+      assert.equal(e.code, "NO_MERCHANT_OFFER");
+      return true;
+    }, status);
+  }
+  // A lookup that DOES resolve still gets its one retry after a NO_MERCHANT_OFFER.
+  const d = door({ get_product: (a) => (a.product_id === SIG ? { product: { product_id: SIG, price: 2 } } : kernelRefusal({ error: "PRODUCT_NOT_FOUND" })) }, { groups: { [GROUP]: { status: "resolved", productId: SIG } } });
+  assert.equal((await d.callTool("get_product", { product_id: GROUP })).product.product_id, SIG);
 });
 
 test("on: a lookup that could not be asked never degrades a group-shaped id: the flag-off answer is given, the very same error", async () => {
@@ -282,10 +294,17 @@ test("on: a seller that is not the answer's is checked against the signature's o
   const asked = [];
   assert.ok((await answering({ [SIG]: ["merch_obs_brandv"] }, asked).callTool("get_product", { merchant_id: "merch_obs_brandv", product_id: SIG })).product);
   assert.deepEqual(asked, [["sellers", SIG]]);
-  // A seller that belongs to neither, a signature with no row, and a lookup that could not be asked: refused.
-  for (const sellers of [{ [SIG]: ["merch_obs_brandv"] }, { [SIG]: [] }, {}]) {
+  // A seller that belongs to neither, and a signature with no row: refused, terminally.
+  for (const sellers of [{ [SIG]: ["merch_obs_brandv"] }, { [SIG]: [] }]) {
     await assert.rejects(answering(sellers).callTool("get_product", { merchant_id: "merch_obs_brandz", product_id: SIG }), isRefusal("MERCHANT_PRODUCT_MISMATCH", "merchant_not_seller_of_product"), JSON.stringify(sellers));
   }
+  // The rows could NOT be asked about: the seller may be the row's, so the refusal is retriable, not a mismatch.
+  await assert.rejects(answering({}).callTool("get_product", { merchant_id: "merch_obs_brandv", product_id: SIG }), (e) => {
+    assert.equal(e.code, "MERCHANT_UNAVAILABLE");
+    assert.equal(e.retriable, true);
+    assert.equal(e.detail.reason, "seller_lookup_unavailable");
+    return true;
+  });
   for (const [productSeller, named] of [["merch_obs_brandx", "merch_obs_brandy"], ["merch_obs_brandx", "merch_shop_a"], ["merch_shop_a", "merch_shop_b"], ["merch_shop_a", "external_seed"], ["external_seed", "merch_shop_a"]]) {
     await assert.rejects(
       door({ get_product: { product: { product_id: SIG, merchant_id: productSeller, price: 1 } } }, { sellers: { [SIG]: [productSeller] } }).callTool("get_product", { merchant_id: named, product_id: SIG }),

@@ -132,6 +132,9 @@ async function shapeProduct(value, { merchantId, asked, resolved, lookups }) {
   // group member, another listing, an offer) is another seller's product and is not accepted.
   if (nonEmpty(merchantId) && !sellerAmong(merchantId, sellersNamedByProduct(product))) {
     const rowSellers = signature ? await lookups.listSignatureSellerIds({ productId: signature }) : null;
+    // The rows could not be asked about: the caller's seller may well be the row's (the canonical-group
+    // fallback), so this is "try again", not a terminal wrong-seller refusal.
+    if (signature && !Array.isArray(rowSellers)) throw refusal("MERCHANT_UNAVAILABLE", "seller_lookup_unavailable", "get_product");
     if (!Array.isArray(rowSellers) || rowSellers.length === 0 || !sellerAmong(merchantId, rowSellers)) {
       throw refusal("MERCHANT_PRODUCT_MISMATCH", "merchant_not_seller_of_product", "get_product");
     }
@@ -203,6 +206,10 @@ async function getProduct(surface, toolArgs, rest, { lookups, log }) {
     // The lookup could not be asked: the answer is exactly the one given with the flag off.
     if (group.status === "unavailable") throw error;
     if (group.status !== "resolved") {
+      // Nothing servable under the id either way. When today's path already answered "no offer", that IS the
+      // answer (the id may be one search served: telling the partner to pass the id it just passed helps nobody).
+      // Only an id today's path calls unknown is named for what it is, a group id.
+      if (error.code === "NO_MERCHANT_OFFER") throw error;
       const [code, detail] = groupIdFailure(group, "get_product");
       throw new PivotaCommerceError(code, detail);
     }
