@@ -512,7 +512,8 @@ describe('the shaper is applied on the UCP dialect only, after the shared cache,
     const viaUcp = await ucp.callTool('get_product', { meta: AGENT_META, catalog: { id: ROW.pivota_signature_id } }, SESSION);
     assert.equal(viaUcp.ucp.version, UCP_RESPONSE_VERSION);
     assert.deepEqual(viaUcp.product.variants.map((v) => v.id), [`${ROW.pivota_signature_id}::v::v_a`, `${ROW.pivota_signature_id}::v::v_b`]);
-    assert.equal(viaUcp.messages, undefined);
+    // No variant warning; the one message is the no-market notice (no market named: answered as US, decision D-10).
+    assert.deepEqual(viaUcp.messages.map((m) => m.code), ['market_assumed']);
     const viaMcp = await native.callTool('get_product', { merchant_id: 'm', product_id: ROW.pivota_signature_id }, SESSION);
     assert.equal(viaMcp.ucp, undefined, 'native dialect not shaped');
     assert.equal(viaMcp.product.variants.length, 2, 'native keeps its real variants');

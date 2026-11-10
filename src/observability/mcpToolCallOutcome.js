@@ -30,6 +30,7 @@
 //   lane, lane_source, upstream_status    the search envelope's own markers, short tokens only
 //   degraded     boolean; plus upstream_timeout / upstream_degraded / fallback_used when true
 //   heartbeat_committed  the response outlived the heartbeat delay and was streamed (slow path)
+//   market_assumed  true when the call named no market and was answered for a US buyer (decision D-10)
 //
 // Measurement only: nothing reads these back, and nothing here may throw into the request it measures. The
 // fields come from the RESULT and the door's own bookkeeping, never from the tool arguments.
@@ -59,6 +60,8 @@ const OBSERVED_FIELDS = Object.freeze({
   upstream_degraded: (v) => (v === true ? true : undefined),
   fallback_used: (v) => (v === true ? true : undefined),
   heartbeat_committed: (v) => (v === true ? true : undefined),
+  // The call was answered for a market the request did not name (decision D-10): US, assumed.
+  market_assumed: (v) => (v === true ? true : undefined),
   // Internal to the recorder, never logged as such: they decide error_class and the tool label.
   error_retriable: (v) => (v === true || v === false ? v : undefined),
   tool_registered: (v) => (v === true || v === false ? v : undefined),
@@ -195,6 +198,7 @@ function createMcpToolCallRecorder() {
     out.degraded = degradedFlags.length > 0;
     for (const key of degradedFlags) out[key] = true;
     if (observed.heartbeat_committed === true) out.heartbeat_committed = true;
+    if (observed.market_assumed === true) out.market_assumed = true;
     return out;
   }
 

@@ -29,6 +29,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createPriceLogDoors, maskIds } = require('./_support/priceLogDoors.cjs');
+const { revertNoMarketDescriptionEdits } = require('./_support/noMarketDescriptionEdits.cjs');
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'price_verification_log', 'door_answers.json');
 const WRITE = process.env.PRICE_LOG_FIXTURE_WRITE || '';
@@ -66,10 +67,55 @@ function pinnedLines(lines, { flag }) {
     });
 }
 
-const snapshot = (r, { flag }) => ({
+// DECISION D-10 (2026-11-08): a read that names no market is answered as US and says so (`market_assumed`, and on the
+// UCP door the same notice in `messages`); recommend_products takes no market, so it always says so. These cases name
+// none: their answer is the pre-log one PLUS that label, which is taken back out (and asserted) here. Every other
+// case names a market, and is compared byte for byte as it always was.
+const NO_MARKET_CASES = new Set(['ucp_search', 'public_search', 'mcp_recommend']);
+function stripMarketAssumed(text) {
+  const o = JSON.parse(text);
+  const r = (o && o.result) || {};
+  let label = null;
+  const take = (inner) => {
+    if (!inner || typeof inner !== 'object' || !('market_assumed' in inner)) return false;
+    label = inner.market_assumed;
+    delete inner.market_assumed;
+    if (Array.isArray(inner.messages)) {
+      const rest = inner.messages.filter((m) => m.code !== 'market_assumed');
+      if (rest.length) inner.messages = rest;
+      else delete inner.messages;
+    }
+    return true;
+  };
+  if (r.structuredContent) take(r.structuredContent);
+  if (Array.isArray(r.content) && r.content[0] && /^\{/.test(r.content[0].text)) {
+    const inner = JSON.parse(r.content[0].text);
+    if (take(inner)) r.content[0].text = JSON.stringify(inner, null, 2);
+  }
+  return { text: JSON.stringify(o), label };
+}
+
+// ...and their `mcp tools/call complete` line records `market_assumed: true` (the production count of calls that
+// relied on the default), which is taken back out of the pinned lines (and asserted) the same way.
+function assumedOnCompletionLines(lines, name) {
+  if (!NO_MARKET_CASES.has(name)) return { lines, assumed: undefined };
+  let assumed = false;
+  const out = lines.map((l) => {
+    if (l.msg !== 'mcp tools/call complete' || !('market_assumed' in l)) return l;
+    assumed = l.market_assumed === true;
+    const { market_assumed: _m, ...rest } = l;
+    return rest;
+  });
+  return { lines: out, assumed };
+}
+
+const snapshot = (r, { flag, name } = {}) => ({
   status: r.status,
-  text: maskIds(r.text),
-  lines: pinnedLines(r.lines, { flag }),
+  completion_market_assumed: assumedOnCompletionLines(pinnedLines(r.lines, { flag }), name).assumed,
+  // The tool list: D-10's description edits (and only those) reversed before the byte comparison.
+  text: NO_MARKET_CASES.has(name) ? stripMarketAssumed(maskIds(r.text)).text : name === 'public_tools_list' ? revertNoMarketDescriptionEdits(maskIds(r.text)) : maskIds(r.text),
+  market_assumed: NO_MARKET_CASES.has(name) ? stripMarketAssumed(maskIds(r.text)).label : undefined,
+  lines: assumedOnCompletionLines(pinnedLines(r.lines, { flag }), name).lines,
   carriers: r.lines.filter(isSearchCompletion).map((l) => {
     const out = {};
     for (const k of MARKET_CARRIER_KEYS) if (k in l) out[k] = l[k];
@@ -104,9 +150,14 @@ if (WRITE) {
       const want = fixture.cases[name];
       assert.ok(want, `no fixture for ${name}`);
       for (const flag of [false, true]) {
-        const got = snapshot(await doors.send(doors.CASES[name], { flag }), { flag });
+        const got = snapshot(await doors.send(doors.CASES[name], { flag }), { flag, name });
         const label = `${name} (PRICE_VERIFICATION_LOG ${flag ? 'on' : 'off'})`;
         assert.equal(got.status, want.status, `${label}: status`);
+        if (NO_MARKET_CASES.has(name)) {
+          assert.equal(got.market_assumed && got.market_assumed.code, 'US', `${label}: no market named, so US assumed and said`);
+          assert.equal(got.completion_market_assumed, true, `${label}: and the completion line counts it`);
+        }
+        else assert.equal(got.market_assumed, undefined);
         assert.equal(got.text, want.text, `${label}: the answer must be the pre-log answer, byte for byte`);
         assert.deepEqual(got.lines, want.lines, `${label}: live-read and completion lines`);
         assert.deepEqual(got.carriers, EXPECTED_CARRIERS[name] || [], `${label}: market_carrier / ignored_payload_market`);

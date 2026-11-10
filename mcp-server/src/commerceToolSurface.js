@@ -61,6 +61,7 @@ import {
   UCP_GET_PRODUCT_MARKET_INPUT_SCHEMA,
   UCP_GET_PRODUCT_MARKET_DESCRIPTION,
   ucpGetProductForwardMarketEnabled,
+  ucpNamesUnforwardedMarket,
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 import {
@@ -74,6 +75,8 @@ import {
 import queryLengthLimit from "../../src/findProductsMulti/queryLengthLimit.js";
 import { cacheHitField, describeUpstreamEnvelope, noteToolCall } from "./toolCallOutcome.js";
 import priceVerificationFacts from "../../src/observability/priceVerificationFacts.js";
+// THE NO-MARKET RULE (decision D-10): one shared helper, CommonJS so the gateway's own routes read the same one.
+import requestMarket from "../../src/services/requestMarket.js";
 import listPriceTiers from "../../src/services/listPriceTiers.js";
 
 // THE LIST PRICE TIERS AT THIS DOOR (src/services/listPriceTiers.js; LIST_ROW_PRICE_AS_OF / PRICE_STALENESS_DEMOTE,
@@ -242,7 +245,7 @@ const UCP_LIVE_OFFER_READ_ENFORCED = liveReadMode("UCP_LIVE_OFFER_READ") === "en
 // get_product's description while `market` is declared (verified-price design, section 4: a stored price is
 // for discovery; get_offers asks the merchant).
 const GET_PRODUCT_MARKET_SENTENCES =
-  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: without it nothing is read live and the price is Pivota's stored one." +
+  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: without it the product is answered for a US buyer, and the answer says so in `market_assumed`." +
   " A stored price is for discovery only: before quoting a final price to a buyer, call get_offers for the product and market and quote only an offer whose `merchant_price_verified` is true.";
 
 function positiveIntEnv(name, fallback) {
@@ -359,7 +362,22 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
    * @returns {Promise<object>}     sanitized result; THROWS PivotaCommerceError / IdentityRequiredError /
    *                                UnknownToolError on failure (the MCP server formats these).
    */
+  // A REFUSAL decided for an assumed US says so too (decision D-10): a read that named no market and is refused
+  // carries `market_assumed` on its error, which toToolError publishes beside the code. `call.marketAssumed` is set
+  // by callToolOnce as soon as it is decided. Errors only, and only the curated classes toToolError trusts.
   async function callTool(toolName, toolArgs = {}, sessionContext = {}, options = {}) {
+    const call = { marketAssumed: false };
+    try {
+      return await callToolOnce(toolName, toolArgs, sessionContext, options, call);
+    } catch (err) {
+      if (call.marketAssumed && err && typeof err === "object" && SAFE_ERROR_CLASSES.some((C) => err instanceof C)) {
+        Object.defineProperty(err, "marketAssumed", { value: true, enumerable: false, configurable: true });
+      }
+      throw err;
+    }
+  }
+
+  async function callToolOnce(toolName, toolArgs, sessionContext, options, call) {
     // When this call started: a `live` row read before it is a replay (doorListPriceTiers).
     const callStartedAtMs = Date.now();
     // dialect defaults to MCP, so every existing caller is unchanged.
@@ -423,7 +441,19 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
 
     // 3) build executor params by ALLOWLIST (only the fields this op defines). One move strips identity,
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
-    const params = toParams(op, nativeArgs);
+    //    The market a read is answered for is resolved here too (decision D-10, see marketAssumedFor): a UCP
+    //    get_product whose `address_country` the mapper does not forward (UCP_GET_PRODUCT_FORWARD_MARKET off) NAMED
+    //    a market, so it is not assumed for.
+    const marketAssumed = marketAssumedFor(op, nativeArgs, {
+      namedElsewhere: dialect === TOOL_DIALECTS.ucp && ucpNamesUnforwardedMarket(op, toolArgs),
+    });
+    const params = toParams(op, nativeArgs, { assumeMarket: marketAssumed && MARKET_READ_OPS.includes(op.id) });
+    call.marketAssumed = marketAssumed;
+    // The tools/call completion line records every call answered for an assumed US (`market_assumed: true`), so how
+    // many partners rely on the default is measured in production, not only by the synthetic eval.
+    const observeEarly = typeof options.observe === "function" ? options.observe : null;
+    if (marketAssumed) noteToolCall(observeEarly, { market_assumed: true });
+    const label = (value) => withMarketAssumed(value, marketAssumed, dialect);
 
     // 3a) UCP CHECKOUT ESCALATION (path 2 — rows Pivota does not transact). On the UCP dialect only, for the
     //     checkout operations, a cart of OBSERVED-seller rows is answered with a spec `requires_escalation`
@@ -486,6 +516,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       }
       const escalationDeclines = [];
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger });
+      if (escalated && isPlainObject(escalated.market_assumed)) noteToolCall(typeof options.observe === "function" ? options.observe : null, { market_assumed: true });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
       if (escalated) {
@@ -497,7 +528,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     kernel, which cannot price a seller Pivota has no connection to and answered a retriable
       //     MERCHANT_UNAVAILABLE for it. A cart with no storefront row passes through untouched. See
       //     refuseUnservedStorefrontCheckout in ucpCheckoutEscalation.js.
-      await refuseUnservedStorefrontCheckout({ op, params, ctx, executor: reads, declined: escalationDeclines.length > 0 });
+      await refuseUnservedStorefrontCheckout({ op, params, ctx, executor: reads, declined: escalationDeclines.length > 0, declineReasons: escalationDeclines });
       // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
       // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which
@@ -608,13 +639,15 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       const fresh = await attributeOwn(await execute());
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
       noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
-      return shape(doorListPriceTiers(op.id, fresh, dialect, callStartedAtMs));
+      return label(shape(doorListPriceTiers(op.id, fresh, dialect, callStartedAtMs)));
     }
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute, {
       onState: (state) => noteToolCall(observe, () => cacheHitField(state)),
     });
     noteToolCall(observe, () => describeUpstreamEnvelope(value));
     noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
+    // The label goes on AFTER the cache, never into it: a no-market call and a declared-US call share one entry
+    // (they are the same params), and only the first was assumed for.
     const own = cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
@@ -626,7 +659,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     // A failed clone hands back the SHARED entry: stamping it would write this caller's links into what
     // every later caller is served (O-04 review, P3-G2). Serve it unstamped instead.
     const shared = own === value && value !== null && typeof value === "object";
-    return shape(doorListPriceTiers(op.id, shared ? own : await attributeOwn(own), dialect, callStartedAtMs));
+    return label(shape(doorListPriceTiers(op.id, shared ? own : await attributeOwn(own), dialect, callStartedAtMs)));
   }
 
   /**
@@ -786,8 +819,49 @@ const QUOTE_KEYS = ["merchant_id", "discount_codes", "customer_email", "customer
 const ITEM_KEYS = ["product_id", "sku_id", "variant_id", "quantity"];
 const ADDR_KEYS = ["country", "city", "postal_code", "state", "address_line1", "address_line2", "name", "recipient_name", "phone"];
 
-function toParams(op, toolArgs) {
+// --- THE MARKET A READ IS ANSWERED FOR (decision D-10) ------------------------------------------------------
+//
+// THE ONE PLACE each door resolves the request market. Every dialect (native /mcp, UCP) and the public tier reach
+// the executor through `toParams`, so a market resolved here is the market every lane downstream sees: the search
+// lanes and their live read, get_product's detail hop and live variant read, get_offers' currency filter, cart gate
+// and live offer read, get_alternatives' graph read. A read that names no market (requestMarket.marketIsUnnamed:
+// absent, null, blank) is sent downstream AS US and its answer carries `market_assumed`; a read that names one is
+// passed exactly as before, valid or not, so a declared market's answer is byte-identical and an invalid one is
+// refused (or ignored) exactly as it was. recommend_products takes no market at all: it is always answered for the
+// US (its lane prices in USD), so its answer always says so; giving it a `market` is its own change (C-13).
+const MARKET_READ_OPS = Object.freeze(["search_catalog", "get_product", "get_offers", "get_alternatives"]);
+const ALWAYS_US_OPS = Object.freeze(["recommend_products"]);
+
+/** True when this op's answer is decided for a market the request did not name. */
+function marketAssumedFor(op, nativeArgs, { namedElsewhere = false } = {}) {
+  if (ALWAYS_US_OPS.includes(op.id)) return true;
+  if (!MARKET_READ_OPS.includes(op.id) || namedElsewhere) return false;
+  return requestMarket.marketIsUnnamed(asObj(nativeArgs).market);
+}
+
+/** The answer, with `market_assumed` when its market was assumed. Never mutates `value` (it may be a cache entry). */
+function withMarketAssumed(value, assumed, dialect) {
+  if (!assumed || !isPlainObject(value)) return value;
+  const out = { ...value, market_assumed: requestMarket.marketAssumedLabel() };
+  // A UCP envelope the shaper built ({ ucp, ... }): the spec's own channel says it too, because `messages` is what
+  // a UCP platform is obliged to read. Same text, one `info`.
+  if (dialect === TOOL_DIALECTS.ucp && isPlainObject(value.ucp)) {
+    out.messages = [...(Array.isArray(value.messages) ? value.messages : []), {
+      type: "info", code: "market_assumed", path: "$", content: requestMarket.MARKET_ASSUMED_MESSAGE, content_type: "plain",
+    }];
+  }
+  return out;
+}
+
+function toParams(op, toolArgs, { assumeMarket = false } = {}) {
   const a = asObj(toolArgs);
+  // `assumeMarket` is decided by the caller (marketAssumedFor), so the cache key and the executor see one market.
+  // An assumed market also travels as `market_assumed: true` (search and get_offers, the reads whose answers carry
+  // backend-minted `/r` links): the backend keys its gates on the US it is sent, but must not stamp a link
+  // `market_observed`, a claim that the buyer named it. It also keeps those answers out of the declared-US cache
+  // entry, whose links say the opposite. A declared market adds nothing.
+  const market = assumeMarket ? requestMarket.ASSUMED_MARKET : a.market;
+  const assumedMember = assumeMarket ? { market_assumed: true } : {};
   switch (op.id) {
     case "search_catalog": {
       // Same limit the invoke route enforces (QUERY_TOO_LONG). Refused HERE so the agent gets an
@@ -800,24 +874,24 @@ function toParams(op, toolArgs) {
             "Send the product, brand or need in a few words.",
         );
       }
-      return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]) } };
+      return { payload: { search: { ...pick({ ...a, market }, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]), ...assumedMember } } };
     }
     case "get_product":
       return {
         payload: {
           product: pick(a, ["merchant_id", "product_id", "sku_id"]),
           ...(Array.isArray(a.include) ? { include: a.include } : {}),
-          ...(typeof a.market === "string" && a.market.trim() ? { market: a.market.trim() } : {}),
+          ...(typeof market === "string" && market.trim() ? { market: market.trim() } : {}),
         },
         // The agent's own get_product: the executor may read variants live from the merchant
         // (localReads.live_product_read). Internal executor reads never set this.
         live_read: true,
       };
     case "get_alternatives":
-      return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
+      return { payload: pick({ ...a, market }, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
     case "get_offers":
       return {
-        payload: pick(a, ["merchant_id", "product_id", "product_group_id", ...(GET_OFFERS_VARIANT_ID ? ["variant_id"] : []), "currency", "market", "limit"]),
+        payload: { ...pick({ ...a, market }, ["merchant_id", "product_id", "product_group_id", ...(GET_OFFERS_VARIANT_ID ? ["variant_id"] : []), "currency", "market", "limit"]), ...assumedMember },
       };
     case "get_intel":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "pivota_signature_id"]) };
@@ -1079,7 +1153,7 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", additionalProperties: false,
     properties: {
       query: { type: "string", maxLength: queryLengthLimit.resolveSearchQueryMaxChars() }, merchant_id: { type: "string" }, category: { type: "string" },
-      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" }, market: { type: "string", description: "Buyer country (ISO 3166-1 alpha-2)." },
+      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" }, market: { type: "string", description: "Buyer country (ISO 3166-1 alpha-2). Absent, the search is answered for a US buyer and the answer carries `market_assumed`." },
       in_stock_only: { type: "boolean" }, page: { type: "integer", minimum: 1 },
       page_size: { type: "integer", minimum: 1, maximum: 50 },
     },
@@ -1097,7 +1171,7 @@ const INPUT_SCHEMAS = Object.freeze({
         ? {
             market: {
               type: "string",
-              description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, GB, ...). State it only when you know it: variant prices and stock may then be read live from the merchant for that market. Without it nothing is read live (`product.live_read.reason: no_market`); a market is never inferred from a listing's currency, and a market Pivota does not price is not read at all.",
+              description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, GB, ...). State it only when you know it: variant prices and stock may then be read live from the merchant for that market. Without it the product is answered, and read live, for a US buyer, and the answer carries `market_assumed`; a market is never inferred from a listing's currency, and a market Pivota does not price is not read at all.",
             },
           }
         : {}),
@@ -1123,7 +1197,7 @@ const INPUT_SCHEMAS = Object.freeze({
       ...(GET_OFFERS_VARIANT_ID
         ? { variant_id: { type: "string", description: "One option of a seller's listing (from an offer's `variants`), for that variant's own offer and cart." } }
         : {}),
-      market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, JP, ...). State it only when you know it: offers and their cart links are then decided for that market, and only offers priced in that market's currency are returned (metadata.withheld_other_currency_count counts the rest; a market Pivota prices nothing in returns no offers, reason market_not_priced). Absent, no market is claimed and offers come back referral-only, in whatever currency each is priced." },
+      market: { type: "string", description: "The buyer's market, ISO-3166-1 alpha-2 (US, SG, JP, ...). State it only when you know it: offers and their cart links are then decided for that market, and only offers priced in that market's currency are returned (metadata.withheld_other_currency_count counts the rest; a market Pivota prices nothing in returns no offers, reason market_not_priced). Absent, the offers are decided for a US buyer (USD offers, US cart links), and the answer carries `market_assumed`." },
       limit: { type: "integer", minimum: 1, maximum: 10 },
     },
   },
@@ -1489,7 +1563,32 @@ export function commerceToolParamsKey(toolName, toolArgs = {}, { dialect } = {})
   if (!op) throw new UnknownToolError(toolName);
   const args = isPlainObject(toolArgs) ? toolArgs : {};
   const nativeArgs = resolved === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, args) : args;
-  return `${op.id}:${stableStringify(toParams(op, nativeArgs) ?? {})}`;
+  const assumed = marketAssumedFor(op, nativeArgs, { namedElsewhere: resolved === TOOL_DIALECTS.ucp && ucpNamesUnforwardedMarket(op, args) });
+  return `${op.id}:${stableStringify(toParams(op, nativeArgs, { assumeMarket: assumed && MARKET_READ_OPS.includes(op.id) }) ?? {})}`;
+}
+
+/**
+ * Whether a read tool call's answer is decided for a market the request did not name (decision D-10). For a tier
+ * that caches above this surface keyed on `commerceToolParamsKey` (the public tier): a no-market call and a
+ * declared-US call share that key, so the tier labels its own answer per call with this, never in its cache.
+ */
+export function commerceToolMarketAssumed(toolName, toolArgs = {}, { dialect } = {}) {
+  const resolved = normalizeDialect(dialect);
+  const op = (resolved === TOOL_DIALECTS.ucp ? OP_BY_UCP_TOOL : OP_BY_MCP)[toolName];
+  if (!op) return false;
+  const args = isPlainObject(toolArgs) ? toolArgs : {};
+  let nativeArgs;
+  try {
+    nativeArgs = resolved === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, args) : args;
+  } catch {
+    return false; // a call the mapper refuses has no answer to label
+  }
+  return marketAssumedFor(op, nativeArgs, { namedElsewhere: resolved === TOOL_DIALECTS.ucp && ucpNamesUnforwardedMarket(op, args) });
+}
+
+/** The label member itself, for a tier that projects this surface's answer into its own shape. */
+export function marketAssumedMember() {
+  return requestMarket.marketAssumedLabel();
 }
 
 export function resolveSessionIdentity(extra) {
@@ -1539,6 +1638,8 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // A refusal decided for an assumed US (decision D-10) says so, in the same member an answer would carry.
+  if (error.marketAssumed === true) body.market_assumed = requestMarket.marketAssumedLabel();
   if (code === "OPERATION_NOT_ALLOWED" && ["ucp_reap_create_refused", "ucp_reap_create_not_available", "reap_create_paused"].includes(error.detail?.reason)) {
     body.detail = { reason: error.detail.reason };
     body.recovery = "correct this selected Reap request; no alternate checkout route will be opened";

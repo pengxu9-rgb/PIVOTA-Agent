@@ -173,10 +173,12 @@ test('through the UCP dialect surface: the executor sees market only when the fl
   }
   assert.deepEqual(seen.map((c) => c.op), ['get_product', 'get_product', 'get_product', 'get_product'], 'the refused call never reached the executor');
   assert.deepEqual(seen.map((c) => c.params.payload), [
+    // off: the stated market is not forwarded, and a request that NAMED one is never answered "assumed"
     { product: { product_id: 'sig_1' } },
     { product: { product_id: 'sig_1' }, market: 'US' },
-    { product: { product_id: 'sig_1' } },
-    { product: { product_id: 'sig_1' } },
+    // on, and no market named (absent or null): answered as US (decision D-10), so US is what is read
+    { product: { product_id: 'sig_1' }, market: 'US' },
+    { product: { product_id: 'sig_1' }, market: 'US' },
   ]);
   for (const c of seen) assert.equal(c.params.live_read, true, 'the agent\'s own get_product opts into the live read');
   assert.doesNotMatch(surface.tools.find((t) => t.name === 'get_product').description, /address_country/, 'off again');
@@ -194,7 +196,9 @@ test('the read-cache key follows the forwarded market (two markets never share a
     const onSg = commerceToolParamsKey('get_product', { meta: META, catalog: { id: 'sig_1', context: { address_country: 'SG' } } }, { dialect: 'ucp' });
     const onNone = commerceToolParamsKey('get_product', { meta: META, catalog: { id: 'sig_1' } }, { dialect: 'ucp' });
     assert.notEqual(onUs, onSg);
-    assert.equal(onNone, offUs);
+    // No market named is answered as US (decision D-10): it is the US entry, not the market-less one.
+    assert.equal(onNone, onUs);
+    assert.notEqual(onNone, offUs);
   } finally {
     if (prior === undefined) delete process.env.UCP_GET_PRODUCT_FORWARD_MARKET;
     else process.env.UCP_GET_PRODUCT_FORWARD_MARKET = prior;

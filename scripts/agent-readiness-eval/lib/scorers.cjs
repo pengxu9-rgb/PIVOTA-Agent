@@ -290,9 +290,15 @@ function scoreNegative(kind, products, expect = {}, { toolError = false } = {}) 
 
 // ---- row integrity ----------------------------------------------------------------------------------------
 
-/** Currency vs market, price present/positive, link well-formed, for one page of products. */
-function scoreRows(products, { market } = {}) {
+/**
+ * Currency vs market, price present/positive, link well-formed, for one page of products.
+ * `assumedMarket`: the market the ANSWER says it assumed for a request that named none (`market_assumed.code`,
+ * decision D-10). Such rows are still no-market rows, counted as LABELLED, and their currency is checked against the
+ * assumed market's (`assumed_market_mismatch`): a labelled "US assumed" page priced in SGD is still wrong.
+ */
+function scoreRows(products, { market, assumedMarket } = {}) {
   const expectedCurrency = currencyForMarket(market);
+  const assumedCurrency = !market ? currencyForMarket(assumedMarket) : null;
   const out = {
     rows: 0,
     missing_price: 0,
@@ -307,6 +313,9 @@ function scoreRows(products, { market } = {}) {
     // SILENT US default, which the scorecard surfaces as a finding.
     no_market_rows: 0,
     no_market_currency: {},
+    // ...of which the answer SAID which market it assumed (`market_assumed`): a labelled default, not a silent one.
+    no_market_labeled_rows: 0,
+    assumed_market_mismatch: 0,
     mixed_currency_pages: 0,
   };
   const pageCurrencies = new Set();
@@ -324,6 +333,10 @@ function scoreRows(products, { market } = {}) {
       if (!market && p.price.currencyValid) {
         out.no_market_rows += 1;
         out.no_market_currency[p.price.currency] = (out.no_market_currency[p.price.currency] || 0) + 1;
+        if (assumedCurrency) {
+          out.no_market_labeled_rows += 1;
+          if (p.price.currency !== assumedCurrency) out.assumed_market_mismatch += 1;
+        }
       }
     }
     const problem = linkProblem(p.link);

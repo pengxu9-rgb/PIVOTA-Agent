@@ -33,7 +33,16 @@ const OpenAI = require('openai');
 const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
-const { installInvokeEgress } = require('./invokeEgress');
+const {
+  LEGACY_SEED_PROBE_HEADER,
+  finalizeInvokeSearchBody,
+  installInvokeEgress,
+  isInvokeResponseCommitted,
+  isLegacySeedProbeHop,
+  legacySeedProbeHopHeaders,
+  projectInvokeResponse,
+} = require('./invokeEgress');
+const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('./services/requestMarket');
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
@@ -619,6 +628,8 @@ const {
   loopbackCallerHeaders,
   loopbackSyntheticHeaders,
   verifyLoopbackSynthetic,
+  loopbackMarketAssumedHeaders,
+  stripUnvouchedMarketAssumed,
 } = require('./guardrails/loopbackCallerAssertion');
 const {
   SYNTHETIC_ASSERTION_HEADER,
@@ -2889,6 +2900,10 @@ function buildSearchProductsV2Body({
     search_all_merchants: searchAllMerchants,
     query: search?.query != null ? String(search.query || '') : undefined,
     market: firstNonEmptyString(search?.market, metadata?.market),
+    // Decision D-10: the search market was ASSUMED (US, for a call that named none). Provenance only, for the
+    // backend's `/r` minters; absent for every other call, so their bodies are byte-identical.
+    // ...and only beside the US it assumed (defence in depth: the invoke route already strips an unvouched one).
+    market_assumed: search?.market_assumed === true && String(search?.market || '').trim().toUpperCase() === 'US' ? true : undefined,
     category: firstNonEmptyString(search?.category),
     catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
     catalog_entity_mode: firstNonEmptyString(
@@ -5595,12 +5610,31 @@ async function fetchExternalSeedProductDetailFromDb(args) {
     LIMIT 1
   `;
 
+  // D-06 / review GD-3: a re-routed legacy id is read under the gates a normal seed detail read is held to
+  // (legacySeedIdServability.legacySeedDetailGate: its own row only, not attached, the buyer's currency, no
+  // quarantined source), in ONE statement, and never through the looser fallbacks below.
+  const legacySeedGate =
+    args?.legacySeedGate && typeof args.legacySeedGate === 'object' && args.legacySeedGate.matchClause
+      ? args.legacySeedGate
+      : null;
+
   try {
     let matchedVia = 'external_product_id';
     let row = null;
     // Built from the fresh check's match set (signatureSeedNotActive.js), so the
     // two cannot drift.
-    const exactMatches = SEED_EXACT_MATCHES;
+    const exactMatches = legacySeedGate ? [] : SEED_EXACT_MATCHES;
+
+    if (legacySeedGate) {
+      // P3-f: under its own short budget, so a hung database answers a legacy pair with its old route quickly.
+      const gatedSql = selectColumns.replace('%%MATCH_CLAUSE%%', legacySeedGate.matchClause);
+      const gatedParams = [productId, String(legacySeedGate.servingCurrency || '').trim().toUpperCase()];
+      const res = typeof dbModuleForLaneDeadlines.queryWithBudget === 'function'
+        ? await dbModuleForLaneDeadlines.queryWithBudget(gatedSql, gatedParams, { timeoutMs: legacySeedDetailDbBudgetMs() })
+        : await query(gatedSql, gatedParams);
+      row = Array.isArray(res?.rows) ? res.rows[0] : null;
+      if (!row) return null;
+    }
 
     for (const [label, matchClause] of exactMatches) {
       const res = await query(selectColumns.replace('%%MATCH_CLAUSE%%', matchClause), [productId]);
@@ -32718,6 +32752,81 @@ function resolveSelfInvokeBudget(defaultTimeoutMs) {
 // tool's results and shares them across callers). Both lanes are listed: the unscoped multi-merchant one
 // and the merchant-scoped one, which goes to the Python backend where we cannot audit per-buyer behaviour.
 const COMMERCE_CACHED_READ_OPS = new Set(['find_products_multi', 'find_products']);
+const {
+  applyLegacySeedPurchasabilityGate,
+  confirmNoOpenableLegacySeeds,
+  dropUnopenableLegacySeedRows,
+  isLegacySeedDetailServable,
+  legacySeedDetailDbBudgetMs,
+  legacySeedDetailGate,
+  legacySeedProbeDeadlineMs,
+  routesToLegacySeedLane,
+} = require('./services/legacySeedIdServability');
+
+// The search-side probe, for a whole page in ONE statement (review GD-2): a Map id -> true only when the
+// database answers that no seed passes the legacy route's own gate for any buyer (P2-N1: the drop and the route
+// are one rule, legacySeedIdServability.confirmNoOpenableLegacySeeds). It throws when it cannot ask (no
+// database, an error), and the rows are then kept. The statement runs under the drop's own
+// deadline (queryWithBudget), so a hung one hands its connection back instead of holding a pool slot.
+function legacySeedProbeQuery(sql, params) {
+  const budgeted = dbModuleForLaneDeadlines.queryWithBudget;
+  return typeof budgeted === 'function'
+    ? budgeted(sql, params, { timeoutMs: legacySeedProbeDeadlineMs() })
+    : query(sql, params);
+}
+
+function legacySeedNoActiveSeeds(productIds) {
+  return confirmNoOpenableLegacySeeds(productIds, {
+    queryFn: process.env.DATABASE_URL ? legacySeedProbeQuery : undefined,
+  });
+}
+
+// D-06 / G-4: a legacy `<slug>:<hex>` seed id opens on THIS gateway's seed-DB detail lane, the lane that
+// already resolves it (exact match on external_product_id), instead of the backend products_cache read that
+// cannot. Null when the pair is not a legacy seed ref or the lane has no active seed for it; the caller then
+// keeps its own route, so nothing that resolved before stops resolving.
+//
+// Review GD-3: only under the gates a normal detail read is held to (legacySeedIdServability.
+// legacySeedDetailGate), for the BUYER'S market (`requestedMarket`, raw, as the door read it; silence is the
+// served default): a quarantined source, an attached seed or a seed priced in another currency is not
+// re-routed, and neither is a request whose market has no single serving currency. The built detail is
+// checked again with the door's own currency test before it is served.
+async function readLegacySeedDetail(merchantId, productId, { requestedMarket } = {}) {
+  if (!routesToLegacySeedLane(merchantId, productId)) return null;
+  const legacySeedGate = legacySeedDetailGate(requestedMarket);
+  if (!legacySeedGate) return null;
+  try {
+    const seedDetail = await fetchExternalSeedProductDetailFromDb({
+      productId: String(productId).trim(),
+      legacySeedGate,
+    });
+    if (!seedDetail || !seedDetail.product) return null;
+    if (!isLegacySeedDetailServable(seedDetail.product, legacySeedGate)) return null;
+    // P3-e: the merchant-purchasability gate, as every offer path meets it (a no-op while it is off). An
+    // unnamed market is asked about as US, the market it is answered for (D-10).
+    const product = await applyLegacySeedPurchasabilityGate(seedDetail.product, {
+      market: resolveRequestMarket(requestedMarket).market,
+    });
+    return product === seedDetail.product ? seedDetail : { ...seedDetail, product };
+  } catch (_) {
+    return null;
+  }
+}
+
+function legacySeedDetailResponse(seedDetail) {
+  return {
+    status: 'success',
+    success: true,
+    product: seedDetail.product,
+    metadata: {
+      query_source: 'external_seed_db',
+      detail_source: 'external_seed_db',
+      matched_via: seedDetail.matched_via || null,
+      legacy_seed_route: true,
+    },
+  };
+}
+
 
 // `options.signal` (an AbortSignal) cancels the upstream request itself: get_offers' second offers.resolve
 // call aborts at its own deadline instead of abandoning a request that keeps running.
@@ -32758,6 +32867,13 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       //    2026-08-27) — reroute.
       // The predicates come from services/externalSeedLane so the seller-shape knowledge stays in
       // its one watched place (the sentinel-literal ratchet exists because twins of it regressed).
+      // A legacy `<slug>:<hex>` seed id with the shared seller (or none) opens on the seed-DB lane first;
+      // neither the backend products_cache read nor the unscoped signature lane can resolve it.
+      // The buyer's market rides along exactly as it does to get_pdp_v2 below (declared, then the payload's own).
+      const legacySeedDetail = await readLegacySeedDetail(rawDetailMerchant, pid, {
+        requestedMarket: firstNonEmptyString(options?.market, payload?.market, metadata?.market) || undefined,
+      });
+      if (legacySeedDetail) return legacySeedDetailResponse(legacySeedDetail);
       const seedSupplyUnservableUpstream = isSeedSupplyUnservableUpstream(rawDetailMerchant, pid);
       const merchantScoped = rawDetailMerchant !== '' && !seedSupplyUnservableUpstream;
       if (!merchantScoped && pid) {
@@ -32950,6 +33066,12 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // The door, caller and request id this call is made for, so the loopback invoke's price lines name
       // them (src/observability/priceVerificationLog.js). Log labels only; {} unless PRICE_VERIFICATION_LOG.
       ...(url.startsWith(`${selfInvokeBase()}/`) ? priceContextHeaders() : {}),
+      // The loopback search hop asks this process's invoke egress to say whether it probed the page's legacy seed
+      // rows (LEGACY_SEED_PROBE_HEADER, read below). A per-process token: outside callers never get the header.
+      ...(selfInvoked && op === 'find_products_multi' ? legacySeedProbeHopHeaders() : {}),
+      // Decision D-10: a search this gateway answered for an ASSUMED US vouches for its own `search.market_assumed`
+      // (the invoke route strips the flag from every request that cannot): see loopbackCallerAssertion.js.
+      ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackMarketAssumedHeaders(payload) : {}),
       ...headers,
     },
     data: requestBody,
@@ -33001,15 +33123,28 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
         : pdpV2Detail
           ? normalizePdpV2ToProductDetail(body)
           : body;
-  if (
+  const result =
     normalizedBody &&
     normalizedBody.ok === true &&
     normalizedBody.data &&
     typeof normalizedBody.data === 'object'
-  ) {
-    return normalizedBody.data;
+      ? normalizedBody.data
+      : normalizedBody;
+  // D-06: the kernel's merchant-scoped find_products goes to the backend, outside the invoke egress, so the
+  // search projection runs here too (idempotent on a body the loopback egress already projected).
+  const projected = projectInvokeResponse(result, { operation: op, door: 'commerce_kernel' });
+  if (!COMMERCE_CACHED_READ_OPS.has(op)) return projected;
+  // Review GD-2: the loopback hop's own invoke egress already asked the database about this page (it says so
+  // in LEGACY_SEED_PROBE_HEADER), so asking again here would only pay the probe twice for the same rows.
+  if (selfInvoked && resp?.headers && resp.headers[LEGACY_SEED_PROBE_HEADER.toLowerCase()]) return projected;
+  const dropped = await dropUnopenableLegacySeedRows(projected, { noActiveSeeds: legacySeedNoActiveSeeds });
+  if (dropped.droppedIds.length) {
+    logger.info(
+      { op, door: 'commerce_kernel', dropped_legacy_seed_rows: dropped.droppedIds.length, product_ids: dropped.droppedIds.slice(0, 10) },
+      'search: legacy seed rows no lane can open were dropped',
+    );
   }
-  return normalizedBody;
+  return dropped.body;
 }
 
 // The resource a partner-identity op acts on, as the backend reads it for the binding
@@ -33855,7 +33990,7 @@ async function getCommerceRemoteMcpAdapter() {
           // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
           priceCache: priceCacheHooks,
           log: logUcpLiveRead,
-          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, market_assumed, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
                 // `sku_id` names one variant: offers.resolve then answers that variant (and its cart) only.
@@ -33867,6 +34002,8 @@ async function getCommerceRemoteMcpAdapter() {
                 // (pivota-backend #2411 `payload.market`), so a named market lets a positive merchant keep
                 // its cart; absent, the payload is byte-identical to before and the answer referral-only.
                 ...(market ? { market } : {}),
+                // Decision D-10: an ASSUMED market (pivota-backend `marketAssumed`): its links are not stamped observed.
+                ...(market && market_assumed === true ? { marketAssumed: true } : {}),
                 ...(include_live_verification ? { includeLiveVerificationOffers: true } : {}),
                 // Only ever built by makeGetOffers from its own signed assertions; no agent argument reaches it.
                 ...(Array.isArray(live_verifications) && live_verifications.length
@@ -34127,7 +34264,7 @@ async function getCommerceConfirmationActionHandler() {
 // resolve, rather than re-deriving a second predicate over catalog_products: services/pdpRenderability.js
 // documents at length what re-derivation costs when the twins drift (rows advertised renderable that then
 // 404). Two measured cohorts are removed, both decided off the resolver's own row:
-//   1. a non-signature id (e.g. `rejuran:...`) never resolves on the unscoped lane at all — 0 of 5 sampled;
+//   1. a non-signature id (e.g. `brand-x:...`) never resolves on the unscoped lane at all — 0 of 5 sampled;
 //   2. a seed-routed row with no acceptable seed on its content route.
 // Everything else is KEPT — see the drop-only-what-is-provably-dead note on publicReadDetailResolves.
 //
@@ -43087,22 +43224,49 @@ function buildCheckoutServerTimingHeader({ totalMs, upstreamMs, checkoutRuntime 
 // the decision is unit-testable without booting the app — the same pattern as publicReadChainResolvability.
 const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObservation');
 
+/**
+ * The market the seed-attribution mint is sent for one search: the request's, raw, or null. An ASSUMED US (decision
+ * D-10, `search.market_assumed` beside `market: "US"`, which only this gateway's own vouched loopback search can
+ * carry past the invoke ingress) is not the buyer's: the mint is sent no market, exactly as a market-less search
+ * was before, so its links are never stamped `market_observed`. The flag beside any other market is ignored.
+ */
+function seedAttributionMintMarket(search, payload, metadata) {
+  const s = search && typeof search === 'object' ? search : {};
+  if (s.market_assumed === true && String(s.market || '').trim().toUpperCase() === 'US') return null;
+  return String(s.market || (payload && payload.market) || (metadata && metadata.market) || '').trim() || null;
+}
+
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
+  // Decision D-10: `market_assumed` DOWNGRADES a market's provenance (its links are never stamped observed), so a
+  // client may not set it. Kept only on this gateway's own vouched loopback search (loopbackCallerAssertion.js),
+  // stripped from every other request before anything reads the payload.
+  stripUnvouchedMarketAssumed(req);
 
   // EGRESS CHOKEPOINT for this function's responses — NOT for every /invoke response: the
   // strict-invoke handler, the auth middleware and the body-size middleware all answer without
   // reaching here. Installed first, because this function has 96 response exits
   // spread over ~13,000 lines and every one of them is `res.json` — so wrapping it once at the
   // ingress covers all of them, and every exit added later, by construction rather than by
-  // convention. Changes no response today: projectInvokeResponse is the identity. What it buys
+  // convention. Its one policy so far is the legacy seed-id search projection. What it buys
   // is that "what may leave the invoke route" finally has ONE owner instead of 96, so the next
   // field question is answered in a single place rather than re-derived at whichever call site
   // the bug was noticed in. See src/invokeEgress.js.
-  installInvokeEgress(res, {
-    operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
-    client_channel: clientChannel,
-  });
+  installInvokeEgress(
+    res,
+    {
+      operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
+      client_channel: clientChannel,
+      // P3-c: only this process's own loopback search hop is told that its page was probed.
+      legacy_seed_probe_hop: isLegacySeedProbeHop(req),
+    },
+    {
+      // D-06: on a search response, legacy seed rows no lane can open are dropped once the database says so.
+      // With no database there is nothing to ask, so the response is sent synchronously as before.
+      finalize: (body, ctx) =>
+        process.env.DATABASE_URL ? finalizeInvokeSearchBody(body, ctx, { noActiveSeeds: legacySeedNoActiveSeeds }) : null,
+    },
+  );
   const syntheticLogFieldsAtStart = syntheticInvokeLogFields(req);
   const routeKeyFingerprint =
     routeContext.key_fingerprint || req?.invokeAuth?.key_fingerprint || null;
@@ -44004,13 +44168,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !Array.isArray(seedAttributionPayload.search)
             ? seedAttributionPayload.search
             : seedAttributionPayload;
-        const seedAttributionMarket =
-          String(
-            seedAttributionSearch.market ||
-              seedAttributionPayload.market ||
-              req?.body?.metadata?.market ||
-              '',
-          ).trim() || null;
+        const seedAttributionMarket = seedAttributionMintMarket(seedAttributionSearch, seedAttributionPayload, req?.body?.metadata);
         seedAttributionSettled = stampExternalSeedAttribution(seedAttributionContainer.products, {
           // Caller-independent by construction: search results are cached and
           // shared across callers, so the mint carries only the internal key —
@@ -44077,7 +44235,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             },
             'find_products_multi finish failed after external seed attribution',
           );
-          if (res.headersSent) return undefined;
+          // isInvokeResponseCommitted, not res.headersSent alone: a search response the egress is still finishing
+          // (review GD-1) has no headers out yet, but it IS the response.
+          if (isInvokeResponseCommitted(res)) return undefined;
           // originalJson, never res.status(500).json — the latter re-enters the
           // find_products_multi overlay above and would throw again on the same body.
           // NOTE since the egress chokepoint landed: `originalJson` is no longer Express's
@@ -50541,6 +50701,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let productDetailBypassCache = false;
     let productDetailCacheMeta = null;
     let productDetailAuthoritativeInvoke = false;
+    // D-06 / G-4: a legacy `<slug>:<hex>` seed pair is answered from the seed-DB lane, inside the normal detail
+    // flow (detail cache, include handling), not by an early return (review GD-4).
+    let productDetailLegacySeedRoute = false;
+    let productDetailLegacySeedMarket;
+    let productDetailLegacySeedTried = false;
     // Creator UI cold-start (empty query) should not be constrained by the
     // upstream live merchant recall limits. Prefer reading sellable products
     // from products_cache (same source as creator categories / merchant portal).
@@ -52161,11 +52326,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             message: 'merchant_id and product_id are required'
           });
         }
+        // D-06 / G-4: a legacy seed id with the shared seller opens on the seed-DB lane, not the backend
+        // products_cache read below (which cannot resolve it). Same rule as the commerce kernel. It is read in
+        // the detail flow below, after the detail cache, under the buyer's market (review GD-3/GD-4).
+        productDetailLegacySeedRoute = routesToLegacySeedLane(merchantId, productId);
+        if (productDetailLegacySeedRoute) productDetailLegacySeedMarket = requestedMarketOf(payload, metadata);
         productDetailCacheKey = JSON.stringify({
           merchantId,
           productId,
           hasCheckoutToken: Boolean(checkoutToken),
           contract: productDetailAuthoritativeInvoke ? 'shop_invoke_detail_v2' : 'legacy_detail',
+          // A legacy seed answer depends on the buyer's currency, so its cache entry does too.
+          ...(productDetailLegacySeedRoute
+            ? { legacySeedServingCurrency: legacySeedDetailGate(productDetailLegacySeedMarket)?.servingCurrency || null }
+            : {}),
         });
         if (productDetailAuthoritativeInvoke) {
           url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
@@ -52782,6 +52956,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     };
 
     let response;
+    // The legacy seed read for get_product_detail (see productDetailLegacySeedRoute): once, before any other
+    // source is asked, and after the detail cache.
+    const tryLegacySeedDetailRoute = async () => {
+      if (response || operation !== 'get_product_detail' || !productDetailLegacySeedRoute || productDetailLegacySeedTried) {
+        return;
+      }
+      productDetailLegacySeedTried = true;
+      const legacySeedDetail = await readLegacySeedDetail(productDetailMerchantId, productDetailProductId, {
+        requestedMarket: productDetailLegacySeedMarket,
+      });
+      if (legacySeedDetail) {
+        response = { status: 200, data: legacySeedDetailResponse(legacySeedDetail) };
+        productDetailCacheMeta = { hit: false, source: 'external_seed_db' };
+      }
+    };
     let searchContractBridgeMeta = null;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
@@ -52826,7 +53015,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             age_ms: ageMs,
             ttl_ms: PRODUCT_DETAIL_CACHE_TTL_MS,
           };
-        } else if (!productDetailAuthoritativeInvoke && process.env.DATABASE_URL) {
+        }
+        await tryLegacySeedDetailRoute();
+        if (!response && !productDetailAuthoritativeInvoke && process.env.DATABASE_URL) {
           const fromDb = await fetchProductDetailFromProductsCache({
             merchantId: productDetailMerchantId,
             productId: productDetailProductId,
@@ -52858,6 +53049,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       } else if (operation === 'get_product_detail' && productDetailCacheKey && productDetailBypassCache) {
         PRODUCT_DETAIL_CACHE_METRICS.bypasses += 1;
       }
+      // With the detail cache off or bypassed, the legacy seed read still comes first (a no-op once tried).
+      await tryLegacySeedDetailRoute();
 
       if (!response) {
         response = await callTrackedUpstream(operation, axiosConfig, primaryUpstreamOptions);
@@ -53868,6 +54061,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...upstreamData,
           cache: productDetailCacheMeta,
         };
+      }
+      // D-10 / P3-d: a legacy seed answer for a request that named no market was answered as US; it says so.
+      // Added after the detail cache, never into it, so a declared-US read of the same entry is not labelled.
+      if (
+        productDetailLegacySeedRoute &&
+        marketIsUnnamed(productDetailLegacySeedMarket) &&
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        upstreamData.metadata &&
+        upstreamData.metadata.legacy_seed_route === true
+      ) {
+        upstreamData = { ...upstreamData, market_assumed: marketAssumedLabel() };
       }
     }
 
@@ -55072,7 +55277,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		    });
 		  }
   } catch (err) {
-    if (res.headersSent) {
+    // Committed covers a search response the egress is still finishing (review GD-1): it is already the answer.
+    if (isInvokeResponseCommitted(res)) {
       logger.error(
         { gateway_request_id: gatewayRequestId, err: err.message, stack: err.stack },
         'Unhandled invoke error after headers sent',
@@ -55542,6 +55748,7 @@ module.exports._debug = {
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
   buildSearchProductsV2Body,
+  seedAttributionMintMarket,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,

@@ -22,14 +22,15 @@ async function surfaceWithRecorder() {
   return { surface: createCommerceToolSurface(executor, { cache: false }), calls };
 }
 
-test('native MCP get_offers: `market` is declared, picked into the payload when stated, absent otherwise', async () => {
+test('native MCP get_offers: `market` is declared, picked into the payload when stated, US when not (decision D-10)', async () => {
   const { surface, calls } = await surfaceWithRecorder();
   await surface.callTool('get_offers', { product_id: 'p1', merchant_id: 'm1', market: 'sg', limit: 3 }, { agent_id: 'agent_a' });
   assert.equal(calls[0].op, 'get_offers');
   assert.deepEqual(calls[0].params, { payload: { product_id: 'p1', merchant_id: 'm1', market: 'sg', limit: 3 } });
-  await surface.callTool('get_offers', { product_id: 'p1', merchant_id: 'm1', limit: 3 }, { agent_id: 'agent_a' });
-  assert.deepEqual(calls[1].params, { payload: { product_id: 'p1', merchant_id: 'm1', limit: 3 } });
-  assert.equal(Object.prototype.hasOwnProperty.call(calls[1].params.payload, 'market'), false);
+  // No market named: answered as US, so US is what the lane is sent (and the answer says so).
+  const assumed = await surface.callTool('get_offers', { product_id: 'p1', merchant_id: 'm1', limit: 3 }, { agent_id: 'agent_a' });
+  assert.deepEqual(calls[1].params, { payload: { product_id: 'p1', merchant_id: 'm1', market: 'US', limit: 3, market_assumed: true } });
+  assert.equal(assumed.market_assumed.code, 'US');
 });
 
 test('native MCP get_offers: the published schema declares `market` as a string, and an undeclared argument is still refused', async () => {
