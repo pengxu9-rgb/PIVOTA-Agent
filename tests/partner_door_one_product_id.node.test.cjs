@@ -37,7 +37,7 @@ test('THE FLAG ACTS ON /mcp ONLY: the gateway reaches this module through the /m
   const server = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
   // One wiring line, at the /mcp adapter. The UCP door projects the bare surface; the public door builds its own.
   assert.equal((server.match(/partnerDoorSurface\(/g) || []).length, 1);
-  assert.match(server, /return createRemoteMcpAdapter\(partnerDoorSurface\(surface\), \{\s+serverInfo: \{ name: 'pivota-commerce-mcp'/);
+  assert.match(server, /return createRemoteMcpAdapter\(partnerDoorSurface\(surface, \{ log: logger \}\), \{\s+serverInfo: \{ name: 'pivota-commerce-mcp'/);
   assert.match(server, /const surface = ucpDialectSurface\(await getCommerceToolSurface\(\)\);/);
   // The kernel hop, the executor wiring and the error mapping do not know the flag.
   assert.equal(server.includes("services/partnerDoorOneProductId'"), false);
@@ -161,13 +161,13 @@ test('a group id that does not resolve: refused by name, or retriable only when 
     ['MERCHANT_UNAVAILABLE', { reason: 'group_id_lookup_unavailable', operation: 'get_product' }]);
 });
 
-test('the sellers a product names: its own, its refs, its group, its other listings and offers', () => {
+test('the seller a product IS: its own merchant_id, never a seller it merely lists', () => {
   assert.deepEqual([...partnerDoor.sellersNamedByProduct({
     merchant_id: ' m_own ', canonical_product_ref: { merchant_id: 'm_canonical' }, product_ref: { merchant_id: 'm_ref' },
-    selected_commerce_ref: { merchant_id: 'm_commerce' }, group_members: [{ merchant_id: 'm_member' }, null, { product_id: 'p' }],
-    other_seller_listings: [{ merchant_id: 'm_other' }], offers: [{ merchant_id: 'm_offer' }, { merchant_id: 'm_own' }],
-    variants: [{ merchant_id: 'm_not_read' }],
-  })].sort(), ['m_canonical', 'm_commerce', 'm_member', 'm_offer', 'm_other', 'm_own', 'm_ref']);
+    selected_commerce_ref: { merchant_id: 'm_commerce' }, group_members: [{ merchant_id: 'm_member' }], members: [{ merchant_id: 'm_member2' }],
+    other_seller_listings: [{ merchant_id: 'm_other' }], offers: [{ merchant_id: 'm_offer' }], variants: [{ merchant_id: 'm_variant' }],
+  })], ['m_own']);
+  assert.deepEqual([...partnerDoor.sellersNamedByProduct({ group_members: [{ merchant_id: 'm_member' }] })], []);
   assert.deepEqual([...partnerDoor.sellersNamedByProduct(null)], []);
 });
 
@@ -175,7 +175,7 @@ test('the seller check: any seller the product is known under; the seed seller n
   const ok = partnerDoor.sellerAmong;
   assert.equal(ok('merch_obs_brandx', ['merch_obs_brandx']), true);
   assert.equal(ok(' merch_obs_brandx ', ['merch_obs_brandx']), true);
-  assert.equal(ok('merch_shop_a', ['merch_obs_brandx', 'merch_shop_a']), true, 'a seller the group names');
+  assert.equal(ok('merch_shop_a', ['merch_obs_brandx', 'merch_shop_a']), true, 'one of the signature\'s row sellers');
   // Seed supply, both directions.
   assert.equal(ok('external_seed', ['merch_obs_brandx']), true);
   assert.equal(ok('merch_obs_brandx', ['external_seed']), true);
@@ -190,9 +190,10 @@ test('the seller check: any seller the product is known under; the seed seller n
   assert.equal(ok('merch_shop_a', ['external_seed']), false);
   assert.equal(ok('merch_shop_a', ['merch_obs_brandx']), false);
   assert.equal(ok('merch_shop_b', ['merch_shop_a']), false);
-  // Against a product.
-  assert.equal(partnerDoor.sellerMatchesProduct('merch_shop_a', { merchant_id: 'merch_obs_brandw', group_members: [{ merchant_id: 'merch_shop_a' }] }), true);
-  assert.equal(partnerDoor.sellerMatchesProduct('merch_shop_b', { merchant_id: 'merch_obs_brandw', group_members: [{ merchant_id: 'merch_shop_a' }] }), false);
+  // Against a product: its own seller, not a sibling it lists.
+  assert.equal(partnerDoor.sellerMatchesProduct('merch_obs_brandw', { merchant_id: 'merch_obs_brandw', group_members: [{ merchant_id: 'merch_shop_a' }] }), true);
+  assert.equal(partnerDoor.sellerMatchesProduct('merch_shop_a', { merchant_id: 'merch_obs_brandw', group_members: [{ merchant_id: 'merch_shop_a' }] }), false);
+  assert.equal(partnerDoor.sellerMatchesProduct('merch_obs_brandt', { merchant_id: 'merch_obs_brandw', other_seller_listings: [{ merchant_id: 'merch_obs_brandt' }] }), false);
 });
 
 // The kernel's refusal, as throwCommerceKernelUpstreamError throws it.

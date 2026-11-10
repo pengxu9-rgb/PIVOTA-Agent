@@ -34112,7 +34112,7 @@ async function getCommerceRemoteMcpAdapter() {
       // Everything the flag does happens inside this view, so the UCP door (which keeps projecting `surface`,
       // above), the public door, the strict invoke route and the kernel hop answer exactly as with it off.
       const { partnerDoorSurface } = await import('../mcp-server/src/partnerDoorOneProductId.js');
-      return createRemoteMcpAdapter(partnerDoorSurface(surface), {
+      return createRemoteMcpAdapter(partnerDoorSurface(surface, { log: logger }), {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
           if (req?.authInfo?.invoke_authenticated !== true) {

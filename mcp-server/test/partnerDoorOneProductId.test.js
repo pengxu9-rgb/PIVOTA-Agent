@@ -9,7 +9,7 @@ import { ERROR_CATALOG, PivotaCommerceError, isPivotaErrorCode } from "../../saf
 import { ERROR_OBSERVABILITY } from "../../safety-kernel/src/invokeHandler.js";
 import { AUDIT_EVENTS } from "../../safety-kernel/src/audit.js";
 import { createCommerceToolSurface, toToolError } from "../src/commerceToolSurface.js";
-import { dropGroupIdFields, partnerDoorSurface, partnerDoorToolDefinition, PARTNER_DOOR_ONE_PRODUCT_ID } from "../src/partnerDoorOneProductId.js";
+import { dropGroupIdFields, partnerDoorRow, restampProductId, partnerDoorSurface, partnerDoorToolDefinition, PARTNER_DOOR_ONE_PRODUCT_ID } from "../src/partnerDoorOneProductId.js";
 
 const SIG = `sig_${"a".repeat(32)}`;
 const OTHER_SIG = `sig_${"b".repeat(32)}`;
@@ -30,7 +30,7 @@ const lookupsFor = ({ groups = {}, sellers = {}, asked = [] } = {}) => ({
   async resolveGroupIdToProductId({ groupId }) { asked.push(["group", groupId]); return groups[groupId] || { status: "none" }; },
   async listSignatureSellerIds({ productId }) { asked.push(["sellers", productId]); return Object.prototype.hasOwnProperty.call(sellers, productId) ? sellers[productId] : null; },
 });
-const door = (answers, { calls, ...lookups } = {}) => partnerDoorSurface(surfaceAnswering(answers, calls), { enabled: true, lookups: lookupsFor(lookups) });
+const door = (answers, { calls, log, ...lookups } = {}) => partnerDoorSurface(surfaceAnswering(answers, calls), { enabled: true, lookups: lookupsFor(lookups), log });
 const errorBody = (error) => JSON.parse(toToolError(error).content[0].text).error;
 const isRefusal = (code, reason) => (e) => e instanceof PivotaCommerceError && e.code === code && e.detail.reason === reason;
 
@@ -78,21 +78,57 @@ test("a variant keeps a sig_-valued variant_id; group members and other sellers 
   assert.deepEqual(out.other_seller_listings, [{ merchant_id: "merch_shop_a", pivota_signature_id: OTHER_SIG }]);
 });
 
-test("by key: `id` always stays; a signature alias stays when it is the row's own id and goes when it is another", () => {
+test("by key: `id` and the signature fields always stay; a group id goes under any top-level name", () => {
   // The row's own signature under every name.
   const own = { product_id: SIG, id: SIG, pivota_signature_id: SIG, signature_id: SIG, canonical_sig_id: SIG, canonical_route_sig_id: SIG, product_group_id: SIG.toUpperCase().replace("SIG_", "sig_") };
   assert.deepEqual(dropGroupIdFields(own), own);
-  // Another product's signature under an alias, and a group id under any top-level name.
+  // A 32-hex signature is never removed, whatever the row's product_id is; a 24-hex value always is.
   assert.deepEqual(dropGroupIdFields({
     product_id: SIG, id: OTHER_SIG, pivota_signature_id: OTHER_SIG, signature_id: GROUP, canonical_route_sig_id: OTHER_SIG, group_ref: GROUP,
     variant_id: GROUP, sku_id: OTHER_SIG, keeper: OTHER_SIG, product_group_id: "pg_catalog_1",
-  }), { product_id: SIG, id: OTHER_SIG, variant_id: GROUP, sku_id: OTHER_SIG, keeper: OTHER_SIG, product_group_id: "pg_catalog_1" });
+  }), { product_id: SIG, id: OTHER_SIG, pivota_signature_id: OTHER_SIG, canonical_route_sig_id: OTHER_SIG, variant_id: GROUP, sku_id: OTHER_SIG, keeper: OTHER_SIG, product_group_id: "pg_catalog_1" });
   // A group id field holding a 32-hex signature that is not the row's own (the catalog-group lane's shape).
   assert.deepEqual(dropGroupIdFields({ product_id: SIG, product_group_id: OTHER_SIG, sellable_item_group_id: OTHER_SIG, canonical_sig_id: OTHER_SIG }), { product_id: SIG });
-  // A row whose product_id is not a signature: only the group id goes.
-  assert.deepEqual(dropGroupIdFields({ product_id: "9001", id: "9001", pivota_signature_id: SIG, product_group_id: GROUP }), { product_id: "9001", id: "9001" });
+  // A row whose product_id is not a signature keeps its signature: it is the only one it has.
+  assert.deepEqual(dropGroupIdFields({ product_id: "9001", id: "9001", pivota_signature_id: SIG, signature_id: SIG, product_group_id: GROUP }), { product_id: "9001", id: "9001", pivota_signature_id: SIG, signature_id: SIG });
   assert.deepEqual(dropGroupIdFields({ id: SIG, title: "No product_id", sellable_item_group_id: GROUP }), { id: SIG, title: "No product_id" });
+  // A row whose own product_id is the group-shaped id keeps the fields that repeat it.
+  assert.deepEqual(dropGroupIdFields({ product_id: GROUP, id: GROUP, product_group_id: GROUP, canonical_entity_id: GROUP }), { product_id: GROUP, id: GROUP, product_group_id: GROUP, canonical_entity_id: GROUP });
   for (const notARow of [null, "x", 7, [GROUP]]) assert.equal(dropGroupIdFields(notARow), notARow);
+});
+
+test("re-stamp: product_id and `id` move to the signature together; an id that IS a signature is never overwritten", () => {
+  // A platform id: it moves aside as source_product_id.
+  assert.deepEqual(restampProductId({ product_id: "9001", id: "9001", title: "T" }, SIG), { product_id: SIG, id: SIG, title: "T", source_product_id: "9001" });
+  // A group-shaped id is not a source id: it is simply replaced.
+  assert.deepEqual(restampProductId({ product_id: GROUP, id: GROUP }, SIG), { product_id: SIG, id: SIG });
+  // No `id` on the row: none is invented. An existing source_product_id is kept.
+  assert.deepEqual(restampProductId({ product_id: "9001", source_product_id: "src-1" }, SIG), { product_id: SIG, source_product_id: "src-1" });
+  assert.deepEqual(restampProductId({ title: "No id" }, SIG), { title: "No id", product_id: SIG });
+  // ANOTHER signature answered (get_pdp_v2's canonical-group fallback): that is another product's id. Untouched.
+  const other = { product_id: OTHER_SIG, id: OTHER_SIG };
+  assert.equal(restampProductId(other, SIG), other);
+  const same = { product_id: SIG, id: "9001" };
+  assert.equal(restampProductId(same, SIG), same);
+  // An `id` that is already a signature stays; a signature that is not one changes nothing.
+  assert.deepEqual(restampProductId({ product_id: "9001", id: OTHER_SIG }, SIG), { product_id: SIG, id: OTHER_SIG, source_product_id: "9001" });
+  const row = { product_id: "9001" };
+  for (const notASignature of [GROUP, "9001", "", null, undefined]) assert.equal(restampProductId(row, notASignature), row);
+});
+
+test("a row served under a group-shaped id is re-stamped to the signature it carries, and keeps its signature fields", () => {
+  const emitted = { id: GROUP, product_id: GROUP, canonical_entity_id: GROUP, product_group_id: GROUP, sellable_item_group_id: GROUP, pivota_signature_id: SIG, signature_id: SIG, title: "Lip Oil" };
+  assert.deepEqual(partnerDoorRow(emitted), { id: SIG, product_id: SIG, pivota_signature_id: SIG, signature_id: SIG, title: "Lip Oil" });
+  assert.equal(emitted.product_id, GROUP, "the input is not edited");
+  // Only signature_id carries it.
+  assert.deepEqual(partnerDoorRow({ product_id: GROUP, id: GROUP, signature_id: SIG }), { product_id: SIG, id: SIG, signature_id: SIG });
+  // No 32-hex signature on the row: its own id is all it has, and it is left exactly as served.
+  const bare = { id: GROUP, product_id: GROUP, product_group_id: GROUP, pivota_signature_id: GROUP };
+  assert.deepEqual(partnerDoorRow(bare), bare);
+  // A row already under its signature, and one under a platform id, are not re-stamped.
+  assert.deepEqual(partnerDoorRow({ product_id: SIG, id: SIG, pivota_signature_id: SIG, product_group_id: GROUP }), { product_id: SIG, id: SIG, pivota_signature_id: SIG });
+  assert.deepEqual(partnerDoorRow({ product_id: "9001", id: "9001", pivota_signature_id: SIG }), { product_id: "9001", id: "9001", pivota_signature_id: SIG });
+  assert.equal(partnerDoorRow(null), null);
 });
 
 // --- the surface ------------------------------------------------------------------------------------------
@@ -131,48 +167,84 @@ test("on: every argument reaches the surface unchanged when the id is not a grou
   assert.equal(calls[2][1], "nope");
 });
 
-test("on: a group id is answered as the product the lookup elects, on both read tools, with the other arguments kept", async () => {
+// A surface that knows these product ids and answers "not found" (the kernel's own error) for any other.
+const notFound = () => new PivotaCommerceError("UNKNOWN_PRODUCT_ID", { operation: "get_product_detail", upstream_status: 400, upstream_code: "MISSING_MERCHANT_CONTEXT" });
+const serving = (known) => (a) => (known[a.product_id] ? { product: { ...known[a.product_id] } } : notFound());
+
+test("on: a group-shaped id is asked for exactly as sent; when that answers, nothing is looked up and nothing is swapped", async () => {
   const calls = [];
   const asked = [];
-  const d = door(
-    { get_product: (a) => ({ product: { product_id: a.product_id, merchant_id: "merch_obs_brandx", price: 9 } }), get_offers: { best_offer: {}, signals: [{}], metadata: {} } },
-    { calls, asked, groups: { [GROUP]: { status: "resolved", productId: SIG } }, sellers: {} },
-  );
-  const answer = await d.callTool("get_product", { merchant_id: "merch_obs_brandx", product_id: GROUP, market: "US" }, { s: 1 });
-  assert.equal(answer.product.product_id, SIG);
-  assert.deepEqual(calls[0], ["get_product", { merchant_id: "merch_obs_brandx", product_id: SIG, market: "US" }, { s: 1 }]);
-  await d.callTool("get_offers", { product_id: GROUP, limit: 3 });
-  assert.deepEqual(calls[1], ["get_offers", { product_id: SIG, limit: 3 }]);
-  assert.deepEqual(asked, [["group", GROUP], ["group", GROUP]]);
+  const d = door({ get_product: serving({ [GROUP]: { product_id: GROUP, id: GROUP, canonical_entity_id: GROUP, merchant_id: "merch_obs_brands", price: 14, pivota_signature_id: SIG } }) },
+    { calls, asked, groups: { [GROUP]: { status: "resolved", productId: OTHER_SIG } } });
+  const args = { merchant_id: "merch_obs_brands", product_id: GROUP, market: "US" };
+  const answer = await d.callTool("get_product", args, { s: 1 });
+  assert.deepEqual(calls, [["get_product", args, { s: 1 }]]);
+  assert.equal(calls[0][1], args, "the very arguments the partner sent");
+  assert.deepEqual(asked, [], "no lookup on the path that works today");
+  // The answer comes back under ITS OWN signature, `id` with it, the group id gone.
+  assert.deepEqual(answer.product, { product_id: SIG, id: SIG, merchant_id: "merch_obs_brands", price: 14, pivota_signature_id: SIG });
+  // An answer that carries no signature keeps the id it was served under.
+  const bare = await door({ get_product: serving({ [GROUP]: { product_id: GROUP, id: GROUP, price: 1 } }) }).callTool("get_product", { product_id: GROUP });
+  assert.deepEqual(bare.product, { product_id: GROUP, id: GROUP, price: 1 });
 });
 
-test("on: a group id with nothing servable is refused by name; a failed lookup is retriable; nothing is read", async () => {
-  for (const tool of ["get_product", "get_offers"]) {
-    const calls = [];
-    await assert.rejects(door({}, { calls, groups: { [GROUP]: { status: "none" } } }).callTool(tool, { product_id: GROUP }), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_has_no_servable_product"));
-    await assert.rejects(door({}, { calls, groups: { [GROUP]: { status: "no_database" } } }).callTool(tool, { product_id: GROUP }), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_id_not_resolvable"));
-    await assert.rejects(door({}, { calls, groups: { [GROUP]: { status: "unavailable" } } }).callTool(tool, { product_id: GROUP }), isRefusal("MERCHANT_UNAVAILABLE", "group_id_lookup_unavailable"));
-    assert.deepEqual(calls, []);
+test("on: a group-shaped id today's path cannot serve is tried once more as the product the lookup elects", async () => {
+  const calls = [];
+  const asked = [];
+  const d = door({ get_product: serving({ [SIG]: { product_id: SIG, merchant_id: "merch_obs_brandx", price: 9, product_group_id: GROUP } }) },
+    { calls, asked, groups: { [GROUP]: { status: "resolved", productId: SIG } }, sellers: {} });
+  const answer = await d.callTool("get_product", { merchant_id: "merch_obs_brandx", product_id: GROUP, market: "US" }, { s: 1 });
+  assert.deepEqual(answer.product, { product_id: SIG, merchant_id: "merch_obs_brandx", price: 9 });
+  assert.deepEqual(calls, [
+    ["get_product", { merchant_id: "merch_obs_brandx", product_id: GROUP, market: "US" }, { s: 1 }],
+    ["get_product", { merchant_id: "merch_obs_brandx", product_id: SIG, market: "US" }, { s: 1 }],
+  ]);
+  assert.deepEqual(asked, [["group", GROUP]]);
+  // The retry's own refusal is re-read like any other (here: the resolved product is withheld).
+  const withheld = door({ get_product: (a) => (a.product_id === SIG ? kernelRefusal(RESOLVED_BODY) : notFound()) }, { groups: { [GROUP]: { status: "resolved", productId: SIG } } });
+  await assert.rejects(withheld.callTool("get_product", { product_id: GROUP }), isRefusal("PRODUCT_NOT_SERVABLE", "not_serving_eligible"));
+});
+
+test("on: a group-shaped id is refused as a group id only when today's path AND the lookup both find nothing", async () => {
+  const refusedWith = (status) => door({ get_product: notFound }, { groups: { [GROUP]: { status } } }).callTool("get_product", { product_id: GROUP });
+  await assert.rejects(refusedWith("none"), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_has_no_servable_product"));
+  await assert.rejects(refusedWith("no_database"), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_id_not_resolvable"));
+  // The kernel's other not-found code counts as not found too.
+  await assert.rejects(door({ get_product: () => kernelRefusal({ error: "PRODUCT_NOT_FOUND" }) }).callTool("get_product", { product_id: GROUP }), isRefusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "group_has_no_servable_product"));
+});
+
+test("on: a lookup that could not be asked never degrades a group-shaped id: the flag-off answer is given, the very same error", async () => {
+  const original = notFound();
+  const asked = [];
+  await assert.rejects(door({ get_product: original }, { asked, groups: { [GROUP]: { status: "unavailable" } } }).callTool("get_product", { product_id: GROUP }), (e) => e === original);
+  assert.deepEqual(asked, [["group", GROUP]]);
+  // Anything but "not found" from today's path is today's answer too, and no lookup is made for it.
+  for (const failure of [
+    new PivotaCommerceError("MERCHANT_UNAVAILABLE", { operation: "get_product_detail", upstream_status: 503 }),
+    new PivotaCommerceError("NO_MERCHANT_OFFER", { reason: "merchant_not_purchasable" }),
+    new Error("boom"),
+  ]) {
+    const none = [];
+    await assert.rejects(door({ get_product: failure }, { asked: none, groups: { [GROUP]: { status: "resolved", productId: SIG } } }).callTool("get_product", { product_id: GROUP }), (e) => e === failure);
+    assert.deepEqual(none, []);
   }
 });
 
-test("on: the answer's product_id is the signature that was asked with; the answered id is kept as source_product_id", async () => {
-  const backend = { product_id: "9001", merchant_id: "merch_shop_a", price: 18, pivota_signature_id: SIG, product_group_id: GROUP };
+test("on: the answer's product_id is the signature that was asked with; a platform id moves aside, another signature is left alone", async () => {
+  const backend = { product_id: "9001", id: "9001", merchant_id: "merch_shop_a", price: 18, pivota_signature_id: SIG, product_group_id: GROUP };
   const answer = await door({ get_product: { status: "success", product: backend } }).callTool("get_product", { merchant_id: "merch_shop_a", product_id: SIG });
-  assert.deepEqual(answer, { status: "success", product: { product_id: SIG, merchant_id: "merch_shop_a", price: 18, pivota_signature_id: SIG, source_product_id: "9001" } });
+  assert.deepEqual(answer, { status: "success", product: { product_id: SIG, id: SIG, merchant_id: "merch_shop_a", price: 18, pivota_signature_id: SIG, source_product_id: "9001" } });
   assert.equal(backend.product_id, "9001", "the surface's value is not edited");
-  // An existing source_product_id is not overwritten; a missing answered id adds none.
-  const kept = await door({ get_product: { product: { product_id: "9001", source_product_id: "src-1", price: 1 } } }).callTool("get_product", { product_id: SIG });
-  assert.equal(kept.product.source_product_id, "src-1");
-  const none = await door({ get_product: { product: { title: "No id", price: 1 } } }).callTool("get_product", { product_id: SIG });
-  assert.deepEqual(none.product, { title: "No id", price: 1, product_id: SIG });
+  // get_pdp_v2's canonical-group fallback answers ANOTHER signature: it is not overwritten with the one asked.
+  const fallback = await door({ get_product: { product: { product_id: OTHER_SIG, id: OTHER_SIG, price: 5 } } }).callTool("get_product", { product_id: SIG });
+  assert.deepEqual(fallback.product, { product_id: OTHER_SIG, id: OTHER_SIG, price: 5 });
   // Asked with an id that is not a signature: the answer's id stands.
   const platform = await door({ get_product: { product: { product_id: "9001", merchant_id: "merch_shop_a", price: 1 } } }).callTool("get_product", { merchant_id: "merch_shop_a", product_id: "9001" });
   assert.equal(platform.product.product_id, "9001");
   assert.equal("source_product_id" in platform.product, false);
 });
 
-test("on: a seller the answered product names, or its seed counterpart, is accepted without a lookup", async () => {
+test("on: the answered product's own seller, or its seed counterpart, is accepted without a lookup", async () => {
   const asked = [];
   const answering = (product) => door({ get_product: { product: { product_id: SIG, price: 30, ...product } } }, { asked, sellers: {} });
   for (const [named, product] of [
@@ -180,8 +252,6 @@ test("on: a seller the answered product names, or its seed counterpart, is accep
     ["merch_shop_a", { merchant_id: "merch_shop_a" }],
     ["external_seed", { merchant_id: "merch_obs_brandx" }],
     ["merch_obs_brandx", { merchant_id: "external_seed" }],
-    ["merch_shop_a", { merchant_id: "merch_obs_brandw", group_members: [{ merchant_id: "merch_shop_a" }] }],
-    ["merch_obs_brandv", { merchant_id: "merch_obs_brandu", canonical_product_ref: { merchant_id: "merch_obs_brandv" } }],
     [undefined, { merchant_id: "merch_obs_brandx" }],
     ["merch_obs_brandx", {}],
   ]) {
@@ -190,7 +260,23 @@ test("on: a seller the answered product names, or its seed counterpart, is accep
   assert.deepEqual(asked, []);
 });
 
-test("on: a seller the answer does not name is checked against the signature's own rows before it is refused", async () => {
+test("on: a seller the answer only LISTS (a group member, another listing, an offer, a ref) is another seller's product: refused", async () => {
+  const listing = {
+    merchant_id: "merch_obs_brandw",
+    group_members: [{ merchant_id: "merch_obs_brandt" }], members: [{ merchant_id: "merch_obs_brandt" }],
+    other_seller_listings: [{ merchant_id: "merch_obs_brandt" }], offers: [{ merchant_id: "merch_obs_brandt" }],
+    canonical_product_ref: { merchant_id: "merch_obs_brandt" }, product_ref: { merchant_id: "merch_obs_brandt" }, selected_commerce_ref: { merchant_id: "merch_obs_brandt" },
+  };
+  for (const key of Object.keys(listing).filter((k) => k !== "merchant_id")) {
+    const product = { product_id: SIG, price: 1, merchant_id: listing.merchant_id, [key]: listing[key] };
+    await assert.rejects(
+      door({ get_product: { product } }, { sellers: { [SIG]: ["merch_obs_brandw"] } }).callTool("get_product", { merchant_id: "merch_obs_brandt", product_id: SIG }),
+      isRefusal("MERCHANT_PRODUCT_MISMATCH", "merchant_not_seller_of_product"), key,
+    );
+  }
+});
+
+test("on: a seller that is not the answer's is checked against the signature's own rows before it is refused", async () => {
   const answering = (sellers, asked = []) => door({ get_product: { product: { product_id: SIG, merchant_id: "merch_obs_brandu", price: 30 } } }, { asked, sellers });
   // The canonical-group fallback: the answer is another seller's, the signature's row is the caller's.
   const asked = [];
@@ -206,11 +292,16 @@ test("on: a seller the answer does not name is checked against the signature's o
       isRefusal("MERCHANT_PRODUCT_MISMATCH", "merchant_not_seller_of_product"), `${named} is not ${productSeller}`,
     );
   }
-  // Asked with an id that is not a signature there are no rows to ask about: the answer alone decides.
+  // Asked with an id that is not a signature, answered under none: there are no rows to ask about.
   const asked2 = [];
   await assert.rejects(door({ get_product: { product: { product_id: "9001", merchant_id: "merch_shop_a", price: 1 } } }, { asked: asked2 }).callTool("get_product", { merchant_id: "merch_shop_b", product_id: "9001" }),
     isRefusal("MERCHANT_PRODUCT_MISMATCH", "merchant_not_seller_of_product"));
   assert.deepEqual(asked2, []);
+  // A group-shaped id answered by today's path: the rows asked about are those of the ANSWER'S signature.
+  const asked3 = [];
+  const emitted = door({ get_product: { product: { product_id: GROUP, merchant_id: "merch_obs_brandu", price: 1, pivota_signature_id: SIG } } }, { asked: asked3, sellers: { [SIG]: ["merch_obs_brandv"] } });
+  assert.equal((await emitted.callTool("get_product", { merchant_id: "merch_obs_brandv", product_id: GROUP })).product.product_id, SIG);
+  assert.deepEqual(asked3, [["sellers", SIG]]);
 });
 
 test("on: a product with no price says so (null, absent or the catalog's 0); a priced one, or one that already says why, is left alone", async () => {
@@ -238,7 +329,9 @@ const kernelRefusal = (upstreamDetail) => new PivotaCommerceError("NO_MERCHANT_O
 test("on: the kernel's NO_MERCHANT_OFFER is re-read: withheld, or unknown; the kernel's code and detail ride along unseen", async () => {
   const withheld = kernelRefusal(RESOLVED_BODY);
   withheld.marketAssumed = true;
-  await assert.rejects(door({ get_product: withheld }).callTool("get_product", { product_id: SIG }), (e) => {
+  const lines = [];
+  const log = { info: (fields, msg) => lines.push([fields, msg]) };
+  await assert.rejects(door({ get_product: withheld }, { log }).callTool("get_product", { product_id: SIG }), (e) => {
     assert.equal(e.code, "PRODUCT_NOT_SERVABLE");
     assert.equal(e.retriable, false);
     assert.equal(e.detail.reason, "not_serving_eligible");
@@ -249,6 +342,14 @@ test("on: the kernel's NO_MERCHANT_OFFER is re-read: withheld, or unknown; the k
     assert.deepEqual(errorBody(e).detail, { reason: "not_serving_eligible" });
     return true;
   });
+  // ONE door-side line per relabel, where the kernel's code (already counted under its own metric) meets the
+  // code the caller saw. Codes only: no id, no seller.
+  assert.deepEqual(lines, [[{ event: "partner_door_read_relabel", door: "mcp", kernel_code: "NO_MERCHANT_OFFER", code: "PRODUCT_NOT_SERVABLE", reason: "not_serving_eligible" }, "partner door: read refusal relabelled"]]);
+  // A logger that throws, or none, never costs the answer; an error that is not relabelled writes nothing.
+  await assert.rejects(door({ get_product: kernelRefusal(RESOLVED_BODY) }, { log: { info() { throw new Error("log down"); } } }).callTool("get_product", { product_id: SIG }), isRefusal("PRODUCT_NOT_SERVABLE", "not_serving_eligible"));
+  lines.length = 0;
+  await assert.rejects(door({ get_product: new PivotaCommerceError("MERCHANT_UNAVAILABLE", { operation: "get_product_detail" }) }, { log }).callTool("get_product", { product_id: SIG }), (e) => e.code === "MERCHANT_UNAVAILABLE");
+  assert.deepEqual(lines, []);
   await assert.rejects(door({ get_product: kernelRefusal({ error: "PRODUCT_NOT_FOUND" }) }).callTool("get_product", { product_id: SIG }), (e) => {
     assert.equal(e.code, "UNKNOWN_PRODUCT_ID");
     assert.equal(e.marketAssumed, undefined);
@@ -295,6 +396,47 @@ test("on: get_offers refuses product_group_id by name, before anything is read",
   assert.deepEqual([calls, asked], [[], []]);
 });
 
+test("on: get_offers asks with the id the partner sent; an answer with an offer is final, and the id is never swapped", async () => {
+  const offer = { signal_type: "offer", value: { affiliate_url: "https://example.com/r/1" } };
+  const calls = [];
+  const asked = [];
+  const d = door({ get_offers: { subject: { id: GROUP }, best_offer: offer, signals: [offer], metadata: { offer_count: 1 } } }, { calls, asked, groups: { [GROUP]: { status: "resolved", productId: SIG } } });
+  const args = { product_id: GROUP, limit: 3 };
+  const answer = await d.callTool("get_offers", args, { s: 1 });
+  assert.deepEqual(calls, [["get_offers", args, { s: 1 }]]);
+  assert.equal(calls[0][1], args);
+  assert.deepEqual(asked, [], "no lookup when the id as sent finds an offer");
+  assert.equal(answer.best_offer, offer);
+});
+
+test("on: only when the id as sent finds no offer is a group-shaped id tried once under its signature; whichever found an offer is returned", async () => {
+  const offer = { signal_type: "offer" };
+  const empty = { subject: { id: GROUP }, best_offer: null, signals: [], metadata: { offer_count: 0 } };
+  const found = { subject: { id: SIG }, best_offer: offer, signals: [offer], metadata: { offer_count: 1 } };
+  const calls = [];
+  const d = door({ get_offers: (a) => (a.product_id === SIG ? found : empty) }, { calls, groups: { [GROUP]: { status: "resolved", productId: SIG } } });
+  assert.equal((await d.callTool("get_offers", { product_id: GROUP, limit: 3 }, { s: 1 })).best_offer, offer);
+  assert.deepEqual(calls, [["get_offers", { product_id: GROUP, limit: 3 }, { s: 1 }], ["get_offers", { product_id: SIG, limit: 3 }, { s: 1 }]]);
+  // The retry found nothing either, or failed: the first answer stands (with its reason).
+  for (const second of [empty, new PivotaCommerceError("MERCHANT_UNAVAILABLE", {}), null]) {
+    const answer = await door({ get_offers: (a) => (a.product_id === SIG ? second : empty) }, { groups: { [GROUP]: { status: "resolved", productId: SIG } } }).callTool("get_offers", { product_id: GROUP });
+    assert.deepEqual(answer, { ...empty, metadata: { offer_count: 0, reason: "no_offer_for_product" } });
+  }
+  // A lookup that misses, has no database or could not be asked: no retry, no refusal, the first answer.
+  for (const status of ["none", "no_database", "unavailable"]) {
+    const once = [];
+    const answer = await door({ get_offers: empty }, { calls: once, groups: { [GROUP]: { status } } }).callTool("get_offers", { product_id: GROUP });
+    assert.equal(once.length, 1, status);
+    assert.equal(answer.metadata.reason, "no_offer_for_product");
+  }
+  // A signature that finds no offer is not looked up at all; neither is an error from the first call.
+  const asked = [];
+  await door({ get_offers: empty }, { asked }).callTool("get_offers", { product_id: SIG });
+  const failure = new PivotaCommerceError("MERCHANT_UNAVAILABLE", {});
+  await assert.rejects(door({ get_offers: failure }, { asked, groups: { [GROUP]: { status: "resolved", productId: SIG } } }).callTool("get_offers", { product_id: GROUP }), (e) => e === failure);
+  assert.deepEqual(asked, []);
+});
+
 test("on: an empty get_offers answer says why, and no sig_ group id is echoed in its metadata", async () => {
   const offer = { signal_type: "offer" };
   const answer = (value) => door({ get_offers: value }).callTool("get_offers", { product_id: SIG });
@@ -327,6 +469,7 @@ test("on: the tool list declares the two read tools the door's way, and nothing 
   assert.deepEqual(Object.keys(on.get_product.inputSchema.properties), Object.keys(off.get_product.inputSchema.properties));
   assert.match(on.get_product.description, /^Get full detail for one product\. Pass `product_id`: the product_id of a search_catalog row/);
   assert.match(on.get_product.description, /`merchant_id` is optional/);
+  assert.match(on.get_product.description, /group ids may still appear nested inside an answer \(for example on its group members\) and are not product ids either/);
   assert.ok(!on.get_product.description.includes("(merchant_id + product_id)"));
   const lead = "Get full detail for one product (merchant_id + product_id).";
   assert.ok(off.get_product.description.startsWith(lead));

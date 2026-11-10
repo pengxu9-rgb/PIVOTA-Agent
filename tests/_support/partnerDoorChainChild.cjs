@@ -93,11 +93,18 @@ const PRODUCTS = {
   [IDS.SIG_MIRROR]: { seller: IDS.SELLER_MIRROR, group: IDS.GROUP_MIRROR, title: 'Barrier Cream', brand: 'Brand Y', price: 22, seed: IDS.SEED_MIRROR },
   [IDS.SIG_CONNECTED]: { seller: IDS.SELLER_CONNECTED, group: IDS.GROUP_CONNECTED, title: 'Day Lotion', brand: 'Shop A', price: 18, seed: IDS.SOURCE_CONNECTED },
 };
+// The row shaped like the one a production probe found: search serves it under its group-shaped id.
+PRODUCTS[IDS.SIG_EMITTED] = { seller: IDS.SELLER_EMITTED, group: IDS.GROUP_EMITTED, title: 'Lip Oil', brand: 'Brand S', price: 14, seed: IDS.SEED_EMITTED, emittedAs: IDS.GROUP_EMITTED };
 const SEARCHED = Object.keys(PRODUCTS);
+// The ids get_pdp_v2 and offers.resolve answer TODAY besides signatures: the emitted group-shaped id.
+const EMITTED = { [IDS.GROUP_EMITTED]: IDS.SIG_EMITTED };
 // One product, two sellers: the brand's listing is the group's canonical member; the retailer is in the group.
 PRODUCTS[IDS.SIG_SHARED_BRAND] = {
   seller: IDS.SELLER_SHARED_BRAND, group: IDS.GROUP_SHARED, title: 'Eye Gel', brand: 'Brand W', price: 26, seed: IDS.SEED_SHARED_BRAND,
-  others: [{ merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_SHARED_RETAILER, pivota_signature_id: IDS.SIG_SHARED_RETAILER }],
+  others: [
+    { merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_SHARED_RETAILER, pivota_signature_id: IDS.SIG_SHARED_RETAILER },
+    { merchant_id: IDS.SELLER_SHARED_SIBLING, product_id: 'ext_sibling', pivota_signature_id: `sig_${'2'.repeat(32)}` },
+  ],
 };
 // The canonical-group fallback: the signature's catalog row is one seller's, and get_pdp_v2 answers another's.
 PRODUCTS[IDS.SIG_FALLBACK] = { seller: IDS.SELLER_FALLBACK_CANONICAL, group: null, title: 'Hand Cream', brand: 'Brand V', price: 12, seed: IDS.SEED_FALLBACK };
@@ -106,9 +113,10 @@ PRODUCTS[IDS.SIG_FALLBACK] = { seller: IDS.SELLER_FALLBACK_CANONICAL, group: nul
 // product's other sellers each under THEIR own signature.
 const searchRow = (signature) => {
   const p = PRODUCTS[signature];
+  const publicId = p.emittedAs || signature;
   return {
-    id: signature,
-    product_id: signature,
+    id: publicId,
+    product_id: publicId,
     merchant_id: p.seller,
     title: p.title,
     brand: p.brand,
@@ -117,6 +125,7 @@ const searchRow = (signature) => {
     in_stock: true,
     pivota_signature_id: signature,
     signature_id: signature,
+    ...(p.emittedAs ? { canonical_entity_id: publicId } : {}),
     sellable_item_group_id: p.group,
     product_group_id: p.group,
     canonical_product_ref: { merchant_id: p.seller, product_id: p.seed },
@@ -126,10 +135,11 @@ const searchRow = (signature) => {
 
 // get_pdp_v2's canonical product for a served signature: the row's seller and the group id, as prod answers,
 // the group's members, and the implicit default variant (src/pdpBuilder.js: variant_id = sku_id = product_id).
-const pdpProduct = (signature) => {
+const pdpProduct = (signature, askedId = signature) => {
   const p = PRODUCTS[signature];
   return {
-    product_id: signature,
+    product_id: askedId,
+    ...(askedId !== signature ? { canonical_entity_id: askedId } : {}),
     merchant_id: p.seller,
     title: p.title,
     brand: { name: p.brand },
@@ -148,12 +158,13 @@ const upstream = [];
 const isOp = (operation) => (body) => body && body.operation === operation;
 nock(LOOPBACK, { allowUnmocked: true }).persist()
   .post('/agent/shop/v1/invoke', isOp('find_products_multi'))
-  .reply(200, () => ({ status: 'success', success: true, products: SEARCHED.map(searchRow), total: 3 }));
+  .reply(200, () => ({ status: 'success', success: true, products: SEARCHED.map(searchRow), total: SEARCHED.length }));
 nock(LOOPBACK, { allowUnmocked: true }).persist()
-  .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && Boolean(PRODUCTS[body.payload?.product_ref?.product_id]))
+  .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && Boolean(PRODUCTS[body.payload?.product_ref?.product_id] || EMITTED[body.payload?.product_ref?.product_id]))
   .reply(200, (_uri, body) => {
-    upstream.push({ op: 'get_pdp_v2', product_id: body.payload.product_ref.product_id });
-    return { status: 'success', modules: [{ type: 'canonical', data: { pdp_payload: { product: pdpProduct(body.payload.product_ref.product_id) } } }] };
+    const askedId = body.payload.product_ref.product_id;
+    upstream.push({ op: 'get_pdp_v2', product_id: askedId });
+    return { status: 'success', modules: [{ type: 'canonical', data: { pdp_payload: { product: pdpProduct(EMITTED[askedId] || askedId, askedId) } } }] };
   });
 nock(LOOPBACK, { allowUnmocked: true }).persist()
   .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && body.payload?.product_ref?.product_id === IDS.SIG_NOT_SERVABLE)
@@ -193,7 +204,12 @@ nock(BACKEND).persist()
   .reply(200, (_uri, body) => {
     const product = body.payload?.product || {};
     upstream.push({ op: 'offers.resolve', merchant_id: product.merchant_id ?? null, product_id: product.product_id });
-    const p = PRODUCTS[product.product_id];
+    // An emitted group-shaped id finds its offer today. One of them finds NONE under the signature it resolves
+    // to (buy-link parity between the two forms is not proven), so swapping the id would lose the offer.
+    if (product.product_id === IDS.GROUP_EMITTED_NO_SIGNATURE_OFFER) {
+      return { offers: [{ offer_id: 'of:emitted:1', merchant_id: IDS.SELLER_EMITTED, price: 14, currency: 'USD', in_stock: true }], product_group_id: 'pg_emitted' };
+    }
+    const p = PRODUCTS[EMITTED[product.product_id] || product.product_id];
     if (!p) return { offers: [] };
     return {
       offers: [{ offer_id: `of:${p.seller}:1`, merchant_id: p.seller, price: p.price, currency: 'USD', in_stock: true }],
@@ -252,6 +268,15 @@ async function call(name, args) {
       go_group_shared: await go({ product_id: IDS.GROUP_SHARED }),
       go_group_unsigned: await go({ product_id: IDS.GROUP_UNSIGNED }),
       go_group_argument: await go({ product_group_id: IDS.GROUP_MINTED }),
+      // AN ID THE DOOR ITSELF EMITTED: the group-shaped product_id of a search row, as a partner that got it
+      // before the flag was on would send it back. Today's path serves it.
+      gp_emitted_id: await gp({ merchant_id: IDS.SELLER_EMITTED, product_id: IDS.GROUP_EMITTED }),
+      gp_emitted_id_no_merchant: await gp({ product_id: IDS.GROUP_EMITTED }),
+      go_emitted_id: await go({ merchant_id: IDS.SELLER_EMITTED, product_id: IDS.GROUP_EMITTED }),
+      go_emitted_id_no_signature_offer: await go({ product_id: IDS.GROUP_EMITTED_NO_SIGNATURE_OFFER }),
+      // A sibling seller of the same group, named beside another seller's signature.
+      gp_sibling_seller_of_group: await gp({ merchant_id: IDS.SELLER_SHARED_SIBLING, product_id: IDS.SIG_SHARED_BRAND }),
+      gp_connected_sibling_of_group: await gp({ merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SIG_SHARED_BRAND }),
       // A seller that is not the product's.
       gp_wrong_observed_seller: await gp({ merchant_id: IDS.SELLER_OTHER_OBSERVED, product_id: IDS.SIG_MINTED }),
       gp_wrong_connected_seller: await gp({ merchant_id: IDS.SELLER_OTHER_CONNECTED, product_id: IDS.SIG_MINTED }),

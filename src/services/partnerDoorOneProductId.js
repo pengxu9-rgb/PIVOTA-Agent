@@ -195,29 +195,19 @@ async function listSignatureSellerIds({ productId, queryFn } = {}) {
   }
 }
 
-// Every seller an answered product names: its own, the refs it resolved through, its group's members and the
-// other listings and offers it carries.
+// The seller an answered product IS: its own `merchant_id`, and nothing else. The sellers a product merely LISTS
+// (group members, other listings, offers, the refs it resolved through) are other sellers' products: accepting
+// one would serve seller A's row to a caller that named seller B.
 function sellersNamedByProduct(product) {
   const names = new Set();
-  const add = (value) => {
-    const id = asString(value);
-    if (id) names.add(id);
-  };
-  if (!isObj(product)) return names;
-  add(product.merchant_id);
-  for (const key of ['canonical_product_ref', 'product_ref', 'selected_commerce_ref']) {
-    if (isObj(product[key])) add(product[key].merchant_id);
-  }
-  for (const key of ['group_members', 'members', 'other_seller_listings', 'offers']) {
-    for (const entry of Array.isArray(product[key]) ? product[key] : []) {
-      if (isObj(entry)) add(entry.merchant_id);
-    }
-  }
+  const id = isObj(product) ? asString(product.merchant_id) : '';
+  if (id) names.add(id);
   return names;
 }
 
 /**
- * Does the seller a caller named belong to this product? `sellers` is every seller the product is known under.
+ * Does the seller a caller named belong to this product? `sellers` is the answered product's own seller, or the
+ * sellers of the signature's own catalog rows.
  *   - any seller in the list is accepted;
  *   - for seed supply, the shared seed seller name and a per-brand observed seller stand for each other, in
  *     both directions (a seed row's signature was minted under the shared name and re-keyed to the observed

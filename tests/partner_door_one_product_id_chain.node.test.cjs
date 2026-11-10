@@ -70,14 +70,19 @@ test.before(async () => {
   ]);
 });
 
-test('the fixture reaches the door: three rows, a minted, a mirror and a connected one', () => {
+const SERVED = [IDS.SIG_MINTED, IDS.SIG_MIRROR, IDS.SIG_CONNECTED];
+
+test('the fixture reaches the door: a minted, a mirror and a connected row, and one served under a group-shaped id', () => {
   for (const run of [ON, OFF]) {
     assert.equal(run.search.isError, false);
-    assert.deepEqual(run.search.value.products.map((r) => r.product_id), [IDS.SIG_MINTED, IDS.SIG_MIRROR, IDS.SIG_CONNECTED]);
-    assert.deepEqual(run.search.value.products.map((r) => r.merchant_id), [IDS.SELLER_MINTED, IDS.SELLER_MIRROR, IDS.SELLER_CONNECTED]);
-    assert.equal(run.chains.length, 3);
+    assert.deepEqual(run.search.value.products.slice(0, 3).map((r) => r.product_id), SERVED);
+    assert.deepEqual(run.search.value.products.map((r) => r.merchant_id), [IDS.SELLER_MINTED, IDS.SELLER_MIRROR, IDS.SELLER_CONNECTED, IDS.SELLER_EMITTED]);
+    assert.equal(run.chains.length, 4);
     assert.equal(run.merchant_calls, 0, 'no merchant is contacted');
   }
+  // The fourth row is the production-shaped one: flag off, its own product_id is the 24-hex id.
+  assert.equal(OFF.search.value.products[3].product_id, IDS.GROUP_EMITTED);
+  assert.equal(OFF.search.value.products[3].pivota_signature_id, IDS.SIG_EMITTED);
 });
 
 // The fields that put a second product-looking id on a row: a group id under its two names (or any other
@@ -106,11 +111,69 @@ test('flag on: every search row has a 36-character product_id, no group id field
     assert.equal(row.signature_id, row.product_id);
     // Another seller's listing keeps ITS signature: that is the id a partner passes for that listing.
     assert.deepEqual(row.other_seller_listings, [{ merchant_id: IDS.SELLER_OTHER_CONNECTED, pivota_signature_id: `sig_${'0'.repeat(32)}`, product_key: 'prod::shop-b::1' }]);
-    assert.deepEqual(row.canonical_product_ref, OFF.search.value.products.find((r) => r.product_id === row.product_id).canonical_product_ref);
   }
-  // Nothing but the group id fields left the rows.
-  const withoutGroup = OFF.search.value.products.map(({ product_group_id: _g, sellable_item_group_id: _s, ...rest }) => rest);
-  assert.deepEqual(ON.search.value.products, withoutGroup);
+  // Nothing but the group id fields left the rows that were already served under their signature.
+  const withoutGroup = OFF.search.value.products.slice(0, 3).map(({ product_group_id: _g, sellable_item_group_id: _s, ...rest }) => rest);
+  assert.deepEqual(ON.search.value.products.slice(0, 3), withoutGroup);
+});
+
+test('flag on: a row served under a group-shaped id is re-stamped to its signature, and keeps its signature fields', () => {
+  const off = OFF.search.value.products[3];
+  const on = ON.search.value.products[3];
+  assert.equal(off.id, IDS.GROUP_EMITTED);
+  assert.equal(on.product_id, IDS.SIG_EMITTED);
+  assert.equal(on.id, IDS.SIG_EMITTED, '`id` moves with product_id');
+  assert.equal(on.pivota_signature_id, IDS.SIG_EMITTED);
+  assert.equal(on.signature_id, IDS.SIG_EMITTED);
+  // The group id is gone under every top-level name, and nothing else changed.
+  const { id: _i, product_id: _p, canonical_entity_id: _c, product_group_id: _g, sellable_item_group_id: _s, ...rest } = off;
+  assert.deepEqual(on, { id: IDS.SIG_EMITTED, product_id: IDS.SIG_EMITTED, ...rest });
+  assert.equal(JSON.stringify(on).includes(IDS.GROUP_EMITTED), false);
+});
+
+test('AN ID THE DOOR EMITTED KEEPS WORKING: flag on is never worse than flag off for the group-shaped row', () => {
+  const priced = (c) => { const p = productOf(c); return Boolean(p) && typeof p.price === 'number' && p.price > 0 && p.currency === 'USD'; };
+  const offered = (c) => Boolean(c) && !c.isError && Boolean(c.value.best_offer);
+  // The chain from the row, each flag with the ids IT served.
+  const on = ON.chains[3];
+  const off = OFF.chains[3];
+  assert.equal(off.get_product.args.product_id, IDS.GROUP_EMITTED);
+  assert.equal(on.get_product.args.product_id, IDS.SIG_EMITTED);
+  for (const step of ['get_product', 'get_product_again', 'get_product_no_merchant']) {
+    assert.equal(priced(off[step]), true, `flag off ${step}`);
+    assert.equal(priced(on[step]), true, `flag on ${step}`);
+    assert.equal(productOf(on[step]).price, productOf(off[step]).price);
+    assert.equal(productOf(on[step]).merchant_id, productOf(off[step]).merchant_id);
+  }
+  assert.equal(offered(off.get_offers), true);
+  assert.equal(offered(on.get_offers), true);
+  // The 24-hex id itself, as a partner that received it before the flag went on sends it back: every call that
+  // answers with the flag off answers with it on, by the SAME upstream call, and nothing is refused.
+  for (const name of ['gp_emitted_id', 'gp_emitted_id_no_merchant']) {
+    assert.equal(priced(OFF.cases[name]), true, name);
+    assert.equal(priced(ON.cases[name]), true, name);
+    assert.deepEqual(ON.cases[name].upstream, OFF.cases[name].upstream);
+    assert.deepEqual(ON.cases[name].upstream, [{ op: 'get_pdp_v2', product_id: IDS.GROUP_EMITTED }], 'asked with the id as sent');
+    // The answer comes back under the signature (and `id` with it), the group id gone.
+    assert.equal(productOf(ON.cases[name]).product_id, IDS.SIG_EMITTED);
+    assert.equal(productOf(OFF.cases[name]).product_id, IDS.GROUP_EMITTED);
+    assert.deepEqual(secondIds(productOf(ON.cases[name])), []);
+  }
+  for (const name of ['go_emitted_id', 'go_emitted_id_no_signature_offer']) {
+    assert.equal(offered(OFF.cases[name]), true, name);
+    assert.equal(offered(ON.cases[name]), true, name);
+    // ONE offers.resolve call, with the id the partner sent: the id is not swapped for the signature.
+    assert.deepEqual(ON.cases[name].upstream, OFF.cases[name].upstream);
+    assert.equal(ON.cases[name].upstream.length, 1);
+    assert.equal(ON.cases[name].upstream[0].product_id, ON.cases[name].args.product_id);
+    assert.deepEqual(ON.cases[name].value.best_offer, OFF.cases[name].value.best_offer);
+  }
+  // No case that answers with the flag off is an error with it on, except the ones the flag exists to refuse.
+  const refusedOnPurpose = new Set(['go_group_argument', 'gp_wrong_observed_seller', 'gp_shared_seed_seller_of_connected', 'gp_fallback_other_seller', 'gp_sibling_seller_of_group']);
+  for (const [name, c] of Object.entries(OFF.cases)) {
+    if (c.isError || refusedOnPurpose.has(name)) continue;
+    assert.equal(ON.cases[name].isError, false, `${name} answers with the flag off and must with it on`);
+  }
 });
 
 test('flag off: the same rows carry the 24-hex group id under two names', () => {
@@ -155,7 +218,8 @@ test('flag on: the product keeps its variant ids and its group members, whatever
   assert.deepEqual(shared.group_members, [
     { merchant_id: IDS.SELLER_SHARED_BRAND, product_id: IDS.SEED_SHARED_BRAND, pivota_signature_id: IDS.SIG_SHARED_BRAND },
     { merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_SHARED_RETAILER, pivota_signature_id: IDS.SIG_SHARED_RETAILER },
-  ], 'the other seller keeps its own signature');
+    { merchant_id: IDS.SELLER_SHARED_SIBLING, product_id: 'ext_sibling', pivota_signature_id: `sig_${'2'.repeat(32)}` },
+  ], 'the other sellers keep their own signatures');
 });
 
 test('flag on: a connected merchant\'s product comes back under the signature, though its backend answers the platform id', () => {
@@ -231,8 +295,12 @@ test('flag on: a group id on get_product is the product get_pdp_v2\'s group look
   const connected = productOf(ON.cases.gp_group_connected_with_seller);
   assert.ok(connected, JSON.stringify(ON.cases.gp_group_connected_with_seller.value));
   assert.equal(connected.product_id, IDS.SIG_CONNECTED);
-  assert.deepEqual(ON.cases.gp_group_connected_with_seller.upstream, [{ op: 'get_product_detail', merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_CONNECTED }]);
-  // Nothing servable in the group: refused as a group id, and nothing is read.
+  // The id is tried as sent first (the backend knows no group id), then once more as the signature it resolves to.
+  assert.deepEqual(ON.cases.gp_group_connected_with_seller.upstream, [
+    { op: 'get_product_detail', merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.GROUP_CONNECTED },
+    { op: 'get_product_detail', merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_CONNECTED },
+  ]);
+  // Nothing servable in the group, and today's path cannot serve the id either: refused as a group id.
   for (const name of ['gp_group_unsigned', 'gp_group_unknown']) {
     const error = errorOf(ON.cases[name]);
     assert.equal(error.code, 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID');
@@ -240,19 +308,26 @@ test('flag on: a group id on get_product is the product get_pdp_v2\'s group look
     assert.deepEqual(error.detail, { reason: 'group_has_no_servable_product' });
     assert.match(error.message, /group id/);
     assert.match(error.message, /product_id from a search_catalog row/);
-    assert.deepEqual(ON.cases[name].upstream, [], 'nothing was read for it');
+    assert.equal(codeOf(OFF.cases[name]), 'UNKNOWN_PRODUCT_ID', 'today\'s path cannot serve it either');
   }
 });
 
-test('flag on: get_offers takes a group id the same way, and product_group_id is no longer an input', () => {
+test('flag on: get_offers asks with the id as sent, and only when that finds no offer tries the signature once', () => {
   for (const [name, signature] of [['go_group_minted', IDS.SIG_MINTED], ['go_group_shared', IDS.SIG_SHARED_BRAND]]) {
     assert.equal(ON.cases[name].isError, false);
+    assert.equal(OFF.cases[name].value.best_offer, null, 'flag off, this id finds no offer');
     assert.equal(ON.cases[name].value.subject.id, signature);
     assert.ok(ON.cases[name].value.best_offer);
-    assert.deepEqual(ON.cases[name].upstream, [{ op: 'offers.resolve', merchant_id: null, product_id: signature }]);
+    assert.deepEqual(ON.cases[name].upstream, [
+      { op: 'offers.resolve', merchant_id: null, product_id: ON.cases[name].args.product_id },
+      { op: 'offers.resolve', merchant_id: null, product_id: signature },
+    ]);
   }
-  assert.equal(codeOf(ON.cases.go_group_unsigned), 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID');
-  assert.deepEqual(ON.cases.go_group_unsigned.upstream, []);
+  // A group with nothing servable is not refused on get_offers: the empty answer says why.
+  assert.equal(ON.cases.go_group_unsigned.isError, false);
+  assert.equal(ON.cases.go_group_unsigned.value.best_offer, null);
+  assert.equal(ON.cases.go_group_unsigned.value.metadata.reason, 'no_offer_for_product');
+  assert.deepEqual(ON.cases.go_group_unsigned.upstream, [{ op: 'offers.resolve', merchant_id: null, product_id: IDS.GROUP_UNSIGNED }]);
   const refused = errorOf(ON.cases.go_group_argument);
   assert.equal(refused.code, 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID');
   assert.deepEqual(refused.detail, { reason: 'product_group_id_argument' });
@@ -262,7 +337,8 @@ test('flag on: get_offers takes a group id the same way, and product_group_id is
 });
 
 test('flag on: a merchant_id the product is not known under is refused, not dropped', () => {
-  for (const name of ['gp_wrong_observed_seller', 'gp_wrong_connected_seller', 'gp_wrong_seller_of_connected', 'gp_shared_seed_seller_of_connected', 'gp_fallback_other_seller']) {
+  for (const name of ['gp_wrong_observed_seller', 'gp_wrong_connected_seller', 'gp_wrong_seller_of_connected', 'gp_shared_seed_seller_of_connected', 'gp_fallback_other_seller',
+    'gp_sibling_seller_of_group', 'gp_connected_sibling_of_group']) {
     const error = errorOf(ON.cases[name]);
     assert.ok(error, `${name}: ${JSON.stringify(ON.cases[name].value)}`);
     assert.equal(error.code, 'MERCHANT_PRODUCT_MISMATCH');
@@ -270,6 +346,17 @@ test('flag on: a merchant_id the product is not known under is refused, not drop
     assert.deepEqual(error.detail, { reason: 'merchant_not_seller_of_product' });
     assert.match(error.message, /merchant_id does not match/);
   }
+});
+
+test('flag on: a SIBLING seller of the same group is refused on both lanes, not served the other seller\'s row', () => {
+  // The answered product lists the sibling among its group members; it is still another seller's product.
+  assert.equal(ON.cases.gp_sibling_seller_of_group.args.merchant_id, IDS.SELLER_SHARED_SIBLING);
+  assert.deepEqual(ON.cases.gp_sibling_seller_of_group.upstream, [{ op: 'get_pdp_v2', product_id: IDS.SIG_SHARED_BRAND }], 'the observed lane');
+  assert.equal(ON.cases.gp_connected_sibling_of_group.upstream[0].op, 'get_product_detail', 'the connected lane');
+  assert.equal(codeOf(ON.cases.gp_sibling_seller_of_group), codeOf(ON.cases.gp_connected_sibling_of_group));
+  assert.equal(codeOf(ON.cases.gp_sibling_seller_of_group), 'MERCHANT_PRODUCT_MISMATCH');
+  // Flag off, the observed lane serves the other seller's row under the sibling's name.
+  assert.equal(productOf(OFF.cases.gp_sibling_seller_of_group).merchant_id, IDS.SELLER_SHARED_BRAND);
 });
 
 test('flag on: a seller the product IS known under is accepted, even when get_pdp_v2 answered another seller of it', () => {

@@ -12,6 +12,8 @@
 //   connected  a connected merchant's row, listed under the merchant's own platform id;
 //   shared     ONE product listed by TWO sellers (a brand's own seed listing and a connected retailer's): the
 //              shape a sellable-item group has in production. Each listing is its own catalog row and signature;
+//   emitted    a product search serves under its GROUP-SHAPED id (the canonical-entity public emit): the row's own
+//              `product_id` is `sig_` + 24 hex and its 32-hex signature rides beside it. Today's path serves that id;
 //   fallback   a signature whose catalog row belongs to one seller while get_pdp_v2 answers the group's
 //              canonical member, another seller (src/server.js, the canonical-group fallback).
 // Plus groups no product answers: one whose only live listing is an unsigned row, one that is not live.
@@ -33,12 +35,15 @@ const IDS = {
   SIG_NOT_SERVABLE: sig('e'),
   SIG_SHARED_BRAND: sig('8'),
   SIG_FALLBACK: sig('5'),
+  SIG_EMITTED: sig('3'),
   GROUP_MINTED: group('1'),
   GROUP_MIRROR: group('2'),
   GROUP_CONNECTED: group('3'),
   GROUP_SHARED: group('4'),
   GROUP_NOT_LIVE: group('5'),
   GROUP_UNSIGNED: group('6'),
+  GROUP_EMITTED: group('7'),
+  GROUP_EMITTED_NO_SIGNATURE_OFFER: group('8'),
   GROUP_UNKNOWN: group('9'),
   SELLER_MINTED: 'merch_obs_brandx',
   SELLER_MIRROR: 'merch_obs_brandy',
@@ -46,12 +51,15 @@ const IDS = {
   SELLER_FALLBACK_ROW: 'merch_obs_brandv',
   SELLER_FALLBACK_CANONICAL: 'merch_obs_brandu',
   SELLER_CONNECTED: 'merch_shop_a',
+  SELLER_EMITTED: 'merch_obs_brands',
+  SELLER_SHARED_SIBLING: 'merch_obs_brandt',
   SELLER_OTHER_OBSERVED: 'merch_obs_brandz',
   SELLER_OTHER_CONNECTED: 'merch_shop_b',
   SEED_MINTED: 'brand-x:0123456789abcdef',
   SEED_MIRROR: 'ext_00000000000000000000b0b0',
   SEED_SHARED_BRAND: 'ext_00000000000000000000d0d0',
   SEED_FALLBACK: 'ext_00000000000000000000f0f0',
+  SEED_EMITTED: 'ext_00000000000000000000e0e0',
   SLUG_MINTED: 'brand-x-calm-serum',
   SOURCE_CONNECTED: '9001',
   SOURCE_SHARED_RETAILER: '9002',
@@ -68,6 +76,7 @@ const rows = {
     { merchant_id: IDS.SELLER_MIRROR, status: 'observed' },
     { merchant_id: IDS.SELLER_SHARED_BRAND, status: 'observed' },
     { merchant_id: IDS.SELLER_FALLBACK_ROW, status: 'observed' },
+    { merchant_id: IDS.SELLER_EMITTED, status: 'observed' },
     { merchant_id: IDS.SELLER_CONNECTED, status: 'active' },
   ],
   catalog_products: [
@@ -75,6 +84,7 @@ const rows = {
     product('prod::external_seed::mirror-1', IDS.SELLER_MIRROR, 'external_seed', 'external_product_seeds_mirror_v1', IDS.SEED_MIRROR, IDS.SIG_MIRROR),
     product('prod::external_seed::mirror-2', IDS.SELLER_SHARED_BRAND, 'external_seed', 'external_product_seeds_mirror_v1', IDS.SEED_SHARED_BRAND, IDS.SIG_SHARED_BRAND),
     product('prod::external_seed::mirror-3', IDS.SELLER_FALLBACK_ROW, 'external_seed', 'external_product_seeds_mirror_v1', IDS.SEED_FALLBACK, IDS.SIG_FALLBACK),
+    product('prod::external_seed::mirror-4', IDS.SELLER_EMITTED, 'external_seed', 'external_product_seeds_mirror_v1', IDS.SEED_EMITTED, IDS.SIG_EMITTED),
     product('prod::shop-a::9001', IDS.SELLER_CONNECTED, 'storefront', 'storefront_sync_v1', IDS.SOURCE_CONNECTED, IDS.SIG_CONNECTED),
     product('prod::shop-a::9002', IDS.SELLER_CONNECTED, 'storefront', 'storefront_sync_v1', IDS.SOURCE_SHARED_RETAILER, IDS.SIG_SHARED_RETAILER),
     // No signature: a listed row that names no product id.
@@ -85,6 +95,7 @@ const rows = {
     { external_product_id: IDS.SEED_MIRROR, attached_product_key: null, status: 'active' },
     { external_product_id: IDS.SEED_SHARED_BRAND, attached_product_key: null, status: 'active' },
     { external_product_id: IDS.SEED_FALLBACK, attached_product_key: null, status: 'active' },
+    { external_product_id: IDS.SEED_EMITTED, attached_product_key: null, status: 'active' },
   ],
   pdp_identity_listing: [
     listing(IDS.SELLER_MINTED, IDS.SEED_MINTED, IDS.GROUP_MINTED, 'external_seed', 'brand'),
@@ -94,6 +105,7 @@ const rows = {
     // group's canonical member is still the brand's.
     listing(IDS.SELLER_CONNECTED, IDS.SOURCE_SHARED_RETAILER, IDS.GROUP_SHARED, 'internal', 'retailer', { confidence: 0.99 }),
     listing(IDS.SELLER_SHARED_BRAND, IDS.SEED_SHARED_BRAND, IDS.GROUP_SHARED, 'external_seed', 'brand', { confidence: 0.8 }),
+    listing(IDS.SELLER_EMITTED, IDS.SEED_EMITTED, IDS.GROUP_EMITTED, 'external_seed', 'brand'),
     listing(IDS.SELLER_CONNECTED, '9003', IDS.GROUP_UNSIGNED, 'internal', 'retailer'),
     listing(IDS.SELLER_CONNECTED, '9004', IDS.GROUP_NOT_LIVE, 'internal', 'retailer', { live: false }),
   ],
@@ -106,6 +118,8 @@ const GROUP_PRODUCT = {
   [IDS.GROUP_MIRROR]: IDS.SIG_MIRROR,
   [IDS.GROUP_CONNECTED]: IDS.SIG_CONNECTED,
   [IDS.GROUP_SHARED]: IDS.SIG_SHARED_BRAND,
+  [IDS.GROUP_EMITTED]: IDS.SIG_EMITTED,
+  [IDS.GROUP_EMITTED_NO_SIGNATURE_OFFER]: null,
   [IDS.GROUP_UNSIGNED]: null,
   [IDS.GROUP_NOT_LIVE]: null,
   [IDS.GROUP_UNKNOWN]: null,
