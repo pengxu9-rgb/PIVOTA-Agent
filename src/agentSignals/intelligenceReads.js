@@ -14,6 +14,7 @@ const liveVerification = require('../services/offerLiveVerification');
 const { numericVariantId } = require('../services/ucpLiveOfferRead');
 // Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
 const listPriceTiers = require('../services/listPriceTiers');
+const { decideEmptyReason, emptyReasonFromOffersResolve } = require('./getOffersEmptyReason');
 
 // When a get_alternatives row's stored price was last READ, as the graph edge carries it: the candidate snapshot's
 // price_checked_at (the graph build copies it from the source row's price read under
@@ -493,6 +494,9 @@ function makeGetOffers(deps = {}) {
   // the cache flags are off.
   const priceCache = deps.priceCache && typeof deps.priceCache.recordVerifiedPrice === 'function' ? deps.priceCache : null;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
+  // `emptyReasonDoor` (optional, () => boolean; GET_OFFERS_EMPTY_REASON): true only for a call of the door that
+  // names every empty answer (agentSignals/getOffersEmptyReason). Absent or false: today's answer.
+  const emptyReasonDoor = typeof deps.emptyReasonDoor === 'function' ? deps.emptyReasonDoor : () => false;
   const logSink = typeof deps.log === 'function' ? deps.log : () => {};
   // A log line never costs the answer.
   const log = (event, fields) => {
@@ -701,6 +705,7 @@ function makeGetOffers(deps = {}) {
     // A FLAGGED offer (its stored facts are stale; pivota-backend #2629) is served only when the merchant's
     // live read just verified it; otherwise it is withheld exactly as offers.resolve used to drop it.
     const beforeUnverified = offers.length;
+    const servedOrFlagged = offers;
     offers = offers.filter((o) => !(o && o.requires_live_verification) || (o.live_read && o.live_read.status === 'verified'));
     const withheldUnverified = beforeUnverified - offers.length;
     // THE CART FOR A STALE OFFER THE LIVE READ JUST VERIFIED (GET_OFFERS_LIVE_CART). Fail-open: any failure
@@ -727,6 +732,19 @@ function makeGetOffers(deps = {}) {
       else if (withheldUnverified > 0) emptyReason = 'offer_needs_live_verification';
       else if (market && withheld > 0) emptyReason = 'no_offer_in_market_currency';
     }
+    // GET_OFFERS_EMPTY_REASON, the reason door only: every empty answer is named, from a fixed vocabulary,
+    // with whether asking again may help. Never throws on its own account; off, nothing below runs.
+    let emptyRetriable = null;
+    if (offers.length === 0 && emptyReasonDoor()) {
+      const decided = decideEmptyReason({
+        current: emptyReason,
+        backend: res && res.empty_reason,
+        // The answer is empty, so every offer that reached the filter above was withheld by it.
+        unverified: servedOrFlagged,
+      });
+      emptyReason = decided.reason;
+      emptyRetriable = decided.retriable;
+    }
     return {
       subject,
       best_offer,
@@ -750,6 +768,7 @@ function makeGetOffers(deps = {}) {
             }
           : {}),
         ...(emptyReason ? { reason: emptyReason } : {}),
+        ...(emptyRetriable === null ? {} : { reason_retriable: emptyRetriable }),
         // Under the fresh-price contract only: which offer is the best price, and who said so (offerToSignal
         // bestFreshComparable). `offer_id: null` + `reason` when no served offer is a fresh comparable price.
         ...(best_price ? { best_price } : {}),
@@ -906,7 +925,11 @@ function makeGetIntel(deps = {}) {
 // Pure. offers.resolve already returns offers in normalize_offer shape (1:1 with offerToSignal), and is
 // cross-merchant by construction (it resolves to a canonical product_group and aggregates offers across ALL
 // member merchants). `mapping.canonical_product_group_id` carries the resolved group.
-function mapOffersResolveResponse(res, fallbackGroupId = null) {
+//
+// `options.emptyReason` (GET_OFFERS_EMPTY_REASON, the reason door only): an answer with no offer also carries
+// `empty_reason`, ONE fixed token for why (getOffersEmptyReason.emptyReasonFromOffersResolve). Nothing the
+// backend wrote is copied. Absent or false, the result is the shape it always was.
+function mapOffersResolveResponse(res, fallbackGroupId = null, options = {}) {
   const offers = res && Array.isArray(res.offers) ? res.offers : [];
   const groupId =
     (res && res.mapping && res.mapping.canonical_product_group_id) ||
@@ -926,6 +949,9 @@ function mapOffersResolveResponse(res, fallbackGroupId = null) {
     product_group_id: groupId,
     ...bestPrice,
     ...(assertions ? { live_verification_assertions: assertions } : {}),
+    ...(options && options.emptyReason === true && offers.length === 0
+      ? { empty_reason: emptyReasonFromOffersResolve(res) }
+      : {}),
   };
 }
 
