@@ -33804,6 +33804,7 @@ async function getCommerceRemoteMcpAdapter() {
         buildIntelKbKeys,
         intelIdentityProductId,
       } = require('./agentSignals/intelligenceReads');
+      const getOffersEmptyReason = require('./agentSignals/getOffersEmptyReason');
       const { makeRecommendProducts, classifyVerifyPriceResponse, withheldPriceOfVerifyResponse } = require('./agentSignals/recommendProducts');
       const { verifyPriceAnswerOfPdpProduct } = require('./agentSignals/recommendProducts');
       const {
@@ -33916,6 +33917,9 @@ async function getCommerceRemoteMcpAdapter() {
           // A minted cart's price goes to the shared verified-price cache as `merchant_cart` (PRICE_CACHE_*).
           priceCache: priceCacheHooks,
           log: logUcpLiveRead,
+          // GET_OFFERS_EMPTY_REASON: true only inside a get_offers call of the `/mcp` door's own view of the
+          // surface (mcp-server/src/getOffersEmptyReasonDoor.js), which exists only with the flag on.
+          emptyReasonDoor: getOffersEmptyReason.emptyReasonDoorActive,
           fetchOffers: async ({ merchant_id, product_id, product_group_id, limit, market, market_assumed, variant_id, include_live_verification, live_verifications, live_verifications_dry_run, signal }) =>
             mapOffersResolveResponse(
               await invokeCommerceKernelRawUpstream('offers.resolve', {
@@ -33941,6 +33945,8 @@ async function getCommerceRemoteMcpAdapter() {
                   : {}),
               }, {}, signal ? { signal } : {}),
               product_group_id || null,
+              // Absent off the reason door: the mapped result is then the shape it always was.
+              ...(getOffersEmptyReason.emptyReasonDoorActive() ? [{ emptyReason: true }] : []),
             ),
         }),
         // Why/fit/evidence from the product-intelligence KB (chat-only until now) → decision Signal.
@@ -34134,11 +34140,16 @@ async function getCommerceRemoteMcpAdapter() {
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
       rememberMcpToolNames(surface);
-      // PARTNER_DOOR_ONE_PRODUCT_ID: the `/mcp` door's own view of the surface (the surface itself while off).
-      // Everything the flag does happens inside this view, so the UCP door (which keeps projecting `surface`,
-      // above), the public door, the strict invoke route and the kernel hop answer exactly as with it off.
+      // THE `/mcp` DOOR'S OWN VIEW OF THE SURFACE: two views, each the surface itself while its flag is off. The UCP
+      // door keeps projecting `surface` (above), so it, the public door, the strict invoke route and the kernel
+      // hop answer exactly as with both off.
+      //   inner  GET_OFFERS_EMPTY_REASON: an empty get_offers answer is named from what the backend said.
+      //   outer  PARTNER_DOOR_ONE_PRODUCT_ID: everything that flag does, over the inner view. Its get_offers
+      //          calls (the first, and the retry under the signature) therefore go through the inner view, and it
+      //          fills `metadata.reason` only when none is there: the inner view's specific reason stands.
+      const { getOffersEmptyReasonSurface } = await import('../mcp-server/src/getOffersEmptyReasonDoor.js');
       const { partnerDoorSurface } = await import('../mcp-server/src/partnerDoorOneProductId.js');
-      return createRemoteMcpAdapter(partnerDoorSurface(surface, { log: logger }), {
+      return createRemoteMcpAdapter(partnerDoorSurface(getOffersEmptyReasonSurface(surface), { log: logger }), {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
           if (req?.authInfo?.invoke_authenticated !== true) {

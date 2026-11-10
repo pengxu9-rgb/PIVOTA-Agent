@@ -37,7 +37,10 @@ test('THE FLAG ACTS ON /mcp ONLY: the gateway reaches this module through the /m
   const server = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
   // One wiring line, at the /mcp adapter. The UCP door projects the bare surface; the public door builds its own.
   assert.equal((server.match(/partnerDoorSurface\(/g) || []).length, 1);
-  assert.match(server, /return createRemoteMcpAdapter\(partnerDoorSurface\(surface, \{ log: logger \}\), \{\s+serverInfo: \{ name: 'pivota-commerce-mcp'/);
+  // It wraps the door's other view (GET_OFFERS_EMPTY_REASON, the surface itself while that flag is off), so its
+  // get_offers calls go through that view and a reason already on an empty answer is kept.
+  assert.match(server, /return createRemoteMcpAdapter\(partnerDoorSurface\(getOffersEmptyReasonSurface\(surface\), \{ log: logger \}\), \{\s+serverInfo: \{ name: 'pivota-commerce-mcp'/);
+  assert.equal((server.match(/getOffersEmptyReasonSurface\(/g) || []).length, 1);
   assert.match(server, /const surface = ucpDialectSurface\(await getCommerceToolSurface\(\)\);/);
   // The kernel hop, the executor wiring and the error mapping do not know the flag.
   assert.equal(server.includes("services/partnerDoorOneProductId'"), false);
