@@ -1,0 +1,69 @@
+{
+  "not_servable": {
+    "status": 404,
+    "body": {
+      "error": "PRODUCT_NOT_SERVABLE",
+      "message": "Product not found",
+      "reason_code": "PRODUCT_NOT_SERVABLE",
+      "gateway_request_id": "<id>",
+      "details": {
+        "reason": "not_serving_eligible",
+        "serving_eligible": false,
+        "index_row_found": true,
+        "content_key": "ck_00000000000000000000000000000001",
+        "pivota_signature_id": "sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "pipeline_stage": null,
+        "blocker_code": null,
+        "blocker_detail": null,
+        "content_quality_score": 0,
+        "pdp_lifecycle_stage": null,
+        "sync_status": null,
+        "active_external_seed_source_match": true,
+        "eligibility_override_reason": null
+      },
+      "metadata": {
+        "identity_resolution": {
+          "requested_product_id": "sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "requested_merchant_id": null,
+          "resolved_product_id": "brand-x:0123456789abcdef",
+          "resolved_merchant_id": "merch_obs_brandx",
+          "canonicalization_applied": true,
+          "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+          "entry_precheck_missing": true,
+          "resolution_source": "catalog_products_signature_exact"
+        },
+        "route_health": "<timings>"
+      }
+    }
+  },
+  "not_found": {
+    "status": 404,
+    "body": {
+      "error": "PRODUCT_NOT_FOUND",
+      "message": "Product not found",
+      "reason_code": "PRODUCT_NOT_FOUND",
+      "gateway_request_id": "<id>",
+      "details": null,
+      "metadata": {
+        "identity_resolution": {
+          "requested_product_id": "sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "requested_merchant_id": null,
+          "resolved_product_id": "brand-x:0123456789abcdef",
+          "resolved_merchant_id": "merch_obs_brandx",
+          "canonicalization_applied": true,
+          "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+          "entry_precheck_missing": true,
+          "resolution_source": "catalog_products_signature_exact"
+        },
+        "route_health": "<timings>"
+      }
+    }
+  },
+  "unresolved": {
+    "status": 400,
+    "body": {
+      "error": "MISSING_MERCHANT_CONTEXT",
+      "message": "merchant_id is required when canonical product identity cannot be resolved"
+    }
+  }
+}

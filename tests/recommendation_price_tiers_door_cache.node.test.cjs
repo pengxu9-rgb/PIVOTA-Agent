@@ -55,9 +55,39 @@ nock(LOOPBACK, { allowUnmocked: true }).persist()
     return [200, { status: 'success', success: true, products: PAGES[q](), total: PAGES[q]().length, metadata }];
   });
 
+// D-P2-1: THE REAL HOP. For this query the MCP door's loopback call is answered by the REAL invoke route of this
+// same process (forwarded in-process, its body and headers as they are), so the door caches what the real lane,
+// the real transport projection and the real final exit produce. The backend's search answer (below) has a merchant
+// answer read 12 min ago, which the projection strips of its price_source on the way.
+const REAL_HOP_QUERY = 'usb hub tiers cap probe';
+const realHopCalls = { n: 0 };
+nock('http://backend.price-log.test').persist()
+  .post(/^\/agent\/v2\/products\/search/, (b) => JSON.stringify(b || {}).includes(REAL_HOP_QUERY))
+  .reply(200, () => ({ status: 'success', total: 2, products: [
+    { product_id: 'p_hub1', merchant_id: 'm2', title: 'USB hub 4 port tiers cap probe', price: 9, currency: 'USD', price_source: 'merchant_cache', price_as_of: iso(NOW - 12 * MIN), in_stock: true },
+    { product_id: 'p_hub2', merchant_id: 'm2', title: 'USB hub 7 port tiers cap probe', price: 8, currency: 'USD', in_stock: true },
+  ] }));
+let forwardApp = null;
+nock(LOOPBACK, { allowUnmocked: true }).persist()
+  .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi' && body.payload?.search?.query === REAL_HOP_QUERY)
+  .reply(function forward(uri, body, cb) {
+    realHopCalls.n += 1;
+    const headers = { ...this.req.headers };
+    for (const k of ['host', 'content-length', 'connection']) delete headers[k];
+    let r = require('supertest')(forwardApp).post('/agent/shop/v1/invoke');
+    for (const [k, v] of Object.entries(headers)) r = r.set(k, v);
+    r.send(body).then((resp) => {
+      const out = {};
+      const earliest = resp.headers['x-pivota-price-earliest-ms'];
+      if (earliest) out['X-Pivota-Price-Earliest-Ms'] = earliest;
+      cb(null, [resp.status, resp.body, out]);
+    }, (err) => cb(err));
+  });
+
 const { createPriceLogDoors, rpc, AGENT_META } = require('./_support/priceLogDoors.cjs');
 
 const doors = createPriceLogDoors({ port: PORT, env: { COMMERCE_READ_CACHE_ENABLED: '1', PUBLIC_READ_CACHE_ENABLED: '1' } });
+forwardApp = doors.app;
 const supertest = require('supertest');
 
 test.before(() => doors.start(test.mock.timers));
@@ -83,6 +113,8 @@ function nativeOf(resp) {
 }
 
 test('P2-1 a /mcp read-cache replay serves `live` rows as `cache`, dated by the original read', async () => {
+  process.env.LIST_ROW_PRICE_AS_OF = 'on';
+  try {
   const q = 'tiers replay probe';
   const first = nativeOf(await mcpSearch(q));
   assert.equal(first.products[0].price_source, 'live', 'fresh: read during this call');
@@ -91,9 +123,17 @@ test('P2-1 a /mcp read-cache replay serves `live` rows as `cache`, dated by the 
   assert.equal(calls[q], 1, 'the second answer is the cache\'s');
   assert.equal(replay.products[0].price_source, 'cache');
   assert.equal(replay.products[0].price_as_of, iso(NOW));
+  } finally {
+    delete process.env.LIST_ROW_PRICE_AS_OF;
+  }
+  // Flags off, the door touches nothing, whatever the answer carries.
+  const offReplay = nativeOf(await mcpSearch('tiers replay probe'));
+  assert.equal(offReplay.products[0].price_source, 'live', 'off: served as the cache entry holds it');
 });
 
 test('P3-2 /mcp reorders by the label it serves; /ucp/mcp (label dropped) keeps the order', async () => {
+  process.env.PRICE_STALENESS_DEMOTE = 'on';
+  try {
   const q = 'tiers reorder probe';
   const mcp = nativeOf(await mcpSearch(q));
   assert.deepEqual(mcp.products.map((p) => p.product_id), ['sig_f1', 'sig_f2', 'sig_s0']);
@@ -107,6 +147,9 @@ test('P3-2 /mcp reorders by the label it serves; /ucp/mcp (label dropped) keeps 
   assert.deepEqual(again.products.map((p) => p.product_id), ['sig_f1', 'sig_f2', 'sig_s0']);
   const ucpAgain = JSON.parse((await ucpSearch(q)).text).result;
   assert.deepEqual([...new Set(JSON.stringify(ucpAgain.structuredContent || JSON.parse(ucpAgain.content[0].text)).match(/sig_(?:s0|f1|f2)/g))], ['sig_s0', 'sig_f1', 'sig_f2']);
+  } finally {
+    delete process.env.PRICE_STALENESS_DEMOTE;
+  }
 });
 
 test('P2-5 OFF: the door caches keep their own TTLs, whatever the price age', async () => {
@@ -154,5 +197,40 @@ test('P2-5 ON: the cap shortens the clock to the answer\'s 15-min mark; stored-o
     test.mock.timers.tick(4 * MIN);
     await mcpSearch(stored);
     assert.equal(calls[stored], 1, 'no merchant answer: its own 5-min TTL');
+  });
+});
+
+test('D-P2-1 THE REAL HOP: with only the cap on (as-of off), a merchant answer the projection stripped still caps the /mcp and public caches', async () => {
+  test.mock.timers.setTime(NOW);
+  // OFF: both door caches keep their own clocks.
+  await withFlags({}, async () => {
+    const base = realHopCalls.n;
+    const first = nativeOf(await mcpSearch(REAL_HOP_QUERY));
+    assert.deepEqual(first.products.map((p) => p.product_id).sort(), ['p_hub1', 'p_hub2'], 'the real lane served both rows');
+    assert.equal(first.products.some((p) => 'price_source' in p), false, 'the real projection dropped every price_source');
+    test.mock.timers.tick(4 * MIN);
+    await mcpSearch(REAL_HOP_QUERY);
+    assert.equal(realHopCalls.n, base + 1, '/mcp off: served from its cache at 4 min');
+  });
+  test.mock.timers.setTime(NOW);
+  await withFlags({ DOOR_CACHE_PRICE_FRESHNESS_CAP: 'on' }, async () => {
+    // A distinct page size: its own cache key, so the OFF entry above does not answer.
+    const base = realHopCalls.n;
+    const q = () => supertest(doors.app).post('/mcp').send(rpc('search_catalog', { query: REAL_HOP_QUERY, market: 'US', page_size: 7 }));
+    const first = nativeOf(await q());
+    assert.equal(first.products.some((p) => 'price_source' in p), false, 'as-of off: nothing new is served');
+    test.mock.timers.tick(2 * MIN);
+    await q();
+    assert.equal(realHopCalls.n, base + 1, 'inside the 3 min the 12-min-old answer has left: cached');
+    test.mock.timers.tick(2 * MIN);
+    await q();
+    assert.equal(realHopCalls.n, base + 2, 'past the answer\'s 15-min mark: recomputed, though the cache\'s own TTL is 5 min');
+    const pubBase = realHopCalls.n;
+    test.mock.timers.setTime(NOW + 13 * MIN);
+    const pub = JSON.parse((await publicSearch(REAL_HOP_QUERY)).text).result;
+    assert.equal(JSON.stringify(pub).includes('2026-'), false, 'the public answer still carries no timestamp');
+    test.mock.timers.tick(3 * MIN);
+    await publicSearch(REAL_HOP_QUERY);
+    assert.equal(realHopCalls.n, pubBase + 2, 'public: the merchant answer is 25 min old, so its 10-min clock never starts');
   });
 });

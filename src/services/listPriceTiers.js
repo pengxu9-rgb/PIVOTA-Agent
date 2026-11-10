@@ -74,6 +74,14 @@ const INTERNAL_CACHE = new Set(['merchant_cache']);
 const LIVE_SLACK_MS = 1000;
 // No request start known: "live" means read within the last 30 s (the UCP lookup memo's span).
 const LIVE_FALLBACK_WINDOW_MS = 30 * 1000;
+// THE ROW'S INTERNAL PRICE PROVENANCE, kept beside a row the search transport projection rebuilt
+// (projectSearchTransportProduct drops the internal price_source and the seed): { price_source, price_as_of,
+// price_checked_at, seed_read_at }. A symbol key, so JSON never serializes it and nothing served carries it,
+// while an object spread ({ ...row }) between the projection and the invoke route's final exit keeps it. The tiers
+// read it first (priceTierOf), so a search is tiered ONCE, at the final exit, after every step that replaces
+// or reorders its list.
+const PROVENANCE = Symbol.for('pivota.listPrice.provenance');
+const MERCHANT_SOURCES = new Set(['merchant_live', 'merchant_cache', 'live', 'cache']);
 
 function str(v) {
   return v === undefined || v === null ? '' : String(v).trim();
@@ -139,8 +147,58 @@ function amountOf(node) {
  * The tier of one priced node: { price_source, price_as_of, priced, stale, undated }. Pure.
  * `hint` (optional) is what the caller knows that the node does not say: { live?: boolean, as_of?: string }.
  */
+function provenanceOf(row) {
+  if (!isObj(row)) return null;
+  const p = row[PROVENANCE];
+  return isObj(p) ? p : null;
+}
+
+/** The provenance a row carries now, to keep beside its projected copy (see PROVENANCE). Pure. */
+function captureProvenance(row) {
+  if (!isObj(row)) return null;
+  const kept = provenanceOf(row);
+  if (kept) return kept;
+  return {
+    price_source: row.price_source,
+    price_as_of: row.price_as_of,
+    price_checked_at: row.price_checked_at,
+    seed_read_at: seedReadAt(row),
+  };
+}
+
+/**
+ * The earliest read time (epoch ms) of a MERCHANT answer among `rows` (priced rows whose provenance names a
+ * merchant answer and dates it), or null. Pure. The door caches' price-freshness cap reads it.
+ */
+function earliestMerchantAnswerMs(rows) {
+  let min = null;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!isObj(row)) continue;
+    const p = provenanceOf(row);
+    const source = str(p && p.price_source !== undefined ? p.price_source : row.price_source);
+    const merchant = MERCHANT_SOURCES.has(source) || row.merchant_price_verified === true;
+    const amount = amountOf(row);
+    if (!merchant || !(amount > 0)) continue;
+    const raw = p && p.price_as_of !== undefined ? p.price_as_of : row.price_as_of;
+    const at = typeof raw === 'string' ? Date.parse(raw) : NaN;
+    if (Number.isFinite(at)) min = min === null ? at : Math.min(min, at);
+  }
+  return min;
+}
+
 function priceTierOf(node, { nowMs = Date.now(), hint = null, liveFromMs } = {}) {
-  const n = isObj(node) ? node : {};
+  const raw = isObj(node) ? node : {};
+  const prov = provenanceOf(raw);
+  // The internal provenance a projected row kept (PROVENANCE) stands in for the fields the projection dropped.
+  const n = prov
+    ? {
+      ...raw,
+      price_source: prov.price_source,
+      price_as_of: prov.price_as_of !== undefined ? prov.price_as_of : raw.price_as_of,
+      price_checked_at: prov.price_checked_at,
+      seed_data: prov.seed_read_at ? { snapshot: { extracted_at: prov.seed_read_at } } : undefined,
+    }
+    : raw;
   const internal = str(n.price_source);
   let source;
   if (internal === 'live' || INTERNAL_LIVE.has(internal) || (hint && hint.live === true)) source = 'live';
@@ -328,6 +386,9 @@ module.exports = {
   applyListPriceTiers,
   relabelReplayedRows,
   orderByStalenessLabel,
+  PROVENANCE,
+  captureProvenance,
+  earliestMerchantAnswerMs,
   LIVE_SLACK_MS,
   LIVE_FALLBACK_WINDOW_MS,
 };

@@ -178,6 +178,45 @@ test('1e READ MODE write volume: an unchanged hot key re-recorded every 40 s for
   assert.ok(r <= w, `read mode wrote ${r}, write mode ${w}`);
 });
 
+test('1f READ MODE race: a newer answer recorded while the store check is in flight is never overwritten by the older one', async () => {
+  const fake = createFakeFirestore();
+  let t = NOW;
+  const now = () => t;
+  const store = createFirestorePriceCacheStore({ client: fake.db, flushMs: 60000, now });
+  // The store read the check makes waits until the test opens it, so a newer answer can land (and flush) first.
+  let open;
+  const gate = new Promise((res) => { open = res; });
+  let gated = false;
+  const slowStore = {
+    putPrice: (...a) => store.putPrice(...a),
+    putHostBackoff: (...a) => store.putHostBackoff(...a),
+    getHostBackoff: (...a) => store.getHostBackoff(...a),
+    getPrices: (ids) => (gated ? gate.then(() => store.getPrices(ids)) : store.getPrices(ids)),
+  };
+  const cache = pc.createPriceCache({ store: slowStore, now, read: () => true });
+  // Instance A wrote $23; another instance then wrote $27 into the store.
+  assert.equal(cache.recordVerifiedPrice(VERIFIED), true);
+  await store.flush();
+  const other = pc.createPriceCache({ store, now, read: () => false });
+  t += MIN;
+  other.recordVerifiedPrice({ ...VERIFIED, amount: 27, read_at: t });
+  await store.flush();
+  t += MIN;
+  // A sees $23 again (unchanged to A, inside 5 min): the store is checked in the background, and it holds $27,
+  // so the check would write $23...
+  gated = true;
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, read_at: t - 1000 }), false);
+  // ...but before it answers, A reads $25, newer, which is written and reaches the store.
+  assert.equal(cache.recordVerifiedPrice({ ...VERIFIED, amount: 25, read_at: t }), true);
+  await store.flush();
+  open();
+  for (let i = 0; i < 10; i += 1) await new Promise((res) => setImmediate(res));
+  await store.flush();
+  const docs = [...fake.docs.values()].filter((d) => d.status === 'verified');
+  assert.equal(docs.length, 1);
+  assert.equal(docs[0].amount, '25.00', 'the newer $25 stands; the late check never writes the older $23 over it');
+});
+
 test('1d SYNTHETIC: a synthetic call writes nothing to the shared cache (no record, no tombstone, no backoff)', () => {
   const fake = createFakeFirestore();
   const built = [];
@@ -714,72 +753,6 @@ function server() {
   return app;
 }
 
-test('4f SEARCH through the server: every exit of the overlay is stamped (skipped or not); flags off it is untouched', async () => {
-  const dbg = server()._debug;
-  const t0 = Date.now();
-  const response = () => ({
-    status: 'success',
-    products: [
-      { product_id: 'sig_seed', price: 13, currency: 'USD', price_source: 'catalog_offer', seed_data: { snapshot: { extracted_at: iso(t0 - 10 * DAY) } } },
-      { product_id: 'sig_fresh', price: 14, currency: 'USD', price_as_of: iso(t0 - DAY) },
-    ],
-    metadata: { query_source: 'beauty_external_seed_mainline' },
-  });
-  const off = await withEnv({}, () => dbg.maybeOverlayLiveSearchPrice(response(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }));
-  assert.equal(JSON.stringify(off), JSON.stringify(response()), 'flags off: the overlay is off, the answer untouched');
-  const on = await withEnv({ LIST_ROW_PRICE_AS_OF: 'on', PRICE_STALENESS_DEMOTE: 'on' }, () => dbg.maybeOverlayLiveSearchPrice(response(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }));
-  assert.deepEqual(on.products.map((p) => [p.product_id, p.price_source, p.price_may_have_changed === true]), [
-    ['sig_fresh', 'stored', false], ['sig_seed', 'stored', true],
-  ]);
-  assert.equal(on.metadata.price_staleness.stale_count, 1);
-  // Applied once: an answer that already carries price_staleness is not reordered again.
-  const twice = await withEnv({ LIST_ROW_PRICE_AS_OF: 'on', PRICE_STALENESS_DEMOTE: 'on' }, () => dbg.maybeOverlayLiveSearchPrice(on, { query: 'serum', market: 'US' }, {}));
-  assert.equal(twice, on);
-  // A price-capped search guards its answer.
-  const capped = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => dbg.maybeOverlayLiveSearchPrice({
-    ...response(), products: [response().products[0], { ...response().products[1] }, { product_id: 'sig_f2', price: 9, currency: 'USD', price_as_of: iso(t0) }],
-  }, { query: 'serum under $20', market: 'US', price_max: 20 }, {}));
-  assert.equal(capped.products[0].product_id, 'sig_fresh');
-  assert.equal(capped.metadata.price_staleness.answer_guard, true);
-});
-
-test('4g SEARCH TRANSPORT PROJECTION: the token and label are projected; an internal price_source never is', () => {
-  const dbg = server()._debug;
-  const liveAt = iso(Date.now() - 1000);
-  const body = () => ({
-    status: 'success',
-    products: [
-      { product_id: 'p1', title: 'One', price: 9, currency: 'USD', price_source: 'merchant_live', price_as_of: liveAt },
-      { product_id: 'p2', title: 'Two', price: 8, currency: 'USD', price_source: 'catalog_offer' },
-    ],
-    metadata: {},
-  });
-  const off = withEnv({}, () => dbg.projectFindProductsMultiTransportResponse(body(), { operation: 'find_products_multi' }));
-  assert.deepEqual(off.products.map((p) => [p.price_source, p.price_as_of]), [[undefined, body().products[0].price_as_of], [undefined, undefined]]);
-  const on = withEnv({ LIST_ROW_PRICE_AS_OF: 'on' }, () => dbg.projectFindProductsMultiTransportResponse(body(), { operation: 'find_products_multi', search: { query: 'cable' } }));
-  assert.deepEqual(on.products.map((p) => [p.price_source, p.price_as_of === null ? null : typeof p.price_as_of]), [['live', 'string'], ['stored', null]]);
-});
-
-test('3f SYNTHETIC through the server: with top-K and read mode set, a synthetic search makes no live read and no cache read', async () => {
-  const a = server();
-  const fetched = [];
-  a._debug.useSearchOverlayFetchForTest(async (url) => { fetched.push(url); return { ok: true, json: async () => json(Number(url.match(/item-(\d)/)[1]) + 1000, 22) }; });
-  try {
-    const { response } = page(2);
-    const env = { SERVE_LIVE_MERCHANT_PRICE: 'on', UCP_LIVE_SEARCH_READ_TOP_K: '3', LIST_ROW_PRICE_AS_OF: 'on' };
-    const synthetic = await withEnv(env, () => INVOKE_AUTH_CONTEXT.run({ synthetic: true }, () => a._debug.maybeOverlayLiveSearchPrice(
-      JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' },
-    )));
-    assert.deepEqual(fetched, [], 'no merchant read for a synthetic call');
-    assert.deepEqual(synthetic.products.map((p) => p.price_source), ['stored', 'stored']);
-    const real = await withEnv(env, () => a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }));
-    assert.equal(fetched.length, 2, 'a real call reads (no UCP reader enforcing here, so K does not apply)');
-    assert.deepEqual(real.products.map((p) => p.price_source), ['live', 'live']);
-  } finally {
-    a._debug.useSearchOverlayFetchForTest(null);
-  }
-});
-
 test('4h PRICE LINE: a fleet-cache answer and the list tokens live / cache count as merchant answers; stored does not', () => {
   const { priceFactOf } = require('../src/observability/priceVerificationFacts');
   const at = iso(NOW - MIN);
@@ -840,24 +813,6 @@ test('2b P2-1 LIVE MEANS THIS REQUEST: a merchant answer read before the request
   assert.equal(tiers.relabelReplayedRows(none, { liveFromMs: t }), none, 'internal names (flags off) are never touched');
 });
 
-test('2c P2-1 through the server: a search served from this instance\'s `.json` page cache is `cache` on the next request', async () => {
-  const a = server();
-  a._debug.useSearchOverlayFetchForTest(async (url) => ({ ok: true, json: async () => json(Number(url.match(/item-(\d)/)[1]) + 1000, 22) }));
-  try {
-    const { response } = page(1, { host: 'page-cache-tiers.example.com' });
-    const env = { SERVE_LIVE_MERCHANT_PRICE: 'on', LIST_ROW_PRICE_AS_OF: 'on' };
-    const first = await withEnv(env, () => a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }));
-    assert.equal(first.products[0].price_source, 'live');
-    await new Promise((res) => setTimeout(res, 1100));
-    const second = await withEnv(env, () => a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }));
-    assert.equal(second.metadata.live_merchant_price.cache_hit_count, 1, 'answered from the page cache');
-    assert.equal(second.products[0].price_source, 'cache');
-    assert.equal(second.products[0].price_as_of, first.products[0].price_as_of, 'dated by the original read');
-  } finally {
-    a._debug.useSearchOverlayFetchForTest(null);
-  }
-});
-
 test('5g P3-7 SHADOW WITH AS-OF ON: rows are stamped, never reordered or labelled', () => {
   const rows = [
     { product_id: 's0', price: 9, price_as_of: iso(NOW - 8 * DAY) },
@@ -890,45 +845,213 @@ test('5h GROUPS and REORDER: rows move only inside their group; reorder:false la
   assert.equal(tiers.orderByStalenessLabel(fresh), fresh);
 });
 
-test('4j P3-1/P3-2 SEARCH through the server: one shadow line per search; a loopback search (an MCP door\'s) is labelled, not reordered', async () => {
+// THE FINAL EXIT (finalizeSearchListPriceTiers), as the invoke route's res.json funnel calls it. `req` is shaped
+// as the route's: a direct caller comes from outside the process, a loopback one from 127.0.0.1 with no
+// X-Forwarded-For (callerLogFields.isLoopbackSelfCall).
+const directReq = (search) => ({ body: { payload: { search } }, socket: { remoteAddress: '10.1.2.3' }, headers: {} });
+const loopbackReq = (search) => ({ body: { payload: { search } }, socket: { remoteAddress: '127.0.0.1' }, headers: {} });
+function fakeRes() {
+  const headers = {};
+  return { headers, setHeader: (k, v) => { headers[String(k).toLowerCase()] = v; } };
+}
+
+test('4f SEARCH at the final exit: every answer is tiered; flags off it is untouched and no header is set', async () => {
+  const dbg = server()._debug;
+  const t0 = Date.now();
+  const response = () => ({
+    status: 'success',
+    products: [
+      { product_id: 'sig_seed', price: 13, currency: 'USD', price_source: 'catalog_offer', seed_data: { snapshot: { extracted_at: iso(t0 - 10 * DAY) } } },
+      { product_id: 'sig_fresh', price: 14, currency: 'USD', price_as_of: iso(t0 - DAY) },
+    ],
+    metadata: { query_source: 'beauty_external_seed_mainline' },
+  });
+  const res0 = fakeRes();
+  const body = response();
+  const off = withEnv({}, () => dbg.finalizeSearchListPriceTiers(body, { req: directReq({ query: 'serum' }), res: res0, startedAtMs: t0 }));
+  assert.equal(off, body, 'flags off: the very same body');
+  assert.deepEqual(res0.headers, {});
+  const on = withEnv({ LIST_ROW_PRICE_AS_OF: 'on', PRICE_STALENESS_DEMOTE: 'on' }, () => dbg.finalizeSearchListPriceTiers(response(), { req: directReq({ query: 'serum' }), startedAtMs: t0 }));
+  assert.deepEqual(on.products.map((p) => [p.product_id, p.price_source, p.price_may_have_changed === true]), [
+    ['sig_fresh', 'stored', false], ['sig_seed', 'stored', true],
+  ]);
+  assert.equal(on.metadata.price_staleness.stale_count, 1);
+  assert.equal(on.metadata.price_staleness.reordered, true);
+  // A price-capped search guards its answer.
+  const capped = withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => dbg.finalizeSearchListPriceTiers({
+    ...response(), products: [response().products[0], response().products[1], { product_id: 'sig_f2', price: 9, currency: 'USD', price_as_of: iso(t0) }],
+  }, { req: directReq({ query: 'serum under $20', price_max: 20 }), startedAtMs: t0 }));
+  assert.equal(capped.products[0].product_id, 'sig_fresh');
+  assert.equal(capped.metadata.price_staleness.answer_guard, true);
+});
+
+test('4g PROJECTED ROWS are tiered from the provenance they keep: the real projection, then the final exit', () => {
+  const dbg = server()._debug;
+  const liveAt = iso(Date.now() - 1000);
+  const body = () => ({
+    status: 'success',
+    products: [
+      { product_id: 'p1', title: 'One', price: 9, currency: 'USD', price_source: 'merchant_live', price_as_of: liveAt },
+      { product_id: 'p2', title: 'Two', price: 8, currency: 'USD', price_source: 'catalog_offer', seed_data: { snapshot: { extracted_at: iso(Date.now() - 9 * DAY) } } },
+    ],
+    metadata: {},
+  });
+  const off = withEnv({}, () => dbg.projectFindProductsMultiTransportResponse(body(), { operation: 'find_products_multi' }));
+  assert.deepEqual(off.products.map((p) => [p.price_source, p.price_as_of]), [[undefined, liveAt], [undefined, undefined]]);
+  assert.equal(Object.getOwnPropertySymbols(off.products[0]).length, 0, 'flags off: no provenance kept');
+  const env = { LIST_ROW_PRICE_AS_OF: 'on', PRICE_STALENESS_DEMOTE: 'on' };
+  const projected = withEnv(env, () => dbg.projectFindProductsMultiTransportResponse(body(), { operation: 'find_products_multi' }));
+  assert.equal('price_source' in projected.products[0], false, 'the projection still drops the internal price_source');
+  assert.equal(JSON.stringify(projected).includes('merchant_live'), false, 'and the provenance is never serialized');
+  // Steps between the projection and the exit replace the list ({ ...row } copies keep the provenance).
+  const replaced = { ...projected, products: projected.products.map((p) => ({ ...p })).reverse() };
+  const out = withEnv(env, () => dbg.finalizeSearchListPriceTiers(replaced, { req: directReq({ query: 'cable' }), startedAtMs: Date.now() - 5000 }));
+  assert.deepEqual(out.products.map((p) => [p.product_id, p.price_source, p.price_may_have_changed === true]), [
+    ['p1', 'live', false], ['p2', 'stored', true],
+  ], 'dated by the dropped seed stamp, labelled live by the dropped merchant_live, reordered once on the final list');
+  assert.equal(JSON.stringify(out).includes('seed_read_at'), false);
+});
+
+test('3f SYNTHETIC through the server: with top-K and read mode set, a synthetic search makes no live read and no cache read', async () => {
+  const a = server();
+  const fetched = [];
+  a._debug.useSearchOverlayFetchForTest(async (url) => { fetched.push(url); return { ok: true, json: async () => json(Number(url.match(/item-(\d)/)[1]) + 1000, 22) }; });
+  try {
+    const { response } = page(2);
+    const env = { SERVE_LIVE_MERCHANT_PRICE: 'on', UCP_LIVE_SEARCH_READ_TOP_K: '3', LIST_ROW_PRICE_AS_OF: 'on' };
+    const t0 = Date.now();
+    const synthetic = await withEnv(env, () => INVOKE_AUTH_CONTEXT.run({ synthetic: true }, async () => a._debug.finalizeSearchListPriceTiers(
+      await a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }),
+      { req: directReq({ query: 'serum' }), startedAtMs: t0 },
+    )));
+    assert.deepEqual(fetched, [], 'no merchant read for a synthetic call');
+    assert.deepEqual(synthetic.products.map((p) => p.price_source), ['stored', 'stored']);
+    const real = await withEnv(env, async () => a._debug.finalizeSearchListPriceTiers(
+      await a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }),
+      { req: directReq({ query: 'serum' }), startedAtMs: t0 },
+    ));
+    assert.equal(fetched.length, 2, 'a real call reads (no UCP reader enforcing here, so K does not apply)');
+    assert.deepEqual(real.products.map((p) => p.price_source), ['live', 'live']);
+  } finally {
+    a._debug.useSearchOverlayFetchForTest(null);
+  }
+});
+
+test('2c P2-1 through the server: a search served from this instance\'s `.json` page cache is `cache` on the next request', async () => {
+  const a = server();
+  a._debug.useSearchOverlayFetchForTest(async (url) => ({ ok: true, json: async () => json(Number(url.match(/item-(\d)/)[1]) + 1000, 22) }));
+  try {
+    const { response } = page(1, { host: 'page-cache-tiers.example.com' });
+    const env = { SERVE_LIVE_MERCHANT_PRICE: 'on', LIST_ROW_PRICE_AS_OF: 'on' };
+    const serve = async () => {
+      const startedAtMs = Date.now();
+      return withEnv(env, async () => a._debug.finalizeSearchListPriceTiers(
+        await a._debug.maybeOverlayLiveSearchPrice(JSON.parse(JSON.stringify(response)), { query: 'serum', market: 'US' }, { buyerMarket: 'US' }),
+        { req: directReq({ query: 'serum' }), startedAtMs },
+      ));
+    };
+    const first = await serve();
+    assert.equal(first.products[0].price_source, 'live');
+    await new Promise((res) => setTimeout(res, 1100));
+    const second = await serve();
+    assert.equal(second.metadata.live_merchant_price.cache_hit_count, 1, 'answered from the page cache');
+    assert.equal(second.products[0].price_source, 'cache');
+    assert.equal(second.products[0].price_as_of, first.products[0].price_as_of, 'dated by the original read');
+  } finally {
+    a._debug.useSearchOverlayFetchForTest(null);
+  }
+});
+
+test('4j D-P3-1 SEARCH at the final exit: one shadow line per answer; a loopback search is labelled, not reordered; the side channel header', async () => {
   const a = server();
   const logger = require('../src/logger');
   const original = logger.info;
   const lines = [];
-  logger.info = (obj, msg) => { if (obj && obj.event === 'list_price_staleness_shadow') lines.push(obj); return undefined; };
+  logger.info = (obj) => { if (obj && obj.event === 'list_price_staleness_shadow') lines.push(obj); return undefined; };
   const t0 = Date.now();
   const body = () => ({
     status: 'success',
     products: [
       { product_id: 'p_stale', title: 'S', price: 9, currency: 'USD', price_source: 'catalog_offer', seed_data: { snapshot: { extracted_at: iso(t0 - 20 * DAY) } } },
-      { product_id: 'p_fresh', title: 'F', price: 8, currency: 'USD', price_as_of: iso(t0 - DAY) },
+      { product_id: 'p_fresh', title: 'F', price: 8, currency: 'USD', price_source: 'merchant_cache', price_as_of: iso(t0 - 3 * MIN) },
     ],
     metadata: {},
   });
   try {
-    const shadowed = await withEnv({ PRICE_STALENESS_DEMOTE: 'shadow' }, async () => {
-      const r = await a._debug.maybeOverlayLiveSearchPrice(body(), { query: 'serum' }, {});
-      return a._debug.projectFindProductsMultiTransportResponse({ ...r, metadata: { ...(r.metadata || {}) } }, { operation: 'find_products_multi' });
+    await withEnv({ PRICE_STALENESS_DEMOTE: 'shadow' }, async () => {
+      // The overlay no longer tiers; the projection no longer tiers; only the exit does.
+      const overlaid = await a._debug.maybeOverlayLiveSearchPrice(body(), { query: 'serum' }, {});
+      const projected = a._debug.projectFindProductsMultiTransportResponse({ ...overlaid, metadata: { ...(overlaid.metadata || {}) } }, { operation: 'find_products_multi' });
+      // A step in between replaces the list (savings hydration, isolation, role selection do).
+      const replaced = { ...projected, products: projected.products.map((p) => ({ ...p })) };
+      a._debug.finalizeSearchListPriceTiers(replaced, { req: directReq({ query: 'serum' }), startedAtMs: t0 });
     });
-    assert.equal(lines.length, 1, 'the overlay exit and the projection share one line');
-    assert.deepEqual(shadowed.products.map((p) => p.product_id), ['p_stale', 'p_fresh']);
-    const loop = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => a._debug.__agentCheckoutStrict.runInInvokeAuthContextForTest({ loopback_self_call: true },
-      () => a._debug.maybeOverlayLiveSearchPrice(body(), { query: 'serum' }, {})));
+    assert.equal(lines.length, 1, 'one line for one answer');
+    const loopRes = fakeRes();
+    const loop = withEnv({ PRICE_STALENESS_DEMOTE: 'on', DOOR_CACHE_PRICE_FRESHNESS_CAP: 'on' },
+      () => a._debug.finalizeSearchListPriceTiers(body(), { req: loopbackReq({ query: 'serum' }), res: loopRes, startedAtMs: t0 }));
     assert.deepEqual(loop.products.map((p) => [p.product_id, p.price_may_have_changed === true]), [['p_stale', true], ['p_fresh', false]]);
     assert.equal(loop.metadata.price_staleness.reordered, false);
-    const direct = await withEnv({ PRICE_STALENESS_DEMOTE: 'on' }, () => a._debug.__agentCheckoutStrict.runInInvokeAuthContextForTest({ loopback_self_call: false },
-      () => a._debug.maybeOverlayLiveSearchPrice(body(), { query: 'serum' }, {})));
+    assert.equal(loopRes.headers['x-pivota-price-earliest-ms'], String(Date.parse(iso(t0 - 3 * MIN))), 'the earliest merchant answer, for the door cache');
+    const directRes = fakeRes();
+    const direct = withEnv({ PRICE_STALENESS_DEMOTE: 'on', DOOR_CACHE_PRICE_FRESHNESS_CAP: 'on' },
+      () => a._debug.finalizeSearchListPriceTiers(body(), { req: directReq({ query: 'serum' }), res: directRes, startedAtMs: t0 }));
     assert.deepEqual(direct.products.map((p) => p.product_id), ['p_fresh', 'p_stale']);
     assert.equal(direct.metadata.price_staleness.reordered, true);
+    assert.deepEqual(directRes.headers, {}, 'a caller outside the process never gets the side channel');
+    const capOnlyRes = fakeRes();
+    const capOnly = withEnv({ DOOR_CACHE_PRICE_FRESHNESS_CAP: 'on' }, () => {
+      const b = body();
+      const out = a._debug.finalizeSearchListPriceTiers(b, { req: loopbackReq({ query: 'serum' }), res: capOnlyRes, startedAtMs: t0 });
+      return { b, out };
+    });
+    assert.equal(capOnly.out, capOnly.b, 'cap alone: the answer is untouched');
+    assert.ok(capOnlyRes.headers['x-pivota-price-earliest-ms'], 'cap alone still sends the side channel (D-P2-1)');
   } finally {
     logger.info = original;
   }
 });
 
-test('4k P3-8 the projection allowlist is gated: flags off, a token arriving from upstream is not projected', () => {
+test('4k P3-8 the projection never projects a price_source token arriving from upstream (flags off)', () => {
   const dbg = server()._debug;
   const body = { status: 'success', products: [{ product_id: 'p', title: 'T', price: 9, currency: 'USD', price_source: 'live', price_may_have_changed: true }], metadata: {} };
   const off = withEnv({}, () => dbg.projectFindProductsMultiTransportResponse(JSON.parse(JSON.stringify(body)), { operation: 'find_products_multi' }));
   assert.equal('price_source' in off.products[0], false);
   assert.equal('price_may_have_changed' in off.products[0], false);
+});
+
+test('2d D-P3-2 a UCP lookup-memo answer (another request\'s, <=30 s) is dated by when the merchant answered: `cache`, not `live`', async () => {
+  const { createUcpLiveSearchReader } = require('../src/services/ucpLiveOfferRead');
+  const VARIANT = '43734829564039';
+  const host = 'memo-tiers.example.com';
+  let lookups = 0;
+  const ucpClient = {
+    async discoverEndpoint(base) { return { mcpEndpoint: `${base}/api/ucp/mcp`, status: 200 }; },
+    async lookupCatalog() {
+      lookups += 1;
+      const products = [{ id: 'gid://shopify/Product/1', handle: 'tint', variants: [{ id: `gid://shopify/ProductVariant/${VARIANT}`, price: { amount: 2300, currency: 'USD' }, availability: { available: true } }] }];
+      return { ok: true, status: 200, response: { jsonrpc: '2.0', result: { content: [{ type: 'text', text: JSON.stringify({ products, messages: [] }) }] } } };
+    },
+  };
+  const reader = createUcpLiveSearchReader({ ucpClient, mode: 'enforce' });
+  const card = { product_id: 'sig_m', price: 25, currency: 'USD', source_variant_id: VARIANT, destination_url: `https://${host}/products/tint` };
+  const serve = async (env) => {
+    const startedAtMs = Date.now();
+    const out = await withEnv(env, () => overlay.overlayLiveMerchantSearchPrices({ products: [{ ...card }] }, {
+      market: 'US', ucpSearchReader: reader, fetchImpl: async () => { throw new Error('no .json read expected'); },
+    }));
+    return { out, startedAtMs };
+  };
+  const first = await serve({ LIST_ROW_PRICE_AS_OF: 'on' });
+  assert.equal(first.out.products[0].price, 23);
+  await new Promise((res) => setTimeout(res, 1100));
+  const second = await serve({ LIST_ROW_PRICE_AS_OF: 'on' });
+  assert.equal(lookups, 1, 'the second request was answered by the lookup memo');
+  assert.equal(second.out.products[0].price_as_of, first.out.products[0].price_as_of, 'dated by the merchant\'s answer, not this settle');
+  assert.equal(second.out.products[0].live_read.checked_at, first.out.products[0].price_as_of);
+  const tiered = withEnv({ LIST_ROW_PRICE_AS_OF: 'on' }, () => tiers.applyListPriceTiers(second.out.products, { liveFromMs: second.startedAtMs - 1000 }).rows);
+  assert.equal(tiered[0].price_source, 'cache');
+  // Flags off: stamped at settle time, exactly as before.
+  const off = await serve({});
+  assert.ok(Date.parse(off.out.products[0].price_as_of) >= off.startedAtMs - 5, 'off: the settle time');
 });

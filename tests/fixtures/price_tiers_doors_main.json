@@ -58,6 +58,18 @@
         "status": 200,
         "sha256": "989429c82ddac2e90dec934e5dae314ab3637ad2f1f1244ffb5f3b55595521f1"
       },
+      "final_search": {
+        "status": 200,
+        "sha256": "989429c82ddac2e90dec934e5dae314ab3637ad2f1f1244ffb5f3b55595521f1"
+      },
+      "final_search_capped": {
+        "status": 200,
+        "sha256": "ed888a64ac87eac77e5db873f43e9000f2e0608282fb2db3f308eb2c11086dfe"
+      },
+      "final_projected": {
+        "status": 200,
+        "sha256": "1c96f0beef6334e9f4c45d735d893c52a511299fe3658f90c4331d1df675de9c"
+      },
       "overlay_search_page2": {
         "status": 200,
         "sha256": "72c6a2b5ba07eec2fca7a7bf24bf185e78033929570af839b921941e82bed8c7"
@@ -143,6 +155,18 @@
       "overlay_search_cheapest": {
         "status": 200,
         "sha256": "989429c82ddac2e90dec934e5dae314ab3637ad2f1f1244ffb5f3b55595521f1"
+      },
+      "final_search": {
+        "status": 200,
+        "sha256": "989429c82ddac2e90dec934e5dae314ab3637ad2f1f1244ffb5f3b55595521f1"
+      },
+      "final_search_capped": {
+        "status": 200,
+        "sha256": "ed888a64ac87eac77e5db873f43e9000f2e0608282fb2db3f308eb2c11086dfe"
+      },
+      "final_projected": {
+        "status": 200,
+        "sha256": "1c96f0beef6334e9f4c45d735d893c52a511299fe3658f90c4331d1df675de9c"
       },
       "overlay_search_page2": {
         "status": 200,
@@ -230,6 +254,18 @@
         "status": 200,
         "sha256": "2f581cc6fce1bca1e40d35ab5df86c06472adf6c33a4fd99314b7a924b5eae87"
       },
+      "final_search": {
+        "status": 200,
+        "sha256": "2f581cc6fce1bca1e40d35ab5df86c06472adf6c33a4fd99314b7a924b5eae87"
+      },
+      "final_search_capped": {
+        "status": 200,
+        "sha256": "ed888a64ac87eac77e5db873f43e9000f2e0608282fb2db3f308eb2c11086dfe"
+      },
+      "final_projected": {
+        "status": 200,
+        "sha256": "1c96f0beef6334e9f4c45d735d893c52a511299fe3658f90c4331d1df675de9c"
+      },
       "overlay_search_page2": {
         "status": 200,
         "sha256": "72c6a2b5ba07eec2fca7a7bf24bf185e78033929570af839b921941e82bed8c7"
@@ -315,6 +351,18 @@
       "overlay_search_cheapest": {
         "status": 200,
         "sha256": "989429c82ddac2e90dec934e5dae314ab3637ad2f1f1244ffb5f3b55595521f1"
+      },
+      "final_search": {
+        "status": 200,
+        "sha256": "989429c82ddac2e90dec934e5dae314ab3637ad2f1f1244ffb5f3b55595521f1"
+      },
+      "final_search_capped": {
+        "status": 200,
+        "sha256": "ed888a64ac87eac77e5db873f43e9000f2e0608282fb2db3f308eb2c11086dfe"
+      },
+      "final_projected": {
+        "status": 200,
+        "sha256": "1c96f0beef6334e9f4c45d735d893c52a511299fe3658f90c4331d1df675de9c"
       },
       "overlay_search_page2": {
         "status": 200,
