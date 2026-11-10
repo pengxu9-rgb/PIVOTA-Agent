@@ -42,6 +42,8 @@ const COMBOS = {
     COMMERCE_READ_CACHE_ENABLED: '1', PUBLIC_READ_CACHE_ENABLED: '1', UCP_LIVE_SEARCH_READ: 'shadow',
     DOOR_CACHE_PRICE_FRESHNESS_CAP: 'off', RELGRAPH_CANDIDATE_PRICE_CHECKED_AT: 'on',
   },
+  // The cap alone changes cache clocks, never an answer (the side channel is a header and a symbol).
+  prod_like_cap_on: { COMMERCE_READ_CACHE_ENABLED: '1', PUBLIC_READ_CACHE_ENABLED: '1', UCP_LIVE_SEARCH_READ: 'shadow', DOOR_CACHE_PRICE_FRESHNESS_CAP: 'on' },
 };
 
 function runCombo(env, port) {
@@ -86,6 +88,7 @@ test('DEFAULTS: every answer byte-identical to origin/main, search read unset / 
     for (const c of Object.values(R[combo])) assert.equal(c.status, 200);
   }
   assert.deepEqual(shas(R.prod_like_cap_off), MAIN.combos.prod_like, 'the door cap off and the graph-build flag: identical');
+  assert.deepEqual(shas(R.prod_like_cap_on), MAIN.combos.prod_like, 'the door cap on alone: every answer identical');
   assert.ok(Object.keys(MAIN.combos.base).length >= 20, 'the fixture covers the doors and the list surfaces');
 });
 
@@ -98,9 +101,12 @@ test('PRICE_STALENESS_DEMOTE=shadow serves exactly what off serves', () => {
 });
 
 test('the harness sees each flag: as-of / staleness change the list answers; the UCP and public doors are untouched', () => {
-  const LIST = ['overlay_search', 'overlay_search_capped', 'overlay_search_cheapest', 'overlay_search_page2', 'overlay_search_no_market',
-    'transport_projection', 'recommend_handler', 'recommend_handler_capped', 'alternatives_handler', 'alternatives_handler_ratio',
-    'mcp_recommend', 'rest_search', 'invoke_overlaid_elsewhere'];
+  const LIST = ['final_search', 'final_search_capped', 'final_projected', 'recommend_handler', 'recommend_handler_capped',
+    'alternatives_handler', 'alternatives_handler_ratio', 'mcp_recommend', 'rest_search', 'invoke_overlaid_elsewhere'];
+  // The overlay and the projection no longer tier anything: a search is tiered once, at the final exit.
+  for (const k of ['overlay_search', 'overlay_search_capped', 'overlay_search_cheapest', 'overlay_search_page2', 'transport_projection']) {
+    assert.equal(changed(MAIN.combos.base, R.asof_on).includes(k), false, `${k} is not the final exit`);
+  }
   const asof = changed(MAIN.combos.base, R.asof_on);
   for (const k of LIST) assert.ok(asof.includes(k), `as-of moves ${k}`);
   for (const k of ['ucp_search', 'public_search', 'ucp_tools_list', 'mcp_tools_list', 'public_tools_list', 'mcp_get_offers']) {
@@ -109,7 +115,7 @@ test('the harness sees each flag: as-of / staleness change the list answers; the
   const stale = changed(MAIN.combos.base, R.staleness_on);
   for (const k of LIST) assert.ok(stale.includes(k), `staleness moves ${k}`);
   // Every stamped search row says when and from where.
-  const rows = JSON.parse(R.asof_on.overlay_search.body).products;
+  const rows = JSON.parse(R.asof_on.final_search.body).products;
   assert.deepEqual(rows.map((p) => p.price_source), ['live', 'stored', 'stored', 'live']);
   for (const p of rows) assert.ok('price_as_of' in p);
 });
