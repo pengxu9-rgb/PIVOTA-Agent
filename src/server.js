@@ -124,6 +124,8 @@ const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices, searchTopKSettings } = require('./services/liveMerchantSearchPrice');
 // Recommendation price tiers on list rows (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off).
 const listPriceTiers = require('./services/listPriceTiers');
+// The door caches' price-freshness cap (DOOR_CACHE_PRICE_FRESHNESS_CAP, default off) and its side channel.
+const priceVerificationFacts = require('./observability/priceVerificationFacts');
 // The shared verified-price cache (PRICE_CACHE_STORE + PRICE_CACHE_MODE) and the merchant politeness gate
 // (PRICE_HOST_BUDGET): every live merchant read records into the first and asks the second. Both default off, and
 // off they build nothing, load no Firestore client and change no answer (see priceHostGate below).
@@ -12879,8 +12881,6 @@ function projectSearchTransportVariant(variant) {
   ]);
 }
 
-const LIST_PRICE_SOURCE_TOKENS = new Set(['live', 'cache', 'stored']);
-
 function projectSearchTransportProduct(product, stats = null) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const projected = copyDefinedFields({}, product, [
@@ -12957,9 +12957,11 @@ function projectSearchTransportProduct(product, stats = null) {
   ]);
   // The list contract's provenance token and staleness label (services/listPriceTiers.js), projected only as the
   // contract spells them: an internal price_source (merchant_live, catalog_offer, ...) is never projected.
-  if (listPriceTiers.listPriceTiersActive()) {
-    if (LIST_PRICE_SOURCE_TOKENS.has(product.price_source)) projected.price_source = product.price_source;
-    if (product.price_may_have_changed === true) projected.price_may_have_changed = true;
+  // The internal price provenance the allowlist drops, kept beside the projected row for the final exit's list
+  // tiers and the door caches' price cap (a symbol key: never serialized, never served). Only while one is on.
+  if (listPriceTiers.listPriceTiersActive() || priceVerificationFacts.doorCachePriceFreshnessCapEnabled()) {
+    const provenance = listPriceTiers.captureProvenance(product);
+    if (provenance) projected[listPriceTiers.PROVENANCE] = provenance;
   }
 
   if (typeof product.description === 'string') {
@@ -13387,9 +13389,8 @@ function projectFindProductsMultiTransportResponse(rawResponseBody, { operation 
   ) {
     return rawResponseBody;
   }
-  // The list price tiers, on the rows before the allowlist drops their internal provenance (both flags off: the
-  // body itself).
-  const responseBody = applySearchListPriceTiers(rawResponseBody, { search: isPlainObject(search) ? search : {} });
+  const responseBody = rawResponseBody;
+  void search;
   const stats = { trimmed_offers: 0, trimmed_variants: 0 };
   const products = responseBody.products
     .map((product) => promoteVisibleSimilarProductSigId(product))
@@ -14436,33 +14437,24 @@ let _searchOverlayFetchForTest = null;
 // THE LIST PRICE TIERS OF A SEARCH ANSWER (services/listPriceTiers.js): every row's `price_as_of` + `price_source`
 // (LIST_ROW_PRICE_AS_OF) and the 7-day staleness demote (PRICE_STALENESS_DEMOTE). Both off: `response` itself,
 // untouched. A cheapest or price-capped search guards its answer: the mainline filtered the cap on STORED prices
-// and ranks by relevance, so a stale row is never the first one served while a fresh one exists. Applied once: an
-// answer that already carries `metadata.price_staleness` (on) is returned as it is. Never throws.
-// The product lists already tiered in this process (shadow included), so one search is tiered and logged ONCE
-// even when it leaves through both the overlay wrapper and the transport projection.
-const listPriceTieredLists = new WeakSet();
-function applySearchListPriceTiers(response, { search = {}, intent = null, budgetConstraint = null, liveFromMs = undefined } = {}) {
+// and ranks by relevance, so a stale row is never the first one served while a fresh one exists. Called once per
+// answer, by finalizeSearchListPriceTiers at the invoke route's final exit. Never throws.
+function applySearchListPriceTiers(response, { search = {}, intent = null, budgetConstraint = null, liveFromMs = undefined, reorder = true } = {}) {
   try {
     if (!listPriceTiers.listPriceTiersActive()) return response;
     if (!response || typeof response !== 'object' || Array.isArray(response) || !Array.isArray(response.products)) return response;
     const meta = isPlainObject(response.metadata) ? response.metadata : null;
-    if ((meta && meta.price_staleness) || listPriceTieredLists.has(response.products)) return response;
-    // Reordered only for a caller outside this process. A loopback search is an MCP door's (/mcp, /ucp/mcp,
-    // /public/mcp, one shared answer cache): /ucp and /public drop the label, so the /mcp door reorders its own
-    // answer by the label instead (mcp-server/src/commerceToolSurface.js).
-    const invokeStore = INVOKE_AUTH_CONTEXT.getStore();
-    const reorder = !(invokeStore && invokeStore.loopback_self_call === true);
+    if (meta && meta.price_staleness) return response;
     const queryText = extractSearchQueryText(search || {});
     const budget = budgetConstraint || resolveBeautyMainlineBudgetConstraint({ search: search || {}, intent, queryText });
     const capped = Boolean(budget && (budget.min != null || budget.max != null));
     const { rows, summary } = listPriceTiers.applyListPriceTiers(response.products, {
       surface: 'search',
       answerGuard: capped || listPriceTiers.isCheapestQuery(queryText),
-      reorder,
+      reorder: reorder !== false,
       liveFromMs,
       log: (event, fields) => logger.info({ event, ...fields, ...priceContextLogFields() }, event),
     });
-    listPriceTieredLists.add(rows);
     if (rows === response.products) return response;
     const out = { ...response, products: rows };
     if (summary && summary.mode === 'on') {
@@ -14486,18 +14478,43 @@ function applySearchListPriceTiers(response, { search = {}, intent = null, budge
   }
 }
 
+// The overlay. The list price tiers are NOT applied here: a search answer is tiered once, at the invoke route's
+// final exit (finalizeSearchListPriceTiers), after every step that can still replace or reorder its list.
 function maybeOverlayLiveSearchPrice(response, search = {}, opts = {}) {
-  // Every live read this overlay makes starts after this instant: an older merchant answer (this instance's
-  // `.json` page cache, another request's read) is served as `cache`, not `live`.
-  const startedAtMs = Date.now();
-  const out = maybeOverlayLiveSearchPriceRaw(response, search, opts);
-  // Both list flags off: exactly the value (or promise) the overlay returned.
-  if (!listPriceTiers.listPriceTiersActive()) return out;
-  const finish = (r) => applySearchListPriceTiers(r, {
-    search, intent: opts.intent || null, budgetConstraint: opts.budgetConstraint || null,
-    liveFromMs: startedAtMs - listPriceTiers.LIVE_SLACK_MS,
-  });
-  return out && typeof out.then === 'function' ? out.then(finish) : finish(out);
+  return maybeOverlayLiveSearchPriceRaw(response, search, opts);
+}
+
+/**
+ * THE FINAL EXIT of a find_products_multi answer (the invoke route's res.json funnel, `send`): every lane, every
+ * `return res.json(...)` site, after savings hydration, domain isolation, role selection, refinement and paging.
+ *   - The list price tiers, ONCE, on the list actually served. `live` means read since the invoke started.
+ *     Reordered only for a caller outside this process: a loopback search is an MCP door's (/mcp, /ucp/mcp,
+ *     /public/mcp share one answer cache); /ucp and /public drop the label, so the /mcp door reorders its own
+ *     copy by the label (mcp-server/src/commerceToolSurface.js).
+ *   - DOOR_CACHE_PRICE_FRESHNESS_CAP=on, a loopback call: the earliest merchant-answer read time among the served
+ *     rows, in the X-Pivota-Price-Earliest-Ms header (the projection stripped the internal price_source the door
+ *     would otherwise need). The door's cache policy reads it; the answer itself is unchanged.
+ * All flags off: `body` itself, and no header. Never throws.
+ */
+function finalizeSearchListPriceTiers(body, { req = null, res = null, startedAtMs = Date.now() } = {}) {
+  try {
+    if (!body || typeof body !== 'object' || Array.isArray(body) || !Array.isArray(body.products)) return body;
+    const loopback = Boolean(req) && isLoopbackSelfCall(req);
+    if (loopback && res && typeof res.setHeader === 'function' && priceVerificationFacts.doorCachePriceFreshnessCapEnabled()) {
+      const earliest = listPriceTiers.earliestMerchantAnswerMs(body.products);
+      if (Number.isFinite(earliest)) res.setHeader(priceVerificationFacts.DOOR_EARLIEST_HEADER, String(Math.floor(earliest)));
+    }
+    if (!listPriceTiers.listPriceTiersActive()) return body;
+    const payload = isPlainObject(req?.body?.payload) ? req.body.payload : {};
+    const search = isPlainObject(payload.search) ? payload.search : payload;
+    return applySearchListPriceTiers(body, {
+      search,
+      liveFromMs: startedAtMs - listPriceTiers.LIVE_SLACK_MS,
+      reorder: !loopback,
+    });
+  } catch (_) {
+    return body;
+  }
 }
 
 function maybeOverlayLiveSearchPriceRaw(response, search = {}, { intent = null, budgetConstraint = null, buyerMarket = undefined } = {}) {
@@ -33065,6 +33082,15 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
   }
 
   const body = resp?.data;
+  // The door caches' price-freshness side channel (DOOR_CACHE_PRICE_FRESHNESS_CAP): the loopback search's earliest
+  // merchant-answer read time, from its response header onto the answer (a symbol; never serialized).
+  if (selfInvoked && (op === 'find_products_multi' || op === 'find_products') && body && typeof body === 'object'
+    && priceVerificationFacts.doorCachePriceFreshnessCapEnabled()) {
+    const raw = resp && resp.headers ? (resp.headers[priceVerificationFacts.DOOR_EARLIEST_HEADER.toLowerCase()]
+      ?? (typeof resp.headers.get === 'function' ? resp.headers.get(priceVerificationFacts.DOOR_EARLIEST_HEADER) : undefined)) : undefined;
+    const ms = /^\d{10,16}$/.test(String(raw || '').trim()) ? Number(String(raw).trim()) : NaN;
+    priceVerificationFacts.withDoorEarliest(body, ms);
+  }
   const normalizedBody =
     op === 'preview_quote'
       ? normalizePreviewQuoteCompat(body)
@@ -33228,7 +33254,13 @@ function statusForCommerceKernelError(code) {
     case 'NO_MERCHANT_OFFER':
     // Persistent "there is no such id" — same HTTP answer, different fact (see errors.js).
     case 'UNKNOWN_PRODUCT_ID':
+    // PARTNER_DOOR_ONE_PRODUCT_ID (thrown by the `/mcp` door only): the product exists and is withheld.
+    case 'PRODUCT_NOT_SERVABLE':
       return 404;
+    // PARTNER_DOOR_ONE_PRODUCT_ID: the id, or the seller beside it, is the wrong argument.
+    case 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID':
+    case 'MERCHANT_PRODUCT_MISMATCH':
+      return 400;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
       return 409;
@@ -34108,10 +34140,16 @@ async function getCommerceRemoteMcpAdapter() {
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
       rememberMcpToolNames(surface);
-      // GET_OFFERS_EMPTY_REASON: the `/mcp` door's own view of the surface (the surface itself while off). The
-      // UCP door keeps projecting `surface` (above), so it and every other caller answer as with the flag off.
+      // THE `/mcp` DOOR'S OWN VIEW OF THE SURFACE: two views, each the surface itself while its flag is off. The UCP
+      // door keeps projecting `surface` (above), so it, the public door, the strict invoke route and the kernel
+      // hop answer exactly as with both off.
+      //   inner  GET_OFFERS_EMPTY_REASON: an empty get_offers answer is named from what the backend said.
+      //   outer  PARTNER_DOOR_ONE_PRODUCT_ID: everything that flag does, over the inner view. Its get_offers
+      //          calls (the first, and the retry under the signature) therefore go through the inner view, and it
+      //          fills `metadata.reason` only when none is there: the inner view's specific reason stands.
       const { getOffersEmptyReasonSurface } = await import('../mcp-server/src/getOffersEmptyReasonDoor.js');
-      return createRemoteMcpAdapter(getOffersEmptyReasonSurface(surface), {
+      const { partnerDoorSurface } = await import('../mcp-server/src/partnerDoorOneProductId.js');
+      return createRemoteMcpAdapter(partnerDoorSurface(getOffersEmptyReasonSurface(surface), { log: logger }), {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
           if (req?.authInfo?.invoke_authenticated !== true) {
@@ -43970,6 +44008,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation: finalOperation,
         gatewayRequestId,
       });
+      // The list price tiers and the door caches' price-freshness side channel, on the FINAL list (both no-ops
+      // with their flags off).
+      if (finalOperation === 'find_products_multi') {
+        finalBody = finalizeSearchListPriceTiers(finalBody, { req, res, startedAtMs: invokeStartedAtMs });
+      }
       // Last, so no step above can put a caller value back. Cannot throw on any body shape.
       if (callerEchoValues) {
         finalBody = withoutHostileCallerEcho(finalBody, callerEchoValues, {
@@ -55254,8 +55297,6 @@ function registerExternalInvokeRoute(path, clientChannel) {
           req?.header('x-buyer-ref'),
         ),
         ...loopbackSyntheticInvokeContext(req),
-        // This process calling itself (an MCP door's search): the list price tiers label but do not reorder.
-        loopback_self_call: isLoopbackSelfCall(req),
       },
       () =>
         handleInvokeRequest(req, res, {
@@ -55750,6 +55791,7 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   maybeOverlayLiveSearchPrice,
+  finalizeSearchListPriceTiers,
   // The gateway-side synthetic gates (src/guardrails/syntheticContext.js).
   setCachedShopifyMerchantCurrency,
   getCachedShopifyMerchantCurrency,

@@ -126,6 +126,12 @@ const altHandler = () => fromRoot('src/agentSignals/intelligenceReads').makeGetA
 });
 
 const asResponse = (value) => ({ status: 200, text: JSON.stringify(value) });
+const finalExit = (body, search) => (typeof doors.app._debug.finalizeSearchListPriceTiers === 'function'
+  ? doors.app._debug.finalizeSearchListPriceTiers(body, {
+    req: { body: { payload: { search } }, socket: { remoteAddress: '10.1.2.3' }, headers: {} },
+    startedAtMs: NOW - 1000,
+  })
+  : body);
 const CASES = {
   ...doors.CASES,
   mcp_tools_list: () => supertest(doors.app).post('/mcp').send({ jsonrpc: '2.0', id: 3, method: 'tools/list' }),
@@ -133,6 +139,14 @@ const CASES = {
   overlay_search: async () => asResponse(await doors.app._debug.maybeOverlayLiveSearchPrice(page(), { query: 'tint', market: 'US' }, { buyerMarket: 'US' })),
   overlay_search_capped: async () => asResponse(await doors.app._debug.maybeOverlayLiveSearchPrice(page(), { query: 'tint', market: 'US', price_max: 30 }, { buyerMarket: 'US' })),
   overlay_search_cheapest: async () => asResponse(await doors.app._debug.maybeOverlayLiveSearchPrice(page(), { query: 'cheapest tint', market: 'US' }, { buyerMarket: 'US' })),
+  // The invoke route's final exit, where the list tiers run (this tree's finalizeSearchListPriceTiers; a tree
+  // without one serves the overlay's answer as it is, as its funnel does).
+  final_search: async () => asResponse(finalExit(await doors.app._debug.maybeOverlayLiveSearchPrice(page(), { query: 'tint', market: 'US' }, { buyerMarket: 'US' }), { query: 'tint', market: 'US' })),
+  final_search_capped: async () => asResponse(finalExit(await doors.app._debug.maybeOverlayLiveSearchPrice(page(), { query: 'tint', market: 'US', price_max: 30 }, { buyerMarket: 'US' }), { query: 'tint', market: 'US', price_max: 30 })),
+  final_projected: async () => asResponse(finalExit(doors.app._debug.projectFindProductsMultiTransportResponse(
+    { ...page(), products: page().products.map((p, i) => (i === 0 ? { ...p, price_source: 'merchant_live', price_as_of: iso(NOW) } : p)) },
+    { operation: 'find_products_multi' },
+  ), { query: 'tint' })),
   overlay_search_page2: async () => asResponse(await doors.app._debug.maybeOverlayLiveSearchPrice(page(), { query: 'tint', market: 'US', page: 2 }, { buyerMarket: 'US' })),
   overlay_search_no_market: async () => asResponse(await doors.app._debug.maybeOverlayLiveSearchPrice(page(), { query: 'tint' }, {})),
   transport_projection: async () => asResponse(doors.app._debug.projectFindProductsMultiTransportResponse(

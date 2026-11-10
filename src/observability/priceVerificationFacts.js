@@ -186,6 +186,31 @@ function priceFactsOf(tool, value, { limit } = {}) {
 // their age is the 7-day staleness rule's business). Off: every door cache's TTLs exactly as before.
 const DOOR_CAP_FLAG = 'DOOR_CACHE_PRICE_FRESHNESS_CAP';
 const DOOR_CAP_WINDOW_MS = 15 * 60 * 1000;
+// THE SIDE CHANNEL. A door caches the loopback invoke's answer, whose rows the search transport projection has
+// already stripped of their internal price_source, so the door cannot find the merchant answers in it. The
+// invoke route, at its final exit and for a loopback call only, sends the earliest merchant-answer read time
+// in this response header; the loopback client puts it on the answer under DOOR_EARLIEST_KEY (a symbol: never
+// serialized, never served), and the door's cache policy reads it there. Only while the cap is on.
+const DOOR_EARLIEST_HEADER = 'X-Pivota-Price-Earliest-Ms';
+const DOOR_EARLIEST_KEY = Symbol.for('pivota.door.priceEarliestMerchantAnswerMs');
+
+/** The side-channel time on a value, or null. */
+function doorEarliestOf(value) {
+  try {
+    const v = value && typeof value === 'object' ? Number(value[DOOR_EARLIEST_KEY]) : NaN;
+    return Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Put the side-channel time (when finite) on `target`, returning it. */
+function withDoorEarliest(target, ms) {
+  if (target && typeof target === 'object' && Number.isFinite(ms)) {
+    try { target[DOOR_EARLIEST_KEY] = ms; } catch { /* a frozen value keeps its own clock */ }
+  }
+  return target;
+}
 
 function doorCachePriceFreshnessCapEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[DOOR_CAP_FLAG]) || '').trim());
@@ -230,4 +255,5 @@ module.exports = {
   FLAG, priceVerificationLogEnabled, TOOL_SURFACES, priceFactOf, priceFactsOf, pricedItemsOf, overlayOutcomeOf,
   DOOR_CAP_FLAG, DOOR_CAP_WINDOW_MS, doorCachePriceFreshnessCapEnabled, earliestMerchantAnswerMs,
   earliestMerchantAnswerMsOfItems, capCachePolicyAtPriceAge,
+  DOOR_EARLIEST_HEADER, DOOR_EARLIEST_KEY, doorEarliestOf, withDoorEarliest,
 };

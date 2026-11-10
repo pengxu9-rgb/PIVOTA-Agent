@@ -448,6 +448,9 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
   function publicEarliestMerchantAnswerMs(toolName, raw, value) {
     try {
       if (toolName === "search_catalog") {
+        // The invoke route's side channel (rows past the projection no longer name their merchant answers).
+        const sideChannel = priceVerificationFacts.doorEarliestOf(raw);
+        if (sideChannel !== null) return value && Array.isArray(value.products) && value.products.some((p) => p && p.price != null) ? sideChannel : null;
         const served = value && Array.isArray(value.products) ? value.products : [];
         const rows = (raw && Array.isArray(raw.products) ? raw.products : [])
           .filter((p) => productSummary(p, PUBLIC_PDP_BASE))

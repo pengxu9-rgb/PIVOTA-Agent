@@ -526,6 +526,9 @@ const STATUS_BY_CODE = Object.freeze({
   // together because leaving one behind would have the door answer two statuses for one class of fact.
   NO_MERCHANT_OFFER: 404,
   UNKNOWN_PRODUCT_ID: 404,
+  // PARTNER_DOOR_ONE_PRODUCT_ID: the product exists and is withheld. 404 like the two above, and like
+  // statusForCommerceKernelError in src/server.js (the other two new codes are 400 on both sides, the default).
+  PRODUCT_NOT_SERVABLE: 404,
   OPERATION_NOT_ALLOWED: 409,
 });
 
