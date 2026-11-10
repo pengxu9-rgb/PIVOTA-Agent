@@ -19,7 +19,9 @@
  * query aggregates, and the run rows carry only the ledger's own counters. The log line is safe to
  * keep in Cloud Logging.
  *
- * READ-ONLY. Three SELECTs, each bounded (LIMIT), under the pool's 30s statement_timeout.
+ * READ-ONLY. Three SELECTs. LIMIT caps the rows RETURNED, not the work: the two
+ * relationship_candidate_labels GROUP BYs still scan every `generated` row. They run under the pool's
+ * 30s statement_timeout, and a timeout is recorded by the health job, never thrown.
  */
 
 const { closePool, query } = require('../src/db');
@@ -143,16 +145,26 @@ async function loadReviewPool(queryFn = query) {
   return out;
 }
 
+// The ledger's statuses that mean a run broke. `running` and the `skipped*` family are not failures:
+// counting them as failed would turn a disabled night or an in-flight run into an alarm.
+const FAILED_STATUSES = new Set(['failed', 'error']);
+
 /** Pure: the headline a reader needs first, from the run list (newest first). */
 function summarizeRuns(runs) {
   const last = runs[0] || null;
   const reviewed = runs.map((r) => r.reviewed).filter((n) => Number.isFinite(n));
+  const statusCounts = {};
+  for (const r of runs) {
+    const key = r.status || 'unknown';
+    statusCounts[key] = (statusCounts[key] || 0) + 1;
+  }
   return {
     last_run_at: last ? last.generated_at : null,
     last_status: last ? last.status : null,
     last_failed_step: last ? last.failed_step : null,
     runs: runs.length,
-    failed_runs: runs.filter((r) => r.status && r.status !== 'passed').length,
+    failed_runs: runs.filter((r) => FAILED_STATUSES.has(r.status)).length,
+    status_counts: statusCounts,
     reviewed_total: reviewed.reduce((a, b) => a + b, 0),
   };
 }

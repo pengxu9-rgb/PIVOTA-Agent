@@ -7,13 +7,16 @@
 # and until now that image existed only if someone had run
 # `gcloud builds submit --config infra/gcp/cloudbuild.gateway.yaml` from a laptop checkout.
 #
-# Same image as that hand build: the root Dockerfile, `--build-arg COMMIT_SHA=<sha>` (stamps
-# /app/.image_commit_sha), tag `:<sha>` (and `:latest` when the sha is still main's tip), pushed to
-# us-west1-docker.pkg.dev/pivota-shared/pivota/gateway.
+# Same image as that hand build (the root Dockerfile, `--build-arg COMMIT_SHA=<sha>`, which stamps
+# /app/.image_commit_sha), tagged `:<sha>` ONLY and pushed to a repository of its own:
+# us-west1-docker.pkg.dev/pivota-shared/pivota-gateway/gateway. That repository has IMMUTABLE tags,
+# so a pushed sha can never be re-pointed, and so it has no `:latest` (nothing deploys one). This
+# identity may write nowhere else, in particular not to `pivota`, where `backend:latest` runs in prod.
+# pivota-backend's scripts resolve a gateway sha in pivota-gateway first, then in `pivota` (hand builds).
 #
 # DARK UNTIL ARMED. The job is skipped unless the repository variable GATEWAY_IMAGE_BUILD_ENABLED is
-# `true`. The identity it authenticates as (provider github-gateway, sa-gateway-image-build, which may
-# push to the `pivota` Artifact Registry repository and do nothing else) is created by
+# `true`. The identity it authenticates as (provider github-gateway, pinned to THIS workflow file on
+# main; sa-gateway-image-build, which may push to `pivota-gateway` and do nothing else) is created by
 # pivota-backend infra/gcp/setup_gateway_image_build_identity.sh; set the variable after that has
 # run, or every push would fail at the auth step.
 name: Build gateway image
@@ -34,7 +37,7 @@ concurrency:
 
 env:
   REGION: us-west1
-  IMAGE: us-west1-docker.pkg.dev/pivota-shared/pivota/gateway
+  IMAGE: us-west1-docker.pkg.dev/pivota-shared/pivota-gateway/gateway
 
 jobs:
   build:
@@ -42,7 +45,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      # Actions pinned to commit SHAs (the tag they were resolved from is in the comment): this job
+      # holds a registry-write token, so its dependencies must not move under it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -53,15 +58,15 @@ jobs:
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || { echo "::error::${GITHUB_SHA} is not on main"; exit 1; }
 
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: projects/371394967380/locations/global/workloadIdentityPools/github-actions/providers/github-gateway
           service_account: sa-gateway-image-build@pivota-shared.iam.gserviceaccount.com
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
-      # A sha is a commit: an image already pushed for it (a hand build, a re-run) is kept as-is
-      # rather than rebuilt from different base-image layers under the same tag.
+      # A sha is a commit: an image already pushed for it (a re-run) is kept as-is. The repository's
+      # immutable tags would refuse an overwrite anyway; this makes a re-run green instead of red.
       - name: Build and push
         run: |
           if gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" >/dev/null 2>&1; then
@@ -70,12 +75,4 @@ jobs:
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           docker build --build-arg "COMMIT_SHA=${GITHUB_SHA}" -t "${IMAGE}:${GITHUB_SHA}" .
           docker push "${IMAGE}:${GITHUB_SHA}"
-          # `:latest` follows main's TIP only: two pushes build in parallel, and the older one must
-          # not finish last and move `latest` backwards. Nothing deploys `latest` (deploy_gateway.sh
-          # and reimage_jobs.sh refuse it); it is kept for parity with the hand build.
-          git fetch --quiet origin main
-          if [ "$(git rev-parse origin/main)" = "${GITHUB_SHA}" ]; then
-            docker tag "${IMAGE}:${GITHUB_SHA}" "${IMAGE}:latest"
-            docker push "${IMAGE}:latest"
-          fi
           echo "pushed ${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"

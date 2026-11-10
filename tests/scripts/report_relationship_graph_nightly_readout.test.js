@@ -109,6 +109,21 @@ describe('report-relationship-graph-nightly-readout', () => {
     });
   });
 
+  it('counts only failed and error as failed; running and skipped are reported, not alarmed', () => {
+    const s = summarizeRuns([
+      { status: 'running' },
+      { status: 'skipped_disabled' },
+      { status: 'skipped' },
+      { status: 'error' },
+      { status: 'failed' },
+      { status: 'passed' },
+    ]);
+    expect(s.failed_runs).toBe(2);
+    expect(s.status_counts).toEqual({
+      running: 1, skipped_disabled: 1, skipped: 1, error: 1, failed: 1, passed: 1,
+    });
+  });
+
   it('summarizes no runs as nulls, not as a healthy night', () => {
     expect(summarizeRuns([])).toMatchObject({ last_run_at: null, last_status: null, runs: 0 });
   });
