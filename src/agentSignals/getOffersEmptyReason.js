@@ -33,15 +33,17 @@ function emptyReasonDoorActive() {
 // gives (variant_not_offered, no_offer_in_market_currency, market_not_priced, offers_source_unavailable)
 // are its own and unchanged.
 const EMPTY_REASONS = Object.freeze({
-  // No stored offer is linked to this product id.
+  // The lookup ran and found no servable stored offer for this product in this market.
   NO_SEED: 'no_seed_for_product',
   // A stored offer exists but is priced or filed for another market.
   NOT_IN_MARKET: 'seed_not_in_market',
   // The store's own live answer no longer lists the item.
   OUT_OF_STOCK: 'seed_out_of_stock',
-  // A stored offer exists, its facts are too old to serve, and the store could not confirm it just now.
+  // A stored offer exists, its facts are too old to serve, and they could not be confirmed with the store
+  // (the store was asked and did not confirm, could not be asked, or our own check failed).
   NEEDS_LIVE_VERIFICATION: 'offer_needs_live_verification',
-  // A stored offer exists and is withheld by a serving rule (its page is gone, its link cannot be issued).
+  // An offer exists and is withheld by a serving rule: a stored offer whose page is gone or whose link
+  // cannot be issued, or a connected seller's own product that matched and cannot be sold now.
   NOT_SERVABLE: 'seed_not_servable',
   // Our own lookup failed or timed out: nothing is known about the product's offers.
   LOOKUP_UNAVAILABLE: 'offer_lookup_unavailable',
@@ -54,7 +56,12 @@ const EMPTY_REASON_SET = new Set(Object.values(EMPTY_REASONS));
 // its market blockers (external_seed_audit).
 const FRESHNESS_BLOCKERS = new Set(['stale_snapshot', 'destination_stale', 'destination_never_verified']);
 const MARKET_BLOCKERS = new Set(['locale_market_mismatch', 'price_currency_mismatch']);
-// A live read that may answer differently on a second try (services/ucpLiveOfferRead STATUS).
+// A connected seller's own product that MATCHED and is withheld (offers.resolve in strict serving mode,
+// candidate kind `internal_product`): the backend then answers `metadata.reason_code: NOT_SERVABLE`.
+const INTERNAL_WITHHELD_REASONS = new Set(['matched_but_not_servable', 'surface_not_enabled']);
+// A live read that may answer differently on a second try (services/ucpLiveOfferRead STATUS). A store too
+// busy to be asked reaches an offer as `error` (the reader's own catch), so it is covered here. `skipped`
+// on an offer is the reader's "no host / no variant id to ask with": asking again changes nothing.
 const RETRIABLE_LIVE_STATUSES = new Set(['timeout', 'error']);
 
 const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -62,15 +69,14 @@ const list = (v) => (Array.isArray(v) ? v.filter(isObj) : []);
 
 /**
  * The reason an offers.resolve answer with NO offer is empty: one of EMPTY_REASONS, never null.
- * Pure. Reads `metadata.sources[].status|row_count`, `mapping.candidates[].kind|reason|blockers` and
- * whether `metadata.buyer_currency_filtered` has a key; compares, never copies.
+ * Pure. Reads `metadata.sources[].status|row_count`, `mapping.candidates[].kind|reason|blockers`,
+ * `metadata.reason_code` and whether `metadata.buyer_currency_filtered` has a key; compares, never copies.
  */
 function emptyReasonFromOffersResolve(res) {
   const metadata = isObj(res) && isObj(res.metadata) ? res.metadata : {};
   const sources = list(metadata.sources);
-  const candidates = list(isObj(res) && isObj(res.mapping) ? res.mapping.candidates : null).filter(
-    (c) => c.kind === 'external_seed',
-  );
+  const allCandidates = list(isObj(res) && isObj(res.mapping) ? res.mapping.candidates : null);
+  const candidates = allCandidates.filter((c) => c.kind === 'external_seed');
   if (sources.some((s) => s.status === 'error')) return EMPTY_REASONS.LOOKUP_UNAVAILABLE;
   const held = candidates.filter((c) => c.reason === 'external_seed_requires_live_verification');
   const blockersOf = (c) => (Array.isArray(c.blockers) ? c.blockers : []);
@@ -86,6 +92,14 @@ function emptyReasonFromOffersResolve(res) {
   if (held.length > 0 || seedRowsRead || candidates.some((c) => c.reason === 'filtered_external_seed')) {
     return EMPTY_REASONS.NOT_SERVABLE;
   }
+  // A CONNECTED seller's product matched and the backend withheld it. The seed lookup beside it found no
+  // row, which says nothing about this product: an offer exists, so "no offer on file" would be false.
+  if (
+    metadata.reason_code === 'NOT_SERVABLE' ||
+    allCandidates.some((c) => c.kind === 'internal_product' && INTERNAL_WITHHELD_REASONS.has(c.reason))
+  ) {
+    return EMPTY_REASONS.NOT_SERVABLE;
+  }
   // Only a lookup that RAN and found no row says there is no stored offer.
   const seedLookupRan = sources.some((s) => typeof s.source === 'string' && s.source.startsWith('external_product_seeds'));
   return seedLookupRan ? EMPTY_REASONS.NO_SEED : EMPTY_REASONS.NO_OFFER;
@@ -96,10 +110,12 @@ function emptyReasonFromOffersResolve(res) {
  *   current      the reason makeGetOffers already chose (or null)
  *   backend      the token emptyReasonFromOffersResolve produced for the fetch (or anything else)
  *   unverified   the flagged offers the live-verification filter withheld
+ *   liveReadFailed  true when OUR live reader threw: no store was heard, so nothing is known and a second
+ *                call may well serve the offer
  * Returns { reason, retriable }: `reason` is always a fixed token; `retriable` says whether the same
- * call may answer differently shortly.
+ * call may answer differently shortly. A lookup or a check WE could not complete is always retriable.
  */
-function decideEmptyReason({ current = null, backend = null, unverified = [] } = {}) {
+function decideEmptyReason({ current = null, backend = null, unverified = [], liveReadFailed = false } = {}) {
   if (current === EMPTY_REASONS.NEEDS_LIVE_VERIFICATION) {
     const statuses = (Array.isArray(unverified) ? unverified : []).map((o) =>
       isObj(o) && isObj(o.live_read) && typeof o.live_read.status === 'string' ? o.live_read.status : '',
@@ -107,7 +123,11 @@ function decideEmptyReason({ current = null, backend = null, unverified = [] } =
     if (statuses.length > 0 && statuses.every((s) => s === 'variant_gone')) {
       return { reason: EMPTY_REASONS.OUT_OF_STOCK, retriable: false };
     }
-    return { reason: current, retriable: statuses.some((s) => RETRIABLE_LIVE_STATUSES.has(s)) };
+    // Every store answered, in another currency than this market's: a market fact, not a freshness one.
+    if (statuses.length > 0 && statuses.every((s) => s === 'currency_mismatch')) {
+      return { reason: EMPTY_REASONS.NOT_IN_MARKET, retriable: false };
+    }
+    return { reason: current, retriable: liveReadFailed === true || statuses.some((s) => RETRIABLE_LIVE_STATUSES.has(s)) };
   }
   if (current) return { reason: current, retriable: false };
   const reason = typeof backend === 'string' && EMPTY_REASON_SET.has(backend) ? backend : EMPTY_REASONS.NO_OFFER;

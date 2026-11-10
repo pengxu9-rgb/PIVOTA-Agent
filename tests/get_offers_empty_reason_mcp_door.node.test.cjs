@@ -52,6 +52,28 @@ for (const [name, reason, retriable] of CASES) {
   });
 }
 
+// Review P2-1. The backend matched a CONNECTED seller's own product and withheld it (reason_code NOT_SERVABLE);
+// the seed lookup beside it found no row. The partner was told "no seller offer on file".
+for (const name of ['connected_out_of_stock_withheld', 'connected_not_orderable_withheld']) {
+  test(`${name}: a connected seller's withheld product is seed_not_servable, never no_seed_for_product`, async () => {
+    const recorded = FIXTURE[name];
+    assert.equal(recorded.offers.length, 0);
+    assert.equal(recorded.metadata.reason_code, 'NOT_SERVABLE');
+    assert.equal(recorded.mapping.candidates[0].kind, 'internal_product');
+    const [seedLookup] = recorded.metadata.sources.filter((s) => s.source === 'external_product_seeds');
+    assert.deepEqual([seedLookup.status, seedLookup.row_count], ['ok', 0], 'the seed lookup ran and found no row');
+    const args = { product_id: recorded.input.product_id, merchant_id: recorded.metadata.merchant_scope, market: 'US' };
+    const out = await mcp(recorded, args);
+    assert.equal(out.metadata.offer_count, 0);
+    assert.equal(out.metadata.reason, 'seed_not_servable');
+    assert.equal(out.metadata.reason_retriable, false);
+    // The other get_offers door answers the same backend body as it always did.
+    const ucp = JSON.stringify((await callGetOffersRaw(app, '/ucp/mcp', recorded)).body);
+    assert.match(ucp, /offer_count/);
+    assert.equal(/seed_not_servable|reason_retriable/.test(ucp), false);
+  });
+}
+
 test('a stale offer the backend returned flagged, with no live read to verify it: needs live verification, not retriable', async () => {
   assert.ok(FIXTURE.minted_stale_flagged.offers[0].requires_live_verification, 'the recorded offer is flagged');
   const out = await mcp(FIXTURE.minted_stale_flagged);
@@ -74,10 +96,10 @@ test('the reasons get_offers already gave keep their token and gain the retry fl
   const out = await mcp({ status: 'success', offers: [gbp] });
   assert.equal(out.metadata.reason, 'no_offer_in_market_currency');
   assert.equal(out.metadata.reason_retriable, false);
-  // Answered before any backend call: untouched.
+  // Answered before any backend call: the same token, and the retry flag every empty answer here carries.
   const unpriced = await mcp(FIXTURE.minted_fresh_offer, { product_id: support.SIG, market: 'DE' });
   assert.equal(unpriced.metadata.reason, 'market_not_priced');
-  assert.equal('reason_retriable' in unpriced.metadata, false);
+  assert.equal(unpriced.metadata.reason_retriable, false);
 });
 
 test('nothing the backend wrote is forwarded: free text in every field it could ride in is never served', async () => {
@@ -119,6 +141,19 @@ test('every reason the door can give is explained in the get_offers description,
   for (const reason of Object.values(EMPTY_REASONS)) assert.ok(description.includes(`\`${reason}\``), reason);
   assert.match(description, /`offer_needs_live_verification`: we hold an offer .* Retry only when `reason_retriable` is true/);
   assert.match(description, /metadata\.reason_retriable/);
+  // The reasons get_offers gave before this flag are listed too: every token the door can answer with.
+  const { GET_OFFERS_REASON_TOKENS } = await import('../mcp-server/src/getOffersEmptyReasonDoor.js');
+  for (const older of ['variant_not_offered', 'no_offer_in_market_currency', 'market_not_priced', 'offers_source_unavailable']) {
+    assert.ok(GET_OFFERS_REASON_TOKENS.includes(older), older);
+  }
+  for (const reason of GET_OFFERS_REASON_TOKENS) assert.ok(description.includes(`\`${reason}\``), reason);
+  // The wording claims no more than was established (review P2-2, P3-2, P3-3).
+  assert.match(description, /retriable` is true \(the store timed out or answered badly, or our own check failed\); when it is false, asking again within minutes will not change this/);
+  assert.match(description, /`no_seed_for_product`: we found no servable seller offer on file for this product in this market\./);
+  assert.match(description, /could not be confirmed with the store\./);
+  for (const overclaim of ['cannot be asked', 'could not confirm them just now', 'is on file for this product id']) {
+    assert.equal(description.includes(overclaim), false, overclaim);
+  }
   // No other tool's declaration moves.
   const { getOffersEmptyReasonSurface } = await import('../mcp-server/src/getOffersEmptyReasonDoor.js');
   const base = { tools: [{ name: 'get_product', description: 'd' }, { name: 'get_offers', description: 'o' }], isCommerceTool: () => true, callTool: async () => null };

@@ -3,7 +3,8 @@
 // Shared by the two GET_OFFERS_EMPTY_REASON door suites (flag on, flag off): the env a commerce door needs,
 // a caller token, and a tools/call helper whose backend is the wire (nock), answering with offers.resolve
 // bodies RECORDED from the backend's own handler (tests/fixtures/offers_resolve_empty_answers.json: a minted
-// catalog row and a mirror row on Postgres, placeholder names; ids, links and timings scrubbed).
+// catalog row, a mirror row and a connected seller's cached product (`connected_*`) on Postgres, placeholder
+// names; ids, links and timings scrubbed).
 
 const assert = require('node:assert/strict');
 const supertest = require('supertest');

@@ -1,4 +1,216 @@
 {
+ "connected_not_orderable_withheld": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "prod_placeholder_0000000001",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "commerce_surface": "agent_api",
+     "confidence": 0.0,
+     "kind": "internal_product",
+     "merchant_id": "merch_conn_0000000000000001",
+     "platform": "shopify",
+     "product_id": "prod_placeholder_0000000001",
+     "reason": "surface_not_enabled"
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_conn_0000000000000001",
+   "reason": "not_servable",
+   "reason_code": "NOT_SERVABLE",
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [
+    "surface_not_enabled"
+   ],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_fuzzy_ref",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 0,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "products_cache_by_alias",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "products_cache",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "external_seed_by_internal_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "external_product_seeds_identity_retry",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "merchant_id": "merch_conn_0000000000000001",
+   "product_id": "prod_placeholder_0000000001"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "connected_out_of_stock_withheld": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "prod_placeholder_0000000001",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "commerce_surface": "agent_api",
+     "confidence": 0.0,
+     "kind": "internal_product",
+     "merchant_id": "merch_conn_0000000000000001",
+     "platform": "shopify",
+     "product_id": "prod_placeholder_0000000001",
+     "reason": "matched_but_not_servable",
+     "reason_codes": [
+      "not_servable"
+     ],
+     "requested_variant_id": null
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_conn_0000000000000001",
+   "reason": "not_servable",
+   "reason_code": "NOT_SERVABLE",
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [
+    "not_servable"
+   ],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_fuzzy_ref",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 0,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "products_cache_by_alias",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "products_cache",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "external_seed_by_internal_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "external_product_seeds_identity_retry",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "merchant_id": "merch_conn_0000000000000001",
+   "product_id": "prod_placeholder_0000000001"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
  "minted_flag_off_no_seed": {
   "commerce_surface": "agent_api",
   "input": {

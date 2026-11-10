@@ -170,6 +170,82 @@ test('both on: when the retry is empty too, the first answer stands with its spe
   assert.equal(answer.metadata.reason_retriable, false);
 });
 
+// Review P3-1. The retry asks about the product itself; its answer must not be dropped for the id form's.
+test('both on: the retry could not complete its lookup: its retriable reason is the one served', async () => {
+  const { view, calls } = await composed({
+    emptyReason: true,
+    partnerDoor: true,
+    lookups: resolves,
+    backendFor: (id) => (id === SIGNATURE ? FIXTURE.seed_lookup_failed : FIXTURE.unknown_signature_no_seed),
+  });
+  const answer = await view.callTool('get_offers', { product_id: GROUP });
+  assert.equal(calls.length, 2);
+  assert.equal(answer.metadata.offer_count, 0);
+  assert.equal(answer.metadata.reason, 'offer_lookup_unavailable');
+  assert.equal(answer.metadata.reason_retriable, true);
+});
+
+test('both on: a retriable retry beats a first answer that is classified and not retriable', async () => {
+  const { view } = await composed({
+    emptyReason: true,
+    partnerDoor: true,
+    lookups: resolves,
+    backendFor: (id) => (id === SIGNATURE ? FIXTURE.seed_lookup_failed : FIXTURE.mirror_dead_page),
+  });
+  const answer = await view.callTool('get_offers', { product_id: GROUP });
+  assert.equal(answer.metadata.reason, 'offer_lookup_unavailable');
+  assert.equal(answer.metadata.reason_retriable, true);
+});
+
+test('both on: a retry that classifies the empty answer beats a first answer that did not', async () => {
+  const { view } = await composed({
+    emptyReason: true,
+    partnerDoor: true,
+    lookups: resolves,
+    backendFor: (id) => (id === SIGNATURE ? FIXTURE.mirror_dead_page : FIXTURE.unknown_signature_no_seed),
+  });
+  const answer = await view.callTool('get_offers', { product_id: GROUP });
+  assert.equal(answer.metadata.reason, 'seed_not_servable');
+  assert.equal(answer.metadata.reason_retriable, false);
+});
+
+test('both on: a first answer that is retriable is never replaced by a retry that is not', async () => {
+  const { view, calls } = await composed({
+    emptyReason: true,
+    partnerDoor: true,
+    lookups: resolves,
+    backendFor: (id) => (id === SIGNATURE ? FIXTURE.mirror_dead_page : FIXTURE.seed_lookup_failed),
+  });
+  const answer = await view.callTool('get_offers', { product_id: GROUP });
+  assert.equal(calls.length, 2);
+  assert.equal(answer.metadata.reason, 'offer_lookup_unavailable');
+  assert.equal(answer.metadata.reason_retriable, true);
+});
+
+test('both on: two answers that are both retriable: the first stands (the id the partner sent)', async () => {
+  const { view, calls } = await composed({ emptyReason: true, partnerDoor: true, lookups: resolves, backendFor: () => FIXTURE.seed_lookup_failed });
+  const answer = await view.callTool('get_offers', { product_id: GROUP });
+  assert.equal(calls.length, 2);
+  assert.equal(answer.metadata.reason_retriable, true);
+  assert.equal(answer.subject.id, GROUP);
+});
+
+test('only the partner door: with no retry flag on the retried answer, the first answer stands as it always did', async () => {
+  // The id form finds nothing and says nothing; the signature's answer names a reason of its own (pre-flag).
+  const { view, calls } = await composed({
+    emptyReason: false,
+    partnerDoor: true,
+    lookups: resolves,
+    backendFor: (id) => (id === SIGNATURE ? FIXTURE.minted_stale_flagged : FIXTURE.unknown_signature_no_seed),
+  });
+  const answer = await view.callTool('get_offers', { product_id: GROUP });
+  assert.equal(calls.length, 2);
+  assert.equal(answer.subject.id, GROUP);
+  assert.equal(answer.metadata.reason, 'no_offer_for_product');
+  assert.equal('reason_retriable' in answer.metadata, false);
+  assert.equal('withheld_unverified_count' in answer.metadata, false, 'the first answer, whole');
+});
+
 test('the four combinations of the composed views, on one backend answer', async () => {
   const expected = [
     [false, false, undefined, undefined],

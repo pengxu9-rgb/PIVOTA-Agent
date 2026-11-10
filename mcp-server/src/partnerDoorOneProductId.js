@@ -225,20 +225,37 @@ async function getProduct(surface, toolArgs, rest, { lookups, log }) {
 
 const hasOffer = (answer) => isObj(answer) && (Boolean(answer.best_offer) || (Array.isArray(answer.signals) && answer.signals.length > 0));
 
+// BOTH ANSWERS EMPTY: which one the partner reads. Only when the retried answer carries `reason_retriable`,
+// which only the empty-reason view under this one adds (GET_OFFERS_EMPTY_REASON); without it the first answer
+// stands, as it always did. The retry asked about the product itself (its signature), so its answer is the
+// one to give when it says more: a lookup that failed and may answer on a second call must not be hidden
+// behind a "no offer, do not retry" for the id form, and a classified reason beats an unclassified one.
+const UNCLASSIFIED_EMPTY_REASONS = new Set(["", "no_offer_for_product", "no_seed_for_product"]);
+function retriedEmptyAnswerSaysMore(first, retried) {
+  const retriedMeta = isObj(retried) && isObj(retried.metadata) ? retried.metadata : null;
+  if (!retriedMeta || typeof retriedMeta.reason_retriable !== "boolean") return false;
+  const firstMeta = isObj(first) && isObj(first.metadata) ? first.metadata : {};
+  if (firstMeta.reason_retriable === true) return false;
+  if (retriedMeta.reason_retriable === true) return true;
+  const token = (m) => (typeof m.reason === "string" ? m.reason.trim() : "");
+  return UNCLASSIFIED_EMPTY_REASONS.has(token(firstMeta)) && !UNCLASSIFIED_EMPTY_REASONS.has(token(retriedMeta));
+}
+
 async function getOffers(surface, toolArgs, rest, { lookups }) {
   const args = isObj(toolArgs) ? toolArgs : {};
   if (Object.prototype.hasOwnProperty.call(args, "product_group_id")) {
     throw refusal("PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "product_group_id_argument", "get_offers");
   }
   // The id the partner sent, first and unchanged: it is the path that answers today. Only when it finds no
-  // offer is a group-shaped id tried once more under its signature, and whichever found an offer is returned.
+  // offer is a group-shaped id tried once more under its signature, and whichever found an offer is returned
+  // (both empty: the first, unless the retried answer says more; see retriedEmptyAnswerSaysMore).
   let answer = await surface.callTool("get_offers", toolArgs, ...rest);
   if (!hasOffer(answer) && isIdentityGroupIdShape(args.product_id)) {
     const group = await lookups.resolveGroupIdToProductId({ groupId: args.product_id });
     if (group.status === "resolved") {
       try {
         const retried = await surface.callTool("get_offers", { ...args, product_id: group.productId }, ...rest);
-        if (hasOffer(retried)) answer = retried;
+        if (hasOffer(retried) || retriedEmptyAnswerSaysMore(answer, retried)) answer = retried;
       } catch {
         /* the first answer stands */
       }

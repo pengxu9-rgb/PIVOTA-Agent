@@ -628,7 +628,13 @@ function makeGetOffers(deps = {}) {
     const p = (params && params.payload) || params || {};
     const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
     if (typeof fetchOffers !== 'function') {
-      return { subject, best_offer: null, signals: [], metadata: { reason: 'offers_source_unavailable' } };
+      return {
+        subject,
+        best_offer: null,
+        signals: [],
+        // The retry flag: GET_OFFERS_EMPTY_REASON, the reason door only (a source that is not wired stays so).
+        metadata: { reason: 'offers_source_unavailable', ...(emptyReasonDoor() ? { reason_retriable: false } : {}) },
+      };
     }
     const limit = Number.isInteger(p.limit) ? p.limit : 10;
     const declared = getOffersDeclaredMarket(p);
@@ -646,6 +652,8 @@ function makeGetOffers(deps = {}) {
           market: declared,
           market_currency: null,
           reason: 'market_not_priced',
+          // GET_OFFERS_EMPTY_REASON, the reason door only: every empty answer there carries the retry flag.
+          ...(emptyReasonDoor() ? { reason_retriable: false } : {}),
         },
       };
     }
@@ -693,6 +701,7 @@ function makeGetOffers(deps = {}) {
     // throws costs the live read, never the answer.
     let offers = cut;
     let liveRead = null;
+    let liveReadThrew = false;
     if (market && typeof readOffersLive === 'function' && cut.length) {
       try {
         const res = await readOffersLive(cut, { market, currency: marketCurrency });
@@ -700,6 +709,7 @@ function makeGetOffers(deps = {}) {
         liveRead = (res && res.stats) || null;
       } catch {
         liveRead = { error: 'live_read_failed' };
+        liveReadThrew = true;
       }
     }
     // A FLAGGED offer (its stored facts are stale; pivota-backend #2629) is served only when the merchant's
@@ -741,6 +751,8 @@ function makeGetOffers(deps = {}) {
         backend: res && res.empty_reason,
         // The answer is empty, so every offer that reached the filter above was withheld by it.
         unverified: servedOrFlagged,
+        // Our reader failed: no store was heard, so the withheld offers may be served on a second call.
+        liveReadFailed: liveReadThrew,
       });
       emptyReason = decided.reason;
       emptyRetriable = decided.retriable;
