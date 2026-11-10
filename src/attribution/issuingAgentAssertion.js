@@ -71,8 +71,9 @@ const SEED_LINK_MINT_OP = 'external_seed_links.mint';
 
 // Signed only while PARTNER_IDENTITY_FORWARDING_ENABLED is on. Each name is the op this gateway
 // sends upstream, and the backend verifies the token against the op of the route it lands on.
-// get_order_status is NOT here: the kernel reads it through the backend's invoke route, which has no
-// such operation and reads no assertion (O-04 review, P3-G4). Add it back with the read's reroute.
+// get_order_status is NOT here (O-04 review, P3-G4). The kernel now reads it from GET /agent/v2/orders/{id} and
+// /tracking (FIX_PLAN C-11), not the invoke route, so it could be signed; until it is, a kernel order's partner and
+// buyer isolation is the kernel's own record check alone (canonicalExecutor.js, case 'get_order').
 const PARTNER_IDENTITY_OPS = Object.freeze(new Set([
   'preview_quote',
   'create_order',

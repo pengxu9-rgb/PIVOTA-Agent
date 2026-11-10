@@ -10,7 +10,10 @@
 //   complete_checkout_session      -> verifyPaymentAuthorization -> createOrder -> mintConfirmation -> submitPayment
 //   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort); with
 //                                     CHECKOUT_CANCEL_UPSTREAM_ENABLED, the backend cancel's own outcome
-//   get_order / request_after_sales-> get_order_status (ownership-gated; a foreign order is not found) / requestAfterSales
+//   get_order                      -> one dispatch over the order-id shape (orderIdShape): a rail purchase (`pp_`/`rp_`/
+//                                     `ap_`) -> the backend ledger read; a storefront hand-off (`esc_`) -> its record;
+//                                     else get_order_status (kernel ownership-gated; a foreign order is not found)
+//   request_after_sales            -> requestAfterSales
 //   search_catalog / get_product   -> upstream reads
 //   start_identity_linking         -> handled at the edge (OAuth), not here
 //   exchange_payment_token         -> PERMANENTLY REFUSED (see delegatedPaymentRefusal.js): that operation is
@@ -118,6 +121,21 @@ export const AGENT_PURCHASE_RESULT = Symbol.for('pivota.commerce.agentPurchaseRe
 
 // The UCP storefront escalation's checkout id prefix (mcp-server/src/ucpCheckoutEscalation.js ESCALATION_ID_PREFIX).
 export const STOREFRONT_HANDOFF_ID_PREFIX = 'esc_';
+
+// get_order's order-id shapes, each read by exactly one reader (createCanonicalExecutor, case 'get_order').
+export const ORDER_ID_SHAPE = Object.freeze({
+  agentPurchase: 'agent_purchase',         // `pp_`/`rp_`/`ap_` + 24 hex: the backend's rail purchase ledger
+  storefrontHandoff: 'storefront_handoff', // `esc_`: a UCP storefront hand-off (FIX_PLAN O-02)
+  kernelOrder: 'kernel_order',             // anything else: an order this gateway's kernel placed
+});
+
+/** Which reader answers get_order for this id. Pure: says nothing about whether the id exists or whose it is. */
+export function orderIdShape(orderId) {
+  if (typeof orderId !== 'string') return ORDER_ID_SHAPE.kernelOrder;
+  if (AGENT_PURCHASE_ID_RE.test(orderId)) return ORDER_ID_SHAPE.agentPurchase;
+  if (orderId.startsWith(STOREFRONT_HANDOFF_ID_PREFIX)) return ORDER_ID_SHAPE.storefrontHandoff;
+  return ORDER_ID_SHAPE.kernelOrder;
+}
 
 /**
  * Map a storefront hand-off read (src/services/storefrontHandoffRecord.js `read`, plus `unrecorded` for an esc id
@@ -416,30 +434,50 @@ export function createCanonicalExecutor({
 
       case 'get_order': {
         if (!nonEmpty(params.order_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_order_id' });
-        // A RAIL PURCHASE (`pp_…`/`rp_…`, the backend's rail-neutral ledger) is not a kernel order, so the kernel
-        // ownership proof below cannot answer it. The backend's read is owner-scoped in SQL on the calling
-        // agent AND buyer (the caller's own credentials, never the internal key), which is the same proof.
-        // `readAgentPurchase` returns null when it does not handle the id (its dial is off): then the id
-        // falls through to the kernel path exactly as before this lane existed.
-        if (typeof readAgentPurchase === 'function' && AGENT_PURCHASE_ID_RE.test(params.order_id)) {
-          const answered = await readAgentPurchase(params.order_id, ctx);
-          if (answered != null) return agentPurchaseOrder(params.order_id, answered);
+        const orderId = params.order_id;
+        // ONE DISPATCH FOR EVERY ORDER-ID SHAPE (orderIdShape below). Each shape has exactly one reader, and each
+        // reader answers a caller that does not own the id the way that id's owner-of-record answers it: not found,
+        // or (a hand-off) the backend's 409 not_owner. Never another partner's data.
+        //   - a RAIL PURCHASE (`pp_`/`rp_`/`ap_`): the backend's rail-neutral ledger read, owner-scoped in SQL on
+        //     the calling agent AND buyer (the caller's own credentials, never the internal key). A foreign agent
+        //     or buyer is 404 purchase_not_found -> QUOTE_NOT_FOUND, the same answer as an untracked kernel order.
+        //   - a UCP STOREFRONT HAND-OFF (`esc_`, FIX_PLAN O-02): the backend's hand-off record, answered only to the
+        //     partner it was recorded for (a foreign partner is 409 not_owner -> STATE_LINKAGE_MISMATCH; an unknown
+        //     record or a binding that does not match is 404 -> QUOTE_NOT_FOUND).
+        //   - anything else is a KERNEL ORDER (below).
+        // A reader returns null while its own switches are off (AGENT_PURCHASE_ORDER_READ_ENABLED;
+        // UCP_STOREFRONT_HANDOFF_RECORD_ENABLED with PARTNER_IDENTITY_FORWARDING_ENABLED) or for an id it does not
+        // decode: the id then takes the kernel path exactly as before its lane existed, which fails closed
+        // (QUOTE_NOT_FOUND: the kernel tracks no such order).
+        switch (orderIdShape(orderId)) {
+          case ORDER_ID_SHAPE.agentPurchase: {
+            if (typeof readAgentPurchase !== 'function') break;
+            const answered = await readAgentPurchase(orderId, ctx);
+            if (answered != null) return agentPurchaseOrder(orderId, answered);
+            break;
+          }
+          case ORDER_ID_SHAPE.storefrontHandoff: {
+            if (typeof readStorefrontHandoff !== 'function') break;
+            const answered = await readStorefrontHandoff(orderId, ctx);
+            if (answered != null) return storefrontHandoffOrder(orderId, answered);
+            break;
+          }
+          default:
+            break;
         }
-        // A UCP STOREFRONT HAND-OFF (`esc_…`, FIX_PLAN O-02) is not a kernel order either: the buyer completes it on
-        // the seller's own storefront. Its record (the backend's, for the partner that asked) is read by
-        // `readStorefrontHandoff`, which returns null while its switches are off: the id then takes the kernel path
-        // exactly as before (QUOTE_NOT_FOUND).
-        if (typeof readStorefrontHandoff === 'function' && params.order_id.startsWith(STOREFRONT_HANDOFF_ID_PREFIX)) {
-          const answered = await readStorefrontHandoff(params.order_id, ctx);
-          if (answered != null) return storefrontHandoffOrder(params.order_id, answered);
-        }
-        // Fail CLOSED (Codex P0): prove kernel ownership before any read. _requireOrder throws
-        // QUOTE_NOT_FOUND (untracked) or STATE_LINKAGE_MISMATCH (cross-user/session) — both propagate, so a
-        // verified user can never read an order the kernel does not know to be theirs (no fail-open on an
-        // untracked id, no swallowing of store errors). The upstream read is ALSO scoped by user_ref
-        // (defense in depth: the backend must enforce it even if it is order-id addressable).
-        await requireOwnedOrder(kernel, params.order_id, ctx);
-        return read('get_order_status', { status: { order_id: params.order_id, user_ref: ctx.user_ref } });
+        // A KERNEL ORDER. Fail CLOSED (Codex P0): prove kernel ownership before any read. requireOwnedOrder answers
+        // QUOTE_NOT_FOUND for an id the kernel never tracked AND for another agent's, buyer's or session's order
+        // (the kernel's STATE_LINKAGE_MISMATCH would confirm the id exists); store errors propagate.
+        //
+        // WHERE ISOLATION IS ENFORCED TODAY: HERE, AND ONLY HERE. The backend read that follows (get_order_status:
+        // GET /agent/v2/orders/{id}/tracking and GET /agent/v2/orders/{id}, src/server.js
+        // invokeCommerceKernelRawUpstream) is sent on this gateway's OWN service key, with no partner assertion
+        // (get_order_status is not in PARTNER_IDENTITY_OPS, src/attribution/issuingAgentAssertion.js) and no
+        // buyer identity those routes read (a GET carries no body, so the `user_ref` below never leaves this
+        // process). The backend's own check there, order.agent_id == the calling key's agent, therefore proves
+        // only that the order is one this gateway placed; it cannot tell one partner or buyer from another.
+        await requireOwnedOrder(kernel, orderId, ctx);
+        return read('get_order_status', { status: { order_id: orderId, user_ref: ctx.user_ref } });
       }
 
       case 'request_after_sales':
