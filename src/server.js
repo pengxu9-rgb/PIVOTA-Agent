@@ -119,6 +119,8 @@ const listPriceTiers = require('./services/listPriceTiers');
 // (PRICE_HOST_BUDGET): every live merchant read records into the first and asks the second. Both default off, and
 // off they build nothing, load no Firestore client and change no answer (see priceHostGate below).
 const priceCacheHooks = require('./services/priceCache');
+// FIX_PLAN C-11: what the backend's order cancel answered (cancel_checkout_session, CHECKOUT_CANCEL_UPSTREAM_ENABLED).
+const checkoutCancelUpstream = require('./services/checkoutCancelUpstream');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -3947,6 +3949,8 @@ const SLOW_UPSTREAM_OPS = new Set([
   'submit_payment',
   'get_order_status',
   'request_after_sales',
+  // The backend cancel calls the PSP (expire the hosted session, void the payment): a money-path budget.
+  'cancel_order',
 ]);
 
 function getUpstreamTimeoutMs(operation) {
@@ -32700,6 +32704,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
   // Set by the cases below that route back into THIS process over loopback instead of out to the Python
   // kernel. A loopback hop needs a different timeout/retry policy — see resolveSelfInvokeBudget.
   let selfInvoked = false;
+  // get_order_status reads two backend order routes (GETs); cancel_order returns the backend's answer raw.
+  let orderStatusRead = null;
+  let cancelOrderCall = false;
 
   switch (op) {
     case 'get_product_detail': {
@@ -32877,12 +32884,35 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       });
       break;
     }
+    case 'get_order_status': {
+      // MCP get_order (the executor reads this op only after proving kernel ownership). It used to fall through
+      // to POST /agent/shop/v1/invoke, which answers "Unsupported operation" for it, so no door could read an
+      // order. It is the backend's own order read now: GET .../tracking, projected exactly as the REST invoke
+      // lane projects it (normalizeGetOrderStatusCompat), with `status` taken from GET /agent/v2/orders/{id}
+      // (see kernelOrderStatusResult). Same auth headers as every other kernel op.
+      const status = isPlainObject(payload?.status) ? payload.status : {};
+      const orderId = firstNonEmptyString(status.order_id, status.orderId);
+      const orderUrl = `${PIVOTA_API_BASE}/agent/v2/orders/${encodeURIComponent(orderId)}`;
+      url = `${orderUrl}/tracking`;
+      orderStatusRead = { orderUrl };
+      break;
+    }
+    case 'cancel_order': {
+      // FIX_PLAN C-11 (the executor reaches this only with CHECKOUT_CANCEL_UPSTREAM_ENABLED on). The backend
+      // closes the hosted payment page at the PSP and cancels the order only while unpaid. Every answer comes
+      // back raw ({ upstream_status, body }) for classifyUpstreamCancel: its 409s are outcomes, not faults.
+      const orderId = firstNonEmptyString(payload?.order_id);
+      url = `${PIVOTA_API_BASE}/agent/v2/orders/${encodeURIComponent(orderId)}/cancel`;
+      requestBody = pruneEmptyFields({ idempotency_key: firstNonEmptyString(payload?.idempotency_key) });
+      cancelOrderCall = true;
+      break;
+    }
     default:
       break;
   }
 
   const axiosConfig = {
-    method: 'POST',
+    method: orderStatusRead ? 'GET' : 'POST',
     url,
     headers: {
       'Content-Type': 'application/json',
@@ -32915,7 +32945,8 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackMarketAssumedHeaders(payload) : {}),
       ...headers,
     },
-    data: requestBody,
+    ...(orderStatusRead ? {} : { data: requestBody }),
+    ...(cancelOrderCall ? { validateStatus: () => true } : {}),
     timeout: selfInvoked ? resolveSelfInvokeBudget(timeout) : timeout,
     ...(options && options.signal ? { signal: options.signal } : {}),
   };
@@ -32947,8 +32978,21 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       }
     }
     if (!resp) {
+      if (orderStatusRead) await throwKernelOrderReadNotFound(err);
       await throwCommerceKernelUpstreamError(op, err);
     }
+  }
+
+  if (cancelOrderCall) return { upstream_status: resp?.status ?? null, body: resp?.data };
+  if (orderStatusRead) {
+    let orderResp;
+    try {
+      orderResp = await callUpstreamWithOptionalRetry(op, { ...axiosConfig, url: orderStatusRead.orderUrl }, {});
+    } catch (err) {
+      await throwKernelOrderReadNotFound(err);
+      await throwCommerceKernelUpstreamError(op, err);
+    }
+    return kernelOrderStatusResult(resp?.data, orderResp?.data);
   }
 
   const body = resp?.data;
@@ -32969,6 +33013,27 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
     return normalizedBody.data;
   }
   return normalizedBody;
+}
+
+// MCP get_order's answer for a kernel order: the REST invoke lane's get_order_status projection of the tracking
+// body (the shape that lane already answers), with `status` the order's own state (`order.state` of GET
+// /agent/v2/orders/{id}) instead of the tracking envelope's "success". Nothing else is taken from the order body:
+// it carries the buyer's contact and address and the PSP client secret, which the tracking body does not.
+function kernelOrderStatusResult(trackingBody, orderBody) {
+  const projected = normalizeGetOrderStatusCompat(trackingBody);
+  if (!isPlainObject(projected)) return projected;
+  const state = firstNonEmptyString(isPlainObject(orderBody?.order) ? orderBody.order.state : null);
+  return state ? { ...projected, status: state } : projected;
+}
+
+// The backend answers 404 for an unknown order and 403 for another agent's. Behind the kernel's own ownership
+// proof both mean the same thing to this caller: not found (never "exists, but not yours"). Returns when the
+// failure is anything else, for the shared mapping to classify.
+async function throwKernelOrderReadNotFound(err) {
+  const status = err?.response?.status;
+  if (status !== 403 && status !== 404) return;
+  const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
+  throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', upstream_status: status });
 }
 
 // The upstream-failure -> shared-taxonomy mapping lives in services/commerceKernelErrorMapping so it is
@@ -33944,6 +34009,26 @@ async function getCommerceRemoteMcpAdapter() {
         // Thunk, not a boolean: this executor is memoized for the process lifetime, so a boolean would freeze
         // the flag at first build and make the kill-switch un-flippable without a redeploy.
         delegatedTokenHandoffEnabled: () => isAcpSptGatewayHandoffEnabled(),
+        // FIX_PLAN C-11: cancel_checkout_session asks the backend to close the hosted payment page and cancel
+        // the unpaid order, and answers what it did. CHECKOUT_CANCEL_UPSTREAM_ENABLED (default OFF), read per
+        // call. Turn the backend flag of the same name on first: until then its route does not exist, which
+        // this classifies as "not confirmed" (retriable), never as canceled.
+        cancelUpstreamEnabled: () => checkoutCancelUpstream.isCheckoutCancelUpstreamEnabled(),
+        cancelUpstreamOrder: async (orderId, ctx) => {
+          let answered;
+          try {
+            answered = await invokeCommerceKernelRawUpstream('cancel_order', { order_id: orderId });
+          } catch (err) {
+            logger.warn({ code: err?.code || 'CANCEL_UPSTREAM_FAILED' }, 'checkout cancel upstream: no answer');
+            return { kind: checkoutCancelUpstream.CANCEL_KIND.unavailable };
+          }
+          const outcome = checkoutCancelUpstream.classifyUpstreamCancel(answered?.upstream_status, answered?.body);
+          logger.info(
+            { event: 'checkout_cancel_upstream', outcome: outcome.kind, upstream_status: answered?.upstream_status ?? null },
+            'checkout cancel upstream',
+          );
+          return outcome;
+        },
       });
       // Publish the executor for the ACP/UCP doors to reuse (one shared kernel — see commerceSharedExecutor).
       commerceSharedExecutor = executor;
