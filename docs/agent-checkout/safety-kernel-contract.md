@@ -116,6 +116,9 @@ cannot succeed without a token bound to the final amount.
 | `PAYMENT_REQUIRES_ACTION` | 3DS/redirect/qr | surface verbatim; never fabricate URLs |
 | `MERCHANT_UNAVAILABLE` | connector down | no silent fallback (rail rule); say so |
 | `USER_AUTH_REQUIRED` | missing user_ref on write | trigger OAuth |
+| `PRODUCT_NOT_SERVABLE` | `/mcp` door, `PARTNER_DOOR_ONE_PRODUCT_ID` on: the product id is known and a serving gate withholds it; `detail.reason` carries the gate's reason | do not retry; offer alternatives |
+| `PRODUCT_GROUP_ID_NOT_PRODUCT_ID` | `/mcp` door, flag on: the id is a product group id (`sig_` + 24 hex) with no servable member, or `product_group_id` was passed to `get_offers` | do not retry; pass the `product_id` of a search row |
+| `MERCHANT_PRODUCT_MISMATCH` | `/mcp` door, flag on: the `merchant_id` named beside the product is not one of the product's sellers | do not retry as sent; omit `merchant_id` or pass the one returned with the product |
 
 **Hard rule:** the model must never auto-retry a money operation on ambiguous failure.
 Retries are safe only via the same `idempotency_key`, which the kernel dedupes.

@@ -33254,7 +33254,13 @@ function statusForCommerceKernelError(code) {
     case 'NO_MERCHANT_OFFER':
     // Persistent "there is no such id" — same HTTP answer, different fact (see errors.js).
     case 'UNKNOWN_PRODUCT_ID':
+    // PARTNER_DOOR_ONE_PRODUCT_ID (thrown by the `/mcp` door only): the product exists and is withheld.
+    case 'PRODUCT_NOT_SERVABLE':
       return 404;
+    // PARTNER_DOOR_ONE_PRODUCT_ID: the id, or the seller beside it, is the wrong argument.
+    case 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID':
+    case 'MERCHANT_PRODUCT_MISMATCH':
+      return 400;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
       return 409;
@@ -34128,7 +34134,11 @@ async function getCommerceRemoteMcpAdapter() {
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
       rememberMcpToolNames(surface);
-      return createRemoteMcpAdapter(surface, {
+      // PARTNER_DOOR_ONE_PRODUCT_ID: the `/mcp` door's own view of the surface (the surface itself while off).
+      // Everything the flag does happens inside this view, so the UCP door (which keeps projecting `surface`,
+      // above), the public door, the strict invoke route and the kernel hop answer exactly as with it off.
+      const { partnerDoorSurface } = await import('../mcp-server/src/partnerDoorOneProductId.js');
+      return createRemoteMcpAdapter(partnerDoorSurface(surface, { log: logger }), {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
           if (req?.authInfo?.invoke_authenticated !== true) {
