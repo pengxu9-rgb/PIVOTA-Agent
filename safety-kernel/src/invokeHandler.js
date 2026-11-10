@@ -52,6 +52,7 @@ export const ERROR_OBSERVABILITY = Object.freeze({
   // the coverage metric unreadable the first time an agent starts guessing sigs.
   UNKNOWN_PRODUCT_ID: { event: 'unknown_product_id', metric: 'unknown_product_id' },
   IDEMPOTENCY_CONFLICT: { event: 'idempotency_conflict_blocked', metric: 'idempotency_conflict' },
+  PARTNER_ASSERTION_REJECTED: { event: 'partner_assertion_rejected', metric: 'partner_assertion_rejected' },
 });
 
 /**

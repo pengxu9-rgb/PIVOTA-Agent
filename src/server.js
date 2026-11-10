@@ -33183,6 +33183,7 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
   const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status });
+  if (kernelCode === 'PARTNER_ASSERTION_REJECTED') notePartnerAssertionRejected(operation, status, upstreamDetail);
   throw new PivotaCommerceError(kernelCode, {
     operation,
     upstream_status: status,
@@ -33194,6 +33195,23 @@ async function throwCommerceKernelUpstreamError(operation, err) {
     // caller: toToolError emits only allowlisted detail reasons. Present only when true.
     ...(isCommerceKernelUpstreamTimeout(err) ? { upstream_timeout: true } : {}),
   });
+}
+
+// FIX_PLAN O-04: one warn line per backend refusal of the partner assertion, so a signing fault between the
+// gateway and the backend (clock, path rewrite, stale secret) is visible the first time it happens. The MCP
+// completion line also counts it as a server-side error (src/observability/mcpToolCallOutcome.js). Fields are
+// our own vocabulary only: the backend's reason (snake_case, e.g. `stale`, `path`, `replay`) and the op.
+function notePartnerAssertionRejected(operation, status, upstreamDetail) {
+  try {
+    const raw = upstreamDetail && typeof upstreamDetail === 'object' ? upstreamDetail.reason : null;
+    const reason = typeof raw === 'string' && /^[a-z0-9_]{1,32}$/.test(raw) ? raw : 'unknown';
+    logger.warn(
+      { event: 'partner_assertion_rejected', operation, upstream_status: status, reason },
+      'backend refused the partner assertion; answered non-retriable PARTNER_ASSERTION_REJECTED',
+    );
+  } catch (_) {
+    // A log line must never change the error the caller gets.
+  }
 }
 
 // A request that never got a response because its transport deadline fired (axios `timeout`, a socket
@@ -33337,6 +33355,7 @@ function statusForCommerceKernelError(code) {
       return 404;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
+    case 'PARTNER_ASSERTION_REJECTED':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
       return 503;

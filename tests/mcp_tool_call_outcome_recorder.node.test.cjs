@@ -205,3 +205,12 @@ test('tier: public door, configured service key, any other resolved caller, nobo
   assert.equal(mcpCallerTier({}, 'mcp'), 'unauthenticated');
   assert.equal(mcpCallerTier(undefined, 'mcp'), 'unauthenticated');
 });
+
+test('error_class: PARTNER_ASSERTION_REJECTED is non-retriable but ours, so the error-rate alert counts it', () => {
+  // FIX_PLAN O-04: the backend refused the gateway's own signed partner assertion. The caller cannot fix that.
+  const refused = createMcpToolCallRecorder();
+  refused.observe({ error_code: 'PARTNER_ASSERTION_REJECTED', error_retriable: false });
+  refused.recordRpcResponse(okOut({ isError: true }));
+  assert.equal(refused.fields(200).error_code, 'PARTNER_ASSERTION_REJECTED');
+  assert.equal(refused.fields(200).error_class, 'server');
+});

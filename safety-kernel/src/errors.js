@@ -3,7 +3,7 @@
 // so the codes/recovery are identical across Claude/ChatGPT/Gemini surfaces.
 // Mirrors §5 of docs/agent-checkout/safety-kernel-contract.md.
 
-/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'} PivotaErrorCode */
+/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'|'PARTNER_ASSERTION_REJECTED'} PivotaErrorCode */
 
 /**
  * code -> { retriable, userMessage, recovery }
@@ -48,6 +48,12 @@ export const ERROR_CATALOG = Object.freeze({
   USER_AUTH_REQUIRED:     { retriable: false, recovery: 'trigger OAuth',                            userMessage: 'Please sign in so I can place this order on your behalf.' },
   STATE_LINKAGE_MISMATCH: { retriable: false, recovery: 're-quote in this session',                userMessage: 'Something about this session does not line up. Let me start the order over.' },
   OPERATION_NOT_ALLOWED:  { retriable: false, recovery: 'use the correct tool for this operation',  userMessage: 'That action is not available here.' },
+  // FIX_PLAN O-04: the backend refused the gateway's request-bound partner assertion (409
+  // PARTNER_ASSERTION_REJECTED) BEFORE the route ran, so nothing was written. That is a fault between our own
+  // two services (a clock, a path rewrite, a stale secret), not a merchant outage, and re-sending the same call
+  // meets the same refusal. As MERCHANT_UNAVAILABLE (retriable, "try again shortly") every chaining agent would
+  // retry forever. retriable:false is the load-bearing bit; the gateway logs and counts each one.
+  PARTNER_ASSERTION_REJECTED: { retriable: false, recovery: 'do not retry this call; nothing was written; report it to Pivota', userMessage: 'Pivota could not confirm the account this request was made for, so nothing was done. Retrying the same call will not change this.' },
 });
 
 export class PivotaCommerceError extends Error {

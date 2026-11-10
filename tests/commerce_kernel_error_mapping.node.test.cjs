@@ -222,3 +222,45 @@ test('every door answers 404 for the terminal read outcomes, not 400', () => {
     assert.match(table, new RegExp(`${code}:\\s*404`), `${code} must map to 404 on the ACP door`);
   }
 });
+
+// ---- FIX_PLAN O-04 (status review P1-7): the backend refusing the partner assertion -----------------------------
+
+test('a 409 PARTNER_ASSERTION_REJECTED is its own terminal code on every op, money ops included', () => {
+  // The backend refuses before the route runs, so nothing was written and the same call is refused again: as
+  // MERCHANT_UNAVAILABLE (retriable) every agent retried it forever.
+  for (const operation of [...READ_OPS, ...MONEY_OPS, 'get_order_status']) {
+    assert.equal(
+      mapUpstreamErrorToKernelCode({ operation, upstreamCode: 'PARTNER_ASSERTION_REJECTED', status: 409 }),
+      'PARTNER_ASSERTION_REJECTED',
+      operation,
+    );
+  }
+  // Keyed on the code, not the status: another 409 on a money op keeps its old classification.
+  assert.equal(mapUpstreamErrorToKernelCode({ operation: 'create_order', upstreamCode: null, status: 409 }), 'MERCHANT_UNAVAILABLE');
+});
+
+test('PARTNER_ASSERTION_REJECTED is non-retriable, honest, 409 on every door and wired into audit + metrics', async () => {
+  const { ERROR_CATALOG, isPivotaErrorCode, PivotaCommerceError } = await import('../safety-kernel/src/errors.js');
+  const { toToolError } = await import('../mcp-server/src/commerceToolSurface.js');
+  const { AUDIT_EVENTS } = await import('../safety-kernel/src/audit.js');
+  const { ERROR_OBSERVABILITY } = await import('../safety-kernel/src/invokeHandler.js');
+
+  assert.ok(isPivotaErrorCode('PARTNER_ASSERTION_REJECTED'));
+  assert.equal(ERROR_CATALOG.PARTNER_ASSERTION_REJECTED.retriable, false);
+  const msg = ERROR_CATALOG.PARTNER_ASSERTION_REJECTED.userMessage.toLowerCase();
+  assert.ok(!msg.includes('try again shortly') && !msg.includes('temporarily'), 'must not promise a retry');
+
+  const body = JSON.parse(toToolError(new PivotaCommerceError('PARTNER_ASSERTION_REJECTED', { reason: 'stale' })).content[0].text);
+  assert.deepEqual([body.error.code, body.error.retriable, body.error.detail], ['PARTNER_ASSERTION_REJECTED', false, undefined]);
+
+  assert.ok(AUDIT_EVENTS.includes('partner_assertion_rejected'));
+  assert.deepEqual(ERROR_OBSERVABILITY.PARTNER_ASSERTION_REJECTED, {
+    event: 'partner_assertion_rejected', metric: 'partner_assertion_rejected',
+  });
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'safety-kernel', 'src', 'protocol', 'acpRestAdapter.js'), 'utf8');
+  assert.match(src.split('const STATUS_BY_CODE')[1].split('});')[0], /PARTNER_ASSERTION_REJECTED:\s*409/);
+  const server = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const statusFn = server.split('function statusForCommerceKernelError')[1].split('\n}\n')[0];
+  assert.match(statusFn, /case 'PARTNER_ASSERTION_REJECTED':\s*\n\s*return 409;/);
+});
