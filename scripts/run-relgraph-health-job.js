@@ -32,6 +32,10 @@
  *                       audit-relationship-graph-noop-runs.js for why it is keyed on
  *                       applied_count and not on the edges view's created_at).
  *
+ * PLUS A REPORT-ONLY READOUT (report-relationship-graph-nightly-readout.js): the last week of
+ * relgraph-sync runs, the review-error quarantine and the review pool, in counts. These were read by
+ * hand after every nightly; they never affect the exit code.
+ *
  * Exit codes: 0 clean, 1 a threshold was breached, 2 the job itself failed. A breach and a crash
  * must not look the same — the whole point of this work is that a green signal over a broken thing
  * is the defect.
@@ -44,6 +48,7 @@ const {
   DEFAULT_THRESHOLDS,
   runServingStatusReport,
 } = require('./report-relationship-graph-serving-status');
+const { runNightlyReadout } = require('./report-relationship-graph-nightly-readout');
 
 // The three reasons the retired workflow hardcoded as CRITICAL_REASONS. Defaulted HERE rather than
 // left to the caller: the Cloud Run job passes thresholds through env, and a reason list that is
@@ -118,6 +123,8 @@ function parseArgs(argv = process.argv.slice(2), env = process.env) {
     // were already enforcing before the move, so they stay enforcing; changing both severities in
     // one migration would make it impossible to tell a migration bug from a real finding.
     failOnNoop: argv.includes('--fail-on-noop') || env.RELGRAPH_FAIL_ON_NOOP === 'true',
+    // How many days of relgraph-sync runs the readout lists (clamped 1..35 by the readout).
+    readoutRunDays: num(at('readout-run-days') ?? env.RELGRAPH_READOUT_RUN_DAYS, 7, { min: 1, max: 35 }),
   };
 }
 
@@ -179,6 +186,7 @@ async function runHealthJob(opts, deps = {}) {
   const servingAudit = deps.runServingGuardAudit || runServingGuardAudit;
   const noopAudit = deps.runNoopAudit || runNoopAudit;
   const statusReport = deps.runServingStatusReport || runServingStatusReport;
+  const nightlyReadout = deps.runNightlyReadout || runNightlyReadout;
 
   const report = await servingAudit({ market: opts.market });
   const gate = evaluateServingGuard(report, opts);
@@ -201,11 +209,22 @@ async function runHealthJob(opts, deps = {}) {
 
   const noop = await noopAudit({});
   const failed = !gate.ok || !expiry.ok || (noop.noop && opts.failOnNoop);
+
+  // REPORT-ONLY, and it must stay that way: the readout never changes `ok`, and its own failure is
+  // recorded rather than thrown, so a readout query that times out cannot turn a clean serving
+  // guard into an exit 2 (a crash) or hide a real breach behind one.
+  let nightly;
+  try {
+    nightly = await nightlyReadout({ runDays: opts.readoutRunDays });
+  } catch (err) {
+    nightly = { error: String((err && err.message) || err).slice(0, 300) };
+  }
   return {
     market: opts.market,
     gate,
     expiry,
     noop,
+    nightly,
     ok: !failed,
     // THE EVIDENCE, not just the verdict. The retired workflow uploaded serving_guard_audit.json,
     // serving_guard_gate.json and serving_status_expiry.json with 14-day retention; a Cloud Run job
@@ -235,6 +254,10 @@ async function main() {
     await closePool().catch(() => {});
   }
   console.log(JSON.stringify(result, null, 2));
+  // ONE compact line as well: a single-line JSON object on stdout lands in Cloud Logging as
+  // jsonPayload, so `jsonPayload.message="relgraph_nightly_readout"` finds every night's readout
+  // without parsing the pretty-printed block above (which arrives one textPayload line at a time).
+  console.log(JSON.stringify({ message: 'relgraph_nightly_readout', ok: result.ok, ...result.nightly }));
   if (!result.ok) process.exitCode = 1;
 }
 

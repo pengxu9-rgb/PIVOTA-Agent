@@ -484,10 +484,17 @@ describe('review of #2375', () => {
     assert.equal(unnamed.messages[0].code, 'checkout.priced_by_seller_storefront');
   });
 
-  test('through the lane: no market on the request means no context hint (never a default market)', async () => {
+  test('through the lane: no market on the request is answered as US (decision D-10): the seller is asked for US, and the answer says so', async () => {
     const door = fakeDoor();
-    await tryEscalateUcpCheckout({ op: CREATE, params: createParams([SEED.product_id, 2]), ctx: {}, executor: executorWith({ [SEED.product_id]: SEED }), ucpArgs: {}, env: ON, now: NOW, merchantDoor: door });
-    assert.equal('context' in door.calls[1][2], false);
+    const out = await tryEscalateUcpCheckout({ op: CREATE, params: createParams([SEED.product_id, 2]), ctx: {}, executor: executorWith({ [SEED.product_id]: SEED }), ucpArgs: {}, env: ON, now: NOW, merchantDoor: door });
+    assert.deepEqual(door.calls[1][2].context, { address_country: 'US' });
+    assert.equal(out.market_assumed.code, 'US');
+    assert.ok(out.messages.some((m) => m.code === 'market_assumed'));
+    // a malformed market is not "no market": nothing is assumed, and no hint is sent (as before)
+    const bad = fakeDoor();
+    const out2 = await tryEscalateUcpCheckout({ op: CREATE, params: createParams([SEED.product_id, 2]), ctx: {}, executor: executorWith({ [SEED.product_id]: SEED }), ucpArgs: { checkout: { context: { address_country: 'USA' } } }, env: ON, now: NOW, merchantDoor: bad });
+    assert.equal('context' in bad.calls[1][2], false);
+    assert.equal(out2.market_assumed, undefined);
   });
 });
 

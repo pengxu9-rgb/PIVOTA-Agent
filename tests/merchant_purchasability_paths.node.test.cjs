@@ -293,7 +293,7 @@ test('path2/escalation: a gate answer with no `offer` key is NOT a refusal (stri
   assert.equal(out.continue_url, MERCHANT_URL);
 });
 
-test('path2/escalation: NO MARKET + ENFORCED => the same fall-through as a decline — never a default market', async () => {
+test('path2/escalation: NO MARKET + ENFORCED => asked as US (decision D-10), and a US decline falls through as a decline', async () => {
   const backend = fakeBackend(BROWSE_ONLY);
   const logger = fakeLogger();
   const env = { ...gateEnv(), [ESCALATION_FLAG]: '1' };
@@ -305,13 +305,13 @@ test('path2/escalation: NO MARKET + ENFORCED => the same fall-through as a decli
   });
 
   // `null` = "not an escalation cart": the kernel path, exactly what a `gate` decline produces.
-  assert.equal(out, null, 'no market => no fact => under enforcement, no storefront checkout');
-  assert.equal(backend.calls.length, 1, 'one market-less enforcement read');
+  assert.equal(out, null, 'the US fact is browse_only => under enforcement, no storefront checkout');
+  assert.equal(backend.calls.length, 1, 'one enforcement read');
   const probe = new URL(backend.calls[0].url);
-  assert.equal(probe.searchParams.has('market'), false, 'a defaulted market would have been on this read');
+  assert.equal(probe.searchParams.get('market'), 'US', 'no market named is answered as US: the gate is asked about US');
   assert.equal(probe.searchParams.get('domain'), MERCHANT, 'the storefront HOST, never the product URL');
   assert.ok(!wireAndLogValues(backend, logger).includes('/products/'));
-  assert.ok(logger.lines.some((l) => l.event === 'merchant_purchasability_unkeyable' && l.level === 'warn'));
+  assert.equal(logger.lines.some((l) => l.event === 'merchant_purchasability_unkeyable'), false, 'keyable now');
 });
 
 test('path2/escalation: NO MARKET + NOT enforced => unchanged', async () => {
@@ -341,9 +341,10 @@ for (const [name, opts] of [
   });
 }
 
-test('path2/escalation GET: the re-read (no market on the wire) takes the SAME fall-through under enforcement', async () => {
-  // The UCP `get_checkout` body carries no `checkout.context`, so this branch is always unkeyable.
-  // Under enforcement that is a decline, handled by the same `return null` as the create branch.
+test('path2/escalation GET: a LEGACY id (no market member) re-reads unkeyable, and takes the SAME fall-through under enforcement', async () => {
+  // The UCP `get_checkout` body carries no `checkout.context`; a new id carries the create's market (decision D-10),
+  // but an id minted before that carries none, and is never read as US: its re-read is unkeyable, exactly as every
+  // re-read was before. Under enforcement that is a decline, handled by the same `return null` as the create branch.
   const { tryEscalateUcpCheckout, encodeEscalationId } = await escalation();
   const sessionId = encodeEscalationId([{ product_id: 'p1', quantity: 1 }]);
   const run = (env, shouldOfferPurchase) => tryEscalateUcpCheckout({
@@ -360,7 +361,7 @@ test('path2/escalation GET: the re-read (no market on the wire) takes the SAME f
 
   const enforcing = fakeBackend(BROWSE_ONLY);
   assert.equal(await run(env, realGate({ env, backend: enforcing, logger: fakeLogger() })), null);
-  assert.equal(new URL(enforcing.calls[0].url).searchParams.has('market'), false);
+  assert.equal(new URL(enforcing.calls[0].url).searchParams.has('market'), false, 'no market: never a defaulted US');
 
   const unenforced = fakeBackend(NOT_ENFORCED);
   const kept = await run(env, realGate({ env, backend: unenforced, logger: fakeLogger() }));
