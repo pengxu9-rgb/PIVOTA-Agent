@@ -130,6 +130,9 @@ export const STOREFRONT_HANDOFF_ID_PREFIX = 'esc_';
  *   not_found   the record does not exist under this exact id: an id nobody issued (forged, or altered).
  *   not_owner   recorded for another partner.
  *   unattributed  the request names no partner: refused, never read.
+ *   assertion_rejected  the backend refused the request's partner assertion (PARTNER_ASSERTION_REJECTED) or adopted no
+ *               partner from it (partner_identity_required): the non-retriable PARTNER_ASSERTION_REJECTED every
+ *               other op answers for it (O-04), never a retriable MERCHANT_UNAVAILABLE.
  *   otherwise   retriable, says nothing about the hand-off.
  */
 export function storefrontHandoffOrder(orderId, answered) {
@@ -163,6 +166,10 @@ export function storefrontHandoffOrder(orderId, answered) {
       throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'storefront_handoff_not_found', order_id: orderId });
     case 'not_owner':
       throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id: orderId, reason: 'agent_mismatch' });
+    case 'assertion_rejected':
+      throw new PivotaCommerceError('PARTNER_ASSERTION_REJECTED', {
+        op: 'get_order', reason: 'storefront_handoff_partner_assertion_rejected', upstream_code: answered.code ?? null,
+      });
     default:
       throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'storefront_handoff_read_unavailable' });
   }

@@ -56,7 +56,13 @@ const OUTCOME = Object.freeze({
   unattributed: 'unattributed',
   refused: 'refused',
   unavailable: 'unavailable',
+  assertionRejected: 'assertion_rejected',
 });
+
+// The backend's refusals of the partner assertion itself (O-04): PARTNER_ASSERTION_REJECTED (the request-bound token
+// failed a check: stale, replayed, bound to another request) and partner_identity_required (no partner was adopted
+// from it). Neither says anything about the hand-off, and the same read is refused the same way every time.
+const ASSERTION_REFUSAL_CODES = new Set(['PARTNER_ASSERTION_REJECTED', 'partner_identity_required']);
 
 function isPlainObject(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -86,6 +92,15 @@ function refusalCode(body) {
     return body.error.details.error;
   }
   return null;
+}
+
+/** The backend's snake_case refusal reason (e.g. `stale`, `replay`), or null: our own vocabulary only. */
+function refusalReason(body) {
+  if (!isPlainObject(body)) return null;
+  const raw = isPlainObject(body.detail) && typeof body.detail.reason === 'string'
+    ? body.detail.reason
+    : (isPlainObject(body.error) && isPlainObject(body.error.details) ? body.error.details.reason : null);
+  return typeof raw === 'string' && /^[a-z0-9_]{1,32}$/.test(raw) ? raw : null;
 }
 
 function parseJson(text) {
@@ -184,7 +199,8 @@ function createStorefrontHandoffClient(deps = {}) {
 
   /**
    * Read one hand-off for get_order. Resolves `{ kind: 'accepted', handoff } | { kind: 'not_found' } |
-   * { kind: 'not_owner' } | { kind: 'unattributed' } | { kind: 'unavailable', code }`; never throws.
+   * { kind: 'not_owner' } | { kind: 'unattributed' } | { kind: 'assertion_rejected', code, reason } |
+   * { kind: 'unavailable', code }`; never throws.
    */
   async function read(recordId, escalationId) {
     if (!HANDOFF_RECORD_ID_RE.test(String(recordId || ''))) return { kind: OUTCOME.notFound };
@@ -211,6 +227,13 @@ function createStorefrontHandoffClient(deps = {}) {
     if ((status === 409 || status === 403) && code === 'not_owner') {
       log('info', { op: 'read', outcome: OUTCOME.notOwner, http_status: status });
       return { kind: OUTCOME.notOwner };
+    }
+    // The backend refused the partner assertion, not the hand-off (O-04 delta review P3-7): non-retriable, like the
+    // same refusal on every other op, never a retriable "unavailable".
+    if (status === 409 && ASSERTION_REFUSAL_CODES.has(code)) {
+      const reason = refusalReason(body);
+      log('warn', { op: 'read', outcome: OUTCOME.assertionRejected, code, reason, http_status: status });
+      return { kind: OUTCOME.assertionRejected, code, reason };
     }
     // Anything else (the backend dark, partner identity not adopted, 5xx, a malformed body) says nothing about
     // the hand-off.

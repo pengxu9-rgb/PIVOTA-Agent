@@ -150,7 +150,7 @@ function interceptProductPage() {
 }
 
 /** The backend's hand-off routes, answered as pivota-backend routes/agent_storefront_handoffs.py answers them. */
-function interceptHandoffBackend() {
+function interceptHandoffBackend({ readAnswer } = {}) {
   const state = { records: [], reads: [], rows: new Map() };
   const refuse = (status, code) => [status, { detail: { error: code }, error: { code: 'X', message: code, details: { error: code } }, status: 'error' }];
   nock(BACKEND)
@@ -169,6 +169,7 @@ function interceptHandoffBackend() {
     .reply(function reply(uri, body) {
       const assertion = assertionOf(this.req.headers, { path: uri.split('?')[0], body });
       state.reads.push({ headers: { ...this.req.headers }, assertion, body });
+      if (readAnswer) return readAnswer;
       if (!assertion || assertion.op !== 'ucp_storefront_handoff.read') return refuse(409, 'partner_identity_required');
       const row = state.rows.get(body.record_id);
       if (!row || row.binding !== body.binding) return refuse(404, 'handoff_not_found');
@@ -360,6 +361,48 @@ test('flags on: a record the backend does not confirm leaves the id unrecorded, 
     setFlags({});
   }
 });
+
+// The read route's exact 409 bytes when the backend refuses the partner assertion (pivota-backend
+// routes/agent_forwarded_owner.py through its ErrorHandlerMiddleware), captured from the real route; only the
+// timestamp and request id are replaced.
+function realAssertionRefusal(code, reason) {
+  const details = code === 'PARTNER_ASSERTION_REJECTED'
+    ? { error: code, reason, message: 'The partner assertion on this request was refused; it was not made as any partner.' }
+    : { error: code };
+  return JSON.stringify({
+    status: 'error',
+    error: { code: 'CONFLICT', message: code, details, documentation_url: 'https://api.pivota.cc/agent/docs/overview' },
+    metadata: { timestamp: '2026-11-10T00:00:00.000000Z', request_id: '00000000-0000-4000-8000-000000000000' },
+    detail: details,
+  });
+}
+
+for (const [code, reason] of [['PARTNER_ASSERTION_REJECTED', 'stale'], ['PARTNER_ASSERTION_REJECTED', 'replay'], ['partner_identity_required', null]]) {
+  test(`flags on: get_order on a hand-off whose read the backend refuses (${code} ${reason || ''}) is non-retriable PARTNER_ASSERTION_REJECTED`, async () => {
+    // O-04 delta review P3-7: before, every such read became a retriable MERCHANT_UNAVAILABLE.
+    setFlags({ record: true, forwarding: true });
+    nock.cleanAll();
+    introspect();
+    interceptProductPage();
+    const backend = interceptHandoffBackend({
+      readAnswer: [409, realAssertionRefusal(code, reason), { 'Content-Type': 'application/json' }],
+    });
+    try {
+      const checkout = await createCheckout(KEY_A, `par_${code}_${reason || 'none'}`);
+      assert.match(escBody(checkout.id).r, /^esh_/, 'recorded, so get_order reads the backend');
+      const err = errorOf(await getOrder(KEY_A, checkout.id));
+      const errCode = err.error?.code ?? err.code;
+      const retriable = err.error?.retriable ?? err.retriable;
+      assert.equal(errCode, 'PARTNER_ASSERTION_REJECTED', JSON.stringify(err));
+      assert.equal(retriable, false, JSON.stringify(err));
+      assert.equal(backend.reads.length, 1, 'one read, no retry');
+      assert.ok(!JSON.stringify(err).includes('shop-a.example.com'), 'nothing of the hand-off is answered');
+    } finally {
+      nock.cleanAll();
+      setFlags({});
+    }
+  });
+}
 
 // ---- flags off -------------------------------------------------------------------------------------------------------
 

@@ -387,6 +387,11 @@ describe('get_order mapping', () => {
     assert.deepEqual(codeOf('not_found'), ['QUOTE_NOT_FOUND', 'storefront_handoff_not_found']);
     assert.deepEqual(codeOf('not_owner'), ['STATE_LINKAGE_MISMATCH', 'agent_mismatch']);
     assert.deepEqual(codeOf('unavailable'), ['MERCHANT_UNAVAILABLE', 'storefront_handoff_read_unavailable']);
+    // O-04 delta review P3-7: a refused partner assertion is the non-retriable code every other op answers.
+    assert.deepEqual(codeOf('assertion_rejected'), ['PARTNER_ASSERTION_REJECTED', 'storefront_handoff_partner_assertion_rejected']);
+    const retriableOf = (kind) => { try { storefrontHandoffOrder(ID, { kind }); } catch (e) { return e.retriable; } return null; };
+    assert.equal(retriableOf('assertion_rejected'), false);
+    assert.equal(retriableOf('unavailable'), true);
   });
 });
 
@@ -448,13 +453,49 @@ describe('storefront hand-off client', () => {
     assert.equal((await client({ status: 403, body: wrapped('partner_identity_required') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
     // The backend answers its own refusals 409 (O-02 review G-1); the gateway reads both.
     assert.equal((await client({ status: 409, body: wrapped('not_owner') }).c.read(FIELDS.record_id, 'e')).kind, 'not_owner');
-    assert.equal((await client({ status: 409, body: wrapped('partner_identity_required') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
+    // A refusal of the partner assertion itself is its own, non-retriable outcome (O-04 delta review P3-7).
+    assert.deepEqual(await client({ status: 409, body: wrapped('partner_identity_required') }).c.read(FIELDS.record_id, 'e'),
+      { kind: 'assertion_rejected', code: 'partner_identity_required', reason: null });
     assert.equal((await client({ status: 409, body: wrapped('handoff_not_found') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
     assert.equal((await client({ status: 404, body: wrapped('not_available') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
     assert.equal((await client({ body: { record_id: 'esh_other', status: 'handed_off' } }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
     const malformed = client();
     assert.deepEqual(await malformed.c.read('esh_bad', 'e'), { kind: 'not_found' });
     assert.equal(malformed.calls.length, 0);
+  });
+
+  // The backend's exact 409 bytes for the read route (pivota-backend routes/agent_storefront_handoffs.py through its
+  // ErrorHandlerMiddleware), captured from the real route; only the timestamp and request id are replaced.
+  const REAL_409 = (reason) => ({
+    status: 'error',
+    error: {
+      code: 'CONFLICT', message: 'PARTNER_ASSERTION_REJECTED',
+      details: { error: 'PARTNER_ASSERTION_REJECTED', reason, message: 'The partner assertion on this request was refused; it was not made as any partner.' },
+      documentation_url: 'https://api.pivota.cc/agent/docs/overview',
+    },
+    metadata: { timestamp: '2026-11-10T00:00:00.000000Z', request_id: '00000000-0000-4000-8000-000000000000' },
+    detail: { error: 'PARTNER_ASSERTION_REJECTED', reason, message: 'The partner assertion on this request was refused; it was not made as any partner.' },
+  });
+
+  test('read: the backend refusing the partner assertion is assertion_rejected with its reason, logged at warn', async () => {
+    for (const reason of ['stale', 'replay']) {
+      const warns = [];
+      const c = handoffModule.createStorefrontHandoffClient({
+        baseUrl: 'http://backend.example.com',
+        authHeaders: () => BASE,
+        signRequest: () => SIGNED,
+        fetchImpl: async () => ({ status: 409, text: async () => JSON.stringify(REAL_409(reason)) }),
+        logger: { info: () => {}, warn: (fields) => warns.push(fields) },
+      });
+      assert.deepEqual(await c.read(FIELDS.record_id, 'e'), { kind: 'assertion_rejected', code: 'PARTNER_ASSERTION_REJECTED', reason });
+      assert.deepEqual(warns, [{ event: 'ucp_storefront_handoff_record', op: 'read', outcome: 'assertion_rejected',
+        code: 'PARTNER_ASSERTION_REJECTED', reason, http_status: 409 }]);
+    }
+    // Only the backend's 409: the same code under another status says nothing about the assertion.
+    assert.equal((await client({ status: 503, body: REAL_409('stale') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
+    // A reason outside our own vocabulary is never carried.
+    const odd = await client({ status: 409, body: REAL_409('Not A Reason!') }).c.read(FIELDS.record_id, 'e');
+    assert.deepEqual(odd, { kind: 'assertion_rejected', code: 'PARTNER_ASSERTION_REJECTED', reason: null });
   });
 
   test('record ids are 128 random bits in the esc id alphabet', () => {
