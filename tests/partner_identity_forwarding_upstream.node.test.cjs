@@ -49,11 +49,17 @@ const OPS = {
   request_after_sales: { path: '/agent/v2/orders/o1/refunds', rid: 'o1', payload: { status: { order_id: 'o1', reason: 'damaged' } } },
 };
 
+// The kernel's order read (MCP get_order): two GETs on the backend's order routes since FIX_PLAN C-11 (the gateway
+// half), no longer the invoke route. Kept apart from OPS, which is the signed set.
+const READS = {
+  get_order_status: { method: 'get', path: '/agent/v2/orders/o1/tracking', payload: { status: { order_id: 'o1' } } },
+};
+
 // Every attempt that left the process: headers and the RAW body bytes (nock hands the parsed JSON body to a
 // reply function; re-serialising it reproduces the sent string, since the gateway sent JSON.stringify of
 // the same object).
 async function upstreamAttempts(op, store = PARTNER, { replies = [[200, { status: 'success', products: [] }]] } = {}) {
-  const spec = OPS[op] || { path: '/agent/shop/v1/invoke', payload: { search: { query: 'x' } } };
+  const spec = OPS[op] || READS[op] || { path: '/agent/shop/v1/invoke', payload: { search: { query: 'x' } } };
   const attempts = [];
   const queue = [...replies];
   function reply(_uri, body) {
@@ -61,7 +67,7 @@ async function upstreamAttempts(op, store = PARTNER, { replies = [[200, { status
     return queue.length > 1 ? queue.shift() : queue[0];
   }
   nock.cleanAll();
-  nock(process.env.PIVOTA_API_BASE).persist().post(spec.path).reply(reply);
+  nock(process.env.PIVOTA_API_BASE).persist()[spec.method || 'post'](spec.path).reply(reply);
   nock(process.env.SELF_INVOKE_BASE).persist().post('/agent/shop/v1/invoke').reply(reply);
   try {
     await app._debug.INVOKE_AUTH_CONTEXT.run(store, () => app._debug.invokeCommerceKernelRawUpstream(op, spec.payload));
@@ -145,7 +151,7 @@ test('flag off: no money op carries an assertion (only offers.resolve, as before
   });
 });
 
-test('flag on: offers.resolve stays v1, and get_order_status is not signed (its route reads no assertion)', async () => {
+test('flag on: offers.resolve stays v1, and get_order_status is not signed (it is not in PARTNER_IDENTITY_OPS)', async () => {
   await withFlag('1', async () => {
     const offers = decode((await upstreamHeaders('offers.resolve'))['x-pivota-issuing-agent']);
     assert.equal(offers.version, 'v1');

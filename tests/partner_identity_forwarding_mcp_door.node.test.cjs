@@ -252,7 +252,8 @@ function interceptMoney() {
     if (path === 'order') {
       return [200, { status: 'success', order: { order_id: `ORD_${n}`, amounts: { total: '29.00', currency: 'USD' } } }];
     }
-    if (path === 'order_read') return [200, { status: 'success', order: { status: 'pending' } }];
+    if (path === 'order_tracking') return [200, { status: 'success', tracking: { order_id: uri.split('/')[4], payment_status: 'awaiting_payment' } }];
+    if (path === 'order_read') return [200, { status: 'success', order: { order_id: uri.split('/')[4], state: 'awaiting_checkout' } }];
     if (path === 'after_sales') return [200, { status: 'success', refund: { refund_id: `rf_${n}`, state: 'requested' } }];
     return [200, { status: 'success', checkout_session: {
       checkout_session_id: `cs_${n}`, hosted_url: `https://checkout.example.com/s/${n}`, state: 'created',
@@ -262,7 +263,9 @@ function interceptMoney() {
     .post('/agent/v2/quotes/preview').reply(record('quote'))
     .post('/agent/v2/orders').reply(record('order'))
     .post('/agent/v2/payments/checkout-sessions').reply(record('session'))
-    .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'get_order_status').reply(record('order_read'))
+    // The kernel's order read: GET .../tracking, then GET the order (FIX_PLAN C-11, gateway half).
+    .get(/\/agent\/v2\/orders\/[^/]+\/tracking$/).reply(record('order_tracking'))
+    .get(/\/agent\/v2\/orders\/[^/]+$/).reply(record('order_read'))
     .post(/\/agent\/v2\/orders\/[^/]+\/refunds$/).reply(record('after_sales'));
   return calls;
 }
@@ -312,7 +315,8 @@ test('flag on: each partner\'s quote, order and hosted link reach the backend si
       ['quote', partner, 'preview_quote', null, 'gateway-service-key'],
       ['order', partner, 'create_order', ridOf(i), 'gateway-service-key'],
       ['session', partner, 'create_payment_link', calls.filter((c) => c.path === 'session')[i].body.order_id, 'gateway-service-key'],
-      // The kernel's order read goes to the backend's invoke route, which reads no assertion: unsigned.
+      // The kernel's order read (two GETs on the order routes) is not a partner-identity op: unsigned.
+      ['order_tracking', null, null, null, 'gateway-service-key'],
       ['order_read', null, null, null, 'gateway-service-key'],
       ['after_sales', partner, 'request_after_sales', calls.filter((c) => c.path === 'after_sales')[i].uri.split('/')[4], 'gateway-service-key'],
     ];
@@ -334,7 +338,7 @@ test('flag off: the same money calls carry no partner assertion (the upstream se
   const calls = interceptMoney();
   try {
     await buyWithHostedLink(KEY_A, 'off_a');
-    assert.deepEqual(calls.map((c) => c.path), ['quote', 'order', 'session', 'order_read', 'after_sales']);
+    assert.deepEqual(calls.map((c) => c.path), ['quote', 'order', 'session', 'order_tracking', 'order_read', 'after_sales']);
     for (const c of calls) {
       assert.equal(c.headers['x-pivota-issuing-agent'], undefined, c.path);
       assert.equal(c.headers['x-api-key'], 'gateway-service-key');
