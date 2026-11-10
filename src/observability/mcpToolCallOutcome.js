@@ -30,6 +30,7 @@
 //   lane, lane_source, upstream_status    the search envelope's own markers, short tokens only
 //   degraded     boolean; plus upstream_timeout / upstream_degraded / fallback_used when true
 //   heartbeat_committed  the response outlived the heartbeat delay and was streamed (slow path)
+//   market_assumed  true when the call named no market and was answered for a US buyer (decision D-10)
 //
 // Measurement only: nothing reads these back, and nothing here may throw into the request it measures. The
 // fields come from the RESULT and the door's own bookkeeping, never from the tool arguments.
@@ -59,6 +60,8 @@ const OBSERVED_FIELDS = Object.freeze({
   upstream_degraded: (v) => (v === true ? true : undefined),
   fallback_used: (v) => (v === true ? true : undefined),
   heartbeat_committed: (v) => (v === true ? true : undefined),
+  // The call was answered for a market the request did not name (decision D-10): US, assumed.
+  market_assumed: (v) => (v === true ? true : undefined),
   // Internal to the recorder, never logged as such: they decide error_class and the tool label.
   error_retriable: (v) => (v === true || v === false ? v : undefined),
   tool_registered: (v) => (v === true || v === false ? v : undefined),
@@ -66,7 +69,9 @@ const OBSERVED_FIELDS = Object.freeze({
 
 // Codes that mean "our side failed" even though the taxonomy marks them non-retriable or carries no flag:
 // UNEXPECTED_ERROR is what an uncurated exception becomes on the wire.
-const SERVER_TOOL_ERROR_CODES = new Set(['UNEXPECTED_ERROR']);
+// PARTNER_ASSERTION_REJECTED (FIX_PLAN O-04): the backend refused the gateway's own signed partner assertion,
+// a fault between our two services, so the error-rate alert must see it although it is non-retriable.
+const SERVER_TOOL_ERROR_CODES = new Set(['UNEXPECTED_ERROR', 'PARTNER_ASSERTION_REJECTED']);
 
 const MAX_TOOL_LABEL_LENGTH = 64;
 const TOOL_LABEL = /^[A-Za-z0-9_.:-]{1,64}$/;
@@ -195,6 +200,7 @@ function createMcpToolCallRecorder() {
     out.degraded = degradedFlags.length > 0;
     for (const key of degradedFlags) out[key] = true;
     if (observed.heartbeat_committed === true) out.heartbeat_committed = true;
+    if (observed.market_assumed === true) out.market_assumed = true;
     return out;
   }
 

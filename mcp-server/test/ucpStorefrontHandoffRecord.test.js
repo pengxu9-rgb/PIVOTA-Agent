@@ -161,7 +161,7 @@ describe('catalogue fallback', () => {
       const rec = recorder(kind);
       const out = await create({ env: { ...ESC, ...ALL }, handoffRecorder: rec });
       assert.equal(rec.calls.length, 1);
-      assert.equal(out.id, encodeEscalationId([{ product_id: SEED.product_id, quantity: 2 }]), String(kind));
+      assert.equal(out.id, encodeEscalationId([{ product_id: SEED.product_id, quantity: 2 }], undefined, undefined, { code: 'US', assumed: false }), String(kind));
       assert.equal(out.quote_source, 'catalogue_fallback');
     }
   });
@@ -260,11 +260,11 @@ describe('the record id in the esc id', () => {
   test('read back only when well formed, and only from an id that decodes', () => {
     const items = [{ product_id: 'p_1', quantity: 1 }];
     const good = `esh_${'a'.repeat(22)}`;
-    assert.equal(escalationRecordIdOf(encodeEscalationId(items, undefined, undefined, good)), good);
-    assert.equal(escalationRecordIdOf(encodeEscalationId(items, 'cart_1', 'shop-a.example.com', good)), good);
+    assert.equal(escalationRecordIdOf(encodeEscalationId(items, undefined, undefined, undefined, good)), good);
+    assert.equal(escalationRecordIdOf(encodeEscalationId(items, 'cart_1', 'shop-a.example.com', { code: 'US', assumed: false }, good)), good);
     assert.equal(escalationRecordIdOf(encodeEscalationId(items)), undefined);
     for (const bad of ['esh_short', `esh_${'a'.repeat(23)}`, `x${good}`, 42, `esh_${'a'.repeat(21)}/`]) {
-      assert.equal(escalationRecordIdOf(encodeEscalationId(items, undefined, undefined, bad)), undefined, String(bad));
+      assert.equal(escalationRecordIdOf(encodeEscalationId(items, undefined, undefined, undefined, bad)), undefined, String(bad));
     }
     const noItems = `esc_${Buffer.from(JSON.stringify({ v: 1, i: [], r: good })).toString('base64url')}`;
     assert.equal(escalationRecordIdOf(noItems), undefined);

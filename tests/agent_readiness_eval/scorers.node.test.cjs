@@ -217,3 +217,32 @@ test('S6: no-market rows are still checked, and their currencies are recorded (a
   assert.equal(f.severity, 'warn');
   assert.match(f.text, /default to the US market silently/);
 });
+
+test('S6b: a no-market answer that SAYS which market it assumed (`market_assumed`, D-10) is a labelled default, not a silent one', () => {
+  const R = require('../../scripts/agent-readiness-eval/lib/responses.cjs');
+  const { computeMetrics } = require('../../scripts/agent-readiness-eval/lib/report.cjs');
+  const payload = { value: { products: [{ product_id: 'a', price: 10, currency: 'USD' }], market_assumed: { code: 'US', message: 'x' } } };
+  assert.equal(R.readSearch(payload).assumed_market, 'US');
+  assert.equal(R.readProduct({ value: { product: { product_id: 'a' }, market_assumed: { code: 'US' } } }).assumed_market, 'US');
+  assert.equal(R.readOffers({ value: { signals: [], market_assumed: { code: 'US' } } }).assumed_market, 'US');
+  assert.equal(R.readSearch({ value: { products: [] } }).assumed_market, null, 'no label, no assumed market');
+
+  const labelled = S.scoreRows([P({ price: 10, currency: 'USD' }), P({ price: 11, currency: 'SGD' })], { market: null, assumedMarket: 'US' });
+  assert.equal(labelled.no_market_rows, 2);
+  assert.equal(labelled.no_market_labeled_rows, 2);
+  assert.equal(labelled.assumed_market_mismatch, 1, 'an SGD row on a page labelled US assumed is still wrong');
+  const declared = S.scoreRows([P({ price: 10, currency: 'USD' })], { market: 'US', assumedMarket: 'US' });
+  assert.equal(declared.no_market_labeled_rows, 0, 'a declared market is never counted as assumed');
+
+  const run = (rows) => computeMetrics(
+    { calls: [], discovery: [{ query_id: 'q', class: 'c', lang: 'en', market: null, result_count: 2, rows, relevance: null, duplicates: 0 }], follow: [], recommend: [], consistency: [], skipped_tools: [] },
+    { tier: 'public', targetKind: 'local', endpoint: 'http://127.0.0.1:1/public/mcp' },
+  );
+  const usdLabelled = S.scoreRows([P({ price: 10, currency: 'USD' }), P({ price: 11, currency: 'USD' })], { market: null, assumedMarket: 'US' });
+  const f = run(usdLabelled).findings.find((x) => x.key === 'no_market_currency');
+  assert.equal(f.severity, 'info', 'labelled: not a silent default');
+  assert.doesNotMatch(f.text, /silently/);
+  assert.match(f.text, /2 of them in answers labelled/);
+  assert.equal(run(usdLabelled).findings.some((x) => x.key === 'assumed_market_mismatch'), false);
+  assert.equal(run(labelled).findings.find((x) => x.key === 'assumed_market_mismatch').severity, 'warn');
+});

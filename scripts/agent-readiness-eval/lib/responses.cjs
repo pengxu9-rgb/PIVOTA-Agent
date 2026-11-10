@@ -202,6 +202,11 @@ function emptyClassOf(v, productCount) {
   );
 }
 
+/** The market an answer says it ASSUMED for a request that named none (`market_assumed.code`, D-10), or null. */
+function assumedMarketOf(v) {
+  return isObj(v) && isObj(v.market_assumed) ? str(v.market_assumed.code) : null;
+}
+
 function readSearch(payload) {
   const v = payload.value;
   const rows = isObj(v) ? arr(v.products).length ? arr(v.products) : arr(v.items).length ? arr(v.items) : arr(v.results) : [];
@@ -213,6 +218,7 @@ function readSearch(payload) {
     degraded,
     failed_with_hits: degraded && products.length > 0,
     empty_class: emptyClassOf(v, products.length),
+    assumed_market: assumedMarketOf(v),
   };
 }
 
@@ -222,7 +228,7 @@ function readProduct(payload) {
   const raw = isObj(v.product) ? v.product : v;
   const product = normalizeProduct(raw);
   const found = Boolean(product && (product.id || product.title) && !(str(v.note) && !product.id));
-  return { found, product: found ? product : null, degraded: envelopeDegraded(v) };
+  return { found, product: found ? product : null, degraded: envelopeDegraded(v), assumed_market: assumedMarketOf(v) };
 }
 
 function normalizeOfferSignal(sig) {
@@ -248,6 +254,7 @@ function readOffers(payload) {
     best_offer: best,
     market_currency: str(m.market_currency),
     empty_class: offers.length === 0 ? str(m.reason) || 'unspecified' : null,
+    assumed_market: assumedMarketOf(v),
   };
 }
 
@@ -266,7 +273,7 @@ function readAlternatives(payload) {
       .filter(Boolean);
   }
   const m = isObj(v.metadata) ? v.metadata : {};
-  return { items, empty_class: items.length === 0 ? str(v.note) ? 'no_reviewed_alternatives' : str(m.reason) || str(m.empty_reason) || 'unspecified' : null };
+  return { items, empty_class: items.length === 0 ? str(v.note) ? 'no_reviewed_alternatives' : str(m.reason) || str(m.empty_reason) || 'unspecified' : null, assumed_market: assumedMarketOf(v) };
 }
 
 function readRecommendations(payload) {
@@ -283,10 +290,12 @@ function readRecommendations(payload) {
     items,
     empty_class: items.length === 0 ? str(m.products_empty_reason) || str(m.reason) || 'unspecified' : null,
     confidence_basis: str(m.confidence_basis),
+    assumed_market: assumedMarketOf(v),
   };
 }
 
 module.exports = {
+  assumedMarketOf,
   MARKET_CURRENCY,
   currencyForMarket,
   toolPayload,

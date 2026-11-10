@@ -32,7 +32,7 @@ const SINGLE_PRODUCT_READ_OPS = new Set(['get_product_detail']);
 
 /**
  * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null }} input
- * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'MERCHANT_UNAVAILABLE'}
+ * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'PARTNER_ASSERTION_REJECTED'|'MERCHANT_UNAVAILABLE'}
  */
 function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) {
   const op = String(operation || '').trim();
@@ -42,6 +42,12 @@ function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) 
   if (code === 'QUOTE_EXPIRED') return 'QUOTE_EXPIRED';
   if (code === 'PRICE_CHANGED' || code === 'QUOTE_MISMATCH') return 'PRICE_CHANGED';
   if (code === 'OUT_OF_STOCK') return 'OUT_OF_STOCK';
+
+  // FIX_PLAN O-04: the backend refused this call's request-bound partner assertion before its route ran
+  // (routes/agent_forwarded_owner.py, 409). Terminal and op-independent: the code is our own backend's, by
+  // name, and it says nothing was written, so "never retry" is true on the money ops as well. It is not a
+  // merchant outage, and as one (retriable) every agent would retry a call that is refused every time.
+  if (code === 'PARTNER_ASSERTION_REJECTED') return 'PARTNER_ASSERTION_REJECTED';
 
   // THE ID RESOLVED TO NOTHING. Unscoped get_product_detail routes to this gateway's own get_pdp_v2, which
   // answers HTTP 400 `MISSING_MERCHANT_CONTEXT` ("merchant_id is required when canonical product identity

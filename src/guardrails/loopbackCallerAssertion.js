@@ -181,6 +181,90 @@ function verifyLoopbackSynthetic(req, { nowSec, secret = PROCESS_SECRET } = {}) 
   }
 }
 
+// THE LOOPBACK MARKET-ASSUMED MARKER (decision D-10). The MCP door answers a search that named no market as US and
+// sends it downstream as `search.market: "US"` + `search.market_assumed: true`, so the backend's `/r` minters never
+// stamp that US `market_observed`. The flag DOWNGRADES provenance, so it must never be the client's to set: the
+// invoke route honours `search.market_assumed` only on a loopback call carrying this marker (same secret, same
+// loopback-socket rule and same window as the markers above), and strips it from every other request. The marker
+// asserts only "this search's US was assumed by this gateway"; it carries no caller and no other value.
+const LOOPBACK_MARKET_ASSUMED_HEADER = 'X-Pivota-Loopback-Market-Assumed';
+const MARKET_ASSUMED_VERSION = 'mav1';
+const ASSUMED_MARKET_CODE = 'US';
+
+function marketAssumedMarkerKey(secret) {
+  return mac('pivota-loopback-market-assumed', secret);
+}
+
+function signLoopbackMarketAssumed({ nowSec, secret = PROCESS_SECRET } = {}) {
+  const ts = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
+  const signingInput = `${MARKET_ASSUMED_VERSION}.${b64url(JSON.stringify({ m: ASSUMED_MARKET_CODE, ts }))}`;
+  return `${signingInput}.${b64url(mac(signingInput, marketAssumedMarkerKey(secret)))}`;
+}
+
+/** True when a search payload carries this gateway's own assumed US (the only shape the marker vouches for). */
+function searchCarriesAssumedUs(payload) {
+  const search = payload && typeof payload === 'object' && payload.search && typeof payload.search === 'object' ? payload.search : null;
+  return Boolean(search && search.market_assumed === true && typeof search.market === 'string'
+    && search.market.trim().toUpperCase() === ASSUMED_MARKET_CODE);
+}
+
+/** The marker header for a loopback invoke whose search carries the assumed US, else none. Never throws. */
+function loopbackMarketAssumedHeaders(payload, { nowSec } = {}) {
+  try {
+    return searchCarriesAssumedUs(payload) ? { [LOOPBACK_MARKET_ASSUMED_HEADER]: signLoopbackMarketAssumed({ nowSec }) } : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/** True for a VALID marker on a loopback request (no X-Forwarded-For), inside the window. Never throws. */
+function verifyLoopbackMarketAssumed(req, { nowSec, secret = PROCESS_SECRET } = {}) {
+  try {
+    const raw = req?.headers?.[LOOPBACK_MARKET_ASSUMED_HEADER.toLowerCase()];
+    if (typeof raw !== 'string' || !raw || raw.length > MAX_HEADER_LENGTH) return false;
+    if (!isLoopbackSelfCall(req)) return false;
+    const parts = raw.split('.');
+    if (parts.length !== 3 || parts[0] !== MARKET_ASSUMED_VERSION) return false;
+    const expected = mac(`${parts[0]}.${parts[1]}`, marketAssumedMarkerKey(secret));
+    const given = Buffer.from(parts[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return false;
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    const now = Number.isInteger(nowSec) ? nowSec : Math.floor(Date.now() / 1000);
+    return payload?.m === ASSUMED_MARKET_CODE && Number.isInteger(payload?.ts) && Math.abs(now - payload.ts) <= MAX_AGE_SEC;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * THE INVOKE INGRESS RULE. Mutates `req.body.payload` in place: `search.market_assumed` survives only beside the
+ * assumed US on a request carrying a valid marker; every other request loses it, and no request may carry the
+ * offers.resolve spelling (`market_assumed` / `marketAssumed` at the payload top level: this gateway sends that
+ * one straight to the backend, never through this route). Returns what it removed, for tests. Never throws.
+ */
+function stripUnvouchedMarketAssumed(req, { nowSec } = {}) {
+  const removed = [];
+  try {
+    const payload = req && req.body && typeof req.body === 'object' ? req.body.payload : null;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return removed;
+    for (const key of ['market_assumed', 'marketAssumed']) {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) { delete payload[key]; removed.push(key); }
+    }
+    const search = payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search) ? payload.search : null;
+    if (search) {
+      for (const key of ['market_assumed', 'marketAssumed']) {
+        if (!Object.prototype.hasOwnProperty.call(search, key)) continue;
+        if (key === 'market_assumed' && searchCarriesAssumedUs(payload) && verifyLoopbackMarketAssumed(req, { nowSec })) continue;
+        delete search[key];
+        removed.push(`search.${key}`);
+      }
+    }
+  } catch (_) {
+    // never into the request
+  }
+  return removed;
+}
+
 /**
  * The invoke limiter's view: the asserted caller, only when limits are ENFORCED. In observe mode the
  * invoke route keeps its old keying, so observe changes no response anywhere.
@@ -214,6 +298,10 @@ function loopbackAssertionStatus(selfInvokeBase, { expectedPort } = {}) {
 }
 
 module.exports = {
+  LOOPBACK_MARKET_ASSUMED_HEADER,
+  loopbackMarketAssumedHeaders,
+  verifyLoopbackMarketAssumed,
+  stripUnvouchedMarketAssumed,
   LOOPBACK_CALLER_HEADER,
   LOOPBACK_SYNTHETIC_HEADER,
   loopbackSyntheticHeaders,

@@ -138,7 +138,8 @@ describe('the switch', () => {
     const out = await create({ env: { ...ESC, [MERCHANT_PRICING_FLAG]: '1' }, storefrontPage: read, merchantDoor: variantInvalidDoor(), log });
     assert.equal(read.asked.length, 0);
     assert.equal(out.continue_url, LINK);
-    assert.equal(out.messages.length, 1);
+    // one message about the checkout itself (the other says the request named no market: answered as US, D-10)
+    assert.equal(out.messages.filter((m) => m.code !== 'market_assumed').length, 1);
     const hint = log.lines.find((l) => l.event === 'ucp_storefront_page_check');
     assert.equal(hint.reason, 'door_variant_invalid');
     assert.equal(hint.outcome, 'not_checked');
@@ -171,7 +172,7 @@ describe('ON: the store\'s own page decides', () => {
     const log = recordingLog();
     const out = await create({ env: PRICED_POLICY, storefrontPage: reader({ 'glow-highlighter': live(STALE, CURRENT) }), merchantDoor: variantInvalidDoor(), log });
     assert.equal(out.continue_url, LINK);
-    assert.equal(out.messages.length, 1);
+    assert.equal(out.messages.filter((m) => m.code !== 'market_assumed').length, 1);
     assert.equal(log.lines.find((l) => l.event === 'ucp_storefront_page_check').outcome, 'variant_listed');
   });
 
@@ -203,8 +204,10 @@ describe('ON: the store\'s own page decides', () => {
   test('a re-read hands out the SAME link the create did', async () => {
     const pages = { 'glow-highlighter': live(CURRENT) };
     const made = await create({ storefrontPage: reader(pages) });
+    // The create's own id: it carries the market the checkout was created for (here none named, so US assumed).
+    assert.notEqual(made.id, encodeEscalationId([{ product_id: ROW.product_id, quantity: 1 }]));
     const again = await tryEscalateUcpCheckout({
-      op: GET, params: { session_id: encodeEscalationId([{ product_id: ROW.product_id, quantity: 1 }]) }, ctx: {}, ucpArgs: {},
+      op: GET, params: { session_id: made.id }, ctx: {}, ucpArgs: {},
       now: NOW, env: POLICY, storefrontPage: reader(pages), executor: executorWith({ [ROW.product_id]: ROW }),
     });
     assert.equal(again.continue_url, made.continue_url);
