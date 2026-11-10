@@ -19,8 +19,14 @@ logger.error({ probe: 'error' }, 'p');
 logger.fatal({ probe: 'fatal' }, 'p');
 `;
 
-function emittedLines(env = {}) {
-  const out = execFileSync(process.execPath, ['-e', SCRIPT], {
+// Holds every libuv threadpool thread for a moment, so the async fs.write of the first line queues behind them.
+const BUSY_THREADPOOL = `
+const crypto = require('node:crypto');
+for (let i = 0; i < 4; i++) crypto.pbkdf2('x', 'y', 200000, 64, 'sha512', () => {});
+`;
+
+function emittedLines(env = {}, prelude = '') {
+  const out = execFileSync(process.execPath, ['-e', prelude + SCRIPT], {
     env: { ...process.env, ...env },
     encoding: 'utf8',
   });
@@ -44,9 +50,21 @@ test('every level carries its Cloud Logging severity, and the numeric level is k
   }
 });
 
+// Arrival ORDER on stdout is not the contract, and pino does not keep it: its default stdout destination is async,
+// and `fatal` calls flushSync(), which writes the queued lines at once and skips one whose async write is still
+// in flight. When the libuv threadpool is slow (a loaded CI runner) the info line lands LAST, so the order came out
+// ['warn', 'error', 'fatal', 'info'] in CI. What is checked: exactly these levels, once each, and the shape of each.
+function assertFilteredAtInfo(lines) {
+  assert.deepEqual(lines.map((l) => l.probe).sort(), ['error', 'fatal', 'info', 'warn']);
+  for (const line of lines) {
+    assert.deepEqual(Object.keys(line).sort(), ['level', 'msg', 'probe', 'severity', 'time'], line.probe);
+  }
+}
+
 test('LOG_LEVEL still filters, and the line shape is otherwise unchanged', () => {
-  const lines = emittedLines({ LOG_LEVEL: 'info' });
-  assert.deepEqual(lines.map((l) => l.probe), ['info', 'warn', 'error', 'fatal']);
-  const info = lines[0];
-  assert.deepEqual(Object.keys(info).sort(), ['level', 'msg', 'probe', 'severity', 'time']);
+  assertFilteredAtInfo(emittedLines({ LOG_LEVEL: 'info' }));
+});
+
+test('the LOG_LEVEL check holds when fatal\'s flushSync overtakes an in-flight write (a busy threadpool)', () => {
+  assertFilteredAtInfo(emittedLines({ LOG_LEVEL: 'info', UV_THREADPOOL_SIZE: '4' }, BUSY_THREADPOOL));
 });
