@@ -156,6 +156,23 @@ describe('catalogue fallback', () => {
     assert.match(out.messages.find((m) => m.code === QUOTE_SOURCE_FALLBACK_MESSAGE_CODE).content, /no read time on record/);
   });
 
+  test('an assumed market (D-10) is recorded as no market; a declared one as itself; the id still carries both', async () => {
+    const assumed = recorder();
+    const outAssumed = await tryEscalateUcpCheckout({
+      op: CREATE, params: createParams([SEED.product_id, 2]), ctx: {}, executor: executorWith({ [SEED.product_id]: SEED }),
+      ucpArgs: {}, env: { ...ESC, ...ALL }, now: NOW, handoffRecorder: assumed,
+    });
+    assert.equal(assumed.calls.length, 1);
+    assert.equal('buyer_market' in assumed.calls[0], false, 'no claim that the buyer named US');
+    assert.deepEqual([escBody(outAssumed.id).m, escBody(outAssumed.id).a], ['US', 1]);
+    assert.equal(escBody(outAssumed.id).r, assumed.calls[0].record_id);
+    assert.equal(outAssumed.market_assumed.code, 'US');
+    const declared = recorder();
+    const outDeclared = await create({ env: { ...ESC, ...ALL }, handoffRecorder: declared });
+    assert.equal(declared.calls[0].buyer_market, 'US');
+    assert.deepEqual([escBody(outDeclared.id).m, escBody(outDeclared.id).a], ['US', undefined]);
+  });
+
   test('a record that is not confirmed hands out exactly the unrecorded id', async () => {
     for (const kind of ['refused', 'unavailable', 'unattributed', () => { throw new Error('boom'); }, () => null]) {
       const rec = recorder(kind);

@@ -908,6 +908,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         "the buyer entered it, or send the checkout without `checkout.discounts`.",
       ].join(" "), { rejected_field: "checkout.discounts.codes" });
     }
+    // The hand-off record names the buyer's market only when the buyer NAMED it (decision D-10): an assumed US is no
+    // claim about the buyer, so the record carries none, as the seed-link mint is sent none.
+    const recordedMarket = requested.assumed ? undefined : buyerMarket;
     const priced = await priceOnMerchantDoor({
       items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
       expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
@@ -921,7 +924,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         const id = await recordedEscalationId({
           encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId),
           quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart,
-          totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket,
+          totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
           items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
         });
         return withAssumedMarket(buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env }), requested.assumed);
@@ -954,7 +957,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     const id = await recordedEscalationId({
       encode: (recordId) => encodeEscalationId(normalized, undefined, undefined, fallbackMarket, recordId),
       quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.catalogueFallback,
-      totals: draft.totals, currency: draft.currency, sellerHost, catalogLink: continueUrl, buyerMarket,
+      totals: draft.totals, currency: draft.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
       items: normalized, rows, priceAsOf: cataloguePriceAsOf(normalized, rows), env, handoffRecorder, log,
     });
     return withAssumedMarket(id === draft.id ? draft : buildEscalationCheckout({ id, ...fallbackArgs }), requested.assumed);
