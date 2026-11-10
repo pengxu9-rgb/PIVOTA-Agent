@@ -3,7 +3,7 @@
 // so the codes/recovery are identical across Claude/ChatGPT/Gemini surfaces.
 // Mirrors §5 of docs/agent-checkout/safety-kernel-contract.md.
 
-/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'|'PARTNER_ASSERTION_REJECTED'} PivotaErrorCode */
+/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'} PivotaErrorCode */
 
 /**
  * code -> { retriable, userMessage, recovery }
@@ -54,6 +54,11 @@ export const ERROR_CATALOG = Object.freeze({
   // meets the same refusal. As MERCHANT_UNAVAILABLE (retriable, "try again shortly") every chaining agent would
   // retry forever. retriable:false is the load-bearing bit; the gateway logs and counts each one.
   PARTNER_ASSERTION_REJECTED: { retriable: false, recovery: 'do not retry this call; nothing was written; report it to Pivota', userMessage: 'Pivota could not confirm the account this request was made for, so nothing was done. Retrying the same call will not change this.' },
+  // FIX_PLAN C-11: the backend refused to open (or keep) a payment surface for an order that was canceled (409
+  // ORDER_CANCELED from POST /agent/v1/payments, sent only with its CHECKOUT_CANCEL_UPSTREAM_ENABLED on). Terminal:
+  // a canceled order never becomes payable again, so as MERCHANT_UNAVAILABLE (retriable) an agent would keep
+  // retrying a charge that is refused every time. retriable:false is the load-bearing bit.
+  ORDER_CANCELED:         { retriable: false, recovery: 'do not retry; this order was canceled; if the buyer still wants the item, start a new checkout', userMessage: 'This order was canceled, so it can no longer be paid. Retrying will not change this.' },
 });
 
 export class PivotaCommerceError extends Error {

@@ -17,8 +17,19 @@
  *   paid              409 ORDER_ALREADY_PAID: the buyer paid first; nothing was canceled
  *   processing        409 PAYMENT_PROCESSING: a payment is in flight at the PSP; nothing was canceled
  *   not_found         404 "Order not found" (unknown, or another agent's: one answer by design)
- *   unavailable       anything else: 503 CANCEL_NOT_CONFIRMED, a 404 with FastAPI's bare "Not Found" (the backend
- *                     flag is off, so the route does not exist), a timeout, a malformed body
+ *   not_confirmed     503 CANCEL_NOT_CONFIRMED, canceled false: the backend could not close the PSP surface, so it
+ *                     did not cancel. Answered exactly as `unavailable` (retriable, never canceled); its own kind
+ *                     only so the log line tells "the backend said not confirmed" from "no usable answer"
+ *   unavailable       anything else: a 404 with FastAPI's bare "Not Found" (the backend flag is off, so the route
+ *                     does not exist), a timeout, a malformed body
+ *
+ * THE v1 CANCEL GIVES THE SAME ANSWERS. With the backend's CHECKOUT_CANCEL_UPSTREAM_ENABLED on, POST
+ * /agent/v1/orders/{id}/cancel cancels through the same producer and the same answer mapping (pivota-backend
+ * routes/agent_v2.py cancel_upstream_answer): its 409 ORDER_ALREADY_PAID / PAYMENT_PROCESSING and 503
+ * CANCEL_NOT_CONFIRMED are these bodies, and its 200 adds only v1's own `order_id` / `message` beside `cancel`.
+ * So a v1 answer classifies exactly as the v2 one (tests/get_order_unified_backend_contract.node.test.cjs replays
+ * both from one recording). The kernel itself only ever calls v2; the REST invoke lane's
+ * request_after_sales(cancel) reaches v1 and hands its status and body back unchanged.
  */
 
 const CANCEL_KIND = Object.freeze({
@@ -27,6 +38,7 @@ const CANCEL_KIND = Object.freeze({
   paid: 'paid',
   processing: 'processing',
   notFound: 'not_found',
+  notConfirmed: 'not_confirmed',
   unavailable: 'unavailable',
 });
 
@@ -50,6 +62,9 @@ function classifyUpstreamCancel(status, body) {
   if (code === 409 && isPlainObject(detail) && detail.canceled === false) {
     if (detail.error === 'ORDER_ALREADY_PAID') return { kind: CANCEL_KIND.paid };
     if (detail.error === 'PAYMENT_PROCESSING') return { kind: CANCEL_KIND.processing };
+  }
+  if (code === 503 && isPlainObject(detail) && detail.canceled === false && detail.error === 'CANCEL_NOT_CONFIRMED') {
+    return { kind: CANCEL_KIND.notConfirmed };
   }
   if (code === 404 && detail === 'Order not found') return { kind: CANCEL_KIND.notFound };
   return { kind: CANCEL_KIND.unavailable };

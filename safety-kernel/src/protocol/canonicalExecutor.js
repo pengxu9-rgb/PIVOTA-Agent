@@ -946,6 +946,7 @@ async function cancelSessionUpstream({ kernel, cancelUpstreamOrder }, params, ct
       throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'payment_processing_not_canceled', order_id });
     case 'not_found':
       throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id });
+    case 'not_confirmed': // the backend said 503 CANCEL_NOT_CONFIRMED: the same answer as no usable one
     default:
       throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { op, reason: 'cancel_not_confirmed', order_id });
   }

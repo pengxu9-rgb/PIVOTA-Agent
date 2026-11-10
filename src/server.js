@@ -33458,6 +33458,7 @@ function statusForCommerceKernelError(code) {
       return 404;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
+    case 'ORDER_CANCELED':
     case 'PARTNER_ASSERTION_REJECTED':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
