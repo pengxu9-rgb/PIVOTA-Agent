@@ -206,7 +206,9 @@ function createStorefrontHandoffClient(deps = {}) {
       log('info', { op: 'read', outcome: OUTCOME.notFound, http_status: status });
       return { kind: OUTCOME.notFound };
     }
-    if (status === 403 && code === 'not_owner') {
+    // 409 since the backend stopped answering 403 for it (O-02 review G-1: under the private backend hop a 403 is
+    // thrown as `backend_iam_rejected` before it reaches here). 403 is still read, for a backend not yet on 409.
+    if ((status === 409 || status === 403) && code === 'not_owner') {
       log('info', { op: 'read', outcome: OUTCOME.notOwner, http_status: status });
       return { kind: OUTCOME.notOwner };
     }

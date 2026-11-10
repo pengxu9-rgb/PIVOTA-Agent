@@ -159,7 +159,7 @@ function interceptHandoffBackend() {
     .reply(function reply(uri, body) {
       const assertion = assertionOf(this.req.headers, { path: uri.split('?')[0], body });
       state.records.push({ headers: { ...this.req.headers }, assertion, body });
-      if (!assertion || assertion.op !== 'ucp_storefront_handoff.record') return refuse(403, 'partner_identity_required');
+      if (!assertion || assertion.op !== 'ucp_storefront_handoff.record') return refuse(409, 'partner_identity_required');
       const existing = state.rows.get(body.record_id);
       if (existing && (existing.partner !== assertion.sub || existing.binding !== body.binding)) return refuse(409, 'handoff_conflict');
       state.rows.set(body.record_id, { partner: assertion.sub, ...body });
@@ -169,10 +169,10 @@ function interceptHandoffBackend() {
     .reply(function reply(uri, body) {
       const assertion = assertionOf(this.req.headers, { path: uri.split('?')[0], body });
       state.reads.push({ headers: { ...this.req.headers }, assertion, body });
-      if (!assertion || assertion.op !== 'ucp_storefront_handoff.read') return refuse(403, 'partner_identity_required');
+      if (!assertion || assertion.op !== 'ucp_storefront_handoff.read') return refuse(409, 'partner_identity_required');
       const row = state.rows.get(body.record_id);
       if (!row || row.binding !== body.binding) return refuse(404, 'handoff_not_found');
-      if (row.partner !== assertion.sub) return refuse(403, 'not_owner');
+      if (row.partner !== assertion.sub) return refuse(409, 'not_owner');
       return [200, {
         record_id: body.record_id, status: 'handed_off', handed_off_at: '2026-11-08T12:00:00Z',
         seller_host: row.seller_host, quote_source: row.quote_source, price_as_of: row.price_as_of,
@@ -375,7 +375,7 @@ for (const flags of [{}, { forwarding: true }, { record: true }]) {
       const checkout = await createCheckout(KEY_A, `off_${Object.keys(flags).join('_') || 'all'}`);
       assert.equal(checkout.status, 'requires_escalation');
       assert.equal(escBody(checkout.id).r, undefined);
-      assert.deepEqual(escBody(checkout.id), { v: 1, i: [[PRODUCT_ID, 1]] }, 'the id it always was');
+      assert.deepEqual(escBody(checkout.id), { v: 1, i: [[PRODUCT_ID, 1]], m: 'US' }, 'the id main hands out (D-10 adds the market), no record');
       assert.equal(backend.records.length, 0);
       if (flags.record) {
         assert.equal(checkout.quote_source, 'catalogue_fallback', 'the label rides its own flag');

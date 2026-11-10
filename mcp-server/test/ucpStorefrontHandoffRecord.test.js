@@ -446,6 +446,10 @@ describe('storefront hand-off client', () => {
     assert.equal((await client({ status: 404, body: wrapped('handoff_not_found') }).c.read(FIELDS.record_id, 'e')).kind, 'not_found');
     assert.equal((await client({ status: 403, body: wrapped('not_owner') }).c.read(FIELDS.record_id, 'e')).kind, 'not_owner');
     assert.equal((await client({ status: 403, body: wrapped('partner_identity_required') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
+    // The backend answers its own refusals 409 (O-02 review G-1); the gateway reads both.
+    assert.equal((await client({ status: 409, body: wrapped('not_owner') }).c.read(FIELDS.record_id, 'e')).kind, 'not_owner');
+    assert.equal((await client({ status: 409, body: wrapped('partner_identity_required') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
+    assert.equal((await client({ status: 409, body: wrapped('handoff_not_found') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
     assert.equal((await client({ status: 404, body: wrapped('not_available') }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
     assert.equal((await client({ body: { record_id: 'esh_other', status: 'handed_off' } }).c.read(FIELDS.record_id, 'e')).kind, 'unavailable');
     const malformed = client();
