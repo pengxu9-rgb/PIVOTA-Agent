@@ -45,8 +45,8 @@ export const ERROR_CATALOG = Object.freeze({
   // shapes returned MERCHANT_UNAVAILABLE / retriable:true — "try again shortly" for an id that will never
   // resolve. retriable:false is the load-bearing bit; the honest message is the rest of it.
   UNKNOWN_PRODUCT_ID:     { retriable: false, recovery: 'do not retry; re-run search to obtain a valid product_id', userMessage: 'No product matches that id. Retrying will not change this — search again to get a valid product_id.' },
-  // PARTNER DOOR, ONE PRODUCT ID (PARTNER_DOOR_ONE_PRODUCT_ID; never thrown while it is off). Three read
-  // outcomes that used to be reported as NO_MERCHANT_OFFER or UNKNOWN_PRODUCT_ID, each now naming its one fact.
+  // PARTNER DOOR, ONE PRODUCT ID (PARTNER_DOOR_ONE_PRODUCT_ID; thrown by the `/mcp` door only, and never while
+  // the flag is off). Three read outcomes that door used to report as NO_MERCHANT_OFFER or UNKNOWN_PRODUCT_ID.
   // The id IS a product, and a serving gate withholds it: `detail.reason` carries the gate's own reason code.
   PRODUCT_NOT_SERVABLE:   { retriable: false, recovery: 'do not retry; the product exists but is withheld from serving (detail.reason); offer alternatives', userMessage: 'This product id is known, but the product is not servable right now (see detail.reason). This will not change on retry.' },
   // The id is an identity GROUP id (`sig_` + 24 hex), not a product id (`sig_` + 32 hex). Same prefix, another

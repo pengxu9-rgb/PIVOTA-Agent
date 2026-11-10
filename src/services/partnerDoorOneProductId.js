@@ -2,22 +2,31 @@
 
 // PARTNER DOOR, ONE PRODUCT ID (flag PARTNER_DOOR_ONE_PRODUCT_ID, default off; off = nothing here runs).
 //
+// THE FLAG ACTS ON THE `/mcp` DOOR ONLY. Nothing in this file is called from the kernel hop, the canonical
+// executor or get_pdp_v2: its one caller is the `/mcp` door's view of the tool surface
+// (mcp-server/src/partnerDoorOneProductId.js), so `/ucp/mcp`, `/public/mcp` and the invoke route answer the same
+// with the flag on as with it off.
+//
 // Two different ids start with `sig_`:
 //   - the catalog signature, `sig_` + 32 hex: the `product_id` search_catalog advertises;
 //   - the identity-graph group id, `sig_` + 24 hex (pdpIdentityGraph stableHash('sig', ...)): the value of
 //     `product_group_id` / `sellable_item_group_id` on a row.
-// A partner that passed the second one to get_product was answered NO_MERCHANT_OFFER (the alias lane hands the
-// serving gate a ref with no signature and no content key, which a minted row never matches). This module is
-// the door-side answer: a group id is resolved to the ONE catalog signature its live members sit under, and the
-// read re-enters the signature lane with it; a group that names several products, or none, is refused by name.
+// A partner that passed the second one to get_product was answered NO_MERCHANT_OFFER for a minted row: the alias
+// lane hands the serving gate a ref with no signature and no content key, which a minted row never matches.
 //
-// The lookup is the join the signature resolver already runs the other way round (src/server.js
-// resolveCatalogProductRefFromPivotaSignature, its seed LATERAL): a listing meets its catalog row either on the
-// row's own (merchant_id, source_product_id), or, for a minted row whose source_product_id is a name slug,
-// through the seed attached to the row by product key.
+// So a group id is answered as the catalog signature of the member get_pdp_v2's own group lookup elects
+// (pdpIdentityGraph.resolveLivePdpIdentityGroupForPdp: same listings, same active-seed filter, same canonical
+// pick), and the read then takes the signature lane. The one thing added here is the step that lookup does not
+// do: a listing ref -> the catalog row it is, by the join the signature resolver runs the other way round
+// (src/server.js resolveCatalogProductRefFromPivotaSignature): the row's own (merchant_id, source_product_id),
+// or, for a minted row whose source_product_id is a name slug, the seed attached to the row by product key.
 
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
-const { EXTERNAL_SEED_MERCHANT_ID, isExternalSeedSupplyMerchantId } = require('./externalSeedLane');
+const {
+  isExternalSeedSupplyMerchantId,
+  isObservedSellerMerchantId,
+  isSeedSupplyUnservableUpstream,
+} = require('./externalSeedLane');
 
 const FLAG_NAME = 'PARTNER_DOOR_ONE_PRODUCT_ID';
 
@@ -30,43 +39,64 @@ const CATALOG_SIGNATURE_RE = /^sig_[0-9a-f]{32}$/i;
 const REASON_RE = /^[a-z0-9_]{1,64}$/;
 
 const asString = (value) => (typeof value === 'string' ? value.trim() : '');
+const isObj = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 const isIdentityGroupIdShape = (value) => IDENTITY_GROUP_ID_RE.test(asString(value));
 const isCatalogSignatureShape = (value) => CATALOG_SIGNATURE_RE.test(asString(value));
 
-// A test's stand-in for the database (the door tests run without one). Never set outside a test.
+// EVERY STATEMENT THIS MODULE SENDS IS BOUNDED. They sit in front of a partner's read, and the pool's own
+// defaults (tens of seconds) would let a slow database hold that read. Past the budget the lookup is
+// "unavailable": retriable for a group id, and no opinion for a seller list.
+const DEFAULT_LOOKUP_BUDGET_MS = 1500;
+function lookupBudgetMs(env = process.env) {
+  const configured = Number(env && env.PARTNER_DOOR_LOOKUP_BUDGET_MS);
+  return Number.isFinite(configured) && configured >= 50 && configured <= 10000 ? Math.floor(configured) : DEFAULT_LOOKUP_BUDGET_MS;
+}
+function budgetedQuery(sql, params) {
+  const db = require('../db');
+  return db.queryWithBudget(sql, params, { timeoutMs: lookupBudgetMs() });
+}
+
+// Test stand-ins (the door tests run without a database). Never set outside a test.
 let queryForTest = null;
+let groupLookupForTest = null;
 function usePartnerDoorQueryForTest(queryFn) {
   queryForTest = typeof queryFn === 'function' ? queryFn : null;
 }
+function usePartnerDoorGroupLookupForTest(lookupFn) {
+  groupLookupForTest = typeof lookupFn === 'function' ? lookupFn : null;
+}
 function pickQuery(queryFn) {
   if (queryForTest) return queryForTest;
-  return process.env.DATABASE_URL && typeof queryFn === 'function' ? queryFn : null;
+  if (!process.env.DATABASE_URL) return null;
+  return typeof queryFn === 'function' ? queryFn : budgetedQuery;
+}
+function pickGroupLookup() {
+  if (groupLookupForTest) return groupLookupForTest;
+  return require('./pdpIdentityGraph').resolveLivePdpIdentityGroupForPdp;
 }
 
-const GROUP_MEMBER_SIGNATURE_SQL = `
-  /* partner_door_group_member_signature */
-  WITH members AS (
-    SELECT pil.merchant_id, pil.product_id
-    FROM pdp_identity_listing pil
-    WHERE pil.sellable_item_group_id = $1
-      AND pil.identity_status = 'approved'
-      AND pil.live_read_enabled = true
-      AND pil.review_required = false
-    LIMIT 200
+// The catalog row a listing ref is, for an ordered list of refs: the first ref (in the order given) that has a
+// signed, active catalog row answers. Within one ref the row keyed on the listing's own ids comes before a
+// minted row reached through its attached seed.
+const LISTING_REF_SIGNATURE_SQL = `
+  /* partner_door_listing_ref_signature */
+  WITH refs AS (
+    SELECT r.merchant_id, r.product_id, r.ord
+    FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS r(merchant_id, product_id, ord)
   )
-  SELECT DISTINCT picked.pivota_signature_id
+  SELECT picked.pivota_signature_id
   FROM (
-    SELECT cp.pivota_signature_id
-    FROM members m
+    SELECT cp.pivota_signature_id, r.ord, 0 AS lane, cp.product_key
+    FROM refs r
     JOIN catalog_products cp
-      ON cp.merchant_id = m.merchant_id
-     AND cp.source_product_id = m.product_id
+      ON cp.merchant_id = r.merchant_id
+     AND cp.source_product_id = r.product_id
     LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
     WHERE ${activeCatalogProductSourceWhere('cp', 'cm')}
     UNION ALL
-    SELECT cp.pivota_signature_id
-    FROM members m
-    JOIN external_product_seeds eps ON eps.external_product_id = m.product_id
+    SELECT cp.pivota_signature_id, r.ord, 1 AS lane, cp.product_key
+    FROM refs r
+    JOIN external_product_seeds eps ON eps.external_product_id = r.product_id
     JOIN catalog_products cp
       ON cp.product_key = eps.attached_product_key
      AND cp.source_system = 'catalog_enrichment_agent_v1'
@@ -74,33 +104,69 @@ const GROUP_MEMBER_SIGNATURE_SQL = `
     WHERE ${activeCatalogProductSourceWhere('cp', 'cm')}
   ) picked
   WHERE picked.pivota_signature_id ~ '^sig_[0-9a-f]{32}$'
-  LIMIT 3
+  ORDER BY picked.ord ASC, picked.lane ASC, picked.product_key ASC
+  LIMIT 1
 `;
 
+// The group's listing refs in the order get_pdp_v2 would try them: the canonical member it elects, the member
+// it sells from, then the rest of the group as the lookup ordered it.
+function orderedGroupRefs(group) {
+  const out = [];
+  const seen = new Set();
+  const push = (ref) => {
+    if (!isObj(ref)) return;
+    const merchantId = asString(ref.merchant_id);
+    const productId = asString(ref.product_id);
+    if (!merchantId || !productId) return;
+    const key = `${merchantId}\u0000${productId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ merchant_id: merchantId, product_id: productId, pivota_signature_id: asString(ref.pivota_signature_id).toLowerCase() });
+  };
+  if (isObj(group)) {
+    push(group.canonical_product_ref);
+    push(group.selected_commerce_ref);
+    for (const member of Array.isArray(group.group_members) ? group.group_members : []) push(member);
+  }
+  return out.slice(0, 50);
+}
+
 /**
- * An identity group id -> the catalog signature of the product its live members are.
- * @returns {Promise<{status:'resolved', productId:string}|{status:'several', count:number}|{status:'none'}|{status:'no_database'}|{status:'unavailable'}>}
+ * An identity group id -> the catalog signature of the member get_pdp_v2's group lookup elects.
+ * @returns {Promise<{status:'resolved', productId:string}|{status:'none'}|{status:'no_database'}|{status:'unavailable'}>}
+ *   `none`: the lookup found no live member, or no member that is a signed, active catalog row.
  *   `no_database`: this process has no database, so no group id can ever resolve here (not a transient state).
- *   `unavailable`: the database was asked and did not answer. Never throws.
+ *   `unavailable`: the database was asked and did not answer in time. Never throws.
  */
 async function resolveGroupIdToProductId({ groupId, queryFn } = {}) {
   const id = asString(groupId).toLowerCase();
   if (!isIdentityGroupIdShape(id)) return { status: 'none' };
   const run = pickQuery(queryFn);
   if (!run) return { status: 'no_database' };
-  let rows;
+  // The group lookup answers null for "no such group" and also when it swallowed a statement that failed, so
+  // every statement it sends is watched: nothing found after a failure is "unavailable", not "none".
+  let statementFailed = false;
+  const watched = async (sql, params) => {
+    try {
+      return await run(sql, params);
+    } catch (err) {
+      statementFailed = true;
+      throw err;
+    }
+  };
   try {
-    const res = await run(GROUP_MEMBER_SIGNATURE_SQL, [id]);
-    rows = Array.isArray(res && res.rows) ? res.rows : [];
+    const group = await pickGroupLookup()({ productGroupId: id, queryFn: watched });
+    const refs = orderedGroupRefs(group);
+    if (!refs.length) return { status: statementFailed ? 'unavailable' : 'none' };
+    // The lookup's catalog-group fallback already names its member's signature.
+    if (isCatalogSignatureShape(refs[0].pivota_signature_id)) return { status: 'resolved', productId: refs[0].pivota_signature_id };
+    const res = await run(LISTING_REF_SIGNATURE_SQL, [refs.map((r) => r.merchant_id), refs.map((r) => r.product_id)]);
+    const row = Array.isArray(res && res.rows) ? res.rows[0] : null;
+    const signature = asString(row && row.pivota_signature_id).toLowerCase();
+    return isCatalogSignatureShape(signature) ? { status: 'resolved', productId: signature } : { status: 'none' };
   } catch (_) {
     return { status: 'unavailable' };
   }
-  const signatures = Array.from(
-    new Set(rows.map((row) => asString(row && row.pivota_signature_id).toLowerCase()).filter(isCatalogSignatureShape)),
-  );
-  if (signatures.length === 1) return { status: 'resolved', productId: signatures[0] };
-  if (signatures.length > 1) return { status: 'several', count: signatures.length };
-  return { status: 'none' };
 }
 
 const SIGNATURE_SELLERS_SQL = `
@@ -112,8 +178,8 @@ const SIGNATURE_SELLERS_SQL = `
 `;
 
 /**
- * The sellers whose catalog rows carry this signature. null = could not ask (no database, an error, not a
- * signature): the caller then keeps the route it had.
+ * The sellers whose catalog rows carry this signature. null = could not ask (no database, an error, past the
+ * budget, not a signature).
  */
 async function listSignatureSellerIds({ productId, queryFn } = {}) {
   const id = asString(productId).toLowerCase();
@@ -129,87 +195,91 @@ async function listSignatureSellerIds({ productId, queryFn } = {}) {
   }
 }
 
-/**
- * Does the seller a caller named belong to a product whose own seller is `productMerchantId`?
- * Both ids the door itself hands out are accepted: the row's seller, and the shared seed seller name for a
- * seed-supply row (the literal a seed row's signature was minted under, which get_product has always taken).
- */
-function sellerMatchesProduct(requestedMerchantId, productMerchantId) {
-  const requested = asString(requestedMerchantId);
-  const actual = asString(productMerchantId);
-  if (!requested || !actual) return true;
-  if (requested === actual) return true;
-  return requested === EXTERNAL_SEED_MERCHANT_ID && isExternalSeedSupplyMerchantId(actual);
+// Every seller an answered product names: its own, the refs it resolved through, its group's members and the
+// other listings and offers it carries.
+function sellersNamedByProduct(product) {
+  const names = new Set();
+  const add = (value) => {
+    const id = asString(value);
+    if (id) names.add(id);
+  };
+  if (!isObj(product)) return names;
+  add(product.merchant_id);
+  for (const key of ['canonical_product_ref', 'product_ref', 'selected_commerce_ref']) {
+    if (isObj(product[key])) add(product[key].merchant_id);
+  }
+  for (const key of ['group_members', 'members', 'other_seller_listings', 'offers']) {
+    for (const entry of Array.isArray(product[key]) ? product[key] : []) {
+      if (isObj(entry)) add(entry.merchant_id);
+    }
+  }
+  return names;
 }
 
 /**
- * What a failed single-product read says, for mapUpstreamErrorToKernelCode's `partnerDoorRead` and the error's
- * `detail.reason`. `extracted` is extractUpstreamErrorCode's answer; `pdpV2Detail` says the read went to this
- * gateway's own detail lane.
+ * Does the seller a caller named belong to this product? `sellers` is every seller the product is known under.
+ *   - any seller in the list is accepted;
+ *   - for seed supply, the shared seed seller name and a per-brand observed seller stand for each other, in
+ *     both directions (a seed row's signature was minted under the shared name and re-keyed to the observed
+ *     seller, and get_pdp_v2 can answer either);
+ *   - nothing to compare (no seller named, or the product names none) is not a mismatch.
  */
-function describePartnerDoorReadFailure({ extracted, pdpV2Detail } = {}) {
-  const data = extracted && extracted.data && typeof extracted.data === 'object' ? extracted.data : null;
-  const identity = data && data.metadata && typeof data.metadata === 'object' && data.metadata.identity_resolution
-    && typeof data.metadata.identity_resolution === 'object' ? data.metadata.identity_resolution : null;
+function sellerAmong(requestedMerchantId, sellers) {
+  const requested = asString(requestedMerchantId);
+  const known = Array.from(sellers || []).map(asString).filter(Boolean);
+  if (!requested || known.length === 0) return true;
+  if (known.includes(requested)) return true;
+  if (!isExternalSeedSupplyMerchantId(requested)) return false;
+  return known.some(
+    (seller) => isExternalSeedSupplyMerchantId(seller) && (isSharedSeedSellerName(requested) || isSharedSeedSellerName(seller)),
+  );
+}
+
+// The shared seed seller NAME, as request vocabulary: seed supply that is not a per-brand observed seller. Asked
+// of the lane's own predicates (services/externalSeedLane), so the seller-shape knowledge stays in its one
+// watched place and this file compares against no seller literal.
+function isSharedSeedSellerName(merchantId) {
+  return isExternalSeedSupplyMerchantId(merchantId) && !isObservedSellerMerchantId(merchantId);
+}
+
+/** The seller check against the answered product alone (no database). */
+function sellerMatchesProduct(requestedMerchantId, product) {
+  return sellerAmong(requestedMerchantId, sellersNamedByProduct(product));
+}
+
+/**
+ * ONE FACT PER CODE, for a get_product the kernel refused. The kernel's mapping folds the whole not-found family
+ * of the single-product read into NO_MERCHANT_OFFER (audit rows E1-E3). On the `/mcp` door, flag on, that error
+ * is re-read from the detail it already carries (`upstream_detail` is the upstream's own body):
+ *   - this gateway's detail lane answered for an id it had RESOLVED to a catalog identity: the product exists
+ *     and a gate or its content route withholds it       -> PRODUCT_NOT_SERVABLE, with the gate's reason
+ *   - the detail lane answered for an id no lane resolved -> UNKNOWN_PRODUCT_ID
+ *   - the per-merchant backend said not found: that merchant has no such product -> UNKNOWN_PRODUCT_ID
+ * null = not that error: it is rethrown untouched (MERCHANT_UNAVAILABLE and every other code included).
+ * The lane is the one the kernel hop took for these arguments (src/server.js `case 'get_product_detail'`).
+ */
+function remapReadFailure({ code, detail, merchantId, productId } = {}) {
+  if (code !== 'NO_MERCHANT_OFFER' || !isObj(detail) || detail.operation !== 'get_product_detail') return null;
+  const pdpLane = !asString(merchantId) || isSeedSupplyUnservableUpstream(merchantId, productId);
+  const body = isObj(detail.upstream_detail) ? detail.upstream_detail : null;
+  const identity = body && isObj(body.metadata) && isObj(body.metadata.identity_resolution) ? body.metadata.identity_resolution : null;
   const source = asString(identity && identity.resolution_source);
   const resolved = Boolean(identity) && (identity.canonicalization_applied === true || (source !== '' && source !== 'requested_route'));
-  // FastAPI's bare `{"detail": "PRODUCT_NOT_FOUND"}`: a statement about the product with no code field.
-  const statedNotFound = Boolean(data) && data.detail === 'PRODUCT_NOT_FOUND';
-  const rawReason = asString(data && data.details && typeof data.details === 'object' ? data.details.reason : '');
-  return {
-    partnerDoorRead: { lane: pdpV2Detail ? 'pdp_v2' : 'backend', statedNotFound, resolved },
-    reason: REASON_RE.test(rawReason) ? rawReason : null,
-  };
-}
-
-/** The `detail.reason` a mapped read failure carries: the gate's own reason when it named one. */
-function partnerDoorReadFailureReason(kernelCode, reason) {
-  if (kernelCode === 'PRODUCT_NOT_SERVABLE') return reason || 'product_detail_not_found';
-  if (kernelCode === 'UNKNOWN_PRODUCT_ID') return reason || 'product_id_not_found';
-  return null;
-}
-
-/**
- * get_offers behind the partner door. Off, `getOffers` is returned as is. On:
- *   - a `product_id` that is a group id is resolved like get_product's (same resolver), or refused by name;
- *   - an empty answer always says why (`metadata.reason`);
- *   - the answer's metadata carries no `sig_`-shaped group id.
- * `fail(code, detail)` throws the door's error class (it lives in an ES module the caller already loads).
- */
-function makePartnerDoorGetOffers({ getOffers, queryFn, fail, enabled = partnerDoorOneProductIdEnabled } = {}) {
-  return async function partnerDoorGetOffers(params = {}, ctx) {
-    if (!enabled()) return getOffers(params, ctx);
-    const wrapped = params && typeof params === 'object' && params.payload && typeof params.payload === 'object';
-    const p = wrapped ? params.payload : params || {};
-    let next = params;
-    if (asString(p.product_group_id)) {
-      await fail('PRODUCT_GROUP_ID_NOT_PRODUCT_ID', { reason: 'product_group_id_argument', operation: 'get_offers' });
-    }
-    if (isIdentityGroupIdShape(p.product_id)) {
-      const resolved = await resolveGroupIdToProductId({ groupId: p.product_id, queryFn });
-      if (resolved.status !== 'resolved') await fail(...groupIdFailure(resolved, 'get_offers'));
-      const payload = { ...p, product_id: resolved.productId };
-      next = wrapped ? { ...params, payload } : payload;
-    }
-    const answer = await getOffers(next, ctx);
-    if (!answer || typeof answer !== 'object') return answer;
-    const metadata = answer.metadata && typeof answer.metadata === 'object' ? { ...answer.metadata } : {};
-    if (/^sig_/i.test(asString(metadata.product_group_id))) metadata.product_group_id = null;
-    const empty = !answer.best_offer && (!Array.isArray(answer.signals) || answer.signals.length === 0);
-    if (empty && !asString(metadata.reason)) metadata.reason = 'no_offer_for_product';
-    return { ...answer, metadata };
-  };
+  if (pdpLane && resolved) {
+    const reason = asString(body && isObj(body.details) ? body.details.reason : '');
+    return { code: 'PRODUCT_NOT_SERVABLE', reason: REASON_RE.test(reason) ? reason : 'product_detail_not_found' };
+  }
+  return { code: 'UNKNOWN_PRODUCT_ID', reason: 'product_id_not_found' };
 }
 
 const GROUP_ID_REFUSAL_REASONS = Object.freeze({
-  several: 'group_has_several_products',
   none: 'group_has_no_servable_product',
   no_database: 'group_id_not_resolvable',
 });
 
 /**
- * The (code, detail) a group id that did not resolve to one product is refused with. Only a lookup that FAILED
- * is retriable; every other outcome is the terminal "this is a group id" refusal.
+ * The (code, detail) a group id that did not resolve is refused with. Only a lookup that FAILED is retriable;
+ * every other outcome is the terminal "this is a group id" refusal.
  */
 function groupIdFailure(resolved, operation) {
   if (resolved && resolved.status === 'unavailable') {
@@ -223,17 +293,21 @@ function groupIdFailure(resolved, operation) {
 
 module.exports = {
   FLAG_NAME,
-  GROUP_MEMBER_SIGNATURE_SQL,
+  LISTING_REF_SIGNATURE_SQL,
   SIGNATURE_SELLERS_SQL,
+  DEFAULT_LOOKUP_BUDGET_MS,
+  lookupBudgetMs,
   partnerDoorOneProductIdEnabled,
   isIdentityGroupIdShape,
   isCatalogSignatureShape,
+  orderedGroupRefs,
   resolveGroupIdToProductId,
   listSignatureSellerIds,
+  sellersNamedByProduct,
+  sellerAmong,
   sellerMatchesProduct,
-  describePartnerDoorReadFailure,
-  partnerDoorReadFailureReason,
-  makePartnerDoorGetOffers,
+  remapReadFailure,
   groupIdFailure,
   usePartnerDoorQueryForTest,
+  usePartnerDoorGroupLookupForTest,
 };

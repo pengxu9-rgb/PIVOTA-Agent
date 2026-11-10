@@ -31,10 +31,10 @@ const COMMERCE_KERNEL_READ_OPS = new Set(['get_product_detail', 'find_products',
 const SINGLE_PRODUCT_READ_OPS = new Set(['get_product_detail']);
 
 /**
- * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null, partnerDoorRead?: {lane?: string, statedNotFound?: boolean, resolved?: boolean}|null }} input
- * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'MERCHANT_UNAVAILABLE'|'PRODUCT_NOT_SERVABLE'}
+ * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null }} input
+ * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'MERCHANT_UNAVAILABLE'}
  */
-function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, partnerDoorRead } = {}) {
+function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) {
   const op = String(operation || '').trim();
   const code = String(upstreamCode || '').trim().toUpperCase();
   const isReadOp = COMMERCE_KERNEL_READ_OPS.has(op);
@@ -63,36 +63,10 @@ function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, partner
   // A not-found from a read lane is a persistent data condition: no acceptable offer/seed answers the id's
   // content route, and that is true again on the next call. The explicit PRODUCT_NOT_FOUND code is unambiguous
   // by name so it stays op-independent; the bare 404 is not, so it is read-only.
-  // PARTNER_DOOR_ONE_PRODUCT_ID (absent or off: the two arms below are reached exactly as before). On, the
-  // single-product read's not-found family names its fact here instead. See partnerDoorReadCode.
-  const partnerDoorCode = partnerDoorRead ? partnerDoorReadCode({ op, code, status, partnerDoorRead }) : null;
-  if (partnerDoorCode) return partnerDoorCode;
   if (code === 'PRODUCT_NOT_FOUND') return 'NO_MERCHANT_OFFER';
   if (status === 404 && isReadOp) return 'NO_MERCHANT_OFFER';
 
   return 'MERCHANT_UNAVAILABLE';
-}
-
-// PARTNER DOOR, ONE FACT PER CODE (PARTNER_DOOR_ONE_PRODUCT_ID). Only for the single-product read, and only for
-// the not-found family that the arms above fold into NO_MERCHANT_OFFER (audit rows E1-E3):
-//   - this gateway's own detail lane (`lane: 'pdp_v2'`) answered PRODUCT_NOT_SERVABLE or PRODUCT_NOT_FOUND
-//     for an id it had RESOLVED to a catalog identity (`resolved`): the product exists and a gate or its
-//     content route withholds it                                                -> PRODUCT_NOT_SERVABLE
-//   - the same answers for an id no lane resolved                               -> UNKNOWN_PRODUCT_ID
-//   - PRODUCT_NOT_FOUND, or a 404 with no code, from the per-merchant backend:
-//     that merchant has no such product                                         -> UNKNOWN_PRODUCT_ID
-// Every other signal returns null and keeps the mapping above, MISSING_MERCHANT_CONTEXT and the retriable
-// default included. `partnerDoorRead` is `{ lane, statedNotFound, resolved }`, built by the caller only while
-// the flag is on.
-function partnerDoorReadCode({ op, code, status, partnerDoorRead }) {
-  if (!SINGLE_PRODUCT_READ_OPS.has(op)) return null;
-  if (code === 'MISSING_MERCHANT_CONTEXT') return null;
-  const notFound = code === 'PRODUCT_NOT_FOUND' || partnerDoorRead.statedNotFound === true || status === 404;
-  if (partnerDoorRead.lane === 'pdp_v2') {
-    if (code !== 'PRODUCT_NOT_SERVABLE' && !notFound) return null;
-    return partnerDoorRead.resolved === true ? 'PRODUCT_NOT_SERVABLE' : 'UNKNOWN_PRODUCT_ID';
-  }
-  return notFound ? 'UNKNOWN_PRODUCT_ID' : null;
 }
 
 module.exports = {

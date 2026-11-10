@@ -4,7 +4,7 @@ const request = require('supertest');
 
 jest.setTimeout(60000);
 
-// PARTNER_DOOR_ONE_PRODUCT_ID: what the REAL get_pdp_v2 says when it refuses a signature, and what the partner
+// PARTNER_DOOR_ONE_PRODUCT_ID: what the REAL get_pdp_v2 says when it refuses a signature, and what the `/mcp`
 // door makes of each refusal.
 //
 // The chained /mcp door test (tests/partner_door_one_product_id_chain.node.test.cjs) cannot run get_pdp_v2
@@ -115,29 +115,42 @@ describe('partner door: the real get_pdp_v2 refusals and their partner codes', (
     expect(produced.unresolved.body.error).toBe('MISSING_MERCHANT_CONTEXT');
   });
 
-  // The door's own reading of each body, through the same two functions throwCommerceKernelUpstreamError calls.
+  // The `/mcp` door's reading of each refusal. The kernel hop maps the body to its code with the UNCHANGED
+  // mapping and throws it with the body as `upstream_detail` (src/server.js throwCommerceKernelUpstreamError:
+  // for a gateway error body, extractUpstreamErrorCode's code is `error` and its detail is the body). The door
+  // re-reads that error (remapReadFailure). The chained door test drives the same two steps through the real
+  // route; this pins them against the bodies the real get_pdp_v2 just produced.
   const { mapUpstreamErrorToKernelCode } = require('../../src/services/commerceKernelErrorMapping');
   const partnerDoor = require('../../src/services/partnerDoorOneProductId');
-  const read = ({ status, body }, { flag }) => {
-    // extractUpstreamErrorCode's answer for a legacy gateway error body: the code is `error`, the detail the body.
-    const extracted = { code: body.error, data: body, detail: body };
-    const failure = flag ? partnerDoor.describePartnerDoorReadFailure({ extracted, pdpV2Detail: true }) : null;
-    const code = mapUpstreamErrorToKernelCode({
-      operation: 'get_product_detail', upstreamCode: body.error, status,
-      ...(failure ? { partnerDoorRead: failure.partnerDoorRead } : {}),
-    });
-    return { code, reason: failure ? partnerDoor.partnerDoorReadFailureReason(code, failure.reason) : null };
+  const kernelError = ({ status, body }) => ({
+    code: mapUpstreamErrorToKernelCode({ operation: 'get_product_detail', upstreamCode: body.error, status }),
+    detail: { operation: 'get_product_detail', upstream_status: status, upstream_code: body.error, upstream_detail: body },
+  });
+  const atDoor = (refusal) => {
+    const error = kernelError(refusal);
+    return partnerDoor.remapReadFailure({ ...error, merchantId: undefined, productId: IDS.SIG_NOT_SERVABLE }) || { code: error.code };
   };
 
-  test('flag off: both 404s read NO_MERCHANT_OFFER, as before', () => {
-    expect(read(produced.not_servable, { flag: false }).code).toBe('NO_MERCHANT_OFFER');
-    expect(read(produced.not_found, { flag: false }).code).toBe('NO_MERCHANT_OFFER');
-    expect(read(produced.unresolved, { flag: false }).code).toBe('UNKNOWN_PRODUCT_ID');
+  test('the kernel\'s own codes are what they were: both 404s read NO_MERCHANT_OFFER', () => {
+    expect(kernelError(produced.not_servable).code).toBe('NO_MERCHANT_OFFER');
+    expect(kernelError(produced.not_found).code).toBe('NO_MERCHANT_OFFER');
+    expect(kernelError(produced.unresolved).code).toBe('UNKNOWN_PRODUCT_ID');
   });
 
-  test('flag on: a withheld product is PRODUCT_NOT_SERVABLE with the gate\'s reason; an unresolved id stays unknown', () => {
-    expect(read(produced.not_servable, { flag: true })).toEqual({ code: 'PRODUCT_NOT_SERVABLE', reason: 'not_serving_eligible' });
-    expect(read(produced.not_found, { flag: true })).toEqual({ code: 'PRODUCT_NOT_SERVABLE', reason: 'product_detail_not_found' });
-    expect(read(produced.unresolved, { flag: true })).toEqual({ code: 'UNKNOWN_PRODUCT_ID', reason: 'product_id_not_found' });
+  test('at the /mcp door: a withheld product is PRODUCT_NOT_SERVABLE with the gate\'s reason; an unresolved id stays unknown', () => {
+    expect(atDoor(produced.not_servable)).toEqual({ code: 'PRODUCT_NOT_SERVABLE', reason: 'not_serving_eligible' });
+    expect(atDoor(produced.not_found)).toEqual({ code: 'PRODUCT_NOT_SERVABLE', reason: 'product_detail_not_found' });
+    expect(atDoor(produced.unresolved)).toEqual({ code: 'UNKNOWN_PRODUCT_ID' });
+  });
+
+  test('the same bodies named with the shared seed seller or an observed seller are read the same way; a connected seller\'s are not', () => {
+    const error = kernelError(produced.not_servable);
+    for (const merchantId of ['external_seed', IDS.SELLER_MINTED]) {
+      expect(partnerDoor.remapReadFailure({ ...error, merchantId, productId: IDS.SIG_NOT_SERVABLE }).code).toBe('PRODUCT_NOT_SERVABLE');
+    }
+    // A connected seller's read goes to the per-merchant backend, never to this lane: its not-found is "that
+    // merchant has no such product", whatever body it carries.
+    expect(partnerDoor.remapReadFailure({ ...error, merchantId: IDS.SELLER_CONNECTED, productId: IDS.SIG_NOT_SERVABLE }))
+      .toEqual({ code: 'UNKNOWN_PRODUCT_ID', reason: 'product_id_not_found' });
   });
 });

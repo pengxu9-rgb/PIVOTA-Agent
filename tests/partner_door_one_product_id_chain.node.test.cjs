@@ -12,11 +12,16 @@
 // what is stubbed.
 //
 // Flag on:
-//   - a search row carries ONE `sig_` value, its `product_id`; so does a product answer;
+//   - a search row and a product answer carry no group id field, and no signature other than their own under the
+//     signature's other names; `id`, variant ids, group members and other sellers' listings are left as they are;
 //   - no id search served is ever answered NO_MERCHANT_OFFER or UNKNOWN_PRODUCT_ID, with the seller the door
 //     itself returned, with the shared seed seller name, or with no seller;
-//   - a group id resolves to its product, or is refused as a group id;
-//   - a seller that is not the product's is refused, not dropped;
+//   - the answer's product_id is the signature that was asked with, on the connected merchant's lane too (whose
+//     backend is asked by, and answers, its platform id);
+//   - a group id resolves to the member get_pdp_v2's group lookup elects (one product listed by two sellers
+//     included), or is refused as a group id when nothing servable is in it;
+//   - a seller the product is not known under is refused, not dropped; one it IS known under is accepted even
+//     when get_pdp_v2 answered another seller of it;
 //   - a withheld product, an unknown id and a temporarily unavailable read are three codes.
 // Flag off: the door answers as it did (the differential against origin/main is run outside this suite; here
 // the same chain shows the old answers, so each flag-on assertion is seen to depend on the flag).
@@ -51,18 +56,6 @@ function runChild(env, port) {
   });
 }
 
-// Every string in `value` that starts with `sig_`, as [path, string].
-function sigValues(value, at = '', out = []) {
-  if (typeof value === 'string') {
-    if (/^sig_/i.test(value.trim())) out.push([at, value]);
-  } else if (Array.isArray(value)) {
-    value.forEach((el, i) => sigValues(el, `${at}[${i}]`, out));
-  } else if (value && typeof value === 'object') {
-    for (const [k, v] of Object.entries(value)) sigValues(v, at ? `${at}.${k}` : k, out);
-  }
-  return out;
-}
-
 const errorOf = (c) => (c && c.isError && c.value && c.value.error) || null;
 const codeOf = (c) => (errorOf(c) ? errorOf(c).code : null);
 const productOf = (c) => (c && !c.isError && c.value && c.value.product) || null;
@@ -87,21 +80,46 @@ test('the fixture reaches the door: three rows, a minted, a mirror and a connect
   }
 });
 
-test('flag on: every search row has a 36-character product_id and no other sig_ value', () => {
+// The fields that put a second product-looking id on a row: a group id under its two names (or any other
+// top-level name), and a signature that is not the row's own under the signature's other names.
+const GROUP_ID_KEYS = ['product_group_id', 'sellable_item_group_id', 'canonical_sig_id'];
+const SIGNATURE_ALIAS_KEYS = ['pivota_signature_id', 'signature_id', 'canonical_route_sig_id'];
+const GROUP_ID = /^sig_[0-9a-f]{24}$/;
+function secondIds(row) {
+  const out = [];
+  for (const [key, value] of Object.entries(row)) {
+    if (typeof value !== 'string' || key === 'product_id' || value === row.product_id) continue;
+    if (GROUP_ID.test(value)) out.push(key);
+    else if ((GROUP_ID_KEYS.includes(key) || SIGNATURE_ALIAS_KEYS.includes(key)) && /^sig_/.test(value)) out.push(key);
+  }
+  return out;
+}
+
+test('flag on: every search row has a 36-character product_id, no group id field, and keeps its other ids', () => {
   for (const row of ON.search.value.products) {
     assert.match(row.product_id, CATALOG_SIGNATURE);
-    assert.deepEqual(sigValues(row), [['product_id', row.product_id]]);
+    assert.deepEqual(secondIds(row), []);
+    for (const key of GROUP_ID_KEYS) assert.equal(Object.prototype.hasOwnProperty.call(row, key), false, key);
+    // The same id under its other names is the same id, and stays; so does `id`.
+    assert.equal(row.id, row.product_id);
+    assert.equal(row.pivota_signature_id, row.product_id);
+    assert.equal(row.signature_id, row.product_id);
+    // Another seller's listing keeps ITS signature: that is the id a partner passes for that listing.
+    assert.deepEqual(row.other_seller_listings, [{ merchant_id: IDS.SELLER_OTHER_CONNECTED, pivota_signature_id: `sig_${'0'.repeat(32)}`, product_key: 'prod::shop-b::1' }]);
+    assert.deepEqual(row.canonical_product_ref, OFF.search.value.products.find((r) => r.product_id === row.product_id).canonical_product_ref);
   }
+  // Nothing but the group id fields left the rows.
+  const withoutGroup = OFF.search.value.products.map(({ product_group_id: _g, sellable_item_group_id: _s, ...rest }) => rest);
+  assert.deepEqual(ON.search.value.products, withoutGroup);
 });
 
-test('flag off: the same rows carry the signature under other names and the 24-hex group id', () => {
+test('flag off: the same rows carry the 24-hex group id under two names', () => {
   const row = OFF.search.value.products[0];
-  const fields = sigValues(row).map(([at]) => at).sort();
-  assert.deepEqual(fields, ['id', 'pivota_signature_id', 'product_group_id', 'product_id', 'sellable_item_group_id', 'signature_id']);
+  assert.deepEqual(secondIds(row).sort(), ['product_group_id', 'sellable_item_group_id']);
   assert.equal(row.product_group_id, IDS.GROUP_MINTED);
 });
 
-test('flag on: get_product with exactly the row\'s ids answers the product, priced in USD', () => {
+test('flag on: get_product with exactly the row\'s ids answers the product, priced in USD, under the id it was asked with', () => {
   for (const chain of ON.chains) {
     const call = chain.get_product;
     assert.deepEqual(call.args, { merchant_id: chain.row.merchant_id, product_id: chain.row.product_id, market: 'US' });
@@ -113,8 +131,50 @@ test('flag on: get_product with exactly the row\'s ids answers the product, pric
     assert.equal(typeof product.price, 'number');
     assert.equal(product.currency, 'USD');
     assert.equal(product.price_unavailable_reason, undefined);
-    assert.deepEqual(sigValues(product).filter(([at]) => at !== 'product_id'), [], 'the product answer carries one sig_ value');
+    assert.deepEqual(secondIds(product), [], 'no group id, no other signature');
+    assert.equal(product.pivota_signature_id, chain.row.product_id);
   }
+});
+
+test('flag on: the product keeps its variant ids and its group members, whatever they hold', () => {
+  for (const chain of ON.chains.slice(0, 2)) {
+    const product = productOf(chain.get_product);
+    const before = productOf(OFF.chains.find((c) => c.row.product_id === chain.row.product_id).get_product);
+    // The implicit default variant's id IS the product's signature (src/pdpBuilder.js): it is not "another id".
+    assert.equal(product.variants[0].variant_id, chain.row.product_id);
+    assert.equal(product.variants[0].sku_id, chain.row.product_id);
+    assert.equal(product.default_variant_id, chain.row.product_id);
+    assert.deepEqual(product.variants, before.variants);
+    assert.deepEqual(product.group_members, before.group_members);
+    assert.equal(product.group_members[0].pivota_signature_id, chain.row.product_id);
+    // Only the two group id fields left the product.
+    const { product_group_id: _g, sellable_item_group_id: _s, ...rest } = before;
+    assert.deepEqual(product, rest);
+  }
+  const shared = productOf(ON.cases.gp_group_shared);
+  assert.deepEqual(shared.group_members, [
+    { merchant_id: IDS.SELLER_SHARED_BRAND, product_id: IDS.SEED_SHARED_BRAND, pivota_signature_id: IDS.SIG_SHARED_BRAND },
+    { merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_SHARED_RETAILER, pivota_signature_id: IDS.SIG_SHARED_RETAILER },
+  ], 'the other seller keeps its own signature');
+});
+
+test('flag on: a connected merchant\'s product comes back under the signature, though its backend answers the platform id', () => {
+  const chain = ON.chains.find((c) => c.row.product_id === IDS.SIG_CONNECTED);
+  for (const step of ['get_product', 'get_product_again']) {
+    // The kernel hop translated the signature and asked the backend by the merchant's platform id.
+    assert.deepEqual(chain[step].upstream, [{ op: 'get_product_detail', merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_CONNECTED }]);
+    const product = productOf(chain[step]);
+    assert.equal(product.product_id, IDS.SIG_CONNECTED);
+    assert.equal(product.source_product_id, IDS.SOURCE_CONNECTED, 'the platform id is kept, under its own name');
+    assert.equal(product.pivota_signature_id, IDS.SIG_CONNECTED);
+    assert.equal(product.variants[0].variant_id, 'v-9001-1');
+  }
+  // The next call in the chain was made with the signature, not a platform id.
+  assert.equal(chain.get_offers.args.product_id, IDS.SIG_CONNECTED);
+  // Flag off, the same call hands the partner the platform id as product_id.
+  const off = OFF.chains.find((c) => c.row.product_id === IDS.SIG_CONNECTED);
+  assert.equal(productOf(off.get_product).product_id, IDS.SOURCE_CONNECTED);
+  assert.deepEqual(off.get_product.upstream, chain.get_product.upstream);
 });
 
 test('flag on: get_offers with the ids get_product returned answers an offer', () => {
@@ -153,19 +213,31 @@ test('flag on: the shared seed seller name beside a seed product\'s signature is
   assert.equal(product.merchant_id, IDS.SELLER_MINTED);
 });
 
-test('flag on: a group id on get_product is the product it names, or the group-id refusal', () => {
+test('flag on: a group id on get_product is the product get_pdp_v2\'s group lookup elects, or the group-id refusal', () => {
   for (const name of ['gp_group_minted', 'gp_group_minted_with_seller']) {
     const product = productOf(ON.cases[name]);
     assert.ok(product, `${name}: ${JSON.stringify(ON.cases[name].value)}`);
     assert.equal(product.product_id, IDS.SIG_MINTED);
-    // The read re-entered the signature lane with the member's signature.
+    // The read took the signature lane with the member's signature.
     assert.deepEqual(ON.cases[name].upstream, [{ op: 'get_pdp_v2', product_id: IDS.SIG_MINTED }]);
   }
-  for (const [name, reason] of [['gp_group_several', 'group_has_several_products'], ['gp_group_unknown', 'group_has_no_servable_product']]) {
+  // ONE PRODUCT, TWO SELLERS: the group's canonical (brand) member answers; it is not refused as "several".
+  const shared = productOf(ON.cases.gp_group_shared);
+  assert.ok(shared, JSON.stringify(ON.cases.gp_group_shared.value));
+  assert.equal(shared.product_id, IDS.SIG_SHARED_BRAND);
+  assert.equal(shared.merchant_id, IDS.SELLER_SHARED_BRAND);
+  assert.deepEqual(ON.cases.gp_group_shared.upstream, [{ op: 'get_pdp_v2', product_id: IDS.SIG_SHARED_BRAND }]);
+  // A group id beside a connected seller: the resolved signature is what gets translated and asked for.
+  const connected = productOf(ON.cases.gp_group_connected_with_seller);
+  assert.ok(connected, JSON.stringify(ON.cases.gp_group_connected_with_seller.value));
+  assert.equal(connected.product_id, IDS.SIG_CONNECTED);
+  assert.deepEqual(ON.cases.gp_group_connected_with_seller.upstream, [{ op: 'get_product_detail', merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_CONNECTED }]);
+  // Nothing servable in the group: refused as a group id, and nothing is read.
+  for (const name of ['gp_group_unsigned', 'gp_group_unknown']) {
     const error = errorOf(ON.cases[name]);
     assert.equal(error.code, 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID');
     assert.equal(error.retriable, false);
-    assert.deepEqual(error.detail, { reason });
+    assert.deepEqual(error.detail, { reason: 'group_has_no_servable_product' });
     assert.match(error.message, /group id/);
     assert.match(error.message, /product_id from a search_catalog row/);
     assert.deepEqual(ON.cases[name].upstream, [], 'nothing was read for it');
@@ -173,11 +245,14 @@ test('flag on: a group id on get_product is the product it names, or the group-i
 });
 
 test('flag on: get_offers takes a group id the same way, and product_group_id is no longer an input', () => {
-  assert.equal(ON.cases.go_group_minted.isError, false);
-  assert.equal(ON.cases.go_group_minted.value.subject.id, IDS.SIG_MINTED);
-  assert.ok(ON.cases.go_group_minted.value.best_offer);
-  assert.deepEqual(ON.cases.go_group_minted.upstream, [{ op: 'offers.resolve', merchant_id: null, product_id: IDS.SIG_MINTED }]);
-  assert.equal(codeOf(ON.cases.go_group_several), 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID');
+  for (const [name, signature] of [['go_group_minted', IDS.SIG_MINTED], ['go_group_shared', IDS.SIG_SHARED_BRAND]]) {
+    assert.equal(ON.cases[name].isError, false);
+    assert.equal(ON.cases[name].value.subject.id, signature);
+    assert.ok(ON.cases[name].value.best_offer);
+    assert.deepEqual(ON.cases[name].upstream, [{ op: 'offers.resolve', merchant_id: null, product_id: signature }]);
+  }
+  assert.equal(codeOf(ON.cases.go_group_unsigned), 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID');
+  assert.deepEqual(ON.cases.go_group_unsigned.upstream, []);
   const refused = errorOf(ON.cases.go_group_argument);
   assert.equal(refused.code, 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID');
   assert.deepEqual(refused.detail, { reason: 'product_group_id_argument' });
@@ -186,8 +261,8 @@ test('flag on: get_offers takes a group id the same way, and product_group_id is
   assert.equal(OFF.tools.get_offers.properties.includes('product_group_id'), true);
 });
 
-test('flag on: a merchant_id that is not the product\'s seller is refused, not dropped', () => {
-  for (const name of ['gp_wrong_observed_seller', 'gp_wrong_connected_seller', 'gp_wrong_seller_of_connected', 'gp_shared_seed_seller_of_connected']) {
+test('flag on: a merchant_id the product is not known under is refused, not dropped', () => {
+  for (const name of ['gp_wrong_observed_seller', 'gp_wrong_connected_seller', 'gp_wrong_seller_of_connected', 'gp_shared_seed_seller_of_connected', 'gp_fallback_other_seller']) {
     const error = errorOf(ON.cases[name]);
     assert.ok(error, `${name}: ${JSON.stringify(ON.cases[name].value)}`);
     assert.equal(error.code, 'MERCHANT_PRODUCT_MISMATCH');
@@ -195,8 +270,18 @@ test('flag on: a merchant_id that is not the product\'s seller is refused, not d
     assert.deepEqual(error.detail, { reason: 'merchant_not_seller_of_product' });
     assert.match(error.message, /merchant_id does not match/);
   }
-  // A connected seller that has no row under the signature is never sent to the per-merchant catalog.
-  assert.deepEqual(ON.cases.gp_wrong_connected_seller.upstream, []);
+});
+
+test('flag on: a seller the product IS known under is accepted, even when get_pdp_v2 answered another seller of it', () => {
+  // The signature's catalog row is one seller's (the one search would name); get_pdp_v2 answered the group's
+  // canonical member, another seller. Both are the product's sellers; so is the shared seed seller name.
+  for (const name of ['gp_fallback_row_seller', 'gp_fallback_canonical_seller', 'gp_fallback_shared_seed_seller']) {
+    const product = productOf(ON.cases[name]);
+    assert.ok(product, `${name}: ${JSON.stringify(ON.cases[name].value)}`);
+    assert.equal(product.product_id, IDS.SIG_FALLBACK);
+    assert.equal(product.merchant_id, IDS.SELLER_FALLBACK_CANONICAL);
+  }
+  assert.equal(ON.cases.gp_fallback_row_seller.args.merchant_id, IDS.SELLER_FALLBACK_ROW);
 });
 
 test('flag off: the same wrong seller is dropped and another seller\'s row is served', () => {
@@ -240,7 +325,7 @@ test('flag off: the withheld product and the per-merchant not-found both read NO
   for (const name of ['gp_not_servable', 'gp_resolved_no_content', 'gp_unknown_at_connected']) {
     assert.equal(codeOf(OFF.cases[name]), 'NO_MERCHANT_OFFER', name);
   }
-  assert.equal(codeOf(OFF.cases.gp_group_minted), 'UNKNOWN_PRODUCT_ID');
+  for (const name of ['gp_group_minted', 'gp_group_shared', 'gp_group_unknown']) assert.equal(codeOf(OFF.cases[name]), 'UNKNOWN_PRODUCT_ID', name);
   assert.equal(OFF.cases.go_unknown_signature.value.metadata.reason, undefined);
 });
 

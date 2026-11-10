@@ -5,27 +5,31 @@
 // ids taken from the previous answer, then the refusals. Prints one JSON line. Driven by
 // tests/partner_door_one_product_id_chain.node.test.cjs.
 //
-// REAL: the /mcp route, the JSON-RPC adapter, the tool surface (schema guard, allowlist, sanitizer), the
-// canonical executor, the gateway's kernel dispatcher (invokeCommerceKernelRawUpstream: lane choice, the group
-// id resolver, the seller check), the upstream error mapping, get_offers (makeGetOffers), and get_pdp_v2 itself
-// for an id nothing below answers (no database: it answers MISSING_MERCHANT_CONTEXT).
+// REAL: the /mcp route, the JSON-RPC adapter, the door's view of the surface, the tool surface (schema guard,
+// allowlist, sanitizer), the canonical executor, the gateway's kernel dispatcher (invokeCommerceKernelRawUpstream:
+// lane choice, and the connected merchant's signature -> platform id translation), the upstream error mapping,
+// get_offers (makeGetOffers), and get_pdp_v2 itself for an id nothing below answers (no database: it answers
+// MISSING_MERCHANT_CONTEXT).
 //
 // STUBBED, because no database or backend is reachable here:
 //   - the search page (the loopback find_products_multi): three rows shaped as the search lane stamps them
 //     (src/server.js: `id` = `product_id`, pivota_signature_id / signature_id, sellable_item_group_id /
-//     product_group_id, canonical_product_ref);
-//   - get_pdp_v2's SERVED answer for the three fixture signatures (the canonical module's product);
+//     product_group_id, canonical_product_ref, other_seller_listings);
+//   - get_pdp_v2's SERVED answer for the fixture signatures (the canonical module's product, with the implicit
+//     default variant pdpBuilder gives a product: `variant_id` = `sku_id` = the product's own id);
 //   - get_pdp_v2's refusals, replayed from tests/fixtures/partner_door_pdp_v2_refusals.json, which
 //     tests/integration/partner_door_pdp_v2_refusal_shape.test.js records from the real route;
-//   - the backend: offers.resolve, and the per-merchant get_product_detail of the connected merchant;
-//   - the database, for the door's two statements only: tests/_support/partnerDoorFixture.cjs answers them, and
-//     tests/integration/partner_door_group_member_signature_postgres.test.js requires PostgreSQL to agree.
+//   - the backend: offers.resolve, and the connected merchant's per-merchant detail, which answers the PLATFORM
+//     id it is asked by (as the real backend does) and knows no signature;
+//   - the database: tests/_support/partnerDoorFixture.cjs answers the door's group lookup and statements and the
+//     translation's statement, and tests/integration/partner_door_group_member_signature_postgres.test.js
+//     requires the real lookup and PostgreSQL to agree with it.
 //
 // Usage: node tests/_support/partnerDoorChainChild.cjs <port>   (env: PARTNER_DOOR_ONE_PRODUCT_ID or nothing)
 
 const nock = require('nock');
 const supertest = require('supertest');
-const { IDS, fixtureQuery } = require('./partnerDoorFixture.cjs');
+const { IDS, fixtureQuery, groupLookup } = require('./partnerDoorFixture.cjs');
 const REFUSALS = require('../fixtures/partner_door_pdp_v2_refusals.json');
 
 const PORT = String(Number(process.argv[2]) || 4390);
@@ -53,27 +57,53 @@ for (const suffix of ['ENABLED', 'DELAY_MS', 'INTERVAL_MS']) delete process.env[
 
 const logger = require('../../src/logger');
 logger.level = 'silent';
+// THE CONNECTED MERCHANT'S TRANSLATION RUNS FOR REAL. The kernel hop turns (merchant, signature) into the
+// merchant's platform id before asking the backend (resolveMerchantScopedSourceProductId), and only with a
+// database. Here the real function runs with the fixture as its database: installed before the server loads
+// (which binds the function then), with DATABASE_URL present only while the function reads it.
+const catalogEntityResolution = require('../../src/services/catalogEntityResolution');
+const realTranslate = catalogEntityResolution.resolveMerchantScopedSourceProductId;
+catalogEntityResolution.resolveMerchantScopedSourceProductId = (args) => {
+  process.env.DATABASE_URL = 'postgres://partner-door.test/none';
+  try {
+    return realTranslate({ ...args, queryFn: fixtureQuery });
+  } finally {
+    delete process.env.DATABASE_URL;
+  }
+};
 const app = require('../../src/server');
 let merchantCalls = 0;
 app._debug.useUcpLiveClientForTest({
   async discoverEndpoint() { merchantCalls += 1; return { status: 404 }; },
   async lookupCatalog() { merchantCalls += 1; return { ok: false, status: 500 }; },
 });
-// The database stand-in, for the door's two statements only. (Guarded so this file also runs, unchanged, on a
-// tree from before the flag: that is how the flag-off answers are compared with origin/main's.)
+// The database stand-in for the door's own lookups. (Guarded so this file also runs, unchanged, on a tree from
+// before the flag: that is how the flag-off answers are compared with origin/main's.)
 try {
-  require('../../src/services/partnerDoorOneProductId').usePartnerDoorQueryForTest(fixtureQuery);
+  const partnerDoor = require('../../src/services/partnerDoorOneProductId');
+  partnerDoor.usePartnerDoorQueryForTest(fixtureQuery);
+  partnerDoor.usePartnerDoorGroupLookupForTest(groupLookup);
 } catch (_) {
-  /* a tree without the module has no statement to answer */
+  /* a tree without the module has no lookup to answer */
 }
 
+// The three products search serves, and two more only get_pdp_v2 knows.
 const PRODUCTS = {
   [IDS.SIG_MINTED]: { seller: IDS.SELLER_MINTED, group: IDS.GROUP_MINTED, title: 'Calm Serum', brand: 'Brand X', price: 30, seed: IDS.SEED_MINTED },
   [IDS.SIG_MIRROR]: { seller: IDS.SELLER_MIRROR, group: IDS.GROUP_MIRROR, title: 'Barrier Cream', brand: 'Brand Y', price: 22, seed: IDS.SEED_MIRROR },
-  [IDS.SIG_CONNECTED]: { seller: IDS.SELLER_CONNECTED, group: IDS.GROUP_CONNECTED, title: 'Day Lotion', brand: 'Shop A', price: 18, seed: '9001' },
+  [IDS.SIG_CONNECTED]: { seller: IDS.SELLER_CONNECTED, group: IDS.GROUP_CONNECTED, title: 'Day Lotion', brand: 'Shop A', price: 18, seed: IDS.SOURCE_CONNECTED },
 };
+const SEARCHED = Object.keys(PRODUCTS);
+// One product, two sellers: the brand's listing is the group's canonical member; the retailer is in the group.
+PRODUCTS[IDS.SIG_SHARED_BRAND] = {
+  seller: IDS.SELLER_SHARED_BRAND, group: IDS.GROUP_SHARED, title: 'Eye Gel', brand: 'Brand W', price: 26, seed: IDS.SEED_SHARED_BRAND,
+  others: [{ merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_SHARED_RETAILER, pivota_signature_id: IDS.SIG_SHARED_RETAILER }],
+};
+// The canonical-group fallback: the signature's catalog row is one seller's, and get_pdp_v2 answers another's.
+PRODUCTS[IDS.SIG_FALLBACK] = { seller: IDS.SELLER_FALLBACK_CANONICAL, group: null, title: 'Hand Cream', brand: 'Brand V', price: 12, seed: IDS.SEED_FALLBACK };
 
-// A search row as the search lane stamps it: the signature under four names, the group id under two.
+// A search row as the search lane stamps it: the signature under four names, the group id under two, and the
+// product's other sellers each under THEIR own signature.
 const searchRow = (signature) => {
   const p = PRODUCTS[signature];
   return {
@@ -90,10 +120,12 @@ const searchRow = (signature) => {
     sellable_item_group_id: p.group,
     product_group_id: p.group,
     canonical_product_ref: { merchant_id: p.seller, product_id: p.seed },
+    other_seller_listings: [{ merchant_id: IDS.SELLER_OTHER_CONNECTED, pivota_signature_id: `sig_${'0'.repeat(32)}`, product_key: 'prod::shop-b::1' }],
   };
 };
 
-// get_pdp_v2's canonical product for a served signature: the row's seller and the group id, as prod answers.
+// get_pdp_v2's canonical product for a served signature: the row's seller and the group id, as prod answers,
+// the group's members, and the implicit default variant (src/pdpBuilder.js: variant_id = sku_id = product_id).
 const pdpProduct = (signature) => {
   const p = PRODUCTS[signature];
   return {
@@ -104,17 +136,19 @@ const pdpProduct = (signature) => {
     price: { current: { amount: p.price, currency: 'USD' } },
     availability: { in_stock: true, available_quantity: 3 },
     pivota_signature_id: signature,
-    product_group_id: p.group,
-    sellable_item_group_id: p.group,
-    variants: [{ variant_id: 'v1', title: 'Default', price: { current: { amount: p.price, currency: 'USD' } }, availability: { in_stock: true } }],
+    ...(p.group ? { product_group_id: p.group, sellable_item_group_id: p.group } : {}),
+    default_variant_id: signature,
+    variants: [{ variant_id: signature, sku_id: signature, title: 'Default', price: { current: { amount: p.price, currency: 'USD' } }, availability: { in_stock: true } }],
+    group_members: [{ merchant_id: p.seller, product_id: p.seed, pivota_signature_id: signature }, ...(p.others || [])],
   };
 };
 
+const SIG_NO_CONTENT = `sig_${'4'.repeat(32)}`;
 const upstream = [];
 const isOp = (operation) => (body) => body && body.operation === operation;
 nock(LOOPBACK, { allowUnmocked: true }).persist()
   .post('/agent/shop/v1/invoke', isOp('find_products_multi'))
-  .reply(200, () => ({ status: 'success', success: true, products: Object.keys(PRODUCTS).map(searchRow), total: 3 }));
+  .reply(200, () => ({ status: 'success', success: true, products: SEARCHED.map(searchRow), total: 3 }));
 nock(LOOPBACK, { allowUnmocked: true }).persist()
   .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && Boolean(PRODUCTS[body.payload?.product_ref?.product_id]))
   .reply(200, (_uri, body) => {
@@ -125,7 +159,7 @@ nock(LOOPBACK, { allowUnmocked: true }).persist()
   .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && body.payload?.product_ref?.product_id === IDS.SIG_NOT_SERVABLE)
   .reply(REFUSALS.not_servable.status, REFUSALS.not_servable.body);
 nock(LOOPBACK, { allowUnmocked: true }).persist()
-  .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && body.payload?.product_ref?.product_id === IDS.SIG_SECOND_OF_SEVERAL)
+  .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && body.payload?.product_ref?.product_id === SIG_NO_CONTENT)
   .reply(REFUSALS.not_found.status, REFUSALS.not_found.body);
 // A product get_pdp_v2 serves with its money withheld (no price it may show this buyer), and a read it cannot
 // answer right now (its own bounded-failure body, src/server.js `TEMPORARY_UNAVAILABLE`).
@@ -137,15 +171,20 @@ nock(LOOPBACK, { allowUnmocked: true }).persist()
 nock(LOOPBACK, { allowUnmocked: true }).persist()
   .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && body.payload?.product_ref?.product_id === SIG_UNAVAILABLE)
   .reply(503, { error: 'TEMPORARY_UNAVAILABLE', message: 'Product is temporarily unavailable. Please retry shortly.', reason_code: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' });
-// The backend. Per-merchant detail: the connected merchant's own row, and FastAPI's not-found for anything else.
+// The backend. Per-merchant detail is keyed by the PLATFORM product id and answers that id; it does not know a
+// signature (FastAPI's not-found for anything else).
 nock(BACKEND).persist()
   .post('/agent/shop/v1/invoke', isOp('get_product_detail'))
   .reply((_uri, body) => {
     const product = body.payload?.product || {};
     upstream.push({ op: 'get_product_detail', merchant_id: product.merchant_id, product_id: product.product_id });
-    if (product.merchant_id === IDS.SELLER_CONNECTED && product.product_id === IDS.SIG_CONNECTED) {
+    if (product.merchant_id === IDS.SELLER_CONNECTED && product.product_id === IDS.SOURCE_CONNECTED) {
       const p = PRODUCTS[IDS.SIG_CONNECTED];
-      return [200, { status: 'success', product: { product_id: IDS.SIG_CONNECTED, merchant_id: p.seller, title: p.title, brand: p.brand, price: p.price, currency: 'USD', in_stock: true, product_group_id: p.group } }];
+      return [200, { status: 'success', product: {
+        product_id: IDS.SOURCE_CONNECTED, merchant_id: p.seller, title: p.title, brand: p.brand, price: p.price, currency: 'USD', in_stock: true,
+        pivota_signature_id: IDS.SIG_CONNECTED, product_group_id: p.group,
+        variants: [{ variant_id: 'v-9001-1', sku_id: 'v-9001-1', title: 'Default', price: p.price }],
+      } }];
     }
     return [404, { detail: 'PRODUCT_NOT_FOUND' }];
   });
@@ -205,19 +244,28 @@ async function call(name, args) {
       // A group id where a product id belongs.
       gp_group_minted: await gp({ product_id: IDS.GROUP_MINTED }),
       gp_group_minted_with_seller: await gp({ merchant_id: IDS.SELLER_MINTED, product_id: IDS.GROUP_MINTED }),
-      gp_group_several: await gp({ product_id: IDS.GROUP_SEVERAL }),
+      gp_group_connected_with_seller: await gp({ merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.GROUP_CONNECTED }),
+      gp_group_shared: await gp({ product_id: IDS.GROUP_SHARED }),
+      gp_group_unsigned: await gp({ product_id: IDS.GROUP_UNSIGNED }),
       gp_group_unknown: await gp({ product_id: IDS.GROUP_UNKNOWN }),
       go_group_minted: await go({ product_id: IDS.GROUP_MINTED }),
-      go_group_several: await go({ product_id: IDS.GROUP_SEVERAL }),
+      go_group_shared: await go({ product_id: IDS.GROUP_SHARED }),
+      go_group_unsigned: await go({ product_id: IDS.GROUP_UNSIGNED }),
       go_group_argument: await go({ product_group_id: IDS.GROUP_MINTED }),
       // A seller that is not the product's.
       gp_wrong_observed_seller: await gp({ merchant_id: IDS.SELLER_OTHER_OBSERVED, product_id: IDS.SIG_MINTED }),
       gp_wrong_connected_seller: await gp({ merchant_id: IDS.SELLER_OTHER_CONNECTED, product_id: IDS.SIG_MINTED }),
       gp_wrong_seller_of_connected: await gp({ merchant_id: IDS.SELLER_OTHER_CONNECTED, product_id: IDS.SIG_CONNECTED }),
       gp_shared_seed_seller_of_connected: await gp({ merchant_id: 'external_seed', product_id: IDS.SIG_CONNECTED }),
+      // A seller the product IS known under, though get_pdp_v2 answered another: the signature's own row seller
+      // (the canonical-group fallback), and a seller the answered product's group names.
+      gp_fallback_row_seller: await gp({ merchant_id: IDS.SELLER_FALLBACK_ROW, product_id: IDS.SIG_FALLBACK }),
+      gp_fallback_canonical_seller: await gp({ merchant_id: IDS.SELLER_FALLBACK_CANONICAL, product_id: IDS.SIG_FALLBACK }),
+      gp_fallback_shared_seed_seller: await gp({ merchant_id: 'external_seed', product_id: IDS.SIG_FALLBACK }),
+      gp_fallback_other_seller: await gp({ merchant_id: IDS.SELLER_OTHER_OBSERVED, product_id: IDS.SIG_FALLBACK }),
       // One fact per code.
       gp_not_servable: await gp({ product_id: IDS.SIG_NOT_SERVABLE }),
-      gp_resolved_no_content: await gp({ product_id: IDS.SIG_SECOND_OF_SEVERAL }),
+      gp_resolved_no_content: await gp({ product_id: SIG_NO_CONTENT }),
       gp_unknown_signature: await gp({ product_id: `sig_${'f'.repeat(32)}` }),
       gp_unknown_at_connected: await gp({ merchant_id: IDS.SELLER_CONNECTED, product_id: 'no-such-product' }),
       go_unknown_signature: await go({ product_id: `sig_${'f'.repeat(32)}` }),
