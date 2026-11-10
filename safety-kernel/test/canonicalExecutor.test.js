@@ -277,9 +277,26 @@ test('get_order: a kernel-tracked order owned by another user is denied (ownersh
   // create an order owned by user_1
   const session_id = await newSession(exec);
   await exec('complete_checkout_session', { idempotency_key: 'idem-own-1', session_id, payment_authorization: { token: 't' } }, CTX);
-  // a different user asking for the same order id → STATE_LINKAGE_MISMATCH
+  // a different user asking for the same order id → NOT FOUND, the answer an untracked id gets: a foreign
+  // caller is never told the id exists (STATE_LINKAGE_MISMATCH would say "yours? no, but it is real")
   const other = { user_ref: 'user_2', acp_session_id: 'acp_2' };
-  await assert.rejects(exec('get_order', { order_id: 'o_exec' }, other), (e) => e.code === 'STATE_LINKAGE_MISMATCH');
+  await assert.rejects(
+    exec('get_order', { order_id: 'o_exec' }, other),
+    (e) => e.code === 'QUOTE_NOT_FOUND' && e.detail?.reason === 'order_not_found',
+  );
+});
+
+test('get_order: the same user in another session, or under another agent, is not found either', async () => {
+  const { exec, reads } = setup({ verify: okVerify });
+  const session_id = await newSession(exec);
+  await exec('complete_checkout_session', { idempotency_key: 'idem-own-2', session_id, payment_authorization: { token: 't' } }, { ...CTX, agent_id: 'agent_a' });
+  const before = reads.length;
+  for (const ctx of [{ ...CTX, acp_session_id: 'acp_other' }, { ...CTX, agent_id: 'agent_b' }]) {
+    await assert.rejects(exec('get_order', { order_id: 'o_exec' }, ctx), (e) => e.code === 'QUOTE_NOT_FOUND');
+  }
+  assert.equal(reads.length, before, 'no upstream read for a foreign order');
+  await exec('get_order', { order_id: 'o_exec' }, { ...CTX, agent_id: 'agent_a' });
+  assert.equal(reads.length, before + 1, 'the owner reads it');
 });
 
 test('P0 single-use: a session cannot be completed twice (different keys) — no double charge', async () => {

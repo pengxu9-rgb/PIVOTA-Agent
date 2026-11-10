@@ -1698,8 +1698,44 @@ export function toToolError(error) {
     body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
     body.detail = { reason: error.detail?.reason === "purchase_outcome_unknown" ? "purchase_outcome_unknown" : "ucp_reap_create_outcome_unknown" };
   }
+  // The upstream cancel (FIX_PLAN C-11, CHECKOUT_CANCEL_UPSTREAM_ENABLED): every "not canceled" outcome says so in
+  // words an agent cannot read as canceled. Only that lane raises these reasons, so with the flag off no answer
+  // changes. Reasons are our own vocabulary; no request value is echoed.
+  if (error instanceof PivotaCommerceError && error.detail?.op === "cancel_checkout_session") {
+    const notCanceled = CANCEL_NOT_CANCELED_ANSWERS[error.detail.reason];
+    if (notCanceled && notCanceled.code === code) {
+      body.message = notCanceled.message;
+      body.detail = { reason: error.detail.reason, canceled: false };
+      body.recovery = notCanceled.recovery;
+    }
+  }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
+
+// cancel_checkout_session's "not canceled" answers (canonicalExecutor.js cancelSessionUpstream). A refund is the
+// merchant's to make (decision D-03): the paid answer points there and never offers to execute one.
+const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
+  order_paid_not_canceled: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "The buyer already paid for this order, so it was not canceled.",
+    recovery: "do not tell the buyer the order was canceled; a refund is the merchant's to make: the buyer asks the merchant for one",
+  },
+  payment_processing_not_canceled: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "A payment for this order is being processed, so it was not canceled.",
+    recovery: "do not tell the buyer the order was canceled; read it again with get_order shortly",
+  },
+  cancel_not_confirmed: {
+    code: "MERCHANT_UNAVAILABLE",
+    message: "The cancellation could not be confirmed, so the order may still be payable.",
+    recovery: "retry with the same idempotency_key; until it answers canceled, do not tell the buyer the order was canceled",
+  },
+  session_already_ordered: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This checkout session already became an order, so canceling the session alone would leave the order payable.",
+    recovery: "cancel it by its order_id",
+  },
+});
 
 // --- small helpers ----------------------------------------------------------------------------------------
 

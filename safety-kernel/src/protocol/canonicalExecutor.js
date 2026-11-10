@@ -8,8 +8,9 @@
 //   create/update_checkout_session -> previewQuote        (session_id == quote_id)
 //   get_checkout_session           -> quotes.resolveForOrder (ownership + expiry checked)
 //   complete_checkout_session      -> verifyPaymentAuthorization -> createOrder -> mintConfirmation -> submitPayment
-//   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort)
-//   get_order / request_after_sales-> get_order_status (ownership-gated) / requestAfterSales
+//   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort); with
+//                                     CHECKOUT_CANCEL_UPSTREAM_ENABLED, the backend cancel's own outcome
+//   get_order / request_after_sales-> get_order_status (ownership-gated; a foreign order is not found) / requestAfterSales
 //   search_catalog / get_product   -> upstream reads
 //   start_identity_linking         -> handled at the edge (OAuth), not here
 //   exchange_payment_token         -> PERMANENTLY REFUSED (see delegatedPaymentRefusal.js): that operation is
@@ -233,6 +234,12 @@ export function createCanonicalExecutor({
   delegatedTokenHandoffEnabled = false,
   readAgentPurchase,
   readStorefrontHandoff,
+  // FIX_PLAN C-11. `cancelUpstreamOrder(order_id, ctx)` asks the backend to cancel the order and close its
+  // hosted payment page, and answers one of the kinds of classifyUpstreamCancel (src/services/
+  // checkoutCancelUpstream.js). Used only while `cancelUpstreamEnabled` (CHECKOUT_CANCEL_UPSTREAM_ENABLED,
+  // a boolean or a thunk, default OFF) is on.
+  cancelUpstreamOrder,
+  cancelUpstreamEnabled = false,
 } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
@@ -383,6 +390,11 @@ export function createCanonicalExecutor({
       }
 
       case 'cancel_checkout_session':
+        // CHECKOUT_CANCEL_UPSTREAM_ENABLED (default OFF): the backend cancel is the answer (FIX_PLAN C-11).
+        // Off, the gateway-row-only cancel below, byte-identical to before this lane existed.
+        if (flagOn(cancelUpstreamEnabled) && typeof cancelUpstreamOrder === 'function') {
+          return cancelSessionUpstream({ kernel, cancelUpstreamOrder }, params, ctx);
+        }
         return cancelSession(kernel, params, ctx);
 
       case 'complete_checkout_session':
@@ -426,7 +438,7 @@ export function createCanonicalExecutor({
         // verified user can never read an order the kernel does not know to be theirs (no fail-open on an
         // untracked id, no swallowing of store errors). The upstream read is ALSO scoped by user_ref
         // (defense in depth: the backend must enforce it even if it is order-id addressable).
-        await kernel._requireOrder(params.order_id, ctx);
+        await requireOwnedOrder(kernel, params.order_id, ctx);
         return read('get_order_status', { status: { order_id: params.order_id, user_ref: ctx.user_ref } });
       }
 
@@ -845,6 +857,60 @@ async function cancelSession(kernel, params, ctx) {
     }
   }
   return { session_id: params.session_id ?? null, order_id: order_id ?? null, status: 'canceled' };
+}
+
+// An order this caller does not own is NOT FOUND: the same answer as an id the kernel never tracked. The
+// STATE_LINKAGE_MISMATCH `_requireOrder` raises for another user, session or agent would confirm to that caller
+// that the id exists. Store errors and every other refusal propagate unchanged.
+async function requireOwnedOrder(kernel, order_id, ctx) {
+  try {
+    return await kernel._requireOrder(order_id, ctx);
+  } catch (err) {
+    if (err instanceof PivotaCommerceError && err.code === 'STATE_LINKAGE_MISMATCH') {
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id });
+    }
+    throw err;
+  }
+}
+
+// FIX_PLAN C-11, behind CHECKOUT_CANCEL_UPSTREAM_ENABLED. The answer is the BACKEND's: it closes the hosted
+// payment page at the PSP and cancels the order only while it is unpaid. "canceled" is said only when the backend
+// said so; a paid order is refused with that reason (a refund is the merchant's, D-03), and an outcome the backend
+// could not confirm is retriable and never reads as canceled.
+async function cancelSessionUpstream({ kernel, cancelUpstreamOrder }, params, ctx) {
+  const op = 'cancel_checkout_session';
+  if (!nonEmpty(params.order_id)) {
+    // A session (quote) that never became an order: nothing is payable upstream yet. Claim the quote so it can
+    // never become one; the claim is the same single-use record createOrder takes, so a later
+    // complete/create_payment_link on this session is refused QUOTE_ALREADY_USED. Ownership + expiry first.
+    if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+    const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx);
+    const claimed = await kernel._quoteClaims.putIfAbsent(snapshot.quote_id, { canceled: true });
+    if (!claimed) {
+      // The session already became an order, whose id this call did not name: cancelling the session alone
+      // would leave that order payable, so say so instead of answering "canceled".
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_already_ordered' });
+    }
+    return { session_id: params.session_id, order_id: null, status: 'canceled' };
+  }
+
+  const order_id = params.order_id;
+  const record = await requireOwnedOrder(kernel, order_id, ctx);
+  const outcome = await cancelUpstreamOrder(order_id, ctx);
+  switch (outcome?.kind) {
+    case 'canceled':
+    case 'already_canceled':
+      await kernel._orderStore.set(order_id, { ...record, status: 'canceled' });
+      return { session_id: params.session_id ?? null, order_id, status: 'canceled' };
+    case 'paid':
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'order_paid_not_canceled', order_id });
+    case 'processing':
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'payment_processing_not_canceled', order_id });
+    case 'not_found':
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id });
+    default:
+      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { op, reason: 'cancel_not_confirmed', order_id });
+  }
 }
 
 // Map a kernel quote snapshot → the canonical "checkout session" shape adapters return.
