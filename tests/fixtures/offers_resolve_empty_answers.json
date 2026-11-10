@@ -12,7 +12,7 @@
    "canonical_product_group_id": null,
    "canonical_ref": null,
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "not_servable",
@@ -25,11 +25,11 @@
    "has_external": false,
    "has_internal": false,
    "latency_ms": 1,
-   "merchant_scope": "merch_obs_a9af6104c77f708e",
+   "merchant_scope": "merch_obs_0000000000000001",
    "reason": "no_candidates",
    "reason_code": "NO_CANDIDATES",
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "not_servable",
@@ -73,7 +73,7 @@
   "offers": [],
   "offers_count": 0,
   "requested_target": {
-   "merchant_id": "merch_obs_a9af6104c77f708e",
+   "merchant_id": "merch_obs_0000000000000001",
    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
   },
   "resolution_mode": "not_servable",
@@ -104,7 +104,7 @@
    "canonical_product_group_id": null,
    "canonical_ref": null,
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "external_only",
@@ -117,11 +117,11 @@
    "has_external": true,
    "has_internal": false,
    "latency_ms": 1,
-   "merchant_scope": "merch_obs_a9af6104c77f708e",
+   "merchant_scope": "merch_obs_0000000000000001",
    "reason": "resolved",
    "reason_code": "OK",
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "external_only",
@@ -204,7 +204,7 @@
   ],
   "offers_count": 1,
   "requested_target": {
-   "merchant_id": "merch_obs_a9af6104c77f708e",
+   "merchant_id": "merch_obs_0000000000000001",
    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
   },
   "resolution_mode": "external_only",
@@ -235,7 +235,7 @@
    "canonical_product_group_id": null,
    "canonical_ref": null,
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "external_only",
@@ -252,11 +252,11 @@
     "offers": 1,
     "seeds": 1
    },
-   "merchant_scope": "merch_obs_a9af6104c77f708e",
+   "merchant_scope": "merch_obs_0000000000000001",
    "reason": "resolved",
    "reason_code": "OK",
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "external_only",
@@ -347,7 +347,7 @@
   ],
   "offers_count": 1,
   "requested_target": {
-   "merchant_id": "merch_obs_a9af6104c77f708e",
+   "merchant_id": "merch_obs_0000000000000001",
    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
   },
   "resolution_mode": "external_only",
@@ -379,7 +379,7 @@
    "canonical_product_group_id": null,
    "canonical_ref": null,
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "not_servable",
@@ -392,11 +392,11 @@
    "has_external": false,
    "has_internal": false,
    "latency_ms": 1,
-   "merchant_scope": "merch_obs_a9af6104c77f708e",
+   "merchant_scope": "merch_obs_0000000000000001",
    "reason": "no_candidates",
    "reason_code": "NO_CANDIDATES",
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "not_servable",
@@ -440,7 +440,7 @@
   "offers": [],
   "offers_count": 0,
   "requested_target": {
-   "merchant_id": "merch_obs_a9af6104c77f708e",
+   "merchant_id": "merch_obs_0000000000000001",
    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
   },
   "resolution_mode": "not_servable",
@@ -632,7 +632,7 @@
    "canonical_product_group_id": null,
    "canonical_ref": null,
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "not_servable",
@@ -648,11 +648,11 @@
    "has_external": false,
    "has_internal": false,
    "latency_ms": 1,
-   "merchant_scope": "merch_obs_a9af6104c77f708e",
+   "merchant_scope": "merch_obs_0000000000000001",
    "reason": "offers_unavailable",
    "reason_code": "DB_ERROR",
    "requested_target": {
-    "merchant_id": "merch_obs_a9af6104c77f708e",
+    "merchant_id": "merch_obs_0000000000000001",
     "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
    },
    "resolution_mode": "not_servable",
@@ -696,7 +696,7 @@
   "offers": [],
   "offers_count": 0,
   "requested_target": {
-   "merchant_id": "merch_obs_a9af6104c77f708e",
+   "merchant_id": "merch_obs_0000000000000001",
    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
   },
   "resolution_mode": "not_servable",
