@@ -53,6 +53,9 @@ const THROTTLE_REASON = /^(?:http_429|http_430|http_5\d\d|host_backoff|host_budg
 // services/listPriceTiers.js) is never older than Shopify's 15-min limit: the window is capped by the cache's own
 // constant, which no env var reaches.
 const { MAX_PRICE_WINDOW_MS } = require('./priceCache');
+const { listPriceTiersActive } = require('./listPriceTiers');
+// When a UCP lookup answer arrived (ucpLiveOfferRead's lookup core; a symbol on the read).
+const UCP_ANSWERED_AT = Symbol.for('pivota.ucp.answeredAtMs');
 const SHARED_TTL_MS = Math.min(15 * 60 * 1000, MAX_PRICE_WINDOW_MS);
 // TOP-K LIVE READ (UCP_LIVE_SEARCH_READ_TOP_K, D-16; read by the caller and passed as `options.topK` /
 // `options.liveBudgetMs`, only while UCP_LIVE_SEARCH_READ=enforce). 0, the default, is the overlay exactly as before.
@@ -500,16 +503,20 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
       if (!card || typeof card !== 'object' || status !== 'verified') continue;
       ucp.verified += 1;
       if (Math.abs(Number(card.price) - read.amount) > 0.01) ucp.drifted += 1;
+      // With the list price tiers on, a memoized lookup (another request's, <=30 s) is dated by when the merchant
+      // answered, so it can never pass for this request's read. Off: stamped at settle time, as always.
+      const answeredAt = Number(read[UCP_ANSWERED_AT]);
+      const readAsOf = listPriceTiersActive() && Number.isFinite(answeredAt) ? new Date(answeredAt).toISOString() : asOf;
       const raise = read.available === true && card.in_stock !== true;
       if (raise) ucp.stockRaised += 1;
       const next = {
         ...card, price: read.amount, price_amount: read.amount,
-        price_source: 'merchant_live', price_as_of: asOf,
+        price_source: 'merchant_live', price_as_of: readAsOf,
         // variant_in_stock is the merchant's answer for THIS variant only; the card speaks for the product
         // (any shade), so a false answer is reported here and never written over the card.
         live_read: {
           status: read.status, market: read.market || null, market_basis: read.market_basis || null,
-          variant_in_stock: read.available, source: 'merchant_ucp_lookup_catalog', checked_at: asOf,
+          variant_in_stock: read.available, source: 'merchant_ucp_lookup_catalog', checked_at: readAsOf,
         },
       };
       if (raise) {

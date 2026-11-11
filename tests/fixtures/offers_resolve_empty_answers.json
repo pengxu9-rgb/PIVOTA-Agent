@@ -1,0 +1,998 @@
+{
+ "connected_not_orderable_withheld": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "prod_placeholder_0000000001",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "commerce_surface": "agent_api",
+     "confidence": 0.0,
+     "kind": "internal_product",
+     "merchant_id": "merch_conn_0000000000000001",
+     "platform": "shopify",
+     "product_id": "prod_placeholder_0000000001",
+     "reason": "surface_not_enabled"
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_conn_0000000000000001",
+   "reason": "not_servable",
+   "reason_code": "NOT_SERVABLE",
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [
+    "surface_not_enabled"
+   ],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_fuzzy_ref",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 0,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "products_cache_by_alias",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "products_cache",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "external_seed_by_internal_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "external_product_seeds_identity_retry",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "merchant_id": "merch_conn_0000000000000001",
+   "product_id": "prod_placeholder_0000000001"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "connected_out_of_stock_withheld": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "prod_placeholder_0000000001",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "commerce_surface": "agent_api",
+     "confidence": 0.0,
+     "kind": "internal_product",
+     "merchant_id": "merch_conn_0000000000000001",
+     "platform": "shopify",
+     "product_id": "prod_placeholder_0000000001",
+     "reason": "matched_but_not_servable",
+     "reason_codes": [
+      "not_servable"
+     ],
+     "requested_variant_id": null
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_conn_0000000000000001",
+   "reason": "not_servable",
+   "reason_code": "NOT_SERVABLE",
+   "requested_target": {
+    "merchant_id": "merch_conn_0000000000000001",
+    "product_id": "prod_placeholder_0000000001"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [
+    "not_servable"
+   ],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_fuzzy_ref",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 0,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "products_cache_by_alias",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "products_cache",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "external_seed_by_internal_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "external_product_seeds_identity_retry",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "merchant_id": "merch_conn_0000000000000001",
+   "product_id": "prod_placeholder_0000000001"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "minted_flag_off_no_seed": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_obs_0000000000000001",
+   "reason": "no_candidates",
+   "reason_code": "NO_CANDIDATES",
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_fuzzy_ref",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 0,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "merchant_id": "merch_obs_0000000000000001",
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "minted_fresh_offer": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "confidence": 0.8,
+     "domain": "brand-x.example",
+     "external_product_id": "brand-x:00b3d1e673bcbbaf",
+     "kind": "external_seed",
+     "reason": "matched_external_seed",
+     "seed_id": "seed:catalog_enrichment_agent_v1:00b3d1e673bcbbaf",
+     "variant_id": "brand-x:00b3d1e673bcbbaf::canonical"
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "external_only",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": true,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_obs_0000000000000001",
+   "reason": "resolved",
+   "reason_code": "OK",
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "external_only",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_signature_attached_key",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [
+   {
+    "affiliate_url": "https://api.pivota.test/r?token=placeholder",
+    "cart_prefilled": false,
+    "confidence": 0.8,
+    "currency": "USD",
+    "execution_spec": {
+     "cart_url": null,
+     "expires_at": "2026-11-17T00:00:00Z",
+     "merchant_domain": "brand-x.example",
+     "pdp_url": "https://brand-x.example/products/calm-barrier-cream?utm_source=pivota&utm_medium=catalog_enrichment_agent_v1&utm_campaign=US&pvt_click_id=clk_000000000000000000000000&utm_content=clk_000000000000000000000000",
+     "rail": "referral",
+     "tracking": {
+      "click_id": "clk_000000000000000000000000",
+      "join_mode": "referral_only",
+      "param": "pvt_click_id"
+     },
+     "variant_id": null
+    },
+    "in_stock": true,
+    "internal_checkout_items": null,
+    "merchant_id": "brand-x.example",
+    "merchant_name": "Brand X",
+    "offer_id": "of:external_seed:seed:catalog_enrichment_agent_v1:00b3d1e673bcbbaf:brand-x:00b3d1e673bcbbaf::canonical",
+    "price": 21.0,
+    "purchase_route": "affiliate_outbound",
+    "seller": "Brand X",
+    "source": {
+     "canonical_url": "https://brand-x.example/products/calm-barrier-cream",
+     "destination_url": "https://brand-x.example/products/calm-barrier-cream",
+     "domain": "brand-x.example",
+     "external_product_id": "brand-x:00b3d1e673bcbbaf",
+     "image_url": "https://brand-x.example/img/calm-barrier-cream.jpg",
+     "seed_id": "seed:catalog_enrichment_agent_v1:00b3d1e673bcbbaf",
+     "title": "Calm Barrier Cream",
+     "type": "external_seed",
+     "variant_id": "brand-x:00b3d1e673bcbbaf::canonical"
+    }
+   }
+  ],
+  "offers_count": 1,
+  "requested_target": {
+   "merchant_id": "merch_obs_0000000000000001",
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+  },
+  "resolution_mode": "external_only",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "minted_stale_flagged": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "confidence": 0.8,
+     "domain": "brand-x.example",
+     "external_product_id": "brand-x:00b3d1e673bcbbaf",
+     "kind": "external_seed",
+     "reason": "matched_external_seed",
+     "seed_id": "seed:catalog_enrichment_agent_v1:00b3d1e673bcbbaf",
+     "variant_id": "brand-x:00b3d1e673bcbbaf::canonical"
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "external_only",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": true,
+   "has_internal": false,
+   "latency_ms": 1,
+   "live_verification_returned": {
+    "offers": 1,
+    "seeds": 1
+   },
+   "merchant_scope": "merch_obs_0000000000000001",
+   "reason": "resolved",
+   "reason_code": "OK",
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "external_only",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_signature_attached_key",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [
+   {
+    "affiliate_url": "https://api.pivota.test/r?token=placeholder",
+    "availability": "unknown",
+    "cart_prefilled": false,
+    "confidence": 0.8,
+    "currency": "USD",
+    "execution_spec": {
+     "cart_url": null,
+     "expires_at": "2026-11-17T00:00:00Z",
+     "merchant_domain": "brand-x.example",
+     "pdp_url": "https://brand-x.example/products/calm-barrier-cream?utm_source=pivota&utm_medium=catalog_enrichment_agent_v1&utm_campaign=US&pvt_click_id=clk_000000000000000000000000&utm_content=clk_000000000000000000000000",
+     "rail": "referral",
+     "tracking": {
+      "click_id": "clk_000000000000000000000000",
+      "join_mode": "referral_only",
+      "param": "pvt_click_id"
+     },
+     "variant_id": null
+    },
+    "internal_checkout_items": null,
+    "merchant_id": "brand-x.example",
+    "merchant_name": "Brand X",
+    "offer_id": "of:external_seed:seed:catalog_enrichment_agent_v1:00b3d1e673bcbbaf:brand-x:00b3d1e673bcbbaf::canonical",
+    "price": 21.0,
+    "purchase_route": "affiliate_outbound",
+    "requires_live_verification": {
+     "lookup_variant_id": null,
+     "price_stale": true,
+     "reasons": [
+      "destination_never_verified",
+      "stale_snapshot"
+     ]
+    },
+    "seller": "Brand X",
+    "source": {
+     "canonical_url": "https://brand-x.example/products/calm-barrier-cream",
+     "destination_url": "https://brand-x.example/products/calm-barrier-cream",
+     "domain": "brand-x.example",
+     "external_product_id": "brand-x:00b3d1e673bcbbaf",
+     "image_url": "https://brand-x.example/img/calm-barrier-cream.jpg",
+     "seed_id": "seed:catalog_enrichment_agent_v1:00b3d1e673bcbbaf",
+     "title": "Calm Barrier Cream",
+     "type": "external_seed",
+     "variant_id": "brand-x:00b3d1e673bcbbaf::canonical"
+    }
+   }
+  ],
+  "offers_count": 1,
+  "requested_target": {
+   "merchant_id": "merch_obs_0000000000000001",
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+  },
+  "resolution_mode": "external_only",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "minted_stale_held": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "blockers": [
+      "destination_never_verified",
+      "stale_snapshot"
+     ],
+     "confidence": 0.0,
+     "kind": "external_seed",
+     "reason": "external_seed_requires_live_verification",
+     "seed_id": "seed:catalog_enrichment_agent_v1:00b3d1e673bcbbaf"
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_obs_0000000000000001",
+   "reason": "no_candidates",
+   "reason_code": "NO_CANDIDATES",
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_signature_attached_key",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "merchant_id": "merch_obs_0000000000000001",
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "mirror_dead_page": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [
+    {
+     "blockers": [
+      "destination_dead"
+     ],
+     "confidence": 0.0,
+     "kind": "external_seed",
+     "reason": "filtered_external_seed",
+     "seed_id": "eps_cdcdcdcdcdcdcdcdcdcdcdcd"
+    }
+   ],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": null,
+   "reason": "no_candidates",
+   "reason_code": "NO_CANDIDATES",
+   "requested_target": {
+    "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_pivota_signature",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "mirror_usd_seed_sg_buyer": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "buyer_currency_filtered": {
+    "USD": 1
+   },
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": null,
+   "reason": "no_candidates",
+   "reason_code": "NO_CANDIDATES",
+   "requested_target": {
+    "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_pivota_signature",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 1,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "product_id": "sig_5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "seed_lookup_failed": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {
+    "catalog_offers": "db_schema",
+    "external_product_seeds": "db_schema"
+   },
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": "merch_obs_0000000000000001",
+   "reason": "offers_unavailable",
+   "reason_code": "DB_ERROR",
+   "requested_target": {
+    "merchant_id": "merch_obs_0000000000000001",
+    "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "error": "UndefinedTableError",
+     "latency_ms": 1,
+     "ok": false,
+     "query": "external_seed_by_fuzzy_ref",
+     "reason": "DB_ERROR",
+     "reason_code": "db_schema",
+     "source": "external_product_seeds",
+     "status": "error"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "error": "UndefinedTableError",
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "DB_ERROR",
+     "reason_code": "db_schema",
+     "source": "catalog_offers",
+     "status": "error"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "merchant_id": "merch_obs_0000000000000001",
+   "product_id": "sig_400b9b8df4fb0afa1891c86607e05cf1"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ },
+ "unknown_signature_no_seed": {
+  "commerce_surface": "agent_api",
+  "input": {
+   "product_id": "sig_0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+   "sku_id": null
+  },
+  "mapping": {
+   "candidates": [],
+   "canonical_identity_status": "no_canonical_identity",
+   "canonical_product": null,
+   "canonical_product_group_id": null,
+   "canonical_ref": null,
+   "requested_target": {
+    "product_id": "sig_0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "substitution_reason_codes": []
+  },
+  "metadata": {
+   "commerce_surface": "agent_api",
+   "failure_breakdown": {},
+   "has_external": false,
+   "has_internal": false,
+   "latency_ms": 1,
+   "merchant_scope": null,
+   "reason": "no_candidates",
+   "reason_code": "NO_CANDIDATES",
+   "requested_target": {
+    "product_id": "sig_0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+   },
+   "resolution_mode": "not_servable",
+   "resolved_target": null,
+   "servable_reason_codes": [],
+   "source": "offers.resolve",
+   "sources": [
+    {
+     "latency_ms": 1,
+     "ok": true,
+     "query": "external_seed_by_fuzzy_ref",
+     "reason": "OK",
+     "reason_code": "ok",
+     "row_count": 0,
+     "source": "external_product_seeds",
+     "status": "ok"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "products_cache_by_alias",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "products_cache",
+     "status": "empty"
+    },
+    {
+     "latency_ms": 1,
+     "ok": false,
+     "query": "catalog_offers_by_canonical_identity",
+     "reason": "NO_CANDIDATES",
+     "reason_code": "no_candidates",
+     "row_count": 0,
+     "source": "catalog_offers",
+     "status": "empty"
+    }
+   ],
+   "substitution_reason_codes": []
+  },
+  "offers": [],
+  "offers_count": 0,
+  "requested_target": {
+   "product_id": "sig_0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+  },
+  "resolution_mode": "not_servable",
+  "resolved_target": null,
+  "status": "success",
+  "substitution_reason_codes": []
+ }
+}
