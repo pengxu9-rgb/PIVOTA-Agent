@@ -49,6 +49,8 @@ import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import warmHandoffModule from "../../src/services/ucpWarmHandoff.js";
 import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js";
+// The store-cart referral client's vocabulary (CommonJS): the flag, and the one reader of a referral's members.
+import storefrontCartReferralModule from "../../src/services/storefrontCartReferral.js";
 import { judgeSellerUrl, pivotaHopDestination, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { encodeUcpVariantItemId, findRealVariant, realVariantsOf } from "./ucpVariantIds.js";
 
@@ -561,7 +563,11 @@ function trackingPairsOf(catalogLink) {
 }
 
 export function carryAttribution(cartUrl, catalogLink) {
-  const tracking = trackingPairsOf(catalogLink);
+  return carryTrackingPairs(cartUrl, trackingPairsOf(catalogLink));
+}
+
+/** Append tracking members to the cart URL's raw query, never overwriting one the seller set. Pure. */
+function carryTrackingPairs(cartUrl, tracking) {
   if (!tracking) return cartUrl;
   let parsed;
   try { parsed = new URL(cartUrl); } catch { return cartUrl; }
@@ -591,6 +597,97 @@ export function cartAttributionOf(catalogLink) {
   const pairs = catalogLink ? trackingPairsOf(catalogLink) : null;
   if (!pairs || !pairs.length) return null;
   return Object.fromEntries(pairs);
+}
+
+// ---- the referral for a cart whose catalog link carries none --------------------------------------------------------
+//
+// THE DOOR'S OWN PRODUCT READ HANDS IT THE SELLER'S DIRECT LINK. That read is made with the gateway's service key, so
+// the row's link is the seller's page, not a stamped referral hop: `carryAttribution` then has nothing to copy, the
+// cart link carries no tracking member, no click is recorded, and a purchase from the cart cannot be joined to us or
+// to the partner. With AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED on (default OFF, read per call), a create whose
+// catalog link carries NO tracking member asks the backend for one referral just before `create_cart`
+// (src/services/storefrontCartReferral.js): one click row there, and the tracking members a normal referral carries.
+// They ride (a) on the cart URL, exactly as a stamped link's members do, and (b) as `cart.attribution` while
+// CART_ATTRIBUTION_FLAG is on. A link that already carries tracking members is left alone: its referral exists.
+//
+// ONLY WHEN A CART IS ABOUT TO BE SENT. The mint comes after the variant is resolved, the catalog check passed and
+// the seller's endpoint was found, so a checkout that falls back before any store call mints nothing.
+//
+// THE TIME IT MAY TAKE. At most REFERRAL_MINT_BUDGET_MS, and never time the cart call needs: it gets what is left of
+// the door's budget above the cart call's own share. Too little left is a miss, not a slower cart.
+//
+// A MISS NEVER FAILS THE BUYER. The policy is REFERRAL_MISS_POLICY: the cart is built anyway, with no attribution,
+// and the miss is counted (cartReferralOutcomeCounts) and logged with its reason. The other policy this could have
+// been ("fallback_to_product_page": answer the catalog price and the product page) would trade a working store cart
+// for an unattributed product page, which carries no referral either.
+//
+// A RE-READ MINTS NOTHING. The members a create minted ride in the checkout id (ucpCheckoutEscalation.js, `t`), and a
+// re-read carries those onto the cart URL the seller answers with.
+export const CART_REFERRAL_FLAG = storefrontCartReferralModule.STOREFRONT_CART_REFERRAL_ENV;
+export const REFERRAL_MINT_BUDGET_MS = storefrontCartReferralModule.DEFAULT_TIMEOUT_MS;
+export const REFERRAL_MISS_POLICIES = Object.freeze({ buildCartUnattributed: "build_cart_unattributed", fallbackToProductPage: "fallback_to_product_page" });
+export const REFERRAL_MISS_POLICY = REFERRAL_MISS_POLICIES.buildCartUnattributed;
+const REFERRAL_MIN_BUDGET_MS = 50;
+const MAX_REFERRAL_PAIRS = 12;
+
+export function cartReferralEnabled(env = process.env) {
+  return storefrontCartReferralModule.storefrontCartReferralFlagOn(env);
+}
+
+// Per-process counts of what each mint came to: `minted`, or `miss:<reason>`. The log line is the fleet-wide view.
+const cartReferralOutcomes = new Map();
+function countReferral(outcome) { cartReferralOutcomes.set(outcome, (cartReferralOutcomes.get(outcome) || 0) + 1); }
+export function cartReferralOutcomeCounts() { return Object.fromEntries(cartReferralOutcomes); }
+export function resetCartReferralOutcomeCountsForTest() { cartReferralOutcomes.clear(); }
+
+/** Tracking members as this door carries them, or null when `value` is not exactly that. Pure. */
+export function trackingPairsFrom(value) {
+  const entries = Array.isArray(value) ? value : (isPlainObject(value) ? Object.entries(value) : null);
+  if (!entries || entries.length === 0 || entries.length > MAX_REFERRAL_PAIRS) return null;
+  const pairs = [];
+  const seen = new Set();
+  for (const entry of entries) {
+    if (!Array.isArray(entry) || entry.length !== 2) return null;
+    const [key, val] = entry;
+    if (typeof key !== "string" || typeof val !== "string" || !TRACKING_KEY_RE.test(key) || !TRACKING_VALUE_RE.test(val) || seen.has(key)) return null;
+    seen.add(key);
+    pairs.push([key, val]);
+  }
+  return pairs;
+}
+
+/**
+ * Ask for one referral, inside `budgetMs`. Resolves `{ clickId, pairs }`, or null for a miss (counted and logged with
+ * its reason, never the click id). Never throws.
+ */
+async function mintCartReferral({ mintReferral, budgetMs, sellerHost, log }) {
+  const miss = (reason) => {
+    countReferral(`miss:${reason}`);
+    emitReferral(log, "warn", { outcome: "miss", reason, policy: REFERRAL_MISS_POLICY, seller_host: sellerHost });
+    return null;
+  };
+  if (typeof mintReferral !== "function") return miss("no_minter");
+  const budget = Math.min(REFERRAL_MINT_BUDGET_MS, Math.floor(budgetMs));
+  if (!(budget >= REFERRAL_MIN_BUDGET_MS)) return miss("no_budget");
+  let answered;
+  try { answered = await withBudget(Promise.resolve().then(() => mintReferral()), budget); } catch { return miss("minter_threw"); }
+  if (answered && answered.timedOut) return miss("timeout");
+  if (!isPlainObject(answered) || answered.kind !== storefrontCartReferralModule.OUTCOME.minted) {
+    const code = isPlainObject(answered) && typeof answered.code === "string" && /^[A-Za-z0-9_]{1,64}$/.test(answered.code) ? answered.code : "no_answer";
+    return miss(code);
+  }
+  const pairs = trackingPairsFrom(answered.pairs);
+  const clickId = pairs ? (pairs.find(([key]) => key === storefrontCartReferralModule.CLICK_ID_MEMBER) || [])[1] : undefined;
+  if (!pairs || !clickId || clickId !== answered.clickId) return miss("malformed_answer");
+  countReferral("minted");
+  emitReferral(log, "info", { outcome: "minted", attributed: answered.attributed === true, seller_host: sellerHost });
+  return { clickId, pairs };
+}
+
+function emitReferral(log, level, detail) {
+  if (log && typeof log[level] === "function") {
+    try { log[level]({ event: "ucp_storefront_cart_referral", ...detail }); } catch { /* never throw the door */ }
+  }
 }
 
 // ---- the door ----------------------------------------------------------------------------------------------------
@@ -664,11 +761,14 @@ function emit(log, level, detail) {
  *   `signals` (optional out-param array): what the seller SAID while this door fell back, for the caller to act on.
  *   Today one signal: `{ reason: "variant_invalid", lines }` — the seller's own door answered a create_cart with a
  *   STRUCTURED tool error naming the variant as unknown (see ucpCheckoutEscalation.js, the variant_invalid policy).
+ *   `mintReferral` (create only, with CART_REFERRAL_FLAG on): asks the backend for one referral when the catalog link
+ *   carries no tracking member; a priced answer then carries `referral: { clickId, pairs }`.
+ *   `referralPairs` (re-read only, same flag): the members a create minted, carried onto the cart URL again.
  *   `discountCode` (create only, with SELLER_DISCOUNT_CODES_FLAG on): the buyer's ONE code, sent to a seller whose
  *   profile advertises the discount capability. With the flag on, the answer carries `discounts`
  *   (readSellerDiscounts) whenever there is something to say about codes.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -732,7 +832,22 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   if (left() <= 0) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
   if (codeToSend !== null && !acceptsDiscountCodes) { codeToSend = null; notSentReason = "not_sent_seller_does_not_advertise"; }
 
-  const cartAttribution = cartId === undefined && cartAttributionEnabled(env) ? cartAttributionOf(catalogLink) : null;
+  // THE REFERRAL (CART_REFERRAL_FLAG). Create: minted now, only when the catalog link carries no tracking member, in
+  // what the budget holds above the cart call's own share. Re-read: the members the create minted, from the id.
+  const referralOn = cartReferralEnabled(env);
+  const linkTracking = catalogLink ? trackingPairsOf(catalogLink) : null;
+  let referral = null;
+  if (referralOn && cartId === undefined && !(linkTracking && linkTracking.length)) {
+    const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
+    referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log });
+    if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
+  } else if (referralOn && cartId !== undefined && !(linkTracking && linkTracking.length)) {
+    const again = trackingPairsFrom(referralPairs);
+    if (again) referral = { clickId: null, pairs: again };
+  }
+  const cartAttribution = cartId === undefined && cartAttributionEnabled(env)
+    ? (cartAttributionOf(catalogLink) || (referral ? Object.fromEntries(referral.pairs) : null))
+    : null;
   let result;
   try {
     const call = cartId !== undefined
@@ -804,6 +919,10 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     return null;
   }
   if (catalogLink) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
+  if (referral) {
+    read.continueUrl = carryTrackingPairs(read.continueUrl, referral.pairs);
+    if (cartId === undefined) read.referral = referral;
+  }
   if (cartId !== undefined && read.cartId !== cartId) { emit(log, "info", { outcome: "fallback", reason: "cart_id_mismatch", seller_host: sellerHost }); return null; }
   emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length });
   return read;

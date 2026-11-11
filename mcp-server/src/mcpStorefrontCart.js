@@ -227,11 +227,11 @@ function storefrontOnlyRefusal(opId) {
  * @param {{ op:{id:string}, toolArgs:object, params:object, ctx:object, attested?:object,
  *           executor:{execute:Function}, merchantDoor?:object, log?:object, onMarketAssumed?:Function, env?:object }} a
  */
-export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attested = {}, executor, merchantDoor, log, onMarketAssumed, env = process.env }) {
+export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attested = {}, executor, merchantDoor, log, onMarketAssumed, env = process.env, referralMinter }) {
   const opId = op && op.id;
   try {
     if (opId === "create_checkout_session") {
-      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env });
+      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env, referralMinter });
     }
     const sessionId = str(own(params, "session_id"));
     if (!sessionId || !decodeEscalationId(sessionId)) return undefined; // a kernel session: untouched
@@ -254,7 +254,7 @@ export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attes
   }
 }
 
-async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env }) {
+async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env, referralMinter }) {
   const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
   // ONLY A SELLER PIVOTA IS NOT CONNECTED TO. A connected merchant's product read can carry a storefront link too
   // (the backend stamps Pivota's own hop on it), so the row alone does not decide: the seller named must be
@@ -290,7 +290,7 @@ async function createStorefrontCart({ op, toolArgs, params, ctx, attested, execu
   if (!escalationOn) return undefined;
   const declines = [];
   const escalated = await tryEscalateUcpCheckout({
-    op, params, ctx, executor, ucpArgs: escalationArgsFor(market), attested, declines, merchantDoor, log, env,
+    op, params, ctx, executor, ucpArgs: escalationArgsFor(market), attested, declines, merchantDoor, log, env, referralMinter,
   });
   if (escalated) {
     const codes = own(quote, "discount_codes");

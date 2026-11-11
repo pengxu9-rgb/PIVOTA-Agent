@@ -44,6 +44,9 @@ const IDS = Object.freeze({
   SOURCE_CONNECTED: '9001',
   // a product search serves under its group-shaped id (`sig_` + 24 hex), store-a's.
   SIG_EMITTED: sig('3'),
+  // store-a again: a product whose catalog link already carries a referral's tracking members.
+  SIG_A_STAMPED: sig('5'),
+  VARIANT_A_STAMPED: '44000000000071',
   GROUP_EMITTED: `sig_${'7'.repeat(24)}`,
   SELLER_A: 'merch_obs_000000000000000a',
   SELLER_B: 'merch_obs_000000000000000b',
@@ -73,7 +76,16 @@ const STORE_PRICE = Object.freeze({
   [IDS.VARIANT_B]: 3000,
   [IDS.VARIANT_D]: 4000,
   [IDS.VARIANT_EMITTED]: 1500,
+  [IDS.VARIANT_A_STAMPED]: 1900,
 });
+
+// The referral the stamped product's catalog link carries (a click id of the shape the backend mints).
+const STAMPED_CLICK_ID = 'clk_0000000000000000000000aa';
+const STAMPED_TRACKING = Object.freeze([
+  ['utm_source', 'pivota'], ['utm_medium', 'search_catalog'], ['utm_campaign', 'US'],
+  ['pvt_click_id', STAMPED_CLICK_ID], ['utm_content', STAMPED_CLICK_ID],
+]);
+const BACKEND_BASE = 'http://backend.storefront-cart.test';
 
 // A seed row as the crawl stores it, for the real producers.
 const seedRow = (externalId, title, url, variants) => ({
@@ -93,6 +105,7 @@ const CATALOG = Object.freeze({
   [IDS.SIG_B]: { seller: IDS.SELLER_B, seed: seedRow('ext_00000000000000000000b0b0', 'Barrier Cream', `https://${HOST.B}/products/barrier-cream?variant=${IDS.VARIANT_B}`, [{ id: IDS.VARIANT_B, title: 'Default Title', price: '30.00' }]) },
   [IDS.SIG_C]: { seller: IDS.SELLER_C, seed: seedRow('ext_00000000000000000000c0c0', 'Eye Gel', `https://${HOST.C}/products/eye-gel?variant=${IDS.VARIANT_C}`, [{ id: IDS.VARIANT_C, title: 'Default Title', price: '22.00' }]) },
   [IDS.SIG_D]: { seller: IDS.SELLER_D, seed: seedRow('ext_00000000000000000000d0d0', 'Hand Cream', `https://${HOST.D}/products/hand-cream?variant=${IDS.VARIANT_D}`, [{ id: IDS.VARIANT_D, title: 'Default Title', price: '40.00' }]) },
+  [IDS.SIG_A_STAMPED]: { seller: IDS.SELLER_A, seed: seedRow('ext_00000000000000000000a0a5', 'Day Cream', `https://${HOST.A}/products/day-cream?variant=${IDS.VARIANT_A_STAMPED}&${STAMPED_TRACKING.map(([k, v]) => `${k}=${v}`).join('&')}`, [{ id: IDS.VARIANT_A_STAMPED, title: 'Default Title', price: '19.00' }]) },
   [IDS.SIG_EMITTED]: { seller: IDS.SELLER_A, emittedAs: IDS.GROUP_EMITTED, seed: seedRow('ext_00000000000000000000e0e0', 'Lip Oil', `https://${HOST.A}/products/lip-oil?variant=${IDS.VARIANT_EMITTED}`, [{ id: IDS.VARIANT_EMITTED, title: 'Default Title', price: '15.00' }]) },
 });
 const EMITTED = Object.freeze({ [IDS.GROUP_EMITTED]: IDS.SIG_EMITTED });
@@ -108,7 +121,7 @@ const OTHER_BUYER = Object.freeze({ 'X-Test-User-Ref': 'buyer-0002', 'X-Test-Acp
 function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4396, env = {} } = {}) {
   const PORT = String(port);
   const LOOPBACK = `http://127.0.0.1:${PORT}`;
-  const BACKEND = 'http://backend.storefront-cart.test';
+  const BACKEND = BACKEND_BASE;
   Object.assign(process.env, {
     NODE_ENV: 'test',
     PORT,
@@ -135,7 +148,9 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4396, env = 
     'UCP_LIVE_OFFER_READ', 'GET_OFFERS_VARIANT_ID', 'PRICE_VERIFICATION_LOG', 'MCP_OAUTH_ENABLED', 'REAP_AGENTIC_LANE_ENABLED',
     'AGENT_CHECKOUT_UCP_SELLER_DISCOUNT_CODES_ENABLED', 'AGENT_CHECKOUT_UCP_DEAD_PAGE_CHECK_ENABLED',
     'AGENT_CHECKOUT_UCP_VARIANT_GONE_POLICY_ENABLED', 'MERCHANT_PURCHASABILITY_OIDC_AUDIENCE',
-    'AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED', 'PARTNER_DOOR_ONE_PRODUCT_ID', 'GET_OFFERS_EMPTY_REASON']) delete process.env[k];
+    'AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED', 'PARTNER_DOOR_ONE_PRODUCT_ID', 'GET_OFFERS_EMPTY_REASON',
+    'AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED', 'AGENT_CHECKOUT_UCP_CART_ATTRIBUTION_ENABLED',
+    'PARTNER_IDENTITY_FORWARDING_ENABLED', 'UCP_STOREFRONT_HANDOFF_RECORD_ENABLED']) delete process.env[k];
   for (const suffix of ['ENABLED', 'DELAY_MS', 'INTERVAL_MS']) delete process.env[`COMMERCE_MCP_HEARTBEAT_${suffix}`];
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined || v === null || v === '') delete process.env[k];
@@ -505,4 +520,4 @@ async function runRequests(door) {
   return out;
 }
 
-module.exports = { IDS, HOST, STORE_PRICE, CATALOG, BUYER, OTHER_BUYER, LEGACY_ESC_ID, FORGED_ESC_ID, gid, escId, bootDoor, nativeCreate, ucpCreate, idem, runRequests };
+module.exports = { BACKEND_BASE, STAMPED_CLICK_ID, STAMPED_TRACKING, IDS, HOST, STORE_PRICE, CATALOG, BUYER, OTHER_BUYER, LEGACY_ESC_ID, FORGED_ESC_ID, gid, escId, bootDoor, nativeCreate, ucpCreate, idem, runRequests };

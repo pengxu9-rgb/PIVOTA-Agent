@@ -32189,6 +32189,28 @@ function getStorefrontHandoffClient(deps = {}) {
   return client;
 }
 
+// THE STORE-CART REFERRAL (src/services/storefrontCartReferral.js). Called by the checkout door only while
+// AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED is on (read per call there). The backend is called with this gateway's OWN
+// key; the partner's REQUEST-BOUND (v2) assertion is added when the request has a partner and
+// PARTNER_IDENTITY_FORWARDING_ENABLED is on. With no partner the call is still made: the referral is then no agent's.
+let storefrontCartReferralClient = null;
+function getStorefrontCartReferralClient(deps = {}) {
+  if (storefrontCartReferralClient && !deps.fresh) return storefrontCartReferralClient;
+  const { createStorefrontCartReferralClient } = require('./services/storefrontCartReferral');
+  const client = createStorefrontCartReferralClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    authHeaders: () => (PIVOTA_API_KEY
+      ? buildInvokeUpstreamAuthHeaders({ forceInternalFallback: true, forwardAgentUserJwt: false, forwardBuyerRef: false })
+      : null),
+    signRequest: ({ op, method, url, rid, rawBody }) =>
+      boundIssuingAgentAssertionHeaders({ op, invokeContext: getInvokeAuthContext() || {}, method, url, rid, rawBody }),
+    logger,
+  });
+  if (!deps.fresh) storefrontCartReferralClient = client;
+  return client;
+}
+
 // The executor's `readStorefrontHandoff`: null (= not handled, kernel path) while the switches are off. An esc id that
 // does not decode is not one of ours (null: kernel path, as before); one that decodes but carries no record is
 // `unrecorded`, never "not found".
@@ -34370,6 +34392,8 @@ async function getCommerceRemoteMcpAdapter() {
         attributeSearchResult: attributeCommerceSearchPerResponse,
         // FIX_PLAN O-02: each UCP storefront hand-off recorded for the partner that asked (dark by default).
         storefrontHandoff: getStorefrontHandoffClient(),
+        // A referral for a store cart whose catalog link carries none (dark by default; read per call by the door).
+        storefrontReferral: getStorefrontCartReferralClient(),
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a

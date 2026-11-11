@@ -107,7 +107,7 @@ import storefrontProductPageModule from "../../src/services/storefrontProductPag
 // The hand-off record (FIX_PLAN O-02) — CommonJS, shared with the gateway's backend client and get_order read.
 import storefrontHandoffRecordModule from "../../src/services/storefrontHandoffRecord.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
-import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH } from "./ucpMerchantDoorPricing.js";
+import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 // THE NO-MARKET RULE (decision D-10): the same helper the read tools resolve their market through.
 import requestMarket from "../../src/services/requestMarket.js";
@@ -225,7 +225,13 @@ export function escalationTargetOf(product) {
 // market minted the same bytes, or by a create whose market was malformed -- and says nothing about the market: its
 // re-read is unkeyable exactly as every re-read was before (under enforcement, a decline). It is never read as US.
 // The members are additive: a build without them ignores them (its re-read is unkeyable again, as before).
-export function encodeEscalationId(items, cartId, sellerHost, market, recordId) {
+//
+// THE REFERRAL MINTED FOR THE CART (`t`, AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED). A cart whose catalog link carried
+// no tracking member, and for which the backend minted a referral, carries that referral's tracking members
+// (`utm_*`, `pvt_*`: ours, never the seller's and never the buyer's), so a re-read hands out the same attributed
+// cart link the create did without minting again. Only on a seller-priced id, only when a referral was minted, so
+// every other id keeps its bytes. A build without the member ignores it (its re-read hands out the seller's link).
+export function encodeEscalationId(items, cartId, sellerHost, market, recordId, tracking) {
   // A chosen variant rides as a third member of its line: [product_id, quantity, variant_id].
   const i = items.map((it) => (it.variant_id ? [it.product_id, it.quantity, it.variant_id] : [it.product_id, it.quantity]));
   const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId, h: sellerHost } : { v: 1, i };
@@ -235,6 +241,7 @@ export function encodeEscalationId(items, cartId, sellerHost, market, recordId) 
     if (market.assumed === true && code === requestMarket.ASSUMED_MARKET) body.a = 1;
   }
   if (recordId !== undefined && recordId !== null) body.r = recordId;
+  if (body.v === 2 && trackingPairsFrom(tracking)) body.t = Object.fromEntries(trackingPairsFrom(tracking));
   return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
 }
 
@@ -255,6 +262,18 @@ function parseEscalationId(id) {
     ? (!isCarriableCartId(parsed.c) || typeof parsed.h !== "string" || !/^[a-z0-9.-]{1,253}$/.test(parsed.h))
     : (parsed.v !== 1 || own(parsed, "c") !== undefined || own(parsed, "h") !== undefined)) return null;
   return parsed;
+}
+
+/**
+ * The tracking members of the referral minted for a seller-priced id's cart (`t`), or undefined. A `t` that is not
+ * exactly tracking members is IGNORED, never a reason to refuse the id: an id is read as it was before the member
+ * existed, and nothing unreadable is ever carried onto a link.
+ */
+export function escalationTrackingOf(id) {
+  const parsed = parseEscalationId(id);
+  if (!parsed || parsed.v !== 2 || !decodeEscalationId(id)) return undefined;
+  const t = own(parsed, "t");
+  return isPlainObject(t) ? (trackingPairsFrom(t) || undefined) : undefined;
 }
 
 /** The seller cart id a seller-priced escalation id carries, or undefined. */
@@ -381,7 +400,7 @@ function cartMerchantId(items, rows) {
  * The id to hand out for a storefront checkout. `encode(recordId?)` builds it. Without the record switches or a
  * recorder, or on any write that is not confirmed, the id WITHOUT a record (what the door always handed out).
  */
-async function recordedEscalationId({ encode, quoteSource, totals, currency, sellerHost, catalogLink, buyerMarket, items, rows, priceAsOf, env, handoffRecorder, log }) {
+async function recordedEscalationId({ encode, quoteSource, totals, currency, sellerHost, catalogLink, buyerMarket, items, rows, priceAsOf, env, handoffRecorder, log, mintedClickId }) {
   const plain = encode(undefined);
   if (!storefrontHandoffRecordModule.storefrontHandoffRecordEnabled(env)) return plain;
   if (!handoffRecorder || typeof handoffRecorder.record !== "function") return plain;
@@ -404,7 +423,9 @@ async function recordedEscalationId({ encode, quoteSource, totals, currency, sel
     quoted_total_minor: amount,
     quote_source: quoteSource,
     buyer_market: buyerMarket && /^[A-Z]{2}$/.test(buyerMarket) ? buyerMarket : undefined,
-    referral_click_id: catalogLink ? referralClickIdOf(catalogLink) : null,
+    // The catalog link's own referral, else the one minted for this cart (the link then carried none).
+    referral_click_id: (catalogLink ? referralClickIdOf(catalogLink) : null)
+      || (typeof mintedClickId === "string" && REFERRAL_CLICK_ID_RE.test(mintedClickId) ? mintedClickId : null),
     price_as_of: priceAsOf,
     merchant_id: cartMerchantId(items, rows),
   });
@@ -798,7 +819,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -914,18 +935,27 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     const priced = await priceOnMerchantDoor({
       items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
       expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
+      // THE REFERRAL for a cart whose catalog link carries none (ucpMerchantDoorPricing.js, CART_REFERRAL_FLAG): the
+      // door asks only when it is about to send the cart. The seller host, the market THE CART IS BUILT FOR (the one
+      // sent to the seller: the buyer's, or the assumed one) and the observed seller's id; nothing of the buyer.
+      mintReferral: referralMinter && typeof referralMinter.mint === "function"
+        ? () => referralMinter.mint(compact({ seller_host: sellerHost, market: buyerMarket, merchant_id: cartMerchantId(normalized, rows) }))
+        : undefined,
     });
     if (priced) {
       // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
       // id: such a cart is not offered at all, and the catalog answer below is given instead.
       const idMarket = { code: buyerMarket, assumed: requested.assumed };
-      const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket);
+      const minted = priced.referral || null;
+      const tracking = minted ? minted.pairs : undefined;
+      const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, undefined, tracking);
       if (escalationCartIdOf(unrecorded) === priced.cartId) {
         const id = await recordedEscalationId({
-          encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId),
+          encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId, tracking),
           quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart,
           totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
           items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
+          mintedClickId: minted ? minted.clickId : undefined,
         });
         return withAssumedMarket(buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env }), requested.assumed);
       }
@@ -1000,7 +1030,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     if (cartId !== undefined && sellerHost && escalationSellerHostOf(sessionId) === sellerHost) {
       const priced = await priceOnMerchantDoor({
         items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(link), catalogLink: link,
-        market: rereadMarket, cartId, env, merchantDoor, log,
+        market: rereadMarket, cartId, env, merchantDoor, log, referralPairs: escalationTrackingOf(sessionId),
       });
       if (priced) return withAssumedMarket(buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env }), created.assumed);
     }
