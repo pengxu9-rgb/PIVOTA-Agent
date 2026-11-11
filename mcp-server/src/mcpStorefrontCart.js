@@ -260,6 +260,12 @@ async function createStorefrontCart({ op, toolArgs, params, ctx, attested, execu
   // (the backend stamps Pivota's own hop on it), so the row alone does not decide: the seller named must be
   // external-seed supply, the one id test the native door's storefront refusal already uses.
   if (!externalSeedLane.isExternalSeedSupplyMerchantId(quote.merchant_id)) return undefined;
+  // A MUTATION NEEDS ITS IDEMPOTENCY KEY, as on the kernel path (canonicalExecutor: `missing_idempotency_key`), which
+  // this path never reaches. Before any read, gate or store call. (The allowlist keeps a string key only, so a
+  // numeric or blank one is a missing one here exactly as it is there.)
+  if (typeof params.idempotency_key !== "string" || params.idempotency_key.trim() === "") {
+    throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason: "missing_idempotency_key", op: op && op.id });
+  }
   const items = Array.isArray(quote.items)
     ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)).map((it) => ({ ...it, product_id: str(it.product_id) }))
     : [];
