@@ -15,10 +15,12 @@ import assert from 'node:assert/strict';
 
 import { createCommerceToolSurface, ucpDialectSurface, commerceToolDefinitions } from '../src/commerceToolSurface.js';
 import {
+  MARKET_REQUIRED_REASON,
   MCP_STOREFRONT_ESCALATION_FLAG,
   NATIVE_STOREFRONT_STATUS,
   mcpStorefrontCartSurface,
   mcpStorefrontEscalationEnabled,
+  namedStorefrontMarket,
   storefrontCartInputSchema,
   storefrontCartToolDefinition,
   storefrontMarketProblem,
@@ -302,6 +304,9 @@ test('the escalation\'s own switch off: a create continues to the kernel, and an
     const out = await surface.callTool('create_checkout_session', createArgs(SELLER, SIG, { market: 'US' }), SESSION, ON);
     assert.equal(out.session_id, 'q_kernel');
     assert.deepEqual(door.calls, []);
+    // No store cart can be built, so no market is required: the same create without one continues the same way.
+    const unnamed = await surface.callTool('create_checkout_session', createArgs(SELLER, SIG), SESSION, ON);
+    assert.equal(unnamed.session_id, 'q_kernel');
     const id = encodeEscalationId([{ product_id: SIG, quantity: 1 }], undefined, undefined, { code: 'US', assumed: false });
     const err = await rejected(surface.callTool('get_checkout_session', { session_id: id }, SESSION, ON));
     assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
@@ -332,16 +337,48 @@ test('no verified buyer: refused before the path is entered, on every checkout t
   });
 });
 
-test('a create decided for an assumed market is counted, as the read tools\' are', async () => {
+test('a create that names no market is refused before any store or kernel call and is never counted as assumed; only a re-read of an id minted for an assumed market is', async () => {
   await withEnv(ARMED, async () => {
-    const notes = [];
+    for (const extra of [{}, { market: null }, { market: '' }, { market: '   ' }]) {
+      const notes = [];
+      const executor = executorWith({ rows: { [SIG]: STOREFRONT_ROW } });
+      const door = sellerDoor();
+      const surface = createCommerceToolSurface(executor, { cache: false, merchantDoor: door });
+      const err = await rejected(surface.callTool('create_checkout_session', createArgs(SELLER, SIG, extra), SESSION, { ...ON, observe: (fields) => notes.push(fields) }));
+      const label = JSON.stringify(extra);
+      assert.equal(err && err.code, 'QUOTE_REQUIRED', label);
+      assert.equal(err.retriable, false, label);
+      assert.equal(err.detail.reason, MARKET_REQUIRED_REASON, label);
+      assert.deepEqual(err.detail.acp_detail, { reason: 'market_required_for_seller_storefront', required_argument: 'market', format: 'ISO 3166-1 alpha-2' }, label);
+      assert.equal(err.marketAssumed, undefined, label);
+      assert.deepEqual(door.calls, [], label);
+      assert.deepEqual(executor.kernelCalls(), [], label);
+      assert.equal(notes.some((n) => n && n.market_assumed === true), false, label);
+    }
     const surface = createCommerceToolSurface(executorWith({ rows: { [SIG]: STOREFRONT_ROW } }), { cache: false, merchantDoor: sellerDoor() });
-    const out = await surface.callTool('create_checkout_session', createArgs(SELLER, SIG), SESSION, { ...ON, observe: (fields) => notes.push(fields) });
-    assert.equal(out.market_assumed.code, 'US');
-    assert.equal(notes.some((n) => n && n.market_assumed === true), true);
     const named = [];
-    await surface.callTool('create_checkout_session', createArgs(SELLER, SIG, { market: 'US' }), SESSION, { ...ON, observe: (fields) => named.push(fields) });
+    const out = await surface.callTool('create_checkout_session', createArgs(SELLER, SIG, { market: 'US' }), SESSION, { ...ON, observe: (fields) => named.push(fields) });
+    assert.equal(out.market_assumed, undefined);
     assert.equal(named.some((n) => n && n.market_assumed === true), false);
+    // An id carrying the assumed mark (only the UCP door mints one) is read back with its label, and counted.
+    const reread = [];
+    const assumedId = encodeEscalationId([{ product_id: SIG, quantity: 1 }], undefined, undefined, { code: 'US', assumed: true });
+    const read = await surface.callTool('get_checkout_session', { session_id: assumedId }, SESSION, { ...ON, observe: (fields) => reread.push(fields) });
+    assert.equal(read.market_assumed.code, 'US');
+    assert.equal(reread.some((n) => n && n.market_assumed === true), true);
+  });
+});
+
+test('a connected merchant\'s cart needs no market: with none it goes to the kernel exactly as without the option', async () => {
+  await withEnv(ARMED, async () => {
+    for (const extra of [{}, { market: null }, { market: ' ' }]) {
+      const executor = executorWith({ rows: { [SIG_CONNECTED]: CONNECTED_ROW } });
+      const door = sellerDoor();
+      const surface = createCommerceToolSurface(executor, { cache: false, merchantDoor: door });
+      const out = await surface.callTool('create_checkout_session', createArgs(CONNECTED, SIG_CONNECTED, extra), SESSION, ON);
+      assert.equal(out.session_id, 'q_kernel', JSON.stringify(extra));
+      assert.deepEqual(door.calls, []);
+    }
   });
 });
 
@@ -349,6 +386,8 @@ test('a create decided for an assumed market is counted, as the read tools\' are
 
 test('storefrontMarketProblem: unnamed is fine, a two-letter code is fine, anything else is a problem', () => {
   for (const ok of [undefined, null, '', '  ', 'US', 'us', ' gb ']) assert.equal(storefrontMarketProblem(ok), null, String(ok));
+  // What the path is handed: the trimmed market, or null for "names none" (which a storefront create is refused for).
+  assert.deepEqual([{}, { market: null }, { market: '' }, { market: ' ' }, { market: ' gb ' }, { market: 'US' }].map(namedStorefrontMarket), [null, null, null, null, 'gb', 'US']);
   for (const bad of ['USA', 'U', 'U1', 'United States', 12, true, {}, ['US']]) assert.match(String(storefrontMarketProblem(bad)), /ISO 3166-1 alpha-2/, String(bad));
 });
 

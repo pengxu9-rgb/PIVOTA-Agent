@@ -393,7 +393,7 @@ async function runRequests(door) {
   await ucp('ucp.search', 'search_catalog', { meta: UCP_META, catalog: { query: 'serum', context: { address_country: 'US' } } });
   await ucp('ucp.get_product', 'get_product', { meta: UCP_META, catalog: { id: IDS.SIG_A } });
   const ucpPriced = await ucp('ucp.create_priced', 'create_checkout', ucpCreate([[IDS.SIG_A, 1]], 'US'));
-  await ucp('ucp.create_no_market', 'create_checkout', ucpCreate([[IDS.SIG_A, 1]]));
+  const ucpAssumed = await ucp('ucp.create_no_market', 'create_checkout', ucpCreate([[IDS.SIG_A, 1]]));
   const ucpChosen = await ucp('ucp.create_chosen_variant', 'create_checkout', ucpCreate([[`${IDS.SIG_A_MULTI}::v::${IDS.VARIANT_A_MULTI[1]}`, 1]], 'US'));
   await ucp('ucp.create_unresolved_variant', 'create_checkout', ucpCreate([[IDS.SIG_A_MULTI, 1]], 'US'));
   const ucpFallback = await ucp('ucp.create_fallback', 'create_checkout', ucpCreate([[IDS.SIG_B, 1]], 'US'));
@@ -406,6 +406,9 @@ async function runRequests(door) {
   const fallbackId = (ucpFallback.value && ucpFallback.value.id) || FORGED_ESC_ID;
   await ucp('ucp.get_priced', 'get_checkout', { meta: UCP_META, id: pricedId });
   await ucp('ucp.get_fallback', 'get_checkout', { meta: UCP_META, id: fallbackId });
+  // The id the UCP door minted for a create that named no market (it carries the assumed-market mark).
+  const assumedId = (ucpAssumed.value && ucpAssumed.value.id) || FORGED_ESC_ID;
+  await ucp('ucp.get_assumed_id', 'get_checkout', { meta: UCP_META, id: assumedId });
   await ucp('ucp.update_esc', 'update_checkout', { meta: { ...UCP_META, 'idempotency-key': idem(21) }, id: pricedId, checkout: { line_items: [{ item: { id: IDS.SIG_A }, quantity: 2 }] } });
   await ucp('ucp.complete_esc', 'complete_checkout', { meta: { ...UCP_META, 'idempotency-key': idem(22) }, id: pricedId, checkout: { payment: { instruments: [] } } });
 
@@ -427,6 +430,10 @@ async function runRequests(door) {
   door.resetGate();
   const priced = await create('mcp.create_priced', IDS.SELLER_A, [[IDS.SIG_A, 1]], { market: 'US', n: 1 });
   await create('mcp.create_no_market', IDS.SELLER_A, [[IDS.SIG_A, 1]], { n: 2 });
+  await create('mcp.create_null_market', IDS.SELLER_A, [[IDS.SIG_A, 1]], { market: null, n: 51 });
+  await create('mcp.create_blank_market', IDS.SELLER_A, [[IDS.SIG_A, 1]], { market: '  ', n: 52 });
+  await create('mcp.create_no_market_unknown_variant', IDS.SELLER_A, [[IDS.SIG_A_MULTI, 1, 'no-such-variant']], { n: 53 });
+  await create('mcp.create_no_market_shared_seed_name', IDS.SHARED_SEED_SELLER, [[IDS.SIG_A, 1]], { n: 54 });
   await create('mcp.create_two_products', IDS.SELLER_A, [[IDS.SIG_A, 2], [IDS.SIG_A_SECOND, 3]], { market: 'US', n: 3 });
   await create('mcp.create_unresolved_variant', IDS.SELLER_A, [[IDS.SIG_A_MULTI, 1]], { market: 'US', n: 4 });
   await create('mcp.create_chosen_variant', IDS.SELLER_A, [[IDS.SIG_A_MULTI, 1, IDS.VARIANT_A_MULTI[1]]], { market: 'US', n: 5 });
@@ -466,6 +473,7 @@ async function runRequests(door) {
   await mcp('mcp.get_fallback', 'get_checkout_session', { session_id: fallbackId });
   await mcp('mcp.get_no_buyer', 'get_checkout_session', { session_id: pricedId }, { buyer: null });
   await mcp('mcp.get_other_buyer', 'get_checkout_session', { session_id: pricedId }, { buyer: OTHER_BUYER });
+  await mcp('mcp.get_assumed_id', 'get_checkout_session', { session_id: assumedId });
   await mcp('mcp.get_legacy_id', 'get_checkout_session', { session_id: LEGACY_ESC_ID });
   await mcp('mcp.get_forged_id', 'get_checkout_session', { session_id: FORGED_ESC_ID });
   await mcp('mcp.get_declined_seller_id', 'get_checkout_session', { session_id: escId({ v: 1, i: [[IDS.SIG_C, 1]], m: 'US' }) });

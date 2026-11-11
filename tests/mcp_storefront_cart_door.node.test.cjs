@@ -298,27 +298,87 @@ test('update, complete, cancel and payment link on an esc_ id are refused by nam
   }
 });
 
-test('the market: named is used; unnamed is decided for the US and says so; malformed is refused', () => {
-  const assumed = on['mcp.create_no_market'];
-  assert.equal(assumed.isError, false, assumed.raw);
-  assert.deepEqual(codesOf(assumed), ['checkout.priced_by_seller_storefront', 'market_assumed']);
-  assert.equal(assumed.value.market_assumed.code, 'US');
-  const id = decodeEsc(assumed.value.session_id);
-  assert.deepEqual([id.m, id.a], ['US', 1]);
-  assert.deepEqual(assumed.store.filter((c) => c.kind === 'tool').map((c) => c.arguments.cart.context), [{ address_country: 'US' }]);
-  // The UCP door does the same for a create that names no market.
-  assert.deepEqual(codesOf(on['ucp.create_no_market']), codesOf(assumed));
-  // A decline decided for the assumed market says so, in this door's words.
-  const declined = on['mcp.create_declined_no_market'];
-  assert.equal(reasonOf(declined), 'merchant_not_purchasable');
-  assert.equal(errorOf(declined).market_assumed.code, 'US');
-  assert.match(errorOf(declined).message, /send `market` to decide it for the buyer's own market/);
+// The creates for a storefront seller's cart that name no market: absent, null, blank; with a variant the product
+// does not have; under the shared seed seller name; and for the seller the gate declines.
+const NO_MARKET_KEYS = ['mcp.create_no_market', 'mcp.create_null_market', 'mcp.create_blank_market',
+  'mcp.create_no_market_unknown_variant', 'mcp.create_no_market_shared_seed_name', 'mcp.create_declined_no_market'];
+
+test('the market: named is used; unnamed (absent, null, blank) is refused by name, before the gate and any store call; malformed is refused', () => {
+  for (const key of NO_MARKET_KEYS) {
+    const a = on[key];
+    assert.equal(a.isError, true, `${key}: ${a.raw}`);
+    assert.equal(errorOf(a).code, 'QUOTE_REQUIRED', key);
+    assert.equal(errorOf(a).retriable, false, key);
+    assert.deepEqual(errorOf(a).detail, { reason: 'market_required_for_seller_storefront', required_argument: 'market', format: 'ISO 3166-1 alpha-2' }, key);
+    assert.match(errorOf(a).message, /Send `market`, the buyer's country as an ISO 3166-1 alpha-2 code/, key);
+    // NOTHING reached a store, and the purchasability gate was never asked.
+    assert.deepEqual([a.store, a.gate], [[], []], key);
+    // Only the product reads the path makes to know this is a storefront cart at all; no quote, no kernel.
+    assert.deepEqual([...new Set(a.upstream.map((u) => u.op))], ['get_pdp_v2'], key);
+    // Nothing is decided for an assumed market: no label, no id.
+    assert.equal(a.raw.includes('market_assumed'), false, key);
+    assert.equal(a.raw.includes('esc_'), false, key);
+    assert.equal(errorOf(a).market_assumed, undefined, key);
+    // The refusal names no seller, no store and no product: it is the same bytes for every such cart.
+    assert.equal(a.raw, on['mcp.create_no_market'].raw, key);
+    for (const name of [...Object.values(HOST), IDS.SELLER_A, IDS.SELLER_C, IDS.SHARED_SEED_SELLER, IDS.SIG_A, IDS.SIG_C]) assert.equal(a.raw.includes(name), false, `${key} ${name}`);
+  }
+  // The seller the gate declines is still declined by name once the market is named (not before).
+  assert.equal(reasonOf(on['mcp.create_declined']), 'merchant_not_purchasable');
+  // The same cart with the market named is the store's cart, as before.
+  assert.deepEqual(codesOf(on['mcp.create_priced']), ['checkout.priced_by_seller_storefront']);
+  assert.deepEqual(on['mcp.create_priced'].store.filter((c) => c.kind === 'tool').map((c) => c.arguments.cart.context), [{ address_country: 'US' }]);
+  assert.deepEqual(on['mcp.create_priced'].gate, [{ domain: HOST.A, market: 'US' }]);
   // Lower case is the same market; three letters is not a market.
   assert.equal(decodeEsc(on['mcp.create_lowercase_market'].value.session_id).m, 'US');
   const malformed = on['mcp.create_malformed_market'];
   assert.equal(errorOf(malformed).code, 'INVALID_ARGUMENTS');
   assert.match(errorOf(malformed).message, /`market` must be the buyer's country/);
   assert.deepEqual([malformed.store, malformed.upstream], [[], []]);
+});
+
+test('no create on /mcp is answered for an assumed market: no market_assumed member or message, and no assumed mark in an esc_ id', () => {
+  const creates = mcpKeys.filter((k) => k.startsWith('mcp.create_'));
+  assert.ok(creates.length >= 30);
+  let minted = 0;
+  for (const key of creates) {
+    const a = on[key];
+    assert.equal(a.raw.includes('market_assumed'), false, key);
+    const id = a.value && a.value.session_id;
+    if (typeof id !== 'string' || !id.startsWith('esc_')) continue;
+    minted += 1;
+    assert.equal(decodeEsc(id).a, undefined, key);
+    assert.match(String(decodeEsc(id).m), /^[A-Z]{2}$/, key);
+  }
+  assert.ok(minted >= 8, String(minted));
+});
+
+test('the UCP door still answers a create that names no market with its labelled assumed-US cart (known gap; unchanged by the flag)', () => {
+  for (const phase of [off, on]) {
+    const a = phase['ucp.create_no_market'];
+    assert.equal(a.isError, false, a.raw);
+    assert.deepEqual(codesOf(a), ['checkout.priced_by_seller_storefront', 'market_assumed']);
+    assert.equal(a.value.market_assumed.code, 'US');
+    const id = decodeEsc(a.value.id);
+    assert.deepEqual([id.m, id.a], ['US', 1]);
+    assert.deepEqual(a.store.filter((c) => c.kind === 'tool').map((c) => [c.tool, c.arguments.cart.context]), [['create_cart', { address_country: 'US' }]]);
+  }
+  assert.equal(mask(on['ucp.create_no_market'].raw), mask(off['ucp.create_no_market'].raw));
+});
+
+test('get_checkout_session on an id the UCP door minted for an assumed market reads it back as the UCP door does, label kept', () => {
+  const native = on['mcp.get_assumed_id'];
+  const ucp = on['ucp.get_assumed_id'];
+  assert.equal(native.isError, false, native.raw);
+  assert.equal(decodeEsc(native.value.session_id).a, 1);
+  assert.equal(native.value.session_id, ucp.value.id);
+  assert.deepEqual(native.value.market_assumed, ucp.value.market_assumed);
+  assert.equal(native.value.market_assumed.code, 'US');
+  assert.deepEqual(native.value.messages, ucp.value.messages);
+  assert.deepEqual(codesOf(native), ['checkout.priced_by_seller_storefront', 'market_assumed']);
+  assert.deepEqual(native.value.totals, ucp.value.totals);
+  // One read of the cart the UCP door built; no new cart.
+  assert.deepEqual(toolsSent(native), ['get_cart']);
 });
 
 test('product ids as this door\'s own search returned them resolve: the 36-character signature and the group-shaped id', () => {
@@ -392,9 +452,17 @@ test('tools/list on /mcp says what the checkout tools answer only while the flag
   assert.deepEqual(Object.keys(onCreate.inputSchema.properties), ['idempotency_key', 'quote', 'market']);
   assert.deepEqual(onCreate.inputSchema.required, offCreate.inputSchema.required);
   assert.equal(onCreate.description.startsWith(offCreate.description), true);
-  for (const phrase of ['completes_on_seller_storefront', 'checkout.priced_by_seller_storefront', 'checkout.completes_on_seller_storefront', 'continue_url', 'market_assumed', 'esc_']) {
+  for (const phrase of ['completes_on_seller_storefront', 'checkout.priced_by_seller_storefront', 'checkout.completes_on_seller_storefront', 'continue_url', 'market_required_for_seller_storefront', 'esc_']) {
     assert.equal(onCreate.description.includes(phrase), true, phrase);
   }
+  // `market` is REQUIRED for a seller-storefront checkout, in words: the same tool also creates the checkouts
+  // Pivota prices itself, where it stays optional, so the schema's `required` list does not name it (asserted above).
+  assert.match(onCreate.description, /`market` \(the buyer's country, ISO 3166-1 alpha-2\) is REQUIRED for such a checkout/);
+  assert.match(onCreate.inputSchema.properties.market.description, /REQUIRED for such a checkout/);
+  assert.equal(onCreate.inputSchema.required.includes('market'), false);
+  // The create declaration no longer says a market is assumed for such a checkout.
+  assert.equal(JSON.stringify(onCreate).includes('market_assumed'), false);
+  assert.equal(/for a US buyer/.test(JSON.stringify(onCreate)), false);
   const changed = onTools.filter((t, i) => JSON.stringify(t) !== JSON.stringify(toolsOf(off['mcp.tools_list'])[i])).map((t) => t.name).sort();
   assert.deepEqual(changed, ['cancel_checkout_session', 'complete_checkout_session', 'create_checkout_session', 'create_payment_link', 'get_checkout_session', 'update_checkout_session']);
   assert.deepEqual(onTools.map((t) => t.name), toolsOf(off['mcp.tools_list']).map((t) => t.name));

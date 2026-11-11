@@ -565,6 +565,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     if (storefrontCartDoor) {
       const answered = await tryNativeStorefrontCart({
         op, toolArgs, params, ctx, attested, executor: memoizedProductReads(executor), merchantDoor, log: logger,
+        // Only a re-read of an id the UCP door minted for an assumed market: a create here names its market or is refused.
         onMarketAssumed: () => noteToolCall(observeEarly, { market_assumed: true }),
       });
       if (answered !== undefined) return answered;

@@ -9,8 +9,12 @@
 //   - the same functions run (assertChosenVariantsBelong, tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout),
 //     so the purchasability gate, the variant rules, the store `create_cart`, the exact-match checks on the
 //     store's answer and the catalog fallback are the UCP door's own code;
-//   - this module only (1) decides whether a native call is one for that path, (2) hands the native `market` to
-//     the escalation in the place it reads a market from, and (3) restates the answer in the native shape.
+//   - this module only (1) decides whether a native call is one for that path, (2) requires the native `market`
+//     and hands it to the escalation in the place it reads a market from, and (3) restates the answer in the
+//     native shape.
+//
+// THE ONE PLACE THIS DOOR IS STRICTER THAN THE UCP DOOR: a create for this path must NAME its market. No seller
+// cart is built here for an assumed market (see marketRequiredRefusal).
 //
 // WHAT IT NEVER DOES: no store `create_checkout`, no payment, no credential. A cart only, as the UCP door.
 //
@@ -36,6 +40,7 @@ import {
   readCheckoutRows,
   refuseUnservedStorefrontCheckout,
   tryEscalateUcpCheckout,
+  ucpEscalationEnabled,
 } from "./ucpCheckoutEscalation.js";
 
 export const MCP_STOREFRONT_ESCALATION_FLAG = "AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED";
@@ -78,7 +83,8 @@ const MARKET_PROPERTY = Object.freeze({
   description:
     "The buyer's country (ISO 3166-1 alpha-2), as on search_catalog, get_product and get_offers. Used only when the " +
     "checkout completes on the seller's own storefront: the seller is checked, and its cart priced, for this market. " +
-    "Absent, that cart is decided for a US buyer and the answer carries `market_assumed`. Ignored for a checkout Pivota prices itself.",
+    "REQUIRED for such a checkout: without it the call is refused (`market_required_for_seller_storefront`) and no cart is built; " +
+    "no market is ever assumed. Optional, and ignored, for a checkout Pivota prices itself.",
 });
 
 // One derived schema per base schema object, so the schema tools/list publishes and the schema the door enforces
@@ -95,24 +101,42 @@ export function storefrontCartInputSchema(opId, base) {
 }
 
 /**
- * Why a native `market` is not usable, or null. A named market must be a two-letter code: a store cart is built
- * for a named market or for the stated default, never for a value this door cannot read. Unnamed (absent, null,
- * blank) is the no-market rule's case and is not a problem.
+ * Why a native `market` is not usable, or null. A named market must be a two-letter code: a store cart is never
+ * built for a value this door cannot read. Unnamed (absent, null, blank) is not a problem HERE, because this runs
+ * on every create, before anything is read, and a checkout Pivota prices itself needs no market; a create that
+ * turns out to be for the storefront path is refused for it there (marketRequiredRefusal).
  */
 export function storefrontMarketProblem(market) {
   if (requestMarket.marketIsUnnamed(market)) return null;
   if (typeof market !== "string" || !/^[A-Za-z]{2}$/.test(market.trim())) {
-    return "`market` must be the buyer's country as an ISO 3166-1 alpha-2 code (for example US), or be left out.";
+    return "`market` must be the buyer's country as an ISO 3166-1 alpha-2 code (for example US).";
   }
   return null;
 }
 
+/** The market a native create names, trimmed, or null when it names none (absent, null, blank). */
+export function namedStorefrontMarket(toolArgs) {
+  const market = own(toolArgs, "market");
+  return requestMarket.marketIsUnnamed(market) ? null : String(market).trim();
+}
+
 // The escalation reads the request market from the UCP wire body (`checkout.context.address_country`). The native
 // `market` is handed to it there, and nothing else is: no discount code, no expected seller, no buyer data.
-function escalationArgsFor(toolArgs) {
-  const market = own(toolArgs, "market");
-  if (requestMarket.marketIsUnnamed(market)) return {};
-  return { checkout: { context: { address_country: String(market).trim() } } };
+// Always a NAMED market: an empty body is what the escalation reads as "assume US", and this door never sends it.
+function escalationArgsFor(market) {
+  return { checkout: { context: { address_country: market } } };
+}
+
+export const MARKET_REQUIRED_REASON = "market_required_for_seller_storefront";
+
+// NO SELLER CART FOR AN ASSUMED MARKET on this door (owner decision: a market is never defaulted silently). Terminal: the same
+// call is refused every time until it names a market. Says only what every answer of this path says (the checkout
+// completes on the seller's storefront), never which seller or store.
+// KNOWN GAP: the UCP door (`/ucp/mcp`) still builds this cart for an assumed US and labels it `market_assumed`.
+function marketRequiredRefusal() {
+  return intakeRefusal("QUOTE_REQUIRED", MARKET_REQUIRED_REASON,
+    "This checkout completes on the seller's own storefront, and a seller-storefront cart is only built for a named market: no market is assumed. Send `market`, the buyer's country as an ISO 3166-1 alpha-2 code (for example `\"market\": \"US\"`), as a top-level argument of create_checkout_session. Retrying without it will not change this.",
+    { required_argument: "market", format: "ISO 3166-1 alpha-2" });
 }
 
 // ---- the answer ------------------------------------------------------------------------------------------------
@@ -132,6 +156,7 @@ const DISCOUNT_CODES_NOT_SENT = Object.freeze({
  *   amount_unit   `minor`: every amount below is an integer in the currency's minor unit, as the store gave it
  *   line_items    the escalation's lines, each also naming its `product_id` (and `variant_id` when one was chosen)
  *   totals, currency, continue_url, expires_at, links, buyer, discounts, messages, market_assumed: as answered
+ *   (`market_assumed` only on a re-read of an id the UCP door minted for an assumed market: no create here has one)
  * The UCP envelope member (`ucp`) and the UCP `status` are not carried.
  */
 export function toNativeStorefrontCheckout(checkout, { discountCodesNotSent = false } = {}) {
@@ -206,13 +231,14 @@ export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attes
   const opId = op && op.id;
   try {
     if (opId === "create_checkout_session") {
-      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, onMarketAssumed, env });
+      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env });
     }
     const sessionId = str(own(params, "session_id"));
     if (!sessionId || !decodeEscalationId(sessionId)) return undefined; // a kernel session: untouched
     if (opId === "cancel_checkout_session" || opId === "create_payment_link") throw storefrontOnlyRefusal(opId);
     // get, update, complete: the UCP door's own answer for an escalation id. A re-read carries no market on the
-    // wire on either door; the id carries the one the cart was created for.
+    // wire on either door; the id carries the one the cart was created for. An id marked as created for an assumed
+    // market can only be the UCP door's (no create here mints one); it is read back as that door reads it, label kept.
     const declines = [];
     const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs: {}, attested, declines, merchantDoor, log, env });
     if (escalated) {
@@ -228,7 +254,7 @@ export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attes
   }
 }
 
-async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, onMarketAssumed, env }) {
+async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env }) {
   const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
   // ONLY A SELLER PIVOTA IS NOT CONNECTED TO. A connected merchant's product read can carry a storefront link too
   // (the backend stamps Pivota's own hop on it), so the row alone does not decide: the seller named must be
@@ -254,18 +280,24 @@ async function createStorefrontCart({ op, toolArgs, params, ctx, attested, execu
   for (const row of rows.values()) {
     if (!partnerDoor.sellerMatchesProduct(quote.merchant_id, row)) return undefined;
   }
+  // THIS IS A STOREFRONT CART, SO ITS MARKET MUST BE NAMED. Decided on the reads above (which this path makes with
+  // or without a market), before the variant check, the purchasability gate and any store call. With the
+  // escalation's own switch off no store cart can be built, so nothing is required: that call continues as before.
+  const escalationOn = ucpEscalationEnabled(env);
+  const market = namedStorefrontMarket(toolArgs);
+  if (escalationOn && market === null) throw marketRequiredRefusal();
   await assertChosenVariantsBelong({ params, ctx, executor });
+  if (!escalationOn) return undefined;
   const declines = [];
   const escalated = await tryEscalateUcpCheckout({
-    op, params, ctx, executor, ucpArgs: escalationArgsFor(toolArgs), attested, declines, merchantDoor, log, env,
+    op, params, ctx, executor, ucpArgs: escalationArgsFor(market), attested, declines, merchantDoor, log, env,
   });
   if (escalated) {
-    if (isPlainObject(escalated.market_assumed) && typeof onMarketAssumed === "function") onMarketAssumed();
     const codes = own(quote, "discount_codes");
     return toNativeStorefrontCheckout(escalated, { discountCodesNotSent: Array.isArray(codes) && codes.length > 0 });
   }
   // The gate declined this seller for this market: refused by name (`merchant_not_purchasable`), as on the UCP
-  // door. With no decline (the escalation itself is off) the call continues as before.
+  // door. With no decline the call continues as before.
   if (declines.length > 0) {
     await refuseUnservedStorefrontCheckout({ op, params, ctx, executor, declined: true, declineReasons: declines, env });
   }
@@ -280,7 +312,7 @@ const CREATE_SENTENCES =
   " Read `messages`: code `checkout.priced_by_seller_storefront` means the seller's own storefront built a cart for these items and `line_items`, `totals` and `continue_url` are that cart's (shipping and tax it does not show are added on the storefront);" +
   " code `checkout.completes_on_seller_storefront` means the seller's cart could not be used, the totals are the catalog's last observed prices and `continue_url` is the product page: verify the price there." +
   ` Amounts in such an answer are integers in the currency's minor unit (\`amount_unit: "${NATIVE_STOREFRONT_AMOUNT_UNIT}"\`).` +
-  " Send `market` (the buyer's country) for such a checkout: without it the seller is checked and the cart priced for a US buyer, and the answer says so in `market_assumed`." +
+  " `market` (the buyer's country, ISO 3166-1 alpha-2) is REQUIRED for such a checkout: the seller is checked and the cart priced for that market, and without it the call is refused (`QUOTE_REQUIRED`, `detail.reason: market_required_for_seller_storefront`) with no cart built. No market is assumed." +
   " One seller per checkout. `quote.discount_codes` are not sent to a seller's storefront. Such a checkout cannot be updated, completed, paid or cancelled here.";
 
 const SESSION_SENTENCES = Object.freeze({
