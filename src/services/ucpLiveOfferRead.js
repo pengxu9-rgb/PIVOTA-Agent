@@ -37,6 +37,8 @@
 
 const { currencyExponent, majorUnitsOf, isRestatedProductId } = require('./merchantVariantSource');
 const { unwrapToolPayload } = require('./ucpBuyerAgentClient');
+// The epoch ms a UCP lookup answer arrived (createLookupCore), carried on the payload object.
+const UCP_ANSWERED_AT = Symbol.for('pivota.ucp.answeredAtMs');
 
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 const { priceVerificationLogEnabled } = require('../observability/priceVerificationFacts');
@@ -502,7 +504,14 @@ function createLookupCore({
         noteRefusal(host, err.status);
         throw err;
       }
-      return unwrapToolPayload(res);
+      const payload = unwrapToolPayload(res);
+      // WHEN THE MERCHANT ANSWERED, on the answer itself (a symbol: never serialized, and invisible to every
+      // reader that does not ask). A memoized answer handed to a later caller keeps the time it was read, so
+      // that caller can tell its read from another request's (the list price tiers' `live` vs `cache`).
+      if (payload && typeof payload === 'object') {
+        try { payload[UCP_ANSWERED_AT] = now(); } catch { /* a frozen payload is simply undated */ }
+      }
+      return payload;
     }, deadline);
     if (perHostCap !== null) {
       const done = () => {
@@ -1322,8 +1331,14 @@ function createUcpLiveSearchReader(deps = {}) {
         const ids = [...new Set(g.items.map((it) => it.id))];
         const chunks = [];
         for (let i = 0; i < ids.length; i += MAX_IDS_PER_LOOKUP) chunks.push(ids.slice(i, i + MAX_IDS_PER_LOOKUP));
+        let answeredAtMs = null;
         const parsed = await withDeadline(
-          Promise.all(chunks.map((chunk) => core.lookup(g.host, endpoint, chunk, g.country, { deadline }).then(parseLookup))),
+          Promise.all(chunks.map((chunk) => core.lookup(g.host, endpoint, chunk, g.country, { deadline }).then((payload) => {
+            const at = payload && typeof payload === 'object' ? Number(payload[UCP_ANSWERED_AT]) : NaN;
+            // The group is as old as its OLDEST chunk answer.
+            if (Number.isFinite(at)) answeredAtMs = answeredAtMs === null ? at : Math.min(answeredAtMs, at);
+            return parseLookup(payload);
+          }))),
           deadline,
           now,
         );
@@ -1347,7 +1362,14 @@ function createUcpLiveSearchReader(deps = {}) {
           else if (v.handle !== it.handle) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'other_product' });
           else if (v.currency !== it.currency) reads.set(it.index, { status: STATUS.CURRENCY_MISMATCH, ...base });
           else if (v.amount === null || v.available === null) reads.set(it.index, { status: STATUS.ERROR, ...base, reason: 'unreadable_variant' });
-          else reads.set(it.index, { status: STATUS.VERIFIED, ...base, amount: roundTo(v.amount, it.currency), currency: it.currency, available: v.available });
+          else {
+            reads.set(it.index, {
+              status: STATUS.VERIFIED, ...base, amount: roundTo(v.amount, it.currency), currency: it.currency, available: v.available,
+              // When the merchant answered (a memo hit: the earlier request's read). Read only by the list tiers.
+              // (a symbol key: the read's string keys, which build answers, are unchanged).
+              ...(answeredAtMs !== null ? { [UCP_ANSWERED_AT]: answeredAtMs } : {}),
+            });
+          }
         }
       } catch (e) {
         const status = e && e.code === 'timeout' ? STATUS.TIMEOUT : STATUS.ERROR;
@@ -1428,6 +1450,7 @@ function createUcpLiveSearchReader(deps = {}) {
 }
 
 module.exports = {
+  UCP_ANSWERED_AT,
   normalizeProductHandle,
   productHandleFromUrl,
   createUcpLiveSearchReader,

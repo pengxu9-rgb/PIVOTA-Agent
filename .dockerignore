@@ -25,3 +25,9 @@ tests
 !tests/fixtures/external_seed_sentinel_watermarks.json
 scripts/demo-*.mjs
 docs/integrations/*.md
+
+# google-github-actions/auth writes its credential file into the workspace (gha-creds-<hash>.json,
+# create_credentials_file defaults to true), and `COPY . .` would bake it into the image. For WIF the
+# file carries the job's OIDC request token; it is inert once the job ends, but no image should hold
+# it. build-gateway-image.yml builds from this workspace right after the auth step.
+gha-creds-*.json
