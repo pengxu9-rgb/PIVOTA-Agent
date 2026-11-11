@@ -31,6 +31,10 @@ export const AUDIT_EVENTS = Object.freeze([
   // And distinct from THAT: the id resolved to no product at all (stale/invented sig, or a non-signature id
   // the unscoped detail lane cannot route). A caller-side fact, where no_merchant_offer is a catalog-side one.
   'unknown_product_id',
+  // PARTNER_DOOR_ONE_PRODUCT_ID (the `/mcp` door's read refusals; see errors.js).
+  'product_not_servable',
+  'product_group_id_refused',
+  'merchant_product_mismatch',
   'idempotency_conflict_blocked',
   'after_sales_requested',
 ]);
