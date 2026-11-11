@@ -36,6 +36,7 @@ import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import {
   assertChosenVariantsBelong,
   decodeEscalationId,
+  escalationIdReadable,
   escalationTargetOf,
   readCheckoutRows,
   refuseUnservedStorefrontCheckout,
@@ -234,7 +235,9 @@ export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attes
       return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env, referralMinter, idempotencyStore });
     }
     const sessionId = str(own(params, "session_id"));
-    if (!sessionId || !decodeEscalationId(sessionId)) return undefined; // a kernel session: untouched
+    // An id this buyer may not read (the id binding, ucpCheckoutEscalation.js) is treated as an id that is not one
+    // of these at all, before anything below can say otherwise.
+    if (!sessionId || !decodeEscalationId(sessionId) || !escalationIdReadable(sessionId, isPlainObject(ctx) ? ctx.user_ref : null, env)) return undefined; // a kernel session: untouched
     if (opId === "cancel_checkout_session" || opId === "create_payment_link") throw storefrontOnlyRefusal(opId);
     // get, update, complete: the UCP door's own answer for an escalation id. A re-read carries no market on the
     // wire on either door; the id carries the one the cart was created for. An id marked as created for an assumed

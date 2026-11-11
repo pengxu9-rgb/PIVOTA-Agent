@@ -32215,11 +32215,14 @@ function getStorefrontCartReferralClient(deps = {}) {
 // does not decode is not one of ours (null: kernel path, as before); one that decodes but carries no record is
 // `unrecorded`, never "not found".
 function buildReadStorefrontHandoff(client) {
-  return async (orderId) => {
+  return async (orderId, ctx) => {
     const { storefrontHandoffRecordEnabled } = require('./services/storefrontHandoffRecord');
     if (!storefrontHandoffRecordEnabled()) return null;
-    const { decodeEscalationId, escalationRecordIdOf } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+    const { decodeEscalationId, escalationRecordIdOf, escalationIdReadable } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
     if (!decodeEscalationId(orderId)) return null;
+    // An id bound to another buyer (AGENT_CHECKOUT_STORE_CART_ID_BINDING) is an id that is not one of these: the
+    // kernel path answers it as it answers any order id it never tracked.
+    if (!escalationIdReadable(orderId, ctx && ctx.user_ref, process.env)) return null;
     const recordId = escalationRecordIdOf(orderId);
     if (!recordId) return { kind: 'unrecorded' };
     return client.read(recordId, orderId);

@@ -110,6 +110,7 @@ import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMe
 import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 import { canonicalRequest, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
+import { createHmac, timingSafeEqual } from "node:crypto";
 // THE NO-MARKET RULE (decision D-10): the same helper the read tools resolve their market through.
 import requestMarket from "../../src/services/requestMarket.js";
 
@@ -232,7 +233,14 @@ export function escalationTargetOf(product) {
 // (`utm_*`, `pvt_*`: ours, never the seller's and never the buyer's), so a re-read hands out the same attributed
 // cart link the create did without minting again. Only on a seller-priced id, only when a referral was minted, so
 // every other id keeps its bytes. A build without the member ignores it (its re-read hands out the seller's link).
-export function encodeEscalationId(items, cartId, sellerHost, market, recordId, tracking) {
+//
+// BOUND TO THE BUYER THAT CREATED IT (`v: 3`, `b`; AGENT_CHECKOUT_STORE_CART_ID_BINDING, see escalationIdReadable
+// below). A v1/v2 id is a bearer handle: any verified buyer holding it reads the cart's totals and link. A v3 id is
+// the same members plus `b`, an HMAC-SHA256 over those members and the creating buyer's verified reference, under a
+// key derived from the kernel's confirmation secret. It is a NEW version on purpose, not a member added to v2: a
+// build that does not know v3 reads such an id as no id of ours (the answer for an unknown id), never as an
+// unbound one. `bind` is `{ userRef, env }`; without it, or with the switch off, the id is the v1/v2 id it always was.
+export function encodeEscalationId(items, cartId, sellerHost, market, recordId, tracking, bind) {
   // A chosen variant rides as a third member of its line: [product_id, quantity, variant_id].
   const i = items.map((it) => (it.variant_id ? [it.product_id, it.quantity, it.variant_id] : [it.product_id, it.quantity]));
   const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId, h: sellerHost } : { v: 1, i };
@@ -243,6 +251,11 @@ export function encodeEscalationId(items, cartId, sellerHost, market, recordId, 
   }
   if (recordId !== undefined && recordId !== null) body.r = recordId;
   if (body.v === 2 && trackingPairsFrom(tracking)) body.t = Object.fromEntries(trackingPairsFrom(tracking));
+  const binding = isPlainObject(bind) ? idBindingFor(bind.userRef, bind.env) : null;
+  if (binding && binding.mode !== ID_BINDING_MODES.off && binding.key && binding.userRef) {
+    body.v = 3;
+    body.b = bindingMac(body, binding.userRef, binding.key);
+  }
   return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
 }
 
@@ -259,10 +272,85 @@ function parseEscalationId(id) {
   if (m !== undefined && (typeof m !== "string" || !/^[A-Z]{2}$/.test(m))) return null;
   const a = own(parsed, "a");
   if (a !== undefined && (a !== 1 || m !== requestMarket.ASSUMED_MARKET)) return null;
-  if (parsed.v === 2
+  // v3 = a buyer-bound id: a seller-priced one (`c` and `h`, as v2) or a catalogue one (neither, as v1), plus `b`.
+  const priced = parsed.v === 2 || (parsed.v === 3 && (own(parsed, "c") !== undefined || own(parsed, "h") !== undefined));
+  if (priced
     ? (!isCarriableCartId(parsed.c) || typeof parsed.h !== "string" || !/^[a-z0-9.-]{1,253}$/.test(parsed.h))
-    : (parsed.v !== 1 || own(parsed, "c") !== undefined || own(parsed, "h") !== undefined)) return null;
+    : ((parsed.v !== 1 && parsed.v !== 3) || own(parsed, "c") !== undefined || own(parsed, "h") !== undefined)) return null;
+  if (parsed.v === 3 ? !BINDING_RE.test(String(own(parsed, "b") ?? "")) : own(parsed, "b") !== undefined) return null;
   return parsed;
+}
+
+/** Does this parsed id carry a seller's cart (v2, or a bound id with `c`)? */
+function isSellerPriced(parsed) {
+  return parsed.v === 2 || (parsed.v === 3 && own(parsed, "c") !== undefined);
+}
+
+// ---- the buyer binding ---------------------------------------------------------------------------------------------
+//
+// AGENT_CHECKOUT_STORE_CART_ID_BINDING (read per call): `off` (default, and any other value) | `mint` | `enforce`.
+//   off      ids are minted unbound (v1/v2), as before. A v3 id is still verified and read, so turning the switch
+//            back off does not strand the checkouts minted while it was on.
+//   mint     every new id is bound (v3). Unbound ids are still read: an id carries no mint time, so "until they
+//            expire" cannot be checked per id; the six hours an id says it lives are waited out by the operator
+//            before `enforce`.
+//   enforce  as mint, and an unbound id is no id of ours.
+// A bound id presented by ANOTHER verified buyer, with a `b` that does not verify, or when no key can be derived,
+// is no id of ours: get, update, complete, cancel, payment link and get_order answer exactly what they answer for
+// an id that never existed, so the answer does not say whether it does.
+//
+// THE KEY. Derived (HMAC, a label of its own) from CONFIRMATION_SECRET, the kernel's secret for the confirmation
+// tokens these same doors mint; strict checkout does not boot without a strong one. No new secret name. FAIL CLOSED:
+// with `mint` or `enforce` on and no usable secret (or no verified buyer), a create hands out NO storefront checkout
+// rather than an unbound id, and says so in the log.
+export const ID_BINDING_FLAG = "AGENT_CHECKOUT_STORE_CART_ID_BINDING";
+export const ID_BINDING_MODES = Object.freeze({ off: "off", mint: "mint", enforce: "enforce" });
+export const ID_BINDING_SECRET_ENV = "CONFIRMATION_SECRET";
+const ID_BINDING_KEY_LABEL = "storefront-cart-id-binding/v1";
+const ID_BINDING_MIN_SECRET_LENGTH = 16; // the floor the kernel itself demands of this secret in strict mode
+const BINDING_RE = /^[A-Za-z0-9_-]{43}$/;
+
+export function idBindingMode(env = process.env) {
+  const raw = String((env && env[ID_BINDING_FLAG]) || "").trim().toLowerCase();
+  return raw === ID_BINDING_MODES.mint || raw === ID_BINDING_MODES.enforce ? raw : ID_BINDING_MODES.off;
+}
+
+function idBindingKey(env = process.env) {
+  const secret = env ? env[ID_BINDING_SECRET_ENV] : undefined;
+  if (typeof secret !== "string" || secret.length < ID_BINDING_MIN_SECRET_LENGTH) return null;
+  return createHmac("sha256", secret).update(ID_BINDING_KEY_LABEL, "utf8").digest();
+}
+
+function idBindingFor(userRef, env = process.env) {
+  return { mode: idBindingMode(env), key: idBindingKey(env), userRef: str(userRef) };
+}
+
+/** The binding of an id's members (everything but `b`, in the order they are written) to one buyer. */
+function bindingMac(body, userRef, key) {
+  const { b: _b, ...members } = body;
+  return createHmac("sha256", key).update(JSON.stringify([members, userRef]), "utf8").digest("base64url");
+}
+
+/**
+ * MAY THIS BUYER READ THIS ID? False for an id that is not ours at all, so a caller can treat "not readable" and
+ * "unknown" as one case, which is the point. `userRef` is the VERIFIED buyer of the call (never a body value).
+ */
+export function escalationIdReadable(id, userRef, env = process.env) {
+  const parsed = parseEscalationId(id);
+  if (!parsed || !decodeEscalationId(id)) return false;
+  if (parsed.v !== 3) return idBindingMode(env) !== ID_BINDING_MODES.enforce;
+  const key = idBindingKey(env);
+  const buyer = str(userRef);
+  if (!key || !buyer) return false;
+  const expected = Buffer.from(bindingMac(parsed, buyer, key), "utf8");
+  const given = Buffer.from(String(parsed.b), "utf8");
+  return expected.length === given.length && timingSafeEqual(expected, given);
+}
+
+/** Is this id bound to a buyer (v3)? Says nothing about whose. */
+export function escalationIdIsBound(id) {
+  const parsed = parseEscalationId(id);
+  return Boolean(parsed && parsed.v === 3 && decodeEscalationId(id));
 }
 
 /**
@@ -272,7 +360,7 @@ function parseEscalationId(id) {
  */
 export function escalationTrackingOf(id) {
   const parsed = parseEscalationId(id);
-  if (!parsed || parsed.v !== 2 || !decodeEscalationId(id)) return undefined;
+  if (!parsed || !isSellerPriced(parsed) || !decodeEscalationId(id)) return undefined;
   const t = own(parsed, "t");
   return isPlainObject(t) ? (trackingPairsFrom(t) || undefined) : undefined;
 }
@@ -280,7 +368,7 @@ export function escalationTrackingOf(id) {
 /** The seller cart id a seller-priced escalation id carries, or undefined. */
 export function escalationCartIdOf(id) {
   const parsed = parseEscalationId(id);
-  return parsed && parsed.v === 2 && decodeEscalationId(id) ? parsed.c : undefined;
+  return parsed && isSellerPriced(parsed) && decodeEscalationId(id) ? parsed.c : undefined;
 }
 
 /**
@@ -298,7 +386,7 @@ export function escalationMarketOf(id) {
 /** The seller host a seller-priced escalation id is bound to, or undefined. */
 export function escalationSellerHostOf(id) {
   const parsed = parseEscalationId(id);
-  return parsed && parsed.v === 2 && decodeEscalationId(id) ? parsed.h : undefined;
+  return parsed && isSellerPriced(parsed) && decodeEscalationId(id) ? parsed.h : undefined;
 }
 
 export function decodeEscalationId(id) {
@@ -856,6 +944,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
   // so it was decided for US) or `market_unrecorded` (a legacy id's re-read: no market to decide it for).
   const declined = (tags = []) => { if (Array.isArray(declines)) declines.push("merchant_not_purchasable", ...tags); return null; };
 
+  // The verified buyer of this call, for the id binding (escalationIdReadable).
+  const callerRef = isPlainObject(ctx) ? str(ctx.user_ref) : null;
+  const bind = { userRef: callerRef, env };
+
   if (opId === "create_checkout_session") {
     const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
     // Trimmed at the door: memo key, target lookup and the minted id all agree on the same spelling.
@@ -910,6 +1002,15 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         throw sellerMismatchRefusal({ cause: verdict.cause, merchantDomain: verdict.cause === "different_seller" ? verdict.host : null });
       }
     }
+    // THE ID MUST BE BINDABLE, or no storefront checkout is handed out (FAIL CLOSED): with the binding switch on and
+    // no key or no verified buyer to bind to, an unbound id would be the very thing the switch exists to stop.
+    // Before the gate and before any seller is contacted. `null`: the door refuses the storefront rows by name.
+    if (idBindingMode(env) !== ID_BINDING_MODES.off && (!idBindingKey(env) || !callerRef)) {
+      if (log && typeof log.error === "function") {
+        try { log.error({ event: "storefront_cart_id_binding", outcome: "unbindable", reason: callerRef ? "no_key" : "no_buyer" }); } catch { /* never throw the door */ }
+      }
+      return null;
+    }
     // EVERYTHING FROM HERE ON asks the gate, may build a cart at the seller's store and may write records: the part
     // of a create a retry must not repeat (storefrontCartIdempotency.js). Every refusal above is decided on the
     // request and the catalog alone, and is the same on every attempt.
@@ -955,10 +1056,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         const idMarket = { code: buyerMarket, assumed: requested.assumed };
         const minted = priced.referral || null;
         const tracking = minted ? minted.pairs : undefined;
-        const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, undefined, tracking);
+        const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, undefined, tracking, bind);
         if (escalationCartIdOf(unrecorded) === priced.cartId) {
           const id = await recordedEscalationId({
-            encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId, tracking),
+            encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId, tracking, bind),
             quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart,
             totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
             items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
@@ -990,9 +1091,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         env,
         discountCode,
       };
-      const draft = buildEscalationCheckout({ id: encodeEscalationId(normalized, undefined, undefined, fallbackMarket), ...fallbackArgs });
+      const draft = buildEscalationCheckout({ id: encodeEscalationId(normalized, undefined, undefined, fallbackMarket, undefined, undefined, bind), ...fallbackArgs });
       const id = await recordedEscalationId({
-        encode: (recordId) => encodeEscalationId(normalized, undefined, undefined, fallbackMarket, recordId),
+        encode: (recordId) => encodeEscalationId(normalized, undefined, undefined, fallbackMarket, recordId, undefined, bind),
         quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.catalogueFallback,
         totals: draft.totals, currency: draft.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
         items: normalized, rows, priceAsOf: cataloguePriceAsOf(normalized, rows), env, handoffRecorder, log,
@@ -1039,7 +1140,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
   }
 
   const sessionId = str(own(params, "session_id"));
-  const decoded = sessionId ? decodeEscalationId(sessionId) : null;
+  // An id this buyer may not read (bound to another buyer, or unbound under `enforce`) is no id of ours: the SAME
+  // path as an id that never existed, on every operation below.
+  const decoded = sessionId && escalationIdReadable(sessionId, callerRef, env) ? decodeEscalationId(sessionId) : null;
   if (!decoded) return null; // not one of ours: kernel path
 
   if (opId === "get_checkout_session") {
@@ -1139,7 +1242,7 @@ export async function refuseUnservedStorefrontCheckout({ op, params, ctx, execut
   const assumed = tags.includes("market_assumed");
   const opId = op && op.id;
   const sessionId = str(own(params, "session_id"));
-  if (opId !== "create_checkout_session" && sessionId && decodeEscalationId(sessionId)) {
+  if (opId !== "create_checkout_session" && sessionId && escalationIdReadable(sessionId, isPlainObject(ctx) ? ctx.user_ref : null, env) && decodeEscalationId(sessionId)) {
     if (declined) {
       // A decline on a RE-READ. Same reason code as before, and a message that says what the decline was decided on:
       // the market the checkout was created for (the one its id carries, decision D-10), or -- for a legacy id that

@@ -45,12 +45,16 @@ const FORWARDING_FLAG = 'PARTNER_IDENTITY_FORWARDING_ENABLED';
 const HANDOFF_RECORD_FLAG = 'UCP_STOREFRONT_HANDOFF_RECORD_ENABLED';
 const NATIVE_DOOR_FLAG = 'AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED';
 const IDEMPOTENCY_FLAG = 'AGENT_CHECKOUT_STORE_CART_IDEMPOTENCY_ENABLED';
-const PER_CALL_FLAGS = Object.freeze([REFERRAL_FLAG, ATTRIBUTION_FLAG, FORWARDING_FLAG, HANDOFF_RECORD_FLAG, NATIVE_DOOR_FLAG, IDEMPOTENCY_FLAG]);
+const ID_BINDING_FLAG = 'AGENT_CHECKOUT_STORE_CART_ID_BINDING';
+const BIND_MINT = `${ID_BINDING_FLAG}=mint`;
+const BIND_ENFORCE = `${ID_BINDING_FLAG}=enforce`;
+const PER_CALL_FLAGS = Object.freeze([REFERRAL_FLAG, ATTRIBUTION_FLAG, FORWARDING_FLAG, HANDOFF_RECORD_FLAG, NATIVE_DOOR_FLAG, IDEMPOTENCY_FLAG, ID_BINDING_FLAG]);
 
-/** Set exactly these per-call flags on (every other one of PER_CALL_FLAGS off). */
+/** Set exactly these per-call flags (`NAME` = '1', or `NAME=value`); every other one of PER_CALL_FLAGS is unset. */
 function setFlags(on = []) {
+  const wanted = new Map(on.map((entry) => (entry.includes('=') ? entry.split('=') : [entry, '1'])));
   for (const flag of PER_CALL_FLAGS) {
-    if (on.includes(flag)) process.env[flag] = '1';
+    if (wanted.has(flag)) process.env[flag] = wanted.get(flag);
     else delete process.env[flag];
   }
 }
@@ -136,13 +140,29 @@ function bootHardeningDoor({ root, port = 4461, env = {} } = {}) {
 
   // ---- the hand-off record route -------------------------------------------------------------------------------
   const handoffCalls = [];
+  const handoffReads = [];
+  const handoffRows = new Map();
   nock(support.BACKEND_BASE).persist()
     .post(HANDOFF_PATH)
     .reply(function reply(uri, body) {
       const assertion = assertionOf(this.req.headers, { requestPath: uri.split('?')[0], body });
       handoffCalls.push({ assertion, body });
       if (!assertion || !assertion.ok) return [409, { detail: { error: 'partner_identity_required' } }];
+      handoffRows.set(body.record_id, { partner: assertion.payload.sub, ...body });
       return [200, { record_id: body.record_id, status: 'handed_off' }];
+    })
+    .post(`${HANDOFF_PATH}/read`)
+    .reply(function reply(uri, body) {
+      const assertion = assertionOf(this.req.headers, { requestPath: uri.split('?')[0], body });
+      handoffReads.push({ assertion, body });
+      const row = handoffRows.get(body.record_id);
+      if (!assertion || !assertion.ok) return [409, { detail: { error: 'partner_identity_required' } }];
+      if (!row || row.binding !== body.binding) return [404, { detail: { error: 'handoff_not_found' } }];
+      if (row.partner !== assertion.payload.sub) return [409, { detail: { error: 'not_owner' } }];
+      return [200, {
+        record_id: body.record_id, status: 'handed_off', handed_off_at: '2026-11-11T12:00:00Z', seller_host: row.seller_host,
+        quote_source: row.quote_source, quoted_total: { amount: row.quoted_total_minor, currency: row.currency },
+      }];
     });
 
   /**
@@ -154,19 +174,22 @@ function bootHardeningDoor({ root, port = 4461, env = {} } = {}) {
   const resetHardening = () => {
     referralCalls.length = 0;
     handoffCalls.length = 0;
+    handoffReads.length = 0;
+    handoffRows.clear();
     state.clickSeq = 0;
     setReferralBackend('recorded');
     door.reset();
   };
   /** tools/call that also reports the referral and hand-off calls it caused. */
   async function call(doorPath, name, args, options) {
-    const before = { referral: referralCalls.length, handoff: handoffCalls.length, tools: door.storeCalls.filter((c) => c.kind === 'tool').length };
+    const before = { referral: referralCalls.length, handoff: handoffCalls.length, reads: handoffReads.length, tools: door.storeCalls.filter((c) => c.kind === 'tool').length };
     const out = await door.call(doorPath, name, args, options);
     return {
       ...out,
       // `storeToolCallsBefore`: how many store tool calls THIS call had made when the referral was asked for.
       referral: referralCalls.slice(before.referral).map((r) => ({ ...r, storeToolCallsBefore: r.storeToolCallsSoFar - before.tools })),
       handoff: handoffCalls.slice(before.handoff),
+      handoffReads: handoffReads.slice(before.reads),
     };
   }
   return { ...door, call, referralCalls, handoffCalls, setReferralBackend, resetHardening };
@@ -266,9 +289,12 @@ module.exports = {
   AS,
   ASSERTION_SECRET,
   ATTRIBUTION_FLAG,
+  BIND_ENFORCE,
+  BIND_MINT,
   FORWARDING_FLAG,
   HANDOFF_PATH,
   HANDOFF_RECORD_FLAG,
+  ID_BINDING_FLAG,
   IDEMPOTENCY_FLAG,
   KEY_A,
   KEY_B,
