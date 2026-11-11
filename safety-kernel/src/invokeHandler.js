@@ -51,6 +51,11 @@ export const ERROR_OBSERVABILITY = Object.freeze({
   // usually a caller holding a stale or invented id. Same recovery, different owner; merging them would make
   // the coverage metric unreadable the first time an agent starts guessing sigs.
   UNKNOWN_PRODUCT_ID: { event: 'unknown_product_id', metric: 'unknown_product_id' },
+  // PARTNER_DOOR_ONE_PRODUCT_ID. Each its own metric: a withheld product is a serving-gate signal (an id we
+  // advertised and then withheld), the other two are a caller passing the wrong argument.
+  PRODUCT_NOT_SERVABLE: { event: 'product_not_servable', metric: 'product_not_servable' },
+  PRODUCT_GROUP_ID_NOT_PRODUCT_ID: { event: 'product_group_id_refused', metric: 'product_group_id_refused' },
+  MERCHANT_PRODUCT_MISMATCH: { event: 'merchant_product_mismatch', metric: 'merchant_product_mismatch' },
   IDEMPOTENCY_CONFLICT: { event: 'idempotency_conflict_blocked', metric: 'idempotency_conflict' },
   PARTNER_ASSERTION_REJECTED: { event: 'partner_assertion_rejected', metric: 'partner_assertion_rejected' },
 });

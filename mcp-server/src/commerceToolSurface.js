@@ -88,6 +88,8 @@ import listPriceTiers from "../../src/services/listPriceTiers.js";
 //     but does not reorder them (`price_staleness.reordered: false`): the answer is shared with /ucp/mcp, whose
 //     shaper drops the label. The native /mcp dialect serves the label, so it reorders its own answer here.
 function doorListPriceTiers(opId, value, dialect, callStartedAtMs) {
+  // Both list flags off: nothing here runs, whatever an upstream answer carries.
+  if (!listPriceTiers.listPriceTiersActive()) return value;
   if (opId !== "search_catalog" || !isPlainObject(value) || !Array.isArray(value.products)) return value;
   let products = listPriceTiers.relabelReplayedRows(value.products, { liveFromMs: callStartedAtMs - listPriceTiers.LIVE_SLACK_MS });
   let metadata = value.metadata;
@@ -348,7 +350,13 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
           if (!isCacheableSearchResult(value)) return null;
           const base = { ttlMs, staleMs };
           if (!priceVerificationFacts.doorCachePriceFreshnessCapEnabled()) return base;
-          return priceVerificationFacts.capCachePolicyAtPriceAge(base, priceVerificationFacts.earliestMerchantAnswerMs("search_catalog", value));
+          // The invoke route's side channel first (the projection stripped the rows' internal price_source), then
+          // whatever merchant answer the rows still name.
+          const sideChannel = priceVerificationFacts.doorEarliestOf(value);
+          return priceVerificationFacts.capCachePolicyAtPriceAge(
+            base,
+            sideChannel !== null ? sideChannel : priceVerificationFacts.earliestMerchantAnswerMs("search_catalog", value),
+          );
         },
       })
     : null;
@@ -585,7 +593,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //    is the same kind of handoff a checkout op returns, so it is preserved the same way.
       const purchaseHandoff = op.id === "get_order" && isPlainObject(result)
         && result[Symbol.for("pivota.commerce.agentPurchaseResult")] === true;
-      return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff });
+      // The door cache's price-freshness side channel survives the sanitizer (which rebuilds the value).
+      return priceVerificationFacts.withDoorEarliest(
+        sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff }),
+        priceVerificationFacts.doorEarliestOf(result),
+      );
     };
 
     // 6) cache read-only, caller-independent results. Gated on the op being cacheable — never on anything
@@ -1676,6 +1688,13 @@ export function toToolError(error) {
       && typeof error.detail.reconciliation_id === "string" && /^[a-f0-9]{32}$/.test(error.detail.reconciliation_id)) {
     body.detail = {reason:"ucp_reap_attempt_retired",reconciliation_id:error.detail.reconciliation_id};
     body.recovery = "the original attempt is permanently closed; explicitly start a new checkout with a fresh idempotency_key";
+  }
+  // PARTNER_DOOR_ONE_PRODUCT_ID's read refusals: the reason is our own vocabulary (snake_case, never a request
+  // value), and for PRODUCT_NOT_SERVABLE it is the serving gate's reason code, the fact the code exists to carry.
+  if (error instanceof PivotaCommerceError
+      && ["PRODUCT_NOT_SERVABLE", "PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "MERCHANT_PRODUCT_MISMATCH"].includes(code)
+      && typeof error.detail?.reason === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
   }
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
