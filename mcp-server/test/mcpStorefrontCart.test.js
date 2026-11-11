@@ -268,6 +268,9 @@ test('a seller that is not the row\'s, a read that fails, and a cart with no sto
     const cases = [
       ['another observed seller named', () => executorWith({ rows: { [SIG]: STOREFRONT_ROW } }), createArgs(OTHER_SELLER, SIG)],
       ['the read fails', () => executorWith({ readThrows: true }), createArgs(SELLER, SIG)],
+      // With the variant named, the kernel path needs no read at all: a read this path cannot make must not
+      // become a refusal the call never had.
+      ['the read fails, variant named', () => executorWith({ readThrows: true }), { ...createArgs(SELLER, SIG), quote: { ...createArgs(SELLER, SIG).quote, items: [{ product_id: SIG, quantity: 1, variant_id: VARIANT }] } }],
       ['no storefront row', () => executorWith({ rows: { [SIG]: { ...STOREFRONT_ROW, external_redirect_url: undefined } } }), createArgs(SELLER, SIG)],
       ['a row that declares internal checkout', () => executorWith({ rows: { [SIG]: { ...STOREFRONT_ROW, purchase_route: 'internal_checkout' } } }), createArgs(SELLER, SIG)],
     ];
