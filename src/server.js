@@ -34395,16 +34395,20 @@ async function getCommerceRemoteMcpAdapter() {
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
       rememberMcpToolNames(surface);
-      // THE `/mcp` DOOR'S OWN VIEW OF THE SURFACE: two views, each the surface itself while its flag is off. The UCP
-      // door keeps projecting `surface` (above), so it, the public door, the strict invoke route and the kernel
-      // hop answer exactly as with both off.
+      // THE `/mcp` DOOR'S OWN VIEW OF THE SURFACE: three views, each answering as the surface itself while its
+      // flag is off. The UCP door keeps projecting `surface` (above), so it, the public door, the strict invoke
+      // route and the kernel hop answer exactly as with all three off.
       //   inner  GET_OFFERS_EMPTY_REASON: an empty get_offers answer is named from what the backend said.
       //   outer  PARTNER_DOOR_ONE_PRODUCT_ID: everything that flag does, over the inner view. Its get_offers
       //          calls (the first, and the retry under the signature) therefore go through the inner view, and it
       //          fills `metadata.reason` only when none is there: the inner view's specific reason stands.
+      //   innermost  AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED (read per call): a native checkout for a
+      //          seller Pivota is not connected to takes the storefront path the UCP door takes. It touches the
+      //          checkout tools only; the two views above it pass those through unchanged.
       const { getOffersEmptyReasonSurface } = await import('../mcp-server/src/getOffersEmptyReasonDoor.js');
       const { partnerDoorSurface } = await import('../mcp-server/src/partnerDoorOneProductId.js');
-      return createRemoteMcpAdapter(partnerDoorSurface(getOffersEmptyReasonSurface(surface), { log: logger }), {
+      const { mcpStorefrontCartSurface } = await import('../mcp-server/src/mcpStorefrontCart.js');
+      return createRemoteMcpAdapter(partnerDoorSurface(getOffersEmptyReasonSurface(mcpStorefrontCartSurface(surface)), { log: logger }), {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
           if (req?.authInfo?.invoke_authenticated !== true) {
