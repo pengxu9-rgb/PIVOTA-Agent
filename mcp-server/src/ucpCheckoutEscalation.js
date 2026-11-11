@@ -109,6 +109,7 @@ import storefrontHandoffRecordModule from "../../src/services/storefrontHandoffR
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
+import { canonicalRequest, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
 // THE NO-MARKET RULE (decision D-10): the same helper the read tools resolve their market through.
 import requestMarket from "../../src/services/requestMarket.js";
 
@@ -626,7 +627,7 @@ function priceOf(row) {
  * Build the spec checkout for an already-classified, same-seller cart. Pure.
  * @param {{ id:string, items:{product_id,quantity}[], rows:Map, continueUrl:string, buyerEmail?:string, now:number, env?:object }} a
  */
-export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [], discountCode }) {
+export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [], discountCode, expiresFrom }) {
   const labelled = quoteSourceLabelEnabled(env);
   const priceAsOf = labelled ? cataloguePriceAsOf(items, rows) : null;
   const lineItems = [];
@@ -690,7 +691,8 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
       { type: "total", amount: subtotal, display_text: "Expected total before the seller's shipping and tax" },
     ],
     buyerEmail,
-    expiresAt: new Date(now + ESCALATION_TTL_MS).toISOString(),
+    // `expiresFrom`: a replayed create states the expiry the first create stated (storefrontCartIdempotency.js).
+    expiresAt: new Date((Number.isFinite(expiresFrom) ? expiresFrom : now) + ESCALATION_TTL_MS).toISOString(),
     env,
     // A code the buyer sent, on an answer the seller did not price: echoed, nothing applied, and said so below.
     discounts: discountCode !== undefined ? { codes: [discountCode], applied: [] } : undefined,
@@ -760,7 +762,7 @@ export function buildUcpCheckoutEnvelope({ id, status, continueUrl, currency, li
  * currency and cart continue_url, in the same shared envelope. Still `requires_escalation` — Pivota neither charges
  * nor ships it; the buyer pays on the storefront. Seller message CODES ride as info messages; their text never does.
  */
-export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env = process.env }) {
+export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env = process.env, expiresFrom }) {
   const host = sellerHost || hostOf(priced.continueUrl);
   const messages = [
     {
@@ -795,7 +797,8 @@ export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, 
     totals: priced.totals,
     discounts: priced.discounts ? { codes: priced.discounts.codes, applied: priced.discounts.applied } : undefined,
     buyerEmail,
-    expiresAt: new Date(now + ESCALATION_TTL_MS).toISOString(),
+    // `expiresFrom`: a replayed create states the expiry the first create stated (storefrontCartIdempotency.js).
+    expiresAt: new Date((Number.isFinite(expiresFrom) ? expiresFrom : now) + ESCALATION_TTL_MS).toISOString(),
     env,
     messages,
   });
@@ -819,7 +822,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter, idempotencyStore, idempotencyDoor = "ucp", replayed }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -907,90 +910,132 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         throw sellerMismatchRefusal({ cause: verdict.cause, merchantDomain: verdict.cause === "different_seller" ? verdict.host : null });
       }
     }
-    // THE SEAM, BEFORE THE CHECKOUT IS BUILT. `null` = "not an escalation cart", which is the answer this
-    // function already gives for every row that is not eligible for a continue_url. See the note above
-    // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.
-    if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined(requested.assumed ? ["market_assumed"] : []);
-    const buyerEmail = attestedEmailOrBody(attested, quote.customer_email);
-    // THE SELLER PRICES IT, when its door can (ucpMerchantDoorPricing.js; own switch, default OFF). Null = fall back
-    // to the catalog answer below, unchanged. Asked only AFTER the gate and the expected-seller check, so a seller
-    // this door will not offer is never contacted.
-    const sellerHost = sellerHostOf(continueUrl);
-    const doorSignals = [];
-    // The buyer's code: read only while this door accepts codes for storefront checkouts. Otherwise a code that
-    // reached here came in under the Reap lane's rule and is that lane's (and the UCP view's) to answer for.
-    const discountCode = storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined;
-    // A code no storefront could take (blank, control or invisible/bidirectional characters) is REFUSED here, before
-    // any seller is contacted: it is never sent, and never echoed back raw.
-    if (discountCode !== undefined && !isAcceptableDiscountCode(discountCode)) {
-      throw intakeRefusal("QUOTE_REQUIRED", "ucp_discount_code_invalid", [
-        "`checkout.discounts.codes[0]` is not a usable discount code: it must be 1 to",
-        `${DISCOUNT_CODE_MAX_LENGTH} UTF-16 code units of visible characters, with no control, formatting or invisible characters. Send the code exactly as`,
-        "the buyer entered it, or send the checkout without `checkout.discounts`.",
-      ].join(" "), { rejected_field: "checkout.discounts.codes" });
-    }
-    // The hand-off record names the buyer's market only when the buyer NAMED it (decision D-10): an assumed US is no
-    // claim about the buyer, so the record carries none, as the seed-link mint is sent none.
-    const recordedMarket = requested.assumed ? undefined : buyerMarket;
-    const priced = await priceOnMerchantDoor({
-      items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
-      expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
-      // THE REFERRAL for a cart whose catalog link carries none (ucpMerchantDoorPricing.js, CART_REFERRAL_FLAG): the
-      // door asks only when it is about to send the cart. The seller host, the market THE CART IS BUILT FOR (the one
-      // sent to the seller: the buyer's, or the assumed one) and the observed seller's id; nothing of the buyer.
-      mintReferral: referralMinter && typeof referralMinter.mint === "function"
-        ? () => referralMinter.mint(compact({ seller_host: sellerHost, market: buyerMarket, merchant_id: cartMerchantId(normalized, rows) }))
-        : undefined,
-    });
-    if (priced) {
-      // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
-      // id: such a cart is not offered at all, and the catalog answer below is given instead.
-      const idMarket = { code: buyerMarket, assumed: requested.assumed };
-      const minted = priced.referral || null;
-      const tracking = minted ? minted.pairs : undefined;
-      const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, undefined, tracking);
-      if (escalationCartIdOf(unrecorded) === priced.cartId) {
-        const id = await recordedEscalationId({
-          encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId, tracking),
-          quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart,
-          totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
-          items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
-          mintedClickId: minted ? minted.clickId : undefined,
-        });
-        return withAssumedMarket(buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env }), requested.assumed);
+    // EVERYTHING FROM HERE ON asks the gate, may build a cart at the seller's store and may write records: the part
+    // of a create a retry must not repeat (storefrontCartIdempotency.js). Every refusal above is decided on the
+    // request and the catalog alone, and is the same on every attempt.
+    const buildCart = async () => {
+      // THE SEAM, BEFORE THE CHECKOUT IS BUILT. `null` = "not an escalation cart", which is the answer this
+      // function already gives for every row that is not eligible for a continue_url. See the note above
+      // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.
+      if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined(requested.assumed ? ["market_assumed"] : []);
+      const buyerEmail = attestedEmailOrBody(attested, quote.customer_email);
+      // THE SELLER PRICES IT, when its door can (ucpMerchantDoorPricing.js; own switch, default OFF). Null = fall back
+      // to the catalog answer below, unchanged. Asked only AFTER the gate and the expected-seller check, so a seller
+      // this door will not offer is never contacted.
+      const sellerHost = sellerHostOf(continueUrl);
+      const doorSignals = [];
+      // The buyer's code: read only while this door accepts codes for storefront checkouts. Otherwise a code that
+      // reached here came in under the Reap lane's rule and is that lane's (and the UCP view's) to answer for.
+      const discountCode = storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined;
+      // A code no storefront could take (blank, control or invisible/bidirectional characters) is REFUSED here, before
+      // any seller is contacted: it is never sent, and never echoed back raw.
+      if (discountCode !== undefined && !isAcceptableDiscountCode(discountCode)) {
+        throw intakeRefusal("QUOTE_REQUIRED", "ucp_discount_code_invalid", [
+          "`checkout.discounts.codes[0]` is not a usable discount code: it must be 1 to",
+          `${DISCOUNT_CODE_MAX_LENGTH} UTF-16 code units of visible characters, with no control, formatting or invisible characters. Send the code exactly as`,
+          "the buyer entered it, or send the checkout without `checkout.discounts`.",
+        ].join(" "), { rejected_field: "checkout.discounts.codes" });
       }
-    }
-    const checked = await checkStorefrontPages({
-      items: normalized, links: normalized.map((it) => targets.get(it.product_id)), rows, continueUrl,
-      env, storefrontPage, log, doorSignals,
-    });
-    // The catalogue answer is built first (it can still refuse: an unpriced line, mixed currencies), so a hand-off is
-    // recorded only for a checkout that is actually handed out, with the totals it shows.
-    const fallbackMarket = { code: buyerMarket, assumed: requested.assumed };
-    const fallbackArgs = {
-      items: normalized,
-      rows,
-      continueUrl: checked.continueUrl,
-      extraMessages: checked.messages,
-      // ATTESTED WINS, exactly as intake rule 1: the verified session's email displaces any body value, and a
-      // body value is only ever echoed after normalizeEmail. `buyer.email` is what a platform pre-fills on
-      // the storefront, so a body-supplied address displacing a signed-in buyer's is the misdirection rule 1
-      // exists to stop (review of #2025). UNLIKE a Pivota quote, an email is OPTIONAL here — `buyer` is an
-      // optional member of the checkout and the storefront collects its own — so nothing is refused for its
-      // absence (resolveBuyerEmail would; this is the same precedence without the throw).
-      buyerEmail,
-      now,
-      env,
-      discountCode,
+      // The hand-off record names the buyer's market only when the buyer NAMED it (decision D-10): an assumed US is no
+      // claim about the buyer, so the record carries none, as the seed-link mint is sent none.
+      const recordedMarket = requested.assumed ? undefined : buyerMarket;
+      const priced = await priceOnMerchantDoor({
+        items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
+        expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
+        // THE REFERRAL for a cart whose catalog link carries none (ucpMerchantDoorPricing.js, CART_REFERRAL_FLAG): the
+        // door asks only when it is about to send the cart. The seller host, the market THE CART IS BUILT FOR (the one
+        // sent to the seller: the buyer's, or the assumed one) and the observed seller's id; nothing of the buyer.
+        mintReferral: referralMinter && typeof referralMinter.mint === "function"
+          ? () => referralMinter.mint(compact({ seller_host: sellerHost, market: buyerMarket, merchant_id: cartMerchantId(normalized, rows) }))
+          : undefined,
+      });
+      if (priced) {
+        // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
+        // id: such a cart is not offered at all, and the catalog answer below is given instead.
+        const idMarket = { code: buyerMarket, assumed: requested.assumed };
+        const minted = priced.referral || null;
+        const tracking = minted ? minted.pairs : undefined;
+        const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, undefined, tracking);
+        if (escalationCartIdOf(unrecorded) === priced.cartId) {
+          const id = await recordedEscalationId({
+            encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId, tracking),
+            quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart,
+            totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
+            items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
+            mintedClickId: minted ? minted.clickId : undefined,
+          });
+          return withAssumedMarket(buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env }), requested.assumed);
+        }
+      }
+      const checked = await checkStorefrontPages({
+        items: normalized, links: normalized.map((it) => targets.get(it.product_id)), rows, continueUrl,
+        env, storefrontPage, log, doorSignals,
+      });
+      // The catalogue answer is built first (it can still refuse: an unpriced line, mixed currencies), so a hand-off is
+      // recorded only for a checkout that is actually handed out, with the totals it shows.
+      const fallbackMarket = { code: buyerMarket, assumed: requested.assumed };
+      const fallbackArgs = {
+        items: normalized,
+        rows,
+        continueUrl: checked.continueUrl,
+        extraMessages: checked.messages,
+        // ATTESTED WINS, exactly as intake rule 1: the verified session's email displaces any body value, and a
+        // body value is only ever echoed after normalizeEmail. `buyer.email` is what a platform pre-fills on
+        // the storefront, so a body-supplied address displacing a signed-in buyer's is the misdirection rule 1
+        // exists to stop (review of #2025). UNLIKE a Pivota quote, an email is OPTIONAL here — `buyer` is an
+        // optional member of the checkout and the storefront collects its own — so nothing is refused for its
+        // absence (resolveBuyerEmail would; this is the same precedence without the throw).
+        buyerEmail,
+        now,
+        env,
+        discountCode,
+      };
+      const draft = buildEscalationCheckout({ id: encodeEscalationId(normalized, undefined, undefined, fallbackMarket), ...fallbackArgs });
+      const id = await recordedEscalationId({
+        encode: (recordId) => encodeEscalationId(normalized, undefined, undefined, fallbackMarket, recordId),
+        quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.catalogueFallback,
+        totals: draft.totals, currency: draft.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
+        items: normalized, rows, priceAsOf: cataloguePriceAsOf(normalized, rows), env, handoffRecorder, log,
+      });
+      return withAssumedMarket(id === draft.id ? draft : buildEscalationCheckout({ id, ...fallbackArgs }), requested.assumed);
     };
-    const draft = buildEscalationCheckout({ id: encodeEscalationId(normalized, undefined, undefined, fallbackMarket), ...fallbackArgs });
-    const id = await recordedEscalationId({
-      encode: (recordId) => encodeEscalationId(normalized, undefined, undefined, fallbackMarket, recordId),
-      quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.catalogueFallback,
-      totals: draft.totals, currency: draft.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
-      items: normalized, rows, priceAsOf: cataloguePriceAsOf(normalized, rows), env, handoffRecorder, log,
+    // A RETRY RETURNS THE SAME CHECKOUT (AGENT_CHECKOUT_STORE_CART_IDEMPOTENCY_ENABLED, default OFF, read per call).
+    // Same verified buyer, same door, same key, same request: the checkout the first create handed out, read back
+    // (the get path below), with no second cart, referral or record. Another request under the key: refused.
+    const idempotencyKey = str(own(params, "idempotency_key"));
+    const buyerRef = isPlainObject(ctx) ? str(ctx.user_ref) : null;
+    if (!storeCartIdempotencyEnabled(env) || !idempotencyKey || !buyerRef) return buildCart();
+    const fingerprint = requestFingerprint(canonicalRequest({
+      items: normalized,
+      market: buyerMarket,
+      marketAssumed: requested.assumed,
+      discountCodes: [own(own(own(ucpArgs, "checkout"), "discounts"), "codes") ?? null, own(quote, "discount_codes") ?? null],
+      sellerNamed: own(quote, "merchant_id"),
+      expectedSeller,
+    }));
+    return runIdempotentCart({
+      store: idempotencyStore,
+      scope: { door: idempotencyDoor, userRef: buyerRef, rawKey: idempotencyKey },
+      fingerprint,
+      ttlMs: ESCALATION_TTL_MS,
+      now: () => now,
+      log,
+      build: async () => {
+        const answer = await buildCart();
+        return { answer, id: isPlainObject(answer) && typeof answer.id === "string" ? answer.id : null };
+      },
+      // The recorded checkout, read back as a re-read reads it, with what only a create knows put back: the buyer's
+      // email as THIS request carries it, the code this request sent, and the expiry the first create stated.
+      replay: (id, createdAt) => tryEscalateUcpCheckout({
+        op: { id: "get_checkout_session" }, params: { session_id: id }, ctx, executor, ucpArgs: {}, attested, now, env, timeoutMs,
+        shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter,
+        replayed: {
+          buyerEmail: attestedEmailOrBody(attested, quote.customer_email),
+          discountCode: storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined,
+          expiresFrom: createdAt,
+        },
+      }),
     });
-    return withAssumedMarket(id === draft.id ? draft : buildEscalationCheckout({ id, ...fallbackArgs }), requested.assumed);
   }
 
   const sessionId = str(own(params, "session_id"));
@@ -998,6 +1043,11 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
   if (!decoded) return null; // not one of ours: kernel path
 
   if (opId === "get_checkout_session") {
+    // A REPLAYED CREATE (storefrontCartIdempotency.js) reads its checkout back here and adds what only a create
+    // knows. Never set by a door: an ordinary re-read carries none of it, and its bytes do not move.
+    const again = isPlainObject(replayed)
+      ? compact({ buyerEmail: replayed.buyerEmail, expiresFrom: Number.isFinite(replayed.expiresFrom) ? replayed.expiresFrom : undefined })
+      : {};
     const rows = await readRows(decoded, executor, ctx, { timeoutMs });
     const targets = decoded.map((it) => escalationTargetOf(rows.get(it.product_id)));
     if (targets.some((t) => !t)) {
@@ -1032,11 +1082,12 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(link), catalogLink: link,
         market: rereadMarket, cartId, env, merchantDoor, log, referralPairs: escalationTrackingOf(sessionId),
       });
-      if (priced) return withAssumedMarket(buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env }), created.assumed);
+      if (priced) return withAssumedMarket(buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env, ...again }), created.assumed);
     }
     const checked = await checkStorefrontPages({ items: decoded, links: targets, rows, continueUrl: link, env, storefrontPage, log });
     return withAssumedMarket(buildEscalationCheckout({
       id: sessionId, items: decoded, rows, continueUrl: checked.continueUrl, now, env, extraMessages: checked.messages,
+      ...again, ...(isPlainObject(replayed) && replayed.discountCode !== undefined ? { discountCode: replayed.discountCode } : {}),
     }), created.assumed);
   }
 

@@ -34394,6 +34394,10 @@ async function getCommerceRemoteMcpAdapter() {
         storefrontHandoff: getStorefrontHandoffClient(),
         // A referral for a store cart whose catalog link carries none (dark by default; read per call by the door).
         storefrontReferral: getStorefrontCartReferralClient(),
+        // A retried storefront create returns the same checkout (mcp-server/src/storefrontCartIdempotency.js; dark by
+        // default, read per call). Its records live beside the kernel's own state: Postgres whenever the kernel is
+        // durable, which strict checkout requires outside tests.
+        storefrontCartIdempotencyStore: typeof commerce.stateStore === 'function' ? commerce.stateStore('storefront_cart_idempotency') : undefined,
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
