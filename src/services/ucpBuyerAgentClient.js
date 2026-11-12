@@ -1049,13 +1049,21 @@ function createUcpBuyerAgentClient(options = {}) {
    * i.e. arguments = { meta, cart: { line_items: [...] } }. Cart tools accept unauthenticated (anonymous)
    * requests per the spec, and the returned cart carries a storefront `continue_url` (warm handoff).
    */
-  async function createCart(mcpEndpoint, { lineItems, context, attribution, discountCodes } = {}) {
+  //
+  // `cartAttribution` (FIX_PLAN O-02): UCP 2026-04-08's `cart.attribution` (shopping/cart.json; an open map of string
+  // values), INSIDE the cart object as the schema places it. The older `attribution` argument is kept exactly as it
+  // was (a sibling of `cart`, which no schema of that version defines) for its existing caller, the warm handoff.
+  async function createCart(mcpEndpoint, { lineItems, context, attribution, discountCodes, cartAttribution } = {}) {
     if (!Array.isArray(lineItems) || lineItems.length === 0) {
       throw new Error('createCart requires a non-empty lineItems array');
     }
     const cart = { line_items: lineItems };
     if (context) cart.context = context;
     if (discountCodes !== undefined && discountCodes !== null) cart.discounts = { codes: normalizeDiscountCodes(discountCodes) };
+    if (isPlainObjectLocal(cartAttribution)) {
+      const entries = Object.entries(cartAttribution).filter(([k, v]) => typeof k === 'string' && typeof v === 'string');
+      if (entries.length) cart.attribution = Object.fromEntries(entries);
+    }
     const args = { cart };
     if (attribution) args.attribution = attribution;
     return callTool(mcpEndpoint, TOOL.CREATE_CART, args);

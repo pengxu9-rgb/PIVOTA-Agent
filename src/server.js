@@ -46,6 +46,10 @@ const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('.
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
+  partnerIdentityForwardingEnabled,
+  SEED_LINK_MINT_OP,
+  isBoundOp,
+  boundIssuingAgentAssertionHeaders,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
@@ -130,6 +134,8 @@ const priceVerificationFacts = require('./observability/priceVerificationFacts')
 // (PRICE_HOST_BUDGET): every live merchant read records into the first and asks the second. Both default off, and
 // off they build nothing, load no Firestore client and change no answer (see priceHostGate below).
 const priceCacheHooks = require('./services/priceCache');
+// FIX_PLAN C-11: what the backend's order cancel answered (cancel_checkout_session, CHECKOUT_CANCEL_UPSTREAM_ENABLED).
+const checkoutCancelUpstream = require('./services/checkoutCancelUpstream');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -436,6 +442,10 @@ const {
   stampExternalSeedAttribution,
   applyExternalSeedAttributionMetadata,
   createBackendSeedLinkFetcher,
+  SEED_ATTRIBUTION_DEFER_HEADER,
+  SEED_ATTRIBUTION_DEFERRED,
+  isSeedAttributionDeferred,
+  stampSearchResultPerResponse,
 } = require('./services/externalSeedAttributionStamp');
 const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
@@ -3958,6 +3968,8 @@ const SLOW_UPSTREAM_OPS = new Set([
   'submit_payment',
   'get_order_status',
   'request_after_sales',
+  // The backend cancel calls the PSP (expire the hosted session, void the payment): a money-path budget.
+  'cancel_order',
 ]);
 
 function getUpstreamTimeoutMs(operation) {
@@ -27565,7 +27577,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
     try {
       // Every attempt carries a freshly signed synthetic assertion: one signed for the first attempt can be
       // past the backend's 60 s window by a late retry, and the backend serves an expired one as a real call.
-      return await axios(withFreshSyntheticAssertion(axiosConfig));
+      return await axios(withFreshSyntheticAssertion(withBoundIssuingAssertion(axiosConfig)));
     } catch (err) {
       attempt += 1;
 
@@ -31874,6 +31886,39 @@ function llmRerankStageFields(outcome) {
 // (src/guardrails/loopbackCallerAssertion.js). Each is checked within 60 s of its signing, and busy retries can
 // outlast that; an expired one is read as a real call. Unchanged when it carries neither, or when this context
 // cannot sign one.
+// FIX_PLAN O-04, P2-2: a request-bound (v2) partner assertion, signed per ATTEMPT. The kernel upstream marks
+// a config with BOUND_ASSERTION_SPEC ({ op, invokeContext, rid }) for the partner-identity ops; here, just
+// before each send, the body is serialised ONCE into the string that is sent, the token is signed over
+// that string, the method, the path and the resource id, with a fresh nonce. A retry (busy, timeout, or the
+// create_order `order_request` wrapper, which swaps the body) therefore never reuses a nonce the backend
+// may already have seen, and is always hashed over what it sends. A config without the spec is returned
+// untouched, so every other call is byte-identical.
+const BOUND_ASSERTION_SPEC = Symbol.for('pivota.issuingAssertion.boundSpec');
+function withBoundIssuingAssertion(axiosConfig) {
+  try {
+    const spec = axiosConfig && axiosConfig[BOUND_ASSERTION_SPEC];
+    if (!spec) return axiosConfig;
+    const data = axiosConfig.data;
+    const rawBody = typeof data === 'string' ? data : (data === undefined || data === null ? '' : JSON.stringify(data));
+    const signed = boundIssuingAgentAssertionHeaders({
+      op: spec.op,
+      invokeContext: spec.invokeContext,
+      method: axiosConfig.method || 'GET',
+      url: axiosConfig.url,
+      rid: spec.rid,
+      rawBody,
+    });
+    if (!Object.keys(signed).length) return axiosConfig;
+    return {
+      ...axiosConfig,
+      ...(rawBody === '' ? {} : { data: rawBody }),
+      headers: { ...(axiosConfig.headers || {}), ...signed },
+    };
+  } catch (_) {
+    return axiosConfig;
+  }
+}
+
 function withFreshSyntheticAssertion(axiosConfig) {
   try {
     const headers = axiosConfig?.headers;
@@ -32118,6 +32163,44 @@ function buildReadAgentPurchase(client) {
     const ctxAgent = String(ctx?.agent_id || '').trim();
     if (requestAgent && ctxAgent && requestAgent !== ctxAgent) return { kind: 'identity_mismatch' };
     return client.getPurchase(purchaseId);
+  };
+}
+
+// THE UCP STOREFRONT HAND-OFF RECORD (FIX_PLAN O-02; src/services/storefrontHandoffRecord.js). Dark unless
+// UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (read per call). The backend is
+// called with this gateway's OWN key (the record route accepts only a service that vouches) and the partner's signed
+// REQUEST-BOUND (v2) assertion for that call; a request bound to no partner signs nothing, and nothing is sent.
+let storefrontHandoffClient = null;
+function getStorefrontHandoffClient(deps = {}) {
+  if (storefrontHandoffClient && !deps.fresh) return storefrontHandoffClient;
+  const { createStorefrontHandoffClient } = require('./services/storefrontHandoffRecord');
+  const client = createStorefrontHandoffClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    authHeaders: () => (PIVOTA_API_KEY
+      ? buildInvokeUpstreamAuthHeaders({ forceInternalFallback: true, forwardAgentUserJwt: false, forwardBuyerRef: false })
+      : null),
+    // The partner's REQUEST-BOUND (v2) assertion, signed per send over the exact body it sends (O-04 review P2-2).
+    signRequest: ({ op, method, url, rid, rawBody }) =>
+      boundIssuingAgentAssertionHeaders({ op, invokeContext: getInvokeAuthContext() || {}, method, url, rid, rawBody }),
+    logger,
+  });
+  if (!deps.fresh) storefrontHandoffClient = client;
+  return client;
+}
+
+// The executor's `readStorefrontHandoff`: null (= not handled, kernel path) while the switches are off. An esc id that
+// does not decode is not one of ours (null: kernel path, as before); one that decodes but carries no record is
+// `unrecorded`, never "not found".
+function buildReadStorefrontHandoff(client) {
+  return async (orderId) => {
+    const { storefrontHandoffRecordEnabled } = require('./services/storefrontHandoffRecord');
+    if (!storefrontHandoffRecordEnabled()) return null;
+    const { decodeEscalationId, escalationRecordIdOf } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+    if (!decodeEscalationId(orderId)) return null;
+    const recordId = escalationRecordIdOf(orderId);
+    if (!recordId) return { kind: 'unrecorded' };
+    return client.read(recordId, orderId);
   };
 }
 
@@ -32820,6 +32903,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
   // Set by the cases below that route back into THIS process over loopback instead of out to the Python
   // kernel. A loopback hop needs a different timeout/retry policy — see resolveSelfInvokeBudget.
   let selfInvoked = false;
+  // get_order_status reads two backend order routes (GETs); cancel_order returns the backend's answer raw.
+  let orderStatusRead = null;
+  let cancelOrderCall = false;
 
   switch (op) {
     case 'get_product_detail': {
@@ -33004,12 +33090,35 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       });
       break;
     }
+    case 'get_order_status': {
+      // MCP get_order (the executor reads this op only after proving kernel ownership). It used to fall through
+      // to POST /agent/shop/v1/invoke, which answers "Unsupported operation" for it, so no door could read an
+      // order. It is the backend's own order read now: GET .../tracking, projected exactly as the REST invoke
+      // lane projects it (normalizeGetOrderStatusCompat), with `status` taken from GET /agent/v2/orders/{id}
+      // (see kernelOrderStatusResult). Same auth headers as every other kernel op.
+      const status = isPlainObject(payload?.status) ? payload.status : {};
+      const orderId = firstNonEmptyString(status.order_id, status.orderId);
+      const orderUrl = `${PIVOTA_API_BASE}/agent/v2/orders/${encodeURIComponent(orderId)}`;
+      url = `${orderUrl}/tracking`;
+      orderStatusRead = { orderUrl };
+      break;
+    }
+    case 'cancel_order': {
+      // FIX_PLAN C-11 (the executor reaches this only with CHECKOUT_CANCEL_UPSTREAM_ENABLED on). The backend
+      // closes the hosted payment page at the PSP and cancels the order only while unpaid. Every answer comes
+      // back raw ({ upstream_status, body }) for classifyUpstreamCancel: its 409s are outcomes, not faults.
+      const orderId = firstNonEmptyString(payload?.order_id);
+      url = `${PIVOTA_API_BASE}/agent/v2/orders/${encodeURIComponent(orderId)}/cancel`;
+      requestBody = pruneEmptyFields({ idempotency_key: firstNonEmptyString(payload?.idempotency_key) });
+      cancelOrderCall = true;
+      break;
+    }
     default:
       break;
   }
 
   const axiosConfig = {
-    method: 'POST',
+    method: orderStatusRead ? 'GET' : 'POST',
     url,
     headers: {
       'Content-Type': 'application/json',
@@ -33029,6 +33138,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // upstream key above is always the gateway's own, so without this the backend can name no MCP agent.
       // Empty for every cached read lane: ISSUING_OPS holds no cached op (issuingAgentAssertion.js).
       ...(COMMERCE_CACHED_READ_OPS.has(op) ? {} : issuingAgentAssertionHeaders({ op, invokeContext })),
+      // FIX_PLAN O-04: the cached loopback search mints no seed link; the commerce surface mints one per
+      // response, AFTER its cache, for that response's caller (attributeCommerceSearchPerResponse).
+      ...(op === 'find_products_multi' && selfInvoked && partnerIdentityForwardingEnabled()
+        ? { [SEED_ATTRIBUTION_DEFER_HEADER]: SEED_ATTRIBUTION_DEFERRED }
+        : {}),
       // A call back into THIS process carries the caller the MCP door resolved, signed with a per-process
       // secret, so the invoke limiter keys on that caller rather than on this gateway's own key (see
       // src/guardrails/loopbackCallerAssertion.js). It names a rate-limit bucket only: the response, and so
@@ -33045,10 +33159,15 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackMarketAssumedHeaders(payload) : {}),
       ...headers,
     },
-    data: requestBody,
+    ...(orderStatusRead ? {} : { data: requestBody }),
+    ...(cancelOrderCall ? { validateStatus: () => true } : {}),
     timeout: selfInvoked ? resolveSelfInvokeBudget(timeout) : timeout,
     ...(options && options.signal ? { signal: options.signal } : {}),
   };
+  // FIX_PLAN O-04: the partner's request-bound assertion, signed per attempt (withBoundIssuingAssertion).
+  if (!COMMERCE_CACHED_READ_OPS.has(op) && isBoundOp(op)) {
+    axiosConfig[BOUND_ASSERTION_SPEC] = { op, invokeContext, rid: boundAssertionResourceId(op, requestBody, payload) };
+  }
 
   let resp;
   try {
@@ -33077,8 +33196,21 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       }
     }
     if (!resp) {
+      if (orderStatusRead) await throwKernelOrderReadNotFound(err);
       await throwCommerceKernelUpstreamError(op, err);
     }
+  }
+
+  if (cancelOrderCall) return { upstream_status: resp?.status ?? null, body: resp?.data };
+  if (orderStatusRead) {
+    let orderResp;
+    try {
+      orderResp = await callUpstreamWithOptionalRetry(op, { ...axiosConfig, url: orderStatusRead.orderUrl }, {});
+    } catch (err) {
+      await throwKernelOrderReadNotFound(err);
+      await throwCommerceKernelUpstreamError(op, err);
+    }
+    return kernelOrderStatusResult(resp?.data, orderResp?.data);
   }
 
   const body = resp?.data;
@@ -33123,6 +33255,46 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
   return dropped.body;
 }
 
+// The resource a partner-identity op acts on, as the backend reads it for the binding
+// (pivota-backend routes/agent_v2.py forwarded_owner_context(..., resource=...)): the quote id an order is
+// created from, the order a checkout session or after-sales request is for; none for a quote preview.
+function boundAssertionResourceId(op, requestBody, payload) {
+  switch (op) {
+    case 'create_order':
+      return firstNonEmptyString(requestBody?.quote_id) || null;
+    case 'submit_payment':
+    case 'create_payment_link':
+      return firstNonEmptyString(requestBody?.order_id) || null;
+    case 'request_after_sales': {
+      const status = isPlainObject(payload?.status) ? payload.status : {};
+      return firstNonEmptyString(status.order_id, status.orderId) || null;
+    }
+    default:
+      return null;
+  }
+}
+
+// MCP get_order's answer for a kernel order: the REST invoke lane's get_order_status projection of the tracking
+// body (the shape that lane already answers), with `status` the order's own state (`order.state` of GET
+// /agent/v2/orders/{id}) instead of the tracking envelope's "success". Nothing else is taken from the order body:
+// it carries the buyer's contact and address and the PSP client secret, which the tracking body does not.
+function kernelOrderStatusResult(trackingBody, orderBody) {
+  const projected = normalizeGetOrderStatusCompat(trackingBody);
+  if (!isPlainObject(projected)) return projected;
+  const state = firstNonEmptyString(isPlainObject(orderBody?.order) ? orderBody.order.state : null);
+  return state ? { ...projected, status: state } : projected;
+}
+
+// The backend answers 404 for an unknown order and 403 for another agent's. Behind the kernel's own ownership
+// proof both mean the same thing to this caller: not found (never "exists, but not yours"). Returns when the
+// failure is anything else, for the shared mapping to classify.
+async function throwKernelOrderReadNotFound(err) {
+  const status = err?.response?.status;
+  if (status !== 403 && status !== 404) return;
+  const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
+  throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', upstream_status: status });
+}
+
 // The upstream-failure -> shared-taxonomy mapping lives in services/commerceKernelErrorMapping so it is
 // unit-testable without booting this app. Read that module before touching the classification: it is shared
 // by every kernel op including the money ops, and `retriable` is a promise that costs real money when wrong
@@ -33140,6 +33312,7 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
   const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status });
+  if (kernelCode === 'PARTNER_ASSERTION_REJECTED') notePartnerAssertionRejected(operation, status, upstreamDetail);
   throw new PivotaCommerceError(kernelCode, {
     operation,
     upstream_status: status,
@@ -33151,6 +33324,23 @@ async function throwCommerceKernelUpstreamError(operation, err) {
     // caller: toToolError emits only allowlisted detail reasons. Present only when true.
     ...(isCommerceKernelUpstreamTimeout(err) ? { upstream_timeout: true } : {}),
   });
+}
+
+// FIX_PLAN O-04: one warn line per backend refusal of the partner assertion, so a signing fault between the
+// gateway and the backend (clock, path rewrite, stale secret) is visible the first time it happens. The MCP
+// completion line also counts it as a server-side error (src/observability/mcpToolCallOutcome.js). Fields are
+// our own vocabulary only: the backend's reason (snake_case, e.g. `stale`, `path`, `replay`) and the op.
+function notePartnerAssertionRejected(operation, status, upstreamDetail) {
+  try {
+    const raw = upstreamDetail && typeof upstreamDetail === 'object' ? upstreamDetail.reason : null;
+    const reason = typeof raw === 'string' && /^[a-z0-9_]{1,32}$/.test(raw) ? raw : 'unknown';
+    logger.warn(
+      { event: 'partner_assertion_rejected', operation, upstream_status: status, reason },
+      'backend refused the partner assertion; answered non-retriable PARTNER_ASSERTION_REJECTED',
+    );
+  } catch (_) {
+    // A log line must never change the error the caller gets.
+  }
 }
 
 // A request that never got a response because its transport deadline fired (axios `timeout`, a socket
@@ -33179,6 +33369,43 @@ function recordCommerceKernelAudit(entry) {
     },
     'agent checkout audit event',
   );
+}
+
+// FIX_PLAN O-04 (PARTNER_IDENTITY_FORWARDING_ENABLED, default OFF): the seed links of ONE search response,
+// minted after the commerce read cache for the caller of that response. The cached entry holds raw cards
+// (the loopback search was told to defer), so every response gets its own click ids, and the mint carries
+// the caller's signed assertion (SEED_LINK_MINT_OP) so the backend records the click as issued to that
+// partner. The upstream key is the gateway's internal one, as for the in-search mint; no internal key, no
+// mint (a caller-key mint is exactly what the in-search mint refuses). `value` is this response's own
+// clone. Flag off: a no-op, never called on the old path's bytes.
+async function attributeCommerceSearchPerResponse(value, params) {
+  if (!partnerIdentityForwardingEnabled()) return false;
+  // The surface's allowlisted search params: { payload: { search: { query, market, … } } } (toParams).
+  const search = isPlainObject(params?.payload?.search) ? params.payload.search : {};
+  const invokeContext = getInvokeAuthContext() || {};
+  const counts = await stampSearchResultPerResponse(value, {
+    fetchLinks: createBackendSeedLinkFetcher({
+      apiBase: PIVOTA_API_BASE,
+      buildHeaders: () =>
+        (PIVOTA_API_KEY
+          ? {
+            ...buildInvokeUpstreamAuthHeaders({
+              forceInternalFallback: true,
+              forwardAgentUserJwt: false,
+              forwardBuyerRef: false,
+            }),
+          }
+          : null),
+      // The caller's request-bound assertion, over the exact body the fetcher sends.
+      signRequest: ({ method, url, rawBody }) =>
+        boundIssuingAgentAssertionHeaders({ op: SEED_LINK_MINT_OP, invokeContext, method, url, rawBody }),
+    }),
+    market: firstNonEmptyString(search.market) || null,
+    tool: 'find_products_multi',
+    logger,
+  });
+  // true = this response's value changed (links stamped and/or metadata.external_seed_attribution written).
+  return Number(counts?.candidates) > 0;
 }
 
 async function getCommerceMount() {
@@ -33263,6 +33490,8 @@ function statusForCommerceKernelError(code) {
       return 400;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
+    case 'ORDER_CANCELED':
+    case 'PARTNER_ASSERTION_REJECTED':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
       return 503;
@@ -34067,6 +34296,8 @@ async function getCommerceRemoteMcpAdapter() {
         localReads,
         // get_order for a rail purchase (`pp_…`); dark unless AGENT_PURCHASE_ORDER_READ_ENABLED.
         readAgentPurchase: buildReadAgentPurchase(buildAgentPurchaseReadClient(logger)),
+        // FIX_PLAN O-02: get_order on a UCP storefront hand-off (`esc_…`) reads its record; null while dark.
+        readStorefrontHandoff: buildReadStorefrontHandoff(getStorefrontHandoffClient()),
         // AP2: checkout sessions carry the merchant-signed Checkout JWT a wallet hashes into
         // its mandate. Best-effort inside the executor; a mint failure logs here and costs
         // only AP2 (which then fails closed at verification), never the session.
@@ -34108,6 +34339,26 @@ async function getCommerceRemoteMcpAdapter() {
         // Thunk, not a boolean: this executor is memoized for the process lifetime, so a boolean would freeze
         // the flag at first build and make the kill-switch un-flippable without a redeploy.
         delegatedTokenHandoffEnabled: () => isAcpSptGatewayHandoffEnabled(),
+        // FIX_PLAN C-11: cancel_checkout_session asks the backend to close the hosted payment page and cancel
+        // the unpaid order, and answers what it did. CHECKOUT_CANCEL_UPSTREAM_ENABLED (default OFF), read per
+        // call. Turn the backend flag of the same name on first: until then its route does not exist, which
+        // this classifies as "not confirmed" (retriable), never as canceled.
+        cancelUpstreamEnabled: () => checkoutCancelUpstream.isCheckoutCancelUpstreamEnabled(),
+        cancelUpstreamOrder: async (orderId, ctx) => {
+          let answered;
+          try {
+            answered = await invokeCommerceKernelRawUpstream('cancel_order', { order_id: orderId });
+          } catch (err) {
+            logger.warn({ code: err?.code || 'CANCEL_UPSTREAM_FAILED' }, 'checkout cancel upstream: no answer');
+            return { kind: checkoutCancelUpstream.CANCEL_KIND.unavailable };
+          }
+          const outcome = checkoutCancelUpstream.classifyUpstreamCancel(answered?.upstream_status, answered?.body);
+          logger.info(
+            { event: 'checkout_cancel_upstream', outcome: outcome.kind, upstream_status: answered?.upstream_status ?? null },
+            'checkout cancel upstream',
+          );
+          return outcome;
+        },
       });
       // Publish the executor for the ACP/UCP doors to reuse (one shared kernel — see commerceSharedExecutor).
       commerceSharedExecutor = executor;
@@ -34115,6 +34366,10 @@ async function getCommerceRemoteMcpAdapter() {
         log: logger,
         // G1: a synthetic call (src/guardrails/syntheticContext.js) answers search uncached and stores nothing.
         bypassReadCache: isSyntheticCall,
+        // FIX_PLAN O-04: a search's seed links minted per response, after the cache, for this caller.
+        attributeSearchResult: attributeCommerceSearchPerResponse,
+        // FIX_PLAN O-02: each UCP storefront hand-off recorded for the partner that asked (dark by default).
+        storefrontHandoff: getStorefrontHandoffClient(),
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
@@ -44068,8 +44323,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       let seedAttributionContainer = null;
       let seedAttributionCards = [];
+      // FIX_PLAN O-04: a cached MCP search mints after its cache, per response (see the kernel upstream).
+      const seedAttributionDeferred =
+        finalOperation === 'find_products_multi' &&
+        partnerIdentityForwardingEnabled() &&
+        isLoopbackSelfCall(req) &&
+        isSeedAttributionDeferred(req.get(SEED_ATTRIBUTION_DEFER_HEADER));
       try {
-        if (finalOperation === 'find_products_multi') {
+        if (finalOperation === 'find_products_multi' && !seedAttributionDeferred) {
           seedAttributionContainer = Array.isArray(finalBody?.products)
             ? finalBody
             : finalBody?.data && Array.isArray(finalBody.data.products)

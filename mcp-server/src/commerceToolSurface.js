@@ -301,7 +301,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -523,7 +523,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "ucp_reap_create_not_available" });
       }
       const escalationDeclines = [];
-      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger });
+      // `storefrontHandoff` (FIX_PLAN O-02): the recorder of each hand-off this lane issues, for the partner that asked.
+      // Inert unless UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (ucpCheckoutEscalation.js).
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger, handoffRecorder: storefrontHandoff });
       if (escalated && isPlainObject(escalated.market_assumed)) noteToolCall(typeof options.observe === "function" ? options.observe : null, { market_assumed: true });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
@@ -632,8 +634,23 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    storing an entry nor starting a revalidation. The gateway passes it for a synthetic call (our own eval
     //    traffic, src/guardrails/syntheticContext.js), so eval measures the uncached path and never fills an
     //    entry a real caller is later served.
+    //
+    // 9) PER-RESPONSE ATTRIBUTION (`attributeSearchResult`, optional; FIX_PLAN O-04): search_catalog's seed links
+    //    are minted for THIS response, after the cache, on this response's own value (a clone on the cached
+    //    branch). Returns true when it changed the value, which then takes the same sanitizer pass a fresh
+    //    result took. The gateway's hook is a no-op unless PARTNER_IDENTITY_FORWARDING_ENABLED.
+    const attributeOwn = async (value) => {
+      if (op.id !== "search_catalog" || typeof attributeSearchResult !== "function") return value;
+      let changed = false;
+      try {
+        changed = (await attributeSearchResult(value, params)) === true;
+      } catch (err) {
+        if (logger) logger.warn({ err: err?.message || String(err), tool: op.id }, "per-response search attribution failed");
+      }
+      return changed ? sanitizeResult(value, { handoffAllowed: false }) : value;
+    };
     if (!cache || !CACHEABLE_TOOLS.includes(op.id) || (typeof bypassReadCache === "function" && bypassReadCache() === true)) {
-      const fresh = await execute();
+      const fresh = await attributeOwn(await execute());
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
       noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
       return label(shape(doorListPriceTiers(op.id, fresh, dialect, callStartedAtMs)));
@@ -645,14 +662,18 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
     // The label goes on AFTER the cache, never into it: a no-market call and a declared-US call share one entry
     // (they are the same params), and only the first was assumed for.
-    return label(shape(doorListPriceTiers(op.id, cloneCachedValue(value, (err) => {
+    const own = cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
           { err: err?.message || String(err), tool: op.id },
           "commerce read cache: value not cloneable, serving shared reference",
         );
       }
-    }), dialect, callStartedAtMs)));
+    });
+    // A failed clone hands back the SHARED entry: stamping it would write this caller's links into what
+    // every later caller is served (O-04 review, P3-G2). Serve it unstamped instead.
+    const shared = own === value && value !== null && typeof value === "object";
+    return label(shape(doorListPriceTiers(op.id, shared ? own : await attributeOwn(own), dialect, callStartedAtMs)));
   }
 
   /**
@@ -1639,6 +1660,19 @@ export function toToolError(error) {
   }
 
   if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && ["ucp_reap_variant_not_created","ucp_reap_price_not_created"].includes(error.detail?.reason)) body.detail = { reason: error.detail.reason };
+  // get_order on a UCP storefront hand-off (FIX_PLAN O-02; only ever raised with UCP_STOREFRONT_HANDOFF_RECORD_ENABLED on):
+  // a fixed reason and a fixed recovery, never a value from the request.
+  if (error instanceof PivotaCommerceError && code === "OPERATION_NOT_ALLOWED" && error.detail?.op === "get_order"
+      && ["storefront_handoff_unrecorded", "storefront_handoff_partner_required"].includes(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+    if (error.detail.reason === "storefront_handoff_unrecorded") {
+      body.message = "This checkout completes on the seller's own storefront, and no status was recorded for it.";
+      body.recovery = "read it with get_checkout on the UCP door, or ask the buyer whether they completed it on the storefront";
+    } else {
+      body.message = "A storefront hand-off's status is answered only to the partner it was issued to.";
+      body.recovery = "call with the agent credentials the checkout was created with";
+    }
+  }
   // start_purchase (orchestratedPurchaseTool.js): reasons and the backend's refusal code are our own vocabulary
   // (snake_case, never a request value), so they are safe to surface and are what makes the answer actionable.
   if (error instanceof PivotaCommerceError && error.detail?.op === "start_purchase"
@@ -1683,8 +1717,44 @@ export function toToolError(error) {
     body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
     body.detail = { reason: error.detail?.reason === "purchase_outcome_unknown" ? "purchase_outcome_unknown" : "ucp_reap_create_outcome_unknown" };
   }
+  // The upstream cancel (FIX_PLAN C-11, CHECKOUT_CANCEL_UPSTREAM_ENABLED): every "not canceled" outcome says so in
+  // words an agent cannot read as canceled. Only that lane raises these reasons, so with the flag off no answer
+  // changes. Reasons are our own vocabulary; no request value is echoed.
+  if (error instanceof PivotaCommerceError && error.detail?.op === "cancel_checkout_session") {
+    const notCanceled = CANCEL_NOT_CANCELED_ANSWERS[error.detail.reason];
+    if (notCanceled && notCanceled.code === code) {
+      body.message = notCanceled.message;
+      body.detail = { reason: error.detail.reason, canceled: false };
+      body.recovery = notCanceled.recovery;
+    }
+  }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
+
+// cancel_checkout_session's "not canceled" answers (canonicalExecutor.js cancelSessionUpstream). A refund is the
+// merchant's to make (decision D-03): the paid answer points there and never offers to execute one.
+const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
+  order_paid_not_canceled: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "The buyer already paid for this order, so it was not canceled.",
+    recovery: "do not tell the buyer the order was canceled; a refund is the merchant's to make: the buyer asks the merchant for one",
+  },
+  payment_processing_not_canceled: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "A payment for this order is being processed, so it was not canceled.",
+    recovery: "do not tell the buyer the order was canceled; read it again with get_order shortly",
+  },
+  cancel_not_confirmed: {
+    code: "MERCHANT_UNAVAILABLE",
+    message: "The cancellation could not be confirmed, so the order may still be payable.",
+    recovery: "retry with the same idempotency_key; until it answers canceled, do not tell the buyer the order was canceled",
+  },
+  session_already_ordered: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This checkout session already became an order, so canceling the session alone would leave the order payable.",
+    recovery: "cancel it by its order_id",
+  },
+});
 
 // --- small helpers ----------------------------------------------------------------------------------------
 
