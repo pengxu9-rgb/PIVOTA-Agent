@@ -314,6 +314,35 @@ test('an id minted before the rule for GB with a USD store cart is not re-served
   assert.deepEqual(assertAnswerCurrency(gotCatalog.value, 'GBP').money, []);
 });
 
+test('an id minted before the rule over a USD cart, for a row that still states USD under the GB read: the cart is not read either', async () => {
+  const minted = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD_UNGUARDED, 1]], 'GB')));
+  assert.deepEqual([decodeEscId(minted.value.id).v, decodeEscId(minted.value.id).m, minted.value.currency], [2, 'GB', 'USD']);
+  const got = await on(() => ucp('get_checkout', ucpGet(minted.value.id)));
+  assert.equal(reasonOf(got), 'seller_not_priced_in_market_currency');
+  assert.deepEqual(got.store, [], 'no get_cart, no profile read');
+  assert.deepEqual(reads(got), [[IDS.SIG_USD_UNGUARDED, 'GB']]);
+  assert.deepEqual(assertAnswerCurrency(got.value, 'GBP').money, []);
+});
+
+test("a re-read of a store cart that answers in USD for a GB id over a GBP row: the store's price is not shown, and the log says why", async () => {
+  // The store built this cart (in USD) when a GB create asked it; that create answered with the GBP catalog price.
+  door.reset();
+  const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_USD_STORE, 1]], 'GB')));
+  assert.equal(created.value.messages[0].code, 'checkout.completes_on_seller_storefront');
+  const cartId = 'cart_store-h_0001';
+  const id = escId({ v: 2, i: [[IDS.SIG_GBP_USD_STORE, 1]], c: cartId, h: HOST.H, m: 'GB' });
+  const got = await on(() => ucp('get_checkout', ucpGet(id)));
+  assert.deepEqual(tools(got).map((c) => [c.tool, c.arguments.id]), [['get_cart', cartId]], 'the cart exists and was read');
+  assert.equal(got.value.currency, 'GBP');
+  assert.deepEqual(got.value.totals.map((x) => x.amount), [2200, 2200], "the catalog's GBP price, not the cart's 26.00 USD");
+  assert.equal(JSON.stringify(got.value).includes('USD'), false);
+  assertAnswerCurrency(got.value, 'GBP');
+  assert.deepEqual(got.log, [{
+    event: 'ucp_merchant_door_pricing', outcome: 'fallback', reason: 'store_currency_not_market_currency',
+    market: 'GB', expected_currency: 'GBP', row_currency: 'GBP', store_currency: 'USD', seller_host: HOST.H,
+  }]);
+});
+
 test('an id minted for a market with no currency is refused by name on re-read', async () => {
   const id = escId({ v: 1, i: [[IDS.SIG_USD, 1]], m: 'DE' });
   assert.equal((await off(() => ucp('get_checkout', ucpGet(id)))).value.currency, 'USD', 'before: re-served in USD');
