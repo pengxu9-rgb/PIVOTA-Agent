@@ -498,6 +498,13 @@ async function runRequests(door) {
   await invoke('invoke.get_product_detail_connected', { operation: 'get_product_detail', payload: { product: { merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_CONNECTED } } });
   await invoke('invoke.get_product_detail_unscoped_gb', { operation: 'get_product_detail', payload: { product: { product_id: IDS.SIG_USD }, market: 'GB' } });
   await invoke('invoke.unknown_operation', { operation: 'create_checkout_session', payload: nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 42) });
+  // The creator invoke address: the same handler chain as the shop address, under another path.
+  const creator = (key, body) => raw(key, '/agent/creator/v1/invoke', body);
+  await creator('invoke_creator.preview_quote_storefront_seller', { operation: 'preview_quote', payload: { quote: { merchant_id: IDS.SELLER_A, items: [{ product_id: IDS.SIG_USD, variant_id: IDS.VARIANT_USD, quantity: 1 }], customer_email: 'buyer@example.test' } } });
+  await creator('invoke_creator.preview_quote_connected', { operation: 'preview_quote', payload: { quote: { merchant_id: IDS.SELLER_CONNECTED, items: [{ product_id: IDS.SOURCE_CONNECTED, variant_id: IDS.VARIANT_CONNECTED, quantity: 1 }], customer_email: 'buyer@example.test' } } });
+  await creator('invoke_creator.get_product_detail_connected', { operation: 'get_product_detail', payload: { product: { merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SOURCE_CONNECTED } } });
+  await creator('invoke_creator.get_product_detail_unscoped_gb', { operation: 'get_product_detail', payload: { product: { product_id: IDS.SIG_USD }, market: 'GB' } });
+  await creator('invoke_creator.unknown_operation', { operation: 'create_checkout_session', payload: nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 43) });
   return out;
 }
 

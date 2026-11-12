@@ -25,6 +25,7 @@ import {
   marketCurrencyOf,
   lineCurrencyLabelsOf,
   tryEscalateUcpCheckout,
+  escalationRecordIdOf,
   buildEscalationCheckout,
   buildSellerPricedCheckout,
   encodeEscalationId,
@@ -38,6 +39,7 @@ import {
   mcpStorefrontEscalationEnabled,
 } from '../src/mcpStorefrontCart.js';
 import { createCommerceToolSurface, commerceToolDefinitions } from '../src/commerceToolSurface.js';
+import crypto from 'node:crypto';
 
 const require = createRequire(import.meta.url);
 const { resolveServingCurrency } = require('../../src/services/buyerMarket.js');
@@ -908,5 +910,106 @@ describe('the /mcp storefront path runs only with the currency rule on', () => {
       assert.equal(/\d+\.\d\d|USD|GBP/.test(JSON.stringify([out.error.message, out.error.detail])), false, `${tool}: no price, no currency`);
       assert.deepEqual([d.door.calls, d.executor.seen], [[], []], tool);
     }
+  });
+});
+
+// ---- the hand-off record and the rule ------------------------------------------------------------------------------
+
+describe('a hand-off is recorded only for a checkout the currency rule lets out', () => {
+  // The record's two switches, as the hand-off record's own tests set them.
+  const RECORDING = { UCP_STOREFRONT_HANDOFF_RECORD_ENABLED: '1', PARTNER_IDENTITY_FORWARDING_ENABLED: '1' };
+  const CLICK = 'clk_00112233445566778899aabb';
+  const LINK = `https://${HOST}/products/calm-serum?utm_source=pivota&utm_medium=agent&pvt_click_id=${CLICK}`;
+  const SELLER = 'merch_obs_000000000000000a';
+  const recorded = (served) => ({ ...served, merchant_id: SELLER, external_redirect_url: LINK, price_as_of: '2026-01-10T09:00:00Z' });
+  function recorder() {
+    const calls = [];
+    return { calls, async record(fields) { calls.push(structuredClone(fields)); return { kind: 'recorded' }; } };
+  }
+  const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
+  const run = (served, country, env, door, rec, op = CREATE, params = createParams(2)) => rejected(
+    escalate({ op, params, executor: recordingExecutor(served), ucpArgs: ucpArgs(country), env: { ...env, ...RECORDING }, merchantDoor: door, handoffRecorder: rec })
+      .then((out) => { const e = new Error('answered'); e.answer = out; return Promise.reject(e); }),
+  );
+
+  test('a refused create writes NO record and makes no record call: seller in another currency, market not priced, storefront answered in another currency, row with no label', async () => {
+    const cases = [
+      ['GB buyer, USD seller', recorded(row('USD')), 'GB', 'USD', 'seller_not_priced_in_market_currency', []],
+      ['SG buyer, a seller withheld in GBP', recorded(withheldRow('GBP')), 'SG', 'GBP', 'seller_not_priced_in_market_currency', []],
+      ['DE buyer (no currency)', recorded(row('USD')), 'DE', 'USD', 'market_not_priced', []],
+      ['ZZ buyer (no such market)', recorded(row('USD')), 'ZZ', 'USD', 'market_not_priced', []],
+      ['GB buyer, GBP seller whose storefront answers USD', recorded(withheldRow('GBP')), 'GB', 'USD', 'seller_not_priced_in_market_currency', ['discover', 'create_cart']],
+      ['GB buyer, a row that says nothing', recorded({ ...row(null), price: null }), 'GB', 'GBP', 'ucp_escalation_item_unpriced', []],
+    ];
+    for (const [label, served, country, storeCurrency, reason, doorCalls] of cases) {
+      const rec = recorder();
+      const door = fakeDoor(storeCurrency);
+      const err = await run(served, country, ON, door, rec);
+      assert.equal(err.answer, undefined, `${label}: an answer was given`);
+      assert.equal((err.detail.acp_detail || err.detail).reason, reason, label);
+      assert.deepEqual(rec.calls, [], `${label}: a hand-off was recorded for a refused checkout`);
+      assert.deepEqual(door.calls.map((c) => c[0]), doorCalls, label);
+    }
+    // Before the rule (flag off) the first of these IS handed out, in USD, and recorded: the refusal is the rule's.
+    const rec = recorder();
+    const before = await run(recorded(row('USD')), 'GB', OFF, fakeDoor('USD'), rec);
+    assert.equal(before.answer.currency, 'USD');
+    assert.equal(rec.calls.length, 1);
+  });
+
+  test('a row re-labelled after the pre-check: the builder refuses, and nothing was recorded for it', async () => {
+    const product = recorded(row('GBP'));
+    const rec = recorder();
+    const relabelling = { async endpointFor() { return ENDPOINT; }, async createCart() { product.currency = 'USD'; return { ok: false, status: 500 }; } };
+    const err = await rejected(escalate({
+      op: CREATE, params: createParams(), executor: { async execute() { return { product }; } }, ucpArgs: ucpArgs('GB'),
+      env: { ...ON, ...RECORDING }, merchantDoor: relabelling, handoffRecorder: rec,
+    }));
+    assert.equal(err.detail.acp_detail.reason, 'seller_not_priced_in_market_currency');
+    assert.deepEqual(rec.calls, []);
+  });
+
+  test('a create priced by the seller in the market\'s currency writes exactly one record, with the fields the hand-off record always carries', async () => {
+    const rec = recorder();
+    const door = fakeDoor('GBP');
+    const { answer } = await run(recorded(withheldRow('GBP')), 'GB', ON, door, rec, CREATE, createParams(1));
+    assert.equal(answer.currency, 'GBP');
+    const recordId = escalationRecordIdOf(answer.id);
+    assert.match(recordId, /^esh_[A-Za-z0-9_-]{22}$/);
+    assert.deepEqual(rec.calls, [{
+      record_id: recordId, binding: sha(answer.id), seller_host: HOST, currency: 'GBP', quoted_total_minor: 2750,
+      quote_source: 'seller_cart', buyer_market: 'GB', referral_click_id: CLICK, price_as_of: new Date(NOW).toISOString(), merchant_id: SELLER,
+    }]);
+    assert.equal(answer.quote_source, 'seller_cart');
+    assert.deepEqual(door.calls.map((c) => c[0]), ['discover', 'create_cart']);
+  });
+
+  test('a create answered from the catalogue in the market\'s currency writes exactly one record, for the totals it shows', async () => {
+    const rec = recorder();
+    // No seller pricing: the catalogue answer. Its GBP price is the market's.
+    const { answer } = await run(recorded(row('GBP')), 'GB', { [UCP_ESCALATION_FLAG]: '1', [CURRENCY_FOLLOWS_MARKET_FLAG]: '1' }, undefined, rec);
+    assert.deepEqual([answer.currency, answer.quote_source], ['GBP', 'catalogue_fallback']);
+    const recordId = escalationRecordIdOf(answer.id);
+    assert.deepEqual(rec.calls, [{
+      record_id: recordId, binding: sha(answer.id), seller_host: HOST, currency: 'GBP', quoted_total_minor: 5000,
+      quote_source: 'catalogue_fallback', buyer_market: 'GB', referral_click_id: CLICK, price_as_of: '2026-01-10T09:00:00.000Z', merchant_id: SELLER,
+    }]);
+  });
+
+  test('US, USD seller: the record written with the rule on is the record written with it off', async () => {
+    const one = async (env) => {
+      const rec = recorder();
+      const { answer } = await run(recorded(row('USD')), 'US', env, fakeDoor('USD'), rec, CREATE, createParams(1));
+      const [fields] = rec.calls;
+      assert.equal(rec.calls.length, 1);
+      assert.equal(fields.binding, sha(answer.id));
+      const { record_id: _id, binding: _binding, ...rest } = fields;
+      return rest;
+    };
+    assert.deepEqual(await one(ON), await one(OFF));
+    assert.deepEqual(await one(ON), {
+      seller_host: HOST, currency: 'USD', quoted_total_minor: 2750, quote_source: 'seller_cart', buyer_market: 'US',
+      referral_click_id: CLICK, price_as_of: new Date(NOW).toISOString(), merchant_id: SELLER,
+    });
   });
 });
