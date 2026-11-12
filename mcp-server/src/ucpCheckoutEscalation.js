@@ -107,7 +107,7 @@ import storefrontProductPageModule from "../../src/services/storefrontProductPag
 // The hand-off record (FIX_PLAN O-02) — CommonJS, shared with the gateway's backend client and get_order read.
 import storefrontHandoffRecordModule from "../../src/services/storefrontHandoffRecord.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
-import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
+import { REFERRAL_SKIP, priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
 import { assertKeyLongEnough, canonicalRequest, partnerPrincipalOf, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -632,6 +632,16 @@ export function escalationRequestMarket(ucpArgs) {
   return { market: escalationBuyerMarket(ucpArgs), assumed: false };
 }
 
+/**
+ * Why a create for this market asks for NO referral, or undefined when it may ask: `market_assumed` (the buyer named
+ * none and the cart is built for the assumed one), `market_unnamed` (no well-formed market at all). Pure.
+ */
+export function referralSkipFor(requested) {
+  if (!isPlainObject(requested) || requested.assumed === true) return REFERRAL_SKIP.marketAssumed;
+  if (typeof requested.market !== "string" || !/^[A-Z]{2}$/.test(requested.market)) return REFERRAL_SKIP.marketUnnamed;
+  return undefined;
+}
+
 /** A checkout answered for an assumed market says so: `market_assumed`, and the same notice in `messages`. */
 function withAssumedMarket(checkout, assumed) {
   if (!assumed || !isPlainObject(checkout)) return checkout;
@@ -1048,9 +1058,16 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
         expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
         // THE REFERRAL for a cart whose catalog link carries none (ucpMerchantDoorPricing.js, CART_REFERRAL_FLAG): the
-        // door asks only when it is about to send the cart. The seller host, the market THE CART IS BUILT FOR (the one
-        // sent to the seller: the buyer's, or the assumed one) and the observed seller's id; nothing of the buyer.
-        mintReferral: referralMinter && typeof referralMinter.mint === "function"
+        // door asks only when it is about to send the cart. The seller host, the market THE BUYER NAMED and the
+        // observed seller's id; nothing of the buyer.
+        // ONLY FOR A NAMED MARKET. A referral records its market as a fact about the buyer, and the backend refuses
+        // one that names none. A cart built for an ASSUMED market (the buyer named none; this door answered for
+        // US and says so), or for no market at all (a malformed `address_country`), asks for NO referral: the cart
+        // is built untracked, exactly as with the referral switch off, and the skip is counted under its own name.
+        // The assumed market is never sent as if the buyer had named it, and a request the backend would refuse
+        // is never sent to be counted as a miss.
+        referralSkip: referralSkipFor(requested),
+        mintReferral: referralMinter && typeof referralMinter.mint === "function" && referralSkipFor(requested) === undefined
           ? () => referralMinter.mint(compact({ seller_host: sellerHost, market: buyerMarket, merchant_id: cartMerchantId(normalized, rows) }))
           : undefined,
       });

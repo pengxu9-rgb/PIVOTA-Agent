@@ -158,21 +158,119 @@ test('partner identity forwarding off: the referral is still minted, on the gate
   assert.deepEqual(queryOf(a.value.continue_url), [['key', 'k0'], ...membersFor(CLICK(1))]);
 });
 
-test('the referral records the market the cart was built for: the assumed one when the buyer named none, the named one otherwise', async () => {
+test('the referral records the market the buyer NAMED, and only that: SG and GB are asked for as SG and GB', async () => {
   h.setFlags([h.REFERRAL_FLAG, h.FORWARDING_FLAG]);
-  const a = await ucpCreate([[IDS.SIG_A, 1]], 8, AS.A, null);
-  assert.ok(a.value.market_assumed, 'answered for an assumed market');
-  assert.equal(a.isError, false, a.raw);
-  assert.deepEqual(a.referral[0].body, { seller_host: HOST.A, market: 'US', merchant_id: IDS.SELLER_A });
-  assert.equal(toolCalls(a)[0].arguments.cart.context.address_country, 'US');
-  assert.equal(new URL(a.value.continue_url).searchParams.get('utm_campaign'), 'US');
   // A cart built for another market is recorded for that market, never for a default.
   const sg = await ucpCreate([[IDS.SIG_A, 1]], 81, AS.A, 'SG');
   assert.equal(sg.isError, false, sg.raw);
   assert.equal(toolCalls(sg)[0].arguments.cart.context.address_country, 'SG');
-  assert.deepEqual(sg.referral[0].body, { seller_host: HOST.A, market: 'SG', merchant_id: IDS.SELLER_A });
+  assert.deepEqual(sg.referral.map((r) => r.body), [{ seller_host: HOST.A, market: 'SG', merchant_id: IDS.SELLER_A }]);
   assert.equal(new URL(sg.value.continue_url).searchParams.get('utm_campaign'), 'SG');
+  const gb = await ucpCreate([[IDS.SIG_A, 1]], 82, AS.A, 'GB');
+  assert.equal(gb.isError, false, gb.raw);
+  assert.equal(toolCalls(gb)[0].arguments.cart.context.address_country, 'GB');
+  assert.deepEqual(gb.referral.map((r) => r.body), [{ seller_host: HOST.A, market: 'GB', merchant_id: IDS.SELLER_A }]);
+  assert.equal(new URL(gb.value.continue_url).searchParams.get('utm_campaign'), 'GB');
+  // A lower-case code the buyer sent is the market it names.
+  const lower = await ucpCreate([[IDS.SIG_A, 1]], 83, AS.A, 'us');
+  assert.deepEqual(lower.referral.map((r) => r.body.market), ['US']);
+  assert.equal(lower.value.market_assumed, undefined);
+  assert.deepEqual(pricing.cartReferralOutcomeCounts(), { minted: 3 });
 });
+
+test('AN ASSUMED MARKET ASKS FOR NO REFERRAL: no call at all, the cart is built untracked, counted as skipped, not as a miss', async () => {
+  h.setFlags([h.REFERRAL_FLAG, h.FORWARDING_FLAG, h.ATTRIBUTION_FLAG, h.HANDOFF_RECORD_FLAG]);
+  const a = await ucpCreate([[IDS.SIG_A, 1]], 8, AS.A, null);
+  assert.equal(a.isError, false, a.raw);
+  assert.ok(a.value.market_assumed, 'answered for an assumed market');
+  // ZERO referral calls: not "US", and not a market-less request for the backend to refuse.
+  assert.deepEqual(a.referral, []);
+  assert.equal(door.referralCalls.length, 0);
+  // The cart is built, for the assumed market, exactly as with the referral switch off.
+  assert.deepEqual(codesOf(a).filter((c) => c !== 'market_assumed'), ['checkout.priced_by_seller_storefront']);
+  assert.deepEqual(toolCalls(a).map((c) => c.tool), ['create_cart']);
+  assert.equal(toolCalls(a)[0].arguments.cart.context.address_country, 'US');
+  assert.equal(toolCalls(a)[0].arguments.cart.attribution, undefined, 'no cart.attribution');
+  assert.deepEqual(queryOf(a.value.continue_url), [['key', 'k0']], 'no tracking member on the link');
+  assert.equal(decodeEsc(a.value.id).t, undefined, 'none in the id');
+  assert.equal(a.handoff.length, 1);
+  assert.equal('referral_click_id' in a.handoff[0].body, false, 'the hand-off record names no click');
+  assert.deepEqual(pricing.cartReferralOutcomeCounts(), { 'skipped:market_assumed': 1 });
+  // The same create with the referral switch off: the same id members and the same store traffic.
+  door.resetHardening();
+  h.setFlags([h.FORWARDING_FLAG, h.ATTRIBUTION_FLAG, h.HANDOFF_RECORD_FLAG]);
+  const off = await ucpCreate([[IDS.SIG_A, 1]], 8, AS.A, null);
+  const maskRecord = (answer) => JSON.stringify({ ...decodeEsc(answer.value.id), r: '<record>' });
+  assert.equal(maskRecord(a), maskRecord(off));
+  assert.deepEqual(toolCalls(a), toolCalls(off));
+  // The re-read mints nothing either.
+  h.setFlags([h.REFERRAL_FLAG, h.FORWARDING_FLAG, h.ATTRIBUTION_FLAG, h.HANDOFF_RECORD_FLAG]);
+  const again = await ucpGet(off.value.id);
+  assert.deepEqual(again.referral, []);
+  assert.deepEqual(queryOf(again.value.continue_url), [['key', 'k0']]);
+});
+
+test('A MALFORMED MARKET ASKS FOR NO REFERRAL: where a cart is still built for it, it is built untracked, counted as skipped', async () => {
+  h.setFlags([h.REFERRAL_FLAG, h.FORWARDING_FLAG, h.ATTRIBUTION_FLAG]);
+  // With the purchasability gate enforcing (this fixture's default), a market that cannot be read is declined
+  // before any seller is asked: no cart, and no referral call.
+  for (const market of ['USA', 'U1', '840']) {
+    const declined = await ucpCreate([[IDS.SIG_A, 1]], 84, AS.A, market);
+    assert.equal(declined.isError, true, `${market}: ${declined.raw}`);
+    assert.deepEqual([declined.referral.length, toolCalls(declined).length], [0, 0], market);
+  }
+  assert.deepEqual(pricing.cartReferralOutcomeCounts(), {});
+  // With the gate off, the door still builds the cart (with no market to send the seller). The backend would
+  // refuse a referral that names no market, so it is NOT ASKED: no call, no miss.
+  const gate = process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED;
+  delete process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED;
+  try {
+    const a = await ucpCreate([[IDS.SIG_A, 1]], 85, AS.A, 'USA');
+    assert.equal(a.isError, false, a.raw);
+    assert.deepEqual(toolCalls(a).map((c) => c.tool), ['create_cart']);
+    assert.equal(toolCalls(a)[0].arguments.cart.context, undefined, 'no market is sent to the seller either');
+    assert.deepEqual(a.referral, []);
+    assert.equal(door.referralCalls.length, 0);
+    assert.equal(toolCalls(a)[0].arguments.cart.attribution, undefined);
+    assert.deepEqual(queryOf(a.value.continue_url), [['key', 'k0']]);
+    assert.equal(decodeEsc(a.value.id).t, undefined);
+    assert.deepEqual(pricing.cartReferralOutcomeCounts(), { 'skipped:market_unnamed': 1 });
+  } finally {
+    if (gate !== undefined) process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED = gate;
+  }
+});
+
+test('A WELL-FORMED MARKET THE BACKEND DOES NOT KNOW ("ZZ") is asked for as named, and the backend\'s refusal is a skip of its own name: the cart is built untracked', async () => {
+  // This gateway has no one list of markets to check a code against, so it sends a named, well-formed market as
+  // named, and the backend is the judge of which markets exist (the recorded `market_unknown`).
+  h.setFlags([h.REFERRAL_FLAG, h.FORWARDING_FLAG, h.ATTRIBUTION_FLAG]);
+  assert.equal(h.REFERRAL_FIXTURE.market_unknown.request.market, 'ZZ');
+  const a = await ucpCreate([[IDS.SIG_A, 1]], 86, AS.A, 'ZZ');
+  assert.equal(a.isError, false, a.raw);
+  assert.deepEqual(toolCalls(a).map((c) => c.tool), ['create_cart']);
+  assert.equal(toolCalls(a)[0].arguments.cart.context.address_country, 'ZZ');
+  assert.deepEqual(a.referral.map((r) => r.body), [{ seller_host: HOST.A, market: 'ZZ', merchant_id: IDS.SELLER_A }], 'asked once, with the market as named');
+  assert.deepEqual(queryOf(a.value.continue_url), [['key', 'k0']]);
+  assert.equal(toolCalls(a)[0].arguments.cart.attribution, undefined);
+  assert.equal(decodeEsc(a.value.id).t, undefined);
+  assert.deepEqual(pricing.cartReferralOutcomeCounts(), { 'skipped:market_unknown': 1 });
+});
+
+for (const mode of ['market_required', 'market_invalid']) {
+  test(`a backend that answers ${mode} to a request that NAMED a market: the cart is built untracked, counted as an error of this door, never as a miss`, async () => {
+    // Not reachable while the door and the backend agree (the door never asks without a named market). If it
+    // ever happens it must be visible: its own count and an error-level line.
+    h.setFlags([h.REFERRAL_FLAG, h.FORWARDING_FLAG, h.ATTRIBUTION_FLAG]);
+    door.setReferralBackend(mode);
+    const a = await ucpCreate([[IDS.SIG_A, 1]], 87);
+    assert.equal(a.isError, false, a.raw);
+    assert.equal(a.referral.length, 1, 'asked once, never retried');
+    assert.deepEqual(toolCalls(a).map((c) => c.tool), ['create_cart']);
+    assert.deepEqual(queryOf(a.value.continue_url), [['key', 'k0']]);
+    assert.equal(decodeEsc(a.value.id).t, undefined);
+    assert.deepEqual(pricing.cartReferralOutcomeCounts(), { [`error:${mode}`]: 1 });
+  });
+}
 
 // ---- a link that already carries a referral --------------------------------------------------------------------
 

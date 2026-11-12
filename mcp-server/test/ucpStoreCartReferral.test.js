@@ -19,11 +19,11 @@ import fs from 'node:fs';
 import {
   MERCHANT_PRICING_FLAG, CART_ATTRIBUTION_FLAG, CART_REFERRAL_FLAG, REFERRAL_MINT_BUDGET_MS, REFERRAL_MISS_POLICY,
   REFERRAL_MISS_POLICIES, MERCHANT_PRICING_BUDGET_MS, cartReferralEnabled, cartReferralOutcomeCounts,
-  resetCartReferralOutcomeCountsForTest, trackingPairsFrom, priceOnMerchantDoor,
+  resetCartReferralOutcomeCountsForTest, trackingPairsFrom, priceOnMerchantDoor, REFERRAL_SKIP,
 } from '../src/ucpMerchantDoorPricing.js';
 import {
   UCP_ESCALATION_FLAG, tryEscalateUcpCheckout, encodeEscalationId, decodeEscalationId, escalationCartIdOf,
-  escalationTrackingOf, escalationRecordIdOf,
+  escalationTrackingOf, escalationRecordIdOf, referralSkipFor,
 } from '../src/ucpCheckoutEscalation.js';
 import referralModule from '../../src/services/storefrontCartReferral.js';
 import assertionModule from '../../src/attribution/issuingAgentAssertion.js';
@@ -190,12 +190,12 @@ describe('when', () => {
     assert.deepEqual(m.calls, [{ seller_host: 'shop-a.example.com', market: 'US', merchant_id: 'merch_obs_shop_a' }]);
   });
 
-  test('the market sent is the one the cart is built for: named, or the assumed one', async () => {
+  test('the market sent is the one the buyer named; a cart built for the assumed market asks for nothing', async () => {
     const m = minter();
     const door = fakeDoor();
     await create({ referralMinter: m, ucpArgs: {}, merchantDoor: door });
     await create({ referralMinter: m, ucpArgs: { checkout: { context: { address_country: 'GB' } } }, merchantDoor: door });
-    assert.deepEqual(m.calls.map((c) => c.market), ['US', 'GB']);
+    assert.deepEqual(m.calls.map((c) => c.market), ['GB']);
     assert.deepEqual(door.calls.filter((c) => c[0] === 'create_cart').map((c) => c[2].context.address_country), ['US', 'GB']);
   });
 
@@ -273,6 +273,101 @@ describe('a miss', () => {
       assert.deepEqual(cartReferralOutcomeCounts(), { [`miss:${reason}`]: 1 });
       const line = log.lines.find((l) => l.event === 'ucp_storefront_cart_referral');
       assert.deepEqual(line, { level: 'warn', event: 'ucp_storefront_cart_referral', outcome: 'miss', reason, policy: 'build_cart_unattributed', seller_host: 'shop-a.example.com' });
+    });
+  }
+});
+
+// ---- only for a market the buyer named ------------------------------------------------------------------------------
+
+describe('only for a market the buyer named', () => {
+  const quiet = (out, door) => {
+    assert.equal(out.status, 'requires_escalation');
+    assert.ok(out.messages.some((x) => x.code === 'checkout.priced_by_seller_storefront'));
+    assert.equal(out.continue_url, CART_URL);
+    assert.equal(escBody(out.id).t, undefined);
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 1);
+    assert.equal(door.calls.find((c) => c[0] === 'create_cart')[2].attribution, undefined);
+  };
+
+  test('referralSkipFor: assumed, unnamed, or neither', () => {
+    assert.equal(referralSkipFor({ market: 'US', assumed: true }), 'market_assumed');
+    assert.equal(referralSkipFor({ market: 'US', assumed: false }), undefined);
+    assert.equal(referralSkipFor({ market: 'GB', assumed: false }), undefined);
+    for (const market of [null, undefined, '', 'us', 'USA', 'U1', 84]) assert.equal(referralSkipFor({ market, assumed: false }), 'market_unnamed', String(market));
+    for (const none of [null, undefined, 'US']) assert.equal(referralSkipFor(none), 'market_assumed', String(none));
+    assert.deepEqual(REFERRAL_SKIP, { marketAssumed: 'market_assumed', marketUnnamed: 'market_unnamed', marketUnknown: 'market_unknown' });
+  });
+
+  test('AN ASSUMED MARKET (the buyer named none): the minter is never asked, the cart is built untracked, counted as skipped', async () => {
+    const log = logs();
+    const door = fakeDoor();
+    const m = minter();
+    const out = await create({ env: { ...ON, [CART_ATTRIBUTION_FLAG]: '1' }, merchantDoor: door, referralMinter: m, log, ucpArgs: {} });
+    assert.ok(out.market_assumed);
+    assert.deepEqual(m.calls, [], 'not asked: neither with "US" nor with nothing');
+    quiet(out, door);
+    assert.equal(door.calls.find((c) => c[0] === 'create_cart')[2].context.address_country, 'US', 'the cart is still built for the assumed market');
+    assert.deepEqual(cartReferralOutcomeCounts(), { 'skipped:market_assumed': 1 });
+    assert.deepEqual(log.lines.filter((l) => l.event === 'ucp_storefront_cart_referral'), [
+      { level: 'info', event: 'ucp_storefront_cart_referral', outcome: 'skipped', reason: 'market_assumed', seller_host: 'shop-a.example.com' },
+    ]);
+    // Blank and null are "named none" too.
+    for (const address_country of ['', '  ', null]) {
+      const again = minter();
+      await create({ merchantDoor: fakeDoor(), referralMinter: again, ucpArgs: { checkout: { context: { address_country } } } });
+      assert.deepEqual(again.calls, [], JSON.stringify(address_country));
+    }
+  });
+
+  test('A MALFORMED MARKET: the minter is never asked, the cart is built untracked, counted as skipped under its own name', async () => {
+    for (const address_country of ['USA', 'U1', '840']) {
+      resetCartReferralOutcomeCountsForTest();
+      const door = fakeDoor();
+      const m = minter();
+      const out = await create({ merchantDoor: door, referralMinter: m, ucpArgs: { checkout: { context: { address_country } } } });
+      assert.equal(out.market_assumed, undefined);
+      assert.deepEqual(m.calls, [], address_country);
+      quiet(out, door);
+      assert.deepEqual(cartReferralOutcomeCounts(), { 'skipped:market_unnamed': 1 }, address_country);
+    }
+  });
+
+  test('a named market is asked for as named', async () => {
+    for (const [sent, market] of [['US', 'US'], ['GB', 'GB'], ['sg', 'SG'], ['ZZ', 'ZZ']]) {
+      const m = minter();
+      await create({ merchantDoor: fakeDoor(), referralMinter: m, ucpArgs: { checkout: { context: { address_country: sent } } } });
+      assert.deepEqual(m.calls, [{ seller_host: 'shop-a.example.com', market, merchant_id: 'merch_obs_shop_a' }], sent);
+    }
+  });
+
+  test('no skip is counted when no referral was due: the switch off, a stamped link, no cart sent', async () => {
+    await create({ env: PRICED, merchantDoor: fakeDoor(), referralMinter: minter(), ucpArgs: {} });
+    await create({ row: { ...SEED, external_redirect_url: STAMPED_LINK }, merchantDoor: fakeDoor(), referralMinter: minter(), ucpArgs: {} });
+    await create({ merchantDoor: fakeDoor({ endpoint: null }), referralMinter: minter(), ucpArgs: {} });
+    assert.deepEqual(cartReferralOutcomeCounts(), {});
+  });
+
+  test('the backend says the market is UNKNOWN to it: a skip of its own name, at info, not a miss', async () => {
+    const log = logs();
+    const door = fakeDoor();
+    const out = await create({ merchantDoor: door, referralMinter: minter({ kind: 'refused', code: 'market_unknown' }), log, ucpArgs: { checkout: { context: { address_country: 'ZZ' } } } });
+    quiet(out, door);
+    assert.deepEqual(cartReferralOutcomeCounts(), { 'skipped:market_unknown': 1 });
+    assert.deepEqual(log.lines.filter((l) => l.event === 'ucp_storefront_cart_referral'), [
+      { level: 'info', event: 'ucp_storefront_cart_referral', outcome: 'skipped', reason: 'market_unknown', seller_host: 'shop-a.example.com' },
+    ]);
+  });
+
+  for (const code of ['market_required', 'market_invalid', 'market_not_named']) {
+    test(`an answer that says this door asked without a usable market (${code}): counted and logged as an ERROR of its own, never a miss; the cart is built`, async () => {
+      const log = logs();
+      const door = fakeDoor();
+      const out = await create({ merchantDoor: door, referralMinter: minter({ kind: 'refused', code }), log });
+      quiet(out, door);
+      assert.deepEqual(cartReferralOutcomeCounts(), { [`error:${code}`]: 1 });
+      assert.deepEqual(log.lines.filter((l) => l.event === 'ucp_storefront_cart_referral'), [
+        { level: 'error', event: 'ucp_storefront_cart_referral', outcome: 'error', reason: code, policy: 'build_cart_unattributed', seller_host: 'shop-a.example.com' },
+      ]);
     });
   }
 });
@@ -413,7 +508,7 @@ describe('the backend client', () => {
   }
 
   test('minted: the recorded answer of the real handler, for a partner and for none', async () => {
-    for (const [name, signed] of [['minted_for_partner', true], ['minted_no_partner', false], ['minted_no_market', false], ['minted_market_sg', false]]) {
+    for (const [name, signed] of [['minted_for_partner', true], ['minted_no_partner', false], ['minted_market_sg', false], ['minted_market_gb', false]]) {
       const { client, sent } = clientWith(FIXTURE[name], { signed });
       const out = await client.mint(FIXTURE[name].request);
       assert.equal(out.kind, 'minted', name);
@@ -468,6 +563,34 @@ describe('the backend client', () => {
     }
   });
 
+  test('NEVER WITHOUT A NAMED MARKET: asked with none, or a malformed one, the client sends nothing and says so', async () => {
+    // The recorded handler refuses these very requests (`market_required`, `market_invalid`): they are never sent.
+    assert.equal(FIXTURE.market_required.status, 400);
+    assert.equal(FIXTURE.market_required.body.detail.error, 'market_required');
+    assert.equal(FIXTURE.market_invalid.body.detail.error, 'market_invalid');
+    assert.equal(FIXTURE.market_unknown.body.detail.error, 'market_unknown');
+    for (const request of [
+      FIXTURE.market_required.request, FIXTURE.market_invalid.request,
+      { seller_host: 'shop-a.example.com', market: null }, { seller_host: 'shop-a.example.com', market: '' }, { seller_host: 'shop-a.example.com', market: ' ' },
+      { seller_host: 'shop-a.example.com', market: 'us' }, { seller_host: 'shop-a.example.com', market: 'U1' }, { seller_host: 'shop-a.example.com', market: 840 },
+      { seller_host: 'shop-a.example.com', market: ['US'] }, {}, undefined,
+    ]) {
+      const { client, sent } = clientWith(FIXTURE.minted_no_partner);
+      assert.deepEqual(await client.mint(request), { kind: 'refused', code: 'market_not_named' }, JSON.stringify(request));
+      assert.equal(sent.length, 0, JSON.stringify(request));
+    }
+    assert.equal(referralModule.MARKET_NOT_NAMED_CODE, 'market_not_named');
+  });
+
+  test('the backend\'s market refusals are read by name from the recorded answers', async () => {
+    const named = { seller_host: 'shop-a.example.com', market: 'US' };
+    for (const name of ['market_required', 'market_invalid', 'market_unknown']) {
+      const { client, sent } = clientWith(FIXTURE[name]);
+      assert.deepEqual(await client.mint(named), { kind: 'refused', code: name }, name);
+      assert.equal(sent.length, 1);
+    }
+  });
+
   test('an answer that is not exactly tracking members naming one click is no referral', async () => {
     const good = FIXTURE.minted_for_partner.body;
     const bad = [
@@ -484,22 +607,22 @@ describe('the backend client', () => {
     for (const body of bad) {
       assert.equal(referralModule.readReferralAnswer(body), null, JSON.stringify(body));
       const { client } = clientWith({ status: 200, body });
-      assert.deepEqual(await client.mint({ seller_host: 'shop-a.example.com' }), { kind: 'unavailable', code: 'malformed_answer' });
+      assert.deepEqual(await client.mint({ seller_host: 'shop-a.example.com', market: 'US' }), { kind: 'unavailable', code: 'malformed_answer' });
     }
     assert.deepEqual(referralModule.readReferralAnswer(good), { clickId: good.click_id, pairs: Object.entries(good.attribution) });
   });
 
   test('a transport failure, a timeout and a missing key are misses', async () => {
     const thrown = clientWith(() => { throw new Error('socket'); });
-    assert.deepEqual(await thrown.client.mint({ seller_host: 'shop-a.example.com' }), { kind: 'unavailable', code: 'transport' });
+    assert.deepEqual(await thrown.client.mint({ seller_host: 'shop-a.example.com', market: 'US' }), { kind: 'unavailable', code: 'transport' });
     const slow = clientWith((_url, init) => new Promise((_resolve, reject) => {
       init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
     }), { timeoutMs: 60 });
     const started = Date.now();
-    assert.deepEqual(await slow.client.mint({ seller_host: 'shop-a.example.com' }), { kind: 'unavailable', code: 'timeout' });
+    assert.deepEqual(await slow.client.mint({ seller_host: 'shop-a.example.com', market: 'US' }), { kind: 'unavailable', code: 'timeout' });
     assert.ok(Date.now() - started < 500);
     const noKey = clientWith(FIXTURE.minted_no_partner, { authHeaders: () => null });
-    assert.deepEqual(await noKey.client.mint({ seller_host: 'shop-a.example.com' }), { kind: 'unavailable', code: 'unconfigured' });
+    assert.deepEqual(await noKey.client.mint({ seller_host: 'shop-a.example.com', market: 'US' }), { kind: 'unavailable', code: 'unconfigured' });
     assert.deepEqual(noKey.sent, [], 'nothing is sent without the gateway\'s own key');
     // The timeout can be lowered, never raised above one second.
     assert.equal(clientWith(FIXTURE.dark, { timeoutMs: 60000 }).client.timeoutMs, 1000);

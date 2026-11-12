@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_from": "pivota-backend feat/store-cart-referral at e61453124 (routes/agent_storefront_referrals.py), POST /agent/v2/storefront-cart-referrals driven through main.app (its error envelope included) on a scratch sqlite database by a one-off recorder, with the gateway's own body bytes and a request-bound partner assertion where a case names a partner. Per-response 'metadata' (timestamp, request id) removed; click ids replaced by placeholders. All values are placeholders.",
+  "generated_from": "pivota-backend feat/store-cart-referral at 3ace82281 (routes/agent_storefront_referrals.py), POST /agent/v2/storefront-cart-referrals driven through main.app (its error envelope included) on a scratch sqlite database by a one-off recorder, with the gateway's own body bytes and a request-bound partner assertion where a case names a partner. Per-response 'metadata' (timestamp, request id) removed; click ids replaced by placeholders. All values are placeholders.",
   "minted_for_partner": {
     "request": {
       "seller_host": "shop-a.example.com",
@@ -39,9 +39,10 @@
       }
     }
   },
-  "minted_no_market": {
+  "minted_market_sg": {
     "request": {
-      "seller_host": "shop-a.example.com"
+      "seller_host": "shop-a.example.com",
+      "market": "SG"
     },
     "status": 200,
     "body": {
@@ -50,16 +51,17 @@
       "attribution": {
         "utm_source": "pivota",
         "utm_medium": "create_checkout",
-        "utm_campaign": "US",
+        "utm_campaign": "SG",
         "pvt_click_id": "clk_000000000000000000000003",
         "utm_content": "clk_000000000000000000000003"
       }
     }
   },
-  "minted_market_sg": {
+  "minted_market_gb": {
     "request": {
       "seller_host": "shop-a.example.com",
-      "market": "SG"
+      "market": "GB",
+      "merchant_id": "merch_obs_shop_a"
     },
     "status": 200,
     "body": {
@@ -68,9 +70,50 @@
       "attribution": {
         "utm_source": "pivota",
         "utm_medium": "create_checkout",
-        "utm_campaign": "SG",
+        "utm_campaign": "GB",
         "pvt_click_id": "clk_000000000000000000000004",
         "utm_content": "clk_000000000000000000000004"
+      }
+    }
+  },
+  "market_required": {
+    "request": {
+      "seller_host": "shop-a.example.com"
+    },
+    "status": 400,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "market_required",
+        "details": {
+          "error": "market_required"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "market_required"
+      }
+    }
+  },
+  "market_invalid": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "usa"
+    },
+    "status": 400,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "market_invalid",
+        "details": {
+          "error": "market_invalid"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "market_invalid"
       }
     }
   },
@@ -145,6 +188,7 @@
   "invalid_body": {
     "request": {
       "seller_host": "shop-a.example.com",
+      "market": "US",
       "buyer_email": "buyer@example.com"
     },
     "status": 400,
@@ -220,5 +264,27 @@
       "agent_id": null,
       "surface": "ucp_storefront_handoff"
     }
-  ]
+  ],
+  "market_unknown": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "ZZ",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 400,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "market_unknown",
+        "details": {
+          "error": "market_unknown"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "market_unknown"
+      }
+    }
+  }
 }

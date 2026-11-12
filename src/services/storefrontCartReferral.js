@@ -21,6 +21,11 @@
  *
  * WHAT IS SENT. The seller host, the market the buyer named and the observed seller's id. Nothing about the buyer.
  *
+ * NEVER WITHOUT A NAMED MARKET. The backend requires one and refuses a request without it; nothing may default one.
+ * `mint` asked with no well-formed market (two upper-case letters) sends NOTHING and resolves
+ * `{ kind: 'refused', code: 'market_not_named' }`. The door does not ask in that case (ucpMerchantDoorPricing.js
+ * REFERRAL_SKIP); this is the same rule held at the last point before the wire.
+ *
  * NEVER FAILS THE CHECKOUT. Every outcome that is not a well-formed referral (the backend dark, down, slow or
  * refusing; an answer that is not exactly tracking members) resolves `{ kind: 'unavailable' | 'refused' }`. The
  * door then follows its named miss policy (ucpMerchantDoorPricing.js REFERRAL_MISS_POLICY).
@@ -51,6 +56,8 @@ const TRACKING_VALUE_RE = /^[A-Za-z0-9._~-]{1,200}$/;
 const CLICK_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const CLICK_ID_MEMBER = 'pvt_click_id';
 const MAX_MEMBERS = 12;
+const MARKET_RE = /^[A-Z]{2}$/;
+const MARKET_NOT_NAMED_CODE = 'market_not_named';
 
 const OUTCOME = Object.freeze({ minted: 'minted', refused: 'refused', unavailable: 'unavailable' });
 
@@ -131,8 +138,11 @@ function createStorefrontCartReferralClient(deps = {}) {
    */
   async function mint({ seller_host: sellerHost, market, merchant_id: merchantId } = {}) {
     if (!baseUrl || typeof fetchImpl !== 'function') return { kind: OUTCOME.unavailable, code: 'unconfigured' };
-    const body = { seller_host: sellerHost };
-    if (typeof market === 'string' && market) body.market = market;
+    if (typeof market !== 'string' || !MARKET_RE.test(market)) {
+      log('error', { outcome: OUTCOME.refused, code: MARKET_NOT_NAMED_CODE });
+      return { kind: OUTCOME.refused, code: MARKET_NOT_NAMED_CODE };
+    }
+    const body = { seller_host: sellerHost, market };
     if (typeof merchantId === 'string' && merchantId) body.merchant_id = merchantId;
     const url = `${baseUrl}${STOREFRONT_CART_REFERRALS_PATH}`;
     // Serialised ONCE: a partner assertion is hashed over exactly these bytes, and exactly these bytes are sent.
@@ -194,6 +204,7 @@ function createStorefrontCartReferralClient(deps = {}) {
 module.exports = {
   CLICK_ID_MEMBER,
   DEFAULT_TIMEOUT_MS,
+  MARKET_NOT_NAMED_CODE,
   OUTCOME,
   STOREFRONT_CART_REFERRALS_PATH,
   STOREFRONT_CART_REFERRAL_ENV,

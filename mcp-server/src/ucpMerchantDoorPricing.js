@@ -621,12 +621,25 @@ export function cartAttributionOf(catalogLink) {
 // been ("fallback_to_product_page": answer the catalog price and the product page) would trade a working store cart
 // for an unattributed product page, which carries no referral either.
 //
+// ONLY FOR A MARKET THE BUYER NAMED. A referral records its market as a fact about the buyer. The caller says when
+// there is none to record (`referralSkip`): `market_assumed` (the buyer named no market and the cart is built for
+// the assumed one) or `market_unnamed` (no well-formed market at all). The backend is then NOT asked: the cart is
+// built untracked, as with this switch off, and the skip is counted and logged as `skipped:<reason>`, never as a
+// miss. The backend also judges whether a named market is one it knows; its `market_unknown` answer is a skip of
+// the same kind (`skipped:market_unknown`). Its `market_required` / `market_invalid` answers, and a minter that
+// was asked with no market, mean this door sent what it must never send: counted and logged apart, as
+// `error:<code>`, so that it is visible if it ever happens. The cart is built untracked in every one of these cases.
+//
 // A RE-READ MINTS NOTHING. The members a create minted ride in the checkout id (ucpCheckoutEscalation.js, `t`), and a
 // re-read carries those onto the cart URL the seller answers with.
 export const CART_REFERRAL_FLAG = storefrontCartReferralModule.STOREFRONT_CART_REFERRAL_ENV;
 export const REFERRAL_MINT_BUDGET_MS = storefrontCartReferralModule.DEFAULT_TIMEOUT_MS;
 export const REFERRAL_MISS_POLICIES = Object.freeze({ buildCartUnattributed: "build_cart_unattributed", fallbackToProductPage: "fallback_to_product_page" });
 export const REFERRAL_MISS_POLICY = REFERRAL_MISS_POLICIES.buildCartUnattributed;
+export const REFERRAL_SKIP = Object.freeze({ marketAssumed: "market_assumed", marketUnnamed: "market_unnamed", marketUnknown: "market_unknown" });
+// Answers that say THIS DOOR sent a referral request without a usable market (the backend's two refusals, and the
+// client's own refusal to send one): never an ordinary miss.
+const REFERRAL_PROGRAMMING_ERROR_CODES = Object.freeze(new Set(["market_required", "market_invalid", storefrontCartReferralModule.MARKET_NOT_NAMED_CODE]));
 const REFERRAL_MIN_BUDGET_MS = 50;
 const MAX_REFERRAL_PAIRS = 12;
 
@@ -634,7 +647,8 @@ export function cartReferralEnabled(env = process.env) {
   return storefrontCartReferralModule.storefrontCartReferralFlagOn(env);
 }
 
-// Per-process counts of what each mint came to: `minted`, or `miss:<reason>`. The log line is the fleet-wide view.
+// Per-process counts of what each mint came to: `minted`, `miss:<reason>`, `skipped:<reason>` (no referral was due:
+// REFERRAL_SKIP) or `error:<code>` (this door sent a request with no usable market). The log line is the fleet-wide view.
 const cartReferralOutcomes = new Map();
 function countReferral(outcome) { cartReferralOutcomes.set(outcome, (cartReferralOutcomes.get(outcome) || 0) + 1); }
 export function cartReferralOutcomeCounts() { return Object.fromEntries(cartReferralOutcomes); }
@@ -660,12 +674,19 @@ export function trackingPairsFrom(value) {
  * Ask for one referral, inside `budgetMs`. Resolves `{ clickId, pairs }`, or null for a miss (counted and logged with
  * its reason, never the click id). Never throws.
  */
-async function mintCartReferral({ mintReferral, budgetMs, sellerHost, log }) {
+async function mintCartReferral({ mintReferral, budgetMs, sellerHost, log, skip }) {
   const miss = (reason) => {
     countReferral(`miss:${reason}`);
     emitReferral(log, "warn", { outcome: "miss", reason, policy: REFERRAL_MISS_POLICY, seller_host: sellerHost });
     return null;
   };
+  const skipped = (reason) => {
+    countReferral(`skipped:${reason}`);
+    emitReferral(log, "info", { outcome: "skipped", reason, seller_host: sellerHost });
+    return null;
+  };
+  // No market the buyer named: the backend is not asked at all.
+  if (skip !== undefined) return skipped(Object.values(REFERRAL_SKIP).includes(skip) ? skip : REFERRAL_SKIP.marketUnnamed);
   if (typeof mintReferral !== "function") return miss("no_minter");
   const budget = Math.min(REFERRAL_MINT_BUDGET_MS, Math.floor(budgetMs));
   if (!(budget >= REFERRAL_MIN_BUDGET_MS)) return miss("no_budget");
@@ -674,6 +695,13 @@ async function mintCartReferral({ mintReferral, budgetMs, sellerHost, log }) {
   if (answered && answered.timedOut) return miss("timeout");
   if (!isPlainObject(answered) || answered.kind !== storefrontCartReferralModule.OUTCOME.minted) {
     const code = isPlainObject(answered) && typeof answered.code === "string" && /^[A-Za-z0-9_]{1,64}$/.test(answered.code) ? answered.code : "no_answer";
+    // The backend knows no such market: nothing to record, and nothing wrong with the call.
+    if (code === REFERRAL_SKIP.marketUnknown) return skipped(REFERRAL_SKIP.marketUnknown);
+    if (REFERRAL_PROGRAMMING_ERROR_CODES.has(code)) {
+      countReferral(`error:${code}`);
+      emitReferral(log, "error", { outcome: "error", reason: code, policy: REFERRAL_MISS_POLICY, seller_host: sellerHost });
+      return null;
+    }
     return miss(code);
   }
   const pairs = trackingPairsFrom(answered.pairs);
@@ -763,12 +791,14 @@ function emit(log, level, detail) {
  *   STRUCTURED tool error naming the variant as unknown (see ucpCheckoutEscalation.js, the variant_invalid policy).
  *   `mintReferral` (create only, with CART_REFERRAL_FLAG on): asks the backend for one referral when the catalog link
  *   carries no tracking member; a priced answer then carries `referral: { clickId, pairs }`.
+ *   `referralSkip` (create only, same flag): a REFERRAL_SKIP reason when the cart's market is not one the buyer named;
+ *   the backend is then not asked and the cart is built untracked.
  *   `referralPairs` (re-read only, same flag): the members a create minted, carried onto the cart URL again.
  *   `discountCode` (create only, with SELLER_DISCOUNT_CODES_FLAG on): the buyer's ONE code, sent to a seller whose
  *   profile advertises the discount capability. With the flag on, the answer carries `discounts`
  *   (readSellerDiscounts) whenever there is something to say about codes.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -839,7 +869,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   let referral = null;
   if (referralOn && cartId === undefined && !(linkTracking && linkTracking.length)) {
     const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
-    referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log });
+    referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log, skip: referralSkip });
     if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
   } else if (referralOn && cartId !== undefined && !(linkTracking && linkTracking.length)) {
     const again = trackingPairsFrom(referralPairs);

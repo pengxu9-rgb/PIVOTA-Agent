@@ -131,14 +131,26 @@ function bootHardeningDoor({ root, port = 4461, env = {} } = {}) {
       if (!body || typeof body.seller_host !== 'string' || Object.keys(body).some((k) => !known.has(k))) {
         return [REFERRAL_FIXTURE.invalid_body.status, REFERRAL_FIXTURE.invalid_body.body];
       }
+      // THE MARKET IS REQUIRED, as the real handler requires it: none (absent, null or blank) and one that is not
+      // two capital letters are refused with the recorded refusals, and nothing is minted. A well-formed market
+      // the handler's registry does not list (the recorded one: "ZZ") is refused with the recorded `market_unknown`.
+      if (body.market === undefined || body.market === null || String(body.market).trim() === '') {
+        return [REFERRAL_FIXTURE.market_required.status, REFERRAL_FIXTURE.market_required.body];
+      }
+      if (typeof body.market !== 'string' || !/^[A-Z]{2}$/.test(body.market)) {
+        return [REFERRAL_FIXTURE.market_invalid.status, REFERRAL_FIXTURE.market_invalid.body];
+      }
+      if (body.market === REFERRAL_FIXTURE.market_unknown.request.market) {
+        return [REFERRAL_FIXTURE.market_unknown.status, REFERRAL_FIXTURE.market_unknown.body];
+      }
       // The recorded answer for this request's shape. The recordings hold the campaign of the market they were
-      // made with (US, SG, and US for none); for any other market the campaign is that market, as the recorded
-      // SG answer shows the handler does.
+      // made with (US, SG, GB); for any other market the campaign is that market, as the recorded SG and GB
+      // answers show the handler does.
       const recorded = assertion ? REFERRAL_FIXTURE.minted_for_partner
         : body.market === 'SG' ? REFERRAL_FIXTURE.minted_market_sg
-          : body.market === undefined ? REFERRAL_FIXTURE.minted_no_market : REFERRAL_FIXTURE.minted_no_partner;
+          : body.market === 'GB' ? REFERRAL_FIXTURE.minted_market_gb : REFERRAL_FIXTURE.minted_no_partner;
       const [status, answer] = withOwnClickId(recorded);
-      if (typeof body.market === 'string') answer.attribution.utm_campaign = body.market;
+      answer.attribution.utm_campaign = body.market;
       return [status, answer];
     });
 
@@ -171,7 +183,8 @@ function bootHardeningDoor({ root, port = 4461, env = {} } = {}) {
 
   /**
    * How the referral route answers next: 'recorded' (the real handler's behaviour), or one recorded refusal by name
-   * ('dark', 'store_unavailable', 'assertion_rejected', 'not_a_service_caller', 'invalid_body'), or 'malformed';
+   * ('dark', 'store_unavailable', 'assertion_rejected', 'not_a_service_caller', 'invalid_body', 'market_required',
+   * 'market_invalid', 'market_unknown'), or 'malformed';
    * `delayMs` holds every answer back that long.
    */
   const setReferralBackend = (mode = 'recorded', { delayMs = 0 } = {}) => { state.referral = mode; state.delayMs = delayMs; };
