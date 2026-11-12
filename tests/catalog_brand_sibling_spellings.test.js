@@ -61,8 +61,8 @@ const ROWS = [
   beauty('brisa beauty', 18), // "beauty" is part of a brand name: NOT a sibling suffix
   beauty('lime', 11), // on the ambiguous stripped-name list
   beauty('lime uk', 15),
-  beauty('merit', 11), // on the ambiguous single-word list
-  beauty('merit usa', 15),
+  beauty('whipped', 11), // on the ambiguous single-word list
+  beauty('whipped usa', 15),
   beauty('orrin', 16),
   { b: 'orrin jp', n: 2, nb: 2, nc: 2, nl: 0 }, // in the dictionary, does not qualify (2 rows)
   { b: 'orrin store', n: 60, nb: 3, nc: 60, nl: 3 }, // in the dictionary, mostly not beauty
@@ -146,8 +146,11 @@ describe('the sibling resolver', () => {
   test('a family name on either ambiguous list binds nothing', () => {
     expect(siblingsOf('lime')).toEqual([]);
     expect(siblingsOf('lime uk')).toEqual([]);
-    expect(siblingsOf('merit')).toEqual([]);
-    expect(siblingsOf('merit usa')).toEqual([]);
+    expect(siblingsOf('whipped')).toEqual([]);
+    expect(siblingsOf('whipped usa')).toEqual([]);
+    // premise: nothing but the two lists stands between these families and a binding
+    expect(cache.resolveBrandSiblingSpellings('lime').siblings).toEqual(['lime uk']);
+    expect(cache.resolveBrandSiblingSpellings('whipped').siblings).toEqual(['whipped usa']);
   });
 
   test('a member that does not itself qualify as a beauty brand is not bound', () => {
