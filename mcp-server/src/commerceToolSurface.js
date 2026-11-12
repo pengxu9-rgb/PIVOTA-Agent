@@ -1517,13 +1517,20 @@ export function ucpDialectSurface(surface) {
  */
 function memoizedProductReads(executor) {
   const memo = new Map();
+  // A read FOR A MARKET (`payload.market`, the storefront escalation's currency rule) is a different read: the row
+  // comes back priced for that market. It has its own memo per market, so a read for one market is never answered
+  // from a read for another, or from one that named none. A read with no market keys on the product id alone, as before.
+  const memoByMarket = new Map();
   return {
     execute(op, params, ctx) {
       const product = op === "get_product" && isPlainObject(params?.payload) && isPlainObject(params.payload.product) ? params.payload.product : null;
       const key = product && nonEmpty(product.product_id) && !nonEmpty(product.merchant_id) && Object.keys(product).length === 1 ? product.product_id : null;
       if (!key) return executor.execute(op, params, ctx);
-      if (!memo.has(key)) memo.set(key, executor.execute(op, params, ctx));
-      return memo.get(key);
+      const market = nonEmpty(params.payload.market) ? params.payload.market.trim() : null;
+      if (market && !memoByMarket.has(market)) memoByMarket.set(market, new Map());
+      const reads = market ? memoByMarket.get(market) : memo;
+      if (!reads.has(key)) reads.set(key, executor.execute(op, params, ctx));
+      return reads.get(key);
     },
   };
 }

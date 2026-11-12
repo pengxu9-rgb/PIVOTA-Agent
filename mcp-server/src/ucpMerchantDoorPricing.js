@@ -640,8 +640,11 @@ function emit(log, level, detail) {
  *   `discountCode` (create only, with SELLER_DISCOUNT_CODES_FLAG on): the buyer's ONE code, sent to a seller whose
  *   profile advertises the discount capability. With the flag on, the answer carries `discounts`
  *   (readSellerDiscounts) whenever there is something to say about codes.
+ *   `marketCurrency` (set by the escalation only while its currency-follows-market rule is on): the currency of the
+ *   buyer's market. When given, THAT is the currency the seller's answer must be in, whatever the catalog row says;
+ *   absent, the row's currency is, as before.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -656,13 +659,21 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   }
   // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
   const currencies = new Set(items.map((it) => str(own(rows.get(it.product_id), "currency"))?.toUpperCase()).filter(Boolean));
-  const expectedCurrency = currencies.size === 1 ? [...currencies][0] : null;
-  if (!expectedCurrency) { emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost }); return null; }
+  const rowCurrency = currencies.size === 1 ? [...currencies][0] : null;
+  if (!rowCurrency) { emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost }); return null; }
+  // THE CURRENCY THE SELLER MUST ANSWER IN. The buyer market's own when the caller states it (`marketCurrency`): a
+  // price for a market is in that market's currency, so the seller's answer is held to the market, not to whatever
+  // currency the catalog row happens to carry. Without it, the row's currency, as before.
+  const followsMarket = typeof marketCurrency === "string" && /^[A-Z]{3}$/.test(marketCurrency);
+  const expectedCurrency = followsMarket ? marketCurrency : rowCurrency;
   const wanted = [];
   const derived = [];
+  // Which variant-id route each line took (sellerVariantChoiceOf), for the priced line below.
+  const sources = [];
   for (const it of items) {
     const choice = sellerVariantChoiceOf(rows.get(it.product_id), sellerHost, it.variant_id);
     const gid = choice.gid;
+    if (choice.source && !sources.includes(choice.source)) sources.push(choice.source);
     if (!gid) { emit(log, "info", { outcome: "fallback", reason: "variant_unresolved", seller_host: sellerHost }); return null; }
     // A "choice" of the ONLY real variant is not a choice: get_product publishes no variant list for such a product,
     // but its sole variant id is visible elsewhere (variants[0].variant_id on the native door / PDP), so
@@ -752,7 +763,20 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   let doorHost = null;
   try { const ep = new URL(endpoint); if (ep.protocol === "https:") doorHost = ep.hostname.toLowerCase(); } catch { doorHost = null; }
   const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn });
-  if (!read) { emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost }); return null; }
+  if (!read) {
+    // Under the market rule, a seller that answered in ANOTHER currency than the market's is named as that: its
+    // price is not shown (the caller answers without it). No buyer data, no cart id.
+    const storeCurrency = str(own(payload, "currency"));
+    if (followsMarket && storeCurrency && /^[A-Z]{3}$/.test(storeCurrency) && storeCurrency !== expectedCurrency) {
+      emit(log, "info", {
+        outcome: "fallback", reason: "store_currency_not_market_currency", market: market || null,
+        expected_currency: expectedCurrency, row_currency: rowCurrency, store_currency: storeCurrency, seller_host: sellerHost,
+      });
+      return null;
+    }
+    emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost });
+    return null;
+  }
   if (discountCodesOn) {
     const discounts = readSellerDiscounts(payload, wanted, read, { requested: codeRequested ? discountCode : undefined, notSentReason });
     if (discounts) {
@@ -776,7 +800,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   }
   if (catalogLink) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
   if (cartId !== undefined && read.cartId !== cartId) { emit(log, "info", { outcome: "fallback", reason: "cart_id_mismatch", seller_host: sellerHost }); return null; }
-  emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length });
+  emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length, source: sources.sort().join(",") });
   return read;
 }
 
