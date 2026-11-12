@@ -302,10 +302,13 @@ async function runHardeningRequests(door) {
   // ---- one buyer, two partners; one partner, two sessions; a key under the published minimum ----
   const scoped = await ucp('ucp.scope_first', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171));
   await ucp('ucp.scope_same_buyer_other_partner_same_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171), AS.A_BUYER_VIA_B);
-  await ucp('ucp.scope_same_buyer_other_partner_other_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 171), AS.A_BUYER_VIA_B);
   await ucp('ucp.scope_other_session_same_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171), AS.A_OTHER_SESSION);
-  await ucp('ucp.scope_other_session_other_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 171), AS.A_OTHER_SESSION);
   await ucp('ucp.scope_same_everything', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171));
+  // Another cart under a key the buyer used through partner A in the first session: a key of its own (177), so that
+  // neither the other partner nor the other session has used it before.
+  await ucp('ucp.scope_second', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 3]], 'US', 177));
+  await ucp('ucp.scope_same_buyer_other_partner_other_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 177), AS.A_BUYER_VIA_B);
+  await ucp('ucp.scope_other_session_other_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 177), AS.A_OTHER_SESSION);
   await ucp('ucp.scope_get_first_by_other_partner', 'get_checkout', { meta: UCP_META, id: idOf(scoped) }, AS.A_BUYER_VIA_B);
   await mcp('mcp.scope_first', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 2]], { market: 'US', n: 172 }));
   await mcp('mcp.scope_same_buyer_other_partner_same_cart', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 2]], { market: 'US', n: 172 }), AS.A_BUYER_VIA_B);
