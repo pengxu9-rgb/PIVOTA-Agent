@@ -72,8 +72,13 @@ function setFlags(on = []) {
   }
 }
 
-function bootHardeningDoor({ root, port = 4461, env = {} } = {}) {
-  const door = support.bootDoor({
+/**
+ * `base`: the door fixture to add the partners and the two backend routes to. The storefront-cart fixture by
+ * default; a test of the currency rule passes the store-cart-by-market fixture (tests/_support/storeCartMarketDoor.cjs:
+ * sellers priced in several currencies) with the backend base that fixture answers on.
+ */
+function bootHardeningDoor({ root, port = 4461, env = {}, base = support, backendBase = base.BACKEND_BASE } = {}) {
+  const door = base.bootDoor({
     ...(root ? { root } : {}),
     port,
     env: {
@@ -119,7 +124,7 @@ function bootHardeningDoor({ root, port = 4461, env = {} } = {}) {
     const own = `clk_${state.clickSeq.toString(16).padStart(24, '0')}`;
     return [recorded.status, JSON.parse(JSON.stringify(recorded.body).split(placeholder).join(own))];
   };
-  nock(support.BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post(REFERRAL_PATH)
     .reply(async function reply(uri, body) {
       if (state.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.delayMs));
@@ -167,7 +172,7 @@ function bootHardeningDoor({ root, port = 4461, env = {} } = {}) {
   const handoffCalls = [];
   const handoffReads = [];
   const handoffRows = new Map();
-  nock(support.BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post(HANDOFF_PATH)
     .reply(function reply(uri, body) {
       const assertion = assertionOf(this.req.headers, { requestPath: uri.split('?')[0], body });

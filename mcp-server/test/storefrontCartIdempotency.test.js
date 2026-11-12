@@ -606,6 +606,32 @@ describe('the lane', () => {
     assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 2);
   });
 
+  test('A RECORD MADE BEFORE THE CURRENCY RULE IS JUDGED AGAIN, NEVER SERVED: a GB cart of a USD seller, on either door\'s scope', async () => {
+    const RULE = 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET';
+    for (const idempotencyDoor of ['ucp', 'mcp']) {
+      resetStoreCartIdempotencyCountsForTest();
+      const store = new InMemoryKvStore();
+      const door = fakeDoor();
+      const before = await create({ store, door, market: 'GB', idempotencyDoor });
+      assert.equal(before.currency, 'USD', 'before the rule: answered in the seller\'s currency');
+      assert.equal(store._m.size, 1);
+      // The rule on: the same create, the same key.
+      const on = { ...ON, [RULE]: '1' };
+      await assert.rejects(create({ env: on, store, door, market: 'GB', idempotencyDoor }),
+        (err) => err.code === 'NO_MERCHANT_OFFER' && err.detail.reason === 'seller_not_priced_in_market_currency', idempotencyDoor);
+      assert.deepEqual(door.calls.map((c) => c[0]), ['create_cart'], 'the recorded cart is not even read back from the seller');
+      // The record was found (a replay was attempted) and what it holds was refused, not served.
+      assert.deepEqual(storeCartIdempotencyCounts(), { claimed: 1, replayed: 1 });
+      // A US cart of the same seller replays under the rule, member for member.
+      const us = await create({ store, door, key: 'idem-lane-us-01', idempotencyDoor });
+      assert.deepEqual(await create({ env: on, store, door, key: 'idem-lane-us-01', idempotencyDoor }), us);
+      // A create the rule refuses records nothing: the same key builds once the rule is off again.
+      await assert.rejects(create({ env: on, store, door, market: 'GB', key: 'idem-lane-gb-02', idempotencyDoor }), (err) => err.detail.reason === 'seller_not_priced_in_market_currency');
+      assert.equal(store._m.size, 2, 'no record for the refused create');
+      assert.ok((await create({ store, door, market: 'GB', key: 'idem-lane-gb-02', idempotencyDoor })).id);
+    }
+  });
+
   test('a 7-character key with the flag on: refused before the gate and the store; 8 characters: built; flag off: a short key is as before', async () => {
     const store = new InMemoryKvStore();
     const door = fakeDoor();
