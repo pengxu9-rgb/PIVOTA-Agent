@@ -155,6 +155,8 @@ test('what the ceiling leaves to the rules that were already there', () => {
   for (const cart of [undefined, null, 'items', 7, {}, [], [null], ['x'], [[{ quantity: 1000 }]]]) {
     assert.equal(caught(() => assertLineQuantitiesWithinMaximum(cart)), null, `not a cart: ${JSON.stringify(cart)}`);
   }
+  // Only a line's OWN quantity is read, as the cart rule itself reads it: an inherited one is not the line's.
+  assert.equal(caught(() => assertLineQuantitiesWithinMaximum([Object.create({ quantity: 1000 })])), null, 'an inherited quantity');
   // A cart with more lines than a cart may have is refused for THAT, without being walked.
   const oversized = Array.from({ length: MAX_CART_ITEMS + 1 }, (_, i) => ({ product_id: `p${i}`, quantity: 1000 }));
   assert.equal(caught(() => assertLineQuantitiesWithinMaximum(oversized)), null, 'left to the cart-size rule');

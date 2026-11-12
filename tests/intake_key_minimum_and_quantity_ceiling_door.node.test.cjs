@@ -306,6 +306,19 @@ test('/ucp/mcp create and update, kernel path: 999 units are sent to be priced; 
   }
 });
 
+test('/ucp/mcp create and update: a line that names a variant is refused above the ceiling before the read that proves the variant', async () => {
+  const sid = await kernelSession();
+  const chosen = `${IDS.SIG_STORE}::v::${IDS.VARIANT_STORE}`;
+  // At the ceiling the door reads the product to prove the variant is one of its own.
+  door.resetGate();
+  const at = await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(freshKey()), checkout: fx.ucpCheckout(chosen, 999) });
+  assert.ok(at.upstream.some((c) => c.to === 'catalog'), `999: ${at.raw.slice(0, 300)}`);
+  for (const quantity of [1000, 900000000]) {
+    assertQuantityAboveMaximum(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(freshKey()), checkout: fx.ucpCheckout(chosen, quantity) }), `create ${quantity}`);
+    assertQuantityAboveMaximum(await door.call('/ucp/mcp', 'update_checkout', { meta: fx.ucpMeta(freshKey()), id: sid, checkout: fx.ucpCheckout(chosen, quantity) }), `update ${quantity}`);
+  }
+});
+
 // ---- /public/mcp ----------------------------------------------------------------------------------------------------
 
 test('/public/mcp publishes no checkout tool, so neither bound has anything to judge there', async () => {

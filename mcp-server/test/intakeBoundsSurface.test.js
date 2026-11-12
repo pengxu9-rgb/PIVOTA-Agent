@@ -259,6 +259,27 @@ for (const tool of ['create_checkout', 'update_checkout']) {
   });
 }
 
+for (const tool of ['create_checkout', 'update_checkout']) {
+  test(`UCP ${tool}: a line that NAMES A VARIANT is proven against a product read before intake; 1000 is refused before that read`, async () => {
+    // Without the surface's own early ceiling this cart would be read first (the variant proof) and refused after.
+    for (const product of [CONTRACTED, STOREFRONT]) {
+      const variant = product === CONTRACTED ? 'v-9001-1' : '44000000000001';
+      const row = { ...product, variants: [{ variant_id: variant }] };
+      const executor = recorder({ [product.product_id]: row });
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+      const call = (quantity) => ucp.callTool(tool, {
+        meta: { ...UCP_META, 'idempotency-key': 'idem-quantity-0004' },
+        ...(tool === 'update_checkout' ? { id: 'q_1' } : {}),
+        checkout: ucpCheckout(quantity, `${product.product_id}::v::${variant}`),
+      }, SESSION);
+      assertQuantityAboveMaximum(await rejected(call(1000)), `${tool} ${product.product_id} 1000`);
+      assert.deepEqual(executor.seen, [], `${tool} ${product.product_id}: the product was not read`);
+      await rejected(call(999));
+      assert.ok(executor.seen.some((c) => c.op === 'get_product'), `${tool} ${product.product_id} 999: the variant proof read the product`);
+    }
+  });
+}
+
 test('UCP create: 999 units of a storefront product become a storefront checkout of 999 units', async () => {
   await withEscalation(async () => {
     const executor = recorder(ROWS);
