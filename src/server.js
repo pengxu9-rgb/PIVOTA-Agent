@@ -470,6 +470,7 @@ const {
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
 const { unscopedDetailPdpRequest } = require('./services/pdpDetailHop');
+const pdpWithheldCurrencies = require('./services/pdpWithheldCurrencies');
 const { resolveOfferScopeCurrency } = require('./services/buyerMarketOfferScope');
 const {
   collapseSearchResponseBodyByShadeLine,
@@ -32750,6 +32751,7 @@ function normalizePdpV2ToProductDetail(body) {
   const degraded = Array.isArray(body?.degraded_reads) && body.degraded_reads.length > 0
     ? { degraded_reads: body.degraded_reads.map(String) }
     : {};
+  let product;
   try {
     const modules = Array.isArray(body?.modules) ? body.modules : [];
     const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
@@ -32759,21 +32761,24 @@ function normalizePdpV2ToProductDetail(body) {
       ? p.price.current
       : null;
     const availability = typeof p.availability === 'string' ? p.availability.toLowerCase() : '';
-    return {
-      product: {
-        ...p,
-        brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
-        price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
-        currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
-        in_stock: availability
-          ? /in.?stock|available/.test(availability)
-          : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
-      },
-      ...degraded,
+    product = {
+      ...p,
+      brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
+      price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
+      currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
+      in_stock: availability
+        ? /in.?stock|available/.test(availability)
+        : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
     };
   } catch {
     return { product: null, ...degraded };
   }
+  // The currencies the page withheld money in (`metadata.serving_currency_guard`) are noted BESIDE the product,
+  // never on it (src/services/pdpWithheldCurrencies.js): the product and every answer built from it are unchanged.
+  // OUTSIDE the projection's own try, and never throwing: the note is written for every product this function
+  // returns, and a note that cannot be written leaves the projection exactly as it was.
+  pdpWithheldCurrencies.noteWithheldCurrenciesOfPdpResponse(product, body);
+  return { product, ...degraded };
 }
 
 // recommend_products' per-item live price checks call get_pdp_v2 back into this process. They carry the MCP
