@@ -104,6 +104,8 @@ import merchantPurchasability from "../../src/services/merchantPurchasabilityCli
 // The storefront product-page check — CommonJS, shared with the search price overlay so a page either surface
 // found gone is gone for both for the same TTL (src/services/storefrontProductPage.js).
 import storefrontProductPageModule from "../../src/services/storefrontProductPage.js";
+// The hand-off record (FIX_PLAN O-02) — CommonJS, shared with the gateway's backend client and get_order read.
+import storefrontHandoffRecordModule from "../../src/services/storefrontHandoffRecord.js";
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
@@ -251,13 +253,18 @@ export function escalationTargetOf(product) {
 // resolve to a DIFFERENT seller (the row was re-pointed, or the id was forged) must not hand seller A's cart id to
 // seller B. On a host mismatch the re-read does not call the seller at all and falls back to the catalog answer.
 //
+// RECORDED (`r`, FIX_PLAN O-02; UCP_STOREFRONT_HANDOFF_RECORD_ENABLED). An id whose hand-off the backend recorded for
+// the partner that asked carries that record's id. Nothing here trusts it: get_order sends it to the backend with the
+// sha256 of the WHOLE id, and the backend answers only a record stored under that binding, only to its owner
+// (src/services/storefrontHandoffRecord.js). Absent unless the record was confirmed, so every other id keeps its bytes.
+//
 // THE MARKET THE CHECKOUT WAS CREATED FOR (decision D-10). `get_checkout` carries no market on the wire, so the id
 // carries it: `m` (ISO-2, US included) whenever the create had a market to key on, plus `a: 1` when the create named
 // none and was answered as US, assumed. An id with NO `m` is a LEGACY id -- minted before this change, when every
 // market minted the same bytes, or by a create whose market was malformed -- and says nothing about the market: its
 // re-read is unkeyable exactly as every re-read was before (under enforcement, a decline). It is never read as US.
 // The members are additive: a build without them ignores them (its re-read is unkeyable again, as before).
-export function encodeEscalationId(items, cartId, sellerHost, market) {
+export function encodeEscalationId(items, cartId, sellerHost, market, recordId) {
   // A chosen variant rides as a third member of its line: [product_id, quantity, variant_id].
   const i = items.map((it) => (it.variant_id ? [it.product_id, it.quantity, it.variant_id] : [it.product_id, it.quantity]));
   const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId, h: sellerHost } : { v: 1, i };
@@ -266,6 +273,7 @@ export function encodeEscalationId(items, cartId, sellerHost, market) {
     body.m = code;
     if (market.assumed === true && code === requestMarket.ASSUMED_MARKET) body.a = 1;
   }
+  if (recordId !== undefined && recordId !== null) body.r = recordId;
   return ESCALATION_ID_PREFIX + Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
 }
 
@@ -334,6 +342,114 @@ export function decodeEscalationId(id) {
 
 export function isEscalationId(id) {
   return decodeEscalationId(id) !== null;
+}
+
+/** The hand-off record id a recorded escalation id carries (`r`), or undefined. Never proof of anything by itself. */
+export function escalationRecordIdOf(id) {
+  const parsed = parseEscalationId(id);
+  if (!parsed || !decodeEscalationId(id)) return undefined;
+  const r = own(parsed, "r");
+  return typeof r === "string" && storefrontHandoffRecordModule.HANDOFF_RECORD_ID_RE.test(r) ? r : undefined;
+}
+
+// ---- the hand-off record and the quote-source label (FIX_PLAN O-02) ------------------------------------------------
+//
+// THE LABEL (UCP_STOREFRONT_HANDOFF_RECORD_ENABLED alone, read per call). Every storefront checkout says where its
+// totals came from: `quote_source: "seller_cart"` (the seller's own door priced a cart built for it, `price_as_of` =
+// when) or `quote_source: "catalogue_fallback"` (the catalog's last observed price, `price_as_of` = the OLDEST read
+// behind the lines, null when any line has none) plus a warning naming it, so an agent never takes a catalogue total
+// for the seller's live cart. Off, neither member nor the warning exists.
+//
+// THE RECORD (the same flag AND PARTNER_IDENTITY_FORWARDING_ENABLED; an injected `handoffRecorder`). Each create writes
+// one hand-off record for the partner that asked, and only a CONFIRMED write puts its id into the esc id.
+
+export const QUOTE_SOURCE_FALLBACK_MESSAGE_CODE = "checkout.quote_source.catalogue_fallback";
+
+export function quoteSourceLabelEnabled(env = process.env) {
+  return storefrontHandoffRecordModule.storefrontHandoffFlagOn(env);
+}
+
+function isoOrNull(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+/** The catalogue price stamp of a cart: the oldest line's `price_as_of`, null when any line has none. Pure. */
+export function cataloguePriceAsOf(items, rows) {
+  let oldest = null;
+  for (const it of items) {
+    const row = rows.get(it.product_id);
+    const at = isoOrNull(isPlainObject(row) ? (row.price_as_of ?? row.price_checked_at) : null);
+    if (!at) return null;
+    if (oldest === null || at < oldest) oldest = at;
+  }
+  return oldest;
+}
+
+function withQuoteSource(checkout, quoteSource, priceAsOf) {
+  return { ...checkout, quote_source: quoteSource, price_as_of: priceAsOf };
+}
+
+const REFERRAL_CLICK_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** The referral click id (`pvt_click_id`) the catalog link carries: on a Pivota hop, its destination's. Pure. */
+export function referralClickIdOf(link) {
+  let parsed;
+  try { parsed = new URL(link); } catch { return null; }
+  const hop = pivotaHopDestination(parsed);
+  let source = parsed;
+  if (hop) {
+    if (!hop.dest) return null;
+    try { source = new URL(hop.dest); } catch { return null; }
+  }
+  const values = source.searchParams.getAll("pvt_click_id");
+  return values.length === 1 && REFERRAL_CLICK_ID_RE.test(values[0]) ? values[0] : null;
+}
+
+const MERCHANT_ID_RE = /^[A-Za-z0-9_.:-]{1,50}$/;
+
+function cartMerchantId(items, rows) {
+  const ids = new Set(items.map((it) => str(own(rows.get(it.product_id), "merchant_id"))));
+  if (ids.size !== 1) return null;
+  const [only] = [...ids];
+  return only && MERCHANT_ID_RE.test(only) ? only : null;
+}
+
+/**
+ * The id to hand out for a storefront checkout. `encode(recordId?)` builds it. Without the record switches or a
+ * recorder, or on any write that is not confirmed, the id WITHOUT a record (what the door always handed out).
+ */
+async function recordedEscalationId({ encode, quoteSource, totals, currency, sellerHost, catalogLink, buyerMarket, items, rows, priceAsOf, env, handoffRecorder, log }) {
+  const plain = encode(undefined);
+  if (!storefrontHandoffRecordModule.storefrontHandoffRecordEnabled(env)) return plain;
+  if (!handoffRecorder || typeof handoffRecorder.record !== "function") return plain;
+  const total = Array.isArray(totals) ? totals.find((t) => isPlainObject(t) && t.type === "total") : null;
+  const amount = total ? total.amount : undefined;
+  if (!sellerHost || !Number.isSafeInteger(amount) || amount < 0 || !/^[A-Z]{3}$/.test(String(currency || ""))) {
+    if (log && typeof log.info === "function") {
+      try { log.info({ event: "ucp_storefront_handoff_record", outcome: "not_recordable" }); } catch { /* never throw the door */ }
+    }
+    return plain;
+  }
+  const recordId = storefrontHandoffRecordModule.mintHandoffRecordId();
+  const id = encode(recordId);
+  if (escalationRecordIdOf(id) !== recordId) return plain;
+  const fields = compact({
+    record_id: recordId,
+    binding: storefrontHandoffRecordModule.escalationIdBinding(id),
+    seller_host: sellerHost,
+    currency,
+    quoted_total_minor: amount,
+    quote_source: quoteSource,
+    buyer_market: buyerMarket && /^[A-Z]{2}$/.test(buyerMarket) ? buyerMarket : undefined,
+    referral_click_id: catalogLink ? referralClickIdOf(catalogLink) : null,
+    price_as_of: priceAsOf,
+    merchant_id: cartMerchantId(items, rows),
+  });
+  let answered;
+  try { answered = await handoffRecorder.record(fields); } catch { answered = null; }
+  return answered && answered.kind === "recorded" ? id : plain;
 }
 
 // ---- reads -------------------------------------------------------------------------------------------------
@@ -547,6 +663,8 @@ function assertMarketCurrency(currency, marketCurrency, productId) {
  * @param {{ id:string, items:{product_id,quantity}[], rows:Map, continueUrl:string, buyerEmail?:string, now:number, env?:object }} a
  */
 export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [], discountCode, marketCurrency }) {
+  const labelled = quoteSourceLabelEnabled(env);
+  const priceAsOf = labelled ? cataloguePriceAsOf(items, rows) : null;
   const lineItems = [];
   let subtotal = 0;
   let currency = null;
@@ -600,7 +718,7 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
 
   const host = sellerHostOf(continueUrl);
   const where = host ? `the seller's own storefront (${host})` : "the seller's own storefront (continue_url)";
-  return buildUcpCheckoutEnvelope({
+  const checkout = buildUcpCheckoutEnvelope({
     id,
     status: "requires_escalation",
     continueUrl,
@@ -629,8 +747,20 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
       },
       ...extraMessages,
       ...(discountCode !== undefined ? [discountOutcomeMessage({ status: "not_confirmed", reason: "not_priced_by_seller" })] : []),
+      ...(labelled ? [{
+        type: "warning",
+        code: QUOTE_SOURCE_FALLBACK_MESSAGE_CODE,
+        path: "$.totals",
+        content: [
+          "quote_source is catalogue_fallback: these totals are the catalog's stored price",
+          priceAsOf ? `as of ${priceAsOf},` : "(no read time on record),",
+          "not the seller's live cart. Do not present them to the buyer as the price they will pay.",
+        ].join(" "),
+        content_type: "plain",
+      }] : []),
     ],
   });
+  return labelled ? withQuoteSource(checkout, storefrontHandoffRecordModule.QUOTE_SOURCE.catalogueFallback, priceAsOf) : checkout;
 }
 
 /**
@@ -697,7 +827,7 @@ export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, 
       .map((o, i) => (o.status === "applied" ? null : { ...discountOutcomeMessage(o), path: `$.discounts.codes[${i}]` }))
       .filter(Boolean),
   ];
-  return buildUcpCheckoutEnvelope({
+  const checkout = buildUcpCheckoutEnvelope({
     id,
     status: "requires_escalation",
     continueUrl: priced.continueUrl,
@@ -710,6 +840,9 @@ export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, 
     env,
     messages,
   });
+  return quoteSourceLabelEnabled(env)
+    ? withQuoteSource(checkout, storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart, new Date(now).toISOString())
+    : checkout;
 }
 
 function attestedEmailOrBody(attested, bodyValue) {
@@ -727,7 +860,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -857,6 +990,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         "the buyer entered it, or send the checkout without `checkout.discounts`.",
       ].join(" "), { rejected_field: "checkout.discounts.codes" });
     }
+    // The hand-off record names the buyer's market only when the buyer NAMED it (decision D-10): an assumed US is no
+    // claim about the buyer, so the record carries none, as the seed-link mint is sent none.
+    const recordedMarket = requested.assumed ? undefined : buyerMarket;
     // No seller cart for rows that are not priced in the market's currency: the seller is not contacted at all.
     const priced = notInMarketCurrency ? null : await priceOnMerchantDoor({
       items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
@@ -866,8 +1002,18 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     if (priced) {
       // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
       // id: such a cart is not offered at all, and the catalog answer below is given instead.
-      const id = encodeEscalationId(normalized, priced.cartId, sellerHost, { code: buyerMarket, assumed: requested.assumed });
-      if (escalationCartIdOf(id) === priced.cartId) {
+      const idMarket = { code: buyerMarket, assumed: requested.assumed };
+      const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket);
+      if (escalationCartIdOf(unrecorded) === priced.cartId) {
+        // THE CURRENCY RULE BEFORE THE RECORD: a hand-off is recorded only for a checkout that is handed out, so the
+        // seller's answer is held to the market's currency here, before anything is written (the builder holds it again).
+        if (marketCurrency) assertMarketCurrency(priced.currency, marketCurrency);
+        const id = await recordedEscalationId({
+          encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId),
+          quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart,
+          totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
+          items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
+        });
         return withAssumedMarket(buildSellerPricedCheckout({
           id, priced, sellerHost, buyerEmail, now, env, ...(marketCurrency ? { marketCurrency } : {}),
         }), requested.assumed);
@@ -886,8 +1032,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       items: normalized, links: normalized.map((it) => targets.get(it.product_id)), rows, continueUrl,
       env, storefrontPage, log, doorSignals,
     });
-    return withAssumedMarket(buildEscalationCheckout({
-      id: encodeEscalationId(normalized, undefined, undefined, { code: buyerMarket, assumed: requested.assumed }),
+    // The catalogue answer is built first (it can still refuse: an unpriced line, mixed currencies), so a hand-off is
+    // recorded only for a checkout that is actually handed out, with the totals it shows.
+    const fallbackMarket = { code: buyerMarket, assumed: requested.assumed };
+    const fallbackArgs = {
       items: normalized,
       rows,
       continueUrl: checked.continueUrl,
@@ -903,7 +1051,15 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       env,
       discountCode,
       ...(marketCurrency ? { marketCurrency } : {}),
-    }), requested.assumed);
+    };
+    const draft = buildEscalationCheckout({ id: encodeEscalationId(normalized, undefined, undefined, fallbackMarket), ...fallbackArgs });
+    const id = await recordedEscalationId({
+      encode: (recordId) => encodeEscalationId(normalized, undefined, undefined, fallbackMarket, recordId),
+      quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.catalogueFallback,
+      totals: draft.totals, currency: draft.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
+      items: normalized, rows, priceAsOf: cataloguePriceAsOf(normalized, rows), env, handoffRecorder, log,
+    });
+    return withAssumedMarket(id === draft.id ? draft : buildEscalationCheckout({ id, ...fallbackArgs }), requested.assumed);
   }
 
   const sessionId = str(own(params, "session_id"));

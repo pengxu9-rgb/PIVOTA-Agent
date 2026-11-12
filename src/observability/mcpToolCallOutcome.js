@@ -69,7 +69,9 @@ const OBSERVED_FIELDS = Object.freeze({
 
 // Codes that mean "our side failed" even though the taxonomy marks them non-retriable or carries no flag:
 // UNEXPECTED_ERROR is what an uncurated exception becomes on the wire.
-const SERVER_TOOL_ERROR_CODES = new Set(['UNEXPECTED_ERROR']);
+// PARTNER_ASSERTION_REJECTED (FIX_PLAN O-04): the backend refused the gateway's own signed partner assertion,
+// a fault between our two services, so the error-rate alert must see it although it is non-retriable.
+const SERVER_TOOL_ERROR_CODES = new Set(['UNEXPECTED_ERROR', 'PARTNER_ASSERTION_REJECTED']);
 
 const MAX_TOOL_LABEL_LENGTH = 64;
 const TOOL_LABEL = /^[A-Za-z0-9_.:-]{1,64}$/;

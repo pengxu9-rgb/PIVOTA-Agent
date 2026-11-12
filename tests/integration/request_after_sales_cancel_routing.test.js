@@ -53,5 +53,33 @@ describe('request_after_sales cancel routing', () => {
     expect(seen[0]['x-api-key']).toBeUndefined();
     expect(seen[0].authorization).toBeUndefined();
   });
-});
 
+  // FIX_PLAN C-11: with the backend's CHECKOUT_CANCEL_UPSTREAM_ENABLED on, the v1 cancel answers v2's codes. This lane
+  // hands each back unchanged (status and body), so a caller reads `canceled: false` and the code, never a success.
+  // The answers are recorded from the merged backend (tests/fixtures/backend_get_order_unified.backend.json).
+  const RECORDED_V1_CANCEL = JSON.parse(require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'fixtures', 'backend_get_order_unified.backend.json'), 'utf8',
+  )).cancel_v1;
+  it.each([
+    ['not_canceled_paid', 409, 'ORDER_ALREADY_PAID'],
+    ['not_canceled_processing', 409, 'PAYMENT_PROCESSING'],
+    ['not_confirmed', 503, 'CANCEL_NOT_CONFIRMED'],
+  ])('passes the backend\'s v1 cancel answer %s through as %s %s', async (outcome, status, code) => {
+    const recorded = RECORDED_V1_CANCEL[outcome];
+    let calls = 0;
+    nock(process.env.PIVOTA_API_BASE)
+      .post(`/agent/v1/orders/${recorded.body.detail.order_id}/cancel`)
+      .reply(() => { calls += 1; return [recorded.status, recorded.body]; });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'request_after_sales',
+        payload: { status: { order_id: recorded.body.detail.order_id, requested_action: 'cancel' } },
+      });
+
+    expect(res.status).toBe(status);
+    expect(res.body.detail).toEqual(expect.objectContaining({ error: code, canceled: false }));
+    expect(calls).toBe(1);
+  });
+});

@@ -541,29 +541,56 @@ const TRACKING_KEY_RE = /^(utm_[a-z0-9_]{1,40}|pvt_[a-z0-9_]{1,40})$/i;
 // appended to the RAW query — the seller's own query string is left byte for byte as the seller wrote it.
 const TRACKING_VALUE_RE = /^[A-Za-z0-9._~-]{1,200}$/;
 
-export function carryAttribution(cartUrl, catalogLink) {
+/** The tracking members (`utm_*`, `pvt_*`) of the catalog link's destination, first value per key. Pure. */
+function trackingPairsOf(catalogLink) {
   let source;
   try {
     const parsed = new URL(catalogLink);
     const hop = pivotaHopDestination(parsed);
     source = hop ? (hop.dest ? new URL(hop.dest) : null) : parsed;
   } catch { source = null; }
-  if (!source) return cartUrl;
-  let parsed;
-  try { parsed = new URL(cartUrl); } catch { return cartUrl; }
+  if (!source) return null;
   const pairs = [];
   const seen = new Set();
   for (const [key, value] of source.searchParams.entries()) {
-    if (!TRACKING_KEY_RE.test(key) || !TRACKING_VALUE_RE.test(value) || parsed.searchParams.has(key) || seen.has(key)) continue;
+    if (!TRACKING_KEY_RE.test(key) || !TRACKING_VALUE_RE.test(value) || seen.has(key)) continue;
     seen.add(key);
-    pairs.push(`${key}=${value}`);
+    pairs.push([key, value]);
   }
+  return pairs;
+}
+
+export function carryAttribution(cartUrl, catalogLink) {
+  const tracking = trackingPairsOf(catalogLink);
+  if (!tracking) return cartUrl;
+  let parsed;
+  try { parsed = new URL(cartUrl); } catch { return cartUrl; }
+  const pairs = tracking.filter(([key]) => !parsed.searchParams.has(key)).map(([key, value]) => `${key}=${value}`);
   if (!pairs.length) return cartUrl;
   const hashAt = cartUrl.indexOf("#");
   const head = hashAt === -1 ? cartUrl : cartUrl.slice(0, hashAt);
   const hash = hashAt === -1 ? "" : cartUrl.slice(hashAt);
   const sep = !head.includes("?") ? "?" : (head.endsWith("?") || head.endsWith("&") ? "" : "&");
   return `${head}${sep}${pairs.join("&")}${hash}`;
+}
+
+// THE UCP `attribution` MEMBER ON THE SELLER'S CART (FIX_PLAN O-02; AGENT_CHECKOUT_UCP_CART_ATTRIBUTION_ENABLED, default
+// OFF, read per call). UCP 2026-04-08 — the version this door speaks (safety-kernel/src/protocol/ucpSpecVersion.cjs) —
+// defines `attribution` on the cart object (shopping/cart.json: create "optional", $ref types/attribution.json: an
+// open map of string values, "platform-emitted referral and conversion-event context ... the same parameters
+// platforms pass in URL query strings"). So the referral the cart URL already carries (above) is ALSO sent the way
+// the protocol defines, on create_cart, as `cart.attribution`: the SAME tracking members, never anything new, never
+// buyer data. A re-read (`get_cart`) sends nothing. Off, the cart is byte-identical to before.
+export const CART_ATTRIBUTION_FLAG = "AGENT_CHECKOUT_UCP_CART_ATTRIBUTION_ENABLED";
+export function cartAttributionEnabled(env = process.env) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[CART_ATTRIBUTION_FLAG]) || "").trim());
+}
+
+/** The `cart.attribution` object for a catalog link, or null when it carries no tracking member. Pure. */
+export function cartAttributionOf(catalogLink) {
+  const pairs = catalogLink ? trackingPairsOf(catalogLink) : null;
+  if (!pairs || !pairs.length) return null;
+  return Object.fromEntries(pairs);
 }
 
 // ---- the door ----------------------------------------------------------------------------------------------------
@@ -734,6 +761,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   if (left() <= 0) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
   if (codeToSend !== null && !acceptsDiscountCodes) { codeToSend = null; notSentReason = "not_sent_seller_does_not_advertise"; }
 
+  const cartAttribution = cartId === undefined && cartAttributionEnabled(env) ? cartAttributionOf(catalogLink) : null;
   let result;
   try {
     const call = cartId !== undefined
@@ -742,6 +770,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
         lineItems: wanted.map((w) => ({ item: { id: w.gid }, quantity: w.quantity })),
         ...(market ? { context: { address_country: market } } : {}),
         ...(codeToSend !== null ? { discountCodes: [codeToSend] } : {}),
+        ...(cartAttribution ? { cartAttribution } : {}),
       });
     result = await withBudget(call, left());
   } catch (err) {
