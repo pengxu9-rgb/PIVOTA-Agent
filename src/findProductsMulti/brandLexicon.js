@@ -560,9 +560,9 @@ function staticLexiconNames(key) {
 }
 
 function resolveBoundBrandSiblingSpellings(brand) {
-  const brandKey = String((brand && brand.brand_key) || '');
-  if (!brandKey.startsWith('catalog:')) return [];
-  const key = brandKey.slice('catalog:'.length);
+  const catalogKey = /^catalog:(.+)$/.exec(String((brand && brand.brand_key) || ''));
+  if (!catalogKey) return [];
+  const key = catalogKey[1];
   const { siblings } = brandDictionaryCache.resolveBrandSiblingSpellings(key);
   if (!siblings.length) return [];
   const familyName = normalizeBrandText(brandDictionaryCache.brandFamilyName(key));

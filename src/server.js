@@ -19366,13 +19366,11 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
   // row under a bare contract; it does not admit one suffixed spelling under another ("x uk" under
   // "x usa"). The siblings are the SAME list the SQL binds, compared for EQUALITY with the row's
   // own brand, so this adds the family's rows and no others. [] with the flag off.
-  if (productBrand) {
-    const compactProductBrand = productBrand.replace(/\s+/g, '');
-    const isSiblingSpelling = resolveBoundBrandSiblingSpellings(brand).some(
-      (sibling) => normalizeSearchQualityBrandNeedle(sibling).replace(/\s+/g, '') === compactProductBrand,
-    );
-    if (isSiblingSpelling) return true;
-  }
+  const ownCompactBrand = productBrand.replace(/\s+/g, '');
+  const isSiblingSpelling = resolveBoundBrandSiblingSpellings(brand).some(
+    (sibling) => normalizeSearchQualityBrandNeedle(sibling).replace(/\s+/g, '') === ownCompactBrand,
+  );
+  if (isSiblingSpelling) return true;
   const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
   const compactText = text.replace(/\s+/g, '');
   const matches = (needle) => {

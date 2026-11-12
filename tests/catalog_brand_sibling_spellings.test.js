@@ -166,9 +166,14 @@ describe('the sibling resolver', () => {
   test('spacing and hyphens do not split a family, and one row identity is not two spellings', () => {
     expect(siblingsOf('hale-wyn')).toEqual(['halewyn usa']);
     expect(siblingsOf('halewyn usa')).toEqual(['hale-wyn']);
-    cache.__setBeautyBrandRowsForTest([beauty('vel mora', 9), beauty('velmora', 9)]);
-    expect(siblingsOf('vel mora')).toEqual([]);
-    expect(siblingsOf('velmora')).toEqual([]);
+    // premise: loaded solid-first, the two spellings are two dictionary entries in one family
+    cache.__setBeautyBrandRowsForTest([beauty('velmora', 9), beauty('vel mora', 9), beauty('velmora uk', 9)]);
+    expect(cache.matchCatalogBeautyBrand('velmora').brand).toBe('velmora');
+    expect(cache.matchCatalogBeautyBrand('vel mora').brand).toBe('vel mora');
+    expect(siblingsOf('vel mora')).toEqual(['velmora uk']);
+    expect(siblingsOf('velmora')).toEqual(['velmora uk']);
+    expect(siblingsOf('velmora uk')).toEqual(['vel mora', 'velmora']);
+    expect(brandIdentityBindKeys(catalog('velmora uk'))).toEqual(['velmorauk', 'velmora']);
   });
 
   test('a static-lexicon brand keeps its single key, whatever the catalog holds', () => {
@@ -314,6 +319,13 @@ describe('the brand keys both recall lanes bind', () => {
     expect(brandIdentityBindKeys(catalog('zentora labs'))).toEqual(MAIN['zentora labs']);
     expect(brandIdentityBindKeys(catalog('brisa beauty'))).toEqual(MAIN['brisa beauty']);
     expect(brandIdentityBindKeys(catalog('quillbright'))).toEqual(['quillbright']);
+  });
+
+  test('a sibling is bound verbatim: the predicate\'s own "beauty" shortening is not applied to it', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('brisa beauty', 18), beauty('brisa beauty usa', 9), beauty('brisa usa', 9), beauty('brisa', 20)]);
+    // main already binds "brisa" for "brisa beauty"; the sibling adds its own identity and no shortening of it
+    expect(brandIdentityBindKeys(catalog('brisa beauty'))).toEqual(['brisabeauty', 'brisa', 'brisabeautyusa']);
+    expect(brandIdentityBindKeys(catalog('brisa'))).toEqual(['brisa', 'brisausa']);
   });
 
   test('flag on: a static brand binds its reviewed aliases and nothing else', () => {

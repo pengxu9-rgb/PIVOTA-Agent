@@ -144,11 +144,16 @@ async function refresh() {
     }
   }
   _set = next;
+  installBeautyBrandStats(rows);
+  _loadedAt = Date.now();
+}
+
+// The beauty map and everything derived from it, replaced together (the loader and the test hook).
+function installBeautyBrandStats(rows) {
   _beauty = buildBeautyBrandStats(rows);
   _beautyStripped = buildStrippedBrandIndex(_beauty);
   _beautyFamilies = buildBrandFamilyIndex(_beauty);
   _familyCapLogged = new Set();
-  _loadedAt = Date.now();
 }
 
 // Non-blocking warm: kick a refresh if enabled + stale, but never await it on
@@ -400,7 +405,6 @@ function buildBrandFamilyIndex(stats) {
     if (seen.has(entry.brand)) continue; // the squashed alias points at the same entry
     seen.add(entry.brand);
     const key = brandFamilyKey(entry.brand);
-    if (!key) continue;
     if (!families.has(key)) families.set(key, []);
     families.get(key).push(entry.brand);
   }
@@ -419,25 +423,21 @@ const NO_SIBLING_SPELLINGS = Object.freeze({ siblings: Object.freeze([]), capped
 // here. An empty (cold) dictionary, or a key it does not hold, has no siblings.
 function resolveBrandSiblingSpellings(brandKey) {
   if (!siblingSpellingsEnabled() || !enabled() || !beautyContractEnabled()) return NO_SIBLING_SPELLINGS;
-  if (!_beautyFamilies.size) return NO_SIBLING_SPELLINGS;
   const key = normalize(foldAccents(brandKey));
-  const own = _beauty.get(key);
-  if (!own || own.brand !== key) return NO_SIBLING_SPELLINGS;
+  // A cold dictionary holds no key, so it has no family either.
+  if (!_beauty.has(key)) return NO_SIBLING_SPELLINGS;
   const familyKey = brandFamilyKey(key);
   const ownIdentity = key.replace(/[\s\-]/g, '');
-  const siblings = (_beautyFamilies.get(familyKey) || []).filter((brand) => {
+  const siblings = (_beautyFamilies.get(familyKey) || []).filter(
     // "vel mora" and "velmora" are one row identity already, not two spellings to bind.
-    if (brand.replace(/[\s\-]/g, '') === ownIdentity) return false;
-    const stats = _beauty.get(brand);
-    return Boolean(stats) && stats.brand === brand && qualifiesAsBeautyBrand(stats);
-  });
-  if (!siblings.length) return NO_SIBLING_SPELLINGS;
+    (brand) => brand.replace(/[\s\-]/g, '') !== ownIdentity && qualifiesAsBeautyBrand(_beauty.get(brand)),
+  );
   if (siblings.length + 1 > MAX_BRAND_FAMILY_SPELLINGS) {
     if (!_familyCapLogged.has(familyKey)) {
       _familyCapLogged.add(familyKey);
-      // Counts only: a brand string in a log line is a brand string in a log sink.
       // Once per family per dictionary load, and loaded here so a process that never meets an
-      // oversized family never loads the logger through this module.
+      // oversized family never loads the logger through this module. Counts only: a brand
+      // string in a log line is a brand string in a log sink.
       require('../logger').warn(
         { event: 'brand_sibling_spellings_over_cap', spellings: siblings.length + 1, cap: MAX_BRAND_FAMILY_SPELLINGS },
         'brand_sibling_spellings_over_cap: only the matched brand key is bound',
@@ -607,20 +607,14 @@ function debugState() {
 // Test hook: seed the cache without a DB.
 function __setBrandSetForTest(values) {
   _set = new Set(values || []);
-  _beauty = new Map();
-  _beautyStripped = new Map();
-  _beautyFamilies = new Map();
-  _familyCapLogged = new Set();
+  installBeautyBrandStats([]);
   _loadedAt = Date.now();
 }
 
 // Test hook: seed the beauty map through the SAME builder the loader uses.
 // rows: [{ b, n, nb, nc }]
 function __setBeautyBrandRowsForTest(rows) {
-  _beauty = buildBeautyBrandStats(rows);
-  _beautyStripped = buildStrippedBrandIndex(_beauty);
-  _beautyFamilies = buildBrandFamilyIndex(_beauty);
-  _familyCapLogged = new Set();
+  installBeautyBrandStats(rows);
   _loadedAt = Date.now();
 }
 
