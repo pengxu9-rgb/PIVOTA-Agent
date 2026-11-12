@@ -355,6 +355,9 @@ function isSellerPriced(parsed) {
 //              (it puts bound ids in circulation so `enforce` strands none), not a protection.
 //   enforce    a checkout id is read only by the buyer it was minted for: an unbound id is refused, so there is
 //              nothing to rewrite a bound id into, and `t` (the referral's members) is under the MAC.
+// THE BUYER IS THE VERIFIED `user_ref`, ACROSS PARTNERS. The binding names no partner: one person signed in through
+// two partners' clients is one `user_ref` (always, on the OAuth door), so under `enforce` either client reads the id
+// the other created. Never another person's. The retry ledger (storefrontCartIdempotency.js) does isolate partners.
 //
 // THE KEY. Derived (HMAC, a label of its own) from CONFIRMATION_SECRET, the kernel's secret for the confirmation
 // tokens these same doors mint; strict checkout does not boot without a strong one. No new secret name. FAIL CLOSED:

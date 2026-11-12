@@ -15,7 +15,7 @@ import {
   STORE_CART_IDEMPOTENCY_FLAG, CLAIM_LEASE_MS, KEY_REUSED_REASON, IN_FLIGHT_REASON, STORE_CART_IDEMPOTENCY_NAMESPACE,
   MIN_KEY_LENGTH, KEY_TOO_SHORT_REASON, partnerPrincipalOf, assertKeyLongEnough,
   storeCartIdempotencyEnabled, storeCartIdempotencyCounts, resetStoreCartIdempotencyCountsForTest,
-  canonicalRequest, requestFingerprint, recordKey, sealCheckoutId, openCheckoutId, runIdempotentCart,
+  canonicalRequest, requestFingerprint, recordKey, sealCheckoutId, openCheckoutId, runIdempotentCart, storedFingerprint,
 } from '../src/storefrontCartIdempotency.js';
 import { MERCHANT_PRICING_FLAG } from '../src/ucpMerchantDoorPricing.js';
 import { UCP_ESCALATION_FLAG, ESCALATION_TTL_MS, ID_BINDING_SECRET_ENV, tryEscalateUcpCheckout, storeCartIdempotencyKey } from '../src/ucpCheckoutEscalation.js';
@@ -122,8 +122,15 @@ describe('what is stored', () => {
     const record = await h.store.get(key);
     assert.deepEqual(Object.keys(record).sort(), ['created_at', 'fp', 'sealed', 'status']);
     assert.equal(record.status, 'done');
-    assert.equal(record.fp, FP);
     const stored = JSON.stringify([key, record]);
+    // The request digest is stored KEYED: not the plain digest, and not computable from the request and scope alone.
+    assert.equal(record.fp, storedFingerprint(SCOPE, FP));
+    assert.notEqual(record.fp, FP);
+    assert.match(record.fp, /^[0-9a-f]{64}$/);
+    assert.equal(record.fp, crypto.createHmac('sha256', SERVER_KEY).update(`fp|${FP}|${JSON.stringify([SCOPE.door, SCOPE.partner, SCOPE.userRef, SCOPE.sessionId, SCOPE.rawKey])}`, 'utf8').digest('hex'));
+    assert.equal(stored.includes(FP), false, 'the plain request digest is nowhere in the row');
+    for (const [name, other] of Object.entries(OTHER_SCOPES)) assert.notEqual(storedFingerprint(other, FP), record.fp, name);
+    assert.throws(() => storedFingerprint({ ...SCOPE, serverKey: null }, FP), /no server key/);
     for (const secret of [SCOPE.userRef, SCOPE.rawKey, SCOPE.sessionId, 'agent_partner_a', ID]) assert.equal(stored.includes(secret), false, secret);
     assert.equal(openCheckoutId(record.sealed, SCOPE), ID);
     for (const [name, other] of Object.entries(OTHER_SCOPES)) {
@@ -407,9 +414,17 @@ describe('fail open, counted', () => {
     assert.deepEqual(await h.run(), { id: ID, built: 1 });
     assert.deepEqual(storeCartIdempotencyCounts(), { 'fail_open:read': 1 });
   });
+  test('a record written before the request digest was keyed (a plain digest in `fp`) is never replayed: it reads as another request, refused', async () => {
+    const store = new InMemoryKvStore();
+    await store.putIfAbsent(recordKey(SCOPE), { fp: FP, status: 'done', sealed: sealCheckoutId(ID, SCOPE), created_at: 1 }, { ttlMs: TTL });
+    const h = harness({ store });
+    await assert.rejects(h.run(), (err) => err.code === 'IDEMPOTENCY_CONFLICT' && err.detail.reason === KEY_REUSED_REASON);
+    assert.equal(h.calls.build, 0);
+    assert.deepEqual(h.calls.replay, []);
+  });
   test('a record this scope cannot open is not read back', async () => {
     const store = new InMemoryKvStore();
-    await store.putIfAbsent(recordKey(SCOPE), { fp: FP, status: 'done', sealed: sealCheckoutId(ID, { ...SCOPE, userRef: 'someone-else' }), created_at: 1 }, { ttlMs: TTL });
+    await store.putIfAbsent(recordKey(SCOPE), { fp: storedFingerprint(SCOPE, FP), status: 'done', sealed: sealCheckoutId(ID, { ...SCOPE, userRef: 'someone-else' }), created_at: 1 }, { ttlMs: TTL });
     const h = harness({ store });
     assert.deepEqual(await h.run(), { id: ID, built: 1 });
     assert.deepEqual(h.calls.replay, []);

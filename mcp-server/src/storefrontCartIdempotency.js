@@ -26,14 +26,24 @@
 //            replay can never belong to two partners. A buyer's `user_ref` does NOT name the partner: one person
 //            signed in through two OAuth clients is one `user_ref`, and without the partner here the second client
 //            was handed the first client's checkout, with the first client's referral on its link.
-//   session  the verified `acp_session_id`, as the kernel's own ledger scopes a key (canonicalExecutor.js
-//            `scopedBaseKey`): a key reused in another session is another request, not a conflict.
+//   session  the call's `acp_session_id`, as the kernel's own ledger scopes a key (canonicalExecutor.js
+//            `scopedBaseKey`): a key reused in another session is another request, not a conflict. WHAT THAT VALUE
+//            IS depends on the door's sign-in. On an api-key call it is the session the gateway's sign-in channel
+//            resolved for the buyer. On an OAuth call it is a session claim of the access token when the token
+//            carries one, and otherwise the `Mcp-Session-Id` header THE CLIENT SENDS: a value the client chooses, which
+//            this gateway neither issues nor checks. A client that reconnects under a new one is in a new scope,
+//            so its retry is NOT deduplicated (it builds a second cart, as with the flag off). That splits only
+//            the client's own scope: the partner and the buyer are verified on every door.
 // NEVER ACROSS AN UNKNOWN PRINCIPAL. A call with no partner (a service or degraded identity, an unbound caller) or
 // no session is not deduplicated at all: it proceeds as it did before this module, counted and logged
 // (`fail_open: no_partner` / `no_session`).
 //
 // THE KEY HAS A MINIMUM LENGTH on this path while the flag is on: MIN_KEY_LENGTH characters, the `minLength` both
-// doors' tool schemas publish. A shorter one is refused before the gate or any store is asked, with the code a
+// doors' tool schemas publish. Counted on the key AS THE DOOR READS IT: with surrounding blanks removed, and in
+// UTF-16 code units. That is not quite the schema's count (code points of the string as sent): a key of eight
+// characters padded with blanks to nine is refused here though the schema allows it, and four characters outside
+// the basic plane (eight code units) are accepted though the schema refuses them. Left as it is: the shared intake
+// rule for both paths is to replace this one. A shorter one is refused before the gate or any store is asked, with the code a
 // missing key gets (IDEMPOTENCY_CONFLICT) and a reason of its own (KEY_TOO_SHORT_REASON).
 //
 // THE GUARANTEE, stated exactly. While the store answers, at most one create per scope is building at a
@@ -51,7 +61,9 @@
 //
 // UNDER A SERVER SECRET. Every member of the scope is a value a caller knows or can guess (a key is often
 // `checkout-1`), so digests of the scope alone would let anyone who can read the table find a buyer's row and open
-// it; the row holds the seller's cart id, a bearer handle. Both the record key and the sealing key are therefore
+// it; the row holds the seller's cart id, a bearer handle. The request digest is guessable in the same way (a cart
+// is a few product ids and quantities): stored plain, a reader of the table could confirm a guessed cart against a
+// row. So the record key, the sealing key AND the stored request digest (`fp`) are all
 // HMACs under `scope.serverKey`: a key the door derives from the kernel's own secret, with a label of this
 // module's own (ucpCheckoutEscalation.js `storeCartIdempotencyKey`; the same secret and derivation as the id
 // binding, another label, so neither key can stand in for the other). NO KEY, NO RECORD: with the flag on and no
@@ -143,6 +155,16 @@ function sealingKey(scope) {
   return keyed(scope, "seal");
 }
 
+/**
+ * The request digest AS STORED (`fp`): an HMAC of the scope and the request's fingerprint under the server key, with
+ * a purpose of its own. A row's `fp` cannot be matched against a guessed cart without the key. Throws without a
+ * server key (runIdempotentCart never asks). A record written before this (a plain digest in `fp`) simply does not
+ * match: it reads as another request under the key, which is refused, and it expires with its six hours.
+ */
+export function storedFingerprint(scope, fingerprint) {
+  return keyed(scope, `fp|${String(fingerprint)}`).toString("hex");
+}
+
 /** The checkout id, sealed so that only a request presenting the same scope, on a server holding the key, can open it. */
 export function sealCheckoutId(id, scope) {
   const iv = randomBytes(12);
@@ -219,6 +241,8 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
   if (!serverKeyOf(scope)) return failOpen("no_secret");
   if (!store || typeof store.putIfAbsent !== "function") return failOpen("no_store");
   const key = recordKey(scope);
+  // What is stored and compared is the KEYED digest, never the request's plain one.
+  const fp = storedFingerprint(scope, fingerprint);
   const owner = randomUUID();
   const replayOf = async (record, outcome) => {
     const id = openCheckoutId(record.sealed, scope);
@@ -228,7 +252,7 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
     return replay(id, Number(record.created_at));
   };
   const conflictIfOther = (record) => {
-    if (record.fp !== fingerprint) {
+    if (record.fp !== fp) {
       count("conflict");
       emit(log, "info", { outcome: "conflict" });
       throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason: KEY_REUSED_REASON });
@@ -238,7 +262,7 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
   for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
     let claimed;
     try {
-      claimed = await store.putIfAbsent(key, { fp: fingerprint, status: "pending", owner, claimed_at: now() }, { ttlMs: CLAIM_LEASE_MS });
+      claimed = await store.putIfAbsent(key, { fp, status: "pending", owner, claimed_at: now() }, { ttlMs: CLAIM_LEASE_MS });
     } catch { return failOpen("claim"); }
 
     if (claimed) {
@@ -258,7 +282,7 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
         return built.answer;
       }
       try {
-        const done = { fp: fingerprint, status: "done", sealed: sealCheckoutId(built.id, scope), created_at: now() };
+        const done = { fp, status: "done", sealed: sealCheckoutId(built.id, scope), created_at: now() };
         const finalized = await store.compareAndSet(key, "owner", owner, done, { ttlMs });
         if (!finalized) { count("lease_lost"); emit(log, "warn", { outcome: "lease_lost" }); }
       } catch {
