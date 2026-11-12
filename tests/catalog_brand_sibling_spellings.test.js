@@ -155,7 +155,8 @@ describe('the sibling resolver', () => {
   });
 
   // Review of the first version: "global", "global store" and "global us" bound together.
-  test.each(['global', 'official', 'store'])('a name that is only the channel word "%s" is no family name', (word) => {
+  // "cosmetic" is not a market / channel word, but it is a strippable suffix word: no brand's name.
+  test.each(['global', 'official', 'store', 'cosmetic'])('a name that is only the suffix word "%s" is no family name', (word) => {
     const rows = [beauty(word, 30), beauty(`${word} store`, 20), beauty(`${word} us`, 15), beauty(`${word} official uk`, 12)];
     cache.__setBeautyBrandRowsForTest(rows);
     for (const row of rows) {

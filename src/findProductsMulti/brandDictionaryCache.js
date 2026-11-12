@@ -413,13 +413,14 @@ function buildWholeBrandKeys(rows) {
 }
 
 // Whether a family name can stand for ONE brand. It cannot when:
-//   * every word of it is itself a market / channel word ("global", beside "global store" and
-//     "global us": three unrelated sellers, not one brand's storefronts);
+//   * every word of it is itself a strippable suffix word, from the FULL list above, descriptive
+//     words included ("global", beside "global store" and "global us": three unrelated sellers,
+//     not one brand's storefronts; likewise "cosmetic" beside "cosmetic us");
 //   * the dictionary itself would refuse it as a key (admissibleKey above: MIN_LEN letters, or 3
 //     with a digit, and not a stop word), judged on the squashed name the family is keyed by.
 function familyNameIsABrandName(familyName) {
   const words = String(familyName || '').split(' ').filter(Boolean);
-  if (words.every((word) => SIBLING_SPELLING_SUFFIXES.has(word))) return false;
+  if (words.every((word) => STRIPPABLE_BRAND_SUFFIXES.has(word))) return false;
   return admissibleKey(words.join('').replace(/-/g, ''));
 }
 
