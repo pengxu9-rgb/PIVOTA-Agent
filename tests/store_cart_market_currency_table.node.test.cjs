@@ -1,0 +1,200 @@
+'use strict';
+
+// THE STORE-CART PATH, MARKET BY MARKET: every currency in the answer is the market's currency, or there is no price.
+//
+// One table over BOTH doors that reach a seller's own storefront cart, for a seller Pivota is not connected to:
+// `/ucp/mcp` (create_checkout, get_checkout) and `/mcp` (create_checkout_session, get_checkout_session; its storefront
+// path, AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED, on). With AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET on:
+//   markets   US, SG, GB, FR, DE, none, "ZZ" (no such market), "USA" (not a country code)
+//   x rows    a seller priced in USD, SGD, GBP, EUR (the product read withholds the money of the last three and says
+//             which currency it withheld), plus two rows served by a page the money guard does not cover (a GBP and a
+//             USD row that still state their price)
+//   x stores  the seller's storefront answers a cart in USD, and in the market's currency
+//
+// MARKET -> CURRENCY SOURCE (the one a later door-by-market test should use too): `resolveServingCurrency` in
+// src/services/buyerMarket.js, over `BUYER_REGION_CURRENCY` in src/auroraBff/buyerRegion.js. This file keeps no
+// table of its own: each cell's expected currency is asked of that source. A market the source has no currency for
+// (DE today) is not skipped: the right answer for it is the named refusal, and the table says so.
+//
+// THE RULE ITSELF is `assertAnswerCurrency` (tests/_support/answerCurrencies.cjs), run over the WHOLE response body
+// as the door sent it: every price-labelling currency is the market's, every amount has one, no money in text.
+//
+// IN EVERY CELL, ON BOTH DOORS: the product read is one request with no market on it, and a seller whose row is in
+// another currency than the market's is never contacted.
+//
+// WHERE `/mcp` DIFFERS, by its own rules, which the currency rule leaves alone: its storefront path requires a NAMED
+// market, so a create that names none is refused `market_required_for_seller_storefront` (the UCP door answers it as
+// US, labelled), and a value that is not a two-letter code is refused as an invalid argument before anything is read
+// (the UCP door: `ucp_market_invalid`). A re-read on `/mcp` of an id the UCP door minted for an assumed US is
+// answered as the UCP door answers it.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const support = require('./_support/storeCartMarketDoor.cjs');
+const { assertAnswerCurrency } = require('./_support/answerCurrencies.cjs');
+const { resolveServingCurrency } = require('../src/services/buyerMarket');
+
+const { IDS, HOST, ucpCreate, ucpGet, nativeCreate, escId } = support;
+const door = support.bootDoor({ port: 4474 });
+const BOTH_ON = { mcp: true, currency: true };
+const callDoor = (doorPath, name, args) => door.withFlags(BOTH_ON, () => door.call(doorPath, name, args));
+
+// The seller rows of the fixture. `catalog`: the row still states its price on a read with no market.
+const ROWS = Object.freeze([
+  { name: 'USD', currency: 'USD', id: IDS.SIG_USD, seller: IDS.SELLER_A, host: HOST.A, catalog: true },
+  { name: 'SGD', currency: 'SGD', id: IDS.SIG_SGD, seller: IDS.SELLER_S, host: HOST.S, catalog: false },
+  { name: 'GBP', currency: 'GBP', id: IDS.SIG_GBP, seller: IDS.SELLER_G, host: HOST.G, catalog: false },
+  { name: 'EUR', currency: 'EUR', id: IDS.SIG_EUR, seller: IDS.SELLER_E, host: HOST.E, catalog: false },
+  { name: 'GBP (unguarded page)', currency: 'GBP', id: IDS.SIG_GBP_UNGUARDED, seller: IDS.SELLER_V, host: HOST.V, catalog: true },
+  { name: 'USD (unguarded page)', currency: 'USD', id: IDS.SIG_USD_UNGUARDED, seller: IDS.SELLER_U, host: HOST.U, catalog: true },
+]);
+
+// `sent`: what the request carries (undefined = no market). `market`: what it is answered for.
+const MARKETS = Object.freeze([
+  { label: 'US', sent: 'US', market: 'US' },
+  { label: 'SG', sent: 'SG', market: 'SG' },
+  { label: 'GB', sent: 'GB', market: 'GB' },
+  { label: 'FR', sent: 'FR', market: 'FR' },
+  { label: 'DE', sent: 'DE', market: 'DE' },
+  { label: 'none', sent: undefined, market: 'US', assumed: true },
+  { label: 'ZZ', sent: 'ZZ', market: 'ZZ' },
+  { label: 'USA', sent: 'USA', market: null, invalid: true },
+]);
+
+const cells = [];
+for (const m of MARKETS) {
+  const marketCurrency = m.invalid ? null : (resolveServingCurrency(m.market) || null);
+  for (const row of ROWS) {
+    for (const storeCurrency of [...new Set(['USD', marketCurrency || row.currency])]) {
+      let expected;
+      if (m.invalid) expected = 'ucp_market_invalid';
+      else if (!marketCurrency) expected = 'market_not_priced';
+      else if (row.currency !== marketCurrency) expected = 'seller_not_priced_in_market_currency';
+      else if (storeCurrency === marketCurrency) expected = 'priced_by_store';
+      else expected = row.catalog ? 'priced_by_catalog' : 'store_not_in_market_currency';
+      cells.push({ ...m, marketCurrency, row, storeCurrency, expected });
+    }
+  }
+}
+
+test.before(() => door.listen());
+test.after(() => door.close());
+
+test('the table covers what it says, and the source has no currency for DE or ZZ', () => {
+  assert.deepEqual(MARKETS.map((m) => (m.invalid ? null : resolveServingCurrency(m.market) || null)), ['USD', 'SGD', 'GBP', 'EUR', null, 'USD', null, null]);
+  const count = (expected) => cells.filter((c) => c.expected === expected).length;
+  assert.deepEqual({
+    cells: cells.length, priced_by_store: count('priced_by_store'), priced_by_catalog: count('priced_by_catalog'),
+    store_not_in_market_currency: count('store_not_in_market_currency'), seller_not_priced_in_market_currency: count('seller_not_priced_in_market_currency'),
+    market_not_priced: count('market_not_priced'), ucp_market_invalid: count('ucp_market_invalid'),
+  }, {
+    cells: 78, priced_by_store: 8, priced_by_catalog: 1, store_not_in_market_currency: 3, seller_not_priced_in_market_currency: 36,
+    market_not_priced: 20, ucp_market_invalid: 10,
+  });
+});
+
+const theRead = (signature) => JSON.stringify({ product_ref: { product_id: signature }, include: ['product_overview'] });
+const readPayloads = (answer) => answer.upstream.filter((u) => u.op === 'get_pdp_v2').map((u) => u.payload);
+const tools = (answer) => answer.store.filter((c) => c.kind === 'tool').map((c) => c.tool);
+
+const DOORS = Object.freeze([
+  { path: '/ucp/mcp', create: 'create_checkout', get: 'get_checkout' },
+  { path: '/mcp', create: 'create_checkout_session', get: 'get_checkout_session', native: true },
+]);
+let key = 7000;
+
+for (const cell of cells) {
+  for (const at of DOORS) {
+    const { label, sent, market, assumed, invalid, marketCurrency, row, storeCurrency, expected } = cell;
+    const name = `${at.path}: market ${label} (${marketCurrency || 'no currency'}), seller row in ${row.name}, store answers in ${storeCurrency}`;
+    // What this door's CREATE answers: the cell's outcome, except where `/mcp` refuses first by its own rules.
+    const createExpected = at.native && invalid ? 'mcp_market_invalid' : at.native && assumed ? 'mcp_market_required' : expected;
+
+    const check = (answer, op, outcome) => {
+      // The whole body, as sent: the JSON-RPC envelope and the tool result's text inside it.
+      const found = assertAnswerCurrency(JSON.parse(answer.raw), marketCurrency, `${name} ${op}`);
+      assert.deepEqual(found.textMoney, [], 'no money written in text');
+      const servedCurrencies = [...new Set([...found.priceCurrencies.map((c) => c.value), ...found.money.map((m) => m.currency)])];
+      if (outcome === 'mcp_market_invalid') {
+        assert.equal(answer.isError, true);
+        assert.equal(answer.value.error.code, 'INVALID_ARGUMENTS');
+        assert.deepEqual([found.money, found.priceCurrencies, answer.store, answer.gate, answer.upstream], [[], [], [], [], []], 'refused before anything is read or asked');
+        return;
+      }
+      assert.deepEqual(readPayloads(answer), [theRead(row.id)], 'one product read, with no market on it');
+      if (outcome === 'priced_by_store' || outcome === 'priced_by_catalog') {
+        assert.equal(answer.isError, false);
+        assert.equal(answer.value.status, at.native ? 'completes_on_seller_storefront' : 'requires_escalation');
+        assert.equal(answer.value.currency, marketCurrency);
+        assert.ok(found.money.length > 0, 'a price is stated');
+        assert.deepEqual(servedCurrencies, [marketCurrency], 'every price is in the market currency');
+        assert.equal(answer.value.messages[0].code, outcome === 'priced_by_store' ? 'checkout.priced_by_seller_storefront' : 'checkout.completes_on_seller_storefront');
+        // No market named: the labelled, assumed-US answer; a named market is never labelled as assumed.
+        assert.equal(answer.value.market_assumed ? answer.value.market_assumed.code : null, assumed ? 'US' : null);
+        return;
+      }
+      assert.equal(answer.isError, true);
+      assert.deepEqual([found.money, found.priceCurrencies], [[], []], 'no price at all');
+      const error = answer.value.error;
+      assert.equal(typeof error.detail.reason, 'string', 'the refusal is named');
+      if (outcome === 'mcp_market_required') {
+        assert.equal(error.code, 'QUOTE_REQUIRED');
+        assert.equal(error.detail.reason, 'market_required_for_seller_storefront');
+        assert.deepEqual([answer.store, answer.gate], [[], []], 'no cart for an unnamed market, and nobody is asked');
+        return;
+      }
+      if (outcome === 'ucp_market_invalid') {
+        assert.equal(error.code, 'QUOTE_REQUIRED');
+        assert.equal(error.detail.reason, 'ucp_market_invalid');
+        assert.equal(JSON.stringify(answer.value).includes('USA'), false, 'the value sent is not echoed');
+        assert.deepEqual([answer.store, answer.gate], [[], []]);
+        return;
+      }
+      assert.equal(error.code, 'NO_MERCHANT_OFFER');
+      if (outcome === 'market_not_priced') {
+        assert.equal(error.detail.reason, 'market_not_priced');
+        assert.deepEqual([answer.store, answer.gate], [[], []], 'neither the seller nor the gate is asked');
+        assert.deepEqual(found.currencyMentions, [], 'not even a mention of a currency');
+        return;
+      }
+      assert.equal(error.detail.reason, 'seller_not_priced_in_market_currency');
+      assert.equal(error.detail.market_currency, marketCurrency);
+      assert.equal(Boolean(error.market_assumed), Boolean(assumed));
+      if (outcome === 'seller_not_priced_in_market_currency') {
+        assert.deepEqual(error.detail.seller_currencies, [row.currency], "the row's own currency is named");
+        assert.deepEqual(answer.store, [], 'a seller priced in another currency is never contacted');
+      } else {
+        // The row is in the market's currency, so the seller was asked; it answered in another one.
+        assert.deepEqual(error.detail.seller_currencies, [storeCurrency]);
+        assert.deepEqual(tools(answer), [op === at.create ? 'create_cart' : 'get_cart']);
+      }
+      // What is named in the refusal is a MENTION of a currency, never a price in it.
+      assert.deepEqual(found.currencyMentions.map((mention) => mention.path.replace(/^.*\./, '')).sort(), ['market_currency', 'seller_currencies']);
+    };
+
+    test(`${name}: create and re-read -> ${createExpected}${createExpected === expected ? '' : ` (re-read of a UCP-door id: ${expected})`}`, async (t) => {
+      door.reset();
+      door.setStoreCurrency(row.host, storeCurrency);
+      t.after(() => door.setStoreCurrency(row.host, null));
+      key += 1;
+      const createArgs = at.native
+        ? nativeCreate(row.seller, [[row.id, 1]], key, sent === undefined ? {} : { market: sent })
+        : ucpCreate([[row.id, 1]], sent, key);
+      const created = await callDoor(at.path, at.create, createArgs);
+      check(created, at.create, createExpected);
+      if (invalid) return; // an id's market is always a two-letter code: nothing to re-read
+      // The id this create minted when it priced; otherwise the id a create from before the rule minted for this cell
+      // (over a store cart where a store cart could have been built).
+      const mintedId = created.isError ? null : (at.native ? created.value.session_id : created.value.id);
+      let id = mintedId || escId({ v: 1, i: [[row.id, 1]], m: market, ...(assumed ? { a: 1 } : {}) });
+      if (expected === 'store_not_in_market_currency') id = escId({ v: 2, i: [[row.id, 1]], c: `cart_${row.host.split('.')[0]}_0001`, h: row.host, m: market });
+      if (at.native && assumed && expected === 'priced_by_store') {
+        // `/mcp` mints no id for an assumed market; the id to re-read is the UCP door's own, over its own cart.
+        door.reset();
+        id = (await callDoor('/ucp/mcp', 'create_checkout', ucpCreate([[row.id, 1]], undefined, (key += 1)))).value.id;
+      }
+      check(await callDoor(at.path, at.get, at.native ? { session_id: id } : ucpGet(id)), at.get, expected);
+    });
+  }
+}

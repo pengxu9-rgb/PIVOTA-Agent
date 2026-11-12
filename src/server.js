@@ -470,6 +470,7 @@ const {
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
 const { unscopedDetailPdpRequest } = require('./services/pdpDetailHop');
+const pdpWithheldCurrencies = require('./services/pdpWithheldCurrencies');
 const { resolveOfferScopeCurrency } = require('./services/buyerMarketOfferScope');
 const {
   collapseSearchResponseBodyByShadeLine,
@@ -32761,6 +32762,7 @@ function normalizePdpV2ToProductDetail(body) {
   const degraded = Array.isArray(body?.degraded_reads) && body.degraded_reads.length > 0
     ? { degraded_reads: body.degraded_reads.map(String) }
     : {};
+  let product;
   try {
     const modules = Array.isArray(body?.modules) ? body.modules : [];
     const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
@@ -32770,21 +32772,24 @@ function normalizePdpV2ToProductDetail(body) {
       ? p.price.current
       : null;
     const availability = typeof p.availability === 'string' ? p.availability.toLowerCase() : '';
-    return {
-      product: {
-        ...p,
-        brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
-        price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
-        currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
-        in_stock: availability
-          ? /in.?stock|available/.test(availability)
-          : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
-      },
-      ...degraded,
+    product = {
+      ...p,
+      brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
+      price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
+      currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
+      in_stock: availability
+        ? /in.?stock|available/.test(availability)
+        : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
     };
   } catch {
     return { product: null, ...degraded };
   }
+  // The currencies the page withheld money in (`metadata.serving_currency_guard`) are noted BESIDE the product,
+  // never on it (src/services/pdpWithheldCurrencies.js): the product and every answer built from it are unchanged.
+  // OUTSIDE the projection's own try, and never throwing: the note is written for every product this function
+  // returns, and a note that cannot be written leaves the projection exactly as it was.
+  pdpWithheldCurrencies.noteWithheldCurrenciesOfPdpResponse(product, body);
+  return { product, ...degraded };
 }
 
 // recommend_products' per-item live price checks call get_pdp_v2 back into this process. They carry the MCP
@@ -35291,7 +35296,7 @@ function registerCommerceConfirmationActionRoute() {
 }
 
 function registerCommerceStrictInvokeRoute(path, clientChannel) {
-  app.post(path, async (req, res, next) => {
+  app.post(path, async function commerceStrictInvokeRouteHandler(req, res, next) {
     const operation = String(req?.body?.operation || '').trim();
     if (!isAgentCheckoutStrictEnabled() || !AGENT_CHECKOUT_STRICT_MONEY_OPS.has(operation)) {
       return next();
@@ -55579,7 +55584,7 @@ function authenticateExternalInvokeRoute(req, res, next) {
 function registerExternalInvokeRoute(path, clientChannel) {
   // priceContextMiddleware: the price context of this request (door `invoke`, or the MCP door a loopback call
   // carries); off, next() exactly.
-  app.post(path, priceContextMiddleware('invoke'), authenticateExternalInvokeRoute, async (req, res) => {
+  app.post(path, priceContextMiddleware('invoke'), authenticateExternalInvokeRoute, async function externalInvokeRouteHandler(req, res) {
     return INVOKE_AUTH_CONTEXT.run(
       {
         api_key: req?.invokeAuth?.raw_token || null,
@@ -55612,6 +55617,33 @@ function registerExternalInvokeRoute(path, clientChannel) {
   });
 }
 
+// EVERY ADDRESS THAT SERVES THE INVOKE HANDLER, in one list, registered by one loop.
+//
+// The creator address is a backward-compatible alias of the shop address: the same handler, the same
+// operations. It used to be registered by hand, one line under the shop address, and that line left out the
+// strict checkout route. So with strict checkout on, the money operations sent to the alias went to the
+// legacy handler: no verified buyer, no kernel quote, no charge-once lock, and neither the submit_payment
+// switch nor the confirm_payment block applied to them.
+//
+// An address is therefore DATA here, never a registration call of its own: the loop below gives each entry
+// the strict route first and the invoke handler second, so an address cannot have one without the other.
+// The ONLY thing an entry may vary is its client-channel label (the handler's default source and log
+// label). To add an address, add an entry; tests/invoke_route_alias_parity.node.test.cjs fails on any
+// address that serves the handler from anywhere else, and on any difference between two addresses'
+// handler chains.
+const INVOKE_ROUTES = Object.freeze([
+  Object.freeze({ path: '/agent/shop/v1/invoke', clientChannel: 'shop' }),
+  Object.freeze({ path: '/agent/creator/v1/invoke', clientChannel: 'creator' }),
+]);
+
+function registerInvokeRoutes() {
+  for (const { path, clientChannel } of INVOKE_ROUTES) {
+    // Order matters: the strict route must see a money operation before the invoke handler can answer it.
+    registerCommerceStrictInvokeRoute(path, clientChannel);
+    registerExternalInvokeRoute(path, clientChannel);
+  }
+}
+
 registerCommerceRemoteMcpRoute();
 registerPublicReadMcpRoute();
 commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, {
@@ -55629,10 +55661,7 @@ registerUcpOrderWebhookRoutes();
 registerUcpBuyerAgentProfileRoute();
 registerUcpWarmHandoffInternalRoute();
 registerUcpDiscountVerifyInternalRoute();
-registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
-registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
-// Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
-registerExternalInvokeRoute('/agent/creator/v1/invoke', 'creator');
+registerInvokeRoutes();
 
 // Global error handler - prevent crashes and avoid double sends
 app.use((err, req, res, next) => {
@@ -56140,6 +56169,13 @@ module.exports._debug = {
   compactBeautyMainlineProductForResponse,
   snapshotProductDetailCacheStats,
   resolveProductDetailCacheTtlMs,
+  // Tests only (tests/invoke_route_alias_parity.node.test.cjs): the shared list of invoke addresses, and the
+  // two registration functions so a test can register a wrong address and watch the wiring scan refuse it.
+  __invokeRoutes: {
+    INVOKE_ROUTES,
+    registerCommerceStrictInvokeRoute,
+    registerExternalInvokeRoute,
+  },
   __agentCheckoutStrict: {
     getCommerceMount,
     deriveStrictCommerceCtx,

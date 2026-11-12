@@ -50,15 +50,24 @@ const HANDOFF_RECORD_FLAG = 'UCP_STOREFRONT_HANDOFF_RECORD_ENABLED';
 const NATIVE_DOOR_FLAG = 'AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED';
 const IDEMPOTENCY_FLAG = 'AGENT_CHECKOUT_STORE_CART_IDEMPOTENCY_ENABLED';
 const ID_BINDING_FLAG = 'AGENT_CHECKOUT_STORE_CART_ID_BINDING';
+// THE `/mcp` STOREFRONT PATH RUNS ONLY UNDER THE CURRENCY RULE (mcp-server/src/mcpStorefrontCart.js
+// `mcpStorefrontCartPath`): with its own switch on and the rule off, nothing of it runs. So a test that turns the
+// native door on gets the rule with it (setFlags), unless it names the rule's state itself (`CURRENCY_OFF`).
+const CURRENCY_FLAG = 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET';
+const CURRENCY_OFF = `${CURRENCY_FLAG}=`;
 const BIND_MINT = `${ID_BINDING_FLAG}=mint`;
 const BIND_ENFORCE = `${ID_BINDING_FLAG}=enforce`;
-const PER_CALL_FLAGS = Object.freeze([REFERRAL_FLAG, ATTRIBUTION_FLAG, FORWARDING_FLAG, HANDOFF_RECORD_FLAG, NATIVE_DOOR_FLAG, IDEMPOTENCY_FLAG, ID_BINDING_FLAG]);
+const PER_CALL_FLAGS = Object.freeze([REFERRAL_FLAG, ATTRIBUTION_FLAG, FORWARDING_FLAG, HANDOFF_RECORD_FLAG, NATIVE_DOOR_FLAG, IDEMPOTENCY_FLAG, ID_BINDING_FLAG, CURRENCY_FLAG]);
 
-/** Set exactly these per-call flags (`NAME` = '1', or `NAME=value`); every other one of PER_CALL_FLAGS is unset. */
+/**
+ * Set exactly these per-call flags (`NAME` = '1', or `NAME=value`; an empty value unsets); every other one of
+ * PER_CALL_FLAGS is unset. The native door's switch brings the currency rule with it unless the rule is named.
+ */
 function setFlags(on = []) {
   const wanted = new Map(on.map((entry) => (entry.includes('=') ? entry.split('=') : [entry, '1'])));
+  if (wanted.has(NATIVE_DOOR_FLAG) && !wanted.has(CURRENCY_FLAG)) wanted.set(CURRENCY_FLAG, '1');
   for (const flag of PER_CALL_FLAGS) {
-    if (wanted.has(flag)) process.env[flag] = wanted.get(flag);
+    if (wanted.has(flag) && wanted.get(flag) !== '') process.env[flag] = wanted.get(flag);
     else delete process.env[flag];
   }
 }
@@ -330,6 +339,8 @@ module.exports = {
   ATTRIBUTION_FLAG,
   BIND_ENFORCE,
   BIND_MINT,
+  CURRENCY_FLAG,
+  CURRENCY_OFF,
   FORWARDING_FLAG,
   HANDOFF_PATH,
   HANDOFF_RECORD_FLAG,
