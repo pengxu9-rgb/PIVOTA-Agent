@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_from": "pivota-backend feat/store-cart-referral at 3ace82281 (routes/agent_storefront_referrals.py), POST /agent/v2/storefront-cart-referrals driven through main.app (its error envelope included) on a scratch sqlite database by a one-off recorder, with the gateway's own body bytes and a request-bound partner assertion where a case names a partner. Per-response 'metadata' (timestamp, request id) removed; click ids replaced by placeholders. All values are placeholders.",
+  "generated_from": "pivota-backend feat/store-cart-referral at e1fe950dd (routes/agent_storefront_referrals.py), POST /agent/v2/storefront-cart-referrals driven through main.app (its error envelope included) on a scratch sqlite database by a one-off recorder, with the gateway's own body bytes and a request-bound partner assertion where a case names a partner. Per-response 'metadata' (timestamp, request id) removed; click ids replaced by placeholders. All values are placeholders.",
   "minted_for_partner": {
     "request": {
       "seller_host": "shop-a.example.com",
