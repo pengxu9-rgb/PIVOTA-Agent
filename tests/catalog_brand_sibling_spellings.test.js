@@ -215,6 +215,10 @@ describe('the sibling resolver', () => {
       cache.__setBeautyBrandRowsForTest([beauty('가나다 velmora', 30), beauty('velmora', 9), beauty('velmora store', 20)]);
       expect(siblingsOf('velmora')).toEqual(['velmora store']);
       expect(siblingsOf('velmora store')).toEqual(['velmora']);
+      // whichever of the two the dictionary reads first
+      cache.__setBeautyBrandRowsForTest([beauty('velmora', 9), beauty('가나다 velmora', 30), beauty('velmora store', 20)]);
+      expect(siblingsOf('velmora')).toEqual(['velmora store']);
+      expect(siblingsOf('velmora store')).toEqual(['velmora']);
     });
 
     test('accents, case-free punctuation and digits are not lost letters', () => {

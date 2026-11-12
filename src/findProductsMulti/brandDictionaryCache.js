@@ -407,7 +407,7 @@ function buildWholeBrandKeys(rows) {
     const key = normalize(folded);
     const written = (folded.match(/[\p{L}\p{N}]/gu) || []).length;
     const kept = (key.match(/[a-z0-9]/g) || []).length;
-    if (key && written === kept) whole.add(key);
+    if (written === kept) whole.add(key);
   }
   return whole;
 }
