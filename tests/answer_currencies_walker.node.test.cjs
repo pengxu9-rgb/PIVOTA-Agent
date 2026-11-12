@@ -288,7 +288,7 @@ test('`textCurrencyIs` is exported as a function: "is money written like this mo
   for (const market of ['GBP', 'EUR', 'JPY', 'CNY', 'MXN', 'BRL']) assert.equal(textCurrencyIs('$', market), false, market);
   assert.deepEqual(['JPY', 'CNY', 'USD', 'KRW'].map((market) => textCurrencyIs('¥', market)), [true, true, false, false]);
   // No currency, an unknown spelling, a market with none, an inherited property name: never.
-  for (const [currency, market] of [['XY$', 'USD'], ['', 'USD'], [null, 'USD'], ['USD', null], ['USD', ''], ['$', null], ['$', 'usd'], ['toString', 'USD'], ['constructor', 'USD']]) {
+  for (const [currency, market] of [['XY$', 'USD'], ['', 'USD'], [null, 'USD'], ['USD', null], ['USD', ''], ['$', null], ['$', 'usd'], ['toString', 'USD'], ['constructor', 'USD'], [null, null], [undefined, undefined], ['', ''], ['usd', 'usd'], ['$', '$']]) {
     assert.equal(textCurrencyIs(currency, market), false, JSON.stringify([currency, market]));
   }
   // It is the rule the walker itself applies, and it cannot be edited through the export.
