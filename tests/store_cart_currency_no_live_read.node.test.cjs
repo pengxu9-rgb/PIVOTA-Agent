@@ -8,7 +8,9 @@
 // store's cached live answer (`livePdpOverlay`). Asked with no market, the read is skipped (`no_market`) and the
 // overlay does nothing. So the rule must not put a market on the product read, in any flag state.
 //
-// WHAT IS REAL HERE: the `/ucp/mcp` door, the escalation, the executor, the unscoped detail hop, and BEHIND the page
+// The same holds for the `/mcp` door's storefront path, which reaches the same escalation.
+//
+// WHAT IS REAL HERE: the `/ucp/mcp` and `/mcp` doors, the escalation, the executor, the unscoped detail hop, and BEHIND the page
 // the handler's own `shadowPdpLiveRead` and `livePdpOverlay` (with the live read fully on: UCP_LIVE_PDP_READ=enforce,
 // sampled at 1), the real live-catalog reader, its cache and its per-store budget. The reader's store client is a
 // recording fake: every endpoint discovery and every catalog lookup a store would receive is in `door.liveReads`.
@@ -21,7 +23,7 @@ const assert = require('node:assert/strict');
 
 const support = require('./_support/storeCartMarketDoor.cjs');
 
-const { IDS, ucpCreate, ucpGet, escId } = support;
+const { IDS, ucpCreate, ucpGet, nativeCreate, escId } = support;
 const door = support.bootDoor({ port: 4477, realPdpLiveSeam: true, env: { UCP_LIVE_PDP_READ: 'enforce', UCP_LIVE_PDP_READ_SAMPLE: '1' } });
 const ucp = (name, args) => door.call('/ucp/mcp', name, args);
 const settle = () => new Promise((resolve) => { setTimeout(resolve, 60); });
@@ -61,6 +63,32 @@ test('a storefront checkout looks no store up through its product read: every ma
       }
     }
   }
+});
+
+test('the `/mcp` door\'s storefront checkout looks no store up through its product read either: every market, every state of the two switches, create and re-read', async () => {
+  const rows = [[IDS.SELLER_A, IDS.SIG_USD], [IDS.SELLER_G, IDS.SIG_GBP], [IDS.SELLER_S, IDS.SIG_SGD], [IDS.SELLER_E, IDS.SIG_EUR], [IDS.SELLER_U, IDS.SIG_USD_UNGUARDED], [IDS.SELLER_V, IDS.SIG_GBP_UNGUARDED]];
+  let key = 800;
+  let pagesAsked = 0;
+  for (const flags of [{ mcp: false, currency: false }, { mcp: true, currency: false }, { mcp: false, currency: true }, { mcp: true, currency: true }]) {
+    for (const market of ['US', 'SG', 'GB', 'FR', 'DE', 'ZZ', undefined]) {
+      for (const [seller, signature] of rows) {
+        const label = `mcp=${flags.mcp} currency=${flags.currency} ${market} ${signature.slice(0, 8)}`;
+        const liveBefore = door.liveReads.length;
+        const seamBefore = door.pdpSeamCalls.length;
+        const created = await door.withFlags(flags, () => door.call('/mcp', 'create_checkout_session', nativeCreate(seller, [[signature, 1]], (key += 1), market === undefined ? {} : { market })));
+        // The id this create minted, else the id a create for this market mints (no market named: assumed US, marked).
+        const id = created.isError ? escId({ v: 1, i: [[signature, 1]], ...(market === undefined ? { m: 'US', a: 1 } : { m: market }) }) : created.value.session_id;
+        await door.withFlags(flags, () => door.call('/mcp', 'get_checkout_session', { session_id: id }));
+        await settle();
+        const seam = door.pdpSeamCalls.slice(seamBefore);
+        pagesAsked += seam.length;
+        assert.deepEqual(seam.filter((c) => c.market !== null), [], `${label}: every page this door asked for was asked for no market`);
+        assert.deepEqual(seam.filter((c) => c.product_id !== signature), [], label);
+        assert.deepEqual(door.liveReads.slice(liveBefore), [], `${label}: no store endpoint discovery, no catalog lookup`);
+      }
+    }
+  }
+  assert.ok(pagesAsked > 100, 'the product page was asked many times across these calls, so the absence above means something');
 });
 
 test('US, USD row: the page the checkout read is the page flag off read (no live overlay moved its price)', async (t) => {

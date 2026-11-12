@@ -88,6 +88,8 @@ const CATALOG = Object.freeze({
 
 const BUYER = Object.freeze({ 'X-Test-User-Ref': 'buyer-0001', 'X-Test-Acp-Session-Id': 'sess-0001' });
 const FLAG = 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET';
+// The `/mcp` door's storefront path. It requires FLAG: on alone, the door answers as with it off.
+const MCP_FLAG = 'AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED';
 
 /**
  * Boot the gateway app from `root` (this repo by default; a differential passes another tree) and answer its
@@ -123,7 +125,8 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
     'UCP_LIVE_OFFER_READ', 'GET_OFFERS_VARIANT_ID', 'PRICE_VERIFICATION_LOG', 'MCP_OAUTH_ENABLED', 'REAP_AGENTIC_LANE_ENABLED',
     'AGENT_CHECKOUT_UCP_SELLER_DISCOUNT_CODES_ENABLED', 'AGENT_CHECKOUT_UCP_DEAD_PAGE_CHECK_ENABLED',
     'AGENT_CHECKOUT_UCP_VARIANT_GONE_POLICY_ENABLED', 'MERCHANT_PURCHASABILITY_OIDC_AUDIENCE',
-    'PARTNER_DOOR_ONE_PRODUCT_ID', 'GET_OFFERS_EMPTY_REASON', 'CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET', FLAG]) delete process.env[k];
+    'PARTNER_DOOR_ONE_PRODUCT_ID', 'GET_OFFERS_EMPTY_REASON', 'CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET', FLAG, MCP_FLAG,
+    'UCP_STOREFRONT_HANDOFF_RECORD_ENABLED', 'PARTNER_IDENTITY_FORWARDING_ENABLED', 'CHECKOUT_CANCEL_UPSTREAM_ENABLED']) delete process.env[k];
   for (const suffix of ['ENABLED', 'DELAY_MS', 'INTERVAL_MS']) delete process.env[`COMMERCE_MCP_HEARTBEAT_${suffix}`];
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined || v === null || v === '') delete process.env[k];
@@ -133,11 +136,12 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
   const fromRoot = (p) => require(path.join(root, p));
   const logger = fromRoot('src/logger');
   logger.level = 'silent';
-  // The storefront-pricing log lines (`ucp_merchant_door_pricing`), captured whatever the level.
+  // The storefront-pricing log lines (`ucp_merchant_door_pricing`) and the `/mcp` path's "did not run" line
+  // (`mcp_storefront_cart_path`), captured whatever the level.
   const logLines = [];
   const realInfo = logger.info.bind(logger);
   logger.info = (first, ...rest) => {
-    if (first && typeof first === 'object' && first.event === 'ucp_merchant_door_pricing') logLines.push(first);
+    if (first && typeof first === 'object' && ['ucp_merchant_door_pricing', 'mcp_storefront_cart_path'].includes(first.event)) logLines.push(first);
     return realInfo(first, ...rest);
   };
 
@@ -363,7 +367,16 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
       if (before === undefined) delete process.env[FLAG]; else process.env[FLAG] = before;
     }
   }
-  return { app, call, post, listen, close, reset, setGateEnforced, setStoreCurrency, withFlag, storeCalls, upstream, gateCalls, logLines, liveReads, pdpSeamCalls, root };
+  /** Run `fn` with the `/mcp` storefront switch and the currency rule each on or off, restoring the env after. */
+  async function withFlags({ mcp = false, currency = false } = {}, fn) {
+    const before = [process.env[MCP_FLAG], process.env[FLAG]];
+    if (mcp) process.env[MCP_FLAG] = '1'; else delete process.env[MCP_FLAG];
+    if (currency) process.env[FLAG] = '1'; else delete process.env[FLAG];
+    try { return await fn(); } finally {
+      for (const [i, name] of [MCP_FLAG, FLAG].entries()) { if (before[i] === undefined) delete process.env[name]; else process.env[name] = before[i]; }
+    }
+  }
+  return { app, call, post, listen, close, reset, setGateEnforced, setStoreCurrency, withFlag, withFlags, storeCalls, upstream, gateCalls, logLines, liveReads, pdpSeamCalls, root };
 }
 
 const UCP_META = Object.freeze({ 'ucp-agent': { profile: 'https://agent.example/profile' } });
@@ -454,6 +467,23 @@ async function runRequests(door) {
   await mcp('mcp.get_esc_id_gb', 'get_checkout_session', { session_id: escId({ v: 1, i: [[IDS.SIG_USD, 1]], m: 'GB' }) });
   await mcp('mcp.get_kernel_unknown', 'get_checkout_session', { session_id: 'q_00000000-0000-0000-0000-000000000000' });
   await mcp('mcp.complete_esc_id', 'complete_checkout_session', { idempotency_key: idem(33), session_id: idOf(usPriced), payment_authorization: { type: 'none' } });
+  // The native door's storefront checkout, naming its market (an argument only while that path is on).
+  const sessionOf = (answer) => (answer.value && typeof answer.value.session_id === 'string' && answer.value.session_id.startsWith('esc_') ? answer.value.session_id : 'esc_bm90LWFuLWlk');
+  const mcpUs = await mcp('mcp.us_usd.create', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 51, { market: 'US' }));
+  await mcp('mcp.us_usd.get', 'get_checkout_session', { session_id: sessionOf(mcpUs) });
+  await mcp('mcp.us_usd.create_two_lines', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 2], [IDS.SIG_USD_SECOND, 1]], 52, { market: 'US' }));
+  await mcp('mcp.gb_usd.create', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 53, { market: 'GB' }));
+  const mcpGb = await mcp('mcp.gb_gbp.create', 'create_checkout_session', nativeCreate(IDS.SELLER_G, [[IDS.SIG_GBP, 1]], 54, { market: 'GB' }));
+  await mcp('mcp.gb_gbp.get', 'get_checkout_session', { session_id: sessionOf(mcpGb) });
+  await mcp('mcp.sg_usd.create', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 55, { market: 'SG' }));
+  await mcp('mcp.de_usd.create', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 56, { market: 'DE' }));
+  await mcp('mcp.zz_usd.create', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 57, { market: 'ZZ' }));
+  await mcp('mcp.malformed_usd.create', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_USD, 1]], 58, { market: 'USA' }));
+  await mcp('mcp.us_connected.create', 'create_checkout_session', nativeCreate(IDS.SELLER_CONNECTED, [[IDS.SOURCE_CONNECTED, 1, IDS.VARIANT_CONNECTED]], 59, { market: 'US' }));
+  await mcp('mcp.update_esc_id', 'update_checkout_session', { idempotency_key: idem(60), session_id: idOf(usPriced), quote: { merchant_id: IDS.SELLER_A, items: [{ product_id: IDS.SIG_USD, quantity: 2 }], customer_email: 'buyer@example.test' } });
+  await mcp('mcp.cancel_esc_id', 'cancel_checkout_session', { idempotency_key: idem(61), session_id: idOf(usPriced) });
+  await mcp('mcp.get_de_old_id', 'get_checkout_session', { session_id: escId({ v: 1, i: [[IDS.SIG_USD, 1]], m: 'DE' }) });
+  await mcp('mcp.get_legacy_id', 'get_checkout_session', { session_id: escId({ v: 1, i: [[IDS.SIG_USD, 1]] }) });
 
   // ---- /public/mcp ----
   await raw('public.tools_list', '/public/mcp', { jsonrpc: '2.0', id: 7, method: 'tools/list' }, { buyer: null });
@@ -471,4 +501,4 @@ async function runRequests(door) {
   return out;
 }
 
-module.exports = { IDS, HOST, STORE_CURRENCY, STORE_PRICE, CATALOG, BUYER, FLAG, UCP_META, gid, escId, decodeEscId, bootDoor, ucpCreate, ucpGet, nativeCreate, idem, runRequests };
+module.exports = { IDS, HOST, STORE_CURRENCY, STORE_PRICE, CATALOG, BUYER, FLAG, MCP_FLAG, UCP_META, gid, escId, decodeEscId, bootDoor, ucpCreate, ucpGet, nativeCreate, idem, runRequests };

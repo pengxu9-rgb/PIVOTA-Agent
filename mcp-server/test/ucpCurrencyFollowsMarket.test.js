@@ -20,6 +20,7 @@ import {
   UCP_ESCALATION_FLAG,
   CURRENCY_FOLLOWS_MARKET_FLAG,
   currencyFollowsMarketEnabled,
+  checkoutSwitchOn,
   ucpEscalationEnabled,
   marketCurrencyOf,
   lineCurrencyLabelsOf,
@@ -28,6 +29,15 @@ import {
   buildSellerPricedCheckout,
   encodeEscalationId,
 } from '../src/ucpCheckoutEscalation.js';
+
+import {
+  MCP_STOREFRONT_ESCALATION_FLAG,
+  MCP_STOREFRONT_PATH,
+  mcpStorefrontCartPath,
+  mcpStorefrontCartSurface,
+  mcpStorefrontEscalationEnabled,
+} from '../src/mcpStorefrontCart.js';
+import { createCommerceToolSurface, commerceToolDefinitions } from '../src/commerceToolSurface.js';
 
 const require = createRequire(import.meta.url);
 const { resolveServingCurrency } = require('../../src/services/buyerMarket.js');
@@ -665,5 +675,238 @@ describe('no answer can be BUILT in another currency than the market\'s', () => 
     assert.deepEqual(err.detail.acp_detail.seller_currencies, ['USD']);
     assert.equal(buildSellerPricedCheckout({ id: 'esc_x', priced: priced('GBP'), sellerHost: HOST, now: NOW, env: {}, marketCurrency: 'GBP' }).currency, 'GBP');
     assert.equal(buildSellerPricedCheckout({ id: 'esc_x', priced: priced('USD'), sellerHost: HOST, now: NOW, env: {} }).currency, 'USD');
+  });
+});
+
+// ---- the `/mcp` storefront path requires the rule ------------------------------------------------------------------
+
+describe('the /mcp storefront path runs only with the currency rule on', () => {
+  const ON_VALUES = ['1', 'true', 'TRUE', 'yes', ' on ', 'enabled'];
+  const OFF_VALUES = [undefined, '', ' ', '0', 'false', 'off', 'no', 'enforce', '2', 'garbage'];
+  const envOf = (mcp, currency) => ({ [MCP_STOREFRONT_ESCALATION_FLAG]: mcp, [CURRENCY_FOLLOWS_MARKET_FLAG]: currency });
+  async function withEnv(vars, fn) {
+    const before = {};
+    for (const [k, v] of Object.entries(vars)) { before[k] = process.env[k]; if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    try { return await fn(); } finally {
+      for (const [k, v] of Object.entries(before)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  }
+  function recordingSurface() {
+    const calls = [];
+    const tools = commerceToolDefinitions.map((t) => ({ ...t }));
+    return { calls, tools, isCommerceTool: () => true, callTool: (...args) => { calls.push(args); return Promise.resolve('answer'); } };
+  }
+  const CHECKOUT_TOOLS = ['create_checkout_session', 'get_checkout_session', 'update_checkout_session', 'complete_checkout_session', 'cancel_checkout_session', 'create_payment_link'];
+
+  test('the three states: on needs BOTH switches; the path\'s own switch with the rule off is its own state, not "on"', () => {
+    assert.deepEqual(MCP_STOREFRONT_PATH, { on: 'on', off: 'off', needsCurrencyRule: 'needs_currency_rule' });
+    for (const mcp of [...ON_VALUES, ...OFF_VALUES]) {
+      for (const currency of [...ON_VALUES, ...OFF_VALUES]) {
+        const expected = !ON_VALUES.includes(mcp) ? 'off' : ON_VALUES.includes(currency) ? 'on' : 'needs_currency_rule';
+        assert.equal(mcpStorefrontCartPath(envOf(mcp, currency)), expected, JSON.stringify([mcp, currency]));
+      }
+    }
+    assert.equal(mcpStorefrontCartPath({}), 'off');
+  });
+
+  test('both switches are read by ONE reader: each agrees with it on every value, and so with each other', () => {
+    for (const v of [...ON_VALUES, ...OFF_VALUES, 'True', 'YES', 'On', '\ton\n', 'Enabled', '10', '01', 'y', 'true1', 'xon']) {
+      const byReader = checkoutSwitchOn({ A_SWITCH: v }, 'A_SWITCH');
+      assert.equal(mcpStorefrontEscalationEnabled({ [MCP_STOREFRONT_ESCALATION_FLAG]: v }), byReader, JSON.stringify(v));
+      assert.equal(currencyFollowsMarketEnabled({ [CURRENCY_FOLLOWS_MARKET_FLAG]: v }), byReader, JSON.stringify(v));
+      assert.equal(ucpEscalationEnabled({ [UCP_ESCALATION_FLAG]: v }), byReader, JSON.stringify(v));
+      // The path with the other switch held on is exactly that one reader's answer.
+      assert.equal(mcpStorefrontCartPath(envOf(v, '1')) === 'on', byReader, JSON.stringify(v));
+      assert.equal(mcpStorefrontCartPath(envOf('1', v)) === 'on', byReader, JSON.stringify(v));
+    }
+    assert.equal(checkoutSwitchOn(null, 'A_SWITCH'), false);
+    assert.equal(checkoutSwitchOn({}, 'A_SWITCH'), false);
+  });
+
+  test('the view: with its switch on and the rule off, every call and the tool list are the wrapped surface\'s own, as with its switch off', async () => {
+    for (const [mcp, currency, marked] of [[undefined, undefined, false], ['1', undefined, false], [undefined, '1', false], ['1', '0', false], ['1', 'enforce', false], ['1', '1', true]]) {
+      const inner = recordingSurface();
+      const lines = [];
+      const view = mcpStorefrontCartSurface(inner, { log: { info: (line) => lines.push(line) } });
+      const observe = () => {};
+      const session = { user_ref: 'buyer_1', acp_session_id: 'sess_1' };
+      await withEnv(envOf(mcp, currency), async () => {
+        const args = { quote: {} };
+        const options = { observe };
+        for (const tool of CHECKOUT_TOOLS) assert.equal(await view.callTool(tool, args, session, options), 'answer');
+        await view.callTool('search_catalog', args, session, options);
+        const label = JSON.stringify([mcp, currency]);
+        assert.equal(view.tools === inner.tools, !marked, `${label}: the tool list`);
+        assert.equal(inner.calls.length, 7);
+        for (const [i, call] of inner.calls.entries()) {
+          assert.equal(call[1], args, `${label}: the caller's own arguments object`);
+          assert.equal(call[2], session);
+          const isCheckout = i < 6;
+          if (marked && isCheckout) assert.deepEqual(call[3], { observe, storefrontCartDoor: true }, label);
+          else assert.equal(call[3], options, `${label}: the caller's own options object, nothing added`);
+        }
+        // ONE line per checkout call in the one state it explains, and none in any other state or for any other tool.
+        const expected = mcp === '1' && !marked
+          ? CHECKOUT_TOOLS.map((tool) => ({ event: 'mcp_storefront_cart_path', outcome: 'not_run', reason: 'currency_follows_market_off', tool }))
+          : [];
+        assert.deepEqual(lines, expected, label);
+      });
+    }
+  });
+
+  test('the line carries nothing from the request, and a logger that throws does not fail the call', async () => {
+    const inner = recordingSurface();
+    const lines = [];
+    const view = mcpStorefrontCartSurface(inner, { log: { info: (...args) => lines.push(args) } });
+    await withEnv(envOf('1', undefined), async () => {
+      await view.callTool('get_checkout_session', { session_id: 'esc_secret_id', market: 'GB' }, { user_ref: 'buyer_secret', acp_session_id: 'sess_secret' });
+    });
+    assert.equal(lines.length, 1);
+    assert.deepEqual(Object.keys(lines[0][0]).sort(), ['event', 'outcome', 'reason', 'tool']);
+    assert.equal(/secret|esc_|GB/.test(JSON.stringify(lines[0])), false);
+    const throwing = mcpStorefrontCartSurface(inner, { log: { info: () => { throw new Error('log down'); } } });
+    await withEnv(envOf('1', undefined), async () => {
+      assert.equal(await throwing.callTool('create_checkout_session', {}, {}), 'answer');
+    });
+    for (const log of [null, undefined, {}, { info: 'x' }]) {
+      const quiet = mcpStorefrontCartSurface(inner, log === undefined ? {} : { log });
+      await withEnv(envOf('1', undefined), async () => { assert.equal(await quiet.callTool('create_checkout_session', {}, {}), 'answer'); });
+    }
+  });
+
+  test('the flags are read per call: turning the rule off turns the path off on the next call', async () => {
+    const inner = recordingSurface();
+    const view = mcpStorefrontCartSurface(inner, { log: null });
+    for (const [currency, marked] of [['1', true], [undefined, false], ['1', true], ['0', false]]) {
+      await withEnv(envOf('1', currency), async () => { await view.callTool('create_checkout_session', {}, {}); });
+      assert.equal(Boolean(inner.calls.at(-1)[3] && inner.calls.at(-1)[3].storefrontCartDoor), marked, String(currency));
+    }
+  });
+
+  // The whole native door at module level: the real surface behind the real view, a recording executor and seller door.
+  const SELLER = 'merch_obs_000000000000000a';
+  const nativeRow = (currency, extra = {}) => ({ ...row(currency), merchant_id: SELLER, ...extra });
+  const nativeCreateArgs = (market, extra = {}) => ({
+    idempotency_key: 'idem-0009',
+    quote: { merchant_id: SELLER, items: [{ product_id: 'sig_row_a', quantity: 1 }], customer_email: 'buyer@example.test' },
+    ...(market === undefined ? {} : { market }),
+    ...extra,
+  });
+  function nativeDoor(served, storeCurrency) {
+    const seen = [];
+    const executor = {
+      seen,
+      async execute(op, params) {
+        seen.push({ op, params: structuredClone(params) });
+        if (op !== 'get_product') return { session_id: 'q_kernel', status: 'ready_for_payment' };
+        const { __withheld: withheld, ...product } = structuredClone(served);
+        if (withheld) noteWithheldCurrencies(product, withheld);
+        return { product };
+      },
+    };
+    const door = fakeDoor(storeCurrency);
+    const lines = [];
+    const surface = createCommerceToolSurface(executor, { cache: false, merchantDoor: door, log: { info: (l) => lines.push(l), warn: () => {} } });
+    const view = mcpStorefrontCartSurface(surface, { log: { info: (l) => lines.push(l) } });
+    return { view, executor, door, lines };
+  }
+  const SESSION = { user_ref: 'buyer_1', acp_session_id: 'sess_1' };
+  const ARMED = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: '1', MERCHANT_PURCHASABILITY_GATE_ENABLED: undefined };
+  const call = (d, tool, args, flags) => withEnv({ ...ARMED, ...flags }, () => d.view.callTool(tool, args, SESSION).then((value) => ({ value }), (error) => ({ error })));
+  const BOTH = envOf('1', '1');
+
+  test('both on, create: the currency is the REQUEST market\'s; a seller in another currency is refused by name with no store call; DE and ZZ are refused by name', async () => {
+    // GB buyer, USD seller.
+    let d = nativeDoor(nativeRow('USD'), 'USD');
+    let out = await call(d, 'create_checkout_session', nativeCreateArgs('GB'), BOTH);
+    assert.equal(out.error.code, 'NO_MERCHANT_OFFER');
+    assert.equal(out.error.detail.acp_detail.reason, 'seller_not_priced_in_market_currency');
+    assert.deepEqual([out.error.detail.acp_detail.market, out.error.detail.acp_detail.market_currency, out.error.detail.acp_detail.seller_currencies], ['GB', 'GBP', ['USD']]);
+    assert.deepEqual(d.door.calls, [], 'no store call');
+    assert.deepEqual(d.executor.seen.map((s) => [s.op, JSON.stringify(s.params)]), [['get_product', '{"payload":{"product":{"product_id":"sig_row_a"}}}']], 'one product read, no market on it, and the kernel is not asked');
+    // GB buyer, a seller whose money the read withheld in GBP: priced in GBP by the store, in the native shape.
+    d = nativeDoor({ ...withheldRow('GBP'), merchant_id: SELLER }, 'GBP');
+    out = await call(d, 'create_checkout_session', nativeCreateArgs('GB'), BOTH);
+    assert.equal(out.value.status, 'completes_on_seller_storefront');
+    assert.equal(out.value.currency, 'GBP');
+    assert.deepEqual(d.door.calls.map((c) => c[0]), ['discover', 'create_cart']);
+    // ... and when that store answers in USD: the named refusal, nothing in USD shown.
+    d = nativeDoor({ ...withheldRow('GBP'), merchant_id: SELLER }, 'USD');
+    out = await call(d, 'create_checkout_session', nativeCreateArgs('GB'), BOTH);
+    assert.equal(out.error.detail.acp_detail.reason, 'seller_not_priced_in_market_currency');
+    assert.deepEqual(out.error.detail.acp_detail.seller_currencies, ['USD']);
+    // US buyer, USD seller: priced in USD.
+    d = nativeDoor(nativeRow('USD'), 'USD');
+    out = await call(d, 'create_checkout_session', nativeCreateArgs('US'), BOTH);
+    assert.equal(out.value.currency, 'USD');
+    // Markets with no currency: refused by name, no store call, never answered as US.
+    for (const market of ['DE', 'ZZ']) {
+      d = nativeDoor(nativeRow('USD'), 'USD');
+      out = await call(d, 'create_checkout_session', nativeCreateArgs(market), BOTH);
+      assert.equal(out.error.code, 'NO_MERCHANT_OFFER', market);
+      assert.equal(out.error.detail.acp_detail.reason, 'market_not_priced', market);
+      assert.deepEqual(d.door.calls, [], market);
+    }
+    // A missing or malformed market keeps this door's own refusals, as without the rule.
+    d = nativeDoor(nativeRow('USD'), 'USD');
+    out = await call(d, 'create_checkout_session', nativeCreateArgs(undefined), BOTH);
+    assert.equal(out.error.detail.acp_detail.reason, 'market_required_for_seller_storefront');
+    out = await call(d, 'create_checkout_session', nativeCreateArgs('USA'), BOTH);
+    assert.equal(out.error.code, 'INVALID_ARGUMENTS');
+    assert.deepEqual(d.door.calls, []);
+  });
+
+  test('the path\'s switch on and the rule off: the GB create that would be answered in USD at the seller is the answer the door gives with the path off, and no store is called', async () => {
+    const answers = {};
+    for (const [name, flags] of [['off', envOf(undefined, undefined)], ['mcp_only', envOf('1', undefined)], ['rule_only', envOf(undefined, '1')]]) {
+      const d = nativeDoor(nativeRow('USD'), 'USD');
+      const withMarket = await call(d, 'create_checkout_session', nativeCreateArgs('GB'), flags);
+      const noMarket = await call(d, 'create_checkout_session', nativeCreateArgs(undefined), flags);
+      const reread = await call(d, 'get_checkout_session', { session_id: encodeEscalationId([{ product_id: 'sig_row_a', quantity: 1 }], 'cart_0001', HOST, { code: 'GB', assumed: false }) }, flags);
+      assert.deepEqual(d.door.calls, [], `${name}: no store call`);
+      answers[name] = JSON.stringify([
+        withMarket.error && [withMarket.error.code, withMarket.error.message], noMarket.value || [noMarket.error.code, noMarket.error.detail],
+        reread.value || [reread.error.code, reread.error.detail], d.executor.seen,
+      ]);
+      assert.equal(withMarket.error.code, 'INVALID_ARGUMENTS', `${name}: \`market\` is not an argument while the path is not on`);
+      assert.equal(d.lines.filter((l) => l.event === 'mcp_storefront_cart_path').length, name === 'mcp_only' ? 3 : 0, name);
+    }
+    assert.equal(answers.mcp_only, answers.off);
+    assert.equal(answers.rule_only, answers.off);
+  });
+
+  test('both on, re-read and update: an id minted for GB over a USD seller\'s cart is re-judged, not replayed; update states no price', async () => {
+    // An id as a create made BEFORE the rule would have minted it (GB, a USD store cart).
+    const id = encodeEscalationId([{ product_id: 'sig_row_a', quantity: 1 }], 'cart_0001', HOST, { code: 'GB', assumed: false });
+    let d = nativeDoor(nativeRow('USD'), 'USD');
+    let out = await call(d, 'get_checkout_session', { session_id: id }, BOTH);
+    assert.equal(out.error.detail.acp_detail.reason, 'seller_not_priced_in_market_currency');
+    assert.deepEqual(d.door.calls, [], 'the cart is not read');
+    // The id's own market is the one judged: the same seller and cart under a US id is served, in USD.
+    const usId = encodeEscalationId([{ product_id: 'sig_row_a', quantity: 1 }], 'cart_0001', HOST, { code: 'US', assumed: false });
+    d = nativeDoor(nativeRow('USD'), 'USD');
+    out = await call(d, 'get_checkout_session', { session_id: usId }, BOTH);
+    assert.equal(out.value.currency, 'USD');
+    assert.deepEqual(d.door.calls.map((c) => c[0]), ['discover', 'get_cart']);
+    // DE id and an id with no market.
+    d = nativeDoor(nativeRow('USD'), 'USD');
+    out = await call(d, 'get_checkout_session', { session_id: encodeEscalationId([{ product_id: 'sig_row_a', quantity: 1 }], undefined, undefined, { code: 'DE', assumed: false }) }, BOTH);
+    assert.equal(out.error.detail.acp_detail.reason, 'market_not_priced');
+    out = await call(d, 'get_checkout_session', { session_id: encodeEscalationId([{ product_id: 'sig_row_a', quantity: 1 }]) }, BOTH);
+    assert.equal(out.error.code, 'OPERATION_NOT_ALLOWED');
+    assert.deepEqual(d.door.calls, []);
+    // update / complete / cancel / payment link on such an id: refused as this door always refuses them, with no price,
+    // no product read and no store call. There is no stored answer to replay on this door: every call is computed.
+    for (const [tool, args] of [
+      ['update_checkout_session', { idempotency_key: 'idem-1', session_id: id, quote: { items: [{ product_id: 'sig_row_a', quantity: 2 }] } }],
+      ['complete_checkout_session', { idempotency_key: 'idem-2', session_id: id, payment_authorization: { type: 'none' } }],
+      ['cancel_checkout_session', { idempotency_key: 'idem-3', session_id: id }],
+    ]) {
+      d = nativeDoor(nativeRow('USD'), 'USD');
+      out = await call(d, tool, args, BOTH);
+      assert.equal(out.error.code, 'OPERATION_NOT_ALLOWED', tool);
+      assert.equal(/\d+\.\d\d|USD|GBP/.test(JSON.stringify([out.error.message, out.error.detail])), false, `${tool}: no price, no currency`);
+      assert.deepEqual([d.door.calls, d.executor.seen], [[], []], tool);
+    }
   });
 });

@@ -177,7 +177,16 @@ export function ucpEscalationEnabled(env = process.env) {
 // ignored. Anything else is OFF: unset, empty, `0`, `false`, `off`, `no`, a rollout word such as `enforce` or
 // `shadow`, any other number, any other text. Pinned value by value in test/ucpCurrencyFollowsMarket.test.js.
 export function currencyFollowsMarketEnabled(env = process.env) {
-  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[CURRENCY_FOLLOWS_MARKET_FLAG]) || "").trim());
+  return checkoutSwitchOn(env, CURRENCY_FOLLOWS_MARKET_FLAG);
+}
+
+/**
+ * THE ONE READER for a checkout switch that another switch depends on: is `flag` on in `env`? The same spellings and
+ * the same expression as every `AGENT_CHECKOUT_*` switch in this file. A door whose path requires this rule reads
+ * its own switch AND this rule's switch through it, so the two can never be read by different rules.
+ */
+export function checkoutSwitchOn(env, flag) {
+  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[flag]) || "").trim());
 }
 
 /**
