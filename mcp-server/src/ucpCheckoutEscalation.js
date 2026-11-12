@@ -109,7 +109,7 @@ import storefrontHandoffRecordModule from "../../src/services/storefrontHandoffR
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
-import { canonicalRequest, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
+import { assertKeyLongEnough, canonicalRequest, partnerPrincipalOf, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 // THE NO-MARKET RULE (decision D-10): the same helper the read tools resolve their market through.
 import requestMarket from "../../src/services/requestMarket.js";
@@ -910,7 +910,7 @@ function attestedEmailOrBody(attested, bodyValue) {
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter, idempotencyStore, idempotencyDoor = "ucp", replayed }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs, shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter, idempotencyStore, idempotencyDoor = "ucp", idempotencyPartner, replayed }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
   // ONE client, ONE cache, ONE switch — the process singleton the warm-handoff seam already uses. A test
@@ -1011,6 +1011,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       }
       return null;
     }
+    // THE KEY'S MINIMUM LENGTH, on this path, while a retry is deduplicated by it (storefrontCartIdempotency.js):
+    // refused here, before the gate, the referral or any store is asked.
+    const idempotencyKey = str(own(params, "idempotency_key"));
+    if (storeCartIdempotencyEnabled(env) && idempotencyKey) assertKeyLongEnough(idempotencyKey, log);
     // EVERYTHING FROM HERE ON asks the gate, may build a cart at the seller's store and may write records: the part
     // of a create a retry must not repeat (storefrontCartIdempotency.js). Every refusal above is decided on the
     // request and the catalog alone, and is the same on every attempt.
@@ -1101,10 +1105,13 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       return withAssumedMarket(id === draft.id ? draft : buildEscalationCheckout({ id, ...fallbackArgs }), requested.assumed);
     };
     // A RETRY RETURNS THE SAME CHECKOUT (AGENT_CHECKOUT_STORE_CART_IDEMPOTENCY_ENABLED, default OFF, read per call).
-    // Same verified buyer, same door, same key, same request: the checkout the first create handed out, read back
-    // (the get path below), with no second cart, referral or record. Another request under the key: refused.
-    const idempotencyKey = str(own(params, "idempotency_key"));
+    // Same partner, same verified buyer, same session, same door, same key, same request: the checkout the first
+    // create handed out, read back (the get path below), with no second cart, referral or record. Another request
+    // under the key: refused. THE PARTNER is the subject the gateway verified for this call (`idempotencyPartner`,
+    // the same reader the partner assertion is signed from); a call with none is not deduplicated (counted).
     const buyerRef = isPlainObject(ctx) ? str(ctx.user_ref) : null;
+    let partnerSubject = null;
+    try { partnerSubject = typeof idempotencyPartner === "function" ? idempotencyPartner() : null; } catch { partnerSubject = null; }
     if (!storeCartIdempotencyEnabled(env) || !idempotencyKey || !buyerRef) return buildCart();
     const fingerprint = requestFingerprint(canonicalRequest({
       items: normalized,
@@ -1116,7 +1123,13 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     }));
     return runIdempotentCart({
       store: idempotencyStore,
-      scope: { door: idempotencyDoor, userRef: buyerRef, rawKey: idempotencyKey },
+      scope: {
+        door: idempotencyDoor,
+        partner: partnerPrincipalOf(partnerSubject),
+        userRef: buyerRef,
+        sessionId: isPlainObject(ctx) ? str(ctx.acp_session_id) : null,
+        rawKey: idempotencyKey,
+      },
       fingerprint,
       ttlMs: ESCALATION_TTL_MS,
       now: () => now,

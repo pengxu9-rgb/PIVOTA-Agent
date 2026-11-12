@@ -4,7 +4,8 @@
 // storefront path: the kernel's ledger is only reached by a kernel checkout. So an agent that retried a create (a
 // slow answer, a dropped connection) built a second anonymous cart at the seller's store, and a second referral.
 //
-// WHAT. With the flag on, for the SAME verified buyer on the SAME door with the SAME key:
+// WHAT. With the flag on, for the SAME partner's SAME verified buyer in the SAME session on the SAME door with the
+// SAME key (THE SCOPE, below):
 //   - the same request (canonicalRequest below) within the record's life gets the SAME checkout id, read back: no
 //     second `create_cart`, no second referral, no second hand-off record;
 //   - a DIFFERENT request is refused, terminally, with the kernel ledger's own code and meaning
@@ -18,14 +19,31 @@
 // fails: the create proceeds as it did before this module (FAIL OPEN), counted and logged. A failed dedup must
 // never cost the buyer the cart.
 //
-// THE GUARANTEE, stated exactly. While the store answers, at most one create per (door, buyer, key) is building at a
+// THE SCOPE: (door, partner, buyer, session, key).
+//   partner  the calling principal the gateway verified: the agent of an api-key call, or the issuer and client of
+//            an OAuth call. The SAME value the partner assertion on the referral and the hand-off record is signed
+//            for (src/attribution/issuingAgentAssertion.js `issuingSubjectFromInvokeContext`), so a checkout and its
+//            replay can never belong to two partners. A buyer's `user_ref` does NOT name the partner: one person
+//            signed in through two OAuth clients is one `user_ref`, and without the partner here the second client
+//            was handed the first client's checkout, with the first client's referral on its link.
+//   session  the verified `acp_session_id`, as the kernel's own ledger scopes a key (canonicalExecutor.js
+//            `scopedBaseKey`): a key reused in another session is another request, not a conflict.
+// NEVER ACROSS AN UNKNOWN PRINCIPAL. A call with no partner (a service or degraded identity, an unbound caller) or
+// no session is not deduplicated at all: it proceeds as it did before this module, counted and logged
+// (`fail_open: no_partner` / `no_session`).
+//
+// THE KEY HAS A MINIMUM LENGTH on this path while the flag is on: MIN_KEY_LENGTH characters, the `minLength` both
+// doors' tool schemas publish. A shorter one is refused before the gate or any store is asked, with the code a
+// missing key gets (IDEMPOTENCY_CONFLICT) and a reason of its own (KEY_TOO_SHORT_REASON).
+//
+// THE GUARANTEE, stated exactly. While the store answers, at most one create per scope is building at a
 // time, for as long as its claim's lease (CLAIM_LEASE_MS) holds. A build slower than the lease can be overlapped
 // by a retry; the create path's own budgets (product reads, the gate, the seller's door, the record write) sum to
 // well under it. A create that crashes mid-build leaves a claim that expires with the lease.
 //
-// WHAT IS STORED, AND FOR HOW LONG. Key: a SHA-256 over (door, buyer, key): neither the buyer's id nor the key is
+// WHAT IS STORED, AND FOR HOW LONG. Key: a SHA-256 over the scope: none of its members is
 // stored. Value: the SHA-256 of the canonical request, and the checkout id ENCRYPTED (AES-256-GCM) under a key
-// derived from that same (door, buyer, key) triple, so a row can be opened only by a request that presents them
+// derived from that same scope, so a row can be opened only by a request that presents all of it
 // again; a seller-priced id carries the seller's cart id, which is that seller's bearer handle. Nothing else: no
 // cart link, no totals, no email. Life: ESCALATION_TTL_MS (6 h), the checkout id's own stated expiry (`expires_at`);
 // after it the id is expired on its face and a retry builds a fresh cart. The seller's cart may outlive that; the
@@ -44,14 +62,18 @@ export const WAIT_FOR_WINNER_MS = 12 * 1000;
 export const POLL_INTERVAL_MS = 100;
 export const KEY_REUSED_REASON = "storefront_cart_idempotency_key_reused";
 export const IN_FLIGHT_REASON = "storefront_cart_create_in_flight";
+// The `minLength` the tool schemas publish for an idempotency key (commerceToolSurface.js IDEMPOTENCY,
+// ucpArgumentAdapter.js `idempotency-key`).
+export const MIN_KEY_LENGTH = 8;
+export const KEY_TOO_SHORT_REASON = "idempotency_key_too_short";
 const MAX_CLAIM_ATTEMPTS = 3;
 
 export function storeCartIdempotencyEnabled(env = process.env) {
   return /^(1|true|yes|on)$/i.test(String((env && env[STORE_CART_IDEMPOTENCY_FLAG]) || "").trim());
 }
 
-// Per-process counts: claimed, replayed, replayed_after_wait, conflict, in_flight, fail_open:<stage>,
-// finalize_failed, lease_lost, released. The log line is the fleet-wide view.
+// Per-process counts: claimed, replayed, replayed_after_wait, conflict, in_flight, key_too_short,
+// fail_open:<stage>, finalize_failed, lease_lost, released. The log line is the fleet-wide view.
 const outcomes = new Map();
 function count(outcome) { outcomes.set(outcome, (outcomes.get(outcome) || 0) + 1); }
 export function storeCartIdempotencyCounts() { return Object.fromEntries(outcomes); }
@@ -64,18 +86,41 @@ function emit(log, level, detail) {
 }
 
 const sha256 = (text) => createHash("sha256").update(text, "utf8").digest();
-const scopeOf = (door, userRef, rawKey) => JSON.stringify([String(door), String(userRef), String(rawKey)]);
+// A JSON array, so no member's content can re-segment into another scope (as the kernel's `scopedBaseKey`).
+const scopeOf = ({ door, partner, userRef, sessionId, rawKey }) =>
+  JSON.stringify([String(door), String(partner), String(userRef), String(sessionId), String(rawKey)]);
 
-/** The record's key: a digest of (door, buyer, key). Neither the buyer nor the key can be read back from it. */
-export function recordKey({ door, userRef, rawKey }) {
-  return `sci1_${sha256(`key|${scopeOf(door, userRef, rawKey)}`).toString("hex")}`;
+/**
+ * THE PARTNER of a call, as one string, from the verified subject the partner assertion is signed for
+ * (`{ kind: 'agent', sub }` for an api-key call, `{ kind: 'oauth', iss, cid }` for an OAuth call), or null when
+ * the call is bound to no partner. A JSON array: an agent id can never read as an OAuth client. Pure.
+ */
+export function partnerPrincipalOf(subject) {
+  const text = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);
+  if (!subject || typeof subject !== "object") return null;
+  if (subject.kind === "agent") return text(subject.sub) ? JSON.stringify(["agent", text(subject.sub)]) : null;
+  if (subject.kind === "oauth") return text(subject.iss) && text(subject.cid) ? JSON.stringify(["oauth", text(subject.iss), text(subject.cid)]) : null;
+  return null;
 }
 
-function sealingKey({ door, userRef, rawKey }) {
-  return sha256(`seal|${scopeOf(door, userRef, rawKey)}`);
+/** Refuse a key shorter than the published minimum (see the header). `rawKey` is the key as the door read it. */
+export function assertKeyLongEnough(rawKey, log) {
+  if (typeof rawKey === "string" && rawKey.length >= MIN_KEY_LENGTH) return;
+  count("key_too_short");
+  emit(log, "info", { outcome: "key_too_short" });
+  throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason: KEY_TOO_SHORT_REASON, min_length: MIN_KEY_LENGTH });
 }
 
-/** The checkout id, sealed so that only a request presenting the same (door, buyer, key) can open it. */
+/** The record's key: a digest of the scope. None of its members can be read back from it. */
+export function recordKey(scope) {
+  return `sci1_${sha256(`key|${scopeOf(scope)}`).toString("hex")}`;
+}
+
+function sealingKey(scope) {
+  return sha256(`seal|${scopeOf(scope)}`);
+}
+
+/** The checkout id, sealed so that only a request presenting the same scope can open it. */
 export function sealCheckoutId(id, scope) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", sealingKey(scope), iv);
@@ -121,11 +166,12 @@ export function requestFingerprint(canonical) {
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 /**
- * Build the checkout once per (door, buyer, key, request).
+ * Build the checkout once per (door, partner, buyer, session, key, request).
  *
  * @param {{
  *   store: object|undefined,          // a KvStore: get, putIfAbsent, compareAndSet, compareAndDelete
- *   scope: { door:string, userRef:string, rawKey:string },
+ *   scope: { door:string, partner:(string|null), userRef:string, sessionId:(string|null), rawKey:string },
+ *                                     // partner: partnerPrincipalOf(...); null (or no session) = not deduplicated
  *   fingerprint: string,
  *   ttlMs: number,                    // the life of a finished record
  *   now: () => number,
@@ -141,6 +187,10 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
     emit(log, "warn", { outcome: "fail_open", stage });
     return (await build()).answer;
   };
+  // Never across an unknown principal: no partner, or no session, is no scope to deduplicate in.
+  const known = (value) => typeof value === "string" && value !== "";
+  if (!scope || !known(scope.partner)) return failOpen("no_partner");
+  if (!known(scope.sessionId)) return failOpen("no_session");
   if (!store || typeof store.putIfAbsent !== "function") return failOpen("no_store");
   const key = recordKey(scope);
   const owner = randomUUID();

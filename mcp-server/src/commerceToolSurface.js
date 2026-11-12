@@ -303,7 +303,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff, storefrontReferral, storefrontCartIdempotencyStore } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff, storefrontReferral, storefrontCartIdempotencyStore, storefrontCartPartner } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -539,7 +539,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       // Inert unless UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (ucpCheckoutEscalation.js).
       // `storefrontReferral`: the minter of a referral for a store cart whose catalog link carries none. Inert unless
       // AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED (ucpMerchantDoorPricing.js).
-      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger, handoffRecorder: storefrontHandoff, referralMinter: storefrontReferral, idempotencyStore: storefrontCartIdempotencyStore, idempotencyDoor: "ucp" });
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger, handoffRecorder: storefrontHandoff, referralMinter: storefrontReferral, idempotencyStore: storefrontCartIdempotencyStore, idempotencyDoor: "ucp", idempotencyPartner: storefrontCartPartner });
       if (escalated && isPlainObject(escalated.market_assumed)) noteToolCall(typeof options.observe === "function" ? options.observe : null, { market_assumed: true });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
@@ -577,7 +577,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       }
       const answered = await tryNativeStorefrontCart({
         op, toolArgs, params, ctx, attested, executor: memoizedProductReads(executor), merchantDoor, log: logger,
-        referralMinter: storefrontReferral, idempotencyStore: storefrontCartIdempotencyStore,
+        referralMinter: storefrontReferral, idempotencyStore: storefrontCartIdempotencyStore, idempotencyPartner: storefrontCartPartner,
         // Only a re-read of an id the UCP door minted for an assumed market: a create here names its market or is refused.
         onMarketAssumed: () => noteToolCall(observeEarly, { market_assumed: true }),
       });

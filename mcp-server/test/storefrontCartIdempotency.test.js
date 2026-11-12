@@ -1,8 +1,9 @@
 // A RETRIED STOREFRONT CREATE RETURNS THE SAME CHECKOUT (AGENT_CHECKOUT_STORE_CART_IDEMPOTENCY_ENABLED): the ledger
 // itself and the lane. The doors end to end: tests/store_cart_idempotency_door.node.test.cjs.
 //
-// Pinned here: the switch; what "the same request" is (the market included); what is stored and that only the same
-// buyer and key can open it; one build under concurrency, the loser reading the winner's checkout; the terminal
+// Pinned here: the switch; what "the same request" is (the market included); THE SCOPE (door, partner, buyer,
+// session, key), that a call with no partner or no session is never deduplicated, and the key's minimum length;
+// what is stored and that only the same scope can open it; one build under concurrency, the loser reading the winner's checkout; the terminal
 // refusal for another request under the key; the retriable answer while the first is still building; fail open,
 // counted, when there is no store or the store fails; a build that hands out nothing leaves no record.
 
@@ -11,6 +12,7 @@ import assert from 'node:assert/strict';
 
 import {
   STORE_CART_IDEMPOTENCY_FLAG, CLAIM_LEASE_MS, KEY_REUSED_REASON, IN_FLIGHT_REASON, STORE_CART_IDEMPOTENCY_NAMESPACE,
+  MIN_KEY_LENGTH, KEY_TOO_SHORT_REASON, partnerPrincipalOf, assertKeyLongEnough,
   storeCartIdempotencyEnabled, storeCartIdempotencyCounts, resetStoreCartIdempotencyCountsForTest,
   canonicalRequest, requestFingerprint, recordKey, sealCheckoutId, openCheckoutId, runIdempotentCart,
 } from '../src/storefrontCartIdempotency.js';
@@ -20,7 +22,17 @@ import { InMemoryKvStore } from '../../safety-kernel/src/stores.js';
 import { createCommerceMount } from '../../safety-kernel/src/mount.js';
 import { PivotaCommerceError } from '../../safety-kernel/src/errors.js';
 
-const SCOPE = Object.freeze({ door: 'ucp', userRef: 'buyer-0001', rawKey: 'idem-key-0001' });
+const PARTNER_A = partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_a' });
+const PARTNER_B = partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_b' });
+const SCOPE = Object.freeze({ door: 'ucp', partner: PARTNER_A, userRef: 'buyer-0001', sessionId: 'sess-0001', rawKey: 'idem-key-0001' });
+// Every scope that differs from SCOPE in exactly one member.
+const OTHER_SCOPES = Object.freeze({
+  'another buyer': { ...SCOPE, userRef: 'buyer-0002' },
+  'another key': { ...SCOPE, rawKey: 'idem-key-0002' },
+  'another door': { ...SCOPE, door: 'mcp' },
+  'another partner': { ...SCOPE, partner: PARTNER_B },
+  'another session': { ...SCOPE, sessionId: 'sess-0002' },
+});
 const FP = requestFingerprint(canonicalRequest({ items: [{ product_id: 'p1', quantity: 1 }], market: 'US' }));
 const ID = 'esc_eyJ2IjoyfQ';
 const TTL = 6 * 60 * 60 * 1000;
@@ -98,7 +110,7 @@ describe('the same request', () => {
 });
 
 describe('what is stored', () => {
-  test('the key names neither the buyer nor the key; the id is sealed to the same door, buyer and key', async () => {
+  test('the key names neither the buyer nor the key; the id is sealed to the same door, partner, buyer, session and key', async () => {
     const h = harness();
     await h.run();
     const key = recordKey(SCOPE);
@@ -108,11 +120,11 @@ describe('what is stored', () => {
     assert.equal(record.status, 'done');
     assert.equal(record.fp, FP);
     const stored = JSON.stringify([key, record]);
-    for (const secret of [SCOPE.userRef, SCOPE.rawKey, ID]) assert.equal(stored.includes(secret), false, secret);
+    for (const secret of [SCOPE.userRef, SCOPE.rawKey, SCOPE.sessionId, 'agent_partner_a', ID]) assert.equal(stored.includes(secret), false, secret);
     assert.equal(openCheckoutId(record.sealed, SCOPE), ID);
-    for (const other of [{ ...SCOPE, userRef: 'buyer-0002' }, { ...SCOPE, rawKey: 'idem-key-0002' }, { ...SCOPE, door: 'mcp' }]) {
-      assert.equal(openCheckoutId(record.sealed, other), null);
-      assert.notEqual(recordKey(other), key);
+    for (const [name, other] of Object.entries(OTHER_SCOPES)) {
+      assert.equal(openCheckoutId(record.sealed, other), null, name);
+      assert.notEqual(recordKey(other), key, name);
     }
     assert.equal(openCheckoutId('not.a.record', SCOPE), null);
     assert.notEqual(sealCheckoutId(ID, SCOPE), sealCheckoutId(ID, SCOPE), 'a fresh nonce per record');
@@ -159,9 +171,80 @@ describe('retries', () => {
   test('another buyer, another key or another door under the same words is a build of its own', async () => {
     const h = harness();
     await h.run();
-    for (const scope of [{ ...SCOPE, userRef: 'buyer-0002' }, { ...SCOPE, rawKey: 'idem-key-0002' }, { ...SCOPE, door: 'mcp' }]) await h.run({ scope });
+    for (const name of ['another buyer', 'another key', 'another door']) await h.run({ scope: OTHER_SCOPES[name] });
     assert.equal(h.calls.build, 4);
     assert.deepEqual(h.calls.replay, []);
+  });
+
+  test('ANOTHER PARTNER with the same buyer and key is a build of its own, even for another request: never a replay, never a conflict', async () => {
+    const h = harness();
+    await h.run();
+    assert.deepEqual(await h.run({ scope: OTHER_SCOPES['another partner'] }), { id: ID, built: 2 });
+    // Another request under the key, for the other partner: its own record, not a conflict with the first partner's.
+    const otherFp = requestFingerprint(canonicalRequest({ items: [{ product_id: 'p1', quantity: 9 }], market: 'US' }));
+    const b = partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_c' });
+    assert.deepEqual(await h.run({ scope: { ...SCOPE, partner: b }, fingerprint: otherFp }), { id: ID, built: 3 });
+    assert.deepEqual(h.calls.replay, []);
+    assert.equal(storeCartIdempotencyCounts().conflict, undefined);
+    // Each partner replays its own.
+    await h.run();
+    await h.run({ scope: OTHER_SCOPES['another partner'] });
+    assert.equal(h.calls.build, 3);
+    assert.equal(h.calls.replay.length, 2);
+  });
+
+  test('ANOTHER SESSION with the same partner, buyer and key is a build of its own (as the kernel ledger scopes a key), not a conflict', async () => {
+    const h = harness();
+    await h.run();
+    const otherFp = requestFingerprint(canonicalRequest({ items: [{ product_id: 'p1', quantity: 9 }], market: 'US' }));
+    assert.deepEqual(await h.run({ scope: OTHER_SCOPES['another session'], fingerprint: otherFp }), { id: ID, built: 2 });
+    assert.deepEqual(await h.run({ scope: { ...SCOPE, sessionId: 'sess-0003' } }), { id: ID, built: 3 });
+    assert.deepEqual(h.calls.replay, []);
+    assert.equal(storeCartIdempotencyCounts().conflict, undefined);
+  });
+
+  test('the scope cannot be re-segmented: a member holding another member\'s text is another scope', () => {
+    const a = recordKey({ ...SCOPE, userRef: 'u","s', sessionId: 'x' });
+    const b = recordKey({ ...SCOPE, userRef: 'u', sessionId: 's","x' });
+    assert.notEqual(a, b);
+  });
+});
+
+describe('the partner', () => {
+  test('an agent, and an OAuth client under its issuer, each as themselves; an agent id never reads as a client', () => {
+    assert.equal(partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_a' }), '["agent","agent_partner_a"]');
+    assert.equal(partnerPrincipalOf({ kind: 'oauth', iss: 'https://as.example', cid: 'client-a' }), '["oauth","https://as.example","client-a"]');
+    assert.notEqual(partnerPrincipalOf({ kind: 'agent', sub: 'client-a' }), partnerPrincipalOf({ kind: 'oauth', iss: 'https://as.example', cid: 'client-a' }));
+    assert.notEqual(partnerPrincipalOf({ kind: 'oauth', iss: 'https://as.example', cid: 'client-a' }), partnerPrincipalOf({ kind: 'oauth', iss: 'https://other.example', cid: 'client-a' }));
+  });
+  test('no partner: null, for every shape that names none', () => {
+    for (const none of [null, undefined, '', 'agent_partner_a', {}, { kind: 'agent' }, { kind: 'agent', sub: ' ' }, { kind: 'oauth', cid: 'client-a' }, { kind: 'oauth', iss: 'https://as.example' }, { kind: 'service', sub: 'x' }]) {
+      assert.equal(partnerPrincipalOf(none), null, JSON.stringify(none));
+    }
+  });
+  test('NEVER ACROSS AN UNKNOWN PRINCIPAL: no partner, or no session, builds every time, counted, and writes nothing', async () => {
+    for (const [stage, scope] of [['no_partner', { ...SCOPE, partner: null }], ['no_partner', { ...SCOPE, partner: '' }], ['no_partner', { ...SCOPE, partner: undefined }], ['no_session', { ...SCOPE, sessionId: null }], ['no_session', { ...SCOPE, sessionId: '' }]]) {
+      resetStoreCartIdempotencyCountsForTest();
+      const h = harness();
+      assert.deepEqual(await h.run({ scope }), { id: ID, built: 1 });
+      assert.deepEqual(await h.run({ scope }), { id: ID, built: 2 });
+      assert.deepEqual(h.calls.replay, []);
+      assert.deepEqual(storeCartIdempotencyCounts(), { [`fail_open:${stage}`]: 2 });
+      assert.equal(h.store._m.size, 0, 'no record is written for an unknown principal');
+    }
+  });
+});
+
+describe('the key\'s minimum length', () => {
+  test('the published minimum: 8', () => {
+    assert.equal(MIN_KEY_LENGTH, 8);
+  });
+  test('7 characters: refused with the code a missing key gets and a reason of its own; 8: accepted', () => {
+    assert.throws(() => assertKeyLongEnough('1234567'), (err) => err instanceof PivotaCommerceError && err.code === 'IDEMPOTENCY_CONFLICT'
+      && err.detail.reason === KEY_TOO_SHORT_REASON && err.detail.min_length === 8 && err.retriable === false);
+    assert.throws(() => assertKeyLongEnough('a'), (err) => err.code === 'IDEMPOTENCY_CONFLICT');
+    assert.equal(assertKeyLongEnough('12345678'), undefined);
+    assert.deepEqual(storeCartIdempotencyCounts(), { key_too_short: 2 });
   });
 
   test('a build that hands out no checkout (a decline) leaves no record: the retry builds again', async () => {
@@ -262,7 +345,7 @@ describe('fail open, counted', () => {
     assert.deepEqual(await h.run(), { id: ID, built: 1 });
     assert.deepEqual(storeCartIdempotencyCounts(), { 'fail_open:read': 1 });
   });
-  test('a record this buyer and key cannot open is not read back', async () => {
+  test('a record this scope cannot open is not read back', async () => {
     const store = new InMemoryKvStore();
     await store.putIfAbsent(recordKey(SCOPE), { fp: FP, status: 'done', sealed: sealCheckoutId(ID, { ...SCOPE, userRef: 'someone-else' }), created_at: 1 }, { ttlMs: TTL });
     const h = harness({ store });
@@ -299,8 +382,10 @@ describe('the lane', () => {
       async getCart(_ep, id) { calls.push(['get_cart', id]); return cart(id, carts.get(id)); },
     };
   }
-  const create = ({ env = ON, store, door, key = 'idem-lane-0001', quantity = 2, market = 'US', user = 'buyer-0001', email, now = 5000, idempotencyDoor }) => tryEscalateUcpCheckout({
-    op: { id: 'create_checkout_session' }, ctx: { user_ref: user },
+  const AGENT_A = { kind: 'agent', sub: 'agent_partner_a' };
+  const create = ({ env = ON, store, door, key = 'idem-lane-0001', quantity = 2, market = 'US', user = 'buyer-0001', session = 'sess-0001', partner = AGENT_A, email, now = 5000, idempotencyDoor }) => tryEscalateUcpCheckout({
+    op: { id: 'create_checkout_session' }, ctx: { user_ref: user, ...(session ? { acp_session_id: session } : {}) },
+    idempotencyPartner: typeof partner === 'function' ? partner : () => partner,
     params: { idempotency_key: key, quote: { items: [{ product_id: SEED.product_id, quantity }], ...(email ? { customer_email: email } : {}) } },
     executor, ucpArgs: market ? { checkout: { context: { address_country: market } } } : {}, env, now, merchantDoor: door, idempotencyStore: store, idempotencyDoor,
   });
@@ -375,6 +460,73 @@ describe('the lane', () => {
     assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 3);
   });
 
+  test('PARTNER A THEN PARTNER B, same buyer, same session, same key, same cart: two checkouts, neither reads the other\'s', async () => {
+    const store = new InMemoryKvStore();
+    const door = fakeDoor();
+    const a = await create({ store, door });
+    const b = await create({ store, door, partner: { kind: 'agent', sub: 'agent_partner_b' } });
+    const oauth = await create({ store, door, partner: { kind: 'oauth', iss: 'https://as.example', cid: 'client-a' } });
+    const oauthOther = await create({ store, door, partner: { kind: 'oauth', iss: 'https://as.example', cid: 'client-b' } });
+    assert.equal(new Set([a.id, b.id, oauth.id, oauthOther.id]).size, 4);
+    assert.deepEqual(door.calls.map((c) => c[0]), ['create_cart', 'create_cart', 'create_cart', 'create_cart']);
+    // Another cart under the key for partner B: B's own conflict, never A's business.
+    await assert.rejects(create({ store, door, partner: { kind: 'agent', sub: 'agent_partner_b' }, quantity: 5 }), (err) => err.code === 'IDEMPOTENCY_CONFLICT');
+    assert.equal((await create({ store, door })).id, a.id);
+    assert.equal((await create({ store, door, partner: { kind: 'oauth', iss: 'https://as.example', cid: 'client-b' } })).id, oauthOther.id);
+  });
+
+  test('the same partner, buyer and key in ANOTHER SESSION: a new checkout, even for another cart; never a conflict', async () => {
+    const store = new InMemoryKvStore();
+    const door = fakeDoor();
+    const first = await create({ store, door });
+    const otherSession = await create({ store, door, session: 'sess-0002', quantity: 3 });
+    const otherSessionSameCart = await create({ store, door, session: 'sess-0003' });
+    assert.equal(new Set([first.id, otherSession.id, otherSessionSameCart.id]).size, 3);
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 3);
+    assert.equal((await create({ store, door, session: 'sess-0002', quantity: 3 })).id, otherSession.id, 'each session replays its own');
+  });
+
+  test('NO PARTNER on the call (none wired, none resolved, a reader that throws) or no session: not deduplicated, counted', async () => {
+    const store = new InMemoryKvStore();
+    const door = fakeDoor();
+    for (const partner of [null, {}, { kind: 'agent', sub: '' }, () => { throw new Error('reader down'); }]) {
+      await create({ store, door, partner });
+      await create({ store, door, partner });
+    }
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 8);
+    assert.deepEqual(storeCartIdempotencyCounts(), { 'fail_open:no_partner': 8 });
+    resetStoreCartIdempotencyCountsForTest();
+    await create({ store, door, session: null });
+    await create({ store, door, session: null });
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 10);
+    assert.deepEqual(storeCartIdempotencyCounts(), { 'fail_open:no_session': 2 });
+    assert.equal(store._m.size, 0);
+  });
+
+  test('a 7-character key with the flag on: refused before the gate and the store; 8 characters: built; flag off: a short key is as before', async () => {
+    const store = new InMemoryKvStore();
+    const door = fakeDoor();
+    const gate = [];
+    const shouldOfferPurchase = async (args) => { gate.push(args); return true; };
+    await assert.rejects(
+      tryEscalateUcpCheckout({
+        op: { id: 'create_checkout_session' }, ctx: { user_ref: 'buyer-0001', acp_session_id: 'sess-0001' }, idempotencyPartner: () => AGENT_A,
+        params: { idempotency_key: 'idem-07', quote: { items: [{ product_id: SEED.product_id, quantity: 1 }] } },
+        executor, ucpArgs: { checkout: { context: { address_country: 'US' } } }, env: ON, now: 5000, merchantDoor: door, idempotencyStore: store, shouldOfferPurchase,
+      }),
+      (err) => err.code === 'IDEMPOTENCY_CONFLICT' && err.detail.reason === KEY_TOO_SHORT_REASON,
+    );
+    assert.deepEqual([door.calls.length, gate.length, store._m.size], [0, 0, 0]);
+    // A short key is refused whoever calls: the rule is the key's, not the scope's.
+    await assert.rejects(create({ store, door, key: 'idem-07', partner: null }), (err) => err.detail.reason === KEY_TOO_SHORT_REASON);
+    await assert.rejects(create({ store, door, key: '  1234567  ' }), (err) => err.detail.reason === KEY_TOO_SHORT_REASON, 'surrounding blanks do not count');
+    assert.equal(door.calls.length, 0);
+    assert.ok((await create({ store, door, key: 'idem-008' })).id);
+    const off = { ...ON, [STORE_CART_IDEMPOTENCY_FLAG]: '' };
+    assert.ok((await create({ env: off, store, door, key: 'abc' })).id);
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 2);
+  });
+
   test('no verified buyer or no key on the call: not deduplicated (and never thrown for)', async () => {
     const store = new InMemoryKvStore();
     const door = fakeDoor();
@@ -389,6 +541,6 @@ describe('the lane', () => {
     const door = fakeDoor();
     const first = await create({ store, door, email: 'buyer@example.com' });
     const row = JSON.stringify([...store._m.entries()]);
-    for (const secret of ['secret-cart_1', 'cart_1', 'buyer@example.com', 'buyer-0001', 'idem-lane-0001', first.id, 'shop-a.example.com']) assert.equal(row.includes(secret), false, secret);
+    for (const secret of ['secret-cart_1', 'cart_1', 'buyer@example.com', 'buyer-0001', 'idem-lane-0001', 'sess-0001', 'agent_partner_a', first.id, 'shop-a.example.com']) assert.equal(row.includes(secret), false, secret);
   });
 });

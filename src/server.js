@@ -50,6 +50,7 @@ const {
   SEED_LINK_MINT_OP,
   isBoundOp,
   boundIssuingAgentAssertionHeaders,
+  issuingSubjectFromInvokeContext,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
@@ -34401,6 +34402,10 @@ async function getCommerceRemoteMcpAdapter() {
         // default, read per call). Its records live beside the kernel's own state: Postgres whenever the kernel is
         // durable, which strict checkout requires outside tests.
         storefrontCartIdempotencyStore: typeof commerce.stateStore === 'function' ? commerce.stateStore('storefront_cart_idempotency') : undefined,
+        // THE PARTNER a retried create is deduplicated for: the verified subject of THIS request, read by the same
+        // function the partner assertion on the referral and the hand-off record is signed from, so the two can
+        // never name different partners. Null (a service or degraded identity): that call is not deduplicated.
+        storefrontCartPartner: () => issuingSubjectFromInvokeContext(getInvokeAuthContext()),
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a

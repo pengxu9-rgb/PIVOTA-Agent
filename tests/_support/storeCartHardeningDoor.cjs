@@ -37,6 +37,10 @@ const AS = Object.freeze({
   A: Object.freeze({ ...support.BUYER, 'X-Agent-API-Key': KEY_A }),
   A_OTHER_BUYER: Object.freeze({ ...support.OTHER_BUYER, 'X-Agent-API-Key': KEY_A }),
   B: Object.freeze({ 'X-Test-User-Ref': 'buyer-0003', 'X-Test-Acp-Session-Id': 'sess-0003', 'X-Agent-API-Key': KEY_B }),
+  // THE SAME BUYER AND SESSION AS `A`, calling through partner B: one person using two partners' agents.
+  A_BUYER_VIA_B: Object.freeze({ ...support.BUYER, 'X-Agent-API-Key': KEY_B }),
+  // The same buyer and partner as `A`, in another session.
+  A_OTHER_SESSION: Object.freeze({ ...support.BUYER, 'X-Test-Acp-Session-Id': 'sess-0009', 'X-Agent-API-Key': KEY_A }),
 });
 
 const REFERRAL_FLAG = 'AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED';
@@ -281,6 +285,25 @@ async function runHardeningRequests(door) {
   await ucp('ucp.get_hand_built_v3_id', 'get_checkout', { meta: UCP_META, id: support.escId({ v: 3, i: [[IDS.SIG_A, 3]], c: 'cart_store-a_9999', h: support.HOST.A, m: 'US', b: 'A'.repeat(43) }) });
   // No verified buyer at all.
   await ucp('ucp.owned_get_no_buyer', 'get_checkout', { meta: UCP_META, id: ownedId }, { 'X-Agent-API-Key': KEY_A });
+
+  // ---- one buyer, two partners; one partner, two sessions; a key under the published minimum ----
+  const scoped = await ucp('ucp.scope_first', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171));
+  await ucp('ucp.scope_same_buyer_other_partner_same_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171), AS.A_BUYER_VIA_B);
+  await ucp('ucp.scope_same_buyer_other_partner_other_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 171), AS.A_BUYER_VIA_B);
+  await ucp('ucp.scope_other_session_same_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171), AS.A_OTHER_SESSION);
+  await ucp('ucp.scope_other_session_other_cart', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 171), AS.A_OTHER_SESSION);
+  await ucp('ucp.scope_same_everything', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 2]], 'US', 171));
+  await ucp('ucp.scope_get_first_by_other_partner', 'get_checkout', { meta: UCP_META, id: idOf(scoped) }, AS.A_BUYER_VIA_B);
+  await mcp('mcp.scope_first', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 2]], { market: 'US', n: 172 }));
+  await mcp('mcp.scope_same_buyer_other_partner_same_cart', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 2]], { market: 'US', n: 172 }), AS.A_BUYER_VIA_B);
+  await mcp('mcp.scope_other_session_other_cart', 'create_checkout_session', nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 3]], { market: 'US', n: 172 }), AS.A_OTHER_SESSION);
+  const shortKey = (args, key) => ({ ...args, meta: { ...args.meta, 'idempotency-key': key } });
+  await ucp('ucp.key_7_characters', 'create_checkout', shortKey(ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 173), 'idem-07'));
+  await ucp('ucp.key_8_characters', 'create_checkout', shortKey(ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 173), 'idem-008'));
+  await mcp('mcp.key_7_characters', 'create_checkout_session', { ...nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 1]], { market: 'US', n: 174 }), idempotency_key: 'idem-07' });
+  await mcp('mcp.key_7_characters_kernel', 'create_checkout_session', { ...nativeCreate(IDS.SELLER_CONNECTED, [[IDS.SOURCE_CONNECTED, 1, IDS.VARIANT_CONNECTED]], { n: 175 }), idempotency_key: 'idem-07' });
+  // No market named, with a second product (the first no-market cart is `ucp.cart_no_market`).
+  await ucp('ucp.cart_no_market_second', 'create_checkout', ucpCreateKeyed([[IDS.SIG_A_SECOND, 1]], undefined, 176));
   return out;
 }
 
