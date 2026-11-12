@@ -28085,6 +28085,40 @@ async function fetchSimilarProductsFromUpstream(args) {
   return Array.isArray(resp?.data?.products) ? resp.data.products : [];
 }
 
+// THE CREDENTIAL OF THE REVIEW-SUMMARY FETCH, when the request carries no checkout token.
+//
+// The answer is SHARED: fetchReviewSummaryCached keys its cache and its in-flight memo on merchant, platform
+// and product only, so what one caller's request fetched is served to the next caller. A shared read goes out
+// on the gateway's own service credential, from the builder every other call to the backend invoke route uses,
+// and with nothing derived from the caller: not the caller's key (forceInternalFallback), not X-Buyer-Ref, not
+// X-Agent-User-JWT. The builder is asked only when the service credential is configured, because without one
+// it would fall back to the caller's key.
+//
+// No service credential configured (PIVOTA_API_KEY unset): the fetch goes out with no credential, as it always
+// did, and says so once per process. The read is never failed for it.
+let reviewSummaryMissingServiceCredentialWarned = false;
+function buildReviewSummaryUpstreamAuthHeaders() {
+  if (!PIVOTA_API_KEY) {
+    if (!reviewSummaryMissingServiceCredentialWarned) {
+      reviewSummaryMissingServiceCredentialWarned = true;
+      logger.warn(
+        {
+          operation: 'get_review_summary',
+          missing_config: 'gateway_service_credential',
+          env: 'PIVOTA_API_KEY',
+        },
+        'review summary fetch has no service credential configured; sending it without one',
+      );
+    }
+    return {};
+  }
+  return buildInvokeUpstreamAuthHeaders({
+    forceInternalFallback: true,
+    forwardAgentUserJwt: false,
+    forwardBuyerRef: false,
+  });
+}
+
 async function fetchReviewSummaryFromUpstream(args) {
   const { merchantId, platform, platformProductId, checkoutToken } = args;
   const mid = String(merchantId || '').trim();
@@ -28110,7 +28144,9 @@ async function fetchReviewSummaryFromUpstream(args) {
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
+      // A request that carries a checkout token sends the token, alone, exactly as before. Every other
+      // request sends the gateway's service credential (buildReviewSummaryUpstreamAuthHeaders).
+      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : buildReviewSummaryUpstreamAuthHeaders()),
     },
     timeout: UPSTREAM_TIMEOUT_REVIEWS_MS,
     data,
