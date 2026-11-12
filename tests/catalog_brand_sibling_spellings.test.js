@@ -163,7 +163,12 @@ describe('the sibling resolver', () => {
       // premise: each is a dictionary brand on its own
       expect(cache.matchCatalogBeautyBrand(row.b)).toEqual(expect.objectContaining({ brand: row.b }));
       expect(siblingsOf(row.b)).toEqual([]);
-      expect(brandIdentityBindKeys(catalog(row.b))).toEqual([row.b.replace(/ /g, '')]);
+      // exactly what main binds for it (main's own "cosmetic" shortening included), nothing added
+      const on = brandIdentityBindKeys(catalog(row.b));
+      setFlags({ [SIBLINGS]: null });
+      expect(on).toEqual(brandIdentityBindKeys(catalog(row.b)));
+      setFlags({ [SIBLINGS]: 'on' });
+      expect(on).toContain(row.b.replace(/ /g, ''));
     }
   });
 
