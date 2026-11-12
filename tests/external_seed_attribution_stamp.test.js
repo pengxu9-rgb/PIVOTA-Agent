@@ -590,3 +590,107 @@ describe('the minted redirect survives the safety-kernel sanitizer', () => {
     }
   });
 });
+
+// FIX_PLAN O-04: the per-response stamp the commerce surface runs after its cache (src/server.js
+// attributeCommerceSearchPerResponse) and the deferral the cached loopback search asks for.
+describe('stampSearchResultPerResponse / isSeedAttributionDeferred', () => {
+  const {
+    stampSearchResultPerResponse,
+    isSeedAttributionDeferred,
+  } = require('../src/services/externalSeedAttributionStamp');
+
+  const placeholderCard = () => ({
+    product_id: 'ext_x', external_product_id: 'ext_x', source: 'external_seed', platform: 'external',
+    external_seed_id: 'seed_x', destination_url: 'https://shop-a.example.com/products/x',
+  });
+  const placeholderLink = (clickId) => ({
+    external_seed_id: 'seed_x',
+    external_redirect_url: `https://api.example.com/r?token=${clickId}.sig`,
+    destination_url: `https://shop-a.example.com/products/x?pvt_click_id=${clickId}`,
+    cart_url: null,
+    tracking: { click_id: clickId },
+  });
+
+  test.each([
+    ['top-level products', (card) => ({ products: [card] }), (v) => v.products[0], (v) => v.metadata],
+    ['products under data', (card) => ({ data: { products: [card] } }), (v) => v.data.products[0], (v) => v.metadata],
+  ])('stamps %s and records the counts on the response metadata', async (_label, wrap, cardIn, metaOf) => {
+    const value = wrap(placeholderCard());
+    const counts = await stampSearchResultPerResponse(value, { fetchLinks: async () => [placeholderLink('clk_9')] });
+    expect(counts).toEqual({ candidates: 1, stamped: 1 });
+    expect(cardIn(value).tracking).toEqual({ click_id: 'clk_9' });
+    expect(metaOf(value).external_seed_attribution).toEqual({ candidates: 1, stamped: 1 });
+  });
+
+  test('a body with no product list is left alone and reports nothing', async () => {
+    const fetchLinks = jest.fn();
+    const value = { product: placeholderCard() };
+    expect(await stampSearchResultPerResponse(value, { fetchLinks })).toEqual({ candidates: 0, stamped: 0 });
+    expect(fetchLinks).not.toHaveBeenCalled();
+    expect(value).toEqual({ product: placeholderCard() });
+  });
+
+  test('a failing mint never throws and leaves the raw card', async () => {
+    const value = { products: [placeholderCard()] };
+    const counts = await stampSearchResultPerResponse(value, { fetchLinks: async () => { throw new Error('down'); } });
+    expect(counts.stamped).toBe(0);
+    expect(value.products[0]).toEqual(placeholderCard());
+  });
+
+  test('only the exact deferral value defers', () => {
+    expect(isSeedAttributionDeferred('deferred')).toBe(true);
+    expect(isSeedAttributionDeferred(' Deferred ')).toBe(true);
+    for (const v of [undefined, null, '', '1', 'true', 'defer', 'deferred-not', ['deferred']]) {
+      expect(isSeedAttributionDeferred(v)).toBe(false);
+    }
+  });
+});
+
+// FIX_PLAN O-04, P2-2: the per-response mint's partner assertion is signed over the EXACT request.
+describe('createBackendSeedLinkFetcher with signRequest', () => {
+  beforeEach(() => {
+    axios.mockClear();
+    axios.mockImplementation(async () => ({ data: { links: [] } }));
+  });
+
+  const card = () => ({
+    product_id: 'ext_x', source: 'external_seed', platform: 'external', external_seed_id: 'seed_x',
+    destination_url: 'https://shop-a.example.com/products/x',
+  });
+
+  test('sends the exact string the signer was handed, with the signed header beside the key', async () => {
+    const signed = [];
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+      signRequest: (req) => { signed.push(req); return { 'X-Pivota-Issuing-Agent': 'v2.signed.token' }; },
+    });
+    await stampExternalSeedAttribution([card()], { fetchLinks, market: 'US', tool: 'find_products_multi' });
+    const sent = axios.mock.calls[0][0];
+    expect(signed).toHaveLength(1);
+    expect(signed[0]).toEqual({ method: 'POST', url: sent.url, rawBody: sent.data });
+    expect(typeof sent.data).toBe('string');
+    expect(JSON.parse(sent.data)).toEqual(expect.objectContaining({ market: 'US', tool: 'find_products_multi' }));
+    expect(sent.headers['X-Pivota-Issuing-Agent']).toBe('v2.signed.token');
+    expect(sent.headers['X-API-Key']).toBe('internal-key');
+  });
+
+  test('a signer that signs nothing sends the request unsigned, never a stale header', async () => {
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+      signRequest: () => ({}),
+    });
+    await stampExternalSeedAttribution([card()], { fetchLinks, market: 'US', tool: 'find_products_multi' });
+    expect(axios.mock.calls[0][0].headers).not.toHaveProperty('X-Pivota-Issuing-Agent');
+  });
+
+  test('without a signer the body is the object, exactly as before', async () => {
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+    });
+    await stampExternalSeedAttribution([card()], { fetchLinks, market: 'US', tool: 'find_products_multi' });
+    expect(typeof axios.mock.calls[0][0].data).toBe('object');
+  });
+});
