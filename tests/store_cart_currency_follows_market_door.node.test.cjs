@@ -485,6 +485,41 @@ test('an id that carries no market is never re-served for an implied US: v1, v2 
 
 // ---- the rule is the flag's ---------------------------------------------------------------------------------------
 
+// ---- the projection that notes what the page withheld --------------------------------------------------------------
+
+test('the detail projection notes what the page withheld beside the product it returns, and nothing about the note can change or break the projection', () => {
+  const { normalizePdpV2ToProductDetail } = door.app._debug;
+  const { withheldCurrenciesOf } = require('../src/services/pdpWithheldCurrencies');
+  // `extra` is copied by descriptor, so a getter stays a getter on the page.
+  const page = (extra = {}) => Object.defineProperties({
+    status: 'success',
+    modules: [{ type: 'canonical', data: { pdp_payload: { product: { product_id: IDS.SIG_GBP, title: 'Barrier Cream', brand: { name: 'Brand A' } } } } }],
+  }, Object.getOwnPropertyDescriptors(extra));
+  const plain = normalizePdpV2ToProductDetail(page());
+  assert.deepEqual(plain, { product: { product_id: IDS.SIG_GBP, title: 'Barrier Cream', brand: 'Brand A', price: null, currency: null, in_stock: undefined } });
+  assert.deepEqual(withheldCurrenciesOf(plain.product), []);
+  // A page that withheld money: the same projection, byte for byte, and the note beside it.
+  const noted = normalizePdpV2ToProductDetail(page({ metadata: { serving_currency_guard: { withheld_currencies: ['GBP'] } } }));
+  assert.equal(JSON.stringify(noted), JSON.stringify(plain), 'the product carries nothing new');
+  assert.deepEqual(Object.getOwnPropertyNames(noted.product), Object.getOwnPropertyNames(plain.product));
+  assert.deepEqual(Object.getOwnPropertySymbols(noted.product), []);
+  assert.deepEqual(withheldCurrenciesOf(noted.product), ['GBP']);
+  // A page whose guard report cannot be read: the note is skipped, and the projection is exactly what it was.
+  // (With the note written inside the projection's own try, this page came back as `product: null`.)
+  for (const broken of [
+    page({ get metadata() { throw new Error('unreadable'); } }),
+    page({ metadata: { get serving_currency_guard() { throw new Error('unreadable'); } } }),
+    page({ metadata: { serving_currency_guard: { get withheld_currencies() { throw new Error('unreadable'); } } } }),
+  ]) {
+    const out = normalizePdpV2ToProductDetail(broken);
+    assert.equal(JSON.stringify(out), JSON.stringify(plain));
+    assert.deepEqual(withheldCurrenciesOf(out.product), []);
+  }
+  // No product, no note, as before.
+  assert.deepEqual(normalizePdpV2ToProductDetail({ modules: [], metadata: { serving_currency_guard: { withheld_currencies: ['GBP'] } } }), { product: null });
+  assert.deepEqual(normalizePdpV2ToProductDetail(null), { product: null });
+});
+
 test('the helper sees what a wrong answer looks like (the flag-off GB answer breaks the rule)', async () => {
   const created = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD, 1]], 'GB')));
   assert.throws(() => assertAnswerCurrency(created.value, 'GBP'), /is USD, the market's currency is GBP/);

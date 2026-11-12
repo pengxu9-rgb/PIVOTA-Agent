@@ -30,7 +30,15 @@ function codesOf(value) {
   return [...codes].sort();
 }
 
-/** The currencies a get_pdp_v2 response body says it withheld (sorted ISO 4217 codes; empty when it names none). */
+/**
+ * The currencies a get_pdp_v2 response body says it withheld (sorted ISO 4217 codes; empty when it names none).
+ *
+ * ONLY SAFE FOR A PAGE READ WITHOUT OFFERS. The page's `withheld_currencies` is ONE list: the card's own withheld
+ * currencies merged with the withheld currencies of every OFFER on the page, which are other sellers' money. The
+ * unscoped detail hop asks for `include: ['product_overview']` and nothing else (src/services/pdpDetailHop.js), so
+ * no offer is built and the list is the card's alone. If that hop ever included offers, a seller's unpriced row
+ * would be labelled with another seller's currency. mcp-server/test/ucpCurrencyFollowsMarket.test.js pins the hop.
+ */
 function withheldCurrenciesOfPdpResponse(body) {
   const guard = isObject(body) && isObject(body.metadata) ? body.metadata.serving_currency_guard : null;
   return codesOf(isObject(guard) ? guard.withheld_currencies : null);
@@ -43,10 +51,24 @@ function noteWithheldCurrencies(product, codes) {
   if (list.length) notes.set(product, Object.freeze(list));
 }
 
+/**
+ * Note beside `product` what `body` (the get_pdp_v2 response it was projected from) says was withheld. NEVER THROWS,
+ * whatever either argument is: the projection that calls this must return its product either way. Returns whether
+ * the note was attempted without error.
+ */
+function noteWithheldCurrenciesOfPdpResponse(product, body) {
+  try {
+    noteWithheldCurrencies(product, withheldCurrenciesOfPdpResponse(body));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The currencies noted for this very object (never for a copy of it), or an empty list. */
 function withheldCurrenciesOf(product) {
   const list = isObject(product) ? notes.get(product) : undefined;
   return list ? [...list] : [];
 }
 
-module.exports = { noteWithheldCurrencies, withheldCurrenciesOf, withheldCurrenciesOfPdpResponse };
+module.exports = { noteWithheldCurrencies, noteWithheldCurrenciesOfPdpResponse, withheldCurrenciesOf, withheldCurrenciesOfPdpResponse };

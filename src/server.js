@@ -32653,6 +32653,7 @@ function normalizePdpV2ToProductDetail(body) {
   const degraded = Array.isArray(body?.degraded_reads) && body.degraded_reads.length > 0
     ? { degraded_reads: body.degraded_reads.map(String) }
     : {};
+  let product;
   try {
     const modules = Array.isArray(body?.modules) ? body.modules : [];
     const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
@@ -32662,7 +32663,7 @@ function normalizePdpV2ToProductDetail(body) {
       ? p.price.current
       : null;
     const availability = typeof p.availability === 'string' ? p.availability.toLowerCase() : '';
-    const product = {
+    product = {
       ...p,
       brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
       price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
@@ -32671,13 +32672,15 @@ function normalizePdpV2ToProductDetail(body) {
         ? /in.?stock|available/.test(availability)
         : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
     };
-    // The currencies the page withheld money in (`metadata.serving_currency_guard`) are noted BESIDE the product,
-    // never on it (src/services/pdpWithheldCurrencies.js): the product and every answer built from it are unchanged.
-    pdpWithheldCurrencies.noteWithheldCurrencies(product, pdpWithheldCurrencies.withheldCurrenciesOfPdpResponse(body));
-    return { product, ...degraded };
   } catch {
     return { product: null, ...degraded };
   }
+  // The currencies the page withheld money in (`metadata.serving_currency_guard`) are noted BESIDE the product,
+  // never on it (src/services/pdpWithheldCurrencies.js): the product and every answer built from it are unchanged.
+  // OUTSIDE the projection's own try, and never throwing: the note is written for every product this function
+  // returns, and a note that cannot be written leaves the projection exactly as it was.
+  pdpWithheldCurrencies.noteWithheldCurrenciesOfPdpResponse(product, body);
+  return { product, ...degraded };
 }
 
 // recommend_products' per-item live price checks call get_pdp_v2 back into this process. They carry the MCP

@@ -4,7 +4,7 @@
 //
 // One table over the real `/ucp/mcp` door (create_checkout and get_checkout for a seller Pivota is not connected to),
 // with AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET on:
-//   markets   US, SG, GB, DE, none, "ZZ" (no such market), "USA" (not a country code)
+//   markets   US, SG, GB, FR, DE, none, "ZZ" (no such market), "USA" (not a country code)
 //   x rows    a seller priced in USD, SGD, GBP, EUR (the product read withholds the money of the last three and says
 //             which currency it withheld), plus two rows served by a page the money guard does not cover (a GBP and a
 //             USD row that still state their price)
@@ -47,6 +47,7 @@ const MARKETS = Object.freeze([
   { label: 'US', sent: 'US', market: 'US' },
   { label: 'SG', sent: 'SG', market: 'SG' },
   { label: 'GB', sent: 'GB', market: 'GB' },
+  { label: 'FR', sent: 'FR', market: 'FR' },
   { label: 'DE', sent: 'DE', market: 'DE' },
   { label: 'none', sent: undefined, market: 'US', assumed: true },
   { label: 'ZZ', sent: 'ZZ', market: 'ZZ' },
@@ -73,14 +74,14 @@ test.before(() => door.listen());
 test.after(() => door.close());
 
 test('the table covers what it says, and the source has no currency for DE or ZZ', () => {
-  assert.deepEqual(MARKETS.map((m) => (m.invalid ? null : resolveServingCurrency(m.market) || null)), ['USD', 'SGD', 'GBP', null, 'USD', null, null]);
+  assert.deepEqual(MARKETS.map((m) => (m.invalid ? null : resolveServingCurrency(m.market) || null)), ['USD', 'SGD', 'GBP', 'EUR', null, 'USD', null, null]);
   const count = (expected) => cells.filter((c) => c.expected === expected).length;
   assert.deepEqual({
     cells: cells.length, priced_by_store: count('priced_by_store'), priced_by_catalog: count('priced_by_catalog'),
     store_not_in_market_currency: count('store_not_in_market_currency'), seller_not_priced_in_market_currency: count('seller_not_priced_in_market_currency'),
     market_not_priced: count('market_not_priced'), ucp_market_invalid: count('ucp_market_invalid'),
   }, {
-    cells: 66, priced_by_store: 7, priced_by_catalog: 1, store_not_in_market_currency: 2, seller_not_priced_in_market_currency: 26,
+    cells: 78, priced_by_store: 8, priced_by_catalog: 1, store_not_in_market_currency: 3, seller_not_priced_in_market_currency: 36,
     market_not_priced: 20, ucp_market_invalid: 10,
   });
 });

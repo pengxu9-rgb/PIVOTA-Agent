@@ -1012,6 +1012,8 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
 // One structured line whenever the rule refuses or withholds a price, under the merchant-door pricing event so one
 // query shows every outcome of a storefront checkout. Fields: outcome, reason, market, expected currency, the
 // catalog row's currency, seller host. No buyer data, no buyer or cart ids.
+// `outcome: "unlabelled"` / `reason: "row_currency_unknown"` (judgeLinesForMarket) carries a line count instead of a
+// currency and a host.
 function emitCurrencyRule(log, detail) {
   if (log && typeof log.info === "function") {
     try { log.info({ event: "ucp_merchant_door_pricing", ...detail }); } catch { /* never throw the door */ }
@@ -1071,12 +1073,19 @@ function judgeLinesForMarket({ items, rows, linkOf, market, currency, assumed, l
   const off = new Set();
   const sellerCurrencies = new Set();
   let confirmed = true;
+  let unlabelled = 0;
   for (const it of items) {
     const labels = lineCurrencyLabelsOf(rows.get(it.product_id), it);
     const others = labels.filter((code) => code !== currency);
     if (others.length) { off.add(it.product_id); for (const code of others) sellerCurrencies.add(code); }
     if (labels.length === 0 || others.length) confirmed = false;
+    if (labels.length === 0) unlabelled += 1;
   }
+  // A LINE THE RULE COULD SAY NOTHING ABOUT: no price, no currency on the row, and no note of what the read withheld.
+  // Either the product simply has no price, or the read withheld one and the note beside the row was lost on the way
+  // here (the row was copied). The answer is the same safe one (no price); this line is how a lost note is seen.
+  // One line per cart, a count and the market only: no product id, no seller, no buyer data.
+  if (unlabelled) emitCurrencyRule(log, { outcome: "unlabelled", reason: "row_currency_unknown", market, expected_currency: currency, lines: unlabelled });
   if (off.size === 0) return { refusal: null, confirmed };
   const refusal = notInMarketCurrencyRefusal({ productIds: [...off], linkOf, market, currency, sellerCurrencies: [...sellerCurrencies], assumed, log });
   return { refusal, confirmed: false };

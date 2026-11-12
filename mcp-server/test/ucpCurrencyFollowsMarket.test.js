@@ -32,7 +32,8 @@ import {
 const require = createRequire(import.meta.url);
 const { resolveServingCurrency } = require('../../src/services/buyerMarket.js');
 const { BUYER_REGION_CURRENCY } = require('../../src/auroraBff/buyerRegion.js');
-const { noteWithheldCurrencies, withheldCurrenciesOf, withheldCurrenciesOfPdpResponse } = require('../../src/services/pdpWithheldCurrencies.js');
+const { noteWithheldCurrencies, noteWithheldCurrenciesOfPdpResponse, withheldCurrenciesOf, withheldCurrenciesOfPdpResponse } = require('../../src/services/pdpWithheldCurrencies.js');
+const { unscopedDetailPdpRequest } = require('../../src/services/pdpDetailHop.js');
 
 const OFF = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: '1' };
 const ON = { ...OFF, [CURRENCY_FOLLOWS_MARKET_FLAG]: '1' };
@@ -230,6 +231,46 @@ describe('the currencies a row is labelled with', () => {
     const r = row('USD');
     noteWithheldCurrencies(r, ['GBP']);
     assert.deepEqual(lineCurrencyLabelsOf(r, line), ['USD']);
+  });
+
+  test('THE READ THE DOOR MAKES ASKS FOR NO OFFERS, which is the only reason the withheld list may label a row', () => {
+    // The page reports ONE `withheld_currencies` list: the card's own withheld currencies merged with those of every
+    // offer on the page (other sellers' money). The door reads its rows through the unscoped detail hop, and that hop
+    // asks for the product overview only, so no offer is built and the list is the card's alone.
+    const WHY = [
+      "the unscoped detail hop must ask get_pdp_v2 for include: ['product_overview'] and nothing else.",
+      "With offers on the page, metadata.serving_currency_guard.withheld_currencies also lists OTHER SELLERS' currencies,",
+      'and the storefront checkout would label a seller\'s unpriced row with them (and ask the wrong store for a cart).',
+      'If the hop must include offers, the page has to report the card\'s own withheld currencies separately first.',
+    ].join(' ');
+    const asked = [
+      unscopedDetailPdpRequest('sig_row_a', { product: { product_id: 'sig_row_a' } }, undefined),
+      unscopedDetailPdpRequest('sig_row_a', { product: { product_id: 'sig_row_a' } }, 'GB'),
+      // Nothing a caller puts in its own payload widens what the hop asks for.
+      unscopedDetailPdpRequest('sig_row_a', { product: { product_id: 'sig_row_a' }, include: ['offers', 'similar'], market: 'SG' }, undefined),
+      unscopedDetailPdpRequest('sig_row_a', { include: ['offers'], options: { include: ['offers'] }, offers: true }, 'US'),
+    ];
+    for (const request of asked) {
+      assert.equal(request.operation, 'get_pdp_v2');
+      assert.deepEqual(request.payload.include, ['product_overview'], WHY);
+      assert.deepEqual(Object.keys(request.payload).filter((key) => !['product_ref', 'include', 'market'].includes(key)), [], WHY);
+      assert.equal(JSON.stringify(request).includes('offers'), false, WHY);
+    }
+  });
+
+  test('noting what a page withheld never throws, whatever the page or the product is', () => {
+    const product = {};
+    assert.equal(noteWithheldCurrenciesOfPdpResponse(product, { metadata: { serving_currency_guard: { withheld_currencies: ['GBP'] } } }), true);
+    assert.deepEqual(withheldCurrenciesOf(product), ['GBP']);
+    const throwing = { get metadata() { throw new Error('unreadable'); } };
+    const untouched = {};
+    assert.equal(noteWithheldCurrenciesOfPdpResponse(untouched, throwing), false);
+    assert.deepEqual(withheldCurrenciesOf(untouched), []);
+    const badList = { metadata: { serving_currency_guard: { get withheld_currencies() { throw new Error('unreadable'); } } } };
+    assert.equal(noteWithheldCurrenciesOfPdpResponse({}, badList), false);
+    for (const [p, b] of [[null, null], [undefined, undefined], ['x', 5], [Object.freeze({}), { metadata: { serving_currency_guard: { withheld_currencies: ['USD'] } } }]]) {
+      assert.doesNotThrow(() => noteWithheldCurrenciesOfPdpResponse(p, b));
+    }
   });
 
   test('the note is read from the page exactly where the page reports it', () => {
@@ -434,9 +475,52 @@ describe('the escalation, flag ON: the rule is the REQUEST market\'s, on a row r
         assert.equal(err.detail.reason, 'ucp_escalation_item_unpriced');
         assert.deepEqual(executor.seen, THE_READ);
         assert.deepEqual(door.calls, []);
-        assert.deepEqual(log.lines, [{ event: 'ucp_merchant_door_pricing', outcome: 'fallback', reason: 'catalog_currency_unknown', seller_host: HOST }], 'the same one line, flag off and on');
+        // Flag on, one more line says the rule could say nothing about this row (see the next test).
+        const fallback = { event: 'ucp_merchant_door_pricing', outcome: 'fallback', reason: 'catalog_currency_unknown', seller_host: HOST };
+        const unlabelled = { event: 'ucp_merchant_door_pricing', outcome: 'unlabelled', reason: 'row_currency_unknown', market: country, expected_currency: country === 'GB' ? 'GBP' : 'USD', lines: 1 };
+        assert.deepEqual(log.lines, env === ON ? [unlabelled, fallback] : [fallback]);
       }
     }
+  });
+
+  test('A LOST NOTE IS VISIBLE: a withheld row that reaches the door as a copy is answered safely, and one line says the rule had nothing to read', async () => {
+    // The read withheld GBP and noted it, and something between the read and the door copied the row: the note is gone.
+    const copying = { async execute() { const product = { ...row(null), price: null, currency: null }; noteWithheldCurrencies(product, ['GBP']); return { product: { ...product } }; } };
+    for (const [op, params, args] of [
+      [CREATE, createParams(2), ucpArgs('GB')],
+      [GET, { session_id: encodeEscalationId([{ product_id: 'sig_row_a', quantity: 2 }], 'cart_0001', HOST, { code: 'GB', assumed: false }) }, {}],
+    ]) {
+      const door = fakeDoor('GBP');
+      const log = logOf();
+      const err = await rejected(escalate({ op, params, executor: copying, ucpArgs: args, env: ON, merchantDoor: door, log }));
+      assert.equal(err.detail.reason, 'ucp_escalation_item_unpriced', `${op.id}: no price is shown`);
+      assert.deepEqual(door.calls, [], `${op.id}: and no seller is asked`);
+      const line = log.lines.find((l) => l.outcome === 'unlabelled');
+      assert.deepEqual(line, { event: 'ucp_merchant_door_pricing', outcome: 'unlabelled', reason: 'row_currency_unknown', market: 'GB', expected_currency: 'GBP', lines: 1 }, op.id);
+      // A count and a market: no product id, no seller host, no cart id, no buyer data.
+      assert.deepEqual(Object.keys(line).sort(), ['event', 'expected_currency', 'lines', 'market', 'outcome', 'reason']);
+      assert.equal(JSON.stringify(line).includes('sig_row_a') || JSON.stringify(line).includes(HOST) || JSON.stringify(line).includes('cart_0001'), false);
+    }
+    // The same row with its note intact logs no such line (it is priced by the seller), and neither does a priced row.
+    for (const served of [withheldRow('GBP'), row('GBP')]) {
+      const log = logOf();
+      const out = await escalate({ op: CREATE, params: createParams(), executor: recordingExecutor(served), ucpArgs: ucpArgs('GB'), env: ON, merchantDoor: fakeDoor('GBP'), log });
+      assert.equal(out.currency, 'GBP');
+      assert.deepEqual(log.lines.map((l) => l.outcome), ['priced']);
+    }
+    // Flag off the rule does not run, so it says nothing.
+    const offLog = logOf();
+    await rejected(escalate({ op: CREATE, params: createParams(), executor: copying, ucpArgs: ucpArgs('GB'), env: OFF, merchantDoor: fakeDoor('GBP'), log: offLog }));
+    assert.equal(offLog.lines.some((l) => l.outcome === 'unlabelled'), false);
+  });
+
+  test('two unlabelled lines of one cart are one log line with a count of two', async () => {
+    const silent = (id) => ({ ...row(null), product_id: id, price: null, currency: null });
+    const executor = { async execute(op, params) { return { product: silent(params.payload.product.product_id) }; } };
+    const log = logOf();
+    const params = { idempotency_key: 'idem-0002', quote: { items: [{ product_id: 'sig_row_a', quantity: 1 }, { product_id: 'sig_row_b', quantity: 1 }] } };
+    await rejected(escalate({ op: CREATE, params, executor, ucpArgs: ucpArgs('GB'), env: ON, merchantDoor: fakeDoor('GBP'), log }));
+    assert.deepEqual(log.lines.filter((l) => l.outcome === 'unlabelled'), [{ event: 'ucp_merchant_door_pricing', outcome: 'unlabelled', reason: 'row_currency_unknown', market: 'GB', expected_currency: 'GBP', lines: 2 }]);
   });
 
   test('a gate decline still comes first: the currency rule does not run for a seller the gate refuses', async () => {
