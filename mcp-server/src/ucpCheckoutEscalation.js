@@ -1032,11 +1032,10 @@ const currencyCodeOf = (value) => {
 
 /**
  * EVERY CURRENCY A LINE'S ROW IS LABELLED WITH (upper-case ISO 4217 codes; empty = the row says nothing). The rows
- * are read with no market, so a row may be in any currency, or have had its money withheld by the read. In order:
- *   - the price the line would be answered with: the CHOSEN VARIANT's own when it states one, else the product's
- *     (catalogLinePriceOf, the builder's own choice);
- *   - the currency the chosen variant states, with or without an amount beside it;
- *   - the row's own `currency` member;
+ * are read with no market, so a row may be in any currency, or have had its money withheld by the read:
+ *   - the currency the CHOSEN VARIANT states (on its own price, or beside it), with or without an amount;
+ *   - the row's own `currency` member. Between them these are every currency the price the line would be answered
+ *     with can be in (variantPriceOf and priceOf read a currency from nowhere else);
  *   - for a line with NO price: the currencies the read withheld money in (pdpWithheldCurrencies, noted beside the
  *     row by the read). This is how a seller priced in another currency than the deployment's is told from a row that
  *     simply has no price: its money is withheld, and the currency it was in is named.
@@ -1047,7 +1046,6 @@ export function lineCurrencyLabelsOf(row, it) {
   const labels = new Set();
   const add = (value) => { const code = currencyCodeOf(value); if (code) labels.add(code); };
   const price = catalogLinePriceOf(row, it);
-  if (price) add(price.currency);
   const variant = it && it.variant_id ? findRealVariant(row, it.variant_id) : null;
   if (isPlainObject(variant)) {
     const stated = isPlainObject(variant.price) && isPlainObject(variant.price.current) ? variant.price.current : variant.price;
