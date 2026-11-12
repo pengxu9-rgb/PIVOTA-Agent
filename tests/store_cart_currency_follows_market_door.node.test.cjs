@@ -186,7 +186,7 @@ test("GB market, GBP row, the store answers in USD: the store's price is not sho
   assertAnswerCurrency(got.value, 'GBP');
 });
 
-test('two products in one GB cart: each is read for GB, only the unpriced one is read again, and one read never answers for the other market', async () => {
+test('two products in one GB cart: each is read for GB and again with no market, and one read never answers for the other', async () => {
   const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD, 1], [IDS.SIG_USD_SECOND, 2]], 'GB')));
   assert.equal(reasonOf(created), 'seller_not_priced_in_market_currency');
   assert.deepEqual(errorOf(created).detail.storefront_items, [IDS.SIG_USD, IDS.SIG_USD_SECOND]);
