@@ -42,6 +42,8 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong, storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
+// The native door's route to the same storefront path (AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED, default off).
+import { storefrontCartInputSchema, storefrontMarketProblem, tryNativeStorefrontCart } from "./mcpStorefrontCart.js";
 import {
   assertExpectedSeller,
   prepareReapCheckout,
@@ -306,7 +308,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -423,7 +425,17 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     The UCP dialect is validated in its own mapper instead (`rejectUnknown` et al. in
     //     ucpArgumentAdapter.js) against the UCP wire schemas, with UCP-vocabulary refusals — running this
     //     guard on those args would misjudge them against a shape they never claimed to have.
-    if (dialect === TOOL_DIALECTS.mcp) assertDeclaredArguments(op, toolArgs);
+    //     `storefrontCartDoor` is set by the `/mcp` door's own view only (mcpStorefrontCart.js), and only while its
+    //     flag is on: a native checkout call may then take the storefront path (step 3a-n), and create's schema
+    //     also declares `market`. The UCP projection never forwards the option, so no other door can set it.
+    const storefrontCartDoor = dialect === TOOL_DIALECTS.mcp && options.storefrontCartDoor === true && op.capability === "checkout";
+    if (dialect === TOOL_DIALECTS.mcp) {
+      assertDeclaredArguments(op, toolArgs, storefrontCartDoor ? storefrontCartInputSchema(op.id, INPUT_SCHEMAS[op.id]) : undefined);
+      if (storefrontCartDoor && op.id === "create_checkout_session") {
+        const problem = storefrontMarketProblem(toolArgs.market);
+        if (problem) throw new ToolValidationError(`${op.mcp}: ${problem}`);
+      }
+    }
 
     // 1) trusted identity from the verified session ONLY. Identity-derivation errors are swallowed for
     //    read-only ops (anonymous) and surface as USER_AUTH_REQUIRED for user-scoped ops below.
@@ -540,7 +552,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "ucp_reap_create_not_available" });
       }
       const escalationDeclines = [];
-      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger });
+      // `storefrontHandoff` (FIX_PLAN O-02): the recorder of each hand-off this lane issues, for the partner that asked.
+      // Inert unless UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (ucpCheckoutEscalation.js).
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger, handoffRecorder: storefrontHandoff });
       if (escalated && isPlainObject(escalated.market_assumed)) noteToolCall(typeof options.observe === "function" ? options.observe : null, { market_assumed: true });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
@@ -559,6 +573,21 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which
       // armed the capability for native `create_checkout_session` alone.
       resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads, sourceMerchantVariants });
+    }
+
+    // 3a-n) THE NATIVE DOOR'S STOREFRONT PATH (mcpStorefrontCart.js; reached only with `storefrontCartDoor`). The
+    //     same escalation the UCP branch above calls, for a native checkout of a seller Pivota is not connected
+    //     to, answered in the native shape. After the identity check (2) and the allowlist (3), before intake and
+    //     the kernel, exactly where the UCP branch sits. `undefined` = not that path: the call continues below
+    //     exactly as it does without the option. Only the escalation runs here (none of the UCP branch's other
+    //     lanes), and nothing is sent to a store but the cart the escalation itself builds.
+    if (storefrontCartDoor) {
+      const answered = await tryNativeStorefrontCart({
+        op, toolArgs, params, ctx, attested, executor: memoizedProductReads(executor), merchantDoor, log: logger,
+        // Only a re-read of an id the UCP door minted for an assumed market: a create here names its market or is refused.
+        onMarketAssumed: () => noteToolCall(observeEarly, { market_assumed: true }),
+      });
+      if (answered !== undefined) return answered;
     }
 
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.
@@ -649,8 +678,23 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    storing an entry nor starting a revalidation. The gateway passes it for a synthetic call (our own eval
     //    traffic, src/guardrails/syntheticContext.js), so eval measures the uncached path and never fills an
     //    entry a real caller is later served.
+    //
+    // 9) PER-RESPONSE ATTRIBUTION (`attributeSearchResult`, optional; FIX_PLAN O-04): search_catalog's seed links
+    //    are minted for THIS response, after the cache, on this response's own value (a clone on the cached
+    //    branch). Returns true when it changed the value, which then takes the same sanitizer pass a fresh
+    //    result took. The gateway's hook is a no-op unless PARTNER_IDENTITY_FORWARDING_ENABLED.
+    const attributeOwn = async (value) => {
+      if (op.id !== "search_catalog" || typeof attributeSearchResult !== "function") return value;
+      let changed = false;
+      try {
+        changed = (await attributeSearchResult(value, params)) === true;
+      } catch (err) {
+        if (logger) logger.warn({ err: err?.message || String(err), tool: op.id }, "per-response search attribution failed");
+      }
+      return changed ? sanitizeResult(value, { handoffAllowed: false }) : value;
+    };
     if (!cache || !CACHEABLE_TOOLS.includes(op.id) || (typeof bypassReadCache === "function" && bypassReadCache() === true)) {
-      const fresh = await execute();
+      const fresh = await attributeOwn(await execute());
       if (CACHEABLE_TOOLS.includes(op.id)) noteToolCall(observe, () => describeUpstreamEnvelope(fresh));
       noteToolCall(observe, () => servedPriceFacts(op.id, fresh, dialect));
       return label(shape(doorListPriceTiers(op.id, fresh, dialect, callStartedAtMs)));
@@ -662,14 +706,18 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     noteToolCall(observe, () => servedPriceFacts(op.id, value, dialect));
     // The label goes on AFTER the cache, never into it: a no-market call and a declared-US call share one entry
     // (they are the same params), and only the first was assumed for.
-    return label(shape(doorListPriceTiers(op.id, cloneCachedValue(value, (err) => {
+    const own = cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
           { err: err?.message || String(err), tool: op.id },
           "commerce read cache: value not cloneable, serving shared reference",
         );
       }
-    }), dialect, callStartedAtMs)));
+    });
+    // A failed clone hands back the SHARED entry: stamping it would write this caller's links into what
+    // every later caller is served (O-04 review, P3-G2). Serve it unstamped instead.
+    const shared = own === value && value !== null && typeof value === "object";
+    return label(shape(doorListPriceTiers(op.id, shared ? own : await attributeOwn(own), dialect, callStartedAtMs)));
   }
 
   /**
@@ -795,19 +843,21 @@ function attestedBuyerFromSession(sessionContext = {}) {
 // needs its own hint because `constraints` is free-form (additionalProperties as a typed subschema), so a
 // misplaced constraint's name is — by design — declared nowhere the generic scan can find it.
 const DECLARED_PATHS_BY_TOOL = new Map();
-function declaredPathsFor(op) {
-  if (!DECLARED_PATHS_BY_TOOL.has(op.id)) {
-    DECLARED_PATHS_BY_TOOL.set(op.id, declaredPropertyPathsByName(INPUT_SCHEMAS[op.id]));
+// Keyed by the op for its own schema, and by the schema object for a door's variant of it (`schemaOverride`).
+function declaredPathsFor(op, schema) {
+  const key = schema === INPUT_SCHEMAS[op.id] ? op.id : schema;
+  if (!DECLARED_PATHS_BY_TOOL.has(key)) {
+    DECLARED_PATHS_BY_TOOL.set(key, declaredPropertyPathsByName(schema));
   }
-  return DECLARED_PATHS_BY_TOOL.get(op.id);
+  return DECLARED_PATHS_BY_TOOL.get(key);
 }
 
-function assertDeclaredArguments(op, toolArgs) {
-  const schema = INPUT_SCHEMAS[op.id];
+function assertDeclaredArguments(op, toolArgs, schemaOverride) {
+  const schema = schemaOverride || INPUT_SCHEMAS[op.id];
   const violations = findUndeclaredArguments(schema, toolArgs);
   if (violations.length === 0) return;
 
-  const declared = declaredPathsFor(op);
+  const declared = declaredPathsFor(op, schema);
   const parts = violations.map(({ path }) => {
     const leaf = path.replace(/\[\d+\]/g, "").split(".").pop();
     const elsewhere = (declared.get(leaf) || []).filter((p) => p !== path);
@@ -1661,6 +1711,19 @@ export function toToolError(error) {
   }
 
   if (error instanceof PivotaCommerceError && code === "QUOTE_REQUIRED" && ["ucp_reap_variant_not_created","ucp_reap_price_not_created"].includes(error.detail?.reason)) body.detail = { reason: error.detail.reason };
+  // get_order on a UCP storefront hand-off (FIX_PLAN O-02; only ever raised with UCP_STOREFRONT_HANDOFF_RECORD_ENABLED on):
+  // a fixed reason and a fixed recovery, never a value from the request.
+  if (error instanceof PivotaCommerceError && code === "OPERATION_NOT_ALLOWED" && error.detail?.op === "get_order"
+      && ["storefront_handoff_unrecorded", "storefront_handoff_partner_required"].includes(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+    if (error.detail.reason === "storefront_handoff_unrecorded") {
+      body.message = "This checkout completes on the seller's own storefront, and no status was recorded for it.";
+      body.recovery = "read it with get_checkout on the UCP door, or ask the buyer whether they completed it on the storefront";
+    } else {
+      body.message = "A storefront hand-off's status is answered only to the partner it was issued to.";
+      body.recovery = "call with the agent credentials the checkout was created with";
+    }
+  }
   // start_purchase (orchestratedPurchaseTool.js): reasons and the backend's refusal code are our own vocabulary
   // (snake_case, never a request value), so they are safe to surface and are what makes the answer actionable.
   if (error instanceof PivotaCommerceError && error.detail?.op === "start_purchase"
@@ -1705,8 +1768,44 @@ export function toToolError(error) {
     body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
     body.detail = { reason: error.detail?.reason === "purchase_outcome_unknown" ? "purchase_outcome_unknown" : "ucp_reap_create_outcome_unknown" };
   }
+  // The upstream cancel (FIX_PLAN C-11, CHECKOUT_CANCEL_UPSTREAM_ENABLED): every "not canceled" outcome says so in
+  // words an agent cannot read as canceled. Only that lane raises these reasons, so with the flag off no answer
+  // changes. Reasons are our own vocabulary; no request value is echoed.
+  if (error instanceof PivotaCommerceError && error.detail?.op === "cancel_checkout_session") {
+    const notCanceled = CANCEL_NOT_CANCELED_ANSWERS[error.detail.reason];
+    if (notCanceled && notCanceled.code === code) {
+      body.message = notCanceled.message;
+      body.detail = { reason: error.detail.reason, canceled: false };
+      body.recovery = notCanceled.recovery;
+    }
+  }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
+
+// cancel_checkout_session's "not canceled" answers (canonicalExecutor.js cancelSessionUpstream). A refund is the
+// merchant's to make (decision D-03): the paid answer points there and never offers to execute one.
+const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
+  order_paid_not_canceled: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "The buyer already paid for this order, so it was not canceled.",
+    recovery: "do not tell the buyer the order was canceled; a refund is the merchant's to make: the buyer asks the merchant for one",
+  },
+  payment_processing_not_canceled: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "A payment for this order is being processed, so it was not canceled.",
+    recovery: "do not tell the buyer the order was canceled; read it again with get_order shortly",
+  },
+  cancel_not_confirmed: {
+    code: "MERCHANT_UNAVAILABLE",
+    message: "The cancellation could not be confirmed, so the order may still be payable.",
+    recovery: "retry with the same idempotency_key; until it answers canceled, do not tell the buyer the order was canceled",
+  },
+  session_already_ordered: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This checkout session already became an order, so canceling the session alone would leave the order payable.",
+    recovery: "cancel it by its order_id",
+  },
+});
 
 // --- small helpers ----------------------------------------------------------------------------------------
 

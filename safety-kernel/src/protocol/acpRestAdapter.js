@@ -550,6 +550,8 @@ const STATUS_BY_CODE = Object.freeze({
   // statusForCommerceKernelError in src/server.js (the other two new codes are 400 on both sides, the default).
   PRODUCT_NOT_SERVABLE: 404,
   OPERATION_NOT_ALLOWED: 409,
+  PARTNER_ASSERTION_REJECTED: 409,
+  ORDER_CANCELED: 409,
 });
 
 // Run a handler, mapping any throw to an ACP error response. PivotaCommerceError → its code + curated

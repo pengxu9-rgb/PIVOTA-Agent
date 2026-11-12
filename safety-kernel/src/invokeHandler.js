@@ -57,6 +57,7 @@ export const ERROR_OBSERVABILITY = Object.freeze({
   PRODUCT_GROUP_ID_NOT_PRODUCT_ID: { event: 'product_group_id_refused', metric: 'product_group_id_refused' },
   MERCHANT_PRODUCT_MISMATCH: { event: 'merchant_product_mismatch', metric: 'merchant_product_mismatch' },
   IDEMPOTENCY_CONFLICT: { event: 'idempotency_conflict_blocked', metric: 'idempotency_conflict' },
+  PARTNER_ASSERTION_REJECTED: { event: 'partner_assertion_rejected', metric: 'partner_assertion_rejected' },
 });
 
 /**

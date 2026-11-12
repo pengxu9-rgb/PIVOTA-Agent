@@ -39,7 +39,10 @@ test('THE FLAG ACTS ON /mcp ONLY: the gateway reaches this module through the /m
   assert.equal((server.match(/partnerDoorSurface\(/g) || []).length, 1);
   // It wraps the door's other view (GET_OFFERS_EMPTY_REASON, the surface itself while that flag is off), so its
   // get_offers calls go through that view and a reason already on an empty answer is kept.
-  assert.match(server, /return createRemoteMcpAdapter\(partnerDoorSurface\(getOffersEmptyReasonSurface\(surface\), \{ log: logger \}\), \{\s+serverInfo: \{ name: 'pivota-commerce-mcp'/);
+  // (Innermost is the door's storefront-cart view, which touches the checkout tools only and is the surface's own
+  // answer while AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED is off.)
+  assert.match(server, /return createRemoteMcpAdapter\(partnerDoorSurface\(getOffersEmptyReasonSurface\(mcpStorefrontCartSurface\(surface\)\), \{ log: logger \}\), \{\s+serverInfo: \{ name: 'pivota-commerce-mcp'/);
+  assert.equal((server.match(/mcpStorefrontCartSurface\(/g) || []).length, 1);
   assert.equal((server.match(/getOffersEmptyReasonSurface\(/g) || []).length, 1);
   assert.match(server, /const surface = ucpDialectSurface\(await getCommerceToolSurface\(\)\);/);
   // The kernel hop, the executor wiring and the error mapping do not know the flag.

@@ -8,8 +8,12 @@
 //   create/update_checkout_session -> previewQuote        (session_id == quote_id)
 //   get_checkout_session           -> quotes.resolveForOrder (ownership + expiry checked)
 //   complete_checkout_session      -> verifyPaymentAuthorization -> createOrder -> mintConfirmation -> submitPayment
-//   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort)
-//   get_order / request_after_sales-> get_order_status (ownership-gated) / requestAfterSales
+//   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort); with
+//                                     CHECKOUT_CANCEL_UPSTREAM_ENABLED, the backend cancel's own outcome
+//   get_order                      -> one dispatch over the order-id shape (orderIdShape): a rail purchase (`pp_`/`rp_`/
+//                                     `ap_`) -> the backend ledger read; a storefront hand-off (`esc_`) -> its record;
+//                                     else get_order_status (kernel ownership-gated; a foreign order is not found)
+//   request_after_sales            -> requestAfterSales
 //   search_catalog / get_product   -> upstream reads
 //   start_identity_linking         -> handled at the edge (OAuth), not here
 //   exchange_payment_token         -> PERMANENTLY REFUSED (see delegatedPaymentRefusal.js): that operation is
@@ -116,6 +120,81 @@ export const AGENT_PURCHASE_ID_RE = /^(?:pp|rp|ap)_[0-9a-f]{24}$/;
 // kernel order result can never claim it; the surface preserves buyer handoff URLs only on marked results.
 export const AGENT_PURCHASE_RESULT = Symbol.for('pivota.commerce.agentPurchaseResult');
 
+// The UCP storefront escalation's checkout id prefix (mcp-server/src/ucpCheckoutEscalation.js ESCALATION_ID_PREFIX).
+export const STOREFRONT_HANDOFF_ID_PREFIX = 'esc_';
+
+// get_order's order-id shapes, each read by exactly one reader (createCanonicalExecutor, case 'get_order').
+export const ORDER_ID_SHAPE = Object.freeze({
+  agentPurchase: 'agent_purchase',         // `pp_`/`rp_`/`ap_` + 24 hex: the backend's rail purchase ledger
+  storefrontHandoff: 'storefront_handoff', // `esc_`: a UCP storefront hand-off (FIX_PLAN O-02)
+  kernelOrder: 'kernel_order',             // anything else: an order this gateway's kernel placed
+});
+
+/** Which reader answers get_order for this id. Pure: says nothing about whether the id exists or whose it is. */
+export function orderIdShape(orderId) {
+  if (typeof orderId !== 'string') return ORDER_ID_SHAPE.kernelOrder;
+  if (AGENT_PURCHASE_ID_RE.test(orderId)) return ORDER_ID_SHAPE.agentPurchase;
+  if (orderId.startsWith(STOREFRONT_HANDOFF_ID_PREFIX)) return ORDER_ID_SHAPE.storefrontHandoff;
+  return ORDER_ID_SHAPE.kernelOrder;
+}
+
+/**
+ * Map a storefront hand-off read (src/services/storefrontHandoffRecord.js `read`, plus `unrecorded` for an esc id
+ * that carries no record) onto get_order's answer.
+ *
+ *   accepted    the hand-off, as recorded, with what is known of it since (`status`: handed_off,
+ *               buyer_followed_link or seller_order_observed). `source: 'storefront_handoff'`: Pivota neither charges
+ *               nor ships it, so there is no Pivota order behind it.
+ *   unrecorded  a well-formed esc id with no record in it: issued before the record existed, or its write failed.
+ *               Never "not found" (the id may well be real): a terminal statement that no status is kept for it.
+ *   not_found   the record does not exist under this exact id: an id nobody issued (forged, or altered).
+ *   not_owner   recorded for another partner.
+ *   unattributed  the request names no partner: refused, never read.
+ *   assertion_rejected  the backend refused the request's partner assertion (PARTNER_ASSERTION_REJECTED) or adopted no
+ *               partner from it (partner_identity_required): the non-retriable PARTNER_ASSERTION_REJECTED every
+ *               other op answers for it (O-04), never a retriable MERCHANT_UNAVAILABLE.
+ *   otherwise   retriable, says nothing about the hand-off.
+ */
+export function storefrontHandoffOrder(orderId, answered) {
+  switch (answered.kind) {
+    case 'accepted': {
+      const h = answered.handoff;
+      const out = {
+        order_id: orderId,
+        status: h.status,
+        source: 'storefront_handoff',
+        completes_on: 'seller_storefront',
+        handoff: {
+          handed_off_at: h.handed_off_at ?? null,
+          seller_host: h.seller_host ?? null,
+          buyer_market: h.buyer_market ?? null,
+          quote_source: h.quote_source ?? null,
+          price_as_of: h.price_as_of ?? null,
+          quoted_total: isPlainObjectValue(h.quoted_total) ? { amount: h.quoted_total.amount, currency: h.quoted_total.currency } : null,
+        },
+      };
+      if (typeof h.link_followed_at === 'string') out.handoff.link_followed_at = h.link_followed_at;
+      if (typeof h.seller_order_observed_at === 'string') out.handoff.seller_order_observed_at = h.seller_order_observed_at;
+      return out;
+    }
+    case 'unrecorded':
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'storefront_handoff_unrecorded', order_id: orderId });
+    case 'unattributed':
+      // The request names no partner (no verified agent behind it), and a hand-off is answered only to its partner.
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'get_order', reason: 'storefront_handoff_partner_required' });
+    case 'not_found':
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'storefront_handoff_not_found', order_id: orderId });
+    case 'not_owner':
+      throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id: orderId, reason: 'agent_mismatch' });
+    case 'assertion_rejected':
+      throw new PivotaCommerceError('PARTNER_ASSERTION_REJECTED', {
+        op: 'get_order', reason: 'storefront_handoff_partner_assertion_rejected', upstream_code: answered.code ?? null,
+      });
+    default:
+      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'storefront_handoff_read_unavailable' });
+  }
+}
+
 /**
  * Map a rail-neutral purchase read onto get_order's answer. `answered` is the read client's
  * `{ kind, purchase?, code? }` (src/services/agentPurchaseReadClient.js).
@@ -173,6 +252,13 @@ export function createCanonicalExecutor({
   mintAp2CheckoutJwt,
   delegatedTokenHandoffEnabled = false,
   readAgentPurchase,
+  readStorefrontHandoff,
+  // FIX_PLAN C-11. `cancelUpstreamOrder(order_id, ctx)` asks the backend to cancel the order and close its
+  // hosted payment page, and answers one of the kinds of classifyUpstreamCancel (src/services/
+  // checkoutCancelUpstream.js). Used only while `cancelUpstreamEnabled` (CHECKOUT_CANCEL_UPSTREAM_ENABLED,
+  // a boolean or a thunk, default OFF) is on.
+  cancelUpstreamOrder,
+  cancelUpstreamEnabled = false,
 } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
@@ -328,6 +414,11 @@ export function createCanonicalExecutor({
       }
 
       case 'cancel_checkout_session':
+        // CHECKOUT_CANCEL_UPSTREAM_ENABLED (default OFF): the backend cancel is the answer (FIX_PLAN C-11).
+        // Off, the gateway-row-only cancel below, byte-identical to before this lane existed.
+        if (flagOn(cancelUpstreamEnabled) && typeof cancelUpstreamOrder === 'function') {
+          return cancelSessionUpstream({ kernel, cancelUpstreamOrder }, params, ctx);
+        }
         return cancelSession(kernel, params, ctx);
 
       case 'complete_checkout_session':
@@ -349,22 +440,50 @@ export function createCanonicalExecutor({
 
       case 'get_order': {
         if (!nonEmpty(params.order_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_order_id' });
-        // A RAIL PURCHASE (`pp_…`/`rp_…`, the backend's rail-neutral ledger) is not a kernel order, so the kernel
-        // ownership proof below cannot answer it. The backend's read is owner-scoped in SQL on the calling
-        // agent AND buyer (the caller's own credentials, never the internal key), which is the same proof.
-        // `readAgentPurchase` returns null when it does not handle the id (its dial is off): then the id
-        // falls through to the kernel path exactly as before this lane existed.
-        if (typeof readAgentPurchase === 'function' && AGENT_PURCHASE_ID_RE.test(params.order_id)) {
-          const answered = await readAgentPurchase(params.order_id, ctx);
-          if (answered != null) return agentPurchaseOrder(params.order_id, answered);
+        const orderId = params.order_id;
+        // ONE DISPATCH FOR EVERY ORDER-ID SHAPE (orderIdShape below). Each shape has exactly one reader, and each
+        // reader answers a caller that does not own the id the way that id's owner-of-record answers it: not found,
+        // or (a hand-off) the backend's 409 not_owner. Never another partner's data.
+        //   - a RAIL PURCHASE (`pp_`/`rp_`/`ap_`): the backend's rail-neutral ledger read, owner-scoped in SQL on
+        //     the calling agent AND buyer (the caller's own credentials, never the internal key). A foreign agent
+        //     or buyer is 404 purchase_not_found -> QUOTE_NOT_FOUND, the same answer as an untracked kernel order.
+        //   - a UCP STOREFRONT HAND-OFF (`esc_`, FIX_PLAN O-02): the backend's hand-off record, answered only to the
+        //     partner it was recorded for (a foreign partner is 409 not_owner -> STATE_LINKAGE_MISMATCH; an unknown
+        //     record or a binding that does not match is 404 -> QUOTE_NOT_FOUND).
+        //   - anything else is a KERNEL ORDER (below).
+        // A reader returns null while its own switches are off (AGENT_PURCHASE_ORDER_READ_ENABLED;
+        // UCP_STOREFRONT_HANDOFF_RECORD_ENABLED with PARTNER_IDENTITY_FORWARDING_ENABLED) or for an id it does not
+        // decode: the id then takes the kernel path exactly as before its lane existed, which fails closed
+        // (QUOTE_NOT_FOUND: the kernel tracks no such order).
+        switch (orderIdShape(orderId)) {
+          case ORDER_ID_SHAPE.agentPurchase: {
+            if (typeof readAgentPurchase !== 'function') break;
+            const answered = await readAgentPurchase(orderId, ctx);
+            if (answered != null) return agentPurchaseOrder(orderId, answered);
+            break;
+          }
+          case ORDER_ID_SHAPE.storefrontHandoff: {
+            if (typeof readStorefrontHandoff !== 'function') break;
+            const answered = await readStorefrontHandoff(orderId, ctx);
+            if (answered != null) return storefrontHandoffOrder(orderId, answered);
+            break;
+          }
+          default:
+            break;
         }
-        // Fail CLOSED (Codex P0): prove kernel ownership before any read. _requireOrder throws
-        // QUOTE_NOT_FOUND (untracked) or STATE_LINKAGE_MISMATCH (cross-user/session) — both propagate, so a
-        // verified user can never read an order the kernel does not know to be theirs (no fail-open on an
-        // untracked id, no swallowing of store errors). The upstream read is ALSO scoped by user_ref
-        // (defense in depth: the backend must enforce it even if it is order-id addressable).
-        await kernel._requireOrder(params.order_id, ctx);
-        return read('get_order_status', { status: { order_id: params.order_id, user_ref: ctx.user_ref } });
+        // A KERNEL ORDER. Fail CLOSED (Codex P0): prove kernel ownership before any read. requireOwnedOrder answers
+        // QUOTE_NOT_FOUND for an id the kernel never tracked AND for another agent's, buyer's or session's order
+        // (the kernel's STATE_LINKAGE_MISMATCH would confirm the id exists); store errors propagate.
+        //
+        // WHERE ISOLATION IS ENFORCED TODAY: HERE, AND ONLY HERE. The backend read that follows (get_order_status:
+        // GET /agent/v2/orders/{id}/tracking and GET /agent/v2/orders/{id}, src/server.js
+        // invokeCommerceKernelRawUpstream) is sent on this gateway's OWN service key, with no partner assertion
+        // (get_order_status is not in PARTNER_IDENTITY_OPS, src/attribution/issuingAgentAssertion.js) and no
+        // buyer identity those routes read (a GET carries no body, so the `user_ref` below never leaves this
+        // process). The backend's own check there, order.agent_id == the calling key's agent, therefore proves
+        // only that the order is one this gateway placed; it cannot tell one partner or buyer from another.
+        await requireOwnedOrder(kernel, orderId, ctx);
+        return read('get_order_status', { status: { order_id: orderId, user_ref: ctx.user_ref } });
       }
 
       case 'request_after_sales':
@@ -782,6 +901,61 @@ async function cancelSession(kernel, params, ctx) {
     }
   }
   return { session_id: params.session_id ?? null, order_id: order_id ?? null, status: 'canceled' };
+}
+
+// An order this caller does not own is NOT FOUND: the same answer as an id the kernel never tracked. The
+// STATE_LINKAGE_MISMATCH `_requireOrder` raises for another user, session or agent would confirm to that caller
+// that the id exists. Store errors and every other refusal propagate unchanged.
+async function requireOwnedOrder(kernel, order_id, ctx) {
+  try {
+    return await kernel._requireOrder(order_id, ctx);
+  } catch (err) {
+    if (err instanceof PivotaCommerceError && err.code === 'STATE_LINKAGE_MISMATCH') {
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id });
+    }
+    throw err;
+  }
+}
+
+// FIX_PLAN C-11, behind CHECKOUT_CANCEL_UPSTREAM_ENABLED. The answer is the BACKEND's: it closes the hosted
+// payment page at the PSP and cancels the order only while it is unpaid. "canceled" is said only when the backend
+// said so; a paid order is refused with that reason (a refund is the merchant's, D-03), and an outcome the backend
+// could not confirm is retriable and never reads as canceled.
+async function cancelSessionUpstream({ kernel, cancelUpstreamOrder }, params, ctx) {
+  const op = 'cancel_checkout_session';
+  if (!nonEmpty(params.order_id)) {
+    // A session (quote) that never became an order: nothing is payable upstream yet. Claim the quote so it can
+    // never become one; the claim is the same single-use record createOrder takes, so a later
+    // complete/create_payment_link on this session is refused QUOTE_ALREADY_USED. Ownership + expiry first.
+    if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+    const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx);
+    const claimed = await kernel._quoteClaims.putIfAbsent(snapshot.quote_id, { canceled: true });
+    if (!claimed) {
+      // The session already became an order, whose id this call did not name: cancelling the session alone
+      // would leave that order payable, so say so instead of answering "canceled".
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_already_ordered' });
+    }
+    return { session_id: params.session_id, order_id: null, status: 'canceled' };
+  }
+
+  const order_id = params.order_id;
+  const record = await requireOwnedOrder(kernel, order_id, ctx);
+  const outcome = await cancelUpstreamOrder(order_id, ctx);
+  switch (outcome?.kind) {
+    case 'canceled':
+    case 'already_canceled':
+      await kernel._orderStore.set(order_id, { ...record, status: 'canceled' });
+      return { session_id: params.session_id ?? null, order_id, status: 'canceled' };
+    case 'paid':
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'order_paid_not_canceled', order_id });
+    case 'processing':
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'payment_processing_not_canceled', order_id });
+    case 'not_found':
+      throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id });
+    case 'not_confirmed': // the backend said 503 CANCEL_NOT_CONFIRMED: the same answer as no usable one
+    default:
+      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { op, reason: 'cancel_not_confirmed', order_id });
+  }
 }
 
 // Map a kernel quote snapshot → the canonical "checkout session" shape adapters return.

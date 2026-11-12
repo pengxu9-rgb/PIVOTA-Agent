@@ -37,6 +37,8 @@ export const AUDIT_EVENTS = Object.freeze([
   'merchant_product_mismatch',
   'idempotency_conflict_blocked',
   'after_sales_requested',
+  // FIX_PLAN O-04: the backend refused the gateway's request-bound partner assertion; nothing was written.
+  'partner_assertion_rejected',
 ]);
 
 export class AuditLog {
