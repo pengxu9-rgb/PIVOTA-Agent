@@ -30,6 +30,8 @@ import { encodeEscalationId, UCP_ESCALATION_FLAG } from '../src/ucpCheckoutEscal
 import { MERCHANT_PRICING_FLAG } from '../src/ucpMerchantDoorPricing.js';
 
 const SESSION = { user_ref: 'buyer_1', acp_session_id: 'sess_1' };
+// The rule the path requires (mcpStorefrontCartPath): the path's own switch alone does not turn it on.
+const CURRENCY_RULE_FLAG = 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET';
 const SELLER = 'merch_obs_000000000000000a';
 const OTHER_SELLER = 'merch_obs_000000000000000b';
 const CONNECTED = 'merch_shop_a';
@@ -168,7 +170,8 @@ test('the view reads its switch per call: one view object follows the flag', asy
     await view.callTool('create_checkout_session', {}, SESSION);
     assert.equal(view.tools, inner.tools);
   });
-  await withEnv({ [MCP_STOREFRONT_ESCALATION_FLAG]: '1' }, async () => {
+  // The path requires the currency rule: its own switch alone does not turn it on (see the tests below).
+  await withEnv({ [MCP_STOREFRONT_ESCALATION_FLAG]: '1', [CURRENCY_RULE_FLAG]: '1' }, async () => {
     await view.callTool('create_checkout_session', {}, SESSION);
     assert.notEqual(view.tools, inner.tools);
   });
