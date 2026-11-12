@@ -295,9 +295,18 @@ function isSellerPriced(parsed) {
 //            expire" cannot be checked per id; the six hours an id says it lives are waited out by the operator
 //            before `enforce`.
 //   enforce  as mint, and an unbound id is no id of ours.
-// A bound id presented by ANOTHER verified buyer, with a `b` that does not verify, or when no key can be derived,
-// is no id of ours: get, update, complete, cancel, payment link and get_order answer exactly what they answer for
-// an id that never existed, so the answer does not say whether it does.
+// A bound id AS MINTED, presented by ANOTHER verified buyer, with a `b` that does not verify, or when no key can be
+// derived, is no id of ours: get, update, complete, cancel, payment link and get_order answer exactly what they
+// answer for an id that never existed, so the answer does not say whether it does.
+//
+// WHAT EACH MODE GUARANTEES, exactly. An id is not secret from the caller that holds it, and its members are
+// readable: whoever holds a bound id can rewrite it as an unbound one (drop `b`, `v: 2` or `v: 1`).
+//   off, mint  NOTHING is protected. Unbound ids are read by anyone who presents them, so a bound id rewritten as
+//              unbound is read by anyone too: by another buyer of the same partner, and by another partner's. The
+//              check on a v3 id only stops the id exactly as minted. `mint` is a MIGRATION STEP towards `enforce`
+//              (it puts bound ids in circulation so `enforce` strands none), not a protection.
+//   enforce    a checkout id is read only by the buyer it was minted for: an unbound id is refused, so there is
+//              nothing to rewrite a bound id into, and `t` (the referral's members) is under the MAC.
 //
 // THE KEY. Derived (HMAC, a label of its own) from CONFIRMATION_SECRET, the kernel's secret for the confirmation
 // tokens these same doors mint; strict checkout does not boot without a strong one. No new secret name. FAIL CLOSED:

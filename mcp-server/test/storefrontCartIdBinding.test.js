@@ -103,6 +103,16 @@ describe('who may read an id', () => {
       assert.equal(escalationIdReadable(unbound, who, ENFORCE), false);
     }
   });
+  test('WHAT EACH MODE GUARANTEES: a bound id rewritten as an unbound one is read by ANYONE under off and mint, by no one under enforce', () => {
+    // An id's members are readable by whoever holds it: drop `b` and say `v: 2`.
+    const { b: _b, ...members } = escBody(bound);
+    const rewritten = escOf({ ...members, v: 2 });
+    for (const who of ['buyer-1', 'buyer-2', 'another-partners-buyer']) {
+      assert.equal(escalationIdReadable(rewritten, who, OFF), true, `off: ${who}`);
+      assert.equal(escalationIdReadable(rewritten, who, MINT), true, `mint protects nothing: ${who}`);
+      assert.equal(escalationIdReadable(rewritten, who, ENFORCE), false, `enforce: ${who}`);
+    }
+  });
   test('the binding covers every member: change one and the id is nobody\'s', () => {
     const body = escBody(priced('buyer-1', MINT, { record: RECORD, tracking: TRACKING }));
     const changes = {
