@@ -324,10 +324,23 @@ export function idBindingMode(env = process.env) {
   return raw === ID_BINDING_MODES.mint || raw === ID_BINDING_MODES.enforce ? raw : ID_BINDING_MODES.off;
 }
 
-function idBindingKey(env = process.env) {
+// ONE DERIVATION for every key this module takes from that secret: HMAC(secret, label). A label per use, so no
+// key can stand in for another. Null when the secret is unset or under the floor: never a default key.
+function secretDerivedKey(label, env = process.env) {
   const secret = env ? env[ID_BINDING_SECRET_ENV] : undefined;
   if (typeof secret !== "string" || secret.length < ID_BINDING_MIN_SECRET_LENGTH) return null;
-  return createHmac("sha256", secret).update(ID_BINDING_KEY_LABEL, "utf8").digest();
+  return createHmac("sha256", secret).update(label, "utf8").digest();
+}
+
+function idBindingKey(env = process.env) {
+  return secretDerivedKey(ID_BINDING_KEY_LABEL, env);
+}
+
+// The key the idempotency records of a retried create are keyed and sealed under (storefrontCartIdempotency.js,
+// UNDER A SERVER SECRET): the same secret and derivation as the id binding, a label of its own.
+const STORE_CART_IDEMPOTENCY_KEY_LABEL = "storefront-cart-idempotency/v1";
+export function storeCartIdempotencyKey(env = process.env) {
+  return secretDerivedKey(STORE_CART_IDEMPOTENCY_KEY_LABEL, env);
 }
 
 function idBindingFor(userRef, env = process.env) {
@@ -1155,6 +1168,8 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         userRef: buyerRef,
         sessionId: isPlainObject(ctx) ? str(ctx.acp_session_id) : null,
         rawKey: idempotencyKey,
+        // Null with no usable secret: the create is then not deduplicated, and no record is written (counted).
+        serverKey: storeCartIdempotencyKey(env),
       },
       fingerprint,
       ttlMs: ESCALATION_TTL_MS,

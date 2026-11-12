@@ -8,6 +8,7 @@
 // counted, when there is no store or the store fails; a build that hands out nothing leaves no record.
 
 import { test, describe, beforeEach } from 'node:test';
+import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 
 import {
@@ -17,14 +18,16 @@ import {
   canonicalRequest, requestFingerprint, recordKey, sealCheckoutId, openCheckoutId, runIdempotentCart,
 } from '../src/storefrontCartIdempotency.js';
 import { MERCHANT_PRICING_FLAG } from '../src/ucpMerchantDoorPricing.js';
-import { UCP_ESCALATION_FLAG, ESCALATION_TTL_MS, tryEscalateUcpCheckout } from '../src/ucpCheckoutEscalation.js';
+import { UCP_ESCALATION_FLAG, ESCALATION_TTL_MS, ID_BINDING_SECRET_ENV, tryEscalateUcpCheckout, storeCartIdempotencyKey } from '../src/ucpCheckoutEscalation.js';
 import { InMemoryKvStore } from '../../safety-kernel/src/stores.js';
 import { createCommerceMount } from '../../safety-kernel/src/mount.js';
 import { PivotaCommerceError } from '../../safety-kernel/src/errors.js';
 
 const PARTNER_A = partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_a' });
 const PARTNER_B = partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_b' });
-const SCOPE = Object.freeze({ door: 'ucp', partner: PARTNER_A, userRef: 'buyer-0001', sessionId: 'sess-0001', rawKey: 'idem-key-0001' });
+const SECRET = 'unit-test-secret-0123456789';
+const SERVER_KEY = storeCartIdempotencyKey({ [ID_BINDING_SECRET_ENV]: SECRET });
+const SCOPE = Object.freeze({ door: 'ucp', partner: PARTNER_A, userRef: 'buyer-0001', sessionId: 'sess-0001', rawKey: 'idem-key-0001', serverKey: SERVER_KEY });
 // Every scope that differs from SCOPE in exactly one member.
 const OTHER_SCOPES = Object.freeze({
   'another buyer': { ...SCOPE, userRef: 'buyer-0002' },
@@ -32,6 +35,7 @@ const OTHER_SCOPES = Object.freeze({
   'another door': { ...SCOPE, door: 'mcp' },
   'another partner': { ...SCOPE, partner: PARTNER_B },
   'another session': { ...SCOPE, sessionId: 'sess-0002' },
+  'another server secret': { ...SCOPE, serverKey: storeCartIdempotencyKey({ [ID_BINDING_SECRET_ENV]: 'another-secret-0123456789' }) },
 });
 const FP = requestFingerprint(canonicalRequest({ items: [{ product_id: 'p1', quantity: 1 }], market: 'US' }));
 const ID = 'esc_eyJ2IjoyfQ';
@@ -128,6 +132,64 @@ describe('what is stored', () => {
     }
     assert.equal(openCheckoutId('not.a.record', SCOPE), null);
     assert.notEqual(sealCheckoutId(ID, SCOPE), sealCheckoutId(ID, SCOPE), 'a fresh nonce per record');
+  });
+  test('UNDER A SERVER SECRET: neither the record key nor the seal can be computed from the scope alone', async () => {
+    const h = harness();
+    await h.run();
+    const [[storedKey, entry]] = [...h.store._m.entries()];
+    const record = entry.value ?? entry;
+    assert.equal(storedKey, recordKey(SCOPE));
+    // What a reader of the table who knows (door, partner, buyer, session, key) could compute with no secret:
+    // every plain digest of the scope, in the spellings this module has used.
+    const members = [SCOPE.door, SCOPE.partner, SCOPE.userRef, SCOPE.sessionId, SCOPE.rawKey];
+    const guesses = [JSON.stringify(members), JSON.stringify([SCOPE.door, SCOPE.userRef, SCOPE.rawKey])];
+    for (const guess of guesses) {
+      for (const purpose of ['key', 'seal']) {
+        const digest = crypto.createHash('sha256').update(`${purpose}|${guess}`, 'utf8').digest();
+        assert.notEqual(storedKey, `sci1_${digest.toString('hex')}`);
+        // The seal does not open under a key made of the scope alone.
+        const [iv, body, tag] = String(record.sealed).split('.').map((part) => Buffer.from(part, 'base64url'));
+        assert.throws(() => {
+          const d = crypto.createDecipheriv('aes-256-gcm', digest, iv);
+          d.setAuthTag(tag);
+          Buffer.concat([d.update(body), d.final()]);
+        });
+      }
+    }
+    // The keys are exactly the HMACs under the derived server key, with a purpose each.
+    const hmac = (purpose) => crypto.createHmac('sha256', SERVER_KEY).update(`${purpose}|${JSON.stringify(members)}`, 'utf8').digest();
+    assert.equal(storedKey, `sci1_${hmac('key').toString('hex')}`);
+    const [iv, body, tag] = String(record.sealed).split('.').map((part) => Buffer.from(part, 'base64url'));
+    const d = crypto.createDecipheriv('aes-256-gcm', hmac('seal'), iv);
+    d.setAuthTag(tag);
+    assert.equal(Buffer.concat([d.update(body), d.final()]).toString('utf8'), ID);
+  });
+  test('the server key: derived from the kernel\'s secret with a label of its own; null without a usable secret', () => {
+    assert.equal(ID_BINDING_SECRET_ENV, 'CONFIRMATION_SECRET');
+    assert.ok(Buffer.isBuffer(SERVER_KEY) && SERVER_KEY.length === 32);
+    assert.deepEqual(SERVER_KEY, crypto.createHmac('sha256', SECRET).update('storefront-cart-idempotency/v1', 'utf8').digest());
+    // Not the id binding's key, and not the raw secret.
+    assert.notDeepEqual(SERVER_KEY, crypto.createHmac('sha256', SECRET).update('storefront-cart-id-binding/v1', 'utf8').digest());
+    assert.notDeepEqual(SERVER_KEY, crypto.createHash('sha256').update(SECRET).digest());
+    for (const env of [{}, { CONFIRMATION_SECRET: '' }, { CONFIRMATION_SECRET: 'short' }, { CONFIRMATION_SECRET: 'x'.repeat(15) }, { CONFIRMATION_SECRET: 7 }, null]) {
+      assert.equal(storeCartIdempotencyKey(env), null, JSON.stringify(env));
+    }
+    assert.ok(storeCartIdempotencyKey({ CONFIRMATION_SECRET: 'x'.repeat(16) }));
+  });
+  test('NO KEY, NO RECORD: without a server key every create builds, counted, and nothing is written; the key functions refuse', async () => {
+    for (const serverKey of [null, undefined, Buffer.alloc(0), Buffer.alloc(16, 1), 'a-string-not-a-key', SECRET]) {
+      resetStoreCartIdempotencyCountsForTest();
+      const h = harness();
+      const scope = { ...SCOPE, serverKey };
+      assert.deepEqual(await h.run({ scope }), { id: ID, built: 1 });
+      assert.deepEqual(await h.run({ scope }), { id: ID, built: 2 });
+      assert.deepEqual(h.calls.replay, []);
+      assert.equal(h.store._m.size, 0);
+      assert.deepEqual(storeCartIdempotencyCounts(), { 'fail_open:no_secret': 2 });
+      assert.throws(() => recordKey(scope), /no server key/);
+      assert.throws(() => sealCheckoutId(ID, scope), /no server key/);
+      assert.equal(openCheckoutId('a.b.c', scope), null);
+    }
   });
   test('a finished record expires with the checkout id; a claim with its lease', async () => {
     const ttls = [];
@@ -358,7 +420,7 @@ describe('fail open, counted', () => {
 // ---- the lane ---------------------------------------------------------------------------------------------------
 
 describe('the lane', () => {
-  const ON = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: '1', [STORE_CART_IDEMPOTENCY_FLAG]: '1' };
+  const ON = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: '1', [STORE_CART_IDEMPOTENCY_FLAG]: '1', [ID_BINDING_SECRET_ENV]: SECRET };
   const GID = (n) => `gid://shopify/ProductVariant/${n}`;
   const SEED = Object.freeze({
     product_id: 'sig_idem_a', merchant_id: 'merch_obs_shop_a', title: 'Serum X', price: 25, currency: 'USD',
@@ -501,6 +563,32 @@ describe('the lane', () => {
     assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 10);
     assert.deepEqual(storeCartIdempotencyCounts(), { 'fail_open:no_session': 2 });
     assert.equal(store._m.size, 0);
+  });
+
+  test('THE SECRET UNSET, OR TOO SHORT, with the flag on: the create is answered, not deduplicated, counted; no record is written', async () => {
+    for (const secret of [undefined, '', 'x'.repeat(15)]) {
+      resetStoreCartIdempotencyCountsForTest();
+      const store = new InMemoryKvStore();
+      const door = fakeDoor();
+      const env = { ...ON, [ID_BINDING_SECRET_ENV]: secret };
+      const a = await create({ env, store, door });
+      const b = await create({ env, store, door });
+      assert.ok(a.id && b.id);
+      assert.notEqual(a.id, b.id);
+      assert.deepEqual(door.calls.map((c) => c[0]), ['create_cart', 'create_cart']);
+      assert.equal(store._m.size, 0);
+      assert.deepEqual(storeCartIdempotencyCounts(), { 'fail_open:no_secret': 2 });
+    }
+  });
+
+  test('another secret is another key space: a record written under one is not found under another (a rotation builds anew)', async () => {
+    const store = new InMemoryKvStore();
+    const door = fakeDoor();
+    const first = await create({ store, door });
+    const rotated = await create({ env: { ...ON, [ID_BINDING_SECRET_ENV]: 'another-secret-0123456789' }, store, door });
+    assert.notEqual(rotated.id, first.id);
+    assert.equal((await create({ store, door })).id, first.id);
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 2);
   });
 
   test('a 7-character key with the flag on: refused before the gate and the store; 8 characters: built; flag off: a short key is as before', async () => {

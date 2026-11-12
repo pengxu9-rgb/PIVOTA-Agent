@@ -41,15 +41,27 @@
 // by a retry; the create path's own budgets (product reads, the gate, the seller's door, the record write) sum to
 // well under it. A create that crashes mid-build leaves a claim that expires with the lease.
 //
-// WHAT IS STORED, AND FOR HOW LONG. Key: a SHA-256 over the scope: none of its members is
+// WHAT IS STORED, AND FOR HOW LONG. Key: an HMAC-SHA-256 over the scope: none of its members is
 // stored. Value: the SHA-256 of the canonical request, and the checkout id ENCRYPTED (AES-256-GCM) under a key
-// derived from that same scope, so a row can be opened only by a request that presents all of it
+// derived (HMAC) from that same scope, so a row can be opened only by a request that presents all of it
 // again; a seller-priced id carries the seller's cart id, which is that seller's bearer handle. Nothing else: no
 // cart link, no totals, no email. Life: ESCALATION_TTL_MS (6 h), the checkout id's own stated expiry (`expires_at`);
 // after it the id is expired on its face and a retry builds a fresh cart. The seller's cart may outlive that; the
 // door has never read the seller's expiry and makes no claim about it.
+//
+// UNDER A SERVER SECRET. Every member of the scope is a value a caller knows or can guess (a key is often
+// `checkout-1`), so digests of the scope alone would let anyone who can read the table find a buyer's row and open
+// it; the row holds the seller's cart id, a bearer handle. Both the record key and the sealing key are therefore
+// HMACs under `scope.serverKey`: a key the door derives from the kernel's own secret, with a label of this
+// module's own (ucpCheckoutEscalation.js `storeCartIdempotencyKey`; the same secret and derivation as the id
+// binding, another label, so neither key can stand in for the other). NO KEY, NO RECORD: with the flag on and no
+// usable secret, a create is not deduplicated (`fail_open: no_secret`, counted and logged) and nothing is written.
+// FAIL OPEN, unlike the id binding, on purpose: the binding fails closed because an unbound id is the very thing
+// its switch exists to stop; here the thing to stop is a record sealed with no secret, and not writing one stops
+// it, while refusing the create would cost the buyer the cart, which this module never does. Strict checkout does
+// not boot without a strong secret, so in production this arm is not reached.
 
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 
 export const STORE_CART_IDEMPOTENCY_FLAG = "AGENT_CHECKOUT_STORE_CART_IDEMPOTENCY_ENABLED";
@@ -111,16 +123,27 @@ export function assertKeyLongEnough(rawKey, log) {
   throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason: KEY_TOO_SHORT_REASON, min_length: MIN_KEY_LENGTH });
 }
 
-/** The record's key: a digest of the scope. None of its members can be read back from it. */
+// The server key of a scope (see UNDER A SERVER SECRET): 32 bytes, or null. Never a default.
+const serverKeyOf = (scope) => (scope && Buffer.isBuffer(scope.serverKey) && scope.serverKey.length === 32 ? scope.serverKey : null);
+const keyed = (scope, purpose) => {
+  const serverKey = serverKeyOf(scope);
+  if (!serverKey) throw new Error("storefront cart idempotency: no server key");
+  return createHmac("sha256", serverKey).update(`${purpose}|${scopeOf(scope)}`, "utf8").digest();
+};
+
+/**
+ * The record's key: an HMAC of the scope under the server key. None of its members can be read back from it, and
+ * it cannot be computed from them without the key. Throws without a server key (runIdempotentCart never asks).
+ */
 export function recordKey(scope) {
-  return `sci1_${sha256(`key|${scopeOf(scope)}`).toString("hex")}`;
+  return `sci1_${keyed(scope, "key").toString("hex")}`;
 }
 
 function sealingKey(scope) {
-  return sha256(`seal|${scopeOf(scope)}`);
+  return keyed(scope, "seal");
 }
 
-/** The checkout id, sealed so that only a request presenting the same scope can open it. */
+/** The checkout id, sealed so that only a request presenting the same scope, on a server holding the key, can open it. */
 export function sealCheckoutId(id, scope) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", sealingKey(scope), iv);
@@ -170,8 +193,9 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
  *
  * @param {{
  *   store: object|undefined,          // a KvStore: get, putIfAbsent, compareAndSet, compareAndDelete
- *   scope: { door:string, partner:(string|null), userRef:string, sessionId:(string|null), rawKey:string },
+ *   scope: { door:string, partner:(string|null), userRef:string, sessionId:(string|null), rawKey:string, serverKey:(Buffer|null) },
  *                                     // partner: partnerPrincipalOf(...); null (or no session) = not deduplicated
+ *                                     // serverKey: 32 bytes derived from the server's secret; null = not deduplicated
  *   fingerprint: string,
  *   ttlMs: number,                    // the life of a finished record
  *   now: () => number,
@@ -191,6 +215,8 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
   const known = (value) => typeof value === "string" && value !== "";
   if (!scope || !known(scope.partner)) return failOpen("no_partner");
   if (!known(scope.sessionId)) return failOpen("no_session");
+  // No key, no record: nothing is ever stored under digests a caller could compute.
+  if (!serverKeyOf(scope)) return failOpen("no_secret");
   if (!store || typeof store.putIfAbsent !== "function") return failOpen("no_store");
   const key = recordKey(scope);
   const owner = randomUUID();
