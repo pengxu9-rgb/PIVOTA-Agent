@@ -518,7 +518,8 @@ function resolveBrandSiblingSpellings(brandKey, typedSpelling = brandKey) {
     }
     return { siblings: NO_SIBLING_SPELLINGS.siblings, capped: true };
   }
-  const typedSuffixed = brandFamilyName(key) !== key && brandSpellingIdentity(typedSpelling) !== familyKey;
+  // typed with a suffix word: what was typed is not the family's bare name
+  const typedSuffixed = brandSpellingIdentity(typedSpelling) !== familyKey;
   if (typedSuffixed) return { siblings: siblings.filter((brand) => brandFamilyName(brand) === brand), capped: false };
   return { siblings, capped: false };
 }

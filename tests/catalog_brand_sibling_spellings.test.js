@@ -189,6 +189,12 @@ describe('the sibling resolver', () => {
     expect(typed('zentoraus')).toEqual([]); // typed solid: still that spelling
     expect(typed(undefined)).toEqual([]); // no alias: the key speaks
     expect(typed('')).toEqual([]);
+    expect(typed(null)).toEqual([]);
+    // a bare key with no alias on the contract is still the bare name typed
+    cache.__setBeautyBrandRowsForTest([beauty('zentora', 5), beauty('zentora us', 40), beauty('zentora jp', 30)]);
+    for (const alias of [undefined, null, '']) {
+      expect(resolveBoundBrandSiblingSpellings({ brand_key: 'catalog:zentora', canonical: 'zentora', alias })).toEqual(['zentora jp', 'zentora us']);
+    }
   });
 
   // The rule keys on the MATCHED BRAND SPAN (the longest dictionary span in the query), not on
