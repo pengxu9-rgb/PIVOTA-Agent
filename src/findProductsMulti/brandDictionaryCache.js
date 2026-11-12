@@ -34,6 +34,11 @@ let _set = new Set();
 let _beauty = new Map();
 // suffix-stripped name -> the same stats entry as _beauty (GATEWAY_CATALOG_BRAND_LONG_TAIL)
 let _beautyStripped = new Map();
+// keys at least one raw catalog spelling writes in full (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS)
+let _beautyWholeKeys = new Set();
+// family name -> every catalog brand spelling of that family (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS)
+let _beautyFamilies = new Map();
+let _familyCapLogged = new Set();
 let _loadedAt = 0;
 let _loading = null;
 
@@ -141,9 +146,17 @@ async function refresh() {
     }
   }
   _set = next;
+  installBeautyBrandStats(rows);
+  _loadedAt = Date.now();
+}
+
+// The beauty map and everything derived from it, replaced together (the loader and the test hook).
+function installBeautyBrandStats(rows) {
   _beauty = buildBeautyBrandStats(rows);
   _beautyStripped = buildStrippedBrandIndex(_beauty);
-  _loadedAt = Date.now();
+  _beautyWholeKeys = buildWholeBrandKeys(rows);
+  _beautyFamilies = buildBrandFamilyIndex(_beauty);
+  _familyCapLogged = new Set();
 }
 
 // Non-blocking warm: kick a refresh if enabled + stale, but never await it on
@@ -346,10 +359,169 @@ const STRIPPABLE_BRAND_SUFFIXES = new Set([
   'us', 'usa', 'uk', 'jp', 'kr', 'global', 'official', 'store',
 ]);
 
-function stripBrandSuffixes(brand) {
+function stripBrandSuffixes(brand, suffixes = STRIPPABLE_BRAND_SUFFIXES) {
   const tokens = String(brand || '').split(' ').filter(Boolean);
-  while (tokens.length > 1 && STRIPPABLE_BRAND_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
+  while (tokens.length > 1 && suffixes.has(tokens[tokens.length - 1])) tokens.pop();
   return tokens.join(' ');
+}
+
+// SIBLING SPELLINGS (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS, default OFF; on = 1 / true / yes /
+// on, read per call like its neighbours). One brand can sit in the catalog under two spellings:
+// a retailer writes the bare name, the brand's own store writes the name plus a market or channel
+// word ("Zentora" and "Zentora USA"). Each spelling is its own dictionary key, and a brand
+// constraint is an equality on ONE key, so a buyer typing the bare name plus a category was
+// scoped to the retailer's rows only and never saw the store's.
+//
+// Two keys are siblings when they are EQUAL after the trailing words below are removed (compared
+// with spaces and hyphens squashed, the identity the row index itself uses). Never a prefix:
+// "zentora" and "zentora labs" stay two brands, because "labs" is not in the list.
+//
+// The list is the MARKET / CHANNEL subset of STRIPPABLE_BRAND_SUFFIXES. The descriptive words
+// (beauty, cosmetics, cosmetic, makeup, skincare) are left out on purpose: they are part of real
+// brand names, and a bare word beside "<word> Beauty" is as often another brand as the same one
+// (ten of the 55 stripped names reviewed 2026-09-25 collided with an ordinary word or phrase).
+// A market or channel word says where a brand is sold, not which brand it is.
+const SIBLING_SPELLING_SUFFIXES = new Set(['us', 'usa', 'uk', 'jp', 'kr', 'global', 'official', 'store']);
+// A family this large is not one brand's storefronts. Beyond it only the matched key is bound.
+const MAX_BRAND_FAMILY_SPELLINGS = 8;
+
+function siblingSpellingsEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS || '').trim().toLowerCase(),
+  );
+}
+
+// FLIP AND ROLLBACK. The flag is read per call, but the doors cache search answers on the call's
+// arguments alone (commerce /mcp and /ucp/mcp: 5 min fresh, served stale to 15; /public/mcp: 10 min
+// and 60). After a flip ON a page that was partial before stays partial until its entry ages out;
+// after a ROLLBACK a page answered with the wider family stays that long too. Nothing invalidates
+// them, so a check after either must use query strings that were not asked before.
+
+// A key keeps only a-z, 0-9, "&" and "-" of the raw brand (`normalize`), so "<other-script letters>
+// Global" keys as `global`: a name that is not the brand's. A key is WHOLE when at least one raw
+// spelling folds to it without losing a letter or a digit. Only whole keys form or join a family.
+function buildWholeBrandKeys(rows) {
+  const whole = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const folded = foldAccents(row && row.b);
+    const key = normalize(folded);
+    const written = (folded.match(/[\p{L}\p{N}]/gu) || []).length;
+    const kept = (key.match(/[a-z0-9]/g) || []).length;
+    if (written === kept) whole.add(key);
+  }
+  return whole;
+}
+
+// Whether a family can stand for ONE brand, decided ONCE per family, on the key the family is
+// indexed by (its name with spaces and hyphens removed), when the index is built. Never on the
+// spelling a buyer typed: "glob-al us" and "global us" are one family and get one verdict.
+// It cannot when:
+//   * the key is nothing but strippable suffix words run together, from the FULL list above,
+//     descriptive words included ("global", beside "global store" and "global us": three
+//     unrelated sellers, not one brand's storefronts; likewise "cosmetic", or "store-us");
+//   * the dictionary itself would refuse the key (admissibleKey above: MIN_LEN letters, or 3 with
+//     a digit, and not a stop word).
+function familyKeyIsABrandName(familyKey) {
+  const key = String(familyKey || '');
+  // reachable[i]: the first i characters are whole strippable words
+  const reachable = [true];
+  for (let end = 1; end <= key.length; end += 1) {
+    reachable[end] = [...STRIPPABLE_BRAND_SUFFIXES].some(
+      (word) => end >= word.length && reachable[end - word.length] && key.endsWith(word, end),
+    );
+  }
+  if (reachable[key.length]) return false;
+  return admissibleKey(key);
+}
+
+// THE identity a spelling is bound by in SQL, as far as spacing goes: the dictionary key with
+// spaces and hyphens removed. Lists that name spellings are compared on this, never on the text.
+function brandSpellingIdentity(value) {
+  return normalize(foldAccents(value)).replace(/[\s\-]/g, '');
+}
+
+// The dictionary's own spelling of a brand: what a reviewed list must be written in.
+function brandDictionaryKey(value) {
+  return normalize(foldAccents(value));
+}
+
+// The name a family shares: the brand without its trailing market / channel words.
+function brandFamilyName(brand) {
+  return stripBrandSuffixes(brand, SIBLING_SPELLING_SUFFIXES);
+}
+
+function brandFamilyKey(brand) {
+  return brandFamilyName(brand).replace(/[\s\-]/g, '');
+}
+
+// family key -> the catalog brand spellings in it, sorted. Only families of two or more whose key
+// can stand for one brand are kept.
+function buildBrandFamilyIndex(stats) {
+  const families = new Map();
+  const seen = new Set();
+  for (const entry of stats.values()) {
+    if (seen.has(entry.brand)) continue; // the squashed alias points at the same entry
+    seen.add(entry.brand);
+    const key = brandFamilyKey(entry.brand);
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push(entry.brand);
+  }
+  const out = new Map();
+  for (const [key, members] of families) {
+    if (members.length > 1 && familyKeyIsABrandName(key)) out.set(key, members.sort());
+  }
+  return out;
+}
+
+const NO_SIBLING_SPELLINGS = Object.freeze({ siblings: Object.freeze([]), capped: false });
+
+// The OTHER catalog spellings of the brand `brandKey` names (a canonical dictionary key, as in
+// `catalog:<key>`). A sibling is bound only when it is in the dictionary AND qualifies as a beauty
+// brand by itself, by the unchanged qualifiesAsBeautyBrand: which keys are brands is not decided
+// here. An empty (cold) dictionary, or a key it does not hold, has no siblings; neither has a key
+// that is not whole, or one whose family cannot stand for one brand (such a family is not indexed).
+//
+// WHICH siblings (owner, 2026-11-12: "match only the typed spelling plus the bare name"):
+//   * the buyer typed the BARE name -> every sibling: the whole family;
+//   * the buyer typed a SUFFIXED spelling ("zentora jp") -> the bare spelling only, never the
+//     other suffixed ones. A market word in the brand names a storefront, and the buyer who
+//     names one gets that storefront plus the plain brand, not "zentora us" or "zentora global".
+//     Channel words (global, official, store) are treated exactly like market words, for the
+//     same reason: "zentora store" is a particular shop. "us" and "usa" are two spellings like
+//     any other two: "zentora usa" does not bind "zentora us".
+// `typedSpelling` is the span of the query that matched (the contract's alias). It differs from
+// the key only when a bare name was matched to a suffixed key (the stripped-name matcher): the
+// buyer typed the bare name then, and gets the whole family.
+function resolveBrandSiblingSpellings(brandKey, typedSpelling = brandKey) {
+  if (!siblingSpellingsEnabled() || !enabled() || !beautyContractEnabled()) return NO_SIBLING_SPELLINGS;
+  const key = normalize(foldAccents(brandKey));
+  // A cold dictionary holds no key, so it has no family either.
+  if (!_beauty.has(key)) return NO_SIBLING_SPELLINGS;
+  if (!_beautyWholeKeys.has(key)) return NO_SIBLING_SPELLINGS;
+  const familyKey = brandFamilyKey(key);
+  const ownIdentity = key.replace(/[\s\-]/g, '');
+  const siblings = (_beautyFamilies.get(familyKey) || []).filter(
+    // "vel mora" and "velmora" are one row identity already, not two spellings to bind.
+    (brand) => brand.replace(/[\s\-]/g, '') !== ownIdentity && _beautyWholeKeys.has(brand) &&
+      qualifiesAsBeautyBrand(_beauty.get(brand)),
+  );
+  if (siblings.length + 1 > MAX_BRAND_FAMILY_SPELLINGS) {
+    if (!_familyCapLogged.has(familyKey)) {
+      _familyCapLogged.add(familyKey);
+      // Once per family per dictionary load, and loaded here so a process that never meets an
+      // oversized family never loads the logger through this module. Counts only: a brand
+      // string in a log line is a brand string in a log sink.
+      require('../logger').warn(
+        { event: 'brand_sibling_spellings_over_cap', spellings: siblings.length + 1, cap: MAX_BRAND_FAMILY_SPELLINGS },
+        'brand_sibling_spellings_over_cap: only the matched brand key is bound',
+      );
+    }
+    return { siblings: NO_SIBLING_SPELLINGS.siblings, capped: true };
+  }
+  // typed with a suffix word: what was typed is not the family's bare name
+  const typedSuffixed = brandSpellingIdentity(typedSpelling) !== familyKey;
+  if (typedSuffixed) return { siblings: siblings.filter((brand) => brandFamilyName(brand) === brand), capped: false };
+  return { siblings, capped: false };
 }
 
 function buildStrippedBrandIndex(stats) {
@@ -511,16 +683,14 @@ function debugState() {
 // Test hook: seed the cache without a DB.
 function __setBrandSetForTest(values) {
   _set = new Set(values || []);
-  _beauty = new Map();
-  _beautyStripped = new Map();
+  installBeautyBrandStats([]);
   _loadedAt = Date.now();
 }
 
 // Test hook: seed the beauty map through the SAME builder the loader uses.
 // rows: [{ b, n, nb, nc }]
 function __setBeautyBrandRowsForTest(rows) {
-  _beauty = buildBeautyBrandStats(rows);
-  _beautyStripped = buildStrippedBrandIndex(_beauty);
+  installBeautyBrandStats(rows);
   _loadedAt = Date.now();
 }
 
@@ -539,6 +709,13 @@ module.exports = {
   isOnboardedBrand,
   longTailEnabled,
   stripBrandSuffixes,
+  siblingSpellingsEnabled,
+  brandFamilyName,
+  brandSpellingIdentity,
+  brandDictionaryKey,
+  resolveBrandSiblingSpellings,
+  SIBLING_SPELLING_SUFFIXES,
+  MAX_BRAND_FAMILY_SPELLINGS,
   MIN_BEAUTY_ROWS,
   LONG_TAIL_MIN_BEAUTY_ROWS,
   MIN_BEAUTY_SHARE,

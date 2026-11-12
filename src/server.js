@@ -420,6 +420,7 @@ const {
   hasExplicitCategoryHint,
   normalizeBrandText,
   resolveBeautyBrandBrowseQuery,
+  resolveBoundBrandSiblingSpellings,
 } = require('./findProductsMulti/brandLexicon');
 const {
   buildSearchQualityContract,
@@ -19278,6 +19279,9 @@ function shouldShortCircuitInvokeSearchQualitySafeEmpty({
 
 function projectSearchQualityContractForMetadata(contract = null) {
   if (!contract || typeof contract !== 'object') return null;
+  // GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS: how many spellings of the brand recall was bound to,
+  // present only when it is more than the one key the contract names. A count, never the strings.
+  const siblingSpellings = resolveBoundBrandSiblingSpellings(contract.hard_constraints?.brand);
   return {
     contract_version: contract.contract_version || SEARCH_QUALITY_CONTRACT_VERSION,
     target_domain: contract.target_domain || null,
@@ -19286,6 +19290,7 @@ function projectSearchQualityContractForMetadata(contract = null) {
     clarification_allowed: Boolean(contract.clarification_allowed),
     hard_constraints: contract.hard_constraints || {},
     soft_preferences: contract.soft_preferences || {},
+    ...(siblingSpellings.length > 0 ? { brand_spellings_bound: siblingSpellings.length + 1 } : {}),
   };
 }
 
@@ -19358,6 +19363,16 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
       return identity.brand_key === brand.brand_key;
     }
   }
+  // GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS: recall binds the brand's sibling spellings too, and
+  // this gate must admit every row recall can return. Containment below already admits a suffixed
+  // row under a bare contract; it does not admit one suffixed spelling under another ("x uk" under
+  // "x usa"). The siblings are the SAME list the SQL binds, compared for EQUALITY with the row's
+  // own brand, so this adds the family's rows and no others. [] with the flag off.
+  const ownCompactBrand = productBrand.replace(/\s+/g, '');
+  const isSiblingSpelling = resolveBoundBrandSiblingSpellings(brand).some(
+    (sibling) => normalizeSearchQualityBrandNeedle(sibling).replace(/\s+/g, '') === ownCompactBrand,
+  );
+  if (isSiblingSpelling) return true;
   const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
   const compactText = text.replace(/\s+/g, '');
   const matches = (needle) => {
@@ -28071,6 +28086,40 @@ async function fetchSimilarProductsFromUpstream(args) {
   return Array.isArray(resp?.data?.products) ? resp.data.products : [];
 }
 
+// THE CREDENTIAL OF THE REVIEW-SUMMARY FETCH, when the request carries no checkout token.
+//
+// The answer is SHARED: fetchReviewSummaryCached keys its cache and its in-flight memo on merchant, platform
+// and product only, so what one caller's request fetched is served to the next caller. A shared read goes out
+// on the gateway's own service credential, from the builder every other call to the backend invoke route uses,
+// and with nothing derived from the caller: not the caller's key (forceInternalFallback), not X-Buyer-Ref, not
+// X-Agent-User-JWT. The builder is asked only when the service credential is configured, because without one
+// it would fall back to the caller's key.
+//
+// No service credential configured (PIVOTA_API_KEY unset): the fetch goes out with no credential, as it always
+// did, and says so once per process. The read is never failed for it.
+let reviewSummaryMissingServiceCredentialWarned = false;
+function buildReviewSummaryUpstreamAuthHeaders() {
+  if (!PIVOTA_API_KEY) {
+    if (!reviewSummaryMissingServiceCredentialWarned) {
+      reviewSummaryMissingServiceCredentialWarned = true;
+      logger.warn(
+        {
+          operation: 'get_review_summary',
+          missing_config: 'gateway_service_credential',
+          env: 'PIVOTA_API_KEY',
+        },
+        'review summary fetch has no service credential configured; sending it without one',
+      );
+    }
+    return {};
+  }
+  return buildInvokeUpstreamAuthHeaders({
+    forceInternalFallback: true,
+    forwardAgentUserJwt: false,
+    forwardBuyerRef: false,
+  });
+}
+
 async function fetchReviewSummaryFromUpstream(args) {
   const { merchantId, platform, platformProductId, checkoutToken } = args;
   const mid = String(merchantId || '').trim();
@@ -28096,7 +28145,9 @@ async function fetchReviewSummaryFromUpstream(args) {
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
+      // A request that carries a checkout token sends the token, alone, exactly as before. Every other
+      // request sends the gateway's service credential (buildReviewSummaryUpstreamAuthHeaders).
+      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : buildReviewSummaryUpstreamAuthHeaders()),
     },
     timeout: UPSTREAM_TIMEOUT_REVIEWS_MS,
     data,

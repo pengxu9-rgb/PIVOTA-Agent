@@ -473,6 +473,48 @@ const AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES = new Set([
   'terra',
 ]);
 
+// Catalog spellings that END in a market / channel word and are a DIFFERENT brand from the name in
+// front of it ("<name> store", a brand, beside "<name>", another): reviewed, pinned, and never
+// bound as a sibling spelling (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS). A listed spelling has no
+// siblings and is nobody's sibling; listing the bare name instead keeps it apart from every
+// suffixed spelling. A string rule cannot tell a brand named "<name> store" from <name>'s own
+// store, so this list is where that knowledge goes.
+//
+// EMPTY: the owner read the real families (2026-11-12) and none is two brands.
+//
+// HOW AN ENTRY IS WRITTEN: as the dictionary writes the spelling -- lower case, accents folded,
+// words separated by one space ("pallor usa"). A test refuses any other form, so the list stays
+// readable. HOW IT IS COMPARED: on the spelling's identity (spaces and hyphens removed, the form
+// the SQL binds), so "pal lor usa", "pallor-usa" and "pallorusa" are the same listed spelling;
+// the entries are folded to that identity when the list is loaded, whatever form they are in.
+const REVIEWED_NOT_SIBLING_SPELLINGS = Object.freeze([]);
+
+function isCanonicalReviewedSpelling(entry) {
+  return typeof entry === 'string' && entry !== '' && brandDictionaryCache.brandDictionaryKey(entry) === entry;
+}
+
+function loadReviewedSpellingIdentities(entries) {
+  return new Set(entries.map((entry) => brandDictionaryCache.brandSpellingIdentity(entry)).filter(Boolean));
+}
+let reviewedNotSiblingIdentities = loadReviewedSpellingIdentities(REVIEWED_NOT_SIBLING_SPELLINGS);
+
+function isReviewedNotSibling(spelling) {
+  return reviewedNotSiblingIdentities.has(brandDictionaryCache.brandSpellingIdentity(spelling));
+}
+
+// Test seam: replace the list through the SAME loader the shipped list goes through. Returns a
+// function that puts the shipped list back.
+function __setReviewedNotSiblingSpellingsForTest(entries) {
+  reviewedNotSiblingIdentities = loadReviewedSpellingIdentities(entries);
+  return () => { reviewedNotSiblingIdentities = loadReviewedSpellingIdentities(REVIEWED_NOT_SIBLING_SPELLINGS); };
+}
+
+// The two ambiguous-word lists, on the same identity: a family is the family however it is spaced.
+const AMBIGUOUS_FAMILY_IDENTITIES = new Set(
+  [...AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES, ...AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS]
+    .map((name) => brandDictionaryCache.brandSpellingIdentity(name)),
+);
+
 // The query's own words, minus framing ("shop", "products") and brand suffixes
 // ("beauty", "makeup"): what the buyer typed as the brand name, when the query is only that.
 function coreBrandQueryTokens(normalizedQuery) {
@@ -540,6 +582,38 @@ function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}
     detection_mode: 'catalog_beauty',
     contract: 'brand_browse',
   };
+}
+
+// THE bound spellings of a contract brand, beyond the key it already carries
+// (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS, default OFF -> always []). Both recall lanes, the
+// serving gate and the ranker read this ONE function, keyed on the contract's brand_key, so
+// they cannot bind different families.
+//   * Only a catalog-derived brand (`catalog:<key>`) has siblings. A static-lexicon brand keeps
+//     its reviewed aliases and nothing else.
+//   * A family whose shared name is on either ambiguous list has none: "lime" beside
+//     "lime uk" is a word first.
+//   * A sibling the static lexicon names belongs to that reviewed brand, not to this family.
+//   * A spelling on REVIEWED_NOT_SIBLING_SPELLINGS is another brand: it binds nothing and is
+//     bound by nothing.
+const STATIC_LEXICON_NAMES = new Map();
+function staticLexiconNames(key) {
+  if (!STATIC_LEXICON_NAMES.has(key)) {
+    STATIC_LEXICON_NAMES.set(key, detectBrandByStaticAliases(normalizeBrandText(key)).length > 0);
+  }
+  return STATIC_LEXICON_NAMES.get(key);
+}
+
+function resolveBoundBrandSiblingSpellings(brand) {
+  const catalogKey = /^catalog:(.+)$/.exec(String((brand && brand.brand_key) || ''));
+  if (!catalogKey) return [];
+  const key = catalogKey[1];
+  if (isReviewedNotSibling(key)) return [];
+  const { siblings } = brandDictionaryCache.resolveBrandSiblingSpellings(key, brand.alias || key);
+  if (!siblings.length) return [];
+  if (AMBIGUOUS_FAMILY_IDENTITIES.has(brandDictionaryCache.brandSpellingIdentity(brandDictionaryCache.brandFamilyName(key)))) {
+    return [];
+  }
+  return siblings.filter((sibling) => !isReviewedNotSibling(sibling) && !staticLexiconNames(sibling));
 }
 
 function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
@@ -910,5 +984,9 @@ module.exports = {
   normalizeBrandText,
   reduceBrandOnlyQuery,
   resolveBeautyBrandBrowseQuery,
+  resolveBoundBrandSiblingSpellings,
+  REVIEWED_NOT_SIBLING_SPELLINGS,
+  isCanonicalReviewedSpelling,
+  __setReviewedNotSiblingSpellingsForTest,
   BRAND_QUERY_FILLER_TOKENS,
 };

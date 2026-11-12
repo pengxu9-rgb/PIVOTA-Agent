@@ -2,7 +2,7 @@
 
 const { createHash } = require('crypto');
 const reviewedAliases = require('../../data/beauty/meitu_brand_aliases.json');
-const { normalizeBrandText } = require('../findProductsMulti/brandLexicon');
+const { normalizeBrandText, resolveBoundBrandSiblingSpellings } = require('../findProductsMulti/brandLexicon');
 const { MAX_CARRIERS, MULTI_PRODUCT_NAME_PATTERN, nameEvidenceAdmissionEnabled, queryDistinctiveTokens,
   queryNamesMultiProduct } = require('./searchNameEvidence');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
@@ -97,11 +97,22 @@ function brandIdentityKey(value) {
   return folded.toLowerCase().replace(/[^\p{L}\p{Nd}]+/gu, '');
 }
 
-function buildBrandIdentityPredicate(brand, expression, params) {
+// THE brand keys a brand constraint binds, for BOTH recall lanes (the canonical statement here
+// and the seed lane through seedSearchOfferScope). With GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS
+// on, a catalog-derived brand also binds its sibling spellings (brandLexicon
+// .resolveBoundBrandSiblingSpellings); they are bound verbatim, after today's keys, so with the
+// flag off -- or no sibling -- the list is exactly what it was. Still equality on the indexed
+// identity: more keys in the same `= ANY`, never a pattern.
+function brandIdentityBindKeys(brand) {
   const terms = [...(reviewedAliases[brand.brand_key] || []), brand.canonical, brand.brand, brand.alias]
     .flatMap(value => [value, String(value || '').replace(/\b(?:beauty|cosmetics?)\b/gi, '')])
     .map(identityValue).filter(Boolean);
-  const normalized = [...new Set(terms.map(term => term.replace(/\s+/g, '')))];
+  const siblings = resolveBoundBrandSiblingSpellings(brand).map(identityValue).filter(Boolean);
+  return [...new Set([...terms, ...siblings].map(term => term.replace(/\s+/g, '')))];
+}
+
+function buildBrandIdentityPredicate(brand, expression, params) {
+  const normalized = brandIdentityBindKeys(brand);
   params.push(normalized);
   const fullBind = `$${params.length}`;
   params.push(normalized.map(value => createHash('md5').update(value, 'utf8').digest('hex')));
@@ -285,7 +296,7 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere, nameEvidence };
 }
 module.exports = {
-  buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL,
+  buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, brandIdentityBindKeys, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL,
   // The stored-fold read (#2404) and the expression it stands in for, for the tests that pin equality.
   storedNameNormEnabled, STORED_NAME_NORM_FLAG, identitySql, OWN_NAME_INPUTS_SQL, CARRIER_NAME_INPUTS_SQL,
   IDENTITY_ACCENTED, IDENTITY_FOLDED,
