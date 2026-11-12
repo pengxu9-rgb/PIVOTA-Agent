@@ -34,12 +34,45 @@ const INVISIBLE_FORMAT_CHARACTERS = /\p{Cf}/gu;
 
 const isPresentKey = (key) => typeof key === 'string' && key.trim() !== '';
 
+// WHICH CHARACTERS A KEY MAY BE MADE OF: printable ASCII, U+0020 (space) to U+007E, and nothing else.
+//
+// WHY. The kernel sends a caller's key on to the backend inside an HTTP header as well as in the body. A header
+// value cannot carry a character above U+00FF at all (the request is never sent, and the caller used to get a
+// retriable "merchant unavailable" for a key that could never work), nor a control character. The characters from
+// U+0080 to U+00FF are legal in a header but are not text there: intermediaries re-encode or drop them, so the key
+// the backend deduplicates on could differ from the key in the body. Refusing all of them leaves one alphabet that
+// arrives everywhere exactly as sent, and it is the alphabet every generated key (a UUID, a hash, a counter) uses.
+// Spaces are accepted anywhere; those around the key are not counted toward its length (below), and the key is
+// never altered.
+const IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON = 'idempotency_key_bad_characters';
+const KEY_CHARACTERS_ACCEPTED = /^[\x20-\x7E]*$/;
+
 /** How many characters of a key count toward the minimum. */
 const countedKeyLength = (key) => [...key.replace(INVISIBLE_FORMAT_CHARACTERS, '').trim()].length;
 
-/** The refusal for a PRESENT key shorter than the minimum, else null (absent, or long enough). */
+/**
+ * The refusal for a PRESENT key that cannot be used, else null (absent, or acceptable). The characters are judged
+ * first, on the key exactly as sent: a key with a character outside the accepted set is refused for that whatever
+ * its length. So an invisible character never reaches the count through a door; the count still leaves them out,
+ * for any caller of the length rule that judges characters some other way.
+ */
 function idempotencyKeyRefusal(key) {
   if (!isPresentKey(key)) return null;
+  if (!KEY_CHARACTERS_ACCEPTED.test(key)) {
+    return {
+      // The code a missing key gets.
+      code: 'IDEMPOTENCY_CONFLICT',
+      reason: IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
+      message: [
+        'The idempotency key contains a character that is not accepted: a key may be made of printable ASCII',
+        'characters only (letters, digits, punctuation and spaces, U+0020 to U+007E). Generate a new unique key',
+        'from those characters (a UUID works) and send the request again with it. Retrying with this key will not',
+        'change the answer.',
+      ].join(' '),
+      detail: { accepted_characters: 'printable ASCII, U+0020 to U+007E' },
+      retriable: false,
+    };
+  }
   if (countedKeyLength(key) >= IDEMPOTENCY_KEY_MIN_LENGTH) return null;
   return {
     // The code a missing key gets.
@@ -136,15 +169,17 @@ function invokeIntakeBoundsRefusal(operation, payload) {
 }
 
 // The one sentence a tool schema adds to a key's description: `minLength` alone cannot say how the runtime counts.
-const IDEMPOTENCY_KEY_LENGTH_SENTENCE = `At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters; leading and trailing whitespace and invisible formatting characters are not counted.`;
+const IDEMPOTENCY_KEY_LENGTH_SENTENCE = `At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters, printable ASCII only (U+0020 to U+007E); leading and trailing spaces are not counted.`;
 
 module.exports = {
   IDEMPOTENCY_KEY_MIN_LENGTH,
   IDEMPOTENCY_KEY_TOO_SHORT_REASON,
+  IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
   IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   MAX_LINE_QUANTITY,
   QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
   idempotencyKeyRefusal,
+  countedKeyLength,
   isAcceptableLineQuantity,
   isLineQuantityAboveMaximum,
   lineQuantityRefusal,

@@ -33547,8 +33547,9 @@ function commerceKernelErrorBody(error = {}) {
   return body;
 }
 
-// The two bounds every checkout door shares, for the invoke requests the strict kernel route does not take: this
-// route with strict checkout off, and the creator alias always. The numbers, the rules and the wording are the
+// The two bounds every checkout door shares, for the invoke requests the strict kernel route does not take: either
+// invoke address with strict checkout off. (With it on, the strict route answers every money operation on both
+// addresses and this is asked for nothing it would refuse, but strict off is still a state, so the guard stays.) The numbers, the rules and the wording are the
 // kernel's (safety-kernel/src/protocol/intakeBounds.cjs, the one file both module systems load); this only asks it
 // and shapes the answer the way the strict route shapes a kernel refusal. Null when the request is within both.
 // Read off the request body as it arrived (the request schema has not judged it yet): a body, operation or payload

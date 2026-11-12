@@ -20,7 +20,7 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
-import { assertIdempotencyKeyLongEnough, assertLineQuantitiesWithinMaximum } from './buyerIntake.js';
+import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
@@ -299,7 +299,7 @@ export function createCanonicalExecutor({
     }
     // A key that IS present has a minimum length (buyerIntake.js). The doors refuse a short one before they read
     // or call anything; this is the same rule for every caller of the executor, before the kernel is reached.
-    if (op.mutating) assertIdempotencyKeyLongEnough(params.idempotency_key);
+    if (op.mutating) assertIdempotencyKeyAcceptable(params.idempotency_key);
 
     switch (opId) {
       case 'search_catalog': {

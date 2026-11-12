@@ -31,7 +31,7 @@ import intakeBoundsModule from '../src/protocol/intakeBounds.cjs';
 import { createInvokeHandler } from '../src/invokeHandler.js';
 import { SafetyKernel } from '../src/kernel.js';
 import {
-  assertIdempotencyKeyLongEnough,
+  assertIdempotencyKeyAcceptable,
   assertLineQuantitiesWithinMaximum,
   IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   IDEMPOTENCY_KEY_MIN_LENGTH,
@@ -85,48 +85,113 @@ test('the two numbers and the two reason names', () => {
 // ---- the key --------------------------------------------------------------------------------------------------
 
 test('a key of 7 characters is refused and one of 8 is accepted', () => {
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('abcdefg')), '7');
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough('abcdefgh')), null, '8');
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough('abcdefghi')), null, '9');
+  assertKeyTooShort(caught(() => assertIdempotencyKeyAcceptable('abcdefg')), '7');
+  assert.equal(caught(() => assertIdempotencyKeyAcceptable('abcdefgh')), null, '8');
+  assert.equal(caught(() => assertIdempotencyKeyAcceptable('abcdefghi')), null, '9');
   for (const short of ['a', 'ab', 'abc', 'abcd', 'abcde', 'abcdef']) {
-    assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(short)), JSON.stringify(short));
+    assertKeyTooShort(caught(() => assertIdempotencyKeyAcceptable(short)), JSON.stringify(short));
   }
 });
 
 test('surrounding whitespace is not counted', () => {
   // 8 characters as sent, 3 once trimmed: padding cannot make a key long enough.
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('abc     ')), 'padded on the right');
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('     abc')), 'padded on the left');
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('  abcdefg\t\n')), '7 inside padding');
+  assertKeyTooShort(caught(() => assertIdempotencyKeyAcceptable('abc     ')), 'padded on the right');
+  assertKeyTooShort(caught(() => assertIdempotencyKeyAcceptable('     abc')), 'padded on the left');
+  assertKeyTooShort(caught(() => assertIdempotencyKeyAcceptable('  abcdefg   ')), '7 inside padding');
   // 8 once trimmed is long enough, whatever surrounds it; whitespace INSIDE the key is part of the key.
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough('  abcdefgh  ')), null, '8 inside padding');
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough('abc  fgh')), null, 'inner whitespace counts');
+  assert.equal(caught(() => assertIdempotencyKeyAcceptable('  abcdefgh  ')), null, '8 inside padding');
+  assert.equal(caught(() => assertIdempotencyKeyAcceptable('abc  fgh')), null, 'inner whitespace counts');
 });
 
-test('the unit is the Unicode code point, as JSON Schema minLength counts', () => {
-  // Two-byte characters: one each.
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('é'.repeat(7))), '7 two-byte characters');
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough('é'.repeat(8))), null, '8 two-byte characters');
-  // A character outside the basic plane is two UTF-16 units and ONE character: four of them are 4, not 8.
-  const astral = '\u{1F511}';
-  assert.equal(astral.repeat(4).length, 8, 'four such characters are eight UTF-16 units');
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(astral.repeat(4))), 'four characters outside the basic plane');
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(astral.repeat(7))), 'seven of them');
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough(astral.repeat(8))), null, 'eight of them');
-  // Three-byte characters.
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough('一'.repeat(8))), null, '8 three-byte characters');
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('一'.repeat(7))), '7 three-byte characters');
+function assertKeyBadCharacters(err, label) {
+  assert.ok(err instanceof PivotaCommerceError, `${label}: a kernel error`);
+  assert.equal(err.code, 'IDEMPOTENCY_CONFLICT', `${label}: the code a missing key gets`);
+  assert.equal(err.retriable, false, `${label}: terminal`);
+  assert.equal(err.detail.reason, 'idempotency_key_bad_characters', `${label}: named`);
+  const surfaced = surfaceableIntakeRefusal(err);
+  assert.deepEqual(surfaced.detail, { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' }, `${label}: the detail a door surfaces`);
+  assert.match(surfaced.message, /printable ASCII\s+characters only \(letters, digits, punctuation and spaces, U\+0020 to U\+007E\)/, `${label}: the message says what is accepted`);
+}
+
+test('a key is made of printable ASCII: every character from U+0020 to U+007E, and no other', () => {
+  // Every accepted character, in keys long enough to pass the length rule.
+  const accepted = Array.from({ length: 0x7e - 0x20 + 1 }, (_, i) => String.fromCharCode(0x20 + i));
+  assert.equal(accepted.length, 95);
+  for (const ch of accepted) {
+    assert.equal(caught(() => assertIdempotencyKeyAcceptable(`idem${ch}0001`)), null, `U+${ch.charCodeAt(0).toString(16)} inside a key`);
+  }
+  assert.equal(caught(() => assertIdempotencyKeyAcceptable(accepted.join(''))), null, 'all of them at once');
+  // Just outside, on both sides, and everything a header value cannot carry or cannot carry reliably.
+  const refused = {
+    'U+001F (a control character)': '\u001f', 'tab': '\t', 'line feed': '\n', 'carriage return': '\r', 'NUL': '\u0000',
+    'U+007F (delete)': '\u007f', 'U+0080': '\u0080', 'U+00A0 (no-break space)': '\u00a0', 'U+00AD (soft hyphen)': '\u00ad',
+    'U+00E9 (an accented letter)': '\u00e9', 'U+00FF': '\u00ff', 'U+0100': '\u0100', 'U+200B (zero width space)': '\u200b',
+    'U+200D': '\u200d', 'U+2060': '\u2060', 'U+FEFF': '\ufeff', 'U+3000 (ideographic space)': '\u3000', 'U+4E00': '\u4e00',
+    'a character outside the basic plane': '\u{1F511}', 'a lone surrogate': '\ud83d',
+  };
+  for (const [name, ch] of Object.entries(refused)) {
+    assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable(`idem${ch}0001`)), `${name} inside a key`);
+    assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable(`idem-0001${ch}`)), `${name} at the end`);
+    assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable(`${ch}idem-0001`)), `${name} at the start`);
+  }
+});
+
+test('the characters are judged before the length, on the key exactly as sent', () => {
+  // Short AND a bad character: the answer is about the character.
+  assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable('\u00e9')), 'one accented letter');
+  assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable('\u{1F511}'.repeat(4))), 'four wide characters');
+  assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable('abc\u200b')), 'short, with an invisible character');
+  // An invisible character never reaches the count: a key of eight of them is refused for what they are.
+  assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable('\u200b'.repeat(8))), 'eight zero width spaces');
+  // Whitespace other than a space AROUND a key is part of the key as sent, and is judged.
+  assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable('idem-0001\n')), 'a trailing line feed');
+  assertKeyBadCharacters(caught(() => assertIdempotencyKeyAcceptable('\u00a0idem-0001')), 'a leading no-break space');
+  // Spaces around a key are accepted, and not counted.
+  assert.equal(caught(() => assertIdempotencyKeyAcceptable('   idem-0001   ')), null);
+  assertKeyTooShort(caught(() => assertIdempotencyKeyAcceptable('   abcdefg   ')), 'seven inside spaces');
+  // A key of nothing but whitespace, of any kind, is no key: absent, some other rule's.
+  for (const blank of ['   ', '\t\n', '\u00a0\u3000', '\ufeff'.repeat(8)]) {
+    assert.equal(caught(() => assertIdempotencyKeyAcceptable(blank)), null, JSON.stringify(blank));
+  }
+});
+
+test('the bad-characters refusal says nothing about the key', () => {
+  const key = 'zq7\u00e9x-0001';
+  const err = caught(() => assertIdempotencyKeyAcceptable(key));
+  assertKeyBadCharacters(err, 'bad');
+  const said = JSON.stringify({ message: surfaceableIntakeRefusal(err).message, detail: err.detail });
+  assert.equal(said.includes(key), false);
+  assert.equal(said.includes('\u00e9'), false, 'nor the character');
+});
+
+test('the count, for any caller of it: Unicode code points, surrounding whitespace and invisible format characters left out', () => {
+  const count = intakeBoundsModule.countedKeyLength;
+  assert.equal(count('abcdefgh'), 8);
+  assert.equal(count('  abcdefg \t\n'), 7);
+  assert.equal(count('abc  fgh'), 8, 'inner whitespace counts');
+  assert.equal(count('\u00e9'.repeat(7)), 7);
+  assert.equal(count('\u4e00'.repeat(8)), 8);
+  assert.equal('\u{1F511}'.repeat(4).length, 8, 'four wide characters are eight UTF-16 units');
+  assert.equal(count('\u{1F511}'.repeat(4)), 4, 'and four characters');
+  assert.equal(count('e\u0301'.repeat(4)), 8, 'a combining mark is a character');
+  for (const ch of ['\u200b', '\u200c', '\u200d', '\u2060', '\ufeff', '\u00ad', '\u200e', '\u202e', '\u2066', '\u061c', '\u{e0061}']) {
+    assert.match(ch, /^\p{Cf}$/u);
+    assert.equal(count(ch.repeat(8)), 0, `eight of U+${ch.codePointAt(0).toString(16)}`);
+    assert.equal(count(`${ch}abc${ch}defg${ch}`), 7);
+    assert.equal(count(`abcd${ch}efgh`), 8);
+  }
+  assert.equal(count('\u200b  abcdefg  \u200b'), 7, 'padding inside invisible characters');
 });
 
 test('an absent key is not this rule\'s to refuse', () => {
   for (const absent of [undefined, null, '', '   ', '\t\n', 0, 12345678, {}, [], true]) {
-    assert.equal(caught(() => assertIdempotencyKeyLongEnough(absent)), null, `absent: ${JSON.stringify(absent)}`);
+    assert.equal(caught(() => assertIdempotencyKeyAcceptable(absent)), null, `absent: ${JSON.stringify(absent)}`);
   }
 });
 
 test('the key refusal says nothing about the key', () => {
   const key = 'zq7!x';
-  const err = caught(() => assertIdempotencyKeyLongEnough(key));
+  const err = caught(() => assertIdempotencyKeyAcceptable(key));
   assertKeyTooShort(err, 'short');
   assert.equal(JSON.stringify({ message: err.message, detail: err.detail }).includes(key), false, 'the key is not echoed');
   assert.equal('length' in err.detail.acp_detail, false, 'nor its length');
@@ -462,10 +527,14 @@ test('strict contract, the key on a write: no key is refused as before; a presen
       assert.deepEqual(err.detail, { reason: 'missing_or_short_idempotency_key' }, `${operation} ${JSON.stringify(key)}`);
     }
     // A KEY THAT IS PRESENT AND SHORT: the shared rule decides, whichever way it is short.
-    for (const key of ['abcdefg', 'k', '  abcdefg  ', 'abc     ', '\u{1F511}'.repeat(4), '\u{1F511}'.repeat(7), `  ${'\u{1F511}'.repeat(4)}  `, '\u200b'.repeat(8)]) {
-      assertKeyTooShort(caught(() => validateCanonical(operation, { ...payload, idempotency_key: key })), `${operation} wide characters`);
+    for (const key of ['abcdefg', 'k', '  abcdefg  ', 'abc     ']) {
+      assertKeyTooShort(caught(() => validateCanonical(operation, { ...payload, idempotency_key: key })), `${operation} ${JSON.stringify(key)}`);
     }
-    for (const key of ['abcdefgh', '  abcdefgh  ', '\u{1F511}'.repeat(8), 'é'.repeat(8)]) {
+    // A KEY WITH A CHARACTER THAT IS NOT ACCEPTED: the same rule, its other refusal.
+    for (const key of ['\u{1F511}'.repeat(8), 'idem-\u00e9-0001', 'abcdefgh\u200b', 'idem-0001\n']) {
+      assertKeyBadCharacters(caught(() => validateCanonical(operation, { ...payload, idempotency_key: key })), `${operation} ${JSON.stringify(key)}`);
+    }
+    for (const key of ['abcdefgh', '  abcdefgh  ', 'a b c d~']) {
       assert.equal(caught(() => validateCanonical(operation, { ...payload, idempotency_key: key })), null, `${operation} ${JSON.stringify(key)}`);
     }
   }
@@ -475,9 +544,10 @@ test('strict contract, the key on a quote: none is needed, and one that is sent 
   for (const absent of [undefined, null, '', '   ']) {
     assert.equal(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: absent }))), null, JSON.stringify(absent));
   }
-  for (const key of ['abcdefg', 'k', 'abc     ', '\u{1F511}'.repeat(4)]) {
+  for (const key of ['abcdefg', 'k', 'abc     ']) {
     assertKeyTooShort(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: key }))), JSON.stringify(key));
   }
+  assertKeyBadCharacters(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: 'idem-\u00e9-0001' }))), 'a quote, bad character');
   assert.equal(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: 'abcdefgh' }))), null);
   // A read is not judged, whatever it carries.
   assert.equal(caught(() => validateCanonical('get_order_status', { idempotency_key: 'k', quote: invokeQuote(1000).quote })), null);
@@ -502,7 +572,7 @@ test('the other invoke route\'s check: both bounds and nothing else, with the qu
   // The key: present and short on an operation that takes one.
   for (const operation of INVOKE_KEYED_OPERATIONS) {
     assertKeyTooShort(caught(() => assertInvokeIntakeBounds(operation, { idempotency_key: 'abc     ' })), operation);
-    assertKeyTooShort(caught(() => assertInvokeIntakeBounds(operation, { idempotency_key: '\u{1F511}'.repeat(4) })), operation);
+    assertKeyBadCharacters(caught(() => assertInvokeIntakeBounds(operation, { idempotency_key: '\u{1F511}'.repeat(8) })), operation);
     assert.equal(caught(() => assertInvokeIntakeBounds(operation, { idempotency_key: 'abcdefgh' })), null, operation);
     assert.equal(caught(() => assertInvokeIntakeBounds(operation, {})), null, `${operation}: no key`);
   }
@@ -523,6 +593,9 @@ test('the invoke door\'s error object: a shared refusal is named, every other er
   assert.equal(key.code, 'IDEMPOTENCY_CONFLICT');
   assert.equal(key.retriable, false);
   assert.deepEqual(key.detail, { reason: 'idempotency_key_too_short', min_length: 8 });
+  const characters = invokeErrorOf(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: 'idem-\u00e9-0001' }))));
+  assert.deepEqual([characters.code, characters.retriable, characters.detail], ['IDEMPOTENCY_CONFLICT', false, { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' }]);
+  assert.equal('recovery' in characters, false);
   for (const other of [
     caught(() => validateCanonical('preview_quote', invokeQuote('1000'))),
     caught(() => validateCanonical('create_order', {})),
@@ -580,6 +653,7 @@ const QUANTITY_PATHS = [
   'mcp-server/src/commerceToolSurface.js',
   'mcp-server/src/ucpArgumentAdapter.js',
   'mcp-server/src/ucpCheckoutEscalation.js',
+  'mcp-server/src/mcpStorefrontCart.js',
   'mcp-server/src/operationMap.js',
   'mcp-server/src/secureInvoke.js',
   'src/schema.js',
@@ -659,26 +733,10 @@ test('the shared module: what a refusal says, and that it is as final as its cod
   assert.equal(MAX_LINE_QUANTITY, intakeBoundsModule.MAX_LINE_QUANTITY);
 });
 
-// ---- invisible characters are not counted ------------------------------------------------------------------------
+// ---- the key is never altered --------------------------------------------------------------------------------------
 
-test('characters of the Unicode format category are left out of the count, wherever they sit; the key is not altered', () => {
-  const invisible = ['\u200b', '\u200c', '\u200d', '\u2060', '\ufeff', '\u00ad', '\u200e', '\u200f', '\u202a', '\u202e', '\u2066', '\u2069', '\u061c', '\u{e0061}'];
-  for (const ch of invisible) {
-    const hex = ch.codePointAt(0).toString(16);
-    assert.match(ch, /^\p{Cf}$/u, `U+${hex} is a format character`);
-    // (U+FEFF is also whitespace to `trim`, so a key of nothing else is a blank key: absent, some other rule's.)
-    if (ch === '\ufeff') assert.equal(caught(() => assertIdempotencyKeyLongEnough(ch.repeat(8))), null, 'eight of U+feff is a blank key');
-    else assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(ch.repeat(8))), `eight of U+${hex}`);
-    assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(`abcdefg${ch}`)), `seven letters and U+${hex}`);
-    assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(`${ch}abc${ch}defg${ch}`)), `seven letters among U+${hex}`);
-    assert.equal(caught(() => assertIdempotencyKeyLongEnough(`abcd${ch}efgh`)), null, `eight letters around U+${hex}`);
-  }
-  // Whitespace the trim removes only once an invisible character beside it is left out.
-  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('\u200b  abcdefg  \u200b')), 'padding inside invisible characters');
-  // Visible characters all count: marks, wide characters, inner spaces.
-  assert.equal(caught(() => assertIdempotencyKeyLongEnough('e\u0301'.repeat(4))), null, 'four letters each with a combining mark are eight characters');
-  // Counting changes nothing about the key: the executor hands it on exactly as sent.
-  const key = 'abcd\u200befgh\u200d';
+test('judging a key changes nothing about it: the executor hands it on exactly as sent', () => {
+  const key = '  idem 0001 ~!#  ';
   const seen = [];
   const kernel = {
     previewQuote: async () => { throw new Error('unused'); },
@@ -689,7 +747,7 @@ test('characters of the Unicode format category are left out of the count, where
 });
 
 test('the sentence a key schema adds says what is not counted', () => {
-  assert.equal(IDEMPOTENCY_KEY_LENGTH_SENTENCE, 'At least 8 characters; leading and trailing whitespace and invisible formatting characters are not counted.');
+  assert.equal(IDEMPOTENCY_KEY_LENGTH_SENTENCE, 'At least 8 characters, printable ASCII only (U+0020 to U+007E); leading and trailing spaces are not counted.');
   assert.equal(intakeBoundsModule.IDEMPOTENCY_KEY_LENGTH_SENTENCE, IDEMPOTENCY_KEY_LENGTH_SENTENCE);
 });
 

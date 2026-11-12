@@ -98,6 +98,16 @@ function assertKeyTooShort(err, label) {
   assert.deepEqual(wire.detail, { reason: 'idempotency_key_too_short', min_length: 8 }, label);
   assert.match(wire.message, /at least 8 characters/, label);
 }
+// Keys with a character outside printable ASCII: wide, accented, invisible, control.
+const BAD_CHARACTER_KEYS = ['\u{1F511}'.repeat(8), 'idem-\u00e9-0001', '\u4e00'.repeat(8), 'abcdefgh\u200b', '\u200b'.repeat(8), 'idem-0001\u00ad', 'idem\t0001', '\u{1F511}'];
+function assertKeyBadCharacters(err, label) {
+  assert.equal(err && err.code, 'IDEMPOTENCY_CONFLICT', `${label}: ${JSON.stringify(err && (err.answered ?? err.message))}`);
+  assert.equal(err.retriable, false, `${label}: terminal`);
+  const wire = JSON.parse(toToolError(err).content[0].text).error;
+  assert.equal(wire.retriable, false, label);
+  assert.deepEqual(wire.detail, { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' }, label);
+  assert.match(wire.message, /printable ASCII characters only/, label);
+}
 function assertQuantityAboveMaximum(err, label) {
   assert.equal(err && err.code, 'QUOTE_REQUIRED', `${label}: ${JSON.stringify(err && (err.answered ?? err.message))}`);
   assert.equal(err.retriable, false, `${label}: terminal`);
@@ -129,12 +139,12 @@ for (const [tool, args] of Object.entries(NATIVE_CALLS)) {
   test(`native ${tool}: a short key is refused by name with nothing read or executed; 8 characters are past the gate`, async () => {
     const executor = recorder(ROWS);
     const surface = createCommerceToolSurface(executor, { cache: false });
-    for (const key of ['abcdefg', 'a', '       a', 'abc     ', '\u{1F511}'.repeat(4), 'é'.repeat(7)]) {
+    for (const key of ['abcdefg', 'a', '       a', 'abc     ']) {
       assertKeyTooShort(await rejected(surface.callTool(tool, { idempotency_key: key, ...args }, SESSION)), `${tool} ${JSON.stringify(key)}`);
     }
     assert.deepEqual(executor.seen, [], 'the executor was never called');
 
-    for (const key of ['abcdefgh', ' abcdefgh ', 'é'.repeat(8), '\u{1F511}'.repeat(8)]) {
+    for (const key of ['abcdefgh', ' abcdefgh ', 'a b c d~', '0f8fad5b-d9cb-469f-a165-70867728950e']) {
       const out = await rejected(surface.callTool(tool, { idempotency_key: key, ...args }, SESSION));
       assert.notEqual(out && out.code, 'IDEMPOTENCY_CONFLICT', `${tool} ${JSON.stringify(key)}: past the key gate`);
     }
@@ -163,7 +173,7 @@ for (const tool of ['create_checkout', 'update_checkout', 'complete_checkout']) 
       const executor = recorder(ROWS);
       const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
       // This door trims the key before using it, so padding never counts here either.
-      for (const key of ['abcdefg', 'a', '  abcdefg  ', 'abc     ', '\u{1F511}'.repeat(4)]) {
+      for (const key of ['abcdefg', 'a', '  abcdefg  ', 'abc     ']) {
         assertKeyTooShort(await rejected(ucp.callTool(tool, ucpCalls(key)[tool], SESSION)), `${tool} ${JSON.stringify(key)}`);
       }
       assert.deepEqual(executor.seen, [], 'no product was read and nothing was executed');
@@ -385,7 +395,7 @@ test('the published maximum for a line quantity is the runtime ceiling, and lowe
 
 test('each published key description says how the minimum is counted, which minLength alone cannot', () => {
   const sentence = ` ${IDEMPOTENCY_KEY_LENGTH_SENTENCE}`;
-  assert.match(sentence, /At least 8 characters; leading and trailing whitespace and invisible formatting characters are not counted\.$/);
+  assert.equal(sentence, ' At least 8 characters, printable ASCII only (U+0020 to U+007E); leading and trailing spaces are not counted.');
   for (const tool of Object.keys(NATIVE_CALLS)) {
     assert.ok(schemaOf(commerceToolDefinitions, tool).properties.idempotency_key.description.endsWith(sentence), tool);
   }
@@ -424,8 +434,11 @@ test('start_purchase: a short key gets the shared named refusal before anything 
     const executor = recorder(ROWS);
     const surface = createCommerceToolSurface(executor, { cache: false, orchestratedPurchase: { client: { createPurchase: async () => { throw new Error('the purchase backend was called'); } } } });
     // Plainly short, padded (8 UTF-16 units as sent), wide (8 units, 4 characters), invisible.
-    for (const key of ['abcdefg', 'k', '   abcde', 'abc     ', '\u{1F511}'.repeat(4), '\u200b'.repeat(8), 'abcdefg\u200b']) {
+    for (const key of ['abcdefg', 'k', '   abcde', 'abc     ']) {
       assertKeyTooShort(await rejected(surface.callTool('start_purchase', { idempotency_key: key, ...PURCHASE_ARGS }, SESSION)), `start_purchase ${JSON.stringify(key)}`);
+    }
+    for (const key of BAD_CHARACTER_KEYS) {
+      assertKeyBadCharacters(await rejected(surface.callTool('start_purchase', { idempotency_key: key, ...PURCHASE_ARGS }, SESSION)), `start_purchase ${JSON.stringify(key)}`);
     }
     assert.deepEqual(executor.seen, [], 'nothing was read');
     // No key at all is the tool's own argument problem, as before.
@@ -446,4 +459,31 @@ test('start_purchase: a short key gets the shared named refusal before anything 
   // Its own, lower, quantity limit is untouched.
   assert.deepEqual(START_PURCHASE_INPUT_SCHEMA.properties.quantity, { type: 'integer', minimum: 1, maximum: 10 });
   assert.equal(startPurchaseArgumentProblems({ ...PURCHASE_ARGS, idempotency_key: 'abcdefgh', quantity: 11 })[0].field, 'quantity');
+});
+
+// ---- which characters a key may be made of, at the surface ---------------------------------------------------------
+
+test('a key with a character outside printable ASCII is refused by name on every tool that takes a key, with nothing read or executed', async () => {
+  await withEscalation(async () => {
+    const executor = recorder(ROWS);
+    const surface = createCommerceToolSurface(executor, { cache: false });
+    const ucp = ucpDialectSurface(surface);
+    for (const key of BAD_CHARACTER_KEYS) {
+      for (const [tool, args] of Object.entries(NATIVE_CALLS)) {
+        assertKeyBadCharacters(await rejected(surface.callTool(tool, { idempotency_key: key, ...args }, SESSION)), `native ${tool} ${JSON.stringify(key)}`);
+      }
+      for (const [tool, args] of Object.entries(ucpCalls(key))) {
+        assertKeyBadCharacters(await rejected(ucp.callTool(tool, args, SESSION)), `UCP ${tool} ${JSON.stringify(key)}`);
+      }
+      const storefront = { meta: { ...UCP_META, 'idempotency-key': key }, checkout: ucpCheckout(1, STOREFRONT.product_id) };
+      assertKeyBadCharacters(await rejected(ucp.callTool('create_checkout', storefront, SESSION)), `UCP storefront ${JSON.stringify(key)}`);
+    }
+    assert.deepEqual(executor.seen, [], 'the executor was never called');
+  });
+});
+
+test('the partner door\'s own storefront cart leaves a line above the ceiling to intake, by intake\'s one predicate', async () => {
+  const source = (await import('node:fs')).readFileSync(new URL('../src/mcpStorefrontCart.js', import.meta.url), 'utf8');
+  assert.match(source, /items\.some\(\(it\) => !isAcceptableLineQuantity\(it\.quantity\)\)/);
+  assert.doesNotMatch(source.replace(/\/\/.*$/gm, ''), /Number\.isSafeInteger\(it\.quantity\)/);
 });

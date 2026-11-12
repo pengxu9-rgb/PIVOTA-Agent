@@ -11,7 +11,7 @@ const LINE_QUANTITY_MAXIMUM_EDIT = Object.freeze([
   '"quantity":{"type":"integer","minimum":1,"maximum":999}',
   '"quantity":{"type":"integer","minimum":1}',
 ]);
-const KEY_LENGTH_SENTENCE = ' At least 8 characters; leading and trailing whitespace and invisible formatting characters are not counted.';
+const KEY_LENGTH_SENTENCE = ' At least 8 characters, printable ASCII only (U+0020 to U+007E); leading and trailing spaces are not counted.';
 const IDEMPOTENCY_KEY_DESCRIPTION_EDITS = Object.freeze([
   Object.freeze([
     `Client-generated unique key; a replay returns the original result, never a duplicate.${KEY_LENGTH_SENTENCE}"`,

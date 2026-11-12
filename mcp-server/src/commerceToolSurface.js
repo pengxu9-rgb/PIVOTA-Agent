@@ -23,7 +23,7 @@ import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
 // (buyerIntake.js is jose-free by construction, so this import keeps mcp-server jose-free too.)
 import {
-  assertIdempotencyKeyLongEnough,
+  assertIdempotencyKeyAcceptable,
   assertLineQuantitiesWithinMaximum,
   attestedBuyerFromClaims,
   createDefaultVariantResolver,
@@ -488,7 +488,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     continue an EARLIER create (recover, resume) are not judged here: they must present that create's own
     //     key and cart, and they never reach the storefront cart or the kernel. See buyerIntake.js.
     if (!recoverOnly && !resumeOnly) {
-      if (op.mutating) assertIdempotencyKeyLongEnough(params.idempotency_key);
+      if (op.mutating) assertIdempotencyKeyAcceptable(params.idempotency_key);
       if (QUOTE_INTAKE_OPS.includes(op.id)) assertLineQuantitiesWithinMaximum(asObj(params.quote).items);
     }
 
@@ -739,7 +739,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     }
     // The shared minimum for a key that is present (intakeBounds.cjs), with the named refusal every door gives. A
     // missing key is the tool's own argument problem below, as before.
-    assertIdempotencyKeyLongEnough(toolArgs.idempotency_key);
+    assertIdempotencyKeyAcceptable(toolArgs.idempotency_key);
     const problems = startPurchaseArgumentProblems(toolArgs);
     if (problems.length > 0) {
       throw new ToolValidationError(

@@ -22,7 +22,6 @@ const assert = require('node:assert/strict');
 const fx = require('./_support/intakeKeyQtyDoor.cjs');
 
 const { IDS } = fx;
-const ASTRAL = '\u{1F511}'; // one character, two UTF-16 units
 let door;
 
 test.before(async () => {
@@ -32,6 +31,10 @@ test.before(async () => {
 test.after(async () => { if (door) await door.close(); });
 
 // ---- what a refusal looks like on each kind of door -------------------------------------------------------------
+
+const KEY_BAD_CHARACTERS_MESSAGE = 'The idempotency key contains a character that is not accepted: a key may be made of printable ASCII characters only (letters, digits, punctuation and spaces, U+0020 to U+007E). Generate a new unique key from those characters (a UUID works) and send the request again with it. Retrying with this key will not change the answer.';
+// Keys with a character an HTTP header cannot carry, or cannot carry reliably: wide, accented, invisible, control.
+const BAD_CHARACTER_KEYS = ['\u{1F511}'.repeat(8), 'idem-\u00e9-0001', '\u4e00'.repeat(8), 'abcdefgh\u200b', '\u200b'.repeat(8), 'idem-0001\u00ad', 'idem\u00a00001', 'idem-0001\n', 'idem\t0001', 'idem-0001\u007f', '\u{1F511}'];
 
 const errorOf = (r) => (r.value && r.value.error) || null;
 const sentNothing = (r, label) => {
@@ -57,6 +60,17 @@ function assertQuantityAboveMaximum(r, label) {
     message: "A line's quantity is above the maximum: at most 999 units per line are accepted. Send a whole number from 1 to 999 as each line's quantity. Retrying as sent will not change the answer.",
     retriable: false,
     detail: { reason: 'quantity_above_line_maximum', max_quantity: 999 },
+  }, label);
+  sentNothing(r, label);
+}
+function assertKeyBadCharacters(r, label) {
+  assert.equal(r.http, 200, label);
+  assert.equal(r.isError, true, `${label}: ${r.raw.slice(0, 300)}`);
+  assert.deepEqual(errorOf(r), {
+    code: 'IDEMPOTENCY_CONFLICT',
+    message: KEY_BAD_CHARACTERS_MESSAGE,
+    retriable: false,
+    detail: { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' },
   }, label);
   sentNothing(r, label);
 }
@@ -127,17 +141,13 @@ test('/mcp: a key of 8 characters is past the gate on every tool that changes st
   assert.equal(quoteCalls(created).length, 1);
 });
 
-test('/mcp: surrounding whitespace is not counted; the unit is the character, not the UTF-16 unit', async () => {
+test('/mcp: surrounding spaces are not counted; a key within the accepted characters is priced', async () => {
   const args = { quote: fx.nativeQuote(1) };
   // 8 or more characters as sent, fewer once trimmed.
   assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', fx.withKey('abc     ', args)), 'padded right');
   assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', fx.withKey('   abcdefg   ', args)), 'padded both sides');
-  // Four characters outside the basic plane: eight UTF-16 units, four characters.
-  assert.equal(ASTRAL.repeat(4).length, 8);
-  assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', fx.withKey(ASTRAL.repeat(4), args)), 'four characters of two units each');
-  assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', fx.withKey('é'.repeat(7), args)), 'seven two-byte characters');
 
-  for (const key of ['  abcdefgh  ', 'é'.repeat(8), '一'.repeat(8), ASTRAL.repeat(8)]) {
+  for (const key of ['  abcdefgh  ', 'a b c d e', '!"#$%&\'(', '~}|{`_^]', '0f8fad5b-d9cb-469f-a165-70867728950e']) {
     const r = await door.call('/mcp', 'create_checkout_session', fx.withKey(key, args));
     assert.equal(r.isError, false, `${JSON.stringify(key)}: ${r.raw.slice(0, 300)}`);
     assert.equal(quoteCalls(r).length, 1, `${JSON.stringify(key)}: priced`);
@@ -222,7 +232,7 @@ const ucpPayment = { payment: { method: 'ucp_handler', token: 'placeholder.grant
 
 test('/ucp/mcp: a key of 7 characters is refused on create, update and complete, and nothing is sent anywhere', async () => {
   const sid = await kernelSession();
-  for (const key of ['abcdefg', 'k', '  abcdefg  ', 'abc     ', ASTRAL.repeat(4), 'é'.repeat(7)]) {
+  for (const key of ['abcdefg', 'k', '  abcdefg  ', 'abc     ']) {
     const meta = fx.ucpMeta(key);
     // A storefront cart: no product read, no gate, no store. A kernel cart: no product read, no quote.
     assertKeyTooShort(await door.call('/ucp/mcp', 'create_checkout', { meta, checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) }), `create storefront ${JSON.stringify(key)}`);
@@ -233,7 +243,7 @@ test('/ucp/mcp: a key of 7 characters is refused on create, update and complete,
 });
 
 test('/ucp/mcp: a key of 8 characters is past the gate: the storefront cart is made, the kernel cart is priced', async () => {
-  for (const key of ['abcdefgh', '  ABCDEFGH  ', 'é'.repeat(8), ASTRAL.repeat(8)]) {
+  for (const key of ['abcdefgh', '  ABCDEFGH  ', 'a b c d e', '~}|{`_^]']) {
     door.resetGate();
     const store = await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_STORE, 2) });
     assert.equal(store.isError, false, `${JSON.stringify(key)}: ${store.raw.slice(0, 300)}`);
@@ -319,31 +329,62 @@ test('/ucp/mcp create and update: a line that names a variant is refused above t
   }
 });
 
-// ---- invisible characters are not counted, on every door -------------------------------------------------------------
+// ---- which characters a key may be made of, on every door ------------------------------------------------------------
 
-test('a key made of, or padded out with, invisible formatting characters is refused on every door; the key itself is never altered', async () => {
+test('a key with a character outside printable ASCII is refused by name on every door, whatever its length, with nothing sent', async () => {
   const sid = await kernelSession();
   const acpId = await acpSession();
-  // Eight zero-width spaces; seven letters and one; the other characters named in the rule.
-  for (const key of ['\u200b'.repeat(8), 'abcdefg\u200b', '\u200babcdefg', 'abc\u200c\u200d\u2060\ufeffdef', 'abcdefg\u00ad', '\u202eabcdefg\u202c']) {
+  for (const key of BAD_CHARACTER_KEYS) {
     const label = JSON.stringify(key);
-    assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', fx.withKey(key, { quote: fx.nativeQuote(1) })), `/mcp create ${label}`);
-    assertKeyTooShort(await door.call('/mcp', 'complete_checkout_session', fx.withKey(key, { session_id: sid, payment_authorization: { method: 'placeholder', token: 'placeholder' } })), `/mcp complete ${label}`);
-    assertKeyTooShort(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) }), `/ucp/mcp create ${label}`);
-    assertInvokeRefusal(await door.invoke(SHOP, 'preview_quote', invokeQuote(1, { idempotency_key: key })), INVOKE_KEY_REFUSAL, 409, `invoke strict ${label}`);
-    assertInvokeRefusal(await door.invoke(CREATOR, 'preview_quote', invokeQuote(1, { idempotency_key: key })), INVOKE_KEY_REFUSAL, 409, `invoke creator ${label}`);
+    for (const [tool, args] of Object.entries(nativeMutations(sid))) {
+      assertKeyBadCharacters(await door.call('/mcp', tool, fx.withKey(key, args)), `/mcp ${tool} ${label}`);
+    }
+    // This door has always trimmed the key before using it, so whitespace AROUND a key (a trailing newline) is
+    // gone before the key is judged; the key it uses is clean. The native door uses the key as sent, and refuses it.
+    if (!/^[\x20-\x7E]*$/.test(key.trim())) {
+    assertKeyBadCharacters(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) }), `/ucp/mcp create storefront ${label}`);
+    assertKeyBadCharacters(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 1) }), `/ucp/mcp create kernel ${label}`);
+    assertKeyBadCharacters(await door.call('/ucp/mcp', 'update_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 2) }), `/ucp/mcp update ${label}`);
+    assertKeyBadCharacters(await door.call('/ucp/mcp', 'complete_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: ucpPayment }), `/ucp/mcp complete ${label}`);
+    }
+    for (const [way, route, strict] of INVOKE_WAYS) {
+      for (const [operation, payload] of [['preview_quote', invokeQuote(1, { idempotency_key: key })], ['create_order', invokeOrder(key, 1)]]) {
+        assertInvokeRefusal(await door.invoke(route, operation, payload, { strict }), INVOKE_KEY_BAD_CHARACTERS_REFUSAL, 409, `invoke ${way} ${operation} ${label}`);
+      }
+    }
   }
-  // An HTTP header cannot carry these characters, so the ACP REST door is shown with the one it can: a soft hyphen.
-  assertAcpKeyTooShort(await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key: 'abcdefg\u00ad' }), 'ACP create, soft hyphen');
-  assertAcpKeyTooShort(await door.acp('POST', `/checkout_sessions/${acpId}/cancel`, {}, { key: '\u00ad'.repeat(8) }), 'ACP cancel, eight soft hyphens');
+  // The ACP REST door carries the key in a header, which can hold only single-byte characters: those above ASCII
+  // arrive, and are refused. (A control character never arrives: the HTTP layer refuses the request itself.)
+  for (const key of ['idem-\u00e9-0001', 'idem-0001\u00ad', '\u00e9'.repeat(8)]) {
+    for (const [name, r] of [
+      ['create', await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key })],
+      ['update', await door.acp('POST', `/checkout_sessions/${acpId}`, fx.acpCart(2), { key })],
+      ['complete', await door.acp('POST', `/checkout_sessions/${acpId}/complete`, { payment_data: { method: 'placeholder', token: 'placeholder' } }, { key })],
+      ['cancel', await door.acp('POST', `/checkout_sessions/${acpId}/cancel`, {}, { key })],
+    ]) {
+      assert.equal(r.http, 409, `ACP ${name} ${JSON.stringify(key)}: ${r.raw.slice(0, 200)}`);
+      assert.deepEqual(r.body, {
+        type: 'error',
+        code: 'IDEMPOTENCY_CONFLICT',
+        message: KEY_BAD_CHARACTERS_MESSAGE,
+        detail: { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' },
+      }, `ACP ${name} ${JSON.stringify(key)}`);
+      sentNothing(r, `ACP ${name} ${JSON.stringify(key)}`);
+    }
+  }
+});
 
-  // Eight counted characters with invisible ones among them: accepted, and handed on exactly as sent. (A soft
-  // hyphen here, because the kernel also sends the key to the backend in an HTTP header.)
-  const key = 'abcd\u00adefgh\u00ad';
+test('the characters are judged before the length, and a key that passes both is handed on exactly as sent', async () => {
+  const sid = await kernelSession();
+  // One wide character is a short key too: the answer is about the character.
+  assertKeyBadCharacters(await door.call('/mcp', 'create_checkout_session', fx.withKey('\u{1F511}', { quote: fx.nativeQuote(1) })), 'one wide character');
+  // The key the backend is sent (in the order body, and as a header) is the key as the caller sent it: padding,
+  // inner spaces and punctuation included.
+  const key = '  idem 0001 ~!#  ';
   const link = await door.call('/mcp', 'create_payment_link', fx.withKey(key, { session_id: sid, customer_email: 'buyer@example.test' }));
   const order = link.upstream.find((c) => c.path === '/agent/v2/orders');
   assert.ok(order, link.raw.slice(0, 300));
-  assert.equal(JSON.parse(order.body.idempotency_key.replace(/:order$/, ''))[3], key, 'the key the backend is sent is the key as the caller sent it');
+  assert.equal(JSON.parse(order.body.idempotency_key.replace(/:order$/, ''))[3], key);
 });
 
 // ---- ACP REST update: the ceiling before the session is loaded ----------------------------------------------------
@@ -362,6 +403,37 @@ test('ACP REST update: a line above the ceiling is answered before the session i
   assert.equal(noBuyer.raw.includes('quantity_above_line_maximum'), false);
   const noBuyerCreate = await door.acp('POST', '/checkout_sessions', fx.acpCart(1000), { key: freshKey(), buyer: false });
   assert.equal(noBuyerCreate.body.code, 'USER_AUTH_REQUIRED');
+});
+
+// ---- /mcp: the partner door's own storefront cart ---------------------------------------------------------------------
+
+test('/mcp storefront cart (its switch on): 999 units reach the store; a line above the ceiling, a short key and a bad key reach nothing', async () => {
+  const FLAG = 'AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED';
+  const saved = process.env[FLAG];
+  process.env[FLAG] = '1';
+  try {
+    const cart = (key, quantity) => ({ ...fx.withKey(key, { quote: fx.nativeQuote(quantity, { product: IDS.SIG_STORE, merchant: IDS.SELLER_STORE, variant: null }) }), market: 'US' });
+    door.resetGate();
+    const at = await door.call('/mcp', 'create_checkout_session', cart(freshKey(), 999));
+    assert.equal(at.isError, false, at.raw.slice(0, 300));
+    const sent = at.store.find((c) => c.tool === 'create_cart');
+    assert.ok(sent, `the seller's store was asked for a cart: ${at.raw.slice(0, 300)}`);
+    assert.equal(sent.arguments.cart.line_items[0].quantity, 999);
+
+    door.resetGate();
+    for (const quantity of [1000, 900000000]) {
+      assertQuantityAboveMaximum(await door.call('/mcp', 'create_checkout_session', cart(freshKey(), quantity)), `storefront ${quantity}`);
+    }
+    for (const key of ['abcdefg', 'k', 'abc     ']) {
+      assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', cart(key, 1)), `storefront ${JSON.stringify(key)}`);
+    }
+    for (const key of BAD_CHARACTER_KEYS) {
+      assertKeyBadCharacters(await door.call('/mcp', 'create_checkout_session', cart(key, 1)), `storefront ${JSON.stringify(key)}`);
+    }
+  } finally {
+    if (saved === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = saved;
+  }
 });
 
 // ---- /public/mcp ----------------------------------------------------------------------------------------------------
@@ -391,7 +463,7 @@ async function acpSession() {
 test('ACP REST: a short Idempotency-Key is refused on create, update, complete and cancel, and nothing is sent anywhere', async () => {
   const id = await acpSession();
   // The header value reaches the door already trimmed (HTTP strips it), so padding cannot lengthen a key here.
-  for (const key of ['abcdefg', 'k', '  abcdefg  ', 'é'.repeat(7)]) {
+  for (const key of ['abcdefg', 'k', '  abcdefg  ']) {
     assertAcpKeyTooShort(await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key }), `create ${JSON.stringify(key)}`);
     // No variant named: the door would read the product to resolve one. Refused before that read.
     assertAcpKeyTooShort(await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER_CONNECTED, items: [{ product_id: IDS.SIG_CONNECTED, quantity: 1 }] }, { key }), `create, variant to resolve ${JSON.stringify(key)}`);
@@ -402,7 +474,7 @@ test('ACP REST: a short Idempotency-Key is refused on create, update, complete a
 });
 
 test('ACP REST: an 8-character key is past the gate; an absent key is answered exactly as before; a read takes none', async () => {
-  for (const key of ['abcdefgh', 'é'.repeat(8)]) {
+  for (const key of ['abcdefgh', 'a b c d~']) {
     const created = await door.acp('POST', '/checkout_sessions', fx.acpCart(2), { key });
     assert.equal(created.http, 201, `${JSON.stringify(key)}: ${created.raw.slice(0, 300)}`);
     assert.equal(quoteCalls(created).length, 1);
@@ -463,11 +535,11 @@ test('ACP REST create and update: 999 units are priced; 1000, and a huge number,
 
 // ---- the invoke door: /agent/shop/v1/invoke and its creator alias ------------------------------------------------
 //
-// Three ways a quote reaches the backend from here, and the ceiling is on each:
-//   - the shop route with strict checkout ON: the kernel's invoke handler (its contract validator refuses);
-//   - the shop route with strict checkout OFF, and the creator alias ALWAYS (it is never the kernel's): the
-//     gateway's own handler, which asks the same kernel module before it reads, rewrites or sends anything.
-// One answer on all of them: 422 QUOTE_REQUIRED in this door's failure body, with the named detail.
+// The two addresses are one route. Two ways a quote reaches the backend from it, and the ceiling is on each:
+//   - strict checkout ON (either address): the kernel's invoke handler (its contract validator refuses);
+//   - strict checkout OFF (either address): the gateway's own handler, which asks the same kernel module before
+//     it reads, rewrites or sends anything.
+// One answer on both: 422 QUOTE_REQUIRED in this door's failure body, with the named detail.
 
 const SHOP = '/agent/shop/v1/invoke';
 const CREATOR = '/agent/creator/v1/invoke';
@@ -486,6 +558,14 @@ const INVOKE_KEY_REFUSAL = Object.freeze({
   message: 'The idempotency key is too short: it must be at least 8 characters, not counting leading or trailing whitespace or invisible formatting characters. Generate a new unique key of that length or longer (a UUID works) and send the request again with it. Retrying with this key will not change the answer.',
   retriable: false,
   detail: { reason: 'idempotency_key_too_short', min_length: 8 },
+});
+const INVOKE_KEY_BAD_CHARACTERS_REFUSAL = Object.freeze({
+  status: 'failure',
+  error: 'IDEMPOTENCY_CONFLICT',
+  code: 'IDEMPOTENCY_CONFLICT',
+  message: KEY_BAD_CHARACTERS_MESSAGE,
+  retriable: false,
+  detail: { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' },
 });
 // What the strict contract always answered for a missing or short key on a write: unnamed, same code and status.
 const INVOKE_STRICT_KEY_REFUSAL_AS_BEFORE = Object.freeze({
@@ -533,9 +613,9 @@ test('invoke preview_quote: 999 units are priced; 1000, and a huge number, are r
   }
 });
 
-test('invoke preview_quote, strict contract: a numeric string is not a quantity there and keeps the refusal it always got', async () => {
+for (const address of [SHOP, CREATOR]) test(`${address} invoke preview_quote, strict contract: a numeric string is not a quantity there and keeps the refusal it always got`, async () => {
   for (const quantity of ['1000', '5', 0, -1, 1.5]) {
-    const r = await door.invoke(SHOP, 'preview_quote', invokeQuote(quantity));
+    const r = await door.invoke(address, 'preview_quote', invokeQuote(quantity));
     assertInvokeRefusal(r, {
       status: 'failure',
       error: 'QUOTE_REQUIRED',
@@ -550,7 +630,7 @@ test('invoke preview_quote, strict contract: a numeric string is not a quantity 
 test('invoke preview_quote, the gateway\'s own handler: it CONVERTS a quantity, so the ceiling is on what it would price', async () => {
   // This handler has always priced "999" as 999 units and "1000" as 1000: a string above the ceiling is a line
   // above the ceiling here, and is refused like one. A string within it is priced exactly as before.
-  for (const [label, route, strict] of INVOKE_WAYS.filter(([, route, strict]) => route === CREATOR || !strict)) {
+  for (const [label, route, strict] of INVOKE_WAYS.filter(([, route, strict]) => !strict)) {
     const within = await door.invoke(route, 'preview_quote', invokeQuote('999'), { strict });
     assert.equal(within.http, 200, `${label}: ${within.raw.slice(0, 300)}`);
     assert.equal(quoteCalls(within)[0].body.offer_refs[0].quantity, 999, label);
@@ -566,14 +646,14 @@ test('invoke preview_quote, the gateway\'s own handler: it CONVERTS a quantity, 
   }
 });
 
-test('invoke, strict contract: an order is priced from its locked quote, so lines beside it are not read and not judged', async () => {
-  const r = await door.invoke(SHOP, 'create_order', invokeOrder('idem-invoke-order-04', 1000));
+for (const address of [SHOP, CREATOR]) test(`${address} invoke, strict contract: an order is priced from its locked quote, so lines beside it are not read and not judged`, async () => {
+  const r = await door.invoke(address, 'create_order', invokeOrder('idem-invoke-order-04', 1000));
   assert.equal(r.http, 404, r.raw.slice(0, 300));
   assert.equal(r.body.code, 'QUOTE_NOT_FOUND');
   sentNothing(r, 'strict create_order');
 });
 
-test('invoke, strict contract: a write with no key is refused as before; a key that is present and short gets the one named refusal, on a write and on a quote', async () => {
+for (const address of [SHOP, CREATOR]) test(`${address} invoke, strict contract: a write with no key is refused as before; a key that is present and short gets the one named refusal, on a write and on a quote`, async () => {
   const writes = {
     create_order: (key) => invokeOrder(key),
     submit_payment: (key) => ({ ...(key === undefined ? {} : { idempotency_key: key }), confirmation_token: 'placeholder', payment: { order_id: 'ord_placeholder', expected_amount: 1800, currency: 'USD' } }),
@@ -582,36 +662,35 @@ test('invoke, strict contract: a write with no key is refused as before; a key t
   for (const [operation, payload] of Object.entries(writes)) {
     // NO KEY AT ALL: the kernel's contract validator (contractValidation.js), unnamed, exactly as before.
     for (const key of [undefined, '', '   ']) {
-      assertInvokeRefusal(await door.invoke(SHOP, operation, payload(key)), INVOKE_STRICT_KEY_REFUSAL_AS_BEFORE, 409, `${operation} ${JSON.stringify(key)}`);
+      assertInvokeRefusal(await door.invoke(address, operation, payload(key)), INVOKE_STRICT_KEY_REFUSAL_AS_BEFORE, 409, `${operation} ${JSON.stringify(key)}`);
     }
     // A KEY THAT IS PRESENT AND SHORT: one rule decides, and names itself. The same status as before (409); the
-    // body now says what is wrong. Includes what the older count let through (eight UTF-16 units, four characters).
-    assert.equal(ASTRAL.repeat(4).length, 8);
-    for (const key of ['abcdefg', 'k', '  abcdefg  ', 'abc     ', ASTRAL.repeat(4), '\u200b'.repeat(8), 'abcdefg\u200b']) {
-      assertInvokeRefusal(await door.invoke(SHOP, operation, payload(key)), INVOKE_KEY_REFUSAL, 409, `${operation} ${JSON.stringify(key)}`);
+    // body now says what is wrong.
+    for (const key of ['abcdefg', 'k', '  abcdefg  ', 'abc     ']) {
+      assertInvokeRefusal(await door.invoke(address, operation, payload(key)), INVOKE_KEY_REFUSAL, 409, `${operation} ${JSON.stringify(key)}`);
     }
-    for (const key of ['abcdefgh', '  abcdefgh  ', ASTRAL.repeat(8)]) {
-      const r = await door.invoke(SHOP, operation, payload(key));
+    for (const key of ['abcdefgh', '  abcdefgh  ', 'a b c d~']) {
+      const r = await door.invoke(address, operation, payload(key));
       assert.notEqual(r.body && r.body.code, 'IDEMPOTENCY_CONFLICT', `${operation} ${JSON.stringify(key)}: ${r.raw.slice(0, 200)}`);
     }
   }
   // A quote needs no key under the strict contract (unchanged); one that is sent is held to the minimum.
-  const none = await door.invoke(SHOP, 'preview_quote', invokeQuote(1));
+  const none = await door.invoke(address, 'preview_quote', invokeQuote(1));
   assert.equal(none.http, 200, none.raw.slice(0, 300));
-  for (const key of ['abcdefg', 'k', 'abc     ', ASTRAL.repeat(4)]) {
-    assertInvokeRefusal(await door.invoke(SHOP, 'preview_quote', invokeQuote(1, { idempotency_key: key })), INVOKE_KEY_REFUSAL, 409, `preview_quote ${JSON.stringify(key)}`);
+  for (const key of ['abcdefg', 'k', 'abc     ']) {
+    assertInvokeRefusal(await door.invoke(address, 'preview_quote', invokeQuote(1, { idempotency_key: key })), INVOKE_KEY_REFUSAL, 409, `preview_quote ${JSON.stringify(key)}`);
   }
-  const eight = await door.invoke(SHOP, 'preview_quote', invokeQuote(1, { idempotency_key: 'abcdefgh' }));
+  const eight = await door.invoke(address, 'preview_quote', invokeQuote(1, { idempotency_key: 'abcdefgh' }));
   assert.equal(eight.http, 200, eight.raw.slice(0, 300));
 });
 
 test('invoke, the gateway\'s own handler: a short key gets the same named refusal whether it is plainly short, padded or wide; the request schema no longer answers it first', async () => {
-  for (const [label, route, strict] of INVOKE_WAYS.filter(([, route, strict]) => route === CREATOR || !strict)) {
+  for (const [label, route, strict] of INVOKE_WAYS.filter(([, route, strict]) => !strict)) {
     for (const [operation, payload] of [['preview_quote', (key) => invokeQuote(1, { idempotency_key: key })], ['create_order', (key) => invokeOrder(key, 1)]]) {
       // BEFORE: src/schema.js (`idempotency_key: z.string().min(8)`) answered a plainly short key with a 400
       // INVALID_REQUEST, and let through 8 units that are fewer than 8 characters. NOW the shared rule is asked
       // first and answers every one of them the same way.
-      for (const key of ['abcdefg', 'k', 'abc     ', '  abcdef  ', ASTRAL.repeat(4), '\u200b'.repeat(8), 'abcdefg\u200b']) {
+      for (const key of ['abcdefg', 'k', 'abc     ', '  abcdef  ']) {
         assertInvokeRefusal(await door.invoke(route, operation, payload(key), { strict }), INVOKE_KEY_REFUSAL, 409, `${label} ${operation} ${JSON.stringify(key)}`);
       }
       keySeq += 1;
@@ -682,7 +761,7 @@ test('tools/list publishes the minimum for every idempotency key and the ceiling
       for (const found of collect(tools, key, [])) {
         keySchemas += 1;
         assert.equal(found.schema.minLength, 8, found.at);
-        assert.ok(found.schema.description.endsWith(' At least 8 characters; leading and trailing whitespace and invisible formatting characters are not counted.'), found.at);
+        assert.ok(found.schema.description.endsWith(' At least 8 characters, printable ASCII only (U+0020 to U+007E); leading and trailing spaces are not counted.'), found.at);
       }
     }
   }

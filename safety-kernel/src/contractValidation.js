@@ -27,7 +27,11 @@ export const WRITE_OPERATIONS = new Set(['create_order', 'submit_payment', 'requ
 export const INVOKE_KEYED_OPERATIONS = new Set(intakeBounds.INVOKE_KEYED_OPERATIONS);
 export const { INVOKE_BOUNDED_OPERATIONS } = intakeBounds;
 
-const INVOKE_NAMED_REASONS = new Set([intakeBounds.IDEMPOTENCY_KEY_TOO_SHORT_REASON, intakeBounds.QUANTITY_ABOVE_LINE_MAXIMUM_REASON]);
+const INVOKE_NAMED_REASONS = new Set([
+  intakeBounds.IDEMPOTENCY_KEY_TOO_SHORT_REASON,
+  intakeBounds.IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
+  intakeBounds.QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
+]);
 
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };
 
@@ -37,7 +41,7 @@ export function assertInvokeLineQuantities(operation, payload, options) {
 }
 
 /** Refuse, by name, a present idempotency key below the shared minimum on an invoke operation that takes one. */
-export function assertInvokeKeyLongEnough(operation, payload) {
+export function assertInvokeKeyAcceptable(operation, payload) {
   throwIfRefused(intakeBounds.invokeKeyRefusal(operation, payload));
 }
 
@@ -55,7 +59,7 @@ export function assertInvokeIntakeBounds(operation, payload) {
  */
 export function invokeErrorOf(err) {
   const error = err.toResult().error;
-  // ONLY the two shared bounds. Any other intake refusal that ever reaches this door keeps the plain body.
+  // ONLY the shared bounds, by their own reasons. Any other intake refusal that ever reaches this door keeps the plain body.
   const surfaced = INVOKE_NAMED_REASONS.has(err.detail?.reason) ? surfaceableIntakeRefusal(err) : null;
   if (!surfaced) return error;
   // The code's generic recovery hint is about another situation (QUOTE_REQUIRED's is "quote first"); the curated
@@ -101,7 +105,7 @@ export function validateCanonical(operation, payload, opts = {}) {
 
   // A key that IS present has the shared minimum (intakeBounds.cjs), on a write and on a quote alike, and a short
   // one gets that rule's named refusal. What is left for the check below is a write with no key at all.
-  assertInvokeKeyLongEnough(operation, p);
+  assertInvokeKeyAcceptable(operation, p);
   // Writes must carry an idempotency key (INV-4) regardless of which write it is.
   if (WRITE_OPERATIONS.has(operation)) {
     const k = p.idempotency_key;
