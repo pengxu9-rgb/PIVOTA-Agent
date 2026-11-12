@@ -218,7 +218,8 @@ describe('the currencies a row is labelled with', () => {
   test('an unpriced row: the currencies the read withheld, noted beside that very object', () => {
     const r = { ...row(null), price: null };
     assert.deepEqual(lineCurrencyLabelsOf(r, line), []);
-    noteWithheldCurrencies(r, ['sgd', 'EUR', 'EUR', 'nope', 5]);
+    noteWithheldCurrencies(r, ['sgd', 'EUR', 'EUR', 'nope', 'US', 5]);
+    assert.deepEqual(withheldCurrenciesOf(r), ['EUR', 'SGD'], 'the note keeps currency codes only, once each, sorted');
     assert.deepEqual(lineCurrencyLabelsOf(r, line), ['EUR', 'SGD']);
     assert.deepEqual(lineCurrencyLabelsOf({ ...r }, line), [], 'a copy of the row carries no note: unknown, never guessed');
     assert.deepEqual(Object.keys(r).sort(), Object.keys(row(null)).sort(), 'nothing was added to the row');
@@ -464,11 +465,17 @@ describe('the escalation, flag ON: the rule is the REQUEST market\'s, on a row r
   test('a re-read: the rule is applied with the market the id carries, on the same single read; a row in another currency is refused and its cart is not read', async () => {
     const door = fakeDoor('USD');
     const executor = recordingExecutor(row('USD'));
+    const log = logOf();
     const id = encodeEscalationId([{ product_id: 'sig_row_a', quantity: 1 }], 'cart_0001', HOST, { code: 'GB', assumed: false });
-    const err = await rejected(escalate({ op: GET, params: { session_id: id }, executor, ucpArgs: {}, env: ON, merchantDoor: door }));
+    const err = await rejected(escalate({ op: GET, params: { session_id: id }, executor, ucpArgs: {}, env: ON, merchantDoor: door, log }));
     assert.deepEqual(err.detail.acp_detail, refusalDetail(['USD']));
     assert.deepEqual(door.calls, []);
     assert.deepEqual(executor.seen, THE_READ);
+    // The seller door was not even entered for it: the one line is the refusal's.
+    assert.deepEqual(log.lines, [{
+      event: 'ucp_merchant_door_pricing', outcome: 'refused', reason: 'seller_not_priced_in_market_currency',
+      market: 'GB', expected_currency: 'GBP', row_currency: 'USD', seller_host: HOST,
+    }]);
     // A withheld GBP row for the GB id: the cart is read and shown in GBP; when the cart answers USD it is refused by name.
     const gbp = fakeDoor('GBP');
     const out = await escalate({ op: GET, params: { session_id: id }, executor: recordingExecutor(withheldRow('GBP')), ucpArgs: {}, env: ON, merchantDoor: gbp });
@@ -537,6 +544,34 @@ describe('no answer can be BUILT in another currency than the market\'s', () => 
       const err = thrown(() => build(row('USD'), { marketCurrency }));
       assert.equal(err && err.detail.acp_detail.reason, 'seller_not_priced_in_market_currency', JSON.stringify(marketCurrency));
     }
+  });
+
+  // THE DOOR HANDS ITS BUILDER THE MARKET'S CURRENCY. The pre-check and the builder read the same row, so to show the
+  // builder is really the last step the row is changed BETWEEN them: the seller door (asked after the pre-check, before
+  // the build) fails, and while failing re-labels the row. An answer in the row's new currency must not be built.
+  test('create and re-read: a row that changes currency after the pre-check is still not answered in another currency', async () => {
+    const relabelling = (product) => ({
+      async endpointFor() { return ENDPOINT; },
+      async createCart() { product.currency = 'USD'; return { ok: false, status: 500 }; },
+      async getCart() { product.currency = 'USD'; return { ok: false, status: 500 }; },
+    });
+    const created = row('GBP');
+    const err = await rejected(escalate({ op: CREATE, params: createParams(), executor: { async execute() { return { product: created }; } }, ucpArgs: ucpArgs('GB'), env: ON, merchantDoor: relabelling(created) }));
+    assert.equal(created.currency, 'USD', 'the row was re-labelled under the door');
+    assert.ok(err, 'create: an answer was built in the new currency');
+    assert.equal(err.detail.acp_detail.reason, 'seller_not_priced_in_market_currency');
+    assert.deepEqual([err.detail.acp_detail.market_currency, err.detail.acp_detail.seller_currencies], ['GBP', ['USD']]);
+
+    const reread = row('GBP');
+    const id = encodeEscalationId([{ product_id: 'sig_row_a', quantity: 1 }], 'cart_0001', HOST, { code: 'GB', assumed: false });
+    const again = await rejected(escalate({ op: GET, params: { session_id: id }, executor: { async execute() { return { product: reread }; } }, ucpArgs: {}, env: ON, merchantDoor: relabelling(reread) }));
+    assert.equal(reread.currency, 'USD');
+    assert.ok(again, 're-read: an answer was built in the new currency');
+    assert.equal(again.detail.acp_detail.reason, 'seller_not_priced_in_market_currency');
+    // Flag off, the same sequence answers in whatever the row says at build time, as it always did.
+    const offRow = row('GBP');
+    const out = await escalate({ op: CREATE, params: createParams(), executor: { async execute() { return { product: offRow }; } }, ucpArgs: ucpArgs('GB'), env: OFF, merchantDoor: relabelling(offRow) });
+    assert.equal(out.currency, 'USD');
   });
 
   test('the seller-priced builder: an answer in another currency is refused by name; in the market\'s it is built', () => {
