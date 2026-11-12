@@ -236,3 +236,4 @@ jobs:
           # The same network guard the node suite runner preloads (scripts/run_node_test_suites.cjs,
           # withGuardPreload): loopback only.
           NODE_OPTIONS=--require=./tests/_support/netGuard.cjs node --test tests/integration/find_products_multi_brand_sibling_spellings_door_postgres.node.test.cjs
+          NODE_OPTIONS=--require=./tests/_support/netGuard.cjs node --test tests/integration/find_products_multi_brand_sibling_market_word_currency_postgres.node.test.cjs

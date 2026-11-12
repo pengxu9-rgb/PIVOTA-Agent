@@ -22,7 +22,7 @@ const suite = url ? describe : describe.skip;
 
 const FLAG = 'GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS';
 const {
-  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, REVIEW_ITEMS, UNDER_A_SIBLING_SPELLING, insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
+  BRANDS, FAMILY, ITEMS, KINDS, MARKET_WORD_ITEMS, NOT_FAMILIES, REVIEW_ITEMS, UNDER_A_SIBLING_SPELLING, insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
 } = require('../_support/brandSiblingSpellingsFixture.cjs');
 
 suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', () => {
@@ -118,11 +118,14 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     expect(exact.body.metadata.search_quality_contract.query_class).toBe('exact_product');
     expect(idsOf(exact.body)).toEqual(['zentora_usa__sunscreen']);
     // three spellings, any of them typed
-    for (const typed of FAMILY.Lumavelle) {
-      expect(await routeIds(`${typed} toner`)).toEqual(['lumavelle__toner', 'lumavelle_official_store__toner', 'lumavelle_uk__toner']);
-    }
-    const three = await invoke('Lumavelle UK toner');
-    expect(three.body.metadata.search_quality_contract.brand_spellings_bound).toBe(3);
+    // three spellings: the bare name reaches all three; a suffixed one reaches itself and the bare name
+    expect(await routeIds('Lumavelle toner')).toEqual(['lumavelle__toner', 'lumavelle_official_store__toner', 'lumavelle_uk__toner']);
+    expect(await routeIds('Lumavelle UK toner')).toEqual(['lumavelle__toner', 'lumavelle_uk__toner']);
+    expect(await routeIds('Lumavelle Official Store toner')).toEqual(['lumavelle__toner', 'lumavelle_official_store__toner']);
+    const bare = await invoke('Lumavelle toner');
+    expect(bare.body.metadata.search_quality_contract.brand_spellings_bound).toBe(3);
+    const suffixed = await invoke('Lumavelle UK toner');
+    expect(suffixed.body.metadata.search_quality_contract.brand_spellings_bound).toBe(2);
   });
 
   test('the invariant at the route: flag off breaks it for exactly the sibling-spelling products; flag on holds', async () => {
@@ -192,6 +195,52 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     expect([...new Set(changed)].sort()).toEqual([...FAMILY.Zentora, ...FAMILY.Lumavelle].sort());
   });
 
+  // Owner, 2026-11-12: "match only the typed spelling plus the bare name". A market or channel word
+  // in the brand names a storefront; the buyer who types one gets that spelling and the plain brand.
+  test('a market word in the typed brand narrows: the typed spelling plus the bare name, never the other storefronts', async () => {
+    const ids = (kind, brands) => MARKET_WORD_ITEMS.filter((item) => item.kind === kind && brands.includes(item.brand)).map((item) => item.id).sort();
+    const queries = ['Solvane serum', 'Solvane US serum', 'Solvane JP serum', 'Solvane KR serum', 'Solvane serum us', 'Solvane', 'Solvane US', 'Solvane JP',
+      'Solvane toner for us', 'Tavrin serum', 'Tavrin Global serum', 'Tavrin Global'];
+    await insertItems(db, MARKET_WORD_ITEMS);
+    try {
+      jest.resetModules();
+      await boot(null);
+      const off = await routeAnswers(queries);
+      jest.resetModules();
+      await boot('on');
+      const on = await routeAnswers(queries);
+      const every = (brands) => MARKET_WORD_ITEMS.filter((item) => brands.includes(item.brand)).map((item) => item.id).sort();
+      // the bare name: the whole family (its qualifying spellings; the one-row "Solvane KR" is no brand by itself)
+      expect(on['Solvane serum']).toEqual(ids('serum', ['Solvane', 'Solvane US', 'Solvane JP']));
+      expect(on['Solvane']).toEqual(every(['Solvane', 'Solvane US', 'Solvane JP']));
+      // a suffixed spelling: itself and the bare name; the other storefront never
+      expect(on['Solvane US serum']).toEqual(ids('serum', ['Solvane', 'Solvane US']));
+      expect(on['Solvane JP serum']).toEqual(ids('serum', ['Solvane', 'Solvane JP']));
+      expect(on['Solvane US']).toEqual(every(['Solvane', 'Solvane US']));
+      expect(on['Solvane JP']).toEqual(every(['Solvane', 'Solvane JP']));
+      // the market word outside the brand span: the brand typed is the bare one
+      expect(on['Solvane serum us']).toEqual(on['Solvane serum']);
+      expect(on['Solvane toner for us']).toEqual(ids('toner', ['Solvane', 'Solvane US', 'Solvane JP']));
+      // a suffixed spelling that is no brand by itself: exactly the flag-off answer
+      expect(on['Solvane KR serum']).toEqual(off['Solvane KR serum']);
+      // a two-spelling family: both, whichever is typed
+      expect(on['Tavrin serum']).toEqual(ids('serum', ['Tavrin', 'Tavrin Global']));
+      expect(on['Tavrin Global serum']).toEqual(ids('serum', ['Tavrin', 'Tavrin Global']));
+      expect(on['Tavrin Global']).toEqual(every(['Tavrin', 'Tavrin Global']));
+      // flag off, for the record: one spelling each
+      expect(off['Solvane serum']).toEqual(ids('serum', ['Solvane']));
+      expect(off['Solvane US serum']).toEqual(ids('serum', ['Solvane US']));
+      expect(off['Solvane JP serum']).toEqual(ids('serum', ['Solvane JP']));
+      // the count the answer reports is the number bound
+      const count = async (query) => (await invoke(query)).body.metadata.search_quality_contract.brand_spellings_bound;
+      expect(await count('Solvane serum')).toBe(3);
+      expect(await count('Solvane JP serum')).toBe(2);
+      expect(await count('Tavrin Global serum')).toBe(2);
+    } finally {
+      await removeItems(db, MARKET_WORD_ITEMS);
+    }
+  });
+
   // The reviewed list, populated through its test seam (the shipped list is empty), on the real
   // route: a listed spelling binds nothing and is bound by nothing, however the entry or the
   // catalogue spaces it. "Pallor USA" and "Pal Lor USA" are one row identity.
@@ -209,9 +258,10 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
         } finally { restore(); }
       };
       // premise: unlisted, it is one family and every spelling reaches every row
+      // premise: unlisted, the bare name reaches every row, and a suffixed spelling reaches itself and the bare name
       const everything = serum(['Pallor', 'Pallor UK', ...USA]);
-      expect(await answers([])).toEqual({ 'Pallor serum': everything, 'Pallor UK serum': everything, 'Pallor USA serum': everything,
-        'Pal Lor USA serum': everything, 'pallorusa serum': everything });
+      expect(await answers([])).toEqual({ 'Pallor serum': everything, 'Pallor UK serum': serum(['Pallor', 'Pallor UK']),
+        'Pallor USA serum': serum(['Pallor', ...USA]), 'Pal Lor USA serum': serum(['Pallor', ...USA]), 'pallorusa serum': serum(['Pallor', ...USA]) });
       for (const entry of ['pallor usa', 'pal lor usa', 'pallorusa', 'Pallor USA']) {
         expect({ entry, ...(await answers([entry])) }).toEqual({ entry,
           'Pallor serum': serum(['Pallor', 'Pallor UK']), 'Pallor UK serum': serum(['Pallor', 'Pallor UK']),
@@ -219,9 +269,8 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
       }
       for (const entry of ['pallor', 'pal lor', 'Pal-Lor']) {
         expect({ entry, ...(await answers([entry])) }).toEqual({ entry,
-          'Pallor serum': serum(['Pallor']), 'Pallor UK serum': serum(['Pallor UK', ...USA]),
-          'Pallor USA serum': serum(['Pallor UK', ...USA]), 'Pal Lor USA serum': serum(['Pallor UK', ...USA]),
-          'pallorusa serum': serum(['Pallor UK', ...USA]) });
+          'Pallor serum': serum(['Pallor']), 'Pallor UK serum': serum(['Pallor UK']),
+          'Pallor USA serum': serum(USA), 'Pal Lor USA serum': serum(USA), 'pallorusa serum': serum(USA) });
       }
     } finally {
       await removeItems(db, REVIEW_ITEMS);
@@ -265,7 +314,9 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     expect(await matched('on', 'zentora')).toEqual(['Zentora', 'Zentora USA']);
     expect(await matched(null, 'zentora usa')).toEqual(['Zentora USA']);
     expect(await matched('on', 'zentora usa')).toEqual(['Zentora', 'Zentora USA']);
-    expect(await matched('on', 'lumavelle uk')).toEqual(['Lumavelle', 'Lumavelle Official Store', 'Lumavelle UK']);
+    expect(await matched('on', 'lumavelle')).toEqual(['Lumavelle', 'Lumavelle Official Store', 'Lumavelle UK']);
+    expect(await matched('on', 'lumavelle uk')).toEqual(['Lumavelle', 'Lumavelle UK']);
+    expect(await matched('on', 'lumavelle official store')).toEqual(['Lumavelle', 'Lumavelle Official Store']);
     expect(await matched('on', 'zentora labs')).toEqual(['Zentora Labs']);
     expect(await matched('on', 'noble')).toEqual(['Noble']);
     expect(await matched('on', 'noble pegasus')).toEqual(['Noble Pegasus']);

@@ -22,6 +22,7 @@ const beauty = (b, n) => ({ b, n, nb: n, nc: n, nl: n });
 const ROWS = [
   beauty('zentora', 5), beauty('zentora usa', 189), beauty('zentora uk', 31), beauty('zentora labs', 12),
   beauty('noble', 30), beauty('noble pegasus', 14), beauty('quillbright', 25),
+  beauty('vel mora', 20), beauty('velmora us', 15), // the bare name spaced, the store's written solid
 ];
 cache.__setBrandSetForTest(ROWS.map((row) => row.b));
 cache.__setBeautyBrandRowsForTest(ROWS);
@@ -56,12 +57,25 @@ test('flag on: a bare contract admits every family member', () => withFlag('on',
   for (const brand of ['Zentora', 'ZENTORA USA', 'Zentora UK']) assert.equal(admitted('Zentora toner', brand), true, brand);
 }));
 
-test('flag on: a suffixed contract admits the bare key AND the other suffixed member', () => withFlag('on', () => {
+// Owner, 2026-11-12: "match only the typed spelling plus the bare name".
+test('flag on: a suffixed contract admits its own spelling and the bare one, not the other suffixed member', () => withFlag('on', () => {
   const { contract } = gateFor('Zentora USA toner', row('Zentora USA'));
   assert.equal(contract.hard_constraints.brand.brand_key, 'catalog:zentora usa');
-  assert.deepEqual(brandIdentityBindKeys(contract.hard_constraints.brand), ['zentorausa', 'zentora', 'zentorauk']);
-  for (const brand of ['Zentora USA', 'Zentora', 'Zentora UK']) assert.equal(admitted('Zentora USA toner', brand), true, brand);
+  assert.deepEqual(brandIdentityBindKeys(contract.hard_constraints.brand), ['zentorausa', 'zentora']);
+  for (const brand of ['Zentora USA', 'Zentora']) assert.equal(admitted('Zentora USA toner', brand), true, brand);
+  const { gate } = gateFor('Zentora USA toner', row('Zentora UK'));
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
 }));
+
+// The gate's own containment check already admits "x usa" under "x" and "x" under "x usa". What it
+// cannot see is spacing: "Velmora US" neither contains "vel mora" nor is contained in it.
+test('flag on: a sibling whose spacing differs from the contract\'s is admitted by the sibling list; flag off it is not', () => {
+  for (const [query, brand] of [['Vel Mora toner', 'Velmora US'], ['Velmora US toner', 'Vel Mora']]) {
+    assert.equal(withFlag(null, () => admitted(query, brand)), false, `premise, flag off: ${query} / ${brand}`);
+    assert.equal(withFlag('on', () => admitted(query, brand)), true, `${query} / ${brand}`);
+  }
+});
 
 test('flag off: the other suffixed member is rejected, as on main (the gap the gate had)', () => withFlag(null, () => {
   assert.equal(admitted('Zentora USA toner', 'Zentora USA'), true);
@@ -76,7 +90,7 @@ test('the gate admits every key recall binds, for every family member typed (fla
   for (const typed of Object.values(spellings)) {
     const { contract } = gateFor(`${typed} toner`, row(typed));
     const bound = brandIdentityBindKeys(contract.hard_constraints.brand);
-    assert.equal(bound.length, 3, typed);
+    assert.equal(bound.length, typed === 'Zentora' ? 3 : 2, typed);
     for (const key of bound) assert.equal(admitted(`${typed} toner`, spellings[key]), true, `${typed} -> ${key}`);
   }
 }));
@@ -107,7 +121,8 @@ test('the flag changes the verdict for family rows only: every other (query, row
       if (off !== on) changed.push(`${typed} -> ${brand}: ${off} -> ${on}`);
     }
   }
-  assert.deepEqual(changed, ['Zentora USA -> Zentora UK: false -> true', 'Zentora UK -> Zentora USA: false -> true']);
+  // nothing: a suffixed contract binds its own spelling and the bare one, and containment admits both
+  assert.deepEqual(changed, []);
 });
 
 test('metadata: the count of bound spellings, only with the flag on and more than one key, never the strings', () => {
