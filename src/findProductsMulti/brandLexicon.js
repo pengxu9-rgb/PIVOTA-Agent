@@ -608,7 +608,7 @@ function resolveBoundBrandSiblingSpellings(brand) {
   if (!catalogKey) return [];
   const key = catalogKey[1];
   if (isReviewedNotSibling(key)) return [];
-  const { siblings } = brandDictionaryCache.resolveBrandSiblingSpellings(key);
+  const { siblings } = brandDictionaryCache.resolveBrandSiblingSpellings(key, brand.alias || key);
   if (!siblings.length) return [];
   if (AMBIGUOUS_FAMILY_IDENTITIES.has(brandDictionaryCache.brandSpellingIdentity(brandDictionaryCache.brandFamilyName(key)))) {
     return [];

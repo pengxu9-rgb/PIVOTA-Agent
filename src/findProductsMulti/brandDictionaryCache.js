@@ -480,7 +480,19 @@ const NO_SIBLING_SPELLINGS = Object.freeze({ siblings: Object.freeze([]), capped
 // brand by itself, by the unchanged qualifiesAsBeautyBrand: which keys are brands is not decided
 // here. An empty (cold) dictionary, or a key it does not hold, has no siblings; neither has a key
 // that is not whole, or one whose family cannot stand for one brand (such a family is not indexed).
-function resolveBrandSiblingSpellings(brandKey) {
+//
+// WHICH siblings (owner, 2026-11-12: "match only the typed spelling plus the bare name"):
+//   * the buyer typed the BARE name -> every sibling: the whole family;
+//   * the buyer typed a SUFFIXED spelling ("zentora jp") -> the bare spelling only, never the
+//     other suffixed ones. A market word in the brand names a storefront, and the buyer who
+//     names one gets that storefront plus the plain brand, not "zentora us" or "zentora global".
+//     Channel words (global, official, store) are treated exactly like market words, for the
+//     same reason: "zentora store" is a particular shop. "us" and "usa" are two spellings like
+//     any other two: "zentora usa" does not bind "zentora us".
+// `typedSpelling` is the span of the query that matched (the contract's alias). It differs from
+// the key only when a bare name was matched to a suffixed key (the stripped-name matcher): the
+// buyer typed the bare name then, and gets the whole family.
+function resolveBrandSiblingSpellings(brandKey, typedSpelling = brandKey) {
   if (!siblingSpellingsEnabled() || !enabled() || !beautyContractEnabled()) return NO_SIBLING_SPELLINGS;
   const key = normalize(foldAccents(brandKey));
   // A cold dictionary holds no key, so it has no family either.
@@ -506,6 +518,8 @@ function resolveBrandSiblingSpellings(brandKey) {
     }
     return { siblings: NO_SIBLING_SPELLINGS.siblings, capped: true };
   }
+  const typedSuffixed = brandFamilyName(key) !== key && brandSpellingIdentity(typedSpelling) !== familyKey;
+  if (typedSuffixed) return { siblings: siblings.filter((brand) => brandFamilyName(brand) === brand), capped: false };
   return { siblings, capped: false };
 }
 

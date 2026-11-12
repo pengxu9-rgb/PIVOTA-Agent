@@ -75,6 +75,29 @@ const REVIEW_CASE = [
   ['Pallor UK', ['serum', 'toner', 'sunscreen']],
 ];
 const REVIEW_ITEMS = itemsOf(REVIEW_CASE, 'review');
+// "Match only the typed spelling plus the bare name": a three-spelling family (bare, US, JP), a
+// two-spelling one (bare, Global), and a spelling too small to be a brand by itself (one row).
+// Inserted and removed by the test that needs them.
+const MARKET_WORD_CASE = [
+  ['Solvane', ['serum', 'toner', 'lipstick']],
+  ['Solvane US', ['serum', 'toner', 'sunscreen']],
+  ['Solvane JP', ['serum', 'toner', 'lipstick']],
+  ['Solvane KR', ['serum']],
+  ['Tavrin', ['serum', 'toner', 'lipstick']],
+  ['Tavrin Global', ['serum', 'toner', 'sunscreen']],
+];
+const MARKET_WORD_ITEMS = itemsOf(MARKET_WORD_CASE, 'market');
+// The same family as market storefronts, each priced in its own currency, for the currency walk.
+const STOREFRONT_CASE = [
+  ['Solvane', ['serum', 'toner', 'lipstick'], 'USD'],
+  ['Solvane US', ['serum', 'toner', 'sunscreen'], 'USD'],
+  ['Solvane JP', ['serum', 'toner', 'lipstick'], 'JPY'],
+  ['Solvane UK', ['serum', 'toner', 'sunscreen'], 'GBP'],
+  ['Solvane Global', ['serum', 'toner', 'lipstick'], 'SGD'],
+];
+const STOREFRONT_ITEMS = itemsOf(STOREFRONT_CASE, 'storefront').map((item) => ({
+  ...item, currency: STOREFRONT_CASE.find(([brand]) => brand === item.brand)[2],
+}));
 const ALL_ITEMS = [...ITEMS, ...OTHER_ITEMS];
 const brandOf = Object.fromEntries(ALL_ITEMS.map((item) => [item.id, item.brand]));
 const sigOf = (id) => `sig_${crypto.createHash('md5').update(id).digest('hex')}`;
@@ -117,7 +140,7 @@ async function createFixture(db, { fetchCanonicalChainRows, buildSearchQualityCo
 }
 
 async function insertItems(db, items) {
-  for (const { id, title, brand, category, type } of items) {
+  for (const { id, title, brand, category, type, currency = 'USD' } of items) {
     const sig = sigOf(id);
     await db.query(`INSERT INTO catalog_products(product_key,merchant_id,platform,source_product_id,title,brand,product_type,
      category_path,content_key,pivota_signature_id,pivota_canonical_url,canonical_url,image_url,product_payload,updated_at)
@@ -126,7 +149,7 @@ async function insertItems(db, items) {
       `https://cdn.example/${id}.jpg`]);
     await db.query('INSERT INTO index_pipeline_state(content_key,serving_eligible) VALUES ($1,true)', [id]);
     await db.query('INSERT INTO catalog_skus(sku_key,product_key,source_variant_id) VALUES ($1,$1,$2)', [id, `variant_${id}`]);
-    await db.query("INSERT INTO catalog_offers(offer_id,sku_key,merchant_effective_price,currency,availability) VALUES ($1,$1,20,'USD','in_stock')", [id]);
+    await db.query("INSERT INTO catalog_offers(offer_id,sku_key,merchant_effective_price,currency,availability) VALUES ($1,$1,20,$2,'in_stock')", [id, currency]);
   }
 }
 
@@ -175,5 +198,6 @@ async function invariantBreaks(search) {
 }
 
 module.exports = {
-  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, REVIEW_ITEMS, UNDER_A_SIBLING_SPELLING, insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, idOfSig, invariantBreaks, sigOf,
+  BRANDS, FAMILY, ITEMS, KINDS, MARKET_WORD_ITEMS, NOT_FAMILIES, REVIEW_ITEMS, STOREFRONT_ITEMS, UNDER_A_SIBLING_SPELLING,
+  insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, idOfSig, invariantBreaks, sigOf,
 };

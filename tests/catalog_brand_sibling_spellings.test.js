@@ -106,10 +106,107 @@ describe('the sibling resolver', () => {
     expect(siblingsOf('lumavelle')).toEqual(['lumavelle official store', 'lumavelle uk']);
   });
 
-  test('suffixed typed -> the bare key and the other suffixed members', () => {
+  // Owner, 2026-11-12: "match only the typed spelling plus the bare name".
+  test('suffixed typed -> the bare key only, never the other suffixed members', () => {
     expect(siblingsOf('zentora usa')).toEqual(['zentora']);
-    expect(siblingsOf('lumavelle uk')).toEqual(['lumavelle', 'lumavelle official store']);
-    expect(siblingsOf('lumavelle official store')).toEqual(['lumavelle', 'lumavelle uk']);
+    expect(siblingsOf('lumavelle uk')).toEqual(['lumavelle']);
+    expect(siblingsOf('lumavelle official store')).toEqual(['lumavelle']);
+    expect(brandIdentityBindKeys(catalog('lumavelle uk'))).toEqual(['lumavelleuk', 'lumavelle']);
+    expect(brandIdentityBindKeys(catalog('lumavelle official store'))).toEqual(['lumavelleofficialstore', 'lumavelle']);
+    // the bare name still binds the whole family
+    expect(brandIdentityBindKeys(catalog('lumavelle'))).toEqual(['lumavelle', 'lumavelleofficialstore', 'lumavelleuk']);
+  });
+
+  test.each(['us', 'usa', 'uk', 'jp', 'kr', 'global', 'official', 'store'])(
+    'typing the spelling with "%s" binds it and the bare name, and no other suffixed spelling (channel words like market words)',
+    (word) => {
+      const others = ['us', 'usa', 'uk', 'jp', 'kr', 'global', 'official', 'store'].filter((w) => w !== word).slice(0, 3);
+      cache.__setBeautyBrandRowsForTest([beauty('brisa', 20), beauty(`brisa ${word}`, 18), ...others.map((w) => beauty(`brisa ${w}`, 9))]);
+      expect(siblingsOf(`brisa ${word}`)).toEqual(['brisa']);
+      expect(brandIdentityBindKeys(catalog(`brisa ${word}`))).toEqual([`brisa${word}`, 'brisa']);
+      expect(siblingsOf('brisa')).toEqual([word, ...others].map((w) => `brisa ${w}`).sort());
+    },
+  );
+
+  test('"us" and "usa" are two spellings: neither binds the other', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('zentora', 5), beauty('zentora us', 40), beauty('zentora usa', 189)]);
+    expect(siblingsOf('zentora usa')).toEqual(['zentora']);
+    expect(siblingsOf('zentora us')).toEqual(['zentora']);
+    expect(brandIdentityBindKeys(catalog('zentora usa'))).toEqual(['zentorausa', 'zentora']);
+    expect(brandIdentityBindKeys(catalog('zentora us'))).toEqual(['zentoraus', 'zentora']);
+    expect(siblingsOf('zentora')).toEqual(['zentora us', 'zentora usa']);
+  });
+
+  test('two suffix words in a row are one spelling: it binds the bare name, not the one-word spellings', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('zentora', 5), beauty('zentora official', 9), beauty('zentora official store', 9), beauty('zentora store', 9)]);
+    expect(siblingsOf('zentora official store')).toEqual(['zentora']);
+    expect(siblingsOf('zentora official')).toEqual(['zentora']);
+  });
+
+  describe('a suffixed spelling typed, and no bare spelling to add: nothing extra, never the family', () => {
+    test('the bare spelling does not exist', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('zentora us', 40), beauty('zentora jp', 30), beauty('zentora global', 9)]);
+      for (const key of ['zentora us', 'zentora jp', 'zentora global']) {
+        expect(siblingsOf(key)).toEqual([]);
+        expect(brandIdentityBindKeys(catalog(key))).toEqual([key.replace(/ /g, '')]);
+      }
+    });
+
+    test('the bare spelling does not qualify (too few rows; or not beauty)', () => {
+      for (const bare of [{ b: 'zentora', n: 2, nb: 2, nc: 2, nl: 0 }, { b: 'zentora', n: 60, nb: 3, nc: 60, nl: 3 }]) {
+        cache.__setBeautyBrandRowsForTest([bare, beauty('zentora us', 40), beauty('zentora jp', 30)]);
+        expect(siblingsOf('zentora us')).toEqual([]);
+        expect(siblingsOf('zentora jp')).toEqual([]);
+      }
+    });
+
+    test('the bare spelling is not written in full by any catalog string', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('가나다 zentora', 30), beauty('zentora us', 40), beauty('zentora jp', 30)]);
+      expect(siblingsOf('zentora us')).toEqual([]);
+    });
+
+    test('the typed spelling is the only qualifying member', () => {
+      cache.__setBeautyBrandRowsForTest([{ b: 'zentora', n: 2, nb: 2, nc: 2, nl: 0 }, beauty('zentora us', 40), { b: 'zentora jp', n: 1, nb: 1, nc: 1, nl: 0 }]);
+      expect(siblingsOf('zentora us')).toEqual([]);
+    });
+  });
+
+  test('the bare name may be spaced or hyphenated: it is still the bare name', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('vel mora', 9), beauty('velmora us', 9), beauty('vel-mora jp', 9)]);
+    expect(siblingsOf('velmora us')).toEqual(['vel mora']);
+    expect(siblingsOf('vel-mora jp')).toEqual(['vel mora']);
+    expect(siblingsOf('vel mora')).toEqual(['vel-mora jp', 'velmora us']);
+  });
+
+  // The typed span is the contract's alias. It differs from the key only when a bare name was
+  // matched to a suffixed key (the stripped-name matcher): the buyer typed the bare name.
+  test('what was TYPED decides, not the key it was matched to', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('zentora us', 40), beauty('zentora jp', 30), beauty('zentora global', 9)]);
+    const typed = (alias) => resolveBoundBrandSiblingSpellings({ brand_key: 'catalog:zentora us', canonical: 'zentora us', alias });
+    expect(typed('zentora')).toEqual(['zentora global', 'zentora jp']); // bare typed: the whole family
+    expect(typed('zen-tora')).toEqual(['zentora global', 'zentora jp']);
+    expect(typed('zentora us')).toEqual([]);
+    expect(typed('zentoraus')).toEqual([]); // typed solid: still that spelling
+    expect(typed(undefined)).toEqual([]); // no alias: the key speaks
+    expect(typed('')).toEqual([]);
+  });
+
+  // The rule keys on the MATCHED BRAND SPAN (the longest dictionary span in the query), not on
+  // a market word standing anywhere else in it.
+  test.each([
+    ['zentora us serum', 'catalog:zentora us', ['zentoraus', 'zentora']],
+    ['Zentora US serum for dry skin', 'catalog:zentora us', ['zentoraus', 'zentora']],
+    ['serum zentora jp', 'catalog:zentora jp', ['zentorajp', 'zentora']],
+    ['zentora serum us', 'catalog:zentora', ['zentora', 'zentorajp', 'zentoraus']],
+    ['us zentora serum', 'catalog:zentora', ['zentora', 'zentorajp', 'zentoraus']],
+    ['zentora sunscreen for us', 'catalog:zentora', ['zentora', 'zentorajp', 'zentoraus']],
+    ['zentora serum made in usa', 'catalog:zentora', ['zentora', 'zentorajp', 'zentoraus']],
+    ['zentora store serum', 'catalog:zentora', ['zentora', 'zentorajp', 'zentoraus']], // no "zentora store" in the catalogue
+  ])('query %j matches %s and binds %j', (rawQuery, brandKey, keys) => {
+    cache.__setBeautyBrandRowsForTest([beauty('zentora', 5), beauty('zentora us', 40), beauty('zentora jp', 30)]);
+    const { brand } = buildSearchQualityContract({ rawQuery, source: 'shopping-agent-ui' }).hard_constraints;
+    expect(brand.brand_key).toBe(brandKey);
+    expect(brandIdentityBindKeys(brand)).toEqual(keys);
   });
 
   test('never a prefix: a different brand sharing the first word is not a sibling, either way', () => {
@@ -187,11 +284,12 @@ describe('the sibling resolver', () => {
     ['ma', false], ['k2', false], ['abc', false], ['ab c', false], ['ab-c', false], ['a-b', false], ['skin', false], ['the', false],
     ['k2x', true], ['abcd', true], ['ab cd', true], ['ab-cd', true], ['a1 b', true],
   ])('family name "%s": a family = %s', (name, isFamily) => {
-    cache.__setBeautyBrandRowsForTest([beauty(`${name} us`, 20), beauty(`${name} store`, 15), beauty(`${name} jp`, 12)]);
+    cache.__setBeautyBrandRowsForTest([beauty(name, 30), beauty(`${name} us`, 20), beauty(`${name} store`, 15)]);
     // premise: the suffixed spellings are dictionary brands either way
     expect(cache.matchCatalogBeautyBrand(`${name} us`)).toEqual(expect.objectContaining({ brand: `${name} us` }));
-    expect(siblingsOf(`${name} us`)).toEqual(isFamily ? [`${name} jp`, `${name} store`] : []);
-    expect(siblingsOf(`${name} store`)).toEqual(isFamily ? [`${name} jp`, `${name} us`] : []);
+    expect(siblingsOf(name)).toEqual(isFamily ? [`${name} store`, `${name} us`] : []);
+    expect(siblingsOf(`${name} us`)).toEqual(isFamily ? [name] : []);
+    expect(siblingsOf(`${name} store`)).toEqual(isFamily ? [name] : []);
     expect(cache.admissibleKey(name.replace(/[ -]/g, ''))).toBe(isFamily);
   });
 
@@ -203,8 +301,9 @@ describe('the sibling resolver', () => {
       // premise: the dictionary does hold the folded key, and the Latin spellings are a family
       expect(cache.matchCatalogBeautyBrand('velmora')).toEqual(expect.objectContaining({ brand: 'velmora' }));
       expect(siblingsOf('velmora')).toEqual([]);
-      expect(siblingsOf('velmora store')).toEqual(['velmora uk']);
-      expect(siblingsOf('velmora uk')).toEqual(['velmora store']);
+      // ...and the suffixed spellings have no bare name to add
+      expect(siblingsOf('velmora store')).toEqual([]);
+      expect(siblingsOf('velmora uk')).toEqual([]);
     });
 
     test('...and the review\'s case: "<other-script letters> global" beside Latin "global store"', () => {
@@ -294,11 +393,11 @@ describe('the sibling resolver', () => {
       });
     });
 
-    test('listing the bare name keeps it apart from every suffixed spelling, which still bind each other', () => {
+    test('listing the bare name keeps it apart from every suffixed spelling, and a suffixed spelling then binds nothing', () => {
       listed(['lumavelle'], () => {
         expect(siblingsOf('lumavelle')).toEqual([]);
-        expect(siblingsOf('lumavelle uk')).toEqual(['lumavelle official store']);
-        expect(siblingsOf('lumavelle official store')).toEqual(['lumavelle uk']);
+        expect(siblingsOf('lumavelle uk')).toEqual([]);
+        expect(siblingsOf('lumavelle official store')).toEqual([]);
       });
     });
 
@@ -331,9 +430,9 @@ describe('the sibling resolver', () => {
         listed([entry], () => {
           expect(siblingsOf('pallor')).toEqual([]);
           expect(siblingsOf('pal-lor')).toEqual([]);
-          expect(siblingsOf('pallor usa')).toEqual(['pallor uk']);
-          expect(siblingsOf('pal lor usa')).toEqual(['pallor uk']);
-          expect(siblingsOf('pallor uk')).toEqual(['pal lor usa', 'pallor usa']);
+          expect(siblingsOf('pallor usa')).toEqual([]);
+          expect(siblingsOf('pal lor usa')).toEqual([]);
+          expect(siblingsOf('pallor uk')).toEqual([]);
           for (const key of ['pallor usa', 'pal lor usa', 'pallor uk']) expect(brandIdentityBindKeys(catalog(key))).not.toContain('pallor');
         });
       },
@@ -344,7 +443,7 @@ describe('the sibling resolver', () => {
       const restore = __setReviewedNotSiblingSpellingsForTest(['pallor usa']);
       expect(siblingsOf('pallor usa')).toEqual([]);
       restore();
-      expect(siblingsOf('pallor usa')).toEqual(['pal-lor', 'pallor', 'pallor uk']);
+      expect(siblingsOf('pallor usa')).toEqual(['pal-lor', 'pallor']);
     });
   });
 
@@ -476,6 +575,7 @@ describe('the sibling resolver', () => {
     const atCap = [beauty('velora', 9), ...words.slice(0, 7).map((word) => beauty(`velora ${word}`, 9))];
     cache.__setBeautyBrandRowsForTest(atCap);
     expect(siblingsOf('velora')).toHaveLength(7);
+    expect(siblingsOf('velora uk')).toEqual(['velora']);
     expect(mockWarn).not.toHaveBeenCalled();
 
     cache.__setBeautyBrandRowsForTest([...atCap, beauty('velora store', 9)]);
