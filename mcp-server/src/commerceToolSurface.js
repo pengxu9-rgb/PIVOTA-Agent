@@ -37,6 +37,8 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong, storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
+// The native door's route to the same storefront path (AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED, default off).
+import { storefrontCartInputSchema, storefrontMarketProblem, tryNativeStorefrontCart } from "./mcpStorefrontCart.js";
 import {
   assertExpectedSeller,
   prepareReapCheckout,
@@ -418,7 +420,17 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     The UCP dialect is validated in its own mapper instead (`rejectUnknown` et al. in
     //     ucpArgumentAdapter.js) against the UCP wire schemas, with UCP-vocabulary refusals — running this
     //     guard on those args would misjudge them against a shape they never claimed to have.
-    if (dialect === TOOL_DIALECTS.mcp) assertDeclaredArguments(op, toolArgs);
+    //     `storefrontCartDoor` is set by the `/mcp` door's own view only (mcpStorefrontCart.js), and only while its
+    //     flag is on: a native checkout call may then take the storefront path (step 3a-n), and create's schema
+    //     also declares `market`. The UCP projection never forwards the option, so no other door can set it.
+    const storefrontCartDoor = dialect === TOOL_DIALECTS.mcp && options.storefrontCartDoor === true && op.capability === "checkout";
+    if (dialect === TOOL_DIALECTS.mcp) {
+      assertDeclaredArguments(op, toolArgs, storefrontCartDoor ? storefrontCartInputSchema(op.id, INPUT_SCHEMAS[op.id]) : undefined);
+      if (storefrontCartDoor && op.id === "create_checkout_session") {
+        const problem = storefrontMarketProblem(toolArgs.market);
+        if (problem) throw new ToolValidationError(`${op.mcp}: ${problem}`);
+      }
+    }
 
     // 1) trusted identity from the verified session ONLY. Identity-derivation errors are swallowed for
     //    read-only ops (anonymous) and surface as USER_AUTH_REQUIRED for user-scoped ops below.
@@ -544,6 +556,21 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       // certain to arrive without variant identity. Threading it here was missed in the first revision, which
       // armed the capability for native `create_checkout_session` alone.
       resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads, sourceMerchantVariants });
+    }
+
+    // 3a-n) THE NATIVE DOOR'S STOREFRONT PATH (mcpStorefrontCart.js; reached only with `storefrontCartDoor`). The
+    //     same escalation the UCP branch above calls, for a native checkout of a seller Pivota is not connected
+    //     to, answered in the native shape. After the identity check (2) and the allowlist (3), before intake and
+    //     the kernel, exactly where the UCP branch sits. `undefined` = not that path: the call continues below
+    //     exactly as it does without the option. Only the escalation runs here (none of the UCP branch's other
+    //     lanes), and nothing is sent to a store but the cart the escalation itself builds.
+    if (storefrontCartDoor) {
+      const answered = await tryNativeStorefrontCart({
+        op, toolArgs, params, ctx, attested, executor: memoizedProductReads(executor), merchantDoor, log: logger,
+        // Only a re-read of an id the UCP door minted for an assumed market: a create here names its market or is refused.
+        onMarketAssumed: () => noteToolCall(observeEarly, { market_assumed: true }),
+      });
+      if (answered !== undefined) return answered;
     }
 
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.
@@ -796,19 +823,21 @@ function attestedBuyerFromSession(sessionContext = {}) {
 // needs its own hint because `constraints` is free-form (additionalProperties as a typed subschema), so a
 // misplaced constraint's name is — by design — declared nowhere the generic scan can find it.
 const DECLARED_PATHS_BY_TOOL = new Map();
-function declaredPathsFor(op) {
-  if (!DECLARED_PATHS_BY_TOOL.has(op.id)) {
-    DECLARED_PATHS_BY_TOOL.set(op.id, declaredPropertyPathsByName(INPUT_SCHEMAS[op.id]));
+// Keyed by the op for its own schema, and by the schema object for a door's variant of it (`schemaOverride`).
+function declaredPathsFor(op, schema) {
+  const key = schema === INPUT_SCHEMAS[op.id] ? op.id : schema;
+  if (!DECLARED_PATHS_BY_TOOL.has(key)) {
+    DECLARED_PATHS_BY_TOOL.set(key, declaredPropertyPathsByName(schema));
   }
-  return DECLARED_PATHS_BY_TOOL.get(op.id);
+  return DECLARED_PATHS_BY_TOOL.get(key);
 }
 
-function assertDeclaredArguments(op, toolArgs) {
-  const schema = INPUT_SCHEMAS[op.id];
+function assertDeclaredArguments(op, toolArgs, schemaOverride) {
+  const schema = schemaOverride || INPUT_SCHEMAS[op.id];
   const violations = findUndeclaredArguments(schema, toolArgs);
   if (violations.length === 0) return;
 
-  const declared = declaredPathsFor(op);
+  const declared = declaredPathsFor(op, schema);
   const parts = violations.map(({ path }) => {
     const leaf = path.replace(/\[\d+\]/g, "").split(".").pop();
     const elsewhere = (declared.get(leaf) || []).filter((p) => p !== path);
