@@ -85,6 +85,7 @@ import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import {
   assertProductIdentity,
   intakeRefusal,
+  isAcceptableLineQuantity,
   itemVariantRefusal,
   normalizeEmail,
   mapWithConcurrency,
@@ -709,7 +710,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // A quantity that is not a positive safe integer is NOT coerced to 1 (review of #2025: that would state a
     // one-unit total for a cart the caller believes is 2.5 or "3" — on the one number the agent compares
     // against the storefront). Fall through: intake refuses it with its own curated `item_bad_quantity`.
-    if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return null;
+    // The same for a line above the per-line ceiling: no store is asked for a cart the door will not offer, and the
+    // ceiling is intake's one number (`isAcceptableLineQuantity`), not a second one held here.
+    if (items.some((it) => !isAcceptableLineQuantity(it.quantity))) return null;
     const rows = await readRows(items, executor, ctx, { timeoutMs });
     const targets = new Map();
     for (const [pid, row] of rows) targets.set(pid, escalationTargetOf(row));
@@ -937,7 +940,7 @@ export async function refuseUnservedStorefrontCheckout({ op, params, ctx, execut
   // to intake, so they keep intake's own message and detail; a storefront row inside one is refused there too.
   if (items.length === 0 || items.length > MAX_ESCALATION_ITEMS) return undefined;
   if (new Set(items.map((it) => it.product_id)).size > MAX_CART_DISTINCT_PRODUCTS) return undefined;
-  if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return undefined;
+  if (items.some((it) => !isAcceptableLineQuantity(it.quantity))) return undefined;
   // `failOpen` (the native door): a read that fails is NOT this check's refusal to give — that door's checkout ran
   // without this read before, so only a POSITIVE storefront classification refuses; anything else proceeds as it did.
   let rows;

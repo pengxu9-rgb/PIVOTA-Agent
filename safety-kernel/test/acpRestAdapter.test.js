@@ -317,8 +317,10 @@ test('P2 session response does NOT preserve a merchant handoff-named string verb
 
 test('P2 create-dedup key is collision-safe across buyers/keys containing spaces', async () => {
   const { adapter } = setup();
-  const a = await adapter.createCheckoutSession(req({ body: CART, buyer: 'a b', idem: 'c' }));
-  const b = await adapter.createCheckoutSession(req({ body: CART, buyer: 'a', idem: 'b c' }));
+  // The two (buyer, key) pairs still read the same when joined on a space ("a b cdefghij"); the keys are the
+  // minimum length a key may have.
+  const a = await adapter.createCheckoutSession(req({ body: CART, buyer: 'a b', idem: 'cdefghij' }));
+  const b = await adapter.createCheckoutSession(req({ body: CART, buyer: 'a', idem: 'b cdefghij' }));
   assert.equal(a.status, 201);
   assert.equal(b.status, 201, 'distinct (buyer,key) must not collide on the dedup key');
   assert.notEqual(a.body.id, b.body.id);

@@ -38,6 +38,7 @@ import {
   joinName,
   normalizeAttestedBuyer,
   normalizeCartItems,
+  assertIdempotencyKeyLongEnough,
   pickCompleteAddress,
   resolveBuyerEmail,
   resolveBuyerName,
@@ -149,6 +150,9 @@ export function createAcpRestAdapter(deps = {}) {
   function requireIdempotencyKey(req) {
     const key = header(req, 'idempotency-key');
     if (!nonEmpty(key)) throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'missing_idempotency_key' });
+    // The shared minimum (buyerIntake.js), here so a short key is refused before the buyer is resolved, a session
+    // is loaded or a product is read.
+    assertIdempotencyKeyLongEnough(key);
     return key;
   }
 

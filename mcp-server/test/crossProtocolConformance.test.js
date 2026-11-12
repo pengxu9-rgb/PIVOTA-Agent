@@ -162,20 +162,20 @@ test('CONFORMANCE: replay is charge-once in BOTH ecosystems (same idempotency ke
   const h = await harness();
   // MCP: complete twice with the same key
   const sess = mcpSession('sess_mcp');
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'k-c', quote: cart() }, sess);
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-k-c', quote: cart() }, sess);
   const grant = await h.mintGrant(created.session_id);
-  const args = { idempotency_key: 'k-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } };
+  const args = { idempotency_key: 'idem-k-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } };
   const first = await h.mcp.callTool('complete_checkout_session', args, sess);
   const second = await h.mcp.callTool('complete_checkout_session', args, sess); // replay
   // the replay returns the ORIGINAL result (not just the same order id) — full body equality
   assert.deepEqual(second, first);
 
   // ACP: complete twice with the same key on the same session
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'ak-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-ak-c' }));
   const aGrant = await h.mintGrant(aCreated.body.id);
-  const aArgs = acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'ak-pay' });
+  const aArgs = acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'idem-ak-pay' });
   const aFirst = await h.acp.completeCheckoutSession(aArgs);
-  const aSecond = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'ak-pay' }));
+  const aSecond = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'idem-ak-pay' }));
   assert.equal(aFirst.status, 200);
   assert.equal(aSecond.status, 200);
   // replay returns the byte-identical body, not merely a 200-shaped response
@@ -189,17 +189,17 @@ test('CONFORMANCE isolation: a session/checkout id from one protocol cannot be d
   const h = await harness();
   const sess = mcpSession('sess_mcp');
   // an MCP checkout session (a kernel quote_id)
-  const mcpCreated = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'iso-mc', quote: cart() }, sess);
+  const mcpCreated = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-iso-mc', quote: cart() }, sess);
   // an ACP checkout session (an adapter-minted acpSid)
-  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'iso-ac' }));
+  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-iso-ac' }));
 
   // ACP cannot resolve/complete an MCP session id (it isn't in the ACP session store) → 404, no charge
-  const acpOnMcp = await h.acp.completeCheckoutSession(acpReq({ id: mcpCreated.session_id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(mcpCreated.session_id) } }, idem: 'iso-x1' }));
+  const acpOnMcp = await h.acp.completeCheckoutSession(acpReq({ id: mcpCreated.session_id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(mcpCreated.session_id) } }, idem: 'idem-iso-x1' }));
   assert.equal(acpOnMcp.status, 404);
 
   // MCP cannot complete using an ACP checkout id (it isn't a kernel quote_id) → rejected, no charge
   await assert.rejects(
-    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'iso-x2', session_id: acpCreated.body.id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(acpCreated.body.id) } }, sess),
+    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-iso-x2', session_id: acpCreated.body.id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(acpCreated.body.id) } }, sess),
     (e) => e.code === 'QUOTE_NOT_FOUND' || e.code === 'STATE_LINKAGE_MISMATCH',
   );
   assert.equal(h.charges().length, 0, 'no cross-protocol session hijack charged anything');
@@ -237,11 +237,11 @@ test('CONFORMANCE edge parity: a user-scoped op with no verified session id is r
   const h = await harness();
   // MCP: user_ref but no acp_session_id
   await assert.rejects(
-    h.mcp.callTool('create_checkout_session', { idempotency_key: 'ns-mc', quote: cart() }, { user_ref: 'usr_buyer' }),
+    h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-ns-mc', quote: cart() }, { user_ref: 'usr_buyer' }),
     (e) => e.code === 'USER_AUTH_REQUIRED',
   );
   // ACP: no verified buyer at all
-  const aRes = await h.acp.createCheckoutSession(acpReq({ body: cart(), buyer: null, idem: 'ns-ac' }));
+  const aRes = await h.acp.createCheckoutSession(acpReq({ body: cart(), buyer: null, idem: 'idem-ns-ac' }));
   assert.equal(aRes.status, 401);
   assert.equal(h.charges().length, 0);
 });
@@ -274,31 +274,31 @@ test('CONFORMANCE surface parity: get returns the owned session; cancel works un
   const h = await harness();
   const sess = mcpSession('sess_mcp');
   // MCP: create → get → cancel (unpaid)
-  const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'sp-mc', quote: cart() }, sess);
+  const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-sp-mc', quote: cart() }, sess);
   const got = await h.mcp.callTool('get_checkout_session', { session_id: mc.session_id }, sess);
   assert.equal(got.session_id, mc.session_id);
-  const cxl = await h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'sp-cxl', session_id: mc.session_id }, sess);
+  const cxl = await h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'idem-sp-cxl', session_id: mc.session_id }, sess);
   assert.equal(cxl.status, 'canceled');
   // ACP: create → get → cancel (unpaid)
-  const ac = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'sp-ac' }));
+  const ac = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-sp-ac' }));
   const aGot = await h.acp.getCheckoutSession(acpReq({ id: ac.body.id, idem: null }));
   assert.equal(aGot.status, 200);
   assert.equal(aGot.body.id, ac.body.id);
-  const aCxl = await h.acp.cancelCheckoutSession(acpReq({ id: ac.body.id, idem: 'sp-acxl' }));
+  const aCxl = await h.acp.cancelCheckoutSession(acpReq({ id: ac.body.id, idem: 'idem-sp-acxl' }));
   assert.equal(aCxl.status, 200);
   assert.equal(aCxl.body.status, 'canceled');
 
   // a PAID order refuses cancellation — in BOTH
   // MCP: complete then cancel the resulting order → refused
-  const mp = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'sp-mp', quote: cart() }, sess);
-  const mPaid = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'sp-mpay', session_id: mp.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mp.session_id) } }, sess);
+  const mp = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-sp-mp', quote: cart() }, sess);
+  const mPaid = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-sp-mpay', session_id: mp.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mp.session_id) } }, sess);
   await assert.rejects(
     h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'sp-mcxl2', order_id: mPaid.order.order_id }, sess),
     (e) => e.code === 'OPERATION_NOT_ALLOWED',
   );
   // ACP: complete then cancel the same checkout session → refused
-  const ap = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'sp-apc' }));
-  await h.acp.completeCheckoutSession(acpReq({ id: ap.body.id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(ap.body.id) } }, idem: 'sp-apay' }));
+  const ap = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-sp-apc' }));
+  await h.acp.completeCheckoutSession(acpReq({ id: ap.body.id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(ap.body.id) } }, idem: 'idem-sp-apay' }));
   const aPaidCxl = await h.acp.cancelCheckoutSession(acpReq({ id: ap.body.id, idem: 'sp-acxl2' }));
   assert.equal(aPaidCxl.status, 409); // OPERATION_NOT_ALLOWED → 409
 
@@ -309,16 +309,16 @@ test('CONFORMANCE: an under-covering credential is rejected by BOTH (amount bind
   const h = await harness();
   // MCP: grant allowance below the 113 total
   const sess = mcpSession('sess_mcp');
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'u-c', quote: cart() }, sess);
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-u-c', quote: cart() }, sess);
   const smallGrant = await h.mintGrant(created.session_id, { maxAmount: 100 });
   await assert.rejects(
-    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'u-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: smallGrant } }, sess),
+    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-u-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: smallGrant } }, sess),
     (e) => e.code === 'CONFIRMATION_INVALID',
   );
   // ACP: same under-covering grant
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'au-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-au-c' }));
   const aSmall = await h.mintGrant(aCreated.body.id, { maxAmount: 100 });
-  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aSmall } }, idem: 'au-pay' }));
+  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aSmall } }, idem: 'idem-au-pay' }));
   assert.equal(aRes.status, 402); // CONFIRMATION_INVALID → 402
 
   assert.equal(h.charges().length, 0, 'neither ecosystem charged on an under-covering credential');
@@ -328,16 +328,16 @@ test('CONFORMANCE: a credential bound to ANOTHER session is rejected by BOTH (se
   const h = await harness();
   // MCP: grant bound to a different session id
   const sess = mcpSession('sess_mcp');
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'x-c', quote: cart() }, sess);
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-x-c', quote: cart() }, sess);
   const wrongGrant = await h.mintGrant('sess_SOMEONE_ELSE');
   await assert.rejects(
-    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'x-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: wrongGrant } }, sess),
+    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-x-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: wrongGrant } }, sess),
     (e) => e.code === 'CONFIRMATION_INVALID',
   );
   // ACP: grant for a different session than the one created
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'ax-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-ax-c' }));
   const aWrong = await h.mintGrant('cs_not_this_one');
-  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aWrong } }, idem: 'ax-pay' }));
+  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aWrong } }, idem: 'idem-ax-pay' }));
   assert.equal(aRes.status, 402);
   assert.equal(h.charges().length, 0);
 });
@@ -350,18 +350,18 @@ test('CONFORMANCE: amount-from-quote — a caller-injected amount cannot reach p
   const poisoned = () => ({ ...cart(), total: 1, items: CART_ITEMS.map((it) => ({ ...it, price: 1 })) });
   const sess = mcpSession('sess_mcp');
   await assert.rejects(
-    h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c', amount_total: 1, quote: poisoned() }, sess),
+    h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-q-c', amount_total: 1, quote: poisoned() }, sess),
     (e) => e.code === 'INVALID_ARGUMENTS' && e.message.includes('"amount_total"') && e.message.includes('"quote.total"'),
   );
   // a clean cart still prices from the locked quote, never from anything the caller could send
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c2', quote: cart() }, sess);
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-q-c2', quote: cart() }, sess);
   const grant = await h.mintGrant(created.session_id);
-  const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'q-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
+  const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-q-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
   assert.equal(out.order.amount_total, 113); // the adversarial stub would have priced this 1 if total/price leaked
   // ACP: stuffed amount in the (signed) body is dropped by the allowlist
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: poisoned(), idem: 'aq-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: poisoned(), idem: 'idem-aq-c' }));
   const aGrant = await h.mintGrant(aCreated.body.id);
-  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'aq-pay' }));
+  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'idem-aq-pay' }));
   assert.equal(aRes.body.order.amount_total, 113);
   for (const c of h.charges()) assert.equal(c.amount, 113); // never the injected 1
   // and PROVE it: NO caller amount field ever reached pricing input in either ecosystem
@@ -374,13 +374,13 @@ test('CONFORMANCE: amount-from-quote — a caller-injected amount cannot reach p
 test('CONFORMANCE: a missing/absent payment authorization is refused by BOTH before any charge', async () => {
   const h = await harness();
   const sess = mcpSession('sess_mcp');
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'n-c', quote: cart() }, sess);
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-n-c', quote: cart() }, sess);
   await assert.rejects(
-    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'n-pay', session_id: created.session_id }, sess),
+    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-n-pay', session_id: created.session_id }, sess),
     (e) => e.code === 'CONFIRMATION_INVALID',
   );
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'an-c' }));
-  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: {}, idem: 'an-pay' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-an-c' }));
+  const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: {}, idem: 'idem-an-pay' }));
   assert.equal(aRes.status, 402);
   assert.equal(h.charges().length, 0);
 });
@@ -392,8 +392,8 @@ test('CONFORMANCE: a missing/absent payment authorization is refused by BOTH bef
 
 test('CONFORMANCE intake parity: the SAME cart + SAME attested buyer yields a BYTE-IDENTICAL canonical quote', async () => {
   const h = await harness();
-  await h.mcp.callTool('create_checkout_session', { idempotency_key: 'par-m', quote: cart() }, mcpSession('sess_par'));
-  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'par-a' }));
+  await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-par-m', quote: cart() }, mcpSession('sess_par'));
+  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-par-a' }));
   assert.equal(acpCreated.status, 201, JSON.stringify(acpCreated.body));
 
   const [fromMcp, fromAcp] = h.previewQuotes();
@@ -408,10 +408,10 @@ test('CONFORMANCE intake parity: an ATTESTED email beats a caller-supplied one a
   const HOSTILE = 'model-asserted@evil.example';
   await h.mcp.callTool(
     'create_checkout_session',
-    { idempotency_key: 'att-m', quote: { ...cart(), customer_email: HOSTILE } },
+    { idempotency_key: 'idem-att-m', quote: { ...cart(), customer_email: HOSTILE } },
     mcpSession('sess_att'),
   );
-  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: { ...cart(), customer_email: HOSTILE }, idem: 'att-a' }));
+  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: { ...cart(), customer_email: HOSTILE }, idem: 'idem-att-a' }));
   assert.equal(acpCreated.status, 201, JSON.stringify(acpCreated.body));
 
   const [fromMcp, fromAcp] = h.previewQuotes();
@@ -443,9 +443,9 @@ test('CONFORMANCE intake parity: a partial shipping address is refused by BOTH, 
   const h = await harness();
   const partial = { city: 'London' };
   const mcpErr = await h.mcp
-    .callTool('create_checkout_session', { idempotency_key: 'addr-m', quote: { ...cart(), shipping_address: partial } }, mcpSession('sess_addr'))
+    .callTool('create_checkout_session', { idempotency_key: 'idem-addr-m', quote: { ...cart(), shipping_address: partial } }, mcpSession('sess_addr'))
     .then(() => null, (e) => e);
-  const acpRes = await h.acp.createCheckoutSession(acpReq({ body: { ...cart(), shipping_address: partial }, idem: 'addr-a' }));
+  const acpRes = await h.acp.createCheckoutSession(acpReq({ body: { ...cart(), shipping_address: partial }, idem: 'idem-addr-a' }));
 
   assert.ok(mcpErr);
   assert.equal(mcpErr.code, 'QUOTE_REQUIRED');
