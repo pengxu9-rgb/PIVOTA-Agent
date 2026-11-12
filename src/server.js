@@ -33322,8 +33322,12 @@ function commerceKernelErrorBody(error = {}) {
 // route with strict checkout off, and the creator alias always. The numbers, the rules and the wording are the
 // kernel's (safety-kernel/src/protocol/intakeBounds.cjs, the one file both module systems load); this only asks it
 // and shapes the answer the way the strict route shapes a kernel refusal. Null when the request is within both.
-function invokeIntakeBoundsFailure(operation, payload) {
-  const refusal = commerceIntakeBounds.invokeIntakeBoundsRefusal(operation, payload);
+// Read off the request body as it arrived (the request schema has not judged it yet): a body, operation or payload
+// of the wrong kind is that schema's to refuse, and is not judged here.
+function invokeIntakeBoundsFailure(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.operation !== 'string') return null;
+  const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload : null;
+  const refusal = commerceIntakeBounds.invokeIntakeBoundsRefusal(body.operation, payload);
   if (!refusal) return null;
   return {
     code: refusal.code,
@@ -44220,6 +44224,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
 
   try {
+    // The shared checkout bounds, before anything is read, rewritten or sent, and BEFORE the request schema: a
+    // present idempotency key below the minimum, a cart line above the per-line ceiling (invokeIntakeBoundsFailure).
+    // Before the schema because it has its own count for the key (8 UTF-16 units, as sent), and two rules gave two
+    // different answers for a short key on one door. Now the shared rule decides, with its named refusal; the
+    // schema still judges everything else about the request, including a key that is not a string.
+    const intakeBoundsFailure = invokeIntakeBoundsFailure(req.body);
+    if (intakeBoundsFailure) {
+      return res.status(statusForCommerceKernelError(intakeBoundsFailure.code)).json(commerceKernelErrorBody(intakeBoundsFailure));
+    }
     const parsed = InvokeRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       logger.warn({ gateway_request_id: gatewayRequestId, error: parsed.error.format() }, 'Invalid request body');
@@ -44231,12 +44244,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     const { operation } = parsed.data;
     let { payload } = parsed.data;
-    // The shared checkout bounds, before anything is read, rewritten or sent: a present idempotency key below the
-    // minimum, a cart line above the per-line ceiling (see invokeIntakeBoundsFailure).
-    const intakeBoundsFailure = invokeIntakeBoundsFailure(operation, payload);
-    if (intakeBoundsFailure) {
-      return res.status(statusForCommerceKernelError(intakeBoundsFailure.code)).json(commerceKernelErrorBody(intakeBoundsFailure));
-    }
     // Product search: the search request contract (and the lane fields copied out of it) and the routing
     // flags public_search_route / invoke_search_rail are the gateway's own, never the caller's. Under
     // those keys the request metadata is dropped here, before anything reads it, unless it is the very

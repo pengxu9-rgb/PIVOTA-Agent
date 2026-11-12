@@ -27,6 +27,8 @@ export const WRITE_OPERATIONS = new Set(['create_order', 'submit_payment', 'requ
 export const INVOKE_KEYED_OPERATIONS = new Set(intakeBounds.INVOKE_KEYED_OPERATIONS);
 export const { INVOKE_BOUNDED_OPERATIONS } = intakeBounds;
 
+const INVOKE_NAMED_REASONS = new Set([intakeBounds.IDEMPOTENCY_KEY_TOO_SHORT_REASON, intakeBounds.QUANTITY_ABOVE_LINE_MAXIMUM_REASON]);
+
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };
 
 /** Refuse, by name, an invoke operation with a cart line above the shared per-line ceiling (see intakeBounds.cjs). */
@@ -53,7 +55,8 @@ export function assertInvokeIntakeBounds(operation, payload) {
  */
 export function invokeErrorOf(err) {
   const error = err.toResult().error;
-  const surfaced = surfaceableIntakeRefusal(err);
+  // ONLY the two shared bounds. Any other intake refusal that ever reaches this door keeps the plain body.
+  const surfaced = INVOKE_NAMED_REASONS.has(err.detail?.reason) ? surfaceableIntakeRefusal(err) : null;
   if (!surfaced) return error;
   // The code's generic recovery hint is about another situation (QUOTE_REQUIRED's is "quote first"); the curated
   // message is the instruction, so the hint is left out rather than sent beside it.
@@ -96,16 +99,16 @@ export function validateCanonical(operation, payload, opts = {}) {
   const afterSalesSupported = opts.afterSalesSupported || SUPPORTED_AFTER_SALES;
   const p = payload || {};
 
+  // A key that IS present has the shared minimum (intakeBounds.cjs), on a write and on a quote alike, and a short
+  // one gets that rule's named refusal. What is left for the check below is a write with no key at all.
+  assertInvokeKeyLongEnough(operation, p);
   // Writes must carry an idempotency key (INV-4) regardless of which write it is.
   if (WRITE_OPERATIONS.has(operation)) {
     const k = p.idempotency_key;
-    if (typeof k !== 'string' || k.trim().length < 8) {
+    if (typeof k !== 'string' || k.trim() === '') {
       throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'missing_or_short_idempotency_key' });
     }
   }
-  // The shared minimum for a key that is present (buyerIntake.js): characters, not UTF-16 units, so it also refuses
-  // what the count above lets through, and it covers a key sent with a quote, which needs none.
-  assertInvokeKeyLongEnough(operation, p);
 
   switch (operation) {
     case 'get_product_detail': {

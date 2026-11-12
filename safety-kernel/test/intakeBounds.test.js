@@ -33,6 +33,7 @@ import { SafetyKernel } from '../src/kernel.js';
 import {
   assertIdempotencyKeyLongEnough,
   assertLineQuantitiesWithinMaximum,
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   IDEMPOTENCY_KEY_MIN_LENGTH,
   IDEMPOTENCY_KEY_TOO_SHORT_REASON,
   isAcceptableLineQuantity,
@@ -446,7 +447,7 @@ test('strict contract, create_order: the order is priced from its locked quote, 
   assert.equal(caught(() => validateCanonical('create_order', order)), null);
 });
 
-test('strict contract, the key on a write: where the minimum always was, and what the shared rule adds', () => {
+test('strict contract, the key on a write: no key is refused as before; a present short key gets the one named refusal', () => {
   const writes = {
     create_order: { order: { quote_id: 'q_1', shipping_address: { country: 'US', city: 'Springfield', address_line1: '1 Example Street', recipient_name: 'Example Buyer', postal_code: '00000' } } },
     submit_payment: { confirmation_token: 'placeholder', payment: { order_id: 'o_1', currency: 'USD', expected_amount: 100 } },
@@ -454,14 +455,14 @@ test('strict contract, the key on a write: where the minimum always was, and wha
   };
   assert.deepEqual(Object.keys(writes).sort(), [...WRITE_OPERATIONS].sort());
   for (const [operation, payload] of Object.entries(writes)) {
-    // ALREADY ENFORCED, unnamed: absent, blank, or fewer than 8 UTF-16 units once trimmed.
-    for (const key of [undefined, null, '', '   ', 'abcdefg', 'k', '  abcdefg  ', 'abc     ', 12345678]) {
+    // NO KEY (absent, blank, not a string): the refusal a write always got, unnamed and unchanged.
+    for (const key of [undefined, null, '', '   ', 12345678]) {
       const err = caught(() => validateCanonical(operation, { ...payload, idempotency_key: key }));
       assert.equal(err.code, 'IDEMPOTENCY_CONFLICT', `${operation} ${JSON.stringify(key)}`);
       assert.deepEqual(err.detail, { reason: 'missing_or_short_idempotency_key' }, `${operation} ${JSON.stringify(key)}`);
     }
-    // ADDED: 8 or more UTF-16 units that are fewer than 8 characters.
-    for (const key of ['\u{1F511}'.repeat(4), '\u{1F511}'.repeat(7), `  ${'\u{1F511}'.repeat(4)}  `]) {
+    // A KEY THAT IS PRESENT AND SHORT: the shared rule decides, whichever way it is short.
+    for (const key of ['abcdefg', 'k', '  abcdefg  ', 'abc     ', '\u{1F511}'.repeat(4), '\u{1F511}'.repeat(7), `  ${'\u{1F511}'.repeat(4)}  `, '\u200b'.repeat(8)]) {
       assertKeyTooShort(caught(() => validateCanonical(operation, { ...payload, idempotency_key: key })), `${operation} wide characters`);
     }
     for (const key of ['abcdefgh', '  abcdefgh  ', '\u{1F511}'.repeat(8), 'é'.repeat(8)]) {
@@ -526,6 +527,8 @@ test('the invoke door\'s error object: a shared refusal is named, every other er
     caught(() => validateCanonical('preview_quote', invokeQuote('1000'))),
     caught(() => validateCanonical('create_order', {})),
     new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'placeholder', secret: 'x' }),
+    // Another intake refusal, should one ever reach this door: only the two shared bounds are named here.
+    caught(() => normalizeCartItems(Array.from({ length: MAX_CART_ITEMS + 1 }, () => ({ product_id: 'p1', quantity: 1 })))),
   ]) {
     assert.deepEqual(invokeErrorOf(other), other.toResult().error);
     assert.equal('detail' in invokeErrorOf(other), false);
@@ -627,7 +630,7 @@ test('the per-line ceiling is written as a number in exactly one place on the ch
 test('the gateway\'s own invoke route holds no rule of its own: it loads the shared module and asks it', () => {
   const server = readFileSync(join(REPO, 'src/server.js'), 'utf8');
   assert.match(server, /require\('\.\.\/safety-kernel\/src\/protocol\/intakeBounds\.cjs'\)/);
-  assert.match(server, /commerceIntakeBounds\.invokeIntakeBoundsRefusal\(operation, payload\)/);
+  assert.match(server, /commerceIntakeBounds\.invokeIntakeBoundsRefusal\(body\.operation, payload\)/);
   // No list of operations, no minimum and no ceiling of its own.
   for (const forbidden of [/MAX_LINE_QUANTITY\s*=/, /IDEMPOTENCY_KEY_MIN_LENGTH\s*=/, /quantity_above_line_maximum/, /idempotency_key_too_short/]) {
     assert.equal(forbidden.test(server), false, String(forbidden));
@@ -654,4 +657,123 @@ test('the shared module: what a refusal says, and that it is as final as its cod
   // The numbers every ESM importer sees are this module's own.
   assert.equal(IDEMPOTENCY_KEY_MIN_LENGTH, intakeBoundsModule.IDEMPOTENCY_KEY_MIN_LENGTH);
   assert.equal(MAX_LINE_QUANTITY, intakeBoundsModule.MAX_LINE_QUANTITY);
+});
+
+// ---- invisible characters are not counted ------------------------------------------------------------------------
+
+test('characters of the Unicode format category are left out of the count, wherever they sit; the key is not altered', () => {
+  const invisible = ['\u200b', '\u200c', '\u200d', '\u2060', '\ufeff', '\u00ad', '\u200e', '\u200f', '\u202a', '\u202e', '\u2066', '\u2069', '\u061c', '\u{e0061}'];
+  for (const ch of invisible) {
+    const hex = ch.codePointAt(0).toString(16);
+    assert.match(ch, /^\p{Cf}$/u, `U+${hex} is a format character`);
+    // (U+FEFF is also whitespace to `trim`, so a key of nothing else is a blank key: absent, some other rule's.)
+    if (ch === '\ufeff') assert.equal(caught(() => assertIdempotencyKeyLongEnough(ch.repeat(8))), null, 'eight of U+feff is a blank key');
+    else assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(ch.repeat(8))), `eight of U+${hex}`);
+    assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(`abcdefg${ch}`)), `seven letters and U+${hex}`);
+    assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough(`${ch}abc${ch}defg${ch}`)), `seven letters among U+${hex}`);
+    assert.equal(caught(() => assertIdempotencyKeyLongEnough(`abcd${ch}efgh`)), null, `eight letters around U+${hex}`);
+  }
+  // Whitespace the trim removes only once an invisible character beside it is left out.
+  assertKeyTooShort(caught(() => assertIdempotencyKeyLongEnough('\u200b  abcdefg  \u200b')), 'padding inside invisible characters');
+  // Visible characters all count: marks, wide characters, inner spaces.
+  assert.equal(caught(() => assertIdempotencyKeyLongEnough('e\u0301'.repeat(4))), null, 'four letters each with a combining mark are eight characters');
+  // Counting changes nothing about the key: the executor hands it on exactly as sent.
+  const key = 'abcd\u200befgh\u200d';
+  const seen = [];
+  const kernel = {
+    previewQuote: async () => { throw new Error('unused'); },
+    requestAfterSales: async (params) => { seen.push(params.idempotency_key); return { ok: true }; },
+  };
+  return createCanonicalExecutor({ kernel }).execute('request_after_sales', { idempotency_key: key, status: { order_id: 'o_1', requested_action: 'refund' } }, CTX)
+    .then(() => assert.deepEqual(seen, [key]));
+});
+
+test('the sentence a key schema adds says what is not counted', () => {
+  assert.equal(IDEMPOTENCY_KEY_LENGTH_SENTENCE, 'At least 8 characters; leading and trailing whitespace and invisible formatting characters are not counted.');
+  assert.equal(intakeBoundsModule.IDEMPOTENCY_KEY_LENGTH_SENTENCE, IDEMPOTENCY_KEY_LENGTH_SENTENCE);
+});
+
+// ---- ACP REST update: the ceiling before the session read, after the buyer -----------------------------------------
+
+test('ACP REST update: a line above the ceiling is refused before the session store is read, and after the buyer is resolved', async () => {
+  const { adapter, calls, req } = acpSetup();
+  const over = await adapter.updateCheckoutSession(req({ body: ACP_CART(1000), key: 'acp-update-0002', id: 'cs_unknown' }));
+  assert.equal(over.status, 400);
+  assert.deepEqual(over.body.detail, { reason: 'quantity_above_line_maximum', max_quantity: 999 });
+  assert.deepEqual(calls.map((c) => c.name), ['resolveUserRef'], 'the buyer was resolved; the session store was not read');
+  // Within the ceiling the session is looked up, as before.
+  calls.length = 0;
+  const unknown = await adapter.updateCheckoutSession(req({ body: ACP_CART(999), key: 'acp-update-0003', id: 'cs_unknown' }));
+  assert.equal(unknown.status, 404);
+  assert.deepEqual(calls.map((c) => c.name), ['resolveUserRef', 'sessionStore.get']);
+  // A body that does not parse is not this check's to judge: the session lookup still answers first, as before.
+  calls.length = 0;
+  const broken = req({ body: ACP_CART(1000), key: 'acp-update-0004', id: 'cs_unknown' });
+  broken.rawBody = '{"items":[{"quantity":1000}';
+  broken.headers.signature = createHmac('sha256', ACP_SECRET).update(`${broken.headers.timestamp}.${broken.rawBody}`).digest('hex');
+  const res = await adapter.updateCheckoutSession(broken);
+  assert.equal(res.status, 404, JSON.stringify(res.body));
+  assert.deepEqual(calls.map((c) => c.name), ['resolveUserRef', 'sessionStore.get']);
+});
+
+test('ACP REST: a caller with no verified buyer is told that, whatever the cart says', async () => {
+  const store = new InMemoryKvStore();
+  const calls = [];
+  const adapter = createAcpRestAdapter({
+    executor: { execute: async () => { calls.push('executor'); return {}; } },
+    sessionStore: { get: async (k) => { calls.push('get'); return store.get(k); }, set: async () => {}, putIfAbsent: async () => true },
+    signingSecret: ACP_SECRET,
+    resolveUserRef: async () => undefined,
+  });
+  const rawBody = JSON.stringify(ACP_CART(1000));
+  const timestamp = String(Date.now());
+  const signature = createHmac('sha256', ACP_SECRET).update(`${timestamp}.${rawBody}`).digest('hex');
+  for (const handler of [adapter.createCheckoutSession, adapter.updateCheckoutSession]) {
+    const res = await handler({ headers: { signature, timestamp, 'idempotency-key': 'acp-nobuyer-0001' }, rawBody, params: { checkout_session_id: 'cs_unknown' } });
+    assert.equal(res.status, 401);
+    assert.equal(res.body.code, 'USER_AUTH_REQUIRED');
+  }
+  assert.deepEqual(calls, []);
+});
+
+// ---- a session that was already used: read the order, do not start over -----------------------------------------
+
+test('QUOTE_ALREADY_USED tells the caller to read the order first, on every door\'s wording; the code is unchanged', () => {
+  const err = new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: 'q_1' });
+  assert.equal(err.code, 'QUOTE_ALREADY_USED');
+  assert.equal(err.retriable, false);
+  assert.equal(err.userMessage, "This checkout session was already used to place an order, so it can't be used again. Read that order first (get_order) before doing anything else; start a new checkout only if the buyer wants another order.");
+  assert.equal(err.recovery, 'read the order this session already placed (get_order) before anything else; re-quote only for a new order the buyer asked for');
+  for (const text of [err.userMessage, err.recovery]) {
+    assert.match(text, /get_order/);
+    assert.doesNotMatch(text, /fresh|start over|Let me/i);
+  }
+  // The invoke door carries both; nothing is added or named for it.
+  assert.deepEqual(invokeErrorOf(err), { code: 'QUOTE_ALREADY_USED', retriable: false, recovery: err.recovery, message: err.userMessage });
+});
+
+// ---- the key minimum is written as a number in one place ---------------------------------------------------------
+
+test('no other rule about a key\'s length on the doors: every remaining literal 8 is one of these, and why', () => {
+  const files = [...QUANTITY_PATHS.filter((f) => f !== 'src/server.js'), 'safety-kernel/src/idempotencyLedger.js', 'mcp-server/src/orchestratedPurchaseTool.js', 'mcp-server/src/safety.js'];
+  const hits = [];
+  for (const file of files) {
+    readFileSync(join(REPO, file), 'utf8').split('\n').forEach((line) => {
+      const code = line.replace(/\/\/.*$/, '');
+      if (/^\s*\*/.test(code)) return;
+      if (/minLength:\s*8\b|\.min\(8\)|length\s*(?:<|>=|>|<=)\s*8\b|MIN_LENGTH\s*=\s*8\b/.test(code)) hits.push(`${file}: ${code.trim()}`);
+    });
+  }
+  assert.deepEqual(hits, [
+    // THE number.
+    'safety-kernel/src/protocol/intakeBounds.cjs: const IDEMPOTENCY_KEY_MIN_LENGTH = 8;',
+    // The request schema of the gateway's own invoke handler. For an operation that takes a key the shared rule
+    // is asked BEFORE this schema; what is left to it is a key on an operation that takes none.
+    'src/schema.js: const IdempotencyKeySchema = z.string().min(8);',
+    // The kernel ledger's own floor, on ledger keys the kernel builds (scoped by buyer and session), not on a door.
+    "safety-kernel/src/idempotencyLedger.js: if (typeof key !== 'string' || key.trim().length < 8) {",
+    // The older stdio tool server's guard on its own calls; those calls then go to the invoke door and its rule.
+    'mcp-server/src/safety.js: if (typeof generated !== "string" || generated.trim().length < 8) {',
+    'mcp-server/src/safety.js: if (typeof existing !== "string" || existing.trim().length < 8) {',
+  ]);
 });

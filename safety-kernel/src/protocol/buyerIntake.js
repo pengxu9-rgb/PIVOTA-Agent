@@ -373,13 +373,14 @@ export const DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS = 3000;
 // executor call the functions below.
 //
 // THE IDEMPOTENCY KEY: at least IDEMPOTENCY_KEY_MIN_LENGTH characters, counted in Unicode code points after
-// surrounding whitespace is removed. An ABSENT key is not this rule's: the rule that requires one stays where it
+// surrounding whitespace is removed and without invisible formatting characters. An ABSENT key is not this rule's: the rule that requires one stays where it
 // was, with the answer it had.
 // THE QUANTITY OF ONE LINE: at most MAX_LINE_QUANTITY units. Per line only: the cart's own bounds (lines, distinct
 // products) are below, and a purchase lane with a lower limit of its own keeps it.
 export const {
   IDEMPOTENCY_KEY_MIN_LENGTH,
   IDEMPOTENCY_KEY_TOO_SHORT_REASON,
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   MAX_LINE_QUANTITY,
   QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
   isAcceptableLineQuantity,

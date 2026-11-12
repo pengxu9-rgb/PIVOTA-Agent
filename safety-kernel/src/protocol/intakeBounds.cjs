@@ -21,23 +21,34 @@
 // them) after surrounding whitespace is removed (as the kernel's ledger and the doors that carry the key in a header
 // or in `meta` already remove it before using the key). An ABSENT key is not this rule's: whichever rule requires
 // one stays where it was, with the answer it had.
+//
+// INVISIBLE CHARACTERS ARE NOT COUNTED EITHER. A key of eight zero-width spaces is eight code points and nothing a
+// person or a log can tell apart from an empty one. Every character of Unicode general category Cf ("format":
+// U+200B zero width space, U+200C and U+200D the zero width joiners, U+2060 word joiner, U+FEFF, U+00AD soft
+// hyphen, the bidirectional marks and isolates, the tag characters, ...) is left out of the COUNT, wherever it sits
+// in the key. Only the count: the key itself is never changed, and is stored and forwarded exactly as each door
+// always did.
 const IDEMPOTENCY_KEY_MIN_LENGTH = 8;
 const IDEMPOTENCY_KEY_TOO_SHORT_REASON = 'idempotency_key_too_short';
+const INVISIBLE_FORMAT_CHARACTERS = /\p{Cf}/gu;
 
 const isPresentKey = (key) => typeof key === 'string' && key.trim() !== '';
+
+/** How many characters of a key count toward the minimum. */
+const countedKeyLength = (key) => [...key.replace(INVISIBLE_FORMAT_CHARACTERS, '').trim()].length;
 
 /** The refusal for a PRESENT key shorter than the minimum, else null (absent, or long enough). */
 function idempotencyKeyRefusal(key) {
   if (!isPresentKey(key)) return null;
-  if ([...key.trim()].length >= IDEMPOTENCY_KEY_MIN_LENGTH) return null;
+  if (countedKeyLength(key) >= IDEMPOTENCY_KEY_MIN_LENGTH) return null;
   return {
     // The code a missing key gets.
     code: 'IDEMPOTENCY_CONFLICT',
     reason: IDEMPOTENCY_KEY_TOO_SHORT_REASON,
     message: [
       `The idempotency key is too short: it must be at least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters, not counting leading or trailing`,
-      'whitespace. Generate a new unique key of that length or longer (a UUID works) and send the request again',
-      'with it. Retrying with this key will not change the answer.',
+      'whitespace or invisible formatting characters. Generate a new unique key of that length or longer (a UUID',
+      'works) and send the request again with it. Retrying with this key will not change the answer.',
     ].join(' '),
     detail: { min_length: IDEMPOTENCY_KEY_MIN_LENGTH },
     retriable: false,
@@ -124,9 +135,13 @@ function invokeIntakeBoundsRefusal(operation, payload) {
   return invokeKeyRefusal(operation, payload) || invokeLineQuantityRefusal(operation, payload, { asThatRouteReadsIt: true });
 }
 
+// The one sentence a tool schema adds to a key's description: `minLength` alone cannot say how the runtime counts.
+const IDEMPOTENCY_KEY_LENGTH_SENTENCE = `At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters; leading and trailing whitespace and invisible formatting characters are not counted.`;
+
 module.exports = {
   IDEMPOTENCY_KEY_MIN_LENGTH,
   IDEMPOTENCY_KEY_TOO_SHORT_REASON,
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   MAX_LINE_QUANTITY,
   QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
   idempotencyKeyRefusal,

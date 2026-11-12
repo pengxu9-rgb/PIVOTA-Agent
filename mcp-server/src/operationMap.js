@@ -1,5 +1,5 @@
-// The per-line quantity ceiling the invoke door enforces on a quote (the one number, not restated here).
-import { MAX_LINE_QUANTITY } from "../../safety-kernel/src/protocol/buyerIntake.js";
+// The two shared checkout bounds the invoke door enforces (the one number each, not restated here).
+import { IDEMPOTENCY_KEY_MIN_LENGTH, MAX_LINE_QUANTITY } from "../../safety-kernel/src/protocol/buyerIntake.js";
 
 export const operationMap = Object.freeze({
   pivota_search: Object.freeze([
@@ -187,7 +187,7 @@ export const toolDefinitions = Object.freeze([
           properties: {
             idempotency_key: {
               type: "string",
-              minLength: 8,
+              minLength: IDEMPOTENCY_KEY_MIN_LENGTH,
               description:
                 "Client-generated UUID. Same key => same order, never duplicated."
             },
@@ -255,7 +255,7 @@ export const toolDefinitions = Object.freeze([
           required: ["idempotency_key", "confirmation_token", "payment"],
           additionalProperties: false,
           properties: {
-            idempotency_key: { type: "string", minLength: 8 },
+            idempotency_key: { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH },
             confirmation_token: {
               type: "string",
               description:
@@ -316,7 +316,7 @@ export const toolDefinitions = Object.freeze([
             acp_state: { type: "object", additionalProperties: true },
             idempotency_key: {
               type: "string",
-              minLength: 8,
+              minLength: IDEMPOTENCY_KEY_MIN_LENGTH,
               description: "Required when operation = request_after_sales."
             },
             status: {

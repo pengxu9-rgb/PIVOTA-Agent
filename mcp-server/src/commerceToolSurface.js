@@ -27,6 +27,7 @@ import {
   assertLineQuantitiesWithinMaximum,
   attestedBuyerFromClaims,
   createDefaultVariantResolver,
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   IDEMPOTENCY_KEY_MIN_LENGTH,
   MAX_LINE_QUANTITY,
   normalizeCartItems,
@@ -688,6 +689,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
           `silently ignored. Accepted top-level arguments: ${Object.keys(START_PURCHASE_INPUT_SCHEMA.properties).join(", ")}.`,
       );
     }
+    // The shared minimum for a key that is present (intakeBounds.cjs), with the named refusal every door gives. A
+    // missing key is the tool's own argument problem below, as before.
+    assertIdempotencyKeyLongEnough(toolArgs.idempotency_key);
     const problems = startPurchaseArgumentProblems(toolArgs);
     if (problems.length > 0) {
       throw new ToolValidationError(
@@ -1109,7 +1113,7 @@ function describe(op) {
 }
 
 // `minLength` is the runtime minimum itself (buyerIntake.js), imported so the two cannot drift.
-const IDEMPOTENCY = { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH, description: `Client-generated unique key; a replay returns the original result, never a duplicate. At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters; leading and trailing whitespace is not counted.` };
+const IDEMPOTENCY = { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH, description: `Client-generated unique key; a replay returns the original result, never a duplicate. ${IDEMPOTENCY_KEY_LENGTH_SENTENCE}` };
 const ADDRESS = {
   type: "object",
   properties: {

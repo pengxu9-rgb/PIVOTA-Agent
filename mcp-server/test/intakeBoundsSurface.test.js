@@ -13,6 +13,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   IDEMPOTENCY_KEY_MIN_LENGTH,
   MAX_LINE_QUANTITY,
 } from '../../safety-kernel/src/protocol/buyerIntake.js';
@@ -25,7 +26,7 @@ import {
   ucpDialectSurface,
 } from '../src/commerceToolSurface.js';
 import { toolDefinitions as legacyToolDefinitions } from '../src/operationMap.js';
-import { START_PURCHASE_MAX_QUANTITY } from '../src/orchestratedPurchaseTool.js';
+import { START_PURCHASE_INPUT_SCHEMA, START_PURCHASE_MAX_QUANTITY, startPurchaseArgumentProblems } from '../src/orchestratedPurchaseTool.js';
 import { REAP_MAX_QUANTITY } from '../src/ucpReapAgenticLane.js';
 import {
   refuseUnservedStorefrontCheckout,
@@ -383,7 +384,8 @@ test('the published maximum for a line quantity is the runtime ceiling, and lowe
 });
 
 test('each published key description says how the minimum is counted, which minLength alone cannot', () => {
-  const sentence = ` At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters; leading and trailing whitespace is not counted.`;
+  const sentence = ` ${IDEMPOTENCY_KEY_LENGTH_SENTENCE}`;
+  assert.match(sentence, /At least 8 characters; leading and trailing whitespace and invisible formatting characters are not counted\.$/);
   for (const tool of Object.keys(NATIVE_CALLS)) {
     assert.ok(schemaOf(commerceToolDefinitions, tool).properties.idempotency_key.description.endsWith(sentence), tool);
   }
@@ -398,4 +400,50 @@ test('the older quote tool, whose calls go to the invoke door, publishes the sam
   const quote = legacyToolDefinitions.find((t) => t.name === 'pivota_quote');
   const quantity = quote.inputSchema.properties.payload.properties.quote.properties.items.items.properties.quantity;
   assert.deepEqual(quantity, { type: 'integer', minimum: 1, maximum: MAX_LINE_QUANTITY });
+});
+
+// ---- start_purchase: the same key rule, its own quantity limit ------------------------------------------------------
+
+const PURCHASE_ARGS = Object.freeze({
+  merchant_id: 'merch_shop_a', product_id: 'p_shop_1', quantity: 1, expected_unit_price_minor: 1800, expected_currency: 'USD',
+  consent_version: 'terms-0001',
+  shipping_address: { name: 'Example Buyer', phone: '0000000000', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country: 'US' },
+});
+
+async function withPurchaseTool(fn) {
+  const flags = ['ORCHESTRATED_PURCHASE_TOOL_ENABLED', 'AGENT_PURCHASE_ORDER_READ_ENABLED'];
+  const saved = flags.map((name) => process.env[name]);
+  for (const name of flags) process.env[name] = '1';
+  try { return await fn(); } finally {
+    flags.forEach((name, i) => { if (saved[i] === undefined) delete process.env[name]; else process.env[name] = saved[i]; });
+  }
+}
+
+test('start_purchase: a short key gets the shared named refusal before anything is read; its schema states the shared minimum', async () => {
+  await withPurchaseTool(async () => {
+    const executor = recorder(ROWS);
+    const surface = createCommerceToolSurface(executor, { cache: false, orchestratedPurchase: { client: { createPurchase: async () => { throw new Error('the purchase backend was called'); } } } });
+    // Plainly short, padded (8 UTF-16 units as sent), wide (8 units, 4 characters), invisible.
+    for (const key of ['abcdefg', 'k', '   abcde', 'abc     ', '\u{1F511}'.repeat(4), '\u200b'.repeat(8), 'abcdefg\u200b']) {
+      assertKeyTooShort(await rejected(surface.callTool('start_purchase', { idempotency_key: key, ...PURCHASE_ARGS }, SESSION)), `start_purchase ${JSON.stringify(key)}`);
+    }
+    assert.deepEqual(executor.seen, [], 'nothing was read');
+    // No key at all is the tool's own argument problem, as before.
+    for (const absent of [undefined, '', '   ']) {
+      const err = await rejected(surface.callTool('start_purchase', { ...(absent === undefined ? {} : { idempotency_key: absent }), ...PURCHASE_ARGS }, SESSION));
+      assert.equal(err.name, 'ToolValidationError', JSON.stringify(absent));
+      assert.match(err.message, /idempotency_key is required/);
+    }
+    // Eight characters are past the key rule.
+    const ok = await rejected(surface.callTool('start_purchase', { idempotency_key: 'abcdefgh', ...PURCHASE_ARGS }, SESSION));
+    assert.notEqual(ok && ok.code, 'IDEMPOTENCY_CONFLICT');
+    assert.doesNotMatch(String(ok && ok.message), /idempotency_key/);
+  });
+  assert.deepEqual(startPurchaseArgumentProblems({ ...PURCHASE_ARGS, idempotency_key: 'abcdefgh' }), []);
+  const key = START_PURCHASE_INPUT_SCHEMA.properties.idempotency_key;
+  assert.equal(key.minLength, IDEMPOTENCY_KEY_MIN_LENGTH);
+  assert.ok(key.description.endsWith(` ${IDEMPOTENCY_KEY_LENGTH_SENTENCE}`));
+  // Its own, lower, quantity limit is untouched.
+  assert.deepEqual(START_PURCHASE_INPUT_SCHEMA.properties.quantity, { type: 'integer', minimum: 1, maximum: 10 });
+  assert.equal(startPurchaseArgumentProblems({ ...PURCHASE_ARGS, idempotency_key: 'abcdefgh', quantity: 11 })[0].field, 'quantity');
 });

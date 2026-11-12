@@ -146,6 +146,7 @@ import selectionContract from '../../src/services/reapSelectionWitness.js';
 // the credential carries none. Nothing in this file can override a verified buyer.
 
 import {
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   IDEMPOTENCY_KEY_MIN_LENGTH,
   MAX_CART_ITEMS,
   MAX_LINE_QUANTITY,
@@ -211,7 +212,7 @@ const IDEMPOTENCY_KEY_DESCRIPTION = [
   "REQUIRED on this state-changing tool. Client-generated; a replay returns the original result rather than",
   "minting a second quote or a second charge. Pivota does NOT generate one for you — a server-minted key would",
   "make every retry a new request, which is the opposite of what the key is for.",
-  `At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters; leading and trailing whitespace is not counted.`,
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
 ].join(" ");
 
 function metaSchema({ idempotency }) {

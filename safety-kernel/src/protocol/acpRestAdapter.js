@@ -39,6 +39,7 @@ import {
   normalizeAttestedBuyer,
   normalizeCartItems,
   assertIdempotencyKeyLongEnough,
+  assertLineQuantitiesWithinMaximum,
   pickCompleteAddress,
   resolveBuyerEmail,
   resolveBuyerName,
@@ -213,6 +214,10 @@ export function createAcpRestAdapter(deps = {}) {
       const buyer = await requireBuyer(req);
       const { user_ref } = buyer;
       const acp_session_id = pathId(req);
+      // The per-line ceiling is decided on the body alone, so it is answered before the session is loaded (one
+      // store read). After the buyer, never before: a caller with no verified buyer is still told that first. A
+      // body that does not parse is left to the checks below, in their own order.
+      assertLineQuantitiesWithinMaximum(peekItems(req));
       const stored = await ownedSession(acp_session_id, user_ref);
       // An update RE-MINTS the quote snapshot (executor: create/update share previewQuote), and the snapshot
       // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address
@@ -331,6 +336,17 @@ export function delegatePayment() {
 }
 
 // ---- request helpers --------------------------------------------------------------------------------------
+
+// The cart lines of the SIGNED body, or undefined when it is absent, not JSON or not an object. Never throws:
+// what is wrong with such a body is `trustedBody`'s to say, where it always said it.
+const peekItems = (req) => {
+  try {
+    const parsed = typeof req?.rawBody === 'string' ? JSON.parse(req.rawBody) : undefined;
+    return isPlainObject(parsed) ? parsed.items : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const header = (req, name) => {
   const h = req?.headers ?? {};
