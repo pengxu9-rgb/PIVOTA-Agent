@@ -45,6 +45,7 @@ const BRANDS = [
 const NOT_FAMILIES = [
   ['Global', ['serum', 'toner', 'lipstick']],
   ['Global Store', ['sunscreen', 'serum', 'toner']],
+  ['Glob-Al US', ['serum', 'toner', 'lipstick']], // the same family key as "Global", typed another way
   ['Ma US', ['serum', 'toner', 'lipstick']],
   ['Ma Store', ['sunscreen', 'serum', 'toner']],
   ['가나다 Velmora', ['serum', 'toner', 'lipstick']],
@@ -60,10 +61,20 @@ const ITEMS = BRANDS.flatMap(([brand, typed, kinds]) => kinds.map((kind) => {
 }));
 // The store's own sunscreen, under a fuller title, for the full-title query.
 ITEMS.find((item) => item.id === 'zentora_usa__sunscreen').title = 'Daily Shield Mineral Sunscreen SPF 50';
-const OTHER_ITEMS = NOT_FAMILIES.flatMap(([brand, kinds], at) => kinds.map((kind) => {
+const itemsOf = (brands, prefix) => brands.flatMap(([brand, kinds], at) => kinds.map((kind) => {
   const [category, type, title] = GENERIC[kind];
-  return { id: `other${at}_${slug(brand)}__${kind}`, brand, kind, category, type, title: `${title} 9${at}${kind.length}` };
+  return { id: `${prefix}${at}_${slug(brand)}__${kind}`, brand, kind, category, type, title: `${title} 9${prefix.length}${at}${kind.length}` };
 }));
+const OTHER_ITEMS = itemsOf(NOT_FAMILIES, 'other');
+// One brand under spellings that differ only in spacing, for the reviewed-list test. NOT in the
+// catalogue by default: the test that needs them inserts and removes them (insertItems).
+const REVIEW_CASE = [
+  ['Pallor', ['serum', 'toner', 'lipstick']],
+  ['Pallor USA', ['serum', 'toner', 'sunscreen']],
+  ['Pal Lor USA', ['serum', 'toner', 'lipstick']],
+  ['Pallor UK', ['serum', 'toner', 'sunscreen']],
+];
+const REVIEW_ITEMS = itemsOf(REVIEW_CASE, 'review');
 const ALL_ITEMS = [...ITEMS, ...OTHER_ITEMS];
 const brandOf = Object.fromEntries(ALL_ITEMS.map((item) => [item.id, item.brand]));
 const sigOf = (id) => `sig_${crypto.createHash('md5').update(id).digest('hex')}`;
@@ -101,7 +112,12 @@ async function createFixture(db, { fetchCanonicalChainRows, buildSearchQualityCo
     }
   }
   await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status,primary_platform) VALUES ('retailer','Retailer','active','shopify')");
-  for (const { id, title, brand, category, type } of ALL_ITEMS) {
+  await insertItems(db, ALL_ITEMS);
+  return schema;
+}
+
+async function insertItems(db, items) {
+  for (const { id, title, brand, category, type } of items) {
     const sig = sigOf(id);
     await db.query(`INSERT INTO catalog_products(product_key,merchant_id,platform,source_product_id,title,brand,product_type,
      category_path,content_key,pivota_signature_id,pivota_canonical_url,canonical_url,image_url,product_payload,updated_at)
@@ -112,7 +128,14 @@ async function createFixture(db, { fetchCanonicalChainRows, buildSearchQualityCo
     await db.query('INSERT INTO catalog_skus(sku_key,product_key,source_variant_id) VALUES ($1,$1,$2)', [id, `variant_${id}`]);
     await db.query("INSERT INTO catalog_offers(offer_id,sku_key,merchant_effective_price,currency,availability) VALUES ($1,$1,20,'USD','in_stock')", [id]);
   }
-  return schema;
+}
+
+async function removeItems(db, items) {
+  const ids = items.map((item) => item.id);
+  await db.query('DELETE FROM catalog_offers WHERE offer_id = ANY($1)', [ids]);
+  await db.query('DELETE FROM catalog_skus WHERE sku_key = ANY($1)', [ids]);
+  await db.query('DELETE FROM index_pipeline_state WHERE content_key = ANY($1)', [ids]);
+  await db.query('DELETE FROM catalog_products WHERE product_key = ANY($1)', [ids]);
 }
 
 // The stand-in for src/db: the canonical statement and the brand dictionary's own statement
@@ -152,5 +175,5 @@ async function invariantBreaks(search) {
 }
 
 module.exports = {
-  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, UNDER_A_SIBLING_SPELLING, brandOf, createFixture, familyOf, fixtureDbQuery, idOfSig, invariantBreaks, sigOf,
+  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, REVIEW_ITEMS, UNDER_A_SIBLING_SPELLING, insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, idOfSig, invariantBreaks, sigOf,
 };

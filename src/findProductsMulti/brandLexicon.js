@@ -477,11 +477,43 @@ const AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES = new Set([
 // front of it ("<name> store", a brand, beside "<name>", another): reviewed, pinned, and never
 // bound as a sibling spelling (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS). A listed spelling has no
 // siblings and is nobody's sibling; listing the bare name instead keeps it apart from every
-// suffixed spelling. Keys are written as the dictionary writes them (lower case, accents folded).
-// EMPTY until the family listing has been reviewed against prod (see the flag's notes); a string
-// rule cannot tell a brand named "<name> store" from <name>'s own store, so this list is where
-// that knowledge goes.
-const REVIEWED_NOT_SIBLING_SPELLINGS = new Set([]);
+// suffixed spelling. A string rule cannot tell a brand named "<name> store" from <name>'s own
+// store, so this list is where that knowledge goes.
+//
+// EMPTY: the owner read the real families (2026-11-12) and none is two brands.
+//
+// HOW AN ENTRY IS WRITTEN: as the dictionary writes the spelling -- lower case, accents folded,
+// words separated by one space ("pallor usa"). A test refuses any other form, so the list stays
+// readable. HOW IT IS COMPARED: on the spelling's identity (spaces and hyphens removed, the form
+// the SQL binds), so "pal lor usa", "pallor-usa" and "pallorusa" are the same listed spelling;
+// the entries are folded to that identity when the list is loaded, whatever form they are in.
+const REVIEWED_NOT_SIBLING_SPELLINGS = Object.freeze([]);
+
+function isCanonicalReviewedSpelling(entry) {
+  return typeof entry === 'string' && entry !== '' && brandDictionaryCache.brandDictionaryKey(entry) === entry;
+}
+
+function loadReviewedSpellingIdentities(entries) {
+  return new Set(entries.map((entry) => brandDictionaryCache.brandSpellingIdentity(entry)).filter(Boolean));
+}
+let reviewedNotSiblingIdentities = loadReviewedSpellingIdentities(REVIEWED_NOT_SIBLING_SPELLINGS);
+
+function isReviewedNotSibling(spelling) {
+  return reviewedNotSiblingIdentities.has(brandDictionaryCache.brandSpellingIdentity(spelling));
+}
+
+// Test seam: replace the list through the SAME loader the shipped list goes through. Returns a
+// function that puts the shipped list back.
+function __setReviewedNotSiblingSpellingsForTest(entries) {
+  reviewedNotSiblingIdentities = loadReviewedSpellingIdentities(entries);
+  return () => { reviewedNotSiblingIdentities = loadReviewedSpellingIdentities(REVIEWED_NOT_SIBLING_SPELLINGS); };
+}
+
+// The two ambiguous-word lists, on the same identity: a family is the family however it is spaced.
+const AMBIGUOUS_FAMILY_IDENTITIES = new Set(
+  [...AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES, ...AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS]
+    .map((name) => brandDictionaryCache.brandSpellingIdentity(name)),
+);
 
 // The query's own words, minus framing ("shop", "products") and brand suffixes
 // ("beauty", "makeup"): what the buyer typed as the brand name, when the query is only that.
@@ -575,14 +607,13 @@ function resolveBoundBrandSiblingSpellings(brand) {
   const catalogKey = /^catalog:(.+)$/.exec(String((brand && brand.brand_key) || ''));
   if (!catalogKey) return [];
   const key = catalogKey[1];
-  if (REVIEWED_NOT_SIBLING_SPELLINGS.has(key)) return [];
+  if (isReviewedNotSibling(key)) return [];
   const { siblings } = brandDictionaryCache.resolveBrandSiblingSpellings(key);
   if (!siblings.length) return [];
-  const familyName = normalizeBrandText(brandDictionaryCache.brandFamilyName(key));
-  if (AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES.has(familyName) || AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(familyName)) {
+  if (AMBIGUOUS_FAMILY_IDENTITIES.has(brandDictionaryCache.brandSpellingIdentity(brandDictionaryCache.brandFamilyName(key)))) {
     return [];
   }
-  return siblings.filter((sibling) => !REVIEWED_NOT_SIBLING_SPELLINGS.has(sibling) && !staticLexiconNames(sibling));
+  return siblings.filter((sibling) => !isReviewedNotSibling(sibling) && !staticLexiconNames(sibling));
 }
 
 function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
@@ -955,5 +986,7 @@ module.exports = {
   resolveBeautyBrandBrowseQuery,
   resolveBoundBrandSiblingSpellings,
   REVIEWED_NOT_SIBLING_SPELLINGS,
+  isCanonicalReviewedSpelling,
+  __setReviewedNotSiblingSpellingsForTest,
   BRAND_QUERY_FILLER_TOKENS,
 };

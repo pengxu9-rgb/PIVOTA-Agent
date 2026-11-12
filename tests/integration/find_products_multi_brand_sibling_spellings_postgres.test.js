@@ -22,7 +22,7 @@ const suite = url ? describe : describe.skip;
 
 const FLAG = 'GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS';
 const {
-  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, UNDER_A_SIBLING_SPELLING, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
+  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, REVIEW_ITEMS, UNDER_A_SIBLING_SPELLING, insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
 } = require('../_support/brandSiblingSpellingsFixture.cjs');
 
 suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', () => {
@@ -183,11 +183,49 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     // premise: these ARE hard brands with rows of their own, so the comparison above is not vacuous
     expect(lookalikesOn['Global serum']).toEqual(['other0_global__serum']);
     expect(lookalikesOn['Global Store serum']).toEqual(['other1_global_store__serum']);
-    expect(lookalikesOn['Ma US serum']).toEqual(['other2_ma_us__serum']);
-    expect(lookalikesOn['Ma Store serum']).toEqual(['other3_ma_store__serum']);
-    expect(lookalikesOn['Velmora Store serum']).toEqual(['other5_velmora_store__serum']);
+    // typed another way, the same family: the verdict is the family's, not the typed spelling's
+    expect(lookalikesOn['Glob-Al US serum']).toEqual(['other2_glob_al_us__serum']);
+    expect(lookalikesOn['Ma US serum']).toEqual(['other3_ma_us__serum']);
+    expect(lookalikesOn['Ma Store serum']).toEqual(['other4_ma_store__serum']);
+    expect(lookalikesOn['Velmora Store serum']).toEqual(['other6_velmora_store__serum']);
     // THE ONLY QUERIES THAT CHANGE are the ones whose brand has a sibling spelling.
     expect([...new Set(changed)].sort()).toEqual([...FAMILY.Zentora, ...FAMILY.Lumavelle].sort());
+  });
+
+  // The reviewed list, populated through its test seam (the shipped list is empty), on the real
+  // route: a listed spelling binds nothing and is bound by nothing, however the entry or the
+  // catalogue spaces it. "Pallor USA" and "Pal Lor USA" are one row identity.
+  test('the reviewed list on the route: a listed spelling is isolated under every spacing of it', async () => {
+    const serum = (brands) => REVIEW_ITEMS.filter((item) => item.kind === 'serum' && brands.includes(item.brand)).map((item) => item.id).sort();
+    const USA = ['Pallor USA', 'Pal Lor USA'];
+    await insertItems(db, REVIEW_ITEMS);
+    try {
+      const answers = async (entries) => {
+        jest.resetModules();
+        await boot('on');
+        const restore = require('../../src/findProductsMulti/brandLexicon').__setReviewedNotSiblingSpellingsForTest(entries);
+        try {
+          return await routeAnswers(['Pallor serum', 'Pallor UK serum', 'Pallor USA serum', 'Pal Lor USA serum', 'pallorusa serum']);
+        } finally { restore(); }
+      };
+      // premise: unlisted, it is one family and every spelling reaches every row
+      const everything = serum(['Pallor', 'Pallor UK', ...USA]);
+      expect(await answers([])).toEqual({ 'Pallor serum': everything, 'Pallor UK serum': everything, 'Pallor USA serum': everything,
+        'Pal Lor USA serum': everything, 'pallorusa serum': everything });
+      for (const entry of ['pallor usa', 'pal lor usa', 'pallorusa', 'Pallor USA']) {
+        expect({ entry, ...(await answers([entry])) }).toEqual({ entry,
+          'Pallor serum': serum(['Pallor', 'Pallor UK']), 'Pallor UK serum': serum(['Pallor', 'Pallor UK']),
+          'Pallor USA serum': serum(USA), 'Pal Lor USA serum': serum(USA), 'pallorusa serum': serum(USA) });
+      }
+      for (const entry of ['pallor', 'pal lor', 'Pal-Lor']) {
+        expect({ entry, ...(await answers([entry])) }).toEqual({ entry,
+          'Pallor serum': serum(['Pallor']), 'Pallor UK serum': serum(['Pallor UK', ...USA]),
+          'Pallor USA serum': serum(['Pallor UK', ...USA]), 'Pal Lor USA serum': serum(['Pallor UK', ...USA]),
+          'pallorusa serum': serum(['Pallor UK', ...USA]) });
+      }
+    } finally {
+      await removeItems(db, REVIEW_ITEMS);
+    }
   });
 
   test('a cold dictionary: no brand constraint at all, flag on or off', async () => {

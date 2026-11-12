@@ -412,16 +412,37 @@ function buildWholeBrandKeys(rows) {
   return whole;
 }
 
-// Whether a family name can stand for ONE brand. It cannot when:
-//   * every word of it is itself a strippable suffix word, from the FULL list above, descriptive
-//     words included ("global", beside "global store" and "global us": three unrelated sellers,
-//     not one brand's storefronts; likewise "cosmetic" beside "cosmetic us");
-//   * the dictionary itself would refuse it as a key (admissibleKey above: MIN_LEN letters, or 3
-//     with a digit, and not a stop word), judged on the squashed name the family is keyed by.
-function familyNameIsABrandName(familyName) {
-  const words = String(familyName || '').split(' ').filter(Boolean);
-  if (words.every((word) => STRIPPABLE_BRAND_SUFFIXES.has(word))) return false;
-  return admissibleKey(words.join('').replace(/-/g, ''));
+// Whether a family can stand for ONE brand, decided ONCE per family, on the key the family is
+// indexed by (its name with spaces and hyphens removed), when the index is built. Never on the
+// spelling a buyer typed: "glob-al us" and "global us" are one family and get one verdict.
+// It cannot when:
+//   * the key is nothing but strippable suffix words run together, from the FULL list above,
+//     descriptive words included ("global", beside "global store" and "global us": three
+//     unrelated sellers, not one brand's storefronts; likewise "cosmetic", or "store-us");
+//   * the dictionary itself would refuse the key (admissibleKey above: MIN_LEN letters, or 3 with
+//     a digit, and not a stop word).
+function familyKeyIsABrandName(familyKey) {
+  const key = String(familyKey || '');
+  // reachable[i]: the first i characters are whole strippable words
+  const reachable = [true];
+  for (let end = 1; end <= key.length; end += 1) {
+    reachable[end] = [...STRIPPABLE_BRAND_SUFFIXES].some(
+      (word) => end >= word.length && reachable[end - word.length] && key.endsWith(word, end),
+    );
+  }
+  if (reachable[key.length]) return false;
+  return admissibleKey(key);
+}
+
+// THE identity a spelling is bound by in SQL, as far as spacing goes: the dictionary key with
+// spaces and hyphens removed. Lists that name spellings are compared on this, never on the text.
+function brandSpellingIdentity(value) {
+  return normalize(foldAccents(value)).replace(/[\s\-]/g, '');
+}
+
+// The dictionary's own spelling of a brand: what a reviewed list must be written in.
+function brandDictionaryKey(value) {
+  return normalize(foldAccents(value));
 }
 
 // The name a family shares: the brand without its trailing market / channel words.
@@ -433,7 +454,8 @@ function brandFamilyKey(brand) {
   return brandFamilyName(brand).replace(/[\s\-]/g, '');
 }
 
-// family key -> the catalog brand spellings in it, sorted. Only families of two or more are kept.
+// family key -> the catalog brand spellings in it, sorted. Only families of two or more whose key
+// can stand for one brand are kept.
 function buildBrandFamilyIndex(stats) {
   const families = new Map();
   const seen = new Set();
@@ -446,7 +468,7 @@ function buildBrandFamilyIndex(stats) {
   }
   const out = new Map();
   for (const [key, members] of families) {
-    if (members.length > 1) out.set(key, members.sort());
+    if (members.length > 1 && familyKeyIsABrandName(key)) out.set(key, members.sort());
   }
   return out;
 }
@@ -457,13 +479,13 @@ const NO_SIBLING_SPELLINGS = Object.freeze({ siblings: Object.freeze([]), capped
 // `catalog:<key>`). A sibling is bound only when it is in the dictionary AND qualifies as a beauty
 // brand by itself, by the unchanged qualifiesAsBeautyBrand: which keys are brands is not decided
 // here. An empty (cold) dictionary, or a key it does not hold, has no siblings; neither has a key
-// that is not whole or whose family name cannot stand for one brand (the two rules above).
+// that is not whole, or one whose family cannot stand for one brand (such a family is not indexed).
 function resolveBrandSiblingSpellings(brandKey) {
   if (!siblingSpellingsEnabled() || !enabled() || !beautyContractEnabled()) return NO_SIBLING_SPELLINGS;
   const key = normalize(foldAccents(brandKey));
   // A cold dictionary holds no key, so it has no family either.
   if (!_beauty.has(key)) return NO_SIBLING_SPELLINGS;
-  if (!_beautyWholeKeys.has(key) || !familyNameIsABrandName(brandFamilyName(key))) return NO_SIBLING_SPELLINGS;
+  if (!_beautyWholeKeys.has(key)) return NO_SIBLING_SPELLINGS;
   const familyKey = brandFamilyKey(key);
   const ownIdentity = key.replace(/[\s\-]/g, '');
   const siblings = (_beautyFamilies.get(familyKey) || []).filter(
@@ -674,6 +696,8 @@ module.exports = {
   stripBrandSuffixes,
   siblingSpellingsEnabled,
   brandFamilyName,
+  brandSpellingIdentity,
+  brandDictionaryKey,
   resolveBrandSiblingSpellings,
   SIBLING_SPELLING_SUFFIXES,
   MAX_BRAND_FAMILY_SPELLINGS,

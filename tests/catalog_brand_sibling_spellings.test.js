@@ -22,6 +22,8 @@ const {
   resolveBeautyBrandBrowseQuery,
   resolveBoundBrandSiblingSpellings,
   REVIEWED_NOT_SIBLING_SPELLINGS,
+  isCanonicalReviewedSpelling,
+  __setReviewedNotSiblingSpellingsForTest,
 } = require('../src/findProductsMulti/brandLexicon');
 const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
 const {
@@ -251,14 +253,26 @@ describe('the sibling resolver', () => {
   // P2-2 of the review: a brand NAMED "<name> store" beside another brand "<name>" cannot be told
   // from a storefront by any string rule. The reviewed list is where that is pinned.
   describe('the reviewed list of spellings that are another brand', () => {
-    const listed = (keys, fn) => {
-      for (const key of keys) REVIEWED_NOT_SIBLING_SPELLINGS.add(key);
-      try { return fn(); } finally { for (const key of keys) REVIEWED_NOT_SIBLING_SPELLINGS.delete(key); }
+    // Through the seam, so the entries go through the loader the shipped list goes through.
+    const listed = (entries, fn) => {
+      const restore = __setReviewedNotSiblingSpellingsForTest(entries);
+      try { return fn(); } finally { restore(); }
     };
+    const PALLOR = [beauty('pallor', 30), beauty('pallor usa', 20), beauty('pal lor usa', 12), beauty('pallor uk', 9), beauty('pal-lor', 7)];
 
-    test('ships empty: only data is added after the family listing is reviewed', () => {
-      expect(REVIEWED_NOT_SIBLING_SPELLINGS).toBeInstanceOf(Set);
-      expect(REVIEWED_NOT_SIBLING_SPELLINGS.size).toBe(0);
+    test('ships empty, after the owner\'s review of the real families', () => {
+      expect(Array.isArray(REVIEWED_NOT_SIBLING_SPELLINGS)).toBe(true);
+      expect(Object.isFrozen(REVIEWED_NOT_SIBLING_SPELLINGS)).toBe(true);
+      expect(REVIEWED_NOT_SIBLING_SPELLINGS).toHaveLength(0);
+    });
+
+    test('every shipped entry is written as the dictionary writes it; any other form is refused', () => {
+      for (const entry of REVIEWED_NOT_SIBLING_SPELLINGS) expect({ entry, canonical: isCanonicalReviewedSpelling(entry) }).toEqual({ entry, canonical: true });
+      // what the check accepts and refuses, so an empty list does not leave it untested
+      for (const good of ['pallor usa', 'pallor', 'a&b store', 'pal-lor uk', 'k2x jp']) expect(isCanonicalReviewedSpelling(good)).toBe(true);
+      for (const bad of ['Pallor USA', 'pallor  usa', ' pallor usa', 'pallor usa ', 'pállor usa', 'pallor (usa)', "pallor's store", '', null, 7]) {
+        expect({ bad, canonical: isCanonicalReviewedSpelling(bad) }).toEqual({ bad, canonical: false });
+      }
     });
 
     test('a listed spelling binds nothing and is bound by nothing; the rest of its family is untouched', () => {
@@ -287,6 +301,81 @@ describe('the sibling resolver', () => {
         expect(siblingsOf('lumavelle official store')).toEqual(['lumavelle uk']);
       });
     });
+
+    // Review: the list compared the dictionary's text while SQL binds the spaces-removed identity,
+    // so "pal lor usa" walked around a listed "pallor usa".
+    test.each([['pallor usa'], ['pal lor usa'], ['pallorusa'], ['pallor-usa'], ['Pallor USA'], ['PÁLLOR  Usa']])(
+      'a listed SUFFIXED spelling, entered as %j, is isolated under every spacing of it',
+      (entry) => {
+        cache.__setBeautyBrandRowsForTest(PALLOR);
+        // premise: unlisted, every spelling is in the family
+        expect(siblingsOf('pallor')).toEqual(['pal lor usa', 'pallor uk', 'pallor usa']);
+        listed([entry], () => {
+          expect(siblingsOf('pallor')).toEqual(['pallor uk']);
+          expect(siblingsOf('pal-lor')).toEqual(['pallor uk']);
+          expect(siblingsOf('pallor uk')).toEqual(['pal-lor', 'pallor']);
+          expect(siblingsOf('pallor usa')).toEqual([]);
+          expect(siblingsOf('pal lor usa')).toEqual([]);
+          // the identities SQL binds: the listed one is in nobody else's list
+          for (const key of ['pallor', 'pal-lor', 'pallor uk']) expect(brandIdentityBindKeys(catalog(key))).not.toContain('pallorusa');
+          expect(brandIdentityBindKeys(catalog('pallor usa'))).toEqual(['pallorusa']);
+          expect(brandIdentityBindKeys(catalog('pal lor usa'))).toEqual(['pallorusa']);
+        });
+      },
+    );
+
+    test.each([['pallor'], ['pal lor'], ['pal-lor'], ['Pallor']])(
+      'a listed BARE spelling, entered as %j, is isolated under every spacing of it',
+      (entry) => {
+        cache.__setBeautyBrandRowsForTest(PALLOR);
+        listed([entry], () => {
+          expect(siblingsOf('pallor')).toEqual([]);
+          expect(siblingsOf('pal-lor')).toEqual([]);
+          expect(siblingsOf('pallor usa')).toEqual(['pallor uk']);
+          expect(siblingsOf('pal lor usa')).toEqual(['pallor uk']);
+          expect(siblingsOf('pallor uk')).toEqual(['pal lor usa', 'pallor usa']);
+          for (const key of ['pallor usa', 'pal lor usa', 'pallor uk']) expect(brandIdentityBindKeys(catalog(key))).not.toContain('pallor');
+        });
+      },
+    );
+
+    test('the seam puts the shipped list back', () => {
+      cache.__setBeautyBrandRowsForTest(PALLOR);
+      const restore = __setReviewedNotSiblingSpellingsForTest(['pallor usa']);
+      expect(siblingsOf('pallor usa')).toEqual([]);
+      restore();
+      expect(siblingsOf('pallor usa')).toEqual(['pal-lor', 'pallor', 'pallor uk']);
+    });
+  });
+
+  // Review: the strip-word test read the typed spelling, so "glob-al us" pulled in the family
+  // that "global us" was refused. One verdict per family, whatever was typed.
+  test.each([
+    [['global', 'global store', 'global us', 'glob-al us', 'glo bal uk']],
+    [['official', 'official store', 'off icial uk', 'offi-cial us']],
+    [['store-us', 'store-us uk', 'store us jp']],
+    [['global-store', 'global-store us', 'global store jp']],
+    [['us store', 'us-store uk']],
+    [['cosmetic', 'cos metic us', 'cosmetic-store', 'cosmetic-store uk']],
+  ])('no spelling of a family whose name is only suffix words binds anything: %j', (spellings) => {
+    cache.__setBeautyBrandRowsForTest(spellings.map((b, at) => beauty(b, 30 - at)));
+    for (const b of spellings) {
+      // premise: it is a dictionary brand, so it is a hard brand on its own
+      expect(cache.matchCatalogBeautyBrand(b)).toEqual(expect.objectContaining({ brand: b }));
+      expect({ b, siblings: siblingsOf(b) }).toEqual({ b, siblings: [] });
+    }
+  });
+
+  test('a name that merely CONTAINS suffix words run together with other letters is a brand name', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('ukiyo', 9), beauty('ukiyo us', 9), beauty('storeusa x', 9), beauty('storeusa x jp', 9), beauty('usukx', 9), beauty('usukx uk', 9)]);
+    expect(siblingsOf('ukiyo')).toEqual(['ukiyo us']);
+    expect(siblingsOf('storeusa x')).toEqual(['storeusa x jp']);
+    expect(siblingsOf('usukx uk')).toEqual(['usukx']);
+  });
+
+  test('the ambiguous lists are read on the family, not on how it was spaced', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('lime', 11), beauty('lime uk', 15), beauty('li-me us', 9), beauty('first aid', 9), beauty('firstaid usa', 9), beauty('whip ped uk', 9), beauty('whipped', 9)]);
+    for (const key of ['lime', 'lime uk', 'li-me us', 'first aid', 'firstaid usa', 'whip ped uk', 'whipped']) expect({ key, siblings: siblingsOf(key) }).toEqual({ key, siblings: [] });
   });
 
   test('a member that does not itself qualify as a beauty brand is not bound', () => {
