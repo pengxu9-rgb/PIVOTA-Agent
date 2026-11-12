@@ -111,6 +111,8 @@ describe('the sibling resolver', () => {
     expect(siblingsOf('zentora usa')).toEqual(['zentora']);
     expect(siblingsOf('lumavelle uk')).toEqual(['lumavelle']);
     expect(siblingsOf('lumavelle official store')).toEqual(['lumavelle']);
+    // narrowed, not capped: the cap is another matter
+    expect(cache.resolveBrandSiblingSpellings('lumavelle uk')).toEqual({ siblings: ['lumavelle'], capped: false });
     expect(brandIdentityBindKeys(catalog('lumavelle uk'))).toEqual(['lumavelleuk', 'lumavelle']);
     expect(brandIdentityBindKeys(catalog('lumavelle official store'))).toEqual(['lumavelleofficialstore', 'lumavelle']);
     // the bare name still binds the whole family
