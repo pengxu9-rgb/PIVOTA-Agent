@@ -419,6 +419,7 @@ const {
   hasExplicitCategoryHint,
   normalizeBrandText,
   resolveBeautyBrandBrowseQuery,
+  resolveBoundBrandSiblingSpellings,
 } = require('./findProductsMulti/brandLexicon');
 const {
   buildSearchQualityContract,
@@ -19277,6 +19278,9 @@ function shouldShortCircuitInvokeSearchQualitySafeEmpty({
 
 function projectSearchQualityContractForMetadata(contract = null) {
   if (!contract || typeof contract !== 'object') return null;
+  // GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS: how many spellings of the brand recall was bound to,
+  // present only when it is more than the one key the contract names. A count, never the strings.
+  const siblingSpellings = resolveBoundBrandSiblingSpellings(contract.hard_constraints?.brand);
   return {
     contract_version: contract.contract_version || SEARCH_QUALITY_CONTRACT_VERSION,
     target_domain: contract.target_domain || null,
@@ -19285,6 +19289,7 @@ function projectSearchQualityContractForMetadata(contract = null) {
     clarification_allowed: Boolean(contract.clarification_allowed),
     hard_constraints: contract.hard_constraints || {},
     soft_preferences: contract.soft_preferences || {},
+    ...(siblingSpellings.length > 0 ? { brand_spellings_bound: siblingSpellings.length + 1 } : {}),
   };
 }
 
@@ -19357,6 +19362,16 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
       return identity.brand_key === brand.brand_key;
     }
   }
+  // GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS: recall binds the brand's sibling spellings too, and
+  // this gate must admit every row recall can return. Containment below already admits a suffixed
+  // row under a bare contract; it does not admit one suffixed spelling under another ("x uk" under
+  // "x usa"). The siblings are the SAME list the SQL binds, compared for EQUALITY with the row's
+  // own brand, so this adds the family's rows and no others. [] with the flag off.
+  const ownCompactBrand = productBrand.replace(/\s+/g, '');
+  const isSiblingSpelling = resolveBoundBrandSiblingSpellings(brand).some(
+    (sibling) => normalizeSearchQualityBrandNeedle(sibling).replace(/\s+/g, '') === ownCompactBrand,
+  );
+  if (isSiblingSpelling) return true;
   const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
   const compactText = text.replace(/\s+/g, '');
   const matches = (needle) => {
