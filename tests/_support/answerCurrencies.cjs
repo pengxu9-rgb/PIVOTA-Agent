@@ -16,12 +16,19 @@
 // WHAT IS COLLECTED, each with the JSON path it was found at:
 //
 //   PRICES (judged by the rule)
-//   - `priceCurrencies`: a member that LABELS A PRICE: `currency`, `currency_code`, `currencyCode`, `price_currency`,
-//     `priceCurrency` (any letter case). Its value is a string, or an object naming the code in `code`,
-//     `currency_code`, `currencyCode`, `iso_code` or `isoCode` (`{ currency: { code: 'USD' } }`). One beside a price
-//     says what that price is in; one with no price beside it still reads as "this is priced in X", so it is held to
-//     the same rule. A label object no code can be read from is in `unreadableCurrencies` (and breaks the rule: a
-//     currency nobody can read is not the market's).
+//   - `priceCurrencies`: a member that LABELS A PRICE. Its name, with letter case and every `_` / `-` ignored, is
+//     one of: `currency`, `currencycode`, `pricecurrency`, `pricecurrencycode`, `settlementcurrency`, `ccy` (so
+//     `currency_code`, `currencyCode`, `currency-code`, `price_currency`, `priceCurrencyCode`, `settlement_currency`).
+//     Its value is a string, or an object naming the code in `code`, `currency_code`, `currencyCode`, `iso_code` or
+//     `isoCode` (`{ currency: { code: 'USD' } }`); the rest of such an object is walked like any other. One beside a
+//     price says what that price is in; one with no price beside it still reads as "this is priced in X", so it is
+//     held to the same rule. A label object no code can be read from is in `unreadableCurrencies` (and breaks the
+//     rule: a currency nobody can read is not the market's).
+//     AN EMPTY LABEL IS "NO LABEL HERE", AND IT STOPS INHERITANCE: an object whose only price-label members are
+//     empty (`''`, blank, `null`, a boolean, a number, an unreadable object) says its own money has no currency. The
+//     amounts in that object, and below it down to the next real label, are paired with NO currency: they never take
+//     the label of an object further out (a line that says `currency: ''` under a GBP checkout is not a GBP line).
+//     An empty label beside no amount is not a problem by itself (an unpriced row says `price: null, currency: null`).
 //   - `money`: a member that QUOTES AN AMOUNT: a finite number (or numeric string) under a money name. A money name
 //     is one of `price`, `amount`, `total`, `subtotal`, `tax`, `min_price`, `max_price`, `price_min`, `price_max`,
 //     `shipping_cost`; any name whose LAST word is `price`, `amount`, `cost`, `fee`, `subtotal` or `tax`
@@ -50,20 +57,35 @@
 // FREE TEXT. Every string value is scanned, except the value of a member that is an identifier or a link by name
 // (last word `id`, `ids`, `url`, `urls`, `uri`, `href`, `link`, `token`, `key`, `signature`, `cursor`, `sku`, `gid`):
 // an opaque id can contain any letters. Two things are read as money in text:
-//   - a currency SYMBOL directly before a number (one optional space): `US$`, `S$`, `A$`, `C$`, `HK$`, `NZ$`, `$`,
-//     `£`, `€`, `¥` ("$12.00", "US$ 12", "£5");
+//   - a currency SYMBOL directly before a number (one optional space): `$`, `£`, `€`, `¥`, and a dollar sign with a
+//     capital-letter prefix: `US$` USD, `S$` SGD, `A$` / `AU$` AUD, `C$` / `CA$` CAD, `HK$` HKD, `NZ$` NZD, `R$` BRL,
+//     `MX$` MXN, `NT$` TWD ("$12.00", "US$ 12", "£5", "CA$9"). A prefixed dollar sign is never read as a bare `$`:
+//     any other prefix of one to three capitals at a word start (`XY$5`) is reported under that spelling, which is
+//     no market's currency;
 //   - one of these ISO 4217 CODES directly before or after a number (one optional space): USD EUR GBP SGD JPY AUD CAD
 //     HKD NZD CNY KRW CHF SEK NOK DKK INR MXN BRL AED TWD THB MYR IDR PHP VND PLN ZAR SAR ("USD 12", "12 USD", "12GBP").
 // `textMoney` entries are `{ path, currency, match }`: `currency` is the ISO code, or `'$'` for a bare dollar sign
 // and `'¥'` for a yen/yuan sign, which are ambiguous: `$` is accepted for a market priced in USD, SGD, AUD, CAD, HKD,
 // NZD or TWD, `¥` for JPY or CNY.
+// `textCurrencyIs(currency, marketCurrency)` answers "is money written like this money in that market's currency".
 // WHAT FREE TEXT DOES NOT CATCH: a currency named in words ("twelve dollars", "12 pounds", "GBP twelve"); a code or
 // symbol not next to a digit ("priced in USD"); any ISO code outside the list above (notably TRY, ALL, TOP, GEL, PEN,
-// MOP, which are also English words or product words); other symbols (kr, Rs, ₩, ₹, R$, Fr); a number written with a
-// thousands separator after a code is matched on its first digits only; `$12` in an SGD answer (accepted: ambiguous);
-// money inside a member skipped as an identifier or link.
+// MOP, which are also English words or product words); a code in lower or title case ("12usd", "Usd 12"); a symbol
+// AFTER the number ("12 €", "12$"); a no-break space or any other non-ASCII space between the two; the fullwidth
+// yen sign; other symbols (kr, Rs, ₩, ₹, Fr); a number written with a thousands separator after a code is matched
+// on its first digits only; `$12` in an SGD answer (accepted: ambiguous); money inside a member skipped as an
+// identifier or link.
+//
+// OTHER STATED LIMITS (not read as money, by design or not yet): an amount in minor units under a name that does not
+// end in a money word (`amount_minor`, `price_cents`, `total_cents`); `line_total` and `grand_total` (a name ending
+// in `total` is money only when every word in it is a money word); `price.value` and any amount under `value`;
+// `discount`, `savings`, `msrp`; a plural list of bare amounts (`prices: [12, 15]`); a currency-keyed map
+// (`{ USD: 12 }`) and an amount/currency tuple (`[12, 'USD']`); a numeric string with a thousands or decimal comma
+// ("1,299.00", "12,50"); a price label under any other spelling than the ones listed above.
 
-const PRICE_CURRENCY_KEYS = new Set(['currency', 'currency_code', 'currencycode', 'price_currency', 'pricecurrency']);
+// Price-label member names, compared with letter case and every `_` / `-` removed.
+const PRICE_CURRENCY_KEYS = new Set(['currency', 'currencycode', 'pricecurrency', 'pricecurrencycode', 'settlementcurrency', 'ccy']);
+const isPriceLabelKey = (key) => PRICE_CURRENCY_KEYS.has(String(key).toLowerCase().replace(/[_-]/g, ''));
 const CURRENCY_OBJECT_CODE_KEYS = ['code', 'currency_code', 'currencyCode', 'iso_code', 'isoCode'];
 const MONEY_KEYS = new Set([
   'price', 'amount', 'total', 'subtotal', 'unit_price', 'list_price', 'compare_at_price', 'sale_price',
@@ -79,11 +101,15 @@ const TEXT_ISO_CODES = [
   'USD', 'EUR', 'GBP', 'SGD', 'JPY', 'AUD', 'CAD', 'HKD', 'NZD', 'CNY', 'KRW', 'CHF', 'SEK', 'NOK', 'DKK', 'INR', 'MXN', 'BRL',
   'AED', 'TWD', 'THB', 'MYR', 'IDR', 'PHP', 'VND', 'PLN', 'ZAR', 'SAR',
 ];
-const SYMBOL_CURRENCY = Object.freeze({ 'US$': 'USD', 'S$': 'SGD', 'A$': 'AUD', 'C$': 'CAD', 'HK$': 'HKD', 'NZ$': 'NZD', '£': 'GBP', '€': 'EUR', $: '$', '¥': '¥' });
+const SYMBOL_CURRENCY = Object.freeze({
+  'US$': 'USD', 'S$': 'SGD', 'A$': 'AUD', 'AU$': 'AUD', 'C$': 'CAD', 'CA$': 'CAD', 'HK$': 'HKD', 'NZ$': 'NZD', 'R$': 'BRL', 'MX$': 'MXN', 'NT$': 'TWD',
+  '£': 'GBP', '€': 'EUR', $: '$', '¥': '¥',
+});
 const AMBIGUOUS_SYMBOL = Object.freeze({ $: new Set(['USD', 'SGD', 'AUD', 'CAD', 'HKD', 'NZD', 'TWD']), '¥': new Set(['JPY', 'CNY']) });
 const ISO = TEXT_ISO_CODES.join('|');
-// 1: a symbol before a number.  2: a code before a number.  3: a code after a number.
-const TEXT_MONEY = new RegExp(`(HK\\$|NZ\\$|US\\$|S\\$|A\\$|C\\$|\\$|£|€|¥) ?\\d[\\d.,]*|\\b(${ISO}) ?\\d[\\d.,]*|\\d[\\d.,]*? ?(${ISO})\\b`, 'g');
+// 1: a symbol before a number (a prefixed dollar sign first, so `CA$` is never read as `A$` or as a bare `$`).
+// 2: a code before a number.  3: a code after a number.
+const TEXT_MONEY = new RegExp(`(\\b[A-Z]{1,3}\\$|HK\\$|NZ\\$|US\\$|CA\\$|AU\\$|MX\\$|NT\\$|R\\$|S\\$|A\\$|C\\$|\\$|£|€|¥) ?\\d[\\d.,]*|\\b(${ISO}) ?\\d[\\d.,]*|\\d[\\d.,]*? ?(${ISO})\\b`, 'g');
 
 const isObject = (v) => typeof v === 'object' && v !== null;
 const isAmount = (v) => (typeof v === 'number' && Number.isFinite(v))
@@ -99,13 +125,17 @@ function isMoneyKey(key) {
 }
 const isRowCount = (key, parent) => String(key).toLowerCase() === 'total' && ROW_COUNT_SIBLINGS.some((k) => has(parent, k));
 
+/** The member of a label object that names its code (`code`, `currency_code`, ...), or null. */
+function currencyCodeKeyOf(value) {
+  if (!isObject(value) || Array.isArray(value)) return null;
+  return CURRENCY_OBJECT_CODE_KEYS.find((key) => typeof value[key] === 'string' && value[key].trim() !== '') || null;
+}
+
 /** The code a price-labelling member's value names: the string itself, or an object's code member. Else null. */
 function currencyValueOf(value) {
   if (typeof value === 'string') return value.trim() !== '' ? value.trim() : null;
-  if (isObject(value) && !Array.isArray(value)) {
-    for (const key of CURRENCY_OBJECT_CODE_KEYS) if (typeof value[key] === 'string' && value[key].trim() !== '') return value[key].trim();
-  }
-  return null;
+  const key = currencyCodeKeyOf(value);
+  return key ? value[key].trim() : null;
 }
 
 /** The currency codes a mention names directly: a string code, or the string codes of an array. */
@@ -119,7 +149,8 @@ function textMoneyOf(text) {
   const out = [];
   if (typeof text !== 'string' || text === '') return out;
   for (const m of text.matchAll(TEXT_MONEY)) {
-    const currency = m[1] ? SYMBOL_CURRENCY[m[1]] : (m[2] || m[3]);
+    // A prefixed dollar sign this file has no currency for is reported as written (`XY$`): no market's currency.
+    const currency = m[1] ? (SYMBOL_CURRENCY[m[1]] || m[1]) : (m[2] || m[3]);
     out.push({ currency, match: m[0].trim() });
   }
   return out;
@@ -161,22 +192,26 @@ function collectAnswerCurrencies(answer) {
       return;
     }
     // This object's own price label, read first so every amount in it is paired whatever the member order.
-    let here = scope;
+    let own = null;
+    let emptyLabel = false;
     for (const [key, value] of Object.entries(node)) {
-      if (!PRICE_CURRENCY_KEYS.has(key.toLowerCase())) continue;
+      if (!isPriceLabelKey(key)) continue;
       const code = currencyValueOf(value);
       const at = `${path}.${key}`;
       if (code) {
         out.priceCurrencies.push({ path: at, value: code });
-        if (here === scope) here = { value: code.toUpperCase(), path: at };
-      } else if (isObject(value)) {
-        out.unreadableCurrencies.push({ path: at, value });
+        if (!own) own = { value: code.toUpperCase(), path: at };
+      } else {
+        emptyLabel = true;
+        if (isObject(value)) out.unreadableCurrencies.push({ path: at, value });
       }
     }
+    // Its own label; else, when it has only an EMPTY label, no label at all (never an outer object's); else the scope's.
+    const here = own || (emptyLabel ? null : scope);
     for (const [key, value] of Object.entries(node)) {
       const at = `${path}.${key}`;
       const name = key.toLowerCase();
-      const isLabel = PRICE_CURRENCY_KEYS.has(name);
+      const isLabel = isPriceLabelKey(key);
       if (!isLabel && name.includes('currenc')) {
         // A statement about currencies. Reported as a mention, and walked like everything else.
         out.otherCurrencyMentions.push({ path: at, value });
@@ -185,9 +220,12 @@ function collectAnswerCurrencies(answer) {
         continue;
       }
       if (isLabel) {
-        // The code itself was read above (an object that named one is the label, and is done). An object no code
-        // could be read from is walked: whatever it does state is collected.
-        if (isObject(value) && !currencyValueOf(value)) walk(value, at, here, opaque);
+        // The code itself was read above. The REST of a label object is walked like any other object (a price inside
+        // it is a price); only the member that named the code is left out, so it is not counted as a second label.
+        if (isObject(value)) {
+          const codeKey = currencyCodeKeyOf(value);
+          if (codeKey) { const { [codeKey]: _code, ...rest } = value; walk(rest, at, here, opaque); } else walk(value, at, here, opaque);
+        }
         continue;
       }
       if (isAmount(value) && isRowCount(key, node)) {
@@ -202,9 +240,15 @@ function collectAnswerCurrencies(answer) {
   return out;
 }
 
-/** Is money written in text as `currency` (an ISO code, `'$'` or `'¥'`) money in `marketCurrency`? */
+/**
+ * Is money written in text as `currency` money in `marketCurrency`? `currency` is what a `textMoney` entry carries:
+ * an ISO code, or an ambiguous sign: `'$'` (USD, SGD, AUD, CAD, HKD, NZD or TWD) or `'¥'` (JPY or CNY). Anything else
+ * (an unknown prefixed dollar sign, an empty value) is no market's currency, and no currency is a market's when the
+ * market has none.
+ */
 function textCurrencyIs(currency, marketCurrency) {
-  return AMBIGUOUS_SYMBOL[currency] ? AMBIGUOUS_SYMBOL[currency].has(marketCurrency) : currency === marketCurrency;
+  if (typeof currency !== 'string' || typeof marketCurrency !== 'string' || !/^[A-Z]{3}$/.test(marketCurrency)) return false;
+  return has(AMBIGUOUS_SYMBOL, currency) ? AMBIGUOUS_SYMBOL[currency].has(marketCurrency) : currency === marketCurrency;
 }
 
 /**
@@ -246,4 +290,4 @@ function assertAnswerCurrency(answer, marketCurrency, label = 'answer') {
   return collectAnswerCurrencies(answer);
 }
 
-module.exports = { collectAnswerCurrencies, answerCurrencyProblems, assertAnswerCurrency, textMoneyOf, isMoneyKey };
+module.exports = { collectAnswerCurrencies, answerCurrencyProblems, assertAnswerCurrency, textMoneyOf, isMoneyKey, textCurrencyIs };

@@ -7,7 +7,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { collectAnswerCurrencies, answerCurrencyProblems, assertAnswerCurrency, textMoneyOf, isMoneyKey } = require('./_support/answerCurrencies.cjs');
+const walker = require('./_support/answerCurrencies.cjs');
+
+const { collectAnswerCurrencies, answerCurrencyProblems, assertAnswerCurrency, textMoneyOf, isMoneyKey, textCurrencyIs } = walker;
 
 const problems = (answer, currency = 'GBP') => answerCurrencyProblems(answer, currency);
 const clean = (answer, currency = 'GBP') => assert.deepEqual(problems(answer, currency), []);
@@ -207,6 +209,99 @@ test('`total` beside a page of rows is a row count, not a price with no currency
   assert.deepEqual(problems({ pricing: { subtotal: 10, total: 12 } }).length, 2);
   // A count does not hide a price beside it.
   assert.deepEqual(problems({ products: [{ price: 5 }], total: 1 }), ['a price is quoted ($.products[0].price) with no currency beside it']);
+});
+
+// ---- escapes closed after review -----------------------------------------------------------------------------------
+
+test('ESCAPE (a): a prefixed dollar sign is its own currency, never a bare `$` and never a shorter prefix', () => {
+  const cases = [['CA$5', 'CAD'], ['R$ 9', 'BRL'], ['MX$10', 'MXN'], ['NT$100', 'TWD'], ['AU$7', 'AUD'], ['C$5', 'CAD'], ['A$5', 'AUD'], ['HK$8', 'HKD'], ['NZ$8', 'NZD'], ['US$8', 'USD'], ['S$8', 'SGD']];
+  for (const [text, currency] of cases) {
+    assert.deepEqual(textMoneyOf(`from ${text} each`), [{ currency, match: text }], text);
+  }
+  // Before: CA$ read as A$ (AUD); R$, MX$, NT$, AU$ read as a bare `$`, which a USD answer accepts.
+  for (const text of ['CA$5', 'R$5', 'MX$5', 'NT$5', 'AU$5']) {
+    assert.equal(answerCurrencyProblems({ note: `Total ${text}` }, 'USD').length, 1, `${text} is not a USD price`);
+  }
+  assert.deepEqual(answerCurrencyProblems({ note: 'Total CA$5' }, 'CAD'), []);
+  assert.equal(answerCurrencyProblems({ note: 'Total CA$5' }, 'AUD').length, 1, 'CA$ is not AUD');
+  // A prefix this file has no currency for is reported as written, and is no market's currency (not even a dollar one).
+  assert.deepEqual(textMoneyOf('XY$5'), [{ currency: 'XY$', match: 'XY$5' }]);
+  for (const market of ['USD', 'SGD', 'AUD', 'CAD']) assert.equal(answerCurrencyProblems({ note: 'XY$5' }, market).length, 1, market);
+  // A bare `$` is still a bare `$`.
+  assert.deepEqual(textMoneyOf('Total $5'), [{ currency: '$', match: '$5' }]);
+});
+
+test('ESCAPE (b): a label object that names a code is still walked: a price inside it is a price', () => {
+  const answer = { currency: { code: 'GBP', price: { amount: 10, currency: 'USD' } } };
+  assert.deepEqual(answerCurrencyProblems(answer, 'GBP'), ["$.currency.price.currency is USD, the market's currency is GBP"]);
+  const found = collectAnswerCurrencies(answer);
+  assert.deepEqual(found.priceCurrencies, [{ path: '$.currency', value: 'GBP' }, { path: '$.currency.price.currency', value: 'USD' }]);
+  assert.deepEqual(found.money, [{ path: '$.currency.price.amount', value: 10, currency: 'USD', currencyPath: '$.currency.price.currency' }]);
+  // The member that named the code is not counted a second time, whatever it is called.
+  for (const key of ['code', 'currency_code', 'currencyCode', 'iso_code', 'isoCode']) {
+    assert.deepEqual(collectAnswerCurrencies({ price: 1, currency: { [key]: 'GBP', note: 'x' } }).priceCurrencies, [{ path: '$.currency', value: 'GBP' }], key);
+  }
+  // Text inside a label object is scanned too.
+  assert.equal(answerCurrencyProblems({ currency: { code: 'GBP', display: 'US$10' } }, 'GBP').length, 1);
+});
+
+test('ESCAPE (c): price-currency-code spellings label a price, so a line labelled that way is judged on its own label', () => {
+  for (const key of ['priceCurrencyCode', 'price_currency_code', 'currency-code', 'Currency-Code', 'ccy', 'CCY', 'settlement_currency', 'settlementCurrency']) {
+    // A USD line under a GBP checkout: before, the line's amount took the checkout's GBP and passed.
+    const answer = { currency: 'GBP', line_items: [{ price: 5, [key]: 'USD' }] };
+    assert.deepEqual(answerCurrencyProblems(answer, 'GBP'), [`$.line_items[0].${key} is USD, the market's currency is GBP`], key);
+    const found = collectAnswerCurrencies(answer);
+    assert.deepEqual([found.money[0].currency, found.money[0].currencyPath], ['USD', `$.line_items[0].${key}`], key);
+    assert.deepEqual(found.otherCurrencyMentions, [], `${key} is a price label, not a mention`);
+    assert.deepEqual(answerCurrencyProblems({ currency: 'GBP', line_items: [{ price: 5, [key]: 'GBP' }] }, 'GBP'), [], key);
+  }
+});
+
+test('ESCAPE (c): an EMPTY label is "no label here" and stops inheritance: the amount beside it has no currency', () => {
+  // THE RULE: an object whose only price-label members are empty says its own money has no currency. Its amounts,
+  // and those below it down to the next real label, never take the label of an object further out.
+  for (const empty of ['', '   ', null, true, 0, 12, { name: 'pound' }, []]) {
+    const answer = { currency: 'GBP', line_items: [{ price: 5, currency: empty, totals: [{ amount: 5 }] }] };
+    const label = JSON.stringify(empty);
+    const found = collectAnswerCurrencies(answer);
+    assert.deepEqual(found.money.map((m) => [m.path, m.currency]), [['$.line_items[0].price', null], ['$.line_items[0].totals[0].amount', null]], label);
+    const problems = answerCurrencyProblems(answer, 'GBP').filter((line) => /no currency beside it/.test(line));
+    assert.deepEqual(problems, ['a price is quoted ($.line_items[0].price) with no currency beside it', 'a price is quoted ($.line_items[0].totals[0].amount) with no currency beside it'], label);
+  }
+  // A real label below the empty one labels again; a sibling line is untouched; an absent label still inherits.
+  const mixed = collectAnswerCurrencies({ currency: 'GBP', line_items: [{ price: 1, currency: '', offer: { price: 2, currency: 'GBP' } }, { price: 3 }] });
+  assert.deepEqual(mixed.money.map((m) => m.currency), [null, 'GBP', 'GBP']);
+  // Two label members on one object: the readable one is the label.
+  assert.deepEqual(answerCurrencyProblems({ price: 5, currency: '', currency_code: 'GBP' }, 'GBP'), []);
+  // An empty label beside NO amount is not a problem: an unpriced row says `price: null, currency: null`.
+  assert.deepEqual(answerCurrencyProblems({ currency: 'GBP', product: { price: null, currency: null, title: 'x' } }, 'GBP'), []);
+  assert.deepEqual(answerCurrencyProblems({ product: { price: null, currency: null } }, null), []);
+});
+
+test('`textCurrencyIs` is exported as a function: "is money written like this money in that market\'s currency"', () => {
+  assert.equal(typeof textCurrencyIs, 'function');
+  // ISO codes: only themselves.
+  assert.deepEqual([textCurrencyIs('GBP', 'GBP'), textCurrencyIs('USD', 'GBP')], [true, false]);
+  // The ambiguous signs, as `textMoneyOf` reports them.
+  const dollar = ['USD', 'SGD', 'AUD', 'CAD', 'HKD', 'NZD', 'TWD'];
+  for (const market of dollar) assert.equal(textCurrencyIs('$', market), true, market);
+  for (const market of ['GBP', 'EUR', 'JPY', 'CNY', 'MXN', 'BRL']) assert.equal(textCurrencyIs('$', market), false, market);
+  assert.deepEqual(['JPY', 'CNY', 'USD', 'KRW'].map((market) => textCurrencyIs('¥', market)), [true, true, false, false]);
+  // No currency, an unknown spelling, a market with none, an inherited property name: never.
+  for (const [currency, market] of [['XY$', 'USD'], ['', 'USD'], [null, 'USD'], ['USD', null], ['USD', ''], ['$', null], ['$', 'usd'], ['toString', 'USD'], ['constructor', 'USD']]) {
+    assert.equal(textCurrencyIs(currency, market), false, JSON.stringify([currency, market]));
+  }
+  // It is the rule the walker itself applies, and it cannot be edited through the export.
+  assert.equal(textCurrencyIs(textMoneyOf('$5')[0].currency, 'SGD'), true);
+  assert.equal(textCurrencyIs(textMoneyOf('US$5')[0].currency, 'SGD'), false);
+  assert.deepEqual(Object.keys(walker).sort(), ['answerCurrencyProblems', 'assertAnswerCurrency', 'collectAnswerCurrencies', 'isMoneyKey', 'textCurrencyIs', 'textMoneyOf']);
+  assert.ok(Object.values(walker).every((value) => typeof value === 'function'), 'only functions are exported: no shared set a caller could edit');
+});
+
+test('stated limits stay stated: what the header says is not read, is not read (so a change here is a decision)', () => {
+  for (const key of ['amount_minor', 'price_cents', 'total_cents', 'line_total', 'grand_total', 'value', 'discount', 'savings', 'msrp', 'prices']) assert.equal(isMoneyKey(key), false, key);
+  for (const text of ['12usd', 'Usd 12', '12 €', '12$', 'USD 12', '￥1200']) assert.deepEqual(textMoneyOf(text), [], text);
+  assert.deepEqual(collectAnswerCurrencies({ prices: [12, 15], by_currency_map: { USD: 12 }, pair: [12, 'USD'], price_text: '1,299.00' }).money, []);
 });
 
 // ---- robustness ----------------------------------------------------------------------------------------------------
