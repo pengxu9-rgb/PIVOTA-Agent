@@ -416,6 +416,183 @@ test('ACP REST create and update: 999 units are priced; 1000, and a huge number,
   }
 });
 
+// ---- the invoke door: /agent/shop/v1/invoke and its creator alias ------------------------------------------------
+//
+// Three ways a quote reaches the backend from here, and the ceiling is on each:
+//   - the shop route with strict checkout ON: the kernel's invoke handler (its contract validator refuses);
+//   - the shop route with strict checkout OFF, and the creator alias ALWAYS (it is never the kernel's): the
+//     gateway's own handler, which asks the same kernel module before it reads, rewrites or sends anything.
+// One answer on all of them: 422 QUOTE_REQUIRED in this door's failure body, with the named detail.
+
+const SHOP = '/agent/shop/v1/invoke';
+const CREATOR = '/agent/creator/v1/invoke';
+const INVOKE_QUANTITY_REFUSAL = Object.freeze({
+  status: 'failure',
+  error: 'QUOTE_REQUIRED',
+  code: 'QUOTE_REQUIRED',
+  message: "A line's quantity is above the maximum: at most 999 units per line are accepted. Send a whole number from 1 to 999 as each line's quantity. Retrying as sent will not change the answer.",
+  retriable: false,
+  detail: { reason: 'quantity_above_line_maximum', max_quantity: 999 },
+});
+const INVOKE_KEY_REFUSAL = Object.freeze({
+  status: 'failure',
+  error: 'IDEMPOTENCY_CONFLICT',
+  code: 'IDEMPOTENCY_CONFLICT',
+  message: 'The idempotency key is too short: it must be at least 8 characters, not counting leading or trailing whitespace. Generate a new unique key of that length or longer (a UUID works) and send the request again with it. Retrying with this key will not change the answer.',
+  retriable: false,
+  detail: { reason: 'idempotency_key_too_short', min_length: 8 },
+});
+// What the strict contract always answered for a missing or short key on a write: unnamed, same code and status.
+const INVOKE_STRICT_KEY_REFUSAL_AS_BEFORE = Object.freeze({
+  status: 'failure',
+  error: 'IDEMPOTENCY_CONFLICT',
+  code: 'IDEMPOTENCY_CONFLICT',
+  message: 'This looks like a different request reusing an old reference. Starting fresh.',
+  recovery: 'use a new idempotency_key for a new request',
+  retriable: false,
+});
+function assertInvokeRefusal(r, expected, status, label) {
+  assert.equal(r.http, status, `${label}: ${r.raw.slice(0, 300)}`);
+  assert.deepEqual(r.body, expected, label);
+  sentNothing(r, label);
+}
+const invokeQuote = (quantity, extra = {}) => ({ quote: fx.nativeQuote(quantity), ...extra });
+const invokeOrder = (key, quantity) => ({
+  ...(key === undefined ? {} : { idempotency_key: key }),
+  order: {
+    quote_id: 'q_placeholder', customer_email: 'buyer@example.test',
+    shipping_address: { country: 'US', city: 'Springfield', postal_code: '00000', address_line1: '1 Example Street', recipient_name: 'Example Buyer' },
+    ...(quantity === undefined ? {} : { items: [{ merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SIG_CONNECTED, variant_id: IDS.VARIANT_CONNECTED, quantity }] }),
+  },
+});
+// Every way a request reaches an invoke route: [label, route, strict checkout on?].
+const INVOKE_WAYS = [
+  ['shop, strict', SHOP, true],
+  ['shop, strict off', SHOP, false],
+  ['creator alias, strict', CREATOR, true],
+  ['creator alias, strict off', CREATOR, false],
+];
+
+test('invoke preview_quote: 999 units are priced; 1000, and a huge number, are refused by name with nothing sent, on every route', async () => {
+  for (const [label, route, strict] of INVOKE_WAYS) {
+    const at = await door.invoke(route, 'preview_quote', invokeQuote(999), { strict });
+    assert.equal(at.http, 200, `${label}: ${at.raw.slice(0, 300)}`);
+    assert.equal(quoteCalls(at)[0].body.offer_refs[0].quantity, 999, `${label}: the quantity the backend was asked to price`);
+    for (const quantity of [1000, 1001, 900000000, 1e30]) {
+      assertInvokeRefusal(await door.invoke(route, 'preview_quote', invokeQuote(quantity), { strict }), INVOKE_QUANTITY_REFUSAL, 422, `${label} ${quantity}`);
+    }
+    // Above the ceiling on the second line only.
+    const twoLines = invokeQuote(1);
+    twoLines.quote.items.push({ product_id: IDS.SIG_CONNECTED, variant_id: IDS.VARIANT_CONNECTED, quantity: 1000 });
+    assertInvokeRefusal(await door.invoke(route, 'preview_quote', twoLines, { strict }), INVOKE_QUANTITY_REFUSAL, 422, `${label} second line`);
+  }
+});
+
+test('invoke preview_quote, strict contract: a numeric string is not a quantity there and keeps the refusal it always got', async () => {
+  for (const quantity of ['1000', '5', 0, -1, 1.5]) {
+    const r = await door.invoke(SHOP, 'preview_quote', invokeQuote(quantity));
+    assertInvokeRefusal(r, {
+      status: 'failure',
+      error: 'QUOTE_REQUIRED',
+      code: 'QUOTE_REQUIRED',
+      message: 'I need a fresh price quote before placing this order.',
+      recovery: 'call pivota_quote first',
+      retriable: false,
+    }, 422, `strict ${JSON.stringify(quantity)}`);
+  }
+});
+
+test('invoke preview_quote, the gateway\'s own handler: it CONVERTS a quantity, so the ceiling is on what it would price', async () => {
+  // This handler has always priced "999" as 999 units and "1000" as 1000: a string above the ceiling is a line
+  // above the ceiling here, and is refused like one. A string within it is priced exactly as before.
+  for (const [label, route, strict] of INVOKE_WAYS.filter(([, route, strict]) => route === CREATOR || !strict)) {
+    const within = await door.invoke(route, 'preview_quote', invokeQuote('999'), { strict });
+    assert.equal(within.http, 200, `${label}: ${within.raw.slice(0, 300)}`);
+    assert.equal(quoteCalls(within)[0].body.offer_refs[0].quantity, 999, label);
+    for (const quantity of ['1000', '900000000', '1e9', ' 1000 ']) {
+      assertInvokeRefusal(await door.invoke(route, 'preview_quote', invokeQuote(quantity), { strict }), INVOKE_QUANTITY_REFUSAL, 422, `${label} ${JSON.stringify(quantity)}`);
+    }
+    // create_order on this handler may carry lines of its own (it re-quotes them): the same ceiling.
+    assertInvokeRefusal(await door.invoke(route, 'create_order', invokeOrder('idem-invoke-order-01', 1000), { strict }), INVOKE_QUANTITY_REFUSAL, 422, `${label} create_order 1000`);
+    assertInvokeRefusal(await door.invoke(route, 'create_order', invokeOrder('idem-invoke-order-02', '1000'), { strict }), INVOKE_QUANTITY_REFUSAL, 422, `${label} create_order "1000"`);
+    const order = await door.invoke(route, 'create_order', invokeOrder('idem-invoke-order-03', 999), { strict });
+    assert.notEqual(order.body && order.body.code, 'QUOTE_REQUIRED', `${label} create_order 999: ${order.raw.slice(0, 200)}`);
+    assert.ok(order.upstream.length > 0, `${label} create_order 999 went on to the backend`);
+  }
+});
+
+test('invoke, strict contract: an order is priced from its locked quote, so lines beside it are not read and not judged', async () => {
+  const r = await door.invoke(SHOP, 'create_order', invokeOrder('idem-invoke-order-04', 1000));
+  assert.equal(r.http, 404, r.raw.slice(0, 300));
+  assert.equal(r.body.code, 'QUOTE_NOT_FOUND');
+  sentNothing(r, 'strict create_order');
+});
+
+test('invoke, strict contract: a write always needed a key of 8 or more; that refusal is unchanged, and a quote\'s key now has the same minimum', async () => {
+  const writes = {
+    create_order: (key) => invokeOrder(key),
+    submit_payment: (key) => ({ ...(key === undefined ? {} : { idempotency_key: key }), confirmation_token: 'placeholder', payment: { order_id: 'ord_placeholder', expected_amount: 1800, currency: 'USD' } }),
+    request_after_sales: (key) => ({ ...(key === undefined ? {} : { idempotency_key: key }), status: { order_id: 'ord_placeholder', requested_action: 'refund' } }),
+  };
+  for (const [operation, payload] of Object.entries(writes)) {
+    // WHERE IT WAS ALREADY ENFORCED: the kernel's contract validator (contractValidation.js), unnamed.
+    for (const key of [undefined, '', '   ', 'abcdefg', 'k', '  abcdefg  ', 'abc     ']) {
+      assertInvokeRefusal(await door.invoke(SHOP, operation, payload(key)), INVOKE_STRICT_KEY_REFUSAL_AS_BEFORE, 409, `${operation} ${JSON.stringify(key)}`);
+    }
+    // WHAT THAT COUNT LET THROUGH: eight UTF-16 units that are fewer than eight characters. Now the shared refusal.
+    assert.equal(ASTRAL.repeat(4).length, 8);
+    assertInvokeRefusal(await door.invoke(SHOP, operation, payload(ASTRAL.repeat(4))), INVOKE_KEY_REFUSAL, 409, `${operation} four characters of two units each`);
+    for (const key of ['abcdefgh', '  abcdefgh  ', ASTRAL.repeat(8)]) {
+      const r = await door.invoke(SHOP, operation, payload(key));
+      assert.notEqual(r.body && r.body.code, 'IDEMPOTENCY_CONFLICT', `${operation} ${JSON.stringify(key)}: ${r.raw.slice(0, 200)}`);
+    }
+  }
+  // A quote needs no key under the strict contract (unchanged); one that is sent is held to the minimum.
+  const none = await door.invoke(SHOP, 'preview_quote', invokeQuote(1));
+  assert.equal(none.http, 200, none.raw.slice(0, 300));
+  for (const key of ['abcdefg', 'k', 'abc     ', ASTRAL.repeat(4)]) {
+    assertInvokeRefusal(await door.invoke(SHOP, 'preview_quote', invokeQuote(1, { idempotency_key: key })), INVOKE_KEY_REFUSAL, 409, `preview_quote ${JSON.stringify(key)}`);
+  }
+  const eight = await door.invoke(SHOP, 'preview_quote', invokeQuote(1, { idempotency_key: 'abcdefgh' }));
+  assert.equal(eight.http, 200, eight.raw.slice(0, 300));
+});
+
+test('invoke, the gateway\'s own handler: its request schema always refused a key under 8 UTF-16 units; padding and wide characters now meet the shared rule', async () => {
+  for (const [label, route, strict] of INVOKE_WAYS.filter(([, route, strict]) => route === CREATOR || !strict)) {
+    for (const [operation, payload] of [['preview_quote', (key) => invokeQuote(1, { idempotency_key: key })], ['create_order', (key) => invokeOrder(key, 1)]]) {
+      // WHERE IT WAS ALREADY ENFORCED: src/schema.js (`idempotency_key: z.string().min(8)`), as a 400.
+      for (const key of ['abcdefg', 'k']) {
+        const r = await door.invoke(route, operation, payload(key), { strict });
+        assert.equal(r.http, 400, `${label} ${operation} ${key}: ${r.raw.slice(0, 200)}`);
+        assert.equal(r.body.error, 'INVALID_REQUEST', `${label} ${operation} ${key}`);
+        assert.ok(r.body.details.payload.idempotency_key, `${label} ${operation} ${key}: the schema names the field`);
+        sentNothing(r, `${label} ${operation} ${key}`);
+      }
+      // WHAT THAT COUNT LET THROUGH: 8 units as sent that are fewer than 8 characters once trimmed or counted.
+      for (const key of ['abc     ', '  abcdef  ', ASTRAL.repeat(4)]) {
+        assertInvokeRefusal(await door.invoke(route, operation, payload(key), { strict }), INVOKE_KEY_REFUSAL, 409, `${label} ${operation} ${JSON.stringify(key)}`);
+      }
+      keySeq += 1;
+      const eightCharacters = `k${String(keySeq).padStart(6, '0')}x`;
+      assert.equal(eightCharacters.length, 8);
+      const ok = await door.invoke(route, operation, payload(eightCharacters), { strict });
+      assert.notEqual(ok.body && ok.body.code, 'IDEMPOTENCY_CONFLICT', `${label} ${operation} 8: ${ok.raw.slice(0, 200)}`);
+      assert.ok(ok.upstream.length > 0, `${label} ${operation} 8 went on to the backend`);
+      // No key at all is this handler's to accept, as before.
+      const none = await door.invoke(route, operation, payload(undefined), { strict });
+      assert.notEqual(none.http, 409, `${label} ${operation} no key`);
+      assert.ok(none.upstream.length > 0, `${label} ${operation} no key went on to the backend`);
+    }
+  }
+});
+
+test('invoke: an operation that carries no cart and no key is not judged by either bound', async () => {
+  for (const [label, route, strict] of INVOKE_WAYS) {
+    const r = await door.invoke(route, 'get_product_detail', { product: { merchant_id: IDS.SELLER_CONNECTED, product_id: IDS.SIG_CONNECTED }, quote: fx.nativeQuote(1000) }, { strict });
+    assert.equal(r.http, 200, `${label}: ${r.raw.slice(0, 200)}`);
+  }
+});
+
 // ---- tools/list says what the doors do ----------------------------------------------------------------------------
 
 function collect(node, key, into, at = '$') {
@@ -443,12 +620,20 @@ test('tools/list publishes the minimum for every idempotency key and the ceiling
     assert.equal(schemaOf(ucp, tool).properties.meta.properties['idempotency-key'].minLength, 8, tool);
     assert.deepEqual(schemaOf(ucp, tool).properties.meta.required, ['idempotency-key'], `${tool}: required, as before`);
   }
-  // Every key schema either door publishes states 8, whichever tool it sits on.
+  // Every key schema either door publishes states 8, whichever tool it sits on, and says how it is counted: the
+  // runtime does not count surrounding whitespace, which `minLength` alone cannot say.
+  let keySchemas = 0;
   for (const tools of [mcp, ucp]) {
     for (const key of ['idempotency_key', 'idempotency-key']) {
-      for (const found of collect(tools, key, [])) assert.equal(found.schema.minLength, 8, found.at);
+      for (const found of collect(tools, key, [])) {
+        keySchemas += 1;
+        assert.equal(found.schema.minLength, 8, found.at);
+        assert.ok(found.schema.description.endsWith(' At least 8 characters; leading and trailing whitespace is not counted.'), found.at);
+      }
     }
   }
+  // Six native tools take a key. Every UCP tool's `meta` declares the member (three of them require it).
+  assert.equal(keySchemas, 6 + ucp.length);
 
   for (const tool of ['create_checkout_session', 'update_checkout_session']) {
     assert.deepEqual(schemaOf(mcp, tool).properties.quote.properties.items.items.properties.quantity, { type: 'integer', minimum: 1, maximum: 999 }, tool);

@@ -24,6 +24,7 @@
 // file imports anything but the shared error taxonomy.
 
 import { PivotaCommerceError } from '../errors.js';
+import intakeBounds from './intakeBounds.cjs';
 
 const nonEmpty = (s) => typeof s === 'string' && s.trim() !== '';
 // The prototype guard, moved VERBATIM from acpRestAdapter.js: it admits `Object.prototype` and a null
@@ -365,69 +366,57 @@ export const DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS = 3000;
 // ---- 4. two bounds every door shares: the idempotency key's minimum, the per-line quantity ceiling -----------
 //
 // Both are decided on the request alone, so every door refuses them BEFORE it reads a product, asks a
-// purchasability gate, mints a referral, prices a quote or contacts a store. Each number lives here and nowhere
-// else: the tool schemas import it (`minLength`, `maximum`), the doors and the executor call the functions below.
+// purchasability gate, mints a referral, prices a quote or contacts a store. Each number, each rule and each
+// refusal's wording is written once, in ./intakeBounds.cjs (a file the gateway's CommonJS invoke route can load
+// too). They are re-exported here, where every protocol door already imports its intake from, and turned into the
+// kernel error a door throws: the tool schemas import the numbers (`minLength`, `maximum`), the doors and the
+// executor call the functions below.
 //
-// THE IDEMPOTENCY KEY: at least IDEMPOTENCY_KEY_MIN_LENGTH characters, counted in Unicode code points (as JSON
-// Schema `minLength` counts them) after surrounding whitespace is removed (as the kernel's ledger and the doors that
-// carry the key in a header or in `meta` already remove it before using the key). An ABSENT key is not this rule's:
-// the rule that requires one stays where it was, with the answer it had.
-export const IDEMPOTENCY_KEY_MIN_LENGTH = 8;
-export const IDEMPOTENCY_KEY_TOO_SHORT_REASON = 'idempotency_key_too_short';
-
-const idempotencyKeyTooShortMessage = (min) => [
-  `The idempotency key is too short: it must be at least ${min} characters, not counting leading or trailing`,
-  'whitespace. Generate a new unique key of that length or longer (a UUID works) and send the request again',
-  'with it. Retrying with this key will not change the answer.',
-].join(' ');
-
-/**
- * Refuse a PRESENT idempotency key that is shorter than the minimum. Same code as a missing key
- * (IDEMPOTENCY_CONFLICT, not retriable), its own reason, and a detail that states the minimum and nothing about
- * the key. Absent (not a string, or blank) returns: the caller's own "a key is required" rule answers that.
- */
-export function assertIdempotencyKeyLongEnough(key) {
-  if (!nonEmpty(key)) return;
-  if ([...key.trim()].length >= IDEMPOTENCY_KEY_MIN_LENGTH) return;
-  throw intakeRefusal(
-    'IDEMPOTENCY_CONFLICT',
-    IDEMPOTENCY_KEY_TOO_SHORT_REASON,
-    idempotencyKeyTooShortMessage(IDEMPOTENCY_KEY_MIN_LENGTH),
-    { min_length: IDEMPOTENCY_KEY_MIN_LENGTH },
-  );
-}
-
+// THE IDEMPOTENCY KEY: at least IDEMPOTENCY_KEY_MIN_LENGTH characters, counted in Unicode code points after
+// surrounding whitespace is removed. An ABSENT key is not this rule's: the rule that requires one stays where it
+// was, with the answer it had.
 // THE QUANTITY OF ONE LINE: at most MAX_LINE_QUANTITY units. Per line only: the cart's own bounds (lines, distinct
 // products) are below, and a purchase lane with a lower limit of its own keeps it.
-export const MAX_LINE_QUANTITY = 999;
-export const QUANTITY_ABOVE_LINE_MAXIMUM_REASON = 'quantity_above_line_maximum';
-
-const quantityAboveLineMaximumMessage = (max) => [
-  `A line's quantity is above the maximum: at most ${max} units per line are accepted.`,
-  `Send a whole number from 1 to ${max} as each line's quantity. Retrying as sent will not change the answer.`,
-].join(' ');
-
-/** A number above the ceiling, whatever else is wrong with it. Anything that is not a number is not this rule's. */
-export const isLineQuantityAboveMaximum = (quantity) => typeof quantity === 'number' && quantity > MAX_LINE_QUANTITY;
-
-/** The one definition of a line quantity a door may act on: a whole number from 1 to MAX_LINE_QUANTITY. */
-export const isAcceptableLineQuantity = (quantity) => Number.isSafeInteger(quantity) && quantity >= 1
-  && quantity <= MAX_LINE_QUANTITY;
+export const {
+  IDEMPOTENCY_KEY_MIN_LENGTH,
+  IDEMPOTENCY_KEY_TOO_SHORT_REASON,
+  MAX_LINE_QUANTITY,
+  QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
+  isAcceptableLineQuantity,
+  isLineQuantityAboveMaximum,
+} = intakeBounds;
 
 /**
- * Refuse a cart that has a line above the ceiling. Same code as every other bad quantity (QUOTE_REQUIRED, not
- * retriable), its own reason, and the maximum in the message and the detail. A cart that is not an array, or has
- * more lines than a cart may have, is left to `normalizeCartItems`, which refuses it without walking it.
+ * The kernel error for a refusal ./intakeBounds.cjs describes: its code (not retriable), its own reason, its
+ * curated message and a detail that states the bound and nothing from the request.
+ */
+export function intakeBoundRefusal(refusal) {
+  return intakeRefusal(refusal.code, refusal.reason, refusal.message, refusal.detail);
+}
+
+/**
+ * Refuse a PRESENT idempotency key that is shorter than the minimum, with the code a missing key gets
+ * (IDEMPOTENCY_CONFLICT). Absent (not a string, or blank) returns: the caller's own "a key is required" rule
+ * answers that.
+ */
+export function assertIdempotencyKeyLongEnough(key) {
+  const refusal = intakeBounds.idempotencyKeyRefusal(key);
+  if (refusal) throw intakeBoundRefusal(refusal);
+}
+
+/** THE refusal for a line above the ceiling, for every door, with the code every other bad quantity gets (QUOTE_REQUIRED). */
+export function lineQuantityAboveMaximumRefusal() {
+  return intakeBoundRefusal(intakeBounds.lineQuantityRefusal());
+}
+
+/**
+ * Refuse a cart that has a line above the ceiling. A cart that is not an array, or has more lines than a cart may
+ * have, is left to `normalizeCartItems`, which refuses it without walking it.
  */
 export function assertLineQuantitiesWithinMaximum(rawItems) {
   if (!Array.isArray(rawItems) || rawItems.length > MAX_CART_ITEMS) return;
   if (!rawItems.some((it) => isLineQuantityAboveMaximum(pickFields(it, ['quantity']).quantity))) return;
-  throw intakeRefusal(
-    'QUOTE_REQUIRED',
-    QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
-    quantityAboveLineMaximumMessage(MAX_LINE_QUANTITY),
-    { max_quantity: MAX_LINE_QUANTITY },
-  );
+  throw lineQuantityAboveMaximumRefusal();
 }
 
 // ---- load bounds on a public create path --------------------------------------------------------------------

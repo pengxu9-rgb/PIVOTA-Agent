@@ -24,6 +24,7 @@ import {
   ucpCommerceToolDefinitionsFor,
   ucpDialectSurface,
 } from '../src/commerceToolSurface.js';
+import { toolDefinitions as legacyToolDefinitions } from '../src/operationMap.js';
 import { START_PURCHASE_MAX_QUANTITY } from '../src/orchestratedPurchaseTool.js';
 import { REAP_MAX_QUANTITY } from '../src/ucpReapAgenticLane.js';
 import {
@@ -379,4 +380,22 @@ test('the published maximum for a line quantity is the runtime ceiling, and lowe
   }
   assert.deepEqual([...maxima].sort((a, b) => a - b), [...new Set([REAP_MAX_QUANTITY, MAX_LINE_QUANTITY])].filter((m) => maxima.has(m)));
   assert.ok(maxima.has(MAX_LINE_QUANTITY));
+});
+
+test('each published key description says how the minimum is counted, which minLength alone cannot', () => {
+  const sentence = ` At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters; leading and trailing whitespace is not counted.`;
+  for (const tool of Object.keys(NATIVE_CALLS)) {
+    assert.ok(schemaOf(commerceToolDefinitions, tool).properties.idempotency_key.description.endsWith(sentence), tool);
+  }
+  for (const env of [{}, { REAP_AGENTIC_LANE_ENABLED: '1' }]) {
+    for (const tool of ucpCommerceToolDefinitionsFor(env)) {
+      assert.ok(tool.inputSchema.properties.meta.properties['idempotency-key'].description.endsWith(sentence), tool.name);
+    }
+  }
+});
+
+test('the older quote tool, whose calls go to the invoke door, publishes the same ceiling', () => {
+  const quote = legacyToolDefinitions.find((t) => t.name === 'pivota_quote');
+  const quantity = quote.inputSchema.properties.payload.properties.quote.properties.items.items.properties.quantity;
+  assert.deepEqual(quantity, { type: 'integer', minimum: 1, maximum: MAX_LINE_QUANTITY });
 });

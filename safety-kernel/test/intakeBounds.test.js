@@ -14,7 +14,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PivotaCommerceError } from '../src/errors.js';
+import {
+  assertInvokeIntakeBounds,
+  assertInvokeLineQuantities,
+  INVOKE_BOUNDED_OPERATIONS,
+  INVOKE_KEYED_OPERATIONS,
+  invokeErrorOf,
+  validateCanonical,
+  WRITE_OPERATIONS,
+} from '../src/contractValidation.js';
+import intakeBoundsModule from '../src/protocol/intakeBounds.cjs';
+import { createInvokeHandler } from '../src/invokeHandler.js';
+import { SafetyKernel } from '../src/kernel.js';
 import {
   assertIdempotencyKeyLongEnough,
   assertLineQuantitiesWithinMaximum,
@@ -382,4 +397,261 @@ test('ACP REST: a line of 1000 is refused on create and on update before the exe
   assert.equal(asString.status, 400);
   assert.equal(asString.body.code, 'QUOTE_REQUIRED');
   assert.equal('detail' in asString.body, false);
+});
+
+// ---- the invoke door: the strict contract validator, the kernel's invoke handler, and the other route's check -----
+
+const invokeQuote = (quantity, extra = {}) => ({ quote: { merchant_id: 'merch_a', items: [{ product_id: 'p1', variant_id: 'v1', quantity }] }, ...extra });
+
+test('the invoke operations either bound can refuse', () => {
+  assert.deepEqual([...INVOKE_KEYED_OPERATIONS].sort(), ['confirm_payment', 'create_order', 'preview_quote', 'request_after_sales', 'submit_payment']);
+  assert.deepEqual([...INVOKE_BOUNDED_OPERATIONS], ['confirm_payment', 'create_order', 'preview_quote', 'request_after_sales', 'submit_payment']);
+  for (const write of WRITE_OPERATIONS) assert.ok(INVOKE_KEYED_OPERATIONS.has(write), write);
+});
+
+test('strict contract, preview_quote: 999 passes, a number above it is refused by name, and every older refusal keeps its own', () => {
+  assert.equal(caught(() => validateCanonical('preview_quote', invokeQuote(999))), null);
+  for (const quantity of [1000, 1001, 900000000, 1e30, 1000.5, 999.5]) {
+    assertQuantityAboveMaximum(caught(() => validateCanonical('preview_quote', invokeQuote(quantity))), `strict ${quantity}`);
+  }
+  // On any line, and before any single line is otherwise judged.
+  const second = invokeQuote(1);
+  second.quote.items.push({ product_id: 'p2', quantity: 1000 });
+  assertQuantityAboveMaximum(caught(() => validateCanonical('preview_quote', second)), 'second line');
+  assertQuantityAboveMaximum(caught(() => validateCanonical('preview_quote', { quote: { merchant_id: 'merch_a', items: [{ quantity: 1 }, { product_id: 'p2', quantity: 1000 }] } })), 'beside a line with no product_id');
+  // This door's cart has no line cap of its own, so there is none for a long cart to hide behind.
+  const long = { quote: { merchant_id: 'merch_a', items: Array.from({ length: 80 }, (_, i) => ({ product_id: `p${i}`, quantity: i === 79 ? 1000 : 1 })) } };
+  assertQuantityAboveMaximum(caught(() => validateCanonical('preview_quote', long)), 'the 80th line');
+  // A numeric string is not a quantity under this contract: the refusal it always got, unchanged.
+  for (const quantity of ['1000', '5', 0, -1, 1.5, null, undefined]) {
+    const err = caught(() => validateCanonical('preview_quote', invokeQuote(quantity)));
+    assert.equal(err.code, 'QUOTE_REQUIRED', String(quantity));
+    assert.deepEqual(err.detail, { reason: 'item_quantity_invalid' }, String(quantity));
+  }
+  // What was refused before the cart was looked at still is, for the same reason.
+  assert.deepEqual(caught(() => validateCanonical('preview_quote', {})).detail, { reason: 'quote_required' });
+  assert.deepEqual(caught(() => validateCanonical('preview_quote', { quote: { items: [{ product_id: 'p1', quantity: 1000 }] } })).detail.reason, 'merchant_id_required');
+  assert.deepEqual(caught(() => validateCanonical('preview_quote', { quote: { merchant_id: 'merch_a', items: [] } })).detail, { reason: 'items_required' });
+});
+
+test('strict contract, create_order: the order is priced from its locked quote, so lines beside it are not judged', () => {
+  const order = {
+    idempotency_key: 'abcdefgh',
+    order: {
+      quote_id: 'q_1',
+      shipping_address: { country: 'US', city: 'Springfield', address_line1: '1 Example Street', recipient_name: 'Example Buyer', postal_code: '00000' },
+      items: [{ product_id: 'p1', quantity: 1000 }],
+    },
+  };
+  assert.equal(caught(() => validateCanonical('create_order', order)), null);
+});
+
+test('strict contract, the key on a write: where the minimum always was, and what the shared rule adds', () => {
+  const writes = {
+    create_order: { order: { quote_id: 'q_1', shipping_address: { country: 'US', city: 'Springfield', address_line1: '1 Example Street', recipient_name: 'Example Buyer', postal_code: '00000' } } },
+    submit_payment: { confirmation_token: 'placeholder', payment: { order_id: 'o_1', currency: 'USD', expected_amount: 100 } },
+    request_after_sales: { status: { order_id: 'o_1', requested_action: 'refund' } },
+  };
+  assert.deepEqual(Object.keys(writes).sort(), [...WRITE_OPERATIONS].sort());
+  for (const [operation, payload] of Object.entries(writes)) {
+    // ALREADY ENFORCED, unnamed: absent, blank, or fewer than 8 UTF-16 units once trimmed.
+    for (const key of [undefined, null, '', '   ', 'abcdefg', 'k', '  abcdefg  ', 'abc     ', 12345678]) {
+      const err = caught(() => validateCanonical(operation, { ...payload, idempotency_key: key }));
+      assert.equal(err.code, 'IDEMPOTENCY_CONFLICT', `${operation} ${JSON.stringify(key)}`);
+      assert.deepEqual(err.detail, { reason: 'missing_or_short_idempotency_key' }, `${operation} ${JSON.stringify(key)}`);
+    }
+    // ADDED: 8 or more UTF-16 units that are fewer than 8 characters.
+    for (const key of ['\u{1F511}'.repeat(4), '\u{1F511}'.repeat(7), `  ${'\u{1F511}'.repeat(4)}  `]) {
+      assertKeyTooShort(caught(() => validateCanonical(operation, { ...payload, idempotency_key: key })), `${operation} wide characters`);
+    }
+    for (const key of ['abcdefgh', '  abcdefgh  ', '\u{1F511}'.repeat(8), 'é'.repeat(8)]) {
+      assert.equal(caught(() => validateCanonical(operation, { ...payload, idempotency_key: key })), null, `${operation} ${JSON.stringify(key)}`);
+    }
+  }
+});
+
+test('strict contract, the key on a quote: none is needed, and one that is sent has the shared minimum', () => {
+  for (const absent of [undefined, null, '', '   ']) {
+    assert.equal(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: absent }))), null, JSON.stringify(absent));
+  }
+  for (const key of ['abcdefg', 'k', 'abc     ', '\u{1F511}'.repeat(4)]) {
+    assertKeyTooShort(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: key }))), JSON.stringify(key));
+  }
+  assert.equal(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: 'abcdefgh' }))), null);
+  // A read is not judged, whatever it carries.
+  assert.equal(caught(() => validateCanonical('get_order_status', { idempotency_key: 'k', quote: invokeQuote(1000).quote })), null);
+});
+
+test('the other invoke route\'s check: both bounds and nothing else, with the quantity read as that route reads it', () => {
+  // That route converts a quantity (`Number(quantity)`) and prices the result: "1000" is a thousand units there.
+  for (const quantity of [1000, 900000000, 1e30, '1000', '900000000', '1e9', ' 1000 ', [1000]]) {
+    assertQuantityAboveMaximum(caught(() => assertInvokeIntakeBounds('preview_quote', invokeQuote(quantity))), `quote ${JSON.stringify(quantity)}`);
+    assertQuantityAboveMaximum(caught(() => assertInvokeIntakeBounds('create_order', { order: { quote_id: 'q_1', items: [{ product_id: 'p1', quantity }] } })), `order ${JSON.stringify(quantity)}`);
+  }
+  // Everything that route always accepted or judged for itself is left to it.
+  for (const quantity of [1, 999, '999', '5', 0, -1, 1.5, null, undefined, 'many', {}, true]) {
+    assert.equal(caught(() => assertInvokeIntakeBounds('preview_quote', invokeQuote(quantity))), null, `quote ${JSON.stringify(quantity)}`);
+  }
+  for (const payload of [undefined, null, {}, { quote: null }, { quote: {} }, { quote: { items: 'x' } }, { quote: { items: [null, 'x', 7] } }]) {
+    assert.equal(caught(() => assertInvokeIntakeBounds('preview_quote', payload)), null, JSON.stringify(payload));
+  }
+  // The strict contract's own reading stays strict: there a string is never converted.
+  assert.equal(caught(() => assertInvokeLineQuantities('preview_quote', invokeQuote('1000'))), null);
+  assertQuantityAboveMaximum(caught(() => assertInvokeLineQuantities('preview_quote', invokeQuote('1000'), { asThatRouteReadsIt: true })), 'converted');
+  // The key: present and short on an operation that takes one.
+  for (const operation of INVOKE_KEYED_OPERATIONS) {
+    assertKeyTooShort(caught(() => assertInvokeIntakeBounds(operation, { idempotency_key: 'abc     ' })), operation);
+    assertKeyTooShort(caught(() => assertInvokeIntakeBounds(operation, { idempotency_key: '\u{1F511}'.repeat(4) })), operation);
+    assert.equal(caught(() => assertInvokeIntakeBounds(operation, { idempotency_key: 'abcdefgh' })), null, operation);
+    assert.equal(caught(() => assertInvokeIntakeBounds(operation, {})), null, `${operation}: no key`);
+  }
+  // An operation that is neither keyed nor carries lines is never judged.
+  assert.equal(caught(() => assertInvokeIntakeBounds('find_products', { idempotency_key: 'k', quote: invokeQuote(1000).quote, order: { items: [{ quantity: 1000 }] } })), null);
+  assert.equal(caught(() => assertInvokeIntakeBounds('toString', { idempotency_key: 'k', quote: invokeQuote(1000).quote })), null);
+});
+
+test('the invoke door\'s error object: a shared refusal is named, every other error is exactly toResult()', () => {
+  const quantity = invokeErrorOf(caught(() => validateCanonical('preview_quote', invokeQuote(1000))));
+  assert.deepEqual(quantity, {
+    code: 'QUOTE_REQUIRED',
+    retriable: false,
+    message: "A line's quantity is above the maximum: at most 999 units per line are accepted. Send a whole number from 1 to 999 as each line's quantity. Retrying as sent will not change the answer.",
+    detail: { reason: 'quantity_above_line_maximum', max_quantity: 999 },
+  });
+  const key = invokeErrorOf(caught(() => validateCanonical('preview_quote', invokeQuote(1, { idempotency_key: 'k' }))));
+  assert.equal(key.code, 'IDEMPOTENCY_CONFLICT');
+  assert.equal(key.retriable, false);
+  assert.deepEqual(key.detail, { reason: 'idempotency_key_too_short', min_length: 8 });
+  for (const other of [
+    caught(() => validateCanonical('preview_quote', invokeQuote('1000'))),
+    caught(() => validateCanonical('create_order', {})),
+    new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'placeholder', secret: 'x' }),
+  ]) {
+    assert.deepEqual(invokeErrorOf(other), other.toResult().error);
+    assert.equal('detail' in invokeErrorOf(other), false);
+  }
+});
+
+test('the kernel\'s invoke handler: a quote above the ceiling, or with a short key, is refused before the kernel or an upstream is called', async () => {
+  const calls = [];
+  const kernel = new SafetyKernel({
+    upstream: async (op, payload) => { calls.push({ op, payload }); return { quote_id: 'bq_1', currency: 'USD', merchant_of_record: 'merch_a', locked_totals: { subtotal: 100, total: 100 }, line_items: payload.quote.items }; },
+    secret: 'invoke-bounds-secret-0123456789abcdef',
+    log: { info() {}, warn() {}, error() {} },
+  });
+  const handler = createInvokeHandler({ kernel, upstream: async (op, payload) => { calls.push({ op, payload }); return {}; }, log: { info() {}, warn() {}, error() {} } });
+  for (const quantity of [1000, 900000000]) {
+    const out = await handler.handle('preview_quote', invokeQuote(quantity), CTX);
+    assert.deepEqual(out, { ok: false, error: {
+      code: 'QUOTE_REQUIRED',
+      retriable: false,
+      message: "A line's quantity is above the maximum: at most 999 units per line are accepted. Send a whole number from 1 to 999 as each line's quantity. Retrying as sent will not change the answer.",
+      detail: { reason: 'quantity_above_line_maximum', max_quantity: 999 },
+    } }, String(quantity));
+  }
+  const shortKey = await handler.handle('preview_quote', invokeQuote(1, { idempotency_key: 'abcdefg' }), CTX);
+  assert.equal(shortKey.error.code, 'IDEMPOTENCY_CONFLICT');
+  assert.deepEqual(shortKey.error.detail, { reason: 'idempotency_key_too_short', min_length: 8 });
+  // A refusal that was there before answers with exactly the body it had: no detail, the code's own hint.
+  const asString = await handler.handle('preview_quote', invokeQuote('1000'), CTX);
+  assert.deepEqual(asString, { ok: false, error: { code: 'QUOTE_REQUIRED', retriable: false, recovery: 'call pivota_quote first', message: 'I need a fresh price quote before placing this order.' } });
+  assert.deepEqual(calls, [], 'nothing was called for any refusal');
+
+  const priced = await handler.handle('preview_quote', invokeQuote(999), CTX);
+  assert.equal(priced.ok, true, JSON.stringify(priced));
+  assert.deepEqual(calls.map((c) => [c.op, c.payload.quote.items[0].quantity]), [['preview_quote', 999]]);
+});
+
+// ---- one number: no other literal ceiling on a line quantity anywhere on these paths ------------------------------
+
+const REPO = fileURLToPath(new URL('../../', import.meta.url));
+const QUANTITY_PATHS = [
+  'safety-kernel/src/protocol/intakeBounds.cjs',
+  'safety-kernel/src/protocol/buyerIntake.js',
+  'safety-kernel/src/protocol/canonicalExecutor.js',
+  'safety-kernel/src/protocol/acpRestAdapter.js',
+  'safety-kernel/src/contractValidation.js',
+  'safety-kernel/src/invokeHandler.js',
+  'safety-kernel/src/kernel.js',
+  'safety-kernel/src/upstreamAdapter.js',
+  'mcp-server/src/commerceToolSurface.js',
+  'mcp-server/src/ucpArgumentAdapter.js',
+  'mcp-server/src/ucpCheckoutEscalation.js',
+  'mcp-server/src/operationMap.js',
+  'mcp-server/src/secureInvoke.js',
+  'src/schema.js',
+  'src/server.js',
+];
+// The purchase lanes' own limit: lower than the ceiling, theirs to keep, and the largest number a quantity may sit
+// beside anywhere else on these paths.
+const LARGEST_LANE_LIMIT = 10;
+
+/** Every number above the lane limit that sits within one expression of the word "quantity", in code (not comments). */
+function numbersBesideQuantity(source) {
+  const found = [];
+  source.split('\n').forEach((line, index) => {
+    const code = line.replace(/\/\/.*$/, '');
+    if (/^\s*\*/.test(code) || /^\s*\/\*/.test(code)) return;
+    for (const match of code.matchAll(/quantity/gi)) {
+      const before = code.slice(Math.max(0, match.index - 40), match.index).split(/[;{}]/).pop();
+      const after = code.slice(match.index, match.index + 100).split(/[;}]/)[0];
+      for (const number of `${before} ${after}`.matchAll(/(?<![\w.$])(\d[\d_]*)(?![\w.])/g)) {
+        const value = Number(number[1].replace(/_/g, ''));
+        if (value > LARGEST_LANE_LIMIT) found.push({ line: index + 1, value, code: code.trim().slice(0, 120) });
+      }
+    }
+  });
+  return found;
+}
+
+test('the scan itself finds a literal ceiling when there is one', () => {
+  assert.equal(numbersBesideQuantity('if (it.quantity > 1000) refuse();').length, 1);
+  assert.equal(numbersBesideQuantity('const ok = 999 >= item.quantity;').length, 1);
+  assert.equal(numbersBesideQuantity('quantity: { type: "integer", minimum: 1, maximum: 500 },').length, 1);
+  assert.equal(numbersBesideQuantity('const MAX_QUANTITY = 1_000;').length, 1);
+  assert.equal(numbersBesideQuantity('// a comment about quantity 1000').length, 0);
+  assert.equal(numbersBesideQuantity('quantity: { type: "integer", minimum: 1, maximum: 10 }, title: { maxLength: 1024 }').length, 0);
+  assert.equal(numbersBesideQuantity('if (it.quantity > MAX_LINE_QUANTITY) refuse();').length, 0);
+});
+
+test('the per-line ceiling is written as a number in exactly one place on the checkout and invoke paths', () => {
+  const hits = [];
+  for (const file of QUANTITY_PATHS) {
+    for (const hit of numbersBesideQuantity(readFileSync(join(REPO, file), 'utf8'))) hits.push({ file, ...hit });
+  }
+  assert.deepEqual(hits.map((h) => [h.file, h.value, h.code]), [
+    ['safety-kernel/src/protocol/intakeBounds.cjs', 999, 'const MAX_LINE_QUANTITY = 999;'],
+  ]);
+});
+
+test('the gateway\'s own invoke route holds no rule of its own: it loads the shared module and asks it', () => {
+  const server = readFileSync(join(REPO, 'src/server.js'), 'utf8');
+  assert.match(server, /require\('\.\.\/safety-kernel\/src\/protocol\/intakeBounds\.cjs'\)/);
+  assert.match(server, /commerceIntakeBounds\.invokeIntakeBoundsRefusal\(operation, payload\)/);
+  // No list of operations, no minimum and no ceiling of its own.
+  for (const forbidden of [/MAX_LINE_QUANTITY\s*=/, /IDEMPOTENCY_KEY_MIN_LENGTH\s*=/, /quantity_above_line_maximum/, /idempotency_key_too_short/]) {
+    assert.equal(forbidden.test(server), false, String(forbidden));
+  }
+});
+
+test('the shared module: what a refusal says, and that it is as final as its code', () => {
+  const key = intakeBoundsModule.idempotencyKeyRefusal('abcdefg');
+  const quantity = intakeBoundsModule.lineQuantityRefusal();
+  for (const refusal of [key, quantity]) {
+    const err = new PivotaCommerceError(refusal.code, {});
+    assert.equal(refusal.retriable, false);
+    assert.equal(refusal.retriable, err.retriable, `${refusal.code}: the taxonomy says the same`);
+  }
+  assert.deepEqual([key.code, key.reason, key.detail], ['IDEMPOTENCY_CONFLICT', 'idempotency_key_too_short', { min_length: 8 }]);
+  assert.deepEqual([quantity.code, quantity.reason, quantity.detail], ['QUOTE_REQUIRED', 'quantity_above_line_maximum', { max_quantity: 999 }]);
+  assert.equal(intakeBoundsModule.idempotencyKeyRefusal('abcdefgh'), null);
+  assert.equal(intakeBoundsModule.idempotencyKeyRefusal(undefined), null);
+  // What the gateway's own invoke route gets back: the key before the lines, null when within both.
+  assert.equal(intakeBoundsModule.invokeIntakeBoundsRefusal('preview_quote', { idempotency_key: 'k', quote: { items: [{ quantity: 1000 }] } }).reason, 'idempotency_key_too_short');
+  assert.equal(intakeBoundsModule.invokeIntakeBoundsRefusal('preview_quote', { quote: { items: [{ quantity: '1000' }] } }).reason, 'quantity_above_line_maximum');
+  assert.equal(intakeBoundsModule.invokeIntakeBoundsRefusal('preview_quote', { idempotency_key: 'abcdefgh', quote: { items: [{ quantity: '999' }] } }), null);
+  assert.equal(intakeBoundsModule.invokeIntakeBoundsRefusal('constructor', { idempotency_key: 'k', quote: { items: [{ quantity: 1000 }] } }), null);
+  // The numbers every ESM importer sees are this module's own.
+  assert.equal(IDEMPOTENCY_KEY_MIN_LENGTH, intakeBoundsModule.IDEMPOTENCY_KEY_MIN_LENGTH);
+  assert.equal(MAX_LINE_QUANTITY, intakeBoundsModule.MAX_LINE_QUANTITY);
 });

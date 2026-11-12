@@ -33,6 +33,7 @@ const OpenAI = require('openai');
 const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
+const commerceIntakeBounds = require('../safety-kernel/src/protocol/intakeBounds.cjs');
 const {
   LEGACY_SEED_PROBE_HEADER,
   finalizeInvokeSearchBody,
@@ -33309,7 +33310,27 @@ function commerceKernelErrorBody(error = {}) {
   if (error.details && typeof error.details === 'object' && !Array.isArray(error.details)) {
     body.details = sanitizeCommerceKernelErrorDetails(error.details);
   }
+  // A shared intake refusal (the idempotency key's minimum, the per-line quantity ceiling) names itself: its
+  // field-level detail, as the kernel's invoke handler hands it over. No other kernel error carries one.
+  if (error.detail && typeof error.detail === 'object' && !Array.isArray(error.detail)) {
+    body.detail = sanitizeCommerceKernelErrorDetails(error.detail);
+  }
   return body;
+}
+
+// The two bounds every checkout door shares, for the invoke requests the strict kernel route does not take: this
+// route with strict checkout off, and the creator alias always. The numbers, the rules and the wording are the
+// kernel's (safety-kernel/src/protocol/intakeBounds.cjs, the one file both module systems load); this only asks it
+// and shapes the answer the way the strict route shapes a kernel refusal. Null when the request is within both.
+function invokeIntakeBoundsFailure(operation, payload) {
+  const refusal = commerceIntakeBounds.invokeIntakeBoundsRefusal(operation, payload);
+  if (!refusal) return null;
+  return {
+    code: refusal.code,
+    message: refusal.message,
+    retriable: refusal.retriable,
+    detail: { reason: refusal.reason, ...refusal.detail },
+  };
 }
 
 function mcpToolErrorBody({ id = null, code, message }) {
@@ -44210,6 +44231,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     const { operation } = parsed.data;
     let { payload } = parsed.data;
+    // The shared checkout bounds, before anything is read, rewritten or sent: a present idempotency key below the
+    // minimum, a cart line above the per-line ceiling (see invokeIntakeBoundsFailure).
+    const intakeBoundsFailure = invokeIntakeBoundsFailure(operation, payload);
+    if (intakeBoundsFailure) {
+      return res.status(statusForCommerceKernelError(intakeBoundsFailure.code)).json(commerceKernelErrorBody(intakeBoundsFailure));
+    }
     // Product search: the search request contract (and the lane fields copied out of it) and the routing
     // flags public_search_route / invoke_search_rail are the gateway's own, never the caller's. Under
     // those keys the request metadata is dropped here, before anything reads it, unless it is the very

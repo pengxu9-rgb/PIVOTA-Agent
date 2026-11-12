@@ -14,7 +14,7 @@
 //   });
 
 import { SafetyKernel, PivotaCommerceError, classifyPaymentStatus, IDEMPOTENT_REPLAY_MARKER } from './kernel.js';
-import { validateCanonical, WRITE_OPERATIONS } from './contractValidation.js';
+import { invokeErrorOf, validateCanonical, WRITE_OPERATIONS } from './contractValidation.js';
 import { redact } from './redact.js';
 
 // Codex P3-2: after-sales IS a kernel money-path op (routes through kernel.requestAfterSales).
@@ -155,7 +155,9 @@ export function createInvokeHandler({ kernel, upstream, log = console, afterSale
           });
         }
         if (err.code === 'IDEMPOTENCY_CONFLICT') count('idempotency_conflict');
-        const result = err.toResult();
+        // A shared intake refusal (the key minimum, the per-line ceiling) answers with its curated message and its
+        // field-level detail; every other error keeps exactly the body it had.
+        const result = { ok: false, error: invokeErrorOf(err) };
         if (ctx?.diagnostics === true) {
           result.error.details = redact(err.detail || {});
         }

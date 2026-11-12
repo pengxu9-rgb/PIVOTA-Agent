@@ -289,6 +289,21 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
     const { resp, store, upstream: sent } = await observed(() => send('POST', door, JSON.stringify(body), buyer || {}));
     return { http: resp.status, raw: resp.text, body: resp.body, store, upstream: sent };
   }
+  /**
+   * One operation on an invoke route (`/agent/shop/v1/invoke`, or its creator alias). The answer is the route's
+   * own JSON body. `strict: false` runs the request with strict checkout off (the route reads the switch per call).
+   */
+  async function invoke(route, operation, payload, { buyer = BUYER, strict = true } = {}) {
+    const saved = process.env.AGENT_CHECKOUT_STRICT;
+    if (!strict) delete process.env.AGENT_CHECKOUT_STRICT;
+    try {
+      const { resp, store, upstream: sent } = await observed(() => send('POST', route, JSON.stringify({ operation, payload }), buyer || {}));
+      return { http: resp.status, raw: resp.text, body: resp.body, store, upstream: sent };
+    } finally {
+      if (saved === undefined) delete process.env.AGENT_CHECKOUT_STRICT;
+      else process.env.AGENT_CHECKOUT_STRICT = saved;
+    }
+  }
   const listTools = async (door) => (await post(door, { jsonrpc: '2.0', id: 7, method: 'tools/list' })).body.result.tools;
   /**
    * A signed ACP REST request. `key`: the Idempotency-Key header (undefined = none). `buyer: false` sends no buyer
@@ -313,7 +328,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
     if (server) await new Promise((resolve) => server.close(resolve));
     nock.cleanAll();
   };
-  return { app, call, post, acp, listTools, listen, close, resetGate, storeCalls, upstream, root };
+  return { app, call, post, acp, invoke, listTools, listen, close, resetGate, storeCalls, upstream, root };
 }
 
 const UCP_META = Object.freeze({ 'ucp-agent': { profile: 'https://agent.example/profile' } });

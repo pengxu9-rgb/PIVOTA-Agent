@@ -1,3 +1,6 @@
+// The per-line quantity ceiling the invoke door enforces on a quote (the one number, not restated here).
+import { MAX_LINE_QUANTITY } from "../../safety-kernel/src/protocol/buyerIntake.js";
+
 export const operationMap = Object.freeze({
   pivota_search: Object.freeze([
     "find_products",
@@ -140,7 +143,7 @@ export const toolDefinitions = Object.freeze([
                       product_id: { type: "string" },
                       sku_id: { type: "string" },
                       variant_id: { type: "string" },
-                      quantity: { type: "integer", minimum: 1 }
+                      quantity: { type: "integer", minimum: 1, maximum: MAX_LINE_QUANTITY }
                     }
                   }
                 },

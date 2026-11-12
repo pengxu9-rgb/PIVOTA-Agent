@@ -1109,7 +1109,7 @@ function describe(op) {
 }
 
 // `minLength` is the runtime minimum itself (buyerIntake.js), imported so the two cannot drift.
-const IDEMPOTENCY = { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH, description: "Client-generated unique key; a replay returns the original result, never a duplicate." };
+const IDEMPOTENCY = { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH, description: `Client-generated unique key; a replay returns the original result, never a duplicate. At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters; leading and trailing whitespace is not counted.` };
 const ADDRESS = {
   type: "object",
   properties: {

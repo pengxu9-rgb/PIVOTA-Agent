@@ -29,7 +29,7 @@ const { spawn } = require('node:child_process');
 
 const MAIN = require('./fixtures/get_product_forward_market_main.json');
 const { revertNoMarketDescriptionEdits } = require('./_support/noMarketDescriptionEdits.cjs');
-const { revertLineQuantityMaximumEdit } = require('./_support/lineQuantityMaximumSchemaEdit.cjs');
+const { revertLineQuantityMaximumEdit, revertIdempotencyKeyDescriptionEdits, KEY_LENGTH_SENTENCE } = require('./_support/lineQuantityMaximumSchemaEdit.cjs');
 const CHILD = path.join(__dirname, '_support', 'getProductDoorsChild.cjs');
 const GP_CASES = ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other', 'ucp_gp_ctx', 'mcp_gp', 'mcp_gp_market', 'public_gp', 'public_gp_market'];
 const sha = (text) => require('node:crypto').createHash('sha256').update(text).digest('hex');
@@ -82,6 +82,10 @@ test.before(async () => {
       // The tool lists again: the per-line quantity ceiling's one schema member (and only that) is reversed too.
       const unbounded = revertLineQuantityMaximumEdit(c.body);
       if (unbounded !== c.body) { c.line_quantity_maximum_published = true; c.body = unbounded; c.sha256 = sha(unbounded); }
+      // And the one sentence each idempotency key description gained (how the minimum is counted).
+      const sentences = c.body.split(KEY_LENGTH_SENTENCE).length - 1;
+      const unsentenced = revertIdempotencyKeyDescriptionEdits(c.body);
+      if (unsentenced !== c.body) { c.key_length_sentences = sentences; c.body = unsentenced; c.sha256 = sha(unsentenced); }
     }
   }
 }, { timeout: 240000 });
@@ -393,5 +397,10 @@ test('the per-line quantity ceiling is the one other tools/list edit: on the two
     assert.equal(cases.mcp_tools.line_quantity_maximum_published, true, `mcp_tools (${combo})`);
     assert.equal(cases.ucp_tools.line_quantity_maximum_published, true, `ucp_tools (${combo})`);
     assert.equal(cases.public_tools.line_quantity_maximum_published, undefined, `public_tools (${combo})`);
+    // The key sentence: once per key schema (six native tools take a key; every UCP tool's `meta` declares the
+    // member), and nowhere else.
+    assert.equal(cases.mcp_tools.key_length_sentences, 6, `mcp_tools (${combo})`);
+    assert.equal(cases.ucp_tools.key_length_sentences, JSON.parse(R[combo].ucp_tools.body).result.tools.length, `ucp_tools (${combo})`);
+    assert.equal(cases.public_tools.key_length_sentences, undefined, `public_tools (${combo})`);
   }
 });

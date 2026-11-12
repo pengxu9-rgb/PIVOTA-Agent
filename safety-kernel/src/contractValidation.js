@@ -12,8 +12,53 @@
 // See docs/agent-checkout/C3-reconciliation.md for the migration plan.
 
 import { PivotaCommerceError } from './errors.js';
+import intakeBounds from './protocol/intakeBounds.cjs';
+import { intakeBoundRefusal, surfaceableIntakeRefusal } from './protocol/buyerIntake.js';
 
 export const WRITE_OPERATIONS = new Set(['create_order', 'submit_payment', 'request_after_sales']);
+
+// ---- the two bounds every checkout door shares, on the invoke door --------------------------------------------
+//
+// The numbers, the rules, which invoke operations carry a key or cart lines, and each refusal's wording are
+// ./protocol/intakeBounds.cjs's (the gateway's own invoke route loads that file directly); nothing here restates
+// them. These throw what it describes, as the kernel error every door throws.
+
+/** The invoke operations a caller may send an idempotency key with, and every operation either bound can refuse. */
+export const INVOKE_KEYED_OPERATIONS = new Set(intakeBounds.INVOKE_KEYED_OPERATIONS);
+export const { INVOKE_BOUNDED_OPERATIONS } = intakeBounds;
+
+const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };
+
+/** Refuse, by name, an invoke operation with a cart line above the shared per-line ceiling (see intakeBounds.cjs). */
+export function assertInvokeLineQuantities(operation, payload, options) {
+  throwIfRefused(intakeBounds.invokeLineQuantityRefusal(operation, payload, options));
+}
+
+/** Refuse, by name, a present idempotency key below the shared minimum on an invoke operation that takes one. */
+export function assertInvokeKeyLongEnough(operation, payload) {
+  throwIfRefused(intakeBounds.invokeKeyRefusal(operation, payload));
+}
+
+/**
+ * Both shared bounds and nothing else, as the invoke route that does not run the strict contract below (and its
+ * alias) asks them. Throws the shared refusal; returns for everything else.
+ */
+export function assertInvokeIntakeBounds(operation, payload) {
+  throwIfRefused(intakeBounds.invokeIntakeBoundsRefusal(operation, payload));
+}
+
+/**
+ * The invoke door's error object for a kernel error: `toResult().error`, and for a shared intake refusal its
+ * curated message and its field-level detail (the minimum, the maximum; never a value from the request).
+ */
+export function invokeErrorOf(err) {
+  const error = err.toResult().error;
+  const surfaced = surfaceableIntakeRefusal(err);
+  if (!surfaced) return error;
+  // The code's generic recovery hint is about another situation (QUOTE_REQUIRED's is "quote first"); the curated
+  // message is the instruction, so the hint is left out rather than sent beside it.
+  return { code: error.code, retriable: error.retriable, message: surfaced.message, detail: surfaced.detail };
+}
 
 // After-sales actions the backend can actually fulfill today (mapping doc: refunds only).
 export const SUPPORTED_AFTER_SALES = new Set(['refund']);
@@ -58,6 +103,9 @@ export function validateCanonical(operation, payload, opts = {}) {
       throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'missing_or_short_idempotency_key' });
     }
   }
+  // The shared minimum for a key that is present (buyerIntake.js): characters, not UTF-16 units, so it also refuses
+  // what the count above lets through, and it covers a key sent with a quote, which needs none.
+  assertInvokeKeyLongEnough(operation, p);
 
   switch (operation) {
     case 'get_product_detail': {
@@ -73,6 +121,8 @@ export function validateCanonical(operation, payload, opts = {}) {
       if (!Array.isArray(quote.items) || quote.items.length === 0) {
         throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'items_required' });
       }
+      // The shared per-line ceiling, before any line is otherwise judged and before anything is priced.
+      assertInvokeLineQuantities(operation, p);
       for (const it of quote.items) {
         reqStr(it.product_id, 'QUOTE_REQUIRED', 'item_product_id_required');
         if (!Number.isInteger(it.quantity) || it.quantity < 1) {
