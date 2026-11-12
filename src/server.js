@@ -34996,7 +34996,7 @@ function registerCommerceConfirmationActionRoute() {
 }
 
 function registerCommerceStrictInvokeRoute(path, clientChannel) {
-  app.post(path, async (req, res, next) => {
+  app.post(path, async function commerceStrictInvokeRouteHandler(req, res, next) {
     const operation = String(req?.body?.operation || '').trim();
     if (!isAgentCheckoutStrictEnabled() || !AGENT_CHECKOUT_STRICT_MONEY_OPS.has(operation)) {
       return next();
@@ -55278,7 +55278,7 @@ function authenticateExternalInvokeRoute(req, res, next) {
 function registerExternalInvokeRoute(path, clientChannel) {
   // priceContextMiddleware: the price context of this request (door `invoke`, or the MCP door a loopback call
   // carries); off, next() exactly.
-  app.post(path, priceContextMiddleware('invoke'), authenticateExternalInvokeRoute, async (req, res) => {
+  app.post(path, priceContextMiddleware('invoke'), authenticateExternalInvokeRoute, async function externalInvokeRouteHandler(req, res) {
     return INVOKE_AUTH_CONTEXT.run(
       {
         api_key: req?.invokeAuth?.raw_token || null,
@@ -55311,6 +55311,33 @@ function registerExternalInvokeRoute(path, clientChannel) {
   });
 }
 
+// EVERY ADDRESS THAT SERVES THE INVOKE HANDLER, in one list, registered by one loop.
+//
+// The creator address is a backward-compatible alias of the shop address: the same handler, the same
+// operations. It used to be registered by hand, one line under the shop address, and that line left out the
+// strict checkout route. So with strict checkout on, the money operations sent to the alias went to the
+// legacy handler: no verified buyer, no kernel quote, no charge-once lock, and neither the submit_payment
+// switch nor the confirm_payment block applied to them.
+//
+// An address is therefore DATA here, never a registration call of its own: the loop below gives each entry
+// the strict route first and the invoke handler second, so an address cannot have one without the other.
+// The ONLY thing an entry may vary is its client-channel label (the handler's default source and log
+// label). To add an address, add an entry; tests/invoke_route_alias_parity.node.test.cjs fails on any
+// address that serves the handler from anywhere else, and on any difference between two addresses'
+// handler chains.
+const INVOKE_ROUTES = Object.freeze([
+  Object.freeze({ path: '/agent/shop/v1/invoke', clientChannel: 'shop' }),
+  Object.freeze({ path: '/agent/creator/v1/invoke', clientChannel: 'creator' }),
+]);
+
+function registerInvokeRoutes() {
+  for (const { path, clientChannel } of INVOKE_ROUTES) {
+    // Order matters: the strict route must see a money operation before the invoke handler can answer it.
+    registerCommerceStrictInvokeRoute(path, clientChannel);
+    registerExternalInvokeRoute(path, clientChannel);
+  }
+}
+
 registerCommerceRemoteMcpRoute();
 registerPublicReadMcpRoute();
 commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, {
@@ -55328,10 +55355,7 @@ registerUcpOrderWebhookRoutes();
 registerUcpBuyerAgentProfileRoute();
 registerUcpWarmHandoffInternalRoute();
 registerUcpDiscountVerifyInternalRoute();
-registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
-registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
-// Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
-registerExternalInvokeRoute('/agent/creator/v1/invoke', 'creator');
+registerInvokeRoutes();
 
 // Global error handler - prevent crashes and avoid double sends
 app.use((err, req, res, next) => {
@@ -55839,6 +55863,13 @@ module.exports._debug = {
   compactBeautyMainlineProductForResponse,
   snapshotProductDetailCacheStats,
   resolveProductDetailCacheTtlMs,
+  // Tests only (tests/invoke_route_alias_parity.node.test.cjs): the shared list of invoke addresses, and the
+  // two registration functions so a test can register a wrong address and watch the wiring scan refuse it.
+  __invokeRoutes: {
+    INVOKE_ROUTES,
+    registerCommerceStrictInvokeRoute,
+    registerExternalInvokeRoute,
+  },
   __agentCheckoutStrict: {
     getCommerceMount,
     deriveStrictCommerceCtx,
