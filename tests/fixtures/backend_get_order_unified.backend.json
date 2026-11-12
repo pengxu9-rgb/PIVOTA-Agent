@@ -1,0 +1,805 @@
+{
+  "cancel_v1": {
+    "already_canceled": {
+      "body": {
+        "cancel": {
+          "canceled": true,
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "cancelled",
+          "outcome": "already_canceled",
+          "payment_status": "cancelled",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          }
+        },
+        "message": "Order already cancelled",
+        "order_id": "ORD_GETORDER_UNIFIED",
+        "status": "success"
+      },
+      "status": 200
+    },
+    "canceled": {
+      "body": {
+        "cancel": {
+          "canceled": true,
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "cancelled",
+          "outcome": "canceled",
+          "payment_status": "cancelled",
+          "payment_surface": {
+            "action": "expired",
+            "reference_type": "checkout_session"
+          }
+        },
+        "order_id": "ORD_GETORDER_UNIFIED",
+        "status": "success"
+      },
+      "status": 200
+    },
+    "not_canceled_paid": {
+      "body": {
+        "detail": {
+          "canceled": false,
+          "error": "ORDER_ALREADY_PAID",
+          "message": "The buyer already paid for this order, so it was not canceled.",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "awaiting_checkout",
+          "outcome": "not_canceled_paid",
+          "payment_status": "awaiting_payment",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          },
+          "refund": {
+            "code": "REFUND_HANDLED_BY_MERCHANT",
+            "executed": false,
+            "message": "Refunds are made by the merchant, not by Pivota. Ask the buyer to contact the merchant, or open an after-sales case so the request is recorded.",
+            "path": "/agent/v1/after-sales/cases"
+          }
+        },
+        "error": {
+          "code": "CONFLICT",
+          "details": {
+            "canceled": false,
+            "error": "ORDER_ALREADY_PAID",
+            "message": "The buyer already paid for this order, so it was not canceled.",
+            "order_id": "ORD_GETORDER_UNIFIED",
+            "order_state": "awaiting_checkout",
+            "outcome": "not_canceled_paid",
+            "payment_status": "awaiting_payment",
+            "payment_surface": {
+              "action": "none",
+              "reference_type": null
+            },
+            "refund": {
+              "code": "REFUND_HANDLED_BY_MERCHANT",
+              "executed": false,
+              "message": "Refunds are made by the merchant, not by Pivota. Ask the buyer to contact the merchant, or open an after-sales case so the request is recorded.",
+              "path": "/agent/v1/after-sales/cases"
+            }
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "ORDER_ALREADY_PAID"
+        },
+        "status": "error"
+      },
+      "status": 409
+    },
+    "not_canceled_processing": {
+      "body": {
+        "detail": {
+          "canceled": false,
+          "error": "PAYMENT_PROCESSING",
+          "message": "A payment for this order is being processed, so it was not canceled.",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "awaiting_checkout",
+          "outcome": "not_canceled_processing",
+          "payment_status": "awaiting_payment",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          }
+        },
+        "error": {
+          "code": "CONFLICT",
+          "details": {
+            "canceled": false,
+            "error": "PAYMENT_PROCESSING",
+            "message": "A payment for this order is being processed, so it was not canceled.",
+            "order_id": "ORD_GETORDER_UNIFIED",
+            "order_state": "awaiting_checkout",
+            "outcome": "not_canceled_processing",
+            "payment_status": "awaiting_payment",
+            "payment_surface": {
+              "action": "none",
+              "reference_type": null
+            }
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "PAYMENT_PROCESSING"
+        },
+        "status": "error"
+      },
+      "status": 409
+    },
+    "not_confirmed": {
+      "body": {
+        "detail": {
+          "canceled": false,
+          "error": "CANCEL_NOT_CONFIRMED",
+          "message": "The hosted payment page could not be closed, so the order was not canceled.",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "awaiting_checkout",
+          "outcome": "not_confirmed",
+          "payment_status": "awaiting_payment",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          },
+          "retryable": true
+        },
+        "error": {
+          "code": "EXTERNAL_SERVICE_ERROR",
+          "details": {
+            "canceled": false,
+            "error": "CANCEL_NOT_CONFIRMED",
+            "message": "The hosted payment page could not be closed, so the order was not canceled.",
+            "order_id": "ORD_GETORDER_UNIFIED",
+            "order_state": "awaiting_checkout",
+            "outcome": "not_confirmed",
+            "payment_status": "awaiting_payment",
+            "payment_surface": {
+              "action": "none",
+              "reference_type": null
+            },
+            "retryable": true
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "CANCEL_NOT_CONFIRMED"
+        },
+        "status": "error"
+      },
+      "status": 503
+    },
+    "other_agent": {
+      "body": {
+        "detail": "Not authorized for this order",
+        "error": {
+          "code": "FORBIDDEN",
+          "details": {
+            "error": "Not authorized for this order"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "Not authorized for this order"
+        },
+        "status": "error"
+      },
+      "status": 403
+    }
+  },
+  "cancel_v2": {
+    "already_canceled": {
+      "body": {
+        "cancel": {
+          "canceled": true,
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "cancelled",
+          "outcome": "already_canceled",
+          "payment_status": "cancelled",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          }
+        },
+        "status": "success"
+      },
+      "status": 200
+    },
+    "canceled": {
+      "body": {
+        "cancel": {
+          "canceled": true,
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "cancelled",
+          "outcome": "canceled",
+          "payment_status": "cancelled",
+          "payment_surface": {
+            "action": "expired",
+            "reference_type": "checkout_session"
+          }
+        },
+        "status": "success"
+      },
+      "status": 200
+    },
+    "not_canceled_paid": {
+      "body": {
+        "detail": {
+          "canceled": false,
+          "error": "ORDER_ALREADY_PAID",
+          "message": "The buyer already paid for this order, so it was not canceled.",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "awaiting_checkout",
+          "outcome": "not_canceled_paid",
+          "payment_status": "awaiting_payment",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          },
+          "refund": {
+            "code": "REFUND_HANDLED_BY_MERCHANT",
+            "executed": false,
+            "message": "Refunds are made by the merchant, not by Pivota. Ask the buyer to contact the merchant, or open an after-sales case so the request is recorded.",
+            "path": "/agent/v1/after-sales/cases"
+          }
+        },
+        "error": {
+          "code": "CONFLICT",
+          "details": {
+            "canceled": false,
+            "error": "ORDER_ALREADY_PAID",
+            "message": "The buyer already paid for this order, so it was not canceled.",
+            "order_id": "ORD_GETORDER_UNIFIED",
+            "order_state": "awaiting_checkout",
+            "outcome": "not_canceled_paid",
+            "payment_status": "awaiting_payment",
+            "payment_surface": {
+              "action": "none",
+              "reference_type": null
+            },
+            "refund": {
+              "code": "REFUND_HANDLED_BY_MERCHANT",
+              "executed": false,
+              "message": "Refunds are made by the merchant, not by Pivota. Ask the buyer to contact the merchant, or open an after-sales case so the request is recorded.",
+              "path": "/agent/v1/after-sales/cases"
+            }
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "ORDER_ALREADY_PAID"
+        },
+        "status": "error"
+      },
+      "status": 409
+    },
+    "not_canceled_processing": {
+      "body": {
+        "detail": {
+          "canceled": false,
+          "error": "PAYMENT_PROCESSING",
+          "message": "A payment for this order is being processed, so it was not canceled.",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "awaiting_checkout",
+          "outcome": "not_canceled_processing",
+          "payment_status": "awaiting_payment",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          }
+        },
+        "error": {
+          "code": "CONFLICT",
+          "details": {
+            "canceled": false,
+            "error": "PAYMENT_PROCESSING",
+            "message": "A payment for this order is being processed, so it was not canceled.",
+            "order_id": "ORD_GETORDER_UNIFIED",
+            "order_state": "awaiting_checkout",
+            "outcome": "not_canceled_processing",
+            "payment_status": "awaiting_payment",
+            "payment_surface": {
+              "action": "none",
+              "reference_type": null
+            }
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "PAYMENT_PROCESSING"
+        },
+        "status": "error"
+      },
+      "status": 409
+    },
+    "not_confirmed": {
+      "body": {
+        "detail": {
+          "canceled": false,
+          "error": "CANCEL_NOT_CONFIRMED",
+          "message": "The hosted payment page could not be closed, so the order was not canceled.",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "order_state": "awaiting_checkout",
+          "outcome": "not_confirmed",
+          "payment_status": "awaiting_payment",
+          "payment_surface": {
+            "action": "none",
+            "reference_type": null
+          },
+          "retryable": true
+        },
+        "error": {
+          "code": "EXTERNAL_SERVICE_ERROR",
+          "details": {
+            "canceled": false,
+            "error": "CANCEL_NOT_CONFIRMED",
+            "message": "The hosted payment page could not be closed, so the order was not canceled.",
+            "order_id": "ORD_GETORDER_UNIFIED",
+            "order_state": "awaiting_checkout",
+            "outcome": "not_confirmed",
+            "payment_status": "awaiting_payment",
+            "payment_surface": {
+              "action": "none",
+              "reference_type": null
+            },
+            "retryable": true
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "CANCEL_NOT_CONFIRMED"
+        },
+        "status": "error"
+      },
+      "status": 503
+    },
+    "not_found": {
+      "body": {
+        "detail": "Order not found",
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "Order not found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "Order not found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    },
+    "route_off": {
+      "body": {
+        "detail": "Not Found",
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "Not Found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "Not Found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    }
+  },
+  "generated_from": "pivota-backend: a throwaway merge of fix/getorder-cancel-upstream (C-11, 56d81f713) and feat/o02-handoff-record (O-02 on O-04, 97798e50c), driven through main.app (its error envelope included) on the test sqlite database by a one-off recorder. order_read: GET /agent/v2/orders/{id} and /tracking for one real orders row placed by the gateway's own agent (owner = that agent; other_agent = another key's agent). cancel_v2 / cancel_v1: POST /agent/v2/orders/{id}/cancel and POST /agent/v1/orders/{id}/cancel with CHECKOUT_CANCEL_UPSTREAM_ENABLED on and each cancel_order_upstream outcome staged (route_off: the flag off). payments_v1: POST /agent/v1/payments on a real cancelled orders row with the flag on. purchase_read: GET /agent/v2/commerce/purchases/{rp_|pp_} for one real ledger row (owner agent + buyer; another agent; another buyer). handoff_read: POST /agent/v2/storefront-handoffs then /read with a request-bound partner assertion for the owner partner, the other partner and an unknown record; escalation_id was minted by mcp-server/src/ucpCheckoutEscalation.js encodeEscalationId and the record was stored under its sha256. Per-response 'metadata' (timestamp, request id) removed. All values are placeholders.",
+  "handoff_read": {
+    "escalation_id": "esc_eyJ2IjoxLCJpIjpbWyJzaWdfc2VydW1feF9oYW5kb2ZmIiwxXV0sIm0iOiJVUyIsInIiOiJlc2hfUmVjMHJkZWRIYW5kMGZmSWRfQTF4eCJ9",
+    "other_partner": {
+      "body": {
+        "detail": {
+          "error": "not_owner"
+        },
+        "error": {
+          "code": "CONFLICT",
+          "details": {
+            "error": "not_owner"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "not_owner"
+        },
+        "status": "error"
+      },
+      "status": 409
+    },
+    "owner": {
+      "body": {
+        "buyer_market": "US",
+        "handed_off_at": "2026-11-10 03:14:40.528062",
+        "price_as_of": "2026-11-01T10:00:00.000Z",
+        "quote_source": "catalogue_fallback",
+        "quoted_total": {
+          "amount": 2500,
+          "currency": "USD"
+        },
+        "record_id": "esh_Rec0rdedHand0ffId_A1xx",
+        "seller_host": "shop-a.example.com",
+        "status": "handed_off"
+      },
+      "status": 200
+    },
+    "record": {
+      "body": {
+        "record_id": "esh_Rec0rdedHand0ffId_A1xx",
+        "status": "handed_off"
+      },
+      "status": 200
+    },
+    "record_id": "esh_Rec0rdedHand0ffId_A1xx",
+    "unknown_record": {
+      "body": {
+        "detail": {
+          "error": "handoff_not_found"
+        },
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "handoff_not_found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "handoff_not_found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    }
+  },
+  "order_read": {
+    "order": {
+      "body": {
+        "order": {
+          "amounts": {
+            "currency": "USD",
+            "discount_total": "0",
+            "shipping_fee": "0",
+            "subtotal": "29.00",
+            "tax": "0",
+            "total": "29.00"
+          },
+          "audit": {
+            "agent_id": "agent_gateway_service",
+            "created_at": "2026-11-10T09:00:00+00:00",
+            "updated_at": "2026-11-10T03:14:40+00:00"
+          },
+          "buyer_context": {
+            "agent_user_ref": null,
+            "buyer_ref": null,
+            "customer_email": "buyer@example.com",
+            "customer_name": null,
+            "shipping_address": {
+              "address_line1": "1 Example St",
+              "city": "Example City",
+              "country": "US",
+              "name": "Buyer A",
+              "postal_code": "00000"
+            }
+          },
+          "fulfillment_summary": {
+            "carrier": null,
+            "delivered_at": null,
+            "fulfillment_status": null,
+            "shipped_at": null,
+            "tracking_number": null
+          },
+          "line_items": [
+            {
+              "product_id": "p_1",
+              "quantity": 1,
+              "title": "Item",
+              "unit_price": "29.00",
+              "variant_id": "v_1"
+            }
+          ],
+          "merchant_id": "m_shop_a",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "payment_status": "awaiting_payment",
+          "payment_summary": {
+            "client_secret": null,
+            "payment_intent_id": null,
+            "psp": null
+          },
+          "quote_id": null,
+          "refund_summary": null,
+          "state": "awaiting_checkout"
+        },
+        "status": "success"
+      },
+      "status": 200
+    },
+    "other_agent_order": {
+      "body": {
+        "detail": "Not authorized for this order",
+        "error": {
+          "code": "FORBIDDEN",
+          "details": {
+            "error": "Not authorized for this order"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "Not authorized for this order"
+        },
+        "status": "error"
+      },
+      "status": 403
+    },
+    "other_agent_tracking": {
+      "body": {
+        "detail": "Not authorized for this order",
+        "error": {
+          "code": "FORBIDDEN",
+          "details": {
+            "error": "Not authorized for this order"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "Not authorized for this order"
+        },
+        "status": "error"
+      },
+      "status": 403
+    },
+    "tracking": {
+      "body": {
+        "capability": "optional",
+        "status": "success",
+        "tracking": {
+          "carrier": null,
+          "currency": "USD",
+          "delivery_status": "not_shipped",
+          "discount_total": "0",
+          "estimated_delivery": null,
+          "fulfillment_status": "",
+          "order_id": "ORD_GETORDER_UNIFIED",
+          "payment_status": "awaiting_payment",
+          "pricing": {
+            "currency": "USD",
+            "discount_total": "0",
+            "shipping_fee": "0",
+            "subtotal": "29.00",
+            "tax": "0",
+            "total": "29.00"
+          },
+          "shipped_at": null,
+          "shipping_fee": "0",
+          "subtotal": "29.00",
+          "tax": "0",
+          "timeline": [
+            {
+              "completed": true,
+              "status": "ordered",
+              "timestamp": "2026-11-10T09:00:00"
+            },
+            {
+              "completed": false,
+              "status": "paid",
+              "timestamp": null
+            },
+            {
+              "completed": false,
+              "status": "shipped",
+              "timestamp": null
+            },
+            {
+              "completed": false,
+              "status": "delivered",
+              "timestamp": null
+            }
+          ],
+          "total": "29.00",
+          "tracking_number": null
+        }
+      },
+      "status": 200
+    },
+    "unknown_order": {
+      "body": {
+        "detail": "Order not found",
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "Order not found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "Order not found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    },
+    "unknown_tracking": {
+      "body": {
+        "detail": "Order not found",
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "Order not found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "Order not found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    }
+  },
+  "payments_v1": {
+    "order_canceled": {
+      "body": {
+        "detail": {
+          "error": "ORDER_CANCELED",
+          "message": "This order was canceled and can no longer be paid.",
+          "order_id": "ORD_GETORDER_UNIFIED_CANCELLED"
+        },
+        "error": {
+          "code": "CONFLICT",
+          "details": {
+            "error": "ORDER_CANCELED",
+            "message": "This order was canceled and can no longer be paid.",
+            "order_id": "ORD_GETORDER_UNIFIED_CANCELLED"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "ORDER_CANCELED"
+        },
+        "status": "error"
+      },
+      "status": 409
+    }
+  },
+  "purchase_read": {
+    "other_agent": {
+      "body": {
+        "detail": {
+          "error": "purchase_not_found"
+        },
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "purchase_not_found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "purchase_not_found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    },
+    "other_agent_rp": {
+      "body": {
+        "detail": {
+          "error": "purchase_not_found"
+        },
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "purchase_not_found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "purchase_not_found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    },
+    "other_buyer": {
+      "body": {
+        "detail": {
+          "error": "purchase_not_found"
+        },
+        "error": {
+          "code": "PRODUCT_NOT_FOUND",
+          "details": {
+            "error": "purchase_not_found"
+          },
+          "documentation_url": "https://api.pivota.cc/agent/docs/overview",
+          "message": "purchase_not_found"
+        },
+        "status": "error"
+      },
+      "status": 404
+    },
+    "owner_by_pp": {
+      "body": {
+        "created_at": "2026-11-10T03:14:40+00:00",
+        "detail": {
+          "brand": null,
+          "category": null,
+          "checkout_dispatch_state": "not_dispatched",
+          "consent_version": null,
+          "consented_at": null,
+          "contact_reentry_required": false,
+          "created_at": "2026-11-10T03:14:40+00:00",
+          "id": "rp_29ced1f382984ff0b8ad1362",
+          "last_error_code": null,
+          "merchant_domain": "shop-a.example.com",
+          "offer_code": null,
+          "offer_code_outcome": null,
+          "poll_after_seconds": 60,
+          "product_key": "pk_1",
+          "product_name": "Item",
+          "quantity": 1,
+          "reap_quote_expires_at": null,
+          "refusal_reason": null,
+          "state": "quoting",
+          "terminal_at": null,
+          "totals": {
+            "currency": "USD",
+            "discount_minor": null,
+            "final_total_minor": null,
+            "our_price_minor": 2900,
+            "quoted_total_minor": null,
+            "shipping_minor": null,
+            "tax_included": null,
+            "tax_minor": null
+          },
+          "updated_at": "2026-11-10T03:14:40+00:00",
+          "variant_key": null,
+          "variant_title": null
+        },
+        "executor": "rail_managed",
+        "poll_after_seconds": 60,
+        "purchase_id": "pp_db89773df9e8495eac5824c5",
+        "rail": "reap",
+        "rail_purchase_id": "rp_29ced1f382984ff0b8ad1362",
+        "rail_state": "quoting",
+        "state": "locking",
+        "totals": {
+          "currency": "USD",
+          "discount_minor": null,
+          "final_total_minor": null,
+          "our_price_minor": 2900,
+          "quoted_total_minor": null,
+          "shipping_minor": null,
+          "tax_included": null,
+          "tax_minor": null
+        }
+      },
+      "status": 200
+    },
+    "owner_by_rp": {
+      "body": {
+        "created_at": "2026-11-10T03:14:40+00:00",
+        "detail": {
+          "brand": null,
+          "category": null,
+          "checkout_dispatch_state": "not_dispatched",
+          "consent_version": null,
+          "consented_at": null,
+          "contact_reentry_required": false,
+          "created_at": "2026-11-10T03:14:40+00:00",
+          "id": "rp_29ced1f382984ff0b8ad1362",
+          "last_error_code": null,
+          "merchant_domain": "shop-a.example.com",
+          "offer_code": null,
+          "offer_code_outcome": null,
+          "poll_after_seconds": 60,
+          "product_key": "pk_1",
+          "product_name": "Item",
+          "quantity": 1,
+          "reap_quote_expires_at": null,
+          "refusal_reason": null,
+          "state": "quoting",
+          "terminal_at": null,
+          "totals": {
+            "currency": "USD",
+            "discount_minor": null,
+            "final_total_minor": null,
+            "our_price_minor": 2900,
+            "quoted_total_minor": null,
+            "shipping_minor": null,
+            "tax_included": null,
+            "tax_minor": null
+          },
+          "updated_at": "2026-11-10T03:14:40+00:00",
+          "variant_key": null,
+          "variant_title": null
+        },
+        "executor": "rail_managed",
+        "poll_after_seconds": 60,
+        "purchase_id": "pp_db89773df9e8495eac5824c5",
+        "rail": "reap",
+        "rail_purchase_id": "rp_29ced1f382984ff0b8ad1362",
+        "rail_state": "quoting",
+        "state": "locking",
+        "totals": {
+          "currency": "USD",
+          "discount_minor": null,
+          "final_total_minor": null,
+          "our_price_minor": 2900,
+          "quoted_total_minor": null,
+          "shipping_minor": null,
+          "tax_included": null,
+          "tax_minor": null
+        }
+      },
+      "status": 200
+    },
+    "purchase_id": "pp_db89773df9e8495eac5824c5",
+    "rail_purchase_id": "rp_29ced1f382984ff0b8ad1362"
+  },
+  "version": 1
+}

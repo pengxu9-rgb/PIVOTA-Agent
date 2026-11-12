@@ -27,6 +27,12 @@ const { buildDelegatedPaymentV1Body, isAcpSptGatewayHandoffEnabled } = app._debu
 
 const SPT = 'spt_1PjKtestTOKENvalue0001';
 
+// The backend's own 409 ORDER_CANCELED for POST /agent/v1/payments on a canceled order (FIX_PLAN C-11), recorded
+// from the merged backend (tests/fixtures/backend_get_order_unified.backend.json, `payments_v1`).
+const RECORDED_ORDER_CANCELED = JSON.parse(require('node:fs').readFileSync(
+  require('node:path').join(__dirname, 'fixtures', 'backend_get_order_unified.backend.json'), 'utf8',
+)).payments_v1.order_canceled;
+
 // --- the flag -----------------------------------------------------------------------------------------------
 
 const FLAG = 'ACP_SPT_GATEWAY_HANDOFF_ENABLED';
@@ -101,6 +107,8 @@ function describeEndToEnd() {
     let backend;
     let backendUrl;
     let received;
+    // What the stub answers POST /agent/v1/payments with; null = the success charge.
+    let paymentsAnswer = null;
     let buyerJwt;
     let identityIssuersJson;
 
@@ -137,6 +145,10 @@ function describeEndToEnd() {
             return json({ order: { order_id: 'ord_delegated_1' }, total: '11.30', currency: 'USD' });
           }
           if (req.url.startsWith('/agent/v1/payments')) {
+            if (paymentsAnswer) {
+              res.writeHead(paymentsAnswer.status, { 'content-type': 'application/json' });
+              return res.end(JSON.stringify(paymentsAnswer.body));
+            }
             return json({ payment_id: 'pi_delegated_1', payment_status: 'succeeded' });
           }
           res.writeHead(404, { 'content-type': 'application/json' });
@@ -249,6 +261,29 @@ function describeEndToEnd() {
 
       // And the response the agent sees must not echo the token back.
       assert.equal(JSON.stringify(done.body).includes('spt_'), false);
+    });
+
+    it('a backend 409 ORDER_CANCELED (the order was canceled) is a non-retriable 409 ORDER_CANCELED, charged once', async () => {
+      const localApp = bootApp({ [FLAG]: '1' });
+      received.length = 0;
+      paymentsAnswer = RECORDED_ORDER_CANCELED;
+      try {
+        const created = await signed(localApp, '/acp/checkout_sessions', createBody, 'idem-spt-e2e-create-canceled');
+        assert.equal(created.status, 201, `create failed: ${JSON.stringify(created.body)}`);
+        const done = await signed(
+          localApp,
+          `/acp/checkout_sessions/${created.body.id}/complete`,
+          { payment_data: { provider: 'stripe', token: SPT } },
+          'idem-spt-e2e-complete-canceled',
+        );
+        assert.equal(done.status, 409, JSON.stringify(done.body));
+        assert.equal(done.body.code, 'ORDER_CANCELED', JSON.stringify(done.body));
+        assert.doesNotMatch(JSON.stringify(done.body), /temporarily|try again shortly/i);
+        assert.equal(received.filter((r) => r.path.startsWith('/agent/v1/payments')).length, 1, 'one charge attempt, never retried');
+        assert.equal(JSON.stringify(done.body).includes('spt_'), false);
+      } finally {
+        paymentsAnswer = null;
+      }
     });
 
     // NOTE ON WHICH REFUSAL FIRES HERE. This boot configures no JWS payment-authorization verifier (no
