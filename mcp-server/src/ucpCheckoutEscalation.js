@@ -112,6 +112,8 @@ import requestMarket from "../../src/services/requestMarket.js";
 // THE ONE MARKET -> CURRENCY SOURCE (CommonJS): `resolveServingCurrency`, the rule search, the serving-currency guard
 // and get_pdp_v2 already answer with, over the one map src/auroraBff/buyerRegion.js keeps. No second table here.
 import buyerMarketModule from "../../src/services/buyerMarket.js";
+// The currencies a product read withheld money in, noted beside the row by the read itself (CommonJS; see that file).
+import pdpWithheldCurrencies from "../../src/services/pdpWithheldCurrencies.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
 export const UCP_RESPONSE_VERSION = "2026-04-08";
@@ -133,13 +135,17 @@ export const DEAD_PAGE_CHECK_BUDGET_MS = 1500;
 // link. The door's structured `variant_invalid` is always logged as a refresh hint, switch or no switch.
 export const VARIANT_POLICY_FLAG = "AGENT_CHECKOUT_UCP_VARIANT_GONE_POLICY_ENABLED";
 // THE CURRENCY OF A STOREFRONT CHECKOUT FOLLOWS THE BUYER'S MARKET (default OFF, read per call; it only matters while
-// the escalation itself is on). Before it, the rows were read with no market and the answer took the catalog row's
-// currency: a create naming GB asked the gate about GB, sent GB to the seller, and answered in USD. With it on, for a
-// checkout answered for market M whose currency is C (marketCurrencyOf, the gateway's one market -> currency source):
-//   - the rows are read FOR M (the market rides on the product read, as it does on the agent's own get_product);
-//   - a line the catalog prices in another currency is refused by name (`seller_not_priced_in_market_currency`):
-//     no seller cart is built and no price is stated, converted or relabelled;
+// the escalation itself is on). Without it the answer takes the catalog row's currency: a create naming GB asks the
+// gate about GB, sends GB to the seller, and answers in USD. With it on, for a checkout answered for market M whose
+// currency is C (marketCurrencyOf, the gateway's one market -> currency source):
+//   - THE PRODUCT READ DOES NOT CHANGE. The rows are read with no market, by the same request as with the flag off,
+//     in every market: the rule adds no read and no market to any read, so nothing downstream of the read (a live
+//     store read, a live-price overlay, a gate keyed on a market) is started by this flag;
+//   - the rule is applied HERE, to the REQUEST's market: every currency a line's row is labelled with
+//     (lineCurrencyLabelsOf) must be C. A line labelled with another currency is refused by name
+//     (`seller_not_priced_in_market_currency`): no seller cart is built and no price is stated, converted or relabelled;
 //   - the seller's own answer must be in C (ucpMerchantDoorPricing `marketCurrency`), else it is not shown;
+//   - no answer can be BUILT in another currency: both builders refuse one (`marketCurrency`);
 //   - a market with no currency in that source is refused by name (`market_not_priced`), never answered as US;
 //   - a re-read applies the same rule with the market its id carries; an id that carries none is not re-served.
 // A create that names NO market is still answered as US, labelled (decision D-10), so its answer is USD or nothing.
@@ -164,6 +170,10 @@ export function ucpEscalationEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[UCP_ESCALATION_FLAG]) || "").trim());
 }
 
+// ON for exactly the spellings every `AGENT_CHECKOUT_*` switch in this file takes, read the same way
+// (ucpEscalationEnabled above): `1`, `true`, `yes`, `on`, `enabled`, in any letter case, surrounding whitespace
+// ignored. Anything else is OFF: unset, empty, `0`, `false`, `off`, `no`, a rollout word such as `enforce` or
+// `shadow`, any other number, any other text. Pinned value by value in test/ucpCurrencyFollowsMarket.test.js.
 export function currencyFollowsMarketEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[CURRENCY_FOLLOWS_MARKET_FLAG]) || "").trim());
 }
@@ -345,7 +355,7 @@ export async function readCheckoutRows(items, executor, ctx, opts) {
   return readRows(items, executor, ctx, opts);
 }
 
-async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS, merchantId, market } = {}) {
+async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS, merchantId } = {}) {
   const ids = [...new Set(items.map((it) => it.product_id))];
   if (ids.length > MAX_CART_DISTINCT_PRODUCTS) {
     throw intakeRefusal("QUOTE_REQUIRED", "acp_cart_too_many_products",
@@ -360,11 +370,7 @@ async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESO
         // checkout resolver performs. For a seed-supply merchant the gateway dispatcher answers it from the canonical
         // unscoped detail; assertProductIdentity (product id, and merchant id when the row names one) is the guard.
         const product = merchantId ? { product_id, merchant_id: merchantId } : { product_id };
-        // `market` (the currency rule only): the buyer market rides BESIDE the product, exactly where the agent's own
-        // get_product puts it, so the gateway's product read prices the row for that market (and the per-call memo
-        // keys on it). Never `live_read`: this stays an internal read under this door's deadline.
-        const payload = market ? { product, market } : { product };
-        const result = await executor.execute("get_product", { payload }, { ...ctx, signal: controller.signal });
+        const result = await executor.execute("get_product", { payload: { product } }, { ...ctx, signal: controller.signal });
         assertProductIdentity(result, product_id, merchantId);
         return isPlainObject(own(result, "product")) ? own(result, "product") : result;
       }, controller),
@@ -519,10 +525,28 @@ function priceOf(row) {
 }
 
 /**
+ * No answer is BUILT in another currency than the market's. `marketCurrency` is given only while the currency rule is
+ * on (an ISO 4217 code); without it nothing is checked, as before. A currency that is not the market's — or that is
+ * missing — is refused by the rule's own name, never relabelled.
+ */
+function assertMarketCurrency(currency, marketCurrency, productId) {
+  if (marketCurrency === undefined) return;
+  if (typeof marketCurrency === "string" && /^[A-Z]{3}$/.test(marketCurrency) && currency === marketCurrency) return;
+  throw intakeRefusal("NO_MERCHANT_OFFER", "seller_not_priced_in_market_currency", [
+    "No price can be stated for this checkout: a price for the buyer's market must be in that market's currency, and this one is not.",
+    "Nothing was converted or relabelled. This will not change on retry.",
+  ].join(" "), compact({
+    market_currency: typeof marketCurrency === "string" && /^[A-Z]{3}$/.test(marketCurrency) ? marketCurrency : undefined,
+    seller_currencies: typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? [currency] : undefined,
+    storefront_items: productId ? [productId] : undefined,
+  }));
+}
+
+/**
  * Build the spec checkout for an already-classified, same-seller cart. Pure.
  * @param {{ id:string, items:{product_id,quantity}[], rows:Map, continueUrl:string, buyerEmail?:string, now:number, env?:object }} a
  */
-export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [], discountCode }) {
+export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEmail, now, env = process.env, extraMessages = [], discountCode, marketCurrency }) {
   const lineItems = [];
   let subtotal = 0;
   let currency = null;
@@ -541,6 +565,9 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
     if (!price) {
       throw new PivotaCommerceError("NO_MERCHANT_OFFER", { reason: "ucp_escalation_item_unpriced", dialect: "ucp", product_id: it.product_id });
     }
+    // THE CURRENCY RULE, AT THE LAST STEP (`marketCurrency`, given only while the rule is on): the price this line is
+    // about to state, the chosen variant's own included, is in the market's currency or the answer is not built.
+    assertMarketCurrency(price.currency, marketCurrency, it.product_id);
     if (currency && price.currency !== currency) {
       throw intakeRefusal("QUOTE_REQUIRED", "ucp_escalation_mixed_currency",
         "Items in one checkout must share a currency; these rows are observed in different currencies. Send one checkout per currency.",
@@ -642,7 +669,9 @@ export function buildUcpCheckoutEnvelope({ id, status, continueUrl, currency, li
  * currency and cart continue_url, in the same shared envelope. Still `requires_escalation` — Pivota neither charges
  * nor ships it; the buyer pays on the storefront. Seller message CODES ride as info messages; their text never does.
  */
-export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env = process.env }) {
+export function buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env = process.env, marketCurrency }) {
+  // The same last step for the seller's own answer (`marketCurrency`, given only while the rule is on).
+  assertMarketCurrency(priced.currency, marketCurrency);
   const host = sellerHost || hostOf(priced.continueUrl);
   const messages = [
     {
@@ -744,10 +773,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // one-unit total for a cart the caller believes is 2.5 or "3" — on the one number the agent compares
     // against the storefront). Fall through: intake refuses it with its own curated `item_bad_quantity`.
     if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return null;
-    // THE CURRENCY RULE (CURRENCY_FOLLOWS_MARKET_FLAG): the market's currency, or null when the rule is off or the
-    // market has none. The rows are read for the market only when it has one; otherwise exactly as before.
+    // THE CURRENCY RULE (CURRENCY_FOLLOWS_MARKET_FLAG): the REQUEST market's currency, or null when the rule is off
+    // or the market has none. The rows are read as they always were: no market on the read, whatever the flag says.
     const marketCurrency = followsMarket ? marketCurrencyOf(buyerMarket) : null;
-    const rows = await readRows(items, executor, ctx, { timeoutMs, market: marketCurrency ? buyerMarket : undefined });
+    const rows = await readRows(items, executor, ctx, { timeoutMs });
     const targets = new Map();
     for (const [pid, row] of rows) targets.set(pid, escalationTargetOf(row));
     const escalating = [...targets.values()].filter(Boolean).length;
@@ -800,19 +829,22 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // `mayOfferStorefrontCheckout`. Single-seller by the check above, so this is ONE read per checkout.
     if (!(await mayOfferStorefrontCheckout(continueUrl, buyerMarket, gate, gateEnabled, gateBudgetMs()))) return declined(requested.assumed ? ["market_assumed"] : []);
     // THE CURRENCY RULE, after the gate (a seller the gate declines is refused as before) and before any seller is
-    // asked: the refusal to raise when a line is not priced in the market's currency, or null.
-    const notInMarketCurrency = marketCurrency
-      ? await rowsNotPricedForMarket({
+    // asked. `refusal`: what to raise when a line is labelled with another currency than the market's, or null.
+    // `confirmed`: every line is labelled, and only with the market's currency.
+    const currencyRule = marketCurrency
+      ? judgeLinesForMarket({
         items: normalized, rows, linkOf: (pid) => targets.get(pid), market: buyerMarket, currency: marketCurrency,
-        assumed: requested.assumed, executor, ctx, timeoutMs, env, log,
+        assumed: requested.assumed, log,
       })
       : null;
+    const notInMarketCurrency = currencyRule ? currencyRule.refusal : null;
     const buyerEmail = attestedEmailOrBody(attested, quote.customer_email);
     // THE SELLER PRICES IT, when its door can (ucpMerchantDoorPricing.js; own switch, default OFF). Null = fall back
     // to the catalog answer below, unchanged. Asked only AFTER the gate and the expected-seller check, so a seller
     // this door will not offer is never contacted.
     const sellerHost = sellerHostOf(continueUrl);
     const doorSignals = [];
+    const storeAnswer = {};
     // The buyer's code: read only while this door accepts codes for storefront checkouts. Otherwise a code that
     // reached here came in under the Reap lane's rule and is that lane's (and the UCP view's) to answer for.
     const discountCode = storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined;
@@ -829,18 +861,27 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     const priced = notInMarketCurrency ? null : await priceOnMerchantDoor({
       items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
       expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
-      ...(marketCurrency ? { marketCurrency } : {}),
+      ...(marketCurrency ? { marketCurrency, rowsInMarketCurrency: currencyRule.confirmed, storeAnswer } : {}),
     });
     if (priced) {
       // An id this door could not read back (a host outside the id's host alphabet) would make every poll an unknown
       // id: such a cart is not offered at all, and the catalog answer below is given instead.
       const id = encodeEscalationId(normalized, priced.cartId, sellerHost, { code: buyerMarket, assumed: requested.assumed });
       if (escalationCartIdOf(id) === priced.cartId) {
-        return withAssumedMarket(buildSellerPricedCheckout({ id, priced, sellerHost, buyerEmail, now, env }), requested.assumed);
+        return withAssumedMarket(buildSellerPricedCheckout({
+          id, priced, sellerHost, buyerEmail, now, env, ...(marketCurrency ? { marketCurrency } : {}),
+        }), requested.assumed);
       }
     }
     // ... and no catalog answer either: the catalog's price for these rows is in another currency than the market's.
     if (notInMarketCurrency) throw notInMarketCurrency;
+    // The seller answered in another currency and the catalog has no price of its own to state: named as that.
+    if (marketCurrency) {
+      throwIfOnlyAnswerIsInAnotherCurrency({
+        items: normalized, rows, linkOf: (pid) => targets.get(pid), market: buyerMarket, currency: marketCurrency,
+        assumed: requested.assumed, storeAnswer, log,
+      });
+    }
     const checked = await checkStorefrontPages({
       items: normalized, links: normalized.map((it) => targets.get(it.product_id)), rows, continueUrl,
       env, storefrontPage, log, doorSignals,
@@ -861,6 +902,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       now,
       env,
       discountCode,
+      ...(marketCurrency ? { marketCurrency } : {}),
     }), requested.assumed);
   }
 
@@ -870,9 +912,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
 
   if (opId === "get_checkout_session") {
     // THE CURRENCY RULE on a re-read: the market is the one the id carries (the market the checkout was created for).
+    // The rows are read as they always were: no market on the read.
     const minted = followsMarket ? escalationMarketOf(sessionId) : null;
     const rereadCurrency = minted ? marketCurrencyOf(minted.market) : null;
-    const rows = await readRows(decoded, executor, ctx, { timeoutMs, market: rereadCurrency ? minted.market : undefined });
+    const rows = await readRows(decoded, executor, ctx, { timeoutMs });
     const targets = decoded.map((it) => escalationTargetOf(rows.get(it.product_id)));
     if (targets.some((t) => !t)) {
       // The row stopped being an escalation row since the id was minted (it became a contracted merchant, or
@@ -916,24 +959,37 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     const sellerHost = sellerHostOf(link);
     // The same rule as create: an id minted (before this rule) for rows that are not priced in its market's currency
     // is not re-served, priced or not. The seller's cart is not read for it and no catalog price is stated.
-    const rereadNotInMarketCurrency = rereadCurrency
-      ? await rowsNotPricedForMarket({
+    const rereadRule = rereadCurrency
+      ? judgeLinesForMarket({
         items: decoded, rows, linkOf: (pid) => targets[decoded.findIndex((it) => it.product_id === pid)], market: rereadMarket,
-        currency: rereadCurrency, assumed: created.assumed, executor, ctx, timeoutMs, env, log,
+        currency: rereadCurrency, assumed: created.assumed, log,
       })
       : null;
+    const rereadNotInMarketCurrency = rereadRule ? rereadRule.refusal : null;
+    const rereadStoreAnswer = {};
     if (!rereadNotInMarketCurrency && cartId !== undefined && sellerHost && escalationSellerHostOf(sessionId) === sellerHost) {
       const priced = await priceOnMerchantDoor({
         items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(link), catalogLink: link,
         market: rereadMarket, cartId, env, merchantDoor, log,
-        ...(rereadCurrency ? { marketCurrency: rereadCurrency } : {}),
+        ...(rereadCurrency ? { marketCurrency: rereadCurrency, rowsInMarketCurrency: rereadRule.confirmed, storeAnswer: rereadStoreAnswer } : {}),
       });
-      if (priced) return withAssumedMarket(buildSellerPricedCheckout({ id: sessionId, priced, sellerHost, now, env }), created.assumed);
+      if (priced) {
+        return withAssumedMarket(buildSellerPricedCheckout({
+          id: sessionId, priced, sellerHost, now, env, ...(rereadCurrency ? { marketCurrency: rereadCurrency } : {}),
+        }), created.assumed);
+      }
     }
     if (rereadNotInMarketCurrency) throw rereadNotInMarketCurrency;
+    if (rereadCurrency) {
+      throwIfOnlyAnswerIsInAnotherCurrency({
+        items: decoded, rows, linkOf: (pid) => targets[decoded.findIndex((it) => it.product_id === pid)], market: rereadMarket,
+        currency: rereadCurrency, assumed: created.assumed, storeAnswer: rereadStoreAnswer, log,
+      });
+    }
     const checked = await checkStorefrontPages({ items: decoded, links: targets, rows, continueUrl: link, env, storefrontPage, log });
     return withAssumedMarket(buildEscalationCheckout({
       id: sessionId, items: decoded, rows, continueUrl: checked.continueUrl, now, env, extraMessages: checked.messages,
+      ...(rereadCurrency ? { marketCurrency: rereadCurrency } : {}),
     }), created.assumed);
   }
 
@@ -969,50 +1025,85 @@ function catalogLinePriceOf(row, it) {
   return (variant ? variantPriceOf(variant, row) : undefined) || priceOf(row) || null;
 }
 
+const currencyCodeOf = (value) => {
+  const code = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+};
+
 /**
- * The refusal for a cart whose lines the catalog does NOT price in the market's currency, or null when every priced
- * line is in it. Never throws.
- *
- * A line with a price in another currency is one. A line with NO price in the market's read may be one too: the
- * gateway's product read withholds money that is not in the market's currency rather than show it, so the row comes
- * back unpriced. To name the currency the seller IS priced in, such a line is read once more with no market (the
- * read every other lane of this call makes, shared through the per-call memo): a price there, in another currency,
- * settles it. That second read is skipped when the market's currency is the one a no-market read is judged in (the
- * deployment's own: it could say nothing new), so a US checkout reads nothing extra. A line that is unpriced either
- * way is left to the existing answer for an unpriced row (`ucp_escalation_item_unpriced`): still no price shown.
+ * EVERY CURRENCY A LINE'S ROW IS LABELLED WITH (upper-case ISO 4217 codes; empty = the row says nothing). The rows
+ * are read with no market, so a row may be in any currency, or have had its money withheld by the read. In order:
+ *   - the price the line would be answered with: the CHOSEN VARIANT's own when it states one, else the product's
+ *     (catalogLinePriceOf, the builder's own choice);
+ *   - the currency the chosen variant states, with or without an amount beside it;
+ *   - the row's own `currency` member;
+ *   - for a line with NO price: the currencies the read withheld money in (pdpWithheldCurrencies, noted beside the
+ *     row by the read). This is how a seller priced in another currency than the deployment's is told from a row that
+ *     simply has no price: its money is withheld, and the currency it was in is named.
+ * A line is in the market's currency only when it has a label and every label is that currency.
  */
-async function rowsNotPricedForMarket({ items, rows, linkOf, market, currency, assumed, executor, ctx, timeoutMs, env, log }) {
+export function lineCurrencyLabelsOf(row, it) {
+  if (!isPlainObject(row)) return [];
+  const labels = new Set();
+  const add = (value) => { const code = currencyCodeOf(value); if (code) labels.add(code); };
+  const price = catalogLinePriceOf(row, it);
+  if (price) add(price.currency);
+  const variant = it && it.variant_id ? findRealVariant(row, it.variant_id) : null;
+  if (isPlainObject(variant)) {
+    const stated = isPlainObject(variant.price) && isPlainObject(variant.price.current) ? variant.price.current : variant.price;
+    if (isPlainObject(stated)) add(stated.currency);
+    add(variant.currency);
+  }
+  add(row.currency);
+  if (!price) for (const code of pdpWithheldCurrencies.withheldCurrenciesOf(row)) add(code);
+  return [...labels].sort();
+}
+
+/**
+ * THE RULE, for one cart and the currency of the market it is answered for. Reads nothing and never throws.
+ * Returns `{ refusal, confirmed }`:
+ *   - `refusal`: the error to raise when any line is labelled with another currency than the market's
+ *     (`seller_not_priced_in_market_currency`, naming the currencies the rows ARE labelled with), else null;
+ *   - `confirmed`: true when every line is labelled, and only with the market's currency. Only then may the seller
+ *     be asked to price a row that states no currency of its own (ucpMerchantDoorPricing `rowsInMarketCurrency`).
+ * A line with no label at all is neither: it is left to the existing answer for an unpriced row
+ * (`ucp_escalation_item_unpriced`), still with no price shown and no seller asked on its account.
+ */
+function judgeLinesForMarket({ items, rows, linkOf, market, currency, assumed, log }) {
   const off = new Set();
-  const unpriced = [];
   const sellerCurrencies = new Set();
+  let confirmed = true;
   for (const it of items) {
-    const price = catalogLinePriceOf(rows.get(it.product_id), it);
-    if (price && price.currency === currency) continue;
-    if (price) { off.add(it.product_id); sellerCurrencies.add(price.currency); } else unpriced.push(it);
+    const labels = lineCurrencyLabelsOf(rows.get(it.product_id), it);
+    const others = labels.filter((code) => code !== currency);
+    if (others.length) { off.add(it.product_id); for (const code of others) sellerCurrencies.add(code); }
+    if (labels.length === 0 || others.length) confirmed = false;
   }
-  let deploymentCurrency = null;
-  try { deploymentCurrency = buyerMarketModule.resolveServingCurrency("", env); } catch { deploymentCurrency = null; }
-  if (unpriced.length && currency !== deploymentCurrency) {
-    try {
-      const plain = await readRows(unpriced, executor, ctx, { timeoutMs });
-      for (const it of unpriced) {
-        const price = catalogLinePriceOf(plain.get(it.product_id), it);
-        if (price && price.currency !== currency) { off.add(it.product_id); sellerCurrencies.add(price.currency); }
-      }
-    } catch { /* the seller's currency stays unknown; the unpriced row is answered as one */ }
-  }
-  if (off.size === 0) return null;
-  const productIds = [...off];
+  if (off.size === 0) return { refusal: null, confirmed };
+  const refusal = notInMarketCurrencyRefusal({ productIds: [...off], linkOf, market, currency, sellerCurrencies: [...sellerCurrencies], assumed, log });
+  return { refusal, confirmed: false };
+}
+
+/**
+ * The named refusal (`seller_not_priced_in_market_currency`) and its log line. `sellerCurrencies`: the currencies the
+ * seller IS priced in (row labels), or, with `storeCurrency`, the one its storefront answered a cart in.
+ */
+function notInMarketCurrencyRefusal({ productIds, linkOf, market, currency, sellerCurrencies, assumed, log, storeCurrency }) {
   const links = productIds.map(linkOf).filter(Boolean);
   const hosts = [...new Set(links.map(sellerHostOf).filter(Boolean))];
-  const priced = [...sellerCurrencies].sort();
+  const priced = [...new Set(sellerCurrencies)].sort();
   emitCurrencyRule(log, {
     outcome: "refused", reason: "seller_not_priced_in_market_currency", market, expected_currency: currency,
-    row_currency: priced.join(",") || null, seller_host: hosts[0] || null,
+    row_currency: storeCurrency ? null : (priced.join(",") || null), ...(storeCurrency ? { store_currency: storeCurrency } : {}),
+    seller_host: hosts[0] || null,
   });
   return withAssumedMarketRefusal(intakeRefusal("NO_MERCHANT_OFFER", "seller_not_priced_in_market_currency", [
-    `No price can be stated for a buyer in ${market} for these items (${productIds.join(", ")}): their seller${hosts.length ? ` (${hosts.join(", ")})` : ""} is priced in ${priced.join(", ")}, and a price for ${market} must be in ${currency}.`,
-    "Nothing was converted or relabelled, and no cart was built on the seller's storefront.",
+    storeCurrency
+      ? `No price can be stated for a buyer in ${market} for these items (${productIds.join(", ")}): their seller's storefront${hosts.length ? ` (${hosts.join(", ")})` : ""} answered in ${priced.join(", ")}, and a price for ${market} must be in ${currency}.`
+      : `No price can be stated for a buyer in ${market} for these items (${productIds.join(", ")}): their seller${hosts.length ? ` (${hosts.join(", ")})` : ""} is priced in ${priced.join(", ")}, and a price for ${market} must be in ${currency}.`,
+    storeCurrency
+      ? "Nothing was converted or relabelled, and the storefront's answer is not shown."
+      : "Nothing was converted or relabelled, and no cart was built on the seller's storefront.",
     ...(assumed ? [ASSUMED_REFUSAL_SENTENCE] : []),
     `${assumed ? "Retrying the same request will not change this" : "This will not change on retry"}; offer the buyer alternatives priced for ${market}, or send the buyer to the seller's own page in storefront_urls, where the seller states its own price.`,
   ].join(" "), compact({
@@ -1023,6 +1114,20 @@ async function rowsNotPricedForMarket({ items, rows, linkOf, market, currency, a
     seller_hosts: hosts.length ? hosts : undefined,
     storefront_urls: links.length ? Object.fromEntries(productIds.map((pid) => [pid, linkOf(pid)]).filter(([, url]) => url)) : undefined,
   })), assumed);
+}
+
+/**
+ * The seller's storefront answered in ANOTHER currency than the market's (`storeAnswer.currency`, set by
+ * priceOnMerchantDoor) and at least one line has no catalog price to answer with instead: the cart is refused by the
+ * rule's own name rather than as a row with no price. When every line has a catalog price, nothing is thrown: the
+ * catalog answer (held to the market's currency by its builder) is given, and the storefront's is simply not shown.
+ */
+function throwIfOnlyAnswerIsInAnotherCurrency({ items, rows, linkOf, market, currency, assumed, storeAnswer, log }) {
+  const storeCurrency = currencyCodeOf(storeAnswer && storeAnswer.currency);
+  if (!storeCurrency || storeCurrency === currency) return;
+  const unpriced = [...new Set(items.filter((it) => !catalogLinePriceOf(rows.get(it.product_id), it)).map((it) => it.product_id))];
+  if (unpriced.length === 0) return;
+  throw notInMarketCurrencyRefusal({ productIds: unpriced, linkOf, market, currency, sellerCurrencies: [storeCurrency], assumed, log, storeCurrency });
 }
 
 /**

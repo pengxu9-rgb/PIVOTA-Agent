@@ -642,9 +642,13 @@ function emit(log, level, detail) {
  *   (readSellerDiscounts) whenever there is something to say about codes.
  *   `marketCurrency` (set by the escalation only while its currency-follows-market rule is on): the currency of the
  *   buyer's market. When given, THAT is the currency the seller's answer must be in, whatever the catalog row says;
- *   absent, the row's currency is, as before.
+ *   absent, the row's currency is, as before. Under it, a row that states ANOTHER currency is never sent to the
+ *   seller, and a row that states none is sent only when the caller says its lines are known to be in the market's
+ *   currency (`rowsInMarketCurrency === true`; the escalation's judgement, judgeLinesForMarket).
+ *   `storeAnswer` (optional out-param object, market rule only): when the seller answered in ANOTHER currency than
+ *   the market's, `storeAnswer.currency` is set to it, so the caller can name that instead of "no price".
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -660,11 +664,25 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
   const currencies = new Set(items.map((it) => str(own(rows.get(it.product_id), "currency"))?.toUpperCase()).filter(Boolean));
   const rowCurrency = currencies.size === 1 ? [...currencies][0] : null;
-  if (!rowCurrency) { emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost }); return null; }
   // THE CURRENCY THE SELLER MUST ANSWER IN. The buyer market's own when the caller states it (`marketCurrency`): a
   // price for a market is in that market's currency, so the seller's answer is held to the market, not to whatever
   // currency the catalog row happens to carry. Without it, the row's currency, as before.
   const followsMarket = typeof marketCurrency === "string" && /^[A-Z]{3}$/.test(marketCurrency);
+  // Under the market rule a row stating another currency is never sent to the seller (the escalation refuses such a
+  // cart first; this door does not rely on it).
+  if (followsMarket && [...currencies].some((code) => code !== marketCurrency)) {
+    emit(log, "info", {
+      outcome: "fallback", reason: "row_currency_not_market_currency", market: market || null,
+      expected_currency: marketCurrency, row_currency: [...currencies].sort().join(","), seller_host: sellerHost,
+    });
+    return null;
+  }
+  // No currency on the rows: nothing to hold the seller to, unless the market rule is on AND its caller knows these
+  // lines to be in the market's currency (their money was withheld by the read, not absent).
+  if (!rowCurrency && !(followsMarket && rowsInMarketCurrency === true)) {
+    emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost });
+    return null;
+  }
   const expectedCurrency = followsMarket ? marketCurrency : rowCurrency;
   const wanted = [];
   const derived = [];
@@ -772,6 +790,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
         outcome: "fallback", reason: "store_currency_not_market_currency", market: market || null,
         expected_currency: expectedCurrency, row_currency: rowCurrency, store_currency: storeCurrency, seller_host: sellerHost,
       });
+      if (isPlainObject(storeAnswer)) storeAnswer.currency = storeCurrency;
       return null;
     }
     emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost });

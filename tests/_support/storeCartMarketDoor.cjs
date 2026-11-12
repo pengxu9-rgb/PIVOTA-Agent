@@ -15,9 +15,14 @@
 //     runs them: externalSeedProducts.buildExternalSeedProduct -> servingCurrencyGuard.withholdOffMarketMoney for the
 //     serving currency servingCurrencyGuard.servingCurrencyFor reads from THIS request's payload (so a request that
 //     carries a market is judged for that market, one that carries none for the deployment's) -> pdpBuilder
-//     .buildPdpPayload. Then it carries the identity the catalog identity layer stamps. Every get_pdp_v2 request is
-//     recorded with the market it carried. A row marked `unguarded` skips the money guard: the handler has pages that
-//     guard does not cover, and the door must hold its own rule on a row that still states another currency;
+//     .buildPdpPayload. Then it carries the identity the catalog identity layer stamps, and, when the guard withheld
+//     money, `metadata.serving_currency_guard.withheld_currencies` exactly as the handler reports it. Every
+//     get_pdp_v2 request is recorded with the market it carried. A row marked `unguarded` skips the money guard: the
+//     handler has pages that guard does not cover, and the door must hold its own rule on a row that still states
+//     another currency. With `realPdpLiveSeam` (bootDoor option) the stub also calls, with the request's own payload,
+//     the two things the real handler does to a served page that can reach a store: the handler's own
+//     `shadowPdpLiveRead` (the background store read) and `livePdpOverlay`, keyed by the handler's own
+//     `offersGateBuyerMarket`. The store's catalog client behind them is a recording fake (`liveReads`);
 //   - the backend: the connected merchant's per-merchant detail, its quote, offers.resolve, the purchasability route;
 //   - the SELLER STOREFRONTS: the buyer-agent client's transport (`fetchImpl`, its own test seam) is answered in
 //     process: `/.well-known/ucp` and the store's MCP endpoint (`create_cart`, `get_cart`). Every request a store
@@ -89,7 +94,7 @@ const FLAG = 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET';
  * upstreams. Sets the process env: call once per process, before anything else loads the server.
  * @param {{ root?:string, port?:number, env?:Record<string,string|undefined> }} [o]
  */
-function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = {} } = {}) {
+function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = {}, realPdpLiveSeam = false } = {}) {
   const PORT = String(port);
   const LOOPBACK = `http://127.0.0.1:${PORT}`;
   const BACKEND = 'http://backend.store-cart-market.test';
@@ -138,6 +143,8 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
 
   // ---- the seller storefronts -------------------------------------------------------------------------------
   const storeCalls = [];
+  // A test may make one storefront answer its carts in another currency (`setStoreCurrency`); null restores it.
+  const storeCurrencyOverride = new Map();
   const carts = new Map();
   let cartSeq = 0;
   const cartFor = (host, lines) => {
@@ -149,7 +156,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
     const subtotal = lineItems.reduce((n, l) => n + l.totals[0].amount, 0);
     cartSeq += 1;
     const id = `cart_${host.split('.')[0]}_${String(cartSeq).padStart(4, '0')}`;
-    const cart = { id, currency: STORE_CURRENCY[host], line_items: lineItems, totals: [{ type: 'subtotal', amount: subtotal }, { type: 'total', amount: subtotal }], continue_url: `https://${host}/cart/c/${id}?key=k0` };
+    const cart = { id, currency: storeCurrencyOverride.get(host) || STORE_CURRENCY[host], line_items: lineItems, totals: [{ type: 'subtotal', amount: subtotal }, { type: 'total', amount: subtotal }], continue_url: `https://${host}/cart/c/${id}?key=k0` };
     carts.set(id, cart);
     return cart;
   };
@@ -184,13 +191,19 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
   const { buildExternalSeedProduct } = fromRoot('src/services/externalSeedProducts.js');
   const { buildPdpPayload } = fromRoot('src/pdpBuilder.js');
   const { withholdOffMarketMoney, servingCurrencyFor } = fromRoot('src/services/servingCurrencyGuard.js');
-  const pdpProduct = (signature, payload) => {
+  const pdpPage = (signature, payload) => {
     const row = CATALOG[signature];
     const seedProduct = buildExternalSeedProduct(row.seed);
     const servingCurrency = servingCurrencyFor({ payload, metadata: undefined });
-    const product = row.unguarded ? seedProduct : withholdOffMarketMoney(seedProduct, servingCurrency).product;
-    const built = buildPdpPayload({ product }).product;
-    return { ...built, product_id: signature, merchant_id: row.seller, source_product_id: row.seed.external_product_id, pivota_signature_id: signature };
+    const guarded = row.unguarded ? { product: seedProduct, withheld: [] } : withholdOffMarketMoney(seedProduct, servingCurrency);
+    const built = buildPdpPayload({ product: guarded.product }).product;
+    const product = { ...built, product_id: signature, merchant_id: row.seller, source_product_id: row.seed.external_product_id, pivota_signature_id: signature };
+    return {
+      status: 'success',
+      modules: [{ type: 'canonical', data: { pdp_payload: { product } } }],
+      // As the handler reports a guard that withheld money (src/server.js, `serving_currency_guard`).
+      ...(guarded.withheld.length ? { metadata: { serving_currency_guard: { withheld_currencies: guarded.withheld } } } : {}),
+    };
   };
   const searchRow = (signature) => {
     const row = CATALOG[signature];
@@ -217,10 +230,18 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
     .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && Boolean(CATALOG[body.payload?.product_ref?.product_id]))
     .reply(200, (_uri, body) => {
       const askedId = body.payload.product_ref.product_id;
-      // The market the request carried, exactly as sent (null = it carried none).
-      upstream.push({ op: 'get_pdp_v2', product_id: askedId, market: Object.prototype.hasOwnProperty.call(body.payload, 'market') ? body.payload.market : null });
-      return { status: 'success', modules: [{ type: 'canonical', data: { pdp_payload: { product: pdpProduct(askedId, body.payload) } } }] };
+      // The market the request carried, exactly as sent (null = it carried none), and the whole payload as sent.
+      upstream.push({ op: 'get_pdp_v2', product_id: askedId, market: Object.prototype.hasOwnProperty.call(body.payload, 'market') ? body.payload.market : null, payload: JSON.stringify(body.payload) });
+      const page = pdpPage(askedId, body.payload);
+      if (!realPdpLiveSeam) return page;
+      // What the real handler does with a served page (src/server.js get_pdp_v2): the background store read, then the
+      // live overlay, both keyed by the market the REQUEST carried. Run here on the handler's own functions.
+      const debug = app._debug;
+      const market = fromRoot('src/offers/offersPriority.js').offersGateBuyerMarket(body.payload, body.metadata);
+      pdpSeamCalls.push({ product_id: askedId, market: market === undefined ? null : market, started: debug.shadowPdpLiveRead(page, { market, pageState: 'served', random: () => 0 }) });
+      return debug.livePdpOverlay(page, { market });
     });
+  const pdpSeamCalls = [];
 
   // ---- the backend ------------------------------------------------------------------------------------------
   const connectedProduct = () => ({
@@ -270,10 +291,13 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
     });
 
   const app = fromRoot('src/server');
+  // The store catalog client behind every live read (get_product's, get_pdp_v2's): answers nothing, records every
+  // call it receives, so a test can say no store was looked up.
+  const liveReads = [];
   if (app._debug && typeof app._debug.useUcpLiveClientForTest === 'function') {
     app._debug.useUcpLiveClientForTest({
-      async discoverEndpoint() { return { status: 404 }; },
-      async lookupCatalog() { return { ok: false, status: 500 }; },
+      async discoverEndpoint(base) { liveReads.push({ kind: 'discover', base: String(base) }); return { status: 404 }; },
+      async lookupCatalog(endpoint) { liveReads.push({ kind: 'lookup_catalog', endpoint: String(endpoint) }); return { ok: false, status: 500 }; },
     });
   }
 
@@ -301,6 +325,8 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
   const rpc = (name, args) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
   const mark = () => ({ store: storeCalls.length, upstream: upstream.length, gate: gateCalls.length, log: logLines.length });
   const since = (m) => ({ store: storeCalls.slice(m.store), upstream: upstream.slice(m.upstream), gate: gateCalls.slice(m.gate), log: logLines.slice(m.log) });
+  /** Make `host`'s storefront answer its carts in `currency` (null: in its own again). */
+  const setStoreCurrency = (host, currency) => { if (currency) storeCurrencyOverride.set(host, currency); else storeCurrencyOverride.delete(host); };
   /** tools/call on `door`. `raw` is the response body as the door sent it, byte for byte. */
   async function call(door, name, args, { buyer = BUYER } = {}) {
     const before = mark();
@@ -337,7 +363,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
       if (before === undefined) delete process.env[FLAG]; else process.env[FLAG] = before;
     }
   }
-  return { app, call, post, listen, close, reset, setGateEnforced, withFlag, storeCalls, upstream, gateCalls, logLines, root };
+  return { app, call, post, listen, close, reset, setGateEnforced, setStoreCurrency, withFlag, storeCalls, upstream, gateCalls, logLines, liveReads, pdpSeamCalls, root };
 }
 
 const UCP_META = Object.freeze({ 'ucp-agent': { profile: 'https://agent.example/profile' } });

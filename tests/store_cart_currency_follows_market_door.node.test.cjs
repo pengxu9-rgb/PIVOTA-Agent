@@ -4,8 +4,12 @@
 // the real `/ucp/mcp` door: create_checkout and get_checkout for sellers Pivota is not connected to, with an in-process
 // backend and in-process seller storefronts (tests/_support/storeCartMarketDoor.cjs says what is real and what is not).
 //
-// THE DEFECT THIS PINS THE END OF: the rows were read with no market and the answer took the catalog row's currency,
-// so a create naming GB asked the gate about GB, sent GB to the seller, and answered in USD.
+// THE DEFECT THIS PINS THE END OF: the answer took the catalog row's currency, so a create naming GB asked the gate
+// about GB, sent GB to the seller, and answered in USD.
+//
+// THE PRODUCT READ DOES NOT CHANGE: with the flag on or off, in every market, the door's product read is the same one
+// request with no market on it. The rule is applied in the door, to the request's market, on what that read returned
+// (a price, a currency label, or the currencies the read says it withheld money in).
 //
 // MARKET -> CURRENCY SOURCE: `resolveServingCurrency` (src/services/buyerMarket.js) over `BUYER_REGION_CURRENCY`
 // (src/auroraBff/buyerRegion.js). GB -> GBP, SG -> SGD, US -> USD; DE and ZZ have none.
@@ -23,6 +27,9 @@ const on = (fn) => door.withFlag(true, fn);
 const off = (fn) => door.withFlag(false, fn);
 const tools = (answer) => answer.store.filter((c) => c.kind === 'tool');
 const reads = (answer) => answer.upstream.filter((u) => u.op === 'get_pdp_v2').map((u) => [u.product_id, u.market]);
+// The product read exactly as it was sent to the page: the payload's own bytes.
+const readPayloads = (answer) => answer.upstream.filter((u) => u.op === 'get_pdp_v2').map((u) => u.payload);
+const theRead = (signature) => JSON.stringify({ product_ref: { product_id: signature }, include: ['product_overview'] });
 const errorOf = (answer) => (answer.value && answer.value.error) || {};
 const reasonOf = (answer) => (errorOf(answer).detail || {}).reason;
 
@@ -56,14 +63,14 @@ test('US market, USD row, USD store answer: priced by the store, and the whole a
   assert.deepEqual(id, { v: 2, i: [[IDS.SIG_USD, 1]], c: link.pathname.split('/').pop(), h: HOST.A, m: 'US' });
   assert.equal('market_assumed' in v, false);
   assert.deepEqual(Object.keys(v), ['ucp', 'id', 'status', 'continue_url', 'currency', 'line_items', 'totals', 'buyer', 'links', 'expires_at', 'messages']);
-  // What was asked of whom: the gate about US, the store for a US cart, the product read for US.
+  // What was asked of whom: the gate about US, the store for a US cart, the product read as always (no market).
   assert.deepEqual(created.gate, [{ domain: HOST.A, market: 'US' }]);
   assert.deepEqual(tools(created).map((c) => [c.host, c.tool, c.arguments.cart.context]), [[HOST.A, 'create_cart', { address_country: 'US' }]]);
-  assert.deepEqual(reads(created), [[IDS.SIG_USD, 'US']]);
+  assert.deepEqual(reads(created), [[IDS.SIG_USD, null]]);
   assertAnswerCurrency(v, 'USD');
 });
 
-test('US market, USD row: flag on answers byte for byte what flag off answers, on create and on get_checkout', async (t) => {
+test('US market, USD row: flag on answers byte for byte what flag off answers, and sends exactly what flag off sends, on create and on get_checkout', async (t) => {
   // One instant for both runs, so `expires_at` is the same bytes; the stores restart their cart numbering each run.
   t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-01-15T10:00:00.000Z') });
   const run = async () => {
@@ -81,9 +88,32 @@ test('US market, USD row: flag on answers byte for byte what flag off answers, o
   assert.deepEqual(after.created.store, before.created.store, 'the store was sent the same requests');
   assert.deepEqual(after.got.store, before.got.store);
   assert.deepEqual(after.created.gate, before.created.gate);
-  // The one difference: the product read now says whom it is for.
-  assert.deepEqual([reads(before.created), reads(before.got)], [[[IDS.SIG_USD, null]], [[IDS.SIG_USD, null]]]);
-  assert.deepEqual([reads(after.created), reads(after.got)], [[[IDS.SIG_USD, 'US']], [[IDS.SIG_USD, 'US']]]);
+  assert.deepEqual(after.got.gate, before.got.gate);
+  // Nothing differs underneath either: the same product reads, byte for byte, and the same log lines.
+  assert.deepEqual(after.created.upstream, before.created.upstream);
+  assert.deepEqual(after.got.upstream, before.got.upstream);
+  assert.deepEqual([readPayloads(after.created), readPayloads(after.got)], [[theRead(IDS.SIG_USD)], [theRead(IDS.SIG_USD)]]);
+  assert.deepEqual(after.created.log, before.created.log);
+  assert.deepEqual(after.got.log, before.got.log);
+});
+
+// ---- the product read is the same request, flag off and on, in every market ---------------------------------------
+
+test('the product read of a storefront checkout is one request with no market on it: US, SG, GB, DE, no market; flag off and on; create and get_checkout', async () => {
+  const rowsByName = { USD: IDS.SIG_USD, GBP: IDS.SIG_GBP, SGD: IDS.SIG_SGD, EUR: IDS.SIG_EUR };
+  for (const flag of [off, on]) {
+    for (const market of ['US', 'SG', 'GB', 'DE', undefined]) {
+      for (const [name, signature] of Object.entries(rowsByName)) {
+        const label = `${flag === on ? 'on' : 'off'} ${market} ${name}`;
+        const created = await flag(() => ucp('create_checkout', ucpCreate([[signature, 1]], market)));
+        assert.deepEqual(readPayloads(created), [theRead(signature)], `create ${label}`);
+        // The id this create minted, else the id a create for this market mints.
+        const id = created.isError ? escId({ v: 1, i: [[signature, 1]], ...(market === undefined ? { m: 'US', a: 1 } : { m: market }) }) : created.value.id;
+        const got = await flag(() => ucp('get_checkout', ucpGet(id)));
+        assert.deepEqual(readPayloads(got), [theRead(signature)], `get_checkout ${label}`);
+      }
+    }
+  }
 });
 
 test('the priced log line names the variant-id route; no buyer data, no cart id', async () => {
@@ -97,7 +127,7 @@ test('before the rule (flag off): a GB create for a USD seller is answered in US
   const created = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD, 1]], 'GB')));
   assert.equal(created.value.currency, 'USD');
   assert.equal(created.value.messages[0].code, 'checkout.priced_by_seller_storefront');
-  assert.deepEqual(reads(created), [[IDS.SIG_USD, null]], 'and its product read named no market');
+  assert.deepEqual(reads(created), [[IDS.SIG_USD, null]]);
 });
 
 test('GB market, USD row: refused by name, the seller is never contacted, no price is stated', async () => {
@@ -121,9 +151,8 @@ test('GB market, USD row: refused by name, the seller is never contacted, no pri
   assert.equal('market_assumed' in error, false);
   assert.deepEqual(created.store, [], 'ZERO store calls: no profile read, no cart');
   assert.deepEqual(created.gate, [{ domain: HOST.A, market: 'GB' }], 'the gate was asked as before');
-  // The read FOR GB came back unpriced (the gateway withholds off-market money); the read with no market names the
-  // seller's currency. Two reads of one product in one call, each answered for its own market.
-  assert.deepEqual(reads(created), [[IDS.SIG_USD, 'GB'], [IDS.SIG_USD, null]]);
+  // ONE read, with no market: the row it returned states USD, and that is judged against GB's currency here.
+  assert.deepEqual(readPayloads(created), [theRead(IDS.SIG_USD)]);
   const found = assertAnswerCurrency(created.value, 'GBP');
   assert.deepEqual(found.money, [], 'no amount anywhere in the answer');
   assert.deepEqual(found.priceCurrencies, []);
@@ -133,14 +162,40 @@ test('GB market, USD row: refused by name, the seller is never contacted, no pri
   }]);
 });
 
-test('GB market, a row that still states USD under the GB read: the same refusal, with one read and no store call', async () => {
+test('GB market, a USD row served by a page the money guard does not cover: the same refusal, with one read and no store call', async () => {
   const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD_UNGUARDED, 1]], 'GB')));
   assert.equal(reasonOf(created), 'seller_not_priced_in_market_currency');
   assert.deepEqual(errorOf(created).detail.seller_currencies, ['USD']);
   assert.deepEqual(created.store, []);
-  assert.deepEqual(reads(created), [[IDS.SIG_USD_UNGUARDED, 'GB']], 'the row itself named its currency: nothing more is read');
+  assert.deepEqual(readPayloads(created), [theRead(IDS.SIG_USD_UNGUARDED)]);
   assert.deepEqual(assertAnswerCurrency(created.value, 'GBP').money, []);
 });
+
+for (const [market, signature, host, sellerCurrency] of [['GB', IDS.SIG_SGD, HOST.S, 'SGD'], ['GB', IDS.SIG_EUR, HOST.E, 'EUR'], ['SG', IDS.SIG_GBP, HOST.G, 'GBP'], ['US', IDS.SIG_SGD, HOST.S, 'SGD']]) {
+  test(`${market} market, a seller priced in ${sellerCurrency} (its money withheld by the read): the same named refusal, naming ${sellerCurrency}; one read, no store call`, async () => {
+    const marketCurrency = { GB: 'GBP', SG: 'SGD', US: 'USD' }[market];
+    const created = await on(() => ucp('create_checkout', ucpCreate([[signature, 1]], market)));
+    assert.equal(created.isError, true);
+    const error = errorOf(created);
+    assert.equal(error.code, 'NO_MERCHANT_OFFER');
+    assert.equal(error.retriable, false);
+    assert.equal(error.detail.reason, 'seller_not_priced_in_market_currency');
+    assert.deepEqual([error.detail.market, error.detail.market_currency, error.detail.seller_currencies, error.detail.seller_hosts], [market, marketCurrency, [sellerCurrency], [host]]);
+    assert.match(error.message, new RegExp(`is priced in ${sellerCurrency}, and a price for ${market} must be in ${marketCurrency}`));
+    assert.deepEqual(created.store, [], 'ZERO store calls');
+    assert.deepEqual(readPayloads(created), [theRead(signature)]);
+    const found = assertAnswerCurrency(created.value, marketCurrency);
+    assert.deepEqual([found.money, found.priceCurrencies, found.textMoney], [[], [], []]);
+    assert.deepEqual(created.log, [{
+      event: 'ucp_merchant_door_pricing', outcome: 'refused', reason: 'seller_not_priced_in_market_currency',
+      market, expected_currency: marketCurrency, row_currency: sellerCurrency, seller_host: host,
+    }]);
+    // Flag off, the same request is the unnamed "no price" it always was.
+    const before = await off(() => ucp('create_checkout', ucpCreate([[signature, 1]], market)));
+    assert.equal(errorOf(before).code, 'NO_MERCHANT_OFFER');
+    assert.equal(reasonOf(before), undefined);
+  });
+}
 
 test('GB market, GBP row, GBP store answer: priced in GBP, on create and on get_checkout', async () => {
   const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP, 1]], 'GB')));
@@ -150,26 +205,30 @@ test('GB market, GBP row, GBP store answer: priced in GBP, on create and on get_
   assert.equal(created.value.messages[0].code, 'checkout.priced_by_seller_storefront');
   assert.equal(decodeEscId(created.value.id).m, 'GB');
   assert.deepEqual(tools(created).map((c) => [c.tool, c.arguments.cart.context]), [['create_cart', { address_country: 'GB' }]]);
-  assert.deepEqual(reads(created), [[IDS.SIG_GBP, 'GB']]);
+  assert.deepEqual(readPayloads(created), [theRead(IDS.SIG_GBP)]);
   assertAnswerCurrency(created.value, 'GBP');
   const got = await on(() => ucp('get_checkout', ucpGet(created.value.id)));
   assert.equal(got.value.currency, 'GBP');
   assert.deepEqual(got.value.totals.map((x) => x.amount), [2100, 2100]);
   assert.deepEqual(tools(got).map((c) => c.tool), ['get_cart']);
-  assert.deepEqual(reads(got), [[IDS.SIG_GBP, 'GB']], "the re-read is for the id's market");
+  assert.deepEqual(readPayloads(got), [theRead(IDS.SIG_GBP)]);
   assertAnswerCurrency(got.value, 'GBP');
 });
 
 test('before the rule (flag off): the same GB create for a GBP seller could not be priced at all', async () => {
   const created = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP, 1]], 'GB')));
-  assert.equal(errorOf(created).code, 'NO_MERCHANT_OFFER', 'the row was read for no market, so its GBP price was withheld');
+  assert.equal(errorOf(created).code, 'NO_MERCHANT_OFFER', 'its GBP price is withheld by the read, and nothing said the seller is priced in GBP');
+  assert.deepEqual(created.store, []);
 });
 
-test("GB market, GBP row, the store answers in USD: the store's price is not shown; the answer is the GBP catalog price", async () => {
-  const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_USD_STORE, 1]], 'GB')));
+test("GB market, a GBP row with a catalog price, the store answers in USD: the store's price is not shown; the answer is the GBP catalog price", async (t) => {
+  // The row served by a page the money guard does not cover still states its GBP price on a read with no market.
+  door.setStoreCurrency(HOST.V, 'USD');
+  t.after(() => door.setStoreCurrency(HOST.V, null));
+  const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_UNGUARDED, 1]], 'GB')));
   assert.equal(created.isError, false);
   assert.equal(created.value.currency, 'GBP');
-  assert.deepEqual(created.value.totals.map((x) => x.amount), [2200, 2200], "the catalog's 22.00, not the store's 26.00 USD");
+  assert.deepEqual(created.value.totals.map((x) => x.amount), [2000, 2000], "the catalog's 20.00, not the store's 21.00 USD");
   assert.equal(created.value.messages[0].code, 'checkout.completes_on_seller_storefront');
   assert.equal(JSON.stringify(created.value).includes('USD'), false, 'USD appears nowhere in a GB answer');
   assert.equal(decodeEscId(created.value.id).v, 1, 'no store cart is carried');
@@ -177,23 +236,41 @@ test("GB market, GBP row, the store answers in USD: the store's price is not sho
   assertAnswerCurrency(created.value, 'GBP');
   assert.deepEqual(created.log, [{
     event: 'ucp_merchant_door_pricing', outcome: 'fallback', reason: 'store_currency_not_market_currency',
-    market: 'GB', expected_currency: 'GBP', row_currency: 'GBP', store_currency: 'USD', seller_host: HOST.H,
+    market: 'GB', expected_currency: 'GBP', row_currency: 'GBP', store_currency: 'USD', seller_host: HOST.V,
   }]);
   const got = await on(() => ucp('get_checkout', ucpGet(created.value.id)));
   assert.equal(got.value.currency, 'GBP');
-  assert.deepEqual(got.value.totals.map((x) => x.amount), [2200, 2200]);
+  assert.deepEqual(got.value.totals.map((x) => x.amount), [2000, 2000]);
   assert.deepEqual(got.store, []);
   assertAnswerCurrency(got.value, 'GBP');
 });
 
-test('two products in one GB cart: each is read for GB and again with no market, and one read never answers for the other', async () => {
+test("GB market, a GBP seller whose money the read withheld, the store answers in USD: no price in GBP exists, and the refusal names what the storefront answered in", async () => {
+  const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_USD_STORE, 1]], 'GB')));
+  assert.equal(created.isError, true);
+  const error = errorOf(created);
+  assert.equal(error.code, 'NO_MERCHANT_OFFER');
+  assert.deepEqual(error.detail, {
+    reason: 'seller_not_priced_in_market_currency', market: 'GB', market_currency: 'GBP', seller_currencies: ['USD'],
+    storefront_items: [IDS.SIG_GBP_USD_STORE], seller_hosts: [HOST.H],
+    storefront_urls: { [IDS.SIG_GBP_USD_STORE]: `https://${HOST.H}/products/eye-gel?variant=${IDS.VARIANT_GBP_USD_STORE}` },
+  });
+  assert.match(error.message, /storefront \(store-h\.example\) answered in USD, and a price for GB must be in GBP/);
+  assert.doesNotMatch(error.message, /no cart was built/, 'a cart WAS asked for: the message does not say otherwise');
+  assert.deepEqual(tools(created).map((c) => c.tool), ['create_cart'], 'the seller was asked once: the read said it is priced in GBP');
+  const found = assertAnswerCurrency(created.value, 'GBP');
+  assert.deepEqual([found.money, found.priceCurrencies, found.textMoney], [[], [], []]);
+  assert.deepEqual(created.log, [
+    { event: 'ucp_merchant_door_pricing', outcome: 'fallback', reason: 'store_currency_not_market_currency', market: 'GB', expected_currency: 'GBP', row_currency: null, store_currency: 'USD', seller_host: HOST.H },
+    { event: 'ucp_merchant_door_pricing', outcome: 'refused', reason: 'seller_not_priced_in_market_currency', market: 'GB', expected_currency: 'GBP', row_currency: null, store_currency: 'USD', seller_host: HOST.H },
+  ]);
+});
+
+test('two products in one GB cart: each is read once, with no market, and both are named in the refusal', async () => {
   const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD, 1], [IDS.SIG_USD_SECOND, 2]], 'GB')));
   assert.equal(reasonOf(created), 'seller_not_priced_in_market_currency');
   assert.deepEqual(errorOf(created).detail.storefront_items, [IDS.SIG_USD, IDS.SIG_USD_SECOND]);
-  const seen = reads(created);
-  assert.deepEqual(seen.filter(([, m]) => m === 'GB').map(([p]) => p).sort(), [IDS.SIG_USD, IDS.SIG_USD_SECOND]);
-  assert.deepEqual(seen.filter(([, m]) => m === null).map(([p]) => p).sort(), [IDS.SIG_USD, IDS.SIG_USD_SECOND]);
-  assert.equal(seen.length, 4, 'four reads: a read for GB is not served from a read with no market, nor the reverse');
+  assert.deepEqual(readPayloads(created).sort(), [theRead(IDS.SIG_USD), theRead(IDS.SIG_USD_SECOND)].sort(), 'two reads for two products: nothing is read twice');
   assert.deepEqual(created.store, []);
 });
 
@@ -254,7 +331,7 @@ test('no market named: still answered as US and labelled, in USD only', async ()
   assert.deepEqual(created.value.messages.map((m) => m.code), ['checkout.priced_by_seller_storefront', 'market_assumed']);
   assert.deepEqual(decodeEscId(created.value.id).m, 'US');
   assert.equal(decodeEscId(created.value.id).a, 1);
-  assert.deepEqual(reads(created), [[IDS.SIG_USD, 'US']], 'the read is for the assumed market');
+  assert.deepEqual(readPayloads(created), [theRead(IDS.SIG_USD)], 'the assumed market is not put on the read either');
   assertAnswerCurrency(created.value, 'USD');
   const got = await on(() => ucp('get_checkout', ucpGet(created.value.id)));
   assert.equal(got.value.currency, 'USD');
@@ -263,7 +340,7 @@ test('no market named: still answered as US and labelled, in USD only', async ()
 });
 
 test('no market named, a seller priced in GBP: no GBP price is shown as a US one', async () => {
-  // The row states GBP even under the US read: refused by name, for the assumed US, and it says it was assumed.
+  // The row states GBP: refused by name, for the assumed US, and it says it was assumed.
   const stated = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_UNGUARDED, 1]])));
   assert.equal(reasonOf(stated), 'seller_not_priced_in_market_currency');
   assert.deepEqual([errorOf(stated).detail.market, errorOf(stated).detail.market_currency, errorOf(stated).detail.seller_currencies], ['US', 'USD', ['GBP']]);
@@ -276,13 +353,18 @@ test('no market named, a seller priced in GBP: no GBP price is shown as a US one
   assert.equal(reasonOf(named), 'seller_not_priced_in_market_currency');
   assert.equal('market_assumed' in errorOf(named), false);
   assert.deepEqual(named.store, []);
-  // A row whose GBP money the product read withholds for US is answered as an unpriced row, flag on or off: no price.
+  // A row whose GBP money the product read withheld: the same named refusal (the read says it withheld GBP), where
+  // flag off gives the unnamed "no price". Neither shows a price or asks the seller, and both read once.
   const before = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP, 1]])));
   const after = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP, 1]])));
-  assert.equal(errorOf(after).code, 'NO_MERCHANT_OFFER');
-  assert.equal(after.raw, before.raw);
-  assert.deepEqual(after.store, []);
-  assert.deepEqual(reads(after), [[IDS.SIG_GBP, 'US']], 'and nothing extra is read for a US checkout');
+  assert.equal(errorOf(before).code, 'NO_MERCHANT_OFFER');
+  assert.equal(reasonOf(before), undefined);
+  assert.equal(reasonOf(after), 'seller_not_priced_in_market_currency');
+  assert.deepEqual([errorOf(after).detail.market, errorOf(after).detail.market_currency, errorOf(after).detail.seller_currencies], ['US', 'USD', ['GBP']]);
+  assert.equal(errorOf(after).market_assumed.code, 'US');
+  assert.deepEqual([before.store, after.store], [[], []]);
+  assert.deepEqual(readPayloads(after), readPayloads(before));
+  assert.deepEqual(readPayloads(after), [theRead(IDS.SIG_GBP)]);
 });
 
 test('before the rule (flag off): a row stating GBP was answered in GBP to a US buyer', async () => {
@@ -304,7 +386,7 @@ test('an id minted before the rule for GB with a USD store cart is not re-served
   assert.equal(reasonOf(got), 'seller_not_priced_in_market_currency');
   assert.deepEqual([errorOf(got).detail.market, errorOf(got).detail.market_currency, errorOf(got).detail.seller_currencies], ['GB', 'GBP', ['USD']]);
   assert.deepEqual(got.store, [], 'the seller is not asked for the cart');
-  assert.deepEqual(reads(got), [[IDS.SIG_USD, 'GB'], [IDS.SIG_USD, null]]);
+  assert.deepEqual(readPayloads(got), [theRead(IDS.SIG_USD)]);
   assert.deepEqual(assertAnswerCurrency(got.value, 'GBP').money, []);
   // The same for a catalog-priced id (no cart) minted for GB.
   const catalogId = escId({ v: 1, i: [[IDS.SIG_USD, 1]], m: 'GB' });
@@ -314,33 +396,45 @@ test('an id minted before the rule for GB with a USD store cart is not re-served
   assert.deepEqual(assertAnswerCurrency(gotCatalog.value, 'GBP').money, []);
 });
 
-test('an id minted before the rule over a USD cart, for a row that still states USD under the GB read: the cart is not read either', async () => {
+test('an id minted before the rule over a USD cart, for a USD row served by a page the money guard does not cover: the cart is not read either', async () => {
   const minted = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD_UNGUARDED, 1]], 'GB')));
   assert.deepEqual([decodeEscId(minted.value.id).v, decodeEscId(minted.value.id).m, minted.value.currency], [2, 'GB', 'USD']);
   const got = await on(() => ucp('get_checkout', ucpGet(minted.value.id)));
   assert.equal(reasonOf(got), 'seller_not_priced_in_market_currency');
   assert.deepEqual(got.store, [], 'no get_cart, no profile read');
-  assert.deepEqual(reads(got), [[IDS.SIG_USD_UNGUARDED, 'GB']]);
+  assert.deepEqual(readPayloads(got), [theRead(IDS.SIG_USD_UNGUARDED)]);
   assert.deepEqual(assertAnswerCurrency(got.value, 'GBP').money, []);
 });
 
-test("a re-read of a store cart that answers in USD for a GB id over a GBP row: the store's price is not shown, and the log says why", async () => {
-  // The store built this cart (in USD) when a GB create asked it; that create answered with the GBP catalog price.
+test("a re-read of a store cart that answers in USD, for a GB id: the store's price is never shown, and the log says why", async (t) => {
+  // A GBP row with a catalog price (a page the money guard does not cover): the catalog's GBP price is the answer.
   door.reset();
-  const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_USD_STORE, 1]], 'GB')));
+  door.setStoreCurrency(HOST.V, 'USD');
+  t.after(() => door.setStoreCurrency(HOST.V, null));
+  const created = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_UNGUARDED, 1]], 'GB')));
   assert.equal(created.value.messages[0].code, 'checkout.completes_on_seller_storefront');
-  const cartId = 'cart_store-h_0001';
-  const id = escId({ v: 2, i: [[IDS.SIG_GBP_USD_STORE, 1]], c: cartId, h: HOST.H, m: 'GB' });
+  const cartId = 'cart_store-v_0001';
+  const id = escId({ v: 2, i: [[IDS.SIG_GBP_UNGUARDED, 1]], c: cartId, h: HOST.V, m: 'GB' });
   const got = await on(() => ucp('get_checkout', ucpGet(id)));
   assert.deepEqual(tools(got).map((c) => [c.tool, c.arguments.id]), [['get_cart', cartId]], 'the cart exists and was read');
   assert.equal(got.value.currency, 'GBP');
-  assert.deepEqual(got.value.totals.map((x) => x.amount), [2200, 2200], "the catalog's GBP price, not the cart's 26.00 USD");
+  assert.deepEqual(got.value.totals.map((x) => x.amount), [2000, 2000], "the catalog's GBP price, not the cart's USD one");
   assert.equal(JSON.stringify(got.value).includes('USD'), false);
   assertAnswerCurrency(got.value, 'GBP');
   assert.deepEqual(got.log, [{
     event: 'ucp_merchant_door_pricing', outcome: 'fallback', reason: 'store_currency_not_market_currency',
-    market: 'GB', expected_currency: 'GBP', row_currency: 'GBP', store_currency: 'USD', seller_host: HOST.H,
+    market: 'GB', expected_currency: 'GBP', row_currency: 'GBP', store_currency: 'USD', seller_host: HOST.V,
   }]);
+  // A GBP seller whose money the read withheld: there is no catalog price to fall back to, so it is the named refusal.
+  door.reset();
+  const refused = await on(() => ucp('create_checkout', ucpCreate([[IDS.SIG_GBP_USD_STORE, 1]], 'GB')));
+  assert.equal(reasonOf(refused), 'seller_not_priced_in_market_currency');
+  const withheldId = escId({ v: 2, i: [[IDS.SIG_GBP_USD_STORE, 1]], c: 'cart_store-h_0001', h: HOST.H, m: 'GB' });
+  const gotWithheld = await on(() => ucp('get_checkout', ucpGet(withheldId)));
+  assert.deepEqual(tools(gotWithheld).map((c) => [c.tool, c.arguments.id]), [['get_cart', 'cart_store-h_0001']]);
+  assert.equal(reasonOf(gotWithheld), 'seller_not_priced_in_market_currency');
+  assert.deepEqual(errorOf(gotWithheld).detail.seller_currencies, ['USD']);
+  assert.deepEqual(assertAnswerCurrency(gotWithheld.value, 'GBP').money, []);
 });
 
 test('an id minted for a market with no currency is refused by name on re-read', async () => {
@@ -390,13 +484,6 @@ test('an id that carries no market is never re-served for an implied US: v1, v2 
 });
 
 // ---- the rule is the flag's ---------------------------------------------------------------------------------------
-
-test('flag off: no product read of a storefront checkout carries a market, whatever market the request names', async () => {
-  for (const market of ['US', 'GB', 'DE', undefined]) {
-    const created = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD, 1]], market)));
-    assert.deepEqual(reads(created), [[IDS.SIG_USD, null]], String(market));
-  }
-});
 
 test('the helper sees what a wrong answer looks like (the flag-off GB answer breaks the rule)', async () => {
   const created = await off(() => ucp('create_checkout', ucpCreate([[IDS.SIG_USD, 1]], 'GB')));

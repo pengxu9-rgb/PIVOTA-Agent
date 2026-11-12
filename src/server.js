@@ -459,6 +459,7 @@ const {
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
 const { unscopedDetailPdpRequest } = require('./services/pdpDetailHop');
+const pdpWithheldCurrencies = require('./services/pdpWithheldCurrencies');
 const { resolveOfferScopeCurrency } = require('./services/buyerMarketOfferScope');
 const {
   collapseSearchResponseBodyByShadeLine,
@@ -32661,18 +32662,19 @@ function normalizePdpV2ToProductDetail(body) {
       ? p.price.current
       : null;
     const availability = typeof p.availability === 'string' ? p.availability.toLowerCase() : '';
-    return {
-      product: {
-        ...p,
-        brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
-        price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
-        currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
-        in_stock: availability
-          ? /in.?stock|available/.test(availability)
-          : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
-      },
-      ...degraded,
+    const product = {
+      ...p,
+      brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
+      price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
+      currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
+      in_stock: availability
+        ? /in.?stock|available/.test(availability)
+        : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
     };
+    // The currencies the page withheld money in (`metadata.serving_currency_guard`) are noted BESIDE the product,
+    // never on it (src/services/pdpWithheldCurrencies.js): the product and every answer built from it are unchanged.
+    pdpWithheldCurrencies.noteWithheldCurrencies(product, pdpWithheldCurrencies.withheldCurrenciesOfPdpResponse(body));
+    return { product, ...degraded };
   } catch {
     return { product: null, ...degraded };
   }
