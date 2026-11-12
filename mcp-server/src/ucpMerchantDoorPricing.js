@@ -621,6 +621,17 @@ export function cartAttributionOf(catalogLink) {
 // been ("fallback_to_product_page": answer the catalog price and the product page) would trade a working store cart
 // for an unattributed product page, which carries no referral either.
 //
+// A MISS CAN STILL LEAVE A CLICK ROW. "Miss" says the door got no referral in time; it does not say the backend
+// wrote none. Giving up on the call does not undo it: a request the backend has already received is completed
+// there whether or not anyone is still waiting (the client's abort closes the connection, nothing more), and the
+// door's own budget can be shorter than the client's. The row then exists with no cart carrying it. So does the row
+// of a referral that WAS minted for a cart the door then did not hand out (the store's answer rejected, an id that
+// cannot carry the cart). All of these are the same thing on the backend: a row on the hand-off surface that no
+// link carries, never clicked, and named by no hand-off record. Nothing here retries, and nothing here can void a
+// row: the door holds no click id for a call it gave up on. What a reader needs is on the backend side: count rows
+// on that surface that no hand-off record names (the record carries `referral_click_id` for a cart that was handed
+// out), and never count a row of that surface as an issued link.
+//
 // ONLY FOR A MARKET THE BUYER NAMED. A referral records its market as a fact about the buyer. The caller says when
 // there is none to record (`referralSkip`): `market_assumed` (the buyer named no market and the cart is built for
 // the assumed one) or `market_unnamed` (no well-formed market at all). The backend is then NOT asked: the cart is
