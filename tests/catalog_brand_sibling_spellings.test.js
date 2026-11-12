@@ -21,6 +21,7 @@ const cache = require('../src/findProductsMulti/brandDictionaryCache');
 const {
   resolveBeautyBrandBrowseQuery,
   resolveBoundBrandSiblingSpellings,
+  REVIEWED_NOT_SIBLING_SPELLINGS,
 } = require('../src/findProductsMulti/brandLexicon');
 const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
 const {
@@ -151,6 +152,131 @@ describe('the sibling resolver', () => {
     // premise: nothing but the two lists stands between these families and a binding
     expect(cache.resolveBrandSiblingSpellings('lime').siblings).toEqual(['lime uk']);
     expect(cache.resolveBrandSiblingSpellings('whipped').siblings).toEqual(['whipped usa']);
+  });
+
+  // Review of the first version: "global", "global store" and "global us" bound together.
+  test.each(['global', 'official', 'store'])('a name that is only the channel word "%s" is no family name', (word) => {
+    const rows = [beauty(word, 30), beauty(`${word} store`, 20), beauty(`${word} us`, 15), beauty(`${word} official uk`, 12)];
+    cache.__setBeautyBrandRowsForTest(rows);
+    for (const row of rows) {
+      // premise: each is a dictionary brand on its own
+      expect(cache.matchCatalogBeautyBrand(row.b)).toEqual(expect.objectContaining({ brand: row.b }));
+      expect(siblingsOf(row.b)).toEqual([]);
+      expect(brandIdentityBindKeys(catalog(row.b))).toEqual([row.b.replace(/ /g, '')]);
+    }
+  });
+
+  test('a channel word INSIDE a longer name does not disqualify it', () => {
+    cache.__setBeautyBrandRowsForTest([beauty('global velora', 30), beauty('global velora uk', 20), beauty('velora store house', 9), beauty('velora store house us', 9)]);
+    expect(siblingsOf('global velora')).toEqual(['global velora uk']);
+    expect(siblingsOf('global velora uk')).toEqual(['global velora']);
+    expect(siblingsOf('velora store house')).toEqual(['velora store house us']);
+  });
+
+  // The dictionary's own key rule (brandDictionaryCache.admissibleKey: 4 letters, or 3 with a
+  // digit, and not a stop word), applied to the family name as the family is keyed (squashed).
+  test.each([
+    ['ma', false], ['k2', false], ['abc', false], ['ab c', false], ['ab-c', false], ['a-b', false], ['skin', false], ['the', false],
+    ['k2x', true], ['abcd', true], ['ab cd', true], ['ab-cd', true], ['a1 b', true],
+  ])('family name "%s": a family = %s', (name, isFamily) => {
+    cache.__setBeautyBrandRowsForTest([beauty(`${name} us`, 20), beauty(`${name} store`, 15), beauty(`${name} jp`, 12)]);
+    // premise: the suffixed spellings are dictionary brands either way
+    expect(cache.matchCatalogBeautyBrand(`${name} us`)).toEqual(expect.objectContaining({ brand: `${name} us` }));
+    expect(siblingsOf(`${name} us`)).toEqual(isFamily ? [`${name} jp`, `${name} store`] : []);
+    expect(siblingsOf(`${name} store`)).toEqual(isFamily ? [`${name} jp`, `${name} us`] : []);
+    expect(cache.admissibleKey(name.replace(/[ -]/g, ''))).toBe(isFamily);
+  });
+
+  // The dictionary keeps only a-z, 0-9, "&" and "-" of a raw brand, so a mixed-script brand keys
+  // as its Latin part: a name that is not the brand's. Placeholder letters, no real brand.
+  describe('a key must be written in full by some catalog spelling', () => {
+    test('a mixed-script brand whose key is only its Latin part forms no family, either way', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('가나다 velmora', 30), beauty('velmora store', 20), beauty('velmora uk', 12)]);
+      // premise: the dictionary does hold the folded key, and the Latin spellings are a family
+      expect(cache.matchCatalogBeautyBrand('velmora')).toEqual(expect.objectContaining({ brand: 'velmora' }));
+      expect(siblingsOf('velmora')).toEqual([]);
+      expect(siblingsOf('velmora store')).toEqual(['velmora uk']);
+      expect(siblingsOf('velmora uk')).toEqual(['velmora store']);
+    });
+
+    test('...and the review\'s case: "<other-script letters> global" beside Latin "global store"', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('가나다 global', 30), beauty('global store', 20), beauty('global us', 12)]);
+      for (const key of ['global', 'global store', 'global us']) expect(siblingsOf(key)).toEqual([]);
+    });
+
+    test('a suffixed spelling that lost letters is not bound as a sibling', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('zentora', 30), beauty('zentora αβγ usa', 20), beauty('zentora uk', 12)]);
+      expect(cache.matchCatalogBeautyBrand('zentora usa')).toEqual(expect.objectContaining({ brand: 'zentora usa' }));
+      expect(siblingsOf('zentora')).toEqual(['zentora uk']);
+      expect(siblingsOf('zentora usa')).toEqual([]);
+    });
+
+    test('one spelling that writes the key in full is enough: a mixed-script namesake does not take the family away', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('가나다 velmora', 30), beauty('velmora', 9), beauty('velmora store', 20)]);
+      expect(siblingsOf('velmora')).toEqual(['velmora store']);
+      expect(siblingsOf('velmora store')).toEqual(['velmora']);
+    });
+
+    test('accents, case-free punctuation and digits are not lost letters', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('lumière', 30), beauty('lumiere uk', 20), beauty("a'velle 21", 9), beauty('a velle 21 us', 9)]);
+      expect(siblingsOf('lumiere')).toEqual(['lumiere uk']);
+      expect(siblingsOf('lumiere uk')).toEqual(['lumiere']);
+      expect(siblingsOf('a velle 21')).toEqual(['a velle 21 us']);
+    });
+
+    test('a digit the key drops is a lost character too', () => {
+      cache.__setBeautyBrandRowsForTest([beauty('velmora ٣', 30), beauty('velmora uk', 20)]);
+      expect(siblingsOf('velmora')).toEqual([]);
+    });
+
+    test('the REAL loader marks whole keys', async () => {
+      cache.__setBrandSetForTest([]);
+      mockQuery.mockResolvedValue({ rows: [beauty('가나다 velmora', 30), beauty('velmora store', 20), beauty('zentora', 5), beauty('zentora usa', 9)] });
+      await cache.refresh();
+      expect(siblingsOf('velmora')).toEqual([]);
+      expect(siblingsOf('zentora')).toEqual(['zentora usa']);
+    });
+  });
+
+  // P2-2 of the review: a brand NAMED "<name> store" beside another brand "<name>" cannot be told
+  // from a storefront by any string rule. The reviewed list is where that is pinned.
+  describe('the reviewed list of spellings that are another brand', () => {
+    const listed = (keys, fn) => {
+      for (const key of keys) REVIEWED_NOT_SIBLING_SPELLINGS.add(key);
+      try { return fn(); } finally { for (const key of keys) REVIEWED_NOT_SIBLING_SPELLINGS.delete(key); }
+    };
+
+    test('ships empty: only data is added after the family listing is reviewed', () => {
+      expect(REVIEWED_NOT_SIBLING_SPELLINGS).toBeInstanceOf(Set);
+      expect(REVIEWED_NOT_SIBLING_SPELLINGS.size).toBe(0);
+    });
+
+    test('a listed spelling binds nothing and is bound by nothing; the rest of its family is untouched', () => {
+      listed(['lumavelle official store'], () => {
+        expect(siblingsOf('lumavelle official store')).toEqual([]);
+        expect(siblingsOf('lumavelle')).toEqual(['lumavelle uk']);
+        expect(siblingsOf('lumavelle uk')).toEqual(['lumavelle']);
+        expect(brandIdentityBindKeys(catalog('lumavelle'))).toEqual(['lumavelle', 'lumavelleuk']);
+        expect(siblingsOf('zentora')).toEqual(['zentora usa']);
+      });
+      expect(siblingsOf('lumavelle')).toEqual(['lumavelle official store', 'lumavelle uk']);
+    });
+
+    test('a two-spelling family with one listed binds nothing in either direction', () => {
+      listed(['zentora usa'], () => {
+        expect(siblingsOf('zentora')).toEqual([]);
+        expect(siblingsOf('zentora usa')).toEqual([]);
+        expect(brandIdentityBindKeys(catalog('zentora'))).toEqual(['zentora']);
+      });
+    });
+
+    test('listing the bare name keeps it apart from every suffixed spelling, which still bind each other', () => {
+      listed(['lumavelle'], () => {
+        expect(siblingsOf('lumavelle')).toEqual([]);
+        expect(siblingsOf('lumavelle uk')).toEqual(['lumavelle official store']);
+        expect(siblingsOf('lumavelle official store')).toEqual(['lumavelle uk']);
+      });
+    });
   });
 
   test('a member that does not itself qualify as a beauty brand is not bound', () => {

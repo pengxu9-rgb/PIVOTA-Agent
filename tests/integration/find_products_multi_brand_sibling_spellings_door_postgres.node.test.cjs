@@ -62,13 +62,18 @@ test('the brand-family invariant through the real /mcp door, flag off (pinned ga
 
     const app = require('../../src/server');
     await require('../../src/findProductsMulti/brandDictionaryCache').refresh();
+    // ONE listener, bound to 127.0.0.1 by name, for the door calls AND the door's own loopback hop.
+    // supertest(app) would open a fresh wildcard listener on a free port for every call, and a
+    // request to 127.0.0.1:<that port> is answered by whatever other local process holds that port
+    // on 127.0.0.1 itself (seen as a 404 with an empty body, or a reset, about 1 run in 15-30).
     server = await new Promise((resolve) => { const listening = app.listen(0, '127.0.0.1', () => resolve(listening)); });
-    process.env.SELF_INVOKE_BASE = `http://127.0.0.1:${server.address().port}`;
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    process.env.SELF_INVOKE_BASE = origin;
 
     // The door caches search_catalog answers per process, keyed on the call's params; a page size
     // of its own gives each phase its own entries.
     const doorSearch = (pageSize) => async (query) => {
-      const res = await supertest(app).post('/mcp').send({ jsonrpc: '2.0', id: 1, method: 'tools/call',
+      const res = await supertest(origin).post('/mcp').send({ jsonrpc: '2.0', id: 1, method: 'tools/call',
         params: { name: 'search_catalog', arguments: { query, market: 'US', page_size: pageSize } } });
       assert.equal(res.status, 200, JSON.stringify(res.body).slice(0, 300));
       assert.notEqual(res.body.result?.isError, true, JSON.stringify(res.body.result).slice(0, 300));

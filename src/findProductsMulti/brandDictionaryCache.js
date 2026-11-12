@@ -34,6 +34,8 @@ let _set = new Set();
 let _beauty = new Map();
 // suffix-stripped name -> the same stats entry as _beauty (GATEWAY_CATALOG_BRAND_LONG_TAIL)
 let _beautyStripped = new Map();
+// keys at least one raw catalog spelling writes in full (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS)
+let _beautyWholeKeys = new Set();
 // family name -> every catalog brand spelling of that family (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS)
 let _beautyFamilies = new Map();
 let _familyCapLogged = new Set();
@@ -152,6 +154,7 @@ async function refresh() {
 function installBeautyBrandStats(rows) {
   _beauty = buildBeautyBrandStats(rows);
   _beautyStripped = buildStrippedBrandIndex(_beauty);
+  _beautyWholeKeys = buildWholeBrandKeys(rows);
   _beautyFamilies = buildBrandFamilyIndex(_beauty);
   _familyCapLogged = new Set();
 }
@@ -388,6 +391,38 @@ function siblingSpellingsEnabled() {
   );
 }
 
+// FLIP AND ROLLBACK. The flag is read per call, but the doors cache search answers on the call's
+// arguments alone (commerce /mcp and /ucp/mcp: 5 min fresh, served stale to 15; /public/mcp: 10 min
+// and 60). After a flip ON a page that was partial before stays partial until its entry ages out;
+// after a ROLLBACK a page answered with the wider family stays that long too. Nothing invalidates
+// them, so a check after either must use query strings that were not asked before.
+
+// A key keeps only a-z, 0-9, "&" and "-" of the raw brand (`normalize`), so "<other-script letters>
+// Global" keys as `global`: a name that is not the brand's. A key is WHOLE when at least one raw
+// spelling folds to it without losing a letter or a digit. Only whole keys form or join a family.
+function buildWholeBrandKeys(rows) {
+  const whole = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const folded = foldAccents(row && row.b);
+    const key = normalize(folded);
+    const written = (folded.match(/[\p{L}\p{N}]/gu) || []).length;
+    const kept = (key.match(/[a-z0-9]/g) || []).length;
+    if (key && written === kept) whole.add(key);
+  }
+  return whole;
+}
+
+// Whether a family name can stand for ONE brand. It cannot when:
+//   * every word of it is itself a market / channel word ("global", beside "global store" and
+//     "global us": three unrelated sellers, not one brand's storefronts);
+//   * the dictionary itself would refuse it as a key (admissibleKey above: MIN_LEN letters, or 3
+//     with a digit, and not a stop word), judged on the squashed name the family is keyed by.
+function familyNameIsABrandName(familyName) {
+  const words = String(familyName || '').split(' ').filter(Boolean);
+  if (words.every((word) => SIBLING_SPELLING_SUFFIXES.has(word))) return false;
+  return admissibleKey(words.join('').replace(/-/g, ''));
+}
+
 // The name a family shares: the brand without its trailing market / channel words.
 function brandFamilyName(brand) {
   return stripBrandSuffixes(brand, SIBLING_SPELLING_SUFFIXES);
@@ -420,17 +455,20 @@ const NO_SIBLING_SPELLINGS = Object.freeze({ siblings: Object.freeze([]), capped
 // The OTHER catalog spellings of the brand `brandKey` names (a canonical dictionary key, as in
 // `catalog:<key>`). A sibling is bound only when it is in the dictionary AND qualifies as a beauty
 // brand by itself, by the unchanged qualifiesAsBeautyBrand: which keys are brands is not decided
-// here. An empty (cold) dictionary, or a key it does not hold, has no siblings.
+// here. An empty (cold) dictionary, or a key it does not hold, has no siblings; neither has a key
+// that is not whole or whose family name cannot stand for one brand (the two rules above).
 function resolveBrandSiblingSpellings(brandKey) {
   if (!siblingSpellingsEnabled() || !enabled() || !beautyContractEnabled()) return NO_SIBLING_SPELLINGS;
   const key = normalize(foldAccents(brandKey));
   // A cold dictionary holds no key, so it has no family either.
   if (!_beauty.has(key)) return NO_SIBLING_SPELLINGS;
+  if (!_beautyWholeKeys.has(key) || !familyNameIsABrandName(brandFamilyName(key))) return NO_SIBLING_SPELLINGS;
   const familyKey = brandFamilyKey(key);
   const ownIdentity = key.replace(/[\s\-]/g, '');
   const siblings = (_beautyFamilies.get(familyKey) || []).filter(
     // "vel mora" and "velmora" are one row identity already, not two spellings to bind.
-    (brand) => brand.replace(/[\s\-]/g, '') !== ownIdentity && qualifiesAsBeautyBrand(_beauty.get(brand)),
+    (brand) => brand.replace(/[\s\-]/g, '') !== ownIdentity && _beautyWholeKeys.has(brand) &&
+      qualifiesAsBeautyBrand(_beauty.get(brand)),
   );
   if (siblings.length + 1 > MAX_BRAND_FAMILY_SPELLINGS) {
     if (!_familyCapLogged.has(familyKey)) {

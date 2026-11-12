@@ -22,11 +22,11 @@ const suite = url ? describe : describe.skip;
 
 const FLAG = 'GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS';
 const {
-  BRANDS, FAMILY, ITEMS, KINDS, UNDER_A_SIBLING_SPELLING, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
+  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, UNDER_A_SIBLING_SPELLING, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
 } = require('../_support/brandSiblingSpellingsFixture.cjs');
 
 suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', () => {
-  let db, schema, priorEnv, app, sqlCalls, coldDictionary;
+  let db, schema, priorEnv, app, origin, server, sqlCalls, coldDictionary;
   beforeAll(async () => {
     db = new Client({ connectionString: url }); await db.connect();
     schema = await createFixture(db, { fetchCanonicalChainRows, buildSearchQualityContract });
@@ -45,19 +45,29 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     const state = { get sqlCalls() { return sqlCalls; }, get coldDictionary() { return coldDictionary; } };
     jest.doMock('../../src/db', () => ({ query: fixtureDbQuery(db, state) }));
     app = require('../../src/server');
+    // One listener bound to 127.0.0.1 by name per boot, not supertest's fresh wildcard listener per
+    // call: a request to 127.0.0.1:<port> must not be answerable by another local process.
+    await stopServer();
+    server = await new Promise((resolve) => { const listening = app.listen(0, '127.0.0.1', () => resolve(listening)); });
+    origin = `http://127.0.0.1:${server.address().port}`;
     const cache = require('../../src/findProductsMulti/brandDictionaryCache');
     await cache.refresh(); // warm: a cold dictionary detects no brand at all (pinned below)
     return cache;
   }
+  const stopServer = async () => {
+    if (server) await new Promise((resolve) => server.close(resolve));
+    server = null;
+  };
   beforeEach(() => {
     priorEnv = { ...process.env }; jest.resetModules(); sqlCalls = []; coldDictionary = false;
     nock.disableNetConnect(); nock.enableNetConnect((host) => host.includes('127.0.0.1'));
   });
   afterEach(async () => {
+    await stopServer();
     process.env = priorEnv; jest.dontMock('../../src/db'); jest.resetModules(); nock.cleanAll(); nock.enableNetConnect();
   });
 
-  const invoke = (query, limit = 50) => request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi',
+  const invoke = (query, limit = 50) => request(origin).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi',
     payload: { search: { query, domain: 'beauty', market: 'US', page: 1, limit } }, metadata: { source: 'public_api', market: 'US' } });
   const idsOf = (body) => (body.products || []).map((p) => p.product_key || p.product_ref?.product_id || p.id).sort();
   const routeIds = async (query) => { const res = await invoke(query); expect(res.status).toBe(200); return idsOf(res.body); };
@@ -84,7 +94,7 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     expect(brandBinds()).toEqual([['zentora']]);
     expect(await routeIds('Zentora USA sunscreen')).toEqual(['zentora_usa__sunscreen']);
     expect(await routeIds('Zentora')).toEqual(['zentora__lipstick', 'zentora__serum', 'zentora__toner']);
-    expect(await routeIds('Zentora Green Tea Mild Daily Sunscreen SPF 50')).toEqual([]);
+    expect(await routeIds('Zentora Daily Shield Mineral Sunscreen SPF 50')).toEqual([]);
   });
 
   test('flag on, the fix: bare brand + category returns the store row; brand alone returns both spellings', async () => {
@@ -104,7 +114,7 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     expect(await routeIds('Zentora USA serum')).toEqual(['zentora__serum', 'zentora_usa__serum']);
     expect(await routeIds('Zentora USA sunscreen')).toEqual(['zentora_usa__sunscreen']);
     // full brand + title: the exact-product anchor reads the row's own name, and admits it
-    const exact = await invoke('Zentora Green Tea Mild Daily Sunscreen SPF 50');
+    const exact = await invoke('Zentora Daily Shield Mineral Sunscreen SPF 50');
     expect(exact.body.metadata.search_quality_contract.query_class).toBe('exact_product');
     expect(idsOf(exact.body)).toEqual(['zentora_usa__sunscreen']);
     // three spellings, any of them typed
@@ -118,7 +128,8 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
   test('the invariant at the route: flag off breaks it for exactly the sibling-spelling products; flag on holds', async () => {
     await boot(null);
     const off = await invariantBreaks(routeIds);
-    // KNOWN GAP, pinned: 10 of the fixture's 39 products cannot be found by their brand + category.
+    // KNOWN GAP, pinned: 10 of the fixture's 39 family-or-single-brand products cannot be found by
+    // their brand + category.
     expect(off).toEqual(UNDER_A_SIBLING_SPELLING);
     expect(off).toHaveLength(10);
     jest.resetModules();
@@ -154,6 +165,27 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     expect(on['Noble Pegasus serum']).toEqual(['noble_pegasus__serum']);
     expect(on['Brisa serum']).toEqual(['brisa__serum']);
     expect(on['Brisa sunscreen']).toEqual([]); // "Brisa Beauty" is another brand: not a sibling
+    // NOT FAMILIES: a channel-word name, a name too short to be a key, a mixed-script brand. Each
+    // query answers exactly what it answers with the flag off, and never another brand's rows.
+    const lookalikes = NOT_FAMILIES.flatMap(([brand]) => [brand, ...KINDS.map((kind) => `${brand} ${kind}`)]);
+    jest.resetModules();
+    await boot(null);
+    const lookalikesOff = await routeAnswers(lookalikes);
+    jest.resetModules();
+    await boot('on');
+    const lookalikesOn = await routeAnswers(lookalikes);
+    expect(lookalikesOn).toEqual(lookalikesOff);
+    for (const [brand] of NOT_FAMILIES) {
+      for (const query of [brand, ...KINDS.map((kind) => `${brand} ${kind}`)]) {
+        expect({ query, brands: [...new Set(lookalikesOn[query].map((id) => brandOf[id]))].filter((b) => b !== brand) }).toEqual({ query, brands: [] });
+      }
+    }
+    // premise: these ARE hard brands with rows of their own, so the comparison above is not vacuous
+    expect(lookalikesOn['Global serum']).toEqual(['other0_global__serum']);
+    expect(lookalikesOn['Global Store serum']).toEqual(['other1_global_store__serum']);
+    expect(lookalikesOn['Ma US serum']).toEqual(['other2_ma_us__serum']);
+    expect(lookalikesOn['Ma Store serum']).toEqual(['other3_ma_store__serum']);
+    expect(lookalikesOn['Velmora Store serum']).toEqual(['other5_velmora_store__serum']);
     // THE ONLY QUERIES THAT CHANGE are the ones whose brand has a sibling spelling.
     expect([...new Set(changed)].sort()).toEqual([...FAMILY.Zentora, ...FAMILY.Lumavelle].sort());
   });
@@ -179,7 +211,7 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
       const { buildBrandIdentityPredicate, CANONICAL_OWN_BRAND_SQL } = require('../../src/services/canonicalSearchQualitySql');
       const { buildSeedSearchOfferScope } = require('../../src/services/seedSearchOfferScope');
       const brand = { contract: 'brand_browse', brand_key: `catalog:${key}`, brand: key, canonical: key, alias: key };
-      const stored = BRANDS.map(([name]) => name);
+      const stored = [...BRANDS, ...NOT_FAMILIES].map(([name]) => name);
       const canonicalParams = [];
       const canonical = buildBrandIdentityPredicate(brand, CANONICAL_OWN_BRAND_SQL, canonicalParams);
       canonicalParams.push(stored);
@@ -200,6 +232,12 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     expect(await matched('on', 'noble')).toEqual(['Noble']);
     expect(await matched('on', 'noble pegasus')).toEqual(['Noble Pegasus']);
     expect(await matched('on', 'brisa')).toEqual(['Brisa']);
+    // not families: a channel-word name, a name too short to be a key
+    expect(await matched('on', 'global')).toEqual(['Global']);
+    expect(await matched('on', 'global store')).toEqual(['Global Store']);
+    expect(await matched('on', 'ma us')).toEqual(['Ma US']);
+    expect(await matched('on', 'ma store')).toEqual(['Ma Store']);
+    expect(await matched('on', 'velmora store')).toEqual(['Velmora Store']);
   });
 
   test('the plan: the brand index serves one key and a family alike', async () => {

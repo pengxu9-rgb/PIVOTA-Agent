@@ -233,4 +233,6 @@ jobs:
           CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
         run: |
           npx jest --watchman=false --runInBand tests/integration/find_products_multi_brand_sibling_spellings_postgres.test.js
-          node --test tests/integration/find_products_multi_brand_sibling_spellings_door_postgres.node.test.cjs
+          # The same network guard the node suite runner preloads (scripts/run_node_test_suites.cjs,
+          # withGuardPreload): loopback only.
+          NODE_OPTIONS=--require=./tests/_support/netGuard.cjs node --test tests/integration/find_products_multi_brand_sibling_spellings_door_postgres.node.test.cjs

@@ -473,6 +473,16 @@ const AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES = new Set([
   'terra',
 ]);
 
+// Catalog spellings that END in a market / channel word and are a DIFFERENT brand from the name in
+// front of it ("<name> store", a brand, beside "<name>", another): reviewed, pinned, and never
+// bound as a sibling spelling (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS). A listed spelling has no
+// siblings and is nobody's sibling; listing the bare name instead keeps it apart from every
+// suffixed spelling. Keys are written as the dictionary writes them (lower case, accents folded).
+// EMPTY until the family listing has been reviewed against prod (see the flag's notes); a string
+// rule cannot tell a brand named "<name> store" from <name>'s own store, so this list is where
+// that knowledge goes.
+const REVIEWED_NOT_SIBLING_SPELLINGS = new Set([]);
+
 // The query's own words, minus framing ("shop", "products") and brand suffixes
 // ("beauty", "makeup"): what the buyer typed as the brand name, when the query is only that.
 function coreBrandQueryTokens(normalizedQuery) {
@@ -551,6 +561,8 @@ function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}
 //   * A family whose shared name is on either ambiguous list has none: "lime" beside
 //     "lime uk" is a word first.
 //   * A sibling the static lexicon names belongs to that reviewed brand, not to this family.
+//   * A spelling on REVIEWED_NOT_SIBLING_SPELLINGS is another brand: it binds nothing and is
+//     bound by nothing.
 const STATIC_LEXICON_NAMES = new Map();
 function staticLexiconNames(key) {
   if (!STATIC_LEXICON_NAMES.has(key)) {
@@ -563,13 +575,14 @@ function resolveBoundBrandSiblingSpellings(brand) {
   const catalogKey = /^catalog:(.+)$/.exec(String((brand && brand.brand_key) || ''));
   if (!catalogKey) return [];
   const key = catalogKey[1];
+  if (REVIEWED_NOT_SIBLING_SPELLINGS.has(key)) return [];
   const { siblings } = brandDictionaryCache.resolveBrandSiblingSpellings(key);
   if (!siblings.length) return [];
   const familyName = normalizeBrandText(brandDictionaryCache.brandFamilyName(key));
   if (AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES.has(familyName) || AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(familyName)) {
     return [];
   }
-  return siblings.filter((sibling) => !staticLexiconNames(sibling));
+  return siblings.filter((sibling) => !REVIEWED_NOT_SIBLING_SPELLINGS.has(sibling) && !staticLexiconNames(sibling));
 }
 
 function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
@@ -941,5 +954,6 @@ module.exports = {
   reduceBrandOnlyQuery,
   resolveBeautyBrandBrowseQuery,
   resolveBoundBrandSiblingSpellings,
+  REVIEWED_NOT_SIBLING_SPELLINGS,
   BRAND_QUERY_FILLER_TOKENS,
 };

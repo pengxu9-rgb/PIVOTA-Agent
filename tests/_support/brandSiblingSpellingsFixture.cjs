@@ -37,6 +37,19 @@ const BRANDS = [
   ['Brisa', 'Brisa', ['serum', 'toner', 'lipstick']],
   ['Brisa Beauty', 'Brisa Beauty', ['sunscreen', 'serum', 'toner']],
 ];
+// Spellings that LOOK like a family and are not one, so no query of one may return another's rows,
+// flag on or off: a name that is only a channel word, a name too short to be a dictionary key, and
+// a mixed-script brand whose dictionary key keeps only its Latin part. They sit in the catalogue
+// and the dictionary beside the brands above, outside the invariant (their own brand query is the
+// dictionary's business, not this flag's).
+const NOT_FAMILIES = [
+  ['Global', ['serum', 'toner', 'lipstick']],
+  ['Global Store', ['sunscreen', 'serum', 'toner']],
+  ['Ma US', ['serum', 'toner', 'lipstick']],
+  ['Ma Store', ['sunscreen', 'serum', 'toner']],
+  ['가나다 Velmora', ['serum', 'toner', 'lipstick']],
+  ['Velmora Store', ['sunscreen', 'serum', 'toner']],
+];
 // The rows a brand query may return, written by hand, not derived by the code under test.
 const FAMILY = { Zentora: ['Zentora', 'Zentora USA'], Lumavelle: ['Lumavelle', 'Lumavelle UK', 'Lumavelle Official Store'] };
 const familyOf = (brand) => Object.values(FAMILY).find((members) => members.includes(brand)) || [brand];
@@ -46,10 +59,15 @@ const ITEMS = BRANDS.flatMap(([brand, typed, kinds]) => kinds.map((kind) => {
   return { id: `${slug(brand)}__${kind}`, brand, typed, kind, category, type, title: `${title} ${slug(brand).length}${kind.length}` };
 }));
 // The store's own sunscreen, under a fuller title, for the full-title query.
-ITEMS.find((item) => item.id === 'zentora_usa__sunscreen').title = 'Green Tea Mild Daily Sunscreen SPF 50';
-const brandOf = Object.fromEntries(ITEMS.map((item) => [item.id, item.brand]));
+ITEMS.find((item) => item.id === 'zentora_usa__sunscreen').title = 'Daily Shield Mineral Sunscreen SPF 50';
+const OTHER_ITEMS = NOT_FAMILIES.flatMap(([brand, kinds], at) => kinds.map((kind) => {
+  const [category, type, title] = GENERIC[kind];
+  return { id: `other${at}_${slug(brand)}__${kind}`, brand, kind, category, type, title: `${title} 9${at}${kind.length}` };
+}));
+const ALL_ITEMS = [...ITEMS, ...OTHER_ITEMS];
+const brandOf = Object.fromEntries(ALL_ITEMS.map((item) => [item.id, item.brand]));
 const sigOf = (id) => `sig_${crypto.createHash('md5').update(id).digest('hex')}`;
-const idOfSig = Object.fromEntries(ITEMS.map((item) => [sigOf(item.id), item.id]));
+const idOfSig = Object.fromEntries(ALL_ITEMS.map((item) => [sigOf(item.id), item.id]));
 // The products that sit under a suffixed spelling of a brand whose buyer types the bare name.
 const UNDER_A_SIBLING_SPELLING = ITEMS.filter((item) => item.brand !== item.typed).map((item) => item.id).sort();
 
@@ -83,7 +101,7 @@ async function createFixture(db, { fetchCanonicalChainRows, buildSearchQualityCo
     }
   }
   await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status,primary_platform) VALUES ('retailer','Retailer','active','shopify')");
-  for (const { id, title, brand, category, type } of ITEMS) {
+  for (const { id, title, brand, category, type } of ALL_ITEMS) {
     const sig = sigOf(id);
     await db.query(`INSERT INTO catalog_products(product_key,merchant_id,platform,source_product_id,title,brand,product_type,
      category_path,content_key,pivota_signature_id,pivota_canonical_url,canonical_url,image_url,product_payload,updated_at)
@@ -121,9 +139,10 @@ async function invariantBreaks(search) {
   for (const kind of KINDS) {
     const generic = await search(kind);
     // premise: the generic query really returns every fixture product of that kind
-    assert.deepEqual(generic, ITEMS.filter((item) => item.kind === kind).map((item) => item.id).sort());
+    assert.deepEqual(generic, ALL_ITEMS.filter((item) => item.kind === kind).map((item) => item.id).sort());
     for (const id of generic) {
       const item = ITEMS.find((candidate) => candidate.id === id);
+      if (!item) continue; // a NOT_FAMILIES row
       checked += 1;
       if (!(await search(`${item.typed} ${kind}`)).includes(id)) breaks.push(id);
     }
@@ -133,5 +152,5 @@ async function invariantBreaks(search) {
 }
 
 module.exports = {
-  BRANDS, FAMILY, ITEMS, KINDS, UNDER_A_SIBLING_SPELLING, brandOf, createFixture, familyOf, fixtureDbQuery, idOfSig, invariantBreaks, sigOf,
+  BRANDS, FAMILY, ITEMS, KINDS, NOT_FAMILIES, UNDER_A_SIBLING_SPELLING, brandOf, createFixture, familyOf, fixtureDbQuery, idOfSig, invariantBreaks, sigOf,
 };
