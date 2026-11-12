@@ -34,6 +34,9 @@ let _set = new Set();
 let _beauty = new Map();
 // suffix-stripped name -> the same stats entry as _beauty (GATEWAY_CATALOG_BRAND_LONG_TAIL)
 let _beautyStripped = new Map();
+// family name -> every catalog brand spelling of that family (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS)
+let _beautyFamilies = new Map();
+let _familyCapLogged = new Set();
 let _loadedAt = 0;
 let _loading = null;
 
@@ -143,6 +146,8 @@ async function refresh() {
   _set = next;
   _beauty = buildBeautyBrandStats(rows);
   _beautyStripped = buildStrippedBrandIndex(_beauty);
+  _beautyFamilies = buildBrandFamilyIndex(_beauty);
+  _familyCapLogged = new Set();
   _loadedAt = Date.now();
 }
 
@@ -346,10 +351,101 @@ const STRIPPABLE_BRAND_SUFFIXES = new Set([
   'us', 'usa', 'uk', 'jp', 'kr', 'global', 'official', 'store',
 ]);
 
-function stripBrandSuffixes(brand) {
+function stripBrandSuffixes(brand, suffixes = STRIPPABLE_BRAND_SUFFIXES) {
   const tokens = String(brand || '').split(' ').filter(Boolean);
-  while (tokens.length > 1 && STRIPPABLE_BRAND_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
+  while (tokens.length > 1 && suffixes.has(tokens[tokens.length - 1])) tokens.pop();
   return tokens.join(' ');
+}
+
+// SIBLING SPELLINGS (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS, default OFF; on = 1 / true / yes /
+// on, read per call like its neighbours). One brand can sit in the catalog under two spellings:
+// a retailer writes the bare name, the brand's own store writes the name plus a market or channel
+// word ("Zentora" and "Zentora USA"). Each spelling is its own dictionary key, and a brand
+// constraint is an equality on ONE key, so a buyer typing the bare name plus a category was
+// scoped to the retailer's rows only and never saw the store's.
+//
+// Two keys are siblings when they are EQUAL after the trailing words below are removed (compared
+// with spaces and hyphens squashed, the identity the row index itself uses). Never a prefix:
+// "zentora" and "zentora labs" stay two brands, because "labs" is not in the list.
+//
+// The list is the MARKET / CHANNEL subset of STRIPPABLE_BRAND_SUFFIXES. The descriptive words
+// (beauty, cosmetics, cosmetic, makeup, skincare) are left out on purpose: they are part of real
+// brand names, and a bare word beside "<word> Beauty" is as often another brand as the same one
+// (ten of the 55 stripped names reviewed 2026-09-25 collided with an ordinary word or phrase).
+// A market or channel word says where a brand is sold, not which brand it is.
+const SIBLING_SPELLING_SUFFIXES = new Set(['us', 'usa', 'uk', 'jp', 'kr', 'global', 'official', 'store']);
+// A family this large is not one brand's storefronts. Beyond it only the matched key is bound.
+const MAX_BRAND_FAMILY_SPELLINGS = 8;
+
+function siblingSpellingsEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS || '').trim().toLowerCase(),
+  );
+}
+
+// The name a family shares: the brand without its trailing market / channel words.
+function brandFamilyName(brand) {
+  return stripBrandSuffixes(brand, SIBLING_SPELLING_SUFFIXES);
+}
+
+function brandFamilyKey(brand) {
+  return brandFamilyName(brand).replace(/[\s\-]/g, '');
+}
+
+// family key -> the catalog brand spellings in it, sorted. Only families of two or more are kept.
+function buildBrandFamilyIndex(stats) {
+  const families = new Map();
+  const seen = new Set();
+  for (const entry of stats.values()) {
+    if (seen.has(entry.brand)) continue; // the squashed alias points at the same entry
+    seen.add(entry.brand);
+    const key = brandFamilyKey(entry.brand);
+    if (!key) continue;
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push(entry.brand);
+  }
+  const out = new Map();
+  for (const [key, members] of families) {
+    if (members.length > 1) out.set(key, members.sort());
+  }
+  return out;
+}
+
+const NO_SIBLING_SPELLINGS = Object.freeze({ siblings: Object.freeze([]), capped: false });
+
+// The OTHER catalog spellings of the brand `brandKey` names (a canonical dictionary key, as in
+// `catalog:<key>`). A sibling is bound only when it is in the dictionary AND qualifies as a beauty
+// brand by itself, by the unchanged qualifiesAsBeautyBrand: which keys are brands is not decided
+// here. An empty (cold) dictionary, or a key it does not hold, has no siblings.
+function resolveBrandSiblingSpellings(brandKey) {
+  if (!siblingSpellingsEnabled() || !enabled() || !beautyContractEnabled()) return NO_SIBLING_SPELLINGS;
+  if (!_beautyFamilies.size) return NO_SIBLING_SPELLINGS;
+  const key = normalize(foldAccents(brandKey));
+  const own = _beauty.get(key);
+  if (!own || own.brand !== key) return NO_SIBLING_SPELLINGS;
+  const familyKey = brandFamilyKey(key);
+  const ownIdentity = key.replace(/[\s\-]/g, '');
+  const siblings = (_beautyFamilies.get(familyKey) || []).filter((brand) => {
+    // "vel mora" and "velmora" are one row identity already, not two spellings to bind.
+    if (brand.replace(/[\s\-]/g, '') === ownIdentity) return false;
+    const stats = _beauty.get(brand);
+    return Boolean(stats) && stats.brand === brand && qualifiesAsBeautyBrand(stats);
+  });
+  if (!siblings.length) return NO_SIBLING_SPELLINGS;
+  if (siblings.length + 1 > MAX_BRAND_FAMILY_SPELLINGS) {
+    if (!_familyCapLogged.has(familyKey)) {
+      _familyCapLogged.add(familyKey);
+      // Counts only: a brand string in a log line is a brand string in a log sink.
+      // Once per family per dictionary load, and loaded here so a process that never meets an
+      // oversized family never loads the logger through this module.
+      require('../logger').warn(
+        { event: 'brand_sibling_spellings_over_cap', spellings: siblings.length + 1, cap: MAX_BRAND_FAMILY_SPELLINGS },
+        'brand_sibling_spellings_over_cap: only the matched brand key is bound',
+      );
+    }
+    return { siblings: NO_SIBLING_SPELLINGS.siblings, capped: true };
+  }
+  return { siblings, capped: false };
 }
 
 function buildStrippedBrandIndex(stats) {
@@ -513,6 +609,8 @@ function __setBrandSetForTest(values) {
   _set = new Set(values || []);
   _beauty = new Map();
   _beautyStripped = new Map();
+  _beautyFamilies = new Map();
+  _familyCapLogged = new Set();
   _loadedAt = Date.now();
 }
 
@@ -521,6 +619,8 @@ function __setBrandSetForTest(values) {
 function __setBeautyBrandRowsForTest(rows) {
   _beauty = buildBeautyBrandStats(rows);
   _beautyStripped = buildStrippedBrandIndex(_beauty);
+  _beautyFamilies = buildBrandFamilyIndex(_beauty);
+  _familyCapLogged = new Set();
   _loadedAt = Date.now();
 }
 
@@ -539,6 +639,11 @@ module.exports = {
   isOnboardedBrand,
   longTailEnabled,
   stripBrandSuffixes,
+  siblingSpellingsEnabled,
+  brandFamilyName,
+  resolveBrandSiblingSpellings,
+  SIBLING_SPELLING_SUFFIXES,
+  MAX_BRAND_FAMILY_SPELLINGS,
   MIN_BEAUTY_ROWS,
   LONG_TAIL_MIN_BEAUTY_ROWS,
   MIN_BEAUTY_SHARE,

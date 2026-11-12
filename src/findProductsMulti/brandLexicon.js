@@ -542,6 +542,36 @@ function resolveCatalogBeautyBrandQuery(normalizedQuery, queryText, options = {}
   };
 }
 
+// THE bound spellings of a contract brand, beyond the key it already carries
+// (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS, default OFF -> always []). Both recall lanes, the
+// serving gate and the ranker read this ONE function, keyed on the contract's brand_key, so
+// they cannot bind different families.
+//   * Only a catalog-derived brand (`catalog:<key>`) has siblings. A static-lexicon brand keeps
+//     its reviewed aliases and nothing else.
+//   * A family whose shared name is on either ambiguous list has none: "lime" beside
+//     "lime uk" is a word first.
+//   * A sibling the static lexicon names belongs to that reviewed brand, not to this family.
+const STATIC_LEXICON_NAMES = new Map();
+function staticLexiconNames(key) {
+  if (!STATIC_LEXICON_NAMES.has(key)) {
+    STATIC_LEXICON_NAMES.set(key, detectBrandByStaticAliases(normalizeBrandText(key)).length > 0);
+  }
+  return STATIC_LEXICON_NAMES.get(key);
+}
+
+function resolveBoundBrandSiblingSpellings(brand) {
+  const brandKey = String((brand && brand.brand_key) || '');
+  if (!brandKey.startsWith('catalog:')) return [];
+  const key = brandKey.slice('catalog:'.length);
+  const { siblings } = brandDictionaryCache.resolveBrandSiblingSpellings(key);
+  if (!siblings.length) return [];
+  const familyName = normalizeBrandText(brandDictionaryCache.brandFamilyName(key));
+  if (AMBIGUOUS_STRIPPED_CATALOG_BRAND_NAMES.has(familyName) || AMBIGUOUS_SINGLE_WORD_CATALOG_BRANDS.has(familyName)) {
+    return [];
+  }
+  return siblings.filter((sibling) => !staticLexiconNames(sibling));
+}
+
 function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
   const normalizedQuery = normalizeBrandText(queryText);
   if (!normalizedQuery) {
@@ -910,5 +940,6 @@ module.exports = {
   normalizeBrandText,
   reduceBrandOnlyQuery,
   resolveBeautyBrandBrowseQuery,
+  resolveBoundBrandSiblingSpellings,
   BRAND_QUERY_FILLER_TOKENS,
 };
