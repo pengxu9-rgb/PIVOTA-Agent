@@ -96,7 +96,7 @@ const MESSAGES = {
 const RETRIABLE = { MERCHANT_UNAVAILABLE: true };
 const ACP_STATUS = { MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409 };
 // What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
-const FIRST_CODE = { partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
+const FIRST_CODE = { partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
 const firstCode = (answer) => FIRST_CODE[answer] || 'MERCHANT_UNAVAILABLE';
 /** Wait until the backend holds the request; if the call answers first it never got there, so fail with its answer. */
 const atBackend = (held, running) => Promise.race([held.reached, running.then((r) => { throw new Error(`the call answered before it reached the backend: ${r.raw.slice(0, 300)}`); })]);
@@ -296,6 +296,80 @@ test('after a released refusal the retry is judged afresh: the backend\'s view o
       assertAnswerCurrency(JSON.parse(after.raw), marketCurrency('GB'), label);
     }
     assert.equal(door.orders.length, before + 1, label);
+  }
+}));
+
+// ---- where the code and the reason are read from ------------------------------------------------------------------
+
+test('a listed code releases only from the route\'s own detail (error.details.error): the same code in the outer error.code, or in a message, keeps the claim', each(async (caller) => {
+  const meta = { timestamp: '2026-01-01T00:00:00.000000Z', request_id: null };
+  const envelope = (code, message, details, detail) => ({ status: 'error', error: { code, message, details, documentation_url: 'https://docs.backend.quote-claim.test/errors' }, metadata: meta, detail });
+  const KEPT = [
+    // The transport reads a code from three places, in this order: details.error, the message, the outer code.
+    ['only in the outer error.code', envelope('INVALID_BUYER_CONTEXT', 'Invalid request format or parameters', { message: 'placeholder' }, { message: 'placeholder' })],
+    ['only in the message', envelope('INVALID_REQUEST', 'INVALID_BUYER_CONTEXT', { message: 'placeholder' }, { message: 'placeholder' })],
+    ['in the message and the outer code, with prose in details.error', envelope('INVALID_BUYER_CONTEXT', 'INVALID_BUYER_CONTEXT', { error: 'the buyer context is not valid' }, 'the buyer context is not valid')],
+    ['only in the outer error.code, with no details at all', { status: 'error', error: { code: 'INVALID_BUYER_CONTEXT', message: 'Invalid request format or parameters' }, metadata: meta }],
+  ];
+  for (const [where, body] of KEPT) {
+    for (const landed of [false, true]) {
+      const label = `${caller} ${where}${landed ? ' (the order was made)' : ''}`;
+      const h = await open(caller, 'SG');
+      const before = door.orders.length;
+      door.orderScript.push(ANSWERS.raw(400, body, { landed }));
+      const key = freshKey();
+      const first = await attempt(h, key);
+      assertRefused(h, first, 'MERCHANT_UNAVAILABLE', `${label} first`);
+      assert.equal(ordersAsked(first).length, 1, label);
+      for (const k of [key, freshKey()]) {
+        const retry = await attempt(h, k);
+        assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
+        assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
+      }
+      assert.equal(door.orders.length, before + (landed ? 1 : 0), label);
+    }
+  }
+  // The releasing form, in the envelope and as the route's bare detail: the raise site named the code.
+  for (const [where, body] of [
+    ['in details.error', ANSWERS.invalidBuyer().body],
+    ['in the route\'s bare detail (no envelope)', { detail: { error: 'INVALID_BUYER_CONTEXT', message: 'placeholder' } }],
+  ]) {
+    const h = await open(caller, 'SG');
+    const before = door.orders.length;
+    door.orderScript.push(ANSWERS.raw(400, body));
+    const key = freshKey();
+    assertRefused(h, await attempt(h, key), 'MERCHANT_UNAVAILABLE', `${caller} ${where} first`);
+    assertOrdered(h, await attempt(h, key), `${caller} ${where} retry`);
+    assert.equal(door.orders.length, before + 1, `${caller} ${where}`);
+  }
+}));
+
+test('a refused caller assertion: nine reasons give the session back; replay, stale, no reason and an unknown reason keep it', each(async (caller) => {
+  for (const reason of ['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body', 'subject']) {
+    const label = `${caller} ${reason}`;
+    const h = await open(caller, 'GB');
+    const before = door.orders.length;
+    door.orderScript.push(ANSWERS.partnerAssertion(reason));
+    const key = freshKey();
+    assertRefused(h, await attempt(h, key), 'PARTNER_ASSERTION_REJECTED', `${label} first`);
+    assertOrdered(h, await attempt(h, key), `${label} retry`);
+    assert.equal(door.orders.length, before + 1, label);
+  }
+  for (const reason of ['replay', 'stale', undefined, null, '', 7, 'nonce_store_unavailable', 'PATH']) {
+    const label = `${caller} reason ${JSON.stringify(reason)}`;
+    const h = await open(caller, 'GB');
+    const before = door.orders.length;
+    // The order was made by the first copy of the request; this answer is the second copy's.
+    door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+    const key = freshKey();
+    const first = await attempt(h, key);
+    assertRefused(h, first, 'PARTNER_ASSERTION_REJECTED', `${label} first`);
+    for (const k of [key, freshKey(), key]) {
+      const retry = await attempt(h, k);
+      assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
+      assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
+    }
+    assert.equal(door.orders.length, before + 1, `${label}: the one order the first copy made, never a second`);
   }
 }));
 

@@ -27,7 +27,9 @@ import { SafetyKernel } from '../src/kernel.js';
 import { InMemoryKvStore } from '../src/stores.js';
 import { PostgresKvStore } from '../src/stores/postgresKvStore.js';
 import { PivotaCommerceError } from '../src/errors.js';
-import { upstreamAnsweredRefusal, REFUSED_BEFORE_ANY_ORDER } from '../src/upstreamRefusal.js';
+import { readFileSync } from 'node:fs';
+import { upstreamAnsweredRefusal, refusalsByStatus, REFUSED_BEFORE_ANY_ORDER, ASSERTION_REASONS_BEFORE_ANY_ORDER } from '../src/upstreamRefusal.js';
+import { redact } from '../src/redact.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
 import { makeFakePgDb } from './helpers/fakePgDb.js';
@@ -47,10 +49,21 @@ const address = (country) => ({ name: 'Buyer One', address_line1: '1 Example Roa
 // ---- the upstream's failures, as the transport raises them ---------------------------------------------------
 
 const KERNEL_CODE = { OUT_OF_STOCK: 'OUT_OF_STOCK', QUOTE_EXPIRED: 'QUOTE_EXPIRED', PRICE_CHANGED: 'PRICE_CHANGED', QUOTE_MISMATCH: 'PRICE_CHANGED', PARTNER_ASSERTION_REJECTED: 'PARTNER_ASSERTION_REJECTED' };
-/** A response that arrived: `status`, and the error code its body named (null: it named none). */
-const answered = (status, upstreamCode = null) => new PivotaCommerceError((typeof upstreamCode === 'string' && Object.hasOwn(KERNEL_CODE, upstreamCode) && KERNEL_CODE[upstreamCode]) || 'MERCHANT_UNAVAILABLE', {
-  operation: 'create_order', upstream_status: status, upstream_code: upstreamCode, message: undefined, upstream_detail: undefined,
-});
+/**
+ * A response that arrived: `status`, the error code the transport took from its body (null: it found none), and
+ * the route's own detail, which the transport hands over whole. By default the detail names that same code in
+ * `error`, as a raise site that chose the code writes it; `route` replaces the detail (undefined: none at all).
+ * A refused caller assertion also says why (`reason`, `path` unless given).
+ */
+const answered = (status, upstreamCode = null, { route, reason = 'path' } = {}) => {
+  const ownDetail = typeof upstreamCode === 'string'
+    ? { error: upstreamCode, message: 'placeholder', ...(upstreamCode === 'PARTNER_ASSERTION_REJECTED' ? { reason } : {}) }
+    : undefined;
+  return new PivotaCommerceError((typeof upstreamCode === 'string' && Object.hasOwn(KERNEL_CODE, upstreamCode) && KERNEL_CODE[upstreamCode]) || 'MERCHANT_UNAVAILABLE', {
+    operation: 'create_order', upstream_status: status, upstream_code: upstreamCode, message: undefined,
+    upstream_detail: route === undefined ? ownDetail : route,
+  });
+};
 /** No response: the deadline passed (`timeout`), or the connection failed. */
 const noAnswer = ({ timeout = false } = {}) => new PivotaCommerceError('MERCHANT_UNAVAILABLE', {
   operation: 'create_order', upstream_status: null, upstream_code: null, message: undefined, upstream_detail: undefined,
@@ -202,16 +215,99 @@ const ALLOWED = [
   [409, 'PARTNER_ASSERTION_REJECTED'], [409, 'UNSUPPORTED_COMMERCE_PATH'], [409, 'PREFLIGHT_FAILED'],
 ];
 
-test('the list of answers that give a claim back is exactly these nine status-and-code pairs', () => {
+const LIST_FILE = new URL('../contracts/order_create_prologue_refusals.json', import.meta.url);
+// The file, to the byte: the upstream's repository holds the same bytes.
+const LIST_FILE_TEXT = `[
+  [400, "INVALID_BUYER_CONTEXT"],
+  [400, "INVALID_QUOTE"],
+  [400, "QUOTE_MERCHANT_MISMATCH"],
+  [400, "QUOTE_REQUIRED_BEFORE_PURCHASE"],
+  [400, "VARIANT_REQUIRED"],
+  [404, "QUOTE_NOT_FOUND"],
+  [409, "PARTNER_ASSERTION_REJECTED"],
+  [409, "PREFLIGHT_FAILED"],
+  [409, "UNSUPPORTED_COMMERCE_PATH"]
+]
+`;
+
+test('the list of answers that give a claim back is the data file, and the file is exactly these nine status-and-code pairs', () => {
+  const text = readFileSync(LIST_FILE, 'utf8');
+  assert.equal(text, LIST_FILE_TEXT, 'the file, byte for byte');
+  const pairs = JSON.parse(text);
+  assert.deepEqual([...pairs].sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : 1)), pairs, 'sorted by status, then by code');
+  assert.deepEqual(pairs.map(([st, c]) => `${st} ${c}`).sort(), ALLOWED.map(([st, c]) => `${st} ${c}`).sort());
+  // The rule holds exactly the file: every pair of the file releases, and the rule's own table is the file's.
+  assert.deepEqual(REFUSED_BEFORE_ANY_ORDER, refusalsByStatus(pairs));
+  assert.deepEqual(Object.entries(REFUSED_BEFORE_ANY_ORDER).flatMap(([st, codes]) => codes.map((c) => [Number(st), c])), pairs);
   assert.deepEqual(REFUSED_BEFORE_ANY_ORDER, {
-    400: ['INVALID_QUOTE', 'INVALID_BUYER_CONTEXT', 'QUOTE_REQUIRED_BEFORE_PURCHASE', 'QUOTE_MERCHANT_MISMATCH', 'VARIANT_REQUIRED'],
+    400: ['INVALID_BUYER_CONTEXT', 'INVALID_QUOTE', 'QUOTE_MERCHANT_MISMATCH', 'QUOTE_REQUIRED_BEFORE_PURCHASE', 'VARIANT_REQUIRED'],
     404: ['QUOTE_NOT_FOUND'],
-    409: ['PARTNER_ASSERTION_REJECTED', 'UNSUPPORTED_COMMERCE_PATH', 'PREFLIGHT_FAILED'],
+    409: ['PARTNER_ASSERTION_REJECTED', 'PREFLIGHT_FAILED', 'UNSUPPORTED_COMMERCE_PATH'],
   });
   assert.ok(Object.isFrozen(REFUSED_BEFORE_ANY_ORDER) && Object.values(REFUSED_BEFORE_ANY_ORDER).every(Object.isFrozen));
-  for (const [status, code] of ALLOWED) {
-    assert.deepEqual(upstreamAnsweredRefusal(answered(status, code)), { upstream_status: status, upstream_code: code }, `${status} ${code}`);
+  for (const [status, code] of pairs) {
+    const expected = { upstream_status: status, upstream_code: code, ...(code === 'PARTNER_ASSERTION_REJECTED' ? { upstream_reason: 'path' } : {}) };
+    assert.deepEqual(upstreamAnsweredRefusal(answered(status, code)), expected, `${status} ${code}`);
   }
+  // A file that is not a list of [status, "CODE"] pairs is refused when it is loaded, never read loosely.
+  for (const bad of [null, {}, [], [[400]], [['400', 'INVALID_QUOTE']], [[400, 'invalid_quote']], [[400, 'INVALID_QUOTE', 'x']], [{ status: 400, code: 'INVALID_QUOTE' }], [[400.5, 'INVALID_QUOTE']]]) {
+    assert.throws(() => refusalsByStatus(bad), /order_create_prologue_refusals/, JSON.stringify(bad));
+  }
+});
+
+test('a listed code gives the claim back only when the route\'s own detail names it: not from the envelope\'s outer code, not from a message', () => {
+  const listed = (route) => answered(400, 'INVALID_BUYER_CONTEXT', { route });
+  // The only releasing form: the raise site wrote the code in its detail.
+  assert.deepEqual(upstreamAnsweredRefusal(listed({ error: 'INVALID_BUYER_CONTEXT', message: 'buyer_context.customer_email is required for order creation' })), { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT' });
+  const kept = [
+    // The transport found the code in the envelope's status-derived `error.code`: the detail names none.
+    ['the code only in the outer error.code', { message: 'Insufficient inventory', items: [] }],
+    // The transport found it in the envelope's message: the detail's `error` is the prose, or is absent.
+    ['the code only in a message string', { message: 'INVALID_BUYER_CONTEXT' }],
+    ['the detail naming prose', { error: 'buyer context is invalid' }],
+    ['the detail naming another listed code', { error: 'INVALID_QUOTE' }],
+    ['the detail naming the code in lower case', { error: 'invalid_buyer_context' }],
+    ['the detail naming the code under another member', { code: 'INVALID_BUYER_CONTEXT' }],
+    ['the detail naming a list that holds the code', { error: ['INVALID_BUYER_CONTEXT'] }],
+    ['an empty detail', {}],
+    ['a detail that is a string', 'INVALID_BUYER_CONTEXT'],
+    ['a detail that is a list', ['INVALID_BUYER_CONTEXT']],
+    ['a null detail', null],
+  ];
+  for (const [label, route] of kept) assert.equal(upstreamAnsweredRefusal(listed(route)), null, label);
+  // No detail at all (the transport passes none on when the body had none).
+  assert.equal(upstreamAnsweredRefusal(new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT' })), null, 'no detail');
+  // Every listed pair, with the code present in `upstream_code` and absent from the detail.
+  for (const [status, code] of ALLOWED) {
+    assert.equal(upstreamAnsweredRefusal(answered(status, code, { route: { message: code, reason: 'path' } })), null, `${status} ${code}`);
+  }
+});
+
+test('a refused caller assertion gives the claim back for nine reasons; replay, stale, no reason and any other reason keep it', () => {
+  assert.deepEqual(ASSERTION_REASONS_BEFORE_ANY_ORDER, ['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body', 'subject']);
+  assert.ok(Object.isFrozen(ASSERTION_REASONS_BEFORE_ANY_ORDER));
+  const refused = (route) => answered(409, 'PARTNER_ASSERTION_REJECTED', { route });
+  const message = 'The partner assertion on this request was refused; it was not made as any partner.';
+  for (const reason of ASSERTION_REASONS_BEFORE_ANY_ORDER) {
+    assert.deepEqual(upstreamAnsweredRefusal(refused({ error: 'PARTNER_ASSERTION_REJECTED', reason, message })), { upstream_status: 409, upstream_code: 'PARTNER_ASSERTION_REJECTED', upstream_reason: reason }, reason);
+  }
+  const kept = [
+    ['replay: the upstream already accepted this very request once', { reason: 'replay' }],
+    ['stale: what a second copy is told once the nonce is forgotten', { reason: 'stale' }],
+    ['no reason', {}],
+    ['a null reason', { reason: null }],
+    ['an empty reason', { reason: '' }],
+    ['a reason that is not a string', { reason: 7 }],
+    ['a reason that is a list holding a good one', { reason: ['path'] }],
+    ['a reason this rule does not know', { reason: 'nonce_store_unavailable' }],
+    ['a good reason in upper case', { reason: 'PATH' }],
+    ['a good reason with a space after it', { reason: 'path ' }],
+    ['replay beside a good reason under another name', { reason: 'replay', why: 'path' }],
+    ['a reason named like something every list has', { reason: 'length' }],
+  ];
+  for (const [label, extra] of kept) assert.equal(upstreamAnsweredRefusal(refused({ error: 'PARTNER_ASSERTION_REJECTED', message, ...extra })), null, label);
+  // The reason is read only for that code: another listed code that happens to say `replay` is not an assertion.
+  assert.deepEqual(upstreamAnsweredRefusal(answered(409, 'PREFLIGHT_FAILED', { route: { error: 'PREFLIGHT_FAILED', reason: 'replay' } })), { upstream_status: 409, upstream_code: 'PREFLIGHT_FAILED' });
 });
 
 test('nothing else gives a claim back: no 503, no consumed quote, no refusal of the write step, no listed code at another status, no status class', () => {
@@ -223,6 +319,9 @@ test('nothing else gives a claim back: no 503, no consumed quote, no refusal of 
       assert.equal(upstreamAnsweredRefusal(answered(status, code)), null, `${status} ${code}`);
     }
   }
+  // Everything a listed refusal carries (the status, the code, the route's detail naming it), with one thing wrong.
+  const full = (over) => ({ upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT', upstream_detail: { error: 'INVALID_BUYER_CONTEXT', message: 'placeholder' }, ...over });
+  assert.deepEqual(upstreamAnsweredRefusal(new PivotaCommerceError('MERCHANT_UNAVAILABLE', full({}))), { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT' }, 'the control: nothing wrong releases');
   const no = [
     // The upstream's database was busy: the order may have been written before it said so.
     ['a 503 the upstream names', answered(503, 'TEMPORARY_UNAVAILABLE')],
@@ -262,17 +361,17 @@ test('nothing else gives a claim back: no 503, no consumed quote, no refusal of 
     // The transport did not vouch for it.
     ['a deadline', noAnswer({ timeout: true })],
     ['a lost connection', noAnswer()],
-    ['a deadline that also carries a listed status and code', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT', upstream_timeout: true })],
-    ['a listed status as a string', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: '400', upstream_code: 'INVALID_BUYER_CONTEXT' })],
-    ['a status that is not whole', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 400.5, upstream_code: 'INVALID_BUYER_CONTEXT' })],
-    ['a listed code with no status', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_code: 'INVALID_BUYER_CONTEXT' })],
-    ['a listed code with a null status', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: null, upstream_code: 'INVALID_BUYER_CONTEXT' })],
+    ['a deadline that also carries a listed status and code', new PivotaCommerceError('MERCHANT_UNAVAILABLE', full({ upstream_timeout: true }))],
+    ['a listed status as a string', new PivotaCommerceError('MERCHANT_UNAVAILABLE', full({ upstream_status: '400' }))],
+    ['a status that is not whole', new PivotaCommerceError('MERCHANT_UNAVAILABLE', full({ upstream_status: 400.5 }))],
+    ['a listed code with no status', new PivotaCommerceError('MERCHANT_UNAVAILABLE', (({ upstream_status: _s, ...rest }) => rest)(full({})))],
+    ['a listed code with a null status', new PivotaCommerceError('MERCHANT_UNAVAILABLE', full({ upstream_status: null }))],
     ['a refusal this process raised itself', new PivotaCommerceError('OUT_OF_STOCK')],
     ['a refusal with a reason and a status under another name', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'backend_http_error', status: 400, code: 'INVALID_BUYER_CONTEXT' })],
     ['a refusal whose detail is a list', Object.assign(new PivotaCommerceError('MERCHANT_UNAVAILABLE'), { detail: [400, 'INVALID_BUYER_CONTEXT'] })],
     ['a refusal with no detail', Object.assign(new PivotaCommerceError('MERCHANT_UNAVAILABLE'), { detail: null })],
     ['a plain error', new Error('socket hang up')],
-    ['a plain error dressed as a listed refusal', Object.assign(new Error('x'), { code: 'MERCHANT_UNAVAILABLE', detail: { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT' } })],
+    ['a plain error dressed as a listed refusal', Object.assign(new Error('x'), { code: 'MERCHANT_UNAVAILABLE', detail: full({}) })],
     ['a string', 'INVALID_BUYER_CONTEXT'],
     ['nothing', undefined],
     ['null', null],
@@ -292,7 +391,7 @@ test('a refusal before any order (400 INVALID_BUYER_CONTEXT): the failing attemp
     assert.equal(first.ok, false, label);
     assert.equal(first.code, 'MERCHANT_UNAVAILABLE', label);
     if (caller !== 'acp_complete') {
-      assert.deepEqual(first.wire, { code: 'MERCHANT_UNAVAILABLE', retriable: true, message: 'The merchant is temporarily unreachable. Please try again shortly.', detail: { operation: 'create_order', upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT', message: undefined, upstream_detail: undefined } }, label);
+      assert.deepEqual(first.wire, { code: 'MERCHANT_UNAVAILABLE', retriable: true, message: 'The merchant is temporarily unreachable. Please try again shortly.', detail: { operation: 'create_order', upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT', message: undefined, upstream_detail: { error: 'INVALID_BUYER_CONTEXT', message: 'placeholder' } } }, label);
     } else {
       assert.deepEqual(first.wire, { status: 503, body: { type: 'error', code: 'MERCHANT_UNAVAILABLE', message: 'The merchant is temporarily unreachable. Please try again shortly.' } }, label);
     }
@@ -339,7 +438,7 @@ test('every listed refusal gives the claim back, and a DIFFERENT key is then a f
     assert.equal(first.code, kernelCode, `${label} ${code}`);
     assert.equal(await w.claims.get(h.quoteId), undefined, `${label} ${code}: released`);
     assert.deepEqual(w.log.filter((l) => l.event.startsWith('quote_claim')), [
-      { level: 'info', event: 'quote_claim_released', fields: { quote_id: h.quoteId, code: kernelCode, released: true, upstream_status: status, upstream_code: code } },
+      { level: 'info', event: 'quote_claim_released', fields: { quote_id: h.quoteId, code: kernelCode, released: true, upstream_status: status, upstream_code: code, ...(code === 'PARTNER_ASSERTION_REJECTED' ? { upstream_reason: 'path' } : {}) } },
     ], `${label} ${code}`);
     const second = await w.attempt(h, 'idem-named-0002');
     assert.equal(second.ok, true, `${label} ${code}: ${JSON.stringify(second.wire)}`);
@@ -430,6 +529,11 @@ const UNKNOWN_OUTCOMES = [
   ['a merchant not accepting orders', refuse(403, 'MERCHANT_NOT_ACCEPTING_ORDERS'), 'MERCHANT_UNAVAILABLE'],
   ['a listed code at a status it is not listed for', refuse(409, 'INVALID_BUYER_CONTEXT'), 'MERCHANT_UNAVAILABLE'],
   ['a rate limit', refuse(429, 'RATE_LIMIT_EXCEEDED'), 'MERCHANT_UNAVAILABLE'],
+  ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'PARTNER_ASSERTION_REJECTED'],
+  ['a listed code the transport took from a message, not from the route\'s detail', () => { throw answered(400, 'INVALID_BUYER_CONTEXT', { route: { message: 'INVALID_BUYER_CONTEXT' } }); }, 'MERCHANT_UNAVAILABLE'],
+  ['a listed code the transport took from the outer status-derived code', () => { throw answered(400, 'INVALID_QUOTE', { route: { message: 'placeholder', items: [] } }); }, 'MERCHANT_UNAVAILABLE'],
   ['a 409 with no code', refuse(409, null), 'MERCHANT_UNAVAILABLE'],
   ['a 408 with a code', refuse(408, 'REQUEST_TIMEOUT'), 'MERCHANT_UNAVAILABLE'],
   ['a refusal with no status', () => { throw new PivotaCommerceError('OUT_OF_STOCK'); }, 'OUT_OF_STOCK'],
@@ -922,3 +1026,39 @@ test('an order was written and the upstream still answered a coded refusal (a bu
     assert.equal(w.upstreamOrders.length, 1, `${label} ${status} ${code}: one order`);
   }
 }));
+
+// ---- the two claim log lines -----------------------------------------------------------------------------------
+
+test('the claim log lines carry the quote id whole, and everything else in them is still redacted', async () => {
+  // A quote id whose digits the redactor's card-number pattern matches across the hyphens.
+  const quoteId = 'q_12345678-1234-4123-8123-123456789012';
+  assert.notEqual(redact(quoteId), quoteId, 'this id is one the redactor would blank');
+  const lines = [];
+  const kernel = new SafetyKernel({ upstream: async () => ({}), secret: KSECRET, log: { info: (event, fields) => lines.push(['info', event, fields]), warn: (event, fields) => lines.push(['warn', event, fields]) } });
+  const card = '4111 1111 1111 1111';
+
+  // KEPT, for a failure whose code is a card-like number: the id is whole, the number is not there.
+  await kernel._settleQuoteClaimAfterFailedCreate(quoteId, 'claim-0001', Object.assign(new Error('x'), { code: card }));
+  // KEPT, for a failure whose code is an object holding key-like members.
+  await kernel._settleQuoteClaimAfterFailedCreate(quoteId, 'claim-0001', Object.assign(new Error('x'), { code: { api_key: 'key-placeholder-0000000000000000', token: 'tok-placeholder', note: `card ${card}` } }));
+  // RELEASED (nothing to delete: reported `released: false`).
+  await kernel._settleQuoteClaimAfterFailedCreate(quoteId, 'claim-0001', answered(RELEASED.status, RELEASED.code));
+  // KEPT because the delete failed.
+  kernel._quoteClaims.compareAndDelete = async () => { throw new Error('store unavailable'); };
+  await kernel._settleQuoteClaimAfterFailedCreate(quoteId, 'claim-0001', answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'body' }));
+
+  assert.deepEqual(lines, [
+    ['warn', 'quote_claim_kept', { quote_id: quoteId, code: '[REDACTED_PAN]', reason: 'create_order_outcome_unknown' }],
+    ['warn', 'quote_claim_kept', { quote_id: quoteId, code: { api_key: '[REDACTED]', token: '[REDACTED]', note: 'card [REDACTED_PAN]' }, reason: 'create_order_outcome_unknown' }],
+    ['info', 'quote_claim_released', { quote_id: quoteId, code: 'MERCHANT_UNAVAILABLE', released: false, upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT' }],
+    ['warn', 'quote_claim_kept', { quote_id: quoteId, code: 'PARTNER_ASSERTION_REJECTED', reason: 'release_failed', upstream_status: 409, upstream_code: 'PARTNER_ASSERTION_REJECTED', upstream_reason: 'body' }],
+  ]);
+  // Said the other way round: each line is the quote id plus the REDACTED rest, and no line holds the card
+  // number or either key anywhere.
+  for (const [, , fields] of lines) {
+    const { quote_id: id, ...rest } = fields;
+    assert.equal(id, quoteId);
+    assert.deepEqual(rest, redact(rest), 'redacting the rest again changes nothing');
+    assert.doesNotMatch(JSON.stringify(fields), /4111|key-placeholder|tok-placeholder/);
+  }
+});

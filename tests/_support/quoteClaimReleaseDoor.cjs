@@ -113,10 +113,11 @@ function backendError(status, detail) {
 /** A scripted answer in the backend's envelope. `landed`: the backend wrote the order before it answered this. */
 const fromBackend = (status, detail, { landed = false, headers } = {}) => ({ kind: 'reply', landed, ...backendError(status, detail), ...(headers ? { headers } : {}) });
 
+const ASSERTION_MESSAGE = 'The partner assertion on this request was refused; it was not made as any partner.';
 // THE ROUTE ERRORS OF THE BACKEND'S ORDER-CREATE PATH, with the status and `detail` each raise site writes.
 // `BEFORE_ANY_ORDER`: raised only in the request's prologue, before the backend first tries to write the order.
 const BEFORE_ANY_ORDER = Object.freeze({
-  partnerAssertionRejected: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'stale', message: 'The partner assertion on this request was refused; it was not made as any partner.' }],
+  partnerAssertionRejected: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'path', message: ASSERTION_MESSAGE }],
   quoteNotFound: [404, { error: 'QUOTE_NOT_FOUND', message: 'Quote not found' }],
   invalidQuote: [400, { error: 'INVALID_QUOTE', message: 'quote snapshot does not contain orderable items' }],
   invalidBuyer: [400, { error: 'INVALID_BUYER_CONTEXT', message: 'buyer_context.customer_email is required for order creation' }],
@@ -129,6 +130,11 @@ const BEFORE_ANY_ORDER = Object.freeze({
 // Everything else the path answers: from its write step (which can run twice in one request), after the order
 // was written, or with nothing but the status to go by.
 const NOT_PROVABLY_BEFORE = Object.freeze({
+  // The caller's assertion refused because the backend has ALREADY accepted this very request once (`replay`),
+  // or because it is too old (`stale`: what a second copy is told once the nonce is forgotten), or with no reason.
+  partnerAssertionReplay: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'replay', message: ASSERTION_MESSAGE }],
+  partnerAssertionStale: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'stale', message: ASSERTION_MESSAGE }],
+  partnerAssertionNoReason: [409, { error: 'PARTNER_ASSERTION_REJECTED', message: ASSERTION_MESSAGE }],
   // The database was busy. Retry-After is the backend's own header.
   busy: [503, { error: 'TEMPORARY_UNAVAILABLE', message: 'Temporary database busy. Please retry shortly.' }, { 'Retry-After': '1' }],
   quoteConsumed: [409, { error: 'QUOTE_CONSUMED', message: 'Quote already consumed', details: { order_id: 'ord_placeholder' } }],
@@ -150,6 +156,10 @@ const scripted = (table) => Object.fromEntries(Object.entries(table).map(([name,
 const ANSWERS = Object.freeze({
   ...scripted(BEFORE_ANY_ORDER),
   ...scripted(NOT_PROVABLY_BEFORE),
+  // A body written out by the test, sent as it is (for shapes no backend route produces today).
+  raw: (status, body, { landed = false } = {}) => ({ kind: 'reply', landed, status, body }),
+  // A refused caller assertion with the given reason.
+  partnerAssertion: (reason) => fromBackend(409, { error: 'PARTNER_ASSERTION_REJECTED', reason, message: ASSERTION_MESSAGE }),
   // What stands in front of the backend: a status and a page, not the backend's envelope.
   badGateway: () => ({ kind: 'reply', status: 502, body: '<html><body>502 Bad Gateway</body></html>', headers: { 'content-type': 'text/html' } }),
   gatewayTimeout: () => ({ kind: 'reply', status: 504, body: '<html><body>504 Gateway Timeout</body></html>', headers: { 'content-type': 'text/html' } }),
