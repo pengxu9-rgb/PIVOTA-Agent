@@ -55,9 +55,11 @@ const ID_BINDING_FLAG = 'AGENT_CHECKOUT_STORE_CART_ID_BINDING';
 // native door on gets the rule with it (setFlags), unless it names the rule's state itself (`CURRENCY_OFF`).
 const CURRENCY_FLAG = 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET';
 const CURRENCY_OFF = `${CURRENCY_FLAG}=`;
+// The per-(seller, market) memo of a store that answered in another currency (mcp-server/src/storeCartCurrencyMismatchMemo.js).
+const MISMATCH_MEMO_FLAG = 'AGENT_CHECKOUT_STORE_CART_CURRENCY_MISMATCH_MEMO_ENABLED';
 const BIND_MINT = `${ID_BINDING_FLAG}=mint`;
 const BIND_ENFORCE = `${ID_BINDING_FLAG}=enforce`;
-const PER_CALL_FLAGS = Object.freeze([REFERRAL_FLAG, ATTRIBUTION_FLAG, FORWARDING_FLAG, HANDOFF_RECORD_FLAG, NATIVE_DOOR_FLAG, IDEMPOTENCY_FLAG, ID_BINDING_FLAG, CURRENCY_FLAG]);
+const PER_CALL_FLAGS = Object.freeze([REFERRAL_FLAG, ATTRIBUTION_FLAG, FORWARDING_FLAG, HANDOFF_RECORD_FLAG, NATIVE_DOOR_FLAG, IDEMPOTENCY_FLAG, ID_BINDING_FLAG, CURRENCY_FLAG, MISMATCH_MEMO_FLAG]);
 
 /**
  * Set exactly these per-call flags (`NAME` = '1', or `NAME=value`; an empty value unsets); every other one of
@@ -353,6 +355,7 @@ module.exports = {
   IDEMPOTENCY_FLAG,
   KEY_A,
   KEY_B,
+  MISMATCH_MEMO_FLAG,
   NATIVE_DOOR_FLAG,
   PARTNER_A,
   PARTNER_B,
