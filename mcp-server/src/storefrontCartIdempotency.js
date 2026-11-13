@@ -38,13 +38,12 @@
 // no session is not deduplicated at all: it proceeds as it did before this module, counted and logged
 // (`fail_open: no_partner` / `no_session`).
 //
-// THE KEY HAS A MINIMUM LENGTH on this path while the flag is on: MIN_KEY_LENGTH characters, the `minLength` both
-// doors' tool schemas publish. Counted on the key AS THE DOOR READS IT: with surrounding blanks removed, and in
-// UTF-16 code units. That is not quite the schema's count (code points of the string as sent): a key of eight
-// characters padded with blanks to nine is refused here though the schema allows it, and four characters outside
-// the basic plane (eight code units) are accepted though the schema refuses them. Left as it is: the shared intake
-// rule for both paths is to replace this one. A shorter one is refused before the gate or any store is asked, with the code a
-// missing key gets (IDEMPOTENCY_CONFLICT) and a reason of its own (KEY_TOO_SHORT_REASON).
+// WHICH KEYS ARE ACCEPTED IS NOT DECIDED HERE. A key's alphabet and its minimum length are the shared intake rule's
+// (safety-kernel/src/protocol/intakeBounds.cjs), the one rule every checkout door applies to a key that is present,
+// whatever this flag says. Both doors apply it before they reach this path, and with this flag on the create path
+// applies it again to the key exactly as sent before it asks this module for anything (ucpCheckoutEscalation.js),
+// so a key that rule refuses is never claimed, never looked up and never replayed. This module holds no number
+// and no reason of its own for a key.
 //
 // THE GUARANTEE, stated exactly. While the store answers, at most one create per scope is building at a
 // time, for as long as its claim's lease (CLAIM_LEASE_MS) holds. A build slower than the lease can be overlapped
@@ -86,17 +85,13 @@ export const WAIT_FOR_WINNER_MS = 12 * 1000;
 export const POLL_INTERVAL_MS = 100;
 export const KEY_REUSED_REASON = "storefront_cart_idempotency_key_reused";
 export const IN_FLIGHT_REASON = "storefront_cart_create_in_flight";
-// The `minLength` the tool schemas publish for an idempotency key (commerceToolSurface.js IDEMPOTENCY,
-// ucpArgumentAdapter.js `idempotency-key`).
-export const MIN_KEY_LENGTH = 8;
-export const KEY_TOO_SHORT_REASON = "idempotency_key_too_short";
 const MAX_CLAIM_ATTEMPTS = 3;
 
 export function storeCartIdempotencyEnabled(env = process.env) {
   return /^(1|true|yes|on)$/i.test(String((env && env[STORE_CART_IDEMPOTENCY_FLAG]) || "").trim());
 }
 
-// Per-process counts: claimed, replayed, replayed_after_wait, conflict, in_flight, key_too_short,
+// Per-process counts: claimed, replayed, replayed_after_wait, conflict, in_flight,
 // fail_open:<stage>, finalize_failed, lease_lost, released. The log line is the fleet-wide view.
 const outcomes = new Map();
 function count(outcome) { outcomes.set(outcome, (outcomes.get(outcome) || 0) + 1); }
@@ -125,14 +120,6 @@ export function partnerPrincipalOf(subject) {
   if (subject.kind === "agent") return text(subject.sub) ? JSON.stringify(["agent", text(subject.sub)]) : null;
   if (subject.kind === "oauth") return text(subject.iss) && text(subject.cid) ? JSON.stringify(["oauth", text(subject.iss), text(subject.cid)]) : null;
   return null;
-}
-
-/** Refuse a key shorter than the published minimum (see the header). `rawKey` is the key as the door read it. */
-export function assertKeyLongEnough(rawKey, log) {
-  if (typeof rawKey === "string" && rawKey.length >= MIN_KEY_LENGTH) return;
-  count("key_too_short");
-  emit(log, "info", { outcome: "key_too_short" });
-  throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason: KEY_TOO_SHORT_REASON, min_length: MIN_KEY_LENGTH });
 }
 
 // The server key of a scope (see UNDER A SERVER SECRET): 32 bytes, or null. Never a default.

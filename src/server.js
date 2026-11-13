@@ -33,6 +33,7 @@ const OpenAI = require('openai');
 const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
+const commerceIntakeBounds = require('../safety-kernel/src/protocol/intakeBounds.cjs');
 const {
   LEGACY_SEED_PROBE_HEADER,
   finalizeInvokeSearchBody,
@@ -33620,7 +33621,32 @@ function commerceKernelErrorBody(error = {}) {
   if (error.details && typeof error.details === 'object' && !Array.isArray(error.details)) {
     body.details = sanitizeCommerceKernelErrorDetails(error.details);
   }
+  // A shared intake refusal (the idempotency key's minimum, the per-line quantity ceiling) names itself: its
+  // field-level detail, as the kernel's invoke handler hands it over. No other kernel error carries one.
+  if (error.detail && typeof error.detail === 'object' && !Array.isArray(error.detail)) {
+    body.detail = sanitizeCommerceKernelErrorDetails(error.detail);
+  }
   return body;
+}
+
+// The two bounds every checkout door shares, for the invoke requests the strict kernel route does not take: either
+// invoke address with strict checkout off. (With it on, the strict route answers every money operation on both
+// addresses and this is asked for nothing it would refuse, but strict off is still a state, so the guard stays.) The numbers, the rules and the wording are the
+// kernel's (safety-kernel/src/protocol/intakeBounds.cjs, the one file both module systems load); this only asks it
+// and shapes the answer the way the strict route shapes a kernel refusal. Null when the request is within both.
+// Read off the request body as it arrived (the request schema has not judged it yet): a body, operation or payload
+// of the wrong kind is that schema's to refuse, and is not judged here.
+function invokeIntakeBoundsFailure(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.operation !== 'string') return null;
+  const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload : null;
+  const refusal = commerceIntakeBounds.invokeIntakeBoundsRefusal(body.operation, payload);
+  if (!refusal) return null;
+  return {
+    code: refusal.code,
+    message: refusal.message,
+    retriable: refusal.retriable,
+    detail: { reason: refusal.reason, ...refusal.detail },
+  };
 }
 
 function mcpToolErrorBody({ id = null, code, message }) {
@@ -44556,6 +44582,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
 
   try {
+    // The shared checkout bounds, before anything is read, rewritten or sent, and BEFORE the request schema: a
+    // present idempotency key below the minimum, a cart line above the per-line ceiling (invokeIntakeBoundsFailure).
+    // Before the schema because it has its own count for the key (8 UTF-16 units, as sent), and two rules gave two
+    // different answers for a short key on one door. Now the shared rule decides, with its named refusal; the
+    // schema still judges everything else about the request, including a key that is not a string.
+    const intakeBoundsFailure = invokeIntakeBoundsFailure(req.body);
+    if (intakeBoundsFailure) {
+      return res.status(statusForCommerceKernelError(intakeBoundsFailure.code)).json(commerceKernelErrorBody(intakeBoundsFailure));
+    }
     const parsed = InvokeRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       logger.warn({ gateway_request_id: gatewayRequestId, error: parsed.error.format() }, 'Invalid request body');

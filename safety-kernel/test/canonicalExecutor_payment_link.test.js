@@ -118,7 +118,7 @@ test('rejects a non-https checkout url (fail closed)', async () => {
 test('contract safety: needs verified buyer + session + idempotency key', async () => {
   const { exec } = setup();
   const sid = await newSession(exec);
-  await assert.rejects(exec('create_payment_link', { idempotency_key: 'k', session_id: sid }, { acp_session_id: 'acp_1' }), (e) => e.code === 'USER_AUTH_REQUIRED');
+  await assert.rejects(exec('create_payment_link', { idempotency_key: 'idem-key-1', session_id: sid }, { acp_session_id: 'acp_1' }), (e) => e.code === 'USER_AUTH_REQUIRED');
   await assert.rejects(exec('create_payment_link', { session_id: sid }, CTX), (e) => e.code === 'IDEMPOTENCY_CONFLICT');
-  await assert.rejects(exec('create_payment_link', { idempotency_key: 'k2' }, CTX), (e) => e.code === 'QUOTE_NOT_FOUND');
+  await assert.rejects(exec('create_payment_link', { idempotency_key: 'idem-key-2' }, CTX), (e) => e.code === 'QUOTE_NOT_FOUND');
 });

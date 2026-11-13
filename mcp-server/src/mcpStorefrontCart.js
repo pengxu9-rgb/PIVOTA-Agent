@@ -32,7 +32,7 @@ import externalSeedLane from "../../src/services/externalSeedLane.js";
 import partnerDoor from "../../src/services/partnerDoorOneProductId.js";
 import requestMarket from "../../src/services/requestMarket.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
-import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
+import { intakeRefusal, isAcceptableLineQuantity } from "../../safety-kernel/src/protocol/buyerIntake.js";
 // The door's logger (CommonJS), for the one line that says why the path did not run (see mcpStorefrontCartPath).
 import gatewayLogger from "../../src/logger.js";
 import {
@@ -298,7 +298,8 @@ async function createStorefrontCart({ op, toolArgs, params, ctx, attested, execu
     : [];
   // The carts intake refuses on shape alone stay intake's to refuse.
   if (items.length === 0 || items.length > MAX_ITEMS) return undefined;
-  if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return undefined;
+  // Intake's one definition of a quantity a door may act on (it holds the per-line ceiling); no number here.
+  if (items.some((it) => !isAcceptableLineQuantity(it.quantity))) return undefined;
   // The rows, by the read the escalation itself performs (the per-call memo makes it the same read). A read that
   // fails is not this path's refusal to give: the call continues as it did before this path existed.
   let rows;

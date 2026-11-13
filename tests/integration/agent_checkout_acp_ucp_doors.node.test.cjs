@@ -221,7 +221,7 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
     it('rejects an unsigned create with 401 (HMAC platform auth required)', async () => {
       const res = await request(app)
         .post('/acp/checkout_sessions')
-        .set('idempotency-key', 'idem-1')
+        .set('idempotency-key', 'idem-0001')
         .send({ items: [{ product_id: 'p1', quantity: 1 }] });
       assert.equal(res.status, 401);
       assert.equal(res.body.code, 'USER_AUTH_REQUIRED');
@@ -231,7 +231,7 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       // The kill-switch fires before signature checking, so an unsigned request still proves the gate.
       const res = await request(app)
         .post('/acp/checkout_sessions/sess_x/complete')
-        .set('idempotency-key', 'idem-2')
+        .set('idempotency-key', 'idem-0002')
         .send({ payment_data: { token: 'tok' } });
       assert.equal(res.status, 405);
       assert.equal(res.body.code, 'OPERATION_NOT_ALLOWED');
@@ -278,7 +278,7 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       const res = await request(localApp)
         .post('/acp/checkout_sessions')
         .set('content-type', 'application/json')
-        .set('idempotency-key', 'idem-3')
+        .set('idempotency-key', 'idem-0003')
         .set('signature', signature)
         .set('timestamp', timestamp)
         .set('x-buyer-authorization', `Bearer ${buyerJwt}`)

@@ -21,6 +21,12 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
 
 const FLAG = 'GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS';
+// Per test (and per hook), stated here and not left to the runner's 15 s default, which this file
+// ran within a second of. Sized from the PR gate's own logs: the slowest test here ("precision":
+// four boots, 190 route calls) took 7.4 to 14.2 s on the CI runner across five runs, and this is
+// 3.5 times the slowest. A laptop runs the whole file in about 11 s.
+const TEST_TIMEOUT_MS = 50000;
+jest.setTimeout(TEST_TIMEOUT_MS);
 const {
   BRANDS, FAMILY, ITEMS, KINDS, MARKET_WORD_ITEMS, NOT_FAMILIES, REVIEW_ITEMS, UNDER_A_SIBLING_SPELLING, insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
 } = require('../_support/brandSiblingSpellingsFixture.cjs');
@@ -171,6 +177,8 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     // NOT FAMILIES: a channel-word name, a name too short to be a key, a mixed-script brand. Each
     // query answers exactly what it answers with the flag off, and never another brand's rows.
     const lookalikes = NOT_FAMILIES.flatMap(([brand]) => [brand, ...KINDS.map((kind) => `${brand} ${kind}`)]);
+    // On boots of their own, not the two above: the route's per-caller bucket for this operation
+    // holds 60 calls, a boot starts a new one, and the 60 brand queries above have spent theirs.
     jest.resetModules();
     await boot(null);
     const lookalikesOff = await routeAnswers(lookalikes);
@@ -249,12 +257,20 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
     const USA = ['Pallor USA', 'Pal Lor USA'];
     await insertItems(db, REVIEW_ITEMS);
     try {
+      // One boot for every list: the seam replaces the list in the loaded module and puts the
+      // shipped one back, and the route reads it per call. The same five queries are asked under
+      // each list, so the statement count pins that no answer was a kept page from the list before.
+      // 40 calls in all, inside the route's per-caller bucket of 60 for this operation.
+      jest.resetModules();
+      await boot('on');
+      const reviewed = ['Pallor serum', 'Pallor UK serum', 'Pallor USA serum', 'Pal Lor USA serum', 'pallorusa serum'];
       const answers = async (entries) => {
-        jest.resetModules();
-        await boot('on');
         const restore = require('../../src/findProductsMulti/brandLexicon').__setReviewedNotSiblingSpellingsForTest(entries);
         try {
-          return await routeAnswers(['Pallor serum', 'Pallor UK serum', 'Pallor USA serum', 'Pal Lor USA serum', 'pallorusa serum']);
+          sqlCalls = [];
+          const out = await routeAnswers(reviewed);
+          expect(sqlCalls).toHaveLength(reviewed.length);
+          return out;
         } finally { restore(); }
       };
       // premise: unlisted, it is one family and every spelling reaches every row
@@ -292,41 +308,48 @@ suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', 
   });
 
   test('both lanes on PostgreSQL: the canonical and the seed predicate match the same rows, the family and no other', async () => {
-    const matched = async (flag, key) => {
+    // One boot per flag value, every key against it. Both builders read the flag per call and the
+    // dictionary from the loaded module, which boot() fills once (refresh) and no builder refills,
+    // so a key's answer cannot depend on having a boot of its own.
+    const lanes = async (flag) => {
       jest.resetModules();
       await boot(flag);
       const { buildBrandIdentityPredicate, CANONICAL_OWN_BRAND_SQL } = require('../../src/services/canonicalSearchQualitySql');
       const { buildSeedSearchOfferScope } = require('../../src/services/seedSearchOfferScope');
-      const brand = { contract: 'brand_browse', brand_key: `catalog:${key}`, brand: key, canonical: key, alias: key };
-      const stored = [...BRANDS, ...NOT_FAMILIES].map(([name]) => name);
-      const canonicalParams = [];
-      const canonical = buildBrandIdentityPredicate(brand, CANONICAL_OWN_BRAND_SQL, canonicalParams);
-      canonicalParams.push(stored);
-      const own = await db.query(`SELECT p.brand FROM (SELECT b AS brand, '{}'::jsonb AS product_payload FROM unnest($${canonicalParams.length}::text[]) b) p WHERE ${canonical} ORDER BY 1`, canonicalParams);
-      const seedParams = [];
-      const seed = buildSeedSearchOfferScope({ brand }, seedParams);
-      seedParams.push(stored);
-      const seeds = await db.query(`SELECT seed.seed_data->>'brand' AS brand FROM (SELECT jsonb_build_object('brand', b) AS seed_data, 20::numeric AS price_amount FROM unnest($${seedParams.length}::text[]) b) seed WHERE TRUE ${seed} ORDER BY 1`, seedParams);
-      expect(seeds.rows).toEqual(own.rows);
-      return own.rows.map((row) => row.brand);
+      return async (key) => {
+        const brand = { contract: 'brand_browse', brand_key: `catalog:${key}`, brand: key, canonical: key, alias: key };
+        const stored = [...BRANDS, ...NOT_FAMILIES].map(([name]) => name);
+        const canonicalParams = [];
+        const canonical = buildBrandIdentityPredicate(brand, CANONICAL_OWN_BRAND_SQL, canonicalParams);
+        canonicalParams.push(stored);
+        const own = await db.query(`SELECT p.brand FROM (SELECT b AS brand, '{}'::jsonb AS product_payload FROM unnest($${canonicalParams.length}::text[]) b) p WHERE ${canonical} ORDER BY 1`, canonicalParams);
+        const seedParams = [];
+        const seed = buildSeedSearchOfferScope({ brand }, seedParams);
+        seedParams.push(stored);
+        const seeds = await db.query(`SELECT seed.seed_data->>'brand' AS brand FROM (SELECT jsonb_build_object('brand', b) AS seed_data, 20::numeric AS price_amount FROM unnest($${seedParams.length}::text[]) b) seed WHERE TRUE ${seed} ORDER BY 1`, seedParams);
+        expect(seeds.rows).toEqual(own.rows);
+        return own.rows.map((row) => row.brand);
+      };
     };
-    expect(await matched(null, 'zentora')).toEqual(['Zentora']);
-    expect(await matched('on', 'zentora')).toEqual(['Zentora', 'Zentora USA']);
-    expect(await matched(null, 'zentora usa')).toEqual(['Zentora USA']);
-    expect(await matched('on', 'zentora usa')).toEqual(['Zentora', 'Zentora USA']);
-    expect(await matched('on', 'lumavelle')).toEqual(['Lumavelle', 'Lumavelle Official Store', 'Lumavelle UK']);
-    expect(await matched('on', 'lumavelle uk')).toEqual(['Lumavelle', 'Lumavelle UK']);
-    expect(await matched('on', 'lumavelle official store')).toEqual(['Lumavelle', 'Lumavelle Official Store']);
-    expect(await matched('on', 'zentora labs')).toEqual(['Zentora Labs']);
-    expect(await matched('on', 'noble')).toEqual(['Noble']);
-    expect(await matched('on', 'noble pegasus')).toEqual(['Noble Pegasus']);
-    expect(await matched('on', 'brisa')).toEqual(['Brisa']);
+    let matched = await lanes(null);
+    expect(await matched('zentora')).toEqual(['Zentora']);
+    expect(await matched('zentora usa')).toEqual(['Zentora USA']);
+    matched = await lanes('on');
+    expect(await matched('zentora')).toEqual(['Zentora', 'Zentora USA']);
+    expect(await matched('zentora usa')).toEqual(['Zentora', 'Zentora USA']);
+    expect(await matched('lumavelle')).toEqual(['Lumavelle', 'Lumavelle Official Store', 'Lumavelle UK']);
+    expect(await matched('lumavelle uk')).toEqual(['Lumavelle', 'Lumavelle UK']);
+    expect(await matched('lumavelle official store')).toEqual(['Lumavelle', 'Lumavelle Official Store']);
+    expect(await matched('zentora labs')).toEqual(['Zentora Labs']);
+    expect(await matched('noble')).toEqual(['Noble']);
+    expect(await matched('noble pegasus')).toEqual(['Noble Pegasus']);
+    expect(await matched('brisa')).toEqual(['Brisa']);
     // not families: a channel-word name, a name too short to be a key
-    expect(await matched('on', 'global')).toEqual(['Global']);
-    expect(await matched('on', 'global store')).toEqual(['Global Store']);
-    expect(await matched('on', 'ma us')).toEqual(['Ma US']);
-    expect(await matched('on', 'ma store')).toEqual(['Ma Store']);
-    expect(await matched('on', 'velmora store')).toEqual(['Velmora Store']);
+    expect(await matched('global')).toEqual(['Global']);
+    expect(await matched('global store')).toEqual(['Global Store']);
+    expect(await matched('ma us')).toEqual(['Ma US']);
+    expect(await matched('ma store')).toEqual(['Ma Store']);
+    expect(await matched('velmora store')).toEqual(['Velmora Store']);
   });
 
   test('the plan: the brand index serves one key and a family alike', async () => {

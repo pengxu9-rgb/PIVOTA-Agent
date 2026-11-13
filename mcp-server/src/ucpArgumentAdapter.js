@@ -146,7 +146,10 @@ import selectionContract from '../../src/services/reapSelectionWitness.js';
 // the credential carries none. Nothing in this file can override a verified buyer.
 
 import {
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
+  IDEMPOTENCY_KEY_MIN_LENGTH,
   MAX_CART_ITEMS,
+  MAX_LINE_QUANTITY,
   intakeRefusal,
   pickCompleteAddress,
   REQUIRED_ADDRESS_FIELDS,
@@ -209,6 +212,7 @@ const IDEMPOTENCY_KEY_DESCRIPTION = [
   "REQUIRED on this state-changing tool. Client-generated; a replay returns the original result rather than",
   "minting a second quote or a second charge. Pivota does NOT generate one for you — a server-minted key would",
   "make every retry a new request, which is the opposite of what the key is for.",
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
 ].join(" ");
 
 function metaSchema({ idempotency }) {
@@ -224,7 +228,8 @@ function metaSchema({ idempotency }) {
         additionalProperties: true,
         properties: { profile: { type: "string", description: "URL of the calling agent's UCP capability profile." } },
       },
-      "idempotency-key": { type: "string", minLength: 8, description: IDEMPOTENCY_KEY_DESCRIPTION },
+      // `minLength` is the runtime minimum itself (buyerIntake.js), imported so the two cannot drift.
+      "idempotency-key": { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH, description: IDEMPOTENCY_KEY_DESCRIPTION },
     },
     description: META_DESCRIPTION,
   };
@@ -254,7 +259,8 @@ const LINE_ITEMS_SCHEMA = {
         additionalProperties: false,
         properties: { id: { type: "string", description: LINE_ITEM_ID_DESCRIPTION } },
       },
-      quantity: { type: "integer", minimum: 1 },
+      // The shared per-line ceiling, imported like the cart bound above.
+      quantity: { type: "integer", minimum: 1, maximum: MAX_LINE_QUANTITY },
       // LIVE-VERIFIED (cosrx tools/list, 2026-08-13): the line may ALSO carry an optional flat `id` beside
       // `item`. It is accepted and NOT read — `item.id` is the required identity and the only one this door
       // prices from. Declaring it matters: without it a conforming platform that sends the optional field is

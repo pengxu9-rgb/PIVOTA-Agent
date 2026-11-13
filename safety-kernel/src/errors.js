@@ -18,7 +18,7 @@ export const ERROR_CATALOG = Object.freeze({
   // same as "paid". The order may be unpaid (a post-create failure, an abandoned charge), so claiming the
   // checkout "was already completed" told buyers money had moved when it had not. Say what is actually
   // true: the session is spent and a fresh quote is needed.
-  QUOTE_ALREADY_USED:     { retriable: false, recovery: 're-quote for a new order',                 userMessage: 'This checkout session was already used to place an order, so it can\'t be used again. Let me start a fresh order.' },
+  QUOTE_ALREADY_USED:     { retriable: false, recovery: 'read the order this session already placed (get_order) before anything else; re-quote only for a new order the buyer asked for',                 userMessage: 'This checkout session was already used to place an order, so it can\'t be used again. Read that order first (get_order) before doing anything else; start a new checkout only if the buyer wants another order.' },
   PRICE_CHANGED:          { retriable: false, recovery: 'show new quote, re-confirm',               userMessage: 'The price changed since you confirmed. Here is the updated total.' },
   OUT_OF_STOCK:           { retriable: false, recovery: 're-quote remaining items',                 userMessage: 'An item just went out of stock. Let me re-quote what is available.' },
   CONFIRMATION_REQUIRED:  { retriable: false, recovery: 'render confirmation card',                 userMessage: 'Please confirm the order details to continue.' },

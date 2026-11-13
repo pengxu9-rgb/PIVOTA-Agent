@@ -24,6 +24,7 @@
 // file imports anything but the shared error taxonomy.
 
 import { PivotaCommerceError } from '../errors.js';
+import intakeBounds from './intakeBounds.cjs';
 
 const nonEmpty = (s) => typeof s === 'string' && s.trim() !== '';
 // The prototype guard, moved VERBATIM from acpRestAdapter.js: it admits `Object.prototype` and a null
@@ -362,6 +363,64 @@ export const PRODUCT_IDENTITY_MISMATCH_MESSAGE = [
 // the door answers. Overridable per-wiring.
 export const DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS = 3000;
 
+// ---- 4. two bounds every door shares: the idempotency key's minimum, the per-line quantity ceiling -----------
+//
+// Both are decided on the request alone, so every door refuses them BEFORE it reads a product, asks a
+// purchasability gate, mints a referral, prices a quote or contacts a store. Each number, each rule and each
+// refusal's wording is written once, in ./intakeBounds.cjs (a file the gateway's CommonJS invoke route can load
+// too). They are re-exported here, where every protocol door already imports its intake from, and turned into the
+// kernel error a door throws: the tool schemas import the numbers (`minLength`, `maximum`), the doors and the
+// executor call the functions below.
+//
+// THE IDEMPOTENCY KEY: printable ASCII only, and at least IDEMPOTENCY_KEY_MIN_LENGTH characters, counted after
+// surrounding whitespace is removed. An ABSENT key is not this rule's: the rule that requires one stays where it
+// was, with the answer it had.
+// THE QUANTITY OF ONE LINE: at most MAX_LINE_QUANTITY units. Per line only: the cart's own bounds (lines, distinct
+// products) are below, and a purchase lane with a lower limit of its own keeps it.
+export const {
+  IDEMPOTENCY_KEY_MIN_LENGTH,
+  IDEMPOTENCY_KEY_TOO_SHORT_REASON,
+  IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
+  MAX_LINE_QUANTITY,
+  QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
+  isAcceptableLineQuantity,
+  isLineQuantityAboveMaximum,
+} = intakeBounds;
+
+/**
+ * The kernel error for a refusal ./intakeBounds.cjs describes: its code (not retriable), its own reason, its
+ * curated message and a detail that states the bound and nothing from the request.
+ */
+export function intakeBoundRefusal(refusal) {
+  return intakeRefusal(refusal.code, refusal.reason, refusal.message, refusal.detail);
+}
+
+/**
+ * Refuse a PRESENT idempotency key that cannot be used (a character outside the accepted set, or shorter than the
+ * minimum), with the code a missing key gets (IDEMPOTENCY_CONFLICT). Absent (not a string, or blank) returns: the caller's own "a key is required" rule
+ * answers that.
+ */
+export function assertIdempotencyKeyAcceptable(key) {
+  const refusal = intakeBounds.idempotencyKeyRefusal(key);
+  if (refusal) throw intakeBoundRefusal(refusal);
+}
+
+/** THE refusal for a line above the ceiling, for every door, with the code every other bad quantity gets (QUOTE_REQUIRED). */
+export function lineQuantityAboveMaximumRefusal() {
+  return intakeBoundRefusal(intakeBounds.lineQuantityRefusal());
+}
+
+/**
+ * Refuse a cart that has a line above the ceiling. A cart that is not an array, or has more lines than a cart may
+ * have, is left to `normalizeCartItems`, which refuses it without walking it.
+ */
+export function assertLineQuantitiesWithinMaximum(rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length > MAX_CART_ITEMS) return;
+  if (!rawItems.some((it) => isLineQuantityAboveMaximum(pickFields(it, ['quantity']).quantity))) return;
+  throw lineQuantityAboveMaximumRefusal();
+}
+
 // ---- load bounds on a public create path --------------------------------------------------------------------
 //
 // Before these existed, intake checked only `items.length !== 0`, so ONE create with 2000 distinct products
@@ -395,7 +454,8 @@ const cartTooManyProductsMessage = (max) => [
  * Allowlist + validate a cart's items. Returns fresh item objects; NOTHING is derived or synthesised here.
  *
  * Requires a non-empty items array with a scalar `product_id` and a positive safe-integer quantity each, so a
- * `{}` / `{items:[]}` body cannot drive a default/zero-item quote on a loose backend.
+ * `{}` / `{items:[]}` body cannot drive a default/zero-item quote on a loose backend. A quantity above
+ * MAX_LINE_QUANTITY is refused by name (`assertLineQuantitiesWithinMaximum`).
  *
  * `product_id` is REQUIRED: without it the shared quote-body builder silently DROPS the item from
  * `offer_refs`, so a `sku_id`-only cart prices as an EMPTY cart. `variant_id` is optional and resolved later;
@@ -412,6 +472,8 @@ export function normalizeCartItems(rawItems) {
       item_count: raw.length,
     });
   }
+  // The per-line ceiling, before any line is otherwise judged: one answer for it on every door.
+  assertLineQuantitiesWithinMaximum(raw);
   const items = raw.map((it) => {
     const item = pickFields(it, ['product_id', 'sku_id', 'variant_id', 'quantity']);
     if (!nonEmpty(item.product_id)) {

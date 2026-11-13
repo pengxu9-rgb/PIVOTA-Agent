@@ -146,10 +146,13 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // (FIX_PLAN D-06). It is a plain res.json, wrapped like the rest.
   // 2026-11-08: -1, that early return is gone again: the legacy seed answer now runs through the normal
   // detail flow (detail cache, include handling) and leaves by its ordinary exit (review GD-4).
+  // 2026-11-12: +1, the shared checkout bounds: a present idempotency key below the minimum, or a cart line above
+  // the per-line ceiling, is refused before anything else is read (and before the request schema). A plain
+  // res.status(...).json, wrapped like the rest.
   assert.equal(
     exits.length,
-    106,
-    `expected 106 response exits in handleInvokeRequest, saw ${exits.length}`,
+    107,
+    `expected 107 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(
