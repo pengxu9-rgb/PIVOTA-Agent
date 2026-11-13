@@ -294,3 +294,25 @@ test('the refusal never repeats a currency the pricing engine sent that is not a
   const { run } = setup({ currency: 'eur' });
   assert.deepEqual(detailOf(await refusal(run('create_checkout_session', SG))).seller_currencies, ['EUR']);
 });
+
+// A shipping address is where the order is sent, and its country is not the buyer's market on this path: it is
+// never read as one. An update that changes the address country is still judged for the session's market, a session
+// with no market does not acquire one from an address, and the address still travels to the pricing call.
+test('a shipping address country is not the market: it neither moves a session\'s market nor gives one to a session without', async () => {
+  const address = (country) => ({ country, city: 'City', postal_code: '00000', address_line1: '1 Street', recipient_name: 'A Buyer' });
+  const { kernel, run, priced, state } = sessionSetup('SGD');
+  const created = await run('create_checkout_session', { ...SG, quote: { ...QUOTE, shipping_address: address('SG') } });
+  const moved = await run('update_checkout_session', { session_id: created.session_id, quote: { ...QUOTE, shipping_address: address('US') } });
+  assert.equal(moved.currency, 'SGD');
+  assert.equal(priced.at(-1).market, 'SG');
+  assert.equal(priced.at(-1).quote.shipping_address.country, 'US', 'the address is sent as given');
+  assert.deepEqual(await kernel.quotes.sessionMarket(moved.session_id, CTX), SG);
+  state.currency = 'USD';
+  const err = await refusal(run('update_checkout_session', { session_id: created.session_id, quote: { ...QUOTE, shipping_address: address('US') } }));
+  assert.equal(detailOf(err).market, 'SG', 'a USD re-quote for a US address is still refused for the session\'s SG');
+
+  const plain = await run('create_checkout_session', { quote: { ...QUOTE, shipping_address: address('GB') } });
+  assert.equal(plain.currency, 'USD');
+  assert.equal('market' in priced.at(-1), false);
+  assert.equal(await kernel.quotes.sessionMarket(plain.session_id, CTX), null);
+});
