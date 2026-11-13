@@ -139,8 +139,17 @@ export class SafetyKernel {
     if (!ctx.acp_session_id) throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { reason: 'missing_acp_session' });
   }
 
-  /** preview_quote: call upstream, then snapshot the LOCKED result into the registry. */
-  async previewQuote(payload, ctx) {
+  /**
+   * preview_quote: call upstream, then snapshot the LOCKED result into the registry.
+   *
+   * `opts.acceptQuoteCurrency` (optional): called with the upstream quote's currency (canonical UPPERCASE) once the
+   * quote is known to be well formed and BEFORE anything is snapshotted. When it throws, its error is the answer and
+   * no snapshot exists: a quote the caller refuses can never be read back, updated or paid. The executor uses it to
+   * hold a checkout that names a market to that market's currency (canonicalExecutor.js, quoteMarketOf).
+   * `opts.sessionMarket` (optional, `{ market, market_currency }`): the market this checkout is for, recorded on the
+   * snapshot (quoteRegistry.js) so a re-quote of the session is judged for the same market.
+   */
+  async previewQuote(payload, ctx, opts = {}) {
     this._requireUser(ctx);
     const upstreamResult = await this._upstream('preview_quote', payload);
     // Fix Codex S4: fail closed if upstream did not return a well-formed locked quote,
@@ -171,6 +180,8 @@ export class SafetyKernel {
     if (violatesChargeMultiple(lt.total, currency)) {
       throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'unchargeable_amount_for_currency', currency });
     }
+    // The caller's own condition on the currency this quote is in (see the method's note). Before the snapshot.
+    if (opts && typeof opts.acceptQuoteCurrency === 'function') opts.acceptQuoteCurrency(currency);
     // Trust the upstream's authoritative pricing, not the model's payload.
     const snapshot = await this.quotes.issue({
       user_ref: ctx.user_ref,
@@ -181,6 +192,7 @@ export class SafetyKernel {
       locked_totals: upstreamResult.locked_totals,
       line_items: upstreamResult.line_items,
       buyer_context: buyerContextFromQuotePayload(payload),
+      market: opts ? opts.sessionMarket : undefined,
     });
     return {
       quote_id: snapshot.quote_id,

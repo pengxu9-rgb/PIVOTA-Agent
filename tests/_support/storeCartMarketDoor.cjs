@@ -23,7 +23,10 @@
 //     the two things the real handler does to a served page that can reach a store: the handler's own
 //     `shadowPdpLiveRead` (the background store read) and `livePdpOverlay`, keyed by the handler's own
 //     `offersGateBuyerMarket`. The store's catalog client behind them is a recording fake (`liveReads`);
-//   - the backend: the connected merchant's per-merchant detail, its quote, offers.resolve, the purchasability route;
+//   - the backend: the connected merchant's per-merchant detail, its quote, offers.resolve, the purchasability route.
+//     The quote answers in USD, or in the currency a test sets (`setQuoteCurrency`): the pricing engine answers in the
+//     currency the merchant's store is priced in, whatever the request says. Every quote request body is recorded
+//     (`quotes`), so a test can say which market the quote carried;
 //   - the SELLER STOREFRONTS: the buyer-agent client's transport (`fetchImpl`, its own test seam) is answered in
 //     process: `/.well-known/ucp` and the store's MCP endpoint (`create_cart`, `get_cart`). Every request a store
 //     receives is recorded, so a test can say what was sent and that nothing else was.
@@ -276,13 +279,20 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
       if (operation === 'offers.resolve') return [200, { offers: [] }];
       return [404, { detail: 'NOT_FOUND' }];
     });
+  // The currency the connected merchant's store is priced in: USD, as its product rows above are, until a test sets
+  // another (`setQuoteCurrency`). The amounts are the merchant's own and are the same digits in any currency:
+  // nothing here converts.
+  const CONNECTED_STORE_CURRENCY = 'USD';
+  let quoteCurrency = CONNECTED_STORE_CURRENCY;
+  const quotes = [];
   nock(BACKEND).persist()
     .post('/agent/v2/quotes/preview')
     .reply((_uri, body) => {
       upstream.push({ op: 'quotes.preview', merchant_id: (body && body.merchant_id) || null });
+      quotes.push(JSON.parse(JSON.stringify(body || null)));
       if (!body || body.merchant_id !== IDS.SELLER_CONNECTED) return [422, { detail: { code: 'MERCHANT_NOT_CONNECTED' } }];
       return [200, {
-        quote_id: 'q_connected_0001', currency: 'USD',
+        quote_id: 'q_connected_0001', currency: quoteCurrency,
         pricing: { subtotal: '18.00', shipping_fee: '0.00', tax: '0.00', total: '18.00' },
         line_items: [{ product_id: IDS.SOURCE_CONNECTED, variant_id: IDS.VARIANT_CONNECTED, quantity: 1, unit_price_effective: '18.00' }],
         expires_at: '2099-01-01T00:00:00Z',
@@ -336,8 +346,10 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
     });
   }
   const rpc = (name, args) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
-  const mark = () => ({ store: storeCalls.length, upstream: upstream.length, gate: gateCalls.length, log: logLines.length, ledger: ledgerLines.length });
-  const since = (m) => ({ store: storeCalls.slice(m.store), upstream: upstream.slice(m.upstream), gate: gateCalls.slice(m.gate), log: logLines.slice(m.log), ledger: ledgerLines.slice(m.ledger) });
+  const mark = () => ({ store: storeCalls.length, upstream: upstream.length, gate: gateCalls.length, log: logLines.length, ledger: ledgerLines.length, quotes: quotes.length });
+  const since = (m) => ({ store: storeCalls.slice(m.store), upstream: upstream.slice(m.upstream), gate: gateCalls.slice(m.gate), log: logLines.slice(m.log), ledger: ledgerLines.slice(m.ledger), quotes: quotes.slice(m.quotes) });
+  /** Make the connected merchant's quote answer in `currency` (null: in its own again). */
+  const setQuoteCurrency = (currency) => { quoteCurrency = currency === null || currency === undefined ? CONNECTED_STORE_CURRENCY : currency; };
   /** Make `host`'s storefront answer its carts in `currency` (null: in its own again). */
   const setStoreCurrency = (host, currency) => { if (currency) storeCurrencyOverride.set(host, currency); else storeCurrencyOverride.delete(host); };
   /** tools/call on `door`. `raw` is the response body as the door sent it, byte for byte. */
@@ -385,7 +397,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
       for (const [i, name] of [MCP_FLAG, FLAG].entries()) { if (before[i] === undefined) delete process.env[name]; else process.env[name] = before[i]; }
     }
   }
-  return { app, call, post, listen, close, reset, setGateEnforced, setStoreCurrency, withFlag, withFlags, storeCalls, upstream, gateCalls, logLines, liveReads, pdpSeamCalls, root };
+  return { app, call, post, listen, close, reset, setGateEnforced, setStoreCurrency, setQuoteCurrency, withFlag, withFlags, storeCalls, upstream, gateCalls, logLines, liveReads, pdpSeamCalls, quotes, root };
 }
 
 const UCP_META = Object.freeze({ 'ucp-agent': { profile: 'https://agent.example/profile' } });
