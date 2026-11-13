@@ -415,6 +415,58 @@ test('the characters are judged before the length, and a key that passes both is
   assert.equal(JSON.parse(order.body.idempotency_key.replace(/:order$/, ''))[3], key);
 });
 
+// ---- the completion line says WHY a key or a cart was refused ---------------------------------------------------------
+
+/** Run `fn` and return the `mcp tools/call complete` lines it produced. */
+async function completionLines(fn) {
+  const logger = require('../src/logger');
+  const lines = [];
+  const real = logger.info;
+  logger.info = (obj, msg) => { if (msg === 'mcp tools/call complete') lines.push(obj); };
+  try {
+    await fn();
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    logger.info = real;
+  }
+  return lines;
+}
+
+test('the tools/call completion line names why a key or a line was refused, from a closed set, and never carries the key', async () => {
+  const sid = await kernelSession();
+  const SHORT = 'kq7-sht';
+  const WIDE = 'kq-w\u00efde-key-0001';
+  const PADDED = 'kq-padded-key-0001\u00a0';
+  const cases = [
+    ['mcp', 'short', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_too_short', () => door.call('/mcp', 'create_checkout_session', fx.withKey(SHORT, { quote: fx.nativeQuote(1) }))],
+    ['mcp', 'bad character', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_bad_characters', () => door.call('/mcp', 'cancel_checkout_session', fx.withKey(WIDE, { session_id: sid }))],
+    ['mcp', 'missing', 'IDEMPOTENCY_CONFLICT', 'missing_idempotency_key', () => door.call('/mcp', 'create_checkout_session', { quote: fx.nativeQuote(1) })],
+    ['mcp', 'line above the ceiling', 'QUOTE_REQUIRED', 'quantity_above_line_maximum', () => door.call('/mcp', 'create_checkout_session', fx.withKey(freshKey(), { quote: fx.nativeQuote(1000) }))],
+    ['ucp_mcp', 'short', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_too_short', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(SHORT), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) })],
+    ['ucp_mcp', 'padded', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_bad_characters', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(PADDED), checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 1) })],
+    ['ucp_mcp', 'missing', 'QUOTE_REQUIRED', 'ucp_idempotency_key_required', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(undefined), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) })],
+    ['ucp_mcp', 'line above the ceiling', 'QUOTE_REQUIRED', 'quantity_above_line_maximum', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(freshKey()), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1000) })],
+  ];
+  for (const [doorName, label, code, reason, send] of cases) {
+    const lines = await completionLines(send);
+    assert.equal(lines.length, 1, `${doorName} ${label}: one completion line`);
+    const [line] = lines;
+    assert.equal(line.door, doorName, label);
+    assert.equal(line.outcome, 'tool_error', `${doorName} ${label}`);
+    assert.equal(line.error_code, code, `${doorName} ${label}`);
+    assert.equal(line.error_class, 'client', `${doorName} ${label}: a caller's mistake, not an outage`);
+    assert.equal(line.error_reason, reason, `${doorName} ${label}`);
+    const text = JSON.stringify(line);
+    for (const sent of [SHORT, WIDE, PADDED, 'kq-padded-key-0001', 'buyer@example.test']) assert.ok(!text.includes(sent), `${doorName} ${label}: nothing the caller sent is logged`);
+  }
+
+  // An answer that is not an error carries no reason.
+  const ok = await completionLines(() => door.call('/mcp', 'create_checkout_session', fx.withKey(freshKey(), { quote: fx.nativeQuote(1) })));
+  assert.equal(ok[0].outcome, 'ok');
+  assert.equal('error_reason' in ok[0], false);
+});
+
 // ---- ACP REST update: the ceiling before the session is loaded ----------------------------------------------------
 
 test('ACP REST update: a line above the ceiling is answered before the session is looked up, and never before the buyer is known', async () => {

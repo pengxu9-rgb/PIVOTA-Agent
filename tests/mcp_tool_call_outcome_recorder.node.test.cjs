@@ -173,6 +173,49 @@ test('observed fields are allowlisted and validated; degraded is the OR of its f
   assert.deepEqual(bad.fields(200), { outcome: 'ok', is_error: false, error_code: null, error_class: null, degraded: false });
 });
 
+test('error_reason: a listed label is logged beside the tool error it explains; anything else is dropped', () => {
+  const { MCP_TOOL_ERROR_REASONS } = require('../src/observability/mcpToolErrorReasons');
+  for (const reason of MCP_TOOL_ERROR_REASONS) {
+    const r = createMcpToolCallRecorder();
+    r.observe({ error_code: 'IDEMPOTENCY_CONFLICT', error_retriable: false, error_reason: reason });
+    r.recordRpcResponse(okOut({ isError: true, content: [] }));
+    assert.deepEqual(r.fields(200), {
+      outcome: 'tool_error', is_error: true, error_code: 'IDEMPOTENCY_CONFLICT', error_class: 'client', error_reason: reason, degraded: false,
+    }, reason);
+  }
+  // Not a listed label: a key, free text, a near miss, another type. The line keeps its code and says no more.
+  for (const reason of ['idem-key-as-sent-0001', 'a caller wrote this', 'idempotency_key_too_short ', 'Idempotency_Key_Too_Short', '', 7, true, null, ['in_flight'], { reason: 'in_flight' }]) {
+    const r = createMcpToolCallRecorder();
+    r.observe({ error_code: 'IDEMPOTENCY_CONFLICT', error_retriable: false, error_reason: reason });
+    r.recordRpcResponse(okOut({ isError: true, content: [] }));
+    assert.deepEqual(r.fields(200), {
+      outcome: 'tool_error', is_error: true, error_code: 'IDEMPOTENCY_CONFLICT', error_class: 'client', degraded: false,
+    }, JSON.stringify(reason));
+  }
+});
+
+test('error_reason is logged only on a tool error: never on an ok answer, a protocol error, a refusal or a shed call', () => {
+  const ok = createMcpToolCallRecorder();
+  ok.observe({ error_reason: 'in_flight' });
+  ok.recordRpcResponse(okOut({ content: [] }));
+  assert.equal('error_reason' in ok.fields(200), false);
+  const rpc = createMcpToolCallRecorder();
+  rpc.observe({ error_reason: 'in_flight' });
+  rpc.recordRpcResponse({ status: 200, body: { jsonrpc: '2.0', id: 1, error: { code: -32602 } } });
+  assert.equal('error_reason' in rpc.fields(200), false);
+  const internal = createMcpToolCallRecorder();
+  internal.observe({ error_reason: 'in_flight' });
+  internal.recordInternalError();
+  assert.equal('error_reason' in internal.fields(200), false);
+  const refused = createMcpToolCallRecorder();
+  refused.observe({ error_reason: 'in_flight' });
+  assert.equal('error_reason' in refused.fields(429), false);
+  const shed = createMcpToolCallRecorder();
+  shed.observe({ error_reason: 'in_flight' });
+  shed.recordCallerLimitRefusal({ status: 503 });
+  assert.equal('error_reason' in shed.fields(503), false);
+});
+
 test('later observations of the same field win (the surface reports cache state, then the adapter the count)', () => {
   const r = createMcpToolCallRecorder();
   r.observe({ cache_hit: false });
