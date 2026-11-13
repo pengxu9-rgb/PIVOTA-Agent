@@ -101,10 +101,9 @@ test('created for US; the address dropped by an update; an address-less update w
   assertMarketRefused(await update(id, 'SGD', undefined), 'seller_not_priced_in_market_currency', 'US', { quotes: 1 });
   assertPriced(await read(id), 'USD');
   assertMarketRefused(await complete(id, 'SG'), 'seller_not_priced_in_market_currency', 'SG');
-  // The session is now marked for SG (its held quote is not priced for it): a US address no longer gets it paid.
-  assertMarketRefused(await complete(id, 'US'), 'seller_not_priced_in_market_currency', 'SG');
-  assertPriced(await update(id, 'USD', 'US'), 'USD');
-  assertPaid(await complete(id, undefined), 'USD', 'US');
+  // A refused completion marks nothing: addressed to the market the session was priced for, it is paid there.
+  assertPriced(await read(id), 'USD');
+  assertPaid(await complete(id, 'US'), 'USD', 'US');
 });
 
 test('the controls: without the refused update, the same completions answer the same', async () => {
@@ -120,9 +119,12 @@ test('a mark and a completion\'s address are both judged, and the refusal names 
   // A completion addressed elsewhere is refused for where IT is addressed, not for the market the session is marked with.
   assertMarketRefused(await complete(id, 'ZZ'), 'market_not_priced', 'ZZ');
   assertMarketRefused(await complete(id, 'GB'), 'seller_not_priced_in_market_currency', 'GB');
-  // ...and each such refusal is now the session's mark. An address the quote is priced for is still blocked by it.
-  assertMarketRefused(await complete(id, 'US'), 'seller_not_priced_in_market_currency', 'GB');
-  assertMarketRefused(await complete(id, undefined), 'seller_not_priced_in_market_currency', 'GB');
+  // ...and neither refusal replaced the mark the refused UPDATE left: an address the quote is priced for is still
+  // blocked by it, by its own name, until an update puts the session right.
+  assertMarketRefused(await complete(id, 'US'), 'seller_not_priced_in_market_currency', 'SG');
+  assertMarketRefused(await complete(id, undefined), 'seller_not_priced_in_market_currency', 'SG');
+  assertPriced(await update(id, 'USD', 'US'), 'USD');
+  assertPaid(await complete(id, undefined), 'USD', 'US');
 });
 
 test('a completion addressed to another country than the session was priced for is refused by name, even in the same currency; an update re-prices it', async () => {
@@ -159,6 +161,17 @@ test('a country is two ASCII letters: one that only upper-cases into two is refu
       assert.deepEqual(answer.backend, []);
     }
   }
+});
+
+test('the country reaches the backend as the market code it was judged as, in the quote and in the order', async () => {
+  const quoted = await create('SGD', ' sg ');
+  assertPriced(quoted, 'SGD', 201);
+  assert.equal(quoted.quotes[0].buyer_context.shipping_address.country, 'SG', 'the quote is sent the code, not the spelling received');
+  assert.equal(quoteMarket(quoted.quotes[0]), 'SG');
+  const updated = await update(quoted.body.id, 'SGD', 'Sg');
+  assert.equal(updated.quotes[0].buyer_context.shipping_address.country, 'SG');
+  const paid = await complete(await created('USD', undefined), 'us\n');
+  assertPaid(paid, 'USD', 'US');
 });
 
 // ---- 3. a session that is over ---------------------------------------------------------------------------------

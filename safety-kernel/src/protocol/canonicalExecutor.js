@@ -787,7 +787,9 @@ async function completeCheckout(
       // Advisory only: createOrder's atomic claim below is still the enforcement, so a concurrent claim that
       // lands after this read is refused there, exactly as before.
       if (typeof kernel.isQuoteClaimed === 'function' && (await kernel.isQuoteClaimed(quote.quote_id))) {
-        throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
+        throw typeof kernel.quoteAlreadyUsed === 'function'
+          ? await kernel.quoteAlreadyUsed(quote.quote_id)
+          : new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
       }
 
       // THE MARKETS A DOOR NAMES FOR THIS COMPLETION (judgeSessionMarkets): the money about to be taken is the
@@ -1098,6 +1100,24 @@ function assertAttestation(attestation, order, ctx) {
 
 async function cancelSession(kernel, params, ctx) {
   const order_id = params.order_id;
+  if (!nonEmpty(order_id) && cancelClaimsSession(params, ctx)) {
+    // A SESSION THAT NEVER BECAME AN ORDER, ON THE DOOR THAT RECORDS ITS CANCELLATIONS. The cancellation takes the
+    // quote's single-use claim, the same record createOrder takes, so a cancellation and a completion of one
+    // session are decided by one atomic write and exactly one of them wins:
+    //   - the cancellation holds the claim: no completion can create an order from this quote, now or later;
+    //   - an order holds it (a completion got there first, finished or still in flight): the session is not
+    //     cancelled, and the caller is told so instead of "canceled".
+    // Cancelling again is the same answer: a claim this door's cancellation already holds is not a refusal.
+    if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+    const claimed = await kernel._quoteClaims.putIfAbsent(params.session_id, { canceled: true });
+    if (!claimed) {
+      const held = await kernel._quoteClaims.get(params.session_id);
+      if (!(held && held.canceled === true)) {
+        throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'cancel_checkout_session', reason: 'session_already_ordered' });
+      }
+    }
+    return { session_id: params.session_id, order_id: null, status: 'canceled' };
+  }
   if (nonEmpty(order_id)) {
     const o = await kernel._orderStore.get(order_id);
     if (o) {
@@ -1109,6 +1129,15 @@ async function cancelSession(kernel, params, ctx) {
     }
   }
   return { session_id: params.session_id ?? null, order_id: order_id ?? null, status: 'canceled' };
+}
+
+/**
+ * Does this cancellation come from the door that records a cancelled session and never pays one? The ACP REST door
+ * says so on the call (`params.cancel_claims_session`), read only on a call that door built. Every other door's
+ * cancellation of a session with no order is exactly what it was.
+ */
+function cancelClaimsSession(params, ctx) {
+  return Boolean(ctx && ctx.protocol === ADDRESS_MARKET_PROTOCOL && params && params.cancel_claims_session === true);
 }
 
 // An order this caller does not own is NOT FOUND: the same answer as an id the kernel never tracked. The

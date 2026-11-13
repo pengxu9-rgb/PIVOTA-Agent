@@ -229,6 +229,17 @@ export class SafetyKernel {
     return Boolean(await this._quoteClaims.get(quoteId));
   }
 
+  /**
+   * The refusal of a quote that is already claimed. The claim is single-use and has two takers: an order
+   * (createOrder) and a cancellation of a session that never became one. Which one holds it is said in the
+   * refusal's detail (`claim: 'canceled'`), for a door that answers a cancelled session by that name; the code and
+   * the message are the same for both.
+   */
+  async quoteAlreadyUsed(quote_id) {
+    const held = await this._quoteClaims.get(quote_id);
+    return new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id, ...(held && held.canceled === true ? { claim: 'canceled' } : {}) });
+  }
+
   /** create_order: INV-1 (quote required), INV-4 (idempotent), INV-5 (amount from snapshot). */
   async createOrder(payload, ctx) {
     this._requireUser(ctx);
@@ -247,7 +258,7 @@ export class SafetyKernel {
         // ledger above and never reaches here, so a failed claim means a DIFFERENT request already turned
         // this quote into an order — refuse, so one locked quote can never become two orders (double charge).
         const claimedQuote = await this._quoteClaims.putIfAbsent(quote.quote_id, { idempotency_key: key });
-        if (!claimedQuote) throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
+        if (!claimedQuote) throw await this.quoteAlreadyUsed(quote.quote_id);
         const lockedBuyerContext = normalizeBuyerContext(quote.buyer_context);
         const requestedBuyerContext = normalizeBuyerContext(payload.order);
         const buyerContext = {

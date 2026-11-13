@@ -189,10 +189,13 @@ for (const sellerCurrency of SELLER_CURRENCIES) for (const m of MARKETS) {
       const answer = await complete(id, m);
       if (rule.kind === 'refused') {
         assertRefused(answer, rule);
-        // A completion refused for its market leaves the same mark a refused update does: the session is not
-        // completable with another address afterwards, only after an update that succeeds.
-        assertRefused(await complete(id, homeOf(sellerCurrency)), rule);
-        assertRefused(await read(id), rule);
+        // A refused completion marks nothing: each completion is judged for the address it carries. The session
+        // is read as it was, and is paid when it is completed for the market its quote is priced for.
+        assertPricedSession(await read(id), sellerCurrency);
+        const home = homeOf(sellerCurrency);
+        const paid = await complete(id, from === undefined ? home : undefined);
+        assertPaid(paid, sellerCurrency);
+        assert.equal(paid.orders[0].buyer_context.shipping_address.country, home);
         return;
       }
       if (rule.kind === 'priced' || from !== undefined) {
@@ -369,8 +372,9 @@ test('a refused completion releases its key: the same key completes the session 
   const id = await created('USD', undefined);
   const key = 'idem-acp-market-complete-retry';
   assertRefused(await door.acp('POST', `/checkout_sessions/${id}/complete`, completion('SG'), { key }), ruleFor('USD', 'SG'));
-  assertPricedSession(await update(id, 'USD', 'US'), 'USD', { quantity: 2 });
-  assertPaid(await door.acp('POST', `/checkout_sessions/${id}/complete`, completion(undefined), { key }), 'USD');
+  const paid = await door.acp('POST', `/checkout_sessions/${id}/complete`, completion('US'), { key });
+  assertPaid(paid, 'USD');
+  assert.equal(paid.orders[0].buyer_context.shipping_address.country, 'US');
 });
 
 test('the quote request is the one it was, plus the market: nothing else is added, and never the market\'s currency', async () => {

@@ -196,7 +196,7 @@ export function createAcpRestAdapter(deps = {}) {
   //     market: an order needs the address. So a session is paid only with an address, and the country of the
   //     address the order ships to is always one the locked quote was judged for: the quote's own address when
   //     it holds one (judged when it was priced), else the completion's (judged at completion, (1)-(3) above).
-  //   - THE MARK. An update or a completion refused for its market changes no quote, so the session still holds
+  //   - THE MARK. An UPDATE refused for its market changes no quote, so the session still holds
   //     the quote it had. When that HELD quote is not priced for the refused market (the market has no currency,
   //     or another currency than the held quote's), the market is written on the session record
   //     (`refused_market`): the buyer named a market the session cannot be paid for, so until an update succeeds
@@ -204,10 +204,13 @@ export function createAcpRestAdapter(deps = {}) {
   //     completion's own address is judged first and in its own right. When the held quote IS priced for the
   //     refused market (it was the update's new cart that was not), nothing is written: the session is as it was,
   //     and its completions are judged as in (1)-(3). The next update that succeeds removes the mark. A country
-  //     this door cannot read is an ordinary intake refusal and marks nothing.
+  //     this door cannot read is an ordinary intake refusal and marks nothing. A refused COMPLETION marks
+  //     nothing either: each completion is judged for its own address, so the next one, correctly addressed, is
+  //     not held back by the last.
   //   - A SESSION THAT IS OVER IS NEVER MARKED OR RE-PRICED. A completed session (it has an order) and a cancelled
   //     one refuse an update by name before anything is priced, and are read as what they are: the completed
-  //     checkout, or `canceled`. A cancelled session is not completed.
+  //     checkout, or `canceled`. A cancelled session is not completed: a cancellation takes the quote's single-use
+  //     claim, the one an order takes, so of a cancellation and a completion exactly one wins.
   //   - EVERY WRITE OF THE SESSION RECORD IS CONDITIONAL on the record still being the one this request read
   //     (writeSession): a request that lost a race re-reads and decides again, so a refused or late request never
   //     puts back an old quote id, and never erases an order id or a cancellation.
@@ -257,20 +260,18 @@ export function createAcpRestAdapter(deps = {}) {
     if (stored.canceled === true) throw new PivotaCommerceError('ORDER_CANCELED', { reason: 'checkout_session_canceled' });
     if (stored.order_id) throw new PivotaCommerceError('QUOTE_ALREADY_USED', { reason: 'checkout_session_completed' });
   }
-  // THE MARK (see "the buyer's market"). `market`: the market of a market refusal, or null. `heldQuoteJudged`: the
-  // refusal was of the session's HELD quote (a completion); else it was of a new cart (an update), and the held
-  // quote's own currency is read to see whether it is priced for the market: if it is, nothing is marked.
+  // THE MARK (see "the buyer's market"), written by a refused UPDATE. `market`: the market of a market refusal,
+  // or null. The refusal was of the update's new cart, so the HELD quote's own currency is read to see whether it
+  // is priced for the market: if it is, nothing is marked.
   // Never throws: the refusal is the caller's answer whatever happens here. When nothing could be written the
   // session is exactly as it was, which is safe: every completion is still judged for the address it ships to.
-  async function markRefusedMarket(acp_session_id, stored, market, ctx, { heldQuoteJudged }) {
+  async function markRefusedMarket(acp_session_id, stored, market, ctx) {
     if (!market || !sessionIsOpen(stored)) return;
     try {
-      if (!heldQuoteJudged) {
-        const marketCurrency = marketParamsOf(market).market_currency;
-        if (marketCurrency !== undefined) {
-          const held = await canonicalExecutor.execute('get_checkout_session', { session_id: stored.quote_id }, ctx);
-          if (held && held.currency === marketCurrency) return;
-        }
+      const marketCurrency = marketParamsOf(market).market_currency;
+      if (marketCurrency !== undefined) {
+        const held = await canonicalExecutor.execute('get_checkout_session', { session_id: stored.quote_id }, ctx);
+        if (held && held.currency === marketCurrency) return;
       }
       // Only the session this request judged: one that has since been re-priced, completed or cancelled is left
       // to the request that did that.
@@ -490,7 +491,7 @@ export function createAcpRestAdapter(deps = {}) {
       } catch (err) {
         // REFUSED FOR ITS MARKET: no quote was recorded, so the session still holds the one it had. It is marked
         // only when that held quote is not priced for the market this update named (markRefusedMarket).
-        await markRefusedMarket(acp_session_id, stored, marketOfMarketRefusal(err), ctx, { heldQuoteJudged: false });
+        await markRefusedMarket(acp_session_id, stored, marketOfMarketRefusal(err), ctx);
         throw err;
       }
       // The session now holds this update's quote, judged for this update's market: an earlier mark is gone.
@@ -531,7 +532,7 @@ export function createAcpRestAdapter(deps = {}) {
       if (stored.canceled === true) assertSessionOpen(stored);
       const body = trustedBody(req);
       const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
-      const shipping_address = mapAddress(body);
+      const shipping_address = addressForMarket(mapAddress(body));
       let out;
       try {
         out = await executor.execute('complete_checkout_session', {
@@ -550,17 +551,21 @@ export function createAcpRestAdapter(deps = {}) {
           fulfillment_address_required: ADDRESS_UPDATE_HINT,
         }, ctx);
       } catch (err) {
-        // REFUSED FOR ITS MARKET, with no order and no charge. The refusal was of the session's own held quote, so
-        // the session is not priced for that market: marked, and another address on a later completion does not
-        // get it paid; an update that succeeds does.
-        await markRefusedMarket(acp_session_id, stored, marketOfMarketRefusal(err), ctx, { heldQuoteJudged: true });
+        // A session a cancellation won (it holds the quote's single-use claim, see cancelCheckoutSession) answers
+        // as cancelled, whether or not the record said so when this completion read it.
+        if (err instanceof PivotaCommerceError && err.code === 'QUOTE_ALREADY_USED' && err.detail?.claim === 'canceled') {
+          throw new PivotaCommerceError('ORDER_CANCELED', { reason: 'checkout_session_canceled' });
+        }
+        // A completion refused for its market writes nothing: every completion is judged for its own address, so a
+        // mark from this one would add no judgement and would only stand in the way of a later, correct one.
         throw err;
       }
       // THE ORDER ID IS NEVER LOST, AND THE SESSION'S QUOTE IS THE ONE THAT WAS PAID. Written on top of whatever the
       // record is now: an update that re-priced the session while this completion was being paid does not leave a
       // completed session pointing at an unpaid quote.
       const order_id = out.order?.order_id ?? stored.order_id;
-      const completed = (current) => { const { refused_market: _answered, ...kept } = current; return { ...kept, quote_id: stored.quote_id, order_id }; };
+      // Money moved: whatever else the record says, the session is completed (never cancelled, never marked).
+      const completed = (current) => { const { refused_market: _answered, canceled: _never, ...kept } = current; return { ...kept, quote_id: stored.quote_id, order_id }; };
       try {
         await writeSession(acp_session_id, stored, completed);
       } catch (err) {
@@ -580,19 +585,31 @@ export function createAcpRestAdapter(deps = {}) {
       const idempotency_key = requireIdempotencyKey(req);
       const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
-      const stored = await ownedSession(acp_session_id, user_ref);
       const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
-      await executor.execute('cancel_checkout_session', { idempotency_key, session_id: stored.quote_id, order_id: stored.order_id ?? undefined }, ctx);
-      // The session is over, and says so from now on: read as `canceled`, never re-priced, marked or paid. A
-      // record that could not be written changes nothing the caller is told.
-      try {
-        await writeSession(acp_session_id, stored, (current) => {
-          if (current.canceled === true) return null;
-          const { refused_market: _answered, ...kept } = current;
-          return { ...kept, canceled: true };
-        });
-      } catch { /* the cancellation was done; the next cancel writes it */ }
-      return { status: 200, body: { id: acp_session_id, object: 'checkout_session', status: 'canceled' } };
+      const canceled = { status: 200, body: { id: acp_session_id, object: 'checkout_session', status: 'canceled' } };
+      // A CANCELLATION AND A COMPLETION OF ONE SESSION: EXACTLY ONE WINS. For a session with no order the executor
+      // takes the quote's single-use claim (`cancel_claims_session`), the claim an order takes: once the
+      // cancellation holds it no completion can be paid, and when an order holds it (a completion that finished,
+      // or is still in flight) the cancellation is refused and nothing is recorded. For a session WITH an order
+      // the executor answers for the order (a paid one is not cancelled).
+      // The record is written `canceled` only for the session this request cancelled: if an order id has
+      // appeared on it since it was read, nothing is written and the request decides again on what is there.
+      for (let attempt = 0; attempt < MAX_SESSION_WRITE_ATTEMPTS; attempt += 1) {
+        const stored = await ownedSession(acp_session_id, user_ref);
+        if (stored.canceled === true) return canceled; // cancelling again is the same answer
+        await executor.execute('cancel_checkout_session', { idempotency_key, session_id: stored.quote_id, order_id: stored.order_id ?? undefined, cancel_claims_session: true }, ctx);
+        let orderAppeared = false;
+        try {
+          await writeSession(acp_session_id, stored, (current) => {
+            if (current.canceled === true) return null;
+            if ((current.order_id ?? null) !== (stored.order_id ?? null)) { orderAppeared = true; return null; }
+            const { refused_market: _answered, ...kept } = current;
+            return { ...kept, canceled: true };
+          });
+        } catch { /* the cancellation was done; the next cancel writes it */ }
+        if (!orderAppeared) return canceled;
+      }
+      throw outcomeUnknown('race');
     });
   }
 
@@ -747,6 +764,8 @@ async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants, assertM
   // the caller's claim and quote. A country this door cannot read, and a market nothing is priced for, are
   // refused by name with nothing read, claimed or priced. No address: no market, and nothing is asked.
   if (typeof assertMarketPriced === 'function') assertMarketPriced(quote.shipping_address);
+  // The address travels with its country as that market code (addressForMarket), from here on.
+  if (quote.shipping_address) quote.shipping_address = addressForMarket(quote.shipping_address);
 
   // LAST: resolve a default variant for every item that arrived without one (items are mutated in place, so
   // the resolved id is what reaches `quote.items` and therefore pricing). Deliberately after the buyer/address
@@ -803,6 +822,13 @@ function marketOfAddress(address) {
       { rejected_field: 'fulfillment_address.country' });
   }
   return market;
+}
+
+// THE ADDRESS AS IT IS PRICED AND SHIPPED: with its country written as the market it was read as (two ASCII
+// letters, upper case), so the country this door judges is, letter for letter, the country the quote and the order
+// are sent with. `undefined` in, `undefined` out; a country that cannot be read is refused by name (marketOfAddress).
+function addressForMarket(address) {
+  return isPlainObject(address) ? { ...address, country: marketOfAddress(address) } : address;
 }
 
 // The market named by one of the two market refusals (canonicalExecutor.js quoteMarketOf), else null. Read from
