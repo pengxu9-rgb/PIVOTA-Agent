@@ -430,10 +430,12 @@ export function assertLineQuantitiesWithinMaximum(rawItems) {
 /**
  * Refuse a cart that names the same product and variant on more than one line (./intakeBounds.cjs: the rule, what
  * "the same" is, and what a line with no variant means). Decided on the lines alone, so a door asks it before it
- * reads anything. The canonical executor asks it again on the lines it is about to price: by then a line that
- * named no variant carries the one the door resolved for it, so a line that named a variant and a line that named
- * none are refused there if they turned out to be the same. Like the ceiling, a cart that is not an array or has
- * more lines than a cart may have is left to `normalizeCartItems`.
+ * reads anything. For a KERNEL row (a product Pivota prices) it is asked again on the resolved lines: by the ACP
+ * door at the end of its cart mapping, and by the canonical executor on the lines it is about to price. By then a
+ * line that named no variant carries the one intake resolved for it, so a line that named a variant and a line that
+ * named none are refused if they turned out to be the same. (A storefront row never reaches either: see
+ * ./intakeBounds.cjs.) Like the ceiling, a cart that is not an array or has more lines than a cart may have is left
+ * to `normalizeCartItems`.
  */
 export function assertNoDuplicateLines(rawItems) {
   if (!Array.isArray(rawItems) || rawItems.length > MAX_CART_ITEMS) return;

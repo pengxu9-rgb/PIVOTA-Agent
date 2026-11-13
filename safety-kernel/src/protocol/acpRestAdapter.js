@@ -190,7 +190,9 @@ export function createAcpRestAdapter(deps = {}) {
       const idempotency_key = requireIdempotencyKey(req);
       const buyer = await requireBuyer(req);
       const { user_ref } = buyer;
-      // priced from the SIGNED bytes (validates non-empty items; resolves each item's default variant)
+      // priced from the SIGNED bytes (validates non-empty items; resolves each item's default variant; refuses a
+      // cart whose lines, as sent or as resolved, name one product and variant twice). Every refusal the cart can
+      // get from intake is raised here, BEFORE the claim below is written.
       const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
 
       // ACP-layer create idempotency (Codex P1): a replayed (buyer, key) returns the ORIGINAL session instead
@@ -443,6 +445,14 @@ async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants) {
   // mapItemsToQuote is a plain module-level function and nothing forces the third argument.
   if (typeof resolveDefaultVariants !== 'function') assertNoUnresolvedVariants(items);
   else await resolveDefaultVariants(items, quote.merchant_id, { user_ref: buyer.user_ref });
+  // ONE LINE PER PRODUCT AND VARIANT, ASKED AGAIN ON THE RESOLVED LINES, HERE. `normalizeCartItems` asked it on the
+  // lines as sent; a line that named no variant now carries the one the read resolved, so a line that named a
+  // variant and a line that named none are refused here when they turned out to be the same. It must be HERE and
+  // not left to the executor: a create writes its dedup claim (the caller's key, held for CREATE_DEDUP_TTL_MS)
+  // between this function and the executor, and a refusal after the claim would leave the key pointing at a
+  // session that was never written. The refusal tells the caller to merge the lines and send again; with the
+  // same key, that retry must be a first create. The executor still asks, as the second check.
+  assertNoDuplicateLines(items);
   return quote;
 }
 

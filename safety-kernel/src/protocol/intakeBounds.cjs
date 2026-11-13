@@ -135,8 +135,15 @@ function lineQuantityRefusal() {
 // A LINE WITH NO VARIANT. Two lines of one product that both name no variant are the same line twice, and are
 // refused. A line that names a variant and a line of the same product that names none are NOT known to be the same
 // from the request alone (which variant the second means is only known once the product is read), so this rule does
-// not refuse them here. On the doors that resolve a missing variant from a product read, the rule is asked again
-// after that read, where both lines carry a variant and can be compared: see `duplicateLineGroups`' callers.
+// not refuse them here. WHERE A DOOR RESOLVES A MISSING VARIANT ITSELF, the rule is asked again on the resolved lines:
+//   - a KERNEL row (a product Pivota prices) on the native, UCP and ACP doors: intake reads the product, fills in the
+//     variant, and the rule is asked again (the ACP door at the end of its own cart mapping, before it claims the
+//     caller's key; the canonical executor on the lines it is about to price). The pair is refused before any quote.
+//   - a STOREFRONT row (a product that completes on its seller's storefront) never reaches that intake or the
+//     executor. There the store-cart builder's own check (ucpMerchantDoorPricing.js, `duplicate_variant`) declines to
+//     build a cart for two lines of one store variant and the door answers with the hand-off to the seller's page:
+//     no cart, no store call. That answer is not this rule's refusal.
+//   - the INVOKE door resolves nothing: see `lineIdentityAsInvokeReadsIt`.
 const DUPLICATE_LINE_REASON = 'duplicate_line_for_product_variant';
 
 // How many line positions a refusal lists. Enough for twelve merges; a cart with more duplicates than that is told
@@ -167,6 +174,13 @@ function lineIdentityAsIntakeReadsIt(line) {
  * `variantId`, `sku`, `product_id`, `productId` with something in it. So on this door a line that names no variant
  * IS a line whose variant is its product id, and is compared as that. A value that is not a string is read as its
  * text, as that builder reads it. Null when there is no product (that builder drops the line).
+ *
+ * WHAT THIS DOOR CANNOT DO, AND WHAT IS LEFT. `[{p, v}, {p}]` is not refused here, and unlike the other doors it is
+ * not refused later either: neither invoke route reads the product before the quote is asked for, so nothing at
+ * this layer ever learns which variant `{p}` means. The quote body carries the two lines as `(p, v)` and `(p, p)`.
+ * Those are two different keys to what prices the cart, so their quantities are NOT added together; the second
+ * names the product id as a variant, which is not a variant of anything, and is that pricer's to refuse. Two lines
+ * that both name no variant ARE the same key `(p, p)` and are refused here.
  */
 function lineIdentityAsInvokeReadsIt(line) {
   if (line === null || typeof line !== 'object' || Array.isArray(line)) return null;

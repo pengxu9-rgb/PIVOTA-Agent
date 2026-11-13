@@ -15,8 +15,11 @@
 //   - it is decided on the lines alone: the same answer for every market, named or not, priced or not;
 //   - two different variants of one product are two lines and are priced as sent, at 999 units each;
 //   - a line that names a variant beside one of the same product that names none is NOT refused from the request
-//     alone; when the door's read resolves the second to the same variant the cart is refused before it is priced, so
-//     it is never priced as one summed line;
+//     alone. For a KERNEL row (a product Pivota prices) on `/mcp`, `/ucp/mcp` and ACP REST, the door's read resolves
+//     the second line; when that is the same variant the cart is refused before it is priced, and before ACP claims
+//     the caller's key, so the merged cart can be sent again with the same key. For a STOREFRONT row no cart is built
+//     at the store: the door answers with the hand-off to the seller's page (the store-cart builder's own check, not
+//     this rule). On the INVOKE door nothing resolves a variant: the two lines go to be priced as two different keys;
 //   - a cart of one line is answered exactly as before.
 
 const test = require('node:test');
@@ -106,7 +109,7 @@ test('/mcp: two different variants of one product are two lines: 999 units of ea
   assert.equal(quoteCalls(updated)[0].body.offer_refs.length, 2);
 });
 
-test('/mcp: a line that names a variant beside one that names none is never priced as one line: resolved to the same variant, it is refused before the quote', async () => {
+test('/mcp, a kernel row: a line that names a variant beside one that names none is never priced as one line: resolved to the same variant, it is refused before the quote', async () => {
   // The product has one variant, so the line that names none resolves to the variant the other line names. The door
   // cannot know that from the request (it reads the product to find out); once it does, the two lines are the same.
   const r = await door.call('/mcp', 'create_checkout_session', nativeCart([item(ONE, ONE_V, 600), item(ONE, null, 600)]));
@@ -194,7 +197,7 @@ test('/ucp/mcp: two different variants of one product are two lines, sent to be 
   ], `one quote, two lines: ${r.raw.slice(0, 300)}`);
 });
 
-test('/ucp/mcp: a named variant beside the bare product id is never priced as one line', async () => {
+test('/ucp/mcp, a kernel row: a named variant beside the bare product id is never priced as one line', async () => {
   const r = await door.call('/ucp/mcp', 'create_checkout', ucpCart([[`${ONE}::v::${ONE_V}`, 600], [ONE, 600]]));
   assert.equal(r.isError, true, r.raw.slice(0, 300));
   assert.deepEqual(quoteCalls(r), [], 'nothing was priced');
@@ -208,6 +211,109 @@ test('/ucp/mcp: a storefront cart of one line is still handed to the store, 999 
   assert.equal(r.isError, false, r.raw.slice(0, 300));
   assert.equal(r.store.find((c) => c.tool === 'create_cart').arguments.cart.line_items[0].quantity, 999);
   assertAnswerCurrency(JSON.parse(r.raw), 'USD', 'storefront, US');
+});
+
+// ---- after the refusal: the merged cart, with the SAME key --------------------------------------------------------------
+//
+// The refusal says "merge those lines and send the request again". A caller that corrects a create reuses its key.
+
+test('ACP REST, a kernel row: a named variant beside an unnamed line is refused before the key is claimed; the merged cart with the same key is then created and priced once', async () => {
+  for (const [label, refusedCart] of [
+    ['named + unnamed, resolved to the same variant', [item(ONE, ONE_V, 600), item(ONE, null, 600)]],
+    ['unnamed + named', [item(ONE, null, 1), item(ONE, ONE_V, 2)]],
+    ['the same variant named twice', [item(ONE, ONE_V, 600), item(ONE, ONE_V, 600)]],
+  ]) {
+    const key = freshKey();
+    const refused = await door.acp('POST', '/checkout_sessions', acpCart(refusedCart), { key });
+    assert.equal(refused.http, 400, `${label}: ${refused.raw.slice(0, 300)}`);
+    assert.deepEqual(refused.body, { type: 'error', code: 'QUOTE_REQUIRED', message: MESSAGE, detail: detailOf([[1, 2]]) }, label);
+    assert.deepEqual(quoteCalls(refused), [], `${label}: nothing was priced`);
+    assert.deepEqual(refused.store, [], label);
+    // The same key, the lines merged: a FIRST create (201), priced once. A claim left behind by the refused attempt
+    // would answer 404 here for as long as the claim lives.
+    const merged = await door.acp('POST', '/checkout_sessions', acpCart([item(ONE, ONE_V, 999)]), { key });
+    assert.equal(merged.http, 201, `${label}: the merged cart with the same key: ${merged.raw.slice(0, 300)}`);
+    assert.equal(quoteCalls(merged).length, 1, `${label}: one quote`);
+    assert.deepEqual(quoteCalls(merged)[0].body.offer_refs.map((ref) => [ref.variant_id, ref.quantity]), [[ONE_V, 999]], label);
+    // And from here the key is that session's: the same request again is a replay of it, not a second create.
+    const replay = await door.acp('POST', '/checkout_sessions', acpCart([item(ONE, ONE_V, 999)]), { key });
+    assert.equal(replay.http, 200, `${label}: ${replay.raw.slice(0, 200)}`);
+    assert.equal(replay.body.id, merged.body.id, label);
+    assert.deepEqual(quoteCalls(replay), [], label);
+  }
+  // On update the same pair is refused too, and the session keeps the quote it had.
+  const created = await door.acp('POST', '/checkout_sessions', acpCart([item(ONE, ONE_V, 1)]), { key: freshKey() });
+  const update = await door.acp('POST', `/checkout_sessions/${created.body.id}`, acpCart([item(ONE, ONE_V, 600), item(ONE, null, 600)]), { key: freshKey() });
+  assert.equal(update.http, 400, update.raw.slice(0, 300));
+  assert.deepEqual(update.body.detail, detailOf([[1, 2]]));
+  assert.deepEqual(quoteCalls(update), []);
+  const mergedUpdate = await door.acp('POST', `/checkout_sessions/${created.body.id}`, acpCart([item(ONE, ONE_V, 999)]), { key: freshKey() });
+  assert.equal(mergedUpdate.http, 200, mergedUpdate.raw.slice(0, 300));
+});
+
+test('/mcp and /ucp/mcp, a kernel row: after the same refusal the merged cart with the same key is priced', async () => {
+  const nativeKey = freshKey();
+  const refused = await door.call('/mcp', 'create_checkout_session', { ...nativeCart([item(ONE, ONE_V, 600), item(ONE, null, 600)]), idempotency_key: nativeKey });
+  assert.deepEqual(errorOf(refused).detail, detailOf([[1, 2]]), refused.raw.slice(0, 300));
+  const merged = await door.call('/mcp', 'create_checkout_session', { ...nativeCart([item(ONE, ONE_V, 999)]), idempotency_key: nativeKey });
+  assert.equal(merged.isError, false, merged.raw.slice(0, 300));
+  assert.equal(quoteCalls(merged).length, 1);
+
+  const ucpKey = freshKey();
+  const ucpRefused = await door.call('/ucp/mcp', 'create_checkout', { ...ucpCart([[`${ONE}::v::${ONE_V}`, 600], [ONE, 600]]), meta: fx.ucpMeta(ucpKey) });
+  assert.deepEqual(errorOf(ucpRefused).detail, detailOf([[1, 2]]), ucpRefused.raw.slice(0, 300));
+  const ucpMerged = await door.call('/ucp/mcp', 'create_checkout', { ...ucpCart([[`${ONE}::v::${ONE_V}`, 999]]), meta: fx.ucpMeta(ucpKey) });
+  assert.equal(quoteCalls(ucpMerged).length, 1, `the merged cart reaches the quote: ${ucpMerged.raw.slice(0, 300)}`);
+  assert.notEqual(errorOf(ucpMerged) && errorOf(ucpMerged).code, 'IDEMPOTENCY_CONFLICT');
+});
+
+// ---- a storefront row: named beside unnamed ----------------------------------------------------------------------------
+
+test('a storefront row, both doors: a named variant beside the bare product is NOT this rule\'s refusal; no cart is built at the store, the answer is the hand-off to the seller\'s page', async () => {
+  // The store-cart builder declines two lines of one store variant (its own, older check) and the door falls back
+  // to the hand-off. Nothing is sent to the store either way.
+  door.resetGate();
+  const ucp = await door.call('/ucp/mcp', 'create_checkout', ucpCart([[`${IDS.SIG_STORE}::v::${IDS.VARIANT_STORE}`, 600], [IDS.SIG_STORE, 600]]));
+  assert.equal(ucp.isError, false, ucp.raw.slice(0, 300));
+  assert.equal(ucp.value.status, 'requires_escalation');
+  assert.equal(ucp.value.continue_url, `https://${fx.STORE_HOST}/products/calm-serum?variant=${IDS.VARIANT_STORE}`, 'the product page, not a store cart');
+  assert.deepEqual(ucp.value.line_items.map((l) => l.quantity), [600, 600], 'the two lines as sent, not one summed line');
+  assert.deepEqual(ucp.store, [], 'no store call: no cart was built');
+  assert.deepEqual(ucp.upstream.map((c) => c.to), ['catalog', 'gate'], 'the product read and the gate, nothing else');
+  const FLAGS = ['AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED', 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET'];
+  const saved = FLAGS.map((flag) => process.env[flag]);
+  for (const flag of FLAGS) process.env[flag] = '1';
+  try {
+    door.resetGate();
+    const native = await door.call('/mcp', 'create_checkout_session', nativeCart([item(IDS.SIG_STORE, IDS.VARIANT_STORE, 600), item(IDS.SIG_STORE, null, 600)], { merchant: IDS.SELLER_STORE, market: 'US' }));
+    assert.equal(native.isError, false, native.raw.slice(0, 300));
+    assert.equal(native.value.status, 'completes_on_seller_storefront');
+    assert.deepEqual(native.value.line_items.map((l) => l.quantity), [600, 600]);
+    assert.deepEqual(native.store, [], 'no store call: no cart was built');
+    assert.deepEqual(native.upstream.map((c) => c.to), ['catalog', 'gate']);
+    assertAnswerCurrency(JSON.parse(native.raw), resolveServingCurrency('US'), 'storefront hand-off, US');
+  } finally {
+    FLAGS.forEach((flag, i) => { if (saved[i] === undefined) delete process.env[flag]; else process.env[flag] = saved[i]; });
+  }
+});
+
+// ---- the invoke door: named beside unnamed ----------------------------------------------------------------------------
+
+test('invoke, every route: a named variant beside an unnamed line is NOT refused (nothing here reads the product); the two lines go to be priced as two different keys, never as one', async () => {
+  // THE RESIDUAL, stated: the other doors resolve the unnamed line and refuse the pair; the invoke door cannot. Its
+  // quote body carries the unnamed line as the variant that restates the product id, so what prices the cart is
+  // asked about (product, variant) and (product, product): two keys, whose quantities it does not add together.
+  for (const [label, route, strict] of INVOKE_WAYS) {
+    for (const product of [ONE, TWO]) {
+      const variant = product === ONE ? ONE_V : IDS.VARIANT_TWO_A;
+      const r = await door.invoke(route, 'preview_quote', invokeQuote([item(product, variant, 600), item(product, null, 600)]), { strict });
+      assert.notEqual(r.body && r.body.detail && r.body.detail.reason, 'duplicate_line_for_product_variant', `${label}: ${r.raw.slice(0, 200)}`);
+      assert.equal(quoteCalls(r).length, 1, `${label}: ${r.raw.slice(0, 200)}`);
+      assert.deepEqual(quoteCalls(r)[0].body.offer_refs.map((ref) => [ref.product_id, ref.variant_id, ref.quantity]), [[product, variant, 600], [product, product, 600]], `${label}: two keys, 600 each`);
+    }
+    // Two unnamed lines ARE one key on this door, and are refused.
+    assertInvokeDuplicateLines(await door.invoke(route, 'preview_quote', invokeQuote([item(TWO, null, 600), item(TWO, null, 600)]), { strict }), [[1, 2]], `${label} unnamed twice`);
+  }
 });
 
 // ---- the completion line ------------------------------------------------------------------------------------------

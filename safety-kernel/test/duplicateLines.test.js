@@ -279,7 +279,7 @@ test('ACP REST: a duplicate line is refused on create and on update before the e
   assert.equal(after.status, 201, JSON.stringify(after.body));
 });
 
-test('ACP REST: a line that names a variant beside one that names none is refused only when the read resolves them to the same variant, and never priced as one', async () => {
+test('ACP REST, a kernel row: a line that names a variant beside one that names none is refused only when the read resolves them to the same variant, and never priced as one', async () => {
   // p1 has one variant: the line that names none resolves to it, and the two lines are then the same.
   const one = acpSetup({ variantsByProduct: { p1: ['v1'] } });
   const real = createCanonicalExecutor({
@@ -300,6 +300,45 @@ test('ACP REST: a line that names a variant beside one that names none is refuse
   assert.deepEqual(one.calls.filter((c) => c.name === 'kernel.previewQuote'), [], 'nothing was priced');
 });
 
+test('ACP REST create: a pair that resolves to the same variant is refused BEFORE the create claim is written, so the same key then creates the merged cart', async () => {
+  const calls = [];
+  const store = new InMemoryKvStore();
+  const sessionStore = {
+    get: async (k) => { calls.push('get'); return store.get(k); },
+    set: async (k, v, o) => { calls.push('set'); return store.set(k, v, o); },
+    putIfAbsent: async (k, v, o) => { calls.push('putIfAbsent'); return store.putIfAbsent(k, v, o); },
+  };
+  const executor = { execute: async (op, params) => {
+    calls.push(op);
+    if (op === 'get_product') return { product: { product_id: params.payload.product.product_id, merchant_id: 'merch_a', variants: [{ variant_id: 'v1' }] } };
+    return { session_id: 'q_1', status: 'ready_for_payment', totals: {}, line_items: [] };
+  } };
+  const adapter = createAcpRestAdapter({ executor, sessionStore, signingSecret: ACP_SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }) });
+  const { req } = acpSetup();
+  for (const items of [[line('p1', 'v1', 600), line('p1', undefined, 600)], [line('p1', undefined, 1), line('p1', 'v1', 1)]]) {
+    calls.length = 0;
+    assertAcpDuplicateLines(await adapter.createCheckoutSession(req({ body: acpCart(items), key: 'acp-claim-0001' })), [[1, 2]], JSON.stringify(items));
+    assert.deepEqual(calls, ['get_product'], 'the read that resolves the variant, and nothing else: no claim, no create');
+  }
+  // The same key, the lines merged: a first create.
+  calls.length = 0;
+  const merged = await adapter.createCheckoutSession(req({ body: acpCart([line('p1', 'v1', 999)]), key: 'acp-claim-0001' }));
+  assert.equal(merged.status, 201, JSON.stringify(merged.body));
+  assert.deepEqual(calls, ['putIfAbsent', 'create_checkout_session', 'set']);
+  // Update: refused after the session is loaded and the variant read, and before the executor is asked to re-price.
+  calls.length = 0;
+  assertAcpDuplicateLines(await adapter.updateCheckoutSession(req({ body: acpCart([line('p1', 'v1', 600), line('p1', undefined, 600)]), key: 'acp-claim-0002', id: merged.body.id })), [[1, 2]], 'update');
+  assert.deepEqual(calls, ['get', 'get_product'], 'update: the session read and the variant read; the executor was not asked to price');
+  // A pair that resolves to DIFFERENT variants is two lines, and is created.
+  const other = createAcpRestAdapter({
+    executor: { execute: async (op, params) => (op === 'get_product'
+      ? { product: { product_id: params.payload.product.product_id, merchant_id: 'merch_a', variants: [{ variant_id: 'v_default' }] } }
+      : { session_id: 'q_2', status: 'ready_for_payment', totals: {}, line_items: [] }) },
+    sessionStore: new InMemoryKvStore(), signingSecret: ACP_SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }),
+  });
+  assert.equal((await other.createCheckoutSession(req({ body: acpCart([line('p1', 'v1', 600), line('p1', undefined, 600)]), key: 'acp-claim-0003' }))).status, 201);
+});
+
 // ---- the invoke door ----------------------------------------------------------------------------------------------
 
 const invokeQuote = (items, extra = {}) => ({ quote: { merchant_id: 'merch_a', items }, ...extra });
@@ -310,7 +349,10 @@ test('invoke, as that door builds its quote body: the product is product_id or p
   assert.equal(id({ product_id: 'p1' }), id({ product_id: 'p1', variant_id: 'p1' }), 'no variant = the product id, on this door');
   assert.equal(id({ product_id: 'p1', sku: 's1' }), id({ product_id: 'p1', variant_id: 's1' }), '`sku` is a variant spelling here');
   assert.equal(id({ product_id: 9001, variant_id: 7 }), id({ product_id: '9001', variant_id: '7' }), 'read as text, as that builder reads it');
+  // THE RESIDUAL ON THIS DOOR: a named variant beside an unnamed line is two keys, (p1, v1) and (p1, p1), and stays
+  // so: nothing on this door reads the product, so it is never learned which variant the unnamed line means.
   assert.notEqual(id({ product_id: 'p1', variant_id: 'v1' }), id({ product_id: 'p1' }));
+  assert.equal(intakeBounds.invokeDuplicateLineRefusal('preview_quote', { quote: { items: [{ product_id: 'p1', variant_id: 'v1', quantity: 600 }, { product_id: 'p1', quantity: 600 }] } }), null);
   assert.notEqual(id({ product_id: 'p1', variant_id: 'v1' }), id({ product_id: 'P1', variant_id: 'v1' }));
   // An offer id is not part of it: what prices the cart adds lines by product and variant, whatever offer each names.
   assert.equal(id({ product_id: 'p1', variant_id: 'v1', offer_id: 'of_a' }), id({ product_id: 'p1', variant_id: 'v1', offer_id: 'of_b' }));
