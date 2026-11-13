@@ -241,6 +241,18 @@ test('a market nothing is priced for is refused before the variant read and befo
   assertPricedSession(retried, 'USD', { http: 201 });
 });
 
+test('a create refused on the quote\'s currency gives the key back: the same key with an address the seller is priced for is a first create', async () => {
+  const key = 'idem-acp-market-sg-then-us';
+  assertRefused(await door.acp('POST', '/checkout_sessions', cart('USD', 'SG'), { key }), ruleFor('USD', 'SG'), { quotes: 1 });
+  const retried = await door.acp('POST', '/checkout_sessions', cart('USD', 'US'), { key });
+  assertPricedSession(retried, 'USD', { http: 201 });
+  assert.equal(retried.quotes.length, 1, 'one quote for the session');
+  const replayed = await door.acp('POST', '/checkout_sessions', cart('USD', 'US'), { key });
+  assertPricedSession(replayed, 'USD');
+  assert.equal(replayed.body.id, retried.body.id);
+  assert.deepEqual(replayed.backend, []);
+});
+
 test('a create replayed under its key answers what the session answers: the refusal while it is marked, the session once it is put right', async () => {
   const key = 'idem-acp-market-replayed-create';
   const first = await door.acp('POST', '/checkout_sessions', cart('USD', undefined), { key });

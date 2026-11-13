@@ -284,3 +284,120 @@ test('complete_checkout_session with no market is the completion it always was',
     assert.equal(ops('submit_payment').length, 1);
   }
 });
+
+// ---- a market refusal and the create's claim on the caller's key ------------------------------------------------
+//
+// Over real HTTP, on both session stores (helpers/acpCreateDoor.js, whose store records every call it receives). A
+// create writes a claim on (buyer, Idempotency-Key) before it asks the pricer. A market refusal is a failure whose
+// outcome is known, with nothing behind it:
+//   - refused before the pricer (a market nothing is priced for, a country that cannot be read): no claim is written;
+//   - refused on the quote's currency (after one quote): the claim is released;
+// so the same key, with an address the seller is priced for, is a first create. The mark a refused update leaves is
+// on the SESSION record; the claim record is another row and is not touched by it.
+import { bootAcpCreateDoor, cart as claimCart, PRICER_CURRENCY, UNIT_MINOR } from './helpers/acpCreateDoor.js';
+
+const CLAIM_PORT = 5733;
+async function withClaimDoor(storeKind, fn) {
+  const door = await bootAcpCreateDoor({ port: CLAIM_PORT, storeKind });
+  try { await fn(door); } finally { await door.close(); }
+}
+// A pricer step that answers in `currency` whatever the cart's destination: the seller's own currency.
+const pricedIn = (currency) => (payload) => ({
+  quote_id: `uq_seller_${currency}`, merchant_of_record: payload.quote.merchant_id, currency,
+  locked_totals: { subtotal: UNIT_MINOR, tax: 0, shipping: 0, total: UNIT_MINOR }, line_items: [], acp_state: {},
+});
+const isClaimCall = (call) => String(call.key).startsWith('["acpcreate"');
+
+for (const storeKind of ['memory', 'postgres']) {
+  test(`[${storeKind}] a create refused on the quote's currency releases its claim: the same key with a corrected address is a first create`, async () => {
+    await withClaimDoor(storeKind, async (door) => {
+      const key = 'idem-market-claim-01';
+      door.pricer.script(pricedIn('USD'));
+      const refused = await door.create(claimCart(1, 'SG'), { key });
+      assert.equal(refused.status, 404, refused.text);
+      assert.deepEqual(refused.body.detail, { reason: MISMATCH, market: 'SG', market_currency: PRICER_CURRENCY.SG, seller_currencies: ['USD'] });
+      assert.equal(door.pricer.calls.length, 1, 'refused after one quote');
+      assert.deepEqual(door.store.calls.filter(isClaimCall).map((c) => c.name), ['putIfAbsent', 'compareAndDelete'], 'the claim was written, then released');
+      assert.deepEqual([await door.store.claims(), await door.store.sessions()], [[], []], 'nothing is behind the refusal');
+      assert.equal(door.kernelStores.get('quotes')?._m.size ?? 0, 0, 'no quote was recorded');
+
+      const created = await door.create(claimCart(1, 'US'), { key });
+      assert.equal(created.status, 201, created.text);
+      assert.equal(created.body.currency, 'USD');
+      assert.equal(door.pricer.calls.length, 2, 'one quote for the session');
+      const claims = await door.store.claims();
+      assert.deepEqual(claims.map((row) => row.value), [{ acp_session_id: created.body.id, status: 'done' }]);
+    });
+  });
+
+  for (const [name, country, status, reason] of [
+    ['a market nothing is priced for', 'ZZ', 404, 'market_not_priced'],
+    ['a country that cannot be read', 'Nowhere Land', 400, 'market_invalid'],
+  ]) {
+    test(`[${storeKind}] a create refused for ${name} writes no claim: the same key is usable at once`, async () => {
+      await withClaimDoor(storeKind, async (door) => {
+        const key = 'idem-market-claim-02';
+        const refused = await door.create(claimCart(1, country), { key });
+        assert.equal(refused.status, status, refused.text);
+        assert.equal(refused.body.detail.reason, reason);
+        assert.deepEqual([door.pricer.calls, door.store.calls], [[], []], 'the pricer was not asked and the store was not touched');
+        const created = await door.create(claimCart(1, 'US'), { key });
+        assert.equal(created.status, 201, created.text);
+        assert.equal(door.pricer.calls.length, 1);
+      });
+    });
+  }
+
+  test(`[${storeKind}] a refused update marks the session row and leaves the claim row alone: the create replay answers the named refusal`, async () => {
+    await withClaimDoor(storeKind, async (door) => {
+      const key = 'idem-market-claim-03';
+      const created = await door.create(claimCart(1, 'US'), { key });
+      assert.equal(created.status, 201, created.text);
+      const id = created.body.id;
+      const claimBefore = await door.store.claims();
+      assert.deepEqual(claimBefore.map((row) => row.value), [{ acp_session_id: id, status: 'done' }]);
+      const sessionBefore = (await door.store.sessions())[0].value;
+
+      door.pricer.script(pricedIn('USD'));
+      const refused = await door.send('POST', `/checkout_sessions/${id}`, claimCart(2, 'SG'), { key: 'idem-market-claim-04' });
+      assert.equal(refused.status, 404, refused.text);
+      assert.equal(refused.body.detail.reason, MISMATCH);
+      assert.deepEqual(await door.store.claims(), claimBefore, 'the claim record is as it was');
+      assert.deepEqual((await door.store.sessions()).map((row) => row.value), [{ ...sessionBefore, refused_market: 'SG' }], 'one session row, marked');
+
+      // The replay of the create: the named refusal. Not "outcome unknown", and not the priced body it once had.
+      const pricedCalls = door.pricer.calls.length;
+      const replay = await door.create(claimCart(1, 'US'), { key });
+      assert.equal(replay.status, 404, replay.text);
+      assert.equal(replay.body.code, 'NO_MERCHANT_OFFER');
+      assert.deepEqual(replay.body.detail, { reason: MISMATCH, market: 'SG', market_currency: PRICER_CURRENCY.SG, seller_currencies: ['USD'] });
+      assert.equal(replay.body.totals, undefined);
+      assert.equal(door.pricer.calls.length, pricedCalls, 'a replay prices nothing');
+      assert.deepEqual(await door.store.claims(), claimBefore);
+
+      // An update the seller is priced for: the mark goes, and the replay is the session again.
+      const fixed = await door.send('POST', `/checkout_sessions/${id}`, claimCart(3, 'US'), { key: 'idem-market-claim-05' });
+      assert.equal(fixed.status, 200, fixed.text);
+      const again = await door.create(claimCart(1, 'US'), { key });
+      assert.equal(again.status, 200, again.text);
+      assert.equal(again.body.id, id);
+      assert.equal(again.body.totals.total, UNIT_MINOR * 3);
+      assert.deepEqual(await door.store.claims(), claimBefore);
+      assert.equal('refused_market' in (await door.store.sessions())[0].value, false);
+    });
+  });
+
+  test(`[${storeKind}] a create whose pricer does not answer in time, with a market named: the key is held for the lease (unchanged)`, async () => {
+    await withClaimDoor(storeKind, async (door) => {
+      const key = 'idem-market-claim-06';
+      door.pricer.script(() => { throw door.timedOut(); });
+      const failed = await door.create(claimCart(1, 'SG'), { key });
+      assert.equal(failed.status, 503, failed.text);
+      assert.equal((await door.store.claims())[0].value.status, 'pending');
+      const held = await door.create(claimCart(1, 'SG'), { key });
+      assert.equal(held.status, 409, held.text);
+      assert.equal(held.body.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+      assert.equal(door.pricer.calls.length, 1, 'nothing more is asked of the pricer meanwhile');
+    });
+  });
+}
