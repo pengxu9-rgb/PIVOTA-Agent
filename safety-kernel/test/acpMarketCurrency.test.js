@@ -9,6 +9,7 @@ import { SafetyKernel } from '../src/kernel.js';
 import { InMemoryKvStore } from '../src/stores.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
+import { PivotaCommerceError } from '../src/errors.js';
 import { surfaceableIntakeRefusal } from '../src/protocol/buyerIntake.js';
 import { marketCurrencyOf } from './helpers/marketCurrency.js';
 
@@ -47,12 +48,12 @@ function setup({ sellerCurrency = 'USD', source = marketCurrencyOf, store = new 
 }
 
 let keys = 0;
-function req({ body, id } = {}) {
+function req({ body, id, key } = {}) {
   const rawBody = body === undefined ? '' : JSON.stringify(body);
   const timestamp = String(FIXED_NOW);
   keys += 1;
   return {
-    headers: { timestamp, signature: createHmac('sha256', SECRET).update(`${timestamp}.${rawBody}`).digest('hex'), 'idempotency-key': `idem-acp-market-${String(keys).padStart(4, '0')}` },
+    headers: { timestamp, signature: createHmac('sha256', SECRET).update(`${timestamp}.${rawBody}`).digest('hex'), 'idempotency-key': key || `idem-acp-market-${String(keys).padStart(4, '0')}` },
     rawBody, body, params: id ? { checkout_session_id: id } : {},
   };
 }
@@ -145,20 +146,19 @@ test('an update refused because nothing is priced for its market marks the sessi
   assert.equal(cancelled.status, 200);
 });
 
-test('a completion that brings the address is judged against it before the authorization is presented; refused, it marks the session', async () => {
+test('a completion that brings the address is judged against it before the authorization is presented; refused, it marks nothing', async () => {
   const door = setup({ sellerCurrency: 'USD' });
   const id = (await door.adapter.createCheckoutSession(req({ body: cart(undefined) }))).body.id;
   refusedBy(await door.adapter.completeCheckoutSession(req({ id, body: completion('GB') })), MISMATCH, 'GB');
   assert.deepEqual([door.verified, door.ops('create_order'), door.ops('submit_payment')], [[], [], []]);
-  assert.equal((await door.store.get(id)).refused_market, 'GB');
-  refusedBy(await door.adapter.completeCheckoutSession(req({ id, body: completion('US') })), MISMATCH, 'GB');
-
-  const other = setup({ sellerCurrency: 'USD' });
-  const otherId = (await other.adapter.createCheckoutSession(req({ body: cart(undefined) }))).body.id;
-  const paid = await other.adapter.completeCheckoutSession(req({ id: otherId, body: completion('US') }));
+  assert.equal('refused_market' in (await door.store.get(id)), false, 'each completion is judged for its own address: nothing is held against the next');
+  refusedBy(await door.adapter.completeCheckoutSession(req({ id, body: completion('ZZ') })), 'market_not_priced', 'ZZ');
+  assert.equal('refused_market' in (await door.store.get(id)), false);
+  // The same session, addressed where its quote is priced: paid there.
+  const paid = await door.adapter.completeCheckoutSession(req({ id, body: completion('US') }));
   assert.equal(paid.status, 200, JSON.stringify(paid.body));
-  assert.deepEqual(other.verified.map((b) => b.currency), ['USD']);
-  assert.equal(other.ops('create_order')[0].payload.order.shipping_address.country, 'US');
+  assert.deepEqual(door.verified.map((b) => b.currency), ['USD']);
+  assert.equal(door.ops('create_order')[0].payload.order.shipping_address.country, 'US');
 });
 
 test('an intake refusal on an update is not a market refusal and marks nothing', async () => {
@@ -668,7 +668,7 @@ function gate() {
 }
 function sessionDoor({ storeKind = 'memory', conditional = true } = {}) {
   const calls = [];
-  const gates = { preview_quote: [], submit_payment: [] };
+  const gates = { preview_quote: [], create_order: [], submit_payment: [], verify: [], afterGet: [] };
   const verified = [];
   const kernelUpstream = async (op, payload) => {
     calls.push({ op, payload: structuredClone(payload) });
@@ -689,7 +689,8 @@ function sessionDoor({ storeKind = 'memory', conditional = true } = {}) {
   const fail = { compareAndSet: 0, set: 0 };
   const writes = [];
   const store = {
-    get: (k) => inner.get(k),
+    // `gates.afterGet`: the next read of a session record returns to its caller only once the gate is opened.
+    get: async (k) => { const v = await inner.get(k); const g = !String(k).startsWith('[') ? gates.afterGet.shift() : null; if (g) await g.wait(); return v; },
     putIfAbsent: (...a) => inner.putIfAbsent(...a),
     set: async (k, v, o) => { if (fail.set > 0) { fail.set -= 1; throw new Error('placeholder store failure'); } writes.push({ op: 'set', k, v }); return inner.set(k, v, o); },
     ...(conditional ? {
@@ -700,7 +701,7 @@ function sessionDoor({ storeKind = 'memory', conditional = true } = {}) {
   };
   const executor = createCanonicalExecutor({
     kernel, upstream: async () => ({}),
-    verifyPaymentAuthorization: async (_a, bound) => { verified.push(bound); return { ok: true, amount: bound.amount, currency: bound.currency, user_ref: bound.user_ref }; },
+    verifyPaymentAuthorization: async (_a, bound) => { const g = gates.verify.shift(); if (g) await g.wait(); verified.push(bound); return { ok: true, amount: bound.amount, currency: bound.currency, user_ref: bound.user_ref }; },
   });
   const adapter = createAcpRestAdapter({ executor, sessionStore: store, signingSecret: SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }), marketCurrencyOf, now: () => FIXED_NOW });
   const ops = (op) => calls.filter((c) => c.op === op);
@@ -710,7 +711,8 @@ function sessionDoor({ storeKind = 'memory', conditional = true } = {}) {
     create: (merchant, country) => adapter.createCheckoutSession(req({ body: body(merchant, country) })),
     update: (id, merchant, country, quantity = 2) => adapter.updateCheckoutSession(req({ id, body: body(merchant, country, quantity) })),
     read: (id) => adapter.getCheckoutSession(req({ id })),
-    complete: (id, country) => adapter.completeCheckoutSession(req({ id, body: completion(country) })),
+    complete: (id, country, key) => adapter.completeCheckoutSession(req({ id, key, body: completion(country) })),
+    inner,
     cancel: (id) => adapter.cancelCheckoutSession(req({ id, body: {} })),
     record: (id) => store.get(id),
   };
@@ -727,7 +729,7 @@ test('verified lane: a refused update whose market the held quote is priced for 
   refusedBy(unpaid, MISMATCH, 'SG');
   assert.match(unpaid.body.message, /this checkout session was neither read out nor paid/, 'worded as a session that exists');
   assert.deepEqual([door.verified, door.ops('create_order'), door.ops('submit_payment')], [[], [], []], 'not paid in USD for SG');
-  assert.equal((await door.record(id)).refused_market, 'SG', 'refused on the held quote: marked');
+  assert.equal('refused_market' in (await door.record(id)), false, 'a refused completion marks nothing');
   // Created for US, the address dropped, then an address-less update with a cart priced in SGD: the same.
   const other = sessionDoor();
   const oid = (await other.create('merch_USD', 'US')).body.id;
@@ -926,3 +928,207 @@ for (const storeKind of ['memory', 'postgres']) {
     assert.ok(sessionWrites.slice(1).every((w) => w.ok));
   });
 }
+
+// ---- a cancellation and a completion of one session: exactly one wins ------------------------------------------------
+//
+// For a session with no order, the cancellation takes the quote's single-use claim, the claim an order takes. So:
+// a paid session never reads `canceled`; the payer's same-key replay returns the paid result; a cancelled session
+// is never paid; and there is exactly zero or one charge. In every interleaving, on both stores.
+
+async function assertPaidSession(door, id, key, paidAnswer) {
+  assert.equal(paidAnswer.status, 200, JSON.stringify(paidAnswer.body));
+  const record = await door.record(id);
+  assert.ok(record.order_id, 'the record has its order');
+  assert.equal('canceled' in record, false, 'a paid session is not recorded as cancelled');
+  const read = await door.read(id);
+  assert.equal(read.status, 200);
+  assert.equal(read.body.order.id, record.order_id, 'read as the completed checkout');
+  const replay = await door.complete(id, undefined, key);
+  assert.equal(replay.status, 200, `the payer's replay: ${JSON.stringify(replay.body)}`);
+  assert.equal(replay.body.order.id, paidAnswer.body.order.id);
+  assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [1, 1], 'exactly one charge');
+  const cancelAgain = await door.cancel(id);
+  assert.equal(cancelAgain.status, 409, 'a paid session is not cancelled');
+  assert.equal((await door.read(id)).body.order.id, record.order_id);
+}
+async function assertCancelledSession(door, id, key) {
+  const record = await door.record(id);
+  assert.equal(record.canceled, true);
+  assert.ok(!record.order_id, 'a cancelled session has no order');
+  assert.deepEqual((await door.read(id)).body, { id, object: 'checkout_session', status: 'canceled' });
+  for (const k of [key, undefined]) {
+    const again = await door.complete(id, undefined, k);
+    assert.equal(again.status, 409, JSON.stringify(again.body));
+    assert.equal(again.body.code, 'ORDER_CANCELED');
+  }
+  assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [0, 0], 'a cancelled session is never paid');
+  assert.equal((await door.cancel(id)).status, 200, 'cancelling again is the same answer');
+}
+
+for (const storeKind of ['memory', 'postgres']) {
+  test(`[${storeKind}] cancel reads, the completion pays and writes, then the cancel goes on: the cancel is refused, the session is paid`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.afterGet.push(g);
+    const cancelling = door.cancel(id); // has read the open record, and waits
+    await g.entered;
+    const key = 'idem-race-cancel-0001';
+    const paid = await door.complete(id, undefined, key);
+    g.open();
+    const cancelled = await cancelling;
+    assert.equal(cancelled.status, 409, JSON.stringify(cancelled.body));
+    assert.equal(cancelled.body.code, 'OPERATION_NOT_ALLOWED');
+    await assertPaidSession(door, id, key, paid);
+  });
+
+  test(`[${storeKind}] the completion is charging when the cancel arrives: the cancel is refused and writes nothing, the session is paid`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.submit_payment.push(g);
+    const key = 'idem-race-cancel-0002';
+    const completing = door.complete(id, undefined, key); // has the quote's claim (its order exists), and waits in the charge
+    await g.entered;
+    const before = await door.record(id);
+    const cancelled = await door.cancel(id);
+    assert.equal(cancelled.status, 409, JSON.stringify(cancelled.body));
+    assert.equal(cancelled.body.code, 'OPERATION_NOT_ALLOWED');
+    assert.deepEqual(await door.record(id), before, 'nothing was recorded for the refused cancel');
+    g.open();
+    await assertPaidSession(door, id, key, await completing);
+  });
+
+  test(`[${storeKind}] the completion has read the session and not yet created its order when the cancel lands: the cancel wins, the completion is refused as cancelled and never pays`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.verify.push(g);
+    const key = 'idem-race-cancel-0003';
+    const completing = door.complete(id, undefined, key); // read the open record; waits before its order
+    await g.entered;
+    assert.equal((await door.cancel(id)).status, 200);
+    g.open();
+    const refused = await completing;
+    assert.equal(refused.status, 409, JSON.stringify(refused.body));
+    assert.equal(refused.body.code, 'ORDER_CANCELED', 'answered as cancelled, not as "an order was already placed"');
+    await assertCancelledSession(door, id, key);
+  });
+
+  test(`[${storeKind}] a cancel and a completion started together: one of them wins, whichever it is`, async () => {
+    for (const first of ['complete', 'cancel']) {
+      const door = sessionDoor({ storeKind });
+      const id = (await door.create('merch_USD', 'US')).body.id;
+      const key = 'idem-race-cancel-0004';
+      const run = { complete: () => door.complete(id, undefined, key), cancel: () => door.cancel(id) };
+      const second = first === 'complete' ? 'cancel' : 'complete';
+      const [a, b] = await Promise.all([run[first](), run[second]()]);
+      const answer = { [first]: a, [second]: b };
+      const paid = answer.complete.status === 200;
+      assert.notEqual(paid, answer.cancel.status === 200, `exactly one wins: complete ${answer.complete.status}, cancel ${answer.cancel.status}`);
+      assert.ok(door.ops('submit_payment').length <= 1);
+      if (paid) await assertPaidSession(door, id, key, answer.complete);
+      else {
+        assert.equal(answer.complete.body.code, 'ORDER_CANCELED');
+        await assertCancelledSession(door, id, key);
+      }
+    }
+  });
+
+  // The record's own guards, with the claim taken out of the picture: an executor whose cancellation of a session
+  // with no order always succeeds (as it did before the claim) and whose completion always pays.
+  test(`[${storeKind}] the record alone: a cancel never writes over an order id that appeared after it read, and a completion's write is never left cancelled`, async () => {
+    const base = sessionDoor({ storeKind });
+    const cancels = [];
+    const adapter = createAcpRestAdapter({
+      executor: { execute: async (opId, params) => {
+        if (opId === 'cancel_checkout_session') {
+          cancels.push(params.order_id ?? null);
+          if (params.order_id) throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending' });
+          return { status: 'canceled' };
+        }
+        if (opId === 'complete_checkout_session') return { order: { order_id: 'o_stub', amount_total: 1800, currency: 'USD' }, payment: { order_status: 'paid', payment_status: 'succeeded' } };
+        return { session_id: 'q_stub', currency: 'USD', totals: { total: 1800 }, line_items: [] };
+      } },
+      sessionStore: base.store, signingSecret: SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }), marketCurrencyOf, now: () => FIXED_NOW,
+    });
+    // (1) the cancel has read the record; an order id is then written onto it; the cancel goes on.
+    const id = 'sess_guard_1';
+    await base.inner.set(id, { quote_id: 'q_stub', order_id: null, user_ref: 'buyer_1', rev: 'r0' });
+    const g = gate();
+    base.gates.afterGet.push(g);
+    const cancelling = adapter.cancelCheckoutSession(req({ id, body: {} }));
+    await g.entered;
+    await base.inner.set(id, { quote_id: 'q_stub', order_id: 'o_stub', user_ref: 'buyer_1', rev: 'r1' });
+    g.open();
+    const cancelled = await cancelling;
+    assert.equal(cancelled.status, 409, JSON.stringify(cancelled.body));
+    assert.deepEqual(cancels, [null, 'o_stub'], 'it decided again, for the session as it is now: one with an order');
+    assert.deepEqual(await base.inner.get(id), { quote_id: 'q_stub', order_id: 'o_stub', user_ref: 'buyer_1', rev: 'r1' }, 'nothing was written over the order');
+    // (2) the completion has read the record; a cancellation is then written onto it; the completion pays and writes.
+    const other = 'sess_guard_2';
+    await base.inner.set(other, { quote_id: 'q_stub', order_id: null, user_ref: 'buyer_1', rev: 'r0' });
+    const g2 = gate();
+    base.gates.afterGet.push(g2);
+    const completing = adapter.completeCheckoutSession(req({ id: other, body: completion(undefined) }));
+    await g2.entered;
+    await base.inner.set(other, { quote_id: 'q_stub', order_id: null, user_ref: 'buyer_1', canceled: true, rev: 'r1' });
+    g2.open();
+    assert.equal((await completing).status, 200);
+    const record = await base.inner.get(other);
+    assert.equal(record.order_id, 'o_stub');
+    assert.equal('canceled' in record, false, 'money moved: the session is completed, not cancelled');
+  });
+
+  // KNOWN OPEN, pinned as it is today so that neither a fix nor a regression goes unseen.
+  // WHAT WILL CLOSE IT: a `completing` marker on the session record. The completion writes it (conditionally) before
+  // it asks the executor for anything and clears it when it fails with nothing done; an update (and a cancel) that
+  // finds it set is refused, retriable, instead of re-pricing a session whose completion is in flight. When that
+  // lands, this test must change to: the update below is refused, and there is ONE order and ONE payment.
+  test(`[${storeKind}] KNOWN OPEN (to be closed by a "completing" marker on the session record): an update while a completion is in flight, then a completion under a new key, takes two payments`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const firstQuote = (await door.record(id)).quote_id;
+    const g = gate();
+    door.gates.submit_payment.push(g);
+    const first = door.complete(id, undefined, 'idem-known-open-0001'); // in flight: its order exists, its charge waits
+    await g.entered;
+    // The record has no order id yet, so the session is still open: the update is priced and written.
+    const updated = await door.update(id, 'merch_USD', 'US', 3);
+    assert.equal(updated.status, 200, JSON.stringify(updated.body));
+    const secondQuote = (await door.record(id)).quote_id;
+    assert.notEqual(secondQuote, firstQuote);
+    // A completion under another key pays the new quote.
+    const second = await door.complete(id, undefined, 'idem-known-open-0002');
+    assert.equal(second.status, 200, JSON.stringify(second.body));
+    assert.equal(second.body.order.amount_total, 5400);
+    g.open();
+    const firstDone = await first;
+    assert.equal(firstDone.status, 200, JSON.stringify(firstDone.body));
+    assert.equal(firstDone.body.order.amount_total, 1800);
+    // TODAY: two orders and two payments on one session, both in the session's currency.
+    assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [2, 2]);
+    assert.notEqual(firstDone.body.order.id, second.body.order.id);
+    assert.deepEqual(door.verified.map((b) => b.currency), ['USD', 'USD']);
+    // The record ends on the completion that wrote last: the first one's quote and order.
+    const record = await door.record(id);
+    assert.equal(record.quote_id, firstQuote);
+    assert.equal(record.order_id, firstDone.body.order.id);
+    // From here the session is over: nothing more is priced or paid on it.
+    assert.equal((await door.update(id, 'merch_USD', 'US')).body.code, 'QUOTE_ALREADY_USED');
+    assert.equal((await door.complete(id, undefined, 'idem-known-open-0003')).body.code, 'QUOTE_ALREADY_USED');
+    assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [2, 2]);
+  });
+}
+
+test('the country travels as the market it was read as: the quote and the order are sent the two upper-case letters, not the spelling received', async () => {
+  const door = sessionDoor();
+  const id = (await door.create('merch_SGD', ' sg ')).body.id;
+  assert.equal(door.ops('preview_quote')[0].payload.market, 'SG');
+  assert.equal(door.ops('preview_quote')[0].payload.quote.shipping_address.country, 'SG');
+  assert.equal((await door.update(id, 'merch_SGD', 'Sg')).status, 200);
+  assert.equal(door.ops('preview_quote')[1].payload.quote.shipping_address.country, 'SG');
+  const other = (await door.create('merch_USD', undefined)).body.id;
+  assert.equal((await door.complete(other, 'us\n')).status, 200);
+  assert.equal(door.ops('create_order')[0].payload.order.shipping_address.country, 'US');
+});
