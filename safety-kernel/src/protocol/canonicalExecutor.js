@@ -20,7 +20,7 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
-import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
+import { fulfillmentAddressRequiredRefusal, assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
@@ -343,6 +343,17 @@ function updateReplacesSessionMarket(params, ctx) {
   if (!ctx || ctx.protocol !== ADDRESS_MARKET_PROTOCOL) return false;
   if (!params || params.market_replaces_session_market !== true) return false;
   return params.market !== undefined && params.market !== null;
+}
+
+/**
+ * Does this completion come from the door that refuses, by name, a completion with no address to ship to? The ACP
+ * REST door says so on the call (`params.fulfillment_address_required`: where its caller can supply the address),
+ * and it is read only on a call that door built. Every other door's completion is exactly as it was.
+ */
+function completionRequiresFulfillmentAddress(params, ctx) {
+  if (!ctx || ctx.protocol !== ADDRESS_MARKET_PROTOCOL) return null;
+  const hint = params ? params.fulfillment_address_required : undefined;
+  return typeof hint === 'string' && hint.trim() !== '' ? hint : null;
 }
 
 function isPlainObjectValue(value) {
@@ -741,6 +752,20 @@ async function completeCheckout(
       // idempotency run with no side effect done, so the caller's key is released with it.
       const sessionMarket = quoteMarketOf(params, 'session');
       if (sessionMarket) sessionMarket.accept(quote.currency);
+
+      // AN ADDRESS TO SHIP TO, ON THE DOOR THAT STATES IT IS REQUIRED HERE (completionRequiresFulfillmentAddress).
+      // The address the order below would be created with is the locked quote's, completed by this request's
+      // (kernel.createOrder merges them the same way). When that is not a complete address, there is nothing to
+      // create an order with, and so no buyer country either: refused by name here, after the market rule and
+      // before either payment lane, with no authorization presented, no order asked for and nothing charged.
+      // Raised inside the idempotency run with no side effect done, so the caller's key is released with it.
+      const addressHint = completionRequiresFulfillmentAddress(params, ctx);
+      if (addressHint) {
+        const locked = isPlainObjectValue(quote.buyer_context) ? quote.buyer_context.shipping_address : undefined;
+        const requested = isPlainObjectValue(params.shipping_address) ? params.shipping_address : undefined;
+        const refusal = fulfillmentAddressRequiredRefusal(locked || requested ? { ...(requested || {}), ...(locked || {}) } : undefined, { updateHint: addressHint });
+        if (refusal) throw refusal;
+      }
 
       // --- THE BRANCH (decided above, taken here) -------------------------------------------------------
       // A delegated PSP token (`spt_`) is routed to the backend's off-session money endpoint INSTEAD of being

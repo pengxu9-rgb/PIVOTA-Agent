@@ -13,6 +13,7 @@ import { InMemoryKvStore } from '../../safety-kernel/src/stores.js';
 import { createCanonicalExecutor } from '../../safety-kernel/src/protocol/canonicalExecutor.js';
 import { createPaymentAuthorizationVerifier } from '../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js';
 import { createAcpRestAdapter } from '../../safety-kernel/src/protocol/acpRestAdapter.js';
+import { marketCurrencyOf } from '../../safety-kernel/test/helpers/marketCurrency.js';
 import { createCommerceToolSurface } from '../src/commerceToolSurface.js';
 
 // This capstone exercises the REAL unified payment-BINDING verifier (createPaymentAuthorizationVerifier) with a
@@ -39,7 +40,10 @@ const BUYER_EMAIL = 'conformance@example.com';
 // attested-wins rule.
 const MCP_CLAIMS = Object.freeze({ iss: 'https://idp.test', sub: 'buyer-1', email: BUYER_EMAIL, email_verified: true });
 const mcpSession = (sessionId, user_ref = 'usr_buyer') => ({ user_ref, acp_session_id: sessionId, claims: MCP_CLAIMS });
-const cart = () => ({ merchant_id: MERCHANT, items: CART_ITEMS.map((it) => ({ ...it })) });
+// A US address, under the member both doors read (`shipping_address`): the ACP door completes only a session with an
+// address to ship to, and the stub pricer answers in USD.
+const SHIP_TO = Object.freeze({ name: 'Example Buyer', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country: 'US' });
+const cart = () => ({ merchant_id: MERCHANT, items: CART_ITEMS.map((it) => ({ ...it })), shipping_address: { ...SHIP_TO } });
 
 // One shared kernel + executor + REAL unified payment-binding verifier (stub crypto); both adapters mount on it.
 async function harness() {
@@ -89,6 +93,7 @@ async function harness() {
     executor, sessionStore: new InMemoryKvStore({ now: () => FIXED_NOW }), signingSecret: ACP_SECRET,
     // Object form: the same buyer, with the same ATTESTED email the MCP session carries in its claims.
     resolveUserRef: async (req) => ({ user_ref: req.headers['x-test-buyer'], customer_email: BUYER_EMAIL }),
+    marketCurrencyOf,
     now: () => FIXED_NOW,
   });
 

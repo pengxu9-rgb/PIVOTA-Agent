@@ -26,6 +26,7 @@ import { InMemoryKvStore } from '../src/stores.js';
 import { PivotaCommerceError } from '../src/errors.js';
 import { createCanonicalExecutor, delegatedPspToken } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
+import { marketCurrencyOf } from './helpers/marketCurrency.js';
 import { createPaymentAuthorizationVerifier } from '../src/protocol/paymentAuthorizationVerifier.js';
 
 const SECRET = 'spt-handoff-secret-0123456789abcd';
@@ -516,6 +517,7 @@ function acpSetup({ enabled = true } = {}) {
   };
   const kernel = new SafetyKernel({ upstream: kernelUpstream, secret: SECRET, log: quiet, now: () => FIXED_NOW });
   const adapter = createAcpRestAdapter({
+    marketCurrencyOf,
     executor: createCanonicalExecutor({
       kernel,
       upstream: async () => ({}),
@@ -555,10 +557,12 @@ function acpReq({ body = {}, id, idem }) {
   };
 }
 
+// A US address: this door completes only a session with an address to ship to, and the stub pricer answers in USD.
 const createBody = {
   merchant_id: 'merch_A',
   buyer: { email: 'spt@example.com' },
   items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }],
+  fulfillment_address: { name: 'Example Buyer', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country: 'US' },
 };
 
 test('ACP REST, flag OFF: POST /complete with an spt_ answers 402 CONFIRMATION_INVALID and leaves the session spendable', async () => {

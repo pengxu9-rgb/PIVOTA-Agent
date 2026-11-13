@@ -245,6 +245,32 @@ export function addressIncompleteMessage(updateHint = DEFAULT_UPDATE_HINT) {
 }
 
 /**
+ * THE REFUSAL OF A COMPLETION THAT HAS NO ADDRESS TO SHIP TO, or `null` when it has one.
+ *
+ * An address is optional when a checkout session is created or updated, so a session can reach its completion
+ * with none: not on the quote it holds and not on the completion request. An order cannot be created without one
+ * (the five REQUIRED_ADDRESS_FIELDS), so such a completion is refused HERE, by name, before an order is asked for:
+ * left to the order lane it comes back as a generic "temporarily unreachable" that invites a retry which can
+ * never succeed. `address` is the address the order would be created with (the quote's, completed by the
+ * request's). The refusal names the missing FIELDS, never a value.
+ */
+export function fulfillmentAddressRequiredRefusal(address, { updateHint = DEFAULT_UPDATE_HINT } = {}) {
+  const held = isPlainObject(address) ? address : {};
+  const effective = { ...held, name: nonEmpty(held.name) ? held.name : held.recipient_name };
+  const missing = REQUIRED_ADDRESS_FIELDS.filter((f) => !nonEmpty(effective[f]));
+  if (!missing.length) return null;
+  return intakeRefusal('QUOTE_REQUIRED', 'acp_fulfillment_address_required', [
+    'This checkout has no complete fulfillment address, and an order cannot be placed without one: order creation requires all of',
+    `${REQUIRED_ADDRESS_FIELDS.join(', ')}.`,
+    `Supply the address via ${updateHint}, or send it with this completion request, then complete again with the same Idempotency-Key.`,
+    'Nothing was charged and no order was created; retrying this request unchanged will not succeed.',
+  ].join(' '), {
+    missing_fields: missing,
+    required_fields: [...REQUIRED_ADDRESS_FIELDS],
+  });
+}
+
+/**
  * Allowlist-pick an address and REFUSE it if incomplete. `undefined` in -> `undefined` out (absent is legal).
  *
  * The refusal names the MISSING FIELDS and nothing else: an address is PII and must never reach an error body

@@ -24,8 +24,8 @@
 // ONE KIND OF CELL IS NOT "PRICED IN THE MARKET'S CURRENCY OR REFUSED BY NAME", pinned as what it is: NO ADDRESS ON
 // A SESSION THAT NEVER HAD A MARKET. Create, and an update of such a session, are priced in the seller's own
 // currency, nothing assumed, the quote carrying no market (the decided behaviour for a checkout that names no
-// market). A session with no address is not paid without one: that is not this door's judgement to make and takes
-// no money here (the order needs an address, and the backend refuses it).
+// market). A session with no address is not paid without one: the completion is refused by name before any order
+// is asked for (tests/acp_complete_needs_address_door.node.test.cjs).
 // An update with no address on a session that HAS a market does not take the market away: it is judged for it.
 //
 // The switches of the other checkout doors (the `/mcp` storefront path, the currency rule) are OFF in this file's
@@ -108,6 +108,15 @@ function assertRefused(answer, rule, { quotes = 0 } = {}) {
   if (rule.reason === 'market_not_priced') assert.deepEqual(answer.backend, [], 'nothing at all was asked of the backend');
 }
 
+/** A completion with no address to ship to: refused by name, with nothing asked of the backend. */
+function assertNoAddress(answer) {
+  assert.equal(answer.http, 400, answer.raw);
+  assert.equal(answer.body.code, 'QUOTE_REQUIRED');
+  assert.equal(answer.body.detail.reason, 'acp_fulfillment_address_required');
+  assert.deepEqual(answer.backend, [], 'no order and no charge were asked for');
+  assert.equal(collectAnswerCurrencies(answer.body).money.length, 0, 'no price is stated');
+}
+
 test('the door is on in this boot, and the source prices US, SG and GB and has no currency for DE or ZZ', async () => {
   const answer = await create('USD', undefined);
   assert.equal(answer.http, 201, `the ACP routes must be mounted here: ${answer.raw}`);
@@ -170,12 +179,9 @@ for (const sellerCurrency of SELLER_CURRENCIES) for (const m of MARKETS) {
         return;
       }
       // No address on the session (the update dropped it, or there never was one) and none on the completion: no
-      // money is taken. The refusal is the backend's (an order needs an address), relayed as this door relays any
-      // backend refusal.
+      // money is taken, and nothing is asked of the backend (tests/acp_complete_needs_address_door.node.test.cjs).
       assert.equal(rule.kind, 'no_market');
-      assert.ok(done.http >= 400, done.raw);
-      assert.deepEqual(done.payments, [], 'no charge');
-      assert.equal(collectAnswerCurrencies(done.body).money.length, 0, 'no price is stated');
+      assertNoAddress(done);
     });
 
     test(`complete carrying the address | a session created in ${label(from)} | ${cell}: ${rule.kind === 'no_market' && from !== undefined ? `paid in ${sellerCurrency}` : rule.kind === 'no_market' ? 'no money taken' : says}`, async () => {
@@ -195,8 +201,7 @@ for (const sellerCurrency of SELLER_CURRENCIES) for (const m of MARKETS) {
         assert.equal(answer.orders[0].buyer_context.shipping_address.country, m === undefined ? from : m);
         return;
       }
-      assert.ok(answer.http >= 400, answer.raw);
-      assert.deepEqual(answer.payments, [], 'no charge');
+      assertNoAddress(answer);
     });
   }
 }

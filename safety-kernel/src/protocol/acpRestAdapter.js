@@ -55,6 +55,8 @@ import {
 // This adapter IS the ACP door; every ctx it builds says so, which scopes the delegated-PSP-token lane.
 const ACP_PROTOCOL_NAME = 'acp';
 
+// Where this door's caller supplies or replaces the fulfillment address. Named as the concrete REST endpoint.
+const ADDRESS_UPDATE_HINT = 'POST /checkout_sessions/{checkout_session_id}';
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000; // reject a Timestamp more than 5 minutes off (replay window)
 const CREATE_DEDUP_TTL_MS = 15 * 60 * 1000; // window over which a replayed (buyer, idempotency_key) create dedupes
 // How long a create's claim on the caller's key is held while the create is still running. It must outlast the
@@ -180,6 +182,10 @@ export function createAcpRestAdapter(deps = {}) {
   //   - COMPLETE that carries an address: that address names the market, and the session's locked quote is judged
   //     against it before either payment lane. A session created with no address is therefore judged at the
   //     latest here, before any money moves.
+  //   - COMPLETE WITH NO ADDRESS TO SHIP TO (none on the session's quote, none on the completion) is refused by
+  //     name before any order is asked for (`acp_fulfillment_address_required`), whether or not the session has a
+  //     market: an order needs the address, and without one there is no buyer country to have judged either. So
+  //     a session is paid only with an address, and every address this door accepts names a judged market.
   //   - AN UPDATE OR A COMPLETION REFUSED FOR ITS MARKET changes no quote, so the session still holds the quote
   //     it had. The market that request named is written on the session record (`refused_market`), and while it
   //     is there every read and every completion of the session is judged against THAT market (a completion's
@@ -443,6 +449,9 @@ export function createAcpRestAdapter(deps = {}) {
           // The market this completion is judged against (the executor holds the locked quote's currency to it,
           // before either payment lane): the one a refused request left on the session, else this address's.
           ...heldSessionMarketParams(stored, shipping_address),
+          // A completion with no address to ship to (none on the session's quote, none here) is refused by name
+          // before any order is asked for (the executor reads the quote). The value says where to supply one.
+          fulfillment_address_required: ADDRESS_UPDATE_HINT,
         }, ctx);
       } catch (err) {
         // REFUSED FOR ITS MARKET, with no order and no charge: the mark a refused update leaves, for the same
@@ -660,7 +669,7 @@ function mapAddress(body) {
   if (!a) return undefined;
   // Name the concrete REST endpoint: an ACP client reads this out of `body.message`, and 'the update op'
   // does not tell it where to send one.
-  return pickCompleteAddress(a, { updateHint: 'POST /checkout_sessions/{checkout_session_id}' });
+  return pickCompleteAddress(a, { updateHint: ADDRESS_UPDATE_HINT });
 }
 
 // THE BUYER'S MARKET, AS THIS PROTOCOL NAMES IT: the country of the fulfillment address, read as an ISO 3166-1
