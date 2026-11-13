@@ -23,6 +23,7 @@ const MCP_TOOL_ERROR_REASONS = Object.freeze([
   intakeBounds.IDEMPOTENCY_KEY_TOO_SHORT_REASON,
   intakeBounds.IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
   intakeBounds.QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
+  intakeBounds.DUPLICATE_LINE_REASON,
   // A state-changing call with no key: the executor's and the storefront cart's refusal, the UCP mapper's, the
   // kernel ledger's.
   'missing_idempotency_key',

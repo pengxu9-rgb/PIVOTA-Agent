@@ -1,8 +1,9 @@
 'use strict';
 
 /*
- * THE TWO BOUNDS EVERY CHECKOUT DOOR SHARES, as numbers and as rules: the minimum length of an idempotency key
- * that is present, and the most units one cart line may ask for. This is the ONE place either number is written.
+ * THE BOUNDS EVERY CHECKOUT DOOR SHARES, as numbers and as rules: the minimum length of an idempotency key that is
+ * present, the most units one cart line may ask for, and that a cart names each product and variant on one line
+ * only. This is the ONE place each number and each rule is written.
  *
  * WHY .cjs INSIDE AN ESM PACKAGE (the same reason as ucpSpecVersion.cjs). The protocol doors are ESM and reach
  * these through buyerIntake.js, which re-exports them and turns a refusal described here into the kernel error
@@ -12,7 +13,8 @@
  *
  * Nothing here throws, reads a request beyond the fields named, or imports anything. A REFUSAL is a plain
  * description: `{ code, reason, message, detail, retriable }`. `code` is the kernel error code the refusal is
- * raised under; `detail` names the bound and nothing from the request.
+ * raised under; `detail` names the bound and never a value from the request (the duplicate-line rule adds the
+ * POSITIONS of the lines concerned, which are counted here, not sent).
  */
 
 // ---- the idempotency key -----------------------------------------------------------------------------------------
@@ -117,6 +119,123 @@ function lineQuantityRefusal() {
   };
 }
 
+// ---- one line per product and variant ------------------------------------------------------------------------------
+//
+// A cart that names the SAME PRODUCT AND VARIANT on more than one line is refused: the caller is told to merge those
+// lines into one. WHY: the ceiling above is per line, and what prices a cart adds the quantities of lines that name
+// the same product and variant together before pricing them, with no ceiling of its own. Two lines of 600 pass the
+// per-line ceiling and would be priced as one line of 1,200. With this rule a product and variant has one line, so
+// the per-line ceiling is also the most units of it a cart can ask for. Nothing is summed here.
+//
+// WHAT "THE SAME" IS: the same product id and the same variant id, compared exactly as text, after the one
+// normalisation the door reading the line already applies to an id (below, per door). Nothing else is folded: not
+// letter case, not an id's other spellings. A line the door cannot identify (no usable product id) is not this
+// rule's; the door's own rule about such a line answers it, where it always did.
+//
+// A LINE WITH NO VARIANT. Two lines of one product that both name no variant are the same line twice, and are
+// refused. A line that names a variant and a line of the same product that names none are NOT known to be the same
+// from the request alone (which variant the second means is only known once the product is read), so this rule does
+// not refuse them here. On the doors that resolve a missing variant from a product read, the rule is asked again
+// after that read, where both lines carry a variant and can be compared: see `duplicateLineGroups`' callers.
+const DUPLICATE_LINE_REASON = 'duplicate_line_for_product_variant';
+
+// How many line positions a refusal lists. Enough for twelve merges; a cart with more duplicates than that is told
+// about the first, merges them, and is told about the rest. Bounded so that the answer to a cart of any size is small.
+const MAX_DUPLICATE_POSITIONS_LISTED = 24;
+
+/**
+ * A line's identity AS THE CART INTAKE READS IT (`normalizeCartItems` in buyerIntake.js: the native, UCP and ACP
+ * doors, and the canonical executor): `product_id` and `variant_id`, each a string with the whitespace around it
+ * removed; a variant that is not a string, or is blank, is no variant. Null when there is no usable product id.
+ * `sku_id` is not part of it: no pricing path reads it.
+ */
+function lineIdentityAsIntakeReadsIt(line) {
+  if (line === null || typeof line !== 'object' || Array.isArray(line)) return null;
+  // A plain object only, and own members only, as the intake copies a line's fields.
+  const prototype = Object.getPrototypeOf(line);
+  if (prototype !== Object.prototype && prototype !== null) return null;
+  const has = (key) => Object.prototype.hasOwnProperty.call(line, key);
+  const text = (value) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
+  const product = has('product_id') ? text(line.product_id) : null;
+  if (product === null) return null;
+  return JSON.stringify([product, has('variant_id') ? text(line.variant_id) : null]);
+}
+
+/**
+ * A line's identity AS THE INVOKE DOOR'S QUOTE BODY IS BUILT FROM IT (src/server.js `buildQuotePreviewV2Body`): the
+ * product is the first of `product_id`, `productId` with something in it; the variant is the first of `variant_id`,
+ * `variantId`, `sku`, `product_id`, `productId` with something in it. So on this door a line that names no variant
+ * IS a line whose variant is its product id, and is compared as that. A value that is not a string is read as its
+ * text, as that builder reads it. Null when there is no product (that builder drops the line).
+ */
+function lineIdentityAsInvokeReadsIt(line) {
+  if (line === null || typeof line !== 'object' || Array.isArray(line)) return null;
+  const first = (...values) => {
+    for (const value of values) {
+      if (value === null || value === undefined) continue;
+      const text = (typeof value === 'string' ? value : String(value)).trim();
+      if (text) return text;
+    }
+    return null;
+  };
+  try {
+    const product = first(line.product_id, line.productId);
+    if (product === null) return null;
+    return JSON.stringify([product, first(line.variant_id, line.variantId, line.sku, line.product_id, line.productId)]);
+  } catch {
+    // A value with no text form: that builder cannot read the line either. Not this rule's.
+    return null;
+  }
+}
+
+/**
+ * The lines that name the same product and variant as another line, as groups of 1-BASED POSITIONS (`[[1, 3]]`:
+ * the first and third lines are one product and variant), in the order the cart first names them. Empty when no
+ * line repeats another. `identityOf` is one of the two readings above. Never throws.
+ */
+function duplicateLineGroups(lines, identityOf = lineIdentityAsIntakeReadsIt) {
+  if (!Array.isArray(lines)) return [];
+  const positionsByIdentity = new Map();
+  lines.forEach((line, index) => {
+    const identity = identityOf(line);
+    if (identity === null) return;
+    const positions = positionsByIdentity.get(identity);
+    if (positions) positions.push(index + 1);
+    else positionsByIdentity.set(identity, [index + 1]);
+  });
+  return [...positionsByIdentity.values()].filter((positions) => positions.length > 1);
+}
+
+/** The refusal for a cart with duplicate lines. Names positions, never an id or a quantity. */
+function duplicateLineRefusal(groups) {
+  const listed = [];
+  let room = MAX_DUPLICATE_POSITIONS_LISTED;
+  for (const positions of groups) {
+    if (room < 2) break;
+    listed.push(positions.slice(0, room));
+    room -= Math.min(positions.length, room);
+  }
+  return {
+    // The code every other cart-line refusal gets.
+    code: 'QUOTE_REQUIRED',
+    reason: DUPLICATE_LINE_REASON,
+    message: [
+      'This cart names the same product and variant on more than one line. Merge those lines into one line that',
+      `carries their combined quantity (at most ${MAX_LINE_QUANTITY} units per line) and send the request again. \`detail.duplicate_lines\``,
+      'lists the lines to merge by position (the first line is 1), one group per product and variant. Retrying as',
+      'sent will not change the answer.',
+    ].join(' '),
+    detail: { duplicate_lines: listed },
+    retriable: false,
+  };
+}
+
+/** The refusal for a cart (as the cart intake reads its lines) with duplicate lines, else null. */
+function duplicateLinesRefusal(lines, identityOf = lineIdentityAsIntakeReadsIt) {
+  const groups = duplicateLineGroups(lines, identityOf);
+  return groups.length > 0 ? duplicateLineRefusal(groups) : null;
+}
+
 // ---- the invoke door: where its operations carry a key and cart lines ----------------------------------------------
 
 // The invoke operations a caller may send an idempotency key with. A key that is PRESENT has the minimum on each of
@@ -153,6 +272,16 @@ function invokeLineQuantityRefusal(operation, payload, { asThatRouteReadsIt = fa
   return items.some((it) => isLineQuantityAboveMaximum(quantityOf(it))) ? lineQuantityRefusal() : null;
 }
 
+/**
+ * The refusal for an invoke operation whose cart names the same product and variant on more than one line, else
+ * null. The same lines the ceiling above is judged on, identified as this door's quote body is built from them.
+ */
+function invokeDuplicateLineRefusal(operation, payload) {
+  const linesOf = Object.prototype.hasOwnProperty.call(INVOKE_CART_LINES, operation) ? INVOKE_CART_LINES[operation] : null;
+  const items = linesOf ? linesOf(payload) : undefined;
+  return Array.isArray(items) ? duplicateLinesRefusal(items, lineIdentityAsInvokeReadsIt) : null;
+}
+
 /** The refusal for a present, short idempotency key on an invoke operation that takes one, else null. */
 function invokeKeyRefusal(operation, payload) {
   if (!INVOKE_KEYED_OPERATIONS.includes(operation)) return null;
@@ -160,13 +289,18 @@ function invokeKeyRefusal(operation, payload) {
 }
 
 /**
- * Both bounds and nothing else, for the invoke route that does not run the strict contract (and its alias): the
- * key first, then the lines as that route reads them. Null for everything else, which that route judges as it
- * always did.
+ * The shared bounds and nothing else, for the invoke route that does not run the strict contract (and its alias):
+ * the key first, then the lines as that route reads them (each line's quantity, then lines that repeat another).
+ * Null for everything else, which that route judges as it always did.
  */
 function invokeIntakeBoundsRefusal(operation, payload) {
-  return invokeKeyRefusal(operation, payload) || invokeLineQuantityRefusal(operation, payload, { asThatRouteReadsIt: true });
+  return invokeKeyRefusal(operation, payload)
+    || invokeLineQuantityRefusal(operation, payload, { asThatRouteReadsIt: true })
+    || invokeDuplicateLineRefusal(operation, payload);
 }
+
+// The one sentence a tool schema adds to a cart's line-items description: no JSON Schema keyword says it.
+const DUPLICATE_LINES_SENTENCE = 'Name each product and variant on ONE line: a cart that lists the same product and variant on more than one line is refused; merge those lines into one.';
 
 // The one sentence a tool schema adds to a key's description: `minLength` alone cannot say how the runtime counts.
 const IDEMPOTENCY_KEY_LENGTH_SENTENCE = `At least ${IDEMPOTENCY_KEY_MIN_LENGTH} characters, printable ASCII only (U+0020 to U+007E); leading and trailing spaces are not counted.`;
@@ -183,9 +317,17 @@ module.exports = {
   isAcceptableLineQuantity,
   isLineQuantityAboveMaximum,
   lineQuantityRefusal,
+  DUPLICATE_LINE_REASON,
+  DUPLICATE_LINES_SENTENCE,
+  MAX_DUPLICATE_POSITIONS_LISTED,
+  lineIdentityAsIntakeReadsIt,
+  lineIdentityAsInvokeReadsIt,
+  duplicateLineGroups,
+  duplicateLinesRefusal,
   INVOKE_KEYED_OPERATIONS,
   INVOKE_BOUNDED_OPERATIONS,
   invokeKeyRefusal,
   invokeLineQuantityRefusal,
+  invokeDuplicateLineRefusal,
   invokeIntakeBoundsRefusal,
 };

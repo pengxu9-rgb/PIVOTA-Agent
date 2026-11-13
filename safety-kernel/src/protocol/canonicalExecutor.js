@@ -20,7 +20,7 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
-import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum } from './buyerIntake.js';
+import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
@@ -403,6 +403,10 @@ export function createCanonicalExecutor({
       case 'update_checkout_session': {
         // The per-line quantity ceiling (buyerIntake.js), for a create and an update alike, before anything is priced.
         assertLineQuantitiesWithinMaximum(params.quote?.items);
+        // One line per product and variant, on the lines about to be priced. A door has already asked this on
+        // the lines as sent; here a line that named no variant carries the one the door resolved for it, so two
+        // lines that turned out to be the same product and variant are refused before they are priced as one.
+        assertNoDuplicateLines(params.quote?.items);
         const quote = await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
         return attachAp2CheckoutJwt(toSession(quote), mintAp2CheckoutJwt, ctx);
       }

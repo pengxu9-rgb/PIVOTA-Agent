@@ -505,11 +505,11 @@ describe('through createCommerceToolSurface on the UCP dialect', () => {
     try {
       const executor = executorWith({ [CONTRACTED.product_id]: CONTRACTED, p_shop_2: { ...CONTRACTED, product_id: 'p_shop_2' } });
       const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
-      await ucp.callTool('create_checkout', { meta: AGENT_META, checkout: { line_items: [{ item: { id: CONTRACTED.product_id }, quantity: 1 }, { item: { id: 'p_shop_2' }, quantity: 2 }, { item: { id: CONTRACTED.product_id }, quantity: 1 }], buyer: { email: 'shopper@example.test' } } }, SESSION);
+      await ucp.callTool('create_checkout', { meta: AGENT_META, checkout: { line_items: [{ item: { id: CONTRACTED.product_id }, quantity: 1 }, { item: { id: 'p_shop_2' }, quantity: 2 }], buyer: { email: 'shopper@example.test' } } }, SESSION);
       const reads = executor.seen.filter((c) => c.op === 'get_product').map((c) => c.params.payload.product.product_id).sort();
       assert.deepEqual(reads, [CONTRACTED.product_id, 'p_shop_2'], 'two distinct products -> exactly two reads, not four');
       const create = executor.seen.find((c) => c.op === 'create_checkout_session');
-      assert.deepEqual(create.params.quote.items.map((i) => i.variant_id), ['48930014462260', '48930014462260', '48930014462260'], 'and the resolver still resolved from the shared read');
+      assert.deepEqual(create.params.quote.items.map((i) => i.variant_id), ['48930014462260', '48930014462260'], 'and the resolver still resolved from the shared read');
     } finally { if (saved === undefined) delete process.env[UCP_ESCALATION_FLAG]; else process.env[UCP_ESCALATION_FLAG] = saved; }
   });
 

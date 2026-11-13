@@ -40,6 +40,7 @@ import {
   normalizeCartItems,
   assertIdempotencyKeyAcceptable,
   assertLineQuantitiesWithinMaximum,
+  assertNoDuplicateLines,
   pickCompleteAddress,
   resolveBuyerEmail,
   resolveBuyerName,
@@ -218,6 +219,8 @@ export function createAcpRestAdapter(deps = {}) {
       // store read). After the buyer, never before: a caller with no verified buyer is still told that first. A
       // body that does not parse is left to the checks below, in their own order.
       assertLineQuantitiesWithinMaximum(peekItems(req));
+      // One line per product and variant, at the same place for the same reason.
+      assertNoDuplicateLines(peekItems(req));
       const stored = await ownedSession(acp_session_id, user_ref);
       // An update RE-MINTS the quote snapshot (executor: create/update share previewQuote), and the snapshot
       // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address

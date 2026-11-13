@@ -17,7 +17,7 @@ import { intakeBoundRefusal, surfaceableIntakeRefusal } from './protocol/buyerIn
 
 export const WRITE_OPERATIONS = new Set(['create_order', 'submit_payment', 'request_after_sales']);
 
-// ---- the two bounds every checkout door shares, on the invoke door --------------------------------------------
+// ---- the bounds every checkout door shares, on the invoke door --------------------------------------------
 //
 // The numbers, the rules, which invoke operations carry a key or cart lines, and each refusal's wording are
 // ./protocol/intakeBounds.cjs's (the gateway's own invoke route loads that file directly); nothing here restates
@@ -31,6 +31,7 @@ const INVOKE_NAMED_REASONS = new Set([
   intakeBounds.IDEMPOTENCY_KEY_TOO_SHORT_REASON,
   intakeBounds.IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
   intakeBounds.QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
+  intakeBounds.DUPLICATE_LINE_REASON,
 ]);
 
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };
@@ -40,13 +41,18 @@ export function assertInvokeLineQuantities(operation, payload, options) {
   throwIfRefused(intakeBounds.invokeLineQuantityRefusal(operation, payload, options));
 }
 
+/** Refuse, by name, an invoke operation whose cart names the same product and variant on more than one line. */
+export function assertInvokeNoDuplicateLines(operation, payload) {
+  throwIfRefused(intakeBounds.invokeDuplicateLineRefusal(operation, payload));
+}
+
 /** Refuse, by name, a present idempotency key below the shared minimum on an invoke operation that takes one. */
 export function assertInvokeKeyAcceptable(operation, payload) {
   throwIfRefused(intakeBounds.invokeKeyRefusal(operation, payload));
 }
 
 /**
- * Both shared bounds and nothing else, as the invoke route that does not run the strict contract below (and its
+ * The shared bounds and nothing else, as the invoke route that does not run the strict contract below (and its
  * alias) asks them. Throws the shared refusal; returns for everything else.
  */
 export function assertInvokeIntakeBounds(operation, payload) {
@@ -130,6 +136,8 @@ export function validateCanonical(operation, payload, opts = {}) {
       }
       // The shared per-line ceiling, before any line is otherwise judged and before anything is priced.
       assertInvokeLineQuantities(operation, p);
+      // One line per product and variant, likewise before any line is otherwise judged.
+      assertInvokeNoDuplicateLines(operation, p);
       for (const it of quote.items) {
         reqStr(it.product_id, 'QUOTE_REQUIRED', 'item_product_id_required');
         if (!Number.isInteger(it.quantity) || it.quantity < 1) {

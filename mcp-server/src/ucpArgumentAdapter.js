@@ -150,6 +150,7 @@ import {
   IDEMPOTENCY_KEY_MIN_LENGTH,
   MAX_CART_ITEMS,
   MAX_LINE_QUANTITY,
+  DUPLICATE_LINES_SENTENCE,
   intakeRefusal,
   pickCompleteAddress,
   REQUIRED_ADDRESS_FIELDS,
@@ -271,7 +272,8 @@ const LINE_ITEMS_SCHEMA = {
       },
     },
   },
-  description: "Required. The lines to price; the id is NESTED under `item`, per the UCP wire shape.",
+  // The second sentence is the shared rule about the lines as a set (buyerIntake.js `assertNoDuplicateLines`).
+  description: `Required. The lines to price; the id is NESTED under \`item\`, per the UCP wire shape. ${DUPLICATE_LINES_SENTENCE}`,
 };
 
 /** The backend column is VARCHAR(32); the schema and the mapper both hold the tag to it. */

@@ -25,11 +25,13 @@ import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer
 import {
   assertIdempotencyKeyAcceptable,
   assertLineQuantitiesWithinMaximum,
+  assertNoDuplicateLines,
   attestedBuyerFromClaims,
   createDefaultVariantResolver,
   IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   IDEMPOTENCY_KEY_MIN_LENGTH,
   MAX_LINE_QUANTITY,
+  DUPLICATE_LINES_SENTENCE,
   normalizeCartItems,
   pickCompleteAddress,
   resolveBuyerEmail,
@@ -481,11 +483,12 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     if (marketAssumed) noteToolCall(observeEarly, { market_assumed: true });
     const label = (value) => withMarketAssumed(value, marketAssumed, dialect);
 
-    // 3-0) THE TWO SHARED BOUNDS, decided on the request alone and so refused HERE: before the variant proof, the
+    // 3-0) THE SHARED BOUNDS, decided on the request alone and so refused HERE: before the variant proof, the
     //     expected-seller check, the purchase lanes, the storefront cart (its product reads, its purchasability
     //     gate, the seller's own door), intake's variant read and the kernel. A PRESENT idempotency key shorter
-    //     than the minimum, on every mutating operation; a line above the per-line quantity ceiling, on the two
-    //     operations that carry a cart. An absent key is answered where it always was. The two vendor tools that
+    //     than the minimum, on every mutating operation; a line above the per-line quantity ceiling, and a cart
+    //     that names the same product and variant on more than one line, on the two operations that carry a cart.
+    //     An absent key is answered where it always was. The two vendor tools that
     //     continue an EARLIER create (recover, resume) are not judged here: they must present that create's own
     //     key and cart, and they never reach the storefront cart or the kernel. See buyerIntake.js.
     //     THE KEY IS JUDGED AS SENT, ON EVERY DOOR. The native door's `params.idempotency_key` is the argument
@@ -496,7 +499,13 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     if (!recoverOnly && !resumeOnly) {
       if (op.mutating && dialect === TOOL_DIALECTS.ucp) assertIdempotencyKeyAcceptable(ucpIdempotencyKeyAsSent(toolArgs));
       if (op.mutating) assertIdempotencyKeyAcceptable(params.idempotency_key);
-      if (QUOTE_INTAKE_OPS.includes(op.id)) assertLineQuantitiesWithinMaximum(asObj(params.quote).items);
+      if (QUOTE_INTAKE_OPS.includes(op.id)) {
+        assertLineQuantitiesWithinMaximum(asObj(params.quote).items);
+        // ONE LINE PER PRODUCT AND VARIANT, on the same two operations and for the same reason it is here: it
+        // is decided on the lines alone. A line is identified as intake identifies it (the UCP mapper has already
+        // split `item.id` into the product and the variant it names).
+        assertNoDuplicateLines(asObj(params.quote).items);
+      }
     }
 
     // 3a) UCP CHECKOUT ESCALATION (path 2 — rows Pivota does not transact). On the UCP dialect only, for the
@@ -1203,6 +1212,8 @@ const QUOTE_SCHEMA = {
     merchant_id: { type: "string" },
     items: {
       type: "array", minItems: 1, maxItems: 50,
+      // What no schema keyword can say about the lines as a set (buyerIntake.js `assertNoDuplicateLines`).
+      description: DUPLICATE_LINES_SENTENCE,
       items: {
         type: "object", required: ["product_id", "quantity"], additionalProperties: false,
         properties: {

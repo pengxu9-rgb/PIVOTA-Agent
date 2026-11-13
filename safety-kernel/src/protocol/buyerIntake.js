@@ -363,7 +363,8 @@ export const PRODUCT_IDENTITY_MISMATCH_MESSAGE = [
 // the door answers. Overridable per-wiring.
 export const DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS = 3000;
 
-// ---- 4. two bounds every door shares: the idempotency key's minimum, the per-line quantity ceiling -----------
+// ---- 4. the bounds every door shares: the idempotency key's minimum, the per-line quantity ceiling, and one
+//         line per product and variant -------------------------------------------------------------------------
 //
 // Both are decided on the request alone, so every door refuses them BEFORE it reads a product, asks a
 // purchasability gate, mints a referral, prices a quote or contacts a store. Each number, each rule and each
@@ -377,6 +378,9 @@ export const DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS = 3000;
 // was, with the answer it had.
 // THE QUANTITY OF ONE LINE: at most MAX_LINE_QUANTITY units. Per line only: the cart's own bounds (lines, distinct
 // products) are below, and a purchase lane with a lower limit of its own keeps it.
+// ONE LINE PER PRODUCT AND VARIANT: a cart that names the same product and variant on more than one line is refused
+// (the caller merges them). That is what makes the per-line ceiling the most units of one product and variant a
+// cart can ask for: what prices a cart adds such lines together. Nothing is summed here.
 export const {
   IDEMPOTENCY_KEY_MIN_LENGTH,
   IDEMPOTENCY_KEY_TOO_SHORT_REASON,
@@ -384,6 +388,8 @@ export const {
   IDEMPOTENCY_KEY_LENGTH_SENTENCE,
   MAX_LINE_QUANTITY,
   QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
+  DUPLICATE_LINE_REASON,
+  DUPLICATE_LINES_SENTENCE,
   isAcceptableLineQuantity,
   isLineQuantityAboveMaximum,
 } = intakeBounds;
@@ -421,6 +427,20 @@ export function assertLineQuantitiesWithinMaximum(rawItems) {
   throw lineQuantityAboveMaximumRefusal();
 }
 
+/**
+ * Refuse a cart that names the same product and variant on more than one line (./intakeBounds.cjs: the rule, what
+ * "the same" is, and what a line with no variant means). Decided on the lines alone, so a door asks it before it
+ * reads anything. The canonical executor asks it again on the lines it is about to price: by then a line that
+ * named no variant carries the one the door resolved for it, so a line that named a variant and a line that named
+ * none are refused there if they turned out to be the same. Like the ceiling, a cart that is not an array or has
+ * more lines than a cart may have is left to `normalizeCartItems`.
+ */
+export function assertNoDuplicateLines(rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length > MAX_CART_ITEMS) return;
+  const refusal = intakeBounds.duplicateLinesRefusal(rawItems);
+  if (refusal) throw intakeBoundRefusal(refusal);
+}
+
 // ---- load bounds on a public create path --------------------------------------------------------------------
 //
 // Before these existed, intake checked only `items.length !== 0`, so ONE create with 2000 distinct products
@@ -455,7 +475,8 @@ const cartTooManyProductsMessage = (max) => [
  *
  * Requires a non-empty items array with a scalar `product_id` and a positive safe-integer quantity each, so a
  * `{}` / `{items:[]}` body cannot drive a default/zero-item quote on a loose backend. A quantity above
- * MAX_LINE_QUANTITY is refused by name (`assertLineQuantitiesWithinMaximum`).
+ * MAX_LINE_QUANTITY is refused by name (`assertLineQuantitiesWithinMaximum`), and so is a cart that names the same
+ * product and variant on more than one line (`assertNoDuplicateLines`).
  *
  * `product_id` is REQUIRED: without it the shared quote-body builder silently DROPS the item from
  * `offer_refs`, so a `sku_id`-only cart prices as an EMPTY cart. `variant_id` is optional and resolved later;
@@ -474,6 +495,8 @@ export function normalizeCartItems(rawItems) {
   }
   // The per-line ceiling, before any line is otherwise judged: one answer for it on every door.
   assertLineQuantitiesWithinMaximum(raw);
+  // One line per product and variant, likewise.
+  assertNoDuplicateLines(raw);
   const items = raw.map((it) => {
     const item = pickFields(it, ['product_id', 'sku_id', 'variant_id', 'quantity']);
     if (!nonEmpty(item.product_id)) {
