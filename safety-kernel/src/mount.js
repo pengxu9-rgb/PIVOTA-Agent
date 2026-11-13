@@ -85,6 +85,14 @@ export function createCommerceMount(opts = {}) {
     strict,
     durable: Boolean(db),
 
+    /**
+     * A state store beside the kernel's own, in its own namespace, on the SAME backing (Postgres when the kernel
+     * is durable, in-process otherwise). For state that must be shared exactly as widely as the kernel's.
+     */
+    stateStore(namespace) {
+      return makeStore(namespace);
+    },
+
     /** Does the safe path own this operation? In non-strict mode, always false (legacy untouched). */
     handles(operation) {
       return strict && COMMERCE_OPERATIONS.has(operation);

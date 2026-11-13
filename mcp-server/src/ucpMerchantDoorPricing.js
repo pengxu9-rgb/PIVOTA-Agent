@@ -49,6 +49,8 @@ import { intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import buyerAgentClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import warmHandoffModule from "../../src/services/ucpWarmHandoff.js";
 import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js";
+// The store-cart referral client's vocabulary (CommonJS): the flag, and the one reader of a referral's members.
+import storefrontCartReferralModule from "../../src/services/storefrontCartReferral.js";
 import { judgeSellerUrl, pivotaHopDestination, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { encodeUcpVariantItemId, findRealVariant, realVariantsOf } from "./ucpVariantIds.js";
 
@@ -561,7 +563,11 @@ function trackingPairsOf(catalogLink) {
 }
 
 export function carryAttribution(cartUrl, catalogLink) {
-  const tracking = trackingPairsOf(catalogLink);
+  return carryTrackingPairs(cartUrl, trackingPairsOf(catalogLink));
+}
+
+/** Append tracking members to the cart URL's raw query, never overwriting one the seller set. Pure. */
+function carryTrackingPairs(cartUrl, tracking) {
   if (!tracking) return cartUrl;
   let parsed;
   try { parsed = new URL(cartUrl); } catch { return cartUrl; }
@@ -591,6 +597,136 @@ export function cartAttributionOf(catalogLink) {
   const pairs = catalogLink ? trackingPairsOf(catalogLink) : null;
   if (!pairs || !pairs.length) return null;
   return Object.fromEntries(pairs);
+}
+
+// ---- the referral for a cart whose catalog link carries none --------------------------------------------------------
+//
+// THE DOOR'S OWN PRODUCT READ HANDS IT THE SELLER'S DIRECT LINK. That read is made with the gateway's service key, so
+// the row's link is the seller's page, not a stamped referral hop: `carryAttribution` then has nothing to copy, the
+// cart link carries no tracking member, no click is recorded, and a purchase from the cart cannot be joined to us or
+// to the partner. With AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED on (default OFF, read per call), a create whose
+// catalog link carries NO tracking member asks the backend for one referral just before `create_cart`
+// (src/services/storefrontCartReferral.js): one click row there, and the tracking members a normal referral carries.
+// They ride (a) on the cart URL, exactly as a stamped link's members do, and (b) as `cart.attribution` while
+// CART_ATTRIBUTION_FLAG is on. A link that already carries tracking members is left alone: its referral exists.
+//
+// ONLY WHEN A CART IS ABOUT TO BE SENT. The mint comes after the variant is resolved, the catalog check passed and
+// the seller's endpoint was found, so a checkout that falls back before any store call mints nothing.
+//
+// THE TIME IT MAY TAKE. At most REFERRAL_MINT_BUDGET_MS, and never time the cart call needs: it gets what is left of
+// the door's budget above the cart call's own share. Too little left is a miss, not a slower cart.
+//
+// A MISS NEVER FAILS THE BUYER. The policy is REFERRAL_MISS_POLICY: the cart is built anyway, with no attribution,
+// and the miss is counted (cartReferralOutcomeCounts) and logged with its reason. The other policy this could have
+// been ("fallback_to_product_page": answer the catalog price and the product page) would trade a working store cart
+// for an unattributed product page, which carries no referral either.
+//
+// A MISS CAN STILL LEAVE A CLICK ROW. "Miss" says the door got no referral in time; it does not say the backend
+// wrote none. Giving up on the call does not undo it: a request the backend has already received is completed
+// there whether or not anyone is still waiting (the client's abort closes the connection, nothing more), and the
+// door's own budget can be shorter than the client's. The row then exists with no cart carrying it. So does the row
+// of a referral that WAS minted for a cart the door then did not hand out (the store's answer rejected, an id that
+// cannot carry the cart). All of these are the same thing on the backend: a row on the hand-off surface that no
+// link carries, never clicked, and named by no hand-off record. Nothing here retries, and nothing here can void a
+// row: the door holds no click id for a call it gave up on. What a reader needs is on the backend side: count rows
+// on that surface that no hand-off record names (the record carries `referral_click_id` for a cart that was handed
+// out), and never count a row of that surface as an issued link.
+//
+// ONLY FOR A MARKET THE BUYER NAMED. A referral records its market as a fact about the buyer. The caller says when
+// there is none to record (`referralSkip`): `market_assumed` (the buyer named no market and the cart is built for
+// the assumed one) or `market_unnamed` (no well-formed market at all). The backend is then NOT asked: the cart is
+// built untracked, as with this switch off, and the skip is counted and logged as `skipped:<reason>`, never as a
+// miss. The backend also judges whether a named market is one it knows; its `market_unknown` answer is a skip of
+// the same kind (`skipped:market_unknown`). Its `market_required` / `market_invalid` answers, and a minter that
+// was asked with no market, mean this door sent what it must never send: counted and logged apart, as
+// `error:<code>`, so that it is visible if it ever happens. The cart is built untracked in every one of these cases.
+//
+// A RE-READ MINTS NOTHING. The members a create minted ride in the checkout id (ucpCheckoutEscalation.js, `t`), and a
+// re-read carries those onto the cart URL the seller answers with.
+export const CART_REFERRAL_FLAG = storefrontCartReferralModule.STOREFRONT_CART_REFERRAL_ENV;
+export const REFERRAL_MINT_BUDGET_MS = storefrontCartReferralModule.DEFAULT_TIMEOUT_MS;
+export const REFERRAL_MISS_POLICIES = Object.freeze({ buildCartUnattributed: "build_cart_unattributed", fallbackToProductPage: "fallback_to_product_page" });
+export const REFERRAL_MISS_POLICY = REFERRAL_MISS_POLICIES.buildCartUnattributed;
+export const REFERRAL_SKIP = Object.freeze({ marketAssumed: "market_assumed", marketUnnamed: "market_unnamed", marketUnknown: "market_unknown" });
+// Answers that say THIS DOOR sent a referral request without a usable market (the backend's two refusals, and the
+// client's own refusal to send one): never an ordinary miss.
+const REFERRAL_PROGRAMMING_ERROR_CODES = Object.freeze(new Set(["market_required", "market_invalid", storefrontCartReferralModule.MARKET_NOT_NAMED_CODE]));
+const REFERRAL_MIN_BUDGET_MS = 50;
+const MAX_REFERRAL_PAIRS = 12;
+
+export function cartReferralEnabled(env = process.env) {
+  return storefrontCartReferralModule.storefrontCartReferralFlagOn(env);
+}
+
+// Per-process counts of what each mint came to: `minted`, `miss:<reason>`, `skipped:<reason>` (no referral was due:
+// REFERRAL_SKIP) or `error:<code>` (this door sent a request with no usable market). The log line is the fleet-wide view.
+const cartReferralOutcomes = new Map();
+function countReferral(outcome) { cartReferralOutcomes.set(outcome, (cartReferralOutcomes.get(outcome) || 0) + 1); }
+export function cartReferralOutcomeCounts() { return Object.fromEntries(cartReferralOutcomes); }
+export function resetCartReferralOutcomeCountsForTest() { cartReferralOutcomes.clear(); }
+
+/** Tracking members as this door carries them, or null when `value` is not exactly that. Pure. */
+export function trackingPairsFrom(value) {
+  const entries = Array.isArray(value) ? value : (isPlainObject(value) ? Object.entries(value) : null);
+  if (!entries || entries.length === 0 || entries.length > MAX_REFERRAL_PAIRS) return null;
+  const pairs = [];
+  const seen = new Set();
+  for (const entry of entries) {
+    if (!Array.isArray(entry) || entry.length !== 2) return null;
+    const [key, val] = entry;
+    if (typeof key !== "string" || typeof val !== "string" || !TRACKING_KEY_RE.test(key) || !TRACKING_VALUE_RE.test(val) || seen.has(key)) return null;
+    seen.add(key);
+    pairs.push([key, val]);
+  }
+  return pairs;
+}
+
+/**
+ * Ask for one referral, inside `budgetMs`. Resolves `{ clickId, pairs }`, or null for a miss (counted and logged with
+ * its reason, never the click id). Never throws.
+ */
+async function mintCartReferral({ mintReferral, budgetMs, sellerHost, log, skip }) {
+  const miss = (reason) => {
+    countReferral(`miss:${reason}`);
+    emitReferral(log, "warn", { outcome: "miss", reason, policy: REFERRAL_MISS_POLICY, seller_host: sellerHost });
+    return null;
+  };
+  const skipped = (reason) => {
+    countReferral(`skipped:${reason}`);
+    emitReferral(log, "info", { outcome: "skipped", reason, seller_host: sellerHost });
+    return null;
+  };
+  // No market the buyer named: the backend is not asked at all.
+  if (skip !== undefined) return skipped(Object.values(REFERRAL_SKIP).includes(skip) ? skip : REFERRAL_SKIP.marketUnnamed);
+  if (typeof mintReferral !== "function") return miss("no_minter");
+  const budget = Math.min(REFERRAL_MINT_BUDGET_MS, Math.floor(budgetMs));
+  if (!(budget >= REFERRAL_MIN_BUDGET_MS)) return miss("no_budget");
+  let answered;
+  try { answered = await withBudget(Promise.resolve().then(() => mintReferral()), budget); } catch { return miss("minter_threw"); }
+  if (answered && answered.timedOut) return miss("timeout");
+  if (!isPlainObject(answered) || answered.kind !== storefrontCartReferralModule.OUTCOME.minted) {
+    const code = isPlainObject(answered) && typeof answered.code === "string" && /^[A-Za-z0-9_]{1,64}$/.test(answered.code) ? answered.code : "no_answer";
+    // The backend knows no such market: nothing to record, and nothing wrong with the call.
+    if (code === REFERRAL_SKIP.marketUnknown) return skipped(REFERRAL_SKIP.marketUnknown);
+    if (REFERRAL_PROGRAMMING_ERROR_CODES.has(code)) {
+      countReferral(`error:${code}`);
+      emitReferral(log, "error", { outcome: "error", reason: code, policy: REFERRAL_MISS_POLICY, seller_host: sellerHost });
+      return null;
+    }
+    return miss(code);
+  }
+  const pairs = trackingPairsFrom(answered.pairs);
+  const clickId = pairs ? (pairs.find(([key]) => key === storefrontCartReferralModule.CLICK_ID_MEMBER) || [])[1] : undefined;
+  if (!pairs || !clickId || clickId !== answered.clickId) return miss("malformed_answer");
+  countReferral("minted");
+  emitReferral(log, "info", { outcome: "minted", attributed: answered.attributed === true, seller_host: sellerHost });
+  return { clickId, pairs };
+}
+
+function emitReferral(log, level, detail) {
+  if (log && typeof log[level] === "function") {
+    try { log[level]({ event: "ucp_storefront_cart_referral", ...detail }); } catch { /* never throw the door */ }
+  }
 }
 
 // ---- the door ----------------------------------------------------------------------------------------------------
@@ -664,11 +800,23 @@ function emit(log, level, detail) {
  *   `signals` (optional out-param array): what the seller SAID while this door fell back, for the caller to act on.
  *   Today one signal: `{ reason: "variant_invalid", lines }` — the seller's own door answered a create_cart with a
  *   STRUCTURED tool error naming the variant as unknown (see ucpCheckoutEscalation.js, the variant_invalid policy).
+ *   `mintReferral` (create only, with CART_REFERRAL_FLAG on): asks the backend for one referral when the catalog link
+ *   carries no tracking member; a priced answer then carries `referral: { clickId, pairs }`.
+ *   `referralSkip` (create only, same flag): a REFERRAL_SKIP reason when the cart's market is not one the buyer named;
+ *   the backend is then not asked and the cart is built untracked.
+ *   `referralPairs` (re-read only, same flag): the members a create minted, carried onto the cart URL again.
  *   `discountCode` (create only, with SELLER_DISCOUNT_CODES_FLAG on): the buyer's ONE code, sent to a seller whose
  *   profile advertises the discount capability. With the flag on, the answer carries `discounts`
  *   (readSellerDiscounts) whenever there is something to say about codes.
+ *   `marketCurrency` (set by the escalation only while its currency-follows-market rule is on): the currency of the
+ *   buyer's market. When given, THAT is the currency the seller's answer must be in, whatever the catalog row says;
+ *   absent, the row's currency is, as before. Under it, a row that states ANOTHER currency is never sent to the
+ *   seller, and a row that states none is sent only when the caller says its lines are known to be in the market's
+ *   currency (`rowsInMarketCurrency === true`; the escalation's judgement, judgeLinesForMarket).
+ *   `storeAnswer` (optional out-param object, market rule only): when the seller answered in ANOTHER currency than
+ *   the market's, `storeAnswer.currency` is set to it, so the caller can name that instead of "no price".
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -683,13 +831,35 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   }
   // The catalog's currency for these rows (the escalation refuses a mixed-currency cart before this is reached).
   const currencies = new Set(items.map((it) => str(own(rows.get(it.product_id), "currency"))?.toUpperCase()).filter(Boolean));
-  const expectedCurrency = currencies.size === 1 ? [...currencies][0] : null;
-  if (!expectedCurrency) { emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost }); return null; }
+  const rowCurrency = currencies.size === 1 ? [...currencies][0] : null;
+  // THE CURRENCY THE SELLER MUST ANSWER IN. The buyer market's own when the caller states it (`marketCurrency`): a
+  // price for a market is in that market's currency, so the seller's answer is held to the market, not to whatever
+  // currency the catalog row happens to carry. Without it, the row's currency, as before.
+  const followsMarket = typeof marketCurrency === "string" && /^[A-Z]{3}$/.test(marketCurrency);
+  // Under the market rule a row stating another currency is never sent to the seller (the escalation refuses such a
+  // cart first; this door does not rely on it).
+  if (followsMarket && [...currencies].some((code) => code !== marketCurrency)) {
+    emit(log, "info", {
+      outcome: "fallback", reason: "row_currency_not_market_currency", market: market || null,
+      expected_currency: marketCurrency, row_currency: [...currencies].sort().join(","), seller_host: sellerHost,
+    });
+    return null;
+  }
+  // No currency on the rows: nothing to hold the seller to, unless the market rule is on AND its caller knows these
+  // lines to be in the market's currency (their money was withheld by the read, not absent).
+  if (!rowCurrency && !(followsMarket && rowsInMarketCurrency === true)) {
+    emit(log, "info", { outcome: "fallback", reason: "catalog_currency_unknown", seller_host: sellerHost });
+    return null;
+  }
+  const expectedCurrency = followsMarket ? marketCurrency : rowCurrency;
   const wanted = [];
   const derived = [];
+  // Which variant-id route each line took (sellerVariantChoiceOf), for the priced line below.
+  const sources = [];
   for (const it of items) {
     const choice = sellerVariantChoiceOf(rows.get(it.product_id), sellerHost, it.variant_id);
     const gid = choice.gid;
+    if (choice.source && !sources.includes(choice.source)) sources.push(choice.source);
     if (!gid) { emit(log, "info", { outcome: "fallback", reason: "variant_unresolved", seller_host: sellerHost }); return null; }
     // A "choice" of the ONLY real variant is not a choice: get_product publishes no variant list for such a product,
     // but its sole variant id is visible elsewhere (variants[0].variant_id on the native door / PDP), so
@@ -732,7 +902,22 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   if (left() <= 0) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
   if (codeToSend !== null && !acceptsDiscountCodes) { codeToSend = null; notSentReason = "not_sent_seller_does_not_advertise"; }
 
-  const cartAttribution = cartId === undefined && cartAttributionEnabled(env) ? cartAttributionOf(catalogLink) : null;
+  // THE REFERRAL (CART_REFERRAL_FLAG). Create: minted now, only when the catalog link carries no tracking member, in
+  // what the budget holds above the cart call's own share. Re-read: the members the create minted, from the id.
+  const referralOn = cartReferralEnabled(env);
+  const linkTracking = catalogLink ? trackingPairsOf(catalogLink) : null;
+  let referral = null;
+  if (referralOn && cartId === undefined && !(linkTracking && linkTracking.length)) {
+    const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
+    referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log, skip: referralSkip });
+    if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
+  } else if (referralOn && cartId !== undefined && !(linkTracking && linkTracking.length)) {
+    const again = trackingPairsFrom(referralPairs);
+    if (again) referral = { clickId: null, pairs: again };
+  }
+  const cartAttribution = cartId === undefined && cartAttributionEnabled(env)
+    ? (cartAttributionOf(catalogLink) || (referral ? Object.fromEntries(referral.pairs) : null))
+    : null;
   let result;
   try {
     const call = cartId !== undefined
@@ -781,7 +966,21 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   let doorHost = null;
   try { const ep = new URL(endpoint); if (ep.protocol === "https:") doorHost = ep.hostname.toLowerCase(); } catch { doorHost = null; }
   const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn });
-  if (!read) { emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost }); return null; }
+  if (!read) {
+    // Under the market rule, a seller that answered in ANOTHER currency than the market's is named as that: its
+    // price is not shown (the caller answers without it). No buyer data, no cart id.
+    const storeCurrency = str(own(payload, "currency"));
+    if (followsMarket && storeCurrency && /^[A-Z]{3}$/.test(storeCurrency) && storeCurrency !== expectedCurrency) {
+      emit(log, "info", {
+        outcome: "fallback", reason: "store_currency_not_market_currency", market: market || null,
+        expected_currency: expectedCurrency, row_currency: rowCurrency, store_currency: storeCurrency, seller_host: sellerHost,
+      });
+      if (isPlainObject(storeAnswer)) storeAnswer.currency = storeCurrency;
+      return null;
+    }
+    emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost });
+    return null;
+  }
   if (discountCodesOn) {
     const discounts = readSellerDiscounts(payload, wanted, read, { requested: codeRequested ? discountCode : undefined, notSentReason });
     if (discounts) {
@@ -804,8 +1003,12 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     return null;
   }
   if (catalogLink) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
+  if (referral) {
+    read.continueUrl = carryTrackingPairs(read.continueUrl, referral.pairs);
+    if (cartId === undefined) read.referral = referral;
+  }
   if (cartId !== undefined && read.cartId !== cartId) { emit(log, "info", { outcome: "fallback", reason: "cart_id_mismatch", seller_host: sellerHost }); return null; }
-  emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length });
+  emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length, source: sources.sort().join(",") });
   return read;
 }
 

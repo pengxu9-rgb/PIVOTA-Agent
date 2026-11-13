@@ -308,7 +308,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff, storefrontReferral, storefrontCartIdempotencyStore, storefrontCartPartner } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -554,7 +554,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       const escalationDeclines = [];
       // `storefrontHandoff` (FIX_PLAN O-02): the recorder of each hand-off this lane issues, for the partner that asked.
       // Inert unless UCP_STOREFRONT_HANDOFF_RECORD_ENABLED and PARTNER_IDENTITY_FORWARDING_ENABLED (ucpCheckoutEscalation.js).
-      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger, handoffRecorder: storefrontHandoff });
+      // `storefrontReferral`: the minter of a referral for a store cart whose catalog link carries none. Inert unless
+      // AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED (ucpMerchantDoorPricing.js).
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, declines: escalationDeclines, merchantDoor, log: logger, handoffRecorder: storefrontHandoff, referralMinter: storefrontReferral, idempotencyStore: storefrontCartIdempotencyStore, idempotencyDoor: "ucp", idempotencyPartner: storefrontCartPartner });
       if (escalated && isPlainObject(escalated.market_assumed)) noteToolCall(typeof options.observe === "function" ? options.observe : null, { market_assumed: true });
       // A Reap hint (a CONSTANT message: "this may be purchasable through Reap with consent + details") rides on the
       // storefront answer only. With no hint the escalation answer is returned as the very same object.
@@ -582,8 +584,17 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     exactly as it does without the option. Only the escalation runs here (none of the UCP branch's other
     //     lanes), and nothing is sent to a store but the cart the escalation itself builds.
     if (storefrontCartDoor) {
+      // BUYER INTAKE FIRST. This path answers a create without the kernel, so it must not answer one the kernel path
+      // refuses at intake: the same rules (cart shape, a buyer email, the buyer name) are applied here, to a copy,
+      // BEFORE any product read, gate read or store call this path makes. The variant resolver is left out: it is
+      // the step that reads products, and it is the storefront path's own to decide. A cart that is not a
+      // storefront cart is checked again, unchanged, at step 3b.
+      if (op.id === "create_checkout_session") {
+        await applyBuyerIntake(op, safeClone(params), attested, async () => {}, ctx, EMAIL_BODY_FIELDS[dialect]);
+      }
       const answered = await tryNativeStorefrontCart({
         op, toolArgs, params, ctx, attested, executor: memoizedProductReads(executor), merchantDoor, log: logger,
+        referralMinter: storefrontReferral, idempotencyStore: storefrontCartIdempotencyStore, idempotencyPartner: storefrontCartPartner,
         // Only a re-read of an id the UCP door minted for an assumed market: a create here names its market or is refused.
         onMarketAssumed: () => noteToolCall(observeEarly, { market_assumed: true }),
       });

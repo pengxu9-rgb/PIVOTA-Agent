@@ -1,0 +1,362 @@
+const { Client } = require('pg');
+const request = require('supertest');
+const nock = require('nock');
+const { fetchCanonicalChainRows } = require('../../src/services/canonicalCatalogSearch');
+const { buildSearchQualityContract } = require('../../src/findProductsMulti/queryUnderstanding');
+
+// One brand under two catalog spellings (GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS, default OFF).
+// A retailer writes the bare name, the brand's own store writes the name plus a market word; a
+// brand constraint is an equality on ONE dictionary key, so "<brand> sunscreen" was scoped to the
+// retailer's rows and answered an empty page while the store's sunscreen sat under the sibling
+// spelling. Real route, real statement, real PostgreSQL, and the dictionary is loaded by the real
+// loader from this fixture. Every brand name is a placeholder.
+//
+// THE INVARIANT this file adds (it would have caught the defect): for every product a generic
+// query returns, "<its brand as a buyer types it> <the same query>" returns that product too.
+// Flag off, the number of products that break it is pinned, so the flag's effect is visible.
+// The same invariant through the real /mcp door: ..._door_postgres.node.test.cjs.
+
+// Dedicated disposable DB only. CI/operators opt in with this explicit test URL.
+const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
+const suite = url ? describe : describe.skip;
+
+const FLAG = 'GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS';
+const {
+  BRANDS, FAMILY, ITEMS, KINDS, MARKET_WORD_ITEMS, NOT_FAMILIES, REVIEW_ITEMS, UNDER_A_SIBLING_SPELLING, insertItems, removeItems, brandOf, createFixture, familyOf, fixtureDbQuery, invariantBreaks,
+} = require('../_support/brandSiblingSpellingsFixture.cjs');
+
+suite('brand sibling spellings: route, both lanes and plan on real PostgreSQL', () => {
+  let db, schema, priorEnv, app, origin, server, sqlCalls, coldDictionary;
+  beforeAll(async () => {
+    db = new Client({ connectionString: url }); await db.connect();
+    schema = await createFixture(db, { fetchCanonicalChainRows, buildSearchQualityContract });
+  });
+  afterAll(async () => { if (db) { await db.query(`DROP SCHEMA ${schema} CASCADE`); await db.end(); } });
+
+  // A fresh app (and a freshly loaded dictionary) per boot.
+  async function boot(flag) {
+    Object.assign(process.env, { DATABASE_URL: url, PIVOTA_API_BASE: 'http://upstream-disabled.test', PIVOTA_API_KEY: 'test', API_MODE: 'REAL',
+      INDEX_ELIGIBLE_RECALL: 'false', PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: 'true', SEARCH_QUALITY_CONTRACT_V1_ENABLED: 'true',
+      SEARCH_QUALITY_CONTRACT_V1_MODE: 'enforce', PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED: 'false',
+      CANONICAL_CATALOG_RECALL_DOC_MATCH: 'off', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'off',
+      AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false',
+      GATEWAY_DYNAMIC_BRAND_DETECT: '1', GATEWAY_CATALOG_BEAUTY_BRAND_CONTRACT: '1' });
+    if (flag) process.env[FLAG] = flag; else delete process.env[FLAG];
+    const state = { get sqlCalls() { return sqlCalls; }, get coldDictionary() { return coldDictionary; } };
+    jest.doMock('../../src/db', () => ({ query: fixtureDbQuery(db, state) }));
+    app = require('../../src/server');
+    // One listener bound to 127.0.0.1 by name per boot, not supertest's fresh wildcard listener per
+    // call: a request to 127.0.0.1:<port> must not be answerable by another local process.
+    await stopServer();
+    server = await new Promise((resolve) => { const listening = app.listen(0, '127.0.0.1', () => resolve(listening)); });
+    origin = `http://127.0.0.1:${server.address().port}`;
+    const cache = require('../../src/findProductsMulti/brandDictionaryCache');
+    await cache.refresh(); // warm: a cold dictionary detects no brand at all (pinned below)
+    return cache;
+  }
+  const stopServer = async () => {
+    if (server) await new Promise((resolve) => server.close(resolve));
+    server = null;
+  };
+  beforeEach(() => {
+    priorEnv = { ...process.env }; jest.resetModules(); sqlCalls = []; coldDictionary = false;
+    nock.disableNetConnect(); nock.enableNetConnect((host) => host.includes('127.0.0.1'));
+  });
+  afterEach(async () => {
+    await stopServer();
+    process.env = priorEnv; jest.dontMock('../../src/db'); jest.resetModules(); nock.cleanAll(); nock.enableNetConnect();
+  });
+
+  const invoke = (query, limit = 50) => request(origin).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi',
+    payload: { search: { query, domain: 'beauty', market: 'US', page: 1, limit } }, metadata: { source: 'public_api', market: 'US' } });
+  const idsOf = (body) => (body.products || []).map((p) => p.product_key || p.product_ref?.product_id || p.id).sort();
+  const routeIds = async (query) => { const res = await invoke(query); expect(res.status).toBe(200); return idsOf(res.body); };
+  // The brand keys each statement bound: the text array that is followed by its md5 twin.
+  const brandBinds = () => sqlCalls.map((call) => call.params.find((param, at) => Array.isArray(param)
+    && Array.isArray(call.params[at + 1]) && call.params[at + 1].length === param.length
+    && call.params[at + 1].every((value) => /^[0-9a-f]{32}$/.test(String(value)))) || null);
+
+  // What each (query) answers on the route, as sorted fixture ids.
+  async function routeAnswers(queries) {
+    const out = {};
+    for (const query of queries) out[query] = await routeIds(query);
+    return out;
+  }
+
+  test('flag off, the symptom: bare brand + category is an empty page; the store row needs its suffix typed', async () => {
+    await boot(null);
+    expect(await routeIds('sunscreen')).toContain('zentora_usa__sunscreen');
+    sqlCalls = [];
+    const res = await invoke('Zentora sunscreen');
+    expect(res.body.products).toEqual([]);
+    expect(res.body.metadata.search_quality_contract.hard_constraints.brand).toEqual({ brand_key: 'catalog:zentora', canonical: 'zentora', alias: 'zentora' });
+    expect(res.body.metadata.search_quality_contract).not.toHaveProperty('brand_spellings_bound');
+    expect(brandBinds()).toEqual([['zentora']]);
+    expect(await routeIds('Zentora USA sunscreen')).toEqual(['zentora_usa__sunscreen']);
+    expect(await routeIds('Zentora')).toEqual(['zentora__lipstick', 'zentora__serum', 'zentora__toner']);
+    expect(await routeIds('Zentora Daily Shield Mineral Sunscreen SPF 50')).toEqual([]);
+  });
+
+  test('flag on, the fix: bare brand + category returns the store row; brand alone returns both spellings', async () => {
+    await boot('on');
+    const res = await invoke('Zentora sunscreen');
+    expect(idsOf(res.body)).toEqual(['zentora_usa__sunscreen']);
+    expect(res.body.products.every((p) => p.source === 'canonical_chain')).toBe(true);
+    expect(brandBinds()).toEqual([['zentora', 'zentorausa']]);
+    // the answer says how many spellings were bound, and names no spelling it did not name before
+    const contract = res.body.metadata.search_quality_contract;
+    expect(contract.brand_spellings_bound).toBe(2);
+    expect(contract.hard_constraints.brand).toEqual({ brand_key: 'catalog:zentora', canonical: 'zentora', alias: 'zentora' });
+    expect(JSON.stringify(res.body.metadata)).not.toMatch(/zentora usa/i);
+
+    expect(await routeIds('Zentora')).toEqual(ITEMS.filter((item) => FAMILY.Zentora.includes(item.brand)).map((item) => item.id).sort());
+    // the suffixed spelling typed: the bare retailer rows come too
+    expect(await routeIds('Zentora USA serum')).toEqual(['zentora__serum', 'zentora_usa__serum']);
+    expect(await routeIds('Zentora USA sunscreen')).toEqual(['zentora_usa__sunscreen']);
+    // full brand + title: the exact-product anchor reads the row's own name, and admits it
+    const exact = await invoke('Zentora Daily Shield Mineral Sunscreen SPF 50');
+    expect(exact.body.metadata.search_quality_contract.query_class).toBe('exact_product');
+    expect(idsOf(exact.body)).toEqual(['zentora_usa__sunscreen']);
+    // three spellings, any of them typed
+    // three spellings: the bare name reaches all three; a suffixed one reaches itself and the bare name
+    expect(await routeIds('Lumavelle toner')).toEqual(['lumavelle__toner', 'lumavelle_official_store__toner', 'lumavelle_uk__toner']);
+    expect(await routeIds('Lumavelle UK toner')).toEqual(['lumavelle__toner', 'lumavelle_uk__toner']);
+    expect(await routeIds('Lumavelle Official Store toner')).toEqual(['lumavelle__toner', 'lumavelle_official_store__toner']);
+    const bare = await invoke('Lumavelle toner');
+    expect(bare.body.metadata.search_quality_contract.brand_spellings_bound).toBe(3);
+    const suffixed = await invoke('Lumavelle UK toner');
+    expect(suffixed.body.metadata.search_quality_contract.brand_spellings_bound).toBe(2);
+  });
+
+  test('the invariant at the route: flag off breaks it for exactly the sibling-spelling products; flag on holds', async () => {
+    await boot(null);
+    const off = await invariantBreaks(routeIds);
+    // KNOWN GAP, pinned: 10 of the fixture's 39 family-or-single-brand products cannot be found by
+    // their brand + category.
+    expect(off).toEqual(UNDER_A_SIBLING_SPELLING);
+    expect(off).toHaveLength(10);
+    jest.resetModules();
+    await boot('on');
+    expect(await invariantBreaks(routeIds)).toEqual([]);
+  });
+
+  test('precision, flag on: a brand query returns its own family only; only family queries differ from flag off', async () => {
+    const queries = BRANDS.flatMap(([brand]) => [brand, ...KINDS.map((kind) => `${brand} ${kind}`)]);
+    await boot(null);
+    const off = await routeAnswers(queries);
+    jest.resetModules();
+    await boot('on');
+    const on = await routeAnswers(queries);
+    const changed = [];
+    for (const [brand] of BRANDS) {
+      // "Brisa Beauty" also binds "brisa" on main (the predicate drops the word "beauty"): unchanged here.
+      const allowed = brand === 'Brisa Beauty' ? ['Brisa Beauty', 'Brisa'] : familyOf(brand);
+      for (const query of [brand, ...KINDS.map((kind) => `${brand} ${kind}`)]) {
+        expect({ query, brands: [...new Set(on[query].map((id) => brandOf[id]))].filter((b) => !allowed.includes(b)) }).toEqual({ query, brands: [] });
+        // nothing is lost: everything flag off returned is still returned
+        expect(on[query]).toEqual(expect.arrayContaining(off[query]));
+        if (JSON.stringify(on[query]) !== JSON.stringify(off[query])) changed.push(brand);
+      }
+    }
+    // the prefix-sharing brands, named: neither ever shows the other's rows
+    for (const kind of ['sunscreen', 'serum', 'toner']) {
+      expect(on[`Zentora ${kind}`].map((id) => brandOf[id])).not.toContain('Zentora Labs');
+      expect(on[`Zentora USA ${kind}`].map((id) => brandOf[id])).not.toContain('Zentora Labs');
+      expect(on[`Zentora Labs ${kind}`]).toEqual([`zentora_labs__${kind}`]);
+    }
+    expect(on['Noble serum']).toEqual(['noble__serum']);
+    expect(on['Noble Pegasus serum']).toEqual(['noble_pegasus__serum']);
+    expect(on['Brisa serum']).toEqual(['brisa__serum']);
+    expect(on['Brisa sunscreen']).toEqual([]); // "Brisa Beauty" is another brand: not a sibling
+    // NOT FAMILIES: a channel-word name, a name too short to be a key, a mixed-script brand. Each
+    // query answers exactly what it answers with the flag off, and never another brand's rows.
+    const lookalikes = NOT_FAMILIES.flatMap(([brand]) => [brand, ...KINDS.map((kind) => `${brand} ${kind}`)]);
+    jest.resetModules();
+    await boot(null);
+    const lookalikesOff = await routeAnswers(lookalikes);
+    jest.resetModules();
+    await boot('on');
+    const lookalikesOn = await routeAnswers(lookalikes);
+    expect(lookalikesOn).toEqual(lookalikesOff);
+    for (const [brand] of NOT_FAMILIES) {
+      for (const query of [brand, ...KINDS.map((kind) => `${brand} ${kind}`)]) {
+        expect({ query, brands: [...new Set(lookalikesOn[query].map((id) => brandOf[id]))].filter((b) => b !== brand) }).toEqual({ query, brands: [] });
+      }
+    }
+    // premise: these ARE hard brands with rows of their own, so the comparison above is not vacuous
+    expect(lookalikesOn['Global serum']).toEqual(['other0_global__serum']);
+    expect(lookalikesOn['Global Store serum']).toEqual(['other1_global_store__serum']);
+    // typed another way, the same family: the verdict is the family's, not the typed spelling's
+    expect(lookalikesOn['Glob-Al US serum']).toEqual(['other2_glob_al_us__serum']);
+    expect(lookalikesOn['Ma US serum']).toEqual(['other3_ma_us__serum']);
+    expect(lookalikesOn['Ma Store serum']).toEqual(['other4_ma_store__serum']);
+    expect(lookalikesOn['Velmora Store serum']).toEqual(['other6_velmora_store__serum']);
+    // THE ONLY QUERIES THAT CHANGE are the ones whose brand has a sibling spelling.
+    expect([...new Set(changed)].sort()).toEqual([...FAMILY.Zentora, ...FAMILY.Lumavelle].sort());
+  });
+
+  // Owner, 2026-11-12: "match only the typed spelling plus the bare name". A market or channel word
+  // in the brand names a storefront; the buyer who types one gets that spelling and the plain brand.
+  test('a market word in the typed brand narrows: the typed spelling plus the bare name, never the other storefronts', async () => {
+    const ids = (kind, brands) => MARKET_WORD_ITEMS.filter((item) => item.kind === kind && brands.includes(item.brand)).map((item) => item.id).sort();
+    const queries = ['Solvane serum', 'Solvane US serum', 'Solvane JP serum', 'Solvane KR serum', 'Solvane serum us', 'Solvane', 'Solvane US', 'Solvane JP',
+      'Solvane toner for us', 'Tavrin serum', 'Tavrin Global serum', 'Tavrin Global'];
+    await insertItems(db, MARKET_WORD_ITEMS);
+    try {
+      jest.resetModules();
+      await boot(null);
+      const off = await routeAnswers(queries);
+      jest.resetModules();
+      await boot('on');
+      const on = await routeAnswers(queries);
+      const every = (brands) => MARKET_WORD_ITEMS.filter((item) => brands.includes(item.brand)).map((item) => item.id).sort();
+      // the bare name: the whole family (its qualifying spellings; the one-row "Solvane KR" is no brand by itself)
+      expect(on['Solvane serum']).toEqual(ids('serum', ['Solvane', 'Solvane US', 'Solvane JP']));
+      expect(on['Solvane']).toEqual(every(['Solvane', 'Solvane US', 'Solvane JP']));
+      // a suffixed spelling: itself and the bare name; the other storefront never
+      expect(on['Solvane US serum']).toEqual(ids('serum', ['Solvane', 'Solvane US']));
+      expect(on['Solvane JP serum']).toEqual(ids('serum', ['Solvane', 'Solvane JP']));
+      expect(on['Solvane US']).toEqual(every(['Solvane', 'Solvane US']));
+      expect(on['Solvane JP']).toEqual(every(['Solvane', 'Solvane JP']));
+      // the market word outside the brand span: the brand typed is the bare one
+      expect(on['Solvane serum us']).toEqual(on['Solvane serum']);
+      expect(on['Solvane toner for us']).toEqual(ids('toner', ['Solvane', 'Solvane US', 'Solvane JP']));
+      // a suffixed spelling that is no brand by itself: exactly the flag-off answer
+      expect(on['Solvane KR serum']).toEqual(off['Solvane KR serum']);
+      // a two-spelling family: both, whichever is typed
+      expect(on['Tavrin serum']).toEqual(ids('serum', ['Tavrin', 'Tavrin Global']));
+      expect(on['Tavrin Global serum']).toEqual(ids('serum', ['Tavrin', 'Tavrin Global']));
+      expect(on['Tavrin Global']).toEqual(every(['Tavrin', 'Tavrin Global']));
+      // flag off, for the record: one spelling each
+      expect(off['Solvane serum']).toEqual(ids('serum', ['Solvane']));
+      expect(off['Solvane US serum']).toEqual(ids('serum', ['Solvane US']));
+      expect(off['Solvane JP serum']).toEqual(ids('serum', ['Solvane JP']));
+      // the count the answer reports is the number bound
+      const count = async (query) => (await invoke(query)).body.metadata.search_quality_contract.brand_spellings_bound;
+      expect(await count('Solvane serum')).toBe(3);
+      expect(await count('Solvane JP serum')).toBe(2);
+      expect(await count('Tavrin Global serum')).toBe(2);
+    } finally {
+      await removeItems(db, MARKET_WORD_ITEMS);
+    }
+  });
+
+  // The reviewed list, populated through its test seam (the shipped list is empty), on the real
+  // route: a listed spelling binds nothing and is bound by nothing, however the entry or the
+  // catalogue spaces it. "Pallor USA" and "Pal Lor USA" are one row identity.
+  test('the reviewed list on the route: a listed spelling is isolated under every spacing of it', async () => {
+    const serum = (brands) => REVIEW_ITEMS.filter((item) => item.kind === 'serum' && brands.includes(item.brand)).map((item) => item.id).sort();
+    const USA = ['Pallor USA', 'Pal Lor USA'];
+    await insertItems(db, REVIEW_ITEMS);
+    try {
+      const answers = async (entries) => {
+        jest.resetModules();
+        await boot('on');
+        const restore = require('../../src/findProductsMulti/brandLexicon').__setReviewedNotSiblingSpellingsForTest(entries);
+        try {
+          return await routeAnswers(['Pallor serum', 'Pallor UK serum', 'Pallor USA serum', 'Pal Lor USA serum', 'pallorusa serum']);
+        } finally { restore(); }
+      };
+      // premise: unlisted, it is one family and every spelling reaches every row
+      // premise: unlisted, the bare name reaches every row, and a suffixed spelling reaches itself and the bare name
+      const everything = serum(['Pallor', 'Pallor UK', ...USA]);
+      expect(await answers([])).toEqual({ 'Pallor serum': everything, 'Pallor UK serum': serum(['Pallor', 'Pallor UK']),
+        'Pallor USA serum': serum(['Pallor', ...USA]), 'Pal Lor USA serum': serum(['Pallor', ...USA]), 'pallorusa serum': serum(['Pallor', ...USA]) });
+      for (const entry of ['pallor usa', 'pal lor usa', 'pallorusa', 'Pallor USA']) {
+        expect({ entry, ...(await answers([entry])) }).toEqual({ entry,
+          'Pallor serum': serum(['Pallor', 'Pallor UK']), 'Pallor UK serum': serum(['Pallor', 'Pallor UK']),
+          'Pallor USA serum': serum(USA), 'Pal Lor USA serum': serum(USA), 'pallorusa serum': serum(USA) });
+      }
+      for (const entry of ['pallor', 'pal lor', 'Pal-Lor']) {
+        expect({ entry, ...(await answers([entry])) }).toEqual({ entry,
+          'Pallor serum': serum(['Pallor']), 'Pallor UK serum': serum(['Pallor UK']),
+          'Pallor USA serum': serum(USA), 'Pal Lor USA serum': serum(USA), 'pallorusa serum': serum(USA) });
+      }
+    } finally {
+      await removeItems(db, REVIEW_ITEMS);
+    }
+  });
+
+  test('a cold dictionary: no brand constraint at all, flag on or off', async () => {
+    const answers = {};
+    for (const flag of [null, 'on']) {
+      jest.resetModules(); coldDictionary = true; sqlCalls = [];
+      await boot(flag);
+      const res = await invoke('Zentora sunscreen');
+      expect(res.status).toBe(200);
+      expect(res.body.metadata.search_quality_contract?.hard_constraints?.brand || null).toBeNull();
+      expect(res.body.metadata.search_quality_contract || {}).not.toHaveProperty('brand_spellings_bound');
+      answers[String(flag)] = { ids: idsOf(res.body), sql: sqlCalls.map((call) => [call.sql, call.params]) };
+    }
+    expect(answers.on).toEqual(answers.null);
+  });
+
+  test('both lanes on PostgreSQL: the canonical and the seed predicate match the same rows, the family and no other', async () => {
+    const matched = async (flag, key) => {
+      jest.resetModules();
+      await boot(flag);
+      const { buildBrandIdentityPredicate, CANONICAL_OWN_BRAND_SQL } = require('../../src/services/canonicalSearchQualitySql');
+      const { buildSeedSearchOfferScope } = require('../../src/services/seedSearchOfferScope');
+      const brand = { contract: 'brand_browse', brand_key: `catalog:${key}`, brand: key, canonical: key, alias: key };
+      const stored = [...BRANDS, ...NOT_FAMILIES].map(([name]) => name);
+      const canonicalParams = [];
+      const canonical = buildBrandIdentityPredicate(brand, CANONICAL_OWN_BRAND_SQL, canonicalParams);
+      canonicalParams.push(stored);
+      const own = await db.query(`SELECT p.brand FROM (SELECT b AS brand, '{}'::jsonb AS product_payload FROM unnest($${canonicalParams.length}::text[]) b) p WHERE ${canonical} ORDER BY 1`, canonicalParams);
+      const seedParams = [];
+      const seed = buildSeedSearchOfferScope({ brand }, seedParams);
+      seedParams.push(stored);
+      const seeds = await db.query(`SELECT seed.seed_data->>'brand' AS brand FROM (SELECT jsonb_build_object('brand', b) AS seed_data, 20::numeric AS price_amount FROM unnest($${seedParams.length}::text[]) b) seed WHERE TRUE ${seed} ORDER BY 1`, seedParams);
+      expect(seeds.rows).toEqual(own.rows);
+      return own.rows.map((row) => row.brand);
+    };
+    expect(await matched(null, 'zentora')).toEqual(['Zentora']);
+    expect(await matched('on', 'zentora')).toEqual(['Zentora', 'Zentora USA']);
+    expect(await matched(null, 'zentora usa')).toEqual(['Zentora USA']);
+    expect(await matched('on', 'zentora usa')).toEqual(['Zentora', 'Zentora USA']);
+    expect(await matched('on', 'lumavelle')).toEqual(['Lumavelle', 'Lumavelle Official Store', 'Lumavelle UK']);
+    expect(await matched('on', 'lumavelle uk')).toEqual(['Lumavelle', 'Lumavelle UK']);
+    expect(await matched('on', 'lumavelle official store')).toEqual(['Lumavelle', 'Lumavelle Official Store']);
+    expect(await matched('on', 'zentora labs')).toEqual(['Zentora Labs']);
+    expect(await matched('on', 'noble')).toEqual(['Noble']);
+    expect(await matched('on', 'noble pegasus')).toEqual(['Noble Pegasus']);
+    expect(await matched('on', 'brisa')).toEqual(['Brisa']);
+    // not families: a channel-word name, a name too short to be a key
+    expect(await matched('on', 'global')).toEqual(['Global']);
+    expect(await matched('on', 'global store')).toEqual(['Global Store']);
+    expect(await matched('on', 'ma us')).toEqual(['Ma US']);
+    expect(await matched('on', 'ma store')).toEqual(['Ma Store']);
+    expect(await matched('on', 'velmora store')).toEqual(['Velmora Store']);
+  });
+
+  test('the plan: the brand index serves one key and a family alike', async () => {
+    const { primaryBrandIndexDefinitions } = require('../../scripts/catalog/primary_brand_indexes');
+    const index = primaryBrandIndexDefinitions().find((definition) => definition.table === 'catalog_products');
+    // Enough other-brand rows that a scan is not the cheaper plan, in a category no query here reads.
+    await db.query(`INSERT INTO catalog_products(product_key,merchant_id,platform,source_product_id,title,brand,product_type,category_path,content_key,product_payload,updated_at)
+      SELECT 'filler_'||i,'retailer','shopify','filler_'||i,'Filler Item '||i,'Filler '||(i % 400),'Comb','beauty/haircare/tools','filler_'||i,'{}',now() FROM generate_series(1,6000) i`);
+    try {
+      await db.query(index.sql); await db.query('ANALYZE catalog_products');
+      const plans = {};
+      for (const flag of [null, 'on']) {
+        jest.resetModules(); sqlCalls = [];
+        await boot(flag);
+        await invoke('Zentora sunscreen');
+        expect(sqlCalls).toHaveLength(1);
+        const explain = await db.query('EXPLAIN (FORMAT JSON) ' + sqlCalls[0].sql, sqlCalls[0].params);
+        const nodes = []; const walk = (node) => { nodes.push(node); for (const child of node.Plans || []) walk(child); };
+        walk(explain.rows[0]['QUERY PLAN'][0].Plan);
+        plans[String(flag)] = { sql: sqlCalls[0].sql, binds: brandBinds()[0], indexed: nodes.some((node) => node['Index Name'] === index.name) };
+      }
+      expect(plans.null.binds).toEqual(['zentora']);
+      expect(plans.on.binds).toEqual(['zentora', 'zentorausa']);
+      expect(plans.on.sql).toBe(plans.null.sql); // one statement text: only the bound array grew
+      expect(plans.null.indexed).toBe(true);
+      expect(plans.on.indexed).toBe(true);
+    } finally {
+      await db.query(`DROP INDEX IF EXISTS ${index.name}`);
+      await db.query("DELETE FROM catalog_products WHERE product_key LIKE 'filler_%'");
+      await db.query('ANALYZE catalog_products');
+    }
+  });
+});

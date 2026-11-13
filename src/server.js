@@ -51,6 +51,7 @@ const {
   SEED_LINK_MINT_OP,
   isBoundOp,
   boundIssuingAgentAssertionHeaders,
+  issuingSubjectFromInvokeContext,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
@@ -420,6 +421,7 @@ const {
   hasExplicitCategoryHint,
   normalizeBrandText,
   resolveBeautyBrandBrowseQuery,
+  resolveBoundBrandSiblingSpellings,
 } = require('./findProductsMulti/brandLexicon');
 const {
   buildSearchQualityContract,
@@ -470,6 +472,7 @@ const {
   servingCurrencyFor,
 } = require('./services/servingCurrencyGuard');
 const { unscopedDetailPdpRequest } = require('./services/pdpDetailHop');
+const pdpWithheldCurrencies = require('./services/pdpWithheldCurrencies');
 const { resolveOfferScopeCurrency } = require('./services/buyerMarketOfferScope');
 const {
   collapseSearchResponseBodyByShadeLine,
@@ -19277,6 +19280,9 @@ function shouldShortCircuitInvokeSearchQualitySafeEmpty({
 
 function projectSearchQualityContractForMetadata(contract = null) {
   if (!contract || typeof contract !== 'object') return null;
+  // GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS: how many spellings of the brand recall was bound to,
+  // present only when it is more than the one key the contract names. A count, never the strings.
+  const siblingSpellings = resolveBoundBrandSiblingSpellings(contract.hard_constraints?.brand);
   return {
     contract_version: contract.contract_version || SEARCH_QUALITY_CONTRACT_VERSION,
     target_domain: contract.target_domain || null,
@@ -19285,6 +19291,7 @@ function projectSearchQualityContractForMetadata(contract = null) {
     clarification_allowed: Boolean(contract.clarification_allowed),
     hard_constraints: contract.hard_constraints || {},
     soft_preferences: contract.soft_preferences || {},
+    ...(siblingSpellings.length > 0 ? { brand_spellings_bound: siblingSpellings.length + 1 } : {}),
   };
 }
 
@@ -19357,6 +19364,16 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
       return identity.brand_key === brand.brand_key;
     }
   }
+  // GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS: recall binds the brand's sibling spellings too, and
+  // this gate must admit every row recall can return. Containment below already admits a suffixed
+  // row under a bare contract; it does not admit one suffixed spelling under another ("x uk" under
+  // "x usa"). The siblings are the SAME list the SQL binds, compared for EQUALITY with the row's
+  // own brand, so this adds the family's rows and no others. [] with the flag off.
+  const ownCompactBrand = productBrand.replace(/\s+/g, '');
+  const isSiblingSpelling = resolveBoundBrandSiblingSpellings(brand).some(
+    (sibling) => normalizeSearchQualityBrandNeedle(sibling).replace(/\s+/g, '') === ownCompactBrand,
+  );
+  if (isSiblingSpelling) return true;
   const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
   const compactText = text.replace(/\s+/g, '');
   const matches = (needle) => {
@@ -28070,6 +28087,40 @@ async function fetchSimilarProductsFromUpstream(args) {
   return Array.isArray(resp?.data?.products) ? resp.data.products : [];
 }
 
+// THE CREDENTIAL OF THE REVIEW-SUMMARY FETCH, when the request carries no checkout token.
+//
+// The answer is SHARED: fetchReviewSummaryCached keys its cache and its in-flight memo on merchant, platform
+// and product only, so what one caller's request fetched is served to the next caller. A shared read goes out
+// on the gateway's own service credential, from the builder every other call to the backend invoke route uses,
+// and with nothing derived from the caller: not the caller's key (forceInternalFallback), not X-Buyer-Ref, not
+// X-Agent-User-JWT. The builder is asked only when the service credential is configured, because without one
+// it would fall back to the caller's key.
+//
+// No service credential configured (PIVOTA_API_KEY unset): the fetch goes out with no credential, as it always
+// did, and says so once per process. The read is never failed for it.
+let reviewSummaryMissingServiceCredentialWarned = false;
+function buildReviewSummaryUpstreamAuthHeaders() {
+  if (!PIVOTA_API_KEY) {
+    if (!reviewSummaryMissingServiceCredentialWarned) {
+      reviewSummaryMissingServiceCredentialWarned = true;
+      logger.warn(
+        {
+          operation: 'get_review_summary',
+          missing_config: 'gateway_service_credential',
+          env: 'PIVOTA_API_KEY',
+        },
+        'review summary fetch has no service credential configured; sending it without one',
+      );
+    }
+    return {};
+  }
+  return buildInvokeUpstreamAuthHeaders({
+    forceInternalFallback: true,
+    forwardAgentUserJwt: false,
+    forwardBuyerRef: false,
+  });
+}
+
 async function fetchReviewSummaryFromUpstream(args) {
   const { merchantId, platform, platformProductId, checkoutToken } = args;
   const mid = String(merchantId || '').trim();
@@ -28095,7 +28146,9 @@ async function fetchReviewSummaryFromUpstream(args) {
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
+      // A request that carries a checkout token sends the token, alone, exactly as before. Every other
+      // request sends the gateway's service credential (buildReviewSummaryUpstreamAuthHeaders).
+      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : buildReviewSummaryUpstreamAuthHeaders()),
     },
     timeout: UPSTREAM_TIMEOUT_REVIEWS_MS,
     data,
@@ -32190,15 +32243,40 @@ function getStorefrontHandoffClient(deps = {}) {
   return client;
 }
 
+// THE STORE-CART REFERRAL (src/services/storefrontCartReferral.js). Called by the checkout door only while
+// AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED is on (read per call there). The backend is called with this gateway's OWN
+// key; the partner's REQUEST-BOUND (v2) assertion is added when the request has a partner and
+// PARTNER_IDENTITY_FORWARDING_ENABLED is on. With no partner the call is still made: the referral is then no agent's.
+let storefrontCartReferralClient = null;
+function getStorefrontCartReferralClient(deps = {}) {
+  if (storefrontCartReferralClient && !deps.fresh) return storefrontCartReferralClient;
+  const { createStorefrontCartReferralClient } = require('./services/storefrontCartReferral');
+  const client = createStorefrontCartReferralClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    authHeaders: () => (PIVOTA_API_KEY
+      ? buildInvokeUpstreamAuthHeaders({ forceInternalFallback: true, forwardAgentUserJwt: false, forwardBuyerRef: false })
+      : null),
+    signRequest: ({ op, method, url, rid, rawBody }) =>
+      boundIssuingAgentAssertionHeaders({ op, invokeContext: getInvokeAuthContext() || {}, method, url, rid, rawBody }),
+    logger,
+  });
+  if (!deps.fresh) storefrontCartReferralClient = client;
+  return client;
+}
+
 // The executor's `readStorefrontHandoff`: null (= not handled, kernel path) while the switches are off. An esc id that
 // does not decode is not one of ours (null: kernel path, as before); one that decodes but carries no record is
 // `unrecorded`, never "not found".
 function buildReadStorefrontHandoff(client) {
-  return async (orderId) => {
+  return async (orderId, ctx) => {
     const { storefrontHandoffRecordEnabled } = require('./services/storefrontHandoffRecord');
     if (!storefrontHandoffRecordEnabled()) return null;
-    const { decodeEscalationId, escalationRecordIdOf } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+    const { decodeEscalationId, escalationRecordIdOf, escalationIdReadable } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
     if (!decodeEscalationId(orderId)) return null;
+    // An id bound to another buyer (AGENT_CHECKOUT_STORE_CART_ID_BINDING) is an id that is not one of these: the
+    // kernel path answers it as it answers any order id it never tracked.
+    if (!escalationIdReadable(orderId, ctx && ctx.user_ref, process.env)) return null;
     const recordId = escalationRecordIdOf(orderId);
     if (!recordId) return { kind: 'unrecorded' };
     return client.read(recordId, orderId);
@@ -32736,6 +32814,7 @@ function normalizePdpV2ToProductDetail(body) {
   const degraded = Array.isArray(body?.degraded_reads) && body.degraded_reads.length > 0
     ? { degraded_reads: body.degraded_reads.map(String) }
     : {};
+  let product;
   try {
     const modules = Array.isArray(body?.modules) ? body.modules : [];
     const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
@@ -32745,21 +32824,24 @@ function normalizePdpV2ToProductDetail(body) {
       ? p.price.current
       : null;
     const availability = typeof p.availability === 'string' ? p.availability.toLowerCase() : '';
-    return {
-      product: {
-        ...p,
-        brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
-        price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
-        currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
-        in_stock: availability
-          ? /in.?stock|available/.test(availability)
-          : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
-      },
-      ...degraded,
+    product = {
+      ...p,
+      brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
+      price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
+      currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
+      in_stock: availability
+        ? /in.?stock|available/.test(availability)
+        : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
     };
   } catch {
     return { product: null, ...degraded };
   }
+  // The currencies the page withheld money in (`metadata.serving_currency_guard`) are noted BESIDE the product,
+  // never on it (src/services/pdpWithheldCurrencies.js): the product and every answer built from it are unchanged.
+  // OUTSIDE the projection's own try, and never throwing: the note is written for every product this function
+  // returns, and a note that cannot be written leaves the projection exactly as it was.
+  pdpWithheldCurrencies.noteWithheldCurrenciesOfPdpResponse(product, body);
+  return { product, ...degraded };
 }
 
 // recommend_products' per-item live price checks call get_pdp_v2 back into this process. They carry the MCP
@@ -34396,6 +34478,16 @@ async function getCommerceRemoteMcpAdapter() {
         attributeSearchResult: attributeCommerceSearchPerResponse,
         // FIX_PLAN O-02: each UCP storefront hand-off recorded for the partner that asked (dark by default).
         storefrontHandoff: getStorefrontHandoffClient(),
+        // A referral for a store cart whose catalog link carries none (dark by default; read per call by the door).
+        storefrontReferral: getStorefrontCartReferralClient(),
+        // A retried storefront create returns the same checkout (mcp-server/src/storefrontCartIdempotency.js; dark by
+        // default, read per call). Its records live beside the kernel's own state: Postgres whenever the kernel is
+        // durable, which strict checkout requires outside tests.
+        storefrontCartIdempotencyStore: typeof commerce.stateStore === 'function' ? commerce.stateStore('storefront_cart_idempotency') : undefined,
+        // THE PARTNER a retried create is deduplicated for: the verified subject of THIS request, read by the same
+        // function the partner assertion on the referral and the hand-off record is signed from, so the two can
+        // never name different partners. Null (a service or degraded identity): that call is not deduplicated.
+        storefrontCartPartner: () => issuingSubjectFromInvokeContext(getInvokeAuthContext()),
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a

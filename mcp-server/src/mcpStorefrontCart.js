@@ -33,9 +33,14 @@ import partnerDoor from "../../src/services/partnerDoorOneProductId.js";
 import requestMarket from "../../src/services/requestMarket.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { intakeRefusal, isAcceptableLineQuantity } from "../../safety-kernel/src/protocol/buyerIntake.js";
+// The door's logger (CommonJS), for the one line that says why the path did not run (see mcpStorefrontCartPath).
+import gatewayLogger from "../../src/logger.js";
 import {
   assertChosenVariantsBelong,
+  checkoutSwitchOn,
+  CURRENCY_FOLLOWS_MARKET_FLAG,
   decodeEscalationId,
+  escalationIdReadable,
   escalationTargetOf,
   readCheckoutRows,
   refuseUnservedStorefrontCheckout,
@@ -47,7 +52,27 @@ export const MCP_STOREFRONT_ESCALATION_FLAG = "AGENT_CHECKOUT_MCP_STOREFRONT_ESC
 
 /** Read per call, as the escalation's own switches are: turning it off stops the path on the next call. */
 export function mcpStorefrontEscalationEnabled(env = process.env) {
-  return /^(1|true|yes|on|enabled)$/i.test(String((env && env[MCP_STOREFRONT_ESCALATION_FLAG]) || "").trim());
+  return checkoutSwitchOn(env, MCP_STOREFRONT_ESCALATION_FLAG);
+}
+
+// THIS PATH REQUIRES THE CURRENCY RULE (AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET, ucpCheckoutEscalation.js).
+//
+// The path hands a native checkout to the storefront escalation with the market the caller named. Without the
+// currency rule that escalation answers in the catalog row's currency: a create naming GB for a seller priced in USD
+// is answered in USD with a cart built at the seller, a market this gateway prices nothing for is answered the same
+// way, and an id minted for GB is re-read in USD. This door never serves that. So the path is ON only when BOTH
+// switches are on, each read per call by the SAME reader (checkoutSwitchOn):
+//   'on'                  both on: the path runs, and every answer of it is under the currency rule;
+//   'off'                 this door's switch is off: nothing here runs;
+//   'needs_currency_rule' this door's switch is on and the currency rule's is off: NOTHING HERE RUNS EITHER. The
+//                         call, the tool list and every answer are exactly what they are with this door's switch
+//                         off, and one log line per checkout call says why (mcpStorefrontCartSurface).
+// Turning the currency rule off therefore turns this path off on the next call; a cart created while both were on
+// is not re-read by this path afterwards (its id is answered as with this door's switch off).
+export const MCP_STOREFRONT_PATH = Object.freeze({ on: "on", off: "off", needsCurrencyRule: "needs_currency_rule" });
+export function mcpStorefrontCartPath(env = process.env) {
+  if (!checkoutSwitchOn(env, MCP_STOREFRONT_ESCALATION_FLAG)) return MCP_STOREFRONT_PATH.off;
+  return checkoutSwitchOn(env, CURRENCY_FOLLOWS_MARKET_FLAG) ? MCP_STOREFRONT_PATH.on : MCP_STOREFRONT_PATH.needsCurrencyRule;
 }
 
 // The native status of a checkout the buyer completes at the seller. Deliberately not `ready_for_payment`
@@ -227,14 +252,16 @@ function storefrontOnlyRefusal(opId) {
  * @param {{ op:{id:string}, toolArgs:object, params:object, ctx:object, attested?:object,
  *           executor:{execute:Function}, merchantDoor?:object, log?:object, onMarketAssumed?:Function, env?:object }} a
  */
-export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attested = {}, executor, merchantDoor, log, onMarketAssumed, env = process.env }) {
+export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attested = {}, executor, merchantDoor, log, onMarketAssumed, env = process.env, referralMinter, idempotencyStore, idempotencyPartner }) {
   const opId = op && op.id;
   try {
     if (opId === "create_checkout_session") {
-      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env });
+      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env, referralMinter, idempotencyStore, idempotencyPartner });
     }
     const sessionId = str(own(params, "session_id"));
-    if (!sessionId || !decodeEscalationId(sessionId)) return undefined; // a kernel session: untouched
+    // An id this buyer may not read (the id binding, ucpCheckoutEscalation.js) is treated as an id that is not one
+    // of these at all, before anything below can say otherwise.
+    if (!sessionId || !decodeEscalationId(sessionId) || !escalationIdReadable(sessionId, isPlainObject(ctx) ? ctx.user_ref : null, env)) return undefined; // a kernel session: untouched
     if (opId === "cancel_checkout_session" || opId === "create_payment_link") throw storefrontOnlyRefusal(opId);
     // get, update, complete: the UCP door's own answer for an escalation id. A re-read carries no market on the
     // wire on either door; the id carries the one the cart was created for. An id marked as created for an assumed
@@ -254,12 +281,18 @@ export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attes
   }
 }
 
-async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env }) {
+async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env, referralMinter, idempotencyStore, idempotencyPartner }) {
   const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
   // ONLY A SELLER PIVOTA IS NOT CONNECTED TO. A connected merchant's product read can carry a storefront link too
   // (the backend stamps Pivota's own hop on it), so the row alone does not decide: the seller named must be
   // external-seed supply, the one id test the native door's storefront refusal already uses.
   if (!externalSeedLane.isExternalSeedSupplyMerchantId(quote.merchant_id)) return undefined;
+  // A MUTATION NEEDS ITS IDEMPOTENCY KEY, as on the kernel path (canonicalExecutor: `missing_idempotency_key`), which
+  // this path never reaches. Before any read, gate or store call. (The allowlist keeps a string key only, so a
+  // numeric or blank one is a missing one here exactly as it is there.)
+  if (typeof params.idempotency_key !== "string" || params.idempotency_key.trim() === "") {
+    throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason: "missing_idempotency_key", op: op && op.id });
+  }
   const items = Array.isArray(quote.items)
     ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)).map((it) => ({ ...it, product_id: str(it.product_id) }))
     : [];
@@ -291,7 +324,9 @@ async function createStorefrontCart({ op, toolArgs, params, ctx, attested, execu
   if (!escalationOn) return undefined;
   const declines = [];
   const escalated = await tryEscalateUcpCheckout({
-    op, params, ctx, executor, ucpArgs: escalationArgsFor(market), attested, declines, merchantDoor, log, env,
+    op, params, ctx, executor, ucpArgs: escalationArgsFor(market), attested, declines, merchantDoor, log, env, referralMinter,
+    // A retried create returns the same checkout (storefrontCartIdempotency.js). This door's keys are its own.
+    idempotencyStore, idempotencyDoor: "mcp", idempotencyPartner,
   });
   if (escalated) {
     const codes = own(quote, "discount_codes");
@@ -344,21 +379,37 @@ export function storefrontCartToolDefinition(tool) {
 }
 
 /**
- * The surface the `/mcp` adapter serves. While the flag is off, every call and every tools/list is the wrapped
+ * The surface the `/mcp` adapter serves. While the path is not on, every call and every tools/list is the wrapped
  * surface's own, with the arguments it was given. While it is on, a checkout tool's call is marked for the path
  * (`storefrontCartDoor`, an option only this view sets) and the checkout tools' declarations say what it answers.
  * The UCP door, the public door and the invoke route do not go through this view.
- * `enabled` is injectable for tests; the default reads the flag per call.
+ *
+ * The path is on only when this door's switch AND the currency rule's switch are on (mcpStorefrontCartPath, read
+ * per call). With this door's switch on and the currency rule off, a checkout tool's call is passed through exactly
+ * as with this door's switch off, and ONE line is logged for it: the event, the outcome, the reason and the tool's
+ * name, nothing from the request.
+ * `enabled` is injectable for tests (it replaces the whole decision); `log` defaults to the gateway's logger.
  */
-export function mcpStorefrontCartSurface(surface, { enabled = () => mcpStorefrontEscalationEnabled(process.env) } = {}) {
-  const on = typeof enabled === "function" ? enabled : () => enabled === true;
+export function mcpStorefrontCartSurface(surface, { enabled, log = gatewayLogger } = {}) {
+  const injected = typeof enabled === "function" ? enabled : (enabled === undefined ? null : () => enabled === true);
+  const path = () => (injected ? (injected() ? MCP_STOREFRONT_PATH.on : MCP_STOREFRONT_PATH.off) : mcpStorefrontCartPath(process.env));
+  const on = () => path() === MCP_STOREFRONT_PATH.on;
+  const noteNotRun = (toolName) => {
+    if (!log || typeof log.info !== "function") return;
+    try {
+      log.info({ event: "mcp_storefront_cart_path", outcome: "not_run", reason: "currency_follows_market_off", tool: toolName },
+        "the /mcp storefront path is switched on but did not run: it requires the currency-follows-market rule, which is off");
+    } catch { /* never throw the door */ }
+  };
   return {
     get tools() {
       return on() ? surface.tools.map(storefrontCartToolDefinition) : surface.tools;
     },
     isCommerceTool: surface.isCommerceTool,
     callTool(toolName, toolArgs, ...rest) {
-      if (!STOREFRONT_CART_TOOLS.has(toolName) || !on()) return surface.callTool(toolName, toolArgs, ...rest);
+      const state = STOREFRONT_CART_TOOLS.has(toolName) ? path() : MCP_STOREFRONT_PATH.off;
+      if (state === MCP_STOREFRONT_PATH.needsCurrencyRule) noteNotRun(toolName);
+      if (state !== MCP_STOREFRONT_PATH.on) return surface.callTool(toolName, toolArgs, ...rest);
       const [sessionContext, options] = rest;
       return surface.callTool(toolName, toolArgs, sessionContext, { ...(isPlainObject(options) ? options : {}), storefrontCartDoor: true });
     },
