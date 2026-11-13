@@ -23,8 +23,13 @@ import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
 // (buyerIntake.js is jose-free by construction, so this import keeps mcp-server jose-free too.)
 import {
+  assertIdempotencyKeyAcceptable,
+  assertLineQuantitiesWithinMaximum,
   attestedBuyerFromClaims,
   createDefaultVariantResolver,
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
+  IDEMPOTENCY_KEY_MIN_LENGTH,
+  MAX_LINE_QUANTITY,
   normalizeCartItems,
   pickCompleteAddress,
   resolveBuyerEmail,
@@ -475,6 +480,18 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     if (marketAssumed) noteToolCall(observeEarly, { market_assumed: true });
     const label = (value) => withMarketAssumed(value, marketAssumed, dialect);
 
+    // 3-0) THE TWO SHARED BOUNDS, decided on the request alone and so refused HERE: before the variant proof, the
+    //     expected-seller check, the purchase lanes, the storefront cart (its product reads, its purchasability
+    //     gate, the seller's own door), intake's variant read and the kernel. A PRESENT idempotency key shorter
+    //     than the minimum, on every mutating operation; a line above the per-line quantity ceiling, on the two
+    //     operations that carry a cart. An absent key is answered where it always was. The two vendor tools that
+    //     continue an EARLIER create (recover, resume) are not judged here: they must present that create's own
+    //     key and cart, and they never reach the storefront cart or the kernel. See buyerIntake.js.
+    if (!recoverOnly && !resumeOnly) {
+      if (op.mutating) assertIdempotencyKeyAcceptable(params.idempotency_key);
+      if (QUOTE_INTAKE_OPS.includes(op.id)) assertLineQuantitiesWithinMaximum(asObj(params.quote).items);
+    }
+
     // 3a) UCP CHECKOUT ESCALATION (path 2 — rows Pivota does not transact). On the UCP dialect only, for the
     //     checkout operations, a cart of OBSERVED-seller rows is answered with a spec `requires_escalation`
     //     checkout whose continue_url is the seller's storefront — no intake, no quote, no kernel, no charge:
@@ -731,6 +748,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
           `silently ignored. Accepted top-level arguments: ${Object.keys(START_PURCHASE_INPUT_SCHEMA.properties).join(", ")}.`,
       );
     }
+    // The shared minimum for a key that is present (intakeBounds.cjs), with the named refusal every door gives. A
+    // missing key is the tool's own argument problem below, as before.
+    assertIdempotencyKeyAcceptable(toolArgs.idempotency_key);
     const problems = startPurchaseArgumentProblems(toolArgs);
     if (problems.length > 0) {
       throw new ToolValidationError(
@@ -1153,7 +1173,8 @@ function describe(op) {
   return base[op.id] || `${op.id} (${op.capability})`;
 }
 
-const IDEMPOTENCY = { type: "string", minLength: 8, description: "Client-generated unique key; a replay returns the original result, never a duplicate." };
+// `minLength` is the runtime minimum itself (buyerIntake.js), imported so the two cannot drift.
+const IDEMPOTENCY = { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH, description: `Client-generated unique key; a replay returns the original result, never a duplicate. ${IDEMPOTENCY_KEY_LENGTH_SENTENCE}` };
 const ADDRESS = {
   type: "object",
   properties: {
@@ -1185,7 +1206,8 @@ const QUOTE_SCHEMA = {
             description:
               "The exact option the buyer chose. Optional: omitted, the server resolves the product's default variant and REFUSES if that is ambiguous (more than one variant) or impossible. A variant id is never guessed or derived from product_id.",
           },
-          quantity: { type: "integer", minimum: 1 },
+          // The per-line ceiling the door enforces (buyerIntake.js), imported rather than restated.
+          quantity: { type: "integer", minimum: 1, maximum: MAX_LINE_QUANTITY },
         },
       },
     },

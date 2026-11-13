@@ -29,7 +29,12 @@
 import { createHash } from "node:crypto";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { agentPurchaseOrder, AGENT_PURCHASE_RESULT } from "../../safety-kernel/src/protocol/canonicalExecutor.js";
-import { intakeRefusal, normalizeEmail } from "../../safety-kernel/src/protocol/buyerIntake.js";
+import {
+  IDEMPOTENCY_KEY_LENGTH_SENTENCE,
+  IDEMPOTENCY_KEY_MIN_LENGTH,
+  intakeRefusal,
+  normalizeEmail,
+} from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { readCheckoutRows } from "./ucpCheckoutEscalation.js";
 import { resolveCartLinkPurchaseRow } from "./ucpReapAgenticLane.js";
 
@@ -71,8 +76,9 @@ export const START_PURCHASE_INPUT_SCHEMA = Object.freeze({
   additionalProperties: false,
   properties: {
     idempotency_key: {
-      type: "string", minLength: 8,
-      description: "Client-generated, one per purchase attempt. A retry with the same key and body returns the SAME purchase; never reuse it for a different purchase.",
+      // The shared minimum (intakeBounds.cjs), not a number of this tool's own.
+      type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH,
+      description: `Client-generated, one per purchase attempt. A retry with the same key and body returns the SAME purchase; never reuse it for a different purchase. ${IDEMPOTENCY_KEY_LENGTH_SENTENCE}`,
     },
     merchant_id: { type: "string" },
     product_id: { type: "string" },
@@ -122,7 +128,8 @@ function nonEmpty(value) {
 export function startPurchaseArgumentProblems(args) {
   const problems = [];
   const need = (field, ok, message) => { if (!ok) problems.push({ field, message }); };
-  need("idempotency_key", nonEmpty(args.idempotency_key) && args.idempotency_key.length >= 8, "must be a string of at least 8 characters");
+  // Presence only. How long a present key must be is the shared rule's (the door asks it before these checks).
+  need("idempotency_key", nonEmpty(args.idempotency_key), "is required");
   need("merchant_id", nonEmpty(args.merchant_id), "is required");
   need("product_id", nonEmpty(args.product_id), "is required");
   // The backend's own bound (StartPurchaseRequest.variant_id, 20 digits): a longer id is refused HERE, before the row read.

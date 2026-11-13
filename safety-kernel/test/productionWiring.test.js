@@ -257,7 +257,7 @@ test('E2E ACP door: a request with NO verified buyer token is refused (resolveUs
   const wired = composeProductionCommerce(baseConfig(jwks, fakeBackendFetch()));
   const sign = (raw, ts) => createHmac('sha256', ACP_SECRET).update(`${ts}.${raw}`).digest('hex');
   const raw = JSON.stringify({ merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] }); const ts = String(FIXED_NOW);
-  const res = await wired.acp.createCheckoutSession({ headers: { authorization: 'Bearer platform', timestamp: ts, signature: sign(raw, ts), 'idempotency-key': 'nb-1' }, rawBody: raw, body: JSON.parse(raw), params: {} });
+  const res = await wired.acp.createCheckoutSession({ headers: { authorization: 'Bearer platform', timestamp: ts, signature: sign(raw, ts), 'idempotency-key': 'idem-nb-1' }, rawBody: raw, body: JSON.parse(raw), params: {} });
   assert.equal(res.status, 401);
   assert.equal(res.body.code, 'USER_AUTH_REQUIRED');
 });
@@ -338,7 +338,7 @@ test('P0 reconcile: a present-but-malformed/foreign payment_id is HELD BACK (nev
     }));
     const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
     const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'bm-create', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
-    await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'bm-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
+    await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-bm-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
     const res = await wired.reconcile();
     assert.equal(res.reconciled.length, 0, `badId=${JSON.stringify(badId)} must NOT finalize`);
     assert.ok(res.stillPending.some((p) => p.order_id === 'o_async'), `badId=${JSON.stringify(badId)} held back`);
@@ -377,7 +377,7 @@ test('PSP webhooks: built only when configured; Stripe webhook finalizes an asyn
   // drive an async charge to charge_pending, then finalize via the Stripe webhook on the SAME kernel
   const sess = { user_ref: 'usr_mcp', acp_session_id: 'sess_mcp', claims: MCP_CLAIMS };
   const created = await wired.mcp.callTool('create_checkout_session', { idempotency_key: 'psp-create', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] } }, sess);
-  const out = await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'psp-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
+  const out = await wired.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-psp-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await mintGrant(privateKey, created.session_id) } }, sess);
   assert.equal(out.payment.order_status, 'charge_pending');
   // the kernel order is o_async / pi_async (from fakeAsyncBackendFetch); Stripe event carries those in metadata + PI id
   const body = JSON.stringify({ type: 'payment_intent.succeeded', data: { object: { object: 'payment_intent', id: 'pi_async', status: 'succeeded', metadata: { order_id: 'o_async' } } } });

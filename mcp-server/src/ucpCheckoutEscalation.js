@@ -83,8 +83,10 @@
 
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import {
+  assertIdempotencyKeyAcceptable,
   assertProductIdentity,
   intakeRefusal,
+  isAcceptableLineQuantity,
   itemVariantRefusal,
   normalizeEmail,
   mapWithConcurrency,
@@ -109,7 +111,7 @@ import storefrontHandoffRecordModule from "../../src/services/storefrontHandoffR
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { REFERRAL_SKIP, priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
-import { assertKeyLongEnough, canonicalRequest, partnerPrincipalOf, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
+import { canonicalRequest, partnerPrincipalOf, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 // THE NO-MARKET RULE (decision D-10): the same helper the read tools resolve their market through.
 import requestMarket from "../../src/services/requestMarket.js";
@@ -1065,7 +1067,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     // A quantity that is not a positive safe integer is NOT coerced to 1 (review of #2025: that would state a
     // one-unit total for a cart the caller believes is 2.5 or "3" — on the one number the agent compares
     // against the storefront). Fall through: intake refuses it with its own curated `item_bad_quantity`.
-    if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return null;
+    // The same for a line above the per-line ceiling: no store is asked for a cart the door will not offer, and the
+    // ceiling is intake's one number (`isAcceptableLineQuantity`), not a second one held here.
+    if (items.some((it) => !isAcceptableLineQuantity(it.quantity))) return null;
     // THE CURRENCY RULE (CURRENCY_FOLLOWS_MARKET_FLAG): the REQUEST market's currency, or null when the rule is off
     // or the market has none. The rows are read as they always were: no market on the read, whatever the flag says.
     const marketCurrency = followsMarket ? marketCurrencyOf(buyerMarket) : null;
@@ -1126,10 +1130,14 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       }
       return null;
     }
-    // THE KEY'S MINIMUM LENGTH, on this path, while a retry is deduplicated by it (storefrontCartIdempotency.js):
-    // refused here, before the gate, the referral or any store is asked.
+    // THE KEY A RETRY IS DEDUPLICATED BY (storefrontCartIdempotency.js) IS JUDGED BY THE SHARED INTAKE RULE
+    // (buyerIntake.js `assertIdempotencyKeyAcceptable`: its alphabet and its minimum length), on the key EXACTLY AS
+    // SENT. Both doors apply that rule to every mutating call before they reach this function, whatever any flag
+    // says; it is applied here too, wherever the key is about to be USED, so that no caller of this function can
+    // reach the gate, the referral, a store or a record (a first build or a replay) under a key the rule refuses.
+    // There is no second rule about a key on this path. An absent key is not this rule's.
+    if (storeCartIdempotencyEnabled(env)) assertIdempotencyKeyAcceptable(own(params, "idempotency_key"));
     const idempotencyKey = str(own(params, "idempotency_key"));
-    if (storeCartIdempotencyEnabled(env) && idempotencyKey) assertKeyLongEnough(idempotencyKey, log);
     // EVERYTHING FROM HERE ON asks the gate, may build a cart at the seller's store and may write records: the part
     // of a create a retry must not repeat (storefrontCartIdempotency.js). Every refusal above is decided on the
     // request and the catalog alone, and is the same on every attempt.
@@ -1635,7 +1643,7 @@ export async function refuseUnservedStorefrontCheckout({ op, params, ctx, execut
   // to intake, so they keep intake's own message and detail; a storefront row inside one is refused there too.
   if (items.length === 0 || items.length > MAX_ESCALATION_ITEMS) return undefined;
   if (new Set(items.map((it) => it.product_id)).size > MAX_CART_DISTINCT_PRODUCTS) return undefined;
-  if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return undefined;
+  if (items.some((it) => !isAcceptableLineQuantity(it.quantity))) return undefined;
   // `failOpen` (the native door): a read that fails is NOT this check's refusal to give — that door's checkout ran
   // without this read before, so only a POSITIVE storefront classification refuses; anything else proceeds as it did.
   let rows;

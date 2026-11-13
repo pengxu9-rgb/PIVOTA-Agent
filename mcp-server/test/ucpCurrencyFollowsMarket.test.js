@@ -900,9 +900,9 @@ describe('the /mcp storefront path runs only with the currency rule on', () => {
     // update / complete / cancel / payment link on such an id: refused as this door always refuses them, with no price,
     // no product read and no store call. There is no stored answer to replay on this door: every call is computed.
     for (const [tool, args] of [
-      ['update_checkout_session', { idempotency_key: 'idem-1', session_id: id, quote: { items: [{ product_id: 'sig_row_a', quantity: 2 }] } }],
-      ['complete_checkout_session', { idempotency_key: 'idem-2', session_id: id, payment_authorization: { type: 'none' } }],
-      ['cancel_checkout_session', { idempotency_key: 'idem-3', session_id: id }],
+      ['update_checkout_session', { idempotency_key: 'idem-0011', session_id: id, quote: { items: [{ product_id: 'sig_row_a', quantity: 2 }] } }],
+      ['complete_checkout_session', { idempotency_key: 'idem-0012', session_id: id, payment_authorization: { type: 'none' } }],
+      ['cancel_checkout_session', { idempotency_key: 'idem-0013', session_id: id }],
     ]) {
       d = nativeDoor(nativeRow('USD'), 'USD');
       out = await call(d, tool, args, BOTH);

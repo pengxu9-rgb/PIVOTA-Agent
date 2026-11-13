@@ -13,7 +13,8 @@
 //   - the same partner and buyer in another session: a new checkout, as the kernel answers, not a conflict;
 //   - everything the same: the first checkout again;
 //   - a call bound to no partner is never deduplicated;
-//   - a key under the published minimum (8) is refused on this path, and only on this path.
+//   - which keys are accepted is the shared intake rule's alone (printable ASCII, at least 8 characters): a key it
+//     refuses is refused on this path and on the kernel path, with this flag on or off, with one answer.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -222,38 +223,81 @@ test('NO PARTNER on the call: never deduplicated. Every create is a cart of its 
   assert.deepEqual(ledger.storeCartIdempotencyCounts(), { 'fail_open:no_partner': 3 });
 });
 
+// What the shared intake rule answers through a door: the code a missing key gets, never retriable, the reason and
+// the bound (nothing from the request). `detail` is the whole detail, so a second rule's wording cannot hide in it.
+const KEY_REFUSALS = {
+  short: { reason: 'idempotency_key_too_short', min_length: 8 },
+  characters: { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' },
+};
+function assertKeyRefused(answer, kind, label) {
+  assert.equal(answer.isError, true, `${label}: ${answer.raw}`);
+  const error = errorOf(answer);
+  assert.equal(error.code, 'IDEMPOTENCY_CONFLICT', label);
+  assert.equal(error.retriable, false, label);
+  assert.deepEqual(error.detail, KEY_REFUSALS[kind], label);
+  // Before the gate, the referral and the store.
+  assert.deepEqual([answer.store.length, answer.gate.length, answer.referral.length], [0, 0, 0], label);
+}
+const withKey = (args, key) => ({ ...args, meta: { ...args.meta, 'idempotency-key': key } });
+const ucpWithKey = (key, market = 'US') => door.call('/ucp/mcp', 'create_checkout', withKey(h.ucpCreateKeyed([[IDS.SIG_A, 1]], market, 1), key), { buyer: AS.A });
+const nativeWithKey = (key, market = 'US') => door.call('/mcp', 'create_checkout_session', { ...h.nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 1]], { market, n: 1 }), idempotency_key: key }, { buyer: AS.A });
+
 test('A 7-CHARACTER KEY is refused on the storefront path with the flag on, before the gate, the referral and the store; 8 is accepted', async () => {
   h.setFlags([h.IDEMPOTENCY_FLAG, h.NATIVE_DOOR_FLAG, h.REFERRAL_FLAG]);
-  const withKey = (args, key) => ({ ...args, meta: { ...args.meta, 'idempotency-key': key } });
-  const short = await door.call('/ucp/mcp', 'create_checkout', withKey(h.ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 1), 'idem-07'), { buyer: AS.A });
-  assert.equal(short.isError, true, short.raw);
-  assert.match(short.raw, /IDEMPOTENCY_CONFLICT|idempotency/i);
-  assert.deepEqual([short.store.length, short.gate.length, short.referral.length], [0, 0, 0]);
-  const nativeShort = await door.call('/mcp', 'create_checkout_session', { ...h.nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 1]], { market: 'US', n: 1 }), idempotency_key: 'idem-07' }, { buyer: AS.A });
-  assert.equal(nativeShort.isError, true, nativeShort.raw);
+  assertKeyRefused(await ucpWithKey('idem-07'), 'short', 'ucp');
+  const nativeShort = await nativeWithKey('idem-07');
+  assertKeyRefused(nativeShort, 'short', 'native');
   // The code a MISSING key gets on this path, not retriable.
   const missing = h.nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 1]], { market: 'US', n: 1 });
   delete missing.idempotency_key;
   const nativeMissing = await door.call('/mcp', 'create_checkout_session', missing, { buyer: AS.A });
-  assert.equal(errorOf(nativeShort).code, 'IDEMPOTENCY_CONFLICT');
   assert.equal(errorOf(nativeShort).code, errorOf(nativeMissing).code);
-  assert.equal(errorOf(nativeShort).retriable, false);
-  assert.deepEqual([nativeShort.store.length, nativeShort.gate.length, nativeShort.referral.length], [0, 0, 0]);
-  assert.equal(ledger.storeCartIdempotencyCounts().key_too_short, 2);
+  // The refusal is the shared intake rule's: this path keeps no count of its own for it.
+  assert.equal(ledger.storeCartIdempotencyCounts().key_too_short, undefined);
+  assert.deepEqual(ledger.storeCartIdempotencyCounts(), {});
 
-  const eight = await door.call('/ucp/mcp', 'create_checkout', withKey(h.ucpCreateKeyed([[IDS.SIG_A, 1]], 'US', 1), 'idem-008'), { buyer: AS.A });
+  const eight = await ucpWithKey('idem-008');
   assert.equal(eight.isError, false, eight.raw);
   assert.deepEqual(tools(eight), ['create_cart']);
 });
 
-test('the key rule is this path\'s and this flag\'s: a kernel checkout, and the flag off, take a 7-character key as before', async () => {
+test('the key rule is no path\'s and no flag\'s: a kernel checkout, and the flag off, refuse a 7-character key with the same answer', async () => {
+  // THE RULE CHANGED, AND THIS TEST WITH IT (it used to pin that a kernel checkout, and the flag off, took a
+  // 7-character key). The storefront path used to hold a minimum of its own, only while its flag was on. There is now ONE rule, the shared intake rule, and it is no path's and no flag's: a kernel
+  // checkout, and the storefront path with the flag off, refuse a 7-character key with the same answer.
   h.setFlags([h.IDEMPOTENCY_FLAG, h.NATIVE_DOOR_FLAG]);
-  const kernel = await door.call('/mcp', 'create_checkout_session', { ...h.nativeCreate(IDS.SELLER_CONNECTED, [[IDS.SOURCE_CONNECTED, 1, IDS.VARIANT_CONNECTED]], { n: 1 }), idempotency_key: 'idem-07' }, { buyer: AS.A });
+  const kernelCreate = (key) => door.call('/mcp', 'create_checkout_session', { ...h.nativeCreate(IDS.SELLER_CONNECTED, [[IDS.SOURCE_CONNECTED, 1, IDS.VARIANT_CONNECTED]], { n: 1 }), idempotency_key: key }, { buyer: AS.A });
+  assertKeyRefused(await kernelCreate('idem-07'), 'short', 'kernel, flag on');
+  const kernel = await kernelCreate('idem-008');
   assert.equal(kernel.isError, false, kernel.raw);
   assert.match(kernel.value.session_id, /^q_/);
   h.setFlags([h.NATIVE_DOOR_FLAG]);
-  const off = await door.call('/mcp', 'create_checkout_session', { ...h.nativeCreate(IDS.SELLER_A, [[IDS.SIG_A, 1]], { market: 'US', n: 1 }), idempotency_key: 'idem-07' }, { buyer: AS.A });
+  assertKeyRefused(await nativeWithKey('idem-07'), 'short', 'storefront, flag off, native');
+  assertKeyRefused(await ucpWithKey('idem-07'), 'short', 'storefront, flag off, ucp');
+  assertKeyRefused(await kernelCreate('idem-07'), 'short', 'kernel, flag off');
+  const off = await nativeWithKey('idem-008');
   assert.equal(off.isError, false, off.raw);
   assert.deepEqual(tools(off), ['create_cart']);
-  assert.equal(ledger.storeCartIdempotencyCounts().key_too_short, undefined);
+  assert.deepEqual(ledger.storeCartIdempotencyCounts(), {});
+});
+
+test('A KEY OUTSIDE PRINTABLE ASCII is refused by name on both doors, flag on and flag off, for every market, before the gate, the referral and the store', async () => {
+  // Each key is long enough, so none is refused as short: a letter outside ASCII, DEL, an invisible format
+  // character. The rule is decided on the key alone, so the market cannot change it; a market is named (or left
+  // out) only to show that.
+  const keys = ['clé-door-0001', 'idem\u007fdoor-01', 'idem​door-01'];
+  for (const flags of [[h.IDEMPOTENCY_FLAG, h.NATIVE_DOOR_FLAG, h.REFERRAL_FLAG], [h.NATIVE_DOOR_FLAG]]) {
+    h.setFlags(flags);
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      for (const key of keys) {
+        const label = JSON.stringify([flags.length, market, key]);
+        assertKeyRefused(await ucpWithKey(key, market), 'characters', `ucp ${label}`);
+        assertKeyRefused(await nativeWithKey(key, market), 'characters', `native ${label}`);
+      }
+    }
+    // No market named at all, on the door that accepts that.
+    const absent = h.ucpCreateKeyed([[IDS.SIG_A, 1]], undefined, 1);
+    assertKeyRefused(await door.call('/ucp/mcp', 'create_checkout', withKey(absent, keys[0]), { buyer: AS.A }), 'characters', 'ucp, no market');
+  }
+  assert.deepEqual(ledger.storeCartIdempotencyCounts(), {});
 });

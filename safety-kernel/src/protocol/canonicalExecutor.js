@@ -20,6 +20,7 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
+import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
@@ -296,6 +297,9 @@ export function createCanonicalExecutor({
     if (op.mutating && !nonEmpty(params?.idempotency_key)) {
       throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'missing_idempotency_key', op: opId });
     }
+    // A key that IS present has a minimum length (buyerIntake.js). The doors refuse a short one before they read
+    // or call anything; this is the same rule for every caller of the executor, before the kernel is reached.
+    if (op.mutating) assertIdempotencyKeyAcceptable(params.idempotency_key);
 
     switch (opId) {
       case 'search_catalog': {
@@ -397,6 +401,8 @@ export function createCanonicalExecutor({
 
       case 'create_checkout_session':
       case 'update_checkout_session': {
+        // The per-line quantity ceiling (buyerIntake.js), for a create and an update alike, before anything is priced.
+        assertLineQuantitiesWithinMaximum(params.quote?.items);
         const quote = await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
         return attachAp2CheckoutJwt(toSession(quote), mintAp2CheckoutJwt, ctx);
       }

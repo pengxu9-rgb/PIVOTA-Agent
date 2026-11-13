@@ -224,7 +224,7 @@ test('the executor attaches ap2_checkout_jwt to created sessions, and its absenc
   // against. This assertion previously expected 'jwt-for-cs_exec_1' (the KERNEL quote id) while
   // handing in an ACP ctx, so it encoded the defect: an ACP wallet never learns the quote id, and
   // every ACP AP2 completion failed session_mismatch.
-  const session = await withMint.execute('create_checkout_session', { quote: {}, idempotency_key: 'idem_1' }, ctx);
+  const session = await withMint.execute('create_checkout_session', { quote: {}, idempotency_key: 'idem_0001' }, ctx);
   assert.equal(session.ap2_checkout_jwt, 'jwt-for-acp_1');
 
   // ...but the NATIVE door binds to the kernel quote id, and this is the case that makes the rule
@@ -234,7 +234,7 @@ test('the executor attaches ap2_checkout_jwt to created sessions, and its absenc
   // ctx.protocol would silently break the door that already works.
   const nativeCtx = { user_ref: 'u1', acp_session_id: 'mcp_conn_1' };
   const nativeSession = await withMint.execute(
-    'create_checkout_session', { quote: {}, idempotency_key: 'idem_1b' }, nativeCtx,
+    'create_checkout_session', { quote: {}, idempotency_key: 'idem_0001b' }, nativeCtx,
   );
   assert.equal(nativeSession.ap2_checkout_jwt, 'jwt-for-cs_exec_1');
 
@@ -244,14 +244,14 @@ test('the executor attaches ap2_checkout_jwt to created sessions, and its absenc
   assert.equal(reread.ap2_checkout_jwt, 'jwt-for-acp_1');
 
   const mintless = createCanonicalExecutor({ kernel });
-  const bare = await mintless.execute('create_checkout_session', { quote: {}, idempotency_key: 'idem_2' }, ctx);
+  const bare = await mintless.execute('create_checkout_session', { quote: {}, idempotency_key: 'idem_0002' }, ctx);
   assert.equal('ap2_checkout_jwt' in bare, false);
 
   const throwing = createCanonicalExecutor({
     kernel,
     mintAp2CheckoutJwt: () => { throw new Error('mint blew up'); },
   });
-  const survived = await throwing.execute('create_checkout_session', { quote: {}, idempotency_key: 'idem_3' }, ctx);
+  const survived = await throwing.execute('create_checkout_session', { quote: {}, idempotency_key: 'idem_0003' }, ctx);
   assert.equal(survived.session_id, 'cs_exec_1'); // session unharmed
   assert.equal('ap2_checkout_jwt' in survived, false); // AP2 fails closed, nothing else does
 });

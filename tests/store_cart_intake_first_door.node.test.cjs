@@ -108,17 +108,53 @@ test('a good create is answered exactly as before: the store\'s cart, one store 
   assert.equal(a.store.find((c) => c.kind === 'tool').arguments.cart.line_items[0].quantity, 1);
 });
 
-test('what intake does NOT refuse on the kernel path is not refused here either: a 3-character key, a very large quantity', async () => {
-  // Neither is an intake rule today (the schema advertises a minimum key length that nothing enforces, and intake
-  // has no quantity ceiling). Pinned so that adding either rule is a decision made for both paths at once.
+test('what the shared bounds refuse on the kernel path is refused here the same, and what they accept is accepted: a 3-character key, a key outside printable ASCII, a very large quantity', async () => {
+  // THE RULE CHANGED, AND THIS TEST WITH IT. It used to pin that neither a short key nor a very large quantity was
+  // an intake rule on either path, "so that adding either rule is a decision made for both paths at once". Both
+  // are now the shared intake bounds (a present key: printable ASCII, at least 8 characters; a line: at most 999
+  // units), and that decision WAS made for both paths at once: each is refused on this path exactly as on the
+  // kernel path (code, reason, message), before any read, gate, referral or store call, for every market.
   h.setFlags([h.NATIVE_DOOR_FLAG]);
-  const shortKeyKernel = await create({ ...connected(), idempotency_key: 'abc' });
-  assert.equal(shortKeyKernel.isError, false, shortKeyKernel.raw);
-  const shortKey = await create({ ...storefront(), idempotency_key: 'abc' });
-  assert.equal(shortKey.isError, false, shortKey.raw);
-  const big = storefront();
-  big.quote.items[0].quantity = 900000000;
-  const bigAnswer = await create(big);
-  assert.equal(bigAnswer.isError, false, bigAnswer.raw);
-  assert.equal(bigAnswer.store.find((c) => c.kind === 'tool').arguments.cart.line_items[0].quantity, 900000000);
+  const defects = {
+    'a 3-character key': [(a) => { a.idempotency_key = 'abc'; }, 'IDEMPOTENCY_CONFLICT', 'idempotency_key_too_short'],
+    'a 7-character key': [(a) => { a.idempotency_key = 'idem-07'; }, 'IDEMPOTENCY_CONFLICT', 'idempotency_key_too_short'],
+    'a key with a letter outside ASCII': [(a) => { a.idempotency_key = 'clé-intake-0001'; }, 'IDEMPOTENCY_CONFLICT', 'idempotency_key_bad_characters'],
+    'a key with DEL': [(a) => { a.idempotency_key = 'idem\u007fintake-01'; }, 'IDEMPOTENCY_CONFLICT', 'idempotency_key_bad_characters'],
+    'a very large quantity': [(a) => { a.quote.items[0].quantity = 900000000; }, 'QUOTE_REQUIRED', 'quantity_above_line_maximum'],
+    'a quantity of 1000': [(a) => { a.quote.items[0].quantity = 1000; }, 'QUOTE_REQUIRED', 'quantity_above_line_maximum'],
+  };
+  for (const [name, [apply, code, reason]] of Object.entries(defects)) {
+    const kernelArgs = connected();
+    apply(kernelArgs);
+    const onKernel = await create(kernelArgs);
+    assert.equal(onKernel.isError, true, `${name}: ${onKernel.raw}`);
+    assert.deepEqual([refusal(onKernel).code, refusal(onKernel).reason, refusal(onKernel).retriable], [code, reason, false], name);
+    assert.deepEqual(touched(onKernel), NOTHING, name);
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      const args = storefront(market);
+      apply(args);
+      const onStorefront = await create(args);
+      assert.equal(onStorefront.isError, true, `${name} ${market}: ${onStorefront.raw}`);
+      assert.deepEqual(refusal(onStorefront), refusal(onKernel), `${name} ${market}`);
+      assert.deepEqual(touched(onStorefront), NOTHING, `${name} ${market}`);
+    }
+    // The flag off (no `market`: that argument does not exist there): the same refusal.
+    h.setFlags([]);
+    const offArgs = storefront(null);
+    apply(offArgs);
+    const off = await create(offArgs);
+    assert.deepEqual(refusal(off), refusal(onKernel), `${name}, flag off`);
+    assert.deepEqual(touched(off), NOTHING, `${name}, flag off`);
+    h.setFlags([h.NATIVE_DOOR_FLAG]);
+  }
+  // At the bounds, both paths answer: a key of exactly 8 characters, a line of exactly 999 units.
+  const eightKernel = await create({ ...connected(), idempotency_key: 'idem-008' });
+  assert.equal(eightKernel.isError, false, eightKernel.raw);
+  const atBounds = { ...storefront(), idempotency_key: 'idem-009' };
+  atBounds.quote.items[0].quantity = 999;
+  const answered = await create(atBounds);
+  assert.equal(answered.isError, false, answered.raw);
+  assert.equal(answered.store.find((c) => c.kind === 'tool').arguments.cart.line_items[0].quantity, 999);
+  // The seller here is priced in USD and the request names US: the answer states USD and no other currency.
+  assert.equal(answered.value.currency, 'USD', answered.raw);
 });

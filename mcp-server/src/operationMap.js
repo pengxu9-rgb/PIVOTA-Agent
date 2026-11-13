@@ -1,3 +1,6 @@
+// The two shared checkout bounds the invoke door enforces (the one number each, not restated here).
+import { IDEMPOTENCY_KEY_MIN_LENGTH, MAX_LINE_QUANTITY } from "../../safety-kernel/src/protocol/buyerIntake.js";
+
 export const operationMap = Object.freeze({
   pivota_search: Object.freeze([
     "find_products",
@@ -140,7 +143,7 @@ export const toolDefinitions = Object.freeze([
                       product_id: { type: "string" },
                       sku_id: { type: "string" },
                       variant_id: { type: "string" },
-                      quantity: { type: "integer", minimum: 1 }
+                      quantity: { type: "integer", minimum: 1, maximum: MAX_LINE_QUANTITY }
                     }
                   }
                 },
@@ -184,7 +187,7 @@ export const toolDefinitions = Object.freeze([
           properties: {
             idempotency_key: {
               type: "string",
-              minLength: 8,
+              minLength: IDEMPOTENCY_KEY_MIN_LENGTH,
               description:
                 "Client-generated UUID. Same key => same order, never duplicated."
             },
@@ -252,7 +255,7 @@ export const toolDefinitions = Object.freeze([
           required: ["idempotency_key", "confirmation_token", "payment"],
           additionalProperties: false,
           properties: {
-            idempotency_key: { type: "string", minLength: 8 },
+            idempotency_key: { type: "string", minLength: IDEMPOTENCY_KEY_MIN_LENGTH },
             confirmation_token: {
               type: "string",
               description:
@@ -313,7 +316,7 @@ export const toolDefinitions = Object.freeze([
             acp_state: { type: "object", additionalProperties: true },
             idempotency_key: {
               type: "string",
-              minLength: 8,
+              minLength: IDEMPOTENCY_KEY_MIN_LENGTH,
               description: "Required when operation = request_after_sales."
             },
             status: {
