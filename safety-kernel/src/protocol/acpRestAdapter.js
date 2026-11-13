@@ -592,22 +592,26 @@ export function createAcpRestAdapter(deps = {}) {
       // cancellation holds it no completion can be paid, and when an order holds it (a completion that finished,
       // or is still in flight) the cancellation is refused and nothing is recorded. For a session WITH an order
       // the executor answers for the order (a paid one is not cancelled).
-      // The record is written `canceled` only for the session this request cancelled: if an order id has
-      // appeared on it since it was read, nothing is written and the request decides again on what is there.
+      // The record is written `canceled` only for the session this request cancelled, AS IT IS NOW: if an order id
+      // has appeared on it since it was read, or it has been re-priced (the claim taken above is on the quote it
+      // held then, not the one it holds now), nothing is written and the request decides again on what is there:
+      // it claims the quote the session holds now. So exactly one of a cancellation and a completion wins for the
+      // SESSION, whatever quote it holds. The tries are bounded; a session re-priced under every one of them is
+      // answered "outcome unknown, ask again" (409, retriable) and is not recorded as cancelled.
       for (let attempt = 0; attempt < MAX_SESSION_WRITE_ATTEMPTS; attempt += 1) {
         const stored = await ownedSession(acp_session_id, user_ref);
         if (stored.canceled === true) return canceled; // cancelling again is the same answer
         await executor.execute('cancel_checkout_session', { idempotency_key, session_id: stored.quote_id, order_id: stored.order_id ?? undefined, cancel_claims_session: true }, ctx);
-        let orderAppeared = false;
+        let sessionChanged = false;
         try {
           await writeSession(acp_session_id, stored, (current) => {
             if (current.canceled === true) return null;
-            if ((current.order_id ?? null) !== (stored.order_id ?? null)) { orderAppeared = true; return null; }
+            if ((current.order_id ?? null) !== (stored.order_id ?? null) || current.quote_id !== stored.quote_id) { sessionChanged = true; return null; }
             const { refused_market: _answered, ...kept } = current;
             return { ...kept, canceled: true };
           });
         } catch { /* the cancellation was done; the next cancel writes it */ }
-        if (!orderAppeared) return canceled;
+        if (!sessionChanged) return canceled;
       }
       throw outcomeUnknown('race');
     });
