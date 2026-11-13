@@ -52,6 +52,33 @@ const ACP_PROTOCOL_NAME = 'acp';
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000; // reject a Timestamp more than 5 minutes off (replay window)
 const CREATE_DEDUP_TTL_MS = 15 * 60 * 1000; // window over which a replayed (buyer, idempotency_key) create dedupes
+// How long a create's claim on the caller's key is held while the create is still running. It must outlast the
+// slowest create (one pricer call, bounded by the pricer transport's own deadline: 60 s by default at the gateway),
+// and it bounds how long an attempt that never finished (a crashed process, an outcome nobody can know) keeps the
+// key. The same number as the kernel ledger's claim lease (idempotencyLedger.js), for the same reason.
+const CREATE_CLAIM_LEASE_MS = 2 * 60 * 1000;
+const CREATE_PENDING = 'pending'; // the claim of a create that has not finished: no session is behind it yet
+const CREATE_DONE = 'done'; // the claim of a create whose session was written: a replay reads that session back
+const MAX_CREATE_CLAIM_ATTEMPTS = 3; // a claim released between our failed write and our read is tried again
+// The reasons of the kernel ledger (idempotencyLedger.js), with its meanings: `in_flight` an earlier attempt still
+// holds the key, `lease_lost_after_op` this attempt priced but another holds the key now, `race` the key changed
+// hands on every try.
+const outcomeUnknown = (reason) => new PivotaCommerceError('CHECKOUT_OUTCOME_UNKNOWN', { reason });
+
+// DID THE CREATE FAIL WITH NOTHING BEHIND IT? True only for a refusal whose outcome is known: one this process
+// raised itself, or one the pricer ANSWERED. Then no quote was recorded and no session written, and the claim can
+// be given back. False for everything else, which is every failure whose outcome nobody here can know:
+//   - the pricer was asked and no answer came back (the deadline passed, the connection was lost): it may still
+//     be pricing. The transport says so on the error: `upstream_timeout`, or an `upstream_status` that is not a
+//     status (src/server.js throwCommerceKernelUpstreamError writes both);
+//   - anything that is not a refusal at all (a store that failed while the quote was being recorded, a bug).
+function createFailedWithNothingBehindIt(err) {
+  if (!(err instanceof PivotaCommerceError)) return false;
+  const detail = isPlainObject(err.detail) ? err.detail : {};
+  if (detail.upstream_timeout === true) return false;
+  if ('upstream_status' in detail && !Number.isInteger(detail.upstream_status)) return false;
+  return true;
+}
 // Build a sanitized ACP checkout-session response. handoffAllowed=FALSE: a quote/session response carries NO
 // legitimate payment redirect (that arrives at /complete via requires_action), so a merchant-supplied
 // redirect-named string in line_items is NOT trusted as a handoff — it is scrubbed like any other string
@@ -196,23 +223,73 @@ export function createAcpRestAdapter(deps = {}) {
       const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
 
       // ACP-layer create idempotency (Codex P1): a replayed (buyer, key) returns the ORIGINAL session instead
-      // of minting a new one — no quote/inventory-hold amplification. (Concurrent first-time creates with the
-      // same key race on the claim; the loser's quote simply expires unused — documented, acceptable.)
+      // of minting a new one — no quote/inventory-hold amplification.
       // JSON-tuple key (NOT a delimiter-join): unambiguous regardless of whether buyer/key contain spaces, so
       // two distinct (buyer, key) pairs can never collide (Codex round-2 #3; same lesson as the executor scoping).
+      //
+      // THE CLAIM IS HELD ONLY WHILE IT STANDS FOR SOMETHING. It is written before the pricer is called, so that
+      // two creates under one key never both price. It used to stay whatever happened next: a create the pricer
+      // refused left the key pointing at a session that was never written, and the caller's retry with the same
+      // key (which a retriable refusal invites) was answered QUOTE_NOT_FOUND for the whole window. Now, as the
+      // kernel ledger does it (idempotencyLedger.js):
+      //   - the claim is PENDING under a lease (CREATE_CLAIM_LEASE_MS) while the create runs. Another create
+      //     under the key in that time is told the outcome is not known yet, to ask again with the same key
+      //     (`in_flight`), and prices nothing;
+      //   - a create that fails with nothing behind it (createFailedWithNothingBehindIt) RELEASES its claim: the
+      //     same key is a first create again at once;
+      //   - a create whose outcome nobody can know keeps its claim until the lease ends. The pricer may still be
+      //     working on it, so the key asks nothing more of the pricer meanwhile; after the lease a create under
+      //     the key is a first create. A process that died mid-create leaves exactly this, and it ends the same way;
+      //   - a create that succeeds writes its session and then turns the claim into DONE, for what is left of the
+      //     dedup window counted from the claim (as before). Only a DONE claim is replayed.
+      // Every write after the claim is conditional on the claim still being THIS attempt's (its minted session
+      // id, unique to the attempt): an attempt that outlived its lease can neither delete nor finish a claim that
+      // another attempt has since written.
       const createKey = JSON.stringify(['acpcreate', user_ref, idempotency_key]);
       const minted = randomUUID();
-      const claimed = await sessionStore.putIfAbsent(createKey, { acp_session_id: minted }, { ttlMs: CREATE_DEDUP_TTL_MS });
-      if (!claimed) {
+      // A store with no conditional write cannot give a claim back safely, so on such a store the claim is what
+      // it always was: written once for the whole window and never released.
+      const conditional = typeof sessionStore.compareAndSet === 'function' && typeof sessionStore.compareAndDelete === 'function';
+      const claimedAt = now();
+      const claim = conditional ? { acp_session_id: minted, status: CREATE_PENDING } : { acp_session_id: minted };
+      let claimed = false;
+      for (let attempt = 0; attempt < MAX_CREATE_CLAIM_ATTEMPTS; attempt += 1) {
+        claimed = await sessionStore.putIfAbsent(createKey, claim, { ttlMs: conditional ? CREATE_CLAIM_LEASE_MS : CREATE_DEDUP_TTL_MS });
+        if (claimed) break;
         const prior = await sessionStore.get(createKey);
+        // Released (or expired) between the two calls: the key is free, so try to claim it again.
+        if (prior === undefined || prior === null) continue;
+        if (isPlainObject(prior) && prior.status === CREATE_PENDING) throw outcomeUnknown('in_flight');
         const stored = await ownedSession(prior.acp_session_id, user_ref);
         const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, { user_ref, acp_session_id: prior.acp_session_id, protocol: ACP_PROTOCOL_NAME });
         return { status: 200, body: acpSessionBody(prior.acp_session_id, session, stored) };
       }
+      if (!claimed) throw outcomeUnknown('race');
 
       const ctx = { user_ref, acp_session_id: minted, protocol: ACP_PROTOCOL_NAME };
-      const session = await executor.execute('create_checkout_session', { idempotency_key, quote }, ctx);
+      let session;
+      try {
+        session = await executor.execute('create_checkout_session', { idempotency_key, quote }, ctx);
+      } catch (err) {
+        if (conditional && createFailedWithNothingBehindIt(err)) {
+          // OUR claim only. A failure to release changes nothing the caller is told: the lease ends the claim.
+          try { await sessionStore.compareAndDelete(createKey, 'acp_session_id', minted); } catch { /* the lease ends it */ }
+        }
+        throw err;
+      }
       await sessionStore.set(minted, { quote_id: session.session_id, order_id: null, user_ref });
+      if (conditional) {
+        const remainingMs = Math.max(1, CREATE_DEDUP_TTL_MS - (now() - claimedAt));
+        const finished = await sessionStore.compareAndSet(createKey, 'acp_session_id', minted, { acp_session_id: minted, status: CREATE_DONE }, { ttlMs: remainingMs });
+        if (!finished) {
+          // The lease ended while this attempt was still pricing, and the key is no longer ours: another attempt
+          // may have created the session this key stands for. Ours is never handed out.
+          if (typeof sessionStore.delete === 'function') {
+            try { await sessionStore.delete(minted); } catch { /* nothing points at it */ }
+          }
+          throw outcomeUnknown('lease_lost_after_op');
+        }
+      }
       return { status: 201, body: acpSessionBody(minted, session) };
     });
   }
@@ -448,10 +525,10 @@ async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants) {
   // ONE LINE PER PRODUCT AND VARIANT, ASKED AGAIN ON THE RESOLVED LINES, HERE. `normalizeCartItems` asked it on the
   // lines as sent; a line that named no variant now carries the one the read resolved, so a line that named a
   // variant and a line that named none are refused here when they turned out to be the same. It must be HERE and
-  // not left to the executor: a create writes its dedup claim (the caller's key, held for CREATE_DEDUP_TTL_MS)
-  // between this function and the executor, and a refusal after the claim would leave the key pointing at a
-  // session that was never written. The refusal tells the caller to merge the lines and send again; with the
-  // same key, that retry must be a first create. The executor still asks, as the second check.
+  // not left to the executor: a create writes its claim on the caller's key between this function and the
+  // executor, and a cart that intake refuses claims nothing (a store with no conditional write could not give
+  // the claim back at all). The refusal tells the caller to merge the lines and send again; with the same key,
+  // that retry must be a first create. The executor still asks, as the second check.
   assertNoDuplicateLines(items);
   return quote;
 }
@@ -561,6 +638,9 @@ const STATUS_BY_CODE = Object.freeze({
   CONFIRMATION_INVALID: 402,
   IDEMPOTENCY_CONFLICT: 409,
   IDEMPOTENT_REPLAY: 409,
+  // A create under a key whose earlier attempt has not finished, or whose outcome is not known. A conflict with
+  // that attempt, not a malformed request (the `?? 400` default): the same request with the same key is the way on.
+  CHECKOUT_OUTCOME_UNKNOWN: 409,
   PAYMENT_REQUIRES_ACTION: 402,
   MERCHANT_UNAVAILABLE: 503,
   // The two TERMINAL read outcomes. Both mean "there is nothing at this id and there never will be", so both

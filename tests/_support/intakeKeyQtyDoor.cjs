@@ -221,6 +221,10 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
   });
   const major = (minor) => (minor / 100).toFixed(2);
   let quoteSeq = 0;
+  // A test may say what the next quote requests are answered with (`quoteScript`, in order): each entry is a
+  // function of the request body and the answer the fixture would have given, returning `[status, body]`, or an
+  // Error (the request then fails with it and gets no answer), or a promise of either. Empty: answered as below.
+  const quoteScript = [];
   nock(BACKEND_BASE).persist()
     .post('/agent/shop/v1/invoke')
     .reply((_uri, body) => {
@@ -241,8 +245,17 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
   // The quote: the backend prices the connected merchant's cart at the quantity it is sent, whatever that is.
   nock(BACKEND_BASE).persist()
     .post('/agent/v2/quotes/preview')
-    .reply((_uri, body) => {
+    .reply(async (_uri, body) => {
       upstream.push({ to: 'backend', path: '/agent/v2/quotes/preview', body });
+      const scripted = quoteScript.shift();
+      if (scripted) {
+        const out = await scripted(body, () => priceQuote(body));
+        if (out instanceof Error) throw out;
+        return out;
+      }
+      return priceQuote(body);
+    });
+  function priceQuote(body) {
       const refs = body && Array.isArray(body.offer_refs) ? body.offer_refs : [];
       // Priced when the cart is the connected merchant's: named (the native and ACP doors) or, on the UCP door,
       // which names no merchant, by its product.
@@ -257,7 +270,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
         line_items: refs.map((ref) => ({ product_id: ref.product_id, variant_id: ref.variant_id, quantity: ref.quantity, unit_price_effective: major(CONNECTED_UNIT_MINOR) })),
         expires_at: '2099-01-01T00:00:00Z',
       }];
-    });
+  }
   nock(BACKEND_BASE).persist()
     .get('/ops/merchant-purchasability')
     .query(true)
@@ -358,7 +371,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
     if (server) await new Promise((resolve) => server.close(resolve));
     nock.cleanAll();
   };
-  return { app, call, post, acp, invoke, listTools, listen, close, resetGate, storeCalls, upstream, root };
+  return { app, call, post, acp, invoke, listTools, listen, close, resetGate, storeCalls, upstream, quoteScript, root };
 }
 
 const UCP_META = Object.freeze({ 'ucp-agent': { profile: 'https://agent.example/profile' } });
