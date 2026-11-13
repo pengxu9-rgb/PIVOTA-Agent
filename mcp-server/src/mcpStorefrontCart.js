@@ -40,6 +40,7 @@ import {
   checkoutSwitchOn,
   CURRENCY_FOLLOWS_MARKET_FLAG,
   decodeEscalationId,
+  escalationIdReadable,
   escalationTargetOf,
   readCheckoutRows,
   refuseUnservedStorefrontCheckout,
@@ -251,14 +252,16 @@ function storefrontOnlyRefusal(opId) {
  * @param {{ op:{id:string}, toolArgs:object, params:object, ctx:object, attested?:object,
  *           executor:{execute:Function}, merchantDoor?:object, log?:object, onMarketAssumed?:Function, env?:object }} a
  */
-export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attested = {}, executor, merchantDoor, log, onMarketAssumed, env = process.env }) {
+export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attested = {}, executor, merchantDoor, log, onMarketAssumed, env = process.env, referralMinter, idempotencyStore, idempotencyPartner }) {
   const opId = op && op.id;
   try {
     if (opId === "create_checkout_session") {
-      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env });
+      return await createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env, referralMinter, idempotencyStore, idempotencyPartner });
     }
     const sessionId = str(own(params, "session_id"));
-    if (!sessionId || !decodeEscalationId(sessionId)) return undefined; // a kernel session: untouched
+    // An id this buyer may not read (the id binding, ucpCheckoutEscalation.js) is treated as an id that is not one
+    // of these at all, before anything below can say otherwise.
+    if (!sessionId || !decodeEscalationId(sessionId) || !escalationIdReadable(sessionId, isPlainObject(ctx) ? ctx.user_ref : null, env)) return undefined; // a kernel session: untouched
     if (opId === "cancel_checkout_session" || opId === "create_payment_link") throw storefrontOnlyRefusal(opId);
     // get, update, complete: the UCP door's own answer for an escalation id. A re-read carries no market on the
     // wire on either door; the id carries the one the cart was created for. An id marked as created for an assumed
@@ -278,12 +281,18 @@ export async function tryNativeStorefrontCart({ op, toolArgs, params, ctx, attes
   }
 }
 
-async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env }) {
+async function createStorefrontCart({ op, toolArgs, params, ctx, attested, executor, merchantDoor, log, env, referralMinter, idempotencyStore, idempotencyPartner }) {
   const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
   // ONLY A SELLER PIVOTA IS NOT CONNECTED TO. A connected merchant's product read can carry a storefront link too
   // (the backend stamps Pivota's own hop on it), so the row alone does not decide: the seller named must be
   // external-seed supply, the one id test the native door's storefront refusal already uses.
   if (!externalSeedLane.isExternalSeedSupplyMerchantId(quote.merchant_id)) return undefined;
+  // A MUTATION NEEDS ITS IDEMPOTENCY KEY, as on the kernel path (canonicalExecutor: `missing_idempotency_key`), which
+  // this path never reaches. Before any read, gate or store call. (The allowlist keeps a string key only, so a
+  // numeric or blank one is a missing one here exactly as it is there.)
+  if (typeof params.idempotency_key !== "string" || params.idempotency_key.trim() === "") {
+    throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason: "missing_idempotency_key", op: op && op.id });
+  }
   const items = Array.isArray(quote.items)
     ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)).map((it) => ({ ...it, product_id: str(it.product_id) }))
     : [];
@@ -314,7 +323,9 @@ async function createStorefrontCart({ op, toolArgs, params, ctx, attested, execu
   if (!escalationOn) return undefined;
   const declines = [];
   const escalated = await tryEscalateUcpCheckout({
-    op, params, ctx, executor, ucpArgs: escalationArgsFor(market), attested, declines, merchantDoor, log, env,
+    op, params, ctx, executor, ucpArgs: escalationArgsFor(market), attested, declines, merchantDoor, log, env, referralMinter,
+    // A retried create returns the same checkout (storefrontCartIdempotency.js). This door's keys are its own.
+    idempotencyStore, idempotencyDoor: "mcp", idempotencyPartner,
   });
   if (escalated) {
     const codes = own(quote, "discount_codes");
