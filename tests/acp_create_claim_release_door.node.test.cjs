@@ -96,21 +96,22 @@ for (const market of ['US', 'SG', 'GB', null]) {
   });
 }
 
-test('ACP REST, market DE: the backend refuses the market by name; nothing is priced, and the key is a first create afterwards', async () => {
+test('ACP REST, market DE: the door refuses the market by name before the backend is asked; nothing is priced, and the key is a first create afterwards', async () => {
   const key = freshKey();
   assert.equal(resolveServingCurrency('DE'), null, 'the market source has no currency for this market');
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    // The same market under the same key is refused the same way each time: nothing was claimed.
+    const refused = await create('DE', key);
+    assert.equal(refused.http, 404, refused.raw.slice(0, 300));
+    assert.equal(refused.body.code, 'NO_MERCHANT_OFFER');
+    assert.deepEqual(refused.body.detail, { reason: 'market_not_priced', market: 'DE' }, 'refused by name, with the market');
+    assertAnswerCurrency(refused.body, null, 'a refusal states no price');
+    assert.deepEqual([refused.upstream, refused.store], [[], []], 'nothing was asked of the backend or of a seller storefront');
+  }
   door.quoteScript.push(priceForMarket);
-  const refused = await create('DE', key);
-  assert.equal(refused.http, 503, refused.raw.slice(0, 300));
-  assert.deepEqual(refused.body, UNAVAILABLE, 'this door relays the backend\'s refusal as it always did');
-  assertAnswerCurrency(refused.body, null, 'a refusal states no price');
-  assert.equal(quoteRequests(refused)[0].body.buyer_context.shipping_address.country, 'DE', 'the backend was asked for the market the request named');
-  door.quoteScript.push(priceForMarket);
-  const sameAgain = await create('DE', key);
-  assert.equal(sameAgain.http, 503, 'the same market under the same key is asked, and refused, again');
-  assert.equal(quoteRequests(sameAgain).length, 1);
-  door.quoteScript.push(priceForMarket);
-  assertSession(await create('GB', key), 201, 'GB', 'the same key, a priced market');
+  const created = await create('GB', key);
+  assertSession(created, 201, 'GB', 'the same key, a priced market');
+  assert.equal(quoteRequests(created).length, 1);
 });
 
 const ANSWERED = [

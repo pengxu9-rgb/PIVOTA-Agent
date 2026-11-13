@@ -23,16 +23,19 @@ import { createAcpRestAdapter } from './acpRestAdapter.js';
  *  - resolveUserRef(req): the VERIFIED buyer (from a buyer credential the platform presents) — never the body.
  *  - getProducts(query): product feed source.
  *  - signingSecret: the ACP request-signing shared secret.
+ *  - marketCurrencyOf(market): the currency a buyer market (ISO 3166-1 alpha-2, upper case) is priced in, or
+ *    null. The door prices a request that names a market (its fulfillment address's country) only in that
+ *    market's currency; without this seam such a request is refused.
  *  - secret: the kernel confirmation secret.
  *  - sessionStore: durable in prod (Postgres/Redis KV); InMemory by default here.
  */
-export function composeAcpRest({ kernelUpstream, merchantRead, verifyPaymentAuthorization, resolveUserRef, getProducts, mapFeedItem, signingSecret, secret, sessionStore, log = console }) {
+export function composeAcpRest({ kernelUpstream, merchantRead, verifyPaymentAuthorization, resolveUserRef, getProducts, mapFeedItem, signingSecret, secret, sessionStore, marketCurrencyOf, log = console }) {
   const kernel = new SafetyKernel({ upstream: kernelUpstream, secret, log });
   const executor = createCanonicalExecutor({ kernel, upstream: merchantRead, verifyPaymentAuthorization });
   return createAcpRestAdapter({
     executor,
     sessionStore: sessionStore || new InMemoryKvStore({}),
-    signingSecret, resolveUserRef, getProducts, mapFeedItem,
+    signingSecret, resolveUserRef, getProducts, mapFeedItem, marketCurrencyOf,
   });
 }
 

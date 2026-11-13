@@ -23,7 +23,8 @@ const KERNEL_SECRET = 'acp-kernel-secret-0123456789abcdef';
 export const T0 = 1_900_000_000_000;
 export const UNIT_MINOR = 1800;
 // The stub pricer's own table: the currency it prices a ship-to country in. A country it has no currency for is
-// refused by name. A cart that names no destination is priced in the merchant's own currency.
+// refused by name (by the door, from this same table, before the pricer is asked; the pricer would refuse it too).
+// A cart that names no destination is priced in the merchant's own currency.
 export const PRICER_CURRENCY = Object.freeze({ US: 'USD', SG: 'SGD', GB: 'GBP' });
 export const PRICER_MERCHANT_CURRENCY = 'USD';
 export const MARKET_NOT_PRICED = 'market_not_priced';
@@ -160,6 +161,9 @@ export async function bootAcpCreateDoor({ root = new URL('../../', import.meta.u
   const adapter = createAcpRestAdapter({
     executor, sessionStore, signingSecret: SECRET, now: clock.now,
     resolveUserRef: async (req) => req.headers['x-test-buyer'],
+    // The door's market -> currency source: the stub pricer's own table, so the door prices exactly the markets
+    // the pricer does. A country outside it has no currency (null), and the door refuses it before the pricer.
+    marketCurrencyOf: (market) => (Object.prototype.hasOwnProperty.call(PRICER_CURRENCY, market) ? PRICER_CURRENCY[market] : null),
   });
   const routes = createAcpRouteHandlers(adapter, { basePath: '/acp' }).map((route) => ({
     ...route,
