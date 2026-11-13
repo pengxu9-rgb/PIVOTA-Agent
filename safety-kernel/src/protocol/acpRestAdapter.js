@@ -203,14 +203,22 @@ export function createAcpRestAdapter(deps = {}) {
   const heldSessionMarketParams = (stored, address) => marketParamsOf(
     stored.refused_market !== undefined && stored.refused_market !== null ? stored.refused_market : marketOfAddress(address),
   );
-  // What the executor is told about the market of an UPDATE: the market of the address it carries, else the market
-  // a refused request left on the session. Either one REPLACES the market recorded on the session's quote, and the
-  // call says so. Neither: nothing is said, and the executor judges the update for the recorded market, if any.
+  // What the executor is told about the market of an UPDATE. Two members, both this door's own words (nothing in a
+  // request body reaches either: an update's call is built member by member below, and its `quote` by allowlist):
+  //   - `judge_session_market: true`, on EVERY update. The executor reads the market recorded on a session, and
+  //     judges the re-quote for it, only on a call a door marked so. This door's market rule is on whenever the
+  //     door is, so it marks every update: an update with no address is judged for the session's recorded market.
+  //   - the market of the address the update carries, else the market a refused request left on the session, with
+  //     `market_replaces_session_market: true`: either one REPLACES the market recorded on the session's quote.
+  // Neither market: only the mark is sent, and the executor judges the update for the recorded market, if any.
   const updateMarketParams = (stored, address) => {
     const named = marketOfAddress(address);
     const market = named !== undefined ? named
       : stored.refused_market !== undefined && stored.refused_market !== null ? stored.refused_market : undefined;
-    return market === undefined ? {} : { ...marketParamsOf(market), market_replaces_session_market: true };
+    return {
+      judge_session_market: true,
+      ...(market === undefined ? {} : { ...marketParamsOf(market), market_replaces_session_market: true }),
+    };
   };
   // Every cart a CREATE prices goes through here, so the market of its address travels with it. The executor is
   // the one place the rule is applied (quoteMarketOf); nothing else about a call is changed. An update names its

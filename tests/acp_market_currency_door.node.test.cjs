@@ -395,6 +395,32 @@ test('the rule does not depend on the other doors\' switches: the same answers w
   }
 });
 
+// THE DOOR'S RULE IS ITS OWN. The other checkout doors judge a session's market only while their two switches are on.
+// This door judges whenever it is on: in every combination of those switches, a session created for SG and priced
+// in SGD cannot be re-priced into another seller's currency by an update that omits the address.
+for (const [storefront, currencyRule] of [[false, false], [true, false], [false, true], [true, true]]) {
+  test(`the storefront path ${storefront ? 'on' : 'off'}, the currency rule ${currencyRule ? 'on' : 'off'}: an address-less update naming a seller priced in USD is refused for the session's market (SG)`, async () => {
+    const flags = { AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED: storefront, AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET: currencyRule };
+    for (const [flag, on] of Object.entries(flags)) { if (on) process.env[flag] = '1'; else delete process.env[flag]; }
+    try {
+      const id = await created('SGD', 'SG');
+      const moved = await update(id, 'USD', undefined);
+      assertRefused(moved, ruleFor('USD', 'SG'), { quotes: 1 });
+      assert.deepEqual(moved.quotes.map(quoteMarket), ['SG']);
+      assertPricedSession(await read(id), 'SGD');
+      // The rest of the rule, in the same state of the switches.
+      assertRefused(await create('USD', 'SG'), ruleFor('USD', 'SG'), { quotes: 1 });
+      assertRefused(await create('USD', 'DE'), ruleFor('USD', 'DE'));
+      assertRefused(await complete(await created('USD', undefined), 'SG'), ruleFor('USD', 'SG'));
+      const kept = await update(await created('SGD', 'SG'), 'SGD', undefined);
+      assertPricedSession(kept, 'SGD', { quantity: 2 });
+      assert.deepEqual(kept.quotes.map(quoteMarket), ['SG']);
+    } finally {
+      for (const flag of Object.keys(flags)) delete process.env[flag];
+    }
+  });
+}
+
 test('with the door off every checkout route is 404 and nothing is asked of the backend', async () => {
   const id = await created('USD', 'US');
   const saved = process.env.AGENT_CHECKOUT_ACP_REST_ENABLED;

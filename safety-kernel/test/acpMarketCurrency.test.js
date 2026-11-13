@@ -481,7 +481,7 @@ test('only the ACP door\'s own call can replace a session\'s market: the same me
     // Were SG honoured, a USD quote would be refused. It is not read: the update is judged for US, and stays US.
     const updated = await executor.execute('update_checkout_session', {
       idempotency_key: 'idem-move-0002', session_id: session.session_id, quote: QUOTE,
-      market: 'SG', market_currency: 'SGD', market_replaces_session_market: true,
+      market: 'SG', market_currency: 'SGD', market_replaces_session_market: true, judge_session_market: true,
     }, ctx);
     assert.equal(updated.currency, 'USD');
     assert.equal(ops('preview_quote').at(-1).payload.market, 'US');
@@ -494,16 +494,16 @@ test('on the ACP door\'s call the statement replaces the market only when a mark
   const { executor, kernel, ops } = setup({ sellerCurrency: 'USD' });
   const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-move-0003', quote: QUOTE, market: 'US', market_currency: 'USD' }, ctx);
   for (const none of [{}, { market: undefined }, { market: null }]) {
-    const updated = await executor.execute('update_checkout_session', { idempotency_key: `idem-move-000${ops('preview_quote').length + 3}`, session_id: session.session_id, quote: QUOTE, market_replaces_session_market: true, ...none }, ctx);
+    const updated = await executor.execute('update_checkout_session', { idempotency_key: `idem-move-000${ops('preview_quote').length + 3}`, session_id: session.session_id, quote: QUOTE, market_replaces_session_market: true, judge_session_market: true, ...none }, ctx);
     assert.equal(ops('preview_quote').at(-1).payload.market, 'US', 'judged for the recorded market');
     assert.deepEqual(await kernel.quotes.sessionMarket(updated.session_id, ctx), { market: 'US', market_currency: 'USD' });
   }
   // Named: judged for the new market (refused here, the seller is priced in USD), and nothing is recorded for it.
-  const err = await refusal(executor.execute('update_checkout_session', { idempotency_key: 'idem-move-0009', session_id: session.session_id, quote: QUOTE, market: 'SG', market_currency: 'SGD', market_replaces_session_market: true }, ctx));
+  const err = await refusal(executor.execute('update_checkout_session', { idempotency_key: 'idem-move-0009', session_id: session.session_id, quote: QUOTE, market: 'SG', market_currency: 'SGD', market_replaces_session_market: true, judge_session_market: true }, ctx));
   assert.equal(surfaceableIntakeRefusal(err).detail.reason, MISMATCH);
   assert.equal(surfaceableIntakeRefusal(err).detail.market, 'SG');
-  // Without the statement the same members are judged for the recorded market, on this door too.
-  const plain = await executor.execute('update_checkout_session', { idempotency_key: 'idem-move-0010', session_id: session.session_id, quote: QUOTE, market: 'SG', market_currency: 'SGD' }, ctx);
+  // Without the statement, on a marked update, the same members are judged for the recorded market, on this door too.
+  const plain = await executor.execute('update_checkout_session', { idempotency_key: 'idem-move-0010', session_id: session.session_id, quote: QUOTE, market: 'SG', market_currency: 'SGD', judge_session_market: true }, ctx);
   assert.equal(plain.currency, 'USD');
   assert.equal(ops('preview_quote').at(-1).payload.market, 'US');
 });
@@ -513,7 +513,8 @@ test('the registry\'s own check still stands behind a replaced market: a quote r
   const { kernel } = setup({ sellerCurrency: 'USD' });
   // The door's judgement taken away (an accept that lets anything through): the registry refuses to record it.
   const err = await refusal(kernel.previewQuote({ quote: QUOTE, market: 'SG' }, ctx, { acceptQuoteCurrency: () => {}, sessionMarket: { market: 'SG', market_currency: 'SGD' } }));
-  assert.equal(err.detail.reason, 'quote_not_in_session_market_currency');
+  assert.equal(err.code, 'NO_MERCHANT_OFFER');
+  assert.deepEqual(surfaceableIntakeRefusal(err).detail, { reason: MISMATCH, market: 'SG', market_currency: 'SGD', seller_currencies: ['USD'] });
   assert.equal(kernel.quotes._store._m?.size ?? 0, 0, 'nothing was recorded');
   // And a quote in the new market's currency is recorded for it.
   const sgd = setup({ sellerCurrency: 'SGD' });
@@ -533,4 +534,90 @@ test('one set of stage words: each stage has its own sentence, and an unknown st
   assert.equal(sentence(undefined), sentence('create'));
   assert.equal(sentence('complete'), sentence('create'));
   assert.deepEqual(Object.keys(quoteMarketOf({ market: 'SG', market_currency: 'SGD' })), ['market', 'currency', 'accept']);
+});
+
+// ---- the door's own words to the executor, and what a request body can reach -----------------------------------------
+
+/** The door over an executor that records every call it is handed, then runs it. */
+function recordingDoor({ sellerCurrency = 'USD' } = {}) {
+  const base = setup({ sellerCurrency });
+  const handed = [];
+  const adapter = createAcpRestAdapter({
+    executor: { execute: (opId, params, ctx) => { handed.push({ opId, params: structuredClone(params) }); return base.executor.execute(opId, params, ctx); } },
+    sessionStore: base.store, signingSecret: SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }),
+    marketCurrencyOf, now: () => FIXED_NOW,
+  });
+  const of = (opId) => handed.filter((h) => h.opId === opId).map((h) => h.params);
+  return { ...base, adapter, handed, of };
+}
+const DOOR_WORDS = ['judge_session_market', 'market_replaces_session_market', 'market', 'market_currency'];
+const wordsOf = (params) => Object.fromEntries(DOOR_WORDS.filter((k) => k in params).map((k) => [k, params[k]]));
+
+test('every update of this door carries the mark that has the session\'s market judged, with or without an address', async () => {
+  const door = recordingDoor({ sellerCurrency: 'USD' });
+  const id = (await door.adapter.createCheckoutSession(req({ body: cart('US') }))).body.id;
+  assert.deepEqual(wordsOf(door.of('create_checkout_session')[0]), { market: 'US', market_currency: 'USD' }, 'a create names its market and nothing else');
+  await door.adapter.updateCheckoutSession(req({ id, body: cart('US', 2) })); // an address
+  await door.adapter.updateCheckoutSession(req({ id, body: cart(undefined, 2) })); // no address, a bound session
+  await door.adapter.updateCheckoutSession(req({ id, body: cart('SG', 2) })); // refused: marks the session
+  await door.adapter.updateCheckoutSession(req({ id, body: cart(undefined, 2) })); // no address, a marked session
+  assert.deepEqual(door.of('update_checkout_session').map(wordsOf), [
+    { judge_session_market: true, market_replaces_session_market: true, market: 'US', market_currency: 'USD' },
+    { judge_session_market: true },
+    { judge_session_market: true, market_replaces_session_market: true, market: 'SG', market_currency: 'SGD' },
+    { judge_session_market: true, market_replaces_session_market: true, market: 'SG', market_currency: 'SGD' },
+  ]);
+  // The address-less update of the bound session was judged for US: the pricer was asked for it.
+  assert.equal(door.ops('preview_quote')[2].payload.market, 'US');
+  // A session that never had a market: the mark is sent, there is nothing recorded to judge, nothing is assumed.
+  const unbound = (await door.adapter.createCheckoutSession(req({ body: cart(undefined) }))).body.id;
+  await door.adapter.updateCheckoutSession(req({ id: unbound, body: cart(undefined, 2) }));
+  assert.deepEqual(wordsOf(door.of('update_checkout_session').at(-1)), { judge_session_market: true });
+  assert.deepEqual(Object.keys(door.ops('preview_quote').at(-1).payload), ['quote']);
+});
+
+test('no member of a request body reaches the door\'s words: the executor is handed the same call with them planted at every depth', async () => {
+  // What a caller would try: the mark off, the replacement on, a market and a currency of its choosing.
+  const PLANT = { judge_session_market: false, market_replaces_session_market: true, market: 'US', market_currency: 'USD', sessionMarket: { market: 'US', market_currency: 'USD' } };
+  const planted = (body) => ({
+    ...PLANT, ...body,
+    items: body.items ? body.items.map((item) => ({ ...item, ...PLANT })) : undefined,
+    ...(body.fulfillment_address ? { fulfillment_address: { ...body.fulfillment_address, ...PLANT, country: body.fulfillment_address.country } } : {}),
+    buyer: { ...PLANT }, quote: { ...PLANT }, params: { ...PLANT }, context: { ...PLANT }, meta: { ...PLANT },
+  });
+  const flow = async (door, shape) => {
+    const id = (await door.adapter.createCheckoutSession(req({ body: shape(cart('SG')) }))).body.id;
+    await door.adapter.updateCheckoutSession(req({ id, body: shape(cart(undefined, 2)) })); // bound to SG, no address
+    await door.adapter.updateCheckoutSession(req({ id, body: shape(cart('SG', 3)) }));
+    await door.adapter.getCheckoutSession(req({ id }));
+    await door.adapter.completeCheckoutSession(req({ id, body: shape(completion(undefined)) }));
+    return door.handed.map(({ opId, params }) => { const { idempotency_key: _k, session_id: _s, authorization_checkout_session_id: _a, ...rest } = params; return { opId, ...rest }; });
+  };
+  const clean = await flow(recordingDoor({ sellerCurrency: 'SGD' }), (body) => body);
+  const dirty = await flow(recordingDoor({ sellerCurrency: 'SGD' }), planted);
+  assert.deepEqual(dirty, clean);
+  assert.deepEqual(clean.map((c) => c.opId), ['create_checkout_session', 'update_checkout_session', 'update_checkout_session', 'get_checkout_session', 'complete_checkout_session']);
+  // And the planted market did not move the session: it stayed SG, priced in SGD, through the address-less update.
+  assert.deepEqual(wordsOf(dirty[1]), { judge_session_market: true });
+  assert.equal(JSON.stringify(dirty).includes('sessionMarket'), false);
+  // A seller priced in USD with the same planted members: refused for SG on create, whatever the body says of US.
+  const usd = recordingDoor({ sellerCurrency: 'USD' });
+  refusedBy(await usd.adapter.createCheckoutSession(req({ body: planted(cart('SG')) })), MISMATCH, 'SG');
+});
+
+test('the registry\'s refusal reaches the caller as the door\'s own market refusal: 404, by name, and it marks a refused update', async () => {
+  // The executor's own judgement taken away, so only the registry stands between a USD quote and a session for SG.
+  const base = setup({ sellerCurrency: 'USD' });
+  const realPreview = base.kernel.previewQuote.bind(base.kernel);
+  const id = (await base.adapter.createCheckoutSession(req({ body: cart('US') }))).body.id;
+  base.kernel.previewQuote = (payload, ctx, opts) => realPreview(payload, ctx, opts ? { ...opts, acceptQuoteCurrency: () => {} } : opts);
+  const expected = { reason: MISMATCH, market: 'SG', market_currency: 'SGD', seller_currencies: ['USD'] };
+  const created = await base.adapter.createCheckoutSession(req({ body: cart('SG') }));
+  assert.equal(created.status, 404, JSON.stringify(created.body));
+  assert.equal(created.body.code, 'NO_MERCHANT_OFFER');
+  assert.deepEqual(created.body.detail, expected);
+  const updated = await base.adapter.updateCheckoutSession(req({ id, body: cart('SG', 2) }));
+  assert.equal(updated.status, 404, JSON.stringify(updated.body));
+  assert.deepEqual(updated.body.detail, expected);
+  assert.equal((await base.store.get(id)).refused_market, 'SG');
 });
