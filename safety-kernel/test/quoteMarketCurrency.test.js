@@ -171,7 +171,12 @@ function sessionSetup(currency = 'SGD') {
   const kernel = new SafetyKernel({ upstream: kernelUpstream, secret: SECRET, log: quiet });
   const exec = createCanonicalExecutor({ kernel, upstream: async () => ({}) });
   let n = 0;
-  const run = (opId, extra = {}, ctx = CTX) => { n += 1; return exec.execute(opId, { idempotency_key: `idem-session-market-${n}`, quote: QUOTE, ...extra }, ctx); };
+  // An update is marked as a door marks it while its market rule is on (`judge_session_market`), unless a test says not.
+  const run = (opId, extra = {}, ctx = CTX) => {
+    n += 1;
+    const marked = opId === 'update_checkout_session' && !('judge_session_market' in extra) ? { judge_session_market: true } : {};
+    return exec.execute(opId, { idempotency_key: `idem-session-market-${n}`, quote: QUOTE, ...marked, ...extra }, ctx);
+  };
   return { kernel, run, priced, state };
 }
 const SG = { market: 'SG', market_currency: 'SGD' };
@@ -270,7 +275,11 @@ test('the bounds answer before the session is read on an update of a bound sessi
 test('the registry never stores a market-bound snapshot in another currency, and records only a well-formed market', async () => {
   const { kernel } = sessionSetup('SGD');
   const base = { user_ref: 'user_1', acp_session_id: 'acp_1', merchant_of_record: 'merch_A', upstream_quote_id: 'uq', locked_totals: { total: 1 }, line_items: [] };
-  await assert.rejects(kernel.quotes.issue({ ...base, currency: 'USD', market: SG }), (e) => e.code === 'MERCHANT_UNAVAILABLE' && e.detail.reason === 'quote_not_in_session_market_currency');
+  const refused = await refusal(kernel.quotes.issue({ ...base, currency: 'USD', market: SG }));
+  assert.equal(refused.code, 'NO_MERCHANT_OFFER');
+  assert.equal(refused.retriable, false);
+  assert.deepEqual(detailOf(refused), { reason: 'seller_not_priced_in_market_currency', market: 'SG', market_currency: 'SGD', seller_currencies: ['USD'] });
+  assert.deepEqual(detailOf(await refusal(kernel.quotes.issue({ ...base, currency: ' usd ', market: SG }))), { reason: 'seller_not_priced_in_market_currency', market: 'SG', market_currency: 'SGD' });
   const ok = await kernel.quotes.issue({ ...base, currency: 'SGD', market: SG });
   assert.deepEqual([ok.market, ok.market_currency], ['SG', 'SGD']);
   for (const market of [undefined, null, 'SG', {}, { market: 'SG' }, { market: 'sg', market_currency: 'SGD' }, { market: 'SG', market_currency: 'sgd' }, { market: 'SG', market_currency: '' }]) {
@@ -315,4 +324,90 @@ test('a shipping address country is not the market: it neither moves a session\'
   assert.equal(plain.currency, 'USD');
   assert.equal('market' in priced.at(-1), false);
   assert.equal(await kernel.quotes.sessionMarket(plain.session_id, CTX), null);
+});
+
+// ---- the door's mark, the isolation of a session's market, and the backstop's own answer -------------------------
+
+test('without the door\'s mark an update reads nothing of the session and is priced as it always was, a bound session included', async () => {
+  const { kernel, run, priced, state } = sessionSetup('SGD');
+  const created = await run('create_checkout_session', SG);
+  let reads = 0;
+  const real = kernel.quotes.sessionMarket.bind(kernel.quotes);
+  kernel.quotes.sessionMarket = async (...a) => { reads += 1; return real(...a); };
+  state.currency = 'USD';
+  // Anything but the door's own `true` is no mark.
+  for (const mark of [undefined, false, 'true', 1, {}, null]) {
+    const updated = await run('update_checkout_session', { session_id: created.session_id, judge_session_market: mark });
+    assert.equal(updated.currency, 'USD', String(mark));
+    assert.deepEqual(priced.at(-1), { quote: QUOTE }, 'no market in the re-quote');
+    // The session it answers is a new, unbound one; the session it named is as it was.
+    assert.equal(await real(updated.session_id, CTX), null);
+  }
+  assert.equal(reads, 0, 'the session record was never read');
+  assert.deepEqual(await real(created.session_id, CTX), SG);
+  assert.equal((await run('get_checkout_session', { session_id: created.session_id })).currency, 'SGD');
+  // A create never reads it, marked or not.
+  await run('create_checkout_session', { judge_session_market: true });
+  assert.equal(reads, 0);
+  // With the mark, the same update is judged.
+  assert.equal(detailOf(await refusal(run('update_checkout_session', { session_id: created.session_id }))).reason, 'seller_not_priced_in_market_currency');
+  assert.equal(reads, 1);
+});
+
+// The isolation check has two halves (the buyer, and the connection the session was created on). Each is varied ALONE:
+// a session's market is read only by the same buyer on the same connection.
+test('a session\'s market is never read for another identity: the buyer and the connection are each checked alone', async () => {
+  const { kernel, run, priced, state } = sessionSetup('SGD');
+  const created = await run('create_checkout_session', SG);
+  state.currency = 'USD';
+  const identities = [
+    ['another buyer on the same connection', { user_ref: 'user_2', acp_session_id: CTX.acp_session_id }],
+    ['the same buyer on another connection', { user_ref: CTX.user_ref, acp_session_id: 'acp_2' }],
+    ['another buyer on another connection', { user_ref: 'user_2', acp_session_id: 'acp_2' }],
+  ];
+  for (const [label, ctx] of identities) {
+    assert.equal(await kernel.quotes.sessionMarket(created.session_id, ctx), null, label);
+    const updated = await run('update_checkout_session', { session_id: created.session_id }, ctx);
+    assert.equal(updated.currency, 'USD', `${label}: priced unjudged, as an id that names no session of theirs`);
+    assert.deepEqual(priced.at(-1), { quote: QUOTE }, `${label}: no market in the re-quote`);
+  }
+  for (const ctx of [undefined, null, {}, { user_ref: CTX.user_ref }, { acp_session_id: CTX.acp_session_id }]) {
+    assert.equal(await kernel.quotes.sessionMarket(created.session_id, ctx), null, JSON.stringify(ctx));
+  }
+  assert.deepEqual(await kernel.quotes.sessionMarket(created.session_id, { ...CTX }), SG, 'and it is read for its own buyer on its own connection');
+});
+
+test('an update of a session with NO market that sends a shipping address: the address country is not a market, and the session stays unjudged', async () => {
+  const address = (country) => ({ country, city: 'City', postal_code: '00000', address_line1: '1 Street', recipient_name: 'A Buyer' });
+  const { kernel, run, priced, state } = sessionSetup('USD');
+  const created = await run('create_checkout_session');
+  for (const [country, sellerCurrency] of [['GB', 'USD'], ['SG', 'USD'], ['DE', 'SGD'], ['US', 'SGD']]) {
+    state.currency = sellerCurrency;
+    const updated = await run('update_checkout_session', { session_id: created.session_id, quote: { ...QUOTE, shipping_address: address(country) } });
+    assert.equal(updated.currency, sellerCurrency, country);
+    assert.equal('market' in priced.at(-1), false, `${country}: no market in the re-quote`);
+    assert.equal(priced.at(-1).quote.shipping_address.country, country);
+    assert.equal(await kernel.quotes.sessionMarket(updated.session_id, CTX), null, `${country}: the session it answers has no market`);
+  }
+});
+
+test('the backstop, with the judgement stubbed out: a market-bound quote in another currency is refused by name, not retriable, and nothing is stored', async () => {
+  const { kernel, issued, priced } = setup({ currency: 'USD' });
+  // No acceptor: only the registry stands between this quote and a session bound to SG.
+  const err = await refusal(kernel.previewQuote({ quote: QUOTE, market: 'SG' }, CTX, { sessionMarket: SG }));
+  assert.ok(err instanceof PivotaCommerceError);
+  assert.equal(err.code, 'NO_MERCHANT_OFFER');
+  assert.equal(err.retriable, false);
+  assert.deepEqual(detailOf(err), { reason: 'seller_not_priced_in_market_currency', market: 'SG', market_currency: 'SGD', seller_currencies: ['USD'] });
+  assert.equal(priced.length, 1);
+  assert.equal(issued.length, 1, 'the registry was asked once');
+  const stored = [];
+  const second = setup({ currency: 'USD' });
+  const realSet = second.kernel.quotes._store.set.bind(second.kernel.quotes._store);
+  second.kernel.quotes._store.set = async (...a) => { stored.push(a[0]); return realSet(...a); };
+  await refusal(second.kernel.previewQuote({ quote: QUOTE, market: 'SG' }, CTX, { sessionMarket: SG }));
+  assert.deepEqual(stored, [], 'no snapshot was written');
+  // It runs only for a quote handed in with a market: an unjudged quote in any currency is stored as before.
+  await second.kernel.previewQuote({ quote: QUOTE }, CTX);
+  assert.equal(stored.length, 1);
 });
