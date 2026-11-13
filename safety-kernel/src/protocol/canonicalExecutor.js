@@ -20,7 +20,7 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
-import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum } from './buyerIntake.js';
+import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
@@ -238,6 +238,52 @@ export function agentPurchaseOrder(orderId, answered) {
   }
 }
 
+// --- the market a checkout is priced for -------------------------------------------------------------
+//
+// A QUOTE PIVOTA PRICES ITSELF IS IN THE SELLER'S OWN CURRENCY: the pricing engine answers in the currency the
+// seller's store is priced in, and the request's market does not change that. So a checkout that NAMES a market is
+// held to it here, in the one place every door's quote passes through:
+//   - `params.market` is the market the request named, as the door read it (an upper-case ISO 3166-1 alpha-2 code),
+//     and `params.market_currency` the currency the door's market -> currency source prices that market in. The
+//     executor keeps no market table of its own;
+//   - a market with no currency is refused by name (`market_not_priced`) BEFORE any quote: it is never answered as
+//     another market, and no currency is assumed for it;
+//   - otherwise the market travels in the quote body (`market`), and the quote must come back in the market's
+//     currency. One that does not is refused by name (`seller_not_priced_in_market_currency`) before anything is
+//     snapshotted: no session exists, and no amount is stated, converted or relabelled.
+// A request that carries no `market` is priced exactly as it was before this rule: nothing is assumed for it.
+// Same refusal codes, reasons and detail members as a seller-storefront checkout answers under the currency rule
+// (mcp-server/src/ucpCheckoutEscalation.js).
+
+/** `null` when the request names no market; else `{ market, accept }`. Throws the named refusal for an unpriced one. */
+function quoteMarketOf(params) {
+  const market = params ? params.market : undefined;
+  if (market === undefined || market === null) return null;
+  if (typeof market !== 'string' || !/^[A-Z]{2}$/.test(market)) {
+    // A door hands over a code it has already read. Anything else is not echoed and is never priced.
+    throw intakeRefusal('QUOTE_REQUIRED', 'market_invalid',
+      '`market` is not a country code this door can read, so there is no buyer market to price this checkout for. Send the buyer\'s country as ISO 3166-1 alpha-2 (two letters); a market is never guessed, and nothing was priced.',
+      { rejected_field: 'market' });
+  }
+  const currency = params.market_currency;
+  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
+    throw intakeRefusal('NO_MERCHANT_OFFER', 'market_not_priced', [
+      `No price can be stated for a buyer in ${market}: this door prices no market by that code, so this checkout was not priced for it.`,
+      `A request for ${market} is never answered as another market, and a price in another market's currency is never shown for it.`,
+      'This will not change on retry; offer the buyer alternatives, or create the checkout for a market this door prices.',
+    ].join(' '), { market });
+  }
+  const accept = (quoteCurrency) => {
+    if (quoteCurrency === currency) return;
+    throw intakeRefusal('NO_MERCHANT_OFFER', 'seller_not_priced_in_market_currency', [
+      `No price can be stated for a buyer in ${market} for this checkout: its seller is priced in ${quoteCurrency}, and a price for ${market} must be in ${currency}.`,
+      'Nothing was converted or relabelled, and no checkout session was created.',
+      `This will not change on retry; offer the buyer alternatives priced for ${market}.`,
+    ].join(' '), { market, market_currency: currency, seller_currencies: [quoteCurrency] });
+  };
+  return { market, accept };
+}
+
 function isPlainObjectValue(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -403,7 +449,12 @@ export function createCanonicalExecutor({
       case 'update_checkout_session': {
         // The per-line quantity ceiling (buyerIntake.js), for a create and an update alike, before anything is priced.
         assertLineQuantitiesWithinMaximum(params.quote?.items);
-        const quote = await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
+        // The market the request names, when a door carries one (quoteMarketOf): refused here, before any quote,
+        // when nothing is priced for it; else it travels in the quote body and the quote must be in its currency.
+        const quoteMarket = quoteMarketOf(params);
+        const quote = quoteMarket
+          ? await kernel.previewQuote({ quote: params.quote ?? {}, market: quoteMarket.market }, ctx, { acceptQuoteCurrency: quoteMarket.accept })
+          : await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
         return attachAp2CheckoutJwt(toSession(quote), mintAp2CheckoutJwt, ctx);
       }
 

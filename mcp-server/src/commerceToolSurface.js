@@ -43,7 +43,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong, storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
 // The native door's route to the same storefront path (AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED, default off).
-import { storefrontCartInputSchema, storefrontMarketProblem, tryNativeStorefrontCart } from "./mcpStorefrontCart.js";
+import { kernelQuoteMarketParams, storefrontCartInputSchema, storefrontMarketProblem, tryNativeStorefrontCart } from "./mcpStorefrontCart.js";
 import {
   assertExpectedSeller,
   prepareReapCheckout,
@@ -605,6 +605,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     Deliberately AFTER the allowlist (so intake only ever sees fields this op defines) and BEFORE
     //     `executor.execute` (so a refused request performs no pricing call and takes no inventory hold).
     await applyBuyerIntake(op, params, attested, resolveVariantsForThisCall, ctx, EMAIL_BODY_FIELDS[dialect]);
+
+    // 3c) THE MARKET A NATIVE CREATE NAMED GOES WITH ITS QUOTE. `market` is an argument of create only while the
+    //     `/mcp` door's storefront path is on (step 0b), and until this line a create that was not a storefront
+    //     cart dropped it: the kernel priced the cart in the seller's currency for any market named, one this
+    //     gateway prices nothing in included. The executor now receives the market and its currency and holds the
+    //     quote to them (canonicalExecutor.js, quoteMarketOf). After intake, so a request intake refuses is refused
+    //     as before. A create that names no market adds nothing here and is priced exactly as it was.
+    if (storefrontCartDoor && op.id === "create_checkout_session") Object.assign(params, kernelQuoteMarketParams(toolArgs));
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
