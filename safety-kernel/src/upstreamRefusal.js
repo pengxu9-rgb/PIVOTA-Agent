@@ -44,12 +44,17 @@
 //     the first is the raise site speaking. So the route's detail, which the transport hands over whole as
 //     `upstream_detail`, must itself name that code in `error`. A code that reached `upstream_code` from a
 //     message or from the status-derived code never matches.
-//   - A REFUSED CALLER ASSERTION SAYS WHY, AND TWO REASONS ARE KEPT. The assertion is checked before the route
-//     runs, so most refusals of it mean this request did nothing. But `replay` means the upstream has ALREADY
-//     accepted this very request once (same signed bytes, same nonce): something between here and there
-//     delivered it twice, and the first copy may have made the order. `stale` is what that same second copy is
-//     told once the nonce has been forgotten. Both are kept. So is a refusal whose reason is missing, is not a
-//     string, or is not one of the reasons below (unknown: keep).
+//   - A REFUSED CALLER ASSERTION SAYS WHY, AND THREE REASONS ARE KEPT. The assertion is checked before the route
+//     runs, so most refusals of it mean this request did nothing. Three do not say that:
+//       `replay`   the upstream has ALREADY accepted this very request once (same signed bytes, same nonce):
+//                  something between here and there delivered it twice, and the first copy may have made the order.
+//       `stale`    what that same second copy is told once the nonce has been forgotten.
+//       `subject`  the caller's agent record could not be taken as active. The upstream says this for a record
+//                  that was switched off AND for one it could not READ (its database failing for a moment), so
+//                  it can mean "cannot tell" rather than "no"; a second copy of an accepted request, judged
+//                  while the record is unreadable, is told `subject` while the first copy made the order.
+//     All three are kept. So is a refusal whose reason is missing, is not a string, or is not one of the eight
+//     reasons below (unknown: keep).
 //
 // The transport must also vouch for the answer: a PivotaCommerceError whose detail carries the HTTP status of a
 // response that arrived (`upstream_status`, an integer; `null` when no response came), the code the response
@@ -80,10 +85,11 @@ export const REFUSED_BEFORE_ANY_ORDER = refusalsByStatus(
   JSON.parse(readFileSync(new URL('../contracts/order_create_prologue_refusals.json', import.meta.url), 'utf8')),
 );
 
-// The reasons a refused caller assertion can carry that mean "this request did nothing": every reason the
-// upstream's assertion check gives EXCEPT `replay` and `stale` (above).
+// The reasons a refused caller assertion can carry that mean "this request did nothing": the eight that are
+// decided from the request's own bytes and this service's own secret, with nothing read from a store. NOT
+// `replay`, `stale` or `subject` (above).
 const ASSERTION_CODE = 'PARTNER_ASSERTION_REJECTED';
-export const ASSERTION_REASONS_BEFORE_ANY_ORDER = Object.freeze(['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body', 'subject']);
+export const ASSERTION_REASONS_BEFORE_ANY_ORDER = Object.freeze(['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body']);
 
 function isPlainObject(value) {
   return value != null && typeof value === 'object' && !Array.isArray(value);

@@ -96,7 +96,7 @@ const MESSAGES = {
 const RETRIABLE = { MERCHANT_UNAVAILABLE: true };
 const ACP_STATUS = { MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409 };
 // What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
-const FIRST_CODE = { partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
+const FIRST_CODE = { partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionSubject: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
 const firstCode = (answer) => FIRST_CODE[answer] || 'MERCHANT_UNAVAILABLE';
 /** Wait until the backend holds the request; if the call answers first it never got there, so fail with its answer. */
 const atBackend = (held, running) => Promise.race([held.reached, running.then((r) => { throw new Error(`the call answered before it reached the backend: ${r.raw.slice(0, 300)}`); })]);
@@ -344,8 +344,8 @@ test('a listed code releases only from the route\'s own detail (error.details.er
   }
 }));
 
-test('a refused caller assertion: nine reasons give the session back; replay, stale, no reason and an unknown reason keep it', each(async (caller) => {
-  for (const reason of ['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body', 'subject']) {
+test('a refused caller assertion: eight reasons give the session back; replay, stale, subject, no reason and an unknown reason keep it, with or without an order behind them', each(async (caller) => {
+  for (const reason of ['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body']) {
     const label = `${caller} ${reason}`;
     const h = await open(caller, 'GB');
     const before = door.orders.length;
@@ -355,12 +355,12 @@ test('a refused caller assertion: nine reasons give the session back; replay, st
     assertOrdered(h, await attempt(h, key), `${label} retry`);
     assert.equal(door.orders.length, before + 1, label);
   }
-  for (const reason of ['replay', 'stale', undefined, null, '', 7, 'nonce_store_unavailable', 'PATH']) {
-    const label = `${caller} reason ${JSON.stringify(reason)}`;
+  for (const landed of [true, false]) for (const reason of ['replay', 'stale', 'subject', undefined, null, '', 7, 'nonce_store_unavailable', 'PATH']) {
+    const label = `${caller} reason ${JSON.stringify(reason)}${landed ? ' (the order was made)' : ''}`;
     const h = await open(caller, 'GB');
     const before = door.orders.length;
-    // The order was made by the first copy of the request; this answer is the second copy's.
-    door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+    // `landed`: the order was made by the first copy of the request; this answer is the second copy's.
+    door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed });
     const key = freshKey();
     const first = await attempt(h, key);
     assertRefused(h, first, 'PARTNER_ASSERTION_REJECTED', `${label} first`);
@@ -369,7 +369,7 @@ test('a refused caller assertion: nine reasons give the session back; replay, st
       assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
       assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
     }
-    assert.equal(door.orders.length, before + 1, `${label}: the one order the first copy made, never a second`);
+    assert.equal(door.orders.length, before + (landed ? 1 : 0), `${label}: at most the one order the first copy made, never a second`);
   }
 }));
 

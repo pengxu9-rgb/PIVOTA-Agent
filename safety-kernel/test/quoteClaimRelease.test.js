@@ -283,8 +283,8 @@ test('a listed code gives the claim back only when the route\'s own detail names
   }
 });
 
-test('a refused caller assertion gives the claim back for nine reasons; replay, stale, no reason and any other reason keep it', () => {
-  assert.deepEqual(ASSERTION_REASONS_BEFORE_ANY_ORDER, ['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body', 'subject']);
+test('a refused caller assertion gives the claim back for eight reasons; replay, stale, subject, no reason and any other reason keep it', () => {
+  assert.deepEqual(ASSERTION_REASONS_BEFORE_ANY_ORDER, ['no_secret', 'malformed', 'bad_mac', 'op', 'method', 'path', 'resource', 'body']);
   assert.ok(Object.isFrozen(ASSERTION_REASONS_BEFORE_ANY_ORDER));
   const refused = (route) => answered(409, 'PARTNER_ASSERTION_REJECTED', { route });
   const message = 'The partner assertion on this request was refused; it was not made as any partner.';
@@ -294,6 +294,7 @@ test('a refused caller assertion gives the claim back for nine reasons; replay, 
   const kept = [
     ['replay: the upstream already accepted this very request once', { reason: 'replay' }],
     ['stale: what a second copy is told once the nonce is forgotten', { reason: 'stale' }],
+    ['subject: the agent record was switched off, or could not be read (cannot tell)', { reason: 'subject' }],
     ['no reason', {}],
     ['a null reason', { reason: null }],
     ['an empty reason', { reason: '' }],
@@ -531,6 +532,7 @@ const UNKNOWN_OUTCOMES = [
   ['a rate limit', refuse(429, 'RATE_LIMIT_EXCEEDED'), 'MERCHANT_UNAVAILABLE'],
   ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'PARTNER_ASSERTION_REJECTED'],
   ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: subject', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'subject' }); }, 'PARTNER_ASSERTION_REJECTED'],
   ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'PARTNER_ASSERTION_REJECTED'],
   ['a listed code the transport took from a message, not from the route\'s detail', () => { throw answered(400, 'INVALID_BUYER_CONTEXT', { route: { message: 'INVALID_BUYER_CONTEXT' } }); }, 'MERCHANT_UNAVAILABLE'],
   ['a listed code the transport took from the outer status-derived code', () => { throw answered(400, 'INVALID_QUOTE', { route: { message: 'placeholder', items: [] } }); }, 'MERCHANT_UNAVAILABLE'],

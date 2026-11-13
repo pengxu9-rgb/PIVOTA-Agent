@@ -131,9 +131,11 @@ const BEFORE_ANY_ORDER = Object.freeze({
 // was written, or with nothing but the status to go by.
 const NOT_PROVABLY_BEFORE = Object.freeze({
   // The caller's assertion refused because the backend has ALREADY accepted this very request once (`replay`),
-  // or because it is too old (`stale`: what a second copy is told once the nonce is forgotten), or with no reason.
+  // because it is too old (`stale`: what a second copy is told once the nonce is forgotten), because the caller's
+  // agent record was switched off or could not be read (`subject`), or with no reason.
   partnerAssertionReplay: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'replay', message: ASSERTION_MESSAGE }],
   partnerAssertionStale: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'stale', message: ASSERTION_MESSAGE }],
+  partnerAssertionSubject: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'subject', message: ASSERTION_MESSAGE }],
   partnerAssertionNoReason: [409, { error: 'PARTNER_ASSERTION_REJECTED', message: ASSERTION_MESSAGE }],
   // The database was busy. Retry-After is the backend's own header.
   busy: [503, { error: 'TEMPORARY_UNAVAILABLE', message: 'Temporary database busy. Please retry shortly.' }, { 'Retry-After': '1' }],
