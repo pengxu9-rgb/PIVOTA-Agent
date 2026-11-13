@@ -815,8 +815,14 @@ function emit(log, level, detail) {
  *   currency (`rowsInMarketCurrency === true`; the escalation's judgement, judgeLinesForMarket).
  *   `storeAnswer` (optional out-param object, market rule only): when the seller answered in ANOTHER currency than
  *   the market's, `storeAnswer.currency` is set to it, so the caller can name that instead of "no price".
+ *   `recallStoreCurrency` (create only, market rule only, optional): the caller's memory of this seller answering
+ *   this market's carts in another currency (storeCartCurrencyMismatchMemo.js, read by the caller's function). It
+ *   returns that currency when the caller would refuse this cart on it, else null. It is called at ONE place: after
+ *   every fallback this door takes without the seller, immediately before the seller would be contacted. A
+ *   currency it returns is put in `storeAnswer.currency` with `storeAnswer.remembered = true`, and nothing is asked
+ *   of the seller or of the referral.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip, recallStoreCurrency }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -884,6 +890,25 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     const settled = await withBudget(refuseDerivedSoleVariant(row, d), left());
     const refusal = settled && settled.timedOut ? "catalog_variant_count_timeout" : settled;
     if (refusal) { emit(log, "info", { outcome: "fallback", reason: refusal, seller_host: sellerHost }); return null; }
+  }
+
+  // THE SELLER IS ABOUT TO BE ASKED: everything above answered without it (a row currency this door cannot hold the
+  // seller to, a line with no seller variant, the same variant twice, a door that cannot be built, a derived variant
+  // the catalog does not confirm), and each of those answers stands whatever is remembered about the seller. Only
+  // HERE is the caller's memory read (`recallStoreCurrency`): a seller remembered as answering this market's carts
+  // in another currency is not asked again, and what it answered then is reported as its answer, marked `remembered`
+  // so the caller neither writes it down a second time nor counts it as a fresh answer. Before discovery, the
+  // referral and the cart: a hit costs the seller and the referral nothing. Never on a re-read (`cartId`): that cart
+  // exists, and is read from the seller as ever. A function that throws, or returns anything but another currency,
+  // is no hit.
+  if (followsMarket && cartId === undefined && typeof recallStoreCurrency === "function" && isPlainObject(storeAnswer)) {
+    let remembered = null;
+    try { remembered = recallStoreCurrency(); } catch { remembered = null; }
+    if (typeof remembered === "string" && /^[A-Z]{3}$/.test(remembered) && remembered !== expectedCurrency) {
+      storeAnswer.currency = remembered;
+      storeAnswer.remembered = true;
+      return null;
+    }
   }
 
   let endpoint;

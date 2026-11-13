@@ -91,8 +91,9 @@ export function storeCartIdempotencyEnabled(env = process.env) {
   return /^(1|true|yes|on)$/i.test(String((env && env[STORE_CART_IDEMPOTENCY_FLAG]) || "").trim());
 }
 
-// Per-process counts: claimed, replayed, replayed_after_wait, conflict, in_flight,
-// fail_open:<stage>, finalize_failed, lease_lost, released. The log line is the fleet-wide view.
+// Per-process counts: claimed, replayed, replayed_after_wait, replay_refused, conflict, in_flight,
+// fail_open:<stage>, finalize_failed, lease_lost, released. The log line is the fleet-wide view, and the ONLY one
+// production has: nothing outside the tests reads these counts, and `claimed` and `released` have no log line.
 const outcomes = new Map();
 function count(outcome) { outcomes.set(outcome, (outcomes.get(outcome) || 0) + 1); }
 export function storeCartIdempotencyCounts() { return Object.fromEntries(outcomes); }
@@ -197,6 +198,9 @@ export function requestFingerprint(canonical) {
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
+// Why a replayed create's read-back answered nothing (the `reason` of its `replay_refused` line and count).
+export const REPLAY_NOTHING_SERVED = Object.freeze({ declined: "declined", notReadable: "not_readable" });
+
 /**
  * Build the checkout once per (door, partner, buyer, session, key, request).
  *
@@ -210,11 +214,14 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
  *   now: () => number,
  *   build: () => Promise<{ answer:any, id:(string|null) }>,   // today's create; `id` null = no checkout was handed out
  *   replay: (id:string, createdAt:number) => Promise<any>,   // read the recorded checkout back
+ *   nothingServedReason?: () => string,   // asked only when `replay` answered nothing: REPLAY_NOTHING_SERVED.notReadable
+ *                                     // when the recorded id is no longer one the caller may read; anything else
+ *                                     // (or no function) is counted as REPLAY_NOTHING_SERVED.declined
  *   log?: object, waitMs?: number, pollMs?: number,
  * }} a
  * @returns {Promise<any>} the answer
  */
-export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now = Date.now, build, replay, log, waitMs = WAIT_FOR_WINNER_MS, pollMs = POLL_INTERVAL_MS }) {
+export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now = Date.now, build, replay, nothingServedReason, log, waitMs = WAIT_FOR_WINNER_MS, pollMs = POLL_INTERVAL_MS }) {
   const failOpen = async (stage) => {
     count(`fail_open:${stage}`);
     emit(log, "warn", { outcome: "fail_open", stage });
@@ -236,7 +243,35 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
     if (id === null) return failOpen("unreadable_record");
     count(outcome);
     emit(log, "info", { outcome });
-    return replay(id, Number(record.created_at));
+    // `replayed` / `replayed_after_wait` mean A RECORD WAS FOUND AND READ BACK, not that its checkout was served: the
+    // read-back is judged again (the purchasability gate, the currency rule, the rows as they are now) and may be
+    // refused. Each read-back that hands out no checkout is counted and logged once more, as `replay_refused`,
+    // with the refusal's reason. A read-back that ANSWERED NOTHING (the door then refuses it by name) is one of two
+    // things, told apart by the caller (`nothingServedReason`), never guessed here:
+    //   `declined`      the recorded checkout was read and the purchasability gate (or a rule that declines as the
+    //                   gate does) declined it;
+    //   `not_readable`  the recorded id is no longer one this buyer may read (an unbound id after the id binding
+    //                   moved to `enforce`, or a bound one after its secret changed): nothing was read or judged.
+    // SERVED replays = replayed + replayed_after_wait - replay_refused.
+    const notServed = (reason) => {
+      count("replay_refused");
+      emit(log, "info", { outcome: "replay_refused", reason });
+    };
+    let answer;
+    try {
+      answer = await replay(id, Number(record.created_at));
+    } catch (err) {
+      const detail = err && typeof err === "object" ? err.detail : null;
+      const reason = detail && typeof detail === "object" && typeof detail.reason === "string" ? detail.reason : null;
+      notServed(reason || (err && typeof err.code === "string" ? err.code : "error"));
+      throw err;
+    }
+    if (answer === null || answer === undefined) {
+      let said = null;
+      try { said = typeof nothingServedReason === "function" ? nothingServedReason() : null; } catch { said = null; }
+      notServed(said === REPLAY_NOTHING_SERVED.notReadable ? REPLAY_NOTHING_SERVED.notReadable : REPLAY_NOTHING_SERVED.declined);
+    }
+    return answer;
   };
   const conflictIfOther = (record) => {
     if (record.fp !== fp) {
