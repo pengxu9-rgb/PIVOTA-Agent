@@ -144,6 +144,8 @@ export class SafetyKernel {
    * quote is known to be well formed and BEFORE anything is snapshotted. When it throws, its error is the answer and
    * no snapshot exists: a quote the caller refuses can never be read back, updated or paid. The executor uses it to
    * hold a checkout that names a market to that market's currency (canonicalExecutor.js, quoteMarketOf).
+   * `opts.sessionMarket` (optional, `{ market, market_currency }`): the market this checkout is for, recorded on the
+   * snapshot (quoteRegistry.js) so a re-quote of the session is judged for the same market.
    */
   async previewQuote(payload, ctx, opts = {}) {
     this._requireUser(ctx);
@@ -188,6 +190,7 @@ export class SafetyKernel {
       locked_totals: upstreamResult.locked_totals,
       line_items: upstreamResult.line_items,
       buyer_context: buyerContextFromQuotePayload(payload),
+      market: opts ? opts.sessionMarket : undefined,
     });
     return {
       quote_id: snapshot.quote_id,

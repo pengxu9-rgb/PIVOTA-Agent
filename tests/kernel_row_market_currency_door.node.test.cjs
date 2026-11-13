@@ -323,6 +323,115 @@ test('the quote body is the same request as before, plus the market: nothing els
   assert.equal(Object.prototype.hasOwnProperty.call(named.quotes[0].request_context, 'currency'), false);
 });
 
+// ---- update: a session keeps the market it was created for ------------------------------------------------------
+//
+// update_checkout_session takes no `market` on this door and re-quotes the cart. A session that was created FOR a
+// market carries that market, so its re-quote is judged for it exactly as the create was: same refusals, in the same
+// order, and a refused update leaves the session it named as it was. A session created with no market has none to
+// carry and stays unjudged (the decided no-market behaviour): an update never gives a session a market.
+
+const updateOf = (sessionId, items, o) => door.withFlags(ON, () => door.call('/mcp', 'update_checkout_session', {
+  idempotency_key: support.idem(nextKey()), session_id: sessionId,
+  quote: { merchant_id: IDS.SELLER_CONNECTED, items, customer_email: 'buyer@example.test' },
+}, o));
+const readOf = (sessionId) => door.withFlags(ON, () => door.call('/mcp', 'get_checkout_session', { session_id: sessionId }));
+const CARTS = Object.freeze([
+  ['the same cart', [{ product_id: IDS.SOURCE_CONNECTED, variant_id: IDS.VARIANT_CONNECTED, quantity: 1 }]],
+  ['a changed quantity', [{ product_id: IDS.SOURCE_CONNECTED, variant_id: IDS.VARIANT_CONNECTED, quantity: 3 }]],
+  ['a changed item', [{ product_id: '9002', variant_id: 'v-9002-1', quantity: 1 }]],
+]);
+
+for (const [cartLabel, items] of CARTS) {
+  test(`created for SG, then updated (${cartLabel}), the seller still priced in SGD: re-priced in SGD, and the re-quote carries SG`, async () => {
+    door.setQuoteCurrency('SGD');
+    const created = await kernel('SG');
+    const updated = await updateOf(created.value.session_id, items);
+    assert.equal(updated.isError, false);
+    assertAnswerCurrency(JSON.parse(updated.raw), 'SGD', 'the update');
+    assert.equal(updated.value.currency, 'SGD');
+    assert.deepEqual(updated.quotes.map(countryOf), ['SG']);
+    // The session the update answered is bound to SG as well: a second update is judged the same way.
+    door.setQuoteCurrency('USD');
+    refusedFor(await updateOf(updated.value.session_id, items), 'seller_not_priced_in_market_currency');
+  });
+
+  test(`created for SG, then updated (${cartLabel}), the re-quote comes back in USD: refused by name, and the session is as it was`, async () => {
+    door.setQuoteCurrency('SGD');
+    const created = await kernel('SG');
+    door.setQuoteCurrency('USD');
+    const updated = await updateOf(created.value.session_id, items);
+    refusedFor(updated, 'seller_not_priced_in_market_currency');
+    assert.deepEqual(updated.value.error.detail, { reason: 'seller_not_priced_in_market_currency', market: 'SG', market_currency: 'SGD', seller_currencies: ['USD'] });
+    assert.ok(updated.value.error.message.includes('was not re-priced'), updated.value.error.message);
+    assert.deepEqual(updated.quotes.map(countryOf), ['SG'], 'one re-quote, carrying the session\'s market');
+    const read = await readOf(created.value.session_id);
+    assert.equal(read.isError, false);
+    assert.equal(read.value.currency, 'SGD');
+    assert.deepEqual(read.value.totals, created.value.totals);
+    assert.equal(read.value.session_id, created.value.session_id);
+  });
+}
+
+test('created for US, then updated: priced while the seller is in USD, refused when the re-quote is in SGD', async () => {
+  const created = await kernel('US');
+  const same = await updateOf(created.value.session_id, CARTS[1][1]);
+  assert.equal(same.isError, false);
+  assert.equal(same.value.currency, 'USD');
+  assert.deepEqual(same.quotes.map(countryOf), ['US']);
+  door.setQuoteCurrency('SGD');
+  const moved = await updateOf(created.value.session_id, CARTS[1][1]);
+  refusedFor(moved, 'seller_not_priced_in_market_currency');
+  assert.deepEqual(moved.value.error.detail, { reason: 'seller_not_priced_in_market_currency', market: 'US', market_currency: 'USD', seller_currencies: ['SGD'] });
+});
+
+// The decided no-market behaviour, on update too: a session created with no market is re-priced in the seller's own
+// currency, unjudged and unlabelled, and its re-quote carries no market. To revisit with the create's own pin.
+test('created with no market, then updated: unjudged as the create was, whatever the seller is priced in, and no market is acquired', async () => {
+  const created = await kernel(undefined);
+  for (const sellerCurrency of ['USD', 'SGD']) {
+    door.setQuoteCurrency(sellerCurrency);
+    const updated = await updateOf(created.value.session_id, CARTS[1][1]);
+    assert.equal(updated.isError, false);
+    assert.equal(updated.value.currency, sellerCurrency);
+    assert.equal(updated.value.market_assumed, undefined);
+    assert.deepEqual(updated.quotes.map(countryOf), [null]);
+    const again = await updateOf(updated.value.session_id, CARTS[0][1]);
+    assert.deepEqual(again.quotes.map(countryOf), [null], 'the session it answered has no market either');
+  }
+});
+
+test('the bounds answer first on an update of a market-bound session, and an update cannot name a market', async () => {
+  door.setQuoteCurrency('SGD');
+  const created = await kernel('SG');
+  door.setQuoteCurrency('USD');
+  const line = CARTS[0][1][0];
+  const duplicate = await updateOf(created.value.session_id, [line, { ...line, quantity: 2 }]);
+  assert.equal(duplicate.value.error.detail.reason, 'duplicate_line_for_product_variant');
+  assert.deepEqual(duplicate.quotes, []);
+  const named = await door.withFlags(ON, () => door.call('/mcp', 'update_checkout_session', {
+    idempotency_key: support.idem(nextKey()), session_id: created.value.session_id, market: 'US',
+    quote: { merchant_id: IDS.SELLER_CONNECTED, items: CARTS[0][1], customer_email: 'buyer@example.test' },
+  }));
+  assert.equal(named.value.error.code, 'INVALID_ARGUMENTS');
+  assert.deepEqual(named.quotes, []);
+});
+
+// NOT CHANGED HERE (the door's behaviour before the rule, pinned so a change is seen): an update reads `session_id`
+// only to find the market of a session of THIS buyer. An id that names no session of this buyer (one that never
+// existed, another buyer's) has no market to carry, and the update is priced as a create that names none.
+test('an update naming a session that is not this buyer\'s carries no market: priced as before, in the seller\'s currency', async () => {
+  door.setQuoteCurrency('SGD');
+  const created = await kernel('SG');
+  door.setQuoteCurrency('USD');
+  const unknown = await updateOf('q_00000000-0000-0000-0000-000000000000', CARTS[0][1]);
+  assert.equal(unknown.isError, false);
+  assert.deepEqual(unknown.quotes.map(countryOf), [null]);
+  const other = await updateOf(created.value.session_id, CARTS[0][1], { buyer: { 'X-Test-User-Ref': 'buyer-0002', 'X-Test-Acp-Session-Id': 'sess-0002' } });
+  assert.equal(other.isError, false);
+  assert.deepEqual(other.quotes.map(countryOf), [null], 'another buyer learns nothing of the session\'s market');
+  assert.equal((await readOf(created.value.session_id)).value.currency, 'SGD', 'and the session is as it was');
+});
+
 test('update_checkout_session takes no market on this door (unchanged), and create says what a named market does', async () => {
   const created = await kernel('US');
   const update = await door.withFlags(ON, () => door.call('/mcp', 'update_checkout_session', {

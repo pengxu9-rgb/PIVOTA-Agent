@@ -252,6 +252,12 @@ export function agentPurchaseOrder(orderId, answered) {
 //     currency. One that does not is refused by name (`seller_not_priced_in_market_currency`) before anything is
 //     snapshotted: no session exists, and no amount is stated, converted or relabelled.
 // A request that carries no `market` is priced exactly as it was before this rule: nothing is assumed for it.
+//
+// A SESSION KEEPS THE MARKET IT WAS CREATED FOR. The market and its currency are recorded on the session's snapshot
+// (quoteRegistry.js), and an update re-quotes FOR THAT MARKET (sessionMarketParams): the same refusals, in the same
+// order, and since a refused quote is never snapshotted, the session the update named is exactly as it was. The
+// session's market is the one judged even when the update itself carries another: an update cannot move a session
+// to another market, and it cannot give a market to a session that was created with none.
 // Same refusal codes, reasons and detail members as a seller-storefront checkout answers under the currency rule
 // (mcp-server/src/ucpCheckoutEscalation.js).
 //
@@ -261,17 +267,19 @@ export function agentPurchaseOrder(orderId, answered) {
 // refused by the same names and the session is neither read out nor paid. Nothing is repriced. A door that names
 // no market for a session (every door but the ACP REST one, today) is answered exactly as before.
 
-// What the refusal says happened to the checkout, by where the rule was applied. The create sentence is the
-// original one, byte for byte.
+// What the refusal says happened to the checkout, by where the rule was applied: one set of stages for every door.
 const MARKET_REFUSAL_OUTCOME = Object.freeze({
   create: 'no checkout session was created',
   update: 'the checkout session was not re-priced',
   session: 'this checkout session was neither read out nor paid',
 });
+// A currency code as a refusal may state it. What an upstream sent that is not one is never echoed.
+const statedCurrency = (value) => (typeof value === 'string' && /^[A-Z]{3}$/.test(value) ? value : null);
 
 /**
- * `null` when the request names no market; else `{ market, accept }`. Throws the named refusal for an unpriced one.
- * `stage` only words the refusal: 'create' (the default), 'update', or 'session' (a session that already exists).
+ * `null` when the request names no market; else `{ market, currency, accept }`. Throws the named refusal for an
+ * unpriced one. `stage` only words the refusal: 'create' (the default), 'update', or 'session' (a session that
+ * already exists, being read or completed).
  */
 export function quoteMarketOf(params, stage = 'create') {
   const outcome = MARKET_REFUSAL_OUTCOME[stage] || MARKET_REFUSAL_OUTCOME.create;
@@ -293,13 +301,29 @@ export function quoteMarketOf(params, stage = 'create') {
   }
   const accept = (quoteCurrency) => {
     if (quoteCurrency === currency) return;
+    // The seller's currency is named only when it is a well-formed code: anything else the pricing engine sent is
+    // not repeated, in the message or in the detail (`seller_currencies` is then left out).
+    const sellerCurrency = statedCurrency(quoteCurrency);
     throw intakeRefusal('NO_MERCHANT_OFFER', 'seller_not_priced_in_market_currency', [
-      `No price can be stated for a buyer in ${market} for this checkout: its seller is priced in ${quoteCurrency}, and a price for ${market} must be in ${currency}.`,
+      `No price can be stated for a buyer in ${market} for this checkout: its seller is priced in ${sellerCurrency || 'another currency'}, and a price for ${market} must be in ${currency}.`,
       `Nothing was converted or relabelled, and ${outcome}.`,
       `This will not change on retry; offer the buyer alternatives priced for ${market}.`,
-    ].join(' '), { market, market_currency: currency, seller_currencies: [quoteCurrency] });
+    ].join(' '), { market, market_currency: currency, ...(sellerCurrency ? { seller_currencies: [sellerCurrency] } : {}) });
   };
-  return { market, accept };
+  return { market, currency, accept };
+}
+
+/**
+ * The market members an UPDATE is judged with: the ones recorded on the session it names, when that session is this
+ * buyer's and was created for a market; else the request's own, untouched (no door sends any on an update today).
+ * Reads exactly one thing: the session's record, by `params.session_id`, for its recorded market. Nothing else of
+ * the session is read or checked here, and an id that names no session of this buyer changes nothing.
+ */
+async function sessionMarketParams(kernel, params, ctx) {
+  const recorded = kernel.quotes && typeof kernel.quotes.sessionMarket === 'function'
+    ? await kernel.quotes.sessionMarket(params ? params.session_id : undefined, ctx)
+    : null;
+  return recorded ? { market: recorded.market, market_currency: recorded.market_currency } : params;
 }
 
 function isPlainObjectValue(value) {
@@ -476,9 +500,16 @@ export function createCanonicalExecutor({
         // duplicate lines, here) answer first, as on every door. Only then the market the request names, when a
         // door carries one (quoteMarketOf): refused here, before any quote, when nothing is priced for it; else it
         // travels in the quote body and the quote must be in its currency.
-        const quoteMarket = quoteMarketOf(params, opId === 'update_checkout_session' ? 'update' : 'create');
+        // An update is judged for the market its SESSION was created for (sessionMarketParams), read after the
+        // bounds and before anything is priced.
+        const quoteMarket = opId === 'update_checkout_session'
+          ? quoteMarketOf(await sessionMarketParams(kernel, params, ctx), 'update')
+          : quoteMarketOf(params);
         const quote = quoteMarket
-          ? await kernel.previewQuote({ quote: params.quote ?? {}, market: quoteMarket.market }, ctx, { acceptQuoteCurrency: quoteMarket.accept })
+          ? await kernel.previewQuote({ quote: params.quote ?? {}, market: quoteMarket.market }, ctx, {
+            acceptQuoteCurrency: quoteMarket.accept,
+            sessionMarket: { market: quoteMarket.market, market_currency: quoteMarket.currency },
+          })
           : await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
         return attachAp2CheckoutJwt(toSession(quote), mintAp2CheckoutJwt, ctx);
       }
