@@ -42,6 +42,7 @@ import {
   decodeEscalationId,
   escalationIdReadable,
   escalationTargetOf,
+  marketCurrencyOf,
   readCheckoutRows,
   refuseUnservedStorefrontCheckout,
   tryEscalateUcpCheckout,
@@ -109,7 +110,9 @@ const MARKET_PROPERTY = Object.freeze({
     "The buyer's country (ISO 3166-1 alpha-2), as on search_catalog, get_product and get_offers. Used only when the " +
     "checkout completes on the seller's own storefront: the seller is checked, and its cart priced, for this market. " +
     "REQUIRED for such a checkout: without it the call is refused (`market_required_for_seller_storefront`) and no cart is built; " +
-    "no market is ever assumed. Optional, and ignored, for a checkout Pivota prices itself.",
+    "no market is ever assumed. Optional for a checkout Pivota prices itself: when named, the quote is answered only if it is in that " +
+    "market's currency, else the call is refused by name (`seller_not_priced_in_market_currency`, or `market_not_priced` for a market " +
+    "Pivota prices nothing in) and no session is created; nothing is converted or relabelled.",
 });
 
 // One derived schema per base schema object, so the schema tools/list publishes and the schema the door enforces
@@ -143,6 +146,23 @@ export function storefrontMarketProblem(market) {
 export function namedStorefrontMarket(toolArgs) {
   const market = own(toolArgs, "market");
   return requestMarket.marketIsUnnamed(market) ? null : String(market).trim();
+}
+
+/**
+ * THE MARKET OF A CHECKOUT PIVOTA PRICES ITSELF. A native create that is NOT a storefront cart goes to the kernel,
+ * whose quote is in the seller's own currency whatever market the request names. So the market this door accepted
+ * (two letters, storefrontMarketProblem) travels with the quote, with the currency the gateway's one market ->
+ * currency source prices it in (marketCurrencyOf): the executor refuses a market that source has no currency for,
+ * and a quote that is not in the market's currency (canonicalExecutor.js, quoteMarketOf).
+ * Returns the members to add to the executor's params: none when the create names no market (it is then priced as
+ * it always was: nothing is assumed), `market` alone when nothing is priced for it. Never a default of either.
+ */
+export function kernelQuoteMarketParams(toolArgs) {
+  const named = namedStorefrontMarket(toolArgs);
+  if (named === null) return {};
+  const market = named.toUpperCase();
+  const currency = marketCurrencyOf(market);
+  return currency ? { market, market_currency: currency } : { market };
 }
 
 // The escalation reads the request market from the UCP wire body (`checkout.context.address_country`). The native
