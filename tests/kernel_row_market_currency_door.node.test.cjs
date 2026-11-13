@@ -282,6 +282,10 @@ test('buyer intake answers first: a create intake refuses is refused as before, 
   }
 });
 
+// A DECIDED BEHAVIOUR, NOT AN OVERSIGHT (owner decision): a create for a merchant Pivota prices itself that names NO
+// market stays exactly as it was: answered in the seller's own currency, not judged against any market, and not
+// labelled as assumed for one. To revisit when the checkout tools take a REQUIRED market; until then this test is
+// the pin, and a change here is a change to that decision.
 test('no market named: priced in the seller\'s own currency, nothing assumed, the quote carries no market (as before the rule)', async () => {
   for (const sellerCurrency of ['USD', 'SGD']) {
     door.setQuoteCurrency(sellerCurrency);
@@ -292,6 +296,23 @@ test('no market named: priced in the seller\'s own currency, nothing assumed, th
     assert.deepEqual(answer.quotes.map(countryOf), [null]);
   }
 });
+
+// THE BOUNDS ANSWER FIRST. A cart with two lines for one product and variant is refused on the request alone, as on
+// every door, whatever market it names: one this gateway prices (US), one whose currency the seller is not in (SG),
+// one it prices nothing in (DE, ZZ), or none. Nothing is read, priced or asked.
+for (const market of ['SG', 'DE', 'ZZ', 'US', undefined]) {
+  test(`a duplicate line and market ${market || 'none'}: the duplicate-line refusal, with no call anywhere`, async () => {
+    const args = kernelCreate(market);
+    args.quote.items = [args.quote.items[0], { ...args.quote.items[0], quantity: 2 }];
+    const answer = await door.withFlags(ON, () => door.call('/mcp', 'create_checkout_session', args));
+    assert.equal(answer.isError, true);
+    assert.equal(answer.value.error.detail.reason, 'duplicate_line_for_product_variant');
+    assert.deepEqual(answer.value.error.detail.duplicate_lines, [[1, 2]]);
+    assert.deepEqual([answer.upstream, answer.quotes, answer.store, answer.gate], [[], [], [], []]);
+    const found = collectAnswerCurrencies(JSON.parse(answer.raw));
+    assert.deepEqual([found.money, found.priceCurrencies], [[], []]);
+  });
+}
 
 test('the quote body is the same request as before, plus the market: nothing else is added to it', async () => {
   const strip = (quoteBody) => { const { request_context: rc, ...rest } = quoteBody; const { request_id: _id, country, ...context } = rc; return { ...rest, request_context: context, country: country === undefined ? null : country }; };

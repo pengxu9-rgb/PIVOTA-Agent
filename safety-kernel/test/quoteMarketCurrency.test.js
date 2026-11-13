@@ -96,6 +96,27 @@ test('a market with no currency: refused by name BEFORE any pricing call, and th
   }
 });
 
+test('the bounds answer before the market: a duplicate line, a quantity above the ceiling and a short key are refused as themselves for any market', async () => {
+  const line = QUOTE.items[0];
+  for (const members of [{ market: 'SG', market_currency: 'SGD' }, { market: 'DE' }, { market: 'ZZ' }, { market: 'usa' }, {}]) {
+    for (const opId of ['create_checkout_session', 'update_checkout_session']) {
+      const label = `${opId} ${JSON.stringify(members)}`;
+      const dup = setup({ currency: 'USD' });
+      const dupErr = await refusal(dup.run(opId, { ...members, quote: { ...QUOTE, items: [line, { ...line, quantity: 2 }] } }));
+      assert.equal(detailOf(dupErr).reason, 'duplicate_line_for_product_variant', label);
+      const many = setup({ currency: 'USD' });
+      const manyErr = await refusal(many.run(opId, { ...members, quote: { ...QUOTE, items: [{ ...line, quantity: 100000 }] } }));
+      assert.notEqual(detailOf(manyErr).reason, 'market_not_priced', label);
+      assert.notEqual(detailOf(manyErr).reason, 'market_invalid', label);
+      assert.match(detailOf(manyErr).reason, /quantity/, label);
+      const short = setup({ currency: 'USD' });
+      const shortErr = await refusal(short.run(opId, { ...members, idempotency_key: 'k1' }));
+      assert.match(String(detailOf(shortErr).reason), /idempotency_key/, label);
+      assert.deepEqual([dup.priced, dup.issued, many.priced, many.issued, short.priced, short.issued], [[], [], [], [], [], []], label);
+    }
+  }
+});
+
 test('a market that is not an upper-case two-letter code is never priced and never echoed', async () => {
   for (const market of ['usa', 'sg', 'U', 'S G', '', 12, true, {}, ['US']]) {
     const { run, priced, issued } = setup();
