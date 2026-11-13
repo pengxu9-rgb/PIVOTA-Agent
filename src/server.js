@@ -33621,15 +33621,16 @@ function commerceKernelErrorBody(error = {}) {
   if (error.details && typeof error.details === 'object' && !Array.isArray(error.details)) {
     body.details = sanitizeCommerceKernelErrorDetails(error.details);
   }
-  // A shared intake refusal (the idempotency key's minimum, the per-line quantity ceiling) names itself: its
-  // field-level detail, as the kernel's invoke handler hands it over. No other kernel error carries one.
+  // A shared intake refusal (the idempotency key's minimum, the per-line quantity ceiling, one line per product and
+  // variant) names itself: its field-level detail, as the kernel's invoke handler hands it over. No other kernel
+  // error carries one.
   if (error.detail && typeof error.detail === 'object' && !Array.isArray(error.detail)) {
     body.detail = sanitizeCommerceKernelErrorDetails(error.detail);
   }
   return body;
 }
 
-// The two bounds every checkout door shares, for the invoke requests the strict kernel route does not take: either
+// The bounds every checkout door shares, for the invoke requests the strict kernel route does not take: either
 // invoke address with strict checkout off. (With it on, the strict route answers every money operation on both
 // addresses and this is asked for nothing it would refuse, but strict off is still a state, so the guard stays.) The numbers, the rules and the wording are the
 // kernel's (safety-kernel/src/protocol/intakeBounds.cjs, the one file both module systems load); this only asks it
@@ -44583,7 +44584,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   try {
     // The shared checkout bounds, before anything is read, rewritten or sent, and BEFORE the request schema: a
-    // present idempotency key below the minimum, a cart line above the per-line ceiling (invokeIntakeBoundsFailure).
+    // present idempotency key below the minimum, a cart line above the per-line ceiling, a cart that names the same
+    // product and variant on more than one line (invokeIntakeBoundsFailure).
     // Before the schema because it has its own count for the key (8 UTF-16 units, as sent), and two rules gave two
     // different answers for a short key on one door. Now the shared rule decides, with its named refusal; the
     // schema still judges everything else about the request, including a key that is not a string.

@@ -20,6 +20,7 @@ import { InMemoryKvStore } from '../src/stores.js';
 import { redact } from '../src/redact.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
+import { createDefaultVariantResolver } from '../src/protocol/buyerIntake.js';
 import { attestedBuyerFromClaims } from '../src/identity/userTokenVerifier.js';
 
 const SECRET = 'acp-signing-secret-0123456789abcdef';
@@ -373,13 +374,26 @@ test('resolution TIMES OUT: refused on expiry — a hanging read cannot stall se
 });
 
 test('the SAME product twice in one cart costs ONE read, and both items get the resolved id', async () => {
+  // The RESOLVER's property, asked of the resolver itself: one read per DISTINCT product_id.
+  const reads = [];
+  const resolve = createDefaultVariantResolver({
+    executor: { execute: async (_op, params) => { reads.push(params.payload.product); return productWith({ variant_id: 'v_shared' })(params.payload); } },
+  });
+  const items = [{ product_id: 'p1', quantity: 1 }, { product_id: 'p1', quantity: 4 }];
+  await resolve(items, undefined, { user_ref: 'buyer_1' });
+  assert.equal(reads.length, 1, 'one read per DISTINCT product_id');
+  assert.deepEqual(items.map((i) => i.variant_id), ['v_shared', 'v_shared']);
+
+  // THROUGH THE DOOR that cart no longer reaches the resolver: two lines of one product that name no variant are
+  // one product and variant on two lines, refused by name before any read (duplicateLines.test.js).
   const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v_shared' }) });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }, { product_id: 'p1', quantity: 4 }] }),
   }));
-  assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.equal(productReads().length, 1, 'one read per DISTINCT product_id');
-  assert.deepEqual(quoteOf(priced()).items.map((i) => i.variant_id), ['v_shared', 'v_shared']);
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.deepEqual(r.body.detail, { reason: 'duplicate_line_for_product_variant', duplicate_lines: [[1, 2]] });
+  assert.equal(productReads().length, 0);
+  assert.equal(priced().length, 0);
 });
 
 test('ONE ambiguous item refuses the WHOLE request (a partially-resolved cart is never priced)', async () => {
@@ -797,10 +811,20 @@ test('LOAD: a cart over the DISTINCT-PRODUCT cap is refused before any read, und
 });
 
 test('LOAD: a 50-line cart of ONE product is still legal — it is 1 read, not 50', async () => {
-  const { adapter, productReads } = setup({ productRead: productWith({ variant_id: 'v_shared' }) });
-  const r = await adapter.createCheckoutSession(req({ body: bigCart(50, { distinct: false }) }));
+  // Fifty lines of one product are fifty DIFFERENT variants of it (one line per product and variant): forty-nine
+  // named, and one left for the read to resolve. The distinct-product cap counts one product, and one read is made.
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v_default' }) });
+  const items = Array.from({ length: 50 }, (_, i) => (i === 0 ? { product_id: 'p_same', quantity: 1 } : { product_id: 'p_same', variant_id: `v_${i}`, quantity: 1 }));
+  const r = await adapter.createCheckoutSession(req({ body: { customer_email: 'a@b.co', items } }));
   assert.equal(r.status, 201, `the caps must not punish quantity: ${JSON.stringify(r.body)}`);
   assert.equal(productReads().length, 1);
+  assert.equal(new Set(quoteOf(priced()).items.map((i) => i.variant_id)).size, 50, 'fifty lines, fifty variants');
+  // Fifty lines that all name NO variant are one line fifty times: refused before any read.
+  const same = setup({ productRead: productWith({ variant_id: 'v_default' }) });
+  const refused = await same.adapter.createCheckoutSession(req({ body: bigCart(50, { distinct: false }) }));
+  assert.equal(refused.status, 400, JSON.stringify(refused.body));
+  assert.equal(refused.body.detail.reason, 'duplicate_line_for_product_variant');
+  assert.equal(same.productReads().length, 0);
 });
 
 test('LOAD: read concurrency never exceeds the limiter', async () => {
@@ -839,11 +863,12 @@ test('LOAD: the deadline STOPS LAUNCHING reads — an abandoned batch does not k
 });
 
 test('LOAD: product_id is TRIMMED, so " p1 " / "p1" / "p1  " are ONE product and ONE read', async () => {
+  // Three spellings of one product, as three DIFFERENT variants of it (two named, one for the read to resolve).
   const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v_trim' }) });
   const r = await adapter.createCheckoutSession(req({
     body: {
       customer_email: 'a@b.co',
-      items: [{ product_id: 'p1', quantity: 1 }, { product_id: ' p1 ', quantity: 1 }, { product_id: 'p1  ', quantity: 1 }],
+      items: [{ product_id: 'p1', variant_id: 'v_a', quantity: 1 }, { product_id: ' p1 ', quantity: 1 }, { product_id: 'p1  ', variant_id: 'v_b', quantity: 1 }],
     },
   }));
   assert.equal(r.status, 201, JSON.stringify(r.body));
@@ -851,6 +876,15 @@ test('LOAD: product_id is TRIMMED, so " p1 " / "p1" / "p1  " are ONE product and
   assert.deepEqual(productReads()[0].payload.product, { product_id: 'p1' });
   assert.deepEqual(quoteOf(priced()).items.map((i) => i.product_id), ['p1', 'p1', 'p1'],
     'and the NORMALIZED value is what reaches pricing');
+  // The three spellings with no variant named are ONE product and variant on three lines: the trimmed value is
+  // also what the one-line-per-product-and-variant rule compares, so they are refused together, before any read.
+  const same = setup({ productRead: productWith({ variant_id: 'v_trim' }) });
+  const refused = await same.adapter.createCheckoutSession(req({
+    body: { customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }, { product_id: ' p1 ', quantity: 1 }, { product_id: 'p1  ', quantity: 1 }] },
+  }));
+  assert.equal(refused.status, 400, JSON.stringify(refused.body));
+  assert.deepEqual(refused.body.detail, { reason: 'duplicate_line_for_product_variant', duplicate_lines: [[1, 2, 3]] });
+  assert.equal(same.productReads().length, 0);
 });
 
 // ---- 4. PII hygiene ---------------------------------------------------------------------------------------

@@ -40,6 +40,7 @@ import {
   normalizeCartItems,
   assertIdempotencyKeyAcceptable,
   assertLineQuantitiesWithinMaximum,
+  assertNoDuplicateLines,
   pickCompleteAddress,
   resolveBuyerEmail,
   resolveBuyerName,
@@ -151,8 +152,15 @@ export function createAcpRestAdapter(deps = {}) {
   function requireIdempotencyKey(req) {
     const key = header(req, 'idempotency-key');
     if (!nonEmpty(key)) throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'missing_idempotency_key' });
-    // The shared minimum (buyerIntake.js), here so a short key is refused before the buyer is resolved, a session
-    // is loaded or a product is read.
+    // The shared rule (buyerIntake.js), here so a key it refuses is refused before the buyer is resolved, a session
+    // is loaded or a product is read. THE KEY IS JUDGED AS SENT: the header value as the HTTP layer hands it over,
+    // before `header()` removes the whitespace around it, so this door refuses exactly the keys the other doors
+    // refuse. What can differ between the two values over HTTP is narrow: the HTTP layer has already removed the
+    // spaces and tabs around a header value, and of the characters a header byte can decode to (U+0000 to U+00FF)
+    // the only other one `trim()` removes that it lets through is U+00A0, the no-break space (byte 0xA0).
+    assertIdempotencyKeyAcceptable(headerAsSent(req, 'idempotency-key'));
+    // What this door USES is the value without the whitespace around it, as it always was, so every key still
+    // accepted names the record it named before. Judged too: a second check on the value about to be used.
     assertIdempotencyKeyAcceptable(key);
     return key;
   }
@@ -182,7 +190,9 @@ export function createAcpRestAdapter(deps = {}) {
       const idempotency_key = requireIdempotencyKey(req);
       const buyer = await requireBuyer(req);
       const { user_ref } = buyer;
-      // priced from the SIGNED bytes (validates non-empty items; resolves each item's default variant)
+      // priced from the SIGNED bytes (validates non-empty items; resolves each item's default variant; refuses a
+      // cart whose lines, as sent or as resolved, name one product and variant twice). Every refusal the cart can
+      // get from intake is raised here, BEFORE the claim below is written.
       const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
 
       // ACP-layer create idempotency (Codex P1): a replayed (buyer, key) returns the ORIGINAL session instead
@@ -218,6 +228,8 @@ export function createAcpRestAdapter(deps = {}) {
       // store read). After the buyer, never before: a caller with no verified buyer is still told that first. A
       // body that does not parse is left to the checks below, in their own order.
       assertLineQuantitiesWithinMaximum(peekItems(req));
+      // One line per product and variant, at the same place for the same reason.
+      assertNoDuplicateLines(peekItems(req));
       const stored = await ownedSession(acp_session_id, user_ref);
       // An update RE-MINTS the quote snapshot (executor: create/update share previewQuote), and the snapshot
       // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address
@@ -348,10 +360,15 @@ const peekItems = (req) => {
   }
 };
 
-const header = (req, name) => {
+/** A header's value exactly as the request carries it (a string), else undefined. Read, never altered. */
+const headerAsSent = (req, name) => {
   const h = req?.headers ?? {};
   const v = h[name] ?? h[name.toLowerCase()] ?? h[name.toUpperCase()];
-  return typeof v === 'string' ? v.trim() : undefined;
+  return typeof v === 'string' ? v : undefined;
+};
+const header = (req, name) => {
+  const v = headerAsSent(req, name);
+  return v === undefined ? undefined : v.trim();
 };
 const pathId = (req) => {
   const id = req?.params?.checkout_session_id ?? req?.params?.id;
@@ -428,6 +445,14 @@ async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants) {
   // mapItemsToQuote is a plain module-level function and nothing forces the third argument.
   if (typeof resolveDefaultVariants !== 'function') assertNoUnresolvedVariants(items);
   else await resolveDefaultVariants(items, quote.merchant_id, { user_ref: buyer.user_ref });
+  // ONE LINE PER PRODUCT AND VARIANT, ASKED AGAIN ON THE RESOLVED LINES, HERE. `normalizeCartItems` asked it on the
+  // lines as sent; a line that named no variant now carries the one the read resolved, so a line that named a
+  // variant and a line that named none are refused here when they turned out to be the same. It must be HERE and
+  // not left to the executor: a create writes its dedup claim (the caller's key, held for CREATE_DEDUP_TTL_MS)
+  // between this function and the executor, and a refusal after the claim would leave the key pointing at a
+  // session that was never written. The refusal tells the caller to merge the lines and send again; with the
+  // same key, that retry must be a first create. The executor still asks, as the second check.
+  assertNoDuplicateLines(items);
   return quote;
 }
 

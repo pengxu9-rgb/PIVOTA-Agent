@@ -482,6 +482,93 @@ test('a key with a character outside printable ASCII is refused by name on every
   });
 });
 
+// ---- the key is judged AS SENT on both dialects -------------------------------------------------------------------
+//
+// The UCP mapper removes the whitespace around `meta["idempotency-key"]` (the key that door uses). The rule is asked
+// about the key as it arrived, so what surrounds a key is judged like what is inside it, on both doors alike.
+
+// A good key with something around it that is not an ASCII space. `trim()` removes every one of these.
+const GOOD_KEY = 'idem-pad-0001';
+const PADDED_KEYS = [
+  `\u00a0${GOOD_KEY}\u00a0`, `${GOOD_KEY}\u00a0`, `\u00a0${GOOD_KEY}`, `${GOOD_KEY}\n`, `${GOOD_KEY}\r\n`, `\t${GOOD_KEY}`, `${GOOD_KEY}\t`,
+  `\u3000${GOOD_KEY}`, `${GOOD_KEY}\ufeff`, `\ufeff${GOOD_KEY}`, `${GOOD_KEY}\u2028`, `${GOOD_KEY}\u2029`, `\u2003${GOOD_KEY}\u2003`,
+  `${GOOD_KEY}\u202f`, `\u1680${GOOD_KEY}`, `${GOOD_KEY}\v`, `${GOOD_KEY}\f`, ` ${GOOD_KEY}\u00a0 `, `\u00a0 ${GOOD_KEY} `,
+];
+const wireErrorOf = (err) => JSON.parse(toToolError(err).content[0].text).error;
+
+test('a key padded with whitespace that is not an ASCII space is refused on the UCP dialect exactly as on the native one, with nothing read or executed', async () => {
+  await withEscalation(async () => {
+    const executor = recorder(ROWS);
+    const surface = createCommerceToolSurface(executor, { cache: false });
+    const ucp = ucpDialectSurface(surface);
+    for (const key of PADDED_KEYS) {
+      const label = JSON.stringify(key);
+      const native = await rejected(surface.callTool('create_checkout_session', { idempotency_key: key, quote: nativeQuote(1) }, SESSION));
+      assertKeyBadCharacters(native, `native create ${label}`);
+      for (const [tool, args] of Object.entries(ucpCalls(key))) {
+        const err = await rejected(ucp.callTool(tool, args, SESSION));
+        assertKeyBadCharacters(err, `UCP ${tool} ${label}`);
+        // The same answer, member for member: code, message, retriable and detail.
+        assert.deepEqual(wireErrorOf(err), wireErrorOf(native), `UCP ${tool} ${label}: the native door's answer`);
+      }
+      const storefront = { meta: { ...UCP_META, 'idempotency-key': key }, checkout: ucpCheckout(1, STOREFRONT.product_id) };
+      assertKeyBadCharacters(await rejected(ucp.callTool('create_checkout', storefront, SESSION)), `UCP storefront ${label}`);
+    }
+    assert.deepEqual(executor.seen, [], 'the executor was never called: no read, nothing executed');
+  });
+});
+
+test('both dialects accept and refuse the same keys, with the same answer', async () => {
+  const keys = [
+    ...PADDED_KEYS, ...BAD_CHARACTER_KEYS, GOOD_KEY, ` ${GOOD_KEY} `, `   ${GOOD_KEY}`, `${GOOD_KEY}   `, 'abcdefgh', 'abcdefg', ' abcdefg ', '       a',
+    'abc     ', 'a b c d~', '\u00a0abcdefg', 'abcdefg\u00a0', '\u00a0'.repeat(8), ` \u00a0${GOOD_KEY}`, 'idem\u00a0pad-0001',
+  ];
+  const outcome = (err) => (err && err.code === 'IDEMPOTENCY_CONFLICT' ? wireErrorOf(err) : 'past the key gate');
+  await withEscalation(async () => {
+    const surface = createCommerceToolSurface(recorder(ROWS), { cache: false });
+    const ucp = ucpDialectSurface(surface);
+    const seen = new Set();
+    for (const key of keys) {
+      const native = outcome(await rejected(surface.callTool('create_checkout_session', { idempotency_key: key, quote: nativeQuote(1) }, SESSION)));
+      for (const [tool, args] of Object.entries(ucpCalls(key))) {
+        assert.deepEqual(outcome(await rejected(ucp.callTool(tool, args, SESSION))), native, `UCP ${tool} ${JSON.stringify(key)}`);
+      }
+      seen.add(typeof native === 'string' ? native : native.detail.reason);
+    }
+    // The comparison met every outcome: a pass and both named refusals.
+    assert.deepEqual([...seen].sort(), ['idempotency_key_bad_characters', 'idempotency_key_too_short', 'past the key gate']);
+  });
+});
+
+test('a key the rule accepts is used as each door always used it: the UCP door without the spaces around it, the native door as sent', async () => {
+  await withEscalation(async () => {
+    for (const [sent, used] of [[GOOD_KEY, GOOD_KEY], [` ${GOOD_KEY} `, GOOD_KEY], [`   ${GOOD_KEY}`, GOOD_KEY], [`${GOOD_KEY}  `, GOOD_KEY], ['a b c d~', 'a b c d~'], [' a b c d~ ', 'a b c d~']]) {
+      const executor = recorder(ROWS);
+      const surface = createCommerceToolSurface(executor, { cache: false });
+      const ucp = ucpDialectSurface(surface);
+      for (const [tool, args] of Object.entries(ucpCalls(sent))) {
+        await rejected(ucp.callTool(tool, args, SESSION));
+        const call = executor.seen.find((c) => c.op === CANONICAL_OPERATIONS.find((op) => op.ucpTool === tool).id);
+        assert.ok(call, `UCP ${tool} ${JSON.stringify(sent)}: executed`);
+        assert.equal(call.params.idempotency_key, used, `UCP ${tool} ${JSON.stringify(sent)}: the key the door uses`);
+      }
+      await surface.callTool('create_checkout_session', { idempotency_key: sent, quote: nativeQuote(1) }, SESSION);
+      assert.equal(executor.seen.at(-1).params.idempotency_key, sent, `native ${JSON.stringify(sent)}: as sent`);
+    }
+  });
+});
+
+test('the two vendor tools that continue an earlier create still find a key that create was sent with padding', async () => {
+  // They are not judged by the key rule, and the key they look the earlier create up by is the one this door stored:
+  // without the whitespace around it, whatever that whitespace was.
+  const executor = recorder(ROWS);
+  const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+  for (const key of [`${GOOD_KEY}\u00a0`, `\t${GOOD_KEY}\n`, 'abc\u00a0']) {
+    const recover = await rejected(ucp.callTool('recover_checkout', { meta: { ...UCP_META, 'idempotency-key': key }, checkout: ucpCheckout(1) }, SESSION));
+    assert.notEqual(recover.code, 'IDEMPOTENCY_CONFLICT', `recover ${JSON.stringify(key)}: ${recover.code} ${recover.detail && recover.detail.reason}`);
+  }
+});
+
 test('the partner door\'s own storefront cart leaves a line above the ceiling to intake, by intake\'s one predicate', async () => {
   const source = (await import('node:fs')).readFileSync(new URL('../src/mcpStorefrontCart.js', import.meta.url), 'utf8');
   assert.match(source, /items\.some\(\(it\) => !isAcceptableLineQuantity\(it\.quantity\)\)/);

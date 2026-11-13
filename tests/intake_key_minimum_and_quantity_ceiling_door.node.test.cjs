@@ -341,14 +341,12 @@ test('a key with a character outside printable ASCII is refused by name on every
     for (const [tool, args] of Object.entries(nativeMutations(sid))) {
       assertKeyBadCharacters(await door.call('/mcp', tool, fx.withKey(key, args)), `/mcp ${tool} ${label}`);
     }
-    // This door has always trimmed the key before using it, so whitespace AROUND a key (a trailing newline) is
-    // gone before the key is judged; the key it uses is clean. The native door uses the key as sent, and refuses it.
-    if (!/^[\x20-\x7E]*$/.test(key.trim())) {
+    // The key is judged as sent on this door too: whitespace AROUND a key (a trailing newline) is refused here as
+    // on the native door, although this door would have removed it before using the key.
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) }), `/ucp/mcp create storefront ${label}`);
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 1) }), `/ucp/mcp create kernel ${label}`);
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'update_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 2) }), `/ucp/mcp update ${label}`);
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'complete_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: ucpPayment }), `/ucp/mcp complete ${label}`);
-    }
     for (const [way, route, strict] of INVOKE_WAYS) {
       for (const [operation, payload] of [['preview_quote', invokeQuote(1, { idempotency_key: key })], ['create_order', invokeOrder(key, 1)]]) {
         assertInvokeRefusal(await door.invoke(route, operation, payload, { strict }), INVOKE_KEY_BAD_CHARACTERS_REFUSAL, 409, `invoke ${way} ${operation} ${label}`);
@@ -376,6 +374,34 @@ test('a key with a character outside printable ASCII is refused by name on every
   }
 });
 
+// A good key with whitespace around it that is not an ASCII space: every one of these is removed by `trim()`.
+const PADDED_KEYS = ['\u00a0idem-pad-0001\u00a0', 'idem-pad-0001\u00a0', '\u00a0idem-pad-0001', 'idem-pad-0001\n', 'idem-pad-0001\r\n', '\tidem-pad-0001', '\u3000idem-pad-0001', 'idem-pad-0001\ufeff', 'idem-pad-0001\u2028', ' idem-pad-0001\u00a0 '];
+
+test('/ucp/mcp and /mcp refuse the same padded keys with the same answer: the key is judged as sent on both, and nothing is sent', async () => {
+  const sid = await kernelSession();
+  for (const key of PADDED_KEYS) {
+    const label = JSON.stringify(key);
+    const native = await door.call('/mcp', 'create_checkout_session', fx.withKey(key, { quote: fx.nativeQuote(1) }));
+    assertKeyBadCharacters(native, `/mcp create ${label}`);
+    for (const [name, r] of [
+      ['create storefront', await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) })],
+      ['create kernel', await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 1) })],
+      ['update', await door.call('/ucp/mcp', 'update_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 2) })],
+      ['complete', await door.call('/ucp/mcp', 'complete_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: ucpPayment })],
+    ]) {
+      assertKeyBadCharacters(r, `/ucp/mcp ${name} ${label}`);
+      assert.deepEqual(errorOf(r), errorOf(native), `/ucp/mcp ${name} ${label}: the same answer as /mcp`);
+    }
+  }
+  // The same key with only ASCII spaces around it is accepted on both doors, in every market the store cart prices
+  // and with no market named; an unpriced market is refused by its own name, not by the key rule.
+  for (const market of ['US', 'SG', 'GB', null]) {
+    const ucp = await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(`  ${freshKey()}  `), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1, market) });
+    pastTheKeyGate(ucp, `/ucp/mcp spaces around the key, market ${market}`);
+    pastTheKeyGate(await door.call('/mcp', 'create_checkout_session', fx.withKey(`  ${freshKey()}  `, { quote: fx.nativeQuote(1) })), '/mcp spaces around the key');
+  }
+});
+
 test('the characters are judged before the length, and a key that passes both is handed on exactly as sent', async () => {
   const sid = await kernelSession();
   // One wide character is a short key too: the answer is about the character.
@@ -387,6 +413,142 @@ test('the characters are judged before the length, and a key that passes both is
   const order = link.upstream.find((c) => c.path === '/agent/v2/orders');
   assert.ok(order, link.raw.slice(0, 300));
   assert.equal(JSON.parse(order.body.idempotency_key.replace(/:order$/, ''))[3], key);
+});
+
+// ---- ACP REST: the key header is judged as sent -----------------------------------------------------------------------
+
+/** One raw HTTP/1.1 request to the door, bytes as given (latin1), so a header value is exactly what a client could put on the wire. */
+function rawHttp(text) {
+  return new Promise((resolve, reject) => {
+    const socket = require('node:net').connect(4476, '127.0.0.1', () => socket.end(Buffer.from(text, 'latin1')));
+    const chunks = [];
+    socket.on('data', (c) => chunks.push(c));
+    socket.on('end', () => {
+      const answer = Buffer.concat(chunks).toString('utf8');
+      const status = Number((answer.match(/^HTTP\/1\.1 (\d{3})/) || [0, 0])[1]);
+      let body = null;
+      try { body = JSON.parse(answer.slice(answer.indexOf('\r\n\r\n') + 4)); } catch { body = null; }
+      resolve({ status, body, answer });
+    });
+    socket.on('error', reject);
+  });
+}
+
+test('ACP REST: a key padded with a no-break space (byte 0xA0) is refused as sent, with the answer /mcp gives for it, on every route that takes a key, and nothing is sent', async () => {
+  const acpId = await acpSession();
+  for (const key of ['\u00a0idem-acp-pad-01\u00a0', 'idem-acp-pad-01\u00a0', '\u00a0idem-acp-pad-01', ' idem-acp-pad-01\u00a0 ', '\u00a0\u00a0idem-acp-pad-01', 'abcdefg\u00a0']) {
+    const label = JSON.stringify(key);
+    const native = await door.call('/mcp', 'create_checkout_session', fx.withKey(key, { quote: fx.nativeQuote(1) }));
+    assertKeyBadCharacters(native, `/mcp ${label}`);
+    for (const [name, r] of [
+      ['create', await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key })],
+      ['update', await door.acp('POST', `/checkout_sessions/${acpId}`, fx.acpCart(2), { key })],
+      ['complete', await door.acp('POST', `/checkout_sessions/${acpId}/complete`, { payment_data: { method: 'placeholder', token: 'placeholder' } }, { key })],
+      ['cancel', await door.acp('POST', `/checkout_sessions/${acpId}/cancel`, {}, { key })],
+    ]) {
+      assert.equal(r.http, 409, `ACP ${name} ${label}: ${r.raw.slice(0, 200)}`);
+      // The same code, message and detail as /mcp, in this door's own error body.
+      assert.deepEqual(r.body, { type: 'error', code: errorOf(native).code, message: errorOf(native).message, detail: errorOf(native).detail }, `ACP ${name} ${label}`);
+      sentNothing(r, `ACP ${name} ${label}`);
+    }
+    // No verified buyer: the key is still answered first, as a short key is.
+    const noBuyer = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key, buyer: false });
+    assert.equal(noBuyer.http, 409, `no buyer ${label}`);
+    // A signature that does not verify is answered before the key, as before.
+    const unsigned = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key, signed: false });
+    assert.equal(unsigned.http, 401, `unsigned ${label}`);
+    sentNothing(unsigned, `unsigned ${label}`);
+  }
+  // The session is untouched by all of it, and a read takes no key.
+  const read = await door.acp('GET', `/checkout_sessions/${acpId}`, undefined, { key: 'idem-acp-pad-01\u00a0' });
+  assert.equal(read.http, 200, read.raw.slice(0, 200));
+});
+
+test('ACP REST: spaces and tabs around a key never arrive (the HTTP layer removes them), so such a key is the bare key, as before', async () => {
+  const bare = freshKey();
+  const first = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key: `  ${bare}  ` });
+  assert.equal(first.http, 201, first.raw.slice(0, 300));
+  assert.equal(quoteCalls(first).length, 1);
+  // The same key bare, tab-padded and space-padded another way: each replays the first create (200, same session,
+  // no second quote): one stored record.
+  for (const key of [bare, `\t${bare}\t`, ` ${bare}`, `${bare} \t `]) {
+    const again = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key });
+    assert.equal(again.http, 200, `${JSON.stringify(key)}: ${again.raw.slice(0, 200)}`);
+    assert.equal(again.body.id, first.body.id, JSON.stringify(key));
+    assert.deepEqual(quoteCalls(again), [], JSON.stringify(key));
+  }
+});
+
+test('ACP REST, on the wire: byte 0xA0 beside a key reaches the rule and is refused; a control character beside it never reaches the door', async () => {
+  const body = JSON.stringify(fx.acpCart(1));
+  const request = (keyBytes) => [
+    'POST /acp/checkout_sessions HTTP/1.1', 'Host: 127.0.0.1:4476', 'Content-Type: application/json', `Content-Length: ${Buffer.byteLength(body)}`,
+    'Connection: close', 'Signature: ' + '0'.repeat(64), `Timestamp: ${Date.now()}`, `Idempotency-Key: ${keyBytes}`, '', body,
+  ].join('\r\n');
+  // With a signature that does not verify the door answers 401 for any key that ARRIVES: that is what shows the
+  // request reached the door. (The signed cases are the test above.)
+  for (const bytes of ['idem-wire-0001', 'idem-wire-0001\xa0', '\xa0idem-wire-0001', '  idem-wire-0001\t ', 'idem-wire-0001\x85', 'idem-wire-0001\xff']) {
+    const r = await rawHttp(request(bytes));
+    assert.equal(r.status, 401, `${JSON.stringify(bytes)} arrives: ${r.answer.slice(0, 120)}`);
+  }
+  // A vertical tab, a form feed, a carriage return alone or a NUL beside the key: the HTTP layer refuses the request.
+  for (const bytes of ['idem-wire-0001\x0b', '\x0cidem-wire-0001', 'idem-wire-0001\x00', 'idem-wire-0001\rx']) {
+    const r = await rawHttp(request(bytes));
+    assert.equal(r.status, 400, `${JSON.stringify(bytes)} never arrives: ${r.answer.slice(0, 120)}`);
+    assert.equal(r.body, null, 'not this door\'s answer');
+  }
+});
+
+// ---- the completion line says WHY a key or a cart was refused ---------------------------------------------------------
+
+/** Run `fn` and return the `mcp tools/call complete` lines it produced. */
+async function completionLines(fn) {
+  const logger = require('../src/logger');
+  const lines = [];
+  const real = logger.info;
+  logger.info = (obj, msg) => { if (msg === 'mcp tools/call complete') lines.push(obj); };
+  try {
+    await fn();
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    logger.info = real;
+  }
+  return lines;
+}
+
+test('the tools/call completion line names why a key or a line was refused, from a closed set, and never carries the key', async () => {
+  const sid = await kernelSession();
+  const SHORT = 'kq7-sht';
+  const WIDE = 'kq-w\u00efde-key-0001';
+  const PADDED = 'kq-padded-key-0001\u00a0';
+  const cases = [
+    ['mcp', 'short', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_too_short', () => door.call('/mcp', 'create_checkout_session', fx.withKey(SHORT, { quote: fx.nativeQuote(1) }))],
+    ['mcp', 'bad character', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_bad_characters', () => door.call('/mcp', 'cancel_checkout_session', fx.withKey(WIDE, { session_id: sid }))],
+    ['mcp', 'missing', 'IDEMPOTENCY_CONFLICT', 'missing_idempotency_key', () => door.call('/mcp', 'create_checkout_session', { quote: fx.nativeQuote(1) })],
+    ['mcp', 'line above the ceiling', 'QUOTE_REQUIRED', 'quantity_above_line_maximum', () => door.call('/mcp', 'create_checkout_session', fx.withKey(freshKey(), { quote: fx.nativeQuote(1000) }))],
+    ['ucp_mcp', 'short', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_too_short', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(SHORT), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) })],
+    ['ucp_mcp', 'padded', 'IDEMPOTENCY_CONFLICT', 'idempotency_key_bad_characters', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(PADDED), checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 1) })],
+    ['ucp_mcp', 'missing', 'QUOTE_REQUIRED', 'ucp_idempotency_key_required', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(undefined), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) })],
+    ['ucp_mcp', 'line above the ceiling', 'QUOTE_REQUIRED', 'quantity_above_line_maximum', () => door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(freshKey()), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1000) })],
+  ];
+  for (const [doorName, label, code, reason, send] of cases) {
+    const lines = await completionLines(send);
+    assert.equal(lines.length, 1, `${doorName} ${label}: one completion line`);
+    const [line] = lines;
+    assert.equal(line.door, doorName, label);
+    assert.equal(line.outcome, 'tool_error', `${doorName} ${label}`);
+    assert.equal(line.error_code, code, `${doorName} ${label}`);
+    assert.equal(line.error_class, 'client', `${doorName} ${label}: a caller's mistake, not an outage`);
+    assert.equal(line.error_reason, reason, `${doorName} ${label}`);
+    const text = JSON.stringify(line);
+    for (const sent of [SHORT, WIDE, PADDED, 'kq-padded-key-0001', 'buyer@example.test']) assert.ok(!text.includes(sent), `${doorName} ${label}: nothing the caller sent is logged`);
+  }
+
+  // An answer that is not an error carries no reason.
+  const ok = await completionLines(() => door.call('/mcp', 'create_checkout_session', fx.withKey(freshKey(), { quote: fx.nativeQuote(1) })));
+  assert.equal(ok[0].outcome, 'ok');
+  assert.equal('error_reason' in ok[0], false);
 });
 
 // ---- ACP REST update: the ceiling before the session is loaded ----------------------------------------------------

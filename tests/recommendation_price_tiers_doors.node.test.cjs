@@ -20,7 +20,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const MAIN = require('./fixtures/price_tiers_doors_main.json');
-const { revertLineQuantityMaximumEdit, revertIdempotencyKeyDescriptionEdits } = require('./_support/lineQuantityMaximumSchemaEdit.cjs');
+const { revertLineQuantityMaximumEdit, revertIdempotencyKeyDescriptionEdits, revertDuplicateLinesDescriptionEdits, DUPLICATE_LINES_SENTENCE } = require('./_support/lineQuantityMaximumSchemaEdit.cjs');
 const CHILD = path.join(__dirname, '_support', 'priceTiersDoorsChild.cjs');
 const NEW_FLAGS = ['LIST_ROW_PRICE_AS_OF', 'PRICE_STALENESS_DEMOTE', 'UCP_LIVE_SEARCH_READ_TOP_K', 'UCP_LIVE_SEARCH_READ_BUDGET_MS'];
 const ALL_FLAGS = [...NEW_FLAGS, 'DOOR_CACHE_PRICE_FRESHNESS_CAP', 'RELGRAPH_CANDIDATE_PRICE_CHECKED_AT',
@@ -81,14 +81,18 @@ test.before(async () => {
     batch.forEach(([name], j) => { R[name] = results[j]; });
   }
   // THE TWO TOOL LISTS. The shared checkout bounds changed what tools/list publishes, and only this: one `maximum`
-  // on a cart line's quantity, and one sentence on each idempotency key description
+  // on a cart line's quantity, one sentence on each idempotency key description, and one sentence on each cart's
+  // line-item list (one line per product and variant)
   // (tests/_support/lineQuantityMaximumSchemaEdit.cjs). Exactly those are reversed before a tool list is compared
   // with the answer captured on main, so any OTHER change to a tool list still fails here. That both doors do
   // publish them is asserted in the first test, so the reversal cannot pass by finding nothing.
   for (const cases of Object.values(R)) {
     for (const name of TOOL_LISTS) {
       const c = cases[name];
-      const reverted = revertIdempotencyKeyDescriptionEdits(revertLineQuantityMaximumEdit(c.body));
+      c.duplicate_lines_sentences = c.body.split(DUPLICATE_LINES_SENTENCE).length - 1;
+      const reverted = revertDuplicateLinesDescriptionEdits(revertIdempotencyKeyDescriptionEdits(revertLineQuantityMaximumEdit(c.body)));
+      // Every sentence published was one of the two reversed edits: none is left anywhere else in the list.
+      c.duplicate_lines_sentences_left = reverted.split(DUPLICATE_LINES_SENTENCE).length - 1;
       if (reverted !== c.body) { c.shared_bounds_published = true; c.body = reverted; c.sha256 = sha(reverted); }
     }
   }
@@ -102,6 +106,10 @@ test('DEFAULTS: every answer byte-identical to origin/main, search read unset / 
     assert.deepEqual(shas(R[combo]), MAIN.combos[combo], `${combo}: byte-identical to origin/main`);
     for (const c of Object.values(R[combo])) assert.equal(c.status, 200);
     for (const name of TOOL_LISTS) assert.equal(R[combo][name].shared_bounds_published, true, `${combo} ${name}: publishes the shared bounds`);
+    for (const name of TOOL_LISTS) {
+      assert.ok(R[combo][name].duplicate_lines_sentences >= 2, `${combo} ${name}: the one-line-per-product-and-variant sentence is on create and on update`);
+      assert.equal(R[combo][name].duplicate_lines_sentences_left, 0, `${combo} ${name}: and nowhere but the line-item lists`);
+    }
   }
   assert.deepEqual(shas(R.prod_like_cap_off), MAIN.combos.prod_like, 'the door cap off and the graph-build flag: identical');
   assert.deepEqual(shas(R.prod_like_cap_on), MAIN.combos.prod_like, 'the door cap on alone: every answer identical');
