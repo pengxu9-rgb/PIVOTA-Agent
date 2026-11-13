@@ -432,6 +432,29 @@ test('an update naming a session that is not this buyer\'s carries no market: pr
   assert.equal((await readOf(created.value.session_id)).value.currency, 'SGD', 'and the session is as it was');
 });
 
+// ROLLBACK. The update's read of its session is made only while BOTH switches are on (the door marks the update;
+// with either off it does not). So a session that was bound while they were on, updated after either is turned off,
+// is re-priced exactly as before the rule: unjudged, in the seller's currency, with no market in the re-quote, and
+// the session it answers is unbound. The session it named is untouched and still reads in its judged currency.
+for (const off of [{ mcp: false, currency: true }, { mcp: true, currency: false }, { mcp: false, currency: false }]) {
+  test(`a session bound for SG, updated with the storefront switch ${off.mcp ? 'on' : 'off'} and the currency rule ${off.currency ? 'on' : 'off'}: unjudged, as before the rule`, async () => {
+    door.setQuoteCurrency('SGD');
+    const created = await kernel('SG');
+    door.setQuoteCurrency('USD');
+    const args = () => ({ idempotency_key: support.idem(nextKey()), session_id: created.value.session_id, quote: { merchant_id: IDS.SELLER_CONNECTED, items: CARTS[0][1], customer_email: 'buyer@example.test' } });
+    const updated = await door.withFlags(off, () => door.call('/mcp', 'update_checkout_session', args()));
+    assert.equal(updated.isError, false);
+    assert.equal(updated.value.currency, 'USD');
+    assert.deepEqual(updated.quotes.map(countryOf), [null]);
+    // Back on: the session the unjudged update answered has no market; the one it named is still bound to SG.
+    const next = await door.withFlags(ON, () => door.call('/mcp', 'update_checkout_session', { ...args(), session_id: updated.value.session_id }));
+    assert.equal(next.isError, false);
+    assert.deepEqual(next.quotes.map(countryOf), [null]);
+    refusedFor(await door.withFlags(ON, () => door.call('/mcp', 'update_checkout_session', args())), 'seller_not_priced_in_market_currency');
+    assert.equal((await readOf(created.value.session_id)).value.currency, 'SGD');
+  });
+}
+
 test('update_checkout_session takes no market on this door (unchanged), and create says what a named market does', async () => {
   const created = await kernel('US');
   const update = await door.withFlags(ON, () => door.call('/mcp', 'update_checkout_session', {

@@ -258,6 +258,14 @@ export function agentPurchaseOrder(orderId, answered) {
 // order, and since a refused quote is never snapshotted, the session the update named is exactly as it was. The
 // session's market is the one judged even when the update itself carries another: an update cannot move a session
 // to another market, and it cannot give a market to a session that was created with none.
+//
+// ONLY WHEN THE DOOR SAYS SO: `params.judge_session_market === true`. The session's record is read, and the re-quote
+// judged for its market, only on an update a door marked with that member. A door sets it when ITS market rule is on
+// for this call; no request field can (every door builds `params` by allowlist, and this member is the door's own,
+// as `market` and `market_currency` are). The executor reads no switch. Without the member an update makes no read
+// of the session and is priced exactly as it was before this rule, a session that was bound while the rule was on
+// included: turning a door's rule off returns its updates to what they were, at once. The session such an update
+// answers is a new, unbound one, and completes as any unjudged session does; the session it named stays as it was.
 // Same refusal codes, reasons and detail members as a seller-storefront checkout answers under the currency rule
 // (mcp-server/src/ucpCheckoutEscalation.js).
 
@@ -308,10 +316,12 @@ function quoteMarketOf(params, stage = 'create') {
 /**
  * The market members an UPDATE is judged with: the ones recorded on the session it names, when that session is this
  * buyer's and was created for a market; else the request's own, untouched (no door sends any on an update today).
- * Reads exactly one thing: the session's record, by `params.session_id`, for its recorded market. Nothing else of
- * the session is read or checked here, and an id that names no session of this buyer changes nothing.
+ * Reads exactly one thing, and only on an update the door marked (`params.judge_session_market === true`): the
+ * session's record, by `params.session_id`, for its recorded market. Nothing else of the session is read or checked
+ * here, and an id that names no session of this buyer changes nothing.
  */
 async function sessionMarketParams(kernel, params, ctx) {
+  if (!params || params.judge_session_market !== true) return params; // not marked by a door: nothing is read
   const recorded = kernel.quotes && typeof kernel.quotes.sessionMarket === 'function'
     ? await kernel.quotes.sessionMarket(params ? params.session_id : undefined, ctx)
     : null;

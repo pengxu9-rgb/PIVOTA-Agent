@@ -38,9 +38,18 @@ export class QuoteRegistry {
     // update case). A snapshot bound to a market is in that market's currency BY CONSTRUCTION: one that is not is
     // never stored, whatever the caller checked before, so no reader of a session (a read, a completion, a payment
     // link) can be handed a market-bound quote in another currency. Absent: nothing is recorded, nothing assumed.
+    // This runs only for a quote a caller handed in WITH a market, that is, only on a call the market rule judged;
+    // every other quote is stored exactly as before, with no check. The refusal is the rule's own, by name and not
+    // retriable: the caller's own check should have given it first, so this is the same answer, not a new one.
     const bound = boundMarketOf(input.market);
     if (bound && input.currency !== bound.market_currency) {
-      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'quote_not_in_session_market_currency' });
+      const reason = 'seller_not_priced_in_market_currency';
+      const sellerCurrency = typeof input.currency === 'string' && /^[A-Z]{3}$/.test(input.currency) ? input.currency : null;
+      throw new PivotaCommerceError('NO_MERCHANT_OFFER', {
+        reason,
+        acp_message: `No price can be stated for a buyer in ${bound.market} for this checkout: its seller is priced in ${sellerCurrency || 'another currency'}, and a price for ${bound.market} must be in ${bound.market_currency}. Nothing was converted or relabelled, and no checkout session was stored. This will not change on retry; offer the buyer alternatives priced for ${bound.market}.`,
+        acp_detail: { reason, market: bound.market, market_currency: bound.market_currency, ...(sellerCurrency ? { seller_currencies: [sellerCurrency] } : {}) },
+      });
     }
     const quote_id = `q_${randomUUID()}`;
     const issued_at = this._now();
