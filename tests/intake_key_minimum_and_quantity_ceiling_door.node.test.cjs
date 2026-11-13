@@ -415,6 +415,90 @@ test('the characters are judged before the length, and a key that passes both is
   assert.equal(JSON.parse(order.body.idempotency_key.replace(/:order$/, ''))[3], key);
 });
 
+// ---- ACP REST: the key header is judged as sent -----------------------------------------------------------------------
+
+/** One raw HTTP/1.1 request to the door, bytes as given (latin1), so a header value is exactly what a client could put on the wire. */
+function rawHttp(text) {
+  return new Promise((resolve, reject) => {
+    const socket = require('node:net').connect(4476, '127.0.0.1', () => socket.end(Buffer.from(text, 'latin1')));
+    const chunks = [];
+    socket.on('data', (c) => chunks.push(c));
+    socket.on('end', () => {
+      const answer = Buffer.concat(chunks).toString('utf8');
+      const status = Number((answer.match(/^HTTP\/1\.1 (\d{3})/) || [0, 0])[1]);
+      let body = null;
+      try { body = JSON.parse(answer.slice(answer.indexOf('\r\n\r\n') + 4)); } catch { body = null; }
+      resolve({ status, body, answer });
+    });
+    socket.on('error', reject);
+  });
+}
+
+test('ACP REST: a key padded with a no-break space (byte 0xA0) is refused as sent, with the answer /mcp gives for it, on every route that takes a key, and nothing is sent', async () => {
+  const acpId = await acpSession();
+  for (const key of ['\u00a0idem-acp-pad-01\u00a0', 'idem-acp-pad-01\u00a0', '\u00a0idem-acp-pad-01', ' idem-acp-pad-01\u00a0 ', '\u00a0\u00a0idem-acp-pad-01', 'abcdefg\u00a0']) {
+    const label = JSON.stringify(key);
+    const native = await door.call('/mcp', 'create_checkout_session', fx.withKey(key, { quote: fx.nativeQuote(1) }));
+    assertKeyBadCharacters(native, `/mcp ${label}`);
+    for (const [name, r] of [
+      ['create', await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key })],
+      ['update', await door.acp('POST', `/checkout_sessions/${acpId}`, fx.acpCart(2), { key })],
+      ['complete', await door.acp('POST', `/checkout_sessions/${acpId}/complete`, { payment_data: { method: 'placeholder', token: 'placeholder' } }, { key })],
+      ['cancel', await door.acp('POST', `/checkout_sessions/${acpId}/cancel`, {}, { key })],
+    ]) {
+      assert.equal(r.http, 409, `ACP ${name} ${label}: ${r.raw.slice(0, 200)}`);
+      // The same code, message and detail as /mcp, in this door's own error body.
+      assert.deepEqual(r.body, { type: 'error', code: errorOf(native).code, message: errorOf(native).message, detail: errorOf(native).detail }, `ACP ${name} ${label}`);
+      sentNothing(r, `ACP ${name} ${label}`);
+    }
+    // No verified buyer: the key is still answered first, as a short key is.
+    const noBuyer = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key, buyer: false });
+    assert.equal(noBuyer.http, 409, `no buyer ${label}`);
+    // A signature that does not verify is answered before the key, as before.
+    const unsigned = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key, signed: false });
+    assert.equal(unsigned.http, 401, `unsigned ${label}`);
+    sentNothing(unsigned, `unsigned ${label}`);
+  }
+  // The session is untouched by all of it, and a read takes no key.
+  const read = await door.acp('GET', `/checkout_sessions/${acpId}`, undefined, { key: 'idem-acp-pad-01\u00a0' });
+  assert.equal(read.http, 200, read.raw.slice(0, 200));
+});
+
+test('ACP REST: spaces and tabs around a key never arrive (the HTTP layer removes them), so such a key is the bare key, as before', async () => {
+  const bare = freshKey();
+  const first = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key: `  ${bare}  ` });
+  assert.equal(first.http, 201, first.raw.slice(0, 300));
+  assert.equal(quoteCalls(first).length, 1);
+  // The same key bare, tab-padded and space-padded another way: each replays the first create (200, same session,
+  // no second quote): one stored record.
+  for (const key of [bare, `\t${bare}\t`, ` ${bare}`, `${bare} \t `]) {
+    const again = await door.acp('POST', '/checkout_sessions', fx.acpCart(1), { key });
+    assert.equal(again.http, 200, `${JSON.stringify(key)}: ${again.raw.slice(0, 200)}`);
+    assert.equal(again.body.id, first.body.id, JSON.stringify(key));
+    assert.deepEqual(quoteCalls(again), [], JSON.stringify(key));
+  }
+});
+
+test('ACP REST, on the wire: byte 0xA0 beside a key reaches the rule and is refused; a control character beside it never reaches the door', async () => {
+  const body = JSON.stringify(fx.acpCart(1));
+  const request = (keyBytes) => [
+    'POST /acp/checkout_sessions HTTP/1.1', 'Host: 127.0.0.1:4476', 'Content-Type: application/json', `Content-Length: ${Buffer.byteLength(body)}`,
+    'Connection: close', 'Signature: ' + '0'.repeat(64), `Timestamp: ${Date.now()}`, `Idempotency-Key: ${keyBytes}`, '', body,
+  ].join('\r\n');
+  // With a signature that does not verify the door answers 401 for any key that ARRIVES: that is what shows the
+  // request reached the door. (The signed cases are the test above.)
+  for (const bytes of ['idem-wire-0001', 'idem-wire-0001\xa0', '\xa0idem-wire-0001', '  idem-wire-0001\t ', 'idem-wire-0001\x85', 'idem-wire-0001\xff']) {
+    const r = await rawHttp(request(bytes));
+    assert.equal(r.status, 401, `${JSON.stringify(bytes)} arrives: ${r.answer.slice(0, 120)}`);
+  }
+  // A vertical tab, a form feed, a carriage return alone or a NUL beside the key: the HTTP layer refuses the request.
+  for (const bytes of ['idem-wire-0001\x0b', '\x0cidem-wire-0001', 'idem-wire-0001\x00', 'idem-wire-0001\rx']) {
+    const r = await rawHttp(request(bytes));
+    assert.equal(r.status, 400, `${JSON.stringify(bytes)} never arrives: ${r.answer.slice(0, 120)}`);
+    assert.equal(r.body, null, 'not this door\'s answer');
+  }
+});
+
 // ---- the completion line says WHY a key or a cart was refused ---------------------------------------------------------
 
 /** Run `fn` and return the `mcp tools/call complete` lines it produced. */

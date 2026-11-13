@@ -152,8 +152,15 @@ export function createAcpRestAdapter(deps = {}) {
   function requireIdempotencyKey(req) {
     const key = header(req, 'idempotency-key');
     if (!nonEmpty(key)) throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'missing_idempotency_key' });
-    // The shared minimum (buyerIntake.js), here so a short key is refused before the buyer is resolved, a session
-    // is loaded or a product is read.
+    // The shared rule (buyerIntake.js), here so a key it refuses is refused before the buyer is resolved, a session
+    // is loaded or a product is read. THE KEY IS JUDGED AS SENT: the header value as the HTTP layer hands it over,
+    // before `header()` removes the whitespace around it, so this door refuses exactly the keys the other doors
+    // refuse. What can differ between the two values over HTTP is narrow: the HTTP layer has already removed the
+    // spaces and tabs around a header value, and of the characters a header byte can decode to (U+0000 to U+00FF)
+    // the only other one `trim()` removes that it lets through is U+00A0, the no-break space (byte 0xA0).
+    assertIdempotencyKeyAcceptable(headerAsSent(req, 'idempotency-key'));
+    // What this door USES is the value without the whitespace around it, as it always was, so every key still
+    // accepted names the record it named before. Judged too: a second check on the value about to be used.
     assertIdempotencyKeyAcceptable(key);
     return key;
   }
@@ -351,10 +358,15 @@ const peekItems = (req) => {
   }
 };
 
-const header = (req, name) => {
+/** A header's value exactly as the request carries it (a string), else undefined. Read, never altered. */
+const headerAsSent = (req, name) => {
   const h = req?.headers ?? {};
   const v = h[name] ?? h[name.toLowerCase()] ?? h[name.toUpperCase()];
-  return typeof v === 'string' ? v.trim() : undefined;
+  return typeof v === 'string' ? v : undefined;
+};
+const header = (req, name) => {
+  const v = headerAsSent(req, name);
+  return v === undefined ? undefined : v.trim();
 };
 const pathId = (req) => {
   const id = req?.params?.checkout_session_id ?? req?.params?.id;
