@@ -13,6 +13,8 @@ import { PivotaCommerceError } from './errors.js';
 import { redact } from './redact.js';
 import { InMemoryKvStore } from './stores.js';
 import { sameMinor, violatesChargeMultiple } from './money.js';
+import { upstreamAnsweredRefusal } from './upstreamRefusal.js';
+import { randomUUID } from 'node:crypto';
 
 const AMOUNT_TOLERANCE = 0; // zero tolerance — INV-2
 
@@ -221,7 +223,10 @@ export class SafetyKernel {
         // INV-1 single-use: claim the quote atomically. A same-key retry short-circuits in the idempotency
         // ledger above and never reaches here, so a failed claim means a DIFFERENT request already turned
         // this quote into an order — refuse, so one locked quote can never become two orders (double charge).
-        const claimedQuote = await this._quoteClaims.putIfAbsent(quote.quote_id, { idempotency_key: key });
+        // `claim_id` names THIS attempt's claim and nothing else, so the one place that gives a claim back
+        // (_settleQuoteClaimAfterFailedCreate) can only ever give back its own.
+        const claimId = randomUUID();
+        const claimedQuote = await this._quoteClaims.putIfAbsent(quote.quote_id, { idempotency_key: key, claim_id: claimId });
         if (!claimedQuote) throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
         const lockedBuyerContext = normalizeBuyerContext(quote.buyer_context);
         const requestedBuyerContext = normalizeBuyerContext(payload.order);
@@ -249,7 +254,14 @@ export class SafetyKernel {
             _merchant_of_record: quote.merchant_of_record,
           },
         };
-        const r = await this._upstream('create_order', upstreamPayload, { 'Idempotency-Key': key });
+        let r;
+        try {
+          r = await this._upstream('create_order', upstreamPayload, { 'Idempotency-Key': key });
+        } catch (err) {
+          // The caller is answered with `err` exactly as it was raised, whatever happens to the claim.
+          await this._settleQuoteClaimAfterFailedCreate(quote.quote_id, claimId, err);
+          throw err;
+        }
         runCtx.sideEffectDone = true; // order created upstream — past this point, failures are ambiguous
         // MONEY-UNITS CROSS-CHECK: the quote snapshot and the backend's own order are two INDEPENDENT
         // sources of the same money. Both are MINOR units (the adapter converts the quote; the backend
@@ -315,6 +327,42 @@ export class SafetyKernel {
     );
     if (replayed) this._log.info?.('idempotent_replay', redact({ op: 'create_order', key }));
     return markIdempotentReplay(result, replayed);
+  }
+
+  /**
+   * The upstream `create_order` failed. Keep the quote's single-use claim, or give it back?
+   *
+   * The claim is written before the order is asked for, and it has no expiry. Left in place after a create the
+   * upstream REFUSED, it spent the quote on an order that was never made: the ledger gives the caller's key back
+   * (nothing irreversible happened), the caller retries as a retriable refusal invites, and the retry was told
+   * QUOTE_ALREADY_USED, to go and read an order that does not exist.
+   *
+   * It is given back ONLY when the upstream answered a refusal by name (upstreamRefusal.js). Every other failure
+   * keeps it: the ledger gives its key back on a deadline as well, so after an outcome nobody can know this claim
+   * is the last thing between a retry and a second `create_order` for one quote, which is a second order.
+   *
+   * Given back by compare-and-delete on this attempt's own `claim_id`, so a claim that is not this attempt's (an
+   * older build's, a cancel's, another attempt's) is never touched. A store with no conditional delete keeps the
+   * claim. A release that fails keeps the claim. Nothing here can change the answer the failed create gives.
+   */
+  async _settleQuoteClaimAfterFailedCreate(quoteId, claimId, err) {
+    const note = (level, event, fields) => {
+      try { this._log[level]?.(event, redact({ quote_id: quoteId, code: err?.code ?? null, ...fields })); } catch { /* a log line never changes an answer */ }
+    };
+    const refusal = upstreamAnsweredRefusal(err);
+    if (!refusal) {
+      note('warn', 'quote_claim_kept', { reason: 'create_order_outcome_unknown' });
+      return;
+    }
+    let released = false;
+    try {
+      released = typeof this._quoteClaims.compareAndDelete === 'function'
+        && (await this._quoteClaims.compareAndDelete(quoteId, 'claim_id', claimId)) === true;
+    } catch {
+      note('warn', 'quote_claim_kept', { reason: 'release_failed', ...refusal });
+      return;
+    }
+    note('info', 'quote_claim_released', { released, ...refusal });
   }
 
   /** Look up an order's authoritative record, enforcing ownership. */
