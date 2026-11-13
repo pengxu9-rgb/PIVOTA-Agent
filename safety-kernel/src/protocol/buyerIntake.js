@@ -262,6 +262,7 @@ export function fulfillmentAddressRequiredRefusal(address, { updateHint = DEFAUL
   return intakeRefusal('QUOTE_REQUIRED', 'acp_fulfillment_address_required', [
     'This checkout has no complete fulfillment address, and an order cannot be placed without one: order creation requires all of',
     `${REQUIRED_ADDRESS_FIELDS.join(', ')}.`,
+    '(`name` may be given as `recipient_name`.)',
     `Supply the address via ${updateHint}, or send it with this completion request, then complete again with the same Idempotency-Key.`,
     'Nothing was charged and no order was created; retrying this request unchanged will not succeed.',
   ].join(' '), {

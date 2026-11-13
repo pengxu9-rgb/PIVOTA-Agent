@@ -163,6 +163,27 @@ test('CONFORMANCE: MCP and ACP drive the SAME kernel money-path — both charge 
   assert.notEqual(charges[0].order_id, charges[1].order_id);
 });
 
+// THE MCP DOOR WITH NO ADDRESS ANYWHERE, AS IT BEHAVES TODAY. The shared cart above ships to an address because the
+// ACP door completes only a session that has one. The MCP door has no such rule: it hands an address-less completion
+// to the order lane, which is where an address is required. This case keeps that path covered as it is (against
+// this harness's order lane, which accepts it), so a change to it is seen here.
+test('CONFORMANCE (MCP only): a session with no address anywhere is completed by the MCP door as before; the ACP door refuses it by name', async () => {
+  const h = await harness();
+  const noAddress = () => ({ merchant_id: MERCHANT, items: CART_ITEMS.map((it) => ({ ...it })) });
+  const sess = mcpSession('sess_mcp_noaddr');
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-noaddr-mc', quote: noAddress() }, sess);
+  const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-noaddr-mp', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(created.session_id) } }, sess);
+  assert.equal(out.payment.order_status, 'paid');
+  assert.equal(h.charges().length, 1, 'the MCP door reached the order lane and the charge');
+
+  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: noAddress(), idem: 'idem-noaddr-ac' }));
+  assert.equal(acpCreated.status, 201, JSON.stringify(acpCreated.body));
+  const acpOut = await h.acp.completeCheckoutSession(acpReq({ id: acpCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(acpCreated.body.id) } }, idem: 'idem-noaddr-ap' }));
+  assert.equal(acpOut.status, 400, JSON.stringify(acpOut.body));
+  assert.equal(acpOut.body.detail.reason, 'acp_fulfillment_address_required');
+  assert.equal(h.charges().length, 1, 'the ACP door charged nothing');
+});
+
 test('CONFORMANCE: replay is charge-once in BOTH ecosystems (same idempotency key → no second charge)', async () => {
   const h = await harness();
   // MCP: complete twice with the same key

@@ -20,6 +20,7 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
+import { effectiveShippingAddress } from '../kernel.js';
 import { fulfillmentAddressRequiredRefusal, assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
@@ -796,16 +797,19 @@ async function completeCheckout(
       judgeSessionMarkets(params, quote);
 
       // AN ADDRESS TO SHIP TO, ON THE DOOR THAT STATES IT IS REQUIRED HERE (completionRequiresFulfillmentAddress).
-      // The address the order below would be created with is the locked quote's, completed by this request's
-      // (kernel.createOrder merges them the same way). When that is not a complete address, there is nothing to
+      // The address the order below would be created with is the locked quote's, completed by this request's:
+      // computed by the function kernel.createOrder builds the order's address with (effectiveShippingAddress),
+      // so what is judged here is what would be sent. When that is not a complete address, there is nothing to
       // create an order with, and so no buyer country either: refused by name here, after the market rule and
       // before either payment lane, with no authorization presented, no order asked for and nothing charged.
       // Raised inside the idempotency run with no side effect done, so the caller's key is released with it.
       const addressHint = completionRequiresFulfillmentAddress(params, ctx);
       if (addressHint) {
-        const locked = isPlainObjectValue(quote.buyer_context) ? quote.buyer_context.shipping_address : undefined;
-        const requested = isPlainObjectValue(params.shipping_address) ? params.shipping_address : undefined;
-        const refusal = fulfillmentAddressRequiredRefusal(locked || requested ? { ...(requested || {}), ...(locked || {}) } : undefined, { updateHint: addressHint });
+        const shipTo = effectiveShippingAddress(
+          isPlainObjectValue(quote.buyer_context) ? quote.buyer_context.shipping_address : undefined,
+          params.shipping_address,
+        );
+        const refusal = fulfillmentAddressRequiredRefusal(shipTo, { updateHint: addressHint });
         if (refusal) throw refusal;
       }
 

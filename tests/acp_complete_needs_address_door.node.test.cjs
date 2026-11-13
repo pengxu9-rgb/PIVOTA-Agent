@@ -142,6 +142,21 @@ test('a session kept in its market with no address is refused for an address in 
   assertMarketRefused(await complete(other, 'US'), 'seller_not_priced_in_market_currency', 'US');
 });
 
+test('a session whose quote is already spent answers that, not the address refusal: completed with an address, then completed again with none', async () => {
+  const id = await created('USD', undefined);
+  assertPaid(await complete(id, 'US'), 'USD', 'US');
+  // A new key and no address anywhere. The honest answer is that the session was already used to place an order;
+  // the address refusal would say "no order was created, complete again with the same key", which is false here.
+  const again = await complete(id, undefined);
+  assert.equal(again.http, 409, again.raw);
+  assert.equal(again.body.code, 'QUOTE_ALREADY_USED');
+  assert.deepEqual(again.backend, [], 'no order and no charge');
+  // And with an address in another market: still the spent quote, not a market refusal.
+  const elsewhere = await complete(id, 'SG');
+  assert.equal(elsewhere.http, 409, elsewhere.raw);
+  assert.equal(elsewhere.body.code, 'QUOTE_ALREADY_USED');
+});
+
 test('the refusal does not mark the session: it is read as before, and can be cancelled', async () => {
   const id = await created('USD', undefined);
   assertAddressRequired(await complete(id, undefined));

@@ -69,7 +69,7 @@ test('the refusal: QUOTE_REQUIRED, not retriable, naming the missing fields and 
   assert.equal(ERROR_CATALOG[err.code].retriable, false);
   const { message, detail } = surfaceableIntakeRefusal(err);
   assert.deepEqual(detail, { reason: REASON, missing_fields: [...REQUIRED_ADDRESS_FIELDS], required_fields: [...REQUIRED_ADDRESS_FIELDS] });
-  for (const part of [HINT, 'with this completion request', 'same Idempotency-Key', 'Nothing was charged and no order was created']) assert.ok(message.includes(part), part);
+  for (const part of [HINT, 'with this completion request', 'same Idempotency-Key', 'Nothing was charged and no order was created', '(`name` may be given as `recipient_name`.)']) assert.ok(message.includes(part), part);
   // A complete address is no refusal; `recipient_name` stands for `name`; what is missing is named, never a value.
   assert.equal(fulfillmentAddressRequiredRefusal(ADDRESS), null);
   const { name: _n, ...unnamed } = ADDRESS;
@@ -151,4 +151,30 @@ test('the address the order would be created with is the quote\'s completed by t
       assert.deepEqual(moneyTouched(), [1, 1, 1]);
     }
   }
+});
+
+test('one address, computed once: what the door judges is what the order is created with', async () => {
+  const { effectiveShippingAddress } = await import('../src/kernel.js');
+  // The locked address wins field by field, and each side is normalised first: an empty locked field does not
+  // hide the request's, and `name` / `recipient_name` stand for each other.
+  assert.equal(effectiveShippingAddress(undefined, undefined), undefined);
+  assert.equal(effectiveShippingAddress({}, {}), undefined);
+  assert.equal(effectiveShippingAddress('x', 7), undefined);
+  const { name: _n, ...unnamed } = ADDRESS;
+  assert.deepEqual(effectiveShippingAddress({ ...unnamed, recipient_name: 'Example Buyer' }, undefined), { ...ADDRESS, recipient_name: 'Example Buyer' });
+  assert.deepEqual(effectiveShippingAddress({ city: 'Lockedtown', postal_code: '' }, ADDRESS), { ...ADDRESS, recipient_name: 'Example Buyer', city: 'Lockedtown' });
+  // Through the door: a quote whose address has an empty field, completed by the request's. The order is created
+  // with exactly the address the completion was let through for.
+  const QUOTE = { merchant_id: 'merch_A', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test' };
+  const ctx = { user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' };
+  const { executor, ops } = setup();
+  const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-exec-address-05', quote: { ...QUOTE, shipping_address: { ...ADDRESS, postal_code: '' } } }, ctx);
+  const complete = (shipping_address) => executor.execute('complete_checkout_session', { idempotency_key: 'idem-exec-address-06', session_id: session.session_id, payment_authorization: { token: 'tok_1' }, fulfillment_address_required: HINT, shipping_address }, ctx);
+  const err = await complete(undefined).then(() => assert.fail('expected a refusal'), (e) => e);
+  assert.deepEqual(surfaceableIntakeRefusal(err).detail.missing_fields, ['postal_code']);
+  await complete({ postal_code: '11111', city: 'Requestville' });
+  const sent = ops('create_order')[0].payload.order.shipping_address;
+  assert.equal(sent.postal_code, '11111', 'the request filled what the quote left empty');
+  assert.equal(sent.city, 'Springfield', 'and the quote\'s own field won');
+  assert.equal(fulfillmentAddressRequiredRefusal(sent), null);
 });
