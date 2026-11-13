@@ -723,7 +723,9 @@ test('verified lane: a refused update whose market the held quote is priced for 
   refusedBy(await door.update(id, 'merch_SGD', 'US'), MISMATCH, 'US');
   assert.equal('refused_market' in (await door.record(id)), false, 'the held quote is priced for US: nothing to mark');
   assert.equal((await door.read(id)).status, 200);
-  refusedBy(await door.complete(id, 'SG'), MISMATCH, 'SG');
+  const unpaid = await door.complete(id, 'SG');
+  refusedBy(unpaid, MISMATCH, 'SG');
+  assert.match(unpaid.body.message, /this checkout session was neither read out nor paid/, 'worded as a session that exists');
   assert.deepEqual([door.verified, door.ops('create_order'), door.ops('submit_payment')], [[], [], []], 'not paid in USD for SG');
   assert.equal((await door.record(id)).refused_market, 'SG', 'refused on the held quote: marked');
   // Created for US, the address dropped, then an address-less update with a cart priced in SGD: the same.
