@@ -166,9 +166,17 @@ export function createAcpRestAdapter(deps = {}) {
   //     (`market_not_priced`), sends the market with the quote, and refuses a quote that is not in the market's
   //     currency before anything is recorded (`seller_not_priced_in_market_currency`). Nothing is converted or
   //     relabelled. (`marketOfAddress`, `marketParamsOf`; canonicalExecutor.js `quoteMarketOf`.)
-  //   - CREATE and UPDATE with NO address: no market is known, none is assumed, and the session is priced in the
-  //     seller's own currency, not judged (the same decided behaviour as a checkout that names no market on the
-  //     other doors). Such a session holds no address, and an order needs one, so it cannot be paid as it stands.
+  //   - AN UPDATE THAT CARRIES AN ADDRESS REPLACES THE SESSION'S MARKET, and says so to the executor
+  //     (`market_replaces_session_market`): it is judged for the NEW country, and when it succeeds the new market
+  //     is the one recorded on the session's quote. Without that statement the executor judges an update for the
+  //     market the session already has, which is right for a door whose updates cannot name one.
+  //   - CREATE with NO address: no market is known, none is assumed, and the session is priced in the seller's
+  //     own currency, not judged (the same decided behaviour as a checkout that names no market on the other
+  //     doors). Such a session holds no address, and an order needs one, so it cannot be paid as it stands.
+  //   - UPDATE with NO address NEVER TAKES A MARKET AWAY. The address is dropped from the quote, as everything an
+  //     update omits is; the session's market is not. The re-quote is judged for the market the session has: the
+  //     one a refused request left on it (the mark below) when there is one, else the one recorded on its quote
+  //     (the executor reads it). Only a session that never had a market is re-priced unjudged.
   //   - COMPLETE that carries an address: that address names the market, and the session's locked quote is judged
   //     against it before either payment lane. A session created with no address is therefore judged at the
   //     latest here, before any money moves.
@@ -192,14 +200,24 @@ export function createAcpRestAdapter(deps = {}) {
   };
   // What the executor is told about the market of a session that already exists: the market a refused request left
   // on it when there is one, else the market of the address this request carries, else nothing.
-  const sessionMarketParams = (stored, address) => marketParamsOf(
+  const heldSessionMarketParams = (stored, address) => marketParamsOf(
     stored.refused_market !== undefined && stored.refused_market !== null ? stored.refused_market : marketOfAddress(address),
   );
-  // Every cart this door prices goes through here, so the market of its address travels with it. The executor is
-  // the one place the rule is applied (quoteMarketOf); nothing else about a call is changed.
+  // What the executor is told about the market of an UPDATE: the market of the address it carries, else the market
+  // a refused request left on the session. Either one REPLACES the market recorded on the session's quote, and the
+  // call says so. Neither: nothing is said, and the executor judges the update for the recorded market, if any.
+  const updateMarketParams = (stored, address) => {
+    const named = marketOfAddress(address);
+    const market = named !== undefined ? named
+      : stored.refused_market !== undefined && stored.refused_market !== null ? stored.refused_market : undefined;
+    return market === undefined ? {} : { ...marketParamsOf(market), market_replaces_session_market: true };
+  };
+  // Every cart a CREATE prices goes through here, so the market of its address travels with it. The executor is
+  // the one place the rule is applied (quoteMarketOf); nothing else about a call is changed. An update names its
+  // market itself (updateMarketParams), because what it means depends on the session.
   const executor = {
     execute(opId, params, ctx) {
-      if (opId !== 'create_checkout_session' && opId !== 'update_checkout_session') return canonicalExecutor.execute(opId, params, ctx);
+      if (opId !== 'create_checkout_session') return canonicalExecutor.execute(opId, params, ctx);
       return canonicalExecutor.execute(opId, { ...params, ...marketParamsOf(marketOfAddress(params?.quote?.shipping_address)) }, ctx);
     },
   };
@@ -322,7 +340,7 @@ export function createAcpRestAdapter(deps = {}) {
         if (prior === undefined || prior === null) continue;
         if (isPlainObject(prior) && prior.status === CREATE_PENDING) throw outcomeUnknown('in_flight');
         const stored = await ownedSession(prior.acp_session_id, user_ref);
-        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...sessionMarketParams(stored) }, { user_ref, acp_session_id: prior.acp_session_id, protocol: ACP_PROTOCOL_NAME });
+        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...heldSessionMarketParams(stored) }, { user_ref, acp_session_id: prior.acp_session_id, protocol: ACP_PROTOCOL_NAME });
         return { status: 200, body: acpSessionBody(prior.acp_session_id, session, stored) };
       }
       if (!claimed) throw outcomeUnknown('race');
@@ -376,7 +394,7 @@ export function createAcpRestAdapter(deps = {}) {
       let session;
       try {
         const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants, (address) => assertMarketPriced(address, 'update'));
-        session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote }, ctx);
+        session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote, ...updateMarketParams(stored, quote.shipping_address) }, ctx);
       } catch (err) {
         // REFUSED FOR ITS MARKET: no quote was recorded, so the session still holds the one it had, priced for
         // whatever it was priced for. The market this update named is kept on the record, and until an update
@@ -399,7 +417,7 @@ export function createAcpRestAdapter(deps = {}) {
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
       const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
-      const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...sessionMarketParams(stored) }, ctx);
+      const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...heldSessionMarketParams(stored) }, ctx);
       return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
     });
   }
@@ -424,7 +442,7 @@ export function createAcpRestAdapter(deps = {}) {
           shipping_address,
           // The market this completion is judged against (the executor holds the locked quote's currency to it,
           // before either payment lane): the one a refused request left on the session, else this address's.
-          ...sessionMarketParams(stored, shipping_address),
+          ...heldSessionMarketParams(stored, shipping_address),
         }, ctx);
       } catch (err) {
         // REFUSED FOR ITS MARKET, with no order and no charge: the mark a refused update leaves, for the same

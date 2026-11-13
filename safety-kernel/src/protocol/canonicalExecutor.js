@@ -258,6 +258,14 @@ export function agentPurchaseOrder(orderId, answered) {
 // order, and since a refused quote is never snapshotted, the session the update named is exactly as it was. The
 // session's market is the one judged even when the update itself carries another: an update cannot move a session
 // to another market, and it cannot give a market to a session that was created with none.
+//
+// THE ONE EXCEPTION IS STATED BY THE DOOR, NOT BY THE CALLER. On a door whose protocol names the buyer's market by
+// the fulfillment address (the ACP REST door), an update that carries an address REPLACES the address, so the market
+// it is judged for is the new address's. That door says so on the call (`params.market_replaces_session_market`),
+// and it is honoured only for a call that door built (`ctx.protocol`, which a door sets and no request member
+// reaches) and only when the call names a market: omitting a market never takes one away from a session. The quote
+// is then judged, sent and recorded for the request's market exactly as a create's is. A refused one records
+// nothing, so the session keeps the quote and the market it had. On every other door the flag is not read.
 // Same refusal codes, reasons and detail members as a seller-storefront checkout answers under the currency rule
 // (mcp-server/src/ucpCheckoutEscalation.js).
 //
@@ -314,16 +322,27 @@ export function quoteMarketOf(params, stage = 'create') {
 }
 
 /**
- * The market members an UPDATE is judged with: the ones recorded on the session it names, when that session is this
- * buyer's and was created for a market; else the request's own, untouched (no door sends any on an update today).
+ * The market members an UPDATE is judged with: the request's own when the door states that this update replaces the
+ * session's market (updateReplacesSessionMarket); else the ones recorded on the session it names, when that session
+ * is this buyer's and was created for a market; else the request's own, untouched.
  * Reads exactly one thing: the session's record, by `params.session_id`, for its recorded market. Nothing else of
  * the session is read or checked here, and an id that names no session of this buyer changes nothing.
  */
 async function sessionMarketParams(kernel, params, ctx) {
+  if (updateReplacesSessionMarket(params, ctx)) return params;
   const recorded = kernel.quotes && typeof kernel.quotes.sessionMarket === 'function'
     ? await kernel.quotes.sessionMarket(params ? params.session_id : undefined, ctx)
     : null;
   return recorded ? { market: recorded.market, market_currency: recorded.market_currency } : params;
+}
+
+// The door whose protocol names the market by the fulfillment address, as that door declares itself in ctx.
+const ADDRESS_MARKET_PROTOCOL = 'acp';
+/** Does this update state, with the authority to, that the market it names replaces the session's? */
+function updateReplacesSessionMarket(params, ctx) {
+  if (!ctx || ctx.protocol !== ADDRESS_MARKET_PROTOCOL) return false;
+  if (!params || params.market_replaces_session_market !== true) return false;
+  return params.market !== undefined && params.market !== null;
 }
 
 function isPlainObjectValue(value) {

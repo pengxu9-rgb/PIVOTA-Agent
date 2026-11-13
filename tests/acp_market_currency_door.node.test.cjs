@@ -21,11 +21,12 @@
 // (assertAnswerCurrency, tests/_support/answerCurrencies.cjs) against the currency the gateway's one market ->
 // currency source (`resolveServingCurrency`, src/services/buyerMarket.js) gives. This file keeps no market table.
 //
-// ONE KIND OF CELL IS NOT "PRICED IN THE MARKET'S CURRENCY OR REFUSED BY NAME", pinned as what it is: NO ADDRESS,
-// so no market is known. Create and update are priced in the seller's own currency, nothing assumed, the quote
-// carrying no market (the decided behaviour for a checkout that names no market). Such a session holds no address;
-// completing it without one is not this door's judgement to make and takes no money here: the order needs an
-// address, and the backend refuses it.
+// ONE KIND OF CELL IS NOT "PRICED IN THE MARKET'S CURRENCY OR REFUSED BY NAME", pinned as what it is: NO ADDRESS ON
+// A SESSION THAT NEVER HAD A MARKET. Create, and an update of such a session, are priced in the seller's own
+// currency, nothing assumed, the quote carrying no market (the decided behaviour for a checkout that names no
+// market). A session with no address is not paid without one: that is not this door's judgement to make and takes
+// no money here (the order needs an address, and the backend refuses it).
+// An update with no address on a session that HAS a market does not take the market away: it is judged for it.
 //
 // The switches of the other checkout doors (the `/mcp` storefront path, the currency rule) are OFF in this file's
 // boot: on this door the rule is not behind them.
@@ -135,7 +136,10 @@ for (const sellerCurrency of SELLER_CURRENCIES) for (const m of MARKETS) {
   });
 
   for (const from of [undefined, homeOf(sellerCurrency)]) {
-    test(`update | a session created in ${label(from)} | ${cell}: ${says}`, async () => {
+    // An update with no address does not take the session's market away: it is judged for the market the session
+    // was created for, and its quote carries that market.
+    const keepsMarket = m === undefined && from !== undefined;
+    test(`update | a session created in ${label(from)} | ${cell}: ${keepsMarket ? `priced in ${sellerCurrency}, judged for ${from}` : says}`, async () => {
       const id = await created(sellerCurrency, from);
       const answer = await update(id, sellerCurrency, m);
       if (rule.kind === 'refused') {
@@ -157,7 +161,7 @@ for (const sellerCurrency of SELLER_CURRENCIES) for (const m of MARKETS) {
         return;
       }
       assertPricedSession(answer, sellerCurrency, { quantity: 2 });
-      assert.deepEqual(answer.quotes.map(quoteMarket), [m === undefined ? null : m]);
+      assert.deepEqual(answer.quotes.map(quoteMarket), [m === undefined ? (from === undefined ? null : from) : m], 'the quote carries the update\'s market, else the session\'s, else none');
       assertPricedSession(await read(id), sellerCurrency, { quantity: 2 });
       const done = await complete(id, undefined);
       if (rule.kind === 'priced') {
@@ -165,8 +169,9 @@ for (const sellerCurrency of SELLER_CURRENCIES) for (const m of MARKETS) {
         assert.equal(done.orders[0].buyer_context.shipping_address.country, m);
         return;
       }
-      // No address on the session and none on the completion: no market is known, and no money is taken. The
-      // refusal is the backend's (an order needs an address), relayed as this door relays any backend refusal.
+      // No address on the session (the update dropped it, or there never was one) and none on the completion: no
+      // money is taken. The refusal is the backend's (an order needs an address), relayed as this door relays any
+      // backend refusal.
       assert.equal(rule.kind, 'no_market');
       assert.ok(done.http >= 400, done.raw);
       assert.deepEqual(done.payments, [], 'no charge');
@@ -267,14 +272,84 @@ test('a create replayed under its key answers what the session answers: the refu
   assert.deepEqual(replayed.backend, []);
 });
 
-test('an update with no address takes the mark away with the market: the session is priced, not judged, and holds no address', async () => {
+// ---- an update and the session's market ----------------------------------------------------------------------------
+
+test('an update with no address on a marked session is judged for the mark: refused, and the mark stays', async () => {
   const id = await created('USD', 'US');
   assertRefused(await update(id, 'USD', 'SG'), ruleFor('USD', 'SG'), { quotes: 1 });
-  const cleared = await update(id, 'USD', undefined);
-  assertPricedSession(cleared, 'USD', { quantity: 2 });
-  assert.deepEqual(cleared.quotes.map(quoteMarket), [null]);
-  // Its completion is judged against the address the completion brings.
-  assertRefused(await complete(id, 'SG'), ruleFor('USD', 'SG'));
+  const answer = await update(id, 'USD', undefined);
+  assertRefused(answer, ruleFor('USD', 'SG'), { quotes: 1 });
+  assert.deepEqual(answer.quotes.map(quoteMarket), ['SG'], 'the re-quote was asked for the market the session is marked with');
+  assertRefused(await read(id), ruleFor('USD', 'SG'));
+  assertRefused(await complete(id, 'US'), ruleFor('USD', 'SG'));
+});
+
+test('an update with no address cannot move a session out of its market: another seller\'s currency is refused for the market it has', async () => {
+  // Created for SG, priced in SGD. The update drops the address and names a seller priced in USD.
+  const id = await created('SGD', 'SG');
+  const moved = await update(id, 'USD', undefined);
+  assertRefused(moved, ruleFor('USD', 'SG'), { quotes: 1 });
+  assert.deepEqual(moved.quotes.map(quoteMarket), ['SG']);
+  // Nothing was recorded for the refused update: the session is still the SG one, priced in SGD, and is read
+  // and paid as that. It was never in USD.
+  assertPricedSession(await read(id), 'SGD');
+  const paid = await complete(id, undefined);
+  assertPaid(paid, 'SGD');
+  assert.equal(paid.orders[0].buyer_context.shipping_address.country, 'SG');
+});
+
+test('an update with no address keeps the session\'s market: priced for it, and a completion elsewhere is refused', async () => {
+  const id = await created('SGD', 'SG');
+  const kept = await update(id, 'SGD', undefined);
+  assertPricedSession(kept, 'SGD', { quantity: 2 });
+  assert.deepEqual(kept.quotes.map(quoteMarket), ['SG']);
+  assertRefused(await complete(id, 'US'), ruleFor('SGD', 'US'));
+  const other = await created('SGD', 'SG');
+  assertPricedSession(await update(other, 'SGD', undefined), 'SGD', { quantity: 2 });
+  const paid = await complete(other, 'SG');
+  assertPaid(paid, 'SGD');
+  assert.equal(paid.orders[0].buyer_context.shipping_address.country, 'SG');
+});
+
+test('an address change is judged for the NEW country, in both directions, and the session\'s market follows it', async () => {
+  // SG (SGD) -> US with a seller priced in USD -> back to SG with the seller priced in SGD.
+  const id = await created('SGD', 'SG');
+  const toUs = await update(id, 'USD', 'US');
+  assertPricedSession(toUs, 'USD', { quantity: 2 });
+  assert.deepEqual(toUs.quotes.map(quoteMarket), ['US']);
+  assertPricedSession(await read(id), 'USD', { quantity: 2 });
+  // The session's market is now US: an update with no address is judged for US, not for the SG it was created in.
+  const kept = await update(id, 'USD', undefined, 3);
+  assertPricedSession(kept, 'USD', { quantity: 3 });
+  assert.deepEqual(kept.quotes.map(quoteMarket), ['US']);
+  assertRefused(await update(id, 'SGD', undefined), ruleFor('SGD', 'US'), { quotes: 1 });
+  const toSg = await update(id, 'SGD', 'SG', 4);
+  assertPricedSession(toSg, 'SGD', { quantity: 4 });
+  assert.deepEqual(toSg.quotes.map(quoteMarket), ['SG']);
+  assertPaid(await complete(id, undefined), 'SGD');
+  // The same seller, the address moved to a market it is not priced for: refused for the new country in each direction.
+  assertRefused(await update(await created('USD', 'US'), 'USD', 'SG'), ruleFor('USD', 'SG'), { quotes: 1 });
+  assertRefused(await update(await created('SGD', 'SG'), 'SGD', 'US'), ruleFor('SGD', 'US'), { quotes: 1 });
+});
+
+test('a refused address change leaves the session the market it had: once put right, an update with no address is judged for the old market', async () => {
+  const id = await created('USD', 'US');
+  assertRefused(await update(id, 'USD', 'SG'), ruleFor('USD', 'SG'), { quotes: 1 });
+  assertPricedSession(await update(id, 'USD', 'US'), 'USD', { quantity: 2 });
+  const kept = await update(id, 'USD', undefined, 3);
+  assertPricedSession(kept, 'USD', { quantity: 3 });
+  assert.deepEqual(kept.quotes.map(quoteMarket), ['US'], 'US, as before the refused change: SG was never recorded');
+});
+
+test('a session created with no address gets a market only from an address: an update with none is priced, not judged', async () => {
+  const id = await created('SGD', undefined);
+  const still = await update(id, 'SGD', undefined);
+  assertPricedSession(still, 'SGD', { quantity: 2 });
+  assert.deepEqual(still.quotes.map(quoteMarket), [null]);
+  assertPricedSession(await update(id, 'SGD', 'SG', 3), 'SGD', { quantity: 3 });
+  // From here it has one, and keeps it.
+  const kept = await update(id, 'SGD', undefined, 4);
+  assert.deepEqual(kept.quotes.map(quoteMarket), ['SG']);
 });
 
 test('a session marked by a refused update can still be cancelled', async () => {
