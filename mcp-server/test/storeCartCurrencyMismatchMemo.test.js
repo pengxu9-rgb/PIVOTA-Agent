@@ -11,7 +11,11 @@
 //   - in the lane: a retry of a refused create is refused with the SAME refusal and nothing is asked of the store
 //     or the referral; with the switch off nothing is remembered and nothing changes; a cart that has a catalog
 //     price is still asked at the store; markets with no currency never reach the memo; the ledger's replay is
-//     still judged again.
+//     still judged again;
+//   - WHERE THE MEMO IS READ: by the seller door, at the one point where it would contact the store. A cart that
+//     door answers without the store (several variants and none chosen, a row with no currency, no seller variant
+//     id, the same variant twice, a sole variant the catalog does not confirm) is answered exactly as with the
+//     switch off, entry or no entry, and the memo is not read for it. The referral is asked for after that point.
 
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -301,6 +305,18 @@ describe('the lane', () => {
     sig_sgd: { variant: VARIANT.sgd, withheld: 'SGD' },
     sig_eur: { variant: VARIANT.eur, withheld: 'EUR' },
     sig_gbp_priced: { variant: VARIANT.gbp_priced, priced: 'GBP' },
+    // Carts the seller door answers WITHOUT the store (all of this seller, all unpriced):
+    //   several real variants, and the request chooses none;
+    sig_multi: { withheld: 'GBP', variants: [{ variant_id: 'multi-small', source_variant_id: '44000000000011', title: 'Small' }, { variant_id: 'multi-large', source_variant_id: '44000000000012', title: 'Large' }] },
+    //   no price, no currency, and no note of a currency the read withheld;
+    sig_unlabelled: { variant: '44000000000013' },
+    //   one variant, and nothing that names the store's own id for it;
+    sig_novariant: { withheld: 'GBP', variants: [{ variant_id: 'sig_novariant' }] },
+    //   two products whose rows name the same store variant;
+    sig_twin_a: { variant: '44000000000014', withheld: 'GBP' },
+    sig_twin_b: { variant: '44000000000014', withheld: 'GBP' },
+    //   a sole variant known only by its own id, which the catalog is then asked to confirm.
+    sig_derived: { withheld: 'GBP', variants: [{ variant_id: '44000000000015', title: 'Default Title' }] },
   });
   const linkOf = (pid) => `https://${HOST}/products/${pid.replace(/_/g, '-')}`;
   const executor = {
@@ -310,14 +326,14 @@ describe('the lane', () => {
       const product = {
         product_id: pid, title: `Item ${pid}`, external_redirect_url: linkOf(pid),
         price: entry.priced ? 25 : null, currency: entry.priced || null,
-        variants: [{ variant_id: pid, source_variant_id: entry.variant }],
+        variants: entry.variants ? structuredClone(entry.variants) : [{ variant_id: pid, source_variant_id: entry.variant }],
       };
       if (entry.withheld) noteWithheldCurrencies(product, [entry.withheld]);
       return { product };
     },
   };
   /** A storefront that answers each market's cart in the currency `answers` names for it. */
-  function fakeDoor(answers) {
+  function fakeDoor(answers, events = []) {
     const calls = [];
     let seq = 0;
     const carts = new Map();
@@ -332,24 +348,26 @@ describe('the lane', () => {
     return {
       calls,
       answers,
-      async endpointFor(host) { calls.push(['discover', host]); return `https://${HOST}/api/ucp/mcp`; },
+      async endpointFor(host) { calls.push(['discover', host]); events.push('discover'); return `https://${HOST}/api/ucp/mcp`; },
       async createCart(_ep, args) {
         seq += 1;
         const id = `cart_${seq}`;
         const market = args.context && args.context.address_country;
         carts.set(id, { gid: args.lineItems[0].item.id, quantity: args.lineItems[0].quantity, currency: answers[market] });
         calls.push(['create_cart', market]);
+        events.push('create_cart');
         return cart(id);
       },
       async getCart(_ep, id) { calls.push(['get_cart', id]); return cart(id); },
     };
   }
-  function minter() {
+  function minter(events = []) {
     const calls = [];
     return {
       calls,
       async mint(fields) {
         calls.push(structuredClone(fields));
+        events.push('mint_referral');
         const click = `clk_${String(calls.length).padStart(24, '0')}`;
         return { kind: 'minted', clickId: click, pairs: [['utm_source', 'pivota'], ['pvt_click_id', click]], attributed: false };
       },
@@ -360,20 +378,31 @@ describe('the lane', () => {
   const refusalOf = (promise) => promise.then((out) => assert.fail(`not refused: ${JSON.stringify(out)}`), (err) => ({ code: err.code, message: err.message, detail: structuredClone(err.detail), marketAssumed: err.marketAssumed === true }));
   function rig({ answers = { GB: 'USD', US: 'USD', SG: 'SGD', FR: 'USD', HR: 'EUR' }, env = MEMO_ON, gate = allow } = {}) {
     const clock = clockAt();
-    const memo = createCurrencyMismatchMemo({ clock });
-    const door = fakeDoor(answers);
-    const referrals = minter();
+    // The memo, with every read and write of it noted (`touched`): what is pinned below is not only what a create
+    // answers but whether the memo was consulted for it at all.
+    const held = createCurrencyMismatchMemo({ clock });
+    const touched = [];
+    const memo = {
+      ...held,
+      recall(args) { const out = held.recall(args); touched.push(['recall', args.market, out]); events.push('recall'); return out; },
+      remember(args) { const out = held.remember(args); touched.push(['remember', args.market, out]); return out; },
+    };
+    // One timeline of everything a create asks of anyone: the memo, the store, the referral.
+    const events = [];
+    const door = fakeDoor(answers, events);
+    const referrals = minter(events);
     const log = logOf();
+    // `pid`: one product id, or a list of them (one line each).
     const create = (pid, market, over = {}) => tryEscalateUcpCheckout({
       op: { id: 'create_checkout_session' }, ctx: { user_ref: 'buyer-0001', acp_session_id: 'sess-0001' },
-      params: { idempotency_key: over.key || 'idem-memo-0001', quote: { items: [{ product_id: pid, quantity: over.quantity || 1 }] } },
+      params: { idempotency_key: over.key || 'idem-memo-0001', quote: { items: (Array.isArray(pid) ? pid : [pid]).map((id) => ({ product_id: id, quantity: over.quantity || 1 })) } },
       executor, ucpArgs: market === undefined ? {} : { checkout: { context: { address_country: market } } },
       env: over.env || env, now: NOW, shouldOfferPurchase: over.gate || gate, merchantDoor: door, referralMinter: referrals, log,
       currencyMismatchMemo: memo,
       ...(over.store ? { idempotencyStore: over.store, idempotencyPartner: () => ({ kind: 'agent', sub: 'agent_partner_a' }) } : {}),
     });
     const storeTools = () => door.calls.filter((c) => c[0] !== 'discover').map((c) => c[0]);
-    return { clock, memo, door, referrals, log, create, storeTools };
+    return { clock, memo, door, referrals, log, create, storeTools, touched, events };
   }
 
   test('the fixture: the source prices US, SG, GB, FR and HR, and prices neither DE nor ZZ', () => {
@@ -616,6 +645,113 @@ describe('the lane', () => {
     assert.deepEqual(r.storeTools(), ['create_cart', 'create_cart', 'create_cart']);
     assert.equal(memo.size(), 0);
   });
+
+  // ---- where the memo is read ------------------------------------------------------------------------------------
+
+  // Carts the seller door answers without ever contacting the store, and the reason it logs for each.
+  const NEVER_ASKED = Object.freeze([
+    { name: 'a product with several variants and none chosen', cart: 'sig_multi', fallback: 'variant_unresolved' },
+    { name: 'a row with no price, no currency and no withheld note', cart: 'sig_unlabelled', fallback: 'catalog_currency_unknown' },
+    { name: 'a row with no seller variant id', cart: 'sig_novariant', fallback: 'variant_unresolved' },
+    { name: 'two lines that name the same store variant', cart: ['sig_twin_a', 'sig_twin_b'], fallback: 'duplicate_variant' },
+    { name: 'a sole variant the catalog cannot confirm', cart: 'sig_derived', fallback: 'catalog_variant_count_unavailable' },
+  ]);
+  const pricingLines = (log, from = 0) => log.lines.slice(from).filter((l) => l.event === 'ucp_merchant_door_pricing');
+
+  for (const c of NEVER_ASKED) {
+    test(`A CART THE STORE WOULD NEVER BE ASKED ABOUT KEEPS ITS OWN ANSWER (${c.name}): with a live entry for its seller and market, it is answered exactly as with the switch off, and the memo is not read`, async () => {
+      // The switch off, nothing remembered: what this cart is answered with, and that the store is not asked for it.
+      const off = rig({ env: BASE });
+      const expected = await refusalOf(off.create(c.cart, 'GB'));
+      assert.notEqual(expected.detail.reason, 'seller_not_priced_in_market_currency', 'the fixture: this cart is not refused by the currency rule');
+      assert.deepEqual([off.door.calls, off.referrals.calls], [[], []], 'the fixture: the store is never asked about this cart');
+      assert.deepEqual(pricingLines(off.log).filter((l) => l.outcome === 'fallback').map((l) => l.reason), [c.fallback]);
+
+      // The switch on, and an entry for this seller and GB written by another cart's refusal.
+      const r = rig();
+      const mismatch = await refusalOf(r.create('sig_gbp', 'GB'));
+      assert.equal(mismatch.detail.reason, 'seller_not_priced_in_market_currency');
+      assert.equal(r.memo.recall({ sellerHost: HOST, market: 'GB', marketCurrency: 'GBP', env: MEMO_ON }), 'USD', 'the entry is live');
+      const before = { calls: r.door.calls.length, referrals: r.referrals.calls.length, touched: r.touched.length, lines: r.log.lines.length };
+
+      for (const attempt of [1, 2, 3]) {
+        const got = await refusalOf(r.create(c.cart, 'GB', { key: `idem-memo-never-${attempt}` }));
+        assert.deepEqual(got, expected, `attempt ${attempt}: code, message and detail are the switch-off answer`);
+      }
+      assert.equal(r.touched.length, before.touched, 'the memo was neither read nor written for it');
+      assert.equal(r.door.calls.length, before.calls, 'no discovery, no cart');
+      assert.equal(r.referrals.calls.length, before.referrals, 'no referral');
+      assert.deepEqual(r.memo.counts(), { remembered: 1 }, 'not counted as refused from the memo');
+      // The log is the switch-off log, three times over: the door's own fallback line, and no `store_not_asked`.
+      assert.deepEqual(pricingLines(r.log, before.lines), [...pricingLines(off.log), ...pricingLines(off.log), ...pricingLines(off.log)]);
+      // And the entry is as it was: the cart that wrote it is still refused from it.
+      assert.deepEqual(await refusalOf(r.create('sig_gbp', 'GB')), mismatch);
+      assert.deepEqual(r.memo.counts(), { remembered: 1, refused_without_store: 1 });
+    });
+  }
+
+  test('the same carts with the switch on and NOTHING remembered: the switch-off answer, and the memo is not read', async () => {
+    for (const c of NEVER_ASKED) {
+      const off = rig({ env: BASE });
+      const on = rig();
+      assert.deepEqual(await refusalOf(on.create(c.cart, 'GB')), await refusalOf(off.create(c.cart, 'GB')), c.name);
+      assert.deepEqual([on.touched, on.door.calls, on.referrals.calls], [[], [], []], c.name);
+    }
+  });
+
+  test('THE ORDER OF A CREATE: the memo is read once, before discovery; the referral is asked for after discovery and before the cart. A hit stops at the read: no discovery, NO REFERRAL, no cart', async () => {
+    const r = rig();
+    const first = await refusalOf(r.create('sig_gbp', 'GB'));
+    assert.deepEqual(r.events, ['recall', 'discover', 'mint_referral', 'create_cart'], 'nothing remembered: read, then the store and its referral');
+    assert.deepEqual(r.touched, [['recall', 'GB', null], ['remember', 'GB', true]]);
+    r.events.length = 0;
+    for (const key of ['idem-memo-0001', 'idem-memo-order-2', 'idem-memo-order-3']) {
+      assert.deepEqual(await refusalOf(r.create('sig_gbp', 'GB', { key })), first);
+    }
+    assert.deepEqual(r.events, ['recall', 'recall', 'recall'], 'each hit is one read and nothing else');
+    assert.equal(r.referrals.calls.length, 1, 'the first attempt\'s referral, and no other');
+    assert.deepEqual(r.touched.slice(2), [['recall', 'GB', 'USD'], ['recall', 'GB', 'USD'], ['recall', 'GB', 'USD']], 'A HIT WRITES NOTHING: the entry is read, never written again');
+  });
+
+  test('a hit asks for no referral even when the referral is the only thing left to ask: a minter that would answer is never called, and one that throws is never reached', async () => {
+    const r = rig();
+    const first = await refusalOf(r.create('sig_gbp', 'GB'));
+    const minted = r.referrals.calls.length;
+    r.referrals.mint = async () => { throw new Error('the referral must not be asked for on a hit'); };
+    assert.deepEqual(await refusalOf(r.create('sig_gbp', 'GB')), first);
+    assert.equal(r.referrals.calls.length, minted);
+    assert.deepEqual(r.storeTools(), ['create_cart']);
+  });
+
+  test('a market with no currency, an unknown market and a row in another currency never reach the read', async () => {
+    const r = rig();
+    await refusalOf(r.create('sig_gbp', 'GB'));
+    const before = r.touched.length;
+    assert.equal((await refusalOf(r.create('sig_eur', 'DE'))).detail.reason, 'market_not_priced');
+    assert.equal((await refusalOf(r.create('sig_eur', 'ZZ'))).detail.reason, 'market_not_priced');
+    assert.equal((await refusalOf(r.create('sig_usd', 'USA'))).detail.reason, 'ucp_market_invalid');
+    assert.match((await refusalOf(r.create('sig_usd', 'GB'))).detail.acp_message, /is priced in USD/);
+    assert.equal(r.touched.length, before, 'the memo was not read for any of them');
+  });
+
+  test('a re-read of a checkout is never answered from an entry: the cart is read from the store, and the memo is not read', async () => {
+    const r = rig({ answers: { GB: 'GBP' } });
+    const made = await r.create('sig_gbp', 'GB');
+    assert.equal(made.currency, 'GBP');
+    // An entry for the same seller and market, as another cart's refusal would have left it.
+    r.memo.remember({ sellerHost: HOST, market: 'GB', marketCurrency: 'GBP', storeCurrency: 'USD', env: MEMO_ON });
+    const before = r.touched.length;
+    const again = await tryEscalateUcpCheckout({
+      op: { id: 'get_checkout_session' }, ctx: { user_ref: 'buyer-0001', acp_session_id: 'sess-0001' }, params: { session_id: made.id },
+      executor, ucpArgs: {}, env: MEMO_ON, now: NOW, shouldOfferPurchase: allow, merchantDoor: r.door, referralMinter: r.referrals, log: r.log,
+      currencyMismatchMemo: r.memo,
+    });
+    assert.equal(again.id, made.id);
+    assert.deepEqual(again.totals, made.totals);
+    assert.deepEqual(r.storeTools(), ['create_cart', 'get_cart']);
+    assert.equal(r.touched.length, before, 'no read of the memo on a re-read');
+  });
+
 
   describe('with the retry ledger on', () => {
     const LEDGER = { ...MEMO_ON, [STORE_CART_IDEMPOTENCY_FLAG]: '1', [ID_BINDING_SECRET_ENV]: SECRET };

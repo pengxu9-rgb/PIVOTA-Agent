@@ -147,6 +147,13 @@ test('(i) the same for every market the rule prices: a retry recorded before the
     // The record was found and read back, and its read-back was refused: both are counted. The fresh create
     // claimed and released.
     assert.deepEqual(ledger.storeCartIdempotencyCounts(), { replayed: 1, replay_refused: 1, claimed: 1, released: 1 }, sent);
+    // ... and logged, through the door: the retry's two lines (found, then refused with the refusal's own reason).
+    // A claim and a release are counted only, so the first create and the fresh one log no ledger line.
+    assert.deepEqual(after.ledger, [
+      { event: 'storefront_cart_idempotency', outcome: 'replayed' },
+      { event: 'storefront_cart_idempotency', outcome: 'replay_refused', reason: 'seller_not_priced_in_market_currency' },
+    ], sent);
+    assert.deepEqual([before.ledger, fresh.ledger], [[], []], sent);
   }
 });
 

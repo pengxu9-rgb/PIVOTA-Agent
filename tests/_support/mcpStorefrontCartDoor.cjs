@@ -159,6 +159,8 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4396, env = 
   }
 
   const fromRoot = (p) => require(path.join(root, p));
+  // No log line is captured by this fixture (the retry ledger's `storefront_cart_idempotency` lines included): what
+  // a call logs is pinned in the unit suites and, for the ledger's lines, through tests/_support/storeCartMarketDoor.cjs.
   fromRoot('src/logger').level = 'silent';
 
   // ---- the seller storefronts -------------------------------------------------------------------------------

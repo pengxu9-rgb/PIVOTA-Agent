@@ -111,7 +111,7 @@ import storefrontHandoffRecordModule from "../../src/services/storefrontHandoffR
 import { carriesAnotherUrl, judgeSellerUrl, pivotaHopDestination, reapExpectedMerchantDomain, sellerMismatchRefusal, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { REFERRAL_SKIP, priceOnMerchantDoor, isCarriableCartId, sellerVariantChoiceOf, merchantPricingEnabled, sellerDiscountCodesFlagOn, isAcceptableDiscountCode, DISCOUNT_CODE_MAX_LENGTH, trackingPairsFrom } from "./ucpMerchantDoorPricing.js";
 import { encodeUcpVariantItemId, findRealVariant, parseUcpItemId, variantLabelOf, variantPriceOf } from "./ucpVariantIds.js";
-import { canonicalRequest, partnerPrincipalOf, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
+import { REPLAY_NOTHING_SERVED, canonicalRequest, partnerPrincipalOf, requestFingerprint, runIdempotentCart, storeCartIdempotencyEnabled } from "./storefrontCartIdempotency.js";
 import { storeCartCurrencyMismatchMemo } from "./storeCartCurrencyMismatchMemo.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 // THE NO-MARKET RULE (decision D-10): the same helper the read tools resolve their market through.
@@ -1179,36 +1179,25 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       // The hand-off record names the buyer's market only when the buyer NAMED it (decision D-10): an assumed US is no
       // claim about the buyer, so the record carries none, as the seed-link mint is sent none.
       const recordedMarket = requested.assumed ? undefined : buyerMarket;
-      // A STORE REMEMBERED AS ANSWERING THIS MARKET IN ANOTHER CURRENCY (storeCartCurrencyMismatchMemo.js; own switch,
-      // default OFF) is not asked again while that is remembered, when its answer could only be refused: the SAME
-      // refusal the store's own answer raised (the same function, the same arguments, the remembered currency where
-      // the store's answer was), with no discovery, no referral and no cart. Keyed on the seller AND the request's
-      // market; read only where the seller would be asked at all. A cart with a catalog price for every line does
-      // not throw here and goes on to ask the store, exactly as with the switch off.
-      const rememberedStoreCurrency = marketCurrency && !notInMarketCurrency && sellerHost && merchantPricingEnabled(env)
-        ? currencyMismatchMemo.recall({ sellerHost, market: buyerMarket, marketCurrency, env })
-        : null;
-      if (rememberedStoreCurrency) {
-        try {
-          throwIfOnlyAnswerIsInAnotherCurrency({
-            items: normalized, rows, linkOf: (pid) => targets.get(pid), market: buyerMarket, currency: marketCurrency,
-            assumed: requested.assumed, storeAnswer: { currency: rememberedStoreCurrency }, log,
-          });
-        } catch (err) {
-          currencyMismatchMemo.noteRefusedWithoutStore();
-          emitCurrencyRule(log, {
-            outcome: "store_not_asked", reason: "store_currency_not_market_currency_remembered", market: buyerMarket,
-            expected_currency: marketCurrency, store_currency: rememberedStoreCurrency, seller_host: sellerHost,
-          });
-          throw err;
-        }
-      }
       // No seller cart for rows that are not priced in the market's currency: the seller is not contacted at all
       // (and so no referral is asked for: the door asks for one only when it is about to send a cart).
       const priced = notInMarketCurrency ? null : await priceOnMerchantDoor({
         items: normalized, rows, sellerHost, discoveryHost: sellerHostnameOf(continueUrl), catalogLink: continueUrl,
         expectedSeller, market: buyerMarket, discountCode, env, merchantDoor, log, signals: doorSignals,
         ...(marketCurrency ? { marketCurrency, rowsInMarketCurrency: currencyRule.confirmed, storeAnswer } : {}),
+        // A STORE REMEMBERED AS ANSWERING THIS MARKET IN ANOTHER CURRENCY (storeCartCurrencyMismatchMemo.js; own switch,
+        // default OFF) is not asked again while that is remembered, when its answer could only be refused. The
+        // memory is READ BY THE SELLER DOOR, at the one point where it would otherwise contact the seller: a cart it
+        // answers without the seller (several variants and none chosen, a row with no currency to hold the seller
+        // to, no seller variant id) keeps that answer, exactly as with the switch off. Keyed on the seller
+        // AND the request's market. A cart with a catalog price for every line is no hit: the store's answer would
+        // not refuse it, so the store is asked exactly as with the switch off.
+        ...(marketCurrency ? {
+          recallStoreCurrency: () => {
+            const remembered = currencyMismatchMemo.recall({ sellerHost, market: buyerMarket, marketCurrency, env });
+            return remembered && linesWithNoCatalogPrice(normalized, rows).length > 0 ? remembered : null;
+          },
+        } : {}),
         // THE REFERRAL for a cart whose catalog link carries none (ucpMerchantDoorPricing.js, CART_REFERRAL_FLAG): the
         // door asks only when it is about to send the cart. The seller host, the market THE BUYER NAMED and the
         // observed seller's id; nothing of the buyer.
@@ -1256,9 +1245,21 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
             assumed: requested.assumed, storeAnswer, log,
           });
         } catch (err) {
-          // Refused on the store's own answer: remembered for (this seller, this market), so that a retry is refused
-          // without building another cart there (a no-op with the memo's switch off).
-          currencyMismatchMemo.remember({ sellerHost, market: buyerMarket, marketCurrency, storeCurrency: storeAnswer.currency, env });
+          if (storeAnswer.remembered === true) {
+            // Refused on what is REMEMBERED of the store (the seller door read it in place of asking): the SAME
+            // refusal the store's own answer raised (the same function, the same arguments, the remembered currency
+            // where the store's answer was). Counted and logged as that; the entry is NOT written again, so a hit
+            // never renews it and the store is asked again one life after it last answered.
+            currencyMismatchMemo.noteRefusedWithoutStore();
+            emitCurrencyRule(log, {
+              outcome: "store_not_asked", reason: "store_currency_not_market_currency_remembered", market: buyerMarket,
+              expected_currency: marketCurrency, store_currency: storeAnswer.currency, seller_host: sellerHost,
+            });
+          } else {
+            // Refused on the store's own answer: remembered for (this seller, this market), so that a retry is refused
+            // without building another cart there (a no-op with the memo's switch off).
+            currencyMismatchMemo.remember({ sellerHost, market: buyerMarket, marketCurrency, storeCurrency: storeAnswer.currency, env });
+          }
           throw err;
         }
       }
@@ -1312,6 +1313,9 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       sellerNamed: own(quote, "merchant_id"),
       expectedSeller,
     }));
+    // What the read-back of a recorded checkout declined with (the gate, or a rule that declines as the gate does).
+    // Empty after a read-back that answered nothing: the recorded id was not one this buyer may read any more.
+    const readBackDeclines = [];
     return runIdempotentCart({
       store: idempotencyStore,
       scope: {
@@ -1333,15 +1337,26 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       },
       // The recorded checkout, read back as a re-read reads it, with what only a create knows put back: the buyer's
       // email as THIS request carries it, the code this request sent, and the expiry the first create stated.
-      replay: (id, createdAt) => tryEscalateUcpCheckout({
-        op: { id: "get_checkout_session" }, params: { session_id: id }, ctx, executor, ucpArgs: {}, attested, now, env, timeoutMs,
-        shouldOfferPurchase, clock, declines, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter,
-        replayed: {
-          buyerEmail: attestedEmailOrBody(attested, quote.customer_email),
-          discountCode: storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined,
-          expiresFrom: createdAt,
-        },
-      }),
+      // Its declines are noted on the way to the caller's own list (same tags, same order), so that a read-back that
+      // answers nothing can be told apart below: declined, or an id that is no longer readable.
+      replay: async (id, createdAt) => {
+        const noted = [];
+        try {
+          return await tryEscalateUcpCheckout({
+            op: { id: "get_checkout_session" }, params: { session_id: id }, ctx, executor, ucpArgs: {}, attested, now, env, timeoutMs,
+            shouldOfferPurchase, clock, declines: noted, merchantDoor, storefrontPage, log, handoffRecorder, referralMinter,
+            replayed: {
+              buyerEmail: attestedEmailOrBody(attested, quote.customer_email),
+              discountCode: storefrontDiscountCodesEnabled(env) ? buyerDiscountCode(ucpArgs) : undefined,
+              expiresFrom: createdAt,
+            },
+          });
+        } finally {
+          readBackDeclines.push(...noted);
+          if (Array.isArray(declines)) declines.push(...noted);
+        }
+      },
+      nothingServedReason: () => (readBackDeclines.length > 0 ? REPLAY_NOTHING_SERVED.declined : REPLAY_NOTHING_SERVED.notReadable),
     });
   }
 
@@ -1573,6 +1588,11 @@ function notInMarketCurrencyRefusal({ productIds, linkOf, market, currency, sell
   })), assumed);
 }
 
+/** The products of a cart's lines that have no catalog price to be answered with (each once, in cart order). */
+function linesWithNoCatalogPrice(items, rows) {
+  return [...new Set(items.filter((it) => !catalogLinePriceOf(rows.get(it.product_id), it)).map((it) => it.product_id))];
+}
+
 /**
  * The seller's storefront answered in ANOTHER currency than the market's (`storeAnswer.currency`, set by
  * priceOnMerchantDoor) and at least one line has no catalog price to answer with instead: the cart is refused by the
@@ -1582,7 +1602,7 @@ function notInMarketCurrencyRefusal({ productIds, linkOf, market, currency, sell
 function throwIfOnlyAnswerIsInAnotherCurrency({ items, rows, linkOf, market, currency, assumed, storeAnswer, log }) {
   const storeCurrency = currencyCodeOf(storeAnswer && storeAnswer.currency);
   if (!storeCurrency || storeCurrency === currency) return;
-  const unpriced = [...new Set(items.filter((it) => !catalogLinePriceOf(rows.get(it.product_id), it)).map((it) => it.product_id))];
+  const unpriced = linesWithNoCatalogPrice(items, rows);
   if (unpriced.length === 0) return;
   throw notInMarketCurrencyRefusal({ productIds: unpriced, linkOf, market, currency, sellerCurrencies: [storeCurrency], assumed, log, storeCurrency });
 }

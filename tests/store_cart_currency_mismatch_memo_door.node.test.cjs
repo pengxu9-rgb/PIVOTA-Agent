@@ -13,7 +13,10 @@
 //   - the entry is for (seller, market): other markets and other sellers are answered exactly as with the switch off;
 //   - it expires (the memo's clock is set by the test: nothing here waits), and a store that then answers in the
 //     market's currency is served;
-//   - the whole market x seller-currency table with the memo on states no price outside the market's currency.
+//   - the whole market x seller-currency table with the memo on states no price outside the market's currency;
+//   - what comes BEFORE the memo: the shared intake bounds (a key under 8 characters, a key that is not printable
+//     ASCII, a line quantity over 999) and the market refusals (a market with no currency, an unknown market, a
+//     missing `/mcp` market) are answered with the memo neither read nor written, entry or no entry.
 // The memo's own rules (bounds, TTL parsing, the key) are in mcp-server/test/storeCartCurrencyMismatchMemo.test.js.
 
 const test = require('node:test');
@@ -262,6 +265,100 @@ test('A RETRY UNDER A RECORDED KEY IS STILL JUDGED AGAIN: a GB checkout recorded
   assertAnswerCurrency(whole(replay), 'GBP', 'the replay');
   assert.deepEqual(memo.counts(), { remembered: 1 }, 'the replay read nothing from the memo');
 });
+
+// ---- what is decided before the memo ---------------------------------------------------------------------------------------
+
+// Every read and write of the process's memo while `fn` runs, as [method, market] pairs.
+async function watchingMemo(fn) {
+  const touched = [];
+  const real = { recall: memo.recall, remember: memo.remember };
+  memo.recall = (args) => { touched.push(['recall', args && args.market]); return real.recall(args); };
+  memo.remember = (args) => { touched.push(['remember', args && args.market]); return real.remember(args); };
+  try { await fn(touched); } finally { memo.recall = real.recall; memo.remember = real.remember; }
+  return touched;
+}
+const withUcpKey = (args, key) => ({ ...args, meta: { ...args.meta, 'idempotency-key': key } });
+const BEFORE_THE_MEMO = Object.freeze([
+  {
+    path: '/ucp/mcp',
+    send: (args) => door.call('/ucp/mcp', 'create_checkout', args, { buyer: A }),
+    good: (sent, n, quantity = 1) => market.ucpCreate([[IDS.SIG_GBP_USD_STORE, quantity]], sent, n),
+    keyed: (args, key) => withUcpKey(args, key),
+  },
+  {
+    path: '/mcp',
+    send: (args) => door.call('/mcp', 'create_checkout_session', args, { buyer: A }),
+    good: (sent, n, quantity = 1) => market.nativeCreate(IDS.SELLER_H, [[IDS.SIG_GBP_USD_STORE, quantity]], n, sent === undefined ? {} : { market: sent }),
+    keyed: (args, key) => ({ ...args, idempotency_key: key }),
+  },
+]);
+
+for (const at of BEFORE_THE_MEMO) {
+  test(`${at.path}: THE INTAKE BOUNDS COME FIRST. A 7-character key, a key that is not printable ASCII and a quantity of 1000 are refused with the memo neither read nor written, with a live entry for that seller and market and without one, and with the switch-off bytes`, async () => {
+    const bad = [
+      ['a 7-character key', () => at.keyed(at.good('GB', nextKey()), 'idem-07'), 'idempotency_key_too_short'],
+      ['a key that is not printable ASCII', () => at.keyed(at.good('GB', nextKey()), 'idemé-memo-01'), 'idempotency_key_bad_characters'],
+      ['a quantity of 1000', () => at.good('GB', nextKey(), 1000), 'quantity_above_line_maximum'],
+    ];
+    // The switch off: what each is refused with.
+    h.setFlags(ALL_BUT_MEMO);
+    const control = [];
+    for (const [name, build, reason] of bad) {
+      const refused = await at.send(build());
+      assert.equal(refused.isError, true, `${name}: ${refused.raw}`);
+      assert.equal(errorOf(refused).detail.reason, reason, name);
+      assert.deepEqual([refused.store, refused.referral, refused.handoff], [[], [], []], name);
+      control.push(refused.raw);
+    }
+    // The switch on, nothing remembered; then with a live entry for this seller and GB.
+    h.setFlags(ALL_ON);
+    for (const entry of ['no entry', 'a live entry']) {
+      if (entry === 'a live entry') {
+        const first = await at.send(at.good('GB', nextKey()));
+        assert.equal(errorOf(first).detail.reason, 'seller_not_priced_in_market_currency');
+        assert.deepEqual(memo.counts(), { remembered: 1 });
+      }
+      const before = structuredClone(memo.counts());
+      const touched = await watchingMemo(async () => {
+        for (const [i, [name, build]] of bad.entries()) {
+          const refused = await at.send(build());
+          assert.equal(refused.raw, control[i], `${entry}, ${name}: the switch-off bytes`);
+          assert.deepEqual([refused.store, refused.referral, refused.handoff, memoLines(refused)], [[], [], [], []], `${entry}, ${name}`);
+        }
+      });
+      assert.deepEqual(touched, [], `${entry}: the memo was neither read nor written`);
+      assert.deepEqual(memo.counts(), before, entry);
+    }
+    // The control: a well-formed GB create of the same seller IS read from the entry (one read, no write).
+    const hit = await watchingMemo(async () => {
+      const refused = await at.send(at.good('GB', nextKey()));
+      assert.equal(errorOf(refused).detail.reason, 'seller_not_priced_in_market_currency');
+      assert.deepEqual(refused.store, []);
+    });
+    assert.deepEqual(hit, [['recall', 'GB']]);
+  });
+
+  test(`${at.path}: A MARKET THIS DOOR DOES NOT PRICE IS REFUSED BY NAME WITH THE MEMO NEVER READ: DE and an unknown market are market_not_priced, with a live GB entry for the same seller`, async () => {
+    h.setFlags(ALL_ON);
+    const first = await at.send(at.good('GB', nextKey()));
+    assert.equal(errorOf(first).detail.reason, 'seller_not_priced_in_market_currency');
+    const touched = await watchingMemo(async () => {
+      for (const sent of ['DE', 'ZZ', 'de']) {
+        const refused = await at.send(at.good(sent, nextKey()));
+        assert.equal(errorOf(refused).detail.reason, 'market_not_priced', sent);
+        assert.equal(errorOf(refused).detail.market, sent.toUpperCase(), sent);
+        assert.deepEqual([refused.store, refused.referral, refused.handoff], [[], [], []], sent);
+      }
+      // No market named: `/mcp` requires one for a seller storefront; the UCP door answers for an assumed US, where
+      // this seller's GBP rows are refused by the row rule. Neither reads the memo.
+      const none = await at.send(at.good(undefined, nextKey()));
+      assert.equal(errorOf(none).detail.reason, at.path === '/mcp' ? 'market_required_for_seller_storefront' : 'seller_not_priced_in_market_currency');
+      assert.deepEqual(none.store, []);
+    });
+    assert.deepEqual(touched, []);
+    assert.deepEqual(memo.counts(), { remembered: 1 });
+  });
+}
 
 // ---- the whole table, with every hardening flag and the memo on --------------------------------------------------------
 

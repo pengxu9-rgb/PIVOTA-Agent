@@ -17,9 +17,10 @@ import {
   partnerPrincipalOf,
   storeCartIdempotencyEnabled, storeCartIdempotencyCounts, resetStoreCartIdempotencyCountsForTest,
   canonicalRequest, requestFingerprint, recordKey, sealCheckoutId, openCheckoutId, runIdempotentCart, storedFingerprint,
+  REPLAY_NOTHING_SERVED,
 } from '../src/storefrontCartIdempotency.js';
 import { MERCHANT_PRICING_FLAG } from '../src/ucpMerchantDoorPricing.js';
-import { UCP_ESCALATION_FLAG, ESCALATION_TTL_MS, ID_BINDING_SECRET_ENV, tryEscalateUcpCheckout, storeCartIdempotencyKey } from '../src/ucpCheckoutEscalation.js';
+import { UCP_ESCALATION_FLAG, ESCALATION_TTL_MS, ID_BINDING_FLAG, ID_BINDING_SECRET_ENV, tryEscalateUcpCheckout, storeCartIdempotencyKey } from '../src/ucpCheckoutEscalation.js';
 import { InMemoryKvStore } from '../../safety-kernel/src/stores.js';
 import { createCommerceMount } from '../../safety-kernel/src/mount.js';
 import { PivotaCommerceError } from '../../safety-kernel/src/errors.js';
@@ -275,6 +276,45 @@ describe('retries', () => {
     assert.equal(h.calls.build, 1, 'a refused read-back never builds');
     // The record is untouched by a refused read-back: the next retry is served from it.
     assert.deepEqual(await h.run(), { id: ID, replayed: true });
+  });
+
+  test('A READ-BACK THAT ANSWERED NOTHING IS ONE OF TWO THINGS, and its caller says which: `declined` (read and declined) or `not_readable` (the recorded id may no longer be read)', async () => {
+    assert.deepEqual(REPLAY_NOTHING_SERVED, { declined: 'declined', notReadable: 'not_readable' });
+    assert.notEqual(REPLAY_NOTHING_SERVED.declined, REPLAY_NOTHING_SERVED.notReadable);
+    const lines = [];
+    const log = { info: (l) => lines.push(l), warn: (l) => lines.push(l) };
+    const h = harness();
+    await h.run();
+    const nothing = async () => null;
+    const asked = [];
+    const says = (value) => () => { asked.push(value); return value; };
+    assert.equal(await h.run({ log, replay: nothing, nothingServedReason: says('not_readable') }), null);
+    assert.equal(await h.run({ log, replay: nothing, nothingServedReason: says('declined') }), null);
+    assert.equal(await h.run({ log, replay: async () => undefined, nothingServedReason: says('not_readable') }), undefined);
+    assert.deepEqual(lines.filter((l) => l.outcome === 'replay_refused'), [
+      { event: 'storefront_cart_idempotency', outcome: 'replay_refused', reason: 'not_readable' },
+      { event: 'storefront_cart_idempotency', outcome: 'replay_refused', reason: 'declined' },
+      { event: 'storefront_cart_idempotency', outcome: 'replay_refused', reason: 'not_readable' },
+    ]);
+    assert.deepEqual(asked, ['not_readable', 'declined', 'not_readable'], 'asked once per read-back that answered nothing');
+    assert.deepEqual(storeCartIdempotencyCounts(), { claimed: 1, replayed: 3, replay_refused: 3 }, 'one count, whatever the reason');
+    // Anything that is not exactly `not_readable` (another word, no word, a function that throws, no function) is
+    // `declined`: `not_readable` is never guessed.
+    lines.length = 0;
+    for (const nothingServedReason of [says('NOT_READABLE'), says(''), says(null), says(true), says({}), () => { throw new Error('no reason'); }, undefined, 'not_readable']) {
+      assert.equal(await h.run({ log, replay: nothing, nothingServedReason }), null);
+    }
+    assert.deepEqual(lines.filter((l) => l.outcome === 'replay_refused').map((l) => l.reason), Array(8).fill('declined'));
+    // The caller is NOT asked when the read-back served a checkout, or refused by name: those say why themselves.
+    asked.length = 0;
+    lines.length = 0;
+    const never = () => { asked.push('asked'); return 'not_readable'; };
+    assert.deepEqual(await h.run({ log, nothingServedReason: never }), { id: ID, replayed: true });
+    const refusal = new PivotaCommerceError('NO_MERCHANT_OFFER', { reason: 'market_not_priced' });
+    await assert.rejects(h.run({ log, replay: async () => { throw refusal; }, nothingServedReason: never }), (err) => err === refusal);
+    assert.deepEqual(asked, []);
+    assert.deepEqual(lines.map((l) => [l.outcome, l.reason]), [['replayed', undefined], ['replayed', undefined], ['replay_refused', 'market_not_priced']]);
+    assert.equal(h.calls.build, 1);
   });
 
   test('a replay after waiting for the winner that is then refused is counted the same way', async () => {
@@ -705,6 +745,70 @@ describe('the lane', () => {
     assert.notEqual(rotated.id, first.id);
     assert.equal((await create({ store, door })).id, first.id);
     assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 2);
+  });
+
+  test('A RETRY WHOSE READ-BACK ANSWERS NOTHING SAYS WHICH KIND: the gate declining the recorded checkout is `declined`; a recorded id that may no longer be read (made unbound, replayed under `enforce`) is `not_readable`', async () => {
+    const GATE = 'MERCHANT_PURCHASABILITY_GATE_ENABLED';
+    const lines = [];
+    const log = { info: (l) => lines.push(l), warn: (l) => lines.push(l), error: (l) => lines.push(l) };
+    const ledgerLines = () => lines.filter((l) => l.event === 'storefront_cart_idempotency');
+    const call = ({ env, store, door, offer = true, declines }) => tryEscalateUcpCheckout({
+      op: { id: 'create_checkout_session' }, ctx: { user_ref: 'buyer-0001', acp_session_id: 'sess-0001' },
+      idempotencyPartner: () => AGENT_A,
+      params: { idempotency_key: 'idem-lane-kind-1', quote: { items: [{ product_id: SEED.product_id, quantity: 2 }] } },
+      executor, ucpArgs: { checkout: { context: { address_country: 'US' } } }, env, now: 5000, merchantDoor: door, idempotencyStore: store,
+      shouldOfferPurchase: async () => ({ offer }), declines, log,
+    });
+
+    // DECLINED. The gate offers the first create and declines the retry's read-back.
+    {
+      const store = new InMemoryKvStore();
+      const door = fakeDoor();
+      const env = { ...ON, [GATE]: '1' };
+      const first = await call({ env, store, door, declines: [] });
+      assert.ok(first.id);
+      lines.length = 0;
+      const declines = [];
+      assert.equal(await call({ env, store, door, offer: false, declines }), null);
+      assert.deepEqual(declines, ['merchant_not_purchasable'], 'the caller\'s list is told of the decline, once, as before');
+      assert.deepEqual(ledgerLines(), [
+        { event: 'storefront_cart_idempotency', outcome: 'replayed' },
+        { event: 'storefront_cart_idempotency', outcome: 'replay_refused', reason: 'declined' },
+      ]);
+      assert.deepEqual(door.calls.map((c) => c[0]), ['create_cart'], 'a declined read-back asks the seller nothing');
+      assert.deepEqual(storeCartIdempotencyCounts(), { claimed: 1, replayed: 1, replay_refused: 1 });
+      // The record is untouched: once the gate offers again, the same checkout is served.
+      assert.equal((await call({ env, store, door, declines: [] })).id, first.id);
+    }
+
+    // NOT READABLE. The record holds an unbound id (the binding was off, then `mint` hands out bound ids but still
+    // reads unbound ones); under `enforce` an unbound id is no id of this door's, so the read-back reads nothing.
+    for (const madeUnder of [{}, { [ID_BINDING_FLAG]: 'off' }]) {
+      resetStoreCartIdempotencyCountsForTest();
+      const store = new InMemoryKvStore();
+      const door = fakeDoor();
+      const first = await call({ env: { ...ON, ...madeUnder }, store, door, declines: [] });
+      assert.ok(first.id);
+      // `mint`: the unbound record is still read back and served.
+      assert.equal((await call({ env: { ...ON, [ID_BINDING_FLAG]: 'mint' }, store, door, declines: [] })).id, first.id);
+      lines.length = 0;
+      const declines = [];
+      const calls = door.calls.length;
+      assert.equal(await call({ env: { ...ON, [ID_BINDING_FLAG]: 'enforce' }, store, door, declines }), null);
+      assert.deepEqual(declines, [], 'nothing was read, so nothing was declined');
+      assert.deepEqual(ledgerLines(), [
+        { event: 'storefront_cart_idempotency', outcome: 'replayed' },
+        { event: 'storefront_cart_idempotency', outcome: 'replay_refused', reason: 'not_readable' },
+      ]);
+      assert.equal(door.calls.length, calls, 'no seller call, and no second cart');
+      assert.deepEqual(storeCartIdempotencyCounts(), { claimed: 1, replayed: 2, replay_refused: 1 });
+      // The gate declining under `enforce` is not what happened here, and is not what is logged even when the gate
+      // WOULD decline: the id is unreadable before the gate is asked.
+      lines.length = 0;
+      const gated = [];
+      assert.equal(await call({ env: { ...ON, [ID_BINDING_FLAG]: 'enforce', [GATE]: '1' }, store, door, offer: false, declines: gated }), null);
+      assert.deepEqual([gated, ledgerLines().map((l) => l.reason)], [[], [undefined, 'not_readable']]);
+    }
   });
 
   test('A RECORD MADE BEFORE THE CURRENCY RULE IS JUDGED AGAIN, NEVER SERVED: a GB cart of a USD seller, on either door\'s scope', async () => {

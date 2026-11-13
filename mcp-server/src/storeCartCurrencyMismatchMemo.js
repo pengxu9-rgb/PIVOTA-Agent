@@ -15,6 +15,12 @@
 // refusal is raised by the same function from the same arguments as the first one, with the remembered currency in
 // the place of the store's answer, so it is the same code, reason, message and detail for the same request.
 //
+// WHERE IT IS READ. At one place: inside the seller door's pricing (ucpMerchantDoorPricing.js priceOnMerchantDoor),
+// after every answer that door gives without the store and immediately before it would contact the store. A cart
+// the store would never be asked about (several variants and none chosen, a row with no currency to hold the store
+// to, no seller variant id, the same variant twice, a sole variant the catalog does not confirm) is answered as it
+// is with the flag off, whatever is held here, and this memo is not read for it.
+//
 // THE KEY IS (SELLER HOST, MARKET), NEVER THE SELLER ALONE. A storefront prices each market on its own: answering a
 // GB cart in USD says nothing about what it answers a US cart in. A request for another market never reads this
 // market's entry. As a second lock, an entry is only used while the market's currency (the gateway's one market ->
@@ -157,7 +163,12 @@ export function createCurrencyMismatchMemo({ clock = Date.now } = {}) {
 
     /** How many entries are held (expired ones included until they are next read or room is needed). */
     size() { return entries.size; },
-    /** Per-process counts: remembered, refused_without_store, expired, evicted. */
+    /**
+     * Per-process counts: remembered, refused_without_store, expired, evicted. FOR TESTS: nothing in production
+     * reads them. What production sees is two log lines (`ucp_merchant_door_pricing`): the store's answer in another
+     * currency (`fallback` / `store_currency_not_market_currency`) and a hit (`store_not_asked`). An expiry or an
+     * eviction logs nothing.
+     */
     counts() { return Object.fromEntries(outcomes); },
     resetForTest() { entries.clear(); outcomes.clear(); now = clock; },
     /** A test's own clock for this memo (undefined: the one it was made with). */
