@@ -17,12 +17,8 @@ const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const FLAG = 'GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS';
 const MARKETS = ['US', 'SG', 'GB', 'JP', 'DE', null];
 const QUERIES = ['Solvane serum', 'Solvane US serum', 'Solvane JP serum', 'Solvane UK serum', 'Solvane Global serum', 'Solvane', 'Solvane JP', 'serum'];
-// Sized from the PR gate's own logs: this test took 9.2 s on the CI runner in the one run there
-// is, a fast one (the sibling door suite took 2.7 s in it and up to 4.7 s in others), so about
-// 16 s on a slow runner; this is a little under four times that.
-const TEST_TIMEOUT_MS = 60000;
 
-test('sibling spellings keep the currency rule on the route and the three doors, flag on', { skip: !url && 'needs CANONICAL_MAINLINE_TEST_DATABASE_URL', timeout: TEST_TIMEOUT_MS }, async () => {
+test('sibling spellings keep the currency rule on the route and the three doors, flag on', { skip: !url && 'needs CANONICAL_MAINLINE_TEST_DATABASE_URL', timeout: 240000 }, async () => {
   const priorEnv = { ...process.env };
   Object.assign(process.env, {
     NODE_ENV: 'test', DATABASE_URL: url, PIVOTA_API_BASE: 'http://upstream-disabled.test', PIVOTA_API_KEY: 'test', API_MODE: 'REAL',

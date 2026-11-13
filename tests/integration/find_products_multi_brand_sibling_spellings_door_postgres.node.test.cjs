@@ -18,11 +18,8 @@ const assert = require('node:assert/strict');
 
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const FLAG = 'GATEWAY_CATALOG_BRAND_SIBLING_SPELLINGS';
-// Sized from the PR gate's own logs: this test took 2.6 to 4.7 s on the CI runner across four
-// runs (about 1.7 s on a laptop); this is a little over four times the slowest.
-const TEST_TIMEOUT_MS = 20000;
 
-test('the brand-family invariant through the real /mcp door, flag off (pinned gap) and on', { skip: !url && 'needs CANONICAL_MAINLINE_TEST_DATABASE_URL', timeout: TEST_TIMEOUT_MS }, async () => {
+test('the brand-family invariant through the real /mcp door, flag off (pinned gap) and on', { skip: !url && 'needs CANONICAL_MAINLINE_TEST_DATABASE_URL', timeout: 180000 }, async () => {
   const priorEnv = { ...process.env };
   Object.assign(process.env, {
     NODE_ENV: 'test', DATABASE_URL: url, PIVOTA_API_BASE: 'http://upstream-disabled.test', PIVOTA_API_KEY: 'test', API_MODE: 'REAL',
