@@ -136,3 +136,53 @@ test('update takes no market on the marked door, and the UCP door never hands th
   assert.equal(creates.length, 1, 'the cart reached the kernel');
   for (const c of creates) assert.deepEqual(marketMembers(c.params), {}, 'the UCP door does not carry a market to the kernel (unchanged)');
 });
+
+test('the door marks an update for its session\'s market only on the marked door, and no argument can set the mark', async () => {
+  const updateArgs = { ...createArgs(), session_id: 'q_1' };
+  const marked = recordingExecutor();
+  await createCommerceToolSurface(marked, { cache: false }).callTool('update_checkout_session', updateArgs, SESSION, ON);
+  assert.equal(marked.seen[0].params.judge_session_market, true);
+  for (const options of [undefined, {}, { storefrontCartDoor: false }, { storefrontCartDoor: 'true' }]) {
+    const plain = recordingExecutor();
+    await createCommerceToolSurface(plain, { cache: false }).callTool('update_checkout_session', updateArgs, SESSION, ...(options ? [options] : []));
+    assert.equal('judge_session_market' in plain.seen[0].params, false, JSON.stringify(options));
+    const { judge_session_market: _mark, ...rest } = marked.seen[0].params;
+    assert.deepEqual(plain.seen[0].params, rest, 'the same params but for the mark');
+  }
+  // A caller cannot send it: as a top-level argument it is refused, and inside `quote` the allowlist drops it.
+  for (const options of [undefined, ON]) {
+    const executor = recordingExecutor();
+    const surface = createCommerceToolSurface(executor, { cache: false });
+    await assert.rejects(surface.callTool('update_checkout_session', { ...updateArgs, judge_session_market: true }, SESSION, ...(options ? [options] : [])), /unknown argument "judge_session_market"/);
+    await assert.rejects(surface.callTool('create_checkout_session', { ...createArgs(), judge_session_market: true }, SESSION, ...(options ? [options] : [])), /unknown argument "judge_session_market"/);
+    assert.deepEqual(executor.seen, []);
+  }
+  // Nor from inside the cart: wherever a caller puts the name, the executor is handed no mark it did not get from the door.
+  for (const nested of [{ quote: { ...createArgs().quote, judge_session_market: true } }, { quote: { ...createArgs().quote, items: [{ ...createArgs().quote.items[0], judge_session_market: true }] } }]) {
+    const executor = recordingExecutor();
+    // The declared schema refuses the name at any depth, before anything is read; so nothing reaches the executor.
+    await assert.rejects(createCommerceToolSurface(executor, { cache: false }).callTool('update_checkout_session', { ...updateArgs, ...nested }, SESSION), /judge_session_market/);
+    assert.deepEqual(executor.seen, []);
+  }
+  // A create is never marked, and neither are the other checkout tools.
+  const create = recordingExecutor();
+  await createCommerceToolSurface(create, { cache: false }).callTool('create_checkout_session', createArgs({ market: 'SG' }), SESSION, ON);
+  assert.equal('judge_session_market' in create.seen[0].params, false);
+});
+
+test('the `/mcp` view: an update is marked only while both switches are on', async () => {
+  const both = { [UCP_ESCALATION_FLAG]: '1', [MCP_STOREFRONT_ESCALATION_FLAG]: '1', [CURRENCY_FOLLOWS_MARKET_FLAG]: '1' };
+  for (const [label, env, marked] of [
+    ['both on', both, true],
+    ['the currency rule off', { ...both, [CURRENCY_FOLLOWS_MARKET_FLAG]: undefined }, false],
+    ['the storefront switch off', { ...both, [MCP_STOREFRONT_ESCALATION_FLAG]: undefined }, false],
+    ['both off', { ...both, [MCP_STOREFRONT_ESCALATION_FLAG]: undefined, [CURRENCY_FOLLOWS_MARKET_FLAG]: undefined }, false],
+  ]) {
+    await withEnv(env, async () => {
+      const executor = recordingExecutor();
+      const view = mcpStorefrontCartSurface(createCommerceToolSurface(executor, { cache: false }), { log: { info() {} } });
+      await view.callTool('update_checkout_session', { ...createArgs(), session_id: 'q_1' }, SESSION);
+      assert.equal(executor.seen[0].params.judge_session_market === true, marked, label);
+    });
+  }
+});

@@ -629,6 +629,12 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     quote to them (canonicalExecutor.js, quoteMarketOf). After intake, so a request intake refuses is refused
     //     as before. A create that names no market adds nothing here and is priced exactly as it was.
     if (storefrontCartDoor && op.id === "create_checkout_session") Object.assign(params, kernelQuoteMarketParams(toolArgs));
+    //     AND AN UPDATE IS JUDGED FOR ITS SESSION'S MARKET, on the same condition: `storefrontCartDoor` is set only
+    //     while this door's storefront switch and the currency rule are both on, the one state in which a session
+    //     can have been created for a market here. The member is this door's own word to the executor (no argument
+    //     of the tool reaches `params` but through the allowlist, which has no such key). With either switch off
+    //     it is absent: the executor then reads nothing of the session and the update is exactly what it was.
+    if (storefrontCartDoor && op.id === "update_checkout_session") params.judge_session_market = true;
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
