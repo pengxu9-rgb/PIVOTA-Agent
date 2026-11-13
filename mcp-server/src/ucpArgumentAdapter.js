@@ -150,6 +150,7 @@ import {
   IDEMPOTENCY_KEY_MIN_LENGTH,
   MAX_CART_ITEMS,
   MAX_LINE_QUANTITY,
+  DUPLICATE_LINES_SENTENCE,
   intakeRefusal,
   pickCompleteAddress,
   REQUIRED_ADDRESS_FIELDS,
@@ -271,7 +272,8 @@ const LINE_ITEMS_SCHEMA = {
       },
     },
   },
-  description: "Required. The lines to price; the id is NESTED under `item`, per the UCP wire shape.",
+  // The second sentence is the shared rule about the lines as a set (buyerIntake.js `assertNoDuplicateLines`).
+  description: `Required. The lines to price; the id is NESTED under \`item\`, per the UCP wire shape. ${DUPLICATE_LINES_SENTENCE}`,
 };
 
 /** The backend column is VARCHAR(32); the schema and the mapper both hold the tag to it. */
@@ -1064,15 +1066,36 @@ function requireMeta(args, code) {
   return meta;
 }
 
+/** `meta["idempotency-key"]` exactly as the platform sent it: read, never altered. */
+const idempotencyKeyAsSent = (meta) => own(meta, "idempotency-key");
+
+/**
+ * THE KEY AS SENT, for the door's shared key rule (commerceToolSurface.js step 3-0). The rule judges THIS value on
+ * a state-changing call, not the one `requireIdempotencyKey` returns, so that this door and the native door refuse
+ * exactly the same keys: a key with anything but printable ASCII in it, around it included (a no-break space, a
+ * tab, a trailing newline), is refused here as it is there. `undefined` when the arguments carry no `meta` or no
+ * key; a missing key is `requireIdempotencyKey`'s to refuse.
+ */
+export function ucpIdempotencyKeyAsSent(args) {
+  return idempotencyKeyAsSent(own(args, "meta"));
+}
+
 /**
  * The idempotency key for a state-changing call, read from `meta["idempotency-key"]` — UCP's carrier for it.
  *
  * REFUSED WHEN ABSENT, never minted. A server-generated key makes every retry a distinct request, which on
  * this lane means a second quote or a second charge; the whole point of the key is that the CLIENT can repeat
  * itself safely.
+ *
+ * WHAT IS RETURNED IS THE KEY THIS DOOR USES, with the spaces around it removed, as this door has always stored
+ * and forwarded it: ` K` and `K` are one key here. WHETHER THE KEY IS ACCEPTABLE IS NOT DECIDED ON THAT VALUE. The
+ * door judges the key as sent (`ucpIdempotencyKeyAsSent`), so by the time a create, an update or a complete uses
+ * what this returns, the only characters removed were ASCII spaces (U+0020): every other character `trim()`
+ * removes is one the rule refuses. The two vendor tools that continue an EARLIER create (recover, resume) are not
+ * judged by that rule; for them this removes what it always removed, so they still find the key that create stored.
  */
 function requireIdempotencyKey(meta, code) {
-  const key = own(meta, "idempotency-key");
+  const key = idempotencyKeyAsSent(meta);
   if (!nonEmpty(key)) {
     throw ucpRefusal(code, "ucp_idempotency_key_required", [
       "This tool changes state, so `meta[\"idempotency-key\"]` is required: it is what makes a retry return the",

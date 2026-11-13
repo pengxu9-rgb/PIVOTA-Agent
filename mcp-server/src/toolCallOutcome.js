@@ -12,6 +12,8 @@
 // Callers hand fields to an `observe(fields)` sink. The sink is optional everywhere: a surface called without
 // one (tests, the stdio server, the public tier's inner commerce call) behaves exactly as before.
 
+import toolErrorReasons from "../../src/observability/mcpToolErrorReasons.js";
+
 const TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
 const ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 
@@ -101,6 +103,19 @@ export function describeUpstreamEnvelope(raw) {
 export function describeToolError(error) {
   const detail = error && typeof error === "object" && isPlainObject(error.detail) ? error.detail : null;
   return detail && detail.upstream_timeout === true ? { upstream_timeout: true } : {};
+}
+
+/**
+ * WHY a thrown tool error refused, as `error_reason`: the error's own `detail.reason`, and only when it is one of
+ * the listed labels (src/observability/mcpToolErrorReasons.js). The code alone cannot tell a key that is too short
+ * from one with a bad character, a missing one or a reused one: all four are IDEMPOTENCY_CONFLICT. Read off the
+ * error, not the wire body, because most refusals do not publish their reason to the caller. A reason that is not
+ * listed (anything this repository did not write) yields nothing, so no caller text can reach the log here.
+ */
+export function describeToolErrorReason(error) {
+  const detail = error && typeof error === "object" && isPlainObject(error.detail) ? error.detail : null;
+  const reason = detail ? toolErrorReasons.loggedToolErrorReason(detail.reason) : undefined;
+  return reason === undefined ? {} : { error_reason: reason };
 }
 
 /**

@@ -25,6 +25,11 @@
 //                ok. The error-rate alert counts 'server' only: a caller sending bad ids is not an outage,
 //                and shedding is the limits doing their job, counted and alerted on by their own metric and
 //                policy (monitoring/alerts/mcp_caller_limits/).
+//   error_reason why a tool error refused, when its code alone does not say: the refusal's own `detail.reason`,
+//                logged ONLY when it is one of the listed labels (./mcpToolErrorReasons.js), so it can never be
+//                a key, an id or any other text a caller sent. It tells a too-short idempotency key from one
+//                with a bad character, a missing one and a reused one, which all answer IDEMPOTENCY_CONFLICT.
+//                Absent for every other error and for every answer that is not a tool error.
 //   result_count rows the caller received, AFTER the public tier's filters (absent for a non-list result)
 //   cache_hit    true | false | 'stale' (absent when no cache was consulted)
 //   lane, lane_source, upstream_status    the search envelope's own markers, short tokens only
@@ -34,6 +39,8 @@
 //
 // Measurement only: nothing reads these back, and nothing here may throw into the request it measures. The
 // fields come from the RESULT and the door's own bookkeeping, never from the tool arguments.
+
+const { loggedToolErrorReason } = require('./mcpToolErrorReasons');
 
 const ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
@@ -53,6 +60,8 @@ const OBSERVED_FIELDS = Object.freeze({
   result_count: (v) => (Number.isInteger(v) && v >= 0 ? v : undefined),
   cache_hit: (v) => (v === true || v === false || v === 'stale' ? v : undefined),
   error_code: (v) => (typeof v === 'string' && ERROR_CODE.test(v) ? v : undefined),
+  // A listed label or nothing: the closed set is checked here again, where the line is written.
+  error_reason: loggedToolErrorReason,
   lane: (v) => (typeof v === 'string' && TOKEN.test(v) ? v : undefined),
   lane_source: (v) => (typeof v === 'string' && TOKEN.test(v) ? v : undefined),
   upstream_status: (v) => (typeof v === 'string' && TOKEN.test(v) ? v : undefined),
@@ -193,6 +202,8 @@ function createMcpToolCallRecorder() {
     else if (outcome === 'shed') errorClass = 'capacity';
 
     const out = { outcome, is_error: outcome !== 'ok', error_code: errorCode, error_class: errorClass };
+    // Only beside the tool error it explains: never on an answer the door gave some other way.
+    if (outcome === 'tool_error' && observed.error_reason !== undefined) out.error_reason = observed.error_reason;
     for (const key of ['result_count', 'cache_hit', 'lane', 'lane_source', 'upstream_status']) {
       if (observed[key] !== undefined) out[key] = observed[key];
     }

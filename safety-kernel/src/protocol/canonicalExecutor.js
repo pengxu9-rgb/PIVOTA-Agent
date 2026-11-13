@@ -20,7 +20,7 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
-import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, intakeRefusal } from './buyerIntake.js';
+import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
@@ -449,8 +449,15 @@ export function createCanonicalExecutor({
       case 'update_checkout_session': {
         // The per-line quantity ceiling (buyerIntake.js), for a create and an update alike, before anything is priced.
         assertLineQuantitiesWithinMaximum(params.quote?.items);
-        // The market the request names, when a door carries one (quoteMarketOf): refused here, before any quote,
-        // when nothing is priced for it; else it travels in the quote body and the quote must be in its currency.
+        // One line per product and variant, on the lines about to be priced (only a KERNEL row's cart reaches
+        // this). A door has already asked this on the lines as sent; here a line that named no variant carries
+        // the one intake resolved for it, so two lines that turned out to be the same product and variant are
+        // refused before they are priced as one.
+        assertNoDuplicateLines(params.quote?.items);
+        // THE ORDER: the bounds decided on the request alone (the key, above; the quantity ceiling and the
+        // duplicate lines, here) answer first, as on every door. Only then the market the request names, when a
+        // door carries one (quoteMarketOf): refused here, before any quote, when nothing is priced for it; else it
+        // travels in the quote body and the quote must be in its currency.
         const quoteMarket = quoteMarketOf(params);
         const quote = quoteMarket
           ? await kernel.previewQuote({ quote: params.quote ?? {}, market: quoteMarket.market }, ctx, { acceptQuoteCurrency: quoteMarket.accept })

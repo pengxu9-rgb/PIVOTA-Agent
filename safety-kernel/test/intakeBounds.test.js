@@ -798,6 +798,61 @@ test('ACP REST: a caller with no verified buyer is told that, whatever the cart 
   assert.deepEqual(calls, []);
 });
 
+// ---- ACP REST: the key header is judged as sent -----------------------------------------------------------------------
+
+test('ACP REST: a key with whitespace around it that is not an ASCII space is refused as sent, on every route that takes a key, before anything is called', async () => {
+  // Whatever hands the adapter its headers: every character `trim()` removes, around a key that is otherwise good.
+  for (const key of ['\u00a0acp-pad-0001\u00a0', 'acp-pad-0001\u00a0', '\u00a0acp-pad-0001', 'acp-pad-0001\n', '\tacp-pad-0001', 'acp-pad-0001\r\n', '\u3000acp-pad-0001', 'acp-pad-0001\ufeff', ' acp-pad-0001\u00a0 ', 'abcdefg\u00a0']) {
+    const { adapter, calls, req } = acpSetup();
+    for (const [name, res] of [
+      ['create', await adapter.createCheckoutSession(req({ body: ACP_CART(1), key }))],
+      ['update', await adapter.updateCheckoutSession(req({ body: ACP_CART(1), key, id: 'cs_1' }))],
+      ['complete', await adapter.completeCheckoutSession(req({ body: { payment_data: { token: 'placeholder' } }, key, id: 'cs_1' }))],
+      ['cancel', await adapter.cancelCheckoutSession(req({ body: {}, key, id: 'cs_1' }))],
+    ]) {
+      const label = `${name} ${JSON.stringify(key)}`;
+      assert.equal(res.status, 409, `${label}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.code, 'IDEMPOTENCY_CONFLICT', label);
+      assert.deepEqual(res.body.detail, { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' }, label);
+      // The same message and detail the shared rule gives every door for this key.
+      const shared = surfaceableIntakeRefusal(caught(() => assertIdempotencyKeyAcceptable(key)));
+      assert.deepEqual({ message: res.body.message, detail: res.body.detail }, shared, label);
+    }
+    assert.deepEqual(calls, [], `${JSON.stringify(key)}: no buyer resolved, no session read, nothing executed`);
+  }
+});
+
+test('ACP REST: a key with ASCII spaces around it is accepted and used without them, so it names the record the bare key names', async () => {
+  const { adapter, calls, req } = acpSetup();
+  const first = await adapter.createCheckoutSession(req({ body: ACP_CART(1), key: '  acp-spc-0001  ' }));
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  assert.equal(calls.find((c) => c.name === 'executor.create_checkout_session').params.idempotency_key, 'acp-spc-0001', 'the key handed on');
+  // The bare key, and the key padded another way, replay that create: one record, as before.
+  for (const key of ['acp-spc-0001', ' acp-spc-0001', 'acp-spc-0001   ']) {
+    const again = await adapter.createCheckoutSession(req({ body: ACP_CART(1), key }));
+    assert.equal(again.status, 200, `${JSON.stringify(key)}: ${JSON.stringify(again.body)}`);
+    assert.equal(again.body.id, first.body.id, JSON.stringify(key));
+  }
+  assert.equal(calls.filter((c) => c.name === 'executor.create_checkout_session').length, 1, 'created once');
+  // A header that is absent, blank, or not a string is the missing-key refusal, as before.
+  for (const key of [undefined, '', '   ', '\u00a0', ['acp-spc-0002']]) {
+    const res = await adapter.createCheckoutSession(req({ body: ACP_CART(1), key }));
+    assert.equal(res.status, 409, JSON.stringify(key));
+    assert.equal('detail' in res.body, false, `${JSON.stringify(key)}: the unnamed missing-key refusal`);
+  }
+});
+
+test('ACP REST: the signature is still checked before the key, and the key before the buyer', async () => {
+  const { adapter, calls, req } = acpSetup();
+  const forged = req({ body: ACP_CART(1), key: 'acp-pad-0002\u00a0' });
+  forged.headers.signature = '0'.repeat(64);
+  const unsigned = await adapter.createCheckoutSession(forged);
+  assert.equal(unsigned.status, 401, JSON.stringify(unsigned.body));
+  const padded = await adapter.createCheckoutSession(req({ body: ACP_CART(1), key: 'acp-pad-0002\u00a0' }));
+  assert.equal(padded.status, 409);
+  assert.deepEqual(calls, [], 'the buyer was not resolved for either');
+});
+
 // ---- a session that was already used: read the order, do not start over -----------------------------------------
 
 test('QUOTE_ALREADY_USED tells the caller to read the order first, on every door\'s wording; the code is unchanged', () => {

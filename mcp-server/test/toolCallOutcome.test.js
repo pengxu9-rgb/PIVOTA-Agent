@@ -9,9 +9,21 @@ import assert from "node:assert/strict";
 import { createPublicReadCache } from "../src/publicReadCache.js";
 import { createRemoteMcpAdapter } from "../src/remoteMcpAdapter.js";
 import { ToolValidationError, UnknownToolError } from "../src/commerceToolSurface.js";
+import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
+import { IdempotencyLedger } from "../../safety-kernel/src/idempotencyLedger.js";
+import {
+  IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
+  IDEMPOTENCY_KEY_TOO_SHORT_REASON,
+  QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
+  assertIdempotencyKeyAcceptable,
+  lineQuantityAboveMaximumRefusal,
+} from "../../safety-kernel/src/protocol/buyerIntake.js";
+import toolErrorReasons from "../../src/observability/mcpToolErrorReasons.js";
+import { KEY_REUSED_REASON } from "../src/storefrontCartIdempotency.js";
 import {
   cacheHitField,
   describeToolError,
+  describeToolErrorReason,
   describeUpstreamEnvelope,
   noteToolCall,
   resultCountOf,
@@ -92,6 +104,59 @@ test("describeToolError reads only the upstream timeout flag", () => {
   assert.deepEqual(describeToolError(new Error("x")), {});
 });
 
+test("describeToolErrorReason reads a refusal's own reason, and only when it is a listed label", () => {
+  for (const reason of toolErrorReasons.MCP_TOOL_ERROR_REASONS) {
+    assert.deepEqual(describeToolErrorReason(new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason })), { error_reason: reason });
+  }
+  // Not listed: nothing. A reason is never echoed for being a string, a token, or close to a label.
+  for (const reason of ["some_other_reason", "idem-key-as-sent-0001", "idempotency_key_too_short ", "IDEMPOTENCY_KEY_TOO_SHORT", "", 7, null, undefined, ["idempotency_key_too_short"], { reason: "in_flight" }]) {
+    assert.deepEqual(describeToolErrorReason({ detail: { reason } }), {}, JSON.stringify(reason));
+  }
+  // Only `detail.reason`: nothing else on the error is read, whatever it holds.
+  assert.deepEqual(describeToolErrorReason({ reason: "in_flight", message: "in_flight", detail: { key: "in_flight", acp_detail: { reason: "in_flight" } } }), {});
+  for (const notAnError of [undefined, null, "in_flight", 7, new Error("in_flight"), { detail: "in_flight" }, { detail: ["in_flight"] }]) {
+    assert.deepEqual(describeToolErrorReason(notAnError), {});
+  }
+});
+
+test("the listed reasons are a frozen set of this repository's own labels, the shared bounds' among them by import", () => {
+  const listed = toolErrorReasons.MCP_TOOL_ERROR_REASONS;
+  assert.ok(Object.isFrozen(listed));
+  assert.equal(new Set(listed).size, listed.length, "no label twice");
+  for (const label of listed) assert.match(label, /^[a-z][a-z0-9_]{2,63}$/, label);
+  for (const label of [IDEMPOTENCY_KEY_TOO_SHORT_REASON, IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON, QUANTITY_ABOVE_LINE_MAXIMUM_REASON, KEY_REUSED_REASON]) {
+    assert.ok(listed.includes(label), label);
+  }
+  assert.equal(toolErrorReasons.loggedToolErrorReason("in_flight"), "in_flight");
+  assert.equal(toolErrorReasons.loggedToolErrorReason("in_flight "), undefined);
+  assert.equal(toolErrorReasons.loggedToolErrorReason({ toString: () => "in_flight" }), undefined);
+});
+
+test("the shared bounds' real refusals carry a listed reason: a short key, a bad character and a line above the ceiling are told apart", () => {
+  const thrown = (fn) => { try { fn(); } catch (err) { return err; } return null; };
+  assert.deepEqual(describeToolErrorReason(thrown(() => assertIdempotencyKeyAcceptable("abcdefg"))), { error_reason: "idempotency_key_too_short" });
+  assert.deepEqual(describeToolErrorReason(thrown(() => assertIdempotencyKeyAcceptable("idem-0001\u00a0"))), { error_reason: "idempotency_key_bad_characters" });
+  assert.deepEqual(describeToolErrorReason(lineQuantityAboveMaximumRefusal()), { error_reason: "quantity_above_line_maximum" });
+});
+
+test("a key already used: the kernel ledger's states are listed; its 'same key, another request' names no reason, so the line carries none", async () => {
+  const ledger = new IdempotencyLedger();
+  const KEY = "idem-ledger-0001";
+  await ledger.run(KEY, { a: 1 }, async () => ({ ok: true }));
+  const other = await ledger.run(KEY, { a: 2 }, async () => ({ ok: true })).then(() => null, (err) => err);
+  assert.equal(other.code, "IDEMPOTENCY_CONFLICT");
+  assert.deepEqual(describeToolErrorReason(other), {}, "no reason of its own: the absence is what tells it apart");
+  // Two attempts under one key at once: the second is refused as in flight, which is a listed label.
+  let release;
+  const held = ledger.run("idem-ledger-0002", { a: 1 }, () => new Promise((resolve) => { release = resolve; }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = await ledger.run("idem-ledger-0002", { a: 1 }, async () => ({ ok: true })).then(() => null, (err) => err);
+  assert.deepEqual(describeToolErrorReason(second), { error_reason: "in_flight" });
+  assert.ok(!JSON.stringify(describeToolErrorReason(second)).includes("idem-ledger"));
+  release({ ok: true });
+  await held;
+});
+
 test("toolErrorFieldsOf reads the code, and the retriable flag when declared, back off the formatted result", () => {
   const text = (error) => ({ isError: true, content: [{ type: "text", text: JSON.stringify({ error }) }] });
   assert.deepEqual(toolErrorFieldsOf(text({ code: "UNKNOWN_PRODUCT_ID", retriable: false })), {
@@ -155,6 +220,29 @@ test("adapter: a thrown tool error reports the wire code and the timeout flag", 
   assert.deepEqual(Object.assign({}, ...fields), {
     tool_registered: true, error_code: "INVALID_ARGUMENTS", upstream_timeout: true,
   });
+});
+
+test("adapter: a refusal reports its listed reason beside the wire code, and never the key it refused", async () => {
+  const key = "k\u00e9y-as-sent-0001";
+  const surface = surfaceReturning(() => assertIdempotencyKeyAcceptable(key));
+  const adapter = createRemoteMcpAdapter(surface, { allowUnauthenticated: true });
+  const fields = [];
+  const out = await adapter.handleJsonRpc({ body: rpc("t"), observe: (f) => fields.push(f) });
+  assert.equal(out.body.result.isError, true);
+  assert.deepEqual(Object.assign({}, ...fields), {
+    tool_registered: true, error_code: "IDEMPOTENCY_CONFLICT", error_retriable: false, error_reason: "idempotency_key_bad_characters",
+  });
+  assert.ok(!JSON.stringify(fields).includes(key));
+});
+
+test("adapter: a reason that is not a listed label is not reported, whatever it says", async () => {
+  for (const reason of ["caller text that looks like a reason", "idem-key-as-sent-0001", "not_listed_here"]) {
+    const surface = surfaceReturning(() => { throw new PivotaCommerceError("IDEMPOTENCY_CONFLICT", { reason, key: "idem-key-as-sent-0001" }); });
+    const adapter = createRemoteMcpAdapter(surface, { allowUnauthenticated: true });
+    const fields = [];
+    await adapter.handleJsonRpc({ body: rpc("t"), observe: (f) => fields.push(f) });
+    assert.deepEqual(Object.assign({}, ...fields), { tool_registered: true, error_code: "IDEMPOTENCY_CONFLICT", error_retriable: false }, reason);
+  }
 });
 
 test("adapter: a non-curated error is logged as the generic code the caller saw", async () => {

@@ -35,6 +35,11 @@ const IDS = Object.freeze({
   SOURCE_CONNECTED: '9001',
   SELLER_CONNECTED: 'merch_shop_a',
   VARIANT_CONNECTED: 'v-9001-1',
+  // The same merchant's product with TWO variants: a line must name one, and two lines may name one each.
+  SIG_TWO_VARIANTS: sig('2'),
+  SOURCE_TWO_VARIANTS: '9002',
+  VARIANT_TWO_A: 'v-9002-1',
+  VARIANT_TWO_B: 'v-9002-2',
 });
 const STORE_HOST = 'store-a.example';
 const STORE_UNIT_MINOR = 2750;
@@ -188,6 +193,27 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
       };
     });
 
+  // The two-variant product, as the unscoped read and the merchant-scoped read serve it.
+  const TWO_VARIANTS = [IDS.VARIANT_TWO_A, IDS.VARIANT_TWO_B];
+  nock(LOOPBACK, { allowUnmocked: true }).persist()
+    .post('/agent/shop/v1/invoke', (body) => isOp('get_pdp_v2')(body) && body.payload?.product_ref?.product_id === IDS.SIG_TWO_VARIANTS)
+    .reply(200, () => {
+      upstream.push({ to: 'catalog', op: 'get_pdp_v2', product_id: IDS.SIG_TWO_VARIANTS });
+      return {
+        status: 'success',
+        modules: [{ type: 'canonical', data: { pdp_payload: { product: {
+          product_id: IDS.SIG_TWO_VARIANTS, merchant_id: IDS.SELLER_CONNECTED, pivota_signature_id: IDS.SIG_TWO_VARIANTS,
+          title: 'Night Lotion', brand: { name: 'Shop A' }, price: { current: { amount: 18, currency: 'USD' } }, availability: 'in_stock',
+          variants: TWO_VARIANTS.map((id, i) => ({ variant_id: id, sku_id: id, title: `Size ${i + 1}`, price: { current: { amount: 18, currency: 'USD' } } })),
+        } } } }],
+      };
+    });
+  const twoVariantProduct = (askedId) => ({
+    product_id: askedId, merchant_id: IDS.SELLER_CONNECTED, title: 'Night Lotion', brand: 'Shop A', price: 18, currency: 'USD', in_stock: true,
+    pivota_signature_id: IDS.SIG_TWO_VARIANTS,
+    variants: TWO_VARIANTS.map((id, i) => ({ variant_id: id, sku_id: id, title: `Size ${i + 1}`, price: 18 })),
+  });
+
   const connectedProduct = (askedId) => ({
     product_id: askedId, merchant_id: IDS.SELLER_CONNECTED, title: 'Day Lotion', brand: 'Shop A', price: 18, currency: 'USD', in_stock: true,
     pivota_signature_id: IDS.SIG_CONNECTED,
@@ -205,6 +231,10 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
         && [IDS.SOURCE_CONNECTED, IDS.SIG_CONNECTED].includes(product.product_id)) {
         return [200, { status: 'success', product: connectedProduct(product.product_id) }];
       }
+      if (operation === 'get_product_detail' && product.merchant_id === IDS.SELLER_CONNECTED
+        && [IDS.SOURCE_TWO_VARIANTS, IDS.SIG_TWO_VARIANTS].includes(product.product_id)) {
+        return [200, { status: 'success', product: twoVariantProduct(product.product_id) }];
+      }
       if (operation === 'offers.resolve') return [200, { offers: [] }];
       return [404, { detail: 'NOT_FOUND' }];
     });
@@ -217,7 +247,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4476, env = 
       // Priced when the cart is the connected merchant's: named (the native and ACP doors) or, on the UCP door,
       // which names no merchant, by its product.
       const connected = body && (body.merchant_id === IDS.SELLER_CONNECTED
-        || (refs.length > 0 && refs.every((ref) => ref.product_id === IDS.SIG_CONNECTED)));
+        || (refs.length > 0 && refs.every((ref) => [IDS.SIG_CONNECTED, IDS.SIG_TWO_VARIANTS].includes(ref.product_id))));
       if (!connected) return [422, { detail: { code: 'MERCHANT_NOT_CONNECTED' } }];
       const subtotal = refs.reduce((n, ref) => n + CONNECTED_UNIT_MINOR * Number(ref.quantity), 0);
       quoteSeq += 1;
