@@ -113,8 +113,22 @@ function storefrontHandoffRecordEnabled(env = process.env) {
   return storefrontHandoffFlagOn(env) && partnerIdentityForwardingEnabled(env);
 }
 
+// THE STORE-CART REFERRAL, behind AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED (default OFF). Before the checkout door
+// builds a cart on a seller's own endpoint for a product whose catalog link carries no tracking member, it asks the
+// backend for one referral (src/services/storefrontCartReferral.js; the backend's routes/agent_storefront_referrals.py).
+// The call is signed for the partner (the REQUEST-BOUND v2 token) only while this flag AND
+// PARTNER_IDENTITY_FORWARDING_ENABLED are on; unsigned, the backend records the referral for no partner.
+const STOREFRONT_CART_REFERRAL_ENV = 'AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED';
+const STOREFRONT_CART_REFERRAL_OP = 'ucp_storefront_cart.referral';
+
+function storefrontCartReferralFlagOn(env = process.env) {
+  const raw = env ? env[STOREFRONT_CART_REFERRAL_ENV] : undefined;
+  return /^(1|true|yes|on)$/i.test(String(raw === undefined || raw === null ? '' : raw).trim());
+}
+
 function isBoundOp(operation, env = process.env) {
   if (STOREFRONT_HANDOFF_OPS.has(operation)) return storefrontHandoffRecordEnabled(env);
+  if (operation === STOREFRONT_CART_REFERRAL_OP) return storefrontCartReferralFlagOn(env) && partnerIdentityForwardingEnabled(env);
   return PARTNER_IDENTITY_OPS.has(operation) && partnerIdentityForwardingEnabled(env);
 }
 
@@ -283,6 +297,9 @@ module.exports = {
   STOREFRONT_HANDOFF_OPS,
   storefrontHandoffFlagOn,
   storefrontHandoffRecordEnabled,
+  STOREFRONT_CART_REFERRAL_ENV,
+  STOREFRONT_CART_REFERRAL_OP,
+  storefrontCartReferralFlagOn,
   isBoundOp,
   signBoundIssuingAgentAssertion,
   boundIssuingAgentAssertionHeaders,

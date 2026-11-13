@@ -1,0 +1,290 @@
+{
+  "version": 1,
+  "generated_from": "pivota-backend feat/store-cart-referral at e1fe950dd (routes/agent_storefront_referrals.py), POST /agent/v2/storefront-cart-referrals driven through main.app (its error envelope included) on a scratch sqlite database by a one-off recorder, with the gateway's own body bytes and a request-bound partner assertion where a case names a partner. Per-response 'metadata' (timestamp, request id) removed; click ids replaced by placeholders. All values are placeholders.",
+  "minted_for_partner": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "US",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 200,
+    "body": {
+      "click_id": "clk_000000000000000000000001",
+      "surface": "ucp_storefront_handoff",
+      "attribution": {
+        "utm_source": "pivota",
+        "utm_medium": "create_checkout",
+        "utm_campaign": "US",
+        "pvt_click_id": "clk_000000000000000000000001",
+        "utm_content": "clk_000000000000000000000001"
+      }
+    }
+  },
+  "minted_no_partner": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "US",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 200,
+    "body": {
+      "click_id": "clk_000000000000000000000002",
+      "surface": "ucp_storefront_handoff",
+      "attribution": {
+        "utm_source": "pivota",
+        "utm_medium": "create_checkout",
+        "utm_campaign": "US",
+        "pvt_click_id": "clk_000000000000000000000002",
+        "utm_content": "clk_000000000000000000000002"
+      }
+    }
+  },
+  "minted_market_sg": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "SG"
+    },
+    "status": 200,
+    "body": {
+      "click_id": "clk_000000000000000000000003",
+      "surface": "ucp_storefront_handoff",
+      "attribution": {
+        "utm_source": "pivota",
+        "utm_medium": "create_checkout",
+        "utm_campaign": "SG",
+        "pvt_click_id": "clk_000000000000000000000003",
+        "utm_content": "clk_000000000000000000000003"
+      }
+    }
+  },
+  "minted_market_gb": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "GB",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 200,
+    "body": {
+      "click_id": "clk_000000000000000000000004",
+      "surface": "ucp_storefront_handoff",
+      "attribution": {
+        "utm_source": "pivota",
+        "utm_medium": "create_checkout",
+        "utm_campaign": "GB",
+        "pvt_click_id": "clk_000000000000000000000004",
+        "utm_content": "clk_000000000000000000000004"
+      }
+    }
+  },
+  "market_required": {
+    "request": {
+      "seller_host": "shop-a.example.com"
+    },
+    "status": 400,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "market_required",
+        "details": {
+          "error": "market_required"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "market_required"
+      }
+    }
+  },
+  "market_invalid": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "usa"
+    },
+    "status": 400,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "market_invalid",
+        "details": {
+          "error": "market_invalid"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "market_invalid"
+      }
+    }
+  },
+  "dark": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "US",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 404,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "PRODUCT_NOT_FOUND",
+        "message": "Not Found",
+        "details": {
+          "error": "Not Found"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": "Not Found"
+    }
+  },
+  "assertion_rejected": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "US",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 409,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "CONFLICT",
+        "message": "PARTNER_ASSERTION_REJECTED",
+        "details": {
+          "error": "PARTNER_ASSERTION_REJECTED",
+          "reason": "op",
+          "message": "The partner assertion on this request was refused; it was not made as any partner."
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "PARTNER_ASSERTION_REJECTED",
+        "reason": "op",
+        "message": "The partner assertion on this request was refused; it was not made as any partner."
+      }
+    }
+  },
+  "not_a_service_caller": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "US",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 409,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "CONFLICT",
+        "message": "service_caller_required",
+        "details": {
+          "error": "service_caller_required"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "service_caller_required"
+      }
+    }
+  },
+  "invalid_body": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "US",
+      "buyer_email": "buyer@example.com"
+    },
+    "status": 400,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "Request validation failed",
+        "details": {
+          "validation_errors": [
+            {
+              "field": "body -> buyer_email",
+              "message": "Extra inputs are not permitted",
+              "type": "extra_forbidden"
+            }
+          ]
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": [
+        {
+          "type": "extra_forbidden",
+          "loc": [
+            "body",
+            "buyer_email"
+          ],
+          "msg": "Extra inputs are not permitted",
+          "input": "buyer@example.com"
+        }
+      ]
+    }
+  },
+  "store_unavailable": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "US",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 503,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "EXTERNAL_SERVICE_ERROR",
+        "message": "referral_store_unavailable",
+        "details": {
+          "error": "referral_store_unavailable"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "referral_store_unavailable"
+      }
+    }
+  },
+  "rows_written": [
+    {
+      "click_id": "clk_000000000000000000000001",
+      "agent_id": "agent_partner_a",
+      "surface": "ucp_storefront_handoff"
+    },
+    {
+      "click_id": "clk_000000000000000000000002",
+      "agent_id": null,
+      "surface": "ucp_storefront_handoff"
+    },
+    {
+      "click_id": "clk_000000000000000000000003",
+      "agent_id": null,
+      "surface": "ucp_storefront_handoff"
+    },
+    {
+      "click_id": "clk_000000000000000000000004",
+      "agent_id": null,
+      "surface": "ucp_storefront_handoff"
+    }
+  ],
+  "market_unknown": {
+    "request": {
+      "seller_host": "shop-a.example.com",
+      "market": "ZZ",
+      "merchant_id": "merch_obs_shop_a"
+    },
+    "status": 400,
+    "body": {
+      "status": "error",
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "market_unknown",
+        "details": {
+          "error": "market_unknown"
+        },
+        "documentation_url": "https://api.pivota.cc/agent/docs/overview"
+      },
+      "detail": {
+        "error": "market_unknown"
+      }
+    }
+  }
+}

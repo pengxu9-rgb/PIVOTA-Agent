@@ -50,6 +50,7 @@ const {
   SEED_LINK_MINT_OP,
   isBoundOp,
   boundIssuingAgentAssertionHeaders,
+  issuingSubjectFromInvokeContext,
 } = require('./attribution/issuingAgentAssertion');
 const { callerLogFields, isLoopbackSelfCall } = require('./attribution/callerLogFields');
 const { createMcpToolCallRecorder, mcpCallerTier } = require('./observability/mcpToolCallOutcome');
@@ -32241,15 +32242,40 @@ function getStorefrontHandoffClient(deps = {}) {
   return client;
 }
 
+// THE STORE-CART REFERRAL (src/services/storefrontCartReferral.js). Called by the checkout door only while
+// AGENT_CHECKOUT_UCP_CART_REFERRAL_ENABLED is on (read per call there). The backend is called with this gateway's OWN
+// key; the partner's REQUEST-BOUND (v2) assertion is added when the request has a partner and
+// PARTNER_IDENTITY_FORWARDING_ENABLED is on. With no partner the call is still made: the referral is then no agent's.
+let storefrontCartReferralClient = null;
+function getStorefrontCartReferralClient(deps = {}) {
+  if (storefrontCartReferralClient && !deps.fresh) return storefrontCartReferralClient;
+  const { createStorefrontCartReferralClient } = require('./services/storefrontCartReferral');
+  const client = createStorefrontCartReferralClient({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    authHeaders: () => (PIVOTA_API_KEY
+      ? buildInvokeUpstreamAuthHeaders({ forceInternalFallback: true, forwardAgentUserJwt: false, forwardBuyerRef: false })
+      : null),
+    signRequest: ({ op, method, url, rid, rawBody }) =>
+      boundIssuingAgentAssertionHeaders({ op, invokeContext: getInvokeAuthContext() || {}, method, url, rid, rawBody }),
+    logger,
+  });
+  if (!deps.fresh) storefrontCartReferralClient = client;
+  return client;
+}
+
 // The executor's `readStorefrontHandoff`: null (= not handled, kernel path) while the switches are off. An esc id that
 // does not decode is not one of ours (null: kernel path, as before); one that decodes but carries no record is
 // `unrecorded`, never "not found".
 function buildReadStorefrontHandoff(client) {
-  return async (orderId) => {
+  return async (orderId, ctx) => {
     const { storefrontHandoffRecordEnabled } = require('./services/storefrontHandoffRecord');
     if (!storefrontHandoffRecordEnabled()) return null;
-    const { decodeEscalationId, escalationRecordIdOf } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
+    const { decodeEscalationId, escalationRecordIdOf, escalationIdReadable } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
     if (!decodeEscalationId(orderId)) return null;
+    // An id bound to another buyer (AGENT_CHECKOUT_STORE_CART_ID_BINDING) is an id that is not one of these: the
+    // kernel path answers it as it answers any order id it never tracked.
+    if (!escalationIdReadable(orderId, ctx && ctx.user_ref, process.env)) return null;
     const recordId = escalationRecordIdOf(orderId);
     if (!recordId) return { kind: 'unrecorded' };
     return client.read(recordId, orderId);
@@ -34426,6 +34452,16 @@ async function getCommerceRemoteMcpAdapter() {
         attributeSearchResult: attributeCommerceSearchPerResponse,
         // FIX_PLAN O-02: each UCP storefront hand-off recorded for the partner that asked (dark by default).
         storefrontHandoff: getStorefrontHandoffClient(),
+        // A referral for a store cart whose catalog link carries none (dark by default; read per call by the door).
+        storefrontReferral: getStorefrontCartReferralClient(),
+        // A retried storefront create returns the same checkout (mcp-server/src/storefrontCartIdempotency.js; dark by
+        // default, read per call). Its records live beside the kernel's own state: Postgres whenever the kernel is
+        // durable, which strict checkout requires outside tests.
+        storefrontCartIdempotencyStore: typeof commerce.stateStore === 'function' ? commerce.stateStore('storefront_cart_idempotency') : undefined,
+        // THE PARTNER a retried create is deduplicated for: the verified subject of THIS request, read by the same
+        // function the partner assertion on the referral and the hand-off record is signed from, so the two can
+        // never name different partners. Null (a service or degraded identity): that call is not deduplicated.
+        storefrontCartPartner: () => issuingSubjectFromInvokeContext(getInvokeAuthContext()),
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
