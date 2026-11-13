@@ -20,6 +20,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const fx = require('./_support/intakeKeyQtyDoor.cjs');
+const { assertAnswerCurrency } = require('./_support/answerCurrencies.cjs');
+const { resolveServingCurrency } = require('../src/services/buyerMarket');
 
 const { IDS } = fx;
 let door;
@@ -408,31 +410,67 @@ test('ACP REST update: a line above the ceiling is answered before the session i
 // ---- /mcp: the partner door's own storefront cart ---------------------------------------------------------------------
 
 test('/mcp storefront cart (its switch on): 999 units reach the store; a line above the ceiling, a short key and a bad key reach nothing', async () => {
-  const FLAG = 'AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED';
-  const saved = process.env[FLAG];
-  process.env[FLAG] = '1';
+  // This door's storefront path runs only with the currency rule on as well (mcp-server/src/mcpStorefrontCart.js):
+  // both switches, as that path is ever served.
+  const FLAGS = ['AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED', 'AGENT_CHECKOUT_UCP_CURRENCY_FOLLOWS_MARKET'];
+  const saved = FLAGS.map((flag) => process.env[flag]);
+  for (const flag of FLAGS) process.env[flag] = '1';
   try {
-    const cart = (key, quantity) => ({ ...fx.withKey(key, { quote: fx.nativeQuote(quantity, { product: IDS.SIG_STORE, merchant: IDS.SELLER_STORE, variant: null }) }), market: 'US' });
+    // `market`: null = the request names none.
+    const cart = (key, quantity, market = 'US') => ({ ...fx.withKey(key, { quote: fx.nativeQuote(quantity, { product: IDS.SIG_STORE, merchant: IDS.SELLER_STORE, variant: null }) }), ...(market === null ? {} : { market }) });
     door.resetGate();
     const at = await door.call('/mcp', 'create_checkout_session', cart(freshKey(), 999));
     assert.equal(at.isError, false, at.raw.slice(0, 300));
     const sent = at.store.find((c) => c.tool === 'create_cart');
     assert.ok(sent, `the seller's store was asked for a cart: ${at.raw.slice(0, 300)}`);
     assert.equal(sent.arguments.cart.line_items[0].quantity, 999);
+    // THE PRICED ANSWER IS IN THE REQUEST MARKET'S CURRENCY, and states no other: the request names US, the seller
+    // is priced in USD. The market's currency comes from the gateway's one source, not from a table here.
+    assertAnswerCurrency(JSON.parse(at.raw), resolveServingCurrency('US'), 'US x a USD seller, 999 units');
+    assert.equal(resolveServingCurrency('US'), 'USD');
 
-    door.resetGate();
-    for (const quantity of [1000, 900000000]) {
-      assertQuantityAboveMaximum(await door.call('/mcp', 'create_checkout_session', cart(freshKey(), quantity)), `storefront ${quantity}`);
+    // OTHER MARKETS, WITHIN BOTH BOUNDS: this seller is priced in USD, so a request for a market with another
+    // currency is refused by name and states no price, and so is a request for a market the gateway's source has
+    // no currency for; a request that names no market, or a market that is not known, is refused by name too. No
+    // store is asked for a cart in any of them.
+    for (const market of ['SG', 'GB', 'DE']) {
+      door.resetGate();
+      const other = await door.call('/mcp', 'create_checkout_session', cart(freshKey(), 999, market));
+      assert.equal(other.isError, true, `${market}: ${other.raw.slice(0, 300)}`);
+      const expected = resolveServingCurrency(market) ? 'seller_not_priced_in_market_currency' : 'market_not_priced';
+      assert.equal(other.value.error.detail.reason, expected, `${market}: ${other.raw.slice(0, 300)}`);
+      assert.notEqual(resolveServingCurrency(market), 'USD', market);
+      assertAnswerCurrency(JSON.parse(other.raw), resolveServingCurrency(market), `${market} x a USD seller`);
+      assert.equal(other.store.some((c) => c.tool === 'create_cart'), false, market);
     }
-    for (const key of ['abcdefg', 'k', 'abc     ']) {
-      assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', cart(key, 1)), `storefront ${JSON.stringify(key)}`);
-    }
-    for (const key of BAD_CHARACTER_KEYS) {
-      assertKeyBadCharacters(await door.call('/mcp', 'create_checkout_session', cart(key, 1)), `storefront ${JSON.stringify(key)}`);
+    const noMarket = await door.call('/mcp', 'create_checkout_session', cart(freshKey(), 999, null));
+    assert.equal(noMarket.isError, true, noMarket.raw.slice(0, 600));
+    assert.equal(noMarket.value.error.detail.reason, 'market_required_for_seller_storefront', noMarket.raw.slice(0, 300));
+    assert.equal(noMarket.store.some((c) => c.tool === 'create_cart'), false);
+    const unknown = await door.call('/mcp', 'create_checkout_session', cart(freshKey(), 999, 'ZZ'));
+    assert.equal(unknown.isError, true, unknown.raw.slice(0, 300));
+    assert.match(unknown.raw, /ZZ/, 'an unknown market is refused by name');
+    assert.equal(unknown.store.some((c) => c.tool === 'create_cart'), false);
+
+    // THE TWO BOUNDS ARE DECIDED ON THE REQUEST ALONE: the same refusal for every market, named or not, known or
+    // not, and nothing is sent anywhere.
+    for (const market of ['US', 'SG', 'GB', 'DE', null, 'ZZ']) {
+      door.resetGate();
+      for (const quantity of [1000, 900000000]) {
+        assertQuantityAboveMaximum(await door.call('/mcp', 'create_checkout_session', cart(freshKey(), quantity, market)), `storefront ${quantity} ${market}`);
+      }
+      for (const key of ['abcdefg', 'k', 'abc     ']) {
+        assertKeyTooShort(await door.call('/mcp', 'create_checkout_session', cart(key, 1, market)), `storefront ${JSON.stringify(key)} ${market}`);
+      }
+      for (const key of BAD_CHARACTER_KEYS) {
+        assertKeyBadCharacters(await door.call('/mcp', 'create_checkout_session', cart(key, 1, market)), `storefront ${JSON.stringify(key)} ${market}`);
+      }
     }
   } finally {
-    if (saved === undefined) delete process.env[FLAG];
-    else process.env[FLAG] = saved;
+    FLAGS.forEach((flag, i) => {
+      if (saved[i] === undefined) delete process.env[flag];
+      else process.env[flag] = saved[i];
+    });
   }
 });
 

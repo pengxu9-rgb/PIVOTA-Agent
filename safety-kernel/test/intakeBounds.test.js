@@ -654,6 +654,10 @@ const QUANTITY_PATHS = [
   'mcp-server/src/ucpArgumentAdapter.js',
   'mcp-server/src/ucpCheckoutEscalation.js',
   'mcp-server/src/mcpStorefrontCart.js',
+  // The storefront cart's retry ledger, its pricing door and its referral: they once held a key minimum of their own.
+  'mcp-server/src/storefrontCartIdempotency.js',
+  'mcp-server/src/ucpMerchantDoorPricing.js',
+  'src/services/storefrontCartReferral.js',
   'mcp-server/src/operationMap.js',
   'mcp-server/src/secureInvoke.js',
   'src/schema.js',
@@ -819,9 +823,18 @@ test('no other rule about a key\'s length on the doors: every remaining literal 
     readFileSync(join(REPO, file), 'utf8').split('\n').forEach((line) => {
       const code = line.replace(/\/\/.*$/, '');
       if (/^\s*\*/.test(code)) return;
-      if (/minLength:\s*8\b|\.min\(8\)|length\s*(?:<|>=|>|<=)\s*8\b|MIN_LENGTH\s*=\s*8\b/.test(code)) hits.push(`${file}: ${code.trim()}`);
+      if (/minLength:\s*8\b|\.min\(8\)|length\s*(?:<|>=|>|<=)\s*8\b|MIN_(?:[A-Z]+_)*LENGTH\s*=\s*8\b/.test(code)) hits.push(`${file}: ${code.trim()}`);
     });
   }
+  // The storefront cart's retry ledger keeps no key rule under any name: no minimum, no reason, no check of its own.
+  const ledgerSource = readFileSync(join(REPO, 'mcp-server/src/storefrontCartIdempotency.js'), 'utf8');
+  for (const forbidden of [/MIN_KEY_LENGTH/, /KEY_TOO_SHORT/, /LongEnough/, /idempotency_key_too_short/, /key_too_short/]) {
+    assert.equal(forbidden.test(ledgerSource), false, String(forbidden));
+  }
+  // And the create path asks the shared rule, on the key as sent, before it derives the key it deduplicates on.
+  const lane = readFileSync(join(REPO, 'mcp-server/src/ucpCheckoutEscalation.js'), 'utf8');
+  const asked = lane.indexOf('if (storeCartIdempotencyEnabled(env)) assertIdempotencyKeyAcceptable(own(params, "idempotency_key"));');
+  assert.ok(asked > 0 && asked < lane.indexOf('const idempotencyKey = str(own(params, "idempotency_key"));'));
   assert.deepEqual(hits, [
     // THE number.
     'safety-kernel/src/protocol/intakeBounds.cjs: const IDEMPOTENCY_KEY_MIN_LENGTH = 8;',

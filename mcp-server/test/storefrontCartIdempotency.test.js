@@ -2,7 +2,8 @@
 // itself and the lane. The doors end to end: tests/store_cart_idempotency_door.node.test.cjs.
 //
 // Pinned here: the switch; what "the same request" is (the market included); THE SCOPE (door, partner, buyer,
-// session, key), that a call with no partner or no session is never deduplicated, and the key's minimum length;
+// session, key), that a call with no partner or no session is never deduplicated, and that which keys are accepted
+// is the shared intake rule's alone (this path holds no rule of its own, on a first build or on a replay);
 // what is stored and that only the same scope can open it; one build under concurrency, the loser reading the winner's checkout; the terminal
 // refusal for another request under the key; the retriable answer while the first is still building; fail open,
 // counted, when there is no store or the store fails; a build that hands out nothing leaves no record.
@@ -13,7 +14,7 @@ import assert from 'node:assert/strict';
 
 import {
   STORE_CART_IDEMPOTENCY_FLAG, CLAIM_LEASE_MS, KEY_REUSED_REASON, IN_FLIGHT_REASON, STORE_CART_IDEMPOTENCY_NAMESPACE,
-  MIN_KEY_LENGTH, KEY_TOO_SHORT_REASON, partnerPrincipalOf, assertKeyLongEnough,
+  partnerPrincipalOf,
   storeCartIdempotencyEnabled, storeCartIdempotencyCounts, resetStoreCartIdempotencyCountsForTest,
   canonicalRequest, requestFingerprint, recordKey, sealCheckoutId, openCheckoutId, runIdempotentCart, storedFingerprint,
 } from '../src/storefrontCartIdempotency.js';
@@ -22,6 +23,27 @@ import { UCP_ESCALATION_FLAG, ESCALATION_TTL_MS, ID_BINDING_SECRET_ENV, tryEscal
 import { InMemoryKvStore } from '../../safety-kernel/src/stores.js';
 import { createCommerceMount } from '../../safety-kernel/src/mount.js';
 import { PivotaCommerceError } from '../../safety-kernel/src/errors.js';
+import {
+  IDEMPOTENCY_KEY_MIN_LENGTH, IDEMPOTENCY_KEY_TOO_SHORT_REASON, IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
+  assertIdempotencyKeyAcceptable, surfaceableIntakeRefusal,
+} from '../../safety-kernel/src/protocol/buyerIntake.js';
+import * as ledgerModule from '../src/storefrontCartIdempotency.js';
+
+// What the shared intake rule answers for a key it refuses: the code a missing key gets, a reason of its own, never
+// retriable, and a detail that states the bound and nothing from the request.
+const refusedAs = (reason) => (err) => {
+  assert.ok(err instanceof PivotaCommerceError, String(err));
+  assert.equal(err.code, 'IDEMPOTENCY_CONFLICT');
+  assert.equal(err.retriable, false);
+  assert.equal(err.detail.reason, reason);
+  // What a door surfaces for it.
+  assert.deepEqual(surfaceableIntakeRefusal(err).detail, reason === IDEMPOTENCY_KEY_TOO_SHORT_REASON
+    ? { reason: 'idempotency_key_too_short', min_length: 8 }
+    : { reason: 'idempotency_key_bad_characters', accepted_characters: 'printable ASCII, U+0020 to U+007E' });
+  return true;
+};
+const TOO_SHORT = refusedAs(IDEMPOTENCY_KEY_TOO_SHORT_REASON);
+const BAD_CHARACTERS = refusedAs(IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON);
 
 const PARTNER_A = partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_a' });
 const PARTNER_B = partnerPrincipalOf({ kind: 'agent', sub: 'agent_partner_b' });
@@ -306,14 +328,24 @@ describe('the partner', () => {
 
 describe('the key\'s minimum length', () => {
   test('the published minimum: 8', () => {
-    assert.equal(MIN_KEY_LENGTH, 8);
+    // The shared intake rule's number. This module carries no minimum, no reason and no check of its own.
+    assert.equal(IDEMPOTENCY_KEY_MIN_LENGTH, 8);
+    assert.deepEqual(Object.keys(ledgerModule).filter((name) => /LENGTH|SHORT|LongEnough|KEY_TOO/i.test(name)), []);
   });
   test('7 characters: refused with the code a missing key gets and a reason of its own; 8: accepted', () => {
-    assert.throws(() => assertKeyLongEnough('1234567'), (err) => err instanceof PivotaCommerceError && err.code === 'IDEMPOTENCY_CONFLICT'
-      && err.detail.reason === KEY_TOO_SHORT_REASON && err.detail.min_length === 8 && err.retriable === false);
-    assert.throws(() => assertKeyLongEnough('a'), (err) => err.code === 'IDEMPOTENCY_CONFLICT');
-    assert.equal(assertKeyLongEnough('12345678'), undefined);
-    assert.deepEqual(storeCartIdempotencyCounts(), { key_too_short: 2 });
+    assert.throws(() => assertIdempotencyKeyAcceptable('1234567'), TOO_SHORT);
+    assert.throws(() => assertIdempotencyKeyAcceptable('a'), TOO_SHORT);
+    assert.equal(assertIdempotencyKeyAcceptable('12345678'), undefined);
+    // The rule is not this module's, and neither is a count of it.
+    assert.deepEqual(storeCartIdempotencyCounts(), {});
+  });
+  test('a key outside printable ASCII is refused by name whatever its length; DEL is not printable; 8 printable characters with a space inside are accepted', () => {
+    for (const key of ['cl\u00e9-0000001', '\u30ad\u30fc-0000001', 'idem\u007f0001', 'idem\u00000001', 'idem\u200b0001', '\u{1F511}\u{1F511}\u{1F511}\u{1F511}', 'idem-key\n']) {
+      assert.throws(() => assertIdempotencyKeyAcceptable(key), BAD_CHARACTERS, JSON.stringify(key));
+    }
+    assert.equal(assertIdempotencyKeyAcceptable('idem 008'), undefined);
+    assert.equal(assertIdempotencyKeyAcceptable('~!@#$%^&'), undefined);
+    assert.deepEqual(storeCartIdempotencyCounts(), {});
   });
 
   test('a build that hands out no checkout (a decline) leaves no record: the retry builds again', async () => {
@@ -460,6 +492,33 @@ describe('the lane', () => {
     };
   }
   const AGENT_A = { kind: 'agent', sub: 'agent_partner_a' };
+  // A store that notes every call made to it.
+  function watched(store) {
+    store.touched = [];
+    for (const method of ['get', 'has', 'set', 'putIfAbsent', 'compareAndSet', 'compareAndDelete', 'delete']) {
+      if (typeof store[method] !== 'function') continue;
+      const real = store[method].bind(store);
+      store[method] = (...args) => { store.touched.push(method); return real(...args); };
+    }
+    return store;
+  }
+  // A finished record placed in the ledger directly, under any key at all, for the request `create` sends by
+  // default: the checkout is one a create really handed out (built with the ledger off), recorded under the scope
+  // the lane would use for `key`.
+  async function seedRecord({ store, door, key, idempotencyDoor = 'ucp' }) {
+    const made = await create({ env: { ...ON, [STORE_CART_IDEMPOTENCY_FLAG]: '' }, store, door, key: 'idem-seed-build-01', idempotencyDoor });
+    await runIdempotentCart({
+      store,
+      scope: { door: idempotencyDoor, partner: partnerPrincipalOf(AGENT_A), userRef: 'buyer-0001', sessionId: 'sess-0001', rawKey: key.trim(), serverKey: SERVER_KEY },
+      fingerprint: requestFingerprint(canonicalRequest({
+        items: [{ product_id: SEED.product_id, quantity: 2 }], market: 'US', marketAssumed: false, discountCodes: [null, null],
+      })),
+      ttlMs: TTL, now: () => 5000,
+      build: async () => ({ answer: made, id: made.id }),
+      replay: async () => { throw new Error('seeding never replays'); },
+    });
+    return made;
+  }
   const create = ({ env = ON, store, door, key = 'idem-lane-0001', quantity = 2, market = 'US', user = 'buyer-0001', session = 'sess-0001', partner = AGENT_A, email, now = 5000, idempotencyDoor }) => tryEscalateUcpCheckout({
     op: { id: 'create_checkout_session' }, ctx: { user_ref: user, ...(session ? { acp_session_id: session } : {}) },
     idempotencyPartner: typeof partner === 'function' ? partner : () => partner,
@@ -643,17 +702,62 @@ describe('the lane', () => {
         params: { idempotency_key: 'idem-07', quote: { items: [{ product_id: SEED.product_id, quantity: 1 }] } },
         executor, ucpArgs: { checkout: { context: { address_country: 'US' } } }, env: ON, now: 5000, merchantDoor: door, idempotencyStore: store, shouldOfferPurchase,
       }),
-      (err) => err.code === 'IDEMPOTENCY_CONFLICT' && err.detail.reason === KEY_TOO_SHORT_REASON,
+      TOO_SHORT,
     );
     assert.deepEqual([door.calls.length, gate.length, store._m.size], [0, 0, 0]);
     // A short key is refused whoever calls: the rule is the key's, not the scope's.
-    await assert.rejects(create({ store, door, key: 'idem-07', partner: null }), (err) => err.detail.reason === KEY_TOO_SHORT_REASON);
-    await assert.rejects(create({ store, door, key: '  1234567  ' }), (err) => err.detail.reason === KEY_TOO_SHORT_REASON, 'surrounding blanks do not count');
+    await assert.rejects(create({ store, door, key: 'idem-07', partner: null }), TOO_SHORT);
+    await assert.rejects(create({ store, door, key: '  1234567  ' }), TOO_SHORT, 'surrounding blanks do not count');
     assert.equal(door.calls.length, 0);
     assert.ok((await create({ store, door, key: 'idem-008' })).id);
+    // Flag off: THIS FUNCTION does not use the key at all, so it does not judge it (as before). The doors do, for
+    // every mutating call, before they call this (tests/store_cart_idempotency_scope_door.node.test.cjs).
     const off = { ...ON, [STORE_CART_IDEMPOTENCY_FLAG]: '' };
     assert.ok((await create({ env: off, store, door, key: 'abc' })).id);
     assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 2);
+    assert.deepEqual(storeCartIdempotencyCounts(), { claimed: 1 }, 'no count of a refused key on this path');
+  });
+
+  test('a key outside printable ASCII, on either door\'s scope: refused by name before the gate, the store and the ledger; the key is judged as sent, not as trimmed', async () => {
+    for (const env of [ON]) {
+      for (const idempotencyDoor of ['ucp', 'mcp']) {
+        const store = watched(new InMemoryKvStore());
+        const door = fakeDoor();
+        // Each long enough, so none is short: a letter outside ASCII, DEL, a control character, an invisible
+        // format character, and a no-break space around a key that would be long enough once trimmed.
+        for (const key of ['cl\u00e9-lane-0001', 'idem\u007flane-01', 'idem\u0001lane-01', 'idem\u200blane-01', '\u00a0idem-lane-01\u00a0']) {
+          await assert.rejects(create({ env, store, door, key, idempotencyDoor }), BAD_CHARACTERS, JSON.stringify(key));
+        }
+        assert.deepEqual([door.calls.length, store.touched.length, store._m.size], [0, 0, 0]);
+      }
+    }
+    assert.deepEqual(storeCartIdempotencyCounts(), {});
+  });
+
+  test('A REPLAY IS JUDGED BY THE SHARED KEY RULE TOO: a record that exists under a key the rule refuses is never looked up, never served', async () => {
+    for (const idempotencyDoor of ['ucp', 'mcp']) {
+      resetStoreCartIdempotencyCountsForTest();
+      const store = watched(new InMemoryKvStore());
+      const door = fakeDoor();
+      // THE CONTROL: a record seeded this way under an acceptable key IS a replay (so the seeding below is faithful).
+      const seeded = await seedRecord({ store, door, key: 'idem-seeded-01', idempotencyDoor });
+      const callsAfterSeed = door.calls.length;
+      const replayed = await create({ store, door, key: 'idem-seeded-01', idempotencyDoor });
+      assert.equal(replayed.id, seeded.id);
+      assert.deepEqual(door.calls.slice(callsAfterSeed).map((c) => c[0]), ['get_cart']);
+      assert.deepEqual(storeCartIdempotencyCounts(), { claimed: 1, replayed: 1 });
+      // Records under keys the rule refuses (as a record made before the rule would be).
+      for (const [key, refusal] of [['cl\u00e9-seeded-01', BAD_CHARACTERS], ['idem\u007fseeded-1', BAD_CHARACTERS], ['idem-07', TOO_SHORT]]) {
+        await seedRecord({ store, door, key, idempotencyDoor });
+        const before = [door.calls.length, store._m.size];
+        store.touched.length = 0;
+        resetStoreCartIdempotencyCountsForTest();
+        await assert.rejects(create({ store, door, key, idempotencyDoor }), refusal, JSON.stringify(key));
+        assert.deepEqual([door.calls.length, store._m.size], before, 'no cart is built or read back, no record written');
+        assert.deepEqual(store.touched, [], 'the ledger is not asked at all');
+        assert.deepEqual(storeCartIdempotencyCounts(), {});
+      }
+    }
   });
 
   test('no verified buyer or no key on the call: not deduplicated (and never thrown for)', async () => {
