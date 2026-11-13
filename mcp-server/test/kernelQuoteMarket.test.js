@@ -157,6 +157,13 @@ test('the door marks an update for its session\'s market only on the marked door
     await assert.rejects(surface.callTool('create_checkout_session', { ...createArgs(), judge_session_market: true }, SESSION, ...(options ? [options] : [])), /unknown argument "judge_session_market"/);
     assert.deepEqual(executor.seen, []);
   }
+  // Nor from inside the cart: wherever a caller puts the name, the executor is handed no mark it did not get from the door.
+  for (const nested of [{ quote: { ...createArgs().quote, judge_session_market: true } }, { quote: { ...createArgs().quote, items: [{ ...createArgs().quote.items[0], judge_session_market: true }] } }]) {
+    const executor = recordingExecutor();
+    // The declared schema refuses the name at any depth, before anything is read; so nothing reaches the executor.
+    await assert.rejects(createCommerceToolSurface(executor, { cache: false }).callTool('update_checkout_session', { ...updateArgs, ...nested }, SESSION), /judge_session_market/);
+    assert.deepEqual(executor.seen, []);
+  }
   // A create is never marked, and neither are the other checkout tools.
   const create = recordingExecutor();
   await createCommerceToolSurface(create, { cache: false }).callTool('create_checkout_session', createArgs({ market: 'SG' }), SESSION, ON);
