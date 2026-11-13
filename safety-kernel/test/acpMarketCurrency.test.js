@@ -1132,3 +1132,62 @@ test('the country travels as the market it was read as: the quote and the order 
   assert.equal((await door.complete(other, 'us\n')).status, 200);
   assert.equal(door.ops('create_order')[0].payload.order.shipping_address.country, 'US');
 });
+
+test('cancelling again is the same answer: from the record when it says so, and from the claim when the record could not be written', async () => {
+  // The record could not be written after the first cancel: the claim is held, the record is still open.
+  const door = sessionDoor();
+  const id = (await door.create('merch_USD', 'US')).body.id;
+  door.fail.compareAndSet = 1;
+  assert.equal((await door.cancel(id)).status, 200);
+  assert.equal('canceled' in (await door.record(id)), false, 'the write failed');
+  // The next cancel finds the cancellation's own claim, is not refused, and writes the record.
+  assert.equal((await door.cancel(id)).status, 200);
+  assert.equal((await door.record(id)).canceled, true);
+  assert.equal((await door.complete(id, undefined)).body.code, 'ORDER_CANCELED');
+  assert.deepEqual(door.ops('submit_payment'), []);
+
+  // The record says cancelled: the answer is given from it, and the executor is not asked again.
+  const asked = [];
+  const base = sessionDoor();
+  const adapter = createAcpRestAdapter({
+    executor: { execute: async (opId) => { asked.push(opId); return { status: 'canceled' }; } },
+    sessionStore: base.store, signingSecret: SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }), marketCurrencyOf, now: () => FIXED_NOW,
+  });
+  await base.inner.set('sess_again', { quote_id: 'q_stub', order_id: null, user_ref: 'buyer_1', rev: 'r0' });
+  assert.equal((await adapter.cancelCheckoutSession(req({ id: 'sess_again', body: {} }))).status, 200);
+  assert.equal((await adapter.cancelCheckoutSession(req({ id: 'sess_again', body: {} }))).status, 200);
+  assert.deepEqual(asked, ['cancel_checkout_session'], 'asked once');
+});
+
+test('only the ACP door\'s cancellation claims the session: the same member on another door\'s cancel changes nothing, and that session is completed as before', async () => {
+  const QUOTE_BODY = { merchant_id: 'merch_USD', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test' };
+  for (const [ctx, claims] of [
+    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' }, true],
+    [{ user_ref: 'u1', acp_session_id: 's1' }, false],
+    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'mcp' }, false],
+  ]) {
+    const door = sessionDoor();
+    const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}), verifyPaymentAuthorization: async (_a, bound) => ({ ok: true, amount: bound.amount, currency: bound.currency, user_ref: bound.user_ref }) });
+    const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0001', quote: QUOTE_BODY }, ctx);
+    const cancelled = await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0002', session_id: session.session_id, cancel_claims_session: true }, ctx);
+    assert.equal(cancelled.status, 'canceled');
+    assert.equal(await door.kernel.isQuoteClaimed(session.session_id), claims);
+    const completing = executor.execute('complete_checkout_session', { idempotency_key: 'idem-claim-0003', session_id: session.session_id, payment_authorization: { token: 'tok_1' } }, ctx);
+    if (claims) {
+      const err = await refusal(completing);
+      assert.equal(err.code, 'QUOTE_ALREADY_USED');
+      assert.equal(err.detail.claim, 'canceled');
+      assert.deepEqual(door.ops('submit_payment'), []);
+    } else {
+      await completing; // as before this rule, on a door that does not state it
+      assert.equal(door.ops('submit_payment').length, 1);
+    }
+  }
+  // Without the statement, the ACP door's own ctx claims nothing either.
+  const door = sessionDoor();
+  const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}) });
+  const ctx = { user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' };
+  const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0004', quote: QUOTE_BODY }, ctx);
+  await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0005', session_id: session.session_id }, ctx);
+  assert.equal(await door.kernel.isQuoteClaimed(session.session_id), false);
+});
