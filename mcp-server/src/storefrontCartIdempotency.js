@@ -40,10 +40,10 @@
 //
 // WHICH KEYS ARE ACCEPTED IS NOT DECIDED HERE. A key's alphabet and its minimum length are the shared intake rule's
 // (safety-kernel/src/protocol/intakeBounds.cjs), the one rule every checkout door applies to a key that is present,
-// whatever this flag says. Both doors apply it before they reach this path, and with this flag on the create path
-// applies it again to the key exactly as sent before it asks this module for anything (ucpCheckoutEscalation.js),
-// so a key that rule refuses is never claimed, never looked up and never replayed. This module holds no number
-// and no reason of its own for a key.
+// whatever this flag says. Both doors apply it to the key exactly as sent before they reach this path, and with
+// this flag on the create path applies it again, to the key it is about to use, before it asks this module for
+// anything (ucpCheckoutEscalation.js), so a key that rule refuses is never claimed, never looked up and never
+// replayed. This module holds no number and no reason of its own for a key.
 //
 // THE GUARANTEE, stated exactly. While the store answers, at most one create per scope is building at a
 // time, for as long as its claim's lease (CLAIM_LEASE_MS) holds. A build slower than the lease can be overlapped

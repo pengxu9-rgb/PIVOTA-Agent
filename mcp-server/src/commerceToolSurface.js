@@ -61,6 +61,7 @@ import {
   ucpInputSchemasFor,
   ucpToolDescriptionsFor,
   ucpToNativeToolArgs,
+  ucpIdempotencyKeyAsSent,
   ucpRecoverToNativeToolArgs,
   ucpResumeToNativeToolArgs,
   UCP_REAP_RECOVER_INPUT_SCHEMA,
@@ -487,7 +488,13 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     operations that carry a cart. An absent key is answered where it always was. The two vendor tools that
     //     continue an EARLIER create (recover, resume) are not judged here: they must present that create's own
     //     key and cart, and they never reach the storefront cart or the kernel. See buyerIntake.js.
+    //     THE KEY IS JUDGED AS SENT, ON EVERY DOOR. The native door's `params.idempotency_key` is the argument
+    //     untouched. The UCP mapper has already removed the whitespace around `meta["idempotency-key"]` (the key
+    //     that door stores and forwards), so on that dialect the rule is asked about the key as it arrived
+    //     (`ucpIdempotencyKeyAsSent`) first: a key padded with a no-break space, a tab or a newline is refused
+    //     there exactly as it is here, with the same code, reason and detail.
     if (!recoverOnly && !resumeOnly) {
+      if (op.mutating && dialect === TOOL_DIALECTS.ucp) assertIdempotencyKeyAcceptable(ucpIdempotencyKeyAsSent(toolArgs));
       if (op.mutating) assertIdempotencyKeyAcceptable(params.idempotency_key);
       if (QUOTE_INTAKE_OPS.includes(op.id)) assertLineQuantitiesWithinMaximum(asObj(params.quote).items);
     }

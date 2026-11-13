@@ -341,14 +341,12 @@ test('a key with a character outside printable ASCII is refused by name on every
     for (const [tool, args] of Object.entries(nativeMutations(sid))) {
       assertKeyBadCharacters(await door.call('/mcp', tool, fx.withKey(key, args)), `/mcp ${tool} ${label}`);
     }
-    // This door has always trimmed the key before using it, so whitespace AROUND a key (a trailing newline) is
-    // gone before the key is judged; the key it uses is clean. The native door uses the key as sent, and refuses it.
-    if (!/^[\x20-\x7E]*$/.test(key.trim())) {
+    // The key is judged as sent on this door too: whitespace AROUND a key (a trailing newline) is refused here as
+    // on the native door, although this door would have removed it before using the key.
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) }), `/ucp/mcp create storefront ${label}`);
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 1) }), `/ucp/mcp create kernel ${label}`);
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'update_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 2) }), `/ucp/mcp update ${label}`);
     assertKeyBadCharacters(await door.call('/ucp/mcp', 'complete_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: ucpPayment }), `/ucp/mcp complete ${label}`);
-    }
     for (const [way, route, strict] of INVOKE_WAYS) {
       for (const [operation, payload] of [['preview_quote', invokeQuote(1, { idempotency_key: key })], ['create_order', invokeOrder(key, 1)]]) {
         assertInvokeRefusal(await door.invoke(route, operation, payload, { strict }), INVOKE_KEY_BAD_CHARACTERS_REFUSAL, 409, `invoke ${way} ${operation} ${label}`);
@@ -373,6 +371,34 @@ test('a key with a character outside printable ASCII is refused by name on every
       }, `ACP ${name} ${JSON.stringify(key)}`);
       sentNothing(r, `ACP ${name} ${JSON.stringify(key)}`);
     }
+  }
+});
+
+// A good key with whitespace around it that is not an ASCII space: every one of these is removed by `trim()`.
+const PADDED_KEYS = ['\u00a0idem-pad-0001\u00a0', 'idem-pad-0001\u00a0', '\u00a0idem-pad-0001', 'idem-pad-0001\n', 'idem-pad-0001\r\n', '\tidem-pad-0001', '\u3000idem-pad-0001', 'idem-pad-0001\ufeff', 'idem-pad-0001\u2028', ' idem-pad-0001\u00a0 '];
+
+test('/ucp/mcp and /mcp refuse the same padded keys with the same answer: the key is judged as sent on both, and nothing is sent', async () => {
+  const sid = await kernelSession();
+  for (const key of PADDED_KEYS) {
+    const label = JSON.stringify(key);
+    const native = await door.call('/mcp', 'create_checkout_session', fx.withKey(key, { quote: fx.nativeQuote(1) }));
+    assertKeyBadCharacters(native, `/mcp create ${label}`);
+    for (const [name, r] of [
+      ['create storefront', await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1) })],
+      ['create kernel', await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(key), checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 1) })],
+      ['update', await door.call('/ucp/mcp', 'update_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: fx.ucpCheckout(IDS.SIG_CONNECTED, 2) })],
+      ['complete', await door.call('/ucp/mcp', 'complete_checkout', { meta: fx.ucpMeta(key), id: sid, checkout: ucpPayment })],
+    ]) {
+      assertKeyBadCharacters(r, `/ucp/mcp ${name} ${label}`);
+      assert.deepEqual(errorOf(r), errorOf(native), `/ucp/mcp ${name} ${label}: the same answer as /mcp`);
+    }
+  }
+  // The same key with only ASCII spaces around it is accepted on both doors, in every market the store cart prices
+  // and with no market named; an unpriced market is refused by its own name, not by the key rule.
+  for (const market of ['US', 'SG', 'GB', null]) {
+    const ucp = await door.call('/ucp/mcp', 'create_checkout', { meta: fx.ucpMeta(`  ${freshKey()}  `), checkout: fx.ucpCheckout(IDS.SIG_STORE, 1, market) });
+    pastTheKeyGate(ucp, `/ucp/mcp spaces around the key, market ${market}`);
+    pastTheKeyGate(await door.call('/mcp', 'create_checkout_session', fx.withKey(`  ${freshKey()}  `, { quote: fx.nativeQuote(1) })), '/mcp spaces around the key');
   }
 });
 

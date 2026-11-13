@@ -1131,9 +1131,12 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       return null;
     }
     // THE KEY A RETRY IS DEDUPLICATED BY (storefrontCartIdempotency.js) IS JUDGED BY THE SHARED INTAKE RULE
-    // (buyerIntake.js `assertIdempotencyKeyAcceptable`: its alphabet and its minimum length), on the key EXACTLY AS
-    // SENT. Both doors apply that rule to every mutating call before they reach this function, whatever any flag
-    // says; it is applied here too, wherever the key is about to be USED, so that no caller of this function can
+    // (buyerIntake.js `assertIdempotencyKeyAcceptable`: its alphabet and its minimum length). THE RULE'S HOME IS THE
+    // DOOR (commerceToolSurface.js step 3-0): both doors apply it there to the key EXACTLY AS SENT, on every mutating
+    // call, before they reach this function and whatever any flag says. THIS IS A SECOND CHECK, on the key this
+    // function was handed and is about to USE: the argument untouched on the native door, and on the UCP door the
+    // key with the spaces around it removed (ucpArgumentAdapter.js `requireIdempotencyKey`), which is the key that
+    // door stores. No request through a door can fail it; it is kept so that no other caller of this function can
     // reach the gate, the referral, a store or a record (a first build or a replay) under a key the rule refuses.
     // There is no second rule about a key on this path. An absent key is not this rule's.
     if (storeCartIdempotencyEnabled(env)) assertIdempotencyKeyAcceptable(own(params, "idempotency_key"));
