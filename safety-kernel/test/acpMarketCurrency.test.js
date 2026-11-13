@@ -59,6 +59,8 @@ function req({ body, id } = {}) {
 const addressIn = (country) => (country === undefined ? {} : { fulfillment_address: { name: 'Example Buyer', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country } });
 const cart = (country, quantity = 1) => ({ merchant_id: 'merch_A', items: [{ product_id: 'p1', variant_id: 'v1', quantity }], ...addressIn(country) });
 const completion = (country) => ({ payment_data: { token: 'tok_1' }, ...addressIn(country) });
+// A session record without its revision stamp (rewritten on every write).
+const unrevised = (record) => { const { rev: _rev, ...rest } = record; return rest; };
 const refusedBy = (answer, reason, market) => {
   assert.equal(answer.status, 404, JSON.stringify(answer.body));
   assert.equal(answer.body.code, 'NO_MERCHANT_OFFER');
@@ -108,7 +110,8 @@ test('a refused update marks the session with the market it named; the mark is w
   const refused = await door.adapter.updateCheckoutSession(req({ id, body: cart('SG', 2) }));
   refusedBy(refused, MISMATCH, 'SG');
   assert.match(refused.body.message, /the checkout session was not re-priced/);
-  assert.deepEqual(await door.store.get(id), { ...before, refused_market: 'SG' }, 'the quote it holds is the one it had');
+  assert.deepEqual(unrevised(await door.store.get(id)), { ...unrevised(before), refused_market: 'SG' }, 'the quote it holds is the one it had');
+  assert.notEqual((await door.store.get(id)).rev, before.rev, 'every write of the record changes its revision');
 
   const read = await door.adapter.getCheckoutSession(req({ id }));
   refusedBy(read, MISMATCH, 'SG');
@@ -363,7 +366,7 @@ for (const storeKind of ['memory', 'postgres']) {
       assert.equal(refused.status, 404, refused.text);
       assert.equal(refused.body.detail.reason, MISMATCH);
       assert.deepEqual(await door.store.claims(), claimBefore, 'the claim record is as it was');
-      assert.deepEqual((await door.store.sessions()).map((row) => row.value), [{ ...sessionBefore, refused_market: 'SG' }], 'one session row, marked');
+      assert.deepEqual((await door.store.sessions()).map((row) => unrevised(row.value)), [{ ...unrevised(sessionBefore), refused_market: 'SG' }], 'one session row, marked');
 
       // The replay of the create: the named refusal. Not "outcome unknown", and not the priced body it once had.
       const pricedCalls = door.pricer.calls.length;
@@ -621,3 +624,303 @@ test('the registry\'s refusal reaches the caller as the door\'s own market refus
   assert.deepEqual(updated.body.detail, expected);
   assert.equal((await base.store.get(id)).refused_market, 'SG');
 });
+
+// ---- a completion is judged for every market that applies; a mark never stands in for its address -------------------
+
+test('executor: the request\'s market, the recorded market and a held market are each judged; the request\'s own is named first', async () => {
+  const ctx = { user_ref: 'buyer_1', acp_session_id: 'sess_1', protocol: 'acp' };
+  const { executor, verified, ops } = setup({ sellerCurrency: 'USD' });
+  const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-every-0001', quote: QUOTE, market: 'US', market_currency: 'USD' }, ctx);
+  const complete = (members) => executor.execute('complete_checkout_session', { idempotency_key: 'idem-every-0002', session_id: session.session_id, payment_authorization: { token: 'tok_1' }, ...members }, ctx);
+  const reasonOf = async (members) => { const d = surfaceableIntakeRefusal(await refusal(complete(members))).detail; return [d.reason, d.market]; };
+  // A held market the quote's currency satisfies does not let another address through: both are judged.
+  assert.deepEqual(await reasonOf({ market: 'SG', market_currency: 'SGD', held_market: 'US', held_market_currency: 'USD' }), [MISMATCH, 'SG']);
+  // The request's own market is named before a held one.
+  assert.deepEqual(await reasonOf({ market: 'ZZ', held_market: 'SG', held_market_currency: 'SGD' }), ['market_not_priced', 'ZZ']);
+  // The request's market is fine; the held one still blocks, by its own name.
+  assert.deepEqual(await reasonOf({ market: 'US', market_currency: 'USD', held_market: 'SG', held_market_currency: 'SGD' }), [MISMATCH, 'SG']);
+  assert.deepEqual(await reasonOf({ held_market: 'DE' }), ['market_not_priced', 'DE']);
+  assert.deepEqual(await reasonOf({ held_market: 'sg', held_market_currency: 'SGD' }), ['market_invalid', undefined]);
+  // Another country than the one recorded on the quote, in the same currency: refused by name, to be re-priced.
+  const moved = surfaceableIntakeRefusal(await refusal(complete({ market: 'CA', market_currency: 'USD' })));
+  assert.deepEqual(moved.detail, { reason: 'market_changed_without_requote', market: 'CA', session_market: 'US' });
+  assert.deepEqual([verified, ops('create_order'), ops('submit_payment')], [[], [], []], 'none of them presented an authorization, created an order or charged');
+  // Every market agrees: paid, under the key the refusals released.
+  const paid = await complete({ market: 'US', market_currency: 'USD', held_market: 'US', held_market_currency: 'USD' });
+  assert.equal(paid.order.currency, 'USD');
+  // A read is judged for a held market too, and for nothing when none is named.
+  const other = await executor.execute('create_checkout_session', { idempotency_key: 'idem-every-0003', quote: QUOTE }, { ...ctx, acp_session_id: 'sess_2' });
+  const err = await refusal(executor.execute('get_checkout_session', { session_id: other.session_id, held_market: 'SG', held_market_currency: 'SGD' }, { ...ctx, acp_session_id: 'sess_2' }));
+  assert.equal(surfaceableIntakeRefusal(err).detail.market, 'SG');
+  assert.equal((await executor.execute('get_checkout_session', { session_id: other.session_id }, { ...ctx, acp_session_id: 'sess_2' })).currency, 'USD');
+});
+
+// A door whose pricer answers in the currency of the cart's merchant (`merch_SGD` in SGD, any other in USD), with a
+// gate on each pricing and each charge, over either session store. `completion` pays on the verified lane.
+import { PostgresKvStore } from '../src/stores/postgresKvStore.js';
+import { makeFakePgDb } from './helpers/fakePgDb.js';
+
+function gate() {
+  let open; let enter;
+  const opened = new Promise((resolve) => { open = resolve; });
+  const entered = new Promise((resolve) => { enter = resolve; });
+  return { entered, open, wait: async () => { enter(); await opened; } };
+}
+function sessionDoor({ storeKind = 'memory', conditional = true } = {}) {
+  const calls = [];
+  const gates = { preview_quote: [], submit_payment: [] };
+  const verified = [];
+  const kernelUpstream = async (op, payload) => {
+    calls.push({ op, payload: structuredClone(payload) });
+    const g = gates[op] ? gates[op].shift() : null;
+    if (g) await g.wait();
+    if (op === 'preview_quote') {
+      const subtotal = (payload.quote.items ?? []).reduce((n, item) => n + 1800 * item.quantity, 0);
+      return { quote_id: `uq_${calls.length}`, merchant_of_record: payload.quote.merchant_id, currency: payload.quote.merchant_id === 'merch_SGD' ? 'SGD' : 'USD', locked_totals: { subtotal, tax: 0, shipping: 0, total: subtotal }, line_items: [], acp_state: {} };
+    }
+    if (op === 'create_order') return { order_id: `o_${calls.length}`, acp_state: {} };
+    if (op === 'submit_payment') return { order_id: payload.order_id, payment_id: 'pay1', payment_status: 'succeeded' };
+    return {};
+  };
+  const kernel = new SafetyKernel({ upstream: kernelUpstream, secret: KSECRET, log: quiet, now: () => FIXED_NOW });
+  const inner = storeKind === 'postgres'
+    ? new PostgresKvStore({ db: makeFakePgDb(() => FIXED_NOW), namespace: 'acp_sessions', now: () => FIXED_NOW })
+    : new InMemoryKvStore({ now: () => FIXED_NOW });
+  const fail = { compareAndSet: 0, set: 0 };
+  const writes = [];
+  const store = {
+    get: (k) => inner.get(k),
+    putIfAbsent: (...a) => inner.putIfAbsent(...a),
+    set: async (k, v, o) => { if (fail.set > 0) { fail.set -= 1; throw new Error('placeholder store failure'); } writes.push({ op: 'set', k, v }); return inner.set(k, v, o); },
+    ...(conditional ? {
+      compareAndSet: async (k, f, m, v, o) => { if (fail.compareAndSet > 0) { fail.compareAndSet -= 1; throw new Error('placeholder store failure'); } const ok = await inner.compareAndSet(k, f, m, v, o); writes.push({ op: 'compareAndSet', k, v, ok }); return ok; },
+      compareAndDelete: (...a) => inner.compareAndDelete(...a),
+      delete: (...a) => inner.delete(...a),
+    } : {}),
+  };
+  const executor = createCanonicalExecutor({
+    kernel, upstream: async () => ({}),
+    verifyPaymentAuthorization: async (_a, bound) => { verified.push(bound); return { ok: true, amount: bound.amount, currency: bound.currency, user_ref: bound.user_ref }; },
+  });
+  const adapter = createAcpRestAdapter({ executor, sessionStore: store, signingSecret: SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }), marketCurrencyOf, now: () => FIXED_NOW });
+  const ops = (op) => calls.filter((c) => c.op === op);
+  const body = (merchant_id, country, quantity = 1) => ({ ...cart(country, quantity), merchant_id });
+  return {
+    adapter, store, kernel, gates, fail, writes, ops, verified,
+    create: (merchant, country) => adapter.createCheckoutSession(req({ body: body(merchant, country) })),
+    update: (id, merchant, country, quantity = 2) => adapter.updateCheckoutSession(req({ id, body: body(merchant, country, quantity) })),
+    read: (id) => adapter.getCheckoutSession(req({ id })),
+    complete: (id, country) => adapter.completeCheckoutSession(req({ id, body: completion(country) })),
+    cancel: (id) => adapter.cancelCheckoutSession(req({ id, body: {} })),
+    record: (id) => store.get(id),
+  };
+}
+
+test('verified lane: a refused update whose market the held quote is priced for marks nothing, and the completion\'s own address is judged', async () => {
+  // No address at create (USD); an update for US with a cart priced in SGD is refused for US.
+  const door = sessionDoor();
+  const id = (await door.create('merch_USD', undefined)).body.id;
+  refusedBy(await door.update(id, 'merch_SGD', 'US'), MISMATCH, 'US');
+  assert.equal('refused_market' in (await door.record(id)), false, 'the held quote is priced for US: nothing to mark');
+  assert.equal((await door.read(id)).status, 200);
+  refusedBy(await door.complete(id, 'SG'), MISMATCH, 'SG');
+  assert.deepEqual([door.verified, door.ops('create_order'), door.ops('submit_payment')], [[], [], []], 'not paid in USD for SG');
+  assert.equal((await door.record(id)).refused_market, 'SG', 'refused on the held quote: marked');
+  // Created for US, the address dropped, then an address-less update with a cart priced in SGD: the same.
+  const other = sessionDoor();
+  const oid = (await other.create('merch_USD', 'US')).body.id;
+  assert.equal((await other.update(oid, 'merch_USD', undefined)).status, 200);
+  refusedBy(await other.update(oid, 'merch_SGD', undefined), MISMATCH, 'US');
+  assert.equal('refused_market' in (await other.record(oid)), false);
+  refusedBy(await other.complete(oid, 'SG'), MISMATCH, 'SG');
+  assert.deepEqual([other.verified, other.ops('submit_payment')], [[], []]);
+});
+
+test('an address-less update on a marked session is judged for the mark, not for the market recorded on its quote', async () => {
+  const door = sessionDoor();
+  const id = (await door.create('merch_USD', 'US')).body.id;
+  refusedBy(await door.update(id, 'merch_USD', 'SG'), MISMATCH, 'SG');
+  assert.equal((await door.record(id)).refused_market, 'SG');
+  const priced = door.ops('preview_quote').length;
+  // Judged for the recorded market (US) this cart would be priced; judged for the mark it is refused.
+  refusedBy(await door.update(id, 'merch_USD', undefined), MISMATCH, 'SG');
+  assert.equal(door.ops('preview_quote')[priced].payload.market, 'SG', 'the re-quote was asked for the marked market');
+  assert.equal((await door.record(id)).refused_market, 'SG');
+});
+
+test('a session that is over is not re-priced, marked or paid again; it is read as what it is', async () => {
+  const door = sessionDoor();
+  const id = (await door.create('merch_USD', 'US')).body.id;
+  assert.equal((await door.complete(id, undefined)).status, 200);
+  const done = await door.record(id);
+  const priced = door.ops('preview_quote').length;
+  for (const country of ['SG', 'US', undefined, 'ZZ']) {
+    const answer = await door.update(id, 'merch_USD', country);
+    assert.equal(answer.status, 409, JSON.stringify(answer.body));
+    assert.equal(answer.body.code, 'QUOTE_ALREADY_USED');
+  }
+  assert.equal(door.ops('preview_quote').length, priced, 'nothing was priced');
+  assert.deepEqual(await door.record(id), done, 'the record is untouched: its order id, its quote, no mark');
+  const read = await door.read(id);
+  assert.equal(read.status, 200);
+  assert.equal(read.body.order.id, done.order_id);
+  // A second completion never reaches the verifier or a charge.
+  const again = await door.complete(id, 'SG');
+  assert.equal(again.body.code, 'QUOTE_ALREADY_USED');
+  assert.deepEqual([door.verified.length, door.ops('create_order').length, door.ops('submit_payment').length], [1, 1, 1]);
+  assert.deepEqual(await door.record(id), done);
+  assert.notEqual((await door.cancel(id)).status, 200, 'a paid order is not cancelled');
+  assert.equal((await door.record(id)).order_id, done.order_id);
+
+  const other = sessionDoor();
+  const oid = (await other.create('merch_USD', 'US')).body.id;
+  refusedBy(await other.update(oid, 'merch_USD', 'SG'), MISMATCH, 'SG');
+  assert.equal((await other.cancel(oid)).status, 200);
+  assert.deepEqual(unrevised(await other.record(oid)), { quote_id: (await other.record(oid)).quote_id, order_id: null, user_ref: 'buyer_1', canceled: true }, 'cancelled, and the mark is gone');
+  assert.deepEqual((await other.read(oid)).body, { id: oid, object: 'checkout_session', status: 'canceled' });
+  for (const answer of [await other.update(oid, 'merch_USD', 'US'), await other.complete(oid, 'US')]) {
+    assert.equal(answer.status, 409);
+    assert.equal(answer.body.code, 'ORDER_CANCELED');
+  }
+  assert.deepEqual([other.verified, other.ops('submit_payment')], [[], []]);
+});
+
+test('a mark that cannot be written does not hide the refusal: the caller is told, and the session is as it was', async () => {
+  for (const failing of ['compareAndSet', 'set']) {
+    const door = sessionDoor({ conditional: failing === 'compareAndSet' });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const before = await door.record(id);
+    door.fail[failing] = 1;
+    refusedBy(await door.update(id, 'merch_USD', 'SG'), MISMATCH, 'SG');
+    assert.deepEqual(await door.record(id), before, 'nothing was written');
+    // Unmarked, the session is what it was: priced for US, and a completion elsewhere is judged on its own address.
+    assert.equal((await door.read(id)).status, 200);
+    door.fail[failing] = 1;
+    refusedBy(await door.complete(id, 'SG'), MISMATCH, 'SG');
+    assert.deepEqual(await door.record(id), before);
+    assert.deepEqual([door.verified, door.ops('submit_payment')], [[], []]);
+  }
+});
+
+test('a store with no conditional write is written as it always was: the mark, the update and the order still land', async () => {
+  const door = sessionDoor({ conditional: false });
+  const id = (await door.create('merch_USD', 'US')).body.id;
+  refusedBy(await door.update(id, 'merch_USD', 'SG'), MISMATCH, 'SG');
+  assert.equal((await door.record(id)).refused_market, 'SG');
+  assert.equal((await door.update(id, 'merch_USD', 'US')).status, 200);
+  assert.equal('refused_market' in (await door.record(id)), false);
+  assert.equal((await door.complete(id, undefined)).status, 200);
+  assert.ok((await door.record(id)).order_id);
+});
+
+// ---- races: every write of the session record is conditional; an order id and a quote id are never lost --------------
+
+for (const storeKind of ['memory', 'postgres']) {
+  test(`[${storeKind}] a refused update that finishes after another update succeeded writes nothing: the session keeps the new quote`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.preview_quote.push(g);
+    const refused = door.update(id, 'merch_USD', 'SG'); // read the record, then waits in the pricer
+    await g.entered;
+    const won = await door.update(id, 'merch_USD', 'US', 3);
+    assert.equal(won.status, 200);
+    const after = await door.record(id);
+    g.open();
+    refusedBy(await refused, MISMATCH, 'SG');
+    assert.deepEqual(await door.record(id), after, 'the old quote id was not put back, and nothing was marked');
+    const read = await door.read(id);
+    assert.equal(read.status, 200);
+    assert.equal(read.body.totals.total, 5400, 'the session is the one the successful update answered');
+  });
+
+  test(`[${storeKind}] a refused update that finishes after a completion writes nothing: the order id stays, the session reads completed, cancel is refused`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.preview_quote.push(g);
+    const refused = door.update(id, 'merch_USD', 'SG');
+    await g.entered;
+    assert.equal((await door.complete(id, undefined)).status, 200);
+    const paid = await door.record(id);
+    assert.ok(paid.order_id);
+    g.open();
+    refusedBy(await refused, MISMATCH, 'SG');
+    assert.deepEqual(await door.record(id), paid, 'order id kept, no mark');
+    assert.equal((await door.read(id)).body.order.id, paid.order_id);
+    const cancelled = await door.cancel(id);
+    assert.equal(cancelled.status, 409, JSON.stringify(cancelled.body));
+    assert.equal(cancelled.body.code, 'OPERATION_NOT_ALLOWED');
+  });
+
+  test(`[${storeKind}] an update that is priced while the session is completed is not written: answered completed, the paid quote and the order id stay`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.preview_quote.push(g);
+    const late = door.update(id, 'merch_USD', 'US', 3);
+    await g.entered;
+    assert.equal((await door.complete(id, undefined)).status, 200);
+    const paid = await door.record(id);
+    g.open();
+    const answer = await late;
+    assert.equal(answer.status, 409, JSON.stringify(answer.body));
+    assert.equal(answer.body.code, 'QUOTE_ALREADY_USED');
+    assert.deepEqual(await door.record(id), paid);
+    // No second charge is possible on the session: its quote is the paid one.
+    assert.equal((await door.complete(id, undefined)).body.code, 'QUOTE_ALREADY_USED');
+    assert.equal(door.ops('submit_payment').length, 1);
+  });
+
+  test(`[${storeKind}] a completion that finishes after an update re-priced the session: the order id is written and the session's quote is the paid one`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const paidQuote = (await door.record(id)).quote_id;
+    const g = gate();
+    door.gates.submit_payment.push(g);
+    const completing = door.complete(id, undefined); // read the record, then waits in the charge
+    await g.entered;
+    assert.equal((await door.update(id, 'merch_USD', 'US', 3)).status, 200);
+    assert.notEqual((await door.record(id)).quote_id, paidQuote, 'the update landed first');
+    g.open();
+    assert.equal((await completing).status, 200);
+    const after = await door.record(id);
+    assert.ok(after.order_id, 'the order id is never lost');
+    assert.equal(after.quote_id, paidQuote, 'a completed session points at the quote that was paid');
+    // So nothing more can be charged on it, with any key.
+    const again = await door.complete(id, undefined);
+    assert.equal(again.body.code, 'QUOTE_ALREADY_USED');
+    assert.equal(door.ops('submit_payment').length, 1);
+    assert.equal((await door.update(id, 'merch_USD', 'US')).body.code, 'QUOTE_ALREADY_USED');
+  });
+
+  test(`[${storeKind}] an update that is priced while the session is cancelled is not written: answered canceled`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.preview_quote.push(g);
+    const late = door.update(id, 'merch_USD', 'US', 3);
+    await g.entered;
+    assert.equal((await door.cancel(id)).status, 200);
+    const cancelled = await door.record(id);
+    g.open();
+    const answer = await late;
+    assert.equal(answer.status, 409, JSON.stringify(answer.body));
+    assert.equal(answer.body.code, 'ORDER_CANCELED');
+    assert.deepEqual(await door.record(id), cancelled);
+    assert.equal((await door.read(id)).body.status, 'canceled');
+  });
+
+  test(`[${storeKind}] every write after the create is a conditional one, and each changes the record's revision`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const revs = [(await door.record(id)).rev];
+    refusedBy(await door.update(id, 'merch_USD', 'SG'), MISMATCH, 'SG'); revs.push((await door.record(id)).rev);
+    assert.equal((await door.update(id, 'merch_USD', 'US')).status, 200); revs.push((await door.record(id)).rev);
+    assert.equal((await door.complete(id, undefined)).status, 200); revs.push((await door.record(id)).rev);
+    assert.equal(new Set(revs).size, 4);
+    const sessionWrites = door.writes.filter((w) => w.k === id);
+    assert.deepEqual(sessionWrites.map((w) => w.op), ['set', 'compareAndSet', 'compareAndSet', 'compareAndSet'], 'one plain write, the create\'s; the rest compare');
+    assert.ok(sessionWrites.slice(1).every((w) => w.ok));
+  });
+}

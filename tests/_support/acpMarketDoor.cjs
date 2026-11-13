@@ -21,8 +21,8 @@ const http = require('node:http');
 const path = require('node:path');
 
 // One placeholder seller per currency: the currency its store is priced in.
-const SELLERS = Object.freeze({ merch_priced_usd: 'USD', merch_priced_sgd: 'SGD', merch_priced_gbp: 'GBP' });
-const SELLER_OF = Object.freeze({ USD: 'merch_priced_usd', SGD: 'merch_priced_sgd', GBP: 'merch_priced_gbp' });
+const SELLERS = Object.freeze({ merch_priced_usd: 'USD', merch_priced_sgd: 'SGD', merch_priced_gbp: 'GBP', merch_priced_eur: 'EUR' });
+const SELLER_OF = Object.freeze({ USD: 'merch_priced_usd', SGD: 'merch_priced_sgd', GBP: 'merch_priced_gbp', EUR: 'merch_priced_eur' });
 const UNIT_MINOR = 1800;
 const ACP_SECRET = 'acp-signing-secret-0123456789abc';
 const BUYER_ISSUER = 'https://buyer-idp.acp-market.test';

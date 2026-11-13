@@ -437,6 +437,6 @@ test('with the door off every checkout route is 404 and nothing is asked of the 
 });
 
 test('the placeholder sellers are the ones the matrix says they are', () => {
-  assert.deepEqual(Object.keys(SELLER_OF), ['USD', 'SGD', 'GBP']);
+  assert.deepEqual(Object.keys(SELLER_OF), ['USD', 'SGD', 'GBP', 'EUR']);
   for (const [currency, seller] of Object.entries(SELLER_OF)) assert.equal(support.SELLERS[seller], currency);
 });
