@@ -114,6 +114,40 @@ test('(i) /ucp/mcp: a GB cart of a USD seller recorded BEFORE the rule is not re
   const reread = await door.call('/ucp/mcp', 'get_checkout', market.ucpGet(before.value.id), { buyer: A });
   assert.equal(errorOf(reread).detail.reason, 'seller_not_priced_in_market_currency');
   assert.deepEqual(reread.store, []);
+  // THE REPLAY'S REFUSAL IS THE REFUSAL A FRESH CREATE GETS for the same request (a key nobody used), member for
+  // member and byte for byte: the read-back runs the same line judgement, so nothing of the refusal is lost on a
+  // retry (the market, the seller's hosts, the storefront pages, the guidance to send the buyer there).
+  const fresh = await ucp([[IDS.SIG_USD, 1]], 'GB', nextKey());
+  assert.equal(errorOf(fresh).detail.reason, 'seller_not_priced_in_market_currency');
+  assert.deepEqual(fresh.store, []);
+  assert.deepEqual(errorOf(after), errorOf(fresh));
+  assert.equal(after.raw, fresh.raw);
+  assert.deepEqual(errorOf(again), errorOf(fresh));
+  assert.deepEqual(errorOf(reread), errorOf(fresh));
+  assert.deepEqual(Object.keys(errorOf(after).detail).sort(), Object.keys(errorOf(fresh).detail).sort());
+  for (const member of ['market', 'seller_hosts', 'storefront_urls']) assert.ok(errorOf(after).detail[member], `the replay's refusal carries ${member}`);
+  assert.match(errorOf(after).message, /seller's own page/);
+});
+
+test('(i) the same for every market the rule prices: a retry recorded before the rule is refused with the fresh create\'s own refusal (SG, GB, a lower-case gb)', async () => {
+  for (const sent of ['SG', 'GB', 'gb']) {
+    h.setFlags(HARDENING);
+    const n = nextKey();
+    const before = await ucp([[IDS.SIG_USD, 2]], sent, n);
+    assert.equal(before.isError, false, `${sent}: ${before.raw}`);
+    h.setFlags([...HARDENING, RULE]);
+    ledger.resetStoreCartIdempotencyCountsForTest();
+    const after = await ucp([[IDS.SIG_USD, 2]], sent, n);
+    const fresh = await ucp([[IDS.SIG_USD, 2]], sent, nextKey());
+    assert.equal(errorOf(fresh).detail.reason, 'seller_not_priced_in_market_currency', sent);
+    assert.equal(errorOf(fresh).detail.market_currency, resolveServingCurrency(sent.toUpperCase()), sent);
+    assert.deepEqual(errorOf(after), errorOf(fresh), sent);
+    assert.equal(after.raw, fresh.raw, sent);
+    assert.deepEqual([after.store, after.referral, after.handoff], [[], [], []], sent);
+    // The record was found and read back, and its read-back was refused: both are counted. The fresh create
+    // claimed and released.
+    assert.deepEqual(ledger.storeCartIdempotencyCounts(), { replayed: 1, replay_refused: 1, claimed: 1, released: 1 }, sent);
+  }
 });
 
 test('(i) a market with no currency (DE) recorded before the rule: after it, the retry is refused market_not_priced before the ledger, the gate or any seller', async () => {

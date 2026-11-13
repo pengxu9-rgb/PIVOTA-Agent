@@ -249,7 +249,26 @@ export async function runIdempotentCart({ store, scope, fingerprint, ttlMs, now 
     if (id === null) return failOpen("unreadable_record");
     count(outcome);
     emit(log, "info", { outcome });
-    return replay(id, Number(record.created_at));
+    // `replayed` / `replayed_after_wait` mean A RECORD WAS FOUND AND READ BACK, not that its checkout was served: the
+    // read-back is judged again (the purchasability gate, the currency rule, the rows as they are now) and may be
+    // refused. Each read-back that hands out no checkout is counted and logged once more, as `replay_refused`,
+    // with the refusal's reason (`declined`: the read-back answered nothing, and the door refuses it by name).
+    // SERVED replays = replayed + replayed_after_wait - replay_refused.
+    const notServed = (reason) => {
+      count("replay_refused");
+      emit(log, "info", { outcome: "replay_refused", reason });
+    };
+    let answer;
+    try {
+      answer = await replay(id, Number(record.created_at));
+    } catch (err) {
+      const detail = err && typeof err === "object" ? err.detail : null;
+      const reason = detail && typeof detail === "object" && typeof detail.reason === "string" ? detail.reason : null;
+      notServed(reason || (err && typeof err.code === "string" ? err.code : "error"));
+      throw err;
+    }
+    if (answer === null || answer === undefined) notServed("declined");
+    return answer;
   };
   const conflictIfOther = (record) => {
     if (record.fp !== fp) {
