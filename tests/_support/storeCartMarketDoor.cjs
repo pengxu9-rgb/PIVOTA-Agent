@@ -144,6 +144,15 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
     if (first && typeof first === 'object' && ['ucp_merchant_door_pricing', 'mcp_storefront_cart_path'].includes(first.event)) logLines.push(first);
     return realInfo(first, ...rest);
   };
+  // The retry ledger's own lines (`storefront_cart_idempotency`: claimed, replayed, replay_refused and its reason,
+  // released, ...), at the two levels it logs at, kept APART from the lines above so that nothing that compares
+  // `log` moves. An answer carries the ones its call produced as `ledger`.
+  const ledgerLines = [];
+  const noteLedger = (first) => { if (first && typeof first === 'object' && first.event === 'storefront_cart_idempotency') ledgerLines.push(first); };
+  const pricingInfo = logger.info.bind(logger);
+  logger.info = (first, ...rest) => { noteLedger(first); return pricingInfo(first, ...rest); };
+  const realWarn = logger.warn.bind(logger);
+  logger.warn = (first, ...rest) => { noteLedger(first); return realWarn(first, ...rest); };
 
   // ---- the seller storefronts -------------------------------------------------------------------------------
   const storeCalls = [];
@@ -327,8 +336,8 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 4471, env = 
     });
   }
   const rpc = (name, args) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
-  const mark = () => ({ store: storeCalls.length, upstream: upstream.length, gate: gateCalls.length, log: logLines.length });
-  const since = (m) => ({ store: storeCalls.slice(m.store), upstream: upstream.slice(m.upstream), gate: gateCalls.slice(m.gate), log: logLines.slice(m.log) });
+  const mark = () => ({ store: storeCalls.length, upstream: upstream.length, gate: gateCalls.length, log: logLines.length, ledger: ledgerLines.length });
+  const since = (m) => ({ store: storeCalls.slice(m.store), upstream: upstream.slice(m.upstream), gate: gateCalls.slice(m.gate), log: logLines.slice(m.log), ledger: ledgerLines.slice(m.ledger) });
   /** Make `host`'s storefront answer its carts in `currency` (null: in its own again). */
   const setStoreCurrency = (host, currency) => { if (currency) storeCurrencyOverride.set(host, currency); else storeCurrencyOverride.delete(host); };
   /** tools/call on `door`. `raw` is the response body as the door sent it, byte for byte. */
