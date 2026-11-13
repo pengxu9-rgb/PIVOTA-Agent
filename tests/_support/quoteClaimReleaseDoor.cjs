@@ -60,25 +60,100 @@ async function mintKeys() {
   return { buyerJwks: { keys: [buyerPub] }, buyerToken, grantJwks: { keys: [grantPub] }, mintGrant };
 }
 
-// ---- the backend's answers to POST /agent/v2/orders, in its own shapes -----------------------------------------
-// A refusal the backend names: FastAPI's `{ detail: { error, message } }`.
-const named = (status, error, message = 'placeholder') => ({ kind: 'reply', status, body: { detail: { error, message } } });
+// ---- the backend's answers to POST /agent/v2/orders, in its own wire shape ----------------------------------------
+//
+// THE BACKEND'S ERROR ENVELOPE. A route raises an HTTP error with a `detail` (an object, usually naming its code
+// in `error`, or a plain string). Before it leaves the backend, every JSON error of status 400 or more is re-wrapped:
+//
+//   { status: 'error',
+//     error: { code, message, details, documentation_url },
+//     metadata: { timestamp, request_id },
+//     detail }                                   <- the route's own `detail`, unchanged
+//
+//   - `error.code` is derived from the STATUS alone (STATUS_CODE below; any other status gets the 500 code).
+//   - `error.details` is the route's `detail` when that is an object, `{ error: <the string> }` when it is a string.
+//   - `error.message` is `detail.error` when the object names one, the string when `detail` is a string, and
+//     otherwise the status code's default message.
+//   - a 422 (request validation, `detail` a list) is answered as a 400 with `details.validation_errors`.
+//   - response headers (a busy 503's Retry-After) are kept.
+//
+// So the code a route chose is in `error.details.error`, and EVERY error carries some `error.code`. `backendError`
+// builds exactly that; a test pins it against bodies written out by hand. The timestamp, the request id and the
+// documentation link are placeholders.
+const STATUS_CODE = Object.freeze({
+  400: ['INVALID_REQUEST', 'Invalid request format or parameters'],
+  401: ['UNAUTHORIZED', 'Authentication required'],
+  403: ['FORBIDDEN', 'You don\'t have permission to access this resource'],
+  404: ['PRODUCT_NOT_FOUND', 'Product not found'],
+  409: ['CONFLICT', 'Request conflicts with the current state of the resource'],
+  429: ['RATE_LIMIT_EXCEEDED', 'Too many requests, please try again later'],
+  500: ['INTERNAL_SERVER_ERROR', 'An unexpected error occurred'],
+  502: ['EXTERNAL_SERVICE_ERROR', 'External service request failed'],
+  503: ['EXTERNAL_SERVICE_ERROR', 'External service request failed'],
+});
+const ENVELOPE_PLACEHOLDERS = Object.freeze({ documentation_url: 'https://docs.backend.quote-claim.test/errors', timestamp: '2026-01-01T00:00:00.000000Z', request_id: null });
+const isObject = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+/** The backend's wire answer for a route error: `{ status, body }`. */
+function backendError(status, detail) {
+  const wrap = (code, message, details) => ({
+    status: 'error',
+    error: { code, message, details, documentation_url: ENVELOPE_PLACEHOLDERS.documentation_url },
+    metadata: { timestamp: ENVELOPE_PLACEHOLDERS.timestamp, request_id: ENVELOPE_PLACEHOLDERS.request_id },
+    detail,
+  });
+  if (status === 422) {
+    const errors = (Array.isArray(detail) ? detail : []).filter(isObject).map((e) => ({ field: (e.loc || []).map(String).join(' -> '), message: e.msg ?? 'Invalid value', type: e.type ?? 'validation_error' }));
+    return { status: 400, body: wrap(STATUS_CODE[400][0], 'Request validation failed', { validation_errors: errors }) };
+  }
+  const [code, defaultMessage] = STATUS_CODE[status] || STATUS_CODE[500];
+  if (isObject(detail)) return { status, body: wrap(code, typeof detail.error === 'string' ? detail.error : defaultMessage, detail) };
+  if (typeof detail === 'string') return { status, body: wrap(code, detail, { error: detail }) };
+  return { status, body: wrap(code, defaultMessage, detail == null ? {} : { raw: detail }) };
+}
+/** A scripted answer in the backend's envelope. `landed`: the backend wrote the order before it answered this. */
+const fromBackend = (status, detail, { landed = false, headers } = {}) => ({ kind: 'reply', landed, ...backendError(status, detail), ...(headers ? { headers } : {}) });
+
+// THE ROUTE ERRORS OF THE BACKEND'S ORDER-CREATE PATH, with the status and `detail` each raise site writes.
+// `BEFORE_ANY_ORDER`: raised only in the request's prologue, before the backend first tries to write the order.
+const BEFORE_ANY_ORDER = Object.freeze({
+  partnerAssertionRejected: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'stale', message: 'The partner assertion on this request was refused; it was not made as any partner.' }],
+  quoteNotFound: [404, { error: 'QUOTE_NOT_FOUND', message: 'Quote not found' }],
+  invalidQuote: [400, { error: 'INVALID_QUOTE', message: 'quote snapshot does not contain orderable items' }],
+  invalidBuyer: [400, { error: 'INVALID_BUYER_CONTEXT', message: 'buyer_context.customer_email is required for order creation' }],
+  quoteRequiredBeforePurchase: [400, { error: 'QUOTE_REQUIRED_BEFORE_PURCHASE', message: 'placeholder' }],
+  unsupportedCommercePath: [409, { error: 'UNSUPPORTED_COMMERCE_PATH', message: 'placeholder' }],
+  quoteMerchantMismatch: [400, { error: 'QUOTE_MERCHANT_MISMATCH', message: 'placeholder' }],
+  preflightFailed: [409, { error: 'PREFLIGHT_FAILED', message: 'placeholder' }],
+  variantRequired: [400, { error: 'VARIANT_REQUIRED', message: 'placeholder' }],
+});
+// Everything else the path answers: from its write step (which can run twice in one request), after the order
+// was written, or with nothing but the status to go by.
+const NOT_PROVABLY_BEFORE = Object.freeze({
+  // The database was busy. Retry-After is the backend's own header.
+  busy: [503, { error: 'TEMPORARY_UNAVAILABLE', message: 'Temporary database busy. Please retry shortly.' }, { 'Retry-After': '1' }],
+  quoteConsumed: [409, { error: 'QUOTE_CONSUMED', message: 'Quote already consumed', details: { order_id: 'ord_placeholder' } }],
+  quoteExpired: [409, { error: 'QUOTE_EXPIRED', message: 'Quote expired', details: null }],
+  quoteMismatch: [409, { error: 'QUOTE_MISMATCH', message: 'placeholder', debug_id: 'placeholder' }],
+  // Out of stock, as this path says it: a 400 whose detail names no code.
+  insufficientInventory: [400, { message: 'Insufficient inventory', items: [] }],
+  merchantNotAccepting: [403, { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder' }],
+  checkoutQuoteRequired: [400, { error: 'CHECKOUT_QUOTE_REQUIRED', message: 'placeholder' }],
+  notAuthorized: [403, 'Not authorized for this merchant'],
+  merchantNotFound: [404, 'Merchant not found'],
+  validationFailed: [422, [{ loc: ['body', 'quote_id'], msg: 'Field required', type: 'missing' }]],
+  internalError: [500, 'Order creation internal error: placeholder'],
+  // Answered after the order exists, by construction.
+  badGatewayFromBackend: [502, 'Created order could not be reloaded'],
+});
+const scripted = (table) => Object.fromEntries(Object.entries(table).map(([name, [status, detail, headers]]) => [name, (opts = {}) => fromBackend(status, detail, { ...opts, headers })]));
+
 const ANSWERS = Object.freeze({
-  // The backend shedding load: 503 with its own code and a Retry-After.
-  busy: () => ({ ...named(503, 'TEMPORARY_UNAVAILABLE', 'Temporary database busy. Please retry shortly.'), headers: { 'Retry-After': '1' } }),
-  outOfStock: () => named(409, 'OUT_OF_STOCK', 'An item is out of stock.'),
-  quoteExpired: () => named(409, 'QUOTE_EXPIRED', 'The quote has expired.'),
-  quoteMismatch: () => named(409, 'QUOTE_MISMATCH', 'The quote no longer matches.'),
-  invalidBuyer: () => named(400, 'INVALID_BUYER_CONTEXT', 'buyer_context.customer_email is required for order creation'),
-  // What is in front of the backend, or the backend failing part-way: a status and no code of the backend's.
+  ...scripted(BEFORE_ANY_ORDER),
+  ...scripted(NOT_PROVABLY_BEFORE),
+  // What stands in front of the backend: a status and a page, not the backend's envelope.
   badGateway: () => ({ kind: 'reply', status: 502, body: '<html><body>502 Bad Gateway</body></html>', headers: { 'content-type': 'text/html' } }),
-  badGatewayFromBackend: () => ({ kind: 'reply', status: 502, body: { detail: 'Created order could not be reloaded' } }),
   gatewayTimeout: () => ({ kind: 'reply', status: 504, body: '<html><body>504 Gateway Timeout</body></html>', headers: { 'content-type': 'text/html' } }),
   platformUnavailable: () => ({ kind: 'reply', status: 503, body: 'Service Unavailable', headers: { 'content-type': 'text/plain' } }),
-  internalError: () => ({ kind: 'reply', status: 500, body: { detail: 'Order creation internal error: placeholder' } }),
-  namedBadGateway: () => named(502, 'TEMPORARY_UNAVAILABLE'),
-  namedGatewayTimeout: () => named(504, 'TEMPORARY_UNAVAILABLE'),
-  namedInternalError: () => named(500, 'TEMPORARY_UNAVAILABLE'),
   // No answer at all. `landed`: the backend made the order before the answer was lost.
   timeout: ({ landed = false } = {}) => ({ kind: 'error', landed, error: { code: 'ECONNABORTED', message: 'timeout of 60000ms exceeded' } }),
   connectionLost: ({ landed = false } = {}) => ({ kind: 'error', landed, error: { code: 'ECONNRESET', message: 'socket hang up' } }),
@@ -192,6 +267,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
           if (step.landed) makeOrder(body);
           return callback(Object.assign(new Error(step.error.message), { code: step.error.code }));
         }
+        if (step.landed) makeOrder(body);
         return callback(null, [step.status, step.body, step.headers || {}]);
       };
       const next = orderScript.shift() || ANSWERS.created();
@@ -275,4 +351,4 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
   return { app, call, acp, listen, close, upstream, orders, orderScript, root };
 }
 
-module.exports = { IDS, PRICED_IN, UNIT_MINOR, BACKEND_BASE, BUYER, ANSWERS, address, mintKeys, bootDoor };
+module.exports = { IDS, PRICED_IN, UNIT_MINOR, BACKEND_BASE, BUYER, ANSWERS, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE, backendError, address, mintKeys, bootDoor };

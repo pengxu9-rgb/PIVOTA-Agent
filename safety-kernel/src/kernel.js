@@ -337,9 +337,15 @@ export class SafetyKernel {
    * (nothing irreversible happened), the caller retries as a retriable refusal invites, and the retry was told
    * QUOTE_ALREADY_USED, to go and read an order that does not exist.
    *
-   * It is given back ONLY when the upstream answered a refusal by name (upstreamRefusal.js). Every other failure
-   * keeps it: the ledger gives its key back on a deadline as well, so after an outcome nobody can know this claim
-   * is the last thing between a retry and a second `create_order` for one quote, which is a second order.
+   * It is given back ONLY for the listed answers the upstream can give before it could have written an order
+   * (upstreamRefusal.js: an exact status and code, never a status class, never a 503). Every other failure keeps
+   * it: the ledger gives its key back on a deadline as well, so after an outcome nobody can know this claim is the
+   * last thing between a retry and a second `create_order` for one quote, which is a second order.
+   *
+   * After a release the next attempt starts over: on the complete lane that presents the buyer's payment
+   * authorization to the verifier a second time (a verifier that accepts a grant once would refuse it), and a
+   * cancel that was told `session_already_ordered` while this create was in flight was told about an order that
+   * was then never made.
    *
    * Given back by compare-and-delete on this attempt's own `claim_id`, so a claim that is not this attempt's (an
    * older build's, a cancel's, another attempt's) is never touched. A store with no conditional delete keeps the
@@ -347,7 +353,9 @@ export class SafetyKernel {
    */
   async _settleQuoteClaimAfterFailedCreate(quoteId, claimId, err) {
     const note = (level, event, fields) => {
-      try { this._log[level]?.(event, redact({ quote_id: quoteId, code: err?.code ?? null, ...fields })); } catch { /* a log line never changes an answer */ }
+      // The quote id is this kernel's own (`q_` + a UUID) and is logged as it is: redact()'s card-number pattern
+      // can match a run of digits inside a UUID and would blank part of the id.
+      try { this._log[level]?.(event, { quote_id: quoteId, ...redact({ code: err?.code ?? null, ...fields }) }); } catch { /* a log line never changes an answer */ }
     };
     const refusal = upstreamAnsweredRefusal(err);
     if (!refusal) {

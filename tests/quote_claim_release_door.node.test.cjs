@@ -4,13 +4,19 @@
 // `/mcp` create_payment_link and the ACP REST complete route, over HTTP, with the gateway's own transport making
 // what it makes of each backend answer.
 //
-//   - The backend ANSWERS A REFUSAL BY NAME (its own 503 TEMPORARY_UNAVAILABLE, a 409 OUT_OF_STOCK, ...): the
-//     failing call is answered exactly as before, and the same key then creates the order, once.
-//   - NO ANSWER (the deadline passed, the connection was lost or refused), a status from in front of the backend
-//     (502, 504, a 503 or a 500 with no code of the backend's), or a 5xx other than 503 whatever it names: the
-//     claim is kept. The same key and another key are told what they were told before (QUOTE_ALREADY_USED) and NO
-//     second order is asked for, whether or not the first one was made.
+//   - The backend REFUSES FROM ITS PROLOGUE, before it could have written an order (one of nine listed
+//     status-and-code answers: a bad buyer context, a quote that is not the caller's, a pre-flight refusal, ...):
+//     the failing call is answered exactly as before, and the same key then creates the order, once.
+//   - ANYTHING ELSE keeps the claim, and the same key and another key are told what they were told before
+//     (QUOTE_ALREADY_USED) with NO second order asked for, whether or not the first one was made:
+//       - every 5xx, the backend's own coded busy 503 included (it can follow a written order);
+//       - "quote already consumed", and every refusal of the backend's write step (its out-of-stock is a 400
+//         "Insufficient inventory"), because that step can run twice inside one request;
+//       - no answer (the deadline passed, the connection was lost or refused), and a status from in front of the
+//         backend (a page, not the backend's envelope).
 //   - An order the backend made and this gateway then refused (its total or currency is not the quote's): kept.
+//
+// Every backend error here is in the backend's own wire envelope (the fixture pins it, and so does a test below).
 //
 // The kernel-level suite (safety-kernel/test/quoteClaimRelease.test.js) holds what needs an injected clock or a
 // failing store: expiry, races on both stores, a write that fails after the order exists.
@@ -23,7 +29,7 @@ const fx = require('./_support/quoteClaimReleaseDoor.cjs');
 const { assertAnswerCurrency } = require('./_support/answerCurrencies.cjs');
 const { resolveServingCurrency } = require('../src/services/buyerMarket');
 
-const { IDS, ANSWERS, PRICED_IN, UNIT_MINOR } = fx;
+const { IDS, ANSWERS, PRICED_IN, UNIT_MINOR, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE } = fx;
 const CALLERS = ['mcp_complete', 'mcp_payment_link', 'acp_complete'];
 const MARKETS = ['US', 'SG', 'GB', 'DE', null];
 let door;
@@ -83,10 +89,17 @@ const MESSAGES = {
   OUT_OF_STOCK: 'An item just went out of stock. Let me re-quote what is available.',
   QUOTE_EXPIRED: 'The price quote expired. Let me refresh it.',
   PRICE_CHANGED: 'The price changed since you confirmed. Here is the updated total.',
+  NO_MERCHANT_OFFER: 'This product has no purchasable merchant offer attached, so no detail is available. This will not change on retry.',
+  PARTNER_ASSERTION_REJECTED: 'Pivota could not confirm the account this request was made for, so nothing was done. Retrying the same call will not change this.',
   QUOTE_ALREADY_USED: 'This checkout session was already used to place an order, so it can\'t be used again. Read that order first (get_order) before doing anything else; start a new checkout only if the buyer wants another order.',
 };
 const RETRIABLE = { MERCHANT_UNAVAILABLE: true };
-const ACP_STATUS = { MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409 };
+const ACP_STATUS = { MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409 };
+// What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
+const FIRST_CODE = { partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
+const firstCode = (answer) => FIRST_CODE[answer] || 'MERCHANT_UNAVAILABLE';
+/** Wait until the backend holds the request; if the call answers first it never got there, so fail with its answer. */
+const atBackend = (held, running) => Promise.race([held.reached, running.then((r) => { throw new Error(`the call answered before it reached the backend: ${r.raw.slice(0, 300)}`); })]);
 function assertRefused(h, r, code, label) {
   assert.equal(r.ok, false, `${label}: ${r.raw.slice(0, 300)}`);
   if (h.caller === 'acp_complete') {
@@ -131,9 +144,69 @@ test('the markets: US, SG and GB are priced in the gateway\'s own currency for t
   for (const m of ['US', 'SG', 'GB']) assert.equal(PRICED_IN[m], resolveServingCurrency(m), m);
 });
 
-// ---- an answered refusal ------------------------------------------------------------------------------------------
+// ---- the backend's wire shape -------------------------------------------------------------------------------------
 
-test('an answered 503 (the backend\'s own code): the call fails as before, and the same key then creates the order exactly once, in every market', each(async (caller) => {
+test('the fixture answers in the backend\'s own error envelope: the status-derived code outside, the route\'s code in details.error', () => {
+  const meta = { timestamp: '2026-01-01T00:00:00.000000Z', request_id: null };
+  const docs = 'https://docs.backend.quote-claim.test/errors';
+  // A coded route error (an object detail naming `error`).
+  assert.deepEqual(ANSWERS.busy(), {
+    kind: 'reply', landed: false, status: 503, headers: { 'Retry-After': '1' },
+    body: {
+      status: 'error',
+      error: { code: 'EXTERNAL_SERVICE_ERROR', message: 'TEMPORARY_UNAVAILABLE', details: { error: 'TEMPORARY_UNAVAILABLE', message: 'Temporary database busy. Please retry shortly.' }, documentation_url: docs },
+      metadata: meta,
+      detail: { error: 'TEMPORARY_UNAVAILABLE', message: 'Temporary database busy. Please retry shortly.' },
+    },
+  });
+  assert.deepEqual(ANSWERS.invalidBuyer().body, {
+    status: 'error',
+    error: { code: 'INVALID_REQUEST', message: 'INVALID_BUYER_CONTEXT', details: { error: 'INVALID_BUYER_CONTEXT', message: 'buyer_context.customer_email is required for order creation' }, documentation_url: docs },
+    metadata: meta,
+    detail: { error: 'INVALID_BUYER_CONTEXT', message: 'buyer_context.customer_email is required for order creation' },
+  });
+  assert.equal(ANSWERS.invalidBuyer().status, 400);
+  assert.deepEqual(ANSWERS.quoteConsumed().body.error, { code: 'CONFLICT', message: 'QUOTE_CONSUMED', details: { error: 'QUOTE_CONSUMED', message: 'Quote already consumed', details: { order_id: 'ord_placeholder' } }, documentation_url: docs });
+  // Out of stock: an object detail that names NO code. Only the status-derived code is there.
+  assert.deepEqual(ANSWERS.insufficientInventory(), {
+    kind: 'reply', landed: false, status: 400,
+    body: {
+      status: 'error',
+      error: { code: 'INVALID_REQUEST', message: 'Invalid request format or parameters', details: { message: 'Insufficient inventory', items: [] }, documentation_url: docs },
+      metadata: meta,
+      detail: { message: 'Insufficient inventory', items: [] },
+    },
+  });
+  // A string detail.
+  assert.deepEqual(ANSWERS.badGatewayFromBackend().body, {
+    status: 'error',
+    error: { code: 'EXTERNAL_SERVICE_ERROR', message: 'Created order could not be reloaded', details: { error: 'Created order could not be reloaded' }, documentation_url: docs },
+    metadata: meta,
+    detail: 'Created order could not be reloaded',
+  });
+  assert.deepEqual(ANSWERS.merchantNotFound().body.error, { code: 'PRODUCT_NOT_FOUND', message: 'Merchant not found', details: { error: 'Merchant not found' }, documentation_url: docs });
+  // A request-validation 422 leaves the backend as a 400.
+  assert.equal(ANSWERS.validationFailed().status, 400);
+  assert.deepEqual(ANSWERS.validationFailed().body.error, { code: 'INVALID_REQUEST', message: 'Request validation failed', details: { validation_errors: [{ field: 'body -> quote_id', message: 'Field required', type: 'missing' }] }, documentation_url: docs });
+  // Every scripted backend error is in that envelope, with its route detail carried unchanged.
+  for (const [name, [status, detail]] of Object.entries({ ...BEFORE_ANY_ORDER, ...NOT_PROVABLY_BEFORE })) {
+    const a = ANSWERS[name]();
+    assert.deepEqual(Object.keys(a.body), ['status', 'error', 'metadata', 'detail'], name);
+    assert.equal(a.body.status, 'error', name);
+    assert.deepEqual(a.body.detail, detail, name);
+    assert.equal(a.status, status === 422 ? 400 : status, name);
+    assert.match(a.body.error.code, /^[A-Z][A-Z_]+$/, `${name}: every backend error carries a code`);
+  }
+  // The answers that give a claim back are exactly the nine prologue refusals, each naming its code.
+  assert.deepEqual(Object.values(BEFORE_ANY_ORDER).map(([status, detail]) => `${status} ${detail.error}`).sort(), [
+    '400 INVALID_BUYER_CONTEXT', '400 INVALID_QUOTE', '400 QUOTE_MERCHANT_MISMATCH', '400 QUOTE_REQUIRED_BEFORE_PURCHASE', '400 VARIANT_REQUIRED',
+    '404 QUOTE_NOT_FOUND', '409 PARTNER_ASSERTION_REJECTED', '409 PREFLIGHT_FAILED', '409 UNSUPPORTED_COMMERCE_PATH',
+  ]);
+});
+
+// ---- a refusal before any order ------------------------------------------------------------------------------------
+
+test('a refusal from the backend\'s prologue (400 INVALID_BUYER_CONTEXT): the call fails as before, and the same key then creates the order exactly once, in every market', each(async (caller) => {
   for (const market of MARKETS) {
     const label = `${caller} ${market}`;
     const h = await open(caller, market);
@@ -141,7 +214,7 @@ test('an answered 503 (the backend\'s own code): the call fails as before, and t
     assertAnswerCurrency(JSON.parse(h.opened.raw), marketCurrency(market), `${label}: the session`);
     const before = door.orders.length;
 
-    door.orderScript.push(ANSWERS.busy());
+    door.orderScript.push(ANSWERS.invalidBuyer());
     const key = freshKey();
     const first = await attempt(h, key);
     assertRefused(h, first, 'MERCHANT_UNAVAILABLE', `${label} first`);
@@ -170,15 +243,15 @@ test('an answered 503 (the backend\'s own code): the call fails as before, and t
   }
 }));
 
-test('every refusal the backend names gives the session back: the next attempt, on the same key or another, is a first attempt', each(async (caller) => {
-  for (const [answer, code] of [['outOfStock', 'OUT_OF_STOCK'], ['quoteExpired', 'QUOTE_EXPIRED'], ['quoteMismatch', 'PRICE_CHANGED'], ['invalidBuyer', 'MERCHANT_UNAVAILABLE'], ['busy', 'MERCHANT_UNAVAILABLE']]) {
+test('every listed prologue refusal gives the session back: the next attempt, on the same key or another, is a first attempt', each(async (caller) => {
+  for (const answer of Object.keys(BEFORE_ANY_ORDER)) {
     for (const sameKey of [true, false]) {
       const label = `${caller} ${answer} ${sameKey ? 'same key' : 'another key'}`;
       const h = await open(caller, 'SG');
       const before = door.orders.length;
       door.orderScript.push(ANSWERS[answer]());
       const key = freshKey();
-      assertRefused(h, await attempt(h, key), code, `${label} first`);
+      assertRefused(h, await attempt(h, key), firstCode(answer), `${label} first`);
       const retry = await attempt(h, sameKey ? key : freshKey());
       assertOrdered(h, retry, `${label} retry`);
       assert.equal(door.orders.length, before + 1, label);
@@ -186,17 +259,23 @@ test('every refusal the backend names gives the session back: the next attempt, 
   }
 }));
 
-test('after an answered OUT_OF_STOCK the retry is judged afresh: the backend\'s view of the quote, then the locked total and currency', each(async (caller) => {
-  // The backend now says the quote no longer matches: relayed, no order, and the session is still not spent.
+test('after a released refusal the retry is judged afresh: the backend\'s view of the quote, then the locked total and currency', each(async (caller) => {
+  // The backend refuses again from its prologue (released again), then says the quote no longer matches from its
+  // write step: relayed, no order, and from then on the session is spent.
   {
     const h = await open(caller, 'GB');
     const before = door.orders.length;
     const key = freshKey();
-    door.orderScript.push(ANSWERS.outOfStock(), ANSWERS.quoteMismatch());
-    assertRefused(h, await attempt(h, key), 'OUT_OF_STOCK', `${caller} first`);
-    assertRefused(h, await attempt(h, key), 'PRICE_CHANGED', `${caller} retry`);
+    door.orderScript.push(ANSWERS.preflightFailed(), ANSWERS.invalidBuyer(), ANSWERS.quoteMismatch());
+    assertRefused(h, await attempt(h, key), 'MERCHANT_UNAVAILABLE', `${caller} first`);
+    assertRefused(h, await attempt(h, key), 'MERCHANT_UNAVAILABLE', `${caller} second`);
+    const third = await attempt(h, key);
+    assertRefused(h, third, 'PRICE_CHANGED', `${caller} third`);
+    assert.equal(ordersAsked(third).length, 1, caller);
+    const fourth = await attempt(h, key);
+    assertRefused(h, fourth, 'QUOTE_ALREADY_USED', `${caller} fourth`);
+    assert.equal(ordersAsked(fourth).length, 0, caller);
     assert.equal(door.orders.length, before, caller);
-    assertOrdered(h, await attempt(h, key), `${caller} third`);
   }
   // The backend makes the order at another total, or in another currency: never answered as an order, and from
   // then on nothing more is asked (an order exists).
@@ -205,8 +284,8 @@ test('after an answered OUT_OF_STOCK the retry is judged afresh: the backend\'s 
     const h = await open(caller, 'GB');
     const before = door.orders.length;
     const key = freshKey();
-    door.orderScript.push(ANSWERS.outOfStock(), ANSWERS.created(overrides));
-    assertRefused(h, await attempt(h, key), 'OUT_OF_STOCK', `${label} first`);
+    door.orderScript.push(ANSWERS.preflightFailed(), ANSWERS.created(overrides));
+    assertRefused(h, await attempt(h, key), 'MERCHANT_UNAVAILABLE', `${label} first`);
     const retry = await attempt(h, key);
     assertRefused(h, retry, 'PRICE_CHANGED', `${label} retry`);
     assert.equal(door.orders.length, before + 1, label);
@@ -220,17 +299,19 @@ test('after an answered OUT_OF_STOCK the retry is judged afresh: the backend\'s 
   }
 }));
 
-// ---- no answer, or an answer that is not the backend's refusal ---------------------------------------------------
+// ---- everything that keeps the claim ---------------------------------------------------
 
 const UNKNOWN = [
+  // The backend's own coded answers that are not provably before an order: with nothing behind them, and with
+  // the order written before the backend answered (`landed`).
+  ...Object.keys(NOT_PROVABLY_BEFORE).flatMap((answer) => [[answer, {}], [answer, { landed: true }]]),
   ['timeout', {}], ['timeout', { landed: true }],
   ['connectionLost', {}], ['connectionLost', { landed: true }],
   ['connectionRefused', {}],
-  ['badGateway', {}], ['badGatewayFromBackend', {}], ['gatewayTimeout', {}], ['platformUnavailable', {}], ['internalError', {}],
-  ['namedBadGateway', {}], ['namedGatewayTimeout', {}], ['namedInternalError', {}],
+  ['badGateway', {}], ['gatewayTimeout', {}], ['platformUnavailable', {}],
 ];
 
-test('an outcome nobody can know: the call fails as before, the claim is kept, and neither the same key nor another sends a second order', each(async (caller) => {
+test('a busy 503, a consumed quote, out of stock, every other answer not on the list, and no answer: the call fails as before, the claim is kept, and neither the same key nor another sends a second order', each(async (caller) => {
   for (const [answer, opts] of UNKNOWN) {
     const label = `${caller} ${answer}${opts.landed ? ' (the order was made)' : ''}`;
     const h = await open(caller, opts.landed ? 'SG' : 'US');
@@ -238,7 +319,7 @@ test('an outcome nobody can know: the call fails as before, the claim is kept, a
     door.orderScript.push(ANSWERS[answer](opts));
     const key = freshKey();
     const first = await attempt(h, key);
-    assertRefused(h, first, 'MERCHANT_UNAVAILABLE', `${label} first`);
+    assertRefused(h, first, firstCode(answer), `${label} first`);
     assert.equal(ordersAsked(first).length, 1, label);
     for (const k of [key, freshKey(), key]) {
       const retry = await attempt(h, k);
@@ -274,14 +355,14 @@ test('an order the backend made and the gateway refused (not the quote\'s total,
 
 // ---- races, over HTTP ----------------------------------------------------------------------------------------------
 
-test('two calls at once with the SAME key while the backend holds the first: one order request in flight, and after its named refusal one order', each(async (caller) => {
+test('two calls at once with the SAME key while the backend holds the first: one order request in flight, and after its prologue refusal one order', each(async (caller) => {
   const h = await open(caller, 'US');
   const before = door.orders.length;
   const key = freshKey();
-  const held = ANSWERS.held(ANSWERS.busy());
+  const held = ANSWERS.held(ANSWERS.invalidBuyer());
   door.orderScript.push(held);
   const a = attempt(h, key);
-  await held.reached;
+  await atBackend(held, a);
   const b = await attempt(h, key);
   assert.equal(b.ok, false, caller);
   assert.equal(b.code, 'IDEMPOTENCY_CONFLICT', `${caller}: ${b.raw.slice(0, 200)}`);
@@ -293,8 +374,8 @@ test('two calls at once with the SAME key while the backend holds the first: one
 }));
 
 test('two calls at once with DIFFERENT keys on one session: the second is refused while the first is with the backend, whatever the backend then answers', each(async (caller) => {
-  for (const [then, firstCode, sessionFree] of [[ANSWERS.outOfStock(), 'OUT_OF_STOCK', true], [ANSWERS.timeout({ landed: true }), 'MERCHANT_UNAVAILABLE', false], [ANSWERS.created(), null, false]]) {
-    const label = `${caller} then ${then.kind}${then.status ? ` ${then.status}` : ''}`;
+  for (const [then, firstAnswer, sessionFree, madeByFirst] of [[ANSWERS.preflightFailed(), 'MERCHANT_UNAVAILABLE', true, 0], [ANSWERS.busy({ landed: true }), 'MERCHANT_UNAVAILABLE', false, 1], [ANSWERS.busy(), 'MERCHANT_UNAVAILABLE', false, 0], [ANSWERS.timeout({ landed: true }), 'MERCHANT_UNAVAILABLE', false, 1], [ANSWERS.created(), null, false, 1]]) {
+    const label = `${caller} then ${then.kind}${then.status ? ` ${then.status}` : ''}${then.landed ? ' (order written)' : ''}`;
     const h = await open(caller, 'GB');
     const before = door.orders.length;
     const held = ANSWERS.held(then);
@@ -302,13 +383,13 @@ test('two calls at once with DIFFERENT keys on one session: the second is refuse
     const keyA = freshKey();
     const keyB = freshKey();
     const a = attempt(h, keyA);
-    await held.reached;
+    await atBackend(held, a);
     const b = await attempt(h, keyB);
     assertRefused(h, b, 'QUOTE_ALREADY_USED', `${label} second`);
     assert.equal(ordersAsked(b).length, 0, label);
     held.release();
     const ra = await a;
-    if (firstCode) assertRefused(h, ra, firstCode, `${label} first`);
+    if (firstAnswer) assertRefused(h, ra, firstAnswer, `${label} first`);
     else assertOrdered(h, ra, `${label} first`);
     const again = await attempt(h, keyB);
     if (sessionFree) assertOrdered(h, again, `${label} second key, afterwards`);
@@ -316,7 +397,7 @@ test('two calls at once with DIFFERENT keys on one session: the second is refuse
       assertRefused(h, again, 'QUOTE_ALREADY_USED', `${label} second key, afterwards`);
       assert.equal(ordersAsked(again).length, 0, label);
     }
-    assert.equal(door.orders.length, before + 1, `${label}: one order`);
+    assert.equal(door.orders.length, before + (sessionFree ? 1 : madeByFirst), `${label}: never two orders`);
   }
 }));
 

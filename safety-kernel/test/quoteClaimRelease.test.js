@@ -2,11 +2,15 @@
 //
 // createOrder claims the quote, then asks the upstream for the order. The claim has no expiry. The rule:
 //
-//   - the upstream ANSWERED A REFUSAL BY NAME  -> the claim is given back (this attempt's own claim only). The
-//     same key, or another, is then a first attempt on that quote, judged afresh.
-//   - ANYTHING ELSE (no answer, a status from in front of the upstream, a failure that is not a refusal, an
-//     order that exists upstream but could not be recorded here) -> the claim is KEPT. The ledger gives the
-//     caller's key back on those too, so the claim is the last guard against a second create_order.
+//   - the upstream REFUSED BEFORE ANY ORDER COULD EXIST (one of the listed status-and-code answers its order
+//     path gives from its prologue) -> the claim is given back (this attempt's own claim only). The same key, or
+//     another, is then a first attempt on that quote, judged afresh.
+//   - ANYTHING ELSE -> the claim is KEPT: no answer, a status from in front of the upstream, every 5xx (a coded
+//     503 included: the upstream answers it when its database was busy, which can be after the order was
+//     written), a refusal its write step raises (stock, the quote re-read: that step can run twice in one
+//     request), "this quote was already consumed", a failure that is not a refusal, an order that exists upstream
+//     but could not be recorded here. The ledger gives the caller's key back on those too, so the claim is the
+//     last guard against a second create_order.
 //
 // Driven through the three callers of createOrder (the executor's complete_checkout_session and
 // create_payment_link, and the ACP REST adapter's complete), on both stores (in-memory, and Postgres over the
@@ -23,7 +27,7 @@ import { SafetyKernel } from '../src/kernel.js';
 import { InMemoryKvStore } from '../src/stores.js';
 import { PostgresKvStore } from '../src/stores/postgresKvStore.js';
 import { PivotaCommerceError } from '../src/errors.js';
-import { upstreamAnsweredRefusal } from '../src/upstreamRefusal.js';
+import { upstreamAnsweredRefusal, REFUSED_BEFORE_ANY_ORDER } from '../src/upstreamRefusal.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
 import { makeFakePgDb } from './helpers/fakePgDb.js';
@@ -44,7 +48,7 @@ const address = (country) => ({ name: 'Buyer One', address_line1: '1 Example Roa
 
 const KERNEL_CODE = { OUT_OF_STOCK: 'OUT_OF_STOCK', QUOTE_EXPIRED: 'QUOTE_EXPIRED', PRICE_CHANGED: 'PRICE_CHANGED', QUOTE_MISMATCH: 'PRICE_CHANGED', PARTNER_ASSERTION_REJECTED: 'PARTNER_ASSERTION_REJECTED' };
 /** A response that arrived: `status`, and the error code its body named (null: it named none). */
-const answered = (status, upstreamCode = null) => new PivotaCommerceError(KERNEL_CODE[upstreamCode] ?? 'MERCHANT_UNAVAILABLE', {
+const answered = (status, upstreamCode = null) => new PivotaCommerceError((typeof upstreamCode === 'string' && Object.hasOwn(KERNEL_CODE, upstreamCode) && KERNEL_CODE[upstreamCode]) || 'MERCHANT_UNAVAILABLE', {
   operation: 'create_order', upstream_status: status, upstream_code: upstreamCode, message: undefined, upstream_detail: undefined,
 });
 /** No response: the deadline passed (`timeout`), or the connection failed. */
@@ -177,68 +181,118 @@ function gate(then) {
   return { step, reached, release };
 }
 const refuse = (status, code) => () => { throw answered(status, code); };
+/**
+ * Wait until the gate's request is at the upstream. If the attempt answers first it never got there: fail now,
+ * with its answer, instead of waiting on a gate nobody will reach.
+ */
+const atUpstream = (g, running) => Promise.race([
+  g.reached,
+  running.then((r) => { throw new Error(`the attempt answered before it reached the upstream: ${JSON.stringify(r.wire)}`); }),
+]);
+// The two refusals the tests release with: one at each status the list has more than one code for.
+const RELEASED = Object.freeze({ status: 400, code: 'INVALID_BUYER_CONTEXT' });
+const RELEASED_409 = Object.freeze({ status: 409, code: 'PREFLIGHT_FAILED' });
 const each = (fn) => async () => { for (const store of STORES) for (const caller of CALLERS) await fn(store, caller, `${store} / ${caller}`); };
 
 // ---- the rule itself -----------------------------------------------------------------------------------------
 
-test('what counts as an answered refusal: a named code on a 4xx (not 408) or a 503, from the transport, and nothing else', () => {
-  const yes = [
-    [503, 'TEMPORARY_UNAVAILABLE'], [409, 'OUT_OF_STOCK'], [409, 'QUOTE_EXPIRED'], [409, 'QUOTE_MISMATCH'], [409, 'PARTNER_ASSERTION_REJECTED'],
-    [400, 'INVALID_BUYER_CONTEXT'], [403, 'MERCHANT_NOT_ACCEPTING_ORDERS'], [404, 'QUOTE_NOT_FOUND'], [422, 'VARIANT_REQUIRED'], [429, 'RATE_LIMITED'], [499, 'A1'],
-  ];
-  for (const [status, code] of yes) {
+const ALLOWED = [
+  [400, 'INVALID_QUOTE'], [400, 'INVALID_BUYER_CONTEXT'], [400, 'QUOTE_REQUIRED_BEFORE_PURCHASE'], [400, 'QUOTE_MERCHANT_MISMATCH'], [400, 'VARIANT_REQUIRED'],
+  [404, 'QUOTE_NOT_FOUND'],
+  [409, 'PARTNER_ASSERTION_REJECTED'], [409, 'UNSUPPORTED_COMMERCE_PATH'], [409, 'PREFLIGHT_FAILED'],
+];
+
+test('the list of answers that give a claim back is exactly these nine status-and-code pairs', () => {
+  assert.deepEqual(REFUSED_BEFORE_ANY_ORDER, {
+    400: ['INVALID_QUOTE', 'INVALID_BUYER_CONTEXT', 'QUOTE_REQUIRED_BEFORE_PURCHASE', 'QUOTE_MERCHANT_MISMATCH', 'VARIANT_REQUIRED'],
+    404: ['QUOTE_NOT_FOUND'],
+    409: ['PARTNER_ASSERTION_REJECTED', 'UNSUPPORTED_COMMERCE_PATH', 'PREFLIGHT_FAILED'],
+  });
+  assert.ok(Object.isFrozen(REFUSED_BEFORE_ANY_ORDER) && Object.values(REFUSED_BEFORE_ANY_ORDER).every(Object.isFrozen));
+  for (const [status, code] of ALLOWED) {
     assert.deepEqual(upstreamAnsweredRefusal(answered(status, code)), { upstream_status: status, upstream_code: code }, `${status} ${code}`);
   }
+});
+
+test('nothing else gives a claim back: no 503, no consumed quote, no refusal of the write step, no listed code at another status, no status class', () => {
+  const allCodes = ALLOWED.map(([, code]) => code);
+  // Every listed code at every status it is NOT listed for.
+  for (const code of allCodes) {
+    for (const status of [200, 399, 400, 401, 403, 404, 408, 409, 422, 429, 499, 500, 502, 503, 504]) {
+      if (ALLOWED.some(([st, c]) => st === status && c === code)) continue;
+      assert.equal(upstreamAnsweredRefusal(answered(status, code)), null, `${status} ${code}`);
+    }
+  }
   const no = [
-    ['a 502 with a code', answered(502, 'TEMPORARY_UNAVAILABLE')],
+    // The upstream's database was busy: the order may have been written before it said so.
+    ['a 503 the upstream names', answered(503, 'TEMPORARY_UNAVAILABLE')],
+    ['a 503 with the code the upstream gives every 503', answered(503, 'EXTERNAL_SERVICE_ERROR')],
+    // An order already used this quote.
+    ['a consumed quote', answered(409, 'QUOTE_CONSUMED')],
+    // Raised by the write step, which can run a second time in one request after its first run wrote the order.
+    ['an expired quote', answered(409, 'QUOTE_EXPIRED')],
+    ['a quote that no longer matches', answered(409, 'QUOTE_MISMATCH')],
+    ['a quote that must be repriced', answered(409, 'QUOTE_STALE_REPRICE_REQUIRED')],
+    ['a quote not found by the write step', answered(409, 'QUOTE_NOT_FOUND')],
+    ['an out-of-stock code', answered(409, 'OUT_OF_STOCK')],
+    ['a merchant not accepting orders', answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS')],
+    ['a quote required by the write step', answered(400, 'QUOTE_REQUIRED')],
+    ['a checkout quote required by the write step', answered(400, 'CHECKOUT_QUOTE_REQUIRED')],
+    // The codes the upstream derives from the status alone: they say nothing about where the failure was.
+    ['a 400 with the code every 400 gets (insufficient inventory arrives as this)', answered(400, 'INVALID_REQUEST')],
+    ['a 401 with the code every 401 gets', answered(401, 'UNAUTHORIZED')],
+    ['a 403 with the code every 403 gets', answered(403, 'FORBIDDEN')],
+    ['a 404 with the code every 404 gets', answered(404, 'PRODUCT_NOT_FOUND')],
+    ['a 409 with the code every 409 gets', answered(409, 'CONFLICT')],
+    ['a 429 with the code every 429 gets', answered(429, 'RATE_LIMIT_EXCEEDED')],
+    ['a 500 with the code every 500 gets', answered(500, 'INTERNAL_SERVER_ERROR')],
+    ['a 502 with a code', answered(502, 'EXTERNAL_SERVICE_ERROR')],
     ['a 504 with a code', answered(504, 'TEMPORARY_UNAVAILABLE')],
-    ['a 500 with a code', answered(500, 'TEMPORARY_UNAVAILABLE')],
-    ['a 501 with a code', answered(501, 'NOT_IMPLEMENTED')],
-    ['a 505 with a code', answered(505, 'TEMPORARY_UNAVAILABLE')],
-    ['a 599 with a code', answered(599, 'TEMPORARY_UNAVAILABLE')],
     ['a 408 with a code', answered(408, 'REQUEST_TIMEOUT')],
-    ['a 399 with a code', answered(399, 'TEMPORARY_UNAVAILABLE')],
-    ['a 200 with a code', answered(200, 'TEMPORARY_UNAVAILABLE')],
-    ['a 503 that names no code (the platform in front)', answered(503, null)],
-    ['a 409 that names no code', answered(409, null)],
-    ['a 503 whose code is prose', answered(503, 'Service Unavailable')],
-    ['a 503 whose code is lower case', answered(503, 'temporary_unavailable')],
-    ['a 503 whose code is one letter', answered(503, 'A')],
-    ['a 503 whose code is an empty string', answered(503, '')],
-    ['a 503 whose code is not a string', answered(503, 503)],
-    ['a 503 whose code is longer than a code', answered(503, `A${'B'.repeat(80)}`)],
+    // No code, or not one of the listed codes exactly.
+    ['a listed status that names no code', answered(400, null)],
+    ['a listed code in lower case', answered(400, 'invalid_buyer_context')],
+    ['a listed code with a space after it', answered(400, 'INVALID_BUYER_CONTEXT ')],
+    ['a listed code as the start of another', answered(400, 'INVALID_BUYER_CONTEXT_V2')],
+    ['an empty code', answered(400, '')],
+    ['a code that is not a string', answered(400, 400)],
+    ['a code that is a list holding a listed code', answered(400, ['INVALID_QUOTE'])],
+    ['a code named like something every object has', answered(400, 'toString')],
+    ['a status named like something every object has', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 'constructor', upstream_code: 'INVALID_QUOTE' })],
+    // The transport did not vouch for it.
     ['a deadline', noAnswer({ timeout: true })],
     ['a lost connection', noAnswer()],
-    ['a deadline that also carries a status and a code', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 503, upstream_code: 'TEMPORARY_UNAVAILABLE', upstream_timeout: true })],
-    ['a status as a string', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: '503', upstream_code: 'TEMPORARY_UNAVAILABLE' })],
-    ['a 409 as a string', new PivotaCommerceError('OUT_OF_STOCK', { upstream_status: '409', upstream_code: 'OUT_OF_STOCK' })],
-    ['a status that is not whole', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 503.5, upstream_code: 'TEMPORARY_UNAVAILABLE' })],
+    ['a deadline that also carries a listed status and code', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT', upstream_timeout: true })],
+    ['a listed status as a string', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: '400', upstream_code: 'INVALID_BUYER_CONTEXT' })],
+    ['a status that is not whole', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: 400.5, upstream_code: 'INVALID_BUYER_CONTEXT' })],
+    ['a listed code with no status', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_code: 'INVALID_BUYER_CONTEXT' })],
+    ['a listed code with a null status', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { upstream_status: null, upstream_code: 'INVALID_BUYER_CONTEXT' })],
     ['a refusal this process raised itself', new PivotaCommerceError('OUT_OF_STOCK')],
-    ['a refusal with a reason and no status', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'backend_http_error', status: 503 })],
-    ['a refusal whose detail is an array', Object.assign(new PivotaCommerceError('OUT_OF_STOCK'), { detail: [503, 'OUT_OF_STOCK'] })],
-    ['a refusal with no detail', Object.assign(new PivotaCommerceError('OUT_OF_STOCK'), { detail: null })],
+    ['a refusal with a reason and a status under another name', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'backend_http_error', status: 400, code: 'INVALID_BUYER_CONTEXT' })],
+    ['a refusal whose detail is a list', Object.assign(new PivotaCommerceError('MERCHANT_UNAVAILABLE'), { detail: [400, 'INVALID_BUYER_CONTEXT'] })],
+    ['a refusal with no detail', Object.assign(new PivotaCommerceError('MERCHANT_UNAVAILABLE'), { detail: null })],
     ['a plain error', new Error('socket hang up')],
-    ['a plain error dressed as a refusal', Object.assign(new Error('x'), { code: 'OUT_OF_STOCK', detail: { upstream_status: 409, upstream_code: 'OUT_OF_STOCK' } })],
-    ['a string', 'OUT_OF_STOCK'],
+    ['a plain error dressed as a listed refusal', Object.assign(new Error('x'), { code: 'MERCHANT_UNAVAILABLE', detail: { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT' } })],
+    ['a string', 'INVALID_BUYER_CONTEXT'],
     ['nothing', undefined],
     ['null', null],
   ];
   for (const [label, err] of no) assert.equal(upstreamAnsweredRefusal(err), null, label);
 });
 
-// ---- an answered refusal gives the claim back ------------------------------------------------------------------
+// ---- a refusal before any order gives the claim back ------------------------------------------------------------------
 
-test('an answered 503: the failing attempt is answered as raised, the claim is gone, and the same key then creates the order exactly once', each(async (store, caller, label) => {
+test('a refusal before any order (400 INVALID_BUYER_CONTEXT): the failing attempt is answered as raised, the claim is gone, and the same key then creates the order exactly once', each(async (store, caller, label) => {
   for (const market of MARKETS) {
     const w = world({ store });
     const h = await w.open(caller, market);
     assert.equal(h.currency, PRICED_IN[market ?? 'none'], `${label} ${market}: the session is priced in the request market's currency`);
-    w.script.push(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+    w.script.push(refuse(RELEASED.status, RELEASED.code));
     const first = await w.attempt(h, 'idem-claim-0001');
     assert.equal(first.ok, false, label);
     assert.equal(first.code, 'MERCHANT_UNAVAILABLE', label);
     if (caller !== 'acp_complete') {
-      assert.deepEqual(first.wire, { code: 'MERCHANT_UNAVAILABLE', retriable: true, message: 'The merchant is temporarily unreachable. Please try again shortly.', detail: { operation: 'create_order', upstream_status: 503, upstream_code: 'TEMPORARY_UNAVAILABLE', message: undefined, upstream_detail: undefined } }, label);
+      assert.deepEqual(first.wire, { code: 'MERCHANT_UNAVAILABLE', retriable: true, message: 'The merchant is temporarily unreachable. Please try again shortly.', detail: { operation: 'create_order', upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT', message: undefined, upstream_detail: undefined } }, label);
     } else {
       assert.deepEqual(first.wire, { status: 503, body: { type: 'error', code: 'MERCHANT_UNAVAILABLE', message: 'The merchant is temporarily unreachable. Please try again shortly.' } }, label);
     }
@@ -275,12 +329,9 @@ test('an answered 503: the failing attempt is answered as raised, the claim is g
   }
 }));
 
-test('every named refusal gives the claim back, and a DIFFERENT key is then a first attempt too', each(async (store, caller, label) => {
-  for (const [status, code, kernelCode] of [
-    [409, 'OUT_OF_STOCK', 'OUT_OF_STOCK'], [409, 'QUOTE_EXPIRED', 'QUOTE_EXPIRED'], [409, 'QUOTE_MISMATCH', 'PRICE_CHANGED'],
-    [409, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'], [400, 'INVALID_BUYER_CONTEXT', 'MERCHANT_UNAVAILABLE'],
-    [429, 'RATE_LIMITED', 'MERCHANT_UNAVAILABLE'], [503, 'TEMPORARY_UNAVAILABLE', 'MERCHANT_UNAVAILABLE'],
-  ]) {
+test('every listed refusal gives the claim back, and a DIFFERENT key is then a first attempt too', each(async (store, caller, label) => {
+  for (const [status, code] of ALLOWED) {
+    const kernelCode = Object.hasOwn(KERNEL_CODE, code) ? KERNEL_CODE[code] : 'MERCHANT_UNAVAILABLE';
     const w = world({ store });
     const h = await w.open(caller, 'US');
     w.script.push(refuse(status, code));
@@ -300,36 +351,42 @@ test('every named refusal gives the claim back, and a DIFFERENT key is then a fi
   }
 }));
 
-test('after an answered OUT_OF_STOCK the retry is judged afresh: expiry, the upstream\'s own view of the price, and the locked total', each(async (store, caller, label) => {
+test('after a released refusal the retry is judged afresh: expiry, the upstream\'s own view of the quote, and the locked total', each(async (store, caller, label) => {
+  const first = async (w, h, key) => assert.equal((await w.attempt(h, key)).code, 'MERCHANT_UNAVAILABLE', label);
   // (a) the quote expired meanwhile: refused before anything is sent.
   {
     const w = world({ store });
     const h = await w.open(caller, 'SG');
-    w.script.push(refuse(409, 'OUT_OF_STOCK'));
-    assert.equal((await w.attempt(h, 'idem-fresh-0001')).code, 'OUT_OF_STOCK', label);
+    w.script.push(refuse(RELEASED_409.status, RELEASED_409.code));
+    await first(w, h, 'idem-fresh-0001');
     w.advance(10 * 60 * 1000 + 1);
     const retry = await w.attempt(h, 'idem-fresh-0001');
     assert.equal(retry.code, 'QUOTE_EXPIRED', `${label}: ${JSON.stringify(retry.wire)}`);
     assert.equal(w.createsSent().length, 1, `${label}: an expired quote sends no create_order`);
     assert.equal(w.upstreamOrders.length, 0, label);
   }
-  // (b) the upstream now says the price changed: relayed, claim given back again, no order.
+  // (b) the upstream refuses the retry: again from its prologue (released again), then from its write step,
+  //     saying the price changed (relayed, and from then on the claim is kept).
   {
     const w = world({ store });
     const h = await w.open(caller, 'GB');
-    w.script.push(refuse(409, 'OUT_OF_STOCK'), refuse(409, 'QUOTE_MISMATCH'));
-    assert.equal((await w.attempt(h, 'idem-fresh-0002')).code, 'OUT_OF_STOCK', label);
+    w.script.push(refuse(RELEASED_409.status, RELEASED_409.code), refuse(400, 'QUOTE_MERCHANT_MISMATCH'), refuse(409, 'QUOTE_MISMATCH'));
+    await first(w, h, 'idem-fresh-0002');
+    await first(w, h, 'idem-fresh-0002');
+    assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), false, label);
     const retry = await w.attempt(h, 'idem-fresh-0002');
     assert.equal(retry.code, 'PRICE_CHANGED', label);
     assert.equal(w.upstreamOrders.length, 0, label);
-    assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), false, label);
+    assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, `${label}: a refusal of the write step keeps the claim`);
+    assert.equal((await w.attempt(h, 'idem-fresh-0002')).code, 'QUOTE_ALREADY_USED', label);
+    assert.equal(w.createsSent().length, 3, label);
   }
   // (c) the upstream makes the order at ANOTHER amount, or in another currency: never answered as an order.
   for (const overrides of [{ backend_amount_minor: TOTAL + 100 }, { backend_currency: 'USD' }, { backend_amount_present: false }]) {
     const w = world({ store });
     const h = await w.open(caller, 'GB');
-    w.script.push(refuse(409, 'OUT_OF_STOCK'), (payload, makeOrder) => makeOrder(payload, overrides));
-    assert.equal((await w.attempt(h, 'idem-fresh-0003')).code, 'OUT_OF_STOCK', label);
+    w.script.push(refuse(RELEASED_409.status, RELEASED_409.code), (payload, makeOrder) => makeOrder(payload, overrides));
+    await first(w, h, 'idem-fresh-0003');
     const retry = await w.attempt(h, 'idem-fresh-0003');
     assert.equal(retry.code, 'PRICE_CHANGED', `${label} ${JSON.stringify(overrides)}: ${JSON.stringify(retry.wire)}`);
     // An order exists upstream now, so this claim stays.
@@ -339,13 +396,13 @@ test('after an answered OUT_OF_STOCK the retry is judged afresh: expiry, the ups
     assert.equal(w.createsSent().length, 2, `${label}: nothing more is sent`);
     assert.equal(w.upstreamOrders.length, 1, label);
   }
-  // (d) the item is back: the order is made at the locked total, in the quote's currency, and what is sent to
-  //     the upstream is the same locked quote as the first time.
+  // (d) the retry goes through: the order is made at the locked total, in the quote's currency, and what is
+  //     sent to the upstream is the same locked quote as the first time.
   {
     const w = world({ store });
     const h = await w.open(caller, 'DE');
-    w.script.push(refuse(409, 'OUT_OF_STOCK'));
-    assert.equal((await w.attempt(h, 'idem-fresh-0004')).code, 'OUT_OF_STOCK', label);
+    w.script.push(refuse(RELEASED_409.status, RELEASED_409.code));
+    await first(w, h, 'idem-fresh-0004');
     const retry = await w.attempt(h, 'idem-fresh-0004');
     assert.equal(retry.ok, true, label);
     assert.equal(retry.currency, 'EUR', label);
@@ -364,6 +421,15 @@ const UNKNOWN_OUTCOMES = [
   ['a 504 with a code', refuse(504, 'TEMPORARY_UNAVAILABLE'), 'MERCHANT_UNAVAILABLE'],
   ['a 500 with a code', refuse(500, 'TEMPORARY_UNAVAILABLE'), 'MERCHANT_UNAVAILABLE'],
   ['a 503 with no code', refuse(503, null), 'MERCHANT_UNAVAILABLE'],
+  ['a 503 the upstream names (its database was busy)', refuse(503, 'TEMPORARY_UNAVAILABLE'), 'MERCHANT_UNAVAILABLE'],
+  ['a consumed quote', refuse(409, 'QUOTE_CONSUMED'), 'MERCHANT_UNAVAILABLE'],
+  ['an expired quote', refuse(409, 'QUOTE_EXPIRED'), 'QUOTE_EXPIRED'],
+  ['a quote that no longer matches', refuse(409, 'QUOTE_MISMATCH'), 'PRICE_CHANGED'],
+  ['an out-of-stock code', refuse(409, 'OUT_OF_STOCK'), 'OUT_OF_STOCK'],
+  ['insufficient inventory, as the upstream sends it (400, the code every 400 gets)', refuse(400, 'INVALID_REQUEST'), 'MERCHANT_UNAVAILABLE'],
+  ['a merchant not accepting orders', refuse(403, 'MERCHANT_NOT_ACCEPTING_ORDERS'), 'MERCHANT_UNAVAILABLE'],
+  ['a listed code at a status it is not listed for', refuse(409, 'INVALID_BUYER_CONTEXT'), 'MERCHANT_UNAVAILABLE'],
+  ['a rate limit', refuse(429, 'RATE_LIMIT_EXCEEDED'), 'MERCHANT_UNAVAILABLE'],
   ['a 409 with no code', refuse(409, null), 'MERCHANT_UNAVAILABLE'],
   ['a 408 with a code', refuse(408, 'REQUEST_TIMEOUT'), 'MERCHANT_UNAVAILABLE'],
   ['a refusal with no status', () => { throw new PivotaCommerceError('OUT_OF_STOCK'); }, 'OUT_OF_STOCK'],
@@ -430,7 +496,7 @@ test('a failure AFTER the order was made and recorded keeps the claim (the payme
     {
       const w = world({ store });
       const h = await w.open('payment_link', 'US');
-      const exec = createCanonicalExecutor({ kernel: w.kernel, hostedLinkEnabled: true, upstream: async () => { throw answered(503, 'TEMPORARY_UNAVAILABLE'); } });
+      const exec = createCanonicalExecutor({ kernel: w.kernel, hostedLinkEnabled: true, upstream: async () => { throw answered(RELEASED.status, RELEASED.code); } });
       await assert.rejects(exec.execute('create_payment_link', { idempotency_key: 'idem-after-0001', session_id: h.quoteId }, h.ctx), (e) => e.code === 'MERCHANT_UNAVAILABLE');
       assert.equal(w.upstreamOrders.length, 1, store);
       assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, store);
@@ -443,7 +509,7 @@ test('a failure AFTER the order was made and recorded keeps the claim (the payme
       const w = world({ store });
       const h = await w.open('complete', 'US');
       const realUpstream = w.kernel._upstream;
-      w.kernel._upstream = async (op, ...rest) => { if (op === 'submit_payment') throw answered(503, 'TEMPORARY_UNAVAILABLE'); return realUpstream(op, ...rest); };
+      w.kernel._upstream = async (op, ...rest) => { if (op === 'submit_payment') throw answered(RELEASED.status, RELEASED.code); return realUpstream(op, ...rest); };
       assert.equal((await w.attempt(h, 'idem-after-0003')).code, 'MERCHANT_UNAVAILABLE', store);
       assert.equal(w.upstreamOrders.length, 1, store);
       assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, store);
@@ -460,10 +526,10 @@ test('a failure AFTER the order was made and recorded keeps the claim (the payme
 test('the claim names its attempt, and only that attempt\'s claim is ever deleted', each(async (store, caller, label) => {
   const w = world({ store });
   const h = await w.open(caller, 'US');
-  const g = gate(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+  const g = gate(refuse(RELEASED.status, RELEASED.code));
   w.script.push(g.step);
   const running = w.attempt(h, 'idem-own-0001');
-  await g.reached;
+  await atUpstream(g, running);
   const mine = await w.claims.get(h.quoteId);
   assert.equal(typeof mine.claim_id, 'string', label);
   assert.match(mine.claim_id, /^[0-9a-f-]{36}$/, label);
@@ -485,13 +551,13 @@ test('a claim written by an older build (no claim_id) or by a cancel is never de
     for (const foreign of [{ idempotency_key: 'someone-elses-key' }, { canceled: true }, { idempotency_key: 'k', claim_id: null }, { claim_id: 'undefined' }]) {
       const w = world({ store });
       const h = await w.open('payment_link', 'US');
-      const g = gate(refuse(409, 'OUT_OF_STOCK'));
+      const g = gate(refuse(RELEASED_409.status, RELEASED_409.code));
       w.script.push(g.step);
       const running = w.attempt(h, 'idem-old-0001');
-      await g.reached;
+      await atUpstream(g, running);
       await w.claims.set(h.quoteId, foreign);
       g.release();
-      assert.equal((await running).code, 'OUT_OF_STOCK', store);
+      assert.equal((await running).code, 'MERCHANT_UNAVAILABLE', store);
       assert.deepEqual(await w.claims.get(h.quoteId), foreign, `${store} ${JSON.stringify(foreign)}`);
     }
   }
@@ -503,7 +569,7 @@ test('a release that fails, a store that cannot delete conditionally and a logge
     const w = world({ store });
     const h = await w.open(caller, 'US');
     w.claims.compareAndDelete = async () => { throw new Error('store unavailable'); };
-    w.script.push(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+    w.script.push(refuse(RELEASED.status, RELEASED.code));
     const first = await w.attempt(h, 'idem-fail-0001');
     assert.equal(first.code, 'MERCHANT_UNAVAILABLE', `${label}: ${JSON.stringify(first.wire)}`);
     assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, label);
@@ -519,7 +585,7 @@ test('a release that fails, a store that cannot delete conditionally and a logge
     let deletes = 0;
     const realDelete = w.claims.delete.bind(w.claims);
     w.claims.delete = async (...a) => { deletes += 1; return realDelete(...a); };
-    w.script.push(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+    w.script.push(refuse(RELEASED.status, RELEASED.code));
     assert.equal((await w.attempt(h, 'idem-fail-0002')).code, 'MERCHANT_UNAVAILABLE', label);
     assert.equal(deletes, 0, label);
     assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, label);
@@ -529,7 +595,7 @@ test('a release that fails, a store that cannot delete conditionally and a logge
     const w = world({ store });
     const h = await w.open(caller, 'US');
     w.kernel._log = { info() { throw new Error('logger down'); }, warn() { throw new Error('logger down'); } };
-    w.script.push(refuse(503, 'TEMPORARY_UNAVAILABLE'), () => { throw noAnswer({ timeout: true }); });
+    w.script.push(refuse(RELEASED.status, RELEASED.code), () => { throw noAnswer({ timeout: true }); });
     assert.equal((await w.attempt(h, 'idem-fail-0003')).code, 'MERCHANT_UNAVAILABLE', label);
     assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), false, label);
     assert.equal((await w.attempt(h, 'idem-fail-0003')).code, 'MERCHANT_UNAVAILABLE', label);
@@ -546,7 +612,7 @@ test('the claim is given back before the failed attempt answers, and before the 
   const ledger = w.storeFactory('idempotency');
   const realLedgerCad = ledger.compareAndDelete.bind(ledger);
   ledger.compareAndDelete = async (...a) => { order.push('ledger'); return realLedgerCad(...a); };
-  w.script.push(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+  w.script.push(refuse(RELEASED.status, RELEASED.code));
   await w.attempt(h, 'idem-order-0001');
   order.push('answered');
   assert.equal(order[0], 'claim', `${label}: ${order.join(',')}`);
@@ -560,10 +626,10 @@ test('the claim is given back before the failed attempt answers, and before the 
 test('two attempts with the SAME key: the second waits out the first, and after a named refusal the key creates one order', each(async (store, caller, label) => {
   const w = world({ store });
   const h = await w.open(caller, 'US');
-  const g = gate(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+  const g = gate(refuse(RELEASED.status, RELEASED.code));
   w.script.push(g.step);
   const a = w.attempt(h, 'idem-race-0001');
-  await g.reached;
+  await atUpstream(g, a);
   // B arrives while A is at the upstream: refused by the ledger, sends nothing.
   const b = await w.attempt(h, 'idem-race-0001');
   assert.equal(b.code, 'IDEMPOTENCY_CONFLICT', `${label}: ${JSON.stringify(b.wire)}`);
@@ -575,7 +641,7 @@ test('two attempts with the SAME key: the second waits out the first, and after 
   const g2 = gate((payload, makeOrder) => makeOrder(payload));
   w.script.push(g2.step);
   const c = w.attempt(h, 'idem-race-0001');
-  await g2.reached;
+  await atUpstream(g2, c);
   const d = await w.attempt(h, 'idem-race-0001');
   assert.equal(d.code, 'IDEMPOTENCY_CONFLICT', label);
   g2.release();
@@ -593,15 +659,15 @@ test('two attempts with DIFFERENT keys on one quote, every order of arrival: at 
   {
     const w = world({ store });
     const h = await w.open(caller, 'US');
-    const g = gate(refuse(409, 'OUT_OF_STOCK'));
+    const g = gate(refuse(RELEASED_409.status, RELEASED_409.code));
     w.script.push(g.step);
     const a = w.attempt(h, 'idem-diff-000A');
-    await g.reached;
+    await atUpstream(g, a);
     const b = await w.attempt(h, 'idem-diff-000B');
     assert.equal(b.code, 'QUOTE_ALREADY_USED', label);
     assert.equal(w.createsSent().length, 1, label);
     g.release();
-    assert.equal((await a).code, 'OUT_OF_STOCK', label);
+    assert.equal((await a).code, 'MERCHANT_UNAVAILABLE', label);
     const c = await w.attempt(h, 'idem-diff-000B');
     assert.equal(c.ok, true, `${label}: ${JSON.stringify(c.wire)}`);
     assert.equal(w.upstreamOrders.length, 1, label);
@@ -613,7 +679,7 @@ test('two attempts with DIFFERENT keys on one quote, every order of arrival: at 
     const g = gate((payload, makeOrder) => makeOrder(payload));
     w.script.push(g.step);
     const a = w.attempt(h, 'idem-diff-000C');
-    await g.reached;
+    await atUpstream(g, a);
     assert.equal((await w.attempt(h, 'idem-diff-000D')).code, 'QUOTE_ALREADY_USED', label);
     g.release();
     assert.equal((await a).ok, true, label);
@@ -628,7 +694,7 @@ test('two attempts with DIFFERENT keys on one quote, every order of arrival: at 
     const g = gate((payload, makeOrder) => { makeOrder(payload); throw noAnswer({ timeout: true }); });
     w.script.push(g.step);
     const a = w.attempt(h, 'idem-diff-000E');
-    await g.reached;
+    await atUpstream(g, a);
     assert.equal((await w.attempt(h, 'idem-diff-000F')).code, 'QUOTE_ALREADY_USED', label);
     g.release();
     assert.equal((await a).code, 'MERCHANT_UNAVAILABLE', label);
@@ -640,13 +706,13 @@ test('two attempts with DIFFERENT keys on one quote, every order of arrival: at 
   {
     const w = world({ store });
     const h = await w.open(caller, 'US');
-    w.script.push(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+    w.script.push(refuse(RELEASED.status, RELEASED.code));
     assert.equal((await w.attempt(h, 'idem-diff-000G')).code, 'MERCHANT_UNAVAILABLE', label);
     const g = gate((payload, makeOrder) => makeOrder(payload));
     w.script.push(g.step);
     const b = w.attempt(h, 'idem-diff-000H');
     const c = w.attempt(h, 'idem-diff-000I');
-    await g.reached;
+    await atUpstream(g, c);
     g.release();
     const results = await Promise.all([b, c]);
     assert.equal(results.filter((r) => r.ok).length, 1, `${label}: ${JSON.stringify(results.map((r) => r.code ?? 'ok'))}`);
@@ -660,10 +726,10 @@ test('the release lands while another key is between its two reads of the claim:
   // B's claim attempt is held at the store until A's release has landed: B then wins the claim and creates.
   const w = world({ store });
   const h = await w.open(caller, 'US');
-  const gA = gate(refuse(503, 'TEMPORARY_UNAVAILABLE'));
+  const gA = gate(refuse(RELEASED.status, RELEASED.code));
   w.script.push(gA.step);
   const a = w.attempt(h, 'idem-mid-000A');
-  await gA.reached;
+  await atUpstream(gA, a);
   const realPut = w.claims.putIfAbsent.bind(w.claims);
   let hold;
   let held;
@@ -673,7 +739,7 @@ test('the release lands while another key is between its two reads of the claim:
   const realIsClaimed = w.kernel.isQuoteClaimed.bind(w.kernel);
   w.kernel.isQuoteClaimed = async () => false;
   const b = w.attempt(h, 'idem-mid-000B');
-  await bAtClaim;
+  await Promise.race([bAtClaim, b.then((r) => { throw new Error(`the second key answered before it reached the claim: ${JSON.stringify(r.wire)}`); })]);
   w.kernel.isQuoteClaimed = realIsClaimed;
   gA.release();
   assert.equal((await a).code, 'MERCHANT_UNAVAILABLE', label);
@@ -692,14 +758,14 @@ test('the ledger lease runs out while the first attempt is still at the upstream
     const w = world({ store });
     const h = await w.open(caller, 'US');
     const g = gate((payload, makeOrder) => {
-      if (ending === 'refused') throw answered(503, 'TEMPORARY_UNAVAILABLE');
+      if (ending === 'refused') throw answered(RELEASED.status, RELEASED.code);
       const made = makeOrder(payload);
       if (ending === 'unknown') throw noAnswer({ timeout: true });
       return made;
     });
     w.script.push(g.step);
     const a = w.attempt(h, 'idem-lease-0001');
-    await g.reached;
+    await atUpstream(g, a);
     w.advance(2 * 60 * 1000 + 1); // past the ledger's claim lease; the quote (10 min) is still live
     const b = await w.attempt(h, 'idem-lease-0001');
     assert.equal(b.code, 'QUOTE_ALREADY_USED', `${label} ${ending}: ${JSON.stringify(b.wire)}`);
@@ -754,5 +820,105 @@ test('a first attempt that succeeds is what it was: one create_order, one order 
     assert.deepEqual(Object.keys(claim).sort(), ['claim_id', 'idempotency_key'], label);
     assert.deepEqual(w.log.filter((l) => l.event.startsWith('quote_claim')), [], label);
     assert.equal((await w.attempt(h, 'idem-plain-0002')).code, 'QUOTE_ALREADY_USED', label);
+  }
+}));
+
+// ---- the claim's id, pinned by assertion ---------------------------------------------------------------------------
+
+test('the claim is written WITH its attempt\'s id before the upstream is asked, a fresh id for every attempt and every kernel', each(async (store, caller, label) => {
+  const w = world({ store });
+  const h = await w.open(caller, 'US');
+  const seen = [];
+  // No gate: the upstream step itself reads the claim that is in the store while the order is being asked for.
+  const readThen = (then) => async (payload, makeOrder) => { seen.push(await w.claims.get(h.quoteId)); return then(payload, makeOrder); };
+  w.script.push(readThen(refuse(RELEASED.status, RELEASED.code)), readThen(refuse(RELEASED_409.status, RELEASED_409.code)), readThen((payload, makeOrder) => makeOrder(payload)));
+  assert.equal((await w.attempt(h, 'idem-id-0001')).code, 'MERCHANT_UNAVAILABLE', label);
+  assert.equal(await w.claims.get(h.quoteId), undefined, `${label}: released`);
+  assert.equal((await w.attempt(h, 'idem-id-0001')).code, 'MERCHANT_UNAVAILABLE', label);
+  assert.equal(await w.claims.get(h.quoteId), undefined, `${label}: released again`);
+  assert.equal((await w.attempt(h, 'idem-id-0002')).ok, true, label);
+  assert.equal(seen.length, 3, `${label}: all three attempts reached the upstream`);
+  for (const claim of seen) {
+    assert.deepEqual(Object.keys(claim).sort(), ['claim_id', 'idempotency_key'], label);
+    assert.match(claim.claim_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, `${label}: a random id of its own`);
+  }
+  assert.equal(new Set(seen.map((c) => c.claim_id)).size, 3, `${label}: three attempts, three ids`);
+  assert.equal(seen[0].idempotency_key, seen[1].idempotency_key, `${label}: the same caller key twice, and still two ids`);
+  assert.deepEqual(await w.claims.get(h.quoteId), seen[2], `${label}: the claim that stays is the one that made the order`);
+  // Another kernel (another process) never reuses an id either.
+  const w2 = world({ store });
+  const h2 = await w2.open(caller, 'US');
+  assert.equal((await w2.attempt(h2, 'idem-id-0001')).ok, true, label);
+  assert.equal(seen.map((c) => c.claim_id).includes((await w2.claims.get(h2.quoteId)).claim_id), false, label);
+}));
+
+test('a release matches the attempt\'s id and nothing else: an older build\'s claim under the SAME caller key survives it', each(async (store, caller, label) => {
+  // Every shape a claim on this quote can have that is not this attempt's, each carrying this attempt's own
+  // caller key where it has one. None may be deleted by this attempt's release.
+  const foreign = (mine) => [
+    { idempotency_key: mine.idempotency_key }, // an older build's claim, same caller key
+    { idempotency_key: mine.idempotency_key, claim_id: '00000000-0000-4000-8000-000000000000' }, // another attempt, same caller key
+    { idempotency_key: mine.idempotency_key, claim_id: mine.claim_id.toUpperCase() },
+    { idempotency_key: mine.idempotency_key, claim_id: `${mine.claim_id} ` },
+    { idempotency_key: mine.idempotency_key, claim_id: null },
+    { idempotency_key: mine.idempotency_key, canceled: true },
+  ];
+  for (let i = 0; i < 6; i += 1) {
+    const w = world({ store });
+    const h = await w.open(caller, 'US');
+    let theirs;
+    // No gate: the upstream step swaps the record, then refuses by a listed answer.
+    w.script.push(async () => {
+      const mine = await w.claims.get(h.quoteId);
+      theirs = foreign(mine)[i];
+      await w.claims.set(h.quoteId, theirs);
+      throw answered(RELEASED.status, RELEASED.code);
+    });
+    const first = await w.attempt(h, 'idem-key-0001');
+    assert.equal(first.code, 'MERCHANT_UNAVAILABLE', `${label} #${i}`);
+    assert.ok(theirs, `${label} #${i}: the attempt reached the upstream`);
+    assert.deepEqual(await w.claims.get(h.quoteId), theirs, `${label} #${i}: ${JSON.stringify(theirs)} survives`);
+    assert.deepEqual(w.log.filter((l) => l.event.startsWith('quote_claim')).map((l) => [l.event, l.fields.released]), [['quote_claim_released', false]], `${label} #${i}`);
+    // The quote is still spent for everyone, the first key included.
+    assert.equal((await w.attempt(h, 'idem-key-0001')).code, 'QUOTE_ALREADY_USED', `${label} #${i}`);
+    assert.equal(w.createsSent().length, 1, `${label} #${i}`);
+  }
+}));
+
+test('the failed create rejects with the very error the upstream raised, not a copy of it', async () => {
+  for (const store of STORES) {
+    for (const raised of [answered(RELEASED.status, RELEASED.code), answered(503, 'TEMPORARY_UNAVAILABLE'), noAnswer({ timeout: true }), new TypeError('cannot read the answer')]) {
+      const w = world({ store });
+      const h = await w.open('complete', 'US');
+      w.script.push(() => { throw raised; });
+      await assert.rejects(
+        w.kernel.createOrder({ idempotency_key: 'idem-same-0001', order: { quote_id: h.quoteId, shipping_address: {} } }, h.ctx),
+        (err) => err === raised,
+        `${store} ${raised.message}`,
+      );
+    }
+  }
+});
+
+// ---- the order that exists behind a coded refusal -----------------------------------------------------------------
+
+test('an order was written and the upstream still answered a coded refusal (a busy 503, a consumed quote, a refusal of its write step): no key ever sends a second create_order', each(async (store, caller, label) => {
+  for (const [status, code] of [[503, 'TEMPORARY_UNAVAILABLE'], [503, 'EXTERNAL_SERVICE_ERROR'], [409, 'QUOTE_CONSUMED'], [400, 'INVALID_REQUEST'], [409, 'QUOTE_EXPIRED'], [409, 'CONFLICT'], [403, 'MERCHANT_NOT_ACCEPTING_ORDERS']]) {
+    const w = world({ store });
+    const h = await w.open(caller, 'SG');
+    w.script.push((payload, makeOrder) => { makeOrder(payload); throw answered(status, code); });
+    const first = await w.attempt(h, 'idem-behind-0001');
+    assert.equal(first.ok, false, `${label} ${status} ${code}`);
+    assert.equal(w.upstreamOrders.length, 1, `${label} ${status} ${code}: the order exists`);
+    assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, `${label} ${status} ${code}: kept`);
+    // The retries the reviewer drove to a second order: the same key, another key, and both again later.
+    for (const key of ['idem-behind-0001', 'idem-behind-0002', 'idem-behind-0001', 'idem-behind-0003']) {
+      const retry = await w.attempt(h, key);
+      assert.equal(retry.code, 'QUOTE_ALREADY_USED', `${label} ${status} ${code} ${key}: ${JSON.stringify(retry.wire)}`);
+    }
+    w.advance(3 * 60 * 1000);
+    assert.equal((await w.attempt(h, 'idem-behind-0001')).code, 'QUOTE_ALREADY_USED', `${label} ${status} ${code}`);
+    assert.equal(w.createsSent().length, 1, `${label} ${status} ${code}: one create_order, ever`);
+    assert.equal(w.upstreamOrders.length, 1, `${label} ${status} ${code}: one order`);
   }
 }));
