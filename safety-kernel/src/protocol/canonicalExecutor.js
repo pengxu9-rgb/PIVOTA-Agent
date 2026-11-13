@@ -254,9 +254,27 @@ export function agentPurchaseOrder(orderId, answered) {
 // A request that carries no `market` is priced exactly as it was before this rule: nothing is assumed for it.
 // Same refusal codes, reasons and detail members as a seller-storefront checkout answers under the currency rule
 // (mcp-server/src/ucpCheckoutEscalation.js).
+//
+// A SESSION THAT EXISTS IS HELD TO THE SAME RULE WHEN A DOOR NAMES A MARKET FOR IT. A read
+// (get_checkout_session) and a completion (complete_checkout_session) that carry `params.market` judge the
+// session's own locked quote: a market with no currency, or a quote that is not in the market's currency, is
+// refused by the same names and the session is neither read out nor paid. Nothing is repriced. A door that names
+// no market for a session (every door but the ACP REST one, today) is answered exactly as before.
 
-/** `null` when the request names no market; else `{ market, accept }`. Throws the named refusal for an unpriced one. */
-function quoteMarketOf(params) {
+// What the refusal says happened to the checkout, by where the rule was applied. The create sentence is the
+// original one, byte for byte.
+const MARKET_REFUSAL_OUTCOME = Object.freeze({
+  create: 'no checkout session was created',
+  update: 'the checkout session was not re-priced',
+  session: 'this checkout session was neither read out nor paid',
+});
+
+/**
+ * `null` when the request names no market; else `{ market, accept }`. Throws the named refusal for an unpriced one.
+ * `stage` only words the refusal: 'create' (the default), 'update', or 'session' (a session that already exists).
+ */
+export function quoteMarketOf(params, stage = 'create') {
+  const outcome = MARKET_REFUSAL_OUTCOME[stage] || MARKET_REFUSAL_OUTCOME.create;
   const market = params ? params.market : undefined;
   if (market === undefined || market === null) return null;
   if (typeof market !== 'string' || !/^[A-Z]{2}$/.test(market)) {
@@ -277,7 +295,7 @@ function quoteMarketOf(params) {
     if (quoteCurrency === currency) return;
     throw intakeRefusal('NO_MERCHANT_OFFER', 'seller_not_priced_in_market_currency', [
       `No price can be stated for a buyer in ${market} for this checkout: its seller is priced in ${quoteCurrency}, and a price for ${market} must be in ${currency}.`,
-      'Nothing was converted or relabelled, and no checkout session was created.',
+      `Nothing was converted or relabelled, and ${outcome}.`,
       `This will not change on retry; offer the buyer alternatives priced for ${market}.`,
     ].join(' '), { market, market_currency: currency, seller_currencies: [quoteCurrency] });
   };
@@ -458,7 +476,7 @@ export function createCanonicalExecutor({
         // duplicate lines, here) answer first, as on every door. Only then the market the request names, when a
         // door carries one (quoteMarketOf): refused here, before any quote, when nothing is priced for it; else it
         // travels in the quote body and the quote must be in its currency.
-        const quoteMarket = quoteMarketOf(params);
+        const quoteMarket = quoteMarketOf(params, opId === 'update_checkout_session' ? 'update' : 'create');
         const quote = quoteMarket
           ? await kernel.previewQuote({ quote: params.quote ?? {}, market: quoteMarket.market }, ctx, { acceptQuoteCurrency: quoteMarket.accept })
           : await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
@@ -468,6 +486,10 @@ export function createCanonicalExecutor({
       case 'get_checkout_session': {
         if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
         const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx); // ownership + expiry
+        // The market a door names for this session (quoteMarketOf): the session is read out only when its own
+        // quote is in that market's currency. After ownership and expiry, so those answer as they always did.
+        const sessionMarket = quoteMarketOf(params, 'session');
+        if (sessionMarket) sessionMarket.accept(snapshot.currency);
         return attachAp2CheckoutJwt(toSession(snapshot), mintAp2CheckoutJwt, ctx);
       }
 
@@ -662,6 +684,13 @@ async function completeCheckout(
       if (typeof kernel.isQuoteClaimed === 'function' && (await kernel.isQuoteClaimed(quote.quote_id))) {
         throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
       }
+
+      // THE MARKET A DOOR NAMES FOR THIS COMPLETION (quoteMarketOf): the money about to be taken is the locked
+      // quote's, so it is the locked quote's currency that is judged, here, before either payment lane and before
+      // anything irreversible (no order, no authorization presented, no charge). A refusal is raised inside the
+      // idempotency run with no side effect done, so the caller's key is released with it.
+      const sessionMarket = quoteMarketOf(params, 'session');
+      if (sessionMarket) sessionMarket.accept(quote.currency);
 
       // --- THE BRANCH (decided above, taken here) -------------------------------------------------------
       // A delegated PSP token (`spt_`) is routed to the backend's off-session money endpoint INSTEAD of being

@@ -316,7 +316,7 @@ export function composeProductionCommerce(config = {}) {
   if (strict && !config.sessionStore) log.warn?.('acp_session_store_in_memory', { note: 'use a durable store in production (multi-instance safety)' });
 
   const acp = nonEmpty(acpSigningSecret)
-    ? createAcpRestAdapter({ executor, sessionStore, signingSecret: acpSigningSecret, resolveUserRef, getProducts, publicFeed: Boolean(config.acpPublicFeed), now })
+    ? createAcpRestAdapter({ executor, sessionStore, signingSecret: acpSigningSecret, resolveUserRef, getProducts, publicFeed: Boolean(config.acpPublicFeed), marketCurrencyOf: config.marketCurrencyOf, now })
     : null;
   const acpRoutes = acp ? createAcpRouteHandlers(acp, { basePath: config.acpBasePath || '' }) : null;
 

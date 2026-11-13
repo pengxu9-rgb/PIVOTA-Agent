@@ -22,12 +22,16 @@
 //     resolved buyer is refused (no cross-buyer session access via a leaked/guessed session id).
 //   - Request bodies are mapped to canonical params by ALLOWLIST — model/caller-set amounts never reach pricing.
 //   - Errors are mapped to ACP error shapes with curated messages; internal detail is never surfaced.
+//
+// THE BUYER'S MARKET ON THIS DOOR is the country of the fulfillment address (see "the buyer's market" below):
+// a priced answer for a known market is in that market's currency, or the request is refused by name.
 
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import { PivotaCommerceError } from '../errors.js';
 import { PIVOTA_TO_ACP_STATUS } from '../acpAp2.js';
 import { sanitizeResult } from './resultSanitizer.js';
 import { delegatedPaymentRefusalAcpResponse } from './delegatedPaymentRefusal.js';
+import { quoteMarketOf } from './canonicalExecutor.js';
 // The SHARED intake rules (attested-wins precedence, the required-address field set, default-variant
 // resolution). They used to live in this file; they MOVED to buyerIntake.js when the MCP door turned out to
 // have the same three defects, so that there is ONE definition rather than two that can drift. Behaviour here
@@ -41,6 +45,7 @@ import {
   assertIdempotencyKeyAcceptable,
   assertLineQuantitiesWithinMaximum,
   assertNoDuplicateLines,
+  intakeRefusal,
   pickCompleteAddress,
   resolveBuyerEmail,
   resolveBuyerName,
@@ -99,13 +104,16 @@ export function verifyAcpSignature({ signature, timestamp, rawBody, secret, maxS
  *   getProducts?: (query) => Promise<Array>, // product feed source
  *   mapFeedItem?: (product) => object,       // product -> ACP feed item
  *   variantResolutionTimeoutMs?: number,     // bound on the door's default-variant resolution (see below)
+ *   marketCurrencyOf?: (market: string) => string|null, // the currency a market (upper-case ISO 3166-1 alpha-2)
+ *                                            // is priced in, null when none. No table is kept here. Without it
+ *                                            // a request that names a market is refused, never priced unjudged.
  *   maxClockSkewMs?: number,
  *   now?: () => number,
  * }} deps
  */
 export function createAcpRestAdapter(deps = {}) {
-  const { executor, sessionStore, signingSecret, authenticate, resolveUserRef, getProducts, mapFeedItem, publicFeed = false, maxClockSkewMs = DEFAULT_MAX_SKEW_MS, now = () => Date.now() } = deps;
-  if (!executor || typeof executor.execute !== 'function') throw new Error('createAcpRestAdapter requires a canonical executor');
+  const { executor: canonicalExecutor, sessionStore, signingSecret, authenticate, resolveUserRef, getProducts, mapFeedItem, publicFeed = false, maxClockSkewMs = DEFAULT_MAX_SKEW_MS, now = () => Date.now() } = deps;
+  if (!canonicalExecutor || typeof canonicalExecutor.execute !== 'function') throw new Error('createAcpRestAdapter requires a canonical executor');
   if (!sessionStore || typeof sessionStore.get !== 'function' || typeof sessionStore.set !== 'function' || typeof sessionStore.putIfAbsent !== 'function') throw new Error('createAcpRestAdapter requires a sessionStore (get/set/putIfAbsent)');
   if (typeof resolveUserRef !== 'function') throw new Error('createAcpRestAdapter requires resolveUserRef');
   if (typeof authenticate !== 'function' && !nonEmpty(signingSecret)) {
@@ -118,6 +126,59 @@ export function createAcpRestAdapter(deps = {}) {
         signature: header(req, 'signature'), timestamp: header(req, 'timestamp'),
         rawBody: req.rawBody, secret: signingSecret, maxSkewMs: maxClockSkewMs, now,
       });
+
+  // ---- the buyer's market ------------------------------------------------------------------------------------
+  //
+  // WHERE IT COMES FROM. An ACP checkout request names the buyer's market in one place: the `country` of its
+  // fulfillment address (ISO 3166-1 alpha-2), which is optional on create and on update. This door reads no
+  // request currency, no locale and no header as a market, and it never infers one.
+  //
+  // THE RULE, applied on every operation of this door that states or takes money, whenever the market is known:
+  //   - CREATE and UPDATE with an address: the market goes to the executor with the currency this door's source
+  //     prices it in (`marketCurrencyOf`). The executor refuses a market with no currency before any quote
+  //     (`market_not_priced`), sends the market with the quote, and refuses a quote that is not in the market's
+  //     currency before anything is recorded (`seller_not_priced_in_market_currency`). Nothing is converted or
+  //     relabelled. (`marketOfAddress`, `marketParamsOf`; canonicalExecutor.js `quoteMarketOf`.)
+  //   - CREATE and UPDATE with NO address: no market is known, none is assumed, and the session is priced in the
+  //     seller's own currency, not judged (the same decided behaviour as a checkout that names no market on the
+  //     other doors). Such a session holds no address, and an order needs one, so it cannot be paid as it stands.
+  //   - COMPLETE that carries an address: that address names the market, and the session's locked quote is judged
+  //     against it before either payment lane. A session created with no address is therefore judged at the
+  //     latest here, before any money moves.
+  //   - AN UPDATE OR A COMPLETION REFUSED FOR ITS MARKET changes no quote, so the session still holds the quote
+  //     it had. The market that request named is written on the session record (`refused_market`), and while it
+  //     is there every read and every completion of the session is judged against THAT market (a completion's
+  //     own address does not replace it): the session answers the same named refusal instead of a price in a
+  //     currency its buyer's market is not priced in, and it cannot be paid. The next update that succeeds
+  //     removes the mark; cancel always works. A country this door cannot read is an ordinary intake refusal
+  //     and marks nothing.
+  //
+  // With no `marketCurrencyOf` wired, a request that names a market is refused (fail closed): this door never
+  // prices a named market without judging it.
+  const { marketCurrencyOf } = deps;
+  const marketParamsOf = (market) => {
+    if (market === undefined) return {};
+    if (typeof marketCurrencyOf !== 'function') throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'no_market_currency_source' });
+    const currency = marketCurrencyOf(market);
+    // `market` alone when nothing is priced for it: the executor refuses that by name. Never a default of either.
+    return typeof currency === 'string' && /^[A-Z]{3}$/.test(currency) ? { market, market_currency: currency } : { market };
+  };
+  // What the executor is told about the market of a session that already exists: the market a refused request left
+  // on it when there is one, else the market of the address this request carries, else nothing.
+  const sessionMarketParams = (stored, address) => marketParamsOf(
+    stored.refused_market !== undefined && stored.refused_market !== null ? stored.refused_market : marketOfAddress(address),
+  );
+  // Every cart this door prices goes through here, so the market of its address travels with it. The executor is
+  // the one place the rule is applied (quoteMarketOf); nothing else about a call is changed.
+  const executor = {
+    execute(opId, params, ctx) {
+      if (opId !== 'create_checkout_session' && opId !== 'update_checkout_session') return canonicalExecutor.execute(opId, params, ctx);
+      return canonicalExecutor.execute(opId, { ...params, ...marketParamsOf(marketOfAddress(params?.quote?.shipping_address)) }, ctx);
+    },
+  };
+  // The cheap half of the rule, asked at intake: a market nothing is priced for is refused before a variant is
+  // read, a claim is written or a quote is asked for. The executor asks again.
+  const assertMarketPriced = (address, stage) => { quoteMarketOf(marketParamsOf(marketOfAddress(address)), stage); };
 
   // Resolve the verified buyer; checkout ops are user-scoped so a missing buyer fails closed.
   //
@@ -193,7 +254,7 @@ export function createAcpRestAdapter(deps = {}) {
       // priced from the SIGNED bytes (validates non-empty items; resolves each item's default variant; refuses a
       // cart whose lines, as sent or as resolved, name one product and variant twice). Every refusal the cart can
       // get from intake is raised here, BEFORE the claim below is written.
-      const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
+      const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants, (address) => assertMarketPriced(address, 'create'));
 
       // ACP-layer create idempotency (Codex P1): a replayed (buyer, key) returns the ORIGINAL session instead
       // of minting a new one — no quote/inventory-hold amplification. (Concurrent first-time creates with the
@@ -206,7 +267,7 @@ export function createAcpRestAdapter(deps = {}) {
       if (!claimed) {
         const prior = await sessionStore.get(createKey);
         const stored = await ownedSession(prior.acp_session_id, user_ref);
-        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, { user_ref, acp_session_id: prior.acp_session_id, protocol: ACP_PROTOCOL_NAME });
+        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...sessionMarketParams(stored) }, { user_ref, acp_session_id: prior.acp_session_id, protocol: ACP_PROTOCOL_NAME });
         return { status: 200, body: acpSessionBody(prior.acp_session_id, session, stored) };
       }
 
@@ -234,11 +295,23 @@ export function createAcpRestAdapter(deps = {}) {
       // An update RE-MINTS the quote snapshot (executor: create/update share previewQuote), and the snapshot
       // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address
       // intake again, exactly as create did. Anything it omits is not "kept", it is DROPPED.
-      const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
       const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
-      const session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote }, ctx);
-      await sessionStore.set(acp_session_id, { ...stored, quote_id: session.session_id });
-      return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
+      let session;
+      try {
+        const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants, (address) => assertMarketPriced(address, 'update'));
+        session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote }, ctx);
+      } catch (err) {
+        // REFUSED FOR ITS MARKET: no quote was recorded, so the session still holds the one it had, priced for
+        // whatever it was priced for. The market this update named is kept on the record, and until an update
+        // succeeds the session is read and completed only against it (see "the buyer's market" above).
+        const refusedMarket = marketOfMarketRefusal(err);
+        if (refusedMarket) await sessionStore.set(acp_session_id, { ...stored, refused_market: refusedMarket });
+        throw err;
+      }
+      // The session now holds this update's quote, judged for this update's market: an earlier mark is gone.
+      const { refused_market: _answered, ...kept } = stored;
+      await sessionStore.set(acp_session_id, { ...kept, quote_id: session.session_id });
+      return { status: 200, body: acpSessionBody(acp_session_id, session, kept) };
     });
   }
 
@@ -249,7 +322,7 @@ export function createAcpRestAdapter(deps = {}) {
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
       const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
-      const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, ctx);
+      const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...sessionMarketParams(stored) }, ctx);
       return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
     });
   }
@@ -263,13 +336,27 @@ export function createAcpRestAdapter(deps = {}) {
       const stored = await ownedSession(acp_session_id, user_ref);
       const body = trustedBody(req);
       const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
-      const out = await executor.execute('complete_checkout_session', {
-        idempotency_key,
-        session_id: stored.quote_id,
-        authorization_checkout_session_id: acp_session_id,
-        payment_authorization: paymentAuthorization(body), // ACP `payment_data` — verified by the executor
-        shipping_address: mapAddress(body),
-      }, ctx);
+      const shipping_address = mapAddress(body);
+      let out;
+      try {
+        out = await executor.execute('complete_checkout_session', {
+          idempotency_key,
+          session_id: stored.quote_id,
+          authorization_checkout_session_id: acp_session_id,
+          payment_authorization: paymentAuthorization(body), // ACP `payment_data` — verified by the executor
+          shipping_address,
+          // The market this completion is judged against (the executor holds the locked quote's currency to it,
+          // before either payment lane): the one a refused request left on the session, else this address's.
+          ...sessionMarketParams(stored, shipping_address),
+        }, ctx);
+      } catch (err) {
+        // REFUSED FOR ITS MARKET, with no order and no charge: the mark a refused update leaves, for the same
+        // reason. The buyer's market is now known and the session is not priced for it, so another address on a
+        // later completion does not get it paid; an update that succeeds does.
+        const refusedMarket = marketOfMarketRefusal(err);
+        if (refusedMarket && stored.refused_market !== refusedMarket) await sessionStore.set(acp_session_id, { ...stored, refused_market: refusedMarket });
+        throw err;
+      }
       await sessionStore.set(acp_session_id, { ...stored, order_id: out.order?.order_id ?? stored.order_id });
       // checkout flow → payment redirect handoff preserved verbatim; secrets/amounts elsewhere scrubbed.
       return { status: 200, body: sanitizeResult(toAcpOrder(acp_session_id, out), { handoffAllowed: true }) };
@@ -411,7 +498,7 @@ const pathId = (req) => {
 // `resolveDefaultVariants` is the closure-bound resolver above; it is the ONLY step in here that talks to
 // another service, and it runs LAST — after every cheap refusal — so a request that was going to be refused
 // anyway never costs an upstream read.
-async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants) {
+async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants, assertMarketPriced) {
   const b = isPlainObject(body) ? body : {};
   const items = normalizeCartItems(b.items);
   const quote = { merchant_id: str(b.merchant_id) ?? str(b.merchant?.id), items };
@@ -434,6 +521,12 @@ async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants) {
   });
   const customer_name = resolveBuyerName(buyer.attested_name, [joinName(acpBuyer.first_name, acpBuyer.last_name), b.customer_name]);
   if (customer_name) quote.customer_name = customer_name;
+
+  // THE MARKET THE ADDRESS NAMES, asked here when the door supplies the check: after the refusals that cost
+  // nothing and can be fixed by the caller (the lines, the address, the buyer), and before the variant read and
+  // the caller's claim and quote. A country this door cannot read, and a market nothing is priced for, are
+  // refused by name with nothing read, claimed or priced. No address: no market, and nothing is asked.
+  if (typeof assertMarketPriced === 'function') assertMarketPriced(quote.shipping_address);
 
   // LAST: resolve a default variant for every item that arrived without one (items are mutated in place, so
   // the resolved id is what reaches `quote.items` and therefore pricing). Deliberately after the buyer/address
@@ -473,6 +566,30 @@ function mapAddress(body) {
   // Name the concrete REST endpoint: an ACP client reads this out of `body.message`, and 'the update op'
   // does not tell it where to send one.
   return pickCompleteAddress(a, { updateHint: 'POST /checkout_sessions/{checkout_session_id}' });
+}
+
+// THE BUYER'S MARKET, AS THIS PROTOCOL NAMES IT: the country of the fulfillment address, read as an ISO 3166-1
+// alpha-2 code in any letter case. `undefined` when there is no address: the request names no market, and none
+// is assumed. A country that is not two letters is refused by name; it is not echoed, guessed or priced.
+function marketOfAddress(address) {
+  if (!isPlainObject(address)) return undefined;
+  const market = typeof address.country === 'string' ? address.country.trim().toUpperCase() : '';
+  if (!/^[A-Z]{2}$/.test(market)) {
+    throw intakeRefusal('QUOTE_REQUIRED', 'market_invalid',
+      'The fulfillment address `country` is not a country code this door can read, so there is no buyer market to price this checkout for. Send the buyer\'s country as ISO 3166-1 alpha-2 (two letters); a market is never guessed, and nothing was priced.',
+      { rejected_field: 'fulfillment_address.country' });
+  }
+  return market;
+}
+
+// The market named by one of the two market refusals (canonicalExecutor.js quoteMarketOf), else null. Read from
+// the refusal's own published detail, which only that rule writes with these reasons.
+const MARKET_REFUSAL_REASONS = Object.freeze(['market_not_priced', 'seller_not_priced_in_market_currency']);
+function marketOfMarketRefusal(err) {
+  if (!(err instanceof PivotaCommerceError) || err.code !== 'NO_MERCHANT_OFFER') return null;
+  const detail = surfaceableIntakeRefusal(err)?.detail;
+  if (!detail || !MARKET_REFUSAL_REASONS.includes(detail.reason)) return null;
+  return typeof detail.market === 'string' && /^[A-Z]{2}$/.test(detail.market) ? detail.market : null;
 }
 
 // ACP `payment_data` is the delegated-token / credential envelope; opaque to the kernel, VERIFIED by the

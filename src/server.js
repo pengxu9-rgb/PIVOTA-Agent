@@ -35736,6 +35736,9 @@ async function getCommerceAcpRestAdapter() {
       // this file, still used by the other lanes, deliberately unchanged) from ever being what fills the
       // field on the ACP lane: by the time a quote leaves the door, every item carries an id the PRODUCT
       // READ returned, or the request was refused. See the item-identity section in acpRestAdapter.js.
+      // The gateway's one market -> currency source, as the other checkout doors read it. The door holds every
+      // priced answer for a known buyer market to it; it is not behind a switch of its own.
+      const { marketCurrencyOf } = await import('../mcp-server/src/ucpCheckoutEscalation.js');
       return createAcpRestAdapter({
         executor,
         sessionStore,
@@ -35743,6 +35746,7 @@ async function getCommerceAcpRestAdapter() {
         resolveUserRef,
         getProducts,
         mapFeedItem,
+        marketCurrencyOf,
         // The resolution read is bounded so it cannot stall session creation, and expiry REFUSES. That makes
         // the bound operationally load-bearing: if the product-detail lane slows down, every variant-less
         // cart starts refusing. `undefined` keeps the adapter's own short default (3s); this env exists so
