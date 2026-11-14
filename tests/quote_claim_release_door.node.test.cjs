@@ -32,6 +32,10 @@ const { resolveServingCurrency } = require('../src/services/buyerMarket');
 const { IDS, ANSWERS, PRICED_IN, UNIT_MINOR, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE } = fx;
 const CALLERS = ['mcp_complete', 'mcp_payment_link', 'acp_complete'];
 const MARKETS = ['US', 'SG', 'GB', 'DE', null];
+// The ACP door cannot reach an order for two of these: it refuses a market it has no currency for (DE) by name
+// before any quote, and refuses to complete a session with no fulfillment address anywhere (no market) before
+// any order is asked for. Its own door suites pin both. The tool doors keep all five.
+const marketsFor = (caller) => (caller === 'acp_complete' ? MARKETS.filter((m) => m !== 'DE' && m !== null) : MARKETS);
 let door;
 let keys;
 
@@ -207,7 +211,7 @@ test('the fixture answers in the backend\'s own error envelope: the status-deriv
 // ---- a refusal before any order ------------------------------------------------------------------------------------
 
 test('a refusal from the backend\'s prologue (400 INVALID_BUYER_CONTEXT): the call fails as before, and the same key then creates the order exactly once, in every market', each(async (caller) => {
-  for (const market of MARKETS) {
+  for (const market of marketsFor(caller)) {
     const label = `${caller} ${market}`;
     const h = await open(caller, market);
     assert.equal(h.currency, marketCurrency(market), `${label}: the session`);

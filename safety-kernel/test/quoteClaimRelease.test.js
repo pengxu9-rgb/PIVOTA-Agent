@@ -33,6 +33,7 @@ import { redact } from '../src/redact.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
 import { makeFakePgDb } from './helpers/fakePgDb.js';
+import { marketCurrencyOf } from './helpers/marketCurrency.js';
 
 const T0 = 1_900_000_000_000;
 const KSECRET = 'claim-kernel-secret-0123456789abcdef';
@@ -43,6 +44,10 @@ const CALLERS = ['complete', 'payment_link', 'acp_complete'];
 // country). The gateway code under test holds no such table: a quote's currency is whatever the pricer answered.
 const PRICED_IN = Object.freeze({ US: 'USD', SG: 'SGD', GB: 'GBP', DE: 'EUR', none: 'USD' });
 const MARKETS = ['US', 'SG', 'GB', 'DE', null];
+// The ACP door cannot reach an order for two of these. It refuses a market it has no currency for (DE) by name
+// before any quote, and it refuses to complete a session that has no fulfillment address anywhere (no market)
+// before any order is asked for: both pinned below. The tool doors keep all five.
+const marketsFor = (caller) => (caller === 'acp_complete' ? MARKETS.filter((m) => m !== 'DE' && m !== null) : MARKETS);
 const TOTAL = 11300;
 const address = (country) => ({ name: 'Buyer One', address_line1: '1 Example Road', city: 'Exampleton', postal_code: '00001', country });
 
@@ -127,6 +132,8 @@ function world({ store = 'memory', requireBackendAmount = true } = {}) {
     executor, sessionStore, signingSecret: ACP_SECRET, now,
     resolveUserRef: async (req) => req.headers['x-test-buyer'],
     getProducts: async () => [],
+    // The ACP door judges a quote's currency against the buyer's market and refuses without a source of it.
+    marketCurrencyOf,
   });
   const acpReq = ({ body = {}, id, key }) => {
     const rawBody = JSON.stringify(body);
@@ -383,7 +390,7 @@ test('nothing else gives a claim back: no 503, no consumed quote, no refusal of 
 // ---- a refusal before any order gives the claim back ------------------------------------------------------------------
 
 test('a refusal before any order (400 INVALID_BUYER_CONTEXT): the failing attempt is answered as raised, the claim is gone, and the same key then creates the order exactly once', each(async (store, caller, label) => {
-  for (const market of MARKETS) {
+  for (const market of marketsFor(caller)) {
     const w = world({ store });
     const h = await w.open(caller, market);
     assert.equal(h.currency, PRICED_IN[market ?? 'none'], `${label} ${market}: the session is priced in the request market's currency`);
@@ -500,17 +507,39 @@ test('after a released refusal the retry is judged afresh: expiry, the upstream\
   //     sent to the upstream is the same locked quote as the first time.
   {
     const w = world({ store });
-    const h = await w.open(caller, 'DE');
+    const market = caller === 'acp_complete' ? 'GB' : 'DE';
+    const h = await w.open(caller, market);
     w.script.push(refuse(RELEASED_409.status, RELEASED_409.code));
     await first(w, h, 'idem-fresh-0004');
     const retry = await w.attempt(h, 'idem-fresh-0004');
     assert.equal(retry.ok, true, label);
-    assert.equal(retry.currency, 'EUR', label);
+    assert.equal(retry.currency, PRICED_IN[market], label);
     const [a, b] = w.createsSent();
     assert.deepEqual(b.payload, a.payload, `${label}: the retry sends the same locked quote`);
     assert.equal(b.payload.order._locked_totals.total, TOTAL, label);
   }
 }));
+
+test('on the ACP door a market with no currency (DE) is refused by name before any quote, so no claim is ever written for it', async () => {
+  for (const store of STORES) {
+    const w = world({ store });
+    await assert.rejects(() => w.open('acp_complete', 'DE'), (err) => /NO_MERCHANT_OFFER/.test(String(err?.message)) && /market_not_priced|DE/.test(String(err?.message)), store);
+    assert.equal(w.upstreamOrders.length, 0, store);
+  }
+});
+
+test('on the ACP door a session with no fulfillment address is refused by name at completion, before any order, and its claim is never taken', async () => {
+  for (const store of STORES) {
+    const w = world({ store });
+    const h = await w.open('acp_complete', null);
+    const r = await w.attempt(h, 'idem-noaddr-0001');
+    assert.equal(r.ok, false, store);
+    assert.equal(r.code, 'QUOTE_REQUIRED', store);
+    assert.equal(w.upstreamOrders.length, 0, store);
+    assert.equal(w.createsSent().length, 0, store);
+    assert.equal((await w.claims.get(h.quoteId)) ?? null, null, `${store}: no claim`);
+  }
+});
 
 // ---- everything else keeps it ----------------------------------------------------------------------------------
 
@@ -914,7 +943,7 @@ test('a refusal before the claim leaves no claim and sends nothing: an unknown s
 }));
 
 test('a first attempt that succeeds is what it was: one create_order, one order in the request market\'s currency, a claim that stays', each(async (store, caller, label) => {
-  for (const market of MARKETS) {
+  for (const market of marketsFor(caller)) {
     const w = world({ store });
     const h = await w.open(caller, market);
     const r = await w.attempt(h, 'idem-plain-0001');
@@ -985,8 +1014,10 @@ test('a release matches the attempt\'s id and nothing else: an older build\'s cl
     assert.ok(theirs, `${label} #${i}: the attempt reached the upstream`);
     assert.deepEqual(await w.claims.get(h.quoteId), theirs, `${label} #${i}: ${JSON.stringify(theirs)} survives`);
     assert.deepEqual(w.log.filter((l) => l.event.startsWith('quote_claim')).map((l) => [l.event, l.fields.released]), [['quote_claim_released', false]], `${label} #${i}`);
-    // The quote is still spent for everyone, the first key included.
-    assert.equal((await w.attempt(h, 'idem-key-0001')).code, 'QUOTE_ALREADY_USED', `${label} #${i}`);
+    // The quote is still spent for everyone, the first key included. On the ACP door a claim that a
+    // cancellation holds answers as the cancellation it is.
+    const spent = theirs.canceled === true && caller === 'acp_complete' ? 'ORDER_CANCELED' : 'QUOTE_ALREADY_USED';
+    assert.equal((await w.attempt(h, 'idem-key-0001')).code, spent, `${label} #${i}`);
     assert.equal(w.createsSent().length, 1, `${label} #${i}`);
   }
 }));
