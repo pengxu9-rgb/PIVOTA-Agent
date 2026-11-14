@@ -224,3 +224,65 @@ test('makeGetIntel: per-key fallback + not_found when nothing matches', async ()
   assert.deepEqual(miss.signals, []);
   assert.equal(miss.metadata.reason, 'not_found');
 });
+
+test('exact merchant evidence adds cited claims while preserving reviewed KB fit and deduplicating claims', async () => {
+  const entry = sampleEntry();
+  const existing = { claim_text: 'Formula contains glycerin', evidence_grade: 'B',
+    substantiation_status: 'substantiated', source_refs: ['https://brand.example/label'] };
+  entry.analysis.product_intel_v1.product_intel_core.evidence_claims = [existing];
+  const merchant = { claim_text: 'Fragrance is absent from the ingredient label', evidence_grade: 'A', source_type: 'brand_statement',
+    substantiation_status: 'substantiated', source_ref: 'https://brand.example/formula', source_refs: ['https://brand.example/formula'] };
+  const { filterPublicSafeClaims } = require('../src/services/pivotaInsightsQuality');
+  const loadCalls = [];
+  const get = makeGetIntel({
+    getProductIntelKbEntry: async () => entry,
+    isReviewed: () => true,
+    filterPublicSafeClaims,
+    loadReviewedMerchantClaims: async (ref) => {
+      loadCalls.push(ref);
+      return [
+        { ...merchant, claim_text: existing.claim_text.toUpperCase() },
+        merchant,
+        { ...merchant, claim_text: 'Needs review', substantiation_status: 'unverified' },
+        { ...merchant, claim_text: 'No citation', source_refs: [] },
+      ];
+    },
+  });
+
+  const payload = { product_id: 'sig_test', merchant_id: 'm1', product_ref: 'product:sig_test' };
+  const result = await get({ payload });
+  assert.deepEqual(loadCalls, [{ signature: 'sig_test', merchantId: 'm1' }]);
+  const [signal] = result.signals;
+  assert.equal(signal.value.why_it_stands_out[0].headline, 'Clinically backed');
+  assert.equal(signal.value.best_for[0].label, 'Dry skin');
+  assert.equal(signal.evidence.grade, 'A');
+  assert.equal(signal.evidence.claims.length, 2);
+  assert.equal(signal.evidence.claims[0].evidence_grade, 'B');
+  assert.equal(signal.evidence.claims[1].source_type, 'brand_statement');
+  assert.deepEqual(signal.evidence.claims[1].source_refs, ['https://brand.example/formula']);
+  assert.equal(signal.evidence.sources[1].type, 'staff_verified_merchant_evidence');
+  assert.equal(entry.analysis.product_intel_v1.product_intel_core.evidence_claims.length, 1);
+
+  for (const product_ref of ['pg_other', 'product:sig_sibling', 'https://shop.example/product']) {
+    assert.deepEqual((await get({ payload: { ...payload, product_ref } })).signals[0].evidence.claims,
+      intelToSignal(entry, { productId: 'sig_test', filterPublicSafeClaims }).evidence.claims);
+  }
+  assert.equal(loadCalls.length, 1, 'ambiguous identities never load merchant evidence');
+});
+
+test('no KB entry can return a claims-only decision with source and no invented fit', async () => {
+  const { filterPublicSafeClaims } = require('../src/services/pivotaInsightsQuality');
+  const claims = [{ claim_text: 'Contains 30 millilitres', evidence_grade: 'B', source_type: 'brand_statement',
+    substantiation_status: 'substantiated', source_ref: 'https://brand.example/formula', source_refs: ['https://brand.example/formula'] }];
+  const deps = { getProductIntelKbEntry: async () => null, loadReviewedMerchantClaims: async () => claims };
+  const payload = { pivota_signature_id: 'sig_test' };
+  const result = await makeGetIntel({ ...deps, filterPublicSafeClaims })({ payload });
+  assert.equal(result.subject.id, 'sig_test');
+  assert.equal(result.signals[0].evidence.method, 'staff_verified_merchant_evidence');
+  assert.equal(result.signals[0].review_state, 'staff_verified');
+  assert.deepEqual(result.signals[0].value.why_it_stands_out, []);
+  assert.deepEqual(result.signals[0].value.best_for, []);
+  const disabledClaims = await makeGetIntel({ ...deps, filterPublicSafeClaims: () => [] })({ payload });
+  assert.equal(disabledClaims.metadata.reason, 'not_found');
+  assert.deepEqual(disabledClaims.signals, []);
+});

@@ -2,6 +2,9 @@
 
 const { recordAuroraRecoAnswerPath } = require('../auroraBff/visionMetrics');
 const { recommendationIdentityConflict } = require('../shared/recoProductIdentity');
+const { readIngredientExclusions, assessIngredientExclusions } = require('./recommendIngredientExclusions');
+const { ASSUMED_MARKET } = require('../services/requestMarket');
+const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 // Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
 const listPriceTiers = require('../services/listPriceTiers');
 
@@ -63,6 +66,8 @@ const PRICE_VERIFY_EXTRA = 2;
 // timeout) killed every live-price check exactly when it mattered.
 const PRICE_VERIFY_RACE_MS = 6500;
 const PRICE_VERIFY_MAX_CHECKS = 8;
+const MAX_INGREDIENT_CHECKS = 16;
+const INGREDIENT_PILOT_CURRENCY = currencyForBuyerRegion(ASSUMED_MARKET);
 
 function nonEmpty(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -702,7 +707,7 @@ function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {})
  *   generate: (args:object) => Promise<object>,   // Aurora routes.__internal.generateProductRecommendations
  *   buildAsk?: ({focus, constraints, lang}) => string, // routes.__internal.buildRecoGenerateUserAsk
  *   isEnabled?: () => boolean,                     // agent-surface flag (fail-closed when absent)
- *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|{withheld_currencies}|{unresolvable:true}|null>,
+ *   verifyPrice?: ({product_id, merchant_id, product_ref, sku_id, market}) => Promise<{price, currency, in_stock?}|{withheld_currencies}|{unresolvable:true}|null>,
  *     // live PDP/offer lookup for a grounded item (server.js wires get_pdp_v2 over loopback); absent =
  *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all.
  *     // `{unresolvable:true}` means the lookup answered a DEFINITIVE not-found (the id is dead on the
@@ -710,6 +715,7 @@ function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {})
  *     // which only degrades it to an unverified snapshot price. `{unresolvable:true, confirm:true}`
  *     // is the AMBIGUOUS flavor (an envelope a transient dependency blip can also mint): the bridge
  *     // probes that item once more, and only a repeated unresolvable answer buys the drop
+ *   loadIngredientFormulas?: (refs:object[], market:string) => Promise<Array<object|null>>,
  *   logger?: { warn?: Function, info?: Function },
  *   budgetMs?: number,
  *   now?: () => number,
@@ -719,7 +725,7 @@ function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {})
  * }} deps
  */
 function makeRecommendProducts(deps = {}) {
-  const { generate, buildAsk, isEnabled, logger, verifyPrice } = deps;
+  const { generate, buildAsk, isEnabled, logger, verifyPrice, loadIngredientFormulas } = deps;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   // Injectable so a test can pin the join keys; `crypto.randomBytes` by default rather than
   // Math.random because these ids are the primary key of the outcome graph and a collision silently
@@ -756,6 +762,7 @@ function makeRecommendProducts(deps = {}) {
     }
 
     const constraints = normalizeConstraints(p.constraints);
+    const ingredientExclusion = readIngredientExclusions(p.constraints);
     const limitRaw = Number(p.limit);
     const limit = Number.isInteger(limitRaw) ? Math.min(MAX_LIMIT, Math.max(1, limitRaw)) : DEFAULT_LIMIT;
     const lang = str(p.language).toUpperCase() === 'CN' ? 'CN' : 'EN';
@@ -913,6 +920,7 @@ function makeRecommendProducts(deps = {}) {
       isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta.confidence_basis : null,
     ) || null;
     const projected = [];
+    const ingredientRefs = new Map();
     let identityMismatchSuppressed = 0;
     for (const item of items) {
       // A price check cannot repair a product whose evidence/destination belongs to another ID.
@@ -922,7 +930,17 @@ function makeRecommendProducts(deps = {}) {
         continue;
       }
       const s = recommendationItemToSignal(item, { confidenceBasis: laneConfidenceBasis });
-      if (s) projected.push(s);
+      if (s) {
+        projected.push(s);
+        if (ingredientExclusion) {
+          const sku = isPlainObject(item.sku) ? item.sku : item.product;
+          const { product_id, merchant_id } = s.value.product;
+          const observedSku = firstString(sku?.sku_id, sku?.skuId, item.sku_id, item.skuId);
+          const explicitVariant = firstString(sku?.variant_id, sku?.variantId, item.variant_id, item.variantId);
+          const sku_id = explicitVariant || (observedSku !== product_id ? observedSku : null);
+          ingredientRefs.set(s, { product_id, merchant_id, sku_id });
+        }
+      }
     }
     // NOTHING UNBUYABLE LEAVES THIS FUNCTION. Two independent ways a signal can carry no purchasable
     // identity; both are suppressed HERE, the one point every exit below flows through.
@@ -986,6 +1004,50 @@ function makeRecommendProducts(deps = {}) {
       );
     }
 
+    let ingredientVerification = null;
+    if (ingredientExclusion) {
+      const candidates = groundedSignals.slice(0, MAX_INGREDIENT_CHECKS);
+      let formulas = [];
+      if (candidates.length && ingredientExclusion.ingredientIds.length && typeof loadIngredientFormulas === 'function') {
+        try {
+          formulas = await loadIngredientFormulas(candidates.map((s) => ingredientRefs.get(s)), ASSUMED_MARKET);
+        } catch (err) {
+          logger?.warn?.({ code: err?.code }, 'recommend_products ingredient evidence unavailable');
+        }
+      }
+      ingredientVerification = { market: ASSUMED_MARKET, present_withheld: 0, unknown_withheld: 0, verified: 0 };
+      if (ingredientExclusion.unsupported) ingredientVerification.unsupported_input = true;
+      const verified = [];
+      for (const [index, s] of groundedSignals.entries()) {
+        const formula = formulas?.[index];
+        const verdict = assessIngredientExclusions(formula?.market === ASSUMED_MARKET ? formula : null, ingredientExclusion);
+        if (verdict === 'present') {
+          ingredientVerification.present_withheld += 1;
+        } else if (verdict === 'unknown') {
+          ingredientVerification.unknown_withheld += 1;
+        } else {
+          const { sku_id } = ingredientRefs.get(s);
+          if (sku_id) s.value.product.sku_id = sku_id;
+          // A product-level snapshot cannot price an exact variant or quote a foreign
+          // currency as US money. The scoped read can attach a new verified price.
+          const snapshotCurrency = str(s.value.product.currency).toUpperCase();
+          if (sku_id || snapshotCurrency !== INGREDIENT_PILOT_CURRENCY) {
+            s.value.product.price = null;
+            s.value.product.currency = null;
+            s.value.product.price_verified = false;
+            s.value.why = stripBudgetClaims(s.value.why);
+            s.value.notes = stripBudgetClaims(s.value.notes);
+            s.value.watchouts = stripBudgetClaims(s.value.watchouts);
+          }
+          s.value.ingredient_exclusion = { status: verdict, market: ASSUMED_MARKET, source_url: formula.sourceUrl };
+          ingredientVerification.verified += 1;
+          verified.push(s);
+        }
+      }
+      groundedSignals.length = 0;
+      groundedSignals.push(...verified);
+    }
+
     // LIVE PRICE RE-VERIFICATION (grounded items only; there is nothing to verify on an invented
     // product). The lane's price is a catalog-offer snapshot; the injected `verifyPrice` resolves the
     // same PDP/offer lane the public product page renders from, so a stale snapshot is corrected
@@ -1023,7 +1085,9 @@ function makeRecommendProducts(deps = {}) {
         const probe = async () => {
           try {
             return await Promise.race([
-              verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
+              verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref,
+                ...(product.sku_id ? { sku_id: product.sku_id } : {}),
+                ...(ingredientVerification ? { market: ASSUMED_MARKET } : {}) }),
               new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
             ]);
           } catch { return null; }
@@ -1050,8 +1114,9 @@ function makeRecommendProducts(deps = {}) {
         const withheldCurrencies = isPlainObject(live) && Array.isArray(live.withheld_currencies)
           ? live.withheld_currencies.map((code) => str(code).toUpperCase()).filter(Boolean)
           : [];
-        const snapshotUnit = str(product.currency).toUpperCase();
-        if (withheldCurrencies.length && snapshotUnit && !withheldCurrencies.includes(snapshotUnit)) {
+        const snapshotCurrency = str(product.currency).toUpperCase();
+        const expectedCurrency = ingredientVerification ? INGREDIENT_PILOT_CURRENCY : snapshotCurrency;
+        if (withheldCurrencies.length && expectedCurrency && !withheldCurrencies.includes(expectedCurrency)) {
           currencySwitchedSignals.add(s);
           return;
         }
@@ -1077,8 +1142,7 @@ function makeRecommendProducts(deps = {}) {
         // quote a USD figure the store never charges. Every grounded row is checked here, the model's
         // own picks and the price ceiling's catalog filler alike, and the slot backfills below. A
         // snapshot with NO currency that the live check fills is not a change of unit and is updated.
-        const snapshotCurrency = str(product.currency).toUpperCase();
-        if (snapshotCurrency && snapshotCurrency !== liveCurrency) {
+        if (expectedCurrency && expectedCurrency !== liveCurrency) {
           currencySwitchedSignals.add(s);
           return;
         }
@@ -1285,7 +1349,10 @@ function makeRecommendProducts(deps = {}) {
           // The lane's own step-aware reason ('no_viable_candidates_for_target') is computed over the
           // list AFTER grounding withheld these items, so it blames the catalog's pool for what was a
           // refusal to substitute. Withheld items mean the lane answered and nothing was buyable.
-          ? (laneWithheldCount > 0 ? 'no_grounded_recommendations' : null)
+          ? (ingredientVerification?.verified === 0 &&
+              ingredientVerification.present_withheld + ingredientVerification.unknown_withheld > 0
+            ? 'no_verified_ingredient_matches' : null)
+            || (laneWithheldCount > 0 ? 'no_grounded_recommendations' : null)
             || firstString(payload.products_empty_reason, result?.upstreamFailureCode)
             || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : null)
             || (verification && verification.currency_switched > 0 ? 'live_price_currency_changed' : null)
@@ -1326,6 +1393,7 @@ function makeRecommendProducts(deps = {}) {
         // shortlist (the count is the only trace, deliberately: an agent must not be handed a dead id
         // even in a diagnostic field).
         ...(verification ? { price_verification: verification } : {}),
+        ...(ingredientVerification ? { ingredient_exclusion_verification: ingredientVerification } : {}),
         // What this pass actually enforced, so a partner agent can tell "all conforming" from "includes
         // flagged near-misses" from "could not be checked" — without rescanning items, and without
         // reading an absent marker as a clean bill of health.
@@ -1415,8 +1483,11 @@ function classifyVerifyPriceResponse(status, body) {
  * answer, else the page's stored price_as_of. A merchant-priced card keeps the canonical lane's stored
  * price_as_of beside the merchant's price, so that stamp never dates a merchant answer. Pure.
  */
-function verifyPriceAnswerOfPdpProduct(product) {
+function verifyPriceAnswerOfPdpProduct(product, skuId = null) {
   const p = isPlainObject(product) ? product : {};
+  // get_pdp_v2 still projects default-variant money on the product. A SKU-scoped
+  // recommendation may use it only when the returned default is that exact variant.
+  if (skuId && str(p.default_variant_id) !== skuId) return null;
   const out = { price: p.price, currency: p.currency, in_stock: p.in_stock };
   const merchant = p.price_source === 'merchant_live';
   const lr = isPlainObject(p.live_read) ? p.live_read : null;

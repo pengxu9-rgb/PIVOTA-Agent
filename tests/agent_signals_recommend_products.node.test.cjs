@@ -1954,7 +1954,7 @@ test('6n-ter. the loopback body maps to {withheld_currencies}, every one the pag
   }
   // The server wiring reads this function, not a copy.
   const source = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
-  assert.match(source, /if \(!product \|\| typeof product\.price !== 'number'\) return withheldPriceOfVerifyResponse\(response\.data\);/);
+  assert.match(source, /if \(!product \|\| typeof product\.price !== 'number'\) \{\s*return withheldPriceOfVerifyResponse\(response\.data\);/);
 });
 
 test('6n-quater. a snapshot in one of the withheld units is no switch: the live price is unavailable', async () => {
@@ -1999,4 +1999,160 @@ test('6p. a shortlist emptied by currency switches says so', async () => {
   assert.deepEqual(res.signals, []);
   assert.equal(res.metadata.products_empty_reason, 'live_price_currency_changed');
   assert.equal(res.metadata.price_verification.currency_switched, 1);
+});
+
+test('explicit ingredient exclusions apply after catalog fallback and rebound, before price verification', async () => {
+  const candidate = (id, title, additions = {}) => ({
+    ...ITEM_INTERNAL,
+    name: title,
+    sku: { product_id: id, name: title, merchant_id: 'merchant-1', ...additions.sku },
+    ...(additions.basis ? { __pivota_score_basis: additions.basis } : {}),
+  });
+  const calls = [];
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([
+      candidate('sig_snail', 'COSRX Advanced Snail 96 Mucin Power Essence', { basis: 'positional' }),
+      candidate('sig_unknown', 'Unverified Hydrating Essence', { basis: 'catalog_rebound' }),
+      candidate('sig_other_market', 'Other Market Essence'),
+      candidate('sig_verified', 'Reviewed Hydrating Essence', { sku: { variant_id: 'essence-us-30ml' } }),
+    ]),
+    loadIngredientFormulas: async (refs, market) => {
+      assert.equal(market, 'US');
+      assert.deepEqual(refs.map((ref) => [ref.product_id, ref.sku_id]), [
+        ['sig_snail', null], ['sig_unknown', null], ['sig_other_market', null], ['sig_verified', 'essence-us-30ml'],
+      ]);
+      return [
+        { ingredientText: 'Snail Secretion Filtrate, Water, Panthenol', market: 'US' },
+        null,
+        { ingredientText: 'Water, Glycerin, Panthenol', market: 'KR' },
+        { ingredientText: 'Water, Glycerin, Panthenol', sourceUrl: 'https://brand.example/formula', market: 'US' },
+      ];
+    },
+    verifyPrice: async (product) => {
+      calls.push(product);
+      return { price: 22, currency: 'USD' };
+    },
+  });
+  const res = await h({ need: 'A lightweight hydrating essence that avoids snail-derived ingredients, in the United States.',
+    constraints: { avoid: ['snail mucin'], price_max: 25, currency: 'USD' }, limit: 3 });
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_verified']);
+  assert.deepEqual(res.signals[0].value.ingredient_exclusion, {
+    status: 'absent_from_reviewed_ingredient_list', market: 'US', source_url: 'https://brand.example/formula',
+  });
+  assert.equal(res.signals[0].value.product.sku_id, 'essence-us-30ml');
+  assert.equal(res.signals[0].value.product.price, 22);
+  assert.equal(res.signals[0].value.product.price_verified, true);
+  assert.deepEqual(calls.map((ref) => [ref.product_id, ref.sku_id]), [['sig_verified', 'essence-us-30ml']]);
+  assert.deepEqual(res.metadata.ingredient_exclusion_verification, { market: 'US', present_withheld: 1, unknown_withheld: 2, verified: 1 });
+});
+
+test('an unsupported ingredient or unavailable formula cannot silently become a match', async () => {
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_INTERNAL]),
+    loadIngredientFormulas: async () => { throw new Error('database unavailable'); },
+  });
+  const result = await h({ need: 'gentle cream', constraints: { avoid: ['fragrance'] } });
+  assert.equal(result.metadata.products_empty_reason, 'no_verified_ingredient_matches');
+  assert.equal(result.metadata.ingredient_exclusion_verification.unknown_withheld, 1);
+  assert.deepEqual(result.signals, []);
+  const unsupported = await h({ need: 'gentle cream', constraints: { avoid: ['all undisclosed allergens'] } });
+  assert.equal(unsupported.metadata.ingredient_exclusion_verification.unsupported_input, true);
+  assert.deepEqual(unsupported.signals, []);
+});
+
+test('SKU-scoped price verification uses default-product money only for the exact returned default variant', () => {
+  const { verifyPriceAnswerOfPdpProduct } = require('../src/agentSignals/recommendProducts');
+  const pdp = { default_variant_id: 'variant-a', price: 27, currency: 'USD', in_stock: true,
+    price_source: 'merchant_live', live_read: { status: 'verified', checked_at: '2026-11-14T09:30:00Z' } };
+  assert.equal(verifyPriceAnswerOfPdpProduct(pdp, 'variant-b'), null);
+  assert.equal(verifyPriceAnswerOfPdpProduct({ ...pdp, default_variant_id: null }, 'variant-a'), null);
+  assert.deepEqual(verifyPriceAnswerOfPdpProduct(pdp, 'variant-a'), {
+    price: 27, currency: 'USD', in_stock: true, merchant_live: true, price_as_of: '2026-11-14T09:30:00Z',
+  });
+});
+
+test('a verified formula cannot lend unscoped catalog money or budget fit to its exact variant', async () => {
+  const variant = { ...ITEM_FULL,
+    sku: { ...ITEM_FULL.sku, variant_id: 'trial-kit-30ml' },
+    price: { amount: 9, currency: 'USD' },
+    reasons: ['A useful texture', 'Within your budget'],
+  };
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([variant]),
+    loadIngredientFormulas: async () => [
+      { ingredientText: 'Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate', market: 'US' },
+    ],
+    verifyPrice: async () => null,
+  });
+  const result = await h({ need: 'gentle essence', constraints: { avoid: ['snail mucin'], price_max: 25 } });
+  assert.equal(result.signals.length, 1);
+  const row = result.signals[0].value;
+  assert.equal(row.product.price, null);
+  assert.equal(row.product.price_verified, false);
+  assert.ok(row.why.includes('A useful texture'));
+  assert.ok(!row.why.includes('Within your budget'));
+  assert.equal(result.metadata.price_unverified_returned, 1);
+});
+
+test('ingredient-verified variants cannot quote foreign PDP money for a US buyer', async () => {
+  const variant = { ...ITEM_FULL, sku: { ...ITEM_FULL.sku, variant_id: 'essence-30ml' },
+    price: { amount: 19, currency: 'USD' } };
+  for (const price of [{ price: 26, currency: 'AUD' }, { withheld_currencies: ['AUD'] }]) {
+    const h = makeRecommendProducts({
+      generate: async () => laneResult([variant]),
+      loadIngredientFormulas: async () => [
+        { ingredientText: 'Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate', market: 'US' },
+      ],
+      verifyPrice: async (ref) => {
+        assert.equal(ref.market, 'US');
+        assert.equal(ref.sku_id, 'essence-30ml');
+        return price;
+      },
+    });
+    const result = await h({ need: 'gentle essence', constraints: { avoid: ['snail mucin'], price_max: 25 } });
+    assert.deepEqual(result.signals, []);
+    assert.equal(result.metadata.products_empty_reason, 'live_price_currency_changed');
+  }
+});
+
+test('bridge shortlist ignores commercial metadata when lane order and verified buyer facts are fixed', async () => {
+  const candidate = (id, merchant, price, extras = {}) => ({
+    ...ITEM_FULL,
+    merchant_id: merchant,
+    sku: { product_id: id, name: id, merchant_id: merchant, ...extras },
+    price: { amount: price, currency: 'USD' },
+    ...extras,
+  });
+  const clean = 'Water, Glycerin, Niacinamide, Panthenol, Sodium Hyaluronate';
+  const formulas = { sig_conflict: 'Snail Secretion Filtrate, ' + clean, sig_retailer: clean, sig_brand: clean, sig_over_budget: clean };
+  const run = (commercialFields) => makeRecommendProducts({
+    // This fixture pins the upstream shortlist. It exercises bridge filtering and
+    // slotting after the lane runs, not the discovery/order chosen upstream.
+    generate: async () => laneResult([
+      candidate('sig_conflict', 'merchant_a', 17, commercialFields),
+      candidate('sig_over_budget', 'merchant_a', 31, commercialFields),
+      candidate('sig_retailer', 'merchant_b', 19),
+      candidate('sig_brand', 'merchant_a', 21, commercialFields),
+    ]),
+    loadIngredientFormulas: async (refs, market) =>
+      refs.map(({ product_id }) => ({ ingredientText: formulas[product_id], market })),
+    verifyPrice: async ({ product_id }) => ({
+      price: { sig_retailer: 19, sig_brand: 21, sig_over_budget: 31 }[product_id],
+      currency: 'USD',
+    }),
+  })({ need: 'A hydrating essence', constraints: { avoid: ['snail mucin'], price_max: 25 }, limit: 2 });
+  const baseline = await run({});
+  const changed = await run({
+    partnership_status: 'paid', commission: 0.4, affiliate_url: 'https://shop.example/affiliate',
+    audit_score: 100, campaign_id: 'featured-products',
+  });
+  const shortlist = ({ signals }) => signals.map(({ value }) => [
+    value.product.product_id, value.rank, value.ingredient_exclusion.status, value.product.price,
+  ]);
+  assert.deepEqual(shortlist(baseline), [
+    ['sig_retailer', 1, 'absent_from_reviewed_ingredient_list', 19],
+    ['sig_brand', 2, 'absent_from_reviewed_ingredient_list', 21],
+  ]);
+  assert.deepEqual(shortlist(changed), shortlist(baseline));
+  assert.deepEqual(changed.metadata.ingredient_exclusion_verification, baseline.metadata.ingredient_exclusion_verification);
 });

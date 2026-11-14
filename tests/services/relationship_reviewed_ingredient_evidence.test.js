@@ -193,3 +193,51 @@ test('optional actual model and packet linkage are bounded primitive metadata',(
     const malformed=record();malformed.reviews[0][field]=value;expect(()=>validateReviewedIngredientEvidence(malformed,{nowMs:NOW})).toThrow();
   }
 });
+
+test('recommendation formula load preserves per-row evidence, market and exact variant', async () => {
+  const { loadRecommendationIngredientFormulas } = require('../../src/services/recommendReviewedIngredientLookup');
+  const evidence = record();
+  const sourceUrl = `${evidence.source_url}?variant=variant-1`;
+  evidence.source_url = sourceUrl;
+  evidence.source_capture.source_url = sourceUrl;
+  evidence.reviews.forEach((review) => { review.source_url = sourceUrl; });
+  const proof = validateReviewedIngredientEvidence(evidence, { nowMs: NOW });
+  const row = { ...proof.identity, ...proof, proof, source_variant_id: 'variant-1' };
+  const query = jest.fn(async () => ({
+    rows: [
+      { ...row, ordinality: 0 },
+      { ...row, ordinality: 1, variant_title: 'Other shade' },
+      { ...row, ordinality: 2, source_variant_id: 'reused-title-variant' },
+      { ...row, ordinality: 3, proof: { ...proof, full_ingredient_list: false } },
+      ...Array.from({ length: 5 }, () => ({ ...row, ordinality: 4 })),
+      { ...row, ordinality: 5, source_url: 'https://example.test/different-pdp?variant=variant-1' },
+      { ...row, ordinality: 6, source_observed_at: '2026-10-02T14:00:00.000Z' },
+    ],
+  }));
+  const refs = Array.from({ length: 7 }, () => ({ product_id: 'sig_a', merchant_id: 'external_seed', sku_id: 'variant-1' }));
+  const formulas = await loadRecommendationIngredientFormulas(refs, 'US', { query, nowMs: NOW });
+  expect(formulas).toEqual([{ ingredientText: FORMULA, market: 'US', sourceUrl: proof.source_url }, ...Array(6).fill(null)]);
+  expect(query).toHaveBeenCalledWith(expect.stringContaining('source.market = $2'),
+    [expect.any(String), 'US', new Date(NOW).toISOString(), 5], { timeoutMs: 2500 });
+  expect(await loadRecommendationIngredientFormulas(refs, 'KR', { query, nowMs: NOW })).toEqual(Array(7).fill(null));
+});
+
+test('a product-grain packet with a variant URL cannot attest a different sole variant', async () => {
+  const { loadRecommendationIngredientFormulas } = require('../../src/services/recommendReviewedIngredientLookup');
+  const identity = { ...record().identity, variant_title: '' };
+  const evidence = record();
+  const sourceUrl = `${evidence.source_url}?variant=variant-1`;
+  Object.assign(evidence, { identity, source_url: sourceUrl });
+  Object.assign(evidence.source_capture, { identity, source_url: sourceUrl });
+  evidence.reviews.forEach((review) => Object.assign(review, { identity, source_url: sourceUrl }));
+  const proof = validateReviewedIngredientEvidence(evidence, { nowMs: NOW });
+  const row = { ...proof.identity, ...proof, proof };
+  const query = async () => ({ rows: [
+    { ...row, ordinality: 0, source_variant_id: 'variant-1' },
+    { ...row, ordinality: 1, source_variant_id: 'variant-2' },
+    { ...row, ordinality: 2, source_variant_id: null },
+  ] });
+  const refs = Array.from({ length: 3 }, () => ({ product_id: 'sig_a', merchant_id: 'external_seed' }));
+  await expect(loadRecommendationIngredientFormulas(refs, 'US', { query, nowMs: NOW }))
+    .resolves.toEqual([{ ingredientText: FORMULA, market: 'US', sourceUrl: proof.source_url }, null, null]);
+});
