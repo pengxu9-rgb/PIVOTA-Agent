@@ -34128,6 +34128,7 @@ async function getCommerceRemoteMcpAdapter() {
       const commerce = await getCommerceMount();
       const { createCanonicalExecutor } = await import('../safety-kernel/src/protocol/canonicalExecutor.js');
       const { createCommerceToolSurface } = await import('../mcp-server/src/commerceToolSurface.js');
+      const { createMerchantQuoteCatalogVerifier } = await import('../mcp-server/src/merchantCheckoutQuoteTool.js');
       const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
       const verifyPaymentAuthorization = await getCommercePaymentAuthorizationVerifier();
       // Read-only intelligence reads (get_alternatives/get_offers) injected as localReads — the relationship
@@ -34511,6 +34512,13 @@ async function getCommerceRemoteMcpAdapter() {
         // function the partner assertion on the referral and the hand-off record is signed from, so the two can
         // never name different partners. Null (a service or degraded identity): that call is not deduplicated.
         storefrontCartPartner: () => issuingSubjectFromInvokeContext(getInvokeAuthContext()),
+        merchantQuote: {
+          stateStore: typeof commerce.stateStore === 'function' ? commerce.stateStore('merchant_checkout_quote') : undefined,
+          partnerPrincipal: () => issuingSubjectFromInvokeContext(getInvokeAuthContext()),
+          confirmCatalogVariant: createMerchantQuoteCatalogVerifier(
+            (sql, params) => dbModuleForLaneDeadlines.queryWithBudget(sql, params, { timeoutMs: 1500 }),
+          ),
+        },
         // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
@@ -35117,7 +35125,7 @@ function registerCommerceRemoteMcpRoute() {
  * The caller owns whatever must happen BEFORE this (public-read host dispatch, per-door enable flags), so
  * nothing here can accidentally re-open a door its own route decided to keep shut.
  */
-async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel, door }) {
+async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel, door, oauthResourcePath }) {
     // One id for this call on every hop (the outcome line, the loopback, the backend assertion).
     req.mcpGatewayRequestId = randomUUID();
     const toolCallRecorder = logMcpToolCallOnFinish(req, res, door || 'commerce_mcp');
@@ -35127,7 +35135,9 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
     // when the flag is off — the existing api-key channel below is unchanged.
     let mcpOAuthOutcome = { mode: 'disabled' };
     try {
-      mcpOAuthOutcome = await commerceMcpOAuth.resolveMcpOAuthIdentity(req);
+      mcpOAuthOutcome = await commerceMcpOAuth.resolveMcpOAuthIdentity(
+        oauthResourcePath ? { path: oauthResourcePath, headers: req.headers } : req,
+      );
     } catch (err) {
       logger.warn({ err: err?.message || String(err) }, 'mcp oauth resolution failed');
     }
@@ -35328,6 +35338,28 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
  * Both flags 404 rather than 403: a dark door must be indistinguishable from a route that does not exist.
  */
 function registerCommerceUcpMcpRoute() {
+  app.post('/api/quotes/merchant-preview', async (req, res) => {
+    try {
+      const { merchantCheckoutQuoteEnabled } = await import('../mcp-server/src/merchantCheckoutQuote.js');
+      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpToolDoorEnabled() || !merchantCheckoutQuoteEnabled()) {
+        return res.status(404).json({ error: 'not_found' });
+      }
+      // This route uses the UCP resource and existing authentication, session, and caller limit.
+      req.body = { jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: 'preview_merchant_checkout_quote', arguments: req.body } };
+      return await runWithPriceDoor(req, 'ucp_mcp', () => serveCommerceMcpJsonRpc(req, res, {
+        handlerEnteredAtMs: Date.now(),
+        getAdapter: getCommerceUcpMcpAdapter,
+        resolveBlockedOperation: resolveBlockedUcpMcpOperation,
+        failureLabel: 'merchant quote preview route failed',
+        door: 'ucp_mcp',
+        oauthResourcePath: '/ucp/mcp',
+      }));
+    } catch {
+      if (!res.headersSent) return res.status(503).json({ error: 'merchant_quote_unavailable' });
+      return undefined;
+    }
+  });
   app.post('/ucp/mcp', async (req, res) => {
     // Same reason as /mcp: the auth channel below can burn seconds of the edge's first-body-byte budget.
     const handlerEnteredAtMs = Date.now();

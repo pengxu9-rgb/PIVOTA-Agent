@@ -1520,12 +1520,21 @@ function normalizeDiscountCodes(codes) {
   return out;
 }
 
+const SHOPIFY_FULFILLMENT_TOTAL_PATH = '$.totals[?@.type == "fulfillment"]';
+
+function shopifyFulfillmentAmount(totals) {
+  if (!Array.isArray(totals)) return null;
+  const rows = totals.filter(row => isPlainObjectLocal(row) && row.type === 'fulfillment');
+  return rows.length === 1 ? positiveMinor(rows[0].amount) : null;
+}
+
 /**
  * Where an allocation lands, from its JSON path. The spec types `path` as a free JSONPath and shows only
- * `$.line_items[i]` and `$.totals.shipping`; its totals vocabulary names `fulfillment` and `fee` too. Only those
- * are recognized. Any other path, and a missing one, returns null: the entry is unreadable, never guessed.
+ * `$.line_items[i]` and `$.totals.shipping`; its totals vocabulary names `fulfillment` and `fee` too.
+ * Shopify also uses a literal filter for a fulfillment total. Recognize that exact path only when it selects
+ * one valid row with enough shipping charge for the allocation.
  */
-function allocationTarget(path, lines) {
+function allocationTarget(path, lines, fulfillmentAmount, amount) {
   if (typeof path !== 'string') return null;
   const lineIndex = /^\$\.line_items\[(\d+)\]$/.exec(path);
   // A line allocation must name a line this checkout has; `$.line_items[99]` on a one-line checkout is not one,
@@ -1533,6 +1542,7 @@ function allocationTarget(path, lines) {
   if (lineIndex) return isPlainObjectLocal(lines[Number(lineIndex[1])]) ? 'line' : null;
   if (/^\$\.totals\.(shipping|fulfillment)$/.test(path)) return 'shipping';
   if (/^\$\.totals\.fee$/.test(path)) return 'fee';
+  if (path === SHOPIFY_FULFILLMENT_TOTAL_PATH && fulfillmentAmount !== null && amount <= fulfillmentAmount) return 'shipping';
   return null;
 }
 
@@ -1549,7 +1559,7 @@ function positiveMinor(value) {
  * So it is read, as one allocation targeted `unallocated`: it lowers the checkout total, but nothing says
  * whether it lowered the item, the order or shipping, so it never counts as the item's saving.
  */
-function readAppliedEntry(entry, lines) {
+function readAppliedEntry(entry, lines, fulfillmentAmount) {
   if (!isPlainObjectLocal(entry)) return null;
   const amount = positiveMinor(entry.amount);
   const code = typeof entry.code === 'string' && entry.code.trim() ? entry.code.trim() : null;
@@ -1565,8 +1575,9 @@ function readAppliedEntry(entry, lines) {
   } else {
     for (const a of rawAllocations) {
       const allocationAmount = isPlainObjectLocal(a) ? positiveMinor(a.amount) : null;
-      const target = isPlainObjectLocal(a) ? allocationTarget(a.path, lines) : null;
-      if (allocationAmount === null || target === null) return null;
+      if (allocationAmount === null) return null;
+      const target = allocationTarget(a.path, lines, fulfillmentAmount, allocationAmount);
+      if (target === null) return null;
       allocations.push({ path: a.path, target, amount_minor: allocationAmount });
     }
     // "Sum of allocation amounts equals total amount" (spec). A mismatch, or an allocation larger than its
@@ -1629,14 +1640,24 @@ function normalizeDiscounts(payload) {
       } else if (entries.length > 0) subtotalUnreadable = true;
     }
   }
+  const fulfillmentAmount = shopifyFulfillmentAmount(totals);
+  const rawEntries = Array.isArray(block.applied) ? block.applied : [];
+  const entries = rawEntries.map(raw => ({ raw, read: readAppliedEntry(raw, lines, fulfillmentAmount) }));
+  const shippingAllocated = entries.flatMap(({ read }) => read?.allocations ?? [])
+    .filter(allocation => allocation.target === 'shipping')
+    .reduce((sum, allocation) => sum + allocation.amount_minor, 0);
+  const shippingOverallocated = fulfillmentAmount !== null
+    && (!Number.isSafeInteger(shippingAllocated) || shippingAllocated > fulfillmentAmount);
   const applied = [];
   const unreadable = [];
-  for (const entry of Array.isArray(block.applied) ? block.applied : []) {
-    const read = readAppliedEntry(entry, lines);
-    if (read) applied.push(read);
-    else {
-      const named = isPlainObjectLocal(entry) && typeof entry.code === 'string' ? entry.code.trim() : null;
-      unreadable.push({ code: named || null, raw: entry });
+  for (const { raw, read } of entries) {
+    // Exact Shopify selectors all refer to the same charge. Reject their entries if the combined allocations,
+    // including legacy shipping paths, would consume that charge more than once.
+    if (read && !(shippingOverallocated && read.allocations.some(a => a.path === SHOPIFY_FULFILLMENT_TOTAL_PATH))) {
+      applied.push(read);
+    } else {
+      const named = isPlainObjectLocal(raw) && typeof raw.code === 'string' ? raw.code.trim() : null;
+      unreadable.push({ code: named || null, raw });
     }
   }
   const rejected = [];
