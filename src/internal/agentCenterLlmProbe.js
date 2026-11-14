@@ -7,10 +7,9 @@
  *   - `mock`: deterministic stub responses keyed by scan_mode. Used by
  *     default and in CI; lets the whole agent-center pipeline be tested
  *     end-to-end without burning tokens.
- *   - `gemini`: real Gemini calls via @google/genai. Requires
- *     GEMINI_API_KEY in env. Routes through the existing
- *     geminiGlobalGate semaphore + circuit breaker (no new rate-limit
- *     surface introduced).
+ *   - `gemini`: real Gemini calls via @google/genai. Merchant audits can
+ *     use a separate Vertex project with the attached service account.
+ *     Each project has a rate limiter and circuit breaker.
  *   - `chatgpt`: real OpenAI Responses API calls with web_search_preview.
  *     Requires OPENAI_API_KEY in env and uses the same probe gate.
  *   - `claude`: real Anthropic Messages API calls with web_search. Two
@@ -33,7 +32,7 @@
 const vertexGemini = require('../llm/vertexGemini');
 const consumerAnswer = require('./consumerAnswerEvidence');
 
-const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
+const { getGeminiGlobalGate, getMerchantAuditGeminiGate } = require('../lib/geminiGlobalGate');
 
 const ALLOWED_SCAN_MODES = new Set([
   consumerAnswer.MODE,
@@ -74,6 +73,8 @@ const DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS = Number(
   process.env.PIVOTA_AGENT_CENTER_LLM_GATE_QUEUE_TIMEOUT_MS || 30_000,
 );
 const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5-flash';
+const MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT =
+  String(process.env.PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT || '').trim();
 // OpenAI ChatGPT fidelity model. `chat-latest` is the API alias that tracks the
 // latest Instant model used in ChatGPT. Probe callers may override per request
 // via `options.model`; there is intentionally no service-env model pin here.
@@ -122,6 +123,7 @@ function openAIProbePricing(model) {
 }
 
 let cachedGeminiClient = null;
+let merchantAuditGeminiClient = null;
 let geminiInitFailed = false;
 let cachedOpenAIClient = null;
 let openAIInitFailed = false;
@@ -363,6 +365,24 @@ function getGeminiClient() {
     geminiInitFailed = true;
     return null;
   }
+}
+
+function usesMerchantAuditGeminiVertex(input) {
+  // The backend uses this store ID for the merchant audit's SKU probes and answer capture.
+  return Boolean(
+    MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT && input?.merchant_id &&
+    input.store_id === `${input.merchant_id}_audit`,
+  );
+}
+
+function getMerchantAuditGeminiClient() {
+  if (!merchantAuditGeminiClient) {
+    const { GoogleGenAI } = require('@google/genai');
+    merchantAuditGeminiClient = new GoogleGenAI(
+      vertexGemini.attachedServiceGeminiClientOptions(MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT),
+    );
+  }
+  return merchantAuditGeminiClient;
 }
 
 function getOpenAIClient() {
@@ -957,7 +977,9 @@ async function withProbeCostGate(input, provider, fn) {
     if (!_providerUsesGeminiGate(provider)) {
       return await fn();
     }
-    const globalGate = getGeminiGlobalGate();
+    const globalGate = usesMerchantAuditGeminiVertex(input)
+      ? getMerchantAuditGeminiGate()
+      : getGeminiGlobalGate();
     return await globalGate.withGate(
       `agent_center_llm_probe_${provider}`,
       fn,
@@ -1468,7 +1490,9 @@ async function buildGroundedProviderProbe(input, providerSpec) {
 
 async function buildGeminiProbe(input) {
   consumerAnswer.assertEnabled(input);
-  const client = getGeminiClient();
+  const client = usesMerchantAuditGeminiVertex(input)
+    ? getMerchantAuditGeminiClient()
+    : getGeminiClient();
   if (!client) {
     // Fall back to mock so callers still get a useful response, with a
     // clearly-marked provider so they know it didn't go through Gemini.

@@ -155,9 +155,13 @@ function warnOnProjectMismatch(info) {
  */
 function geminiClientOptions(apiKey) {
   if (!vertexEnabled()) return { apiKey };
+  return vertexGeminiClientOptions(vertexProject(), parsedCredentials());
+}
+
+function vertexGeminiClientOptions(project, credentials) {
   const options = {
     vertexai: true,
-    project: vertexProject(),
+    project,
     location: vertexLocation(),
     // @google/genai@0.7.0 derives the host as `${location}-aiplatform.
     // googleapis.com` with NO case for "global" (verified: zero occurrences of
@@ -173,9 +177,20 @@ function geminiClientOptions(apiKey) {
     // URL is used — so it was hiding behind the ADC failure this branch fixes.
     httpOptions: { baseUrl: `${vertexHost()}/` },
   };
-  const credentials = parsedCredentials();
   if (credentials) options.googleAuthOptions = { credentials };
   return options;
+}
+
+function attachedServiceGeminiClientOptions(project) {
+  const { Compute } = require(require.resolve('google-auth-library', {
+    paths: [require.resolve('@google/genai')],
+  }));
+  const scopes = ['https://www.googleapis.com/auth/cloud-platform'];
+  // Force the attached identity even when another lane has configured a key or ADC file.
+  return {
+    ...vertexGeminiClientOptions(project),
+    googleAuthOptions: { authClient: new Compute({ scopes }), scopes },
+  };
 }
 
 /**
@@ -630,6 +645,7 @@ module.exports = {
   vertexProject,
   vertexLocation,
   geminiClientOptions,
+  attachedServiceGeminiClientOptions,
   credentialsAvailable,
   credentialProbeState,
   clientCacheKey,

@@ -298,6 +298,7 @@ function createKeyPool() {
 // --------------- Global Gate Singleton ---------------
 
 let _gate = null;
+let merchantAuditGate = null;
 
 function createGeminiGlobalGate({
   concurrencyMax,
@@ -529,9 +530,8 @@ function createGeminiGlobalGate({
   return { withGate, getApiKey, snapshot, metrics };
 }
 
-function getGeminiGlobalGate() {
-  if (_gate) return _gate;
-  _gate = createGeminiGlobalGate({
+function createConfiguredGeminiGate() {
+  return createGeminiGlobalGate({
     concurrencyMax: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_CONCURRENCY_MAX, 6)),
     ratePerMin: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_RATE_PER_MIN, 300)),
     circuitFailThreshold: Math.max(1, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_FAIL_THRESHOLD, 8)),
@@ -544,16 +544,28 @@ function getGeminiGlobalGate() {
     ),
     timeoutWindowMs: Math.max(1000, parseEnvInt(process.env.GEMINI_GLOBAL_CIRCUIT_TIMEOUT_WINDOW_MS, 60_000)),
   });
+}
+
+function getGeminiGlobalGate() {
+  if (!_gate) _gate = createConfiguredGeminiGate();
   return _gate;
+}
+
+function getMerchantAuditGeminiGate() {
+  // Billing and quota are separate on the merchant audit Vertex project.
+  if (!merchantAuditGate) merchantAuditGate = createConfiguredGeminiGate();
+  return merchantAuditGate;
 }
 
 function resetGlobalGateForTest() {
   _gate = null;
+  merchantAuditGate = null;
 }
 
 module.exports = {
   GeminiGateError,
   createGeminiGlobalGate,
   getGeminiGlobalGate,
+  getMerchantAuditGeminiGate,
   resetGlobalGateForTest,
 };
