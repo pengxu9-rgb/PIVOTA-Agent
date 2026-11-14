@@ -8,6 +8,7 @@ import { SafetyKernel } from '../src/kernel.js';
 import { InMemoryKvStore } from '../src/stores.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter, verifyAcpSignature } from '../src/protocol/acpRestAdapter.js';
+import { marketCurrencyOf } from './helpers/marketCurrency.js';
 
 const SECRET = 'acp-signing-secret-0123456789abcdef';
 const KSECRET = 'acp-kernel-secret-0123456789abcdef';
@@ -39,6 +40,7 @@ function setup({ verify = okVerify, getProducts, quote = QUOTE, publicFeed } = {
     executor, sessionStore, signingSecret: SECRET, publicFeed,
     resolveUserRef: async (req) => req.headers['x-test-buyer'], // simulates a verified buyer credential
     getProducts: getProducts ?? (async () => [{ product_id: 'p1', title: 'Sock', price: '9.99', currency: 'USD', in_stock: true }]),
+    marketCurrencyOf,
     now: () => FIXED_NOW,
   });
   return { adapter, sessionStore, charges: () => charges, upstreamCalls };
@@ -57,7 +59,9 @@ function req({ body = {}, id, buyer = 'buyer_1', idem = 'idem-acp-00001', ts = F
 // PR-E intake: every ACP item now needs a REAL variant_id (never synthesised from product_id), and a
 // checkout session needs a buyer email. `resolveUserRef` in setup() returns a bare STRING (no attested
 // claims), so this fixture also pins the BODY-ONLY email path and the string-return back-compat shape.
-const CART = { merchant_id: 'merch_A', buyer: { email: 'buyer1@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] };
+// A US address: this door completes only a session with an address to ship to, and the stub pricer answers in USD.
+const ADDRESS = { name: 'Example Buyer', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country: 'US' };
+const CART = { merchant_id: 'merch_A', buyer: { email: 'buyer1@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], fulfillment_address: ADDRESS };
 
 async function open(adapter, buyer = 'buyer_1') {
   const r = await adapter.createCheckoutSession(req({ body: CART, idem: `idem-open-${buyer}`, buyer }));
@@ -185,6 +189,7 @@ test('requires_action handoff surfaced verbatim; raw client_secret never echoed'
   // make submit_payment return a redirect handoff + a raw client_secret
   const redirect = 'https://paypal.example/checkoutnow?token=EC-9&code=AUTH';
   const adp = createAcpRestAdapter({
+    marketCurrencyOf,
     executor: createCanonicalExecutor({
       kernel: new SafetyKernel({
         upstream: async (op) => op === 'preview_quote' ? QUOTE : op === 'create_order' ? { order_id: 'o_acp', acp_state: {} }

@@ -55,6 +55,8 @@ import {
 // This adapter IS the ACP door; every ctx it builds says so, which scopes the delegated-PSP-token lane.
 const ACP_PROTOCOL_NAME = 'acp';
 
+// Where this door's caller supplies or replaces the fulfillment address. Named as the concrete REST endpoint.
+const ADDRESS_UPDATE_HINT = 'POST /checkout_sessions/{checkout_session_id}';
 const MAX_SESSION_WRITE_ATTEMPTS = 4; // conditional writes of one session record a request tries before it gives up
 // A session is open until it has an order or was cancelled.
 const sessionIsOpen = (record) => isPlainObject(record) && !record.order_id && record.canceled !== true;
@@ -189,6 +191,11 @@ export function createAcpRestAdapter(deps = {}) {
   //       (3) no mark blocks it (below).
   //     A quote that holds an address was judged for that address's country when it was priced, and records it.
   //     A session created with no address is therefore judged at the latest here, before any money moves.
+  //   - COMPLETE WITH NO ADDRESS TO SHIP TO (none on the session's quote, none on the completion) is refused by
+  //     name before any order is asked for (`acp_fulfillment_address_required`), whether or not the session has a
+  //     market: an order needs the address. So a session is paid only with an address, and the country of the
+  //     address the order ships to is always one the locked quote was judged for: the quote's own address when
+  //     it holds one (judged when it was priced), else the completion's (judged at completion, (1)-(3) above).
   //   - THE MARK. An UPDATE refused for its market changes no quote, so the session still holds
   //     the quote it had. When that HELD quote is not priced for the refused market (the market has no currency,
   //     or another currency than the held quote's), the market is written on the session record
@@ -539,6 +546,9 @@ export function createAcpRestAdapter(deps = {}) {
           // request left on the session, beside it and never in its place.
           ...marketParamsOf(marketOfAddress(shipping_address)),
           ...heldMarketParams(stored),
+          // A completion with no address to ship to (none on the session's quote, none here) is refused by name
+          // before any order is asked for (the executor reads the quote). The value says where to supply one.
+          fulfillment_address_required: ADDRESS_UPDATE_HINT,
         }, ctx);
       } catch (err) {
         // A session a cancellation won (it holds the quote's single-use claim, see cancelCheckoutSession) answers
@@ -798,7 +808,7 @@ function mapAddress(body) {
   if (!a) return undefined;
   // Name the concrete REST endpoint: an ACP client reads this out of `body.message`, and 'the update op'
   // does not tell it where to send one.
-  return pickCompleteAddress(a, { updateHint: 'POST /checkout_sessions/{checkout_session_id}' });
+  return pickCompleteAddress(a, { updateHint: ADDRESS_UPDATE_HINT });
 }
 
 // THE BUYER'S MARKET, AS THIS PROTOCOL NAMES IT: the country of the fulfillment address, read as an ISO 3166-1

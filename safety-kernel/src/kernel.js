@@ -57,6 +57,19 @@ function normalizeBuyerAddress(value) {
   return Object.keys(out).length ? out : undefined;
 }
 
+/**
+ * THE ADDRESS AN ORDER IS CREATED WITH: the address locked on the session's quote, completed field by field by
+ * the one the completion request carries (the locked one wins), each normalised first (normalizeBuyerAddress).
+ * `undefined` when neither side holds anything. ONE definition: createOrder builds the order's shipping address
+ * with it, and a door that refuses a completion with no address to ship to (canonicalExecutor.js) judges the same
+ * object, so what is judged and what is sent cannot drift apart.
+ */
+export function effectiveShippingAddress(lockedAddress, requestedAddress) {
+  const locked = normalizeBuyerAddress(lockedAddress);
+  const requested = normalizeBuyerAddress(requestedAddress);
+  return locked || requested ? { ...(requested || {}), ...(locked || {}) } : undefined;
+}
+
 function normalizeBuyerContext(value) {
   if (!isPlainObject(value)) return undefined;
   const out = {
@@ -248,14 +261,13 @@ export class SafetyKernel {
         if (!claimedQuote) throw await this.quoteAlreadyUsed(quote.quote_id);
         const lockedBuyerContext = normalizeBuyerContext(quote.buyer_context);
         const requestedBuyerContext = normalizeBuyerContext(payload.order);
-        const lockedShipping = lockedBuyerContext && lockedBuyerContext.shipping_address;
-        const requestedShipping = requestedBuyerContext && requestedBuyerContext.shipping_address;
         const buyerContext = {
           ...(requestedBuyerContext || {}),
           ...(lockedBuyerContext || {}),
-          shipping_address: lockedShipping || requestedShipping
-            ? { ...(requestedShipping || {}), ...(lockedShipping || {}) }
-            : payload.order?.shipping_address,
+          shipping_address: effectiveShippingAddress(
+            isPlainObject(quote.buyer_context) ? quote.buyer_context.shipping_address : undefined,
+            isPlainObject(payload.order) ? payload.order.shipping_address : undefined,
+          ) ?? payload.order?.shipping_address,
         };
         // Pricing is forced from the snapshot; model-supplied amounts are ignored.
         const upstreamPayload = {
