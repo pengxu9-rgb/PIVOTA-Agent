@@ -215,6 +215,54 @@ describe('the response is read without guessing', () => {
     expect(read([codeEntry({ allocations: [{ path, amount: 400 }] })]).unreadable).toHaveLength(1);
   });
 
+  test.each([
+    ['no fulfillment', []],
+    ['duplicate fulfillment', [{ type: 'fulfillment', amount: 400 }, { type: 'fulfillment', amount: 800 }]],
+    ['a malformed charge', [{ type: 'fulfillment', amount: '400' }]],
+    ['a smaller charge', [{ type: 'fulfillment', amount: 300 }]],
+  ])('the Shopify fulfillment selector remains unreadable with %s', (_label, totals) => {
+    const path = '$.totals[?@.type == "fulfillment"]';
+    const entry = codeEntry({ allocations: [{ path, amount: 400 }] });
+    const discounts = read([entry], { totals });
+    expect(discounts.applied).toEqual([]);
+    expect(discounts.unreadable).toHaveLength(1);
+  });
+
+  test('an arbitrary total selector remains unreadable even when it matches a single row', () => {
+    const path = '$.totals[?@.type == "fee"]';
+    const entry = codeEntry({ allocations: [{ path, amount: 400 }] });
+    const discounts = read([entry], { totals: [{ type: 'fee', amount: 400 }] });
+    expect(discounts.applied).toEqual([]);
+    expect(discounts.unreadable).toHaveLength(1);
+  });
+
+  test('Shopify fulfillment allocations cannot exceed a single delivery charge within or across discounts', () => {
+    const path = '$.totals[?@.type == "fulfillment"]';
+    const charge = { totals: [{ type: 'fulfillment', amount: 500 }] };
+    const tooMuchInOne = read([codeEntry({
+      amount: 600, allocations: [{ path, amount: 300 }, { path, amount: 300 }],
+    })], charge);
+    expect(tooMuchInOne.applied).toEqual([]);
+    expect(tooMuchInOne.unreadable).toHaveLength(1);
+
+    const automatic = { automatic: true, amount: 300, allocations: [{ path, amount: 300 }] };
+    const code = codeEntry({ amount: 300, allocations: [{ path, amount: 300 }] });
+    const tooMuchAcrossTwo = read([automatic, code], charge);
+    expect(tooMuchAcrossTwo.applied).toEqual([]);
+    expect(tooMuchAcrossTwo.unreadable).toHaveLength(2);
+
+    const legacy = codeEntry({ amount: 300, allocations: [{ path: '$.totals.shipping', amount: 300 }] });
+    const mixed = read([automatic, legacy], charge);
+    expect(mixed.applied.map(entry => entry.code)).toEqual(['GLOW10']);
+    expect(mixed.unreadable).toHaveLength(1);
+
+    const exact = read([
+      automatic, codeEntry({ amount: 200, allocations: [{ path, amount: 200 }] }),
+    ], charge);
+    expect(exact.applied).toHaveLength(2);
+    expect(exact.unreadable).toEqual([]);
+  });
+
   test('an entry with no allocations is the spec\'s order-level form: read as unallocated', () => {
     for (const allocations of [[], undefined]) {
       const d = read([codeEntry({ amount: 1000, allocations })]);

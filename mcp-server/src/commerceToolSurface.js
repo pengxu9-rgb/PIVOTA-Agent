@@ -43,6 +43,8 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
+import { merchantCheckoutQuoteEnabled } from "./merchantCheckoutQuote.js";
+import { createMerchantQuoteTool, MERCHANT_QUOTE_TOOL, merchantQuoteToolDefinition } from "./merchantCheckoutQuoteTool.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong, storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
 // The native door's route to the same storefront path (AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED, default off).
 import { kernelQuoteMarketParams, storefrontCartInputSchema, storefrontMarketProblem, tryNativeStorefrontCart } from "./mcpStorefrontCart.js";
@@ -311,12 +313,13 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff, storefrontReferral, storefrontCartIdempotencyStore, storefrontCartPartner } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, bypassReadCache, sourceMerchantVariants, reapAgentic, merchantDoor, orchestratedPurchase, attributeSearchResult, storefrontHandoff, storefrontReferral, storefrontCartIdempotencyStore, storefrontCartPartner, merchantQuote } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
 
   const tools = commerceToolDefinitions.map((tool) => ({ ...tool }));
+  const previewMerchantQuote = createMerchantQuoteTool({ executor, ...merchantQuote });
 
   // Default-variant resolution over THIS surface's executor — the same canonical `get_product` read the ACP
   // door resolves through, built by the same factory. Nothing about the rule lives here.
@@ -400,6 +403,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     const callStartedAtMs = Date.now();
     // dialect defaults to MCP, so every existing caller is unchanged.
     const dialect = normalizeDialect(options.dialect);
+    if (toolName === MERCHANT_QUOTE_TOOL && merchantCheckoutQuoteEnabled()) {
+      const ctx = buildContext(sessionContext);
+      if (!ctx.user_ref || !ctx.acp_session_id) throw new IdentityRequiredError();
+      return sanitizeResult(await previewMerchantQuote(toolArgs, ctx), { handoffAllowed: false });
+    }
     // `start_purchase` (native MCP only; dark unless ORCHESTRATED_PURCHASE_TOOL_ENABLED, read per call). Off, the
     // name falls through to the op lookup below and is an unknown tool, exactly as before it existed.
     if (dialect === TOOL_DIALECTS.mcp && toolName === START_PURCHASE_TOOL && orchestratedPurchaseToolEnabled(process.env)) {
@@ -802,6 +810,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   }
 
   function isCommerceTool(name, dialect) {
+    if (name === MERCHANT_QUOTE_TOOL) return merchantCheckoutQuoteEnabled();
     if (name === START_PURCHASE_TOOL && normalizeDialect(dialect) === TOOL_DIALECTS.mcp) {
       return orchestratedPurchaseToolEnabled(process.env);
     }
@@ -811,7 +820,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   return {
     // Read per `tools/list`, so `start_purchase` is listed exactly while its dial is on.
     get tools() {
-      return orchestratedPurchaseToolEnabled(process.env) ? [...tools, { ...START_PURCHASE_TOOL_DEFINITION }] : tools;
+      const declared = orchestratedPurchaseToolEnabled(process.env) ? [...tools, { ...START_PURCHASE_TOOL_DEFINITION }] : tools;
+      return merchantCheckoutQuoteEnabled() ? [...declared, merchantQuoteToolDefinition] : declared;
     },
     callTool,
     isCommerceTool,
@@ -1586,7 +1596,8 @@ export function ucpDialectSurface(surface) {
     // Read per `tools/list`, so the advertised create_checkout follows the Reap lane and offer-code dials (see
     // `ucpCommerceToolDefinitionsFor`).
     get tools() {
-      const tools = ucpCommerceToolDefinitionsFor(process.env);
+      const base = ucpCommerceToolDefinitionsFor(process.env);
+      const tools = merchantCheckoutQuoteEnabled() ? [...base, merchantQuoteToolDefinition] : base;
       return reapAgenticLaneEnabled(process.env) ? [...tools, {
         name: "recover_checkout",
         description: "Pivota vendor read-only recovery of an unresolved Reap checkout. Send the identical original create payload and idempotency key. Never creates a purchase or alternative checkout; unknown outcomes remain unresolved.",
@@ -1810,6 +1821,10 @@ export function toToolError(error) {
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
     body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
     body.detail = { reason: error.detail?.reason === "purchase_outcome_unknown" ? "purchase_outcome_unknown" : "ucp_reap_create_outcome_unknown" };
+    if (error.detail?.reason === "merchant_quote_outcome_pending") {
+      body.message = "The Shopify quote or its cancellation could not be confirmed.";
+      body.detail = { reason: "merchant_quote_outcome_pending" };
+    }
   }
   // The upstream cancel (FIX_PLAN C-11, CHECKOUT_CANCEL_UPSTREAM_ENABLED): every "not canceled" outcome says so in
   // words an agent cannot read as canceled. Only that lane raises these reasons, so with the flag off no answer

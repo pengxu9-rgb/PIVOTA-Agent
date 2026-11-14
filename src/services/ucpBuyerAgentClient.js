@@ -852,7 +852,7 @@ function createUcpBuyerAgentClient(options = {}) {
    * Low-level MCP tool call (JSON-RPC 2.0 `tools/call`) against a discovered endpoint.
    * Never call this with TOOL.COMPLETE_CHECKOUT — a guard throws.
    */
-  async function callTool(mcpEndpoint, toolName, args = {}, { retry = false } = {}) {
+  async function callTool(mcpEndpoint, toolName, args = {}, { retry = false, idempotencyKey: requestKey } = {}) {
     if (toolName === TOOL.COMPLETE_CHECKOUT) {
       throw new Error('ucpBuyerAgentClient: complete_checkout is hard-disabled (cart-build + handoff only).');
     }
@@ -861,7 +861,13 @@ function createUcpBuyerAgentClient(options = {}) {
     const retryOk = retry && IDEMPOTENT_TOOLS.has(toolName);
     const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
     // Idempotency key is minted for signed (state-changing) requests; it lives in meta AND is a covered header.
-    const idempotencyKey = tier === TRUST_TIER.SIGNED ? cryptoId() : undefined;
+    if (requestKey !== undefined && (tier !== TRUST_TIER.SIGNED ||
+      ![TOOL.CREATE_CHECKOUT, 'cancel_checkout'].includes(toolName) ||
+      typeof requestKey !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestKey) ||
+      Object.hasOwn(args, 'meta'))) {
+      throw new Error('ucpBuyerAgentClient: invalid signed checkout idempotency key.');
+    }
+    const idempotencyKey = tier === TRUST_TIER.SIGNED ? (requestKey ?? cryptoId()) : undefined;
     const meta = requestMeta(idempotencyKey);
     // LIVE-VERIFIED shape (cosrx create_cart inputSchema, 2026-07-13): the tool's own fields sit DIRECTLY
     // alongside `meta` inside params.arguments (e.g. { meta, cart: { line_items: [...] } }). They are NOT
@@ -1106,9 +1112,9 @@ function createUcpBuyerAgentClient(options = {}) {
    * @param {{ cartId?: string, lineItems?: Array, buyer?: object, context?: object, attribution?: object,
    *          checkout?: object }} params
    */
-  async function createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context, attribution, checkout, discountCodes } = {}) {
+  async function createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context, attribution, checkout, discountCodes } = {}, options) {
     const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout, discountCodes });
-    return callTool(mcpEndpoint, TOOL.CREATE_CHECKOUT, args);
+    return callTool(mcpEndpoint, TOOL.CREATE_CHECKOUT, args, options);
   }
 
   /**
@@ -1520,12 +1526,21 @@ function normalizeDiscountCodes(codes) {
   return out;
 }
 
+const SHOPIFY_FULFILLMENT_TOTAL_PATH = '$.totals[?@.type == "fulfillment"]';
+
+function shopifyFulfillmentAmount(totals) {
+  if (!Array.isArray(totals)) return null;
+  const rows = totals.filter(row => isPlainObjectLocal(row) && row.type === 'fulfillment');
+  return rows.length === 1 ? positiveMinor(rows[0].amount) : null;
+}
+
 /**
  * Where an allocation lands, from its JSON path. The spec types `path` as a free JSONPath and shows only
- * `$.line_items[i]` and `$.totals.shipping`; its totals vocabulary names `fulfillment` and `fee` too. Only those
- * are recognized. Any other path, and a missing one, returns null: the entry is unreadable, never guessed.
+ * `$.line_items[i]` and `$.totals.shipping`; its totals vocabulary names `fulfillment` and `fee` too.
+ * Shopify also uses a literal filter for a fulfillment total. Recognize that exact path only when it selects
+ * one valid row with enough shipping charge for the allocation.
  */
-function allocationTarget(path, lines) {
+function allocationTarget(path, lines, fulfillmentAmount, amount) {
   if (typeof path !== 'string') return null;
   const lineIndex = /^\$\.line_items\[(\d+)\]$/.exec(path);
   // A line allocation must name a line this checkout has; `$.line_items[99]` on a one-line checkout is not one,
@@ -1533,6 +1548,7 @@ function allocationTarget(path, lines) {
   if (lineIndex) return isPlainObjectLocal(lines[Number(lineIndex[1])]) ? 'line' : null;
   if (/^\$\.totals\.(shipping|fulfillment)$/.test(path)) return 'shipping';
   if (/^\$\.totals\.fee$/.test(path)) return 'fee';
+  if (path === SHOPIFY_FULFILLMENT_TOTAL_PATH && fulfillmentAmount !== null && amount <= fulfillmentAmount) return 'shipping';
   return null;
 }
 
@@ -1549,7 +1565,7 @@ function positiveMinor(value) {
  * So it is read, as one allocation targeted `unallocated`: it lowers the checkout total, but nothing says
  * whether it lowered the item, the order or shipping, so it never counts as the item's saving.
  */
-function readAppliedEntry(entry, lines) {
+function readAppliedEntry(entry, lines, fulfillmentAmount) {
   if (!isPlainObjectLocal(entry)) return null;
   const amount = positiveMinor(entry.amount);
   const code = typeof entry.code === 'string' && entry.code.trim() ? entry.code.trim() : null;
@@ -1565,8 +1581,9 @@ function readAppliedEntry(entry, lines) {
   } else {
     for (const a of rawAllocations) {
       const allocationAmount = isPlainObjectLocal(a) ? positiveMinor(a.amount) : null;
-      const target = isPlainObjectLocal(a) ? allocationTarget(a.path, lines) : null;
-      if (allocationAmount === null || target === null) return null;
+      if (allocationAmount === null) return null;
+      const target = allocationTarget(a.path, lines, fulfillmentAmount, allocationAmount);
+      if (target === null) return null;
       allocations.push({ path: a.path, target, amount_minor: allocationAmount });
     }
     // "Sum of allocation amounts equals total amount" (spec). A mismatch, or an allocation larger than its
@@ -1629,14 +1646,24 @@ function normalizeDiscounts(payload) {
       } else if (entries.length > 0) subtotalUnreadable = true;
     }
   }
+  const fulfillmentAmount = shopifyFulfillmentAmount(totals);
+  const rawEntries = Array.isArray(block.applied) ? block.applied : [];
+  const entries = rawEntries.map(raw => ({ raw, read: readAppliedEntry(raw, lines, fulfillmentAmount) }));
+  const shippingAllocated = entries.flatMap(({ read }) => read?.allocations ?? [])
+    .filter(allocation => allocation.target === 'shipping')
+    .reduce((sum, allocation) => sum + allocation.amount_minor, 0);
+  const shippingOverallocated = fulfillmentAmount !== null
+    && (!Number.isSafeInteger(shippingAllocated) || shippingAllocated > fulfillmentAmount);
   const applied = [];
   const unreadable = [];
-  for (const entry of Array.isArray(block.applied) ? block.applied : []) {
-    const read = readAppliedEntry(entry, lines);
-    if (read) applied.push(read);
-    else {
-      const named = isPlainObjectLocal(entry) && typeof entry.code === 'string' ? entry.code.trim() : null;
-      unreadable.push({ code: named || null, raw: entry });
+  for (const { raw, read } of entries) {
+    // Exact Shopify selectors all refer to the same charge. Reject their entries if the combined allocations,
+    // including legacy shipping paths, would consume that charge more than once.
+    if (read && !(shippingOverallocated && read.allocations.some(a => a.path === SHOPIFY_FULFILLMENT_TOTAL_PATH))) {
+      applied.push(read);
+    } else {
+      const named = isPlainObjectLocal(raw) && typeof raw.code === 'string' ? raw.code.trim() : null;
+      unreadable.push({ code: named || null, raw });
     }
   }
   const rejected = [];
