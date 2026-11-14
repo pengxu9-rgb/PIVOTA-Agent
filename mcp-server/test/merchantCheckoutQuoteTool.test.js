@@ -6,7 +6,8 @@ import { createCommerceToolSurface, ucpDialectSurface } from "../src/commerceToo
 import { createMerchantQuoteCatalogVerifier, MERCHANT_QUOTE_TOOL } from "../src/merchantCheckoutQuoteTool.js";
 import { encodeUcpVariantItemId } from "../src/ucpVariantIds.js";
 
-const productId = "prod::merch_obs_test::external_seed::ext_123";
+const productId = "sig_f574469185cec88071f23f7080adaeb2";
+const productKey = "prod::merch_obs_test::external_seed::ext_123";
 const host = "amuseseoulmakeup.com";
 const key = "test-merchant-quote-601";
 const buyer = { user_ref: "test-buyer", acp_session_id: "test-session" };
@@ -38,7 +39,7 @@ function setup({ proof = true, source = host, clock = () => now, expiry = null, 
       assert.equal(op, "get_product");
       assert.equal(params.payload.product.product_id, productId);
       assert.equal(params.payload.market, "US");
-      return { product: { product_id: productId, product_key: productId, merchant_id: "merch_obs_test",
+      return { product: { product_id: productId, product_key: productKey, merchant_id: "merch_obs_test",
         source_domain: source, external_redirect_url: `https://${host}/products/example`, variants: [
           { variant_id: "52547428942138" }, { variant_id: "52547429007674" },
         ] } };
@@ -80,7 +81,8 @@ test("merchant preview is dark by default, then shared by native and UCP with an
   const result = await ucp.callTool(MERCHANT_QUOTE_TOOL, args, buyer);
   assert.equal(result.verifiedQuotedTotalMinor, 5688);
   assert.equal(result.payableMinor, null);
-  assert.deepEqual(await surface.callTool(MERCHANT_QUOTE_TOOL, args, buyer), result);
+  const retry = { ...args, meta: { "idempotency-key": ` ${key} ` } };
+  assert.deepEqual(await surface.callTool(MERCHANT_QUOTE_TOOL, retry, buyer), result);
   assert.equal(passed.length, 1);
   assert.deepEqual(passed[0].lineItems, [{ variantId: "52547428942138", quantity: 2 }, { variantId: "52547429007674", quantity: 1 }]);
   assert.equal(passed[0].shippingAddress.postal_code, "94105");
@@ -110,10 +112,10 @@ test("native ID proof checks the exact product, observed seller, variant, market
   const verify = createMerchantQuoteCatalogVerifier(async (sql, params) => {
     assert.match(sql, /offer_payload->>'variant_id'=\$3/);
     assert.match(sql, /s\.suppressed_at IS NULL AND o\.suppressed_at IS NULL/);
-    assert.deepEqual(params, [productId, "merch_obs_test", "52547428942138", "US", "USD"]);
+    assert.deepEqual(params, [productKey, "merch_obs_test", "52547428942138", "US", "USD"]);
     return { rows: [{ sku_key: "sku-exact" }] };
   });
-  assert.equal(await verify({ row: { product_key: productId, merchant_id: "merch_obs_test" },
+  assert.equal(await verify({ row: { product_key: productKey, merchant_id: "merch_obs_test" },
     variantId: "52547428942138", market: "US", currency: "USD" }), true);
 });
 

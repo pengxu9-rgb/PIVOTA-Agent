@@ -23,7 +23,8 @@ export const merchantQuoteToolDefinition = {
         type: "object", additionalProperties: false, required: ["line_items", "context", "fulfillment"],
         properties: {
           line_items: { type: "array", items: { type: "object", required: ["item", "quantity"],
-            properties: { item: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+            properties: { item: { type: "object", required: ["id"], properties: { id: { type: "string",
+              description: "Use the exact variant item ID returned by get_product for the catalog signature." } } },
               quantity: { type: "integer", minimum: 1 } } } },
           context: { type: "object", required: ["address_country"],
             properties: { address_country: { type: "string", pattern: "^[A-Z]{2}$" } } },
@@ -78,7 +79,7 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
     const items = quote.items.map(item => [item.product_id, item.variant_id, item.quantity])
       .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const digest = value => createHmac("sha256", key).update(JSON.stringify(value)).digest("hex");
-    const scope = [partner, ctx.user_ref, ctx.acp_session_id, rawKey];
+    const scope = [partner, ctx.user_ref, ctx.acp_session_id, rawKey.trim()];
     const recordKey = digest(["key", scope]);
     const destination = { ...address };
     delete destination.phone;
