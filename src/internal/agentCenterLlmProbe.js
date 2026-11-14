@@ -75,6 +75,7 @@ const DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS = Number(
 const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5-flash';
 const MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT =
   String(process.env.PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT || '').trim();
+const AUDIT_RUN_PREFIX = /^(?:adhoc|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}):/i;
 // OpenAI ChatGPT fidelity model. `chat-latest` is the API alias that tracks the
 // latest Instant model used in ChatGPT. Probe callers may override per request
 // via `options.model`; there is intentionally no service-env model pin here.
@@ -368,11 +369,19 @@ function getGeminiClient() {
 }
 
 function usesMerchantAuditGeminiVertex(input) {
-  // The backend uses this store ID for the merchant audit's SKU probes and answer capture.
-  return Boolean(
-    MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT && input?.merchant_id &&
-    input.store_id === `${input.merchant_id}_audit`,
-  );
+  const { merchant_id: merchantId, store_id: storeId, scan_mode: mode, scan_target_id: target } = input || {};
+  // Scope the override to backend audit workers. An employee demand test can
+  // supply its own store ID, so match the worker's generated target ID too.
+  if (!MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT || !merchantId || storeId !== `${merchantId}_audit` ||
+      merchantId.startsWith('prospect_') || typeof target !== 'string' || !AUDIT_RUN_PREFIX.test(target)) {
+    return false;
+  }
+  const probe = target.slice(target.indexOf(':') + 1);
+  if (mode === consumerAnswer.MODE) return /^consumer:[a-f0-9]{64}$/i.test(probe);
+  if (mode === 'open_product_visibility_test') {
+    return /^(?:.+:gemini:per_sku:branded:[1-9]\d*|competitor_attrs:[^:]*:gemini)$/.test(probe);
+  }
+  return mode === 'category_visibility_test' && /^.+:gemini:per_sku:discovery:[1-9]\d*$/.test(probe);
 }
 
 function getMerchantAuditGeminiClient() {

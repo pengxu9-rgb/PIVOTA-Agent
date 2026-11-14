@@ -7,6 +7,9 @@ const geminiGateModule = '../src/lib/geminiGlobalGate';
 const cloudScope = 'https://www.googleapis.com/auth/cloud-platform';
 const productUrl = 'https://shop.example/products/test-essence';
 const merchantId = 'legacy_merchant';
+const runId = '12345678-abcd-4cde-8f01-123456789abc';
+const brandedTarget = `${runId}:test-sku:gemini:per_sku:branded:1`;
+const discoveryTarget = `${runId}:test-sku:gemini:per_sku:discovery:1`;
 
 let priorEnv;
 
@@ -44,13 +47,13 @@ function simulateProvider() {
   }), { headers: { 'content-type': 'application/json' } }));
 }
 
-async function requestProbe(scanMode, storeId) {
+async function requestProbe(scanMode, storeId, target, merchant = merchantId) {
   const { handleProbeRequest } = require('../src/internal/agentCenterLlmProbe')._internals;
   const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
   await handleProbeRequest({ body: {
-    merchant_id: merchantId,
+    merchant_id: merchant,
     store_id: storeId,
-    scan_target_id: 'audit-routing-check',
+    scan_target_id: target,
     scan_mode: scanMode,
     context: { queries: ['Where can I buy this essence?'], product: { title: 'Test Essence' } },
     options: { provider: 'gemini', max_runs: 1 },
@@ -68,13 +71,15 @@ test('merchant diagnostic and answer capture use the configured Vertex project a
   const credentials = jest.spyOn(Compute.prototype, 'getAccessToken').mockResolvedValue({ token: 'fake-attached-token' });
   const request = simulateProvider();
 
-  const diagnostic = await requestProbe('open_product_visibility_test', `${merchantId}_audit`);
-  const answer = await requestProbe('consumer_answer_test', `${merchantId}_audit`);
+  const diagnostic = await requestProbe('open_product_visibility_test', `${merchantId}_audit`, brandedTarget);
+  await requestProbe('category_visibility_test', `${merchantId}_audit`, discoveryTarget);
+  await requestProbe('open_product_visibility_test', `${merchantId}_audit`, 'adhoc:competitor_attrs:test_brand:gemini');
+  const answer = await requestProbe('consumer_answer_test', `${merchantId}_audit`, `${runId}:consumer:${'a'.repeat(64)}`);
 
   expect(diagnostic.raw_runs[0].grounding_chunks).toEqual([productUrl]);
   expect(answer.raw_runs[0].answer).toMatchObject({ complete: true, provider: 'gemini' });
-  expect(request).toHaveBeenCalledTimes(2);
-  expect(credentials).toHaveBeenCalledTimes(2);
+  expect(request).toHaveBeenCalledTimes(4);
+  expect(credentials).toHaveBeenCalledTimes(4);
   expect(credentials.mock.contexts[0].scopes).toEqual([cloudScope]);
   expect(credentials.mock.contexts[0].serviceAccountEmail).toBe('default');
   for (const [url, init] of request.mock.calls) {
@@ -87,15 +92,17 @@ test('merchant diagnostic and answer capture use the configured Vertex project a
 });
 
 test.each([
-  ['unset project', undefined, `${merchantId}_audit`],
-  ['lead probe', 'audit-vertex', `${merchantId}_lead`],
-  ['different tenant suffix', 'audit-vertex', 'other_merchant_audit'],
-])('retains the shared Gemini transport for %s', async (_label, project, storeId) => {
+  ['unset project', null, `${merchantId}_audit`, discoveryTarget, merchantId],
+  ['lead probe', 'audit-vertex', `${merchantId}_lead`, 'bd-category_visibility_test-123', merchantId],
+  ['different tenant suffix', 'audit-vertex', 'other_merchant_audit', discoveryTarget, merchantId],
+  ['demand test with audit-like store', 'audit-vertex', `${merchantId}_audit`, 'acst_169763e3d1e8', merchantId],
+  ['staff prospect', 'audit-vertex', 'prospect_sample_audit', 'adhoc:test-sku:gemini:per_sku:discovery:1', 'prospect_sample'],
+])('retains the shared Gemini transport for %s', async (_label, project, storeId, target, merchant) => {
   if (project) process.env.PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT = project;
   delete process.env.GOOGLE_API_KEY;
   const request = simulateProvider();
 
-  await requestProbe('category_visibility_test', storeId);
+  await requestProbe('category_visibility_test', storeId, target, merchant);
 
   const [url, init] = request.mock.calls[0];
   expect(String(url)).toMatch(/^https:\/\/generativelanguage\.googleapis\.com\//);
@@ -116,6 +123,11 @@ test('an open shared Gemini circuit cannot block enabled merchant audit probes',
   await expect(sharedGate.withGate('legacy', broken)).rejects.toThrow('legacy project billing disabled');
   expect(sharedGate.snapshot().gate.circuitOpen).toBe(true);
   expect(auditGate.snapshot().gate.circuitOpen).toBe(false);
-  const store = { merchant_id: merchantId, store_id: `${merchantId}_audit` };
+  const store = {
+    merchant_id: merchantId,
+    store_id: `${merchantId}_audit`,
+    scan_mode: 'category_visibility_test',
+    scan_target_id: discoveryTarget,
+  };
   await expect(withProbeCostGate(store, 'gemini', async () => 'audited')).resolves.toBe('audited');
 });
