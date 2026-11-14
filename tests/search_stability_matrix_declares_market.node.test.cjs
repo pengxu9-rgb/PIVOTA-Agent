@@ -17,16 +17,17 @@ const { execFile } = require('node:child_process');
 const REPO = path.join(__dirname, '..');
 const SCRIPT = path.join(REPO, 'scripts', 'search_stability_matrix.js');
 
-function runMatrix({ cases, env = {} }) {
+function runMatrix({ cases, env = {}, responseFor = () => ({ ok: true, data: { products: [] } }), failOnGateFailures = false }) {
   return new Promise((resolve, reject) => {
     const bodies = [];
     const server = http.createServer((req, res) => {
       let raw = '';
       req.on('data', (c) => { raw += c; });
       req.on('end', () => {
-        bodies.push({ path: req.url, body: JSON.parse(raw) });
+        const body = JSON.parse(raw);
+        bodies.push({ path: req.url, body });
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, data: { products: [] } }));
+        res.end(JSON.stringify(responseFor(body)));
       });
     });
     server.listen(0, '127.0.0.1', () => {
@@ -36,7 +37,8 @@ function runMatrix({ cases, env = {} }) {
       execFile(
         process.execPath,
         [SCRIPT, '--base-url', `http://127.0.0.1:${server.address().port}`, '--rounds', '1',
-          '--query-file', queryFile, '--out-dir', dir, '--agent-api-key', 'test_key', '--timeout-ms', '5000'],
+          '--query-file', queryFile, '--out-dir', dir, '--agent-api-key', 'test_key', '--timeout-ms', '5000',
+          ...(failOnGateFailures ? ['--fail-on-gate-failures'] : [])],
         {
           cwd: REPO,
           env: {
@@ -49,7 +51,11 @@ function runMatrix({ cases, env = {} }) {
         },
         (error, stdout, stderr) => {
           server.close();
-          if (error) return reject(new Error(`${error.message}\n${stdout}\n${stderr}`));
+          if (error) {
+            const reportPath = fs.readdirSync(dir).find((file) => file.startsWith('search_stability_matrix_') && file.endsWith('.md'));
+            const report = reportPath ? fs.readFileSync(path.join(dir, reportPath), 'utf8') : '';
+            return reject(new Error(`${error.message}\n${stdout}\n${stderr}\n${report}`));
+          }
           resolve(bodies);
         },
       );
@@ -88,4 +94,22 @@ test('the environment names the gate market and who the gate is; blank env means
   const blankFpm = blank.filter((b) => b.body.operation === 'find_products_multi');
   assert.equal(blankFpm[0].body.metadata.market, 'US');
   assert.equal(blankFpm[0].body.metadata.invoked_by, 'ci:search_stability_matrix');
+});
+
+test('a currency-scoped result rejects a foreign currency or a missing currency on any offer', async () => {
+  const runWithOffers = (products) => runMatrix({
+    cases: [{ id: 'us_browse', query: 'serum', expected_offer_currency: 'USD', require_primary_path: false }],
+    responseFor: () => ({ products }),
+    failOnGateFailures: true,
+  });
+
+  await runWithOffers([{ title: 'First serum', currency: 'USD' }, { title: 'Second serum', currency: 'USD' }]);
+  await assert.rejects(
+    runWithOffers([{ title: 'First serum', currency: 'USD' }, { title: 'Second serum', currency: 'EUR' }]),
+    /offer_currency_mismatch:expected=USD:actual=EUR:count=1/,
+  );
+  await assert.rejects(
+    runWithOffers([{ title: 'First serum', currency: 'USD' }, { title: 'Second serum' }]),
+    /offer_currency_mismatch:expected=USD:actual=missing:count=1/,
+  );
 });
