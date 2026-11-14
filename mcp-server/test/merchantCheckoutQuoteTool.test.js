@@ -26,9 +26,12 @@ const args = {
   },
 };
 
-function setup({ proof = true, source = host } = {}) {
+const now = Date.parse("2026-11-14T12:00:00Z");
+
+function setup({ proof = true, source = host, clock = () => now, expiry = null, persist = true } = {}) {
   const store = new InMemoryKvStore();
   Object.defineProperty(store, "durable", { value: true });
+  if (!persist) store.compareAndSet = async () => false;
   const passed = [];
   const surface = createCommerceToolSurface({
     async execute(op, params) {
@@ -43,6 +46,7 @@ function setup({ proof = true, source = host } = {}) {
   }, {
     cache: false,
     merchantQuote: {
+      now: clock,
       stateStore: store,
       partnerPrincipal: () => ({ kind: "oauth", iss: "test", cid: "test-client" }),
       confirmCatalogVariant: async () => proof,
@@ -52,7 +56,8 @@ function setup({ proof = true, source = host } = {}) {
       },
       service: { async quote(input) {
         passed.push(input);
-        return { state: "verified_quote_with_buyer_requirements", verifiedQuotedTotalMinor: 5688, payableMinor: null };
+        return { state: "verified_quote_with_buyer_requirements", verifiedQuotedTotalMinor: 5688, payableMinor: null,
+          quotedAt: new Date(now).toISOString(), merchantExpiresAt: expiry };
       } },
     },
   });
@@ -110,4 +115,24 @@ test("native ID proof checks the exact product, observed seller, variant, market
   });
   assert.equal(await verify({ row: { product_key: productId, merchant_id: "merch_obs_test" },
     variantId: "52547428942138", market: "US", currency: "USD" }), true);
+});
+
+test("a stale quote or failed ledger write cannot replay as a verified quote", async t => {
+  const old = process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED;
+  process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED = "1";
+  t.after(() => old === undefined ? delete process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED
+    : process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED = old);
+
+  for (const expiry of [null, new Date(now + 5_000).toISOString()]) {
+    let instant = now;
+    const { surface, passed } = setup({ clock: () => instant, expiry });
+    await surface.callTool(MERCHANT_QUOTE_TOOL, args, buyer);
+    instant += expiry ? 5_000 : 60_000;
+    await assert.rejects(surface.callTool(MERCHANT_QUOTE_TOOL, args, buyer), { code: "QUOTE_EXPIRED" });
+    assert.equal(passed.length, 1);
+  }
+  const { surface, passed } = setup({ persist: false });
+  await assert.rejects(surface.callTool(MERCHANT_QUOTE_TOOL, args, buyer), { code: "CHECKOUT_OUTCOME_UNKNOWN" });
+  await assert.rejects(surface.callTool(MERCHANT_QUOTE_TOOL, args, buyer), { code: "CHECKOUT_OUTCOME_UNKNOWN" });
+  assert.equal(passed.length, 1);
 });

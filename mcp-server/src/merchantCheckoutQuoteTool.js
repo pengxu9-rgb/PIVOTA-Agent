@@ -2,14 +2,13 @@ import { createHmac, randomUUID } from "node:crypto";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import {
   assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines,
-  MAX_CART_ITEMS, pickCompleteAddress,
+  mapWithConcurrency, MAX_CART_ITEMS, pickCompleteAddress, VARIANT_RESOLUTION_CONCURRENCY, withDeadline,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { createMerchantCheckoutQuoteService, merchantCheckoutQuoteAllowedSellers } from "./merchantCheckoutQuote.js";
-import { escalationTargetOf, marketCurrencyOf } from "./ucpCheckoutEscalation.js";
+import { escalationTargetOf, marketCurrencyOf, readCheckoutRows } from "./ucpCheckoutEscalation.js";
 import { canonicalReapMerchantDomain, judgeSellerUrl, sellerDestinationsOfRow } from "./ucpExpectedSeller.js";
-import { sellerVariantChoiceOf } from "./ucpMerchantDoorPricing.js";
+import { isAcceptableDiscountCode, sellerVariantChoiceOf } from "./ucpMerchantDoorPricing.js";
 import { ucpToNativeToolArgs } from "./ucpArgumentAdapter.js";
-import { isAcceptableDiscountCode } from "./ucpMerchantDoorPricing.js";
 
 export const MERCHANT_QUOTE_TOOL = "preview_merchant_checkout_quote";
 export const merchantQuoteToolDefinition = {
@@ -37,14 +36,16 @@ export const merchantQuoteToolDefinition = {
 };
 
 const RECORD_TTL_MS = 10 * 60 * 1000;
+const QUOTE_FRESHNESS_MS = 60 * 1000;
 const PRODUCT_READ_TIMEOUT_MS = 3000;
+const SKU_PROOF_TIMEOUT_MS = 3000;
 const OP = { id: "create_checkout_session" };
 const refusal = (reason, code = "QUOTE_REQUIRED") => new PivotaCommerceError(code, { reason });
 const isPlainObject = value => value !== null && typeof value === "object"
   && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 
 export function createMerchantQuoteTool({ executor, stateStore, service = createMerchantCheckoutQuoteService(),
-  env = process.env, partnerPrincipal, confirmCatalogVariant } = {}) {
+  env = process.env, partnerPrincipal, confirmCatalogVariant, now = Date.now } = {}) {
   return async function preview(args, ctx) {
     if (!isPlainObject(args) || args.consent_to_share_shipping_address !== true
       || Object.keys(args).some(key => !Object.hasOwn(merchantQuoteToolDefinition.inputSchema.properties, key))
@@ -87,17 +88,20 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
       const prior = await stateStore.get(recordKey);
       if (prior?.fingerprint !== fingerprint) throw refusal("merchant_quote_key_conflict", "IDEMPOTENCY_CONFLICT");
       if (!prior.result) throw refusal("merchant_quote_outcome_pending", "CHECKOUT_OUTCOME_UNKNOWN");
+      if (prior.expiresAt !== null && (!Number.isFinite(prior.expiresAt) || now() >= prior.expiresAt)) {
+        throw refusal("merchant_quote_expired", "QUOTE_EXPIRED");
+      }
       return prior.result;
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PRODUCT_READ_TIMEOUT_MS);
     let result;
     try {
-      const productIds = [...new Set(items.map(([id]) => id))];
-      const rows = await Promise.all(productIds.map(async id => {
-        const response = await executor.execute("get_product",
-          { payload: { product: { product_id: id }, market } }, { ...ctx, signal: controller.signal });
-        const row = response?.product ?? response;
+      const marketExecutor = {
+        execute(op, { payload }, context) {
+          return executor.execute(op, { payload: { ...payload, market } }, context);
+        },
+      };
+      const products = await readCheckoutRows(quote.items, marketExecutor, ctx, { timeoutMs: PRODUCT_READ_TIMEOUT_MS });
+      const rows = [...products].map(([id, row]) => {
         const known = [row?.product_id, row?.product_key, row?.pivota_signature_id].includes(id);
         const target = escalationTargetOf(row);
         const seller = known && target && Object.keys(allowedSellers).find(host =>
@@ -106,11 +110,12 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
               : judgeSellerUrl(host, candidate.value).ok));
         if (!seller) throw refusal("merchant_quote_seller_unverified");
         return [id, { row, seller }];
-      }));
+      });
       const byId = new Map(rows);
       const sellerHost = rows[0][1].seller;
       if (rows.some(([, row]) => row.seller !== sellerHost)) throw refusal("merchant_quote_mixed_sellers");
-      const lineItems = await Promise.all(items.map(async ([id, variant, quantity]) => {
+      const skuController = new AbortController();
+      const proof = mapWithConcurrency(items, VARIANT_RESOLUTION_CONCURRENCY, async ([id, variant, quantity]) => {
         const { row } = byId.get(id);
         const { gid, stored } = sellerVariantChoiceOf(row, sellerHost, variant);
         const variantId = /^gid:\/\/shopify\/ProductVariant\/(\d+)$/.exec(gid ?? "")?.[1];
@@ -121,16 +126,25 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
           throw refusal("merchant_quote_native_variant_unverified");
         }
         return { variantId, quantity };
-      }));
+      }, skuController);
+      const lineItems = await withDeadline(proof, SKU_PROOF_TIMEOUT_MS, skuController);
       result = await service.quote({ sellerHost, market, expectedCurrency, lineItems, shippingAddress: destination,
         discountCodes: args.discount_code === undefined ? undefined : [args.discount_code] });
     } catch (error) {
       result = { state: "checkout_unverified", reason: error instanceof PivotaCommerceError
         ? error.detail.reason : "merchant_quote_unavailable", verifiedQuotedTotalMinor: null, payableMinor: null };
-    } finally {
-      clearTimeout(timer);
     }
-    await stateStore.compareAndSet(recordKey, "claim", claim, { fingerprint, result }, { ttlMs: RECORD_TTL_MS });
+    const merchantExpiry = result.merchantExpiresAt == null ? Infinity : Date.parse(result.merchantExpiresAt);
+    const expiresAt = result.verifiedQuotedTotalMinor == null ? null
+      : Math.min(merchantExpiry, Date.parse(result.quotedAt) + QUOTE_FRESHNESS_MS);
+    const recordedExpiry = expiresAt === null || Number.isFinite(expiresAt) ? expiresAt : 0;
+    const persisted = await stateStore.compareAndSet(
+      recordKey, "claim", claim, { fingerprint, result, expiresAt: recordedExpiry }, { ttlMs: RECORD_TTL_MS },
+    );
+    if (!persisted) throw refusal("merchant_quote_outcome_pending", "CHECKOUT_OUTCOME_UNKNOWN");
+    if (recordedExpiry !== null && now() >= recordedExpiry) {
+      throw refusal("merchant_quote_expired", "QUOTE_EXPIRED");
+    }
     return result;
   };
 }
