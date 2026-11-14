@@ -34305,7 +34305,7 @@ async function getCommerceRemoteMcpAdapter() {
                 ref.signature_serving_eligible !== true || ref.pdp_lifecycle_stage !== 'published' ||
                 ref.sync_status !== 'live' || ref.suppression_reason || ref.tombstone_keeper_sig_id ||
                 /^retailer:/i.test(ref.product_id || '')) return [];
-            if (ref.merchant_id === EXTERNAL_SEED_MERCHANT_ID && isExternalSeedProductId(ref.product_id) &&
+            if (isExternalSeedListingMerchantId(ref.merchant_id) && isExternalSeedProductId(ref.product_id) &&
                 String(ref.external_seed_status || '').trim().toLowerCase() !== 'active') return [];
             const { hostFromUrl, isKnownRetailer } = require('./services/offerSellerIdentity');
             const sourceHost = hostFromUrl(ref.canonical_url);
