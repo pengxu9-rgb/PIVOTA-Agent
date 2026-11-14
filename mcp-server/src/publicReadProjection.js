@@ -310,6 +310,7 @@ function claimsFrom(raw) {
         grade: str(c.evidence_grade || c.grade) ? String(c.evidence_grade || c.grade).toUpperCase() : null,
         citations: strList(c.source_refs || c.citations, MAX_CITATIONS, 300),
         concern: clamp(c.concern, 160),
+        source_type: clamp(c.source_type, 80),
       })
     );
     if (out.length >= MAX_CLAIMS) break;

@@ -21,6 +21,7 @@ const { spawn } = require('node:child_process');
 
 const MAIN = require('./fixtures/price_tiers_doors_main.json');
 const { revertLineQuantityMaximumEdit, revertIdempotencyKeyDescriptionEdits, revertDuplicateLinesDescriptionEdits, DUPLICATE_LINES_SENTENCE } = require('./_support/lineQuantityMaximumSchemaEdit.cjs');
+const { revertRecommendationIngredientDescriptionEdits } = require('./_support/recommendationIngredientDescriptionEdits.cjs');
 const CHILD = path.join(__dirname, '_support', 'priceTiersDoorsChild.cjs');
 const NEW_FLAGS = ['LIST_ROW_PRICE_AS_OF', 'PRICE_STALENESS_DEMOTE', 'UCP_LIVE_SEARCH_READ_TOP_K', 'UCP_LIVE_SEARCH_READ_BUDGET_MS'];
 const ALL_FLAGS = [...NEW_FLAGS, 'DOOR_CACHE_PRICE_FRESHNESS_CAP', 'RELGRAPH_CANDIDATE_PRICE_CHECKED_AT',
@@ -95,6 +96,9 @@ test.before(async () => {
       c.duplicate_lines_sentences_left = reverted.split(DUPLICATE_LINES_SENTENCE).length - 1;
       if (reverted !== c.body) { c.shared_bounds_published = true; c.body = reverted; c.sha256 = sha(reverted); }
     }
+    const nativeTools = cases.mcp_tools_list;
+    nativeTools.body = revertRecommendationIngredientDescriptionEdits(nativeTools.body);
+    nativeTools.sha256 = sha(nativeTools.body);
   }
 }, { timeout: 600000 });
 

@@ -8,7 +8,7 @@
 
 const { relationshipEdgesToSignals } = require('./relationshipEdgeToSignal');
 const { offersToSignals } = require('./offerToSignal');
-const { intelToSignal } = require('./intelToSignal');
+const { intelToSignal, addReviewedMerchantClaims } = require('./intelToSignal');
 const { normalizeBuyerRegion, currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 const liveVerification = require('../services/offerLiveVerification');
 const { numericVariantId } = require('../services/ucpLiveOfferRead');
@@ -804,6 +804,16 @@ function intelIdentityProductId(params = {}) {
   return null;
 }
 
+function exactMerchantEvidenceSignature(params) {
+  // New public merchant evidence only binds to the listing identified by one
+  // exact catalog signature. A source id or another URL could name a sibling.
+  const ids = [params.product_id, params.product_ref, params.pivota_signature_id]
+    .filter(nonEmpty)
+    .map((ref) => parseProductRefArg(ref).productId);
+  if (!ids.length || !/^sig_[a-z0-9]+$/i.test(ids[0]) || !ids.every((id) => id === ids[0])) return null;
+  return ids[0];
+}
+
 // Candidate KB keys, most specific first: the hydrated identity (when the resolver found one), then the
 // request's own ids. A `url:` ref (or a merchant URL) is looked up as the KB's own `url:` key; a `text:`
 // ref names no KB key.
@@ -852,10 +862,11 @@ function buildIntelKbKeys(params = {}, identity = null) {
  *   isEnabled?: () => boolean,                              // agent-surface flag gate (fail-closed if absent)
  *   isReviewed?: (bundle:object) => boolean,                // require-reviewed quality gate (fail-closed)
  *   filterPublicSafeClaims?: (claims:object[]) => object[], // FTC public-safe claim filter (absent → no claims)
+ *   loadReviewedMerchantClaims?: ({signature:string, merchantId?:string}) => Promise<object[]>,
  * }} deps
  */
 function makeGetIntel(deps = {}) {
-  const { getProductIntelKbEntry, getProductIntelKbEntries, resolveKbKeys, isEnabled, isReviewed, filterPublicSafeClaims } =
+  const { getProductIntelKbEntry, getProductIntelKbEntries, resolveKbKeys, isEnabled, isReviewed, filterPublicSafeClaims, loadReviewedMerchantClaims } =
     deps;
   if (typeof getProductIntelKbEntry !== 'function' && typeof getProductIntelKbEntries !== 'function') {
     throw new Error('makeGetIntel requires getProductIntelKbEntry or getProductIntelKbEntries');
@@ -916,11 +927,26 @@ function makeGetIntel(deps = {}) {
         }
       }
     }
+    const kbSignal = intelToSignal(entry, { productId, isReviewed, filterPublicSafeClaims });
+    const signature = exactMerchantEvidenceSignature(p);
+    let signal = kbSignal;
+    if (signature && typeof loadReviewedMerchantClaims === 'function') {
+      try {
+        const claims = await loadReviewedMerchantClaims({ signature, merchantId: p.merchant_id });
+        signal = addReviewedMerchantClaims(kbSignal, claims, {
+          productId: productId || signature, filterPublicSafeClaims,
+        });
+      } catch {
+        // The optional evidence read cannot drop existing reviewed intelligence.
+      }
+    }
+    if (signal && !kbSignal) {
+      return { subject: signal.subject, signals: [signal], metadata: { source: 'staff_verified_merchant_evidence' } };
+    }
     if (!entry) {
       return { subject, signals: [], metadata: { reason: 'not_found', kb_key_count: kbKeys.length } };
     }
 
-    const signal = intelToSignal(entry, { productId, isReviewed, filterPublicSafeClaims });
     return {
       subject,
       signals: signal ? [signal] : [],

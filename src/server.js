@@ -34297,6 +34297,21 @@ async function getCommerceRemoteMcpAdapter() {
           // Surface the public-safe grounded claims (citation URLs + grade) onto the signal, gated by
           // AGENT_INTEL_PUBLIC_CLAIMS_ENABLED. Same FTC filter the public PDP uses → one consistent claim set.
           filterPublicSafeClaims: filterPublicSafeClaimsGated,
+          loadReviewedMerchantClaims: async ({ signature, merchantId }) => {
+            if (!agentIntelPublicClaimsEnabled() || !isMerchantEvidenceClaimsEnabled()) return [];
+            const ref = await resolveCatalogProductRefFromPivotaSignature(signature, { hydrateIdentityListing: false });
+            if (ref?.source !== 'catalog_products_signature_exact' || ref.pivota_signature_id !== signature ||
+                !ref.product_key || (merchantId && merchantId !== ref.merchant_id) ||
+                ref.signature_serving_eligible !== true || ref.pdp_lifecycle_stage !== 'published' ||
+                ref.sync_status !== 'live' || ref.suppression_reason || ref.tombstone_keeper_sig_id ||
+                /^retailer:/i.test(ref.product_id || '')) return [];
+            if (isExternalSeedListingMerchantId(ref.merchant_id) && isExternalSeedProductId(ref.product_id) &&
+                String(ref.external_seed_status || '').trim().toLowerCase() !== 'active') return [];
+            const { hostFromUrl, isKnownRetailer } = require('./services/offerSellerIdentity');
+            const sourceHost = hostFromUrl(ref.canonical_url);
+            if (!sourceHost || isKnownRetailer(sourceHost, process.env.PUBLIC_READ_RESELLER_HOSTS)) return [];
+            return fetchSubstantiatedMerchantEvidenceClaims(ref.product_key, { staffReviewedOnly: true });
+          },
           // Servable gate: human (Tier-H) OR grounded (Tier-G) intel reaches a buyer-facing agent
           // (drops thin/pilot/unreviewed Tier-L entries). Same predicate the consumer PDP uses for
           // public display, so the agent surface and PDP apply one consistent quality bar. (ADR-002 item 9)
@@ -34338,6 +34353,7 @@ async function getCommerceRemoteMcpAdapter() {
             : undefined,
           isEnabled: agentRecommendProductsEnabled,
           logger,
+          loadIngredientFormulas: require('./services/recommendReviewedIngredientLookup').loadRecommendationIngredientFormulas,
           budgetMs: Number(process.env.AURORA_BFF_RECOMMEND_PRODUCTS_AGENT_BUDGET_MS) > 0
             ? Number(process.env.AURORA_BFF_RECOMMEND_PRODUCTS_AGENT_BUDGET_MS)
             : undefined,
@@ -34349,12 +34365,16 @@ async function getCommerceRemoteMcpAdapter() {
           // "unavailable" — so this function only ever answers {price, currency, in_stock},
           // {withheld_currencies} (the page withheld a price in those currencies) or null.
           verifyPrice: !['0', 'false', 'off'].includes(String(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_ENABLED || '').trim().toLowerCase())
-            ? async ({ product_id: productId }) => {
+            ? async ({ product_id: productId, sku_id: skuId, market }) => {
               const pid = String(productId || '').trim();
               if (!pid) return null;
               const response = await trackLiveWork(axios.post(
                 `${selfInvokeBase()}/agent/shop/v1/invoke`,
-                { operation: 'get_pdp_v2', payload: { product_ref: { product_id: pid }, include: ['product_overview'] } },
+                { operation: 'get_pdp_v2', payload: {
+                  product_ref: { product_id: pid, ...(skuId ? { sku_id: skuId } : {}) },
+                  include: ['product_overview'],
+                  ...(market ? { market } : {}),
+                } },
                 {
                   // Default 5000, raised from 2000: the loopback get_pdp_v2 measures ~4.7s on the
                   // sig->ext resolution path (2026-08-21), so the old default aborted every live-price
@@ -34389,10 +34409,12 @@ async function getCommerceRemoteMcpAdapter() {
               const { product } = normalizePdpV2ToProductDetail(response.data);
               // No price: the page may have withheld one in another currency than the buyer's. Its unit is
               // still a live read, and the shortlist's currency-switch rule needs it.
-              if (!product || typeof product.price !== 'number') return withheldPriceOfVerifyResponse(response.data);
+              if (!product || typeof product.price !== 'number') {
+                return withheldPriceOfVerifyResponse(response.data);
+              }
               // { price, currency, in_stock }, plus, for the list price tiers only, when the page's price was
               // read and whether the merchant answered it (the PDP live overlay's live_read.checked_at).
-              return verifyPriceAnswerOfPdpProduct(product);
+              return verifyPriceAnswerOfPdpProduct(product, skuId);
             }
             : undefined,
         }),
