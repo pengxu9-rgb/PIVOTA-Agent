@@ -7,10 +7,9 @@
  *   - `mock`: deterministic stub responses keyed by scan_mode. Used by
  *     default and in CI; lets the whole agent-center pipeline be tested
  *     end-to-end without burning tokens.
- *   - `gemini`: real Gemini calls via @google/genai. Requires
- *     GEMINI_API_KEY in env. Routes through the existing
- *     geminiGlobalGate semaphore + circuit breaker (no new rate-limit
- *     surface introduced).
+ *   - `gemini`: real Gemini calls via @google/genai. Merchant audits can
+ *     use a separate Vertex project with the attached service account.
+ *     Each project has a rate limiter and circuit breaker.
  *   - `chatgpt`: real OpenAI Responses API calls with web_search_preview.
  *     Requires OPENAI_API_KEY in env and uses the same probe gate.
  *   - `claude`: real Anthropic Messages API calls with web_search. Two
@@ -33,7 +32,7 @@
 const vertexGemini = require('../llm/vertexGemini');
 const consumerAnswer = require('./consumerAnswerEvidence');
 
-const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
+const { getGeminiGlobalGate, getMerchantAuditGeminiGate } = require('../lib/geminiGlobalGate');
 
 const ALLOWED_SCAN_MODES = new Set([
   consumerAnswer.MODE,
@@ -74,6 +73,9 @@ const DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS = Number(
   process.env.PIVOTA_AGENT_CENTER_LLM_GATE_QUEUE_TIMEOUT_MS || 30_000,
 );
 const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5-flash';
+const MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT =
+  String(process.env.PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT || '').trim();
+const AUDIT_RUN_PREFIX = /^(?:adhoc|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}):/i;
 // OpenAI ChatGPT fidelity model. `chat-latest` is the API alias that tracks the
 // latest Instant model used in ChatGPT. Probe callers may override per request
 // via `options.model`; there is intentionally no service-env model pin here.
@@ -122,6 +124,7 @@ function openAIProbePricing(model) {
 }
 
 let cachedGeminiClient = null;
+let merchantAuditGeminiClient = null;
 let geminiInitFailed = false;
 let cachedOpenAIClient = null;
 let openAIInitFailed = false;
@@ -363,6 +366,32 @@ function getGeminiClient() {
     geminiInitFailed = true;
     return null;
   }
+}
+
+function usesMerchantAuditGeminiVertex(input) {
+  const { merchant_id: merchantId, store_id: storeId, scan_mode: mode, scan_target_id: target } = input || {};
+  // Scope the override to backend audit workers. An employee demand test can
+  // supply its own store ID, so match the worker's generated target ID too.
+  if (!MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT || !merchantId || storeId !== `${merchantId}_audit` ||
+      merchantId.startsWith('prospect_') || typeof target !== 'string' || !AUDIT_RUN_PREFIX.test(target)) {
+    return false;
+  }
+  const probe = target.slice(target.indexOf(':') + 1);
+  if (mode === consumerAnswer.MODE) return /^consumer:[a-f0-9]{64}$/i.test(probe);
+  if (mode === 'open_product_visibility_test') {
+    return /^(?:.+:gemini:per_sku:branded:[1-9]\d*|competitor_attrs:[^:]*:gemini)$/.test(probe);
+  }
+  return mode === 'category_visibility_test' && /^.+:gemini:per_sku:discovery:[1-9]\d*$/.test(probe);
+}
+
+function getMerchantAuditGeminiClient() {
+  if (!merchantAuditGeminiClient) {
+    const { GoogleGenAI } = require('@google/genai');
+    merchantAuditGeminiClient = new GoogleGenAI(
+      vertexGemini.attachedServiceGeminiClientOptions(MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT),
+    );
+  }
+  return merchantAuditGeminiClient;
 }
 
 function getOpenAIClient() {
@@ -957,7 +986,9 @@ async function withProbeCostGate(input, provider, fn) {
     if (!_providerUsesGeminiGate(provider)) {
       return await fn();
     }
-    const globalGate = getGeminiGlobalGate();
+    const globalGate = usesMerchantAuditGeminiVertex(input)
+      ? getMerchantAuditGeminiGate()
+      : getGeminiGlobalGate();
     return await globalGate.withGate(
       `agent_center_llm_probe_${provider}`,
       fn,
@@ -1468,7 +1499,9 @@ async function buildGroundedProviderProbe(input, providerSpec) {
 
 async function buildGeminiProbe(input) {
   consumerAnswer.assertEnabled(input);
-  const client = getGeminiClient();
+  const client = usesMerchantAuditGeminiVertex(input)
+    ? getMerchantAuditGeminiClient()
+    : getGeminiClient();
   if (!client) {
     // Fall back to mock so callers still get a useful response, with a
     // clearly-marked provider so they know it didn't go through Gemini.
