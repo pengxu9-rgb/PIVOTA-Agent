@@ -12,6 +12,7 @@ const PRODUCT_INTEL_CONTRACT_VERSION = 'pivota.product_intel.v1';
 const REJECTED_REVIEW_DECISIONS = new Set(['reject', 'reject_external', 'rejected', 'blocked', 'suppressed']);
 // Higher = stronger. Used to surface the bundle's best public-safe claim grade on evidence.grade.
 const GRADE_RANK = { A: 3, B: 2, C: 1 };
+const CLAIM_LIMIT = 6;
 
 function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -112,6 +113,7 @@ function intelToSignal(entry, { productId = null, isReviewed = null, filterPubli
               .filter(Boolean)
               .slice(0, 3),
             concern: nonEmptyString(r.concern) ? r.concern.trim() : null,
+            ...(nonEmptyString(r.source_type) ? { source_type: r.source_type.trim() } : {}),
           };
         })
         .filter((c) => c.claim_text);
@@ -150,4 +152,56 @@ function intelToSignal(entry, { productId = null, isReviewed = null, filterPubli
   };
 }
 
-module.exports = { intelToSignal, PRODUCT_INTEL_CONTRACT_VERSION };
+function addReviewedMerchantClaims(signal, claims, { productId, filterPublicSafeClaims } = {}) {
+  if (!asArray(claims).length || typeof filterPublicSafeClaims !== 'function') return signal;
+  const merchantSignal = intelToSignal({
+    analysis: {
+      contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+      product_intel_core: { evidence_claims: claims },
+    },
+  }, {
+    productId,
+    filterPublicSafeClaims: (items) => {
+      const sourceByClaim = new Map(items.map((claim) =>
+        [JSON.stringify([claim.claim_text.trim(), claim.source_ref]), claim.source_type]));
+      return asArray(filterPublicSafeClaims(items))
+        .filter((claim) => asArray(claim.source_refs).length)
+        .map((claim) => ({
+          ...claim,
+          source_type: sourceByClaim.get(JSON.stringify([claim.claim_text, claim.source_ref])),
+        }));
+    },
+  });
+  if (!merchantSignal) return signal;
+
+  const existing = asArray(signal?.evidence?.claims);
+  const seen = new Set(existing.map((claim) => claim.claim_text.toLowerCase()));
+  const combined = [...existing];
+  for (const claim of merchantSignal.evidence.claims) {
+    if (combined.length >= CLAIM_LIMIT) break;
+    const key = claim.claim_text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    combined.push(claim);
+  }
+  if (combined.length === existing.length) return signal;
+
+  const base = signal || {
+    ...merchantSignal,
+    evidence: { grade: null, confidence: null, method: 'staff_verified_merchant_evidence', sources: [] },
+    review_state: 'staff_verified',
+  };
+  const grade = combined.reduce((best, claim) =>
+    (GRADE_RANK[claim.evidence_grade] > (GRADE_RANK[best] || 0) ? claim.evidence_grade : best), base.evidence.grade);
+  return {
+    ...base,
+    evidence: {
+      ...base.evidence,
+      grade,
+      claims: combined,
+      sources: [...base.evidence.sources, { type: 'staff_verified_merchant_evidence' }],
+    },
+  };
+}
+
+module.exports = { intelToSignal, addReviewedMerchantClaims, PRODUCT_INTEL_CONTRACT_VERSION };

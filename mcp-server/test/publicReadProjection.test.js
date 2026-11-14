@@ -281,7 +281,8 @@ test("get_intel projects the decision signal with claims; strips envelope diagno
         },
         evidence: {
           grade: "A",
-          claims: [{ claim_text: "niacinamide fades dark spots", evidence_grade: "A", source_refs: ["https://pubmed.ncbi.nlm.nih.gov/1"] }],
+          claims: [{ claim_text: "niacinamide fades dark spots", evidence_grade: "A",
+            source_refs: ["https://pubmed.ncbi.nlm.nih.gov/1"], source_type: "third_party_test" }],
         },
         freshness: { observed_at: "2026-07-01T00:00:00Z" }, // timestamp must NOT survive
         review_state: "human_approved",
@@ -295,6 +296,7 @@ test("get_intel projects the decision signal with claims; strips envelope diagno
   assert.equal(out.intel.reviewed, true);
   assert.equal(out.intel.grade, "A");
   assert.equal(out.intel.claims[0].citations[0], "https://pubmed.ncbi.nlm.nih.gov/1");
+  assert.equal(out.intel.claims[0].source_type, "third_party_test");
   assert.equal(out.pivota_url, "https://agent.pivota.cc/products/sig_xyz");
   assert.deepEqual(findLeakedFields(out), [], "no diagnostics/timestamps survive");
 });

@@ -30,6 +30,7 @@ const { spawn } = require('node:child_process');
 const MAIN = require('./fixtures/get_product_forward_market_main.json');
 const { revertNoMarketDescriptionEdits } = require('./_support/noMarketDescriptionEdits.cjs');
 const { revertLineQuantityMaximumEdit, revertIdempotencyKeyDescriptionEdits, KEY_LENGTH_SENTENCE, revertDuplicateLinesDescriptionEdits, DUPLICATE_LINES_SENTENCE } = require('./_support/lineQuantityMaximumSchemaEdit.cjs');
+const { revertRecommendationIngredientDescriptionEdits } = require('./_support/recommendationIngredientDescriptionEdits.cjs');
 const CHILD = path.join(__dirname, '_support', 'getProductDoorsChild.cjs');
 const GP_CASES = ['ucp_gp', 'ucp_gp_ctx_blank', 'ucp_gp_ctx_other', 'ucp_gp_ctx', 'mcp_gp', 'mcp_gp_market', 'public_gp', 'public_gp_market'];
 const sha = (text) => require('node:crypto').createHash('sha256').update(text).digest('hex');
@@ -95,6 +96,9 @@ test.before(async () => {
         c.body = merged; c.sha256 = sha(merged);
       }
     }
+    const nativeTools = cases.mcp_tools;
+    nativeTools.body = revertRecommendationIngredientDescriptionEdits(nativeTools.body);
+    nativeTools.sha256 = sha(nativeTools.body);
   }
 }, { timeout: 240000 });
 
