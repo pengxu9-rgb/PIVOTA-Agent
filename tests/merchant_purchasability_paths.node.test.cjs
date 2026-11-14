@@ -1026,6 +1026,7 @@ test('STRUCTURAL: every call site of the gate takes a decline from `offer === fa
     .filter((f) => /shouldOfferPurchase\s*\(|mayOfferPurchaseForDomain\s*\(/.test(fs.readFileSync(path.join(root, f), 'utf8')))
     .sort();
   assert.deepEqual(callers, [
+    path.join('mcp-server', 'src', 'merchantCheckoutQuoteTool.js'),
     path.join('mcp-server', 'src', 'ucpCheckoutEscalation.js'),
     path.join('mcp-server', 'src', 'ucpReapAgenticLane.js'),
     path.join('src', 'offers', 'offersPriority.js'),
@@ -1050,6 +1051,11 @@ test('STRUCTURAL: every call site of the gate takes a decline from `offer === fa
   assert.match(reap, /const offer = await mayOfferPurchaseForDomain\(/);
   assert.match(reap, /if \(!offer\) return skip\("purchasability_declined"\);/);
   assert.doesNotMatch(reap, /\.source\s*[!=]==?/);
+  const merchantQuote = code(path.join('mcp-server', 'src', 'merchantCheckoutQuoteTool.js'));
+  assert.match(merchantQuote, /const canQuoteSeller = seller => mayOfferPurchaseForDomain\(/);
+  assert.match(merchantQuote, /if \(!await canQuoteSeller\(sellerHost\)\) throw refusal\("merchant_quote_seller_browse_only"\);/);
+  assert.match(merchantQuote, /\|\| !await canQuoteSeller\(prior\.result\.sellerHost\)/);
+  assert.doesNotMatch(merchantQuote, /\.source\s*[!=]==?/);
   // And both escalation branches (create AND the get re-read) go through that seam.
   const esc = code(path.join('mcp-server', 'src', 'ucpCheckoutEscalation.js'));
   assert.equal((esc.match(/if \(!\(await mayOfferStorefrontCheckout\(/g) || []).length, 2);

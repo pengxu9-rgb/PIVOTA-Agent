@@ -23,6 +23,8 @@ const SEAMS = [
   { file: 'src/services/ucpWarmHandoff.js', call: /await shouldOfferPurchaseFn\(\{[\s\S]*?\}\);/, rail: 'PURCHASABILITY_RAIL.human' },
   // seam 2: the escalation continue_url, a person on the storefront
   { file: 'mcp-server/src/ucpCheckoutEscalation.js', call: /return mayOfferPurchaseForDomain\(sellerHostOf\(continueUrl\)[^;]*\);/, rail: 'merchantPurchasability.RAIL.human' },
+  // The Shopify preview quotes the seller's storefront prices without charging the buyer.
+  { file: 'mcp-server/src/merchantCheckoutQuoteTool.js', call: /const canQuoteSeller = seller => mayOfferPurchaseForDomain\([\s\S]*?\);/, rail: 'merchantPurchasability.RAIL.human' },
   // the Reap agentic lane: Pivota charges the card headlessly
   { file: 'mcp-server/src/ucpReapAgenticLane.js', call: /const offer = await mayOfferPurchaseForDomain\([\s\S]*?\);/, rail: 'merchantPurchasability.RAIL.card' },
 ];
