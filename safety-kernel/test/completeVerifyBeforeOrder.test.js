@@ -21,6 +21,7 @@ import { InMemoryKvStore } from '../src/stores.js';
 import { PivotaCommerceError } from '../src/errors.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
+import { marketCurrencyOf } from './helpers/marketCurrency.js';
 import { createPaymentAuthorizationVerifier } from '../src/protocol/paymentAuthorizationVerifier.js';
 
 const SECRET = 'verify-first-secret-0123456789ab';
@@ -246,6 +247,7 @@ function acpSetup(verify) {
     executor: createCanonicalExecutor({ kernel, upstream: async () => ({}), verifyPaymentAuthorization: verify }),
     sessionStore: new InMemoryKvStore({ now: () => FIXED_NOW }),
     signingSecret: ACP_SIGNING_SECRET,
+    marketCurrencyOf,
     resolveUserRef: async (r) => r.headers['x-test-buyer'],
     getProducts: async () => [],
     now: () => FIXED_NOW,
@@ -276,7 +278,7 @@ test('ACP REST end-to-end: a 402 on a bad delegated token leaves the checkout se
     if (authz?.token !== 'tok_good') throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'bad_grant' });
     return attest(bound);
   });
-  const created = await adapter.createCheckoutSession(acpReq({ body: { merchant_id: 'merch_A', buyer: { email: 'vfo@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'idem-acp-open-1' }));
+  const created = await adapter.createCheckoutSession(acpReq({ body: { merchant_id: 'merch_A', buyer: { email: 'vfo@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], fulfillment_address: { name: 'Example Buyer', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country: 'US' } }, idem: 'idem-acp-open-1' }));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const id = created.body.id;
 

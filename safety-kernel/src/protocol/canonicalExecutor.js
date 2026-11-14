@@ -20,7 +20,8 @@
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
-import { assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
+import { effectiveShippingAddress } from '../kernel.js';
+import { fulfillmentAddressRequiredRefusal, assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
 import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
@@ -266,22 +267,39 @@ export function agentPurchaseOrder(orderId, answered) {
 // of the session and is priced exactly as it was before this rule, a session that was bound while the rule was on
 // included: turning a door's rule off returns its updates to what they were, at once. The session such an update
 // answers is a new, unbound one, and completes as any unjudged session does; the session it named stays as it was.
+//
+// THE ONE EXCEPTION IS STATED BY THE DOOR, NOT BY THE CALLER. On a door whose protocol names the buyer's market by
+// the fulfillment address (the ACP REST door), an update that carries an address REPLACES the address, so the market
+// it is judged for is the new address's. That door says so on the call (`params.market_replaces_session_market`),
+// and it is honoured only for a call that door built (`ctx.protocol`, which a door sets and no request member
+// reaches) and only when the call names a market: omitting a market never takes one away from a session. The quote
+// is then judged, sent and recorded for the request's market exactly as a create's is. A refused one records
+// nothing, so the session keeps the quote and the market it had. On every other door the flag is not read.
 // Same refusal codes, reasons and detail members as a seller-storefront checkout answers under the currency rule
 // (mcp-server/src/ucpCheckoutEscalation.js).
+//
+// A SESSION THAT EXISTS IS HELD TO THE SAME RULE WHEN A DOOR NAMES A MARKET FOR IT. A read
+// (get_checkout_session) and a completion (complete_checkout_session) judge the session's own locked quote for
+// every market the door names (judgeSessionMarkets): a market with no currency, or a quote that is not in a
+// market's currency, is refused by the same names and the session is neither read out nor paid. Nothing is
+// repriced. A door that names no market for a session (every door but the ACP REST one, today) is answered
+// exactly as before.
 
-// What the refusal says happened to the checkout, by where the rule was applied.
+// What the refusal says happened to the checkout, by where the rule was applied: one set of stages for every door.
 const MARKET_REFUSAL_OUTCOME = Object.freeze({
   create: 'no checkout session was created',
   update: 'the checkout session was not re-priced',
+  session: 'this checkout session was neither read out nor paid',
 });
 // A currency code as a refusal may state it. What an upstream sent that is not one is never echoed.
 const statedCurrency = (value) => (typeof value === 'string' && /^[A-Z]{3}$/.test(value) ? value : null);
 
 /**
  * `null` when the request names no market; else `{ market, currency, accept }`. Throws the named refusal for an
- * unpriced one. `stage` only words the refusal: 'create' (the default) or 'update'.
+ * unpriced one. `stage` only words the refusal: 'create' (the default), 'update', or 'session' (a session that
+ * already exists, being read or completed).
  */
-function quoteMarketOf(params, stage = 'create') {
+export function quoteMarketOf(params, stage = 'create') {
   const outcome = MARKET_REFUSAL_OUTCOME[stage] || MARKET_REFUSAL_OUTCOME.create;
   const market = params ? params.market : undefined;
   if (market === undefined || market === null) return null;
@@ -314,18 +332,73 @@ function quoteMarketOf(params, stage = 'create') {
 }
 
 /**
- * The market members an UPDATE is judged with: the ones recorded on the session it names, when that session is this
- * buyer's and was created for a market; else the request's own, untouched (no door sends any on an update today).
- * Reads exactly one thing, and only on an update the door marked (`params.judge_session_market === true`): the
- * session's record, by `params.session_id`, for its recorded market. Nothing else of the session is read or checked
- * here, and an id that names no session of this buyer changes nothing.
+ * EVERY MARKET A DOOR NAMES FOR A SESSION THAT EXISTS (a read, a completion), judged against the session's own
+ * locked quote. Each is judged; none stands in for another:
+ *   1. `params.market` (+ `market_currency`): the market THIS REQUEST names (on the ACP REST door, the country of
+ *      the address a completion carries, which is where the order ships when the quote holds no address). Judged
+ *      first, so a refusal names the request's own market.
+ *   2. the market RECORDED on the quote, when the request names one too: they must be the same market. A request
+ *      that names another country, even one priced in the same currency, asks for a checkout that was never priced
+ *      for it (its tax and shipping were computed for the recorded market): refused by name, to be re-priced by an
+ *      update that carries the address.
+ *   3. `params.held_market` (+ `held_market_currency`): a market the door holds against the session (one an earlier
+ *      request of the buyer named, that the session was refused for).
+ * A market with no currency, or a quote that is not in a market's currency, is refused by the rule's own names.
+ */
+function judgeSessionMarkets(params, quote) {
+  const named = quoteMarketOf(params, 'session');
+  if (named) {
+    named.accept(quote.currency);
+    if (typeof quote.market === 'string' && quote.market !== named.market) {
+      throw intakeRefusal('QUOTE_REQUIRED', 'market_changed_without_requote', [
+        `This checkout session was priced for a buyer in ${quote.market}, and this request names ${named.market}.`,
+        'A session is priced for one market: send the new address with an update, so the checkout is re-priced for it, then complete.',
+        'Nothing was charged and no order was created.',
+      ].join(' '), { market: named.market, session_market: quote.market });
+    }
+  }
+  const held = params && params.held_market !== undefined && params.held_market !== null
+    ? quoteMarketOf({ market: params.held_market, market_currency: params.held_market_currency }, 'session')
+    : null;
+  if (held) held.accept(quote.currency);
+}
+
+/**
+ * The market members an UPDATE is judged with: the request's own when the door states that this update replaces the
+ * session's market (updateReplacesSessionMarket); else, on an update the door marked
+ * (`params.judge_session_market === true`), the ones recorded on the session it names, when that session is this
+ * buyer's and was created for a market; else the request's own, untouched.
+ * Reads exactly one thing, and only on a marked update: the session's record, by `params.session_id`, for its
+ * recorded market. Nothing else of the session is read or checked here, and an id that names no session of this
+ * buyer changes nothing.
  */
 async function sessionMarketParams(kernel, params, ctx) {
+  if (updateReplacesSessionMarket(params, ctx)) return params;
   if (!params || params.judge_session_market !== true) return params; // not marked by a door: nothing is read
   const recorded = kernel.quotes && typeof kernel.quotes.sessionMarket === 'function'
     ? await kernel.quotes.sessionMarket(params ? params.session_id : undefined, ctx)
     : null;
   return recorded ? { market: recorded.market, market_currency: recorded.market_currency } : params;
+}
+
+// The door whose protocol names the market by the fulfillment address, as that door declares itself in ctx.
+const ADDRESS_MARKET_PROTOCOL = 'acp';
+/** Does this update state, with the authority to, that the market it names replaces the session's? */
+function updateReplacesSessionMarket(params, ctx) {
+  if (!ctx || ctx.protocol !== ADDRESS_MARKET_PROTOCOL) return false;
+  if (!params || params.market_replaces_session_market !== true) return false;
+  return params.market !== undefined && params.market !== null;
+}
+
+/**
+ * Does this completion come from the door that refuses, by name, a completion with no address to ship to? The ACP
+ * REST door says so on the call (`params.fulfillment_address_required`: where its caller can supply the address),
+ * and it is read only on a call that door built. Every other door's completion is exactly as it was.
+ */
+function completionRequiresFulfillmentAddress(params, ctx) {
+  if (!ctx || ctx.protocol !== ADDRESS_MARKET_PROTOCOL) return null;
+  const hint = params ? params.fulfillment_address_required : undefined;
+  return typeof hint === 'string' && hint.trim() !== '' ? hint : null;
 }
 
 function isPlainObjectValue(value) {
@@ -519,6 +592,9 @@ export function createCanonicalExecutor({
       case 'get_checkout_session': {
         if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
         const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx); // ownership + expiry
+        // The markets a door names for this session (judgeSessionMarkets): the session is read out only when its
+        // own quote is in their currency. After ownership and expiry, so those answer as they always did.
+        judgeSessionMarkets(params, snapshot);
         return attachAp2CheckoutJwt(toSession(snapshot), mintAp2CheckoutJwt, ctx);
       }
 
@@ -711,7 +787,32 @@ async function completeCheckout(
       // Advisory only: createOrder's atomic claim below is still the enforcement, so a concurrent claim that
       // lands after this read is refused there, exactly as before.
       if (typeof kernel.isQuoteClaimed === 'function' && (await kernel.isQuoteClaimed(quote.quote_id))) {
-        throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
+        throw typeof kernel.quoteAlreadyUsed === 'function'
+          ? await kernel.quoteAlreadyUsed(quote.quote_id)
+          : new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
+      }
+
+      // THE MARKETS A DOOR NAMES FOR THIS COMPLETION (judgeSessionMarkets): the money about to be taken is the
+      // locked quote's, so it is the locked quote's currency that is judged, here, before either payment lane and
+      // before anything irreversible (no order, no authorization presented, no charge). A refusal is raised inside
+      // the idempotency run with no side effect done, so the caller's key is released with it.
+      judgeSessionMarkets(params, quote);
+
+      // AN ADDRESS TO SHIP TO, ON THE DOOR THAT STATES IT IS REQUIRED HERE (completionRequiresFulfillmentAddress).
+      // The address the order below would be created with is the locked quote's, completed by this request's:
+      // computed by the function kernel.createOrder builds the order's address with (effectiveShippingAddress),
+      // so what is judged here is what would be sent. When that is not a complete address, there is nothing to
+      // create an order with, and so no buyer country either: refused by name here, after the market rule and
+      // before either payment lane, with no authorization presented, no order asked for and nothing charged.
+      // Raised inside the idempotency run with no side effect done, so the caller's key is released with it.
+      const addressHint = completionRequiresFulfillmentAddress(params, ctx);
+      if (addressHint) {
+        const shipTo = effectiveShippingAddress(
+          isPlainObjectValue(quote.buyer_context) ? quote.buyer_context.shipping_address : undefined,
+          params.shipping_address,
+        );
+        const refusal = fulfillmentAddressRequiredRefusal(shipTo, { updateHint: addressHint });
+        if (refusal) throw refusal;
       }
 
       // --- THE BRANCH (decided above, taken here) -------------------------------------------------------
@@ -999,6 +1100,24 @@ function assertAttestation(attestation, order, ctx) {
 
 async function cancelSession(kernel, params, ctx) {
   const order_id = params.order_id;
+  if (!nonEmpty(order_id) && cancelClaimsSession(params, ctx)) {
+    // A SESSION THAT NEVER BECAME AN ORDER, ON THE DOOR THAT RECORDS ITS CANCELLATIONS. The cancellation takes the
+    // quote's single-use claim, the same record createOrder takes, so a cancellation and a completion of one
+    // session are decided by one atomic write and exactly one of them wins:
+    //   - the cancellation holds the claim: no completion can create an order from this quote, now or later;
+    //   - an order holds it (a completion got there first, finished or still in flight): the session is not
+    //     cancelled, and the caller is told so instead of "canceled".
+    // Cancelling again is the same answer: a claim this door's cancellation already holds is not a refusal.
+    if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+    const claimed = await kernel._quoteClaims.putIfAbsent(params.session_id, { canceled: true });
+    if (!claimed) {
+      const held = await kernel._quoteClaims.get(params.session_id);
+      if (!(held && held.canceled === true)) {
+        throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: 'cancel_checkout_session', reason: 'session_already_ordered' });
+      }
+    }
+    return { session_id: params.session_id, order_id: null, status: 'canceled' };
+  }
   if (nonEmpty(order_id)) {
     const o = await kernel._orderStore.get(order_id);
     if (o) {
@@ -1010,6 +1129,15 @@ async function cancelSession(kernel, params, ctx) {
     }
   }
   return { session_id: params.session_id ?? null, order_id: order_id ?? null, status: 'canceled' };
+}
+
+/**
+ * Does this cancellation come from the door that records a cancelled session and never pays one? The ACP REST door
+ * says so on the call (`params.cancel_claims_session`), read only on a call that door built. Every other door's
+ * cancellation of a session with no order is exactly what it was.
+ */
+function cancelClaimsSession(params, ctx) {
+  return Boolean(ctx && ctx.protocol === ADDRESS_MARKET_PROTOCOL && params && params.cancel_claims_session === true);
 }
 
 // An order this caller does not own is NOT FOUND: the same answer as an id the kernel never tracked. The

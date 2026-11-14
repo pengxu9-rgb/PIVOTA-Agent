@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { marketCurrencyOf } from './helpers/marketCurrency.js';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 import { composeProductionCommerce, createHttpBackendUpstream, WiringConfigError } from '../src/protocol/productionWiring.js';
 import { InMemoryKvStore } from '../src/stores.js';
@@ -55,6 +56,7 @@ function baseConfig(jwks, fetchImpl, extra = {}) {
     paymentIssuers: [{ iss: PAY_ISS, aud: AUD, jwks, algs: ['ES256'] }],
     identityIssuers: [{ iss: ISS, aud: AUD, jwks, algs: ['ES256'] }],
     createMcpSurface: createCommerceToolSurface,
+    marketCurrencyOf,
     now: () => FIXED_NOW, log: quiet, ...extra,
   };
 }
@@ -243,7 +245,7 @@ test('E2E ACP door: signed request + verified buyer token → checkout completes
   };
   // No `buyer` in the body: the buyer email is ATTESTED by the verified token (mintBuyerToken sets an
   // `email` claim), which is the precedence this door is built around.
-  const created = await wired.acp.createCheckoutSession(req({ merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, null, 'ac-create-1'));
+  const created = await wired.acp.createCheckoutSession(req({ merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], fulfillment_address: { name: 'Example Buyer', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country: 'US' } }, null, 'ac-create-1'));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.totals.total, 11300);
   const grant = await mintGrant(privateKey, created.body.id);

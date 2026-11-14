@@ -215,7 +215,11 @@ function describeEndToEnd() {
         .send(rawBody);
     };
 
-    const createBody = { merchant_id: 'm1', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] };
+    // A US address: this door completes only a session with an address to ship to, and the stub backend prices in USD.
+    const createBody = {
+      merchant_id: 'm1', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }],
+      fulfillment_address: { name: 'Example Buyer', address_line1: '1 Example Street', city: 'Springfield', postal_code: '00000', country: 'US' },
+    };
 
     it('flag ON: routes the completion to /agent/v2/orders (protocol_name=acp) then /agent/v1/payments (token)', async () => {
       const localApp = bootApp({ [FLAG]: '1' });

@@ -22,6 +22,7 @@ import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
 import { createDefaultVariantResolver } from '../src/protocol/buyerIntake.js';
 import { attestedBuyerFromClaims } from '../src/identity/userTokenVerifier.js';
+import { marketCurrencyOf } from './helpers/marketCurrency.js';
 
 const SECRET = 'acp-signing-secret-0123456789abcdef';
 const KSECRET = 'acp-kernel-secret-0123456789abcdef';
@@ -33,9 +34,10 @@ const QUOTE = {
 };
 const okVerify = async (_a, b) => ({ ok: true, amount: b.amount, currency: b.currency, user_ref: b.user_ref });
 
+// A US address: the stub pricer answers in USD (QUOTE), and the door prices a known market only in its own currency.
 const ADDRESS = {
   recipient_name: 'Ada Lovelace', address_line1: '1 Analytical Way',
-  city: 'London', postal_code: 'EC1A 1BB', country: 'GB',
+  city: 'Springfield', postal_code: '00000', country: 'US',
 };
 
 /**
@@ -72,6 +74,7 @@ function setup({ identity = 'buyer_1', productRead, variantResolutionTimeoutMs }
     signingSecret: SECRET,
     resolveUserRef: async () => identity,
     variantResolutionTimeoutMs,
+    marketCurrencyOf,
     now: () => FIXED_NOW,
   });
   const priced = () => upstreamCalls.filter((c) => c.op === 'preview_quote');
@@ -209,7 +212,7 @@ test('address COMPLETE: mapped through, recipient_name preserved (not renamed)',
   const addr = quoteOf(priced()).shipping_address;
   assert.equal(addr.recipient_name, 'Ada Lovelace', 'src/server.js buildInvokeBuyerContext maps recipient_name -> name');
   assert.equal(addr.address_line1, '1 Analytical Way');
-  assert.equal(addr.country, 'GB');
+  assert.equal(addr.country, 'US');
 });
 
 test('address COMPLETE via the plain `name` spelling is no longer silently stripped', async () => {
@@ -244,7 +247,7 @@ test('address supplied LATER via update: the update op genuinely re-maps it into
   }));
   assert.equal(updated.status, 200, JSON.stringify(updated.body));
   const q = quoteOf(priced());
-  assert.equal(q.shipping_address.city, 'London');
+  assert.equal(q.shipping_address.city, 'Springfield');
   assert.equal(q.customer_email, 'attested@example.com', 'the re-minted snapshot still carries the attested buyer');
 });
 

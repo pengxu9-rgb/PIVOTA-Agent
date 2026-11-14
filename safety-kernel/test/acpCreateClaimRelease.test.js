@@ -19,7 +19,8 @@ const PORT = 5467;
 const LEASE_MS = 2 * 60 * 1000;
 const WINDOW_MS = 15 * 60 * 1000;
 const STORES = ['memory', 'postgres'];
-// The markets of a priced answer: three the pricer prices, one it refuses by name, and no destination at all.
+// The markets of a priced answer: three the pricer prices, and no destination at all. (DE, which nothing is priced
+// for, has its own test.)
 const PRICED_MARKETS = ['US', 'SG', 'GB', null];
 const currencyOf = (market) => (market === null ? PRICER_MERCHANT_CURRENCY : PRICER_CURRENCY[market]);
 
@@ -85,25 +86,29 @@ for (const storeKind of STORES) {
     });
   }
 
-  test(`[${storeKind}] market DE: refused by the pricer by name, never priced; the key is a first create afterwards`, async () => {
+  test(`[${storeKind}] market DE: refused by the door by name, the pricer never asked; the key is a first create afterwards`, async () => {
     await withDoor({ storeKind }, async (door) => {
       const key = 'idem-unpriced-01';
+      const NOT_PRICED = { reason: MARKET_NOT_PRICED, market: 'DE' };
       const refused = await door.create(cart(1, 'DE'), { key });
-      assert.equal(refused.status, 503, refused.text);
-      assert.deepEqual(refused.body, UNAVAILABLE);
+      assert.equal(refused.status, 404, refused.text);
+      assert.equal(refused.body.code, 'NO_MERCHANT_OFFER');
+      assert.deepEqual(refused.body.detail, NOT_PRICED, 'refused by name, with the market');
       assert.equal(refused.body.currency, undefined, 'a refusal states no currency');
-      assert.equal(door.pricer.calls.length, 1);
-      assert.equal(door.pricer.calls[0].quote.shipping_address.country, 'DE', 'the pricer was asked for the market the request named');
-      assert.equal(door.pricer.quotes.length, 0, 'no quote for a market the pricer has no currency for');
       assert.equal(PRICER_CURRENCY.DE, undefined);
+      // Refused at intake: before the claim is written and before the pricer is asked. Nothing touched the store.
+      assert.deepEqual(door.pricer.calls, [], 'the pricer was never asked');
+      assert.deepEqual(door.store.calls, [], 'no claim was written, read or released');
       assert.deepEqual(await door.store.claims(), []);
-      // The pricer's refusal carries its name; the same market under the same key is refused the same way again.
+      // The same market under the same key is refused the same way again, and still nothing is asked or claimed.
       const sameAgain = await door.create(cart(1, 'DE'), { key });
-      assert.equal(sameAgain.status, 503, sameAgain.text);
-      assert.equal(door.pricer.calls.length, 2, 'a first create each time: the pricer is asked again');
+      assert.equal(sameAgain.status, 404, sameAgain.text);
+      assert.deepEqual(sameAgain.body.detail, NOT_PRICED);
+      assert.deepEqual([door.pricer.calls, door.store.calls], [[], []]);
       // The buyer ships somewhere priced instead: the same key is a first create, in that market's currency.
       const created = await door.create(cart(1, 'US'), { key });
       assertSession(created, 201, 'US', 1, 'the same key, a priced market');
+      assert.equal(door.pricer.calls.length, 1);
       assert.equal(door.pricer.quotes.length, 1);
       assert.equal(MARKET_NOT_PRICED, 'market_not_priced');
     });
