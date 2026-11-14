@@ -162,6 +162,16 @@ test("signed tier, tenant profile and negotiated tool safety are independent gat
   }
 });
 
+test("temporary Shopify discovery failure is retryable before a create attempt", async () => {
+  for (const [stage, details] of [["discoverEndpoint", { status: 503 }], ["listTools", { status: 429 }]]) {
+    const client = merchantFixture();
+    client[stage] = async () => details;
+    await assert.rejects(createService(client).quote(request, {
+      async beforeCreate() { assert.fail("no checkout creation is permitted after failed discovery"); },
+    }), { code: "MERCHANT_UNAVAILABLE", retriable: true });
+  }
+});
+
 test("Shopify quote verifies exact quantities, tax and allocation and hides all session identifiers", async () => {
   const readback = checkoutFixture();
   readback.line_items.reverse();

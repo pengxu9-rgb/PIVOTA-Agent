@@ -219,6 +219,24 @@ test("a terminal product refusal does not solicit a transient retry", async t =>
   assert.equal(passed.length, 0);
 });
 
+test("a transient Shopify discovery failure releases a pre-create claim", async t => {
+  const old = process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED;
+  process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED = "1";
+  t.after(() => old === undefined ? delete process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED
+    : process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED = old);
+  let calls = 0;
+  const { surface } = setup({ service: {
+    async quote() {
+      calls += 1;
+      if (calls === 1) throw new PivotaCommerceError("MERCHANT_UNAVAILABLE");
+      return { verifiedQuotedTotalMinor: null, state: "checkout_unverified" };
+    },
+  } });
+  await assert.rejects(surface.callTool(MERCHANT_QUOTE_TOOL, args, buyer), { code: "MERCHANT_UNAVAILABLE" });
+  await surface.callTool(MERCHANT_QUOTE_TOOL, args, buyer);
+  assert.equal(calls, 2);
+});
+
 test("a pickup or selected delivery request cannot be quoted as default shipping", async t => {
   const old = process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED;
   process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED = "1";

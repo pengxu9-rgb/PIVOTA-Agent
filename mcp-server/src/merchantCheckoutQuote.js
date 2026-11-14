@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import buyerClientModule from "../../src/services/ucpBuyerAgentClient.js";
+import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { isAcceptableLineQuantity, MAX_CART_ITEMS, pickCompleteAddress } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { checkoutSwitchOn, marketCurrencyOf } from "./ucpCheckoutEscalation.js";
 import { canonicalReapMerchantDomain } from "./ucpExpectedSeller.js";
@@ -53,6 +54,10 @@ function refusal(reason, detail = {}) {
 
 function unknownOutcome(reason) {
   return { ...refusal(reason), state: "checkout_outcome_unknown" };
+}
+
+function temporaryDiscoveryFailure(status) {
+  return status === 429 || (Number.isInteger(status) && status >= 500);
 }
 
 function wireDestination(shippingAddress, market) {
@@ -307,8 +312,10 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
 
       try {
         const profile = await sellerClient.discoverEndpoint(`https://${seller}`);
+        if (temporaryDiscoveryFailure(profile?.status)) throw new Error("temporary profile failure");
         if (profile?.mcpEndpoint !== endpoint) return refusal("merchant_checkout_quote_seller_profile_mismatch");
         const catalog = await sellerClient.listTools(endpoint);
+        if (temporaryDiscoveryFailure(catalog?.status)) throw new Error("temporary tool discovery failure");
         const tools = catalog?.response?.result?.tools;
         const checkout = Array.isArray(tools) ? tools.find(tool => tool?.name === "create_checkout") : null;
         const properties = checkout?.inputSchema?.properties?.checkout?.properties;
@@ -316,7 +323,9 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
         if (!method?.destinations || !method?.selected_destination_id
           || !tools.some(tool => tool?.name === "get_checkout") || !tools.some(tool => tool?.name === "cancel_checkout")
           || (requestedCode && !properties.discounts)) return refusal("merchant_checkout_quote_capability_unavailable");
-      } catch { return refusal("merchant_checkout_quote_capability_unavailable"); }
+      } catch {
+        throw new PivotaCommerceError("MERCHANT_UNAVAILABLE", { reason: "merchant_quote_discovery_unavailable" });
+      }
 
       const createKey = randomUUID();
       const cancelKey = randomUUID();

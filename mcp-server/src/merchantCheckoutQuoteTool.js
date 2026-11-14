@@ -134,6 +134,10 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
     const fingerprint = digest(["input", scope, items, market, destination, args.discount_code ?? null]);
     const claim = randomUUID();
     const outcomePending = () => refusal("merchant_quote_outcome_pending", "CHECKOUT_OUTCOME_UNKNOWN");
+    async function releasePreflight() {
+      try { await stateStore.compareAndDelete(recordKey, "claim", claim); } catch { /* The preflight lease expires. */ }
+      throw refusal("merchant_quote_unavailable", "MERCHANT_UNAVAILABLE");
+    }
     async function writeClaim(owner, value, options) {
       try {
         if (await stateStore.compareAndSet(recordKey, "claim", owner, value, options)) return;
@@ -217,8 +221,7 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
       if (!(error instanceof PivotaCommerceError) || error.retriable
         || error.detail?.acp_detail?.variant_resolution === "resolution_unavailable") {
         // No merchant operation ran. Release only our claim so the same request can retry.
-        try { await stateStore.compareAndDelete(recordKey, "claim", claim); } catch { /* The record expires. */ }
-        throw refusal("merchant_quote_unavailable", "MERCHANT_UNAVAILABLE");
+        await releasePreflight();
       }
       result = unverified(error.detail.reason || error.code);
     }
@@ -238,8 +241,9 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
             await writeClaim(claim, pending);
           },
         });
-      } catch {
+      } catch (error) {
         if (pending) throw outcomePending();
+        if (error instanceof PivotaCommerceError && error.retriable) await releasePreflight();
         result = unverified("merchant_quote_unavailable");
       }
       if (pending && result.checkoutCancelled !== true) throw outcomePending();
