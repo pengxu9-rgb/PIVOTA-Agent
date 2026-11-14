@@ -35323,6 +35323,9 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
     return requireExternalInvokeAuth(req, res, runMcp);
 }
 
+const MERCHANT_QUOTE_PREVIEW_PATH = '/api/quotes/merchant-preview';
+const MERCHANT_QUOTE_PREVIEW_TOOL = 'preview_merchant_checkout_quote';
+
 /**
  * POST /ucp/mcp — the UCP-DIALECT commerce door.
  *
@@ -35338,15 +35341,21 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
  * Both flags 404 rather than 403: a dark door must be indistinguishable from a route that does not exist.
  */
 function registerCommerceUcpMcpRoute() {
-  app.post('/api/quotes/merchant-preview', async (req, res) => {
+  app.post(MERCHANT_QUOTE_PREVIEW_PATH, async (req, res, next) => {
     try {
       const { merchantCheckoutQuoteEnabled } = await import('../mcp-server/src/merchantCheckoutQuote.js');
       if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpToolDoorEnabled() || !merchantCheckoutQuoteEnabled()) {
         return res.status(404).json({ error: 'not_found' });
       }
+      return next();
+    } catch {
+      return res.status(503).json({ error: 'merchant_quote_unavailable' });
+    }
+  }, agentSignatureMiddleware, async (req, res) => {
+    try {
       // This route uses the UCP resource and existing authentication, session, and caller limit.
       req.body = { jsonrpc: '2.0', id: 1, method: 'tools/call',
-        params: { name: 'preview_merchant_checkout_quote', arguments: req.body } };
+        params: { name: MERCHANT_QUOTE_PREVIEW_TOOL, arguments: req.body } };
       return await runWithPriceDoor(req, 'ucp_mcp', () => serveCommerceMcpJsonRpc(req, res, {
         handlerEnteredAtMs: Date.now(),
         getAdapter: getCommerceUcpMcpAdapter,
@@ -39086,10 +39095,10 @@ function agentSignatureBudgetMs() {
   const n = Number.parseInt(process.env.AGENT_SIGNATURE_VERIFY_BUDGET_MS || '', 10);
   return Number.isFinite(n) && n > 0 ? Math.min(n, 5000) : 1500;
 }
-// Which enforcement route group a door request belongs to. `checkout` = the ACP checkout_sessions routes and
-// an MCP / UCP-dialect tools/call of an operation whose canonical capability is checkout (looked up in the
-// canonical contract, never a local list of names); every other door request is `merchant_doors`.
+// The checkout group covers ACP checkout sessions, MCP calls whose canonical capability is checkout,
+// and the merchant quote preview, which opens a temporary checkout on the seller's storefront.
 async function agentSignatureRouteGroup(req) {
+  if (req.route?.path === MERCHANT_QUOTE_PREVIEW_PATH) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
   const p = String(req.path || '').toLowerCase().replace(/\/+$/, '') || '/';
   if (p === `${COMMERCE_ACP_BASE_PATH}/checkout_sessions` || p.startsWith(`${COMMERCE_ACP_BASE_PATH}/checkout_sessions/`)) {
     return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
@@ -39097,6 +39106,7 @@ async function agentSignatureRouteGroup(req) {
   if (p === '/mcp' || p === '/ucp/mcp') {
     const calls = Array.isArray(req.body) ? req.body : [req.body];
     const names = calls.map((c) => mcpToolNameFromRpcBody(c)).filter((n) => typeof n === 'string' && n);
+    if (names.includes(MERCHANT_QUOTE_PREVIEW_TOOL)) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
     if (names.length) {
       // A contract that cannot load must not quietly move a checkout call out of the checkout group: it is
       // classified as checkout (the group an operator enforces first), so the failure can only refuse more.
@@ -39119,9 +39129,9 @@ function agentSignatureEnforcementConfig() {
   }
   return agentSignatureEnforcementConfigCache.config;
 }
-app.use(async function agentSignatureMiddleware(req, res, next) {
+async function agentSignatureMiddleware(req, res, next) {
   const mode = agentSignatureMode();
-  if (mode === 'off' || !isAgentSignatureDoorPath(req)) return next();
+  if (mode === 'off') return next();
   // Signature-Input marks an RFC 9421 signature; a lone `Signature` header is the ACP adapter's HMAC.
   const signed = req.headers['signature-input'] !== undefined;
   const enforcement = mode === 'enforce' ? agentSignatureEnforcementConfig() : null;
@@ -39206,7 +39216,10 @@ app.use(async function agentSignatureMiddleware(req, res, next) {
       next();
     }
   }
-});
+}
+app.use((req, res, next) => isAgentSignatureDoorPath(req)
+  ? agentSignatureMiddleware(req, res, next)
+  : next());
 
 // ---------------- Aurora BFF surface: not served on the branded public hosts ----------------
 //

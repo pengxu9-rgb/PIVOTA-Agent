@@ -1821,6 +1821,10 @@ export function toToolError(error) {
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
     body.recovery = "retry only the exact request with the same idempotency_key; do not open another checkout";
     body.detail = { reason: error.detail?.reason === "purchase_outcome_unknown" ? "purchase_outcome_unknown" : "ucp_reap_create_outcome_unknown" };
+    if (error.detail?.reason === "merchant_quote_outcome_pending") {
+      body.message = "The Shopify quote or its cancellation could not be confirmed.";
+      body.detail = { reason: "merchant_quote_outcome_pending" };
+    }
   }
   // The upstream cancel (FIX_PLAN C-11, CHECKOUT_CANCEL_UPSTREAM_ENABLED): every "not canceled" outcome says so in
   // words an agent cannot read as canceled. Only that lane raises these reasons, so with the flag off no answer

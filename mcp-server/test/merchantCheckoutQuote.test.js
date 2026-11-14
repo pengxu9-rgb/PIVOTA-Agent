@@ -36,16 +36,18 @@ function rpc(payload, isError = false) {
 }
 
 function checkoutFixture(overrides = {}) {
+  const lines = request.lineItems.map((line, index) => ({
+    id: `gid://shopify/CartLine/fixture-line-${index + 1}`,
+    item: { id: `gid://shopify/ProductVariant/${line.variantId}`, price: 1400 },
+    quantity: line.quantity,
+  }));
   return {
     id: sessionId,
     continue_url: "https://romandbeauty.com/checkout/private",
     status: "incomplete",
     currency: "USD",
     expires_at: "2026-11-14T10:10:00Z",
-    line_items: request.lineItems.map(line => ({
-      item: { id: `gid://shopify/ProductVariant/${line.variantId}`, price: 1400 },
-      quantity: line.quantity,
-    })),
+    line_items: lines,
     totals: [
       { type: "subtotal", amount: 4200 },
       { type: "discount", amount: -500 },
@@ -56,6 +58,7 @@ function checkoutFixture(overrides = {}) {
     fulfillment: {
       methods: [{
         type: "shipping",
+        line_item_ids: lines.map(line => line.id),
         selected_destination_id: "fixture-address",
         destinations: [{
           id: "fixture-address", street_address: request.shippingAddress.address_line1,
@@ -63,6 +66,7 @@ function checkoutFixture(overrides = {}) {
           postal_code: request.shippingAddress.postal_code, address_country: request.shippingAddress.country,
         }],
         groups: [{
+          line_item_ids: lines.map(line => line.id),
           selected_option_id: "priority", options: [{ id: "priority", totals: [{ type: "total", amount: 500 }] }],
         }],
       }],
@@ -105,7 +109,7 @@ function merchantFixture({
       calls.push([operation, url, args]);
       assert.equal(args.id, sessionId);
       assert.ok(operation === "get_checkout" || operation === "cancel_checkout");
-      return rpc(operation === "get_checkout" ? readback : { status: cancellation });
+      return rpc(operation === "get_checkout" ? readback : { id: sessionId, status: cancellation });
     },
   };
 }
@@ -162,6 +166,7 @@ test("Shopify quote verifies exact quantities, tax and allocation and hides all 
   const readback = checkoutFixture();
   readback.line_items.reverse();
   readback.totals.reverse();
+  readback.fulfillment.methods[0].groups[0].line_item_ids.reverse();
   const client = merchantFixture({ readback });
   const result = await createService(client).quote(request);
   assert.equal(result.state, "verified_quote_with_buyer_requirements");
@@ -179,7 +184,40 @@ test("Shopify quote verifies exact quantities, tax and allocation and hides all 
   assert.equal(sent.checkout.fulfillment.methods[0].destinations[0].street_address, request.shippingAddress.address_line1);
   assert.deepEqual(sent.lineItems.map(line => line.quantity), [2, 1]);
   assert.doesNotMatch(JSON.stringify(sent), /payment|4155550130/);
-  assert.doesNotMatch(JSON.stringify(result), /private|test-session|test-secret|11 Test Street|priority/);
+  assert.doesNotMatch(JSON.stringify(result), /private|test-session|test-secret|fixture-line-|11 Test Street|priority/);
+});
+
+test("the shipping method and selected group each cover every distinct priced line in both snapshots", async () => {
+  const reject = async (snapshot, label) => {
+    for (const reply of ["created", "readback"]) {
+      const result = await createService(merchantFixture({ [reply]: snapshot })).quote(request);
+      assert.equal(result.state, "checkout_unverified", `${reply}: ${label}`);
+      assert.equal(result.verifiedQuotedTotalMinor, null);
+      assert.equal(result.checkoutCancelled, true);
+    }
+  };
+  for (const target of ["shipping method", "selected group"]) {
+    for (const [label, change] of [
+      ["missing IDs", () => undefined],
+      ["partial coverage", ([first]) => [first]],
+      ["repeated ID", ([first]) => [first, first]],
+      ["unknown ID", ([first]) => [first, "unknown-line"]],
+    ]) {
+      const snapshot = checkoutFixture();
+      const method = snapshot.fulfillment.methods[0];
+      const assignment = target === "shipping method" ? method : method.groups[0];
+      assignment.line_item_ids = change(assignment.line_item_ids);
+      await reject(snapshot, `${target} has ${label}`);
+    }
+  }
+  for (const [label, invalidId] of [
+    ["missing priced line ID", () => undefined],
+    ["duplicate priced line ID", lines => lines[0].id],
+  ]) {
+    const snapshot = checkoutFixture();
+    snapshot.line_items[1].id = invalidId(snapshot.line_items);
+    await reject(snapshot, label);
+  }
 });
 
 test("money drift, selected delivery drift, unknown checkout errors and elapsed expiry never produce a quote", async () => {
@@ -201,6 +239,16 @@ test("money drift, selected delivery drift, unknown checkout errors and elapsed 
   ]) {
     const result = await createService(merchantFixture({ readback })).quote(request);
     assert.equal(result.state, "checkout_unverified");
+    assert.equal(result.verifiedQuotedTotalMinor, null);
+    assert.equal(result.checkoutCancelled, true);
+  }
+});
+
+test("stock warning aliases suppress a quote with otherwise complete prices and shipping", async () => {
+  for (const code of ["sold_out", "SOLD-OUT", "discontinued", "back-order", "pre order"]) {
+    const readback = checkoutFixture({ status: "ready_for_complete", messages: [{ code, type: "warning" }] });
+    const result = await createService(merchantFixture({ readback })).quote(request);
+    assert.equal(result.state, "checkout_unverified", code);
     assert.equal(result.verifiedQuotedTotalMinor, null);
     assert.equal(result.checkoutCancelled, true);
   }
@@ -230,4 +278,77 @@ test("unverified merchant cleanup suppresses the quote and a tool error never tr
   assert.equal(unableToCancel.reason, "merchant_checkout_quote_cleanup_unverified");
   assert.equal(unableToCancel.verifiedQuotedTotalMinor, null);
   assert.equal(unableToCancel.checkoutCancelled, false);
+});
+
+test("an ambiguous create stays unknown after recording the signed request key", async () => {
+  const client = merchantFixture();
+  const checkpoint = [];
+  client.createCheckout = async (_endpoint, _input, { idempotencyKey }) => {
+    assert.deepEqual(checkpoint, [idempotencyKey]);
+    assert.match(idempotencyKey, /^[a-f0-9-]{36}$/);
+    throw new Error("response lost after dispatch");
+  };
+  const result = await createService(client).quote(request, {
+    async beforeCreate(attempt) {
+      assert.equal(attempt.sellerHost, sellerHost);
+      assert.equal(attempt.endpoint, endpoint);
+      checkpoint.push(attempt.createKey);
+    },
+    async checkoutCreated() { assert.fail("no Shopify checkout ID was received"); },
+  });
+  assert.equal(result.state, "checkout_outcome_unknown");
+  assert.equal(result.verifiedQuotedTotalMinor, null);
+  assert.deepEqual(client.calls.map(([op]) => op), ["discover", "tools/list"]);
+});
+
+test("ambiguous cancellation is confirmed by a matched read of the same checkout", async () => {
+  const client = merchantFixture();
+  let attempted = false;
+  let recorded;
+  client.callTool = async (_endpoint, operation, { id }, options) => {
+    assert.equal(id, sessionId);
+    if (operation === "cancel_checkout") {
+      assert.deepEqual(recorded, { sellerHost, endpoint, checkoutId: sessionId, cancelKey: options.idempotencyKey });
+      attempted = true;
+      throw new Error("cancellation response lost");
+    }
+    assert.equal(operation, "get_checkout");
+    return rpc(attempted ? { status: "canceled", id } : checkoutFixture());
+  };
+  const result = await createService(client).quote(request, {
+    async checkoutCreated(checkout) { recorded = checkout; },
+  });
+  assert.equal(result.checkoutCancelled, true);
+  assert.equal(result.verifiedQuotedTotalMinor, 4563);
+});
+
+test("cleanup recovery reads the bound checkout and reuses its cancel key", async () => {
+  const client = merchantFixture();
+  const cancelKey = "12345678-1234-4321-8234-123456789abc";
+  const service = createService(client);
+  assert.equal(await service.recoverCleanup({ sellerHost, endpoint: endpoint.replace("xyf8uj", "other"),
+    checkoutId: sessionId, cancelKey }), false);
+  const calls = [];
+  client.callTool = async (_endpoint, operation, { id }, options) => {
+    calls.push([operation, id]);
+    if (operation === "get_checkout") return rpc(checkoutFixture());
+    assert.deepEqual(options, { idempotencyKey: cancelKey });
+    return rpc({ id, status: "canceled" });
+  };
+  assert.equal(await service.recoverCleanup({ sellerHost, endpoint, checkoutId: sessionId, cancelKey }), true);
+  assert.deepEqual(calls, [["get_checkout", sessionId], ["cancel_checkout", sessionId]]);
+});
+
+test("readback with an order or a terminal lifecycle never sends a cancel", async () => {
+  for (const readback of [
+    checkoutFixture({ order: { id: "example-order" } }),
+    checkoutFixture({ status: "completed" }),
+    checkoutFixture({ status: "canceled" }),
+  ]) {
+    const client = merchantFixture({ readback });
+    const result = await createService(client).quote(request);
+    assert.equal(result.verifiedQuotedTotalMinor, null);
+    assert.equal(result.checkoutCancelled === true, readback.status === "canceled");
+    assert.ok(!client.calls.some(([tool]) => tool === "cancel_checkout"));
+  }
 });

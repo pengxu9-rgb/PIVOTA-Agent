@@ -852,7 +852,7 @@ function createUcpBuyerAgentClient(options = {}) {
    * Low-level MCP tool call (JSON-RPC 2.0 `tools/call`) against a discovered endpoint.
    * Never call this with TOOL.COMPLETE_CHECKOUT — a guard throws.
    */
-  async function callTool(mcpEndpoint, toolName, args = {}, { retry = false } = {}) {
+  async function callTool(mcpEndpoint, toolName, args = {}, { retry = false, idempotencyKey: requestKey } = {}) {
     if (toolName === TOOL.COMPLETE_CHECKOUT) {
       throw new Error('ucpBuyerAgentClient: complete_checkout is hard-disabled (cart-build + handoff only).');
     }
@@ -861,7 +861,13 @@ function createUcpBuyerAgentClient(options = {}) {
     const retryOk = retry && IDEMPOTENT_TOOLS.has(toolName);
     const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
     // Idempotency key is minted for signed (state-changing) requests; it lives in meta AND is a covered header.
-    const idempotencyKey = tier === TRUST_TIER.SIGNED ? cryptoId() : undefined;
+    if (requestKey !== undefined && (tier !== TRUST_TIER.SIGNED ||
+      ![TOOL.CREATE_CHECKOUT, 'cancel_checkout'].includes(toolName) ||
+      typeof requestKey !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestKey) ||
+      Object.hasOwn(args, 'meta'))) {
+      throw new Error('ucpBuyerAgentClient: invalid signed checkout idempotency key.');
+    }
+    const idempotencyKey = tier === TRUST_TIER.SIGNED ? (requestKey ?? cryptoId()) : undefined;
     const meta = requestMeta(idempotencyKey);
     // LIVE-VERIFIED shape (cosrx create_cart inputSchema, 2026-07-13): the tool's own fields sit DIRECTLY
     // alongside `meta` inside params.arguments (e.g. { meta, cart: { line_items: [...] } }). They are NOT
@@ -1106,9 +1112,9 @@ function createUcpBuyerAgentClient(options = {}) {
    * @param {{ cartId?: string, lineItems?: Array, buyer?: object, context?: object, attribution?: object,
    *          checkout?: object }} params
    */
-  async function createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context, attribution, checkout, discountCodes } = {}) {
+  async function createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context, attribution, checkout, discountCodes } = {}, options) {
     const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout, discountCodes });
-    return callTool(mcpEndpoint, TOOL.CREATE_CHECKOUT, args);
+    return callTool(mcpEndpoint, TOOL.CREATE_CHECKOUT, args, options);
   }
 
   /**

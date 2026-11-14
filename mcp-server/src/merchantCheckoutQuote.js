@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import buyerClientModule from "../../src/services/ucpBuyerAgentClient.js";
 import { isAcceptableLineQuantity, MAX_CART_ITEMS, pickCompleteAddress } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { checkoutSwitchOn, marketCurrencyOf } from "./ucpCheckoutEscalation.js";
@@ -21,7 +22,7 @@ const BREAKDOWN_TYPES = new Set(["subtotal", "fulfillment", "tax", "discount", "
 const DISCOUNT_TYPES = new Set(["discount", "items_discount"]);
 const BLOCKING_SEVERITIES = new Set(["recoverable", "requires_buyer_input", "requires_buyer_review", "unrecoverable"]);
 const MESSAGE_TYPES = new Set(["error", "warning", "info"]);
-const STOCK_MESSAGE = /stock|inventory|quantity|unavailable|back_?order|pre_?order/;
+const STOCK_MESSAGE = /stock|inventory|quantity|unavailable|sold[ _-]?out|discontinued|back[ _-]?order|pre[ _-]?order/i;
 const ADDRESS_FIELDS = ["street_address", "extended_address", "address_locality", "address_region", "postal_code", "address_country"];
 
 export function merchantCheckoutQuoteEnabled(env = process.env) {
@@ -48,6 +49,10 @@ export function merchantCheckoutQuoteAllowedSellers(env = process.env) {
 
 function refusal(reason, detail = {}) {
   return { state: "checkout_unverified", reason, verifiedQuotedTotalMinor: null, payableMinor: null, ...detail };
+}
+
+function unknownOutcome(reason) {
+  return { ...refusal(reason), state: "checkout_outcome_unknown" };
 }
 
 function wireDestination(shippingAddress, market) {
@@ -90,6 +95,26 @@ function validRpc(result) {
   return result?.status === 200 && !result.error && !result.response?.error && !result.response?.result?.isError;
 }
 
+async function readCheckout(client, endpoint, id) {
+  try {
+    const result = await client.callTool(endpoint, "get_checkout", { id });
+    const checkout = validRpc(result) ? readPayload(result) : null;
+    return checkout?.id === id ? checkout : null;
+  } catch { return null; }
+}
+
+function cancellationConfirmed(checkout, id) {
+  return checkout?.id === id && checkout.status === "canceled" && !checkout.order;
+}
+
+async function cancelTemporaryCheckout(client, endpoint, id, idempotencyKey) {
+  try {
+    const result = await client.callTool(endpoint, "cancel_checkout", { id }, { idempotencyKey });
+    if (validRpc(result) && cancellationConfirmed(readPayload(result), id)) return true;
+  } catch { /* Resolve the exact checkout before declaring cleanup pending. */ }
+  return cancellationConfirmed(await readCheckout(client, endpoint, id), id);
+}
+
 function summarizeTotals(rows) {
   if (!Array.isArray(rows)) return null;
   const totals = {};
@@ -106,19 +131,22 @@ function summarizeTotals(rows) {
 
 function summarizeLines(lines, requested, subtotal) {
   if (!Array.isArray(lines) || lines.length !== requested.size) return null;
-  const seen = new Set();
+  const seenVariants = new Set();
+  const lineIds = new Set();
   const result = [];
   for (const line of lines) {
     const variantId = typeof line?.item?.id === "string" ? VARIANT_GID.exec(line.item.id)?.[1] : null;
     const unitMinor = line?.item?.price;
-    if (!variantId || seen.has(variantId) || requested.get(variantId) !== line.quantity
+    if (!variantId || seenVariants.has(variantId) || requested.get(variantId) !== line.quantity
+      || typeof line.id !== "string" || !line.id.trim() || lineIds.has(line.id)
       || !Number.isSafeInteger(unitMinor) || unitMinor < 0) return null;
-    seen.add(variantId);
+    seenVariants.add(variantId);
+    lineIds.add(line.id);
     result.push({ variantId, quantity: line.quantity, unitMinor });
   }
   const computed = result.reduce((sum, line) => sum + line.unitMinor * line.quantity, 0);
   return Number.isSafeInteger(computed) && computed === subtotal
-    ? result.sort((a, b) => a.variantId.localeCompare(b.variantId))
+    ? { lines: result.sort((a, b) => a.variantId.localeCompare(b.variantId)), lineIds }
     : null;
 }
 
@@ -130,17 +158,23 @@ function sameAddress(actual, requested) {
   });
 }
 
-function summarizeDelivery(fulfillment, destination, charge) {
+function summarizeDelivery(fulfillment, destination, charge, lineIds) {
   const methods = fulfillment?.methods;
   if (!Array.isArray(methods) || methods.length !== 1) return null;
+  const coversAllLines = ids => {
+    if (!Array.isArray(ids) || ids.length !== lineIds.size) return false;
+    const covered = new Set(ids);
+    return covered.size === lineIds.size && [...covered].every(id => lineIds.has(id));
+  };
   const method = methods[0];
   if (method?.type !== "shipping" || !Array.isArray(method.destinations) || !Array.isArray(method.groups)
-    || method.groups.length !== 1) return null;
+    || method.groups.length !== 1 || !coversAllLines(method.line_item_ids)) return null;
   const addresses = method.selected_destination_id
     ? method.destinations.filter(address => address?.id === method.selected_destination_id) : method.destinations;
   if (addresses.length !== 1 || !addresses[0] || !sameAddress(addresses[0], destination)) return null;
   const [group] = method.groups;
-  if (typeof group?.selected_option_id !== "string" || !group.selected_option_id || !Array.isArray(group.options)) return null;
+  if (typeof group?.selected_option_id !== "string" || !group.selected_option_id || !Array.isArray(group.options)
+    || !coversAllLines(group.line_item_ids)) return null;
   const options = group.options.filter(option => option?.id === group.selected_option_id);
   if (options.length !== 1 || !Array.isArray(options[0].totals)) return null;
   const totals = options[0].totals.filter(total => total?.type === "total");
@@ -204,9 +238,11 @@ function quoteSnapshot(payload, currency, requested, destination, requestedCode)
   if (!payload || payload.order || !CHECKOUT_STATES.has(payload.status) || payload.currency !== currency) return null;
   const totals = summarizeTotals(payload.totals);
   if (!totals) return null;
-  const lines = summarizeLines(payload.line_items, requested, totals.subtotal);
-  const delivery = summarizeDelivery(payload.fulfillment, destination, totals.fulfillment);
-  if (!lines || !delivery) return null;
+  const cart = summarizeLines(payload.line_items, requested, totals.subtotal);
+  if (!cart) return null;
+  const { lines, lineIds } = cart;
+  const delivery = summarizeDelivery(payload.fulfillment, destination, totals.fulfillment, lineIds);
+  if (!delivery) return null;
   const discounts = summarizeDiscounts(payload, totals, requestedCode, lines);
   if (!discounts) return null;
   const requirements = buyerRequirements(payload, discounts);
@@ -220,13 +256,45 @@ function quoteSnapshot(payload, currency, requested, destination, requestedCode)
 // The creator must invoke the service only for an explicitly requested quote from an authenticated caller.
 export function createMerchantCheckoutQuoteService({ client, env = process.env, allowedSellers, clock = Date.now } = {}) {
   let defaultClient;
+  function endpointFor(seller) {
+    const allowed = allowedSellers ?? merchantCheckoutQuoteAllowedSellers(env);
+    const endpoint = seller && Object.hasOwn(allowed, seller) ? allowed[seller] : null;
+    return typeof endpoint === "string" && SHOPIFY_ENDPOINT.test(endpoint) ? endpoint : null;
+  }
+
+  function signedClient() {
+    if (!client && (!env.UCP_AGENT_PROFILE_URL?.trim() || !env.UCP_AGENT_SIGNING_PRIVATE_KEY?.trim()
+      || !env.UCP_AGENT_SIGNING_KEY_ID?.trim())) return null;
+    try {
+      const candidate = client ?? (defaultClient ??= createUcpBuyerAgentClient({
+        allowTokenTier: false,
+        profileUrl: env.UCP_AGENT_PROFILE_URL,
+        signingPrivateKey: env.UCP_AGENT_SIGNING_PRIVATE_KEY,
+        signingKeyId: env.UCP_AGENT_SIGNING_KEY_ID,
+        timeoutMs: LOOKUP_TIMEOUT_MS,
+        retryAttempts: 0,
+      }));
+      return candidate.tier === TRUST_TIER.SIGNED ? candidate : null;
+    } catch { return null; }
+  }
+
   return {
-    async quote({ sellerHost, market, expectedCurrency, lineItems, shippingAddress, discountCodes } = {}) {
+    async recoverCleanup({ sellerHost, endpoint, checkoutId, cancelKey }) {
+      const sellerClient = signedClient();
+      if (!sellerClient || endpointFor(canonicalReapMerchantDomain(sellerHost)) !== endpoint
+        || typeof checkoutId !== "string" || !CHECKOUT_GID.test(checkoutId)) return false;
+      const checkout = await readCheckout(sellerClient, endpoint, checkoutId);
+      if (cancellationConfirmed(checkout, checkoutId)) return true;
+      if (!checkout || checkout.order || !CHECKOUT_STATES.has(checkout.status)) return false;
+      return cancelTemporaryCheckout(sellerClient, endpoint, checkoutId, cancelKey);
+    },
+
+    async quote({ sellerHost, market, expectedCurrency, lineItems, shippingAddress, discountCodes } = {},
+      { beforeCreate, checkoutCreated } = {}) {
       if (!merchantCheckoutQuoteEnabled(env)) return refusal("merchant_checkout_quote_disabled");
       const seller = canonicalReapMerchantDomain(sellerHost);
-      const allowed = allowedSellers ?? merchantCheckoutQuoteAllowedSellers(env);
-      const endpoint = seller && Object.hasOwn(allowed, seller) ? allowed[seller] : null;
-      if (typeof endpoint !== "string" || !SHOPIFY_ENDPOINT.test(endpoint)) return refusal("merchant_checkout_quote_seller_unavailable");
+      const endpoint = endpointFor(seller);
+      if (!endpoint) return refusal("merchant_checkout_quote_seller_unavailable");
       if (!expectedCurrency || expectedCurrency !== marketCurrencyOf(market)) return refusal("merchant_checkout_quote_currency_mismatch");
       const requested = quoteLines(lineItems);
       const destination = wireDestination(shippingAddress, market);
@@ -234,20 +302,8 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
       if (discountCodes !== undefined && (!Array.isArray(discountCodes) || discountCodes.length > 1
         || (discountCodes.length === 1 && !isAcceptableDiscountCode(discountCodes[0])))) return refusal("merchant_checkout_quote_invalid_discount");
       const requestedCode = discountCodes?.[0]?.trim();
-      if (!client && (!env.UCP_AGENT_PROFILE_URL?.trim() || !env.UCP_AGENT_SIGNING_PRIVATE_KEY?.trim()
-        || !env.UCP_AGENT_SIGNING_KEY_ID?.trim())) return refusal("merchant_checkout_quote_signed_client_unavailable");
-      let sellerClient;
-      try {
-        sellerClient = client ?? (defaultClient ??= createUcpBuyerAgentClient({
-          allowTokenTier: false,
-          profileUrl: env.UCP_AGENT_PROFILE_URL,
-          signingPrivateKey: env.UCP_AGENT_SIGNING_PRIVATE_KEY,
-          signingKeyId: env.UCP_AGENT_SIGNING_KEY_ID,
-          timeoutMs: LOOKUP_TIMEOUT_MS,
-          retryAttempts: 0,
-        }));
-      } catch { return refusal("merchant_checkout_quote_signed_client_unavailable"); }
-      if (sellerClient.tier !== TRUST_TIER.SIGNED) return refusal("merchant_checkout_quote_signed_client_unavailable");
+      const sellerClient = signedClient();
+      if (!sellerClient) return refusal("merchant_checkout_quote_signed_client_unavailable");
 
       try {
         const profile = await sellerClient.discoverEndpoint(`https://${seller}`);
@@ -262,7 +318,12 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
           || (requestedCode && !properties.discounts)) return refusal("merchant_checkout_quote_capability_unavailable");
       } catch { return refusal("merchant_checkout_quote_capability_unavailable"); }
 
+      const createKey = randomUUID();
+      const cancelKey = randomUUID();
+      await beforeCreate?.({ sellerHost: seller, endpoint, createKey });
       let checkoutId;
+      let checkpointFailed = false;
+      let lifecycle = null;
       let result = refusal("merchant_checkout_quote_shopify_unverified");
       try {
         const created = await sellerClient.createCheckout(endpoint, {
@@ -278,14 +339,17 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
             fulfillment: { methods: [{ type: "shipping", destinations: [destination], selected_destination_id: destination.id }] },
           },
           ...(requestedCode ? { discountCodes: [requestedCode] } : {}),
-        });
+        }, { idempotencyKey: createKey });
         const original = readPayload(created);
         if (typeof original?.id === "string" && CHECKOUT_GID.test(original.id) && CHECKOUT_STATES.has(original.status) && !original.order) {
           checkoutId = original.id;
         }
-        if (checkoutId && validRpc(created)) {
-          const readback = await sellerClient.callTool(endpoint, "get_checkout", { id: checkoutId });
-          const reread = validRpc(readback) ? readPayload(readback) : null;
+        if (!checkoutId) return unknownOutcome("merchant_checkout_quote_create_unverified");
+        try {
+          await checkoutCreated?.({ sellerHost: seller, endpoint, checkoutId, cancelKey });
+        } catch { checkpointFailed = true; }
+        if (validRpc(created)) {
+          const reread = lifecycle = await readCheckout(sellerClient, endpoint, checkoutId);
           const first = quoteSnapshot(original, expectedCurrency, requested, destination, requestedCode);
           const second = reread?.id === checkoutId ? quoteSnapshot(reread, expectedCurrency, requested, destination, requestedCode) : null;
           if (first && second && ["totals", "lines", "delivery", "discounts"].every(field =>
@@ -312,16 +376,18 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
         }
       } catch { result = refusal("merchant_checkout_quote_transport_unverified"); }
 
-      if (!checkoutId) return result;
-      try {
-        const cancelled = await sellerClient.callTool(endpoint, "cancel_checkout", { id: checkoutId });
-        const cancelledCheckout = validRpc(cancelled) ? readPayload(cancelled) : null;
-        if (cancelledCheckout?.status === "canceled"
-          && (cancelledCheckout.id === undefined || cancelledCheckout.id === checkoutId)) {
-          return { ...result, checkoutCancelled: true };
-        }
-      } catch { /* Checkout ID and merchant errors stay in process. */ }
-      return refusal("merchant_checkout_quote_cleanup_unverified", { checkoutCancelled: false });
+      if (!checkoutId) return unknownOutcome("merchant_checkout_quote_create_unverified");
+      if (cancellationConfirmed(lifecycle, checkoutId)) {
+        return { ...refusal("merchant_checkout_quote_already_canceled"), checkoutCancelled: true };
+      }
+      if (lifecycle && (lifecycle.order || !CHECKOUT_STATES.has(lifecycle.status))) {
+        return unknownOutcome("merchant_checkout_quote_lifecycle_changed");
+      }
+      if (!await cancelTemporaryCheckout(sellerClient, endpoint, checkoutId, cancelKey)) {
+        return { ...unknownOutcome("merchant_checkout_quote_cleanup_unverified"), checkoutCancelled: false };
+      }
+      return { ...(checkpointFailed ? refusal("merchant_checkout_quote_checkpoint_unavailable") : result),
+        checkoutCancelled: true };
     },
   };
 }

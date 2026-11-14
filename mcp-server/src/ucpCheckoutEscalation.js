@@ -618,7 +618,14 @@ export async function readCheckoutRows(items, executor, ctx, opts) {
   return readRows(items, executor, ctx, opts);
 }
 
-async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS, merchantId } = {}) {
+const TERMINAL_PRODUCT_READ_CODES = new Set([
+  "UNKNOWN_PRODUCT_ID", "NO_MERCHANT_OFFER", "PRODUCT_NOT_SERVABLE",
+  "PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "MERCHANT_PRODUCT_MISMATCH",
+]);
+
+async function readRows(items, executor, ctx, {
+  timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS, merchantId, preserveProductRefusals = false,
+} = {}) {
   const ids = [...new Set(items.map((it) => it.product_id))];
   if (ids.length > MAX_CART_DISTINCT_PRODUCTS) {
     throw intakeRefusal("QUOTE_REQUIRED", "acp_cart_too_many_products",
@@ -643,7 +650,8 @@ async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESO
   } catch (err) {
     // A named intake refusal (identity mismatch) is already curated: surface it. Anything else is an
     // errored/expired read: internal cause never surfaced, caller told what is actionable.
-    if (err instanceof PivotaCommerceError && isPlainObject(err.detail?.acp_detail)) throw err;
+    if (err instanceof PivotaCommerceError && (isPlainObject(err.detail?.acp_detail)
+      || (preserveProductRefusals && TERMINAL_PRODUCT_READ_CODES.has(err.code)))) throw err;
     throw itemVariantRefusal("resolution_unavailable", VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE);
   }
   return new Map(ids.map((id, i) => [id, results[i]]));
