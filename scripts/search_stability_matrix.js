@@ -283,6 +283,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
         ? { ...rawCase.request_search }
         : {},
     allow_zero_results: rawCase?.allow_zero_results !== false,
+    expected_offer_currency: String(rawCase?.expected_offer_currency || '').trim().toUpperCase() || null,
     must_have_metadata: Array.isArray(rawCase?.must_have_metadata)
       ? rawCase.must_have_metadata.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
@@ -532,6 +533,17 @@ function evaluateCase(row) {
 
   if (spec.allow_zero_results === false && products.length === 0) {
     reasons.push('expected_non_empty_results');
+  }
+  if (spec.expected_offer_currency) {
+    const unexpected = products.filter(
+      (product) => String(product?.currency || '').trim().toUpperCase() !== spec.expected_offer_currency,
+    );
+    if (unexpected.length > 0) {
+      const currencies = [...new Set(unexpected.map((product) => product?.currency || 'missing'))];
+      reasons.push(
+        `offer_currency_mismatch:expected=${spec.expected_offer_currency}:actual=${currencies.join('|')}:count=${unexpected.length}`,
+      );
+    }
   }
 
   const metadataPaths = Array.isArray(spec.must_have_metadata) ? spec.must_have_metadata : [];

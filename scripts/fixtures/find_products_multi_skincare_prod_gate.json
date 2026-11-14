@@ -7,13 +7,12 @@
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
+    "request_metadata": { "market": "US" },
+    "expected_offer_currency": "USD",
     "allowed_query_sources": [
-      "beauty_discovery_mainline"
+      "agent_products_beauty_external_seed_mainline"
     ],
-    "allowed_contract_paths": [
-      "pivot.agent.v1",
-      "agent_v1_search_beauty_mainline"
-    ],
+    "expected_contract_path": "pivot.agent.v1",
     "allow_zero_results": false,
     "must_have_metadata": [
       "query_source",
@@ -179,13 +178,12 @@
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
+    "request_metadata": { "market": "US" },
+    "expected_offer_currency": "USD",
     "allowed_query_sources": [
-      "beauty_discovery_mainline"
+      "agent_products_beauty_external_seed_mainline"
     ],
-    "allowed_contract_paths": [
-      "pivot.agent.v1",
-      "agent_v1_search_beauty_mainline"
-    ],
+    "expected_contract_path": "pivot.agent.v1",
     "allow_zero_results": false,
     "must_have_metadata": [
       "query_source",
@@ -270,13 +268,12 @@
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
+    "request_metadata": { "market": "US" },
+    "expected_offer_currency": "USD",
     "allowed_query_sources": [
-      "beauty_discovery_mainline"
+      "agent_products_beauty_external_seed_mainline"
     ],
-    "allowed_contract_paths": [
-      "pivot.agent.v1",
-      "agent_v1_search_beauty_mainline"
-    ],
+    "expected_contract_path": "pivot.agent.v1",
     "allow_zero_results": false,
     "must_have_metadata": [
       "query_source",
@@ -298,13 +295,12 @@
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
+    "request_metadata": { "market": "US" },
+    "expected_offer_currency": "USD",
     "allowed_query_sources": [
-      "beauty_discovery_mainline"
+      "agent_products_beauty_external_seed_mainline"
     ],
-    "allowed_contract_paths": [
-      "pivot.agent.v1",
-      "agent_v1_search_beauty_mainline"
-    ],
+    "expected_contract_path": "pivot.agent.v1",
     "allow_zero_results": false,
     "must_have_metadata": [
       "query_source",

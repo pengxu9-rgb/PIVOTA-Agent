@@ -107,6 +107,7 @@ on:
       - "tests/pdp_product_intel_kb_hydration.test.js"
       - "tests/verify_deployed_commit_matches_script.test.js"
       - "tests/prod_probe_pacing.node.test.cjs"
+      - "tests/search_stability_matrix_declares_market.node.test.cjs"
   pull_request:
     branches:
       - main
@@ -202,6 +203,7 @@ on:
       - "tests/pdp_product_intel_kb_hydration.test.js"
       - "tests/verify_deployed_commit_matches_script.test.js"
       - "tests/prod_probe_pacing.node.test.cjs"
+      - "tests/search_stability_matrix_declares_market.node.test.cjs"
 
 concurrency:
   group: shopping-search-release-gate-${{ github.event_name }}-${{ github.ref_name }}
@@ -247,7 +249,7 @@ jobs:
           bash -n scripts/smoke_find_products_multi_skincare_prod.sh
           bash -n scripts/verify_deployed_commit_matches.sh
           bash -n scripts/wait_for_prod_probe_window.sh
-          node --test tests/prod_probe_pacing.node.test.cjs
+          node --test tests/prod_probe_pacing.node.test.cjs tests/search_stability_matrix_declares_market.node.test.cjs
 
       - name: Shared search + discovery regressions
         env:
