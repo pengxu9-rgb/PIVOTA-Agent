@@ -506,6 +506,45 @@ describe('through the UCP door', () => {
     });
   });
 
+  test('the automatic Shopify delivery discount is preserved without a submitted code', async () => {
+    const deliveryPath = '$.totals[?@.type == "fulfillment"]';
+    const shopifyCart = () => {
+      const quote = sellerCart({
+        discount: 500,
+        discounts: {
+          codes: [],
+          applied: [{
+            amount: 500,
+            method: 'each',
+            automatic: true,
+            allocations: [{ path: deliveryPath, amount: 500 }],
+          }],
+        },
+      });
+      const content = quote.response.result.content[0];
+      const payload = JSON.parse(content.text);
+      const total = payload.totals.find(row => row.type === 'total');
+      total.amount += 500;
+      payload.totals.push({ type: 'fulfillment', amount: 500 });
+      content.text = JSON.stringify(payload);
+      return quote;
+    };
+    await withEnv(ON, async () => {
+      const ucp = surface(fakeDoor({ create: shopifyCart, get: shopifyCart }));
+      const created = await ucp.callTool('create_checkout', createArgs(), SESSION);
+      const reread = await ucp.callTool('get_checkout', { meta: META, id: created.id }, SESSION);
+      for (const result of [created, reread]) {
+        assert.deepEqual(result.discounts?.applied, [{
+          automatic: true,
+          amount: 500,
+          method: 'each',
+          allocations: [{ path: deliveryPath, amount: 500 }],
+        }]);
+        assert.equal(result.totals.find(row => row.type === 'total').amount, 25800);
+      }
+    });
+  });
+
   test('a storefront answer that did not apply it carries ITS warning, not the generic notice', async () => {
     await withEnv(ON, async () => {
       const door = fakeDoor({ advertises: false });

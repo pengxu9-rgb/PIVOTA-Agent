@@ -71,13 +71,14 @@ async function captureLogs(fn) {
 const sigEvents = (entries) => entries.filter((e) => e && e.event === 'agent_signature');
 
 async function withEnv(vars, fn) {
-  const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  const keys = [...new Set([...ENV_KEYS, ...Object.keys(vars)])];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const k of ENV_KEYS) delete process.env[k];
   Object.assign(process.env, vars);
   try {
     return await fn();
   } finally {
-    for (const k of ENV_KEYS) {
+    for (const k of keys) {
       if (saved[k] === undefined) delete process.env[k];
       else process.env[k] = saved[k];
     }
@@ -205,6 +206,97 @@ test('enforce, checkout group only: forged TAP on a checkout call is 401 on ever
     assert.notEqual(ucpSearch.status, 401, 'a catalog tool is not checkout');
     const acp = await post('/acp/checkout_sessions', { headers: forged(), body: { items: [] } });
     assert.equal(acp.status, 401, 'ACP checkout_sessions');
+  });
+});
+
+test('merchant quote preview enforces TAP across transports and keeps its OAuth challenge', async () => {
+  const rpcBody = rpcCall('preview_merchant_checkout_quote');
+  const restPath = '/API/QUOTES/MERCHANT-PREVIEW/';
+  await withEnv({
+    AGENT_CHECKOUT_STRICT: '1',
+    AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1',
+    AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED: '1',
+    AGENT_SIGNATURE_VERIFY_MODE: 'enforce',
+    AGENT_SIGNATURE_ENFORCE_ROUTE_GROUPS: 'checkout',
+    MCP_OAUTH_ENABLED: '1',
+    MCP_OAUTH_RESOURCE: `https://${HOST}/mcp`,
+  }, async () => {
+    for (const [path, body, resourcePath] of [
+      ['/mcp', rpcBody, '/mcp'],
+      ['/ucp/mcp', rpcBody, '/ucp/mcp'],
+      [restPath, {}, '/ucp/mcp'],
+    ]) {
+      const invalid = await post(path, { headers: tap('/somewhere-else'), body });
+      assert.equal(invalid.status, 401, path);
+      assert.equal(invalid.body.error, 'AGENT_SIGNATURE_INVALID', path);
+
+      const verified = await post(path, { headers: tap(path), body });
+      assert.equal(verified.status, 401, path);
+      assert.equal(verified.body.error, 'UNAUTHORIZED', path);
+      const metadataUrl = /resource_metadata="([^"]+)"/.exec(verified.headers['www-authenticate'])?.[1];
+      assert.equal(metadataUrl, `https://${HOST}/.well-known/oauth-protected-resource${resourcePath}`, path);
+    }
+
+    process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED = '0';
+    const dark = await post(restPath, { headers: tap('/somewhere-else'), body: {} });
+    assert.equal(dark.status, 404);
+    assert.equal(dark.body.error, 'not_found');
+  });
+});
+
+test('authenticated quote transports reach consent validation with a verified OAuth buyer', async () => {
+  const { generateKeyPair, exportJWK, SignJWT } = await import('jose');
+  const { publicKey, privateKey } = await generateKeyPair('ES256');
+  const key = { ...await exportJWK(publicKey), kid: 'quote-oauth-key' };
+  const issuer = 'https://quote-login.example.test';
+  const resourceOrigin = 'https://quote-commerce.example.test';
+  const nativeAudience = `${resourceOrigin}/mcp`;
+  const ucpAudience = `${resourceOrigin}/ucp/mcp`;
+  const signBuyer = (audience, session = {}) => new SignJWT({ client_id: 'quote-client', ...session })
+    .setProtectedHeader({ alg: 'ES256', kid: key.kid })
+    .setIssuer(issuer)
+    .setSubject('quote-buyer')
+    .setAudience(audience)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(privateKey);
+  const args = { consent_to_share_shipping_address: false };
+  const rpcBody = rpcCall('preview_merchant_checkout_quote', args);
+  const restPath = '/api/quotes/merchant-preview';
+  await withEnv({
+    AGENT_CHECKOUT_STRICT: '1',
+    AGENT_CHECKOUT_ALLOW_IN_MEMORY_STRICT: '1',
+    AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1',
+    AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED: '1',
+    AGENT_SIGNATURE_VERIFY_MODE: 'enforce',
+    AGENT_SIGNATURE_ENFORCE_ROUTE_GROUPS: 'checkout',
+    CONFIRMATION_SECRET: 'merchant-quote-test-confirmation-secret',
+    MCP_OAUTH_ENABLED: '1',
+    MCP_OAUTH_RESOURCE: nativeAudience,
+    MCP_OAUTH_ISSUERS_JSON: JSON.stringify([{ iss: issuer, algs: ['ES256'], jwks: { keys: [key] } }]),
+  }, async () => {
+    for (const [path, body, audience] of [
+      ['/mcp', rpcBody, nativeAudience],
+      ['/ucp/mcp', rpcBody, ucpAudience],
+      [restPath, args, ucpAudience],
+      [restPath, args, nativeAudience],
+    ]) {
+      const token = await signBuyer(audience, { sid: 'quote-session' });
+      const response = await post(path, { headers: { authorization: `Bearer ${token}` }, body });
+      assert.equal(response.status, 200, path);
+      assert.equal(response.body.result?.isError, true, path);
+      assert.equal(JSON.parse(response.body.result.content[0].text).error.code, 'QUOTE_REQUIRED', path);
+    }
+
+    const missingSession = await signBuyer(ucpAudience);
+    const sessionRefused = await post(restPath, { headers: { authorization: `Bearer ${missingSession}` }, body: args });
+    assert.equal(sessionRefused.status, 200);
+    assert.equal(JSON.parse(sessionRefused.body.result.content[0].text).error.code, 'USER_AUTH_REQUIRED');
+
+    const wrongAudience = await signBuyer(`${resourceOrigin}/other`, { sid: 'quote-session' });
+    const audienceRefused = await post(restPath, { headers: { authorization: `Bearer ${wrongAudience}` }, body: args });
+    assert.equal(audienceRefused.status, 401);
+    assert.match(audienceRefused.headers['www-authenticate'], /error="invalid_token"/);
   });
 });
 

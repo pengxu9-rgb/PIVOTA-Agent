@@ -884,6 +884,31 @@ describe('RFC 9421 signature construction', () => {
 // ---- client: SIGNED-tier checkout-create over fixtures --------------------
 
 describe('SIGNED tier checkout-create reaches the handoff URL credential-free', () => {
+  test('uses caller-store signed request keys for checkout create and cancel', async () => {
+    const fetchImpl = makeFetch({
+      [TOOL.CREATE_CHECKOUT]: CREATE_CHECKOUT_FIXTURE,
+      cancel_checkout: { status: 'canceled' },
+    });
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, signingKeys: [TEST_PUBLIC_JWK],
+      profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent', fetchImpl,
+    });
+    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const createKey = 'efc9d77a-4d05-4ea4-bfda-5aec10010a0c';
+    const cancelKey = 'dfc9d77a-4d05-4ea4-bfda-5aec10010a0d';
+    await client.createCheckout(endpoint, { cartId: 'cart_abc' }, { idempotencyKey: createKey });
+    await client.callTool(endpoint, 'cancel_checkout', { id: 'test-checkout' }, { idempotencyKey: cancelKey });
+    expect(fetchImpl.calls).toHaveLength(2);
+    for (const [call, key] of fetchImpl.calls.map((call, index) => [call, [createKey, cancelKey][index]])) {
+      expect(call.headers['idempotency-key']).toBe(key);
+      expect(call.body.params.arguments.meta['idempotency-key']).toBe(key);
+      expect(verifyCapturedSignature(call, endpoint).ok).toBe(true);
+    }
+    await expect(client.callTool(endpoint, 'get_checkout', { id: 'test-checkout' }, { idempotencyKey: cancelKey }))
+      .rejects.toThrow('invalid signed checkout idempotency key');
+    expect(fetchImpl.calls).toHaveLength(2);
+  });
+
   test('signs create_checkout, sends NO Authorization, and the signature verifies', async () => {
     const fetchImpl = makeFetch({
       [TOOL.CREATE_CHECKOUT]: CREATE_CHECKOUT_FIXTURE,
