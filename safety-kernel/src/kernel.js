@@ -9,7 +9,7 @@
 import { QuoteRegistry } from './quoteRegistry.js';
 import { IdempotencyLedger } from './idempotencyLedger.js';
 import { ConfirmationTokenService } from './confirmationTokens.js';
-import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown, claimsNoEffect } from './errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown, claimsNoEffect, answerAfterOrder } from './errors.js';
 import { redact } from './redact.js';
 import { InMemoryKvStore } from './stores.js';
 import { sameMinor, violatesChargeMultiple } from './money.js';
@@ -382,7 +382,7 @@ export class SafetyKernel {
             // createOrder, the invoke route's bare one included. A 403 or a 429 the store DID answer says so in its
             // words (answeredRefusalKind), never "no readable answer"; the outcome and the claim are the same.
             runCtx.sideEffectDone = true;
-            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: answeredRefusalKind(err) });
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: answeredRefusalKind(err), upstreamCode: claimsNoEffect(err) ? err.code : undefined });
           }
           throw err;
         }
@@ -664,14 +664,18 @@ export class SafetyKernel {
           // SAME attempt-scoped idempotency key — it may not choose its own, so a replay is still parameter-
           // identical on the PSP side.
           const safePayment = { ...p, expected_amount: authoritativeAmount, currency: authoritativeCurrency };
-          const r = typeof opts?.dispatch === 'function'
-            ? await opts.dispatch({
+          // The order exists and is now `charge_pending`: a call with no readable answer, or a refusal whose words would
+          // say it had no effect ("nothing was done"), is the unknown outcome with the order id (errors.js
+          // answerAfterOrder), which this key is then held with.
+          const r = await (typeof opts?.dispatch === 'function'
+            ? opts.dispatch({
                 order_id,
                 amount: authoritativeAmount,
                 currency: authoritativeCurrency,
                 idempotency_key: key,
               })
-            : await this._upstream('submit_payment', { ...payload, payment: safePayment }, { 'Idempotency-Key': key });
+            : this._upstream('submit_payment', { ...payload, payment: safePayment }, { 'Idempotency-Key': key })
+          ).catch((err) => { throw answerAfterOrder(err, order_id, KERNEL_OUTCOME_UNKNOWN_REASONS.payment); });
 
           // A 2xx THAT NAMES NEITHER A PAYMENT STATUS NOR A PAYMENT PAGE says nothing about the charge: an empty or
           // unreadable body, read as success, told the caller its payment was under way with nothing to pay on. It is
@@ -812,7 +816,16 @@ export class SafetyKernel {
       // with a different refund body (amount, restore_inventory, etc.) conflicts instead of replaying.
       { op: 'request_after_sales', order_id, status },
       async () => {
-        const r = await this._upstream('request_after_sales', payload, { 'Idempotency-Key': key });
+        // A refusal whose words would say the request had no effect ("nothing was done") is given only on the release
+        // rule's proof (a listed pair, the route's own code; for a refused assertion one of the eight reasons decided
+        // before any store read). Without it the request may have been filed: the unknown outcome, with the order id.
+        // This key is not held, so the same call (the same Idempotency-Key upstream) can be sent again.
+        const r = await this._upstream('request_after_sales', payload, { 'Idempotency-Key': key }).catch((err) => {
+          if (claimsNoEffect(err) && !upstreamAnsweredRefusal(err)) {
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.afterSales, order_id, { answered: 'refused', upstreamCode: err.code });
+          }
+          throw err;
+        });
         return {
           request_id: r.request_id,
           order_id,

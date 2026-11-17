@@ -19,7 +19,7 @@
 //   exchange_payment_token         -> PERMANENTLY REFUSED (see delegatedPaymentRefusal.js): that operation is
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
-import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, kernelOutcomeUnknownOf, upstreamFailureOutcomeUnknown } from '../errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, kernelOutcomeUnknownOf, upstreamFailureOutcomeUnknown, answerAfterOrder } from '../errors.js';
 import { effectiveShippingAddress } from '../kernel.js';
 import { fulfillmentAddressRequiredRefusal, assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
@@ -444,10 +444,7 @@ function assertAddressToShipTo(quote, params, step) {
 // (the ledger keeps it). A refusal the upstream ANSWERED (a status below 500) and every refusal raised in this process
 // before anything was sent are known outcomes, and stay exactly as they were.
 // (errors.js upstreamFailureOutcomeUnknown is the one test of "no readable answer", shared with kernel.createOrder.)
-function answerAfterOrder(err, orderId, reason) {
-  if (kernelOutcomeUnknownOf(err)) return err;
-  return upstreamFailureOutcomeUnknown(err) ? kernelOutcomeUnknown(reason, orderId) : err;
-}
+// (errors.js answerAfterOrder: also a refusal whose words would say it had no effect, since the order exists.)
 // createOrder answered that the order call's outcome is unknown: the outer attempt is held too (an order may exist),
 // so the same key is answered the same way again rather than being told the session was already used.
 function holdOuterAttemptOnUnknownCreate(err, runCtx) {

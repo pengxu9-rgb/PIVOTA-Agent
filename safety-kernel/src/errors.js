@@ -120,6 +120,9 @@ export const KERNEL_OUTCOME_UNKNOWN_REASONS = Object.freeze({
   payment: 'payment_outcome_unknown_after_order',
   paymentLink: 'payment_link_outcome_unknown_after_order',
   orderCreate: 'order_create_outcome_unknown',
+  // An after-sales request (a refund) on an order, refused by the order service in words that would say it had no
+  // effect, without the proof that it came before any write: whether it was filed is not known.
+  afterSales: 'after_sales_outcome_unknown',
 });
 const KERNEL_OUTCOME_UNKNOWN_REASON_SET = new Set(Object.values(KERNEL_OUTCOME_UNKNOWN_REASONS));
 
@@ -146,19 +149,51 @@ export const KERNEL_ANSWERED_REFUSALS = Object.freeze({
 });
 
 /**
- * The kernel's unknown-outcome answer for `reason` (one of KERNEL_OUTCOME_UNKNOWN_REASONS) and the order it is about.
- * `answered` (KERNEL_ANSWERED_REFUSALS): the store answered the order call with a refusal that keeps the claim.
+ * A CALL AFTER THE ORDER EXISTS (its payment step, its payment page, an after-sales request) that the order service
+ * refused in words that would say it had no effect (errors.js claimsNoEffect: "nothing was done"). The order exists, so
+ * "nothing was done" is never true of the tool call: it is the kernel's unknown outcome, with the order id, in these
+ * words (`answered: 'refused'`), never "no readable answer".
  */
-export function kernelOutcomeUnknown(reason, orderId, { answered } = {}) {
+export const KERNEL_ANSWERED_AFTER_ORDER = Object.freeze({
+  payment_outcome_unknown_after_order: Object.freeze({
+    message: 'The order was created (detail.order_id), but whether its payment step went through is unknown: the order service refused that request in a way that cannot show what happened. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.',
+    recovery: 'read the order in detail.order_id with get_order before anything else; do not open another checkout for this purchase',
+  }),
+  payment_link_outcome_unknown_after_order: Object.freeze({
+    message: 'The order was created (detail.order_id), but whether its payment page was opened is unknown: the order service refused that request in a way that cannot show what happened, so no link can be given. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.',
+    recovery: 'read the order in detail.order_id with get_order before anything else; do not open another checkout for this purchase',
+  }),
+  after_sales_outcome_unknown: Object.freeze({
+    message: 'Whether this after-sales request was filed for the order (detail.order_id) is unknown: the order service refused it in a way that cannot show what happened. Send the same call again with the same idempotency_key; do not file another request for this order until it answers.',
+    recovery: 'send the same call again with the same idempotency_key; do not file another after-sales request for this order until it answers',
+  }),
+});
+
+/** Is `answered` a refusal kind the kernel gives `reason` with this order id? */
+function answeredFits(answered, reason, orderId) {
+  if (reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate) return orderId === null && Object.hasOwn(KERNEL_ANSWERED_REFUSALS, answered);
+  return orderId !== null && answered === 'refused' && Object.hasOwn(KERNEL_ANSWERED_AFTER_ORDER, reason);
+}
+
+/**
+ * The kernel's unknown-outcome answer for `reason` (one of KERNEL_OUTCOME_UNKNOWN_REASONS) and the order it is about.
+ * `answered`: the order service answered with a refusal (KERNEL_ANSWERED_REFUSALS for the order call itself, with no
+ * order id; `refused` for a call after the order exists, KERNEL_ANSWERED_AFTER_ORDER). `upstreamCode`: the refusal's own
+ * code, kept beside the answer (never in its detail) so a door's observability still counts it by that code.
+ */
+export function kernelOutcomeUnknown(reason, orderId, { answered, upstreamCode } = {}) {
   if (!KERNEL_OUTCOME_UNKNOWN_REASON_SET.has(reason)) throw new Error(`Unknown kernel outcome-unknown reason: ${reason}`);
   const order_id = typeof orderId === 'string' && orderId.trim() !== '' ? orderId : null;
-  if (answered !== undefined && answered !== null
-    && !(Object.hasOwn(KERNEL_ANSWERED_REFUSALS, answered) && reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate && order_id === null)) {
+  if (answered !== undefined && answered !== null && !answeredFits(answered, reason, order_id)) {
     throw new Error(`Unknown kernel answered refusal: ${answered}`);
   }
-  const refusal = answered ? KERNEL_ANSWERED_REFUSALS[answered] : null;
+  const refusal = !answered ? null
+    : reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate ? KERNEL_ANSWERED_REFUSALS[answered] : KERNEL_ANSWERED_AFTER_ORDER[reason];
   const err = new PivotaCommerceError('CHECKOUT_OUTCOME_UNKNOWN', { reason, order_id });
   err.retriable = false;
+  if (typeof upstreamCode === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(upstreamCode)) {
+    Object.defineProperty(err, 'upstreamRefusalCode', { value: upstreamCode, enumerable: false });
+  }
   if (refusal) {
     // Beside the detail, never in it: the detail stays `{ reason, order_id }`, as every door and log reads it.
     Object.defineProperty(err, 'answeredRefusal', { value: answered, enumerable: false });
@@ -167,9 +202,22 @@ export function kernelOutcomeUnknown(reason, orderId, { answered } = {}) {
     err.recovery = refusal.recovery;
     return err;
   }
-  err.recovery = order_id
-    ? 'read the order in detail.order_id with get_order before anything else; do not open another checkout for this purchase'
-    : 'the store may hold an order for this checkout, and its id is not known here: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer';
+  err.recovery = reason === KERNEL_OUTCOME_UNKNOWN_REASONS.afterSales ? KERNEL_ANSWERED_AFTER_ORDER.after_sales_outcome_unknown.recovery
+    : order_id
+      ? 'read the order in detail.order_id with get_order before anything else; do not open another checkout for this purchase'
+      : 'the store may hold an order for this checkout, and its id is not known here: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer';
+  return err;
+}
+
+/**
+ * A CALL AFTER THE ORDER EXISTS FAILED: the answer to give. No readable answer, or a refusal whose words would say it
+ * had no effect (claimsNoEffect; the order exists, so that is never true of the tool call), is the kernel's unknown
+ * outcome for `reason` with the order id; anything else is answered as raised.
+ */
+export function answerAfterOrder(err, orderId, reason) {
+  if (kernelOutcomeUnknownOf(err)) return err;
+  if (claimsNoEffect(err)) return kernelOutcomeUnknown(reason, orderId, { answered: 'refused', upstreamCode: err.code });
+  if (upstreamFailureOutcomeUnknown(err)) return kernelOutcomeUnknown(reason, orderId);
   return err;
 }
 
@@ -198,8 +246,7 @@ export function kernelOutcomeUnknownOf(err) {
   const detail = err.detail && typeof err.detail === 'object' ? err.detail : {};
   if (!KERNEL_OUTCOME_UNKNOWN_REASON_SET.has(detail.reason)) return null;
   const order_id = typeof detail.order_id === 'string' && detail.order_id !== '' ? detail.order_id : null;
-  const answered = typeof err.answeredRefusal === 'string' && Object.hasOwn(KERNEL_ANSWERED_REFUSALS, err.answeredRefusal)
-    && detail.reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate && order_id === null ? err.answeredRefusal : null;
+  const answered = typeof err.answeredRefusal === 'string' && answeredFits(err.answeredRefusal, detail.reason, order_id) ? err.answeredRefusal : null;
   return answered ? { reason: detail.reason, order_id, answered } : { reason: detail.reason, order_id };
 }
 

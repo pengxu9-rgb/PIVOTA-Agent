@@ -548,8 +548,10 @@ test('ledger: an ambiguous record replays only the kernel\'s own unknown answer;
   assertUnknown(await refusal(ledger.run(key3, { a: 1 }, async () => 'never')), 'order_create_outcome_unknown', null, 'replayed refusal', { answered: 'rate_limited' });
   await store.set(key3, { ...(await store.get(key3)), outcome_unknown: { reason: 'order_create_outcome_unknown', order_id: null, answered: 'made_up' } });
   assert.equal((await refusal(ledger.run(key3, { a: 1 }, async () => 'never'))).detail.reason, 'ambiguous_prior_attempt', 'a marker the kernel never writes is not replayed');
-  // Only on the order call's own unknown, with no order id.
-  assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, 'o_1', { answered: 'refused' }));
+  // The order call's own kinds only with no order id; a call after the order only `refused`, and only with its id.
+  assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, null, { answered: 'refused' }));
+  assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, 'o_1', { answered: 'rate_limited' }));
+  assert.equal(kernelOutcomeUnknownOf(kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, 'o_1', { answered: 'refused' })).answered, 'refused');
   assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, 'o_1', { answered: 'refused' }));
   assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: 'toString' }));
   assert.equal(Object.keys(kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: 'refused' })).includes('answeredRefusal'), false, 'not an enumerable member');

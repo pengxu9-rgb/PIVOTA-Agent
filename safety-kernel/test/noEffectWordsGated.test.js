@@ -130,3 +130,97 @@ test('the kernel answers every such answer from an order call as raised only on 
     assert.equal(kept, false, reason);
   }
 });
+
+// ---- the calls AFTER the order exists: the payment step, the payment page, an after-sales request ---------------
+
+import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
+import { KERNEL_ANSWERED_AFTER_ORDER, kernelOutcomeUnknownOf } from '../src/errors.js';
+
+/** A kernel and an executor whose upstream answers `failOp` with `make()` once; every other call succeeds. */
+function afterOrderWorld(failOp, make) {
+  let failed = false;
+  const calls = [];
+  const answer = (op, payload) => {
+    calls.push(op);
+    if (op === failOp && !failed) { failed = true; throw make(); }
+    if (op === 'preview_quote') return { quote_id: 'bq_1', currency: 'USD', merchant_of_record: 'merch_A', locked_totals: { subtotal: 1800, tax: 0, shipping: 0, total: 1800 }, line_items: [{ product_id: 'p1', quantity: 1 }] };
+    if (op === 'create_order') return { order_id: 'o_1', acp_state: {} };
+    if (op === 'submit_payment') return { payment_id: 'pay_1', payment_status: 'requires_action', redirect_url: 'https://pay.example.test/o_1' };
+    if (op === 'create_payment_link') return { checkout_url: 'https://pay.example.test/c/o_1', checkout_session_id: 'cs_1' };
+    if (op === 'request_after_sales') return { request_id: 'as_1', status: 'requested' };
+    return {};
+  };
+  const kernel = new SafetyKernel({ upstream: async (op, payload) => answer(op, payload), secret: 'no-effect-secret-0123456789abcdef', log: { info() {}, warn() {}, error() {} } });
+  const executor = createCanonicalExecutor({
+    kernel, upstream: async (op, payload) => answer(op, payload), hostedLinkEnabled: true,
+    verifyPaymentAuthorization: async (_a, b) => ({ ok: true, amount: b.amount, currency: b.currency, user_ref: b.user_ref }),
+  });
+  return { kernel, executor, calls };
+}
+const CTX2 = Object.freeze({ user_ref: 'buyer_1', acp_session_id: 'sess_1' });
+const QUOTE = Object.freeze({ merchant_id: 'merch_A', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test', shipping_address: { name: 'Buyer One', address_line1: '1 Example Road', city: 'Exampleton', postal_code: '00001', country: 'US' } });
+const par = (reason) => () => new PivotaCommerceError('PARTNER_ASSERTION_REJECTED', { operation: 'x', upstream_status: 409, upstream_code: 'PARTNER_ASSERTION_REJECTED', upstream_detail: { error: 'PARTNER_ASSERTION_REJECTED', ...(reason ? { reason } : {}) } });
+
+test('after the order exists, a refusal whose words say nothing happened is the unknown outcome with the order id, for every reason (listed ones too): the payment step, the payment page, the bare submit_payment', async () => {
+  const LANES = {
+    complete: { op: 'submit_payment', reason: 'payment_outcome_unknown_after_order', run: (w, sid, key) => w.executor.execute('complete_checkout_session', { idempotency_key: key, session_id: sid, payment_authorization: { token: 'grant_placeholder' } }, CTX2) },
+    payment_link: { op: 'create_payment_link', reason: 'payment_link_outcome_unknown_after_order', run: (w, sid, key) => w.executor.execute('create_payment_link', { idempotency_key: key, session_id: sid, customer_email: 'buyer@example.test' }, CTX2) },
+  };
+  const makers = [...['replay', 'stale', 'subject', 'path', undefined].map((r) => [`PARTNER_ASSERTION_REJECTED ${r}`, par(r)]),
+    ...Object.entries(ERROR_CATALOG).filter(([, e]) => e.claimsNoEffect).map(([code]) => [code, () => new PivotaCommerceError(code, { operation: 'x', upstream_status: 409, upstream_code: code })])];
+  for (const [laneName, lane] of Object.entries(LANES)) {
+    for (const [label, make] of makers) {
+      const w = afterOrderWorld(lane.op, make);
+      const sid = (await w.executor.execute('create_checkout_session', { idempotency_key: 'idem-ae-open-01', quote: QUOTE }, CTX2)).session_id;
+      const first = await lane.run(w, sid, 'idem-ae-0001').then(() => null, (e) => e);
+      const tag = `${laneName} ${label}`;
+      assert.equal(first?.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${tag}: ${first?.code} ${first?.message}`);
+      assert.deepEqual(first.detail, { reason: lane.reason, order_id: 'o_1' }, tag);
+      assert.equal(first.message, KERNEL_ANSWERED_AFTER_ORDER[lane.reason].message, tag);
+      assert.doesNotMatch(`${first.message} ${first.recovery}`, NO_EFFECT, tag);
+      if (label.startsWith('PARTNER')) assert.equal(first.upstreamRefusalCode, 'PARTNER_ASSERTION_REJECTED', `${tag}: still counted by its code`);
+      // The same key is told the same; the order exists, and no second order or page is asked for.
+      const same = await lane.run(w, sid, 'idem-ae-0001').then(() => null, (e) => e);
+      assert.equal(same?.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${tag} same key: ${same?.code} ${same?.message}`);
+      assert.equal(same.message, first.message, tag);
+      assert.deepEqual([w.calls.filter((c) => c === 'create_order').length, w.calls.filter((c) => c === lane.op).length], [1, 1], tag);
+    }
+  }
+  // The bare submit_payment (the invoke route's call), after charge_pending is written.
+  for (const [label, make] of makers) {
+    const w = afterOrderWorld('submit_payment', make);
+    const q = await w.kernel.previewQuote({ quote: QUOTE }, CTX2);
+    const o = await w.kernel.createOrder({ idempotency_key: 'idem-ae-bare-01', order: { quote_id: q.quote_id, shipping_address: {} } }, CTX2);
+    const token = await w.kernel.mintConfirmation({ order_id: o.order_id }, CTX2);
+    const pay = () => w.kernel.submitPayment({ idempotency_key: 'idem-ae-bare-02', confirmation_token: token, payment: { order_id: o.order_id, expected_amount: 1800, currency: 'USD' } }, CTX2).then(() => null, (e) => e);
+    const first = await pay();
+    assert.deepEqual([first?.code, first?.detail], ['CHECKOUT_OUTCOME_UNKNOWN', { reason: 'payment_outcome_unknown_after_order', order_id: 'o_1' }], `${label}: ${first?.message}`);
+    assert.doesNotMatch(`${first.message} ${first.recovery}`, NO_EFFECT, label);
+    assert.equal((await w.kernel._orderStore.get('o_1')).status, 'charge_pending', label);
+    const same = await pay();
+    assert.equal(same?.message, first.message, `${label}: the same key is told the same`);
+    assert.equal(w.calls.filter((c) => c === 'submit_payment').length, 1, label);
+  }
+});
+
+test('request_after_sales: a refusal whose words say nothing happened is given only on the release proof; a kept reason is the unknown outcome with the order id, and the same call may be sent again', async () => {
+  for (const [reason, released] of [['replay', false], ['stale', false], ['subject', false], [undefined, false], ['path', true], ['bad_mac', true]]) {
+    const w = afterOrderWorld('request_after_sales', par(reason));
+    const q = await w.kernel.previewQuote({ quote: QUOTE }, CTX2);
+    await w.kernel.createOrder({ idempotency_key: 'idem-as-order-01', order: { quote_id: q.quote_id, shipping_address: {} } }, CTX2);
+    const ask = () => w.kernel.requestAfterSales({ idempotency_key: 'idem-as-0001', status: { order_id: 'o_1', requested_action: 'refund', reason: 'placeholder' } }, CTX2).then((v) => v, (e) => e);
+    const first = await ask();
+    if (released) {
+      assert.equal(first?.code, 'PARTNER_ASSERTION_REJECTED', String(reason));
+    } else {
+      assert.deepEqual([first?.code, first?.detail], ['CHECKOUT_OUTCOME_UNKNOWN', { reason: 'after_sales_outcome_unknown', order_id: 'o_1' }], `${reason}: ${first?.message}`);
+      assert.equal(first.message, KERNEL_ANSWERED_AFTER_ORDER.after_sales_outcome_unknown.message, String(reason));
+      assert.doesNotMatch(`${first.message} ${first.recovery}`, NO_EFFECT, String(reason));
+      assert.equal(kernelOutcomeUnknownOf(first).answered, 'refused');
+    }
+    // The key was not held: the same call is sent again, with the same Idempotency-Key upstream.
+    const again = await ask();
+    assert.equal(again?.request_id, 'as_1', String(reason));
+    assert.equal(w.calls.filter((c) => c === 'request_after_sales').length, 2, String(reason));
+  }
+});

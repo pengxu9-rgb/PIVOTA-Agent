@@ -17,7 +17,7 @@
 
 import externalSeedLane from "../../src/services/externalSeedLane.js";
 import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
-import { PivotaCommerceError, KERNEL_ANSWERED_REFUSALS, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
+import { PivotaCommerceError, KERNEL_ANSWERED_REFUSALS, KERNEL_ANSWERED_AFTER_ORDER, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 // The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
@@ -1898,7 +1898,11 @@ export function toToolError(error) {
       // An order call the store answered with a refusal that keeps the claim (a 403, a 429): its own words, never "no
       // readable answer". Which one is not surfaced; the detail below is the same.
       const answered = !orderId && kernelUnknown.answered ? KERNEL_ANSWERED_REFUSALS[kernelUnknown.answered] : null;
-      body.message = answered ? `${answered.message} ${SAME_KEY_SAME_ANSWER}` : orderId ? answer.withOrder : answer.withoutOrder;
+      // A call after the order exists that the order service refused in words that would say it had no effect: its own
+      // words, with the order id (errors.js KERNEL_ANSWERED_AFTER_ORDER), never "nothing was done".
+      const answeredAfterOrder = orderId && kernelUnknown.answered ? KERNEL_ANSWERED_AFTER_ORDER[kernelUnknown.reason] : null;
+      body.message = answeredAfterOrder ? answeredAfterOrder.message
+        : answered ? `${answered.message} ${SAME_KEY_SAME_ANSWER}` : orderId ? answer.withOrder : answer.withoutOrder;
       body.recovery = error.recovery;
       body.detail = { reason: kernelUnknown.reason, order_id: orderId };
     }
@@ -2027,6 +2031,11 @@ const KERNEL_OUTCOME_UNKNOWN_ANSWERS = Object.freeze({
   payment_link_outcome_unknown_after_order: {
     withOrder: "The order was created (detail.order_id), but whether its payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
     withoutOrder: "Whether the payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+  },
+  // Only ever raised with an order id and the order service's refusal (KERNEL_ANSWERED_AFTER_ORDER gives its words).
+  after_sales_outcome_unknown: {
+    withOrder: KERNEL_ANSWERED_AFTER_ORDER.after_sales_outcome_unknown.message,
+    withoutOrder: "Whether this after-sales request was filed is unknown. Send the same call again with the same idempotency_key; do not file another request for this order until it answers.",
   },
   order_create_outcome_unknown: {
     withOrder: "Whether the order was created is unknown: the order service gave no readable answer. An order may exist (detail.order_id): read it with get_order before anything else, and do not start another checkout for this purchase.",

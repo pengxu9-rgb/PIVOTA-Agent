@@ -73,6 +73,7 @@ const sent = (r, path) => r.upstream.filter((c) => c.path === path).length;
 const ORDERS = '/agent/v2/orders';
 const PAGES = '/agent/v2/payments/checkout-sessions';
 const errorOf = (r) => (r.value && r.value.error) || {};
+const currencyOf = (r) => r.value && r.value.currency;
 const orderIdOf = (h, r) => (h.caller === 'mcp_payment_link' ? r.value.order_id : (r.value.order && r.value.order.order_id) || r.value.order_id || (r.value.order && r.value.order.id));
 /** No answer below states money: no amount, no currency code. */
 function assertNoMoney(r, label) {
@@ -333,6 +334,45 @@ test('P1-1: a refused caller assertion that keeps the claim (replay, stale, subj
     assert.equal(errorOf(first).code, 'PARTNER_ASSERTION_REJECTED', `${caller}: ${first.raw.slice(0, 300)}`);
     const again = await attempt(h, key);
     assert.equal(again.isError, false, `${caller}: ${again.raw.slice(0, 300)}`);
+  }
+});
+
+test('P1-1 (after the order): a refused caller assertion on the payment step or the payment page, for every reason, listed ones too, is never "nothing was done" on /mcp, /ucp/mcp or ACP: the unknown outcome with the order id; the same key is told the same; another key names the order', async () => {
+  const { KERNEL_ANSWERED_AFTER_ORDER } = await import('../safety-kernel/src/errors.js');
+  for (const reason of ['replay', 'stale', 'path']) {
+    for (const caller of [...CALLERS, 'acp']) {
+      for (const market of ['US', 'SG', 'GB']) {
+        const label = `${caller} ${reason} ${market}`;
+        const madeBefore = door.orders.length;
+        let first; let same; let other;
+        if (caller === 'acp') {
+          const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+          const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+          const complete = (k) => door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: k });
+          door.paymentScript.push(ANSWERS.partnerAssertion(reason));
+          const key = freshKey();
+          first = await complete(key); same = await complete(key); other = await complete(freshKey());
+          assert.deepEqual([first.http, first.body.code, first.body.message], [409, 'CHECKOUT_OUTCOME_UNKNOWN', KERNEL_ANSWERED_AFTER_ORDER.payment_outcome_unknown_after_order.message], `${label}: ${first.raw.slice(0, 300)}`);
+          assert.equal(same.body.code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
+          assert.equal(other.body.code, 'QUOTE_ALREADY_USED', label);
+        } else {
+          const h = await open(caller, market);
+          door.paymentScript.push(ANSWERS.partnerAssertion(reason));
+          const key = freshKey();
+          first = await attempt(h, key); same = await attempt(h, key); other = await attempt(h, freshKey());
+          const why = caller === 'mcp_payment_link' ? 'payment_link_outcome_unknown_after_order' : 'payment_outcome_unknown_after_order';
+          const orderId = door.orders.at(-1).order_id;
+          assert.deepEqual([errorOf(first).code, errorOf(first).retriable, errorOf(first).detail, errorOf(first).message], ['CHECKOUT_OUTCOME_UNKNOWN', false, { reason: why, order_id: orderId }, KERNEL_ANSWERED_AFTER_ORDER[why].message], `${label}: ${first.raw.slice(0, 300)}`);
+          assert.equal(same.raw, first.raw, `${label}: the same key, the same answer (never "Starting fresh")`);
+          assertSpentNamingOrder(other, orderId, `${label} another key`);
+          assert.equal(currencyOf(await read(h)), h.currency, label);
+        }
+        for (const r of [first, same, other]) assert.equal(/nothing was (?:done|written)|could not confirm the account|Starting fresh/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+        assert.equal(sent(first, ORDERS) + sent(first, PAGES), 2, `${label}: one order call and one page call`);
+        assert.equal(sent(same, ORDERS) + sent(same, PAGES) + sent(other, ORDERS) + sent(other, PAGES), 0, `${label}: nothing more asked`);
+        assert.equal(door.orders.length, madeBefore + 1, label);
+      }
+    }
   }
 });
 

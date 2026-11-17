@@ -46,6 +46,7 @@ const MCP_TOOL_ERROR_REASONS = Object.freeze([
   'payment_outcome_unknown_after_order',
   'payment_link_outcome_unknown_after_order',
   'order_create_outcome_unknown',
+  'after_sales_outcome_unknown',
   // A completion or payment link with no address to ship to; a buyer context the order service refused by name.
   'acp_fulfillment_address_required',
   'buyer_context_refused',
