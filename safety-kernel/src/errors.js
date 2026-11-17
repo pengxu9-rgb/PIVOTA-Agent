@@ -91,6 +91,64 @@ export class PivotaCommerceError extends Error {
   }
 }
 
+/**
+ * THE KERNEL'S OWN "OUTCOME UNKNOWN" ANSWERS. A money call was made and no readable answer came back, so nobody here
+ * can say whether it did what it was asked:
+ *   - `payment_outcome_unknown_after_order`       the order exists (its id is known) and its payment step was asked
+ *                                                 for: no answer, a 5xx, or a 2xx that names neither a payment status
+ *                                                 nor a payment page;
+ *   - `payment_link_outcome_unknown_after_order`  the order exists and its payment page was asked for: no answer, a
+ *                                                 5xx, or a 2xx that names no page;
+ *   - `order_create_outcome_unknown`              the order was asked for and no readable answer came back (no answer,
+ *                                                 a 5xx, a 2xx that is not an order): an order may exist, and its id is
+ *                                                 not known here.
+ * Same code as every other door's unknown outcome (CHECKOUT_OUTCOME_UNKNOWN), but NOT retriable: re-sending the same
+ * call with the same key returns this same answer (the ledger keeps it), so the way on is to read the order, never to
+ * send again or to open another checkout.
+ */
+export const KERNEL_OUTCOME_UNKNOWN_REASONS = Object.freeze({
+  payment: 'payment_outcome_unknown_after_order',
+  paymentLink: 'payment_link_outcome_unknown_after_order',
+  orderCreate: 'order_create_outcome_unknown',
+});
+const KERNEL_OUTCOME_UNKNOWN_REASON_SET = new Set(Object.values(KERNEL_OUTCOME_UNKNOWN_REASONS));
+
+/** The kernel's unknown-outcome answer for `reason` (one of KERNEL_OUTCOME_UNKNOWN_REASONS) and the order it is about. */
+export function kernelOutcomeUnknown(reason, orderId) {
+  if (!KERNEL_OUTCOME_UNKNOWN_REASON_SET.has(reason)) throw new Error(`Unknown kernel outcome-unknown reason: ${reason}`);
+  const order_id = typeof orderId === 'string' && orderId.trim() !== '' ? orderId : null;
+  const err = new PivotaCommerceError('CHECKOUT_OUTCOME_UNKNOWN', { reason, order_id });
+  err.retriable = false;
+  err.recovery = order_id
+    ? 'read the order in detail.order_id with get_order before anything else; do not open another checkout for this purchase'
+    : 'the store may hold an order for this checkout, and its id is not known here: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer';
+  return err;
+}
+
+/**
+ * IS THE OUTCOME OF THIS FAILED UPSTREAM MONEY CALL UNKNOWN? True when no readable answer came back: the transport's
+ * deadline mark, no response at all (`upstream_status` not a status), a 5xx, or an error that is not this taxonomy's
+ * (a raw transport or adapter error). False for a refusal the upstream ANSWERED with a status below 500, and for every
+ * refusal raised in this process before anything was sent (no `upstream_status` member: not the transport's).
+ * The transport writes these members (src/server.js throwCommerceKernelUpstreamError).
+ */
+export function upstreamFailureOutcomeUnknown(err) {
+  if (!(err instanceof PivotaCommerceError)) return true;
+  const detail = err.detail && typeof err.detail === 'object' && !Array.isArray(err.detail) ? err.detail : {};
+  if (detail.upstream_timeout === true) return true;
+  if (!Object.hasOwn(detail, 'upstream_status')) return false; // raised here, not by the transport
+  const status = detail.upstream_status;
+  return !Number.isInteger(status) || status >= 500;
+}
+
+/** `{ reason, order_id }` when `err` is one of the kernel's own unknown-outcome answers, else null. */
+export function kernelOutcomeUnknownOf(err) {
+  if (!(err instanceof PivotaCommerceError) || err.code !== 'CHECKOUT_OUTCOME_UNKNOWN') return null;
+  const detail = err.detail && typeof err.detail === 'object' ? err.detail : {};
+  if (!KERNEL_OUTCOME_UNKNOWN_REASON_SET.has(detail.reason)) return null;
+  return { reason: detail.reason, order_id: typeof detail.order_id === 'string' && detail.order_id !== '' ? detail.order_id : null };
+}
+
 export function isPivotaErrorCode(x) {
   return typeof x === 'string' && Object.prototype.hasOwnProperty.call(ERROR_CATALOG, x);
 }

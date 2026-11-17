@@ -10,8 +10,23 @@
 
 const { isUnavailableAvailabilityText } = require('../services/offerAvailabilitySql');
 
+const EXACT_RETAILER_PDP = /^https:\/\/[A-Za-z0-9.-]+(?:\/[a-z]{2}-[a-z]{2})?\/products\/[A-Za-z0-9_-]+\?variant=([0-9]{1,19})$/;
+const verifiedRetailerPdpUrl = Symbol.for('pivota.commerce.verifiedRetailerPdpUrl');
+
 function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
+}
+
+function verifiedRetailerPdp(offer) {
+  const source = offer.source;
+  if (offer.purchase_route !== 'affiliate_outbound' || offer.cart_prefilled !== false
+    || source?.type !== 'catalog_offer' || source.variant_match !== 'exact'
+    || !nonEmptyString(source.offer_id) || offer.offer_id !== `of:catalog_offer:${source.offer_id}`
+    || !nonEmptyString(offer.merchant_id) || source.merchant_id !== offer.merchant_id
+    || !nonEmptyString(offer.url) || source.destination_url !== offer.url) return null;
+
+  const match = EXACT_RETAILER_PDP.exec(offer.url);
+  return match && match[0] === offer.url && match[1] === source.retailer_variant_id ? offer.url : null;
 }
 
 // EXECUTION SPEC v0 passthrough. The backend composes this at `offers.resolve` (every url built by ONE
@@ -172,7 +187,7 @@ function offerToSignal(offer, { productId = null, freshPriceContract = false, no
   const merchantId = nonEmptyString(offer.merchant_id) ? offer.merchant_id : null;
   const price = offer.price != null && Number.isFinite(Number(offer.price)) ? Number(offer.price) : null;
   const priceFreshness = freshPriceContract ? priceFreshnessFields(offer, now()) : {};
-  return {
+  const signal = {
     signal_type: 'offer',
     subject: { kind: 'offer', id: merchantId ? `${merchantId}:${productId || ''}` : null },
     value: {
@@ -273,6 +288,13 @@ function offerToSignal(offer, { productId = null, freshPriceContract = false, no
     seller_trust: null, // FUTURE: return_rate / shipping_rating from the agent_signal store
     visibility: 'buyer_safe',
   };
+  const verifiedUrl = verifiedRetailerPdp(offer);
+  if (verifiedUrl) {
+    // The exact catalog lane provides the retailer's native variant. Keep this annotation in-process
+    // so the sanitizer can preserve that selector without treating arbitrary offer URLs as PDPs.
+    Object.defineProperty(signal.value, verifiedRetailerPdpUrl, { value: verifiedUrl });
+  }
+  return signal;
 }
 
 // "THIS SELLER CANNOT SELL IT" — the backend's OFFER_UNAVAILABLE_AVAILABILITIES (pivota-backend

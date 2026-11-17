@@ -517,8 +517,18 @@ function priceCheckMessage(check) {
  * handler map that is already there (the escalation and Reap envelopes own theirs) and does not touch any other
  * field — the kernel session's own shape (`session_id`, `status`, `totals`, …) is passed through as it was.
  */
+// The kernel's session status for an order call whose outcome is not known has no UCP name. UCP's own word for a
+// checkout whose completion has not resolved is `complete_in_progress`; the fact itself travels in `order_outcome`.
+const KERNEL_UNKNOWN_ORDER_STATUS = "order_outcome_unknown";
+function ucpSessionStatus(session) {
+  if (!isPlainObject(session) || own(session, "status") !== KERNEL_UNKNOWN_ORDER_STATUS) return session;
+  return { ...session, status: "complete_in_progress", order_outcome: "unknown" };
+}
+
 export function shapeUcpCheckoutResponse(native) {
   if (!isPlainObject(native)) return native;
+  native = ucpSessionStatus(native);
+  if (isPlainObject(own(native, "previous_session"))) native = { ...native, previous_session: ucpSessionStatus(own(native, "previous_session")) };
   const existing = own(native, "ucp");
   // Only an envelope the native body already carries can hold a handler map; keep it as-is.
   if (isPlainObject(existing) && isPlainObject(own(existing, "payment_handlers"))) return native;

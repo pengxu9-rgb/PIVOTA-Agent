@@ -1160,37 +1160,30 @@ test('cancelling again is the same answer: from the record when it says so, and 
   assert.deepEqual(asked, ['cancel_checkout_session'], 'asked once');
 });
 
-test('only the ACP door\'s cancellation claims the session: the same member on another door\'s cancel changes nothing, and that session is completed as before', async () => {
+// With CHECKOUT_CANCEL_UPSTREAM_ENABLED off, every door's cancellation of a session with no order takes its claim: the
+// ACP REST door because it says so on the call (`cancel_claims_session`), every other door because "canceled" is said
+// only when it is true. Either way a completion of that session is then refused and nothing is charged.
+test('every door\'s cancellation of a session with no order claims the session, with or without the ACP member, and that session is never completed', async () => {
   const QUOTE_BODY = { merchant_id: 'merch_USD', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test' };
-  for (const [ctx, claims] of [
+  for (const [ctx, member] of [
     [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' }, true],
+    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' }, false],
+    [{ user_ref: 'u1', acp_session_id: 's1' }, true],
+    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'mcp' }, true],
     [{ user_ref: 'u1', acp_session_id: 's1' }, false],
-    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'mcp' }, false],
   ]) {
+    const label = `${ctx.protocol ?? 'none'} ${member}`;
     const door = sessionDoor();
     const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}), verifyPaymentAuthorization: async (_a, bound) => ({ ok: true, amount: bound.amount, currency: bound.currency, user_ref: bound.user_ref }) });
     const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0001', quote: QUOTE_BODY }, ctx);
-    const cancelled = await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0002', session_id: session.session_id, cancel_claims_session: true }, ctx);
-    assert.equal(cancelled.status, 'canceled');
-    assert.equal(await door.kernel.isQuoteClaimed(session.session_id), claims);
-    const completing = executor.execute('complete_checkout_session', { idempotency_key: 'idem-claim-0003', session_id: session.session_id, payment_authorization: { token: 'tok_1' } }, ctx);
-    if (claims) {
-      const err = await refusal(completing);
-      assert.equal(err.code, 'QUOTE_ALREADY_USED');
-      assert.equal(err.detail.claim, 'canceled');
-      assert.deepEqual(door.ops('submit_payment'), []);
-    } else {
-      await completing; // as before this rule, on a door that does not state it
-      assert.equal(door.ops('submit_payment').length, 1);
-    }
+    const cancelled = await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0002', session_id: session.session_id, ...(member ? { cancel_claims_session: true } : {}) }, ctx);
+    assert.equal(cancelled.status, 'canceled', label);
+    assert.equal(await door.kernel.isQuoteClaimed(session.session_id), true, label);
+    const err = await refusal(executor.execute('complete_checkout_session', { idempotency_key: 'idem-claim-0003', session_id: session.session_id, payment_authorization: { token: 'tok_1' } }, ctx));
+    assert.equal(err && err.code, 'QUOTE_ALREADY_USED', label);
+    assert.equal(err.detail.claim, 'canceled', label);
+    assert.deepEqual(door.ops('submit_payment'), [], label);
   }
-  // Without the statement, the ACP door's own ctx claims nothing either.
-  const door = sessionDoor();
-  const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}) });
-  const ctx = { user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' };
-  const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0004', quote: QUOTE_BODY }, ctx);
-  await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0005', session_id: session.session_id }, ctx);
-  assert.equal(await door.kernel.isQuoteClaimed(session.session_id), false);
 });
 
 // ---- a cancellation of a session that is re-priced while it runs ------------------------------------------------------

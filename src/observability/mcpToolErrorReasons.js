@@ -41,6 +41,20 @@ const MCP_TOOL_ERROR_REASONS = Object.freeze([
   'charge_in_progress',
   'charge_pending',
   'order_already_paid',
+  // A money call after (or for) the order with no readable answer: the kernel's own unknown outcomes
+  // (safety-kernel/src/errors.js KERNEL_OUTCOME_UNKNOWN_REASONS), counted apart from every other unknown outcome.
+  'payment_outcome_unknown_after_order',
+  'payment_link_outcome_unknown_after_order',
+  'order_create_outcome_unknown',
+  // A completion or payment link with no address to ship to; a buyer context the order service refused by name.
+  'acp_fulfillment_address_required',
+  'buyer_context_refused',
+  // A cancel by session id that did not cancel (an ordered session, an order call with an unknown outcome, a claim
+  // given back mid-cancel), and a completion of a session a cancellation holds.
+  'session_already_ordered',
+  'session_order_outcome_unknown',
+  'session_not_ordered_not_canceled',
+  'session_canceled',
 ]);
 
 const LISTED = new Set(MCP_TOOL_ERROR_REASONS);

@@ -30,14 +30,53 @@ const COMMERCE_KERNEL_READ_OPS = new Set(['get_product_detail', 'find_products',
 // refusing to hold an opinion it has no basis for if the backend ever starts emitting that code elsewhere.
 const SINGLE_PRODUCT_READ_OPS = new Set(['get_product_detail']);
 
+// THE ORDER CALL REFUSED THE BUYER'S DETAILS. The backend's order create answers 400 INVALID_BUYER_CONTEXT, from its
+// prologue, before it can have written an order (safety-kernel/contracts/order_create_prologue_refusals.json), for a
+// buyer context it cannot order with: no complete shipping address, no buyer email. As MERCHANT_UNAVAILABLE
+// ("temporarily unreachable", retriable) the agent re-sent the identical call, which can never succeed, and was never
+// told what to fix. It is terminal for the request as sent, and named.
+//
+// Granted on exactly the proof the quote-claim release needs (safety-kernel/src/upstreamRefusal.js): the order op,
+// the exact status, and the route's own detail naming the code (`error.details.error`), not a message or the
+// status-derived code. So the answer says "nothing was ordered, fix and retry" exactly when the claim was given back
+// and a corrected retry can succeed; anything short of that proof stays MERCHANT_UNAVAILABLE.
+const BUYER_CONTEXT_REFUSAL_CODE = 'INVALID_BUYER_CONTEXT';
+function isBuyerContextRefusal({ operation, upstreamCode, status, upstreamDetail } = {}) {
+  return String(operation || '').trim() === 'create_order'
+    && status === 400
+    && String(upstreamCode || '').trim() === BUYER_CONTEXT_REFUSAL_CODE
+    && upstreamDetail != null && typeof upstreamDetail === 'object' && !Array.isArray(upstreamDetail)
+    && upstreamDetail.error === BUYER_CONTEXT_REFUSAL_CODE;
+}
+
 /**
- * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null }} input
- * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'MERCHANT_UNAVAILABLE'}
+ * The curated refusal members for an upstream failure that has one (the shape safety-kernel's intakeRefusal builds:
+ * `reason`, `acp_message`, `acp_detail`, which every door surfaces), or null. Names fields only, never a value.
  */
-function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) {
+function curatedUpstreamRefusal(input = {}) {
+  if (!isBuyerContextRefusal(input)) return null;
+  const reason = 'buyer_context_refused';
+  return {
+    reason,
+    acp_message: [
+      'The order could not be created: the buyer details this checkout carries were refused (an order needs a complete shipping address, with name, address_line1, city, postal_code and country, and a buyer email).',
+      'No order was created and nothing was charged. Supply the missing details, with this call or by updating the checkout session, then try again.',
+      'Retrying this request unchanged will not succeed.',
+    ].join(' '),
+    acp_detail: { reason, required_fields: ['name', 'address_line1', 'city', 'postal_code', 'country', 'customer_email'] },
+  };
+}
+
+/**
+ * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null, upstreamDetail?: object|null }} input
+ * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'QUOTE_REQUIRED'|'MERCHANT_UNAVAILABLE'}
+ */
+function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, upstreamDetail } = {}) {
   const op = String(operation || '').trim();
   const code = String(upstreamCode || '').trim().toUpperCase();
   const isReadOp = COMMERCE_KERNEL_READ_OPS.has(op);
+
+  if (isBuyerContextRefusal({ operation, upstreamCode, status, upstreamDetail })) return 'QUOTE_REQUIRED';
 
   if (code === 'QUOTE_EXPIRED') return 'QUOTE_EXPIRED';
   if (code === 'PRICE_CHANGED' || code === 'QUOTE_MISMATCH') return 'PRICE_CHANGED';
@@ -83,6 +122,7 @@ function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) 
 
 module.exports = {
   mapUpstreamErrorToKernelCode,
+  curatedUpstreamRefusal,
   COMMERCE_KERNEL_READ_OPS,
   SINGLE_PRODUCT_READ_OPS,
 };
