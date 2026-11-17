@@ -27,6 +27,12 @@
 // SHOPIFY_CATALOG_ID (the saved catalog with Earn commission on), SHOPIFY_CATALOG_DRAFT_PROFILE_URL (our own
 // draft-version agent profile, served at /.well-known/ucp-agent-catalog-draft).
 //
+// IDENTITY IS THE VARIANT ID, NOT THE SELLER NAME. A Shopify variant id belongs to exactly one shop, and the lookup is
+// BY that id, so a returned variant with the same number is the variant we are carting. The answer's seller is not
+// compared with the store's host on purpose: the catalog names a shop by its myshopify domain while our rows name the
+// storefront's own domain (measured 2026-11-12: a store whose seller.domain is its myshopify name and whose checkout
+// names its public domain), so a name check would refuse real matches without adding any safety.
+//
 // SCOPE. US buyers only (the caller passes the market; the saved catalog is a US catalog, and the standing rule is a
 // price in the market's currency or none). Shopify stores only: an id the catalog does not return tracked stays bare.
 
@@ -48,8 +54,9 @@ const MODES = Object.freeze({ OFF: "off", SHADOW: "shadow", ENFORCE: "enforce" }
 // A bare Shopify variant gid, anchored. NOT shopifyVariantResolver's toVariantGid, whose unanchored pattern accepts
 // (and strips) anything around the gid.
 const BARE_VARIANT_RE = /^gid:\/\/shopify\/ProductVariant\/(\d{1,20})$/;
-// A tracked id: the bare gid, then a query string. Its parameters are checked one by one below.
-const TRACKED_VARIANT_RE = /^gid:\/\/shopify\/ProductVariant\/(\d{1,20})\?([A-Za-z0-9._~%&=-]{1,400})$/;
+// A tracked id: the bare gid, then a query string of unreserved characters only (no percent-encoding: nothing a
+// store's create_cart could decode into something else). Its parameters are checked one by one below.
+const TRACKED_VARIANT_RE = /^gid:\/\/shopify\/ProductVariant\/(\d{1,20})\?([A-Za-z0-9._~&=-]{1,400})$/;
 const PARAM_VALUE_RE = /^[A-Za-z0-9._~-]{1,200}$/;
 
 const str = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
@@ -84,29 +91,38 @@ export function bareVariantNumber(gid) {
 
 /**
  * Is `id` a tracked id for bare variant `expectedNumber`, attributed to OUR catalog? Exact: the same variant number,
- * `shcgid` equal to our catalog id, one `shclid` of a safe character set, no other parameter repeated, a length cap.
- * Anything else is not used (the line stays bare).
+ * and a query of EXACTLY two parameters, `shcgid` (equal to our catalog id) and `shclid`, each once, each a raw value
+ * of unreserved characters. Any other parameter, a repeat, a different case, an empty key or a percent sign: not used
+ * (the line stays bare). This id goes to the store byte for byte, so nothing beyond Shopify's two members is allowed.
  */
 export function isTrackedIdFor(id, expectedNumber, catalogId) {
-  if (typeof id !== "string" || id.length > MAX_ID_LENGTH) return false;
+  if (typeof id !== "string" || id.length > MAX_ID_LENGTH || typeof catalogId !== "string") return false;
   const m = TRACKED_VARIANT_RE.exec(id);
   if (!m || m[1] !== expectedNumber) return false;
-  let params;
-  try { params = new URLSearchParams(m[2]); } catch { return false; }
-  const seen = new Set();
-  for (const [k] of params) { if (seen.has(k)) return false; seen.add(k); }
-  const shcgid = params.get("shcgid");
-  const shclid = params.get("shclid");
-  return shcgid === catalogId && typeof shclid === "string" && PARAM_VALUE_RE.test(shclid);
+  const found = {};
+  for (const part of m[2].split("&")) {
+    const eq = part.indexOf("=");
+    if (eq <= 0) return false;
+    const key = part.slice(0, eq);
+    const value = part.slice(eq + 1);
+    if ((key !== "shcgid" && key !== "shclid") || key in found || !PARAM_VALUE_RE.test(value)) return false;
+    found[key] = value;
+  }
+  return found.shcgid === catalogId && typeof found.shclid === "string";
 }
 
 function jwtExpiryMs(token) {
   try {
     const part = token.split(".")[1];
     const json = JSON.parse(Buffer.from(part.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
-    return Number.isFinite(json.exp) ? json.exp * 1000 : null;
+    if (!Number.isFinite(json.exp) || json.exp <= 0) return null;
+    // Seconds per RFC 7519; a value that is already a millisecond timestamp is read as one.
+    return json.exp > 1e12 ? json.exp : json.exp * 1000;
   } catch { return null; }
 }
+
+const TOKEN_MAX_LIFETIME_MS = 60 * 60 * 1000;
+const TOKEN_MIN_REUSE_MS = 30 * 1000;
 
 async function fetchWithin(fetchImpl, url, init, ms) {
   if (!(ms > 0)) return { timedOut: true };
@@ -114,7 +130,8 @@ async function fetchWithin(fetchImpl, url, init, ms) {
   const timer = setTimeout(() => ac.abort(), ms);
   timer.unref?.();
   try {
-    const res = await fetchImpl(url, { ...init, signal: ac.signal });
+    // NEVER follow a redirect: a 307/308 would replay the body (the client secret) or the bearer token elsewhere.
+    const res = await fetchImpl(url, { ...init, redirect: "error", signal: ac.signal });
     let body = null;
     try { body = await res.json(); } catch { body = null; }
     return { status: res.status, body };
@@ -193,9 +210,16 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
         }, TOKEN_EXCHANGE_TIMEOUT_MS);
         const value = res && res.status === 200 && isPlainObject(res.body) ? str(res.body.access_token) : null;
         if (!value) { failedUntilMs = now() + TOKEN_FAILURE_BACKOFF_MS; return null; }
+        const t = now();
         const exp = jwtExpiryMs(value);
-        const lifetimeEnd = exp && exp > now() ? exp : now() + TOKEN_FALLBACK_TTL_MS;
-        token = { value, refreshAtMs: Math.max(now(), lifetimeEnd - TOKEN_REFRESH_SKEW_MS) };
+        // An already expired token is not used. Its life is capped at an hour whatever it claims; with no readable
+        // expiry it is trusted for 50 minutes.
+        if (exp !== null && exp <= t) { failedUntilMs = t + TOKEN_FAILURE_BACKOFF_MS; return null; }
+        const lifetimeEnd = Math.min(exp !== null ? exp : t + TOKEN_FALLBACK_TTL_MS, t + TOKEN_MAX_LIFETIME_MS);
+        // Refreshed 5 minutes early. A token that expires sooner than that is reused for a short while (half its
+        // remaining life, at most 30 s) instead of being exchanged again on every call.
+        const early = lifetimeEnd - TOKEN_REFRESH_SKEW_MS;
+        token = { value, refreshAtMs: early > t ? early : t + Math.min(TOKEN_MIN_REUSE_MS, Math.floor((lifetimeEnd - t) / 2)) };
         return value;
       })().finally(() => { inflight = null; });
     }
@@ -215,6 +239,7 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     for (const g of Array.isArray(gids) ? gids : []) { const n = bareVariantNumber(g); if (n) numbers.set(g, n); }
     if (!numbers.size) return done("skipped:no_variant");
     if (!sellerHost) return done("skipped:no_store");
+    if (!(budgetMs > 0)) return done("skipped:no_budget");
     const startedAt = now();
     const left = () => budgetMs - (now() - startedAt);
     const value = await bearer(left());
@@ -234,12 +259,16 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
       }),
     }, left())));
     let failure = null;
+    let answered = 0;
     for (const a of answers) {
       if (!a || a.timedOut) { failure = failure || "failed:timeout"; continue; }
       if (a.error) { failure = failure || "failed:network"; continue; }
       if (a.status === 429) { failure = failure || "failed:rate_limited"; continue; }
+      // The catalog no longer accepts this token: drop it, so the next call exchanges a fresh one.
+      if (a.status === 401 || a.status === 403) { if (token && token.value === value) token = null; failure = failure || "failed:token_refused"; continue; }
       if (a.status !== 200 || !isPlainObject(a.body)) { failure = failure || "failed:http"; continue; }
       if (messageCodesOf(a.body).includes("unauthorized")) { failure = failure || "failed:unauthorized"; continue; }
+      answered += 1;
       for (const v of variantObjectsOf(a.body)) {
         const n = (/^gid:\/\/shopify\/ProductVariant\/(\d{1,20})/.exec(v.id) || [])[1];
         for (const [g, want] of numbers) {
@@ -247,8 +276,10 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
         }
       }
     }
+    // The match rate counts only answered lookups: a failure is counted under its own reason, never as "untracked".
+    if (failure) count(failure);
     count("tracked", tracked.size);
-    count("untracked", numbers.size - tracked.size);
+    if (answered) count("untracked", Math.max(0, numbers.size - tracked.size));
     return { tracked, reason: failure };
   }
 

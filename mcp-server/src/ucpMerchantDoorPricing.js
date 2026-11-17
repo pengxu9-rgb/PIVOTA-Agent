@@ -830,7 +830,7 @@ function emit(log, level, detail) {
  *   currency it returns is put in `storeAnswer.currency` with `storeAnswer.remembered = true`, and nothing is asked
  *   of the seller or of the referral.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip, recallStoreCurrency, catalogAttribution }) {
+export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip, recallStoreCurrency, catalogAttribution, catalogTracked }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -922,7 +922,8 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   // SHOPIFY CATALOG ATTRIBUTION (SHOPIFY_CATALOG_ATTRIBUTION, shopifyCatalogAttribution.js). Create only, US buyers
   // only. The lookup starts NOW, beside discovery and the referral, on its own hard budget, and never delays the cart
   // past it. Its answer is used only in `enforce` for this store; in `shadow` it is counted and the cart is today's.
-  const attributionMode = cartId === undefined ? modeForStore(env, sellerHost) : "off";
+  // A market the buyer did not name (assumed US, unnamed) is not looked up, exactly as no referral is minted for it.
+  const attributionMode = cartId === undefined && !referralSkip ? modeForStore(env, sellerHost) : "off";
   const attributionStartedAt = Date.now();
   const attributionP = attributionMode === "off"
     ? null
@@ -1021,7 +1022,11 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     // error (the shared classifier reads free text, and an HTML "Page not found" once classified as variant_invalid).
     // Not proof the PRODUCT is gone, so it is reported, never acted on here; a cart-level error names no line, so
     // every line goes back. A re-read (`get_cart`) is not a claim about a variant.
-    if (structured && reason === FAILURE_REASON.VARIANT_INVALID && cartId === undefined && Array.isArray(signals)) {
+    if (sendTracked && structured && reason === FAILURE_REASON.VARIANT_INVALID) {
+      // The store refused the cart we sent with catalog-tracked ids. That says nothing yet about the variant itself,
+      // so no variant_invalid signal is raised on it; the pilot reads this line instead.
+      emitAttribution(log, { mode: attributionMode, seller_host: sellerHost, lines: wanted.length, outcome: "sent_rejected" });
+    } else if (structured && reason === FAILURE_REASON.VARIANT_INVALID && cartId === undefined && Array.isArray(signals)) {
       signals.push({
         reason: "variant_invalid",
         lines: wanted.map((w) => ({ product_id: w.product_id, gid: w.gid, chosen: Boolean(w.variant_id) })),
@@ -1074,11 +1079,17 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     emit(log, "info", { outcome: "fallback", reason: "continue_url_not_expected_seller", seller_host: sellerHost });
     return null;
   }
-  if (catalogLink && !sendTracked) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
+  // A catalog-tracked cart (sent tracked now, or re-read from an id that says it was: `catalogTracked`) never gets our
+  // members on its link: on create, and on every re-read of it.
+  const clean = sendTracked || (cartId !== undefined && catalogTracked === true);
+  if (catalogLink && !clean) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
   if (referral) {
-    if (!sendTracked) read.continueUrl = carryTrackingPairs(read.continueUrl, referral.pairs);
-    if (cartId === undefined) read.referral = referral;
+    if (!clean) read.continueUrl = carryTrackingPairs(read.continueUrl, referral.pairs);
+    // Create: the click id stays for the hand-off record; with a tracked line no pairs are returned, so the id the
+    // escalation mints carries none for a re-read to put back.
+    if (cartId === undefined) read.referral = sendTracked ? { clickId: referral.clickId, pairs: [] } : referral;
   }
+  if (sendTracked) read.catalogTracked = true;
   if (cartId !== undefined && read.cartId !== cartId) { emit(log, "info", { outcome: "fallback", reason: "cart_id_mismatch", seller_host: sellerHost }); return null; }
   emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length, source: sources.sort().join(",") });
   return read;
