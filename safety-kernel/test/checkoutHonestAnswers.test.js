@@ -357,16 +357,19 @@ for (const [laneName, lane] of Object.entries(LANES)) {
       ['no route detail', { upstream_detail: undefined }],
       ['the code only in a message', { upstream_detail: { message: 'MERCHANT_NOT_ACCEPTING_ORDERS' } }],
       ['the route naming another code', { upstream_detail: { error: 'FORBIDDEN' } }],
+      ['a deadline mark beside it', { upstream_timeout: true }],
     ]) {
       for (const market of ['US', 'SG', 'GB', 'DE']) {
         const w = world({ market });
         const sid = await open(w);
         w.script.create_order.push(() => { throw notAccepting(over); });
         const err = await refusal(lane.run(w, sid, 'idem-nta-0002'));
-        assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market}`, { answered: 'refused' });
+        // A deadline is never an answered refusal: the no-answer words. Every other case: the store-refused words.
+        const answered = over.upstream_timeout ? undefined : 'refused';
+        assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market}`, { answered });
         assert.equal(/nothing was ordered|not taking orders/i.test(err.message + err.recovery), false, `${label} ${market}`);
         assert.equal(await w.kernel.isQuoteClaimed(sid), true, `${label} ${market}: kept`);
-        assertUnknown(await refusal(lane.run(w, sid, 'idem-nta-0002')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market} same key`, { answered: 'refused' });
+        assertUnknown(await refusal(lane.run(w, sid, 'idem-nta-0002')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market} same key`, { answered });
         assert.equal(w.ops('create_order').length, 1, `${label} ${market}: one order call, ever`);
       }
     }
