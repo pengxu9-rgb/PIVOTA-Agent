@@ -240,3 +240,20 @@ test('RACE: an update and a completion of one session started together, in every
   }
   assert.equal(pairs, 200);
 });
+
+test('the claim-only read is the ACP door\'s alone: on any other door the same member is ignored, and the read is the session as before (ownership and expiry included)', async () => {
+  const d = door();
+  const id = (await d.create('US')).body.id;
+  const quoteId = (await d.record(id)).quote_id;
+  const kernel = d.kernel;
+  const executor = createCanonicalExecutor({ kernel, upstream: async () => ({}) });
+  const acpCtx = { user_ref: 'buyer_1', acp_session_id: id, protocol: 'acp' };
+  assert.deepEqual(await executor.execute('get_checkout_session', { session_id: quoteId, session_claim_only: true }, acpCtx), { session_id: quoteId, status: 'ready_for_payment', order_id: null });
+  for (const ctx of [{ ...acpCtx, protocol: undefined }, { ...acpCtx, protocol: 'mcp' }, { ...acpCtx, protocol: 'ucp' }]) {
+    const read = await executor.execute('get_checkout_session', { session_id: quoteId, session_claim_only: true }, ctx);
+    assert.deepEqual([read.session_id, read.status, read.currency, typeof read.totals], [quoteId, 'ready_for_payment', 'USD', 'object'], String(ctx.protocol));
+    // Another buyer is refused as before; the claim-only member opens nothing.
+    const other = await executor.execute('get_checkout_session', { session_id: quoteId, session_claim_only: true }, { ...ctx, user_ref: 'buyer_2' }).then(() => null, (e) => e);
+    assert.equal(other?.code, 'STATE_LINKAGE_MISMATCH', String(ctx.protocol));
+  }
+});
