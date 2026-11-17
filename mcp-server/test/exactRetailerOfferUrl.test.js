@@ -5,10 +5,10 @@ import intelligenceReads from "../../src/agentSignals/intelligenceReads.js";
 process.env.GET_OFFERS_VARIANT_ID = "on";
 const { createCommerceToolSurface } = await import("../src/commerceToolSurface.js");
 
-const canonicalVariant = "51665757438317";
-const retailerVariant = "54646142992457";
-const productId = "sig_stila";
-const pdp = "https://imagebeauty.com/products/stila-stay-all-day-liquid-lipstick";
+const canonicalVariant = "10000000000016";
+const retailerVariant = "10000000000024";
+const productId = "sig_placeholder_lipstick";
+const pdp = "https://retailer-a.example/products/placeholder-liquid-lipstick";
 const exactUrl = `${pdp}?variant=${retailerVariant}`;
 const signedUrl = "https://api.example/r?token=registry.signed";
 const syntheticPan = "4111111111111111";
@@ -16,7 +16,7 @@ const syntheticPan = "4111111111111111";
 function exactOffer() {
   return {
     offer_id: "of:catalog_offer:offer_exact",
-    merchant_id: "merch_image",
+    merchant_id: "merch_retailer_a",
     price: 25,
     currency: "USD",
     in_stock: true,
@@ -27,7 +27,7 @@ function exactOffer() {
     source: {
       type: "catalog_offer",
       offer_id: "offer_exact",
-      merchant_id: "merch_image",
+      merchant_id: "merch_retailer_a",
       variant_match: "exact",
       variant_id: canonicalVariant,
       retailer_variant_id: retailerVariant,
@@ -57,8 +57,8 @@ function surfaceFor(offer, expectedVariant) {
 test("get_offers preserves exact retailer selectors on default and localized storefront paths", async () => {
   const cases = [
     [exactUrl, canonicalVariant, retailerVariant],
-    ["https://kiokii.com/en-us/products/amuse-banana-lip-oil-4-5ml?variant=52547429007674",
-      "51896079974720", "52547429007674"],
+    ["https://retailer-b.example/en-us/products/placeholder-lip-oil?variant=20000000000022",
+      "20000000000014", "20000000000022"],
   ];
   for (const [url, canonical, retailer] of cases) {
     const offer = exactOffer();
