@@ -221,6 +221,7 @@ const each = (fn) => async () => { for (const store of STORES) for (const caller
 
 const ALLOWED = [
   [400, 'INVALID_QUOTE'], [400, 'INVALID_BUYER_CONTEXT'], [400, 'QUOTE_REQUIRED_BEFORE_PURCHASE'], [400, 'QUOTE_MERCHANT_MISMATCH'], [400, 'VARIANT_REQUIRED'],
+  [403, 'MERCHANT_NOT_ACCEPTING_ORDERS'],
   [404, 'QUOTE_NOT_FOUND'],
   [409, 'PARTNER_ASSERTION_REJECTED'], [409, 'UNSUPPORTED_COMMERCE_PATH'], [409, 'PREFLIGHT_FAILED'],
 ];
@@ -233,6 +234,7 @@ const LIST_FILE_TEXT = `[
   [400, "QUOTE_MERCHANT_MISMATCH"],
   [400, "QUOTE_REQUIRED_BEFORE_PURCHASE"],
   [400, "VARIANT_REQUIRED"],
+  [403, "MERCHANT_NOT_ACCEPTING_ORDERS"],
   [404, "QUOTE_NOT_FOUND"],
   [409, "PARTNER_ASSERTION_REJECTED"],
   [409, "PREFLIGHT_FAILED"],
@@ -240,7 +242,7 @@ const LIST_FILE_TEXT = `[
 ]
 `;
 
-test('the list of answers that give a claim back is the data file, and the file is exactly these nine status-and-code pairs', () => {
+test('the list of answers that give a claim back is the data file, and the file is exactly these ten status-and-code pairs', () => {
   const text = readFileSync(LIST_FILE, 'utf8');
   assert.equal(text, LIST_FILE_TEXT, 'the file, byte for byte');
   const pairs = JSON.parse(text);
@@ -251,6 +253,7 @@ test('the list of answers that give a claim back is the data file, and the file 
   assert.deepEqual(Object.entries(REFUSED_BEFORE_ANY_ORDER).flatMap(([st, codes]) => codes.map((c) => [Number(st), c])), pairs);
   assert.deepEqual(REFUSED_BEFORE_ANY_ORDER, {
     400: ['INVALID_BUYER_CONTEXT', 'INVALID_QUOTE', 'QUOTE_MERCHANT_MISMATCH', 'QUOTE_REQUIRED_BEFORE_PURCHASE', 'VARIANT_REQUIRED'],
+    403: ['MERCHANT_NOT_ACCEPTING_ORDERS'],
     404: ['QUOTE_NOT_FOUND'],
     409: ['PARTNER_ASSERTION_REJECTED', 'PREFLIGHT_FAILED', 'UNSUPPORTED_COMMERCE_PATH'],
   });
@@ -345,7 +348,6 @@ test('nothing else gives a claim back: no 503, no consumed quote, no refusal of 
     ['a quote that must be repriced', answered(409, 'QUOTE_STALE_REPRICE_REQUIRED')],
     ['a quote not found by the write step', answered(409, 'QUOTE_NOT_FOUND')],
     ['an out-of-stock code', answered(409, 'OUT_OF_STOCK')],
-    ['a merchant not accepting orders', answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS')],
     ['a quote required by the write step', answered(400, 'QUOTE_REQUIRED')],
     ['a checkout quote required by the write step', answered(400, 'CHECKOUT_QUOTE_REQUIRED')],
     // The codes the upstream derives from the status alone: they say nothing about where the failure was.

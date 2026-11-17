@@ -21,8 +21,9 @@
 //     upstream application answered; it does not say where in the request the failure happened.
 //   - The upstream retries its own order write inside one request when its database is busy. The second run goes
 //     through the write step's own checks again, and by then the first run's order may exist. So a refusal raised
-//     INSIDE the write step (stock, the quote re-read, the merchant's state) can be answered with an order behind
-//     it. Those are not on the list, whatever their status.
+//     INSIDE the write step (stock, the quote re-read) can be answered with an order behind it. Those are not on the
+//     list, whatever their status. (The order route's check that the seller is taking orders runs before its first
+//     write, and that retry re-runs the route only after a replay lookup that read back no order; it is on the list.)
 //   - A 503 is what the upstream answers when its database was busy, which can be after the order was written,
 //     and the upstream's own replay of an existing order does not hold while the database is busy. No 503 is on
 //     the list.
@@ -30,9 +31,10 @@
 //
 // So the list holds only codes a raise site writes by name, at the exact status it writes them with, where every
 // such site is in the request's prologue: the caller's assertion, quote ownership, the quote's shape, the buyer
-// context, the commerce-path and pre-flight policy, the variant check.
+// context, the commerce-path and pre-flight policy, the variant check, and the order route's own check that the
+// seller is taking orders (403 MERCHANT_NOT_ACCEPTING_ORDERS, raised before its first write).
 //
-// THE LIST IS A DATA FILE, safety-kernel/contracts/order_create_prologue_refusals.json: nine [status, code] pairs,
+// THE LIST IS A DATA FILE, safety-kernel/contracts/order_create_prologue_refusals.json: ten [status, code] pairs,
 // sorted by status and then by code. The upstream's repository holds the same file, byte for byte, and its own
 // tests hold its order path to it, so a pair can only be added or removed by changing both.
 //

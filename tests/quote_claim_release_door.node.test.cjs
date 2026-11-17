@@ -4,7 +4,7 @@
 // `/mcp` create_payment_link and the ACP REST complete route, over HTTP, with the gateway's own transport making
 // what it makes of each backend answer.
 //
-//   - The backend REFUSES FROM ITS PROLOGUE, before it could have written an order (one of nine listed
+//   - The backend REFUSES FROM ITS PROLOGUE, before it could have written an order (one of ten listed
 //     status-and-code answers: a bad buyer context, a quote that is not the caller's, a pre-flight refusal, ...):
 //     the failing call is answered exactly as before, and the same key then creates the order, once.
 //   - ANYTHING ELSE keeps the claim, and the same key and another key are told what they were told before
