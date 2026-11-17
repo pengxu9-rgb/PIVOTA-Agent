@@ -4,16 +4,23 @@
 // over, or may have taken effect, and for an order whose payment was already asked for. Each says what is true there
 // (errors.js IDEMPOTENCY_CONFLICT_ANSWERS, and the catalog's own words for the rest); none says "Starting fresh", which an
 // agent obeys by opening a second checkout while the first may have placed an order.
-// Every name is a placeholder.
+//
+// And the bare submit_payment (the invoke route's call): after `charge_pending` is written, a 5xx, a page from in front of
+// the backend, a timeout or a raw transport error is the unknown outcome with the order id, not a retriable
+// "temporarily unreachable"; the same key is told the same with nothing sent; another key is told the payment was already
+// asked for, with the order id. Every name is a placeholder.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ERROR_CATALOG, IDEMPOTENCY_CONFLICT_ANSWERS, PivotaCommerceError, idempotencyConflict } from '../src/errors.js';
+import { ERROR_CATALOG, IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_AFTER_ORDER, PivotaCommerceError, idempotencyConflict } from '../src/errors.js';
 import { IdempotencyLedger } from '../src/idempotencyLedger.js';
 import { InMemoryKvStore } from '../src/stores.js';
+import { SafetyKernel } from '../src/kernel.js';
 import { NO_EFFECT } from '../test-support/noEffectWords.js';
 
 const START_AGAIN = /start(?:ing)? (?:fresh|over|again)|different request reusing an old reference/i;
+const CTX = Object.freeze({ user_ref: 'buyer_1', acp_session_id: 'sess_1' });
+const QUOTE = Object.freeze({ merchant_id: 'merch_A', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test', shipping_address: { name: 'Buyer One', address_line1: '1 Example Road', city: 'Exampleton', postal_code: '00001', country: 'US' } });
 
 function assertConflict(err, reason, label, { orderId } = {}) {
   const words = IDEMPOTENCY_CONFLICT_ANSWERS[reason];
@@ -74,4 +81,80 @@ test('the ledger: a same-key resend while the first attempt is still running, a 
   // A key reused for a request with other details keeps the catalog's words, which are true there.
   const reused = await ledger.run('idem-flight-0001', { a: 2 }, async () => ({})).then(() => null, (e) => e);
   assert.deepEqual([reused.code, reused.detail.reason, reused.userMessage], ['IDEMPOTENCY_CONFLICT', undefined, ERROR_CATALOG.IDEMPOTENCY_CONFLICT.userMessage]);
+});
+
+/** A kernel whose upstream answers submit_payment with `make()` once (null: a payment page); every other call succeeds. */
+function world(make) {
+  const calls = [];
+  let failed = false;
+  const upstream = async (op) => {
+    calls.push(op);
+    if (op === 'preview_quote') return { quote_id: 'bq_1', currency: 'USD', merchant_of_record: 'merch_A', locked_totals: { subtotal: 1800, tax: 0, shipping: 0, total: 1800 }, line_items: [{ product_id: 'p1', quantity: 1 }] };
+    if (op === 'create_order') return { order_id: 'o_1', acp_state: {} };
+    if (op === 'submit_payment') {
+      if (make && !failed) { failed = true; throw make(); }
+      return { payment_id: 'pay_1', payment_status: 'succeeded' };
+    }
+    return {};
+  };
+  const kernel = new SafetyKernel({ upstream, secret: 'conflict-secret-0123456789abcdef', log: { info() {}, warn() {}, error() {} } });
+  return { kernel, calls };
+}
+async function ordered(w) {
+  const q = await w.kernel.previewQuote({ quote: QUOTE }, CTX);
+  const o = await w.kernel.createOrder({ idempotency_key: 'idem-cf-order-01', order: { quote_id: q.quote_id, shipping_address: {} } }, CTX);
+  // One confirmation per key: a resend with the same key is the same request (another token is another body). A key
+  // sent after the order can no longer be confirmed reuses the last token, as a caller holding only that one would.
+  const tokens = new Map();
+  let last = null;
+  const pay = async (key) => {
+    if (!tokens.has(key)) {
+      last = await w.kernel.mintConfirmation({ order_id: o.order_id }, CTX).catch(() => last);
+      tokens.set(key, last);
+    }
+    return w.kernel.submitPayment({ idempotency_key: key, confirmation_token: tokens.get(key), payment: { order_id: o.order_id, expected_amount: 1800, currency: 'USD' } }, CTX).then((r) => r, (e) => e);
+  };
+  return { orderId: o.order_id, pay };
+}
+
+test('the bare submit_payment: a 500, a 502 page, a timeout and a raw transport error after charge_pending are the unknown outcome with the order id, not retriable; the same key is told the same with nothing sent; another key is told the payment was already asked for', async () => {
+  const transport = (status, extra = {}) => () => new PivotaCommerceError('MERCHANT_UNAVAILABLE', { operation: 'submit_payment', upstream_status: status, ...extra });
+  const cases = {
+    500: transport(500),
+    '502 page': transport(502, { upstream_code: null }),
+    timeout: transport(null, { upstream_timeout: true }),
+    'no answer': transport(undefined),
+    'raw error': () => Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+  };
+  for (const [label, make] of Object.entries(cases)) {
+    const w = world(make);
+    const { orderId, pay } = await ordered(w);
+    const first = await pay('idem-cf-pay-0001');
+    assert.ok(first instanceof PivotaCommerceError, `${label}: ${first?.message}`);
+    assert.deepEqual([first.code, first.retriable, first.detail], ['CHECKOUT_OUTCOME_UNKNOWN', false, { reason: 'payment_outcome_unknown_after_order', order_id: orderId }], `${label}: ${first.message}`);
+    assert.notEqual(first.message, KERNEL_ANSWERED_AFTER_ORDER.payment_outcome_unknown_after_order.message, `${label}: no answer came back, so not the refused words`);
+    assert.match(first.recovery, /read the order in detail\.order_id with get_order before anything else/, label);
+    assert.equal((await w.kernel._orderStore.get(orderId)).status, 'charge_pending', label);
+    // The same key: the same answer, and the payment step is not asked again.
+    const same = await pay('idem-cf-pay-0001');
+    assert.deepEqual([same.code, same.message, same.detail], [first.code, first.message, first.detail], `${label} same key`);
+    // Another key: refused before anything is sent, in words that name the order and say its payment was asked for.
+    const other = await pay('idem-cf-pay-0002');
+    assertConflict(other, 'charge_pending', `${label} another key`, { orderId });
+    assert.equal(w.calls.filter((c) => c === 'submit_payment').length, 1, `${label}: one payment call`);
+  }
+});
+
+test('the bare submit_payment: a paid order is told it is paid, with its id; an order whose payment lock another request holds is told so, without one', async () => {
+  const w = world(null);
+  const { orderId, pay } = await ordered(w);
+  const paid = await pay('idem-cf-paid-0001');
+  assert.equal(paid.payment_status, 'succeeded');
+  assertConflict(await pay('idem-cf-paid-0002'), 'order_already_paid', 'paid', { orderId });
+
+  const w2 = world(null);
+  const second = await ordered(w2);
+  await w2.kernel._orderStore.putIfAbsent(`charge-lock:${second.orderId}`, { owner: 'another' }, { ttlMs: 60_000 });
+  assertConflict(await second.pay('idem-cf-lock-0001'), 'charge_in_progress', 'locked');
+  assert.equal(w2.calls.filter((c) => c === 'submit_payment').length, 0);
 });

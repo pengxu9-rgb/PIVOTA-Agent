@@ -237,6 +237,21 @@ export const KERNEL_ANSWERED_AFTER_ORDER = Object.freeze({
   }),
 });
 
+/**
+ * A CALL AFTER THE ORDER EXISTS THAT GOT NO READABLE ANSWER (no answer, a 5xx, a page from in front of the backend, a 2xx
+ * with nothing in it): the words, with the order id. One source for the tool doors (mcp-server commerceToolSurface.js)
+ * and invoke (contractValidation.js invokeErrorOf).
+ */
+export const KERNEL_NO_ANSWER_AFTER_ORDER = Object.freeze({
+  payment_outcome_unknown_after_order: Object.freeze({
+    message: 'The order was created (detail.order_id), but whether its payment step went through is unknown: the payment service gave no readable answer. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.',
+  }),
+  payment_link_outcome_unknown_after_order: Object.freeze({
+    message: 'The order was created (detail.order_id), but whether its payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.',
+  }),
+  after_sales_outcome_unknown: Object.freeze({ message: KERNEL_ANSWERED_AFTER_ORDER.after_sales_outcome_unknown.message }),
+});
+
 /** Is `answered` a refusal kind the kernel gives `reason` with this order id? */
 function answeredFits(answered, reason, orderId) {
   if (reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate) return orderId === null && Object.hasOwn(KERNEL_ANSWERED_REFUSALS, answered);

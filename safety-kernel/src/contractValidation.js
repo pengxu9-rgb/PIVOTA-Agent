@@ -11,7 +11,7 @@
 //   3. submit_payment must NOT trust a model amount — expected_amount is a verification echo only
 // See docs/agent-checkout/C3-reconciliation.md for the migration plan.
 
-import { IDEMPOTENCY_CONFLICT_ANSWERS, PivotaCommerceError } from './errors.js';
+import { IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_AFTER_ORDER, KERNEL_NO_ANSWER_AFTER_ORDER, PivotaCommerceError, kernelOutcomeUnknownOf } from './errors.js';
 import intakeBounds from './protocol/intakeBounds.cjs';
 import { intakeBoundRefusal, surfaceableIntakeRefusal } from './protocol/buyerIntake.js';
 
@@ -72,6 +72,14 @@ export function assertInvokeIntakeBounds(operation, payload) {
  */
 export function invokeErrorOf(err) {
   const error = err.toResult().error;
+  // A call after the caller's own order exists (its payment step, its payment page, an after-sales request) whose outcome
+  // is unknown: the words that say so, and the order they name (detail.order_id). The kernel raises these only after its
+  // ownership check of that order, and the caller sent the id itself.
+  const unknown = kernelOutcomeUnknownOf(err);
+  if (unknown && unknown.order_id && Object.hasOwn(KERNEL_NO_ANSWER_AFTER_ORDER, unknown.reason)) {
+    const words = unknown.answered ? KERNEL_ANSWERED_AFTER_ORDER[unknown.reason] : KERNEL_NO_ANSWER_AFTER_ORDER[unknown.reason];
+    return { code: error.code, retriable: error.retriable, message: words.message, recovery: error.recovery, detail: { reason: unknown.reason, order_id: unknown.order_id } };
+  }
   // ONLY the shared bounds, by their own reasons. Any other intake refusal that ever reaches this door keeps the plain body.
   const surfaced = INVOKE_NAMED_REASONS.has(err.detail?.reason) ? surfaceableIntakeRefusal(err) : null;
   if (!surfaced) return error;

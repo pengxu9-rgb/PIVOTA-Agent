@@ -486,6 +486,53 @@ test('P2-1 (a): a same-key resend while the first attempt is still running is to
   }
 });
 
+test('P2-1 (b) and P2-2: invoke submit_payment after the order exists: a refused assertion (replay, path), a 500, a page from in front of the backend and a timeout are each 409 CHECKOUT_OUTCOME_UNKNOWN, not retriable, in the after-order words with the order id; the same key is told the same with nothing sent; a new key is told the payment was already asked for, with the order id, never "Starting fresh"', async () => {
+  const { IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_AFTER_ORDER, KERNEL_NO_ANSWER_AFTER_ORDER } = await import('../safety-kernel/src/errors.js');
+  const REASON = 'payment_outcome_unknown_after_order';
+  const KINDS = {
+    par_replay: [() => ANSWERS.partnerAssertion('replay'), KERNEL_ANSWERED_AFTER_ORDER[REASON]],
+    par_path: [() => ANSWERS.partnerAssertion('path'), KERNEL_ANSWERED_AFTER_ORDER[REASON]],
+    r500: [() => ANSWERS.internalError(), KERNEL_NO_ANSWER_AFTER_ORDER[REASON]],
+    r502_page: [() => ANSWERS.badGateway(), KERNEL_NO_ANSWER_AFTER_ORDER[REASON]],
+    timeout: [() => ANSWERS.timeout(), KERNEL_NO_ANSWER_AFTER_ORDER[REASON]],
+  };
+  const commerce = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  for (const market of PRICED_MARKETS) {
+    for (const [kind, [make, words]] of Object.entries(KINDS)) {
+      const label = `invoke submit_payment ${kind} ${market}`;
+      seq += 1;
+      const buyer = buyerFor(seq);
+      const ctx = { user_ref: buyer['X-Test-User-Ref'], acp_session_id: buyer['X-Test-Acp-Session-Id'] };
+      const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer });
+      const o = await door.invoke('create_order', { idempotency_key: freshKey(), order: invokeOrderOf(q, market) }, { buyer });
+      assert.equal(o.http, 200, `${label}: ${o.raw.slice(0, 300)}`);
+      const orderId = o.body.order_id;
+      assert.equal(o.body.currency, q.body.currency, `${label}: the order is in the quote's currency`);
+      const token = await commerce.mintConfirmation({ order_id: orderId }, ctx);
+      const pay = (k, t) => door.invoke('submit_payment', { idempotency_key: k, confirmation_token: t, payment: { order_id: orderId, expected_amount: o.body.amount_total, currency: o.body.currency } }, { buyer });
+      door.paymentScript.push(make());
+      const key = freshKey();
+      const first = await pay(key, token);
+      assert.deepEqual([first.http, first.body.code, first.body.retriable, first.body.message, first.body.detail], [409, 'CHECKOUT_OUTCOME_UNKNOWN', false, words.message, { reason: REASON, order_id: orderId }], `${label}: ${first.raw.slice(0, 400)}`);
+      assert.match(first.body.recovery, /read the order in detail\.order_id with get_order before anything else/, label);
+      assert.equal(sent(first, PAGES), 1, `${label}: one payment call`);
+      // The same key: the same answer, and the payment step is not asked again.
+      const same = await pay(key, token);
+      assert.equal(same.raw, first.raw, `${label} same key`);
+      assert.equal(sent(same, PAGES) + sent(same, ORDERS), 0, `${label} same key: nothing sent`);
+      // A new key (and a new confirmation): the payment was already asked for; read the order, do not pay again.
+      const again = await commerce.mintConfirmation({ order_id: orderId }, ctx).catch(() => token);
+      const other = await pay(freshKey(), again);
+      assert.deepEqual([other.http, other.body.code, other.body.retriable, other.body.message, other.body.detail], [409, 'IDEMPOTENCY_CONFLICT', false, IDEMPOTENCY_CONFLICT_ANSWERS.charge_pending.message, { reason: 'charge_pending', order_id: orderId }], `${label} new key: ${other.raw.slice(0, 400)}`);
+      assert.equal(sent(other, PAGES) + sent(other, ORDERS), 0, `${label} new key: nothing sent`);
+      for (const r of [first, same, other]) {
+        assert.equal(START_FRESH.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+        assert.equal(NO_EFFECT_WORDS.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+      }
+    }
+  }
+});
+
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
   assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');

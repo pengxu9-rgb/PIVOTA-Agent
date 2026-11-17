@@ -17,7 +17,7 @@
 
 import externalSeedLane from "../../src/services/externalSeedLane.js";
 import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
-import { PivotaCommerceError, IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_REFUSALS, KERNEL_ANSWERED_AFTER_ORDER, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
+import { PivotaCommerceError, IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_REFUSALS, KERNEL_ANSWERED_AFTER_ORDER, KERNEL_NO_ANSWER_AFTER_ORDER, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 // The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
@@ -2030,16 +2030,16 @@ const ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS = Object.freeze({
 // The kernel's unknown outcomes (errors.js KERNEL_OUTCOME_UNKNOWN_REASONS), in words that say what is and is not known.
 const KERNEL_OUTCOME_UNKNOWN_ANSWERS = Object.freeze({
   payment_outcome_unknown_after_order: {
-    withOrder: "The order was created (detail.order_id), but whether its payment step went through is unknown: the payment service gave no readable answer. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.payment_outcome_unknown_after_order.message,
     withoutOrder: "Whether the payment step went through is unknown: the payment service gave no readable answer. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
   },
   payment_link_outcome_unknown_after_order: {
-    withOrder: "The order was created (detail.order_id), but whether its payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.payment_link_outcome_unknown_after_order.message,
     withoutOrder: "Whether the payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
   },
   // Only ever raised with an order id and the order service's refusal (KERNEL_ANSWERED_AFTER_ORDER gives its words).
   after_sales_outcome_unknown: {
-    withOrder: KERNEL_ANSWERED_AFTER_ORDER.after_sales_outcome_unknown.message,
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.after_sales_outcome_unknown.message,
     withoutOrder: "Whether this after-sales request was filed is unknown. Send the same call again with the same idempotency_key; do not file another request for this order until it answers.",
   },
   order_create_outcome_unknown: {
