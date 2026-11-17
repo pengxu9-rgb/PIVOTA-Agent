@@ -238,6 +238,7 @@ test('Q1: an order call the backend refused below 500 in a way that keeps the cl
 
 test('Q3: a seller not taking orders (the backend\'s 403 MERCHANT_NOT_ACCEPTING_ORDERS) is named and terminal on every tool door, in every priced market; the session is given back only while the shared list holds the pair', each(async (caller) => {
   const expected = curatedUpstreamRefusal({ operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' } });
+  assert.ok(expected && typeof expected.acp_message === 'string', 'the named refusal has curated words');
   assert.match(expected.acp_message, /^This seller is not taking orders; nothing was ordered/);
   for (const market of PRICED_MARKETS) {
     const label = `${caller} ${market}`;
@@ -263,6 +264,7 @@ test('Q3: a seller not taking orders (the backend\'s 403 MERCHANT_NOT_ACCEPTING_
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
   assert.equal(mapUpstreamErrorToKernelCode(named), 'OPERATION_NOT_ALLOWED');
+  assert.ok(curatedUpstreamRefusal(named), 'curated');
   assert.deepEqual(curatedUpstreamRefusal(named).acp_detail, { reason: 'merchant_not_accepting_orders' });
   for (const [label, input] of [
     ['another op', { ...named, operation: 'submit_payment' }],

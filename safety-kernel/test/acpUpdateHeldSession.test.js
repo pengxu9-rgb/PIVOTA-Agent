@@ -257,3 +257,27 @@ test('the claim-only read is the ACP door\'s alone: on any other door the same m
     assert.equal(other?.code, 'STATE_LINKAGE_MISMATCH', String(ctx.protocol));
   }
 });
+
+test('the ACP order carries the status of ITS order only: a recorded order the session read does not name keeps `order: { id }`', async () => {
+  const store = new InMemoryKvStore({ now: () => T0 });
+  await store.set('sess_x', { quote_id: 'q_x', order_id: 'o_recorded', user_ref: 'buyer_1', rev: 'r0' });
+  const reads = [
+    { session_id: 'q_x', status: 'completed', order_id: 'o_another', order_status: 'paid', currency: 'USD' },
+    { session_id: 'q_x', status: 'order_status_unknown', order_id: 'o_another', order_status: 'expired', currency: 'USD' },
+    { session_id: 'q_x', status: 'completed', order_id: 'o_recorded', order_status: 'paid', currency: 'USD' },
+  ];
+  let answer;
+  const adapter = createAcpRestAdapter({
+    executor: { execute: async () => answer },
+    sessionStore: store, signingSecret: SECRET, resolveUserRef: async () => ({ user_ref: 'buyer_1', customer_email: 'buyer@example.test' }), marketCurrencyOf, now: () => T0,
+  });
+  const get = () => {
+    const timestamp = String(T0);
+    return adapter.getCheckoutSession({ headers: { timestamp, signature: createHmac('sha256', SECRET).update(`${timestamp}.`).digest('hex') }, rawBody: '', params: { checkout_session_id: 'sess_x' } });
+  };
+  for (const [read, order, status] of [[reads[0], { id: 'o_recorded' }, 'checkout.completed'], [reads[1], { id: 'o_recorded' }, 'checkout.completed'], [reads[2], { id: 'o_recorded', status: 'paid' }, 'checkout.completed']]) {
+    answer = read;
+    const got = await get();
+    assert.deepEqual([got.status, got.body.status, got.body.order], [200, status, order], JSON.stringify(read));
+  }
+});

@@ -377,6 +377,13 @@ test('M04 a bare createOrder (the invoke route\'s call) after a 429 or an unname
       assert.equal(await w.kernel.isQuoteClaimed(sid), true, label);
     }
   }
+  // A deadline mark is never a refusal the store answered, whatever status rides beside it: the no-answer words.
+  {
+    const w = world();
+    const sid = await open(w);
+    w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: 403, upstream_code: null, upstream_timeout: true }); });
+    assertUnknown(await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0009', order: { quote_id: sid, customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } } }, CTX)), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, 'a deadline beside a 403');
+  }
   // The named 403, bare: answered as raised; the same key is a first attempt again only while the pair is listed.
   const w = world();
   const sid = await open(w);
