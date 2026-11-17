@@ -177,6 +177,7 @@ const ATTRIBUTED_LINK_RE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/r\?token=[A-
 // break ~10% of carts. The only producer of these keys is our own composer
 // (services/outbound_links_service.py), which writes an id already through extract_shopify_numeric_variant_id.
 const STOREFRONT_URL_KEYS = new Set(['carturl', 'pdpurl']);
+const verifiedRetailerPdpUrl = Symbol.for('pivota.commerce.verifiedRetailerPdpUrl');
 const STOREFRONT_ID_SPAN_RE = /\/cart\/\d{1,19}:\d{1,4}|[?&]variant=\d{1,19}\b/g;
 // Redact PANs everywhere EXCEPT the spans we wrote. Splitting on those spans also means a digit run cannot be
 // matched across a boundary into a preserved id.
@@ -276,7 +277,10 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
         }
         if (stripRankingInternals && RANKING_INTERNAL.has(c)) continue; // internal ranking/debug noise — drop the key entirely
         if (isProductNode && PRODUCT_SCOPED_INTERNAL.has(c)) continue; // bare rank signal on a product node — drop
-        out[k] = walk(v, seen, depth + 1, c);
+        // The offer mapper marks the exact URL, and the annotation never goes on the wire.
+        const verifiedPdp = k === 'url' && typeof v === 'string'
+          && Object.hasOwn(value, verifiedRetailerPdpUrl) && v === value[verifiedRetailerPdpUrl];
+        out[k] = walk(v, seen, depth + 1, verifiedPdp ? 'pdpurl' : c);
       }
       result = out;
     }
