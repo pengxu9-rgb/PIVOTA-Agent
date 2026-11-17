@@ -38,8 +38,10 @@ const SINGLE_PRODUCT_READ_OPS = new Set(['get_product_detail']);
 //
 // Granted on exactly the proof the quote-claim release needs (safety-kernel/src/upstreamRefusal.js): the order op,
 // the exact status, and the route's own detail naming the code (`error.details.error`), not a message or the
-// status-derived code. So the answer says "nothing was ordered, fix and retry" exactly when the claim was given back
-// and a corrected retry can succeed; anything short of that proof stays MERCHANT_UNAVAILABLE.
+// status-derived code. The words say "no order was created, fix and retry", so they are a candidate only: the kernel
+// answers them as raised only when the release rule matches too (the pair is listed), and otherwise answers its unknown
+// outcome (`claims_no_effect`, safety-kernel/src/errors.js claimsNoEffect). Anything short of the shape stays
+// MERCHANT_UNAVAILABLE.
 const BUYER_CONTEXT_REFUSAL_CODE = 'INVALID_BUYER_CONTEXT';
 function isBuyerContextRefusal({ operation, upstreamCode, status, upstreamDetail } = {}) {
   return String(operation || '').trim() === 'create_order'
@@ -79,6 +81,9 @@ function curatedUpstreamRefusal(input = {}) {
   const reason = 'buyer_context_refused';
   return {
     reason,
+    // These words say no order was created: the kernel answers them only on the release rule's proof
+    // (safety-kernel/src/errors.js claimsNoEffect), else the unknown outcome.
+    claims_no_effect: true,
     acp_message: [
       'The order could not be created: the buyer details this checkout carries were refused (an order needs a complete shipping address, with name, address_line1, city, postal_code and country, and a buyer email).',
       'No order was created and nothing was charged. Supply the missing details, with this call or by updating the checkout session, then try again.',

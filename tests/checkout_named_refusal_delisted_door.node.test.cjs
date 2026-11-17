@@ -1,14 +1,15 @@
 'use strict';
 
-// A SELLER NOT TAKING ORDERS, WITH THE PAIR TAKEN OFF THE LIST, through the real doors over HTTP.
+// EVERY LISTED REFUSAL WHOSE WORDS SAY NOTHING HAPPENED, TAKEN OFF THE LIST, through the real doors over HTTP.
 //
-// "Nothing was ordered" (MERCHANT_NOT_ACCEPTING_ORDERS) may be said only on the quote-claim release rule's own proof
-// (safety-kernel/src/upstreamRefusal.js): the pair [403, MERCHANT_NOT_ACCEPTING_ORDERS] is on the shared list, the
-// route named the code, and no deadline mark. The day the upstream finds its merchant check can follow a write, it
-// takes the pair off the list in both repositories. This boots a gateway whose list is exactly that (the shipped list
-// without the 403 pair) and pins what every door must then say: the kernel's unknown outcome, in the store-refused
-// words, never "nothing was ordered", with the claim kept: the same key is told the same, another key the used session,
-// and no second order call is ever made.
+// Words that say an order call had no effect ("nothing was ordered", "nothing was done", "no order was created") may be
+// given only on the quote-claim release rule's own proof (safety-kernel/src/upstreamRefusal.js): the pair is on the
+// shared list, the route named the code, no deadline mark. The day the upstream finds such a check can follow a write, it
+// takes the pair off the list in both repositories. This boots a gateway whose list is the shipped one without EVERY pair
+// whose released answer says nothing happened (found by scanning those answers, not by a hand list), lands an order
+// behind each such refusal, and pins what every door must then say: the kernel's unknown outcome, in the refused words,
+// never a no-effect sentence, with the claim kept: the same key is told the same, another key the used session, and no
+// second order call is ever made.
 //
 // The delisting is done in this process only, by answering the list file's read with the shorter list before the
 // gateway loads the kernel; nothing on disk changes. Every name is a placeholder.
@@ -18,28 +19,47 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { syncBuiltinESMExports } = require('node:module');
+const { curatedUpstreamRefusal, mapUpstreamErrorToKernelCode } = require('../src/services/commerceKernelErrorMapping');
 
 const LIST_FILE = path.join(__dirname, '../safety-kernel/contracts/order_create_prologue_refusals.json');
 const SHIPPED = JSON.parse(fs.readFileSync(LIST_FILE, 'utf8'));
-const DELISTED = SHIPPED.filter(([status, code]) => !(status === 403 && code === 'MERCHANT_NOT_ACCEPTING_ORDERS'));
-const DELISTED_TEXT = `[\n${DELISTED.map(([status, code]) => `  [${status}, ${JSON.stringify(code)}]`).join(',\n')}\n]\n`;
+let DELISTED_TEXT = null; // set before the gateway loads; the list file's read answers it from then on
 const realRead = fs.readFileSync;
 fs.readFileSync = function readFileSync(file, ...rest) {
-  if (String(file instanceof URL ? file.pathname : file) === LIST_FILE) return typeof rest[0] === 'string' || rest[0]?.encoding ? DELISTED_TEXT : Buffer.from(DELISTED_TEXT);
+  if (DELISTED_TEXT !== null && String(file instanceof URL ? file.pathname : file) === LIST_FILE) return typeof rest[0] === 'string' || rest[0]?.encoding ? DELISTED_TEXT : Buffer.from(DELISTED_TEXT);
   return realRead.call(this, file, ...rest);
 };
 syncBuiltinESMExports();
 
 const fx = require('./_support/quoteClaimReleaseDoor.cjs');
 
-const { IDS, ANSWERS } = fx;
+const { IDS, ANSWERS, BEFORE_ANY_ORDER } = fx;
 const ORDERS = '/agent/v2/orders';
+const CALLERS = ['mcp_complete', 'mcp_payment_link', 'ucp_complete', 'acp_complete', 'invoke'];
 let door;
 let keys;
+let NO_EFFECT;
 let KERNEL_ANSWERED_REFUSALS;
 let REFUSED_BEFORE_ANY_ORDER;
+let NO_EFFECT_PAIRS; // [[status, code, harness answer name]]
 
 test.before(async () => {
+  ({ NO_EFFECT } = await import('../safety-kernel/test/helpers/noEffectWords.js'));
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  // The listed pairs whose RELEASED answer says nothing happened: the curated words, else the code's catalog words.
+  NO_EFFECT_PAIRS = SHIPPED.filter(([status, code]) => {
+    const input = { operation: 'create_order', status, upstreamCode: code, upstreamDetail: { error: code, reason: 'path' } };
+    const curated = curatedUpstreamRefusal(input);
+    const kernelCode = mapUpstreamErrorToKernelCode(input);
+    const words = `${curated?.acp_message || ''} ${ERROR_CATALOG[kernelCode]?.userMessage || ''} ${ERROR_CATALOG[kernelCode]?.recovery || ''}`;
+    return NO_EFFECT.test(words);
+  }).map(([status, code]) => {
+    const name = Object.keys(BEFORE_ANY_ORDER).find((n) => BEFORE_ANY_ORDER[n][0] === status && BEFORE_ANY_ORDER[n][1].error === code);
+    assert.ok(name, `the fixture scripts ${status} ${code}`);
+    return [status, code, name];
+  });
+  const kept = SHIPPED.filter(([s, c]) => !NO_EFFECT_PAIRS.some(([s2, c2]) => s2 === s && c2 === c));
+  DELISTED_TEXT = `[\n${kept.map(([status, code]) => `  [${status}, ${JSON.stringify(code)}]`).join(',\n')}\n]\n`;
   ({ KERNEL_ANSWERED_REFUSALS } = await import('../safety-kernel/src/errors.js'));
   ({ REFUSED_BEFORE_ANY_ORDER } = await import('../safety-kernel/src/upstreamRefusal.js'));
   keys = await fx.mintKeys();
@@ -99,37 +119,47 @@ async function opened(caller, market) {
   };
 }
 
-test('the gateway in this process holds the shipped list without the 403 pair', () => {
-  assert.equal(Object.hasOwn(REFUSED_BEFORE_ANY_ORDER, 403), false);
-  assert.equal(DELISTED.length, SHIPPED.length - 1);
+test('the scan finds every listed pair whose answer says nothing happened, and this gateway holds the list without them', () => {
+  const found = NO_EFFECT_PAIRS.map(([s, c]) => `${s} ${c}`).sort();
+  for (const pair of ['400 INVALID_BUYER_CONTEXT', '403 MERCHANT_NOT_ACCEPTING_ORDERS', '409 PARTNER_ASSERTION_REJECTED']) assert.ok(found.includes(pair), `${pair} in ${JSON.stringify(found)}`);
+  for (const [status, code] of NO_EFFECT_PAIRS) assert.equal((REFUSED_BEFORE_ANY_ORDER[status] || []).includes(code), false, `${status} ${code} delisted`);
+  // Every other pair is still listed.
+  assert.equal(Object.values(REFUSED_BEFORE_ANY_ORDER).flat().length, SHIPPED.length - NO_EFFECT_PAIRS.length);
 });
 
-test('delisted: a seller not taking orders is the unknown outcome on every door, in the store-refused words, never "nothing was ordered"; the claim is kept and no second order call is made', async () => {
+test('delisted: every no-effect refusal, with the order landed behind it, is the unknown outcome on every door, in the refused words and never a no-effect sentence; the claim is kept and no second order call is made', async () => {
   const refused = KERNEL_ANSWERED_REFUSALS.refused;
-  for (const caller of ['mcp_complete', 'mcp_payment_link', 'ucp_complete', 'acp_complete', 'invoke']) {
-    for (const market of ['US', 'SG', 'GB']) {
-      const label = `${caller} ${market}`;
-      const attempt = await opened(caller, market);
-      door.orderScript.push(ANSWERS.merchantNotAccepting());
-      const key = freshKey();
-      const first = await attempt(key);
-      assert.equal(first.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${label}: ${first.raw.slice(0, 300)}`);
-      assert.equal(/nothing was ordered|not taking orders|no readable answer|may have been accepted/i.test(first.raw), false, `${label}: ${first.raw.slice(0, 300)}`);
-      assert.equal(first.orders, 1, label);
-      if (caller === 'acp_complete') {
-        assert.deepEqual([first.http, first.message], [409, refused.message], label);
-      } else if (caller === 'invoke') {
-        assert.deepEqual([first.http, first.message, first.recovery], [409, refused.message, refused.recovery], label);
-      } else {
-        assert.deepEqual([first.message, first.recovery, first.detail], [`${refused.message} Sending this call again with the same idempotency_key returns this same answer.`, refused.recovery, { reason: 'order_create_outcome_unknown', order_id: null }], label);
+  for (const [status, code, answerName] of NO_EFFECT_PAIRS) {
+    for (const caller of CALLERS) {
+      for (const market of ['US', 'SG', 'GB']) {
+        const label = `${status} ${code} ${caller} ${market}`;
+        const attempt = await opened(caller, market);
+        const made = door.orders.length;
+        door.orderScript.push(ANSWERS[answerName]({ landed: true }));
+        const key = freshKey();
+        const first = await attempt(key);
+        assert.equal(first.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${label}: ${first.raw.slice(0, 300)}`);
+        assert.equal(NO_EFFECT.test(first.raw), false, `${label}: ${first.raw.slice(0, 300)}`);
+        assert.equal(/not taking orders|no readable answer|may have been accepted|could not confirm the account/i.test(first.raw), false, `${label}: ${first.raw.slice(0, 300)}`);
+        assert.equal(first.orders, 1, label);
+        assert.equal(door.orders.length, made + 1, `${label}: the order exists`);
+        if (caller === 'acp_complete') {
+          assert.deepEqual([first.http, first.message], [409, refused.message], label);
+        } else if (caller === 'invoke') {
+          assert.deepEqual([first.http, first.message, first.recovery], [409, refused.message, refused.recovery], label);
+        } else {
+          assert.deepEqual([first.message, first.recovery, first.detail], [`${refused.message} Sending this call again with the same idempotency_key returns this same answer.`, refused.recovery, { reason: 'order_create_outcome_unknown', order_id: null }], label);
+        }
+        // Kept: the same key is told the same, another key the used session, and no order call follows.
+        const same = await attempt(key);
+        assert.equal(same.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} same key: ${same.raw.slice(0, 300)}`);
+        if (caller !== 'acp_complete') assert.equal(same.raw, first.raw, `${label}: byte for byte`);
+        const other = await attempt(freshKey());
+        assert.equal(other.code, 'QUOTE_ALREADY_USED', `${label} another key: ${other.raw.slice(0, 300)}`);
+        assert.equal(NO_EFFECT.test(other.raw), false, `${label} another key: ${other.raw.slice(0, 300)}`);
+        assert.equal(same.orders + other.orders, 0, `${label}: no second order call`);
+        assert.equal(door.orders.length, made + 1, label);
       }
-      // Kept: the same key is told the same, another key the used session, and no order call follows.
-      const same = await attempt(key);
-      assert.equal(same.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} same key: ${same.raw.slice(0, 300)}`);
-      if (caller !== 'acp_complete') assert.equal(same.raw, first.raw, `${label}: byte for byte`);
-      const other = await attempt(freshKey());
-      assert.equal(other.code, 'QUOTE_ALREADY_USED', `${label} another key: ${other.raw.slice(0, 300)}`);
-      assert.equal(same.orders + other.orders, 0, `${label}: no second order call`);
     }
   }
 });

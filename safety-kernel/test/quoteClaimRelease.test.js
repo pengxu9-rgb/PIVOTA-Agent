@@ -590,10 +590,10 @@ const UNKNOWN_OUTCOMES = [
   ['a 403 with no code', refuse(403, null), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a listed code at a status it is not listed for', refuse(409, 'INVALID_BUYER_CONTEXT'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a rate limit', refuse(429, 'RATE_LIMIT_EXCEEDED'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
-  ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion: subject', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'subject' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: subject', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'subject' }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
   ['a listed code the transport took from a message, not from the route\'s detail', () => { throw answered(400, 'INVALID_BUYER_CONTEXT', { route: { message: 'INVALID_BUYER_CONTEXT' } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a listed code the transport took from the outer status-derived code', () => { throw answered(400, 'INVALID_QUOTE', { route: { message: 'placeholder', items: [] } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a 409 with no code', refuse(409, null), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
@@ -1063,10 +1063,11 @@ test('a release matches the attempt\'s id and nothing else: an older build\'s cl
 }));
 
 test('the failed create rejects with the very error the upstream raised, not a copy of it', async () => {
-  // A refusal the upstream answered: released, or kept under a terminal name. A failure with no readable answer, or a
-  // kept one that would say retriable, is the kernel's unknown outcome instead (the next test).
+  // A refusal the upstream answered: released, or kept under a terminal name. A failure with no readable answer, a kept
+  // one that would say retriable, and a kept one whose words say nothing happened (a refused assertion's `replay`) are
+  // the kernel's unknown outcome instead (the next test, and noEffectWordsGated.test.js).
   for (const store of STORES) {
-    for (const raised of [answered(RELEASED.status, RELEASED.code), answered(409, 'OUT_OF_STOCK'), answered(409, 'QUOTE_EXPIRED'), answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' })]) {
+    for (const raised of [answered(RELEASED.status, RELEASED.code), answered(409, 'OUT_OF_STOCK'), answered(409, 'QUOTE_EXPIRED'), answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'path' })]) {
       const w = world({ store });
       const h = await w.open('complete', 'US');
       w.script.push(() => { throw raised; });

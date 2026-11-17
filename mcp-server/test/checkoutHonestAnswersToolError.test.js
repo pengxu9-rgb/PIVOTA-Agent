@@ -50,7 +50,7 @@ test("an ordered session's cancel refusal: with the upstream cancel off, never '
 
 test("an order call the store refused (a 403, a 429) keeps the unknown outcome's code and detail, in its own words: never 'no readable answer'", () => {
   const plain = bodyOf(kernelOutcomeUnknown("order_create_outcome_unknown", null));
-  for (const [answered, words] of [["refused", /answered this order request with a refusal\. This checkout cannot be retried/], ["rate_limited", /refused this order request for rate limiting\. An earlier attempt of this checkout may already have placed an order/]]) {
+  for (const [answered, words] of [["refused", /^The order service refused this order request\. This checkout cannot be retried/], ["rate_limited", /refused this order request for rate limiting\. An earlier attempt of this checkout may already have placed an order/]]) {
     const body = bodyOf(kernelOutcomeUnknown("order_create_outcome_unknown", null, { answered }));
     assert.deepEqual(Object.keys(body), Object.keys(plain), answered);
     assert.deepEqual([body.code, body.retriable, body.detail], ["CHECKOUT_OUTCOME_UNKNOWN", false, { reason: "order_create_outcome_unknown", order_id: null }], answered);

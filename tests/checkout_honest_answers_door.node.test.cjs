@@ -277,6 +277,61 @@ test('Q3: on the ACP door a seller not taking orders is answered 409 MERCHANT_NO
   }
 });
 
+test('P1-1: a refused caller assertion that keeps the claim (replay, stale, subject, no reason), with the order made by the first copy, is never "nothing was done" on /mcp, /ucp/mcp, invoke or ACP: the unknown outcome, the claim kept, no second order', async () => {
+  const { KERNEL_ANSWERED_REFUSALS: words } = await import('../safety-kernel/src/errors.js');
+  for (const reason of ['replay', 'stale', 'subject', undefined]) {
+    for (const caller of [...CALLERS, 'invoke', 'acp']) {
+      const label = `${caller} ${reason}`;
+      const made = door.orders.length;
+      let first; let same; let other;
+      if (caller === 'invoke') {
+        seq += 1;
+        const buyer = buyerFor(seq);
+        const q = await door.invoke('preview_quote', { quote: nativeQuote('SG') }, { buyer });
+        const order = (k) => door.invoke('create_order', { idempotency_key: k, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address('SG'), recipient_name: 'Buyer One' } } }, { buyer });
+        door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+        const key = freshKey();
+        first = await order(key); same = await order(key); other = await order(freshKey());
+        assert.deepEqual([first.http, first.body.code, first.body.message, first.body.recovery], [409, 'CHECKOUT_OUTCOME_UNKNOWN', words.refused.message, words.refused.recovery], `${label}: ${first.raw.slice(0, 300)}`);
+        assert.equal(same.raw, first.raw, label);
+        assert.equal(other.body.code, 'QUOTE_ALREADY_USED', label);
+      } else if (caller === 'acp') {
+        const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address('SG') }, { key: freshKey() });
+        const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+        const complete = (k) => door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: k });
+        door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+        const key = freshKey();
+        first = await complete(key); same = await complete(key); other = await complete(freshKey());
+        assert.deepEqual([first.http, first.body.code, first.body.message], [409, 'CHECKOUT_OUTCOME_UNKNOWN', words.refused.message], `${label}: ${first.raw.slice(0, 300)}`);
+        assert.equal(same.body.code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
+        assert.equal(other.body.code, 'QUOTE_ALREADY_USED', label);
+      } else {
+        const h = await open(caller, 'SG');
+        door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+        const key = freshKey();
+        first = await attempt(h, key); same = await attempt(h, key); other = await attempt(h, freshKey());
+        assertUnknown(first, 'order_create_outcome_unknown', null, label, { answered: 'refused' });
+        assert.equal(same.raw, first.raw, label);
+        assert.equal(errorOf(other).code, 'QUOTE_ALREADY_USED', label);
+      }
+      for (const r of [first, same, other]) assert.equal(/nothing was (?:done|written)|could not confirm the account/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+      assert.equal(sent(first, ORDERS), 1, label);
+      assert.equal(sent(same, ORDERS) + sent(other, ORDERS), 0, `${label}: no second order call`);
+      assert.equal(door.orders.length, made + 1, `${label}: the first copy's order, and no other`);
+    }
+  }
+  // A listed reason (decided before any store read) is the named refusal as raised, and gives the session back.
+  for (const caller of CALLERS) {
+    const h = await open(caller, 'GB');
+    door.orderScript.push(ANSWERS.partnerAssertion('path'));
+    const key = freshKey();
+    const first = await attempt(h, key);
+    assert.equal(errorOf(first).code, 'PARTNER_ASSERTION_REJECTED', `${caller}: ${first.raw.slice(0, 300)}`);
+    const again = await attempt(h, key);
+    assert.equal(again.isError, false, `${caller}: ${again.raw.slice(0, 300)}`);
+  }
+});
+
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
   assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');
@@ -518,7 +573,7 @@ test('the strict invoke route: an order call with no readable answer is an unkno
   const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
   for (const [answer, http, code, words] of [
     [ANSWERS.rateLimited, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /rate limiting/],
-    [ANSWERS.notAuthorized, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /answered this order request with a refusal/],
+    [ANSWERS.notAuthorized, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /^The order service refused this order request\./],
     [ANSWERS.merchantNotAccepting, 409, 'MERCHANT_NOT_ACCEPTING_ORDERS', null],
   ]) {
     seq += 1;

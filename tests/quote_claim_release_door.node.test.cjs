@@ -123,7 +123,7 @@ const NOT_ACCEPTING = curatedUpstreamRefusal({ operation: 'create_order', status
 const CURATED = { QUOTE_REQUIRED: BUYER_CONTEXT };
 const ACP_STATUS = { CHECKOUT_OUTCOME_UNKNOWN: 409, QUOTE_REQUIRED: 400, MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409, MERCHANT_NOT_ACCEPTING_ORDERS: 409 };
 // What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
-const FIRST_CODE = { invalidBuyer: 'QUOTE_REQUIRED', partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionSubject: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER', merchantNotAccepting: 'MERCHANT_NOT_ACCEPTING_ORDERS' };
+const FIRST_CODE = { invalidBuyer: 'QUOTE_REQUIRED', partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER', merchantNotAccepting: 'MERCHANT_NOT_ACCEPTING_ORDERS' };
 // A kept refusal the backend DID answer, with a status below 500 (safety-kernel/src/errors.js KERNEL_ANSWERED_REFUSALS):
 // the rate-limit words for a 429, the store-refused words for every other (a 422 leaves the backend as a 400). Read off
 // the scripted answer; a 5xx, and every answer that is not a row (no response, a page in front of it), has none.
@@ -430,10 +430,12 @@ test('a refused caller assertion: eight reasons give the session back; replay, s
     door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed });
     const key = freshKey();
     const first = await attempt(h, key);
-    assertRefused(h, first, 'PARTNER_ASSERTION_REJECTED', `${label} first`);
+    // Kept: the first copy may have made the order, so never "nothing was done": the unknown outcome, in the refused words.
+    assertRefused(h, first, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} first`, { answered: 'refused' });
+    assert.equal(/nothing was (?:done|written)/i.test(first.raw), false, `${label}: ${first.raw.slice(0, 300)}`);
     for (const k of [key, freshKey(), key]) {
       const retry = await attempt(h, k);
-      assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
+      assertRefused(h, retry, k === key ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`, { answered: 'refused' });
       assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
     }
     assert.equal(door.orders.length, before + (landed ? 1 : 0), `${label}: at most the one order the first copy made, never a second`);

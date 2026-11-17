@@ -115,7 +115,7 @@ function assertUnknown(err, reason, orderId, label, { answered } = {}) {
       assert.match(text, /do not place a new order for this purchase without the buyer/, label);
       assert.equal(/nothing was ordered/i.test(text), false, `${label}: never claims nothing was ordered`);
     }
-    assert.match(err.message, answered === 'rate_limited' ? /rate limiting.*earlier attempt of this checkout may already have placed an order/ : /answered this order request with a refusal.*cannot be retried/, label);
+    assert.match(err.message, answered === 'rate_limited' ? /rate limiting.*earlier attempt of this checkout may already have placed an order/ : /^The order service refused this order request\. This checkout cannot be retried, and an order for it may still exist/, label);
     return;
   }
   if (orderId) assert.match(err.recovery, /get_order/, label);

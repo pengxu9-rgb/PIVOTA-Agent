@@ -6,9 +6,14 @@
 /** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'PRODUCT_NOT_SERVABLE'|'PRODUCT_GROUP_ID_NOT_PRODUCT_ID'|'MERCHANT_PRODUCT_MISMATCH'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'MERCHANT_NOT_ACCEPTING_ORDERS'} PivotaErrorCode */
 
 /**
- * code -> { retriable, userMessage, recovery }
+ * code -> { retriable, userMessage, recovery, claimsNoEffect? }
  * - retriable: may the SAME request be re-sent (always via the same idempotency_key)?
  * - recovery: what the adapter should drive next.
+ * - claimsNoEffect: the words say the request had no effect ("nothing was done", "nothing was ordered", "without
+ *   creating a purchase"). An order call answered with such a code is answered as raised ONLY on the quote-claim release
+ *   rule's proof that it came before any order write (kernel.js createOrder, upstreamRefusal.js); otherwise it is the
+ *   kernel's unknown outcome. safety-kernel/test/noEffectWordsGated.test.js scans these words and fails on an unflagged
+ *   one.
  */
 export const ERROR_CATALOG = Object.freeze({
   QUOTE_REQUIRED:         { retriable: false, recovery: 'call pivota_quote first',                 userMessage: 'I need a fresh price quote before placing this order.' },
@@ -26,7 +31,7 @@ export const ERROR_CATALOG = Object.freeze({
   IDEMPOTENCY_CONFLICT:   { retriable: false, recovery: 'use a new idempotency_key for a new request', userMessage: 'This looks like a different request reusing an old reference. Starting fresh.' },
   IDEMPOTENT_REPLAY:      { retriable: false, recovery: 'return original result',                   userMessage: 'This order was already placed — here are the details.' },
   PAYMENT_REQUIRES_ACTION:{ retriable: false, recovery: 'surface redirect/qr/instructions verbatim', userMessage: 'One more step is needed to complete payment.' },
-  CHECKOUT_ATTEMPT_RETIRED: { retriable: false, recovery: 'the original attempt is permanently closed; explicitly start a new checkout with a fresh idempotency_key', userMessage: 'The earlier attempt was closed without creating a purchase. You can start a new checkout.' },
+  CHECKOUT_ATTEMPT_RETIRED: { retriable: false, claimsNoEffect: true, recovery: 'the original attempt is permanently closed; explicitly start a new checkout with a fresh idempotency_key', userMessage: 'The earlier attempt was closed without creating a purchase. You can start a new checkout.' },
   CHECKOUT_OUTCOME_UNKNOWN: { retriable: true, recovery: 'retry only the exact request with the same idempotency_key; do not open another checkout', userMessage: 'The checkout request may have been accepted. Its outcome is unknown. Keep the same request and reference when checking again; do not start another purchase.' },
   MERCHANT_UNAVAILABLE:   { retriable: true,  recovery: 'no silent fallback (rail rule); inform user', userMessage: 'The merchant is temporarily unreachable. Please try again shortly.' },
   // A PERSISTENT data condition, deliberately distinct from MERCHANT_UNAVAILABLE. The product identity is
@@ -63,7 +68,7 @@ export const ERROR_CATALOG = Object.freeze({
   // two services (a clock, a path rewrite, a stale secret), not a merchant outage, and re-sending the same call
   // meets the same refusal. As MERCHANT_UNAVAILABLE (retriable, "try again shortly") every chaining agent would
   // retry forever. retriable:false is the load-bearing bit; the gateway logs and counts each one.
-  PARTNER_ASSERTION_REJECTED: { retriable: false, recovery: 'do not retry this call; nothing was written; report it to Pivota', userMessage: 'Pivota could not confirm the account this request was made for, so nothing was done. Retrying the same call will not change this.' },
+  PARTNER_ASSERTION_REJECTED: { retriable: false, claimsNoEffect: true, recovery: 'do not retry this call; nothing was written; report it to Pivota', userMessage: 'Pivota could not confirm the account this request was made for, so nothing was done. Retrying the same call will not change this.' },
   // FIX_PLAN C-11: the backend refused to open (or keep) a payment surface for an order that was canceled (409
   // ORDER_CANCELED from POST /agent/v1/payments, sent only with its CHECKOUT_CANCEL_UPSTREAM_ENABLED on). Terminal:
   // a canceled order never becomes payable again, so as MERCHANT_UNAVAILABLE (retriable) an agent would keep
@@ -73,7 +78,7 @@ export const ERROR_CATALOG = Object.freeze({
   // MERCHANT_NOT_ACCEPTING_ORDERS, named by its order route). Raised ONLY when that answer is one the quote-claim release
   // rule proves came before any order write (safety-kernel/src/upstreamRefusal.js); otherwise the same answer is the
   // kernel's unknown outcome. So "nothing was ordered" is said only when it is shown. Terminal for this checkout.
-  MERCHANT_NOT_ACCEPTING_ORDERS: { retriable: false, recovery: 'do not retry this checkout; nothing was ordered; offer the buyer another seller', userMessage: 'This seller is not taking orders, so nothing was ordered and nothing was charged. Retrying this checkout will not change that: offer the buyer another seller.' },
+  MERCHANT_NOT_ACCEPTING_ORDERS: { retriable: false, claimsNoEffect: true, recovery: 'do not retry this checkout; nothing was ordered; offer the buyer another seller', userMessage: 'This seller is not taking orders, so nothing was ordered and nothing was charged. Retrying this checkout will not change that: offer the buyer another seller.' },
 });
 
 export class PivotaCommerceError extends Error {
@@ -119,7 +124,7 @@ export const KERNEL_OUTCOME_UNKNOWN_REASONS = Object.freeze({
 const KERNEL_OUTCOME_UNKNOWN_REASON_SET = new Set(Object.values(KERNEL_OUTCOME_UNKNOWN_REASONS));
 
 /**
- * AN ORDER CALL THE STORE DID ANSWER, WITH A REFUSAL THAT KEEPS THE QUOTE'S CLAIM. Still an unknown outcome (the claim is
+ * AN ORDER CALL THE ORDER SERVICE DID ANSWER, WITH A REFUSAL THAT KEEPS THE QUOTE'S CLAIM. Still an unknown outcome (the claim is
  * kept, and nothing here can show that no order exists for this checkout), but not one with "no readable answer": the
  * words say what the store did answer. Only on `order_create_outcome_unknown` with no order id. Carried on the answer
  * as `answeredRefusal`, beside its detail and not in it (the ledger keeps it beside the reason as `answered`), and never
@@ -131,12 +136,12 @@ const KERNEL_OUTCOME_UNKNOWN_REASON_SET = new Set(Object.values(KERNEL_OUTCOME_U
  */
 export const KERNEL_ANSWERED_REFUSALS = Object.freeze({
   refused: Object.freeze({
-    message: 'The store answered this order request with a refusal. This checkout cannot be retried, and it cannot be shown here that no order was placed for it: do not place a new order for this purchase without the buyer.',
-    recovery: 'the store refused this order request, and this checkout cannot be retried; it cannot be shown here that no order was placed for it: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer',
+    message: 'The order service refused this order request. This checkout cannot be retried, and an order for it may still exist: do not place a new order for this purchase without the buyer.',
+    recovery: 'the order service refused this order request, and this checkout cannot be retried; an order for it may still exist: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer',
   }),
   rate_limited: Object.freeze({
-    message: 'The store refused this order request for rate limiting. An earlier attempt of this checkout may already have placed an order, so this checkout cannot be retried: do not place a new order for this purchase without the buyer.',
-    recovery: 'the store refused this order request for rate limiting, and an earlier attempt of this checkout may already have placed an order: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer',
+    message: 'The order service refused this order request for rate limiting. An earlier attempt of this checkout may already have placed an order, so this checkout cannot be retried: do not place a new order for this purchase without the buyer.',
+    recovery: 'the order service refused this order request for rate limiting, and an earlier attempt of this checkout may already have placed an order: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer',
   }),
 });
 
@@ -196,6 +201,17 @@ export function kernelOutcomeUnknownOf(err) {
   const answered = typeof err.answeredRefusal === 'string' && Object.hasOwn(KERNEL_ANSWERED_REFUSALS, err.answeredRefusal)
     && detail.reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate && order_id === null ? err.answeredRefusal : null;
   return answered ? { reason: detail.reason, order_id, answered } : { reason: detail.reason, order_id };
+}
+
+/**
+ * DOES THIS ANSWER SAY THE REQUEST HAD NO EFFECT? Its code's catalog words do (`claimsNoEffect`), or its curated words do
+ * (`detail.claims_no_effect`, which src/services/commerceKernelErrorMapping.js sets on such a refusal). Read by
+ * kernel.createOrder, which answers such an error as raised only on the release rule's proof.
+ */
+export function claimsNoEffect(err) {
+  if (!(err instanceof PivotaCommerceError)) return false;
+  if (Object.prototype.hasOwnProperty.call(ERROR_CATALOG, err.code) && ERROR_CATALOG[err.code].claimsNoEffect === true) return true;
+  return Boolean(err.detail && typeof err.detail === 'object' && err.detail.claims_no_effect === true);
 }
 
 export function isPivotaErrorCode(x) {

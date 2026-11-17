@@ -9,7 +9,7 @@
 import { QuoteRegistry } from './quoteRegistry.js';
 import { IdempotencyLedger } from './idempotencyLedger.js';
 import { ConfirmationTokenService } from './confirmationTokens.js';
-import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown } from './errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown, claimsNoEffect } from './errors.js';
 import { redact } from './redact.js';
 import { InMemoryKvStore } from './stores.js';
 import { sameMinor, violatesChargeMultiple } from './money.js';
@@ -360,10 +360,12 @@ export class SafetyKernel {
           // 4xx such as a consumed quote): every retry of it is refused as a used session, and an order may exist
           // behind it (that is why its claim is kept). Neither is on the release list. A listed prologue refusal, and
           // every terminal refusal the upstream named (out of stock, a changed price, ...), is answered as raised.
-          // A NAMED REFUSAL THAT SAYS "NOTHING WAS ORDERED" (MERCHANT_NOT_ACCEPTING_ORDERS) is answered as raised only on the
-          // release rule's own proof (upstreamAnsweredRefusal: the pair is listed, the route named it, no deadline mark).
-          // Without that proof an order may exist, and it is the unknown outcome like any other kept refusal.
-          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && (err.retriable === true || err.code === 'MERCHANT_NOT_ACCEPTING_ORDERS')))) {
+          // AN ANSWER WHOSE WORDS SAY THE REQUEST HAD NO EFFECT ("nothing was ordered", "nothing was done", "no order was
+          // created": errors.js claimsNoEffect) is answered as raised only on the release rule's own proof
+          // (upstreamAnsweredRefusal: the pair is listed, the route named it, no deadline mark; for a refused caller
+          // assertion, one of the eight reasons decided before any store read). Without that proof an order may exist,
+          // and it is the unknown outcome like any other kept refusal.
+          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && (err.retriable === true || claimsNoEffect(err))))) {
             // Held, not released: a same-key resend is told this same answer (the ledger keeps it), on every caller of
             // createOrder, the invoke route's bare one included. A 403 or a 429 the store DID answer says so in its
             // words (answeredRefusalKind), never "no readable answer"; the outcome and the claim are the same.
