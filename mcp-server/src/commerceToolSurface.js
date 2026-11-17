@@ -1910,6 +1910,10 @@ export function toToolError(error) {
     body.message = "This checkout was canceled, so it cannot be completed or paid. No order was placed from it.";
     body.detail = { reason: "session_canceled" };
     body.recovery = "do not complete this checkout; start a new checkout only if the buyer wants to buy";
+  } else if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && error.detail?.claim === "order_outcome_unknown" && !surfaceableOrderId(error.detail?.order_id)) {
+    // The claim names no order (kernel.js quoteAlreadyUsed): its own words (surfaced above) and a recovery that does not
+    // send the caller to an order it cannot name.
+    body.recovery = "do not start another checkout for this purchase without the buyer: an order may exist; read this checkout session again before anything else";
   } else if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && surfaceableOrderId(error.detail?.order_id)) {
     body.detail = { reason: "session_already_ordered", order_id: surfaceableOrderId(error.detail.order_id) };
     body.recovery = "read the order in detail.order_id with get_order before anything else; start a new checkout only if the buyer wants another order";

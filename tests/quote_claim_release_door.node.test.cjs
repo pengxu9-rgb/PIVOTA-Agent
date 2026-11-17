@@ -104,6 +104,7 @@ const MESSAGES = {
   QUOTE_ALREADY_USED: 'This checkout session was already used to place an order, so it can\'t be used again. Read that order first (get_order) before doing anything else; start a new checkout only if the buyer wants another order.',
 };
 const RETRIABLE = { MERCHANT_UNAVAILABLE: true };
+const UNKNOWN_ORDER_CLAIM_MESSAGE = 'An order was asked for on this checkout session, and whether it was placed is not known, so this session cannot be used again. Read this checkout session again before anything else, and do not start another checkout for this purchase without the buyer: an order may exist.';
 const ACP_HELD_UNKNOWN = 'An order was asked for on this checkout session, and whether it was placed is not known, so the session cannot be changed or completed again. Read it with GET /checkout_sessions/{checkout_session_id}, and do not start another checkout for this purchase without the buyer: an order may exist.';
 // An order call with no readable answer (no answer, a 5xx, a page from in front of the backend): the kernel's unknown
 // outcome, with no order id. The ACP door answers it with the catalog's words; the tool doors with their own.
@@ -161,6 +162,12 @@ function assertRefused(h, r, code, label, { orderId, answered } = {}) {
       : refused ? { ...CREATE_UNKNOWN_TOOL_ERROR, message: `${refused.message} Sending this call again with the same idempotency_key returns this same answer.`, recovery: refused.recovery, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
       : code === 'CHECKOUT_OUTCOME_UNKNOWN' ? { ...CREATE_UNKNOWN_TOOL_ERROR, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
       : { code, message: MESSAGES[code], retriable: RETRIABLE[code] === true };
+    if (code === 'QUOTE_ALREADY_USED' && !orderId) {
+      // A used session whose claim names no order: its own words, never "read that order (get_order)".
+      error.message = UNKNOWN_ORDER_CLAIM_MESSAGE;
+      error.detail = { reason: 'checkout_session_order_outcome_unknown' };
+      error.recovery = 'do not start another checkout for this purchase without the buyer: an order may exist; read this checkout session again before anything else';
+    }
     if (code === 'QUOTE_ALREADY_USED' && orderId) {
       error.detail = { reason: 'session_already_ordered', order_id: orderId };
       error.recovery = 'read the order in detail.order_id with get_order before anything else; start a new checkout only if the buyer wants another order';

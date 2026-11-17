@@ -18,6 +18,10 @@ import { randomUUID } from 'node:crypto';
 
 const AMOUNT_TOLERANCE = 0; // zero tolerance — INV-2
 
+// A used session whose claim names no order (quoteAlreadyUsed): the words every door gives it.
+export const UNKNOWN_ORDER_CLAIM_REASON = 'checkout_session_order_outcome_unknown';
+export const UNKNOWN_ORDER_CLAIM_MESSAGE = 'An order was asked for on this checkout session, and whether it was placed is not known, so this session cannot be used again. Read this checkout session again before anything else, and do not start another checkout for this purchase without the buyer: an order may exist.';
+
 // The per-order charge lock must outlive the slowest synchronous submit_payment CALL (the async
 // completion happens later via webhook, NOT under this lock). 2 min comfortably exceeds an upstream
 // charge-call timeout while bounding a crashed holder.
@@ -267,9 +271,17 @@ export class SafetyKernel {
     // The order that holds the claim, when it is THIS caller's (quoteClaimState): the refusal's own advice is to read
     // that order first, and without its id that advice cannot be followed. Another caller's order is never named.
     const state = ctx ? await this._claimStateOf(held, ctx) : null;
+    // A claim held by an order call that names no order (still in flight, or its outcome unknown, or a kept refusal):
+    // whether an order exists is not known, so the catalog's "already used to place an order … read that order" would
+    // state what is not known, with no id to read. Said in its own words, which every door surfaces.
+    const unknownOrder = Boolean(held && held.canceled !== true && !(typeof held.order_id === 'string' && held.order_id !== ''));
     return new PivotaCommerceError('QUOTE_ALREADY_USED', {
       quote_id,
       ...(held && held.canceled === true ? { claim: 'canceled', reason: 'session_canceled' } : {}),
+      ...(unknownOrder ? {
+        claim: 'order_outcome_unknown', reason: UNKNOWN_ORDER_CLAIM_REASON,
+        acp_message: UNKNOWN_ORDER_CLAIM_MESSAGE, acp_detail: { reason: UNKNOWN_ORDER_CLAIM_REASON },
+      } : {}),
       ...(state && state.order_id ? { order_id: state.order_id } : {}),
     });
   }

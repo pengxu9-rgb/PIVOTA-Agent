@@ -101,3 +101,16 @@ test("P3-4 the flag-off order-id cancel words follow the order's status: a faile
     assert.equal(body.detail.order_status, status === "created" || status === "expired" ? status : undefined, String(status));
   }
 });
+
+test("a used session whose claim names no order is never told to read 'that order': its own words, its reason, no order id", async () => {
+  const { UNKNOWN_ORDER_CLAIM_MESSAGE } = await import("../../safety-kernel/src/kernel.js");
+  const body = bodyOf(new PivotaCommerceError("QUOTE_ALREADY_USED", { quote_id: "q_1", claim: "order_outcome_unknown", reason: "checkout_session_order_outcome_unknown", acp_message: UNKNOWN_ORDER_CLAIM_MESSAGE, acp_detail: { reason: "checkout_session_order_outcome_unknown" } }));
+  assert.deepEqual(body, {
+    code: "QUOTE_ALREADY_USED",
+    message: UNKNOWN_ORDER_CLAIM_MESSAGE,
+    retriable: false,
+    detail: { reason: "checkout_session_order_outcome_unknown" },
+    recovery: "do not start another checkout for this purchase without the buyer: an order may exist; read this checkout session again before anything else",
+  });
+  assert.equal(/get_order/.test(JSON.stringify(body)), false);
+});

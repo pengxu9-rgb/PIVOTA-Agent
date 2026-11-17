@@ -110,7 +110,11 @@ function assertSpentNamingOrder(r, orderId, label) {
     assert.deepEqual(e.detail, { reason: 'session_already_ordered', order_id: orderId }, label);
     assert.match(e.recovery, /detail\.order_id with get_order/, label);
   } else {
-    assert.equal(e.detail, undefined, `${label}: no order is known, none is named`);
+    // No order is known: none is named, and the words say whether one was placed is not known (never "read that order").
+    assert.deepEqual(e.detail, { reason: 'checkout_session_order_outcome_unknown' }, `${label}: no order is known, none is named`);
+    assert.match(e.message, /^An order was asked for on this checkout session, and whether it was placed is not known/, label);
+    assert.equal(/get_order|already used to place an order/.test(e.message + e.recovery), false, label);
+    assert.match(e.recovery, /an order may exist/, label);
   }
   assertNoMoney(r, label);
 }
@@ -565,7 +569,10 @@ test('the strict invoke route: an order call with no readable answer is an unkno
     assert.equal(same.http, 409, market);
     assert.equal(sent(same, ORDERS), 0, market);
     const other = await order(freshKey());
-    assert.equal(other.body.code, 'QUOTE_ALREADY_USED', market);
+    // P3 (a): the claim names no order, so not "read the order this session already placed (get_order)", and 409.
+    assert.deepEqual([other.http, other.body.code, other.body.detail], [409, 'QUOTE_ALREADY_USED', { reason: 'checkout_session_order_outcome_unknown' }], `${market}: ${other.raw.slice(0, 300)}`);
+    assert.match(other.body.message, /^An order was asked for on this checkout session, and whether it was placed is not known/, market);
+    assert.equal(/get_order|already used to place an order/.test(other.raw), false, market);
     assert.equal(sent(first, ORDERS) + sent(same, ORDERS) + sent(other, ORDERS), 1, `${market}: one order call, ever`);
   }
   // The store's refusals of the order call on this route: a 429 and an unnamed 403 are the same 409, in their own words;

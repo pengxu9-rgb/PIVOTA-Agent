@@ -34,6 +34,8 @@ const INVOKE_NAMED_REASONS = new Set([
   intakeBounds.DUPLICATE_LINE_REASON,
   // A seller not taking orders (errors.js MERCHANT_NOT_ACCEPTING_ORDERS): its words, not a generic one.
   'merchant_not_accepting_orders',
+  // A used session whose claim names no order (kernel.js quoteAlreadyUsed): not "read that order (get_order)".
+  'checkout_session_order_outcome_unknown',
 ]);
 
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };
