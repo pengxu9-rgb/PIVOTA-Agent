@@ -224,6 +224,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
   const upstream = []; // every request the backend received, in order
   const orders = []; // every order the backend made
   const orderScript = []; // the answers to the next POST /agent/v2/orders, in order; none left = the order is made
+  const paymentScript = []; // the answers to the next payment-page request, in order; none left = the page is opened
   const quotes = new Map(); // backend quote id -> { currency, totalMinor }
   const major = (minor) => (minor / 100).toFixed(2);
   let quoteSeq = 0;
@@ -234,7 +235,10 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       const operation = body && body.operation;
       const product = (body && body.payload && body.payload.product) || {};
       upstream.push({ path: '/agent/shop/v1/invoke', body });
-      if (operation === 'get_product_detail' && product.merchant_id === IDS.SELLER && [IDS.SOURCE, IDS.PRODUCT].includes(product.product_id)) {
+      // Scoped to the seller, or unscoped (the UCP door's item names a product only) for the product id itself.
+      const scoped = product.merchant_id === IDS.SELLER && [IDS.SOURCE, IDS.PRODUCT].includes(product.product_id);
+      const unscoped = (product.merchant_id === undefined || product.merchant_id === null) && product.product_id === IDS.PRODUCT;
+      if (operation === 'get_product_detail' && (scoped || unscoped)) {
         return [200, { status: 'success', product: {
           product_id: product.product_id, merchant_id: IDS.SELLER, title: 'Day Lotion', brand: 'Shop A', price: 18, in_stock: true,
           pivota_signature_id: IDS.PRODUCT, variants: [{ variant_id: IDS.VARIANT, sku_id: IDS.VARIANT, title: 'Default', price: 18 }],
@@ -256,11 +260,24 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       const quoteId = `q_backend_${String(quoteSeq).padStart(4, '0')}`;
       quotes.set(quoteId, { currency, totalMinor });
       return [200, {
-        quote_id: quoteId, currency,
+        // The seller the quote is for (a request that names none, as the UCP door's, is priced for it).
+        quote_id: quoteId, currency, merchant_of_record: IDS.SELLER,
         pricing: { subtotal: major(totalMinor), shipping_fee: '0.00', tax: '0.00', total: major(totalMinor) },
         line_items: refs.map((ref) => ({ product_id: ref.product_id, variant_id: ref.variant_id, quantity: ref.quantity, unit_price_effective: major(UNIT_MINOR) })),
         expires_at: '2099-01-01T00:00:00Z',
       }];
+    });
+  // The product as the unscoped read serves it: the UCP door's item names a product only, and the gateway reads it
+  // through its own loopback detail lane. Every other loopback request (the test's own calls) goes through untouched.
+  nock(`http://127.0.0.1:${PORT}`, { allowUnmocked: true }).persist()
+    .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'get_pdp_v2' && body.payload?.product_ref?.product_id === IDS.PRODUCT)
+    .reply(200, () => {
+      upstream.push({ path: 'loopback:get_pdp_v2' });
+      return { status: 'success', modules: [{ type: 'canonical', data: { pdp_payload: { product: {
+        product_id: IDS.PRODUCT, merchant_id: IDS.SELLER, pivota_signature_id: IDS.PRODUCT, title: 'Day Lotion', brand: { name: 'Shop A' },
+        price: { current: { amount: 18, currency: 'USD' } }, availability: 'in_stock',
+        variants: [{ variant_id: IDS.VARIANT, sku_id: IDS.VARIANT, title: 'Default', price: { current: { amount: 18, currency: 'USD' } } }],
+      } } } }] };
     });
   // The order. One scripted answer per request; with none scripted the backend makes the order from its own quote.
   const makeOrder = (body, overrides = {}) => {
@@ -291,10 +308,14 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
   // The hosted payment page for an order (the charge of a complete, and the payment link).
   nock(BACKEND_BASE).persist()
     .post('/agent/v2/payments/checkout-sessions')
-    .reply((_uri, body) => {
+    .reply(function reply(_uri, body, callback) {
       upstream.push({ path: '/agent/v2/payments/checkout-sessions', body });
       const id = `cs_${body && body.order_id}`;
-      return [200, { status: 'success', checkout_session: { checkout_session_id: id, hosted_url: `https://pay.quote-claim.test/c/${id}` } }];
+      // A scripted answer (`reply` / `error` from ANSWERS); `landed` has no meaning here (no order is made).
+      const next = paymentScript.shift();
+      if (!next) return callback(null, [200, { status: 'success', checkout_session: { checkout_session_id: id, hosted_url: `https://pay.quote-claim.test/c/${id}` } }]);
+      if (next.kind === 'error') return callback(Object.assign(new Error(next.error.message), { code: next.error.code }));
+      return callback(null, [next.status, next.body, next.headers || {}]);
     });
   nock(BACKEND_BASE).persist()
     .post(() => true)
@@ -332,9 +353,9 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     const resp = await fn();
     return { resp, upstream: upstream.slice(before) };
   }
-  /** tools/call on `/mcp`. `raw` is the response body as the door sent it, byte for byte. */
-  async function call(name, args, { buyer = BUYER } = {}) {
-    const { resp, upstream: sent } = await observed(() => send('POST', '/mcp', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }), buyer || {}));
+  /** tools/call on `/mcp` (or `door`). `raw` is the response body as the door sent it, byte for byte. */
+  async function call(name, args, { buyer = BUYER, door = '/mcp' } = {}) {
+    const { resp, upstream: sent } = await observed(() => send('POST', door, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }), buyer || {}));
     const result = resp.body && resp.body.result;
     const text = result && Array.isArray(result.content) && result.content[0] ? result.content[0].text : null;
     let value = null;
@@ -360,7 +381,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     if (server) await new Promise((resolve) => server.close(resolve));
     nock.cleanAll();
   };
-  return { app, call, acp, listen, close, upstream, orders, orderScript, root };
+  return { app, call, acp, listen, close, upstream, orders, orderScript, paymentScript, root };
 }
 
 module.exports = { IDS, PRICED_IN, UNIT_MINOR, BACKEND_BASE, BUYER, ANSWERS, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE, backendError, address, mintKeys, bootDoor };

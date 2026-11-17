@@ -93,7 +93,10 @@ test('fail-closed when the hosted op returns no URL', async () => {
   const sid = await newSession(exec);
   await assert.rejects(
     exec('create_payment_link', { idempotency_key: 'idem-link-4', session_id: sid }, CTX),
-    (e) => e.code === 'MERCHANT_UNAVAILABLE',
+    // An answer that names no page says nothing about whether one was opened: an unknown outcome, with the order's
+    // id, and not retriable (it is never a "try again shortly").
+    (e) => e.code === 'CHECKOUT_OUTCOME_UNKNOWN' && e.retriable === false
+      && e.detail?.reason === 'payment_link_outcome_unknown_after_order' && typeof e.detail?.order_id === 'string',
   );
 });
 

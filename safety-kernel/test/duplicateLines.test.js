@@ -218,8 +218,9 @@ test('executor: the key and the ceiling answer before the duplicate rule, and an
   assert.equal((await rejected(executor.execute('create_checkout_session', { idempotency_key: 'abcdefg', quote: { items: dup } }, CTX))).detail.reason, 'idempotency_key_too_short');
   assert.equal((await rejected(executor.execute('create_checkout_session', { idempotency_key: 'abcdefgh', quote: { items: [line('p1', 'v1', 1000), line('p1', 'v1')] } }, CTX))).detail.reason, 'quantity_above_line_maximum');
   assert.deepEqual(calls, []);
+  // Not judged for a cart: the cancel goes on to read its session.
   const cancel = await rejected(executor.execute('cancel_checkout_session', { idempotency_key: 'abcdefgh', session_id: 'q_1', quote: { items: dup } }, CTX));
-  assert.equal(cancel, null);
+  assert.match(String(cancel && cancel.message), /^the kernel was reached: quotes\.resolveForOrder$/);
 });
 
 // ---- the ACP REST adapter -----------------------------------------------------------------------------------------

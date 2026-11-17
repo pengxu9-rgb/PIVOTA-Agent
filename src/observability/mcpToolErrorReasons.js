@@ -41,6 +41,11 @@ const MCP_TOOL_ERROR_REASONS = Object.freeze([
   'charge_in_progress',
   'charge_pending',
   'order_already_paid',
+  // A money call after (or for) the order with no readable answer: the kernel's own unknown outcomes
+  // (safety-kernel/src/errors.js KERNEL_OUTCOME_UNKNOWN_REASONS), counted apart from every other unknown outcome.
+  'payment_outcome_unknown_after_order',
+  'payment_link_outcome_unknown_after_order',
+  'order_create_outcome_unknown',
 ]);
 
 const LISTED = new Set(MCP_TOOL_ERROR_REASONS);

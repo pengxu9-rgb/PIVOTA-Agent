@@ -952,7 +952,9 @@ test('a first attempt that succeeds is what it was: one create_order, one order 
     assert.equal(w.createsSent().length, 1, label);
     assert.equal(w.createsSent()[0].payload.order._currency, PRICED_IN[market ?? 'none'], label);
     const claim = await w.claims.get(h.quoteId);
-    assert.deepEqual(Object.keys(claim).sort(), ['claim_id', 'idempotency_key'], label);
+    // Once the order exists, the claim also names it (so a later refusal of this quote can name it to its caller).
+    assert.deepEqual(Object.keys(claim).sort(), ['claim_id', 'idempotency_key', 'order_id'], label);
+    assert.equal(claim.order_id, r.order_id, label);
     assert.deepEqual(w.log.filter((l) => l.event.startsWith('quote_claim')), [], label);
     assert.equal((await w.attempt(h, 'idem-plain-0002')).code, 'QUOTE_ALREADY_USED', label);
   }
@@ -979,7 +981,9 @@ test('the claim is written WITH its attempt\'s id before the upstream is asked, 
   }
   assert.equal(new Set(seen.map((c) => c.claim_id)).size, 3, `${label}: three attempts, three ids`);
   assert.equal(seen[0].idempotency_key, seen[1].idempotency_key, `${label}: the same caller key twice, and still two ids`);
-  assert.deepEqual(await w.claims.get(h.quoteId), seen[2], `${label}: the claim that stays is the one that made the order`);
+  const kept = await w.claims.get(h.quoteId);
+  assert.deepEqual({ claim_id: kept.claim_id, idempotency_key: kept.idempotency_key }, seen[2], `${label}: the claim that stays is the one that made the order`);
+  assert.equal(typeof kept.order_id, 'string', `${label}: and it names that order`);
   // Another kernel (another process) never reuses an id either.
   const w2 = world({ store });
   const h2 = await w2.open(caller, 'US');

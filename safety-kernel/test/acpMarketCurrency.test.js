@@ -1170,8 +1170,15 @@ test('only the ACP door\'s cancellation claims the session: the same member on a
     const door = sessionDoor();
     const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}), verifyPaymentAuthorization: async (_a, bound) => ({ ok: true, amount: bound.amount, currency: bound.currency, user_ref: bound.user_ref }) });
     const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0001', quote: QUOTE_BODY }, ctx);
-    const cancelled = await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0002', session_id: session.session_id, cancel_claims_session: true }, ctx);
-    assert.equal(cancelled.status, 'canceled');
+    const cancelling = executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0002', session_id: session.session_id, cancel_claims_session: true }, ctx);
+    if (claims) {
+      assert.equal((await cancelling).status, 'canceled');
+    } else {
+      // Another door records no cancellation, so its cancel of an unordered session says so instead of "canceled".
+      const notCanceled = await refusal(cancelling);
+      assert.equal(notCanceled.code, 'OPERATION_NOT_ALLOWED');
+      assert.equal(notCanceled.detail.reason, 'session_not_ordered_not_canceled');
+    }
     assert.equal(await door.kernel.isQuoteClaimed(session.session_id), claims);
     const completing = executor.execute('complete_checkout_session', { idempotency_key: 'idem-claim-0003', session_id: session.session_id, payment_authorization: { token: 'tok_1' } }, ctx);
     if (claims) {
@@ -1189,7 +1196,8 @@ test('only the ACP door\'s cancellation claims the session: the same member on a
   const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}) });
   const ctx = { user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' };
   const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0004', quote: QUOTE_BODY }, ctx);
-  await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0005', session_id: session.session_id }, ctx);
+  const unclaimed = await refusal(executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0005', session_id: session.session_id }, ctx));
+  assert.equal(unclaimed.detail.reason, 'session_not_ordered_not_canceled');
   assert.equal(await door.kernel.isQuoteClaimed(session.session_id), false);
 });
 
