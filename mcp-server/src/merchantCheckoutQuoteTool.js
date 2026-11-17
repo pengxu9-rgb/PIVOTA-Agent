@@ -6,6 +6,7 @@ import {
   mapWithConcurrency, MAX_CART_ITEMS, pickCompleteAddress, VARIANT_RESOLUTION_CONCURRENCY, withDeadline,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { createMerchantCheckoutQuoteService, merchantCheckoutQuoteAllowedSellers } from "./merchantCheckoutQuote.js";
+import { createMerchantQuoteRateLimiter } from "./merchantCheckoutQuoteRateLimit.js";
 import {
   ESCALATION_GATE_MAX_MS, escalationTargetOf, marketCurrencyOf, mayOfferPurchaseForDomain, readCheckoutRows,
 } from "./ucpCheckoutEscalation.js";
@@ -102,6 +103,10 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
     assertIdempotencyKeyAcceptable(rawKey);
     const { quote } = ucpToNativeToolArgs(OP, { meta: args.meta, checkout: args.checkout }, env);
     const address = pickCompleteAddress(quote.shipping_address);
+    // A well-formed market that Pivota does not price is named, so the caller can tell it from a bad address.
+    if (!expectedCurrency && typeof market === "string" && /^[A-Z]{2}$/.test(market)) {
+      throw new PivotaCommerceError("QUOTE_REQUIRED", { reason: "merchant_quote_market_unpriced", market });
+    }
     if (!expectedCurrency || !address || address.country.trim().toUpperCase() !== market) {
       throw refusal("merchant_quote_market_address_required");
     }
@@ -134,9 +139,9 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
     const fingerprint = digest(["input", scope, items, market, destination, args.discount_code ?? null]);
     const claim = randomUUID();
     const outcomePending = () => refusal("merchant_quote_outcome_pending", "CHECKOUT_OUTCOME_UNKNOWN");
-    async function releasePreflight() {
+    async function releasePreflight(error = refusal("merchant_quote_unavailable", "MERCHANT_UNAVAILABLE")) {
       try { await stateStore.compareAndDelete(recordKey, "claim", claim); } catch { /* The preflight lease expires. */ }
-      throw refusal("merchant_quote_unavailable", "MERCHANT_UNAVAILABLE");
+      throw error;
     }
     async function writeClaim(owner, value, options) {
       try {
@@ -226,6 +231,13 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
       result = unverified(error.detail.reason || error.code);
     }
     if (merchantRequest) {
+      // Enforced on every door before any seller call (see merchantCheckoutQuoteRateLimit.js). A refusal runs
+      // no merchant operation, so the claim is released and the same request may retry after the window.
+      try {
+        await createMerchantQuoteRateLimiter({ stateStore, keyOf: digest, env, now })({
+          partner, sellerHost: merchantRequest.sellerHost,
+        });
+      } catch (error) { await releasePreflight(error); }
       let pending;
       try {
         result = await service.quote(merchantRequest, {

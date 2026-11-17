@@ -84,7 +84,7 @@ const BUSINESS_PROFILE_FIXTURE = {
     version: '2026-04-08',
     services: {
       'dev.ucp.shopping': [
-        { version: '2026-04-08', transport: 'mcp', endpoint: 'https://cosrx.example.myshopify.com/ucp/mcp' },
+        { version: '2026-04-08', transport: 'mcp', endpoint: 'https://coral-shop.myshopify.com/ucp/mcp' },
       ],
     },
     capabilities: { 'dev.ucp.shopping.cart': [{ version: '2026-04-08' }] },
@@ -111,7 +111,7 @@ const CREATE_CART_FIXTURE = {
         line_items: [{ item: { id: '111', title: 'Snail Mucin' }, quantity: 1 }],
         currency: 'USD',
         totals: { total: '1600' },
-        continue_url: 'https://cosrx.example.myshopify.com/cart/111:1?payment=shop_pay',
+        continue_url: 'https://coral-shop.myshopify.com/cart/111:1?payment=shop_pay',
       },
     }],
   },
@@ -126,7 +126,7 @@ const CREATE_CHECKOUT_FIXTURE = {
       json: {
         id: 'checkout_xyz',
         status: 'incomplete',
-        continue_url: 'https://cosrx.example.myshopify.com/checkouts/xyz',
+        continue_url: 'https://coral-shop.myshopify.com/checkouts/xyz',
       },
     }],
   },
@@ -229,7 +229,7 @@ describe('buildUcpBuyerAgentProfile', () => {
   test('fulfillment is requested — negotiation gates argument SHAPES, not just the tool list', () => {
     // The spec's fulfillment extension "adds a `fulfillment` field to Checkout" (methods/destinations/groups).
     // Without requesting it, a merchant's negotiated create_checkout schema omits that field entirely —
-    // measured 2026-08-13, cosrx's create_checkout for our profile contained no `fulfillment` at all, which
+    // measured 2026-08-13, the seller's create_checkout for our profile contained no `fulfillment` at all, which
     // is how an earlier note concluded, wrongly, that UCP carries no shipping address.
     const p = buildUcpBuyerAgentProfile();
     expect(Object.keys(p.ucp.capabilities)).toContain('dev.ucp.shopping.fulfillment');
@@ -381,9 +381,9 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
 
   test('discoverEndpoint extracts the MCP endpoint from /.well-known/ucp', async () => {
     const { client } = newClient({});
-    const disco = await client.discoverEndpoint('https://cosrx.com');
-    expect(disco.wellKnownUrl).toBe('https://cosrx.com/.well-known/ucp');
-    expect(disco.mcpEndpoint).toBe('https://cosrx.example.myshopify.com/ucp/mcp');
+    const disco = await client.discoverEndpoint('https://coral-seller.example');
+    expect(disco.wellKnownUrl).toBe('https://coral-seller.example/.well-known/ucp');
+    expect(disco.mcpEndpoint).toBe('https://coral-shop.myshopify.com/ucp/mcp');
   });
 
   test('catalog search -> cart build -> checkout create -> handoff URL captured', async () => {
@@ -392,7 +392,7 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
       [TOOL.CREATE_CART]: CREATE_CART_FIXTURE,
       [TOOL.CREATE_CHECKOUT]: CREATE_CHECKOUT_FIXTURE,
     });
-    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
 
     const product = await client.getProduct(endpoint, { productId: 'gid://shopify/Product/1' });
     expect(product.ok).toBe(true);
@@ -405,7 +405,7 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
 
     const checkout = await client.createCheckout(endpoint, { cartId: 'cart_abc' });
     expect(checkout.ok).toBe(true);
-    expect(client.extractHandoffUrl(checkout)).toBe('https://cosrx.example.myshopify.com/checkouts/xyz');
+    expect(client.extractHandoffUrl(checkout)).toBe('https://coral-shop.myshopify.com/checkouts/xyz');
 
     // Every request carried the agent profile pointer + Bearer auth (token tier). Credential never in a URL.
     // LIVE shape: meta sits at params.arguments.meta (NOT body.meta / params._meta), alongside the tool fields.
@@ -417,7 +417,7 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
 
   test('create_cart args carry cart.line_items[0].item.id DIRECTLY under arguments (no `input` wrapper)', async () => {
     const { client, fetchImpl } = newClient({ [TOOL.CREATE_CART]: CREATE_CART_FIXTURE });
-    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
     const variantGid = 'gid://shopify/ProductVariant/51895645012184';
 
     const cart = await client.createCart(endpoint, { lineItems: [{ item: { id: variantGid }, quantity: 1 }] });
@@ -429,7 +429,7 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
     expect(args.input).toBeUndefined();
     expect(call.body.params._meta).toBeUndefined();
     expect(call.body.meta).toBeUndefined();
-    // create_cart's field is a `cart` object wrapping line_items (live cosrx schema).
+    // create_cart's field is a `cart` object wrapping line_items (live seller schema).
     expect(args.cart.line_items[0].item.id).toBe(variantGid);
     expect(args.cart.line_items[0].quantity).toBe(1);
     // meta stays at params.arguments.meta.
@@ -438,12 +438,12 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
 
   test('extractHandoffUrl pulls continue_url out of a fixture cart result', async () => {
     const { client } = newClient({ [TOOL.CREATE_CART]: CREATE_CART_FIXTURE });
-    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
     const cart = await client.createCart(endpoint, {
       lineItems: [{ item: { id: 'gid://shopify/ProductVariant/111' }, quantity: 1 }],
     });
     expect(client.extractHandoffUrl(cart)).toBe(
-      'https://cosrx.example.myshopify.com/cart/111:1?payment=shop_pay',
+      'https://coral-shop.myshopify.com/cart/111:1?payment=shop_pay',
     );
   });
 
@@ -451,7 +451,7 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
     const { client } = newClient({
       [TOOL.CREATE_CHECKOUT]: () => jsonResponse({ error: { code: -32000, message: 'authentication required' } }, 401),
     });
-    const res = await client.createCheckout('https://cosrx.example.myshopify.com/ucp/mcp', { cartId: 'cart_abc' });
+    const res = await client.createCheckout('https://coral-shop.myshopify.com/ucp/mcp', { cartId: 'cart_abc' });
     expect(res.ok).toBe(false);
     expect(res.error).toBeTruthy();
   });
@@ -478,7 +478,7 @@ describe('hard safety bounds', () => {
   test('callTool hard-blocks complete_checkout even if invoked directly', async () => {
     const fetchImpl = makeFetch({});
     const client = createUcpBuyerAgentClient({ credential: 'x', fetchImpl });
-    await expect(client.callTool('https://cosrx.example.myshopify.com/ucp/mcp', 'complete_checkout', {}))
+    await expect(client.callTool('https://coral-shop.myshopify.com/ucp/mcp', 'complete_checkout', {}))
       .rejects.toThrow(/hard-disabled/);
     expect(fetchImpl.calls.length).toBe(0);
   });
@@ -490,7 +490,7 @@ describe('hard safety bounds', () => {
     });
     expect(client.tier).toBe(TRUST_TIER.SIGNED);
     expect(client.completeCheckout).toBeUndefined();
-    await expect(client.callTool('https://cosrx.example.myshopify.com/ucp/mcp', 'complete_checkout', {}))
+    await expect(client.callTool('https://coral-shop.myshopify.com/ucp/mcp', 'complete_checkout', {}))
       .rejects.toThrow(/hard-disabled/);
     expect(fetchImpl.calls.length).toBe(0);
   });
@@ -838,7 +838,7 @@ describe('a generated infrastructure host is never derived as the profile identi
 // ---- RFC 9421 signature construction (deterministic) ----------------------
 
 describe('RFC 9421 signature construction', () => {
-  const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+  const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
   const bodyString = JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/call', params: { name: 'create_checkout' } });
 
   test('content digest is RFC 9530 sha-256 base64 wrapped in colons', () => {
@@ -893,7 +893,7 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
       signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, signingKeys: [TEST_PUBLIC_JWK],
       profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent', fetchImpl,
     });
-    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
     const createKey = 'efc9d77a-4d05-4ea4-bfda-5aec10010a0c';
     const cancelKey = 'dfc9d77a-4d05-4ea4-bfda-5aec10010a0d';
     await client.createCheckout(endpoint, { cartId: 'cart_abc' }, { idempotencyKey: createKey });
@@ -917,12 +917,12 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
       signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, signingKeys: [TEST_PUBLIC_JWK],
       profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent', fetchImpl,
     });
-    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
 
     const checkout = await client.createCheckout(endpoint, { cartId: 'cart_abc' });
     expect(checkout.ok).toBe(true);
     expect(checkout.tier).toBe(TRUST_TIER.SIGNED);
-    expect(client.extractHandoffUrl(checkout)).toBe('https://cosrx.example.myshopify.com/checkouts/xyz');
+    expect(client.extractHandoffUrl(checkout)).toBe('https://coral-shop.myshopify.com/checkouts/xyz');
 
     const call = fetchImpl.calls.find((c) => c.body && c.body.params && c.body.params.name === TOOL.CREATE_CHECKOUT);
     // SIGNED tier sends NO Bearer token — checkout is reached credential-free.
@@ -1018,23 +1018,23 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
 
   test('the profile fetch is issued with redirect: "manual" — the 3xx is returned, never followed', async () => {
     const fetchImpl = makeRedirectHonouringFetch();
-    await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com');
+    await clientWith(fetchImpl).discoverEndpoint('https://coral-seller.example');
     expect(fetchImpl.inits).toHaveLength(1);
-    expect(fetchImpl.inits[0].url).toBe('https://cosrx.com/.well-known/ucp');
+    expect(fetchImpl.inits[0].url).toBe('https://coral-seller.example/.well-known/ucp');
     expect(fetchImpl.inits[0].redirect).toBe('manual');
     expect(fetchImpl.targetHits()).toBe(0);
   });
 
   test('a 302 fails discovery with the 302 as its status, and never reaches the redirect target', async () => {
     const fetchImpl = makeRedirectHonouringFetch();
-    const disco = await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com');
+    const disco = await clientWith(fetchImpl).discoverEndpoint('https://coral-seller.example');
     // Resolves (not rejects) to a first-class refusal. Under a 'follow' mutant this resolves with
     // mcpEndpoint = https://attacker.example/ucp/mcp and status 200 -- the endpoint warm handoff would
     // cache and build carts against -- so those are the two fields asserted.
     expect(disco.mcpEndpoint).toBeUndefined();
     expect(disco.status).toBe(302);
     expect(disco.businessProfile).toBeNull();
-    expect(disco.wellKnownUrl).toBe('https://cosrx.com/.well-known/ucp');
+    expect(disco.wellKnownUrl).toBe('https://coral-seller.example/.well-known/ucp');
     expect(fetchImpl.targetHits()).toBe(0);
   });
 
@@ -1047,17 +1047,17 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
     let followed = 0;
     const fetchImpl = async (url, init = {}) => {
       inits.push({ url: String(url), redirect: init.redirect });
-      if (String(url) === 'https://cosrx.com/.well-known/ucp' && init.redirect === 'manual') {
+      if (String(url) === 'https://coral-seller.example/.well-known/ucp' && init.redirect === 'manual') {
         return {
           ok: false, status: 301, redirected: false,
-          headers: { get: (h) => (h.toLowerCase() === 'location' ? 'https://cosrx.com/api/.well-known/ucp' : null) },
+          headers: { get: (h) => (h.toLowerCase() === 'location' ? 'https://coral-seller.example/api/.well-known/ucp' : null) },
           async json() { throw new SyntaxError('html'); }, async text() { return '<html>moved</html>'; },
         };
       }
       followed += 1; // any second request, same-origin or not, is a follow
       return jsonResponse(BUSINESS_PROFILE_FIXTURE, 200);
     };
-    const disco = await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com');
+    const disco = await clientWith(fetchImpl).discoverEndpoint('https://coral-seller.example');
     expect(disco.mcpEndpoint).toBeUndefined();
     expect(disco.status).toBe(301);
     expect(followed).toBe(0);
@@ -1072,7 +1072,7 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
       credential: 'test-token', profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent', fetchImpl,
       sleepImpl: async () => {},
     });
-    await client.discoverEndpoint('https://cosrx.com');
+    await client.discoverEndpoint('https://coral-seller.example');
     expect(fetchImpl.inits).toHaveLength(1);
   });
 
@@ -1083,7 +1083,7 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
   // ever added, this test SHOULD go red: that is the pin moving, not a regression.
   test('control: the SAME body is accepted when it arrives with no redirect', async () => {
     const disco = await clientWith(async () => jsonResponse(REDIRECT_TARGET_PROFILE, 200))
-      .discoverEndpoint('https://cosrx.com');
+      .discoverEndpoint('https://coral-seller.example');
     expect(disco.mcpEndpoint).toBe('https://attacker.example/ucp/mcp');
   });
 });

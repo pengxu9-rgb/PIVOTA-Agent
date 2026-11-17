@@ -43,8 +43,9 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
-import { merchantCheckoutQuoteEnabled } from "./merchantCheckoutQuote.js";
+import { merchantCheckoutQuoteDoorOpen } from "./merchantCheckoutQuote.js";
 import { createMerchantQuoteTool, MERCHANT_QUOTE_TOOL, merchantQuoteToolDefinition } from "./merchantCheckoutQuoteTool.js";
+import { MERCHANT_QUOTE_RATE_LIMITED } from "./merchantCheckoutQuoteRateLimit.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong, storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
 // The native door's route to the same storefront path (AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED, default off).
 import { kernelQuoteMarketParams, storefrontCartInputSchema, storefrontMarketProblem, tryNativeStorefrontCart } from "./mcpStorefrontCart.js";
@@ -406,7 +407,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     const callStartedAtMs = Date.now();
     // dialect defaults to MCP, so every existing caller is unchanged.
     const dialect = normalizeDialect(options.dialect);
-    if (toolName === MERCHANT_QUOTE_TOOL && merchantCheckoutQuoteEnabled()) {
+    if (toolName === MERCHANT_QUOTE_TOOL && merchantCheckoutQuoteDoorOpen()) {
       const ctx = buildContext(sessionContext);
       if (!ctx.user_ref || !ctx.acp_session_id) throw new IdentityRequiredError();
       return sanitizeResult(await previewMerchantQuote(toolArgs, ctx), { handoffAllowed: false });
@@ -820,7 +821,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   }
 
   function isCommerceTool(name, dialect) {
-    if (name === MERCHANT_QUOTE_TOOL) return merchantCheckoutQuoteEnabled();
+    if (name === MERCHANT_QUOTE_TOOL) return merchantCheckoutQuoteDoorOpen();
     if (name === START_PURCHASE_TOOL && normalizeDialect(dialect) === TOOL_DIALECTS.mcp) {
       return orchestratedPurchaseToolEnabled(process.env);
     }
@@ -832,7 +833,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     get tools() {
       const listed = recommendIngredientExclusionFlag.recommendIngredientExclusionEnabled(process.env) ? ingredientExclusionTools : tools;
       const declared = orchestratedPurchaseToolEnabled(process.env) ? [...listed, { ...START_PURCHASE_TOOL_DEFINITION }] : listed;
-      return merchantCheckoutQuoteEnabled() ? [...declared, merchantQuoteToolDefinition] : declared;
+      return merchantCheckoutQuoteDoorOpen() ? [...declared, merchantQuoteToolDefinition] : declared;
     },
     callTool,
     isCommerceTool,
@@ -1638,7 +1639,7 @@ export function ucpDialectSurface(surface) {
     // `ucpCommerceToolDefinitionsFor`).
     get tools() {
       const base = ucpCommerceToolDefinitionsFor(process.env);
-      const tools = merchantCheckoutQuoteEnabled() ? [...base, merchantQuoteToolDefinition] : base;
+      const tools = merchantCheckoutQuoteDoorOpen() ? [...base, merchantQuoteToolDefinition] : base;
       return reapAgenticLaneEnabled(process.env) ? [...tools, {
         name: "recover_checkout",
         description: "Pivota vendor read-only recovery of an unresolved Reap checkout. Send the identical original create payload and idempotency key. Never creates a purchase or alternative checkout; unknown outcomes remain unresolved.",
@@ -1856,6 +1857,26 @@ export function toToolError(error) {
       && ["PRODUCT_NOT_SERVABLE", "PRODUCT_GROUP_ID_NOT_PRODUCT_ID", "MERCHANT_PRODUCT_MISMATCH"].includes(code)
       && typeof error.detail?.reason === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.reason)) {
     body.detail = { reason: error.detail.reason };
+  }
+  // preview_merchant_checkout_quote refusals (merchantCheckoutQuoteTool.js). Their reasons are our own
+  // vocabulary. The only other values surfaced are a market that already passed the ^[A-Z]{2}$ check and a
+  // server-computed retry delay.
+  if (error instanceof PivotaCommerceError && !intake && typeof error.detail?.reason === "string"
+      && /^merchant_quote_[a-z0-9_]{1,48}$/.test(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+    if (typeof error.detail.market === "string" && /^[A-Z]{2}$/.test(error.detail.market)) {
+      body.detail.market = error.detail.market;
+    }
+    if (error.detail.reason === MERCHANT_QUOTE_RATE_LIMITED) {
+      const retryAfter = error.detail.retry_after_seconds;
+      if (Number.isSafeInteger(retryAfter) && retryAfter >= 1 && retryAfter <= 3600) body.detail.retry_after_seconds = retryAfter;
+      body.message = "Too many live quotes were requested for this seller or partner. No checkout was opened.";
+      body.recovery = "retry the same request with the same idempotency_key after detail.retry_after_seconds; do not send new keys in a loop";
+    }
+    if (error.detail.reason === "merchant_quote_market_unpriced") {
+      body.message = "Pivota does not price this market, so no quote was requested from the seller.";
+      body.recovery = "do not retry for this market; quote only a market whose currency Pivota serves";
+    }
   }
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
