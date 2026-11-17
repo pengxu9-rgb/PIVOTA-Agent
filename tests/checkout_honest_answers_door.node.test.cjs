@@ -89,7 +89,7 @@ function assertUnknown(r, reason, orderId, label) {
   assert.equal(e.retriable, false, label);
   assert.deepEqual(e.detail, { reason, order_id: orderId }, label);
   assert.match(e.message, UNKNOWN_WORDS[reason], label);
-  assert.match(e.message, /do not start another checkout/i, label);
+  assert.match(e.message, orderId ? /do not start another checkout/i : /Do not place a new order for this purchase without the buyer/, label);
   if (orderId) assert.match(e.recovery, /get_order/, label);
   assertNoMoney(r, label);
 }
@@ -158,6 +158,45 @@ test('A: a refusal the backend answered by name for the payment page (409 ORDER_
   const first = await attempt(h, freshKey());
   assert.equal(errorOf(first).code, 'ORDER_CANCELED', first.raw.slice(0, 300));
   assert.equal(errorOf(first).retriable, false);
+}));
+
+test('Q1: an order call with no readable answer (no answer, a lost connection, a 5xx, a page from in front of the backend) is an unknown outcome with no order id; nothing is asked twice', each(async (caller) => {
+  const SHAPES = { timeout: () => ANSWERS.timeout(), timeout_landed: () => ANSWERS.timeout({ landed: true }), connection_lost: () => ANSWERS.connectionLost(), connection_refused: () => ANSWERS.connectionRefused(), page_502: () => ANSWERS.badGateway(), page_504: () => ANSWERS.gatewayTimeout(), busy_503: () => ANSWERS.busy(), internal_500: () => ANSWERS.internalError() };
+  for (const [shape, answer] of Object.entries(SHAPES)) {
+    for (const market of PRICED_MARKETS) {
+      const label = `${caller} ${shape} ${market}`;
+      const h = await open(caller, market);
+      door.orderScript.push(answer());
+      const key = freshKey();
+      const first = await attempt(h, key);
+      assertUnknown(first, 'order_create_outcome_unknown', null, label);
+      assert.match(errorOf(first).recovery, /store may hold an order/, label);
+      assert.equal(/get_order/.test(errorOf(first).recovery), false, `${label}: no id, no get_order`);
+      assert.deepEqual([sent(first, ORDERS), sent(first, PAGES)], [1, 0], label);
+      const same = await attempt(h, key);
+      assertUnknown(same, 'order_create_outcome_unknown', null, `${label} same key`);
+      assert.deepEqual(same.upstream, [], `${label} same key: nothing sent`);
+      const other = await attempt(h, freshKey());
+      assertSpentNamingOrder(other, null, `${label} another key`);
+      assert.equal(sent(other, ORDERS), 0, label);
+      const got = await read(h);
+      assert.deepEqual([got.value.status, got.value.order_id], ['order_outcome_unknown', null], label);
+      if (!ucp(h)) {
+        const cancel = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), session_id: h.id }, { buyer: h.buyer });
+        assert.equal(errorOf(cancel).detail?.reason, 'session_order_outcome_unknown', label);
+      }
+    }
+  }
+}));
+
+test('Q1: an order call the backend refused by name below 500 (a consumed quote, out of stock) is answered as before', each(async (caller) => {
+  for (const answer of [ANSWERS.quoteConsumed, ANSWERS.insufficientInventory]) {
+    const h = await open(caller, 'SG');
+    door.orderScript.push(answer());
+    const first = await attempt(h, freshKey());
+    assert.equal(errorOf(first).code, 'MERCHANT_UNAVAILABLE', first.raw.slice(0, 300));
+    assert.equal(errorOf(first).retriable, true);
+  }
 }));
 
 test('A.5: an order call answered with something that is not an order is an unknown outcome with no order id; the claim is kept and no second order is asked for', each(async (caller) => {
@@ -243,15 +282,20 @@ test('B: the mapping grants the named code only on the order op, the exact statu
 
 // ---- C, D: cancel and read back -----------------------------------------------------------------------------------------
 
-test('C: cancel by session id of a session with no order says it was not canceled, and the session can still be completed', async () => {
-  const h = await open('mcp_complete', 'US');
-  const cancel = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), session_id: h.id }, { buyer: h.buyer });
-  assert.equal(cancel.isError, true, cancel.raw.slice(0, 300));
-  assert.deepEqual(errorOf(cancel).detail, { reason: 'session_not_ordered_not_canceled', canceled: false });
-  assert.match(errorOf(cancel).message, /was not canceled and can still be completed/);
-  assert.deepEqual(cancel.upstream, []);
-  const done = await attempt(h, freshKey());
-  assert.equal(done.isError, false, done.raw.slice(0, 300));
+test('C: cancel by session id of a session with no order cancels it truly (its claim is taken): a later complete or payment link is refused and asks the backend for nothing', async () => {
+  for (const market of PRICED_MARKETS) {
+    for (const then of ['mcp_complete', 'mcp_payment_link']) {
+      const h = { ...(await open('mcp_complete', market)), caller: then };
+      const cancel = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), session_id: h.id }, { buyer: h.buyer });
+      assert.equal(cancel.isError, false, cancel.raw.slice(0, 300));
+      assert.deepEqual(cancel.value, { session_id: h.id, order_id: null, status: 'canceled' }, market);
+      assert.deepEqual(cancel.upstream, []);
+      const after = await attempt(h, freshKey());
+      assert.equal(errorOf(after).code, 'QUOTE_ALREADY_USED', `${market} ${then}: ${after.raw.slice(0, 300)}`);
+      assert.deepEqual(after.upstream.filter((c) => c.path === ORDERS || c.path === PAGES), [], `${market} ${then}: 0 order calls`);
+      assert.equal((await read(h)).value.status, 'canceled', market);
+    }
+  }
 });
 
 test('D: a completed session reads as completed with its order id, and an update of it says the id it was sent is already ordered', async () => {

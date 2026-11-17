@@ -9,7 +9,7 @@
 import { QuoteRegistry } from './quoteRegistry.js';
 import { IdempotencyLedger } from './idempotencyLedger.js';
 import { ConfirmationTokenService } from './confirmationTokens.js';
-import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown } from './errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown } from './errors.js';
 import { redact } from './redact.js';
 import { InMemoryKvStore } from './stores.js';
 import { sameMinor, violatesChargeMultiple } from './money.js';
@@ -331,8 +331,13 @@ export class SafetyKernel {
         try {
           r = await this._upstream('create_order', upstreamPayload, { 'Idempotency-Key': key });
         } catch (err) {
-          // The caller is answered with `err` exactly as it was raised, whatever happens to the claim.
+          // The claim is settled on `err` exactly as it was raised (a listed refusal gives it back; anything else keeps it).
           await this._settleQuoteClaimAfterFailedCreate(quote.quote_id, claimId, err);
+          // AN ORDER CALL WITH NO READABLE ANSWER (no answer, the deadline, a 5xx, an error that is not a refusal) may
+          // have written an order: an unknown outcome, said so by name, with no order id (none is known). Its claim is
+          // kept by the rule above (no such failure is on the release list). A refusal the upstream answered with a
+          // status below 500 (the listed prologue refusals included) is answered exactly as it was raised.
+          if (upstreamFailureOutcomeUnknown(err)) throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null);
           throw err;
         }
         runCtx.sideEffectDone = true; // order created upstream — past this point, failures are ambiguous

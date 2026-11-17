@@ -302,18 +302,22 @@ test('CONFORMANCE binding parity: wrong currency AND wrong merchant are rejected
   assert.equal(h.charges().length, 0, 'no mismatched-binding credential charged anything in either ecosystem');
 });
 
-// With CHECKOUT_CANCEL_UPSTREAM_ENABLED off (this harness), the MCP door records no cancellation of a session with no
-// order: it says so (not canceled, still completable) instead of answering "canceled". The ACP door records one.
-test('CONFORMANCE surface parity: get returns the owned session; an unpaid cancel answers truly on each door, and a paid one is refused — in BOTH', async () => {
+// An unpaid cancel takes the session's single-use claim on both doors (with CHECKOUT_CANCEL_UPSTREAM_ENABLED off, as
+// here, and on), so "canceled" is true: the session can no longer become an order.
+test('CONFORMANCE surface parity: get returns the owned session; cancel works unpaid and refuses paid — in BOTH', async () => {
   const h = await harness();
   const sess = mcpSession('sess_mcp');
   // MCP: create → get → cancel (unpaid)
   const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-sp-mc', quote: cart() }, sess);
   const got = await h.mcp.callTool('get_checkout_session', { session_id: mc.session_id }, sess);
   assert.equal(got.session_id, mc.session_id);
-  const cxl = await h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'idem-sp-cxl', session_id: mc.session_id }, sess).then(() => null, (e) => e);
-  assert.equal(cxl && cxl.code, 'OPERATION_NOT_ALLOWED');
-  assert.equal(cxl.detail.reason, 'session_not_ordered_not_canceled');
+  const cxl = await h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'idem-sp-cxl', session_id: mc.session_id }, sess);
+  assert.equal(cxl.status, 'canceled');
+  // And it is never completed afterwards (the cancellation holds the claim).
+  await assert.rejects(
+    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-sp-cxl-pay', session_id: mc.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mc.session_id) } }, sess),
+    (e) => e.code === 'QUOTE_ALREADY_USED',
+  );
   // ACP: create → get → cancel (unpaid)
   const ac = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-sp-ac' }));
   const aGot = await h.acp.getCheckoutSession(acpReq({ id: ac.body.id, idem: null }));

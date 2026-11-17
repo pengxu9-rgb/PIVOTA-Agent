@@ -44,7 +44,7 @@ const KNOWN_REFUSALS = Object.freeze({
  * A kernel and an executor over a scripted upstream. `script.<op>` is a queue of functions `(payload) => answer`
  * (throw to fail); an empty queue answers normally. `market` prices the quote in that market's currency.
  */
-function world({ market = 'US', hostedLink = true, cancelUpstream = false, delegated = false } = {}) {
+function world({ market = 'US', hostedLink = true, cancelUpstream = false, delegated = false, onVerify } = {}) {
   const calls = [];
   const script = { create_order: [], submit_payment: [], create_payment_link: [], dispatch: [] };
   const currency = CURRENCY_BY_MARKET[market] || 'USD';
@@ -71,7 +71,7 @@ function world({ market = 'US', hostedLink = true, cancelUpstream = false, deleg
   const executor = createCanonicalExecutor({
     kernel,
     upstream: reads,
-    verifyPaymentAuthorization: async (_a, b) => { verifies += 1; return { ok: true, amount: b.amount, currency: b.currency, user_ref: b.user_ref }; },
+    verifyPaymentAuthorization: async (_a, b) => { verifies += 1; if (onVerify) await onVerify(b); return { ok: true, amount: b.amount, currency: b.currency, user_ref: b.user_ref }; },
     hostedLinkEnabled: hostedLink,
     cancelUpstreamEnabled: cancelUpstream,
     cancelUpstreamOrder: async (orderId) => { cancels.push(orderId); return { kind: 'canceled' }; },
@@ -105,7 +105,13 @@ function assertUnknown(err, reason, orderId, label) {
   assert.equal(err.retriable, false, `${label}: not retriable`);
   // Says nothing but what it is about: no amount, no currency, no upstream detail.
   assert.deepEqual(err.detail, { reason, order_id: orderId }, label);
-  assert.match(err.recovery, orderId ? /get_order/ : /do not open another checkout/, label);
+  if (orderId) assert.match(err.recovery, /get_order/, label);
+  else {
+    // No id to read: never sent to get_order; told the store may hold an order, and not to place one without the buyer.
+    assert.equal(/get_order/.test(err.recovery), false, label);
+    assert.match(err.recovery, /store may hold an order/, label);
+    assert.match(err.recovery, /do not place a new order for this purchase without the buyer/, label);
+  }
 }
 
 // ---- A.1 / A.2 / A.3: after the order exists ------------------------------------------------------------------------
@@ -227,6 +233,58 @@ test('A.5 an order the upstream made in another currency, or at another total, i
   }
 });
 
+// ---- Q1: the order call itself gets no readable answer ------------------------------------------------------------
+
+const CREATE_UNKNOWN = Object.freeze({
+  ...UNKNOWN_FAILURES,
+  connection_refused: () => transportError('MERCHANT_UNAVAILABLE', { upstream_status: null }),
+});
+for (const [laneName, lane] of Object.entries(LANES)) {
+  for (const [shape, fail] of Object.entries(CREATE_UNKNOWN)) {
+    test(`Q1 ${laneName}: an order call with ${shape} is an unknown outcome with no order id; the claim is kept, the same key is told the same, another key that the session is used, and get / cancel / update say order_outcome_unknown`, async () => {
+      for (const market of ['US', 'SG', 'GB', 'DE']) {
+        const label = `${laneName} ${shape} ${market}`;
+        const w = world({ market });
+        const sid = await open(w);
+        w.script.create_order.push(() => { throw fail(); });
+        assertUnknown(await refusal(lane.run(w, sid, 'idem-cu-0001')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, label);
+        assert.equal(await w.kernel.isQuoteClaimed(sid), true, `${label}: kept`);
+        assertUnknown(await refusal(lane.run(w, sid, 'idem-cu-0001')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} same key`);
+        const other = await refusal(lane.run(w, sid, 'idem-cu-0002'));
+        assert.equal(other?.code, 'QUOTE_ALREADY_USED', label);
+        assert.equal(other.detail.order_id, undefined, label);
+        assert.deepEqual([w.ops('create_order').length, w.ops('submit_payment').length, w.ops('create_payment_link').length], [1, 0, 0], `${label}: one order call, ever`);
+        assert.equal((await w.exec('get_checkout_session', { session_id: sid })).status, 'order_outcome_unknown', label);
+        assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cu-cxl1', session_id: sid })))?.detail?.reason, 'session_order_outcome_unknown', label);
+        const updated = await w.exec('update_checkout_session', { idempotency_key: 'idem-cu-upd1', session_id: sid, quote: { merchant_id: 'merch_A', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } } });
+        assert.deepEqual(updated.previous_session, { session_id: sid, status: 'order_outcome_unknown', order_id: null }, label);
+      }
+    });
+  }
+  test(`Q1 ${laneName}: an order call the upstream refused with a status below 500 is answered as raised; a listed prologue refusal still gives the session back`, async () => {
+    for (const raised of [
+      () => transportError('MERCHANT_UNAVAILABLE', { upstream_status: 409, upstream_code: 'QUOTE_CONSUMED' }),
+      () => transportError('OUT_OF_STOCK', { upstream_status: 409, upstream_code: 'OUT_OF_STOCK' }),
+      () => transportError('MERCHANT_UNAVAILABLE', { upstream_status: 429, upstream_code: 'RATE_LIMIT_EXCEEDED' }),
+    ]) {
+      const w = world();
+      const sid = await open(w);
+      const err = raised();
+      w.script.create_order.push(() => { throw err; });
+      assert.equal(await refusal(lane.run(w, sid, 'idem-cr-0001')), err);
+      assert.equal(await w.kernel.isQuoteClaimed(sid), true);
+    }
+    const w = world();
+    const sid = await open(w);
+    const listed = transportError('QUOTE_REQUIRED', { upstream_status: 400, upstream_code: 'INVALID_BUYER_CONTEXT', upstream_detail: { error: 'INVALID_BUYER_CONTEXT' } });
+    w.script.create_order.push(() => { throw listed; });
+    assert.equal(await refusal(lane.run(w, sid, 'idem-cr-0002')), listed);
+    assert.equal(await w.kernel.isQuoteClaimed(sid), false, 'released, as the claim rule says');
+    await answered(lane.run(w, sid, 'idem-cr-0002'), 'the same key then orders');
+    assert.equal(w.ops('create_order').length, 2);
+  });
+}
+
 // ---- A.3: the order id is only ever the caller's own ----------------------------------------------------------------
 
 test('A.3 QUOTE_ALREADY_USED and the claim state name the order only to the buyer, session and agent that made it', async () => {
@@ -335,34 +393,90 @@ for (const [laneName, lane] of Object.entries(LANES)) {
 
 // ---- C: cancel with the upstream cancel off ---------------------------------------------------------------------------
 
-test('C cancel by session id says canceled only when it is true; the session with no order stays completable', async () => {
+test('C cancel by session id says canceled only when it is true: an unordered session is canceled by taking its claim, and is never completed or linked afterwards', async () => {
   const w = world();
   const open1 = await open(w, { key: 'idem-open-c-01' });
-  const notCanceled = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0001', session_id: open1 }));
-  assert.equal(notCanceled?.code, 'OPERATION_NOT_ALLOWED', 'refused, not answered canceled');
-  assert.deepEqual(notCanceled.detail, { op: 'cancel_checkout_session', reason: 'session_not_ordered_not_canceled' });
-  assert.equal(await w.kernel.isQuoteClaimed(open1), false, 'nothing was claimed');
-  assert.equal((await answered(complete(w, open1, 'idem-cxl-pay-1'))).order.order_id, 'o_1', 'and it can still be completed, as it said');
-  // Now ordered: refused by that name, with the order's id.
-  const ordered = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0002', session_id: open1 }));
+  const canceled = await answered(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0001', session_id: open1 }), 'unordered');
+  assert.deepEqual(canceled, { session_id: open1, order_id: null, status: 'canceled' });
+  assert.deepEqual(await w.kernel._quoteClaims.get(open1), { canceled: true }, 'the claim is the cancellation\'s');
+  // Canceled again: the same answer.
+  assert.equal((await answered(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0001b', session_id: open1 }), 'again')).status, 'canceled');
+  // Neither a completion nor a payment link can order it now, and nothing is asked of the upstream.
+  for (const [name, run] of [['complete', complete], ['payment_link', link]]) {
+    for (const extra of [{}, { fulfillment_address_update_tool: 'update_checkout_session' }]) {
+      const err = await refusal(run(w, open1, `idem-cxl-after-${name}-${Object.keys(extra).length}`, extra));
+      assert.equal(err?.code, 'QUOTE_ALREADY_USED', `${name} ${JSON.stringify(extra)}`);
+      assert.equal(err.detail.claim, 'canceled', name);
+    }
+  }
+  assert.deepEqual([w.ops('create_order').length, w.verifies()], [0, 0], 'no order call, no authorization presented');
+  assert.equal((await w.exec('get_checkout_session', { session_id: open1 })).status, 'canceled');
+  // An ordered session: refused by that name, with the order's id, and the order is not touched.
+  const open4 = await open(w, { key: 'idem-open-c-04' });
+  assert.equal((await answered(complete(w, open4, 'idem-cxl-pay-1'))).order.order_id, 'o_1');
+  const ordered = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0002', session_id: open4 }));
   assert.deepEqual(ordered?.detail, { op: 'cancel_checkout_session', reason: 'session_already_ordered', order_id: 'o_1' });
   assert.equal((await w.kernel._orderStore.get('o_1')).status, 'charge_pending', 'the order was not touched');
-  // An order call with an unknown outcome: refused as such.
+  // An order call with an unknown outcome: refused as such, and the claim stays the order call's.
   const open2 = await open(w, { key: 'idem-open-c-02' });
   w.script.create_order.push(() => { throw UNKNOWN_FAILURES.deadline(); });
   await refusal(complete(w, open2, 'idem-cxl-pay-2'));
   const unknown = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0003', session_id: open2 }));
   assert.deepEqual(unknown?.detail, { op: 'cancel_checkout_session', reason: 'session_order_outcome_unknown' });
-  // A cancellation already holds the claim: that is canceled, truly.
-  const open3 = await open(w, { key: 'idem-open-c-03' });
-  await w.kernel._quoteClaims.putIfAbsent(open3, { canceled: true });
-  assert.equal((await answered(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0004', session_id: open3 }), 'canceled claim')).status, 'canceled');
+  assert.equal((await w.kernel._quoteClaims.get(open2)).canceled, undefined);
   // No session and no order named: nothing to cancel, said so.
   assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0005' })))?.detail?.reason, 'missing_session_id');
-  // Another buyer's session is not theirs to ask about.
-  assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0006', session_id: open1 }, { user_ref: 'buyer_2', acp_session_id: 'sess_1' })))?.code, 'STATE_LINKAGE_MISMATCH');
+  // Another buyer's session is not theirs to ask about, and nothing is claimed for them.
+  const open5 = await open(w, { key: 'idem-open-c-05' });
+  assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0006', session_id: open5 }, { user_ref: 'buyer_2', acp_session_id: 'sess_1' })))?.code, 'STATE_LINKAGE_MISMATCH');
+  assert.equal(await w.kernel.isQuoteClaimed(open5), false);
   // By order id: unchanged (a charge_pending order is refused).
-  assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0007', order_id: 'o_1' }))).detail.reason, 'cannot_cancel_paid_or_pending');
+  assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0007', order_id: 'o_1' })))?.detail?.reason, 'cannot_cancel_paid_or_pending');
+});
+
+test('C a cancellation and a completion of one session: exactly one wins, whichever order they arrive in', async () => {
+  // The cancellation arrives after the completion's spent-session check and before its order call (inside the
+  // authorization check): the completion's own claim is refused, and no order is asked for.
+  {
+    const ref = {};
+    const w = world({ onVerify: async () => { ref.cancel = await w.exec('cancel_checkout_session', { idempotency_key: 'idem-race-cxl1', session_id: ref.sid }); } });
+    ref.sid = await open(w);
+    const err = await refusal(complete(w, ref.sid, 'idem-race-pay1'));
+    assert.equal(ref.cancel?.status, 'canceled', 'the cancellation won');
+    assert.equal(err?.code, 'QUOTE_ALREADY_USED');
+    assert.equal(w.ops('create_order').length, 0);
+  }
+  // The completion's order call is in flight when the cancellation arrives: the cancellation is refused, the order is
+  // made once, and the cancellation is then refused with the order's id.
+  {
+    const w = world();
+    const sid = await open(w);
+    let release;
+    const held = new Promise((r) => { release = r; });
+    let reached;
+    const atUpstream = new Promise((r) => { reached = r; });
+    w.script.create_order.push(async () => { reached(); await held; return { order_id: 'o_held', acp_state: {} }; });
+    const running = complete(w, sid, 'idem-race-pay2');
+    await atUpstream;
+    const during = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-race-cxl2', session_id: sid }));
+    assert.equal(during?.detail?.reason, 'session_order_outcome_unknown', 'the completion holds the claim');
+    release();
+    assert.equal((await answered(running, 'the completion won')).order.order_id, 'o_held');
+    const after = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-race-cxl3', session_id: sid }));
+    assert.deepEqual(after?.detail, { op: 'cancel_checkout_session', reason: 'session_already_ordered', order_id: 'o_held' });
+    assert.equal(w.ops('create_order').length, 1);
+  }
+  // Two at once, started together: one winner every time.
+  for (let i = 0; i < 5; i += 1) {
+    const w = world();
+    const sid = await open(w);
+    const [c, p] = await Promise.all([
+      w.exec('cancel_checkout_session', { idempotency_key: `idem-race-cx-${i}`, session_id: sid }).then((v) => ({ ok: true, v }), (e) => ({ ok: false, e })),
+      complete(w, sid, `idem-race-pp-${i}`).then((v) => ({ ok: true, v }), (e) => ({ ok: false, e })),
+    ]);
+    assert.equal([c.ok, p.ok].filter(Boolean).length, 1, `#${i}: exactly one winner (${JSON.stringify([c.ok, p.ok])})`);
+    assert.equal(w.ops('create_order').length, p.ok ? 1 : 0, `#${i}`);
+  }
 });
 
 test('C with the upstream cancel on, nothing here changes: an unordered session is claimed and canceled', async () => {

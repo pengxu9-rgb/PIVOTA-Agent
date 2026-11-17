@@ -19,7 +19,7 @@
 //   exchange_payment_token         -> PERMANENTLY REFUSED (see delegatedPaymentRefusal.js): that operation is
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
-import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, kernelOutcomeUnknownOf } from '../errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, kernelOutcomeUnknownOf, upstreamFailureOutcomeUnknown } from '../errors.js';
 import { effectiveShippingAddress } from '../kernel.js';
 import { fulfillmentAddressRequiredRefusal, assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
@@ -443,17 +443,10 @@ function assertAddressToShipTo(quote, params, step) {
 // (kernelOutcomeUnknown: not retriable, the order id in its detail) instead, and a same-key retry gets that same answer
 // (the ledger keeps it). A refusal the upstream ANSWERED (a status below 500) and every refusal raised in this process
 // before anything was sent are known outcomes, and stay exactly as they were.
-function outcomeOfFailureIsUnknown(err) {
-  if (!(err instanceof PivotaCommerceError)) return true;
-  const detail = isPlainObjectValue(err.detail) ? err.detail : {};
-  if (detail.upstream_timeout === true) return true;
-  if (!Object.hasOwn(detail, 'upstream_status')) return false; // raised here, not by the transport
-  const status = detail.upstream_status;
-  return !Number.isInteger(status) || status >= 500;
-}
+// (errors.js upstreamFailureOutcomeUnknown is the one test of "no readable answer", shared with kernel.createOrder.)
 function answerAfterOrder(err, orderId, reason) {
   if (kernelOutcomeUnknownOf(err)) return err;
-  return outcomeOfFailureIsUnknown(err) ? kernelOutcomeUnknown(reason, orderId) : err;
+  return upstreamFailureOutcomeUnknown(err) ? kernelOutcomeUnknown(reason, orderId) : err;
 }
 // createOrder answered that the order call's outcome is unknown: the outer attempt is held too (an order may exist),
 // so the same key is answered the same way again rather than being told the session was already used.
@@ -1199,23 +1192,31 @@ async function cancelSession(kernel, params, ctx) {
     return { session_id: params.session_id, order_id: null, status: 'canceled' };
   }
   if (!nonEmpty(order_id)) {
-    // A SESSION, NAMED BY ITS SESSION ID ALONE, ON A DOOR THAT DOES NOT RECORD CANCELLATIONS. Nothing here cancels
-    // anything at the store, so "canceled" is said only when it is true: a cancellation already holds the session's
-    // claim. A session that became an order is refused by that name (with the order's id, when it is this caller's),
-    // a session whose order call has an unknown outcome is refused by that name, and a session with no order is
-    // refused as still open: it can still be completed until it expires. Ownership and
-    // expiry first, as every other read of a session.
+    // A SESSION, NAMED BY ITS SESSION ID ALONE (CHECKOUT_CANCEL_UPSTREAM_ENABLED off, any door but the ACP REST one,
+    // which states its own rule above). "canceled" is said only when it is true: this cancellation takes the session's
+    // claim (below), or a cancellation already holds it. A session that became an order is refused by that name (with
+    // the order's id, when it is this caller's), and a session whose order call has an unknown outcome is refused by
+    // that name. Ownership and expiry first, as every other read of a session.
     const op = 'cancel_checkout_session';
     if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
     const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx);
+    // A SESSION WITH NO ORDER IS CANCELED BY TAKING ITS QUOTE'S SINGLE-USE CLAIM, the record an order takes, exactly as
+    // the upstream-cancel lane does (cancelSessionUpstream): one atomic write decides a cancellation and a completion
+    // of one session, and exactly one of them wins. Once the cancellation holds it, no completion or payment link can
+    // create an order from this quote. Nothing exists at the store to cancel; "canceled" is now true here.
+    if (await kernel._quoteClaims.putIfAbsent(snapshot.quote_id, { canceled: true })) {
+      return { session_id: params.session_id, order_id: null, status: 'canceled' };
+    }
+    // The claim is held: by a cancellation (canceled again: the same answer), or by an order or an order call.
     const claim = await claimStateOf(kernel, snapshot.quote_id, ctx);
     if (claim && claim.canceled) return { session_id: params.session_id, order_id: null, status: 'canceled' };
     if (claim && claim.order_id) {
       throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_already_ordered', order_id: claim.order_id });
     }
     // An order was asked for and this gateway holds none for it (still in flight, or its outcome is unknown).
-    if (claim) throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_order_outcome_unknown' });
-    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_not_ordered_not_canceled' });
+    // An order was asked for and this gateway holds none for it (still in flight, or its outcome is unknown); or the
+    // claim went away between the two reads (an order call that was refused by name gave it back): not canceled.
+    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: claim ? 'session_order_outcome_unknown' : 'session_not_ordered_not_canceled' });
   }
   if (nonEmpty(order_id)) {
     const o = await kernel._orderStore.get(order_id);

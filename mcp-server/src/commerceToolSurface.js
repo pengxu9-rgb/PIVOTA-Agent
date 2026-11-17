@@ -1897,12 +1897,12 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
     message: "This checkout session was used to ask for an order, and whether that order exists is not known here, so nothing was canceled.",
     recovery: "do not tell the buyer the checkout was canceled; this session can no longer be completed; do not start another checkout for this purchase without telling the buyer an earlier order may exist",
   },
-  // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: a session with no order was not canceled (nothing records it), and it
-  // stays completable until it expires.
+  // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: an order call's claim was given back between the cancellation's two reads
+  // (a refusal the order service answered by name), so the session was not canceled. Rare; ask again.
   session_not_ordered_not_canceled: {
     code: "OPERATION_NOT_ALLOWED",
-    message: "This checkout session has no order, so nothing was canceled; the session was not canceled and can still be completed until it expires.",
-    recovery: "do not tell the buyer the checkout was canceled; to make sure it is never paid, do not complete it, and it expires at its expires_at",
+    message: "This checkout session was not canceled: an order call for it was answered while the cancellation ran.",
+    recovery: "do not tell the buyer the checkout was canceled; cancel it again with a new idempotency_key",
   },
 });
 
@@ -1917,8 +1917,8 @@ const KERNEL_OUTCOME_UNKNOWN_ANSWERS = Object.freeze({
     withoutOrder: "Whether the payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
   },
   order_create_outcome_unknown: {
-    withOrder: "The order call was answered, but the answer could not be read: an order may exist (detail.order_id). Read it with get_order before anything else, and do not start another checkout for this purchase.",
-    withoutOrder: "The order call was answered, but the answer could not be read: an order may have been created, and its id is not known. Do not start another checkout for this purchase without telling the buyer an earlier order may exist. Sending this call again with the same idempotency_key returns this same answer.",
+    withOrder: "Whether the order was created is unknown: the order service gave no readable answer. An order may exist (detail.order_id): read it with get_order before anything else, and do not start another checkout for this purchase.",
+    withoutOrder: "Whether the order was created is unknown: the order service gave no readable answer. The store may hold an order for this checkout, and its id is not known here. Do not place a new order for this purchase without the buyer. Sending this call again with the same idempotency_key returns this same answer.",
   },
 });
 

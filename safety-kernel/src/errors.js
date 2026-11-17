@@ -99,8 +99,9 @@ export class PivotaCommerceError extends Error {
  *                                                 nor a payment page;
  *   - `payment_link_outcome_unknown_after_order`  the order exists and its payment page was asked for: no answer, a
  *                                                 5xx, or a 2xx that names no page;
- *   - `order_create_outcome_unknown`              the order was asked for and the answer could not be read: an order
- *                                                 may exist, and its id is not known here.
+ *   - `order_create_outcome_unknown`              the order was asked for and no readable answer came back (no answer,
+ *                                                 a 5xx, a 2xx that is not an order): an order may exist, and its id is
+ *                                                 not known here.
  * Same code as every other door's unknown outcome (CHECKOUT_OUTCOME_UNKNOWN), but NOT retriable: re-sending the same
  * call with the same key returns this same answer (the ledger keeps it), so the way on is to read the order, never to
  * send again or to open another checkout.
@@ -120,8 +121,24 @@ export function kernelOutcomeUnknown(reason, orderId) {
   err.retriable = false;
   err.recovery = order_id
     ? 'read the order in detail.order_id with get_order before anything else; do not open another checkout for this purchase'
-    : 'do not open another checkout for this purchase without telling the buyer an earlier order may exist; re-sending the same call returns this same answer';
+    : 'the store may hold an order for this checkout, and its id is not known here: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer';
   return err;
+}
+
+/**
+ * IS THE OUTCOME OF THIS FAILED UPSTREAM MONEY CALL UNKNOWN? True when no readable answer came back: the transport's
+ * deadline mark, no response at all (`upstream_status` not a status), a 5xx, or an error that is not this taxonomy's
+ * (a raw transport or adapter error). False for a refusal the upstream ANSWERED with a status below 500, and for every
+ * refusal raised in this process before anything was sent (no `upstream_status` member: not the transport's).
+ * The transport writes these members (src/server.js throwCommerceKernelUpstreamError).
+ */
+export function upstreamFailureOutcomeUnknown(err) {
+  if (!(err instanceof PivotaCommerceError)) return true;
+  const detail = err.detail && typeof err.detail === 'object' && !Array.isArray(err.detail) ? err.detail : {};
+  if (detail.upstream_timeout === true) return true;
+  if (!Object.hasOwn(detail, 'upstream_status')) return false; // raised here, not by the transport
+  const status = detail.upstream_status;
+  return !Number.isInteger(status) || status >= 500;
 }
 
 /** `{ reason, order_id }` when `err` is one of the kernel's own unknown-outcome answers, else null. */
