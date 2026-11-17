@@ -235,7 +235,7 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
       // no merchant operation, so the claim is released and the same request may retry after the window.
       try {
         await createMerchantQuoteRateLimiter({ stateStore, keyOf: digest, env, now })({
-          partner, sellerHost: merchantRequest.sellerHost,
+          partner, sellerEndpoint: allowedSellers[merchantRequest.sellerHost],
         });
       } catch (error) { await releasePreflight(error); }
       let pending;

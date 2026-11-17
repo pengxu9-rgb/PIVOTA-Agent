@@ -10,16 +10,20 @@ import { encodeUcpVariantItemId } from "../src/ucpVariantIds.js";
 // Placeholder sellers, products and buyers only.
 const sellerA = "alpha-seller.example";
 const sellerB = "beta-seller.example";
+const sellerA2 = "gamma-seller.example";
 const endpoints = {
   [sellerA]: "https://alpha-shop.myshopify.com/api/ucp/mcp",
   [sellerB]: "https://beta-shop.myshopify.com/api/ucp/mcp",
+  // A second storefront host configured onto the first seller's store.
+  [sellerA2]: "https://alpha-shop.myshopify.com/api/ucp/mcp",
 };
 const products = {
   sig_a0000000000000000000000000000001: { seller: sellerA, variant: "61000000000101" },
   sig_b0000000000000000000000000000002: { seller: sellerB, variant: "62000000000101" },
   sig_c0000000000000000000000000000003: { seller: sellerA, variant: "63000000000101" },
+  sig_d0000000000000000000000000000004: { seller: sellerA2, variant: "64000000000101" },
 };
-const [productA, productB, productA2] = Object.keys(products);
+const [productA, productB, productA2, productSameStore] = Object.keys(products);
 const buyer = { user_ref: "test-buyer", acp_session_id: "test-session" };
 const start = Date.parse("2026-11-17T12:00:10Z");
 const DOOR_FLAGS = ["AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED", "AGENT_CHECKOUT_STRICT", "AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED"];
@@ -67,7 +71,8 @@ function setup({ limits = {}, store = undefined, clock } = {}) {
   const kv = store ?? new InMemoryKvStore({ now });
   Object.defineProperty(kv, "durable", { value: true });
   const quoted = [];
-  const caller = { partner: "partner-one" };
+  // `subject`, when set, replaces the API-key agent subject (an OAuth client, say).
+  const caller = { partner: "partner-one", subject: null };
   const surface = createCommerceToolSurface({
     async execute(op, params) {
       assert.equal(op, "get_product");
@@ -82,7 +87,7 @@ function setup({ limits = {}, store = undefined, clock } = {}) {
     merchantQuote: {
       now,
       stateStore: kv,
-      partnerPrincipal: () => ({ kind: "agent", sub: caller.partner }),
+      partnerPrincipal: () => caller.subject ?? { kind: "agent", sub: caller.partner },
       confirmCatalogVariant: async () => true,
       env: {
         AGENT_MERCHANT_CHECKOUT_QUOTE_SELLERS_JSON: JSON.stringify(endpoints),
@@ -175,27 +180,25 @@ test("the limit is enforced whatever MCP_CALLER_LIMITS_MODE says", async t => {
 });
 
 test("a limit cannot be switched off and an unreadable value uses the default", () => {
-  const read = (perSeller, perPartner, windowSec) => merchantQuoteRateLimits({
-    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: perSeller,
-    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: perPartner,
-    AGENT_MERCHANT_CHECKOUT_QUOTE_RATE_WINDOW_SEC: windowSec,
-  });
-  assert.deepEqual(merchantQuoteRateLimits({}), { windowMs: 60_000, perPartner: 12, perSeller: 6 });
-  assert.deepEqual(read("0", "-3", "0"), { windowMs: 10_000, perPartner: 1, perSeller: 1 });
-  assert.deepEqual(read("off", "", "1.5"), { windowMs: 60_000, perPartner: 12, perSeller: 6 });
-  assert.deepEqual(read("100000", "100000", "100000"), { windowMs: 3_600_000, perPartner: 240, perSeller: 120 });
+  const names = ["RATE_WINDOW_SEC", "PER_PARTNER_LIMIT", "UNREGISTERED_OAUTH_LIMIT", "PER_SELLER_LIMIT", "PER_SELLER_DAILY_LIMIT"];
+  const read = (...values) => merchantQuoteRateLimits(Object.fromEntries(
+    names.map((name, index) => [`AGENT_MERCHANT_CHECKOUT_QUOTE_${name}`, values[index]])));
+  const defaults = { windowMs: 60_000, perPartner: 12, pooledOauth: 6, perSeller: 6, perSellerDaily: 200 };
+  assert.deepEqual(merchantQuoteRateLimits({}), defaults);
+  assert.deepEqual(read("0", "-3", "0", "0", "-1"), { windowMs: 10_000, perPartner: 1, pooledOauth: 1, perSeller: 1, perSellerDaily: 1 });
+  assert.deepEqual(read("1.5", "off", "", "x", "2e3"), defaults);
+  assert.deepEqual(read("100000", "100000", "100000", "100000", "100000"),
+    { windowMs: 3_600_000, perPartner: 240, pooledOauth: 240, perSeller: 120, perSellerDaily: 5000 });
 });
 
-test("a counter store failure or lasting write contention refuses before any seller call", async t => {
+test("a counter store failure, or a store without atomic counters, refuses before any seller call", async t => {
   withEnv(t, {});
-  const isCounter = value => value && Object.hasOwn(value, "count");
-
   const failing = new InMemoryKvStore({ now: () => start });
-  const putIfAbsent = failing.putIfAbsent.bind(failing);
+  const increment = failing.incrementCounterBelow.bind(failing);
   let broken = true;
-  failing.putIfAbsent = async (key, value, options) => {
-    if (broken && isCounter(value)) throw new Error("counter store unavailable");
-    return putIfAbsent(key, value, options);
+  failing.incrementCounterBelow = async (...input) => {
+    if (broken) throw new Error("counter store unavailable");
+    return increment(...input);
   };
   const down = setup({ store: failing });
   await assert.rejects(down.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("store-down-key-01"), buyer),
@@ -204,14 +207,120 @@ test("a counter store failure or lasting write contention refuses before any sel
   broken = false;
   assert.equal((await down.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("store-down-key-01"), buyer)).verifiedQuotedTotalMinor, 2300);
 
-  const contended = new InMemoryKvStore({ now: () => start });
-  const compareAndSet = contended.compareAndSet.bind(contended);
-  contended.compareAndSet = async (key, field, match, value, options) =>
-    (isCounter(value) ? false : compareAndSet(key, field, match, value, options));
-  const busy = setup({ store: contended });
-  await busy.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("contended-key-01"), buyer);
-  await rateLimited(busy.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("contended-key-02"), buyer));
-  assert.equal(busy.quoted.length, 1);
+  const plain = new InMemoryKvStore({ now: () => start });
+  plain.incrementCounterBelow = undefined;
+  const missing = setup({ store: plain });
+  await assert.rejects(missing.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("no-counter-key-01"), buyer),
+    { code: "MERCHANT_UNAVAILABLE", detail: { reason: "merchant_quote_unavailable" } });
+  assert.equal(missing.quoted.length, 0);
+});
+
+test("concurrent new quotes never pass a limit, and none under it is refused for racing", async t => {
+  withEnv(t, {});
+  const { ucp, quoted } = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "240", AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "5",
+  } });
+  const outcomes = await Promise.allSettled(Array.from({ length: 20 }, (_, index) =>
+    ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`burst-key-${String(index).padStart(6, "0")}`), buyer)));
+  assert.equal(outcomes.filter(outcome => outcome.status === "fulfilled").length, 5);
+  assert.ok(outcomes.filter(outcome => outcome.status === "rejected")
+    .every(outcome => outcome.reason.detail?.reason === MERCHANT_QUOTE_RATE_LIMITED));
+  assert.equal(quoted.length, 5);
+});
+
+test("OAuth clients without a caller-limit override share one pooled partner budget", async t => {
+  withEnv(t, {});
+  const provisioned = { kind: "oauth", iss: "https://login.test", cid: "provisioned-client" };
+  const { ucp, quoted, caller } = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_UNREGISTERED_OAUTH_LIMIT: "2",
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "3",
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "100",
+    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ [`oauth:${provisioned.iss}#${provisioned.cid}`]: { rpm: 600 } }),
+  } });
+  // Each self-registered client is a new client id, yet together they get the pooled 2.
+  for (const [index, cid] of ["minted-client-1", "minted-client-2"].entries()) {
+    caller.subject = { kind: "oauth", iss: "https://login.test", cid };
+    await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`minted-key-00000${index}`), buyer);
+  }
+  caller.subject = { kind: "oauth", iss: "https://login.test", cid: "minted-client-3" };
+  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("minted-key-000002"), buyer));
+  assert.equal(quoted.length, 2);
+  // A provisioned client and an API-key agent each keep their own partner budget.
+  caller.subject = provisioned;
+  for (const index of [0, 1, 2]) await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`provisioned-key-0${index}`), buyer);
+  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("provisioned-key-03"), buyer));
+  caller.subject = null;
+  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("agent-key-0000001"), buyer);
+  assert.equal(quoted.length, 6);
+});
+
+test("a malformed overrides value pools every OAuth client", async t => {
+  withEnv(t, {});
+  const { ucp, quoted, caller } = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_UNREGISTERED_OAUTH_LIMIT: "1",
+    MCP_CALLER_LIMITS_OVERRIDES_JSON: "{not json",
+  } });
+  caller.subject = { kind: "oauth", iss: "https://login.test", cid: "listed-client" };
+  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("malformed-key-0001"), buyer);
+  caller.subject = { kind: "oauth", iss: "https://login.test", cid: "other-client" };
+  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("malformed-key-0002"), buyer));
+  assert.equal(quoted.length, 1);
+});
+
+test("each seller has a daily cap across windows, refused until the next UTC day", async t => {
+  withEnv(t, {});
+  const { ucp, quoted, time } = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_DAILY_LIMIT: "3", AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "100",
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "240",
+  } });
+  for (const minute of [0, 1, 2]) {
+    time.now = Date.parse(`2026-11-17T12:0${minute}:10Z`);
+    await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`daily-key-00000${minute}`), buyer);
+  }
+  // 23:58:30: the minute window ends in 30 s, the UTC day in 90 s. The wait is the day's.
+  time.now = Date.parse("2026-11-17T23:58:30Z");
+  const refusal = await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("daily-key-000003"), buyer));
+  assert.equal(refusal.detail.retry_after_seconds, 90, "until the UTC day ends");
+  // Another seller still has its own daily cap.
+  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("daily-key-other-1", { lines: [[productB, 1]] }), buyer);
+  time.now = Date.parse("2026-11-18T00:00:00Z");
+  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("daily-key-000003"), buyer);
+  assert.equal(quoted.length, 5);
+});
+
+test("a refusal by a later counter gives back the units already taken", async t => {
+  withEnv(t, {});
+  const { ucp, quoted } = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "2", AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "1",
+  } });
+  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("refund-key-000001"), buyer);
+  // The seller is full: refused, and the partner unit this attempt took is returned.
+  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("refund-key-000002"), buyer));
+  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("refund-key-000003"), buyer));
+  // So the partner still has its second unit for another seller.
+  const other = await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("refund-key-000004", { lines: [[productB, 1]] }), buyer);
+  assert.equal(other.sellerHost, sellerB);
+  assert.equal(quoted.length, 2);
+
+  // The daily cap refusing gives back both window units.
+  const daily = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "2", AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "2",
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_DAILY_LIMIT: "1",
+  } });
+  await daily.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("daily-refund-key-1"), buyer);
+  await rateLimited(daily.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("daily-refund-key-2"), buyer));
+  await daily.ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("daily-refund-key-3", { lines: [[productB, 1]] }), buyer);
+  assert.equal(daily.quoted.length, 2);
+});
+
+test("two storefront hosts configured onto one store share that store's budget", async t => {
+  withEnv(t, {});
+  const { ucp, quoted } = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "1", AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "240",
+  } });
+  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("same-store-key-01"), buyer);
+  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("same-store-key-02", { lines: [[productSameStore, 1]] }), buyer));
+  assert.deepEqual(quoted.map(input => input.sellerHost), [sellerA]);
 });
 
 test("a cart that spans two sellers is refused before any seller call", async t => {
@@ -274,4 +383,24 @@ test("an address in another country than the market is refused at the tool, befo
   await assert.rejects(ucp.callTool(MERCHANT_QUOTE_TOOL, args, buyer),
     error => error.code === "QUOTE_REQUIRED" && error.detail?.reason === "merchant_quote_market_address_required");
   assert.equal(quoted.length, 0);
+});
+
+test("a store error on a later counter gives back the units already taken", async t => {
+  withEnv(t, {});
+  const store = new InMemoryKvStore({ now: () => start });
+  const increment = store.incrementCounterBelow.bind(store);
+  let calls = 0;
+  let failSecond = true;
+  store.incrementCounterBelow = async (...input) => {
+    calls += 1;
+    if (failSecond && calls === 2) throw new Error("seller counter unavailable");
+    return increment(...input);
+  };
+  const { ucp, quoted } = setup({ store, limits: { AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "1" } });
+  await assert.rejects(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("store-error-key-1"), buyer),
+    { code: "MERCHANT_UNAVAILABLE", detail: { reason: "merchant_quote_unavailable" } });
+  failSecond = false;
+  // The partner's only unit was given back, so the retry is admitted.
+  assert.equal((await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("store-error-key-1"), buyer)).verifiedQuotedTotalMinor, 2300);
+  assert.equal(quoted.length, 1);
 });
