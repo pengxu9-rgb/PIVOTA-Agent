@@ -19,6 +19,7 @@ const { SCENARIOS } = require('../src/agenpas/devFixtures');
 // Each app listens on 127.0.0.1 itself, on a port the OS picks for IPv4. supertest's own `listen(0)` binds the IPv6
 // wildcard and then connects to 127.0.0.1, which on a busy machine can reach ANOTHER process that holds the same port
 // number on IPv4 (seen here as a stray 'not found'). Same chaining as supertest: request(app).get(p).set(...).
+// Every request carries the public host by default (the routes answer only there); a test's own .set('Host') wins.
 const servers = [];
 test.after(() => { for (const srv of servers) srv.close(); });
 function listening(a) {
@@ -36,7 +37,7 @@ function request(a) {
       send(...x) { steps.push(['send', x]); return chain; },
       then(onOk, onErr) {
         return listening(a).then((srv) => {
-          let t = supertest(srv)[method](path);
+          let t = supertest(srv)[method](path).set('Host', PUBLIC_HOST);
           for (const [name, x] of steps) t = t[name](...x);
           return t;
         }).then(onOk, onErr);
@@ -50,11 +51,14 @@ function request(a) {
 const SECRET = 'route-test-secret-for-agenpas-0123456789';
 const PID = 'ap_0123456789abcdef01234567';
 const NOW = Date.UTC(2026, 10, 17, 12, 0, 0);
-const CLAIMS = Object.freeze({ purchaseId: PID, agentId: 'agent_fixture_1', userRef: 'usr_fixtureFixtureFixture' });
+const PUBLIC_HOST = 'agenpas.example';
+const AUD = `https://${PUBLIC_HOST}`;
+const CLAIMS = Object.freeze({ purchaseId: PID, agentId: 'agent_fixture_1', userRef: 'usr_fixtureFixtureFixture', aud: AUD });
 const ENV_ON = Object.freeze({
   AGENPAS_ENABLED: '1',
   AGENPAS_LINK_SECRET: SECRET,
   AGENPAS_HOSTED_HOSTS: 'pay.partner.example',
+  AGENPAS_PUBLIC_BASE_URL: AUD,
 });
 
 function body(state = 'needs_payment_method', extra = {}) {
@@ -74,9 +78,9 @@ function recordingReader(answer = { kind: 'accepted', purchase: body() }) {
 }
 
 // The same shape as src/server.js: the AgenPas router, then the app's own not-found.
-function app({ env = ENV_ON, reader = recordingReader(), mount = true, now = () => NOW, fixtureReader } = {}) {
+function app({ env = ENV_ON, reader = recordingReader(), mount = true, now = () => NOW, fixtureReader, logger, limits } = {}) {
   const a = express();
-  if (mount) a.use(createAgenpasRouter({ reader, env, now, fixtureReader }));
+  if (mount) a.use(createAgenpasRouter({ reader, env, now, fixtureReader, logger, limits }));
   a.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', path: req.path }));
   return a;
 }
@@ -120,11 +124,22 @@ test('on: paths that are not AgenPas routes, other methods, and another host sti
   }
   const post = await request(a).post(`/agenpas/api/p/${PID}`).send({});
   assert.equal(post.body.error, 'NOT_FOUND');
-  const hosted = app({ env: { ...ENV_ON, AGENPAS_PUBLIC_BASE_URL: 'https://agenpas.example' } });
-  const wrongHost = await request(hosted).get(`/agenpas/p/${PID}`).set('Host', 'other.example');
+  const wrongHost = await request(a).get(`/agenpas/p/${PID}`).set('Host', 'other.example');
   assert.equal(wrongHost.body.error, 'NOT_FOUND');
-  const rightHost = await request(hosted).get(`/agenpas/p/${PID}`).set('Host', 'agenpas.example');
+  const rightHost = await request(a).get(`/agenpas/p/${PID}`).set('Host', PUBLIC_HOST);
   assert.equal(rightHost.status, 200);
+});
+
+test('on, but no AGENPAS_PUBLIC_BASE_URL (or an unusable one): no route is served on any host', async () => {
+  for (const base of [undefined, '', 'http://agenpas.example', 'https://agenpas.example/sub', 'http://localhost:4000']) {
+    const env = { ...ENV_ON, AGENPAS_PUBLIC_BASE_URL: base };
+    for (const host of [PUBLIC_HOST, 'localhost:4000', 'anything.example']) {
+      for (const p of [`/agenpas/p/${PID}`, `/agenpas/api/p/${PID}`, '/agenpas/assets/app.js']) {
+        const res = await request(app({ env })).get(p).set('Host', host);
+        assert.equal(res.body.error, 'NOT_FOUND', `${base} ${host} ${p}`);
+      }
+    }
+  }
 });
 
 // ---- the page --------------------------------------------------------------------------------------------------
@@ -262,28 +277,122 @@ test('dev fixtures: off a dev machine the fixture mode cannot arm, whatever its 
 });
 
 test('dev fixtures: /agenpas/dev/start mints a fixture link locally and is a plain 404 on a managed platform', async () => {
-  const local = { ...ENV_ON, AGENPAS_DEV_FIXTURES: '1' };
+  const local = { ...ENV_ON, AGENPAS_DEV_FIXTURES: '1', AGENPAS_PUBLIC_BASE_URL: 'http://localhost:4000' };
   const reader = recordingReader();
   const a = app({ env: local, reader });
-  const start = await request(a).get('/agenpas/dev/start?scenario=happy');
+  const lo = (req) => req.set('Host', 'localhost:4000');
+  const start = await lo(request(a).get('/agenpas/dev/start?scenario=happy'));
   assert.equal(start.status, 302);
   const loc = new URL(start.headers.location, 'http://localhost');
   assert.equal(loc.pathname, `/agenpas/p/${SCENARIOS.happy.id}`);
   assert.equal(loc.search, '');
-  const api = await request(a).get(`/agenpas/api/p/${SCENARIOS.happy.id}`).set('X-Agenpas-Link', new URLSearchParams(loc.hash.slice(1)).get('t'));
+  const api = await lo(request(a).get(`/agenpas/api/p/${SCENARIOS.happy.id}`)).set('X-Agenpas-Link', new URLSearchParams(loc.hash.slice(1)).get('t'));
   assert.equal(api.status, 200);
   assert.equal(api.body.product_name, 'Sample Lip Gloss');
   assert.equal(JSON.stringify(api.body).includes('fixture-owner-hash'), false);
   assert.equal(reader.calls.length, 0, 'the backend reader is not used in fixture mode');
 
-  const deployed = app({ env: { ...local, K_SERVICE: 'gateway' }, reader });
+  // A managed platform: the fixture flag is inert, and localhost is no base URL there, so a deploy names its host.
+  const deployed = app({ env: { ...local, AGENPAS_PUBLIC_BASE_URL: AUD, K_SERVICE: 'gateway' }, reader });
   const refused = await request(deployed).get('/agenpas/dev/start?scenario=happy');
   assert.equal(refused.status, 404);
   assert.equal(refused.body.error, 'NOT_FOUND');
   // And a link for a fixture id goes to the REAL reader there.
-  const t = mintLinkToken({ purchaseId: SCENARIOS.happy.id, agentId: 'a', userRef: 'u', secret: SECRET, now: NOW });
+  const t = mintLinkToken({ purchaseId: SCENARIOS.happy.id, agentId: 'a', userRef: 'u', aud: AUD, secret: SECRET, now: NOW });
   await request(deployed).get(`/agenpas/api/p/${SCENARIOS.happy.id}`).set('X-Agenpas-Link', t);
   assert.equal(reader.calls.length, 1);
+});
+
+test('dev fixtures: on a dev machine but a non-loopback Host, /agenpas/dev/* is not served and the real reader answers', async () => {
+  const reader = recordingReader();
+  const a = app({ env: { ...ENV_ON, AGENPAS_DEV_FIXTURES: '1' }, reader });
+  const refused = await request(a).get('/agenpas/dev/start?scenario=happy');
+  assert.equal(refused.body.error, 'NOT_FOUND');
+  const t = mintLinkToken({ purchaseId: SCENARIOS.happy.id, agentId: 'a', userRef: 'u', aud: AUD, secret: SECRET, now: NOW });
+  await request(a).get(`/agenpas/api/p/${SCENARIOS.happy.id}`).set('X-Agenpas-Link', t);
+  assert.equal(reader.calls.length, 1);
+});
+
+// ---- abuse valves ----------------------------------------------------------------------------------------------
+
+test('api: one link token over its bucket gets 429 with Retry-After; another token is unaffected', async () => {
+  const reader = recordingReader();
+  const a = app({ reader, limits: { token: { capacity: 3, refillPerSecond: 0.0001 }, ip: { capacity: 1000 } } });
+  const t1 = token();
+  const codes = [];
+  for (let i = 0; i < 5; i += 1) codes.push((await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', t1)).status);
+  assert.deepEqual(codes, [200, 200, 200, 429, 429]);
+  const limited = await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', t1);
+  assert.equal(limited.body.error, 'rate_limited');
+  assert.ok(Number(limited.headers['retry-after']) >= 1);
+  assert.equal((await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token())).status, 200);
+});
+
+test('api: one client IP over its bucket gets 429 before any token is checked', async () => {
+  const reader = recordingReader();
+  const a = app({ reader, limits: { ip: { capacity: 2, refillPerSecond: 0.0001 } } });
+  const ip = (req) => req.set('X-Forwarded-For', '203.0.113.7, 198.51.100.1');
+  assert.equal((await ip(request(a).get(`/agenpas/api/p/${PID}`)).set('X-Agenpas-Link', 'v1.junk.junk')).status, 404);
+  assert.equal((await ip(request(a).get(`/agenpas/api/p/${PID}`)).set('X-Agenpas-Link', token())).status, 200);
+  const third = await ip(request(a).get(`/agenpas/api/p/${PID}`)).set('X-Agenpas-Link', token());
+  assert.equal(third.status, 429);
+  assert.ok(third.headers['retry-after']);
+  // Another client is unaffected.
+  const other = await request(a).get(`/agenpas/api/p/${PID}`).set('X-Forwarded-For', '203.0.113.99, 198.51.100.1').set('X-Agenpas-Link', token());
+  assert.equal(other.status, 200);
+});
+
+test('api: concurrent and repeated reads of one purchase share ONE backend read for ~2 s', async () => {
+  let clock = NOW;
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const calls = [];
+  const reader = { async read(claims) { calls.push(claims); await gate; return { kind: 'accepted', purchase: body() }; } };
+  const a = app({ reader, now: () => clock });
+  const pending = [1, 2, 3, 4].map(() => request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token()));
+  await new Promise((r) => setTimeout(r, 50));
+  release();
+  const answers = await Promise.all(pending);
+  assert.deepEqual(answers.map((r) => r.status), [200, 200, 200, 200]);
+  assert.equal(calls.length, 1, 'single-flight');
+  clock += 1500;
+  await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token());
+  assert.equal(calls.length, 1, 'cached within 2 s');
+  clock += 1000;
+  await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token());
+  assert.equal(calls.length, 2, 'read again after 2 s');
+  // Another agent's link for the same purchase is its own read.
+  await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token({ agentId: 'agent_fixture_2' }));
+  assert.equal(calls.length, 3);
+});
+
+test('refusal logs are sampled: the first 5 per reason per minute, then a count; never the token', async () => {
+  let clock = NOW;
+  const lines = [];
+  const logger = { info: (o) => lines.push(o), warn: (o) => lines.push(o) };
+  const a = app({ logger, now: () => clock, limits: { ip: { capacity: 1000 } } });
+  for (let i = 0; i < 12; i += 1) await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', `v1.forged${i}.sig`);
+  const refused = lines.filter((l) => l.outcome === 'refused' && l.reason === 'bad_signature');
+  assert.equal(refused.length, 5);
+  clock += 61_000;
+  await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', 'v1.forged.sig');
+  const summary = lines.find((l) => l.outcome === 'refused_suppressed');
+  assert.equal(summary.suppressed, 7);
+  assert.equal(JSON.stringify(lines).includes('forged'), false);
+  assert.equal(JSON.stringify(lines).includes(PID), false);
+});
+
+test('api: an expired link answers 410 with the configured lifetime for the page\'s copy', async () => {
+  const res = await request(app({ env: { ...ENV_ON, AGENPAS_LINK_TTL_SECONDS: '600' } })).get(`/agenpas/api/p/${PID}`)
+    .set('X-Agenpas-Link', token({ now: NOW - 31 * 60_000 }));
+  assert.equal(res.status, 410);
+  assert.deepEqual(res.body, { error: 'link_expired', link_ttl_minutes: 10 });
+});
+
+test('api: a token minted for another public origin is refused', async () => {
+  const res = await request(app()).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token({ aud: 'https://elsewhere.example' }));
+  assert.equal(res.status, 404);
+  assert.equal(res.body.error, 'link_invalid');
 });
 
 // ---- the backend reader ----------------------------------------------------------------------------------------

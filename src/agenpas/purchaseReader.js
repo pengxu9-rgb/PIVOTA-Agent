@@ -5,12 +5,12 @@
  *
  * WHY NOT THE EXISTING READ CLIENT. src/services/agentPurchaseReadClient.js reads with the CALLER's agent key and
  * buyer token, both of which arrive per request from the partner and are never stored by the gateway. The buyer
- * opening an AgenPas link has neither. So this reader is a server-to-server call, authenticated with the internal
- * key the gateway already holds for the backend's /agent/internal/* routes (X-Internal-Key =
- * AGENT_AUTH_INTROSPECT_INTERNAL_KEY), naming the owner the VERIFIED link token names:
+ * opening an AgenPas link has neither. So this reader is a server-to-server call, authenticated with a DEDICATED
+ * key that grants this one read (X-Internal-Key = AGENPAS_INTERNAL_READ_KEY, not the shared introspection key),
+ * naming the owner the VERIFIED link token names:
  *
  *   GET {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}
- *     X-Internal-Key:            the internal key
+ *     X-Internal-Key:            AGENPAS_INTERNAL_READ_KEY
  *     X-Agenpas-Agent-Id:        the agent id the link was minted for
  *     X-Agenpas-Agent-User-Ref:  the agent user ref the link was minted for (the gateway's `usr_…` form)
  *   200 -> the SAME unified body as GET /agent/v2/commerce/purchases/{id}

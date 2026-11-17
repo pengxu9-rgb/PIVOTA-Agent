@@ -14,13 +14,19 @@
  *   GET /agenpas/dev/start?scenario=<name>         LOCAL DEVELOPMENT ONLY (devFixtures.js): mints a fixture link
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
- * answers exactly what it answered before this module existed (the app's normal not-found). The same happens on a
- * host other than AGENPAS_PUBLIC_BASE_URL's when that is set, and for any /agenpas path not listed above.
+ * answers exactly what it answered before this module existed (the app's normal not-found). The same happens while
+ * AGENPAS_PUBLIC_BASE_URL is unset, on any host other than its host, and for any /agenpas path not listed above.
  *
- * NO BUYER DATA IN LOGS. Lines carry an event, an outcome and a reason code: never the token, the purchase id, a
- * header or a body. Express's own request log records `req.path`, which has no query string.
+ * ABUSE VALVES on the API (process-local, like src/services/publicReadRateLimit.js): a token bucket per client IP
+ * (checked first) and one per link token, each answering 429 with Retry-After; and a single-flight read with a ~2 s
+ * cache per (agent id, purchase id), so any number of pollers of one purchase cost the backend one read per 2 s.
+ *
+ * LOGS. AgenPas's own lines carry an event, an outcome and a reason code: never the token, a header or a body, and
+ * not the purchase id. Refusals are SAMPLED (the first few per reason per minute, then a count). The app's request
+ * log (src/server.js) records `req.path`, which DOES contain the purchase id, but no query string and no token.
  */
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
@@ -29,6 +35,8 @@ const config = require('./config');
 const { PURCHASE_ID_RE, REASON, mintLinkToken, verifyLinkToken } = require('./linkToken');
 const { hostedOrigins } = require('./hostedUrl');
 const { projectPurchaseView } = require('./view');
+const { createTokenBucketLimiter } = require('../services/publicReadRateLimit');
+const { clientIpFromRequest } = require('../guardrails/gatewayGuardrails');
 const { SCENARIOS, createFixturePurchaseReader } = require('./devFixtures');
 
 const ASSET_DIR = path.join(__dirname, 'assets');
@@ -38,6 +46,31 @@ const ASSETS = Object.freeze({
 });
 const LINK_HEADER = 'x-agenpas-link';
 const UNAVAILABLE_RETRY_AFTER_SECONDS = 5;
+const READ_CACHE_MS = 2000;
+const READ_CACHE_MAX_KEYS = 5000;
+// Per link token: a page polls every 2..15 s, so 2/s with a burst of 10 only ever stops a script.
+const TOKEN_LIMIT = Object.freeze({ capacity: 10, refillPerSecond: 2 });
+// Per client IP: looser, because many buyers can share one carrier NAT address.
+const IP_LIMIT = Object.freeze({ capacity: 30, refillPerSecond: 5 });
+const RATE_LIMIT_RETRY_AFTER_SECONDS = 2;
+const LOG_SAMPLE_PER_MINUTE = 5;
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+
+/** The host name of a Host header (no port), lower-cased. */
+function hostnameOf(hostHeader) {
+  const h = String(hostHeader || '').trim().toLowerCase();
+  if (h.startsWith('[')) return h.slice(0, h.indexOf(']') + 1);
+  const colon = h.lastIndexOf(':');
+  return colon > 0 ? h.slice(0, colon) : h;
+}
+
+function isLoopbackHost(req) {
+  return LOOPBACK_HOSTNAMES.has(hostnameOf(req.headers.host));
+}
+
+function digest(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 32);
+}
 
 function loadAssets() {
   const out = {};
@@ -157,6 +190,7 @@ function firstString(value) {
  *   env?: object,                                     tests only; defaults to process.env, read per request
  *   now?: () => number,                               tests only
  *   fixtureReader?: { read: Function },               tests only
+ *   limits?: { token?: object, ip?: object },         tests only: token bucket options
  * }} deps
  */
 function createAgenpasRouter(deps = {}) {
@@ -177,32 +211,86 @@ function createAgenpasRouter(deps = {}) {
     }
   }
 
-  function readerFor(env) {
-    return config.devFixturesEnabled(env) ? fixtureReader : backendReader;
+  // Fixtures only on a dev machine AND on a loopback Host: a deploy that somehow armed the flag still never serves them.
+  function fixturesFor(req, env) {
+    return config.devFixturesEnabled(env) && isLoopbackHost(req);
+  }
+
+  const limits = deps.limits || {};
+  const tokenBuckets = createTokenBucketLimiter({ ...TOKEN_LIMIT, ...(limits.token || {}), now });
+  const ipBuckets = createTokenBucketLimiter({ ...IP_LIMIT, ...(limits.ip || {}), now });
+
+  // SAMPLED refusal logs: the first few per reason per minute, then one line carrying how many were not logged.
+  const sampled = new Map();
+  function logRefusal(fields) {
+    const key = `${fields.surface}:${fields.reason}`;
+    const t = now();
+    let entry = sampled.get(key);
+    if (!entry || t - entry.windowStart >= 60_000) {
+      if (entry && entry.suppressed > 0) log('info', { ...fields, outcome: 'refused_suppressed', suppressed: entry.suppressed });
+      entry = { windowStart: t, logged: 0, suppressed: 0 };
+      sampled.set(key, entry);
+    }
+    if (entry.logged < LOG_SAMPLE_PER_MINUTE) {
+      entry.logged += 1;
+      log('info', { ...fields, outcome: 'refused' });
+    } else {
+      entry.suppressed += 1;
+    }
+  }
+
+  // SINGLE-FLIGHT + SHORT CACHE per (reader, agent id, purchase id). Every answer (unavailable included) is kept
+  // for READ_CACHE_MS: during a backend outage pollers wait on one read instead of each sending their own.
+  const reads = new Map();
+  function readOnce(reader, claims, fixture) {
+    const key = `${fixture ? 'fx' : 'be'}|${claims.agentId}|${claims.purchaseId}`;
+    const t = now();
+    const hit = reads.get(key);
+    if (hit && (hit.pending || t - hit.at < READ_CACHE_MS)) return hit.promise;
+    if (reads.size >= READ_CACHE_MAX_KEYS) {
+      for (const [k, v] of reads) if (!v.pending && t - v.at >= READ_CACHE_MS) reads.delete(k);
+      if (reads.size >= READ_CACHE_MAX_KEYS) reads.clear();
+    }
+    const entry = { pending: true, at: t, promise: null };
+    entry.promise = (async () => {
+      try {
+        return reader && typeof reader.read === 'function' ? await reader.read(claims) : { kind: 'unavailable', code: 'no_reader' };
+      } catch {
+        return { kind: 'unavailable', code: 'threw' };
+      } finally {
+        entry.pending = false;
+        entry.at = now();
+      }
+    })();
+    reads.set(key, entry);
+    return entry.promise;
+  }
+
+  function tooMany(res, surface, reason) {
+    logRefusal({ surface, reason });
+    res.setHeader('Retry-After', String(RATE_LIMIT_RETRY_AFTER_SECONDS));
+    return res.status(429).json({ error: 'rate_limited', retry_after_seconds: RATE_LIMIT_RETRY_AFTER_SECONDS });
   }
 
   const router = express.Router({ caseSensitive: true, strict: false });
 
-  // THE GATE. Off, on another host, or not GET/HEAD: not ours, exactly as before.
+  // THE GATE. Off, no public base URL, another host, or not GET/HEAD: not ours, exactly as before.
   router.use((req, res, next) => {
     if (!String(req.path || '').startsWith('/agenpas/')) return next('router');
     const env = envOf();
     if (!config.isEnabled(env)) return next('router');
     if (req.method !== 'GET' && req.method !== 'HEAD') return next('router');
     const base = config.publicBaseUrl(env);
-    if (base) {
-      const want = new URL(base).host.toLowerCase();
-      const got = String(req.headers.host || '').toLowerCase();
-      if (got !== want) return next('router');
-    }
+    if (!base) return next('router');
+    if (String(req.headers.host || '').toLowerCase() !== new URL(base).host.toLowerCase()) return next('router');
     return next();
   });
 
-  function verify(req, token, purchaseId) {
+  function verify(token, purchaseId) {
     const env = envOf();
     const secret = config.linkSecret(env);
     if (!secret) return { ok: false, reason: REASON.noSecret };
-    return verifyLinkToken(token, { purchaseId, secret, now: now() });
+    return verifyLinkToken(token, { purchaseId, aud: config.publicBaseUrl(env), secret, now: now() });
   }
 
   router.get('/agenpas/assets/:name', (req, res, next) => {
@@ -220,12 +308,12 @@ function createAgenpasRouter(deps = {}) {
     res.type('html');
     const purchaseId = req.params.purchaseId;
     if (!PURCHASE_ID_RE.test(purchaseId)) {
-      log('info', { surface: 'page', outcome: 'refused', reason: 'bad_purchase_id' });
+      logRefusal({ surface: 'page', reason: 'bad_purchase_id' });
       return res.status(404).send(PAGES.invalid);
     }
     // No secret: no link can be valid, so say so without loading the app.
     if (!config.linkSecret(envOf())) {
-      log('info', { surface: 'page', outcome: 'refused', reason: REASON.noSecret });
+      logRefusal({ surface: 'page', reason: REASON.noSecret });
       return res.status(503).send(PAGES.unavailable);
     }
     return res.status(200).send(SHELL_HTML);
@@ -235,22 +323,25 @@ function createAgenpasRouter(deps = {}) {
     const env = envOf();
     setCommonHeaders(res);
     const purchaseId = req.params.purchaseId;
-    if (!PURCHASE_ID_RE.test(purchaseId)) return res.status(404).json({ error: 'link_invalid' });
-    const token = firstString(req.headers[LINK_HEADER]);
-    const verdict = verify(req, token, purchaseId);
-    if (!verdict.ok) {
-      log('info', { surface: 'api', outcome: 'refused', reason: verdict.reason });
-      if (verdict.reason === REASON.noSecret) return res.status(503).json({ error: 'unavailable' });
-      if (verdict.reason === REASON.expired) return res.status(410).json({ error: 'link_expired' });
+    // The IP bucket first, before any token work: it is the one valve a caller cannot multiply by minting garbage.
+    if (!ipBuckets.allow(`ip:${digest(clientIpFromRequest(req) || 'unknown')}`)) return tooMany(res, 'api', 'rate_limited_ip');
+    if (!PURCHASE_ID_RE.test(purchaseId)) {
+      logRefusal({ surface: 'api', reason: 'bad_purchase_id' });
       return res.status(404).json({ error: 'link_invalid' });
     }
-    const reader = readerFor(env);
-    let answer;
-    try {
-      answer = reader && typeof reader.read === 'function' ? await reader.read(verdict.claims) : { kind: 'unavailable', code: 'no_reader' };
-    } catch {
-      answer = { kind: 'unavailable', code: 'threw' };
+    const token = firstString(req.headers[LINK_HEADER]);
+    const verdict = verify(token, purchaseId);
+    if (!verdict.ok) {
+      logRefusal({ surface: 'api', reason: verdict.reason });
+      if (verdict.reason === REASON.noSecret) return res.status(503).json({ error: 'unavailable' });
+      if (verdict.reason === REASON.expired) {
+        return res.status(410).json({ error: 'link_expired', link_ttl_minutes: config.linkTtlMinutes(env) });
+      }
+      return res.status(404).json({ error: 'link_invalid' });
     }
+    if (!tokenBuckets.allow(`t:${digest(token)}`)) return tooMany(res, 'api', 'rate_limited_token');
+    const fixture = fixturesFor(req, env);
+    const answer = await readOnce(fixture ? fixtureReader : backendReader, verdict.claims, fixture);
     if (answer && answer.kind === 'accepted') {
       const view = projectPurchaseView(answer.purchase, {
         purchaseId,
@@ -258,6 +349,7 @@ function createAgenpasRouter(deps = {}) {
         embed: config.embedHostedPages(env),
         now: now(),
         linkExpiresAt: verdict.claims.exp,
+        linkTtlMinutes: Math.max(1, Math.floor((verdict.claims.exp - verdict.claims.iat) / 60)),
       });
       log('info', { surface: 'api', outcome: 'served', state: view.state, screen: view.screen });
       return res.status(200).json(view);
@@ -271,17 +363,17 @@ function createAgenpasRouter(deps = {}) {
     return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
   });
 
-  // LOCAL DEVELOPMENT ONLY: a fresh fixture link. Off a dev machine (or with the fixture flag off) this path is
-  // not ours, exactly like any other unknown path.
+  // LOCAL DEVELOPMENT ONLY: a fresh fixture link. Off a dev machine, with the fixture flag off, or on a Host that is
+  // not loopback, this path is not ours, exactly like any other unknown path.
   router.get('/agenpas/dev/start', (req, res, next) => {
     const env = envOf();
-    if (!config.devFixturesEnabled(env)) return next('router');
+    if (!fixturesFor(req, env)) return next('router');
     const secret = config.linkSecret(env);
     const name = firstString(req.query.scenario) || 'happy';
     const scenario = Object.prototype.hasOwnProperty.call(SCENARIOS, name) ? SCENARIOS[name] : null;
     if (!secret || !scenario) return next('router');
     const token = mintLinkToken({
-      purchaseId: scenario.id, agentId: 'agent_dev_fixture', userRef: 'usr_dev_fixture', secret,
+      purchaseId: scenario.id, agentId: 'agent_dev_fixture', userRef: 'usr_dev_fixture', aud: config.publicBaseUrl(env), secret,
       ttlSeconds: config.linkTtlSeconds(env), now: now(),
     });
     setCommonHeaders(res);

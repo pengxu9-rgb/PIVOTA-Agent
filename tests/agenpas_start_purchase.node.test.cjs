@@ -55,18 +55,21 @@ function unified(railId = AP) {
   };
 }
 
-function fakeBackend() {
+const RP = 'rp_0123456789abcdef01234567';
+
+function fakeBackend(rail = 'a2a') {
   return async (url, init = {}) => {
-    const r = init.method === 'POST'
-      ? { status: 202, body: { purchase_id: AP, rail: 'a2a', state: 'routing', rail_state: 'opened', poll_after_seconds: 5 } }
-      : { status: 200, body: unified() };
+    const created = rail === 'a2a'
+      ? { purchase_id: AP, rail: 'a2a', state: 'routing', rail_state: 'opened', poll_after_seconds: 5 }
+      : { purchase_id: RP, status: 'resolving' };
+    const r = init.method === 'POST' ? { status: 202, body: created } : { status: 200, body: unified(rail === 'a2a' ? AP : RP) };
     return { status: r.status, text: async () => JSON.stringify(r.body) };
   };
 }
 
-async function build({ withMinter = true, orderRailId = AP } = {}) {
+async function build({ withMinter = true, orderRailId = AP, createRail = 'a2a' } = {}) {
   const m = await mods();
-  const deps = { baseUrl: 'https://backend.example', fetchImpl: fakeBackend(), authHeaders: AUTH };
+  const deps = { baseUrl: 'https://backend.example', fetchImpl: fakeBackend(createRail), authHeaders: AUTH };
   const executor = {
     async execute(op, params) {
       if (op === 'get_product') return { product: params.payload.product.product_id === ROW.product_id ? { ...ROW } : null };
@@ -147,7 +150,7 @@ test('flag on: an additive agenpas_url for the answered purchase, minted for the
     assert.equal(u.origin, 'https://agenpas.example');
     assert.equal(u.pathname, `/agenpas/p/${PP}`);
     assert.equal(u.search, '');
-    const verdict = verifyLinkToken(new URLSearchParams(u.hash.slice(1)).get('t'), { purchaseId: PP, secret: SECRET });
+    const verdict = verifyLinkToken(new URLSearchParams(u.hash.slice(1)).get('t'), { purchaseId: PP, aud: 'https://agenpas.example', secret: SECRET });
     assert.equal(verdict.ok, true);
     assert.equal(verdict.claims.agentId, SESSION.agent_id);
     assert.equal(verdict.claims.userRef, SESSION.user_ref);
@@ -185,7 +188,7 @@ test('get_order of an A2A purchase: a FRESH agenpas_url while on (a new token ea
     const u = new URL(url);
     assert.equal(u.pathname, `/agenpas/p/${PP}`);
     assert.equal(u.search, '');
-    const verdict = verifyLinkToken(new URLSearchParams(u.hash.slice(1)).get('t'), { purchaseId: PP, secret: SECRET });
+    const verdict = verifyLinkToken(new URLSearchParams(u.hash.slice(1)).get('t'), { purchaseId: PP, aud: 'https://agenpas.example', secret: SECRET });
     assert.equal(verdict.ok, true);
     assert.equal(verdict.claims.agentId, SESSION.agent_id);
     assert.equal(verdict.claims.userRef, SESSION.user_ref);
@@ -230,13 +233,55 @@ test('descriptions: byte-identical while links are not minted; one sentence each
     const on = surface.tools;
     assert.equal(on.length, off.length);
     for (let i = 0; i < on.length; i += 1) {
-      const expected = on[i].name === 'start_purchase' ? `${off[i].description} ${m.surface.AGENPAS_START_PURCHASE_SENTENCE}`
-        : on[i].name === 'get_order' ? `${off[i].description} ${m.surface.AGENPAS_GET_ORDER_SENTENCE}`
+      const expected = on[i].name === 'start_purchase' ? `${off[i].description} ${m.surface.agenpasStartPurchaseSentence(30)}`
+        : on[i].name === 'get_order' ? `${off[i].description} ${m.surface.agenpasGetOrderSentence(30)}`
           : off[i].description;
       assert.equal(on[i].description, expected, on[i].name);
       assert.deepEqual({ ...on[i], description: null }, { ...off[i], description: null });
     }
     assert.ok(on.some((t) => t.name === 'start_purchase'));
     assert.ok(on.some((t) => t.name === 'get_order'));
+  });
+});
+
+test('start_purchase on the Reap rail: no agenpas_url, even with links on (AgenPas serves the A2A rail only)', async () => {
+  const reap = await build({ createRail: 'reap' });
+  const without = await build({ createRail: 'reap', withMinter: false });
+  await withEnv(ON_ALL, async () => {
+    const a = await reap.callTool('start_purchase', args(), SESSION);
+    assert.equal(a.rail_purchase_id, RP);
+    assert.equal(Object.hasOwn(a, 'agenpas_url'), false);
+    assert.equal(JSON.stringify(a), JSON.stringify(await without.callTool('start_purchase', args(), SESSION)));
+  });
+});
+
+test('start_purchase whose read-back is pending still gets the link for an A2A purchase (the ap_ id)', async () => {
+  const m = await mods();
+  const deps = {
+    baseUrl: 'https://backend.example', authHeaders: AUTH,
+    fetchImpl: async (url, init = {}) => (init.method === 'POST'
+      ? { status: 202, text: async () => JSON.stringify({ purchase_id: AP, rail: 'a2a', state: 'routing', rail_state: 'opened' }) }
+      : { status: 503, text: async () => '{}' }),
+  };
+  const surface = m.surface.createCommerceToolSurface({
+    async execute(op, params) { return { product: params.payload.product.product_id === ROW.product_id ? { ...ROW } : null }; },
+  }, { cache: false, orchestratedPurchase: {
+    createClient: createAgentPurchaseCreateClient(deps), readClient: createAgentPurchaseReadClient(deps), agenpasLink: createAgenpasLinkMinter(),
+  } });
+  await withEnv(ON_ALL, async () => {
+    const a = await surface.callTool('start_purchase', args(), SESSION);
+    assert.equal(a.read_pending, true);
+    assert.equal(new URL(a.agenpas_url).pathname, `/agenpas/p/${AP}`);
+  });
+});
+
+test('descriptions follow the configured link lifetime', async () => {
+  const surface = await build();
+  await withEnv({ ...ON_ALL, AGENPAS_LINK_TTL_SECONDS: '600' }, async () => {
+    const sp = surface.tools.find((t) => t.name === 'start_purchase').description;
+    const go = surface.tools.find((t) => t.name === 'get_order').description;
+    assert.match(sp, /works for 10 minutes\.$/);
+    assert.match(go, /valid 10 minutes/);
+    assert.equal(/30 minutes/.test(sp + go), false);
   });
 });

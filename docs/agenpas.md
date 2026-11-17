@@ -21,13 +21,24 @@ All read per request; no restart needed.
 | `AGENPAS_ENABLED` | off | Off: every `/agenpas` path falls through to the app's normal not-found (byte-identical to before), and `start_purchase`, `get_order` and both tool descriptions are exactly as before. |
 | `AGENPAS_LINK_SECRET` | none | HMAC-SHA256 key for link tokens, at least 32 characters. Missing or short: no link is minted and every link is refused (the page says AgenPas is unavailable). |
 | `AGENPAS_LINK_TTL_SECONDS` | 1800 | Link lifetime. Clamped to 60..1800 (30 min is a hard maximum, also enforced on verify). |
-| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at. None: no link is minted. When set, the pages answer only on that host. |
+| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at, and the ONLY host the routes answer on. None: no link is minted and no route is served. It is also the token's audience (`aud`). `http://localhost` is accepted only while the dev fixtures are actually enabled. **Use a dedicated origin** (a host serving nothing but AgenPas): the page's CSP, its no-referrer policy and the buyer's trust in the address bar are then not shared with any other surface of the gateway. |
+| `AGENPAS_INTERNAL_READ_KEY` | none | The dedicated key the gateway presents (`X-Internal-Key`) on the backend's internal buyer read. None: every read is unavailable. |
 | `AGENPAS_HOSTED_HOSTS` | empty | Comma-separated exact host names the payment partner serves its hosted pages from. Empty refuses every hosted URL (the page shows no button, only "Getting the secure page ready"). |
 | `AGENPAS_EMBED_HOSTED_PAGES` | off | Off: hosted pages open in a popup or a new tab. On: the page frames them (see below). |
-| `AGENPAS_DEV_FIXTURES` | off | Local development only: canned purchases instead of the backend. It cannot arm on a managed platform (`K_SERVICE`, `K_REVISION`, `RAILWAY_*`, ...) or in a production environment (`src/config/platform.js`), whatever its value. |
+| `AGENPAS_DEV_FIXTURES` | off | Local development only: canned purchases instead of the backend. It cannot arm on a managed platform (`K_SERVICE`, `K_REVISION`, `RAILWAY_*`, ...) or in a production environment (`src/config/platform.js`), whatever its value, and it serves only requests whose Host is loopback (`127.0.0.1`, `::1`, `localhost`). |
 
-The backend read also uses `PIVOTA_API_BASE` and `AGENT_AUTH_INTROSPECT_INTERNAL_KEY` (already configured), through
-the private backend hop.
+The backend read also uses `PIVOTA_API_BASE`, through the private backend hop.
+
+## Abuse valves (the API)
+
+Process-local, like the public read tier's limiter:
+
+- a token bucket per client IP (30, refilling 5/s; looser because buyers share carrier NAT addresses), checked
+  before any token work, and one per link token (10, refilling 2/s; a page polls every 2..15 s). Over either: 429
+  `rate_limited` with `Retry-After`;
+- a single-flight read with a 2 s cache per (agent id, purchase id): however many pages poll one purchase, the
+  backend sees at most one read per 2 s (unavailable answers are cached too, so an outage is not amplified);
+- refusal logs are sampled: the first 5 per reason per minute, then one line with the count not logged.
 
 ## Routes
 
@@ -66,8 +77,17 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `awaiting_buyer_authorization` (+ `approval` page) | "Approve $X at merchant with Face ID or fingerprint", then "Waiting for your approval…" |
 | `placing` | "Placing your order at merchant…" (or "Confirm with your bank" while a bank check page is offered) |
 | `completed` | Order placed: order number, total charged, store, link to the store's order page when it is on the store's domain |
-| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text) |
-| outcome-unknown code | "We're checking with the store — don't try again." No retry is ever suggested. |
+| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording with no "try again". |
+| outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
+
+Codes are read segment by segment: the backend writes compound codes (`paid_sent:<n>:<variant>:<code>`,
+`bound_sent:<n>:<code>`, `binding_refused:<kind>:<status>`), so each is lower-cased and split on `:`, and every
+segment is checked. A segment that is outcome-unknown or a hold (money may have moved, or a human must look:
+`paid_sent`, `money_result_seen`, `vic_order_stale`, `vic_total_over_approved`, `vic_currency_mismatch`,
+`checkout_confirm_unresolved`, `checkout_payment_no_order`, `checkout_result_overdue`, ... see `src/agenpas/view.js`)
+wins over everything else. Checkout-step codes that mean nothing was submitted (`checkout_captcha_failed`,
+`checkout_form_error`, `checkout_price_missing`, ...) get plain failure wording. `checkout_total_unparsed` on a
+completed purchase shows the order as placed with "Total charged: see your email receipt".
 | anything else | "Checking on your purchase…", keep polling, claim nothing |
 
 The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"
@@ -94,10 +114,14 @@ kind for the state and unexpired. The page itself opens only `https:` URLs.
 
 ## Security model of the link token
 
-- Format `v1.<payload>.<sig>`, base64url. Payload `{v, p: purchase id, a: agent id, u: agent user ref, iat, exp, n:
-  nonce}`; `sig = HMAC-SHA256(AGENPAS_LINK_SECRET, "agenpas-link:v1." + payload)`.
-- Verified with a constant-time compare; then the purchase id must equal the route's, `iat` must not be in the future
-  (60 s skew), the lifetime must be at most 30 min, and it must not be expired.
+- Format `v1.<payload>.<sig>`, base64url. Payload `{v, aud: public origin, p: purchase id, a: agent id, u: agent user
+  ref, iat, exp, n: nonce}`; `sig = HMAC-SHA256(AGENPAS_LINK_SECRET, "agenpas-link:v1." + payload)`.
+- Verified with a constant-time compare, and only in its canonical base64url spelling (a re-spelled signature that
+  decodes to the same bytes is refused, so no altered token verifies). Then `aud` must be this deployment's
+  `AGENPAS_PUBLIC_BASE_URL`, the purchase id must equal the route's, `iat` must not be in the future (60 s skew), the
+  lifetime must be at most 30 min, and it must not be expired.
+- The page forgets the token (memory and its tab's `sessionStorage` copy) once the purchase is final or the link is
+  refused. Buyer- and agent-facing copy about the lifetime is derived from the configured TTL.
 - It is a bearer grant to SEE one purchase's status and open its hosted pages, which themselves require the buyer's
   card or passkey. It grants no other purchase, no write, and nothing on the backend directly.
 - The payload is signed, not encrypted: it holds only pseudonymous identifiers (the gateway's `usr_…` user ref, the
@@ -116,7 +140,7 @@ the buyer does not have. The page therefore reads server-to-server:
 
 ```
 GET {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}
-  X-Internal-Key:            AGENT_AUTH_INTROSPECT_INTERNAL_KEY
+  X-Internal-Key:            AGENPAS_INTERNAL_READ_KEY (a dedicated key for this one read)
   X-Agenpas-Agent-Id:        <agent id from the verified link>
   X-Agenpas-Agent-User-Ref:  <agent user ref from the verified link (gateway usr_… form)>
 200 -> the same unified body as GET /agent/v2/commerce/purchases/{id}
@@ -141,7 +165,7 @@ link names a rail id, `detail` itself, owner hashes, consent records, raw codes.
 
 ```
 AGENPAS_ENABLED=1 AGENPAS_DEV_FIXTURES=1 AGENPAS_HOSTED_HOSTS=hosted.example \
-AGENPAS_LINK_SECRET=<any 32+ characters> npm start
+AGENPAS_PUBLIC_BASE_URL=http://localhost:<port> AGENPAS_LINK_SECRET=<any 32+ characters> npm start
 open http://localhost:<port>/agenpas/dev/start?scenario=happy   # redirects to /agenpas/p/<id>#t=…
 ```
 

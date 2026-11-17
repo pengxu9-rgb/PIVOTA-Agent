@@ -63,7 +63,7 @@
     stopped: false,
     lastPollAt: 0,
     inFlight: false,
-    notice: null,
+    noticeEl: null,
     lastJson: null,
   };
 
@@ -213,13 +213,13 @@
       return card;
     }
     if (view.action.open_mode === 'embed') {
-      card.appendChild(hostedFrame(view));
+      append(card, hostedFrame(view));
       return card;
     }
     if (ui.waitingKind === view.action.kind) {
-      card.appendChild(waitingBlock(view, opts.waiting));
+      append(card, waitingBlock(view, opts.waiting));
     } else {
-      card.appendChild(hostedButton(view, opts.button));
+      append(card, hostedButton(view, opts.button));
     }
     return card;
   }
@@ -251,7 +251,9 @@
       list.appendChild(wrap);
     }
     row('Order number', order.reference);
-    row('Total charged', money(view.amounts && view.amounts.final_total_minor, view.currency));
+    row('Total charged', order.total_unparsed
+      ? 'See your email receipt'
+      : money(view.amounts && view.amounts.final_total_minor, view.currency));
     row('Store', view.merchant_domain);
     var extra = el('div');
     extra.appendChild(list);
@@ -329,8 +331,23 @@
       ui.lastScreen = view.screen;
     }
     clear(app);
-    append(app, summaryCard(view), stepCard(view));
-    if (ui.notice) app.appendChild(el('p', 'notice', ui.notice));
+    append(app, summaryCard(view), stepCard(view), noticeEl());
+  }
+
+  // ONE notice element for the page's life, updated IN PLACE: showing or clearing "Reconnecting…" never rebuilds the
+  // cards (which would reload a framed hosted page in embed mode).
+  function noticeEl() {
+    if (!ui.noticeEl) {
+      ui.noticeEl = el('p', 'notice');
+      ui.noticeEl.setAttribute('role', 'status');
+    }
+    return ui.noticeEl;
+  }
+
+  function setNotice(text) {
+    var node = noticeEl();
+    node.textContent = text || '';
+    if (ui.view && node.parentNode !== app) app.appendChild(node);
   }
 
   function renderMessage(title, body) {
@@ -429,18 +446,19 @@
     else schedule(POLL_MIN - since);
   }
 
-  function showExpired() {
+  function showExpired(ttlMinutes) {
     stop();
     forgetToken();
-    renderMessage('This link has expired', 'For your security, AgenPas links only work for 30 minutes. Go back to the chat and ask for a new link to see your purchase.');
+    var minutes = Number(ttlMinutes) || (ui.view && Number(ui.view.link_ttl_minutes)) || 0;
+    var lasting = minutes >= 1 ? 'only work for ' + Math.floor(minutes) + (Math.floor(minutes) === 1 ? ' minute' : ' minutes') : 'only work for a short time';
+    renderMessage('This link has expired', 'For your security, AgenPas links ' + lasting + '. Go back to the chat and ask for a new link to see your purchase.');
   }
 
   function onError() {
     ui.errors += 1;
     var backoff = Math.min(POLL_MAX, POLL_MIN * Math.pow(2, ui.errors - 1));
     if (ui.view) {
-      ui.notice = 'Reconnecting…';
-      render();
+      setNotice('Reconnecting…');
     } else {
       renderMessage("We can't load your purchase right now", "We'll keep trying. You can leave this page open.");
     }
@@ -469,21 +487,23 @@
         var json = JSON.stringify(r.body);
         // An unchanged answer is not re-rendered: a re-render would reload a framed hosted page (embed mode) and
         // drop a focused button.
-        var changed = json !== ui.lastJson || ui.notice !== null;
+        var changed = json !== ui.lastJson;
         ui.errors = 0;
-        ui.notice = null;
         ui.view = r.body;
         ui.lastJson = json;
         if (changed) render();
+        setNotice('');
         if (r.body.terminal) {
+          // Final: nothing more to fetch, and nothing left for the token to open.
           stop();
+          forgetToken();
           return;
         }
         schedule(r.body.poll_after_seconds);
         return;
       }
       if (r.status === 410) {
-        showExpired();
+        showExpired(r.body && r.body.link_ttl_minutes);
         return;
       }
       if (r.status === 404) {

@@ -307,11 +307,18 @@ function cloneCachedValue(value, onCloneFailure) {
   }
 }
 
-// AgenPas (docs/agenpas.md): appended to these two descriptions ONLY while links are minted.
-export const AGENPAS_START_PURCHASE_SENTENCE =
-  "When `agenpas_url` is present, give it to the buyer verbatim: it is their own page to add a card, approve and follow this purchase, and it works for 30 minutes.";
-export const AGENPAS_GET_ORDER_SENTENCE =
-  "For a purchase on Pivota's payment partner the answer may carry a fresh `agenpas_url` (the buyer's own page for it, valid 30 minutes): give the buyer the newest one if their link has expired.";
+// AgenPas (docs/agenpas.md): appended to these two descriptions ONLY while links are minted. The lifetime is the
+// configured one (AGENPAS_LINK_TTL_SECONDS, at most 30 minutes), never a number written here.
+const minutesText = (minutes) => {
+  const n = Number.isSafeInteger(minutes) && minutes > 0 ? minutes : 30;
+  return `${n} minute${n === 1 ? "" : "s"}`;
+};
+export function agenpasStartPurchaseSentence(minutes) {
+  return `When \`agenpas_url\` is present, give it to the buyer verbatim: it is their own page to add a card, approve and follow this purchase, and it works for ${minutesText(minutes)}.`;
+}
+export function agenpasGetOrderSentence(minutes) {
+  return `For a purchase on Pivota's payment partner the answer may carry a fresh \`agenpas_url\` (the buyer's own page for it, valid ${minutesText(minutes)}): give the buyer the newest one if their link has expired.`;
+}
 
 /**
  * Build the MCP commerce tool surface over an already-composed canonical executor.
@@ -826,7 +833,10 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       readClient: orchestratedPurchase && orchestratedPurchase.readClient,
       log: logger,
     });
-    return withAgenpasUrl(sanitizeResult(result, { handoffAllowed: true }), orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx);
+    const out = sanitizeResult(result, { handoffAllowed: true });
+    // Only for a purchase on the A2A rail (the rail AgenPas serves), the same rule as get_order; a pending read
+    // (`pendingRead`) names its rail too.
+    return isA2aPurchaseAnswer(out) ? withAgenpasUrl(out, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx) : out;
   }
 
   /**
@@ -848,11 +858,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     return out;
   }
 
-  /** A get_order answer for a purchase on the A2A rail (its rail id, or the `ap_` id itself while a read is pending). */
+  /** A purchase answer on the A2A rail: it says so (`rail`), or its rail id / its own id is an `ap_` id. */
   function isA2aPurchaseAnswer(out) {
     if (!isPlainObject(out)) return false;
     const apId = (v) => typeof v === "string" && /^ap_[0-9a-f]{24}$/.test(v);
-    return apId(out.rail_purchase_id) || apId(out.order_id);
+    return out.rail === "a2a" || apId(out.rail_purchase_id) || apId(out.order_id);
   }
 
   /** True only while a link can be minted (AGENPAS_ENABLED on, secret and base URL set); read per tools/list. */
@@ -868,9 +878,16 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   // The tool descriptions name `agenpas_url` only while links are minted: off, every description is byte-identical.
   function withAgenpasDescriptions(list) {
     if (!agenpasLinksAvailable()) return list;
+    const link = orchestratedPurchase.agenpasLink;
+    let minutes;
+    try {
+      minutes = typeof link.ttlMinutes === "function" ? link.ttlMinutes() : undefined;
+    } catch {
+      minutes = undefined;
+    }
     return list.map((tool) => {
-      if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${AGENPAS_START_PURCHASE_SENTENCE}` };
-      if (tool.name === "get_order") return { ...tool, description: `${tool.description} ${AGENPAS_GET_ORDER_SENTENCE}` };
+      if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${agenpasStartPurchaseSentence(minutes)}` };
+      if (tool.name === "get_order") return { ...tool, description: `${tool.description} ${agenpasGetOrderSentence(minutes)}` };
       return tool;
     });
   }

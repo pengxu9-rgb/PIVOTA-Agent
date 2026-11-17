@@ -43,19 +43,38 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
-// The backend's failure/refusal codes, mapped to plain language. A code is NEVER shown to the buyer. Three rules:
-//   1. An OUTCOME-UNKNOWN code (the order may or may not have been placed) always says "We're checking with the
-//      store — don't try again", and never offers a retry. Matched by the list AND by shape, so a new code of that
+// The backend's failure/refusal codes, mapped to plain language. A code is NEVER shown to the buyer.
+//
+// COMPOUND CODES. The backend writes codes such as `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>` and
+// `binding_refused:<kind>:<status>`. Every code is lower-cased and split on ':', and EVERY segment is tested.
+//
+// Rules, in order:
+//   1. OUTCOME UNKNOWN WINS. Any segment that is an outcome-unknown or hold code (money may have moved, or the
+//      purchase is held for a human) makes the purchase outcome_unknown: "We're checking with the store — don't try
+//      again", never "wasn't placed", never a retry hint. Matched by the list AND by shape, so a new code of that
 //      family is caught without a change here.
-//   2. Only codes on an explicit list say the buyer may try again from the chat. Everything else does not.
-//   3. An unknown code gets the state's generic wording, without a retry hint.
+//   2. Otherwise the first segment on a named list gives that list's wording. Only some lists carry a hint that the
+//      buyer may start again from the chat.
+//   3. Otherwise the state's generic wording: neutral, and without a "try again" hint.
 
 const OUTCOME_UNKNOWN_CODES = new Set([
+  // The order may exist.
   'outcome_unknown', 'vic_order_outcome_unknown', 'vic_order_unresolved', 'vic_submit_unresolved',
-  'pending_write_unreconcilable', 'money_result_parked', 'vic_status_inconsistent', 'vic_order_mismatch',
-  'checkout_outcome_unknown', 'charge_pending',
+  'pending_write_unreconcilable', 'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown',
+  'charge_pending',
+  // Money may have moved, or the purchase is held for a human.
+  'paid_sent', 'money_result_seen', 'money_result_parked', 'vic_held',
+  'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
+  'vic_approved_amount_missing',
+  // The rail's checkout step.
+  'checkout_confirm_unresolved', 'checkout_confirm_error_card', 'checkout_confirm_conflict', 'checkout_payment_no_order',
+  'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_total_over_approved', 'checkout_result_overdue',
+  'checkout_cancel_unresolved', 'checkout_order_id_card_shaped',
 ]);
-const OUTCOME_UNKNOWN_SHAPE_RE = /(?:outcome_unknown|unresolved|unreconcil|parked|inconsistent|charge_pending)/;
+const OUTCOME_UNKNOWN_SHAPE_RE = /(?:outcome_unknown|unresolved|unreconcil|parked|inconsistent|charge_pending|money_result)/;
+
+/** On a COMPLETED purchase: the order was placed, but the final total could not be read. */
+const TOTAL_UNPARSED_CODES = new Set(['checkout_total_unparsed']);
 
 const OUTCOME_UNKNOWN_COPY = Object.freeze({
   kind: 'outcome_unknown',
@@ -97,9 +116,20 @@ const REASON_GROUPS = [
   },
   {
     kind: 'over_approved_amount',
-    codes: ['vic_quote_over_limit', 'vic_total_over_approved', 'amount_over_limit'],
+    codes: ['vic_quote_over_limit', 'amount_over_limit'],
     title: 'The total was higher than allowed',
-    message: "The final total came in above the amount that can be approved, so the order wasn't placed.",
+    message: "The total came in above the amount that can be approved, so the order wasn't placed.",
+    retry_hint: false,
+  },
+  {
+    // The rail's checkout step stopped BEFORE anything was submitted to the store.
+    kind: 'not_submitted',
+    codes: ['checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'checkout_setup_incomplete',
+      'checkout_contact_incomplete', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit',
+      'checkout_price_missing', 'checkout_currency_unsupported', 'checkout_confirm_not_accepted',
+      'checkout_schema_incomplete'],
+    title: "This purchase didn't go through",
+    message: "The store's checkout couldn't be completed, so no order was sent to the store.",
     retry_hint: false,
   },
   {
@@ -127,8 +157,8 @@ for (const group of REASON_GROUPS) {
 const GENERIC_BY_STATE = Object.freeze({
   failed: {
     kind: 'failed',
-    title: "This purchase didn't go through",
-    message: 'Something went wrong. Go back to the chat to check what happened before you try again.',
+    title: "This purchase didn't complete",
+    message: 'Go back to the chat for the latest on this purchase.',
     retry_hint: false,
   },
   refused: {
@@ -149,17 +179,34 @@ function isPlainObject(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
+const SEGMENT_RE = /^[a-z0-9_]{1,64}$/;
+
+/** Every well-formed segment of every code: lower-cased, split on ':'. */
+function codeSegments(codes) {
+  const out = [];
+  for (const code of Array.isArray(codes) ? codes : []) {
+    if (typeof code !== 'string' || code.length > 512) continue;
+    for (const part of code.toLowerCase().split(':')) {
+      const seg = part.trim();
+      if (SEGMENT_RE.test(seg)) out.push(seg);
+    }
+  }
+  return out;
+}
+
+/** True when any segment of the code (or codes) is outcome-unknown or a hold. */
 function isOutcomeUnknownCode(code) {
-  return typeof code === 'string' && (OUTCOME_UNKNOWN_CODES.has(code) || OUTCOME_UNKNOWN_SHAPE_RE.test(code));
+  return codeSegments(Array.isArray(code) ? code : [code])
+    .some((seg) => OUTCOME_UNKNOWN_CODES.has(seg) || OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
 }
 
 /** The plain-language outcome for a terminal non-completed state, from its codes. Null for any other state. */
 function outcomeFor(state, codes) {
   if (!GENERIC_BY_STATE[state]) return null;
-  const list = (Array.isArray(codes) ? codes : []).filter((c) => typeof c === 'string' && /^[a-z0-9_]{1,64}$/.test(c));
-  if (list.some(isOutcomeUnknownCode)) return { ...OUTCOME_UNKNOWN_COPY };
-  for (const code of list) {
-    const group = REASON_BY_CODE.get(code);
+  const segments = codeSegments(codes);
+  if (isOutcomeUnknownCode(segments)) return { ...OUTCOME_UNKNOWN_COPY };
+  for (const seg of segments) {
+    const group = REASON_BY_CODE.get(seg);
     if (group) {
       const { codes: _codes, ...copy } = group;
       return { ...copy, outcome_unknown: false };
@@ -230,10 +277,11 @@ function merchantOrderUrlAllowed(url, merchantDomain) {
 /**
  * Project one backend body for the page.
  * @param {object} body  the backend's unified purchase body
- * @param {{ purchaseId: string, hostedHosts: string[], embed?: boolean, now?: number, linkExpiresAt?: number }} opts
- *        linkExpiresAt is the link token's `exp` (unix seconds)
+ * @param {{ purchaseId: string, hostedHosts: string[], embed?: boolean, now?: number, linkExpiresAt?: number,
+ *           linkTtlMinutes?: number }} opts
+ *        linkExpiresAt is the link token's `exp` (unix seconds); linkTtlMinutes its lifetime, for the page's copy
  */
-function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false, now, linkExpiresAt } = {}) {
+function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false, now, linkExpiresAt, linkTtlMinutes } = {}) {
   const nowMs = typeof now === 'number' ? now : Date.now();
   const src = isPlainObject(body) ? body : {};
   const detail = isPlainObject(src.detail) ? src.detail : {};
@@ -256,10 +304,15 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
   if (rawAction && expectedKind && rawAction.kind === expectedKind) {
     const url = typeof rawAction.url === 'string' ? rawAction.url : rawAction.action_url;
     const expires = isoOrNull(rawAction.expires_at, nowMs);
-    if (isAllowedHostedUrl(url, hostedHosts) && !expires.past) {
-      action = { kind: expectedKind, url, expires_at: expires.iso, open_mode: embed ? 'embed' : 'popup' };
+    // A page with no readable deadline is not shown: the buyer could be sent to a page that has silently lapsed.
+    // The URL goes out in its PARSED, re-serialized form (what the allowlist judged), never the raw string.
+    if (isAllowedHostedUrl(url, hostedHosts) && expires.iso && !expires.past) {
+      action = { kind: expectedKind, url: new URL(url).href, expires_at: expires.iso, open_mode: embed ? 'embed' : 'popup' };
     }
   }
+
+  const codes = [detail.refusal_reason, detail.last_error_code, src.refusal_reason, src.last_error_code,
+    src.failure_code, src.refusal_code, src.error_code];
 
   let order = null;
   if (state === 'completed') {
@@ -269,12 +322,12 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
       .find((v) => typeof v === 'string');
     order = {
       reference: refRaw ? refRaw.trim() : null,
-      status_url: merchantOrderUrlAllowed(statusRaw, merchantDomain) ? statusRaw : null,
+      status_url: merchantOrderUrlAllowed(statusRaw, merchantDomain) ? new URL(statusRaw).href : null,
+      // Placed, but the rail could not read the final total: the page says "see your email receipt".
+      total_unparsed: codeSegments(codes).some((seg) => TOTAL_UNPARSED_CODES.has(seg)),
     };
   }
 
-  const codes = [detail.refusal_reason, detail.last_error_code, src.refusal_reason, src.last_error_code,
-    src.failure_code, src.refusal_code, src.error_code];
   const outcome = outcomeFor(state, codes);
   const screen = screenFor(state, { actionKind: action ? action.kind : null, outcome });
 
@@ -306,6 +359,7 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
     outcome,
     poll_after_seconds: poll,
     link_expires_at: Number.isSafeInteger(linkExpiresAt) ? new Date(linkExpiresAt * 1000).toISOString() : null,
+    link_ttl_minutes: Number.isSafeInteger(linkTtlMinutes) && linkTtlMinutes > 0 ? linkTtlMinutes : null,
   };
 }
 
@@ -314,6 +368,7 @@ module.exports = {
   KNOWN_STATES,
   POLL_MAX_SECONDS,
   POLL_MIN_SECONDS,
+  codeSegments,
   isOutcomeUnknownCode,
   outcomeFor,
   projectPurchaseView,

@@ -32199,14 +32199,15 @@ function buildAgentPurchaseCreateClient(log, deps = {}) {
 }
 
 // AgenPas (docs/agenpas.md): the buyer's page reads a purchase server-to-server on the buyer's behalf, for the
-// owner a verified link token names, with the internal key the gateway already holds for /agent/internal/*. The
-// buyer has no agent key, and the caller's key and token are never stored.
+// agent a verified link token names, with a DEDICATED key (AGENPAS_INTERNAL_READ_KEY, read per call) that grants
+// this one backend read and nothing else. The buyer has no agent key, and the caller's key and token are never stored.
 function buildAgenpasPurchaseReader(log, deps = {}) {
   const { createBackendPurchaseReader } = require('./agenpas/purchaseReader');
+  const agenpasConfig = require('./agenpas/config');
   return createBackendPurchaseReader({
     baseUrl: deps.baseUrl || PIVOTA_API_BASE,
     fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
-    internalKey: () => AGENT_AUTH_INTROSPECT_INTERNAL_KEY,
+    internalKey: () => agenpasConfig.internalReadKey(),
     logger: log,
   });
 }

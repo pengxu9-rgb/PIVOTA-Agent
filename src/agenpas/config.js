@@ -10,8 +10,12 @@
  *   AGENPAS_LINK_SECRET           the HMAC-SHA256 key for link tokens. Missing or shorter than 32 characters: the
  *                                 feature refuses (no link is minted, every link is refused).
  *   AGENPAS_LINK_TTL_SECONDS      link lifetime; default and maximum 1800 (30 min), minimum 60.
- *   AGENPAS_PUBLIC_BASE_URL       the https origin minted links point at (e.g. https://agenpas-host.example). No
- *                                 value: no link is minted. When set, the pages are served only on that host.
+ *   AGENPAS_PUBLIC_BASE_URL       the https origin minted links point at (e.g. https://agenpas-host.example), and
+ *                                 the ONLY host the routes answer on. No value: no link is minted and no route is
+ *                                 served. A dedicated origin is recommended (docs/agenpas.md). http://localhost is
+ *                                 accepted only while the dev fixtures are actually enabled.
+ *   AGENPAS_INTERNAL_READ_KEY     the dedicated key the gateway presents (X-Internal-Key) on the backend's internal
+ *                                 buyer read. No value: every read is `unavailable`.
  *   AGENPAS_HOSTED_HOSTS          comma-separated exact host names the payment partner serves its hosted pages from.
  *                                 Default empty = every hosted page URL is refused (the page shows no button).
  *   AGENPAS_EMBED_HOSTED_PAGES    default OFF: hosted pages open in a popup / new tab (they cannot be framed today).
@@ -58,7 +62,7 @@ function publicBaseUrl(env = process.env) {
   } catch {
     return null;
   }
-  const localDev = devFixturesAllowed(env) && u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
+  const localDev = devFixturesEnabled(env) && u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
   if (u.protocol !== 'https:' && !localDev) return null;
   if (u.username || u.password || (u.pathname && u.pathname !== '/') || u.search || u.hash) return null;
   return u.origin;
@@ -70,6 +74,16 @@ function hostedHosts(env = process.env) {
     .split(',')
     .map((h) => h.trim().toLowerCase().replace(/\.$/, ''))
     .filter((h) => HOST_RE.test(h));
+}
+
+/** Whole minutes of link lifetime, for the buyer- and agent-facing copy (at least 1). */
+function linkTtlMinutes(env = process.env) {
+  return Math.max(1, Math.floor(linkTtlSeconds(env) / 60));
+}
+
+/** The dedicated backend key for the internal buyer read, or '' (never logged). */
+function internalReadKey(env = process.env) {
+  return String(env.AGENPAS_INTERNAL_READ_KEY || '').trim();
 }
 
 function embedHostedPages(env = process.env) {
@@ -97,8 +111,10 @@ module.exports = {
   devFixturesEnabled,
   embedHostedPages,
   hostedHosts,
+  internalReadKey,
   isEnabled,
   linkSecret,
+  linkTtlMinutes,
   linkTtlSeconds,
   publicBaseUrl,
 };

@@ -5,7 +5,7 @@ const request = require('supertest');
 
 const KEYS = [
   'AGENPAS_ENABLED', 'AGENPAS_LINK_SECRET', 'AGENPAS_PUBLIC_BASE_URL', 'AGENPAS_HOSTED_HOSTS', 'AGENPAS_DEV_FIXTURES',
-  'AGENPAS_EMBED_HOSTED_PAGES', 'AGENPAS_LINK_TTL_SECONDS',
+  'AGENPAS_EMBED_HOSTED_PAGES', 'AGENPAS_LINK_TTL_SECONDS', 'AGENPAS_INTERNAL_READ_KEY',
 ];
 const PID = 'ap_000000000000000000000001';
 
@@ -44,17 +44,21 @@ describe('AgenPas routes in the gateway app', () => {
     process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
     process.env.AGENPAS_DEV_FIXTURES = '1';
     process.env.AGENPAS_HOSTED_HOSTS = 'hosted.example';
+    process.env.AGENPAS_PUBLIC_BASE_URL = 'http://localhost:4000';
     const app = require('../src/server');
-    const start = await request(app).get('/agenpas/dev/start?scenario=happy');
+    const HOST = 'localhost:4000';
+    // Not the public host: not served.
+    expect((await request(app).get('/agenpas/assets/app.js').set('Host', 'other.example')).status).toBe(404);
+    const start = await request(app).get('/agenpas/dev/start?scenario=happy').set('Host', HOST);
     expect(start.status).toBe(302);
     const loc = new URL(start.headers.location, 'http://localhost');
     expect(loc.search).toBe('');
     const token = new URLSearchParams(loc.hash.slice(1)).get('t');
-    const page = await request(app).get(loc.pathname);
+    const page = await request(app).get(loc.pathname).set('Host', HOST);
     expect(page.status).toBe(200);
     expect(page.headers['content-security-policy']).toContain("default-src 'self'");
-    expect((await request(app).get('/agenpas/assets/app.js')).status).toBe(200);
-    const api = await request(app).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token);
+    expect((await request(app).get('/agenpas/assets/app.js').set('Host', HOST)).status).toBe(200);
+    const api = await request(app).get(`/agenpas/api/p/${PID}`).set('Host', HOST).set('X-Agenpas-Link', token);
     expect(api.status).toBe(200);
     expect(api.body.purchase_id).toBe(PID);
     expect(typeof api.body.screen).toBe('string');

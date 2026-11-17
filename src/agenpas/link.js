@@ -33,7 +33,7 @@ function mintAgenpasUrl({ purchaseId, agentId, userRef, env = process.env, now }
     if (typeof purchaseId !== 'string' || !PURCHASE_ID_RE.test(purchaseId)) return null;
     if (!nonEmpty(agentId) || !nonEmpty(userRef)) return null;
     const token = mintLinkToken({
-      purchaseId, agentId: agentId.trim(), userRef: userRef.trim(), secret, ttlSeconds: config.linkTtlSeconds(env), now,
+      purchaseId, agentId: agentId.trim(), userRef: userRef.trim(), aud: base, secret, ttlSeconds: config.linkTtlSeconds(env), now,
     });
     return `${base}${PAGE_PATH_PREFIX}${purchaseId}#t=${token}`;
   } catch {
@@ -55,6 +55,7 @@ function createAgenpasLinkMinter({ env } = {}) {
   return Object.freeze({
     mint: (input) => mintAgenpasUrl({ ...input, ...(env ? { env } : {}) }),
     available: () => agenpasLinksAvailable(env || process.env),
+    ttlMinutes: () => config.linkTtlMinutes(env || process.env),
   });
 }
 
