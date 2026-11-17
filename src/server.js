@@ -33575,12 +33575,12 @@ function statusForCommerceKernelError(code) {
     case 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID':
     case 'MERCHANT_PRODUCT_MISMATCH':
       return 400;
+    // CHECKOUT_OUTCOME_UNKNOWN: an outcome nobody here can know is a conflict with that earlier attempt, not a
+    // malformed request: the same as the ACP door answers it, and as this route answers its sibling IDEMPOTENCY_CONFLICT.
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
     case 'ORDER_CANCELED':
     case 'PARTNER_ASSERTION_REJECTED':
-    // An outcome nobody here can know is a conflict with that earlier attempt, not a malformed request: the same as
-    // the ACP door answers it, and as this route answers its sibling IDEMPOTENCY_CONFLICT.
     case 'CHECKOUT_OUTCOME_UNKNOWN':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
