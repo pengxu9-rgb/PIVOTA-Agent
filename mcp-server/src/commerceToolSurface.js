@@ -1873,6 +1873,10 @@ export function toToolError(error) {
       body.message = "Too many live quotes were requested for this seller or partner. No checkout was opened.";
       body.recovery = "retry the same request with the same idempotency_key after detail.retry_after_seconds; do not send new keys in a loop";
     }
+    if (error.detail.reason === "merchant_quote_partner_unprovisioned") {
+      body.message = "Live seller quotes are open only to provisioned Pivota partners. No checkout was opened.";
+      body.recovery = "do not retry with this client; ask Pivota to provision it as a partner";
+    }
     if (error.detail.reason === "merchant_quote_market_unpriced") {
       body.message = "Pivota does not price this market, so no quote was requested from the seller.";
       body.recovery = "do not retry for this market; quote only a market whose currency Pivota serves";
