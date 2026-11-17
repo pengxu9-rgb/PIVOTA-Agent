@@ -10,7 +10,7 @@
 //
 // WHAT THIS DOES. For each such row, oldest first and within bounds, it READS the backend's own order
 // (GET /agent/v2/orders/{order_id}: its state, its payment_status, and whether a PSP payment surface (the hosted
-// page's PaymentIntent or Checkout Session) was ever attached to it). Then it settles the kernel row to that truth:
+// page's PaymentIntent) was ever attached to it). Then it settles the kernel row to that truth:
 //
 //   backend payment_status is a paid state, and its
 //     amount, currency and merchant are the kernel's  -> 'paid'
@@ -26,6 +26,10 @@
 // A row charged through the delegated-token lane (kernel row charge_lane 'dispatch': an off-session charge with no
 // hosted page) is never expired: there, an unknown outcome can mean the PSP captured, and no "surface" exists to
 // look for. It moves only to paid.
+//
+// A row whose lane is not recorded (written before submitPayment stamped charge_lane, or carrying a value this does
+// not know) is never touched at all: it is held as 'lane_unknown', in observe and apply alike. Without its lane the
+// row could be a delegated charge, so expiring it could be wrong, and it is left for ops rather than guessed at.
 //
 // It never creates, re-creates or charges anything, and never calls the PSP: its only reads are the backend's
 // order read, and its only write is kernel.settleUncorrelatedCharge, a compare-and-set that loses to every other
@@ -61,6 +65,8 @@ const BACKEND_PAYMENT_CANCELLED = new Set(['cancelled', 'canceled']);
 // The kernel row's charge lane (kernel.js submitPayment): 'dispatch' = the injected off-session dispatcher (the
 // delegated PSP-token lane), where an unknown outcome may be a capture and there is no hosted page to look for.
 export const CHARGE_LANE_DISPATCH = 'dispatch';
+// 'upstream' = the hosted checkout surface (kernel._upstream('submit_payment')).
+export const CHARGE_LANE_UPSTREAM = 'upstream';
 
 export const DECISION = Object.freeze({ paid: 'paid', expire: 'expire', hold: 'hold' });
 
@@ -112,6 +118,10 @@ export function projectBackendOrder(orderId, httpStatus, body) {
  * @returns {{ decision:'paid'|'expire'|'hold', reason:string }}
  */
 export function decideSettlement(backend, row, { now, sessionMaxAgeMs }) {
+  // First, before anything the backend says: a row whose charge lane is not recorded is never settled (fail closed).
+  if (row.charge_lane !== CHARGE_LANE_UPSTREAM && row.charge_lane !== CHARGE_LANE_DISPATCH) {
+    return { decision: DECISION.hold, reason: 'lane_unknown' };
+  }
   const ps = backend.payment_status;
   if (ps === BACKEND_PAID_AFTER_CANCEL) return { decision: DECISION.hold, reason: 'backend_paid_after_cancel' };
   if (BACKEND_PAID.has(ps)) {

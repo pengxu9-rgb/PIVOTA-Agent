@@ -341,8 +341,8 @@ test('decide: a delegated-token (dispatch) row is never expired, only paid', () 
   }
   assert.deepEqual(decide(B('paid', 'confirmed'), lane(HOUR)), { decision: 'paid', reason: 'backend_paid' });
   assert.deepEqual(decide(B('paid_after_cancel', 'cancelled'), lane(HOUR)), { decision: 'hold', reason: 'backend_paid_after_cancel' });
-  // A row from before charge_lane existed reads as the hosted lane.
-  assert.equal(decide(B('awaiting_payment'), pendingRow(25 * HOUR, { charge_lane: undefined })).decision, 'expire');
+  // A row with no recorded lane is held whatever the backend says (decide: lane_unknown, below).
+  assert.deepEqual(decide(B('awaiting_payment'), pendingRow(25 * HOUR, { charge_lane: undefined })), { decision: 'hold', reason: 'lane_unknown' });
 });
 
 test('decide: "paid" counts only when the backend money is the kernel order\'s own', () => {
@@ -377,7 +377,7 @@ test('decide: unpaid, no surface -> expire only once older than any session live
     assert.deepEqual(decide(B(ps), pendingRow(SESSION - 1)), { decision: 'hold', reason: 'session_may_be_open' }, ps);
   }
   assert.deepEqual(decide(B('awaiting_payment'), pendingRow(SESSION)), { decision: 'expire', reason: 'session_lapsed_no_payment_surface' }, 'boundary');
-  assert.deepEqual(decide(B('awaiting_payment'), { status: 'charge_pending' }), { decision: 'hold', reason: 'no_timestamp' });
+  assert.deepEqual(decide(B('awaiting_payment'), { status: 'charge_pending', charge_lane: 'upstream' }), { decision: 'hold', reason: 'no_timestamp' });
 });
 
 test('decide: a status this does not know is held', () => {
@@ -387,7 +387,7 @@ test('decide: a status this does not know is held', () => {
 });
 
 test('decide: an expired row only ever moves to paid', () => {
-  const expiredRow = { status: 'expired', settled_at: NOW - HOUR, ...MONEY };
+  const expiredRow = { status: 'expired', settled_at: NOW - HOUR, charge_lane: 'upstream', ...MONEY };
   assert.deepEqual(decide(B('paid', 'confirmed'), expiredRow), { decision: 'paid', reason: 'backend_paid' });
   for (const b of [B('awaiting_payment'), B('', 'cancelled'), B('failed'), B('awaiting_payment', 'awaiting_checkout', true), B('paid_after_cancel', 'cancelled')]) {
     assert.equal(decide(b, expiredRow).decision, 'hold');
@@ -915,4 +915,57 @@ test('cursor: the in-memory lister orders by (charge_pending_at, order_id), so e
   const q = { pendingOlderThan: Infinity, pendingNewerThan: 0, expiredNewerThan: 0, pendingLimit: 10, expiredLimit: 0 };
   const after = await list({ ...q, pendingAfter: { at: base.charge_pending_at + 5, id: 'o_a' } });
   assert.deepEqual(after.map((r) => r.order_id), ['o_b', 'o_c']);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// N1: a row whose charge lane is not recorded is never settled (lane_unknown).
+// ---------------------------------------------------------------------------------------------------------------
+
+test('decide: no recorded charge lane -> lane_unknown, whatever the backend says', () => {
+  for (const charge_lane of [undefined, null, '', 'UPSTREAM', 'hosted', 'dispatched', 7]) {
+    for (const b of [B('paid', 'confirmed'), B('awaiting_payment'), B('', 'cancelled'), B('awaiting_payment', 'awaiting_checkout', true), B('processing')]) {
+      assert.deepEqual(decide(b, pendingRow(25 * HOUR, { charge_lane })), { decision: 'hold', reason: 'lane_unknown' }, `${String(charge_lane)} ${JSON.stringify(b)}`);
+    }
+    assert.deepEqual(decide(B('paid', 'confirmed'), { status: 'expired', settled_at: NOW - HOUR, ...MONEY, charge_lane }), { decision: 'hold', reason: 'lane_unknown' });
+  }
+  // The two known lanes still decide as before.
+  assert.equal(decide(B('awaiting_payment'), pendingRow(25 * HOUR, { charge_lane: 'upstream' })).decision, 'expire');
+  assert.equal(decide(B('paid', 'confirmed'), pendingRow(HOUR, { charge_lane: 'dispatch' })).decision, 'paid');
+});
+
+test('run apply: a lane-less uncorrelated row inside the window is read, held as lane_unknown, and never written', async () => {
+  const env = await stuckKernel();
+  const row = await env.store.get(env.order_id);
+  const { charge_lane, ...laneLess } = row;
+  assert.equal(charge_lane, 'upstream');
+  await env.store.set(env.order_id, laneLess); // as written before submitPayment stamped charge_lane
+  env.clock.advance(25 * HOUR); // inside the 14 d window, past the session life
+  const before = await env.store.get(env.order_id);
+  let settles = 0;
+  const kernel = new Proxy(env.kernel, { get: (t, k) => (k === 'settleUncorrelatedCharge' ? async (...a) => { settles += 1; return t.settleUncorrelatedCharge(...a); } : t[k]) });
+  for (const answer of [{}, { state: 'cancelled', payment_status: '' }, { state: 'confirmed', payment_status: 'paid' }]) {
+    const log = captureLog();
+    const s = await run({ ...env, kernel }, { log, readBackendOrder: async (id) => backendOrder(id, answer) });
+    assert.equal(s.scanned, 1, 'it is read (so observe shows it)');
+    assert.deepEqual(s.decisions, { paid: 0, expire: 0, hold: 1 });
+    assert.equal(s.by_reason.lane_unknown, 1);
+    assert.equal(s.applied, 0);
+    assert.equal(log.lines.find((l) => l.order_id === env.order_id).reason, 'lane_unknown');
+  }
+  assert.equal(settles, 0, 'apply never calls the settle for it');
+  assert.deepEqual(await env.store.get(env.order_id), before);
+});
+
+test('a correlated lane-less row (it has a payment id) is unchanged: never listed or read, and the webhook still settles it', async () => {
+  const env = await stuckKernel();
+  const { charge_lane, ...laneLess } = await env.store.get(env.order_id);
+  await env.store.set(env.order_id, { ...laneLess, payment_id: 'pi_corr' });
+  env.clock.advance(25 * HOUR);
+  const before = await env.store.get(env.order_id);
+  let reads = 0;
+  const s = await run(env, { readBackendOrder: async (id) => { reads += 1; return backendOrder(id, { state: 'confirmed', payment_status: 'paid' }); } });
+  assert.equal(reads, 0);
+  assert.equal(s.scanned, 0);
+  assert.deepEqual(await env.store.get(env.order_id), before);
+  assert.deepEqual(await env.kernel.onPaymentWebhook({ order_id: env.order_id, status: 'succeeded', payment_id: 'pi_corr' }), { transitioned: 'paid' });
 });
