@@ -1125,7 +1125,18 @@ async function cancelSession(kernel, params, ctx) {
       if (o.status === 'paid' || o.status === 'charge_pending') {
         throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending', order_id });
       }
-      await kernel._orderStore.set(order_id, { ...o, status: 'canceled' });
+      // 'expired' is the charge_pending reconcile's: nothing can pay it, and the reconcile still re-reads it for a
+      // late payment. Overwriting it with 'canceled' would drop it from that re-read and could undo an
+      // expired -> paid the reconcile is writing at the same moment. Refused, unchanged.
+      if (o.status === 'expired') {
+        throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'order_expired_not_payable', order_id });
+      }
+      // Conditional on the status just read, so a concurrent writer (a webhook, the reconcile) is never overwritten.
+      const next = { ...o, status: 'canceled' };
+      const written = typeof kernel._orderStore.compareAndSet === 'function'
+        ? await kernel._orderStore.compareAndSet(order_id, 'status', o.status, next)
+        : (await kernel._orderStore.set(order_id, next), true);
+      if (!written) throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'order_changed_during_cancel', order_id });
     }
   }
   return { session_id: params.session_id ?? null, order_id: order_id ?? null, status: 'canceled' };

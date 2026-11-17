@@ -89,6 +89,7 @@ function fakeKernelModule(record) {
     normalizeConfig: (c) => ({ ...c, deadlineMs: 60_000 }),
     makePostgresListCandidates: ({ db, namespace }) => { record.lister = { db, namespace }; return async () => []; },
     makeStoreLease: (store, opts) => { record.lease = { store, opts }; return { acquire: async () => true, release: async () => {} }; },
+    makeStoreCursor: (store) => { record.cursorStore = store; return { get: async () => null, set: async () => {} }; },
     reconcileUncorrelatedChargePending: async (deps) => { record.runs.push(deps); if (record.block) await record.block; return { mode: deps.mode, scanned: 0 }; },
   });
 }
@@ -119,6 +120,8 @@ test('start: schedules a jittered first tick, then the interval; a tick runs the
   assert.equal(deps.kernel, kernel);
   assert.deepEqual(record.lister, { db, namespace: 'orders' });
   assert.deepEqual(stateStores, [svc.LEASE_NAMESPACE]);
+  assert.equal(record.cursorStore, record.lease.store, 'the cursor lives beside the lease');
+  assert.equal(typeof deps.cursor?.get, 'function');
   assert.equal(record.lease.opts.owner, 'inst:1');
   assert.equal(record.lease.opts.ttlMs, 90_000, 'lease outlives the run deadline');
   // The mode is read again per tick: off now, so the next tick does nothing.
@@ -157,7 +160,7 @@ test('tick: one run at a time per instance; a non-durable kernel and a failing r
 
 test('the real kernel module loads and exposes what the wiring calls', async () => {
   const mod = await import('../safety-kernel/src/reconcileUncorrelated.js');
-  for (const fn of ['normalizeConfig', 'makePostgresListCandidates', 'makeStoreLease', 'reconcileUncorrelatedChargePending']) {
+  for (const fn of ['normalizeConfig', 'makePostgresListCandidates', 'makeStoreLease', 'makeStoreCursor', 'reconcileUncorrelatedChargePending']) {
     assert.equal(typeof mod[fn], 'function', fn);
   }
 });

@@ -12,14 +12,20 @@
 // (GET /agent/v2/orders/{order_id}: its state, its payment_status, and whether a PSP payment surface (the hosted
 // page's PaymentIntent or Checkout Session) was ever attached to it). Then it settles the kernel row to that truth:
 //
-//   backend payment_status is a paid state            -> 'paid'
-//   backend order cancelled (its page was closed)     -> 'expired'
+//   backend payment_status is a paid state, and its
+//     amount, currency and merchant are the kernel's  -> 'paid'
+//   backend order cancelled, its payment never begun  -> 'expired'
 //   backend unpaid, no PSP surface ever attached, and
 //     the row is older than any hosted session lives  -> 'expired'
 //   anything else (a payment failed on a page that may
 //     still take a retry, an open PSP surface, money
-//     after cancel, a status this does not know, the
-//     read failing)                                   -> unchanged, logged with the reason
+//     after cancel, a cancelled order whose payment is
+//     in flight, a paid order whose money differs, a
+//     status this does not know, the read failing)    -> unchanged, logged with the reason
+//
+// A row charged through the delegated-token lane (kernel row charge_lane 'dispatch': an off-session charge with no
+// hosted page) is never expired: there, an unknown outcome can mean the PSP captured, and no "surface" exists to
+// look for. It moves only to paid.
 //
 // It never creates, re-creates or charges anything, and never calls the PSP: its only reads are the backend's
 // order read, and its only write is kernel.settleUncorrelatedCharge, a compare-and-set that loses to every other
@@ -29,8 +35,15 @@
 // rate limit on backend reads, a deadline per run, and a run lease so one instance runs it at a time. Idempotent:
 // a settled row leaves the candidate list, and a second settle of the same row is refused by the compare-and-set.
 //
+// A HELD ROW DOES NOT BLOCK THE ROWS BEHIND IT. A hold leaves the row charge_pending, so read oldest-first with a
+// plain LIMIT the same held rows would fill every batch and nothing newer would ever be read. A keyset cursor
+// (charge_pending_at, order_id), kept beside the run lease, carries each run on from where the last one stopped,
+// and wraps to the oldest row once a run reaches the end.
+//
 // MODES. 'off' (default) never runs. 'observe' reads and decides and logs what it would do, writing nothing.
 // 'apply' also writes.
+
+import { parseDecimalToMinor } from './money.js';
 
 export const RECONCILE_MODES = Object.freeze({ off: 'off', observe: 'observe', apply: 'apply' });
 
@@ -42,31 +55,50 @@ const BACKEND_FAILED = new Set(['failed', 'payment_failed']);
 // An order with no payment yet (routes/agent_v2.py _order_state_from_row reads these as awaiting_checkout; an empty
 // payment_status reads as draft).
 const BACKEND_UNPAID = new Set(['', 'awaiting_payment', 'pending', 'unpaid']);
+// A cancelled order expires only when its payment never began (unpaid) or was itself cancelled. A cancelled order
+// whose payment_status says anything else (processing, requires_action, failed, …) is held.
+const BACKEND_PAYMENT_CANCELLED = new Set(['cancelled', 'canceled']);
+// The kernel row's charge lane (kernel.js submitPayment): 'dispatch' = the injected off-session dispatcher (the
+// delegated PSP-token lane), where an unknown outcome may be a capture and there is no hosted page to look for.
+export const CHARGE_LANE_DISPATCH = 'dispatch';
 
 export const DECISION = Object.freeze({ paid: 'paid', expire: 'expire', hold: 'hold' });
 
 /**
- * What the reconcile may know about a backend order, from GET /agent/v2/orders/{id}. Only these three facts: the
- * body also carries the buyer's contact and address and the PSP client secret, none of which leaves this function.
+ * What the reconcile may know about a backend order, from GET /agent/v2/orders/{id}: its state, its payment status,
+ * whether a PSP surface was attached, and its total, currency and merchant (to check a "paid" against the kernel's
+ * own order). The body also carries the buyer's contact and address and the PSP client secret, none of which
+ * leaves this function.
  * Null (with a reason) for any answer that is not a 200 carrying this order.
  *
- * @returns {{ ok:true, state:string, payment_status:string, has_payment_surface:boolean } | { ok:false, reason:string }}
+ * @returns {{ ok:true, state:string, payment_status:string, has_payment_surface:boolean, total_minor:number|null,
+ *             currency:string|null, merchant_id:string|null } | { ok:false, reason:string }}
  */
 export function projectBackendOrder(orderId, httpStatus, body) {
   if (httpStatus !== 200) return { ok: false, reason: `http_${httpStatus ?? 'none'}` };
   const order = body && typeof body === 'object' ? body.order : null;
   if (!order || typeof order !== 'object' || Array.isArray(order)) return { ok: false, reason: 'malformed_body' };
   if (typeof order.state !== 'string' || order.state.trim() === '') return { ok: false, reason: 'malformed_body' };
-  // A body for some other order is not an answer about this one.
-  if (order.order_id != null && String(order.order_id) !== String(orderId)) return { ok: false, reason: 'order_id_mismatch' };
+  // The answer must name this order: the backend always sends order_id, and a body for another order (or none) is
+  // not an answer about this one.
+  if (order.order_id == null || String(order.order_id) === '') return { ok: false, reason: 'order_id_missing' };
+  if (String(order.order_id) !== String(orderId)) return { ok: false, reason: 'order_id_mismatch' };
   const ps = order.payment_status;
   if (ps != null && typeof ps !== 'string') return { ok: false, reason: 'malformed_body' };
   const surface = order.payment_summary && typeof order.payment_summary === 'object' ? order.payment_summary.payment_intent_id : null;
+  // The money the backend recorded (routes/agent_v2.py _order_amounts_from_row: a MAJOR-unit decimal string), as
+  // minor units the way the kernel's own create-time cross-check parses it. Undefined when absent or unparseable.
+  const amounts = order.amounts && typeof order.amounts === 'object' ? order.amounts : {};
+  const currency = typeof amounts.currency === 'string' && amounts.currency.trim() !== '' ? amounts.currency.trim().toUpperCase() : null;
+  const totalMinor = currency ? parseDecimalToMinor(amounts.total, currency) : undefined;
   return {
     ok: true,
     state: order.state.trim().toLowerCase(),
     payment_status: String(ps ?? '').trim().toLowerCase(),
     has_payment_surface: typeof surface === 'string' && surface.trim() !== '',
+    total_minor: Number.isSafeInteger(totalMinor) ? totalMinor : null,
+    currency,
+    merchant_id: typeof order.merchant_id === 'string' && order.merchant_id !== '' ? order.merchant_id : null,
   };
 }
 
@@ -74,17 +106,29 @@ export function projectBackendOrder(orderId, httpStatus, body) {
  * The settle decision: pure, from the backend's projected order and the kernel row.
  *
  * @param {{ state:string, payment_status:string, has_payment_surface:boolean }} backend
- * @param {{ status:string, charge_pending_at?:number }} row
+ * @param {{ status:string, charge_pending_at?:number, charge_lane?:string, amount?:number, currency?:string,
+ *           merchant_of_record?:string }} row
  * @param {{ now:number, sessionMaxAgeMs:number }} opts
  * @returns {{ decision:'paid'|'expire'|'hold', reason:string }}
  */
 export function decideSettlement(backend, row, { now, sessionMaxAgeMs }) {
   const ps = backend.payment_status;
   if (ps === BACKEND_PAID_AFTER_CANCEL) return { decision: DECISION.hold, reason: 'backend_paid_after_cancel' };
-  if (BACKEND_PAID.has(ps)) return { decision: DECISION.paid, reason: 'backend_paid' };
+  if (BACKEND_PAID.has(ps)) {
+    // Paid is the backend's word, but only about THIS order's money: the kernel row holds the amount, currency and
+    // merchant it was created with. Any difference, or a figure either side cannot give, is held for ops.
+    const mismatch = paidMismatch(backend, row);
+    if (mismatch) return { decision: DECISION.hold, reason: `backend_paid_mismatch:${mismatch}` };
+    return { decision: DECISION.paid, reason: 'backend_paid' };
+  }
   // An 'expired' row (settled by an earlier run) only ever moves to paid; it is re-read for that alone.
   if (row.status === 'expired') return { decision: DECISION.hold, reason: 'still_not_paid' };
-  if (backend.state === 'cancelled') return { decision: DECISION.expire, reason: 'backend_order_cancelled' };
+  // The delegated-token lane: an unknown outcome may be a capture the backend has not recorded yet. Never expire.
+  if (row.charge_lane === CHARGE_LANE_DISPATCH) return { decision: DECISION.hold, reason: 'delegated_lane_not_paid' };
+  if (backend.state === 'cancelled') {
+    if (BACKEND_UNPAID.has(ps) || BACKEND_PAYMENT_CANCELLED.has(ps)) return { decision: DECISION.expire, reason: 'backend_order_cancelled' };
+    return { decision: DECISION.hold, reason: 'backend_cancelled_payment_in_flight' };
+  }
   // A failed payment on a hosted page that may still take a retry is not the end of that page.
   if (BACKEND_FAILED.has(ps)) return { decision: DECISION.hold, reason: 'backend_payment_failed' };
   if (!BACKEND_UNPAID.has(ps)) return { decision: DECISION.hold, reason: 'backend_status_unrecognized' };
@@ -99,16 +143,27 @@ export function decideSettlement(backend, row, { now, sessionMaxAgeMs }) {
   return { decision: DECISION.expire, reason: 'session_lapsed_no_payment_surface' };
 }
 
+// Which of amount, currency, merchant a backend "paid" disagrees with the kernel row on; null when all three agree.
+function paidMismatch(backend, row) {
+  const amount = typeof row.amount === 'number' ? row.amount : Number(row.amount);
+  if (!Number.isSafeInteger(amount) || backend.total_minor == null || backend.total_minor !== amount) return 'amount';
+  if (typeof row.currency !== 'string' || backend.currency == null || backend.currency !== row.currency.toUpperCase()) return 'currency';
+  if (typeof row.merchant_of_record !== 'string' || backend.merchant_id == null || backend.merchant_id !== row.merchant_of_record) return 'merchant';
+  return null;
+}
+
 /**
  * One bounded run.
  *
  * @param {{
  *   kernel: { settleUncorrelatedCharge: Function },
  *   listCandidates: (q:{ pendingOlderThan:number, pendingNewerThan:number, expiredNewerThan:number,
- *                        pendingLimit:number, expiredLimit:number }) => Promise<Array<object>>,
+ *                        pendingLimit:number, expiredLimit:number,
+ *                        pendingAfter:{ at:number, id:string }|null }) => Promise<Array<object>>,
  *   readBackendOrder: (orderId:string, opts:{ timeoutMs:number }) => Promise<{ status:number, body:any }>,
  *   mode: 'off'|'observe'|'apply',
  *   lease?: { acquire: () => Promise<boolean>, release: () => Promise<void> },
+ *   cursor?: { get: () => Promise<{at:number,id:string}|null|undefined>, set: (v:{at:number,id:string}|null) => Promise<void> },
  *   now?: () => number, sleep?: (ms:number) => Promise<void>, log?: object,
  *   batchSize?: number, recheckBatchSize?: number, minAgeMs?: number, maxAgeMs?: number,
  *   sessionMaxAgeMs?: number, recheckWindowMs?: number, readsPerSecond?: number,
@@ -117,7 +172,7 @@ export function decideSettlement(backend, row, { now, sessionMaxAgeMs }) {
  */
 export async function reconcileUncorrelatedChargePending(deps = {}) {
   const {
-    kernel, listCandidates, readBackendOrder, lease = null,
+    kernel, listCandidates, readBackendOrder, lease = null, cursor = null,
     now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = console,
   } = deps;
   const cfg = normalizeConfig(deps);
@@ -131,18 +186,29 @@ export async function reconcileUncorrelatedChargePending(deps = {}) {
   const started = now();
   const deadline = started + cfg.deadlineMs;
   const summary = {
-    mode, scanned: 0, read_failed: 0, applied: 0, raced: 0, stopped: null,
+    mode, scanned: 0, read_failed: 0, applied: 0, raced: 0, stopped: null, cursor: null,
     decisions: { paid: 0, expire: 0, hold: 0 }, by_reason: {},
   };
+  let lastPending = null;
+  let pendingListed = 0;
+  let after = null;
   try {
+    if (cursor) {
+      try { after = validCursor(await cursor.get()); } catch { after = null; }
+    }
     const rows = await listCandidates({
       pendingOlderThan: started - cfg.minAgeMs,
       pendingNewerThan: started - cfg.maxAgeMs,
       expiredNewerThan: started - cfg.recheckWindowMs,
       pendingLimit: cfg.batchSize,
       expiredLimit: cfg.recheckBatchSize,
+      pendingAfter: after,
     });
-    const list = Array.isArray(rows) ? rows.slice(0, cfg.batchSize + cfg.recheckBatchSize) : [];
+    const all = Array.isArray(rows) ? rows : [];
+    const pendingRows = all.filter((r) => r && r.status === 'charge_pending').slice(0, cfg.batchSize);
+    const expiredRows = all.filter((r) => r && r.status === 'expired').slice(0, cfg.recheckBatchSize);
+    pendingListed = pendingRows.length;
+    const list = [...pendingRows, ...expiredRows];
     const gapMs = Math.ceil(1000 / cfg.readsPerSecond);
     let lastReadAt = null;
     for (const row of list) {
@@ -155,6 +221,7 @@ export async function reconcileUncorrelatedChargePending(deps = {}) {
       if (remaining <= 0) { summary.stopped = 'deadline'; break; }
       summary.scanned += 1;
       lastReadAt = now();
+      if (row.status === 'charge_pending' && Number.isSafeInteger(row.charge_pending_at)) lastPending = { at: row.charge_pending_at, id: row.order_id };
       let projected;
       try {
         const answered = await readBackendOrder(row.order_id, { timeoutMs: Math.min(cfg.readTimeoutMs, remaining) });
@@ -191,6 +258,14 @@ export async function reconcileUncorrelatedChargePending(deps = {}) {
         backend_payment_surface: projected.has_payment_surface,
       });
     }
+    // Where the next run starts. A run that read a full batch, or stopped at its deadline, carries on after the last
+    // row it read; a run that reached the end of the list wraps to the oldest row.
+    if (cursor) {
+      const reachedEnd = summary.stopped == null && pendingListed < cfg.batchSize;
+      const next = reachedEnd ? null : (lastPending || after);
+      summary.cursor = reachedEnd ? 'wrapped' : next === after ? 'kept' : 'advanced';
+      try { await cursor.set(next); } catch { summary.cursor = 'not_saved'; }
+    }
   } finally {
     if (lease) { try { await lease.release(); } catch { /* the lease's TTL frees it */ } }
   }
@@ -221,7 +296,9 @@ const BOUNDS = Object.freeze({
   recheckBatchSize: [0, 50],
   minAgeMs: [5 * 60 * 1000, 7 * 24 * 60 * 60 * 1000],
   maxAgeMs: [60 * 60 * 1000, 90 * 24 * 60 * 60 * 1000],
-  sessionMaxAgeMs: [6 * 60 * 60 * 1000, 30 * 24 * 60 * 60 * 1000],
+  // Never below the backend's own hosted-session clamp (6 h) plus the time a session can start after
+  // charge_pending_at (the 30 s upstream timeout), with margin.
+  sessionMaxAgeMs: [6 * 60 * 60 * 1000 + 5 * 60 * 1000, 30 * 24 * 60 * 60 * 1000],
   recheckWindowMs: [0, 30 * 24 * 60 * 60 * 1000],
   readsPerSecond: [0.1, 20],
   deadlineMs: [5 * 1000, 10 * 60 * 1000],
@@ -254,6 +331,18 @@ export function makeStoreLease(store, { owner, ttlMs, key = 'run-lease' }) {
   };
 }
 
+/** The keyset cursor, beside the run lease in the reconcile's own state store. */
+export function makeStoreCursor(store, { key = 'pending-cursor' } = {}) {
+  return {
+    get: () => store.get(key),
+    set: async (v) => { if (v) await store.set(key, { at: v.at, id: v.id }); else await store.delete(key); },
+  };
+}
+
+function validCursor(v) {
+  return v && typeof v === 'object' && Number.isSafeInteger(v.at) && typeof v.id === 'string' && v.id !== '' ? { at: v.at, id: v.id } : null;
+}
+
 /**
  * The candidate list over the kernel's Postgres order namespace (commerce_kv): charge_pending rows with no payment
  * id inside the age window, oldest first, then a few rows this reconcile expired, newest first, re-read only to
@@ -262,16 +351,20 @@ export function makeStoreLease(store, { owner, ttlMs, key = 'run-lease' }) {
  */
 export function makePostgresListCandidates({ db, namespace = 'orders' }) {
   if (!db || typeof db.query !== 'function') throw new Error('makePostgresListCandidates requires a db with query()');
-  return async ({ pendingOlderThan, pendingNewerThan, expiredNewerThan, pendingLimit, expiredLimit }) => {
-    const pending = await db.query(PENDING_SQL, [namespace, pendingOlderThan, pendingNewerThan, pendingLimit]);
+  return async ({ pendingOlderThan, pendingNewerThan, expiredNewerThan, pendingLimit, expiredLimit, pendingAfter = null }) => {
+    const pending = await db.query(PENDING_SQL, [
+      namespace, pendingOlderThan, pendingNewerThan, pendingLimit,
+      pendingAfter ? pendingAfter.at : null, pendingAfter ? pendingAfter.id : null,
+    ]);
     const out = (pending.rows || []).map((r) => ({
       order_id: r.order_id, status: 'charge_pending', attempt: r.attempt ?? undefined, payment_id: null,
       charge_pending_at: r.charge_pending_at == null ? undefined : Number(r.charge_pending_at),
+      ...moneyOfRow(r),
     }));
     if (expiredLimit > 0) {
       const expired = await db.query(EXPIRED_SQL, [namespace, RECONCILE_SETTLER_NAME, expiredNewerThan, expiredLimit]);
       for (const r of expired.rows || []) {
-        out.push({ order_id: r.order_id, status: 'expired', payment_id: null, settled_at: r.settled_at == null ? undefined : Number(r.settled_at) });
+        out.push({ order_id: r.order_id, status: 'expired', payment_id: null, settled_at: r.settled_at == null ? undefined : Number(r.settled_at), ...moneyOfRow(r) });
       }
     }
     return out;
@@ -282,9 +375,13 @@ export function makePostgresListCandidates({ db, namespace = 'orders' }) {
 export const RECONCILE_SETTLER_NAME = 'kernel_charge_pending_reconcile';
 
 export const PENDING_SQL = `
-  SELECT order_id, attempt, charge_pending_at FROM (
+  SELECT order_id, attempt, charge_pending_at, charge_lane, amount, currency, merchant_of_record FROM (
     SELECT k AS order_id,
            v ->> 'attempt' AS attempt,
+           v ->> 'charge_lane' AS charge_lane,
+           v ->> 'amount' AS amount,
+           v ->> 'currency' AS currency,
+           v ->> 'merchant_of_record' AS merchant_of_record,
            CASE WHEN jsonb_typeof(v -> 'charge_pending_at') = 'number'
                 THEN (v -> 'charge_pending_at')::numeric END AS charge_pending_at
       FROM commerce_kv
@@ -296,12 +393,17 @@ export const PENDING_SQL = `
   WHERE c.charge_pending_at IS NOT NULL
     AND c.charge_pending_at <= $2
     AND c.charge_pending_at >= $3
+    AND ($5::numeric IS NULL OR (c.charge_pending_at, c.order_id) > ($5::numeric, $6::text))
   ORDER BY c.charge_pending_at ASC, c.order_id ASC
   LIMIT $4`;
 
 export const EXPIRED_SQL = `
-  SELECT order_id, settled_at FROM (
+  SELECT order_id, settled_at, charge_lane, amount, currency, merchant_of_record FROM (
     SELECT k AS order_id,
+           v ->> 'charge_lane' AS charge_lane,
+           v ->> 'amount' AS amount,
+           v ->> 'currency' AS currency,
+           v ->> 'merchant_of_record' AS merchant_of_record,
            CASE WHEN jsonb_typeof(v -> 'settled_at') = 'number'
                 THEN (v -> 'settled_at')::numeric END AS settled_at
       FROM commerce_kv
@@ -318,7 +420,7 @@ export const EXPIRED_SQL = `
 
 /** The same list over an InMemoryKvStore (tests, and a non-durable dev gateway). */
 export function makeInMemoryListCandidates(inMemoryStore) {
-  return async ({ pendingOlderThan, pendingNewerThan, expiredNewerThan, pendingLimit, expiredLimit }) => {
+  return async ({ pendingOlderThan, pendingNewerThan, expiredNewerThan, pendingLimit, expiredLimit, pendingAfter = null }) => {
     const pending = [];
     const expired = [];
     const m = inMemoryStore?._m;
@@ -327,17 +429,29 @@ export function makeInMemoryListCandidates(inMemoryStore) {
       const v = rec?.value;
       if (!v || typeof v !== 'object') continue;
       if (v.payment_id != null) continue;
+      const money = { charge_lane: v.charge_lane, amount: v.amount, currency: v.currency, merchant_of_record: v.merchant_of_record };
       if (v.status === 'charge_pending' && Number.isSafeInteger(v.charge_pending_at)
-        && v.charge_pending_at <= pendingOlderThan && v.charge_pending_at >= pendingNewerThan) {
-        pending.push({ order_id: key, status: 'charge_pending', attempt: v.attempt, payment_id: null, charge_pending_at: v.charge_pending_at });
+        && v.charge_pending_at <= pendingOlderThan && v.charge_pending_at >= pendingNewerThan
+        && (!pendingAfter || v.charge_pending_at > pendingAfter.at || (v.charge_pending_at === pendingAfter.at && key > pendingAfter.id))) {
+        pending.push({ order_id: key, status: 'charge_pending', attempt: v.attempt, payment_id: null, charge_pending_at: v.charge_pending_at, ...money });
       } else if (v.status === 'expired' && v.settled_by === RECONCILE_SETTLER_NAME && Number.isSafeInteger(v.settled_at)
         && v.settled_at >= expiredNewerThan) {
-        expired.push({ order_id: key, status: 'expired', payment_id: null, settled_at: v.settled_at });
+        expired.push({ order_id: key, status: 'expired', payment_id: null, settled_at: v.settled_at, ...money });
       }
     }
     pending.sort((a, b) => a.charge_pending_at - b.charge_pending_at || (a.order_id < b.order_id ? -1 : 1));
     expired.sort((a, b) => b.settled_at - a.settled_at || (a.order_id < b.order_id ? -1 : 1));
     return [...pending.slice(0, pendingLimit), ...expired.slice(0, expiredLimit)];
+  };
+}
+
+// The kernel row's own money and lane, as the SQL reads them (text) -> the shapes decideSettlement compares.
+function moneyOfRow(r) {
+  return {
+    charge_lane: r.charge_lane ?? undefined,
+    amount: r.amount == null ? undefined : Number(r.amount),
+    currency: r.currency ?? undefined,
+    merchant_of_record: r.merchant_of_record ?? undefined,
   };
 }
 

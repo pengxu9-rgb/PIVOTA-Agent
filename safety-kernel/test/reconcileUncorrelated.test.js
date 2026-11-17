@@ -3,12 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SafetyKernel, RECONCILE_SETTLER } from '../src/kernel.js';
+import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { InMemoryKvStore, fieldsMatch } from '../src/stores.js';
 import { PostgresKvStore } from '../src/stores/postgresKvStore.js';
 import { makeFakePgDb } from './helpers/fakePgDb.js';
 import {
   reconcileUncorrelatedChargePending, decideSettlement, projectBackendOrder, normalizeConfig,
-  makeInMemoryListCandidates, makePostgresListCandidates, makeStoreLease, RECONCILE_DEFAULTS,
+  makeInMemoryListCandidates, makePostgresListCandidates, makeStoreLease, makeStoreCursor, RECONCILE_DEFAULTS,
   RECONCILE_SETTLER_NAME, PENDING_SQL, EXPIRED_SQL,
 } from '../src/reconcileUncorrelated.js';
 
@@ -30,7 +31,7 @@ function makeClock(start = 1_700_000_000_000) {
 
 // A kernel with ONE order left exactly as an unknown charge outcome leaves it: charge_pending, payment_id null.
 // `submit` decides what the charge call does: 'throw' (the outcome is unknown), or a deferred the test resolves.
-async function stuckKernel({ orderId = 'o_stuck', clock = makeClock(), submit = 'throw' } = {}) {
+async function stuckKernel({ orderId = 'o_stuck', clock = makeClock(), submit = 'throw', lane = 'upstream' } = {}) {
   let resolveSubmit;
   let chargeCalled;
   const deferred = new Promise((r) => { resolveSubmit = r; });
@@ -51,9 +52,11 @@ async function stuckKernel({ orderId = 'o_stuck', clock = makeClock(), submit = 
   const q = await kernel.previewQuote({ quote: {} }, CTX);
   const o = await kernel.createOrder({ idempotency_key: `idem-${orderId}-order`, order: { quote_id: q.quote_id, shipping_address: {} } }, CTX);
   const token = await kernel.mintConfirmation({ order_id: o.order_id }, CTX);
-  const pay = kernel.submitPayment({ idempotency_key: `idem-${orderId}-pay`, confirmation_token: token, payment: { order_id: o.order_id, expected_amount: 113, currency: 'USD' } }, CTX);
+  // The delegated-token lane charges through an injected dispatcher instead of the upstream submit_payment.
+  const opts = lane === 'dispatch' ? { dispatch: async () => { calls.push('dispatch'); throw Object.assign(new Error('socket timeout'), { code: 'ETIMEDOUT' }); } } : {};
+  const pay = kernel.submitPayment({ idempotency_key: `idem-${orderId}-pay`, confirmation_token: token, payment: { order_id: o.order_id, expected_amount: 113, currency: 'USD' } }, CTX, opts);
   let paySettled;
-  if (submit === 'throw') await assert.rejects(pay);
+  if (submit === 'throw' || lane === 'dispatch') await assert.rejects(pay);
   else { paySettled = pay.then((v) => ({ ok: v }), (e) => ({ err: e })); await charging; }
   const row = await kernel._orderStore.get(o.order_id);
   assert.equal(row.status, 'charge_pending');
@@ -61,13 +64,16 @@ async function stuckKernel({ orderId = 'o_stuck', clock = makeClock(), submit = 
   return { kernel, clock, order_id: o.order_id, calls, resolveSubmit, paySettled, store: kernel._orderStore };
 }
 
-function backendOrder(orderId, { state = 'awaiting_checkout', payment_status = 'awaiting_payment', surface = null } = {}) {
+// The backend's GET /agent/v2/orders/{id} body (routes/agent_v2.py _order_response_from_row). The kernel order above is
+// 113 minor USD at merch_A; the backend records the same money as a MAJOR-unit decimal string.
+function backendOrder(orderId, { state = 'awaiting_checkout', payment_status = 'awaiting_payment', surface = null, total = '1.13', currency = 'USD', merchant_id = 'merch_A' } = {}) {
   return {
     status: 200,
     body: {
       status: 'success',
       order: {
-        order_id: orderId, state, payment_status,
+        order_id: orderId, merchant_id, state, payment_status,
+        amounts: { subtotal: '1.00', discount_total: '0.00', shipping_fee: '0.05', tax: '0.08', total, currency },
         payment_summary: { psp: 'stripe', payment_intent_id: surface, client_secret: surface ? 'secret_must_not_leak' : null },
         buyer_context: { customer_email: 'buyer@example.test' },
       },
@@ -131,6 +137,14 @@ for (const [name, makeStore] of [
     assert.equal((await store.get('o1')).status, 'paid');
   });
 
+  test(`${name}.compareAndSetFields never sets an expired (TTL-lapsed) record`, async () => {
+    const clock = makeClock();
+    const store = makeStore(clock.now);
+    await store.set('t1', { status: 'charge_pending', payment_id: null }, { ttlMs: 1000 });
+    clock.advance(1001);
+    assert.equal(await store.compareAndSetFields('t1', { status: 'charge_pending', payment_id: null }, { status: 'paid' }), false);
+  });
+
   test(`${name}.compareAndSetFields: an absent field matches a null expectation, a stamped one does not`, async () => {
     const clock = makeClock();
     const store = makeStore(clock.now);
@@ -158,7 +172,8 @@ test('PostgresKvStore.compareAndSetFields sends one conditional UPDATE with type
   await store.compareAndSetFields('o1', { status: 'charge_pending', payment_id: null, charge_pending_at: 7 }, { status: 'paid' });
   assert.equal(seen.length, 1);
   const t = seen[0].text.replace(/\s+/g, ' ');
-  assert.match(t, /^UPDATE commerce_kv SET v = \$3, expires_at = \$4 WHERE ns = \$1 AND k = \$2/);
+  assert.match(t, /^UPDATE commerce_kv SET v = \$3, expires_at = \$4 WHERE ns = \$1 AND k = \$2 AND \(expires_at IS NULL OR expires_at > to_timestamp\(\$5\)\) AND /);
+  assert.equal(seen[0].params[4], 1, 'the liveness clock is the store clock, in seconds');
   assert.match(t, /\(v ->> \$6::text\) IS NOT DISTINCT FROM \$7::text AND \(v ->> \$8::text\) IS NOT DISTINCT FROM \$9::text AND \(v ->> \$10::text\) IS NOT DISTINCT FROM \$11::text RETURNING k$/);
   assert.deepEqual(seen[0].params.slice(5), ['status', 'charge_pending', 'payment_id', null, 'charge_pending_at', '7']);
 });
@@ -286,8 +301,11 @@ test('RECONCILE_SETTLER is the name the listers look for', () => {
 
 const NOW = 1_700_000_000_000;
 const SESSION = 24 * HOUR;
-const pendingRow = (ageMs) => ({ status: 'charge_pending', charge_pending_at: NOW - ageMs });
-const B = (payment_status, state = 'awaiting_checkout', has_payment_surface = false) => ({ state, payment_status, has_payment_surface });
+const MONEY = { amount: 113, currency: 'USD', merchant_of_record: 'merch_A' };
+const pendingRow = (ageMs, extra = {}) => ({ status: 'charge_pending', charge_pending_at: NOW - ageMs, charge_lane: 'upstream', ...MONEY, ...extra });
+const B = (payment_status, state = 'awaiting_checkout', has_payment_surface = false, money = {}) => ({
+  state, payment_status, has_payment_surface, total_minor: 113, currency: 'USD', merchant_id: 'merch_A', ...money,
+});
 const decide = (b, row = pendingRow(25 * HOUR)) => decideSettlement(b, row, { now: NOW, sessionMaxAgeMs: SESSION });
 
 test('decide: every backend paid state -> paid, whatever else the order says', () => {
@@ -305,6 +323,40 @@ test('decide: money after cancel is held for ops, never settled', () => {
 test('decide: a cancelled backend order -> expire, at any age', () => {
   assert.deepEqual(decide(B('awaiting_payment', 'cancelled', true)), { decision: 'expire', reason: 'backend_order_cancelled' });
   assert.deepEqual(decide(B('', 'cancelled'), pendingRow(MIN)), { decision: 'expire', reason: 'backend_order_cancelled' });
+});
+
+test('decide: a cancelled order whose payment is in flight (or failed) is held, not expired', () => {
+  for (const ps of ['processing', 'requires_action', 'failed', 'payment_failed', 'authorized']) {
+    assert.deepEqual(decide(B(ps, 'cancelled')), { decision: 'hold', reason: 'backend_cancelled_payment_in_flight' }, ps);
+  }
+  for (const ps of ['cancelled', 'canceled', '', 'unpaid', 'pending', 'awaiting_payment']) {
+    assert.deepEqual(decide(B(ps, 'cancelled')), { decision: 'expire', reason: 'backend_order_cancelled' }, ps);
+  }
+});
+
+test('decide: a delegated-token (dispatch) row is never expired, only paid', () => {
+  const lane = (age) => pendingRow(age, { charge_lane: 'dispatch' });
+  for (const b of [B('awaiting_payment'), B('', 'draft'), B('awaiting_payment', 'cancelled'), B('', 'cancelled'), B('processing'), B('awaiting_payment', 'awaiting_checkout', true)]) {
+    assert.deepEqual(decide(b, lane(30 * 24 * HOUR)), { decision: 'hold', reason: 'delegated_lane_not_paid' }, JSON.stringify(b));
+  }
+  assert.deepEqual(decide(B('paid', 'confirmed'), lane(HOUR)), { decision: 'paid', reason: 'backend_paid' });
+  assert.deepEqual(decide(B('paid_after_cancel', 'cancelled'), lane(HOUR)), { decision: 'hold', reason: 'backend_paid_after_cancel' });
+  // A row from before charge_lane existed reads as the hosted lane.
+  assert.equal(decide(B('awaiting_payment'), pendingRow(25 * HOUR, { charge_lane: undefined })).decision, 'expire');
+});
+
+test('decide: "paid" counts only when the backend money is the kernel order\'s own', () => {
+  assert.deepEqual(decide(B('paid', 'confirmed', false, { total_minor: 114 })), { decision: 'hold', reason: 'backend_paid_mismatch:amount' });
+  assert.deepEqual(decide(B('paid', 'confirmed', false, { total_minor: null })), { decision: 'hold', reason: 'backend_paid_mismatch:amount' });
+  assert.deepEqual(decide(B('paid', 'confirmed', false, { currency: 'EUR' })), { decision: 'hold', reason: 'backend_paid_mismatch:currency' });
+  assert.deepEqual(decide(B('paid', 'confirmed', false, { currency: null })), { decision: 'hold', reason: 'backend_paid_mismatch:currency' });
+  assert.deepEqual(decide(B('paid', 'confirmed', false, { merchant_id: 'merch_B' })), { decision: 'hold', reason: 'backend_paid_mismatch:merchant' });
+  assert.deepEqual(decide(B('paid', 'confirmed', false, { merchant_id: null })), { decision: 'hold', reason: 'backend_paid_mismatch:merchant' });
+  assert.deepEqual(decide(B('paid', 'confirmed'), pendingRow(HOUR, { amount: undefined })), { decision: 'hold', reason: 'backend_paid_mismatch:amount' });
+  assert.deepEqual(decide(B('paid', 'confirmed'), pendingRow(HOUR, { currency: 'usd' })), { decision: 'paid', reason: 'backend_paid' }, 'currency case-insensitive');
+  assert.deepEqual(decide(B('paid', 'confirmed'), pendingRow(HOUR, { amount: '113' })), { decision: 'paid', reason: 'backend_paid' }, 'amount read back as text from SQL');
+  // A mismatch only blocks "paid"; an unpaid order still expires.
+  assert.equal(decide(B('awaiting_payment', 'awaiting_checkout', false, { total_minor: 999 }), pendingRow(25 * HOUR)).decision, 'expire');
 });
 
 test('decide: a failed payment is held (the hosted page may still take a retry)', () => {
@@ -335,7 +387,7 @@ test('decide: a status this does not know is held', () => {
 });
 
 test('decide: an expired row only ever moves to paid', () => {
-  const expiredRow = { status: 'expired', settled_at: NOW - HOUR };
+  const expiredRow = { status: 'expired', settled_at: NOW - HOUR, ...MONEY };
   assert.deepEqual(decide(B('paid', 'confirmed'), expiredRow), { decision: 'paid', reason: 'backend_paid' });
   for (const b of [B('awaiting_payment'), B('', 'cancelled'), B('failed'), B('awaiting_payment', 'awaiting_checkout', true), B('paid_after_cancel', 'cancelled')]) {
     assert.equal(decide(b, expiredRow).decision, 'hold');
@@ -347,22 +399,33 @@ test('decide: an expired row only ever moves to paid', () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 test('project: a 200 for this order gives state, payment_status and whether a surface exists, nothing more', () => {
-  const p = projectBackendOrder('o1', 200, backendOrder('o1', { state: 'Awaiting_Checkout', payment_status: ' Awaiting_Payment ', surface: 'cs_test_1' }).body);
-  assert.deepEqual(p, { ok: true, state: 'awaiting_checkout', payment_status: 'awaiting_payment', has_payment_surface: true });
+  const p = projectBackendOrder('o1', 200, backendOrder('o1', { state: 'Awaiting_Checkout', payment_status: ' Awaiting_Payment ', surface: 'pi_test_1', currency: 'usd', total: '28.40' }).body);
+  assert.deepEqual(p, { ok: true, state: 'awaiting_checkout', payment_status: 'awaiting_payment', has_payment_surface: true, total_minor: 2840, currency: 'USD', merchant_id: 'merch_A' });
   assert.equal(JSON.stringify(p).includes('secret'), false);
+  assert.equal(JSON.stringify(p).includes('buyer'), false);
   assert.equal(projectBackendOrder('o1', 200, backendOrder('o1', { surface: '  ' }).body).has_payment_surface, false);
-  assert.equal(projectBackendOrder('o1', 200, { order: { state: 'draft' } }).payment_status, '');
+  assert.equal(projectBackendOrder('o1', 200, { order: { order_id: 'o1', state: 'draft' } }).payment_status, '');
+  // Money that cannot be read is null, never a guess.
+  const noMoney = projectBackendOrder('o1', 200, { order: { order_id: 'o1', state: 'draft' } });
+  assert.deepEqual([noMoney.total_minor, noMoney.currency, noMoney.merchant_id], [null, null, null]);
+  assert.equal(projectBackendOrder('o1', 200, backendOrder('o1', { total: '1.005' }).body).total_minor, null, 'over-precise');
+  assert.equal(projectBackendOrder('o1', 200, backendOrder('o1', { total: '1000', currency: 'JPY' }).body).total_minor, 1000);
 });
 
 test('project: anything but a 200 about this order is "could not read"', () => {
   assert.deepEqual(projectBackendOrder('o1', 404, { detail: 'Order not found' }), { ok: false, reason: 'http_404' });
   assert.deepEqual(projectBackendOrder('o1', 403, {}), { ok: false, reason: 'http_403' });
   assert.deepEqual(projectBackendOrder('o1', 503, {}), { ok: false, reason: 'http_503' });
+  // Only a 200 is an answer: another 2xx carrying a body is not.
+  assert.deepEqual(projectBackendOrder('o1', 201, backendOrder('o1', { payment_status: 'paid' }).body), { ok: false, reason: 'http_201' });
+  assert.deepEqual(projectBackendOrder('o1', 204, backendOrder('o1', { payment_status: 'paid' }).body), { ok: false, reason: 'http_204' });
   assert.deepEqual(projectBackendOrder('o1', undefined, {}), { ok: false, reason: 'http_none' });
   assert.deepEqual(projectBackendOrder('o1', 200, null), { ok: false, reason: 'malformed_body' });
   assert.deepEqual(projectBackendOrder('o1', 200, { order: [] }), { ok: false, reason: 'malformed_body' });
-  assert.deepEqual(projectBackendOrder('o1', 200, { order: { state: '' } }), { ok: false, reason: 'malformed_body' });
-  assert.deepEqual(projectBackendOrder('o1', 200, { order: { state: 'draft', payment_status: 5 } }), { ok: false, reason: 'malformed_body' });
+  assert.deepEqual(projectBackendOrder('o1', 200, { order: { order_id: 'o1', state: '' } }), { ok: false, reason: 'malformed_body' });
+  assert.deepEqual(projectBackendOrder('o1', 200, { order: { order_id: 'o1', state: 'draft', payment_status: 5 } }), { ok: false, reason: 'malformed_body' });
+  assert.deepEqual(projectBackendOrder('o1', 200, { order: { state: 'draft', payment_status: 'paid' } }), { ok: false, reason: 'order_id_missing' });
+  assert.deepEqual(projectBackendOrder('o1', 200, { order: { order_id: '', state: 'draft', payment_status: 'paid' } }), { ok: false, reason: 'order_id_missing' });
   assert.deepEqual(projectBackendOrder('o1', 200, backendOrder('o2').body), { ok: false, reason: 'order_id_mismatch' });
 });
 
@@ -638,13 +701,18 @@ test('config: defaults, clamps, and a window that stays a window', () => {
   const d = normalizeConfig({});
   assert.equal(d.mode, 'off');
   for (const k of Object.keys(RECONCILE_DEFAULTS)) assert.equal(d[k], RECONCILE_DEFAULTS[k], k);
+  // The defaults themselves, as literals (the money-safety ones above all).
+  assert.deepEqual({ ...RECONCILE_DEFAULTS }, {
+    batchSize: 25, recheckBatchSize: 5, minAgeMs: 30 * MIN, maxAgeMs: 14 * 24 * HOUR, sessionMaxAgeMs: 24 * HOUR,
+    recheckWindowMs: 72 * HOUR, readsPerSecond: 2, deadlineMs: 60_000, readTimeoutMs: 5000,
+  });
   const c = normalizeConfig({ mode: 'observe', batchSize: 10_000, readsPerSecond: 0, deadlineMs: 1, minAgeMs: 'x', sessionMaxAgeMs: 1 });
   assert.equal(c.mode, 'observe');
   assert.equal(c.batchSize, 200);
   assert.equal(c.readsPerSecond, 0.1);
   assert.equal(c.deadlineMs, 5000);
   assert.equal(c.minAgeMs, RECONCILE_DEFAULTS.minAgeMs);
-  assert.equal(c.sessionMaxAgeMs, 6 * HOUR, 'never below the backend’s own 6 h session clamp');
+  assert.equal(c.sessionMaxAgeMs, 6 * HOUR + 5 * MIN, 'never below the backend session clamp (6 h) plus margin');
   const w = normalizeConfig({ minAgeMs: 2 * HOUR, maxAgeMs: HOUR });
   assert.ok(w.maxAgeMs > w.minAgeMs);
 });
@@ -654,22 +722,197 @@ test('postgres lister: asks for charge_pending with no payment id inside the win
   const db = {
     query: async (text, params) => {
       seen.push({ text, params });
-      if (text === PENDING_SQL) return { rows: [{ order_id: 'o1', attempt: 'k1', charge_pending_at: '1700000000000' }, { order_id: 'o2', attempt: null, charge_pending_at: null }] };
-      if (text === EXPIRED_SQL) return { rows: [{ order_id: 'o3', settled_at: '1700000000500' }] };
+      if (text === PENDING_SQL) return { rows: [
+        { order_id: 'o1', attempt: 'k1', charge_pending_at: '1700000000000', charge_lane: 'upstream', amount: '113', currency: 'USD', merchant_of_record: 'merch_A' },
+        { order_id: 'o2', attempt: null, charge_pending_at: null, charge_lane: null, amount: null, currency: null, merchant_of_record: null },
+      ] };
+      if (text === EXPIRED_SQL) return { rows: [{ order_id: 'o3', settled_at: '1700000000500', charge_lane: 'dispatch', amount: '113', currency: 'USD', merchant_of_record: 'merch_A' }] };
       throw new Error('unexpected');
     },
   };
   const list = makePostgresListCandidates({ db });
   const rows = await list({ pendingOlderThan: 10, pendingNewerThan: 1, expiredNewerThan: 5, pendingLimit: 25, expiredLimit: 5 });
-  assert.deepEqual(seen.map((s) => s.params), [['orders', 10, 1, 25], ['orders', RECONCILE_SETTLER_NAME, 5, 5]]);
+  assert.deepEqual(seen.map((s) => s.params), [['orders', 10, 1, 25, null, null], ['orders', RECONCILE_SETTLER_NAME, 5, 5]]);
+  const U = undefined;
   assert.deepEqual(rows, [
-    { order_id: 'o1', status: 'charge_pending', attempt: 'k1', payment_id: null, charge_pending_at: 1700000000000 },
-    { order_id: 'o2', status: 'charge_pending', attempt: undefined, payment_id: null, charge_pending_at: undefined },
-    { order_id: 'o3', status: 'expired', payment_id: null, settled_at: 1700000000500 },
+    { order_id: 'o1', status: 'charge_pending', attempt: 'k1', payment_id: null, charge_pending_at: 1700000000000, charge_lane: 'upstream', amount: 113, currency: 'USD', merchant_of_record: 'merch_A' },
+    { order_id: 'o2', status: 'charge_pending', attempt: U, payment_id: null, charge_pending_at: U, charge_lane: U, amount: U, currency: U, merchant_of_record: U },
+    { order_id: 'o3', status: 'expired', payment_id: null, settled_at: 1700000000500, charge_lane: 'dispatch', amount: 113, currency: 'USD', merchant_of_record: 'merch_A' },
   ]);
+  seen.length = 0;
+  await list({ pendingOlderThan: 10, pendingNewerThan: 1, expiredNewerThan: 5, pendingLimit: 25, expiredLimit: 0, pendingAfter: { at: 7, id: 'o9' } });
+  assert.deepEqual(seen[0].params, ['orders', 10, 1, 25, 7, 'o9'], 'the cursor rides as $5/$6');
   seen.length = 0;
   await list({ pendingOlderThan: 10, pendingNewerThan: 1, expiredNewerThan: 5, pendingLimit: 25, expiredLimit: 0 });
   assert.equal(seen.length, 1, 'no expired query with no recheck budget');
   // Neither query can write.
   for (const sql of [PENDING_SQL, EXPIRED_SQL]) assert.doesNotMatch(sql, /\b(UPDATE|INSERT|DELETE)\b/i);
+  // The clauses that keep the list to the reconcile's own rows (real-PG behaviour is checked outside CI; these pin
+  // the text so a dropped clause cannot pass).
+  const flat = (q) => q.replace(/\s+/g, ' ');
+  for (const clause of [
+    "WHERE ns = $1", "AND v ->> 'status' = 'charge_pending'", "AND (v ->> 'payment_id') IS NULL",
+    'AND (expires_at IS NULL OR expires_at > now())', "jsonb_typeof(v -> 'charge_pending_at') = 'number'",
+    'AND c.charge_pending_at <= $2', 'AND c.charge_pending_at >= $3',
+    'AND ($5::numeric IS NULL OR (c.charge_pending_at, c.order_id) > ($5::numeric, $6::text))',
+    'ORDER BY c.charge_pending_at ASC, c.order_id ASC', 'LIMIT $4',
+  ]) assert.ok(flat(PENDING_SQL).includes(clause), clause);
+  for (const clause of [
+    "AND v ->> 'status' = 'expired'", "AND v ->> 'settled_by' = $2", "AND (v ->> 'payment_id') IS NULL",
+    'AND c.settled_at >= $3', 'ORDER BY c.settled_at DESC', 'LIMIT $4',
+  ]) assert.ok(flat(EXPIRED_SQL).includes(clause), clause);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The kernel records how a charge was attempted (P3-3), and the flag-off cancel leaves 'expired' alone (P3-5).
+// ---------------------------------------------------------------------------------------------------------------
+
+test('kernel: the charge_pending row records its lane, and the dispatch lane is never expired end to end', async () => {
+  const hosted = await stuckKernel({ orderId: 'o_hosted' });
+  assert.equal((await hosted.store.get('o_hosted')).charge_lane, 'upstream');
+  const delegated = await stuckKernel({ orderId: 'o_delegated', lane: 'dispatch' });
+  const row = await delegated.store.get('o_delegated');
+  assert.equal(row.charge_lane, 'dispatch');
+  assert.equal(row.status, 'charge_pending');
+  assert.equal(row.payment_id, null);
+  assert.equal(delegated.calls.includes('submit_payment'), false, 'the dispatcher charged, not the hosted surface');
+  delegated.clock.advance(10 * 24 * HOUR); // far past any session life, inside the 14 d window
+  for (const answer of [{ state: 'cancelled', payment_status: '' }, { state: 'draft', payment_status: '' }, { state: 'awaiting_checkout', payment_status: 'awaiting_payment' }]) {
+    const s = await run(delegated, { readBackendOrder: async (id) => backendOrder(id, answer) });
+    assert.equal(s.by_reason.delegated_lane_not_paid, 1, JSON.stringify(answer));
+    assert.equal((await delegated.store.get('o_delegated')).status, 'charge_pending');
+  }
+  await run(delegated, { readBackendOrder: async (id) => backendOrder(id, { state: 'confirmed', payment_status: 'paid' }) });
+  assert.equal((await delegated.store.get('o_delegated')).status, 'paid');
+});
+
+test('flag-off cancel by order id: an expired order is refused and left expired', async () => {
+  const env = await stuckKernel();
+  env.clock.advance(25 * HOUR);
+  await run(env, { readBackendOrder: async (id) => backendOrder(id) });
+  const expired = await env.store.get(env.order_id);
+  assert.equal(expired.status, 'expired');
+  const exec = createCanonicalExecutor({ kernel: env.kernel }).execute;
+  await assert.rejects(
+    exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-expired', order_id: env.order_id }, CTX),
+    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'order_expired_not_payable',
+  );
+  assert.deepEqual(await env.store.get(env.order_id), expired);
+  // ...so a late payment is still caught by the re-read.
+  env.clock.advance(HOUR);
+  await run(env, { readBackendOrder: async (id) => backendOrder(id, { state: 'confirmed', payment_status: 'paid' }) });
+  assert.equal((await env.store.get(env.order_id)).status, 'paid');
+});
+
+test('flag-off cancel by order id: the write is conditional on the status it read', async () => {
+  const clock = makeClock();
+  const kernel = new SafetyKernel({ upstream: async (op) => (op === 'preview_quote' ? QUOTE : op === 'create_order' ? { order_id: 'o_cx', acp_state: {} } : {}), secret: SECRET, now: clock.now, log: quiet });
+  const q = await kernel.previewQuote({ quote: {} }, CTX);
+  await kernel.createOrder({ idempotency_key: 'idem-o_cx-order', order: { quote_id: q.quote_id, shipping_address: {} } }, CTX);
+  const exec = createCanonicalExecutor({ kernel }).execute;
+  // A plain created order still cancels.
+  const ok = await exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-ok', order_id: 'o_cx' }, CTX);
+  assert.equal(ok.status, 'canceled');
+  assert.equal((await kernel._orderStore.get('o_cx')).status, 'canceled');
+  // A writer that lands between the cancel's read and its write wins; the cancel says so and writes nothing.
+  const row = await kernel._orderStore.get('o_cx');
+  await kernel._orderStore.set('o_cx', { ...row, status: 'created' });
+  const realGet = kernel._orderStore.get.bind(kernel._orderStore);
+  kernel._orderStore.get = async (k) => {
+    const v = await realGet(k);
+    if (k === 'o_cx') await kernel._orderStore.set('o_cx', { ...v, status: 'paid' });
+    return v;
+  };
+  await assert.rejects(
+    exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-race', order_id: 'o_cx' }, CTX),
+    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'order_changed_during_cancel',
+  );
+  kernel._orderStore.get = realGet;
+  assert.equal((await kernel._orderStore.get('o_cx')).status, 'paid');
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// P2-1: held rows never starve the rows behind them (keyset cursor).
+// ---------------------------------------------------------------------------------------------------------------
+
+test('starvation: 30 held rows ahead of a settleable one — the cursor reaches it on the next run, then wraps', async () => {
+  const env = await manyStuck(30);
+  // The target: younger than every held row, unpaid, no surface, past the session life.
+  const base = await env.store.get('o_000');
+  await env.store.set('o_target', { ...base, attempt: 'att-target', charge_pending_at: base.charge_pending_at + 1000 });
+  env.clock.advance(25 * HOUR);
+  const cursorStore = new InMemoryKvStore({ now: env.clock.now });
+  const cursor = makeStoreCursor(cursorStore);
+  // The common held state: an abandoned page that attached a PaymentIntent reads `processing`.
+  const reader = async (id) => (id === 'o_target' ? backendOrder(id) : backendOrder(id, { payment_status: 'processing', surface: 'pi_abandoned' }));
+  const reads = [];
+  const read = async (id, o) => { reads.push(id); return reader(id, o); };
+
+  const r1 = await run(env, { cursor, readBackendOrder: read });
+  assert.equal(r1.scanned, 25);
+  assert.equal(reads.includes('o_target'), false);
+  assert.equal(r1.cursor, 'advanced');
+  assert.deepEqual(await cursorStore.get('pending-cursor'), { at: base.charge_pending_at + 24, id: 'o_024' });
+
+  reads.length = 0;
+  const r2 = await run(env, { cursor, readBackendOrder: read });
+  assert.deepEqual(reads, ['o_025', 'o_026', 'o_027', 'o_028', 'o_029', 'o_target']);
+  assert.equal(r2.applied, 1);
+  assert.equal((await env.store.get('o_target')).status, 'expired');
+  assert.equal(r2.cursor, 'wrapped', 'reached the end: the next run starts from the oldest again');
+  assert.equal(await cursorStore.get('pending-cursor'), undefined);
+
+  reads.length = 0;
+  await run(env, { cursor, readBackendOrder: read });
+  assert.equal(reads[0], 'o_000');
+  assert.deepEqual([reads.length, reads.at(-1)], [26, 'o_target'], '25 pending from the top, then the expired target re-read for a late payment');
+  // Without a cursor the same 25 would be read forever: the regression this guards.
+  reads.length = 0;
+  await run(env, { readBackendOrder: read });
+  await run(env, { readBackendOrder: read });
+  assert.equal(new Set(reads.filter((id) => id !== 'o_target')).size, 25, 'two cursorless runs read the same 25 held rows');
+});
+
+test('cursor: a run stopped by its deadline carries on after the last row it read', async () => {
+  const env = await manyStuck(10);
+  env.clock.advance(HOUR);
+  const cursorStore = new InMemoryKvStore({ now: env.clock.now });
+  const cursor = makeStoreCursor(cursorStore);
+  const reads = [];
+  const s = await run(env, {
+    cursor, deadlineMs: 10_000, readsPerSecond: 20,
+    readBackendOrder: async (id) => { reads.push(id); env.clock.advance(4000); return backendOrder(id, { payment_status: 'processing' }); },
+  });
+  assert.equal(s.stopped, 'deadline');
+  assert.deepEqual(reads, ['o_000', 'o_001', 'o_002']);
+  assert.equal(s.cursor, 'advanced');
+  reads.length = 0;
+  await run(env, { cursor, readsPerSecond: 20, readBackendOrder: async (id) => { reads.push(id); return backendOrder(id, { payment_status: 'processing' }); } });
+  assert.equal(reads[0], 'o_003');
+});
+
+test('cursor: an unreadable or failing cursor store starts from the oldest row and never stops the run', async () => {
+  const env = await manyStuck(3);
+  env.clock.advance(HOUR);
+  const reads = [];
+  const read = async (id) => { reads.push(id); return backendOrder(id, { payment_status: 'processing' }); };
+  for (const bad of [{ at: 'x', id: 'o_001' }, { at: 1, id: '' }, 'junk', null]) {
+    reads.length = 0;
+    await run(env, { cursor: { get: async () => bad, set: async () => {} }, readBackendOrder: read });
+    assert.equal(reads[0], 'o_000', JSON.stringify(bad));
+  }
+  reads.length = 0;
+  const s = await run(env, { cursor: { get: async () => { throw new Error('down'); }, set: async () => { throw new Error('down'); } }, readBackendOrder: read });
+  assert.equal(reads.length, 3);
+  assert.equal(s.cursor, 'not_saved');
+});
+
+test('cursor: the in-memory lister orders by (charge_pending_at, order_id), so equal stamps are not skipped', async () => {
+  const env = await stuckKernel();
+  const base = await env.store.get(env.order_id);
+  for (const id of ['o_b', 'o_a', 'o_c']) await env.store.set(id, { ...base, attempt: `att-${id}`, charge_pending_at: base.charge_pending_at + 5 });
+  const list = makeInMemoryListCandidates(env.store);
+  const q = { pendingOlderThan: Infinity, pendingNewerThan: 0, expiredNewerThan: 0, pendingLimit: 10, expiredLimit: 0 };
+  const after = await list({ ...q, pendingAfter: { at: base.charge_pending_at + 5, id: 'o_a' } });
+  assert.deepEqual(after.map((r) => r.order_id), ['o_b', 'o_c']);
 });

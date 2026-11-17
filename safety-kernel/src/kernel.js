@@ -545,7 +545,10 @@ export class SafetyKernel {
           // accepted, cannot reopen the order for a second charge: any retry now sees 'charge_pending'
           // and is rejected. If the charge throws, the order STAYS 'charge_pending' (fail closed —
           // reconciliation may be needed) rather than reopening.
-          await this._orderStore.set(order_id, { ...order, status: 'charge_pending', attempt: key, payment_id: null, charge_pending_at: this._now() });
+          // charge_lane records HOW this attempt charges: 'dispatch' = the injected off-session dispatcher (the
+          // delegated PSP-token lane, no hosted page), 'upstream' = the hosted checkout surface. The charge_pending
+          // reconcile never expires a 'dispatch' row, where an unknown outcome can be a capture.
+          await this._orderStore.set(order_id, { ...order, status: 'charge_pending', attempt: key, payment_id: null, charge_pending_at: this._now(), charge_lane: typeof opts?.dispatch === 'function' ? 'dispatch' : 'upstream' });
           runCtx.sideEffectDone = true; // from here, a failure is AMBIGUOUS (a charge may have landed)
 
           // Codex P0-1 cont.: forward an amount/currency-pinned payment to upstream.

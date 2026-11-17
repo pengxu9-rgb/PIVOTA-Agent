@@ -129,15 +129,18 @@ function startKernelChargePendingReconcile(deps = {}) {
         return { skipped: 'kernel_not_durable' };
       }
       const normalized = mod.normalizeConfig(cfg);
+      const state = mount.stateStore(LEASE_NAMESPACE);
       return await mod.reconcileUncorrelatedChargePending({
         ...normalized,
         kernel: mount.kernel,
         listCandidates: mod.makePostgresListCandidates({ db, namespace: 'orders' }),
         readBackendOrder,
-        lease: mod.makeStoreLease(mount.stateStore(LEASE_NAMESPACE), {
+        lease: mod.makeStoreLease(state, {
           owner: `${instanceId}:${tickNo}`,
           ttlMs: normalized.deadlineMs + 30 * 1000,
         }),
+        // Where the last run stopped, so rows it held never starve the rows behind them.
+        cursor: mod.makeStoreCursor(state),
         log: logger,
       });
     } catch (err) {
