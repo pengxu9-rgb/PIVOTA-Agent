@@ -24,10 +24,15 @@ describe('GET /.well-known/ucp-agent-catalog-draft', () => {
     }
   });
 
-  test('dark by default', async () => {
+  test('dark by default: answered exactly as a path that does not exist', async () => {
     const app = require('../src/server');
     const resp = await request(app).get('/.well-known/ucp-agent-catalog-draft');
+    const unknown = await request(app).get('/.well-known/no-such-path-for-this-test');
     expect(resp.status).toBe(404);
+    expect(resp.status).toBe(unknown.status);
+    expect(resp.headers['content-type']).toBe(unknown.headers['content-type']);
+    expect(resp.text.split('/.well-known/ucp-agent-catalog-draft').join('PATH'))
+      .toBe(unknown.text.split('/.well-known/no-such-path-for-this-test').join('PATH'));
   });
 
   test.each(['shadow', 'enforce'])('lit in %s: draft version, catalog capabilities only', async (mode) => {

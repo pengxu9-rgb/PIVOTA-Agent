@@ -830,7 +830,7 @@ function emit(log, level, detail) {
  *   currency it returns is put in `storeAnswer.currency` with `storeAnswer.remembered = true`, and nothing is asked
  *   of the seller or of the referral.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip, recallStoreCurrency, catalogAttribution, catalogTracked }) {
+async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip, recallStoreCurrency, catalogAttribution, catalogTracked, attempt = {} }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -892,6 +892,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   // The budget covers the catalog check too (it is part of this door's work), so the clock starts before it.
   const startedAt = Date.now();
   const left = () => budgetMs - (Date.now() - startedAt);
+  attempt.left = left;
   // A DERIVED sole-variant id is checked against the catalog BEFORE any seller is contacted (refuseDerivedSoleVariant),
   // inside the budget: a lookup that does not answer in time is a refusal (fail closed), like any other.
   for (const row of derived) {
@@ -923,7 +924,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   // only. The lookup starts NOW, beside discovery and the referral, on its own hard budget, and never delays the cart
   // past it. Its answer is used only in `enforce` for this store; in `shadow` it is counted and the cart is today's.
   // A market the buyer did not name (assumed US, unnamed) is not looked up, exactly as no referral is minted for it.
-  const attributionMode = cartId === undefined && !referralSkip ? modeForStore(env, sellerHost) : "off";
+  const attributionMode = cartId === undefined && !referralSkip && !attempt.bareRetry ? modeForStore(env, sellerHost) : "off";
   const attributionStartedAt = Date.now();
   const attributionP = attributionMode === "off"
     ? null
@@ -932,6 +933,9 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
         market, sellerHost, budgetMs: Math.min(ATTRIBUTION_BUDGET_MS, Math.max(0, left() - Math.min(MERCHANT_CALL_TIMEOUT_MS, budgetMs))),
       }))
       .catch(() => ({ tracked: new Map(), reason: "failed:error" }));
+  attempt.attributionP = attributionP;
+  attempt.attributionMode = attributionMode;
+  attempt.attributionStartedAt = attributionStartedAt;
 
   let endpoint;
   let acceptsDiscountCodes = false;
@@ -954,9 +958,13 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   const referralOn = cartReferralEnabled(env);
   const linkTracking = catalogLink ? trackingPairsOf(catalogLink) : null;
   let referral = null;
-  if (referralOn && cartId === undefined && !(linkTracking && linkTracking.length)) {
+  if (attempt.bareRetry) {
+    // The retry after a tracked send reuses the referral the first attempt minted (or none), never a second one.
+    referral = attempt.bareRetry.referral || null;
+  } else if (referralOn && cartId === undefined && !(linkTracking && linkTracking.length)) {
     const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
     referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log, skip: referralSkip });
+    attempt.referral = referral;
     if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
   } else if (referralOn && cartId !== undefined && !(linkTracking && linkTracking.length)) {
     const again = trackingPairsFrom(referralPairs);
@@ -970,6 +978,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   // bare gid), for signals and for every log.
   let sendTracked = false;
   const reportAttribution = (settled) => {
+    attempt.reported = true;
     const tracked = settled && settled.tracked instanceof Map ? settled.tracked : new Map();
     emitAttribution(log, {
       mode: attributionMode, seller_host: sellerHost, lines: wanted.length, tracked: tracked.size,
@@ -986,6 +995,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
       const id = tracked.get(w.gid);
       if (id) { w.send_id = id; sendTracked = true; }
     }
+    attempt.sentTracked = sendTracked;
     reportAttribution(settled);
   }
   const cartAttribution = cartId === undefined && cartAttributionEnabled(env) && !sendTracked
@@ -1095,6 +1105,58 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   return read;
 }
 
+
+// The least time a bare retry is attempted with: discovery is cached by then, so it is one cart call.
+export const BARE_RETRY_MIN_MS = 500;
+
+/**
+ * Price an escalation cart on the seller's own UCP door (priceOnMerchantDoorOnce), with ONE bare retry after a
+ * catalog-tracked send that did not price. A store that refuses or mis-answers a cart carrying Shopify's tracked ids
+ * then still gets the buyer the store cart today's way (bare ids, our own attribution, the referral already minted),
+ * inside what is left of the same budget. Every outcome of a tracked send is one `ucp_shopify_catalog_attribution`
+ * line: `sent_priced`, `sent_fallback` (with `retried` and the retry's result), or `sent_threw` (the seller's
+ * out-of-stock refusal, rethrown as before). A lookup the door never got to use is logged `unused`.
+ */
+export async function priceOnMerchantDoor(args) {
+  const attempt = {};
+  let out;
+  try {
+    out = await priceOnMerchantDoorOnce({ ...args, attempt });
+  } catch (err) {
+    if (attempt.sentTracked) emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_threw" });
+    throw err;
+  }
+  if (attempt.attributionP && !attempt.reported) {
+    // An early fallback (no door, a timeout, a currency refusal) before the lookup was read: counted, never waited for.
+    attempt.attributionP.then((settled) => emitAttribution(args.log, {
+      mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "unused",
+      tracked: settled && settled.tracked instanceof Map ? settled.tracked.size : 0,
+      reason: settled ? settled.reason || null : "failed:error", latency_ms: Date.now() - attempt.attributionStartedAt,
+    }), () => {});
+  }
+  if (!attempt.sentTracked) return out;
+  if (out !== null) {
+    emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_priced" });
+    return out;
+  }
+  const remaining = typeof attempt.left === "function" ? attempt.left() : 0;
+  if (!(remaining >= BARE_RETRY_MIN_MS)) {
+    emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: false });
+    return null;
+  }
+  let retried;
+  try {
+    retried = await priceOnMerchantDoorOnce({ ...args, budgetMs: remaining, attempt: { bareRetry: { referral: attempt.referral || null } } });
+  } catch (err) {
+    emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: true, retry: "threw" });
+    throw err;
+  }
+  emitAttribution(args.log, {
+    mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: true,
+    retry: retried ? "priced" : "fallback",
+  });
+  return retried;
+}
 
 // ---- verify ONE code on a seller's door (the coupon verifier's route) -------------------------------------------
 //

@@ -45,6 +45,7 @@ const CONFIG = {
   SHOPIFY_CATALOG_DRAFT_PROFILE_URL: DRAFT_PROFILE,
 };
 const GID = (n) => `gid://shopify/ProductVariant/${n}`;
+const ENFORCE = Object.freeze({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce', SHOPIFY_CATALOG_ATTRIBUTION_STORES: 'store.example' });
 const TRACKED = (n, click = 'clk_abc123') => `${GID(n)}?shcgid=${CATALOG_ID}&shclid=${click}`;
 const V1 = '44012345678901';
 const V2 = '44012345678902';
@@ -116,14 +117,17 @@ describe('the switch', () => {
   test('off unless shadow or enforce', () => {
     for (const v of [undefined, '', '0', '1', 'true', 'on', 'ENFORCE_ME']) assert.equal(catalogAttributionMode({ [CATALOG_ATTRIBUTION_FLAG]: v }), 'off', String(v));
     assert.equal(catalogAttributionMode({ [CATALOG_ATTRIBUTION_FLAG]: ' Shadow ' }), 'shadow');
-    assert.equal(catalogAttributionMode({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce' }), 'enforce');
+    assert.equal(catalogAttributionMode({ ...ENFORCE }), 'enforce');
   });
   test('the denylist turns a store off; a pilot list limits enforce, others shadow', () => {
     const env = { [CATALOG_ATTRIBUTION_FLAG]: 'enforce', SHOPIFY_CATALOG_ATTRIBUTION_DENY_HOSTS: 'bad.example', SHOPIFY_CATALOG_ATTRIBUTION_STORES: 'pilot.example' };
     assert.equal(modeForStore(env, 'www.bad.example'), 'off');
     assert.equal(modeForStore(env, 'pilot.example'), 'enforce');
     assert.equal(modeForStore(env, 'other.example'), 'shadow');
-    assert.equal(modeForStore({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce' }, 'other.example'), 'enforce');
+    assert.equal(modeForStore({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce' }, 'other.example'), 'shadow', 'no pilot list: shadow, never fleet-wide');
+    assert.equal(modeForStore({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce', SHOPIFY_CATALOG_ATTRIBUTION_STORES: '  ' }, 'other.example'), 'shadow');
+    assert.equal(modeForStore({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce', SHOPIFY_CATALOG_ATTRIBUTION_STORES: '*' }, 'other.example'), 'enforce');
+    assert.equal(modeForStore({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce', SHOPIFY_CATALOG_ATTRIBUTION_STORES: '*', SHOPIFY_CATALOG_ATTRIBUTION_DENY_HOSTS: 'other.example' }, 'other.example'), 'off');
     assert.equal(modeForStore({ [CATALOG_ATTRIBUTION_FLAG]: 'enforce' }, ''), 'off');
   });
 });
@@ -263,7 +267,7 @@ describe('the store cart', () => {
   test('ENFORCE: the tracked id is sent; the seller echoing the bare id is still priced', async () => {
     const s = fakeShopify();
     const door = fakeDoor(); // the seller answers with the BARE gid
-    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: clientWith(s), env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: clientWith(s), env: { ...ENFORCE } }));
     assert.ok(out, 'priced, not fallen back');
     assert.deepEqual(door.calls[1][2].lineItems, [{ item: { id: TRACKED(V1) }, quantity: 2 }], 'byte for byte as the catalog returned it');
     assert.equal(out.lineItems[0].item.id, 'sig_a');
@@ -272,7 +276,7 @@ describe('the store cart', () => {
   test('ENFORCE: a seller echoing the TRACKED id is priced too', async () => {
     const s = fakeShopify();
     const door = fakeDoor({ create: (args) => sellerCart({ lines: [[args.lineItems[0].item.id, 2, 12900]] }) });
-    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: clientWith(s), env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: clientWith(s), env: { ...ENFORCE } }));
     assert.ok(out);
   });
 
@@ -281,7 +285,7 @@ describe('the store cart', () => {
     const door = fakeDoor();
     const out = await priceOnMerchantDoor(doorArgs({
       merchantDoor: door, catalogAttribution: clientWith(s),
-      env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce', [CART_ATTRIBUTION_FLAG]: '1' },
+      env: { ...ENFORCE, [CART_ATTRIBUTION_FLAG]: '1' },
     }));
     assert.ok(out);
     assert.equal('cartAttribution' in door.calls[1][2], false);
@@ -293,7 +297,7 @@ describe('the store cart', () => {
     const door = fakeDoor();
     const out = await priceOnMerchantDoor(doorArgs({
       merchantDoor: door, catalogAttribution: clientWith(s),
-      env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce', [CART_ATTRIBUTION_FLAG]: '1' },
+      env: { ...ENFORCE, [CART_ATTRIBUTION_FLAG]: '1' },
     }));
     assert.ok(out);
     assert.deepEqual(door.calls[1][2].lineItems, [{ item: { id: GID(V1) }, quantity: 2 }]);
@@ -304,7 +308,7 @@ describe('the store cart', () => {
   test('ENFORCE, the lookup throws: today\'s cart', async () => {
     const door = fakeDoor();
     const broken = { lookupTracked: async () => { throw new Error('boom'); } };
-    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: broken, env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: broken, env: { ...ENFORCE } }));
     assert.ok(out);
     assert.deepEqual(door.calls[1][2].lineItems, [{ item: { id: GID(V1) }, quantity: 2 }]);
   });
@@ -312,7 +316,7 @@ describe('the store cart', () => {
   test('ENFORCE, a GB buyer: no catalog call, today\'s cart', async () => {
     const s = fakeShopify();
     const door = fakeDoor();
-    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, market: 'GB', catalogAttribution: clientWith(s), env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, market: 'GB', catalogAttribution: clientWith(s), env: { ...ENFORCE } }));
     assert.ok(out);
     assert.equal(s.calls.length, 0);
     assert.deepEqual(door.calls[1][2].lineItems, [{ item: { id: GID(V1) }, quantity: 2 }]);
@@ -331,14 +335,14 @@ describe('the store cart', () => {
   test('a re-read (get_cart) never asks the catalog', async () => {
     const s = fakeShopify();
     const door = fakeDoor();
-    await priceOnMerchantDoor(doorArgs({ merchantDoor: door, cartId: 'gid://shopify/Cart/c1', catalogAttribution: clientWith(s), env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+    await priceOnMerchantDoor(doorArgs({ merchantDoor: door, cartId: 'gid://shopify/Cart/c1', catalogAttribution: clientWith(s), env: { ...ENFORCE } }));
     assert.equal(s.calls.length, 0);
   });
 
   test('the log line carries counts only: no variant id, click id, token or secret', async () => {
     const s = fakeShopify();
     const log = recordingLog();
-    await priceOnMerchantDoor(doorArgs({ merchantDoor: fakeDoor(), log, catalogAttribution: clientWith(s), env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+    await priceOnMerchantDoor(doorArgs({ merchantDoor: fakeDoor(), log, catalogAttribution: clientWith(s), env: { ...ENFORCE } }));
     const line = log.lines.find((l) => l.event === 'ucp_shopify_catalog_attribution');
     assert.ok(line);
     assert.equal(line.tracked, 1);
@@ -358,7 +362,7 @@ describe('the store cart', () => {
       const door = fakeDoor();
       await verifyCodeOnMerchantDoor({
         sellerHost: 'store.example', variantGid: GID(V1), market: 'US', code: 'SAVE10', expectedCurrency: 'USD',
-        merchantDoor: door, env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce', ...CONFIG },
+        merchantDoor: door, env: { ...ENFORCE, ...CONFIG },
       });
       assert.equal(seen.some((u) => u.includes('catalog.shopify.com') || u.includes('api.shopify.com')), false);
     } finally { globalThis.fetch = realFetch; }
@@ -519,7 +523,7 @@ describe('review: the door', () => {
   test('the lookup budget leaves the cart call its reserve', async () => {
     for (const [budgetMs, expected] of [[5000, 800], [4000, 500], [3000, 0]]) {
       const s = spy();
-      await priceOnMerchantDoor(doorArgs({ merchantDoor: fakeDoor(), budgetMs, catalogAttribution: s, env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+      await priceOnMerchantDoor(doorArgs({ merchantDoor: fakeDoor(), budgetMs, catalogAttribution: s, env: { ...ENFORCE } }));
       assert.ok(s.calls[0].budgetMs <= expected && s.calls[0].budgetMs >= expected - 50, `${budgetMs}: ${s.calls[0].budgetMs}`);
     }
   });
@@ -527,7 +531,7 @@ describe('review: the door', () => {
   test('an assumed or unnamed market is never looked up', async () => {
     for (const referralSkip of ['market_assumed', 'market_unnamed']) {
       const s = spy();
-      await priceOnMerchantDoor(doorArgs({ merchantDoor: fakeDoor(), referralSkip, catalogAttribution: s, env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+      await priceOnMerchantDoor(doorArgs({ merchantDoor: fakeDoor(), referralSkip, catalogAttribution: s, env: { ...ENFORCE } }));
       assert.equal(s.calls.length, 0, referralSkip);
     }
   });
@@ -537,7 +541,7 @@ describe('review: the door', () => {
     const out = await priceOnMerchantDoor(doorArgs({
       merchantDoor: fakeDoor(), catalogLink: 'https://store.example/products/serum',
       mintReferral: async () => minted, catalogAttribution: clientWith(fakeShopify()),
-      env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce', [CART_REFERRAL_FLAG]: '1' },
+      env: { ...ENFORCE, [CART_REFERRAL_FLAG]: '1' },
     }));
     assert.ok(out);
     assert.equal(out.continueUrl, CART_URL);
@@ -549,7 +553,7 @@ describe('review: the door', () => {
     const reread = (catalogTracked) => priceOnMerchantDoor(doorArgs({
       merchantDoor: fakeDoor(), cartId: 'gid://shopify/Cart/c1', catalogTracked,
       referralPairs: [['pvt_click_id', 'clk_minted_1']],
-      env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce', [CART_REFERRAL_FLAG]: '1' },
+      env: { ...ENFORCE, [CART_REFERRAL_FLAG]: '1' },
     }));
     const tracked = await reread(true);
     assert.equal(tracked.continueUrl, CART_URL);
@@ -559,20 +563,25 @@ describe('review: the door', () => {
     const plainReread = (catalogTracked) => priceOnMerchantDoor(doorArgs({
       merchantDoor: fakeDoor(), cartId: 'gid://shopify/Cart/c1', catalogTracked, catalogLink: 'https://store.example/products/serum',
       referralPairs: [['pvt_click_id', 'clk_minted_1']],
-      env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce', [CART_REFERRAL_FLAG]: '1' },
+      env: { ...ENFORCE, [CART_REFERRAL_FLAG]: '1' },
     }));
     assert.equal((await plainReread(true)).continueUrl, CART_URL);
     assert.match((await plainReread(false)).continueUrl, /pvt_click_id=clk_minted_1/);
   });
 
-  test('a store refusing the tracked cart is named sent_rejected, not variant_invalid', async () => {
-    const door = fakeDoor({ create: () => ({ ok: true, status: 200, error: { message: 'Variant not found' } }) });
+  test('a store refusing the tracked cart is named sent_rejected, and the bare retry prices it', async () => {
+    const door = fakeDoor({ create: (args) => (String(args.lineItems[0].item.id).includes('?')
+      ? { ok: true, status: 200, error: { message: 'Variant not found' } } : sellerCart()) });
     const signals = [];
     const log = recordingLog();
-    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, signals, log, catalogAttribution: clientWith(fakeShopify()), env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
-    assert.equal(out, null);
-    assert.deepEqual(signals, []);
-    assert.ok(log.lines.some((l) => l.event === 'ucp_shopify_catalog_attribution' && l.outcome === 'sent_rejected'));
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, signals, log, catalogAttribution: clientWith(fakeShopify()), env: { ...ENFORCE } }));
+    assert.ok(out, 'the buyer still gets the store cart');
+    assert.deepEqual(signals, [], 'no variant_invalid on a variant the store took bare');
+    const creates = door.calls.filter((c) => c[0] === 'create_cart');
+    assert.deepEqual(creates.map((c) => c[2].lineItems[0].item.id), [TRACKED(V1), GID(V1)]);
+    const outcomes = log.lines.filter((l) => l.event === 'ucp_shopify_catalog_attribution').map((l) => l.outcome).filter(Boolean);
+    assert.deepEqual(outcomes, ['sent_rejected', 'sent_fallback']);
+    assert.equal(log.lines.find((l) => l.outcome === 'sent_fallback').retry, 'priced');
   });
 });
 
@@ -596,6 +605,7 @@ describe('review: the escalation id remembers a catalog-tracked cart', () => {
 });
 
 import { UCP_ESCALATION_FLAG, tryEscalateUcpCheckout } from '../src/ucpCheckoutEscalation.js';
+import { resetDefaultCatalogAttribution } from '../src/shopifyCatalogAttribution.js';
 
 describe('review: through the storefront escalation, create then re-read', () => {
   // The escalation builds the door's client itself (defaultCatalogAttribution: process.env + global fetch), so this
@@ -611,7 +621,7 @@ describe('review: through the storefront escalation, create then re-read', () =>
       return { session_id: 'q_kernel' };
     },
   };
-  const env = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: '1', [CATALOG_ATTRIBUTION_FLAG]: 'enforce' };
+  const env = { [UCP_ESCALATION_FLAG]: '1', [MERCHANT_PRICING_FLAG]: '1', ...ENFORCE };
   const NOW_MS = Date.UTC(2026, 10, 17, 12, 0, 0);
 
   test('a cart sent tracked is handed out clean on create AND on get_checkout', async () => {
@@ -619,13 +629,22 @@ describe('review: through the storefront escalation, create then re-read', () =>
     const realFetch = globalThis.fetch;
     Object.assign(process.env, CONFIG);
     globalThis.fetch = fakeShopify().fetchImpl;
+    resetDefaultCatalogAttribution();
+    const records = [];
+    const handoffRecorder = { async record(fields) { records.push(structuredClone(fields)); return { kind: 'recorded' }; } };
     try {
       const door = fakeDoor();
       const created = await tryEscalateUcpCheckout({
         op: { id: 'create_checkout_session', capability: 'checkout' },
         params: { idempotency_key: 'idem-0001', quote: { items: [{ product_id: ESC_ROW.product_id, quantity: 2 }] } },
-        ctx: {}, executor, ucpArgs: { checkout: { context: { address_country: 'US' } } }, env, now: NOW_MS, merchantDoor: door,
+        ctx: {}, executor, ucpArgs: { checkout: { context: { address_country: 'US' } } },
+        env: { ...env, UCP_STOREFRONT_HANDOFF_RECORD_ENABLED: '1', PARTNER_IDENTITY_FORWARDING_ENABLED: '1' },
+        now: NOW_MS, merchantDoor: door, handoffRecorder,
       });
+      // P2-1: the record says it was catalog-attributed, and names no click of ours (the link carries none).
+      assert.equal(records.length, 1);
+      assert.equal(records[0].catalog_attributed, true);
+      assert.equal('referral_click_id' in records[0], false);
       assert.ok(created && created.continue_url, 'seller-priced');
       assert.deepEqual(door.calls.find((c) => c[0] === 'create_cart')[2].lineItems, [{ item: { id: TRACKED(V1) }, quantity: 2 }]);
       assert.equal(created.continue_url, CART_URL);
@@ -638,7 +657,138 @@ describe('review: through the storefront escalation, create then re-read', () =>
       assert.equal(again.continue_url, CART_URL, 'the re-read does not put utm/pvt back');
     } finally {
       globalThis.fetch = realFetch;
+      resetDefaultCatalogAttribution();
       for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     }
+  });
+});
+
+// ---- the enforce follow-up (controller review of 272a063b8: P2-1, P2-2, P3s) ------------------------------------
+
+import { BARE_RETRY_MIN_MS } from '../src/ucpMerchantDoorPricing.js';
+import { BREAKER_FAILURES } from '../src/shopifyCatalogAttribution.js';
+
+describe('follow-up: the bare retry after a tracked send', () => {
+  const clientWith = (shopify) => createCatalogAttribution({ env: CONFIG, fetchImpl: shopify.fetchImpl });
+  const outcomesOf = (log) => log.lines.filter((l) => l.event === 'ucp_shopify_catalog_attribution' && l.outcome).map((l) => l.outcome);
+
+  for (const [label, refuse] of [
+    ['an HTTP error', { ok: false, status: 500, error: { message: 'Internal Server Error' } }],
+    ['a cart that does not match', sellerCart({ lines: [[GID(V1), 1, 12900]] })],
+  ]) {
+    test(`${label} on the tracked cart: one bare retry prices it, and both are logged`, async () => {
+      const door = fakeDoor({ create: (args) => (String(args.lineItems[0].item.id).includes('?') ? refuse : sellerCart()) });
+      const log = recordingLog();
+      const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, log, catalogAttribution: clientWith(fakeShopify()), env: { ...ENFORCE } }));
+      assert.ok(out);
+      assert.deepEqual(door.calls.filter((c) => c[0] === 'create_cart').map((c) => c[2].lineItems[0].item.id), [TRACKED(V1), GID(V1)]);
+      assert.deepEqual(outcomesOf(log), ['sent_fallback']);
+      assert.equal(log.lines.find((l) => l.outcome === 'sent_fallback').retry, 'priced');
+      assert.equal(out.catalogTracked, undefined, 'the cart handed out is the bare one');
+    });
+  }
+
+  test('the retry carries today\'s attribution and reuses the minted referral, never a second one', async () => {
+    let mints = 0;
+    const minted = { kind: 'minted', clickId: 'clk_minted_1', pairs: [['utm_source', 'pivota'], ['pvt_click_id', 'clk_minted_1']], attributed: true };
+    const door = fakeDoor({ create: (args) => (String(args.lineItems[0].item.id).includes('?') ? { ok: false, status: 500, error: { message: 'x' } } : sellerCart()) });
+    const out = await priceOnMerchantDoor(doorArgs({
+      merchantDoor: door, catalogLink: 'https://store.example/products/serum', mintReferral: async () => { mints += 1; return minted; },
+      catalogAttribution: clientWith(fakeShopify()), env: { ...ENFORCE, [CART_REFERRAL_FLAG]: '1', [CART_ATTRIBUTION_FLAG]: '1' },
+    }));
+    assert.equal(mints, 1);
+    const creates = door.calls.filter((c) => c[0] === 'create_cart');
+    assert.equal('cartAttribution' in creates[0][2], false, 'the tracked attempt sent none of ours');
+    assert.deepEqual(creates[1][2].cartAttribution, { utm_source: 'pivota', pvt_click_id: 'clk_minted_1' });
+    assert.match(out.continueUrl, /pvt_click_id=clk_minted_1/);
+    assert.deepEqual(out.referral.pairs, minted.pairs);
+  });
+
+  test('not enough budget left: no retry, and the fallback is marked', { timeout: 10000 }, async () => {
+    const door = fakeDoor({ create: (args) => new Promise((r) => setTimeout(() => r(String(args.lineItems[0].item.id).includes('?') ? { ok: false, status: 500, error: { message: 'x' } } : sellerCart()), 3900)) });
+    const log = recordingLog();
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, log, budgetMs: 4300, catalogAttribution: clientWith(fakeShopify()), env: { ...ENFORCE } }));
+    assert.equal(out, null);
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 1);
+    const line = log.lines.find((l) => l.outcome === 'sent_fallback');
+    assert.equal(line.retried, false);
+    assert.ok(BARE_RETRY_MIN_MS >= 500);
+  });
+
+  test('a priced tracked send is logged sent_priced; an out-of-stock refusal is logged and rethrown', async () => {
+    const log = recordingLog();
+    await priceOnMerchantDoor(doorArgs({ merchantDoor: fakeDoor(), log, catalogAttribution: clientWith(fakeShopify()), env: { ...ENFORCE } }));
+    assert.deepEqual(outcomesOf(log), ['sent_priced']);
+    const log2 = recordingLog();
+    const soldOut = fakeDoor({ create: () => ({ ok: true, status: 200, error: { message: 'Out of stock' } }) });
+    await assert.rejects(priceOnMerchantDoor(doorArgs({ merchantDoor: soldOut, log: log2, catalogAttribution: clientWith(fakeShopify()), env: { ...ENFORCE } })));
+    assert.deepEqual(outcomesOf(log2), ['sent_threw']);
+  });
+
+  test('an early fallback logs the lookup as unused', async () => {
+    const log = recordingLog();
+    const noDoor = { ...fakeDoor(), async endpointFor() { return null; } };
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: noDoor, log, catalogAttribution: clientWith(fakeShopify()), env: { ...ENFORCE } }));
+    assert.equal(out, null);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(outcomesOf(log), ['unused']);
+  });
+
+  test('shadow never retries anything', async () => {
+    const door = fakeDoor({ create: () => ({ ok: false, status: 500, error: { message: 'x' } }) });
+    await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: clientWith(fakeShopify()), env: { [CATALOG_ATTRIBUTION_FLAG]: 'shadow' } }));
+    assert.equal(door.calls.filter((c) => c[0] === 'create_cart').length, 1);
+  });
+
+  test('enforce without a pilot list runs as shadow: nothing tracked is sent', async () => {
+    const door = fakeDoor();
+    await priceOnMerchantDoor(doorArgs({ merchantDoor: door, catalogAttribution: clientWith(fakeShopify()), env: { [CATALOG_ATTRIBUTION_FLAG]: 'enforce' } }));
+    assert.deepEqual(door.calls[1][2].lineItems, [{ item: { id: GID(V1) }, quantity: 2 }]);
+  });
+});
+
+describe('follow-up: the breaker and the token', () => {
+  test('after consecutive failures, lookups are skipped for a while; an answer closes it again', async () => {
+    let clock = 1_000_000_000_000;
+    let status = 500;
+    const base = fakeShopify();
+    const fetchImpl = async (url, init) => {
+      const r = await base.fetchImpl(url, init);
+      return url === CATALOG_ENDPOINT ? { status, json: r.json } : r;
+    };
+    const c = createCatalogAttribution({ env: CONFIG, fetchImpl, now: () => clock });
+    const look = () => c.lookupTracked([GID(V1)], { market: 'US', sellerHost: 'store.example' });
+    for (let i = 0; i < BREAKER_FAILURES; i += 1) assert.equal((await look()).reason, 'failed:http');
+    const lookups = () => base.calls.filter((x) => x.url === CATALOG_ENDPOINT).length;
+    const before = lookups();
+    assert.equal((await look()).reason, 'skipped:breaker');
+    assert.equal(lookups(), before, 'no call while open');
+    clock += 61 * 1000;
+    status = 200;
+    assert.equal((await look()).reason, null);
+    assert.equal((await look()).reason, null);
+    // An answer resets the count: failures that are not consecutive never open it.
+    for (const next of [500, 500, 200, 500, 500, 200]) {
+      status = next;
+      assert.notEqual((await look()).reason, 'skipped:breaker', `after ${next}`);
+    }
+  });
+
+  test('a token from a non-200 exchange is never used (mutant M30)', async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push(url);
+      if (url === TOKEN_ENDPOINT) return { status: 400, json: async () => ({ access_token: fakeJwt(Math.floor(Date.now() / 1000) + 3600) }) };
+      return { status: 200, json: async () => ({}) };
+    };
+    const out = await createCatalogAttribution({ env: CONFIG, fetchImpl }).lookupTracked([GID(V1)], { market: 'US', sellerHost: 'store.example' });
+    assert.equal(out.reason, 'failed:no_token');
+    assert.equal(calls.includes(CATALOG_ENDPOINT), false);
+  });
+
+  test('a catalogue-only id with the catalog bit still decodes, and is not marked (mutant M13)', () => {
+    const id = encodeEscalationId([{ product_id: 'sig_a', quantity: 1 }], undefined, undefined, { code: 'US' }, undefined, undefined, undefined, true);
+    assert.ok(decodeEscalationId(id));
+    assert.equal(escalationCatalogTrackedOf(id), false);
   });
 });
