@@ -1,8 +1,9 @@
 /*
  * AgenPas buyer page (docs/agenpas.md). Vanilla JS, no dependencies, served same-origin under a strict CSP.
  *
- * - Reads the purchase id from the path and the link token from `?t=`; sends the token to the API in the
- *   `X-Agenpas-Link` header, never in a polled URL.
+ * - Reads the purchase id from the path and the link token from the URL fragment (`#t=`, never sent to a server);
+ *   clears the fragment and sends the token only in the API's `X-Agenpas-Link` header. An invalid or expired link
+ *   is judged by the API (404 / 410) and shown as a friendly screen.
  * - Renders with createElement/textContent only: nothing from the API is ever parsed as HTML.
  * - There is NO card input anywhere: the card is typed only on the payment partner's hosted page, which opens in a
  *   popup (desktop) or a new tab / this tab (mobile and in-app webviews), because it cannot be framed. When the
@@ -19,11 +20,36 @@
 
   var app = document.getElementById('app');
   var match = PATH_RE.exec(window.location.pathname);
-  var token = '';
-  try {
-    token = new URLSearchParams(window.location.search).get('t') || '';
-  } catch (e) {
-    token = '';
+  var TOKEN_KEY = 'agenpas:t:' + (match ? match[1] : '');
+  var token = readToken();
+
+  // THE LINK TOKEN. It arrives in the URL FRAGMENT (`#t=…`), which no browser sends to a server, is kept in memory,
+  // and is sent only in the `X-Agenpas-Link` header. The fragment is then cleared from the address bar and history.
+  // A copy also goes to this tab's sessionStorage (never sent anywhere): on a phone the hosted page often replaces
+  // this page in the same tab, and coming back reloads it without the fragment it was opened with.
+  function readToken() {
+    var fromHash = '';
+    try {
+      fromHash = new URLSearchParams(String(window.location.hash || '').replace(/^#/, '')).get('t') || '';
+    } catch (e) {
+      fromHash = '';
+    }
+    if (fromHash) {
+      try { window.sessionStorage.setItem(TOKEN_KEY, fromHash); } catch (e) { /* storage blocked: memory only */ }
+      try {
+        window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+      } catch (e) { /* ignore */ }
+      return fromHash;
+    }
+    try {
+      return (match && window.sessionStorage.getItem(TOKEN_KEY)) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function forgetToken() {
+    try { window.sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* ignore */ }
   }
 
   var ui = {
@@ -405,6 +431,7 @@
 
   function showExpired() {
     stop();
+    forgetToken();
     renderMessage('This link has expired', 'For your security, AgenPas links only work for 30 minutes. Go back to the chat and ask for a new link to see your purchase.');
   }
 
@@ -461,6 +488,7 @@
       }
       if (r.status === 404) {
         stop();
+        if (!(r.body && r.body.error === 'not_found')) forgetToken();
         if (r.body && r.body.error === 'not_found') {
           renderMessage("We can't find this purchase", 'Go back to the chat to check on it.');
         } else {

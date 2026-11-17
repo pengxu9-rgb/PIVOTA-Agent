@@ -127,7 +127,10 @@ test('mintAgenpasUrl: on with everything configured, a link to the page whose to
   const u = new URL(url);
   assert.equal(u.origin, 'https://agenpas.example');
   assert.equal(u.pathname, `/agenpas/p/${PID}`);
-  assert.equal(verifyLinkToken(u.searchParams.get('t'), { purchaseId: PID, secret: SECRET, now: T0 }).ok, true);
+  // The token is in the FRAGMENT (never sent to a server), never in the query.
+  assert.equal(u.search, '');
+  assert.match(u.hash, /^#t=v1\./);
+  assert.equal(verifyLinkToken(new URLSearchParams(u.hash.slice(1)).get('t'), { purchaseId: PID, secret: SECRET, now: T0 }).ok, true);
 });
 
 test('mintAgenpasUrl: null whenever anything is missing (flag off is the default)', () => {
@@ -149,5 +152,8 @@ test('mintAgenpasUrl: null whenever anything is missing (flag off is the default
 
 test('createAgenpasLinkMinter reads the env it was given (or process.env) per call', () => {
   assert.equal(createAgenpasLinkMinter({ env: {} }).mint(CLAIMS), null);
+  assert.equal(createAgenpasLinkMinter({ env: {} }).available(), false);
+  assert.equal(createAgenpasLinkMinter({ env: { ...ENV_ON, AGENPAS_PUBLIC_BASE_URL: '' } }).available(), false);
+  assert.equal(createAgenpasLinkMinter({ env: ENV_ON }).available(), true);
   assert.match(createAgenpasLinkMinter({ env: ENV_ON }).mint(CLAIMS), /^https:\/\/agenpas\.example\/agenpas\/p\/ap_/);
 });

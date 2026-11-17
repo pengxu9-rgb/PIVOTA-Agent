@@ -6,14 +6,46 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const http = require('node:http');
 const express = require('express');
-const request = require('supertest');
+const supertest = require('supertest');
 
 const { createAgenpasRouter } = require('../src/agenpas/router');
 const { createBackendPurchaseReader, INTERNAL_PURCHASES_PATH } = require('../src/agenpas/purchaseReader');
 const { mintLinkToken } = require('../src/agenpas/linkToken');
 const config = require('../src/agenpas/config');
 const { SCENARIOS } = require('../src/agenpas/devFixtures');
+
+// Each app listens on 127.0.0.1 itself, on a port the OS picks for IPv4. supertest's own `listen(0)` binds the IPv6
+// wildcard and then connects to 127.0.0.1, which on a busy machine can reach ANOTHER process that holds the same port
+// number on IPv4 (seen here as a stray 'not found'). Same chaining as supertest: request(app).get(p).set(...).
+const servers = [];
+test.after(() => { for (const srv of servers) srv.close(); });
+function listening(a) {
+  return new Promise((resolve, reject) => {
+    const srv = http.createServer(a);
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => { servers.push(srv); resolve(srv); });
+  });
+}
+function request(a) {
+  const verb = (method) => (path) => {
+    const steps = [];
+    const chain = {
+      set(...x) { steps.push(['set', x]); return chain; },
+      send(...x) { steps.push(['send', x]); return chain; },
+      then(onOk, onErr) {
+        return listening(a).then((srv) => {
+          let t = supertest(srv)[method](path);
+          for (const [name, x] of steps) t = t[name](...x);
+          return t;
+        }).then(onOk, onErr);
+      },
+    };
+    return chain;
+  };
+  return { get: verb('get'), post: verb('post') };
+}
 
 const SECRET = 'route-test-secret-for-agenpas-0123456789';
 const PID = 'ap_0123456789abcdef01234567';
@@ -54,8 +86,8 @@ function token(over = {}) {
 }
 
 const PATHS = [
-  `/agenpas/p/${PID}?t=x`,
-  `/agenpas/api/p/${PID}?t=x`,
+  `/agenpas/p/${PID}`,
+  `/agenpas/api/p/${PID}`,
   '/agenpas/assets/app.js',
   '/agenpas/assets/app.css',
   '/agenpas/dev/start',
@@ -89,17 +121,16 @@ test('on: paths that are not AgenPas routes, other methods, and another host sti
   const post = await request(a).post(`/agenpas/api/p/${PID}`).send({});
   assert.equal(post.body.error, 'NOT_FOUND');
   const hosted = app({ env: { ...ENV_ON, AGENPAS_PUBLIC_BASE_URL: 'https://agenpas.example' } });
-  const wrongHost = await request(hosted).get(`/agenpas/p/${PID}?t=${token()}`).set('Host', 'other.example');
+  const wrongHost = await request(hosted).get(`/agenpas/p/${PID}`).set('Host', 'other.example');
   assert.equal(wrongHost.body.error, 'NOT_FOUND');
-  const rightHost = await request(hosted).get(`/agenpas/p/${PID}?t=${token()}`).set('Host', 'agenpas.example');
+  const rightHost = await request(hosted).get(`/agenpas/p/${PID}`).set('Host', 'agenpas.example');
   assert.equal(rightHost.status, 200);
 });
 
 // ---- the page --------------------------------------------------------------------------------------------------
 
-test('page: a valid link serves the shell under a strict CSP, with no token or purchase data in the HTML', async () => {
-  const t = token();
-  const res = await request(app()).get(`/agenpas/p/${PID}?t=${t}`);
+test('page: the shell is served for any well-formed id under a strict CSP; the server never sees the token', async () => {
+  const res = await request(app()).get(`/agenpas/p/${PID}`);
   assert.equal(res.status, 200);
   assert.match(res.headers['content-type'], /text\/html/);
   const csp = res.headers['content-security-policy'];
@@ -111,30 +142,25 @@ test('page: a valid link serves the shell under a strict CSP, with no token or p
   assert.equal(res.headers['referrer-policy'], 'no-referrer');
   assert.equal(res.headers['x-frame-options'], 'DENY');
   assert.equal(res.headers['cache-control'], 'no-store');
-  assert.equal(res.text.includes(t), false);
   assert.equal(res.text.includes(PID), false);
   // No inline script, no card fields anywhere.
   assert.equal(/<script(?![^>]*\bsrc=)[^>]*>/i.test(res.text), false);
   assert.equal(/<input|<form|cardnumber|cvv/i.test(res.text), false);
 });
 
-test('page: expired -> friendly 410; tampered, wrong purchase, bad id -> friendly 404; no secret -> 503', async () => {
+test('page: a ?t= query is not read (same shell, whatever it holds); bad id -> friendly 404; no secret -> 503', async () => {
   const a = app();
-  const expired = await request(a).get(`/agenpas/p/${PID}?t=${token({ now: NOW - 31 * 60_000 })}`);
-  assert.equal(expired.status, 410);
-  assert.match(expired.text, /This link has expired/);
-  const t = token();
-  const tail = t.slice(-3) === 'AAA' ? 'BBB' : 'AAA';
-  const tampered = await request(a).get(`/agenpas/p/${PID}?t=${t.slice(0, -3)}${tail}`);
-  assert.equal(tampered.status, 404);
-  assert.match(tampered.text, /isn&#39;t valid|isn't valid/);
-  const other = await request(a).get(`/agenpas/p/ap_fedcba9876543210fedcba98?t=${t}`);
-  assert.equal(other.status, 404);
-  const badId = await request(a).get(`/agenpas/p/not_an_id?t=${t}`);
+  const plain = await request(a).get(`/agenpas/p/${PID}`);
+  for (const q of [token(), token({ now: NOW - 31 * 60_000 }), 'v1.forged.sig']) {
+    const withQuery = await request(a).get(`/agenpas/p/${PID}?t=${q}`);
+    assert.equal(withQuery.status, 200);
+    assert.equal(withQuery.text, plain.text);
+    assert.equal(withQuery.text.includes(q), false);
+  }
+  const badId = await request(a).get('/agenpas/p/not_an_id');
   assert.equal(badId.status, 404);
-  const none = await request(a).get(`/agenpas/p/${PID}`);
-  assert.equal(none.status, 404);
-  const noSecret = await request(app({ env: { ...ENV_ON, AGENPAS_LINK_SECRET: '' } })).get(`/agenpas/p/${PID}?t=${t}`);
+  assert.match(badId.text, /isn&#39;t valid|isn't valid/);
+  const noSecret = await request(app({ env: { ...ENV_ON, AGENPAS_LINK_SECRET: '' } })).get(`/agenpas/p/${PID}`);
   assert.equal(noSecret.status, 503);
 });
 
@@ -147,6 +173,15 @@ test('assets: served same-origin with nosniff; the script builds DOM without inn
   assert.equal(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/.test(src), false);
   assert.equal(/createElement\(['"](input|form|textarea|select)['"]/.test(src), false);
   assert.equal(/https?:\/\/(?!\/)/.test(src.replace(/\/\*[\s\S]*?\*\//g, '')), false, 'no absolute URLs (no CDN, no third party)');
+  // The token: read from the fragment, the fragment cleared, sent only as the header; the query is never read,
+  // and an expired / invalid link is shown from the API's 410 / 404.
+  assert.match(src, /location\.hash/);
+  assert.match(src, /history\.replaceState/);
+  assert.match(src, /'X-Agenpas-Link': token/);
+  assert.equal(/location\.search\)\.get|searchParams\.get\('t'\)/.test(src), false);
+  assert.equal(/'\/agenpas\/api\/p\/' \+ match\[1\] \+ '\?/.test(src), false);
+  assert.match(src, /r\.status === 410/);
+  assert.match(src, /r\.status === 404/);
   const css = await request(app()).get('/agenpas/assets/app.css');
   assert.equal(css.status, 200);
   assert.match(css.headers['content-type'], /text\/css/);
@@ -155,7 +190,7 @@ test('assets: served same-origin with nosniff; the script builds DOM without inn
 
 // ---- the API ---------------------------------------------------------------------------------------------------
 
-test('api: a valid link (header or ?t=) reads for the token\'s owner and answers the safe projection', async () => {
+test('api: a valid link in the header reads for the token\'s owner and answers the safe projection', async () => {
   const reader = recordingReader();
   const a = app({ reader });
   const viaHeader = await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token());
@@ -167,11 +202,11 @@ test('api: a valid link (header or ?t=) reads for the token\'s owner and answers
   for (const leaked of ['pp_aaaaaaaaaaaaaaaaaaaaaaaa', 'owner-hash-fixture', 'rail_managed', CLAIMS.agentId, CLAIMS.userRef]) {
     assert.equal(text.includes(leaked), false, leaked);
   }
+  // A token in the query is never read: tokens travel only in the header, never in a logged URL.
   const viaQuery = await request(a).get(`/agenpas/api/p/${PID}?t=${token()}`);
-  assert.equal(viaQuery.status, 200);
-  assert.deepEqual(reader.calls.map((c) => [c.purchaseId, c.agentId, c.userRef]), [
-    [PID, CLAIMS.agentId, CLAIMS.userRef], [PID, CLAIMS.agentId, CLAIMS.userRef],
-  ]);
+  assert.equal(viaQuery.status, 404);
+  assert.equal(viaQuery.body.error, 'link_invalid');
+  assert.deepEqual(reader.calls.map((c) => [c.purchaseId, c.agentId, c.userRef]), [[PID, CLAIMS.agentId, CLAIMS.userRef]]);
 });
 
 test('api: refused links never reach the reader', async () => {
@@ -208,7 +243,7 @@ test('api: hosted pages are refused unless the gateway allowlist names their hos
 
 test('embed flag: the API marks actions for framing and the page CSP allows exactly the allowlisted hosts', async () => {
   const env = { ...ENV_ON, AGENPAS_EMBED_HOSTED_PAGES: '1' };
-  const page = await request(app({ env })).get(`/agenpas/p/${PID}?t=${token()}`);
+  const page = await request(app({ env })).get(`/agenpas/p/${PID}`);
   assert.match(page.headers['content-security-policy'], /frame-src https:\/\/pay\.partner\.example(;|$)/);
   assert.match(page.headers['permissions-policy'], /publickey-credentials-get=\("https:\/\/pay\.partner\.example"\)/);
   const api = await request(app({ env })).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token());
@@ -234,7 +269,8 @@ test('dev fixtures: /agenpas/dev/start mints a fixture link locally and is a pla
   assert.equal(start.status, 302);
   const loc = new URL(start.headers.location, 'http://localhost');
   assert.equal(loc.pathname, `/agenpas/p/${SCENARIOS.happy.id}`);
-  const api = await request(a).get(`/agenpas/api/p/${SCENARIOS.happy.id}`).set('X-Agenpas-Link', loc.searchParams.get('t'));
+  assert.equal(loc.search, '');
+  const api = await request(a).get(`/agenpas/api/p/${SCENARIOS.happy.id}`).set('X-Agenpas-Link', new URLSearchParams(loc.hash.slice(1)).get('t'));
   assert.equal(api.status, 200);
   assert.equal(api.body.product_name, 'Sample Lip Gloss');
   assert.equal(JSON.stringify(api.body).includes('fixture-owner-hash'), false);

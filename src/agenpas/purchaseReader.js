@@ -13,11 +13,15 @@
  *     X-Internal-Key:            the internal key
  *     X-Agenpas-Agent-Id:        the agent id the link was minted for
  *     X-Agenpas-Agent-User-Ref:  the agent user ref the link was minted for (the gateway's `usr_…` form)
- *   200 -> the SAME unified body as GET /agent/v2/commerce/purchases/{id}, scoped to that owner
- *   404 purchase_not_found -> not that owner's, or does not exist
+ *   200 -> the SAME unified body as GET /agent/v2/commerce/purchases/{id}
+ *   404 purchase_not_found -> not that agent's, or does not exist
  *
- * THIS BACKEND ROUTE IS A PROPOSAL (docs/agenpas.md, "Backend contract"): until the backend serves it, every read
- * answers `unavailable` and the page says it cannot load the purchase right now. Nothing else changes.
+ * SCOPE. The backend scopes this read by (agent_id, purchase_id) ONLY. The user ref is sent but the backend does not
+ * scope by it: the gateway's `usr_…` ref is not the backend's own agent-user ref, so it cannot. The buyer binding is
+ * the link token itself (signed for one purchase, one agent, one user ref).
+ *
+ * The backend route is being built to this contract (docs/agenpas.md, "Backend contract"): until it is served,
+ * every read answers `unavailable` and the page says it cannot load the purchase right now.
  *
  * Outcomes: { kind: 'accepted', purchase } | { kind: 'not_found' } | { kind: 'unavailable', code }. Never throws.
  * Logs carry an event, an outcome, a code and an HTTP status: never an id, a header, a ref or a body.

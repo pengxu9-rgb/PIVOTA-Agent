@@ -307,6 +307,12 @@ function cloneCachedValue(value, onCloneFailure) {
   }
 }
 
+// AgenPas (docs/agenpas.md): appended to these two descriptions ONLY while links are minted.
+export const AGENPAS_START_PURCHASE_SENTENCE =
+  "When `agenpas_url` is present, give it to the buyer verbatim: it is their own page to add a card, approve and follow this purchase, and it works for 30 minutes.";
+export const AGENPAS_GET_ORDER_SENTENCE =
+  "For a purchase on Pivota's payment partner the answer may carry a fresh `agenpas_url` (the buyer's own page for it, valid 30 minutes): give the buyer the newest one if their link has expired.";
+
 /**
  * Build the MCP commerce tool surface over an already-composed canonical executor.
  * @param {{ execute: (opId:string, params:object, ctx:object)=>Promise<any> }} executor
@@ -699,11 +705,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //    is the same kind of handoff a checkout op returns, so it is preserved the same way.
       const purchaseHandoff = op.id === "get_order" && isPlainObject(result)
         && result[Symbol.for("pivota.commerce.agentPurchaseResult")] === true;
+      let sanitized = sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff });
+      // AgenPas: a native get_order of an A2A-rail purchase carries a FRESHLY minted `agenpas_url` (no link
+      // configured = unchanged), so a buyer whose 30-minute link ran out can be handed a new one. See withAgenpasUrl.
+      if (purchaseHandoff && dialect === TOOL_DIALECTS.mcp && isA2aPurchaseAnswer(sanitized)) {
+        sanitized = withAgenpasUrl(sanitized, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx);
+      }
       // The door cache's price-freshness side channel survives the sanitizer (which rebuilds the value).
-      return priceVerificationFacts.withDoorEarliest(
-        sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff }),
-        priceVerificationFacts.doorEarliestOf(result),
-      );
+      return priceVerificationFacts.withDoorEarliest(sanitized, priceVerificationFacts.doorEarliestOf(result));
     };
 
     // 6) cache read-only, caller-independent results. Gated on the op being cacheable — never on anything
@@ -839,6 +848,33 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     return out;
   }
 
+  /** A get_order answer for a purchase on the A2A rail (its rail id, or the `ap_` id itself while a read is pending). */
+  function isA2aPurchaseAnswer(out) {
+    if (!isPlainObject(out)) return false;
+    const apId = (v) => typeof v === "string" && /^ap_[0-9a-f]{24}$/.test(v);
+    return apId(out.rail_purchase_id) || apId(out.order_id);
+  }
+
+  /** True only while a link can be minted (AGENPAS_ENABLED on, secret and base URL set); read per tools/list. */
+  function agenpasLinksAvailable() {
+    const link = orchestratedPurchase && orchestratedPurchase.agenpasLink;
+    try {
+      return Boolean(link && typeof link.available === "function" && link.available() === true);
+    } catch {
+      return false;
+    }
+  }
+
+  // The tool descriptions name `agenpas_url` only while links are minted: off, every description is byte-identical.
+  function withAgenpasDescriptions(list) {
+    if (!agenpasLinksAvailable()) return list;
+    return list.map((tool) => {
+      if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${AGENPAS_START_PURCHASE_SENTENCE}` };
+      if (tool.name === "get_order") return { ...tool, description: `${tool.description} ${AGENPAS_GET_ORDER_SENTENCE}` };
+      return tool;
+    });
+  }
+
   function isCommerceTool(name, dialect) {
     if (name === MERCHANT_QUOTE_TOOL) return merchantCheckoutQuoteDoorOpen();
     if (name === START_PURCHASE_TOOL && normalizeDialect(dialect) === TOOL_DIALECTS.mcp) {
@@ -851,7 +887,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     // Read per `tools/list`, so `start_purchase` is listed exactly while its dial is on.
     get tools() {
       const listed = recommendIngredientExclusionFlag.recommendIngredientExclusionEnabled(process.env) ? ingredientExclusionTools : tools;
-      const declared = orchestratedPurchaseToolEnabled(process.env) ? [...listed, { ...START_PURCHASE_TOOL_DEFINITION }] : listed;
+      const declared = withAgenpasDescriptions(
+        orchestratedPurchaseToolEnabled(process.env) ? [...listed, { ...START_PURCHASE_TOOL_DEFINITION }] : listed,
+      );
       return merchantCheckoutQuoteDoorOpen() ? [...declared, merchantQuoteToolDefinition] : declared;
     },
     callTool,

@@ -30,7 +30,7 @@ describe('AgenPas routes in the gateway app', () => {
   test('dark by default: each AgenPas path answers like a path that never existed', async () => {
     const app = require('../src/server');
     const baseline = await request(app).get('/agenpas-path-that-never-existed');
-    for (const p of [`/agenpas/p/${PID}?t=x`, `/agenpas/api/p/${PID}?t=x`, '/agenpas/assets/app.js', '/agenpas/dev/start']) {
+    for (const p of [`/agenpas/p/${PID}`, `/agenpas/api/p/${PID}`, '/agenpas/assets/app.js', '/agenpas/dev/start']) {
       const resp = await request(app).get(p);
       expect(resp.status).toBe(baseline.status);
       expect(resp.headers['content-type']).toBe(baseline.headers['content-type']);
@@ -48,11 +48,13 @@ describe('AgenPas routes in the gateway app', () => {
     const start = await request(app).get('/agenpas/dev/start?scenario=happy');
     expect(start.status).toBe(302);
     const loc = new URL(start.headers.location, 'http://localhost');
-    const page = await request(app).get(`${loc.pathname}${loc.search}`);
+    expect(loc.search).toBe('');
+    const token = new URLSearchParams(loc.hash.slice(1)).get('t');
+    const page = await request(app).get(loc.pathname);
     expect(page.status).toBe(200);
     expect(page.headers['content-security-policy']).toContain("default-src 'self'");
     expect((await request(app).get('/agenpas/assets/app.js')).status).toBe(200);
-    const api = await request(app).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', loc.searchParams.get('t'));
+    const api = await request(app).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token);
     expect(api.status).toBe(200);
     expect(api.body.purchase_id).toBe(PID);
     expect(typeof api.body.screen).toBe('string');

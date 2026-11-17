@@ -1,7 +1,8 @@
 'use strict';
 
-// `start_purchase` and AgenPas: the answer gains `agenpas_url` ONLY while AGENPAS_ENABLED is on (and everything the
-// link needs is there), and is otherwise exactly the answer it was. Through the REAL surface, tool, clients and money
+// `start_purchase` / `get_order` and AgenPas: the answer gains `agenpas_url` ONLY while AGENPAS_ENABLED is on (and
+// everything the link needs is there), and is otherwise exactly the answer it was; the two tool descriptions gain one
+// sentence each under the same condition and are otherwise byte-identical. Through the REAL surface, tool, clients and money
 // filter, with a stubbed backend fetch and a recording catalog read (same harness as
 // tests/orchestrated_purchase_tool.node.test.cjs). Placeholder merchant and product. No network.
 
@@ -36,14 +37,17 @@ const ROW = Object.freeze({
 let modsPromise = null;
 function mods() {
   if (!modsPromise) {
-    modsPromise = (async () => ({ surface: await import('../mcp-server/src/commerceToolSurface.js') }))();
+    modsPromise = (async () => ({
+      surface: await import('../mcp-server/src/commerceToolSurface.js'),
+      executor: await import('../safety-kernel/src/protocol/canonicalExecutor.js'),
+    }))();
   }
   return modsPromise;
 }
 
-function unified() {
+function unified(railId = AP) {
   return {
-    purchase_id: PP, rail: 'a2a', executor: 'rail_managed', rail_purchase_id: AP, state: 'needs_payment_method',
+    purchase_id: PP, rail: railId.startsWith('ap_') ? 'a2a' : 'reap', executor: 'rail_managed', rail_purchase_id: railId, state: 'needs_payment_method',
     rail_state: 'needs_payment_method', created_at: '2026-11-17T00:00:00Z', totals: { currency: 'USD', our_price_minor: 1800 },
     poll_after_seconds: 15,
     next_action: { type: 'open_url', kind: 'card_binding', url: CARD_PAGE, expires_at: '2026-11-17T00:30:00Z' },
@@ -60,12 +64,14 @@ function fakeBackend() {
   };
 }
 
-async function build({ withMinter = true } = {}) {
+async function build({ withMinter = true, orderRailId = AP } = {}) {
   const m = await mods();
   const deps = { baseUrl: 'https://backend.example', fetchImpl: fakeBackend(), authHeaders: AUTH };
   const executor = {
     async execute(op, params) {
       if (op === 'get_product') return { product: params.payload.product.product_id === ROW.product_id ? { ...ROW } : null };
+      // The canonical executor's own mapper (it marks the answer as a rail purchase read).
+      if (op === 'get_order') return m.executor.agentPurchaseOrder(params.order_id, { kind: 'accepted', purchase: unified(orderRailId) });
       throw new Error(`unexpected op ${op}`);
     },
   };
@@ -140,7 +146,8 @@ test('flag on: an additive agenpas_url for the answered purchase, minted for the
     const u = new URL(url);
     assert.equal(u.origin, 'https://agenpas.example');
     assert.equal(u.pathname, `/agenpas/p/${PP}`);
-    const verdict = verifyLinkToken(u.searchParams.get('t'), { purchaseId: PP, secret: SECRET });
+    assert.equal(u.search, '');
+    const verdict = verifyLinkToken(new URLSearchParams(u.hash.slice(1)).get('t'), { purchaseId: PP, secret: SECRET });
     assert.equal(verdict.ok, true);
     assert.equal(verdict.claims.agentId, SESSION.agent_id);
     assert.equal(verdict.claims.userRef, SESSION.user_ref);
@@ -159,4 +166,77 @@ test('flag on but no secret, no base URL, or no verified agent id: no agenpas_ur
       assert.equal(Object.hasOwn(a, 'agenpas_url'), false, JSON.stringify(env));
     });
   }
+});
+
+// ---- get_order -------------------------------------------------------------------------------------------------
+
+const ON_ALL = { ...TOOL_ON, ...AGENPAS_CONFIG, AGENPAS_ENABLED: '1' };
+
+test('get_order of an A2A purchase: a FRESH agenpas_url while on (a new token each call), nothing while off', async () => {
+  const surface = await build();
+  const without = await build({ withMinter: false });
+  await withEnv(ON_ALL, async () => {
+    const a = await surface.callTool('get_order', { order_id: PP }, SESSION);
+    const b = await surface.callTool('get_order', { order_id: PP }, SESSION);
+    const base = await without.callTool('get_order', { order_id: PP }, SESSION);
+    const { agenpas_url: url, ...rest } = a;
+    assert.deepEqual(rest, base, 'nothing else changes');
+    assert.notEqual(url, b.agenpas_url, 'each read mints a fresh link');
+    const u = new URL(url);
+    assert.equal(u.pathname, `/agenpas/p/${PP}`);
+    assert.equal(u.search, '');
+    const verdict = verifyLinkToken(new URLSearchParams(u.hash.slice(1)).get('t'), { purchaseId: PP, secret: SECRET });
+    assert.equal(verdict.ok, true);
+    assert.equal(verdict.claims.agentId, SESSION.agent_id);
+    assert.equal(verdict.claims.userRef, SESSION.user_ref);
+  });
+  for (const env of [{ AGENPAS_ENABLED: undefined }, { AGENPAS_LINK_SECRET: undefined }, { AGENPAS_PUBLIC_BASE_URL: undefined }]) {
+    await withEnv({ ...ON_ALL, ...env }, async () => {
+      const a = await surface.callTool('get_order', { order_id: PP }, SESSION);
+      const base = await without.callTool('get_order', { order_id: PP }, SESSION);
+      assert.equal(Object.hasOwn(a, 'agenpas_url'), false, JSON.stringify(env));
+      assert.equal(JSON.stringify(a), JSON.stringify(base));
+    });
+  }
+});
+
+test('get_order: no agenpas_url for a purchase on another rail, on the UCP dialect, or without a verified agent id', async () => {
+  const reap = await build({ orderRailId: 'rp_0123456789abcdef01234567' });
+  const a2a = await build();
+  await withEnv(ON_ALL, async () => {
+    assert.equal(Object.hasOwn(await reap.callTool('get_order', { order_id: PP }, SESSION), 'agenpas_url'), false);
+    const noAgent = { user_ref: SESSION.user_ref, acp_session_id: SESSION.acp_session_id };
+    assert.equal(Object.hasOwn(await a2a.callTool('get_order', { order_id: PP }, noAgent), 'agenpas_url'), false);
+    const ucp = await a2a.callTool('get_order', { order_id: PP }, SESSION, { dialect: 'ucp' }).catch(() => ({}));
+    assert.equal(JSON.stringify(ucp).includes('agenpas'), false);
+  });
+});
+
+// ---- tool descriptions -----------------------------------------------------------------------------------------
+
+test('descriptions: byte-identical while links are not minted; one sentence each on start_purchase and get_order while they are', async () => {
+  const m = await mods();
+  const surface = await build();
+  const without = await build({ withMinter: false });
+  const describe = (s) => JSON.stringify(s.tools);
+  for (const env of [{ AGENPAS_ENABLED: undefined }, { AGENPAS_ENABLED: '0' }, { AGENPAS_LINK_SECRET: undefined }, { AGENPAS_PUBLIC_BASE_URL: undefined }]) {
+    await withEnv({ ...ON_ALL, ...env }, async () => {
+      assert.equal(describe(surface), describe(without), JSON.stringify(env));
+      assert.equal(describe(surface).includes('agenpas'), false);
+    });
+  }
+  await withEnv(ON_ALL, async () => {
+    const off = without.tools;
+    const on = surface.tools;
+    assert.equal(on.length, off.length);
+    for (let i = 0; i < on.length; i += 1) {
+      const expected = on[i].name === 'start_purchase' ? `${off[i].description} ${m.surface.AGENPAS_START_PURCHASE_SENTENCE}`
+        : on[i].name === 'get_order' ? `${off[i].description} ${m.surface.AGENPAS_GET_ORDER_SENTENCE}`
+          : off[i].description;
+      assert.equal(on[i].description, expected, on[i].name);
+      assert.deepEqual({ ...on[i], description: null }, { ...off[i], description: null });
+    }
+    assert.ok(on.some((t) => t.name === 'start_purchase'));
+    assert.ok(on.some((t) => t.name === 'get_order'));
+  });
 });

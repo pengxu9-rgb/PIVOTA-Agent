@@ -3,10 +3,13 @@
 /*
  * AgenPas routes (docs/agenpas.md). Mounted once in src/server.js; every request re-reads the flags.
  *
- *   GET /agenpas/p/:purchaseId?t=<link token>      the buyer's page (HTML shell; the app is /agenpas/assets/app.js)
+ *   GET /agenpas/p/:purchaseId#t=<link token>      the buyer's page (HTML shell; the app is /agenpas/assets/app.js).
+ *                                                  The token is in the FRAGMENT, which no browser sends: this route
+ *                                                  never sees it, and serves the same shell for any well-formed id.
+ *                                                  The page judges the link through the API (410 / 404 screens).
  *   GET /agenpas/api/p/:purchaseId                 JSON for the page: the SAFE projection (view.js). The token comes
- *                                                  in the `X-Agenpas-Link` header (what the page sends, so polls keep
- *                                                  it out of URLs and access logs) or as `?t=`.
+ *                                                  ONLY in the `X-Agenpas-Link` header; a `?t=` query is ignored, so
+ *                                                  a token never lands in a URL or an access log.
  *   GET /agenpas/assets/app.js | app.css           the page's script and style (same origin: CSP 'self')
  *   GET /agenpas/dev/start?scenario=<name>         LOCAL DEVELOPMENT ONLY (devFixtures.js): mints a fixture link
  *
@@ -137,7 +140,6 @@ function messageHtml(title, body) {
 
 // Static wording only: nothing from the request is ever interpolated into HTML.
 const PAGES = Object.freeze({
-  expired: messageHtml('This link has expired', 'For your security, AgenPas links only work for 30 minutes. Go back to the chat and ask for a new link to see your purchase.'),
   invalid: messageHtml("This link isn't valid", 'Please open the link exactly as the chat gave it to you, or ask the chat for a new one.'),
   unavailable: messageHtml("AgenPas isn't available right now", 'Please go back to the chat and try again in a little while.'),
 });
@@ -221,12 +223,10 @@ function createAgenpasRouter(deps = {}) {
       log('info', { surface: 'page', outcome: 'refused', reason: 'bad_purchase_id' });
       return res.status(404).send(PAGES.invalid);
     }
-    const verdict = verify(req, firstString(req.query.t), purchaseId);
-    if (!verdict.ok) {
-      log('info', { surface: 'page', outcome: 'refused', reason: verdict.reason });
-      if (verdict.reason === REASON.noSecret) return res.status(503).send(PAGES.unavailable);
-      if (verdict.reason === REASON.expired) return res.status(410).send(PAGES.expired);
-      return res.status(404).send(PAGES.invalid);
+    // No secret: no link can be valid, so say so without loading the app.
+    if (!config.linkSecret(envOf())) {
+      log('info', { surface: 'page', outcome: 'refused', reason: REASON.noSecret });
+      return res.status(503).send(PAGES.unavailable);
     }
     return res.status(200).send(SHELL_HTML);
   });
@@ -236,7 +236,7 @@ function createAgenpasRouter(deps = {}) {
     setCommonHeaders(res);
     const purchaseId = req.params.purchaseId;
     if (!PURCHASE_ID_RE.test(purchaseId)) return res.status(404).json({ error: 'link_invalid' });
-    const token = firstString(req.headers[LINK_HEADER]) || firstString(req.query.t);
+    const token = firstString(req.headers[LINK_HEADER]);
     const verdict = verify(req, token, purchaseId);
     if (!verdict.ok) {
       log('info', { surface: 'api', outcome: 'refused', reason: verdict.reason });
@@ -285,7 +285,7 @@ function createAgenpasRouter(deps = {}) {
       ttlSeconds: config.linkTtlSeconds(env), now: now(),
     });
     setCommonHeaders(res);
-    return res.redirect(302, `/agenpas/p/${scenario.id}?t=${token}`);
+    return res.redirect(302, `/agenpas/p/${scenario.id}#t=${token}`);
   });
 
   return router;
