@@ -46,7 +46,7 @@ test('flag off: a cancel by order id is never answered canceled (the caller\'s o
   const { kernel, exec, calls } = setup({ enabled: false });
   const { session_id, order_id } = await order(kernel, exec);
   const refused = await exec('cancel_checkout_session', { idempotency_key: 'idem-off-1', session_id, order_id }, CTX).then(() => null, (e) => e);
-  assert.deepEqual([refused?.code, refused?.detail], ['OPERATION_NOT_ALLOWED', { op: 'cancel_checkout_session', reason: 'order_cancel_not_available', order_id, upstream_cancel: false }]);
+  assert.deepEqual([refused?.code, refused?.detail], ['OPERATION_NOT_ALLOWED', { op: 'cancel_checkout_session', reason: 'order_cancel_not_available', order_id, upstream_cancel: false, order_status: 'created' }]);
   assert.equal((await kernel._orderStore.get(order_id)).status, 'created', 'nothing was written');
   assert.deepEqual(calls, []);
   // An id the kernel never held, and another caller's order: the same not-found answer, never canceled.

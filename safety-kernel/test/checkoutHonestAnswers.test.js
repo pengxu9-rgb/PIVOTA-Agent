@@ -655,7 +655,7 @@ test('C cancel by order id, with the upstream cancel off, is never answered canc
       await answered(lane.run(w, sid, 'idem-cxo-0001', {}, ctx), label);
       const before = await w.kernel._orderStore.get('o_1');
       const own = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0002', order_id: 'o_1' }, ctx));
-      assert.deepEqual([own?.code, own?.retriable, own?.detail], ['OPERATION_NOT_ALLOWED', false, { op: 'cancel_checkout_session', reason: 'order_cancel_not_available', order_id: 'o_1', upstream_cancel: false }], label);
+      assert.deepEqual([own?.code, own?.retriable, own?.detail], ['OPERATION_NOT_ALLOWED', false, { op: 'cancel_checkout_session', reason: 'order_cancel_not_available', order_id: 'o_1', upstream_cancel: false, order_status: before.status }], label);
       // With the session id beside it: the same.
       assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0003', session_id: sid, order_id: 'o_1' }, ctx)))?.detail?.reason, 'order_cancel_not_available', label);
       assert.deepEqual(await w.kernel._orderStore.get('o_1'), before, `${label}: nothing was written`);

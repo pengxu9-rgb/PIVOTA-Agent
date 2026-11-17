@@ -67,12 +67,12 @@ test("an order call the store refused (a 403, a 429) keeps the unknown outcome's
 });
 
 test("a cancel by order id with the upstream cancel off: never 'canceled', the order's id to read it by, and who can cancel it", () => {
-  const body = bodyOf(new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: "cancel_checkout_session", reason: "order_cancel_not_available", order_id: "ord_0001", upstream_cancel: false }));
+  const body = bodyOf(new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: "cancel_checkout_session", reason: "order_cancel_not_available", order_id: "ord_0001", upstream_cancel: false, order_status: "created" }));
   assert.deepEqual(body, {
     code: "OPERATION_NOT_ALLOWED",
-    message: "This order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.",
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.",
     retriable: false,
-    detail: { reason: "order_cancel_not_available", canceled: false, order_id: "ord_0001" },
+    detail: { reason: "order_cancel_not_available", canceled: false, order_id: "ord_0001", order_status: "created" },
     recovery: "do not tell the buyer the order was canceled; read the order with get_order (detail.order_id); this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
   });
   assert.equal("upstream_cancel" in body.detail, false);
@@ -80,4 +80,24 @@ test("a cancel by order id with the upstream cancel off: never 'canceled', the o
   const bad = bodyOf(new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: "cancel_checkout_session", reason: "order_cancel_not_available", order_id: "o 1", upstream_cancel: false }));
   assert.deepEqual(bad.detail, { reason: "order_cancel_not_available", canceled: false });
   assert.equal(/detail\.order_id/.test(bad.recovery), false);
+});
+
+test("P3-4 the flag-off order-id cancel words follow the order's status: a failed or canceled order never hears its payment page stays open; a canceled one is told it reads canceled and pointed to get_order", () => {
+  const of = (order_status) => bodyOf(new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: "cancel_checkout_session", reason: "order_cancel_not_available", order_id: "ord_0001", upstream_cancel: false, order_status }));
+  const failed = of("failed");
+  assert.deepEqual([failed.code, failed.retriable, failed.detail], ["OPERATION_NOT_ALLOWED", false, { reason: "order_cancel_not_available", canceled: false, order_id: "ord_0001", order_status: "failed" }]);
+  assert.equal(failed.message, "This order cannot be canceled from here: no cancellation reaches the store. Its payment did not go through.");
+  assert.match(failed.recovery, /get_order \(detail\.order_id\)/);
+  assert.match(failed.recovery, /ask the merchant to cancel it/);
+  assert.equal(/should not pay/.test(failed.recovery), false);
+  const canceled = of("canceled");
+  assert.equal(canceled.message, "This order already reads canceled here, and nothing was sent to the store by this call.");
+  assert.equal(canceled.recovery, "read the order with get_order (detail.order_id); tell the buyer only what that read says");
+  for (const body of [failed, canceled]) assert.equal(/payment page/i.test(body.message + body.recovery), false, body.message);
+  // Created, a status no table names, and none at all: an unpaid order's words, with "any payment page opened for it".
+  for (const status of ["created", "expired", undefined, "Not A Word!"]) {
+    const body = of(status);
+    assert.match(body.message, /any payment page opened for it stays open until it expires/, String(status));
+    assert.equal(body.detail.order_status, status === "created" || status === "expired" ? status : undefined, String(status));
+  }
 });

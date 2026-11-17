@@ -271,7 +271,7 @@ test('flag off: a cancel by order id is refused by name (nothing reaches the sto
   const res = await cancel({ order_id, session_id });
   assert.equal(res.isError, true, res.raw);
   assert.equal(res.body.error.code, 'OPERATION_NOT_ALLOWED', res.raw);
-  assert.deepEqual(res.body.error.detail, { reason: 'order_cancel_not_available', canceled: false, order_id }, res.raw);
+  assert.deepEqual(res.body.error.detail, { reason: 'order_cancel_not_available', canceled: false, order_id, order_status: 'created' }, res.raw);
   assert.equal(seen.length, 0);
   nock.cleanAll();
 });

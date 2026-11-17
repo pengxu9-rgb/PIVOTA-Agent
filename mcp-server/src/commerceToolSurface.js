@@ -1933,9 +1933,15 @@ export function toToolError(error) {
           + "; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it";
       }
       if (error.detail.reason === "session_already_ordered" && orderId) body.detail.order_id = orderId;
-      if (error.detail.reason === "order_cancel_not_available" && orderId) {
-        body.detail.order_id = orderId;
-        body.recovery = notCanceled.recovery.replace("get_order;", "get_order (detail.order_id);");
+      if (error.detail.reason === "order_cancel_not_available") {
+        // The words by the order's status: an unpaid order may have an open payment page, a failed one is not said to,
+        // and one that already reads canceled here is pointed to get_order.
+        const status = typeof error.detail.order_status === "string" && /^[a-z][a-z_]{0,31}$/.test(error.detail.order_status) ? error.detail.order_status : null;
+        const byStatus = ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS[status] || ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS.created;
+        body.message = byStatus.message;
+        body.recovery = byStatus.recovery.replace("get_order;", orderId ? "get_order (detail.order_id);" : "get_order;");
+        if (orderId) body.detail.order_id = orderId;
+        if (status) body.detail.order_status = status;
       }
     }
   }
@@ -1966,10 +1972,10 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
     recovery: "cancel it by its order_id",
   },
   // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: a cancel by order id of the caller's own unpaid order. Nothing reaches
-  // the store, so it is never "canceled".
+  // the store, so it is never "canceled". The words are chosen by the order's status (ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS).
   order_cancel_not_available: {
     code: "OPERATION_NOT_ALLOWED",
-    message: "This order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.",
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.",
     recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
   },
   // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: an order was asked for on this session and the gateway holds none for it.
@@ -1988,6 +1994,22 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
 });
 
 const SAME_KEY_SAME_ANSWER = "Sending this call again with the same idempotency_key returns this same answer.";
+// A flag-off cancel by order id, by the order's status in the kernel (any status not named here: `created`'s words).
+const ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS = Object.freeze({
+  created: {
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
+  },
+  failed: {
+    message: "This order cannot be canceled from here: no cancellation reaches the store. Its payment did not go through.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should ask the merchant to cancel it",
+  },
+  canceled: {
+    message: "This order already reads canceled here, and nothing was sent to the store by this call.",
+    recovery: "read the order with get_order; tell the buyer only what that read says",
+  },
+});
+
 // The kernel's unknown outcomes (errors.js KERNEL_OUTCOME_UNKNOWN_REASONS), in words that say what is and is not known.
 const KERNEL_OUTCOME_UNKNOWN_ANSWERS = Object.freeze({
   payment_outcome_unknown_after_order: {

@@ -1233,10 +1233,38 @@ async function cancelSession(kernel, params, ctx) {
   // the same answer for both (requireOwnedOrder), so nobody learns that someone else's order exists. Nothing is written.
   const op = 'cancel_checkout_session';
   const o = await requireOwnedOrder(kernel, order_id, ctx);
+  const acpDoor = Boolean(ctx && ctx.protocol === ADDRESS_MARKET_PROTOCOL);
   if (o.status === 'paid' || o.status === 'charge_pending') {
-    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending', order_id });
+    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', {
+      reason: 'cannot_cancel_paid_or_pending', order_id,
+      // The ACP REST door says what happened in its own words; every other door's answer is as it was.
+      ...(acpDoor ? {
+        acp_message: `This checkout session's order ${o.status === 'paid' ? 'was paid' : 'has a payment under way'}, so it was not canceled. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}; a refund is the merchant's to make.`,
+        acp_detail: { reason: 'cannot_cancel_paid_or_pending', canceled: false, order_status: o.status },
+      } : {}),
+    });
   }
-  throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'order_cancel_not_available', order_id, upstream_cancel: false });
+  // The words depend on the order's status (`order_status`, the kernel's own, beside the id): an order still unpaid may
+  // have an open payment page; one whose payment failed is not said to have one; one that already reads canceled here
+  // is said to, and pointed to get_order. The ACP REST door answers in its own words (it has no get_order tool).
+  const status = typeof o.status === 'string' && /^[a-z][a-z_]{0,31}$/.test(o.status) ? o.status : null;
+  const words = acpDoor ? acpOrderCancelWords(status) : null;
+  throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', {
+    op, reason: 'order_cancel_not_available', order_id, upstream_cancel: false, order_status: status,
+    ...(words ? { acp_message: words, acp_detail: { reason: 'order_cancel_not_available', canceled: false, order_status: status } } : {}),
+  });
+}
+
+// The ACP REST door's words for a flag-off cancel of a session that became an order, by the order's status.
+const ACP_SESSION_READ = 'GET /checkout_sessions/{checkout_session_id}';
+function acpOrderCancelWords(status) {
+  if (status === 'canceled') {
+    return `This checkout session's order already reads canceled here, and nothing was sent to the store by this request. Read the session with ${ACP_SESSION_READ} before telling the buyer anything.`;
+  }
+  if (status === 'failed') {
+    return `This checkout session became an order, and the order cannot be canceled from here: no cancellation reaches the store. Its payment did not go through. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}, and if the buyer no longer wants it, the buyer should ask the merchant to cancel it.`;
+  }
+  return `This checkout session became an order, and the order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}, and if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it.`;
 }
 
 /** Does this read come from the ACP REST door, asking only what holds the session's claim (get_checkout_session)? */

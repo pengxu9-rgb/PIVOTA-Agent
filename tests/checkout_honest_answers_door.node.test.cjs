@@ -415,9 +415,9 @@ test('5: cancel by order id with the upstream cancel off is never canceled: the 
     const own = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), order_id: orderId }, { buyer: h.buyer });
     assert.deepEqual(errorOf(own), {
       code: 'OPERATION_NOT_ALLOWED',
-      message: 'This order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.',
+      message: 'This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.',
       retriable: false,
-      detail: { reason: 'order_cancel_not_available', canceled: false, order_id: orderId },
+      detail: { reason: 'order_cancel_not_available', canceled: false, order_id: orderId, order_status: 'created' },
       recovery: 'do not tell the buyer the order was canceled; read the order with get_order (detail.order_id); this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it',
     }, `${label}: ${own.raw.slice(0, 300)}`);
     assert.deepEqual(own.upstream, [], `${label}: nothing sent`);
@@ -445,9 +445,51 @@ test('5: cancel by order id with the upstream cancel off is never canceled: the 
     assert.equal(done.http, 200, done.raw.slice(0, 300));
     const cancel = await door.acp('POST', `/checkout_sessions/${created.body.id}/cancel`, {}, { key: freshKey() });
     assert.deepEqual([cancel.http, cancel.body.code], [409, 'OPERATION_NOT_ALLOWED'], `${market}: ${cancel.raw.slice(0, 300)}`);
+    // P3-3: its own words, never the catalog's "That action is not available here."
+    assert.deepEqual(cancel.body.detail, { reason: 'cannot_cancel_paid_or_pending', canceled: false, order_status: 'charge_pending' }, market);
+    assert.match(cancel.body.message, /^This checkout session's order has a payment under way, so it was not canceled\./, market);
+    assert.match(cancel.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, market);
     assert.deepEqual(cancel.upstream, [], market);
     const got = await door.acp('GET', `/checkout_sessions/${created.body.id}`);
     assert.deepEqual([got.body.status, got.body.order], ['checkout.completed', { id: done.body.order.id, status: 'charge_pending' }], `${market}: ${got.raw.slice(0, 300)}`);
+  }
+});
+
+test('P3-4/P3-3: the flag-off order-id cancel words follow the order\'s status on /mcp and on ACP: unpaid (a page may be open), failed (no page is promised), canceled (it reads canceled; read it)', async () => {
+  const mount = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const setStatus = async (orderId, status) => { const o = await mount.kernel._orderStore.get(orderId); assert.ok(o, orderId); await mount.kernel._orderStore.set(orderId, { ...o, status }); };
+  for (const [status, mcpWords, acpWords] of [
+    ['created', /any payment page opened for it stays open until it expires/, /any payment page opened for it stays open until it expires/],
+    ['failed', /^This order cannot be canceled from here: no cancellation reaches the store\. Its payment did not go through\.$/, /Its payment did not go through\./],
+    ['canceled', /^This order already reads canceled here, and nothing was sent to the store by this call\.$/, /already reads canceled here/],
+  ]) {
+    for (const market of ['US', 'SG', 'GB']) {
+      const label = `${status} ${market}`;
+      const h = await open('mcp_payment_link', market);
+      const linked = await attempt(h, freshKey());
+      assert.equal(linked.isError, false, `${label}: ${linked.raw.slice(0, 300)}`);
+      await setStatus(linked.value.order_id, status);
+      const own = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), order_id: linked.value.order_id }, { buyer: h.buyer });
+      const e = errorOf(own);
+      assert.deepEqual([e.code, e.retriable, e.detail], ['OPERATION_NOT_ALLOWED', false, { reason: 'order_cancel_not_available', canceled: false, order_id: linked.value.order_id, order_status: status }], `${label}: ${own.raw.slice(0, 300)}`);
+      assert.match(e.message, mcpWords, label);
+      assert.match(e.recovery, /get_order \(detail\.order_id\)/, label);
+      if (status !== 'created') assert.equal(/payment page/i.test(e.message + e.recovery), false, `${label}: ${e.message}`);
+      assert.deepEqual(own.upstream, [], label);
+      // ACP: a session whose order is in that status.
+      const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+      const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+      const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+      assert.equal(done.http, 200, done.raw.slice(0, 300));
+      await setStatus(done.body.order.id, status);
+      const cancel = await door.acp('POST', `/checkout_sessions/${created.body.id}/cancel`, {}, { key: freshKey() });
+      assert.deepEqual([cancel.http, cancel.body.code, cancel.body.detail], [409, 'OPERATION_NOT_ALLOWED', { reason: 'order_cancel_not_available', canceled: false, order_status: status }], `${label}: ${cancel.raw.slice(0, 300)}`);
+      assert.match(cancel.body.message, acpWords, label);
+      assert.match(cancel.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, label);
+      assert.equal(/get_order|not available here/.test(cancel.body.message), false, label);
+      if (status !== 'created') assert.equal(/payment page/i.test(cancel.body.message), false, label);
+      assert.deepEqual(cancel.upstream, [], label);
+    }
   }
 });
 
