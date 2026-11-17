@@ -409,7 +409,9 @@ test('the characters are judged before the length, and a key that passes both is
   // The key the backend is sent (in the order body, and as a header) is the key as the caller sent it: padding,
   // inner spaces and punctuation included.
   const key = '  idem 0001 ~!#  ';
-  const link = await door.call('/mcp', 'create_payment_link', fx.withKey(key, { session_id: sid, customer_email: 'buyer@example.test' }));
+  // (An address to ship to: the door refuses a payment link with none by name before any order is asked for.)
+  const shipTo = { name: 'Buyer One', address_line1: '1 Example Road', city: 'Exampleton', postal_code: '00001', country: 'US' };
+  const link = await door.call('/mcp', 'create_payment_link', fx.withKey(key, { session_id: sid, customer_email: 'buyer@example.test', shipping_address: shipTo }));
   const order = link.upstream.find((c) => c.path === '/agent/v2/orders');
   assert.ok(order, link.raw.slice(0, 300));
   assert.equal(JSON.parse(order.body.idempotency_key.replace(/:order$/, ''))[3], key);

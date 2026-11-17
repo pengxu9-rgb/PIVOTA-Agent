@@ -33382,7 +33382,7 @@ async function throwKernelOrderReadNotFound(err) {
 // unit-testable without booting this app. Read that module before touching the classification: it is shared
 // by every kernel op including the money ops, and `retriable` is a promise that costs real money when wrong
 // in either direction.
-const { mapUpstreamErrorToKernelCode } = require('./services/commerceKernelErrorMapping');
+const { mapUpstreamErrorToKernelCode, curatedUpstreamRefusal } = require('./services/commerceKernelErrorMapping');
 
 let commerceKernelErrorsPromise = null;
 // The upstream-response normalizer (safety-kernel/src/upstreamAdapter.js). The kernel's own money ops get it
@@ -33394,9 +33394,13 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
-  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status });
+  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, upstreamDetail });
   if (kernelCode === 'PARTNER_ASSERTION_REJECTED') notePartnerAssertionRejected(operation, status, upstreamDetail);
+  // A named refusal with a curated message for the caller (a refused buyer context): the transport facts below are
+  // kept beside it unchanged, so the quote-claim rule (safety-kernel/src/upstreamRefusal.js) reads the same answer.
+  const curated = curatedUpstreamRefusal({ operation, upstreamCode, status, upstreamDetail });
   throw new PivotaCommerceError(kernelCode, {
+    ...(curated || {}),
     operation,
     upstream_status: status,
     upstream_code: upstreamCode || null,
