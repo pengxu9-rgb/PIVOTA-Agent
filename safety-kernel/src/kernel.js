@@ -359,7 +359,10 @@ export class SafetyKernel {
           // 4xx such as a consumed quote): every retry of it is refused as a used session, and an order may exist
           // behind it (that is why its claim is kept). Neither is on the release list. A listed prologue refusal, and
           // every terminal refusal the upstream named (out of stock, a changed price, ...), is answered as raised.
-          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && err.retriable === true))) {
+          // A NAMED REFUSAL THAT SAYS "NOTHING WAS ORDERED" (MERCHANT_NOT_ACCEPTING_ORDERS) is answered as raised only on the
+          // release rule's own proof (upstreamAnsweredRefusal: the pair is listed, the route named it, no deadline mark).
+          // Without that proof an order may exist, and it is the unknown outcome like any other kept refusal.
+          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && (err.retriable === true || err.code === 'MERCHANT_NOT_ACCEPTING_ORDERS')))) {
             // Held, not released: a same-key resend is told this same answer (the ledger keeps it), on every caller of
             // createOrder, the invoke route's bare one included. A 403 or a 429 the store DID answer says so in its
             // words (answeredRefusalKind), never "no readable answer"; the outcome and the claim are the same.

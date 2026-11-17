@@ -236,34 +236,47 @@ test('Q1: an order call the backend refused below 500 in a way that keeps the cl
   assert.deepEqual([errorOf(first).code, errorOf(first).retriable], ['QUOTE_EXPIRED', false], first.raw.slice(0, 300));
 }));
 
-test('Q3: a seller not taking orders (the backend\'s 403 MERCHANT_NOT_ACCEPTING_ORDERS) is named and terminal on every tool door, in every priced market; the session is given back only while the shared list holds the pair', each(async (caller) => {
-  const expected = curatedUpstreamRefusal({ operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' } });
-  assert.ok(expected && typeof expected.acp_message === 'string', 'the named refusal has curated words');
-  assert.match(expected.acp_message, /^This seller is not taking orders; nothing was ordered/);
+test('Q3: a seller not taking orders (the backend\'s listed 403 MERCHANT_NOT_ACCEPTING_ORDERS) is named and terminal on every tool door, in every priced market, and gives the session back', each(async (caller) => {
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  const words = ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage;
+  assert.match(words, /^This seller is not taking orders, so nothing was ordered and nothing was charged\./);
+  assert.equal(ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.retriable, false);
   for (const market of PRICED_MARKETS) {
     const label = `${caller} ${market}`;
     const h = await open(caller, market);
     door.orderScript.push(ANSWERS.merchantNotAccepting());
     const key = freshKey();
     const first = await attempt(h, key);
-    assert.deepEqual(errorOf(first), { code: 'OPERATION_NOT_ALLOWED', message: expected.acp_message, retriable: false, detail: { reason: 'merchant_not_accepting_orders' } }, `${label}: ${first.raw.slice(0, 300)}`);
+    assert.equal(first.http, 200, label);
+    assert.deepEqual(errorOf(first), { code: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: words, retriable: false, detail: { reason: 'merchant_not_accepting_orders' } }, `${label}: ${first.raw.slice(0, 300)}`);
     assert.deepEqual([sent(first, ORDERS), sent(first, PAGES)], [1, 0], label);
     assertNoMoney(first, label);
+    // Given back: the same key is a first attempt, and this time the backend makes the order.
     const again = await attempt(h, key);
-    if (fx.MERCHANT_NOT_ACCEPTING_LISTED) {
-      // Given back: the same key is a first attempt, and this time the backend makes the order.
-      assert.equal(again.isError, false, `${label}: ${again.raw.slice(0, 300)}`);
-      assert.equal(sent(again, ORDERS), 1, label);
-    } else {
-      assert.equal(errorOf(again).code, 'QUOTE_ALREADY_USED', label);
-      assert.equal(sent(again, ORDERS), 0, label);
-    }
+    assert.equal(again.isError, false, `${label}: ${again.raw.slice(0, 300)}`);
+    assert.equal(sent(again, ORDERS), 1, label);
   }
 }));
 
+test('Q3: on the ACP door a seller not taking orders is answered 409 MERCHANT_NOT_ACCEPTING_ORDERS in the catalog\'s words, and the session is given back', async () => {
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  for (const market of ['US', 'SG', 'GB']) {
+    const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+    door.orderScript.push(ANSWERS.merchantNotAccepting());
+    const key = freshKey();
+    const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    assert.equal(done.raw, JSON.stringify({ type: 'error', code: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, detail: { reason: 'merchant_not_accepting_orders' } }), market);
+    assert.equal(done.http, 409, market);
+    const again = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    assert.equal(again.http, 200, `${market}: ${again.raw.slice(0, 300)}`);
+    assert.equal(again.body.order.currency, created.body.currency, market);
+  }
+});
+
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
-  assert.equal(mapUpstreamErrorToKernelCode(named), 'OPERATION_NOT_ALLOWED');
+  assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');
   assert.ok(curatedUpstreamRefusal(named), 'curated');
   assert.deepEqual(curatedUpstreamRefusal(named).acp_detail, { reason: 'merchant_not_accepting_orders' });
   for (const [label, input] of [
@@ -456,11 +469,12 @@ test('the strict invoke route: an order call with no readable answer is an unkno
     assert.equal(sent(first, ORDERS) + sent(same, ORDERS) + sent(other, ORDERS), 1, `${market}: one order call, ever`);
   }
   // The store's refusals of the order call on this route: a 429 and an unnamed 403 are the same 409, in their own words;
-  // a seller not taking orders is named (405, as this route answers OPERATION_NOT_ALLOWED).
+  // a seller not taking orders is named: 409, never 405, in the catalog's words and with its reason.
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
   for (const [answer, http, code, words] of [
     [ANSWERS.rateLimited, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /rate limiting/],
     [ANSWERS.notAuthorized, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /answered this order request with a refusal/],
-    [ANSWERS.merchantNotAccepting, 405, 'OPERATION_NOT_ALLOWED', null],
+    [ANSWERS.merchantNotAccepting, 409, 'MERCHANT_NOT_ACCEPTING_ORDERS', null],
   ]) {
     seq += 1;
     const buyer = buyerFor(seq);
@@ -470,6 +484,10 @@ test('the strict invoke route: an order call with no readable answer is an unkno
     const order = () => door.invoke('create_order', { idempotency_key: key, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address('GB'), recipient_name: 'Buyer One' } } }, { buyer });
     const first = await order();
     assert.deepEqual([first.http, first.body.code, first.body.retriable], [http, code, false], first.raw.slice(0, 300));
+    if (code === 'MERCHANT_NOT_ACCEPTING_ORDERS') {
+      assert.deepEqual([first.body.message, first.body.detail], [ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, { reason: 'merchant_not_accepting_orders' }], first.raw.slice(0, 300));
+      assert.equal(/use the correct tool|not available here/i.test(first.raw), false, first.raw.slice(0, 300));
+    }
     if (words) {
       assert.match(first.body.message, words, first.raw.slice(0, 300));
       assert.equal(/no readable answer|may have been accepted/i.test(first.raw), false, first.raw.slice(0, 300));

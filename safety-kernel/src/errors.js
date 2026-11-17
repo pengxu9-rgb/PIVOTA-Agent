@@ -3,7 +3,7 @@
 // so the codes/recovery are identical across Claude/ChatGPT/Gemini surfaces.
 // Mirrors §5 of docs/agent-checkout/safety-kernel-contract.md.
 
-/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'PRODUCT_NOT_SERVABLE'|'PRODUCT_GROUP_ID_NOT_PRODUCT_ID'|'MERCHANT_PRODUCT_MISMATCH'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'} PivotaErrorCode */
+/** @typedef {'QUOTE_REQUIRED'|'QUOTE_NOT_FOUND'|'QUOTE_EXPIRED'|'QUOTE_ALREADY_USED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'CONFIRMATION_REQUIRED'|'CONFIRMATION_INVALID'|'IDEMPOTENCY_CONFLICT'|'IDEMPOTENT_REPLAY'|'PAYMENT_REQUIRES_ACTION'|'MERCHANT_UNAVAILABLE'|'NO_MERCHANT_OFFER'|'UNKNOWN_PRODUCT_ID'|'PRODUCT_NOT_SERVABLE'|'PRODUCT_GROUP_ID_NOT_PRODUCT_ID'|'MERCHANT_PRODUCT_MISMATCH'|'USER_AUTH_REQUIRED'|'STATE_LINKAGE_MISMATCH'|'OPERATION_NOT_ALLOWED'|'CHECKOUT_OUTCOME_UNKNOWN'|'CHECKOUT_ATTEMPT_RETIRED'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'MERCHANT_NOT_ACCEPTING_ORDERS'} PivotaErrorCode */
 
 /**
  * code -> { retriable, userMessage, recovery }
@@ -69,6 +69,11 @@ export const ERROR_CATALOG = Object.freeze({
   // a canceled order never becomes payable again, so as MERCHANT_UNAVAILABLE (retriable) an agent would keep
   // retrying a charge that is refused every time. retriable:false is the load-bearing bit.
   ORDER_CANCELED:         { retriable: false, recovery: 'do not retry; this order was canceled; if the buyer still wants the item, start a new checkout', userMessage: 'This order was canceled, so it can no longer be paid. Retrying will not change this.' },
+  // The seller's store refused the order call because it is not taking orders (the backend's 403
+  // MERCHANT_NOT_ACCEPTING_ORDERS, named by its order route). Raised ONLY when that answer is one the quote-claim release
+  // rule proves came before any order write (safety-kernel/src/upstreamRefusal.js); otherwise the same answer is the
+  // kernel's unknown outcome. So "nothing was ordered" is said only when it is shown. Terminal for this checkout.
+  MERCHANT_NOT_ACCEPTING_ORDERS: { retriable: false, recovery: 'do not retry this checkout; nothing was ordered; offer the buyer another seller', userMessage: 'This seller is not taking orders, so nothing was ordered and nothing was charged. Retrying this checkout will not change that: offer the buyer another seller.' },
 });
 
 export class PivotaCommerceError extends Error {

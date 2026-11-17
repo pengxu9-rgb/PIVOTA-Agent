@@ -324,16 +324,16 @@ for (const [laneName, lane] of Object.entries(LANES)) {
 // ---- Q3: the store's named refusals of the order call ----------------------------------------------------------------
 
 // "This seller is not taking orders", as the transport raises it (src/server.js throwCommerceKernelUpstreamError, with
-// src/services/commerceKernelErrorMapping.js): named, terminal, its words curated.
-const notAccepting = () => transportError('OPERATION_NOT_ALLOWED', {
+// src/services/commerceKernelErrorMapping.js): named, terminal, its reason as the detail. `over` changes the facts.
+const notAccepting = (over = {}) => transportError('MERCHANT_NOT_ACCEPTING_ORDERS', {
   operation: 'create_order', reason: 'merchant_not_accepting_orders',
-  acp_message: 'This seller is not taking orders; nothing was ordered and nothing was charged. Retrying this checkout will not change that: offer the buyer another seller.',
   acp_detail: { reason: 'merchant_not_accepting_orders' },
   upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstream_detail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_A' },
+  ...over,
 });
-const notAcceptingListed = () => (REFUSED_BEFORE_ANY_ORDER[403] || []).includes('MERCHANT_NOT_ACCEPTING_ORDERS');
 for (const [laneName, lane] of Object.entries(LANES)) {
-  test(`Q3 ${laneName}: a seller not taking orders (403 by name) is answered as raised, terminal, in every market; the claim is given back only while the list holds the pair, and never a second order unless it is`, async () => {
+  test(`Q3 ${laneName}: a seller not taking orders (403 by name, listed) is answered as raised, terminal, in every market; the claim is given back and the same key then orders once`, async () => {
+    assert.ok((REFUSED_BEFORE_ANY_ORDER[403] || []).includes('MERCHANT_NOT_ACCEPTING_ORDERS'), 'the pair is listed');
     for (const market of ['US', 'SG', 'GB', 'DE']) {
       const label = `${laneName} ${market}`;
       const w = world({ market });
@@ -342,19 +342,33 @@ for (const [laneName, lane] of Object.entries(LANES)) {
       w.script.create_order.push(() => { throw err; });
       const first = await refusal(lane.run(w, sid, 'idem-nta-0001'));
       assert.equal(first, err, `${label}: answered as raised`);
-      assert.deepEqual([first.code, first.retriable, first.detail.acp_detail.reason], ['OPERATION_NOT_ALLOWED', false, 'merchant_not_accepting_orders'], label);
-      assert.equal(await w.kernel.isQuoteClaimed(sid), !notAcceptingListed(), `${label}: released only while listed`);
-      // The same key once more: a first attempt again when released (the store is asked again, and this time orders),
-      // the used session when kept; never an unknown outcome.
+      assert.deepEqual([first.code, first.retriable, first.detail.acp_detail.reason], ['MERCHANT_NOT_ACCEPTING_ORDERS', false, 'merchant_not_accepting_orders'], label);
+      assert.match(first.message, /^This seller is not taking orders, so nothing was ordered/, label);
+      assert.equal(await w.kernel.isQuoteClaimed(sid), false, `${label}: released`);
+      // The same key once more is a first attempt again: the store is asked again, and this time orders.
       const again = await refusal(lane.run(w, sid, 'idem-nta-0001'));
-      if (notAcceptingListed()) {
-        assert.equal(again, null, `${label}: ${again && again.code}`);
-        assert.equal(w.ops('create_order').length, 2, label);
-      } else {
-        assert.equal(again?.code, 'QUOTE_ALREADY_USED', label);
-        assert.equal(w.ops('create_order').length, 1, label);
+      assert.equal(again, null, `${label}: ${again && again.code}`);
+      assert.equal(w.ops('create_order').length, 2, label);
+      assert.equal(w.ops('submit_payment').length + w.ops('create_payment_link').length, 1, `${label}: a payment step only for the order that was made`);
+    }
+  });
+  test(`P2-1 ${laneName}: "nothing was ordered" only on the release rule's proof: the same name with no route detail, another route code, or a deadline mark is the unknown outcome in the store-refused words, and the claim is kept`, async () => {
+    for (const [label, over] of [
+      ['no route detail', { upstream_detail: undefined }],
+      ['the code only in a message', { upstream_detail: { message: 'MERCHANT_NOT_ACCEPTING_ORDERS' } }],
+      ['the route naming another code', { upstream_detail: { error: 'FORBIDDEN' } }],
+    ]) {
+      for (const market of ['US', 'SG', 'GB', 'DE']) {
+        const w = world({ market });
+        const sid = await open(w);
+        w.script.create_order.push(() => { throw notAccepting(over); });
+        const err = await refusal(lane.run(w, sid, 'idem-nta-0002'));
+        assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market}`, { answered: 'refused' });
+        assert.equal(/nothing was ordered|not taking orders/i.test(err.message + err.recovery), false, `${label} ${market}`);
+        assert.equal(await w.kernel.isQuoteClaimed(sid), true, `${label} ${market}: kept`);
+        assertUnknown(await refusal(lane.run(w, sid, 'idem-nta-0002')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market} same key`, { answered: 'refused' });
+        assert.equal(w.ops('create_order').length, 1, `${label} ${market}: one order call, ever`);
       }
-      assert.equal(w.ops('submit_payment').length + w.ops('create_payment_link').length, notAcceptingListed() ? 1 : 0, `${label}: a payment step only for the order that was made`);
     }
   });
 }
@@ -384,15 +398,15 @@ test('M04 a bare createOrder (the invoke route\'s call) after a 429 or an unname
     w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: 403, upstream_code: null, upstream_timeout: true }); });
     assertUnknown(await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0009', order: { quote_id: sid, customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } } }, CTX)), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, 'a deadline beside a 403');
   }
-  // The named 403, bare: answered as raised; the same key is a first attempt again only while the pair is listed.
+  // The named 403, listed, bare: answered as raised; released, so the same key is a first attempt again.
   const w = world();
   const sid = await open(w);
   w.script.create_order.push(() => { throw notAccepting(); });
   const order = { quote_id: sid, customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } };
-  assert.equal((await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0003', order }, CTX)))?.code, 'OPERATION_NOT_ALLOWED');
+  assert.equal((await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0003', order }, CTX)))?.code, 'MERCHANT_NOT_ACCEPTING_ORDERS');
   const again = await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0003', order }, CTX));
-  assert.equal(again?.code, notAcceptingListed() ? undefined : 'QUOTE_ALREADY_USED');
-  assert.equal(w.ops('create_order').length, notAcceptingListed() ? 2 : 1);
+  assert.equal(again?.code, undefined);
+  assert.equal(w.ops('create_order').length, 2);
 });
 
 test('Q3 a consumed quote (409 QUOTE_CONSUMED) logs the order the store names on the claim-kept line, owner-free, and the answer never carries it', async () => {

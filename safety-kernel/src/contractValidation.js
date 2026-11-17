@@ -32,6 +32,8 @@ const INVOKE_NAMED_REASONS = new Set([
   intakeBounds.IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
   intakeBounds.QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
   intakeBounds.DUPLICATE_LINE_REASON,
+  // A seller not taking orders (errors.js MERCHANT_NOT_ACCEPTING_ORDERS): its words, not a generic one.
+  'merchant_not_accepting_orders',
 ]);
 
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };

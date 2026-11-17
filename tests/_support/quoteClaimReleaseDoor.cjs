@@ -18,7 +18,6 @@
 // Every name is a placeholder.
 
 const crypto = require('node:crypto');
-const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const nock = require('nock');
@@ -127,16 +126,11 @@ const BEFORE_ANY_ORDER_ROWS = {
   quoteMerchantMismatch: [400, { error: 'QUOTE_MERCHANT_MISMATCH', message: 'placeholder' }],
   preflightFailed: [409, { error: 'PREFLIGHT_FAILED', message: 'placeholder' }],
   variantRequired: [400, { error: 'VARIANT_REQUIRED', message: 'placeholder' }],
+  // The seller is not taking orders: raised by the order route after its quote-claim lookup and before its first write.
+  // (tests/checkout_named_refusal_delisted_door.node.test.cjs boots a gateway whose list lacks it.)
+  merchantNotAccepting: [403, { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' }],
 };
-const BEFORE_ANY_ORDER = BEFORE_ANY_ORDER_ROWS;
-// THE SELLER IS NOT TAKING ORDERS: a 403 the order route names, raised before it writes an order. It gives a claim back
-// only while the shared list (safety-kernel/contracts/order_create_prologue_refusals.json, in this tree) holds it, so it
-// sits in whichever table the list puts it in. Either way the gateway answers it by name, as terminal.
-const MERCHANT_NOT_ACCEPTING = [403, { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' }];
-const PROLOGUE_LIST = JSON.parse(fs.readFileSync(path.join(__dirname, '../../safety-kernel/contracts/order_create_prologue_refusals.json'), 'utf8'));
-const MERCHANT_NOT_ACCEPTING_LISTED = PROLOGUE_LIST.some(([status, code]) => status === 403 && code === 'MERCHANT_NOT_ACCEPTING_ORDERS');
-if (MERCHANT_NOT_ACCEPTING_LISTED) BEFORE_ANY_ORDER_ROWS.merchantNotAccepting = MERCHANT_NOT_ACCEPTING;
-Object.freeze(BEFORE_ANY_ORDER_ROWS);
+const BEFORE_ANY_ORDER = Object.freeze(BEFORE_ANY_ORDER_ROWS);
 // Everything else the path answers: from its write step (which can run twice in one request), after the order
 // was written, or with nothing but the status to go by.
 const NOT_PROVABLY_BEFORE = Object.freeze({
@@ -154,7 +148,6 @@ const NOT_PROVABLY_BEFORE = Object.freeze({
   quoteMismatch: [409, { error: 'QUOTE_MISMATCH', message: 'placeholder', debug_id: 'placeholder' }],
   // Out of stock, as this path says it: a 400 whose detail names no code.
   insufficientInventory: [400, { message: 'Insufficient inventory', items: [] }],
-  ...(MERCHANT_NOT_ACCEPTING_LISTED ? {} : { merchantNotAccepting: MERCHANT_NOT_ACCEPTING }),
   // A rate limit, as the backend answers it: never by a name this gateway reads, and possibly to a second copy of a
   // request it already accepted, before it looks for that copy's order. Coded too, to show a name changes nothing.
   rateLimited: [429, 'Rate limit exceeded'],
@@ -403,4 +396,4 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
   return { app, call, invoke, acp, listen, close, upstream, orders, orderScript, paymentScript, root };
 }
 
-module.exports = { IDS, PRICED_IN, UNIT_MINOR, BACKEND_BASE, BUYER, ANSWERS, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE, MERCHANT_NOT_ACCEPTING_LISTED, backendError, address, mintKeys, bootDoor };
+module.exports = { IDS, PRICED_IN, UNIT_MINOR, BACKEND_BASE, BUYER, ANSWERS, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE, backendError, address, mintKeys, bootDoor };

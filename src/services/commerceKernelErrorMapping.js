@@ -50,11 +50,12 @@ function isBuyerContextRefusal({ operation, upstreamCode, status, upstreamDetail
 }
 
 // THE SELLER IS NOT TAKING ORDERS. The backend's order create answers 403 MERCHANT_NOT_ACCEPTING_ORDERS from its order
-// route, before it writes an order, for a seller whose store does not accept orders now. As MERCHANT_UNAVAILABLE
-// (retriable) it became an unknown outcome ("may have been accepted"), which it is not. It is terminal for this checkout
-// and named, whether or not the quote's claim is given back (safety-kernel/contracts/order_create_prologue_refusals.json
-// decides that). The same proof as above: the order op, the exact status, the route's own detail naming the code.
-// OPERATION_NOT_ALLOWED: ordering is not available from this seller; retriable:false is the load-bearing bit.
+// route, before it writes an order, for a seller whose store does not accept orders now. It is named
+// MERCHANT_NOT_ACCEPTING_ORDERS (terminal, "nothing was ordered") on the same proof as above: the order op, the exact
+// status, the route's own detail naming the code. That name is only a candidate: the kernel answers it as raised ONLY
+// when the quote-claim release rule matches it too (the pair is in safety-kernel/contracts/order_create_prologue_refusals.json,
+// no deadline mark), and otherwise answers the kernel's unknown outcome (safety-kernel/src/kernel.js createOrder). So a
+// list without the pair can never be told "nothing was ordered".
 const MERCHANT_NOT_ACCEPTING_CODE = 'MERCHANT_NOT_ACCEPTING_ORDERS';
 function isMerchantNotAcceptingOrders({ operation, upstreamCode, status, upstreamDetail } = {}) {
   return String(operation || '').trim() === 'create_order'
@@ -70,12 +71,9 @@ function isMerchantNotAcceptingOrders({ operation, upstreamCode, status, upstrea
  */
 function curatedUpstreamRefusal(input = {}) {
   if (isMerchantNotAcceptingOrders(input)) {
+    // The words are the catalog's (safety-kernel/src/errors.js MERCHANT_NOT_ACCEPTING_ORDERS); the detail names the reason.
     const reason = 'merchant_not_accepting_orders';
-    return {
-      reason,
-      acp_message: 'This seller is not taking orders; nothing was ordered and nothing was charged. Retrying this checkout will not change that: offer the buyer another seller.',
-      acp_detail: { reason },
-    };
+    return { reason, acp_detail: { reason } };
   }
   if (!isBuyerContextRefusal(input)) return null;
   const reason = 'buyer_context_refused';
@@ -92,7 +90,7 @@ function curatedUpstreamRefusal(input = {}) {
 
 /**
  * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null, upstreamDetail?: object|null }} input
- * @returns {'OPERATION_NOT_ALLOWED'|'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'QUOTE_REQUIRED'|'MERCHANT_UNAVAILABLE'}
+ * @returns {'MERCHANT_NOT_ACCEPTING_ORDERS'|'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'QUOTE_REQUIRED'|'MERCHANT_UNAVAILABLE'}
  */
 function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, upstreamDetail } = {}) {
   const op = String(operation || '').trim();
@@ -100,7 +98,7 @@ function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, upstrea
   const isReadOp = COMMERCE_KERNEL_READ_OPS.has(op);
 
   if (isBuyerContextRefusal({ operation, upstreamCode, status, upstreamDetail })) return 'QUOTE_REQUIRED';
-  if (isMerchantNotAcceptingOrders({ operation, upstreamCode, status, upstreamDetail })) return 'OPERATION_NOT_ALLOWED';
+  if (isMerchantNotAcceptingOrders({ operation, upstreamCode, status, upstreamDetail })) return 'MERCHANT_NOT_ACCEPTING_ORDERS';
 
   if (code === 'QUOTE_EXPIRED') return 'QUOTE_EXPIRED';
   if (code === 'PRICE_CHANGED' || code === 'QUOTE_MISMATCH') return 'PRICE_CHANGED';

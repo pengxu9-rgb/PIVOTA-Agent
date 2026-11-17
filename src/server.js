@@ -33580,6 +33580,7 @@ function statusForCommerceKernelError(code) {
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
     case 'ORDER_CANCELED':
+    case 'MERCHANT_NOT_ACCEPTING_ORDERS':
     case 'CHECKOUT_OUTCOME_UNKNOWN':
     case 'PARTNER_ASSERTION_REJECTED':
       return 409;

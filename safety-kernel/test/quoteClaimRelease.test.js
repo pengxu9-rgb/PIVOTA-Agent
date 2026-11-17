@@ -53,10 +53,7 @@ const address = (country) => ({ name: 'Buyer One', address_line1: '1 Example Roa
 
 // ---- the upstream's failures, as the transport raises them ---------------------------------------------------
 
-const KERNEL_CODE = { OUT_OF_STOCK: 'OUT_OF_STOCK', QUOTE_EXPIRED: 'QUOTE_EXPIRED', PRICE_CHANGED: 'PRICE_CHANGED', QUOTE_MISMATCH: 'PRICE_CHANGED', PARTNER_ASSERTION_REJECTED: 'PARTNER_ASSERTION_REJECTED', MERCHANT_NOT_ACCEPTING_ORDERS: 'OPERATION_NOT_ALLOWED' };
-// "This seller is not taking orders" (403) gives a claim back only while the shared list holds it; it is answered by
-// name, as terminal, either way. The tests below that keep or release it read the list, so they hold with it or without.
-const NOT_ACCEPTING_LISTED = () => (REFUSED_BEFORE_ANY_ORDER[403] || []).includes('MERCHANT_NOT_ACCEPTING_ORDERS');
+const KERNEL_CODE = { OUT_OF_STOCK: 'OUT_OF_STOCK', QUOTE_EXPIRED: 'QUOTE_EXPIRED', PRICE_CHANGED: 'PRICE_CHANGED', QUOTE_MISMATCH: 'PRICE_CHANGED', PARTNER_ASSERTION_REJECTED: 'PARTNER_ASSERTION_REJECTED', MERCHANT_NOT_ACCEPTING_ORDERS: 'MERCHANT_NOT_ACCEPTING_ORDERS' };
 /**
  * A response that arrived: `status`, the error code the transport took from its body (null: it found none), and
  * the route's own detail, which the transport hands over whole. By default the detail names that same code in
@@ -392,9 +389,9 @@ test('nothing else gives a claim back: no 503, no consumed quote, no refusal of 
   for (const [label, err] of no) assert.equal(upstreamAnsweredRefusal(err), null, label);
 });
 
-test('a 403 gives a claim back only as MERCHANT_NOT_ACCEPTING_ORDERS named by the route\'s own detail, and only while the list holds it: a bare 403, another code, or the code anywhere else never', () => {
+test('a 403 gives a claim back only as MERCHANT_NOT_ACCEPTING_ORDERS named by the route\'s own detail: a bare 403, another code, or the code anywhere else never', () => {
   const named = answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS', { route: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_A' } });
-  assert.deepEqual(upstreamAnsweredRefusal(named), NOT_ACCEPTING_LISTED() ? { upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS' } : null);
+  assert.deepEqual(upstreamAnsweredRefusal(named), { upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS' });
   const never = [
     ['a bare 403 (no code, no detail)', answered(403, null)],
     ['a 403 with the code every 403 gets', answered(403, 'FORBIDDEN')],
@@ -406,7 +403,7 @@ test('a 403 gives a claim back only as MERCHANT_NOT_ACCEPTING_ORDERS named by th
     ['the route naming it, the transport another', answered(403, 'FORBIDDEN', { route: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' } })],
     ['the code at another status', answered(409, 'MERCHANT_NOT_ACCEPTING_ORDERS')],
     ['the code at 401', answered(401, 'MERCHANT_NOT_ACCEPTING_ORDERS')],
-    ['the code with a deadline mark', new PivotaCommerceError('OPERATION_NOT_ALLOWED', { upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstream_detail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' }, upstream_timeout: true })],
+    ['the code with a deadline mark', new PivotaCommerceError('MERCHANT_NOT_ACCEPTING_ORDERS', { upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstream_detail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' }, upstream_timeout: true })],
     // The private backend hop (src/services/privateBackendHop.js), when it is switched on, turns every backend 403 into
     // its own error before the transport reads a status: no status, no code.
     ['a 403 the private backend hop turned into its own refusal', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: null, upstream_code: null, message: 'backend_iam_rejected', upstream_detail: undefined })],
@@ -588,7 +585,7 @@ const UNKNOWN_OUTCOMES = [
   ['a quote that no longer matches', refuse(409, 'QUOTE_MISMATCH'), 'PRICE_CHANGED', 'PRICE_CHANGED'],
   ['an out-of-stock code', refuse(409, 'OUT_OF_STOCK'), 'OUT_OF_STOCK', 'OUT_OF_STOCK'],
   ['insufficient inventory, as the upstream sends it (400, the code every 400 gets)', refuse(400, 'INVALID_REQUEST'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
-  ...(NOT_ACCEPTING_LISTED() ? [] : [['a merchant not accepting orders (not on the list: kept, and answered by name)', refuse(403, 'MERCHANT_NOT_ACCEPTING_ORDERS'), 'OPERATION_NOT_ALLOWED', 'OPERATION_NOT_ALLOWED']]),
+  ['a seller not taking orders the route did not name (no proof): kept, an unknown outcome', () => { throw answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS', { route: { message: 'MERCHANT_NOT_ACCEPTING_ORDERS' } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_NOT_ACCEPTING_ORDERS'],
   ['a 403 with the code every 403 gets', refuse(403, 'FORBIDDEN'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a 403 with no code', refuse(403, null), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a listed code at a status it is not listed for', refuse(409, 'INVALID_BUYER_CONTEXT'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
@@ -1102,7 +1099,7 @@ test('a failed create with no readable answer (a 5xx, no answer, a failure that 
 // ---- the order that exists behind a coded refusal -----------------------------------------------------------------
 
 test('an order was written and the upstream still answered a coded refusal (a busy 503, a consumed quote, a refusal of its write step): no key ever sends a second create_order', each(async (store, caller, label) => {
-  for (const [status, code] of [[503, 'TEMPORARY_UNAVAILABLE'], [503, 'EXTERNAL_SERVICE_ERROR'], [409, 'QUOTE_CONSUMED'], [400, 'INVALID_REQUEST'], [409, 'QUOTE_EXPIRED'], [409, 'CONFLICT'], [429, 'RATE_LIMIT_EXCEEDED'], [403, 'FORBIDDEN'], ...(NOT_ACCEPTING_LISTED() ? [] : [[403, 'MERCHANT_NOT_ACCEPTING_ORDERS']])]) {
+  for (const [status, code] of [[503, 'TEMPORARY_UNAVAILABLE'], [503, 'EXTERNAL_SERVICE_ERROR'], [409, 'QUOTE_CONSUMED'], [400, 'INVALID_REQUEST'], [409, 'QUOTE_EXPIRED'], [409, 'CONFLICT'], [429, 'RATE_LIMIT_EXCEEDED'], [403, 'FORBIDDEN']]) {
     const w = world({ store });
     const h = await w.open(caller, 'SG');
     w.script.push((payload, makeOrder) => { makeOrder(payload); throw answered(status, code); });

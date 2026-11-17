@@ -1016,6 +1016,7 @@ const STATUS_BY_CODE = Object.freeze({
   OPERATION_NOT_ALLOWED: 409,
   PARTNER_ASSERTION_REJECTED: 409,
   ORDER_CANCELED: 409,
+  MERCHANT_NOT_ACCEPTING_ORDERS: 409,
 });
 
 // Run a handler, mapping any throw to an ACP error response. PivotaCommerceError → its code + curated
