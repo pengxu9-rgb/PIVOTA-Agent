@@ -1211,12 +1211,13 @@ async function cancelSession(kernel, params, ctx) {
     const claim = await claimStateOf(kernel, snapshot.quote_id, ctx);
     if (claim && claim.canceled) return { session_id: params.session_id, order_id: null, status: 'canceled' };
     if (claim && claim.order_id) {
-      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_already_ordered', order_id: claim.order_id });
+      // `upstream_cancel: false`: nothing this door can do cancels that order at the store (the surface says so).
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_already_ordered', order_id: claim.order_id, upstream_cancel: false });
     }
     // An order was asked for and this gateway holds none for it (still in flight, or its outcome is unknown).
     // An order was asked for and this gateway holds none for it (still in flight, or its outcome is unknown); or the
     // claim went away between the two reads (an order call that was refused by name gave it back): not canceled.
-    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: claim ? 'session_order_outcome_unknown' : 'session_not_ordered_not_canceled' });
+    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: claim ? 'session_order_outcome_unknown' : 'session_not_ordered_not_canceled', upstream_cancel: false });
   }
   if (nonEmpty(order_id)) {
     const o = await kernel._orderStore.get(order_id);
@@ -1336,19 +1337,21 @@ async function claimStateOf(kernel, quoteId, ctx) {
  * A session's status, by what holds its single-use claim:
  *   none                      `ready_for_payment` (it can still become an order);
  *   a cancellation            `canceled`;
- *   this caller's own order   `completed`, with `order_id`;
+ *   this caller's own order   `completed`, with `order_id` and the kernel's `order_status` of it (an unpaid order, or
+ *                             one whose payment step is unknown, is `completed` as a session and not paid);
  *   an order not known here   `order_outcome_unknown` (an order call was made for it whose order this gateway does not
  *                             hold: still in flight, or its outcome is unknown). Never payable again either way.
  */
 function sessionClaimStatus(claim) {
   if (!claim) return { status: 'ready_for_payment', order_id: null };
   if (claim.canceled) return { status: 'canceled', order_id: null };
-  return claim.order_id ? { status: 'completed', order_id: claim.order_id } : { status: 'order_outcome_unknown', order_id: null };
+  return claim.order_id
+    ? { status: 'completed', order_id: claim.order_id, order_status: claim.order_status ?? null }
+    : { status: 'order_outcome_unknown', order_id: null };
 }
 function withClaimStatus(session, claim) {
   if (!claim) return session;
-  const { status, order_id } = sessionClaimStatus(claim);
-  return { ...session, status, order_id };
+  return { ...session, ...sessionClaimStatus(claim) };
 }
 // The session an update was sent, when it is this buyer's and is not open any more: `{ session_id, status, order_id }`.
 // Best effort: a read that fails leaves the update's answer as it was.

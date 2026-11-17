@@ -116,6 +116,9 @@ const ACP_STATUS = { CHECKOUT_OUTCOME_UNKNOWN: 409, QUOTE_REQUIRED: 400, MERCHAN
 // What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
 const FIRST_CODE = { invalidBuyer: 'QUOTE_REQUIRED', partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionSubject: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
 const firstCode = (answer) => FIRST_CODE[answer] || (NO_READABLE_ANSWER.has(answer) ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'MERCHANT_UNAVAILABLE');
+// The same answer when it keeps the claim: one that would say retriable is the kernel's unknown outcome (every retry of
+// it is refused, and an order may exist behind it). A listed prologue refusal releases and is answered as raised.
+const keptCode = (answer) => (firstCode(answer) === 'MERCHANT_UNAVAILABLE' ? 'CHECKOUT_OUTCOME_UNKNOWN' : firstCode(answer));
 /** Wait until the backend holds the request; if the call answers first it never got there, so fail with its answer. */
 const atBackend = (held, running) => Promise.race([held.reached, running.then((r) => { throw new Error(`the call answered before it reached the backend: ${r.raw.slice(0, 300)}`); })]);
 // `orderId`: the tool doors name the caller's own order a used session was spent on (QUOTE_ALREADY_USED).
@@ -347,11 +350,12 @@ test('a listed code releases only from the route\'s own detail (error.details.er
       door.orderScript.push(ANSWERS.raw(400, body, { landed }));
       const key = freshKey();
       const first = await attempt(h, key);
-      assertRefused(h, first, 'MERCHANT_UNAVAILABLE', `${label} first`);
+      // Kept, and as raised it would say retriable: the kernel's unknown outcome.
+      assertRefused(h, first, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} first`);
       assert.equal(ordersAsked(first).length, 1, label);
       for (const k of [key, freshKey()]) {
         const retry = await attempt(h, k);
-        assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
+        assertRefused(h, retry, k === key ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`);
         assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
       }
       assert.equal(door.orders.length, before + (landed ? 1 : 0), label);
@@ -422,12 +426,12 @@ test('a busy 503, a consumed quote, out of stock, every other answer not on the 
     door.orderScript.push(ANSWERS[answer](opts));
     const key = freshKey();
     const first = await attempt(h, key);
-    assertRefused(h, first, firstCode(answer), `${label} first`);
+    assertRefused(h, first, keptCode(answer), `${label} first`);
     assert.equal(ordersAsked(first).length, 1, label);
     for (const k of [key, freshKey(), key]) {
       const retry = await attempt(h, k);
       // The same key after an unknown outcome is told that same outcome again; any other retry, that the session is used.
-      assertRefused(h, retry, k === key && firstCode(answer) === 'CHECKOUT_OUTCOME_UNKNOWN' ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`);
+      assertRefused(h, retry, k === key && keptCode(answer) === 'CHECKOUT_OUTCOME_UNKNOWN' ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`);
       assert.equal(ordersAsked(retry).length, 0, `${label}: no second order is asked for`);
       assert.deepEqual(retry.upstream, [], `${label}: nothing at all is sent`);
     }

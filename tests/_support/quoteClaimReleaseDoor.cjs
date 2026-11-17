@@ -362,6 +362,11 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     try { value = JSON.parse(text); } catch { value = null; }
     return { http: resp.status, isError: Boolean(result && result.isError), value, raw: resp.text, upstream: sent };
   }
+  /** The strict invoke route (`/agent/shop/v1/invoke`): `{ http, body, raw, upstream }`. */
+  async function invoke(operation, payload, { buyer = BUYER } = {}) {
+    const { resp, upstream: sent } = await observed(() => send('POST', '/agent/shop/v1/invoke', JSON.stringify({ operation, payload }), buyer || {}));
+    return { http: resp.status, body: resp.body, raw: resp.text, upstream: sent };
+  }
   /** A signed ACP REST request with the buyer's credential. `key`: the Idempotency-Key header. */
   async function acp(method, subPath, bodyObj, { key } = {}) {
     const rawBody = bodyObj === undefined ? '' : JSON.stringify(bodyObj);
@@ -381,7 +386,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     if (server) await new Promise((resolve) => server.close(resolve));
     nock.cleanAll();
   };
-  return { app, call, acp, listen, close, upstream, orders, orderScript, paymentScript, root };
+  return { app, call, invoke, acp, listen, close, upstream, orders, orderScript, paymentScript, root };
 }
 
 module.exports = { IDS, PRICED_IN, UNIT_MINOR, BACKEND_BASE, BUYER, ANSWERS, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE, backendError, address, mintKeys, bootDoor };

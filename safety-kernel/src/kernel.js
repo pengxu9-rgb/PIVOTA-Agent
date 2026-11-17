@@ -248,7 +248,7 @@ export class SafetyKernel {
     const state = ctx ? await this._claimStateOf(held, ctx) : null;
     return new PivotaCommerceError('QUOTE_ALREADY_USED', {
       quote_id,
-      ...(held && held.canceled === true ? { claim: 'canceled' } : {}),
+      ...(held && held.canceled === true ? { claim: 'canceled', reason: 'session_canceled' } : {}),
       ...(state && state.order_id ? { order_id: state.order_id } : {}),
     });
   }
@@ -334,10 +334,17 @@ export class SafetyKernel {
           // The claim is settled on `err` exactly as it was raised (a listed refusal gives it back; anything else keeps it).
           await this._settleQuoteClaimAfterFailedCreate(quote.quote_id, claimId, err);
           // AN ORDER CALL WITH NO READABLE ANSWER (no answer, the deadline, a 5xx, an error that is not a refusal) may
-          // have written an order: an unknown outcome, said so by name, with no order id (none is known). Its claim is
-          // kept by the rule above (no such failure is on the release list). A refusal the upstream answered with a
-          // status below 500 (the listed prologue refusals included) is answered exactly as it was raised.
-          if (upstreamFailureOutcomeUnknown(err)) throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null);
+          // have written an order: an unknown outcome, said so by name, with no order id (none is known). So is an
+          // answered refusal that keeps the claim and would otherwise be told "retriable" (a 408, a 429, an unlisted
+          // 4xx such as a consumed quote): every retry of it is refused as a used session, and an order may exist
+          // behind it (that is why its claim is kept). Neither is on the release list. A listed prologue refusal, and
+          // every terminal refusal the upstream named (out of stock, a changed price, ...), is answered as raised.
+          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && err.retriable === true))) {
+            // Held, not released: a same-key resend is told this same answer (the ledger keeps it), on every caller of
+            // createOrder, the invoke route's bare one included.
+            runCtx.sideEffectDone = true;
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null);
+          }
           throw err;
         }
         runCtx.sideEffectDone = true; // order created upstream — past this point, failures are ambiguous

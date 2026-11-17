@@ -18,6 +18,9 @@ import { PivotaCommerceError } from './errors.js';
 export const PIVOTA_TO_ACP_STATUS = Object.freeze({
   quote_issued: 'checkout.created',
   order_created: 'checkout.completed', // order exists, not yet paid
+  // An order was asked for and its outcome is not known (the kernel's `order_outcome_unknown` session status): the
+  // session is no longer payable and may have an order. Carried with `order_outcome: 'unknown'` beside it.
+  order_outcome_unknown: 'checkout.in_progress',
   payment_succeeded: 'order.confirmed',
   payment_requires_action: 'checkout.requires_action',
   payment_failed: 'checkout.failed',

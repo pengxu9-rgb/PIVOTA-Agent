@@ -1845,7 +1845,14 @@ export function toToolError(error) {
   }
   // A session already used for an order: the order's id, when the order is this caller's own (kernel.quoteClaimState),
   // makes the message's "read that order first (get_order)" something the caller can do.
-  if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && surfaceableOrderId(error.detail?.order_id)) {
+  // A session a cancellation holds (kernel.quoteAlreadyUsed `claim: 'canceled'`): it was canceled, and no order was
+  // ever placed from it, so the catalog's "already used to place an order ... read that order first" would be untrue.
+  // The code (and retriable:false) stays: clients branch on it. A canceled claim never names an order.
+  if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && error.detail?.claim === "canceled") {
+    body.message = "This checkout was canceled, so it cannot be completed or paid. No order was placed from it.";
+    body.detail = { reason: "session_canceled" };
+    body.recovery = "do not complete this checkout; start a new checkout only if the buyer wants to buy";
+  } else if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && surfaceableOrderId(error.detail?.order_id)) {
     body.detail = { reason: "session_already_ordered", order_id: surfaceableOrderId(error.detail.order_id) };
     body.recovery = "read the order in detail.order_id with get_order before anything else; start a new checkout only if the buyer wants another order";
   }
@@ -1859,10 +1866,15 @@ export function toToolError(error) {
       body.detail = { reason: error.detail.reason, canceled: false };
       body.recovery = notCanceled.recovery;
       const orderId = surfaceableOrderId(error.detail.order_id);
-      if (error.detail.reason === "session_already_ordered" && orderId) {
-        body.detail.order_id = orderId;
-        body.recovery = "cancel it by the order_id in detail.order_id";
+      // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off (`upstream_cancel: false`) no cancellation reaches the store, so a
+      // cancel by order id would only mark this gateway's row: the order's payment page would stay payable. Never
+      // point there; say what can be done. With the upstream cancel on, cancelling by order id is the way.
+      if (error.detail.reason === "session_already_ordered" && error.detail.upstream_cancel === false) {
+        body.message = "This checkout session already became an order, and the order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.";
+        body.recovery = "do not tell the buyer the order was canceled; read the order with get_order" + (orderId ? " (detail.order_id)" : "")
+          + "; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it";
       }
+      if (error.detail.reason === "session_already_ordered" && orderId) body.detail.order_id = orderId;
     }
   }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
