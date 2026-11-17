@@ -14,7 +14,7 @@
 // path deleted whatever was there, including a different owner's live claim).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { PivotaCommerceError } from './errors.js';
+import { PivotaCommerceError, kernelOutcomeUnknown, kernelOutcomeUnknownOf } from './errors.js';
 import { InMemoryKvStore } from './stores.js';
 
 // The claim lease MUST exceed the slowest expected op() (upstream charge + durable writes). A retry
@@ -60,6 +60,11 @@ export class IdempotencyLedger {
       // P1-2: an op that completed its side effect but failed to finalize is recorded as
       // 'ambiguous' — a retry must NOT re-execute; surface a conflict so the caller reconciles.
       if (existing.status === 'ambiguous') {
+        // An attempt that was answered with the kernel's own unknown outcome (errors.js kernelOutcomeUnknown) is
+        // answered the same way again, with the same order id: the caller learns what the first answer said, not a
+        // generic conflict that tells it to start fresh.
+        const unknown = kernelOutcomeUnknownOf(kernelOutcomeUnknownRecord(existing.outcome_unknown));
+        if (unknown) throw kernelOutcomeUnknown(unknown.reason, unknown.order_id);
         throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'ambiguous_prior_attempt' });
       }
       // status === 'pending' and still leased: refuse rather than double-execute.
@@ -84,12 +89,26 @@ export class IdempotencyLedger {
       if (ctx.sideEffectDone) {
         // P1-2: the irreversible upstream side effect happened but op() then failed. Do NOT delete —
         // mark ambiguous so a retry cannot re-charge. compareAndSet keeps it owner-scoped.
-        await this._store.compareAndSet(key, 'owner', owner, { fp, status: 'ambiguous', error: String(err?.message || 'op_failed') }, { ttlMs: DONE_TTL_MS });
+        // The kernel's own unknown-outcome answer is kept beside it ({ reason, order_id }, nothing else), so a
+        // same-key retry is given that answer again.
+        const unknown = kernelOutcomeUnknownOf(err);
+        await this._store.compareAndSet(key, 'owner', owner, { fp, status: 'ambiguous', error: String(err?.message || 'op_failed'), ...(unknown ? { outcome_unknown: unknown } : {}) }, { ttlMs: DONE_TTL_MS });
         throw err;
       }
       // No irreversible side effect → safe to release OUR claim (only ours) so a real retry proceeds.
       await this._store.compareAndDelete(key, 'owner', owner);
       throw err;
     }
+  }
+}
+
+// A stored `{ reason, order_id }` read back as the answer it was made from (null for anything else), so a record that
+// was not written by this ledger can never name a reason or an order the kernel did not.
+function kernelOutcomeUnknownRecord(stored) {
+  if (!stored || typeof stored !== 'object') return null;
+  try {
+    return kernelOutcomeUnknown(stored.reason, stored.order_id);
+  } catch {
+    return null;
   }
 }

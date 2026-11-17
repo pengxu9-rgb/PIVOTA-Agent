@@ -244,6 +244,41 @@ test('merchant quote preview enforces TAP across transports and keeps its OAuth 
   });
 });
 
+test('dark merchant quote preview: its name is not checkout-classified, and every door needs strict and the UCP door', async () => {
+  const rpcBody = rpcCall('preview_merchant_checkout_quote');
+  const forgedCall = (path) => captureLogs(() => post(path, { headers: tap('/somewhere-else'), body: rpcBody }));
+  await withEnv({
+    AGENT_CHECKOUT_STRICT: '1',
+    // The forged call may be the first to build the commerce adapter; build it as the next test needs it.
+    AGENT_CHECKOUT_ALLOW_IN_MEMORY_STRICT: '1',
+    CONFIRMATION_SECRET: 'merchant-quote-test-confirmation-secret',
+    AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1',
+    AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED: '0',
+    AGENT_SIGNATURE_VERIFY_MODE: 'enforce',
+    AGENT_SIGNATURE_ENFORCE_ROUTE_GROUPS: 'checkout',
+  }, async () => {
+    for (const path of ['/mcp', '/ucp/mcp']) {
+      const { result, entries } = await forgedCall(path);
+      assert.notEqual(result.body?.error, 'AGENT_SIGNATURE_INVALID', path);
+      assert.equal(sigEvents(entries)[0]?.enforce_reason, 'scope_not_enforced', path);
+    }
+    process.env.AGENT_MERCHANT_CHECKOUT_QUOTE_ENABLED = '1';
+    for (const off of ['AGENT_CHECKOUT_STRICT', 'AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED']) {
+      process.env[off] = '0';
+      const route = await post('/api/quotes/merchant-preview', { headers: tap('/somewhere-else'), body: {} });
+      assert.equal(route.status, 404, off);
+      const { result, entries } = await forgedCall('/mcp');
+      assert.notEqual(result.body?.error, 'AGENT_SIGNATURE_INVALID', off);
+      assert.equal(sigEvents(entries)[0]?.enforce_reason, 'scope_not_enforced', off);
+      process.env[off] = '1';
+    }
+    // Control: with all three flags on, the same forged call is in the enforced checkout group.
+    const { result } = await forgedCall('/mcp');
+    assert.equal(result.status, 401);
+    assert.equal(result.body.error, 'AGENT_SIGNATURE_INVALID');
+  });
+});
+
 test('authenticated quote transports reach consent validation with a verified OAuth buyer', async () => {
   const { generateKeyPair, exportJWK, SignJWT } = await import('jose');
   const { publicKey, privateKey } = await generateKeyPair('ES256');

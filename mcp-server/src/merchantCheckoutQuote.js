@@ -31,6 +31,17 @@ export function merchantCheckoutQuoteEnabled(env = process.env) {
 }
 
 /**
+ * Whether any door lists or serves the quote tool: the lane flag, plus the two flags that open the
+ * POST /api/quotes/merchant-preview route (AGENT_CHECKOUT_STRICT and AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED,
+ * parsed exactly as src/server.js parses them). Native /mcp, /ucp/mcp and the HTTP route use this one rule.
+ */
+export function merchantCheckoutQuoteDoorOpen(env = process.env) {
+  return merchantCheckoutQuoteEnabled(env)
+    && String(env.AGENT_CHECKOUT_STRICT || "").trim() === "1"
+    && ["1", "true", "on", "yes"].includes(String(env.AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED || "").trim().toLowerCase());
+}
+
+/**
  * Review-controlled map: exact merchant storefront host -> exact Shopify single-tenant checkout endpoint.
  * Malformed config disables the lane. The catalog caller must already have resolved this merchant.
  */
@@ -300,7 +311,12 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
       const seller = canonicalReapMerchantDomain(sellerHost);
       const endpoint = endpointFor(seller);
       if (!endpoint) return refusal("merchant_checkout_quote_seller_unavailable");
-      if (!expectedCurrency || expectedCurrency !== marketCurrencyOf(market)) return refusal("merchant_checkout_quote_currency_mismatch");
+      const marketCurrency = marketCurrencyOf(market);
+      // A well-formed market with no serving currency is named; a malformed one stays a currency mismatch.
+      if (!marketCurrency && typeof market === "string" && /^[A-Z]{2}$/.test(market)) {
+        return refusal("merchant_checkout_quote_market_unpriced", { market });
+      }
+      if (!expectedCurrency || expectedCurrency !== marketCurrency) return refusal("merchant_checkout_quote_currency_mismatch");
       const requested = quoteLines(lineItems);
       const destination = wireDestination(shippingAddress, market);
       if (!requested || !destination) return refusal("merchant_checkout_quote_invalid_request");
