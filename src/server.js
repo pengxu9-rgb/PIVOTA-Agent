@@ -138,6 +138,7 @@ const priceVerificationFacts = require('./observability/priceVerificationFacts')
 const priceCacheHooks = require('./services/priceCache');
 // FIX_PLAN C-11: what the backend's order cancel answered (cancel_checkout_session, CHECKOUT_CANCEL_UPSTREAM_ENABLED).
 const checkoutCancelUpstream = require('./services/checkoutCancelUpstream');
+const kernelChargePendingReconcile = require('./services/kernelChargePendingReconcile');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -56518,6 +56519,27 @@ if (require.main === module) {
           setInterval(runCreatorCatalogAutoSync, intervalMs);
         }, initialDelayMs);
       }
+
+      // Kernel orders stuck at charge_pending with no payment id (an unknown charge outcome): read the backend's own
+      // order and settle the kernel row to it. KERNEL_CHARGE_PENDING_RECONCILE_MODE, default off (nothing scheduled);
+      // observe logs only. See src/services/kernelChargePendingReconcile.js.
+      kernelChargePendingReconcile.startKernelChargePendingReconcile({
+        getMount: getCommerceMount,
+        db: process.env.DATABASE_URL ? { query } : null,
+        readBackendOrder: kernelChargePendingReconcile.createBackendOrderReader({
+          httpGet: (url, config) => axios.get(url, config),
+          baseUrl: PIVOTA_API_BASE,
+          // The gateway's own service key, exactly as the kernel's get_order_status read sends it: no caller, no
+          // buyer and no partner identity (there is no request here).
+          authHeaders: () => buildInvokeUpstreamAuthHeaders({
+            allowInternalFallback: true,
+            forceInternalFallback: true,
+            forwardAgentUserJwt: false,
+            forwardBuyerRef: false,
+          }),
+        }),
+        logger,
+      });
 
       // PDP identity auto-resolve: completes the catalog-coverage loop by resolving
       // newly onboarded seeds into depositable anchors. OFF by default (gated above);

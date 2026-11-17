@@ -22,6 +22,8 @@ const AMOUNT_TOLERANCE = 0; // zero tolerance — INV-2
 // completion happens later via webhook, NOT under this lock). 2 min comfortably exceeds an upstream
 // charge-call timeout while bounding a crashed holder.
 const CHARGE_LOCK_TTL_MS = 2 * 60 * 1000;
+// Who wrote a settled_* stamp on an order: only the charge_pending reconcile writes one.
+export const RECONCILE_SETTLER = 'kernel_charge_pending_reconcile';
 export const IDEMPOTENT_REPLAY_MARKER = Symbol.for('pivota.safety_kernel.idempotent_replay');
 
 function markIdempotentReplay(result, replayed) {
@@ -439,7 +441,8 @@ export class SafetyKernel {
     // 'charge_pending' is intentionally allowed: the requires_action flow re-mints while a charge is in
     // flight (the webhook, not a second submit, finalizes it); submitPayment's own allowlist blocks a
     // second charge on 'charge_pending'.
-    if (order.status === 'paid' || order.status === 'canceled') {
+    // 'expired' (written only by the charge_pending reconcile, settleUncorrelatedCharge) is terminal the same way.
+    if (order.status === 'paid' || order.status === 'canceled' || order.status === 'expired') {
       throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: `not_confirmable:${order.status}`, order_id });
     }
     return this.confirmations.mint({ order_id, user_ref: ctx.user_ref, amount: order.amount, currency: order.currency });
@@ -650,6 +653,60 @@ export class SafetyKernel {
       return { transitioned: 'failed' };
     }
     return { ignored: true, reason: 'non_terminal_status' };
+  }
+
+  /**
+   * The charge_pending reconcile's ONLY write (safety-kernel/src/reconcileUncorrelated.js). It settles an order the
+   * webhook cannot: 'charge_pending' with NO payment_id, which is what an unknown outcome of the charge call leaves
+   * (the call timed out or errored after the durable charge_pending write, so no PSP id was ever stamped and
+   * onPaymentWebhook answers every event for it `uncorrelated_attempt`). The reconcile decides `to` from the
+   * backend's own read of the order; this method only applies it, and never charges, creates or re-creates anything.
+   *
+   * It LOSES TO EVERY OTHER WRITER. The write is one compare-and-set on every field the reconcile observed: the
+   * status, the attempt, the charge_pending_at stamp and an absent payment_id. So if, between the reconcile's read
+   * and this write, the in-flight submit came back (it stamps payment_id and re-stamps charge_pending_at), a
+   * webhook or a cancel moved the row, or another instance's reconcile settled it, this write does not happen and
+   * the answer says so. Re-running it on a settled row is a no-op.
+   *
+   *   charge_pending, payment_id null  -> 'paid' | 'expired'
+   *   expired (by this reconcile)      -> 'paid' only: the backend later read the order paid (a late payment on a
+   *                                       page that was judged lapsed). Nothing else ever leaves 'expired'.
+   *   anything else                    -> ignored, unchanged
+   *
+   * @param {{ order_id:string, observed:{ status:string, attempt?:string, charge_pending_at?:number, settled_at?:number },
+   *           to:'paid'|'expired', reason:string }} args
+   */
+  async settleUncorrelatedCharge({ order_id, observed, to, reason } = {}) {
+    if (!order_id) return { ignored: true, reason: 'missing_order_id' };
+    if (to !== 'paid' && to !== 'expired') return { ignored: true, reason: 'bad_target' };
+    const o = observed && typeof observed === 'object' ? observed : {};
+    const cur = await this._orderStore.get(order_id);
+    if (!cur) return { ignored: true, reason: 'unknown_order' };
+    let expected;
+    if (o.status === 'charge_pending') {
+      if (typeof o.attempt !== 'string' || o.attempt === '' || !Number.isSafeInteger(o.charge_pending_at)) {
+        return { ignored: true, reason: 'unobservable_row' };
+      }
+      expected = { status: 'charge_pending', attempt: o.attempt, charge_pending_at: o.charge_pending_at, payment_id: null };
+    } else if (o.status === 'expired' && to === 'paid') {
+      if (!Number.isSafeInteger(o.settled_at)) return { ignored: true, reason: 'unobservable_row' };
+      expected = { status: 'expired', settled_by: RECONCILE_SETTLER, settled_at: o.settled_at, payment_id: null };
+    } else {
+      return { ignored: true, reason: `not_settleable:${o.status ?? 'unknown'}` };
+    }
+    const next = {
+      ...cur,
+      status: to,
+      settled_by: RECONCILE_SETTLER,
+      settled_at: this._now(),
+      settled_from: cur.status,
+      settled_reason: String(reason || ''),
+    };
+    const won = await this._orderStore.compareAndSetFields(order_id, expected, next);
+    if (!won) return { ignored: true, reason: 'row_changed' };
+    await this._orderStore.delete(`charge-lock:${order_id}`);
+    this._log.info?.('charge_pending_reconcile_settled', redact({ order_id, transitioned: to, from: cur.status, reason: next.settled_reason }));
+    return { transitioned: to };
   }
 
   /**

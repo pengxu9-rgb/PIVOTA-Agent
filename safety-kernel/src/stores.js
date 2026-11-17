@@ -85,6 +85,20 @@ export class InMemoryKvStore {
     return true;
   }
 
+  /**
+   * ATOMIC compare-and-set on SEVERAL fields at once: overwrite ONLY if, for every entry of `expected`, the live
+   * record's field equals it. A `null` expectation matches a field that is null OR absent (Postgres `v ->> f` is
+   * NULL for both). Other values compare as strings, the way Postgres `v ->> f` reads them. Returns true iff it
+   * set. For a writer that must lose to every other writer of a record (the kernel's charge_pending reconcile).
+   */
+  async compareAndSetFields(key, expected, value, { ttlMs } = {}) {
+    const rec = this._m.get(key);
+    if (!this._live(rec)) return false;
+    if (!fieldsMatch(rec.value, expected)) return false;
+    this._m.set(key, { value, expiresAt: ttlMs != null ? this._now() + ttlMs : undefined });
+    return true;
+  }
+
   /** ATOMIC compare-and-delete: delete ONLY if the live record's `value[matchField]` matches. */
   async compareAndDelete(key, matchField, matchValue) {
     const rec = this._m.get(key);
@@ -96,6 +110,28 @@ export class InMemoryKvStore {
   async delete(key) {
     return this._m.delete(key);
   }
+}
+
+/**
+ * The match rule compareAndSetFields shares with the Postgres adapter: every expected field must be present in
+ * `expected` as an own key (an empty `expected` matches nothing, so a caller cannot CAS on no condition at all);
+ * `null` matches null or absent; anything else compares as its string form.
+ */
+export function fieldsMatch(record, expected) {
+  if (!expected || typeof expected !== 'object') return false;
+  const entries = Object.entries(expected);
+  if (entries.length === 0) return false;
+  const v = record && typeof record === 'object' ? record : {};
+  for (const [field, want] of entries) {
+    const have = v[field];
+    if (want === null) {
+      if (have !== null && have !== undefined) return false;
+      continue;
+    }
+    if (have === null || have === undefined) return false;
+    if (String(have) !== String(want)) return false;
+  }
+  return true;
 }
 
 /**
