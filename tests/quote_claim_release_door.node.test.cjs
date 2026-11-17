@@ -39,8 +39,10 @@ const MARKETS = ['US', 'SG', 'GB', 'DE', null];
 const marketsFor = (caller) => (caller === 'acp_complete' ? MARKETS.filter((m) => m !== 'DE' && m !== null) : MARKETS.filter((m) => m !== null));
 let door;
 let keys;
+let KERNEL_ANSWERED_REFUSALS;
 
 test.before(async () => {
+  ({ KERNEL_ANSWERED_REFUSALS } = await import('../safety-kernel/src/errors.js'));
   keys = await fx.mintKeys();
   door = fx.bootDoor({ port: 5611, keys });
   await door.listen();
@@ -112,9 +114,19 @@ const CREATE_UNKNOWN_TOOL_ERROR = Object.freeze({
 const NO_READABLE_ANSWER = new Set(['busy', 'internalError', 'badGatewayFromBackend', 'timeout', 'connectionLost', 'connectionRefused', 'badGateway', 'gatewayTimeout', 'platformUnavailable']);
 // The backend's prologue refusal of the buyer context is named, with the curated words every door surfaces.
 const BUYER_CONTEXT = curatedUpstreamRefusal({ operation: 'create_order', status: 400, upstreamCode: 'INVALID_BUYER_CONTEXT', upstreamDetail: { error: 'INVALID_BUYER_CONTEXT' } });
-const ACP_STATUS = { CHECKOUT_OUTCOME_UNKNOWN: 409, QUOTE_REQUIRED: 400, MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409 };
+// So is "this seller is not taking orders" (a 403 the order route names), as terminal, listed or not.
+const NOT_ACCEPTING = curatedUpstreamRefusal({ operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' } });
+const CURATED = { QUOTE_REQUIRED: BUYER_CONTEXT, OPERATION_NOT_ALLOWED: NOT_ACCEPTING };
+const ACP_STATUS = { CHECKOUT_OUTCOME_UNKNOWN: 409, QUOTE_REQUIRED: 400, MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409, OPERATION_NOT_ALLOWED: 409 };
 // What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
-const FIRST_CODE = { invalidBuyer: 'QUOTE_REQUIRED', partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionSubject: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
+const FIRST_CODE = { invalidBuyer: 'QUOTE_REQUIRED', partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionSubject: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER', merchantNotAccepting: 'OPERATION_NOT_ALLOWED' };
+// A kept refusal the backend DID answer, at a status with words of its own (safety-kernel/src/errors.js
+// KERNEL_ANSWERED_REFUSALS): a 403 it did not name as terminal, and every 429. Read off the scripted answer.
+const ANSWERED_KIND = { 403: 'refused', 429: 'rate_limited' };
+const answeredKind = (answer) => {
+  const row = BEFORE_ANY_ORDER[answer] || NOT_PROVABLY_BEFORE[answer];
+  return row && FIRST_CODE[answer] === undefined ? ANSWERED_KIND[row[0]] : undefined;
+};
 const firstCode = (answer) => FIRST_CODE[answer] || (NO_READABLE_ANSWER.has(answer) ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'MERCHANT_UNAVAILABLE');
 // The same answer when it keeps the claim: one that would say retriable is the kernel's unknown outcome (every retry of
 // it is refused, and an order may exist behind it). A listed prologue refusal releases and is answered as raised.
@@ -122,16 +134,23 @@ const keptCode = (answer) => (firstCode(answer) === 'MERCHANT_UNAVAILABLE' ? 'CH
 /** Wait until the backend holds the request; if the call answers first it never got there, so fail with its answer. */
 const atBackend = (held, running) => Promise.race([held.reached, running.then((r) => { throw new Error(`the call answered before it reached the backend: ${r.raw.slice(0, 300)}`); })]);
 // `orderId`: the tool doors name the caller's own order a used session was spent on (QUOTE_ALREADY_USED).
-function assertRefused(h, r, code, label, { orderId } = {}) {
+// `answered`: an unknown outcome of an order call the backend answered with a refusal (answeredKind).
+function assertRefused(h, r, code, label, { orderId, answered } = {}) {
   assert.equal(r.ok, false, `${label}: ${r.raw.slice(0, 300)}`);
-  const curated = code === 'QUOTE_REQUIRED' ? BUYER_CONTEXT : null;
+  const curated = CURATED[code] || null;
+  const refused = code === 'CHECKOUT_OUTCOME_UNKNOWN' && answered ? KERNEL_ANSWERED_REFUSALS[answered] : null;
+  if (refused) {
+    // Never the words of a call with no readable answer, for a refusal the backend answered.
+    assert.equal(/no readable answer|may have been accepted/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+  }
   if (h.caller === 'acp_complete') {
     assert.equal(r.http, ACP_STATUS[code], `${label}: ${r.raw.slice(0, 300)}`);
-    assert.equal(r.raw, JSON.stringify(curated ? { type: 'error', code, message: curated.acp_message, detail: curated.acp_detail } : { type: 'error', code, message: MESSAGES[code] }), label);
+    assert.equal(r.raw, JSON.stringify(curated ? { type: 'error', code, message: curated.acp_message, detail: curated.acp_detail } : { type: 'error', code, message: refused ? refused.message : MESSAGES[code] }), label);
   } else {
     assert.equal(r.http, 200, label);
     const error = curated
       ? { code, message: curated.acp_message, retriable: false, detail: curated.acp_detail }
+      : refused ? { ...CREATE_UNKNOWN_TOOL_ERROR, message: `${refused.message} Sending this call again with the same idempotency_key returns this same answer.`, recovery: refused.recovery, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
       : code === 'CHECKOUT_OUTCOME_UNKNOWN' ? { ...CREATE_UNKNOWN_TOOL_ERROR, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
       : { code, message: MESSAGES[code], retriable: RETRIABLE[code] === true };
     if (code === 'QUOTE_ALREADY_USED' && orderId) {
@@ -228,8 +247,16 @@ test('the fixture answers in the backend\'s own error envelope: the status-deriv
     assert.equal(a.status, status === 422 ? 400 : status, name);
     assert.match(a.body.error.code, /^[A-Z][A-Z_]+$/, `${name}: every backend error carries a code`);
   }
-  // The answers that give a claim back are exactly the nine prologue refusals, each naming its code.
-  assert.deepEqual(Object.values(BEFORE_ANY_ORDER).map(([status, detail]) => `${status} ${detail.error}`).sort(), [
+  // "This seller is not taking orders", as the backend writes it: the status-derived code outside, the route's code in
+  // its message and in details.error (where the gateway reads it), the seller beside it.
+  assert.deepEqual(ANSWERS.merchantNotAccepting().body.error, { code: 'FORBIDDEN', message: 'MERCHANT_NOT_ACCEPTING_ORDERS', details: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' }, documentation_url: docs });
+  assert.equal(ANSWERS.merchantNotAccepting().status, 403);
+  // The answers that give a claim back are exactly the prologue refusals of the shared list, each naming its code
+  // (the list's own bytes are pinned in safety-kernel/test/quoteClaimRelease.test.js).
+  const listed = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '../safety-kernel/contracts/order_create_prologue_refusals.json'), 'utf8'));
+  assert.deepEqual(Object.values(BEFORE_ANY_ORDER).map(([status, detail]) => `${status} ${detail.error}`).sort(), listed.map(([status, code]) => `${status} ${code}`).sort());
+  assert.equal(Boolean(BEFORE_ANY_ORDER.merchantNotAccepting), fx.MERCHANT_NOT_ACCEPTING_LISTED);
+  assert.deepEqual(Object.values(BEFORE_ANY_ORDER).filter(([status, detail]) => !(status === 403 && detail.error === 'MERCHANT_NOT_ACCEPTING_ORDERS')).map(([status, detail]) => `${status} ${detail.error}`).sort(), [
     '400 INVALID_BUYER_CONTEXT', '400 INVALID_QUOTE', '400 QUOTE_MERCHANT_MISMATCH', '400 QUOTE_REQUIRED_BEFORE_PURCHASE', '400 VARIANT_REQUIRED',
     '404 QUOTE_NOT_FOUND', '409 PARTNER_ASSERTION_REJECTED', '409 PREFLIGHT_FAILED', '409 UNSUPPORTED_COMMERCE_PATH',
   ]);
@@ -426,12 +453,12 @@ test('a busy 503, a consumed quote, out of stock, every other answer not on the 
     door.orderScript.push(ANSWERS[answer](opts));
     const key = freshKey();
     const first = await attempt(h, key);
-    assertRefused(h, first, keptCode(answer), `${label} first`);
+    assertRefused(h, first, keptCode(answer), `${label} first`, { answered: answeredKind(answer) });
     assert.equal(ordersAsked(first).length, 1, label);
     for (const k of [key, freshKey(), key]) {
       const retry = await attempt(h, k);
       // The same key after an unknown outcome is told that same outcome again; any other retry, that the session is used.
-      assertRefused(h, retry, k === key && keptCode(answer) === 'CHECKOUT_OUTCOME_UNKNOWN' ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`);
+      assertRefused(h, retry, k === key && keptCode(answer) === 'CHECKOUT_OUTCOME_UNKNOWN' ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`, { answered: answeredKind(answer) });
       assert.equal(ordersAsked(retry).length, 0, `${label}: no second order is asked for`);
       assert.deepEqual(retry.upstream, [], `${label}: nothing at all is sent`);
     }

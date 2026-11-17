@@ -26,8 +26,10 @@ const CALLERS = ['mcp_complete', 'mcp_payment_link', 'ucp_complete'];
 const PRICED_MARKETS = ['US', 'SG', 'GB', 'DE'];
 let door;
 let keys;
+let KERNEL_ANSWERED_REFUSALS;
 
 test.before(async () => {
+  ({ KERNEL_ANSWERED_REFUSALS } = await import('../safety-kernel/src/errors.js'));
   keys = await fx.mintKeys();
   door = fx.bootDoor({ port: 5651, keys, env: { AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1' } });
   await door.listen();
@@ -81,13 +83,21 @@ const UNKNOWN_WORDS = {
   payment_link_outcome_unknown_after_order: /whether its payment page was opened is unknown/,
   order_create_outcome_unknown: /its id is not known/,
 };
-function assertUnknown(r, reason, orderId, label) {
+// `answered`: the order call was refused by the store at a status with words of its own (a 403, a 429).
+function assertUnknown(r, reason, orderId, label, { answered } = {}) {
   const e = errorOf(r);
   assert.equal(r.isError, true, `${label}: ${r.raw.slice(0, 300)}`);
   assert.deepEqual(Object.keys(e), ['code', 'message', 'retriable', 'recovery', 'detail'], label);
   assert.equal(e.code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
   assert.equal(e.retriable, false, label);
   assert.deepEqual(e.detail, { reason, order_id: orderId }, label);
+  if (answered) {
+    const words = KERNEL_ANSWERED_REFUSALS[answered];
+    assert.deepEqual([e.message, e.recovery], [`${words.message} Sending this call again with the same idempotency_key returns this same answer.`, words.recovery], label);
+    assert.equal(/no readable answer|may have been accepted|nothing was ordered/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+    assertNoMoney(r, label);
+    return;
+  }
   assert.match(e.message, UNKNOWN_WORDS[reason], label);
   assert.match(e.message, orderId ? /do not start another checkout/i : /Do not place a new order for this purchase without the buyer/, label);
   if (orderId) assert.match(e.recovery, /get_order/, label);
@@ -200,20 +210,74 @@ test('Q1: an order call with no readable answer (no answer, a lost connection, a
 }));
 
 test('Q1: an order call the backend refused below 500 in a way that keeps the claim (a consumed quote, its out-of-stock 400, a 403, a 429) is an unknown outcome, never retriable; a terminal name (an expired quote) is answered as before', each(async (caller) => {
-  for (const answer of [ANSWERS.quoteConsumed, ANSWERS.insufficientInventory, ANSWERS.merchantNotAccepting, () => ANSWERS.raw(429, { status: 'error', error: { code: 'RATE_LIMIT_EXCEEDED', message: 'RATE_LIMIT_EXCEEDED', details: { error: 'RATE_LIMIT_EXCEEDED' } }, detail: { error: 'RATE_LIMIT_EXCEEDED' } })]) {
-    const h = await open(caller, 'SG');
-    door.orderScript.push(answer());
-    const key = freshKey();
-    const first = await attempt(h, key);
-    assertUnknown(first, 'order_create_outcome_unknown', null, first.raw.slice(0, 200));
-    assertUnknown(await attempt(h, key), 'order_create_outcome_unknown', null, 'same key');
-    assert.equal(errorOf(await attempt(h, freshKey())).code, 'QUOTE_ALREADY_USED');
+  // A 403 the backend did not name as terminal, and every 429, say what the store answered; the others keep their words.
+  for (const [answer, answered] of [[ANSWERS.quoteConsumed], [ANSWERS.insufficientInventory], [ANSWERS.validationFailed],
+    [ANSWERS.notAuthorized, 'refused'], [() => ANSWERS.raw(403, { status: 'error', error: { code: 'FORBIDDEN', message: 'FORBIDDEN', details: {} }, detail: {} }), 'refused'],
+    [() => ANSWERS.raw(429, { status: 'error', error: { code: 'RATE_LIMIT_EXCEEDED', message: 'RATE_LIMIT_EXCEEDED', details: { error: 'RATE_LIMIT_EXCEEDED' } }, detail: { error: 'RATE_LIMIT_EXCEEDED' } }), 'rate_limited'],
+    [ANSWERS.rateLimited, 'rate_limited'], [ANSWERS.rateLimitedCoded, 'rate_limited'], [() => ANSWERS.rateLimited({ landed: true }), 'rate_limited']]) {
+    for (const market of PRICED_MARKETS) {
+      const h = await open(caller, market);
+      door.orderScript.push(answer());
+      const key = freshKey();
+      const first = await attempt(h, key);
+      const label = `${caller} ${market} ${first.raw.slice(0, 200)}`;
+      assertUnknown(first, 'order_create_outcome_unknown', null, label, { answered });
+      const same = await attempt(h, key);
+      assertUnknown(same, 'order_create_outcome_unknown', null, `${label} same key`, { answered });
+      assert.equal(same.raw, first.raw, `${label}: the same answer, byte for byte`);
+      assert.equal(errorOf(await attempt(h, freshKey())).code, 'QUOTE_ALREADY_USED');
+      assert.equal(sent(first, ORDERS) + sent(same, ORDERS), 1, `${label}: one order call, ever`);
+      assertUnknownStatus(h, await read(h), label);
+    }
   }
   const h = await open(caller, 'SG');
   door.orderScript.push(ANSWERS.quoteExpired());
   const first = await attempt(h, freshKey());
   assert.deepEqual([errorOf(first).code, errorOf(first).retriable], ['QUOTE_EXPIRED', false], first.raw.slice(0, 300));
 }));
+
+test('Q3: a seller not taking orders (the backend\'s 403 MERCHANT_NOT_ACCEPTING_ORDERS) is named and terminal on every tool door, in every priced market; the session is given back only while the shared list holds the pair', each(async (caller) => {
+  const expected = curatedUpstreamRefusal({ operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' } });
+  assert.match(expected.acp_message, /^This seller is not taking orders; nothing was ordered/);
+  for (const market of PRICED_MARKETS) {
+    const label = `${caller} ${market}`;
+    const h = await open(caller, market);
+    door.orderScript.push(ANSWERS.merchantNotAccepting());
+    const key = freshKey();
+    const first = await attempt(h, key);
+    assert.deepEqual(errorOf(first), { code: 'OPERATION_NOT_ALLOWED', message: expected.acp_message, retriable: false, detail: { reason: 'merchant_not_accepting_orders' } }, `${label}: ${first.raw.slice(0, 300)}`);
+    assert.deepEqual([sent(first, ORDERS), sent(first, PAGES)], [1, 0], label);
+    assertNoMoney(first, label);
+    const again = await attempt(h, key);
+    if (fx.MERCHANT_NOT_ACCEPTING_LISTED) {
+      // Given back: the same key is a first attempt, and this time the backend makes the order.
+      assert.equal(again.isError, false, `${label}: ${again.raw.slice(0, 300)}`);
+      assert.equal(sent(again, ORDERS), 1, label);
+    } else {
+      assert.equal(errorOf(again).code, 'QUOTE_ALREADY_USED', label);
+      assert.equal(sent(again, ORDERS), 0, label);
+    }
+  }
+}));
+
+test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
+  const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
+  assert.equal(mapUpstreamErrorToKernelCode(named), 'OPERATION_NOT_ALLOWED');
+  assert.deepEqual(curatedUpstreamRefusal(named).acp_detail, { reason: 'merchant_not_accepting_orders' });
+  for (const [label, input] of [
+    ['another op', { ...named, operation: 'submit_payment' }],
+    ['another status', { ...named, status: 409 }],
+    ['no status (a refusal the private backend hop raised)', { ...named, status: null, upstreamCode: null, upstreamDetail: null }],
+    ['no route detail', { ...named, upstreamDetail: null }],
+    ['a route detail naming another code', { ...named, upstreamDetail: { error: 'FORBIDDEN' } }],
+    ['a route detail that is prose', { ...named, upstreamDetail: 'Not authorized for this merchant' }],
+    ['the status-derived code', { ...named, upstreamCode: 'FORBIDDEN' }],
+    ['a bare 403', { operation: 'create_order', status: 403 }],
+  ]) {
+    assert.equal(mapUpstreamErrorToKernelCode(input), 'MERCHANT_UNAVAILABLE', label);
+    assert.equal(curatedUpstreamRefusal(input), null, label);
+  }
+});
 
 test('A.5: an order call answered with something that is not an order is an unknown outcome with no order id; the claim is kept and no second order is asked for', each(async (caller) => {
   for (const [shape, answer] of Object.entries({ unparseable_200: () => ANSWERS.raw(200, '<html>ok</html>', { landed: true }), empty_200: () => ANSWERS.raw(200, '', { landed: true }), no_order_200: () => ANSWERS.raw(200, { status: 'success' }, { landed: true }) })) {
@@ -385,7 +449,7 @@ test('the tools/call completion line counts the kernel\'s unknown outcomes by th
   const { loggedToolErrorReason } = require('../src/observability/mcpToolErrorReasons');
   for (const reason of ['payment_outcome_unknown_after_order', 'payment_link_outcome_unknown_after_order', 'order_create_outcome_unknown',
     'acp_fulfillment_address_required', 'buyer_context_refused', 'session_already_ordered', 'session_order_outcome_unknown',
-    'session_not_ordered_not_canceled', 'session_canceled']) {
+    'session_not_ordered_not_canceled', 'session_canceled', 'merchant_not_accepting_orders']) {
     assert.equal(loggedToolErrorReason(reason), reason, reason);
   }
 });

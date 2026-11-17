@@ -113,12 +113,49 @@ export const KERNEL_OUTCOME_UNKNOWN_REASONS = Object.freeze({
 });
 const KERNEL_OUTCOME_UNKNOWN_REASON_SET = new Set(Object.values(KERNEL_OUTCOME_UNKNOWN_REASONS));
 
-/** The kernel's unknown-outcome answer for `reason` (one of KERNEL_OUTCOME_UNKNOWN_REASONS) and the order it is about. */
-export function kernelOutcomeUnknown(reason, orderId) {
+/**
+ * AN ORDER CALL THE STORE DID ANSWER, WITH A REFUSAL THAT KEEPS THE QUOTE'S CLAIM. Still an unknown outcome (the claim is
+ * kept, and nothing here can show that no order exists for this checkout), but not one with "no readable answer": the
+ * words say what the store did answer. Only on `order_create_outcome_unknown` with no order id. Carried on the answer
+ * as `answeredRefusal`, beside its detail and not in it (the ledger keeps it beside the reason as `answered`), and never
+ * surfaced to a caller as a member: only the words change.
+ *   - `refused`       a 403 the store answered without a name this gateway reads as terminal;
+ *   - `rate_limited`  a 429. The store can answer it to a second copy of a request it already accepted, before it looks
+ *                     for that first copy's order, so an earlier attempt of this checkout may have placed one.
+ */
+export const KERNEL_ANSWERED_REFUSALS = Object.freeze({
+  refused: Object.freeze({
+    message: 'The store answered this order request with a refusal. This checkout cannot be retried, and it cannot be shown here that no order was placed for it: do not place a new order for this purchase without the buyer.',
+    recovery: 'the store refused this order request, and this checkout cannot be retried; it cannot be shown here that no order was placed for it: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer',
+  }),
+  rate_limited: Object.freeze({
+    message: 'The store refused this order request for rate limiting. An earlier attempt of this checkout may already have placed an order, so this checkout cannot be retried: do not place a new order for this purchase without the buyer.',
+    recovery: 'the store refused this order request for rate limiting, and an earlier attempt of this checkout may already have placed an order: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer',
+  }),
+});
+
+/**
+ * The kernel's unknown-outcome answer for `reason` (one of KERNEL_OUTCOME_UNKNOWN_REASONS) and the order it is about.
+ * `answered` (KERNEL_ANSWERED_REFUSALS): the store answered the order call with a refusal that keeps the claim.
+ */
+export function kernelOutcomeUnknown(reason, orderId, { answered } = {}) {
   if (!KERNEL_OUTCOME_UNKNOWN_REASON_SET.has(reason)) throw new Error(`Unknown kernel outcome-unknown reason: ${reason}`);
   const order_id = typeof orderId === 'string' && orderId.trim() !== '' ? orderId : null;
+  if (answered !== undefined && answered !== null
+    && !(Object.hasOwn(KERNEL_ANSWERED_REFUSALS, answered) && reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate && order_id === null)) {
+    throw new Error(`Unknown kernel answered refusal: ${answered}`);
+  }
+  const refusal = answered ? KERNEL_ANSWERED_REFUSALS[answered] : null;
   const err = new PivotaCommerceError('CHECKOUT_OUTCOME_UNKNOWN', { reason, order_id });
   err.retriable = false;
+  if (refusal) {
+    // Beside the detail, never in it: the detail stays `{ reason, order_id }`, as every door and log reads it.
+    Object.defineProperty(err, 'answeredRefusal', { value: answered, enumerable: false });
+    err.message = refusal.message;
+    err.userMessage = refusal.message;
+    err.recovery = refusal.recovery;
+    return err;
+  }
   err.recovery = order_id
     ? 'read the order in detail.order_id with get_order before anything else; do not open another checkout for this purchase'
     : 'the store may hold an order for this checkout, and its id is not known here: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer';
@@ -141,12 +178,18 @@ export function upstreamFailureOutcomeUnknown(err) {
   return !Number.isInteger(status) || status >= 500;
 }
 
-/** `{ reason, order_id }` when `err` is one of the kernel's own unknown-outcome answers, else null. */
+/**
+ * `{ reason, order_id }` when `err` is one of the kernel's own unknown-outcome answers, else null; with `answered` beside
+ * them when the store answered the order call with a refusal (KERNEL_ANSWERED_REFUSALS).
+ */
 export function kernelOutcomeUnknownOf(err) {
   if (!(err instanceof PivotaCommerceError) || err.code !== 'CHECKOUT_OUTCOME_UNKNOWN') return null;
   const detail = err.detail && typeof err.detail === 'object' ? err.detail : {};
   if (!KERNEL_OUTCOME_UNKNOWN_REASON_SET.has(detail.reason)) return null;
-  return { reason: detail.reason, order_id: typeof detail.order_id === 'string' && detail.order_id !== '' ? detail.order_id : null };
+  const order_id = typeof detail.order_id === 'string' && detail.order_id !== '' ? detail.order_id : null;
+  const answered = typeof err.answeredRefusal === 'string' && Object.hasOwn(KERNEL_ANSWERED_REFUSALS, err.answeredRefusal)
+    && detail.reason === KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate && order_id === null ? err.answeredRefusal : null;
+  return answered ? { reason: detail.reason, order_id, answered } : { reason: detail.reason, order_id };
 }
 
 export function isPivotaErrorCode(x) {

@@ -64,7 +64,7 @@ export class IdempotencyLedger {
         // answered the same way again, with the same order id: the caller learns what the first answer said, not a
         // generic conflict that tells it to start fresh.
         const unknown = kernelOutcomeUnknownOf(kernelOutcomeUnknownRecord(existing.outcome_unknown));
-        if (unknown) throw kernelOutcomeUnknown(unknown.reason, unknown.order_id);
+        if (unknown) throw kernelOutcomeUnknown(unknown.reason, unknown.order_id, { answered: unknown.answered });
         throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'ambiguous_prior_attempt' });
       }
       // status === 'pending' and still leased: refuse rather than double-execute.
@@ -89,7 +89,7 @@ export class IdempotencyLedger {
       if (ctx.sideEffectDone) {
         // P1-2: the irreversible upstream side effect happened but op() then failed. Do NOT delete —
         // mark ambiguous so a retry cannot re-charge. compareAndSet keeps it owner-scoped.
-        // The kernel's own unknown-outcome answer is kept beside it ({ reason, order_id }, nothing else), so a
+        // The kernel's own unknown-outcome answer is kept beside it ({ reason, order_id, answered? }, nothing else), so a
         // same-key retry is given that answer again.
         const unknown = kernelOutcomeUnknownOf(err);
         await this._store.compareAndSet(key, 'owner', owner, { fp, status: 'ambiguous', error: String(err?.message || 'op_failed'), ...(unknown ? { outcome_unknown: unknown } : {}) }, { ttlMs: DONE_TTL_MS });
@@ -102,12 +102,12 @@ export class IdempotencyLedger {
   }
 }
 
-// A stored `{ reason, order_id }` read back as the answer it was made from (null for anything else), so a record that
+// A stored `{ reason, order_id, answered? }` read back as the answer it was made from (null for anything else), so a record that
 // was not written by this ledger can never name a reason or an order the kernel did not.
 function kernelOutcomeUnknownRecord(stored) {
   if (!stored || typeof stored !== 'object') return null;
   try {
-    return kernelOutcomeUnknown(stored.reason, stored.order_id);
+    return kernelOutcomeUnknown(stored.reason, stored.order_id, { answered: stored.answered });
   } catch {
     return null;
   }

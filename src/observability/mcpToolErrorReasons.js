@@ -49,6 +49,8 @@ const MCP_TOOL_ERROR_REASONS = Object.freeze([
   // A completion or payment link with no address to ship to; a buyer context the order service refused by name.
   'acp_fulfillment_address_required',
   'buyer_context_refused',
+  // An order call the store refused by name because the seller is not taking orders.
+  'merchant_not_accepting_orders',
   // A cancel by session id that did not cancel (an ordered session, an order call with an unknown outcome, a claim
   // given back mid-cancel), and a completion of a session a cancellation holds.
   'session_already_ordered',

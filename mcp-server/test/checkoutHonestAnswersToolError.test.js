@@ -47,3 +47,21 @@ test("an ordered session's cancel refusal: with the upstream cancel off, never '
   const on = bodyOf(new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: "cancel_checkout_session", reason: "session_already_ordered" }));
   assert.equal(on.recovery, "cancel it by its order_id");
 });
+
+test("an order call the store refused (a 403, a 429) keeps the unknown outcome's code and detail, in its own words: never 'no readable answer'", () => {
+  const plain = bodyOf(kernelOutcomeUnknown("order_create_outcome_unknown", null));
+  for (const [answered, words] of [["refused", /answered this order request with a refusal\. This checkout cannot be retried/], ["rate_limited", /refused this order request for rate limiting\. An earlier attempt of this checkout may already have placed an order/]]) {
+    const body = bodyOf(kernelOutcomeUnknown("order_create_outcome_unknown", null, { answered }));
+    assert.deepEqual(Object.keys(body), Object.keys(plain), answered);
+    assert.deepEqual([body.code, body.retriable, body.detail], ["CHECKOUT_OUTCOME_UNKNOWN", false, { reason: "order_create_outcome_unknown", order_id: null }], answered);
+    assert.match(body.message, words, answered);
+    assert.match(body.message, /Sending this call again with the same idempotency_key returns this same answer\.$/, answered);
+    assert.match(body.recovery, /do not place a new order for this purchase without the buyer/, answered);
+    assert.equal(/no readable answer|may have been accepted|nothing was ordered|answered/.test(JSON.stringify(body.detail)), false, answered);
+    assert.equal(/no readable answer|may have been accepted|nothing was ordered/i.test(body.message + body.recovery), false, answered);
+  }
+  // A marker on any other unknown is never read: an error built by hand with one says what it always said.
+  const forged = kernelOutcomeUnknown("payment_outcome_unknown_after_order", "ord_0001");
+  Object.defineProperty(forged, "answeredRefusal", { value: "refused" });
+  assert.match(bodyOf(forged).message, /^The order was created \(detail\.order_id\)/);
+});

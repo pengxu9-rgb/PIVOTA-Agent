@@ -39,6 +39,26 @@ function isPlainObject(value) {
   return value != null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// THE ORDER CALL'S REFUSAL, AS THE STORE ANSWERED IT (the transport's facts, src/server.js
+// throwCommerceKernelUpstreamError): `rate_limited` for a 429, `refused` for a 403, a response that arrived with no
+// deadline mark; else undefined. Only the words of an unknown outcome depend on it (errors.js KERNEL_ANSWERED_REFUSALS).
+function answeredRefusalKind(err) {
+  if (!(err instanceof PivotaCommerceError) || !isPlainObject(err.detail) || err.detail.upstream_timeout === true) return undefined;
+  const status = err.detail.upstream_status;
+  if (status === 429) return 'rate_limited';
+  if (status === 403) return 'refused';
+  return undefined;
+}
+
+// The order id a 409 QUOTE_CONSUMED names (the route's own detail, `details.order_id`), id-shaped, else null.
+function consumedQuoteOrderId(err) {
+  if (!(err instanceof PivotaCommerceError) || !isPlainObject(err.detail)) return null;
+  const { upstream_status: status, upstream_code: code, upstream_detail: route } = err.detail;
+  if (status !== 409 || code !== 'QUOTE_CONSUMED' || !isPlainObject(route) || route.error !== 'QUOTE_CONSUMED' || !isPlainObject(route.details)) return null;
+  const id = route.details.order_id;
+  return typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(id) ? id : null;
+}
+
 function nonBlank(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
@@ -341,9 +361,10 @@ export class SafetyKernel {
           // every terminal refusal the upstream named (out of stock, a changed price, ...), is answered as raised.
           if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && err.retriable === true))) {
             // Held, not released: a same-key resend is told this same answer (the ledger keeps it), on every caller of
-            // createOrder, the invoke route's bare one included.
+            // createOrder, the invoke route's bare one included. A 403 or a 429 the store DID answer says so in its
+            // words (answeredRefusalKind), never "no readable answer"; the outcome and the claim are the same.
             runCtx.sideEffectDone = true;
-            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null);
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: answeredRefusalKind(err) });
           }
           throw err;
         }
@@ -462,6 +483,13 @@ export class SafetyKernel {
     };
     const refusal = upstreamAnsweredRefusal(err);
     if (!refusal) {
+      // "This quote was already consumed" names the order the store holds for it: logged for reconciliation, beside the
+      // quote id and outside redact() for the same reason. Never in any answer, and nothing about its owner.
+      const consumedOrderId = consumedQuoteOrderId(err);
+      if (consumedOrderId) {
+        try { this._log.warn?.('quote_claim_kept', { quote_id: quoteId, upstream_order_id: consumedOrderId, ...redact({ code: err?.code ?? null, reason: 'create_order_outcome_unknown' }) }); } catch { /* a log line never changes an answer */ }
+        return;
+      }
       note('warn', 'quote_claim_kept', { reason: 'create_order_outcome_unknown' });
       return;
     }

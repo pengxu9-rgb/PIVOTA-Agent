@@ -17,7 +17,7 @@
 
 import externalSeedLane from "../../src/services/externalSeedLane.js";
 import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
-import { PivotaCommerceError, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
+import { PivotaCommerceError, KERNEL_ANSWERED_REFUSALS, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 // The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
@@ -1872,7 +1872,10 @@ export function toToolError(error) {
     if (kernelUnknown) {
       const orderId = surfaceableOrderId(kernelUnknown.order_id);
       const answer = KERNEL_OUTCOME_UNKNOWN_ANSWERS[kernelUnknown.reason];
-      body.message = orderId ? answer.withOrder : answer.withoutOrder;
+      // An order call the store answered with a refusal that keeps the claim (a 403, a 429): its own words, never "no
+      // readable answer". Which one is not surfaced; the detail below is the same.
+      const answered = !orderId && kernelUnknown.answered ? KERNEL_ANSWERED_REFUSALS[kernelUnknown.answered] : null;
+      body.message = answered ? `${answered.message} ${SAME_KEY_SAME_ANSWER}` : orderId ? answer.withOrder : answer.withoutOrder;
       body.recovery = error.recovery;
       body.detail = { reason: kernelUnknown.reason, order_id: orderId };
     }
@@ -1952,6 +1955,7 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
   },
 });
 
+const SAME_KEY_SAME_ANSWER = "Sending this call again with the same idempotency_key returns this same answer.";
 // The kernel's unknown outcomes (errors.js KERNEL_OUTCOME_UNKNOWN_REASONS), in words that say what is and is not known.
 const KERNEL_OUTCOME_UNKNOWN_ANSWERS = Object.freeze({
   payment_outcome_unknown_after_order: {
