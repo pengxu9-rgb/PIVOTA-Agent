@@ -104,6 +104,7 @@ const MESSAGES = {
   QUOTE_ALREADY_USED: 'This checkout session was already used to place an order, so it can\'t be used again. Read that order first (get_order) before doing anything else; start a new checkout only if the buyer wants another order.',
 };
 const RETRIABLE = { MERCHANT_UNAVAILABLE: true };
+const ACP_HELD_UNKNOWN = 'An order was asked for on this checkout session, and whether it was placed is not known, so the session cannot be changed or completed again. Read it with GET /checkout_sessions/{checkout_session_id}, and do not start another checkout for this purchase without the buyer: an order may exist.';
 // An order call with no readable answer (no answer, a 5xx, a page from in front of the backend): the kernel's unknown
 // outcome, with no order id. The ACP door answers it with the catalog's words; the tool doors with their own.
 MESSAGES.CHECKOUT_OUTCOME_UNKNOWN = 'The checkout request may have been accepted. Its outcome is unknown. Keep the same request and reference when checking again; do not start another purchase.';
@@ -149,7 +150,10 @@ function assertRefused(h, r, code, label, { orderId, answered } = {}) {
   }
   if (h.caller === 'acp_complete') {
     assert.equal(r.http, ACP_STATUS[code], `${label}: ${r.raw.slice(0, 300)}`);
-    assert.equal(r.raw, JSON.stringify(curated ? { type: 'error', code, message: curated.acp_message, detail: curated.acp_detail } : { type: 'error', code, message: refused ? refused.message : MESSAGES[code] }), label);
+    // A used session whose claim holds no order this door knows of: the door's own words for an order call whose
+    // outcome is unknown (never the catalog's "already used to place an order ... get_order").
+    const heldUnknown = code === 'QUOTE_ALREADY_USED' && !orderId ? { type: 'error', code, message: ACP_HELD_UNKNOWN, detail: { reason: 'checkout_session_order_outcome_unknown' } } : null;
+    assert.equal(r.raw, JSON.stringify(heldUnknown || (curated ? { type: 'error', code, message: curated.acp_message, detail: curated.acp_detail } : { type: 'error', code, message: refused ? refused.message : MESSAGES[code] })), label);
   } else {
     assert.equal(r.http, 200, label);
     const error = curated

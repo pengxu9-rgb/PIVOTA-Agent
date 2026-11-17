@@ -650,6 +650,16 @@ test('6: the ACP door refuses to re-price a session whose claim is held (an orde
       assert.notEqual(again.http, 200, `${label}: ${again.raw.slice(0, 300)}`);
       assert.deepEqual(again.upstream.filter((c) => c.path === ORDERS || c.path === PAGES), [], label);
       assert.ok(door.orders.length - ordersBefore <= 1, label);
+      // P3-2: an order call whose outcome is unknown is never told the catalog's "already used to place an order ...
+      // get_order": the update and another completion are told what is known, in this door's words.
+      if (status === 'checkout.in_progress') {
+        for (const r of [updated, again]) {
+          assert.deepEqual([r.http, r.body.code, r.body.detail], [409, 'QUOTE_ALREADY_USED', { reason: 'checkout_session_order_outcome_unknown' }], `${label}: ${r.raw.slice(0, 300)}`);
+          assert.match(r.body.message, /^An order was asked for on this checkout session, and whether it was placed is not known/, label);
+          assert.match(r.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, label);
+          assert.equal(/get_order|already used to place an order/.test(r.body.message), false, label);
+        }
+      }
     }
   }
 });

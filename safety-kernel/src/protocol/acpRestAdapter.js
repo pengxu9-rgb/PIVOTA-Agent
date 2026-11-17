@@ -58,6 +58,7 @@ const ACP_PROTOCOL_NAME = 'acp';
 // Where this door's caller supplies or replaces the fulfillment address. Named as the concrete REST endpoint.
 const ADDRESS_UPDATE_HINT = 'POST /checkout_sessions/{checkout_session_id}';
 const MAX_SESSION_WRITE_ATTEMPTS = 4; // conditional writes of one session record a request tries before it gives up
+const HELD_UNKNOWN_MESSAGE = 'An order was asked for on this checkout session, and whether it was placed is not known, so the session cannot be changed or completed again. Read it with GET /checkout_sessions/{checkout_session_id}, and do not start another checkout for this purchase without the buyer: an order may exist.';
 // The executor's readings of a session whose quote's claim is held (canonicalExecutor.js sessionClaimStatus).
 const HELD_SESSION_STATUSES = new Set(['completed', 'order_outcome_unknown', 'order_status_unknown', 'canceled']);
 // A session is open until it has an order or was cancelled.
@@ -277,7 +278,10 @@ export function createAcpRestAdapter(deps = {}) {
   function heldSessionRefusal(held) {
     if (held.status === 'canceled') return new PivotaCommerceError('ORDER_CANCELED', { reason: 'checkout_session_canceled' });
     if (nonEmpty(held.order_id)) return new PivotaCommerceError('QUOTE_ALREADY_USED', { reason: 'checkout_session_completed' });
-    return new PivotaCommerceError('QUOTE_ALREADY_USED', { reason: 'checkout_session_order_outcome_unknown' });
+    // Not the catalog's "already used to place an order ... read that order (get_order)": whether an order exists is
+    // not known, this door has no get_order, and it names no order id. Words an ACP caller can act on.
+    const reason = 'checkout_session_order_outcome_unknown';
+    return new PivotaCommerceError('QUOTE_ALREADY_USED', { reason, acp_message: HELD_UNKNOWN_MESSAGE, acp_detail: { reason } });
   }
   // Point the record back at the quote whose claim is held (and at its order, when the claim names this caller's), so
   // every later request reads and judges the session by that quote. A completed or cancelled record is left as it is.
@@ -605,10 +609,15 @@ export function createAcpRestAdapter(deps = {}) {
         // outcome is unknown): the record is pointed at the quote this completion used, and at its order when the claim
         // names it, so an update that re-priced the session meanwhile cannot leave this id open on a fresh quote. Best
         // effort: the answer is the completion's either way.
+        let held = null;
         try {
-          const held = await heldClaimOf(stored.quote_id, ctx);
+          held = await heldClaimOf(stored.quote_id, ctx);
           if (held && held.status !== 'canceled') await pinToHeldQuote(acp_session_id, stored.quote_id, held);
         } catch { /* the completion's answer stands */ }
+        // Another key on a session whose order call's outcome is unknown: the same words as an update is told.
+        if (err instanceof PivotaCommerceError && err.code === 'QUOTE_ALREADY_USED' && held && held.status === 'order_outcome_unknown') {
+          throw heldSessionRefusal(held);
+        }
         // A completion refused for its market writes nothing: every completion is judged for its own address, so a
         // mark from this one would add no judgement and would only stand in the way of a later, correct one.
         throw err;
