@@ -3,6 +3,7 @@
 const { recordAuroraRecoAnswerPath } = require('../auroraBff/visionMetrics');
 const { recommendationIdentityConflict } = require('../shared/recoProductIdentity');
 const { readIngredientExclusions, assessIngredientExclusions } = require('./recommendIngredientExclusions');
+const { recommendIngredientExclusionEnabled } = require('./recommendIngredientExclusionFlag');
 const { ASSUMED_MARKET } = require('../services/requestMarket');
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 // Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
@@ -762,7 +763,9 @@ function makeRecommendProducts(deps = {}) {
     }
 
     const constraints = normalizeConstraints(p.constraints);
-    const ingredientExclusion = readIngredientExclusions(p.constraints);
+    // Dark unless AGENT_RECOMMEND_INGREDIENT_EXCLUSION_ENABLED (read per call). Off, `avoid` stays a hint
+    // to the model, as it is rendered into the ask with every other constraint: nothing below reads it.
+    const ingredientExclusion = recommendIngredientExclusionEnabled() ? readIngredientExclusions(p.constraints) : null;
     const limitRaw = Number(p.limit);
     const limit = Number.isInteger(limitRaw) ? Math.min(MAX_LIMIT, Math.max(1, limitRaw)) : DEFAULT_LIMIT;
     const lang = str(p.language).toUpperCase() === 'CN' ? 'CN' : 'EN';
