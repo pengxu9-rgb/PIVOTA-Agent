@@ -1944,6 +1944,8 @@ export function toToolError(error) {
         const byStatus = ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS[status] || ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS.created;
         body.message = byStatus.message;
         body.recovery = byStatus.recovery.replace("get_order;", orderId ? "get_order (detail.order_id);" : "get_order;");
+        // `canceled: false` is this call's own result; a row that already reads canceled says so beside it.
+        if (status === "canceled") body.detail.already_canceled = true;
         if (orderId) body.detail.order_id = orderId;
         if (status) body.detail.order_status = status;
       }
@@ -2009,7 +2011,7 @@ const ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS = Object.freeze({
     recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should ask the merchant to cancel it",
   },
   canceled: {
-    message: "This order already reads canceled here, and nothing was sent to the store by this call.",
+    message: "This order already reads canceled here. This call did not cancel anything and sent nothing to the store.",
     recovery: "read the order with get_order; tell the buyer only what that read says",
   },
 });

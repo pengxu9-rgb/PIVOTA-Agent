@@ -1239,7 +1239,11 @@ async function cancelSession(kernel, params, ctx) {
       reason: 'cannot_cancel_paid_or_pending', order_id,
       // The ACP REST door says what happened in its own words; every other door's answer is as it was.
       ...(acpDoor ? {
-        acp_message: `This checkout session's order ${o.status === 'paid' ? 'was paid' : 'has a payment under way'}, so it was not canceled. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}; a refund is the merchant's to make.`,
+        // A refund is the merchant's only for money that moved: said outright for a paid order, and only as "if it is
+        // charged" for a payment still under way, whose outcome is not known yet.
+        acp_message: o.status === 'paid'
+          ? `This checkout session's order was paid, so it was not canceled. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}; a refund is the merchant's to make.`
+          : `This checkout session's order has a payment under way, so it was not canceled, and the payment's outcome is not known yet. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}; if it is charged, a refund is the merchant's to make.`,
         acp_detail: { reason: 'cannot_cancel_paid_or_pending', canceled: false, order_status: o.status },
       } : {}),
     });
@@ -1251,7 +1255,9 @@ async function cancelSession(kernel, params, ctx) {
   const words = acpDoor ? acpOrderCancelWords(status) : null;
   throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', {
     op, reason: 'order_cancel_not_available', order_id, upstream_cancel: false, order_status: status,
-    ...(words ? { acp_message: words, acp_detail: { reason: 'order_cancel_not_available', canceled: false, order_status: status } } : {}),
+    // `canceled: false` is this call's own result (it canceled nothing); a row that already reads canceled says so beside
+    // it (`already_canceled`), so the two are never read as a contradiction.
+    ...(words ? { acp_message: words, acp_detail: { reason: 'order_cancel_not_available', canceled: false, ...(status === 'canceled' ? { already_canceled: true } : {}), order_status: status } } : {}),
   });
 }
 
@@ -1259,7 +1265,7 @@ async function cancelSession(kernel, params, ctx) {
 const ACP_SESSION_READ = 'GET /checkout_sessions/{checkout_session_id}';
 function acpOrderCancelWords(status) {
   if (status === 'canceled') {
-    return `This checkout session's order already reads canceled here, and nothing was sent to the store by this request. Read the session with ${ACP_SESSION_READ} before telling the buyer anything.`;
+    return `This checkout session's order already reads canceled here. This request did not cancel anything and sent nothing to the store. Read the session with ${ACP_SESSION_READ} before telling the buyer anything.`;
   }
   if (status === 'failed') {
     return `This checkout session became an order, and the order cannot be canceled from here: no cancellation reaches the store. Its payment did not go through. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}, and if the buyer no longer wants it, the buyer should ask the merchant to cancel it.`;

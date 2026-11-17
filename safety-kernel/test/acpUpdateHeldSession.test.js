@@ -312,3 +312,22 @@ test('P2-2 an update naming a market nothing is priced for, on a session whose c
     assert.equal((await d.record(id)).refused_market, 'DE');
   }
 });
+
+test('P3 (d) the ACP cancel of a paid order says a refund is the merchant\'s; of a payment under way, only if it is charged, and that its outcome is not known yet', async () => {
+  for (const [status, words, never] of [
+    ['paid', /was paid, so it was not canceled.*a refund is the merchant's to make\./, /if it is charged/],
+    ['charge_pending', /has a payment under way, so it was not canceled, and the payment's outcome is not known yet\..*if it is charged, a refund is the merchant's to make\./, /was paid/],
+  ]) {
+    const d = door();
+    const id = (await d.create('GB')).body.id;
+    const done = await d.complete(id, 'idem-cxl-paid-0001');
+    assert.equal(done.status, 200, JSON.stringify(done.body));
+    const orderId = (await d.record(id)).order_id;
+    const o = await d.kernel._orderStore.get(orderId);
+    await d.kernel._orderStore.set(orderId, { ...o, status });
+    const cancel = await d.cancel(id);
+    assert.deepEqual([cancel.status, cancel.body.code, cancel.body.detail], [409, 'OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending', canceled: false, order_status: status }], JSON.stringify(cancel.body));
+    assert.match(cancel.body.message, words, status);
+    assert.doesNotMatch(cancel.body.message, never, status);
+  }
+});

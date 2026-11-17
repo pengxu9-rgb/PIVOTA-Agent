@@ -506,7 +506,9 @@ test('5: cancel by order id with the upstream cancel off is never canceled: the 
     assert.deepEqual([cancel.http, cancel.body.code], [409, 'OPERATION_NOT_ALLOWED'], `${market}: ${cancel.raw.slice(0, 300)}`);
     // P3-3: its own words, never the catalog's "That action is not available here."
     assert.deepEqual(cancel.body.detail, { reason: 'cannot_cancel_paid_or_pending', canceled: false, order_status: 'charge_pending' }, market);
-    assert.match(cancel.body.message, /^This checkout session's order has a payment under way, so it was not canceled\./, market);
+    assert.match(cancel.body.message, /^This checkout session's order has a payment under way, so it was not canceled, and the payment's outcome is not known yet\./, market);
+    // P3 (d): a refund is the merchant's only if it is charged; never said outright for a payment still under way.
+    assert.match(cancel.body.message, /if it is charged, a refund is the merchant's to make/, market);
     assert.match(cancel.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, market);
     assert.deepEqual(cancel.upstream, [], market);
     const got = await door.acp('GET', `/checkout_sessions/${created.body.id}`);
@@ -520,7 +522,7 @@ test('P3-4/P3-3: the flag-off order-id cancel words follow the order\'s status o
   for (const [status, mcpWords, acpWords] of [
     ['created', /any payment page opened for it stays open until it expires/, /any payment page opened for it stays open until it expires/],
     ['failed', /^This order cannot be canceled from here: no cancellation reaches the store\. Its payment did not go through\.$/, /Its payment did not go through\./],
-    ['canceled', /^This order already reads canceled here, and nothing was sent to the store by this call\.$/, /already reads canceled here/],
+    ['canceled', /^This order already reads canceled here\. This call did not cancel anything and sent nothing to the store\.$/, /already reads canceled here\. This request did not cancel anything/],
   ]) {
     for (const market of ['US', 'SG', 'GB']) {
       const label = `${status} ${market}`;
@@ -530,7 +532,7 @@ test('P3-4/P3-3: the flag-off order-id cancel words follow the order\'s status o
       await setStatus(linked.value.order_id, status);
       const own = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), order_id: linked.value.order_id }, { buyer: h.buyer });
       const e = errorOf(own);
-      assert.deepEqual([e.code, e.retriable, e.detail], ['OPERATION_NOT_ALLOWED', false, { reason: 'order_cancel_not_available', canceled: false, order_id: linked.value.order_id, order_status: status }], `${label}: ${own.raw.slice(0, 300)}`);
+      assert.deepEqual([e.code, e.retriable, e.detail], ['OPERATION_NOT_ALLOWED', false, { reason: 'order_cancel_not_available', canceled: false, ...(status === 'canceled' ? { already_canceled: true } : {}), order_id: linked.value.order_id, order_status: status }], `${label}: ${own.raw.slice(0, 300)}`);
       assert.match(e.message, mcpWords, label);
       assert.match(e.recovery, /get_order \(detail\.order_id\)/, label);
       if (status !== 'created') assert.equal(/payment page/i.test(e.message + e.recovery), false, `${label}: ${e.message}`);
@@ -542,7 +544,7 @@ test('P3-4/P3-3: the flag-off order-id cancel words follow the order\'s status o
       assert.equal(done.http, 200, done.raw.slice(0, 300));
       await setStatus(done.body.order.id, status);
       const cancel = await door.acp('POST', `/checkout_sessions/${created.body.id}/cancel`, {}, { key: freshKey() });
-      assert.deepEqual([cancel.http, cancel.body.code, cancel.body.detail], [409, 'OPERATION_NOT_ALLOWED', { reason: 'order_cancel_not_available', canceled: false, order_status: status }], `${label}: ${cancel.raw.slice(0, 300)}`);
+      assert.deepEqual([cancel.http, cancel.body.code, cancel.body.detail], [409, 'OPERATION_NOT_ALLOWED', { reason: 'order_cancel_not_available', canceled: false, ...(status === 'canceled' ? { already_canceled: true } : {}), order_status: status }], `${label}: ${cancel.raw.slice(0, 300)}`);
       assert.match(cancel.body.message, acpWords, label);
       assert.match(cancel.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, label);
       assert.equal(/get_order|not available here/.test(cancel.body.message), false, label);

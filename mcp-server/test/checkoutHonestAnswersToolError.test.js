@@ -91,7 +91,10 @@ test("P3-4 the flag-off order-id cancel words follow the order's status: a faile
   assert.match(failed.recovery, /ask the merchant to cancel it/);
   assert.equal(/should not pay/.test(failed.recovery), false);
   const canceled = of("canceled");
-  assert.equal(canceled.message, "This order already reads canceled here, and nothing was sent to the store by this call.");
+  assert.equal(canceled.message, "This order already reads canceled here. This call did not cancel anything and sent nothing to the store.");
+  // This call's own result beside the row's: never read as a contradiction.
+  assert.deepEqual(canceled.detail, { reason: "order_cancel_not_available", canceled: false, already_canceled: true, order_id: "ord_0001", order_status: "canceled" });
+  assert.equal("already_canceled" in failed.detail, false);
   assert.equal(canceled.recovery, "read the order with get_order (detail.order_id); tell the buyer only what that read says");
   for (const body of [failed, canceled]) assert.equal(/payment page/i.test(body.message + body.recovery), false, body.message);
   // Created, a status no table names, and none at all: an unpaid order's words, with "any payment page opened for it".
