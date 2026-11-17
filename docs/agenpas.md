@@ -21,7 +21,7 @@ All read per request; no restart needed.
 | `AGENPAS_ENABLED` | off | Off: every `/agenpas` path falls through to the app's normal not-found (byte-identical to before), and `start_purchase`, `get_order` and both tool descriptions are exactly as before. |
 | `AGENPAS_LINK_SECRET` | none | HMAC-SHA256 key for link tokens, at least 32 characters. Missing or short: no link is minted and every link is refused (the page says AgenPas is unavailable). |
 | `AGENPAS_LINK_TTL_SECONDS` | 1800 | Link lifetime. Clamped to 60..1800 (30 min is a hard maximum, also enforced on verify). |
-| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at, and the ONLY host the routes answer on. None: no link is minted and no route is served. It is also the token's audience (`aud`). `http://localhost` is accepted only while the dev fixtures are actually enabled. **Use a dedicated origin** (a host serving nothing but AgenPas): the page's CSP, its no-referrer policy and the buyer's trust in the address bar are then not shared with any other surface of the gateway. |
+| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at, and the ONLY host the AgenPas routes answer on. None: no link is minted and no route is served. It is also the token's audience (`aud`). `http://localhost` is accepted only while the dev fixtures are actually enabled. **The host is exclusive** (while `AGENPAS_ENABLED` is on): on it, every request other than a GET/HEAD of an AgenPas route answers 404, ahead of every other gateway middleware and route (the internal UI, `/health`, the APIs, `/mcp`), so no other gateway page shares the origin where the buyer's link token is kept. Give it a host name of its own (a dedicated origin): a host that also serves other gateway traffic would lose that traffic. Other hosts are unaffected. |
 | `AGENPAS_INTERNAL_READ_KEY` | none | The dedicated key the gateway presents (`X-Internal-Key`) on the backend's internal buyer read. None: every read is unavailable. |
 | `AGENPAS_HOSTED_HOSTS` | empty | Comma-separated exact host names the payment partner serves its hosted pages from. Empty refuses every hosted URL (the page shows no button, only "Getting the secure page ready"). |
 | `AGENPAS_EMBED_HOSTED_PAGES` | off | Off: hosted pages open in a popup or a new tab. On: the page frames them (see below). |
@@ -76,6 +76,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `locking` | Confirming your total (the merchant prices the exact cart; nothing is approved yet) |
 | `awaiting_buyer_authorization` (+ `approval` page) | "Approve $X at merchant with Face ID or fingerprint", then "Waiting for your approval…" |
 | `placing` | "Placing your order at merchant…" (or "Confirm with your bank" while a bank check page is offered) |
+| `placing` with a hold / outcome-unknown code | "We're checking with the store — don't try again. This can take a while…" (polling goes on) |
 | `completed` | Order placed: order number, total charged, store, link to the store's order page when it is on the store's domain |
 | `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording with no "try again". |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
@@ -83,7 +84,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 Codes are read segment by segment: the backend writes compound codes (`paid_sent:<n>:<variant>:<code>`,
 `bound_sent:<n>:<code>`, `binding_refused:<kind>:<status>`), so each is lower-cased and split on `:`, and every
 segment is checked. The step prefixes (`paid_sent`, `bound_sent`) are bookkeeping and are skipped: `paid` is the
-approval-page step (the rail mints a token, nothing is charged), so `paid_sent:2:visa:buyer_action_expired` gets the
+approval-page step (the rail mints a token, nothing is charged), so `paid_sent:2:scheme:buyer_action_expired` gets the
 ordinary wording. A code segment that is outcome-unknown or a hold (money may have moved, or a human must look:
 `money_result_seen`, `vic_order_stale`, `vic_total_over_approved`, `vic_currency_mismatch`,
 `checkout_confirm_unresolved`, `checkout_payment_no_order`, `checkout_result_overdue`, ... see `src/agenpas/view.js`)

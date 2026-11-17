@@ -38806,6 +38806,11 @@ const AURORA_CHATBOX_ORIGINS = new Set([
   'https://pivota-aurora-chatbox.vercel.app',
 ]);
 
+// AgenPas (docs/agenpas.md): the AgenPas public host serves AgenPas and nothing else. FIRST, ahead of every other
+// middleware and route; a no-op while AGENPAS_ENABLED is off or on any other host (src/agenpas/router.js).
+const agenpasHostGuard = require('./agenpas/router').createAgenpasHostGuard();
+app.use(agenpasHostGuard.front);
+
 // CORS configuration - allow UI to call Gateway
 // NOTE: Must run BEFORE body parsing so browser clients still receive CORS headers
 // even when JSON parsing fails (otherwise Aurora Chatbox sees "No Access-Control-Allow-Origin").
@@ -39109,6 +39114,8 @@ app.use(require('./agenpas/router').createAgenpasRouter({
   reader: buildAgenpasPurchaseReader(logger),
   logger,
 }));
+// …and on the AgenPas host an /agenpas path the router did not serve goes no further.
+app.use(agenpasHostGuard.back);
 
 // ---------------- Inbound agent signatures (Visa TAP / IETF Web Bot Auth) ----------------
 //

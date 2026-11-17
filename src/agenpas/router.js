@@ -64,6 +64,10 @@ function hostnameOf(hostHeader) {
   return colon > 0 ? h.slice(0, colon) : h;
 }
 
+// NOT a network check: this reads the client-supplied Host header, never the socket. It is one more condition on top
+// of the real guards (no managed platform, no production environment, and a loopback AGENPAS_PUBLIC_BASE_URL, which
+// is itself accepted only while the fixtures are armed); it only keeps a fixture link from being served under a
+// public name by mistake.
 function isLoopbackHost(req) {
   return LOOPBACK_HOSTNAMES.has(hostnameOf(req.headers.host));
 }
@@ -383,8 +387,48 @@ function createAgenpasRouter(deps = {}) {
   return router;
 }
 
+/*
+ * THE AGENPAS HOST IS EXCLUSIVE. With AgenPas on and AGENPAS_PUBLIC_BASE_URL set, a request whose Host is that
+ * origin's host is AgenPas's or nothing: `front` (mounted FIRST in src/server.js, ahead of CORS, the body parser, the
+ * internal UI's static files and every route) answers 404 to anything but GET/HEAD under /agenpas/, and `back`
+ * (mounted right after the AgenPas router) answers 404 to an /agenpas/ path the router did not serve. So no other
+ * gateway page (the internal UI has no CSP) ever shares the origin where the buyer's link token lives
+ * (sessionStorage). Off, or on any other host, both call next() and change nothing.
+ */
+const HOST_REFUSAL_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+
+function agenpasHost(env) {
+  if (!config.isEnabled(env)) return null;
+  const base = config.publicBaseUrl(env);
+  return base ? new URL(base).host.toLowerCase() : null;
+}
+
+function createAgenpasHostGuard(deps = {}) {
+  const envOf = () => deps.env || process.env;
+  const onAgenpasHost = (req) => {
+    const host = agenpasHost(envOf());
+    return Boolean(host) && String(req.headers.host || '').toLowerCase() === host;
+  };
+  const refuse = (res) => {
+    setCommonHeaders(res);
+    res.setHeader('Content-Security-Policy', HOST_REFUSAL_CSP);
+    return res.status(404).type('text/plain').send('Not found');
+  };
+  return Object.freeze({
+    front(req, res, next) {
+      if (!onAgenpasHost(req)) return next();
+      const ours = String(req.path || '').startsWith('/agenpas/') && (req.method === 'GET' || req.method === 'HEAD');
+      return ours ? next() : refuse(res);
+    },
+    back(req, res, next) {
+      return onAgenpasHost(req) ? refuse(res) : next();
+    },
+  });
+}
+
 module.exports = {
   LINK_HEADER,
   contentSecurityPolicy,
+  createAgenpasHostGuard,
   createAgenpasRouter,
 };

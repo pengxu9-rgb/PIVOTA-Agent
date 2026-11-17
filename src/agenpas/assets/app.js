@@ -151,7 +151,7 @@
 
     if (view.screen !== 'done' && !view.terminal) {
       var quoted = money(a.quoted_total_minor, view.currency);
-      var approved = view.screen === 'placing' || view.screen === 'authenticate';
+      var approved = view.state === 'placing';
       if (quoted) {
         append(card, el('p', 'approve-cap', (approved ? 'You approved up to ' : "You'll approve up to ") + quoted));
         append(card, el('p', 'fine', "The final total includes shipping and tax and can't be more than the amount you approve."));
@@ -181,7 +181,8 @@
     frame.src = action.url;
     frame.title = action.kind === 'card_binding' ? "Payment partner's secure card page" : "Payment partner's secure approval page";
     frame.setAttribute('referrerpolicy', 'no-referrer');
-    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation-by-user-activation');
+    // No top-navigation token: a framed hosted page can never navigate the buyer's AgenPas tab away.
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
     frame.setAttribute('allow', 'publickey-credentials-get; publickey-credentials-create');
     return frame;
   }

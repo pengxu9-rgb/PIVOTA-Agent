@@ -39,6 +39,49 @@ describe('AgenPas routes in the gateway app', () => {
     }
   });
 
+  test('the AgenPas host is exclusive: every non-AgenPas path is 404 there, and other hosts are unchanged', async () => {
+    const app = require('../src/server');
+    const OTHER_PATHS = ['/', '/index.html', '/health', '/api/merchant/disputes', '/mcp', '/agenpas/not-a-route'];
+    const strip = (r) => ({ status: r.status, type: r.headers['content-type'], text: r.text });
+    // Flag off first: the baseline for every host.
+    const before = {};
+    for (const host of ['agenpas.example', 'gateway.example']) {
+      for (const p of OTHER_PATHS) before[`${host}${p}`] = strip(await request(app).get(p).set('Host', host));
+    }
+    process.env.AGENPAS_ENABLED = '1';
+    process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+    process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+    for (const p of OTHER_PATHS) {
+      for (const method of ['get', 'post', 'options']) {
+        const res = await request(app)[method](p).set('Host', 'agenpas.example');
+        expect([p, method, res.status]).toEqual([p, method, 404]);
+        expect(res.text.includes('Internal UI')).toBe(false);
+        expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+      }
+    }
+    // A non-GET on an AgenPas path, and a case variant, are refused there too.
+    expect((await request(app).post('/agenpas/api/p/ap_000000000000000000000001').set('Host', 'agenpas.example')).status).toBe(404);
+    expect((await request(app).get('/AGENPAS/assets/app.js').set('Host', 'agenpas.example')).status).toBe(404);
+    // AgenPas itself still answers there.
+    expect((await request(app).get('/agenpas/assets/app.js').set('Host', 'agenpas.example')).status).toBe(200);
+    // Every other host: exactly what it answered with the flag off.
+    for (const p of OTHER_PATHS) {
+      const now = strip(await request(app).get(p).set('Host', 'gateway.example'));
+      const then = before[`gateway.example${p}`];
+      if (p === '/health') expect(now.status).toBe(then.status);
+      else expect(now).toEqual(then);
+    }
+    // And with the flag off, the AgenPas host is an ordinary host again.
+    delete process.env.AGENPAS_ENABLED;
+    for (const p of OTHER_PATHS) {
+      const now = strip(await request(app).get(p).set('Host', 'agenpas.example'));
+      const then = before[`agenpas.example${p}`];
+      if (p === '/health') expect(now.status).toBe(then.status);
+      else expect(now).toEqual(then);
+    }
+    expect(before['agenpas.example/'].status).toBe(200);
+  });
+
   test('lit with dev fixtures: page, assets and API answer', async () => {
     process.env.AGENPAS_ENABLED = '1';
     process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';

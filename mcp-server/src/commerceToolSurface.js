@@ -78,6 +78,7 @@ import {
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 import {
+  AGENT_PURCHASE_ORDER_READ_FLAG,
   START_PURCHASE_INPUT_SCHEMA,
   START_PURCHASE_TOOL,
   START_PURCHASE_TOOL_DEFINITION,
@@ -713,9 +714,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       const purchaseHandoff = op.id === "get_order" && isPlainObject(result)
         && result[Symbol.for("pivota.commerce.agentPurchaseResult")] === true;
       let sanitized = sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff });
-      // AgenPas: a native get_order of an A2A-rail purchase carries a FRESHLY minted `agenpas_url` (no link
-      // configured = unchanged), so a buyer whose 30-minute link ran out can be handed a new one. See withAgenpasUrl.
-      if (purchaseHandoff && dialect === TOOL_DIALECTS.mcp && isA2aPurchaseAnswer(sanitized)) {
+      // AgenPas: a get_order of an A2A-rail purchase carries a FRESHLY minted `agenpas_url` (no link configured =
+      // unchanged), so a buyer whose link ran out can be handed a new one. See withAgenpasUrl. Native door only, by
+      // construction: the UCP vocabulary has no get_order (UCP_DIALECT_OPERATIONS), so `op.id === "get_order"` is a
+      // native call; tests/agenpas_start_purchase.node.test.cjs fails if a UCP get_order ever appears.
+      if (purchaseHandoff && isA2aPurchaseAnswer(sanitized)) {
         sanitized = withAgenpasUrl(sanitized, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx);
       }
       // The door cache's price-freshness side channel survives the sanitizer (which rebuilds the value).
@@ -876,8 +879,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   }
 
   // The tool descriptions name `agenpas_url` only while links are minted: off, every description is byte-identical.
+  // get_order's sentence also needs the purchase read it rides on (AGENT_PURCHASE_ORDER_READ_ENABLED): without it a
+  // get_order never reads a rail purchase, so it can never carry a link.
   function withAgenpasDescriptions(list) {
     if (!agenpasLinksAvailable()) return list;
+    const orderReadOn = ["1", "true", "on", "yes"].includes(String(process.env[AGENT_PURCHASE_ORDER_READ_FLAG] || "").trim().toLowerCase());
     const link = orchestratedPurchase.agenpasLink;
     let minutes;
     try {
@@ -887,7 +893,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     }
     return list.map((tool) => {
       if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${agenpasStartPurchaseSentence(minutes)}` };
-      if (tool.name === "get_order") return { ...tool, description: `${tool.description} ${agenpasGetOrderSentence(minutes)}` };
+      if (tool.name === "get_order" && orderReadOn) return { ...tool, description: `${tool.description} ${agenpasGetOrderSentence(minutes)}` };
       return tool;
     });
   }

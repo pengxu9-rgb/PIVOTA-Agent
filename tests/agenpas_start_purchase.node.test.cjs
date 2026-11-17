@@ -203,15 +203,42 @@ test('get_order of an A2A purchase: a FRESH agenpas_url while on (a new token ea
   }
 });
 
-test('get_order: no agenpas_url for a purchase on another rail, on the UCP dialect, or without a verified agent id', async () => {
+test('get_order: no agenpas_url for a purchase on another rail, or without a verified agent id', async () => {
   const reap = await build({ orderRailId: 'rp_0123456789abcdef01234567' });
   const a2a = await build();
   await withEnv(ON_ALL, async () => {
     assert.equal(Object.hasOwn(await reap.callTool('get_order', { order_id: PP }, SESSION), 'agenpas_url'), false);
     const noAgent = { user_ref: SESSION.user_ref, acp_session_id: SESSION.acp_session_id };
     assert.equal(Object.hasOwn(await a2a.callTool('get_order', { order_id: PP }, noAgent), 'agenpas_url'), false);
-    const ucp = await a2a.callTool('get_order', { order_id: PP }, SESSION, { dialect: 'ucp' }).catch(() => ({}));
-    assert.equal(JSON.stringify(ucp).includes('agenpas'), false);
+  });
+});
+
+// The link on get_order is native-door only BY CONSTRUCTION: the UCP vocabulary has no get_order, so the surface has
+// no dialect check of its own there (commerceToolSurface.js). This is the tripwire: if a UCP get_order (or any UCP
+// tool that reaches the get_order op) ever appears, this fails, and whoever adds it must decide about AgenPas links.
+test('the UCP dialect has no get_order: a UCP get_order call is refused by name, and no UCP tool reaches that op', async () => {
+  const m = await mods();
+  const kernel = await import('../safety-kernel/src/protocol/canonicalContract.js');
+  const a2a = await build();
+  await withEnv(ON_ALL, async () => {
+    await assert.rejects(a2a.callTool('get_order', { order_id: PP }, SESSION, { dialect: 'ucp' }),
+      (err) => err.name === 'UnknownToolError' && /get_order/.test(err.message));
+    assert.equal(m.surface.ucpDialectSurface(a2a).tools.some((t) => t.name === 'get_order'), false);
+  });
+  assert.deepEqual(kernel.UCP_DIALECT_OPERATIONS.filter((op) => op.id === 'get_order' || op.ucpTool === 'get_order'), []);
+});
+
+test('the get_order sentence needs the order read too (AGENT_PURCHASE_ORDER_READ_ENABLED); start_purchase\'s does not change', async () => {
+  const m = await mods();
+  const surface = await build();
+  const without = await build({ withMinter: false });
+  await withEnv({ ...AGENPAS_CONFIG, AGENPAS_ENABLED: '1', ORCHESTRATED_PURCHASE_TOOL_ENABLED: undefined, AGENT_PURCHASE_ORDER_READ_ENABLED: undefined }, async () => {
+    const go = surface.tools.find((t) => t.name === 'get_order');
+    assert.equal(go.description, without.tools.find((t) => t.name === 'get_order').description);
+    assert.equal(go.description.includes(m.surface.agenpasGetOrderSentence(30)), false);
+  });
+  await withEnv({ ...AGENPAS_CONFIG, AGENPAS_ENABLED: '1', AGENT_PURCHASE_ORDER_READ_ENABLED: '1' }, async () => {
+    assert.ok(surface.tools.find((t) => t.name === 'get_order').description.endsWith(m.surface.agenpasGetOrderSentence(30)));
   });
 });
 
@@ -244,7 +271,7 @@ test('descriptions: byte-identical while links are not minted; one sentence each
   });
 });
 
-test('start_purchase on the Reap rail: no agenpas_url, even with links on (AgenPas serves the A2A rail only)', async () => {
+test('start_purchase on another rail: no agenpas_url, even with links on (AgenPas serves the A2A rail only)', async () => {
   const reap = await build({ createRail: 'reap' });
   const without = await build({ createRail: 'reap', withMinter: false });
   await withEnv(ON_ALL, async () => {

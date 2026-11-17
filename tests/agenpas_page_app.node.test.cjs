@@ -272,3 +272,26 @@ test('an action URL that is not https never reaches the DOM, and rendering does 
   await settle();
   assert.equal(embed.app.all((n) => n.tagName === 'IFRAME').length, 0);
 });
+
+test('a purchase held while placing: the checking screen, no "under a minute", no retry, and polling goes on', async () => {
+  const held = view({
+    state: 'placing', screen: 'outcome_unknown', terminal: false, action: null, poll_after_seconds: 15,
+    outcome: { kind: 'held', title: "We're checking with the store", message: "We're checking with the store — don't try again. This can take a while; we'll confirm what happened in the chat.", retry_hint: false, outcome_unknown: true },
+  });
+  const h = harness({ answers: [{ status: 200, body: held }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /don't try again/);
+  assert.equal(/under a minute/.test(h.text()), false);
+  assert.equal(/try again from|go back to the chat to try again/i.test(h.text()), false);
+  assert.equal(h.pollTimers()[0].ms, 15000, 'still polling');
+  assert.equal(h.storage.has(`agenpas:t:${PID}`), true, 'not final: the token is kept');
+});
+
+test('embed: the frame sandbox carries no top-navigation permission', async () => {
+  const h = harness({ answers: [{ status: 200, body: view({ action: { ...view().action, open_mode: 'embed' } }) }] });
+  h.start();
+  await settle();
+  const [frame] = h.app.all((n) => n.tagName === 'IFRAME');
+  assert.equal(/allow-top-navigation/.test(frame.getAttribute('sandbox')), false);
+});

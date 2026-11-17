@@ -74,8 +74,14 @@ const OUTCOME_UNKNOWN_CODES = new Set([
   'checkout_confirm_unresolved', 'checkout_confirm_error_card', 'checkout_confirm_conflict', 'checkout_payment_no_order',
   'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_total_over_approved', 'checkout_result_overdue',
   'checkout_cancel_unresolved', 'checkout_order_id_card_shaped',
+  'checkout_confirm_unrecognised', 'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_result_unrecognised',
+  'checkout_confirm_ambiguous_4xx',
 ]);
-const OUTCOME_UNKNOWN_SHAPE_RE = /(?:outcome_unknown|unresolved|unreconcil|parked|inconsistent|charge_pending|money_result)/;
+// Cross-checked 2026-11-18 against the backend worker's `_CHECKOUT_HOLD_CODES` (15) and `_VIC_HOLD_CODES` (7)
+// (pivota-backend services/payment_orchestration/a2a_rail_worker.py): every one of them is on the list above.
+// The SHAPE catches a new code of the same families, but never one that a named group below already words: an
+// explicit list always beats a heuristic (`vic_quote_mismatch` is a pre-submit price check, not a hold).
+const OUTCOME_UNKNOWN_SHAPE_RE = /(?:outcome_unknown|unresolved|unreconcil|unrecognised|unrecognized|ambiguous|mismatch|parked|inconsistent|charge_pending|money_result)/;
 
 /** On a COMPLETED purchase: the order was placed, but the final total could not be read. */
 const TOTAL_UNPARSED_CODES = new Set(['checkout_total_unparsed']);
@@ -174,7 +180,7 @@ const GENERIC_BY_STATE = Object.freeze({
   expired: {
     kind: 'expired',
     title: 'This purchase expired',
-    message: "It wasn't completed in time, so the order wasn't placed. You can start again from the chat.",
+    message: "It wasn't completed in time. Go back to the chat to check on it or to start again.",
     retry_hint: true,
   },
 });
@@ -201,15 +207,28 @@ function codeSegments(codes) {
 }
 
 /** True when any segment of the code (or codes) is outcome-unknown or a hold. */
-function isOutcomeUnknownCode(code) {
-  return codeSegments(Array.isArray(code) ? code : [code])
-    .some((seg) => OUTCOME_UNKNOWN_CODES.has(seg) || OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
+function isOutcomeUnknownSegment(seg) {
+  return OUTCOME_UNKNOWN_CODES.has(seg) || (!REASON_BY_CODE.has(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
 }
+
+function isOutcomeUnknownCode(code) {
+  return codeSegments(Array.isArray(code) ? code : [code]).some(isOutcomeUnknownSegment);
+}
+
+/** While the order is being placed, a hold or outcome-unknown code means it is waiting on a check: say so. */
+const HELD_COPY = Object.freeze({
+  kind: 'held',
+  title: "We're checking with the store",
+  message: "We're checking with the store — don't try again. This can take a while; we'll confirm what happened in the chat.",
+  retry_hint: false,
+  outcome_unknown: true,
+});
 
 /** The plain-language outcome for a terminal non-completed state, from its codes. Null for any other state. */
 function outcomeFor(state, codes) {
-  if (!GENERIC_BY_STATE[state]) return null;
   const segments = codeSegments(codes);
+  if (state === 'placing') return isOutcomeUnknownCode(segments) ? { ...HELD_COPY } : null;
+  if (!GENERIC_BY_STATE[state]) return null;
   if (isOutcomeUnknownCode(segments)) return { ...OUTCOME_UNKNOWN_COPY };
   for (const seg of segments) {
     const group = REASON_BY_CODE.get(seg);
@@ -227,7 +246,8 @@ function outcomeFor(state, codes) {
  *   needs_payment_method             -> add_card
  *   locking                          -> confirming_total (the merchant prices the exact cart; nothing approved yet)
  *   awaiting_buyer_authorization     -> approve
- *   placing                          -> placing, or authenticate while the bank's check page is offered
+ *   placing                          -> placing, or authenticate while the bank's check page is offered, or
+ *                                       outcome_unknown (NOT terminal: polling goes on) while a hold code is set
  *   completed                        -> done
  *   failed / refused / expired       -> failed / refused / expired, or outcome_unknown for an outcome-unknown code
  *   anything else                    -> unknown (keep polling; claim nothing)
@@ -238,7 +258,9 @@ function screenFor(state, { actionKind = null, outcome = null } = {}) {
     case 'needs_payment_method': return 'add_card';
     case 'locking': return 'confirming_total';
     case 'awaiting_buyer_authorization': return 'approve';
-    case 'placing': return actionKind === 'authenticate' ? 'authenticate' : 'placing';
+    case 'placing':
+      if (outcome && outcome.outcome_unknown) return 'outcome_unknown';
+      return actionKind === 'authenticate' ? 'authenticate' : 'placing';
     case 'completed': return 'done';
     case 'failed':
     case 'refused':
@@ -301,7 +323,11 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
   const domainRaw = typeof pick('merchant_domain') === 'string' ? pick('merchant_domain').trim().toLowerCase().replace(/\.$/, '') : '';
   const merchantDomain = DOMAIN_RE.test(domainRaw) ? domainRaw : null;
   const quantity = Number.isSafeInteger(pick('quantity')) && pick('quantity') >= 1 && pick('quantity') <= 99 ? pick('quantity') : null;
-  const currency = [totals.currency, pick('currency')].find((c) => typeof c === 'string' && CURRENCY_RE.test(c)) || null;
+  // Two currencies that disagree: no amount is shown at all (none could be trusted to be in the right currency).
+  const currencies = [totals.currency, pick('currency')].filter((c) => typeof c === 'string' && CURRENCY_RE.test(c));
+  const currencyConflict = new Set(currencies).size > 1;
+  const currency = currencyConflict ? null : currencies[0] || null;
+  const amount = (value) => (currencyConflict ? null : minor(value));
 
   // The buyer's action: the unified `next_action`, or a flatter `action` / `buyer_action`.
   const rawAction = [src.next_action, src.action, src.buyer_action].find(isPlainObject) || null;
@@ -330,7 +356,7 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
       reference: refRaw ? refRaw.trim() : null,
       status_url: merchantOrderUrlAllowed(statusRaw, merchantDomain) ? new URL(statusRaw).href : null,
       // Placed, but the rail could not read the final total: the page says "see your email receipt".
-      total_unparsed: codeSegments(codes).some((seg) => TOTAL_UNPARSED_CODES.has(seg)),
+      total_unparsed: currencyConflict || codeSegments(codes).some((seg) => TOTAL_UNPARSED_CODES.has(seg)),
     };
   }
 
@@ -354,11 +380,11 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
     quantity,
     currency,
     amounts: {
-      unit_price_minor: minor(totals.our_price_minor),
-      quoted_total_minor: minor(totals.quoted_total_minor),
-      final_total_minor: minor(totals.final_total_minor),
-      shipping_minor: minor(totals.shipping_minor),
-      tax_minor: minor(totals.tax_minor),
+      unit_price_minor: amount(totals.our_price_minor),
+      quoted_total_minor: amount(totals.quoted_total_minor),
+      final_total_minor: amount(totals.final_total_minor),
+      shipping_minor: amount(totals.shipping_minor),
+      tax_minor: amount(totals.tax_minor),
     },
     action,
     order,

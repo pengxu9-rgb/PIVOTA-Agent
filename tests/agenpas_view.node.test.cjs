@@ -257,7 +257,8 @@ test('an unknown code (or junk) gets the state\'s generic wording without a retr
   assert.equal(outcomeFor('refused', []).kind, 'refused');
   assert.equal(outcomeFor('expired', [null]).kind, 'expired');
   assert.equal(outcomeFor('completed', ['vic_order_outcome_unknown']), null);
-  assert.equal(outcomeFor('placing', ['vic_order_outcome_unknown']), null);
+  assert.equal(outcomeFor('placing', []), null);
+  assert.equal(outcomeFor('locking', ['vic_order_outcome_unknown']), null);
 });
 
 // ---- compound and new codes (the backend's real formats) -------------------------------------------------------
@@ -296,16 +297,16 @@ test('money-may-have-moved / hold codes are outcome_unknown, bare or inside the 
 test('paid_sent is the approval step, not a charge: only its code segment decides', () => {
   // An approval that expired: the ordinary wording, never "don't try again".
   for (const state of ['failed', 'expired']) {
-    const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: 'paid_sent:2:visa:buyer_action_expired' }));
+    const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: 'paid_sent:2:scheme:buyer_action_expired' }));
     assert.notEqual(view.screen, 'outcome_unknown', state);
     assert.equal(view.outcome.outcome_unknown, false);
     assert.equal(/don't try again/.test(view.outcome.message), false);
   }
-  assert.equal(isOutcomeUnknownCode('paid_sent:2:visa:buyer_action_expired'), false);
+  assert.equal(isOutcomeUnknownCode('paid_sent:2:scheme:buyer_action_expired'), false);
   assert.equal(isOutcomeUnknownCode('paid_sent'), false);
   assert.equal(isOutcomeUnknownCode('bound_sent:1:x'), false);
   // A hold / unknown code behind the prefix still decides.
-  const unresolved = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'paid_sent:3:visa:vic_submit_unresolved' }));
+  const unresolved = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'paid_sent:3:scheme:vic_submit_unresolved' }));
   assert.equal(unresolved.screen, 'outcome_unknown');
   assert.equal(unresolved.outcome.retry_hint, false);
   assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).outcome.kind, 'failed');
@@ -341,4 +342,56 @@ test('the generic failed wording is neutral: no "try again", no claim the order 
   assert.equal(view.outcome.kind, 'failed');
   assert.equal(view.outcome.retry_hint, false);
   assert.equal(/try again|wasn't placed/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
+});
+
+// ---- review round 3 -------------------------------------------------------------------------------------------
+
+test('every backend hold code is outcome_unknown (cross-checked with _CHECKOUT_HOLD_CODES and _VIC_HOLD_CODES)', () => {
+  const CHECKOUT_HOLD = ['checkout_confirm_unresolved', 'checkout_confirm_unrecognised', 'checkout_task_invalid',
+    'checkout_task_mismatch', 'checkout_result_unrecognised', 'checkout_result_overdue', 'checkout_total_over_approved',
+    'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_confirm_error_card', 'checkout_payment_no_order',
+    'checkout_order_id_card_shaped', 'checkout_cancel_unresolved', 'checkout_confirm_conflict', 'checkout_confirm_ambiguous_4xx'];
+  const VIC_HOLD = ['vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing',
+    'vic_total_missing', 'vic_approved_amount_missing', 'vic_submit_unresolved'];
+  for (const code of [...CHECKOUT_HOLD, ...VIC_HOLD]) {
+    assert.equal(isOutcomeUnknownCode(code), true, code);
+    assert.equal(project(unified('failed', {}, { last_error_code: `paid_sent:1:scheme:${code}` })).screen, 'outcome_unknown', code);
+  }
+  // The shape catches a new code of those families, but never overrides a code a named group already words.
+  assert.equal(isOutcomeUnknownCode('checkout_something_unrecognised'), true);
+  assert.equal(isOutcomeUnknownCode('vic_quote_mismatch'), false);
+  assert.equal(project(unified('failed', {}, { last_error_code: 'vic_quote_mismatch' })).outcome.kind, 'price_changed');
+});
+
+test('placing with a hold code: the checking screen, NOT terminal (polling goes on), never "under a minute"', () => {
+  const view = project(unified('placing', { poll_after_seconds: 5 }, { last_error_code: 'checkout_confirm_ambiguous_4xx' }));
+  assert.equal(view.screen, 'outcome_unknown');
+  assert.equal(view.terminal, false);
+  assert.equal(view.poll_after_seconds, 5);
+  assert.equal(view.outcome.kind, 'held');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.match(view.outcome.message, /don't try again/);
+  assert.equal(/minute/.test(view.outcome.message), false);
+  // Without a hold code, placing is placing.
+  assert.equal(project(unified('placing')).screen, 'placing');
+  assert.equal(project(unified('placing')).outcome, null);
+});
+
+test('two currencies that disagree: no amount at all, and a completed order says "see your email receipt"', () => {
+  const body = unified('awaiting_buyer_authorization', { totals: { currency: 'USD', our_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: 2297, shipping_minor: 399, tax_minor: 150 } },
+    { currency: 'EUR' });
+  const view = project(body);
+  assert.equal(view.currency, null);
+  assert.deepEqual(view.amounts, { unit_price_minor: null, quoted_total_minor: null, final_total_minor: null, shipping_minor: null, tax_minor: null });
+  const done = project({ ...body, state: 'completed', order_reference: '#1001' });
+  assert.equal(done.order.total_unparsed, true);
+  assert.equal(done.amounts.final_total_minor, null);
+  // Agreeing (or only one) currency: amounts as before.
+  assert.equal(project(unified('awaiting_buyer_authorization', {}, { currency: 'USD' })).amounts.quoted_total_minor, 2349);
+});
+
+test('the expired wording makes no claim the order was not placed', () => {
+  const view = project(unified('expired', { poll_after_seconds: null }));
+  assert.equal(view.outcome.kind, 'expired');
+  assert.equal(/wasn't placed|nothing was charged/i.test(view.outcome.message), false);
 });
