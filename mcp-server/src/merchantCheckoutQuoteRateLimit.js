@@ -1,4 +1,3 @@
-import callerLimitsConfig from "../../src/guardrails/mcpCallerLimitsConfig.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 
 // Each new merchant quote opens a real temporary checkout at the seller and makes about six signed calls
@@ -12,17 +11,23 @@ import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 //   3. the seller's daily cap (one UTC day).
 // If a later counter refuses, the units already taken are given back, so a refusal costs no budget.
 //
-// WHO IS A PARTNER. An API-key agent has its own budget, and so does an MCP OAuth client named in
-// MCP_CALLER_LIMITS_OVERRIDES_JSON (`oauth:<issuer>#<client_id>`, the provisioning list the caller limits
-// already use). Dynamic client registration lets anyone mint a client id, so every other OAuth client
-// shares ONE pooled budget, as the caller limits pool them (see src/guardrails/mcpCallerLimitsConfig.js).
+// WHO MAY QUOTE. Partners only (decision D-12: API-key agents or confidential OAuth clients). An API-key
+// agent has its own budget. An MCP OAuth client may quote only when it is listed, as
+// `oauth:<issuer>#<client_id>`, in AGENT_MERCHANT_CHECKOUT_QUOTE_OAUTH_PARTNERS (a JSON array), and then it
+// has its own budget too. Dynamic client registration lets anyone mint a client id, so every other OAuth
+// client is refused before any state or seller call (merchant_quote_partner_unprovisioned). A free client
+// can therefore never draw on a seller's shared window or daily budget. The list is this lane's own, apart
+// from the caller-limit overrides, so an entry made there to throttle a client never admits it here.
+// A malformed list admits no OAuth client.
 //
 // WHICH SELLER. The seller counters are keyed by the seller's Shopify checkout endpoint, not the storefront
 // host, so two storefront hosts configured onto one store share that store's budget.
 //
 // HOW. Each counter is one atomic statement on the lane's durable state store (incrementCounterBelow), so
-// every instance shares the counts, concurrent callers never pass a limit, and a caller under a limit is
-// never refused for racing. A store without those methods, or a store error, refuses the quote.
+// every instance shares the counts and concurrent callers never pass a limit. A caller under a limit is not
+// refused for losing a write race. It can, briefly, be refused by a unit that another of the same partner's
+// requests holds while a later counter refuses it, until that unit is given back (one store round trip).
+// A store without those methods, or a store error, refuses the quote.
 //
 // WINDOWS. The per-window counters are fixed windows: across a boundary, up to twice a window limit can
 // arrive within moments (6 + 6 for a seller at the default). The daily cap bounds the total regardless.
@@ -30,13 +35,14 @@ import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 // No limit can be turned off: a value below a minimum rises to it, and an unreadable value uses the default.
 
 export const MERCHANT_QUOTE_RATE_LIMITED = "merchant_quote_rate_limited";
-const POOLED_OAUTH_PARTNER = "oauth:unregistered";
+export const MERCHANT_QUOTE_PARTNER_UNPROVISIONED = "merchant_quote_partner_unprovisioned";
+const OAUTH_PARTNERS_ENV = "AGENT_MERCHANT_CHECKOUT_QUOTE_OAUTH_PARTNERS";
+const OAUTH_PARTNER_ID = /^oauth:[^\s#]+#\S+$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EXPIRY_SLACK_MS = 5000;
 const SETTINGS = {
   windowSec: { env: "AGENT_MERCHANT_CHECKOUT_QUOTE_RATE_WINDOW_SEC", fallback: 60, min: 10, max: 3600 },
   perPartner: { env: "AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT", fallback: 12, min: 1, max: 240 },
-  pooledOauth: { env: "AGENT_MERCHANT_CHECKOUT_QUOTE_UNREGISTERED_OAUTH_LIMIT", fallback: 6, min: 1, max: 240 },
   perSeller: { env: "AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT", fallback: 6, min: 1, max: 120 },
   perSellerDaily: { env: "AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_DAILY_LIMIT", fallback: 200, min: 1, max: 5000 },
 };
@@ -51,29 +57,32 @@ export function merchantQuoteRateLimits(env = process.env) {
   return {
     windowMs: setting(env, SETTINGS.windowSec) * 1000,
     perPartner: setting(env, SETTINGS.perPartner),
-    pooledOauth: setting(env, SETTINGS.pooledOauth),
     perSeller: setting(env, SETTINGS.perSeller),
     perSellerDaily: setting(env, SETTINGS.perSellerDaily),
   };
 }
 
+function provisionedOauthPartners(env) {
+  let parsed;
+  try { parsed = JSON.parse(String(env?.[OAUTH_PARTNERS_ENV] || "[]")); } catch { return new Set(); }
+  if (!Array.isArray(parsed) || parsed.some(id => typeof id !== "string" || !OAUTH_PARTNER_ID.test(id))) return new Set();
+  return new Set(parsed);
+}
+
 /**
- * The budget a partner principal (partnerPrincipalOf's JSON string) draws on, and that budget's limit.
- * Anything not recognised as a provisioned partner falls into the pooled OAuth budget.
+ * The budget a partner principal (partnerPrincipalOf's JSON string) draws on, or null when that principal
+ * is not a provisioned partner and may not quote at all.
  */
-function merchantQuotePartnerBudget(partner, env = process.env) {
-  const limits = merchantQuoteRateLimits(env);
+export function merchantQuotePartnerBudget(partner, env = process.env) {
   let parsed = null;
-  try { parsed = JSON.parse(partner); } catch { /* pooled below */ }
-  if (Array.isArray(parsed) && parsed[0] === "agent" && typeof parsed[1] === "string" && parsed[1]) {
-    return { key: `agent:${parsed[1]}`, limit: limits.perPartner };
-  }
-  if (Array.isArray(parsed) && parsed[0] === "oauth" && typeof parsed[1] === "string" && typeof parsed[2] === "string") {
+  try { parsed = JSON.parse(partner); } catch { return null; }
+  if (!Array.isArray(parsed)) return null;
+  if (parsed[0] === "agent" && typeof parsed[1] === "string" && parsed[1]) return { key: `agent:${parsed[1]}` };
+  if (parsed[0] === "oauth" && typeof parsed[1] === "string" && typeof parsed[2] === "string") {
     const id = `oauth:${parsed[1]}#${parsed[2]}`;
-    // A malformed overrides value parses to an empty list, so every OAuth client is pooled.
-    if (callerLimitsConfig.readCallerLimitsConfig(env).overrides.has(id)) return { key: id, limit: limits.perPartner };
+    if (provisionedOauthPartners(env).has(id)) return { key: id };
   }
-  return { key: POOLED_OAUTH_PARTNER, limit: limits.pooledOauth };
+  return null;
 }
 
 function merchantQuoteRateLimited(retryAfterSeconds) {
@@ -102,13 +111,14 @@ export function createMerchantQuoteRateLimiter({ stateStore, keyOf, env = proces
       || typeof sellerEndpoint !== "string" || !sellerEndpoint) throw unavailable();
     const limits = merchantQuoteRateLimits(env);
     const budget = merchantQuotePartnerBudget(partner, env);
+    if (!budget) throw unavailable();
     const at = now();
     const windowStart = Math.floor(at / limits.windowMs) * limits.windowMs;
     const windowEnd = windowStart + limits.windowMs;
     const dayStart = Math.floor(at / DAY_MS) * DAY_MS;
     const dayEnd = dayStart + DAY_MS;
     const counters = [
-      { key: keyOf(["rate", "partner", budget.key, limits.windowMs, windowStart]), limit: budget.limit, end: windowEnd },
+      { key: keyOf(["rate", "partner", budget.key, limits.windowMs, windowStart]), limit: limits.perPartner, end: windowEnd },
       { key: keyOf(["rate", "seller", sellerEndpoint, limits.windowMs, windowStart]), limit: limits.perSeller, end: windowEnd },
       { key: keyOf(["rate", "seller-day", sellerEndpoint, dayStart]), limit: limits.perSellerDaily, end: dayEnd },
     ];

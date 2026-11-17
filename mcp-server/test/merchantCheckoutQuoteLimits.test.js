@@ -180,15 +180,15 @@ test("the limit is enforced whatever MCP_CALLER_LIMITS_MODE says", async t => {
 });
 
 test("a limit cannot be switched off and an unreadable value uses the default", () => {
-  const names = ["RATE_WINDOW_SEC", "PER_PARTNER_LIMIT", "UNREGISTERED_OAUTH_LIMIT", "PER_SELLER_LIMIT", "PER_SELLER_DAILY_LIMIT"];
+  const names = ["RATE_WINDOW_SEC", "PER_PARTNER_LIMIT", "PER_SELLER_LIMIT", "PER_SELLER_DAILY_LIMIT"];
   const read = (...values) => merchantQuoteRateLimits(Object.fromEntries(
     names.map((name, index) => [`AGENT_MERCHANT_CHECKOUT_QUOTE_${name}`, values[index]])));
-  const defaults = { windowMs: 60_000, perPartner: 12, pooledOauth: 6, perSeller: 6, perSellerDaily: 200 };
+  const defaults = { windowMs: 60_000, perPartner: 12, perSeller: 6, perSellerDaily: 200 };
   assert.deepEqual(merchantQuoteRateLimits({}), defaults);
-  assert.deepEqual(read("0", "-3", "0", "0", "-1"), { windowMs: 10_000, perPartner: 1, pooledOauth: 1, perSeller: 1, perSellerDaily: 1 });
-  assert.deepEqual(read("1.5", "off", "", "x", "2e3"), defaults);
-  assert.deepEqual(read("100000", "100000", "100000", "100000", "100000"),
-    { windowMs: 3_600_000, perPartner: 240, pooledOauth: 240, perSeller: 120, perSellerDaily: 5000 });
+  assert.deepEqual(read("0", "-3", "0", "-1"), { windowMs: 10_000, perPartner: 1, perSeller: 1, perSellerDaily: 1 });
+  assert.deepEqual(read("1.5", "off", "x", "2e3"), defaults);
+  assert.deepEqual(read("100000", "100000", "100000", "100000"),
+    { windowMs: 3_600_000, perPartner: 240, perSeller: 120, perSellerDaily: 5000 });
 });
 
 test("a counter store failure, or a store without atomic counters, refuses before any seller call", async t => {
@@ -228,43 +228,66 @@ test("concurrent new quotes never pass a limit, and none under it is refused for
   assert.equal(quoted.length, 5);
 });
 
-test("OAuth clients without a caller-limit override share one pooled partner budget", async t => {
+async function unprovisioned(promise) {
+  let refusal;
+  await assert.rejects(promise, error => {
+    refusal = error;
+    return error.code === "OPERATION_NOT_ALLOWED" && error.retriable === false
+      && error.detail?.reason === "merchant_quote_partner_unprovisioned";
+  });
+  return refusal;
+}
+
+test("an OAuth client not on the lane's partner list is refused before any state, budget or seller call", async t => {
   withEnv(t, {});
-  const provisioned = { kind: "oauth", iss: "https://login.test", cid: "provisioned-client" };
-  const { ucp, quoted, caller } = setup({ limits: {
-    AGENT_MERCHANT_CHECKOUT_QUOTE_UNREGISTERED_OAUTH_LIMIT: "2",
-    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_PARTNER_LIMIT: "3",
-    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "100",
-    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ [`oauth:${provisioned.iss}#${provisioned.cid}`]: { rpm: 600 } }),
+  const listed = { kind: "oauth", iss: "https://login.test", cid: "listed-client" };
+  const { ucp, quoted, caller, store } = setup({ limits: {
+    AGENT_MERCHANT_CHECKOUT_QUOTE_OAUTH_PARTNERS: JSON.stringify([`oauth:${listed.iss}#${listed.cid}`]),
+    // An entry in the caller-limit overrides (here, one throttling the client) does not admit it.
+    MCP_CALLER_LIMITS_OVERRIDES_JSON: JSON.stringify({ "oauth:https://login.test#minted-client-1": { rpm: 1 } }),
   } });
-  // Each self-registered client is a new client id, yet together they get the pooled 2.
-  for (const [index, cid] of ["minted-client-1", "minted-client-2"].entries()) {
+  for (const cid of ["minted-client-1", "minted-client-2"]) {
     caller.subject = { kind: "oauth", iss: "https://login.test", cid };
-    await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`minted-key-00000${index}`), buyer);
+    const refusal = await unprovisioned(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`minted-${cid}-key`), buyer));
+    const wire = JSON.parse(toToolError(refusal).content[0].text).error;
+    assert.equal(wire.code, "OPERATION_NOT_ALLOWED");
+    assert.equal(wire.retriable, false);
+    assert.deepEqual(wire.detail, { reason: "merchant_quote_partner_unprovisioned" });
+    assert.match(wire.recovery, /provision/);
   }
-  caller.subject = { kind: "oauth", iss: "https://login.test", cid: "minted-client-3" };
-  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("minted-key-000002"), buyer));
-  assert.equal(quoted.length, 2);
-  // A provisioned client and an API-key agent each keep their own partner budget.
-  caller.subject = provisioned;
-  for (const index of [0, 1, 2]) await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`provisioned-key-0${index}`), buyer);
-  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("provisioned-key-03"), buyer));
+  assert.equal(quoted.length, 0);
+  assert.equal(store._m.size, 0, "no idempotency record and no counter was written");
+  // The listed client and an API-key agent each quote with their own partner budget.
+  caller.subject = listed;
+  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("listed-client-key-1"), buyer);
   caller.subject = null;
   await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("agent-key-0000001"), buyer);
-  assert.equal(quoted.length, 6);
+  assert.equal(quoted.length, 2);
 });
 
-test("a malformed overrides value pools every OAuth client", async t => {
+test("a malformed OAuth partner list admits no OAuth client", async t => {
+  withEnv(t, {});
+  for (const list of ["{not json", JSON.stringify("oauth:https://login.test#listed-client"),
+    JSON.stringify(["oauth:https://login.test#listed-client", "not-an-id"])]) {
+    const { ucp, quoted, caller } = setup({ limits: { AGENT_MERCHANT_CHECKOUT_QUOTE_OAUTH_PARTNERS: list } });
+    caller.subject = { kind: "oauth", iss: "https://login.test", cid: "listed-client" };
+    await unprovisioned(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("malformed-key-0001"), buyer));
+    assert.equal(quoted.length, 0, list);
+  }
+});
+
+test("unlisted OAuth clients cannot use up a seller's daily budget that partners share", async t => {
   withEnv(t, {});
   const { ucp, quoted, caller } = setup({ limits: {
-    AGENT_MERCHANT_CHECKOUT_QUOTE_UNREGISTERED_OAUTH_LIMIT: "1",
-    MCP_CALLER_LIMITS_OVERRIDES_JSON: "{not json",
+    AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_DAILY_LIMIT: "3", AGENT_MERCHANT_CHECKOUT_QUOTE_PER_SELLER_LIMIT: "100",
   } });
-  caller.subject = { kind: "oauth", iss: "https://login.test", cid: "listed-client" };
-  await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("malformed-key-0001"), buyer);
-  caller.subject = { kind: "oauth", iss: "https://login.test", cid: "other-client" };
-  await rateLimited(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor("malformed-key-0002"), buyer));
-  assert.equal(quoted.length, 1);
+  for (let index = 0; index < 20; index += 1) {
+    caller.subject = { kind: "oauth", iss: "https://login.test", cid: `minted-client-${index}` };
+    await unprovisioned(ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`minted-key-${String(index).padStart(6, "0")}`), buyer));
+  }
+  caller.subject = null;
+  for (const index of [1, 2, 3]) await ucp.callTool(MERCHANT_QUOTE_TOOL, argsFor(`partner-daily-key-${index}`), buyer);
+  assert.equal(quoted.length, 3, "the partner still has the whole daily budget");
 });
 
 test("each seller has a daily cap across windows, refused until the next UTC day", async t => {
