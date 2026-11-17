@@ -17,7 +17,7 @@
 
 import externalSeedLane from "../../src/services/externalSeedLane.js";
 import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
-import { PivotaCommerceError, KERNEL_ANSWERED_REFUSALS, KERNEL_ANSWERED_AFTER_ORDER, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
+import { PivotaCommerceError, IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_REFUSALS, KERNEL_ANSWERED_AFTER_ORDER, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 // The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
@@ -1799,9 +1799,10 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
-  // A key whose earlier attempt may have taken effect (idempotencyLedger.js): never the catalog's "Starting fresh".
-  if (error instanceof PivotaCommerceError && code === "IDEMPOTENCY_CONFLICT" && error.detail?.reason === "ambiguous_prior_attempt" && intake) {
-    body.recovery = "read the checkout session or its order before anything else; do not start another checkout for this purchase without the buyer; do not reuse this idempotency_key for a new request";
+  // A key that cannot run this request now for a reason the kernel knows (errors.js IDEMPOTENCY_CONFLICT_ANSWERS: still
+  // running, may have taken effect, a payment already asked for): its own recovery beside its own words.
+  if (error instanceof PivotaCommerceError && code === "IDEMPOTENCY_CONFLICT" && intake && Object.hasOwn(IDEMPOTENCY_CONFLICT_ANSWERS, error.detail?.reason)) {
+    body.recovery = IDEMPOTENCY_CONFLICT_ANSWERS[error.detail.reason].recovery;
   }
   // A seller not taking orders: its catalog recovery (what to do next) beside its words.
   if (error instanceof PivotaCommerceError && code === "MERCHANT_NOT_ACCEPTING_ORDERS" && typeof error.recovery === "string") body.recovery = error.recovery;
@@ -1839,7 +1840,7 @@ export function toToolError(error) {
       body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
     }
     if (error.detail.reason === "purchase_idempotency_conflict") {
-      // Never the generic "Starting fresh": this key already opened a purchase (see orchestratedPurchaseTool.js).
+      // Never the code's generic words: this key already opened a purchase (see orchestratedPurchaseTool.js).
       body.message = "This idempotency_key already opened a purchase, for details that no longer match this call (the catalog may have changed since).";
       body.recovery = "the purchase for this key may exist: check it before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
       // The backend names that purchase (the caller's own: its key lookup is scoped to the agent and the buyer).

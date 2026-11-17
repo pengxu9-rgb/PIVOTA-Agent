@@ -9,7 +9,7 @@
 import { QuoteRegistry } from './quoteRegistry.js';
 import { IdempotencyLedger } from './idempotencyLedger.js';
 import { ConfirmationTokenService } from './confirmationTokens.js';
-import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown, claimsNoEffect, answerAfterOrder } from './errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown, claimsNoEffect, answerAfterOrder, idempotencyConflict } from './errors.js';
 import { redact } from './redact.js';
 import { InMemoryKvStore } from './stores.js';
 import { sameMinor, violatesChargeMultiple } from './money.js';
@@ -598,7 +598,8 @@ export class SafetyKernel {
         const lockKey = `charge-lock:${order_id}`;
         const gotLock = await this._orderStore.putIfAbsent(lockKey, { owner: key }, { ttlMs: CHARGE_LOCK_TTL_MS });
         if (!gotLock) {
-          throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'charge_in_progress', order_id });
+          // Before the order is read, so the caller's ownership is not known yet: the answer names no order.
+          throw idempotencyConflict('charge_in_progress', { order_id });
         }
         try {
           // INV-2 (fix B1): the charge amount is read from the kernel's OWN order record,
@@ -611,10 +612,12 @@ export class SafetyKernel {
           // (async checkout-session / client-confirmation, completing via webhook). Both block a new
           // submit. Only 'created' and 'failed' (retry-after-failure) admit one.
           if (order.status === 'paid') {
-            throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'order_already_paid', order_id });
+            throw idempotencyConflict('order_already_paid', { order_id }, { ownedOrderId: order_id });
           }
           if (order.status === 'charge_pending') {
-            throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'charge_pending', order_id });
+            // The caller's own order (read above under its ownership check), whose payment may have gone through: read it,
+            // never "a different request", and never pay again or begin another checkout without the buyer.
+            throw idempotencyConflict('charge_pending', { order_id }, { ownedOrderId: order_id });
           }
           // Codex P0: the two guards above are a DENYLIST — a 'canceled' order (written by
           // cancel_checkout_session) or any unknown status would otherwise slip through and be charged.

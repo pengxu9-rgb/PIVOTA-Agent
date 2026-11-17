@@ -11,7 +11,7 @@
 //   3. submit_payment must NOT trust a model amount — expected_amount is a verification echo only
 // See docs/agent-checkout/C3-reconciliation.md for the migration plan.
 
-import { PivotaCommerceError } from './errors.js';
+import { IDEMPOTENCY_CONFLICT_ANSWERS, PivotaCommerceError } from './errors.js';
 import intakeBounds from './protocol/intakeBounds.cjs';
 import { intakeBoundRefusal, surfaceableIntakeRefusal } from './protocol/buyerIntake.js';
 
@@ -36,8 +36,9 @@ const INVOKE_NAMED_REASONS = new Set([
   'merchant_not_accepting_orders',
   // A used session whose claim names no order (kernel.js quoteAlreadyUsed): not "read that order (get_order)".
   'checkout_session_order_outcome_unknown',
-  // A key whose earlier attempt may have taken effect (idempotencyLedger.js): never "Starting fresh".
-  'ambiguous_prior_attempt',
+  // A key that cannot run this request now for a reason the kernel knows (errors.js IDEMPOTENCY_CONFLICT_ANSWERS): its
+  // own words, never the code's generic ones.
+  ...Object.keys(IDEMPOTENCY_CONFLICT_ANSWERS),
 ]);
 
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };

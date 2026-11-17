@@ -14,7 +14,7 @@
 // path deleted whatever was there, including a different owner's live claim).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { PivotaCommerceError, kernelOutcomeUnknown, kernelOutcomeUnknownOf } from './errors.js';
+import { IDEMPOTENCY_CONFLICT_ANSWERS, PivotaCommerceError, idempotencyConflict, kernelOutcomeUnknown, kernelOutcomeUnknownOf } from './errors.js';
 import { InMemoryKvStore } from './stores.js';
 
 // The claim lease MUST exceed the slowest expected op() (upstream charge + durable writes). A retry
@@ -25,7 +25,7 @@ const CLAIM_LEASE_MS = 2 * 60 * 1000;
 const DONE_TTL_MS = 24 * 60 * 60 * 1000;
 // A key whose earlier attempt made an irreversible call and then failed: its words, on every door.
 export const AMBIGUOUS_PRIOR_ATTEMPT = 'ambiguous_prior_attempt';
-export const AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE = 'An earlier attempt with this idempotency_key may have taken effect, and its outcome is not known here. Read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.';
+export const AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE = IDEMPOTENCY_CONFLICT_ANSWERS[AMBIGUOUS_PRIOR_ATTEMPT].message;
 
 function fingerprint(body) {
   return createHash('sha256').update(JSON.stringify(body)).digest('hex');
@@ -57,7 +57,8 @@ export class IdempotencyLedger {
 
     if (!claimed) {
       const existing = await this._store.get(key);
-      if (!existing) throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'race' });
+      // The key was held a moment ago (the claim above lost) and no longer is: that attempt's outcome is not known here.
+      if (!existing) throw idempotencyConflict('race', { key });
       if (existing.fp !== fp) throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key });
       if (existing.status === 'done') return { result: existing.result, replayed: true };
       // P1-2: an op that completed its side effect but failed to finalize is recorded as
@@ -65,16 +66,16 @@ export class IdempotencyLedger {
       if (existing.status === 'ambiguous') {
         // An attempt that was answered with the kernel's own unknown outcome (errors.js kernelOutcomeUnknown) is
         // answered the same way again, with the same order id: the caller learns what the first answer said, not a
-        // generic conflict that tells it to start fresh.
+        // generic conflict.
         const unknown = kernelOutcomeUnknownOf(kernelOutcomeUnknownRecord(existing.outcome_unknown));
         if (unknown) throw kernelOutcomeUnknown(unknown.reason, unknown.order_id, { answered: unknown.answered });
-        // Never the catalog's "a different request reusing an old reference. Starting fresh.": this key's earlier
-        // attempt did something irreversible and then failed, so it may have taken effect. Said in its own words, which
-        // every door surfaces; the code stays.
-        throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: AMBIGUOUS_PRIOR_ATTEMPT, acp_message: AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, acp_detail: { reason: AMBIGUOUS_PRIOR_ATTEMPT } });
+        // This key's earlier attempt did something irreversible and then failed, so it may have taken effect. Said in its
+        // own words, which every door surfaces; the code stays.
+        throw idempotencyConflict(AMBIGUOUS_PRIOR_ATTEMPT, { key });
       }
-      // status === 'pending' and still leased: refuse rather than double-execute.
-      throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'in_flight' });
+      // status === 'pending' and still leased: refuse rather than double-execute. The attempt holding the key has not
+      // finished, so it may yet make the order: said so, never "a different request".
+      throw idempotencyConflict('in_flight', { key });
     }
 
     // We own the key. Mark whether the op performed an irreversible side effect so the catch path
@@ -87,7 +88,7 @@ export class IdempotencyLedger {
       if (!finalized) {
         // Someone reclaimed our key. We must not double-charge; the op already ran, so this is a
         // genuine ambiguous overlap — record it (best-effort) and reject this attempt.
-        throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'lease_lost_after_op' });
+        throw idempotencyConflict('lease_lost_after_op', { key });
       }
       return { result, replayed: false };
     } catch (err) {

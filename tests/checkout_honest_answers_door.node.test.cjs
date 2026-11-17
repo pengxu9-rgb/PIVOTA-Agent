@@ -421,6 +421,71 @@ test('P2-3: a same-key resend after an attempt that may have taken effect is nev
   }
 });
 
+// The words that told an agent to begin again: on no door, for no conflict.
+const START_FRESH = /start(?:ing)? fresh|different request reusing an old reference/i;
+const NO_EFFECT_WORDS = /nothing was (?:done|written|charged|ordered)|could not confirm the account/i;
+const acpCreate = (market) => door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+const invokeOrderOf = (q, market) => ({ quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address(market), recipient_name: 'Buyer One' } });
+
+test('P2-1 (a): a same-key resend while the first attempt is still running is told so on /mcp complete, /mcp payment link, /ucp/mcp complete, ACP complete and invoke create_order: its outcome is not known yet, read before anything else, no new checkout; never "Starting fresh"; the first attempt then makes the order, once', async () => {
+  const { IDEMPOTENCY_CONFLICT_ANSWERS } = await import('../safety-kernel/src/errors.js');
+  const words = IDEMPOTENCY_CONFLICT_ANSWERS.in_flight;
+  for (const market of PRICED_MARKETS) {
+    // The ACP door prices US, SG and GB (DE is refused there at create, before any session).
+    for (const caller of [...CALLERS, ...(market === 'DE' ? [] : ['acp']), 'invoke_order']) {
+      const label = `${caller} ${market}`;
+      let go;
+      let currency;
+      if (caller === 'acp') {
+        const created = await acpCreate(market);
+        assert.equal(created.http, 201, `${label}: ${created.raw.slice(0, 300)}`);
+        currency = created.body.currency;
+        const grant = await keys.mintGrant({ sessionId: created.body.id, currency, maxAmount: created.body.totals.total });
+        go = (k) => door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: k });
+      } else if (caller === 'invoke_order') {
+        seq += 1;
+        const buyer = buyerFor(seq);
+        const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer });
+        currency = q.body.currency;
+        go = (k) => door.invoke('create_order', { idempotency_key: k, order: invokeOrderOf(q, market) }, { buyer });
+      } else {
+        const h = await open(caller, market);
+        currency = h.currency;
+        go = (k) => attempt(h, k);
+      }
+      const madeBefore = door.orders.length;
+      const held = ANSWERS.held(ANSWERS.created());
+      door.orderScript.push(held);
+      const key = freshKey();
+      const firstP = go(key);
+      await held.reached;
+      const second = await go(key);
+      held.release();
+      const first = await firstP;
+      // The resend: refused before anything is sent, in words that say the attempt is still running.
+      if (caller === 'acp' || caller === 'invoke_order') {
+        assert.deepEqual([second.http, second.body.code, second.body.message, second.body.detail], [409, 'IDEMPOTENCY_CONFLICT', words.message, { reason: 'in_flight' }], `${label}: ${second.raw.slice(0, 300)}`);
+        if (caller === 'invoke_order') assert.equal(second.body.retriable, false, label);
+      } else {
+        const e = errorOf(second);
+        assert.deepEqual([e.code, e.retriable, e.message, e.detail, e.recovery], ['IDEMPOTENCY_CONFLICT', false, words.message, { reason: 'in_flight' }, words.recovery], `${label}: ${second.raw.slice(0, 300)}`);
+      }
+      assert.equal(START_FRESH.test(second.raw), false, `${label}: ${second.raw.slice(0, 300)}`);
+      assert.equal(NO_EFFECT_WORDS.test(second.raw), false, `${label}: ${second.raw.slice(0, 300)}`);
+      assert.equal(sent(second, ORDERS) + sent(second, PAGES), 0, `${label}: the resend asks for nothing`);
+      // The first attempt made the order, once, in the market's currency.
+      assert.equal(door.orders.length, madeBefore + 1, `${label}: ${first.raw.slice(0, 300)}`);
+      assert.equal(sent(first, ORDERS), 1, label);
+      assert.equal(door.orders.at(-1).currency, currency, `${label}: the order is in the session's currency`);
+      // Once it finished, the same key gets its answer back, and nothing more is asked for.
+      const after = await go(key);
+      assert.equal(START_FRESH.test(after.raw), false, `${label} after: ${after.raw.slice(0, 300)}`);
+      assert.equal(sent(after, ORDERS), 0, `${label} after: no second order call`);
+      assert.equal(door.orders.length, madeBefore + 1, `${label} after`);
+    }
+  }
+});
+
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
   assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');

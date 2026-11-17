@@ -141,14 +141,36 @@ test('every string this code writes that says a request had no effect is gated (
     assert.ok(entry.why.length > 10, entry.includes);
   }
   // The unknown-outcome words: never a no-effect sentence, and never covered by an exemption.
-  const { KERNEL_ANSWERED_REFUSALS: refusals, KERNEL_ANSWERED_AFTER_ORDER: afterOrder } = await import('../src/errors.js');
+  const { KERNEL_ANSWERED_REFUSALS: refusals, KERNEL_ANSWERED_AFTER_ORDER: afterOrder, IDEMPOTENCY_CONFLICT_ANSWERS: conflicts } = await import('../src/errors.js');
   const { UNKNOWN_ORDER_CLAIM_MESSAGE } = await import('../src/kernel.js');
   const { AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE } = await import('../src/idempotencyLedger.js');
-  const unknownWords = [...Object.values(refusals), ...Object.values(afterOrder)].flatMap((w) => [w.message, w.recovery]).concat([UNKNOWN_ORDER_CLAIM_MESSAGE, AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE]);
+  const unknownWords = [...Object.values(refusals), ...Object.values(afterOrder), ...Object.values(conflicts)].flatMap((w) => [w.message, w.recovery]).concat([UNKNOWN_ORDER_CLAIM_MESSAGE, AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE]);
   for (const words of unknownWords) {
     assert.doesNotMatch(words, NO_EFFECT, words);
     assert.equal(EXEMPT.some((e) => words.includes(e.includes)), false, words);
   }
+});
+
+// "Starting fresh" told an agent to begin again while an order may exist (a key still running, a payment already asked
+// for). It is in no file this scan reads: not as a literal, not split across literals or a template, not in a comment
+// that a later edit could turn back into words.
+const START_FRESH = /start(?:ing)?\s*(?:['"`]\s*\+\s*['"`]|\$\{[^}]*\})?\s*fresh|reusing an old reference/i;
+
+test('no file this scan reads says "Starting fresh" (or "start fresh"), in a string, across strings, or anywhere else in it', () => {
+  const found = [];
+  for (const rel of SCANNED) {
+    const source = readFileSync(new URL(rel, ROOT), 'utf8');
+    source.split('\n').forEach((line, i) => { if (START_FRESH.test(line)) found.push(`${rel}:${i + 1} ${line.trim().slice(0, 160)}`); });
+    for (const { text, line } of stringLiterals(source)) if (START_FRESH.test(text)) found.push(`${rel}:${line} ${text.slice(0, 160)}`);
+  }
+  // The joined text of each file, so words split across lines or strings are found too.
+  for (const rel of SCANNED) {
+    const flat = readFileSync(new URL(rel, ROOT), 'utf8').replace(/['"`]\s*\+\s*['"`]/g, '').replace(/\s+/g, ' ');
+    if (/start(?:ing)? fresh/i.test(flat) && !found.some((f) => f.startsWith(`${rel}:`))) found.push(`${rel}: (split across lines or strings)`);
+  }
+  assert.deepEqual(found, []);
+  for (const [code, entry] of Object.entries(ERROR_CATALOG)) assert.doesNotMatch(`${entry.userMessage} ${entry.recovery}`, START_FRESH, code);
+  assert.ok(START_FRESH.test("'Starting ' + 'fresh.'") && START_FRESH.test('start fresh') && START_FRESH.test('Starting fresh'), 'the pattern finds what it is for');
 });
 
 // The kernel, over an upstream that answers create_order with one scripted error.

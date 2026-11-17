@@ -28,7 +28,10 @@ export const ERROR_CATALOG = Object.freeze({
   OUT_OF_STOCK:           { retriable: false, recovery: 're-quote remaining items',                 userMessage: 'An item just went out of stock. Let me re-quote what is available.' },
   CONFIRMATION_REQUIRED:  { retriable: false, recovery: 'render confirmation card',                 userMessage: 'Please confirm the order details to continue.' },
   CONFIRMATION_INVALID:   { retriable: false, recovery: 're-confirm',                               userMessage: 'That confirmation is no longer valid. Please confirm again.' },
-  IDEMPOTENCY_CONFLICT:   { retriable: false, recovery: 'use a new idempotency_key for a new request', userMessage: 'This looks like a different request reusing an old reference. Starting fresh.' },
+  // The words every IDEMPOTENCY_CONFLICT without its own (IDEMPOTENCY_CONFLICT_ANSWERS below) is given: a key that is
+  // missing or too short, or one an earlier request with other details used. True of each; never "start again", which an
+  // agent obeys by opening a second checkout while the first may have placed an order.
+  IDEMPOTENCY_CONFLICT:   { retriable: false, recovery: 'send this request with an idempotency_key of its own; reuse a key only to resend the exact request it was first sent with; if an earlier request used this key, read the checkout session or its order before anything else', userMessage: 'This idempotency_key cannot be used for this request: it is missing or too short, or an earlier request with other details already used it. If an earlier request used this key, read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.' },
   IDEMPOTENT_REPLAY:      { retriable: false, recovery: 'return original result',                   userMessage: 'This order was already placed — here are the details.' },
   PAYMENT_REQUIRES_ACTION:{ retriable: false, recovery: 'surface redirect/qr/instructions verbatim', userMessage: 'One more step is needed to complete payment.' },
   CHECKOUT_ATTEMPT_RETIRED: { retriable: false, claimsNoEffect: true, recovery: 'the original attempt is permanently closed; explicitly start a new checkout with a fresh idempotency_key', userMessage: 'The earlier attempt was closed without creating a purchase. You can start a new checkout.' },
@@ -99,6 +102,71 @@ export class PivotaCommerceError extends Error {
   toResult() {
     return { ok: false, error: { code: this.code, retriable: this.retriable, recovery: this.recovery, message: this.userMessage } };
   }
+}
+
+/**
+ * A KEY THAT CANNOT RUN THIS REQUEST NOW, FOR A REASON THE KERNEL KNOWS: its own words, on every door (the curated
+ * `acp_message` / `acp_detail` opt-in every door reads; invoke names these reasons in contractValidation.js). The code
+ * stays IDEMPOTENCY_CONFLICT. Each is true where it is raised, and none tells the caller to begin again:
+ *   - `in_flight`             an attempt with this key holds it and has not finished (idempotencyLedger.js);
+ *   - `race`                  an attempt with this key held it a moment ago and no longer does (idempotencyLedger.js);
+ *   - `lease_lost_after_op`   this attempt ran, but another took its key over before it finished (idempotencyLedger.js);
+ *   - `ambiguous_prior_attempt`  an earlier attempt with this key made an irreversible call and then failed;
+ *   - `charge_in_progress`    another request holds this order's payment lock (kernel.js submitPayment, before the order
+ *                             is read, so no order id is given);
+ *   - `charge_pending`        this order's payment was already asked for and has no known outcome yet (the caller's own
+ *                             order: the id is given);
+ *   - `order_already_paid`    this order is paid (the caller's own order: the id is given).
+ */
+export const IDEMPOTENCY_CONFLICT_ANSWERS = Object.freeze({
+  in_flight: Object.freeze({
+    message: 'An attempt with this idempotency_key is still running, and its outcome is not known yet. Read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.',
+    recovery: 'read the checkout session or its order before anything else; do not start another checkout for this purchase without the buyer; do not reuse this idempotency_key for a new request',
+  }),
+  race: Object.freeze({
+    message: 'An attempt with this idempotency_key was running a moment ago, and its outcome is not known here. Read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.',
+    recovery: 'read the checkout session or its order before anything else; do not start another checkout for this purchase without the buyer; do not reuse this idempotency_key for a new request',
+  }),
+  lease_lost_after_op: Object.freeze({
+    message: 'This attempt ran, but another attempt with the same idempotency_key took it over before this one finished, so its outcome is not known here. Read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.',
+    recovery: 'read the checkout session or its order before anything else; do not start another checkout for this purchase without the buyer; do not reuse this idempotency_key for a new request',
+  }),
+  ambiguous_prior_attempt: Object.freeze({
+    message: 'An earlier attempt with this idempotency_key may have taken effect, and its outcome is not known here. Read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.',
+    recovery: 'read the checkout session or its order before anything else; do not start another checkout for this purchase without the buyer; do not reuse this idempotency_key for a new request',
+  }),
+  charge_in_progress: Object.freeze({
+    message: 'Another request is paying for this order right now, and its outcome is not known yet. Read the order with get_order before anything else, and do not pay for it again or start another checkout for this purchase without the buyer.',
+    recovery: 'read the order with get_order before anything else; do not pay for it again or start another checkout for this purchase without the buyer',
+  }),
+  charge_pending: Object.freeze({
+    message: 'The payment for this order (detail.order_id) was already asked for, and its outcome is not known yet. Read that order with get_order before anything else, and do not pay for it again or start another checkout for this purchase without the buyer.',
+    recovery: 'read the order in detail.order_id with get_order before anything else; do not pay for it again or start another checkout for this purchase without the buyer',
+  }),
+  order_already_paid: Object.freeze({
+    message: 'This order (detail.order_id) is already paid. Read it with get_order; do not pay for it again.',
+    recovery: 'read the order in detail.order_id with get_order; do not pay for it again',
+  }),
+});
+// The reasons whose answer names the caller's own order (detail.order_id).
+const IDEMPOTENCY_CONFLICT_NAMES_ORDER = new Set(['charge_pending', 'order_already_paid']);
+
+/**
+ * The IDEMPOTENCY_CONFLICT for `reason` (a key of IDEMPOTENCY_CONFLICT_ANSWERS), in its own words. `order_id` is surfaced
+ * only for a reason whose answer names it, and only when the caller passes it as its own (`ownedOrderId`); every other
+ * member stays in the detail, as before, for logs.
+ */
+export function idempotencyConflict(reason, detail = {}, { ownedOrderId } = {}) {
+  const words = IDEMPOTENCY_CONFLICT_ANSWERS[reason];
+  if (!words) throw new Error(`Unknown idempotency conflict reason: ${reason}`);
+  const orderId = IDEMPOTENCY_CONFLICT_NAMES_ORDER.has(reason) && typeof ownedOrderId === 'string' && ownedOrderId.trim() !== '' ? ownedOrderId : null;
+  if (IDEMPOTENCY_CONFLICT_NAMES_ORDER.has(reason) && !orderId) throw new Error(`An idempotency conflict for ${reason} names the caller's own order`);
+  return new PivotaCommerceError('IDEMPOTENCY_CONFLICT', {
+    ...detail,
+    reason,
+    acp_message: words.message,
+    acp_detail: orderId ? { reason, order_id: orderId } : { reason },
+  });
 }
 
 /**
