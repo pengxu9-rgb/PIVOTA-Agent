@@ -123,12 +123,13 @@ const CURATED = { QUOTE_REQUIRED: BUYER_CONTEXT };
 const ACP_STATUS = { CHECKOUT_OUTCOME_UNKNOWN: 409, QUOTE_REQUIRED: 400, MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409, MERCHANT_NOT_ACCEPTING_ORDERS: 409 };
 // What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
 const FIRST_CODE = { invalidBuyer: 'QUOTE_REQUIRED', partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionSubject: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER', merchantNotAccepting: 'MERCHANT_NOT_ACCEPTING_ORDERS' };
-// A kept refusal the backend DID answer, at a status with words of its own (safety-kernel/src/errors.js
-// KERNEL_ANSWERED_REFUSALS): a 403 it did not name as terminal, and every 429. Read off the scripted answer.
-const ANSWERED_KIND = { 403: 'refused', 429: 'rate_limited' };
+// A kept refusal the backend DID answer, with a status below 500 (safety-kernel/src/errors.js KERNEL_ANSWERED_REFUSALS):
+// the rate-limit words for a 429, the store-refused words for every other (a 422 leaves the backend as a 400). Read off
+// the scripted answer; a 5xx, and every answer that is not a row (no response, a page in front of it), has none.
 const answeredKind = (answer) => {
   const row = BEFORE_ANY_ORDER[answer] || NOT_PROVABLY_BEFORE[answer];
-  return row && FIRST_CODE[answer] === undefined ? ANSWERED_KIND[row[0]] : undefined;
+  if (!row || FIRST_CODE[answer] !== undefined || row[0] >= 500 || row[0] === 408) return undefined;
+  return row[0] === 429 ? 'rate_limited' : 'refused';
 };
 const firstCode = (answer) => FIRST_CODE[answer] || (NO_READABLE_ANSWER.has(answer) ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'MERCHANT_UNAVAILABLE');
 // The same answer when it keeps the claim: one that would say retriable is the kernel's unknown outcome (every retry of
@@ -379,12 +380,12 @@ test('a listed code releases only from the route\'s own detail (error.details.er
       door.orderScript.push(ANSWERS.raw(400, body, { landed }));
       const key = freshKey();
       const first = await attempt(h, key);
-      // Kept, and as raised it would say retriable: the kernel's unknown outcome.
-      assertRefused(h, first, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} first`);
+      // Kept, and as raised it would say retriable: the kernel's unknown outcome, in the store-refused words (a 400 came back).
+      assertRefused(h, first, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} first`, { answered: 'refused' });
       assert.equal(ordersAsked(first).length, 1, label);
       for (const k of [key, freshKey()]) {
         const retry = await attempt(h, k);
-        assertRefused(h, retry, k === key ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`);
+        assertRefused(h, retry, k === key ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`, { answered: 'refused' });
         assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
       }
       assert.equal(door.orders.length, before + (landed ? 1 : 0), label);

@@ -124,7 +124,8 @@ const KERNEL_OUTCOME_UNKNOWN_REASON_SET = new Set(Object.values(KERNEL_OUTCOME_U
  * words say what the store did answer. Only on `order_create_outcome_unknown` with no order id. Carried on the answer
  * as `answeredRefusal`, beside its detail and not in it (the ledger keeps it beside the reason as `answered`), and never
  * surfaced to a caller as a member: only the words change.
- *   - `refused`       a 403 the store answered without a name this gateway reads as terminal;
+ *   - `refused`       any other status below 500 the store answered (400, 401, 403, 404, 409, 422 ...) that did not
+ *                     give the claim back; a 408 (a deadline in front of the store) is not one;
  *   - `rate_limited`  a 429. The store can answer it to a second copy of a request it already accepted, before it looks
  *                     for that first copy's order, so an earlier attempt of this checkout may have placed one.
  */

@@ -289,7 +289,7 @@ for (const [laneName, lane] of Object.entries(LANES)) {
     }
     // Answered below 500, the claim kept, and as raised it would say retriable:true while every retry is refused. A 403
     // or a 429 says what the store answered (KERNEL_ANSWERED_REFUSALS); the others keep the words they had.
-    const ANSWERED = { 403: 'refused', 429: 'rate_limited' };
+    const ANSWERED = { 400: 'refused', 401: 'refused', 403: 'refused', 409: 'refused', 429: 'rate_limited' };
     for (const [status, code] of [[409, 'QUOTE_CONSUMED'], [429, 'RATE_LIMIT_EXCEEDED'], [429, 'RATE_LIMITED'], [429, null], [408, 'REQUEST_TIMEOUT'], [400, 'INVALID_REQUEST'], [403, 'MERCHANT_NOT_ACCEPTING_ORDERS'], [403, 'FORBIDDEN'], [403, null], [401, 'UNAUTHORIZED']]) {
       const w = world();
       const sid = await open(w);
@@ -409,6 +409,51 @@ test('M04 a bare createOrder (the invoke route\'s call) after a 429 or an unname
   assert.equal(w.ops('create_order').length, 2);
 });
 
+test('P3-6 the words of an order call\'s unknown outcome, by what came back: every status below 500 the store answered (and did not release) is a refusal; no response, a deadline, a 408, a 5xx and an unreadable 2xx have no readable answer', async () => {
+  const answeredOf = (detail) => ({ upstream_status: null, upstream_code: null, ...detail });
+  const TABLE = [
+    [{ upstream_status: 400, upstream_code: 'INVALID_REQUEST' }, 'refused'],
+    [{ upstream_status: 400, upstream_code: 'INVALID_REQUEST', upstream_detail: { message: 'Insufficient inventory', items: [] } }, 'refused'],
+    [{ upstream_status: 401, upstream_code: 'UNAUTHORIZED' }, 'refused'],
+    [{ upstream_status: 403, upstream_code: 'FORBIDDEN' }, 'refused'],
+    [{ upstream_status: 403, upstream_code: null, upstream_detail: 'Not authorized for this merchant' }, 'refused'],
+    [{ upstream_status: 404, upstream_code: 'MERCHANT_NOT_FOUND' }, 'refused'],
+    [{ upstream_status: 409, upstream_code: 'QUOTE_CONSUMED', upstream_detail: { error: 'QUOTE_CONSUMED' } }, 'refused'],
+    [{ upstream_status: 409, upstream_code: 'CONFLICT' }, 'refused'],
+    [{ upstream_status: 422, upstream_code: 'VALIDATION_ERROR' }, 'refused'],
+    [{ upstream_status: 429, upstream_code: 'RATE_LIMIT_EXCEEDED' }, 'rate_limited'],
+    [{ upstream_status: 429, upstream_code: null }, 'rate_limited'],
+    [{ upstream_status: 408, upstream_code: 'REQUEST_TIMEOUT' }, undefined],
+    [{ upstream_status: null, upstream_timeout: true }, undefined],
+    [{ upstream_status: 403, upstream_timeout: true }, undefined],
+    [{ upstream_status: null }, undefined],
+    [{ upstream_status: null, message: 'backend_iam_rejected' }, undefined],
+    [{ upstream_status: 500, upstream_code: 'INTERNAL_SERVER_ERROR' }, undefined],
+    [{ upstream_status: 502 }, undefined],
+    [{ upstream_status: 503, upstream_code: 'TEMPORARY_UNAVAILABLE' }, undefined],
+    [{ upstream_status: 504 }, undefined],
+  ];
+  for (const [detail, answered] of TABLE) {
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      const label = `${JSON.stringify(detail)} ${market}`;
+      const w = world({ market });
+      const sid = await open(w);
+      w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', ...answeredOf(detail) }); });
+      const err = await refusal(complete(w, sid, 'idem-table-0001'));
+      assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, label, { answered });
+      if (!answered) assert.match(err.recovery, /store may hold an order/, label);
+      assert.equal(await w.kernel.isQuoteClaimed(sid), true, label);
+    }
+  }
+  // An unreadable 2xx: the no-answer words.
+  for (const body of [null, '', '<html>ok</html>', {}]) {
+    const w = world();
+    const sid = await open(w);
+    w.script.create_order.push(() => body);
+    assertUnknown(await refusal(complete(w, sid, 'idem-table-0002')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `2xx ${JSON.stringify(body)}`);
+  }
+});
+
 test('Q3 a consumed quote (409 QUOTE_CONSUMED) logs the order the store names on the claim-kept line, owner-free, and the answer never carries it', async () => {
   const lines = [];
   const w = world();
@@ -416,7 +461,7 @@ test('Q3 a consumed quote (409 QUOTE_CONSUMED) logs the order the store names on
   const sid = await open(w);
   w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: 409, upstream_code: 'QUOTE_CONSUMED', upstream_detail: { error: 'QUOTE_CONSUMED', message: 'Quote already consumed', details: { order_id: 'ord_backend_77' } } }); });
   const err = await refusal(complete(w, sid, 'idem-consumed-0001'));
-  assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, 'consumed');
+  assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, 'consumed', { answered: 'refused' });
   assert.equal(JSON.stringify({ m: err.message, d: err.detail, r: err.recovery }).includes('ord_backend_77'), false, 'never in the answer');
   assert.deepEqual(lines.filter((l) => l.event === 'quote_claim_kept'), [{ event: 'quote_claim_kept', fields: { quote_id: sid, upstream_order_id: 'ord_backend_77', code: 'MERCHANT_UNAVAILABLE', reason: 'create_order_outcome_unknown' } }]);
   // Only that code, at that status, from the route's own detail, id-shaped: nothing else adds a member.

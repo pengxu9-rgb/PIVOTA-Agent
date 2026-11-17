@@ -211,7 +211,10 @@ test('Q1: an order call with no readable answer (no answer, a lost connection, a
 
 test('Q1: an order call the backend refused below 500 in a way that keeps the claim (a consumed quote, its out-of-stock 400, a 403, a 429) is an unknown outcome, never retriable; a terminal name (an expired quote) is answered as before', each(async (caller) => {
   // A 403 the backend did not name as terminal, and every 429, say what the store answered; the others keep their words.
-  for (const [answer, answered] of [[ANSWERS.quoteConsumed], [ANSWERS.insufficientInventory], [ANSWERS.validationFailed],
+  for (const [answer, answered] of [[ANSWERS.quoteConsumed, 'refused'], [ANSWERS.insufficientInventory, 'refused'], [ANSWERS.validationFailed, 'refused'],
+    [ANSWERS.checkoutQuoteRequired, 'refused'], [() => ANSWERS.raw(401, { status: 'error', error: { code: 'UNAUTHORIZED', message: 'UNAUTHORIZED', details: {} }, detail: {} }), 'refused'],
+    [() => ANSWERS.raw(409, { status: 'error', error: { code: 'CONFLICT', message: 'CONFLICT', details: {} }, detail: {} }), 'refused'],
+    [() => ANSWERS.raw(408, { status: 'error', error: { code: 'REQUEST_TIMEOUT', message: 'REQUEST_TIMEOUT', details: {} }, detail: {} })],
     [ANSWERS.notAuthorized, 'refused'], [() => ANSWERS.raw(403, { status: 'error', error: { code: 'FORBIDDEN', message: 'FORBIDDEN', details: {} }, detail: {} }), 'refused'],
     [() => ANSWERS.raw(429, { status: 'error', error: { code: 'RATE_LIMIT_EXCEEDED', message: 'RATE_LIMIT_EXCEEDED', details: { error: 'RATE_LIMIT_EXCEEDED' } }, detail: { error: 'RATE_LIMIT_EXCEEDED' } }), 'rate_limited'],
     [ANSWERS.rateLimited, 'rate_limited'], [ANSWERS.rateLimitedCoded, 'rate_limited'], [() => ANSWERS.rateLimited({ landed: true }), 'rate_limited']]) {

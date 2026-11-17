@@ -40,14 +40,15 @@ function isPlainObject(value) {
 }
 
 // THE ORDER CALL'S REFUSAL, AS THE STORE ANSWERED IT (the transport's facts, src/server.js
-// throwCommerceKernelUpstreamError): `rate_limited` for a 429, `refused` for a 403, a response that arrived with no
-// deadline mark; else undefined. Only the words of an unknown outcome depend on it (errors.js KERNEL_ANSWERED_REFUSALS).
+// throwCommerceKernelUpstreamError), for a response that arrived with a status below 500 and no deadline mark:
+// `rate_limited` for a 429, `refused` for every other (a 400, 401, 403, 404, 409, 422 ...), except a 408, which is a
+// deadline in front of the store and keeps the no-answer words. Undefined for no response, a deadline and a 5xx. Only
+// the words of an unknown outcome depend on it (errors.js KERNEL_ANSWERED_REFUSALS).
 function answeredRefusalKind(err) {
   if (!(err instanceof PivotaCommerceError) || !isPlainObject(err.detail) || err.detail.upstream_timeout === true) return undefined;
   const status = err.detail.upstream_status;
-  if (status === 429) return 'rate_limited';
-  if (status === 403) return 'refused';
-  return undefined;
+  if (!Number.isInteger(status) || status >= 500 || status < 400 || status === 408) return undefined;
+  return status === 429 ? 'rate_limited' : 'refused';
 }
 
 // The order id a 409 QUOTE_CONSUMED names (the route's own detail, `details.order_id`), id-shaped, else null.
