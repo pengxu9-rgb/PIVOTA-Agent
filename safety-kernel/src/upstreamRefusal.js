@@ -22,8 +22,13 @@
 //   - The upstream retries its own order write inside one request when its database is busy. The second run goes
 //     through the write step's own checks again, and by then the first run's order may exist. So a refusal raised
 //     INSIDE the write step (stock, the quote re-read) can be answered with an order behind it. Those are not on the
-//     list, whatever their status. (The order route's check that the seller is taking orders runs before its first
-//     write, and that retry re-runs the route only after a replay lookup that read back no order; it is on the list.)
+//     list, whatever their status.
+//   - The seller's own state is the one refusal of the order route that IS listed: [403, MERCHANT_NOT_ACCEPTING_ORDERS].
+//     The upstream raises it after its quote-claim lookup (so a second copy of a request whose order exists is
+//     answered that order, never this refusal) and above its first order write; the busy retry above re-runs the
+//     route only after a replay lookup that read back no order. The upstream's own contract test proves both.
+//   - A 429 is deliberately NOT listed, by any code: the upstream can rate-limit a resend of a request it already
+//     accepted before its replay check runs, so a 429 can be answered while the first copy's order exists.
 //   - A 503 is what the upstream answers when its database was busy, which can be after the order was written,
 //     and the upstream's own replay of an existing order does not hold while the database is busy. No 503 is on
 //     the list.
