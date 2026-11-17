@@ -158,3 +158,119 @@ test('the bare submit_payment: a paid order is told it is paid, with its id; an 
   assertConflict(await second.pay('idem-cf-lock-0001'), 'charge_in_progress', 'locked');
   assert.equal(w2.calls.filter((c) => c === 'submit_payment').length, 0);
 });
+
+// ---- the ownership check comes before the order's payment state -------------------------------------------------
+//
+// `charge_pending` and `order_already_paid` name the order and its payment state, so they are given only to the order's
+// own caller: `_requireOrder` (user, then session, then agent) runs before the status is read. Another user, the same
+// buyer in another session, or another agent, sending that order id with a new key, is refused as a linkage mismatch:
+// no order id, no payment state, nothing sent.
+
+import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
+import { invokeErrorOf } from '../src/contractValidation.js';
+
+const OWNER = Object.freeze({ user_ref: 'buyer_1', acp_session_id: 'sess_1', agent_id: 'agent_A' });
+const STRANGERS = Object.freeze({
+  'another user': { user_ref: 'buyer_2', acp_session_id: 'sess_1', agent_id: 'agent_A' },
+  'the same buyer in another session': { user_ref: 'buyer_1', acp_session_id: 'sess_2', agent_id: 'agent_A' },
+  'the same buyer through another agent': { user_ref: 'buyer_1', acp_session_id: 'sess_1', agent_id: 'agent_B' },
+});
+const PAYMENT_STATE = /charge_pending|order_already_paid|already paid|was already asked for|payment step|payment_status/i;
+
+/** Every surfaced form of an answer: the error, its invoke body. Neither may carry the order id or its payment state. */
+function assertRevealsNothing(err, orderId, label) {
+  assert.ok(err instanceof PivotaCommerceError, `${label}: ${err && err.message}`);
+  assert.equal(err.code, 'STATE_LINKAGE_MISMATCH', `${label}: ${err.code} ${err.message}`);
+  assert.equal(err.message, ERROR_CATALOG.STATE_LINKAGE_MISMATCH.userMessage, label);
+  assert.equal(err.detail.acp_detail, undefined, `${label}: nothing curated to surface`);
+  assert.equal(err.detail.acp_message, undefined, label);
+  const body = JSON.stringify(invokeErrorOf(err));
+  assert.equal(body.includes(orderId), false, `${label}: ${body}`);
+  assert.doesNotMatch(body, PAYMENT_STATE, `${label}: ${body}`);
+  assert.equal(JSON.stringify(err.toResult()).includes(orderId), false, label);
+}
+
+test('the bare submit_payment: after the order is charge_pending, and after it is paid, another user, the same buyer in another session and another agent get a linkage mismatch with no order id and no payment state; nothing is sent', async () => {
+  const transport500 = () => new PivotaCommerceError('MERCHANT_UNAVAILABLE', { operation: 'submit_payment', upstream_status: 500 });
+  for (const [state, make] of [['charge_pending', transport500], ['paid', null]]) {
+    const w = world(make);
+    const q = await w.kernel.previewQuote({ quote: QUOTE }, OWNER);
+    const o = await w.kernel.createOrder({ idempotency_key: 'idem-own-order-01', order: { quote_id: q.quote_id, shipping_address: {} } }, OWNER);
+    const token = await w.kernel.mintConfirmation({ order_id: o.order_id }, OWNER);
+    const pay = (key, ctx, t = token) => w.kernel.submitPayment({ idempotency_key: key, confirmation_token: t, payment: { order_id: o.order_id, expected_amount: 1800, currency: 'USD' } }, ctx).then((r) => r, (e) => e);
+    await pay('idem-own-pay-0001', OWNER);
+    assert.equal((await w.kernel._orderStore.get(o.order_id)).status, state, state);
+    const sentBefore = w.calls.length;
+    let n = 0;
+    for (const [who, ctx] of Object.entries(STRANGERS)) {
+      for (const [tk, t] of [['the owner\'s token', token], ['a garbage token', 'cft_placeholder']]) {
+        n += 1;
+        assertRevealsNothing(await pay(`idem-stranger-${String(n).padStart(4, '0')}`, ctx, t), o.order_id, `${state}: ${who}, ${tk}`);
+      }
+    }
+    assert.equal(w.calls.length, sentBefore, `${state}: nothing sent for any stranger`);
+    // The owner, with a new key, is still told what is true of its own order, with its id.
+    const own = await pay('idem-own-pay-0002', OWNER, await w.kernel.mintConfirmation({ order_id: o.order_id }, OWNER).catch(() => token));
+    assertConflict(own, state === 'paid' ? 'order_already_paid' : 'charge_pending', `${state}: the owner`, { orderId: o.order_id });
+  }
+});
+
+test('the tool-door lanes (complete, payment link, session read): after the order is charge_pending, and after it is paid, another user, the same buyer in another session and another agent learn nothing of the order', async () => {
+  for (const state of ['charge_pending', 'paid']) {
+    const calls = [];
+    let failPage = state === 'charge_pending';
+    const upstream = async (op) => {
+      calls.push(op);
+      if (op === 'preview_quote') return { quote_id: 'bq_1', currency: 'USD', merchant_of_record: 'merch_A', locked_totals: { subtotal: 1800, tax: 0, shipping: 0, total: 1800 }, line_items: [{ product_id: 'p1', quantity: 1 }] };
+      if (op === 'create_order') return { order_id: 'o_1', acp_state: {} };
+      if (op === 'submit_payment') {
+        if (failPage) { failPage = false; throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { operation: 'submit_payment', upstream_status: 500 }); }
+        return { payment_id: 'pay_1', payment_status: 'succeeded' };
+      }
+      return {};
+    };
+    const kernel = new SafetyKernel({ upstream, secret: 'linkage-secret-0123456789abcdef', log: { info() {}, warn() {}, error() {} } });
+    const executor = createCanonicalExecutor({
+      kernel, upstream, hostedLinkEnabled: true,
+      verifyPaymentAuthorization: async (_a, b) => ({ ok: true, amount: b.amount, currency: b.currency, user_ref: b.user_ref }),
+    });
+    const sid = (await executor.execute('create_checkout_session', { idempotency_key: 'idem-own-open-01', quote: QUOTE }, OWNER)).session_id;
+    await executor.execute('complete_checkout_session', { idempotency_key: 'idem-own-done-01', session_id: sid, payment_authorization: { token: 'grant_placeholder' } }, OWNER).catch((e) => e);
+    assert.equal((await kernel._orderStore.get('o_1')).status, state, state);
+    const sentBefore = calls.length;
+    let n = 0;
+    for (const [who, ctx] of Object.entries(STRANGERS)) {
+      for (const [tool, args] of [
+        ['complete_checkout_session', (k) => ({ idempotency_key: k, session_id: sid, payment_authorization: { token: 'grant_placeholder' } })],
+        ['create_payment_link', (k) => ({ idempotency_key: k, session_id: sid, customer_email: 'buyer@example.test' })],
+        ['get_checkout_session', () => ({ session_id: sid })],
+      ]) {
+        n += 1;
+        const label = `${state}: ${who}, ${tool}`;
+        const err = await executor.execute(tool, args(`idem-stranger-tool-${String(n).padStart(3, '0')}`), ctx).then((r) => ({ notRefused: r }), (e) => e);
+        // Another agent in the buyer's own session may read that session (sessions are bound to the buyer and the
+        // session, not the agent), but not the order: no id, and the claim's state hidden behind `order_outcome_unknown`
+        // whatever the order's real payment state.
+        if (who === 'the same buyer through another agent' && tool === 'get_checkout_session') {
+          const read = err.notRefused;
+          assert.ok(read, `${label}: ${JSON.stringify(err).slice(0, 300)}`);
+          assert.deepEqual([read.order_id, read.status], [null, 'order_outcome_unknown'], `${label}: ${JSON.stringify(read).slice(0, 300)}`);
+          assert.equal(JSON.stringify(read).includes('o_1'), false, label);
+          assert.doesNotMatch(JSON.stringify(read), PAYMENT_STATE, label);
+          continue;
+        }
+        assert.ok(err instanceof PivotaCommerceError, `${label}: ${JSON.stringify(err).slice(0, 300)}`);
+        // Another user or session: the linkage mismatch. Another agent in the buyer's own session: that session is spent
+        // (QUOTE_ALREADY_USED), and the order it made is not named to that agent.
+        assert.equal(['STATE_LINKAGE_MISMATCH', 'QUOTE_ALREADY_USED'].includes(err.code), true, `${label}: ${err.code} ${err.message}`);
+        if (who !== 'the same buyer through another agent') assert.equal(err.code, 'STATE_LINKAGE_MISMATCH', label);
+        assert.equal(err.detail.order_id, undefined, `${label}: ${JSON.stringify(err.detail)}`);
+        assert.equal(err.detail.acp_detail?.order_id, undefined, label);
+        const body = JSON.stringify(invokeErrorOf(err));
+        assert.equal(body.includes('o_1'), false, `${label}: ${body}`);
+        assert.doesNotMatch(body, PAYMENT_STATE, `${label}: ${body}`);
+      }
+    }
+    assert.equal(calls.length, sentBefore, `${state}: nothing sent for any stranger`);
+  }
+});

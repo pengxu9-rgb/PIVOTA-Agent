@@ -533,6 +533,75 @@ test('P2-1 (b) and P2-2: invoke submit_payment after the order exists: a refused
   }
 });
 
+// Another user, or the same buyer in another session, with an order's id (or its session) after the order is
+// `charge_pending` and after it is paid: the ownership check comes first, so nothing about the order is said to them.
+// (`"status":"failure"` is invoke's envelope, not the order's.)
+const PAYMENT_STATE = /charge_pending|order_already_paid|already paid|was already asked for|payment step|order_outcome|payment_status|order_status|\\?"status\\?"\s*:\s*\\?"(?!failure)/i;
+const STRANGERS = Object.freeze({ 'another user': (n) => ({ 'X-Test-User-Ref': 'buyer-0002', 'X-Test-Acp-Session-Id': `sess-x-${String(n).padStart(5, '0')}` }), 'the same buyer in another session': (n) => ({ 'X-Test-User-Ref': 'buyer-0001', 'X-Test-Acp-Session-Id': `sess-y-${String(n).padStart(5, '0')}` }) });
+async function setOrderStatus(orderId, status) {
+  const mount = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const o = await mount.kernel._orderStore.get(orderId);
+  assert.ok(o, orderId);
+  await mount.kernel._orderStore.set(orderId, { ...o, status });
+}
+function assertStrangerAnswer(r, orderId, label, { http } = {}) {
+  const code = http !== undefined ? r.body.code : errorOf(r).code;
+  assert.equal(code, 'STATE_LINKAGE_MISMATCH', `${label}: ${r.raw.slice(0, 300)}`);
+  if (http !== undefined) assert.equal(r.http, http, label);
+  assert.equal(r.raw.includes(orderId), false, `${label}: the order id`);
+  assert.doesNotMatch(r.raw, PAYMENT_STATE, `${label}: ${r.raw.slice(0, 300)}`);
+  assert.equal((http !== undefined ? r.body.detail : errorOf(r).detail), undefined, `${label}: no detail`);
+  assert.equal(sent(r, ORDERS) + sent(r, PAGES), 0, `${label}: nothing sent`);
+}
+
+test('P2-1 (v5): after the order is charge_pending, and after it is paid, another user and the same buyer in another session learn nothing of it: invoke submit_payment with its id and a new key, and /mcp complete, payment link and session read on its session, are each a linkage mismatch with no order id and no payment state, and nothing is sent', async () => {
+  const commerce = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  for (const market of PRICED_MARKETS) {
+    for (const state of ['charge_pending', 'paid']) {
+      // invoke: the owner's order, its payment step answered 500 (charge_pending), or then marked paid.
+      seq += 1;
+      const owner = buyerFor(seq);
+      const ctx = { user_ref: owner['X-Test-User-Ref'], acp_session_id: owner['X-Test-Acp-Session-Id'] };
+      const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer: owner });
+      const o = await door.invoke('create_order', { idempotency_key: freshKey(), order: invokeOrderOf(q, market) }, { buyer: owner });
+      const orderId = o.body.order_id;
+      const token = await commerce.mintConfirmation({ order_id: orderId }, ctx);
+      const pay = (k, t, buyer) => door.invoke('submit_payment', { idempotency_key: k, confirmation_token: t, payment: { order_id: orderId, expected_amount: o.body.amount_total, currency: o.body.currency } }, { buyer });
+      door.paymentScript.push(ANSWERS.internalError());
+      assert.equal((await pay(freshKey(), token, owner)).body.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${market} ${state}`);
+      if (state === 'paid') await setOrderStatus(orderId, 'paid');
+      for (const [who, make] of Object.entries(STRANGERS)) {
+        seq += 1;
+        for (const [tk, t] of [['the owner\'s token', token], ['a garbage token', 'cft_placeholder']]) {
+          assertStrangerAnswer(await pay(freshKey(), t, make(seq)), orderId, `invoke ${market} ${state} ${who} ${tk}`, { http: 404 });
+        }
+      }
+      // /mcp: the owner's session, its payment page answered 500 (charge_pending), or then marked paid.
+      const h = await open('mcp_complete', market);
+      door.paymentScript.push(ANSWERS.internalError());
+      const first = await attempt(h, freshKey());
+      assert.equal(errorOf(first).code, 'CHECKOUT_OUTCOME_UNKNOWN', `${market} ${state}: ${first.raw.slice(0, 200)}`);
+      const sessionOrder = errorOf(first).detail.order_id;
+      if (state === 'paid') await setOrderStatus(sessionOrder, 'paid');
+      const grant = await grantFor(h);
+      for (const [who, make] of Object.entries(STRANGERS)) {
+        seq += 1;
+        const buyer = make(seq);
+        for (const [tool, args] of [
+          ['complete_checkout_session', { idempotency_key: freshKey(), session_id: h.id, payment_authorization: { method: 'acp_delegated_token', token: grant } }],
+          ['create_payment_link', { idempotency_key: freshKey(), session_id: h.id, customer_email: 'buyer@example.test' }],
+          ['get_checkout_session', { session_id: h.id }],
+        ]) {
+          assertStrangerAnswer(await door.call(tool, args, { buyer }), sessionOrder, `/mcp ${tool} ${market} ${state} ${who}`);
+        }
+      }
+      // The owner still reads its own session, with its order.
+      const own = await read(h);
+      assert.equal(own.isError, false, `${market} ${state}: ${own.raw.slice(0, 200)}`);
+    }
+  }
+});
+
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
   assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');
