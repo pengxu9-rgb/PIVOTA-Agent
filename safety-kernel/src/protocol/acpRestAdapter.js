@@ -318,7 +318,10 @@ export function createAcpRestAdapter(deps = {}) {
   // A session as this door reads it out: `canceled` for a cancelled one; else its quote, judged for a mark.
   async function readSession(acp_session_id, stored, ctx) {
     if (stored.canceled === true) return { status: 200, body: { id: acp_session_id, object: 'checkout_session', status: 'canceled' } };
-    const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...heldMarketParams(stored) }, ctx);
+    // A mark (a refused market) judges a read only of a session that can still be completed: one whose claim is held
+    // reads as what holds it (a mark written before that rule existed must not hide it).
+    const judgeMark = stored.refused_market !== undefined && stored.refused_market !== null ? !(await heldClaimOf(stored.quote_id, ctx)) : true;
+    const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id, ...(judgeMark ? heldMarketParams(stored) : {}) }, ctx);
     return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
   }
   // What the executor is told about the market of an UPDATE. Two members, both this door's own words (nothing in a
@@ -528,8 +531,17 @@ export function createAcpRestAdapter(deps = {}) {
         session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote, ...updateMarketParams(stored, quote.shipping_address) }, ctx);
       } catch (err) {
         // REFUSED FOR ITS MARKET: no quote was recorded, so the session still holds the one it had. It is marked
-        // only when that held quote is not priced for the market this update named (markRefusedMarket).
-        await markRefusedMarket(acp_session_id, stored, marketOfMarketRefusal(err), ctx);
+        // only when that held quote is not priced for the market this update named (markRefusedMarket), and never when
+        // the session is over by its claim (an order, an order call whose outcome is unknown, a cancellation): such a
+        // session is answered as over, and a mark would turn every later read of it into "not priced", hiding what holds
+        // it. A claim read that fails marks nothing.
+        const refusedMarket = marketOfMarketRefusal(err);
+        if (refusedMarket) {
+          let held = null;
+          try { held = await heldClaimOf(stored.quote_id, ctx); } catch { throw err; }
+          if (held) throw heldSessionRefusal(held);
+          await markRefusedMarket(acp_session_id, stored, refusedMarket, ctx);
+        }
         throw err;
       }
       // The session now holds this update's quote, judged for this update's market: an earlier mark is gone.

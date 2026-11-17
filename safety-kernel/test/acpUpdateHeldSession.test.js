@@ -281,3 +281,34 @@ test('the ACP order carries the status of ITS order only: a recorded order the s
     assert.deepEqual([got.status, got.body.status, got.body.order], [200, status, order], JSON.stringify(read));
   }
 });
+
+test('P2-2 an update naming a market nothing is priced for, on a session whose claim is held, is refused as held and marks nothing; a mark already on such a session never hides what holds it', async () => {
+  for (const storeKind of STORES) {
+    for (const [label, script, code, reads] of [
+      ['an order call with an unknown outcome', (d) => d.script.create_order.push(() => { throw noAnswer(); }), 'QUOTE_ALREADY_USED', 'checkout.in_progress'],
+      ['an order with an unknown payment step', (d) => d.script.submit_payment.push(() => { throw busy(); }), 'QUOTE_ALREADY_USED', 'checkout.completed'],
+    ]) {
+      const d = door({ storeKind });
+      const id = (await d.create('US')).body.id;
+      script(d);
+      assert.equal((await d.complete(id, 'idem-held-mark-0001')).body.code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
+      const priced = d.ops('preview_quote');
+      const refused = await d.update(id, 'DE');
+      assert.deepEqual([refused.status, refused.body.code], [409, code], `${storeKind} ${label}: ${JSON.stringify(refused.body)}`);
+      assert.equal('refused_market' in (await d.record(id)), false, `${storeKind} ${label}: nothing marked`);
+      assert.equal(d.ops('preview_quote'), priced, `${storeKind} ${label}: nothing priced`);
+      const got = await d.read(id);
+      assert.deepEqual([got.status, got.body.status], [200, reads], `${storeKind} ${label}: ${JSON.stringify(got.body)}`);
+      // A mark written before this rule: the read still says what holds the session.
+      await d.inner.set(id, { ...(await d.record(id)), refused_market: 'DE' });
+      const marked = await d.read(id);
+      assert.deepEqual([marked.status, marked.body.status], [200, reads], `${storeKind} ${label} marked: ${JSON.stringify(marked.body)}`);
+      assert.equal(marked.body.currency, 'USD', label);
+    }
+    // An open session is still marked by a refused market, as before.
+    const d = door({ storeKind });
+    const id = (await d.create('US')).body.id;
+    assert.equal((await d.update(id, 'DE')).status, 404);
+    assert.equal((await d.record(id)).refused_market, 'DE');
+  }
+});

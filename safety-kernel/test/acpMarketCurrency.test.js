@@ -855,7 +855,9 @@ for (const storeKind of ['memory', 'postgres']) {
     const paid = await door.record(id);
     assert.ok(paid.order_id);
     g.open();
-    refusedBy(await refused, MISMATCH, 'SG');
+    // The session is over by its claim by the time the refusal lands: it is answered as over, and nothing is marked.
+    const answer = await refused;
+    assert.deepEqual([answer.status, answer.body.code], [409, 'QUOTE_ALREADY_USED'], JSON.stringify(answer.body));
     assert.deepEqual(await door.record(id), paid, 'order id kept, no mark');
     assert.equal((await door.read(id)).body.order.id, paid.order_id);
     const cancelled = await door.cancel(id);
