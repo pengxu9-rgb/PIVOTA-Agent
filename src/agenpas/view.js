@@ -43,48 +43,58 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
-// The backend's failure/refusal codes, mapped to plain language. A code is NEVER shown to the buyer.
+// The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
+// Mirrors pivota-backend 2fe07431c (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES`,
+// `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
-// COMPOUND CODES. The backend writes codes such as `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>` and
-// `binding_refused:<kind>:<status>`. Every code is lower-cased and split on ':', and EVERY segment is tested.
+// SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
+// step prefixes are BOOKKEEPING and are skipped (`paid` is the approval-page step: the rail mints a token and nothing
+// is charged). A code with a suffix (`checkout_card_unavailable:<why>`, `checkout_setup_refused:<kind>:<status>`,
+// `checkout_confirm_refused:http_error:422`) matches on its head segment, because every segment is read.
 //
-// The step prefixes (`paid_sent`, `bound_sent`) are BOOKKEEPING: they say which rail step the code came from and are
-// skipped when matching. `paid` is the approval-page step (the rail mints a token; nothing is charged), so a
-// `paid_sent:…` code says nothing by itself about money having moved: only its code segments decide.
-//
-// Rules, in order:
-//   1. OUTCOME UNKNOWN WINS. Any segment that is an outcome-unknown or hold code (money may have moved, or the
-//      purchase is held for a human) makes the purchase outcome_unknown: "We're checking with the store — don't try
-//      again", never "wasn't placed", never a retry hint. Matched by the list AND by shape, so a new code of that
-//      family is caught without a change here.
-//   2. Otherwise the first segment on a named list gives that list's wording. Only some lists carry a hint that the
-//      buyer may start again from the chat.
-//   3. Otherwise the state's generic wording: neutral, and without a "try again" hint.
+// PRECEDENCE, highest first, over ALL the segments of ALL the codes on the purchase:
+//   1. FAILED (terminal, nothing was submitted to the store): the not_submitted wording.
+//   2. HELD (the purchase is held for a check; money may have moved): outcome_unknown, "don't try again", no retry.
+//   3. the other NAMED lists (declined, approval timed out, card, price, refusals, ...): their wording.
+//   4. the SHAPE heuristic (a new code of the hold families): outcome_unknown.
+//   5. the state's generic wording: neutral, no "try again".
+// Every explicit list beats the shape in both directions: `checkout_setup_unrecognised` is a FAILED code although its
+// name has the shape of a hold, and `vic_quote_mismatch` is a pre-submit price check.
+// While NOT terminal: a HELD (or hold-shaped) code in `placing` shows the checking screen, and a PARKED code (the
+// rail paused the purchase before its checkout step) shows "Getting things ready…"; polling goes on in both.
 
-const OUTCOME_UNKNOWN_CODES = new Set([
-  // The order may exist.
-  'outcome_unknown', 'vic_order_outcome_unknown', 'vic_order_unresolved', 'vic_submit_unresolved',
-  'pending_write_unreconcilable', 'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown',
-  'charge_pending',
-  // Money may have moved, or the purchase is held for a human.
-  'money_result_seen', 'money_result_parked', 'vic_held',
-  'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
-  'vic_approved_amount_missing',
-  // The rail's checkout step.
-  'checkout_confirm_unresolved', 'checkout_confirm_error_card', 'checkout_confirm_conflict', 'checkout_payment_no_order',
-  'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_total_over_approved', 'checkout_result_overdue',
-  'checkout_cancel_unresolved', 'checkout_order_id_card_shaped',
-  'checkout_confirm_unrecognised', 'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_result_unrecognised',
-  'checkout_confirm_ambiguous_4xx',
+/** Terminal, nothing submitted to the store. */
+const FAILED_CODES = new Set([
+  'checkout_contact_incomplete', 'checkout_relay_refused', 'checkout_lock_invalid', 'checkout_price_missing',
+  'checkout_token_unavailable', 'checkout_card_unavailable', 'checkout_setup_incomplete', 'checkout_setup_unrecognised',
+  'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused', 'checkout_confirm_window_passed',
+  'checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported',
+  'token_request_unresolved', 'pay_step_unavailable',
 ]);
-// Cross-checked 2026-11-18 against the backend worker's `_CHECKOUT_HOLD_CODES` (15) and `_VIC_HOLD_CODES` (7)
-// (pivota-backend services/payment_orchestration/a2a_rail_worker.py): every one of them is on the list above.
-// The SHAPE catches a new code of the same families, but never one that a named group below already words: an
-// explicit list always beats a heuristic (`vic_quote_mismatch` is a pre-submit price check, not a hold).
-const OUTCOME_UNKNOWN_SHAPE_RE = /(?:outcome_unknown|unresolved|unreconcil|unrecognised|unrecognized|ambiguous|mismatch|parked|inconsistent|charge_pending|money_result)/;
 
-/** On a COMPLETED purchase: the order was placed, but the final total could not be read. */
-const TOTAL_UNPARSED_CODES = new Set(['checkout_total_unparsed']);
+/** Held for a check (the backend keeps the purchase in `paying`): the order may exist, or money may have moved. */
+const HELD_CODES = new Set([
+  // _CHECKOUT_HOLD_CODES
+  'checkout_confirm_unresolved', 'checkout_confirm_unrecognised', 'checkout_confirm_text_only',
+  'checkout_confirm_error_card', 'checkout_confirm_conflict', 'checkout_confirm_ambiguous_4xx',
+  'checkout_setup_submitted', 'checkout_setup_unresolved', 'checkout_task_invalid', 'checkout_task_mismatch',
+  'checkout_result_unrecognised', 'checkout_result_overdue', 'checkout_total_unverified', 'checkout_total_over_approved',
+  'checkout_payment_no_order', 'checkout_order_id_card_shaped', 'checkout_unknown_timeout',
+  'checkout_unknown_script_error', 'checkout_cancel_unresolved',
+  'money_result_seen',
+  // _VIC_HOLD_CODES
+  'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
+  'vic_approved_amount_missing', 'vic_submit_unresolved',
+  // The other outcome-unknown codes the worker writes.
+  'outcome_unknown', 'vic_order_outcome_unknown', 'vic_order_unresolved', 'pending_write_unreconcilable',
+  'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked',
+  'vic_held',
+]);
+
+/** Paused before the checkout step; not terminal. */
+const PARKED_CODES = new Set(['checkout_step_disabled', 'checkout_schema_incomplete']);
+
+const OUTCOME_UNKNOWN_SHAPE_RE = /(?:outcome_unknown|unresolved|unreconcil|unrecognised|unrecognized|ambiguous|mismatch|parked|inconsistent|charge_pending|money_result)/;
 
 const OUTCOME_UNKNOWN_COPY = Object.freeze({
   kind: 'outcome_unknown',
@@ -92,6 +102,30 @@ const OUTCOME_UNKNOWN_COPY = Object.freeze({
   message: "We're checking with the store — don't try again. Your order may already be in progress, and we'll confirm what happened in the chat.",
   retry_hint: false,
   outcome_unknown: true,
+});
+
+const HELD_COPY = Object.freeze({
+  kind: 'held',
+  title: "We're checking with the store",
+  message: "We're checking with the store — don't try again. This can take a while; we'll confirm what happened in the chat.",
+  retry_hint: false,
+  outcome_unknown: true,
+});
+
+const PARKED_COPY = Object.freeze({
+  kind: 'parked',
+  title: 'Getting things ready…',
+  message: 'This is taking a little longer than usual. This page updates on its own.',
+  retry_hint: false,
+  outcome_unknown: false,
+});
+
+const NOT_SUBMITTED_COPY = Object.freeze({
+  kind: 'not_submitted',
+  title: "This purchase didn't go through",
+  message: "The store's checkout couldn't be completed, so no order was sent to the store.",
+  retry_hint: false,
+  outcome_unknown: false,
 });
 
 const REASON_GROUPS = [
@@ -111,8 +145,8 @@ const REASON_GROUPS = [
   },
   {
     kind: 'card_not_added',
-    codes: ['binding_refused', 'token_refused', 'token_failed', 'token_method_unavailable', 'token_currency_unsupported',
-      'method_not_listed', 'vic_method_missing'],
+    codes: ['binding_refused', 'token_refused', 'token_failed', 'token_method_unavailable', 'method_not_listed',
+      'vic_method_missing'],
     title: "Your card couldn't be used",
     message: "The card couldn't be set up for this purchase, so the order wasn't placed.",
     retry_hint: true,
@@ -132,14 +166,11 @@ const REASON_GROUPS = [
     retry_hint: false,
   },
   {
-    // The rail's checkout step stopped BEFORE anything was submitted to the store.
-    kind: 'not_submitted',
-    codes: ['checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'checkout_setup_incomplete',
-      'checkout_contact_incomplete', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit',
-      'checkout_price_missing', 'checkout_currency_unsupported', 'checkout_confirm_not_accepted',
-      'checkout_schema_incomplete'],
-    title: "This purchase didn't go through",
-    message: "The store's checkout couldn't be completed, so no order was sent to the store.",
+    // The rail's own refusals of the checkout (refusal_reason): plain refusal wording.
+    kind: 'checkout_refused',
+    codes: ['checkout_currency_unsupported', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit'],
+    title: "This purchase couldn't be started",
+    message: "Our payment partner couldn't take this purchase. Go back to the chat for other options.",
     retry_hint: false,
   },
   {
@@ -193,7 +224,7 @@ const SEGMENT_RE = /^[a-z0-9_]{1,64}$/;
 /** Step prefixes: bookkeeping, never matched against any list. */
 const BOOKKEEPING_SEGMENTS = new Set(['paid_sent', 'bound_sent']);
 
-/** Every well-formed segment of every code: lower-cased, split on ':'. */
+/** Every well-formed segment of every code: lower-cased, split on ':', step prefixes skipped. */
 function codeSegments(codes) {
   const out = [];
   for (const code of Array.isArray(codes) ? codes : []) {
@@ -206,36 +237,47 @@ function codeSegments(codes) {
   return out;
 }
 
-/** True when any segment of the code (or codes) is outcome-unknown or a hold. */
-function isOutcomeUnknownSegment(seg) {
-  return OUTCOME_UNKNOWN_CODES.has(seg) || (!REASON_BY_CODE.has(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
+function isExplicit(seg) {
+  return FAILED_CODES.has(seg) || HELD_CODES.has(seg) || PARKED_CODES.has(seg) || REASON_BY_CODE.has(seg);
 }
 
+/** What the codes say, by the precedence above: 'failed' | 'held' | a named group | 'shape_unknown' | null. */
+function classify(segments) {
+  if (segments.some((seg) => FAILED_CODES.has(seg))) return { kind: 'failed' };
+  if (segments.some((seg) => HELD_CODES.has(seg))) return { kind: 'held' };
+  const named = segments.map((seg) => REASON_BY_CODE.get(seg)).find(Boolean);
+  if (named) return { kind: 'named', group: named };
+  if (segments.some((seg) => !isExplicit(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg))) return { kind: 'shape_unknown' };
+  return null;
+}
+
+/** True when the codes, by the precedence above, say the outcome is unknown (held, or hold-shaped). */
 function isOutcomeUnknownCode(code) {
-  return codeSegments(Array.isArray(code) ? code : [code]).some(isOutcomeUnknownSegment);
+  const c = classify(codeSegments(Array.isArray(code) ? code : [code]));
+  return Boolean(c) && (c.kind === 'held' || c.kind === 'shape_unknown');
 }
 
-/** While the order is being placed, a hold or outcome-unknown code means it is waiting on a check: say so. */
-const HELD_COPY = Object.freeze({
-  kind: 'held',
-  title: "We're checking with the store",
-  message: "We're checking with the store — don't try again. This can take a while; we'll confirm what happened in the chat.",
-  retry_hint: false,
-  outcome_unknown: true,
-});
-
-/** The plain-language outcome for a terminal non-completed state, from its codes. Null for any other state. */
+/**
+ * The plain-language outcome for the state, from its codes:
+ *   failed / refused / expired  -> by the precedence above
+ *   placing                     -> the checking wording while held (or hold-shaped); else parked; else null
+ *   any other non-terminal      -> the parked wording while parked; else null
+ *   completed                   -> null
+ */
 function outcomeFor(state, codes) {
   const segments = codeSegments(codes);
-  if (state === 'placing') return isOutcomeUnknownCode(segments) ? { ...HELD_COPY } : null;
+  const c = classify(segments);
+  if (!TERMINAL_STATES.has(state) && state !== 'unknown') {
+    if (state === 'placing' && c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...HELD_COPY };
+    if (segments.some((seg) => PARKED_CODES.has(seg))) return { ...PARKED_COPY };
+    return null;
+  }
   if (!GENERIC_BY_STATE[state]) return null;
-  if (isOutcomeUnknownCode(segments)) return { ...OUTCOME_UNKNOWN_COPY };
-  for (const seg of segments) {
-    const group = REASON_BY_CODE.get(seg);
-    if (group) {
-      const { codes: _codes, ...copy } = group;
-      return { ...copy, outcome_unknown: false };
-    }
+  if (c && c.kind === 'failed') return { ...NOT_SUBMITTED_COPY };
+  if (c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...OUTCOME_UNKNOWN_COPY };
+  if (c && c.kind === 'named') {
+    const { codes: _codes, ...copy } = c.group;
+    return { ...copy, outcome_unknown: false };
   }
   return { ...GENERIC_BY_STATE[state], outcome_unknown: false };
 }
@@ -248,11 +290,13 @@ function outcomeFor(state, codes) {
  *   awaiting_buyer_authorization     -> approve
  *   placing                          -> placing, or authenticate while the bank's check page is offered, or
  *                                       outcome_unknown (NOT terminal: polling goes on) while a hold code is set
+ *   any non-terminal with a parked code (and no action to take) -> parked (NOT terminal)
  *   completed                        -> done
- *   failed / refused / expired       -> failed / refused / expired, or outcome_unknown for an outcome-unknown code
+ *   failed / refused / expired       -> failed / refused / expired, or outcome_unknown for a held code
  *   anything else                    -> unknown (keep polling; claim nothing)
  */
 function screenFor(state, { actionKind = null, outcome = null } = {}) {
+  if (outcome && outcome.kind === 'parked' && !actionKind) return 'parked';
   switch (state) {
     case 'routing': return 'preparing';
     case 'needs_payment_method': return 'add_card';
@@ -355,8 +399,9 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
     order = {
       reference: refRaw ? refRaw.trim() : null,
       status_url: merchantOrderUrlAllowed(statusRaw, merchantDomain) ? new URL(statusRaw).href : null,
-      // Placed, but the rail could not read the final total: the page says "see your email receipt".
-      total_unparsed: currencyConflict || codeSegments(codes).some((seg) => TOTAL_UNPARSED_CODES.has(seg)),
+      // A completed purchase always carries a verified final total; only two disagreeing currencies hide it (the
+      // page then says "see your email receipt").
+      total_unparsed: currencyConflict,
     };
   }
 

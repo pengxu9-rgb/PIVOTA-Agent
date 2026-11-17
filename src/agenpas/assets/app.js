@@ -310,6 +310,8 @@
           button: 'Continue to your bank',
           waiting: 'Waiting for your bank…',
         });
+      case 'parked':
+        return progressCard('Getting things ready…', 'This is taking a little longer than usual. This page updates on its own.');
       case 'placing':
         return progressCard('Placing your order at ' + m + '…', 'This usually takes under a minute. You can keep this page open.');
       case 'done':

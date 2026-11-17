@@ -295,3 +295,17 @@ test('embed: the frame sandbox carries no top-navigation permission', async () =
   const [frame] = h.app.all((n) => n.tagName === 'IFRAME');
   assert.equal(/allow-top-navigation/.test(frame.getAttribute('sandbox')), false);
 });
+
+test('a parked purchase: "Getting things ready…", polling goes on, the token is kept', async () => {
+  const parked = view({
+    state: 'locking', screen: 'parked', terminal: false, action: null, poll_after_seconds: 15,
+    outcome: { kind: 'parked', title: 'Getting things ready…', message: 'This is taking a little longer than usual. This page updates on its own.', retry_hint: false, outcome_unknown: false },
+  });
+  const h = harness({ answers: [{ status: 200, body: parked }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Getting things ready…/);
+  assert.equal(/try again/i.test(h.text()), false);
+  assert.equal(h.pollTimers()[0].ms, 15000);
+  assert.equal(h.storage.has(`agenpas:t:${PID}`), true);
+});

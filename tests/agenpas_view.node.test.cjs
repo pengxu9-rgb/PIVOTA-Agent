@@ -312,29 +312,17 @@ test('paid_sent is the approval step, not a charge: only its code segment decide
   assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).outcome.kind, 'failed');
 });
 
-test('nothing-submitted checkout codes get plain failure wording with no retry hint', () => {
-  for (const code of ['checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'checkout_setup_incomplete',
-    'checkout_contact_incomplete', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit', 'checkout_price_missing',
-    'checkout_currency_unsupported', 'checkout_confirm_not_accepted', 'checkout_schema_incomplete']) {
-    const view = project(unified('failed', {}, { last_error_code: `bound_sent:2:${code}` }));
-    assert.equal(view.screen, 'failed', code);
-    assert.equal(view.outcome.kind, 'not_submitted', code);
-    assert.equal(view.outcome.outcome_unknown, false);
-    assert.equal(view.outcome.retry_hint, false);
-  }
-});
-
 test('binding_refused:<kind>:<status> reads as the card not being usable', () => {
   const view = project(unified('failed', {}, { refusal_reason: 'binding_refused:card_type:422' }));
   assert.equal(view.outcome.kind, 'card_not_added');
 });
 
-test('checkout_total_unparsed on a completed purchase: placed, total "see your email receipt"', () => {
-  const view = project(unified('completed', { order_reference: '#1001', totals: { currency: 'USD', final_total_minor: null } },
-    { last_error_code: 'paid_sent:1:v:checkout_total_unparsed' }));
+test('checkout_total_unparsed: retired by the backend; a completed purchase shows its verified total as usual', () => {
+  const view = project(unified('completed', { order_reference: '#1001', totals: { currency: 'USD', final_total_minor: 2297 } },
+    { last_error_code: 'checkout_total_unparsed' }));
   assert.equal(view.screen, 'done');
-  assert.equal(view.order.total_unparsed, true);
-  assert.equal(view.outcome, null);
+  assert.equal(view.order.total_unparsed, false);
+  assert.equal(view.amounts.final_total_minor, 2297);
 });
 
 test('the generic failed wording is neutral: no "try again", no claim the order was not placed', () => {
@@ -395,3 +383,98 @@ test('the expired wording makes no claim the order was not placed', () => {
   assert.equal(view.outcome.kind, 'expired');
   assert.equal(/wasn't placed|nothing was charged/i.test(view.outcome.message), false);
 });
+
+// ---- backend 2fe07431c: one test per code ----------------------------------------------------------------------
+
+const HELD = [
+  'checkout_confirm_unresolved', 'checkout_confirm_unrecognised', 'checkout_confirm_text_only', 'checkout_confirm_error_card',
+  'checkout_confirm_conflict', 'checkout_confirm_ambiguous_4xx', 'checkout_setup_submitted', 'checkout_setup_unresolved',
+  'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_result_unrecognised', 'checkout_result_overdue',
+  'checkout_total_unverified', 'checkout_total_over_approved', 'checkout_payment_no_order', 'checkout_order_id_card_shaped',
+  'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_cancel_unresolved', 'money_result_seen',
+  'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
+  'vic_approved_amount_missing', 'vic_submit_unresolved',
+];
+for (const code of HELD) {
+  test(`HELD ${code}: placing shows the checking screen and keeps polling; a terminal state is outcome_unknown, never a retry`, () => {
+    const held = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: `paid_sent:1:scheme:${code}` }));
+    assert.equal(held.screen, 'outcome_unknown');
+    assert.equal(held.terminal, false);
+    assert.equal(held.poll_after_seconds, 15);
+    assert.equal(held.outcome.kind, 'held');
+    for (const state of ['failed', 'refused', 'expired']) {
+      const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
+      assert.equal(view.screen, 'outcome_unknown', state);
+      assert.equal(view.outcome.retry_hint, false);
+      assert.match(view.outcome.message, /don't try again/);
+    }
+  });
+}
+
+const FAILED = [
+  'checkout_contact_incomplete', 'checkout_relay_refused', 'checkout_lock_invalid', 'checkout_price_missing',
+  'checkout_token_unavailable', 'checkout_card_unavailable', 'checkout_setup_incomplete', 'checkout_setup_unrecognised',
+  'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused', 'checkout_confirm_window_passed',
+  'checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported',
+  'token_request_unresolved', 'pay_step_unavailable',
+];
+for (const code of FAILED) {
+  test(`FAILED ${code}: terminal not_submitted wording, no retry, never outcome_unknown`, () => {
+    const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: code }));
+    assert.equal(view.screen, 'failed');
+    assert.equal(view.outcome.kind, 'not_submitted');
+    assert.equal(view.outcome.outcome_unknown, false);
+    assert.equal(view.outcome.retry_hint, false);
+    assert.equal(isOutcomeUnknownCode(code), false);
+  });
+}
+
+// The suffixed spellings the backend writes, exactly: they match on their head segment.
+for (const spelled of ['checkout_card_unavailable:token_inactive', 'checkout_card_unavailable:no_method',
+  'checkout_setup_refused:card:402', 'checkout_setup_refused:http_error:500', 'checkout_confirm_refused:http_error:400',
+  'checkout_confirm_refused:http_error:422']) {
+  test(`FAILED ${spelled}: matches on its head segment`, () => {
+    const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: spelled }));
+    assert.equal(view.outcome.kind, 'not_submitted');
+    assert.equal(view.screen, 'failed');
+  });
+}
+
+test('FAILED checkout_setup_unrecognised beats the hold-shaped name (explicit list over the shape)', () => {
+  assert.equal(isOutcomeUnknownCode('checkout_setup_unrecognised'), false);
+  assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_unrecognised' })).outcome.kind, 'not_submitted');
+  // And the other direction: an explicit HELD code whose name has no hold shape still holds.
+  assert.equal(isOutcomeUnknownCode('checkout_setup_submitted'), true);
+  assert.equal(isOutcomeUnknownCode('checkout_confirm_text_only'), true);
+});
+
+test('FAILED outranks HELD when both are on the purchase', () => {
+  const view = project(unified('failed', {}, { refusal_reason: 'checkout_relay_refused', last_error_code: 'checkout_confirm_unresolved' }));
+  assert.equal(view.outcome.kind, 'not_submitted');
+});
+
+for (const code of ['checkout_currency_unsupported', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit']) {
+  test(`REFUSED ${code}: plain refusal wording`, () => {
+    const view = project(unified('refused', { poll_after_seconds: null }, { refusal_reason: code }));
+    assert.equal(view.screen, 'refused');
+    assert.equal(view.outcome.kind, 'checkout_refused');
+    assert.equal(view.outcome.outcome_unknown, false);
+    assert.equal(view.outcome.retry_hint, false);
+  });
+}
+
+for (const code of ['checkout_step_disabled', 'checkout_schema_incomplete']) {
+  test(`PARKED ${code}: not terminal, keeps polling, "Getting things ready…"`, () => {
+    for (const state of ['routing', 'locking', 'placing']) {
+      const view = project(unified(state, { poll_after_seconds: 15 }, { last_error_code: code }));
+      assert.equal(view.screen, 'parked', state);
+      assert.equal(view.terminal, false);
+      assert.equal(view.poll_after_seconds, 15);
+      assert.equal(view.outcome.kind, 'parked');
+      assert.equal(view.outcome.title, 'Getting things ready…');
+    }
+    // A buyer step still on offer wins over the parked wording.
+    const action = { kind: 'card_binding', url: CARD_PAGE, expires_at: '2026-11-17T12:15:00Z' };
+    assert.equal(project(unified('needs_payment_method', { next_action: action }, { last_error_code: code })).screen, 'add_card');
+  });
+}

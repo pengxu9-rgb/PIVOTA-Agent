@@ -77,21 +77,25 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `awaiting_buyer_authorization` (+ `approval` page) | "Approve $X at merchant with Face ID or fingerprint", then "Waiting for your approval…" |
 | `placing` | "Placing your order at merchant…" (or "Confirm with your bank" while a bank check page is offered) |
 | `placing` with a hold / outcome-unknown code | "We're checking with the store — don't try again. This can take a while…" (polling goes on) |
+| any state not yet final, with a parked code and no buyer step | "Getting things ready…" (polling goes on) |
 | `completed` | Order placed: order number, total charged, store, link to the store's order page when it is on the store's domain |
 | `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording with no "try again". |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
-Codes are read segment by segment: the backend writes compound codes (`paid_sent:<n>:<variant>:<code>`,
-`bound_sent:<n>:<code>`, `binding_refused:<kind>:<status>`), so each is lower-cased and split on `:`, and every
-segment is checked. The step prefixes (`paid_sent`, `bound_sent`) are bookkeeping and are skipped: `paid` is the
-approval-page step (the rail mints a token, nothing is charged), so `paid_sent:2:scheme:buyer_action_expired` gets the
-ordinary wording. A code segment that is outcome-unknown or a hold (money may have moved, or a human must look:
-`money_result_seen`, `vic_order_stale`, `vic_total_over_approved`, `vic_currency_mismatch`,
-`checkout_confirm_unresolved`, `checkout_payment_no_order`, `checkout_result_overdue`, ... see `src/agenpas/view.js`)
-wins over everything else. Checkout-step codes that mean nothing was submitted (`checkout_captcha_failed`,
-`checkout_form_error`, `checkout_price_missing`, ...) get plain failure wording. `checkout_total_unparsed` on a
-completed purchase shows the order as placed with "Total charged: see your email receipt".
-| anything else | "Checking on your purchase…", keep polling, claim nothing |
+Codes are read segment by segment (mirroring pivota-backend 2fe07431c): the backend writes compound codes
+(`paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`, `checkout_card_unavailable:<why>`,
+`checkout_setup_refused:<kind>:<status>`, `checkout_confirm_refused:http_error:422`), so each is lower-cased and split
+on `:`, and every segment is checked; a suffixed code matches on its head segment. The step prefixes (`paid_sent`,
+`bound_sent`) are bookkeeping and are skipped: `paid` is the approval-page step (the rail mints a token, nothing is
+charged). Precedence, highest first: an explicit FAILED code (terminal, nothing was submitted: `checkout_relay_refused`,
+`checkout_setup_unrecognised`, `checkout_confirm_refused`, ...) gives "no order was sent to the store"; an explicit
+HELD code (the backend's `_CHECKOUT_HOLD_CODES`, `_VIC_HOLD_CODES` and `money_result_seen`) gives "We're checking with
+the store — don't try again" (in `placing` too, where polling goes on); then the other named lists (declined, approval
+timed out, card, price, the rail's refusals `checkout_currency_unsupported` / `checkout_ceiling_*`, ...); then a
+hold-shaped heuristic for new codes; then neutral generic wording. Explicit lists always beat the heuristic. A PARKED
+code (`checkout_step_disabled`, `checkout_schema_incomplete`) on a purchase that is not final shows "Getting things
+ready…" while polling goes on. A completed purchase always carries its verified final total; only two disagreeing
+currencies hide it ("see your email receipt").
 
 The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"
 once the backend has a quoted total, with the line that the final total includes shipping and tax and cannot exceed
