@@ -857,14 +857,21 @@ function paymentAuthorization(body) {
 function toAcpSession(id, session, stored) {
   // The session's own reading of its claim (canonicalExecutor sessionClaimStatus): an order call whose outcome is not
   // known reads as in progress, with that fact in its own member; an order this door did not record (its completion
-  // answered an unknown outcome) still reads as the order it is.
+  // answered an unknown outcome) still reads as the order it is. The order carries the kernel's status of it
+  // (`order.status`: `created` is an order not yet paid), as the tool doors' `order_status`; an order in a status the
+  // read does not know is in progress, never completed (`order_outcome: 'status_unknown'`).
   const unknownOrder = !stored?.order_id && session.status === 'order_outcome_unknown';
-  const orderId = stored?.order_id ?? (session.status === 'completed' && typeof session.order_id === 'string' ? session.order_id : undefined);
+  const sessionOrderId = (session.status === 'completed' || session.status === 'order_status_unknown') && typeof session.order_id === 'string' ? session.order_id : undefined;
+  const orderId = stored?.order_id ?? sessionOrderId;
+  const readsOrder = orderId !== undefined && orderId === sessionOrderId;
+  const statusUnknown = readsOrder && session.status === 'order_status_unknown';
+  const orderStatus = readsOrder && typeof session.order_status === 'string' ? session.order_status : undefined;
   return {
     id,
     object: 'checkout_session',
-    status: orderId ? PIVOTA_TO_ACP_STATUS.order_created : unknownOrder ? PIVOTA_TO_ACP_STATUS.order_outcome_unknown : PIVOTA_TO_ACP_STATUS.quote_issued,
-    ...(unknownOrder ? { order_outcome: 'unknown' } : {}),
+    status: statusUnknown ? PIVOTA_TO_ACP_STATUS.order_outcome_unknown
+      : orderId ? PIVOTA_TO_ACP_STATUS.order_created : unknownOrder ? PIVOTA_TO_ACP_STATUS.order_outcome_unknown : PIVOTA_TO_ACP_STATUS.quote_issued,
+    ...(unknownOrder ? { order_outcome: 'unknown' } : statusUnknown ? { order_outcome: 'status_unknown' } : {}),
     currency: session.currency,
     merchant_of_record: session.merchant_of_record,
     line_items: session.line_items,
@@ -875,7 +882,7 @@ function toAcpSession(id, session, stored) {
     // over `id` (the ACP session id) — see attachAp2CheckoutJwt — and survives the sanitizer by
     // key+shape; see AP2_CHECKOUT_JWT_KEYS in resultSanitizer.js.
     ap2_checkout_jwt: session.ap2_checkout_jwt,
-    order: orderId ? { id: orderId } : undefined,
+    order: orderId ? { id: orderId, ...(orderStatus !== undefined ? { status: orderStatus } : {}) } : undefined,
   };
 }
 

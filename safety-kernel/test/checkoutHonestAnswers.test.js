@@ -666,6 +666,33 @@ test('D update_checkout_session of a completed id still builds a separate sessio
   assert.equal((await w.exec('update_checkout_session', { idempotency_key: 'idem-upd-0004', session_id: sid, quote }, { user_ref: 'buyer_2', acp_session_id: 'sess_9' })).previous_session, undefined);
 });
 
+test('D an order the kernel holds in a status the read does not know (an expired one, one with no status) is never read as plain completed: order_status_unknown, with its id and status; every known status still reads completed', async () => {
+  const { KERNEL_ORDER_STATUSES } = await import('../src/protocol/canonicalExecutor.js');
+  assert.deepEqual(KERNEL_ORDER_STATUSES, ['created', 'charge_pending', 'paid', 'failed', 'canceled']);
+  const quote = { merchant_id: 'merch_A', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } };
+  for (const [written, status, orderStatus] of [
+    ['expired', 'order_status_unknown', 'expired'],
+    [undefined, 'order_status_unknown', null],
+    ['Not A Word!', 'order_status_unknown', null],
+    ...KERNEL_ORDER_STATUSES.map((known) => [known, 'completed', known]),
+  ]) {
+    const label = String(written);
+    const w = world();
+    const sid = await open(w);
+    await answered(complete(w, sid, 'idem-d-st-0001'), label);
+    const record = await w.kernel._orderStore.get('o_1');
+    const { status: _was, ...rest } = record;
+    await w.kernel._orderStore.set('o_1', written === undefined ? rest : { ...rest, status: written });
+    const got = await w.exec('get_checkout_session', { session_id: sid });
+    assert.deepEqual([got.status, got.order_id, got.order_status], [status, 'o_1', orderStatus], label);
+    const updated = await w.exec('update_checkout_session', { idempotency_key: 'idem-d-st-upd1', session_id: sid, quote });
+    assert.deepEqual(updated.previous_session, { session_id: sid, status, order_id: 'o_1', order_status: orderStatus }, label);
+    // Never payable again either way: another key is told the session is used.
+    assert.equal((await refusal(complete(w, sid, 'idem-d-st-0002')))?.code, 'QUOTE_ALREADY_USED', label);
+    assert.equal(w.ops('create_order').length, 1, label);
+  }
+});
+
 // ---- the markets: no new answer states money, in any market ------------------------------------------------------------
 
 test('every new answer, in every market, states no amount and no currency; a market with no currency is still refused by name before any quote', async () => {

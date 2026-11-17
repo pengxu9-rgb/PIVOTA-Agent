@@ -450,7 +450,45 @@ test('Q3: the ACP door reads a session whose order call is unknown as in progres
     assert.deepEqual([d2.http, d2.body.code], [409, 'CHECKOUT_OUTCOME_UNKNOWN'], d2.raw.slice(0, 300));
     const got2 = await door.acp('GET', `/checkout_sessions/${c2.body.id}`);
     assert.deepEqual([got2.body.status, got2.body.order && got2.body.order.id, 'order_outcome' in got2.body], ['checkout.completed', door.orders.at(-1).order_id, false], got2.raw.slice(0, 300));
+    // N-4: the order's own status beside its id: its payment step was asked for and is not known to have gone
+    // through (charge_pending), so not paid.
+    assert.deepEqual(got2.body.order, { id: door.orders.at(-1).order_id, status: 'charge_pending' }, got2.raw.slice(0, 300));
+    // An order this door did record (its completion answered): the same shape, with the kernel's status of it.
+    const c3 = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const g3 = await keys.mintGrant({ sessionId: c3.body.id, currency: c3.body.currency, maxAmount: c3.body.totals.total });
+    const d3 = await door.acp('POST', `/checkout_sessions/${c3.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: g3 } }, { key: freshKey() });
+    assert.equal(d3.http, 200, d3.raw.slice(0, 300));
+    const got3 = await door.acp('GET', `/checkout_sessions/${c3.body.id}`);
+    assert.deepEqual([got3.body.status, got3.body.order, 'order_outcome' in got3.body], ['checkout.completed', { id: d3.body.order.id, status: 'charge_pending' }, false], got3.raw.slice(0, 300));
+    assert.equal(got3.body.currency, c3.body.currency, `${market}: the currency it was priced in`);
   }
+});
+
+test('8: an order the kernel holds in a status no read knows (an expired one) is never read as completed: /mcp, UCP and ACP all say so, with its id', async () => {
+  const mount = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const expire = async (orderId) => { const o = await mount.kernel._orderStore.get(orderId); assert.ok(o, orderId); await mount.kernel._orderStore.set(orderId, { ...o, status: 'expired' }); };
+  for (const caller of ['mcp_complete', 'ucp_complete']) {
+    for (const market of PRICED_MARKETS) {
+      const label = `${caller} ${market}`;
+      const h = await open(caller, market);
+      const done = await attempt(h, freshKey());
+      assert.equal(done.isError, false, `${label}: ${done.raw.slice(0, 300)}`);
+      const orderId = door.orders.at(-1).order_id;
+      await expire(orderId);
+      const got = await read(h);
+      assert.equal(got.isError, false, label);
+      if (ucp(h)) assert.deepEqual([got.value.status, got.value.order_outcome, got.value.order_id, got.value.order_status], ['complete_in_progress', 'status_unknown', orderId, 'expired'], label);
+      else assert.deepEqual([got.value.status, got.value.order_id, got.value.order_status], ['order_status_unknown', orderId, 'expired'], label);
+      assert.equal(got.value.currency, h.currency, label);
+    }
+  }
+  const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address('SG') }, { key: freshKey() });
+  const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+  const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+  assert.equal(done.http, 200, done.raw.slice(0, 300));
+  await expire(done.body.order.id);
+  const got = await door.acp('GET', `/checkout_sessions/${created.body.id}`);
+  assert.deepEqual([got.body.status, got.body.order_outcome, got.body.order], ['checkout.in_progress', 'status_unknown', { id: done.body.order.id, status: 'expired' }], got.raw.slice(0, 300));
 });
 
 test('D: a completed session reads as completed with its order id, and an update of it says the id it was sent is already ordered', async () => {

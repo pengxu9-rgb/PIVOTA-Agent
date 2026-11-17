@@ -1338,16 +1338,23 @@ async function claimStateOf(kernel, quoteId, ctx) {
  *   none                      `ready_for_payment` (it can still become an order);
  *   a cancellation            `canceled`;
  *   this caller's own order   `completed`, with `order_id` and the kernel's `order_status` of it (an unpaid order, or
- *                             one whose payment step is unknown, is `completed` as a session and not paid);
+ *                             one whose payment step is unknown, is `completed` as a session and not paid); an order
+ *                             in a status this read does not know is `order_status_unknown` instead (never `completed`);
  *   an order not known here   `order_outcome_unknown` (an order call was made for it whose order this gateway does not
  *                             hold: still in flight, or its outcome is unknown). Never payable again either way.
  */
+// The kernel order statuses a read knows (kernel.js writes these, and nothing else today). An order the kernel holds in
+// any other status (one a later build writes, a record with none) is never read as plain `completed`: it reads
+// `order_status_unknown`, with its id and that status when it is a plain word (else null).
+export const KERNEL_ORDER_STATUSES = Object.freeze(['created', 'charge_pending', 'paid', 'failed', 'canceled']);
+const KNOWN_ORDER_STATUS = new Set(KERNEL_ORDER_STATUSES);
 function sessionClaimStatus(claim) {
   if (!claim) return { status: 'ready_for_payment', order_id: null };
   if (claim.canceled) return { status: 'canceled', order_id: null };
-  return claim.order_id
-    ? { status: 'completed', order_id: claim.order_id, order_status: claim.order_status ?? null }
-    : { status: 'order_outcome_unknown', order_id: null };
+  if (!claim.order_id) return { status: 'order_outcome_unknown', order_id: null };
+  if (KNOWN_ORDER_STATUS.has(claim.order_status)) return { status: 'completed', order_id: claim.order_id, order_status: claim.order_status };
+  const raw = typeof claim.order_status === 'string' && /^[a-z][a-z_]{0,31}$/.test(claim.order_status) ? claim.order_status : null;
+  return { status: 'order_status_unknown', order_id: claim.order_id, order_status: raw };
 }
 function withClaimStatus(session, claim) {
   if (!claim) return session;
