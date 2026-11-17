@@ -33579,6 +33579,9 @@ function statusForCommerceKernelError(code) {
     case 'PRICE_CHANGED':
     case 'ORDER_CANCELED':
     case 'PARTNER_ASSERTION_REJECTED':
+    // An outcome nobody here can know is a conflict with that earlier attempt, not a malformed request: the same as
+    // the ACP door answers it, and as this route answers its sibling IDEMPOTENCY_CONFLICT.
+    case 'CHECKOUT_OUTCOME_UNKNOWN':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
       return 503;

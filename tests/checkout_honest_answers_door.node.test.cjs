@@ -397,14 +397,38 @@ test('the strict invoke route: an order call with no readable answer is an unkno
     const order = (key) => door.invoke('create_order', { idempotency_key: key, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address(market), recipient_name: 'Buyer One' } } }, { buyer });
     const key = freshKey();
     const first = await order(key);
-    assert.deepEqual([first.body.code, first.body.retriable], ['CHECKOUT_OUTCOME_UNKNOWN', false], first.raw.slice(0, 300));
+    assert.deepEqual([first.http, first.body.code, first.body.retriable], [409, 'CHECKOUT_OUTCOME_UNKNOWN', false], first.raw.slice(0, 300));
     assert.match(first.body.recovery, /re-sending the same call returns this same answer/);
     const same = await order(key);
     assert.equal(same.raw, first.raw, `${market}: the same answer, byte for byte`);
+    assert.equal(same.http, 409, market);
     assert.equal(sent(same, ORDERS), 0, market);
     const other = await order(freshKey());
     assert.equal(other.body.code, 'QUOTE_ALREADY_USED', market);
     assert.equal(sent(first, ORDERS) + sent(same, ORDERS) + sent(other, ORDERS), 1, `${market}: one order call, ever`);
+  }
+  // The store's refusals of the order call on this route: a 429 and an unnamed 403 are the same 409, in their own words;
+  // a seller not taking orders is named (405, as this route answers OPERATION_NOT_ALLOWED).
+  for (const [answer, http, code, words] of [
+    [ANSWERS.rateLimited, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /rate limiting/],
+    [ANSWERS.notAuthorized, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /answered this order request with a refusal/],
+    [ANSWERS.merchantNotAccepting, 405, 'OPERATION_NOT_ALLOWED', null],
+  ]) {
+    seq += 1;
+    const buyer = buyerFor(seq);
+    const q = await door.invoke('preview_quote', { quote: nativeQuote('GB') }, { buyer });
+    door.orderScript.push(answer());
+    const key = freshKey();
+    const order = () => door.invoke('create_order', { idempotency_key: key, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address('GB'), recipient_name: 'Buyer One' } } }, { buyer });
+    const first = await order();
+    assert.deepEqual([first.http, first.body.code, first.body.retriable], [http, code, false], first.raw.slice(0, 300));
+    if (words) {
+      assert.match(first.body.message, words, first.raw.slice(0, 300));
+      assert.equal(/no readable answer|may have been accepted/i.test(first.raw), false, first.raw.slice(0, 300));
+      const same = await order();
+      assert.equal(same.raw, first.raw, 'the same answer, byte for byte');
+      assert.equal(sent(same, ORDERS), 0);
+    }
   }
 });
 
