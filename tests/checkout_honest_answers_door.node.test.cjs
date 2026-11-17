@@ -255,7 +255,7 @@ test('Q3: a seller not taking orders (the backend\'s listed 403 MERCHANT_NOT_ACC
     const key = freshKey();
     const first = await attempt(h, key);
     assert.equal(first.http, 200, label);
-    assert.deepEqual(errorOf(first), { code: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: words, retriable: false, detail: { reason: 'merchant_not_accepting_orders' } }, `${label}: ${first.raw.slice(0, 300)}`);
+    assert.deepEqual(errorOf(first), { code: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: words, retriable: false, detail: { reason: 'merchant_not_accepting_orders' }, recovery: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.recovery }, `${label}: ${first.raw.slice(0, 300)}`);
     assert.deepEqual([sent(first, ORDERS), sent(first, PAGES)], [1, 0], label);
     assertNoMoney(first, label);
     // Given back: the same key is a first attempt, and this time the backend makes the order.
@@ -594,7 +594,7 @@ test('the strict invoke route: an order call with no readable answer is an unkno
     const first = await order();
     assert.deepEqual([first.http, first.body.code, first.body.retriable], [http, code, false], first.raw.slice(0, 300));
     if (code === 'MERCHANT_NOT_ACCEPTING_ORDERS') {
-      assert.deepEqual([first.body.message, first.body.detail], [ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, { reason: 'merchant_not_accepting_orders' }], first.raw.slice(0, 300));
+      assert.deepEqual([first.body.message, first.body.detail, first.body.recovery], [ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, { reason: 'merchant_not_accepting_orders' }, ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.recovery], first.raw.slice(0, 300));
       assert.equal(/use the correct tool|not available here/i.test(first.raw), false, first.raw.slice(0, 300));
     }
     if (words) {

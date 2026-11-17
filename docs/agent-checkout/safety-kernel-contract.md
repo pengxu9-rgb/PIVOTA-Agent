@@ -115,6 +115,7 @@ cannot succeed without a token bound to the final amount.
 | `IDEMPOTENT_REPLAY` | same key, same body | return original result; tell user "already placed" |
 | `PAYMENT_REQUIRES_ACTION` | 3DS/redirect/qr | surface verbatim; never fabricate URLs |
 | `MERCHANT_UNAVAILABLE` | connector down | no silent fallback (rail rule); say so |
+| `MERCHANT_NOT_ACCEPTING_ORDERS` | the order call: the seller's store is not taking orders (a backend 403 its order route names), answered only when the quote-claim release rule proves it came before any order write; otherwise the same answer is `CHECKOUT_OUTCOME_UNKNOWN` | do not retry this checkout; nothing was ordered; offer the buyer another seller |
 | `USER_AUTH_REQUIRED` | missing user_ref on write | trigger OAuth |
 | `PRODUCT_NOT_SERVABLE` | `/mcp` door, `PARTNER_DOOR_ONE_PRODUCT_ID` on: the product id is known and a serving gate withholds it; `detail.reason` carries the gate's reason | do not retry; offer alternatives |
 | `PRODUCT_GROUP_ID_NOT_PRODUCT_ID` | `/mcp` door, flag on: the id is a product group id (`sig_` + 24 hex) with no servable member, or `product_group_id` was passed to `get_offers` | do not retry; pass the `product_id` of a search row |

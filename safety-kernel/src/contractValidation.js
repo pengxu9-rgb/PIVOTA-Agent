@@ -74,7 +74,9 @@ export function invokeErrorOf(err) {
   if (!surfaced) return error;
   // The code's generic recovery hint is about another situation (QUOTE_REQUIRED's is "quote first"); the curated
   // message is the instruction, so the hint is left out rather than sent beside it.
-  return { code: error.code, retriable: error.retriable, message: surfaced.message, detail: surfaced.detail };
+  // A seller not taking orders also says what to do next (its catalog recovery); the intake bounds keep their body.
+  const recovery = error.code === 'MERCHANT_NOT_ACCEPTING_ORDERS' ? { recovery: error.recovery } : {};
+  return { code: error.code, retriable: error.retriable, message: surfaced.message, ...recovery, detail: surfaced.detail };
 }
 
 // After-sales actions the backend can actually fulfill today (mapping doc: refunds only).

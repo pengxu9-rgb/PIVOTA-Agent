@@ -45,7 +45,7 @@ test.before(async () => {
   let ERROR_CATALOG;
   ({ KERNEL_ANSWERED_REFUSALS, ERROR_CATALOG } = await import('../safety-kernel/src/errors.js'));
   // "This seller is not taking orders": the catalog's words, with its reason as the detail.
-  CURATED.MERCHANT_NOT_ACCEPTING_ORDERS = { acp_message: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, acp_detail: NOT_ACCEPTING.acp_detail };
+  CURATED.MERCHANT_NOT_ACCEPTING_ORDERS = { acp_message: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, acp_detail: NOT_ACCEPTING.acp_detail, recovery: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.recovery };
   keys = await fx.mintKeys();
   door = fx.bootDoor({ port: 5611, keys });
   await door.listen();
@@ -158,7 +158,7 @@ function assertRefused(h, r, code, label, { orderId, answered } = {}) {
   } else {
     assert.equal(r.http, 200, label);
     const error = curated
-      ? { code, message: curated.acp_message, retriable: false, detail: curated.acp_detail }
+      ? { code, message: curated.acp_message, retriable: false, detail: curated.acp_detail, ...(curated.recovery ? { recovery: curated.recovery } : {}) }
       : refused ? { ...CREATE_UNKNOWN_TOOL_ERROR, message: `${refused.message} Sending this call again with the same idempotency_key returns this same answer.`, recovery: refused.recovery, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
       : code === 'CHECKOUT_OUTCOME_UNKNOWN' ? { ...CREATE_UNKNOWN_TOOL_ERROR, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
       : { code, message: MESSAGES[code], retriable: RETRIABLE[code] === true };

@@ -1799,6 +1799,8 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // A seller not taking orders: its catalog recovery (what to do next) beside its words.
+  if (error instanceof PivotaCommerceError && code === "MERCHANT_NOT_ACCEPTING_ORDERS" && typeof error.recovery === "string") body.recovery = error.recovery;
   // A refusal decided for an assumed US (decision D-10) says so, in the same member an answer would carry.
   if (error.marketAssumed === true) body.market_assumed = requestMarket.marketAssumedLabel();
   if (code === "OPERATION_NOT_ALLOWED" && ["ucp_reap_create_refused", "ucp_reap_create_not_available", "reap_create_paused"].includes(error.detail?.reason)) {
