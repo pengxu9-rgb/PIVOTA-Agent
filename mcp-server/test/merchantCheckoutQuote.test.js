@@ -6,8 +6,8 @@ import {
   merchantCheckoutQuoteEnabled,
 } from "../src/merchantCheckoutQuote.js";
 
-const sellerHost = "romandbeauty.com";
-const endpoint = "https://xyf8uj-w2.myshopify.com/api/ucp/mcp";
+const sellerHost = "rose-seller.example";
+const endpoint = "https://xample-q2.myshopify.com/api/ucp/mcp";
 const sessionId = "gid://shopify/Checkout/test-session?key=test-secret";
 const shippingAllocation = '$.totals[?@.type == "fulfillment"]';
 const env = {
@@ -18,7 +18,7 @@ const request = {
   sellerHost,
   market: "US",
   expectedCurrency: "USD",
-  lineItems: [{ variantId: "41341731438667", quantity: 2 }, { variantId: "41341731635275", quantity: 1 }],
+  lineItems: [{ variantId: "41000000000101", quantity: 2 }, { variantId: "41000000000202", quantity: 1 }],
   shippingAddress: {
     name: "Test Buyer",
     address_line1: "11 Test Street",
@@ -43,7 +43,7 @@ function checkoutFixture(overrides = {}) {
   }));
   return {
     id: sessionId,
-    continue_url: "https://romandbeauty.com/checkout/private",
+    continue_url: "https://rose-seller.example/checkout/private",
     status: "incomplete",
     currency: "USD",
     expires_at: "2026-11-14T10:10:00Z",
@@ -336,7 +336,7 @@ test("cleanup recovery reads the bound checkout and reuses its cancel key", asyn
   const client = merchantFixture();
   const cancelKey = "12345678-1234-4321-8234-123456789abc";
   const service = createService(client);
-  assert.equal(await service.recoverCleanup({ sellerHost, endpoint: endpoint.replace("xyf8uj", "other"),
+  assert.equal(await service.recoverCleanup({ sellerHost, endpoint: endpoint.replace("xample-q2", "other"),
     checkoutId: sessionId, cancelKey }), false);
   const calls = [];
   client.callTool = async (_endpoint, operation, { id }, options) => {
@@ -361,4 +361,82 @@ test("readback with an order or a terminal lifecycle never sends a cancel", asyn
     assert.equal(result.checkoutCancelled === true, readback.status === "canceled");
     assert.ok(!client.calls.some(([tool]) => tool === "cancel_checkout"));
   }
+});
+
+// Each case below breaks exactly one price check, in both the create reply and the read-back, so the two
+// still agree and nothing else refuses: the refusal comes only from the check under test.
+async function assertOneGuardRefuses(label, change, input = request) {
+  const control = await createService(merchantFixture()).quote(request);
+  assert.equal(control.verifiedQuotedTotalMinor, 4563, `${label}: control quote`);
+  const snapshot = checkoutFixture();
+  change(snapshot);
+  const client = merchantFixture({ created: snapshot, readback: structuredClone(snapshot) });
+  const result = await createService(client).quote(input);
+  assert.equal(result.state, "checkout_unverified", label);
+  assert.equal(result.reason, "merchant_checkout_quote_shopify_unverified", label);
+  assert.equal(result.verifiedQuotedTotalMinor, null, label);
+  assert.equal(result.checkoutCancelled, true, label);
+  assert.deepEqual(client.calls.map(([op]) => op), ["discover", "tools/list", "create_checkout", "get_checkout", "cancel_checkout"]);
+}
+
+test("totals that do not add up to the total are refused", async () => {
+  // subtotal 4200 - discount 500 + fulfillment 500 + tax 363 = 4563, not 4564.
+  await assertOneGuardRefuses("total one minor unit high", snapshot => {
+    snapshot.totals.find(row => row.type === "total").amount = 4564;
+  });
+  await assertOneGuardRefuses("total one minor unit low", snapshot => {
+    snapshot.totals.find(row => row.type === "total").amount = 4562;
+  });
+});
+
+test("line prices that do not add up to the subtotal are refused", async () => {
+  // 2 x 1401 + 1 x 1400 = 4202 against a subtotal of 4200; the totals themselves still reconcile.
+  await assertOneGuardRefuses("line sum above subtotal", snapshot => { snapshot.line_items[0].item.price = 1401; });
+  await assertOneGuardRefuses("line sum below subtotal", snapshot => { snapshot.line_items[1].item.price = 1399; });
+});
+
+test("a returned quantity other than the requested one is refused even when the money adds up", async () => {
+  // The store answers 1 x 2800 for a requested 2 x 1400: the subtotal still matches, the quantity does not.
+  await assertOneGuardRefuses("fewer units at a higher unit price", snapshot => {
+    snapshot.line_items[0].quantity = 1;
+    snapshot.line_items[0].item.price = 2800;
+  });
+  // 4 x 700 for a requested 2 x 1400.
+  await assertOneGuardRefuses("more units at a lower unit price", snapshot => {
+    snapshot.line_items[0].quantity = 4;
+    snapshot.line_items[0].item.price = 700;
+  });
+});
+
+test("a selected shipping option whose total differs from the fulfillment charge is refused", async () => {
+  for (const amount of [400, 501, 0]) {
+    await assertOneGuardRefuses(`option total ${amount} against fulfillment 500`, snapshot => {
+      snapshot.fulfillment.methods[0].groups[0].options[0].totals = [{ type: "total", amount }];
+    });
+  }
+});
+
+function codeDiscount(snapshot, entries, { rejected = false } = {}) {
+  snapshot.discounts = { codes: ["FIXTURE-QA"], applied: entries };
+  if (rejected) snapshot.messages.push({ code: "discount_code_invalid", type: "warning", path: "$.discounts.codes[0]" });
+}
+const shippingCodeEntry = amount => ({ code: "FIXTURE-QA", amount, allocations: [{ path: shippingAllocation, amount }] });
+
+test("a requested code counts as applied only when Shopify applies it exactly once and rejects nothing", async () => {
+  const withCode = { ...request, discountCodes: ["fixture-qa"] };
+  const applied = checkoutFixture();
+  codeDiscount(applied, [shippingCodeEntry(500)]);
+  const result = await createService(merchantFixture({ created: applied, readback: structuredClone(applied) })).quote(withCode);
+  assert.equal(result.verifiedQuotedTotalMinor, 4563);
+  assert.equal(result.discounts.codeOutcome, "applied");
+
+  await assertOneGuardRefuses("code applied and also rejected", snapshot => {
+    codeDiscount(snapshot, [shippingCodeEntry(500)], { rejected: true });
+  }, withCode);
+  await assertOneGuardRefuses("code applied twice", snapshot => {
+    codeDiscount(snapshot, [shippingCodeEntry(250), shippingCodeEntry(250)]);
+  }, withCode);
+  await assertOneGuardRefuses("code neither applied nor rejected", snapshot => {
+    snapshot.discounts.codes = ["FIXTURE-QA"];
+  }, withCode);
 });

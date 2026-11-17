@@ -254,7 +254,10 @@ export function addressIncompleteMessage(updateHint = DEFAULT_UPDATE_HINT) {
  * never succeed. `address` is the address the order would be created with (the quote's, completed by the
  * request's). The refusal names the missing FIELDS, never a value.
  */
-export function fulfillmentAddressRequiredRefusal(address, { updateHint = DEFAULT_UPDATE_HINT } = {}) {
+// `nextStep` (optional) replaces the sentence that says how to supply the address and complete again, for a door whose
+// way on is not "the update op, or this request, then the same key" (a tool door's update returns a NEW session id;
+// a door whose completion carries no address). Fixed text chosen by the door, never a value from the request.
+export function fulfillmentAddressRequiredRefusal(address, { updateHint = DEFAULT_UPDATE_HINT, nextStep } = {}) {
   const held = isPlainObject(address) ? address : {};
   const effective = { ...held, name: nonEmpty(held.name) ? held.name : held.recipient_name };
   const missing = REQUIRED_ADDRESS_FIELDS.filter((f) => !nonEmpty(effective[f]));
@@ -263,7 +266,9 @@ export function fulfillmentAddressRequiredRefusal(address, { updateHint = DEFAUL
     'This checkout has no complete fulfillment address, and an order cannot be placed without one: order creation requires all of',
     `${REQUIRED_ADDRESS_FIELDS.join(', ')}.`,
     '(`name` may be given as `recipient_name`.)',
-    `Supply the address via ${updateHint}, or send it with this completion request, then complete again with the same Idempotency-Key.`,
+    typeof nextStep === 'string' && nextStep.trim() !== ''
+      ? nextStep
+      : `Supply the address via ${updateHint}, or send it with this completion request, then complete again with the same Idempotency-Key.`,
     'Nothing was charged and no order was created; retrying this request unchanged will not succeed.',
   ].join(' '), {
     missing_fields: missing,

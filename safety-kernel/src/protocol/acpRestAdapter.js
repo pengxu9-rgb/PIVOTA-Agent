@@ -855,10 +855,16 @@ function paymentAuthorization(body) {
 // ---- response mapping (ACP shapes; reuses the canonical status vocabulary) --------------------------------
 
 function toAcpSession(id, session, stored) {
+  // The session's own reading of its claim (canonicalExecutor sessionClaimStatus): an order call whose outcome is not
+  // known reads as in progress, with that fact in its own member; an order this door did not record (its completion
+  // answered an unknown outcome) still reads as the order it is.
+  const unknownOrder = !stored?.order_id && session.status === 'order_outcome_unknown';
+  const orderId = stored?.order_id ?? (session.status === 'completed' && typeof session.order_id === 'string' ? session.order_id : undefined);
   return {
     id,
     object: 'checkout_session',
-    status: stored?.order_id ? PIVOTA_TO_ACP_STATUS.order_created : PIVOTA_TO_ACP_STATUS.quote_issued,
+    status: orderId ? PIVOTA_TO_ACP_STATUS.order_created : unknownOrder ? PIVOTA_TO_ACP_STATUS.order_outcome_unknown : PIVOTA_TO_ACP_STATUS.quote_issued,
+    ...(unknownOrder ? { order_outcome: 'unknown' } : {}),
     currency: session.currency,
     merchant_of_record: session.merchant_of_record,
     line_items: session.line_items,
@@ -869,7 +875,7 @@ function toAcpSession(id, session, stored) {
     // over `id` (the ACP session id) — see attachAp2CheckoutJwt — and survives the sanitizer by
     // key+shape; see AP2_CHECKOUT_JWT_KEYS in resultSanitizer.js.
     ap2_checkout_jwt: session.ap2_checkout_jwt,
-    order: stored?.order_id ? { id: stored.order_id } : undefined,
+    order: orderId ? { id: orderId } : undefined,
   };
 }
 

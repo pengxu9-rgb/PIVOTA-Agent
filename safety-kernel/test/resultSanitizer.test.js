@@ -247,6 +247,27 @@ test('the exemption applies only to the storefront url keys', () => {
   assert.match(sanitizeResult({ offers: [{ notes: [cart] }] }).offers[0].notes[0], /\[REDACTED_PAN\]/);
 });
 
+test('a verified retailer PDP marker covers only its exact url value and is not a wire field', () => {
+  const url = `https://brand.com/products/serum?variant=${LUHN_VALID_VARIANT_ID}`;
+  const key = 'pivota.commerce.verifiedRetailerPdpUrl';
+  const marker = Symbol.for(key);
+  const marked = { url, other_url: url, note: PAN, [marker]: url };
+  const inherited = Object.assign(Object.create(marked), { url });
+  const out = sanitizeResult({
+    marked,
+    inherited,
+    stale: { ...marked, url: `https://brand.com/products/serum?variant=${PAN}` },
+    untrusted: { url, [key]: url },
+  });
+  assert.equal(out.marked.url, url);
+  assert.match(out.marked.other_url, /\[REDACTED_PAN\]/);
+  assert.equal(out.marked.note, '[REDACTED_PAN]');
+  assert.match(out.inherited.url, /\[REDACTED_PAN\]/);
+  assert.match(out.stale.url, /\[REDACTED_PAN\]/);
+  assert.match(out.untrusted.url, /\[REDACTED_PAN\]/);
+  assert.deepEqual(Object.getOwnPropertySymbols(out.marked), []);
+});
+
 test('the exemption covers PAN scanning ONLY — secrets in the query are still scrubbed', () => {
   const got = spec('cart_url', `https://brand.com/cart/${LUHN_VALID_VARIANT_ID}:1?secret=hunter2`);
   assert.ok(!got.includes('hunter2'), 'a secret query param must not survive');

@@ -323,13 +323,9 @@ for (const opId of Object.keys(PARAMS_BY_OP)) {
 
     const long = recordingExecutor();
     const err = await rejected(long.executor.execute(opId, { ...PARAMS_BY_OP[opId], idempotency_key: 'abcdefgh' }, CTX));
-    if (opId === 'cancel_checkout_session') {
-      // A cancel of a session with no order touches no kernel state: past the gate, it simply answers.
-      assert.equal(err, null, 'an 8-character key is past the gate');
-    } else {
-      assert.match(String(err && err.message), /^the kernel was reached: /, 'an 8-character key is past the gate');
-      assert.equal(long.calls.length, 1);
-    }
+    // A cancel of a session with no order reads that session first, like every other operation here.
+    assert.match(String(err && err.message), /^the kernel was reached: /, 'an 8-character key is past the gate');
+    assert.equal(long.calls.length, 1);
   });
 
   test(`executor ${opId}: an absent key is refused exactly as before`, async () => {

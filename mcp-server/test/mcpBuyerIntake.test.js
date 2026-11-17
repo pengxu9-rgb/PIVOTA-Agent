@@ -299,7 +299,7 @@ test('update_checkout_session advertises the SAME quote schema it enforces', () 
 
 test('create_payment_link: an ATTESTED email wins over the caller-supplied one', async () => {
   const { surface, sess, linkCalls } = setup();
-  const created = await create(surface, sess, CART());
+  const created = await create(surface, sess, CART(undefined, { shipping_address: ADDRESS }));
   await surface.callTool('create_payment_link', {
     idempotency_key: 'idem-link-1', session_id: created.session_id,
     customer_email: 'model-asserted@evil.example',
@@ -310,7 +310,7 @@ test('create_payment_link: an ATTESTED email wins over the caller-supplied one',
 test('create_payment_link: with NO attested email the caller-supplied one is still accepted (guest checkout)', async () => {
   const { surface, sess, linkCalls } = setup({ claims: null });
   const created = await surface.callTool('create_checkout_session', {
-    idempotency_key: 'idem-link-c2', quote: CART(undefined, { customer_email: 'guest@example.com' }),
+    idempotency_key: 'idem-link-c2', quote: CART(undefined, { customer_email: 'guest@example.com', shipping_address: ADDRESS }),
   }, sess);
   await surface.callTool('create_payment_link', {
     idempotency_key: 'idem-link-2', session_id: created.session_id, customer_email: 'guest@example.com',

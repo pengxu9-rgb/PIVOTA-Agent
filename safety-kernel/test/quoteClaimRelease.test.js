@@ -543,36 +543,42 @@ test('on the ACP door a session with no fulfillment address is refused by name a
 
 // ---- everything else keeps it ----------------------------------------------------------------------------------
 
+// [name, the upstream's step, the code the caller is answered with, the code of the error as the upstream raised it
+// (what the claim's log line names; the same as the answer unless the answer is the kernel's unknown outcome)].
+// No readable answer (no answer, a 5xx, a failure that is not a refusal) is answered CHECKOUT_OUTCOME_UNKNOWN, and so is
+// an answered refusal that keeps the claim and would otherwise say retriable (every retry of it is refused); a refusal
+// the upstream answered by a terminal name is answered as it was raised.
 const UNKNOWN_OUTCOMES = [
-  ['a deadline', () => { throw noAnswer({ timeout: true }); }, 'MERCHANT_UNAVAILABLE'],
-  ['a lost connection', () => { throw noAnswer(); }, 'MERCHANT_UNAVAILABLE'],
-  ['a 502 with a code', refuse(502, 'TEMPORARY_UNAVAILABLE'), 'MERCHANT_UNAVAILABLE'],
-  ['a 504 with a code', refuse(504, 'TEMPORARY_UNAVAILABLE'), 'MERCHANT_UNAVAILABLE'],
-  ['a 500 with a code', refuse(500, 'TEMPORARY_UNAVAILABLE'), 'MERCHANT_UNAVAILABLE'],
-  ['a 503 with no code', refuse(503, null), 'MERCHANT_UNAVAILABLE'],
-  ['a 503 the upstream names (its database was busy)', refuse(503, 'TEMPORARY_UNAVAILABLE'), 'MERCHANT_UNAVAILABLE'],
-  ['a consumed quote', refuse(409, 'QUOTE_CONSUMED'), 'MERCHANT_UNAVAILABLE'],
-  ['an expired quote', refuse(409, 'QUOTE_EXPIRED'), 'QUOTE_EXPIRED'],
-  ['a quote that no longer matches', refuse(409, 'QUOTE_MISMATCH'), 'PRICE_CHANGED'],
-  ['an out-of-stock code', refuse(409, 'OUT_OF_STOCK'), 'OUT_OF_STOCK'],
-  ['insufficient inventory, as the upstream sends it (400, the code every 400 gets)', refuse(400, 'INVALID_REQUEST'), 'MERCHANT_UNAVAILABLE'],
-  ['a merchant not accepting orders', refuse(403, 'MERCHANT_NOT_ACCEPTING_ORDERS'), 'MERCHANT_UNAVAILABLE'],
-  ['a listed code at a status it is not listed for', refuse(409, 'INVALID_BUYER_CONTEXT'), 'MERCHANT_UNAVAILABLE'],
-  ['a rate limit', refuse(429, 'RATE_LIMIT_EXCEEDED'), 'MERCHANT_UNAVAILABLE'],
-  ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion: subject', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'subject' }); }, 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'PARTNER_ASSERTION_REJECTED'],
-  ['a listed code the transport took from a message, not from the route\'s detail', () => { throw answered(400, 'INVALID_BUYER_CONTEXT', { route: { message: 'INVALID_BUYER_CONTEXT' } }); }, 'MERCHANT_UNAVAILABLE'],
-  ['a listed code the transport took from the outer status-derived code', () => { throw answered(400, 'INVALID_QUOTE', { route: { message: 'placeholder', items: [] } }); }, 'MERCHANT_UNAVAILABLE'],
-  ['a 409 with no code', refuse(409, null), 'MERCHANT_UNAVAILABLE'],
-  ['a 408 with a code', refuse(408, 'REQUEST_TIMEOUT'), 'MERCHANT_UNAVAILABLE'],
-  ['a refusal with no status', () => { throw new PivotaCommerceError('OUT_OF_STOCK'); }, 'OUT_OF_STOCK'],
-  ['a failure that is not a refusal', () => { throw new TypeError('cannot read the answer'); }, null],
+  ['a deadline', () => { throw noAnswer({ timeout: true }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a lost connection', () => { throw noAnswer(); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 502 with a code', refuse(502, 'TEMPORARY_UNAVAILABLE'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 504 with a code', refuse(504, 'TEMPORARY_UNAVAILABLE'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 500 with a code', refuse(500, 'TEMPORARY_UNAVAILABLE'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 503 with no code', refuse(503, null), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 503 the upstream names (its database was busy)', refuse(503, 'TEMPORARY_UNAVAILABLE'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a consumed quote', refuse(409, 'QUOTE_CONSUMED'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['an expired quote', refuse(409, 'QUOTE_EXPIRED'), 'QUOTE_EXPIRED', 'QUOTE_EXPIRED'],
+  ['a quote that no longer matches', refuse(409, 'QUOTE_MISMATCH'), 'PRICE_CHANGED', 'PRICE_CHANGED'],
+  ['an out-of-stock code', refuse(409, 'OUT_OF_STOCK'), 'OUT_OF_STOCK', 'OUT_OF_STOCK'],
+  ['insufficient inventory, as the upstream sends it (400, the code every 400 gets)', refuse(400, 'INVALID_REQUEST'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a merchant not accepting orders', refuse(403, 'MERCHANT_NOT_ACCEPTING_ORDERS'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a listed code at a status it is not listed for', refuse(409, 'INVALID_BUYER_CONTEXT'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a rate limit', refuse(429, 'RATE_LIMIT_EXCEEDED'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: subject', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'subject' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
+  ['a listed code the transport took from a message, not from the route\'s detail', () => { throw answered(400, 'INVALID_BUYER_CONTEXT', { route: { message: 'INVALID_BUYER_CONTEXT' } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a listed code the transport took from the outer status-derived code', () => { throw answered(400, 'INVALID_QUOTE', { route: { message: 'placeholder', items: [] } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 409 with no code', refuse(409, null), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 408 with a code', refuse(408, 'REQUEST_TIMEOUT'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a refusal with no status', () => { throw new PivotaCommerceError('OUT_OF_STOCK'); }, 'OUT_OF_STOCK', 'OUT_OF_STOCK'],
+  ['a failure that is not a refusal', () => { throw new TypeError('cannot read the answer'); }, 'CHECKOUT_OUTCOME_UNKNOWN', null],
 ];
 
 test('an outcome nobody can know keeps the claim: the same key and another key both send NO second create_order', each(async (store, caller, label) => {
-  for (const [name, step, code] of UNKNOWN_OUTCOMES) {
+  for (const [name, step, code, logged] of UNKNOWN_OUTCOMES) {
+    const unknown = code === 'CHECKOUT_OUTCOME_UNKNOWN';
     for (const landed of [false, true]) {
       const w = world({ store });
       const h = await w.open(caller, 'US');
@@ -580,23 +586,26 @@ test('an outcome nobody can know keeps the claim: the same key and another key b
       w.script.push((payload, makeOrder) => { if (landed) makeOrder(payload); return step(); });
       const first = await w.attempt(h, 'idem-unknown-0001');
       assert.equal(first.ok, false, `${label} ${name}`);
-      if (code) assert.equal(first.code, code, `${label} ${name}`);
+      assert.equal(first.code, code, `${label} ${name}`);
+      if (unknown && caller !== 'acp_complete') assert.deepEqual([first.wire.retriable, first.wire.detail], [false, { reason: 'order_create_outcome_unknown', order_id: null }], `${label} ${name}`);
       assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, `${label} ${name}: the claim is kept`);
       assert.deepEqual(w.log.filter((l) => l.event.startsWith('quote_claim')), [
-        { level: 'warn', event: 'quote_claim_kept', fields: { quote_id: h.quoteId, code, reason: 'create_order_outcome_unknown' } },
+        { level: 'warn', event: 'quote_claim_kept', fields: { quote_id: h.quoteId, code: logged, reason: 'create_order_outcome_unknown' } },
       ], `${label} ${name}`);
 
       for (const key of ['idem-unknown-0001', 'idem-unknown-0002', 'idem-unknown-0001']) {
         const retry = await w.attempt(h, key);
-        // What a retry is told while the claim is held is what it was told before this rule existed.
-        assert.equal(retry.code, 'QUOTE_ALREADY_USED', `${label} ${name} ${key}: ${JSON.stringify(retry.wire)}`);
+        // While the claim is held another key is told the session is used; the same key after an unknown outcome is told
+        // that same unknown outcome again (the attempt is held), and after any other refusal what it was told before.
+        const expected = unknown && key === 'idem-unknown-0001' ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED';
+        assert.equal(retry.code, expected, `${label} ${name} ${key}: ${JSON.stringify(retry.wire)}`);
         assert.equal(w.createsSent().length, 1, `${label} ${name} ${key}: no second create_order`);
       }
       assert.equal(w.upstreamOrders.length, landed ? 1 : 0, `${label} ${name}`);
       // Time does not free it either: the claim has no expiry.
       w.advance(5 * 60 * 1000);
       assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, `${label} ${name}`);
-      assert.equal((await w.attempt(h, 'idem-unknown-0001')).code, 'QUOTE_ALREADY_USED', `${label} ${name}`);
+      assert.equal((await w.attempt(h, 'idem-unknown-0001')).code, unknown ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} ${name}`);
       assert.equal(w.createsSent().length, 1, `${label} ${name}`);
     }
   }
@@ -733,7 +742,8 @@ test('a release that fails, a store that cannot delete conditionally and a logge
     w.script.push(refuse(RELEASED.status, RELEASED.code), () => { throw noAnswer({ timeout: true }); });
     assert.equal((await w.attempt(h, 'idem-fail-0003')).code, 'MERCHANT_UNAVAILABLE', label);
     assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), false, label);
-    assert.equal((await w.attempt(h, 'idem-fail-0003')).code, 'MERCHANT_UNAVAILABLE', label);
+    // The second answer is a deadline: an unknown outcome, the claim kept.
+    assert.equal((await w.attempt(h, 'idem-fail-0003')).code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
     assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, label);
   }
 }));
@@ -832,7 +842,7 @@ test('two attempts with DIFFERENT keys on one quote, every order of arrival: at 
     await atUpstream(g, a);
     assert.equal((await w.attempt(h, 'idem-diff-000F')).code, 'QUOTE_ALREADY_USED', label);
     g.release();
-    assert.equal((await a).code, 'MERCHANT_UNAVAILABLE', label);
+    assert.equal((await a).code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
     assert.equal((await w.attempt(h, 'idem-diff-000F')).code, 'QUOTE_ALREADY_USED', label);
     assert.equal(w.createsSent().length, 1, label);
     assert.equal(w.upstreamOrders.length, 1, label);
@@ -952,7 +962,9 @@ test('a first attempt that succeeds is what it was: one create_order, one order 
     assert.equal(w.createsSent().length, 1, label);
     assert.equal(w.createsSent()[0].payload.order._currency, PRICED_IN[market ?? 'none'], label);
     const claim = await w.claims.get(h.quoteId);
-    assert.deepEqual(Object.keys(claim).sort(), ['claim_id', 'idempotency_key'], label);
+    // Once the order exists, the claim also names it (so a later refusal of this quote can name it to its caller).
+    assert.deepEqual(Object.keys(claim).sort(), ['claim_id', 'idempotency_key', 'order_id'], label);
+    assert.equal(claim.order_id, r.order_id, label);
     assert.deepEqual(w.log.filter((l) => l.event.startsWith('quote_claim')), [], label);
     assert.equal((await w.attempt(h, 'idem-plain-0002')).code, 'QUOTE_ALREADY_USED', label);
   }
@@ -979,7 +991,9 @@ test('the claim is written WITH its attempt\'s id before the upstream is asked, 
   }
   assert.equal(new Set(seen.map((c) => c.claim_id)).size, 3, `${label}: three attempts, three ids`);
   assert.equal(seen[0].idempotency_key, seen[1].idempotency_key, `${label}: the same caller key twice, and still two ids`);
-  assert.deepEqual(await w.claims.get(h.quoteId), seen[2], `${label}: the claim that stays is the one that made the order`);
+  const kept = await w.claims.get(h.quoteId);
+  assert.deepEqual({ claim_id: kept.claim_id, idempotency_key: kept.idempotency_key }, seen[2], `${label}: the claim that stays is the one that made the order`);
+  assert.equal(typeof kept.order_id, 'string', `${label}: and it names that order`);
   // Another kernel (another process) never reuses an id either.
   const w2 = world({ store });
   const h2 = await w2.open(caller, 'US');
@@ -1023,8 +1037,10 @@ test('a release matches the attempt\'s id and nothing else: an older build\'s cl
 }));
 
 test('the failed create rejects with the very error the upstream raised, not a copy of it', async () => {
+  // A refusal the upstream answered: released, or kept under a terminal name. A failure with no readable answer, or a
+  // kept one that would say retriable, is the kernel's unknown outcome instead (the next test).
   for (const store of STORES) {
-    for (const raised of [answered(RELEASED.status, RELEASED.code), answered(503, 'TEMPORARY_UNAVAILABLE'), noAnswer({ timeout: true }), new TypeError('cannot read the answer')]) {
+    for (const raised of [answered(RELEASED.status, RELEASED.code), answered(409, 'OUT_OF_STOCK'), answered(409, 'QUOTE_EXPIRED'), answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' })]) {
       const w = world({ store });
       const h = await w.open('complete', 'US');
       w.script.push(() => { throw raised; });
@@ -1033,6 +1049,23 @@ test('the failed create rejects with the very error the upstream raised, not a c
         (err) => err === raised,
         `${store} ${raised.message}`,
       );
+    }
+  }
+});
+
+test('a failed create with no readable answer (a 5xx, no answer, a failure that is not a refusal) rejects with the kernel\'s unknown outcome, no order id, and the claim kept', async () => {
+  for (const store of STORES) {
+    for (const raised of [answered(503, 'TEMPORARY_UNAVAILABLE'), answered(500, null), noAnswer({ timeout: true }), noAnswer(), new TypeError('cannot read the answer'), answered(409, 'QUOTE_CONSUMED'), answered(429, 'RATE_LIMIT_EXCEEDED')]) {
+      const w = world({ store });
+      const h = await w.open('complete', 'US');
+      w.script.push(() => { throw raised; });
+      await assert.rejects(
+        w.kernel.createOrder({ idempotency_key: 'idem-same-0002', order: { quote_id: h.quoteId, shipping_address: {} } }, h.ctx),
+        (err) => err !== raised && err.code === 'CHECKOUT_OUTCOME_UNKNOWN' && err.retriable === false
+          && err.detail.reason === 'order_create_outcome_unknown' && err.detail.order_id === null,
+        `${store} ${raised.message}`,
+      );
+      assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, `${store} ${raised.message}`);
     }
   }
 });
@@ -1049,12 +1082,15 @@ test('an order was written and the upstream still answered a coded refusal (a bu
     assert.equal(w.upstreamOrders.length, 1, `${label} ${status} ${code}: the order exists`);
     assert.equal(await w.kernel.isQuoteClaimed(h.quoteId), true, `${label} ${status} ${code}: kept`);
     // The retries the reviewer drove to a second order: the same key, another key, and both again later.
+    // A 5xx, or a kept refusal that would say retriable, is an unknown outcome: the same key is told that again; every
+    // other key, and every terminal refusal, is told the session is used.
+    const sameKeyCode = status >= 500 || answered(status, code).retriable === true ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED';
     for (const key of ['idem-behind-0001', 'idem-behind-0002', 'idem-behind-0001', 'idem-behind-0003']) {
       const retry = await w.attempt(h, key);
-      assert.equal(retry.code, 'QUOTE_ALREADY_USED', `${label} ${status} ${code} ${key}: ${JSON.stringify(retry.wire)}`);
+      assert.equal(retry.code, key === 'idem-behind-0001' ? sameKeyCode : 'QUOTE_ALREADY_USED', `${label} ${status} ${code} ${key}: ${JSON.stringify(retry.wire)}`);
     }
     w.advance(3 * 60 * 1000);
-    assert.equal((await w.attempt(h, 'idem-behind-0001')).code, 'QUOTE_ALREADY_USED', `${label} ${status} ${code}`);
+    assert.equal((await w.attempt(h, 'idem-behind-0001')).code, sameKeyCode, `${label} ${status} ${code}`);
     assert.equal(w.createsSent().length, 1, `${label} ${status} ${code}: one create_order, ever`);
     assert.equal(w.upstreamOrders.length, 1, `${label} ${status} ${code}: one order`);
   }

@@ -551,6 +551,11 @@ function getGeminiGlobalGate() {
   return _gate;
 }
 
+// A second gate, with the same env limits, for merchant-audit probes routed to their own Vertex project
+// (PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT, gw#2585). The limits apply to EACH gate, so while that project
+// is set one instance can run up to twice GEMINI_GLOBAL_CONCURRENCY_MAX concurrent calls and twice
+// GEMINI_GLOBAL_RATE_PER_MIN per minute (defaults 6 -> 12 and 300 -> 600; with 12 and 500 set, 24 and 1000).
+// That is intended: the audit project has its own quota. Size the per-instance limits for one gate each.
 function getMerchantAuditGeminiGate() {
   // Billing and quota are separate on the merchant audit Vertex project.
   if (!merchantAuditGate) merchantAuditGate = createConfiguredGeminiGate();

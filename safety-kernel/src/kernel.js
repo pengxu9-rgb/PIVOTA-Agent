@@ -9,7 +9,7 @@
 import { QuoteRegistry } from './quoteRegistry.js';
 import { IdempotencyLedger } from './idempotencyLedger.js';
 import { ConfirmationTokenService } from './confirmationTokens.js';
-import { PivotaCommerceError } from './errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown } from './errors.js';
 import { redact } from './redact.js';
 import { InMemoryKvStore } from './stores.js';
 import { sameMinor, violatesChargeMultiple } from './money.js';
@@ -37,6 +37,10 @@ function markIdempotentReplay(result, replayed) {
 
 function isPlainObject(value) {
   return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonBlank(value) {
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 function firstNonEmpty(...values) {
@@ -237,9 +241,43 @@ export class SafetyKernel {
    * refusal's detail (`claim: 'canceled'`), for a door that answers a cancelled session by that name; the code and
    * the message are the same for both.
    */
-  async quoteAlreadyUsed(quote_id) {
+  async quoteAlreadyUsed(quote_id, ctx) {
     const held = await this._quoteClaims.get(quote_id);
-    return new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id, ...(held && held.canceled === true ? { claim: 'canceled' } : {}) });
+    // The order that holds the claim, when it is THIS caller's (quoteClaimState): the refusal's own advice is to read
+    // that order first, and without its id that advice cannot be followed. Another caller's order is never named.
+    const state = ctx ? await this._claimStateOf(held, ctx) : null;
+    return new PivotaCommerceError('QUOTE_ALREADY_USED', {
+      quote_id,
+      ...(held && held.canceled === true ? { claim: 'canceled', reason: 'session_canceled' } : {}),
+      ...(state && state.order_id ? { order_id: state.order_id } : {}),
+    });
+  }
+
+  /**
+   * WHAT HOLDS A QUOTE'S SINGLE-USE CLAIM, as this caller may be told it. `null` when nothing holds it (the session can
+   * still become an order); otherwise `{ canceled, order_id, order_status }`:
+   *   - `canceled: true`  a cancellation holds it (the session can never become an order);
+   *   - `order_id`        the kernel order that holds it, ONLY when that order is this caller's own (the same buyer and
+   *                       the same session, and the same agent when both name one: _requireOrder's rule). An order the
+   *                       claim names that is not this caller's, or that the kernel does not hold, is `null`;
+   *   - `order_status`    that order's status in the kernel, beside its id.
+   * A claim written before the claim carried its order (or whose order write did not land) is `order_id: null`.
+   * Read-only. Never throws for an unknown quote id; store errors propagate.
+   */
+  async quoteClaimState(quote_id, ctx) {
+    if (typeof quote_id !== 'string' || quote_id === '') return null;
+    return this._claimStateOf(await this._quoteClaims.get(quote_id), ctx);
+  }
+
+  async _claimStateOf(held, ctx) {
+    if (!held) return null;
+    if (held.canceled === true) return { canceled: true, order_id: null, order_status: null };
+    const orderId = typeof held.order_id === 'string' && held.order_id !== '' ? held.order_id : null;
+    const order = orderId ? await this._orderStore.get(orderId) : null;
+    const owned = Boolean(order && ctx && ctx.user_ref && order.user_ref === ctx.user_ref
+      && order.acp_session_id != null && order.acp_session_id === ctx.acp_session_id
+      && !(order.agent_id != null && ctx.agent_id != null && order.agent_id !== ctx.agent_id));
+    return { canceled: false, order_id: owned ? orderId : null, order_status: owned ? order.status ?? null : null };
   }
 
   /** create_order: INV-1 (quote required), INV-4 (idempotent), INV-5 (amount from snapshot). */
@@ -263,7 +301,7 @@ export class SafetyKernel {
         // (_settleQuoteClaimAfterFailedCreate) can only ever give back its own.
         const claimId = randomUUID();
         const claimedQuote = await this._quoteClaims.putIfAbsent(quote.quote_id, { idempotency_key: key, claim_id: claimId });
-        if (!claimedQuote) throw await this.quoteAlreadyUsed(quote.quote_id);
+        if (!claimedQuote) throw await this.quoteAlreadyUsed(quote.quote_id, ctx);
         const lockedBuyerContext = normalizeBuyerContext(quote.buyer_context);
         const requestedBuyerContext = normalizeBuyerContext(payload.order);
         const buyerContext = {
@@ -293,11 +331,31 @@ export class SafetyKernel {
         try {
           r = await this._upstream('create_order', upstreamPayload, { 'Idempotency-Key': key });
         } catch (err) {
-          // The caller is answered with `err` exactly as it was raised, whatever happens to the claim.
+          // The claim is settled on `err` exactly as it was raised (a listed refusal gives it back; anything else keeps it).
           await this._settleQuoteClaimAfterFailedCreate(quote.quote_id, claimId, err);
+          // AN ORDER CALL WITH NO READABLE ANSWER (no answer, the deadline, a 5xx, an error that is not a refusal) may
+          // have written an order: an unknown outcome, said so by name, with no order id (none is known). So is an
+          // answered refusal that keeps the claim and would otherwise be told "retriable" (a 408, a 429, an unlisted
+          // 4xx such as a consumed quote): every retry of it is refused as a used session, and an order may exist
+          // behind it (that is why its claim is kept). Neither is on the release list. A listed prologue refusal, and
+          // every terminal refusal the upstream named (out of stock, a changed price, ...), is answered as raised.
+          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && err.retriable === true))) {
+            // Held, not released: a same-key resend is told this same answer (the ledger keeps it), on every caller of
+            // createOrder, the invoke route's bare one included.
+            runCtx.sideEffectDone = true;
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null);
+          }
           throw err;
         }
         runCtx.sideEffectDone = true; // order created upstream — past this point, failures are ambiguous
+        // AN ANSWER THAT NAMES NO ORDER IS NOT AN ORDER, AND NOT A PRICE CHANGE. The upstream answered 2xx but its body
+        // could not be read as an order (empty, cut short, not JSON, no order id): an order may have been written, and
+        // nothing here knows its id. That is an unknown outcome, said so by name; the quote's claim is kept (this is
+        // not a failed call, so the claim's settlement above never runs) and this key is held ambiguous.
+        if (!r || typeof r !== 'object' || typeof r.order_id !== 'string' || r.order_id.trim() === '') {
+          this._log.warn?.('order_create_answer_unreadable', { quote_id: quote.quote_id });
+          throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null);
+        }
         // MONEY-UNITS CROSS-CHECK: the quote snapshot and the backend's own order are two INDEPENDENT
         // sources of the same money. Both are MINOR units (the adapter converts the quote; the backend
         // amount is already minor). Disagreement is most dangerously a major/minor confusion that would
@@ -350,6 +408,16 @@ export class SafetyKernel {
           merchant_of_record: quote.merchant_of_record,
           status: 'created',
         });
+        // The claim names the order it was spent on, so a later refusal of this quote can name it to its own caller
+        // (quoteAlreadyUsed, quoteClaimState). Compare-and-set on THIS attempt's claim_id: a claim that is not this
+        // attempt's is never touched. Best effort: an order is never refused because this note did not land.
+        try {
+          if (typeof this._quoteClaims.compareAndSet === 'function') {
+            await this._quoteClaims.compareAndSet(quote.quote_id, 'claim_id', claimId, { idempotency_key: key, claim_id: claimId, order_id: r.order_id });
+          }
+        } catch {
+          this._log.warn?.('quote_claim_order_note_failed', { quote_id: quote.quote_id });
+        }
         return {
           order_id: r.order_id,
           amount_total: quote.locked_totals.total, // authoritative
@@ -559,6 +627,14 @@ export class SafetyKernel {
               })
             : await this._upstream('submit_payment', { ...payload, payment: safePayment }, { 'Idempotency-Key': key });
 
+          // A 2xx THAT NAMES NEITHER A PAYMENT STATUS NOR A PAYMENT PAGE says nothing about the charge: an empty or
+          // unreadable body, read as success, told the caller its payment was under way with nothing to pay on. It is
+          // an unknown outcome, with the order's id. The order stays `charge_pending` (written above, before the call),
+          // so nothing can charge it again, and this key is held ambiguous with this answer.
+          if (!r || typeof r !== 'object' || !(nonBlank(r.payment_status) || nonBlank(r.redirect_url))) {
+            this._log.warn?.('payment_answer_unreadable', { order_id });
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, order_id);
+          }
           // Charge call returned. Finalize the state machine + record this attempt's payment_id so the
           // webhook can correlate (reject a stale webhook for a previous attempt).
           const cls = classifyPaymentStatus(r.payment_status);
