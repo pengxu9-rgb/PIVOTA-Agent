@@ -50,8 +50,10 @@ const TOKEN_FALLBACK_TTL_MS = 50 * 60 * 1000; // when the token's own `exp` cann
 const TOKEN_FAILURE_BACKOFF_MS = 60 * 1000;
 const TOKEN_EXCHANGE_TIMEOUT_MS = 3000;
 // THE BREAKER. A slow or failing catalog costs every US create up to the lookup budget. After BREAKER_FAILURES
-// consecutive failed lookups (timeout, network, 429, 5xx), lookups are skipped for BREAKER_OPEN_MS
-// (`skipped:breaker`), then one is tried again. An answered lookup closes it. An `unauthorized` answer counts too.
+// consecutive failed lookups (timeout, network, 429, 5xx, no token), lookups are skipped for BREAKER_OPEN_MS
+// (`skipped:breaker`). After the window ONE lookup is tried (half-open): a failure opens it again at once, an answered
+// lookup closes it. A timeout counts only when the lookup had the full budget (a caller's short budget is not the
+// catalog failing). An `unauthorized` answer counts too; a batch that partly answered does not.
 export const BREAKER_FAILURES = 3;
 export const BREAKER_OPEN_MS = 60 * 1000;
 const MAX_ID_LENGTH = 512;
@@ -203,6 +205,15 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
   let failedUntilMs = 0;
   let consecutiveFailures = 0;
   let breakerOpenUntilMs = 0;
+  const noteFailure = () => {
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= BREAKER_FAILURES) {
+      breakerOpenUntilMs = now() + BREAKER_OPEN_MS;
+      // Half-open after the window: the next failure alone opens it again.
+      consecutiveFailures = BREAKER_FAILURES - 1;
+      count("breaker:opened");
+    }
+  };
 
   async function bearer(budgetMs) {
     if (token && now() < token.refreshAtMs) return token.value;
@@ -254,8 +265,7 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     const left = () => budgetMs - (now() - startedAt);
     const value = await bearer(left());
     if (!value) {
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= BREAKER_FAILURES) { breakerOpenUntilMs = now() + BREAKER_OPEN_MS; consecutiveFailures = 0; count("breaker:opened"); }
+      noteFailure();
       return done("failed:no_token");
     }
     const ids = [...numbers.keys()];
@@ -293,8 +303,7 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     // The match rate counts only answered lookups: a failure is counted under its own reason, never as "untracked".
     if (failure) count(failure);
     if (failure && !answered) {
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= BREAKER_FAILURES) { breakerOpenUntilMs = now() + BREAKER_OPEN_MS; consecutiveFailures = 0; count("breaker:opened"); }
+      if (!(failure === "failed:timeout" && budgetMs < ATTRIBUTION_BUDGET_MS)) noteFailure();
     } else if (answered) consecutiveFailures = 0;
     count("tracked", tracked.size);
     if (answered) count("untracked", Math.max(0, numbers.size - tracked.size));

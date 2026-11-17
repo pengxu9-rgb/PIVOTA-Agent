@@ -953,29 +953,13 @@ async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost,
   if (left() <= 0) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
   if (codeToSend !== null && !acceptsDiscountCodes) { codeToSend = null; notSentReason = "not_sent_seller_does_not_advertise"; }
 
-  // THE REFERRAL (CART_REFERRAL_FLAG). Create: minted now, only when the catalog link carries no tracking member, in
-  // what the budget holds above the cart call's own share. Re-read: the members the create minted, from the id.
-  const referralOn = cartReferralEnabled(env);
-  const linkTracking = catalogLink ? trackingPairsOf(catalogLink) : null;
-  let referral = null;
-  if (attempt.bareRetry) {
-    // The retry after a tracked send reuses the referral the first attempt minted (or none), never a second one.
-    referral = attempt.bareRetry.referral || null;
-  } else if (referralOn && cartId === undefined && !(linkTracking && linkTracking.length)) {
-    const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
-    referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log, skip: referralSkip });
-    attempt.referral = referral;
-    if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
-  } else if (referralOn && cartId !== undefined && !(linkTracking && linkTracking.length)) {
-    const again = trackingPairsFrom(referralPairs);
-    if (again) referral = { clickId: null, pairs: again };
-  }
   // A line whose tracked id is sent carries Shopify's catalog attribution. "One cart or checkout carries one catalog
   // attribution", and attribution sent during the conversion REPLACES it (Promoted Placements docs), so with any
-  // tracked line this cart carries none of ours: no cart.attribution, and no utm/pvt members added to the cart URL
-  // below. The referral (if one was minted) stays a server-side record only. The tracked id travels as `send_id`,
-  // used ONLY in the create_cart body: `gid` stays bare for matching the seller's lines (readSellerCart keys on the
-  // bare gid), for signals and for every log.
+  // tracked line this cart carries none of ours: no cart.attribution, no utm/pvt members added to the cart URL below,
+  // and NO referral minted (a click row no link carries would be issued and never clickable). Decided here, BEFORE
+  // the referral, so enforce waits for the lookup first; its own budget bounds the wait. The tracked id travels as
+  // `send_id`, used ONLY in the create_cart body: `gid` stays bare for matching the seller's lines (readSellerCart keys
+  // on the bare gid), for signals and for every log.
   let sendTracked = false;
   const reportAttribution = (settled) => {
     attempt.reported = true;
@@ -986,7 +970,8 @@ async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost,
     });
   };
   if (attributionP && attributionMode === "shadow") {
-    // Shadow never makes the cart wait: the lookup settles on its own and is only counted.
+    // Shadow never makes the cart wait: the lookup settles on its own and is counted once, here.
+    attempt.reportScheduled = true;
     attributionP.then(reportAttribution, () => {});
   } else if (attributionP) {
     const settled = await attributionP;
@@ -997,6 +982,21 @@ async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost,
     }
     attempt.sentTracked = sendTracked;
     reportAttribution(settled);
+  }
+
+  // THE REFERRAL (CART_REFERRAL_FLAG). Create: minted now, only when the catalog link carries no tracking member and
+  // the cart is not sent catalog-tracked, in what the budget holds above the cart call's own share. A bare retry after
+  // a tracked send mints its own (the tracked attempt minted none). Re-read: the members the create minted, from the id.
+  const referralOn = cartReferralEnabled(env);
+  const linkTracking = catalogLink ? trackingPairsOf(catalogLink) : null;
+  let referral = null;
+  if (referralOn && cartId === undefined && !sendTracked && !(linkTracking && linkTracking.length)) {
+    const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
+    referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log, skip: referralSkip });
+    if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
+  } else if (referralOn && cartId !== undefined && !(linkTracking && linkTracking.length)) {
+    const again = trackingPairsFrom(referralPairs);
+    if (again) referral = { clickId: null, pairs: again };
   }
   const cartAttribution = cartId === undefined && cartAttributionEnabled(env) && !sendTracked
     ? (cartAttributionOf(catalogLink) || (referral ? Object.fromEntries(referral.pairs) : null))
@@ -1014,10 +1014,13 @@ async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost,
     result = await withBudget(call, left());
   } catch (err) {
     emit(log, "warn", { outcome: "fallback", reason: classifyUcpFailure({ thrown: err, phase: "create_cart" }), seller_host: sellerHost });
+    attempt.retryable = true;
     return null;
   }
-  if (!result || result.timedOut) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
+  if (!result || result.timedOut) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); attempt.retryable = true; return null; }
   if (!result.ok || result.error) {
+    // A tool or HTTP error on the cart we sent: retryable bare (an out-of-stock statement throws below instead).
+    attempt.retryable = true;
     const errorText = result.error && (result.error.message || result.error.code);
     const reason = classifyUcpFailure({ status: result.status, errorMessage: errorText, phase: "create_cart" });
     // STRICTER than the shared classifier on purpose: it counts any "unavailable" as out of stock, and for a non-2xx
@@ -1066,6 +1069,7 @@ async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost,
       return null;
     }
     emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost });
+    attempt.retryable = true;
     return null;
   }
   if (discountCodesOn) {
@@ -1095,9 +1099,7 @@ async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost,
   if (catalogLink && !clean) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
   if (referral) {
     if (!clean) read.continueUrl = carryTrackingPairs(read.continueUrl, referral.pairs);
-    // Create: the click id stays for the hand-off record; with a tracked line no pairs are returned, so the id the
-    // escalation mints carries none for a re-read to put back.
-    if (cartId === undefined) read.referral = sendTracked ? { clickId: referral.clickId, pairs: [] } : referral;
+    if (cartId === undefined) read.referral = referral;
   }
   if (sendTracked) read.catalogTracked = true;
   if (cartId !== undefined && read.cartId !== cartId) { emit(log, "info", { outcome: "fallback", reason: "cart_id_mismatch", seller_host: sellerHost }); return null; }
@@ -1126,7 +1128,7 @@ export async function priceOnMerchantDoor(args) {
     if (attempt.sentTracked) emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_threw" });
     throw err;
   }
-  if (attempt.attributionP && !attempt.reported) {
+  if (attempt.attributionP && !attempt.reported && !attempt.reportScheduled) {
     // An early fallback (no door, a timeout, a currency refusal) before the lookup was read: counted, never waited for.
     attempt.attributionP.then((settled) => emitAttribution(args.log, {
       mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "unused",
@@ -1140,13 +1142,21 @@ export async function priceOnMerchantDoor(args) {
     return out;
   }
   const remaining = typeof attempt.left === "function" ? attempt.left() : 0;
-  if (!(remaining >= BARE_RETRY_MIN_MS)) {
-    emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: false });
+  // Retried only when the store answered the CART (an error, a timeout, lines that do not match), never when the answer
+  // was about the store itself (another currency, a link off the expected seller): a bare cart would get the same.
+  const aboutTheStore = isPlainObject(args.storeAnswer) && typeof args.storeAnswer.currency === "string";
+  if (!attempt.retryable || aboutTheStore || !(remaining >= BARE_RETRY_MIN_MS)) {
+    emitAttribution(args.log, {
+      mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: false,
+      why: !attempt.retryable || aboutTheStore ? "not_retryable" : "no_budget",
+    });
     return null;
   }
   let retried;
   try {
-    retried = await priceOnMerchantDoorOnce({ ...args, budgetMs: remaining, attempt: { bareRetry: { referral: attempt.referral || null } } });
+    // The caller's currency memo was already read once for this cart: not again (a concurrent write between the two
+    // attempts would otherwise be reported as this store's answer).
+    retried = await priceOnMerchantDoorOnce({ ...args, budgetMs: remaining, recallStoreCurrency: undefined, attempt: { bareRetry: true } });
   } catch (err) {
     emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: true, retry: "threw" });
     throw err;
