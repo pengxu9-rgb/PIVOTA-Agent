@@ -602,6 +602,56 @@ test('P2-1 (v5): after the order is charge_pending, and after it is paid, anothe
   }
 });
 
+test('P2-2 (v5): the order\'s own buyer in another session, after the payment outcome is unknown, is told to read the order where it was started and not to start another; another user gets the same words; never "start the order over" or "re-quote", on invoke submit_payment and /mcp complete, payment link and session read', async () => {
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  const { restartInstructions } = await import('../safety-kernel/test-support/noEffectWords.js');
+  const words = ERROR_CATALOG.STATE_LINKAGE_MISMATCH;
+  assert.match(words.userMessage, /cannot be continued from this session or agent/);
+  const commerce = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const assertWords = (message, recovery, label) => {
+    assert.equal(message, words.userMessage, label);
+    if (recovery !== undefined) assert.equal(recovery, words.recovery, label);
+    assert.deepEqual(restartInstructions(`${message}. ${recovery || ''}`), [], label);
+  };
+  for (const market of PRICED_MARKETS) {
+    seq += 1;
+    const owner = buyerFor(seq);
+    const ctx = { user_ref: owner['X-Test-User-Ref'], acp_session_id: owner['X-Test-Acp-Session-Id'] };
+    const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer: owner });
+    const o = await door.invoke('create_order', { idempotency_key: freshKey(), order: invokeOrderOf(q, market) }, { buyer: owner });
+    const token = await commerce.mintConfirmation({ order_id: o.body.order_id }, ctx);
+    const pay = (buyer) => door.invoke('submit_payment', { idempotency_key: freshKey(), confirmation_token: token, payment: { order_id: o.body.order_id, expected_amount: o.body.amount_total, currency: o.body.currency } }, { buyer });
+    door.paymentScript.push(ANSWERS.internalError());
+    assert.equal((await pay(owner)).body.code, 'CHECKOUT_OUTCOME_UNKNOWN', market);
+    const h = await open('mcp_complete', market);
+    door.paymentScript.push(ANSWERS.internalError());
+    assert.equal(errorOf(await attempt(h, freshKey())).code, 'CHECKOUT_OUTCOME_UNKNOWN', market);
+    const grant = await grantFor(h);
+    const answers = {};
+    for (const [who, make] of Object.entries(STRANGERS)) {
+      seq += 1;
+      const buyer = make(seq);
+      const inv = await pay(buyer);
+      assert.deepEqual([inv.http, inv.body.code, inv.body.retriable], [404, 'STATE_LINKAGE_MISMATCH', false], `invoke ${market} ${who}: ${inv.raw.slice(0, 300)}`);
+      assertWords(inv.body.message, inv.body.recovery, `invoke ${market} ${who}`);
+      answers[who] = [inv.raw];
+      for (const [tool, args] of [
+        ['complete_checkout_session', { idempotency_key: freshKey(), session_id: h.id, payment_authorization: { method: 'acp_delegated_token', token: grant } }],
+        ['create_payment_link', { idempotency_key: freshKey(), session_id: h.id, customer_email: 'buyer@example.test' }],
+        ['get_checkout_session', { session_id: h.id }],
+      ]) {
+        const r = await door.call(tool, args, { buyer });
+        assert.equal(errorOf(r).code, 'STATE_LINKAGE_MISMATCH', `${tool} ${market} ${who}: ${r.raw.slice(0, 300)}`);
+        assertWords(errorOf(r).message, errorOf(r).recovery, `${tool} ${market} ${who}`);
+        assert.equal(sent(r, ORDERS) + sent(r, PAGES), 0, `${tool} ${market} ${who}`);
+        answers[who].push(JSON.stringify(errorOf(r)));
+      }
+    }
+    // One answer for both: a stranger learns nothing a same-buyer session would not be told.
+    assert.deepEqual(answers['another user'], answers['the same buyer in another session'], market);
+  }
+});
+
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
   assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');

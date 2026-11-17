@@ -96,7 +96,7 @@ const each = (fn) => async () => { for (const caller of CALLERS) await fn(caller
 // What each door answers for a code, in full: the failing attempt's answer is pinned to the byte.
 const MESSAGES = {
   MERCHANT_UNAVAILABLE: 'The merchant is temporarily unreachable. Please try again shortly.',
-  OUT_OF_STOCK: 'An item just went out of stock. Let me re-quote what is available.',
+  OUT_OF_STOCK: 'An item just went out of stock. A new quote for what is still available is needed, unless an order was already placed for this purchase.',
   QUOTE_EXPIRED: 'The price quote expired. Let me refresh it.',
   PRICE_CHANGED: 'The price changed since you confirmed. Here is the updated total.',
   NO_MERCHANT_OFFER: 'This product has no purchasable merchant offer attached, so no detail is available. This will not change on retry.',

@@ -16,7 +16,7 @@ import { ERROR_CATALOG, IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_AFTER_ORDE
 import { IdempotencyLedger } from '../src/idempotencyLedger.js';
 import { InMemoryKvStore } from '../src/stores.js';
 import { SafetyKernel } from '../src/kernel.js';
-import { NO_EFFECT } from '../test-support/noEffectWords.js';
+import { NO_EFFECT, restartInstructions } from '../test-support/noEffectWords.js';
 
 const START_AGAIN = /start(?:ing)? (?:fresh|over|again)|different request reusing an old reference/i;
 const CTX = Object.freeze({ user_ref: 'buyer_1', acp_session_id: 'sess_1' });
@@ -182,6 +182,11 @@ function assertRevealsNothing(err, orderId, label) {
   assert.ok(err instanceof PivotaCommerceError, `${label}: ${err && err.message}`);
   assert.equal(err.code, 'STATE_LINKAGE_MISMATCH', `${label}: ${err.code} ${err.message}`);
   assert.equal(err.message, ERROR_CATALOG.STATE_LINKAGE_MISMATCH.userMessage, label);
+  // One answer for every mismatch, and never "start the order over": the order's own buyer in another session may have an
+  // order that is being charged.
+  assert.deepEqual(restartInstructions(`${err.message}. ${err.recovery}`), [], label);
+  assert.match(err.message, /cannot be continued from this session or agent/, label);
+  assert.match(err.recovery, /read it from the session or agent that started it; do not start another order for this purchase without the buyer/, label);
   assert.equal(err.detail.acp_detail, undefined, `${label}: nothing curated to surface`);
   assert.equal(err.detail.acp_message, undefined, label);
   const body = JSON.stringify(invokeErrorOf(err));

@@ -16,7 +16,7 @@ import { createRequire } from 'node:module';
 import { ERROR_CATALOG, PivotaCommerceError, claimsNoEffect } from '../src/errors.js';
 import { REFUSED_BEFORE_ANY_ORDER } from '../src/upstreamRefusal.js';
 import { SafetyKernel } from '../src/kernel.js';
-import { NO_EFFECT } from '../test-support/noEffectWords.js';
+import { NO_EFFECT, RESTART, restartInstructions } from '../test-support/noEffectWords.js';
 import { stringLiterals } from '../test-support/stringLiterals.js';
 
 const require = createRequire(import.meta.url);
@@ -171,6 +171,53 @@ test('no file this scan reads says "Starting fresh" (or "start fresh"), in a str
   assert.deepEqual(found, []);
   for (const [code, entry] of Object.entries(ERROR_CATALOG)) assert.doesNotMatch(`${entry.userMessage} ${entry.recovery}`, START_FRESH, code);
   assert.ok(START_FRESH.test("'Starting ' + 'fresh.'") && START_FRESH.test('start fresh') && START_FRESH.test('Starting fresh'), 'the pattern finds what it is for');
+});
+
+// "Start the order over", "re-quote", "a new order", "start again": obeyed while an order may exist, any of them can place
+// a second order for one purchase. Every string this scan reads either bounds such words in their own clause ("only if
+// the buyer wants another order", "do not start another order ... without the buyer") or is one of these, each with
+// the test that proves it true where it is said. A flagged catalog entry (claimsNoEffect) is given only on the release
+// rule's proof that nothing was ordered (the test above), so its words may say to start again, in the catalog or where a
+// door gives that code its own catalog words again.
+const RESTART_EXEMPT = [
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'Re-quote a checkout session after a change', why: 'the update_checkout_session tool description: what the tool does (re-prices the session it is sent), not an answer to a call', test: ['tests/intake_key_minimum_and_quantity_ceiling_door.node.test.cjs', '/mcp update: 999 units are re-priced'] },
+];
+
+test('the restart words: the pattern finds what it is for, and the bounded forms are not counted', () => {
+  for (const t of ['Let me start the order over.', 're-quote in this session', 'Please start over.', 'Starting fresh.', 'start again', 'Let me re-quote what is available.', 'Place a new order.', 'Open another checkout.', 'show new quote, re-confirm']) {
+    assert.ok(restartInstructions(t).length > 0, t);
+  }
+  for (const t of ['start a new checkout only if the buyer wants another order', 'do not start another order for this purchase without the buyer', 'if the buyer still wants the item, start a new checkout', 'get a new quote only if no order was placed for this purchase', 'read it (get_order) instead of starting another', 'Requires new purchases enabled.']) {
+    assert.deepEqual(restartInstructions(t), [], t);
+  }
+  assert.ok(RESTART.global, 'matchAll needs the g flag');
+});
+
+test('no string this scan reads tells the caller to start the purchase again, unless its own clause bounds it or it is exempt by a named, existing test', () => {
+  const flagged = new Set(Object.values(ERROR_CATALOG).filter((e) => e.claimsNoEffect).flatMap((e) => [e.userMessage, e.recovery]));
+  const found = [];
+  const used = new Set();
+  for (const rel of SCANNED) {
+    for (const { text, line } of stringLiterals(readFileSync(new URL(rel, ROOT), 'utf8'))) {
+      const hits = restartInstructions(text);
+      if (!hits.length) continue;
+      if (flagged.has(text)) continue;
+      const entry = RESTART_EXEMPT.find((e) => e.file === rel && text.includes(e.includes));
+      if (entry) { used.add(entry); continue; }
+      found.push(`${rel}:${line} [${hits.map((h) => h.words).join(', ')}] ${text.slice(0, 160)}`);
+    }
+  }
+  assert.deepEqual(found, [], 'a restart instruction that is neither bounded, gated nor exempt by a named test');
+  for (const entry of RESTART_EXEMPT) {
+    assert.ok(used.has(entry), `an exemption no string uses any more: ${entry.file} ${entry.includes}`);
+    const [testFile, testName] = entry.test;
+    assert.ok(readFileSync(new URL(testFile, ROOT), 'utf8').includes(testName), `the test an exemption names does not exist: ${testFile} ${testName}`);
+  }
+  // Every catalog entry that is not gated by the release proof, and the linkage words above all, says no such thing.
+  for (const [code, entry] of Object.entries(ERROR_CATALOG)) {
+    if (entry.claimsNoEffect) continue;
+    assert.deepEqual(restartInstructions(`${entry.userMessage}`).concat(restartInstructions(entry.recovery)), [], code);
+  }
 });
 
 // The kernel, over an upstream that answers create_order with one scripted error.

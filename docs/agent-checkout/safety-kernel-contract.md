@@ -106,9 +106,9 @@ cannot succeed without a token bound to the final amount.
 | Code | Meaning | Adapter recovery |
 |---|---|---|
 | `QUOTE_REQUIRED` | order without quote_id | call pivota_quote first |
-| `QUOTE_EXPIRED` | quote past expires_at | re-quote, re-confirm |
-| `PRICE_CHANGED` | expected_amount != snapshot | show new quote, re-confirm |
-| `OUT_OF_STOCK` | item unavailable at quote/order | re-quote remaining items |
+| `QUOTE_EXPIRED` | quote past expires_at | a new quote and a new confirmation, only if there is no order for this purchase yet; if there may be one, read it first |
+| `PRICE_CHANGED` | expected_amount != snapshot | show the buyer the new price and confirm again; if an order was already placed, read it instead of starting another |
+| `OUT_OF_STOCK` | item unavailable at quote/order | a new quote for the items still available, only if there is no order for this purchase yet; if there may be one, read it first |
 | `CONFIRMATION_REQUIRED` | pay without token | render confirmation card |
 | `CONFIRMATION_INVALID` | token reused/expired/mismatch | re-confirm |
 | `IDEMPOTENCY_CONFLICT` | same key, different body | new key for a genuinely new request |
@@ -117,6 +117,7 @@ cannot succeed without a token bound to the final amount.
 | `MERCHANT_UNAVAILABLE` | connector down | no silent fallback (rail rule); say so |
 | `MERCHANT_NOT_ACCEPTING_ORDERS` | the order call: the seller's store is not taking orders (a backend 403 its order route names), answered only when the quote-claim release rule proves it came before any order write; otherwise the same answer is `CHECKOUT_OUTCOME_UNKNOWN` | do not retry this checkout; nothing was ordered; offer the buyer another seller |
 | `USER_AUTH_REQUIRED` | missing user_ref on write | trigger OAuth |
+| `STATE_LINKAGE_MISMATCH` | another user, session or agent than the checkout's or order's own (one answer for all, no id, no state) | read it from the session or agent that started it; do not start another order for this purchase without the buyer |
 | `PRODUCT_NOT_SERVABLE` | `/mcp` door, `PARTNER_DOOR_ONE_PRODUCT_ID` on: the product id is known and a serving gate withholds it; `detail.reason` carries the gate's reason | do not retry; offer alternatives |
 | `PRODUCT_GROUP_ID_NOT_PRODUCT_ID` | `/mcp` door, flag on: the id is a product group id (`sig_` + 24 hex) with no servable member, or `product_group_id` was passed to `get_offers` | do not retry; pass the `product_id` of a search row |
 | `MERCHANT_PRODUCT_MISMATCH` | `/mcp` door, flag on: the `merchant_id` named beside the product is not one of the product's sellers | do not retry as sent; omit `merchant_id` or pass the one returned with the product |

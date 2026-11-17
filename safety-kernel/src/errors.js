@@ -17,15 +17,18 @@
  */
 export const ERROR_CATALOG = Object.freeze({
   QUOTE_REQUIRED:         { retriable: false, recovery: 'call pivota_quote first',                 userMessage: 'I need a fresh price quote before placing this order.' },
-  QUOTE_NOT_FOUND:        { retriable: false, recovery: 're-quote',                                 userMessage: 'That quote is no longer available. Let me get a new price.' },
-  QUOTE_EXPIRED:          { retriable: false, recovery: 're-quote, re-confirm',                     userMessage: 'The price quote expired. Let me refresh it.' },
+  // The quote-stage codes below can also answer a call after an order exists (a payment step's amount echo, an order
+  // call's refusal), so their recoveries ask for a new quote only when no order was placed, and say what to read if one
+  // may have been. Never a bare "re-quote", which an agent obeys by placing a second order.
+  QUOTE_NOT_FOUND:        { retriable: false, recovery: 'get a new quote only if there is no order for this purchase yet; if there may be one, read it (get_order) first', userMessage: 'That quote is no longer available. Let me get a new price.' },
+  QUOTE_EXPIRED:          { retriable: false, recovery: 'get a new quote and confirm it again only if there is no order for this purchase yet; if there may be one, read it (get_order) first', userMessage: 'The price quote expired. Let me refresh it.' },
   // Fires when a locked quote has already been turned into an ORDER (INV-1 single-use) — which is NOT the
   // same as "paid". The order may be unpaid (a post-create failure, an abandoned charge), so claiming the
   // checkout "was already completed" told buyers money had moved when it had not. Say what is actually
   // true: the session is spent and a fresh quote is needed.
   QUOTE_ALREADY_USED:     { retriable: false, recovery: 'read the order this session already placed (get_order) before anything else; re-quote only for a new order the buyer asked for',                 userMessage: 'This checkout session was already used to place an order, so it can\'t be used again. Read that order first (get_order) before doing anything else; start a new checkout only if the buyer wants another order.' },
-  PRICE_CHANGED:          { retriable: false, recovery: 'show new quote, re-confirm',               userMessage: 'The price changed since you confirmed. Here is the updated total.' },
-  OUT_OF_STOCK:           { retriable: false, recovery: 're-quote remaining items',                 userMessage: 'An item just went out of stock. Let me re-quote what is available.' },
+  PRICE_CHANGED:          { retriable: false, recovery: 'show the buyer the new price and confirm again before going on; if an order was already placed for this purchase, read it (get_order) instead of starting another', userMessage: 'The price changed since you confirmed. Here is the updated total.' },
+  OUT_OF_STOCK:           { retriable: false, recovery: 'get a new quote for the items still available only if there is no order for this purchase yet; if there may be one, read it (get_order) first', userMessage: 'An item just went out of stock. A new quote for what is still available is needed, unless an order was already placed for this purchase.' },
   CONFIRMATION_REQUIRED:  { retriable: false, recovery: 'render confirmation card',                 userMessage: 'Please confirm the order details to continue.' },
   CONFIRMATION_INVALID:   { retriable: false, recovery: 're-confirm',                               userMessage: 'That confirmation is no longer valid. Please confirm again.' },
   // The words every IDEMPOTENCY_CONFLICT without its own (IDEMPOTENCY_CONFLICT_ANSWERS below) is given: a key that is
@@ -64,7 +67,11 @@ export const ERROR_CATALOG = Object.freeze({
   // seller's row is never served under another seller's name.
   MERCHANT_PRODUCT_MISMATCH: { retriable: false, recovery: 'do not retry as sent; omit merchant_id, or pass the merchant_id returned with this product', userMessage: 'The merchant_id does not match this product\'s seller. Omit merchant_id, or pass the merchant_id returned with the product. This will not change on retry.' },
   USER_AUTH_REQUIRED:     { retriable: false, recovery: 'trigger OAuth',                            userMessage: 'Please sign in so I can place this order on your behalf.' },
-  STATE_LINKAGE_MISMATCH: { retriable: false, recovery: 're-quote in this session',                userMessage: 'Something about this session does not line up. Let me start the order over.' },
+  // Another user, another session or another agent than the one a checkout or order belongs to (kernel._requireOrder,
+  // the quote registry, the ACP session record). The SAME words for every one of them, with no id and no state, so a
+  // stranger learns nothing; and true for the order's own buyer in another conversation, whose order may exist and may be
+  // charged: read it where it was started, never "start the order over".
+  STATE_LINKAGE_MISMATCH: { retriable: false, recovery: 'read it from the session or agent that started it; do not start another order for this purchase without the buyer', userMessage: 'This checkout or order cannot be continued from this session or agent. If it was started in another conversation, an order may exist there and its payment outcome may not be known here: read it from the conversation that started it, and do not start another order for this purchase without the buyer.' },
   OPERATION_NOT_ALLOWED:  { retriable: false, recovery: 'use the correct tool for this operation',  userMessage: 'That action is not available here.' },
   // FIX_PLAN O-04: the backend refused the gateway's request-bound partner assertion (409
   // PARTNER_ASSERTION_REJECTED) BEFORE the route ran, so nothing was written. That is a fault between our own
