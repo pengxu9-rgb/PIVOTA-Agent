@@ -35347,8 +35347,9 @@ const MERCHANT_QUOTE_PREVIEW_TOOL = 'preview_merchant_checkout_quote';
 function registerCommerceUcpMcpRoute() {
   app.post(MERCHANT_QUOTE_PREVIEW_PATH, async (req, res, next) => {
     try {
-      const { merchantCheckoutQuoteEnabled } = await import('../mcp-server/src/merchantCheckoutQuote.js');
-      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpToolDoorEnabled() || !merchantCheckoutQuoteEnabled()) {
+      const { merchantCheckoutQuoteDoorOpen } = await import('../mcp-server/src/merchantCheckoutQuote.js');
+      // The same rule lists and serves the tool on /mcp and /ucp/mcp: the lane flag, strict and the UCP door.
+      if (!merchantCheckoutQuoteDoorOpen()) {
         return res.status(404).json({ error: 'not_found' });
       }
       return next();
@@ -39110,7 +39111,15 @@ async function agentSignatureRouteGroup(req) {
   if (p === '/mcp' || p === '/ucp/mcp') {
     const calls = Array.isArray(req.body) ? req.body : [req.body];
     const names = calls.map((c) => mcpToolNameFromRpcBody(c)).filter((n) => typeof n === 'string' && n);
-    if (names.includes(MERCHANT_QUOTE_PREVIEW_TOOL)) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
+    // Only while the quote door is open: dark, the name is an unknown tool and is classified like one.
+    // A module that cannot load classifies it as checkout, so that failure can only refuse more.
+    if (names.includes(MERCHANT_QUOTE_PREVIEW_TOOL)) {
+      let quoteDoorOpen = true;
+      try {
+        quoteDoorOpen = (await import('../mcp-server/src/merchantCheckoutQuote.js')).merchantCheckoutQuoteDoorOpen();
+      } catch { /* keep checkout */ }
+      if (quoteDoorOpen) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
+    }
     if (names.length) {
       // A contract that cannot load must not quietly move a checkout call out of the checkout group: it is
       // classified as checkout (the group an operator enforces first), so the failure can only refuse more.
