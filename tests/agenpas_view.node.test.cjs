@@ -448,9 +448,21 @@ test('FAILED checkout_setup_unrecognised beats the hold-shaped name (explicit li
   assert.equal(isOutcomeUnknownCode('checkout_confirm_text_only'), true);
 });
 
-test('FAILED outranks HELD when both are on the purchase', () => {
+test('HELD beats FAILED: refusal_reason a FAILED code, last_error_code a HELD code -> outcome_unknown', () => {
   const view = project(unified('failed', {}, { refusal_reason: 'checkout_relay_refused', last_error_code: 'checkout_confirm_unresolved' }));
-  assert.equal(view.outcome.kind, 'not_submitted');
+  assert.equal(view.screen, 'outcome_unknown');
+  assert.equal(view.outcome.kind, 'outcome_unknown');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.match(view.outcome.message, /don't try again/);
+  assert.equal(/no order was sent/.test(view.outcome.message), false);
+});
+
+test('HELD beats FAILED in either field and inside one compound code', () => {
+  const swapped = project(unified('failed', {}, { refusal_reason: 'money_result_seen', last_error_code: 'checkout_setup_refused:card:402' }));
+  assert.equal(swapped.screen, 'outcome_unknown');
+  const compound = project(unified('failed', {}, { last_error_code: 'paid_sent:2:scheme:checkout_confirm_refused:vic_submit_unresolved' }));
+  assert.equal(compound.screen, 'outcome_unknown');
+  assert.equal(isOutcomeUnknownCode(['checkout_relay_refused', 'checkout_total_unverified']), true);
 });
 
 for (const code of ['checkout_currency_unsupported', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit']) {

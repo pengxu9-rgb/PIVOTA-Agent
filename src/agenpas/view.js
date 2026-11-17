@@ -52,9 +52,11 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // is charged). A code with a suffix (`checkout_card_unavailable:<why>`, `checkout_setup_refused:<kind>:<status>`,
 // `checkout_confirm_refused:http_error:422`) matches on its head segment, because every segment is read.
 //
-// PRECEDENCE, highest first, over ALL the segments of ALL the codes on the purchase:
-//   1. FAILED (terminal, nothing was submitted to the store): the not_submitted wording.
-//   2. HELD (the purchase is held for a check; money may have moved): outcome_unknown, "don't try again", no retry.
+// PRECEDENCE, highest first, over ALL the segments of ALL the codes on the purchase (refusal_reason and
+// last_error_code alike):
+//   1. HELD (the purchase is held for a check; money may have moved): outcome_unknown, "don't try again", no retry.
+//      If ANYTHING on the purchase says money may have moved, the page never says "no order was sent".
+//   2. FAILED (terminal, nothing was submitted to the store): the not_submitted wording.
 //   3. the other NAMED lists (declined, approval timed out, card, price, refusals, ...): their wording.
 //   4. the SHAPE heuristic (a new code of the hold families): outcome_unknown.
 //   5. the state's generic wording: neutral, no "try again".
@@ -243,8 +245,8 @@ function isExplicit(seg) {
 
 /** What the codes say, by the precedence above: 'failed' | 'held' | a named group | 'shape_unknown' | null. */
 function classify(segments) {
-  if (segments.some((seg) => FAILED_CODES.has(seg))) return { kind: 'failed' };
   if (segments.some((seg) => HELD_CODES.has(seg))) return { kind: 'held' };
+  if (segments.some((seg) => FAILED_CODES.has(seg))) return { kind: 'failed' };
   const named = segments.map((seg) => REASON_BY_CODE.get(seg)).find(Boolean);
   if (named) return { kind: 'named', group: named };
   if (segments.some((seg) => !isExplicit(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg))) return { kind: 'shape_unknown' };

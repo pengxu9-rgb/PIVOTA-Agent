@@ -87,10 +87,12 @@ Codes are read segment by segment (mirroring pivota-backend 2fe07431c): the back
 `checkout_setup_refused:<kind>:<status>`, `checkout_confirm_refused:http_error:422`), so each is lower-cased and split
 on `:`, and every segment is checked; a suffixed code matches on its head segment. The step prefixes (`paid_sent`,
 `bound_sent`) are bookkeeping and are skipped: `paid` is the approval-page step (the rail mints a token, nothing is
-charged). Precedence, highest first: an explicit FAILED code (terminal, nothing was submitted: `checkout_relay_refused`,
-`checkout_setup_unrecognised`, `checkout_confirm_refused`, ...) gives "no order was sent to the store"; an explicit
-HELD code (the backend's `_CHECKOUT_HOLD_CODES`, `_VIC_HOLD_CODES` and `money_result_seen`) gives "We're checking with
-the store — don't try again" (in `placing` too, where polling goes on); then the other named lists (declined, approval
+charged). Precedence, highest first, across every code on the purchase (`refusal_reason` and `last_error_code`
+alike): an explicit HELD code (the backend's `_CHECKOUT_HOLD_CODES`, `_VIC_HOLD_CODES` and `money_result_seen`) gives
+"We're checking with the store — don't try again" (in `placing` too, where polling goes on): if anything says money
+may have moved, the page never says "no order was sent"; then an explicit FAILED code (terminal, nothing was
+submitted: `checkout_relay_refused`, `checkout_setup_unrecognised`, `checkout_confirm_refused`, ...) gives "no order
+was sent to the store"; then the other named lists (declined, approval
 timed out, card, price, the rail's refusals `checkout_currency_unsupported` / `checkout_ceiling_*`, ...); then a
 hold-shaped heuristic for new codes; then neutral generic wording. Explicit lists always beat the heuristic. A PARKED
 code (`checkout_step_disabled`, `checkout_schema_incomplete`) on a purchase that is not final shows "Getting things
