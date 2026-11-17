@@ -82,8 +82,10 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 
 Codes are read segment by segment: the backend writes compound codes (`paid_sent:<n>:<variant>:<code>`,
 `bound_sent:<n>:<code>`, `binding_refused:<kind>:<status>`), so each is lower-cased and split on `:`, and every
-segment is checked. A segment that is outcome-unknown or a hold (money may have moved, or a human must look:
-`paid_sent`, `money_result_seen`, `vic_order_stale`, `vic_total_over_approved`, `vic_currency_mismatch`,
+segment is checked. The step prefixes (`paid_sent`, `bound_sent`) are bookkeeping and are skipped: `paid` is the
+approval-page step (the rail mints a token, nothing is charged), so `paid_sent:2:visa:buyer_action_expired` gets the
+ordinary wording. A code segment that is outcome-unknown or a hold (money may have moved, or a human must look:
+`money_result_seen`, `vic_order_stale`, `vic_total_over_approved`, `vic_currency_mismatch`,
 `checkout_confirm_unresolved`, `checkout_payment_no_order`, `checkout_result_overdue`, ... see `src/agenpas/view.js`)
 wins over everything else. Checkout-step codes that mean nothing was submitted (`checkout_captcha_failed`,
 `checkout_form_error`, `checkout_price_missing`, ...) get plain failure wording. `checkout_total_unparsed` on a

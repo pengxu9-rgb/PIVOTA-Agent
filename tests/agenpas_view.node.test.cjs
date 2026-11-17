@@ -263,8 +263,9 @@ test('an unknown code (or junk) gets the state\'s generic wording without a retr
 // ---- compound and new codes (the backend's real formats) -------------------------------------------------------
 
 test('codes are lower-cased and split on ":"; every segment is read', () => {
+  // The step prefixes are bookkeeping and are skipped.
   assert.deepEqual(codeSegments(['PAID_SENT:2:Rose-04:VIC_ORDER_STALE', 'bound_sent:1:token_failed', null, 7]),
-    ['paid_sent', '2', 'vic_order_stale', 'bound_sent', '1', 'token_failed']);
+    ['2', 'vic_order_stale', '1', 'token_failed']);
 });
 
 const MONEY_MAY_HAVE_MOVED = [
@@ -288,10 +289,26 @@ test('money-may-have-moved / hold codes are outcome_unknown, bare or inside the 
     }
   }
   // Wins over a named code elsewhere, in either field and either order.
-  const mixed = project(unified('failed', {}, { refusal_reason: 'binding_refused:card:402', last_error_code: 'paid_sent:1:v:vic_authorization_declined' }));
+  const mixed = project(unified('failed', {}, { refusal_reason: 'binding_refused:card:402', last_error_code: 'paid_sent:1:v:vic_order_stale' }));
   assert.equal(mixed.screen, 'outcome_unknown');
-  // `paid_sent` itself: the payment was sent, so whatever follows, the order may exist.
-  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).screen, 'outcome_unknown');
+});
+
+test('paid_sent is the approval step, not a charge: only its code segment decides', () => {
+  // An approval that expired: the ordinary wording, never "don't try again".
+  for (const state of ['failed', 'expired']) {
+    const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: 'paid_sent:2:visa:buyer_action_expired' }));
+    assert.notEqual(view.screen, 'outcome_unknown', state);
+    assert.equal(view.outcome.outcome_unknown, false);
+    assert.equal(/don't try again/.test(view.outcome.message), false);
+  }
+  assert.equal(isOutcomeUnknownCode('paid_sent:2:visa:buyer_action_expired'), false);
+  assert.equal(isOutcomeUnknownCode('paid_sent'), false);
+  assert.equal(isOutcomeUnknownCode('bound_sent:1:x'), false);
+  // A hold / unknown code behind the prefix still decides.
+  const unresolved = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'paid_sent:3:visa:vic_submit_unresolved' }));
+  assert.equal(unresolved.screen, 'outcome_unknown');
+  assert.equal(unresolved.outcome.retry_hint, false);
+  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).outcome.kind, 'failed');
 });
 
 test('nothing-submitted checkout codes get plain failure wording with no retry hint', () => {

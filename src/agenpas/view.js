@@ -48,6 +48,10 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // COMPOUND CODES. The backend writes codes such as `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>` and
 // `binding_refused:<kind>:<status>`. Every code is lower-cased and split on ':', and EVERY segment is tested.
 //
+// The step prefixes (`paid_sent`, `bound_sent`) are BOOKKEEPING: they say which rail step the code came from and are
+// skipped when matching. `paid` is the approval-page step (the rail mints a token; nothing is charged), so a
+// `paid_sent:…` code says nothing by itself about money having moved: only its code segments decide.
+//
 // Rules, in order:
 //   1. OUTCOME UNKNOWN WINS. Any segment that is an outcome-unknown or hold code (money may have moved, or the
 //      purchase is held for a human) makes the purchase outcome_unknown: "We're checking with the store — don't try
@@ -63,7 +67,7 @@ const OUTCOME_UNKNOWN_CODES = new Set([
   'pending_write_unreconcilable', 'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown',
   'charge_pending',
   // Money may have moved, or the purchase is held for a human.
-  'paid_sent', 'money_result_seen', 'money_result_parked', 'vic_held',
+  'money_result_seen', 'money_result_parked', 'vic_held',
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
   'vic_approved_amount_missing',
   // The rail's checkout step.
@@ -180,6 +184,8 @@ function isPlainObject(value) {
 }
 
 const SEGMENT_RE = /^[a-z0-9_]{1,64}$/;
+/** Step prefixes: bookkeeping, never matched against any list. */
+const BOOKKEEPING_SEGMENTS = new Set(['paid_sent', 'bound_sent']);
 
 /** Every well-formed segment of every code: lower-cased, split on ':'. */
 function codeSegments(codes) {
@@ -188,7 +194,7 @@ function codeSegments(codes) {
     if (typeof code !== 'string' || code.length > 512) continue;
     for (const part of code.toLowerCase().split(':')) {
       const seg = part.trim();
-      if (SEGMENT_RE.test(seg)) out.push(seg);
+      if (SEGMENT_RE.test(seg) && !BOOKKEEPING_SEGMENTS.has(seg)) out.push(seg);
     }
   }
   return out;
