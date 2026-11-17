@@ -893,7 +893,7 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
       signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, signingKeys: [TEST_PUBLIC_JWK],
       profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent', fetchImpl,
     });
-    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
     const createKey = 'efc9d77a-4d05-4ea4-bfda-5aec10010a0c';
     const cancelKey = 'dfc9d77a-4d05-4ea4-bfda-5aec10010a0d';
     await client.createCheckout(endpoint, { cartId: 'cart_abc' }, { idempotencyKey: createKey });
