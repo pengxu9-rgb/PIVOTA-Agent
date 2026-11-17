@@ -1,0 +1,252 @@
+'use strict';
+
+// AgenPas page projection (src/agenpas/view.js) and the gateway-side hosted URL allowlist (src/agenpas/hostedUrl.js).
+// Bodies follow the backend's unified purchase read (pivota-backend docs/agent_purchases_routes.md). Placeholder
+// merchants and products only. No network.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { projectPurchaseView, screenFor, outcomeFor, isOutcomeUnknownCode, KNOWN_STATES } = require('../src/agenpas/view');
+const { isAllowedHostedUrl } = require('../src/agenpas/hostedUrl');
+
+const PP = 'pp_aaaaaaaaaaaaaaaaaaaaaaaa';
+const AP = 'ap_0123456789abcdef01234567';
+const HOSTS = Object.freeze(['pay.partner.example']);
+const NOW = Date.UTC(2026, 10, 17, 12, 0, 0);
+const CARD_PAGE = 'https://pay.partner.example/bind?session=s1';
+const APPROVE_PAGE = 'https://pay.partner.example/approve?session=s2';
+
+function unified(state, extra = {}, detailExtra = {}) {
+  return {
+    purchase_id: PP,
+    rail: 'a2a',
+    executor: 'rail_managed',
+    rail_purchase_id: AP,
+    state,
+    rail_state: state,
+    created_at: '2026-11-17T11:59:00+00:00',
+    totals: { currency: 'USD', our_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+    poll_after_seconds: 15,
+    detail: {
+      id: AP,
+      state,
+      merchant_domain: 'merchant.example',
+      product_key: 'prod::m_fixture::shopify::1001',
+      product_name: 'Sample Lip Gloss',
+      variant_title: 'Rose 04',
+      quantity: 2,
+      currency: 'USD',
+      refusal_reason: null,
+      last_error_code: null,
+      consent_version: 'terms-fixture',
+      consented_at: '2026-11-17T11:58:00+00:00',
+      agent_user_ref_hash: 'owner-hash-fixture',
+      agent_id: 'agent_fixture',
+      ...detailExtra,
+    },
+    ...extra,
+  };
+}
+
+function project(body, opts = {}) {
+  return projectPurchaseView(body, { purchaseId: AP, hostedHosts: HOSTS, now: NOW, linkExpiresAt: Math.floor(NOW / 1000) + 600, ...opts });
+}
+
+// ---- the allowlist ---------------------------------------------------------------------------------------------
+
+test('hosted URL allowlist: https on an exactly-listed host only', () => {
+  assert.equal(isAllowedHostedUrl(CARD_PAGE, HOSTS), true);
+  assert.equal(isAllowedHostedUrl('https://PAY.partner.example./x', HOSTS), true);
+  assert.equal(isAllowedHostedUrl('https://pay.partner.example:443/x', HOSTS), true);
+  for (const bad of [
+    'http://pay.partner.example/bind', // not https
+    'javascript:alert(1)',
+    'data:text/html,hi',
+    '//pay.partner.example/bind',
+    'https://evil.example/bind',
+    'https://pay.partner.example.evil.example/bind', // suffix trick
+    'https://sub.pay.partner.example/bind', // no wildcard
+    'https://user:pw@pay.partner.example/bind', // userinfo
+    'https://pay.partner.example:8443/bind', // non-default port
+    `https://pay.partner.example/${'a'.repeat(5000)}`,
+    '', null, undefined, 42,
+  ]) assert.equal(isAllowedHostedUrl(bad, HOSTS), false, String(bad).slice(0, 60));
+});
+
+test('hosted URL allowlist: empty (the default) refuses everything', () => {
+  assert.equal(isAllowedHostedUrl(CARD_PAGE, []), false);
+  assert.equal(isAllowedHostedUrl(CARD_PAGE, undefined), false);
+});
+
+// ---- the projection --------------------------------------------------------------------------------------------
+
+const ALLOWED_KEYS = [
+  'action', 'amounts', 'currency', 'link_expires_at', 'merchant_domain', 'order', 'outcome', 'poll_after_seconds',
+  'product_name', 'purchase_id', 'quantity', 'screen', 'state', 'terminal', 'variant_title',
+].sort();
+
+test('projection: exactly the allowlisted fields; no rail, executor, other ids, owner hashes, consent or detail', () => {
+  const body = unified('needs_payment_method', {
+    next_action: { type: 'open_url', kind: 'card_binding', url: CARD_PAGE, expires_at: '2026-11-17T12:15:00+00:00' },
+    agent_user_ref_hash: 'top-level-owner-hash', member_id: 'mem_fixture', stack: 'Traceback (most recent call last)…',
+  });
+  const view = project(body);
+  assert.deepEqual(Object.keys(view).sort(), ALLOWED_KEYS);
+  const text = JSON.stringify(view);
+  for (const leaked of [PP, 'a2a', 'rail_managed', 'owner-hash-fixture', 'top-level-owner-hash', 'mem_fixture',
+    'agent_fixture', 'terms-fixture', 'prod::m_fixture', 'Traceback']) {
+    assert.equal(text.includes(leaked), false, `leaked ${leaked}`);
+  }
+  assert.equal(view.purchase_id, AP);
+  assert.equal(view.state, 'needs_payment_method');
+  assert.equal(view.screen, 'add_card');
+  assert.equal(view.terminal, false);
+  assert.equal(view.merchant_domain, 'merchant.example');
+  assert.equal(view.product_name, 'Sample Lip Gloss');
+  assert.equal(view.variant_title, 'Rose 04');
+  assert.equal(view.quantity, 2);
+  assert.equal(view.currency, 'USD');
+  assert.deepEqual(view.amounts, { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 });
+  assert.deepEqual(view.action, { kind: 'card_binding', url: CARD_PAGE, expires_at: '2026-11-17T12:15:00.000Z', open_mode: 'popup' });
+  assert.equal(view.poll_after_seconds, 15);
+  assert.equal(view.link_expires_at, new Date(NOW + 600_000).toISOString());
+});
+
+test('projection: a flatter body (fields at the top level, `action`) projects the same', () => {
+  const flat = {
+    purchase_id: AP, state: 'awaiting_buyer_authorization', merchant_domain: 'merchant.example', product_name: 'Sample Lip Gloss',
+    variant_title: null, quantity: 1, currency: 'USD', our_price_minor: 1800, quoted_total_minor: 2100,
+    action: { kind: 'approval', url: APPROVE_PAGE, expires_at: null }, poll_after_seconds: 5,
+  };
+  const view = project(flat);
+  assert.equal(view.screen, 'approve');
+  assert.equal(view.amounts.quoted_total_minor, 2100);
+  assert.equal(view.action.url, APPROVE_PAGE);
+});
+
+test('projection: the action is dropped unless allowlisted, https, the right kind for the state, and unexpired', () => {
+  const base = (action, state = 'needs_payment_method') => project(unified(state, { next_action: action })).action;
+  const ok = { kind: 'card_binding', url: CARD_PAGE, expires_at: '2026-11-17T12:15:00Z' };
+  assert.ok(base(ok));
+  assert.equal(base({ ...ok, url: 'http://pay.partner.example/bind' }), null);
+  assert.equal(base({ ...ok, url: 'https://unknown.example/bind' }), null);
+  assert.equal(base({ ...ok, url: 'javascript:alert(1)' }), null);
+  assert.equal(base({ ...ok, kind: 'approval' }), null); // stale page from another state
+  assert.equal(base(ok, 'awaiting_buyer_authorization'), null);
+  assert.equal(base({ ...ok, expires_at: '2026-11-17T11:00:00Z' }), null); // expired
+  assert.equal(project(unified('needs_payment_method', { next_action: ok }), { hostedHosts: [] }).action, null); // default empty list
+  assert.equal(project(unified('completed', { next_action: ok })).action, null);
+});
+
+test('projection: embed mode marks the action for framing', () => {
+  const view = project(unified('needs_payment_method', { next_action: { kind: 'card_binding', url: CARD_PAGE } }), { embed: true });
+  assert.equal(view.action.open_mode, 'embed');
+});
+
+test('projection: text is cleaned and capped; a bad domain, currency or quantity is dropped', () => {
+  const view = project(unified('routing', {}, {
+    product_name: `  Sample\u0000 Lip\nGloss ${'x'.repeat(400)}`, merchant_domain: 'not a domain<script>', quantity: 1000,
+  }));
+  assert.equal(view.product_name.startsWith('Sample Lip Gloss'), true);
+  assert.ok(view.product_name.length <= 200);
+  assert.equal(view.merchant_domain, null);
+  assert.equal(view.quantity, null);
+  const badCurrency = project({ ...unified('routing'), totals: { currency: 'usd<', our_price_minor: -5 } });
+  assert.equal(badCurrency.currency, 'USD'); // falls back to detail.currency
+  assert.equal(badCurrency.amounts.unit_price_minor, null);
+});
+
+test('projection: completed carries the order reference and a merchant-domain order page only', () => {
+  const done = unified('completed', { order_reference: '#1001', poll_after_seconds: null, totals: { currency: 'USD', final_total_minor: 2297 } },
+    { merchant_order_status_url: 'https://shop.merchant.example/orders/1001' });
+  const view = project(done);
+  assert.equal(view.screen, 'done');
+  assert.equal(view.terminal, true);
+  assert.equal(view.poll_after_seconds, null);
+  assert.deepEqual(view.order, { reference: '#1001', status_url: 'https://shop.merchant.example/orders/1001' });
+  assert.equal(view.amounts.final_total_minor, 2297);
+  const offDomain = project(unified('completed', { order_reference: '#1001' }, { merchant_order_status_url: 'https://platform.example/orders/1' }));
+  assert.equal(offDomain.order.status_url, null);
+  const httpPage = project(unified('completed', { order_reference: '#1001' }, { merchant_order_status_url: 'http://merchant.example/orders/1' }));
+  assert.equal(httpPage.order.status_url, null);
+});
+
+test('projection: poll interval is clamped to 2..15 s, defaults to 5, and is null once terminal', () => {
+  assert.equal(project(unified('placing', { poll_after_seconds: 0.5 })).poll_after_seconds, 2);
+  assert.equal(project(unified('placing', { poll_after_seconds: 30 })).poll_after_seconds, 15);
+  assert.equal(project(unified('placing', { poll_after_seconds: null })).poll_after_seconds, 5);
+  assert.equal(project(unified('failed', { poll_after_seconds: 30 })).poll_after_seconds, null);
+});
+
+// ---- state -> screen -------------------------------------------------------------------------------------------
+
+test('every unified state maps to a screen, and an unknown state maps to `unknown` (keep polling, claim nothing)', () => {
+  const expected = {
+    routing: 'preparing',
+    needs_payment_method: 'add_card',
+    locking: 'confirming_total',
+    awaiting_buyer_authorization: 'approve',
+    placing: 'placing',
+    completed: 'done',
+    failed: 'failed',
+    refused: 'refused',
+    expired: 'expired',
+  };
+  assert.deepEqual(Object.keys(expected).sort(), [...KNOWN_STATES].sort());
+  for (const [state, screen] of Object.entries(expected)) assert.equal(screenFor(state), screen, state);
+  assert.equal(screenFor('placing', { actionKind: 'authenticate' }), 'authenticate');
+  for (const odd of ['some_future_state', '', undefined, null, 'COMPLETED', '__proto__']) assert.equal(screenFor(odd), 'unknown');
+  const view = project(unified('some_future_state'));
+  assert.equal(view.state, 'unknown');
+  assert.equal(view.screen, 'unknown');
+  assert.equal(view.terminal, false);
+  assert.equal(view.outcome, null);
+  assert.ok(view.poll_after_seconds >= 2);
+});
+
+test('placing with a vetted bank check page shows the authenticate screen', () => {
+  const view = project(unified('placing', { next_action: { kind: 'authenticate', url: 'https://pay.partner.example/3ds' } }));
+  assert.equal(view.screen, 'authenticate');
+  assert.equal(view.action.kind, 'authenticate');
+});
+
+// ---- failure wording -------------------------------------------------------------------------------------------
+
+test('outcome-unknown codes say "checking with the store — don\'t try again" and never offer a retry', () => {
+  for (const code of ['vic_order_outcome_unknown', 'outcome_unknown', 'vic_submit_unresolved', 'pending_write_unreconcilable', 'some_new_outcome_unknown_code']) {
+    assert.equal(isOutcomeUnknownCode(code), true, code);
+    for (const state of ['failed', 'refused', 'expired']) {
+      const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
+      assert.equal(view.screen, 'outcome_unknown');
+      assert.equal(view.outcome.outcome_unknown, true);
+      assert.equal(view.outcome.retry_hint, false);
+      assert.match(view.outcome.message, /checking with the store — don't try again/);
+    }
+  }
+  // One outcome-unknown code among others still wins.
+  const mixed = project(unified('failed', {}, { refusal_reason: 'vic_authorization_declined', last_error_code: 'vic_order_outcome_unknown' }));
+  assert.equal(mixed.screen, 'outcome_unknown');
+});
+
+test('known codes map to plain language; the raw code never reaches the page', () => {
+  const declined = project(unified('failed', {}, { last_error_code: 'vic_authorization_declined' }));
+  assert.equal(declined.screen, 'failed');
+  assert.equal(declined.outcome.kind, 'declined');
+  assert.equal(declined.outcome.retry_hint, true);
+  assert.equal(JSON.stringify(declined).includes('vic_authorization_declined'), false);
+  const refused = project(unified('refused', {}, { refusal_reason: 'merchant_not_purchasable' }));
+  assert.equal(refused.outcome.kind, 'not_purchasable');
+  assert.equal(refused.outcome.retry_hint, false);
+});
+
+test('an unknown code (or junk) gets the state\'s generic wording without a retry for failed/refused', () => {
+  const failed = outcomeFor('failed', ['brand_new_code', '<b>Traceback</b>']);
+  assert.equal(failed.kind, 'failed');
+  assert.equal(failed.retry_hint, false);
+  assert.equal(failed.outcome_unknown, false);
+  assert.equal(outcomeFor('refused', []).kind, 'refused');
+  assert.equal(outcomeFor('expired', [null]).kind, 'expired');
+  assert.equal(outcomeFor('completed', ['vic_order_outcome_unknown']), null);
+  assert.equal(outcomeFor('placing', ['vic_order_outcome_unknown']), null);
+});

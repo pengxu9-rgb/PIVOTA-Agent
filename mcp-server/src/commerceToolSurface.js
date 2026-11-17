@@ -817,7 +817,26 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       readClient: orchestratedPurchase && orchestratedPurchase.readClient,
       log: logger,
     });
-    return sanitizeResult(result, { handoffAllowed: true });
+    return withAgenpasUrl(sanitizeResult(result, { handoffAllowed: true }), orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx);
+  }
+
+  /**
+   * AgenPas (docs/agenpas.md): an ADDITIVE `agenpas_url`, the buyer's own page for this purchase, minted for the
+   * VERIFIED caller (ctx.agent_id + ctx.user_ref, never tool arguments). The minter answers null while
+   * AGENPAS_ENABLED is off or anything it needs is missing, and the answer is then returned untouched. Added AFTER
+   * the money filter on purpose: the link is ours, its token is a purchase-scoped grant meant for the buyer, and a
+   * scrub of its query would break the link.
+   */
+  function withAgenpasUrl(out, agenpasLink, ctx) {
+    if (!agenpasLink || typeof agenpasLink.mint !== "function" || !isPlainObject(out)) return out;
+    let url = null;
+    try {
+      url = agenpasLink.mint({ purchaseId: out.order_id, agentId: ctx && ctx.agent_id, userRef: ctx && ctx.user_ref });
+    } catch {
+      url = null;
+    }
+    if (typeof url === "string" && url) out.agenpas_url = url;
+    return out;
   }
 
   function isCommerceTool(name, dialect) {

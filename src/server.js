@@ -32198,6 +32198,19 @@ function buildAgentPurchaseCreateClient(log, deps = {}) {
   });
 }
 
+// AgenPas (docs/agenpas.md): the buyer's page reads a purchase server-to-server on the buyer's behalf, for the
+// owner a verified link token names, with the internal key the gateway already holds for /agent/internal/*. The
+// buyer has no agent key, and the caller's key and token are never stored.
+function buildAgenpasPurchaseReader(log, deps = {}) {
+  const { createBackendPurchaseReader } = require('./agenpas/purchaseReader');
+  return createBackendPurchaseReader({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    internalKey: () => AGENT_AUTH_INTROSPECT_INTERNAL_KEY,
+    logger: log,
+  });
+}
+
 function isAgentPurchaseOrderReadEnabled() {
   // Default OFF. Off: get_order treats a `pp_` id exactly as before (a kernel lookup, which fails closed).
   const normalized = String(process.env.AGENT_PURCHASE_ORDER_READ_ENABLED || '').trim().toLowerCase();
@@ -34543,6 +34556,8 @@ async function getCommerceRemoteMcpAdapter() {
         orchestratedPurchase: {
           createClient: buildAgentPurchaseCreateClient(logger),
           readClient: buildAgentPurchaseReadClient(logger),
+          // AgenPas: an additive `agenpas_url` on the answer, only while AGENPAS_ENABLED is on (read per call).
+          agenpasLink: require('./agenpas/link').createAgenpasLinkMinter(),
         },
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
@@ -39085,6 +39100,14 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// ---------------- AgenPas: the buyer's own checkout pages (docs/agenpas.md) ----------------
+// Dark unless AGENPAS_ENABLED (read per request): off, every /agenpas path falls through to the normal not-found
+// handling, exactly as before. The routes live in src/agenpas/router.js.
+app.use(require('./agenpas/router').createAgenpasRouter({
+  reader: buildAgenpasPurchaseReader(logger),
+  logger,
+}));
 
 // ---------------- Inbound agent signatures (Visa TAP / IETF Web Bot Auth) ----------------
 //
