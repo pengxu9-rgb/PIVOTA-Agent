@@ -92,6 +92,18 @@ export class QuoteRegistry {
   }
 
   /**
+   * The stored snapshot of a session of THIS buyer, or null: null for an id that names no stored session and for a
+   * session that is another buyer's or another ACP session's (nothing about it is said). Expiry is not judged: this
+   * says whose a session is, not whether it can still be ordered. Never throws for an unknown id.
+   */
+  async ownedSnapshot(quote_id, ctx) {
+    if (typeof quote_id !== 'string' || quote_id === '') return null;
+    const q = await this._store.get(quote_id);
+    if (!q || !ctx || q.user_ref !== ctx.user_ref || q.acp_session_id !== ctx.acp_session_id) return null;
+    return q;
+  }
+
+  /**
    * Resolve a quote for an order, enforcing existence, expiry, and linkage (INV-1 + §6).
    * @returns {Promise<object>} the snapshot
    */

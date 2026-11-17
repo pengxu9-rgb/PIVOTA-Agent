@@ -163,19 +163,21 @@ describe('a UCP checkout can actually place an order', () => {
   });
 
   test('the blocker REPRODUCES without a destination — this test would have failed before the fix', async () => {
-    // The control. A create with no `fulfillment` still completes through the gateway and still reaches
-    // create_order — with an EMPTY address, which is precisely the 400. Pinning it proves the assertion above
-    // is measuring the address and not merely that a completion happens.
+    // The control. A create with no `fulfillment` has no address to ship to. It used to reach create_order with an
+    // EMPTY address, which is precisely the 400; the door now refuses the completion by name before any order is
+    // asked for, naming every required field and the tool that re-prices a checkout with a destination. Pinning it
+    // proves the assertion above is measuring the address and not merely that a completion happens.
     const stack = realStack();
     const created = await stack.ucp.callTool('create_checkout', createBody(), SESSION);
-    await stack.ucp.callTool('complete_checkout', completeBody(created.session_id ?? created.id), SESSION);
-
-    const address = stack.orderBody().shipping_address ?? {};
-    const missing = REQUIRED_ADDRESS_FIELDS.filter((f) => !address[f]);
+    const refused = await stack.ucp.callTool('complete_checkout', completeBody(created.session_id ?? created.id), SESSION).then(() => null, (e) => e);
+    assert.equal(refused && refused.code, 'QUOTE_REQUIRED');
+    assert.equal(refused.detail.acp_detail.reason, 'acp_fulfillment_address_required');
     assert.deepEqual(
-      missing, [...REQUIRED_ADDRESS_FIELDS],
-      'with no destination the order body is address-less — the 400 this change exists to prevent',
+      refused.detail.acp_detail.missing_fields, [...REQUIRED_ADDRESS_FIELDS],
+      'with no destination there is no address — the 400 this change exists to prevent',
     );
+    assert.match(refused.detail.acp_message, /update_checkout/);
+    assert.equal(stack.upstreamCalls.filter((c) => c.op === 'create_order').length, 0, 'no order was asked for');
   });
 
   test('field for field, and nothing invented', async () => {

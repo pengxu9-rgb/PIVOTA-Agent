@@ -33382,7 +33382,7 @@ async function throwKernelOrderReadNotFound(err) {
 // unit-testable without booting this app. Read that module before touching the classification: it is shared
 // by every kernel op including the money ops, and `retriable` is a promise that costs real money when wrong
 // in either direction.
-const { mapUpstreamErrorToKernelCode } = require('./services/commerceKernelErrorMapping');
+const { mapUpstreamErrorToKernelCode, curatedUpstreamRefusal } = require('./services/commerceKernelErrorMapping');
 
 let commerceKernelErrorsPromise = null;
 // The upstream-response normalizer (safety-kernel/src/upstreamAdapter.js). The kernel's own money ops get it
@@ -33394,9 +33394,13 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
-  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status });
+  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, upstreamDetail });
   if (kernelCode === 'PARTNER_ASSERTION_REJECTED') notePartnerAssertionRejected(operation, status, upstreamDetail);
+  // A named refusal with a curated message for the caller (a refused buyer context): the transport facts below are
+  // kept beside it unchanged, so the quote-claim rule (safety-kernel/src/upstreamRefusal.js) reads the same answer.
+  const curated = curatedUpstreamRefusal({ operation, upstreamCode, status, upstreamDetail });
   throw new PivotaCommerceError(kernelCode, {
+    ...(curated || {}),
     operation,
     upstream_status: status,
     upstream_code: upstreamCode || null,
@@ -36275,6 +36279,27 @@ function registerUcpBuyerAgentProfileRoute() {
     } catch (err) {
       logger.error({ err: err?.message || String(err), surface: 'ucp_buyer_agent' }, 'UCP buyer-agent profile route failed');
       return res.status(503).json({ error: 'ucp_buyer_agent_profile_unavailable' });
+    }
+  });
+
+  // GET /.well-known/ucp-agent-catalog-draft — the DRAFT-version profile used only for Shopify Global Catalog
+  // lookups that carry Promoted Placements attribution (mcp-server/src/shopifyCatalogAttribution.js). Catalog
+  // capabilities only: no cart, no checkout. Lit only while SHOPIFY_CATALOG_ATTRIBUTION is shadow or enforce, so it
+  // is dark by default. Its self-reference comes ONLY from SHOPIFY_CATALOG_DRAFT_PROFILE_URL (never the Host header).
+  app.get('/.well-known/ucp-agent-catalog-draft', async (req, res) => {
+    const mode = String(process.env.SHOPIFY_CATALOG_ATTRIBUTION || '').trim().toLowerCase();
+    if (mode !== 'shadow' && mode !== 'enforce') return res.status(404).json({ error: 'not_found' });
+    try {
+      // eslint-disable-next-line global-require
+      const { buildUcpCatalogDraftProfile } = require('./services/ucpBuyerAgentProfile');
+      const configured = firstNonEmptyString(process.env.SHOPIFY_CATALOG_DRAFT_PROFILE_URL);
+      const profile = buildUcpCatalogDraftProfile(configured ? { profileUrl: configured } : {});
+      res.setHeader('content-type', 'application/json');
+      res.setHeader('cache-control', 'public, max-age=300');
+      return res.status(200).json(profile);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_catalog_draft_profile' }, 'UCP catalog draft profile route failed');
+      return res.status(503).json({ error: 'ucp_catalog_draft_profile_unavailable' });
     }
   });
 }
