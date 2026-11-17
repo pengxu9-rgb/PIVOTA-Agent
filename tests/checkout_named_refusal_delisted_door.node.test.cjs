@@ -44,7 +44,7 @@ let REFUSED_BEFORE_ANY_ORDER;
 let NO_EFFECT_PAIRS; // [[status, code, harness answer name]]
 
 test.before(async () => {
-  ({ NO_EFFECT } = await import('../safety-kernel/test/helpers/noEffectWords.js'));
+  ({ NO_EFFECT } = await import('../safety-kernel/test-support/noEffectWords.js'));
   const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
   // The listed pairs whose RELEASED answer says nothing happened: the curated words, else the code's catalog words.
   NO_EFFECT_PAIRS = SHIPPED.filter(([status, code]) => {

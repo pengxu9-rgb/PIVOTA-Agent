@@ -11,12 +11,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { ERROR_CATALOG, PivotaCommerceError, claimsNoEffect } from '../src/errors.js';
 import { REFUSED_BEFORE_ANY_ORDER } from '../src/upstreamRefusal.js';
 import { SafetyKernel } from '../src/kernel.js';
-import { NO_EFFECT } from './helpers/noEffectWords.js';
+import { NO_EFFECT } from '../test-support/noEffectWords.js';
+import { stringLiterals } from '../test-support/stringLiterals.js';
 
 const require = createRequire(import.meta.url);
 const MAPPING_FILE = new URL('../../src/services/commerceKernelErrorMapping.js', import.meta.url);
@@ -42,8 +43,13 @@ function curatedForOrderCalls() {
 }
 
 test('the scan finds what it is for: the regex matches the known no-effect words and not the unknown-outcome words', () => {
-  for (const s of ['so nothing was done', 'nothing was written', 'so nothing was ordered and nothing was charged', 'No order was created and nothing was charged', 'closed without creating a purchase']) assert.match(s, NO_EFFECT, s);
-  for (const s of ['an order for it may still exist', 'whether the order was created is unknown', 'an earlier attempt of this checkout may already have placed an order']) assert.doesNotMatch(s, NO_EFFECT, s);
+  for (const s of ['so nothing was done', 'nothing was written', 'so nothing was ordered and nothing was charged', 'No order was created and nothing was charged', 'closed without creating a purchase',
+    // The negated and active forms.
+    'it has not been ordered', "the buyer wasn't charged", 'the buyer was not charged', 'The buyer was NOT charged.', 'the order was not placed', 'its payment did not go through',
+    'this did not create an order', 'the order was not created', 'no payment was made', 'nothing happened', 'it was never charged', 'this call sent nothing to the store', 'the request was not filed',
+    'no refund was filed', 'the buyer has not been charged yet']) assert.match(s, NO_EFFECT, s);
+  for (const s of ['an order for it may still exist', 'whether the order was created is unknown', 'an earlier attempt of this checkout may already have placed an order',
+    'do not place a new order for this purchase without the buyer', 'do not file another request for this order', 'whether it was placed is not known']) assert.doesNotMatch(s, NO_EFFECT, s);
   assert.ok(CODES_IN_MAPPING.includes('INVALID_BUYER_CONTEXT') && CODES_IN_MAPPING.includes('MERCHANT_NOT_ACCEPTING_ORDERS'), 'the mapping\'s codes are read');
 });
 
@@ -72,6 +78,76 @@ test('every string literal of the mapping that says nothing happened is reached 
     if (NO_EFFECT.test(words)) {
       assert.ok(c.claims_no_effect === true || ERROR_CATALOG[kernelCode]?.claimsNoEffect === true, `${input.status} ${input.upstreamCode}`);
     }
+  }
+});
+
+// ---- every string this code writes ----------------------------------------------------------------------------------
+
+const ROOT = new URL('../../', import.meta.url);
+const SCANNED = [
+  ...(function walk(dir) {
+    return readdirSync(new URL(dir, ROOT)).flatMap((name) => {
+      const rel = `${dir}${name}`;
+      return statSync(new URL(rel, ROOT)).isDirectory() ? walk(`${rel}/`) : /\.c?js$/.test(name) ? [rel] : [];
+    });
+  })('safety-kernel/src/'),
+  'mcp-server/src/commerceToolSurface.js',
+  'src/services/commerceKernelErrorMapping.js',
+];
+const MAPPING_REL = 'src/services/commerceKernelErrorMapping.js';
+// The words that say a request had no effect and are TRUE where they are given, each with the test that proves it. An
+// entry names its file, a part of the string, why it is true, and a test (file and a part of its name); the test below
+// checks every entry is still used and that its test still exists. The unknown-outcome words can never be exempt.
+const EXEMPT = [
+  { file: 'safety-kernel/src/protocol/acpRestAdapter.js', includes: 'is not a country code this door can read', why: 'an ACP intake refusal: before any variant read, quote or order', test: ['safety-kernel/test/acpMarketCurrency.test.js', 'a country that is not two letters is refused by name and never reaches the source or the pricer'] },
+  { file: 'safety-kernel/src/protocol/buyerIntake.js', includes: 'Nothing was charged and no order was created; retrying this request unchanged', why: 'a completion with no address to ship to: refused before any authorization, claim or order call', test: ['safety-kernel/test/checkoutHonestAnswers.test.js', 'no address anywhere is refused by name before any order: no authorization presented, no claim'] },
+  { file: 'safety-kernel/src/protocol/canonicalExecutor.js', includes: 'is not a country code this door can read', why: 'the executor\'s market intake: before any pricing call', test: ['safety-kernel/test/quoteMarketCurrency.test.js', 'a market that is not an upper-case two-letter code is never priced and never echoed'] },
+  { file: 'safety-kernel/src/protocol/canonicalExecutor.js', includes: 'Nothing was converted or relabelled', why: 'a quote in another currency than the market\'s: refused after pricing, before any session, claim or order', test: ['safety-kernel/test/quoteMarketCurrency.test.js', 'refused by name, after one pricing call, and NO session exists'] },
+  { file: 'safety-kernel/src/protocol/canonicalExecutor.js', includes: 'Nothing was charged and no order was created.', why: 'a completion judged for another market than its session\'s: refused before any authorization or order call', test: ['safety-kernel/test/acpMarketCurrency.test.js', 'the recorded market and a held market are each judged'] },
+  { file: 'safety-kernel/src/protocol/canonicalExecutor.js', includes: 'This request did not cancel anything and sent nothing to the store', why: 'the flag-off cancel by order id makes no upstream call (ACP words)', test: ['tests/checkout_honest_answers_door.node.test.cjs', 'on /mcp and on ACP: unpaid (a page may be open)'] },
+  { file: 'safety-kernel/src/protocol/canonicalExecutor.js', includes: 'Its payment did not go through.', why: 'said only for a kernel order whose status is `failed`, read from the kernel row (ACP words)', test: ['tests/checkout_honest_answers_door.node.test.cjs', 'on /mcp and on ACP: unpaid (a page may be open)'] },
+  { file: 'safety-kernel/src/quoteRegistry.js', includes: 'Nothing was converted or relabelled', why: 'the registry backstop: a market-bound quote in another currency is never stored', test: ['safety-kernel/test/quoteMarketCurrency.test.js', 'the backstop, with the judgement stubbed out: a market-bound quote in another currency is refused by name, not retriable, and nothing is stored'] },
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'Nothing is substituted when your need asks for', why: 'a tool description of the recommendation gate, not an answer to a call', test: ['tests/agent_signals_recommend_products.node.test.cjs', '8e. the tool description and the code agree'] },
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'Does NOT charge', why: 'the create_payment_link description: the link step never charges', test: ['safety-kernel/test/canonicalExecutor_payment_link.test.js', 'create_payment_link mints a hosted URL and NEVER charges (no submitPayment)'] },
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'nothing was opened by this call; if it retries an earlier call whose outcome was unknown', why: 'start_purchase refused before its key lookup (a frozen lane); hedged that an earlier purchase may exist', test: ['tests/orchestrated_purchase_tool.node.test.cjs', 'a dark backend door, or an explicit rail it cannot honour, is a definite "not available", not an endless retry'] },
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'No order was placed from it.', why: 'given only for a claim a cancellation took (putIfAbsent), which no order can then take', test: ['tests/checkout_honest_answers_door.node.test.cjs', 'C: cancel by session id of a session with no order cancels it truly'] },
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'so nothing was canceled', why: 'the session cancel refused while an order call holds the claim: the claim is left as it is', test: ['safety-kernel/test/checkoutHonestAnswers.test.js', 'C cancel by session id says canceled only when it is true'] },
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'Its payment did not go through.', why: 'said only for a kernel order whose status is `failed`', test: ['mcp-server/test/checkoutHonestAnswersToolError.test.js', 'a failed or canceled order never hears its payment page stays open'] },
+  { file: 'mcp-server/src/commerceToolSurface.js', includes: 'This call did not cancel anything and sent nothing to the store.', why: 'the flag-off cancel by order id makes no upstream call (`upstream: []`)', test: ['tests/checkout_honest_answers_door.node.test.cjs', '5: cancel by order id with the upstream cancel off is never canceled'] },
+];
+
+test('every string this code writes that says a request had no effect is gated (a flagged catalog entry, a flagged curated refusal) or exempt by a named, existing test; the unknown-outcome words never are', async () => {
+  const flaggedCatalogWords = new Set(Object.values(ERROR_CATALOG).filter((e) => e.claimsNoEffect).flatMap((e) => [e.userMessage, e.recovery]));
+  const used = new Set();
+  const ungated = [];
+  let literals = 0;
+  for (const rel of SCANNED) {
+    for (const { text, line } of stringLiterals(readFileSync(new URL(rel, ROOT), 'utf8'))) {
+      literals += 1;
+      if (!NO_EFFECT.test(text)) continue;
+      if (rel === 'safety-kernel/src/errors.js' && flaggedCatalogWords.has(text)) continue;
+      if (rel === MAPPING_REL) continue; // the curated-refusal test above ties each one to a flagged refusal
+      const entry = EXEMPT.find((e) => e.file === rel && text.includes(e.includes));
+      if (entry) { used.add(entry); continue; }
+      ungated.push(`${rel}:${line} ${text.slice(0, 160)}`);
+    }
+  }
+  assert.ok(literals > 2000, `${literals} literals read from ${SCANNED.length} files`);
+  assert.deepEqual(ungated, [], 'a no-effect string that is neither gated nor exempt by a named test');
+  for (const entry of EXEMPT) {
+    assert.ok(used.has(entry), `an exemption no string uses any more: ${entry.file} ${entry.includes}`);
+    const [testFile, testName] = entry.test;
+    assert.ok(readFileSync(new URL(testFile, ROOT), 'utf8').includes(testName), `the test an exemption names does not exist: ${testFile} ${testName}`);
+    assert.ok(entry.why.length > 10, entry.includes);
+  }
+  // The unknown-outcome words: never a no-effect sentence, and never covered by an exemption.
+  const { KERNEL_ANSWERED_REFUSALS: refusals, KERNEL_ANSWERED_AFTER_ORDER: afterOrder } = await import('../src/errors.js');
+  const { UNKNOWN_ORDER_CLAIM_MESSAGE } = await import('../src/kernel.js');
+  const { AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE } = await import('../src/idempotencyLedger.js');
+  const unknownWords = [...Object.values(refusals), ...Object.values(afterOrder)].flatMap((w) => [w.message, w.recovery]).concat([UNKNOWN_ORDER_CLAIM_MESSAGE, AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE]);
+  for (const words of unknownWords) {
+    assert.doesNotMatch(words, NO_EFFECT, words);
+    assert.equal(EXEMPT.some((e) => words.includes(e.includes)), false, words);
   }
 });
 
