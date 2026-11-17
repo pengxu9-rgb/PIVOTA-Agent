@@ -2001,7 +2001,19 @@ test('6p. a shortlist emptied by currency switches says so', async () => {
   assert.equal(res.metadata.price_verification.currency_switched, 1);
 });
 
-test('explicit ingredient exclusions apply after catalog fallback and rebound, before price verification', async () => {
+// Reviewed ingredient exclusions are dark unless AGENT_RECOMMEND_INGREDIENT_EXCLUSION_ENABLED (read per call); the
+// tests below pin the behaviour with the dial on. tests/recommend_ingredient_exclusion_flag.node.test.cjs pins it off.
+function ingredientExclusionOn(t) {
+  const before = process.env.AGENT_RECOMMEND_INGREDIENT_EXCLUSION_ENABLED;
+  process.env.AGENT_RECOMMEND_INGREDIENT_EXCLUSION_ENABLED = '1';
+  t.after(() => {
+    if (before === undefined) delete process.env.AGENT_RECOMMEND_INGREDIENT_EXCLUSION_ENABLED;
+    else process.env.AGENT_RECOMMEND_INGREDIENT_EXCLUSION_ENABLED = before;
+  });
+}
+
+test('explicit ingredient exclusions apply after catalog fallback and rebound, before price verification', async (t) => {
+  ingredientExclusionOn(t);
   const candidate = (id, title, additions = {}) => ({
     ...ITEM_INTERNAL,
     name: title,
@@ -2011,7 +2023,7 @@ test('explicit ingredient exclusions apply after catalog fallback and rebound, b
   const calls = [];
   const h = makeRecommendProducts({
     generate: async () => laneResult([
-      candidate('sig_snail', 'COSRX Advanced Snail 96 Mucin Power Essence', { basis: 'positional' }),
+      candidate('sig_snail', 'Placeholder Snail Mucin Essence', { basis: 'positional' }),
       candidate('sig_unknown', 'Unverified Hydrating Essence', { basis: 'catalog_rebound' }),
       candidate('sig_other_market', 'Other Market Essence'),
       candidate('sig_verified', 'Reviewed Hydrating Essence', { sku: { variant_id: 'essence-us-30ml' } }),
@@ -2046,7 +2058,8 @@ test('explicit ingredient exclusions apply after catalog fallback and rebound, b
   assert.deepEqual(res.metadata.ingredient_exclusion_verification, { market: 'US', present_withheld: 1, unknown_withheld: 2, verified: 1 });
 });
 
-test('an unsupported ingredient or unavailable formula cannot silently become a match', async () => {
+test('an unsupported ingredient or unavailable formula cannot silently become a match', async (t) => {
+  ingredientExclusionOn(t);
   const h = makeRecommendProducts({
     generate: async () => laneResult([ITEM_INTERNAL]),
     loadIngredientFormulas: async () => { throw new Error('database unavailable'); },
@@ -2071,7 +2084,8 @@ test('SKU-scoped price verification uses default-product money only for the exac
   });
 });
 
-test('a verified formula cannot lend unscoped catalog money or budget fit to its exact variant', async () => {
+test('a verified formula cannot lend unscoped catalog money or budget fit to its exact variant', async (t) => {
+  ingredientExclusionOn(t);
   const variant = { ...ITEM_FULL,
     sku: { ...ITEM_FULL.sku, variant_id: 'trial-kit-30ml' },
     price: { amount: 9, currency: 'USD' },
@@ -2094,7 +2108,8 @@ test('a verified formula cannot lend unscoped catalog money or budget fit to its
   assert.equal(result.metadata.price_unverified_returned, 1);
 });
 
-test('ingredient-verified variants cannot quote foreign PDP money for a US buyer', async () => {
+test('ingredient-verified variants cannot quote foreign PDP money for a US buyer', async (t) => {
+  ingredientExclusionOn(t);
   const variant = { ...ITEM_FULL, sku: { ...ITEM_FULL.sku, variant_id: 'essence-30ml' },
     price: { amount: 19, currency: 'USD' } };
   for (const price of [{ price: 26, currency: 'AUD' }, { withheld_currencies: ['AUD'] }]) {
@@ -2115,7 +2130,8 @@ test('ingredient-verified variants cannot quote foreign PDP money for a US buyer
   }
 });
 
-test('bridge shortlist ignores commercial metadata when lane order and verified buyer facts are fixed', async () => {
+test('bridge shortlist ignores commercial metadata when lane order and verified buyer facts are fixed', async (t) => {
+  ingredientExclusionOn(t);
   const candidate = (id, merchant, price, extras = {}) => ({
     ...ITEM_FULL,
     merchant_id: merchant,
