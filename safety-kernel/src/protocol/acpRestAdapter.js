@@ -58,6 +58,8 @@ const ACP_PROTOCOL_NAME = 'acp';
 // Where this door's caller supplies or replaces the fulfillment address. Named as the concrete REST endpoint.
 const ADDRESS_UPDATE_HINT = 'POST /checkout_sessions/{checkout_session_id}';
 const MAX_SESSION_WRITE_ATTEMPTS = 4; // conditional writes of one session record a request tries before it gives up
+// The executor's readings of a session whose quote's claim is held (canonicalExecutor.js sessionClaimStatus).
+const HELD_SESSION_STATUSES = new Set(['completed', 'order_outcome_unknown', 'order_status_unknown', 'canceled']);
 // A session is open until it has an order or was cancelled.
 const sessionIsOpen = (record) => isPlainObject(record) && !record.order_id && record.canceled !== true;
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000; // reject a Timestamp more than 5 minutes off (replay window)
@@ -259,6 +261,34 @@ export function createAcpRestAdapter(deps = {}) {
   function assertSessionOpen(stored) {
     if (stored.canceled === true) throw new PivotaCommerceError('ORDER_CANCELED', { reason: 'checkout_session_canceled' });
     if (stored.order_id) throw new PivotaCommerceError('QUOTE_ALREADY_USED', { reason: 'checkout_session_completed' });
+  }
+  // A SESSION IS ALSO OVER WHEN ITS QUOTE'S SINGLE-USE CLAIM IS HELD, whatever the record says: an order holds it (one
+  // this door did not record, its completion having answered an unknown outcome), an order call whose outcome is not
+  // known holds it, or a cancellation does. The record is only written once a completion answers, so it can still read
+  // open. An update must not re-price such a session: that would point this id at a fresh quote, and a second
+  // completion would then make a second order and open a second payment page. The executor says what holds the claim
+  // (get_checkout_session, `session_claim_only`); null when nothing does.
+  async function heldClaimOf(quoteId, ctx) {
+    if (!nonEmpty(quoteId)) return null;
+    const held = await canonicalExecutor.execute('get_checkout_session', { session_id: quoteId, session_claim_only: true }, ctx);
+    return isPlainObject(held) && HELD_SESSION_STATUSES.has(held.status) ? held : null;
+  }
+  // The refusal for a session whose claim is held: the same names assertSessionOpen gives.
+  function heldSessionRefusal(held) {
+    if (held.status === 'canceled') return new PivotaCommerceError('ORDER_CANCELED', { reason: 'checkout_session_canceled' });
+    if (nonEmpty(held.order_id)) return new PivotaCommerceError('QUOTE_ALREADY_USED', { reason: 'checkout_session_completed' });
+    return new PivotaCommerceError('QUOTE_ALREADY_USED', { reason: 'checkout_session_order_outcome_unknown' });
+  }
+  // Point the record back at the quote whose claim is held (and at its order, when the claim names this caller's), so
+  // every later request reads and judges the session by that quote. A completed or cancelled record is left as it is.
+  async function pinToHeldQuote(acp_session_id, quoteId, held) {
+    await writeSession(acp_session_id, null, (current) => {
+      if (nonEmpty(current.order_id) || current.canceled === true) return null;
+      const orderId = nonEmpty(held.order_id) ? held.order_id : null;
+      if (current.quote_id === quoteId && !orderId && held.status !== 'canceled') return null;
+      const { refused_market: _answered, ...kept } = current;
+      return { ...kept, quote_id: quoteId, ...(orderId ? { order_id: orderId } : {}), ...(held.status === 'canceled' ? { canceled: true } : {}) };
+    });
   }
   // THE MARK (see "the buyer's market"), written by a refused UPDATE. `market`: the market of a market refusal,
   // or null. The refusal was of the update's new cart, so the HELD quote's own currency is read to see whether it
@@ -487,6 +517,10 @@ export function createAcpRestAdapter(deps = {}) {
       let session;
       try {
         const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants, (address) => assertMarketPriced(address, 'update'));
+        // Over by its claim (heldClaimOf), though the record reads open: refused by the same names, after the intake's
+        // own refusals (the caller's to fix) and before anything is priced.
+        const heldBefore = await heldClaimOf(stored.quote_id, ctx);
+        if (heldBefore) throw heldSessionRefusal(heldBefore);
         session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote, ...updateMarketParams(stored, quote.shipping_address) }, ctx);
       } catch (err) {
         // REFUSED FOR ITS MARKET: no quote was recorded, so the session still holds the one it had. It is marked
@@ -497,14 +531,25 @@ export function createAcpRestAdapter(deps = {}) {
       // The session now holds this update's quote, judged for this update's market: an earlier mark is gone.
       // Written only onto a session that is still open: one completed or cancelled while this update was being
       // priced keeps what it has (the quote this update minted is never handed out), and the caller is told so.
+      let replaced = null;
       const written = await writeSession(acp_session_id, stored, (current) => {
         if (!sessionIsOpen(current)) return null;
+        replaced = current.quote_id;
         const { refused_market: _answered, ...kept } = current;
         return { ...kept, quote_id: session.session_id };
       });
       if (!written) {
         assertSessionOpen(await ownedSession(acp_session_id, user_ref));
         throw outcomeUnknown('race');
+      }
+      // A COMPLETION THAT TOOK THE CLAIM WHILE THIS UPDATE WAS PRICING: the quote this write replaced may now be held
+      // (the check above ran before it was). Then the session is over after all: the record is pointed back at that
+      // quote and the update is refused, so no completion can reach the fresh quote. A completion that takes the claim
+      // after this read points the record back itself (completeCheckoutSession).
+      const heldAfter = await heldClaimOf(replaced, ctx);
+      if (heldAfter) {
+        try { await pinToHeldQuote(acp_session_id, replaced, heldAfter); } catch { /* refused either way */ }
+        throw heldSessionRefusal(heldAfter);
       }
       return { status: 200, body: acpSessionBody(acp_session_id, session, written) };
     });
@@ -556,6 +601,14 @@ export function createAcpRestAdapter(deps = {}) {
         if (err instanceof PivotaCommerceError && err.code === 'QUOTE_ALREADY_USED' && err.detail?.claim === 'canceled') {
           throw new PivotaCommerceError('ORDER_CANCELED', { reason: 'checkout_session_canceled' });
         }
+        // A COMPLETION THAT FAILED WITH THE CLAIM HELD (an order whose payment step is unknown, an order call whose
+        // outcome is unknown): the record is pointed at the quote this completion used, and at its order when the claim
+        // names it, so an update that re-priced the session meanwhile cannot leave this id open on a fresh quote. Best
+        // effort: the answer is the completion's either way.
+        try {
+          const held = await heldClaimOf(stored.quote_id, ctx);
+          if (held && held.status !== 'canceled') await pinToHeldQuote(acp_session_id, stored.quote_id, held);
+        } catch { /* the completion's answer stands */ }
         // A completion refused for its market writes nothing: every completion is judged for its own address, so a
         // mark from this one would add no judgement and would only stand in the way of a later, correct one.
         throw err;

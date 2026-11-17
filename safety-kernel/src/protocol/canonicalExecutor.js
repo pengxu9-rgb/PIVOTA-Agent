@@ -653,6 +653,13 @@ export function createCanonicalExecutor({
 
       case 'get_checkout_session': {
         if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+        // WHAT HOLDS A SESSION'S CLAIM, AND NOTHING ELSE, for the door that keeps one session id across re-quotes (the
+        // ACP REST door, which asks it on a call it built, for the quote its own owned record names). No expiry check:
+        // an update may re-quote an expired session, and a claim never expires. `{ session_id, status, order_id, ... }`
+        // as sessionClaimStatus reads it; the order is named only when it is this caller's.
+        if (sessionClaimOnly(params, ctx)) {
+          return { session_id: params.session_id, ...sessionClaimStatus(await claimStateOf(kernel, params.session_id, ctx)) };
+        }
         const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx); // ownership + expiry
         // The markets a door names for this session (judgeSessionMarkets): the session is read out only when its
         // own quote is in their currency. After ownership and expiry, so those answer as they always did.
@@ -1230,6 +1237,11 @@ async function cancelSession(kernel, params, ctx) {
     throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending', order_id });
   }
   throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'order_cancel_not_available', order_id, upstream_cancel: false });
+}
+
+/** Does this read come from the ACP REST door, asking only what holds the session's claim (get_checkout_session)? */
+function sessionClaimOnly(params, ctx) {
+  return Boolean(ctx && ctx.protocol === ADDRESS_MARKET_PROTOCOL && params && params.session_claim_only === true);
 }
 
 /**

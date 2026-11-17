@@ -537,6 +537,58 @@ test('8: an order the kernel holds in a status no read knows (an expired one) is
   assert.deepEqual([got.body.status, got.body.order_outcome, got.body.order], ['checkout.in_progress', 'status_unknown', { id: done.body.order.id, status: 'expired' }], got.raw.slice(0, 300));
 });
 
+test('N-6: on the UCP door, update_checkout of a session whose order call is unknown answers a new session, and says the one it was sent is complete_in_progress, with order_outcome unknown', async () => {
+  for (const market of PRICED_MARKETS) {
+    const h = await open('ucp_complete', market);
+    door.orderScript.push(ANSWERS.timeout());
+    const done = await attempt(h, freshKey());
+    assertUnknown(done, 'order_create_outcome_unknown', null, market);
+    const updated = await door.call('update_checkout', { meta: ucpMeta(freshKey()), id: h.id, checkout: ucpCheckout(market) }, { buyer: h.buyer, door: '/ucp/mcp' });
+    assert.equal(updated.isError, false, updated.raw.slice(0, 300));
+    assert.notEqual(updated.value.id || updated.value.session_id, h.id, `${market}: a separate session`);
+    assert.deepEqual(updated.value.previous_session, { session_id: h.id, status: 'complete_in_progress', order_id: null, order_outcome: 'unknown' }, `${market}: ${updated.raw.slice(0, 400)}`);
+    assert.equal(updated.value.currency, h.currency, market);
+    assert.equal(sent(updated, ORDERS), 0, market);
+  }
+});
+
+test('6: the ACP door refuses to re-price a session whose claim is held (an order with an unknown payment step, an unknown order call, a cancellation); nothing is priced, and no completion makes a second order', async () => {
+  const cart = (market, quantity = 1) => ({ merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity }], fulfillment_address: fx.address(market) });
+  for (const market of ['US', 'SG', 'GB']) {
+    for (const [shape, script, code, status] of [
+      ['after a completion whose payment page answered nothing readable', () => door.paymentScript.push(ANSWERS.busy()), 'QUOTE_ALREADY_USED', 'checkout.completed'],
+      ['after a completion whose order call answered nothing', () => door.orderScript.push(ANSWERS.timeout({ landed: true })), 'QUOTE_ALREADY_USED', 'checkout.in_progress'],
+      ['after a cancellation', null, 'ORDER_CANCELED', 'canceled'],
+    ]) {
+      const label = `${market} ${shape}`;
+      const created = await door.acp('POST', '/checkout_sessions', cart(market), { key: freshKey() });
+      assert.equal(created.http, 201, created.raw.slice(0, 300));
+      const id = created.body.id;
+      const ordersBefore = door.orders.length;
+      if (script) {
+        script();
+        const grant = await keys.mintGrant({ sessionId: id, currency: created.body.currency, maxAmount: created.body.totals.total });
+        const done = await door.acp('POST', `/checkout_sessions/${id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+        assert.deepEqual([done.http, done.body.code], [409, 'CHECKOUT_OUTCOME_UNKNOWN'], `${label}: ${done.raw.slice(0, 300)}`);
+      } else {
+        assert.equal((await door.acp('POST', `/checkout_sessions/${id}/cancel`, {}, { key: freshKey() })).http, 200, label);
+      }
+      const updated = await door.acp('POST', `/checkout_sessions/${id}`, cart(market, 2), { key: freshKey() });
+      assert.deepEqual([updated.http, updated.body.code], [409, code], `${label}: ${updated.raw.slice(0, 300)}`);
+      assert.equal(updated.upstream.filter((c) => c.path === '/agent/v2/quotes/preview').length, 0, `${label}: nothing priced`);
+      const got = await door.acp('GET', `/checkout_sessions/${id}`);
+      assert.equal(got.body.status, status, `${label}: ${got.raw.slice(0, 300)}`);
+      if (status !== 'canceled') assert.equal(got.body.currency, created.body.currency, label);
+      // Another completion: never a second order, never a second payment page.
+      const grant2 = await keys.mintGrant({ sessionId: id, currency: created.body.currency, maxAmount: created.body.totals.total * 2 });
+      const again = await door.acp('POST', `/checkout_sessions/${id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant2 } }, { key: freshKey() });
+      assert.notEqual(again.http, 200, `${label}: ${again.raw.slice(0, 300)}`);
+      assert.deepEqual(again.upstream.filter((c) => c.path === ORDERS || c.path === PAGES), [], label);
+      assert.ok(door.orders.length - ordersBefore <= 1, label);
+    }
+  }
+});
+
 test('D: a completed session reads as completed with its order id, and an update of it says the id it was sent is already ordered', async () => {
   for (const market of PRICED_MARKETS) {
     const h = await open('mcp_complete', market);
