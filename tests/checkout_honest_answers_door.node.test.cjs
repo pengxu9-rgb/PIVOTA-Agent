@@ -376,6 +376,51 @@ test('P1-1 (after the order): a refused caller assertion on the payment step or 
   }
 });
 
+test('P2-3: a same-key resend after an attempt that may have taken effect is never told "Starting fresh" on /mcp, /ucp/mcp, ACP or invoke: its outcome is not known, read before anything else, no new checkout without the buyer', async () => {
+  const { AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE } = await import('../safety-kernel/src/idempotencyLedger.js');
+  const page400 = () => ANSWERS.raw(400, { status: 'error', error: { code: 'INVALID_REQUEST', message: 'INVALID_REQUEST', details: {} }, detail: {} });
+  const assertWords = (r, label, { http } = {}) => {
+    assert.equal(/Starting fresh|different request reusing an old reference/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+    if (http !== undefined) assert.equal(r.http, http, label);
+  };
+  for (const market of ['US', 'SG', 'GB']) {
+    for (const caller of CALLERS) {
+      const label = `${caller} ${market}`;
+      const h = await open(caller, market);
+      door.paymentScript.push(page400());
+      const key = freshKey();
+      const first = await attempt(h, key);
+      assert.equal(sent(first, ORDERS), 1, label);
+      const same = await attempt(h, key);
+      assert.deepEqual([errorOf(same).code, errorOf(same).message, errorOf(same).detail], ['IDEMPOTENCY_CONFLICT', AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, { reason: 'ambiguous_prior_attempt' }], `${label}: ${same.raw.slice(0, 300)}`);
+      assert.match(errorOf(same).recovery, /do not start another checkout for this purchase without the buyer/, label);
+      assertWords(same, label);
+      assert.equal(sent(same, ORDERS) + sent(same, PAGES), 0, label);
+    }
+    // ACP: the same.
+    const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+    door.paymentScript.push(page400());
+    const key = freshKey();
+    await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    const same = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    assert.deepEqual([same.http, same.body.code, same.body.message, same.body.detail], [409, 'IDEMPOTENCY_CONFLICT', AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, { reason: 'ambiguous_prior_attempt' }], `acp ${market}: ${same.raw.slice(0, 300)}`);
+    assertWords(same, `acp ${market}`);
+    // invoke: an order the backend made in another currency (refused here after the order exists), then the same key.
+    seq += 1;
+    const buyer = buyerFor(seq);
+    const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer });
+    door.orderScript.push(ANSWERS.created({ currency: 'JPY' }));
+    const order = (k) => door.invoke('create_order', { idempotency_key: k, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address(market), recipient_name: 'Buyer One' } } }, { buyer });
+    const ikey = freshKey();
+    await order(ikey);
+    const isame = await order(ikey);
+    assert.deepEqual([isame.http, isame.body.code, isame.body.message, isame.body.detail], [409, 'IDEMPOTENCY_CONFLICT', AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, { reason: 'ambiguous_prior_attempt' }], `invoke ${market}: ${isame.raw.slice(0, 300)}`);
+    assertWords(isame, `invoke ${market}`);
+    assert.equal(sent(isame, ORDERS), 0, `invoke ${market}`);
+  }
+});
+
 test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
   const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
   assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');

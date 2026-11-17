@@ -23,6 +23,9 @@ import { InMemoryKvStore } from './stores.js';
 const CLAIM_LEASE_MS = 2 * 60 * 1000;
 // Completed/terminal records are retained so replays return the original result.
 const DONE_TTL_MS = 24 * 60 * 60 * 1000;
+// A key whose earlier attempt made an irreversible call and then failed: its words, on every door.
+export const AMBIGUOUS_PRIOR_ATTEMPT = 'ambiguous_prior_attempt';
+export const AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE = 'An earlier attempt with this idempotency_key may have taken effect, and its outcome is not known here. Read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.';
 
 function fingerprint(body) {
   return createHash('sha256').update(JSON.stringify(body)).digest('hex');
@@ -65,7 +68,10 @@ export class IdempotencyLedger {
         // generic conflict that tells it to start fresh.
         const unknown = kernelOutcomeUnknownOf(kernelOutcomeUnknownRecord(existing.outcome_unknown));
         if (unknown) throw kernelOutcomeUnknown(unknown.reason, unknown.order_id, { answered: unknown.answered });
-        throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'ambiguous_prior_attempt' });
+        // Never the catalog's "a different request reusing an old reference. Starting fresh.": this key's earlier
+        // attempt did something irreversible and then failed, so it may have taken effect. Said in its own words, which
+        // every door surfaces; the code stays.
+        throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: AMBIGUOUS_PRIOR_ATTEMPT, acp_message: AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, acp_detail: { reason: AMBIGUOUS_PRIOR_ATTEMPT } });
       }
       // status === 'pending' and still leased: refuse rather than double-execute.
       throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'in_flight' });

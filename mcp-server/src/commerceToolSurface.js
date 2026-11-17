@@ -1799,6 +1799,10 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // A key whose earlier attempt may have taken effect (idempotencyLedger.js): never the catalog's "Starting fresh".
+  if (error instanceof PivotaCommerceError && code === "IDEMPOTENCY_CONFLICT" && error.detail?.reason === "ambiguous_prior_attempt" && intake) {
+    body.recovery = "read the checkout session or its order before anything else; do not start another checkout for this purchase without the buyer; do not reuse this idempotency_key for a new request";
+  }
   // A seller not taking orders: its catalog recovery (what to do next) beside its words.
   if (error instanceof PivotaCommerceError && code === "MERCHANT_NOT_ACCEPTING_ORDERS" && typeof error.recovery === "string") body.recovery = error.recovery;
   // A refusal decided for an assumed US (decision D-10) says so, in the same member an answer would carry.

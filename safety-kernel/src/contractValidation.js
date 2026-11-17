@@ -36,6 +36,8 @@ const INVOKE_NAMED_REASONS = new Set([
   'merchant_not_accepting_orders',
   // A used session whose claim names no order (kernel.js quoteAlreadyUsed): not "read that order (get_order)".
   'checkout_session_order_outcome_unknown',
+  // A key whose earlier attempt may have taken effect (idempotencyLedger.js): never "Starting fresh".
+  'ambiguous_prior_attempt',
 ]);
 
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };
