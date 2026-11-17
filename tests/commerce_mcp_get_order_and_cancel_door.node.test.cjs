@@ -264,13 +264,14 @@ async function cancel(args, opts) {
   return tool('cancel_checkout_session', { idempotency_key: `idem_door_cancel_${(seq += 1)}`, ...args }, opts);
 }
 
-test('flag off: cancel answers exactly as before, and calls nothing upstream', async () => {
+test('flag off: a cancel by order id is refused by name (nothing reaches the store, so it is never canceled), and calls nothing upstream', async () => {
   delete process.env.CHECKOUT_CANCEL_UPSTREAM_ENABLED;
   const { order_id, session_id } = await placeOrder();
   const seen = cancelRoute('canceled');
   const res = await cancel({ order_id, session_id });
-  assert.equal(res.isError, false);
-  assert.deepEqual(res.body, { session_id, order_id, status: 'canceled' });
+  assert.equal(res.isError, true, res.raw);
+  assert.equal(res.body.error.code, 'OPERATION_NOT_ALLOWED', res.raw);
+  assert.deepEqual(res.body.error.detail, { reason: 'order_cancel_not_available', canceled: false, order_id }, res.raw);
   assert.equal(seen.length, 0);
   nock.cleanAll();
 });

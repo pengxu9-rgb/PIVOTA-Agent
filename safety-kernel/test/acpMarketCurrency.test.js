@@ -1295,7 +1295,7 @@ for (const storeKind of ['memory', 'postgres']) {
   });
 }
 
-test('cancelling a session whose order was not paid (the charge failed): the order is cancelled, the cancellation takes no claim of its own, and the session is not paid afterwards', async () => {
+test('cancelling a session whose order was not paid (the charge failed), with the upstream cancel off: refused by name, the order, the claim and the record stay as they were, and the session is not paid afterwards', async () => {
   const door = sessionDoor();
   const id = (await door.create('merch_USD', 'US')).body.id;
   door.payment.status = 'failed';
@@ -1307,19 +1307,24 @@ test('cancelling a session whose order was not paid (the charge failed): the ord
   const claimBefore = await door.kernel._quoteClaims.get(record.quote_id);
   assert.ok(claimBefore && claimBefore.canceled !== true, 'the quote\'s claim is the order\'s');
 
-  const cancelled = await door.cancel(id);
-  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
-  assert.equal((await door.kernel._orderStore.get(record.order_id)).status, 'canceled', 'the ORDER was cancelled');
+  // No cancellation reaches the store from here, so the order is never said to be canceled.
+  const orderBefore = await door.kernel._orderStore.get(record.order_id);
+  const refused = await door.cancel(id);
+  assert.deepEqual([refused.status, refused.body.code], [409, 'OPERATION_NOT_ALLOWED'], JSON.stringify(refused.body));
+  assert.deepEqual(await door.kernel._orderStore.get(record.order_id), orderBefore, 'the order is as it was');
   assert.deepEqual(await door.kernel._quoteClaims.get(record.quote_id), claimBefore, 'the claim is still the order\'s: the cancel took none');
-  assert.deepEqual(unrevised(await door.record(id)), { ...unrevised(record), canceled: true });
-  assert.deepEqual((await door.read(id)).body, { id, object: 'checkout_session', status: 'canceled' });
+  assert.deepEqual(unrevised(await door.record(id)), unrevised(record), 'the record is not marked canceled');
+  const read = (await door.read(id)).body;
+  assert.deepEqual([read.status, read.order], ['checkout.completed', { id: record.order_id, status: orderBefore.status }]);
   door.payment.status = 'succeeded';
   const charges = door.ops('submit_payment').length;
-  for (const k of [key, 'idem-unpaid-cancel-0002']) {
-    const again = await door.complete(id, undefined, k);
-    assert.equal(again.status, 409, JSON.stringify(again.body));
-    assert.equal(again.body.code, 'ORDER_CANCELED');
-  }
+  const orders = door.ops('create_order').length;
+  // The payer's key replays its failed charge; any other key is refused. Neither charges again.
+  const replay = await door.complete(id, undefined, key);
+  assert.deepEqual([replay.status, replay.body.status], [failed.status, failed.body.status], JSON.stringify(replay.body));
+  const other = await door.complete(id, undefined, 'idem-unpaid-cancel-0002');
+  assert.notEqual(other.status, 200, JSON.stringify(other.body));
   assert.equal(door.ops('submit_payment').length, charges, 'nothing more was charged');
-  assert.equal((await door.cancel(id)).status, 200);
+  assert.equal(door.ops('create_order').length, orders, 'no second order');
+  assert.equal((await door.cancel(id)).status, 409);
 });

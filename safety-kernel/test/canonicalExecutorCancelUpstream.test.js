@@ -42,17 +42,20 @@ async function order(kernel, exec, ctx = CTX) {
   return { session_id: s.session_id, order_id: o.order_id };
 }
 
-test('flag off: the gateway-row cancel, and the backend is never asked', async () => {
+test('flag off: a cancel by order id is never answered canceled (the caller\'s own order is refused by name, any other id is not found), and the backend is never asked', async () => {
   const { kernel, exec, calls } = setup({ enabled: false });
   const { session_id, order_id } = await order(kernel, exec);
-  const out = await exec('cancel_checkout_session', { idempotency_key: 'idem-off-1', session_id, order_id }, CTX);
-  assert.deepEqual(out, { session_id, order_id, status: 'canceled' });
+  const refused = await exec('cancel_checkout_session', { idempotency_key: 'idem-off-1', session_id, order_id }, CTX).then(() => null, (e) => e);
+  assert.deepEqual([refused?.code, refused?.detail], ['OPERATION_NOT_ALLOWED', { op: 'cancel_checkout_session', reason: 'order_cancel_not_available', order_id, upstream_cancel: false }]);
+  assert.equal((await kernel._orderStore.get(order_id)).status, 'created', 'nothing was written');
   assert.deepEqual(calls, []);
-  // and the old behaviour for an untracked id is kept exactly (it is what the flag fixes)
-  assert.deepEqual(
-    await exec('cancel_checkout_session', { idempotency_key: 'idem-off-2', order_id: 'o_untracked' }, CTX),
-    { session_id: null, order_id: 'o_untracked', status: 'canceled' },
-  );
+  // An id the kernel never held, and another caller's order: the same not-found answer, never canceled.
+  for (const [id, ctx] of [['o_untracked', CTX], [order_id, { ...CTX, user_ref: 'user_2' }], [order_id, { ...CTX, acp_session_id: 'acp_2' }], [order_id, { ...CTX, agent_id: 'agent_b' }]]) {
+    const err = await exec('cancel_checkout_session', { idempotency_key: 'idem-off-2', order_id: id }, ctx).then(() => null, (e) => e);
+    assert.deepEqual([err?.code, err?.detail], ['QUOTE_NOT_FOUND', { reason: 'order_not_found', order_id: id }], `${id} ${JSON.stringify(ctx)}`);
+  }
+  assert.equal((await kernel._orderStore.get(order_id)).status, 'created');
+  assert.deepEqual(calls, []);
 });
 
 for (const kind of ['canceled', 'already_canceled']) {

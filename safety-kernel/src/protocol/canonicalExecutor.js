@@ -8,7 +8,7 @@
 //   create/update_checkout_session -> previewQuote        (session_id == quote_id)
 //   get_checkout_session           -> quotes.resolveForOrder (ownership + expiry checked)
 //   complete_checkout_session      -> verifyPaymentAuthorization -> createOrder -> mintConfirmation -> submitPayment
-//   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort); with
+//   cancel_checkout_session        -> cancel an unordered session (its claim); an order is refused by name; with
 //                                     CHECKOUT_CANCEL_UPSTREAM_ENABLED, the backend cancel's own outcome
 //   get_order                      -> one dispatch over the order-id shape (orderIdShape): a rail purchase (`pp_`/`rp_`/
 //                                     `ap_`) -> the backend ledger read; a storefront hand-off (`esc_`) -> its record;
@@ -1219,17 +1219,17 @@ async function cancelSession(kernel, params, ctx) {
     // claim went away between the two reads (an order call that was refused by name gave it back): not canceled.
     throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: claim ? 'session_order_outcome_unknown' : 'session_not_ordered_not_canceled', upstream_cancel: false });
   }
-  if (nonEmpty(order_id)) {
-    const o = await kernel._orderStore.get(order_id);
-    if (o) {
-      if (o.user_ref !== ctx.user_ref) throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id });
-      if (o.status === 'paid' || o.status === 'charge_pending') {
-        throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending', order_id });
-      }
-      await kernel._orderStore.set(order_id, { ...o, status: 'canceled' });
-    }
+  // AN ORDER, NAMED BY ITS ID (CHECKOUT_CANCEL_UPSTREAM_ENABLED off, every door). No cancellation reaches the store from
+  // here, so "canceled" would only mark this gateway's row while the order's payment page stays payable: it is never
+  // said. An order this caller owns is refused by name (`order_cancel_not_available`, `upstream_cancel: false`; a paid
+  // or charging one keeps its own refusal); an id the kernel never held, and another caller's order, are not found,
+  // the same answer for both (requireOwnedOrder), so nobody learns that someone else's order exists. Nothing is written.
+  const op = 'cancel_checkout_session';
+  const o = await requireOwnedOrder(kernel, order_id, ctx);
+  if (o.status === 'paid' || o.status === 'charge_pending') {
+    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending', order_id });
   }
-  return { session_id: params.session_id ?? null, order_id: order_id ?? null, status: 'canceled' };
+  throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'order_cancel_not_available', order_id, upstream_cancel: false });
 }
 
 /**

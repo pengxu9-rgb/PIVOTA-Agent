@@ -57,6 +57,8 @@ const MCP_TOOL_ERROR_REASONS = Object.freeze([
   'session_order_outcome_unknown',
   'session_not_ordered_not_canceled',
   'session_canceled',
+  // A cancel by order id with the upstream cancel off: nothing reaches the store, so the order is not canceled.
+  'order_cancel_not_available',
 ]);
 
 const LISTED = new Set(MCP_TOOL_ERROR_REASONS);

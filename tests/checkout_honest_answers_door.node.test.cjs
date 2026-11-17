@@ -387,6 +387,52 @@ test('C: cancel by session id of a session with no order cancels it truly (its c
   }
 });
 
+test('5: cancel by order id with the upstream cancel off is never canceled: the caller\'s own order is refused by name (its page stays open), an id never held and another caller\'s order get one not-found answer; nothing is sent', async () => {
+  for (const market of PRICED_MARKETS) {
+    const label = market;
+    const h = await open('mcp_payment_link', market);
+    const linked = await attempt(h, freshKey());
+    assert.equal(linked.isError, false, `${label}: ${linked.raw.slice(0, 300)}`);
+    const orderId = linked.value.order_id;
+    const own = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), order_id: orderId }, { buyer: h.buyer });
+    assert.deepEqual(errorOf(own), {
+      code: 'OPERATION_NOT_ALLOWED',
+      message: 'This order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.',
+      retriable: false,
+      detail: { reason: 'order_cancel_not_available', canceled: false, order_id: orderId },
+      recovery: 'do not tell the buyer the order was canceled; read the order with get_order (detail.order_id); this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it',
+    }, `${label}: ${own.raw.slice(0, 300)}`);
+    assert.deepEqual(own.upstream, [], `${label}: nothing sent`);
+    // The session id the session-cancel refusal hands out leads here too: the same refusal.
+    const both = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), session_id: h.id, order_id: orderId }, { buyer: h.buyer });
+    assert.equal(errorOf(both).detail?.reason, 'order_cancel_not_available', label);
+    const got = await read(h);
+    assert.deepEqual([got.value.status, got.value.order_id, got.value.order_status], ['completed', orderId, 'created'], `${label}: the order is as it was`);
+    // Never held, and another caller's (another buyer session on this door): byte-equal answers.
+    const neverHeld = await door.call('cancel_checkout_session', { idempotency_key: 'idem-cxl-same-key', order_id: 'ord_never_held' }, { buyer: h.buyer });
+    const others = await door.call('cancel_checkout_session', { idempotency_key: 'idem-cxl-same-key', order_id: 'ord_never_held' }, { buyer: buyerFor(999000) });
+    const foreign = await door.call('cancel_checkout_session', { idempotency_key: 'idem-cxl-same-key', order_id: orderId }, { buyer: buyerFor(999001) });
+    assert.equal(errorOf(neverHeld).code, 'QUOTE_NOT_FOUND', neverHeld.raw.slice(0, 300));
+    assert.equal(foreign.raw, neverHeld.raw, `${label}: another caller's order reads exactly as one never held`);
+    assert.equal(others.raw, neverHeld.raw, label);
+    assert.equal(foreign.raw.includes(orderId), false, label);
+    for (const r of [neverHeld, others, foreign]) assert.deepEqual(r.upstream, [], label);
+    assert.equal((await read(h)).value.order_status, 'created', label);
+  }
+  // The ACP door: a completed session's cancel (it cancels by its order) is refused too, and the session stays completed.
+  for (const market of ['US', 'SG', 'GB']) {
+    const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+    const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+    assert.equal(done.http, 200, done.raw.slice(0, 300));
+    const cancel = await door.acp('POST', `/checkout_sessions/${created.body.id}/cancel`, {}, { key: freshKey() });
+    assert.deepEqual([cancel.http, cancel.body.code], [409, 'OPERATION_NOT_ALLOWED'], `${market}: ${cancel.raw.slice(0, 300)}`);
+    assert.deepEqual(cancel.upstream, [], market);
+    const got = await door.acp('GET', `/checkout_sessions/${created.body.id}`);
+    assert.deepEqual([got.body.status, got.body.order], ['checkout.completed', { id: done.body.order.id, status: 'charge_pending' }], `${market}: ${got.raw.slice(0, 300)}`);
+  }
+});
+
 test('the strict invoke route: an order call with no readable answer is an unknown outcome, and a same-key resend really is told the same', async () => {
   for (const market of PRICED_MARKETS) {
     seq += 1;
@@ -511,7 +557,7 @@ test('the tools/call completion line counts the kernel\'s unknown outcomes by th
   const { loggedToolErrorReason } = require('../src/observability/mcpToolErrorReasons');
   for (const reason of ['payment_outcome_unknown_after_order', 'payment_link_outcome_unknown_after_order', 'order_create_outcome_unknown',
     'acp_fulfillment_address_required', 'buyer_context_refused', 'session_already_ordered', 'session_order_outcome_unknown',
-    'session_not_ordered_not_canceled', 'session_canceled', 'merchant_not_accepting_orders']) {
+    'session_not_ordered_not_canceled', 'session_canceled', 'merchant_not_accepting_orders', 'order_cancel_not_available']) {
     assert.equal(loggedToolErrorReason(reason), reason, reason);
   }
 });

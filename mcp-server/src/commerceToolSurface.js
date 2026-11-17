@@ -1912,6 +1912,10 @@ export function toToolError(error) {
           + "; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it";
       }
       if (error.detail.reason === "session_already_ordered" && orderId) body.detail.order_id = orderId;
+      if (error.detail.reason === "order_cancel_not_available" && orderId) {
+        body.detail.order_id = orderId;
+        body.recovery = notCanceled.recovery.replace("get_order;", "get_order (detail.order_id);");
+      }
     }
   }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
@@ -1939,6 +1943,13 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
     code: "OPERATION_NOT_ALLOWED",
     message: "This checkout session already became an order, so canceling the session alone would leave the order payable.",
     recovery: "cancel it by its order_id",
+  },
+  // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: a cancel by order id of the caller's own unpaid order. Nothing reaches
+  // the store, so it is never "canceled".
+  order_cancel_not_available: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
   },
   // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: an order was asked for on this session and the gateway holds none for it.
   session_order_outcome_unknown: {

@@ -65,3 +65,19 @@ test("an order call the store refused (a 403, a 429) keeps the unknown outcome's
   Object.defineProperty(forged, "answeredRefusal", { value: "refused" });
   assert.match(bodyOf(forged).message, /^The order was created \(detail\.order_id\)/);
 });
+
+test("a cancel by order id with the upstream cancel off: never 'canceled', the order's id to read it by, and who can cancel it", () => {
+  const body = bodyOf(new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: "cancel_checkout_session", reason: "order_cancel_not_available", order_id: "ord_0001", upstream_cancel: false }));
+  assert.deepEqual(body, {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.",
+    retriable: false,
+    detail: { reason: "order_cancel_not_available", canceled: false, order_id: "ord_0001" },
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order (detail.order_id); this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
+  });
+  assert.equal("upstream_cancel" in body.detail, false);
+  // An id that is not id-shaped is left out, and the recovery does not point at it.
+  const bad = bodyOf(new PivotaCommerceError("OPERATION_NOT_ALLOWED", { op: "cancel_checkout_session", reason: "order_cancel_not_available", order_id: "o 1", upstream_cancel: false }));
+  assert.deepEqual(bad.detail, { reason: "order_cancel_not_available", canceled: false });
+  assert.equal(/detail\.order_id/.test(bad.recovery), false);
+});

@@ -573,8 +573,45 @@ test('C cancel by session id says canceled only when it is true: an unordered se
   const open5 = await open(w, { key: 'idem-open-c-05' });
   assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0006', session_id: open5 }, { user_ref: 'buyer_2', acp_session_id: 'sess_1' })))?.code, 'STATE_LINKAGE_MISMATCH');
   assert.equal(await w.kernel.isQuoteClaimed(open5), false);
-  // By order id: unchanged (a charge_pending order is refused).
+  // By order id: a charge_pending order keeps its refusal.
   assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0007', order_id: 'o_1' })))?.detail?.reason, 'cannot_cancel_paid_or_pending');
+});
+
+test('C cancel by order id, with the upstream cancel off, is never answered canceled: the caller\'s own unpaid order is refused by name and left as it is; an id never held, and another caller\'s order, are not found alike', async () => {
+  for (const [laneName, lane] of Object.entries(LANES)) {
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      const label = `${laneName} ${market}`;
+      const w = world({ market });
+      const ctx = { ...CTX, agent_id: 'agent_1' };
+      const sid = await open(w, { ctx });
+      // An order whose payment page is open (payment link), or whose payment step failed (complete).
+      if (laneName === 'complete') w.script.submit_payment.push(() => ({ payment_id: 'pay_x', payment_status: 'failed' }));
+      await answered(lane.run(w, sid, 'idem-cxo-0001', {}, ctx), label);
+      const before = await w.kernel._orderStore.get('o_1');
+      const own = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0002', order_id: 'o_1' }, ctx));
+      assert.deepEqual([own?.code, own?.retriable, own?.detail], ['OPERATION_NOT_ALLOWED', false, { op: 'cancel_checkout_session', reason: 'order_cancel_not_available', order_id: 'o_1', upstream_cancel: false }], label);
+      // With the session id beside it: the same.
+      assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0003', session_id: sid, order_id: 'o_1' }, ctx)))?.detail?.reason, 'order_cancel_not_available', label);
+      assert.deepEqual(await w.kernel._orderStore.get('o_1'), before, `${label}: nothing was written`);
+      assert.equal((await w.exec('get_checkout_session', { session_id: sid }, ctx)).order_status, before.status, label);
+      // Never held, and another caller's (another buyer, another session, another agent): one not-found answer.
+      const notFound = [];
+      for (const [id, other] of [['o_never_held', ctx], ['o_1', { ...ctx, user_ref: 'buyer_2' }], ['o_1', { ...ctx, acp_session_id: 'sess_2' }], ['o_1', { ...ctx, agent_id: 'agent_2' }]]) {
+        const err = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0004', order_id: id }, other));
+        assert.deepEqual([err?.code, err?.detail?.reason], ['QUOTE_NOT_FOUND', 'order_not_found'], `${label} ${id} ${JSON.stringify(other)}`);
+        notFound.push({ code: err.code, message: err.message, retriable: err.retriable, keys: Object.keys(err.detail) });
+      }
+      assert.ok(notFound.every((n) => JSON.stringify(n) === JSON.stringify(notFound[0])), `${label}: indistinguishable`);
+      assert.deepEqual(await w.kernel._orderStore.get('o_1'), before, label);
+      assert.deepEqual([w.ops('create_order').length, w.ops('create_payment_link').length + w.ops('submit_payment').length], [1, 1], `${label}: nothing more asked`);
+    }
+  }
+  // With the upstream cancel on, the backend's answer is still the answer (unchanged).
+  const w = world({ cancelUpstream: true });
+  const sid = await open(w);
+  await answered(link(w, sid, 'idem-cxo-on-1'));
+  assert.equal((await w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-on-2', order_id: 'o_1' })).status, 'canceled');
+  assert.deepEqual(w.cancels, ['o_1']);
 });
 
 test('C a cancellation and a completion of one session: exactly one wins, whichever order they arrive in', async () => {
