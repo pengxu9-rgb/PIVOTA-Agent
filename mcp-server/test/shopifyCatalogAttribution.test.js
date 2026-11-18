@@ -536,19 +536,23 @@ describe('review: the door', () => {
     }
   });
 
-  test('ENFORCE: a tracked cart mints NO referral (a click no link carries would be orphaned), and is marked', async () => {
+  test('ENFORCE: a tracked cart carries none of the click minted beside the lookup, logged referral_unused, and is marked', async () => {
     let mints = 0;
     const minted = { kind: 'minted', clickId: 'clk_minted_1', pairs: [['utm_source', 'pivota'], ['pvt_click_id', 'clk_minted_1']], attributed: true };
+    const log = recordingLog();
     const out = await priceOnMerchantDoor(doorArgs({
-      merchantDoor: fakeDoor(), catalogLink: 'https://store.example/products/serum',
+      merchantDoor: fakeDoor(), catalogLink: 'https://store.example/products/serum', log,
       mintReferral: async () => { mints += 1; return minted; }, catalogAttribution: clientWith(fakeShopify()),
       env: { ...ENFORCE, [CART_REFERRAL_FLAG]: '1' },
     }));
     assert.ok(out);
-    assert.equal(mints, 0);
+    assert.equal(mints, 1, 'minted beside the lookup (round 3 P2-1)');
     assert.equal(out.continueUrl, CART_URL);
-    assert.equal(out.referral, undefined);
+    assert.equal(out.referral, undefined, 'no click for the hand-off record of a tracked cart');
     assert.equal(out.catalogTracked, true);
+    const line = log.lines.find((l) => l.outcome === 'sent_priced');
+    assert.equal(line.referral_unused, true);
+    assert.ok(!JSON.stringify(log.lines).includes('clk_minted_1'), 'the click id is never logged');
   });
   test('ENFORCE, nothing tracked: the referral is minted exactly as today', async () => {
     let mints = 0;
@@ -679,7 +683,7 @@ describe('review: through the storefront escalation, create then re-read', () =>
 // ---- the enforce follow-up (controller review of 272a063b8: P2-1, P2-2, P3s) ------------------------------------
 
 import { BARE_RETRY_MIN_MS } from '../src/ucpMerchantDoorPricing.js';
-import { BREAKER_FAILURES } from '../src/shopifyCatalogAttribution.js';
+import { BREAKER_FAILURES, BREAKER_OPEN_MS } from '../src/shopifyCatalogAttribution.js';
 
 describe('follow-up: the bare retry after a tracked send', () => {
   const clientWith = (shopify) => createCatalogAttribution({ env: CONFIG, fetchImpl: shopify.fetchImpl });
@@ -701,7 +705,7 @@ describe('follow-up: the bare retry after a tracked send', () => {
     });
   }
 
-  test('the retry carries today\'s attribution; the referral is minted once, by the retry', async () => {
+  test('the retry carries today\'s attribution; the referral is minted once, beside the lookup, and reused by the retry', async () => {
     let mints = 0;
     const minted = { kind: 'minted', clickId: 'clk_minted_1', pairs: [['utm_source', 'pivota'], ['pvt_click_id', 'clk_minted_1']], attributed: true };
     const door = fakeDoor({ create: (args) => (String(args.lineItems[0].item.id).includes('?') ? { ok: false, status: 500, error: { message: 'x' } } : sellerCart()) });
@@ -956,5 +960,184 @@ describe('round 2: the retry and the currency memo', () => {
     }));
     assert.ok(out, 'the bare retry priced');
     assert.equal(recalls, 1);
+  });
+});
+
+describe('round 3: the mint keeps its budget beside the lookup (P2-1)', () => {
+  const minted = { kind: 'minted', clickId: 'clk_minted_1', pairs: [['utm_source', 'pivota'], ['pvt_click_id', 'clk_minted_1']], attributed: true };
+  const slowLookup = (ms, tracked = new Map()) => ({ lookupTracked: () => new Promise((r) => setTimeout(() => r({ tracked, reason: null }), ms)) });
+  const slowMint = (ms, counter) => () => new Promise((r) => { counter.n += 1; setTimeout(() => r(minted), ms); });
+
+  test('a 790 ms lookup that tracks nothing and a 900 ms mint: the referral is kept, and they overlap', { timeout: 10000 }, async () => {
+    const counter = { n: 0 };
+    const door = fakeDoor();
+    const t0 = Date.now();
+    const out = await priceOnMerchantDoor(doorArgs({
+      merchantDoor: door, catalogLink: 'https://store.example/products/serum', mintReferral: slowMint(900, counter),
+      catalogAttribution: slowLookup(790), env: { ...ENFORCE, [CART_REFERRAL_FLAG]: '1', [CART_ATTRIBUTION_FLAG]: '1' },
+    }));
+    const took = Date.now() - t0;
+    assert.ok(out);
+    assert.equal(counter.n, 1);
+    assert.deepEqual(out.referral.pairs, minted.pairs);
+    assert.match(out.continueUrl, /pvt_click_id=clk_minted_1/);
+    assert.deepEqual(door.calls.find((c) => c[0] === 'create_cart')[2].cartAttribution, { utm_source: 'pivota', pvt_click_id: 'clk_minted_1' });
+    assert.ok(took < 1300, `overlapped, not serial (${took} ms)`);
+  });
+
+  test('the mint is given the same budget with enforce as with it off', async () => {
+    const budgets = {};
+    for (const [label, env] of [['off', {}], ['enforce', { ...ENFORCE }]]) {
+      let seen;
+      const mintReferral = () => { seen = Date.now(); return minted; };
+      const t0 = Date.now();
+      await priceOnMerchantDoor(doorArgs({
+        merchantDoor: fakeDoor(), catalogLink: 'https://store.example/products/serum', mintReferral,
+        catalogAttribution: slowLookup(300), env: { ...env, [CART_REFERRAL_FLAG]: '1' },
+      }));
+      budgets[label] = seen - t0;
+    }
+    assert.ok(budgets.enforce < 100, `enforce starts the mint without waiting for the lookup (${budgets.enforce} ms)`);
+  });
+
+  test('a tracked attempt that the store refuses: its click is reused by the retry, minted once', async () => {
+    const counter = { n: 0 };
+    const door = fakeDoor({ create: (args) => (String(args.lineItems[0].item.id).includes('?') ? { ok: false, status: 500, error: { message: 'x' } } : sellerCart()) });
+    const log = recordingLog();
+    const out = await priceOnMerchantDoor(doorArgs({
+      merchantDoor: door, log, catalogLink: 'https://store.example/products/serum', mintReferral: slowMint(10, counter),
+      catalogAttribution: createCatalogAttribution({ env: CONFIG, fetchImpl: fakeShopify().fetchImpl }),
+      env: { ...ENFORCE, [CART_REFERRAL_FLAG]: '1' },
+    }));
+    assert.equal(counter.n, 1);
+    assert.deepEqual(out.referral.pairs, minted.pairs);
+    assert.equal(log.lines.find((l) => l.outcome === 'sent_fallback').answer, 'http_500');
+  });
+});
+
+describe('round 3: the retry allowlist (P2-2)', () => {
+  const clientWith = () => createCatalogAttribution({ env: CONFIG, fetchImpl: fakeShopify().fetchImpl });
+  const onTracked = (refuse) => (args) => (String(args.lineItems[0].item.id).includes('?') ? refuse : sellerCart());
+  const run = async (create, over = {}) => {
+    const door = fakeDoor({ create });
+    const log = recordingLog();
+    const out = await priceOnMerchantDoor(doorArgs({ merchantDoor: door, log, catalogAttribution: clientWith(), env: { ...ENFORCE }, ...over }));
+    const line = log.lines.find((l) => l.outcome === 'sent_fallback');
+    return { out, creates: door.calls.filter((c) => c[0] === 'create_cart').length, line };
+  };
+
+  for (const status of [400, 401, 403, 404, 409, 422, 429, 502, 503, 504]) {
+    test(`HTTP ${status} on the tracked cart is not retried`, async () => {
+      const r = await run(onTracked({ ok: false, status, error: { message: 'x' } }));
+      assert.equal(r.out, null);
+      assert.equal(r.creates, 1);
+      assert.deepEqual([r.line.retried, r.line.why, r.line.answer], [false, 'not_retryable', `http_${status}`]);
+    });
+  }
+
+  for (const [label, refuse, answer] of [
+    ['HTTP 500', { ok: false, status: 500, error: { message: 'x' } }, 'http_500'],
+    ['a structured variant_invalid', { ok: true, status: 200, error: { message: 'Variant not found' } }, 'variant_invalid'],
+    ['lines at another quantity', sellerCart({ lines: [[GID(V1), 1, 12900]] }), 'lines'],
+    ['a line missing', sellerCart({ lines: [] }), 'lines'],
+  ]) {
+    test(`${label} on the tracked cart is retried once, bare`, async () => {
+      const r = await run(onTracked(refuse));
+      assert.ok(r.out);
+      assert.equal(r.creates, 2);
+      assert.deepEqual([r.line.retried, r.line.answer, r.line.retry], [true, answer, 'priced']);
+    });
+  }
+
+  test('the seller\'s own error message on the tracked cart is retried', async () => {
+    const flagged = () => {
+      const c = sellerCart();
+      const body = JSON.parse(c.response.result.content[0].text);
+      body.messages = [{ type: 'error', code: 'invalid_line_item', content: 'x' }];
+      c.response.result.content[0].text = JSON.stringify(body);
+      return c;
+    };
+    const r = await run(onTracked(flagged()));
+    assert.equal(r.creates, 2);
+    assert.equal(r.line.answer, 'seller_errors');
+  });
+
+  test('a continue_url off the store and door hosts is not retried (it is about the store)', async () => {
+    const r = await run(onTracked(sellerCart({ continueUrl: 'https://other.example/cart/c/abc123' })));
+    assert.equal(r.out, null);
+    assert.equal(r.creates, 1);
+    assert.deepEqual([r.line.retried, r.line.answer], [false, 'continue_url']);
+  });
+
+  test('a continue_url off the expected seller is not retried', async () => {
+    const r = await run(onTracked(sellerCart()), { expectedSeller: 'other.example' });
+    assert.equal(r.out, null);
+    assert.equal(r.creates, 1);
+    assert.deepEqual([r.line.retried, r.line.answer], [false, 'not_expected_seller']);
+  });
+
+  test('money that does not add up is not retried', async () => {
+    const off = () => {
+      const c = sellerCart();
+      const body = JSON.parse(c.response.result.content[0].text);
+      body.totals = [{ type: 'subtotal', amount: 1 }, { type: 'total', amount: 1 }];
+      c.response.result.content[0].text = JSON.stringify(body);
+      return c;
+    };
+    const r = await run(onTracked(off()));
+    assert.equal(r.creates, 1);
+    assert.equal(r.line.answer, 'money');
+  });
+
+  test('another currency is not retried, whatever the caller\'s memo held before', async () => {
+    const cad = () => {
+      const c = sellerCart();
+      const body = JSON.parse(c.response.result.content[0].text);
+      body.currency = 'CAD';
+      c.response.result.content[0].text = JSON.stringify(body);
+      return c;
+    };
+    for (const storeAnswer of [{}, undefined]) {
+      const r = await run(cad, { marketCurrency: 'USD', ...(storeAnswer ? { storeAnswer } : {}) });
+      assert.equal(r.creates, 1);
+      assert.equal(r.line.answer, 'store_currency');
+    }
+  });
+
+  test('a throw or a timeout on the tracked cart is not retried', { timeout: 15000 }, async () => {
+    const thrown = await run(() => { throw new Error('socket hang up'); });
+    assert.deepEqual([thrown.creates, thrown.line.answer, thrown.line.why], [1, 'threw', 'not_retryable']);
+    const slow = await run(() => new Promise((r) => { const t = setTimeout(() => r(sellerCart()), 6000); t.unref?.(); }));
+    assert.deepEqual([slow.creates, slow.line.answer, slow.line.why], [1, 'timeout', 'not_retryable']);
+  });
+});
+
+describe('round 3: the half-open breaker is ONE probe (P3-G2)', () => {
+  test('after the window, ten concurrent lookups make one catalog call', async () => {
+    let clock = 1_000_000_000_000;
+    let status = 500;
+    const base = fakeShopify({ delayMs: 20 });
+    let catalogCalls = 0;
+    const fetchImpl = async (url, init) => {
+      const r = await base.fetchImpl(url, init);
+      if (url !== CATALOG_ENDPOINT) return r;
+      catalogCalls += 1;
+      return { status, json: r.json };
+    };
+    const c = createCatalogAttribution({ env: CONFIG, fetchImpl, now: () => clock });
+    const look = () => c.lookupTracked([GID(V1)], { market: 'US', sellerHost: 'store.example' });
+    for (let i = 0; i < BREAKER_FAILURES; i += 1) await look();
+    clock += BREAKER_OPEN_MS + 1;
+    status = 200;
+    catalogCalls = 0;
+    const outs = await Promise.all(Array.from({ length: 10 }, look));
+    assert.equal(catalogCalls, 1);
+    assert.equal(outs.filter((o) => o.reason === 'skipped:breaker').length, 9);
+    assert.equal((await look()).reason, null, 'the answered probe closed it');
+    assert.equal(catalogCalls, 2);
+    catalogCalls = 0;
+    const closed = await Promise.all(Array.from({ length: 5 }, look));
+    assert.equal(catalogCalls, 5, 'closed again: concurrent lookups all run');
+    assert.ok(closed.every((o) => o.reason === null));
   });
 });

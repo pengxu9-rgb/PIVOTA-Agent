@@ -51,8 +51,8 @@ const TOKEN_FAILURE_BACKOFF_MS = 60 * 1000;
 const TOKEN_EXCHANGE_TIMEOUT_MS = 3000;
 // THE BREAKER. A slow or failing catalog costs every US create up to the lookup budget. After BREAKER_FAILURES
 // consecutive failed lookups (timeout, network, 429, 5xx, no token), lookups are skipped for BREAKER_OPEN_MS
-// (`skipped:breaker`). After the window ONE lookup is tried (half-open): a failure opens it again at once, an answered
-// lookup closes it. A timeout counts only when the lookup had the full budget (a caller's short budget is not the
+// (`skipped:breaker`). After the window ONE lookup is tried (half-open; any other lookup while it runs is
+// `skipped:breaker` too): a failure opens it again at once, an answered lookup closes it. A timeout counts only when the lookup had the full budget (a caller's short budget is not the
 // catalog failing). An `unauthorized` answer counts too; a batch that partly answered does not.
 export const BREAKER_FAILURES = 3;
 export const BREAKER_OPEN_MS = 60 * 1000;
@@ -205,10 +205,13 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
   let failedUntilMs = 0;
   let consecutiveFailures = 0;
   let breakerOpenUntilMs = 0;
+  let halfOpen = false; // the breaker has opened at least once and no lookup has answered since
+  let probing = false; // the one half-open lookup is in flight
   const noteFailure = () => {
     consecutiveFailures += 1;
     if (consecutiveFailures >= BREAKER_FAILURES) {
       breakerOpenUntilMs = now() + BREAKER_OPEN_MS;
+      halfOpen = true;
       // Half-open after the window: the next failure alone opens it again.
       consecutiveFailures = BREAKER_FAILURES - 1;
       count("breaker:opened");
@@ -248,7 +251,16 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     return typeof raced === "string" ? raced : null;
   }
 
-  async function lookupTracked(gids, { market, sellerHost, budgetMs = ATTRIBUTION_BUDGET_MS } = {}) {
+  async function lookupTracked(gids, opts = {}) {
+    if (!halfOpen) return lookupOnce(gids, opts);
+    // Half-open: ONE lookup probes the catalog; concurrent ones are skipped until it settles.
+    if (probing) { count("skipped:breaker"); return { tracked: new Map(), reason: "skipped:breaker" }; }
+    if (now() < breakerOpenUntilMs) return lookupOnce(gids, opts); // still open: lookupOnce answers skipped:breaker
+    probing = true;
+    try { return await lookupOnce(gids, opts); } finally { probing = false; }
+  }
+
+  async function lookupOnce(gids, { market, sellerHost, budgetMs = ATTRIBUTION_BUDGET_MS } = {}) {
     const tracked = new Map();
     const done = (reason) => { if (reason) count(reason); return { tracked, reason }; };
     if (!ATTRIBUTION_MARKETS.has(String(market || ""))) return done("skipped:market");
@@ -304,7 +316,7 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     if (failure) count(failure);
     if (failure && !answered) {
       if (!(failure === "failed:timeout" && budgetMs < ATTRIBUTION_BUDGET_MS)) noteFailure();
-    } else if (answered) consecutiveFailures = 0;
+    } else if (answered) { consecutiveFailures = 0; halfOpen = false; }
     count("tracked", tracked.size);
     if (answered) count("untracked", Math.max(0, numbers.size - tracked.size));
     return { tracked, reason: failure };
