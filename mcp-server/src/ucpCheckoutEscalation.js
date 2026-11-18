@@ -1641,16 +1641,23 @@ function throwIfOnlyAnswerIsInAnotherCurrency({ items, rows, linkOf, market, cur
  * `market` is an upper-case ISO-2 code the source does not price, or null for a value that is not a country code at
  * all. Never answered as US; the value sent is echoed only when it is two letters.
  */
+/**
+ * This door's refusal for a checkout whose `checkout.context.address_country` is not a country code it can read.
+ * ONE envelope for it: the storefront lane raises it after its rows are read, and the argument adapter raises it
+ * at intake, before anything is read (ucpArgumentAdapter refuseUnreadableCheckoutMarket). The value is never echoed.
+ */
+export function checkoutMarketInvalidRefusal() {
+  return intakeRefusal("QUOTE_REQUIRED", "ucp_market_invalid", [
+    "`checkout.context.address_country` is not a country code this door can read, so there is no buyer market to price this storefront checkout for.",
+    "Send the buyer's country as ISO 3166-1 alpha-2 (two letters); a market is never guessed, and nothing was priced or carted.",
+  ].join(" "), { rejected_field: "checkout.context.address_country" });
+}
+
 function marketNotPricedRefusal({ market, productIds, links, log }) {
   const hosts = [...new Set((links || []).map(sellerHostOf).filter(Boolean))];
   const code = typeof market === "string" && /^[A-Z]{2}$/.test(market) ? market : null;
   emitCurrencyRule(log, { outcome: "refused", reason: code ? "market_not_priced" : "market_invalid", market: code, expected_currency: null, row_currency: null, seller_host: hosts[0] || null });
-  if (!code) {
-    return intakeRefusal("QUOTE_REQUIRED", "ucp_market_invalid", [
-      "`checkout.context.address_country` is not a country code this door can read, so there is no buyer market to price this storefront checkout for.",
-      "Send the buyer's country as ISO 3166-1 alpha-2 (two letters); a market is never guessed, and nothing was priced or carted.",
-    ].join(" "), { rejected_field: "checkout.context.address_country" });
-  }
+  if (!code) return checkoutMarketInvalidRefusal();
   return intakeRefusal("NO_MERCHANT_OFFER", "market_not_priced", [
     `No price can be stated for a buyer in ${code}: this door prices no market by that code, so these items (${productIds.join(", ")}) were not priced or carted for it.`,
     `A request for ${code} is never answered as another market, and a price in another market's currency is never shown for it.`,
