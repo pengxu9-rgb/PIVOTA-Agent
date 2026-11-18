@@ -24,7 +24,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const HELPER = 'src/services/servedMarkets.js';
 const {
-  parseMarketList, servedMarkets, marketsForRequest, primaryMarket, DEFAULT_MARKET, marketBind,
+  parseDeploymentMarketList, parseRequestMarketList, servedMarkets, marketsForRequest, primaryMarket, DEFAULT_MARKET, marketBind,
   laneMarkets,
 } = require(path.join(ROOT, HELPER));
 
@@ -125,16 +125,48 @@ test('a request that names a market gets THAT market, not the deployment list', 
 
 test('parseMarketList: an entry is two ASCII letters tested before upcasing; a lookalike is not a market', () => {
   for (const lookalike of ['uſ', 'ﬁ', 'ıt', 'İT', 'ＵＳ', 'УС']) {
-    assert.deepStrictEqual(parseMarketList(lookalike, null), [], lookalike);
+    assert.deepStrictEqual(parseDeploymentMarketList(lookalike, null), [], lookalike);
   }
   // Unreadable entries are skipped, as before ('USA,SG' -> SG): this list also parses the deployment env.
-  assert.deepStrictEqual(parseMarketList('ﬁ,SG', null), ['SG']);
-  assert.deepStrictEqual(parseMarketList(' us , sg ', null), ['US', 'SG']);
-  assert.deepStrictEqual(parseMarketList('', 'ﬁ'), ['US'], 'a lookalike fallback is the default, not FI');
+  assert.deepStrictEqual(parseDeploymentMarketList('ﬁ,SG', null), ['SG']);
+  assert.deepStrictEqual(parseDeploymentMarketList(' us , sg ', null), ['US', 'SG']);
+  assert.deepStrictEqual(parseDeploymentMarketList('', 'ﬁ'), ['US'], 'a lookalike fallback is the default, not FI');
 });
 
-test('parseMarketList dedupes and preserves order', () => {
-  assert.deepStrictEqual(parseMarketList('US,SG,US'), ['US', 'SG']);
+test('parseRequestMarketList (a request market): any unreadable entry makes the whole value unreadable', () => {
+  for (const unreadable of ['SG,ﬁ', 'USA,SG', 'en-US', 'US,S', 'uſ', 'ＵＳ', 123, true, { code: 'US' }, ['US', 7], ['US', 'USA']]) {
+    assert.equal(parseRequestMarketList(unreadable), null, JSON.stringify(unreadable));
+  }
+  for (const silent of [undefined, null, '', '  ', ' , ', []]) {
+    assert.deepStrictEqual(parseRequestMarketList(silent), [], JSON.stringify(silent));
+  }
+  assert.deepStrictEqual(parseRequestMarketList(' us '), ['US']);
+  assert.deepStrictEqual(parseRequestMarketList('US,sg,US'), ['US', 'SG']);
+  assert.deepStrictEqual(parseRequestMarketList(['gb']), ['GB']);
+});
+
+test('marketsForRequest binds a readable request; an unreadable one binds the served list (serving decides nothing is shown)', () => {
+  const env = { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US' };
+  assert.deepStrictEqual(marketsForRequest('sg', env), ['SG']);
+  assert.deepStrictEqual(marketsForRequest('SG,ﬁ', env), ['US'], 'never SG alone');
+  assert.deepStrictEqual(marketsForRequest('USA,SG', env), ['US'], 'never SG alone');
+  assert.deepStrictEqual(marketsForRequest(undefined, env), ['US']);
+});
+
+test('resolveServingCurrency: an unreadable request market serves nothing; the env list still drops a typo', () => {
+  const { resolveServingCurrency } = require(path.join(ROOT, 'src/services/buyerMarket'));
+  const env = { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,USA' };
+  for (const raw of ['SG,ﬁ', 'USA,SG', 'en-US', 'uſ', 123, ['SG', 'ﬁ']]) {
+    assert.equal(resolveServingCurrency(raw, env), null, JSON.stringify(raw));
+  }
+  assert.equal(resolveServingCurrency('sg', env), 'SGD');
+  assert.equal(resolveServingCurrency('US,SG', env), null, 'two markets: none of them alone');
+  assert.equal(resolveServingCurrency(undefined, env), 'USD', 'silence: the deployment (its env typo dropped)');
+  assert.deepStrictEqual(servedMarkets(env), ['US']);
+});
+
+test('parseDeploymentMarketList dedupes and preserves order', () => {
+  assert.deepStrictEqual(parseDeploymentMarketList('US,SG,US'), ['US', 'SG']);
 });
 
 // --- the door uses it -----------------------------------------------------------------

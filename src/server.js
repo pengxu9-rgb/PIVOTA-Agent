@@ -32449,15 +32449,14 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, ra
     if (!reader || !(random() < ucpLivePdpSample())) return false;
     const detail = normalizePdpV2ToProductDetail(responsePayload);
     if (!detail || !detail.product) return false;
-    const { productHost, productVariantIds, STATUS } = require('./services/ucpLiveOfferRead');
+    const { productHost, productVariantIds, livePdpReadCountryKey, STATUS } = require('./services/ucpLiveOfferRead');
     const cache = ucpLivePdpCache();
     const host = productHost(detail.product);
     const ids = productVariantIds(detail.product);
-    // Never case-fold a non-ASCII value: case mapping turns lookalikes into codes ('uſ' -> 'US'), which then keyed a
-    // live read. An ASCII value is upcased exactly as before; a non-ASCII one stays as sent and is never keyed.
-    const sentCountry = String(market || '').trim();
-    const country = /^[\x00-\x7F]*$/.test(sentCountry) ? sentCountry.toUpperCase() : sentCountry;
-    const keyed = Boolean(host && ids.length && /^[A-Z]{2}$/.test(country));
+    // The market this read is keyed (claimed, budgeted, recorded) under: livePdpReadCountryKey, two ASCII letters
+    // tested before upcasing, so a lookalike ('uſ', 'ﬁ') is never keyed as the code case mapping folds it into.
+    const country = livePdpReadCountryKey(market);
+    const keyed = Boolean(host && ids.length && country);
     if (keyed && !cache.claimRead(host, country, ids)) return false;
     // Over this store's per-minute read budget (shared with pdp_live_read): no read, the claim released.
     if (keyed && !ucpLivePdpHostBudget().take(host)) {

@@ -197,3 +197,32 @@ describe('unchanged: a readable market, an unpriced code, and no market', () => 
     assert.equal(fetched.length, before);
   });
 });
+
+describe('one envelope for an unreadable checkout market, word for word', () => {
+  test('the /ucp/mcp checkout refusal deep-equals the storefront checkout escalation refusal, for every unreadable value', async () => {
+    const { checkoutMarketInvalidRefusal } = await import('../src/ucpCheckoutEscalation.js');
+    const expected = checkoutMarketInvalidRefusal();
+    const shape = (e) => ({ name: e.name, code: e.code, message: e.message, detail: e.detail, retriable: e.retriable });
+    for (const tool of ['create_checkout', 'update_checkout']) {
+      for (const market of UNREADABLE) {
+        let err = null;
+        try { ucpToNativeToolArgs(canonicalOp(OPS[tool]), TOOLS[tool](market), FORWARD_ON); } catch (e) { err = e; }
+        assert.ok(err, `${tool} ${JSON.stringify(market)}`);
+        assert.deepEqual(shape(err), shape(expected), `${tool} ${JSON.stringify(market)}`);
+        assert.equal(Object.getPrototypeOf(err), Object.getPrototypeOf(expected));
+      }
+    }
+  });
+});
+
+test('the error taxonomy documents every market reason the doors emit', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const url = await import('node:url');
+  const here = path.dirname(url.fileURLToPath(import.meta.url));
+  const doc = fs.readFileSync(path.join(here, '..', '..', 'docs', 'agent-checkout', 'safety-kernel-contract.md'), 'utf8');
+  const { GET_OFFERS_REASON_TOKENS } = await import('../src/getOffersEmptyReasonDoor.js');
+  const marketTokens = [UCP_MARKET_INVALID_REASON, ...GET_OFFERS_REASON_TOKENS.filter((t) => t.startsWith('market_'))];
+  assert.deepEqual([...marketTokens].sort(), ['market_invalid', 'market_not_priced', 'ucp_market_invalid']);
+  for (const token of marketTokens) assert.match(doc, new RegExp(`\\| \`${token}\` \\|`), token);
+});

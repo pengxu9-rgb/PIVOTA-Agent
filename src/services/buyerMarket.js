@@ -40,7 +40,7 @@
 //
 // Flag: FIND_PRODUCTS_BUYER_MARKET=on (default off). Read per call.
 
-const { parseMarketList, marketsForRequest, servedMarkets } = require('./servedMarkets');
+const { parseRequestMarketList, marketsForRequest, servedMarkets } = require('./servedMarkets');
 const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 
 const FLAG = 'FIND_PRODUCTS_BUYER_MARKET';
@@ -71,11 +71,12 @@ function isEnabled(env = process.env) {
  * It never infers a market from a currency, and a caller's `currency` does not override it.
  */
 function resolveServingCurrency(requested, env = process.env) {
-  const named = parseMarketList(requested, null);
+  const named = parseRequestMarketList(requested);
+  // Unreadable ('en-US', 'USA,SG', 'SG,ﬁ', 123) or two markets ('US,SG'): null, served nothing, by name
+  // (buyer_market_has_no_pricing_currency). Only silence is the default.
+  if (named === null || named.length > 1) return null;
   if (named.length === 1) return currencyForBuyerRegion(named[0]) || null;
-  // Two markets ('US,SG') or text that is no market ('en-US') is null. Only silence is the default.
-  const written = Array.isArray(requested) ? requested.join(',') : (requested ? String(requested) : '');
-  return written.trim() ? null : (currencyForBuyerRegion(servedMarkets(env)[0]) || null);
+  return currencyForBuyerRegion(servedMarkets(env)[0]) || null;
 }
 
 /**
@@ -99,8 +100,8 @@ function resolveBuyerMarketScope(requested, env = process.env) {
   const servingCurrency = resolveServingCurrency(requested, env);
   const unchanged = { markets: marketsForRequest(requested, env), buyerMarket: null, buyerCurrency: null, servingCurrency };
   if (!isEnabled(env)) return unchanged;
-  const named = parseMarketList(requested, null);
-  if (named.length !== 1) return unchanged;
+  const named = parseRequestMarketList(requested);
+  if (!named || named.length !== 1) return unchanged;
   const buyerCurrency = currencyForBuyerRegion(named[0]);
   if (!buyerCurrency) return unchanged;
   const served = servedMarkets(env);

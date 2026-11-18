@@ -634,3 +634,18 @@ test('a second viewer of a product being read shares its lookups and is not refu
     open();
   }
 });
+
+test('livePdpReadCountryKey (shadowPdpLiveRead): a lookalike is never keyed; a plain code is keyed upper-cased', () => {
+  const { livePdpReadCountryKey } = require('../src/services/ucpLiveOfferRead');
+  for (const lookalike of ['uſ', 'ﬁ', 'ıt', 'İT', 'ＵＳ', 'УС', 'ſg']) assert.equal(livePdpReadCountryKey(lookalike), null, lookalike);
+  for (const unreadable of ['USA', 'en-US', '', '  ', null, undefined, 7, ['US']]) {
+    assert.equal(livePdpReadCountryKey(unreadable), null, JSON.stringify(unreadable));
+  }
+  assert.equal(livePdpReadCountryKey(' us '), 'US');
+  assert.equal(livePdpReadCountryKey('Sg'), 'SG');
+  // The helper is what shadowPdpLiveRead keys on (not a copy of the rule).
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function shadowPdpLiveRead('), src.indexOf('function shadowPdpLiveRead(') + 4000);
+  assert.match(fn, /const country = livePdpReadCountryKey\(market\);/);
+  assert.match(fn, /const keyed = Boolean\(host && ids\.length && country\);/);
+});

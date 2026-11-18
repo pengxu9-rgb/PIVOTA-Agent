@@ -54,6 +54,10 @@ describe('resolveDiscoveryBuyerMarket', () => {
       if (raw === 'ZZ') expect(resolveDiscoveryBuyerMarket({ buyer_market: raw })).toBe('ZZ');
       else expect(resolveDiscoveryBuyerMarket({ buyer_market: raw })).toBeNull();
     }
+    // A request market with any unreadable entry is unreadable, never its readable rest; a lookalike is not a code.
+    for (const raw of ['SG,ﬁ', 'USA,SG', 'uſ', 'ﬁ', ['SG', 'USA']]) {
+      expect(resolveDiscoveryBuyerMarket({ buyer_market: raw })).toBeNull();
+    }
     expect(resolveDiscoveryBuyerMarket(null)).toBeNull();
     expect(resolveDiscoveryBuyerMarket({ market: 'SG' })).toBeNull(); // only the door's stamp counts
   });
