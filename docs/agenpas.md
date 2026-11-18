@@ -122,9 +122,16 @@ currencies hide it ("see your email receipt").
 memory):
 
 - HELD (the checking wording, in every state, never "no order was sent"): `checkout_unresolvable` (the head of
-  `checkout_unresolvable:<n>:<why>`, including `:operator_found_completed`), `checkout_read_permanent`
-  (`checkout_read_permanent:<n>:<why>`), `checkout_dispatch_unresolved`, `checkout_created_hosted_url_refused`. The hold
-  shape also matches `unresolvab`.
+  `checkout_unresolvable:<n>:<why>`, including `:operator_found_completed`), `checkout_dispatch_unresolved`,
+  `checkout_created_hosted_url_refused`. `checkout_read_permanent:<n>:<why>` (one permanent-shaped read failure, below
+  the backend's limit of 3, after which it is `checkout_unresolvable`) is HELD from `placing` on and in final states;
+  before placing it keeps the buyer's step, as the UCP lane keeps the hosted page for it. The hold shape also matches
+  `unresolvab`, and any `reap_*` code the lists do not name (`reap_status_500`, ...) reads as a hold from `placing` on.
+- PROGRESS (`REAP_PROGRESS_CODES`, the state's own wording, never the checking copy; a HELD code beside one still wins):
+  `reap_status_503`, `checkout_read_failed`, `transport_error` (`transport_error:<Type>`). Each is written only by a READ
+  (the checkout poll's GET) or by a quote / enrollment call, which moves no money; the checkout create never writes
+  them (pivota-backend 0b2749d28; the sources are in `src/agenpas/view.js`). `checkout_read_recovered` is NOT on the
+  list: it is also written on a row whose create answer was lost and that an operator attached.
 - FAILED ("no order was sent"), ONLY the codes written before any Reap checkout exists: `enrollment_no_hosted_action`,
   `enrollment_id_conflict`, `enrollment_row_unreadable`, `enrollment_not_activatable`, `enrollment_dead`,
   `enrollment_create_failed`, `enrollment_read_failed`, `no_active_enrollment`, `enrollment_not_active` (Reap's
@@ -135,9 +142,9 @@ memory):
   placed. You can start again from the chat." (it does not claim the buyer failed to approve: the backend's code is a
   best reading), and it also keeps FAILED away.
 - `buyer_email_missing` (resolving -> failed): "some details were missing".
-- The codes the Reap worker releases on a live row (`enrollment_settling`, `enrollment_pending`, `quote_expired`,
-  `checkout_quote_replayed`, `checkout_read_recovered`, transport codes, ...) leave the buyer's step alone; any other
-  partner code on a final row gets the neutral generic wording.
+- The codes the Reap worker releases on a live row before placing (`enrollment_settling`, `enrollment_pending`,
+  `quote_expired`, `checkout_quote_replayed`, transport codes, ...) leave the buyer's step alone; any other partner code
+  on a final row gets the neutral generic wording, except an unlisted `reap_*` one (the checking wording).
 
 The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"
 once the backend has a quoted total, with the line that the final total includes shipping and tax and cannot exceed
@@ -162,12 +169,14 @@ offer no consent.
 **The offer.** With the flag on, a gated, unsatisfied step whose consent block is complete (`required`, `available`,
 the step of the current state, both links https on `AGENPAS_LEGAL_HOSTS`, both versions at most 32 printable
 characters, and an `offer: {id, issued_at}`) shows, before any hosted button: "Before you add your card / approve,
-read Pivota's Terms of Service and Privacy Policy" (both links open in a new tab, `rel="noopener noreferrer"`), an
+read Pivota's Terms of Service (version X) and Privacy Policy (version Y)" (both links open in a new tab,
+`rel="noopener noreferrer"`; the versions shown are the very values the acceptance records), an
 UNCHECKED checkbox "I agree to the Terms of Service and Privacy Policy", and "Agree and continue", disabled until the
 box is ticked and for a dwell after the offer is first shown: the backend's `min_dwell_seconds` plus 1 s when the
 consent block (or its offer) states it, else 4 s (the backend's default is 3 s). The approval's
 consent may be taken while the total is confirmed (`locking`) or on the approval screen. The view's `consent` member
-carries the step, the two links and the offer, nothing else (never the versions, the flags or a record). The page keeps
+carries the step, the two links, the two versions (the same read's values the POST records) and the offer, nothing
+else (never the flags or a record). New versions are a new offer (tick cleared, dwell restarted). The page keeps
 the FIRST offer it showed for a step (a new one per read would never age past the dwell) for up to 25 minutes measured on
 its own clock from when it first saw the offer (never from `issued_at`, so a phone clock that is off does not matter);
 then it takes the newest offer, clears the tick, restarts the dwell and redraws. It otherwise re-renders only when
@@ -175,7 +184,9 @@ something other than the offer changes, so a tick or focus is never dropped by a
 
 **The POST.** `POST /agenpas/api/p/:id/consent`, link token in `X-Agenpas-Link`, body exactly
 `{step, offer_id, issued_at}` (strict JSON, at most 1 kB, parsed by the route itself: the app's global JSON parser
-skips the AgenPas host). Checked in this order: the per-IP bucket; the exact `Origin` (= `AGENPAS_PUBLIC_BASE_URL`) and
+skips the AgenPas host whenever AgenPas is on, consent or not: so with AgenPas on, a GET to an AgenPas path that
+carries a malformed `application/json` body is served normally there, where before this change the global parser
+answered 400 `Invalid JSON`; nothing else on the host changes). Checked in this order: the per-IP bucket; the exact `Origin` (= `AGENPAS_PUBLIC_BASE_URL`) and
 `Sec-Fetch-Site`, which refuses only when it is SENT and is not `same-origin` (older Safari / iOS 15 send none; the
 exact Origin, the JSON content type, the link header and the refused preflight remain) (else 403 `forbidden`); `Content-Type: application/json` (else 415); the link (404 /
 410 / 503 as for the read); the per-link bucket (429); the body (400, or 413 over 1 kB). Then the gateway's OWN latest
@@ -195,17 +206,24 @@ suffices is a question for Reap.
 
 **Agent surfaces.** With consent on, a `start_purchase` / `get_order` answer whose `next_action` is gated
 (`consent_required: true`, no URL) also carries the freshly minted link as `next_action.action_url`, with `expires_at`
-the earlier of the step's deadline and the link's; their descriptions gain one sentence saying so. The UCP Reap lane
+the earlier of the step's deadline and the link's; their descriptions gain one sentence saying so (only while a rail is
+served; it also says that a gated answer with neither link means "not available yet, poll again", which is what a
+gated answer on a rail not in `AGENPAS_RAILS` carries). A REAP purchase gets `agenpas_url` only when its answer is gated
+or its consent block says satisfied: with the backend's gate still off, a Reap answer is exactly today's answer. The UCP Reap lane
 (`ucpReapAgenticLane.js`), while AgenPas serves the Reap rail, answers a gated `needs_enrollment` / `awaiting_approval`
 (no `hosted_url`, `buyer_step.consent_required` for that step, a future deadline) as `requires_escalation` with
 `continue_url` = the buyer's AgenPas link for the `rp_` id (minted for the verified caller, put in AFTER the money
 filter) and `expires_at` = the earlier of the step's deadline and the link's; its state message says the buyer accepts
 the terms there first, and `create_checkout`'s description gains one sentence. A held, paused or expired step is not
-swapped. Off, every answer and `tools/list` is byte-identical.
+swapped, nor one whose backend says it cannot take the consent now (`available: false` on the marker or on a consent
+block): no dead-end link. Off, every answer and `tools/list` is byte-identical.
 
 **Flag order.** Gateway first: `AGENPAS_CONSENT_ENABLED`, then `AGENPAS_RAILS=a2a,reap`, then the backend's
-`AGENPAS_CONSENT_GATE`. Either order is safe (R3-4: a Reap step without a satisfied consent block is never shown), but
-backend-first leaves Reap buyers on "not available right now" until the gateway is on. `AGENPAS_HOSTED_HOSTS` must also
+`AGENPAS_CONSENT_GATE` (and its consent write). Gateway-first is safe: until the backend gates, a Reap answer gets no
+AgenPas link and keeps today's hosted page, so no buyer is sent to a page that would say "not available right now".
+Backend-first is NOT: gated Reap answers then carry neither the partner's URL nor an AgenPas link (and the A2A ones no
+link either while the gateway's consent is off) until the gateway is on. Either way the page never shows a Reap step
+without a satisfied consent block (R3-4). `AGENPAS_HOSTED_HOSTS` must also
 list Reap's exact hosted-page host names (measured from one sandbox page) before a Reap page can show.
 
 **Backend contract (consent).**

@@ -626,3 +626,26 @@ test('a guard\'s plain-text 404 on the POST is "not available right now": the to
   assert.match(h.text(), /This link isn't valid/);
   assert.equal(h.storage.has(`agenpas:t:${PID}`), false);
 });
+
+// ---- review round 3: the versions recorded are the versions shown ---------------------------------------------
+
+test('the terms and privacy versions are shown next to their links; new versions are a new offer (tick cleared, redrawn)', async () => {
+  const versioned = (t, p, over = {}) => consentView({ consent: { ...consentView().consent, terms_version: t, privacy_version: p, ...over } });
+  const h = harness({ answers: [{ status: 200, body: versioned('terms-2026-11', 'privacy-2026-11') }] });
+  h.start();
+  await settle();
+  // (the fake DOM joins text nodes with spaces)
+  assert.match(h.text().replace(/\s+/g, ' '), /Terms of Service \(version terms-2026-11\) and Privacy Policy \(version privacy-2026-11\)/);
+  const box = checkbox(h);
+  tick(h, box);
+  h.answer({ status: 200, body: versioned('terms-2026-12', 'privacy-2026-11', { offer: { id: 'offerv2v2v2v2v2v2v2v2v2v2v2v2v2v2v', issued_at: '2026-11-17T12:00:05Z' } }) });
+  await nextRead(h);
+  assert.notEqual(checkbox(h), box);
+  assert.equal(checkbox(h).checked, false);
+  assert.match(h.text(), /\(version terms-2026-12\)/);
+  await readyToAgree(h);
+  h.answer({ status: 200, body: { recorded: true } });
+  clickAgree(h);
+  await settle();
+  assert.equal(JSON.parse(h.fetches.filter((f) => f.init.method === 'POST').pop().init.body).offer_id, 'offerv2v2v2v2v2v2v2v2v2v2v2v2v2v2v');
+});

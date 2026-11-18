@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 
 const {
   projectPurchaseView, consentToRecord, HELD_CODES, FAILED_CODES, REAP_HELD_CODES, REAP_FAILED_CODES,
-  POST_CHECKOUT_GENERIC_CODES,
+  POST_CHECKOUT_GENERIC_CODES, REAP_PROGRESS_CODES,
 } = require('../src/agenpas/view');
 
 const PP = 'pp_aaaaaaaaaaaaaaaaaaaaaaaa';
@@ -139,11 +139,15 @@ test('gated and unsatisfied, flag on, a complete offer: the terms are offered, n
     assert.equal(view.screen, 'add_card');
     assert.equal(view.action, null);
     assert.deepEqual(view.consent, {
-      step: 'card_binding', terms_url: 'https://legal.example/terms', privacy_url: 'https://legal.example/privacy', offer: { ...OFFER },
+      step: 'card_binding', terms_url: 'https://legal.example/terms', privacy_url: 'https://legal.example/privacy',
+      terms_version: 'terms-2026-11', privacy_version: 'privacy-2026-11', offer: { ...OFFER },
     });
     assert.equal(JSON.stringify(view).includes('card-secret-1'), false);
-    // Never to the page: the versions, required/available/satisfied, the rail.
-    assert.equal(/terms-2026-11|privacy-2026-11|"rail"|"required"|"satisfied"/.test(JSON.stringify(view)), false);
+    // Never to the page: required/available/satisfied, the rail.
+    assert.equal(/"rail"|"required"|"satisfied"|"available"/.test(JSON.stringify(view)), false);
+    // The versions shown are exactly the ones a consent on this read records.
+    const record = consentToRecord(body, { purchaseId: PP, consentEnabled: true, legalHosts: LEGAL, now: NOW });
+    assert.deepEqual([view.consent.terms_version, view.consent.privacy_version], [record.terms_version, record.privacy_version]);
   }
 });
 
@@ -243,7 +247,7 @@ test('consentToRecord: the step and the versions FROM THE READ, only when the pa
     [reap('needs_payment_method', { next_action: GATED_CARD, consent: consent() }), { consentEnabled: false, legalHosts: LEGAL }],
     [reap('needs_payment_method', { next_action: GATED_CARD, consent: consent({ satisfied: true }) }), { consentEnabled: true, legalHosts: LEGAL }],
     [reap('placing', { consent: consent({ step: 'approval' }) }), { consentEnabled: true, legalHosts: LEGAL }],
-    [reap('needs_payment_method', { next_action: GATED_CARD, consent: consent() }, { last_error_code: 'checkout_read_permanent:1:reap_status_404' }), { consentEnabled: true, legalHosts: LEGAL }],
+    [reap('needs_payment_method', { next_action: GATED_CARD, consent: consent() }, { last_error_code: 'checkout_unresolvable:3:reap_status_404' }), { consentEnabled: true, legalHosts: LEGAL }],
     [reap('needs_payment_method', { next_action: GATED_CARD, consent: consent() }, { contact_reentry_required: true }), { consentEnabled: true, legalHosts: LEGAL }],
     [reap('needs_payment_method', { next_action: GATED_CARD, consent: consent() }), { consentEnabled: true, legalHosts: ['other.example'] }],
   ]) {
@@ -262,7 +266,10 @@ test('Reap HELD codes (bare and in their compound formats): the checking screen 
     'checkout_unresolvable:4:reap_status_404', 'checkout_read_permanent:1:reap_status_404', 'checkout_read_permanent:2:unknown_checkout_status',
     'checkout_dispatch_unresolved', 'checkout_created_hosted_url_refused'];
   for (const code of codes) {
-    for (const state of ['locking', 'awaiting_buyer_authorization', 'placing', 'failed', 'expired']) {
+    // checkout_read_permanent is held from placing on only (see the next test).
+    const states = code.startsWith('checkout_read_permanent') ? ['placing', 'failed', 'expired']
+      : ['locking', 'awaiting_buyer_authorization', 'placing', 'failed', 'expired'];
+    for (const state of states) {
       const view = project(reap(state, {}, { last_error_code: code }), ON);
       assert.equal(view.screen, 'outcome_unknown', `${state} ${code}`);
       assert.match(view.outcome.message, CHECKING, `${state} ${code}`);
@@ -347,4 +354,77 @@ test('the backend\'s dwell: `min_dwell_seconds` (on the block or the offer) reac
   assert.equal(at(consent({ min_dwell_seconds: 3 })).min_dwell_seconds, 3);
   assert.equal(at(consent({ offer: { ...OFFER, min_dwell_seconds: 5 } })).min_dwell_seconds, 5);
   for (const bad of [-1, 1.5, '3', 121, null]) assert.equal(Object.hasOwn(at(consent({ min_dwell_seconds: bad })), 'min_dwell_seconds'), false, String(bad));
+});
+
+test('checkout_read_permanent:<n> below the backend\'s limit keeps the approval step before placing (the UCP lane keeps it too); held from placing on', () => {
+  for (const code of ['checkout_read_permanent:1:reap_status_404', 'checkout_read_permanent:2:unknown_checkout_status']) {
+    const approve = project(reap('awaiting_buyer_authorization', { next_action: APPROVE_ACTION, consent: consent({ step: 'approval', satisfied: true }) }, { last_error_code: code }), ON);
+    assert.equal(approve.screen, 'approve', code);
+    assert.equal(approve.action.url, APPROVE_PAGE);
+    assert.equal(approve.outcome, null);
+    const offered = project(reap('awaiting_buyer_authorization', { next_action: GATED_APPROVE, consent: consent({ step: 'approval' }) }, { last_error_code: code }), ON);
+    assert.equal(offered.consent.step, 'approval', 'the terms are still offered');
+    assert.equal(project(reap('placing', {}, { last_error_code: code })).screen, 'outcome_unknown', code);
+  }
+  // Beside a hard HELD code the step is still dropped.
+  const both = project(reap('awaiting_buyer_authorization', { next_action: APPROVE_ACTION, consent: consent({ step: 'approval', satisfied: true }) },
+    { refusal_reason: 'checkout_dispatch_unresolved', last_error_code: 'checkout_read_permanent:1:reap_status_404' }), ON);
+  assert.equal(both.screen, 'outcome_unknown');
+});
+
+// ---- REAP_PROGRESS_CODES: read-only progress, never a hold -----------------------------------------------------
+
+test('parity: REAP_PROGRESS_CODES is exactly the backend\'s read-only codes (pivota-backend 0b2749d28), and none is a hold', () => {
+  // services/reap_agentic_client.py:2018/:2321 f"reap_status_{status}" for 503; services/reap_agentic_purchase.py:4280
+  // "checkout_read_failed"; :662 _TRANSPORT_PREFIX = "transport_error".
+  const BACKEND_READ_ONLY = ['reap_status_503', 'checkout_read_failed', 'transport_error'];
+  assert.deepEqual([...REAP_PROGRESS_CODES].sort(), [...BACKEND_READ_ONLY].sort());
+  // services/reap_agentic_purchase.py:4206 PERMANENT_CHECKOUT_READ_ERRORS: they escalate, so never progress.
+  for (const code of ['reap_status_404', 'hosted_url_not_allowed', 'unknown_checkout_status']) assert.equal(REAP_PROGRESS_CODES.has(code), false, code);
+  // Written on a row whose create answer may have been lost: off the list.
+  for (const code of ['checkout_read_recovered', 'poller_advance_raised']) assert.equal(REAP_PROGRESS_CODES.has(code), false, code);
+  for (const code of REAP_PROGRESS_CODES) {
+    assert.equal(HELD_CODES.has(code), false, code);
+    assert.equal(FAILED_CODES.has(code), false, code);
+  }
+});
+
+test('in placing, each progress code keeps the state\'s own wording and the buyer step', () => {
+  for (const code of ['reap_status_503', 'checkout_read_failed', 'transport_error:readtimeout', 'transport_error:connecterror']) {
+    const view = project(reap('placing', {}, { last_error_code: code }), ON);
+    assert.equal(view.screen, 'placing', code);
+    assert.equal(view.outcome, null, code);
+    const approve = project(reap('awaiting_buyer_authorization', { next_action: APPROVE_ACTION, consent: consent({ step: 'approval', satisfied: true }) }, { last_error_code: code }), ON);
+    assert.equal(approve.screen, 'approve', code);
+    assert.equal(approve.action.url, APPROVE_PAGE, code);
+    // Final: the state's generic wording, never the checking copy.
+    const failed = project(reap('failed', {}, { last_error_code: code }));
+    assert.equal(failed.outcome.kind, 'failed', code);
+  }
+});
+
+test('a progress code never overrides a HELD code', () => {
+  for (const held of ['checkout_dispatch_unresolved', 'checkout_unresolvable:3:reap_status_404', 'checkout_created_hosted_url_refused']) {
+    for (const progress of ['reap_status_503', 'transport_error:readtimeout', 'checkout_read_failed']) {
+      for (const [a, b] of [[held, progress], [progress, held]]) {
+        const view = project(reap('placing', {}, { refusal_reason: a, last_error_code: b }));
+        assert.equal(view.screen, 'outcome_unknown', `${a} + ${b}`);
+      }
+    }
+  }
+  // checkout_read_permanent (held from placing on) beside a progress code: still held in placing.
+  assert.equal(project(reap('placing', {}, { refusal_reason: 'reap_status_503', last_error_code: 'checkout_read_permanent:1:reap_status_404' })).screen, 'outcome_unknown');
+});
+
+test('an unlisted reap_* code in placing (and once final) reads "checking"; before placing it leaves the step alone', () => {
+  for (const code of ['reap_status_500', 'reap_status_502', 'reap_status_429', 'reap_something_new']) {
+    const placing = project(reap('placing', {}, { last_error_code: code }));
+    assert.equal(placing.screen, 'outcome_unknown', code);
+    assert.match(placing.outcome.message, /checking with the store/);
+    assert.equal(project(reap('failed', {}, { last_error_code: code })).screen, 'outcome_unknown', code);
+    const approve = project(reap('awaiting_buyer_authorization', { next_action: APPROVE_ACTION, consent: consent({ step: 'approval', satisfied: true }) }, { last_error_code: code }), ON);
+    assert.equal(approve.screen, 'approve', code);
+  }
+  // checkout_read_recovered stays unlisted and keeps today's reading in placing (not hold-shaped, no reap_ prefix).
+  assert.equal(project(reap('placing', {}, { last_error_code: 'checkout_read_recovered' })).screen, 'placing');
 });

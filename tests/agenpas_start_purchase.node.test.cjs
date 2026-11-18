@@ -342,16 +342,33 @@ test('AGENPAS_RAILS=a2a,reap WITHOUT AGENPAS_CONSENT_ENABLED: no Reap link (star
   }
 });
 
-test('AGENPAS_RAILS=a2a,reap with consent on: a Reap purchase gets its link (start_purchase and get_order)', async () => {
+test('gateway on (consent + rails a2a,reap), backend gate OFF: a Reap answer is exactly today\'s answer (no link to a dead page)', async () => {
   const reapCreate = await build({ createRail: 'reap' });
+  const reapCreateWithout = await build({ createRail: 'reap', withMinter: false });
   const reapOrder = await build({ orderRailId: RP });
+  const reapOrderWithout = await build({ orderRailId: RP, withMinter: false });
   await withEnv(REAP_ON, async () => {
     const a = await reapCreate.callTool('start_purchase', args(), SESSION);
-    assert.equal(new URL(a.agenpas_url).pathname, `/agenpas/p/${PP}`);
+    assert.equal(Object.hasOwn(a, 'agenpas_url'), false);
+    assert.equal(JSON.stringify(a), JSON.stringify(await reapCreateWithout.callTool('start_purchase', args(), SESSION)));
     const o = await reapOrder.callTool('get_order', { order_id: PP }, SESSION);
+    assert.equal(Object.hasOwn(o, 'agenpas_url'), false);
+    assert.equal(o.next_action.action_url, CARD_PAGE);
+    assert.equal(JSON.stringify(o), JSON.stringify(await reapOrderWithout.callTool('get_order', { order_id: PP }, SESSION)));
+  });
+});
+
+test('AGENPAS_RAILS=a2a,reap with consent on: a Reap purchase gets its link when gated, or when its consent block says satisfied', async () => {
+  const gatedCreate = await build({ createRail: 'reap', readBody: gated });
+  const satisfied = (id) => ({ ...unified(id), consent: { required: true, satisfied: true, step: 'card_binding' } });
+  const satisfiedOrder = await build({ orderRailId: RP, readBody: satisfied });
+  await withEnv(REAP_ON, async () => {
+    const a = await gatedCreate.callTool('start_purchase', args(), SESSION);
+    assert.equal(new URL(a.agenpas_url).pathname, `/agenpas/p/${PP}`);
+    const o = await satisfiedOrder.callTool('get_order', { order_id: PP }, SESSION);
     const verdict = verifyLinkToken(new URLSearchParams(new URL(o.agenpas_url).hash.slice(1)).get('t'), { purchaseId: PP, aud: 'https://agenpas.example', secret: SECRET });
     assert.equal(verdict.ok, true);
-    // Not gated (the backend gate is off in this body): the partner's page stays where it was, untouched.
+    // Consent given: the backend's page is the handoff, untouched.
     assert.equal(o.next_action.action_url, CARD_PAGE);
   });
   // The A2A rail is still served under the list; and a list without a2a serves no A2A purchase.
@@ -422,5 +439,28 @@ test('consent_required WITH a handoff URL of its own (consent already given) is 
     assert.equal(o.next_action.action_url, CARD_PAGE);
     assert.notEqual(o.next_action.action_url, o.agenpas_url);
     assert.equal(o.next_action.expires_at, '2026-11-17T00:30:00Z', 'its own deadline, untouched');
+  });
+});
+
+test('the consent sentence: only with consent on AND a rail served; it names agenpas_url, and what a gated answer without it means', async () => {
+  const m = await mods();
+  // A Reap rail NOT served (rails a2a): a gated Reap answer carries neither link, which is exactly what the sentence says.
+  const reapGated = await build({ orderRailId: RP, readBody: gated });
+  await withEnv({ ...REAP_ON, AGENPAS_RAILS: 'a2a' }, async () => {
+    const o = await reapGated.callTool('get_order', { order_id: PP }, SESSION);
+    assert.equal(Object.hasOwn(o, 'agenpas_url'), false);
+    assert.equal(Object.hasOwn(o.next_action, 'action_url'), false);
+    assert.match(m.surface.AGENPAS_CONSENT_SENTENCE, /If the answer carries neither, the step is not available yet/);
+    assert.ok(reapGated.tools.find((t) => t.name === 'start_purchase').description.endsWith(m.surface.AGENPAS_CONSENT_SENTENCE));
+  });
+  // A minter serving no rail at all: no sentence.
+  const real = createAgenpasLinkMinter();
+  const servesNothing = { ...real, servesRail: () => false };
+  const surface = m.surface.createCommerceToolSurface({ async execute() { throw new Error('unused'); } }, { cache: false, orchestratedPurchase: {
+    createClient: { startPurchase: async () => ({}) }, readClient: { getPurchase: async () => ({}) }, agenpasLink: servesNothing,
+  } });
+  await withEnv(REAP_ON, async () => {
+    assert.equal(JSON.stringify(surface.tools).includes(m.surface.AGENPAS_CONSENT_SENTENCE), false);
+    assert.ok(surface.tools.find((t) => t.name === 'start_purchase').description.endsWith(m.surface.agenpasStartPurchaseSentence(30)));
   });
 });

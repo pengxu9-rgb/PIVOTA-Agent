@@ -227,6 +227,10 @@
     return a;
   }
 
+  function versionNote(version) {
+    return typeof version === 'string' && version ? el('span', 'legal-version', ' (version ' + version + ')') : null;
+  }
+
   function consentReady() {
     var c = ui.consent;
     return Boolean(c && c.checked && !c.posting && !c.accepted && Date.now() >= c.shownAt + c.dwellMs
@@ -260,6 +264,10 @@
    */
   function adoptLatestOffer(c, error) {
     if (ui.latestOffer) c.offer = ui.latestOffer;
+    if (ui.latestVersions) {
+      c.terms_version = ui.latestVersions.terms;
+      c.privacy_version = ui.latestVersions.privacy;
+    }
     c.checked = false;
     c.accepted = false;
     c.waited = 0;
@@ -277,15 +285,19 @@
     var offered = view && view.consent;
     ui.latestOffer = offered && offered.offer ? offered.offer : null;
     ui.latestDwellMs = dwellMsOf(offered);
+    ui.latestVersions = offered ? { terms: offered.terms_version, privacy: offered.privacy_version } : null;
     if (!offered) {
       ui.consent = null;
       return;
     }
     var c = ui.consent;
-    if (!c || c.step !== offered.step || !c.offer || Date.now() - c.seenAt > CONSENT_OFFER_MAX_AGE_MS) {
+    // New terms (a version moved on) are a new offer too: the kept one names versions the buyer is no longer shown.
+    var versionsMoved = Boolean(c) && (c.terms_version !== offered.terms_version || c.privacy_version !== offered.privacy_version);
+    if (!c || c.step !== offered.step || !c.offer || versionsMoved || Date.now() - c.seenAt > CONSENT_OFFER_MAX_AGE_MS) {
       var replacing = Boolean(c);
       ui.consent = {
         step: offered.step, offer: offered.offer, seenAt: Date.now(), shownAt: Date.now(), dwellMs: ui.latestDwellMs,
+        terms_version: offered.terms_version, privacy_version: offered.privacy_version,
         checked: false, posting: false, accepted: false, error: null, retryAt: 0, button: null, waited: 0,
       };
       // A newer offer for the same answer shape must still be drawn (the poll skips an answer whose key is unchanged).
@@ -312,8 +324,9 @@
     }
     var intro = el('p', 'consent-intro');
     append(intro, el('span', null, offered.step === 'card_binding' ? "Before you add your card, read Pivota's " : "Before you approve, read Pivota's "));
-    append(intro, externalLink('Terms of Service', offered.terms_url), el('span', null, ' and '),
-      externalLink('Privacy Policy', offered.privacy_url), el('span', null, '.'));
+    // The versions are the ones the acceptance records (the same read's values): the buyer sees what is recorded.
+    append(intro, externalLink('Terms of Service', offered.terms_url), versionNote(offered.terms_version), el('span', null, ' and '),
+      externalLink('Privacy Policy', offered.privacy_url), versionNote(offered.privacy_version), el('span', null, '.'));
     box.appendChild(intro);
 
     var label = el('label', 'consent-check');
@@ -725,7 +738,10 @@
     if (!body.consent || typeof body.consent !== 'object') return JSON.stringify(body);
     var copy = {};
     for (var k in body) if (Object.prototype.hasOwnProperty.call(body, k)) copy[k] = body[k];
-    copy.consent = { step: body.consent.step, terms_url: body.consent.terms_url, privacy_url: body.consent.privacy_url };
+    copy.consent = {
+      step: body.consent.step, terms_url: body.consent.terms_url, privacy_url: body.consent.privacy_url,
+      terms_version: body.consent.terms_version, privacy_version: body.consent.privacy_version,
+    };
     return JSON.stringify(copy);
   }
 

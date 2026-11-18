@@ -96,7 +96,8 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // HELD: a Reap checkout may exist, or its outcome is not known.
 //   checkout_unresolvable:<n>:<why>    a checkout we cannot read or resolve (incl. :operator_found_completed, an
 //                                      operator attached a checkout that COMPLETED): human review
-//   checkout_read_permanent:<n>:<why>  a permanent-shaped read failure of a live checkout (counting towards the above)
+//   checkout_read_permanent:<n>:<why>  a permanent-shaped read failure of a live checkout (counting towards the above);
+//                                      held from placing on only (PRE_PLACING_SOFT_HELD_CODES)
 //   checkout_dispatch_unresolved       the create crossed the dispatch boundary with no usable answer
 //   checkout_created_hosted_url_refused  Reap created the checkout but its hosted page was refused
 // FAILED ("no order was sent"): ONLY codes written before any checkout create (enrollment failures, no active card,
@@ -113,6 +114,36 @@ const REAP_FAILED_CODES = Object.freeze([
   'enrollment_dead', 'enrollment_create_failed', 'enrollment_read_failed', 'no_active_enrollment', 'enrollment_not_active',
   'quote_id_missing',
 ]);
+/**
+ * HELD only from `placing` on and in final states. `checkout_read_permanent:<n>` is written after ONE permanent-shaped
+ * read failure, below the backend's limit (3, then `checkout_unresolvable`), while the row may still wait in
+ * awaiting_approval with a live page; the UCP lane keeps that page too. So before placing it does not drop the step
+ * (the buyer has approved nothing yet, and Reap's own page decides); once the buyer has approved, it is held.
+ */
+const PRE_PLACING_SOFT_HELD_CODES = new Set(['checkout_read_permanent']);
+/**
+ * PROGRESS, not a hold: codes the Reap worker writes ONLY from a READ (the checkout poll's GET) or from a retry whose
+ * result cannot mean money moved, so they keep the state's own wording (in placing: "Placing your order…") and never
+ * the checking copy. Explicit, so the hold shape and the `reap_` rule below never decide them; a HELD code beside one
+ * still wins. Verified in pivota-backend 0b2749d28 (services/reap_agentic_purchase.py, services/reap_agentic_client.py):
+ *   reap_status_503       client `_get` / `_post` f"reap_status_{status}" (client.py:2018, :2321). Written as
+ *                         last_error_code only by (a) `_release_checkout_read_failure` after `get_checkout` (GET, the
+ *                         poll; purchase.py:4280 -> :4239), and (b) the quote / enrollment POSTs (pre-checkout; a
+ *                         quote or a card enrollment moves no money). The checkout CREATE never writes it: undispatched
+ *                         it has no HTTP answer; dispatched and not ok it is `checkout_dispatch_unresolved` (or the
+ *                         hosted-url hold), purchase.py:4110-4166.
+ *   checkout_read_failed  the poll's own fallback when `get_checkout` failed without a code (purchase.py:4280), GET only.
+ *   transport_error       `_TRANSPORT_PREFIX` (purchase.py:662), `transport_error:<Type>`: a network failure released
+ *                         for retry. From the checkout poll's GET, and from quote / enrollment calls; a dispatched
+ *                         checkout create that failed in transport is `checkout_dispatch_unresolved` instead, and one
+ *                         that RAISED is `poller_advance_raised:<Type>` (jobs/reap_agentic_purchase_poll.py:956).
+ * NOT listed (they fail the test): `checkout_read_recovered` (purchase.py:4283) is also written on a row whose create
+ * answer was lost and that an operator attached (services/reap_checkout_recovery.py:408, then the poll);
+ * `poller_advance_raised:*` can follow a raised checkout create; other `reap_status_*` are left to the rule below.
+ */
+const REAP_PROGRESS_CODES = new Set(['reap_status_503', 'checkout_read_failed', 'transport_error']);
+/** An unlisted Reap partner status (`reap_status_<n>` and any other `reap_*` code) is read as a hold from placing on. */
+const REAP_UNLISTED_PREFIX = 'reap_';
 /** Codes that say a checkout may have existed: they keep a FAILED code from saying "no order was sent". */
 const POST_CHECKOUT_GENERIC_CODES = new Set(['checkout_failed', 'checkout_expired', 'checkout_id_missing', 'partner_id_malformed']);
 const POST_CHECKOUT_CODES = new Set([...POST_CHECKOUT_GENERIC_CODES, 'approval_window_lapsed']);
@@ -329,7 +360,12 @@ function codeSegments(codes) {
 
 function isExplicit(seg) {
   return FAILED_CODES.has(seg) || HELD_CODES.has(seg) || PARKED_CODES.has(seg) || REASON_BY_CODE.has(seg)
-    || POST_CHECKOUT_GENERIC_CODES.has(seg);
+    || POST_CHECKOUT_GENERIC_CODES.has(seg) || REAP_PROGRESS_CODES.has(seg);
+}
+
+/** A code the explicit lists do not name, with the hold shape or the `reap_` prefix (an unlisted Reap code). */
+function isHoldShaped(seg) {
+  return !isExplicit(seg) && (OUTCOME_UNKNOWN_SHAPE_RE.test(seg) || seg.startsWith(REAP_UNLISTED_PREFIX));
 }
 
 /** What the codes say, by the precedence above: 'failed' | 'held' | a named group | 'generic' | 'shape_unknown' | null. */
@@ -340,7 +376,7 @@ function classify(segments) {
   const named = segments.map((seg) => REASON_BY_CODE.get(seg)).find(Boolean);
   if (named) return { kind: 'named', group: named };
   if (segments.some((seg) => POST_CHECKOUT_GENERIC_CODES.has(seg))) return { kind: 'generic' };
-  if (segments.some((seg) => !isExplicit(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg))) return { kind: 'shape_unknown' };
+  if (segments.some(isHoldShaped)) return { kind: 'shape_unknown' };
   return null;
 }
 
@@ -371,7 +407,9 @@ function outcomeFor(state, codes) {
   const c = classify(segments);
   if (!TERMINAL_STATES.has(state)) {
     const preplacing = PRE_PLACING_STATES.has(state);
-    if (c && (c.kind === 'held' || (c.kind === 'shape_unknown' && !preplacing))) return { ...HELD_COPY };
+    const held = c && c.kind === 'held'
+      && (!preplacing || segments.some((seg) => HELD_CODES.has(seg) && !PRE_PLACING_SOFT_HELD_CODES.has(seg)));
+    if (held || (c && c.kind === 'shape_unknown' && !preplacing)) return { ...HELD_COPY };
     if (segments.some((seg) => PARKED_CODES.has(seg))) return state === 'placing' ? { ...HELD_COPY } : { ...PARKED_COPY };
     return null;
   }
@@ -380,7 +418,7 @@ function outcomeFor(state, codes) {
     // HELD has already won above if any hold code is present. "You weren't charged" is said ONLY when nothing else on
     // the purchase is even hold-SHAPED: a claim that strong needs a clean record; otherwise, the checking wording.
     if (segments.some((seg) => OPERATOR_NOT_CHARGED_CODES.has(seg))) {
-      const holdShaped = segments.some((seg) => !isExplicit(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
+      const holdShaped = segments.some(isHoldShaped);
       return holdShaped ? { ...OUTCOME_UNKNOWN_COPY } : { ...NOT_CHARGED_COPY };
     }
     return { ...NOT_SUBMITTED_COPY };
@@ -599,7 +637,11 @@ function buildView(body, { purchaseId, hostedHosts = [], embed = false, now, lin
   let consent = null;
   let record = null;
   if (offerable && consentScreen) {
-    consent = { step: consentStep, terms_url: block.terms_url, privacy_url: block.privacy_url, offer: { ...block.offer } };
+    // The versions shown are the very values recorded (`record`, below): the buyer sees what the record names.
+    consent = {
+      step: consentStep, terms_url: block.terms_url, privacy_url: block.privacy_url,
+      terms_version: block.terms_version, privacy_version: block.privacy_version, offer: { ...block.offer },
+    };
     // Only when the backend states it (the page then waits at least that long plus a second; else its own 4 s).
     if (block.min_dwell_seconds !== null) consent.min_dwell_seconds = block.min_dwell_seconds;
     record = { step: consentStep, terms_version: block.terms_version, privacy_version: block.privacy_version };
@@ -672,6 +714,7 @@ module.exports = {
   POST_CHECKOUT_GENERIC_CODES,
   REAP_FAILED_CODES,
   REAP_HELD_CODES,
+  REAP_PROGRESS_CODES,
   codeSegments,
   consentToRecord,
   isOutcomeUnknownCode,

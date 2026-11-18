@@ -322,7 +322,7 @@ export function agenpasGetOrderSentence(minutes) {
 }
 // AgenPas consent (docs/agenpas.md, "Terms and privacy consent"): one more sentence on start_purchase and get_order, ONLY
 // while AGENPAS_CONSENT_ENABLED is on and links are minted. Off, both descriptions are exactly as above.
-export const AGENPAS_CONSENT_SENTENCE = "When `next_action.consent_required` is true, `next_action.action_url` is the buyer's AgenPas page: the buyer reads and accepts Pivota's Terms of Service and Privacy Policy there before the payment partner's page opens, and there is no other link to that page.";
+export const AGENPAS_CONSENT_SENTENCE = "When `next_action.consent_required` is true, the buyer first reads and accepts Pivota's Terms of Service and Privacy Policy on their AgenPas page, which then opens the payment partner's page: give them `agenpas_url` (it is also `next_action.action_url`); there is no other link to that page. If the answer carries neither, the step is not available yet: poll again.";
 // The UCP create_checkout description gains this ONLY while the Reap lane creates AND AgenPas serves the Reap rail
 // (AGENPAS_CONSENT_ENABLED + AGENPAS_RAILS with reap + links minted). Off, tools/list is byte-identical.
 export const AGENPAS_UCP_REAP_CONSENT_SENTENCE = "On the Reap route, while Pivota's consent step is on, a requires_escalation checkout's continue_url is the buyer's own Pivota page (AgenPas): the buyer reads and accepts Pivota's Terms of Service and Privacy Policy there, and that page opens the payment partner's card or approval page. Send the buyer to continue_url as usual; expires_at is the earlier of the step's deadline and that link's.";
@@ -974,8 +974,17 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         return false;
       }
     };
-    if (isReapPurchaseAnswer(out)) return serves("reap");
+    // A Reap purchase gets its link ONLY when the page can carry the buyer on: the backend gated the step (consent
+    // pending) or says the consent is satisfied. With the backend's gate still off, a Reap answer is today's answer
+    // exactly (no link to a page that would say "not available right now"), so turning the gateway on first is safe.
+    if (isReapPurchaseAnswer(out)) return serves("reap") && (isConsentGatedAction(out.next_action) || consentSatisfied(out));
     return isA2aPurchaseAnswer(out) && serves("a2a");
+  }
+
+  /** The answer's consent block (top level or in `detail`) says the current step's consent is recorded. */
+  function consentSatisfied(out) {
+    const block = [out.consent, isPlainObject(out.detail) ? out.detail.consent : undefined].find(isPlainObject);
+    return Boolean(block && block.satisfied === true);
   }
 
   /** True only while a link can be minted (AGENPAS_ENABLED on, secret and base URL set); read per tools/list. */
@@ -1001,8 +1010,12 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     } catch {
       minutes = undefined;
     }
-    // Only while AGENPAS_CONSENT_ENABLED is on: off, the two sentences above are the only change, as before.
-    const consent = consentOn(link) ? ` ${AGENPAS_CONSENT_SENTENCE}` : "";
+    // Only while AGENPAS_CONSENT_ENABLED is on AND a rail the backend can gate is served (a2a or reap; config.rails
+    // never serves neither): off, the two sentences above are the only change, as before. The sentence names
+    // `agenpas_url` as the way on, which every gated answer on a served rail carries (withAgenpasUrl), and says what a
+    // gated answer without it (a rail not served) means.
+    const servesAny = typeof link.servesRail === "function" && (link.servesRail("reap") === true || link.servesRail("a2a") === true);
+    const consent = consentOn(link) && servesAny ? ` ${AGENPAS_CONSENT_SENTENCE}` : "";
     return list.map((tool) => {
       if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${agenpasStartPurchaseSentence(minutes)}${consent}` };
       if (tool.name === "get_order" && orderReadOn) return { ...tool, description: `${tool.description} ${agenpasGetOrderSentence(minutes)}${consent}` };

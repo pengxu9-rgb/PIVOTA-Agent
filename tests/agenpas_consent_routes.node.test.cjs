@@ -266,6 +266,18 @@ test('recorded: the backend gets the offer the page echoed and the versions from
   assert.equal(reader.calls.length, 2);
 });
 
+test('the versions the page shows (GET view) are exactly the versions the POST records at the backend', async () => {
+  const writer = recordingWriter();
+  const a = app({ writer });
+  const view = await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', token());
+  assert.equal(view.status, 200);
+  assert.equal(view.body.consent.terms_version, 'terms-2026-11');
+  assert.equal(view.body.consent.privacy_version, 'privacy-2026-11');
+  assert.equal((await goodPost(a)).status, 200);
+  assert.equal(writer.calls[0].consent.terms_version, view.body.consent.terms_version);
+  assert.equal(writer.calls[0].consent.privacy_version, view.body.consent.privacy_version);
+});
+
 test('409 consent_stale when the read offers nothing for that step (another step, satisfied, held, paused, flag-off block, wrong state)', async () => {
   for (const [name, body] of [
     ['other step', purchase({ consent: { ...purchase().consent, step: 'approval' } })],

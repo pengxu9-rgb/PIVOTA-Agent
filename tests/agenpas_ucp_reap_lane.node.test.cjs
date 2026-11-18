@@ -159,7 +159,9 @@ test('gate on: no swap for a passed deadline, another step\'s marker, no verifie
     ['passed deadline', gatedView('awaiting_approval', inMinutes(-1)), SESSION],
     ['wrong kind', view('needs_enrollment', { buyer_step: { kind: 'approval', expires_at: inMinutes(10), consent_required: true } }), SESSION],
     ['no marker', view('needs_enrollment'), SESSION],
-    ['held', gatedView('awaiting_approval', inMinutes(10), { last_error_code: 'checkout_read_permanent:1:reap_status_404' }), SESSION],
+    ['held', gatedView('awaiting_approval', inMinutes(10), { last_error_code: 'checkout_unresolvable:4:reap_status_404' }), SESSION],
+    ['consent unavailable (marker)', gatedView('needs_enrollment', inMinutes(10), { buyer_step: { kind: 'card_binding', expires_at: inMinutes(10), consent_required: true, available: false } }), SESSION],
+    ['consent unavailable (block)', gatedView('needs_enrollment', inMinutes(10), { consent: { required: true, available: false, step: 'card_binding', satisfied: false } }), SESSION],
     ['review', gatedView('awaiting_approval', inMinutes(10), { last_error_code: 'checkout_dispatch_unresolved' }), SESSION],
     ['paused', gatedView('needs_enrollment', inMinutes(10), { contact_reentry_required: true }), SESSION],
     ['no agent id', gatedView('needs_enrollment'), { user_ref: SESSION.user_ref, acp_session_id: SESSION.acp_session_id }],
@@ -244,4 +246,11 @@ test('the door puts the captured link ONLY on a requires_escalation answer witho
   }
   assert.equal(m.surface.withConsentContinueUrl(base, null), base);
   assert.equal(m.surface.withConsentContinueUrl(base, ''), base);
+});
+
+test('checkout_read_permanent:<n> before placing: the lane swaps as the page offers (both keep the approval step)', async () => {
+  const { ucp, id } = await build(gatedView('awaiting_approval', inMinutes(10), { last_error_code: 'checkout_read_permanent:1:reap_status_404' }));
+  const out = await withEnv(GATE_ON, () => ucp.callTool('get_checkout', { meta: META, id }, SESSION));
+  assert.equal(out.status, 'requires_escalation');
+  assert.match(out.continue_url, /^https:\/\/agenpas\.example\//);
 });

@@ -941,6 +941,10 @@ function consentSwapFor({ view, state, now, env, agenpasConsent, purchaseId }) {
   if (hosted !== undefined && hosted !== null) return null;
   const step = own(view, "buyer_step");
   if (!isPlainObject(step) || step.consent_required !== true || step.kind !== CONSENT_STEP_FOR_REAP_STATE[state]) return null;
+  // No dead-end link: a backend that says it cannot take the consent now (`available: false`, on the marker or on its
+  // consent block) gets today's answer, never a page that would only say "not available right now".
+  const block = own(view, "consent");
+  if (step.available === false || (isPlainObject(block) && block.available === false)) return null;
   const deadline = typeof step.expires_at === "string" ? Date.parse(step.expires_at) : NaN;
   if (!Number.isFinite(deadline) || deadline <= now) return null;
   if (contactReentryInstruction(view, env) !== null || CHECKOUT_REVIEW_CODES.has(own(view, "last_error_code"))) return null;
