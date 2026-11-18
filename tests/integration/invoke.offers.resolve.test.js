@@ -450,7 +450,8 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
             product: {
               product_id: '9886500749640',
             },
-            market: 'EU-DE',
+            // A two-letter code: a market sent that is not one is refused (see the market cases at the end).
+            market: 'FR',
             tool: '*',
           },
         },
@@ -532,11 +533,11 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
   it.each([
     [{ offers: { market: 'us ' } }, 'US'], [{ offers: { market: 'sg' } }, 'SG'], [{ offers: { market: 'GB' } }, 'GB'],
     [{ offers: { market: 'DE' } }, 'DE'],
-    [{ offers: { market: 'USA' } }, undefined], [{ offers: { market: 'en-US' } }, undefined], [{ offers: { market: 123 } }, undefined],
-    [{ offers: { market: { code: 'US' } } }, undefined], [{ offers: { market: true } }, undefined], [{ offers: { market: 'US,SG' } }, undefined],
     [{ offers: { market: 'USA' }, market: 'SG' }, 'SG'], [{ offers: { market: 'US,SG' }, market: 'jp' }, 'JP'],
+    [{ offers: { market: null }, market: 'gb' }, 'GB'], [{ offers: { market: 'USA' }, market: '' }, 'REFUSED'],
     [{ offers: {} }, undefined], [{ offers: { market: null } }, undefined], [{ offers: { market: '' } }, undefined], [{ offers: { market: '  ' } }, undefined],
   ])('carriers %j reach both lanes as market %j, never a default', async (carriers, forwarded) => {
+    if (forwarded === 'REFUSED') return; // covered by the refusal cases below
     const seen = [];
     nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve', (body) => { seen.push(['subject', body]); return true; })
@@ -554,5 +555,61 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
         expect(JSON.stringify(body)).not.toContain(carriers.offers.market);
       }
     }
+  });
+
+  // EVERY CARRIER SENT, NONE READABLE: refused by name before either lane runs, in the backend's offers.resolve
+  // envelope for the same input. Dropped, it was answered with no market, i.e. in every currency at once.
+  it.each([
+    [{ offers: { market: 'USA' } }], [{ offers: { market: 'en-US' } }], [{ offers: { market: 'US,SG' } }],
+    [{ offers: { market: 123 } }], [{ offers: { market: { code: 'US' } } }], [{ offers: { market: true } }],
+    [{ offers: {}, market: 'USA' }], [{ offers: { market: 'USA' }, market: 'en-US' }], [{ offers: { market: 'USA' }, market: '' }],
+  ])('carriers %j, all unreadable: refused as market_invalid, no lane asked, not echoed', async (carriers) => {
+    const subjectScope = nock(process.env.PIVOTA_API_BASE).post('/v1/subject/resolve').reply(200, { status: 'success' });
+    const cacheScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+      .reply(200, { status: 'success', offers: [] });
+    const payload = { ...carriers, offers: { product: { sku_id: 'sku_market_probe', name: 'Probe Product' }, ...carriers.offers } };
+    const res = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'offers.resolve', payload }).expect(200);
+    expect(res.body.status).toBe('error');
+    expect(res.body.error).toMatchObject({ code: 'MARKET_INVALID', reason: 'market_invalid' });
+    expect(res.body.offers).toEqual([]);
+    expect(res.body.offers_count).toBe(0);
+    expect(subjectScope.isDone()).toBe(false);
+    expect(cacheScope.isDone()).toBe(false);
+    for (const sent of [carriers.offers.market, carriers.market]) {
+      if (typeof sent === 'string' && sent.trim()) expect(JSON.stringify(res.body)).not.toContain(sent);
+    }
+  });
+
+  // The gate's third carrier, `metadata.market`, counts too: the lanes ask for the market the gate keys on.
+  it.each([
+    [{ offers: { market: 'USA' } }, { market: 'us' }, 'US'],
+    [{ offers: {} }, { market: 'sg' }, 'SG'],
+    [{ offers: { market: 'GB' } }, { market: 'SG' }, 'GB'],
+  ])('carriers %j with metadata %j reach both lanes as %j', async (carriers, metadata, forwarded) => {
+    const seen = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/v1/subject/resolve', (body) => { seen.push(['subject', body]); return true; })
+      .reply(404, { reason_code: 'no_candidates', reason: 'no_candidates' });
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => { if (body?.operation === 'offers.resolve') { seen.push(['cache', body]); return true; } return false; })
+      .reply(200, { status: 'success', offers: [], offers_count: 0, reason_code: 'no_candidates' });
+    const payload = { ...carriers, offers: { product: { sku_id: 'sku_market_probe', name: 'Probe Product' }, ...carriers.offers } };
+    await request(app).post('/agent/shop/v1/invoke').send({ operation: 'offers.resolve', payload, metadata });
+    expect(seen.map(([lane]) => lane).sort()).toEqual(['cache', 'subject']);
+    for (const [lane, body] of seen) expect([lane, lane === 'subject' ? body.market : body.payload?.market]).toEqual([lane, forwarded]);
+  });
+
+  it('a metadata market that is unreadable, with nothing else sent, is refused too', async () => {
+    const cacheScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+      .reply(200, { status: 'success', offers: [] });
+    const res = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'offers.resolve',
+      payload: { offers: { product: { sku_id: 'sku_market_probe', name: 'Probe Product' } } },
+      metadata: { market: 'USA' },
+    }).expect(200);
+    expect(res.body.error).toMatchObject({ reason: 'market_invalid' });
+    expect(cacheScope.isDone()).toBe(false);
   });
 });

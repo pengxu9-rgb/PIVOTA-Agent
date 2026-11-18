@@ -41065,9 +41065,9 @@ function normalizeOffersResolveInput(rawPayload) {
   // THE MARKET THE LANES ARE ASKED FOR: this door's own carriers (`offers.market`, then `payload.market`), read by
   // the rule this door's purchasability gate already applies to the same carriers (merchantPurchasabilityClient
   // selectBuyerMarket, docs/merchant-purchasability-gate.md §5): the first carrier that yields ONE ISO-2 market
-  // wins, upper-cased ('us' is US); an unreadable one ('USA', 'US,SG', 123) is SKIPPED, not decisive; none => no
-  // market, never a default. Forwarded raw, an unreadable market matched nothing upstream and the answer read as
-  // no_candidates; and the lanes now ask for the same market the gate keys on.
+  // wins, upper-cased ('us' is US); an unreadable one ('USA', 'US,SG', 123) is SKIPPED, not decisive.
+  // handleOffersResolveOperation replaces this with the gate's own market (the same rule over the same carriers plus
+  // `metadata.market`) and refuses a request whose sent carriers are all unreadable.
   const market = selectOffersResolveMarket(offersPayload.market, payload.market) || null;
   const tool = offersResolvePickFirstTrimmed(offersPayload.tool, payload.tool) || null;
 
@@ -42212,6 +42212,38 @@ async function handleOffersResolveOperation({
   const startedAt = Date.now();
   const sourceTrace = [];
   const normalizedInput = normalizeOffersResolveInput(payload);
+  // THE MARKET THE LANES ARE ASKED FOR IS THE ONE THIS DOOR'S PURCHASABILITY GATE KEYS ON: the same carriers
+  // (`offers.market`, `payload.market`, `metadata.market`) by the same rule (offersResolveGateBuyerMarket ->
+  // selectBuyerMarket, docs/merchant-purchasability-gate.md section 5): first readable ISO-2 code wins, upper-cased;
+  // an unreadable carrier is skipped. When a carrier WAS sent and none is readable, the request is refused by name
+  // below; nothing sent (absent, null, blank everywhere) stays no market, as before. Never a default.
+  const gateMarket = offersResolveGateBuyerMarket(payload, metadata) || null;
+  normalizedInput.market = gateMarket;
+  const offersCarrier = payload && typeof payload.offers === 'object' && payload.offers && !Array.isArray(payload.offers) ? payload.offers.market : undefined;
+  const metadataCarrier = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata.market : undefined;
+  const marketUnreadable = !gateMarket
+    && ![offersCarrier, payload && payload.market, metadataCarrier].every((carrier) => marketIsUnnamed(carrier));
+
+  // Every market carrier sent, and none readable: refused by name before either lane is asked, in the envelope the
+  // backend's offers.resolve gives the same input (pivota-backend be#2843 `_offers_resolve_market_refusal`), so a
+  // caller reads one answer for it whichever side refuses. The value is never echoed.
+  if (marketUnreadable) {
+    return {
+      statusCode: 200,
+      response: {
+        status: 'error',
+        offers: [],
+        offers_count: 0,
+        error: {
+          code: 'MARKET_INVALID',
+          reason: 'market_invalid',
+          message:
+            '`market` is not an ISO 3166-1 alpha-2 country code; nothing was looked up. ' +
+            'Send the buyer\'s country as two letters; a market is never guessed.',
+        },
+      },
+    };
+  }
 
   if (!normalizedInput.has_any_identifier) {
     return {
