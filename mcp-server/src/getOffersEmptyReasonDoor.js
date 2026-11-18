@@ -29,7 +29,7 @@ export const GET_OFFERS_EMPTY_REASON_SENTENCES =
   ` \`${R.NO_SEED}\`: we found no servable seller offer on file for this product in this market. \`${R.NOT_IN_MARKET}\`: an offer exists but not for this buyer market or its currency. \`${R.OUT_OF_STOCK}\`: the store's own answer no longer lists the item. \`${R.NOT_SERVABLE}\`: an offer exists but is withheld (for example its page is gone, or the seller cannot sell it now). \`${R.NO_OFFER}\`: no offer, cause not classified. None of these is worth retrying.` +
   ` \`${R.LOOKUP_UNAVAILABLE}\`: our own lookup failed; retry.` +
   // The reasons get_offers gave before this flag (makeGetOffers' own); they keep their tokens.
-  " `variant_not_offered`: offers exist, none for the variant you named. `no_offer_in_market_currency`: offers exist, none priced in the buyer market's currency. `market_not_priced`: we price nothing in the declared market. `offers_source_unavailable`: this door has no offer source. None of these is worth retrying." +
+  " `variant_not_offered`: offers exist, none for the variant you named. `no_offer_in_market_currency`: offers exist, none priced in the buyer market's currency. `market_not_priced`: we price nothing in the declared market. `offers_source_unavailable`: this door has no offer source. `product_group_id_not_product_id`: the id you passed as `product_group_id` is not a product's signature id; call again with the `product_id` from search. None of these is worth retrying." +
   " A product can have a price on get_product and no offer here: show it as last seen and say no buy link is available now.";
 
 // Every token an empty get_offers answer can carry on this door: this flag's vocabulary and the older reasons.
@@ -39,6 +39,7 @@ export const GET_OFFERS_REASON_TOKENS = Object.freeze([
   "no_offer_in_market_currency",
   "market_not_priced",
   "offers_source_unavailable",
+  "product_group_id_not_product_id",
 ]);
 
 function describe(tool) {
