@@ -48,3 +48,30 @@ test('a defaulted region sends no market on offers.resolve', async () => {
   assert.ok(calls.length >= 1);
   for (const c of calls) assert.equal('market' in c.body.payload, false, JSON.stringify(c.body.payload));
 });
+
+// AN EXPLICIT MARKET THIS GATEWAY CANNOT PRICE IS NOT SENT. The backend refuses a market it does not list
+// (`market_not_priced`), which would turn the reco's resolve into a refusal and send the buyer to the
+// products/resolve fallback. The same rule get_offers applies (buyerRegion.pricedBuyerRegion): a priced market is
+// sent unchanged; DE, ZZ and other unpriced codes go without one, as no market already does.
+test('an explicit market this gateway does not price (DE, ZZ) is not sent on offers.resolve; US, SG, GB are sent unchanged', async () => {
+  for (const region of ['DE', 'ZZ']) {
+    const calls = await resolveWith({ locale: 'en', buyer_region: region, buyer_region_source: 'explicit' });
+    assert.ok(calls.length >= 1, region);
+    for (const c of calls) assert.equal('market' in c.body.payload, false, `${region}: ${JSON.stringify(c.body.payload)}`);
+  }
+  for (const region of ['US', 'SG', 'GB']) {
+    const calls = await resolveWith({ locale: 'en', buyer_region: region, buyer_region_source: 'explicit' });
+    assert.ok(calls.length >= 1, region);
+    for (const c of calls) assert.equal(c.body.payload.market, region, region);
+  }
+});
+
+test('pricedBuyerRegion: the normalised code when priced, else null; never a default', () => {
+  const { pricedBuyerRegion } = require('../src/auroraBff/buyerRegion');
+  assert.equal(pricedBuyerRegion('US'), 'US');
+  assert.equal(pricedBuyerRegion(' sg '), 'SG');
+  assert.equal(pricedBuyerRegion('gb'), 'GB');
+  for (const raw of ['DE', 'ZZ', 'USA', 'en-US', '', '  ', null, undefined, 123, ['US']]) {
+    assert.equal(pricedBuyerRegion(raw), null, JSON.stringify(raw));
+  }
+});

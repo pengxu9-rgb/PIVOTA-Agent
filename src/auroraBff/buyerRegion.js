@@ -111,6 +111,17 @@ function currencyForBuyerRegion(region) {
 }
 
 /**
+ * The market an offers.resolve call may NAME: the normalised ISO-2 code when this gateway prices it, else null
+ * (unreadable, or a well-formed code with no currency here, e.g. DE, ZZ). The rule get_offers already applies
+ * (intelligenceReads getOffersBuyerMarket). Null sends no market: the backend refuses a market it does not list
+ * (`market_not_priced`), which would cost a caller the lane entirely, while a call with no market is answered.
+ */
+function pricedBuyerRegion(raw) {
+  const region = normalizeBuyerRegion(raw);
+  return region && currencyForBuyerRegion(region) ? region : null;
+}
+
+/**
  * The region carried by a request context, defaulted.
  *
  * `ctx` is the object every reco call site already threads (it is how `lang` reaches recall), so the
@@ -168,6 +179,7 @@ module.exports = {
   resolveBuyerRegion,
   isRejectedBuyerRegionInput,
   currencyForBuyerRegion,
+  pricedBuyerRegion,
   buyerRegionFromContext,
   explicitBuyerMarket,
   resolveBuyerRegionForBody,

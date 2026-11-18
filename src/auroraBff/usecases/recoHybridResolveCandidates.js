@@ -65,7 +65,7 @@ const SKINCARE_ALLOW_CJK_RE = /\b(洁面|洗面奶|化妆水|爽肤水|精华|�
 // allow-excuse, and hard-rejected "CeraVe Daily Moisturizing Lotion, Fragrance-Free" -- 11 of 193
 // live catalog rows, eight of them for advertising that they contain no fragrance.
 const { resolveRecoStepDomain, maskNonCategoryQualifiers } = require('../recoTargetStep');
-const { explicitBuyerMarket } = require('../buyerRegion');
+const { explicitBuyerMarket, pricedBuyerRegion } = require('../buyerRegion');
 
 const NON_BEAUTY_FATAL_ASCII_RE = /\b(brush|applicator|blender|tool|supplement|vitamin gummies|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume)\b/i;
 const WRONG_CATEGORY_FATAL_ASCII_RE = /\b(eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume)\b/i;
@@ -1070,9 +1070,12 @@ function buildSearchQueries(seed, { targetStep, targetIngredient, concerns = [] 
   ], 8);
 }
 
-// `market`: the buyer's market ONLY when the request said it (buyerRegion.explicitBuyerMarket);
-// null sends none and the offers.resolve call is silent, so the backend's cart gate makes no claim.
+// `market`: the buyer's market ONLY when the request said it (buyerRegion.explicitBuyerMarket) AND this gateway
+// prices it (buyerRegion.pricedBuyerRegion, get_offers' own rule); otherwise none is sent and the offers.resolve
+// call is silent, so the backend's cart gate makes no claim and a market it does not list (DE, ZZ) cannot turn the
+// resolve into a `market_not_priced` refusal that would send the buyer to the products/resolve fallback.
 async function defaultResolveProduct({ query, lang, hints, market = null }) {
+  const offersMarket = pricedBuyerRegion(market);
   if (!PIVOTA_BACKEND_BASE_URL) {
     return { ok: false, reason: 'pivota_backend_not_configured', transient: false, product: null };
   }
@@ -1108,7 +1111,7 @@ async function defaultResolveProduct({ query, lang, hints, market = null }) {
               ...(query ? { query } : {}),
             },
             ...(query ? { query } : {}),
-            ...(market ? { market } : {}),
+            ...(offersMarket ? { market: offersMarket } : {}),
           },
           metadata: { invoked_by: 'reco_hybrid.resolve_product' },
         },

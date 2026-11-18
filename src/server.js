@@ -44,6 +44,7 @@ const {
   projectInvokeResponse,
 } = require('./invokeEgress');
 const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('./services/requestMarket');
+const { selectBuyerMarket: selectOffersResolveMarket } = require('./services/merchantPurchasabilityClient');
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
@@ -41026,7 +41027,13 @@ function normalizeOffersResolveInput(rawPayload) {
 
   const limitRaw = offersPayload.limit ?? payload.limit;
   const limit = Math.min(Math.max(1, Number(limitRaw || 10) || 10), 50);
-  const market = offersResolvePickFirstTrimmed(offersPayload.market, payload.market) || null;
+  // THE MARKET THE LANES ARE ASKED FOR: this door's own carriers (`offers.market`, then `payload.market`), read by
+  // the rule this door's purchasability gate already applies to the same carriers (merchantPurchasabilityClient
+  // selectBuyerMarket, docs/merchant-purchasability-gate.md §5): the first carrier that yields ONE ISO-2 market
+  // wins, upper-cased ('us' is US); an unreadable one ('USA', 'US,SG', 123) is SKIPPED, not decisive; none => no
+  // market, never a default. Forwarded raw, an unreadable market matched nothing upstream and the answer read as
+  // no_candidates; and the lanes now ask for the same market the gate keys on.
+  const market = selectOffersResolveMarket(offersPayload.market, payload.market) || null;
   const tool = offersResolvePickFirstTrimmed(offersPayload.tool, payload.tool) || null;
 
   return {

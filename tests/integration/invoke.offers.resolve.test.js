@@ -525,4 +525,34 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(JSON.stringify(res.body)).not.toContain('google.com');
     expect(res.body.metadata?.resolve_fail_reason).toBe('no_offer_available');
   });
+
+  // THE MARKET THE LANES ARE ASKED FOR: this door's carriers (`offers.market`, then `payload.market`) by the rule its
+  // purchasability gate applies to them (selectBuyerMarket, §5): the first carrier that yields one ISO-2 market wins,
+  // upper-cased; an unreadable one is skipped; none sends no market. Forwarded raw, 'USA' matched nothing upstream.
+  it.each([
+    [{ offers: { market: 'us ' } }, 'US'], [{ offers: { market: 'sg' } }, 'SG'], [{ offers: { market: 'GB' } }, 'GB'],
+    [{ offers: { market: 'DE' } }, 'DE'],
+    [{ offers: { market: 'USA' } }, undefined], [{ offers: { market: 'en-US' } }, undefined], [{ offers: { market: 123 } }, undefined],
+    [{ offers: { market: { code: 'US' } } }, undefined], [{ offers: { market: true } }, undefined], [{ offers: { market: 'US,SG' } }, undefined],
+    [{ offers: { market: 'USA' }, market: 'SG' }, 'SG'], [{ offers: { market: 'US,SG' }, market: 'jp' }, 'JP'],
+    [{ offers: {} }, undefined], [{ offers: { market: null } }, undefined], [{ offers: { market: '' } }, undefined], [{ offers: { market: '  ' } }, undefined],
+  ])('carriers %j reach both lanes as market %j, never a default', async (carriers, forwarded) => {
+    const seen = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/v1/subject/resolve', (body) => { seen.push(['subject', body]); return true; })
+      .reply(404, { reason_code: 'no_candidates', reason: 'no_candidates' });
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => { if (body?.operation === 'offers.resolve') { seen.push(['cache', body]); return true; } return false; })
+      .reply(200, { status: 'success', offers: [], offers_count: 0, reason_code: 'no_candidates' });
+    const payload = { ...carriers, offers: { product: { sku_id: 'sku_market_probe', name: 'Probe Product' }, ...carriers.offers } };
+    await request(app).post('/agent/shop/v1/invoke').send({ operation: 'offers.resolve', payload });
+    expect(seen.map(([lane]) => lane).sort()).toEqual(['cache', 'subject']);
+    for (const [lane, body] of seen) {
+      const market = lane === 'subject' ? body.market : body.payload?.market;
+      expect([lane, market]).toEqual([lane, forwarded]);
+      if (typeof carriers.offers.market === 'string' && forwarded === undefined && carriers.offers.market.trim()) {
+        expect(JSON.stringify(body)).not.toContain(carriers.offers.market);
+      }
+    }
+  });
 });
