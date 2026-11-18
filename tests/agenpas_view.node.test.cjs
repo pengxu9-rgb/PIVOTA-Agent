@@ -397,7 +397,8 @@ const HELD = [
   'checkout_confirm_conflict', 'checkout_confirm_ambiguous_4xx', 'checkout_setup_submitted', 'checkout_setup_unresolved',
   'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_result_unrecognised', 'checkout_result_overdue',
   'checkout_total_unverified', 'checkout_total_over_approved', 'checkout_payment_no_order', 'checkout_order_id_card_shaped',
-  'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_cancel_unresolved', 'money_result_seen',
+  'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_cancel_unresolved',
+  'checkout_confirm_pending_check', 'checkout_confirm_not_sent', 'checkout_paying_without_task', 'money_result_seen',
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
   'vic_approved_amount_missing', 'vic_submit_unresolved',
 ];
@@ -420,7 +421,7 @@ for (const code of HELD) {
 const FAILED = [
   'checkout_contact_incomplete', 'checkout_relay_refused', 'checkout_lock_invalid', 'checkout_price_missing',
   'checkout_token_unavailable', 'checkout_card_unavailable', 'checkout_setup_incomplete', 'checkout_setup_unrecognised',
-  'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused', 'checkout_confirm_window_passed',
+  'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused',
   'checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported',
   'token_request_unresolved', 'pay_step_unavailable',
 ];
@@ -592,3 +593,82 @@ for (const [name, rr, le, terminalKind, placingKind] of MIXED) {
     assert.equal(placing.outcome ? placing.outcome.kind : null, placingKind);
   });
 }
+
+// ---- backend a2d16c353: the new and changed codes, one test each -----------------------------------------------
+
+const HELD_COPY_RE = /We're checking with the store — don't try again/;
+
+test('HELD checkout_confirm_pending_check (interrupted between paying and the confirm\'s answer): the checking screen', () => {
+  const placing = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: 'checkout_confirm_pending_check' }));
+  assert.equal(placing.screen, 'outcome_unknown');
+  assert.equal(placing.terminal, false);
+  assert.equal(placing.action, null);
+  assert.match(placing.outcome.message, HELD_COPY_RE);
+});
+
+test('HELD checkout_confirm_not_sent (token exchange failed twice): still held, the normal checking copy', () => {
+  const placing = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: 'checkout_confirm_not_sent' }));
+  assert.equal(placing.screen, 'outcome_unknown');
+  assert.equal(placing.outcome.kind, 'held');
+  assert.match(placing.outcome.message, HELD_COPY_RE);
+  assert.equal(/no order was sent/.test(placing.outcome.message), false);
+  const failed = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_confirm_not_sent' }));
+  assert.equal(failed.screen, 'outcome_unknown');
+  assert.equal(failed.outcome.retry_hint, false);
+});
+
+test('checkout_confirm_not_verified (being removed by the backend): not on the FAILED list; neutral generic wording', () => {
+  const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_confirm_not_verified' }));
+  assert.equal(view.screen, 'failed');
+  assert.equal(view.outcome.kind, 'failed');
+  assert.equal(/no order was sent|wasn't placed|try again/i.test(view.outcome.message), false);
+});
+
+test('HELD checkout_paying_without_task: the checking screen while placing, outcome_unknown once final', () => {
+  const placing = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: 'checkout_paying_without_task' }));
+  assert.equal(placing.screen, 'outcome_unknown');
+  assert.equal(placing.terminal, false);
+  assert.equal(placing.action, null);
+  assert.match(placing.outcome.message, HELD_COPY_RE);
+  const failed = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_paying_without_task' }));
+  assert.equal(failed.screen, 'outcome_unknown');
+  assert.equal(failed.outcome.retry_hint, false);
+});
+
+test('removed checkout_confirm_window_passed: no longer a FAILED code; neutral generic wording', () => {
+  const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_confirm_window_passed' }));
+  assert.equal(view.outcome.kind, 'failed');
+  assert.equal(/no order was sent|wasn't placed|try again/i.test(view.outcome.message), false);
+});
+
+test('HELD checkout_confirm_ambiguous_4xx now also for 401 and 429: held, whatever the suffix', () => {
+  for (const spelled of ['checkout_confirm_ambiguous_4xx', 'checkout_confirm_ambiguous_4xx:http_error:401',
+    'checkout_confirm_ambiguous_4xx:http_error:429', 'checkout_confirm_ambiguous_4xx:http_error:409']) {
+    const view = project(unified('placing', {}, { last_error_code: spelled }));
+    assert.equal(view.screen, 'outcome_unknown', spelled);
+  }
+});
+
+test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now writes it): the checking screen', () => {
+  for (const spelled of ['checkout_setup_unresolved', 'checkout_setup_unresolved:http_error:403', 'checkout_setup_unresolved:error_card']) {
+    const view = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: spelled }));
+    assert.equal(view.screen, 'outcome_unknown', spelled);
+    assert.equal(view.terminal, false);
+    assert.match(view.outcome.message, HELD_COPY_RE);
+  }
+  // checkout_setup_refused:<kind>:<status> still exists and is still FAILED.
+  assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
+});
+
+test('the gateway HELD set covers all 21 backend _CHECKOUT_HOLD_CODES and all 7 _VIC_HOLD_CODES at a2d16c353', () => {
+  const BACKEND_CHECKOUT_HOLD = ['checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
+    'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
+    'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_payment_no_order',
+    'checkout_result_overdue', 'checkout_result_unrecognised', 'checkout_setup_submitted', 'checkout_setup_unresolved',
+    'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_total_over_approved', 'checkout_total_unverified',
+    'checkout_unknown_script_error', 'checkout_unknown_timeout'];
+  const BACKEND_VIC_HOLD = ['vic_approved_amount_missing', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_order_stale',
+    'vic_submit_unresolved', 'vic_total_missing', 'vic_total_over_approved'];
+  assert.equal(BACKEND_CHECKOUT_HOLD.length, 21);
+  for (const code of [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD]) assert.equal(isOutcomeUnknownCode(code), true, code);
+});

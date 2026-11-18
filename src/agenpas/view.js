@@ -44,7 +44,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 2fe07431c (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES`,
+// Mirrors pivota-backend a2d16c353 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (21),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -69,7 +69,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 const FAILED_CODES = new Set([
   'checkout_contact_incomplete', 'checkout_relay_refused', 'checkout_lock_invalid', 'checkout_price_missing',
   'checkout_token_unavailable', 'checkout_card_unavailable', 'checkout_setup_incomplete', 'checkout_setup_unrecognised',
-  'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused', 'checkout_confirm_window_passed',
+  'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused',
   'checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported',
   'token_request_unresolved', 'pay_step_unavailable',
   // Pre-store terminal failures whose names have the shape of a hold (the backend ends each before anything reaches
@@ -86,7 +86,8 @@ const HELD_CODES = new Set([
   'checkout_setup_submitted', 'checkout_setup_unresolved', 'checkout_task_invalid', 'checkout_task_mismatch',
   'checkout_result_unrecognised', 'checkout_result_overdue', 'checkout_total_unverified', 'checkout_total_over_approved',
   'checkout_payment_no_order', 'checkout_order_id_card_shaped', 'checkout_unknown_timeout',
-  'checkout_unknown_script_error', 'checkout_cancel_unresolved',
+  'checkout_unknown_script_error', 'checkout_cancel_unresolved', 'checkout_confirm_pending_check',
+  'checkout_confirm_not_sent', 'checkout_paying_without_task',
   'money_result_seen',
   // _VIC_HOLD_CODES
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',

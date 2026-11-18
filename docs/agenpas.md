@@ -82,7 +82,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording: no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
-Codes are read segment by segment (mirroring pivota-backend 2fe07431c): the backend writes compound codes
+Codes are read segment by segment (mirroring pivota-backend a2d16c353, plus the pending `checkout_paying_without_task` hold): the backend writes compound codes
 (`paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`, `checkout_card_unavailable:<why>`,
 `checkout_setup_refused:<kind>:<status>`, `checkout_confirm_refused:http_error:422`), so each is lower-cased and split
 on `:`, and every segment is checked; a suffixed code matches on its head segment. The step prefixes (`paid_sent`,
