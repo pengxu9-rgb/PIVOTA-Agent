@@ -44,7 +44,7 @@ const {
   projectInvokeResponse,
 } = require('./invokeEgress');
 const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('./services/requestMarket');
-const { selectBuyerMarket: selectOffersResolveMarket } = require('./services/merchantPurchasabilityClient');
+const { currencyForBuyerRegion: offersResolveMarketCurrency } = require('./auroraBff/buyerRegion');
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
@@ -40980,7 +40980,64 @@ function extractOffersResolvePdpTargetFromResponse(responseBody, { fallbackQuery
   return null;
 }
 
-function normalizeOffersResolveInput(rawPayload) {
+/**
+ * THE MARKET AN offers.resolve CALL TO THIS DOOR IS ANSWERED FOR, and whether it is refused. ONE reader.
+ *
+ * The market is the one this door's purchasability gate keys on: the same carriers (`offers.market`,
+ * `payload.market`, `metadata.market`) by the same rule (offersResolveGateBuyerMarket -> selectBuyerMarket,
+ * docs/merchant-purchasability-gate.md section 5): the first readable ISO-2 code wins, upper-cased; an unreadable
+ * carrier is skipped ('USA' beside 'SG' is SG). Then:
+ *   - a market this gateway does not price (DE, ZZ: no currency) is refused, `market_not_priced`, as get_offers
+ *     refuses it and as the backend does after be#2843; forwarded, it was answered in every currency (before
+ *     be#2843) or re-labelled `no_offer_available` (after);
+ *   - a carrier SENT with none readable is refused, `market_invalid`;
+ *   - nothing sent anywhere (absent, null, blank) is no market, as before (the D-10 follow-up's).
+ * Never a default. `{ market, refusal }`, refusal null | 'market_invalid' | 'market_not_priced'.
+ */
+function readOffersResolveMarket(payload, metadata) {
+  const gateMarket = offersResolveGateBuyerMarket(payload, metadata) || null;
+  if (gateMarket) {
+    return { market: gateMarket, refusal: offersResolveMarketCurrency(gateMarket) ? null : 'market_not_priced' };
+  }
+  const offers = offersResolveIsRecord(payload) && offersResolveIsRecord(payload.offers) ? payload.offers : null;
+  const carriers = [
+    offers ? offers.market : undefined,
+    offersResolveIsRecord(payload) ? payload.market : undefined,
+    offersResolveIsRecord(metadata) ? metadata.market : undefined,
+  ];
+  return { market: null, refusal: carriers.every((carrier) => marketIsUnnamed(carrier)) ? null : 'market_invalid' };
+}
+
+/** This door's refusal for a market it cannot answer for: be#2843's offers.resolve envelope, field for field. */
+function offersResolveMarketRefusalResponse(refusal, market) {
+  if (refusal === 'market_not_priced') {
+    return {
+      status: 'error',
+      offers: [],
+      offers_count: 0,
+      market,
+      error: {
+        code: 'MARKET_NOT_PRICED',
+        reason: 'market_not_priced',
+        message: `No offer is priced for a buyer in ${market}; nothing was looked up, and a request for ${market} is never answered as another market.`,
+      },
+    };
+  }
+  return {
+    status: 'error',
+    offers: [],
+    offers_count: 0,
+    error: {
+      code: 'MARKET_INVALID',
+      reason: 'market_invalid',
+      message:
+        '`market` is not an ISO 3166-1 alpha-2 country code; nothing was looked up. ' +
+        'Send the buyer\'s country as two letters; a market is never guessed.',
+    },
+  };
+}
+
+function normalizeOffersResolveInput(rawPayload, metadata) {
   const payload = offersResolveIsRecord(rawPayload) ? rawPayload : {};
   const offersPayload =
     offersResolveIsRecord(payload.offers) && Object.keys(payload.offers).length > 0
@@ -41062,13 +41119,8 @@ function normalizeOffersResolveInput(rawPayload) {
 
   const limitRaw = offersPayload.limit ?? payload.limit;
   const limit = Math.min(Math.max(1, Number(limitRaw || 10) || 10), 50);
-  // THE MARKET THE LANES ARE ASKED FOR: this door's own carriers (`offers.market`, then `payload.market`), read by
-  // the rule this door's purchasability gate already applies to the same carriers (merchantPurchasabilityClient
-  // selectBuyerMarket, docs/merchant-purchasability-gate.md §5): the first carrier that yields ONE ISO-2 market
-  // wins, upper-cased ('us' is US); an unreadable one ('USA', 'US,SG', 123) is SKIPPED, not decisive.
-  // handleOffersResolveOperation replaces this with the gate's own market (the same rule over the same carriers plus
-  // `metadata.market`) and refuses a request whose sent carriers are all unreadable.
-  const market = selectOffersResolveMarket(offersPayload.market, payload.market) || null;
+  // The market both lanes are asked for, and its refusal: readOffersResolveMarket, the one reader.
+  const { market, refusal: marketRefusal } = readOffersResolveMarket(rawPayload, metadata);
   const tool = offersResolvePickFirstTrimmed(offersPayload.tool, payload.tool) || null;
 
   return {
@@ -41083,6 +41135,7 @@ function normalizeOffersResolveInput(rawPayload) {
       (rawProductId && offersResolveIsUuidLike(rawProductId)) ||
       (rawSkuId && offersResolveIsUuidLike(rawSkuId)),
     market,
+    market_refusal: marketRefusal,
     tool,
     limit,
     query_text: queryText || '',
@@ -42211,37 +42264,21 @@ async function handleOffersResolveOperation({
 }) {
   const startedAt = Date.now();
   const sourceTrace = [];
-  const normalizedInput = normalizeOffersResolveInput(payload);
-  // THE MARKET THE LANES ARE ASKED FOR IS THE ONE THIS DOOR'S PURCHASABILITY GATE KEYS ON: the same carriers
-  // (`offers.market`, `payload.market`, `metadata.market`) by the same rule (offersResolveGateBuyerMarket ->
-  // selectBuyerMarket, docs/merchant-purchasability-gate.md section 5): first readable ISO-2 code wins, upper-cased;
-  // an unreadable carrier is skipped. When a carrier WAS sent and none is readable, the request is refused by name
-  // below; nothing sent (absent, null, blank everywhere) stays no market, as before. Never a default.
-  const gateMarket = offersResolveGateBuyerMarket(payload, metadata) || null;
-  normalizedInput.market = gateMarket;
-  const offersCarrier = payload && typeof payload.offers === 'object' && payload.offers && !Array.isArray(payload.offers) ? payload.offers.market : undefined;
-  const metadataCarrier = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata.market : undefined;
-  const marketUnreadable = !gateMarket
-    && ![offersCarrier, payload && payload.market, metadataCarrier].every((carrier) => marketIsUnnamed(carrier));
+  const normalizedInput = normalizeOffersResolveInput(payload, metadata);
 
-  // Every market carrier sent, and none readable: refused by name before either lane is asked, in the envelope the
-  // backend's offers.resolve gives the same input (pivota-backend be#2843 `_offers_resolve_market_refusal`), so a
-  // caller reads one answer for it whichever side refuses. The value is never echoed.
-  if (marketUnreadable) {
+  // A market this door cannot answer for is refused by name FIRST, before the identifier check and before any lane
+  // or identity short-circuit (group id, canonical ref, stable alias), in the envelope the backend's offers.resolve
+  // gives the same input (be#2843), so a caller reads one answer whichever side refuses. An unreadable value is never
+  // echoed; an unpriced one is (it is a valid ISO-2 code). Logged by reason only, never the value.
+  if (normalizedInput.market_refusal) {
+    try {
+      logger.warn({ event: 'offers_resolve_market_refused', reason: normalizedInput.market_refusal }, 'offers.resolve: market refused');
+    } catch {
+      /* a log line never costs the answer */
+    }
     return {
       statusCode: 200,
-      response: {
-        status: 'error',
-        offers: [],
-        offers_count: 0,
-        error: {
-          code: 'MARKET_INVALID',
-          reason: 'market_invalid',
-          message:
-            '`market` is not an ISO 3166-1 alpha-2 country code; nothing was looked up. ' +
-            'Send the buyer\'s country as two letters; a market is never guessed.',
-        },
-      },
+      response: offersResolveMarketRefusalResponse(normalizedInput.market_refusal, normalizedInput.market),
     };
   }
 
