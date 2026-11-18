@@ -15,6 +15,8 @@ const { numericVariantId } = require('../services/ucpLiveOfferRead');
 // Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
 const listPriceTiers = require('../services/listPriceTiers');
 const { decideEmptyReason, emptyReasonFromOffersResolve } = require('./getOffersEmptyReason');
+// "Names no market" is one rule for every door (decision D-10): absent, null or a blank string.
+const { marketIsUnnamed } = require('../services/requestMarket');
 // The partner door's own signature shape (trimmed, case-insensitive), so both doors read one id the same way.
 const { isCatalogSignatureShape } = require('../services/partnerDoorOneProductId');
 
@@ -380,11 +382,16 @@ function makeGetAlternatives(deps = {}) {
 /**
  * THE MARKET A get_offers CALLER DECLARED, whether or not anything is priced for it: the ISO-2 code,
  * or null when the caller declared none or sent something that is not a market at all ('USA', 'en-US',
- * a list). Invalid input is absent input (buyerRegion.js); a well-formed code is a declaration.
+ * a list). A well-formed code is a declaration; makeGetOffers refuses a sent value that is not one
+ * (`market_invalid`), so this null never reaches a fetch for it.
  */
 function getOffersDeclaredMarket(p) {
-  const raw = p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
-  return normalizeBuyerRegion(raw) || null;
+  return normalizeBuyerRegion(getOffersRawMarket(p)) || null;
+}
+
+/** The market field a get_offers caller sent, as sent: `market`, else `buyer_market`. */
+function getOffersRawMarket(p) {
+  return p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
 }
 
 /**
@@ -669,6 +676,26 @@ function makeGetOffers(deps = {}) {
     const limit = Number.isInteger(p.limit) ? p.limit : 10;
     const declared = getOffersDeclaredMarket(p);
     const marketCurrency = declared ? currencyForBuyerRegion(declared) : '';
+    // A market SENT that is not a country code ('USA', 'en-US', 123, a list) is refused by name, before any
+    // backend call. Read as absent, it fetched with no market at all: no currency rule ran, and one answer mixed
+    // offers priced in several currencies. Never guessed, never echoed. A market not sent at all keeps its own
+    // rule (the door assumes US and says so, D-10); a well-formed code nothing is priced in is answered below.
+    if (!declared && !marketIsUnnamed(getOffersRawMarket(p))) {
+      return {
+        subject,
+        best_offer: null,
+        signals: [],
+        metadata: {
+          offer_count: 0,
+          product_group_id: groupEcho || null,
+          market: null,
+          market_currency: null,
+          reason: 'market_invalid',
+          // GET_OFFERS_EMPTY_REASON, the reason door only: the same call answers the same.
+          ...(emptyReasonDoor() ? { reason_retriable: false } : {}),
+        },
+      };
+    }
     // A declared market nothing is priced in has no offer it may be shown (the door serves it nothing,
     // as search does: buyerMarket.resolveServingCurrency). Answered here, without a backend call.
     if (declared && !marketCurrency) {
