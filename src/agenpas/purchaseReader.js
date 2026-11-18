@@ -135,7 +135,122 @@ function createBackendPurchaseReader(deps = {}) {
   return Object.freeze({ read });
 }
 
+/*
+ * THE CONSENT WRITE (docs/agenpas.md, "Terms and privacy consent"). The buyer accepted Pivota's Terms of Service and
+ * Privacy Policy on the AgenPas page; the gateway records it server-to-server, for the agent the verified link names,
+ * with its OWN key (the read key stays read-only):
+ *
+ *   POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/consents
+ *     X-Internal-Key:      AGENPAS_INTERNAL_CONSENT_KEY
+ *     X-Agenpas-Agent-Id:  the agent id the link was minted for
+ *     {step, offer_id, issued_at, terms_version, privacy_version}
+ *   201 / 200 -> recorded (a repeat is idempotent)
+ *   409 consent_stale -> the offer or a version moved on (the page reads again)
+ *   400 / 404 -> refused (nothing recorded)
+ *   503 / anything else -> unavailable
+ *
+ * Outcomes: { kind: 'recorded' } | { kind: 'stale' } | { kind: 'refused', code } | { kind: 'unavailable', code }.
+ * Never throws. Logs carry an outcome, a code and an HTTP status only.
+ */
+const CONSENT_SUBPATH = '/consents';
+
+function createBackendConsentWriter(deps = {}) {
+  const baseUrl = String(deps.baseUrl || '').trim().replace(/\/+$/, '');
+  const fetchImpl = typeof deps.fetchImpl === 'function' ? deps.fetchImpl : globalThis.fetch;
+  const internalKey = typeof deps.internalKey === 'function' ? deps.internalKey : () => '';
+  const timeoutMs = Number.isFinite(deps.timeoutMs) && deps.timeoutMs > 0 ? Math.min(deps.timeoutMs, TIMEOUT_MS) : TIMEOUT_MS;
+  const logger = deps.logger && typeof deps.logger.warn === 'function' ? deps.logger : null;
+
+  function log(level, fields) {
+    if (!logger) return;
+    const fn = typeof logger[level] === 'function' ? logger[level] : logger.warn;
+    try {
+      fn.call(logger, { event: 'agenpas_consent_write', ...fields }, 'agenpas consent write');
+    } catch {
+      // A logger fault never changes the answer.
+    }
+  }
+
+  async function record(claims, consent) {
+    const purchaseId = claims && claims.purchaseId;
+    if (typeof purchaseId !== 'string' || !PURCHASE_ID_RE.test(purchaseId) || !isPlainObject(consent)) {
+      return { kind: 'refused', code: 'bad_request' };
+    }
+    let key = '';
+    try {
+      key = String(internalKey() || '').trim();
+    } catch {
+      key = '';
+    }
+    if (!baseUrl || !key || typeof fetchImpl !== 'function') {
+      log('warn', { outcome: 'unavailable', code: 'unconfigured' });
+      return { kind: 'unavailable', code: 'unconfigured' };
+    }
+    // Exactly the contract's five members, in a fixed order: nothing else from the browser can ride along.
+    const payload = JSON.stringify({
+      step: consent.step,
+      offer_id: consent.offer_id,
+      issued_at: consent.issued_at,
+      terms_version: consent.terms_version,
+      privacy_version: consent.privacy_version,
+    });
+    const controller = new AbortController();
+    // NOT unref()'d (see read above).
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let status;
+    let body;
+    try {
+      const res = await fetchImpl(`${baseUrl}${INTERNAL_PURCHASES_PATH}/${purchaseId}${CONSENT_SUBPATH}`, {
+        method: 'POST',
+        headers: {
+          'X-Internal-Key': key,
+          'X-Agenpas-Agent-Id': claims.agentId,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: payload,
+        signal: controller.signal,
+        redirect: 'error',
+      });
+      status = Number(res && res.status);
+      let text = '';
+      try {
+        text = typeof res.text === 'function' ? await res.text() : '';
+      } catch {
+        text = '';
+      }
+      body = text.length > MAX_BODY_CHARS ? undefined : parseJson(text);
+    } catch (err) {
+      const code = controller.signal.aborted || (err && err.name === 'AbortError') ? 'timeout' : 'transport';
+      log('warn', { outcome: 'unavailable', code });
+      return { kind: 'unavailable', code };
+    } finally {
+      clearTimeout(timer);
+    }
+    const reason = reasonOf(body);
+    const code = reason && /^[a-z_]{1,48}$/.test(reason) ? reason : `http_${Number.isFinite(status) ? status : 'unknown'}`;
+    if (status === 200 || status === 201) {
+      log('info', { outcome: 'recorded', http_status: status });
+      return { kind: 'recorded' };
+    }
+    if (status === 409) {
+      log('info', { outcome: 'stale', code, http_status: status });
+      return { kind: 'stale', code };
+    }
+    if (status === 400 || status === 404) {
+      log('info', { outcome: 'refused', code, http_status: status });
+      return { kind: 'refused', code };
+    }
+    log('warn', { outcome: 'unavailable', code, http_status: status });
+    return { kind: 'unavailable', code };
+  }
+
+  return Object.freeze({ record });
+}
+
 module.exports = {
+  CONSENT_SUBPATH,
   INTERNAL_PURCHASES_PATH,
+  createBackendConsentWriter,
   createBackendPurchaseReader,
 };

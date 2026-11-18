@@ -32213,6 +32213,20 @@ function buildAgenpasPurchaseReader(log, deps = {}) {
   });
 }
 
+// AgenPas consent (docs/agenpas.md, "Terms and privacy consent"): the buyer's acceptance of the terms, recorded
+// server-to-server with its OWN key (AGENPAS_INTERNAL_CONSENT_KEY, read per call; the read key stays read-only). Only
+// reached while AGENPAS_CONSENT_ENABLED is on.
+function buildAgenpasConsentWriter(log, deps = {}) {
+  const { createBackendConsentWriter } = require('./agenpas/purchaseReader');
+  const agenpasConfig = require('./agenpas/config');
+  return createBackendConsentWriter({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    internalKey: () => agenpasConfig.internalConsentKey(),
+    logger: log,
+  });
+}
+
 function isAgentPurchaseOrderReadEnabled() {
   // Default OFF. Off: get_order treats a `pp_` id exactly as before (a kernel lookup, which fails closed).
   const normalized = String(process.env.AGENT_PURCHASE_ORDER_READ_ENABLED || '').trim().toLowerCase();
@@ -38998,6 +39012,9 @@ app.use(express.json({
   // does not depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed.
   type: (req) => {
     if (isAcpDelegatePaymentRequest(req)) return false;
+    // The AgenPas host (only while AGENPAS_ENABLED is on): its one body, the consent POST, is parsed by its own route,
+    // strictly and at most 1 kB (src/agenpas/router.js). Off, or any other host: false, so nothing changes.
+    if (agenpasHostGuard.skipsGlobalBodyParser(req)) return false;
     const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     return ct === 'application/json';
   },
@@ -39131,6 +39148,7 @@ app.use((req, res, next) => {
 // handling, exactly as before. The routes live in src/agenpas/router.js.
 app.use(require('./agenpas/router').createAgenpasRouter({
   reader: buildAgenpasPurchaseReader(logger),
+  consentWriter: buildAgenpasConsentWriter(logger),
   logger,
 }));
 // …and on the AgenPas host an /agenpas path the router did not serve goes no further.

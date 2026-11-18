@@ -338,3 +338,149 @@ test('operator_confirmed_not_charged: the operator wording once, no second "try 
   assert.equal((h.text().match(/start again from the chat/g) || []).length, 1);
   assert.equal(h.pollTimers().length, 0);
 });
+
+// ---- terms and privacy consent (AGENPAS_CONSENT_ENABLED; the API sends `consent`) ------------------------------
+
+const OFFER = Object.freeze({ id: 'offer0123456789abcdef0123456789ab', issued_at: '2026-11-17T11:59:58Z' });
+function consentView(over = {}) {
+  return view({
+    action: null,
+    consent: { step: 'card_binding', terms_url: 'https://legal.example/terms', privacy_url: 'https://legal.example/privacy', offer: { ...OFFER } },
+    ...over,
+  });
+}
+const findAll = (h, pred) => h.app.all(pred);
+const checkbox = (h) => findAll(h, (n) => n.tagName === 'INPUT')[0];
+const agree = (h) => findAll(h, (n) => n.tagName === 'BUTTON' && /Agree and continue|Saving/.test(n.textContent))[0];
+const hostedLinks = (h) => findAll(h, (n) => n.tagName === 'A' && /btn/.test(n.className));
+function tick(h, input) {
+  input.checked = true;
+  for (const fn of input.listeners.change || []) fn();
+}
+// Run the one-shot timers due by `ms` from now (the dwell re-check among them), advancing the clock.
+function advance(h, ms) {
+  h.clock.t += ms;
+  for (const timer of h.timers.filter((x) => !x.repeat && x.at <= h.clock.t && x.ms > 4000 && x.ms < 5000)) {
+    h.timers.splice(h.timers.indexOf(timer), 1);
+    timer.fn();
+  }
+}
+
+test('consent: unchecked box, "Agree and continue" disabled until checked AND the dwell has passed; no hosted page button', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Before you add your card, read Pivota's/);
+  const links = findAll(h, (n) => n.tagName === 'A');
+  assert.deepEqual(links.map((a) => [a.textContent, a.href, a.target, a.rel]), [
+    ['Terms of Service', 'https://legal.example/terms', '_blank', 'noopener noreferrer'],
+    ['Privacy Policy', 'https://legal.example/privacy', '_blank', 'noopener noreferrer'],
+  ]);
+  assert.equal(hostedLinks(h).length, 0, 'no hosted page button before the URL');
+  const box = checkbox(h);
+  assert.equal(box.type, 'checkbox');
+  assert.equal(box.checked, false);
+  assert.equal(agree(h).disabled, true);
+  tick(h, box);
+  assert.equal(agree(h).disabled, true, 'checked, but the offer has only just been shown');
+  advance(h, 4100);
+  assert.equal(agree(h).disabled, false);
+  // No input of any other kind anywhere: no card fields.
+  assert.deepEqual(findAll(h, (n) => n.tagName === 'INPUT').map((n) => n.type), ['checkbox']);
+});
+
+test('consent: the click POSTs {step, offer_id, issued_at} as JSON with the link header; the hosted button comes only from a later read', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  tick(h, checkbox(h));
+  advance(h, 4100);
+  // The POST's answer; the follow-up read then finds the backend still settling (503), and only the read after it
+  // carries the hosted page.
+  h.answer({ status: 200, body: { recorded: true } }, { status: 503, body: { error: 'unavailable' } });
+  for (const fn of agree(h).listeners.click) fn();
+  await settle();
+  const post = h.fetches.find((f) => f.init.method === 'POST');
+  assert.equal(post.url, `/agenpas/api/p/${PID}/consent`);
+  assert.equal(post.init.headers['Content-Type'], 'application/json');
+  assert.equal(post.init.headers['X-Agenpas-Link'], TOKEN);
+  assert.equal(post.init.credentials, 'omit');
+  assert.deepEqual(JSON.parse(post.init.body), { step: 'card_binding', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+  assert.equal(post.url.includes(TOKEN) || post.init.body.includes(TOKEN), false);
+  assert.match(h.text(), /Thanks\. Getting the secure card page ready/);
+  assert.equal(hostedLinks(h).length, 0);
+  assert.equal(h.fetches.filter((f) => f.init.method === 'GET').length, 2, 'the page read again at once');
+  h.answer({ status: 200, body: view() });
+  for (let i = 0; i < 3 && hostedLinks(h).length === 0; i += 1) {
+    h.runNext();
+    await settle();
+  }
+  assert.equal(hostedLinks(h).length, 1);
+  assert.equal(hostedLinks(h)[0].href, view().action.url);
+});
+
+test('consent: a 429 keeps the tick and says to wait; a 409 clears it and asks to read again', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  tick(h, checkbox(h));
+  advance(h, 4100);
+  h.answer({ status: 429, body: { error: 'rate_limited', retry_after_seconds: 2 } });
+  for (const fn of agree(h).listeners.click) fn();
+  await settle();
+  assert.equal(checkbox(h).checked, true, 'the tick survives the 429');
+  assert.match(h.text(), /Too many tries/);
+  assert.equal(agree(h).disabled, true, 'not before the wait');
+  h.clock.t += 2100;
+  for (const fn of checkbox(h).listeners.change) fn();
+  assert.equal(agree(h).disabled, false);
+  h.answer({ status: 409, body: { error: 'consent_stale' } });
+  for (const fn of agree(h).listeners.click) fn();
+  await settle();
+  assert.equal(checkbox(h).checked, false);
+  assert.match(h.text(), /read the terms again/);
+});
+
+test('consent: the approval terms ride on "Confirming your total" too', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView({ state: 'locking', screen: 'confirming_total', consent: { ...consentView().consent, step: 'approval' } }) }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Confirming your total/);
+  assert.match(h.text(), /Before you approve, read Pivota's/);
+  assert.ok(checkbox(h));
+});
+
+test('consent: a new offer id on every read does not re-render (the tick and focus stay)', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  const box = checkbox(h);
+  tick(h, box);
+  h.answer({ status: 200, body: consentView({ consent: { ...consentView().consent, offer: { id: 'offerffffffffffffffffffffffffffff', issued_at: '2026-11-17T12:00:03Z' } } }) });
+  h.runNext();
+  await settle();
+  assert.equal(checkbox(h), box, 'same element');
+  assert.equal(checkbox(h).checked, true);
+});
+
+test('"not available right now": no button of any kind, polling goes on, the token is kept', async () => {
+  const h = harness({ answers: [{ status: 200, body: view({ screen: 'unavailable', action: null, poll_after_seconds: 15 }) }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /This step isn't available right now/);
+  assert.equal(findAll(h, (n) => n.tagName === 'A' || n.tagName === 'IFRAME' || n.tagName === 'INPUT').length, 0);
+  assert.equal(h.pollTimers()[0].ms, 15000);
+  assert.equal(h.storage.has(`agenpas:t:${PID}`), true);
+});
+
+test('details needed (contact re-entry): go back to the chat, no card button, polling goes on', async () => {
+  const h = harness({ answers: [{ status: 200, body: view({
+    screen: 'details_needed', action: null, poll_after_seconds: 15,
+    outcome: { kind: 'details_needed', title: 'Some details are needed', message: 'Your contact details need to be entered again before this purchase can go on. Go back to the chat to continue.', retry_hint: false, outcome_unknown: false },
+  }) }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Go back to the chat to continue/);
+  assert.equal(findAll(h, (n) => n.tagName === 'A' || n.tagName === 'INPUT').length, 0);
+  assert.equal(h.pollTimers()[0].ms, 15000);
+});

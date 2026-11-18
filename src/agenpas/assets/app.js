@@ -10,12 +10,21 @@
  *   server says `open_mode: "embed"` (AGENPAS_EMBED_HOSTED_PAGES) it is framed instead.
  * - Polls at the server's poll_after_seconds (2..15 s), backs off on errors, stops when the purchase is final or
  *   the link has expired, and polls at once when the buyer comes back to this tab or closes the popup.
+ * - CONSENT (only when the API sends `consent`, i.e. AGENPAS_CONSENT_ENABLED is on and the backend asks for it): before
+ *   the card or approval step, links to Pivota's Terms of Service and Privacy Policy, an UNCHECKED checkbox and
+ *   "Agree and continue" (disabled until checked, and for a few seconds after the offer is first shown). The click
+ *   POSTs {step, offer_id, issued_at} as JSON; the hosted page's button appears only once a later read carries its URL.
  */
 (function () {
   'use strict';
 
   var POLL_MIN = 2;
   var POLL_MAX = 15;
+  // The buyer has the offer in front of them at least this long before "Agree and continue" works (the backend's own
+  // minimum is shorter: this keeps a fast click from being refused).
+  var CONSENT_DWELL_MS = 4000;
+  // An offer is kept while it is younger than this (the backend accepts up to 30 minutes).
+  var CONSENT_OFFER_MAX_AGE_MS = 25 * 60 * 1000;
   var PATH_RE = /^\/agenpas\/p\/((?:pp|ap|rp)_[0-9a-f]{24})\/?$/;
 
   var app = document.getElementById('app');
@@ -65,6 +74,9 @@
     inFlight: false,
     noticeEl: null,
     lastJson: null,
+    // The consent offer on screen: { step, offer, shownAt, checked, posting, accepted, error, retryAt, button }.
+    consent: null,
+    latestOffer: null,
   };
 
   // ---- tiny DOM helpers ----------------------------------------------------------------------------------------
@@ -202,11 +214,194 @@
     return box;
   }
 
+  // ---- consent -------------------------------------------------------------------------------------------------
+
+  function externalLink(text, url) {
+    if (!isHttps(url)) return el('span', null, text);
+    var a = el('a', 'legal-link', text);
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.setAttribute('referrerpolicy', 'no-referrer');
+    return a;
+  }
+
+  function consentReady() {
+    var c = ui.consent;
+    return Boolean(c && c.checked && !c.posting && !c.accepted && Date.now() >= c.shownAt + CONSENT_DWELL_MS
+      && Date.now() >= (c.retryAt || 0));
+  }
+
+  function updateConsentButton() {
+    var c = ui.consent;
+    if (!c || !c.button) return;
+    c.button.disabled = !consentReady();
+    if (c.button.disabled) c.button.setAttribute('aria-disabled', 'true');
+    else c.button.setAttribute('aria-disabled', 'false');
+  }
+
+  // A re-check once the dwell (or a 429's wait) is over: the button updates in place, nothing is re-rendered.
+  function scheduleConsentCheck() {
+    var c = ui.consent;
+    if (!c) return;
+    var wait = Math.max(c.shownAt + CONSENT_DWELL_MS, c.retryAt || 0) - Date.now();
+    if (wait > 0) setTimeout(updateConsentButton, wait + 50);
+  }
+
+  /** Keep the offer the buyer is reading; a new step (or a stale offer) starts a new one. */
+  function syncConsent(view) {
+    var offered = view && view.consent;
+    ui.latestOffer = offered && offered.offer ? offered.offer : null;
+    if (!offered) {
+      ui.consent = null;
+      return;
+    }
+    var c = ui.consent;
+    var issued = c && c.offer ? Date.parse(c.offer.issued_at) : NaN;
+    if (!c || c.step !== offered.step || !isFinite(issued) || Date.now() - issued > CONSENT_OFFER_MAX_AGE_MS) {
+      ui.consent = { step: offered.step, offer: offered.offer, shownAt: Date.now(), checked: false, posting: false, accepted: false, error: null, retryAt: 0, button: null, waited: 0 };
+      scheduleConsentCheck();
+      return;
+    }
+    // Recorded, yet the step is still offered after a few reads: let the buyer agree again rather than wait forever.
+    if (c.accepted) {
+      c.waited += 1;
+      if (c.waited >= 3) {
+        c.accepted = false;
+        c.checked = false;
+        c.waited = 0;
+        c.offer = offered.offer;
+        c.shownAt = Date.now();
+        c.error = 'Please agree once more to continue.';
+        scheduleConsentCheck();
+        ui.lastJson = null;
+      }
+    }
+  }
+
+  function consentBlock(view) {
+    var offered = view.consent;
+    var c = ui.consent;
+    var box = el('div', 'consent');
+    if (c && c.accepted) {
+      append(box, spinner(), el('p', 'waiting-text', offered.step === 'card_binding'
+        ? 'Thanks. Getting the secure card page ready…'
+        : "Thanks. You'll approve on our payment partner's secure page as soon as it's ready…"));
+      return box;
+    }
+    var intro = el('p', 'consent-intro');
+    append(intro, el('span', null, offered.step === 'card_binding' ? "Before you add your card, read Pivota's " : "Before you approve, read Pivota's "));
+    append(intro, externalLink('Terms of Service', offered.terms_url), el('span', null, ' and '),
+      externalLink('Privacy Policy', offered.privacy_url), el('span', null, '.'));
+    box.appendChild(intro);
+
+    var label = el('label', 'consent-check');
+    var input = el('input');
+    input.type = 'checkbox';
+    input.checked = Boolean(c && c.checked);
+    input.addEventListener('change', function () {
+      if (!ui.consent) return;
+      ui.consent.checked = Boolean(input.checked);
+      ui.consent.error = null;
+      if (ui.consent.errorEl) ui.consent.errorEl.textContent = '';
+      updateConsentButton();
+    });
+    append(label, input, el('span', null, 'I agree to the Terms of Service and Privacy Policy'));
+    box.appendChild(label);
+
+    var button = el('button', 'btn btn-primary', c && c.posting ? 'Saving…' : 'Agree and continue');
+    button.type = 'button';
+    button.addEventListener('click', function () { submitConsent(); });
+    box.appendChild(button);
+    var errorEl = el('p', 'fine consent-error', c && c.error ? c.error : '');
+    errorEl.setAttribute('role', 'status');
+    box.appendChild(errorEl);
+    if (c) {
+      c.button = button;
+      c.errorEl = errorEl;
+    }
+    updateConsentButton();
+    return box;
+  }
+
+  function consentError(text) {
+    var c = ui.consent;
+    if (!c) return;
+    c.posting = false;
+    c.error = text;
+    render();
+  }
+
+  function submitConsent() {
+    var c = ui.consent;
+    if (!c || !consentReady() || !c.offer) return;
+    c.posting = true;
+    c.error = null;
+    render();
+    fetch('/agenpas/api/p/' + match[1] + '/consent', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Agenpas-Link': token },
+      body: JSON.stringify({ step: c.step, offer_id: c.offer.id, issued_at: c.offer.issued_at }),
+      cache: 'no-store',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (body) {
+        return { status: res.status, body: body, retryAfter: res.headers && typeof res.headers.get === 'function' ? res.headers.get('Retry-After') : null };
+      });
+    }).then(function (r) {
+      if (ui.consent !== c) return;
+      if (r.status === 200) {
+        c.posting = false;
+        c.accepted = true;
+        render();
+        pollNow();
+        return;
+      }
+      if (r.status === 410) {
+        showExpired(r.body && r.body.link_ttl_minutes);
+        return;
+      }
+      if (r.status === 404 && !(r.body && r.body.error === 'not_found')) {
+        stop();
+        forgetToken();
+        renderMessage("This link isn't valid", 'Please open the link exactly as the chat gave it to you, or ask the chat for a new one.');
+        return;
+      }
+      if (r.status === 409) {
+        // The offer or the terms moved on: read them again, from the newest offer, and agree again.
+        c.checked = false;
+        if (ui.latestOffer) c.offer = ui.latestOffer;
+        c.shownAt = Date.now();
+        scheduleConsentCheck();
+        consentError('Something changed. Please read the terms again, then agree.');
+        pollNow();
+        return;
+      }
+      if (r.status === 429) {
+        // Keep the buyer's tick; let them try again after the wait.
+        var wait = Math.min(POLL_MAX, Math.max(POLL_MIN, Number(r.retryAfter) || (r.body && Number(r.body.retry_after_seconds)) || POLL_MIN));
+        c.retryAt = Date.now() + wait * 1000;
+        scheduleConsentCheck();
+        consentError('Too many tries just now. Please wait a moment, then try again.');
+        return;
+      }
+      consentError("We couldn't save that just now. Please try again.");
+    }).catch(function () {
+      if (ui.consent === c) consentError("We couldn't save that just now. Please try again.");
+    });
+  }
+
   function actionCard(view, opts) {
     var card = el('section', 'card step');
     append(card, el('h2', null, opts.title));
     append(card, el('p', null, opts.body));
     if (opts.note) append(card, el('p', 'fine', opts.note));
+    // The terms first: no hosted page button exists until a later read carries its URL.
+    if (view.consent && !view.action) {
+      card.appendChild(consentBlock(view));
+      return card;
+    }
     if (!view.action) {
       var prep = el('div', 'waiting');
       append(prep, spinner(), el('p', 'waiting-text', 'Getting the secure page ready…'));
@@ -230,6 +425,12 @@
     var head = el('div', 'progress-head');
     append(head, spinner(), el('h2', null, title));
     append(card, head, el('p', 'muted', body));
+    return card;
+  }
+
+  function noticeCard(title, body) {
+    var card = el('section', 'card step');
+    append(card, el('h2', null, title), el('p', 'muted', body));
     return card;
   }
 
@@ -294,8 +495,17 @@
           button: 'Add a card securely',
           waiting: 'Waiting for your card…',
         });
-      case 'confirming_total':
-        return progressCard('Confirming your total', 'Getting the final total from ' + m + ', including shipping and tax…');
+      case 'confirming_total': {
+        var confirming = progressCard('Confirming your total', 'Getting the final total from ' + m + ', including shipping and tax…');
+        // The approval's terms may be accepted while the total is confirmed.
+        if (view.consent) confirming.appendChild(consentBlock(view));
+        return confirming;
+      }
+      case 'unavailable':
+        return noticeCard("This step isn't available right now", 'Please go back to the chat and try again in a little while. This page updates on its own.');
+      case 'details_needed':
+        return noticeCard((view.outcome && view.outcome.title) || 'Some details are needed',
+          (view.outcome && view.outcome.message) || 'Go back to the chat to continue.');
       case 'approve':
         return actionCard(view, {
           title: 'Approve your purchase',
@@ -469,6 +679,16 @@
     schedule(backoff);
   }
 
+  // What decides a re-render: the answer, except the consent offer's id and time (they change on every read, and a
+  // re-render would drop the buyer's focus on the checkbox). Without a consent member: the answer itself, as before.
+  function viewKey(body) {
+    if (!body.consent || typeof body.consent !== 'object') return JSON.stringify(body);
+    var copy = {};
+    for (var k in body) if (Object.prototype.hasOwnProperty.call(body, k)) copy[k] = body[k];
+    copy.consent = { step: body.consent.step, terms_url: body.consent.terms_url, privacy_url: body.consent.privacy_url };
+    return JSON.stringify(copy);
+  }
+
   function poll() {
     if (ui.stopped || ui.inFlight) return;
     if (linkExpired()) {
@@ -488,7 +708,8 @@
     }).then(function (r) {
       ui.inFlight = false;
       if (r.status === 200 && r.body && typeof r.body.screen === 'string') {
-        var json = JSON.stringify(r.body);
+        syncConsent(r.body);
+        var json = viewKey(r.body);
         // An unchanged answer is not re-rendered: a re-render would reload a framed hosted page (embed mode) and
         // drop a focused button.
         var changed = json !== ui.lastJson;
