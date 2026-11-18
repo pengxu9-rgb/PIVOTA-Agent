@@ -32214,6 +32214,20 @@ function buildAgenpasPurchaseReader(log, deps = {}) {
   });
 }
 
+// AgenPas consent (docs/agenpas.md, "Terms and privacy consent"): the buyer's acceptance of the terms, recorded
+// server-to-server with its OWN key (AGENPAS_INTERNAL_CONSENT_KEY, read per call; the read key stays read-only). Only
+// reached while AGENPAS_CONSENT_ENABLED is on.
+function buildAgenpasConsentWriter(log, deps = {}) {
+  const { createBackendConsentWriter } = require('./agenpas/purchaseReader');
+  const agenpasConfig = require('./agenpas/config');
+  return createBackendConsentWriter({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    internalKey: () => agenpasConfig.internalConsentKey(),
+    logger: log,
+  });
+}
+
 function isAgentPurchaseOrderReadEnabled() {
   // Default OFF. Off: get_order treats a `pp_` id exactly as before (a kernel lookup, which fails closed).
   const normalized = String(process.env.AGENT_PURCHASE_ORDER_READ_ENABLED || '').trim().toLowerCase();
@@ -38992,16 +39006,22 @@ function isAcpDelegatePaymentRequest(req) {
   return p.toLowerCase().replace(/\/+$/, '') === target;
 }
 
+// express.json's default media-type match (`application/json`, parameters ignored), spelled inline so this does not
+// depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed. Named (and on `_debug`)
+// so the AgenPas host carve-out can be tested on its own (tests/agenpas_server_mount.test.js).
+function globalJsonBodyType(req) {
+  if (isAcpDelegatePaymentRequest(req)) return false;
+  // The AgenPas host (only while AGENPAS_ENABLED is on): its one body, the consent POST, is parsed by its own route,
+  // strictly and at most 1 kB (src/agenpas/router.js). Off, or any other host: false, so nothing changes.
+  if (agenpasHostGuard.skipsGlobalBodyParser(req)) return false;
+  const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  return ct === 'application/json';
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
-  // express.json's default media-type match (`application/json`, parameters ignored), spelled inline so this
-  // does not depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed.
-  type: (req) => {
-    if (isAcpDelegatePaymentRequest(req)) return false;
-    const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    return ct === 'application/json';
-  },
+  type: globalJsonBodyType,
   verify: (req, res, buf, encoding) => {
     try {
       JSON.parse(buf);
@@ -39132,6 +39152,7 @@ app.use((req, res, next) => {
 // handling, exactly as before. The routes live in src/agenpas/router.js.
 app.use(require('./agenpas/router').createAgenpasRouter({
   reader: buildAgenpasPurchaseReader(logger),
+  consentWriter: buildAgenpasConsentWriter(logger),
   logger,
 }));
 // …and on the AgenPas host an /agenpas path the router did not serve goes no further.
@@ -56084,6 +56105,7 @@ module.exports = app;
 module.exports._debug = {
   // AgenPas: the internal UI's static handler with its host gate, so the gate can be tested without the front guard.
   internalUiStaticGate,
+  globalJsonBodyType,
   // Exported because the price-check fan-out runs only behind the external reco lane: the property under
   // test is that its loopback sub-calls are marked fan-out (keyed per tool call, not per caller).
   recommendPriceVerifyLoopbackHeaders,
