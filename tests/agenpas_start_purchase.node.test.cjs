@@ -413,3 +413,14 @@ test('descriptions: the consent sentence ONLY with AGENPAS_CONSENT_ENABLED on; A
   // Links not minted: no sentence at all, consent on or not.
   await withEnv({ ...REAP_ON, AGENPAS_ENABLED: undefined }, async () => assert.equal(describe(surface).includes('consent_required'), false));
 });
+
+test('consent_required WITH a handoff URL of its own (consent already given) is not gated: the backend\'s page stays the handoff', async () => {
+  const consented = (id) => { const b = unified(id); b.next_action = { ...b.next_action, consent_required: true }; return b; };
+  const surface = await build({ orderRailId: RP, readBody: consented });
+  await withEnv(REAP_ON, async () => {
+    const o = await surface.callTool('get_order', { order_id: PP }, SESSION);
+    assert.equal(o.next_action.action_url, CARD_PAGE);
+    assert.notEqual(o.next_action.action_url, o.agenpas_url);
+    assert.equal(o.next_action.expires_at, '2026-11-17T00:30:00Z', 'its own deadline, untouched');
+  });
+});

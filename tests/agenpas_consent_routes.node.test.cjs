@@ -164,15 +164,28 @@ test('refused without the exact Origin (missing, another origin, http, a port), 
   }
 });
 
-test('refused unless Sec-Fetch-Site is same-origin', async () => {
-  for (const site of [undefined, 'cross-site', 'same-site', 'none']) {
+test('Sec-Fetch-Site: refused when SENT and not same-origin; ABSENT is allowed (older Safari / iOS 15 send none)', async () => {
+  for (const site of ['cross-site', 'same-site', 'none', 'SAME-ORIGIN']) {
     const writer = recordingWriter();
-    let r = request(app({ writer })).post(CONSENT_PATH).set('Origin', AUD).set('X-Agenpas-Link', token());
-    if (site !== undefined) r = r.set('Sec-Fetch-Site', site);
-    const res = await r.send({ step: 'card_binding', offer_id: OFFER.id, issued_at: OFFER.issued_at });
-    assert.equal(res.status, 403, String(site));
+    const res = await request(app({ writer })).post(CONSENT_PATH).set('Origin', AUD).set('X-Agenpas-Link', token())
+      .set('Sec-Fetch-Site', site).send({ step: 'card_binding', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+    assert.equal(res.status, 403, site);
+    assert.equal(res.body.error, 'forbidden');
     assert.equal(writer.calls.length, 0);
   }
+  const writer = recordingWriter();
+  const absent = await request(app({ writer })).post(CONSENT_PATH).set('Origin', AUD).set('X-Agenpas-Link', token())
+    .send({ step: 'card_binding', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+  assert.equal(absent.status, 200);
+  assert.equal(writer.calls.length, 1);
+  // Absent Sec-Fetch-Site never relaxes the rest: the exact Origin, JSON, and the link are still required.
+  const noOrigin = await request(app()).post(CONSENT_PATH).set('X-Agenpas-Link', token()).send({ step: 'card_binding', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+  assert.equal(noOrigin.status, 403);
+  const form = await request(app()).post(CONSENT_PATH).set('Origin', AUD).set('X-Agenpas-Link', token())
+    .set('Content-Type', 'application/x-www-form-urlencoded').send('step=card_binding');
+  assert.equal(form.status, 415);
+  const noLink = await request(app()).post(CONSENT_PATH).set('Origin', AUD).send({ step: 'card_binding', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+  assert.equal(noLink.status, 404);
 });
 
 test('a non-JSON body is 415 (a plain form, text, no content type)', async () => {
@@ -281,7 +294,8 @@ test('409 consent_stale when the browser names another step than the one the rea
 
 test('the backend\'s answers: stale 409, refused 400, unavailable / throw / no writer 503; read not_found 404, read down 503', async () => {
   for (const [answer, status, error] of [
-    [{ kind: 'stale' }, 409, 'consent_stale'], [{ kind: 'refused', code: 'purchase_not_found' }, 400, 'consent_refused'],
+    [{ kind: 'stale' }, 409, 'consent_stale'], [{ kind: 'too_soon', code: 'consent_too_soon' }, 409, 'consent_too_soon'],
+    [{ kind: 'refused', code: 'purchase_not_found' }, 400, 'consent_refused'],
     [{ kind: 'unavailable', code: 'http_503' }, 503, 'unavailable'], [() => { throw new Error('boom'); }, 503, 'unavailable'],
   ]) {
     const res = await goodPost(app({ writer: recordingWriter(answer) }));
@@ -332,7 +346,8 @@ test('consent writer: POSTs exactly the contract (path, own key, agent id, five 
   assert.deepEqual(JSON.parse(init.body), RECORD);
   assert.deepEqual(Object.keys(JSON.parse(init.body)), ['step', 'offer_id', 'issued_at', 'terms_version', 'privacy_version']);
   for (const [status, body, kind] of [
-    [200, {}, 'recorded'], [409, { detail: { error: 'consent_stale' } }, 'stale'], [400, { error: 'wrong_step' }, 'refused'],
+    [200, {}, 'recorded'], [409, { detail: { error: 'consent_stale' } }, 'stale'], [409, { detail: { error: 'consent_too_soon' } }, 'too_soon'],
+    [409, {}, 'stale'], [400, { error: 'wrong_step' }, 'refused'],
     [404, { error: 'purchase_not_found' }, 'refused'], [503, {}, 'unavailable'], [500, undefined, 'unavailable'], [302, {}, 'unavailable'],
   ]) {
     const w = createBackendConsentWriter({ baseUrl: 'https://backend.example', internalKey: () => KEY, fetchImpl: stubFetch(status, body) });
@@ -364,11 +379,31 @@ test('config: the consent key needs 32+ characters; AGENPAS_LEGAL_HOSTS defaults
   assert.equal(config.consentEnabled({}), false);
 });
 
-test('config: AGENPAS_RAILS defaults to a2a; reap is honoured ONLY with AGENPAS_CONSENT_ENABLED on', () => {
-  assert.deepEqual(config.rails({}), ['a2a']);
-  assert.deepEqual(config.rails({ AGENPAS_RAILS: '' }), ['a2a']);
-  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'a2a,reap' }), ['a2a']);
-  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'reap' }), []);
-  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'a2a,reap', AGENPAS_CONSENT_ENABLED: '0' }), ['a2a']);
-  assert.deepEqual(config.rails({ AGENPAS_RAILS: ' A2A , Reap ,other', AGENPAS_CONSENT_ENABLED: '1' }), ['a2a', 'reap']);
+test('config: AGENPAS_RAILS defaults to a2a; reap is honoured ONLY with consent on; a list leaving no rail falls back to a2a, warned once', () => {
+  const warned = [];
+  const warn = (raw) => warned.push(raw);
+  assert.deepEqual(config.rails({}, warn), ['a2a']);
+  assert.deepEqual(config.rails({ AGENPAS_RAILS: '' }, warn), ['a2a']);
+  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'a2a,reap' }, warn), ['a2a']);
+  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'a2a,reap', AGENPAS_CONSENT_ENABLED: '0' }, warn), ['a2a']);
+  assert.deepEqual(config.rails({ AGENPAS_RAILS: ' A2A , Reap ,other', AGENPAS_CONSENT_ENABLED: '1' }, warn), ['a2a', 'reap']);
+  assert.deepEqual(warned, [], 'no fallback, no warning');
+  // Nothing servable: a2a, never silently nothing.
+  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'reap' }, warn), ['a2a']);
+  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'a2aa' }, warn), ['a2a']);
+  assert.deepEqual(warned, ['reap', 'a2aa']);
+  // a2a is dropped only by a list that names another servable rail.
+  assert.deepEqual(config.rails({ AGENPAS_RAILS: 'reap', AGENPAS_CONSENT_ENABLED: '1' }, warn), ['reap']);
+  // The default warner logs once per value and never throws.
+  assert.doesNotThrow(() => { config.rails({ AGENPAS_RAILS: 'typo-rail' }); config.rails({ AGENPAS_RAILS: 'typo-rail' }); });
+});
+
+test('the global JSON parser skip is the AgenPas host only (another host, or AgenPas off, parses as before)', () => {
+  const guard = (env) => createAgenpasHostGuard({ env });
+  const req = (host) => ({ headers: { host }, method: 'POST', path: CONSENT_PATH });
+  assert.equal(guard(ENV_ON).skipsGlobalBodyParser(req(PUBLIC_HOST)), true);
+  assert.equal(guard(ENV_ON).skipsGlobalBodyParser(req(`${PUBLIC_HOST}:443`)), true);
+  assert.equal(guard(ENV_ON).skipsGlobalBodyParser(req('gateway.example')), false);
+  assert.equal(guard(ENV_ON).skipsGlobalBodyParser(req('localhost:4000')), false);
+  assert.equal(guard({ ...ENV_ON, AGENPAS_ENABLED: undefined }).skipsGlobalBodyParser(req(PUBLIC_HOST)), false);
 });

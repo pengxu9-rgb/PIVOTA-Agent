@@ -241,6 +241,20 @@ describe('AgenPas routes in the gateway app', () => {
     expect(front.headers['x-agenpas-guard']).toBe('front');
   });
 
+  test('the app\'s global JSON parser skips ONLY the AgenPas host, and only while AgenPas is on (the control: other hosts parse)', () => {
+    const { globalJsonBodyType } = require('../src/server')._debug;
+    const req = (host, type = 'application/json') => ({ method: 'POST', path: '/x', headers: { host, 'content-type': type } });
+    expect(globalJsonBodyType(req('agenpas.example'))).toBe(true);
+    process.env.AGENPAS_ENABLED = '1';
+    process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+    process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+    expect(globalJsonBodyType(req('agenpas.example'))).toBe(false);
+    expect(globalJsonBodyType(req('AGENPAS.example:443'))).toBe(false);
+    expect(globalJsonBodyType(req('gateway.example'))).toBe(true);
+    expect(globalJsonBodyType(req('localhost:3000'))).toBe(true);
+    expect(globalJsonBodyType(req('gateway.example', 'text/plain'))).toBe(false);
+  });
+
   describe('terms and privacy consent (AGENPAS_CONSENT_ENABLED)', () => {
     const CONSENT_PID = 'rp_000000000000000000000007';
     const CONSENT_PATH = `/agenpas/api/p/${CONSENT_PID}/consent`;

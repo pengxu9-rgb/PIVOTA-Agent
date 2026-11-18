@@ -137,15 +137,34 @@ function legalHosts(env = process.env) {
 
 const KNOWN_RAILS = Object.freeze(['a2a', 'reap']);
 
+// One warning per distinct unusable AGENPAS_RAILS value per process (the value is a flag, never a secret).
+const railsWarned = new Set();
+function warnRailsOnce(raw) {
+  if (railsWarned.has(raw) || railsWarned.size > 32) return;
+  railsWarned.add(raw);
+  try {
+    // eslint-disable-next-line global-require
+    require('../logger').warn({ event: 'agenpas_config', outcome: 'rails_fallback', agenpas_rails: raw.slice(0, 64) },
+      'AGENPAS_RAILS names no rail that can be served; links are minted for a2a only');
+  } catch {
+    // A logger fault never changes the answer.
+  }
+}
+
 /**
  * The rails AgenPas links are minted for. Default (unset or blank) ['a2a'], exactly as before this flag. `reap` is
  * dropped unless AGENPAS_CONSENT_ENABLED is on: Reap's production rule is that the buyer accepts the terms on our page.
+ * A value that leaves NO rail (a typo, or `reap` alone with consent off) falls back to ['a2a'], with one warning: a2a
+ * is never dropped silently. It is dropped only by a list that names another servable rail and not a2a.
  */
-function rails(env = process.env) {
+function rails(env = process.env, warn = warnRailsOnce) {
   const raw = String(env.AGENPAS_RAILS || '').trim().toLowerCase();
-  const listed = raw ? raw.split(',').map((r) => r.trim()).filter((r) => KNOWN_RAILS.includes(r)) : ['a2a'];
-  const out = [...new Set(listed)];
-  return consentEnabled(env) ? out : out.filter((r) => r !== 'reap');
+  if (!raw) return ['a2a'];
+  const listed = [...new Set(raw.split(',').map((r) => r.trim()).filter((r) => KNOWN_RAILS.includes(r)))];
+  const out = consentEnabled(env) ? listed : listed.filter((r) => r !== 'reap');
+  if (out.length > 0) return out;
+  if (typeof warn === 'function') warn(raw);
+  return ['a2a'];
 }
 
 module.exports = {

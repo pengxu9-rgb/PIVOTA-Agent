@@ -212,3 +212,36 @@ test('tools/list: byte-identical with the gate off; create_checkout gains ONE se
     }
   });
 });
+
+test('a hosted_url that is PRESENT but not one this door may hand out is never swapped for the AgenPas link', async () => {
+  const v = gatedView('awaiting_approval', inMinutes(10), { hosted_url: 'https://elsewhere.example/checkout/1', hosted_url_expires_at: inMinutes(15) });
+  const { ucp, id } = await build(v);
+  const out = await withEnv(GATE_ON, () => ucp.callTool('get_checkout', { meta: META, id }, SESSION));
+  assert.equal(out.status, 'incomplete');
+  assert.equal(Object.hasOwn(out, 'continue_url'), false);
+  assert.equal(JSON.stringify(out).includes('agenpas.example'), false);
+});
+
+test('each mapping starts with no captured link: a stale capture from an earlier mapping is cleared', async () => {
+  const m = await mods();
+  const captured = { url: 'https://agenpas.example/agenpas/p/stale#t=v1.a.b' };
+  const out = m.lane.mapReapPurchaseToCheckout({ id: m.lane.encodeReapCheckoutId(SNAP), snapshot: SNAP, view: view('quoting'), now: Date.now(), env: {},
+    agenpasConsent: { link: () => { throw new Error('not asked'); }, captured } });
+  assert.equal(out.status, 'incomplete');
+  assert.equal(captured.url, null);
+});
+
+test('the door puts the captured link ONLY on a requires_escalation answer without a continue_url of its own', async () => {
+  const m = await mods();
+  const url = 'https://agenpas.example/agenpas/p/rp#t=v1.a.b';
+  const base = { ucp: {}, id: 'reap_x', status: 'requires_escalation', currency: 'USD', messages: [] };
+  assert.deepEqual(Object.keys(m.surface.withConsentContinueUrl(base, url)), ['ucp', 'id', 'status', 'continue_url', 'currency', 'messages']);
+  for (const [name, checkout] of [
+    ['incomplete (degraded)', { ...base, status: 'incomplete' }], ['complete_in_progress', { ...base, status: 'complete_in_progress' }],
+    ['its own continue_url', { ...base, continue_url: 'https://pay.prava.space/x' }],
+  ]) {
+    assert.equal(m.surface.withConsentContinueUrl(checkout, url), checkout, name);
+  }
+  assert.equal(m.surface.withConsentContinueUrl(base, null), base);
+  assert.equal(m.surface.withConsentContinueUrl(base, ''), base);
+});

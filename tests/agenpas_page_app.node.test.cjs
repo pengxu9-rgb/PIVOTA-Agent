@@ -102,7 +102,12 @@ function harness({ hash = `#t=${TOKEN}`, answers = [] } = {}) {
   const fetch = (url, init) => {
     fetches.push({ url, init });
     const next = queue.length ? queue.shift() : { status: 503, body: { error: 'unavailable' } };
-    return Promise.resolve({ status: next.status, json: () => Promise.resolve(next.body) });
+    return Promise.resolve({
+      status: next.status,
+      headers: { get: (k) => ((next.headers || {})[String(k).toLowerCase()] ?? null) },
+      // `text`: a non-JSON answer (a guard's plain-text 404), whose json() rejects.
+      json: () => (next.text !== undefined ? Promise.reject(new SyntaxError('not json')) : Promise.resolve(next.body)),
+    });
   };
   const context = vm.createContext({
     window, document, fetch, URL, URLSearchParams, Date: FakeDate,
@@ -483,4 +488,141 @@ test('details needed (contact re-entry): go back to the chat, no card button, po
   assert.match(h.text(), /Go back to the chat to continue/);
   assert.equal(findAll(h, (n) => n.tagName === 'A' || n.tagName === 'INPUT').length, 0);
   assert.equal(h.pollTimers()[0].ms, 15000);
+});
+
+// ---- review round 2 ----------------------------------------------------------------------------------------------
+
+function clickAgree(h) { for (const fn of agree(h).listeners.click) fn(); }
+// Run one-shot timers (the dwell re-check among them) until the page has made one more read.
+async function nextRead(h) {
+  const before = h.fetches.length;
+  for (let i = 0; i < 5 && h.fetches.length === before; i += 1) {
+    if (h.runNext() === null) break;
+    await settle();
+  }
+  await settle();
+}
+async function readyToAgree(h) {
+  tick(h, checkbox(h));
+  advance(h, 4100);
+  assert.equal(agree(h).disabled, false);
+}
+
+test('a client clock 30 min fast: the offer is kept (its age is the page\'s own, not issued_at), and the dwell ends', async () => {
+  // The link itself is still good on the page's clock (its expiry is on the same clock as the API's answers).
+  const fast = (over = {}) => consentView({ link_expires_at: '2026-11-17T13:30:00.000Z', ...over });
+  const h = harness({ answers: [{ status: 200, body: fast() }] });
+  h.clock.t = T0 + 30 * 60 * 1000;
+  h.start();
+  await settle();
+  const box = checkbox(h);
+  tick(h, box);
+  // Two more reads, each with a new offer: same element, tick kept, the FIRST offer is the one sent.
+  for (const n of [1, 2]) {
+    h.answer({ status: 200, body: fast({ consent: { ...consentView().consent, offer: { id: `offer${n}aaaaaaaaaaaaaaaaaaaaaaaaaaa`, issued_at: '2026-11-17T12:00:0' + n + 'Z' } } }) });
+    await nextRead(h);
+  }
+  assert.equal(checkbox(h), box);
+  assert.equal(checkbox(h).checked, true);
+  advance(h, 4100);
+  assert.equal(agree(h).disabled, false, 'the dwell is over even though issued_at is 30 min "old"');
+  h.answer({ status: 200, body: { recorded: true } });
+  clickAgree(h);
+  await settle();
+  assert.equal(JSON.parse(h.fetches.find((f) => f.init.method === 'POST').init.body).offer_id, OFFER.id);
+});
+
+test('an offer the page has held 25+ minutes is replaced by the newest one AND re-drawn (tick cleared, dwell restarted)', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  const box = checkbox(h);
+  tick(h, box);
+  h.clock.t += 26 * 60 * 1000;
+  const newer = { id: 'offernewnewnewnewnewnewnewnewnewn', issued_at: '2026-11-17T12:26:00Z' };
+  h.answer({ status: 200, body: consentView({ consent: { ...consentView().consent, offer: newer } }) });
+  await nextRead(h);
+  assert.notEqual(checkbox(h), box, 're-rendered');
+  assert.equal(checkbox(h).checked, false);
+  tick(h, checkbox(h));
+  assert.equal(agree(h).disabled, true, 'the dwell restarted');
+  advance(h, 4100);
+  h.answer({ status: 200, body: { recorded: true } });
+  clickAgree(h);
+  await settle();
+  assert.equal(JSON.parse(h.fetches.filter((f) => f.init.method === 'POST').pop().init.body).offer_id, newer.id);
+});
+
+test('the backend\'s dwell (min_dwell_seconds) is waited out plus a second; without it, 4 s', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView({ consent: { ...consentView().consent, min_dwell_seconds: 6 } }) }] });
+  h.start();
+  await settle();
+  tick(h, checkbox(h));
+  h.clock.t += 6500;
+  for (const fn of checkbox(h).listeners.change) fn();
+  assert.equal(agree(h).disabled, true, '6 s is not yet 6 + 1');
+  h.clock.t += 600;
+  for (const fn of checkbox(h).listeners.change) fn();
+  assert.equal(agree(h).disabled, false);
+});
+
+test('400 consent_refused: the newest offer is adopted and the dwell restarts, like a 409', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  const newer = { id: 'offer400400400400400400400400400a', issued_at: '2026-11-17T12:00:09Z' };
+  h.answer({ status: 200, body: consentView({ consent: { ...consentView().consent, offer: newer } }) });
+  await nextRead(h);
+  await readyToAgree(h);
+  h.answer({ status: 400, body: { error: 'consent_refused' } });
+  clickAgree(h);
+  await settle();
+  assert.equal(checkbox(h).checked, false);
+  assert.match(h.text(), /read the terms again/);
+  tick(h, checkbox(h));
+  assert.equal(agree(h).disabled, true, 'dwell restarted');
+  advance(h, 4100);
+  h.answer({ status: 200, body: { recorded: true } });
+  clickAgree(h);
+  await settle();
+  assert.equal(JSON.parse(h.fetches.filter((f) => f.init.method === 'POST').pop().init.body).offer_id, newer.id);
+});
+
+test('409 consent_too_soon: the tick is kept and the page waits (not "something changed")', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  await readyToAgree(h);
+  h.answer({ status: 409, body: { error: 'consent_too_soon' } });
+  clickAgree(h);
+  await settle();
+  assert.equal(checkbox(h).checked, true);
+  assert.equal(/Something changed/.test(h.text()), false);
+  assert.match(h.text(), /Just a moment/);
+  assert.equal(agree(h).disabled, true);
+  h.clock.t += 4100;
+  for (const fn of checkbox(h).listeners.change) fn();
+  assert.equal(agree(h).disabled, false);
+  assert.equal(JSON.parse(h.fetches.filter((f) => f.init.method === 'POST').pop().init.body).offer_id, OFFER.id, 'same offer');
+});
+
+test('a guard\'s plain-text 404 on the POST is "not available right now": the token is kept and polling goes on', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  await readyToAgree(h);
+  h.answer({ status: 404, text: 'Not found', headers: { 'x-agenpas-guard': 'front' } });
+  clickAgree(h);
+  await settle();
+  assert.match(h.text(), /isn't available right now/);
+  assert.equal(/This link isn't valid/.test(h.text()), false);
+  assert.equal(h.storage.get(`agenpas:t:${PID}`), TOKEN, 'token kept');
+  assert.ok(h.pollTimers().length >= 1, 'still polling');
+  // The API's own JSON link_invalid still ends it.
+  h.answer({ status: 404, body: { error: 'link_invalid' } });
+  for (const fn of checkbox(h).listeners.change) fn();
+  clickAgree(h);
+  await settle();
+  assert.match(h.text(), /This link isn't valid/);
+  assert.equal(h.storage.has(`agenpas:t:${PID}`), false);
 });

@@ -39005,19 +39005,22 @@ function isAcpDelegatePaymentRequest(req) {
   return p.toLowerCase().replace(/\/+$/, '') === target;
 }
 
+// express.json's default media-type match (`application/json`, parameters ignored), spelled inline so this does not
+// depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed. Named (and on `_debug`)
+// so the AgenPas host carve-out can be tested on its own (tests/agenpas_server_mount.test.js).
+function globalJsonBodyType(req) {
+  if (isAcpDelegatePaymentRequest(req)) return false;
+  // The AgenPas host (only while AGENPAS_ENABLED is on): its one body, the consent POST, is parsed by its own route,
+  // strictly and at most 1 kB (src/agenpas/router.js). Off, or any other host: false, so nothing changes.
+  if (agenpasHostGuard.skipsGlobalBodyParser(req)) return false;
+  const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  return ct === 'application/json';
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
-  // express.json's default media-type match (`application/json`, parameters ignored), spelled inline so this
-  // does not depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed.
-  type: (req) => {
-    if (isAcpDelegatePaymentRequest(req)) return false;
-    // The AgenPas host (only while AGENPAS_ENABLED is on): its one body, the consent POST, is parsed by its own route,
-    // strictly and at most 1 kB (src/agenpas/router.js). Off, or any other host: false, so nothing changes.
-    if (agenpasHostGuard.skipsGlobalBodyParser(req)) return false;
-    const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    return ct === 'application/json';
-  },
+  type: globalJsonBodyType,
   verify: (req, res, buf, encoding) => {
     try {
       JSON.parse(buf);
@@ -56026,6 +56029,7 @@ module.exports = app;
 module.exports._debug = {
   // AgenPas: the internal UI's static handler with its host gate, so the gate can be tested without the front guard.
   internalUiStaticGate,
+  globalJsonBodyType,
   // Exported because the price-check fan-out runs only behind the external reco lane: the property under
   // test is that its loopback sub-calls are marked fan-out (keyed per tool call, not per caller).
   recommendPriceVerifyLoopbackHeaders,

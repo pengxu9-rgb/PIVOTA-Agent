@@ -56,6 +56,8 @@ const GATED_KINDS = new Set(['card_binding', 'approval']);
 const CONSENT_VERSION_RE = /^[\x21-\x7e](?:[\x20-\x7e]{0,30}[\x21-\x7e])?$/;
 const CONSENT_OFFER_ID_RE = /^[A-Za-z0-9+/=_-]{16,128}$/;
 const CONSENT_ISSUED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/;
+// The backend's minimum dwell, when it states one (`consent.min_dwell_seconds`, or the offer's): whole seconds.
+const CONSENT_MAX_DWELL_SECONDS = 120;
 
 const POLL_MIN_SECONDS = 2;
 const POLL_MAX_SECONDS = 15;
@@ -215,9 +217,18 @@ const REASON_GROUPS = [
   },
   {
     kind: 'approval_timed_out',
-    codes: ['vic_authorization_expired', 'vic_authorization_overdue', 'vic_buyer_abandoned', 'approval_window_lapsed'],
+    codes: ['vic_authorization_expired', 'vic_authorization_overdue', 'vic_buyer_abandoned'],
     title: 'The approval timed out',
     message: "The purchase wasn't approved in time, so the order wasn't placed.",
+    retry_hint: true,
+  },
+  {
+    // Reap's `approval_window_lapsed` is the backend's best reading, not a diagnosis (a late approval that then failed
+    // reads the same): the copy says the order was not placed, and does not say the buyer failed to approve.
+    kind: 'approval_timed_out',
+    codes: ['approval_window_lapsed'],
+    title: "The approval didn't go through in time",
+    message: "The approval didn't go through in time, so the order wasn't placed. You can start again from the chat.",
     retry_hint: true,
   },
   {
@@ -466,7 +477,10 @@ function consentBlockOf(raw, legalHosts) {
   const offer = offerRaw && typeof offerRaw.id === 'string' && CONSENT_OFFER_ID_RE.test(offerRaw.id)
     && typeof offerRaw.issued_at === 'string' && CONSENT_ISSUED_AT_RE.test(offerRaw.issued_at)
     ? { id: offerRaw.id, issued_at: offerRaw.issued_at } : null;
+  const dwellRaw = raw.min_dwell_seconds !== undefined ? raw.min_dwell_seconds : (offerRaw ? offerRaw.min_dwell_seconds : undefined);
+  const minDwell = Number.isSafeInteger(dwellRaw) && dwellRaw >= 0 && dwellRaw <= CONSENT_MAX_DWELL_SECONDS ? dwellRaw : null;
   return {
+    min_dwell_seconds: minDwell,
     required: raw.required === true,
     available: raw.available === true,
     satisfied: raw.satisfied === true,
@@ -586,6 +600,8 @@ function buildView(body, { purchaseId, hostedHosts = [], embed = false, now, lin
   let record = null;
   if (offerable && consentScreen) {
     consent = { step: consentStep, terms_url: block.terms_url, privacy_url: block.privacy_url, offer: { ...block.offer } };
+    // Only when the backend states it (the page then waits at least that long plus a second; else its own 4 s).
+    if (block.min_dwell_seconds !== null) consent.min_dwell_seconds = block.min_dwell_seconds;
     record = { step: consentStep, terms_version: block.terms_version, privacy_version: block.privacy_version };
   }
 

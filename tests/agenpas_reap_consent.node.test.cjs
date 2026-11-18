@@ -313,10 +313,13 @@ test('Reap post-checkout codes: the generic wording, never "no order was sent", 
   }
 });
 
-test('Reap approval_window_lapsed: "the approval timed out", and it too keeps "no order was sent" away', () => {
+test('Reap approval_window_lapsed: the approval did not go through in time (no claim of the cause), and it keeps "no order was sent" away', () => {
   const view = project(reap('failed', {}, { last_error_code: 'approval_window_lapsed' }));
   assert.equal(view.outcome.kind, 'approval_timed_out');
-  assert.match(view.outcome.message, /wasn't approved in time/);
+  assert.equal(view.outcome.message, "The approval didn't go through in time, so the order wasn't placed. You can start again from the chat.");
+  assert.equal(/wasn't approved/.test(view.outcome.message), false, 'never says the buyer did not approve');
+  // The A2A rail's own timed-out codes keep their wording.
+  assert.match(project(a2a('failed', {}, { last_error_code: 'vic_authorization_expired' })).outcome.message, /wasn't approved in time/);
   const both = project(reap('failed', {}, { refusal_reason: 'quote_id_missing', last_error_code: 'approval_window_lapsed' }));
   assert.equal(both.outcome.kind, 'approval_timed_out');
 });
@@ -336,4 +339,12 @@ test('Reap pending-step codes (released, non-final) leave the step alone; an unk
   const unknown = project(reap('failed', {}, { last_error_code: 'agentic_resource_not_found' }));
   assert.equal(unknown.outcome.kind, 'failed');
   assert.equal(/try again|no order was sent/i.test(unknown.outcome.message), false);
+});
+
+test('the backend\'s dwell: `min_dwell_seconds` (on the block or the offer) reaches the page only when stated and sane', () => {
+  const at = (block) => project(reap('needs_payment_method', { next_action: GATED_CARD, consent: block }), ON).consent;
+  assert.equal(Object.hasOwn(at(consent()), 'min_dwell_seconds'), false);
+  assert.equal(at(consent({ min_dwell_seconds: 3 })).min_dwell_seconds, 3);
+  assert.equal(at(consent({ offer: { ...OFFER, min_dwell_seconds: 5 } })).min_dwell_seconds, 5);
+  for (const bad of [-1, 1.5, '3', 121, null]) assert.equal(Object.hasOwn(at(consent({ min_dwell_seconds: bad })), 'min_dwell_seconds'), false, String(bad));
 });

@@ -16,7 +16,8 @@
  *                                                  host guard refuses it): the buyer accepted the terms and privacy
  *                                                  policy for the current step. Token in `X-Agenpas-Link`; JSON body
  *                                                  {step, offer_id, issued_at} (at most 1 kB); exact Origin, Sec-Fetch-
- *                                                  Site same-origin, Content-Type application/json, or 403 / 415. The
+ *                                                  Site same-origin when sent, Content-Type application/json, or 403 /
+ *                                                  415. The
  *                                                  versions recorded come from the gateway's own latest read.
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
@@ -447,7 +448,11 @@ function createAgenpasRouter(deps = {}) {
     if (!ipBuckets.allow(`ip:${digest(clientIpFromRequest(req) || 'unknown')}`)) return tooMany(res, 'consent', 'rate_limited_ip');
     if (!PURCHASE_ID_RE.test(purchaseId)) return refuse(404, 'link_invalid', 'bad_purchase_id');
     if (firstString(req.headers.origin) !== config.publicBaseUrl(env)) return refuse(403, 'forbidden', 'origin');
-    if (firstString(req.headers['sec-fetch-site']) !== 'same-origin') return refuse(403, 'forbidden', 'sec_fetch_site');
+    // Sec-Fetch-Site refuses only when it is SENT and says anything but same-origin: older browsers (Safari before
+    // 16.4, iOS 15) send none, and the exact Origin, the JSON content type, the link header and the refused preflight
+    // already stop a cross-site request.
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite !== undefined && firstString(fetchSite) !== 'same-origin') return refuse(403, 'forbidden', 'sec_fetch_site');
     if (mediaTypeOf(req) !== 'application/json') return refuse(415, 'unsupported_media_type', 'content_type');
     const token = firstString(req.headers[LINK_HEADER]);
     const verdict = verify(token, purchaseId);
@@ -498,6 +503,8 @@ function createAgenpasRouter(deps = {}) {
       log('info', { surface: 'consent', outcome: 'recorded', step: consent.step });
       return res.status(200).json({ recorded: true });
     }
+    // The backend's dwell has not passed yet: the page waits and lets the buyer press again (nothing changed).
+    if (kind === 'too_soon') return refuse(409, 'consent_too_soon', 'too_soon');
     if (kind === 'stale') return refuse(409, 'consent_stale', 'stale');
     if (kind === 'refused') return refuse(400, 'consent_refused', 'refused');
     log('warn', { surface: 'consent', outcome: 'unavailable', reason: (written && typeof written.code === 'string' && written.code) || 'unknown' });

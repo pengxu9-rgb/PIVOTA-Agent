@@ -30,7 +30,7 @@ All read per request; no restart needed.
 | `AGENPAS_CONSENT_ENABLED` | off | On: the card and approval screens can take the buyer's acceptance of Pivota's Terms of Service and Privacy Policy (`POST /agenpas/api/p/<id>/consent`), the API view gains a `consent` member, and `start_purchase` / `get_order` (and, with the Reap rail served, UCP `create_checkout`) each gain one sentence. Off: that route does not exist (the host guard refuses it exactly as before), the view has exactly its old members, and every description is byte-identical. See "Terms and privacy consent". |
 | `AGENPAS_INTERNAL_CONSENT_KEY` | none | The dedicated key (`X-Internal-Key`, at least 32 characters) the gateway presents on the backend's internal consent write. Separate from `AGENPAS_INTERNAL_READ_KEY`, which stays read-only. Missing or short: every consent write is unavailable (503; nothing recorded). |
 | `AGENPAS_LEGAL_HOSTS` | `pivota.cc` | Comma-separated exact host names the terms and privacy links may point at (https, default port, no user-info, exact host, the same check as hosted pages). A link anywhere else drops the offer: "not available right now". |
-| `AGENPAS_RAILS` | `a2a` | Comma-separated rails links are minted for (`start_purchase`, `get_order`). `reap` is honoured ONLY while `AGENPAS_CONSENT_ENABLED` is on: that is enforced in code (`config.rails`), so a Reap buyer can always accept the terms on our page first. A list that names no rail this gateway knows mints no link. |
+| `AGENPAS_RAILS` | `a2a` | Comma-separated rails links are minted for (`start_purchase`, `get_order`). `reap` is honoured ONLY while `AGENPAS_CONSENT_ENABLED` is on: that is enforced in code (`config.rails`), so a Reap buyer can always accept the terms on our page first. A value that leaves no servable rail (a typo, or `reap` alone with consent off) falls back to `a2a`, with one warning per value (`agenpas_config` / `rails_fallback`): a2a is never dropped silently, only by a list naming another servable rail. |
 | `AGENPAS_DEV_FIXTURES` | off | Local development only: canned purchases instead of the backend. It cannot arm on a managed platform (`K_SERVICE`, `K_REVISION`, `RAILWAY_*`, ...) or in a production environment (`src/config/platform.js`), whatever its value, and it serves only requests whose Host is loopback (`127.0.0.1`, `::1`, `localhost`). |
 
 The backend read also uses `PIVOTA_API_BASE`, through the private backend hop.
@@ -131,7 +131,9 @@ memory):
   `ENROLLMENT_NOT_ACTIVE` refusal of the checkout create, which creates nothing), `quote_id_missing`.
 - Post-checkout, the state's generic wording (never "no order was sent", never the card wording, and they keep a FAILED
   code beside them from saying it either): `checkout_failed`, `checkout_expired`, `checkout_id_missing`,
-  `partner_id_malformed`. `approval_window_lapsed` is "the approval timed out" (and also keeps FAILED away).
+  `partner_id_malformed`. `approval_window_lapsed` is "The approval didn't go through in time, so the order wasn't
+  placed. You can start again from the chat." (it does not claim the buyer failed to approve: the backend's code is a
+  best reading), and it also keeps FAILED away.
 - `buyer_email_missing` (resolving -> failed): "some details were missing".
 - The codes the Reap worker releases on a live row (`enrollment_settling`, `enrollment_pending`, `quote_expired`,
   `checkout_quote_replayed`, `checkout_read_recovered`, transport codes, ...) leave the buyer's step alone; any other
@@ -162,22 +164,29 @@ the step of the current state, both links https on `AGENPAS_LEGAL_HOSTS`, both v
 characters, and an `offer: {id, issued_at}`) shows, before any hosted button: "Before you add your card / approve,
 read Pivota's Terms of Service and Privacy Policy" (both links open in a new tab, `rel="noopener noreferrer"`), an
 UNCHECKED checkbox "I agree to the Terms of Service and Privacy Policy", and "Agree and continue", disabled until the
-box is ticked and for 4 s after the offer is first shown (the backend's own minimum dwell is shorter). The approval's
+box is ticked and for a dwell after the offer is first shown: the backend's `min_dwell_seconds` plus 1 s when the
+consent block (or its offer) states it, else 4 s (the backend's default is 3 s). The approval's
 consent may be taken while the total is confirmed (`locking`) or on the approval screen. The view's `consent` member
 carries the step, the two links and the offer, nothing else (never the versions, the flags or a record). The page keeps
-the FIRST offer it showed for a step (a new one per read would never age past the dwell) and re-renders only when
+the FIRST offer it showed for a step (a new one per read would never age past the dwell) for up to 25 minutes measured on
+its own clock from when it first saw the offer (never from `issued_at`, so a phone clock that is off does not matter);
+then it takes the newest offer, clears the tick, restarts the dwell and redraws. It otherwise re-renders only when
 something other than the offer changes, so a tick or focus is never dropped by a poll.
 
 **The POST.** `POST /agenpas/api/p/:id/consent`, link token in `X-Agenpas-Link`, body exactly
 `{step, offer_id, issued_at}` (strict JSON, at most 1 kB, parsed by the route itself: the app's global JSON parser
 skips the AgenPas host). Checked in this order: the per-IP bucket; the exact `Origin` (= `AGENPAS_PUBLIC_BASE_URL`) and
-`Sec-Fetch-Site: same-origin` (else 403 `forbidden`); `Content-Type: application/json` (else 415); the link (404 /
+`Sec-Fetch-Site`, which refuses only when it is SENT and is not `same-origin` (older Safari / iOS 15 send none; the
+exact Origin, the JSON content type, the link header and the refused preflight remain) (else 403 `forbidden`); `Content-Type: application/json` (else 415); the link (404 /
 410 / 503 as for the read); the per-link bucket (429); the body (400, or 413 over 1 kB). Then the gateway's OWN latest
 read (the same 2 s single-flight cache the page's poll fills): the step must be the one that read offers now, or 409
 `consent_stale`; the versions sent to the backend are that read's, never the browser's. Answers: 200
-`{recorded: true}` (the read cache entry is dropped, so the next poll sees the hosted page), 409 `consent_stale` (the
-page clears the tick and asks to read again), 400 `consent_refused`, 503 `unavailable`, 429 `rate_limited` (the page
-keeps the tick and lets the buyer retry after the wait).
+`{recorded: true}` (the read cache entry is dropped, so the next poll sees the hosted page), 409 `consent_stale` and
+400 `consent_refused` (the page takes the newest offer, clears the tick, restarts the dwell and asks to read again), 409
+`consent_too_soon` (the backend's dwell has not passed: the page keeps the tick and lets the buyer press again after the
+dwell), 503 `unavailable`, 429 `rate_limited` (the page keeps the tick and lets the buyer retry after the wait). A 404
+from a guard in front of the route (plain text with `X-Agenpas-Guard`, e.g. the flag switched off) is "not available
+right now" and the link token is kept; only the API's own JSON `link_invalid` ends the link.
 
 **What is recorded, and what it proves.** The backend records "accepted on Pivota's page by the link holder"
 (`evidence = link_holder_on_pivota_page`). Plainly: the agent that was handed the link holds it too, and the Origin,
@@ -210,7 +219,8 @@ POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/consents
   X-Internal-Key:      AGENPAS_INTERNAL_CONSENT_KEY
   X-Agenpas-Agent-Id:  <agent id from the verified link>
   {step, offer_id, issued_at, terms_version, privacy_version}
-  201 / 200 recorded · 409 consent_stale · 400 / 404 refused · 503 unavailable
+  201 / 200 recorded · 409 consent_stale (or consent_too_soon) · 400 / 404 refused · 503 unavailable
+  (optional) consent.min_dwell_seconds or consent.offer.min_dwell_seconds: the backend's dwell, whole seconds 0..120
 ```
 
 Not built here: the legal text itself (buyer Terms of Service with a payment-partner purchase clause, and a buyer

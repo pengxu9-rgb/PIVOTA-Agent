@@ -20,10 +20,11 @@
 
   var POLL_MIN = 2;
   var POLL_MAX = 15;
-  // The buyer has the offer in front of them at least this long before "Agree and continue" works (the backend's own
-  // minimum is shorter: this keeps a fast click from being refused).
+  // The buyer has the offer in front of them at least this long before "Agree and continue" works: the backend's own
+  // minimum plus a second when the API states it (`consent.min_dwell_seconds`), else 4 s (above the backend's default).
   var CONSENT_DWELL_MS = 4000;
-  // An offer is kept while it is younger than this (the backend accepts up to 30 minutes).
+  // An offer is kept while THIS PAGE first saw it less than this long ago (the backend accepts up to 30 minutes). Measured
+  // on the page's own clock from when it saw the offer, never from the offer's `issued_at`: a phone's clock can be off.
   var CONSENT_OFFER_MAX_AGE_MS = 25 * 60 * 1000;
   var PATH_RE = /^\/agenpas\/p\/((?:pp|ap|rp)_[0-9a-f]{24})\/?$/;
 
@@ -228,7 +229,7 @@
 
   function consentReady() {
     var c = ui.consent;
-    return Boolean(c && c.checked && !c.posting && !c.accepted && Date.now() >= c.shownAt + CONSENT_DWELL_MS
+    return Boolean(c && c.checked && !c.posting && !c.accepted && Date.now() >= c.shownAt + c.dwellMs
       && Date.now() >= (c.retryAt || 0));
   }
 
@@ -244,38 +245,58 @@
   function scheduleConsentCheck() {
     var c = ui.consent;
     if (!c) return;
-    var wait = Math.max(c.shownAt + CONSENT_DWELL_MS, c.retryAt || 0) - Date.now();
+    var wait = Math.max(c.shownAt + c.dwellMs, c.retryAt || 0) - Date.now();
     if (wait > 0) setTimeout(updateConsentButton, wait + 50);
   }
 
-  /** Keep the offer the buyer is reading; a new step (or a stale offer) starts a new one. */
+  function dwellMsOf(offered) {
+    var n = offered ? Number(offered.min_dwell_seconds) : NaN;
+    return isFinite(n) && n >= 0 && Math.floor(n) === n ? (n + 1) * 1000 : CONSENT_DWELL_MS;
+  }
+
+  /**
+   * Start again from the newest offer the page has read: the tick is cleared, the dwell restarts, and the next poll
+   * re-renders (an answer that differs only in its offer would otherwise not be drawn again).
+   */
+  function adoptLatestOffer(c, error) {
+    if (ui.latestOffer) c.offer = ui.latestOffer;
+    c.checked = false;
+    c.accepted = false;
+    c.waited = 0;
+    c.seenAt = Date.now();
+    c.shownAt = Date.now();
+    c.dwellMs = ui.latestDwellMs || CONSENT_DWELL_MS;
+    c.retryAt = 0;
+    c.error = error || null;
+    ui.lastJson = null;
+    scheduleConsentCheck();
+  }
+
+  /** Keep the offer the buyer is reading; a new step (or an offer this page has held too long) starts a new one. */
   function syncConsent(view) {
     var offered = view && view.consent;
     ui.latestOffer = offered && offered.offer ? offered.offer : null;
+    ui.latestDwellMs = dwellMsOf(offered);
     if (!offered) {
       ui.consent = null;
       return;
     }
     var c = ui.consent;
-    var issued = c && c.offer ? Date.parse(c.offer.issued_at) : NaN;
-    if (!c || c.step !== offered.step || !isFinite(issued) || Date.now() - issued > CONSENT_OFFER_MAX_AGE_MS) {
-      ui.consent = { step: offered.step, offer: offered.offer, shownAt: Date.now(), checked: false, posting: false, accepted: false, error: null, retryAt: 0, button: null, waited: 0 };
+    if (!c || c.step !== offered.step || !c.offer || Date.now() - c.seenAt > CONSENT_OFFER_MAX_AGE_MS) {
+      var replacing = Boolean(c);
+      ui.consent = {
+        step: offered.step, offer: offered.offer, seenAt: Date.now(), shownAt: Date.now(), dwellMs: ui.latestDwellMs,
+        checked: false, posting: false, accepted: false, error: null, retryAt: 0, button: null, waited: 0,
+      };
+      // A newer offer for the same answer shape must still be drawn (the poll skips an answer whose key is unchanged).
+      if (replacing) ui.lastJson = null;
       scheduleConsentCheck();
       return;
     }
     // Recorded, yet the step is still offered after a few reads: let the buyer agree again rather than wait forever.
     if (c.accepted) {
       c.waited += 1;
-      if (c.waited >= 3) {
-        c.accepted = false;
-        c.checked = false;
-        c.waited = 0;
-        c.offer = offered.offer;
-        c.shownAt = Date.now();
-        c.error = 'Please agree once more to continue.';
-        scheduleConsentCheck();
-        ui.lastJson = null;
-      }
+      if (c.waited >= 3) adoptLatestOffer(c, 'Please agree once more to continue.');
     }
   }
 
@@ -347,7 +368,8 @@
       referrerPolicy: 'no-referrer',
     }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (body) {
-        return { status: res.status, body: body, retryAfter: res.headers && typeof res.headers.get === 'function' ? res.headers.get('Retry-After') : null };
+        var header = function (name) { return res.headers && typeof res.headers.get === 'function' ? res.headers.get(name) : null; };
+        return { status: res.status, body: body, retryAfter: header('Retry-After'), guard: header('X-Agenpas-Guard') };
       });
     }).then(function (r) {
       if (ui.consent !== c) return;
@@ -362,18 +384,36 @@
         showExpired(r.body && r.body.link_ttl_minutes);
         return;
       }
-      if (r.status === 404 && !(r.body && r.body.error === 'not_found')) {
-        stop();
-        forgetToken();
-        renderMessage("This link isn't valid", 'Please open the link exactly as the chat gave it to you, or ask the chat for a new one.');
+      if (r.status === 404) {
+        // Only the API's own JSON answer judges the link. A 404 from a guard in front of it (a plain-text answer with
+        // X-Agenpas-Guard, e.g. the consent route switched off) or with no readable body is "not available right now":
+        // the link may still be good, so the token is kept.
+        var guarded = Boolean(r.guard) || !r.body || typeof r.body.error !== 'string';
+        if (!guarded && r.body.error === 'link_invalid') {
+          stop();
+          forgetToken();
+          renderMessage("This link isn't valid", 'Please open the link exactly as the chat gave it to you, or ask the chat for a new one.');
+          return;
+        }
+        if (!guarded && r.body.error === 'not_found') {
+          stop();
+          renderMessage("We can't find this purchase", 'Go back to the chat to check on it.');
+          return;
+        }
+        consentError("This isn't available right now. Please try again in a little while.");
         return;
       }
-      if (r.status === 409) {
-        // The offer or the terms moved on: read them again, from the newest offer, and agree again.
-        c.checked = false;
-        if (ui.latestOffer) c.offer = ui.latestOffer;
-        c.shownAt = Date.now();
+      if (r.status === 409 && r.body && r.body.error === 'consent_too_soon') {
+        // Nothing changed: the backend wants the offer on screen a little longer. Keep the tick; wait; press again.
+        c.retryAt = Date.now() + c.dwellMs;
         scheduleConsentCheck();
+        consentError('Just a moment. You can press "Agree and continue" again in a few seconds.');
+        return;
+      }
+      if (r.status === 409 || (r.status === 400 && r.body && r.body.error === 'consent_refused')) {
+        // The offer or the terms moved on (or the backend refused this offer): read them again, from the newest
+        // offer, and agree again.
+        adoptLatestOffer(c, 'Something changed. Please read the terms again, then agree.');
         consentError('Something changed. Please read the terms again, then agree.');
         pollNow();
         return;

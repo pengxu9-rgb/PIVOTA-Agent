@@ -352,6 +352,17 @@ function earlierInstant(iso, unixSeconds) {
   return iso;
 }
 
+/**
+ * The door's half of the UCP consent swap (R3-5): the lane's captured AgenPas link goes ONLY onto the answer the lane
+ * built for it, a requires_escalation checkout with no continue_url of its own (never onto a degraded or any other
+ * answer of the same call). Anything else is returned as it is.
+ */
+export function withConsentContinueUrl(checkout, url) {
+  const swap = typeof url === "string" && url !== "" && isPlainObject(checkout) && checkout.status === "requires_escalation"
+    && checkout.continue_url === undefined;
+  return swap ? withContinueUrl(checkout, url) : checkout;
+}
+
 /** The checkout with `continue_url` in its usual place (right after `status`), every other member as it was. */
 function withContinueUrl(checkout, url) {
   if (!isPlainObject(checkout)) return checkout;
@@ -638,10 +649,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       });
       if (reap) {
         const filtered = sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" });
-        // Only onto the answer the lane built for it: a requires_escalation checkout with no continue_url of its own.
-        const swap = consentLink && consentLink.url && isPlainObject(filtered) && filtered.status === "requires_escalation"
-          && filtered.continue_url === undefined;
-        return shape(swap ? withContinueUrl(filtered, consentLink.url) : filtered);
+        return shape(withConsentContinueUrl(filtered, consentLink && consentLink.url));
       }
       if (recoverOnly || resumeOnly || String(params.session_id || "").startsWith("reap_")) {
         throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", { reason: "ucp_reap_primary_route_unavailable" });

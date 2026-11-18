@@ -146,10 +146,12 @@ function createBackendPurchaseReader(deps = {}) {
  *     {step, offer_id, issued_at, terms_version, privacy_version}
  *   201 / 200 -> recorded (a repeat is idempotent)
  *   409 consent_stale -> the offer or a version moved on (the page reads again)
+ *   409 consent_too_soon -> the offer is younger than the backend's dwell (the page waits, then the buyer presses again)
  *   400 / 404 -> refused (nothing recorded)
  *   503 / anything else -> unavailable
  *
- * Outcomes: { kind: 'recorded' } | { kind: 'stale' } | { kind: 'refused', code } | { kind: 'unavailable', code }.
+ * Outcomes: { kind: 'recorded' } | { kind: 'stale' } | { kind: 'too_soon' } | { kind: 'refused', code } |
+ * { kind: 'unavailable', code }.
  * Never throws. Logs carry an outcome, a code and an HTTP status only.
  */
 const CONSENT_SUBPATH = '/consents';
@@ -234,8 +236,10 @@ function createBackendConsentWriter(deps = {}) {
       return { kind: 'recorded' };
     }
     if (status === 409) {
-      log('info', { outcome: 'stale', code, http_status: status });
-      return { kind: 'stale', code };
+      // `consent_too_soon`: the offer is younger than the backend's dwell (nothing moved on; try again shortly).
+      const kind = code === 'consent_too_soon' ? 'too_soon' : 'stale';
+      log('info', { outcome: kind, code, http_status: status });
+      return { kind, code };
     }
     if (status === 400 || status === 404) {
       log('info', { outcome: 'refused', code, http_status: status });
