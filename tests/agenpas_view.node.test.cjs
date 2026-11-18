@@ -910,3 +910,35 @@ test('checkout_placing (also written after a lookup finds the checkout in progre
   const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: 'checkout_placing' }));
   assert.equal(approve.screen, 'approve');
 });
+
+// ---- progress codes vs anomalies (decision after 34e647cce) -----------------------------------------------------
+
+for (const code of ['checkout_placing', 'checkout_ready', 'checkout_read', 'await_read', 'reconciled']) {
+  test(`PROGRESS ${code}: the normal placing screen; Approve stays before placing; a HELD code beside it still wins`, () => {
+    const placing = project(unified('placing', { poll_after_seconds: 5 }, { last_error_code: code }));
+    assert.equal(placing.screen, 'placing');
+    assert.equal(placing.outcome, null);
+    const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: code }));
+    assert.equal(approve.screen, 'approve');
+    assert.ok(approve.action);
+    for (const [rr, le] of [[code, 'checkout_confirm_unresolved'], ['money_result_seen', code]]) {
+      const held = project(unified('placing', {}, { refusal_reason: rr, last_error_code: le }));
+      assert.equal(held.screen, 'outcome_unknown', `${rr} + ${le}`);
+      assert.equal(held.outcome.kind, 'held');
+    }
+  });
+}
+
+for (const code of ['transition_refused', 'rail_refused', 'no_step_for_state', 'vic_order_step_disabled', 'checkout_answer_unrecognised']) {
+  test(`ANOMALY ${code}: the checking wording from placing on; nothing changes before placing`, () => {
+    const placing = project(unified('placing', { poll_after_seconds: 5 }, { last_error_code: code }));
+    assert.equal(placing.screen, 'outcome_unknown');
+    assert.equal(placing.outcome.kind, 'held');
+    const failed = project(unified('failed', { poll_after_seconds: null }, { last_error_code: code }));
+    assert.equal(failed.screen, 'outcome_unknown');
+    assert.equal(failed.outcome.retry_hint, false);
+    const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: code }));
+    assert.equal(approve.screen, 'approve');
+    assert.ok(approve.action);
+  });
+}

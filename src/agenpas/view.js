@@ -117,9 +117,12 @@ const HELD_CODES = new Set([
  * looked card-shaped, or invalid): `merchant_order_id` is null. Neither a hold nor a failure. */
 const COMPLETED_REFERENCE_CODES = new Set(['checkout_order_reference_withheld', 'checkout_order_reference_invalid']);
 
-/** The worker's ordinary progress codes (not holds): the screen is the state's own. `checkout_placing` is written while
- * the checkout is being placed, and also after a lookup finds the checkout in progress. */
-const PROGRESS_CODES = new Set(['checkout_placing', 'checkout_ready']);
+/** The worker's ordinary progress codes (routine retries and reconciliation; not holds): the screen is the state's own.
+ * `checkout_placing` is written while the checkout is being placed, and also after a lookup finds it in progress.
+ * They never override a HELD code (HELD is decided first). Anomalies (`transition_refused`, `rail_refused`,
+ * `no_step_for_state`, `vic_order_step_disabled`, `checkout_answer_unrecognised`) are deliberately NOT here: from
+ * placing on they keep the checking wording. */
+const PROGRESS_CODES = new Set(['checkout_placing', 'checkout_ready', 'checkout_read', 'await_read', 'reconciled']);
 
 /** Paused before the checkout step; not terminal. */
 const PARKED_CODES = new Set(['checkout_step_disabled', 'checkout_schema_incomplete']);
