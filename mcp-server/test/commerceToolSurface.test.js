@@ -75,7 +75,7 @@ test("get_offers declares product_group_id as the product's signature id only, w
   assert.equal(props.product_group_id.type, "string");
   const text = props.product_group_id.description;
   assert.match(text, /^Prefer `product_id`\./);
-  assert.match(text, /signature id from search_catalog or get_product \(sig_ followed by 32 lowercase hex\)/);
+  assert.match(text, /signature id from search_catalog or get_product \(sig_ followed by 32 hex characters\)/);
   assert.match(text, /product_group_id_not_product_id/);
   assert.match(text, /Ignored when `product_id` is given\./);
   assert.deepEqual(props.currency, { type: "string" });

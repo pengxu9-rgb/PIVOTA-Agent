@@ -51,6 +51,10 @@ function runCombo(env, port) {
     const child = spawn(process.execPath, [CHILD, String(port)], { env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
+    // Decode the stream, not each chunk: a multi-byte character split across two chunks was read as two
+    // broken halves, so a tool list that merely got longer moved an em dash onto a chunk edge and changed hash.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { err += d; });
     child.on('close', (code) => {

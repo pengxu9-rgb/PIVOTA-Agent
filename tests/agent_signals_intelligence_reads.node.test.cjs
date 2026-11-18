@@ -1156,8 +1156,9 @@ test('makeGetOffers: a signature in product_group_id (no product_id) is fetched 
 });
 
 test('makeGetOffers: a group id that is not a signature is refused by name, with no fetch', async () => {
-  for (const groupArg of [GROUP_ID_28, `pg_${'ab12cd34'.repeat(4)}`, SIG_IN_GROUP_ARG.toUpperCase().replace('SIG_', 'sig_'),
-    ` ${SIG_IN_GROUP_ARG}`, `${SIG_IN_GROUP_ARG}0`, 'not-an-id']) {
+  // Cyrillic 'а' (U+0430) in place of the hex 'a': a lookalike, not a signature.
+  for (const groupArg of [GROUP_ID_28, `pg_${'ab12cd34'.repeat(4)}`, `${SIG_IN_GROUP_ARG}0`, 'not-an-id',
+    SIG_IN_GROUP_ARG.replace('a', '\u0430'), `sig_ ${'ab12cd34'.repeat(4)}`]) {
     const { handler, seen } = recordingGetOffers([sampleOffer({ price: 12 })]);
     const res = await handler({ payload: { product_group_id: groupArg, market: 'US' } });
     assert.equal(seen.length, 0, `no fetch for ${groupArg}`);
@@ -1180,6 +1181,46 @@ test('makeGetOffers: a group id that is not a signature is refused by name, with
   assert.equal(onDoor.seen.length, 0);
   assert.equal(doorRes.metadata.reason, 'product_group_id_not_product_id');
   assert.equal(doorRes.metadata.reason_retriable, false);
+});
+
+test('makeGetOffers: an upper-case or padded signature in product_group_id is the same product, forwarded normalised', async () => {
+  const upper = SIG_IN_GROUP_ARG.toUpperCase();
+  for (const groupArg of [upper, `sig_${'AB12cd34'.repeat(4)}`, ` ${SIG_IN_GROUP_ARG}`, `${SIG_IN_GROUP_ARG}\n`, `\t${upper} `]) {
+    const { handler, seen } = recordingGetOffers([sampleOffer({ price: 12 })]);
+    const res = await handler({ payload: { product_group_id: groupArg, market: 'US' } });
+    assert.equal(seen.length, 1, JSON.stringify(groupArg));
+    assert.equal(seen[0].product_id, SIG_IN_GROUP_ARG, 'the stored form: trimmed, lower-case');
+    assert.equal(seen[0].product_group_id, SIG_IN_GROUP_ARG);
+    assert.deepEqual(res.subject, { kind: 'product', id: SIG_IN_GROUP_ARG });
+    assert.equal(res.metadata.product_group_id, SIG_IN_GROUP_ARG);
+    assert.equal(res.metadata.offer_count, 1);
+  }
+});
+
+test('makeGetOffers: a non-string product_group_id is refused by name; absent, null or blank keeps the old answer', async () => {
+  for (const groupArg of [123, 0, false, true, [SIG_IN_GROUP_ARG], { id: SIG_IN_GROUP_ARG }]) {
+    for (const productArgs of [{}, { product_id: '' }, { product_id: '  ' }]) {
+      const { handler, seen } = recordingGetOffers([sampleOffer({ price: 12 })]);
+      const res = await handler({ payload: { ...productArgs, product_group_id: groupArg, market: 'US' } });
+      const label = JSON.stringify({ ...productArgs, groupArg });
+      assert.equal(seen.length, 0, label);
+      assert.deepEqual(res.subject, { kind: 'product', id: null }, label);
+      assert.deepEqual(res.metadata, {
+        offer_count: 0, product_group_id: null, market: 'US', market_currency: 'USD',
+        withheld_other_currency_count: 0, reason: 'product_group_id_not_product_id',
+      }, label);
+    }
+  }
+  // Nothing named at all (no product_id, and product_group_id absent, null, '' or blank): today's fetch,
+  // exactly as before this change (the backend answers it with no product reference).
+  for (const groupArg of [undefined, null, '', '   ']) {
+    const { handler, seen } = recordingGetOffers([]);
+    const payload = { merchant_id: 'm1', ...(groupArg === undefined ? {} : { product_group_id: groupArg }) };
+    const res = await handler({ payload });
+    assert.equal(seen.length, 1, String(groupArg));
+    assert.deepEqual(seen[0], { merchant_id: 'm1', product_id: undefined, product_group_id: groupArg, currency: undefined, limit: 10 });
+    assert.equal('reason' in res.metadata, false, String(groupArg));
+  }
 });
 
 test('makeGetOffers: product_id given beside product_group_id wins, whatever the group arg holds', async () => {
