@@ -44,7 +44,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 354670505 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (22),
+// Mirrors pivota-backend 732733b93 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (23),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -94,6 +94,8 @@ const HELD_CODES = new Set([
   'checkout_payment_no_order', 'checkout_order_id_card_shaped', 'checkout_unknown_timeout',
   'checkout_unknown_script_error', 'checkout_cancel_unresolved', 'checkout_confirm_pending_check',
   'checkout_confirm_not_sent', 'checkout_paying_without_task',
+  // The provider reported payment-reached without success: money may have moved.
+  'checkout_payment_reached_unconfirmed',
   'money_result_seen',
   // _VIC_HOLD_CODES
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',

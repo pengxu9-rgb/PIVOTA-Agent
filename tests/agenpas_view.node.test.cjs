@@ -398,7 +398,8 @@ const HELD = [
   'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_result_unrecognised', 'checkout_result_overdue',
   'checkout_total_unverified', 'checkout_total_over_approved', 'checkout_payment_no_order', 'checkout_order_id_card_shaped',
   'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_cancel_unresolved',
-  'checkout_confirm_pending_check', 'checkout_confirm_not_sent', 'checkout_paying_without_task', 'money_result_seen',
+  'checkout_confirm_pending_check', 'checkout_confirm_not_sent', 'checkout_paying_without_task',
+  'checkout_payment_reached_unconfirmed', 'money_result_seen',
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
   'vic_approved_amount_missing', 'vic_submit_unresolved',
 ];
@@ -660,11 +661,11 @@ test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now wri
   assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
 });
 
-test('parity with backend 354670505 (hold sets unchanged since 6f31b6c75): the explicit HELD list is exactly the 22 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
+test('parity with backend 732733b93: the explicit HELD list is exactly the 23 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
   const BACKEND_CHECKOUT_HOLD = ['checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
     'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
     'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_paying_without_task',
-    'checkout_payment_no_order', 'checkout_result_overdue', 'checkout_result_unrecognised', 'checkout_setup_submitted',
+    'checkout_payment_no_order', 'checkout_payment_reached_unconfirmed', 'checkout_result_overdue', 'checkout_result_unrecognised', 'checkout_setup_submitted',
     'checkout_setup_unresolved', 'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_total_over_approved',
     'checkout_total_unverified', 'checkout_unknown_script_error', 'checkout_unknown_timeout'];
   const BACKEND_VIC_HOLD = ['vic_approved_amount_missing', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_order_stale',
@@ -672,7 +673,7 @@ test('parity with backend 354670505 (hold sets unchanged since 6f31b6c75): the e
   // Outcome-unknown codes the worker writes outside those two sets (kept explicit, so the shape never decides them).
   const GATEWAY_EXTRAS = ['money_result_seen', 'outcome_unknown', 'vic_order_outcome_unknown', 'pending_write_unreconcilable',
     'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked', 'vic_held'];
-  assert.equal(BACKEND_CHECKOUT_HOLD.length, 22);
+  assert.equal(BACKEND_CHECKOUT_HOLD.length, 23);
   assert.equal(BACKEND_VIC_HOLD.length, 7);
   // Membership in the EXPLICIT list, not the outcome: the shape regex alone must not be able to satisfy this.
   assert.deepEqual([...HELD_CODES].sort(), [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD, ...GATEWAY_EXTRAS].sort());
@@ -774,5 +775,28 @@ test('operator_confirmed_not_charged beside a hold-SHAPED code (vic_status:unrec
     const view = project(unified('failed', { poll_after_seconds: null }, { refusal_reason: rr, last_error_code: le }));
     assert.equal(view.outcome.kind, 'not_charged', `${rr} + ${le}`);
     assert.match(view.outcome.message, /you weren't charged/);
+  }
+});
+
+// ---- backend 732733b93 -----------------------------------------------------------------------------------------
+
+test('HELD checkout_payment_reached_unconfirmed: the checking screen in placing, outcome_unknown once final, never "charged"', () => {
+  const placing = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: 'checkout_payment_reached_unconfirmed' }));
+  assert.equal(placing.screen, 'outcome_unknown');
+  assert.equal(placing.terminal, false);
+  assert.equal(placing.action, null);
+  assert.match(placing.outcome.message, /We're checking with the store — don't try again/);
+  for (const state of ['failed', 'refused', 'expired']) {
+    const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: 'checkout_payment_reached_unconfirmed' }));
+    assert.equal(view.screen, 'outcome_unknown', state);
+    assert.equal(view.outcome.retry_hint, false);
+    assert.equal(/charged/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
+  }
+  // Beside operator_confirmed_not_charged (either field): HELD wins, the checking wording, never "charged".
+  for (const [rr, le] of [['checkout_payment_reached_unconfirmed', 'operator_confirmed_not_charged'],
+    ['operator_confirmed_not_charged', 'checkout_payment_reached_unconfirmed']]) {
+    const view = project(unified('failed', {}, { refusal_reason: rr, last_error_code: le }));
+    assert.equal(view.screen, 'outcome_unknown', `${rr} + ${le}`);
+    assert.equal(/charged/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
   }
 });
