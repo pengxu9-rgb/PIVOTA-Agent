@@ -53,7 +53,7 @@ const address = (country) => ({ name: 'Buyer One', address_line1: '1 Example Roa
 
 // ---- the upstream's failures, as the transport raises them ---------------------------------------------------
 
-const KERNEL_CODE = { OUT_OF_STOCK: 'OUT_OF_STOCK', QUOTE_EXPIRED: 'QUOTE_EXPIRED', PRICE_CHANGED: 'PRICE_CHANGED', QUOTE_MISMATCH: 'PRICE_CHANGED', PARTNER_ASSERTION_REJECTED: 'PARTNER_ASSERTION_REJECTED' };
+const KERNEL_CODE = { OUT_OF_STOCK: 'OUT_OF_STOCK', QUOTE_EXPIRED: 'QUOTE_EXPIRED', PRICE_CHANGED: 'PRICE_CHANGED', QUOTE_MISMATCH: 'PRICE_CHANGED', PARTNER_ASSERTION_REJECTED: 'PARTNER_ASSERTION_REJECTED', MERCHANT_NOT_ACCEPTING_ORDERS: 'MERCHANT_NOT_ACCEPTING_ORDERS' };
 /**
  * A response that arrived: `status`, the error code the transport took from its body (null: it found none), and
  * the route's own detail, which the transport hands over whole. By default the detail names that same code in
@@ -218,6 +218,7 @@ const each = (fn) => async () => { for (const store of STORES) for (const caller
 
 const ALLOWED = [
   [400, 'INVALID_QUOTE'], [400, 'INVALID_BUYER_CONTEXT'], [400, 'QUOTE_REQUIRED_BEFORE_PURCHASE'], [400, 'QUOTE_MERCHANT_MISMATCH'], [400, 'VARIANT_REQUIRED'],
+  [403, 'MERCHANT_NOT_ACCEPTING_ORDERS'],
   [404, 'QUOTE_NOT_FOUND'],
   [409, 'PARTNER_ASSERTION_REJECTED'], [409, 'UNSUPPORTED_COMMERCE_PATH'], [409, 'PREFLIGHT_FAILED'],
 ];
@@ -230,6 +231,7 @@ const LIST_FILE_TEXT = `[
   [400, "QUOTE_MERCHANT_MISMATCH"],
   [400, "QUOTE_REQUIRED_BEFORE_PURCHASE"],
   [400, "VARIANT_REQUIRED"],
+  [403, "MERCHANT_NOT_ACCEPTING_ORDERS"],
   [404, "QUOTE_NOT_FOUND"],
   [409, "PARTNER_ASSERTION_REJECTED"],
   [409, "PREFLIGHT_FAILED"],
@@ -237,7 +239,7 @@ const LIST_FILE_TEXT = `[
 ]
 `;
 
-test('the list of answers that give a claim back is the data file, and the file is exactly these nine status-and-code pairs', () => {
+test('the list of answers that give a claim back is the data file, and the file is exactly these ten status-and-code pairs', () => {
   const text = readFileSync(LIST_FILE, 'utf8');
   assert.equal(text, LIST_FILE_TEXT, 'the file, byte for byte');
   const pairs = JSON.parse(text);
@@ -248,6 +250,7 @@ test('the list of answers that give a claim back is the data file, and the file 
   assert.deepEqual(Object.entries(REFUSED_BEFORE_ANY_ORDER).flatMap(([st, codes]) => codes.map((c) => [Number(st), c])), pairs);
   assert.deepEqual(REFUSED_BEFORE_ANY_ORDER, {
     400: ['INVALID_BUYER_CONTEXT', 'INVALID_QUOTE', 'QUOTE_MERCHANT_MISMATCH', 'QUOTE_REQUIRED_BEFORE_PURCHASE', 'VARIANT_REQUIRED'],
+    403: ['MERCHANT_NOT_ACCEPTING_ORDERS'],
     404: ['QUOTE_NOT_FOUND'],
     409: ['PARTNER_ASSERTION_REJECTED', 'PREFLIGHT_FAILED', 'UNSUPPORTED_COMMERCE_PATH'],
   });
@@ -342,7 +345,6 @@ test('nothing else gives a claim back: no 503, no consumed quote, no refusal of 
     ['a quote that must be repriced', answered(409, 'QUOTE_STALE_REPRICE_REQUIRED')],
     ['a quote not found by the write step', answered(409, 'QUOTE_NOT_FOUND')],
     ['an out-of-stock code', answered(409, 'OUT_OF_STOCK')],
-    ['a merchant not accepting orders', answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS')],
     ['a quote required by the write step', answered(400, 'QUOTE_REQUIRED')],
     ['a checkout quote required by the write step', answered(400, 'CHECKOUT_QUOTE_REQUIRED')],
     // The codes the upstream derives from the status alone: they say nothing about where the failure was.
@@ -385,6 +387,28 @@ test('nothing else gives a claim back: no 503, no consumed quote, no refusal of 
     ['null', null],
   ];
   for (const [label, err] of no) assert.equal(upstreamAnsweredRefusal(err), null, label);
+});
+
+test('a 403 gives a claim back only as MERCHANT_NOT_ACCEPTING_ORDERS named by the route\'s own detail: a bare 403, another code, or the code anywhere else never', () => {
+  const named = answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS', { route: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_A' } });
+  assert.deepEqual(upstreamAnsweredRefusal(named), { upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS' });
+  const never = [
+    ['a bare 403 (no code, no detail)', answered(403, null)],
+    ['a 403 with the code every 403 gets', answered(403, 'FORBIDDEN')],
+    ['a 403 the route names with prose', answered(403, null, { route: 'Not authorized for this merchant' })],
+    ['a 403 with another code the route names', answered(403, 'MERCHANT_SUSPENDED')],
+    ['the code with no route detail', answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS', { route: null })],
+    ['the code only in a message', answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS', { route: { message: 'MERCHANT_NOT_ACCEPTING_ORDERS' } })],
+    ['the route naming another code', answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS', { route: { error: 'FORBIDDEN' } })],
+    ['the route naming it, the transport another', answered(403, 'FORBIDDEN', { route: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' } })],
+    ['the code at another status', answered(409, 'MERCHANT_NOT_ACCEPTING_ORDERS')],
+    ['the code at 401', answered(401, 'MERCHANT_NOT_ACCEPTING_ORDERS')],
+    ['the code with a deadline mark', new PivotaCommerceError('MERCHANT_NOT_ACCEPTING_ORDERS', { upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstream_detail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' }, upstream_timeout: true })],
+    // The private backend hop (src/services/privateBackendHop.js), when it is switched on, turns every backend 403 into
+    // its own error before the transport reads a status: no status, no code.
+    ['a 403 the private backend hop turned into its own refusal', new PivotaCommerceError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: null, upstream_code: null, message: 'backend_iam_rejected', upstream_detail: undefined })],
+  ];
+  for (const [label, err] of never) assert.equal(upstreamAnsweredRefusal(err), null, label);
 });
 
 // ---- a refusal before any order gives the claim back ------------------------------------------------------------------
@@ -561,13 +585,15 @@ const UNKNOWN_OUTCOMES = [
   ['a quote that no longer matches', refuse(409, 'QUOTE_MISMATCH'), 'PRICE_CHANGED', 'PRICE_CHANGED'],
   ['an out-of-stock code', refuse(409, 'OUT_OF_STOCK'), 'OUT_OF_STOCK', 'OUT_OF_STOCK'],
   ['insufficient inventory, as the upstream sends it (400, the code every 400 gets)', refuse(400, 'INVALID_REQUEST'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
-  ['a merchant not accepting orders', refuse(403, 'MERCHANT_NOT_ACCEPTING_ORDERS'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a seller not taking orders the route did not name (no proof): kept, an unknown outcome', () => { throw answered(403, 'MERCHANT_NOT_ACCEPTING_ORDERS', { route: { message: 'MERCHANT_NOT_ACCEPTING_ORDERS' } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_NOT_ACCEPTING_ORDERS'],
+  ['a 403 with the code every 403 gets', refuse(403, 'FORBIDDEN'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
+  ['a 403 with no code', refuse(403, null), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a listed code at a status it is not listed for', refuse(409, 'INVALID_BUYER_CONTEXT'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a rate limit', refuse(429, 'RATE_LIMIT_EXCEEDED'), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
-  ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion: subject', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'subject' }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
-  ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'PARTNER_ASSERTION_REJECTED', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: replay', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: stale', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'stale' }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion: subject', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'subject' }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
+  ['a refused caller assertion with no reason', () => { throw answered(409, 'PARTNER_ASSERTION_REJECTED', { route: { error: 'PARTNER_ASSERTION_REJECTED' } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'PARTNER_ASSERTION_REJECTED'],
   ['a listed code the transport took from a message, not from the route\'s detail', () => { throw answered(400, 'INVALID_BUYER_CONTEXT', { route: { message: 'INVALID_BUYER_CONTEXT' } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a listed code the transport took from the outer status-derived code', () => { throw answered(400, 'INVALID_QUOTE', { route: { message: 'placeholder', items: [] } }); }, 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
   ['a 409 with no code', refuse(409, null), 'CHECKOUT_OUTCOME_UNKNOWN', 'MERCHANT_UNAVAILABLE'],
@@ -1037,10 +1063,11 @@ test('a release matches the attempt\'s id and nothing else: an older build\'s cl
 }));
 
 test('the failed create rejects with the very error the upstream raised, not a copy of it', async () => {
-  // A refusal the upstream answered: released, or kept under a terminal name. A failure with no readable answer, or a
-  // kept one that would say retriable, is the kernel's unknown outcome instead (the next test).
+  // A refusal the upstream answered: released, or kept under a terminal name. A failure with no readable answer, a kept
+  // one that would say retriable, and a kept one whose words say nothing happened (a refused assertion's `replay`) are
+  // the kernel's unknown outcome instead (the next test, and noEffectWordsGated.test.js).
   for (const store of STORES) {
-    for (const raised of [answered(RELEASED.status, RELEASED.code), answered(409, 'OUT_OF_STOCK'), answered(409, 'QUOTE_EXPIRED'), answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'replay' })]) {
+    for (const raised of [answered(RELEASED.status, RELEASED.code), answered(409, 'OUT_OF_STOCK'), answered(409, 'QUOTE_EXPIRED'), answered(409, 'PARTNER_ASSERTION_REJECTED', { reason: 'path' })]) {
       const w = world({ store });
       const h = await w.open('complete', 'US');
       w.script.push(() => { throw raised; });
@@ -1073,7 +1100,7 @@ test('a failed create with no readable answer (a 5xx, no answer, a failure that 
 // ---- the order that exists behind a coded refusal -----------------------------------------------------------------
 
 test('an order was written and the upstream still answered a coded refusal (a busy 503, a consumed quote, a refusal of its write step): no key ever sends a second create_order', each(async (store, caller, label) => {
-  for (const [status, code] of [[503, 'TEMPORARY_UNAVAILABLE'], [503, 'EXTERNAL_SERVICE_ERROR'], [409, 'QUOTE_CONSUMED'], [400, 'INVALID_REQUEST'], [409, 'QUOTE_EXPIRED'], [409, 'CONFLICT'], [403, 'MERCHANT_NOT_ACCEPTING_ORDERS']]) {
+  for (const [status, code] of [[503, 'TEMPORARY_UNAVAILABLE'], [503, 'EXTERNAL_SERVICE_ERROR'], [409, 'QUOTE_CONSUMED'], [400, 'INVALID_REQUEST'], [409, 'QUOTE_EXPIRED'], [409, 'CONFLICT'], [429, 'RATE_LIMIT_EXCEEDED'], [403, 'FORBIDDEN']]) {
     const w = world({ store });
     const h = await w.open(caller, 'SG');
     w.script.push((payload, makeOrder) => { makeOrder(payload); throw answered(status, code); });

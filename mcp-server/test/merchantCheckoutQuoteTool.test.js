@@ -69,6 +69,7 @@ function setup({ proof = async () => true, source = host, clock = () => now, exp
       env: {
         AGENT_MERCHANT_CHECKOUT_QUOTE_SELLERS_JSON: JSON.stringify({ [host]: "https://sample.myshopify.com/api/ucp/mcp" }),
         AGENT_MERCHANT_CHECKOUT_QUOTE_IDEMPOTENCY_SECRET: "stage-test-key-1234567890-012345678901",
+        AGENT_MERCHANT_CHECKOUT_QUOTE_OAUTH_PARTNERS: JSON.stringify(["oauth:test#test-client"]),
         MERCHANT_PURCHASABILITY_GATE_ENABLED: shouldOfferPurchase ? "1" : "0",
       },
       service: service ?? { async quote(input) {

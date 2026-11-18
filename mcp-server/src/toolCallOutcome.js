@@ -102,7 +102,10 @@ export function describeUpstreamEnvelope(raw) {
 /** Fields a thrown tool error carries beyond its code: today, whether the upstream call timed out. */
 export function describeToolError(error) {
   const detail = error && typeof error === "object" && isPlainObject(error.detail) ? error.detail : null;
-  return detail && detail.upstream_timeout === true ? { upstream_timeout: true } : {};
+  // The upstream refusal a kernel unknown outcome was made from (errors.js kernelOutcomeUnknown `upstreamCode`): a
+  // refused partner assertion still counts as the fault between our two services it is, whatever the caller was told.
+  const refusal = error && typeof error === "object" && typeof error.upstreamRefusalCode === "string" ? { upstream_refusal_code: error.upstreamRefusalCode } : {};
+  return { ...(detail && detail.upstream_timeout === true ? { upstream_timeout: true } : {}), ...refusal };
 }
 
 /**

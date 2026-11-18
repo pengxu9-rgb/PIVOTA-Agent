@@ -9,7 +9,8 @@
 //   - the same request (canonicalRequest below) within the record's life gets the SAME checkout id, read back: no
 //     second `create_cart`, no second referral, no second hand-off record;
 //   - a DIFFERENT request is refused, terminally, with the kernel ledger's own code and meaning
-//     (IDEMPOTENCY_CONFLICT: "a different request reusing an old reference", use a new key for a new request);
+//     (IDEMPOTENCY_CONFLICT: an earlier request with other details already used this key; a key is reused only to
+//     resend the exact request it was first sent with);
 //   - two creates at the same moment: ONE builds; the other waits for it and then reads the same checkout back.
 //
 // THE STORE. The kernel's own state store (safety-kernel/src/mount.js `stateStore`), in a namespace of its own: in
