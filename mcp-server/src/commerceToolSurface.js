@@ -1403,7 +1403,8 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", additionalProperties: false,
     properties: {
       merchant_id: { type: "string" }, product_id: { type: "string" },
-      product_group_id: { type: "string" }, currency: { type: "string" },
+      product_group_id: { type: "string", description: "Prefer `product_id`. Accepted here only as the product's signature id from search_catalog or get_product (sig_ followed by 32 hex characters), which is then looked up as the product_id; any other value is answered with no offers, reason product_group_id_not_product_id. Ignored when `product_id` is given." },
+      currency: { type: "string" },
       ...(GET_OFFERS_VARIANT_ID
         ? { variant_id: { type: "string", description: "One option of a seller's listing (from an offer's `variants`), for that variant's own offer and cart." } }
         : {}),
