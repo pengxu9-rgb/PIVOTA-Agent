@@ -250,3 +250,24 @@ test('supported markets keep their own currency; a padded lower-case code is tha
   assert.deepEqual(currencies(out), ['USD']);
   assert.equal(out.market_assumed.code, 'US');
 });
+
+// A PRODUCT NAMED BY ITS SIGNATURE IN `product_group_id`, end to end: the fetch builds offers.resolve's
+// `product` from product_id only, so before this a group-only call reached the backend with no product at all.
+// Made-up ids.
+const DOOR_SIG = `sig_${'5e1f0a2b'.repeat(4)}`;
+
+test('a signature in product_group_id reaches offers.resolve as product.product_id, normalised; a group id does not reach it', async () => {
+  for (const groupArg of [DOOR_SIG, ` ${DOOR_SIG.toUpperCase()}\n`]) {
+    const { out, upstream } = await callGetOffers({ product_group_id: groupArg, market: 'US' }, [GBP, USD]);
+    assert.ok(upstream, 'the tool reached offers.resolve');
+    assert.deepEqual(upstream.payload.product, { product_id: DOOR_SIG }, JSON.stringify(groupArg));
+    assert.equal(upstream.payload.market, 'US');
+    assert.deepEqual(currencies(out), ['USD']);
+    assert.deepEqual(out.subject, { kind: 'product', id: DOOR_SIG });
+    assert.equal(out.metadata.product_group_id, DOOR_SIG);
+  }
+  const { out, upstream } = await callGetOffers({ product_group_id: `sig_${'5e1f0a2b'.repeat(3)}`, market: 'US' }, [USD]);
+  assert.equal(upstream, null, 'no offers.resolve call for a group id');
+  assert.equal(out.metadata.reason, 'product_group_id_not_product_id');
+  assert.deepEqual(out.signals, []);
+});

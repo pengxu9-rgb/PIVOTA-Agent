@@ -30,8 +30,8 @@ function emptyReasonDoorActive() {
 }
 
 // The whole vocabulary this module can put in `metadata.reason`. The reasons makeGetOffers gives itself
-// (variant_not_offered, no_offer_in_market_currency, market_not_priced, market_invalid,
-// offers_source_unavailable) are its own and unchanged.
+// (variant_not_offered, no_offer_in_market_currency, market_invalid, market_not_priced,
+// offers_source_unavailable, product_group_id_not_product_id) are its own and unchanged.
 const EMPTY_REASONS = Object.freeze({
   // The lookup ran and found no servable stored offer for this product in this market.
   NO_SEED: 'no_seed_for_product',

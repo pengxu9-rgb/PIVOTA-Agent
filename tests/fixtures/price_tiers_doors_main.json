@@ -40,7 +40,7 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
+        "sha256": "0dd2d23b75256e95478a5ce24d6f7686b33601498877cbbaaef4b6066bce8c36"
       },
       "ucp_tools_list": {
         "status": 200,
@@ -138,7 +138,7 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
+        "sha256": "0dd2d23b75256e95478a5ce24d6f7686b33601498877cbbaaef4b6066bce8c36"
       },
       "ucp_tools_list": {
         "status": 200,
@@ -236,7 +236,7 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
+        "sha256": "0dd2d23b75256e95478a5ce24d6f7686b33601498877cbbaaef4b6066bce8c36"
       },
       "ucp_tools_list": {
         "status": 200,
@@ -334,7 +334,7 @@
       },
       "mcp_tools_list": {
         "status": 200,
-        "sha256": "6a6b2770e2b7df3516d7d97c7813fc317ffb26a4dfe751557bf0b386c1bc7400"
+        "sha256": "0dd2d23b75256e95478a5ce24d6f7686b33601498877cbbaaef4b6066bce8c36"
       },
       "ucp_tools_list": {
         "status": 200,

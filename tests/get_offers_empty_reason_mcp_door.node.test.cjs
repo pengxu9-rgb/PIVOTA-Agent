@@ -144,7 +144,7 @@ test('every reason the door can give is explained in the get_offers description,
   // The reasons get_offers gave before this flag are listed too: every token the door can answer with.
   const { GET_OFFERS_REASON_TOKENS } = await import('../mcp-server/src/getOffersEmptyReasonDoor.js');
   for (const older of ['variant_not_offered', 'no_offer_in_market_currency', 'market_not_priced', 'offers_source_unavailable',
-    'market_invalid']) {
+    'market_invalid', 'product_group_id_not_product_id']) {
     assert.ok(GET_OFFERS_REASON_TOKENS.includes(older), older);
   }
   for (const reason of GET_OFFERS_REASON_TOKENS) assert.ok(description.includes(`\`${reason}\``), reason);

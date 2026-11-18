@@ -78,6 +78,7 @@ import {
 } from "./ucpArgumentAdapter.js";
 import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 import {
+  AGENT_PURCHASE_ORDER_READ_FLAG,
   START_PURCHASE_INPUT_SCHEMA,
   START_PURCHASE_TOOL,
   START_PURCHASE_TOOL_DEFINITION,
@@ -305,6 +306,19 @@ function cloneCachedValue(value, onCloneFailure) {
     if (onCloneFailure) onCloneFailure(err);
     return value;
   }
+}
+
+// AgenPas (docs/agenpas.md): appended to these two descriptions ONLY while links are minted. The lifetime is the
+// configured one (AGENPAS_LINK_TTL_SECONDS, at most 30 minutes), never a number written here.
+const minutesText = (minutes) => {
+  const n = Number.isSafeInteger(minutes) && minutes > 0 ? minutes : 30;
+  return `${n} minute${n === 1 ? "" : "s"}`;
+};
+export function agenpasStartPurchaseSentence(minutes) {
+  return `When \`agenpas_url\` is present, give it to the buyer verbatim: it is their own page to add a card, approve and follow this purchase, and it works for ${minutesText(minutes)}.`;
+}
+export function agenpasGetOrderSentence(minutes) {
+  return `For a purchase on Pivota's payment partner the answer may carry a fresh \`agenpas_url\` (the buyer's own page for it, valid ${minutesText(minutes)}): give the buyer the newest one if their link has expired.`;
 }
 
 /**
@@ -699,11 +713,16 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //    is the same kind of handoff a checkout op returns, so it is preserved the same way.
       const purchaseHandoff = op.id === "get_order" && isPlainObject(result)
         && result[Symbol.for("pivota.commerce.agentPurchaseResult")] === true;
+      let sanitized = sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff });
+      // AgenPas: a get_order of an A2A-rail purchase carries a FRESHLY minted `agenpas_url` (no link configured =
+      // unchanged), so a buyer whose link ran out can be handed a new one. See withAgenpasUrl. Native door only, by
+      // construction: the UCP vocabulary has no get_order (UCP_DIALECT_OPERATIONS), so `op.id === "get_order"` is a
+      // native call; tests/agenpas_start_purchase.node.test.cjs fails if a UCP get_order ever appears.
+      if (purchaseHandoff && isA2aPurchaseAnswer(sanitized)) {
+        sanitized = withAgenpasUrl(sanitized, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx);
+      }
       // The door cache's price-freshness side channel survives the sanitizer (which rebuilds the value).
-      return priceVerificationFacts.withDoorEarliest(
-        sanitizeResult(result, { handoffAllowed: op.capability === "checkout" || purchaseHandoff }),
-        priceVerificationFacts.doorEarliestOf(result),
-      );
+      return priceVerificationFacts.withDoorEarliest(sanitized, priceVerificationFacts.doorEarliestOf(result));
     };
 
     // 6) cache read-only, caller-independent results. Gated on the op being cacheable — never on anything
@@ -817,7 +836,66 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       readClient: orchestratedPurchase && orchestratedPurchase.readClient,
       log: logger,
     });
-    return sanitizeResult(result, { handoffAllowed: true });
+    const out = sanitizeResult(result, { handoffAllowed: true });
+    // Only for a purchase on the A2A rail (the rail AgenPas serves), the same rule as get_order; a pending read
+    // (`pendingRead`) names its rail too.
+    return isA2aPurchaseAnswer(out) ? withAgenpasUrl(out, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx) : out;
+  }
+
+  /**
+   * AgenPas (docs/agenpas.md): an ADDITIVE `agenpas_url`, the buyer's own page for this purchase, minted for the
+   * VERIFIED caller (ctx.agent_id + ctx.user_ref, never tool arguments). The minter answers null while
+   * AGENPAS_ENABLED is off or anything it needs is missing, and the answer is then returned untouched. Added AFTER
+   * the money filter on purpose: the link is ours, its token is a purchase-scoped grant meant for the buyer, and a
+   * scrub of its query would break the link.
+   */
+  function withAgenpasUrl(out, agenpasLink, ctx) {
+    if (!agenpasLink || typeof agenpasLink.mint !== "function" || !isPlainObject(out)) return out;
+    let url = null;
+    try {
+      url = agenpasLink.mint({ purchaseId: out.order_id, agentId: ctx && ctx.agent_id, userRef: ctx && ctx.user_ref });
+    } catch {
+      url = null;
+    }
+    if (typeof url === "string" && url) out.agenpas_url = url;
+    return out;
+  }
+
+  /** A purchase answer on the A2A rail: it says so (`rail`), or its rail id / its own id is an `ap_` id. */
+  function isA2aPurchaseAnswer(out) {
+    if (!isPlainObject(out)) return false;
+    const apId = (v) => typeof v === "string" && /^ap_[0-9a-f]{24}$/.test(v);
+    return out.rail === "a2a" || apId(out.rail_purchase_id) || apId(out.order_id);
+  }
+
+  /** True only while a link can be minted (AGENPAS_ENABLED on, secret and base URL set); read per tools/list. */
+  function agenpasLinksAvailable() {
+    const link = orchestratedPurchase && orchestratedPurchase.agenpasLink;
+    try {
+      return Boolean(link && typeof link.available === "function" && link.available() === true);
+    } catch {
+      return false;
+    }
+  }
+
+  // The tool descriptions name `agenpas_url` only while links are minted: off, every description is byte-identical.
+  // get_order's sentence also needs the purchase read it rides on (AGENT_PURCHASE_ORDER_READ_ENABLED): without it a
+  // get_order never reads a rail purchase, so it can never carry a link.
+  function withAgenpasDescriptions(list) {
+    if (!agenpasLinksAvailable()) return list;
+    const orderReadOn = ["1", "true", "on", "yes"].includes(String(process.env[AGENT_PURCHASE_ORDER_READ_FLAG] || "").trim().toLowerCase());
+    const link = orchestratedPurchase.agenpasLink;
+    let minutes;
+    try {
+      minutes = typeof link.ttlMinutes === "function" ? link.ttlMinutes() : undefined;
+    } catch {
+      minutes = undefined;
+    }
+    return list.map((tool) => {
+      if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${agenpasStartPurchaseSentence(minutes)}` };
+      if (tool.name === "get_order" && orderReadOn) return { ...tool, description: `${tool.description} ${agenpasGetOrderSentence(minutes)}` };
+      return tool;
+    });
   }
 
   function isCommerceTool(name, dialect) {
@@ -832,7 +910,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     // Read per `tools/list`, so `start_purchase` is listed exactly while its dial is on.
     get tools() {
       const listed = recommendIngredientExclusionFlag.recommendIngredientExclusionEnabled(process.env) ? ingredientExclusionTools : tools;
-      const declared = orchestratedPurchaseToolEnabled(process.env) ? [...listed, { ...START_PURCHASE_TOOL_DEFINITION }] : listed;
+      const declared = withAgenpasDescriptions(
+        orchestratedPurchaseToolEnabled(process.env) ? [...listed, { ...START_PURCHASE_TOOL_DEFINITION }] : listed,
+      );
       return merchantCheckoutQuoteDoorOpen() ? [...declared, merchantQuoteToolDefinition] : declared;
     },
     callTool,
@@ -1323,7 +1403,8 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", additionalProperties: false,
     properties: {
       merchant_id: { type: "string" }, product_id: { type: "string" },
-      product_group_id: { type: "string" }, currency: { type: "string" },
+      product_group_id: { type: "string", description: "Prefer `product_id`. Accepted here only as the product's signature id from search_catalog or get_product (sig_ followed by 32 hex characters), which is then looked up as the product_id; any other value is answered with no offers, reason product_group_id_not_product_id. Ignored when `product_id` is given." },
+      currency: { type: "string" },
       ...(GET_OFFERS_VARIANT_ID
         ? { variant_id: { type: "string", description: "One option of a seller's listing (from an offer's `variants`), for that variant's own offer and cart." } }
         : {}),
