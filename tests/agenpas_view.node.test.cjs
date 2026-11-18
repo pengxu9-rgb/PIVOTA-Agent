@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { projectPurchaseView, screenFor, outcomeFor, isOutcomeUnknownCode, codeSegments, KNOWN_STATES } = require('../src/agenpas/view');
+const { projectPurchaseView, screenFor, outcomeFor, isOutcomeUnknownCode, codeSegments, KNOWN_STATES, HELD_CODES, FAILED_CODES } = require('../src/agenpas/view');
 const { isAllowedHostedUrl } = require('../src/agenpas/hostedUrl');
 
 const PP = 'pp_aaaaaaaaaaaaaaaaaaaaaaaa';
@@ -660,15 +660,61 @@ test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now wri
   assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
 });
 
-test('the gateway HELD set covers all 21 backend _CHECKOUT_HOLD_CODES and all 7 _VIC_HOLD_CODES at a2d16c353', () => {
+test('parity with backend 6f31b6c75: the explicit HELD list is exactly the 22 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
   const BACKEND_CHECKOUT_HOLD = ['checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
     'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
-    'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_payment_no_order',
-    'checkout_result_overdue', 'checkout_result_unrecognised', 'checkout_setup_submitted', 'checkout_setup_unresolved',
-    'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_total_over_approved', 'checkout_total_unverified',
-    'checkout_unknown_script_error', 'checkout_unknown_timeout'];
+    'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_paying_without_task',
+    'checkout_payment_no_order', 'checkout_result_overdue', 'checkout_result_unrecognised', 'checkout_setup_submitted',
+    'checkout_setup_unresolved', 'checkout_task_invalid', 'checkout_task_mismatch', 'checkout_total_over_approved',
+    'checkout_total_unverified', 'checkout_unknown_script_error', 'checkout_unknown_timeout'];
   const BACKEND_VIC_HOLD = ['vic_approved_amount_missing', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_order_stale',
     'vic_submit_unresolved', 'vic_total_missing', 'vic_total_over_approved'];
-  assert.equal(BACKEND_CHECKOUT_HOLD.length, 21);
-  for (const code of [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD]) assert.equal(isOutcomeUnknownCode(code), true, code);
+  // Outcome-unknown codes the worker writes outside those two sets (kept explicit, so the shape never decides them).
+  const GATEWAY_EXTRAS = ['money_result_seen', 'outcome_unknown', 'vic_order_outcome_unknown', 'pending_write_unreconcilable',
+    'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked', 'vic_held'];
+  assert.equal(BACKEND_CHECKOUT_HOLD.length, 22);
+  assert.equal(BACKEND_VIC_HOLD.length, 7);
+  // Membership in the EXPLICIT list, not the outcome: the shape regex alone must not be able to satisfy this.
+  assert.deepEqual([...HELD_CODES].sort(), [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD, ...GATEWAY_EXTRAS].sort());
+  for (const code of HELD_CODES) assert.equal(FAILED_CODES.has(code), false, `${code} is on both lists`);
+  // And each is decisive against a FAILED code on the same purchase (precedence, not the shape).
+  for (const code of [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD]) {
+    const view = project(unified('failed', {}, { refusal_reason: 'checkout_relay_refused', last_error_code: code }));
+    assert.equal(view.screen, 'outcome_unknown', code);
+  }
+});
+
+// ---- review v3 (2a444e65d): read-retry codes before placing keep the buyer's step --------------------------------
+
+for (const code of ['vic_status:unrecognised', 'paid_sent:2:await:await_answer_unrecognised']) {
+  test(`retry ${code} in awaiting_buyer_authorization: Approve stays, the normal approval screen`, () => {
+    const view = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL, poll_after_seconds: 15 }, { last_error_code: code }));
+    assert.equal(view.screen, 'approve');
+    assert.ok(view.action);
+    assert.equal(view.action.kind, 'approval');
+    assert.equal(view.outcome, null);
+    // From placing on, the same shape is still treated as a hold.
+    assert.equal(project(unified('placing', {}, { last_error_code: code })).screen, 'outcome_unknown');
+  });
+}
+
+test('retry vic_quote:unrecognised:3 in locking: "Confirming your total", not the checking screen', () => {
+  const view = project(unified('locking', { poll_after_seconds: 5 }, { last_error_code: 'vic_quote:unrecognised:3' }));
+  assert.equal(view.screen, 'confirming_total');
+  assert.equal(view.outcome, null);
+  for (const state of ['routing', 'needs_payment_method', 'some_future_state']) {
+    assert.notEqual(project(unified(state, {}, { last_error_code: 'vic_quote:unrecognised:3' })).screen, 'outcome_unknown', state);
+  }
+});
+
+test('an explicit HELD code in awaiting_buyer_authorization still drops Approve (next to the retry codes)', () => {
+  for (const code of ['vic_status_inconsistent', 'money_result_seen', 'outcome_unknown:http_error']) {
+    const view = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: code }));
+    assert.equal(view.screen, 'outcome_unknown', code);
+    assert.equal(view.action, null, code);
+  }
+  // A retry code beside an explicit hold: the hold wins.
+  const both = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL },
+    { refusal_reason: 'vic_status:unrecognised', last_error_code: 'vic_order_stale' }));
+  assert.equal(both.action, null);
 });

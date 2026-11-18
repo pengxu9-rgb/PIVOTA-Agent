@@ -451,7 +451,8 @@ function rawPathOf(req) {
 // double slash is refused outright, so nothing a later decoder (express.static's `send`) could resolve differently
 // ever gets past.
 const ADMITTED_PATHS = [
-  /^\/agenpas\/p\/(?:pp|ap|rp)_[0-9a-f]{24}$/,
+  // Any id of plain characters: a well-formed one is the page, anything else the router's friendly "isn't valid" page.
+  /^\/agenpas\/p\/[A-Za-z0-9_-]{1,64}$/,
   /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}$/,
   /^\/agenpas\/assets\/app\.(?:js|css)$/,
 ];

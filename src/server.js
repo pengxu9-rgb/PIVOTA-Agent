@@ -39064,12 +39064,14 @@ app.head('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 // normal not-found handling, so the public host's shape is "this path does not exist" — the same
 // answer it gives for any other absent path.
 const internalUiStatic = express.static(path.join(__dirname, '..', 'public'));
-app.use((req, res, next) => {
-  // Never on the AgenPas host either (src/agenpas/router.js): that origin is AgenPas's alone, and this page has no
-  // CSP. The host guard mounted first already refuses every non-AgenPas path there; this is the second lock.
+// Never on the AgenPas host either (src/agenpas/router.js): that origin is AgenPas's alone, and this page has no
+// CSP. The host guard mounted first already refuses every non-AgenPas path there; this is the second lock
+// (tests/agenpas_server_mount.test.js tests it on its own, through `_debug.internalUiStaticGate`).
+function internalUiStaticGate(req, res, next) {
   if (isPublicReadMcpHostRequest(req) || agenpasHostGuard.onHost(req)) return next();
   return internalUiStatic(req, res, next);
-});
+}
+app.use(internalUiStaticGate);
 
 // Lightweight request logging.
 //
@@ -55989,6 +55991,8 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // AgenPas: the internal UI's static handler with its host gate, so the gate can be tested without the front guard.
+  internalUiStaticGate,
   // Exported because the price-check fan-out runs only behind the external reco lane: the property under
   // test is that its loopback sub-calls are marked fan-out (keyed per tool call, not per caller).
   recommendPriceVerifyLoopbackHeaders,

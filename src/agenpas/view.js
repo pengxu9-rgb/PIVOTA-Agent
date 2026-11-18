@@ -44,7 +44,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend a2d16c353 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (21),
+// Mirrors pivota-backend 6f31b6c75 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (22),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -269,17 +269,25 @@ function isOutcomeUnknownCode(code) {
 /**
  * The plain-language outcome for the state, from its codes:
  *   failed / refused / expired  -> by the precedence above
- *   ANY state not yet final     -> the checking wording while held (or hold-shaped): the page then shows no buyer
- *                                  step at all (a held VIC row can still be in awaiting_buyer_authorization);
+ *   ANY state not yet final     -> the checking wording while held (an EXPLICIT HELD code before placing; held or
+ *                                  hold-shaped from placing on): the page then shows no buyer step at all (a held
+ *                                  VIC row can still be in awaiting_buyer_authorization);
  *                                  else, while parked: "Getting things ready…", except in placing, where a confirm may
  *                                  already have gone out, so the checking wording; else null
  *   completed                   -> null
  */
+// Before `placing` the buyer may still have a step to take, and the backend's own READ-RETRY codes have the hold shape
+// (`vic_status:unrecognised`, `paid_sent:<n>:await:await_answer_unrecognised`, `vic_quote:unrecognised:<n>`); one of
+// them sticks on the row for the whole approval window. So there, only an EXPLICIT HELD code drops the step: the shape
+// fallback applies from `placing` on (where a confirm may have gone out) and in final states.
+const PRE_PLACING_STATES = new Set(['routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'unknown']);
+
 function outcomeFor(state, codes) {
   const segments = codeSegments(codes);
   const c = classify(segments);
   if (!TERMINAL_STATES.has(state)) {
-    if (c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...HELD_COPY };
+    const preplacing = PRE_PLACING_STATES.has(state);
+    if (c && (c.kind === 'held' || (c.kind === 'shape_unknown' && !preplacing))) return { ...HELD_COPY };
     if (segments.some((seg) => PARKED_CODES.has(seg))) return state === 'placing' ? { ...HELD_COPY } : { ...PARKED_COPY };
     return null;
   }
@@ -464,6 +472,8 @@ module.exports = {
   KNOWN_STATES,
   POLL_MAX_SECONDS,
   POLL_MIN_SECONDS,
+  FAILED_CODES,
+  HELD_CODES,
   codeSegments,
   isOutcomeUnknownCode,
   outcomeFor,

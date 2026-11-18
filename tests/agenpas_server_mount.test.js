@@ -39,6 +39,9 @@ const TRAVERSALS = [
   '/agenpas/..%252findex.html', '/agenpas/./assets/app.js', '/agenpas/assets/app.js/', '/agenpas/assets//app.js',
   '/agenpas/..%2fhealth', '/agenpas/..%2fcatalog-image-cache%2fx', '/agenpas/..%2f..%2fpackage.json',
   '/agenpas/p/ap_000000000000000000000001%2f..%2f..%2findex.html', '/agenpas', '/agenpas/',
+  // Encoded spellings of LEGITIMATE shapes: refused undecoded, so a decode-first refactor cannot slip (v3 P3-3).
+  '/agenpas/assets/app%2ejs', '/agenpas/ass%65ts/app.js', '/agenpas/%61ssets/app.css', '/agenpas/api/p/ap_000000000000000000000001%00',
+  '/agenpas/p/ap_00000000000000000000000%31', '/agenpas/p/.', '/agenpas/p/..',
 ];
 
 const KEYS = [
@@ -173,6 +176,51 @@ describe('AgenPas routes in the gateway app', () => {
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toMatch(/text\/css/);
     });
+  });
+
+  describe('the internal UI static host gate, on its own (front guard bypassed)', () => {
+    // The real gate from src/server.js, mounted on a bare app with NO front guard in front of it: the only thing
+    // between these requests and public/index.html is the gate itself.
+    let bare;
+    beforeEach(() => {
+      process.env.AGENPAS_ENABLED = '1';
+      process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+      const { internalUiStaticGate } = require('../src/server')._debug;
+      const express = require('express');
+      bare = express();
+      bare.use(internalUiStaticGate);
+      bare.use((req, res) => res.status(404).type('text/plain').send('fell through'));
+    });
+
+    test.each(['/', '/index.html', '/agenpas/..%2findex.html', '/agenpas/x/..%2f..%2findex.html'])('%s on the AgenPas host: no internal UI', async (p) => {
+      for (const host of ['agenpas.example', 'AGENPAS.EXAMPLE', 'agenpas.example:443', 'agenpas.example.', 'agenpas.example:8443']) {
+        const res = await rawGet(bare, p, host);
+        expect(res.body.includes('Internal UI')).toBe(false);
+        expect(res.body).toBe('fell through');
+      }
+    });
+
+    test('another host still gets the internal UI from the same gate (the control)', async () => {
+      const res = await rawGet(bare, '/index.html', 'gateway.example');
+      expect(res.status).toBe(200);
+      expect(res.body.includes('Internal UI')).toBe(true);
+    });
+  });
+
+  test('a malformed purchase id on the AgenPas host gets the friendly "isn\'t valid" page', async () => {
+    process.env.AGENPAS_ENABLED = '1';
+    process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+    process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+    const app = require('../src/server');
+    for (const id of ['not_an_id', 'ap_123', 'AP_000000000000000000000001']) {
+      const res = await rawGet(app, `/agenpas/p/${id}`, 'agenpas.example');
+      expect(res.status).toBe(404);
+      expect(res.headers['content-type']).toMatch(/text\/html/);
+      expect(res.body).toMatch(/isn&#39;t valid|isn't valid/);
+      expect(res.headers['content-security-policy']).toContain("default-src 'self'");
+      expect(res.headers['x-agenpas-guard']).toBeUndefined();
+    }
   });
 
   test('the back guard answers on the AgenPas host for an admitted path the router did not serve', async () => {
