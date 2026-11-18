@@ -122,7 +122,9 @@ for (const cell of cells) {
         assert.deepEqual([found.money, found.priceCurrencies, answer.store, answer.gate, answer.upstream], [[], [], [], [], []], 'refused before anything is read or asked');
         return;
       }
-      assert.deepEqual(readPayloads(answer), [theRead(row.id)], 'one product read, with no market on it');
+      // An unreadable market on the UCP door is refused at intake (ucpArgumentAdapter readSentMarket): nothing is read.
+      assert.deepEqual(readPayloads(answer), outcome === 'ucp_market_invalid' ? [] : [theRead(row.id)],
+        outcome === 'ucp_market_invalid' ? 'refused before any product is read' : 'one product read, with no market on it');
       if (outcome === 'priced_by_store' || outcome === 'priced_by_catalog') {
         assert.equal(answer.isError, false);
         assert.equal(answer.value.status, at.native ? 'completes_on_seller_storefront' : 'requires_escalation');

@@ -130,16 +130,18 @@ test('on: of the context leaves, exactly address_country reaches the native args
     meta: META,
     catalog: {
       id: 'SENTINEL_ID',
-      context: { address_country: 'SENTINEL_CC', address_region: 'SENTINEL_RG', postal_code: 'SENTINEL_PC', language: 'SENTINEL_LG', currency: 'SENTINEL_CU', intent: 'SENTINEL_IN' },
+      // address_country is read as a market (a sent value that is not two letters is refused), so its marker is a
+      // two-letter code no real market uses; it is tracked by value below, the other leaves by their SENTINEL_ tag.
+      context: { address_country: 'QQ', address_region: 'SENTINEL_RG', postal_code: 'SENTINEL_PC', language: 'SENTINEL_LG', currency: 'SENTINEL_CU', intent: 'SENTINEL_IN' },
       selected: [{ id: 'SENTINEL_SE' }], preferences: [{ x: 'SENTINEL_PR' }], signals: { s: 'SENTINEL_SI' }, filters: { f: 'SENTINEL_FI' },
     },
   };
   const surviving = (env) => {
     const mapped = JSON.stringify(ucpToNativeToolArgs(OP, body, env));
-    return [...mapped.matchAll(/SENTINEL_[A-Z]{2}/g)].map((m) => m[0]).sort();
+    return [...mapped.matchAll(/SENTINEL_[A-Z]{2}|"QQ"/g)].map((m) => m[0]).sort();
   };
   assert.deepEqual(surviving(OFF), ['SENTINEL_ID']);
-  assert.deepEqual(surviving(ON), ['SENTINEL_CC', 'SENTINEL_ID']);
+  assert.deepEqual(surviving(ON), ['"QQ"', 'SENTINEL_ID']);
   // `catalog.context.*` stays declared accepted-but-unmapped: every OTHER context member is still not read.
   assert.ok(UCP_ACCEPTED_BUT_UNMAPPED.get_product.includes('catalog.context.*'));
 });

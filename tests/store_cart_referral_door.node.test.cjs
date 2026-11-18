@@ -210,31 +210,25 @@ test('AN ASSUMED MARKET ASKS FOR NO REFERRAL: no call at all, the cart is built 
   assert.deepEqual(queryOf(again.value.continue_url), [['key', 'k0']]);
 });
 
-test('A MALFORMED MARKET ASKS FOR NO REFERRAL: where a cart is still built for it, it is built untracked, counted as skipped', async () => {
+test('A MALFORMED MARKET ASKS FOR NO REFERRAL: it is refused by name at intake, gate or no gate; no cart, nothing counted', async () => {
   h.setFlags([h.REFERRAL_FLAG, h.FORWARDING_FLAG, h.ATTRIBUTION_FLAG]);
-  // With the purchasability gate enforcing (this fixture's default), a market that cannot be read is declined
-  // before any seller is asked: no cart, and no referral call.
-  for (const market of ['USA', 'U1', '840']) {
-    const declined = await ucpCreate([[IDS.SIG_A, 1]], 84, AS.A, market);
-    assert.equal(declined.isError, true, `${market}: ${declined.raw}`);
-    assert.deepEqual([declined.referral.length, toolCalls(declined).length], [0, 0], market);
-  }
-  assert.deepEqual(pricing.cartReferralOutcomeCounts(), {});
-  // With the gate off, the door still builds the cart (with no market to send the seller). The backend would
-  // refuse a referral that names no market, so it is NOT ASKED: no call, no miss.
+  // A market that cannot be read is refused before anything is read (ucpArgumentAdapter readSentMarket, reason
+  // ucp_market_invalid): no seller is asked and no referral is called. Before, with the purchasability gate off,
+  // the door still built the cart with no market at all (untracked, counted `skipped:market_unnamed`).
   const gate = process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED;
-  delete process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED;
   try {
-    const a = await ucpCreate([[IDS.SIG_A, 1]], 85, AS.A, 'USA');
-    assert.equal(a.isError, false, a.raw);
-    assert.deepEqual(toolCalls(a).map((c) => c.tool), ['create_cart']);
-    assert.equal(toolCalls(a)[0].arguments.cart.context, undefined, 'no market is sent to the seller either');
-    assert.deepEqual(a.referral, []);
+    for (const gateOn of [true, false]) {
+      if (!gateOn) delete process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED;
+      for (const market of ['USA', 'U1', '840']) {
+        const refused = await ucpCreate([[IDS.SIG_A, 1]], gateOn ? 84 : 85, AS.A, market);
+        assert.equal(refused.isError, true, `${market}: ${refused.raw}`);
+        assert.equal(refused.value.error.detail.reason, 'ucp_market_invalid', market);
+        assert.equal(refused.raw.includes(market), false, `${market}: not echoed`);
+        assert.deepEqual([refused.referral.length, toolCalls(refused).length], [0, 0], market);
+      }
+    }
     assert.equal(door.referralCalls.length, 0);
-    assert.equal(toolCalls(a)[0].arguments.cart.attribution, undefined);
-    assert.deepEqual(queryOf(a.value.continue_url), [['key', 'k0']]);
-    assert.equal(decodeEsc(a.value.id).t, undefined);
-    assert.deepEqual(pricing.cartReferralOutcomeCounts(), { 'skipped:market_unnamed': 1 });
+    assert.deepEqual(pricing.cartReferralOutcomeCounts(), {});
   } finally {
     if (gate !== undefined) process.env.MERCHANT_PURCHASABILITY_GATE_ENABLED = gate;
   }

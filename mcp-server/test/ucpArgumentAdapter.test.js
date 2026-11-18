@@ -990,6 +990,12 @@ describe('schema and mapper cannot drift', () => {
   // Every string leaf gets a sentinel naming its own PATH, so what survives into the canonical params is
   // attributable to an exact field.
   const sentinelFor = (path) => `S<${path}>`;
+  // A MARKET leaf is read as a market (ucpArgumentAdapter readSentMarket: a sent value that is not two letters is
+  // refused), so its sentinel is a two-letter code no real market uses and nothing else in a mapped body spells.
+  const MARKET_LEAVES = new Set(['catalog.context.address_country', 'insights.market', 'checkout.context.address_country']);
+  const MARKET_SENTINEL = 'QQ';
+  const stringLeafFor = (schema, path) => (MARKET_LEAVES.has(path) ? MARKET_SENTINEL
+    : typeof schema.examples?.[0] === 'string' ? schema.examples[0] : sentinelFor(path));
 
   // EVERY generator below REFUSES an unrecognised schema construct rather than falling through to a default.
   // That trap is the load-bearing part. An earlier version dispatched on `schema.type` with a `default:` arm,
@@ -1054,7 +1060,7 @@ describe('schema and mapper cannot drift', () => {
       // A string leaf whose VALID values are constrained beyond `type` (an opaque cursor this door itself
       // minted) declares a real one in the schema's `examples` — a standard JSON Schema annotation, not a
       // constraint — and the fixture sends that, so "a maximal schema-valid body is ACCEPTED" stays true.
-      default: return typeof schema.examples?.[0] === 'string' ? schema.examples[0] : sentinelFor(path);
+      default: return stringLeafFor(schema, path);
     }
   }
 
@@ -1075,7 +1081,7 @@ describe('schema and mapper cannot drift', () => {
       case 'array': return sentinelLeaves(schema.items ?? {}, `${path}[]`);
       case 'integer': case 'number': return [{ path, marker: String(schema.minimum || 424242) }];
       case 'boolean': return [{ path, marker: 'true' }];
-      default: return [{ path, marker: typeof schema.examples?.[0] === 'string' ? schema.examples[0] : sentinelFor(path) }];
+      default: return [{ path, marker: stringLeafFor(schema, path) }];
     }
   }
 
