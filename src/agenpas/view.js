@@ -47,7 +47,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 4dc09ce55 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
+// Mirrors pivota-backend 229d1e587 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -101,7 +101,8 @@ const HELD_CODES = new Set([
   'checkout_confirm_not_sent', 'checkout_paying_without_task',
   // The provider reported payment-reached without success: money may have moved.
   'checkout_payment_reached_unconfirmed',
-  // After the confirm, the provider's answer echoed a card code and was scrubbed: held (not payment-reached).
+  // After the confirm, the provider's answer echoed a card code and was scrubbed: held, and one of the backend's six
+  // payment-reached codes (`_CHECKOUT_PAYMENT_REACHED_CODES`): never "not charged".
   'checkout_answer_scrubbed',
   'money_result_seen',
   // _VIC_HOLD_CODES
