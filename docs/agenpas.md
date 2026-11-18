@@ -101,7 +101,10 @@ ready…" while polling goes on. Pre-store terminal failures whose names look li
 `approval_answer_unrecognised`, `token_answer_unrecognised`, `token_mismatch`, `vic_quote_unrecognised`,
 `vic_quote_currency_mismatch`, `vic_order_unresolved`) are on the FAILED list. `operator_confirmed_not_charged` (an operator ended a held checkout after checking the provider's side: no order,
 no charge) is FAILED with its own wording, "This purchase didn't go through and you weren't charged. You can start
-again from the chat.": the only code whose wording says the buyer was not charged, and HELD still beats it. A completed purchase always carries its
+again from the chat.": the only code whose wording says the buyer was not charged, and only when no other code on the purchase is held or
+even hold-shaped (otherwise the checking wording); HELD still beats it. An operator resolution usually lands long after
+the link's 30-minute lifetime, so the buyer learns the outcome through the fresh link a `get_order` in the chat
+returns. A completed purchase always carries its
 verified final total; only two disagreeing (or a non-ISO, e.g. lower-case,)
 currencies hide it ("see your email receipt").
 

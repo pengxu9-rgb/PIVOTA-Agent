@@ -760,3 +760,19 @@ test('parity: the explicit FAILED list is exactly the backend\'s nothing-submitt
     'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved', 'operator_confirmed_not_charged'];
   assert.deepEqual([...FAILED_CODES].sort(), [...EXPECTED_FAILED].sort());
 });
+
+test('operator_confirmed_not_charged beside a hold-SHAPED code (vic_status:unrecognised, either field): the checking wording, never "charged"', () => {
+  for (const [rr, le] of [['vic_status:unrecognised', 'operator_confirmed_not_charged'], ['operator_confirmed_not_charged', 'vic_status:unrecognised'],
+    [null, 'operator_confirmed_not_charged:zz_new_unresolved_thing']]) {
+    const view = project(unified('failed', { poll_after_seconds: null }, { refusal_reason: rr, last_error_code: le }));
+    assert.equal(view.screen, 'outcome_unknown', `${rr} + ${le}`);
+    assert.equal(view.outcome.retry_hint, false);
+    assert.equal(/charged/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
+  }
+  // Alone (or beside a code with no hold shape), it says "you weren't charged".
+  for (const [rr, le] of [[null, 'operator_confirmed_not_charged'], ['zz_plain_new_code', 'operator_confirmed_not_charged']]) {
+    const view = project(unified('failed', { poll_after_seconds: null }, { refusal_reason: rr, last_error_code: le }));
+    assert.equal(view.outcome.kind, 'not_charged', `${rr} + ${le}`);
+    assert.match(view.outcome.message, /you weren't charged/);
+  }
+});

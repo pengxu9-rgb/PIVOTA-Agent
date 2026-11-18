@@ -307,8 +307,13 @@ function outcomeFor(state, codes) {
   }
   if (!GENERIC_BY_STATE[state]) return null;
   if (c && c.kind === 'failed') {
-    // HELD has already won above if any hold code is present.
-    return segments.some((seg) => OPERATOR_NOT_CHARGED_CODES.has(seg)) ? { ...NOT_CHARGED_COPY } : { ...NOT_SUBMITTED_COPY };
+    // HELD has already won above if any hold code is present. "You weren't charged" is said ONLY when nothing else on
+    // the purchase is even hold-SHAPED: a claim that strong needs a clean record; otherwise, the checking wording.
+    if (segments.some((seg) => OPERATOR_NOT_CHARGED_CODES.has(seg))) {
+      const holdShaped = segments.some((seg) => !isExplicit(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
+      return holdShaped ? { ...OUTCOME_UNKNOWN_COPY } : { ...NOT_CHARGED_COPY };
+    }
+    return { ...NOT_SUBMITTED_COPY };
   }
   if (c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...OUTCOME_UNKNOWN_COPY };
   if (c && c.kind === 'named') {
