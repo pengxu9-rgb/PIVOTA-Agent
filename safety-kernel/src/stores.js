@@ -85,6 +85,45 @@ export class InMemoryKvStore {
     return true;
   }
 
+  /**
+   * ATOMIC bounded counter: a live `{ count }` record below `limit` gains one, an absent or expired key
+   * starts at 1 with `ttlMs`, and a live record at or above the limit (or not a counter) is left alone.
+   * Returns the new count, or null when refused. A live record keeps its original expiry.
+   */
+  async incrementCounterBelow(key, limit, { ttlMs } = {}) {
+    const rec = this._m.get(key);
+    if (!this._live(rec)) {
+      this._m.set(key, { value: { count: 1 }, expiresAt: ttlMs != null ? this._now() + ttlMs : undefined });
+      return 1;
+    }
+    const count = rec.value?.count;
+    if (!Number.isSafeInteger(count) || count >= limit) return null;
+    rec.value = { count: count + 1 };
+    return count + 1;
+  }
+
+  /** ATOMIC: take one back from a live counter above 0. Returns true iff it decremented. */
+  async decrementCounter(key) {
+    const rec = this._m.get(key);
+    if (!this._live(rec) || !Number.isSafeInteger(rec.value?.count) || rec.value.count <= 0) return false;
+    rec.value = { count: rec.value.count - 1 };
+    return true;
+  }
+
+  /**
+   * ATOMIC compare-and-set on SEVERAL fields at once: overwrite ONLY if, for every entry of `expected`, the live
+   * record's field equals it. A `null` expectation matches a field that is null OR absent (Postgres `v ->> f` is
+   * NULL for both). Other values compare as strings, the way Postgres `v ->> f` reads them. Returns true iff it
+   * set. For a writer that must lose to every other writer of a record (the kernel's charge_pending reconcile).
+   */
+  async compareAndSetFields(key, expected, value, { ttlMs } = {}) {
+    const rec = this._m.get(key);
+    if (!this._live(rec)) return false;
+    if (!fieldsMatch(rec.value, expected)) return false;
+    this._m.set(key, { value, expiresAt: ttlMs != null ? this._now() + ttlMs : undefined });
+    return true;
+  }
+
   /** ATOMIC compare-and-delete: delete ONLY if the live record's `value[matchField]` matches. */
   async compareAndDelete(key, matchField, matchValue) {
     const rec = this._m.get(key);
@@ -96,6 +135,28 @@ export class InMemoryKvStore {
   async delete(key) {
     return this._m.delete(key);
   }
+}
+
+/**
+ * The match rule compareAndSetFields shares with the Postgres adapter: every expected field must be present in
+ * `expected` as an own key (an empty `expected` matches nothing, so a caller cannot CAS on no condition at all);
+ * `null` matches null or absent; anything else compares as its string form.
+ */
+export function fieldsMatch(record, expected) {
+  if (!expected || typeof expected !== 'object') return false;
+  const entries = Object.entries(expected);
+  if (entries.length === 0) return false;
+  const v = record && typeof record === 'object' ? record : {};
+  for (const [field, want] of entries) {
+    const have = v[field];
+    if (want === null) {
+      if (have !== null && have !== undefined) return false;
+      continue;
+    }
+    if (have === null || have === undefined) return false;
+    if (String(have) !== String(want)) return false;
+  }
+  return true;
 }
 
 /**

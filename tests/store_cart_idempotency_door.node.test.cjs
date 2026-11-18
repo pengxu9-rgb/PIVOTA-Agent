@@ -91,7 +91,8 @@ test('the same key with a DIFFERENT request is refused as the kernel refuses a r
   const ledgerRefusal = new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key: 'k' });
   const kernelConflict = { value: { error: { code: ledgerRefusal.code, message: ledgerRefusal.userMessage, retriable: ledgerRefusal.retriable } } };
   assert.equal(ledgerRefusal.retriable, false);
-  assert.match(ledgerRefusal.recovery, /new idempotency_key/);
+  assert.match(ledgerRefusal.recovery, /idempotency_key of its own/);
+  assert.match(ledgerRefusal.recovery, /read the checkout session or its order/);
 
   const n = nextKey();
   const first = await native([[IDS.SIG_A_SECOND, 1]], n);

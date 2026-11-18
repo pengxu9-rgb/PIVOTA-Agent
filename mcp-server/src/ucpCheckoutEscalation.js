@@ -577,7 +577,7 @@ function cartMerchantId(items, rows) {
  * The id to hand out for a storefront checkout. `encode(recordId?)` builds it. Without the record switches or a
  * recorder, or on any write that is not confirmed, the id WITHOUT a record (what the door always handed out).
  */
-async function recordedEscalationId({ encode, quoteSource, totals, currency, sellerHost, catalogLink, buyerMarket, items, rows, priceAsOf, env, handoffRecorder, log, mintedClickId }) {
+async function recordedEscalationId({ encode, quoteSource, totals, currency, sellerHost, catalogLink, buyerMarket, items, rows, priceAsOf, env, handoffRecorder, log, mintedClickId, catalogAttributed }) {
   const plain = encode(undefined);
   if (!storefrontHandoffRecordModule.storefrontHandoffRecordEnabled(env)) return plain;
   if (!handoffRecorder || typeof handoffRecorder.record !== "function") return plain;
@@ -600,9 +600,12 @@ async function recordedEscalationId({ encode, quoteSource, totals, currency, sel
     quoted_total_minor: amount,
     quote_source: quoteSource,
     buyer_market: buyerMarket && /^[A-Z]{2}$/.test(buyerMarket) ? buyerMarket : undefined,
-    // The catalog link's own referral, else the one minted for this cart (the link then carried none).
-    referral_click_id: (catalogLink ? referralClickIdOf(catalogLink) : null)
-      || (typeof mintedClickId === "string" && REFERRAL_CLICK_ID_RE.test(mintedClickId) ? mintedClickId : null),
+    // The catalog link's own referral, else the one minted for this cart (the link then carried none). NOT on a
+    // Shopify catalog-attributed cart: its link carries none of our members, so it names no click of ours, and the
+    // record says what it is instead (`catalog_attributed`, which the backend stores and reads back).
+    referral_click_id: catalogAttributed === true ? undefined : ((catalogLink ? referralClickIdOf(catalogLink) : null)
+      || (typeof mintedClickId === "string" && REFERRAL_CLICK_ID_RE.test(mintedClickId) ? mintedClickId : null)),
+    catalog_attributed: catalogAttributed === true ? true : undefined,
     price_as_of: priceAsOf,
     merchant_id: cartMerchantId(items, rows),
   });
@@ -1253,6 +1256,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
             totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
             items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
             mintedClickId: minted ? minted.clickId : undefined,
+            catalogAttributed: catalogTracked,
           });
           return withAssumedMarket(buildSellerPricedCheckout({
             id, priced, sellerHost, buyerEmail, now, env, ...(marketCurrency ? { marketCurrency } : {}),

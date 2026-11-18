@@ -20,8 +20,9 @@
 //
 // SWITCH: SHOPIFY_CATALOG_ATTRIBUTION = off (default; also the kill switch) | shadow | enforce, read per call.
 //   shadow  the lookup runs and is counted; the cart is built exactly as today.
-//   enforce the caller sends the tracked ids. SHOPIFY_CATALOG_ATTRIBUTION_STORES (comma-separated hosts), when set,
-//           limits enforce to those stores (a pilot); every other store is treated as shadow.
+//   enforce the caller sends the tracked ids, ONLY for the stores SHOPIFY_CATALOG_ATTRIBUTION_STORES names
+//           (comma-separated hosts; `*` = every store). Every other store, and every store when the list is unset
+//           or empty, is treated as shadow: a forgotten env value can never take enforce fleet-wide.
 //   SHOPIFY_CATALOG_ATTRIBUTION_DENY_HOSTS (comma-separated) turns it off for named stores in every mode.
 // Configuration, all required for anything to run: SHOPIFY_CATALOG_CLIENT_ID, SHOPIFY_CATALOG_CLIENT_SECRET,
 // SHOPIFY_CATALOG_ID (the saved catalog with Earn commission on), SHOPIFY_CATALOG_DRAFT_PROFILE_URL (our own
@@ -48,6 +49,13 @@ const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 const TOKEN_FALLBACK_TTL_MS = 50 * 60 * 1000; // when the token's own `exp` cannot be read
 const TOKEN_FAILURE_BACKOFF_MS = 60 * 1000;
 const TOKEN_EXCHANGE_TIMEOUT_MS = 3000;
+// THE BREAKER. A slow or failing catalog costs every US create up to the lookup budget. After BREAKER_FAILURES
+// consecutive failed lookups (timeout, network, 429, 5xx, no token), lookups are skipped for BREAKER_OPEN_MS
+// (`skipped:breaker`). After the window ONE lookup is tried (half-open; any other lookup while it runs is
+// `skipped:breaker` too): a failure opens it again at once, an answered lookup closes it. A timeout counts only when the lookup had the full budget (a caller's short budget is not the
+// catalog failing). An `unauthorized` answer counts too; a batch that partly answered does not.
+export const BREAKER_FAILURES = 3;
+export const BREAKER_OPEN_MS = 60 * 1000;
 const MAX_ID_LENGTH = 512;
 
 const MODES = Object.freeze({ OFF: "off", SHADOW: "shadow", ENFORCE: "enforce" });
@@ -77,8 +85,9 @@ export function modeForStore(env, sellerHost) {
   const host = bare(sellerHost);
   if (!host || hostList(env[CATALOG_ATTRIBUTION_DENY_ENV]).has(host)) return MODES.OFF;
   if (mode === MODES.ENFORCE) {
-    const pilot = hostList(env[CATALOG_ATTRIBUTION_STORES_ENV]);
-    if (pilot.size && !pilot.has(host)) return MODES.SHADOW;
+    const raw = String(env[CATALOG_ATTRIBUTION_STORES_ENV] || "").trim();
+    if (raw === "*") return MODES.ENFORCE;
+    return hostList(raw).has(host) ? MODES.ENFORCE : MODES.SHADOW;
   }
   return mode;
 }
@@ -194,6 +203,20 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
   let token = null; // { value, refreshAtMs }
   let inflight = null;
   let failedUntilMs = 0;
+  let consecutiveFailures = 0;
+  let breakerOpenUntilMs = 0;
+  let halfOpen = false; // the breaker has opened at least once and no lookup has answered since
+  let probing = false; // the one half-open lookup is in flight
+  const noteFailure = () => {
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= BREAKER_FAILURES) {
+      breakerOpenUntilMs = now() + BREAKER_OPEN_MS;
+      halfOpen = true;
+      // Half-open after the window: the next failure alone opens it again.
+      consecutiveFailures = BREAKER_FAILURES - 1;
+      count("breaker:opened");
+    }
+  };
 
   async function bearer(budgetMs) {
     if (token && now() < token.refreshAtMs) return token.value;
@@ -228,7 +251,16 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     return typeof raced === "string" ? raced : null;
   }
 
-  async function lookupTracked(gids, { market, sellerHost, budgetMs = ATTRIBUTION_BUDGET_MS } = {}) {
+  async function lookupTracked(gids, opts = {}) {
+    if (!halfOpen) return lookupOnce(gids, opts);
+    // Half-open: ONE lookup probes the catalog; concurrent ones are skipped until it settles.
+    if (probing) { count("skipped:breaker"); return { tracked: new Map(), reason: "skipped:breaker" }; }
+    if (now() < breakerOpenUntilMs) return lookupOnce(gids, opts); // still open: lookupOnce answers skipped:breaker
+    probing = true;
+    try { return await lookupOnce(gids, opts); } finally { probing = false; }
+  }
+
+  async function lookupOnce(gids, { market, sellerHost, budgetMs = ATTRIBUTION_BUDGET_MS } = {}) {
     const tracked = new Map();
     const done = (reason) => { if (reason) count(reason); return { tracked, reason }; };
     if (!ATTRIBUTION_MARKETS.has(String(market || ""))) return done("skipped:market");
@@ -240,10 +272,14 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     if (!numbers.size) return done("skipped:no_variant");
     if (!sellerHost) return done("skipped:no_store");
     if (!(budgetMs > 0)) return done("skipped:no_budget");
+    if (now() < breakerOpenUntilMs) return done("skipped:breaker");
     const startedAt = now();
     const left = () => budgetMs - (now() - startedAt);
     const value = await bearer(left());
-    if (!value) return done("failed:no_token");
+    if (!value) {
+      noteFailure();
+      return done("failed:no_token");
+    }
     const ids = [...numbers.keys()];
     const batches = [];
     for (let i = 0; i < ids.length; i += LOOKUP_BATCH) batches.push(ids.slice(i, i + LOOKUP_BATCH));
@@ -278,6 +314,9 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
     }
     // The match rate counts only answered lookups: a failure is counted under its own reason, never as "untracked".
     if (failure) count(failure);
+    if (failure && !answered) {
+      if (!(failure === "failed:timeout" && budgetMs < ATTRIBUTION_BUDGET_MS)) noteFailure();
+    } else if (answered) { consecutiveFailures = 0; halfOpen = false; }
     count("tracked", tracked.size);
     if (answered) count("untracked", Math.max(0, numbers.size - tracked.size));
     return { tracked, reason: failure };
@@ -287,8 +326,13 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
 }
 
 let defaultClient = null;
-/** The process's client (its token cache is per process). */
+/**
+ * The process's client (its token cache and breaker are per process). Its fetch is read per call from
+ * globalThis.fetch, so it never holds on to the fetch of whoever created it first.
+ */
 export function defaultCatalogAttribution() {
-  if (!defaultClient) defaultClient = createCatalogAttribution();
+  if (!defaultClient) defaultClient = createCatalogAttribution({ fetchImpl: (...a) => globalThis.fetch(...a) });
   return defaultClient;
 }
+/** Tests only: forget the process client (its token, backoff and breaker). */
+export function resetDefaultCatalogAttribution() { defaultClient = null; }

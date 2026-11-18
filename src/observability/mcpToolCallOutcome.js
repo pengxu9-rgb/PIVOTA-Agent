@@ -71,6 +71,8 @@ const OBSERVED_FIELDS = Object.freeze({
   heartbeat_committed: (v) => (v === true ? true : undefined),
   // The call was answered for a market the request did not name (decision D-10): US, assumed.
   market_assumed: (v) => (v === true ? true : undefined),
+  // The upstream refusal an unknown outcome was made from, when it is one of ours to alert on (SERVER_TOOL_ERROR_CODES).
+  upstream_refusal_code: (v) => (typeof v === 'string' && SERVER_TOOL_ERROR_CODES.has(v) ? v : undefined),
   // Internal to the recorder, never logged as such: they decide error_class and the tool label.
   error_retriable: (v) => (v === true || v === false ? v : undefined),
   tool_registered: (v) => (v === true || v === false ? v : undefined),
@@ -197,13 +199,14 @@ function createMcpToolCallRecorder() {
     if (outcome === 'internal_error') errorClass = 'server';
     else if (outcome === 'rpc_error') errorClass = errorCode === 'JSONRPC_INTERNAL_ERROR' ? 'server' : 'client';
     else if (outcome === 'tool_error') {
-      errorClass = observed.error_retriable === true || SERVER_TOOL_ERROR_CODES.has(errorCode) ? 'server' : 'client';
+      errorClass = observed.error_retriable === true || SERVER_TOOL_ERROR_CODES.has(errorCode) || observed.upstream_refusal_code !== undefined ? 'server' : 'client';
     } else if (outcome === 'refused') errorClass = 'client';
     else if (outcome === 'shed') errorClass = 'capacity';
 
     const out = { outcome, is_error: outcome !== 'ok', error_code: errorCode, error_class: errorClass };
     // Only beside the tool error it explains: never on an answer the door gave some other way.
     if (outcome === 'tool_error' && observed.error_reason !== undefined) out.error_reason = observed.error_reason;
+    if (outcome === 'tool_error' && observed.upstream_refusal_code !== undefined) out.upstream_refusal_code = observed.upstream_refusal_code;
     for (const key of ['result_count', 'cache_hit', 'lane', 'lane_source', 'upstream_status']) {
       if (observed[key] !== undefined) out[key] = observed[key];
     }

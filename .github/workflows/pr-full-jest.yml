@@ -224,6 +224,10 @@ jobs:
         env:
           CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
         run: npx jest --watchman=false --runInBand tests/integration/mcp_caller_limit_counters_postgres.test.js
+      - name: Check commerce KV bounded counter SQL under concurrency
+        env:
+          CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
+        run: NODE_OPTIONS=--require=./tests/_support/netGuard.cjs node --test tests/integration/commerce_kv_bounded_counter_postgres.node.test.cjs
       - name: Execute canonical primary SQL through HTTP without rescue
         # Each file that boots src/server.js keeps ~400-600 MB alive across files in one --runInBand process (jest's
         # module registry holds the previous server graph), so the 36 files outgrow Node 20's ~2 GB default heap.

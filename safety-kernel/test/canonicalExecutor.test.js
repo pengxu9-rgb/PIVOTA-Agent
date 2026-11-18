@@ -320,14 +320,14 @@ test('P0 get_order fails CLOSED for an order the kernel does not track (no unsco
   assert.equal(reads.length, 0, 'no upstream read for an unproven order');
 });
 
-test('cancel: cancels a created order; refuses to cancel a paid one', async () => {
+test('cancel by order id (the upstream cancel off): a created order is refused by name and left as it is; a paid one is refused', async () => {
   const { kernel, exec } = setup({ verify: okVerify });
-  // a created (unpaid) order cancels
+  // a created (unpaid) order is not canceled: nothing reaches the store from here
   const s1 = await newSession(exec);
   const o1 = await kernel.createOrder({ idempotency_key: 'idem-cxl-order', order: { quote_id: s1, shipping_address: {} } }, CTX);
-  const c = await exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-1', session_id: s1, order_id: o1.order_id }, CTX);
-  assert.equal(c.status, 'canceled');
-  assert.equal((await kernel._orderStore.get(o1.order_id)).status, 'canceled');
+  await assert.rejects(exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-1', session_id: s1, order_id: o1.order_id }, CTX),
+    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail.reason === 'order_cancel_not_available' && e.detail.upstream_cancel === false);
+  assert.equal((await kernel._orderStore.get(o1.order_id)).status, 'created');
   // a paid order cannot be canceled
   const s2 = await newSession(exec);
   await exec('complete_checkout_session', { idempotency_key: 'idem-paid-1', session_id: s2, payment_authorization: { token: 't' } }, CTX);

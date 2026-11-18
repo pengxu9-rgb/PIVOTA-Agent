@@ -9,7 +9,7 @@
 import { QuoteRegistry } from './quoteRegistry.js';
 import { IdempotencyLedger } from './idempotencyLedger.js';
 import { ConfirmationTokenService } from './confirmationTokens.js';
-import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown } from './errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, upstreamFailureOutcomeUnknown, claimsNoEffect, answerAfterOrder, idempotencyConflict } from './errors.js';
 import { redact } from './redact.js';
 import { InMemoryKvStore } from './stores.js';
 import { sameMinor, violatesChargeMultiple } from './money.js';
@@ -18,10 +18,16 @@ import { randomUUID } from 'node:crypto';
 
 const AMOUNT_TOLERANCE = 0; // zero tolerance — INV-2
 
+// A used session whose claim names no order (quoteAlreadyUsed): the words every door gives it.
+export const UNKNOWN_ORDER_CLAIM_REASON = 'checkout_session_order_outcome_unknown';
+export const UNKNOWN_ORDER_CLAIM_MESSAGE = 'An order was asked for on this checkout session, and whether it was placed is not known, so this session cannot be used again. Read this checkout session again before anything else, and do not start another checkout for this purchase without the buyer: an order may exist.';
+
 // The per-order charge lock must outlive the slowest synchronous submit_payment CALL (the async
 // completion happens later via webhook, NOT under this lock). 2 min comfortably exceeds an upstream
 // charge-call timeout while bounding a crashed holder.
 const CHARGE_LOCK_TTL_MS = 2 * 60 * 1000;
+// Who wrote a settled_* stamp on an order: only the charge_pending reconcile writes one.
+export const RECONCILE_SETTLER = 'kernel_charge_pending_reconcile';
 export const IDEMPOTENT_REPLAY_MARKER = Symbol.for('pivota.safety_kernel.idempotent_replay');
 
 function markIdempotentReplay(result, replayed) {
@@ -37,6 +43,27 @@ function markIdempotentReplay(result, replayed) {
 
 function isPlainObject(value) {
   return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// THE ORDER CALL'S REFUSAL, AS THE STORE ANSWERED IT (the transport's facts, src/server.js
+// throwCommerceKernelUpstreamError), for a response that arrived with a status below 500 and no deadline mark:
+// `rate_limited` for a 429, `refused` for every other (a 400, 401, 403, 404, 409, 422 ...), except a 408, which is a
+// deadline in front of the store and keeps the no-answer words. Undefined for no response, a deadline and a 5xx. Only
+// the words of an unknown outcome depend on it (errors.js KERNEL_ANSWERED_REFUSALS).
+function answeredRefusalKind(err) {
+  if (!(err instanceof PivotaCommerceError) || !isPlainObject(err.detail) || err.detail.upstream_timeout === true) return undefined;
+  const status = err.detail.upstream_status;
+  if (!Number.isInteger(status) || status >= 500 || status < 400 || status === 408) return undefined;
+  return status === 429 ? 'rate_limited' : 'refused';
+}
+
+// The order id a 409 QUOTE_CONSUMED names (the route's own detail, `details.order_id`), id-shaped, else null.
+function consumedQuoteOrderId(err) {
+  if (!(err instanceof PivotaCommerceError) || !isPlainObject(err.detail)) return null;
+  const { upstream_status: status, upstream_code: code, upstream_detail: route } = err.detail;
+  if (status !== 409 || code !== 'QUOTE_CONSUMED' || !isPlainObject(route) || route.error !== 'QUOTE_CONSUMED' || !isPlainObject(route.details)) return null;
+  const id = route.details.order_id;
+  return typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(id) ? id : null;
 }
 
 function nonBlank(value) {
@@ -246,9 +273,17 @@ export class SafetyKernel {
     // The order that holds the claim, when it is THIS caller's (quoteClaimState): the refusal's own advice is to read
     // that order first, and without its id that advice cannot be followed. Another caller's order is never named.
     const state = ctx ? await this._claimStateOf(held, ctx) : null;
+    // A claim held by an order call that names no order (still in flight, or its outcome unknown, or a kept refusal):
+    // whether an order exists is not known, so the catalog's "already used to place an order … read that order" would
+    // state what is not known, with no id to read. Said in its own words, which every door surfaces.
+    const unknownOrder = Boolean(held && held.canceled !== true && !(typeof held.order_id === 'string' && held.order_id !== ''));
     return new PivotaCommerceError('QUOTE_ALREADY_USED', {
       quote_id,
       ...(held && held.canceled === true ? { claim: 'canceled', reason: 'session_canceled' } : {}),
+      ...(unknownOrder ? {
+        claim: 'order_outcome_unknown', reason: UNKNOWN_ORDER_CLAIM_REASON,
+        acp_message: UNKNOWN_ORDER_CLAIM_MESSAGE, acp_detail: { reason: UNKNOWN_ORDER_CLAIM_REASON },
+      } : {}),
       ...(state && state.order_id ? { order_id: state.order_id } : {}),
     });
   }
@@ -339,11 +374,17 @@ export class SafetyKernel {
           // 4xx such as a consumed quote): every retry of it is refused as a used session, and an order may exist
           // behind it (that is why its claim is kept). Neither is on the release list. A listed prologue refusal, and
           // every terminal refusal the upstream named (out of stock, a changed price, ...), is answered as raised.
-          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && err.retriable === true))) {
+          // AN ANSWER WHOSE WORDS SAY THE REQUEST HAD NO EFFECT ("nothing was ordered", "nothing was done", "no order was
+          // created": errors.js claimsNoEffect) is answered as raised only on the release rule's own proof
+          // (upstreamAnsweredRefusal: the pair is listed, the route named it, no deadline mark; for a refused caller
+          // assertion, one of the eight reasons decided before any store read). Without that proof an order may exist,
+          // and it is the unknown outcome like any other kept refusal.
+          if (!upstreamAnsweredRefusal(err) && (upstreamFailureOutcomeUnknown(err) || (err instanceof PivotaCommerceError && (err.retriable === true || claimsNoEffect(err))))) {
             // Held, not released: a same-key resend is told this same answer (the ledger keeps it), on every caller of
-            // createOrder, the invoke route's bare one included.
+            // createOrder, the invoke route's bare one included. A 403 or a 429 the store DID answer says so in its
+            // words (answeredRefusalKind), never "no readable answer"; the outcome and the claim are the same.
             runCtx.sideEffectDone = true;
-            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null);
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: answeredRefusalKind(err), upstreamCode: claimsNoEffect(err) ? err.code : undefined });
           }
           throw err;
         }
@@ -462,6 +503,13 @@ export class SafetyKernel {
     };
     const refusal = upstreamAnsweredRefusal(err);
     if (!refusal) {
+      // "This quote was already consumed" names the order the store holds for it: logged for reconciliation, beside the
+      // quote id and outside redact() for the same reason. Never in any answer, and nothing about its owner.
+      const consumedOrderId = consumedQuoteOrderId(err);
+      if (consumedOrderId) {
+        try { this._log.warn?.('quote_claim_kept', { quote_id: quoteId, upstream_order_id: consumedOrderId, ...redact({ code: err?.code ?? null, reason: 'create_order_outcome_unknown' }) }); } catch { /* a log line never changes an answer */ }
+        return;
+      }
       note('warn', 'quote_claim_kept', { reason: 'create_order_outcome_unknown' });
       return;
     }
@@ -507,7 +555,8 @@ export class SafetyKernel {
     // 'charge_pending' is intentionally allowed: the requires_action flow re-mints while a charge is in
     // flight (the webhook, not a second submit, finalizes it); submitPayment's own allowlist blocks a
     // second charge on 'charge_pending'.
-    if (order.status === 'paid' || order.status === 'canceled') {
+    // 'expired' (written only by the charge_pending reconcile, settleUncorrelatedCharge) is terminal the same way.
+    if (order.status === 'paid' || order.status === 'canceled' || order.status === 'expired') {
       throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: `not_confirmable:${order.status}`, order_id });
     }
     return this.confirmations.mint({ order_id, user_ref: ctx.user_ref, amount: order.amount, currency: order.currency });
@@ -552,7 +601,8 @@ export class SafetyKernel {
         const lockKey = `charge-lock:${order_id}`;
         const gotLock = await this._orderStore.putIfAbsent(lockKey, { owner: key }, { ttlMs: CHARGE_LOCK_TTL_MS });
         if (!gotLock) {
-          throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'charge_in_progress', order_id });
+          // Before the order is read, so the caller's ownership is not known yet: the answer names no order.
+          throw idempotencyConflict('charge_in_progress', { order_id });
         }
         try {
           // INV-2 (fix B1): the charge amount is read from the kernel's OWN order record,
@@ -565,10 +615,12 @@ export class SafetyKernel {
           // (async checkout-session / client-confirmation, completing via webhook). Both block a new
           // submit. Only 'created' and 'failed' (retry-after-failure) admit one.
           if (order.status === 'paid') {
-            throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'order_already_paid', order_id });
+            throw idempotencyConflict('order_already_paid', { order_id }, { ownedOrderId: order_id });
           }
           if (order.status === 'charge_pending') {
-            throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { reason: 'charge_pending', order_id });
+            // The caller's own order (read above under its ownership check), whose payment may have gone through: read it,
+            // never "a different request", and never pay again or begin another checkout without the buyer.
+            throw idempotencyConflict('charge_pending', { order_id }, { ownedOrderId: order_id });
           }
           // Codex P0: the two guards above are a DENYLIST — a 'canceled' order (written by
           // cancel_checkout_session) or any unknown status would otherwise slip through and be charged.
@@ -610,7 +662,10 @@ export class SafetyKernel {
           // accepted, cannot reopen the order for a second charge: any retry now sees 'charge_pending'
           // and is rejected. If the charge throws, the order STAYS 'charge_pending' (fail closed —
           // reconciliation may be needed) rather than reopening.
-          await this._orderStore.set(order_id, { ...order, status: 'charge_pending', attempt: key, payment_id: null, charge_pending_at: this._now() });
+          // charge_lane records HOW this attempt charges: 'dispatch' = the injected off-session dispatcher (the
+          // delegated PSP-token lane, no hosted page), 'upstream' = the hosted checkout surface. The charge_pending
+          // reconcile never expires a 'dispatch' row, where an unknown outcome can be a capture.
+          await this._orderStore.set(order_id, { ...order, status: 'charge_pending', attempt: key, payment_id: null, charge_pending_at: this._now(), charge_lane: typeof opts?.dispatch === 'function' ? 'dispatch' : 'upstream' });
           runCtx.sideEffectDone = true; // from here, a failure is AMBIGUOUS (a charge may have landed)
 
           // Codex P0-1 cont.: forward an amount/currency-pinned payment to upstream.
@@ -618,14 +673,18 @@ export class SafetyKernel {
           // SAME attempt-scoped idempotency key — it may not choose its own, so a replay is still parameter-
           // identical on the PSP side.
           const safePayment = { ...p, expected_amount: authoritativeAmount, currency: authoritativeCurrency };
-          const r = typeof opts?.dispatch === 'function'
-            ? await opts.dispatch({
+          // The order exists and is now `charge_pending`: a call with no readable answer, or a refusal whose words would
+          // say it had no effect ("nothing was done"), is the unknown outcome with the order id (errors.js
+          // answerAfterOrder), which this key is then held with.
+          const r = await (typeof opts?.dispatch === 'function'
+            ? opts.dispatch({
                 order_id,
                 amount: authoritativeAmount,
                 currency: authoritativeCurrency,
                 idempotency_key: key,
               })
-            : await this._upstream('submit_payment', { ...payload, payment: safePayment }, { 'Idempotency-Key': key });
+            : this._upstream('submit_payment', { ...payload, payment: safePayment }, { 'Idempotency-Key': key })
+          ).catch((err) => { throw answerAfterOrder(err, order_id, KERNEL_OUTCOME_UNKNOWN_REASONS.payment); });
 
           // A 2xx THAT NAMES NEITHER A PAYMENT STATUS NOR A PAYMENT PAGE says nothing about the charge: an empty or
           // unreadable body, read as success, told the caller its payment was under way with nothing to pay on. It is
@@ -729,6 +788,60 @@ export class SafetyKernel {
   }
 
   /**
+   * The charge_pending reconcile's ONLY write (safety-kernel/src/reconcileUncorrelated.js). It settles an order the
+   * webhook cannot: 'charge_pending' with NO payment_id, which is what an unknown outcome of the charge call leaves
+   * (the call timed out or errored after the durable charge_pending write, so no PSP id was ever stamped and
+   * onPaymentWebhook answers every event for it `uncorrelated_attempt`). The reconcile decides `to` from the
+   * backend's own read of the order; this method only applies it, and never charges, creates or re-creates anything.
+   *
+   * It LOSES TO EVERY OTHER WRITER. The write is one compare-and-set on every field the reconcile observed: the
+   * status, the attempt, the charge_pending_at stamp and an absent payment_id. So if, between the reconcile's read
+   * and this write, the in-flight submit came back (it stamps payment_id and re-stamps charge_pending_at), a
+   * webhook or a cancel moved the row, or another instance's reconcile settled it, this write does not happen and
+   * the answer says so. Re-running it on a settled row is a no-op.
+   *
+   *   charge_pending, payment_id null  -> 'paid' | 'expired'
+   *   expired (by this reconcile)      -> 'paid' only: the backend later read the order paid (a late payment on a
+   *                                       page that was judged lapsed). Nothing else ever leaves 'expired'.
+   *   anything else                    -> ignored, unchanged
+   *
+   * @param {{ order_id:string, observed:{ status:string, attempt?:string, charge_pending_at?:number, settled_at?:number },
+   *           to:'paid'|'expired', reason:string }} args
+   */
+  async settleUncorrelatedCharge({ order_id, observed, to, reason } = {}) {
+    if (!order_id) return { ignored: true, reason: 'missing_order_id' };
+    if (to !== 'paid' && to !== 'expired') return { ignored: true, reason: 'bad_target' };
+    const o = observed && typeof observed === 'object' ? observed : {};
+    const cur = await this._orderStore.get(order_id);
+    if (!cur) return { ignored: true, reason: 'unknown_order' };
+    let expected;
+    if (o.status === 'charge_pending') {
+      if (typeof o.attempt !== 'string' || o.attempt === '' || !Number.isSafeInteger(o.charge_pending_at)) {
+        return { ignored: true, reason: 'unobservable_row' };
+      }
+      expected = { status: 'charge_pending', attempt: o.attempt, charge_pending_at: o.charge_pending_at, payment_id: null };
+    } else if (o.status === 'expired' && to === 'paid') {
+      if (!Number.isSafeInteger(o.settled_at)) return { ignored: true, reason: 'unobservable_row' };
+      expected = { status: 'expired', settled_by: RECONCILE_SETTLER, settled_at: o.settled_at, payment_id: null };
+    } else {
+      return { ignored: true, reason: `not_settleable:${o.status ?? 'unknown'}` };
+    }
+    const next = {
+      ...cur,
+      status: to,
+      settled_by: RECONCILE_SETTLER,
+      settled_at: this._now(),
+      settled_from: cur.status,
+      settled_reason: String(reason || ''),
+    };
+    const won = await this._orderStore.compareAndSetFields(order_id, expected, next);
+    if (!won) return { ignored: true, reason: 'row_changed' };
+    await this._orderStore.delete(`charge-lock:${order_id}`);
+    this._log.info?.('charge_pending_reconcile_settled', redact({ order_id, transitioned: to, from: cur.status, reason: next.settled_reason }));
+    return { transitioned: to };
+  }
+
+  /**
    * request_after_sales: kernel-side, idempotent, ownership-enforced, and ACTION-GATED
    * (closes Codex P1-4). Only actions the merchant connector actually supports may be requested;
    * unsupported actions are refused so the model can never promise an unfulfillable outcome.
@@ -766,7 +879,16 @@ export class SafetyKernel {
       // with a different refund body (amount, restore_inventory, etc.) conflicts instead of replaying.
       { op: 'request_after_sales', order_id, status },
       async () => {
-        const r = await this._upstream('request_after_sales', payload, { 'Idempotency-Key': key });
+        // A refusal whose words would say the request had no effect ("nothing was done") is given only on the release
+        // rule's proof (a listed pair, the route's own code; for a refused assertion one of the eight reasons decided
+        // before any store read). Without it the request may have been filed: the unknown outcome, with the order id.
+        // This key is not held, so the same call (the same Idempotency-Key upstream) can be sent again.
+        const r = await this._upstream('request_after_sales', payload, { 'Idempotency-Key': key }).catch((err) => {
+          if (claimsNoEffect(err) && !upstreamAnsweredRefusal(err)) {
+            throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.afterSales, order_id, { answered: 'refused', upstreamCode: err.code });
+          }
+          throw err;
+        });
         return {
           request_id: r.request_id,
           order_id,

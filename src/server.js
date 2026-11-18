@@ -138,6 +138,7 @@ const priceVerificationFacts = require('./observability/priceVerificationFacts')
 const priceCacheHooks = require('./services/priceCache');
 // FIX_PLAN C-11: what the backend's order cancel answered (cancel_checkout_session, CHECKOUT_CANCEL_UPSTREAM_ENABLED).
 const checkoutCancelUpstream = require('./services/checkoutCancelUpstream');
+const kernelChargePendingReconcile = require('./services/kernelChargePendingReconcile');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -33569,6 +33570,15 @@ function deriveStrictCommerceCtx(req) {
   });
 }
 
+// The strict invoke route's status for a kernel answer: its code's (statusForCommerceKernelError), except a used session
+// whose claim names no order, which is a conflict with that earlier attempt like its sibling CHECKOUT_OUTCOME_UNKNOWN
+// (not the 422 of a session spent on a known order).
+function statusForCommerceKernelAnswer(error) {
+  const detail = error && typeof error.detail === 'object' && error.detail ? error.detail : null;
+  if (error && error.code === 'QUOTE_ALREADY_USED' && detail && detail.reason === 'checkout_session_order_outcome_unknown') return 409;
+  return statusForCommerceKernelError(error && error.code);
+}
+
 function statusForCommerceKernelError(code) {
   switch (code) {
     case 'USER_AUTH_REQUIRED':
@@ -33589,9 +33599,13 @@ function statusForCommerceKernelError(code) {
     case 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID':
     case 'MERCHANT_PRODUCT_MISMATCH':
       return 400;
+    // CHECKOUT_OUTCOME_UNKNOWN: an outcome nobody here can know is a conflict with that earlier attempt, not a
+    // malformed request: the same as the ACP door answers it, and as this route answers its sibling IDEMPOTENCY_CONFLICT.
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
     case 'ORDER_CANCELED':
+    case 'MERCHANT_NOT_ACCEPTING_ORDERS':
+    case 'CHECKOUT_OUTCOME_UNKNOWN':
     case 'PARTNER_ASSERTION_REJECTED':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
@@ -35528,7 +35542,7 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
           if (out?.ok === true) return res.status(200).json(out.data || {});
 
           const error = out?.error || { code: 'COMMERCE_ERROR' };
-          return res.status(statusForCommerceKernelError(error.code)).json(commerceKernelErrorBody(error));
+          return res.status(statusForCommerceKernelAnswer(error)).json(commerceKernelErrorBody(error));
         } catch (err) {
           logger.error(
             {
@@ -36302,9 +36316,10 @@ function registerUcpBuyerAgentProfileRoute() {
   // lookups that carry Promoted Placements attribution (mcp-server/src/shopifyCatalogAttribution.js). Catalog
   // capabilities only: no cart, no checkout. Lit only while SHOPIFY_CATALOG_ATTRIBUTION is shadow or enforce, so it
   // is dark by default. Its self-reference comes ONLY from SHOPIFY_CATALOG_DRAFT_PROFILE_URL (never the Host header).
-  app.get('/.well-known/ucp-agent-catalog-draft', async (req, res) => {
+  app.get('/.well-known/ucp-agent-catalog-draft', async (req, res, next) => {
     const mode = String(process.env.SHOPIFY_CATALOG_ATTRIBUTION || '').trim().toLowerCase();
-    if (mode !== 'shadow' && mode !== 'enforce') return res.status(404).json({ error: 'not_found' });
+    // Off: not this route at all. Express's own 404 answers, byte for byte what the path answered before it existed.
+    if (mode !== 'shadow' && mode !== 'enforce') return next();
     try {
       // eslint-disable-next-line global-require
       const { buildUcpCatalogDraftProfile } = require('./services/ucpBuyerAgentProfile');
@@ -56589,6 +56604,27 @@ if (require.main === module) {
           setInterval(runCreatorCatalogAutoSync, intervalMs);
         }, initialDelayMs);
       }
+
+      // Kernel orders stuck at charge_pending with no payment id (an unknown charge outcome): read the backend's own
+      // order and settle the kernel row to it. KERNEL_CHARGE_PENDING_RECONCILE_MODE, default off (nothing scheduled);
+      // observe logs only. See src/services/kernelChargePendingReconcile.js.
+      kernelChargePendingReconcile.startKernelChargePendingReconcile({
+        getMount: getCommerceMount,
+        db: process.env.DATABASE_URL ? { query } : null,
+        readBackendOrder: kernelChargePendingReconcile.createBackendOrderReader({
+          httpGet: (url, config) => axios.get(url, config),
+          baseUrl: PIVOTA_API_BASE,
+          // The gateway's own service key, exactly as the kernel's get_order_status read sends it: no caller, no
+          // buyer and no partner identity (there is no request here).
+          authHeaders: () => buildInvokeUpstreamAuthHeaders({
+            allowInternalFallback: true,
+            forceInternalFallback: true,
+            forwardAgentUserJwt: false,
+            forwardBuyerRef: false,
+          }),
+        }),
+        logger,
+      });
 
       // PDP identity auto-resolve: completes the catalog-coverage loop by resolving
       // newly onboarded seeds into depositable anchors. OFF by default (gated above);
