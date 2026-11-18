@@ -6,7 +6,9 @@ import {
   mapWithConcurrency, MAX_CART_ITEMS, pickCompleteAddress, VARIANT_RESOLUTION_CONCURRENCY, withDeadline,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { createMerchantCheckoutQuoteService, merchantCheckoutQuoteAllowedSellers } from "./merchantCheckoutQuote.js";
-import { createMerchantQuoteRateLimiter } from "./merchantCheckoutQuoteRateLimit.js";
+import {
+  createMerchantQuoteRateLimiter, MERCHANT_QUOTE_PARTNER_UNPROVISIONED, merchantQuotePartnerBudget,
+} from "./merchantCheckoutQuoteRateLimit.js";
 import {
   ESCALATION_GATE_MAX_MS, escalationTargetOf, marketCurrencyOf, mayOfferPurchaseForDomain, readCheckoutRows,
 } from "./ucpCheckoutEscalation.js";
@@ -122,6 +124,11 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
     const key = env.AGENT_MERCHANT_CHECKOUT_QUOTE_IDEMPOTENCY_SECRET;
     if (!partner || !ctx.user_ref || !ctx.acp_session_id || typeof key !== "string" || key.length < 32
       || !stateStore?.durable) throw refusal("merchant_quote_state_unavailable");
+    // Only provisioned partners may open a seller checkout (see merchantCheckoutQuoteRateLimit.js), so an
+    // unlisted OAuth client is refused here, before any state is written or any seller is called.
+    if (!merchantQuotePartnerBudget(partner, env)) {
+      throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: MERCHANT_QUOTE_PARTNER_UNPROVISIONED });
+    }
 
     const items = quote.items.map(item => [item.product_id, item.variant_id, item.quantity])
       .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
@@ -235,7 +242,7 @@ export function createMerchantQuoteTool({ executor, stateStore, service = create
       // no merchant operation, so the claim is released and the same request may retry after the window.
       try {
         await createMerchantQuoteRateLimiter({ stateStore, keyOf: digest, env, now })({
-          partner, sellerHost: merchantRequest.sellerHost,
+          partner, sellerEndpoint: allowedSellers[merchantRequest.sellerHost],
         });
       } catch (error) { await releasePreflight(error); }
       let pending;

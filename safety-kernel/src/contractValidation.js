@@ -11,7 +11,7 @@
 //   3. submit_payment must NOT trust a model amount — expected_amount is a verification echo only
 // See docs/agent-checkout/C3-reconciliation.md for the migration plan.
 
-import { PivotaCommerceError } from './errors.js';
+import { IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_AFTER_ORDER, KERNEL_NO_ANSWER_AFTER_ORDER, PivotaCommerceError, kernelOutcomeUnknownOf } from './errors.js';
 import intakeBounds from './protocol/intakeBounds.cjs';
 import { intakeBoundRefusal, surfaceableIntakeRefusal } from './protocol/buyerIntake.js';
 
@@ -32,6 +32,13 @@ const INVOKE_NAMED_REASONS = new Set([
   intakeBounds.IDEMPOTENCY_KEY_BAD_CHARACTERS_REASON,
   intakeBounds.QUANTITY_ABOVE_LINE_MAXIMUM_REASON,
   intakeBounds.DUPLICATE_LINE_REASON,
+  // A seller not taking orders (errors.js MERCHANT_NOT_ACCEPTING_ORDERS): its words, not a generic one.
+  'merchant_not_accepting_orders',
+  // A used session whose claim names no order (kernel.js quoteAlreadyUsed): not "read that order (get_order)".
+  'checkout_session_order_outcome_unknown',
+  // A key that cannot run this request now for a reason the kernel knows (errors.js IDEMPOTENCY_CONFLICT_ANSWERS): its
+  // own words, never the code's generic ones.
+  ...Object.keys(IDEMPOTENCY_CONFLICT_ANSWERS),
 ]);
 
 const throwIfRefused = (refusal) => { if (refusal) throw intakeBoundRefusal(refusal); };
@@ -65,12 +72,22 @@ export function assertInvokeIntakeBounds(operation, payload) {
  */
 export function invokeErrorOf(err) {
   const error = err.toResult().error;
+  // A call after the caller's own order exists (its payment step, its payment page, an after-sales request) whose outcome
+  // is unknown: the words that say so, and the order they name (detail.order_id). The kernel raises these only after its
+  // ownership check of that order, and the caller sent the id itself.
+  const unknown = kernelOutcomeUnknownOf(err);
+  if (unknown && unknown.order_id && Object.hasOwn(KERNEL_NO_ANSWER_AFTER_ORDER, unknown.reason)) {
+    const words = unknown.answered ? KERNEL_ANSWERED_AFTER_ORDER[unknown.reason] : KERNEL_NO_ANSWER_AFTER_ORDER[unknown.reason];
+    return { code: error.code, retriable: error.retriable, message: words.message, recovery: error.recovery, detail: { reason: unknown.reason, order_id: unknown.order_id } };
+  }
   // ONLY the shared bounds, by their own reasons. Any other intake refusal that ever reaches this door keeps the plain body.
   const surfaced = INVOKE_NAMED_REASONS.has(err.detail?.reason) ? surfaceableIntakeRefusal(err) : null;
   if (!surfaced) return error;
   // The code's generic recovery hint is about another situation (QUOTE_REQUIRED's is "quote first"); the curated
   // message is the instruction, so the hint is left out rather than sent beside it.
-  return { code: error.code, retriable: error.retriable, message: surfaced.message, detail: surfaced.detail };
+  // A seller not taking orders also says what to do next (its catalog recovery); the intake bounds keep their body.
+  const recovery = error.code === 'MERCHANT_NOT_ACCEPTING_ORDERS' ? { recovery: error.recovery } : {};
+  return { code: error.code, retriable: error.retriable, message: surfaced.message, ...recovery, detail: surfaced.detail };
 }
 
 // After-sales actions the backend can actually fulfill today (mapping doc: refunds only).

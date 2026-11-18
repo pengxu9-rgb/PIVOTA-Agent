@@ -12,7 +12,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SafetyKernel } from '../src/kernel.js';
-import { PivotaCommerceError, kernelOutcomeUnknown, kernelOutcomeUnknownOf, KERNEL_OUTCOME_UNKNOWN_REASONS } from '../src/errors.js';
+import { PivotaCommerceError, kernelOutcomeUnknown, kernelOutcomeUnknownOf, KERNEL_OUTCOME_UNKNOWN_REASONS, KERNEL_ANSWERED_REFUSALS } from '../src/errors.js';
+import { REFUSED_BEFORE_ANY_ORDER } from '../src/upstreamRefusal.js';
 import { IdempotencyLedger } from '../src/idempotencyLedger.js';
 import { InMemoryKvStore } from '../src/stores.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
@@ -99,12 +100,24 @@ const complete = (w, sid, key, extra = {}, ctx = CTX) => w.exec('complete_checko
 const link = (w, sid, key, extra = {}, ctx = CTX) => w.exec('create_payment_link', { idempotency_key: key, session_id: sid, customer_email: 'buyer@example.test', ...extra }, ctx);
 const LANES = Object.freeze({ complete: { run: complete, failingOp: 'submit_payment', reason: KERNEL_OUTCOME_UNKNOWN_REASONS.payment }, payment_link: { run: link, failingOp: 'create_payment_link', reason: KERNEL_OUTCOME_UNKNOWN_REASONS.paymentLink } });
 
-function assertUnknown(err, reason, orderId, label) {
+function assertUnknown(err, reason, orderId, label, { answered } = {}) {
   assert.ok(err instanceof PivotaCommerceError, `${label}: ${err && err.stack}`);
   assert.equal(err.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${label}: ${err.code} ${JSON.stringify(err.detail)}`);
   assert.equal(err.retriable, false, `${label}: not retriable`);
   // Says nothing but what it is about: no amount, no currency, no upstream detail.
   assert.deepEqual(err.detail, { reason, order_id: orderId }, label);
+  assert.equal(kernelOutcomeUnknownOf(err).answered, answered, `${label}: the store's answer, as the words read it`);
+  if (answered) {
+    // A refusal the store DID answer (a 403, a 429): its own words, never the words of a call with no readable answer.
+    assert.deepEqual([err.message, err.userMessage, err.recovery], [KERNEL_ANSWERED_REFUSALS[answered].message, KERNEL_ANSWERED_REFUSALS[answered].message, KERNEL_ANSWERED_REFUSALS[answered].recovery], label);
+    for (const text of [err.message, err.recovery]) {
+      assert.equal(/no readable answer|may have been accepted|store may hold an order/i.test(text), false, `${label}: ${text}`);
+      assert.match(text, /do not place a new order for this purchase without the buyer/, label);
+      assert.equal(/nothing was ordered/i.test(text), false, `${label}: never claims nothing was ordered`);
+    }
+    assert.match(err.message, answered === 'rate_limited' ? /rate limiting.*earlier attempt of this checkout may already have placed an order/ : /^The order service refused this order request\. This checkout cannot be retried, and an order for it may still exist/, label);
+    return;
+  }
   if (orderId) assert.match(err.recovery, /get_order/, label);
   else {
     // No id to read: never sent to get_order; told the store may hold an order, and not to place one without the buyer.
@@ -274,13 +287,15 @@ for (const [laneName, lane] of Object.entries(LANES)) {
       assert.equal(await refusal(lane.run(w, sid, 'idem-cr-0001')), err);
       assert.equal(await w.kernel.isQuoteClaimed(sid), true);
     }
-    // Answered below 500, the claim kept, and as raised it would say retriable:true while every retry is refused.
-    for (const [status, code] of [[409, 'QUOTE_CONSUMED'], [429, 'RATE_LIMIT_EXCEEDED'], [408, 'REQUEST_TIMEOUT'], [400, 'INVALID_REQUEST'], [403, 'MERCHANT_NOT_ACCEPTING_ORDERS']]) {
+    // Answered below 500, the claim kept, and as raised it would say retriable:true while every retry is refused. A 403
+    // or a 429 says what the store answered (KERNEL_ANSWERED_REFUSALS); the others keep the words they had.
+    const ANSWERED = { 400: 'refused', 401: 'refused', 403: 'refused', 409: 'refused', 429: 'rate_limited' };
+    for (const [status, code] of [[409, 'QUOTE_CONSUMED'], [429, 'RATE_LIMIT_EXCEEDED'], [429, 'RATE_LIMITED'], [429, null], [408, 'REQUEST_TIMEOUT'], [400, 'INVALID_REQUEST'], [403, 'MERCHANT_NOT_ACCEPTING_ORDERS'], [403, 'FORBIDDEN'], [403, null], [401, 'UNAUTHORIZED']]) {
       const w = world();
       const sid = await open(w);
       w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { upstream_status: status, upstream_code: code }); });
-      assertUnknown(await refusal(lane.run(w, sid, 'idem-cr-0003')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${status} ${code}`);
-      assertUnknown(await refusal(lane.run(w, sid, 'idem-cr-0003')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${status} ${code} same key`);
+      assertUnknown(await refusal(lane.run(w, sid, 'idem-cr-0003')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${status} ${code}`, { answered: ANSWERED[status] });
+      assertUnknown(await refusal(lane.run(w, sid, 'idem-cr-0003')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${status} ${code} same key`, { answered: ANSWERED[status] });
       assert.equal(await w.kernel.isQuoteClaimed(sid), true);
       assert.equal(w.ops('create_order').length, 1);
     }
@@ -305,6 +320,169 @@ for (const [laneName, lane] of Object.entries(LANES)) {
     assert.equal(w.ops('create_order').length, 2);
   });
 }
+
+// ---- Q3: the store's named refusals of the order call ----------------------------------------------------------------
+
+// "This seller is not taking orders", as the transport raises it (src/server.js throwCommerceKernelUpstreamError, with
+// src/services/commerceKernelErrorMapping.js): named, terminal, its reason as the detail. `over` changes the facts.
+const notAccepting = (over = {}) => transportError('MERCHANT_NOT_ACCEPTING_ORDERS', {
+  operation: 'create_order', reason: 'merchant_not_accepting_orders',
+  acp_detail: { reason: 'merchant_not_accepting_orders' },
+  upstream_status: 403, upstream_code: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstream_detail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_A' },
+  ...over,
+});
+for (const [laneName, lane] of Object.entries(LANES)) {
+  test(`Q3 ${laneName}: a seller not taking orders (403 by name, listed) is answered as raised, terminal, in every market; the claim is given back and the same key then orders once`, async () => {
+    assert.ok((REFUSED_BEFORE_ANY_ORDER[403] || []).includes('MERCHANT_NOT_ACCEPTING_ORDERS'), 'the pair is listed');
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      const label = `${laneName} ${market}`;
+      const w = world({ market });
+      const sid = await open(w);
+      const err = notAccepting();
+      w.script.create_order.push(() => { throw err; });
+      const first = await refusal(lane.run(w, sid, 'idem-nta-0001'));
+      assert.equal(first, err, `${label}: answered as raised`);
+      assert.deepEqual([first.code, first.retriable, first.detail.acp_detail.reason], ['MERCHANT_NOT_ACCEPTING_ORDERS', false, 'merchant_not_accepting_orders'], label);
+      assert.match(first.message, /^This seller is not taking orders, so nothing was ordered/, label);
+      assert.equal(await w.kernel.isQuoteClaimed(sid), false, `${label}: released`);
+      // The same key once more is a first attempt again: the store is asked again, and this time orders.
+      const again = await refusal(lane.run(w, sid, 'idem-nta-0001'));
+      assert.equal(again, null, `${label}: ${again && again.code}`);
+      assert.equal(w.ops('create_order').length, 2, label);
+      assert.equal(w.ops('submit_payment').length + w.ops('create_payment_link').length, 1, `${label}: a payment step only for the order that was made`);
+    }
+  });
+  test(`P2-1 ${laneName}: "nothing was ordered" only on the release rule's proof: the same name with no route detail, another route code, or a deadline mark is the unknown outcome in the store-refused words, and the claim is kept`, async () => {
+    for (const [label, over] of [
+      ['no route detail', { upstream_detail: undefined }],
+      ['the code only in a message', { upstream_detail: { message: 'MERCHANT_NOT_ACCEPTING_ORDERS' } }],
+      ['the route naming another code', { upstream_detail: { error: 'FORBIDDEN' } }],
+      ['a deadline mark beside it', { upstream_timeout: true }],
+    ]) {
+      for (const market of ['US', 'SG', 'GB', 'DE']) {
+        const w = world({ market });
+        const sid = await open(w);
+        w.script.create_order.push(() => { throw notAccepting(over); });
+        const err = await refusal(lane.run(w, sid, 'idem-nta-0002'));
+        // A deadline is never an answered refusal: the no-answer words. Every other case: the store-refused words.
+        const answered = over.upstream_timeout ? undefined : 'refused';
+        assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market}`, { answered });
+        assert.equal(/nothing was ordered|not taking orders/i.test(err.message + err.recovery), false, `${label} ${market}`);
+        assert.equal(await w.kernel.isQuoteClaimed(sid), true, `${label} ${market}: kept`);
+        assertUnknown(await refusal(lane.run(w, sid, 'idem-nta-0002')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} ${market} same key`, { answered });
+        assert.equal(w.ops('create_order').length, 1, `${label} ${market}: one order call, ever`);
+      }
+    }
+  });
+}
+
+test('M04 a bare createOrder (the invoke route\'s call) after a 429 or an unnamed 403: the same key sends no second order call, and says what the store answered', async () => {
+  for (const [status, code, answered] of [[429, null, 'rate_limited'], [429, 'RATE_LIMITED', 'rate_limited'], [429, 'RATE_LIMIT_EXCEEDED', 'rate_limited'], [403, 'FORBIDDEN', 'refused'], [403, null, 'refused']]) {
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      const label = `${status} ${code} ${market}`;
+      const w = world({ market });
+      const sid = await open(w);
+      w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: status, upstream_code: code }); });
+      const order = { quote_id: sid, customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO, country: market } };
+      assertUnknown(await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0001', order }, CTX)), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, label, { answered });
+      assert.equal(w.ops('create_order').length, 1, label);
+      // The same key, the same body: the same answer, and 0 more order calls.
+      assertUnknown(await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0001', order }, CTX)), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `${label} same key`, { answered });
+      // Another key: the session is used.
+      assert.equal((await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0002', order }, CTX)))?.code, 'QUOTE_ALREADY_USED', label);
+      assert.equal(w.ops('create_order').length, 1, `${label}: 0 more order calls`);
+      assert.equal(await w.kernel.isQuoteClaimed(sid), true, label);
+    }
+  }
+  // A deadline mark is never a refusal the store answered, whatever status rides beside it: the no-answer words.
+  {
+    const w = world();
+    const sid = await open(w);
+    w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: 403, upstream_code: null, upstream_timeout: true }); });
+    assertUnknown(await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0009', order: { quote_id: sid, customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } } }, CTX)), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, 'a deadline beside a 403');
+  }
+  // The named 403, listed, bare: answered as raised; released, so the same key is a first attempt again.
+  const w = world();
+  const sid = await open(w);
+  w.script.create_order.push(() => { throw notAccepting(); });
+  const order = { quote_id: sid, customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } };
+  assert.equal((await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0003', order }, CTX)))?.code, 'MERCHANT_NOT_ACCEPTING_ORDERS');
+  const again = await refusal(w.kernel.createOrder({ idempotency_key: 'idem-bare-0003', order }, CTX));
+  assert.equal(again?.code, undefined);
+  assert.equal(w.ops('create_order').length, 2);
+});
+
+test('P3-6 the words of an order call\'s unknown outcome, by what came back: every status below 500 the store answered (and did not release) is a refusal; no response, a deadline, a 408, a 5xx and an unreadable 2xx have no readable answer', async () => {
+  const answeredOf = (detail) => ({ upstream_status: null, upstream_code: null, ...detail });
+  const TABLE = [
+    [{ upstream_status: 400, upstream_code: 'INVALID_REQUEST' }, 'refused'],
+    [{ upstream_status: 400, upstream_code: 'INVALID_REQUEST', upstream_detail: { message: 'Insufficient inventory', items: [] } }, 'refused'],
+    [{ upstream_status: 401, upstream_code: 'UNAUTHORIZED' }, 'refused'],
+    [{ upstream_status: 403, upstream_code: 'FORBIDDEN' }, 'refused'],
+    [{ upstream_status: 403, upstream_code: null, upstream_detail: 'Not authorized for this merchant' }, 'refused'],
+    [{ upstream_status: 404, upstream_code: 'MERCHANT_NOT_FOUND' }, 'refused'],
+    [{ upstream_status: 409, upstream_code: 'QUOTE_CONSUMED', upstream_detail: { error: 'QUOTE_CONSUMED' } }, 'refused'],
+    [{ upstream_status: 409, upstream_code: 'CONFLICT' }, 'refused'],
+    [{ upstream_status: 422, upstream_code: 'VALIDATION_ERROR' }, 'refused'],
+    [{ upstream_status: 429, upstream_code: 'RATE_LIMIT_EXCEEDED' }, 'rate_limited'],
+    [{ upstream_status: 429, upstream_code: null }, 'rate_limited'],
+    [{ upstream_status: 408, upstream_code: 'REQUEST_TIMEOUT' }, undefined],
+    [{ upstream_status: null, upstream_timeout: true }, undefined],
+    [{ upstream_status: 403, upstream_timeout: true }, undefined],
+    [{ upstream_status: null }, undefined],
+    [{ upstream_status: null, message: 'backend_iam_rejected' }, undefined],
+    [{ upstream_status: 500, upstream_code: 'INTERNAL_SERVER_ERROR' }, undefined],
+    [{ upstream_status: 502 }, undefined],
+    [{ upstream_status: 503, upstream_code: 'TEMPORARY_UNAVAILABLE' }, undefined],
+    [{ upstream_status: 504 }, undefined],
+  ];
+  for (const [detail, answered] of TABLE) {
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      const label = `${JSON.stringify(detail)} ${market}`;
+      const w = world({ market });
+      const sid = await open(w);
+      w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', ...answeredOf(detail) }); });
+      const err = await refusal(complete(w, sid, 'idem-table-0001'));
+      assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, label, { answered });
+      if (!answered) assert.match(err.recovery, /store may hold an order/, label);
+      assert.equal(await w.kernel.isQuoteClaimed(sid), true, label);
+    }
+  }
+  // An unreadable 2xx: the no-answer words.
+  for (const body of [null, '', '<html>ok</html>', {}]) {
+    const w = world();
+    const sid = await open(w);
+    w.script.create_order.push(() => body);
+    assertUnknown(await refusal(complete(w, sid, 'idem-table-0002')), KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, `2xx ${JSON.stringify(body)}`);
+  }
+});
+
+test('Q3 a consumed quote (409 QUOTE_CONSUMED) logs the order the store names on the claim-kept line, owner-free, and the answer never carries it', async () => {
+  const lines = [];
+  const w = world();
+  w.kernel._log = { info() {}, warn: (event, fields) => lines.push({ event, fields }), error() {} };
+  const sid = await open(w);
+  w.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', upstream_status: 409, upstream_code: 'QUOTE_CONSUMED', upstream_detail: { error: 'QUOTE_CONSUMED', message: 'Quote already consumed', details: { order_id: 'ord_backend_77' } } }); });
+  const err = await refusal(complete(w, sid, 'idem-consumed-0001'));
+  assertUnknown(err, KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, 'consumed', { answered: 'refused' });
+  assert.equal(JSON.stringify({ m: err.message, d: err.detail, r: err.recovery }).includes('ord_backend_77'), false, 'never in the answer');
+  assert.deepEqual(lines.filter((l) => l.event === 'quote_claim_kept'), [{ event: 'quote_claim_kept', fields: { quote_id: sid, upstream_order_id: 'ord_backend_77', code: 'MERCHANT_UNAVAILABLE', reason: 'create_order_outcome_unknown' } }]);
+  // Only that code, at that status, from the route's own detail, id-shaped: nothing else adds a member.
+  for (const detail of [
+    { upstream_status: 409, upstream_code: 'CONFLICT', upstream_detail: { error: 'QUOTE_CONSUMED', details: { order_id: 'ord_x' } } },
+    { upstream_status: 400, upstream_code: 'QUOTE_CONSUMED', upstream_detail: { error: 'QUOTE_CONSUMED', details: { order_id: 'ord_x' } } },
+    { upstream_status: 409, upstream_code: 'QUOTE_CONSUMED', upstream_detail: { error: 'QUOTE_CONSUMED', details: { order_id: 'not an id; x' } } },
+    { upstream_status: 409, upstream_code: 'QUOTE_CONSUMED', upstream_detail: { error: 'QUOTE_CONSUMED' } },
+  ]) {
+    lines.length = 0;
+    const w2 = world();
+    w2.kernel._log = { info() {}, warn: (event, fields) => lines.push({ event, fields }), error() {} };
+    const sid2 = await open(w2);
+    w2.script.create_order.push(() => { throw transportError('MERCHANT_UNAVAILABLE', { operation: 'create_order', ...detail }); });
+    await refusal(complete(w2, sid2, 'idem-consumed-0002'));
+    assert.deepEqual(lines.filter((l) => l.event === 'quote_claim_kept').map((l) => Object.keys(l.fields).sort()), [['code', 'quote_id', 'reason']], JSON.stringify(detail));
+  }
+});
 
 // ---- A.3: the order id is only ever the caller's own ----------------------------------------------------------------
 
@@ -363,6 +541,20 @@ test('ledger: an ambiguous record replays only the kernel\'s own unknown answer;
   await refusal(ledger.run(key2, { a: 1 }, async (ctx) => { ctx.sideEffectDone = true; throw new PivotaCommerceError('MERCHANT_UNAVAILABLE'); }));
   assert.equal((await store.get(key2)).outcome_unknown, undefined);
   assert.throws(() => kernelOutcomeUnknown('made_up_reason', 'o_1'));
+  // The store's refusal is kept beside the reason, and replayed with its own words; it is never in the detail.
+  const key3 = 'idem-ledger-0003';
+  await refusal(ledger.run(key3, { a: 1 }, async (ctx) => { ctx.sideEffectDone = true; throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: 'rate_limited' }); }));
+  assert.deepEqual((await store.get(key3)).outcome_unknown, { reason: 'order_create_outcome_unknown', order_id: null, answered: 'rate_limited' });
+  assertUnknown(await refusal(ledger.run(key3, { a: 1 }, async () => 'never')), 'order_create_outcome_unknown', null, 'replayed refusal', { answered: 'rate_limited' });
+  await store.set(key3, { ...(await store.get(key3)), outcome_unknown: { reason: 'order_create_outcome_unknown', order_id: null, answered: 'made_up' } });
+  assert.equal((await refusal(ledger.run(key3, { a: 1 }, async () => 'never'))).detail.reason, 'ambiguous_prior_attempt', 'a marker the kernel never writes is not replayed');
+  // The order call's own kinds only with no order id; a call after the order only `refused`, and only with its id.
+  assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, null, { answered: 'refused' }));
+  assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, 'o_1', { answered: 'rate_limited' }));
+  assert.equal(kernelOutcomeUnknownOf(kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.payment, 'o_1', { answered: 'refused' })).answered, 'refused');
+  assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, 'o_1', { answered: 'refused' }));
+  assert.throws(() => kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: 'toString' }));
+  assert.equal(Object.keys(kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.orderCreate, null, { answered: 'refused' })).includes('answeredRefusal'), false, 'not an enumerable member');
 });
 
 // ---- B: no address to ship to, on a tool door -------------------------------------------------------------------------
@@ -452,8 +644,45 @@ test('C cancel by session id says canceled only when it is true: an unordered se
   const open5 = await open(w, { key: 'idem-open-c-05' });
   assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0006', session_id: open5 }, { user_ref: 'buyer_2', acp_session_id: 'sess_1' })))?.code, 'STATE_LINKAGE_MISMATCH');
   assert.equal(await w.kernel.isQuoteClaimed(open5), false);
-  // By order id: unchanged (a charge_pending order is refused).
+  // By order id: a charge_pending order keeps its refusal.
   assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-0007', order_id: 'o_1' })))?.detail?.reason, 'cannot_cancel_paid_or_pending');
+});
+
+test('C cancel by order id, with the upstream cancel off, is never answered canceled: the caller\'s own unpaid order is refused by name and left as it is; an id never held, and another caller\'s order, are not found alike', async () => {
+  for (const [laneName, lane] of Object.entries(LANES)) {
+    for (const market of ['US', 'SG', 'GB', 'DE']) {
+      const label = `${laneName} ${market}`;
+      const w = world({ market });
+      const ctx = { ...CTX, agent_id: 'agent_1' };
+      const sid = await open(w, { ctx });
+      // An order whose payment page is open (payment link), or whose payment step failed (complete).
+      if (laneName === 'complete') w.script.submit_payment.push(() => ({ payment_id: 'pay_x', payment_status: 'failed' }));
+      await answered(lane.run(w, sid, 'idem-cxo-0001', {}, ctx), label);
+      const before = await w.kernel._orderStore.get('o_1');
+      const own = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0002', order_id: 'o_1' }, ctx));
+      assert.deepEqual([own?.code, own?.retriable, own?.detail], ['OPERATION_NOT_ALLOWED', false, { op: 'cancel_checkout_session', reason: 'order_cancel_not_available', order_id: 'o_1', upstream_cancel: false, order_status: before.status }], label);
+      // With the session id beside it: the same.
+      assert.equal((await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0003', session_id: sid, order_id: 'o_1' }, ctx)))?.detail?.reason, 'order_cancel_not_available', label);
+      assert.deepEqual(await w.kernel._orderStore.get('o_1'), before, `${label}: nothing was written`);
+      assert.equal((await w.exec('get_checkout_session', { session_id: sid }, ctx)).order_status, before.status, label);
+      // Never held, and another caller's (another buyer, another session, another agent): one not-found answer.
+      const notFound = [];
+      for (const [id, other] of [['o_never_held', ctx], ['o_1', { ...ctx, user_ref: 'buyer_2' }], ['o_1', { ...ctx, acp_session_id: 'sess_2' }], ['o_1', { ...ctx, agent_id: 'agent_2' }]]) {
+        const err = await refusal(w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-0004', order_id: id }, other));
+        assert.deepEqual([err?.code, err?.detail?.reason], ['QUOTE_NOT_FOUND', 'order_not_found'], `${label} ${id} ${JSON.stringify(other)}`);
+        notFound.push({ code: err.code, message: err.message, retriable: err.retriable, keys: Object.keys(err.detail) });
+      }
+      assert.ok(notFound.every((n) => JSON.stringify(n) === JSON.stringify(notFound[0])), `${label}: indistinguishable`);
+      assert.deepEqual(await w.kernel._orderStore.get('o_1'), before, label);
+      assert.deepEqual([w.ops('create_order').length, w.ops('create_payment_link').length + w.ops('submit_payment').length], [1, 1], `${label}: nothing more asked`);
+    }
+  }
+  // With the upstream cancel on, the backend's answer is still the answer (unchanged).
+  const w = world({ cancelUpstream: true });
+  const sid = await open(w);
+  await answered(link(w, sid, 'idem-cxo-on-1'));
+  assert.equal((await w.exec('cancel_checkout_session', { idempotency_key: 'idem-cxo-on-2', order_id: 'o_1' })).status, 'canceled');
+  assert.deepEqual(w.cancels, ['o_1']);
 });
 
 test('C a cancellation and a completion of one session: exactly one wins, whichever order they arrive in', async () => {
@@ -543,6 +772,33 @@ test('D update_checkout_session of a completed id still builds a separate sessio
   assert.equal((await w.exec('update_checkout_session', { idempotency_key: 'idem-upd-0002', session_id: open2, quote })).previous_session, undefined);
   assert.equal((await w.exec('update_checkout_session', { idempotency_key: 'idem-upd-0003', session_id: 'q_unknown', quote })).previous_session, undefined);
   assert.equal((await w.exec('update_checkout_session', { idempotency_key: 'idem-upd-0004', session_id: sid, quote }, { user_ref: 'buyer_2', acp_session_id: 'sess_9' })).previous_session, undefined);
+});
+
+test('D an order the kernel holds in a status the read does not know (an expired one, one with no status) is never read as plain completed: order_status_unknown, with its id and status; every known status still reads completed', async () => {
+  const { KERNEL_ORDER_STATUSES } = await import('../src/protocol/canonicalExecutor.js');
+  assert.deepEqual(KERNEL_ORDER_STATUSES, ['created', 'charge_pending', 'paid', 'failed', 'canceled']);
+  const quote = { merchant_id: 'merch_A', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test', shipping_address: { ...SHIP_TO } };
+  for (const [written, status, orderStatus] of [
+    ['expired', 'order_status_unknown', 'expired'],
+    [undefined, 'order_status_unknown', null],
+    ['Not A Word!', 'order_status_unknown', null],
+    ...KERNEL_ORDER_STATUSES.map((known) => [known, 'completed', known]),
+  ]) {
+    const label = String(written);
+    const w = world();
+    const sid = await open(w);
+    await answered(complete(w, sid, 'idem-d-st-0001'), label);
+    const record = await w.kernel._orderStore.get('o_1');
+    const { status: _was, ...rest } = record;
+    await w.kernel._orderStore.set('o_1', written === undefined ? rest : { ...rest, status: written });
+    const got = await w.exec('get_checkout_session', { session_id: sid });
+    assert.deepEqual([got.status, got.order_id, got.order_status], [status, 'o_1', orderStatus], label);
+    const updated = await w.exec('update_checkout_session', { idempotency_key: 'idem-d-st-upd1', session_id: sid, quote });
+    assert.deepEqual(updated.previous_session, { session_id: sid, status, order_id: 'o_1', order_status: orderStatus }, label);
+    // Never payable again either way: another key is told the session is used.
+    assert.equal((await refusal(complete(w, sid, 'idem-d-st-0002')))?.code, 'QUOTE_ALREADY_USED', label);
+    assert.equal(w.ops('create_order').length, 1, label);
+  }
 });
 
 // ---- the markets: no new answer states money, in any market ------------------------------------------------------------

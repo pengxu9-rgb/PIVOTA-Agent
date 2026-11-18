@@ -17,7 +17,7 @@
 
 import externalSeedLane from "../../src/services/externalSeedLane.js";
 import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
-import { PivotaCommerceError, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
+import { PivotaCommerceError, IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_REFUSALS, KERNEL_ANSWERED_AFTER_ORDER, KERNEL_NO_ANSWER_AFTER_ORDER, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 // The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
@@ -1879,6 +1879,13 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // A key that cannot run this request now for a reason the kernel knows (errors.js IDEMPOTENCY_CONFLICT_ANSWERS: still
+  // running, may have taken effect, a payment already asked for): its own recovery beside its own words.
+  if (error instanceof PivotaCommerceError && code === "IDEMPOTENCY_CONFLICT" && intake && Object.hasOwn(IDEMPOTENCY_CONFLICT_ANSWERS, error.detail?.reason)) {
+    body.recovery = IDEMPOTENCY_CONFLICT_ANSWERS[error.detail.reason].recovery;
+  }
+  // A seller not taking orders: its catalog recovery (what to do next) beside its words.
+  if (error instanceof PivotaCommerceError && code === "MERCHANT_NOT_ACCEPTING_ORDERS" && typeof error.recovery === "string") body.recovery = error.recovery;
   // A refusal decided for an assumed US (decision D-10) says so, in the same member an answer would carry.
   if (error.marketAssumed === true) body.market_assumed = requestMarket.marketAssumedLabel();
   if (code === "OPERATION_NOT_ALLOWED" && ["ucp_reap_create_refused", "ucp_reap_create_not_available", "reap_create_paused"].includes(error.detail?.reason)) {
@@ -1913,7 +1920,7 @@ export function toToolError(error) {
       body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
     }
     if (error.detail.reason === "purchase_idempotency_conflict") {
-      // Never the generic "Starting fresh": this key already opened a purchase (see orchestratedPurchaseTool.js).
+      // Never the code's generic words: this key already opened a purchase (see orchestratedPurchaseTool.js).
       body.message = "This idempotency_key already opened a purchase, for details that no longer match this call (the catalog may have changed since).";
       body.recovery = "the purchase for this key may exist: check it before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
       // The backend names that purchase (the caller's own: its key lookup is scoped to the agent and the buyer).
@@ -1953,6 +1960,10 @@ export function toToolError(error) {
       body.message = "Too many live quotes were requested for this seller or partner. No checkout was opened.";
       body.recovery = "retry the same request with the same idempotency_key after detail.retry_after_seconds; do not send new keys in a loop";
     }
+    if (error.detail.reason === "merchant_quote_partner_unprovisioned") {
+      body.message = "Live seller quotes are open only to provisioned Pivota partners. No checkout was opened.";
+      body.recovery = "do not retry with this client; ask Pivota to provision it as a partner";
+    }
     if (error.detail.reason === "merchant_quote_market_unpriced") {
       body.message = "Pivota does not price this market, so no quote was requested from the seller.";
       body.recovery = "do not retry for this market; quote only a market whose currency Pivota serves";
@@ -1973,7 +1984,14 @@ export function toToolError(error) {
     if (kernelUnknown) {
       const orderId = surfaceableOrderId(kernelUnknown.order_id);
       const answer = KERNEL_OUTCOME_UNKNOWN_ANSWERS[kernelUnknown.reason];
-      body.message = orderId ? answer.withOrder : answer.withoutOrder;
+      // An order call the store answered with a refusal that keeps the claim (a 403, a 429): its own words, never "no
+      // readable answer". Which one is not surfaced; the detail below is the same.
+      const answered = !orderId && kernelUnknown.answered ? KERNEL_ANSWERED_REFUSALS[kernelUnknown.answered] : null;
+      // A call after the order exists that the order service refused in words that would say it had no effect: its own
+      // words, with the order id (errors.js KERNEL_ANSWERED_AFTER_ORDER), never "nothing was done".
+      const answeredAfterOrder = orderId && kernelUnknown.answered ? KERNEL_ANSWERED_AFTER_ORDER[kernelUnknown.reason] : null;
+      body.message = answeredAfterOrder ? answeredAfterOrder.message
+        : answered ? `${answered.message} ${SAME_KEY_SAME_ANSWER}` : orderId ? answer.withOrder : answer.withoutOrder;
       body.recovery = error.recovery;
       body.detail = { reason: kernelUnknown.reason, order_id: orderId };
     }
@@ -1987,6 +2005,10 @@ export function toToolError(error) {
     body.message = "This checkout was canceled, so it cannot be completed or paid. No order was placed from it.";
     body.detail = { reason: "session_canceled" };
     body.recovery = "do not complete this checkout; start a new checkout only if the buyer wants to buy";
+  } else if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && error.detail?.claim === "order_outcome_unknown" && !surfaceableOrderId(error.detail?.order_id)) {
+    // The claim names no order (kernel.js quoteAlreadyUsed): its own words (surfaced above) and a recovery that does not
+    // send the caller to an order it cannot name.
+    body.recovery = "do not start another checkout for this purchase without the buyer: an order may exist; read this checkout session again before anything else";
   } else if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && surfaceableOrderId(error.detail?.order_id)) {
     body.detail = { reason: "session_already_ordered", order_id: surfaceableOrderId(error.detail.order_id) };
     body.recovery = "read the order in detail.order_id with get_order before anything else; start a new checkout only if the buyer wants another order";
@@ -2010,6 +2032,18 @@ export function toToolError(error) {
           + "; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it";
       }
       if (error.detail.reason === "session_already_ordered" && orderId) body.detail.order_id = orderId;
+      if (error.detail.reason === "order_cancel_not_available") {
+        // The words by the order's status: an unpaid order may have an open payment page, a failed one is not said to,
+        // and one that already reads canceled here is pointed to get_order.
+        const status = typeof error.detail.order_status === "string" && /^[a-z][a-z_]{0,31}$/.test(error.detail.order_status) ? error.detail.order_status : null;
+        const byStatus = ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS[status] || ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS.created;
+        body.message = byStatus.message;
+        body.recovery = byStatus.recovery.replace("get_order;", orderId ? "get_order (detail.order_id);" : "get_order;");
+        // `canceled: false` is this call's own result; a row that already reads canceled says so beside it.
+        if (status === "canceled") body.detail.already_canceled = true;
+        if (orderId) body.detail.order_id = orderId;
+        if (status) body.detail.order_status = status;
+      }
     }
   }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
@@ -2038,6 +2072,13 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
     message: "This checkout session already became an order, so canceling the session alone would leave the order payable.",
     recovery: "cancel it by its order_id",
   },
+  // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: a cancel by order id of the caller's own unpaid order. Nothing reaches
+  // the store, so it is never "canceled". The words are chosen by the order's status (ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS).
+  order_cancel_not_available: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
+  },
   // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: an order was asked for on this session and the gateway holds none for it.
   session_order_outcome_unknown: {
     code: "OPERATION_NOT_ALLOWED",
@@ -2053,15 +2094,37 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
   },
 });
 
+const SAME_KEY_SAME_ANSWER = "Sending this call again with the same idempotency_key returns this same answer.";
+// A flag-off cancel by order id, by the order's status in the kernel (any status not named here: `created`'s words).
+const ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS = Object.freeze({
+  created: {
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
+  },
+  failed: {
+    message: "This order cannot be canceled from here: no cancellation reaches the store. Its payment did not go through.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should ask the merchant to cancel it",
+  },
+  canceled: {
+    message: "This order already reads canceled here. This call did not cancel anything and sent nothing to the store.",
+    recovery: "read the order with get_order; tell the buyer only what that read says",
+  },
+});
+
 // The kernel's unknown outcomes (errors.js KERNEL_OUTCOME_UNKNOWN_REASONS), in words that say what is and is not known.
 const KERNEL_OUTCOME_UNKNOWN_ANSWERS = Object.freeze({
   payment_outcome_unknown_after_order: {
-    withOrder: "The order was created (detail.order_id), but whether its payment step went through is unknown: the payment service gave no readable answer. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.payment_outcome_unknown_after_order.message,
     withoutOrder: "Whether the payment step went through is unknown: the payment service gave no readable answer. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
   },
   payment_link_outcome_unknown_after_order: {
-    withOrder: "The order was created (detail.order_id), but whether its payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Read that order with get_order before anything else, and do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.payment_link_outcome_unknown_after_order.message,
     withoutOrder: "Whether the payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+  },
+  // Only ever raised with an order id and the order service's refusal (KERNEL_ANSWERED_AFTER_ORDER gives its words).
+  after_sales_outcome_unknown: {
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.after_sales_outcome_unknown.message,
+    withoutOrder: "Whether this after-sales request was filed is unknown. Send the same call again with the same idempotency_key; do not file another request for this order until it answers.",
   },
   order_create_outcome_unknown: {
     withOrder: "Whether the order was created is unknown: the order service gave no readable answer. An order may exist (detail.order_id): read it with get_order before anything else, and do not start another checkout for this purchase.",
