@@ -123,6 +123,16 @@ test('a request that names a market gets THAT market, not the deployment list', 
   assert.deepStrictEqual(marketsForRequest(null, env), ['US', 'SG']);
 });
 
+test('parseMarketList: an entry is two ASCII letters tested before upcasing; a lookalike is not a market', () => {
+  for (const lookalike of ['uſ', 'ﬁ', 'ıt', 'İT', 'ＵＳ', 'УС']) {
+    assert.deepStrictEqual(parseMarketList(lookalike, null), [], lookalike);
+  }
+  // Unreadable entries are skipped, as before ('USA,SG' -> SG): this list also parses the deployment env.
+  assert.deepStrictEqual(parseMarketList('ﬁ,SG', null), ['SG']);
+  assert.deepStrictEqual(parseMarketList(' us , sg ', null), ['US', 'SG']);
+  assert.deepStrictEqual(parseMarketList('', 'ﬁ'), ['US'], 'a lookalike fallback is the default, not FI');
+});
+
 test('parseMarketList dedupes and preserves order', () => {
   assert.deepStrictEqual(parseMarketList('US,SG,US'), ['US', 'SG']);
 });
@@ -338,4 +348,12 @@ test('the canonical arm\'s market gates stay counted, even though the needle can
   assert.ok(gates > 0,
     'the canonical arm has no market gate at all any more — if that is intended, drop ' +
     'CANONICAL_SCALAR_GATES to 0 deliberately rather than letting this test pass on absence.');
+});
+
+test('priceCache.declaredMarket: two ASCII letters tested before upcasing; a lookalike declares nothing', () => {
+  const { declaredMarket } = require('../src/services/priceCache');
+  for (const lookalike of ['uſ', 'ﬁ', 'ıt', 'ＵＳ', 'УС']) assert.equal(declaredMarket(lookalike), null, lookalike);
+  assert.deepStrictEqual(declaredMarket(' us '), { market: 'US', currency: 'USD' });
+  assert.deepStrictEqual(declaredMarket('fi'), { market: 'FI', currency: 'EUR' });
+  assert.equal(declaredMarket('DE'), null);
 });

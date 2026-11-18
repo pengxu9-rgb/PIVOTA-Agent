@@ -282,6 +282,20 @@ test('a declared market Pivota does not price is refused, never swapped for the 
   assert.equal(calls.length, 0);
 });
 
+test('a Unicode lookalike market (uſ, ﬁ, ıt) is never read as the code case mapping folds it into', async () => {
+  for (const market of ['uſ', 'ﬁ', 'ıt', 'ＵＳ']) {
+    const { r, calls } = reader(laneigeUS);
+    const out = await r.readProduct(laneigePdp({ currency: 'USD' }), { market });
+    assert.equal(out.product.live_read.status, STATUS.SKIPPED, market);
+    assert.equal(out.product.live_read.reason, 'market_not_priced', market);
+    assert.equal(calls.length, 0, market);
+  }
+  // 'us' is still US.
+  const { r, calls } = reader(laneigeUS);
+  await r.readProduct(laneigePdp({ currency: 'USD' }), { market: 'us' });
+  assert.ok(calls.length > 0);
+});
+
 test('ADR-026: no declared market, no live read -- never a market inferred from the listing currency', async () => {
   const { r, calls } = reader(laneigeUS);
   const declared = await r.readProduct(laneigePdp(), { market: 'US' });

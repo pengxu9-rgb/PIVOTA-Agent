@@ -32453,7 +32453,10 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, ra
     const cache = ucpLivePdpCache();
     const host = productHost(detail.product);
     const ids = productVariantIds(detail.product);
-    const country = String(market || '').trim().toUpperCase();
+    // Never case-fold a non-ASCII value: case mapping turns lookalikes into codes ('uſ' -> 'US'), which then keyed a
+    // live read. An ASCII value is upcased exactly as before; a non-ASCII one stays as sent and is never keyed.
+    const sentCountry = String(market || '').trim();
+    const country = /^[\x00-\x7F]*$/.test(sentCountry) ? sentCountry.toUpperCase() : sentCountry;
     const keyed = Boolean(host && ids.length && /^[A-Z]{2}$/.test(country));
     if (keyed && !cache.claimRead(host, country, ids)) return false;
     // Over this store's per-minute read budget (shared with pdp_live_read): no read, the claim released.
