@@ -138,6 +138,7 @@ const priceVerificationFacts = require('./observability/priceVerificationFacts')
 const priceCacheHooks = require('./services/priceCache');
 // FIX_PLAN C-11: what the backend's order cancel answered (cancel_checkout_session, CHECKOUT_CANCEL_UPSTREAM_ENABLED).
 const checkoutCancelUpstream = require('./services/checkoutCancelUpstream');
+const kernelChargePendingReconcile = require('./services/kernelChargePendingReconcile');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -32198,6 +32199,20 @@ function buildAgentPurchaseCreateClient(log, deps = {}) {
   });
 }
 
+// AgenPas (docs/agenpas.md): the buyer's page reads a purchase server-to-server on the buyer's behalf, for the
+// agent a verified link token names, with a DEDICATED key (AGENPAS_INTERNAL_READ_KEY, read per call) that grants
+// this one backend read and nothing else. The buyer has no agent key, and the caller's key and token are never stored.
+function buildAgenpasPurchaseReader(log, deps = {}) {
+  const { createBackendPurchaseReader } = require('./agenpas/purchaseReader');
+  const agenpasConfig = require('./agenpas/config');
+  return createBackendPurchaseReader({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    internalKey: () => agenpasConfig.internalReadKey(),
+    logger: log,
+  });
+}
+
 function isAgentPurchaseOrderReadEnabled() {
   // Default OFF. Off: get_order treats a `pp_` id exactly as before (a kernel lookup, which fails closed).
   const normalized = String(process.env.AGENT_PURCHASE_ORDER_READ_ENABLED || '').trim().toLowerCase();
@@ -34556,6 +34571,8 @@ async function getCommerceRemoteMcpAdapter() {
         orchestratedPurchase: {
           createClient: buildAgentPurchaseCreateClient(logger),
           readClient: buildAgentPurchaseReadClient(logger),
+          // AgenPas: an additive `agenpas_url` on the answer, only while AGENPAS_ENABLED is on (read per call).
+          agenpasLink: require('./agenpas/link').createAgenpasLinkMinter(),
         },
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
@@ -38804,6 +38821,11 @@ const AURORA_CHATBOX_ORIGINS = new Set([
   'https://pivota-aurora-chatbox.vercel.app',
 ]);
 
+// AgenPas (docs/agenpas.md): the AgenPas public host serves AgenPas and nothing else. FIRST, ahead of every other
+// middleware and route; a no-op while AGENPAS_ENABLED is off or on any other host (src/agenpas/router.js).
+const agenpasHostGuard = require('./agenpas/router').createAgenpasHostGuard();
+app.use(agenpasHostGuard.front);
+
 // CORS configuration - allow UI to call Gateway
 // NOTE: Must run BEFORE body parsing so browser clients still receive CORS headers
 // even when JSON parsing fails (otherwise Aurora Chatbox sees "No Access-Control-Allow-Origin").
@@ -39057,10 +39079,14 @@ app.head('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 // normal not-found handling, so the public host's shape is "this path does not exist" — the same
 // answer it gives for any other absent path.
 const internalUiStatic = express.static(path.join(__dirname, '..', 'public'));
-app.use((req, res, next) => {
-  if (isPublicReadMcpHostRequest(req)) return next();
+// Never on the AgenPas host either (src/agenpas/router.js): that origin is AgenPas's alone, and this page has no
+// CSP. The host guard mounted first already refuses every non-AgenPas path there; this is the second lock
+// (tests/agenpas_server_mount.test.js tests it on its own, through `_debug.internalUiStaticGate`).
+function internalUiStaticGate(req, res, next) {
+  if (isPublicReadMcpHostRequest(req) || agenpasHostGuard.onHost(req)) return next();
   return internalUiStatic(req, res, next);
-});
+}
+app.use(internalUiStaticGate);
 
 // Lightweight request logging.
 //
@@ -39099,6 +39125,16 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// ---------------- AgenPas: the buyer's own checkout pages (docs/agenpas.md) ----------------
+// Dark unless AGENPAS_ENABLED (read per request): off, every /agenpas path falls through to the normal not-found
+// handling, exactly as before. The routes live in src/agenpas/router.js.
+app.use(require('./agenpas/router').createAgenpasRouter({
+  reader: buildAgenpasPurchaseReader(logger),
+  logger,
+}));
+// …and on the AgenPas host an /agenpas path the router did not serve goes no further.
+app.use(agenpasHostGuard.back);
 
 // ---------------- Inbound agent signatures (Visa TAP / IETF Web Bot Auth) ----------------
 //
@@ -55970,6 +56006,8 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // AgenPas: the internal UI's static handler with its host gate, so the gate can be tested without the front guard.
+  internalUiStaticGate,
   // Exported because the price-check fan-out runs only behind the external reco lane: the property under
   // test is that its loopback sub-calls are marked fan-out (keyed per tool call, not per caller).
   recommendPriceVerifyLoopbackHeaders,
@@ -56566,6 +56604,27 @@ if (require.main === module) {
           setInterval(runCreatorCatalogAutoSync, intervalMs);
         }, initialDelayMs);
       }
+
+      // Kernel orders stuck at charge_pending with no payment id (an unknown charge outcome): read the backend's own
+      // order and settle the kernel row to it. KERNEL_CHARGE_PENDING_RECONCILE_MODE, default off (nothing scheduled);
+      // observe logs only. See src/services/kernelChargePendingReconcile.js.
+      kernelChargePendingReconcile.startKernelChargePendingReconcile({
+        getMount: getCommerceMount,
+        db: process.env.DATABASE_URL ? { query } : null,
+        readBackendOrder: kernelChargePendingReconcile.createBackendOrderReader({
+          httpGet: (url, config) => axios.get(url, config),
+          baseUrl: PIVOTA_API_BASE,
+          // The gateway's own service key, exactly as the kernel's get_order_status read sends it: no caller, no
+          // buyer and no partner identity (there is no request here).
+          authHeaders: () => buildInvokeUpstreamAuthHeaders({
+            allowInternalFallback: true,
+            forceInternalFallback: true,
+            forwardAgentUserJwt: false,
+            forwardBuyerRef: false,
+          }),
+        }),
+        logger,
+      });
 
       // PDP identity auto-resolve: completes the catalog-coverage loop by resolving
       // newly onboarded seeds into depositable anchors. OFF by default (gated above);

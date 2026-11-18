@@ -157,6 +157,32 @@ export class PostgresKvStore {
     return rows.length > 0;
   }
 
+  /**
+   * ATOMIC compare-and-set on SEVERAL JSON fields (InMemoryKvStore.compareAndSetFields has the same rule): one
+   * UPDATE whose WHERE requires every `(v ->> field) IS NOT DISTINCT FROM expected`, so a `null` expectation matches
+   * a JSON null or an absent field, and anything else compares as text. An empty `expected` matches nothing.
+   */
+  async compareAndSetFields(key, expected, value, { ttlMs } = {}) {
+    const entries = expected && typeof expected === 'object' ? Object.entries(expected) : [];
+    if (entries.length === 0) return false;
+    const params = [this._ns, key, JSON.stringify(value), this._expiresAt(ttlMs), this._now() / 1000];
+    const conds = [];
+    for (const [field, want] of entries) {
+      if (typeof field !== 'string' || field === '') return false;
+      params.push(field, want === null ? null : String(want));
+      conds.push(`(v ->> $${params.length - 1}::text) IS NOT DISTINCT FROM $${params.length}::text`);
+    }
+    const { rows } = await this._db.query(
+      `UPDATE ${TABLE} SET v = $3, expires_at = $4
+       WHERE ns = $1 AND k = $2
+         AND (expires_at IS NULL OR expires_at > to_timestamp($5))
+         AND ${conds.join(' AND ')}
+       RETURNING k`,
+      params,
+    );
+    return rows.length > 0;
+  }
+
   /** ATOMIC compare-and-delete on a JSON field. */
   async compareAndDelete(key, matchField, matchValue) {
     const { rows } = await this._db.query(
