@@ -1,7 +1,45 @@
 // AgenPas mounted in the real gateway app (src/server.js; docs/agenpas.md). Dark by default: every /agenpas path
 // answers exactly what an unknown path answers. Lit with dev fixtures (local only): the page, its assets and its API
 // answer, and nothing reaches the backend. Loopback only.
+const net = require('node:net');
 const request = require('supertest');
+
+// RAW requests: the request line goes out byte for byte (supertest's URL handling would resolve dot segments and
+// re-encode), which is what a path-traversal probe needs. Returns { status, headers, body }.
+function rawRequest(app, requestText) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, '127.0.0.1', () => {
+      const socket = net.connect(server.address().port, '127.0.0.1');
+      let buf = '';
+      socket.on('data', (d) => { buf += d.toString('latin1'); });
+      socket.on('end', () => {
+        server.close();
+        const [head, ...rest] = buf.split('\r\n\r\n');
+        const lines = head.split('\r\n');
+        const headers = {};
+        for (const l of lines.slice(1)) {
+          const i = l.indexOf(':');
+          if (i > 0) headers[l.slice(0, i).toLowerCase()] = l.slice(i + 1).trim();
+        }
+        resolve({ status: Number((lines[0] || '').split(' ')[1]), headers, body: rest.join('\r\n\r\n') });
+      });
+      socket.on('error', (err) => { server.close(); reject(err); });
+      socket.write(requestText);
+    });
+  });
+}
+const rawGet = (app, path, host, extra = '') => rawRequest(app, `GET ${path} HTTP/1.1\r\nHost: ${host}\r\n${extra}Connection: close\r\n\r\n`);
+
+// The reviewer's traversal probes (review round 2, P1-1) and their encoded variants.
+const TRAVERSALS = [
+  '/agenpas/..%2findex.html', '/agenpas/..%2F/', '/agenpas/..%2F', '/agenpas//..%2findex.html', '/agenpas/%2e%2e%2findex.html',
+  '/agenpas/x/..%2f..%2findex.html', '/agenpas/p/..%2f..%2findex.html', '/agenpas/assets/..%2f..%2findex.html',
+  '/agenpas/../index.html', '/agenpas/%2e%2e/index.html', '/agenpas/.%2e/index.html', '/agenpas/%2E%2E%2Findex.html',
+  '/agenpas/..%5cindex.html', '/agenpas/..%5Cindex.html', '/agenpas/..\\index.html', '/agenpas/%252e%252e%252findex.html',
+  '/agenpas/..%252findex.html', '/agenpas/./assets/app.js', '/agenpas/assets/app.js/', '/agenpas/assets//app.js',
+  '/agenpas/..%2fhealth', '/agenpas/..%2fcatalog-image-cache%2fx', '/agenpas/..%2f..%2fpackage.json',
+  '/agenpas/p/ap_000000000000000000000001%2f..%2f..%2findex.html', '/agenpas', '/agenpas/',
+];
 
 const KEYS = [
   'AGENPAS_ENABLED', 'AGENPAS_LINK_SECRET', 'AGENPAS_PUBLIC_BASE_URL', 'AGENPAS_HOSTED_HOSTS', 'AGENPAS_DEV_FIXTURES',
@@ -80,6 +118,78 @@ describe('AgenPas routes in the gateway app', () => {
       else expect(now).toEqual(then);
     }
     expect(before['agenpas.example/'].status).toBe(200);
+  });
+
+  describe('the AgenPas host, lit (review round 2)', () => {
+    let app;
+    beforeEach(() => {
+      process.env.AGENPAS_ENABLED = '1';
+      process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+      app = require('../src/server');
+    });
+
+    test.each(TRAVERSALS)('traversal %s on the AgenPas host: refused by the front guard, never the internal UI', async (p) => {
+      for (const host of ['agenpas.example', 'AGENPAS.Example', 'agenpas.example:443', 'agenpas.example.', 'agenpas.example:8443']) {
+        const res = await rawGet(app, p, host);
+        expect([p, host, res.status]).toEqual([p, host, 404]);
+        expect(res.body.includes('Internal UI')).toBe(false);
+        expect(res.headers['x-agenpas-guard']).toBe('front');
+        expect(res.headers['content-security-policy']).toBe("default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+      }
+    });
+
+    test('an absolute-form request line is judged by its path and the Host header', async () => {
+      const abs = await rawGet(app, 'http://x/agenpas/..%2findex.html', 'agenpas.example');
+      expect(abs.status).toBe(404);
+      expect(abs.headers['x-agenpas-guard']).toBe('front');
+      const absOk = await rawGet(app, 'https://agenpas.example/agenpas/assets/app.js', 'agenpas.example');
+      expect(absOk.status).toBe(200);
+      const absRoot = await rawGet(app, 'http://gateway.example/', 'agenpas.example');
+      expect(absRoot.status).toBe(404);
+    });
+
+    test('host variants of the AgenPas host get nothing but AgenPas (:443 and a trailing dot serve it; :8443 serves nothing)', async () => {
+      for (const host of ['agenpas.example:443', 'agenpas.example.', 'AGENPAS.EXAMPLE']) {
+        expect((await rawGet(app, '/', host)).status).toBe(404);
+        expect((await rawGet(app, '/agenpas/assets/app.js', host)).status).toBe(200);
+      }
+      const otherPort = await rawGet(app, '/agenpas/assets/app.js', 'agenpas.example:8443');
+      expect(otherPort.status).toBe(404);
+      expect((await rawGet(app, '/', 'agenpas.example:8443')).headers['x-agenpas-guard']).toBe('front');
+    });
+
+    test('X-Forwarded-Host is ignored: only the Host header decides', async () => {
+      const spoofIn = await rawGet(app, '/', 'gateway.example', 'X-Forwarded-Host: agenpas.example\r\n');
+      expect(spoofIn.status).toBe(200);
+      expect(spoofIn.body.includes('Internal UI')).toBe(true);
+      const spoofOut = await rawGet(app, '/', 'agenpas.example', 'X-Forwarded-Host: gateway.example\r\n');
+      expect(spoofOut.status).toBe(404);
+      expect(spoofOut.headers['x-agenpas-guard']).toBe('front');
+    });
+
+    test('the AgenPas stylesheet, an admitted shape, passes both locks (front guard, static host gate) and is served', async () => {
+      const res = await rawGet(app, '/agenpas/assets/app.css', 'agenpas.example');
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/text\/css/);
+    });
+  });
+
+  test('the back guard answers on the AgenPas host for an admitted path the router did not serve', async () => {
+    process.env.AGENPAS_ENABLED = '1';
+    process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+    process.env.AGENPAS_DEV_FIXTURES = '1';
+    process.env.AGENPAS_PUBLIC_BASE_URL = 'http://localhost:4000';
+    const app = require('../src/server');
+    // /agenpas/dev/start is admitted (fixtures armed, loopback Host); an unknown scenario is not served by the router.
+    const res = await rawGet(app, '/agenpas/dev/start?scenario=no-such-scenario', 'localhost:4000');
+    expect(res.status).toBe(404);
+    expect(res.headers['x-agenpas-guard']).toBe('back');
+    expect(res.body).toBe('Not found');
+    // Off a loopback Host the same path is the front guard's.
+    process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+    const front = await rawGet(app, '/agenpas/dev/start?scenario=happy', 'agenpas.example');
+    expect(front.headers['x-agenpas-guard']).toBe('front');
   });
 
   test('lit with dev fixtures: page, assets and API answer', async () => {

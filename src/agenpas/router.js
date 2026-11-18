@@ -284,9 +284,7 @@ function createAgenpasRouter(deps = {}) {
     const env = envOf();
     if (!config.isEnabled(env)) return next('router');
     if (req.method !== 'GET' && req.method !== 'HEAD') return next('router');
-    const base = config.publicBaseUrl(env);
-    if (!base) return next('router');
-    if (String(req.headers.host || '').toLowerCase() !== new URL(base).host.toLowerCase()) return next('router');
+    if (!isAgenpasOrigin(req, env)) return next('router');
     return next();
   });
 
@@ -397,31 +395,104 @@ function createAgenpasRouter(deps = {}) {
  */
 const HOST_REFUSAL_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
-function agenpasHost(env) {
+/** The base URL's host name (lower-case, no trailing dot, no port), or null while AgenPas is off / unconfigured. */
+function agenpasHostname(env) {
   if (!config.isEnabled(env)) return null;
   const base = config.publicBaseUrl(env);
-  return base ? new URL(base).host.toLowerCase() : null;
+  return base ? new URL(base).hostname.toLowerCase().replace(/\.$/, '') : null;
 }
 
+/** The request's Host, normalised: lower-case host name without a trailing dot, and its port ('' when none). */
+function requestHost(req) {
+  const raw = String((req && req.headers && req.headers.host) || '').trim().toLowerCase();
+  let name = raw;
+  let port = '';
+  if (raw.startsWith('[')) {
+    const end = raw.indexOf(']');
+    name = raw.slice(0, end + 1);
+    port = raw.slice(end + 2);
+  } else if (raw.lastIndexOf(':') > 0) {
+    name = raw.slice(0, raw.lastIndexOf(':'));
+    port = raw.slice(raw.lastIndexOf(':') + 1);
+  }
+  return { name: name.replace(/\.$/, ''), port };
+}
+
+/**
+ * True when the request is for the AgenPas public host, by HOST NAME: any port and a trailing dot count, so
+ * `agenpas.example:8443` and `agenpas.example.` are the AgenPas host too (and get only what it serves). Only the Host
+ * header decides; X-Forwarded-Host is never read.
+ */
+function isOnAgenpasHost(req, env) {
+  const hostname = agenpasHostname(env);
+  return Boolean(hostname) && requestHost(req).name === hostname;
+}
+
+/** The request is EXACTLY the public origin (scheme-default port spelled or not): the one place routes answer. */
+function isAgenpasOrigin(req, env) {
+  const base = config.publicBaseUrl(env);
+  if (!base || !isOnAgenpasHost(req, env)) return false;
+  const u = new URL(base);
+  const want = u.port || (u.protocol === 'https:' ? '443' : '80');
+  const got = requestHost(req).port || (u.protocol === 'https:' ? '443' : '80');
+  return got === want;
+}
+
+/** The path as it arrived on the request line, before any decoding: absolute-form stripped, no query. */
+function rawPathOf(req) {
+  let u = String(req.originalUrl || req.url || '');
+  const absolute = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i.exec(u);
+  if (absolute) u = u.slice(absolute[0].length) || '/';
+  const cut = u.search(/[?#]/);
+  return cut >= 0 ? u.slice(0, cut) : u;
+}
+
+// The ONLY paths the AgenPas host admits. Matched on the raw path: an encoded byte, a dot segment, a backslash or a
+// double slash is refused outright, so nothing a later decoder (express.static's `send`) could resolve differently
+// ever gets past.
+const ADMITTED_PATHS = [
+  /^\/agenpas\/p\/(?:pp|ap|rp)_[0-9a-f]{24}$/,
+  /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}$/,
+  /^\/agenpas\/assets\/app\.(?:js|css)$/,
+];
+const DEV_PATHS = [/^\/agenpas\/dev\/start$/];
+const UNSAFE_PATH_RE = /[%\\]|\.\.|\/\/|\/\.(?:\/|$)/;
+
+function admitted(req, env) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const raw = rawPathOf(req);
+  if (UNSAFE_PATH_RE.test(raw)) return false;
+  if (ADMITTED_PATHS.some((re) => re.test(raw))) return true;
+  return config.devFixturesEnabled(env) && isLoopbackHost(req) && DEV_PATHS.some((re) => re.test(raw));
+}
+
+/*
+ * THE AGENPAS HOST IS EXCLUSIVE. With AgenPas on and AGENPAS_PUBLIC_BASE_URL set, a request whose Host is that
+ * origin's host name (any port, trailing dot or case) is AgenPas's or nothing:
+ *   front  mounted FIRST in src/server.js (ahead of CORS, the body parser, the internal UI's static files and every
+ *          route): 404 unless the request is a GET/HEAD of exactly one of the AgenPas route shapes (ADMITTED_PATHS,
+ *          judged on the raw path; /agenpas/dev/start only with the fixtures armed on a loopback Host).
+ *   back   mounted right after the AgenPas router: 404 for an admitted path the router did not serve.
+ * Each refusal names its guard (`X-Agenpas-Guard: front|back`). The internal UI's static handler also skips this
+ * host (onHost). Off, or on any other host, both call next() and change nothing.
+ */
 function createAgenpasHostGuard(deps = {}) {
   const envOf = () => deps.env || process.env;
-  const onAgenpasHost = (req) => {
-    const host = agenpasHost(envOf());
-    return Boolean(host) && String(req.headers.host || '').toLowerCase() === host;
-  };
-  const refuse = (res) => {
+  const refuse = (res, which) => {
     setCommonHeaders(res);
     res.setHeader('Content-Security-Policy', HOST_REFUSAL_CSP);
+    res.setHeader('X-Agenpas-Guard', which);
     return res.status(404).type('text/plain').send('Not found');
   };
   return Object.freeze({
+    onHost: (req) => isOnAgenpasHost(req, envOf()),
     front(req, res, next) {
-      if (!onAgenpasHost(req)) return next();
-      const ours = String(req.path || '').startsWith('/agenpas/') && (req.method === 'GET' || req.method === 'HEAD');
-      return ours ? next() : refuse(res);
+      const env = envOf();
+      if (!isOnAgenpasHost(req, env)) return next();
+      return admitted(req, env) ? next() : refuse(res, 'front');
     },
     back(req, res, next) {
-      return onAgenpasHost(req) ? refuse(res) : next();
+      return isOnAgenpasHost(req, envOf()) ? refuse(res, 'back') : next();
     },
   });
 }

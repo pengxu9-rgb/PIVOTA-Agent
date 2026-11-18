@@ -72,6 +72,10 @@ const FAILED_CODES = new Set([
   'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused', 'checkout_confirm_window_passed',
   'checkout_captcha_failed', 'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported',
   'token_request_unresolved', 'pay_step_unavailable',
+  // Pre-store terminal failures whose names have the shape of a hold (the backend ends each before anything reaches
+  // the store; `vic_order_unresolved`: "the submit made nothing"). Listed so the shape never words them as unknown.
+  'binding_answer_unrecognised', 'approval_answer_unrecognised', 'token_answer_unrecognised', 'token_mismatch',
+  'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved',
 ]);
 
 /** Held for a check (the backend keeps the purchase in `paying`): the order may exist, or money may have moved. */
@@ -88,7 +92,7 @@ const HELD_CODES = new Set([
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
   'vic_approved_amount_missing', 'vic_submit_unresolved',
   // The other outcome-unknown codes the worker writes.
-  'outcome_unknown', 'vic_order_outcome_unknown', 'vic_order_unresolved', 'pending_write_unreconcilable',
+  'outcome_unknown', 'vic_order_outcome_unknown', 'pending_write_unreconcilable',
   'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked',
   'vic_held',
 ]);
@@ -226,10 +230,12 @@ const SEGMENT_RE = /^[a-z0-9_]{1,64}$/;
 /** Step prefixes: bookkeeping, never matched against any list. */
 const BOOKKEEPING_SEGMENTS = new Set(['paid_sent', 'bound_sent']);
 
-/** Every well-formed segment of every code: lower-cased, split on ':', step prefixes skipped. */
+/** Every well-formed segment of every code: lower-cased, split on ':', step prefixes skipped. A field holding a
+ * list of codes is read as those codes (one level). */
 function codeSegments(codes) {
   const out = [];
-  for (const code of Array.isArray(codes) ? codes : []) {
+  const flat = (Array.isArray(codes) ? codes : []).flatMap((c) => (Array.isArray(c) ? c : [c]));
+  for (const code of flat) {
     if (typeof code !== 'string' || code.length > 512) continue;
     for (const part of code.toLowerCase().split(':')) {
       const seg = part.trim();
@@ -262,16 +268,18 @@ function isOutcomeUnknownCode(code) {
 /**
  * The plain-language outcome for the state, from its codes:
  *   failed / refused / expired  -> by the precedence above
- *   placing                     -> the checking wording while held (or hold-shaped); else parked; else null
- *   any other non-terminal      -> the parked wording while parked; else null
+ *   ANY state not yet final     -> the checking wording while held (or hold-shaped): the page then shows no buyer
+ *                                  step at all (a held VIC row can still be in awaiting_buyer_authorization);
+ *                                  else, while parked: "Getting things ready…", except in placing, where a confirm may
+ *                                  already have gone out, so the checking wording; else null
  *   completed                   -> null
  */
 function outcomeFor(state, codes) {
   const segments = codeSegments(codes);
   const c = classify(segments);
-  if (!TERMINAL_STATES.has(state) && state !== 'unknown') {
-    if (state === 'placing' && c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...HELD_COPY };
-    if (segments.some((seg) => PARKED_CODES.has(seg))) return { ...PARKED_COPY };
+  if (!TERMINAL_STATES.has(state)) {
+    if (c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...HELD_COPY };
+    if (segments.some((seg) => PARKED_CODES.has(seg))) return state === 'placing' ? { ...HELD_COPY } : { ...PARKED_COPY };
     return null;
   }
   if (!GENERIC_BY_STATE[state]) return null;
@@ -292,12 +300,15 @@ function outcomeFor(state, codes) {
  *   awaiting_buyer_authorization     -> approve
  *   placing                          -> placing, or authenticate while the bank's check page is offered, or
  *                                       outcome_unknown (NOT terminal: polling goes on) while a hold code is set
+ *   ANY state with a held (or hold-shaped) code -> outcome_unknown, with the buyer step dropped
  *   any non-terminal with a parked code (and no action to take) -> parked (NOT terminal)
  *   completed                        -> done
  *   failed / refused / expired       -> failed / refused / expired, or outcome_unknown for a held code
  *   anything else                    -> unknown (keep polling; claim nothing)
  */
 function screenFor(state, { actionKind = null, outcome = null } = {}) {
+  // Held, in any state: the checking screen, never a buyer step.
+  if (outcome && outcome.outcome_unknown) return 'outcome_unknown';
   if (outcome && outcome.kind === 'parked' && !actionKind) return 'parked';
   switch (state) {
     case 'routing': return 'preparing';
@@ -370,8 +381,10 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
   const merchantDomain = DOMAIN_RE.test(domainRaw) ? domainRaw : null;
   const quantity = Number.isSafeInteger(pick('quantity')) && pick('quantity') >= 1 && pick('quantity') <= 99 ? pick('quantity') : null;
   // Two currencies that disagree: no amount is shown at all (none could be trusted to be in the right currency).
-  const currencies = [totals.currency, pick('currency')].filter((c) => typeof c === 'string' && CURRENCY_RE.test(c));
-  const currencyConflict = new Set(currencies).size > 1;
+  // A currency that is not an ISO 4217 upper-case code (e.g. 'eur') also counts as a disagreement.
+  const presentCurrencies = [totals.currency, pick('currency')].filter((c) => c !== undefined && c !== null && c !== '');
+  const currencies = presentCurrencies.filter((c) => typeof c === 'string' && CURRENCY_RE.test(c));
+  const currencyConflict = currencies.length !== presentCurrencies.length || new Set(currencies).size > 1;
   const currency = currencyConflict ? null : currencies[0] || null;
   const amount = (value) => (currencyConflict ? null : minor(value));
 
@@ -408,6 +421,9 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
   }
 
   const outcome = outcomeFor(state, codes);
+  // A held purchase offers the buyer NO step, whatever the rail still lists: approving or adding a card on an order
+  // that may already be on its way to the store is exactly what "don't try again" forbids.
+  if (outcome && outcome.outcome_unknown) action = null;
   const screen = screenFor(state, { actionKind: action ? action.kind : null, outcome });
 
   let poll = null;

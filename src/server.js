@@ -39065,7 +39065,9 @@ app.head('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 // answer it gives for any other absent path.
 const internalUiStatic = express.static(path.join(__dirname, '..', 'public'));
 app.use((req, res, next) => {
-  if (isPublicReadMcpHostRequest(req)) return next();
+  // Never on the AgenPas host either (src/agenpas/router.js): that origin is AgenPas's alone, and this page has no
+  // CSP. The host guard mounted first already refuses every non-AgenPas path there; this is the second lock.
+  if (isPublicReadMcpHostRequest(req) || agenpasHostGuard.onHost(req)) return next();
   return internalUiStatic(req, res, next);
 });
 

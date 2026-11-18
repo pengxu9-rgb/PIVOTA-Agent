@@ -21,7 +21,7 @@ All read per request; no restart needed.
 | `AGENPAS_ENABLED` | off | Off: every `/agenpas` path falls through to the app's normal not-found (byte-identical to before), and `start_purchase`, `get_order` and both tool descriptions are exactly as before. |
 | `AGENPAS_LINK_SECRET` | none | HMAC-SHA256 key for link tokens, at least 32 characters. Missing or short: no link is minted and every link is refused (the page says AgenPas is unavailable). |
 | `AGENPAS_LINK_TTL_SECONDS` | 1800 | Link lifetime. Clamped to 60..1800 (30 min is a hard maximum, also enforced on verify). |
-| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at, and the ONLY host the AgenPas routes answer on. None: no link is minted and no route is served. It is also the token's audience (`aud`). `http://localhost` is accepted only while the dev fixtures are actually enabled. **The host is exclusive** (while `AGENPAS_ENABLED` is on): on it, every request other than a GET/HEAD of an AgenPas route answers 404, ahead of every other gateway middleware and route (the internal UI, `/health`, the APIs, `/mcp`), so no other gateway page shares the origin where the buyer's link token is kept. Give it a host name of its own (a dedicated origin): a host that also serves other gateway traffic would lose that traffic. Other hosts are unaffected. |
+| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at, and the ONLY host the AgenPas routes answer on. None: no link is minted and no route is served. It is also the token's audience (`aud`). `http://localhost` is accepted only while the dev fixtures are actually enabled. **The host is exclusive** (while `AGENPAS_ENABLED` is on): on it (matched by host NAME, so any port, a trailing dot and any case count; only the `Host` header decides, `X-Forwarded-Host` is ignored), every request answers 404 (`X-Agenpas-Guard: front`) unless it is a GET/HEAD of exactly one AgenPas route shape: `/agenpas/p/<id>`, `/agenpas/api/p/<id>`, `/agenpas/assets/app.js|app.css` (and `/agenpas/dev/start` with the fixtures armed on a loopback Host). The shape is matched on the RAW request path, and any path containing `%`, `..`, `\` or `//` is refused, so no decoder downstream can resolve it elsewhere. This runs ahead of every other gateway middleware and route (the internal UI, `/health`, the APIs, `/mcp`); the internal UI's static handler also skips the host, and an admitted path the AgenPas router does not serve gets `X-Agenpas-Guard: back`. The routes themselves answer only on the exact origin (its port included). So no other gateway page shares the origin where the buyer's link token is kept. Give it a host name of its own (a dedicated origin): a host that also serves other gateway traffic would lose that traffic. Other hosts are unaffected. |
 | `AGENPAS_INTERNAL_READ_KEY` | none | The dedicated key the gateway presents (`X-Internal-Key`) on the backend's internal buyer read. None: every read is unavailable. |
 | `AGENPAS_HOSTED_HOSTS` | empty | Comma-separated exact host names the payment partner serves its hosted pages from. Empty refuses every hosted URL (the page shows no button, only "Getting the secure page ready"). |
 | `AGENPAS_EMBED_HOSTED_PAGES` | off | Off: hosted pages open in a popup or a new tab. On: the page frames them (see below). |
@@ -76,10 +76,10 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `locking` | Confirming your total (the merchant prices the exact cart; nothing is approved yet) |
 | `awaiting_buyer_authorization` (+ `approval` page) | "Approve $X at merchant with Face ID or fingerprint", then "Waiting for your approval…" |
 | `placing` | "Placing your order at merchant…" (or "Confirm with your bank" while a bank check page is offered) |
-| `placing` with a hold / outcome-unknown code | "We're checking with the store — don't try again. This can take a while…" (polling goes on) |
-| any state not yet final, with a parked code and no buyer step | "Getting things ready…" (polling goes on) |
+| ANY state not yet final with a hold / outcome-unknown code | "We're checking with the store — don't try again. This can take a while…" (polling goes on). No buyer step is offered at all, even if the rail still lists one (a held row can still be in `awaiting_buyer_authorization`). |
+| a state not yet final (other than `placing`), with a parked code and no buyer step | "Getting things ready…" (polling goes on). In `placing` a parked code gets the checking wording above: a confirm may already have gone out. |
 | `completed` | Order placed: order number, total charged, store, link to the store's order page when it is on the store's domain |
-| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording with no "try again". |
+| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording: no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
 Codes are read segment by segment (mirroring pivota-backend 2fe07431c): the backend writes compound codes
@@ -87,7 +87,8 @@ Codes are read segment by segment (mirroring pivota-backend 2fe07431c): the back
 `checkout_setup_refused:<kind>:<status>`, `checkout_confirm_refused:http_error:422`), so each is lower-cased and split
 on `:`, and every segment is checked; a suffixed code matches on its head segment. The step prefixes (`paid_sent`,
 `bound_sent`) are bookkeeping and are skipped: `paid` is the approval-page step (the rail mints a token, nothing is
-charged). Precedence, highest first, across every code on the purchase (`refusal_reason` and `last_error_code`
+charged). **The rule is HELD > FAILED** (since 2e3500a89; the subject of the earlier 0ff3a4bfe says
+"FAILED > HELD", which is NOT the rule). Precedence, highest first, across every code on the purchase (`refusal_reason` and `last_error_code`
 alike): an explicit HELD code (the backend's `_CHECKOUT_HOLD_CODES`, `_VIC_HOLD_CODES` and `money_result_seen`) gives
 "We're checking with the store — don't try again" (in `placing` too, where polling goes on): if anything says money
 may have moved, the page never says "no order was sent"; then an explicit FAILED code (terminal, nothing was
@@ -96,7 +97,10 @@ was sent to the store"; then the other named lists (declined, approval
 timed out, card, price, the rail's refusals `checkout_currency_unsupported` / `checkout_ceiling_*`, ...); then a
 hold-shaped heuristic for new codes; then neutral generic wording. Explicit lists always beat the heuristic. A PARKED
 code (`checkout_step_disabled`, `checkout_schema_incomplete`) on a purchase that is not final shows "Getting things
-ready…" while polling goes on. A completed purchase always carries its verified final total; only two disagreeing
+ready…" while polling goes on. Pre-store terminal failures whose names look like holds (`binding_answer_unrecognised`,
+`approval_answer_unrecognised`, `token_answer_unrecognised`, `token_mismatch`, `vic_quote_unrecognised`,
+`vic_quote_currency_mismatch`, `vic_order_unresolved`) are on the FAILED list. A completed purchase always carries its
+verified final total; only two disagreeing (or a non-ISO, e.g. lower-case,)
 currencies hide it ("see your email receipt").
 
 The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"

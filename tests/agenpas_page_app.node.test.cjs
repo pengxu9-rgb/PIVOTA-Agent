@@ -309,3 +309,18 @@ test('a parked purchase: "Getting things ready…", polling goes on, the token i
   assert.equal(h.pollTimers()[0].ms, 15000);
   assert.equal(h.storage.has(`agenpas:t:${PID}`), true);
 });
+
+test('a held purchase still in approval: no approve button, the checking copy, polling goes on', async () => {
+  const held = view({
+    state: 'awaiting_buyer_authorization', screen: 'outcome_unknown', terminal: false, action: null, poll_after_seconds: 15,
+    amounts: { ...view().amounts, quoted_total_minor: 2300 },
+    outcome: { kind: 'held', title: "We're checking with the store", message: "We're checking with the store — don't try again. This can take a while; we'll confirm what happened in the chat.", retry_hint: false, outcome_unknown: true },
+  });
+  const h = harness({ answers: [{ status: 200, body: held }] });
+  h.start();
+  await settle();
+  assert.equal(/Approve \$|Approve your purchase|Face ID/.test(h.text()), false);
+  assert.equal(h.app.all((n) => n.tagName === 'A' && /btn/.test(n.className)).length, 0);
+  assert.match(h.text(), /don't try again/);
+  assert.equal(h.pollTimers()[0].ms, 15000);
+});
