@@ -205,6 +205,8 @@ test('every unified state maps to a screen, and an unknown state maps to `unknow
     failed: 'failed',
     refused: 'refused',
     expired: 'expired',
+    // Without an address request in the view (or with collection off, see the address tests): just "getting ready".
+    needs_shipping_address: 'preparing',
   };
   assert.deepEqual(Object.keys(expected).sort(), [...KNOWN_STATES].sort());
   for (const [state, screen] of Object.entries(expected)) assert.equal(screenFor(state), screen, state);

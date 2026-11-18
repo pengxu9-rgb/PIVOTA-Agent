@@ -19,10 +19,13 @@
  */
 
 const { isAllowedHostedUrl } = require('./hostedUrl');
+const { readAddressRequest } = require('./shippingAddress');
 
 const KNOWN_STATES = Object.freeze([
   'routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'placing',
   'completed', 'failed', 'refused', 'expired',
+  // The backend MAY name the address step as a state of its own (docs/agenpas.md, "Shipping address").
+  'needs_shipping_address',
 ]);
 const TERMINAL_STATES = new Set(['completed', 'failed', 'refused', 'expired']);
 
@@ -296,7 +299,7 @@ function isOutcomeUnknownCode(code) {
 // (`vic_status:unrecognised`, `paid_sent:<n>:await:await_answer_unrecognised`, `vic_quote:unrecognised:<n>`); one of
 // them sticks on the row for the whole approval window. So there, only an EXPLICIT HELD code drops the step: the shape
 // fallback applies from `placing` on (where a confirm may have gone out) and in final states.
-const PRE_PLACING_STATES = new Set(['routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'unknown']);
+const PRE_PLACING_STATES = new Set(['routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'needs_shipping_address', 'unknown']);
 
 function outcomeFor(state, codes) {
   const segments = codeSegments(codes);
@@ -348,6 +351,7 @@ function screenFor(state, { actionKind = null, outcome = null } = {}) {
     case 'needs_payment_method': return 'add_card';
     case 'locking': return 'confirming_total';
     case 'awaiting_buyer_authorization': return 'approve';
+    case 'needs_shipping_address': return 'preparing';
     case 'placing':
       if (outcome && outcome.outcome_unknown) return 'outcome_unknown';
       return actionKind === 'authenticate' ? 'authenticate' : 'placing';
@@ -399,7 +403,7 @@ function merchantOrderUrlAllowed(url, merchantDomain) {
  *           linkTtlMinutes?: number }} opts
  *        linkExpiresAt is the link token's `exp` (unix seconds); linkTtlMinutes its lifetime, for the page's copy
  */
-function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false, now, linkExpiresAt, linkTtlMinutes } = {}) {
+function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false, now, linkExpiresAt, linkTtlMinutes, collectShipping = false } = {}) {
   const nowMs = typeof now === 'number' ? now : Date.now();
   const src = isPlainObject(body) ? body : {};
   const detail = isPlainObject(src.detail) ? src.detail : {};
@@ -457,7 +461,13 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
   // A held purchase offers the buyer NO step, whatever the rail still lists: approving or adding a card on an order
   // that may already be on its way to the store is exactly what "don't try again" forbids.
   if (outcome && outcome.outcome_unknown) action = null;
-  const screen = screenFor(state, { actionKind: action ? action.kind : null, outcome });
+  let screen = screenFor(state, { actionKind: action ? action.kind : null, outcome });
+
+  // THE ADDRESS STEP (shippingAddress.js): the buyer gives the shipping address / email the partner did not send. Never
+  // while held. With AGENPAS_COLLECT_SHIPPING off the page only says to add it in the chat, and the view carries no
+  // `address_request` (every other view is byte-identical either way).
+  const addressRequest = outcome && outcome.outcome_unknown ? null : readAddressRequest(state, rawAction, { now: nowMs });
+  if (addressRequest) screen = collectShipping ? 'shipping_address' : 'shipping_address_elsewhere';
 
   let poll = null;
   if (!terminal) {
@@ -488,6 +498,7 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
     poll_after_seconds: poll,
     link_expires_at: Number.isSafeInteger(linkExpiresAt) ? new Date(linkExpiresAt * 1000).toISOString() : null,
     link_ttl_minutes: Number.isSafeInteger(linkTtlMinutes) && linkTtlMinutes > 0 ? linkTtlMinutes : null,
+    ...(addressRequest && collectShipping ? { address_request: addressRequest } : {}),
   };
 }
 

@@ -20,6 +20,9 @@
  *                                 Default empty = every hosted page URL is refused (the page shows no button).
  *   AGENPAS_EMBED_HOSTED_PAGES    default OFF: hosted pages open in a popup / new tab (they cannot be framed today).
  *                                 On: the page frames them instead (CSP frame-src widened to the allowlisted hosts).
+ *   AGENPAS_COLLECT_SHIPPING      default OFF (inside AGENPAS_ENABLED). On: when the purchase lacks a shipping address
+ *                                 or email, the page asks for it and submits it (POST /agenpas/api/p/:id/shipping-
+ *                                 address). Off: the page says "Go back to the chat to add your address".
  *   AGENPAS_DEV_FIXTURES          local development only: canned purchases instead of the backend. Refused (treated as
  *                                 off) on any managed platform or production environment (src/config/platform.js).
  */
@@ -86,6 +89,10 @@ function internalReadKey(env = process.env) {
   return String(env.AGENPAS_INTERNAL_READ_KEY || '').trim();
 }
 
+function collectShipping(env = process.env) {
+  return isEnabled(env) && on(env, 'AGENPAS_COLLECT_SHIPPING');
+}
+
 function embedHostedPages(env = process.env) {
   return on(env, 'AGENPAS_EMBED_HOSTED_PAGES');
 }
@@ -106,6 +113,7 @@ function devFixturesEnabled(env = process.env) {
 
 module.exports = {
   MAX_TTL_SECONDS,
+  collectShipping,
   MIN_SECRET_CHARS,
   devFixturesAllowed,
   devFixturesEnabled,

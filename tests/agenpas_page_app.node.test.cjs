@@ -338,3 +338,120 @@ test('operator_confirmed_not_charged: the operator wording once, no second "try 
   assert.equal((h.text().match(/start again from the chat/g) || []).length, 1);
   assert.equal(h.pollTimers().length, 0);
 });
+
+// ---- the shipping address form (AGENPAS_COLLECT_SHIPPING) -----------------------------------------------------
+
+function addressView(fields, prefill = {}) {
+  return view({
+    state: 'routing', screen: 'shipping_address', action: null, poll_after_seconds: 15,
+    address_request: { fields_missing: fields, expires_at: '2026-11-17T12:30:00.000Z', prefill },
+  });
+}
+const byName = (h, name) => h.app.all((n) => n.name === name)[0];
+const formOf = (h) => h.app.all((n) => n.tagName === 'FORM')[0];
+function type(input, value) {
+  input.value = value;
+  (input.listeners.input || []).forEach((f) => f({}));
+}
+function submit(h) {
+  const ev = { prevented: false, preventDefault() { this.prevented = true; } };
+  (formOf(h).listeners.submit || []).forEach((f) => f(ev));
+  return ev;
+}
+
+test('address screen: only the missing fields, with autocomplete / inputmode, prefilled, and no card field', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'phone', 'region', 'postalCode', 'country'], { country: 'US' }) }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Where should we send it\?/);
+  assert.match(h.text(), /goes to merchant\.example so they can ship your order/);
+  const names = h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name);
+  assert.deepEqual(names, ['email', 'phone', 'region', 'postalCode', 'country']);
+  assert.equal(byName(h, 'email').getAttribute('autocomplete'), 'email');
+  assert.equal(byName(h, 'phone').getAttribute('autocomplete'), 'shipping tel');
+  assert.equal(byName(h, 'phone').getAttribute('inputmode'), 'tel');
+  assert.equal(byName(h, 'postalCode').getAttribute('autocomplete'), 'shipping postal-code');
+  assert.equal(byName(h, 'postalCode').getAttribute('inputmode'), 'numeric');
+  assert.equal(byName(h, 'region').tagName, 'SELECT');
+  assert.equal(byName(h, 'region').children.length, 52); // "Choose…" + 50 states + DC
+  assert.equal(byName(h, 'country').value, 'US');
+  for (const n of h.app.all((x) => x.tagName === 'INPUT')) assert.equal(/cc-/.test(n.getAttribute('autocomplete') || ''), false);
+});
+
+test('address screen: the full set uses the shipping autocomplete tokens', async () => {
+  const all = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'];
+  const h = harness({ answers: [{ status: 200, body: addressView(all) }] });
+  h.start();
+  await settle();
+  const ac = Object.fromEntries(all.map((f) => [f, byName(h, f).getAttribute('autocomplete')]));
+  assert.deepEqual(ac, {
+    email: 'email', firstName: 'shipping given-name', lastName: 'shipping family-name', phone: 'shipping tel',
+    addressLine1: 'shipping address-line1', addressLine2: 'shipping address-line2', city: 'shipping address-level2',
+    region: 'shipping address-level1', postalCode: 'shipping postal-code', country: 'shipping country',
+  });
+});
+
+test('address form: client checks stop an incomplete submit with inline messages (nothing sent)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'postalCode']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'not-an-email');
+  type(byName(h, 'postalCode'), '941');
+  const ev = submit(h);
+  await settle();
+  assert.equal(ev.prevented, true);
+  assert.equal(h.fetches.length, 1, 'only the first read');
+  assert.match(h.text(), /Enter a valid email address\./);
+  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.equal(byName(h, 'email').getAttribute('aria-invalid'), 'true');
+});
+
+test('address form: submits JSON to its own route with the link header, then shows the next step', async () => {
+  const next = view({ state: 'needs_payment_method', screen: 'add_card' });
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'postalCode']) }, { status: 200, body: next }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), ' buyer@example.test ');
+  type(byName(h, 'postalCode'), '94107');
+  submit(h);
+  await settle();
+  const sent = h.fetches[1];
+  assert.equal(sent.url, `/agenpas/api/p/${PID}/shipping-address`);
+  assert.equal(sent.init.method, 'POST');
+  assert.equal(sent.init.headers['Content-Type'], 'application/json');
+  assert.equal(sent.init.headers['X-Agenpas-Link'], TOKEN);
+  assert.equal(sent.init.credentials, 'omit');
+  assert.deepEqual(JSON.parse(sent.init.body), { email: 'buyer@example.test', postalCode: '94107' });
+  assert.match(h.text(), /Add a card securely/);
+  assert.equal(h.storage.get(`agenpas:t:${PID}`), TOKEN, 'the address is never stored, the token still is');
+  assert.equal([...h.storage.values()].some((v) => v.includes('buyer@example.test')), false);
+});
+
+test('address form: a 422 shows the server\'s field errors inline; a 409 says "We already have your address"', async () => {
+  const h = harness({ answers: [
+    { status: 200, body: addressView(['postalCode']) },
+    { status: 422, body: { error: 'invalid_address', field_errors: { postalCode: 'invalid_postal_code' } } },
+  ] });
+  h.start();
+  await settle();
+  type(byName(h, 'postalCode'), '94107');
+  submit(h);
+  await settle();
+  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.equal(byName(h, 'postalCode').value, '94107', 'what the buyer typed is kept');
+  const h2 = harness({ answers: [{ status: 200, body: addressView(['postalCode']) }, { status: 409, body: { error: 'address_already_set' } }] });
+  h2.start();
+  await settle();
+  type(byName(h2, 'postalCode'), '94107');
+  submit(h2);
+  await settle();
+  assert.match(h2.text(), /We already have your address\./);
+});
+
+test('collection off: the "add it in the chat" screen, no form', async () => {
+  const h = harness({ answers: [{ status: 200, body: view({ state: 'routing', screen: 'shipping_address_elsewhere', action: null }) }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Go back to the chat to add your address/);
+  assert.equal(h.app.all((n) => n.tagName === 'FORM' || n.tagName === 'INPUT').length, 0);
+});

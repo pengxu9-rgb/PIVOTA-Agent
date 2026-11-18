@@ -25,6 +25,7 @@ All read per request; no restart needed.
 | `AGENPAS_INTERNAL_READ_KEY` | none | The dedicated key the gateway presents (`X-Internal-Key`) on the backend's internal buyer read. None: every read is unavailable. |
 | `AGENPAS_HOSTED_HOSTS` | empty | Comma-separated exact host names the payment partner serves its hosted pages from. Empty refuses every hosted URL (the page shows no button, only "Getting the secure page ready"). |
 | `AGENPAS_EMBED_HOSTED_PAGES` | off | Off: hosted pages open in a popup or a new tab. On: the page frames them (see below). |
+| `AGENPAS_COLLECT_SHIPPING` | off | Inside `AGENPAS_ENABLED`. On: when the purchase lacks a shipping address or email, the page asks for it (see "Shipping address"). Off: the page says "Go back to the chat to add your address", and the write route does not exist. |
 | `AGENPAS_DEV_FIXTURES` | off | Local development only: canned purchases instead of the backend. It cannot arm on a managed platform (`K_SERVICE`, `K_REVISION`, `RAILWAY_*`, ...) or in a production environment (`src/config/platform.js`), whatever its value, and it serves only requests whose Host is loopback (`127.0.0.1`, `::1`, `localhost`). |
 
 The backend read also uses `PIVOTA_API_BASE`, through the private backend hop.
@@ -48,6 +49,7 @@ Process-local, like the public read tier's limiter:
 | `GET /agenpas/api/p/:purchaseId` | JSON for the page. Token ONLY in the `X-Agenpas-Link` header (a `?t=` query is ignored). 200 view, 404 `link_invalid` / `not_found`, 410 `link_expired`, 503 `unavailable` with `Retry-After`. |
 | `GET /agenpas/assets/app.js`, `app.css` | The page's script and style, same origin. |
 | `GET /agenpas/dev/start?scenario=<name>` | Dev fixtures only: mints a fixture link and redirects to it. |
+| `POST /agenpas/api/p/:purchaseId/shipping-address` | `AGENPAS_COLLECT_SHIPPING` only. The buyer's shipping address and email, JSON, token in `X-Agenpas-Link` only. 200 next view, 415 not JSON, 413 over 4 KB, 400 bad JSON, 422 `{field_errors}`, 409 `address_already_set`, 429, 404, 503. |
 
 The page: `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, no inline script or style, no external
 CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the allowlisted hosts in embed mode),
@@ -111,6 +113,42 @@ currencies hide it ("see your email receipt").
 The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"
 once the backend has a quoted total, with the line that the final total includes shipping and tax and cannot exceed
 what the buyer approves.
+
+## Shipping address
+
+The rule: the partner chat app sends the buyer's shipping address; when it does not, AgenPas asks for it.
+
+**The request** (one adapter, `src/agenpas/shippingAddress.js`, owns every backend name): in a state before placing,
+the unified view carries `next_action: {kind: "shipping_address", fields_missing: [...], expires_at, prefill?}` with no
+URL, or the state is `needs_shipping_address` (then every field is asked for). The page shows only the fields in
+`fields_missing`, prefilled from `prefill` when the view carries one. A hold beats it: a held purchase never shows the
+form.
+
+**The fields** (the backend door's names, used as-is by the page and the gateway): `email`, `firstName`, `lastName`,
+`phone`, `addressLine1`, `addressLine2` (optional), `city`, `region`, `postalCode`, `country`. US only for the pilot
+(the rail is USD only): `country` is a one-option select, `region` a 2-letter state select (50 states and DC), the ZIP 5
+or 9 digits. The inputs carry the shipping autocomplete tokens (`shipping given-name`, `shipping family-name`,
+`shipping address-line1/2`, `shipping address-level2/1`, `shipping postal-code`, `shipping country`, `shipping tel`,
+`email`) and `inputmode` for the phone and the ZIP. There is still NO card field anywhere.
+
+**The write.** The page posts the fields to `POST /agenpas/api/p/:id/shipping-address`. The gateway:
+
+- admits only that one POST on the AgenPas host (the front guard, raw path), and only while collection is on;
+- reads the body itself, at most 4 KB, JSON only, ahead of the app's 10 MB parser;
+- needs the link token in `X-Agenpas-Link` (never a cookie, so no cross-site form can send it);
+- limits 5 writes a minute per link, on top of the per-IP bucket;
+- validates: the request's required fields, at most 200 characters, no control characters, an email shape, an
+  E.164-ish phone (normalised, `+1` for a 10-digit US number), a US ZIP, a US state code;
+- forwards the normalised address server-to-server to the backend's
+  `POST /agent/internal/commerce/purchases/{id}/shipping-address` (same `X-Internal-Key` / `X-Agenpas-Agent-Id` as
+  the read), and answers the view the backend returns, so the page moves on to adding a card or approving.
+
+The backend validates again: its 422 `field_errors` become inline messages; its 409 (the address is set already, or
+the state moved on) becomes "We already have your address". The same address sent again is the backend's to accept.
+
+**PII.** The address goes to the backend and nowhere else. No log line, error message or refusal carries any of it:
+field errors are codes (`required`, `invalid_postal_code`, ...), refusal logs carry a reason only, and the page keeps
+what the buyer typed in memory only (never in storage).
 
 ## Hosted pages cannot be framed
 
@@ -187,6 +225,6 @@ AGENPAS_PUBLIC_BASE_URL=http://localhost:<port> AGENPAS_LINK_SECRET=<any 32+ cha
 open http://localhost:<port>/agenpas/dev/start?scenario=happy   # redirects to /agenpas/p/<id>#t=…
 ```
 
-Scenarios: `happy` (about a minute from routing to completed), `outcome_unknown`, `refused`, `declined`,
+Scenarios: `needs_address` (with `AGENPAS_COLLECT_SHIPPING=1`: the address form, then the card step), `happy` (about a minute from routing to completed), `outcome_unknown`, `refused`, `declined`,
 `unknown_state`, `expired`. Hosted page buttons point at `hosted.example`, which resolves nowhere; the purchase
 advances on its own timeline either way.
