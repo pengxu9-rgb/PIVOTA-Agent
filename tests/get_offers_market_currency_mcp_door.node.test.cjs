@@ -206,3 +206,47 @@ test('best_offer is always one of the signals returned, and offer_count is the c
   assert.deepEqual(ids, ['m0', 'm1', 'm2'], 'the backend\'s order is kept');
   assert.ok(ids.includes(out.best_offer.value.merchant_id), `best_offer ${out.best_offer.value.merchant_id} is in ${ids}`);
 });
+
+// A MARKET SENT THAT IS NOT A SUPPORTED COUNTRY CODE, end to end over /mcp. Before this, 'USA' (any value that is
+// not ISO-2) was neither assumed nor refused: no market reached offers.resolve, no currency rule ran, and the answer
+// mixed USD, SGD and GBP offers. Now it is refused by name before any backend call, on every id form. A market is
+// read as every door reads one (trimmed, upper-cased), so 'us ' is US; a blank market names none and is assumed
+// US, labelled (D-10), exactly as before.
+const SGD = referral('ext_seed_sg', 30, 'SGD');
+
+test('a sent market that is not a supported country code is refused by name with no backend call, on every id form', async () => {
+  const idForms = [{ merchant_id: 'm', product_id: 'p' }, { product_id: 'p' }, { product_group_id: 'g' }];
+  for (const ids of idForms) {
+    for (const market of ['USA', 123, 'en-US']) {
+      const { out, upstream } = await callGetOffers({ ...ids, market }, [GBP, SGD, USD]);
+      const label = `${JSON.stringify(ids)} ${JSON.stringify(market)}`;
+      assert.equal(upstream, null, `no offers.resolve call: ${label}`);
+      assert.deepEqual(out.signals, [], label);
+      assert.equal(out.best_offer, null, label);
+      assert.equal(out.metadata.reason, 'market_invalid', label);
+      assert.equal(out.metadata.market, null, label);
+      assert.equal('market_assumed' in out, false, `${label}: a sent market is never assumed over`);
+    }
+    for (const market of ['ZZ', 'DE']) {
+      const { out, upstream } = await callGetOffers({ ...ids, market }, [GBP, SGD, USD]);
+      assert.equal(upstream, null, market);
+      assert.equal(out.metadata.reason, 'market_not_priced', market);
+    }
+  }
+});
+
+test('supported markets keep their own currency; a padded lower-case code is that market; a blank market is assumed US, labelled', async () => {
+  for (const [market, code, currency] of [['US', 'US', 'USD'], ['us ', 'US', 'USD'], ['SG', 'SG', 'SGD'], ['GB', 'GB', 'GBP']]) {
+    const { out, upstream } = await callGetOffers({ merchant_id: 'm', product_id: 'p', market }, [GBP, SGD, USD]);
+    assert.ok(upstream, market);
+    assert.equal(upstream.payload.market, code, JSON.stringify(market));
+    assert.deepEqual(currencies(out), [currency], JSON.stringify(market));
+    assert.equal(out.metadata.market, code);
+    assert.equal('market_assumed' in out, false);
+  }
+  const { out, upstream } = await callGetOffers({ merchant_id: 'm', product_id: 'p', market: '' }, [GBP, SGD, USD]);
+  assert.equal(upstream.payload.market, 'US');
+  assert.equal(upstream.payload.marketAssumed, true);
+  assert.deepEqual(currencies(out), ['USD']);
+  assert.equal(out.market_assumed.code, 'US');
+});

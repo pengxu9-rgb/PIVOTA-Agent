@@ -1081,9 +1081,14 @@ test('makeGetOffers: a stated market reaches fetchOffers as `market`; absent or 
   await handler({ payload: { product_id: 'p1', merchant_id: 'm1' } });
   assert.deepEqual(seen[1], today);
   assert.equal(Object.prototype.hasOwnProperty.call(seen[1], 'market'), false, 'no market key at all when none is stated');
-  for (const junk of ['USA', 'en-US', '']) {
-    await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: junk } });
-    assert.deepEqual(seen[seen.length - 1], today, junk);
+  // Blank names no market: today's fetch. A market SENT that is not a code is refused by name, no fetch.
+  await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: '' } });
+  assert.deepEqual(seen[seen.length - 1], today, 'blank');
+  for (const junk of ['USA', 'en-US']) {
+    const count = seen.length;
+    const res = await handler({ payload: { product_id: 'p1', merchant_id: 'm1', market: junk } });
+    assert.equal(seen.length, count, `no fetch for ${junk}`);
+    assert.equal(res.metadata.reason, 'market_invalid', junk);
   }
   // A well-formed market nothing is priced in is a declaration, not junk: answered with no offers, no fetch.
   const before = seen.length;
@@ -1109,6 +1114,66 @@ test('STRUCTURAL: the wired fetchOffers forwards the stated market into the offe
   assert.match(block, /invokeCommerceKernelRawUpstream\('offers\.resolve', \{[\s\S]*?\.\.\.\(market \? \{ market \} : \{\}\),/);
   // Decision D-10: an ASSUMED market is marked so (pivota-backend `marketAssumed`), and only beside a market.
   assert.match(block, /\.\.\.\(market && market_assumed === true \? \{ marketAssumed: true \} : \{\}\),/);
+});
+
+// A MARKET SENT THAT IS NOT A COUNTRY CODE is refused by name, before any fetch, on every get_offers path. Read
+// as absent, it fetched with no market: no currency rule ran and one answer mixed USD, SGD and GBP offers.
+// Normalised as every door reads a market (buyerRegion.normalizeBuyerRegion: trimmed, upper-cased), so 'us ' is US.
+test('makeGetOffers: a sent market that is not a supported country code is refused by name with no fetch; US, SG, GB keep their own currency', async () => {
+  const offers = [sampleOffer({ merchant_id: 'mu', price: 12, currency: 'USD' }), sampleOffer({ merchant_id: 'ms', price: 16, currency: 'SGD' }),
+    sampleOffer({ merchant_id: 'mg', price: 9, currency: 'GBP' })];
+  const paths = {
+    product_id: { product_id: 'p1' },
+    merchant_and_product: { merchant_id: 'm1', product_id: 'p1' },
+    product_group_id: { product_group_id: 'g1' },
+  };
+  for (const [path, ids] of Object.entries(paths)) {
+    for (const [field, value] of [['market', 'USA'], ['market', 'en-US'], ['market', 123], ['market', ['US']], ['market', { code: 'US' }],
+      ['market', 'U S'], ['market', true], ['buyer_market', 'USA']]) {
+      const seen = [];
+      const handler = makeGetOffers({ fetchOffers: async (args) => { seen.push(args); return { offers }; }, emptyReasonDoor: () => true });
+      const res = await handler({ payload: { ...ids, [field]: value } });
+      const label = `${path} ${field}=${JSON.stringify(value)}`;
+      assert.equal(seen.length, 0, `no fetch: ${label}`);
+      assert.equal(res.best_offer, null, label);
+      assert.deepEqual(res.signals, [], label);
+      assert.equal(res.metadata.offer_count, 0, label);
+      assert.equal(res.metadata.reason, 'market_invalid', label);
+      assert.equal(res.metadata.reason_retriable, false, label);
+      assert.equal(res.metadata.market, null, `${label}: never echoed, never guessed`);
+      assert.equal(res.metadata.market_currency, null, label);
+      assert.equal(JSON.stringify(res).includes('USA'), false, `${label}: the sent value is not repeated`);
+    }
+    // A well-formed code nothing is priced in keeps its own reason; no fetch either.
+    for (const value of ['ZZ', 'DE']) {
+      const seen = [];
+      const handler = makeGetOffers({ fetchOffers: async (args) => { seen.push(args); return { offers }; } });
+      const res = await handler({ payload: { ...ids, market: value } });
+      assert.equal(seen.length, 0, `${path} ${value}`);
+      assert.equal(res.metadata.reason, 'market_not_priced', `${path} ${value}`);
+      assert.equal(res.metadata.market, value);
+    }
+    // Supported markets: each served in its own currency only. 'us ' and 'sg' are read as US and SG.
+    for (const [value, currency] of [['US', 'USD'], ['us ', 'USD'], ['SG', 'SGD'], ['sg', 'SGD'], ['GB', 'GBP']]) {
+      const seen = [];
+      const handler = makeGetOffers({ fetchOffers: async (args) => { seen.push(args); return { offers }; } });
+      const res = await handler({ payload: { ...ids, market: value } });
+      assert.equal(seen.length, 1, `${path} ${value}`);
+      assert.equal(seen[0].market, value.trim().toUpperCase());
+      assert.deepEqual(res.signals.map((sig) => sig.value.currency), [currency], `${path} ${value}`);
+      assert.equal(res.metadata.market_currency, currency);
+      assert.equal('reason' in res.metadata, false);
+    }
+    // Names no market (absent, null, blank): today's answer, unchanged (the door assumes US before this, D-10).
+    for (const raw of [undefined, null, '', '   ']) {
+      const seen = [];
+      const handler = makeGetOffers({ fetchOffers: async (args) => { seen.push(args); return { offers }; } });
+      const res = await handler({ payload: { ...ids, ...(raw === undefined ? {} : { market: raw }) } });
+      assert.equal(seen.length, 1, `${path} ${JSON.stringify(raw)}`);
+      assert.equal('market' in seen[0], false, 'nothing is defaulted here');
+      assert.equal(res.metadata.offer_count, 3);
+    }
+  }
 });
 
 test('D-10: makeGetOffers forwards market_assumed to the fetch only beside the market it assumed', async () => {
