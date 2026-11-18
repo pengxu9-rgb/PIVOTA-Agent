@@ -123,7 +123,7 @@ test('a request that names a market gets THAT market, not the deployment list', 
   assert.deepStrictEqual(marketsForRequest(null, env), ['US', 'SG']);
 });
 
-test('parseMarketList: an entry is two ASCII letters tested before upcasing; a lookalike is not a market', () => {
+test('parseDeploymentMarketList: an entry is two ASCII letters tested before upcasing; a lookalike is not a market', () => {
   for (const lookalike of ['uſ', 'ﬁ', 'ıt', 'İT', 'ＵＳ', 'УС']) {
     assert.deepStrictEqual(parseDeploymentMarketList(lookalike, null), [], lookalike);
   }
@@ -134,10 +134,11 @@ test('parseMarketList: an entry is two ASCII letters tested before upcasing; a l
 });
 
 test('parseRequestMarketList (a request market): any unreadable entry makes the whole value unreadable', () => {
-  for (const unreadable of ['SG,ﬁ', 'USA,SG', 'en-US', 'US,S', 'uſ', 'ＵＳ', 123, true, { code: 'US' }, ['US', 7], ['US', 'USA']]) {
+  for (const unreadable of ['SG,ﬁ', 'USA,SG', 'en-US', 'US,S', 'uſ', 'ＵＳ', 123, true, { code: 'US' }, ['US', 7], ['US', 'USA'],
+    false, 0, [], ' , ', ['  ']]) {
     assert.equal(parseRequestMarketList(unreadable), null, JSON.stringify(unreadable));
   }
-  for (const silent of [undefined, null, '', '  ', ' , ', []]) {
+  for (const silent of [undefined, null, '', '  ']) {
     assert.deepStrictEqual(parseRequestMarketList(silent), [], JSON.stringify(silent));
   }
   assert.deepStrictEqual(parseRequestMarketList(' us '), ['US']);
@@ -328,7 +329,7 @@ test('every lane takes its markets from laneMarkets, not by re-deriving from the
   // `buyerMarket` may be destructured beside them: the lane RECORDS the buyer's market (its contract's
   // hard_constraints.market) while `markets` stays the list it binds. What this pins is unchanged -- the list
   // comes from the resolver, never re-derived -- and the lane market every bind uses is still `markets[0]`.
-  assert.ok(/const \{ markets, (?:buyerMarket, )?buyerCurrency, servingCurrency \} = resolveBuyerMarketScope\(search\.market \|\| metadata\.market\);\n  const market = markets\[0\];/.test(src),
+  assert.ok(/const \{ markets, (?:buyerMarket, )?buyerCurrency, servingCurrency \} = resolveBuyerMarketScope\(requestedMarketOf\(\{ search \}, metadata\)\);\n  const market = markets\[0\];/.test(src),
     'the beauty mainline no longer resolves a LIST before handing it down.');
   assert.ok(/marketId: buyerCurrency \? null : market,/.test(src),
     'the beauty mainline\'s canonical marketId is no longer the lane market.');

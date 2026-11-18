@@ -32,6 +32,9 @@
  * one door mixes their pricing into one shopper's results unless the request names a market.
  */
 
+// The one "names no market" rule (absent, null, blank), shared with every door.
+const { marketIsUnnamed } = require('./requestMarket');
+
 const DEFAULT_MARKET = 'US';
 
 /**
@@ -62,15 +65,17 @@ function parseDeploymentMarketList(raw, fallback = DEFAULT_MARKET) {
 
 /**
  * A MARKET LIST A REQUEST CARRIES (`search.market`, `metadata.market`, a buyer market): the codes it names, `[]` when
- * it names none (absent, null, blank, or any falsy value), or `null` when it is UNREADABLE. Unreadable means any entry is not two ASCII
- * letters (tested before upcasing), or the value is neither a string nor a list of strings: 'USA,SG' and 'SG,ﬁ' are
- * unreadable, not SG -- the purchasability gate's unkeyable rule. Skipping the bad entry would serve a market the
- * buyer did not name, alone. Order preserved, deduped, upper-cased.
+ * it names none, or `null` when it is UNREADABLE.
+ *   - Names none: absent, null or a blank string ONLY -- the one "no market" rule every door shares
+ *     (requestMarket.marketIsUnnamed). `false`, `0`, `[]` or any other non-string were SENT: unreadable, never silence
+ *     (silence is answered for a US buyer, so reading them as silence served USD unlabelled).
+ *   - Unreadable: any entry not two ASCII letters (tested before upcasing), a value that is neither a string nor a
+ *     list of strings, or one that names no code at all (' , ', []). 'USA,SG' and 'SG,ﬁ' are unreadable, not SG --
+ *     the purchasability gate's unkeyable rule; skipping the bad entry would serve a market the buyer did not name.
+ * Order preserved, deduped, upper-cased.
  */
 function parseRequestMarketList(raw) {
-  // Every falsy value (absent, null, '', false, 0) is silence, as this door has always read it (pinned:
-  // tests/buyer_market.node.test.cjs "silence is USD").
-  if (!raw) return [];
+  if (marketIsUnnamed(raw)) return [];
   let entries;
   if (Array.isArray(raw)) {
     if (!raw.every((entry) => typeof entry === 'string')) return null;
@@ -88,7 +93,8 @@ function parseRequestMarketList(raw) {
     const code = entry.toUpperCase();
     if (!out.includes(code)) out.push(code);
   }
-  return out;
+  // Something was sent and it names no code (' , ', []): unreadable, not silence.
+  return out.length ? out : null;
 }
 
 /**

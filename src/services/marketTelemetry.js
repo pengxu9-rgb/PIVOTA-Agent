@@ -57,6 +57,8 @@
 //   ignored_payload_market    true when the payload carried a `market` beside a search block, which no
 //                             lane reads; ABSENT otherwise
 
+const { marketIsUnnamed } = require('./requestMarket');
+
 const MAX_CURRENCIES = 8;
 const MAX_PRICE_SOURCES = 6;
 // A caller's `market` is free text. Capped so junk cannot bloat every log line or become an
@@ -72,17 +74,16 @@ function capRequested(raw) {
   return text.length > MAX_REQUESTED_CHARS ? `${text.slice(0, MAX_REQUESTED_CHARS)}…` : text;
 }
 
-// The door's OWN precedence, applied to the door's OWN raw values: `search.market ||
-// metadata.market`, JavaScript truthiness, no trimming. Whitespace is truthy here exactly as it
-// is at the bind; `false`/`0` are falsy here exactly as they are there.
+// The door's OWN precedence, applied to the door's OWN raw values: the carrier rule of
+// servingCurrencyGuard.requestedMarketOf (requestMarket.marketIsUnnamed), no trimming of what is
+// reported. Absent, null and blank name no market and yield to the next carrier, exactly as at the
+// bind; anything else SENT (`false`, `0`, `[]`, junk) is the search block's market, as it is there.
 function describeRequested(search, metadata) {
   const fromSearch = search && typeof search === 'object' ? search.market : undefined;
   const fromMetadata = metadata && typeof metadata === 'object' ? metadata.market : undefined;
-  const raw = fromSearch || fromMetadata;
-  return {
-    requested: raw ? capRequested(raw) : null,
-    source: fromSearch ? 'explicit_search' : (fromMetadata ? 'explicit_metadata' : 'defaulted'),
-  };
+  if (!marketIsUnnamed(fromSearch)) return { requested: capRequested(fromSearch), source: 'explicit_search' };
+  if (!marketIsUnnamed(fromMetadata)) return { requested: capRequested(fromMetadata), source: 'explicit_metadata' };
+  return { requested: null, source: 'defaulted' };
 }
 
 /**

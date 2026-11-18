@@ -14569,7 +14569,7 @@ function maybeOverlayLiveSearchPriceRaw(response, search = {}, { intent = null, 
     priceCache: priceCacheHooks,
     hostGate: priceHostGate,
     ...(_searchOverlayFetchForTest ? { fetchImpl: _searchOverlayFetchForTest } : {}),
-    // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
+    // The buyer market as the search lane resolved it (servingCurrencyGuard.requestedMarketOf), passed by the caller.
     market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
   }));
 }
@@ -23977,7 +23977,8 @@ async function searchBeautyExternalSeedProductsMainline({
   // `servingCurrency` is the currency every row on the page must carry, flag or no flag: a silent
   // request is a US request (USD), a named priced market is its own currency, and anything else
   // is null and served nothing. See resolveServingCurrency.
-  const { markets, buyerMarket, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
+  // The request market by the shared carrier rule (servingCurrencyGuard.requestedMarketOf), never `||`.
+  const { markets, buyerMarket, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(requestedMarketOf({ search }, metadata));
   const market = markets[0];
   // What the answer RECORDS as its market (search_quality_contract.hard_constraints.market): the buyer's
   // market when the request named one read as such, else the lane market. With the flag on, `market` is the
@@ -24646,7 +24647,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
       ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
     },
-  }, search, { intent, budgetConstraint, buyerMarket: search.market || metadata.market });
+  }, search, { intent, budgetConstraint, buyerMarket: requestedMarketOf({ search }, metadata) });
 }
 
 const LOOKUP_EQUIVALENCE_FAMILIES = [
@@ -45687,7 +45688,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       )
     ) {
       const { buyerCurrency: publicBeautyBuyerCurrency } = resolveBuyerMarketScope(
-        publicBeautySearch.market || metadata.market,
+        requestedMarketOf({ search: publicBeautySearch }, metadata),
       );
       const publicBeautyBudget = resolveBeautyMainlineBudgetConstraint({
         search: publicBeautySearch,
@@ -45821,7 +45822,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
         return res.status(200).json(await maybeOverlayLiveSearchPrice(
-          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget, buyerMarket: publicBeautySearch.market || metadata.market },
+          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget, buyerMarket: requestedMarketOf({ search: publicBeautySearch }, metadata) },
         ));
       } catch (err) {
         logger.warn(
@@ -51364,7 +51365,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // leaking into US users' canonical chain). Falls back to env
         // / 'US' when not set.
         const ingredientPathMarket =
-          String(marketsForRequest(search.market || metadata.market)[0]) /* scalar: marketId only */
+          String(marketsForRequest(requestedMarketOf({ search }, metadata))[0]) /* scalar: marketId only */
             .trim()
             .toUpperCase() || 'US';
         // Bounded from inside: this leg is otherwise the only expensive stage

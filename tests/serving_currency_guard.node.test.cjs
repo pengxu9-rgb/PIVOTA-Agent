@@ -128,7 +128,19 @@ test('never throws, whatever the body', () => {
   assert.strictEqual(junk.total, null, 'a null total is not invented into a number');
 });
 
-test('requestedMarketOf reads the door\'s precedence: search.market || metadata.market', () => {
+test('requestedMarketOf picks a SENT carrier: false or 0 on search is the search market, not metadata\'s or silence', () => {
+  assert.strictEqual(requestedMarketOf({ search: { market: false } }, { market: 'US' }), false);
+  assert.strictEqual(requestedMarketOf({ search: { market: 0 } }, { market: 'US' }), 0);
+  assert.deepStrictEqual(requestedMarketOf({ search: { market: [] } }, { market: 'US' }), []);
+  assert.strictEqual(requestedMarketOf({ search: { market: null } }, { market: 'SG' }), 'SG');
+  assert.strictEqual(requestedMarketOf({ search: { market: '  ' } }, { market: 'SG' }), 'SG');
+  // ...and a sent false serves nothing, never USD.
+  assert.strictEqual(servingCurrencyFor({ payload: { search: { market: false } } }), null);
+  assert.strictEqual(servingCurrencyFor({ payload: { search: { market: 0 } }, metadata: { market: 'US' } }), null);
+  assert.strictEqual(servingCurrencyFor({ payload: { search: {} } }), 'USD');
+});
+
+test('requestedMarketOf reads the door\'s precedence: the search block\'s market when sent, else metadata\'s', () => {
   assert.strictEqual(requestedMarketOf({ search: { market: 'SG' } }, { market: 'US' }), 'SG');
   assert.strictEqual(requestedMarketOf({ search: { market: '' } }, { market: 'US' }), 'US');
   assert.strictEqual(requestedMarketOf({ search: 'oops', market: 'JP' }, {}), 'JP');

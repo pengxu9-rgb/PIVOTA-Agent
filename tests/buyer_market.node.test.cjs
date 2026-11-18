@@ -20,8 +20,13 @@ const ON = { [FLAG]: 'on' };
 // lanes (pivota-backend #2389): silence is US, one priced market is its currency, anything else
 // serves nothing. Not behind the flag.
 test('serving currency: silence is USD, a priced market is its own currency, anything else is null', () => {
-  for (const silent of [undefined, null, '', '   ', false, 0, []]) {
+  // Silence is absent, null or blank ONLY (the shared "names no market" rule). false, 0 and [] were SENT: unreadable,
+  // served nothing (null) -- never read as silence and served USD unlabelled.
+  for (const silent of [undefined, null, '', '   ']) {
     assert.strictEqual(resolveServingCurrency(silent), 'USD', JSON.stringify(silent));
+  }
+  for (const sent of [false, 0, [], true, 7, {}, ' , ', ['  ']]) {
+    assert.strictEqual(resolveServingCurrency(sent), null, JSON.stringify(sent));
   }
   for (const [requested, currency] of [['US', 'USD'], [' us ', 'USD'], ['SG', 'SGD'], ['sg', 'SGD'], ['JP', 'JPY'],
     ['KR', 'KRW'], ['GB', 'GBP'], [['SG'], 'SGD']]) {
@@ -179,7 +184,8 @@ test('live search price never overlays an already budget-filtered result for par
 // silent branch, so one function owns the rule. The deployment's default is servedMarkets()[0].
 test('the silent default is the deployment\'s default market, whatever the flag', () => {
   for (const env of [{}, ON, { [FLAG]: 'off' }]) {
-    for (const requested of [undefined, null, '', '   ', false]) {
+    // Silence is absent, null or blank only; a sent `false` serves nothing (pinned with the serving currency above).
+    for (const requested of [undefined, null, '', '   ']) {
       assert.strictEqual(resolveServingCurrency(requested, env), 'USD', `requested=${JSON.stringify(requested)}`);
     }
   }
