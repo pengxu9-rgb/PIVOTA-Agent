@@ -405,7 +405,7 @@ const HELD = [
   'checkout_total_unverified', 'checkout_total_over_approved', 'checkout_payment_no_order', 'checkout_order_id_card_shaped',
   'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_cancel_unresolved',
   'checkout_confirm_pending_check', 'checkout_confirm_not_sent', 'checkout_paying_without_task',
-  'checkout_payment_reached_unconfirmed', 'money_result_seen',
+  'checkout_payment_reached_unconfirmed', 'checkout_answer_scrubbed', 'money_result_seen',
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
   'vic_approved_amount_missing', 'vic_submit_unresolved',
 ];
@@ -668,8 +668,8 @@ test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now wri
   assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
 });
 
-test('parity with backend f59f4fe37 (hold sets unchanged since 732733b93): the explicit HELD list is exactly the 23 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
-  const BACKEND_CHECKOUT_HOLD = ['checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
+test('parity with backend 4dc09ce55: the explicit HELD list is exactly the 24 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
+  const BACKEND_CHECKOUT_HOLD = ['checkout_answer_scrubbed', 'checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
     'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
     'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_paying_without_task',
     'checkout_payment_no_order', 'checkout_payment_reached_unconfirmed', 'checkout_result_overdue', 'checkout_result_unrecognised', 'checkout_setup_submitted',
@@ -680,7 +680,7 @@ test('parity with backend f59f4fe37 (hold sets unchanged since 732733b93): the e
   // Outcome-unknown codes the worker writes outside those two sets (kept explicit, so the shape never decides them).
   const GATEWAY_EXTRAS = ['money_result_seen', 'outcome_unknown', 'vic_order_outcome_unknown', 'pending_write_unreconcilable',
     'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked', 'vic_held'];
-  assert.equal(BACKEND_CHECKOUT_HOLD.length, 23);
+  assert.equal(BACKEND_CHECKOUT_HOLD.length, 24);
   assert.equal(BACKEND_VIC_HOLD.length, 7);
   // Membership in the EXPLICIT list, not the outcome: the shape regex alone must not be able to satisfy this.
   assert.deepEqual([...HELD_CODES].sort(), [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD, ...GATEWAY_EXTRAS].sort());
@@ -874,4 +874,39 @@ test('a completed order WITH its number: no withheld flag, whatever the code', (
   assert.equal(view.order.reference, '#1001');
   assert.equal(Object.hasOwn(view.order, 'reference_withheld'), false);
   assert.equal(Object.hasOwn(project(unified('completed', { order_reference: '#1001' })).order, 'reference_withheld'), false);
+});
+
+// ---- backend 4dc09ce55 (DAVV) ----------------------------------------------------------------------------------
+
+test('HELD checkout_answer_scrubbed (after the confirm, a card code was echoed): checking while placing, outcome_unknown once final, never "charged"', () => {
+  const placing = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: 'checkout_answer_scrubbed' }));
+  assert.equal(placing.screen, 'outcome_unknown');
+  assert.equal(placing.terminal, false);
+  for (const state of ['failed', 'refused', 'expired']) {
+    const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: 'checkout_answer_scrubbed' }));
+    assert.equal(view.screen, 'outcome_unknown', state);
+    assert.equal(view.outcome.retry_hint, false);
+    assert.equal(/charged/i.test(view.outcome.message), false);
+  }
+  // Beside the operator code, HELD wins.
+  assert.equal(project(unified('failed', {}, { refusal_reason: 'checkout_answer_scrubbed', last_error_code: 'operator_confirmed_not_charged' })).screen, 'outcome_unknown');
+});
+
+test('FAILED checkout_card_unavailable:davv_missing: not_submitted on its head segment, no retry', () => {
+  const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_card_unavailable:davv_missing' }));
+  assert.equal(view.screen, 'failed');
+  assert.equal(view.outcome.kind, 'not_submitted');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.equal(isOutcomeUnknownCode('checkout_card_unavailable:davv_missing'), false);
+});
+
+test('checkout_placing (also written after a lookup finds the checkout in progress): the normal placing screen', () => {
+  const view = project(unified('placing', { poll_after_seconds: 5 }, { last_error_code: 'checkout_placing' }));
+  assert.equal(view.screen, 'placing');
+  assert.equal(view.outcome, null);
+  assert.equal(view.terminal, false);
+  assert.equal(isOutcomeUnknownCode('checkout_placing'), false);
+  // And it never hides a buyer step before placing.
+  const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: 'checkout_placing' }));
+  assert.equal(approve.screen, 'approve');
 });

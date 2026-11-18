@@ -47,7 +47,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend f59f4fe37 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (23),
+// Mirrors pivota-backend 4dc09ce55 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -101,6 +101,8 @@ const HELD_CODES = new Set([
   'checkout_confirm_not_sent', 'checkout_paying_without_task',
   // The provider reported payment-reached without success: money may have moved.
   'checkout_payment_reached_unconfirmed',
+  // After the confirm, the provider's answer echoed a card code and was scrubbed: held (not payment-reached).
+  'checkout_answer_scrubbed',
   'money_result_seen',
   // _VIC_HOLD_CODES
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
@@ -114,6 +116,10 @@ const HELD_CODES = new Set([
 /** On a COMPLETED purchase: the order IS placed, but the merchant's order number was not kept (withheld because it
  * looked card-shaped, or invalid): `merchant_order_id` is null. Neither a hold nor a failure. */
 const COMPLETED_REFERENCE_CODES = new Set(['checkout_order_reference_withheld', 'checkout_order_reference_invalid']);
+
+/** The worker's ordinary progress codes (not holds): the screen is the state's own. `checkout_placing` is written while
+ * the checkout is being placed, and also after a lookup finds the checkout in progress. */
+const PROGRESS_CODES = new Set(['checkout_placing', 'checkout_ready']);
 
 /** Paused before the checkout step; not terminal. */
 const PARKED_CODES = new Set(['checkout_step_disabled', 'checkout_schema_incomplete']);
@@ -275,7 +281,7 @@ function codeSegments(codes) {
 
 function isExplicit(seg) {
   return FAILED_CODES.has(seg) || HELD_CODES.has(seg) || PARKED_CODES.has(seg) || REASON_BY_CODE.has(seg)
-    || COMPLETED_REFERENCE_CODES.has(seg);
+    || COMPLETED_REFERENCE_CODES.has(seg) || PROGRESS_CODES.has(seg);
 }
 
 /** What the codes say, by the precedence above: 'failed' | 'held' | a named group | 'shape_unknown' | null. */
