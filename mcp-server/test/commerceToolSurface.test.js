@@ -42,7 +42,8 @@ const CLAIMS = { iss: "https://idp.test", sub: "user-1", email: "buyer@example.c
 const SESS = { user_ref: "user_1", acp_session_id: "sess_conn_1", claims: CLAIMS };
 // `variant_id` is explicit so these tests exercise the money path, not default-variant RESOLUTION (which has
 // its own dedicated coverage in mcpBuyerIntake.test.js).
-const CART = () => ({ merchant_id: "merch_A", items: [{ product_id: "p1", variant_id: "v1", quantity: 1 }] });
+// An order needs an address to ship to: the door refuses a completion or a payment link with none by name.
+const CART = () => ({ merchant_id: "merch_A", items: [{ product_id: "p1", variant_id: "v1", quantity: 1 }], shipping_address: { name: "Buyer One", address_line1: "1 Example Road", city: "Exampleton", postal_code: "00001", country: "US" } });
 
 async function openSession(surface, sessionContext = SESS, key = "idem-open-001") {
   const s = await surface.callTool("create_checkout_session", { idempotency_key: key, quote: CART() }, sessionContext);

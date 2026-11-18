@@ -116,7 +116,7 @@ const fromBackend = (status, detail, { landed = false, headers } = {}) => ({ kin
 const ASSERTION_MESSAGE = 'The partner assertion on this request was refused; it was not made as any partner.';
 // THE ROUTE ERRORS OF THE BACKEND'S ORDER-CREATE PATH, with the status and `detail` each raise site writes.
 // `BEFORE_ANY_ORDER`: raised only in the request's prologue, before the backend first tries to write the order.
-const BEFORE_ANY_ORDER = Object.freeze({
+const BEFORE_ANY_ORDER_ROWS = {
   partnerAssertionRejected: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'path', message: ASSERTION_MESSAGE }],
   quoteNotFound: [404, { error: 'QUOTE_NOT_FOUND', message: 'Quote not found' }],
   invalidQuote: [400, { error: 'INVALID_QUOTE', message: 'quote snapshot does not contain orderable items' }],
@@ -126,7 +126,11 @@ const BEFORE_ANY_ORDER = Object.freeze({
   quoteMerchantMismatch: [400, { error: 'QUOTE_MERCHANT_MISMATCH', message: 'placeholder' }],
   preflightFailed: [409, { error: 'PREFLIGHT_FAILED', message: 'placeholder' }],
   variantRequired: [400, { error: 'VARIANT_REQUIRED', message: 'placeholder' }],
-});
+  // The seller is not taking orders: raised by the order route after its quote-claim lookup and before its first write.
+  // (tests/checkout_named_refusal_delisted_door.node.test.cjs boots a gateway whose list lacks it.)
+  merchantNotAccepting: [403, { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' }],
+};
+const BEFORE_ANY_ORDER = Object.freeze(BEFORE_ANY_ORDER_ROWS);
 // Everything else the path answers: from its write step (which can run twice in one request), after the order
 // was written, or with nothing but the status to go by.
 const NOT_PROVABLY_BEFORE = Object.freeze({
@@ -144,7 +148,10 @@ const NOT_PROVABLY_BEFORE = Object.freeze({
   quoteMismatch: [409, { error: 'QUOTE_MISMATCH', message: 'placeholder', debug_id: 'placeholder' }],
   // Out of stock, as this path says it: a 400 whose detail names no code.
   insufficientInventory: [400, { message: 'Insufficient inventory', items: [] }],
-  merchantNotAccepting: [403, { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder' }],
+  // A rate limit, as the backend answers it: never by a name this gateway reads, and possibly to a second copy of a
+  // request it already accepted, before it looks for that copy's order. Coded too, to show a name changes nothing.
+  rateLimited: [429, 'Rate limit exceeded'],
+  rateLimitedCoded: [429, { error: 'RATE_LIMITED', message: 'placeholder' }],
   checkoutQuoteRequired: [400, { error: 'CHECKOUT_QUOTE_REQUIRED', message: 'placeholder' }],
   notAuthorized: [403, 'Not authorized for this merchant'],
   merchantNotFound: [404, 'Merchant not found'],
@@ -187,7 +194,7 @@ const ANSWERS = Object.freeze({
  * per process, before anything else loads the server.
  * @param {{ root?:string, port?:number, env?:Record<string,string|undefined>, keys:Awaited<ReturnType<typeof mintKeys>> }} o
  */
-function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = {}, keys } = {}) {
+function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = {}, keys, backendBase = BACKEND_BASE } = {}) {
   const PORT = String(port);
   Object.assign(process.env, {
     NODE_ENV: 'test',
@@ -200,7 +207,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     ACP_SIGNING_SECRET: ACP_SECRET,
     IDENTITY_ISSUERS_JSON: JSON.stringify([{ iss: ACP_BUYER_ISSUER, aud: ACP_BUYER_AUDIENCE, jwks: keys.buyerJwks, algs: ['ES256'] }]),
     PAYMENT_ISSUERS_JSON: JSON.stringify([{ iss: GRANT_ISSUER, aud: GRANT_AUDIENCE, jwks: keys.grantJwks, algs: ['ES256'] }]),
-    PIVOTA_API_BASE: BACKEND_BASE,
+    PIVOTA_API_BASE: backendBase,
     PIVOTA_API_KEY: 'test-token',
     PIVOTA_OPS_ADMIN_TOKEN: 'test-ops-token',
     CONFIRMATION_SECRET: 'strict-confirmation-secret-0123456789',
@@ -224,17 +231,21 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
   const upstream = []; // every request the backend received, in order
   const orders = []; // every order the backend made
   const orderScript = []; // the answers to the next POST /agent/v2/orders, in order; none left = the order is made
+  const paymentScript = []; // the answers to the next payment-page request, in order; none left = the page is opened
   const quotes = new Map(); // backend quote id -> { currency, totalMinor }
   const major = (minor) => (minor / 100).toFixed(2);
   let quoteSeq = 0;
 
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/shop/v1/invoke')
     .reply((_uri, body) => {
       const operation = body && body.operation;
       const product = (body && body.payload && body.payload.product) || {};
       upstream.push({ path: '/agent/shop/v1/invoke', body });
-      if (operation === 'get_product_detail' && product.merchant_id === IDS.SELLER && [IDS.SOURCE, IDS.PRODUCT].includes(product.product_id)) {
+      // Scoped to the seller, or unscoped (the UCP door's item names a product only) for the product id itself.
+      const scoped = product.merchant_id === IDS.SELLER && [IDS.SOURCE, IDS.PRODUCT].includes(product.product_id);
+      const unscoped = (product.merchant_id === undefined || product.merchant_id === null) && product.product_id === IDS.PRODUCT;
+      if (operation === 'get_product_detail' && (scoped || unscoped)) {
         return [200, { status: 'success', product: {
           product_id: product.product_id, merchant_id: IDS.SELLER, title: 'Day Lotion', brand: 'Shop A', price: 18, in_stock: true,
           pivota_signature_id: IDS.PRODUCT, variants: [{ variant_id: IDS.VARIANT, sku_id: IDS.VARIANT, title: 'Default', price: 18 }],
@@ -242,7 +253,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       }
       return [404, { detail: 'NOT_FOUND' }];
     });
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/v2/quotes/preview')
     .reply((_uri, body) => {
       upstream.push({ path: '/agent/v2/quotes/preview', body });
@@ -256,11 +267,24 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       const quoteId = `q_backend_${String(quoteSeq).padStart(4, '0')}`;
       quotes.set(quoteId, { currency, totalMinor });
       return [200, {
-        quote_id: quoteId, currency,
+        // The seller the quote is for (a request that names none, as the UCP door's, is priced for it).
+        quote_id: quoteId, currency, merchant_of_record: IDS.SELLER,
         pricing: { subtotal: major(totalMinor), shipping_fee: '0.00', tax: '0.00', total: major(totalMinor) },
         line_items: refs.map((ref) => ({ product_id: ref.product_id, variant_id: ref.variant_id, quantity: ref.quantity, unit_price_effective: major(UNIT_MINOR) })),
         expires_at: '2099-01-01T00:00:00Z',
       }];
+    });
+  // The product as the unscoped read serves it: the UCP door's item names a product only, and the gateway reads it
+  // through its own loopback detail lane. Every other loopback request (the test's own calls) goes through untouched.
+  nock(`http://127.0.0.1:${PORT}`, { allowUnmocked: true }).persist()
+    .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'get_pdp_v2' && body.payload?.product_ref?.product_id === IDS.PRODUCT)
+    .reply(200, () => {
+      upstream.push({ path: 'loopback:get_pdp_v2' });
+      return { status: 'success', modules: [{ type: 'canonical', data: { pdp_payload: { product: {
+        product_id: IDS.PRODUCT, merchant_id: IDS.SELLER, pivota_signature_id: IDS.PRODUCT, title: 'Day Lotion', brand: { name: 'Shop A' },
+        price: { current: { amount: 18, currency: 'USD' } }, availability: 'in_stock',
+        variants: [{ variant_id: IDS.VARIANT, sku_id: IDS.VARIANT, title: 'Default', price: { current: { amount: 18, currency: 'USD' } } }],
+      } } } }] };
     });
   // The order. One scripted answer per request; with none scripted the backend makes the order from its own quote.
   const makeOrder = (body, overrides = {}) => {
@@ -269,7 +293,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     orders.push(order);
     return { status: 'success', order: { order_id: order.order_id, state: 'awaiting_checkout' }, total: order.total, currency: order.currency };
   };
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/v2/orders')
     .reply(function reply(_uri, body, callback) {
       upstream.push({ path: '/agent/v2/orders', body, idempotencyKeyHeader: this.req.headers['idempotency-key'] });
@@ -289,17 +313,21 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       return undefined;
     });
   // The hosted payment page for an order (the charge of a complete, and the payment link).
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/v2/payments/checkout-sessions')
-    .reply((_uri, body) => {
+    .reply(function reply(_uri, body, callback) {
       upstream.push({ path: '/agent/v2/payments/checkout-sessions', body });
       const id = `cs_${body && body.order_id}`;
-      return [200, { status: 'success', checkout_session: { checkout_session_id: id, hosted_url: `https://pay.quote-claim.test/c/${id}` } }];
+      // A scripted answer (`reply` / `error` from ANSWERS); `landed` has no meaning here (no order is made).
+      const next = paymentScript.shift();
+      if (!next) return callback(null, [200, { status: 'success', checkout_session: { checkout_session_id: id, hosted_url: `https://pay.quote-claim.test/c/${id}` } }]);
+      if (next.kind === 'error') return callback(Object.assign(new Error(next.error.message), { code: next.error.code }));
+      return callback(null, [next.status, next.body, next.headers || {}]);
     });
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post(() => true)
     .reply((uri, body) => { upstream.push({ path: uri, body }); return [404, { detail: 'NOT_FOUND' }]; });
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .get(() => true)
     .reply((uri) => { upstream.push({ path: uri }); return [404, { detail: 'NOT_FOUND' }]; });
 
@@ -332,14 +360,19 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     const resp = await fn();
     return { resp, upstream: upstream.slice(before) };
   }
-  /** tools/call on `/mcp`. `raw` is the response body as the door sent it, byte for byte. */
-  async function call(name, args, { buyer = BUYER } = {}) {
-    const { resp, upstream: sent } = await observed(() => send('POST', '/mcp', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }), buyer || {}));
+  /** tools/call on `/mcp` (or `door`). `raw` is the response body as the door sent it, byte for byte. */
+  async function call(name, args, { buyer = BUYER, door = '/mcp' } = {}) {
+    const { resp, upstream: sent } = await observed(() => send('POST', door, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }), buyer || {}));
     const result = resp.body && resp.body.result;
     const text = result && Array.isArray(result.content) && result.content[0] ? result.content[0].text : null;
     let value = null;
     try { value = JSON.parse(text); } catch { value = null; }
     return { http: resp.status, isError: Boolean(result && result.isError), value, raw: resp.text, upstream: sent };
+  }
+  /** The strict invoke route (`/agent/shop/v1/invoke`): `{ http, body, raw, upstream }`. */
+  async function invoke(operation, payload, { buyer = BUYER } = {}) {
+    const { resp, upstream: sent } = await observed(() => send('POST', '/agent/shop/v1/invoke', JSON.stringify({ operation, payload }), buyer || {}));
+    return { http: resp.status, body: resp.body, raw: resp.text, upstream: sent };
   }
   /** A signed ACP REST request with the buyer's credential. `key`: the Idempotency-Key header. */
   async function acp(method, subPath, bodyObj, { key } = {}) {
@@ -360,7 +393,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     if (server) await new Promise((resolve) => server.close(resolve));
     nock.cleanAll();
   };
-  return { app, call, acp, listen, close, upstream, orders, orderScript, root };
+  return { app, call, invoke, acp, listen, close, upstream, orders, orderScript, paymentScript, root };
 }
 
 module.exports = { IDS, PRICED_IN, UNIT_MINOR, BACKEND_BASE, BUYER, ANSWERS, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE, backendError, address, mintKeys, bootDoor };

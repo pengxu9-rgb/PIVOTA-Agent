@@ -33383,7 +33383,7 @@ async function throwKernelOrderReadNotFound(err) {
 // unit-testable without booting this app. Read that module before touching the classification: it is shared
 // by every kernel op including the money ops, and `retriable` is a promise that costs real money when wrong
 // in either direction.
-const { mapUpstreamErrorToKernelCode } = require('./services/commerceKernelErrorMapping');
+const { mapUpstreamErrorToKernelCode, curatedUpstreamRefusal } = require('./services/commerceKernelErrorMapping');
 
 let commerceKernelErrorsPromise = null;
 // The upstream-response normalizer (safety-kernel/src/upstreamAdapter.js). The kernel's own money ops get it
@@ -33395,9 +33395,13 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
-  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status });
+  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, upstreamDetail });
   if (kernelCode === 'PARTNER_ASSERTION_REJECTED') notePartnerAssertionRejected(operation, status, upstreamDetail);
+  // A named refusal with a curated message for the caller (a refused buyer context): the transport facts below are
+  // kept beside it unchanged, so the quote-claim rule (safety-kernel/src/upstreamRefusal.js) reads the same answer.
+  const curated = curatedUpstreamRefusal({ operation, upstreamCode, status, upstreamDetail });
   throw new PivotaCommerceError(kernelCode, {
+    ...(curated || {}),
     operation,
     upstream_status: status,
     upstream_code: upstreamCode || null,
@@ -33552,6 +33556,15 @@ function deriveStrictCommerceCtx(req) {
   });
 }
 
+// The strict invoke route's status for a kernel answer: its code's (statusForCommerceKernelError), except a used session
+// whose claim names no order, which is a conflict with that earlier attempt like its sibling CHECKOUT_OUTCOME_UNKNOWN
+// (not the 422 of a session spent on a known order).
+function statusForCommerceKernelAnswer(error) {
+  const detail = error && typeof error.detail === 'object' && error.detail ? error.detail : null;
+  if (error && error.code === 'QUOTE_ALREADY_USED' && detail && detail.reason === 'checkout_session_order_outcome_unknown') return 409;
+  return statusForCommerceKernelError(error && error.code);
+}
+
 function statusForCommerceKernelError(code) {
   switch (code) {
     case 'USER_AUTH_REQUIRED':
@@ -33572,9 +33585,13 @@ function statusForCommerceKernelError(code) {
     case 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID':
     case 'MERCHANT_PRODUCT_MISMATCH':
       return 400;
+    // CHECKOUT_OUTCOME_UNKNOWN: an outcome nobody here can know is a conflict with that earlier attempt, not a
+    // malformed request: the same as the ACP door answers it, and as this route answers its sibling IDEMPOTENCY_CONFLICT.
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
     case 'ORDER_CANCELED':
+    case 'MERCHANT_NOT_ACCEPTING_ORDERS':
+    case 'CHECKOUT_OUTCOME_UNKNOWN':
     case 'PARTNER_ASSERTION_REJECTED':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
@@ -35344,8 +35361,9 @@ const MERCHANT_QUOTE_PREVIEW_TOOL = 'preview_merchant_checkout_quote';
 function registerCommerceUcpMcpRoute() {
   app.post(MERCHANT_QUOTE_PREVIEW_PATH, async (req, res, next) => {
     try {
-      const { merchantCheckoutQuoteEnabled } = await import('../mcp-server/src/merchantCheckoutQuote.js');
-      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpToolDoorEnabled() || !merchantCheckoutQuoteEnabled()) {
+      const { merchantCheckoutQuoteDoorOpen } = await import('../mcp-server/src/merchantCheckoutQuote.js');
+      // The same rule lists and serves the tool on /mcp and /ucp/mcp: the lane flag, strict and the UCP door.
+      if (!merchantCheckoutQuoteDoorOpen()) {
         return res.status(404).json({ error: 'not_found' });
       }
       return next();
@@ -35508,7 +35526,7 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
           if (out?.ok === true) return res.status(200).json(out.data || {});
 
           const error = out?.error || { code: 'COMMERCE_ERROR' };
-          return res.status(statusForCommerceKernelError(error.code)).json(commerceKernelErrorBody(error));
+          return res.status(statusForCommerceKernelAnswer(error)).json(commerceKernelErrorBody(error));
         } catch (err) {
           logger.error(
             {
@@ -36275,6 +36293,28 @@ function registerUcpBuyerAgentProfileRoute() {
     } catch (err) {
       logger.error({ err: err?.message || String(err), surface: 'ucp_buyer_agent' }, 'UCP buyer-agent profile route failed');
       return res.status(503).json({ error: 'ucp_buyer_agent_profile_unavailable' });
+    }
+  });
+
+  // GET /.well-known/ucp-agent-catalog-draft — the DRAFT-version profile used only for Shopify Global Catalog
+  // lookups that carry Promoted Placements attribution (mcp-server/src/shopifyCatalogAttribution.js). Catalog
+  // capabilities only: no cart, no checkout. Lit only while SHOPIFY_CATALOG_ATTRIBUTION is shadow or enforce, so it
+  // is dark by default. Its self-reference comes ONLY from SHOPIFY_CATALOG_DRAFT_PROFILE_URL (never the Host header).
+  app.get('/.well-known/ucp-agent-catalog-draft', async (req, res, next) => {
+    const mode = String(process.env.SHOPIFY_CATALOG_ATTRIBUTION || '').trim().toLowerCase();
+    // Off: not this route at all. Express's own 404 answers, byte for byte what the path answered before it existed.
+    if (mode !== 'shadow' && mode !== 'enforce') return next();
+    try {
+      // eslint-disable-next-line global-require
+      const { buildUcpCatalogDraftProfile } = require('./services/ucpBuyerAgentProfile');
+      const configured = firstNonEmptyString(process.env.SHOPIFY_CATALOG_DRAFT_PROFILE_URL);
+      const profile = buildUcpCatalogDraftProfile(configured ? { profileUrl: configured } : {});
+      res.setHeader('content-type', 'application/json');
+      res.setHeader('cache-control', 'public, max-age=300');
+      return res.status(200).json(profile);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_catalog_draft_profile' }, 'UCP catalog draft profile route failed');
+      return res.status(503).json({ error: 'ucp_catalog_draft_profile_unavailable' });
     }
   });
 }
@@ -39107,7 +39147,15 @@ async function agentSignatureRouteGroup(req) {
   if (p === '/mcp' || p === '/ucp/mcp') {
     const calls = Array.isArray(req.body) ? req.body : [req.body];
     const names = calls.map((c) => mcpToolNameFromRpcBody(c)).filter((n) => typeof n === 'string' && n);
-    if (names.includes(MERCHANT_QUOTE_PREVIEW_TOOL)) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
+    // Only while the quote door is open: dark, the name is an unknown tool and is classified like one.
+    // A module that cannot load classifies it as checkout, so that failure can only refuse more.
+    if (names.includes(MERCHANT_QUOTE_PREVIEW_TOOL)) {
+      let quoteDoorOpen = true;
+      try {
+        quoteDoorOpen = (await import('../mcp-server/src/merchantCheckoutQuote.js')).merchantCheckoutQuoteDoorOpen();
+      } catch { /* keep checkout */ }
+      if (quoteDoorOpen) return AGENT_SIGNATURE_ROUTE_GROUP.CHECKOUT;
+    }
     if (names.length) {
       // A contract that cannot load must not quietly move a checkout call out of the checkout group: it is
       // classified as checkout (the group an operator enforces first), so the failure can only refuse more.

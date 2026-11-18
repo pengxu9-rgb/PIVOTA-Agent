@@ -30,14 +30,80 @@ const COMMERCE_KERNEL_READ_OPS = new Set(['get_product_detail', 'find_products',
 // refusing to hold an opinion it has no basis for if the backend ever starts emitting that code elsewhere.
 const SINGLE_PRODUCT_READ_OPS = new Set(['get_product_detail']);
 
+// THE ORDER CALL REFUSED THE BUYER'S DETAILS. The backend's order create answers 400 INVALID_BUYER_CONTEXT, from its
+// prologue, before it can have written an order (safety-kernel/contracts/order_create_prologue_refusals.json), for a
+// buyer context it cannot order with: no complete shipping address, no buyer email. As MERCHANT_UNAVAILABLE
+// ("temporarily unreachable", retriable) the agent re-sent the identical call, which can never succeed, and was never
+// told what to fix. It is terminal for the request as sent, and named.
+//
+// Granted on exactly the proof the quote-claim release needs (safety-kernel/src/upstreamRefusal.js): the order op,
+// the exact status, and the route's own detail naming the code (`error.details.error`), not a message or the
+// status-derived code. The words say "no order was created, fix and retry", so they are a candidate only: the kernel
+// answers them as raised only when the release rule matches too (the pair is listed), and otherwise answers its unknown
+// outcome (`claims_no_effect`, safety-kernel/src/errors.js claimsNoEffect). Anything short of the shape stays
+// MERCHANT_UNAVAILABLE.
+const BUYER_CONTEXT_REFUSAL_CODE = 'INVALID_BUYER_CONTEXT';
+function isBuyerContextRefusal({ operation, upstreamCode, status, upstreamDetail } = {}) {
+  return String(operation || '').trim() === 'create_order'
+    && status === 400
+    && String(upstreamCode || '').trim() === BUYER_CONTEXT_REFUSAL_CODE
+    && upstreamDetail != null && typeof upstreamDetail === 'object' && !Array.isArray(upstreamDetail)
+    && upstreamDetail.error === BUYER_CONTEXT_REFUSAL_CODE;
+}
+
+// THE SELLER IS NOT TAKING ORDERS. The backend's order create answers 403 MERCHANT_NOT_ACCEPTING_ORDERS from its order
+// route, before it writes an order, for a seller whose store does not accept orders now. It is named
+// MERCHANT_NOT_ACCEPTING_ORDERS (terminal, "nothing was ordered") on the same proof as above: the order op, the exact
+// status, the route's own detail naming the code. That name is only a candidate: the kernel answers it as raised ONLY
+// when the quote-claim release rule matches it too (the pair is in safety-kernel/contracts/order_create_prologue_refusals.json,
+// no deadline mark), and otherwise answers the kernel's unknown outcome (safety-kernel/src/kernel.js createOrder). So a
+// list without the pair can never be told "nothing was ordered".
+const MERCHANT_NOT_ACCEPTING_CODE = 'MERCHANT_NOT_ACCEPTING_ORDERS';
+function isMerchantNotAcceptingOrders({ operation, upstreamCode, status, upstreamDetail } = {}) {
+  return String(operation || '').trim() === 'create_order'
+    && status === 403
+    && String(upstreamCode || '').trim() === MERCHANT_NOT_ACCEPTING_CODE
+    && upstreamDetail != null && typeof upstreamDetail === 'object' && !Array.isArray(upstreamDetail)
+    && upstreamDetail.error === MERCHANT_NOT_ACCEPTING_CODE;
+}
+
 /**
- * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null }} input
- * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'MERCHANT_UNAVAILABLE'}
+ * The curated refusal members for an upstream failure that has one (the shape safety-kernel's intakeRefusal builds:
+ * `reason`, `acp_message`, `acp_detail`, which every door surfaces), or null. Names fields only, never a value.
  */
-function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) {
+function curatedUpstreamRefusal(input = {}) {
+  if (isMerchantNotAcceptingOrders(input)) {
+    // The words are the catalog's (safety-kernel/src/errors.js MERCHANT_NOT_ACCEPTING_ORDERS); the detail names the reason.
+    const reason = 'merchant_not_accepting_orders';
+    return { reason, acp_detail: { reason } };
+  }
+  if (!isBuyerContextRefusal(input)) return null;
+  const reason = 'buyer_context_refused';
+  return {
+    reason,
+    // These words say no order was created: the kernel answers them only on the release rule's proof
+    // (safety-kernel/src/errors.js claimsNoEffect), else the unknown outcome.
+    claims_no_effect: true,
+    acp_message: [
+      'The order could not be created: the buyer details this checkout carries were refused (an order needs a complete shipping address, with name, address_line1, city, postal_code and country, and a buyer email).',
+      'No order was created and nothing was charged. Supply the missing details, with this call or by updating the checkout session, then try again.',
+      'Retrying this request unchanged will not succeed.',
+    ].join(' '),
+    acp_detail: { reason, required_fields: ['name', 'address_line1', 'city', 'postal_code', 'country', 'customer_email'] },
+  };
+}
+
+/**
+ * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null, upstreamDetail?: object|null }} input
+ * @returns {'MERCHANT_NOT_ACCEPTING_ORDERS'|'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'PARTNER_ASSERTION_REJECTED'|'ORDER_CANCELED'|'QUOTE_REQUIRED'|'MERCHANT_UNAVAILABLE'}
+ */
+function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status, upstreamDetail } = {}) {
   const op = String(operation || '').trim();
   const code = String(upstreamCode || '').trim().toUpperCase();
   const isReadOp = COMMERCE_KERNEL_READ_OPS.has(op);
+
+  if (isBuyerContextRefusal({ operation, upstreamCode, status, upstreamDetail })) return 'QUOTE_REQUIRED';
+  if (isMerchantNotAcceptingOrders({ operation, upstreamCode, status, upstreamDetail })) return 'MERCHANT_NOT_ACCEPTING_ORDERS';
 
   if (code === 'QUOTE_EXPIRED') return 'QUOTE_EXPIRED';
   if (code === 'PRICE_CHANGED' || code === 'QUOTE_MISMATCH') return 'PRICE_CHANGED';
@@ -83,6 +149,7 @@ function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) 
 
 module.exports = {
   mapUpstreamErrorToKernelCode,
+  curatedUpstreamRefusal,
   COMMERCE_KERNEL_READ_OPS,
   SINGLE_PRODUCT_READ_OPS,
 };

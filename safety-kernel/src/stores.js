@@ -86,6 +86,31 @@ export class InMemoryKvStore {
   }
 
   /**
+   * ATOMIC bounded counter: a live `{ count }` record below `limit` gains one, an absent or expired key
+   * starts at 1 with `ttlMs`, and a live record at or above the limit (or not a counter) is left alone.
+   * Returns the new count, or null when refused. A live record keeps its original expiry.
+   */
+  async incrementCounterBelow(key, limit, { ttlMs } = {}) {
+    const rec = this._m.get(key);
+    if (!this._live(rec)) {
+      this._m.set(key, { value: { count: 1 }, expiresAt: ttlMs != null ? this._now() + ttlMs : undefined });
+      return 1;
+    }
+    const count = rec.value?.count;
+    if (!Number.isSafeInteger(count) || count >= limit) return null;
+    rec.value = { count: count + 1 };
+    return count + 1;
+  }
+
+  /** ATOMIC: take one back from a live counter above 0. Returns true iff it decremented. */
+  async decrementCounter(key) {
+    const rec = this._m.get(key);
+    if (!this._live(rec) || !Number.isSafeInteger(rec.value?.count) || rec.value.count <= 0) return false;
+    rec.value = { count: rec.value.count - 1 };
+    return true;
+  }
+
+  /**
    * ATOMIC compare-and-set on SEVERAL fields at once: overwrite ONLY if, for every entry of `expected`, the live
    * record's field equals it. A `null` expectation matches a field that is null OR absent (Postgres `v ->> f` is
    * NULL for both). Other values compare as strings, the way Postgres `v ->> f` reads them. Returns true iff it

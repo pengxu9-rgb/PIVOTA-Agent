@@ -4,7 +4,7 @@
 // `/mcp` create_payment_link and the ACP REST complete route, over HTTP, with the gateway's own transport making
 // what it makes of each backend answer.
 //
-//   - The backend REFUSES FROM ITS PROLOGUE, before it could have written an order (one of nine listed
+//   - The backend REFUSES FROM ITS PROLOGUE, before it could have written an order (one of ten listed
 //     status-and-code answers: a bad buyer context, a quote that is not the caller's, a pre-flight refusal, ...):
 //     the failing call is answered exactly as before, and the same key then creates the order, once.
 //   - ANYTHING ELSE keeps the claim, and the same key and another key are told what they were told before
@@ -28,18 +28,24 @@ const assert = require('node:assert/strict');
 const fx = require('./_support/quoteClaimReleaseDoor.cjs');
 const { assertAnswerCurrency } = require('./_support/answerCurrencies.cjs');
 const { resolveServingCurrency } = require('../src/services/buyerMarket');
+const { curatedUpstreamRefusal } = require('../src/services/commerceKernelErrorMapping');
 
 const { IDS, ANSWERS, PRICED_IN, UNIT_MINOR, BEFORE_ANY_ORDER, NOT_PROVABLY_BEFORE } = fx;
 const CALLERS = ['mcp_complete', 'mcp_payment_link', 'acp_complete'];
 const MARKETS = ['US', 'SG', 'GB', 'DE', null];
-// The ACP door cannot reach an order for two of these: it refuses a market it has no currency for (DE) by name
-// before any quote, and refuses to complete a session with no fulfillment address anywhere (no market) before
-// any order is asked for. Its own door suites pin both. The tool doors keep all five.
-const marketsFor = (caller) => (caller === 'acp_complete' ? MARKETS.filter((m) => m !== 'DE' && m !== null) : MARKETS);
+// No door reaches an order for a session with no fulfillment address anywhere (no market): each refuses it by name
+// before any order is asked for (tests/checkout_honest_answers_door.node.test.cjs pins the tool doors', the ACP door
+// suites pin its own). The ACP door also refuses a market it has no currency for (DE) by name before any quote.
+const marketsFor = (caller) => (caller === 'acp_complete' ? MARKETS.filter((m) => m !== 'DE' && m !== null) : MARKETS.filter((m) => m !== null));
 let door;
 let keys;
+let KERNEL_ANSWERED_REFUSALS;
 
 test.before(async () => {
+  let ERROR_CATALOG;
+  ({ KERNEL_ANSWERED_REFUSALS, ERROR_CATALOG } = await import('../safety-kernel/src/errors.js'));
+  // "This seller is not taking orders": the catalog's words, with its reason as the detail.
+  CURATED.MERCHANT_NOT_ACCEPTING_ORDERS = { acp_message: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, acp_detail: NOT_ACCEPTING.acp_detail, recovery: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.recovery };
   keys = await fx.mintKeys();
   door = fx.bootDoor({ port: 5611, keys });
   await door.listen();
@@ -90,7 +96,7 @@ const each = (fn) => async () => { for (const caller of CALLERS) await fn(caller
 // What each door answers for a code, in full: the failing attempt's answer is pinned to the byte.
 const MESSAGES = {
   MERCHANT_UNAVAILABLE: 'The merchant is temporarily unreachable. Please try again shortly.',
-  OUT_OF_STOCK: 'An item just went out of stock. Let me re-quote what is available.',
+  OUT_OF_STOCK: 'An item just went out of stock. A new quote for what is still available is needed, unless an order was already placed for this purchase.',
   QUOTE_EXPIRED: 'The price quote expired. Let me refresh it.',
   PRICE_CHANGED: 'The price changed since you confirmed. Here is the updated total.',
   NO_MERCHANT_OFFER: 'This product has no purchasable merchant offer attached, so no detail is available. This will not change on retry.',
@@ -98,20 +104,75 @@ const MESSAGES = {
   QUOTE_ALREADY_USED: 'This checkout session was already used to place an order, so it can\'t be used again. Read that order first (get_order) before doing anything else; start a new checkout only if the buyer wants another order.',
 };
 const RETRIABLE = { MERCHANT_UNAVAILABLE: true };
-const ACP_STATUS = { MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409 };
+const UNKNOWN_ORDER_CLAIM_MESSAGE = 'An order was asked for on this checkout session, and whether it was placed is not known, so this session cannot be used again. Read this checkout session again before anything else, and do not start another checkout for this purchase without the buyer: an order may exist.';
+const ACP_HELD_UNKNOWN = 'An order was asked for on this checkout session, and whether it was placed is not known, so the session cannot be changed or completed again. Read it with GET /checkout_sessions/{checkout_session_id}, and do not start another checkout for this purchase without the buyer: an order may exist.';
+// An order call with no readable answer (no answer, a 5xx, a page from in front of the backend): the kernel's unknown
+// outcome, with no order id. The ACP door answers it with the catalog's words; the tool doors with their own.
+MESSAGES.CHECKOUT_OUTCOME_UNKNOWN = 'The checkout request may have been accepted. Its outcome is unknown. Keep the same request and reference when checking again; do not start another purchase.';
+const CREATE_UNKNOWN_TOOL_ERROR = Object.freeze({
+  code: 'CHECKOUT_OUTCOME_UNKNOWN',
+  message: 'Whether the order was created is unknown: the order service gave no readable answer. The store may hold an order for this checkout, and its id is not known here. Do not place a new order for this purchase without the buyer. Sending this call again with the same idempotency_key returns this same answer.',
+  retriable: false,
+  recovery: 'the store may hold an order for this checkout, and its id is not known here: do not place a new order for this purchase without the buyer; re-sending the same call returns this same answer',
+  detail: { reason: 'order_create_outcome_unknown', order_id: null },
+});
+const NO_READABLE_ANSWER = new Set(['busy', 'internalError', 'badGatewayFromBackend', 'timeout', 'connectionLost', 'connectionRefused', 'badGateway', 'gatewayTimeout', 'platformUnavailable']);
+// The backend's prologue refusal of the buyer context is named, with the curated words every door surfaces.
+const BUYER_CONTEXT = curatedUpstreamRefusal({ operation: 'create_order', status: 400, upstreamCode: 'INVALID_BUYER_CONTEXT', upstreamDetail: { error: 'INVALID_BUYER_CONTEXT' } });
+// So is "this seller is not taking orders" (a listed 403 the order route names), as terminal; its words are the catalog's.
+const NOT_ACCEPTING = curatedUpstreamRefusal({ operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS' } });
+const CURATED = { QUOTE_REQUIRED: BUYER_CONTEXT };
+const ACP_STATUS = { CHECKOUT_OUTCOME_UNKNOWN: 409, QUOTE_REQUIRED: 400, MERCHANT_UNAVAILABLE: 503, OUT_OF_STOCK: 409, QUOTE_EXPIRED: 409, PRICE_CHANGED: 409, QUOTE_ALREADY_USED: 409, NO_MERCHANT_OFFER: 404, PARTNER_ASSERTION_REJECTED: 409, MERCHANT_NOT_ACCEPTING_ORDERS: 409 };
 // What the gateway answers the FAILING attempt for each scripted backend answer (unchanged by the claim rule).
-const FIRST_CODE = { partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', partnerAssertionReplay: 'PARTNER_ASSERTION_REJECTED', partnerAssertionStale: 'PARTNER_ASSERTION_REJECTED', partnerAssertionSubject: 'PARTNER_ASSERTION_REJECTED', partnerAssertionNoReason: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER' };
-const firstCode = (answer) => FIRST_CODE[answer] || 'MERCHANT_UNAVAILABLE';
+const FIRST_CODE = { invalidBuyer: 'QUOTE_REQUIRED', partnerAssertionRejected: 'PARTNER_ASSERTION_REJECTED', quoteExpired: 'QUOTE_EXPIRED', quoteMismatch: 'PRICE_CHANGED', merchantNotFound: 'NO_MERCHANT_OFFER', merchantNotAccepting: 'MERCHANT_NOT_ACCEPTING_ORDERS' };
+// A kept refusal the backend DID answer, with a status below 500 (safety-kernel/src/errors.js KERNEL_ANSWERED_REFUSALS):
+// the rate-limit words for a 429, the store-refused words for every other (a 422 leaves the backend as a 400). Read off
+// the scripted answer; a 5xx, and every answer that is not a row (no response, a page in front of it), has none.
+const answeredKind = (answer) => {
+  const row = BEFORE_ANY_ORDER[answer] || NOT_PROVABLY_BEFORE[answer];
+  if (!row || FIRST_CODE[answer] !== undefined || row[0] >= 500 || row[0] === 408) return undefined;
+  return row[0] === 429 ? 'rate_limited' : 'refused';
+};
+const firstCode = (answer) => FIRST_CODE[answer] || (NO_READABLE_ANSWER.has(answer) ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'MERCHANT_UNAVAILABLE');
+// The same answer when it keeps the claim: one that would say retriable is the kernel's unknown outcome (every retry of
+// it is refused, and an order may exist behind it). A listed prologue refusal releases and is answered as raised.
+const keptCode = (answer) => (firstCode(answer) === 'MERCHANT_UNAVAILABLE' ? 'CHECKOUT_OUTCOME_UNKNOWN' : firstCode(answer));
 /** Wait until the backend holds the request; if the call answers first it never got there, so fail with its answer. */
 const atBackend = (held, running) => Promise.race([held.reached, running.then((r) => { throw new Error(`the call answered before it reached the backend: ${r.raw.slice(0, 300)}`); })]);
-function assertRefused(h, r, code, label) {
+// `orderId`: the tool doors name the caller's own order a used session was spent on (QUOTE_ALREADY_USED).
+// `answered`: an unknown outcome of an order call the backend answered with a refusal (answeredKind).
+function assertRefused(h, r, code, label, { orderId, answered } = {}) {
   assert.equal(r.ok, false, `${label}: ${r.raw.slice(0, 300)}`);
+  const curated = CURATED[code] || null;
+  const refused = code === 'CHECKOUT_OUTCOME_UNKNOWN' && answered ? KERNEL_ANSWERED_REFUSALS[answered] : null;
+  if (refused) {
+    // Never the words of a call with no readable answer, for a refusal the backend answered.
+    assert.equal(/no readable answer|may have been accepted/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+  }
   if (h.caller === 'acp_complete') {
     assert.equal(r.http, ACP_STATUS[code], `${label}: ${r.raw.slice(0, 300)}`);
-    assert.equal(r.raw, JSON.stringify({ type: 'error', code, message: MESSAGES[code] }), label);
+    // A used session whose claim holds no order this door knows of: the door's own words for an order call whose
+    // outcome is unknown (never the catalog's "already used to place an order ... get_order").
+    const heldUnknown = code === 'QUOTE_ALREADY_USED' && !orderId ? { type: 'error', code, message: ACP_HELD_UNKNOWN, detail: { reason: 'checkout_session_order_outcome_unknown' } } : null;
+    assert.equal(r.raw, JSON.stringify(heldUnknown || (curated ? { type: 'error', code, message: curated.acp_message, detail: curated.acp_detail } : { type: 'error', code, message: refused ? refused.message : MESSAGES[code] })), label);
   } else {
     assert.equal(r.http, 200, label);
-    assert.equal(r.raw, JSON.stringify({ jsonrpc: '2.0', id: 1, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: { code, message: MESSAGES[code], retriable: RETRIABLE[code] === true } }, null, 2) }] } }), label);
+    const error = curated
+      ? { code, message: curated.acp_message, retriable: false, detail: curated.acp_detail, ...(curated.recovery ? { recovery: curated.recovery } : {}) }
+      : refused ? { ...CREATE_UNKNOWN_TOOL_ERROR, message: `${refused.message} Sending this call again with the same idempotency_key returns this same answer.`, recovery: refused.recovery, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
+      : code === 'CHECKOUT_OUTCOME_UNKNOWN' ? { ...CREATE_UNKNOWN_TOOL_ERROR, detail: { ...CREATE_UNKNOWN_TOOL_ERROR.detail } }
+      : { code, message: MESSAGES[code], retriable: RETRIABLE[code] === true };
+    if (code === 'QUOTE_ALREADY_USED' && !orderId) {
+      // A used session whose claim names no order: its own words, never "read that order (get_order)".
+      error.message = UNKNOWN_ORDER_CLAIM_MESSAGE;
+      error.detail = { reason: 'checkout_session_order_outcome_unknown' };
+      error.recovery = 'do not start another checkout for this purchase without the buyer: an order may exist; read this checkout session again before anything else';
+    }
+    if (code === 'QUOTE_ALREADY_USED' && orderId) {
+      error.detail = { reason: 'session_already_ordered', order_id: orderId };
+      error.recovery = 'read the order in detail.order_id with get_order before anything else; start a new checkout only if the buyer wants another order';
+    }
+    assert.equal(r.raw, JSON.stringify({ jsonrpc: '2.0', id: 1, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ error }, null, 2) }] } }), label);
   }
   // A refusal states no price in any currency.
   const found = assertAnswerCurrency(JSON.parse(r.raw), marketCurrency(h.market), label);
@@ -201,10 +262,17 @@ test('the fixture answers in the backend\'s own error envelope: the status-deriv
     assert.equal(a.status, status === 422 ? 400 : status, name);
     assert.match(a.body.error.code, /^[A-Z][A-Z_]+$/, `${name}: every backend error carries a code`);
   }
-  // The answers that give a claim back are exactly the nine prologue refusals, each naming its code.
+  // "This seller is not taking orders", as the backend writes it: the status-derived code outside, the route's code in
+  // its message and in details.error (where the gateway reads it), the seller beside it.
+  assert.deepEqual(ANSWERS.merchantNotAccepting().body.error, { code: 'FORBIDDEN', message: 'MERCHANT_NOT_ACCEPTING_ORDERS', details: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' }, documentation_url: docs });
+  assert.equal(ANSWERS.merchantNotAccepting().status, 403);
+  // The answers that give a claim back are exactly the prologue refusals of the shared list, each naming its code
+  // (the list's own bytes are pinned in safety-kernel/test/quoteClaimRelease.test.js).
+  const listed = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '../safety-kernel/contracts/order_create_prologue_refusals.json'), 'utf8'));
+  assert.deepEqual(Object.values(BEFORE_ANY_ORDER).map(([status, detail]) => `${status} ${detail.error}`).sort(), listed.map(([status, code]) => `${status} ${code}`).sort());
   assert.deepEqual(Object.values(BEFORE_ANY_ORDER).map(([status, detail]) => `${status} ${detail.error}`).sort(), [
     '400 INVALID_BUYER_CONTEXT', '400 INVALID_QUOTE', '400 QUOTE_MERCHANT_MISMATCH', '400 QUOTE_REQUIRED_BEFORE_PURCHASE', '400 VARIANT_REQUIRED',
-    '404 QUOTE_NOT_FOUND', '409 PARTNER_ASSERTION_REJECTED', '409 PREFLIGHT_FAILED', '409 UNSUPPORTED_COMMERCE_PATH',
+    '403 MERCHANT_NOT_ACCEPTING_ORDERS', '404 QUOTE_NOT_FOUND', '409 PARTNER_ASSERTION_REJECTED', '409 PREFLIGHT_FAILED', '409 UNSUPPORTED_COMMERCE_PATH',
   ]);
 });
 
@@ -221,7 +289,7 @@ test('a refusal from the backend\'s prologue (400 INVALID_BUYER_CONTEXT): the ca
     door.orderScript.push(ANSWERS.invalidBuyer());
     const key = freshKey();
     const first = await attempt(h, key);
-    assertRefused(h, first, 'MERCHANT_UNAVAILABLE', `${label} first`);
+    assertRefused(h, first, 'QUOTE_REQUIRED', `${label} first`);
     assert.equal(ordersAsked(first).length, 1, label);
     assert.equal(door.orders.length, before, label);
 
@@ -241,7 +309,7 @@ test('a refusal from the backend\'s prologue (400 INVALID_BUYER_CONTEXT): the ca
     assert.equal(ordersAsked(third).length, 0, label);
     // Another key on the spent session: refused, nothing asked.
     const other = await attempt(h, freshKey());
-    assertRefused(h, other, 'QUOTE_ALREADY_USED', `${label} another key`);
+    assertRefused(h, other, 'QUOTE_ALREADY_USED', `${label} another key`, { orderId: second.order_id });
     assert.equal(ordersAsked(other).length, 0, label);
     assert.equal(door.orders.length, before + 1, label);
   }
@@ -272,7 +340,7 @@ test('after a released refusal the retry is judged afresh: the backend\'s view o
     const key = freshKey();
     door.orderScript.push(ANSWERS.preflightFailed(), ANSWERS.invalidBuyer(), ANSWERS.quoteMismatch());
     assertRefused(h, await attempt(h, key), 'MERCHANT_UNAVAILABLE', `${caller} first`);
-    assertRefused(h, await attempt(h, key), 'MERCHANT_UNAVAILABLE', `${caller} second`);
+    assertRefused(h, await attempt(h, key), 'QUOTE_REQUIRED', `${caller} second`);
     const third = await attempt(h, key);
     assertRefused(h, third, 'PRICE_CHANGED', `${caller} third`);
     assert.equal(ordersAsked(third).length, 1, caller);
@@ -323,11 +391,12 @@ test('a listed code releases only from the route\'s own detail (error.details.er
       door.orderScript.push(ANSWERS.raw(400, body, { landed }));
       const key = freshKey();
       const first = await attempt(h, key);
-      assertRefused(h, first, 'MERCHANT_UNAVAILABLE', `${label} first`);
+      // Kept, and as raised it would say retriable: the kernel's unknown outcome, in the store-refused words (a 400 came back).
+      assertRefused(h, first, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} first`, { answered: 'refused' });
       assert.equal(ordersAsked(first).length, 1, label);
       for (const k of [key, freshKey()]) {
         const retry = await attempt(h, k);
-        assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
+        assertRefused(h, retry, k === key ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`, { answered: 'refused' });
         assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
       }
       assert.equal(door.orders.length, before + (landed ? 1 : 0), label);
@@ -342,7 +411,8 @@ test('a listed code releases only from the route\'s own detail (error.details.er
     const before = door.orders.length;
     door.orderScript.push(ANSWERS.raw(400, body));
     const key = freshKey();
-    assertRefused(h, await attempt(h, key), 'MERCHANT_UNAVAILABLE', `${caller} ${where} first`);
+    // Named (the same proof the release rests on), and the corrected retry is a first attempt.
+    assertRefused(h, await attempt(h, key), 'QUOTE_REQUIRED', `${caller} ${where} first`);
     assertOrdered(h, await attempt(h, key), `${caller} ${where} retry`);
     assert.equal(door.orders.length, before + 1, `${caller} ${where}`);
   }
@@ -367,10 +437,12 @@ test('a refused caller assertion: eight reasons give the session back; replay, s
     door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed });
     const key = freshKey();
     const first = await attempt(h, key);
-    assertRefused(h, first, 'PARTNER_ASSERTION_REJECTED', `${label} first`);
+    // Kept: the first copy may have made the order, so never "nothing was done": the unknown outcome, in the refused words.
+    assertRefused(h, first, 'CHECKOUT_OUTCOME_UNKNOWN', `${label} first`, { answered: 'refused' });
+    assert.equal(/nothing was (?:done|written)/i.test(first.raw), false, `${label}: ${first.raw.slice(0, 300)}`);
     for (const k of [key, freshKey(), key]) {
       const retry = await attempt(h, k);
-      assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
+      assertRefused(h, retry, k === key ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`, { answered: 'refused' });
       assert.deepEqual(retry.upstream, [], `${label}: nothing is sent`);
     }
     assert.equal(door.orders.length, before + (landed ? 1 : 0), `${label}: at most the one order the first copy made, never a second`);
@@ -389,7 +461,7 @@ const UNKNOWN = [
   ['badGateway', {}], ['gatewayTimeout', {}], ['platformUnavailable', {}],
 ];
 
-test('a busy 503, a consumed quote, out of stock, every other answer not on the list, and no answer: the call fails as before, the claim is kept, and neither the same key nor another sends a second order', each(async (caller) => {
+test('a busy 503, a consumed quote, out of stock, every other answer not on the list, and no answer: the call fails (an unknown outcome when no readable answer came back), the claim is kept, and neither the same key nor another sends a second order', each(async (caller) => {
   for (const [answer, opts] of UNKNOWN) {
     const label = `${caller} ${answer}${opts.landed ? ' (the order was made)' : ''}`;
     const h = await open(caller, opts.landed ? 'SG' : 'US');
@@ -397,11 +469,12 @@ test('a busy 503, a consumed quote, out of stock, every other answer not on the 
     door.orderScript.push(ANSWERS[answer](opts));
     const key = freshKey();
     const first = await attempt(h, key);
-    assertRefused(h, first, firstCode(answer), `${label} first`);
+    assertRefused(h, first, keptCode(answer), `${label} first`, { answered: answeredKind(answer) });
     assert.equal(ordersAsked(first).length, 1, label);
     for (const k of [key, freshKey(), key]) {
       const retry = await attempt(h, k);
-      assertRefused(h, retry, 'QUOTE_ALREADY_USED', `${label} retry`);
+      // The same key after an unknown outcome is told that same outcome again; any other retry, that the session is used.
+      assertRefused(h, retry, k === key && keptCode(answer) === 'CHECKOUT_OUTCOME_UNKNOWN' ? 'CHECKOUT_OUTCOME_UNKNOWN' : 'QUOTE_ALREADY_USED', `${label} retry`, { answered: answeredKind(answer) });
       assert.equal(ordersAsked(retry).length, 0, `${label}: no second order is asked for`);
       assert.deepEqual(retry.upstream, [], `${label}: nothing at all is sent`);
     }
@@ -422,8 +495,9 @@ test('an order the backend made and the gateway refused (not the quote\'s total,
     for (const k of [key, freshKey(), key]) {
       const retry = await attempt(h, k);
       assert.equal(retry.ok, false, label);
-      // The complete lane reads the claim first; the payment link meets its own order key first.
-      assert.equal(retry.code, caller === 'mcp_payment_link' && k === key ? 'IDEMPOTENCY_CONFLICT' : 'QUOTE_ALREADY_USED', `${label}: ${retry.raw.slice(0, 200)}`);
+      // Both tool lanes read the claim first (the payment link now reads its session before the order, to answer a
+      // missing address by name), so both answer the spent session as spent.
+      assert.equal(retry.code, 'QUOTE_ALREADY_USED', `${label}: ${retry.raw.slice(0, 200)}`);
       assert.equal(ordersAsked(retry).length, 0, label);
       assertAnswerCurrency(JSON.parse(retry.raw), marketCurrency('SG'), label);
     }
@@ -446,13 +520,13 @@ test('two calls at once with the SAME key while the backend holds the first: one
   assert.equal(b.code, 'IDEMPOTENCY_CONFLICT', `${caller}: ${b.raw.slice(0, 200)}`);
   assert.equal(ordersAsked(b).length, 0, caller);
   held.release();
-  assertRefused(h, await a, 'MERCHANT_UNAVAILABLE', `${caller} first`);
+  assertRefused(h, await a, 'QUOTE_REQUIRED', `${caller} first`);
   assertOrdered(h, await attempt(h, key), `${caller} retry`);
   assert.equal(door.orders.length, before + 1, caller);
 }));
 
 test('two calls at once with DIFFERENT keys on one session: the second is refused while the first is with the backend, whatever the backend then answers', each(async (caller) => {
-  for (const [then, firstAnswer, sessionFree, madeByFirst] of [[ANSWERS.preflightFailed(), 'MERCHANT_UNAVAILABLE', true, 0], [ANSWERS.busy({ landed: true }), 'MERCHANT_UNAVAILABLE', false, 1], [ANSWERS.busy(), 'MERCHANT_UNAVAILABLE', false, 0], [ANSWERS.timeout({ landed: true }), 'MERCHANT_UNAVAILABLE', false, 1], [ANSWERS.created(), null, false, 1]]) {
+  for (const [then, firstAnswer, sessionFree, madeByFirst] of [[ANSWERS.preflightFailed(), 'MERCHANT_UNAVAILABLE', true, 0], [ANSWERS.busy({ landed: true }), 'CHECKOUT_OUTCOME_UNKNOWN', false, 1], [ANSWERS.busy(), 'CHECKOUT_OUTCOME_UNKNOWN', false, 0], [ANSWERS.timeout({ landed: true }), 'CHECKOUT_OUTCOME_UNKNOWN', false, 1], [ANSWERS.created(), null, false, 1]]) {
     const label = `${caller} then ${then.kind}${then.status ? ` ${then.status}` : ''}${then.landed ? ' (order written)' : ''}`;
     const h = await open(caller, 'GB');
     const before = door.orders.length;
@@ -472,7 +546,8 @@ test('two calls at once with DIFFERENT keys on one session: the second is refuse
     const again = await attempt(h, keyB);
     if (sessionFree) assertOrdered(h, again, `${label} second key, afterwards`);
     else {
-      assertRefused(h, again, 'QUOTE_ALREADY_USED', `${label} second key, afterwards`);
+      // Named with the order the first call made, when the gateway holds it (only an order it accepted itself).
+      assertRefused(h, again, 'QUOTE_ALREADY_USED', `${label} second key, afterwards`, { orderId: firstAnswer ? undefined : ra.order_id });
       assert.equal(ordersAsked(again).length, 0, label);
     }
     assert.equal(door.orders.length, before + (sessionFree ? 1 : madeByFirst), `${label}: never two orders`);

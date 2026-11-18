@@ -14,7 +14,7 @@
 // path deleted whatever was there, including a different owner's live claim).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { PivotaCommerceError } from './errors.js';
+import { IDEMPOTENCY_CONFLICT_ANSWERS, PivotaCommerceError, idempotencyConflict, kernelOutcomeUnknown, kernelOutcomeUnknownOf } from './errors.js';
 import { InMemoryKvStore } from './stores.js';
 
 // The claim lease MUST exceed the slowest expected op() (upstream charge + durable writes). A retry
@@ -23,6 +23,9 @@ import { InMemoryKvStore } from './stores.js';
 const CLAIM_LEASE_MS = 2 * 60 * 1000;
 // Completed/terminal records are retained so replays return the original result.
 const DONE_TTL_MS = 24 * 60 * 60 * 1000;
+// A key whose earlier attempt made an irreversible call and then failed: its words, on every door.
+export const AMBIGUOUS_PRIOR_ATTEMPT = 'ambiguous_prior_attempt';
+export const AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE = IDEMPOTENCY_CONFLICT_ANSWERS[AMBIGUOUS_PRIOR_ATTEMPT].message;
 
 function fingerprint(body) {
   return createHash('sha256').update(JSON.stringify(body)).digest('hex');
@@ -54,16 +57,25 @@ export class IdempotencyLedger {
 
     if (!claimed) {
       const existing = await this._store.get(key);
-      if (!existing) throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'race' });
+      // The key was held a moment ago (the claim above lost) and no longer is: that attempt's outcome is not known here.
+      if (!existing) throw idempotencyConflict('race', { key });
       if (existing.fp !== fp) throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key });
       if (existing.status === 'done') return { result: existing.result, replayed: true };
       // P1-2: an op that completed its side effect but failed to finalize is recorded as
       // 'ambiguous' — a retry must NOT re-execute; surface a conflict so the caller reconciles.
       if (existing.status === 'ambiguous') {
-        throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'ambiguous_prior_attempt' });
+        // An attempt that was answered with the kernel's own unknown outcome (errors.js kernelOutcomeUnknown) is
+        // answered the same way again, with the same order id: the caller learns what the first answer said, not a
+        // generic conflict.
+        const unknown = kernelOutcomeUnknownOf(kernelOutcomeUnknownRecord(existing.outcome_unknown));
+        if (unknown) throw kernelOutcomeUnknown(unknown.reason, unknown.order_id, { answered: unknown.answered });
+        // This key's earlier attempt did something irreversible and then failed, so it may have taken effect. Said in its
+        // own words, which every door surfaces; the code stays.
+        throw idempotencyConflict(AMBIGUOUS_PRIOR_ATTEMPT, { key });
       }
-      // status === 'pending' and still leased: refuse rather than double-execute.
-      throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'in_flight' });
+      // status === 'pending' and still leased: refuse rather than double-execute. The attempt holding the key has not
+      // finished, so it may yet make the order: said so, never "a different request".
+      throw idempotencyConflict('in_flight', { key });
     }
 
     // We own the key. Mark whether the op performed an irreversible side effect so the catch path
@@ -76,7 +88,7 @@ export class IdempotencyLedger {
       if (!finalized) {
         // Someone reclaimed our key. We must not double-charge; the op already ran, so this is a
         // genuine ambiguous overlap — record it (best-effort) and reject this attempt.
-        throw new PivotaCommerceError('IDEMPOTENCY_CONFLICT', { key, reason: 'lease_lost_after_op' });
+        throw idempotencyConflict('lease_lost_after_op', { key });
       }
       return { result, replayed: false };
     } catch (err) {
@@ -84,12 +96,26 @@ export class IdempotencyLedger {
       if (ctx.sideEffectDone) {
         // P1-2: the irreversible upstream side effect happened but op() then failed. Do NOT delete —
         // mark ambiguous so a retry cannot re-charge. compareAndSet keeps it owner-scoped.
-        await this._store.compareAndSet(key, 'owner', owner, { fp, status: 'ambiguous', error: String(err?.message || 'op_failed') }, { ttlMs: DONE_TTL_MS });
+        // The kernel's own unknown-outcome answer is kept beside it ({ reason, order_id, answered? }, nothing else), so a
+        // same-key retry is given that answer again.
+        const unknown = kernelOutcomeUnknownOf(err);
+        await this._store.compareAndSet(key, 'owner', owner, { fp, status: 'ambiguous', error: String(err?.message || 'op_failed'), ...(unknown ? { outcome_unknown: unknown } : {}) }, { ttlMs: DONE_TTL_MS });
         throw err;
       }
       // No irreversible side effect → safe to release OUR claim (only ours) so a real retry proceeds.
       await this._store.compareAndDelete(key, 'owner', owner);
       throw err;
     }
+  }
+}
+
+// A stored `{ reason, order_id, answered? }` read back as the answer it was made from (null for anything else), so a record that
+// was not written by this ledger can never name a reason or an order the kernel did not.
+function kernelOutcomeUnknownRecord(stored) {
+  if (!stored || typeof stored !== 'object') return null;
+  try {
+    return kernelOutcomeUnknown(stored.reason, stored.order_id, { answered: stored.answered });
+  } catch {
+    return null;
   }
 }

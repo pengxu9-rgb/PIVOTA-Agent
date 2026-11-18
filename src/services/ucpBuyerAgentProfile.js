@@ -372,8 +372,70 @@ function buildUcpBuyerAgentProfile(config = {}) {
   };
 }
 
+// THE CATALOG DRAFT PROFILE. Shopify adds Promoted Placements attribution to `lookup_catalog` / `get_product`
+// answers only on the UCP `draft` version (shopify.dev/docs/agents/catalog/promoted-placement, "Attribute product
+// lookups"). This second profile exists ONLY for those Global Catalog calls (mcp-server/src/shopifyCatalogAttribution.js),
+// served at /.well-known/ucp-agent-catalog-draft. It declares the two catalog capabilities and Shopify's catalog
+// extension and nothing else: no cart, no checkout, so no merchant can be negotiated into anything through it, and the
+// pinned profile above stays the one every store call uses. Every member is transcribed from Shopify's own draft
+// sample profile (shopify.dev/ucp/agent-profiles/draft/valid-with-capabilities.json, read 2026-11-17; the schema
+// documents measured 200 that day).
+const CATALOG_DRAFT_VERSION = 'draft';
+
+function buildUcpCatalogDraftProfile(config = {}) {
+  const version = CATALOG_DRAFT_VERSION;
+  const profileUrl = config.profileUrl ? requireHttps(config.profileUrl, 'profileUrl') : undefined;
+  const capabilityNames = [CATALOG_SEARCH_CAPABILITY, CATALOG_LOOKUP_CAPABILITY, SHOPIFY_GLOBAL_CATALOG_CAPABILITY];
+  assertNoPurchaseCompletion(capabilityNames);
+  const ucp = {
+    version,
+    services: {
+      [SHOPPING_SERVICE]: [{
+        version,
+        spec: 'https://ucp.dev/draft/specification/overview',
+        transport: 'mcp',
+        schema: 'https://ucp.dev/draft/services/shopping/mcp.openrpc.json',
+      }],
+    },
+    capabilities: {
+      [CATALOG_SEARCH_CAPABILITY]: [{
+        version,
+        spec: 'https://ucp.dev/draft/specification/catalog/search',
+        schema: 'https://ucp.dev/draft/schemas/shopping/catalog_search.json',
+      }],
+      [CATALOG_LOOKUP_CAPABILITY]: [{
+        version,
+        spec: 'https://ucp.dev/draft/specification/catalog/lookup',
+        schema: 'https://ucp.dev/draft/schemas/shopping/catalog_lookup.json',
+      }],
+      [SHOPIFY_GLOBAL_CATALOG_CAPABILITY]: [{
+        version,
+        spec: 'https://shopify.dev/docs/agents/catalog/global-catalog',
+        schema: 'https://shopify.dev/ucp/schemas/draft/shopify_catalog_global.json',
+        extends: [CATALOG_LOOKUP_CAPABILITY, CATALOG_SEARCH_CAPABILITY],
+      }],
+    },
+    payment_handlers: {},
+  };
+  if (profileUrl) ucp.profile_url = profileUrl;
+  return {
+    ucp,
+    agent: {
+      name: 'Pivota',
+      role: 'buyer_agent',
+      description: 'Pivota reads the Global Catalog to find products for shoppers. It never completes payment.',
+      homepage: 'https://pivota.cc',
+      completes_payment: false,
+      is_payment_processor: false,
+      requested_scopes: capabilityNames,
+    },
+  };
+}
+
 module.exports = {
   buildUcpBuyerAgentProfile,
+  buildUcpCatalogDraftProfile,
+  CATALOG_DRAFT_VERSION,
   assertNoPurchaseCompletion,
   resolveSigningKeys,
   toPublicJwk,

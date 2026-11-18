@@ -594,7 +594,12 @@ test('no member of a request body reaches the door\'s words: the executor is han
     await door.adapter.updateCheckoutSession(req({ id, body: shape(cart('SG', 3)) }));
     await door.adapter.getCheckoutSession(req({ id }));
     await door.adapter.completeCheckoutSession(req({ id, body: shape(completion(undefined)) }));
-    return door.handed.map(({ opId, params }) => { const { idempotency_key: _k, session_id: _s, authorization_checkout_session_id: _a, ...rest } = params; return { opId, ...rest }; });
+    // The door's own reads of what holds the session's claim (one before and one after each update's pricing) carry
+    // nothing but the session id and that word.
+    const claimReads = door.handed.filter(({ params }) => params.session_claim_only === true);
+    assert.equal(claimReads.length, 4);
+    for (const { opId, params } of claimReads) assert.deepEqual([opId, Object.keys(params).sort()], ['get_checkout_session', ['session_claim_only', 'session_id']]);
+    return door.handed.filter(({ params }) => params.session_claim_only !== true).map(({ opId, params }) => { const { idempotency_key: _k, session_id: _s, authorization_checkout_session_id: _a, ...rest } = params; return { opId, ...rest }; });
   };
   const clean = await flow(recordingDoor({ sellerCurrency: 'SGD' }), (body) => body);
   const dirty = await flow(recordingDoor({ sellerCurrency: 'SGD' }), planted);
@@ -850,7 +855,9 @@ for (const storeKind of ['memory', 'postgres']) {
     const paid = await door.record(id);
     assert.ok(paid.order_id);
     g.open();
-    refusedBy(await refused, MISMATCH, 'SG');
+    // The session is over by its claim by the time the refusal lands: it is answered as over, and nothing is marked.
+    const answer = await refused;
+    assert.deepEqual([answer.status, answer.body.code], [409, 'QUOTE_ALREADY_USED'], JSON.stringify(answer.body));
     assert.deepEqual(await door.record(id), paid, 'order id kept, no mark');
     assert.equal((await door.read(id)).body.order.id, paid.order_id);
     const cancelled = await door.cancel(id);
@@ -877,7 +884,7 @@ for (const storeKind of ['memory', 'postgres']) {
     assert.equal(door.ops('submit_payment').length, 1);
   });
 
-  test(`[${storeKind}] a completion that finishes after an update re-priced the session: the order id is written and the session's quote is the paid one`, async () => {
+  test(`[${storeKind}] an update while a completion is in its charge is refused by the claim the completion holds: the order id is written and the session's quote is the paid one`, async () => {
     const door = sessionDoor({ storeKind });
     const id = (await door.create('merch_USD', 'US')).body.id;
     const paidQuote = (await door.record(id)).quote_id;
@@ -885,8 +892,11 @@ for (const storeKind of ['memory', 'postgres']) {
     door.gates.submit_payment.push(g);
     const completing = door.complete(id, undefined); // read the record, then waits in the charge
     await g.entered;
-    assert.equal((await door.update(id, 'merch_USD', 'US', 3)).status, 200);
-    assert.notEqual((await door.record(id)).quote_id, paidQuote, 'the update landed first');
+    const priced = door.ops('preview_quote').length;
+    const refused = await door.update(id, 'merch_USD', 'US', 3);
+    assert.deepEqual([refused.status, refused.body.code], [409, 'QUOTE_ALREADY_USED'], JSON.stringify(refused.body));
+    assert.equal(door.ops('preview_quote').length, priced, 'nothing was priced');
+    assert.equal((await door.record(id)).quote_id, paidQuote, 'the session still holds the quote being paid');
     g.open();
     assert.equal((await completing).status, 200);
     const after = await door.record(id);
@@ -1081,12 +1091,9 @@ for (const storeKind of ['memory', 'postgres']) {
     assert.equal('canceled' in record, false, 'money moved: the session is completed, not cancelled');
   });
 
-  // KNOWN OPEN, pinned as it is today so that neither a fix nor a regression goes unseen.
-  // WHAT WILL CLOSE IT: a `completing` marker on the session record. The completion writes it (conditionally) before
-  // it asks the executor for anything and clears it when it fails with nothing done; an update (and a cancel) that
-  // finds it set is refused, retriable, instead of re-pricing a session whose completion is in flight. When that
-  // lands, this test must change to: the update below is refused, and there is ONE order and ONE payment.
-  test(`[${storeKind}] KNOWN OPEN (to be closed by a "completing" marker on the session record): an update while a completion is in flight, then a completion under a new key, takes two payments`, async () => {
+  // Was KNOWN OPEN (two payments on one session). Closed by the claim: once a completion holds the quote's claim, an
+  // update of the session is refused by that claim, so no second quote exists for another completion to pay.
+  test(`[${storeKind}] an update while a completion is in flight (its order exists, its charge waits), then a completion under a new key: the update is refused, one order and one payment`, async () => {
     const door = sessionDoor({ storeKind });
     const id = (await door.create('merch_USD', 'US')).body.id;
     const firstQuote = (await door.record(id)).quote_id;
@@ -1094,30 +1101,44 @@ for (const storeKind of ['memory', 'postgres']) {
     door.gates.submit_payment.push(g);
     const first = door.complete(id, undefined, 'idem-known-open-0001'); // in flight: its order exists, its charge waits
     await g.entered;
-    // The record has no order id yet, so the session is still open: the update is priced and written.
     const updated = await door.update(id, 'merch_USD', 'US', 3);
-    assert.equal(updated.status, 200, JSON.stringify(updated.body));
-    const secondQuote = (await door.record(id)).quote_id;
-    assert.notEqual(secondQuote, firstQuote);
-    // A completion under another key pays the new quote.
+    assert.deepEqual([updated.status, updated.body.code], [409, 'QUOTE_ALREADY_USED'], JSON.stringify(updated.body));
+    assert.equal((await door.record(id)).quote_id, firstQuote, 'the session still holds the first quote');
+    // A completion under another key meets the first quote's claim.
     const second = await door.complete(id, undefined, 'idem-known-open-0002');
-    assert.equal(second.status, 200, JSON.stringify(second.body));
-    assert.equal(second.body.order.amount_total, 5400);
+    assert.deepEqual([second.status, second.body.code], [409, 'QUOTE_ALREADY_USED'], JSON.stringify(second.body));
     g.open();
     const firstDone = await first;
     assert.equal(firstDone.status, 200, JSON.stringify(firstDone.body));
     assert.equal(firstDone.body.order.amount_total, 1800);
-    // TODAY: two orders and two payments on one session, both in the session's currency.
-    assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [2, 2]);
-    assert.notEqual(firstDone.body.order.id, second.body.order.id);
-    assert.deepEqual(door.verified.map((b) => b.currency), ['USD', 'USD']);
-    // The record ends on the completion that wrote last: the first one's quote and order.
+    assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [1, 1]);
     const record = await door.record(id);
     assert.equal(record.quote_id, firstQuote);
     assert.equal(record.order_id, firstDone.body.order.id);
-    // From here the session is over: nothing more is priced or paid on it.
     assert.equal((await door.update(id, 'merch_USD', 'US')).body.code, 'QUOTE_ALREADY_USED');
     assert.equal((await door.complete(id, undefined, 'idem-known-open-0003')).body.code, 'QUOTE_ALREADY_USED');
+    assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [1, 1]);
+  });
+
+  // STILL OPEN, pinned as it is so that neither a fix nor a regression goes unseen: a completion that has read the
+  // session but not yet taken the claim (it is still verifying the payment authorization) cannot be seen by an
+  // update, so the update re-prices the session, a SECOND completion pays the new quote, and then the first goes on
+  // and orders the old one. WHAT WILL CLOSE IT: a `completing` marker the completion writes on the record before it
+  // asks the executor for anything (an update and a cancel that find it are refused, retriable). When that lands,
+  // this test must change to: the update is refused, and there is one order and one payment.
+  test(`[${storeKind}] KNOWN OPEN (to be closed by a "completing" marker on the session record): an update and a second completion while a first completion is still verifying, before it holds the claim, take two orders`, async () => {
+    const door = sessionDoor({ storeKind });
+    const id = (await door.create('merch_USD', 'US')).body.id;
+    const g = gate();
+    door.gates.verify.push(g);
+    const first = door.complete(id, undefined, 'idem-known-open-0005');
+    await g.entered;
+    assert.equal((await door.update(id, 'merch_USD', 'US', 3)).status, 200);
+    const second = await door.complete(id, undefined, 'idem-known-open-0006');
+    assert.equal(second.status, 200, JSON.stringify(second.body));
+    g.open();
+    const firstDone = await first;
+    assert.equal(firstDone.status, 200, JSON.stringify(firstDone.body));
     assert.deepEqual([door.ops('create_order').length, door.ops('submit_payment').length], [2, 2]);
   });
 }
@@ -1160,37 +1181,30 @@ test('cancelling again is the same answer: from the record when it says so, and 
   assert.deepEqual(asked, ['cancel_checkout_session'], 'asked once');
 });
 
-test('only the ACP door\'s cancellation claims the session: the same member on another door\'s cancel changes nothing, and that session is completed as before', async () => {
+// With CHECKOUT_CANCEL_UPSTREAM_ENABLED off, every door's cancellation of a session with no order takes its claim: the
+// ACP REST door because it says so on the call (`cancel_claims_session`), every other door because "canceled" is said
+// only when it is true. Either way a completion of that session is then refused and nothing is charged.
+test('every door\'s cancellation of a session with no order claims the session, with or without the ACP member, and that session is never completed', async () => {
   const QUOTE_BODY = { merchant_id: 'merch_USD', items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], customer_email: 'buyer@example.test' };
-  for (const [ctx, claims] of [
+  for (const [ctx, member] of [
     [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' }, true],
+    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' }, false],
+    [{ user_ref: 'u1', acp_session_id: 's1' }, true],
+    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'mcp' }, true],
     [{ user_ref: 'u1', acp_session_id: 's1' }, false],
-    [{ user_ref: 'u1', acp_session_id: 's1', protocol: 'mcp' }, false],
   ]) {
+    const label = `${ctx.protocol ?? 'none'} ${member}`;
     const door = sessionDoor();
     const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}), verifyPaymentAuthorization: async (_a, bound) => ({ ok: true, amount: bound.amount, currency: bound.currency, user_ref: bound.user_ref }) });
     const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0001', quote: QUOTE_BODY }, ctx);
-    const cancelled = await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0002', session_id: session.session_id, cancel_claims_session: true }, ctx);
-    assert.equal(cancelled.status, 'canceled');
-    assert.equal(await door.kernel.isQuoteClaimed(session.session_id), claims);
-    const completing = executor.execute('complete_checkout_session', { idempotency_key: 'idem-claim-0003', session_id: session.session_id, payment_authorization: { token: 'tok_1' } }, ctx);
-    if (claims) {
-      const err = await refusal(completing);
-      assert.equal(err.code, 'QUOTE_ALREADY_USED');
-      assert.equal(err.detail.claim, 'canceled');
-      assert.deepEqual(door.ops('submit_payment'), []);
-    } else {
-      await completing; // as before this rule, on a door that does not state it
-      assert.equal(door.ops('submit_payment').length, 1);
-    }
+    const cancelled = await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0002', session_id: session.session_id, ...(member ? { cancel_claims_session: true } : {}) }, ctx);
+    assert.equal(cancelled.status, 'canceled', label);
+    assert.equal(await door.kernel.isQuoteClaimed(session.session_id), true, label);
+    const err = await refusal(executor.execute('complete_checkout_session', { idempotency_key: 'idem-claim-0003', session_id: session.session_id, payment_authorization: { token: 'tok_1' } }, ctx));
+    assert.equal(err && err.code, 'QUOTE_ALREADY_USED', label);
+    assert.equal(err.detail.claim, 'canceled', label);
+    assert.deepEqual(door.ops('submit_payment'), [], label);
   }
-  // Without the statement, the ACP door's own ctx claims nothing either.
-  const door = sessionDoor();
-  const executor = createCanonicalExecutor({ kernel: door.kernel, upstream: async () => ({}) });
-  const ctx = { user_ref: 'u1', acp_session_id: 's1', protocol: 'acp' };
-  const session = await executor.execute('create_checkout_session', { idempotency_key: 'idem-claim-0004', quote: QUOTE_BODY }, ctx);
-  await executor.execute('cancel_checkout_session', { idempotency_key: 'idem-claim-0005', session_id: session.session_id }, ctx);
-  assert.equal(await door.kernel.isQuoteClaimed(session.session_id), false);
 });
 
 // ---- a cancellation of a session that is re-priced while it runs ------------------------------------------------------
@@ -1264,11 +1278,9 @@ for (const storeKind of ['memory', 'postgres']) {
     await assertCancelledSession(door, id, 'idem-race-cancel-0007');
   });
 
-  // KNOWN OPEN, the same defect as the two-payments case above, reaching further. Pinned as it is today.
-  // WHAT WILL CLOSE IT: the same `completing` marker on the session record: while a completion is in flight, an
-  // update (and a cancel) is refused, retriable. When that lands, this test must change to: the update below is
-  // refused, the cancel is refused while the completion is in flight, and the session is paid once and reads completed.
-  test(`[${storeKind}] KNOWN OPEN (to be closed by a "completing" marker on the session record): an update while a completion is in flight, then a cancel that answers canceled, and the first quote is still paid`, async () => {
+  // Was KNOWN OPEN (a cancel answered canceled while the first quote was paid). Closed by the claim: the update is
+  // refused, so the cancel meets the first quote's claim, held by the completion's order, and is refused too.
+  test(`[${storeKind}] an update while a completion is in flight, then a cancel: both are refused, and the session is paid once and reads completed`, async () => {
     const door = sessionDoor({ storeKind });
     const id = (await door.create('merch_USD', 'US')).body.id;
     const firstQuote = (await door.record(id)).quote_id;
@@ -1277,15 +1289,11 @@ for (const storeKind of ['memory', 'postgres']) {
     const key = 'idem-known-open-0004';
     const first = door.complete(id, undefined, key); // in flight on the first quote: its order exists, its charge waits
     await g.entered;
-    assert.equal((await door.update(id, 'merch_USD', 'US', 3)).status, 200); // the session now holds a second, unclaimed quote
-    const secondQuote = (await door.record(id)).quote_id;
-    // TODAY: the cancel claims the second quote and answers `canceled`...
+    assert.deepEqual((await door.update(id, 'merch_USD', 'US', 3)).body.code, 'QUOTE_ALREADY_USED');
+    assert.equal((await door.record(id)).quote_id, firstQuote);
     const cancelled = await door.cancel(id);
-    assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
-    assert.deepEqual(await door.kernel._quoteClaims.get(secondQuote), { canceled: true });
-    assert.equal((await door.record(id)).canceled, true);
-    assert.deepEqual((await door.read(id)).body, { id, object: 'checkout_session', status: 'canceled' });
-    // ...and the completion that was in flight on the FIRST quote is paid.
+    assert.equal(cancelled.status, 409, JSON.stringify(cancelled.body));
+    assert.equal('canceled' in (await door.record(id)), false);
     g.open();
     const paid = await first;
     assert.equal(paid.status, 200, JSON.stringify(paid.body));
@@ -1302,7 +1310,7 @@ for (const storeKind of ['memory', 'postgres']) {
   });
 }
 
-test('cancelling a session whose order was not paid (the charge failed): the order is cancelled, the cancellation takes no claim of its own, and the session is not paid afterwards', async () => {
+test('cancelling a session whose order was not paid (the charge failed), with the upstream cancel off: refused by name, the order, the claim and the record stay as they were, and the session is not paid afterwards', async () => {
   const door = sessionDoor();
   const id = (await door.create('merch_USD', 'US')).body.id;
   door.payment.status = 'failed';
@@ -1314,19 +1322,24 @@ test('cancelling a session whose order was not paid (the charge failed): the ord
   const claimBefore = await door.kernel._quoteClaims.get(record.quote_id);
   assert.ok(claimBefore && claimBefore.canceled !== true, 'the quote\'s claim is the order\'s');
 
-  const cancelled = await door.cancel(id);
-  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
-  assert.equal((await door.kernel._orderStore.get(record.order_id)).status, 'canceled', 'the ORDER was cancelled');
+  // No cancellation reaches the store from here, so the order is never said to be canceled.
+  const orderBefore = await door.kernel._orderStore.get(record.order_id);
+  const refused = await door.cancel(id);
+  assert.deepEqual([refused.status, refused.body.code], [409, 'OPERATION_NOT_ALLOWED'], JSON.stringify(refused.body));
+  assert.deepEqual(await door.kernel._orderStore.get(record.order_id), orderBefore, 'the order is as it was');
   assert.deepEqual(await door.kernel._quoteClaims.get(record.quote_id), claimBefore, 'the claim is still the order\'s: the cancel took none');
-  assert.deepEqual(unrevised(await door.record(id)), { ...unrevised(record), canceled: true });
-  assert.deepEqual((await door.read(id)).body, { id, object: 'checkout_session', status: 'canceled' });
+  assert.deepEqual(unrevised(await door.record(id)), unrevised(record), 'the record is not marked canceled');
+  const read = (await door.read(id)).body;
+  assert.deepEqual([read.status, read.order], ['checkout.completed', { id: record.order_id, status: orderBefore.status }]);
   door.payment.status = 'succeeded';
   const charges = door.ops('submit_payment').length;
-  for (const k of [key, 'idem-unpaid-cancel-0002']) {
-    const again = await door.complete(id, undefined, k);
-    assert.equal(again.status, 409, JSON.stringify(again.body));
-    assert.equal(again.body.code, 'ORDER_CANCELED');
-  }
+  const orders = door.ops('create_order').length;
+  // The payer's key replays its failed charge; any other key is refused. Neither charges again.
+  const replay = await door.complete(id, undefined, key);
+  assert.deepEqual([replay.status, replay.body.status], [failed.status, failed.body.status], JSON.stringify(replay.body));
+  const other = await door.complete(id, undefined, 'idem-unpaid-cancel-0002');
+  assert.notEqual(other.status, 200, JSON.stringify(other.body));
   assert.equal(door.ops('submit_payment').length, charges, 'nothing more was charged');
-  assert.equal((await door.cancel(id)).status, 200);
+  assert.equal(door.ops('create_order').length, orders, 'no second order');
+  assert.equal((await door.cancel(id)).status, 409);
 });

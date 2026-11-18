@@ -53,6 +53,7 @@ import shopifyVariantResolver from "../../src/services/shopifyVariantResolver.js
 import storefrontCartReferralModule from "../../src/services/storefrontCartReferral.js";
 import { judgeSellerUrl, pivotaHopDestination, SELF_HOST_RE } from "./ucpExpectedSeller.js";
 import { encodeUcpVariantItemId, findRealVariant, realVariantsOf } from "./ucpVariantIds.js";
+import { ATTRIBUTION_BUDGET_MS, defaultCatalogAttribution, modeForStore } from "./shopifyCatalogAttribution.js";
 
 export const MERCHANT_PRICING_FLAG = "AGENT_CHECKOUT_UCP_MERCHANT_PRICING_ENABLED";
 export const MERCHANT_PRICING_BUDGET_MS = 5000; // discovery (usually cached) + one cart call
@@ -342,50 +343,53 @@ function sellerMessageCodes(payload, { discountCodesOn = false } = {}) {
  * @param {object} payload the unwrapped cart
  * @param {{product_id:string, quantity:number, gid:string}[]} wanted
  * @param {string} sellerHost
+ * @param {{why?: string}} [opts.refusal] filled with WHY a cart was refused (not_a_cart, seller_errors, currency,
+ *   continue_url, lines, money, cart_id); the bare retry after a catalog-tracked send keys on it.
  */
-export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn = false } = {}) {
-  if (!isPlainObject(payload)) return null;
+export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn = false, refusal } = {}) {
+  const no = (why) => { if (isPlainObject(refusal)) refusal.why = why; return null; };
+  if (!isPlainObject(payload)) return no("not_a_cart");
   // A cart the seller itself flags with an ERROR message is not a price to show (out of stock is handled by the
   // caller, from the same messages, before this is reached). With codes on, a `discount_code_*` error is about the
   // CODE (the spec sends rejections as warnings, a merchant may send them as errors): the code is reported not
   // applied, and the cart's own totals still have to add up below before any price is shown.
   const errors = sellerErrorCodes(payload).filter((code) => !(discountCodesOn && DISCOUNT_MESSAGE_RE.test(code)));
-  if (errors.length) return null;
+  if (errors.length) return no("seller_errors");
   const currency = str(own(payload, "currency"));
-  if (!currency || !/^[A-Z]{3}$/.test(currency)) return null;
+  if (!currency || !/^[A-Z]{3}$/.test(currency)) return no("currency");
   // The market's currency, as the catalog states it for these rows: a seller answering in another currency (a
   // geo-defaulted storefront, a market the request did not name) is not the price this buyer was shown.
-  if (expectedCurrency && currency !== expectedCurrency) return null;
+  if (expectedCurrency && currency !== expectedCurrency) return no("currency");
   const continueUrl = str(own(payload, "continue_url")) || str(own(payload, "checkout_url"));
   // On the seller's host (or a subdomain), OR exactly on the host of the UCP door that answered. Measured on
   // judydoll.com 2026-10-09: its /.well-known/ucp names `judydoll-joygroup.myshopify.com/api/ucp/mcp`, and the cart's
   // continue_url is on that myshopify host — Shopify stores answer from their myshopify domain, so a seller-host-only
   // rule discarded every such cart. The door host is vouched for by the seller's OWN profile (discovery refuses
   // redirects), so it is the seller too; the same userinfo / embedded-URL refusals apply.
-  if (!continueUrl || !(onSellerHost(continueUrl, sellerHost) || onDoorHost(continueUrl, doorHost))) return null;
+  if (!continueUrl || !(onSellerHost(continueUrl, sellerHost) || onDoorHost(continueUrl, doorHost))) return no("continue_url");
   const lines = Array.isArray(own(payload, "line_items")) ? own(payload, "line_items") : null;
-  if (!lines || lines.length !== wanted.length) return null;
+  if (!lines || lines.length !== wanted.length) return no("lines");
 
   const byGid = new Map();
   for (const line of lines) {
-    if (!isPlainObject(line)) return null;
+    if (!isPlainObject(line)) return no("lines");
     const item = isPlainObject(line.item) ? line.item : {};
     const gid = toVariantGid(typeof item.id === "string" ? item.id : String(item.id ?? ""));
-    if (!gid || byGid.has(gid)) return null;
+    if (!gid || byGid.has(gid)) return no("lines");
     byGid.set(gid, line);
   }
   const lineItems = [];
   let sum = 0;
   for (const [idx, w] of wanted.entries()) {
     const line = byGid.get(w.gid);
-    if (!line || line.quantity !== w.quantity) return null;
+    if (!line || line.quantity !== w.quantity) return no("lines");
     const item = isPlainObject(line.item) ? line.item : {};
     const unit = minor(item.price);
-    if (unit === null) return null;
+    if (unit === null) return no("money");
     const lineId = w.variant_id ? encodeUcpVariantItemId(w.product_id, w.variant_id) : w.product_id;
     const lineSubtotal = singleTotal(line.totals, "subtotal") ?? unit * w.quantity;
     const lineTotal = singleTotal(line.totals, "total") ?? lineSubtotal;
-    if (!Number.isSafeInteger(lineSubtotal) || !Number.isSafeInteger(lineTotal)) return null;
+    if (!Number.isSafeInteger(lineSubtotal) || !Number.isSafeInteger(lineTotal)) return no("money");
     sum += lineSubtotal;
     lineItems.push({
       id: `li_${idx + 1}`,
@@ -398,7 +402,7 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, 
   const subtotal = singleTotal(totalsRaw, "subtotal");
   const total = singleTotal(totalsRaw, "total");
   // The seller's own subtotal must be the sum of its own lines: a cart that disagrees with itself has no price.
-  if (subtotal === null || total === null || !Number.isSafeInteger(sum) || subtotal !== sum) return null;
+  if (subtotal === null || total === null || !Number.isSafeInteger(sum) || subtotal !== sum) return no("money");
   const totals = [{ type: "subtotal", amount: subtotal, display_text: "Subtotal (priced by the seller's storefront)" }];
   let detailed = false;
   let components = 0;
@@ -409,12 +413,12 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, 
     const hits = Array.isArray(totalsRaw) ? totalsRaw.filter((t) => isPlainObject(t) && String(t.type || "").trim().toLowerCase() === type) : [];
     if (hits.length === 0) continue;
     const amount = hits.length === 1 ? hits[0].amount : undefined;
-    if (!Number.isSafeInteger(amount) || (negative ? amount >= 0 : amount < 0)) return null;
+    if (!Number.isSafeInteger(amount) || (negative ? amount >= 0 : amount < 0)) return no("money");
     components += amount;
     totals.push({ type, amount, display_text: `${label} (priced by the seller's storefront)` });
     detailed = true;
   }
-  if (total !== subtotal + components) return null;
+  if (total !== subtotal + components) return no("money");
   totals.push({
     type: "total",
     amount: total,
@@ -423,7 +427,7 @@ export function readSellerCart(payload, wanted, sellerHost, { expectedCurrency, 
   // No cart id = no way to re-read THIS cart, so every later poll would answer with the catalog price: fall back
   // now rather than answer one way on create and another on get.
   const cartId = str(own(payload, "id")) || str(own(payload, "cart_id"));
-  if (!isCarriableCartId(cartId)) return null;
+  if (!isCarriableCartId(cartId)) return no("cart_id");
   return {
     currency,
     continueUrl,
@@ -723,6 +727,13 @@ async function mintCartReferral({ mintReferral, budgetMs, sellerHost, log, skip 
   return { clickId, pairs };
 }
 
+// Counts, a mode, a reason and a latency only: never a variant id, a click id or a token.
+function emitAttribution(log, detail) {
+  if (log && typeof log.info === "function") {
+    try { log.info({ event: "ucp_shopify_catalog_attribution", ...detail }); } catch { /* never throw the door */ }
+  }
+}
+
 function emitReferral(log, level, detail) {
   if (log && typeof log[level] === "function") {
     try { log[level]({ event: "ucp_storefront_cart_referral", ...detail }); } catch { /* never throw the door */ }
@@ -822,7 +833,7 @@ function emit(log, level, detail) {
  *   currency it returns is put in `storeAnswer.currency` with `storeAnswer.remembered = true`, and nothing is asked
  *   of the seller or of the referral.
  */
-export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip, recallStoreCurrency }) {
+async function priceOnMerchantDoorOnce({ items, rows, sellerHost, discoveryHost, catalogLink, expectedSeller, market, marketCurrency, rowsInMarketCurrency, storeAnswer, cartId, discountCode, env = process.env, merchantDoor, doorFactory, budgetMs = MERCHANT_PRICING_BUDGET_MS, log, signals, mintReferral, referralPairs, referralSkip, recallStoreCurrency, catalogAttribution, catalogTracked, attempt = {} }) {
   if (!merchantPricingEnabled(env)) return null;
   if (!sellerHost) return null;
   const discountCodesOn = sellerDiscountCodesFlagOn(env);
@@ -884,6 +895,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   // The budget covers the catalog check too (it is part of this door's work), so the clock starts before it.
   const startedAt = Date.now();
   const left = () => budgetMs - (Date.now() - startedAt);
+  attempt.left = left;
   // A DERIVED sole-variant id is checked against the catalog BEFORE any seller is contacted (refuseDerivedSoleVariant),
   // inside the budget: a lookup that does not answer in time is a refusal (fail closed), like any other.
   for (const row of derived) {
@@ -911,6 +923,23 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     }
   }
 
+  // SHOPIFY CATALOG ATTRIBUTION (SHOPIFY_CATALOG_ATTRIBUTION, shopifyCatalogAttribution.js). Create only, US buyers
+  // only. The lookup starts NOW, beside discovery and the referral, on its own hard budget, and never delays the cart
+  // past it. Its answer is used only in `enforce` for this store; in `shadow` it is counted and the cart is today's.
+  // A market the buyer did not name (assumed US, unnamed) is not looked up, exactly as no referral is minted for it.
+  const attributionMode = cartId === undefined && !referralSkip && !attempt.bareRetry ? modeForStore(env, sellerHost) : "off";
+  const attributionStartedAt = Date.now();
+  const attributionP = attributionMode === "off"
+    ? null
+    : Promise.resolve()
+      .then(() => (catalogAttribution || defaultCatalogAttribution()).lookupTracked(wanted.map((w) => w.gid), {
+        market, sellerHost, budgetMs: Math.min(ATTRIBUTION_BUDGET_MS, Math.max(0, left() - Math.min(MERCHANT_CALL_TIMEOUT_MS, budgetMs))),
+      }))
+      .catch(() => ({ tracked: new Map(), reason: "failed:error" }));
+  attempt.attributionP = attributionP;
+  attempt.attributionMode = attributionMode;
+  attempt.attributionStartedAt = attributionStartedAt;
+
   let endpoint;
   let acceptsDiscountCodes = false;
   try {
@@ -927,20 +956,65 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   if (left() <= 0) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
   if (codeToSend !== null && !acceptsDiscountCodes) { codeToSend = null; notSentReason = "not_sent_seller_does_not_advertise"; }
 
-  // THE REFERRAL (CART_REFERRAL_FLAG). Create: minted now, only when the catalog link carries no tracking member, in
-  // what the budget holds above the cart call's own share. Re-read: the members the create minted, from the id.
+  // THE REFERRAL (CART_REFERRAL_FLAG). Create: minted only when the catalog link carries no tracking member, in what
+  // the budget holds above the cart call's own share, STARTED here (where it always was) and awaited below: in enforce
+  // it runs beside the lookup, so the lookup never eats the mint's budget. A bare retry after a tracked send reuses
+  // the click the tracked attempt minted (it was never put on a link). Re-read: the members the create minted.
   const referralOn = cartReferralEnabled(env);
   const linkTracking = catalogLink ? trackingPairsOf(catalogLink) : null;
-  let referral = null;
+  let referralP = null;
   if (referralOn && cartId === undefined && !(linkTracking && linkTracking.length)) {
-    const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
-    referral = await mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log, skip: referralSkip });
-    if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
+    if (attempt.bareRetry) {
+      referralP = Promise.resolve(attempt.reuseReferral || null);
+    } else {
+      const cartCallShare = Math.min(MERCHANT_CALL_TIMEOUT_MS, Math.floor(budgetMs * (MERCHANT_CALL_TIMEOUT_MS / MERCHANT_PRICING_BUDGET_MS)));
+      referralP = mintCartReferral({ mintReferral, budgetMs: left() - cartCallShare, sellerHost, log, skip: referralSkip });
+    }
+  }
+
+  // A line whose tracked id is sent carries Shopify's catalog attribution. "One cart or checkout carries one catalog
+  // attribution", and attribution sent during the conversion REPLACES it (Promoted Placements docs), so with any
+  // tracked line this cart carries none of ours: no cart.attribution, no utm/pvt members added to the cart URL below,
+  // and the click minted above is NOT put on the cart, its link or its hand-off record (it is kept for a bare retry;
+  // on a priced tracked cart it stays an unused click row, logged `referral_unused`). The tracked id travels as
+  // `send_id`, used ONLY in the create_cart body: `gid` stays bare for matching the seller's lines (readSellerCart keys
+  // on the bare gid), for signals and for every log.
+  let sendTracked = false;
+  const reportAttribution = (settled) => {
+    attempt.reported = true;
+    const tracked = settled && settled.tracked instanceof Map ? settled.tracked : new Map();
+    emitAttribution(log, {
+      mode: attributionMode, seller_host: sellerHost, lines: wanted.length, tracked: tracked.size,
+      sent: sendTracked, reason: settled ? settled.reason || null : "failed:error", latency_ms: Date.now() - attributionStartedAt,
+    });
+  };
+  if (attributionP && attributionMode === "shadow") {
+    // Shadow never makes the cart wait: the lookup settles on its own and is counted once, here.
+    attempt.reportScheduled = true;
+    attributionP.then(reportAttribution, () => {});
+  } else if (attributionP) {
+    const settled = await attributionP;
+    const tracked = settled && settled.tracked instanceof Map ? settled.tracked : new Map();
+    for (const w of wanted) {
+      const id = tracked.get(w.gid);
+      if (id) { w.send_id = id; sendTracked = true; }
+    }
+    attempt.sentTracked = sendTracked;
+    reportAttribution(settled);
+  }
+
+  let referral = null;
+  if (referralP) {
+    referral = await referralP;
+    if (sendTracked) {
+      attempt.mintedReferral = referral;
+      referral = null;
+    } else if (!referral && REFERRAL_MISS_POLICY === REFERRAL_MISS_POLICIES.fallbackToProductPage) return null;
   } else if (referralOn && cartId !== undefined && !(linkTracking && linkTracking.length)) {
     const again = trackingPairsFrom(referralPairs);
     if (again) referral = { clickId: null, pairs: again };
   }
-  const cartAttribution = cartId === undefined && cartAttributionEnabled(env)
+  const cartAttribution = cartId === undefined && cartAttributionEnabled(env) && !sendTracked
     ? (cartAttributionOf(catalogLink) || (referral ? Object.fromEntries(referral.pairs) : null))
     : null;
   let result;
@@ -948,7 +1022,7 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     const call = cartId !== undefined
       ? d.getCart(endpoint, cartId)
       : d.createCart(endpoint, {
-        lineItems: wanted.map((w) => ({ item: { id: w.gid }, quantity: w.quantity })),
+        lineItems: wanted.map((w) => ({ item: { id: w.send_id || w.gid }, quantity: w.quantity })),
         ...(market ? { context: { address_country: market } } : {}),
         ...(codeToSend !== null ? { discountCodes: [codeToSend] } : {}),
         ...(cartAttribution ? { cartAttribution } : {}),
@@ -956,9 +1030,11 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     result = await withBudget(call, left());
   } catch (err) {
     emit(log, "warn", { outcome: "fallback", reason: classifyUcpFailure({ thrown: err, phase: "create_cart" }), seller_host: sellerHost });
+    // Not retried: a throw or a timeout is no answer about the cart's lines, and the store may have built it anyway.
+    attempt.answer = "threw";
     return null;
   }
-  if (!result || result.timedOut) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); return null; }
+  if (!result || result.timedOut) { emit(log, "info", { outcome: "fallback", reason: FAILURE_REASON.TIMEOUT, seller_host: sellerHost }); attempt.answer = "timeout"; return null; }
   if (!result.ok || result.error) {
     const errorText = result.error && (result.error.message || result.error.code);
     const reason = classifyUcpFailure({ status: result.status, errorMessage: errorText, phase: "create_cart" });
@@ -967,6 +1043,13 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     // out of stock"). Only a STRUCTURED tool answer (HTTP 2xx carrying a JSON-RPC or MCP tool error) with an explicit
     // stock statement refuses; everything else falls back.
     const structured = result.ok === true && Number(result.status) >= 200 && Number(result.status) < 300;
+    // THE RETRY ALLOWLIST (a bare retry follows only a catalog-tracked send): the store refusing the cart's VARIANTS
+    // (a structured variant_invalid tool answer) or failing on them (HTTP 500). Never auth (401/403), a missing
+    // endpoint (404), a conflict (409), any other 4xx, a rate limit (429: no immediate retry), or a gateway 5xx
+    // (502/503/504: the store is down for a bare cart too).
+    if (structured && reason === FAILURE_REASON.VARIANT_INVALID) { attempt.retryable = true; attempt.answer = "variant_invalid"; }
+    else if (!structured && Number(result.status) === 500) { attempt.retryable = true; attempt.answer = "http_500"; }
+    else attempt.answer = structured ? "tool_error" : `http_${Number.isSafeInteger(Number(result.status)) ? Number(result.status) : "error"}`;
     const soldOut = structured && reason === FAILURE_REASON.OUT_OF_STOCK && SELLER_OUT_OF_STOCK_RE.test(String(errorText ?? ""));
     emit(log, "info", { outcome: soldOut ? "refused" : "fallback", reason, seller_host: sellerHost });
     if (soldOut) throw outOfStockRefusal(wanted.map((w) => w.product_id), sellerHost);
@@ -974,7 +1057,11 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
     // error (the shared classifier reads free text, and an HTML "Page not found" once classified as variant_invalid).
     // Not proof the PRODUCT is gone, so it is reported, never acted on here; a cart-level error names no line, so
     // every line goes back. A re-read (`get_cart`) is not a claim about a variant.
-    if (structured && reason === FAILURE_REASON.VARIANT_INVALID && cartId === undefined && Array.isArray(signals)) {
+    if (sendTracked && structured && reason === FAILURE_REASON.VARIANT_INVALID) {
+      // The store refused the cart we sent with catalog-tracked ids. That says nothing yet about the variant itself,
+      // so no variant_invalid signal is raised on it; the pilot reads this line instead.
+      emitAttribution(log, { mode: attributionMode, seller_host: sellerHost, lines: wanted.length, outcome: "sent_rejected" });
+    } else if (structured && reason === FAILURE_REASON.VARIANT_INVALID && cartId === undefined && Array.isArray(signals)) {
       signals.push({
         reason: "variant_invalid",
         lines: wanted.map((w) => ({ product_id: w.product_id, gid: w.gid, chosen: Boolean(w.variant_id) })),
@@ -990,7 +1077,8 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   }
   let doorHost = null;
   try { const ep = new URL(endpoint); if (ep.protocol === "https:") doorHost = ep.hostname.toLowerCase(); } catch { doorHost = null; }
-  const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn });
+  const refusal = {};
+  const read = readSellerCart(payload, wanted, sellerHost, { expectedCurrency, doorHost, discountCodesOn, refusal });
   if (!read) {
     // Under the market rule, a seller that answered in ANOTHER currency than the market's is named as that: its
     // price is not shown (the caller answers without it). No buyer data, no cart id.
@@ -1001,9 +1089,15 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
         expected_currency: expectedCurrency, row_currency: rowCurrency, store_currency: storeCurrency, seller_host: sellerHost,
       });
       if (isPlainObject(storeAnswer)) storeAnswer.currency = storeCurrency;
+      attempt.answer = "store_currency";
       return null;
     }
     emit(log, "info", { outcome: "fallback", reason: "cart_mismatch", seller_host: sellerHost });
+    // Retried only when the store answered about the cart's LINES (a line missing, doubled or at another quantity, or
+    // the seller's own error messages on the cart). A link off the seller or door host, another currency, money that
+    // does not add up, or no cart id is about the store, and a bare cart would get the same.
+    attempt.answer = refusal.why || "cart_mismatch";
+    if (refusal.why === "lines" || refusal.why === "seller_errors") attempt.retryable = true;
     return null;
   }
   if (discountCodesOn) {
@@ -1025,18 +1119,92 @@ export async function priceOnMerchantDoor({ items, rows, sellerHost, discoveryHo
   const onDoor = Boolean(onDoorHost(read.continueUrl, doorHost));
   if (expectedSeller !== undefined && !onDoor && !judgeSellerUrl(expectedSeller, read.continueUrl).ok) {
     emit(log, "info", { outcome: "fallback", reason: "continue_url_not_expected_seller", seller_host: sellerHost });
+    attempt.answer = "not_expected_seller";
     return null;
   }
-  if (catalogLink) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
+  // A catalog-tracked cart (sent tracked now, or re-read from an id that says it was: `catalogTracked`) never gets our
+  // members on its link: on create, and on every re-read of it.
+  const clean = sendTracked || (cartId !== undefined && catalogTracked === true);
+  if (catalogLink && !clean) read.continueUrl = carryAttribution(read.continueUrl, catalogLink);
   if (referral) {
-    read.continueUrl = carryTrackingPairs(read.continueUrl, referral.pairs);
+    if (!clean) read.continueUrl = carryTrackingPairs(read.continueUrl, referral.pairs);
     if (cartId === undefined) read.referral = referral;
   }
+  if (sendTracked) read.catalogTracked = true;
   if (cartId !== undefined && read.cartId !== cartId) { emit(log, "info", { outcome: "fallback", reason: "cart_id_mismatch", seller_host: sellerHost }); return null; }
   emit(log, "info", { outcome: "priced", seller_host: sellerHost, lines: wanted.length, source: sources.sort().join(",") });
   return read;
 }
 
+
+// The least time a bare retry is attempted with: discovery is cached by then, so it is one cart call.
+export const BARE_RETRY_MIN_MS = 500;
+
+/**
+ * Price an escalation cart on the seller's own UCP door (priceOnMerchantDoorOnce), with ONE bare retry after a
+ * catalog-tracked send the store refused on its lines (the allowlist in priceOnMerchantDoorOnce: a structured
+ * variant_invalid, an HTTP 500, lines that do not match, the seller's error messages on the cart). The retry builds
+ * the store cart today's way (bare ids, our own attribution, the click the tracked attempt minted and never used),
+ * inside what is left of the same budget. The store has then built the tracked cart too; it is abandoned there (no
+ * order exists, and the buyer only ever gets the bare one).
+ *
+ * Each tracked send ends in ONE outcome line of `ucp_shopify_catalog_attribution`: `sent_priced` (with
+ * `referral_unused` when a minted click went unused), `sent_fallback` (with `retried`, the store's `answer`, and the
+ * retry's result), or `sent_threw` (the seller's out-of-stock refusal, rethrown as before). A structured refusal of
+ * the tracked ids is also logged `sent_rejected` just before its outcome line. A lookup the door never got to use is
+ * logged `unused`.
+ */
+export async function priceOnMerchantDoor(args) {
+  const attempt = {};
+  let out;
+  try {
+    out = await priceOnMerchantDoorOnce({ ...args, attempt });
+  } catch (err) {
+    if (attempt.sentTracked) emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_threw" });
+    throw err;
+  }
+  if (attempt.attributionP && !attempt.reported && !attempt.reportScheduled) {
+    // An early fallback (no door, a timeout, a currency refusal) before the lookup was read: counted, never waited for.
+    attempt.attributionP.then((settled) => emitAttribution(args.log, {
+      mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "unused",
+      tracked: settled && settled.tracked instanceof Map ? settled.tracked.size : 0,
+      reason: settled ? settled.reason || null : "failed:error", latency_ms: Date.now() - attempt.attributionStartedAt,
+    }), () => {});
+  }
+  if (!attempt.sentTracked) return out;
+  if (out !== null) {
+    emitAttribution(args.log, {
+      mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_priced",
+      ...(attempt.mintedReferral ? { referral_unused: true } : {}),
+    });
+    return out;
+  }
+  const remaining = typeof attempt.left === "function" ? attempt.left() : 0;
+  if (!attempt.retryable || !(remaining >= BARE_RETRY_MIN_MS)) {
+    emitAttribution(args.log, {
+      mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: false,
+      why: !attempt.retryable ? "not_retryable" : "no_budget", answer: attempt.answer || null,
+    });
+    return null;
+  }
+  let retried;
+  try {
+    // The caller's currency memo was already read once for this cart: not again (a concurrent write between the two
+    // attempts would otherwise be reported as this store's answer).
+    retried = await priceOnMerchantDoorOnce({
+      ...args, budgetMs: remaining, recallStoreCurrency: undefined,
+      attempt: { bareRetry: true, reuseReferral: attempt.mintedReferral || null },
+    });
+  } catch (err) {
+    emitAttribution(args.log, { mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: true, retry: "threw" });
+    throw err;
+  }
+  emitAttribution(args.log, {
+    mode: attempt.attributionMode, seller_host: args.sellerHost, outcome: "sent_fallback", retried: true,
+    answer: attempt.answer || null, retry: retried ? "priced" : "fallback",
+  });
+  return retried;
+}
 
 // ---- verify ONE code on a seller's door (the coupon verifier's route) -------------------------------------------
 //

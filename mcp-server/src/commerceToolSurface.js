@@ -17,7 +17,7 @@
 
 import externalSeedLane from "../../src/services/externalSeedLane.js";
 import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
-import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
+import { PivotaCommerceError, IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_REFUSALS, KERNEL_ANSWERED_AFTER_ORDER, KERNEL_NO_ANSWER_AFTER_ORDER, kernelOutcomeUnknownOf } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 // The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
 // below the params mapping for what it fixes here and why it is imported rather than reimplemented.
@@ -43,8 +43,9 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult, shapeUcpProduct } from "./ucpResponseShaper.js";
-import { merchantCheckoutQuoteEnabled } from "./merchantCheckoutQuote.js";
+import { merchantCheckoutQuoteDoorOpen } from "./merchantCheckoutQuote.js";
 import { createMerchantQuoteTool, MERCHANT_QUOTE_TOOL, merchantQuoteToolDefinition } from "./merchantCheckoutQuoteTool.js";
+import { MERCHANT_QUOTE_RATE_LIMITED } from "./merchantCheckoutQuoteRateLimit.js";
 import { tryEscalateUcpCheckout, refuseUnservedStorefrontCheckout, assertChosenVariantsBelong, storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
 // The native door's route to the same storefront path (AGENT_CHECKOUT_MCP_STOREFRONT_ESCALATION_ENABLED, default off).
 import { kernelQuoteMarketParams, storefrontCartInputSchema, storefrontMarketProblem, tryNativeStorefrontCart } from "./mcpStorefrontCart.js";
@@ -406,7 +407,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     const callStartedAtMs = Date.now();
     // dialect defaults to MCP, so every existing caller is unchanged.
     const dialect = normalizeDialect(options.dialect);
-    if (toolName === MERCHANT_QUOTE_TOOL && merchantCheckoutQuoteEnabled()) {
+    if (toolName === MERCHANT_QUOTE_TOOL && merchantCheckoutQuoteDoorOpen()) {
       const ctx = buildContext(sessionContext);
       if (!ctx.user_ref || !ctx.acp_session_id) throw new IdentityRequiredError();
       return sanitizeResult(await previewMerchantQuote(toolArgs, ctx), { handoffAllowed: false });
@@ -646,6 +647,13 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //     of the tool reaches `params` but through the allowlist, which has no such key). With either switch off
     //     it is absent: the executor then reads nothing of the session and the update is exactly what it was.
     if (storefrontCartDoor && op.id === "update_checkout_session") params.judge_session_market = true;
+    // 3d) A COMPLETION OR A PAYMENT LINK WITH NO ADDRESS TO SHIP TO is refused by name before any order is asked for
+    //     (canonicalExecutor.js toolDoorAddressStep). This door's own word to the executor, naming the tool of THIS
+    //     dialect that re-prices a session with an address; no argument of the tool reaches `params` but through the
+    //     allowlist, which has no such key.
+    if (op.id === "complete_checkout_session" || op.id === "create_payment_link") {
+      params.fulfillment_address_update_tool = dialect === TOOL_DIALECTS.ucp ? "update_checkout" : "update_checkout_session";
+    }
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
@@ -813,7 +821,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   }
 
   function isCommerceTool(name, dialect) {
-    if (name === MERCHANT_QUOTE_TOOL) return merchantCheckoutQuoteEnabled();
+    if (name === MERCHANT_QUOTE_TOOL) return merchantCheckoutQuoteDoorOpen();
     if (name === START_PURCHASE_TOOL && normalizeDialect(dialect) === TOOL_DIALECTS.mcp) {
       return orchestratedPurchaseToolEnabled(process.env);
     }
@@ -825,7 +833,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     get tools() {
       const listed = recommendIngredientExclusionFlag.recommendIngredientExclusionEnabled(process.env) ? ingredientExclusionTools : tools;
       const declared = orchestratedPurchaseToolEnabled(process.env) ? [...listed, { ...START_PURCHASE_TOOL_DEFINITION }] : listed;
-      return merchantCheckoutQuoteEnabled() ? [...declared, merchantQuoteToolDefinition] : declared;
+      return merchantCheckoutQuoteDoorOpen() ? [...declared, merchantQuoteToolDefinition] : declared;
     },
     callTool,
     isCommerceTool,
@@ -1631,7 +1639,7 @@ export function ucpDialectSurface(surface) {
     // `ucpCommerceToolDefinitionsFor`).
     get tools() {
       const base = ucpCommerceToolDefinitionsFor(process.env);
-      const tools = merchantCheckoutQuoteEnabled() ? [...base, merchantQuoteToolDefinition] : base;
+      const tools = merchantCheckoutQuoteDoorOpen() ? [...base, merchantQuoteToolDefinition] : base;
       return reapAgenticLaneEnabled(process.env) ? [...tools, {
         name: "recover_checkout",
         description: "Pivota vendor read-only recovery of an unresolved Reap checkout. Send the identical original create payload and idempotency key. Never creates a purchase or alternative checkout; unknown outcomes remain unresolved.",
@@ -1791,6 +1799,13 @@ export function toToolError(error) {
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
   if (intake) body.detail = intake.detail;
+  // A key that cannot run this request now for a reason the kernel knows (errors.js IDEMPOTENCY_CONFLICT_ANSWERS: still
+  // running, may have taken effect, a payment already asked for): its own recovery beside its own words.
+  if (error instanceof PivotaCommerceError && code === "IDEMPOTENCY_CONFLICT" && intake && Object.hasOwn(IDEMPOTENCY_CONFLICT_ANSWERS, error.detail?.reason)) {
+    body.recovery = IDEMPOTENCY_CONFLICT_ANSWERS[error.detail.reason].recovery;
+  }
+  // A seller not taking orders: its catalog recovery (what to do next) beside its words.
+  if (error instanceof PivotaCommerceError && code === "MERCHANT_NOT_ACCEPTING_ORDERS" && typeof error.recovery === "string") body.recovery = error.recovery;
   // A refusal decided for an assumed US (decision D-10) says so, in the same member an answer would carry.
   if (error.marketAssumed === true) body.market_assumed = requestMarket.marketAssumedLabel();
   if (code === "OPERATION_NOT_ALLOWED" && ["ucp_reap_create_refused", "ucp_reap_create_not_available", "reap_create_paused"].includes(error.detail?.reason)) {
@@ -1825,7 +1840,7 @@ export function toToolError(error) {
       body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: do not start another";
     }
     if (error.detail.reason === "purchase_idempotency_conflict") {
-      // Never the generic "Starting fresh": this key already opened a purchase (see orchestratedPurchaseTool.js).
+      // Never the code's generic words: this key already opened a purchase (see orchestratedPurchaseTool.js).
       body.message = "This idempotency_key already opened a purchase, for details that no longer match this call (the catalog may have changed since).";
       body.recovery = "the purchase for this key may exist: check it before starting another; use a new idempotency_key only for a different purchase the buyer asked for";
       // The backend names that purchase (the caller's own: its key lookup is scoped to the agent and the buyer).
@@ -1850,6 +1865,30 @@ export function toToolError(error) {
       && typeof error.detail?.reason === "string" && /^[a-z0-9_]{1,64}$/.test(error.detail.reason)) {
     body.detail = { reason: error.detail.reason };
   }
+  // preview_merchant_checkout_quote refusals (merchantCheckoutQuoteTool.js). Their reasons are our own
+  // vocabulary. The only other values surfaced are a market that already passed the ^[A-Z]{2}$ check and a
+  // server-computed retry delay.
+  if (error instanceof PivotaCommerceError && !intake && typeof error.detail?.reason === "string"
+      && /^merchant_quote_[a-z0-9_]{1,48}$/.test(error.detail.reason)) {
+    body.detail = { reason: error.detail.reason };
+    if (typeof error.detail.market === "string" && /^[A-Z]{2}$/.test(error.detail.market)) {
+      body.detail.market = error.detail.market;
+    }
+    if (error.detail.reason === MERCHANT_QUOTE_RATE_LIMITED) {
+      const retryAfter = error.detail.retry_after_seconds;
+      if (Number.isSafeInteger(retryAfter) && retryAfter >= 1 && retryAfter <= 3600) body.detail.retry_after_seconds = retryAfter;
+      body.message = "Too many live quotes were requested for this seller or partner. No checkout was opened.";
+      body.recovery = "retry the same request with the same idempotency_key after detail.retry_after_seconds; do not send new keys in a loop";
+    }
+    if (error.detail.reason === "merchant_quote_partner_unprovisioned") {
+      body.message = "Live seller quotes are open only to provisioned Pivota partners. No checkout was opened.";
+      body.recovery = "do not retry with this client; ask Pivota to provision it as a partner";
+    }
+    if (error.detail.reason === "merchant_quote_market_unpriced") {
+      body.message = "Pivota does not price this market, so no quote was requested from the seller.";
+      body.recovery = "do not retry for this market; quote only a market whose currency Pivota serves";
+    }
+  }
   // An unknown create outcome has one safe, fixed recovery contract. Never
   // echo its payload, key or raw upstream error in the public tool response.
   if (code === "CHECKOUT_OUTCOME_UNKNOWN") {
@@ -1859,6 +1898,40 @@ export function toToolError(error) {
       body.message = "The Shopify quote or its cancellation could not be confirmed.";
       body.detail = { reason: "merchant_quote_outcome_pending" };
     }
+    // The kernel's own unknown outcome of a money call (errors.js kernelOutcomeUnknown): not retriable, and with the
+    // order's id when one exists, so the caller can read what happened instead of opening a second checkout.
+    const kernelUnknown = kernelOutcomeUnknownOf(error);
+    if (kernelUnknown) {
+      const orderId = surfaceableOrderId(kernelUnknown.order_id);
+      const answer = KERNEL_OUTCOME_UNKNOWN_ANSWERS[kernelUnknown.reason];
+      // An order call the store answered with a refusal that keeps the claim (a 403, a 429): its own words, never "no
+      // readable answer". Which one is not surfaced; the detail below is the same.
+      const answered = !orderId && kernelUnknown.answered ? KERNEL_ANSWERED_REFUSALS[kernelUnknown.answered] : null;
+      // A call after the order exists that the order service refused in words that would say it had no effect: its own
+      // words, with the order id (errors.js KERNEL_ANSWERED_AFTER_ORDER), never "nothing was done".
+      const answeredAfterOrder = orderId && kernelUnknown.answered ? KERNEL_ANSWERED_AFTER_ORDER[kernelUnknown.reason] : null;
+      body.message = answeredAfterOrder ? answeredAfterOrder.message
+        : answered ? `${answered.message} ${SAME_KEY_SAME_ANSWER}` : orderId ? answer.withOrder : answer.withoutOrder;
+      body.recovery = error.recovery;
+      body.detail = { reason: kernelUnknown.reason, order_id: orderId };
+    }
+  }
+  // A session already used for an order: the order's id, when the order is this caller's own (kernel.quoteClaimState),
+  // makes the message's "read that order first (get_order)" something the caller can do.
+  // A session a cancellation holds (kernel.quoteAlreadyUsed `claim: 'canceled'`): it was canceled, and no order was
+  // ever placed from it, so the catalog's "already used to place an order ... read that order first" would be untrue.
+  // The code (and retriable:false) stays: clients branch on it. A canceled claim never names an order.
+  if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && error.detail?.claim === "canceled") {
+    body.message = "This checkout was canceled, so it cannot be completed or paid. No order was placed from it.";
+    body.detail = { reason: "session_canceled" };
+    body.recovery = "do not complete this checkout; start a new checkout only if the buyer wants to buy";
+  } else if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && error.detail?.claim === "order_outcome_unknown" && !surfaceableOrderId(error.detail?.order_id)) {
+    // The claim names no order (kernel.js quoteAlreadyUsed): its own words (surfaced above) and a recovery that does not
+    // send the caller to an order it cannot name.
+    body.recovery = "do not start another checkout for this purchase without the buyer: an order may exist; read this checkout session again before anything else";
+  } else if (error instanceof PivotaCommerceError && code === "QUOTE_ALREADY_USED" && surfaceableOrderId(error.detail?.order_id)) {
+    body.detail = { reason: "session_already_ordered", order_id: surfaceableOrderId(error.detail.order_id) };
+    body.recovery = "read the order in detail.order_id with get_order before anything else; start a new checkout only if the buyer wants another order";
   }
   // The upstream cancel (FIX_PLAN C-11, CHECKOUT_CANCEL_UPSTREAM_ENABLED): every "not canceled" outcome says so in
   // words an agent cannot read as canceled. Only that lane raises these reasons, so with the flag off no answer
@@ -1869,6 +1942,28 @@ export function toToolError(error) {
       body.message = notCanceled.message;
       body.detail = { reason: error.detail.reason, canceled: false };
       body.recovery = notCanceled.recovery;
+      const orderId = surfaceableOrderId(error.detail.order_id);
+      // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off (`upstream_cancel: false`) no cancellation reaches the store, so a
+      // cancel by order id would only mark this gateway's row: the order's payment page would stay payable. Never
+      // point there; say what can be done. With the upstream cancel on, cancelling by order id is the way.
+      if (error.detail.reason === "session_already_ordered" && error.detail.upstream_cancel === false) {
+        body.message = "This checkout session already became an order, and the order cannot be canceled from here: no cancellation reaches the store, so its payment page stays open until it expires.";
+        body.recovery = "do not tell the buyer the order was canceled; read the order with get_order" + (orderId ? " (detail.order_id)" : "")
+          + "; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it";
+      }
+      if (error.detail.reason === "session_already_ordered" && orderId) body.detail.order_id = orderId;
+      if (error.detail.reason === "order_cancel_not_available") {
+        // The words by the order's status: an unpaid order may have an open payment page, a failed one is not said to,
+        // and one that already reads canceled here is pointed to get_order.
+        const status = typeof error.detail.order_status === "string" && /^[a-z][a-z_]{0,31}$/.test(error.detail.order_status) ? error.detail.order_status : null;
+        const byStatus = ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS[status] || ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS.created;
+        body.message = byStatus.message;
+        body.recovery = byStatus.recovery.replace("get_order;", orderId ? "get_order (detail.order_id);" : "get_order;");
+        // `canceled: false` is this call's own result; a row that already reads canceled says so beside it.
+        if (status === "canceled") body.detail.already_canceled = true;
+        if (orderId) body.detail.order_id = orderId;
+        if (status) body.detail.order_status = status;
+      }
     }
   }
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
@@ -1897,7 +1992,71 @@ const CANCEL_NOT_CANCELED_ANSWERS = Object.freeze({
     message: "This checkout session already became an order, so canceling the session alone would leave the order payable.",
     recovery: "cancel it by its order_id",
   },
+  // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: a cancel by order id of the caller's own unpaid order. Nothing reaches
+  // the store, so it is never "canceled". The words are chosen by the order's status (ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS).
+  order_cancel_not_available: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
+  },
+  // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: an order was asked for on this session and the gateway holds none for it.
+  session_order_outcome_unknown: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This checkout session was used to ask for an order, and whether that order exists is not known here, so nothing was canceled.",
+    recovery: "do not tell the buyer the checkout was canceled; this session can no longer be completed; do not start another checkout for this purchase without telling the buyer an earlier order may exist",
+  },
+  // With CHECKOUT_CANCEL_UPSTREAM_ENABLED off: an order call's claim was given back between the cancellation's two reads
+  // (a refusal the order service answered by name), so the session was not canceled. Rare; ask again.
+  session_not_ordered_not_canceled: {
+    code: "OPERATION_NOT_ALLOWED",
+    message: "This checkout session was not canceled: an order call for it was answered while the cancellation ran.",
+    recovery: "do not tell the buyer the checkout was canceled; cancel it again with a new idempotency_key",
+  },
 });
+
+const SAME_KEY_SAME_ANSWER = "Sending this call again with the same idempotency_key returns this same answer.";
+// A flag-off cancel by order id, by the order's status in the kernel (any status not named here: `created`'s words).
+const ORDER_CANCEL_NOT_AVAILABLE_BY_STATUS = Object.freeze({
+  created: {
+    message: "This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it",
+  },
+  failed: {
+    message: "This order cannot be canceled from here: no cancellation reaches the store. Its payment did not go through.",
+    recovery: "do not tell the buyer the order was canceled; read the order with get_order; this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should ask the merchant to cancel it",
+  },
+  canceled: {
+    message: "This order already reads canceled here. This call did not cancel anything and sent nothing to the store.",
+    recovery: "read the order with get_order; tell the buyer only what that read says",
+  },
+});
+
+// The kernel's unknown outcomes (errors.js KERNEL_OUTCOME_UNKNOWN_REASONS), in words that say what is and is not known.
+const KERNEL_OUTCOME_UNKNOWN_ANSWERS = Object.freeze({
+  payment_outcome_unknown_after_order: {
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.payment_outcome_unknown_after_order.message,
+    withoutOrder: "Whether the payment step went through is unknown: the payment service gave no readable answer. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+  },
+  payment_link_outcome_unknown_after_order: {
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.payment_link_outcome_unknown_after_order.message,
+    withoutOrder: "Whether the payment page was opened is unknown: the payment service gave no readable answer, so no link can be given. Do not start another checkout for this purchase. Sending this call again with the same idempotency_key returns this same answer.",
+  },
+  // Only ever raised with an order id and the order service's refusal (KERNEL_ANSWERED_AFTER_ORDER gives its words).
+  after_sales_outcome_unknown: {
+    withOrder: KERNEL_NO_ANSWER_AFTER_ORDER.after_sales_outcome_unknown.message,
+    withoutOrder: "Whether this after-sales request was filed is unknown. Send the same call again with the same idempotency_key; do not file another request for this order until it answers.",
+  },
+  order_create_outcome_unknown: {
+    withOrder: "Whether the order was created is unknown: the order service gave no readable answer. An order may exist (detail.order_id): read it with get_order before anything else, and do not start another checkout for this purchase.",
+    withoutOrder: "Whether the order was created is unknown: the order service gave no readable answer. The store may hold an order for this checkout, and its id is not known here. Do not place a new order for this purchase without the buyer. Sending this call again with the same idempotency_key returns this same answer.",
+  },
+});
+
+// An order id this door may hand back: the kernel's own record of the caller's order. Shape-checked anyway, so nothing
+// but an id-shaped string ever reaches an answer; anything else is left out (null).
+function surfaceableOrderId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value) ? value : null;
+}
 
 // --- small helpers ----------------------------------------------------------------------------------------
 

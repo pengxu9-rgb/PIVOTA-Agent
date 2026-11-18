@@ -786,17 +786,32 @@ test('kernel: the charge_pending row records its lane, and the dispatch lane is 
   assert.equal((await delegated.store.get('o_delegated')).status, 'paid');
 });
 
-test('flag-off cancel by order id: an expired order is refused and left expired', async () => {
+// Counts every write the order store takes while `fn` runs (set and the conditional writes).
+async function orderStoreWritesDuring(store, fn) {
+  const writes = [];
+  const saved = {};
+  for (const m of ['set', 'compareAndSet', 'compareAndSetFields', 'putIfAbsent', 'delete', 'compareAndDelete']) {
+    if (typeof store[m] !== 'function') continue;
+    saved[m] = store[m];
+    store[m] = async (...a) => { writes.push(m); return saved[m].apply(store, a); };
+  }
+  try { await fn(); } finally { Object.assign(store, saved); }
+  return writes;
+}
+
+test('flag-off cancel by order id: an expired order is refused (order_cancel_not_available) and nothing is written', async () => {
   const env = await stuckKernel();
   env.clock.advance(25 * HOUR);
   await run(env, { readBackendOrder: async (id) => backendOrder(id) });
   const expired = await env.store.get(env.order_id);
   assert.equal(expired.status, 'expired');
   const exec = createCanonicalExecutor({ kernel: env.kernel }).execute;
-  await assert.rejects(
+  const writes = await orderStoreWritesDuring(env.kernel._orderStore, () => assert.rejects(
     exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-expired', order_id: env.order_id }, CTX),
-    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'order_expired_not_payable',
-  );
+    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'order_cancel_not_available'
+      && e.detail?.order_status === 'expired' && e.detail?.upstream_cancel === false,
+  ));
+  assert.deepEqual(writes, [], 'the cancel writes nothing to the order store');
   assert.deepEqual(await env.store.get(env.order_id), expired);
   // ...so a late payment is still caught by the re-read.
   env.clock.advance(HOUR);
@@ -804,30 +819,37 @@ test('flag-off cancel by order id: an expired order is refused and left expired'
   assert.equal((await env.store.get(env.order_id)).status, 'paid');
 });
 
-test('flag-off cancel by order id: the write is conditional on the status it read', async () => {
+test('flag-off cancel by order id: a plain created order is not canceled, and nothing is written', async () => {
   const clock = makeClock();
   const kernel = new SafetyKernel({ upstream: async (op) => (op === 'preview_quote' ? QUOTE : op === 'create_order' ? { order_id: 'o_cx', acp_state: {} } : {}), secret: SECRET, now: clock.now, log: quiet });
   const q = await kernel.previewQuote({ quote: {} }, CTX);
   await kernel.createOrder({ idempotency_key: 'idem-o_cx-order', order: { quote_id: q.quote_id, shipping_address: {} } }, CTX);
   const exec = createCanonicalExecutor({ kernel }).execute;
-  // A plain created order still cancels.
-  const ok = await exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-ok', order_id: 'o_cx' }, CTX);
-  assert.equal(ok.status, 'canceled');
-  assert.equal((await kernel._orderStore.get('o_cx')).status, 'canceled');
-  // A writer that lands between the cancel's read and its write wins; the cancel says so and writes nothing.
-  const row = await kernel._orderStore.get('o_cx');
-  await kernel._orderStore.set('o_cx', { ...row, status: 'created' });
+  // A plain created order is refused by name and left exactly as it was.
+  const before = await kernel._orderStore.get('o_cx');
+  assert.equal(before.status, 'created');
+  const writes = await orderStoreWritesDuring(kernel._orderStore, () => assert.rejects(
+    exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-ok', order_id: 'o_cx' }, CTX),
+    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'order_cancel_not_available'
+      && e.detail?.order_status === 'created' && e.detail?.upstream_cancel === false,
+  ));
+  assert.deepEqual(writes, [], 'the cancel writes nothing to the order store');
+  assert.deepEqual(await kernel._orderStore.get('o_cx'), before);
+  // A writer that lands while the cancel runs (here: during its read) is never overwritten: the cancel writes nothing.
   const realGet = kernel._orderStore.get.bind(kernel._orderStore);
   kernel._orderStore.get = async (k) => {
     const v = await realGet(k);
     if (k === 'o_cx') await kernel._orderStore.set('o_cx', { ...v, status: 'paid' });
     return v;
   };
-  await assert.rejects(
-    exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-race', order_id: 'o_cx' }, CTX),
-    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'order_changed_during_cancel',
-  );
-  kernel._orderStore.get = realGet;
+  try {
+    await assert.rejects(
+      exec('cancel_checkout_session', { idempotency_key: 'idem-cxl-race', order_id: 'o_cx' }, CTX),
+      (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'order_cancel_not_available',
+    );
+  } finally {
+    kernel._orderStore.get = realGet;
+  }
   assert.equal((await kernel._orderStore.get('o_cx')).status, 'paid');
 });
 

@@ -8,7 +8,7 @@
 //   create/update_checkout_session -> previewQuote        (session_id == quote_id)
 //   get_checkout_session           -> quotes.resolveForOrder (ownership + expiry checked)
 //   complete_checkout_session      -> verifyPaymentAuthorization -> createOrder -> mintConfirmation -> submitPayment
-//   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort); with
+//   cancel_checkout_session        -> cancel an unordered session (its claim); an order is refused by name; with
 //                                     CHECKOUT_CANCEL_UPSTREAM_ENABLED, the backend cancel's own outcome
 //   get_order                      -> one dispatch over the order-id shape (orderIdShape): a rail purchase (`pp_`/`rp_`/
 //                                     `ap_`) -> the backend ledger read; a storefront hand-off (`esc_`) -> its record;
@@ -19,7 +19,7 @@
 //   exchange_payment_token         -> PERMANENTLY REFUSED (see delegatedPaymentRefusal.js): that operation is
 //                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
-import { PivotaCommerceError } from '../errors.js';
+import { PivotaCommerceError, KERNEL_OUTCOME_UNKNOWN_REASONS, kernelOutcomeUnknown, kernelOutcomeUnknownOf, upstreamFailureOutcomeUnknown, answerAfterOrder } from '../errors.js';
 import { effectiveShippingAddress } from '../kernel.js';
 import { fulfillmentAddressRequiredRefusal, assertIdempotencyKeyAcceptable, assertLineQuantitiesWithinMaximum, assertNoDuplicateLines, intakeRefusal } from './buyerIntake.js';
 import { canonicalOp } from './canonicalContract.js';
@@ -396,9 +396,60 @@ function updateReplacesSessionMarket(params, ctx) {
  * and it is read only on a call that door built. Every other door's completion is exactly as it was.
  */
 function completionRequiresFulfillmentAddress(params, ctx) {
-  if (!ctx || ctx.protocol !== ADDRESS_MARKET_PROTOCOL) return null;
+  if (!ctx || ctx.protocol !== ADDRESS_MARKET_PROTOCOL) return toolDoorAddressStep(params, ctx);
   const hint = params ? params.fulfillment_address_required : undefined;
-  return typeof hint === 'string' && hint.trim() !== '' ? hint : null;
+  return typeof hint === 'string' && hint.trim() !== '' ? { updateHint: hint } : null;
+}
+
+// THE TOOL DOORS (`/mcp`, `/ucp/mcp`) REFUSE THE SAME COMPLETION BY THE SAME NAME. An address is optional when one of
+// their sessions is created or updated, and the backend refuses every order without one, so a `complete` or a payment
+// link with none to ship to is refused here, before an order is asked for, instead of coming back from the order call
+// as a retriable "temporarily unreachable" after the quote was spent. The door names the tool that re-prices a session
+// with an address (`params.fulfillment_address_update_tool`, a member the door sets after its allowlist, which no
+// request argument reaches); the words are this table's, never the request's. Never read on the ACP REST door, which
+// states its own.
+const TOOL_DOOR_ADDRESS_STEPS = Object.freeze({
+  update_checkout_session: Object.freeze({
+    updateHint: 'the `update_checkout_session` tool',
+    nextStep: 'Send a complete `shipping_address` with this call, or re-price the checkout with the `update_checkout_session` tool (it answers with a new session_id) and use that session; then call again with the same idempotency_key.',
+  }),
+  update_checkout: Object.freeze({
+    updateHint: 'the `update_checkout` tool',
+    nextStep: 'Re-price the checkout with the `update_checkout` tool, carrying the destination as `checkout.fulfillment.methods[0].destinations[0]`, then complete the checkout it answers with.',
+  }),
+});
+function toolDoorAddressStep(params, ctx) {
+  if (ctx && ctx.protocol === ADDRESS_MARKET_PROTOCOL) return null;
+  const tool = params ? params.fulfillment_address_update_tool : undefined;
+  return typeof tool === 'string' && Object.hasOwn(TOOL_DOOR_ADDRESS_STEPS, tool) ? TOOL_DOOR_ADDRESS_STEPS[tool] : null;
+}
+
+/** Throws the named refusal when the order this session would be created with has no complete address to ship to. */
+function assertAddressToShipTo(quote, params, step) {
+  const shipTo = effectiveShippingAddress(
+    isPlainObjectValue(quote.buyer_context) ? quote.buyer_context.shipping_address : undefined,
+    params.shipping_address,
+  );
+  const refusal = fulfillmentAddressRequiredRefusal(shipTo, step);
+  if (refusal) throw refusal;
+}
+
+// ---- after the order exists: an outcome nobody can know is said so, with the order's id ---------------------
+//
+// Once the kernel order exists, a later money call that comes back with no readable answer (no response at all, the
+// deadline passed, a 5xx, a 2xx with nothing in it) may or may not have done what it was asked. Answered as the
+// transport's retriable MERCHANT_UNAVAILABLE ("try again shortly"), the caller retried, was told the session was used,
+// and could not find out what happened: the order's id was never given. It is answered CHECKOUT_OUTCOME_UNKNOWN
+// (kernelOutcomeUnknown: not retriable, the order id in its detail) instead, and a same-key retry gets that same answer
+// (the ledger keeps it). A refusal the upstream ANSWERED (a status below 500) and every refusal raised in this process
+// before anything was sent are known outcomes, and stay exactly as they were.
+// (errors.js upstreamFailureOutcomeUnknown is the one test of "no readable answer", shared with kernel.createOrder.)
+// (errors.js answerAfterOrder: also a refusal whose words would say it had no effect, since the order exists.)
+// createOrder answered that the order call's outcome is unknown: the outer attempt is held too (an order may exist),
+// so the same key is answered the same way again rather than being told the session was already used.
+function holdOuterAttemptOnUnknownCreate(err, runCtx) {
+  if (kernelOutcomeUnknownOf(err)) runCtx.sideEffectDone = true;
+  return err;
 }
 
 function isPlainObjectValue(value) {
@@ -586,16 +637,33 @@ export function createCanonicalExecutor({
             sessionMarket: { market: quoteMarket.market, market_currency: quoteMarket.currency },
           })
           : await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
-        return attachAp2CheckoutJwt(toSession(quote), mintAp2CheckoutJwt, ctx);
+        const session = toSession(quote);
+        // AN UPDATE OF A SESSION THAT IS ALREADY AN ORDER prices a separate, new session (the one answered here), as it
+        // always did; it now also says what the id it was sent is (`previous_session`), so the caller is not left
+        // believing the new session replaced an order. Only for a session of this buyer; nothing else changes.
+        if (opId === 'update_checkout_session') {
+          const previous = await previousSessionNote(kernel, params.session_id, ctx);
+          if (previous) session.previous_session = previous;
+        }
+        return attachAp2CheckoutJwt(session, mintAp2CheckoutJwt, ctx);
       }
 
       case 'get_checkout_session': {
         if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+        // WHAT HOLDS A SESSION'S CLAIM, AND NOTHING ELSE, for the door that keeps one session id across re-quotes (the
+        // ACP REST door, which asks it on a call it built, for the quote its own owned record names). No expiry check:
+        // an update may re-quote an expired session, and a claim never expires. `{ session_id, status, order_id, ... }`
+        // as sessionClaimStatus reads it; the order is named only when it is this caller's.
+        if (sessionClaimOnly(params, ctx)) {
+          return { session_id: params.session_id, ...sessionClaimStatus(await claimStateOf(kernel, params.session_id, ctx)) };
+        }
         const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx); // ownership + expiry
         // The markets a door names for this session (judgeSessionMarkets): the session is read out only when its
         // own quote is in their currency. After ownership and expiry, so those answer as they always did.
         judgeSessionMarkets(params, snapshot);
-        return attachAp2CheckoutJwt(toSession(snapshot), mintAp2CheckoutJwt, ctx);
+        // A SESSION THAT BECAME AN ORDER READS AS ONE (sessionClaimStatus): `completed` with its order id, not
+        // `ready_for_payment`, which told the caller it could still be paid.
+        return attachAp2CheckoutJwt(withClaimStatus(toSession(snapshot), await claimStateOf(kernel, snapshot.quote_id, ctx)), mintAp2CheckoutJwt, ctx);
       }
 
       case 'cancel_checkout_session':
@@ -788,7 +856,7 @@ async function completeCheckout(
       // lands after this read is refused there, exactly as before.
       if (typeof kernel.isQuoteClaimed === 'function' && (await kernel.isQuoteClaimed(quote.quote_id))) {
         throw typeof kernel.quoteAlreadyUsed === 'function'
-          ? await kernel.quoteAlreadyUsed(quote.quote_id)
+          ? await kernel.quoteAlreadyUsed(quote.quote_id, ctx)
           : new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
       }
 
@@ -805,15 +873,9 @@ async function completeCheckout(
       // create an order with, and so no buyer country either: refused by name here, after the market rule and
       // before either payment lane, with no authorization presented, no order asked for and nothing charged.
       // Raised inside the idempotency run with no side effect done, so the caller's key is released with it.
-      const addressHint = completionRequiresFulfillmentAddress(params, ctx);
-      if (addressHint) {
-        const shipTo = effectiveShippingAddress(
-          isPlainObjectValue(quote.buyer_context) ? quote.buyer_context.shipping_address : undefined,
-          params.shipping_address,
-        );
-        const refusal = fulfillmentAddressRequiredRefusal(shipTo, { updateHint: addressHint });
-        if (refusal) throw refusal;
-      }
+      // The tool doors state the same requirement through their own member (toolDoorAddressStep).
+      const addressStep = completionRequiresFulfillmentAddress(params, ctx);
+      if (addressStep) assertAddressToShipTo(quote, params, addressStep);
 
       // --- THE BRANCH (decided above, taken here) -------------------------------------------------------
       // A delegated PSP token (`spt_`) is routed to the backend's off-session money endpoint INSTEAD of being
@@ -866,7 +928,7 @@ async function completeCheckout(
       const order = await kernel.createOrder(
         { idempotency_key: orderKey, order: { quote_id: params.session_id, shipping_address: params.shipping_address ?? {} } },
         ctx,
-      );
+      ).catch((err) => { throw holdOuterAttemptOnUnknownCreate(err, runCtx); });
       assertAttestation(attestation, order, ctx);
       // Require the field on BOTH sides: a bare string compare would pass when both are absent
       // ("undefined" === "undefined"), which is exactly the regression class this line exists to catch.
@@ -889,7 +951,7 @@ async function completeCheckout(
           payment: { order_id: order.order_id, expected_amount: order.amount_total, currency: order.currency },
         },
         ctx,
-      );
+      ).catch((err) => { throw answerAfterOrder(err, order.order_id, KERNEL_OUTCOME_UNKNOWN_REASONS.payment); });
 
       return { order, payment };
     },
@@ -954,7 +1016,7 @@ async function completeWithDelegatedPspToken(
       },
     },
     ctx,
-  );
+  ).catch((err) => { throw holdOuterAttemptOnUnknownCreate(err, runCtx); });
 
   // 2. The money the backend will charge must be the money the locked quote fixed — the amount the buyer's
   //    token allowance was sized against. createOrder derives both from that snapshot and cross-checks the
@@ -1004,7 +1066,7 @@ async function completeWithDelegatedPspToken(
         user_ref: ctx.user_ref,
       }),
     },
-  );
+  ).catch((err) => { throw answerAfterOrder(err, order.order_id, KERNEL_OUTCOME_UNKNOWN_REASONS.payment); });
 
   return { order, payment };
 }
@@ -1034,11 +1096,24 @@ async function createPaymentLink({ kernel, upstream }, params, ctx) {
     },
     async (runCtx) => {
       const orderKey = `${base}:order`;
+      // 0. A DOOR THAT STATES AN ADDRESS IS REQUIRED HERE (toolDoorAddressStep) is answered by name, before an order is
+      //    asked for: read the session (ownership + expiry, as createOrder does), answer a spent one as spent first
+      //    (so a used session is never told it lacks an address), then judge the address the order would be created
+      //    with. Raised with no side effect done, so the key is released and no claim is taken. Read-only; createOrder's
+      //    atomic claim below is still the enforcement. A door that states nothing is exactly as before.
+      const addressStep = toolDoorAddressStep(params, ctx);
+      if (addressStep) {
+        const quote = await kernel.quotes.resolveForOrder(params.session_id, ctx);
+        if (typeof kernel.isQuoteClaimed === 'function' && (await kernel.isQuoteClaimed(quote.quote_id))) {
+          throw await kernel.quoteAlreadyUsed(quote.quote_id, ctx);
+        }
+        assertAddressToShipTo(quote, params, addressStep);
+      }
       // 1. INV-1/5: order from the session's locked quote; amount is the server-side snapshot, not the caller's.
       const order = await kernel.createOrder(
         { idempotency_key: orderKey, order: { quote_id: params.session_id, shipping_address: params.shipping_address ?? {} } },
         ctx,
-      );
+      ).catch((err) => { throw holdOuterAttemptOnUnknownCreate(err, runCtx); });
       // 2. Mint the HOSTED checkout surface. Creating a backend session is a side effect; mark it so a
       //    base-key retry replays the cached link rather than minting a second session. NO CHARGE happens
       //    here — the buyer pays on the returned page.
@@ -1049,13 +1124,15 @@ async function createPaymentLink({ kernel, upstream }, params, ctx) {
         shipping_address: params.shipping_address ?? null,
         return_url: params.return_url ?? null,
         user_ref: ctx.user_ref,
-      });
+      }).catch((err) => { throw answerAfterOrder(err, order.order_id, KERNEL_OUTCOME_UNKNOWN_REASONS.paymentLink); });
       // accept either a flat shape ({checkout_url,...}) or the backend's nested {checkout_session:{hosted_url,...}}.
       const cs = (hosted && typeof hosted.checkout_session === 'object' && hosted.checkout_session) || hosted || {};
       const checkout_url = cs.hosted_url ?? cs.checkout_url ?? cs.url ?? cs.redirect_url ?? null;
       if (!nonEmpty(checkout_url)) {
-        // fail closed: a hosted-checkout op that didn't return a payable URL must not look successful.
-        throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'hosted_checkout_no_url', order_id: order.order_id });
+        // fail closed: a hosted-checkout op that didn't return a payable URL must not look successful. An answer that
+        // names no page (empty, unreadable, or simply none) says nothing about whether one was opened: an unknown
+        // outcome, with the order's id.
+        throw kernelOutcomeUnknown(KERNEL_OUTCOME_UNKNOWN_REASONS.paymentLink, order.order_id);
       }
       // The URL is surfaced verbatim to the buyer; require https so a malformed/typo'd upstream field can't
       // relay a non-secure or javascript:/data: link. (Host allowlisting is a further hardening option.)
@@ -1118,28 +1195,84 @@ async function cancelSession(kernel, params, ctx) {
     }
     return { session_id: params.session_id, order_id: null, status: 'canceled' };
   }
-  if (nonEmpty(order_id)) {
-    const o = await kernel._orderStore.get(order_id);
-    if (o) {
-      if (o.user_ref !== ctx.user_ref) throw new PivotaCommerceError('STATE_LINKAGE_MISMATCH', { order_id });
-      if (o.status === 'paid' || o.status === 'charge_pending') {
-        throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'cannot_cancel_paid_or_pending', order_id });
-      }
-      // 'expired' is the charge_pending reconcile's: nothing can pay it, and the reconcile still re-reads it for a
-      // late payment. Overwriting it with 'canceled' would drop it from that re-read and could undo an
-      // expired -> paid the reconcile is writing at the same moment. Refused, unchanged.
-      if (o.status === 'expired') {
-        throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'order_expired_not_payable', order_id });
-      }
-      // Conditional on the status just read, so a concurrent writer (a webhook, the reconcile) is never overwritten.
-      const next = { ...o, status: 'canceled' };
-      const written = typeof kernel._orderStore.compareAndSet === 'function'
-        ? await kernel._orderStore.compareAndSet(order_id, 'status', o.status, next)
-        : (await kernel._orderStore.set(order_id, next), true);
-      if (!written) throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'order_changed_during_cancel', order_id });
+  if (!nonEmpty(order_id)) {
+    // A SESSION, NAMED BY ITS SESSION ID ALONE (CHECKOUT_CANCEL_UPSTREAM_ENABLED off, any door but the ACP REST one,
+    // which states its own rule above). "canceled" is said only when it is true: this cancellation takes the session's
+    // claim (below), or a cancellation already holds it. A session that became an order is refused by that name (with
+    // the order's id, when it is this caller's), and a session whose order call has an unknown outcome is refused by
+    // that name. Ownership and expiry first, as every other read of a session.
+    const op = 'cancel_checkout_session';
+    if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+    const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx);
+    // A SESSION WITH NO ORDER IS CANCELED BY TAKING ITS QUOTE'S SINGLE-USE CLAIM, the record an order takes, exactly as
+    // the upstream-cancel lane does (cancelSessionUpstream): one atomic write decides a cancellation and a completion
+    // of one session, and exactly one of them wins. Once the cancellation holds it, no completion or payment link can
+    // create an order from this quote. Nothing exists at the store to cancel; "canceled" is now true here.
+    if (await kernel._quoteClaims.putIfAbsent(snapshot.quote_id, { canceled: true })) {
+      return { session_id: params.session_id, order_id: null, status: 'canceled' };
     }
+    // The claim is held: by a cancellation (canceled again: the same answer), or by an order or an order call.
+    const claim = await claimStateOf(kernel, snapshot.quote_id, ctx);
+    if (claim && claim.canceled) return { session_id: params.session_id, order_id: null, status: 'canceled' };
+    if (claim && claim.order_id) {
+      // `upstream_cancel: false`: nothing this door can do cancels that order at the store (the surface says so).
+      throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: 'session_already_ordered', order_id: claim.order_id, upstream_cancel: false });
+    }
+    // An order was asked for and this gateway holds none for it (still in flight, or its outcome is unknown).
+    // An order was asked for and this gateway holds none for it (still in flight, or its outcome is unknown); or the
+    // claim went away between the two reads (an order call that was refused by name gave it back): not canceled.
+    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op, reason: claim ? 'session_order_outcome_unknown' : 'session_not_ordered_not_canceled', upstream_cancel: false });
   }
-  return { session_id: params.session_id ?? null, order_id: order_id ?? null, status: 'canceled' };
+  // AN ORDER, NAMED BY ITS ID (CHECKOUT_CANCEL_UPSTREAM_ENABLED off, every door). No cancellation reaches the store from
+  // here, so "canceled" would only mark this gateway's row while the order's payment page stays payable: it is never
+  // said. An order this caller owns is refused by name (`order_cancel_not_available`, `upstream_cancel: false`; a paid
+  // or charging one keeps its own refusal); an id the kernel never held, and another caller's order, are not found,
+  // the same answer for both (requireOwnedOrder), so nobody learns that someone else's order exists. Nothing is written.
+  const op = 'cancel_checkout_session';
+  const o = await requireOwnedOrder(kernel, order_id, ctx);
+  const acpDoor = Boolean(ctx && ctx.protocol === ADDRESS_MARKET_PROTOCOL);
+  if (o.status === 'paid' || o.status === 'charge_pending') {
+    throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', {
+      reason: 'cannot_cancel_paid_or_pending', order_id,
+      // The ACP REST door says what happened in its own words; every other door's answer is as it was.
+      ...(acpDoor ? {
+        // A refund is the merchant's only for money that moved: said outright for a paid order, and only as "if it is
+        // charged" for a payment still under way, whose outcome is not known yet.
+        acp_message: o.status === 'paid'
+          ? `This checkout session's order was paid, so it was not canceled. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}; a refund is the merchant's to make.`
+          : `This checkout session's order has a payment under way, so it was not canceled, and the payment's outcome is not known yet. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}; if it is charged, a refund is the merchant's to make.`,
+        acp_detail: { reason: 'cannot_cancel_paid_or_pending', canceled: false, order_status: o.status },
+      } : {}),
+    });
+  }
+  // The words depend on the order's status (`order_status`, the kernel's own, beside the id): an order still unpaid may
+  // have an open payment page; one whose payment failed is not said to have one; one that already reads canceled here
+  // is said to, and pointed to get_order. The ACP REST door answers in its own words (it has no get_order tool).
+  const status = typeof o.status === 'string' && /^[a-z][a-z_]{0,31}$/.test(o.status) ? o.status : null;
+  const words = acpDoor ? acpOrderCancelWords(status) : null;
+  throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', {
+    op, reason: 'order_cancel_not_available', order_id, upstream_cancel: false, order_status: status,
+    // `canceled: false` is this call's own result (it canceled nothing); a row that already reads canceled says so beside
+    // it (`already_canceled`), so the two are never read as a contradiction.
+    ...(words ? { acp_message: words, acp_detail: { reason: 'order_cancel_not_available', canceled: false, ...(status === 'canceled' ? { already_canceled: true } : {}), order_status: status } } : {}),
+  });
+}
+
+// The ACP REST door's words for a flag-off cancel of a session that became an order, by the order's status.
+const ACP_SESSION_READ = 'GET /checkout_sessions/{checkout_session_id}';
+function acpOrderCancelWords(status) {
+  if (status === 'canceled') {
+    return `This checkout session's order already reads canceled here. This request did not cancel anything and sent nothing to the store. Read the session with ${ACP_SESSION_READ} before telling the buyer anything.`;
+  }
+  if (status === 'failed') {
+    return `This checkout session became an order, and the order cannot be canceled from here: no cancellation reaches the store. Its payment did not go through. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}, and if the buyer no longer wants it, the buyer should ask the merchant to cancel it.`;
+  }
+  return `This checkout session became an order, and the order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires. Do not tell the buyer it was canceled; read the session with ${ACP_SESSION_READ}, and if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it.`;
+}
+
+/** Does this read come from the ACP REST door, asking only what holds the session's claim (get_checkout_session)? */
+function sessionClaimOnly(params, ctx) {
+  return Boolean(ctx && ctx.protocol === ADDRESS_MARKET_PROTOCOL && params && params.session_claim_only === true);
 }
 
 /**
@@ -1236,6 +1369,55 @@ async function attachAp2CheckoutJwt(session, mint, ctx) {
     /* field absent -> AP2 verification fails closed; nothing else is affected */
   }
   return session;
+}
+
+// What holds a session's claim, as this caller may be told it (kernel.quoteClaimState); null on a kernel without it.
+async function claimStateOf(kernel, quoteId, ctx) {
+  return typeof kernel.quoteClaimState === 'function' ? kernel.quoteClaimState(quoteId, ctx) : null;
+}
+
+/**
+ * A session's status, by what holds its single-use claim:
+ *   none                      `ready_for_payment` (it can still become an order);
+ *   a cancellation            `canceled`;
+ *   this caller's own order   `completed`, with `order_id` and the kernel's `order_status` of it (an unpaid order, or
+ *                             one whose payment step is unknown, is `completed` as a session and not paid); an order
+ *                             in a status this read does not know is `order_status_unknown` instead (never `completed`);
+ *   an order not known here   `order_outcome_unknown` (an order call was made for it whose order this gateway does not
+ *                             hold: still in flight, or its outcome is unknown). Never payable again either way.
+ */
+// The kernel order statuses a read knows (kernel.js writes these, and nothing else today). An order the kernel holds in
+// any other status (one a later build writes, a record with none) is never read as plain `completed`: it reads
+// `order_status_unknown`, with its id and that status when it is a plain word (else null).
+export const KERNEL_ORDER_STATUSES = Object.freeze(['created', 'charge_pending', 'paid', 'failed', 'canceled']);
+const KNOWN_ORDER_STATUS = new Set(KERNEL_ORDER_STATUSES);
+function sessionClaimStatus(claim) {
+  if (!claim) return { status: 'ready_for_payment', order_id: null };
+  if (claim.canceled) return { status: 'canceled', order_id: null };
+  if (!claim.order_id) return { status: 'order_outcome_unknown', order_id: null };
+  if (KNOWN_ORDER_STATUS.has(claim.order_status)) return { status: 'completed', order_id: claim.order_id, order_status: claim.order_status };
+  const raw = typeof claim.order_status === 'string' && /^[a-z][a-z_]{0,31}$/.test(claim.order_status) ? claim.order_status : null;
+  return { status: 'order_status_unknown', order_id: claim.order_id, order_status: raw };
+}
+function withClaimStatus(session, claim) {
+  if (!claim) return session;
+  return { ...session, ...sessionClaimStatus(claim) };
+}
+// The session an update was sent, when it is this buyer's and is not open any more: `{ session_id, status, order_id }`.
+// Best effort: a read that fails leaves the update's answer as it was.
+async function previousSessionNote(kernel, sessionId, ctx) {
+  if (!nonEmpty(sessionId)) return null;
+  try {
+    const owned = kernel.quotes && typeof kernel.quotes.ownedSnapshot === 'function'
+      ? await kernel.quotes.ownedSnapshot(sessionId, ctx)
+      : null;
+    if (!owned) return null;
+    const claim = await claimStateOf(kernel, owned.quote_id, ctx);
+    if (!claim) return null;
+    return { session_id: owned.quote_id, ...sessionClaimStatus(claim) };
+  } catch {
+    return null;
+  }
 }
 
 function toSession(q) {

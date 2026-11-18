@@ -291,7 +291,7 @@ export function escalationTargetOf(product) {
 // key derived from the kernel's confirmation secret. It is a NEW version on purpose, not a member added to v2: a
 // build that does not know v3 reads such an id as no id of ours (the answer for an unknown id), never as an
 // unbound one. `bind` is `{ userRef, env }`; without it, or with the switch off, the id is the v1/v2 id it always was.
-export function encodeEscalationId(items, cartId, sellerHost, market, recordId, tracking, bind) {
+export function encodeEscalationId(items, cartId, sellerHost, market, recordId, tracking, bind, catalogTracked) {
   // A chosen variant rides as a third member of its line: [product_id, quantity, variant_id].
   const i = items.map((it) => (it.variant_id ? [it.product_id, it.quantity, it.variant_id] : [it.product_id, it.quantity]));
   const body = cartId !== undefined && cartId !== null ? { v: 2, i, c: cartId, h: sellerHost } : { v: 1, i };
@@ -302,6 +302,9 @@ export function encodeEscalationId(items, cartId, sellerHost, market, recordId, 
   }
   if (recordId !== undefined && recordId !== null) body.r = recordId;
   if (body.v === 2 && trackingPairsFrom(tracking)) body.t = Object.fromEntries(trackingPairsFrom(tracking));
+  // `k: 1`: the store cart was sent with Shopify catalog-tracked ids (SHOPIFY_CATALOG_ATTRIBUTION), so a re-read must
+  // not put our tracking members back on its link. Only on a seller-priced id; every other id keeps its bytes.
+  if (body.v === 2 && catalogTracked === true) body.k = 1;
   const binding = isPlainObject(bind) ? idBindingFor(bind.userRef, bind.env) : null;
   if (binding && binding.mode !== ID_BINDING_MODES.off && binding.key && binding.userRef) {
     body.v = 3;
@@ -329,6 +332,9 @@ function parseEscalationId(id) {
     ? (!isCarriableCartId(parsed.c) || typeof parsed.h !== "string" || !/^[a-z0-9.-]{1,253}$/.test(parsed.h))
     : ((parsed.v !== 1 && parsed.v !== 3) || own(parsed, "c") !== undefined || own(parsed, "h") !== undefined)) return null;
   if (parsed.v === 3 ? !BINDING_RE.test(String(own(parsed, "b") ?? "")) : own(parsed, "b") !== undefined) return null;
+  // `k` is only ever 1, and only on a seller-priced id.
+  const k = own(parsed, "k");
+  if (k !== undefined && (k !== 1 || !priced)) return null;
   return parsed;
 }
 
@@ -434,6 +440,12 @@ export function escalationIdIsBound(id) {
  * exactly tracking members is IGNORED, never a reason to refuse the id: an id is read as it was before the member
  * existed, and nothing unreadable is ever carried onto a link.
  */
+/** Was this seller-priced id's cart sent with Shopify catalog-tracked ids (`k`)? */
+export function escalationCatalogTrackedOf(id) {
+  const parsed = parseEscalationId(id);
+  return Boolean(parsed && isSellerPriced(parsed) && decodeEscalationId(id) && own(parsed, "k") === 1);
+}
+
 export function escalationTrackingOf(id) {
   const parsed = parseEscalationId(id);
   if (!parsed || !isSellerPriced(parsed) || !decodeEscalationId(id)) return undefined;
@@ -565,7 +577,7 @@ function cartMerchantId(items, rows) {
  * The id to hand out for a storefront checkout. `encode(recordId?)` builds it. Without the record switches or a
  * recorder, or on any write that is not confirmed, the id WITHOUT a record (what the door always handed out).
  */
-async function recordedEscalationId({ encode, quoteSource, totals, currency, sellerHost, catalogLink, buyerMarket, items, rows, priceAsOf, env, handoffRecorder, log, mintedClickId }) {
+async function recordedEscalationId({ encode, quoteSource, totals, currency, sellerHost, catalogLink, buyerMarket, items, rows, priceAsOf, env, handoffRecorder, log, mintedClickId, catalogAttributed }) {
   const plain = encode(undefined);
   if (!storefrontHandoffRecordModule.storefrontHandoffRecordEnabled(env)) return plain;
   if (!handoffRecorder || typeof handoffRecorder.record !== "function") return plain;
@@ -588,9 +600,12 @@ async function recordedEscalationId({ encode, quoteSource, totals, currency, sel
     quoted_total_minor: amount,
     quote_source: quoteSource,
     buyer_market: buyerMarket && /^[A-Z]{2}$/.test(buyerMarket) ? buyerMarket : undefined,
-    // The catalog link's own referral, else the one minted for this cart (the link then carried none).
-    referral_click_id: (catalogLink ? referralClickIdOf(catalogLink) : null)
-      || (typeof mintedClickId === "string" && REFERRAL_CLICK_ID_RE.test(mintedClickId) ? mintedClickId : null),
+    // The catalog link's own referral, else the one minted for this cart (the link then carried none). NOT on a
+    // Shopify catalog-attributed cart: its link carries none of our members, so it names no click of ours, and the
+    // record says what it is instead (`catalog_attributed`, which the backend stores and reads back).
+    referral_click_id: catalogAttributed === true ? undefined : ((catalogLink ? referralClickIdOf(catalogLink) : null)
+      || (typeof mintedClickId === "string" && REFERRAL_CLICK_ID_RE.test(mintedClickId) ? mintedClickId : null)),
+    catalog_attributed: catalogAttributed === true ? true : undefined,
     price_as_of: priceAsOf,
     merchant_id: cartMerchantId(items, rows),
   });
@@ -1229,17 +1244,19 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         const idMarket = { code: buyerMarket, assumed: requested.assumed };
         const minted = priced.referral || null;
         const tracking = minted ? minted.pairs : undefined;
-        const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, undefined, tracking, bind);
+        const catalogTracked = priced.catalogTracked === true;
+        const unrecorded = encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, undefined, tracking, bind, catalogTracked);
         if (escalationCartIdOf(unrecorded) === priced.cartId) {
           // THE CURRENCY RULE BEFORE THE RECORD: a hand-off is recorded only for a checkout that is handed out, so the
           // seller's answer is held to the market's currency here, before anything is written (the builder holds it again).
           if (marketCurrency) assertMarketCurrency(priced.currency, marketCurrency);
           const id = await recordedEscalationId({
-            encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId, tracking, bind),
+            encode: (recordId) => encodeEscalationId(normalized, priced.cartId, sellerHost, idMarket, recordId, tracking, bind, catalogTracked),
             quoteSource: storefrontHandoffRecordModule.QUOTE_SOURCE.sellerCart,
             totals: priced.totals, currency: priced.currency, sellerHost, catalogLink: continueUrl, buyerMarket: recordedMarket,
             items: normalized, rows, priceAsOf: new Date(now).toISOString(), env, handoffRecorder, log,
             mintedClickId: minted ? minted.clickId : undefined,
+            catalogAttributed: catalogTracked,
           });
           return withAssumedMarket(buildSellerPricedCheckout({
             id, priced, sellerHost, buyerEmail, now, env, ...(marketCurrency ? { marketCurrency } : {}),
@@ -1446,6 +1463,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
       const priced = await priceOnMerchantDoor({
         items: decoded, rows, sellerHost, discoveryHost: sellerHostnameOf(link), catalogLink: link,
         market: rereadMarket, cartId, env, merchantDoor, log, referralPairs: escalationTrackingOf(sessionId),
+        catalogTracked: escalationCatalogTrackedOf(sessionId),
         ...(rereadCurrency ? { marketCurrency: rereadCurrency, rowsInMarketCurrency: rereadRule.confirmed, storeAnswer: rereadStoreAnswer } : {}),
       });
       if (priced) {

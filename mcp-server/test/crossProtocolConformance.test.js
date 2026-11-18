@@ -163,18 +163,24 @@ test('CONFORMANCE: MCP and ACP drive the SAME kernel money-path — both charge 
   assert.notEqual(charges[0].order_id, charges[1].order_id);
 });
 
-// THE MCP DOOR WITH NO ADDRESS ANYWHERE, AS IT BEHAVES TODAY. The shared cart above ships to an address because the
-// ACP door completes only a session that has one. The MCP door has no such rule: it hands an address-less completion
-// to the order lane, which is where an address is required. This case keeps that path covered as it is (against
-// this harness's order lane, which accepts it), so a change to it is seen here.
-test('CONFORMANCE (MCP only): a session with no address anywhere is completed by the MCP door as before; the ACP door refuses it by name', async () => {
+// A SESSION WITH NO ADDRESS ANYWHERE, ON BOTH DOORS. An order needs an address to ship to, and both doors refuse a
+// completion with none by the same code and reason, before any order is asked for (each names its own way to supply
+// one). Until the MCP door had this rule it handed such a completion to the order lane, where the backend refuses it.
+test('CONFORMANCE: a session with no address anywhere is refused by name by BOTH doors, and nothing is ordered or charged', async () => {
   const h = await harness();
   const noAddress = () => ({ merchant_id: MERCHANT, items: CART_ITEMS.map((it) => ({ ...it })) });
   const sess = mcpSession('sess_mcp_noaddr');
   const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'idem-noaddr-mc', quote: noAddress() }, sess);
-  const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-noaddr-mp', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(created.session_id) } }, sess);
+  const refused = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-noaddr-mp', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(created.session_id) } }, sess).then(() => null, (e) => e);
+  assert.equal(refused && refused.code, 'QUOTE_REQUIRED');
+  assert.equal(refused.retriable, false);
+  assert.equal(refused.detail.acp_detail.reason, 'acp_fulfillment_address_required');
+  assert.match(refused.detail.acp_message, /update_checkout_session/);
+  assert.equal(h.charges().length, 0, 'the MCP door charged nothing');
+  // The same key, now with an address, completes once: the refusal took no claim and kept no key.
+  const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-noaddr-mp', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(created.session_id) }, shipping_address: { ...SHIP_TO } }, sess);
   assert.equal(out.payment.order_status, 'paid');
-  assert.equal(h.charges().length, 1, 'the MCP door reached the order lane and the charge');
+  assert.equal(h.charges().length, 1, 'one charge, for the corrected completion');
 
   const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: noAddress(), idem: 'idem-noaddr-ac' }));
   assert.equal(acpCreated.status, 201, JSON.stringify(acpCreated.body));
@@ -296,6 +302,8 @@ test('CONFORMANCE binding parity: wrong currency AND wrong merchant are rejected
   assert.equal(h.charges().length, 0, 'no mismatched-binding credential charged anything in either ecosystem');
 });
 
+// An unpaid cancel takes the session's single-use claim on both doors (with CHECKOUT_CANCEL_UPSTREAM_ENABLED off, as
+// here, and on), so "canceled" is true: the session can no longer become an order.
 test('CONFORMANCE surface parity: get returns the owned session; cancel works unpaid and refuses paid — in BOTH', async () => {
   const h = await harness();
   const sess = mcpSession('sess_mcp');
@@ -305,6 +313,11 @@ test('CONFORMANCE surface parity: get returns the owned session; cancel works un
   assert.equal(got.session_id, mc.session_id);
   const cxl = await h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'idem-sp-cxl', session_id: mc.session_id }, sess);
   assert.equal(cxl.status, 'canceled');
+  // And it is never completed afterwards (the cancellation holds the claim).
+  await assert.rejects(
+    h.mcp.callTool('complete_checkout_session', { idempotency_key: 'idem-sp-cxl-pay', session_id: mc.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mc.session_id) } }, sess),
+    (e) => e.code === 'QUOTE_ALREADY_USED',
+  );
   // ACP: create → get → cancel (unpaid)
   const ac = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'idem-sp-ac' }));
   const aGot = await h.acp.getCheckoutSession(acpReq({ id: ac.body.id, idem: null }));

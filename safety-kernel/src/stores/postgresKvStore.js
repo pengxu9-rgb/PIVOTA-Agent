@@ -123,6 +123,41 @@ export class PostgresKvStore {
   }
 
   /**
+   * ATOMIC bounded counter in ONE statement (see InMemoryKvStore.incrementCounterBelow). Concurrent
+   * callers on one key serialize on the row: ON CONFLICT DO UPDATE re-checks the WHERE against the latest
+   * row version, so the count never passes `limit` and no caller under the limit is refused for racing.
+   * An expired row restarts at 1 with the new expiry. Returns the new count, or null when refused.
+   */
+  async incrementCounterBelow(key, limit, { ttlMs } = {}) {
+    const { rows } = await this._db.query(
+      `INSERT INTO ${TABLE} AS t (ns, k, v, expires_at) VALUES ($1, $2, jsonb_build_object('count', 1), $3)
+       ON CONFLICT (ns, k) DO UPDATE SET
+         v = CASE WHEN t.expires_at IS NOT NULL AND t.expires_at <= to_timestamp($5)
+                  THEN jsonb_build_object('count', 1)
+                  ELSE jsonb_build_object('count', (t.v ->> 'count')::bigint + 1) END,
+         expires_at = CASE WHEN t.expires_at IS NOT NULL AND t.expires_at <= to_timestamp($5)
+                  THEN EXCLUDED.expires_at ELSE t.expires_at END
+       WHERE (t.expires_at IS NOT NULL AND t.expires_at <= to_timestamp($5))
+          OR (jsonb_typeof(t.v -> 'count') = 'number' AND (t.v ->> 'count')::bigint < $4)
+       RETURNING (v ->> 'count')::bigint AS count`,
+      [this._ns, key, this._expiresAt(ttlMs), limit, this._now() / 1000],
+    );
+    return rows[0] ? Number(rows[0].count) : null;
+  }
+
+  /** ATOMIC: take one back from a live counter above 0, in one statement. Returns true iff it did. */
+  async decrementCounter(key) {
+    const { rows } = await this._db.query(
+      `UPDATE ${TABLE} SET v = jsonb_build_object('count', (v ->> 'count')::bigint - 1)
+       WHERE ns = $1 AND k = $2 AND jsonb_typeof(v -> 'count') = 'number' AND (v ->> 'count')::bigint > 0
+         AND (expires_at IS NULL OR expires_at > to_timestamp($3))
+       RETURNING k`,
+      [this._ns, key, this._now() / 1000],
+    );
+    return rows.length > 0;
+  }
+
+  /**
    * ATOMIC compare-and-set on SEVERAL JSON fields (InMemoryKvStore.compareAndSetFields has the same rule): one
    * UPDATE whose WHERE requires every `(v ->> field) IS NOT DISTINCT FROM expected`, so a `null` expectation matches
    * a JSON null or an absent field, and anything else compares as text. An empty `expected` matches nothing.
