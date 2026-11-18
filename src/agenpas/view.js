@@ -47,7 +47,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 732733b93 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (23),
+// Mirrors pivota-backend f59f4fe37 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (23),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -110,6 +110,10 @@ const HELD_CODES = new Set([
   'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked',
   'vic_held',
 ]);
+
+/** On a COMPLETED purchase: the order IS placed, but the merchant's order number was not kept (withheld because it
+ * looked card-shaped, or invalid): `merchant_order_id` is null. Neither a hold nor a failure. */
+const COMPLETED_REFERENCE_CODES = new Set(['checkout_order_reference_withheld', 'checkout_order_reference_invalid']);
 
 /** Paused before the checkout step; not terminal. */
 const PARKED_CODES = new Set(['checkout_step_disabled', 'checkout_schema_incomplete']);
@@ -270,7 +274,8 @@ function codeSegments(codes) {
 }
 
 function isExplicit(seg) {
-  return FAILED_CODES.has(seg) || HELD_CODES.has(seg) || PARKED_CODES.has(seg) || REASON_BY_CODE.has(seg);
+  return FAILED_CODES.has(seg) || HELD_CODES.has(seg) || PARKED_CODES.has(seg) || REASON_BY_CODE.has(seg)
+    || COMPLETED_REFERENCE_CODES.has(seg);
 }
 
 /** What the codes say, by the precedence above: 'failed' | 'held' | a named group | 'shape_unknown' | null. */
@@ -478,6 +483,8 @@ function projectPurchaseView(body, { purchaseId, hostedHosts = [], embed = false
       // page then says "see your email receipt").
       total_unparsed: currencyConflict,
     };
+    // The order number was withheld (or invalid) and not kept: the page points to the store's confirmation email.
+    if (!order.reference && codeSegments(codes).some((seg) => COMPLETED_REFERENCE_CODES.has(seg))) order.reference_withheld = true;
   }
 
   const outcome = outcomeFor(state, codes);

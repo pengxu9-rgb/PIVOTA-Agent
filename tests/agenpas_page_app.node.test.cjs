@@ -230,7 +230,7 @@ test('completed: polling stops, the token is forgotten; an unparsed total says t
   const h = harness({ answers: [{ status: 200, body: done }] });
   h.start();
   await settle();
-  assert.match(h.text(), /Order placed/);
+  assert.match(h.text(), /Your order is placed/);
   assert.match(h.text(), /See your email receipt/);
   assert.equal(h.pollTimers().length, 0);
   assert.equal(h.storage.has(`agenpas:t:${PID}`), false);
@@ -454,4 +454,19 @@ test('collection off: the "add it in the chat" screen, no form', async () => {
   await settle();
   assert.match(h.text(), /Go back to the chat to add your address/);
   assert.equal(h.app.all((n) => n.tagName === 'FORM' || n.tagName === 'INPUT').length, 0);
+});
+
+test('completed with the order number withheld: "Your order is placed", the total, and the confirmation-email line', async () => {
+  const done = view({
+    state: 'completed', screen: 'done', terminal: true, action: null, poll_after_seconds: null,
+    amounts: { ...view().amounts, final_total_minor: 2297 },
+    order: { reference: null, status_url: null, total_unparsed: false, reference_withheld: true },
+  });
+  const h = harness({ answers: [{ status: 200, body: done }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Your order is placed/);
+  assert.match(h.text(), /Your order number is in the store's confirmation email\./);
+  assert.match(h.text(), /\$22\.97/);
+  assert.equal(h.pollTimers().length, 0);
 });

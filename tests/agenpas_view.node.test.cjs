@@ -668,7 +668,7 @@ test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now wri
   assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
 });
 
-test('parity with backend 732733b93: the explicit HELD list is exactly the 23 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
+test('parity with backend f59f4fe37 (hold sets unchanged since 732733b93): the explicit HELD list is exactly the 23 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
   const BACKEND_CHECKOUT_HOLD = ['checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
     'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
     'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_paying_without_task',
@@ -842,4 +842,36 @@ test('unrecognised codes never override an explicit list: FAILED, named and PARK
   assert.equal(project(unified('locking', {}, { refusal_reason: 'zz_new', last_error_code: 'checkout_step_disabled' })).screen, 'parked');
   // No code at all: the generic wording (with expired keeping its hint).
   assert.equal(project(unified('expired', { poll_after_seconds: null })).outcome.kind, 'expired');
+});
+
+// ---- backend f59f4fe37: the withheld order number -------------------------------------------------------------
+
+for (const code of ['checkout_order_reference_withheld', 'checkout_order_reference_invalid']) {
+  test(`COMPLETED ${code}: placed, the verified total, the order number "in the store's confirmation email"`, () => {
+    const withTotal = project(unified('completed', { poll_after_seconds: null, totals: { currency: 'USD', final_total_minor: 2297 } },
+      { last_error_code: code, merchant_order_id: null }));
+    assert.equal(withTotal.screen, 'done');
+    assert.equal(withTotal.terminal, true);
+    assert.equal(withTotal.outcome, null);
+    assert.equal(withTotal.order.reference, null);
+    assert.equal(withTotal.order.reference_withheld, true);
+    assert.equal(withTotal.amounts.final_total_minor, 2297);
+    // Without a total: still placed, still the email line; no amount is made up.
+    const noTotal = project(unified('completed', { poll_after_seconds: null, totals: { currency: 'USD' } }, { last_error_code: code }));
+    assert.equal(noTotal.screen, 'done');
+    assert.equal(noTotal.order.reference_withheld, true);
+    assert.equal(noTotal.amounts.final_total_minor, null);
+    // Not a hold, not a failure: never the checking wording, in any state.
+    assert.equal(isOutcomeUnknownCode(code), false);
+    assert.equal(FAILED_CODES.has(code), false);
+    assert.equal(HELD_CODES.has(code), false);
+    assert.equal(project(unified('placing', {}, { last_error_code: code })).screen, 'placing');
+  });
+}
+
+test('a completed order WITH its number: no withheld flag, whatever the code', () => {
+  const view = project(unified('completed', { order_reference: '#1001', poll_after_seconds: null }, { last_error_code: 'checkout_order_reference_withheld' }));
+  assert.equal(view.order.reference, '#1001');
+  assert.equal(Object.hasOwn(view.order, 'reference_withheld'), false);
+  assert.equal(Object.hasOwn(project(unified('completed', { order_reference: '#1001' })).order, 'reference_withheld'), false);
 });

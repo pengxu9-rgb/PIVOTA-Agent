@@ -257,7 +257,7 @@
       append(wrap, el('dt', null, label), el('dd', null, value));
       list.appendChild(wrap);
     }
-    row('Order number', order.reference);
+    row('Order number', order.reference_withheld ? "Your order number is in the store's confirmation email." : order.reference);
     row('Total charged', order.total_unparsed
       ? 'See your email receipt'
       : money(view.amounts && view.amounts.final_total_minor, view.currency));
@@ -272,7 +272,7 @@
       extra.appendChild(link);
     }
     extra.appendChild(el('p', 'fine', 'You can go back to the chat now.'));
-    return resultCard('done', 'Order placed', 'Your order at ' + merchantName(view) + ' is confirmed.', extra);
+    return resultCard('done', 'Your order is placed', 'Your order at ' + merchantName(view) + ' is confirmed.', extra);
   }
 
   function outcomeCard(view) {
