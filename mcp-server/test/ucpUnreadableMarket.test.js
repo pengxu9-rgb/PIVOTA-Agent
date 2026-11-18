@@ -48,9 +48,11 @@ async function withForwardOn(fn) {
 }
 
 // Sent, and not readable as a market. Each one must be refused, not dropped and not forwarded.
-const UNREADABLE = [123, ['US'], { code: 'US' }, true, 'USA', 'en-US', 'U S', 'U.S.'];
+const UNREADABLE = [123, ['US'], { code: 'US' }, true, 'USA', 'en-US', 'U S', 'U.S.',
+  // Unicode lookalikes: case mapping folds them to ASCII ('uſ' -> US, 'ﬁ' -> FI, 'ıt' -> IT); never a market.
+  'uſ', 'ﬁ', 'ＵＳ', 'УС', 'ıt', 'İT'];
 // The same values the refusal text must never repeat.
-const ECHO_PROBES = ['USA', 'en-US', 'U S', 'U.S.', '123', '"code"'];
+const ECHO_PROBES = ['USA', 'en-US', 'U S', 'U.S.', '123', '"code"', 'uſ', 'ﬁ', 'ＵＳ', 'УС', 'ıt', 'İT'];
 
 const LINE = { item: { id: 'sig_' + 'ab'.repeat(16) }, quantity: 1 };
 

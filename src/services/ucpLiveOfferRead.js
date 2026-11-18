@@ -925,7 +925,10 @@ function createUcpLiveProductReader(deps = {}) {
   }
 
   async function readLiveUncached(product, ctx) {
-    const declared = str(ctx && ctx.market).toUpperCase();
+    // Two ASCII letters are upcased; anything else (a lookalike such as 'uſ' or 'ﬁ' included, which case mapping
+    // would fold into a real code) is kept as sent, so it fails the shape test below and is skipped by name.
+    const sentMarket = str(ctx && ctx.market);
+    const declared = /^[A-Za-z]{2}$/.test(sentMarket) ? sentMarket.toUpperCase() : sentMarket;
     const homeCurrency = productCurrency(product);
     if (declared && !(/^[A-Z]{2}$/.test(declared) && currencyForBuyerRegion(declared))) {
       // A market the caller named and Pivota does not price is not quietly swapped for another one

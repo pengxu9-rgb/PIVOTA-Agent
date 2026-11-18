@@ -65,8 +65,11 @@ const BUYER_REGION_CURRENCY = Object.freeze({
  */
 function normalizeBuyerRegion(raw) {
   if (typeof raw !== 'string') return '';
-  const token = raw.trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(token) ? token : '';
+  // The shape is checked on the TRIMMED value BEFORE upcasing: Unicode case mapping turns lookalikes into
+  // ASCII ('uſ' -> 'US', the ligature 'ﬁ' -> 'FI', dotless 'ıt' -> 'IT'), so checking after it read them as real
+  // markets. Only two ASCII letters are a region; anything else is '' (this layer's unreadable value).
+  const token = raw.trim();
+  return /^[A-Za-z]{2}$/.test(token) ? token.toUpperCase() : '';
 }
 
 /**

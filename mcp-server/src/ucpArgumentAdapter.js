@@ -1600,11 +1600,13 @@ function readSearchCurrency(context, code) {
 // named was replaced. The value is never echoed. A readable code is forwarded exactly as before (trimmed, case as
 // sent); a well-formed code nothing is priced in (DE, ZZ) keeps its own downstream answer (`market_not_priced`).
 export const UCP_MARKET_INVALID_REASON = "ucp_market_invalid";
-const READABLE_MARKET_RE = /^[A-Z]{2}$/;
+// Two ASCII letters, tested on the trimmed value BEFORE any upcasing: Unicode case mapping turns lookalikes into
+// ASCII ('uſ' -> 'US', the ligature 'ﬁ' -> 'FI', 'ıt' -> 'IT'), so testing after it read them as markets.
+const READABLE_MARKET_RE = /^[A-Za-z]{2}$/;
 
 function readSentMarket(raw, { code, field }) {
   if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) return undefined;
-  if (typeof raw !== "string" || !READABLE_MARKET_RE.test(raw.trim().toUpperCase())) {
+  if (typeof raw !== "string" || !READABLE_MARKET_RE.test(raw.trim())) {
     throw ucpRefusal(code, UCP_MARKET_INVALID_REASON, [
       `\`${field}\` is not a country code this door can read, so there is no buyer market to answer this for.`,
       "Send the buyer's country as ISO 3166-1 alpha-2 (two letters); a market is never guessed, and nothing was read.",

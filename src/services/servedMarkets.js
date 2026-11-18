@@ -38,10 +38,13 @@ const DEFAULT_MARKET = 'US';
 function parseMarketList(raw, fallback = DEFAULT_MARKET) {
   const out = [];
   for (const part of String(raw == null ? '' : raw).split(/[,\s]+/)) {
-    const code = part.trim().toUpperCase();
-    // A market code is two letters. Anything else is a typo or a locale ("en-US"), and
-    // silently binding it would match no rows — the failure this module exists to stop.
-    if (/^[A-Z]{2}$/.test(code) && !out.includes(code)) out.push(code);
+    const entry = part.trim();
+    // A market code is two ASCII letters, tested BEFORE upcasing (case mapping folds lookalikes such as
+    // 'uſ' or the ligature 'ﬁ' into 'US' / 'FI'). Anything else is a typo, a locale ("en-US") or a lookalike,
+    // and silently binding it would match no rows — the failure this module exists to stop.
+    if (!/^[A-Za-z]{2}$/.test(entry)) continue;
+    const code = entry.toUpperCase();
+    if (!out.includes(code)) out.push(code);
   }
   if (out.length) return out;
   // `fallback: null` means "no fallback — an empty list is a real answer". Without this,
@@ -49,8 +52,8 @@ function parseMarketList(raw, fallback = DEFAULT_MARKET) {
   // one", because the empty parse coerced back to ['US'] and the deployment list was never
   // consulted. Caught by this module's own test, which is why the parameter is explicit.
   if (fallback === null) return [];
-  const fb = String(fallback || DEFAULT_MARKET).trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(fb) ? [fb] : [DEFAULT_MARKET];
+  const fb = String(fallback || DEFAULT_MARKET).trim();
+  return /^[A-Za-z]{2}$/.test(fb) ? [fb.toUpperCase()] : [DEFAULT_MARKET];
 }
 
 /**

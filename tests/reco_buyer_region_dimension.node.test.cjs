@@ -647,3 +647,22 @@ test('the RECALL pass keys its pool on the request region', async () => {
   assert.notEqual(gb, us);
   assert.equal(await keyFor({ lang: 'EN', buyer_region: 'US' }), us);
 });
+
+// UNICODE LOOKALIKES ARE NOT MARKETS. The shape is checked BEFORE upcasing: case mapping turned 'uſ' (long s) into
+// 'US', the ligature 'ﬁ' into 'FI' (EUR) and dotless 'ıt' into 'IT', each then read as a real market.
+test('normalizeBuyerRegion: only two ASCII letters, checked before upcasing; lookalikes are unreadable', () => {
+  for (const lookalike of ['uſ', 'ﬁ', 'ＵＳ', 'ｕｓ', 'УС', 'ЅG', 'ıt', 'İT', 'ſg', 'Uſ', 'ús']) {
+    assert.equal(normalizeBuyerRegion(lookalike), '', JSON.stringify(lookalike));
+    assert.equal(currencyForBuyerRegion(lookalike), '', JSON.stringify(lookalike));
+    assert.equal(isRejectedBuyerRegionInput(lookalike), true, `${JSON.stringify(lookalike)}: sent and unreadable, logged as rejected`);
+  }
+  for (const [raw, code] of [['us', 'US'], [' US ', 'US'], ['\tgb\n', 'GB'], ['Sg', 'SG']]) {
+    assert.equal(normalizeBuyerRegion(raw), code, JSON.stringify(raw));
+  }
+  // The 12 markets this gateway prices, unchanged.
+  for (const code of ['US', 'SG', 'GB', 'JP', 'FR', 'HR', 'FI', 'AU', 'SE', 'KR', 'HK', 'CA']) {
+    assert.equal(normalizeBuyerRegion(code), code);
+    assert.equal(normalizeBuyerRegion(code.toLowerCase()), code);
+    assert.ok(currencyForBuyerRegion(code), code);
+  }
+});

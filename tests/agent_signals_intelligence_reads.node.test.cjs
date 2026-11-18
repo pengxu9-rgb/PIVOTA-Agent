@@ -1065,7 +1065,9 @@ test('getOffersBuyerMarket: ISO-2 and priceable only, from `market` then `buyer_
   assert.equal(getOffersBuyerMarket({ market: 'sg' }), 'SG');
   assert.equal(getOffersBuyerMarket({ buyer_market: ' jp ' }), 'JP');
   assert.equal(getOffersBuyerMarket({ market: 'US', buyer_market: 'SG' }), 'US', '`market` wins when both are stated');
-  for (const raw of ['USA', 'en-US', 'US,SG', 'ZZ', 'DE', '', null, undefined, 7, ['US']]) {
+  for (const raw of ['USA', 'en-US', 'US,SG', 'ZZ', 'DE', '', null, undefined, 7, ['US'],
+    // Unicode lookalikes upcase to ASCII codes ('uſ' -> US, 'ﬁ' -> FI): never a market.
+    'uſ', 'ﬁ', 'ＵＳ', 'УС', 'ЅG', 'ıt', 'İT']) {
     assert.equal(getOffersBuyerMarket({ market: raw }), null, String(raw));
   }
   assert.equal(getOffersBuyerMarket({}), null);
