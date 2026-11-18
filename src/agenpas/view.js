@@ -62,7 +62,9 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 //   2. FAILED (terminal, nothing was submitted to the store): the not_submitted wording.
 //   3. the other NAMED lists (declined, approval timed out, card, price, refusals, ...): their wording.
 //   4. the SHAPE heuristic (a new code of the hold families): outcome_unknown.
-//   5. the state's generic wording: neutral, no "try again".
+//   5. a code nothing above recognises: from placing on and in final states, the checking wording (outcome_unknown,
+//      no retry); before placing it changes nothing.
+//   6. no code at all: the state's generic wording.
 // Every explicit list beats the shape in both directions: `checkout_setup_unrecognised` is a FAILED code although its
 // name has the shape of a hold, and `vic_quote_mismatch` is a pre-submit price check.
 // While NOT terminal: a HELD (or hold-shaped) code in `placing` shows the checking screen, and a PARKED code (the
@@ -164,7 +166,9 @@ const REASON_GROUPS = [
   },
   {
     kind: 'approval_timed_out',
-    codes: ['vic_authorization_expired', 'vic_authorization_overdue', 'vic_buyer_abandoned'],
+    // `buyer_action_expired`: the approval page lapsed before the buyer approved (the paid step mints a token; nothing
+    // is charged), e.g. `paid_sent:2:<variant>:buyer_action_expired`.
+    codes: ['vic_authorization_expired', 'vic_authorization_overdue', 'vic_buyer_abandoned', 'buyer_action_expired'],
     title: 'The approval timed out',
     message: "The purchase wasn't approved in time, so the order wasn't placed.",
     retry_hint: true,
@@ -301,12 +305,29 @@ function isOutcomeUnknownCode(code) {
 // fallback applies from `placing` on (where a confirm may have gone out) and in final states.
 const PRE_PLACING_STATES = new Set(['routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'needs_shipping_address', 'unknown']);
 
+/**
+ * True when a code is on the purchase that the gateway does not recognise at all: none of its segments is on an
+ * explicit list or has the hold shape (a brand-new code, a malformed or oversized one, a bare `paid_sent:<n>:<v>`).
+ * Nothing known says the order was not placed, so from `placing` on and in final states it is read as "checking".
+ */
+function hasUnrecognisedCode(codes) {
+  const flat = (Array.isArray(codes) ? codes : []).flatMap((c) => (Array.isArray(c) ? c : [c]));
+  return flat.some((code) => {
+    if (typeof code !== 'string' || code.trim() === '') return false;
+    return !codeSegments([code]).some((seg) => isExplicit(seg) || OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
+  });
+}
+
 function outcomeFor(state, codes) {
   const segments = codeSegments(codes);
   const c = classify(segments);
+  // Only when nothing on any list (or of the hold shape) decides: explicit lists and the shape keep their precedence.
+  const unrecognised = !c && hasUnrecognisedCode(codes);
   if (!TERMINAL_STATES.has(state)) {
     const preplacing = PRE_PLACING_STATES.has(state);
     if (c && (c.kind === 'held' || (c.kind === 'shape_unknown' && !preplacing))) return { ...HELD_COPY };
+    // Before placing an unrecognised code changes nothing: the buyer's step stays.
+    if (unrecognised && !preplacing && !segments.some((seg) => PARKED_CODES.has(seg))) return { ...HELD_COPY };
     if (segments.some((seg) => PARKED_CODES.has(seg))) return state === 'placing' ? { ...HELD_COPY } : { ...PARKED_COPY };
     return null;
   }
@@ -321,6 +342,8 @@ function outcomeFor(state, codes) {
     return { ...NOT_SUBMITTED_COPY };
   }
   if (c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...OUTCOME_UNKNOWN_COPY };
+  // An unrecognised code on a final purchase: the checking wording, never "no order was sent", never a retry.
+  if (unrecognised) return { ...OUTCOME_UNKNOWN_COPY };
   if (c && c.kind === 'named') {
     const { codes: _codes, ...copy } = c.group;
     return { ...copy, outcome_unknown: false };

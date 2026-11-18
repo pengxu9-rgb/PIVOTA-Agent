@@ -81,7 +81,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | ANY state not yet final with a hold / outcome-unknown code | "We're checking with the store — don't try again. This can take a while…" (polling goes on). No buyer step is offered at all, even if the rail still lists one (a held row can still be in `awaiting_buyer_authorization`). Before `placing` only an EXPLICIT HELD code does this: the backend's read-retry codes (`vic_status:unrecognised`, `paid_sent:<n>:await:await_answer_unrecognised`, `vic_quote:unrecognised:<n>`) have the hold shape but keep the buyer's step; the shape fallback applies from `placing` on and in final states. |
 | a state not yet final (other than `placing`), with a parked code and no buyer step | "Getting things ready…" (polling goes on). In `placing` a parked code gets the checking wording above: a confirm may already have gone out. |
 | `completed` | Order placed: order number, total charged, store, link to the store's order page when it is on the store's domain |
-| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording: no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
+| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). A code the gateway does not recognise at all (on no list, not of the hold shape) gets the checking wording: "We're checking with the store — don't try again", no retry, never "no order was sent". With no code at all: neutral wording, no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
 Codes are read segment by segment (mirroring pivota-backend 732733b93: its 23 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
@@ -97,7 +97,9 @@ may have moved, the page never says "no order was sent"; then an explicit FAILED
 submitted: `checkout_relay_refused`, `checkout_setup_unrecognised`, `checkout_confirm_refused`, ...) gives "no order
 was sent to the store"; then the other named lists (declined, approval
 timed out, card, price, the rail's refusals `checkout_currency_unsupported` / `checkout_ceiling_*`, ...); then a
-hold-shaped heuristic for new codes; then neutral generic wording. Explicit lists always beat the heuristic. A PARKED
+hold-shaped heuristic for new codes; then, for a code nothing above recognises, the checking wording from `placing` on
+and in final states (before `placing` it changes nothing: the buyer's step stays); then, with no code, neutral generic
+wording. Explicit lists always beat the heuristic. A PARKED
 code (`checkout_step_disabled`, `checkout_schema_incomplete`) on a purchase that is not final shows "Getting things
 ready…" while polling goes on. Pre-store terminal failures whose names look like holds (`binding_answer_unrecognised`,
 `approval_answer_unrecognised`, `token_answer_unrecognised`, `token_mismatch`, `vic_quote_unrecognised`,

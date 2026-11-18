@@ -255,11 +255,12 @@ test('known codes map to plain language; the raw code never reaches the page', (
   assert.equal(refused.outcome.retry_hint, false);
 });
 
-test('an unknown code (or junk) gets the state\'s generic wording without a retry for failed/refused', () => {
+test('an unrecognised code (or junk) on a final purchase gets the checking wording; no code gets the generic wording', () => {
   const failed = outcomeFor('failed', ['brand_new_code', '<b>Traceback</b>']);
-  assert.equal(failed.kind, 'failed');
+  assert.equal(failed.kind, 'outcome_unknown');
   assert.equal(failed.retry_hint, false);
-  assert.equal(failed.outcome_unknown, false);
+  assert.equal(failed.outcome_unknown, true);
+  assert.equal(outcomeFor('failed', []).kind, 'failed');
   assert.equal(outcomeFor('refused', []).kind, 'refused');
   assert.equal(outcomeFor('expired', [null]).kind, 'expired');
   assert.equal(outcomeFor('completed', ['vic_order_outcome_unknown']), null);
@@ -317,7 +318,10 @@ test('paid_sent is the approval step, not a charge: only its code segment decide
   const unresolved = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'paid_sent:3:scheme:vic_submit_unresolved' }));
   assert.equal(unresolved.screen, 'outcome_unknown');
   assert.equal(unresolved.outcome.retry_hint, false);
-  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).outcome.kind, 'failed');
+  // An unrecognised code behind the prefix: the checking wording (review: unknown codes are never neutral once final).
+  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).outcome.kind, 'outcome_unknown');
+  // buyer_action_expired itself is named: the approval timed out.
+  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:2:scheme:buyer_action_expired' })).outcome.kind, 'approval_timed_out');
 });
 
 test('binding_refused:<kind>:<status> reads as the card not being usable', () => {
@@ -334,7 +338,7 @@ test('checkout_total_unparsed: retired by the backend; a completed purchase show
 });
 
 test('the generic failed wording is neutral: no "try again", no claim the order was not placed', () => {
-  const view = project(unified('failed', {}, { last_error_code: 'a_code_nobody_has_seen' }));
+  const view = project(unified('failed', {}, { last_error_code: null }));
   assert.equal(view.outcome.kind, 'failed');
   assert.equal(view.outcome.retry_hint, false);
   assert.equal(/try again|wasn't placed/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
@@ -573,15 +577,15 @@ const MIXED = [
   ['named+hold', 'vic_quote_mismatch', 'outcome_unknown:http_error', 'outcome_unknown', 'held'],
   ['named+fail', 'price_changed', 'checkout_relay_refused', 'not_submitted', null],
   ['upper hold', null, 'CHECKOUT_UNKNOWN_TIMEOUT', 'outcome_unknown', 'held'],
-  ['dash hold (not a code shape: ignored)', null, 'checkout-unknown-timeout', 'generic', null],
+  ['dash hold (not a code shape: unrecognised)', null, 'checkout-unknown-timeout', 'outcome_unknown', 'held'],
   ['space-padded', null, ' checkout_setup_unresolved ', 'outcome_unknown', 'held'],
   ['named beats a shape-only segment', null, 'token_refused:money_result:', 'card_not_added', null],
-  ['unknown only', null, 'zz_brand_new', 'generic', null],
+  ['unknown only', null, 'zz_brand_new', 'outcome_unknown', 'held'],
   ['unknown shapey', null, 'zz_new_unresolved_thing', 'outcome_unknown', 'held'],
   ['fail beats shape', 'checkout_lock_invalid', 'zz_new_unresolved_thing', 'not_submitted', null],
   ['named beats shape', 'binding_refused', 'zz_new_unresolved_thing', 'card_not_added', null],
-  ['code over 512 chars is ignored', null, `${'x'.repeat(520)}:checkout_unknown_timeout`, 'generic', null],
-  ['segment over 64 chars is ignored', null, `checkout_unknown_timeout_${'x'.repeat(60)}`, 'generic', null],
+  ['code over 512 chars is unrecognised', null, `${'x'.repeat(520)}:checkout_unknown_timeout`, 'outcome_unknown', 'held'],
+  ['segment over 64 chars is unrecognised', null, `checkout_unknown_timeout_${'x'.repeat(60)}`, 'outcome_unknown', 'held'],
   ['a list of codes is read', ['checkout_unknown_timeout'], 'checkout_lock_invalid', 'outcome_unknown', 'held'],
 ];
 for (const [name, rr, le, terminalKind, placingKind] of MIXED) {
@@ -620,11 +624,11 @@ test('HELD checkout_confirm_not_sent (token exchange failed twice): still held, 
   assert.equal(failed.outcome.retry_hint, false);
 });
 
-test('checkout_confirm_not_verified (being removed by the backend): not on the FAILED list; neutral generic wording', () => {
+test('checkout_confirm_not_verified (removed by the backend): not on the FAILED list; unrecognised, so the checking wording', () => {
   const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_confirm_not_verified' }));
-  assert.equal(view.screen, 'failed');
-  assert.equal(view.outcome.kind, 'failed');
-  assert.equal(/no order was sent|wasn't placed|try again/i.test(view.outcome.message), false);
+  assert.equal(view.screen, 'outcome_unknown');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.equal(/no order was sent|wasn't placed/i.test(view.outcome.message), false);
 });
 
 test('HELD checkout_paying_without_task: the checking screen while placing, outcome_unknown once final', () => {
@@ -638,10 +642,11 @@ test('HELD checkout_paying_without_task: the checking screen while placing, outc
   assert.equal(failed.outcome.retry_hint, false);
 });
 
-test('removed checkout_confirm_window_passed: no longer a FAILED code; neutral generic wording', () => {
+test('removed checkout_confirm_window_passed: no longer a FAILED code; now unrecognised, so the checking wording', () => {
   const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_confirm_window_passed' }));
-  assert.equal(view.outcome.kind, 'failed');
-  assert.equal(/no order was sent|wasn't placed|try again/i.test(view.outcome.message), false);
+  assert.equal(view.outcome.kind, 'outcome_unknown');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.equal(/no order was sent|wasn't placed/i.test(view.outcome.message), false);
 });
 
 test('HELD checkout_confirm_ambiguous_4xx now also for 401 and 429: held, whatever the suffix', () => {
@@ -801,4 +806,40 @@ test('HELD checkout_payment_reached_unconfirmed: the checking screen in placing,
     assert.equal(view.screen, 'outcome_unknown', `${rr} + ${le}`);
     assert.equal(/charged/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
   }
+});
+
+// ---- unrecognised codes (controller P3, after gw#2599) ----------------------------------------------------------
+
+const UNRECOGNISED = ['zz_brand_new_code', 'checkout_something_new', 'paid_sent:3:scheme:zz_new_step_code', 'not a code at all'];
+
+for (const code of UNRECOGNISED) {
+  test(`unrecognised ${JSON.stringify(code)}: placing -> the checking screen`, () => {
+    const view = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: code }));
+    assert.equal(view.screen, 'outcome_unknown');
+    assert.equal(view.outcome.kind, 'held');
+    assert.equal(view.terminal, false);
+  });
+  test(`unrecognised ${JSON.stringify(code)}: failed / refused / expired -> outcome_unknown, no retry, never "no order was sent"`, () => {
+    for (const state of ['failed', 'refused', 'expired']) {
+      const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
+      assert.equal(view.screen, 'outcome_unknown', state);
+      assert.equal(view.outcome.retry_hint, false, state);
+      assert.equal(/no order was sent|wasn't placed|start again|try again from/i.test(view.outcome.message), false, state);
+      assert.match(view.outcome.message, /don't try again/);
+    }
+  });
+  test(`unrecognised ${JSON.stringify(code)}: awaiting_buyer_authorization -> Approve stays`, () => {
+    const view = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: code }));
+    assert.equal(view.screen, 'approve');
+    assert.ok(view.action);
+    assert.equal(view.outcome, null);
+  });
+}
+
+test('unrecognised codes never override an explicit list: FAILED, named and PARKED keep their wording', () => {
+  assert.equal(project(unified('failed', {}, { refusal_reason: 'zz_new', last_error_code: 'checkout_relay_refused' })).outcome.kind, 'not_submitted');
+  assert.equal(project(unified('failed', {}, { refusal_reason: 'zz_new', last_error_code: 'vic_authorization_declined' })).outcome.kind, 'declined');
+  assert.equal(project(unified('locking', {}, { refusal_reason: 'zz_new', last_error_code: 'checkout_step_disabled' })).screen, 'parked');
+  // No code at all: the generic wording (with expired keeping its hint).
+  assert.equal(project(unified('expired', { poll_after_seconds: null })).outcome.kind, 'expired');
 });
