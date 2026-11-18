@@ -36299,9 +36299,10 @@ function registerUcpBuyerAgentProfileRoute() {
   // lookups that carry Promoted Placements attribution (mcp-server/src/shopifyCatalogAttribution.js). Catalog
   // capabilities only: no cart, no checkout. Lit only while SHOPIFY_CATALOG_ATTRIBUTION is shadow or enforce, so it
   // is dark by default. Its self-reference comes ONLY from SHOPIFY_CATALOG_DRAFT_PROFILE_URL (never the Host header).
-  app.get('/.well-known/ucp-agent-catalog-draft', async (req, res) => {
+  app.get('/.well-known/ucp-agent-catalog-draft', async (req, res, next) => {
     const mode = String(process.env.SHOPIFY_CATALOG_ATTRIBUTION || '').trim().toLowerCase();
-    if (mode !== 'shadow' && mode !== 'enforce') return res.status(404).json({ error: 'not_found' });
+    // Off: not this route at all. Express's own 404 answers, byte for byte what the path answered before it existed.
+    if (mode !== 'shadow' && mode !== 'enforce') return next();
     try {
       // eslint-disable-next-line global-require
       const { buildUcpCatalogDraftProfile } = require('./services/ucpBuyerAgentProfile');
