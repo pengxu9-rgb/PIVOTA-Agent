@@ -274,7 +274,8 @@
     var kind = view.screen === 'outcome_unknown' ? 'checking' : 'stopped';
     var extra = null;
     // Never a retry for an outcome-unknown purchase: the order may already exist.
-    if (outcome.retry_hint && !outcome.outcome_unknown) {
+    // The hint line only when the message does not already say it.
+    if (outcome.retry_hint && !outcome.outcome_unknown && !/start again|try again/i.test(outcome.message || '')) {
       extra = el('p', 'fine', 'You can go back to the chat to try again.');
     }
     return resultCard(kind, outcome.title || "This purchase didn't go through", outcome.message || 'Go back to the chat to check what happened.', extra);

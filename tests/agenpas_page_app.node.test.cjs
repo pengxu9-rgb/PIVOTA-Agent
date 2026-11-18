@@ -324,3 +324,17 @@ test('a held purchase still in approval: no approve button, the checking copy, p
   assert.match(h.text(), /don't try again/);
   assert.equal(h.pollTimers()[0].ms, 15000);
 });
+
+test('operator_confirmed_not_charged: the operator wording once, no second "try again" line, polling stops', async () => {
+  const done = view({
+    state: 'failed', screen: 'failed', terminal: true, action: null, poll_after_seconds: null,
+    outcome: { kind: 'not_charged', title: "This purchase didn't go through", message: "This purchase didn't go through and you weren't charged. You can start again from the chat.", retry_hint: true, outcome_unknown: false },
+  });
+  const h = harness({ answers: [{ status: 200, body: done }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /you weren't charged/);
+  assert.equal(/try again/i.test(h.text()), false);
+  assert.equal((h.text().match(/start again from the chat/g) || []).length, 1);
+  assert.equal(h.pollTimers().length, 0);
+});

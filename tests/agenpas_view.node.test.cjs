@@ -660,7 +660,7 @@ test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now wri
   assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
 });
 
-test('parity with backend 6f31b6c75: the explicit HELD list is exactly the 22 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
+test('parity with backend 354670505 (hold sets unchanged since 6f31b6c75): the explicit HELD list is exactly the 22 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
   const BACKEND_CHECKOUT_HOLD = ['checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
     'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
     'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_paying_without_task',
@@ -717,4 +717,46 @@ test('an explicit HELD code in awaiting_buyer_authorization still drops Approve 
   const both = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL },
     { refusal_reason: 'vic_status:unrecognised', last_error_code: 'vic_order_stale' }));
   assert.equal(both.action, null);
+});
+
+// ---- backend 354670505: the operator's terminal code -----------------------------------------------------------
+
+test('FAILED operator_confirmed_not_charged: "you weren\'t charged" (a human checked the provider), start again from the chat', () => {
+  const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'operator_confirmed_not_charged' }));
+  assert.equal(view.screen, 'failed');
+  assert.equal(view.outcome.kind, 'not_charged');
+  assert.equal(view.outcome.outcome_unknown, false);
+  assert.equal(view.outcome.retry_hint, true);
+  assert.equal(view.outcome.message, "This purchase didn't go through and you weren't charged. You can start again from the chat.");
+  assert.equal(isOutcomeUnknownCode('operator_confirmed_not_charged'), false);
+});
+
+test('operator_confirmed_not_charged: HELD still wins when a hold code is also on the purchase', () => {
+  for (const [rr, le] of [['checkout_confirm_unresolved', 'operator_confirmed_not_charged'], ['operator_confirmed_not_charged', 'money_result_seen']]) {
+    const view = project(unified('failed', {}, { refusal_reason: rr, last_error_code: le }));
+    assert.equal(view.screen, 'outcome_unknown', `${rr} + ${le}`);
+    assert.equal(/weren't charged/.test(view.outcome.message), false);
+  }
+});
+
+test('"weren\'t charged" is said for operator_confirmed_not_charged and NO other code', () => {
+  const every = [...HELD_CODES, ...FAILED_CODES, 'vic_authorization_declined', 'binding_refused', 'price_changed',
+    'checkout_currency_unsupported', 'merchant_not_purchasable', 'invalid_address', 'zz_unknown', 'checkout_step_disabled'];
+  for (const code of every) {
+    for (const state of ['failed', 'refused', 'expired', 'placing', 'awaiting_buyer_authorization']) {
+      const view = project(unified(state, {}, { last_error_code: code }));
+      const text = view.outcome ? `${view.outcome.title} ${view.outcome.message}` : '';
+      assert.equal(/charged/i.test(text), code === 'operator_confirmed_not_charged' && state !== 'placing' && state !== 'awaiting_buyer_authorization', `${state} ${code}`);
+    }
+  }
+});
+
+test('parity: the explicit FAILED list is exactly the backend\'s nothing-submitted codes plus operator_confirmed_not_charged', () => {
+  const EXPECTED_FAILED = ['checkout_contact_incomplete', 'checkout_relay_refused', 'checkout_lock_invalid', 'checkout_price_missing',
+    'checkout_token_unavailable', 'checkout_card_unavailable', 'checkout_setup_incomplete', 'checkout_setup_unrecognised',
+    'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused', 'checkout_captcha_failed',
+    'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported', 'token_request_unresolved', 'pay_step_unavailable',
+    'binding_answer_unrecognised', 'approval_answer_unrecognised', 'token_answer_unrecognised', 'token_mismatch',
+    'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved', 'operator_confirmed_not_charged'];
+  assert.deepEqual([...FAILED_CODES].sort(), [...EXPECTED_FAILED].sort());
 });

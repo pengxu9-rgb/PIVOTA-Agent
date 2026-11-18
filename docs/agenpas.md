@@ -82,7 +82,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). An unknown code gets neutral wording: no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
-Codes are read segment by segment (mirroring pivota-backend 6f31b6c75: its 22 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
+Codes are read segment by segment (mirroring pivota-backend 354670505: its 22 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
 (`paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`, `checkout_card_unavailable:<why>`,
 `checkout_setup_refused:<kind>:<status>`, `checkout_confirm_refused:http_error:422`), so each is lower-cased and split
 on `:`, and every segment is checked; a suffixed code matches on its head segment. The step prefixes (`paid_sent`,
@@ -99,7 +99,9 @@ hold-shaped heuristic for new codes; then neutral generic wording. Explicit list
 code (`checkout_step_disabled`, `checkout_schema_incomplete`) on a purchase that is not final shows "Getting things
 ready…" while polling goes on. Pre-store terminal failures whose names look like holds (`binding_answer_unrecognised`,
 `approval_answer_unrecognised`, `token_answer_unrecognised`, `token_mismatch`, `vic_quote_unrecognised`,
-`vic_quote_currency_mismatch`, `vic_order_unresolved`) are on the FAILED list. A completed purchase always carries its
+`vic_quote_currency_mismatch`, `vic_order_unresolved`) are on the FAILED list. `operator_confirmed_not_charged` (an operator ended a held checkout after checking the provider's side: no order,
+no charge) is FAILED with its own wording, "This purchase didn't go through and you weren't charged. You can start
+again from the chat.": the only code whose wording says the buyer was not charged, and HELD still beats it. A completed purchase always carries its
 verified final total; only two disagreeing (or a non-ISO, e.g. lower-case,)
 currencies hide it ("see your email receipt").
 
