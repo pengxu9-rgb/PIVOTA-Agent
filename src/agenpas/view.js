@@ -44,7 +44,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 6f31b6c75 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (22),
+// Mirrors pivota-backend 732733b93 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (23),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -76,7 +76,13 @@ const FAILED_CODES = new Set([
   // the store; `vic_order_unresolved`: "the submit made nothing"). Listed so the shape never words them as unknown.
   'binding_answer_unrecognised', 'approval_answer_unrecognised', 'token_answer_unrecognised', 'token_mismatch',
   'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved',
+  // An OPERATOR ended a held checkout after checking the provider's side: no order and no charge
+  // (pivota-backend jobs/a2a_rail_operator.py). Its own wording below.
+  'operator_confirmed_not_charged',
 ]);
+
+/** The one FAILED code whose wording may say the buyer was not charged: a human verified it at the provider. */
+const OPERATOR_NOT_CHARGED_CODES = new Set(['operator_confirmed_not_charged']);
 
 /** Held for a check (the backend keeps the purchase in `paying`): the order may exist, or money may have moved. */
 const HELD_CODES = new Set([
@@ -88,6 +94,8 @@ const HELD_CODES = new Set([
   'checkout_payment_no_order', 'checkout_order_id_card_shaped', 'checkout_unknown_timeout',
   'checkout_unknown_script_error', 'checkout_cancel_unresolved', 'checkout_confirm_pending_check',
   'checkout_confirm_not_sent', 'checkout_paying_without_task',
+  // The provider reported payment-reached without success: money may have moved.
+  'checkout_payment_reached_unconfirmed',
   'money_result_seen',
   // _VIC_HOLD_CODES
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
@@ -124,6 +132,14 @@ const PARKED_COPY = Object.freeze({
   title: 'Getting things ready…',
   message: 'This is taking a little longer than usual. This page updates on its own.',
   retry_hint: false,
+  outcome_unknown: false,
+});
+
+const NOT_CHARGED_COPY = Object.freeze({
+  kind: 'not_charged',
+  title: "This purchase didn't go through",
+  message: "This purchase didn't go through and you weren't charged. You can start again from the chat.",
+  retry_hint: true,
   outcome_unknown: false,
 });
 
@@ -292,7 +308,15 @@ function outcomeFor(state, codes) {
     return null;
   }
   if (!GENERIC_BY_STATE[state]) return null;
-  if (c && c.kind === 'failed') return { ...NOT_SUBMITTED_COPY };
+  if (c && c.kind === 'failed') {
+    // HELD has already won above if any hold code is present. "You weren't charged" is said ONLY when nothing else on
+    // the purchase is even hold-SHAPED: a claim that strong needs a clean record; otherwise, the checking wording.
+    if (segments.some((seg) => OPERATOR_NOT_CHARGED_CODES.has(seg))) {
+      const holdShaped = segments.some((seg) => !isExplicit(seg) && OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
+      return holdShaped ? { ...OUTCOME_UNKNOWN_COPY } : { ...NOT_CHARGED_COPY };
+    }
+    return { ...NOT_SUBMITTED_COPY };
+  }
   if (c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...OUTCOME_UNKNOWN_COPY };
   if (c && c.kind === 'named') {
     const { codes: _codes, ...copy } = c.group;
