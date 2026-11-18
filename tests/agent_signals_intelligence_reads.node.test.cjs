@@ -1122,3 +1122,118 @@ test('D-10: makeGetOffers forwards market_assumed to the fetch only beside the m
   assert.equal('market_assumed' in seen[2], false, 'no market: nothing to have assumed');
 });
 
+// ---------------------------------------------------------------------------------------------
+// A PRODUCT NAMED BY ITS SIGNATURE IN `product_group_id`. offers.resolve takes a product id only, so a call
+// that named the product by `product_group_id` alone was answered with no offer for every product. Search
+// and get_product hand out the product's signature in group-id fields; a signature there is looked up as the
+// product id. Any other group-id value is refused by name and never fetched. Made-up ids throughout.
+// ---------------------------------------------------------------------------------------------
+
+const SIG_IN_GROUP_ARG = `sig_${'ab12cd34'.repeat(4)}`; // sig_ + 32 lowercase hex
+const GROUP_ID_28 = `sig_${'ab12cd34'.repeat(3)}`; // sig_ + 24 hex: the identity group id, not a signature
+
+function recordingGetOffers(offers, deps = {}) {
+  const seen = [];
+  const handler = makeGetOffers({
+    ...deps,
+    fetchOffers: async (args) => { seen.push(args); return { offers: offers.map((o) => ({ ...o })) }; },
+  });
+  return { handler, seen };
+}
+
+test('makeGetOffers: a signature in product_group_id (no product_id) is fetched as product_id', async () => {
+  const { handler, seen } = recordingGetOffers([sampleOffer({ price: 12 })]);
+  const res = await handler({ payload: { product_group_id: SIG_IN_GROUP_ARG, market: 'US', limit: 10 } });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].product_id, SIG_IN_GROUP_ARG);
+  assert.equal(seen[0].product_group_id, SIG_IN_GROUP_ARG, 'the group arg still rides as the fallback group echo');
+  assert.equal(seen[0].market, 'US');
+  assert.deepEqual(res.subject, { kind: 'product', id: SIG_IN_GROUP_ARG });
+  assert.equal(res.metadata.offer_count, 1);
+  assert.equal(res.metadata.product_group_id, SIG_IN_GROUP_ARG);
+  assert.equal(res.best_offer.subject.id, `m1:${SIG_IN_GROUP_ARG}`, 'signals are keyed on the product looked up');
+  assert.equal('reason' in res.metadata, false);
+});
+
+test('makeGetOffers: a group id that is not a signature is refused by name, with no fetch', async () => {
+  for (const groupArg of [GROUP_ID_28, `pg_${'ab12cd34'.repeat(4)}`, SIG_IN_GROUP_ARG.toUpperCase().replace('SIG_', 'sig_'),
+    ` ${SIG_IN_GROUP_ARG}`, `${SIG_IN_GROUP_ARG}0`, 'not-an-id']) {
+    const { handler, seen } = recordingGetOffers([sampleOffer({ price: 12 })]);
+    const res = await handler({ payload: { product_group_id: groupArg, market: 'US' } });
+    assert.equal(seen.length, 0, `no fetch for ${groupArg}`);
+    assert.equal(res.best_offer, null);
+    assert.deepEqual(res.signals, []);
+    assert.deepEqual(res.subject, { kind: 'product', id: groupArg });
+    assert.deepEqual(res.metadata, {
+      offer_count: 0, product_group_id: groupArg, market: 'US', market_currency: 'USD',
+      withheld_other_currency_count: 0, reason: 'product_group_id_not_product_id',
+    }, groupArg);
+  }
+  // No market stated: no market keys, and still no default market.
+  const { handler, seen } = recordingGetOffers([sampleOffer()]);
+  const bare = await handler({ payload: { product_group_id: GROUP_ID_28 } });
+  assert.equal(seen.length, 0);
+  assert.deepEqual(bare.metadata, { offer_count: 0, product_group_id: GROUP_ID_28, reason: 'product_group_id_not_product_id' });
+  // The reason door adds its retry flag, as on every other empty answer there.
+  const onDoor = recordingGetOffers([sampleOffer()], { emptyReasonDoor: () => true });
+  const doorRes = await onDoor.handler({ payload: { product_group_id: GROUP_ID_28, market: 'US' } });
+  assert.equal(onDoor.seen.length, 0);
+  assert.equal(doorRes.metadata.reason, 'product_group_id_not_product_id');
+  assert.equal(doorRes.metadata.reason_retriable, false);
+});
+
+test('makeGetOffers: product_id given beside product_group_id wins, whatever the group arg holds', async () => {
+  for (const groupArg of [SIG_IN_GROUP_ARG, GROUP_ID_28, 'not-an-id']) {
+    const { handler, seen } = recordingGetOffers([sampleOffer({ price: 12 })]);
+    const res = await handler({ payload: { product_id: 'p1', product_group_id: groupArg, market: 'US' } });
+    assert.equal(seen.length, 1, groupArg);
+    assert.equal(seen[0].product_id, 'p1');
+    assert.equal(seen[0].product_group_id, groupArg, 'passed along exactly as before');
+    assert.deepEqual(res.subject, { kind: 'product', id: 'p1' });
+    assert.equal(res.metadata.offer_count, 1);
+    assert.equal('reason' in res.metadata, false);
+  }
+  // Neither given: exactly today's fetch (nothing invented, nothing refused here).
+  const { handler, seen } = recordingGetOffers([]);
+  await handler({ payload: { merchant_id: 'm1' } });
+  assert.deepEqual(seen[0], { merchant_id: 'm1', product_id: undefined, product_group_id: undefined, currency: undefined, limit: 10 });
+});
+
+test('makeGetOffers: every market cell answers a signature in product_group_id exactly as the same id in product_id', async () => {
+  // USD and SGD offers, so the market's currency filter has something to keep and something to withhold.
+  const offers = [sampleOffer({ merchant_id: 'm1', price: 12, currency: 'USD' }), sampleOffer({ merchant_id: 'm2', price: 16, currency: 'SGD' })];
+  const strip = (args) => { const { product_group_id: _g, ...rest } = args; return rest; };
+  const stripAnswer = (res) => { const { product_group_id: _g, ...metadata } = res.metadata; return { ...res, metadata }; };
+  for (const market of ['US', 'SG', 'GB', 'DE', undefined, 'ZZ']) {
+    const byId = recordingGetOffers(offers);
+    const byGroup = recordingGetOffers(offers);
+    const marketArg = market === undefined ? {} : { market };
+    const a = await byId.handler({ payload: { product_id: SIG_IN_GROUP_ARG, ...marketArg } });
+    const b = await byGroup.handler({ payload: { product_group_id: SIG_IN_GROUP_ARG, ...marketArg } });
+    assert.equal(byGroup.seen.length, byId.seen.length, `fetch count, market ${market}`);
+    assert.deepEqual(byGroup.seen.map(strip), byId.seen.map(strip), `fetch args, market ${market}`);
+    assert.deepEqual(stripAnswer(b), stripAnswer(a), `answer, market ${market}`);
+    // Never defaulted: no market stated, none forwarded.
+    if (market === undefined) assert.equal('market' in byGroup.seen[0], false);
+    // What each cell actually answers (pinned, so parity cannot pass by both sides breaking alike).
+    const expected = {
+      US: { offer_count: 1, market_currency: 'USD', withheld_other_currency_count: 1 },
+      SG: { offer_count: 1, market_currency: 'SGD', withheld_other_currency_count: 1 },
+      GB: { offer_count: 0, market_currency: 'GBP', withheld_other_currency_count: 2, reason: 'no_offer_in_market_currency' },
+      DE: { offer_count: 0, market_currency: null, reason: 'market_not_priced' },
+      ZZ: { offer_count: 0, market_currency: null, reason: 'market_not_priced' },
+    }[market] || { offer_count: 2 };
+    for (const [key, value] of Object.entries(expected)) assert.equal(b.metadata[key], value, `${key}, market ${market}`);
+    if (market === 'DE' || market === 'ZZ') assert.equal(byGroup.seen.length, 0, `no fetch for unpriced ${market}`);
+  }
+  // A well-formed market nothing is priced in is refused by name before any fetch, whichever field named the
+  // product (and before the group-id refusal: the market's own reason stands).
+  for (const productArgs of [{ product_group_id: SIG_IN_GROUP_ARG }, { product_group_id: GROUP_ID_28 }]) {
+    const { handler, seen } = recordingGetOffers(offers);
+    const zz = await handler({ payload: { ...productArgs, market: 'ZZ' } });
+    assert.equal(seen.length, 0);
+    assert.equal(zz.metadata.reason, 'market_not_priced');
+    assert.equal(zz.metadata.market, 'ZZ');
+  }
+});
+

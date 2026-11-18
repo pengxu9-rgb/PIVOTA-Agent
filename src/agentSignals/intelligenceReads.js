@@ -37,6 +37,14 @@ function nonEmpty(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
+// A product's catalog signature, exactly as search and get_product emit it: `sig_` + 32 lowercase hex. The
+// 28-char identity group id (`sig_` + 24 hex) is NOT one.
+const CATALOG_SIGNATURE_IN_GROUP_ARG_RE = /^sig_[0-9a-f]{32}$/;
+
+function isSignatureInGroupArg(v) {
+  return typeof v === 'string' && CATALOG_SIGNATURE_IN_GROUP_ARG_RE.test(v);
+}
+
 // --- candidate snapshot hydration (the pure half of the injected hydrateCandidates) -----------------------
 // The stored candidate_snapshot is a raw product spread frozen at edge-build time; two gaps are repaired at
 // read time from the canonical catalog row the ref resolves to:
@@ -626,6 +634,15 @@ function makeGetOffers(deps = {}) {
 
   return async function getOffers(params = {}) {
     const p = (params && params.payload) || params || {};
+    // THE PRODUCT ASKED ABOUT. offers.resolve takes a product id only (the fetch below never forwards
+    // `product_group_id`), so a call that named the product by `product_group_id` alone was answered with no
+    // offer for every product. Search and get_product hand out the product's signature in group-id fields, so
+    // a signature there IS the product id. Any other group-id value cannot be resolved here and is refused by
+    // name below, never fetched. A given `product_id` always wins.
+    const groupArgSignature = !nonEmpty(p.product_id) && isSignatureInGroupArg(p.product_group_id) ? p.product_group_id : null;
+    // Otherwise exactly what the caller sent (absent, or blank, stays so: the fetch is byte-identical to before).
+    const productId = groupArgSignature || p.product_id;
+    const unresolvableGroupArg = !nonEmpty(p.product_id) && !groupArgSignature && nonEmpty(p.product_group_id);
     const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
     if (typeof fetchOffers !== 'function') {
       return {
@@ -658,9 +675,26 @@ function makeGetOffers(deps = {}) {
       };
     }
     const market = getOffersBuyerMarket(p);
+    // A group id that is not a signature: no offer can be looked up for it. Named, not fetched (after the
+    // market checks above, so an unpriced market keeps its own reason).
+    if (unresolvableGroupArg) {
+      return {
+        subject,
+        best_offer: null,
+        signals: [],
+        metadata: {
+          offer_count: 0,
+          product_group_id: p.product_group_id,
+          ...(market ? { market, market_currency: marketCurrency, withheld_other_currency_count: 0 } : {}),
+          reason: 'product_group_id_not_product_id',
+          // GET_OFFERS_EMPTY_REASON, the reason door only: asking again with the same id changes nothing.
+          ...(emptyReasonDoor() ? { reason_retriable: false } : {}),
+        },
+      };
+    }
     const fetchArgs = {
       merchant_id: p.merchant_id,
-      product_id: p.product_id,
+      product_id: productId,
       // A listing's option named for its own cart (one offer per listing lists them in `variants`).
       ...(variantIdEnabled && nonEmpty(p.variant_id) ? { variant_id: String(p.variant_id).trim() } : {}),
       product_group_id: p.product_group_id,
@@ -724,7 +758,7 @@ function makeGetOffers(deps = {}) {
       fetchArgs, market, currency: marketCurrency, mode: liveCartMode(), secret: liveVerificationSecret(),
     });
     const { best_offer, signals, best_price } = offersToSignals(offers, {
-      productId: p.product_id,
+      productId,
       limit,
       now,
       // FRESH BEST PRICE (pivota-backend #2635): the backend's pick, passed only when it sent one (null

@@ -69,6 +69,18 @@ test("tools: exposes the canonical commerce lifecycle and EXCLUDES edge (externa
   }
 });
 
+test("get_offers declares product_group_id as the product's signature id only, with product_id preferred", () => {
+  const { surface } = setup();
+  const props = surface.tools.find((t) => t.name === "get_offers").inputSchema.properties;
+  assert.equal(props.product_group_id.type, "string");
+  const text = props.product_group_id.description;
+  assert.match(text, /^Prefer `product_id`\./);
+  assert.match(text, /signature id from search_catalog or get_product \(sig_ followed by 32 lowercase hex\)/);
+  assert.match(text, /product_group_id_not_product_id/);
+  assert.match(text, /Ignored when `product_id` is given\./);
+  assert.deepEqual(props.currency, { type: "string" });
+});
+
 test("unknown tool → clean UnknownToolError, no crash", async () => {
   const { surface } = setup();
   await assert.rejects(surface.callTool("pivota_drop_tables", {}, SESS), (e) => e instanceof UnknownToolError && e.code === "UNKNOWN_TOOL");
