@@ -285,8 +285,12 @@ test('a backend 409 PARTNER_ASSERTION_REJECTED is a non-retriable tool error, se
     }, 2));
     assert.equal(result.isError, true, JSON.stringify(result).slice(0, 400));
     const { error } = JSON.parse(result.content[0].text);
-    assert.equal(error.code, 'PARTNER_ASSERTION_REJECTED');
+    // `stale` keeps the quote's claim (a second copy of an accepted request is told it once the nonce is forgotten), so
+    // never "nothing was done": the kernel's unknown outcome, in the refused words, still non-retriable.
+    assert.equal(error.code, 'CHECKOUT_OUTCOME_UNKNOWN');
     assert.equal(error.retriable, false);
+    assert.equal(/nothing was done|nothing was written/i.test(JSON.stringify(error)), false, error.message);
+    assert.match(error.message, /^The order service refused this order request\./);
     assert.ok(!/try again shortly|temporarily/i.test(error.message), error.message);
     assert.equal(calls.filter((c) => c.path === 'order').length, 1, 'never retried by the gateway');
     assert.equal(calls.filter((c) => c.path === 'session').length, 0, 'nothing after the refused order');

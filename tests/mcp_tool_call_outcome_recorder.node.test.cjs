@@ -257,3 +257,22 @@ test('error_class: PARTNER_ASSERTION_REJECTED is non-retriable but ours, so the 
   assert.equal(refused.fields(200).error_code, 'PARTNER_ASSERTION_REJECTED');
   assert.equal(refused.fields(200).error_class, 'server');
 });
+
+test('a kept refused partner assertion, answered as the kernel\'s unknown outcome, still counts as a server fault and is named on the line', async () => {
+  const { describeToolError } = await import('../mcp-server/src/toolCallOutcome.js');
+  const { kernelOutcomeUnknown } = await import('../safety-kernel/src/errors.js');
+  const kept = kernelOutcomeUnknown('order_create_outcome_unknown', null, { answered: 'refused', upstreamCode: 'PARTNER_ASSERTION_REJECTED' });
+  assert.deepEqual(describeToolError(kept), { upstream_refusal_code: 'PARTNER_ASSERTION_REJECTED' });
+  const r = createMcpToolCallRecorder();
+  r.observe({ error_code: 'CHECKOUT_OUTCOME_UNKNOWN', error_retriable: false, ...describeToolError(kept) });
+  r.recordRpcResponse(okOut({ isError: true, content: [] }));
+  assert.deepEqual(r.fields(200), { outcome: 'tool_error', is_error: true, error_code: 'CHECKOUT_OUTCOME_UNKNOWN', error_class: 'server', upstream_refusal_code: 'PARTNER_ASSERTION_REJECTED', degraded: false });
+  // Any other refusal an unknown outcome was made from is not ours to alert on: the caller's class, nothing named.
+  const named = kernelOutcomeUnknown('order_create_outcome_unknown', null, { answered: 'refused', upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS' });
+  const o = createMcpToolCallRecorder();
+  o.observe({ error_code: 'CHECKOUT_OUTCOME_UNKNOWN', error_retriable: false, ...describeToolError(named) });
+  o.recordRpcResponse(okOut({ isError: true, content: [] }));
+  assert.deepEqual([o.fields(200).error_class, 'upstream_refusal_code' in o.fields(200)], ['client', false]);
+  // A plain unknown outcome names nothing.
+  assert.deepEqual(describeToolError(kernelOutcomeUnknown('order_create_outcome_unknown', null)), {});
+});

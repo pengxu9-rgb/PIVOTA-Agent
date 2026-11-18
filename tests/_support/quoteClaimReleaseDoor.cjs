@@ -116,7 +116,7 @@ const fromBackend = (status, detail, { landed = false, headers } = {}) => ({ kin
 const ASSERTION_MESSAGE = 'The partner assertion on this request was refused; it was not made as any partner.';
 // THE ROUTE ERRORS OF THE BACKEND'S ORDER-CREATE PATH, with the status and `detail` each raise site writes.
 // `BEFORE_ANY_ORDER`: raised only in the request's prologue, before the backend first tries to write the order.
-const BEFORE_ANY_ORDER = Object.freeze({
+const BEFORE_ANY_ORDER_ROWS = {
   partnerAssertionRejected: [409, { error: 'PARTNER_ASSERTION_REJECTED', reason: 'path', message: ASSERTION_MESSAGE }],
   quoteNotFound: [404, { error: 'QUOTE_NOT_FOUND', message: 'Quote not found' }],
   invalidQuote: [400, { error: 'INVALID_QUOTE', message: 'quote snapshot does not contain orderable items' }],
@@ -126,7 +126,11 @@ const BEFORE_ANY_ORDER = Object.freeze({
   quoteMerchantMismatch: [400, { error: 'QUOTE_MERCHANT_MISMATCH', message: 'placeholder' }],
   preflightFailed: [409, { error: 'PREFLIGHT_FAILED', message: 'placeholder' }],
   variantRequired: [400, { error: 'VARIANT_REQUIRED', message: 'placeholder' }],
-});
+  // The seller is not taking orders: raised by the order route after its quote-claim lookup and before its first write.
+  // (tests/checkout_named_refusal_delisted_door.node.test.cjs boots a gateway whose list lacks it.)
+  merchantNotAccepting: [403, { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' }],
+};
+const BEFORE_ANY_ORDER = Object.freeze(BEFORE_ANY_ORDER_ROWS);
 // Everything else the path answers: from its write step (which can run twice in one request), after the order
 // was written, or with nothing but the status to go by.
 const NOT_PROVABLY_BEFORE = Object.freeze({
@@ -144,7 +148,10 @@ const NOT_PROVABLY_BEFORE = Object.freeze({
   quoteMismatch: [409, { error: 'QUOTE_MISMATCH', message: 'placeholder', debug_id: 'placeholder' }],
   // Out of stock, as this path says it: a 400 whose detail names no code.
   insufficientInventory: [400, { message: 'Insufficient inventory', items: [] }],
-  merchantNotAccepting: [403, { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder' }],
+  // A rate limit, as the backend answers it: never by a name this gateway reads, and possibly to a second copy of a
+  // request it already accepted, before it looks for that copy's order. Coded too, to show a name changes nothing.
+  rateLimited: [429, 'Rate limit exceeded'],
+  rateLimitedCoded: [429, { error: 'RATE_LIMITED', message: 'placeholder' }],
   checkoutQuoteRequired: [400, { error: 'CHECKOUT_QUOTE_REQUIRED', message: 'placeholder' }],
   notAuthorized: [403, 'Not authorized for this merchant'],
   merchantNotFound: [404, 'Merchant not found'],
@@ -187,7 +194,7 @@ const ANSWERS = Object.freeze({
  * per process, before anything else loads the server.
  * @param {{ root?:string, port?:number, env?:Record<string,string|undefined>, keys:Awaited<ReturnType<typeof mintKeys>> }} o
  */
-function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = {}, keys } = {}) {
+function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = {}, keys, backendBase = BACKEND_BASE } = {}) {
   const PORT = String(port);
   Object.assign(process.env, {
     NODE_ENV: 'test',
@@ -200,7 +207,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     ACP_SIGNING_SECRET: ACP_SECRET,
     IDENTITY_ISSUERS_JSON: JSON.stringify([{ iss: ACP_BUYER_ISSUER, aud: ACP_BUYER_AUDIENCE, jwks: keys.buyerJwks, algs: ['ES256'] }]),
     PAYMENT_ISSUERS_JSON: JSON.stringify([{ iss: GRANT_ISSUER, aud: GRANT_AUDIENCE, jwks: keys.grantJwks, algs: ['ES256'] }]),
-    PIVOTA_API_BASE: BACKEND_BASE,
+    PIVOTA_API_BASE: backendBase,
     PIVOTA_API_KEY: 'test-token',
     PIVOTA_OPS_ADMIN_TOKEN: 'test-ops-token',
     CONFIRMATION_SECRET: 'strict-confirmation-secret-0123456789',
@@ -229,7 +236,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
   const major = (minor) => (minor / 100).toFixed(2);
   let quoteSeq = 0;
 
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/shop/v1/invoke')
     .reply((_uri, body) => {
       const operation = body && body.operation;
@@ -246,7 +253,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       }
       return [404, { detail: 'NOT_FOUND' }];
     });
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/v2/quotes/preview')
     .reply((_uri, body) => {
       upstream.push({ path: '/agent/v2/quotes/preview', body });
@@ -286,7 +293,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
     orders.push(order);
     return { status: 'success', order: { order_id: order.order_id, state: 'awaiting_checkout' }, total: order.total, currency: order.currency };
   };
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/v2/orders')
     .reply(function reply(_uri, body, callback) {
       upstream.push({ path: '/agent/v2/orders', body, idempotencyKeyHeader: this.req.headers['idempotency-key'] });
@@ -306,7 +313,7 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       return undefined;
     });
   // The hosted payment page for an order (the charge of a complete, and the payment link).
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post('/agent/v2/payments/checkout-sessions')
     .reply(function reply(_uri, body, callback) {
       upstream.push({ path: '/agent/v2/payments/checkout-sessions', body });
@@ -317,10 +324,10 @@ function bootDoor({ root = path.resolve(__dirname, '../..'), port = 5611, env = 
       if (next.kind === 'error') return callback(Object.assign(new Error(next.error.message), { code: next.error.code }));
       return callback(null, [next.status, next.body, next.headers || {}]);
     });
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .post(() => true)
     .reply((uri, body) => { upstream.push({ path: uri, body }); return [404, { detail: 'NOT_FOUND' }]; });
-  nock(BACKEND_BASE).persist()
+  nock(backendBase).persist()
     .get(() => true)
     .reply((uri) => { upstream.push({ path: uri }); return [404, { detail: 'NOT_FOUND' }]; });
 
