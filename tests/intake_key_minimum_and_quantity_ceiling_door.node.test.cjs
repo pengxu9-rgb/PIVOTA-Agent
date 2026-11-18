@@ -22,6 +22,10 @@ const assert = require('node:assert/strict');
 const fx = require('./_support/intakeKeyQtyDoor.cjs');
 const { assertAnswerCurrency } = require('./_support/answerCurrencies.cjs');
 const { resolveServingCurrency } = require('../src/services/buyerMarket');
+// The taxonomy's generic words for a key that is missing (or one another request used): true of both, and never "start
+// again" (safety-kernel/src/errors.js IDEMPOTENCY_CONFLICT).
+const MISSING_KEY_MESSAGE = 'This idempotency_key cannot be used for this request: it is missing or too short, or an earlier request with other details already used it. If an earlier request used this key, read the checkout session or its order before anything else, and do not start another checkout for this purchase without the buyer.';
+const MISSING_KEY_RECOVERY = 'send this request with an idempotency_key of its own; reuse a key only to resend the exact request it was first sent with; if an earlier request used this key, read the checkout session or its order before anything else';
 
 const { IDS } = fx;
 let door;
@@ -164,7 +168,7 @@ test('/mcp: an absent key is answered exactly as before', async () => {
       // The missing-key refusal: its code, the taxonomy's generic message, and no detail.
       assert.deepEqual(errorOf(r), {
         code: 'IDEMPOTENCY_CONFLICT',
-        message: 'This looks like a different request reusing an old reference. Starting fresh.',
+        message: MISSING_KEY_MESSAGE,
         retriable: false,
       }, `${tool} ${label}`);
     }
@@ -701,7 +705,7 @@ test('ACP REST: an 8-character key is past the gate; an absent key is answered e
     assert.deepEqual(r.body, {
       type: 'error',
       code: 'IDEMPOTENCY_CONFLICT',
-      message: 'This looks like a different request reusing an old reference. Starting fresh.',
+      message: MISSING_KEY_MESSAGE,
     }, `${name}: the missing-key refusal, with no detail`);
   }
   const read = await door.acp('GET', `/checkout_sessions/${other}`, undefined, {});
@@ -774,8 +778,8 @@ const INVOKE_STRICT_KEY_REFUSAL_AS_BEFORE = Object.freeze({
   status: 'failure',
   error: 'IDEMPOTENCY_CONFLICT',
   code: 'IDEMPOTENCY_CONFLICT',
-  message: 'This looks like a different request reusing an old reference. Starting fresh.',
-  recovery: 'use a new idempotency_key for a new request',
+  message: MISSING_KEY_MESSAGE,
+  recovery: MISSING_KEY_RECOVERY,
   retriable: false,
 });
 function assertInvokeRefusal(r, expected, status, label) {

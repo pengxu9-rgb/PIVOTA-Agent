@@ -155,6 +155,13 @@ export function createInvokeHandler({ kernel, upstream, log = console, afterSale
             detail: redact({ code: err.code, ...(err.detail || {}) }),
           });
         }
+        // An unknown outcome made from an upstream refusal of our own (a refused partner assertion that kept the claim)
+        // still counts as that refusal: the metric and event exist for the fault between our two services.
+        const fromRefusal = typeof err.upstreamRefusalCode === 'string' && err.upstreamRefusalCode !== err.code ? ERROR_OBSERVABILITY[err.upstreamRefusalCode] : null;
+        if (fromRefusal && err.upstreamRefusalCode === 'PARTNER_ASSERTION_REJECTED') {
+          count(fromRefusal.metric);
+          emit(fromRefusal.event, { user_ref: ctx.user_ref, order_id: payload?.payment?.order_id, operation, detail: redact({ code: err.upstreamRefusalCode, ...(err.detail || {}) }) });
+        }
         if (err.code === 'IDEMPOTENCY_CONFLICT') count('idempotency_conflict');
         // A shared intake refusal (the key minimum, the per-line ceiling) answers with its curated message and its
         // field-level detail; every other error keeps exactly the body it had.

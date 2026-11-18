@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SafetyKernel } from '../src/kernel.js';
+import { PivotaCommerceError } from '../src/errors.js';
 import { createInvokeHandler, ERROR_OBSERVABILITY } from '../src/invokeHandler.js';
 import { AuditLog, AUDIT_EVENTS, CommerceMetrics, readinessScorecard } from '../src/audit.js';
 
@@ -130,4 +131,29 @@ test('C6: readiness scorecard is green on a clean run, red on a safety violation
   metrics.inc('price_lock_violation');
   sc = readinessScorecard(metrics);
   assert.equal(sc.dimensions.PriceLockIntegrity, 'red');
+});
+
+test('a kept refused partner assertion (answered as the unknown outcome) still counts in partner_assertion_rejected, on the order call and on the payment step', async () => {
+  for (const [failOp, reason] of [['create_order', 'stale'], ['create_order', 'replay'], ['submit_payment', 'path']]) {
+    const upstream = async (op) => {
+      if (op === failOp) throw new PivotaCommerceError('PARTNER_ASSERTION_REJECTED', { operation: op, upstream_status: 409, upstream_code: 'PARTNER_ASSERTION_REJECTED', upstream_detail: { error: 'PARTNER_ASSERTION_REJECTED', reason } });
+      if (op === 'preview_quote') return { quote_id: 'bq1', merchant_of_record: 'merch_A', currency: 'USD', locked_totals: { subtotal: 100, tax: 8, shipping: 5, total: 113 }, line_items: [{ product_id: 'p1', quantity: 1 }], acp_state: { acp_session_id: 'acp_1' } };
+      if (op === 'create_order') return { order_id: 'o1', acp_state: {} };
+      return {};
+    };
+    const audit = new AuditLog();
+    const metrics = new CommerceMetrics();
+    const kernel = new SafetyKernel({ upstream, secret: SECRET, log: { info() {}, warn() {}, error() {} } });
+    const handler = createInvokeHandler({ kernel, upstream, audit, metrics, log: { info() {}, warn() {}, error() {} } });
+    const q = await handler.handle('preview_quote', { quote: { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 1 }] } }, CTX);
+    let out = await handler.handle('create_order', { idempotency_key: 'idem-par-order', order: { quote_id: q.data.quote_id, shipping_address: { country: 'US', city: 'NY', postal_code: '10001', address_line1: '1', recipient_name: 'A' } } }, CTX);
+    if (failOp === 'submit_payment') {
+      const token = await kernel.mintConfirmation({ order_id: out.data.order_id }, CTX);
+      out = await handler.handle('submit_payment', { idempotency_key: 'idem-par-pay', confirmation_token: token, payment: { order_id: out.data.order_id, expected_amount: 113, currency: 'USD' } }, CTX);
+    }
+    const label = `${failOp} ${reason}`;
+    assert.equal(out.error?.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${label}: ${JSON.stringify(out.error)}`);
+    assert.ok(metrics.get('partner_assertion_rejected') >= 1, `${label}: counted`);
+    assert.ok(audit.entries().some((e) => e.event === 'partner_assertion_rejected'), `${label}: audited`);
+  }
 });

@@ -33555,6 +33555,15 @@ function deriveStrictCommerceCtx(req) {
   });
 }
 
+// The strict invoke route's status for a kernel answer: its code's (statusForCommerceKernelError), except a used session
+// whose claim names no order, which is a conflict with that earlier attempt like its sibling CHECKOUT_OUTCOME_UNKNOWN
+// (not the 422 of a session spent on a known order).
+function statusForCommerceKernelAnswer(error) {
+  const detail = error && typeof error.detail === 'object' && error.detail ? error.detail : null;
+  if (error && error.code === 'QUOTE_ALREADY_USED' && detail && detail.reason === 'checkout_session_order_outcome_unknown') return 409;
+  return statusForCommerceKernelError(error && error.code);
+}
+
 function statusForCommerceKernelError(code) {
   switch (code) {
     case 'USER_AUTH_REQUIRED':
@@ -33575,9 +33584,13 @@ function statusForCommerceKernelError(code) {
     case 'PRODUCT_GROUP_ID_NOT_PRODUCT_ID':
     case 'MERCHANT_PRODUCT_MISMATCH':
       return 400;
+    // CHECKOUT_OUTCOME_UNKNOWN: an outcome nobody here can know is a conflict with that earlier attempt, not a
+    // malformed request: the same as the ACP door answers it, and as this route answers its sibling IDEMPOTENCY_CONFLICT.
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
     case 'ORDER_CANCELED':
+    case 'MERCHANT_NOT_ACCEPTING_ORDERS':
+    case 'CHECKOUT_OUTCOME_UNKNOWN':
     case 'PARTNER_ASSERTION_REJECTED':
       return 409;
     case 'MERCHANT_UNAVAILABLE':
@@ -35512,7 +35525,7 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
           if (out?.ok === true) return res.status(200).json(out.data || {});
 
           const error = out?.error || { code: 'COMMERCE_ERROR' };
-          return res.status(statusForCommerceKernelError(error.code)).json(commerceKernelErrorBody(error));
+          return res.status(statusForCommerceKernelAnswer(error)).json(commerceKernelErrorBody(error));
         } catch (err) {
           logger.error(
             {

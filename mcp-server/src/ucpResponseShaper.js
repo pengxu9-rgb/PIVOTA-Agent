@@ -520,9 +520,15 @@ function priceCheckMessage(check) {
 // The kernel's session status for an order call whose outcome is not known has no UCP name. UCP's own word for a
 // checkout whose completion has not resolved is `complete_in_progress`; the fact itself travels in `order_outcome`.
 const KERNEL_UNKNOWN_ORDER_STATUS = "order_outcome_unknown";
+// An order the kernel holds in a status the read does not know (canonicalExecutor.js sessionClaimStatus): not
+// `completed` either; the same UCP word, with the order's id and status beside it, and `order_outcome: "status_unknown"`.
+const KERNEL_UNKNOWN_ORDER_STATUS_OF_ORDER = "order_status_unknown";
 function ucpSessionStatus(session) {
-  if (!isPlainObject(session) || own(session, "status") !== KERNEL_UNKNOWN_ORDER_STATUS) return session;
-  return { ...session, status: "complete_in_progress", order_outcome: "unknown" };
+  if (!isPlainObject(session)) return session;
+  const status = own(session, "status");
+  if (status === KERNEL_UNKNOWN_ORDER_STATUS) return { ...session, status: "complete_in_progress", order_outcome: "unknown" };
+  if (status === KERNEL_UNKNOWN_ORDER_STATUS_OF_ORDER) return { ...session, status: "complete_in_progress", order_outcome: "status_unknown" };
+  return session;
 }
 
 export function shapeUcpCheckoutResponse(native) {

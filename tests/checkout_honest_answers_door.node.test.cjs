@@ -26,8 +26,10 @@ const CALLERS = ['mcp_complete', 'mcp_payment_link', 'ucp_complete'];
 const PRICED_MARKETS = ['US', 'SG', 'GB', 'DE'];
 let door;
 let keys;
+let KERNEL_ANSWERED_REFUSALS;
 
 test.before(async () => {
+  ({ KERNEL_ANSWERED_REFUSALS } = await import('../safety-kernel/src/errors.js'));
   keys = await fx.mintKeys();
   door = fx.bootDoor({ port: 5651, keys, env: { AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1' } });
   await door.listen();
@@ -71,6 +73,7 @@ const sent = (r, path) => r.upstream.filter((c) => c.path === path).length;
 const ORDERS = '/agent/v2/orders';
 const PAGES = '/agent/v2/payments/checkout-sessions';
 const errorOf = (r) => (r.value && r.value.error) || {};
+const currencyOf = (r) => r.value && r.value.currency;
 const orderIdOf = (h, r) => (h.caller === 'mcp_payment_link' ? r.value.order_id : (r.value.order && r.value.order.order_id) || r.value.order_id || (r.value.order && r.value.order.id));
 /** No answer below states money: no amount, no currency code. */
 function assertNoMoney(r, label) {
@@ -81,13 +84,21 @@ const UNKNOWN_WORDS = {
   payment_link_outcome_unknown_after_order: /whether its payment page was opened is unknown/,
   order_create_outcome_unknown: /its id is not known/,
 };
-function assertUnknown(r, reason, orderId, label) {
+// `answered`: the order call was refused by the store at a status with words of its own (a 403, a 429).
+function assertUnknown(r, reason, orderId, label, { answered } = {}) {
   const e = errorOf(r);
   assert.equal(r.isError, true, `${label}: ${r.raw.slice(0, 300)}`);
   assert.deepEqual(Object.keys(e), ['code', 'message', 'retriable', 'recovery', 'detail'], label);
   assert.equal(e.code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
   assert.equal(e.retriable, false, label);
   assert.deepEqual(e.detail, { reason, order_id: orderId }, label);
+  if (answered) {
+    const words = KERNEL_ANSWERED_REFUSALS[answered];
+    assert.deepEqual([e.message, e.recovery], [`${words.message} Sending this call again with the same idempotency_key returns this same answer.`, words.recovery], label);
+    assert.equal(/no readable answer|may have been accepted|nothing was ordered/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+    assertNoMoney(r, label);
+    return;
+  }
   assert.match(e.message, UNKNOWN_WORDS[reason], label);
   assert.match(e.message, orderId ? /do not start another checkout/i : /Do not place a new order for this purchase without the buyer/, label);
   if (orderId) assert.match(e.recovery, /get_order/, label);
@@ -100,7 +111,11 @@ function assertSpentNamingOrder(r, orderId, label) {
     assert.deepEqual(e.detail, { reason: 'session_already_ordered', order_id: orderId }, label);
     assert.match(e.recovery, /detail\.order_id with get_order/, label);
   } else {
-    assert.equal(e.detail, undefined, `${label}: no order is known, none is named`);
+    // No order is known: none is named, and the words say whether one was placed is not known (never "read that order").
+    assert.deepEqual(e.detail, { reason: 'checkout_session_order_outcome_unknown' }, `${label}: no order is known, none is named`);
+    assert.match(e.message, /^An order was asked for on this checkout session, and whether it was placed is not known/, label);
+    assert.equal(/get_order|already used to place an order/.test(e.message + e.recovery), false, label);
+    assert.match(e.recovery, /an order may exist/, label);
   }
   assertNoMoney(r, label);
 }
@@ -200,20 +215,462 @@ test('Q1: an order call with no readable answer (no answer, a lost connection, a
 }));
 
 test('Q1: an order call the backend refused below 500 in a way that keeps the claim (a consumed quote, its out-of-stock 400, a 403, a 429) is an unknown outcome, never retriable; a terminal name (an expired quote) is answered as before', each(async (caller) => {
-  for (const answer of [ANSWERS.quoteConsumed, ANSWERS.insufficientInventory, ANSWERS.merchantNotAccepting, () => ANSWERS.raw(429, { status: 'error', error: { code: 'RATE_LIMIT_EXCEEDED', message: 'RATE_LIMIT_EXCEEDED', details: { error: 'RATE_LIMIT_EXCEEDED' } }, detail: { error: 'RATE_LIMIT_EXCEEDED' } })]) {
-    const h = await open(caller, 'SG');
-    door.orderScript.push(answer());
-    const key = freshKey();
-    const first = await attempt(h, key);
-    assertUnknown(first, 'order_create_outcome_unknown', null, first.raw.slice(0, 200));
-    assertUnknown(await attempt(h, key), 'order_create_outcome_unknown', null, 'same key');
-    assert.equal(errorOf(await attempt(h, freshKey())).code, 'QUOTE_ALREADY_USED');
+  // A 403 the backend did not name as terminal, and every 429, say what the store answered; the others keep their words.
+  for (const [answer, answered] of [[ANSWERS.quoteConsumed, 'refused'], [ANSWERS.insufficientInventory, 'refused'], [ANSWERS.validationFailed, 'refused'],
+    [ANSWERS.checkoutQuoteRequired, 'refused'], [() => ANSWERS.raw(401, { status: 'error', error: { code: 'UNAUTHORIZED', message: 'UNAUTHORIZED', details: {} }, detail: {} }), 'refused'],
+    [() => ANSWERS.raw(409, { status: 'error', error: { code: 'CONFLICT', message: 'CONFLICT', details: {} }, detail: {} }), 'refused'],
+    [() => ANSWERS.raw(408, { status: 'error', error: { code: 'REQUEST_TIMEOUT', message: 'REQUEST_TIMEOUT', details: {} }, detail: {} })],
+    [ANSWERS.notAuthorized, 'refused'], [() => ANSWERS.raw(403, { status: 'error', error: { code: 'FORBIDDEN', message: 'FORBIDDEN', details: {} }, detail: {} }), 'refused'],
+    [() => ANSWERS.raw(429, { status: 'error', error: { code: 'RATE_LIMIT_EXCEEDED', message: 'RATE_LIMIT_EXCEEDED', details: { error: 'RATE_LIMIT_EXCEEDED' } }, detail: { error: 'RATE_LIMIT_EXCEEDED' } }), 'rate_limited'],
+    [ANSWERS.rateLimited, 'rate_limited'], [ANSWERS.rateLimitedCoded, 'rate_limited'], [() => ANSWERS.rateLimited({ landed: true }), 'rate_limited']]) {
+    for (const market of PRICED_MARKETS) {
+      const h = await open(caller, market);
+      door.orderScript.push(answer());
+      const key = freshKey();
+      const first = await attempt(h, key);
+      const label = `${caller} ${market} ${first.raw.slice(0, 200)}`;
+      assertUnknown(first, 'order_create_outcome_unknown', null, label, { answered });
+      const same = await attempt(h, key);
+      assertUnknown(same, 'order_create_outcome_unknown', null, `${label} same key`, { answered });
+      assert.equal(same.raw, first.raw, `${label}: the same answer, byte for byte`);
+      assert.equal(errorOf(await attempt(h, freshKey())).code, 'QUOTE_ALREADY_USED');
+      assert.equal(sent(first, ORDERS) + sent(same, ORDERS), 1, `${label}: one order call, ever`);
+      assertUnknownStatus(h, await read(h), label);
+    }
   }
   const h = await open(caller, 'SG');
   door.orderScript.push(ANSWERS.quoteExpired());
   const first = await attempt(h, freshKey());
   assert.deepEqual([errorOf(first).code, errorOf(first).retriable], ['QUOTE_EXPIRED', false], first.raw.slice(0, 300));
 }));
+
+test('Q3: a seller not taking orders (the backend\'s listed 403 MERCHANT_NOT_ACCEPTING_ORDERS) is named and terminal on every tool door, in every priced market, and gives the session back', each(async (caller) => {
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  const words = ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage;
+  assert.match(words, /^This seller is not taking orders, so nothing was ordered and nothing was charged\./);
+  assert.equal(ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.retriable, false);
+  for (const market of PRICED_MARKETS) {
+    const label = `${caller} ${market}`;
+    const h = await open(caller, market);
+    door.orderScript.push(ANSWERS.merchantNotAccepting());
+    const key = freshKey();
+    const first = await attempt(h, key);
+    assert.equal(first.http, 200, label);
+    assert.deepEqual(errorOf(first), { code: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: words, retriable: false, detail: { reason: 'merchant_not_accepting_orders' }, recovery: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.recovery }, `${label}: ${first.raw.slice(0, 300)}`);
+    assert.deepEqual([sent(first, ORDERS), sent(first, PAGES)], [1, 0], label);
+    assertNoMoney(first, label);
+    // Given back: the same key is a first attempt, and this time the backend makes the order.
+    const again = await attempt(h, key);
+    assert.equal(again.isError, false, `${label}: ${again.raw.slice(0, 300)}`);
+    assert.equal(sent(again, ORDERS), 1, label);
+  }
+}));
+
+test('Q3: on the ACP door a seller not taking orders is answered 409 MERCHANT_NOT_ACCEPTING_ORDERS in the catalog\'s words, and the session is given back', async () => {
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  for (const market of ['US', 'SG', 'GB']) {
+    const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+    door.orderScript.push(ANSWERS.merchantNotAccepting());
+    const key = freshKey();
+    const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    assert.equal(done.raw, JSON.stringify({ type: 'error', code: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, detail: { reason: 'merchant_not_accepting_orders' } }), market);
+    assert.equal(done.http, 409, market);
+    const again = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    assert.equal(again.http, 200, `${market}: ${again.raw.slice(0, 300)}`);
+    assert.equal(again.body.order.currency, created.body.currency, market);
+  }
+});
+
+test('P1-1: a refused caller assertion that keeps the claim (replay, stale, subject, no reason), with the order made by the first copy, is never "nothing was done" on /mcp, /ucp/mcp, invoke or ACP: the unknown outcome, the claim kept, no second order', async () => {
+  const { KERNEL_ANSWERED_REFUSALS: words } = await import('../safety-kernel/src/errors.js');
+  for (const reason of ['replay', 'stale', 'subject', undefined]) {
+    for (const caller of [...CALLERS, 'invoke', 'acp']) {
+      const label = `${caller} ${reason}`;
+      const made = door.orders.length;
+      let first; let same; let other;
+      if (caller === 'invoke') {
+        seq += 1;
+        const buyer = buyerFor(seq);
+        const q = await door.invoke('preview_quote', { quote: nativeQuote('SG') }, { buyer });
+        const order = (k) => door.invoke('create_order', { idempotency_key: k, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address('SG'), recipient_name: 'Buyer One' } } }, { buyer });
+        door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+        const key = freshKey();
+        first = await order(key); same = await order(key); other = await order(freshKey());
+        assert.deepEqual([first.http, first.body.code, first.body.message, first.body.recovery], [409, 'CHECKOUT_OUTCOME_UNKNOWN', words.refused.message, words.refused.recovery], `${label}: ${first.raw.slice(0, 300)}`);
+        assert.equal(same.raw, first.raw, label);
+        assert.equal(other.body.code, 'QUOTE_ALREADY_USED', label);
+      } else if (caller === 'acp') {
+        const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address('SG') }, { key: freshKey() });
+        const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+        const complete = (k) => door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: k });
+        door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+        const key = freshKey();
+        first = await complete(key); same = await complete(key); other = await complete(freshKey());
+        assert.deepEqual([first.http, first.body.code, first.body.message], [409, 'CHECKOUT_OUTCOME_UNKNOWN', words.refused.message], `${label}: ${first.raw.slice(0, 300)}`);
+        assert.equal(same.body.code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
+        assert.equal(other.body.code, 'QUOTE_ALREADY_USED', label);
+      } else {
+        const h = await open(caller, 'SG');
+        door.orderScript.push({ ...ANSWERS.partnerAssertion(reason), landed: true });
+        const key = freshKey();
+        first = await attempt(h, key); same = await attempt(h, key); other = await attempt(h, freshKey());
+        assertUnknown(first, 'order_create_outcome_unknown', null, label, { answered: 'refused' });
+        assert.equal(same.raw, first.raw, label);
+        assert.equal(errorOf(other).code, 'QUOTE_ALREADY_USED', label);
+      }
+      for (const r of [first, same, other]) assert.equal(/nothing was (?:done|written)|could not confirm the account/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+      assert.equal(sent(first, ORDERS), 1, label);
+      assert.equal(sent(same, ORDERS) + sent(other, ORDERS), 0, `${label}: no second order call`);
+      assert.equal(door.orders.length, made + 1, `${label}: the first copy's order, and no other`);
+    }
+  }
+  // A listed reason (decided before any store read) is the named refusal as raised, and gives the session back.
+  for (const caller of CALLERS) {
+    const h = await open(caller, 'GB');
+    door.orderScript.push(ANSWERS.partnerAssertion('path'));
+    const key = freshKey();
+    const first = await attempt(h, key);
+    assert.equal(errorOf(first).code, 'PARTNER_ASSERTION_REJECTED', `${caller}: ${first.raw.slice(0, 300)}`);
+    const again = await attempt(h, key);
+    assert.equal(again.isError, false, `${caller}: ${again.raw.slice(0, 300)}`);
+  }
+});
+
+test('P1-1 (after the order): a refused caller assertion on the payment step or the payment page, for every reason, listed ones too, is never "nothing was done" on /mcp, /ucp/mcp or ACP: the unknown outcome with the order id; the same key is told the same; another key names the order', async () => {
+  const { KERNEL_ANSWERED_AFTER_ORDER } = await import('../safety-kernel/src/errors.js');
+  for (const reason of ['replay', 'stale', 'path']) {
+    for (const caller of [...CALLERS, 'acp']) {
+      for (const market of ['US', 'SG', 'GB']) {
+        const label = `${caller} ${reason} ${market}`;
+        const madeBefore = door.orders.length;
+        let first; let same; let other;
+        if (caller === 'acp') {
+          const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+          const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+          const complete = (k) => door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: k });
+          door.paymentScript.push(ANSWERS.partnerAssertion(reason));
+          const key = freshKey();
+          first = await complete(key); same = await complete(key); other = await complete(freshKey());
+          assert.deepEqual([first.http, first.body.code, first.body.message], [409, 'CHECKOUT_OUTCOME_UNKNOWN', KERNEL_ANSWERED_AFTER_ORDER.payment_outcome_unknown_after_order.message], `${label}: ${first.raw.slice(0, 300)}`);
+          assert.equal(same.body.code, 'CHECKOUT_OUTCOME_UNKNOWN', label);
+          assert.equal(other.body.code, 'QUOTE_ALREADY_USED', label);
+        } else {
+          const h = await open(caller, market);
+          door.paymentScript.push(ANSWERS.partnerAssertion(reason));
+          const key = freshKey();
+          first = await attempt(h, key); same = await attempt(h, key); other = await attempt(h, freshKey());
+          const why = caller === 'mcp_payment_link' ? 'payment_link_outcome_unknown_after_order' : 'payment_outcome_unknown_after_order';
+          const orderId = door.orders.at(-1).order_id;
+          assert.deepEqual([errorOf(first).code, errorOf(first).retriable, errorOf(first).detail, errorOf(first).message], ['CHECKOUT_OUTCOME_UNKNOWN', false, { reason: why, order_id: orderId }, KERNEL_ANSWERED_AFTER_ORDER[why].message], `${label}: ${first.raw.slice(0, 300)}`);
+          assert.equal(same.raw, first.raw, `${label}: the same key, the same answer (never "Starting fresh")`);
+          assertSpentNamingOrder(other, orderId, `${label} another key`);
+          assert.equal(currencyOf(await read(h)), h.currency, label);
+        }
+        for (const r of [first, same, other]) assert.equal(/nothing was (?:done|written)|could not confirm the account|Starting fresh/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+        assert.equal(sent(first, ORDERS) + sent(first, PAGES), 2, `${label}: one order call and one page call`);
+        assert.equal(sent(same, ORDERS) + sent(same, PAGES) + sent(other, ORDERS) + sent(other, PAGES), 0, `${label}: nothing more asked`);
+        assert.equal(door.orders.length, madeBefore + 1, label);
+      }
+    }
+  }
+});
+
+test('P2-3: a same-key resend after an attempt that may have taken effect is never told "Starting fresh" on /mcp, /ucp/mcp, ACP or invoke: its outcome is not known, read before anything else, no new checkout without the buyer', async () => {
+  const { AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE } = await import('../safety-kernel/src/idempotencyLedger.js');
+  const page400 = () => ANSWERS.raw(400, { status: 'error', error: { code: 'INVALID_REQUEST', message: 'INVALID_REQUEST', details: {} }, detail: {} });
+  const assertWords = (r, label, { http } = {}) => {
+    assert.equal(/Starting fresh|different request reusing an old reference/i.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+    if (http !== undefined) assert.equal(r.http, http, label);
+  };
+  for (const market of ['US', 'SG', 'GB']) {
+    for (const caller of CALLERS) {
+      const label = `${caller} ${market}`;
+      const h = await open(caller, market);
+      door.paymentScript.push(page400());
+      const key = freshKey();
+      const first = await attempt(h, key);
+      assert.equal(sent(first, ORDERS), 1, label);
+      const same = await attempt(h, key);
+      assert.deepEqual([errorOf(same).code, errorOf(same).message, errorOf(same).detail], ['IDEMPOTENCY_CONFLICT', AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, { reason: 'ambiguous_prior_attempt' }], `${label}: ${same.raw.slice(0, 300)}`);
+      assert.match(errorOf(same).recovery, /do not start another checkout for this purchase without the buyer/, label);
+      assertWords(same, label);
+      assert.equal(sent(same, ORDERS) + sent(same, PAGES), 0, label);
+    }
+    // ACP: the same.
+    const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+    door.paymentScript.push(page400());
+    const key = freshKey();
+    await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    const same = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key });
+    assert.deepEqual([same.http, same.body.code, same.body.message, same.body.detail], [409, 'IDEMPOTENCY_CONFLICT', AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, { reason: 'ambiguous_prior_attempt' }], `acp ${market}: ${same.raw.slice(0, 300)}`);
+    assertWords(same, `acp ${market}`);
+    // invoke: an order the backend made in another currency (refused here after the order exists), then the same key.
+    seq += 1;
+    const buyer = buyerFor(seq);
+    const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer });
+    door.orderScript.push(ANSWERS.created({ currency: 'JPY' }));
+    const order = (k) => door.invoke('create_order', { idempotency_key: k, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address(market), recipient_name: 'Buyer One' } } }, { buyer });
+    const ikey = freshKey();
+    await order(ikey);
+    const isame = await order(ikey);
+    assert.deepEqual([isame.http, isame.body.code, isame.body.message, isame.body.detail], [409, 'IDEMPOTENCY_CONFLICT', AMBIGUOUS_PRIOR_ATTEMPT_MESSAGE, { reason: 'ambiguous_prior_attempt' }], `invoke ${market}: ${isame.raw.slice(0, 300)}`);
+    assertWords(isame, `invoke ${market}`);
+    assert.equal(sent(isame, ORDERS), 0, `invoke ${market}`);
+  }
+});
+
+// The words that told an agent to begin again: on no door, for no conflict.
+const START_FRESH = /start(?:ing)? fresh|different request reusing an old reference/i;
+const NO_EFFECT_WORDS = /nothing was (?:done|written|charged|ordered)|could not confirm the account/i;
+const acpCreate = (market) => door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+const invokeOrderOf = (q, market) => ({ quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address(market), recipient_name: 'Buyer One' } });
+
+test('P2-1 (a): a same-key resend while the first attempt is still running is told so on /mcp complete, /mcp payment link, /ucp/mcp complete, ACP complete and invoke create_order: its outcome is not known yet, read before anything else, no new checkout; never "Starting fresh"; the first attempt then makes the order, once', async () => {
+  const { IDEMPOTENCY_CONFLICT_ANSWERS } = await import('../safety-kernel/src/errors.js');
+  const words = IDEMPOTENCY_CONFLICT_ANSWERS.in_flight;
+  for (const market of PRICED_MARKETS) {
+    // The ACP door prices US, SG and GB (DE is refused there at create, before any session).
+    for (const caller of [...CALLERS, ...(market === 'DE' ? [] : ['acp']), 'invoke_order']) {
+      const label = `${caller} ${market}`;
+      let go;
+      let currency;
+      if (caller === 'acp') {
+        const created = await acpCreate(market);
+        assert.equal(created.http, 201, `${label}: ${created.raw.slice(0, 300)}`);
+        currency = created.body.currency;
+        const grant = await keys.mintGrant({ sessionId: created.body.id, currency, maxAmount: created.body.totals.total });
+        go = (k) => door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: k });
+      } else if (caller === 'invoke_order') {
+        seq += 1;
+        const buyer = buyerFor(seq);
+        const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer });
+        currency = q.body.currency;
+        go = (k) => door.invoke('create_order', { idempotency_key: k, order: invokeOrderOf(q, market) }, { buyer });
+      } else {
+        const h = await open(caller, market);
+        currency = h.currency;
+        go = (k) => attempt(h, k);
+      }
+      const madeBefore = door.orders.length;
+      const held = ANSWERS.held(ANSWERS.created());
+      door.orderScript.push(held);
+      const key = freshKey();
+      const firstP = go(key);
+      await held.reached;
+      const second = await go(key);
+      held.release();
+      const first = await firstP;
+      // The resend: refused before anything is sent, in words that say the attempt is still running.
+      if (caller === 'acp' || caller === 'invoke_order') {
+        assert.deepEqual([second.http, second.body.code, second.body.message, second.body.detail], [409, 'IDEMPOTENCY_CONFLICT', words.message, { reason: 'in_flight' }], `${label}: ${second.raw.slice(0, 300)}`);
+        if (caller === 'invoke_order') assert.equal(second.body.retriable, false, label);
+      } else {
+        const e = errorOf(second);
+        assert.deepEqual([e.code, e.retriable, e.message, e.detail, e.recovery], ['IDEMPOTENCY_CONFLICT', false, words.message, { reason: 'in_flight' }, words.recovery], `${label}: ${second.raw.slice(0, 300)}`);
+      }
+      assert.equal(START_FRESH.test(second.raw), false, `${label}: ${second.raw.slice(0, 300)}`);
+      assert.equal(NO_EFFECT_WORDS.test(second.raw), false, `${label}: ${second.raw.slice(0, 300)}`);
+      assert.equal(sent(second, ORDERS) + sent(second, PAGES), 0, `${label}: the resend asks for nothing`);
+      // The first attempt made the order, once, in the market's currency.
+      assert.equal(door.orders.length, madeBefore + 1, `${label}: ${first.raw.slice(0, 300)}`);
+      assert.equal(sent(first, ORDERS), 1, label);
+      assert.equal(door.orders.at(-1).currency, currency, `${label}: the order is in the session's currency`);
+      // Once it finished, the same key gets its answer back, and nothing more is asked for.
+      const after = await go(key);
+      assert.equal(START_FRESH.test(after.raw), false, `${label} after: ${after.raw.slice(0, 300)}`);
+      assert.equal(sent(after, ORDERS), 0, `${label} after: no second order call`);
+      assert.equal(door.orders.length, madeBefore + 1, `${label} after`);
+    }
+  }
+});
+
+test('P2-1 (b) and P2-2: invoke submit_payment after the order exists: a refused assertion (replay, path), a 500, a page from in front of the backend and a timeout are each 409 CHECKOUT_OUTCOME_UNKNOWN, not retriable, in the after-order words with the order id; the same key is told the same with nothing sent; a new key is told the payment was already asked for, with the order id, never "Starting fresh"', async () => {
+  const { IDEMPOTENCY_CONFLICT_ANSWERS, KERNEL_ANSWERED_AFTER_ORDER, KERNEL_NO_ANSWER_AFTER_ORDER } = await import('../safety-kernel/src/errors.js');
+  const REASON = 'payment_outcome_unknown_after_order';
+  const KINDS = {
+    par_replay: [() => ANSWERS.partnerAssertion('replay'), KERNEL_ANSWERED_AFTER_ORDER[REASON]],
+    par_path: [() => ANSWERS.partnerAssertion('path'), KERNEL_ANSWERED_AFTER_ORDER[REASON]],
+    r500: [() => ANSWERS.internalError(), KERNEL_NO_ANSWER_AFTER_ORDER[REASON]],
+    r502_page: [() => ANSWERS.badGateway(), KERNEL_NO_ANSWER_AFTER_ORDER[REASON]],
+    timeout: [() => ANSWERS.timeout(), KERNEL_NO_ANSWER_AFTER_ORDER[REASON]],
+  };
+  const commerce = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  for (const market of PRICED_MARKETS) {
+    for (const [kind, [make, words]] of Object.entries(KINDS)) {
+      const label = `invoke submit_payment ${kind} ${market}`;
+      seq += 1;
+      const buyer = buyerFor(seq);
+      const ctx = { user_ref: buyer['X-Test-User-Ref'], acp_session_id: buyer['X-Test-Acp-Session-Id'] };
+      const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer });
+      const o = await door.invoke('create_order', { idempotency_key: freshKey(), order: invokeOrderOf(q, market) }, { buyer });
+      assert.equal(o.http, 200, `${label}: ${o.raw.slice(0, 300)}`);
+      const orderId = o.body.order_id;
+      assert.equal(o.body.currency, q.body.currency, `${label}: the order is in the quote's currency`);
+      const token = await commerce.mintConfirmation({ order_id: orderId }, ctx);
+      const pay = (k, t) => door.invoke('submit_payment', { idempotency_key: k, confirmation_token: t, payment: { order_id: orderId, expected_amount: o.body.amount_total, currency: o.body.currency } }, { buyer });
+      door.paymentScript.push(make());
+      const key = freshKey();
+      const first = await pay(key, token);
+      assert.deepEqual([first.http, first.body.code, first.body.retriable, first.body.message, first.body.detail], [409, 'CHECKOUT_OUTCOME_UNKNOWN', false, words.message, { reason: REASON, order_id: orderId }], `${label}: ${first.raw.slice(0, 400)}`);
+      assert.match(first.body.recovery, /read the order in detail\.order_id with get_order before anything else/, label);
+      assert.equal(sent(first, PAGES), 1, `${label}: one payment call`);
+      // The same key: the same answer, and the payment step is not asked again.
+      const same = await pay(key, token);
+      assert.equal(same.raw, first.raw, `${label} same key`);
+      assert.equal(sent(same, PAGES) + sent(same, ORDERS), 0, `${label} same key: nothing sent`);
+      // A new key (and a new confirmation): the payment was already asked for; read the order, do not pay again.
+      const again = await commerce.mintConfirmation({ order_id: orderId }, ctx).catch(() => token);
+      const other = await pay(freshKey(), again);
+      assert.deepEqual([other.http, other.body.code, other.body.retriable, other.body.message, other.body.detail], [409, 'IDEMPOTENCY_CONFLICT', false, IDEMPOTENCY_CONFLICT_ANSWERS.charge_pending.message, { reason: 'charge_pending', order_id: orderId }], `${label} new key: ${other.raw.slice(0, 400)}`);
+      assert.equal(sent(other, PAGES) + sent(other, ORDERS), 0, `${label} new key: nothing sent`);
+      for (const r of [first, same, other]) {
+        assert.equal(START_FRESH.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+        assert.equal(NO_EFFECT_WORDS.test(r.raw), false, `${label}: ${r.raw.slice(0, 300)}`);
+      }
+    }
+  }
+});
+
+// Another user, or the same buyer in another session, with an order's id (or its session) after the order is
+// `charge_pending` and after it is paid: the ownership check comes first, so nothing about the order is said to them.
+// (`"status":"failure"` is invoke's envelope, not the order's.)
+const PAYMENT_STATE = /charge_pending|order_already_paid|already paid|was already asked for|payment step|order_outcome|payment_status|order_status|\\?"status\\?"\s*:\s*\\?"(?!failure)/i;
+const STRANGERS = Object.freeze({ 'another user': (n) => ({ 'X-Test-User-Ref': 'buyer-0002', 'X-Test-Acp-Session-Id': `sess-x-${String(n).padStart(5, '0')}` }), 'the same buyer in another session': (n) => ({ 'X-Test-User-Ref': 'buyer-0001', 'X-Test-Acp-Session-Id': `sess-y-${String(n).padStart(5, '0')}` }) });
+async function setOrderStatus(orderId, status) {
+  const mount = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const o = await mount.kernel._orderStore.get(orderId);
+  assert.ok(o, orderId);
+  await mount.kernel._orderStore.set(orderId, { ...o, status });
+}
+function assertStrangerAnswer(r, orderId, label, { http } = {}) {
+  const code = http !== undefined ? r.body.code : errorOf(r).code;
+  assert.equal(code, 'STATE_LINKAGE_MISMATCH', `${label}: ${r.raw.slice(0, 300)}`);
+  if (http !== undefined) assert.equal(r.http, http, label);
+  assert.equal(r.raw.includes(orderId), false, `${label}: the order id`);
+  assert.doesNotMatch(r.raw, PAYMENT_STATE, `${label}: ${r.raw.slice(0, 300)}`);
+  assert.equal((http !== undefined ? r.body.detail : errorOf(r).detail), undefined, `${label}: no detail`);
+  assert.equal(sent(r, ORDERS) + sent(r, PAGES), 0, `${label}: nothing sent`);
+}
+
+test('P2-1 (v5): after the order is charge_pending, and after it is paid, another user and the same buyer in another session learn nothing of it: invoke submit_payment with its id and a new key, and /mcp complete, payment link and session read on its session, are each a linkage mismatch with no order id and no payment state, and nothing is sent', async () => {
+  const commerce = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  for (const market of PRICED_MARKETS) {
+    for (const state of ['charge_pending', 'paid']) {
+      // invoke: the owner's order, its payment step answered 500 (charge_pending), or then marked paid.
+      seq += 1;
+      const owner = buyerFor(seq);
+      const ctx = { user_ref: owner['X-Test-User-Ref'], acp_session_id: owner['X-Test-Acp-Session-Id'] };
+      const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer: owner });
+      const o = await door.invoke('create_order', { idempotency_key: freshKey(), order: invokeOrderOf(q, market) }, { buyer: owner });
+      const orderId = o.body.order_id;
+      const token = await commerce.mintConfirmation({ order_id: orderId }, ctx);
+      const pay = (k, t, buyer) => door.invoke('submit_payment', { idempotency_key: k, confirmation_token: t, payment: { order_id: orderId, expected_amount: o.body.amount_total, currency: o.body.currency } }, { buyer });
+      door.paymentScript.push(ANSWERS.internalError());
+      assert.equal((await pay(freshKey(), token, owner)).body.code, 'CHECKOUT_OUTCOME_UNKNOWN', `${market} ${state}`);
+      if (state === 'paid') await setOrderStatus(orderId, 'paid');
+      for (const [who, make] of Object.entries(STRANGERS)) {
+        seq += 1;
+        for (const [tk, t] of [['the owner\'s token', token], ['a garbage token', 'cft_placeholder']]) {
+          assertStrangerAnswer(await pay(freshKey(), t, make(seq)), orderId, `invoke ${market} ${state} ${who} ${tk}`, { http: 404 });
+        }
+      }
+      // /mcp: the owner's session, its payment page answered 500 (charge_pending), or then marked paid.
+      const h = await open('mcp_complete', market);
+      door.paymentScript.push(ANSWERS.internalError());
+      const first = await attempt(h, freshKey());
+      assert.equal(errorOf(first).code, 'CHECKOUT_OUTCOME_UNKNOWN', `${market} ${state}: ${first.raw.slice(0, 200)}`);
+      const sessionOrder = errorOf(first).detail.order_id;
+      if (state === 'paid') await setOrderStatus(sessionOrder, 'paid');
+      const grant = await grantFor(h);
+      for (const [who, make] of Object.entries(STRANGERS)) {
+        seq += 1;
+        const buyer = make(seq);
+        for (const [tool, args] of [
+          ['complete_checkout_session', { idempotency_key: freshKey(), session_id: h.id, payment_authorization: { method: 'acp_delegated_token', token: grant } }],
+          ['create_payment_link', { idempotency_key: freshKey(), session_id: h.id, customer_email: 'buyer@example.test' }],
+          ['get_checkout_session', { session_id: h.id }],
+        ]) {
+          assertStrangerAnswer(await door.call(tool, args, { buyer }), sessionOrder, `/mcp ${tool} ${market} ${state} ${who}`);
+        }
+      }
+      // The owner still reads its own session, with its order.
+      const own = await read(h);
+      assert.equal(own.isError, false, `${market} ${state}: ${own.raw.slice(0, 200)}`);
+    }
+  }
+});
+
+test('P2-2 (v5): the order\'s own buyer in another session, after the payment outcome is unknown, is told to read the order where it was started and not to start another; another user gets the same words; never "start the order over" or "re-quote", on invoke submit_payment and /mcp complete, payment link and session read', async () => {
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  const { restartInstructions } = await import('../safety-kernel/test-support/noEffectWords.js');
+  const words = ERROR_CATALOG.STATE_LINKAGE_MISMATCH;
+  assert.match(words.userMessage, /cannot be continued from this session or agent/);
+  const commerce = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const assertWords = (message, recovery, label) => {
+    assert.equal(message, words.userMessage, label);
+    if (recovery !== undefined) assert.equal(recovery, words.recovery, label);
+    assert.deepEqual(restartInstructions(`${message}. ${recovery || ''}`), [], label);
+  };
+  for (const market of PRICED_MARKETS) {
+    seq += 1;
+    const owner = buyerFor(seq);
+    const ctx = { user_ref: owner['X-Test-User-Ref'], acp_session_id: owner['X-Test-Acp-Session-Id'] };
+    const q = await door.invoke('preview_quote', { quote: nativeQuote(market) }, { buyer: owner });
+    const o = await door.invoke('create_order', { idempotency_key: freshKey(), order: invokeOrderOf(q, market) }, { buyer: owner });
+    const token = await commerce.mintConfirmation({ order_id: o.body.order_id }, ctx);
+    const pay = (buyer) => door.invoke('submit_payment', { idempotency_key: freshKey(), confirmation_token: token, payment: { order_id: o.body.order_id, expected_amount: o.body.amount_total, currency: o.body.currency } }, { buyer });
+    door.paymentScript.push(ANSWERS.internalError());
+    assert.equal((await pay(owner)).body.code, 'CHECKOUT_OUTCOME_UNKNOWN', market);
+    const h = await open('mcp_complete', market);
+    door.paymentScript.push(ANSWERS.internalError());
+    assert.equal(errorOf(await attempt(h, freshKey())).code, 'CHECKOUT_OUTCOME_UNKNOWN', market);
+    const grant = await grantFor(h);
+    const answers = {};
+    for (const [who, make] of Object.entries(STRANGERS)) {
+      seq += 1;
+      const buyer = make(seq);
+      const inv = await pay(buyer);
+      assert.deepEqual([inv.http, inv.body.code, inv.body.retriable], [404, 'STATE_LINKAGE_MISMATCH', false], `invoke ${market} ${who}: ${inv.raw.slice(0, 300)}`);
+      assertWords(inv.body.message, inv.body.recovery, `invoke ${market} ${who}`);
+      answers[who] = [inv.raw];
+      for (const [tool, args] of [
+        ['complete_checkout_session', { idempotency_key: freshKey(), session_id: h.id, payment_authorization: { method: 'acp_delegated_token', token: grant } }],
+        ['create_payment_link', { idempotency_key: freshKey(), session_id: h.id, customer_email: 'buyer@example.test' }],
+        ['get_checkout_session', { session_id: h.id }],
+      ]) {
+        const r = await door.call(tool, args, { buyer });
+        assert.equal(errorOf(r).code, 'STATE_LINKAGE_MISMATCH', `${tool} ${market} ${who}: ${r.raw.slice(0, 300)}`);
+        assertWords(errorOf(r).message, errorOf(r).recovery, `${tool} ${market} ${who}`);
+        assert.equal(sent(r, ORDERS) + sent(r, PAGES), 0, `${tool} ${market} ${who}`);
+        answers[who].push(JSON.stringify(errorOf(r)));
+      }
+    }
+    // One answer for both: a stranger learns nothing a same-buyer session would not be told.
+    assert.deepEqual(answers['another user'], answers['the same buyer in another session'], market);
+  }
+});
+
+test('Q3: the mapping names a seller not taking orders only on the order op, at 403, from the route\'s own detail', () => {
+  const named = { operation: 'create_order', status: 403, upstreamCode: 'MERCHANT_NOT_ACCEPTING_ORDERS', upstreamDetail: { error: 'MERCHANT_NOT_ACCEPTING_ORDERS', message: 'placeholder', merchant_id: 'merch_shop_a' } };
+  assert.equal(mapUpstreamErrorToKernelCode(named), 'MERCHANT_NOT_ACCEPTING_ORDERS');
+  assert.ok(curatedUpstreamRefusal(named), 'curated');
+  assert.deepEqual(curatedUpstreamRefusal(named).acp_detail, { reason: 'merchant_not_accepting_orders' });
+  for (const [label, input] of [
+    ['another op', { ...named, operation: 'submit_payment' }],
+    ['another status', { ...named, status: 409 }],
+    ['no status (a refusal the private backend hop raised)', { ...named, status: null, upstreamCode: null, upstreamDetail: null }],
+    ['no route detail', { ...named, upstreamDetail: null }],
+    ['a route detail naming another code', { ...named, upstreamDetail: { error: 'FORBIDDEN' } }],
+    ['a route detail that is prose', { ...named, upstreamDetail: 'Not authorized for this merchant' }],
+    ['the status-derived code', { ...named, upstreamCode: 'FORBIDDEN' }],
+    ['a bare 403', { operation: 'create_order', status: 403 }],
+  ]) {
+    assert.equal(mapUpstreamErrorToKernelCode(input), 'MERCHANT_UNAVAILABLE', label);
+    assert.equal(curatedUpstreamRefusal(input), null, label);
+  }
+});
 
 test('A.5: an order call answered with something that is not an order is an unknown outcome with no order id; the claim is kept and no second order is asked for', each(async (caller) => {
   for (const [shape, answer] of Object.entries({ unparseable_200: () => ANSWERS.raw(200, '<html>ok</html>', { landed: true }), empty_200: () => ANSWERS.raw(200, '', { landed: true }), no_order_200: () => ANSWERS.raw(200, { status: 'success' }, { landed: true }) })) {
@@ -323,6 +780,96 @@ test('C: cancel by session id of a session with no order cancels it truly (its c
   }
 });
 
+test('5: cancel by order id with the upstream cancel off is never canceled: the caller\'s own order is refused by name (its page stays open), an id never held and another caller\'s order get one not-found answer; nothing is sent', async () => {
+  for (const market of PRICED_MARKETS) {
+    const label = market;
+    const h = await open('mcp_payment_link', market);
+    const linked = await attempt(h, freshKey());
+    assert.equal(linked.isError, false, `${label}: ${linked.raw.slice(0, 300)}`);
+    const orderId = linked.value.order_id;
+    const own = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), order_id: orderId }, { buyer: h.buyer });
+    assert.deepEqual(errorOf(own), {
+      code: 'OPERATION_NOT_ALLOWED',
+      message: 'This order cannot be canceled from here: no cancellation reaches the store, so any payment page opened for it stays open until it expires.',
+      retriable: false,
+      detail: { reason: 'order_cancel_not_available', canceled: false, order_id: orderId, order_status: 'created' },
+      recovery: 'do not tell the buyer the order was canceled; read the order with get_order (detail.order_id); this gateway cannot cancel it at the store: if the buyer no longer wants it, the buyer should not pay, or should ask the merchant to cancel it',
+    }, `${label}: ${own.raw.slice(0, 300)}`);
+    assert.deepEqual(own.upstream, [], `${label}: nothing sent`);
+    // The session id the session-cancel refusal hands out leads here too: the same refusal.
+    const both = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), session_id: h.id, order_id: orderId }, { buyer: h.buyer });
+    assert.equal(errorOf(both).detail?.reason, 'order_cancel_not_available', label);
+    const got = await read(h);
+    assert.deepEqual([got.value.status, got.value.order_id, got.value.order_status], ['completed', orderId, 'created'], `${label}: the order is as it was`);
+    // Never held, and another caller's (another buyer session on this door): byte-equal answers.
+    const neverHeld = await door.call('cancel_checkout_session', { idempotency_key: 'idem-cxl-same-key', order_id: 'ord_never_held' }, { buyer: h.buyer });
+    const others = await door.call('cancel_checkout_session', { idempotency_key: 'idem-cxl-same-key', order_id: 'ord_never_held' }, { buyer: buyerFor(999000) });
+    const foreign = await door.call('cancel_checkout_session', { idempotency_key: 'idem-cxl-same-key', order_id: orderId }, { buyer: buyerFor(999001) });
+    assert.equal(errorOf(neverHeld).code, 'QUOTE_NOT_FOUND', neverHeld.raw.slice(0, 300));
+    assert.equal(foreign.raw, neverHeld.raw, `${label}: another caller's order reads exactly as one never held`);
+    assert.equal(others.raw, neverHeld.raw, label);
+    assert.equal(foreign.raw.includes(orderId), false, label);
+    for (const r of [neverHeld, others, foreign]) assert.deepEqual(r.upstream, [], label);
+    assert.equal((await read(h)).value.order_status, 'created', label);
+  }
+  // The ACP door: a completed session's cancel (it cancels by its order) is refused too, and the session stays completed.
+  for (const market of ['US', 'SG', 'GB']) {
+    const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+    const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+    assert.equal(done.http, 200, done.raw.slice(0, 300));
+    const cancel = await door.acp('POST', `/checkout_sessions/${created.body.id}/cancel`, {}, { key: freshKey() });
+    assert.deepEqual([cancel.http, cancel.body.code], [409, 'OPERATION_NOT_ALLOWED'], `${market}: ${cancel.raw.slice(0, 300)}`);
+    // P3-3: its own words, never the catalog's "That action is not available here."
+    assert.deepEqual(cancel.body.detail, { reason: 'cannot_cancel_paid_or_pending', canceled: false, order_status: 'charge_pending' }, market);
+    assert.match(cancel.body.message, /^This checkout session's order has a payment under way, so it was not canceled, and the payment's outcome is not known yet\./, market);
+    // P3 (d): a refund is the merchant's only if it is charged; never said outright for a payment still under way.
+    assert.match(cancel.body.message, /if it is charged, a refund is the merchant's to make/, market);
+    assert.match(cancel.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, market);
+    assert.deepEqual(cancel.upstream, [], market);
+    const got = await door.acp('GET', `/checkout_sessions/${created.body.id}`);
+    assert.deepEqual([got.body.status, got.body.order], ['checkout.completed', { id: done.body.order.id, status: 'charge_pending' }], `${market}: ${got.raw.slice(0, 300)}`);
+  }
+});
+
+test('P3-4/P3-3: the flag-off order-id cancel words follow the order\'s status on /mcp and on ACP: unpaid (a page may be open), failed (no page is promised), canceled (it reads canceled; read it)', async () => {
+  const mount = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const setStatus = async (orderId, status) => { const o = await mount.kernel._orderStore.get(orderId); assert.ok(o, orderId); await mount.kernel._orderStore.set(orderId, { ...o, status }); };
+  for (const [status, mcpWords, acpWords] of [
+    ['created', /any payment page opened for it stays open until it expires/, /any payment page opened for it stays open until it expires/],
+    ['failed', /^This order cannot be canceled from here: no cancellation reaches the store\. Its payment did not go through\.$/, /Its payment did not go through\./],
+    ['canceled', /^This order already reads canceled here\. This call did not cancel anything and sent nothing to the store\.$/, /already reads canceled here\. This request did not cancel anything/],
+  ]) {
+    for (const market of ['US', 'SG', 'GB']) {
+      const label = `${status} ${market}`;
+      const h = await open('mcp_payment_link', market);
+      const linked = await attempt(h, freshKey());
+      assert.equal(linked.isError, false, `${label}: ${linked.raw.slice(0, 300)}`);
+      await setStatus(linked.value.order_id, status);
+      const own = await door.call('cancel_checkout_session', { idempotency_key: freshKey(), order_id: linked.value.order_id }, { buyer: h.buyer });
+      const e = errorOf(own);
+      assert.deepEqual([e.code, e.retriable, e.detail], ['OPERATION_NOT_ALLOWED', false, { reason: 'order_cancel_not_available', canceled: false, ...(status === 'canceled' ? { already_canceled: true } : {}), order_id: linked.value.order_id, order_status: status }], `${label}: ${own.raw.slice(0, 300)}`);
+      assert.match(e.message, mcpWords, label);
+      assert.match(e.recovery, /get_order \(detail\.order_id\)/, label);
+      if (status !== 'created') assert.equal(/payment page/i.test(e.message + e.recovery), false, `${label}: ${e.message}`);
+      assert.deepEqual(own.upstream, [], label);
+      // ACP: a session whose order is in that status.
+      const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+      const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+      const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+      assert.equal(done.http, 200, done.raw.slice(0, 300));
+      await setStatus(done.body.order.id, status);
+      const cancel = await door.acp('POST', `/checkout_sessions/${created.body.id}/cancel`, {}, { key: freshKey() });
+      assert.deepEqual([cancel.http, cancel.body.code, cancel.body.detail], [409, 'OPERATION_NOT_ALLOWED', { reason: 'order_cancel_not_available', canceled: false, ...(status === 'canceled' ? { already_canceled: true } : {}), order_status: status }], `${label}: ${cancel.raw.slice(0, 300)}`);
+      assert.match(cancel.body.message, acpWords, label);
+      assert.match(cancel.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, label);
+      assert.equal(/get_order|not available here/.test(cancel.body.message), false, label);
+      if (status !== 'created') assert.equal(/payment page/i.test(cancel.body.message), false, label);
+      assert.deepEqual(cancel.upstream, [], label);
+    }
+  }
+});
+
 test('the strict invoke route: an order call with no readable answer is an unknown outcome, and a same-key resend really is told the same', async () => {
   for (const market of PRICED_MARKETS) {
     seq += 1;
@@ -333,14 +880,46 @@ test('the strict invoke route: an order call with no readable answer is an unkno
     const order = (key) => door.invoke('create_order', { idempotency_key: key, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address(market), recipient_name: 'Buyer One' } } }, { buyer });
     const key = freshKey();
     const first = await order(key);
-    assert.deepEqual([first.body.code, first.body.retriable], ['CHECKOUT_OUTCOME_UNKNOWN', false], first.raw.slice(0, 300));
+    assert.deepEqual([first.http, first.body.code, first.body.retriable], [409, 'CHECKOUT_OUTCOME_UNKNOWN', false], first.raw.slice(0, 300));
     assert.match(first.body.recovery, /re-sending the same call returns this same answer/);
     const same = await order(key);
     assert.equal(same.raw, first.raw, `${market}: the same answer, byte for byte`);
+    assert.equal(same.http, 409, market);
     assert.equal(sent(same, ORDERS), 0, market);
     const other = await order(freshKey());
-    assert.equal(other.body.code, 'QUOTE_ALREADY_USED', market);
+    // P3 (a): the claim names no order, so not "read the order this session already placed (get_order)", and 409.
+    assert.deepEqual([other.http, other.body.code, other.body.detail], [409, 'QUOTE_ALREADY_USED', { reason: 'checkout_session_order_outcome_unknown' }], `${market}: ${other.raw.slice(0, 300)}`);
+    assert.match(other.body.message, /^An order was asked for on this checkout session, and whether it was placed is not known/, market);
+    assert.equal(/get_order|already used to place an order/.test(other.raw), false, market);
     assert.equal(sent(first, ORDERS) + sent(same, ORDERS) + sent(other, ORDERS), 1, `${market}: one order call, ever`);
+  }
+  // The store's refusals of the order call on this route: a 429 and an unnamed 403 are the same 409, in their own words;
+  // a seller not taking orders is named: 409, never 405, in the catalog's words and with its reason.
+  const { ERROR_CATALOG } = await import('../safety-kernel/src/errors.js');
+  for (const [answer, http, code, words] of [
+    [ANSWERS.rateLimited, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /rate limiting/],
+    [ANSWERS.notAuthorized, 409, 'CHECKOUT_OUTCOME_UNKNOWN', /^The order service refused this order request\./],
+    [ANSWERS.merchantNotAccepting, 409, 'MERCHANT_NOT_ACCEPTING_ORDERS', null],
+  ]) {
+    seq += 1;
+    const buyer = buyerFor(seq);
+    const q = await door.invoke('preview_quote', { quote: nativeQuote('GB') }, { buyer });
+    door.orderScript.push(answer());
+    const key = freshKey();
+    const order = () => door.invoke('create_order', { idempotency_key: key, order: { quote_id: q.body.quote_id, customer_email: 'buyer@example.test', shipping_address: { ...fx.address('GB'), recipient_name: 'Buyer One' } } }, { buyer });
+    const first = await order();
+    assert.deepEqual([first.http, first.body.code, first.body.retriable], [http, code, false], first.raw.slice(0, 300));
+    if (code === 'MERCHANT_NOT_ACCEPTING_ORDERS') {
+      assert.deepEqual([first.body.message, first.body.detail, first.body.recovery], [ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.userMessage, { reason: 'merchant_not_accepting_orders' }, ERROR_CATALOG.MERCHANT_NOT_ACCEPTING_ORDERS.recovery], first.raw.slice(0, 300));
+      assert.equal(/use the correct tool|not available here/i.test(first.raw), false, first.raw.slice(0, 300));
+    }
+    if (words) {
+      assert.match(first.body.message, words, first.raw.slice(0, 300));
+      assert.equal(/no readable answer|may have been accepted/i.test(first.raw), false, first.raw.slice(0, 300));
+      const same = await order();
+      assert.equal(same.raw, first.raw, 'the same answer, byte for byte');
+      assert.equal(sent(same, ORDERS), 0);
+    }
   }
 });
 
@@ -362,6 +941,106 @@ test('Q3: the ACP door reads a session whose order call is unknown as in progres
     assert.deepEqual([d2.http, d2.body.code], [409, 'CHECKOUT_OUTCOME_UNKNOWN'], d2.raw.slice(0, 300));
     const got2 = await door.acp('GET', `/checkout_sessions/${c2.body.id}`);
     assert.deepEqual([got2.body.status, got2.body.order && got2.body.order.id, 'order_outcome' in got2.body], ['checkout.completed', door.orders.at(-1).order_id, false], got2.raw.slice(0, 300));
+    // N-4: the order's own status beside its id: its payment step was asked for and is not known to have gone
+    // through (charge_pending), so not paid.
+    assert.deepEqual(got2.body.order, { id: door.orders.at(-1).order_id, status: 'charge_pending' }, got2.raw.slice(0, 300));
+    // An order this door did record (its completion answered): the same shape, with the kernel's status of it.
+    const c3 = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address(market) }, { key: freshKey() });
+    const g3 = await keys.mintGrant({ sessionId: c3.body.id, currency: c3.body.currency, maxAmount: c3.body.totals.total });
+    const d3 = await door.acp('POST', `/checkout_sessions/${c3.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: g3 } }, { key: freshKey() });
+    assert.equal(d3.http, 200, d3.raw.slice(0, 300));
+    const got3 = await door.acp('GET', `/checkout_sessions/${c3.body.id}`);
+    assert.deepEqual([got3.body.status, got3.body.order, 'order_outcome' in got3.body], ['checkout.completed', { id: d3.body.order.id, status: 'charge_pending' }, false], got3.raw.slice(0, 300));
+    assert.equal(got3.body.currency, c3.body.currency, `${market}: the currency it was priced in`);
+  }
+});
+
+test('8: an order the kernel holds in a status no read knows (an expired one) is never read as completed: /mcp, UCP and ACP all say so, with its id', async () => {
+  const mount = await door.app._debug.__agentCheckoutStrict.getCommerceMount();
+  const expire = async (orderId) => { const o = await mount.kernel._orderStore.get(orderId); assert.ok(o, orderId); await mount.kernel._orderStore.set(orderId, { ...o, status: 'expired' }); };
+  for (const caller of ['mcp_complete', 'ucp_complete']) {
+    for (const market of PRICED_MARKETS) {
+      const label = `${caller} ${market}`;
+      const h = await open(caller, market);
+      const done = await attempt(h, freshKey());
+      assert.equal(done.isError, false, `${label}: ${done.raw.slice(0, 300)}`);
+      const orderId = door.orders.at(-1).order_id;
+      await expire(orderId);
+      const got = await read(h);
+      assert.equal(got.isError, false, label);
+      if (ucp(h)) assert.deepEqual([got.value.status, got.value.order_outcome, got.value.order_id, got.value.order_status], ['complete_in_progress', 'status_unknown', orderId, 'expired'], label);
+      else assert.deepEqual([got.value.status, got.value.order_id, got.value.order_status], ['order_status_unknown', orderId, 'expired'], label);
+      assert.equal(got.value.currency, h.currency, label);
+    }
+  }
+  const created = await door.acp('POST', '/checkout_sessions', { merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity: 1 }], fulfillment_address: fx.address('SG') }, { key: freshKey() });
+  const grant = await keys.mintGrant({ sessionId: created.body.id, currency: created.body.currency, maxAmount: created.body.totals.total });
+  const done = await door.acp('POST', `/checkout_sessions/${created.body.id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+  assert.equal(done.http, 200, done.raw.slice(0, 300));
+  await expire(done.body.order.id);
+  const got = await door.acp('GET', `/checkout_sessions/${created.body.id}`);
+  assert.deepEqual([got.body.status, got.body.order_outcome, got.body.order], ['checkout.in_progress', 'status_unknown', { id: done.body.order.id, status: 'expired' }], got.raw.slice(0, 300));
+});
+
+test('N-6: on the UCP door, update_checkout of a session whose order call is unknown answers a new session, and says the one it was sent is complete_in_progress, with order_outcome unknown', async () => {
+  for (const market of PRICED_MARKETS) {
+    const h = await open('ucp_complete', market);
+    door.orderScript.push(ANSWERS.timeout());
+    const done = await attempt(h, freshKey());
+    assertUnknown(done, 'order_create_outcome_unknown', null, market);
+    const updated = await door.call('update_checkout', { meta: ucpMeta(freshKey()), id: h.id, checkout: ucpCheckout(market) }, { buyer: h.buyer, door: '/ucp/mcp' });
+    assert.equal(updated.isError, false, updated.raw.slice(0, 300));
+    assert.notEqual(updated.value.id || updated.value.session_id, h.id, `${market}: a separate session`);
+    assert.deepEqual(updated.value.previous_session, { session_id: h.id, status: 'complete_in_progress', order_id: null, order_outcome: 'unknown' }, `${market}: ${updated.raw.slice(0, 400)}`);
+    assert.equal(updated.value.currency, h.currency, market);
+    assert.equal(sent(updated, ORDERS), 0, market);
+  }
+});
+
+test('6: the ACP door refuses to re-price a session whose claim is held (an order with an unknown payment step, an unknown order call, a cancellation); nothing is priced, and no completion makes a second order', async () => {
+  const cart = (market, quantity = 1) => ({ merchant_id: IDS.SELLER, items: [{ product_id: IDS.PRODUCT, variant_id: IDS.VARIANT, quantity }], fulfillment_address: fx.address(market) });
+  for (const market of ['US', 'SG', 'GB']) {
+    for (const [shape, script, code, status] of [
+      ['after a completion whose payment page answered nothing readable', () => door.paymentScript.push(ANSWERS.busy()), 'QUOTE_ALREADY_USED', 'checkout.completed'],
+      ['after a completion whose order call answered nothing', () => door.orderScript.push(ANSWERS.timeout({ landed: true })), 'QUOTE_ALREADY_USED', 'checkout.in_progress'],
+      ['after a cancellation', null, 'ORDER_CANCELED', 'canceled'],
+    ]) {
+      const label = `${market} ${shape}`;
+      const created = await door.acp('POST', '/checkout_sessions', cart(market), { key: freshKey() });
+      assert.equal(created.http, 201, created.raw.slice(0, 300));
+      const id = created.body.id;
+      const ordersBefore = door.orders.length;
+      if (script) {
+        script();
+        const grant = await keys.mintGrant({ sessionId: id, currency: created.body.currency, maxAmount: created.body.totals.total });
+        const done = await door.acp('POST', `/checkout_sessions/${id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant } }, { key: freshKey() });
+        assert.deepEqual([done.http, done.body.code], [409, 'CHECKOUT_OUTCOME_UNKNOWN'], `${label}: ${done.raw.slice(0, 300)}`);
+      } else {
+        assert.equal((await door.acp('POST', `/checkout_sessions/${id}/cancel`, {}, { key: freshKey() })).http, 200, label);
+      }
+      const updated = await door.acp('POST', `/checkout_sessions/${id}`, cart(market, 2), { key: freshKey() });
+      assert.deepEqual([updated.http, updated.body.code], [409, code], `${label}: ${updated.raw.slice(0, 300)}`);
+      assert.equal(updated.upstream.filter((c) => c.path === '/agent/v2/quotes/preview').length, 0, `${label}: nothing priced`);
+      const got = await door.acp('GET', `/checkout_sessions/${id}`);
+      assert.equal(got.body.status, status, `${label}: ${got.raw.slice(0, 300)}`);
+      if (status !== 'canceled') assert.equal(got.body.currency, created.body.currency, label);
+      // Another completion: never a second order, never a second payment page.
+      const grant2 = await keys.mintGrant({ sessionId: id, currency: created.body.currency, maxAmount: created.body.totals.total * 2 });
+      const again = await door.acp('POST', `/checkout_sessions/${id}/complete`, { payment_data: { method: 'acp_delegated_token', token: grant2 } }, { key: freshKey() });
+      assert.notEqual(again.http, 200, `${label}: ${again.raw.slice(0, 300)}`);
+      assert.deepEqual(again.upstream.filter((c) => c.path === ORDERS || c.path === PAGES), [], label);
+      assert.ok(door.orders.length - ordersBefore <= 1, label);
+      // P3-2: an order call whose outcome is unknown is never told the catalog's "already used to place an order ...
+      // get_order": the update and another completion are told what is known, in this door's words.
+      if (status === 'checkout.in_progress') {
+        for (const r of [updated, again]) {
+          assert.deepEqual([r.http, r.body.code, r.body.detail], [409, 'QUOTE_ALREADY_USED', { reason: 'checkout_session_order_outcome_unknown' }], `${label}: ${r.raw.slice(0, 300)}`);
+          assert.match(r.body.message, /^An order was asked for on this checkout session, and whether it was placed is not known/, label);
+          assert.match(r.body.message, /GET \/checkout_sessions\/\{checkout_session_id\}/, label);
+          assert.equal(/get_order|already used to place an order/.test(r.body.message), false, label);
+        }
+      }
+    }
   }
 });
 
@@ -385,7 +1064,7 @@ test('the tools/call completion line counts the kernel\'s unknown outcomes by th
   const { loggedToolErrorReason } = require('../src/observability/mcpToolErrorReasons');
   for (const reason of ['payment_outcome_unknown_after_order', 'payment_link_outcome_unknown_after_order', 'order_create_outcome_unknown',
     'acp_fulfillment_address_required', 'buyer_context_refused', 'session_already_ordered', 'session_order_outcome_unknown',
-    'session_not_ordered_not_canceled', 'session_canceled']) {
+    'session_not_ordered_not_canceled', 'session_canceled', 'merchant_not_accepting_orders', 'order_cancel_not_available']) {
     assert.equal(loggedToolErrorReason(reason), reason, reason);
   }
 });
