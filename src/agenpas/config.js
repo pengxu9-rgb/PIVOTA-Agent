@@ -22,6 +22,18 @@
  *                                 On: the page frames them instead (CSP frame-src widened to the allowlisted hosts).
  *   AGENPAS_DEV_FIXTURES          local development only: canned purchases instead of the backend. Refused (treated as
  *                                 off) on any managed platform or production environment (src/config/platform.js).
+ *
+ * CONSENT AND THE REAP RAIL (docs/agenpas.md, "Terms and privacy consent"). Each defaults OFF / to today's behaviour:
+ *   AGENPAS_CONSENT_ENABLED       default OFF. On: the card and approval screens can take the buyer's acceptance of
+ *                                 Pivota's Terms of Service and Privacy Policy (POST /agenpas/api/p/<id>/consent).
+ *                                 Off: that route does not exist (the host guard refuses it) and the page is as before.
+ *   AGENPAS_INTERNAL_CONSENT_KEY  the dedicated key (X-Internal-Key, at least 32 characters) for the backend's internal
+ *                                 consent write. Separate from the read key. Missing or short: every write unavailable.
+ *   AGENPAS_LEGAL_HOSTS           comma-separated exact host names the terms / privacy links may point at; default
+ *                                 `pivota.cc`. A link on any other host (or not https) is dropped: no consent offered.
+ *   AGENPAS_RAILS                 comma-separated rails links are minted for; default `a2a`. `reap` is honoured ONLY
+ *                                 while AGENPAS_CONSENT_ENABLED is on (enforced here, not by convention): a Reap buyer
+ *                                 must always be able to accept the terms on our page before Reap's.
  */
 
 const platform = require('../config/platform');
@@ -104,17 +116,72 @@ function devFixturesEnabled(env = process.env) {
   return on(env, 'AGENPAS_DEV_FIXTURES') && devFixturesAllowed(env);
 }
 
+function consentEnabled(env = process.env) {
+  return on(env, 'AGENPAS_CONSENT_ENABLED');
+}
+
+/** The dedicated backend key for the internal consent write, or '' when absent or too short (never logged). */
+function internalConsentKey(env = process.env) {
+  const raw = String(env.AGENPAS_INTERNAL_CONSENT_KEY || '').trim();
+  return raw.length >= MIN_SECRET_CHARS ? raw : '';
+}
+
+const DEFAULT_LEGAL_HOSTS = Object.freeze(['pivota.cc']);
+
+/** The exact host names the terms and privacy links may be on (lower-case, no trailing dot). Default pivota.cc. */
+function legalHosts(env = process.env) {
+  const raw = String(env.AGENPAS_LEGAL_HOSTS || '').trim();
+  if (!raw) return [...DEFAULT_LEGAL_HOSTS];
+  return raw.split(',').map((h) => h.trim().toLowerCase().replace(/\.$/, '')).filter((h) => HOST_RE.test(h));
+}
+
+const KNOWN_RAILS = Object.freeze(['a2a', 'reap']);
+
+// One warning per distinct unusable AGENPAS_RAILS value per process (the value is a flag, never a secret).
+const railsWarned = new Set();
+function warnRailsOnce(raw) {
+  if (railsWarned.has(raw) || railsWarned.size > 32) return;
+  railsWarned.add(raw);
+  try {
+    // eslint-disable-next-line global-require
+    require('../logger').warn({ event: 'agenpas_config', outcome: 'rails_fallback', agenpas_rails: raw.slice(0, 64) },
+      'AGENPAS_RAILS names no rail that can be served; links are minted for a2a only');
+  } catch {
+    // A logger fault never changes the answer.
+  }
+}
+
+/**
+ * The rails AgenPas links are minted for. Default (unset or blank) ['a2a'], exactly as before this flag. `reap` is
+ * dropped unless AGENPAS_CONSENT_ENABLED is on: Reap's production rule is that the buyer accepts the terms on our page.
+ * A value that leaves NO rail (a typo, or `reap` alone with consent off) falls back to ['a2a'], with one warning: a2a
+ * is never dropped silently. It is dropped only by a list that names another servable rail and not a2a.
+ */
+function rails(env = process.env, warn = warnRailsOnce) {
+  const raw = String(env.AGENPAS_RAILS || '').trim().toLowerCase();
+  if (!raw) return ['a2a'];
+  const listed = [...new Set(raw.split(',').map((r) => r.trim()).filter((r) => KNOWN_RAILS.includes(r)))];
+  const out = consentEnabled(env) ? listed : listed.filter((r) => r !== 'reap');
+  if (out.length > 0) return out;
+  if (typeof warn === 'function') warn(raw);
+  return ['a2a'];
+}
+
 module.exports = {
   MAX_TTL_SECONDS,
   MIN_SECRET_CHARS,
+  consentEnabled,
   devFixturesAllowed,
   devFixturesEnabled,
   embedHostedPages,
   hostedHosts,
+  internalConsentKey,
   internalReadKey,
   isEnabled,
+  legalHosts,
   linkSecret,
   linkTtlMinutes,
   linkTtlSeconds,
   publicBaseUrl,
+  rails,
 };

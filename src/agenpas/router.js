@@ -12,6 +12,13 @@
  *                                                  a token never lands in a URL or an access log.
  *   GET /agenpas/assets/app.js | app.css           the page's script and style (same origin: CSP 'self')
  *   GET /agenpas/dev/start?scenario=<name>         LOCAL DEVELOPMENT ONLY (devFixtures.js): mints a fixture link
+ *   POST /agenpas/api/p/:purchaseId/consent        ONLY while AGENPAS_CONSENT_ENABLED is on (off: not ours, and the
+ *                                                  host guard refuses it): the buyer accepted the terms and privacy
+ *                                                  policy for the current step. Token in `X-Agenpas-Link`; JSON body
+ *                                                  {step, offer_id, issued_at} (at most 1 kB); exact Origin, Sec-Fetch-
+ *                                                  Site same-origin when sent, Content-Type application/json, or 403 /
+ *                                                  415. The
+ *                                                  versions recorded come from the gateway's own latest read.
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
  * answers exactly what it answered before this module existed (the app's normal not-found). The same happens while
@@ -34,10 +41,10 @@ const express = require('express');
 const config = require('./config');
 const { PURCHASE_ID_RE, REASON, mintLinkToken, verifyLinkToken } = require('./linkToken');
 const { hostedOrigins } = require('./hostedUrl');
-const { projectPurchaseView } = require('./view');
+const { consentToRecord, projectPurchaseView } = require('./view');
 const { createTokenBucketLimiter } = require('../services/publicReadRateLimit');
 const { clientIpFromRequest } = require('../guardrails/gatewayGuardrails');
-const { SCENARIOS, createFixturePurchaseReader } = require('./devFixtures');
+const { SCENARIOS, createFixtures } = require('./devFixtures');
 
 const ASSET_DIR = path.join(__dirname, 'assets');
 const ASSETS = Object.freeze({
@@ -55,6 +62,13 @@ const IP_LIMIT = Object.freeze({ capacity: 30, refillPerSecond: 5 });
 const RATE_LIMIT_RETRY_AFTER_SECONDS = 2;
 const LOG_SAMPLE_PER_MINUTE = 5;
 const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+// The consent POST: its raw path, its body members and their shapes (view.js accepts the same offer shapes).
+const CONSENT_POST_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/consent$/;
+const CONSENT_BODY_KEYS = Object.freeze(['step', 'offer_id', 'issued_at']);
+const CONSENT_STEPS = new Set(['card_binding', 'approval']);
+const CONSENT_OFFER_ID_RE = /^[A-Za-z0-9+/=_-]{16,128}$/;
+const CONSENT_ISSUED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/;
+const CONSENT_BODY_LIMIT_BYTES = 1024;
 
 /** The host name of a Host header (no port), lower-cased. */
 function hostnameOf(hostHeader) {
@@ -187,13 +201,39 @@ function firstString(value) {
   return '';
 }
 
+/** The request's media type, lower-cased, parameters dropped ('' when none). */
+function mediaTypeOf(req) {
+  return String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+}
+
+/** The consent POST shape: exactly POST, the flag on, exactly the raw consent path (no decoding, no extras). */
+function isConsentPost(req, env) {
+  if (req.method !== 'POST' || !config.consentEnabled(env)) return false;
+  const raw = rawPathOf(req);
+  return !UNSAFE_PATH_RE.test(raw) && CONSENT_POST_PATH_RE.test(raw);
+}
+
+/** The browser's consent body: exactly {step, offer_id, issued_at}, each well formed; else null. */
+function consentBodyOf(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const keys = Object.keys(body);
+  if (keys.length !== CONSENT_BODY_KEYS.length || !CONSENT_BODY_KEYS.every((k) => keys.includes(k))) return null;
+  const { step, offer_id: offerId, issued_at: issuedAt } = body;
+  if (!CONSENT_STEPS.has(step)) return null;
+  if (typeof offerId !== 'string' || !CONSENT_OFFER_ID_RE.test(offerId)) return null;
+  if (typeof issuedAt !== 'string' || !CONSENT_ISSUED_AT_RE.test(issuedAt)) return null;
+  return { step, offer_id: offerId, issued_at: issuedAt };
+}
+
 /**
  * @param {{
  *   reader: { read: (claims) => Promise<object> },   the backend reader (purchaseReader.js)
  *   logger?: object,
  *   env?: object,                                     tests only; defaults to process.env, read per request
  *   now?: () => number,                               tests only
+ *   consentWriter?: { record: (claims, consent) => Promise<object> },  the backend consent write (purchaseReader.js)
  *   fixtureReader?: { read: Function },               tests only
+ *   fixtureConsentWriter?: { record: Function },      tests only
  *   limits?: { token?: object, ip?: object },         tests only: token bucket options
  * }} deps
  */
@@ -202,7 +242,10 @@ function createAgenpasRouter(deps = {}) {
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const logger = deps.logger && typeof deps.logger.info === 'function' ? deps.logger : null;
   const backendReader = deps.reader;
-  const fixtureReader = deps.fixtureReader || createFixturePurchaseReader();
+  const backendConsentWriter = deps.consentWriter;
+  const fixtures = createFixtures();
+  const fixtureReader = deps.fixtureReader || fixtures.reader;
+  const fixtureConsentWriter = deps.fixtureConsentWriter || fixtures.consentWriter;
   let assets = null;
 
   function log(level, fields) {
@@ -246,8 +289,13 @@ function createAgenpasRouter(deps = {}) {
   // SINGLE-FLIGHT + SHORT CACHE per (reader, agent id, purchase id). Every answer (unavailable included) is kept
   // for READ_CACHE_MS: during a backend outage pollers wait on one read instead of each sending their own.
   const reads = new Map();
+  const readKey = (claims, fixture) => `${fixture ? 'fx' : 'be'}|${claims.agentId}|${claims.purchaseId}`;
+  // After a recorded consent the next poll must see the backend's new answer (the hosted page), not a cached one.
+  function forgetRead(claims, fixture) {
+    reads.delete(readKey(claims, fixture));
+  }
   function readOnce(reader, claims, fixture) {
-    const key = `${fixture ? 'fx' : 'be'}|${claims.agentId}|${claims.purchaseId}`;
+    const key = readKey(claims, fixture);
     const t = now();
     const hit = reads.get(key);
     if (hit && (hit.pending || t - hit.at < READ_CACHE_MS)) return hit.promise;
@@ -278,12 +326,13 @@ function createAgenpasRouter(deps = {}) {
 
   const router = express.Router({ caseSensitive: true, strict: false });
 
-  // THE GATE. Off, no public base URL, another host, or not GET/HEAD: not ours, exactly as before.
+  // THE GATE. Off, no public base URL, another host, or not GET/HEAD: not ours, exactly as before. The one exception
+  // is the consent POST, and only while AGENPAS_CONSENT_ENABLED is on (isConsentPost).
   router.use((req, res, next) => {
     if (!String(req.path || '').startsWith('/agenpas/')) return next('router');
     const env = envOf();
     if (!config.isEnabled(env)) return next('router');
-    if (req.method !== 'GET' && req.method !== 'HEAD') return next('router');
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !isConsentPost(req, env)) return next('router');
     if (!isAgenpasOrigin(req, env)) return next('router');
     return next();
   });
@@ -321,6 +370,20 @@ function createAgenpasRouter(deps = {}) {
     return res.status(200).send(SHELL_HTML);
   });
 
+  function viewOptions(env, purchaseId, claims) {
+    const consentOn = config.consentEnabled(env);
+    return {
+      purchaseId,
+      hostedHosts: config.hostedHosts(env),
+      embed: config.embedHostedPages(env),
+      now: now(),
+      linkExpiresAt: claims.exp,
+      linkTtlMinutes: Math.max(1, Math.floor((claims.exp - claims.iat) / 60)),
+      // Only while the flag is on: off, the projection is called exactly as before.
+      ...(consentOn ? { consentEnabled: true, legalHosts: config.legalHosts(env) } : {}),
+    };
+  }
+
   router.get('/agenpas/api/p/:purchaseId', async (req, res) => {
     const env = envOf();
     setCommonHeaders(res);
@@ -345,14 +408,7 @@ function createAgenpasRouter(deps = {}) {
     const fixture = fixturesFor(req, env);
     const answer = await readOnce(fixture ? fixtureReader : backendReader, verdict.claims, fixture);
     if (answer && answer.kind === 'accepted') {
-      const view = projectPurchaseView(answer.purchase, {
-        purchaseId,
-        hostedHosts: config.hostedHosts(env),
-        embed: config.embedHostedPages(env),
-        now: now(),
-        linkExpiresAt: verdict.claims.exp,
-        linkTtlMinutes: Math.max(1, Math.floor((verdict.claims.exp - verdict.claims.iat) / 60)),
-      });
+      const view = projectPurchaseView(answer.purchase, viewOptions(env, purchaseId, verdict.claims));
       log('info', { surface: 'api', outcome: 'served', state: view.state, screen: view.screen });
       return res.status(200).json(view);
     }
@@ -361,6 +417,97 @@ function createAgenpasRouter(deps = {}) {
       return res.status(404).json({ error: 'not_found' });
     }
     log('warn', { surface: 'api', outcome: 'unavailable', reason: (answer && typeof answer.code === 'string' && answer.code) || 'unknown' });
+    res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
+    return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
+  });
+
+  // THE CONSENT POST (only reached while AGENPAS_CONSENT_ENABLED is on: the gate above). Cross-site defence first, before
+  // any token or body work: the exact public Origin, Sec-Fetch-Site same-origin and a JSON content type (a plain HTML
+  // form can send none of these, and no CORS preflight is ever answered on this host). Then the link, the buckets,
+  // a 1 kB strict JSON body of exactly three members, and the gateway's OWN latest read of the purchase: the step must
+  // be the one the page offers now, and the versions recorded are that read's, never the browser's.
+  const consentJson = express.json({ limit: CONSENT_BODY_LIMIT_BYTES, strict: true, type: () => true });
+  function parseConsentJson(req, res) {
+    return new Promise((resolve) => {
+      try {
+        consentJson(req, res, (err) => resolve(err ? { error: err } : { ok: true }));
+      } catch (err) {
+        resolve({ error: err });
+      }
+    });
+  }
+
+  router.post('/agenpas/api/p/:purchaseId/consent', async (req, res) => {
+    const env = envOf();
+    setCommonHeaders(res);
+    const purchaseId = req.params.purchaseId;
+    const refuse = (status, error, reason) => {
+      logRefusal({ surface: 'consent', reason });
+      return res.status(status).json({ error });
+    };
+    if (!ipBuckets.allow(`ip:${digest(clientIpFromRequest(req) || 'unknown')}`)) return tooMany(res, 'consent', 'rate_limited_ip');
+    if (!PURCHASE_ID_RE.test(purchaseId)) return refuse(404, 'link_invalid', 'bad_purchase_id');
+    if (firstString(req.headers.origin) !== config.publicBaseUrl(env)) return refuse(403, 'forbidden', 'origin');
+    // Sec-Fetch-Site refuses only when it is SENT and says anything but same-origin: older browsers (Safari before
+    // 16.4, iOS 15) send none, and the exact Origin, the JSON content type, the link header and the refused preflight
+    // already stop a cross-site request.
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite !== undefined && firstString(fetchSite) !== 'same-origin') return refuse(403, 'forbidden', 'sec_fetch_site');
+    if (mediaTypeOf(req) !== 'application/json') return refuse(415, 'unsupported_media_type', 'content_type');
+    const token = firstString(req.headers[LINK_HEADER]);
+    const verdict = verify(token, purchaseId);
+    if (!verdict.ok) {
+      logRefusal({ surface: 'consent', reason: verdict.reason });
+      if (verdict.reason === REASON.noSecret) return res.status(503).json({ error: 'unavailable' });
+      if (verdict.reason === REASON.expired) {
+        return res.status(410).json({ error: 'link_expired', link_ttl_minutes: config.linkTtlMinutes(env) });
+      }
+      return res.status(404).json({ error: 'link_invalid' });
+    }
+    if (!tokenBuckets.allow(`t:${digest(token)}`)) return tooMany(res, 'consent', 'rate_limited_token');
+    const parsed = await parseConsentJson(req, res);
+    if (parsed.error) {
+      const tooLarge = parsed.error && (parsed.error.type === 'entity.too.large' || parsed.error.status === 413);
+      return refuse(tooLarge ? 413 : 400, tooLarge ? 'payload_too_large' : 'bad_request', tooLarge ? 'body_too_large' : 'body_unparsable');
+    }
+    // A body some earlier parser already read is held to the same bound.
+    if (JSON.stringify(req.body === undefined ? null : req.body).length > CONSENT_BODY_LIMIT_BYTES) {
+      return refuse(413, 'payload_too_large', 'body_too_large');
+    }
+    const consent = consentBodyOf(req.body);
+    if (!consent) return refuse(400, 'bad_request', 'body_shape');
+
+    const fixture = fixturesFor(req, env);
+    const answer = await readOnce(fixture ? fixtureReader : backendReader, verdict.claims, fixture);
+    if (!answer || answer.kind !== 'accepted') {
+      if (answer && answer.kind === 'not_found') return refuse(404, 'not_found', 'not_found');
+      res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
+      logRefusal({ surface: 'consent', reason: 'read_unavailable' });
+      return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
+    }
+    const toRecord = consentToRecord(answer.purchase, viewOptions(env, purchaseId, verdict.claims));
+    if (!toRecord || toRecord.step !== consent.step) return refuse(409, 'consent_stale', 'not_offered');
+
+    const writer = fixture ? fixtureConsentWriter : backendConsentWriter;
+    let written;
+    try {
+      written = writer && typeof writer.record === 'function'
+        ? await writer.record(verdict.claims, { ...consent, terms_version: toRecord.terms_version, privacy_version: toRecord.privacy_version })
+        : { kind: 'unavailable', code: 'no_writer' };
+    } catch {
+      written = { kind: 'unavailable', code: 'threw' };
+    }
+    const kind = written && written.kind;
+    if (kind === 'recorded') {
+      forgetRead(verdict.claims, fixture);
+      log('info', { surface: 'consent', outcome: 'recorded', step: consent.step });
+      return res.status(200).json({ recorded: true });
+    }
+    // The backend's dwell has not passed yet: the page waits and lets the buyer press again (nothing changed).
+    if (kind === 'too_soon') return refuse(409, 'consent_too_soon', 'too_soon');
+    if (kind === 'stale') return refuse(409, 'consent_stale', 'stale');
+    if (kind === 'refused') return refuse(400, 'consent_refused', 'refused');
+    log('warn', { surface: 'consent', outcome: 'unavailable', reason: (written && typeof written.code === 'string' && written.code) || 'unknown' });
     res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
     return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
   });
@@ -460,6 +607,9 @@ const DEV_PATHS = [/^\/agenpas\/dev\/start$/];
 const UNSAFE_PATH_RE = /[%\\]|\.\.|\/\/|\/\.(?:\/|$)/;
 
 function admitted(req, env) {
+  // The one non-GET shape: the consent POST, and only while AGENPAS_CONSENT_ENABLED is on. Everything else that is not
+  // GET/HEAD (OPTIONS included: no preflight is ever answered here) is refused.
+  if (isConsentPost(req, env)) return true;
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
   const raw = rawPathOf(req);
   if (UNSAFE_PATH_RE.test(raw)) return false;
@@ -492,6 +642,9 @@ function createAgenpasHostGuard(deps = {}) {
       if (!isOnAgenpasHost(req, env)) return next();
       return admitted(req, env) ? next() : refuse(res, 'front');
     },
+    // The app's global JSON parser skips this host: the one body it admits (the consent POST) is parsed by its own
+    // route, strictly and at most 1 kB. False while AgenPas is off, so the parser is then exactly as before.
+    skipsGlobalBodyParser: (req) => isOnAgenpasHost(req, envOf()),
     back(req, res, next) {
       return isOnAgenpasHost(req, envOf()) ? refuse(res, 'back') : next();
     },
@@ -499,6 +652,7 @@ function createAgenpasHostGuard(deps = {}) {
 }
 
 module.exports = {
+  CONSENT_BODY_LIMIT_BYTES,
   LINK_HEADER,
   contentSecurityPolicy,
   createAgenpasHostGuard,

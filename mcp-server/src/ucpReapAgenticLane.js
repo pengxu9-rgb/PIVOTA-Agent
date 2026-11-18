@@ -1,5 +1,8 @@
 import moneyContract from '../../src/services/reapExpectedMoney.js';
 const { readExpectedMoney } = moneyContract;
+// The AgenPas page's own reading of a held purchase, so the consent swap below never sends a buyer to a page that
+// would show "we're checking with the store" instead of the step.
+import agenpasView from '../../src/agenpas/view.js';
 import selectionContract from '../../src/services/reapSelectionWitness.js';
 const { readSelectionWitness, sameSelection } = selectionContract;
 // The REAP AGENTIC lane of the UCP checkout door — the third lane, beside the kernel path and the storefront
@@ -915,6 +918,51 @@ export const REAP_OFFER_CODE_REFUSED_MESSAGE = Object.freeze({
 });
 const PENDING_WITHOUT_URL_MESSAGE =
   "The buyer's next step is on the payment partner's page, but that page is not available yet. Poll get_checkout again.";
+// AgenPas consent (docs/agenpas.md, R3-5): the step messages while continue_url is the buyer's AgenPas page. Used ONLY
+// while the gateway's consent gate is on AND the backend withheld Reap's page for consent; otherwise never.
+const CONSENT_STATE_MESSAGES = Object.freeze({
+  needs_enrollment: "The buyer must add a card on the payment partner's secure page. continue_url is the buyer's own Pivota page (AgenPas): they read and accept Pivota's Terms of Service and Privacy Policy there first, and it then opens the card page. Pivota never sees the card. Poll get_checkout afterwards.",
+  awaiting_approval: "The order is priced. The buyer must review the total and approve it on the payment partner's page before expires_at. continue_url is the buyer's own Pivota page (AgenPas): they read and accept Pivota's Terms of Service and Privacy Policy there first, and it then opens the approval page. That window is usually the merchant quote's own TTL (about five minutes from pricing), after which the purchase fails and a new checkout is needed. Nothing is charged until they approve.",
+});
+const CONSENT_STEP_FOR_REAP_STATE = Object.freeze({ needs_enrollment: "card_binding", awaiting_approval: "approval" });
+const UNIFIED_STATE_FOR_REAP_STATE = Object.freeze({ needs_enrollment: "needs_payment_method", awaiting_approval: "awaiting_buyer_authorization" });
+
+/**
+ * THE CONSENT SWAP (R3-5). While the backend's consent gate withholds Reap's page (no `hosted_url`; `buyer_step =
+ * {kind, expires_at, consent_required: true}` for THIS state's step, with a future deadline), and the door handed
+ * `agenpasConsent` (the gateway's gate is on), the buyer's way on is their AgenPas page: `{ url, expiresAt }` with
+ * expiresAt the EARLIER of the step's deadline and the link's own. Null in every other case, and then the answer is
+ * exactly what it was: a hosted URL present (consent given) is vetted as always; a paused (contact re-entry) or held
+ * purchase, whose AgenPas page would offer no step, is not swapped.
+ */
+function consentSwapFor({ view, state, now, env, agenpasConsent, purchaseId }) {
+  if (!agenpasConsent || typeof agenpasConsent.link !== "function") return null;
+  const hosted = own(view, "hosted_url");
+  if (hosted !== undefined && hosted !== null) return null;
+  const step = own(view, "buyer_step");
+  if (!isPlainObject(step) || step.consent_required !== true || step.kind !== CONSENT_STEP_FOR_REAP_STATE[state]) return null;
+  // No dead-end link: a backend that says it cannot take the consent now (`available: false`, on the marker or on its
+  // consent block) gets today's answer, never a page that would only say "not available right now".
+  const block = own(view, "consent");
+  if (step.available === false || (isPlainObject(block) && block.available === false)) return null;
+  const deadline = typeof step.expires_at === "string" ? Date.parse(step.expires_at) : NaN;
+  if (!Number.isFinite(deadline) || deadline <= now) return null;
+  if (contactReentryInstruction(view, env) !== null || CHECKOUT_REVIEW_CODES.has(own(view, "last_error_code"))) return null;
+  try {
+    const outcome = agenpasView.outcomeFor(UNIFIED_STATE_FOR_REAP_STATE[state], [own(view, "refusal_reason"), own(view, "last_error_code")]);
+    if (outcome && outcome.outcome_unknown) return null;
+  } catch {
+    return null;
+  }
+  let minted = null;
+  try {
+    minted = agenpasConsent.link(purchaseId);
+  } catch {
+    minted = null;
+  }
+  if (!minted || typeof minted.url !== "string" || !Number.isSafeInteger(minted.expiresAt) || minted.expiresAt * 1000 <= now) return null;
+  return { url: minted.url, expiresAt: new Date(Math.min(deadline, minted.expiresAt * 1000)).toISOString() };
+}
 const UNRECOGNISED_STATE_MESSAGE =
   "The purchase is in progress at a step this door does not describe yet. Nothing is charged by this step alone. Poll get_checkout again.";
 const VIEW_UNAVAILABLE_MESSAGE = [
@@ -1145,7 +1193,9 @@ function continuationMessages(view, env = process.env) {
  * An UNKNOWN but well-formed state (a state the backend added after this door) is `incomplete` with a named
  * message — not a failed read — and `onUnrecognisedState` is told so the caller can log it once.
  */
-export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now(), env = process.env, onUnrecognisedState, onUnreconciled }) {
+export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now(), env = process.env, onUnrecognisedState, onUnreconciled, agenpasConsent }) {
+  // A link captured by an earlier mapping of this call never rides on this one's answer.
+  if (agenpasConsent && isPlainObject(agenpasConsent.captured)) agenpasConsent.captured.url = null;
   if (!isPlainObject(view)) return null;
   if (own(view, "id") !== snapshot.purchaseId) return null;
   const state = str(own(view, "state"));
@@ -1201,7 +1251,15 @@ export function mapReapPurchaseToCheckout({ id, snapshot, view, now = Date.now()
     // `incomplete` — because the alternative is a link published with ten minutes it does not have.
     const deadline = own(view, "approval_deadline") ?? own(view, "hosted_url_expires_at");
     continueUrl = vetHostedUrl(own(view, "hosted_url"), deadline, now) || undefined;
-    if (continueUrl) {
+    // Consent gated (only while the door handed `agenpasConsent`): the buyer's AgenPas page. The URL itself is put in
+    // by the door AFTER the money filter (commerceToolSurface), never here; `captured` carries it there.
+    const swap = continueUrl ? null : consentSwapFor({ view, state, now, env, agenpasConsent, purchaseId: snapshot.purchaseId });
+    if (swap && isPlainObject(agenpasConsent.captured)) {
+      agenpasConsent.captured.url = swap.url;
+      expiresAt = swap.expiresAt;
+      messages.push(info(`reap.${state}`, CONSENT_STATE_MESSAGES[state], "$.continue_url"));
+      if (state === "awaiting_approval") messages.push(info("reap.approval_deadline", expiresAt, "$.expires_at"));
+    } else if (continueUrl) {
       expiresAt = new Date(Date.parse(deadline)).toISOString();
       const pausedEnrollment = state === "needs_enrollment" && contactReentryInstruction(view, env) !== null;
       messages.push(info(`reap.${state}`, pausedEnrollment ? NEEDS_ENROLLMENT_PAUSED_MESSAGE : STATE_MESSAGES[state], "$.continue_url"));
@@ -1399,14 +1457,16 @@ export async function tryReapAgenticCheckout({
   recoverOnly = false,
   resumeCheckoutId,
   recoveryIdentityReader,
+  // AgenPas consent (R3-5), handed by the door ONLY while the gateway's gate is on: { link(rpId), captured }.
+  agenpasConsent,
 }) {
   if (resumeCheckoutId !== undefined) {
     if (!decodeReapCheckoutId(resumeCheckoutId)) throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", { reason: "ucp_reap_resume_outcome_unknown" });
     if (!reapAgenticCreateEnabled(env)) throw new PivotaCommerceError("OPERATION_NOT_ALLOWED", { reason: "reap_create_paused" });
-    return recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs, resumeCheckoutId });
+    return recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs, resumeCheckoutId, agenpasConsent });
   }
   if (recoverOnly) {
-    return recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs });
+    return recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs, agenpasConsent });
   }
   if (!reapAgenticLaneEnabled(env)) return null;
   if (!client || typeof client.startPurchase !== "function" || typeof client.getPurchase !== "function") return null;
@@ -1435,6 +1495,7 @@ export async function tryReapAgenticCheckout({
         view: res.purchase,
         now,
         env,
+        agenpasConsent,
         onUnrecognisedState: () => emitOnce(log, "warn", { op: opId, outcome: "state_unrecognised", code: "unknown_state" }, "unknown_state"),
         onUnreconciled: () => emit(log, "warn", { op: opId, outcome: "breakdown_unreconciled", code: "breakdown_unreconciled" }),
       });
@@ -1473,7 +1534,7 @@ export async function tryReapAgenticCheckout({
 // Read-only recovery deliberately bypasses purchase/proof/freshness/price gates.
 // Only a catalog IDENTITY read reconstructs the exact backend body; loss/change
 // of that identity remains unknown. The ledger hash/owner decides authoritatively.
-async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs, resumeCheckoutId }) {
+async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArgs, attested, client, env, now, timeoutMs, resumeCheckoutId, agenpasConsent }) {
   const unknown = () => new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", {
     reason: resumeCheckoutId === undefined ? "ucp_reap_create_outcome_unknown" : "ucp_reap_resume_outcome_unknown",
   });
@@ -1585,7 +1646,7 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
   const snapshot = { purchaseId: view.id, productId, productKey, quantity,
     currency: totals.currency, unitMinor: totals.our_price_minor };
   const id = encodeReapCheckoutId(snapshot);
-  const out = mapReapPurchaseToCheckout({ id, snapshot, view, now, env });
+  const out = mapReapPurchaseToCheckout({ id, snapshot, view, now, env, agenpasConsent });
   if (!out) throw unknown();
   if (resumeCheckoutId === undefined) return out;
   // The caller must retain the exact opaque ID. It is a selector, never owner
@@ -1608,7 +1669,7 @@ async function recoverReapCheckout({ params, ctx, recoveryIdentityReader, ucpArg
     || (expectedSeller !== undefined && !isSameReapMerchant(expectedSeller, resumedView.merchant_domain))) {
     return buildDegradedReapCheckout({ id, snapshot, now, env });
   }
-  return mapReapPurchaseToCheckout({ id, snapshot, view: resumedView, now, env })
+  return mapReapPurchaseToCheckout({ id, snapshot, view: resumedView, now, env, agenpasConsent })
     || buildDegradedReapCheckout({ id, snapshot, now, env });
 }
 
