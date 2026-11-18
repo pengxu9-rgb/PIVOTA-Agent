@@ -36294,6 +36294,27 @@ function registerUcpBuyerAgentProfileRoute() {
       return res.status(503).json({ error: 'ucp_buyer_agent_profile_unavailable' });
     }
   });
+
+  // GET /.well-known/ucp-agent-catalog-draft — the DRAFT-version profile used only for Shopify Global Catalog
+  // lookups that carry Promoted Placements attribution (mcp-server/src/shopifyCatalogAttribution.js). Catalog
+  // capabilities only: no cart, no checkout. Lit only while SHOPIFY_CATALOG_ATTRIBUTION is shadow or enforce, so it
+  // is dark by default. Its self-reference comes ONLY from SHOPIFY_CATALOG_DRAFT_PROFILE_URL (never the Host header).
+  app.get('/.well-known/ucp-agent-catalog-draft', async (req, res) => {
+    const mode = String(process.env.SHOPIFY_CATALOG_ATTRIBUTION || '').trim().toLowerCase();
+    if (mode !== 'shadow' && mode !== 'enforce') return res.status(404).json({ error: 'not_found' });
+    try {
+      // eslint-disable-next-line global-require
+      const { buildUcpCatalogDraftProfile } = require('./services/ucpBuyerAgentProfile');
+      const configured = firstNonEmptyString(process.env.SHOPIFY_CATALOG_DRAFT_PROFILE_URL);
+      const profile = buildUcpCatalogDraftProfile(configured ? { profileUrl: configured } : {});
+      res.setHeader('content-type', 'application/json');
+      res.setHeader('cache-control', 'public, max-age=300');
+      return res.status(200).json(profile);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_catalog_draft_profile' }, 'UCP catalog draft profile route failed');
+      return res.status(503).json({ error: 'ucp_catalog_draft_profile_unavailable' });
+    }
+  });
 }
 
 function registerUcpWarmHandoffInternalRoute() {
