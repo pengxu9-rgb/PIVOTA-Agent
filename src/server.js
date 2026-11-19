@@ -32968,6 +32968,19 @@ function legacySeedNoActiveSeeds(productIds) {
 // served default): a quarantined source, an attached seed or a seed priced in another currency is not
 // re-routed, and neither is a request whose market has no single serving currency. The built detail is
 // checked again with the door's own currency test before it is served.
+// The market the legacy-seed detail lane is gated for: the kernel's declared `options.market` when SENT, else the
+// request's by the one carrier rule (servingCurrencyGuard.requestedMarketOf: the payload's when sent, else metadata's).
+// Before, `firstNonEmptyString` skipped `[]` and blank to the next carrier and turned other non-strings into text.
+// For every value that reaches here today (strings, blank, absent: /mcp and /ucp/mcp refuse a non-string market and
+// the invoke detail route reads requestedMarketOf already) the answer is the same; a sent non-string is now passed
+// raw, and the gate reads it as unreadable (no re-route) instead of falling through to the next carrier.
+function legacySeedDetailRequestedMarket(options, payload, metadata) {
+  const declared = options && typeof options === 'object' ? options.market : undefined;
+  const market = !marketIsUnnamed(declared) ? declared : requestedMarketOf(payload, metadata);
+  if (marketIsUnnamed(market)) return undefined;
+  return typeof market === 'string' ? market.trim() : market;
+}
+
 async function readLegacySeedDetail(merchantId, productId, { requestedMarket } = {}) {
   if (!routesToLegacySeedLane(merchantId, productId)) return null;
   const legacySeedGate = legacySeedDetailGate(requestedMarket);
@@ -33051,7 +33064,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // neither the backend products_cache read nor the unscoped signature lane can resolve it.
       // The buyer's market rides along exactly as it does to get_pdp_v2 below (declared, then the payload's own).
       const legacySeedDetail = await readLegacySeedDetail(rawDetailMerchant, pid, {
-        requestedMarket: firstNonEmptyString(options?.market, payload?.market, metadata?.market) || undefined,
+        requestedMarket: legacySeedDetailRequestedMarket(options, payload, metadata),
       });
       if (legacySeedDetail) return legacySeedDetailResponse(legacySeedDetail);
       const seedSupplyUnservableUpstream = isSeedSupplyUnservableUpstream(rawDetailMerchant, pid);
@@ -56370,6 +56383,8 @@ module.exports._debug = {
   buildSearchProductsV2Body,
   seedAttributionMintMarket,
   withDiscoveryBuyerMarket,
+  legacySeedDetailRequestedMarket,
+  firstNonEmptyString,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,

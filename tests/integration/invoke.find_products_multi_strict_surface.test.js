@@ -945,6 +945,28 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(withDiscoveryBuyerMarket(feed, { search: { market: null } }, {})).toEqual({ query: 'serum' });
   });
 
+  test('the legacy-seed detail market reads requestedMarketOf, and answers every reachable input as firstNonEmptyString did', () => {
+    const { legacySeedDetailRequestedMarket, firstNonEmptyString } = require('../../src/server')._debug;
+    const old = (options, payload, metadata) => firstNonEmptyString(options?.market, payload?.market, metadata?.market) || undefined;
+    // Reachable today: strings, blank and absent on each carrier (/mcp and /ucp/mcp refuse a non-string market; the
+    // invoke detail route reads requestedMarketOf already). Every combination answers exactly as before.
+    const values = [undefined, null, '', '  ', 'US', ' sg ', 'GB', 'USA', 'en-US'];
+    let cells = 0;
+    for (const o of values) for (const p of values) for (const m of values) {
+      const options = o === undefined ? {} : { market: o };
+      const payload = { product: { product_id: 'p_any' }, ...(p === undefined ? {} : { market: p }) };
+      const metadata = m === undefined ? {} : { market: m };
+      expect([o, p, m, legacySeedDetailRequestedMarket(options, payload, metadata)]).toEqual([o, p, m, old(options, payload, metadata)]);
+      cells += 1;
+    }
+    expect(cells).toBe(values.length ** 3);
+    // Not reachable today, and now the one carrier rule: a sent non-string is the carrier's value (the gate reads it
+    // as unreadable), never skipped to metadata's market or turned into text.
+    for (const sent of [false, 0, [], {}, true]) {
+      expect(legacySeedDetailRequestedMarket({}, { market: sent }, { market: 'SG' })).toEqual(sent);
+    }
+  });
+
   test('the mint market is the market every lane served: requestedMarketOf, never `||`', () => {
     const { seedAttributionMintMarket } = require('../../src/server')._debug;
     // Blank names no market: metadata's is the one served, so it is the one minted (before: none).
