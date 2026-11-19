@@ -205,7 +205,25 @@ function extractOfferAmounts(offers = []) {
     .filter((amount) => Number.isFinite(amount));
 }
 
+const UNKNOWN_STOCK_STAYS_UNKNOWN_FLAG = 'OFFERS_UNKNOWN_STOCK_STAYS_UNKNOWN_ENABLED';
+const STATED_OUT_OF_STOCK = new Set(['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'sold out', 'unavailable',
+  'out of stock', 'https://schema.org/outofstock', 'http://schema.org/outofstock']);
+const STATED_IN_STOCK = new Set(['in_stock', 'instock', 'in stock', 'available', 'https://schema.org/instock',
+  'http://schema.org/instock']);
+
+function unknownStockStaysUnknown() {
+  // Default OFF. On: missing or unrecognised availability is 'unknown', never 'available'.
+  return String(process.env[UNKNOWN_STOCK_STAYS_UNKNOWN_FLAG] || '').trim().toLowerCase() === 'true';
+}
+
 function resolveAvailabilityState(input = {}) {
+  if (unknownStockStaysUnknown()) {
+    const stated = asString(input.availability || input.availability_state).trim().toLowerCase();
+    if (input.in_stock === false || STATED_OUT_OF_STOCK.has(stated)) return 'out_of_stock';
+    if (['preorder', 'backorder'].includes(stated)) return stated;
+    if (input.in_stock === true || STATED_IN_STOCK.has(stated)) return 'available';
+    return 'unknown';
+  }
   if (input.in_stock === false) return 'out_of_stock';
   const normalized = asString(input.availability || input.availability_state).toLowerCase();
   if (!normalized) return input.in_stock === false ? 'out_of_stock' : 'available';
