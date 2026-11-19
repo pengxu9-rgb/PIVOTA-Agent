@@ -479,6 +479,10 @@ function buildCatalogServingDoc(input = {}, options = {}) {
           // The source's own market wins ('stated'); a caller market only fills in when the source states
           // none, and is labelled 'scoped' (the caller's scope, not the source's word). '*' names no market.
           const stated = asString(input.market || input.region) || null;
+          // A group input says how its market was reached ('assumed': a catalog_offers.market 'US' alone).
+          if (stated && ['assumed', 'scoped'].includes(input.market_state)) {
+            return { market: stated, market_state: input.market_state };
+          }
           if (stated) return { market: stated, market_state: 'stated' };
           const scoped = asString(options.market);
           if (scoped && scoped !== '*') return { market: scoped, market_state: 'scoped' };
@@ -629,10 +633,13 @@ const NO_DEFAULT_MARKET_FLAG = 'CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED'
  *   - scripts/catalog_serving_shadow_acceptance.js:19              DEFAULT_MARKET = 'US'
  *   - src/services/catalogServingGateway.js:8                      DEFAULT_MARKET = 'US'
  *   - src/services/discoveryFeed.js:2957 shadow read market = resolveDiscoveryExternalSeedMarketConfig() (:1448, US default)
- *   - buildCatalogServingSearchBody (this file :1127 `market = 'US'`, :1135 term `market || 'US'`)
- *   - filterLocalCatalogServingDocs (this file :1263 `params.market || 'US'`)
- *   - local DB search scope (this file :1378 `market: asString(params.market || 'US') || 'US'`)
+ *   - buildCatalogServingSearchBody (this file :1183 `market = 'US'`, :1191 term `market || 'US'`)
+ *   - filterLocalCatalogServingDocs (this file :1319 `params.market || 'US'`)
+ *   - local DB search scope (this file :1434 `market: asString(params.market || 'US') || 'US'`)
  *   - scripts/audit-kb-commerce-index-readiness.cjs:426 `market: row.market || 'US'` and :1034 `--market` default 'US'
+ *   - catalog_offers.market writers: before any flip, find every writer of the column (retailer_ingest apply,
+ *     shopify_markets capture, others; list in ~/pivota-arch-review/no_default_market_flip_checklist_2026_11_19.md)
+ *     and either stamp provenance or also write the market into offer_payload, so 'assumed' can shrink.
  * Until then the script and the admin route, flag on, pass an ABSENT market through, so the backfill refuses it
  * (catalog_serving_backfill_market_required) instead of silently running scoped to 'US'.
  */
@@ -642,42 +649,72 @@ function noDefaultMarket() {
   return String(process.env[NO_DEFAULT_MARKET_FLAG] || '').trim().toLowerCase() === 'true';
 }
 
-// Flag on only. The market one entry's source states, read where the backend writes it:
-//   - product_payload.external_seed.market, the seed's serving partition
-//     (backend scripts/mirror_external_seeds_to_catalog_products.py:1665-1668);
-//   - the offer's offer_payload.market (backend services/external_offer_dual_write.py:503, the same value
-//     it binds to the catalog_offers.market column at :249/:257); the drain's buildOffer spreads offer_payload.
-// The catalog_offers.market COLUMN is not read: it is NOT NULL DEFAULT 'US' (backend migration 149) and most
-// writers never set it, so reading it would stamp US again. The seed's partition wins over an offer's market.
-function resolveEntryStatedMarket(entry = {}) {
-  const product = asPlainObject(entry?.product);
-  const offerMarkets = asArray(product.offers).map((offer) => asPlainObject(offer).market);
-  return (
-    asString(
-      firstNonEmptyString(
-        entry?.source_meta?.market,
-        product.market,
-        product.region,
-        product.locale_market,
-        asPlainObject(product.external_seed).market,
-        ...offerMarkets,
-      ),
-    ).toUpperCase() || null
-  );
+// Flag on only. Where the backend writes a market, and how much each source is believed:
+//   1. the seed / source market: entry.source_meta.market (the seed lane, pdpIdentityGraph.js fetchBackfillProducts
+//      selects e.market), product.market/region/locale_market, or product_payload.external_seed.market (backend
+//      scripts/mirror_external_seeds_to_catalog_products.py:1665-1668) -- 'stated';
+//   2. else an offer's offer_payload.market (backend services/external_offer_dual_write.py:503; the drain's
+//      buildOffer spreads offer_payload onto the offer) -- 'stated';
+//   3. else the offer's catalog_offers.market column (the drain selects it as column_market, flag on only). The
+//      column is NOT NULL DEFAULT 'US' (backend migration 149), so a non-'US' value is a real write ('stated'),
+//      while 'US' may be the default: market 'US', market_state 'assumed' (a US query still serves it).
+// Conflicts (the whole group is skipped and counted, never relabelled):
+//   - payload_column: one offer's payload market and its NON-'US' column disagree (a column 'US' never conflicts);
+//   - offer: within one listing, the seed and an offer, or two offers, state different markets;
+//   - group: two listings of one group state different markets.
+// 'assumed' never conflicts with anything stated: the stated market wins. So no stated market is ever relabelled;
+// only an assumed 'US' can be published under the one market the rest of its group states.
+function resolveOfferMarket(offer = {}) {
+  const row = asPlainObject(offer);
+  const payload = asString(row.market).toUpperCase();
+  const column = asString(row.column_market).toUpperCase();
+  const columnStated = Boolean(column) && column !== 'US';
+  if (payload && columnStated && payload !== column) return { conflict: 'payload_column' };
+  if (payload) return { market: payload, state: 'stated' };
+  if (columnStated) return { market: column, state: 'stated' };
+  if (column) return { market: 'US', state: 'assumed' };
+  return { market: null, state: null };
 }
 
-// Flag on only. Every distinct market a group's entries state (sorted: independent of input order).
-function resolveGroupStatedMarkets(entries = []) {
-  return [...new Set(asArray(entries).map(resolveEntryStatedMarket).filter(Boolean))].sort();
+function resolveEntryMarket(entry = {}) {
+  const product = asPlainObject(entry?.product);
+  const seed = asString(
+    firstNonEmptyString(
+      entry?.source_meta?.market,
+      product.market,
+      product.region,
+      product.locale_market,
+      asPlainObject(product.external_seed).market,
+    ),
+  ).toUpperCase();
+  const offers = asArray(product.offers).map(resolveOfferMarket);
+  if (offers.some((offer) => offer.conflict)) return { conflict: 'payload_column' };
+  const stated = [...new Set([seed, ...offers.filter((o) => o.state === 'stated').map((o) => o.market)].filter(Boolean))];
+  if (stated.length > 1) return { conflict: 'offer' };
+  if (stated.length === 1) return { market: stated[0], state: 'stated' };
+  if (offers.some((offer) => offer.state === 'assumed')) return { market: 'US', state: 'assumed' };
+  return { market: null, state: null };
+}
+
+// Flag on only. Set-based, so the outcome never depends on the entries' order.
+function resolveGroupMarketInfo(entries = []) {
+  const infos = asArray(entries).map(resolveEntryMarket);
+  for (const kind of ['payload_column', 'offer']) {
+    if (infos.some((info) => info.conflict === kind)) return { conflict: kind };
+  }
+  const stated = [...new Set(infos.filter((i) => i.state === 'stated').map((i) => i.market))].sort();
+  if (stated.length > 1) return { conflict: 'group' };
+  if (stated.length === 1) return { market: stated[0], state: 'stated' };
+  if (infos.some((info) => info.state === 'assumed')) return { market: 'US', state: 'assumed' };
+  return { market: null, state: null };
 }
 
 function resolveGroupMarket(entries = [], fallbackMarket = noDefaultMarket() ? null : 'US') {
   if (noDefaultMarket()) {
-    // One stated market: that one. Entries that disagree: none (a backfill skips such a group and counts it).
-    const stated = resolveGroupStatedMarkets(entries);
-    if (stated.length === 1) return stated[0];
-    if (stated.length > 1) return null;
-    return asString(fallbackMarket) || null;
+    // A conflict labels nothing (a backfill skips such a group and counts it).
+    const info = resolveGroupMarketInfo(entries);
+    if (info.conflict) return null;
+    return info.market || asString(fallbackMarket) || null;
   }
   for (const entry of asArray(entries)) {
     const product = asPlainObject(entry?.product);
@@ -897,6 +934,14 @@ function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', 
     browse_score: browseScore >= 0 ? browseScore : composed.browse_score,
     publish_state: publishState,
     market: resolveGroupMarket(sortedEntries, market),
+    ...(noDefaultMarket()
+      ? (() => {
+          const info = resolveGroupMarketInfo(sortedEntries);
+          if (info.conflict) return { market_state: 'conflict' };
+          if (info.state) return { market_state: info.state };
+          return { market_state: asString(market) ? 'scoped' : 'unstated' };
+        })()
+      : {}),
     updated_at: updatedAt || composed.updated_at || composed.updatedAt || null,
   };
 }
@@ -921,12 +966,21 @@ function buildCatalogServingBackfillDocs(
     counts.market_conflict_skipped += 1;
     return true;
   };
-  if (strict) counts.market_group_conflict_skipped = Number(counts.market_group_conflict_skipped || 0);
-  // Flag on: a group whose entries state different markets is skipped and counted under any scope ('*' too),
-  // never labelled by whichever entry sorts first. Set-based, so the input order never changes the outcome.
+  const conflictCounters = {
+    payload_column: 'market_payload_column_conflict_skipped',
+    offer: 'market_offer_conflict_skipped',
+    group: 'market_group_conflict_skipped',
+  };
+  if (strict) {
+    for (const key of Object.values(conflictCounters)) counts[key] = Number(counts[key] || 0);
+  }
+  // Flag on: a group with a market conflict (see resolveEntryMarket) is skipped and counted under any scope
+  // ('*' too), never labelled by whichever entry sorts first. Set-based, so input order never changes the outcome.
   const groupConflicts = (groupEntries) => {
-    if (!strict || resolveGroupStatedMarkets(groupEntries).length <= 1) return false;
-    counts.market_group_conflict_skipped += 1;
+    if (!strict) return false;
+    const { conflict } = resolveGroupMarketInfo(groupEntries);
+    if (!conflict) return false;
+    counts[conflictCounters[conflict]] += 1;
     return true;
   };
   const entries = buildCatalogServingBackfillEntries(sourceRows, { identityRows });
@@ -1074,6 +1128,8 @@ async function backfillCatalogServingIndex(
       ? {
           market_conflict_skipped: Number(backfillStats.market_conflict_skipped || 0),
           market_group_conflict_skipped: Number(backfillStats.market_group_conflict_skipped || 0),
+          market_offer_conflict_skipped: Number(backfillStats.market_offer_conflict_skipped || 0),
+          market_payload_column_conflict_skipped: Number(backfillStats.market_payload_column_conflict_skipped || 0),
         }
       : {}),
     // Publication workers retain only these stable membership pointers. They

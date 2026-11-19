@@ -220,7 +220,8 @@ describe('catalog serving index never defaults a market (flag)', () => {
       identityRowsResolverFn: async () => groupIdentity(['a', 'b']),
       productIntelSummariesResolverFn: async () => new Map(),
     });
-    expect(result).toMatchObject({ market_conflict_skipped: 0, market_group_conflict_skipped: 1 });
+    expect(result).toMatchObject({ market_conflict_skipped: 0, market_group_conflict_skipped: 1,
+      market_offer_conflict_skipped: 0, market_payload_column_conflict_skipped: 0 });
     delete process.env[FLAG];
     const off = await backfillCatalogServingIndex({ market: 'US', dryRun: true }, {
       fetchBackfillProductsFn: async () => [grouped('a', 'US'), grouped('b', 'SG')],
@@ -229,6 +230,18 @@ describe('catalog serving index never defaults a market (flag)', () => {
     });
     expect(off).not.toHaveProperty('market_group_conflict_skipped');
     expect(off).not.toHaveProperty('market_conflict_skipped');
+    expect(off).not.toHaveProperty('market_payload_column_conflict_skipped');
+  });
+  test('flag on: the backfill result counts a payload-vs-column conflict', async () => {
+    process.env[FLAG] = 'true';
+    const conflicted = { ...row('pc'), product: { ...row('pc').product,
+      offers: [{ offer_id: 'o_pc', price: { amount: 10, currency: 'USD' }, market: 'US', column_market: 'SG' }] } };
+    const result = await backfillCatalogServingIndex({ market: '*', dryRun: true }, {
+      fetchBackfillProductsFn: async () => [conflicted],
+      identityRowsResolverFn: async () => [],
+      productIntelSummariesResolverFn: async () => new Map(),
+    });
+    expect(result).toMatchObject({ market_payload_column_conflict_skipped: 1, market_offer_conflict_skipped: 0 });
   });
 });
 

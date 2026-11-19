@@ -62,7 +62,8 @@ describe('drain -> backfill market', () => {
 });
 
 // Rows exactly as the drain's resolveGroupProductRows SELECT returns them, in the backend mirror's shape: the seed's
-// market is nested at product_payload.external_seed.market and on each offer's offer_payload.market, never top-level.
+// market is nested at product_payload.external_seed.market, each offer's at offer_payload.market, and (flag on) the
+// catalog_offers.market column comes back as column_market. Never top-level.
 describe('drain-shaped mirror rows -> serving docs (real builder)', () => {
   const real = jest.requireActual('../../src/services/catalogServingIndex');
   const saved = process.env[FLAG];
@@ -70,7 +71,13 @@ describe('drain-shaped mirror rows -> serving docs (real builder)', () => {
     if (saved === undefined) delete process.env[FLAG]; else process.env[FLAG] = saved;
   });
 
-  const mirrorRow = (id, seedMarket, offerMarket, currency) => ({
+  const offer = (id, payloadMarket, columnMarket, currency = 'USD') => ({
+    offer_id: `offer:external_seed:${id}`, sku_key: `pk_${id}::canonical`, offer_mode: 'external_referral',
+    availability: 'in_stock', inventory_quantity: null, currency, list_price: '12.00', merchant_effective_price: '12.00',
+    offer_payload: { external_seed_id: `seed_${id}`, ...(payloadMarket ? { market: payloadMarket } : {}) },
+    ...(columnMarket ? { column_market: columnMarket } : {}),
+  });
+  const mirrorRow = (id, seedMarket, offers) => ({
     product_key: `pk_${id}`,
     merchant_id: 'mirror_merchant_a',
     platform: 'external_seed',
@@ -83,67 +90,145 @@ describe('drain-shaped mirror rows -> serving docs (real builder)', () => {
     canonical_url: `https://shop.example/${id}`,
     image_url: null,
     product_payload: {
-      external_seed: { id: `seed_${id}`, external_product_id: id, market: seedMarket, price_currency: currency },
+      external_seed: { id: `seed_${id}`, external_product_id: id, ...(seedMarket ? { market: seedMarket } : {}) },
       seed_data: {},
     },
     content_key: null,
     pivota_signature_id: null,
     updated_at: '2026-11-19T00:00:00Z',
-    offers: [{
-      offer_id: `offer:external_seed:${id}`, sku_key: `pk_${id}::canonical`, offer_mode: 'external_referral',
-      availability: 'in_stock', inventory_quantity: null, currency, list_price: '12.00', merchant_effective_price: '12.00',
-      offer_payload: { external_seed_id: `seed_${id}`, market: offerMarket },
-    }],
+    offers,
   });
-  const build = (rows, market) => {
+  const build = (rows, market, identityRows = []) => {
     const stats = {};
-    const docs = real.buildCatalogServingBackfillDocs(drain.buildSourceRows(rows), { includeNonPublic: true, market, stats });
+    const docs = real.buildCatalogServingBackfillDocs(drain.buildSourceRows(rows),
+      { identityRows, includeNonPublic: true, market, stats });
     return { docs, stats };
   };
+  const ZERO = { market_conflict_skipped: 0, market_group_conflict_skipped: 0, market_offer_conflict_skipped: 0,
+    market_payload_column_conflict_skipped: 0 };
 
+  // The census shapes (offer_payload.market x catalog_offers.market), no seed market.
   test.each([
-    ['US', 'US', 'USD', 'US'],
-    ['SG', 'SG', 'SGD', 'SG'],
-    ['SG', 'US', 'USD', 'SG'], // an SG seed priced in USD: the seed's partition wins over the currency's market
-  ])("flag on, '*': seed %s (offer %s, %s) -> market %s, stated", (seedMarket, offerMarket, currency, expected) => {
+    [null, 'US', 'US', 'assumed'],
+    [null, 'SG', 'SG', 'stated'],
+    ['US', 'US', 'US', 'stated'],
+    ['SG', 'SG', 'SG', 'stated'],
+    ['SG', 'US', 'SG', 'stated'], // a column 'US' may be the default: never a conflict
+  ])("flag on, '*': payload %s + column %s -> %s/%s", (payloadMarket, columnMarket, market, state) => {
     process.env[FLAG] = 'true';
-    const { docs, stats } = build([mirrorRow('a1', seedMarket, offerMarket, currency)], '*');
+    const { docs, stats } = build([mirrorRow('a1', null, [offer('a1', payloadMarket, columnMarket)])], '*');
     expect(docs).toHaveLength(1);
-    expect(docs[0]).toMatchObject({ market: expected, market_state: 'stated' });
-    expect(stats).toMatchObject({ market_conflict_skipped: 0, market_group_conflict_skipped: 0 });
+    expect(docs[0]).toMatchObject({ market, market_state: state });
+    expect(stats).toEqual(ZERO);
   });
 
-  test("flag on: only the offer payload states a market -> that market, stated", () => {
+  test("flag on: payload US + column SG is a conflict: skipped and counted, under '*' and scoped", () => {
     process.env[FLAG] = 'true';
-    const row = mirrorRow('a2', null, 'SG', 'SGD');
-    delete row.product_payload.external_seed.market;
-    const { docs } = build([row], '*');
+    for (const scope of ['*', 'US', 'SG']) {
+      const { docs, stats } = build([mirrorRow('c1', null, [offer('c1', 'US', 'SG')])], scope);
+      expect(docs).toEqual([]);
+      expect(stats).toEqual({ ...ZERO, market_payload_column_conflict_skipped: 1 });
+    }
+  });
+
+  test.each([
+    ['US', 'US', 'US', 'stated'],
+    ['SG', 'SG', 'SG', 'stated'],
+    ['SG', null, 'SG', 'stated'],
+  ])("flag on, '*': seed %s with offer payload %s -> %s/%s", (seedMarket, payloadMarket, market, state) => {
+    process.env[FLAG] = 'true';
+    const { docs } = build([mirrorRow('s1', seedMarket, [offer('s1', payloadMarket, null)])], '*');
+    expect(docs[0]).toMatchObject({ market, market_state: state });
+  });
+
+  test("flag on: an 'assumed' US offer (column US only) next to a stated SG seed is no conflict: SG/stated", () => {
+    process.env[FLAG] = 'true';
+    const { docs, stats } = build([mirrorRow('s2', 'SG', [offer('s2', null, 'US', 'SGD')])], '*');
     expect(docs[0]).toMatchObject({ market: 'SG', market_state: 'stated' });
+    expect(stats).toEqual(ZERO);
+  });
+
+  test('flag on: the seed and an offer payload disagree (SG seed, US payload) -> skipped, counted', () => {
+    process.env[FLAG] = 'true';
+    const { docs, stats } = build([mirrorRow('s3', 'SG', [offer('s3', 'US', 'US')])], '*');
+    expect(docs).toEqual([]);
+    expect(stats).toEqual({ ...ZERO, market_offer_conflict_skipped: 1 });
+  });
+
+  test('flag on: one product whose offers state several payload markets -> skipped, counted', () => {
+    process.env[FLAG] = 'true';
+    const { docs, stats } = build([mirrorRow('m1', null, [offer('m1a', 'US', 'US'), offer('m1b', 'SG', 'SG')])], '*');
+    expect(docs).toEqual([]);
+    expect(stats).toEqual({ ...ZERO, market_offer_conflict_skipped: 1 });
+  });
+
+  const identity = (ids) => ids.map((id) => ({ source_listing_ref: `mirror_merchant_a:${id}`,
+    sellable_item_group_id: 'sig_shared', identity_status: 'approved', live_read_enabled: true }));
+
+  test.each([[['g1', 'g2']], [['g2', 'g1']]])('flag on: a group whose listings state US and SG payloads -> skipped (order %j)', (order) => {
+    process.env[FLAG] = 'true';
+    const rows = { g1: mirrorRow('g1', null, [offer('g1', 'US', 'US')]), g2: mirrorRow('g2', null, [offer('g2', 'SG', 'SG')]) };
+    const { docs, stats } = build(order.map((id) => rows[id]), '*', identity(['g1', 'g2']));
+    expect(docs).toEqual([]);
+    expect(stats).toEqual({ ...ZERO, market_group_conflict_skipped: 1 });
+  });
+
+  test.each([[['g3', 'g4']], [['g4', 'g3']]])("flag on: an 'assumed' US listing grouped with a stated SG one -> SG/stated (order %j)", (order) => {
+    process.env[FLAG] = 'true';
+    const rows = { g3: mirrorRow('g3', null, [offer('g3', null, 'US')]), g4: mirrorRow('g4', null, [offer('g4', 'SG', 'SG')]) };
+    const { docs, stats } = build(order.map((id) => rows[id]), '*', identity(['g3', 'g4']));
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({ market: 'SG', market_state: 'stated' });
+    expect(stats).toEqual(ZERO);
   });
 
   test("flag on: scoped 'US' keeps the US seed and skips (counts) the SG seed", () => {
     process.env[FLAG] = 'true';
-    const { docs, stats } = build([mirrorRow('u1', 'US', 'US', 'USD'), mirrorRow('s1', 'SG', 'SG', 'SGD')], 'US');
+    const { docs, stats } = build([mirrorRow('u1', 'US', [offer('u1', 'US', 'US')]),
+      mirrorRow('s4', 'SG', [offer('s4', 'SG', 'SG', 'SGD')])], 'US');
     expect(docs.map((d) => [d.market, d.market_state])).toEqual([['US', 'stated']]);
     expect(stats.market_conflict_skipped).toBe(1);
   });
 
-  test('flag off: the same rows build exactly as today (stamped US, no market_state)', () => {
+  test("flag on: an 'assumed' US doc is served to a US query (local filter and search body)", () => {
+    process.env[FLAG] = 'true';
+    const { docs } = build([mirrorRow('a9', null, [offer('a9', null, 'US')])], '*');
+    const doc = { ...docs[0], publish_state: 'public' };
+    expect(doc).toMatchObject({ market: 'US', market_state: 'assumed' });
+    const { filterLocalCatalogServingDocs } = real._internals;
+    const { buildCatalogServingSearchBody } = real;
+    expect(filterLocalCatalogServingDocs([doc], { market: 'US' })).toHaveLength(1);
+    expect(filterLocalCatalogServingDocs([doc], { market: 'SG' })).toHaveLength(0);
+    const body = JSON.stringify(buildCatalogServingSearchBody({ market: 'US' }));
+    expect(body).toContain('{"term":{"market":"US"}}');
+    expect(body).not.toContain('market_state');
+  });
+
+  test('flag off: the same rows build exactly as today (stamped US, no market_state, no column_market)', () => {
     delete process.env[FLAG];
-    const { docs, stats } = build([mirrorRow('u1', 'US', 'US', 'USD'), mirrorRow('s1', 'SG', 'SG', 'SGD')], 'US');
+    const { docs, stats } = build([mirrorRow('u1', 'US', [offer('u1', 'US', 'US')]),
+      mirrorRow('s5', 'SG', [offer('s5', 'US', 'SG', 'SGD')])], 'US');
     expect(docs.map((d) => d.market)).toEqual(['US', 'US']);
     for (const doc of docs) expect(doc).not.toHaveProperty('market_state');
-    expect(stats).not.toHaveProperty('market_group_conflict_skipped');
+    expect(JSON.stringify(docs)).not.toContain('column_market');
+    expect(stats).toEqual({ market_conflict_skipped: 0 });
     const keys = Object.keys(docs[0]);
     expect(keys.indexOf('market')).toBe(keys.indexOf('category_paths') + 1);
   });
 
-  test.each([[undefined], ['true']])('flag %s: the drain group SELECT reads no catalog_offers.market column', async (flag) => {
-    if (flag === undefined) delete process.env[FLAG]; else process.env[FLAG] = flag;
-    query.mockReset().mockResolvedValue({ rows: [] });
-    await drain.resolveGroupProductRows(['pk1']);
-    const sql = String(query.mock.calls[0][0]);
-    expect(sql).not.toMatch(/co\.market/);
-    expect(sql).toContain("'offer_payload', co.offer_payload");
+  test('the drain group SELECT reads catalog_offers.market only with the flag on; off it is the same text minus that', async () => {
+    const sqlFor = async (flag) => {
+      if (flag === undefined) delete process.env[FLAG]; else process.env[FLAG] = flag;
+      query.mockReset().mockResolvedValue({ rows: [] });
+      await drain.resolveGroupProductRows(['pk1']);
+      return String(query.mock.calls[0][0]);
+    };
+    const off = await sqlFor(undefined);
+    const on = await sqlFor('true');
+    expect(off).not.toMatch(/co\.market/);
+    expect(off).toContain("'offer_payload', co.offer_payload\n");
+    expect(on).toContain("'offer_payload', co.offer_payload, 'column_market', co.market\n");
+    expect(on.replace(", 'column_market', co.market", '')).toBe(off);
+    expect(await sqlFor('1')).toBe(off);
   });
 });
