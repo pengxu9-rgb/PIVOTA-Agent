@@ -52,13 +52,24 @@ describe('POST /api/admin/catalog-serving/backfill market', () => {
   test('flag on, no market: refused by name, no rows read', async () => {
     process.env[FLAG] = 'true';
     const resp = await post({ dry_run: true });
-    expect(resp.status).toBe(500);
-    expect(resp.body).toMatchObject({
+    expect(resp.status).toBe(400);
+    expect(resp.body).toEqual({
       ok: false,
-      error: 'CATALOG_SERVING_BACKFILL_FAILED',
+      error: 'CATALOG_SERVING_BACKFILL_MARKET_REQUIRED',
+      code: 'catalog_serving_backfill_market_required',
       message: 'catalog serving backfill needs an explicit market',
     });
     expect(backfill.mock.calls[0][0].market).toBeUndefined();
+  });
+
+  test('flag off: any other backfill failure is still a 500 CATALOG_SERVING_BACKFILL_FAILED', async () => {
+    delete process.env[FLAG];
+    backfill.mockImplementationOnce(async () => {
+      throw new Error('index unavailable');
+    });
+    const resp = await post({ dry_run: true });
+    expect(resp.status).toBe(500);
+    expect(resp.body).toEqual({ ok: false, error: 'CATALOG_SERVING_BACKFILL_FAILED', message: 'index unavailable' });
   });
 
   test.each([

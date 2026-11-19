@@ -43453,6 +43453,16 @@ app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) =
     });
     return res.json({ ok: true, result });
   } catch (err) {
+    // Flag on only (the backfill throws this code only then): a request that names no market is the caller's
+    // error, answered 400 like this file's other missing-parameter refusals, never a 500.
+    if (err?.code === 'catalog_serving_backfill_market_required') {
+      return res.status(400).json({
+        ok: false,
+        error: 'CATALOG_SERVING_BACKFILL_MARKET_REQUIRED',
+        code: err.code,
+        message: err.message,
+      });
+    }
     return res.status(500).json({
       ok: false,
       error: 'CATALOG_SERVING_BACKFILL_FAILED',
