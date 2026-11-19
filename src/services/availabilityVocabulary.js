@@ -80,8 +80,56 @@ function candidateValues(value) {
   return [value];
 }
 
+// Python's str.strip() set (str.isspace). NOT JS trim(): trim also strips U+FEFF and keeps
+// U+001C..U+001F and U+0085, which Python does the other way round.
+const PY_WHITESPACE = '\t\n\u000b\f\r\u001c\u001d\u001e\u001f \u0085  '
+  + '               　';
+const PY_STRIP_RE = new RegExp(`^[${PY_WHITESPACE}]+|[${PY_WHITESPACE}]+$`, 'gu');
+
+// Characters Python's repr() escapes (not str.isprintable(); a plain space stays).
+const PY_NON_PRINTABLE_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Zs}]/u;
+
+function pyStrRepr(text) {
+  let out = '';
+  for (const ch of text) {
+    if (ch === '\\') out += '\\\\';
+    else if (ch === '\t') out += '\\t';
+    else if (ch === '\n') out += '\\n';
+    else if (ch === '\r') out += '\\r';
+    else if (ch !== ' ' && PY_NON_PRINTABLE_RE.test(ch)) {
+      const cp = ch.codePointAt(0);
+      if (cp < 0x100) out += `\\x${cp.toString(16).padStart(2, '0')}`;
+      else if (cp < 0x10000) out += `\\u${cp.toString(16).padStart(4, '0')}`;
+      else out += `\\U${cp.toString(16).padStart(8, '0')}`;
+    } else out += ch;
+  }
+  return `'${out}'`;
+}
+
+// The backend calls str() on whatever candidate it gets; for a NESTED container that is
+// Python's repr. Only its alphanumeric content survives canonicalisation, so this mirrors
+// that content (keys, values, True/False/None, escape letters), not the punctuation.
+function pyRepr(value) {
+  if (value === null || value === undefined) return 'None';
+  if (value === true) return 'True';
+  if (value === false) return 'False';
+  if (typeof value === 'string') return pyStrRepr(value);
+  if (Array.isArray(value)) return `[${value.map(pyRepr).join(', ')}]`;
+  if (value instanceof Set) return `{${Array.from(value).map(pyRepr).join(', ')}}`;
+  if (typeof value === 'object') {
+    return `{${Object.entries(value).map(([k, v]) => `${pyStrRepr(k)}: ${pyRepr(v)}`).join(', ')}}`;
+  }
+  return String(value);
+}
+
+function pyStr(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return pyRepr(value);
+  return String(value);
+}
+
 function canonicalToken(value) {
-  let text = (value === null || value === undefined ? '' : String(value)).trim();
+  let text = pyStr(value).replace(PY_STRIP_RE, '');
   if (!text) return '';
   const iri = SCHEMA_ORG_IRI_RE.exec(text);
   if (iri) text = iri[1];

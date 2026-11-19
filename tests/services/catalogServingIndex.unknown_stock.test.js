@@ -112,34 +112,68 @@ describe('schema.org OutOfStock IRI is out of stock with the flag on', () => {
   });
 });
 
-describe('stated stock text and in_stock boolean that disagree', () => {
+describe('a boolean in_stock decides over stated stock text', () => {
   const saved = process.env[FLAG];
   afterEach(() => {
     if (saved === undefined) delete process.env[FLAG];
     else process.env[FLAG] = saved;
   });
 
-  const CONFLICTS = [
+  // The offer's own boolean wins (live-verified sold-out with stale in-stock text stays out of
+  // stock). Text is read only when there is no boolean.
+  const BOOLEAN_CASES = [
     // [input, flag off, flag on]
-    [{ in_stock: true, availability: 'discontinued' }, 'available', 'unknown'],
-    [{ in_stock: true, availability: 'https://schema.org/SoldOut' }, 'available', 'unknown'],
-    [{ in_stock: true, availability: 'out_of_stock' }, 'out_of_stock', 'unknown'],
-    [{ in_stock: false, availability: 'in stock' }, 'out_of_stock', 'unknown'],
+    [{ in_stock: false, availability: 'in stock' }, 'out_of_stock', 'out_of_stock'],
+    [{ in_stock: false, availability: 'https://schema.org/InStock' }, 'out_of_stock', 'out_of_stock'],
+    [{ in_stock: true, availability: 'discontinued' }, 'available', 'available'],
+    [{ in_stock: true, availability: 'https://schema.org/SoldOut' }, 'available', 'available'],
     [{ in_stock: true, availability: 'in stock' }, 'available', 'available'],
     [{ in_stock: false, availability: 'sold out' }, 'out_of_stock', 'out_of_stock'],
     [{ in_stock: false, availability: 'preorder' }, 'out_of_stock', 'out_of_stock'],
     [{ in_stock: true, availability: 'preorder' }, 'preorder', 'preorder'],
+    [{ in_stock: true, availability: 'backorder' }, 'backorder', 'backorder'],
     [{ in_stock: true, availability: 'check_at_store' }, 'available', 'available'],
+    [{ in_stock: true }, 'available', 'available'],
+    [{ in_stock: false }, 'out_of_stock', 'out_of_stock'],
+    // no boolean: the shared vocabulary reads the text
+    [{ availability: 'discontinued' }, 'available', 'out_of_stock'],
+    [{ availability: 'Temporarily out of stock' }, 'available', 'out_of_stock'],
+    [{ availability: 'limited stock' }, 'available', 'available'],
+    [{ availability: 'n/a' }, 'available', 'unknown'],
   ];
 
-  test.each(CONFLICTS)('flag off unchanged for %j', (input, off) => {
+  test.each(BOOLEAN_CASES)('flag off unchanged for %j', (input, off) => {
     delete process.env[FLAG];
     expect(buildCatalogServingDoc({ ...base, ...input }).availability_state).toBe(off);
   });
 
-  test.each(CONFLICTS)('flag on: a stated OOS is never overridden to available for %j', (input, _off, on) => {
+  test.each(BOOLEAN_CASES)('flag on for %j', (input, _off, on) => {
     process.env[FLAG] = 'true';
     expect(buildCatalogServingDoc({ ...base, ...input }).availability_state).toBe(on);
+  });
+});
+
+// Inputs where JS and Python string handling differ. Expected values are what the backend's
+// normalize_availability returned (pivota-backend venv, 2026-11-20). Kept out of the shared
+// fixture so that file stays byte-identical with the backend copy.
+describe('exotic inputs match the backend normaliser', () => {
+  test.each([
+    // nested JSON-LD: the backend reads str() (repr) of the inner container
+    [{ availability: { availability: 'InStock' } }, null],
+    [{ availability: { '@id': 'https://schema.org/OutOfStock' } }, 'out_of_stock'],
+    [{ availability: { availability: 'SoldOut' } }, 'out_of_stock'],
+    [{ availability: ['OutOfStock', 'InStock'] }, null],
+    [{ value: [true] }, null],
+    [{ availability: { k: '\u001fsold out' } }, 'out_of_stock'],
+    // U+FEFF is not stripped by Python, so the IRI does not unwrap
+    ['\ufeffhttps://schema.org/InStock', null],
+    ['\ufeffInStock', 'in_stock'],
+    // U+001F / U+0085 / U+3000 ARE stripped by Python, so the IRI unwraps
+    ['\u001fhttps://schema.org/InStock', 'in_stock'],
+    ['\u0085https://schema.org/InStock', 'in_stock'],
+    ['\u3000https://schema.org/InStock', 'in_stock'],
+  ])('%j -> %j', (input, expected) => {
+    expect(normalizeAvailability(input)).toBe(expected);
   });
 });
 

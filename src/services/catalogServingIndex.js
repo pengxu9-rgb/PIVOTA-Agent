@@ -226,17 +226,17 @@ function unknownStockStaysUnknown() {
 
 function resolveAvailabilityState(input = {}) {
   if (unknownStockStaysUnknown()) {
-    // One vocabulary with the backend (availabilityVocabulary). A boolean in_stock is one more
-    // signal: signals that disagree (e.g. in_stock true + 'discontinued') are 'unknown', as in
-    // the backend's normalize_availability.
+    // An offer's own boolean in_stock decides, as everywhere else in the codebase (backend
+    // _offer_known_out_of_stock / best-price, gateway offerToSignal after live verification):
+    // a live-verified sold-out with stale in-stock text stays out_of_stock. Exact
+    // 'preorder'/'backorder' text keeps its own state under in_stock true, as before the flag.
+    // Only with no boolean is the text read, through the vocabulary shared with the backend.
     const rawStated = input.availability || input.availability_state;
-    const statedVerdict = normalizeAvailability(rawStated);
-    const boolVerdict = typeof input.in_stock === 'boolean' ? normalizeAvailability(input.in_stock) : null;
-    const verdict = statedVerdict && boolVerdict && statedVerdict !== boolVerdict
-      ? null
-      : (statedVerdict || boolVerdict);
-    if (verdict === AVAILABILITY_OUT_OF_STOCK) return 'out_of_stock';
     const stated = asString(rawStated).trim().toLowerCase();
+    if (input.in_stock === false) return 'out_of_stock';
+    if (input.in_stock === true) return ['preorder', 'backorder'].includes(stated) ? stated : 'available';
+    const verdict = normalizeAvailability(rawStated);
+    if (verdict === AVAILABILITY_OUT_OF_STOCK) return 'out_of_stock';
     if (['preorder', 'backorder'].includes(stated)) return stated;
     if (verdict === AVAILABILITY_IN_STOCK) return 'available';
     return 'unknown';
