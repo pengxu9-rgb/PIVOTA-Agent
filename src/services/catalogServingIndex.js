@@ -474,7 +474,12 @@ function buildCatalogServingDoc(input = {}, options = {}) {
     review_family_id: reviewFamilyId || null,
     brand_name: brandName || null,
     category_paths: categoryPaths,
-    market: asString(options.market || input.market || input.region || 'US') || 'US',
+    ...(noDefaultMarket()
+      ? (() => {
+          const stated = asString(options.market || input.market || input.region) || null;
+          return { market: stated, market_state: stated ? 'stated' : 'unstated' };
+        })()
+      : { market: asString(options.market || input.market || input.region || 'US') || 'US' }),
     availability_state: resolveAvailabilityState(input),
     publish_state: publishState,
     title: asString(input.card_title || input.title || input.name || productId),
@@ -607,7 +612,15 @@ function maxTimestamp(values = []) {
   return bestRaw || null;
 }
 
-function resolveGroupMarket(entries = [], fallbackMarket = 'US') {
+const NO_DEFAULT_MARKET_FLAG = 'CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED';
+
+function noDefaultMarket() {
+  // Default OFF. On: a doc whose source states no market is published with market null and
+  // market_state 'unstated' (never served under any market), instead of being stamped 'US'.
+  return String(process.env[NO_DEFAULT_MARKET_FLAG] || '').trim().toLowerCase() === 'true';
+}
+
+function resolveGroupMarket(entries = [], fallbackMarket = noDefaultMarket() ? null : 'US') {
   for (const entry of asArray(entries)) {
     const product = asPlainObject(entry?.product);
     const market = firstNonEmptyString(
@@ -619,6 +632,7 @@ function resolveGroupMarket(entries = [], fallbackMarket = 'US') {
     );
     if (market) return market;
   }
+  if (noDefaultMarket()) return asString(fallbackMarket) || null;
   return asString(fallbackMarket || 'US') || 'US';
 }
 
@@ -719,7 +733,9 @@ function buildCatalogServingBackfillEntries(sourceRows = [], { identityRows = []
     .filter(Boolean);
 }
 
-function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', market = 'US' } = {}) {
+function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', market } = {}) {
+  // A market the caller names is the caller's scope; an omitted one is 'US' only while the flag is off.
+  if (market === undefined) market = noDefaultMarket() ? null : 'US';
   const sortedEntries = sortCatalogServingEntries(entries);
   const baseEntry = sortedEntries[0] || null;
   const baseProduct = asPlainObject(baseEntry?.product);
@@ -1153,7 +1169,9 @@ function filterLocalCatalogServingDocs(docs = [], params = {}) {
 
   return asArray(docs).filter((doc) => {
     if (asString(doc.publish_state).toLowerCase() !== 'public') return false;
-    if (asString(doc.market || 'US').toUpperCase() !== market.toUpperCase()) return false;
+    // A doc with no stated market matches no market query (flag on); off: it was read as US.
+    const docMarket = noDefaultMarket() ? asString(doc.market) : asString(doc.market || 'US');
+    if (!docMarket || docMarket.toUpperCase() !== market.toUpperCase()) return false;
     if (brandTerms.length) {
       const brandName = normalizeLocalCatalogSearchToken(doc.brand_name);
       if (!brandTerms.includes(brandName)) return false;
