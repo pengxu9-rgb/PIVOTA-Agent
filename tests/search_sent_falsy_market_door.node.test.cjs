@@ -50,7 +50,8 @@ test('/mcp search_catalog refuses a sent non-string market by name before any re
     const label = JSON.stringify(market);
     await assert.rejects(surface.callTool('search_catalog', { query: 'serum', market }, {}), (e) => {
       assert.equal(e.code, 'INVALID_ARGUMENTS', label);
-      assert.match(e.message, /^search_catalog: `market` must be the buyer's country as an ISO 3166-1 alpha-2 code/, label);
+      // Exactly the fixed text: the sent value is never repeated back.
+      assert.equal(e.message, "search_catalog: `market` must be the buyer's country as an ISO 3166-1 alpha-2 code (for example US).", label);
       return true;
     });
   }
@@ -76,6 +77,7 @@ test('/mcp search_catalog at the door: a sent non-string market is an error nami
     assert.match(text, /INVALID_ARGUMENTS/, JSON.stringify(market));
     assert.match(text, /ISO 3166-1 alpha-2/, JSON.stringify(market));
     assert.doesNotMatch(text, /"products"/, JSON.stringify(market));
+    assert.doesNotMatch(text, /\[object Object\]|"market":\s*(false|true|0|\[\]|\{\})/, `${JSON.stringify(market)}: never echoed`);
   }
 });
 

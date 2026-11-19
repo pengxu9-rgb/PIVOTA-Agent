@@ -520,12 +520,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         const problem = storefrontMarketProblem(toolArgs.market);
         if (problem) throw new ToolValidationError(`${op.mcp}: ${problem}`);
       }
-      // search_catalog's schema declares `market` a string. A SENT non-string (false, 0, [], {}, true) is refused by
-      // name before anything is read, with the refusal this door gives a checkout's unreadable market (it never
-      // repeats the value). Before, it was forwarded and answered with an empty page, while get_offers refused it
-      // (market_invalid) and /ucp/mcp refused it (ucp_country_string_required). Absent, null and blank still name no
-      // market (requestMarket.marketIsUnnamed): assumed US, labelled. A string is passed on exactly as before.
-      if (op.id === "search_catalog" && !requestMarket.marketIsUnnamed(toolArgs.market) && typeof toolArgs.market !== "string") {
+      // Every market read's schema declares `market` a string (NON_STRING_MARKET_REFUSED_OPS). A SENT non-string
+      // (false, 0, [], {}, true) is refused by name before anything is read, with the refusal this door gives a
+      // checkout's unreadable market: a fixed text that never repeats the value. Before, search_catalog answered it
+      // with an empty page, and get_product (which dropped it) and get_alternatives (which read it as its default)
+      // answered it as an unlabelled US/USD page; get_offers keeps its own `market_invalid`, and /ucp/mcp refuses it
+      // as ucp_country_string_required. Absent, null and blank still name no market (requestMarket.marketIsUnnamed):
+      // assumed US, labelled. A string is passed on exactly as before.
+      if (NON_STRING_MARKET_REFUSED_OPS.includes(op.id) && !requestMarket.marketIsUnnamed(toolArgs.market) && typeof toolArgs.market !== "string") {
         throw new ToolValidationError(`${op.mcp}: ${storefrontMarketProblem(toolArgs.market)}`);
       }
     }
@@ -1202,6 +1204,8 @@ const ADDR_KEYS = ["country", "city", "postal_code", "state", "address_line1", "
 // refused (or ignored) exactly as it was. recommend_products takes no market at all: it is always answered for the
 // US (its lane prices in USD), so its answer always says so; giving it a `market` is its own change (C-13).
 const MARKET_READ_OPS = Object.freeze(["search_catalog", "get_product", "get_offers", "get_alternatives"]);
+/** The market reads that refuse a sent non-string `market` up front (step 0b); get_offers answers it `market_invalid`. */
+export const NON_STRING_MARKET_REFUSED_OPS = Object.freeze(MARKET_READ_OPS.filter((id) => id !== "get_offers"));
 const ALWAYS_US_OPS = Object.freeze(["recommend_products"]);
 
 /** True when this op's answer is decided for a market the request did not name. */

@@ -736,29 +736,44 @@ test('a log line that throws never costs the enforce answer', async () => {
 const ts = require('typescript');
 const META_NAME = /^(metadata|meta|[A-Za-z]*Metadata)$/;
 
-function marketCarrierFallbacks(text) {
+function marketCarrierFallbacks(text, { withDiagnostics = false } = {}) {
   const sf = ts.createSourceFile('src.js', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const strip = (n) => { while (n && ts.isParenthesizedExpression(n)) n = n.expression; return n; };
-  const isMetaId = (n) => ts.isIdentifier(strip(n)) && META_NAME.test(strip(n).text);
+  // A metadata receiver: `metadata` (and the names above), a member chain ending in one (`req.body.metadata`), or a
+  // name bound to one (`const md = metadata`).
+  const metaAliases = new Set();
+  const isMetaReceiver = (raw) => {
+    const n = strip(raw);
+    if (!n) return false;
+    if (ts.isIdentifier(n)) return META_NAME.test(n.text) || metaAliases.has(n.text);
+    if (ts.isPropertyAccessExpression(n)) return META_NAME.test(n.name.text);
+    return false;
+  };
+  const isMarketMember = (n) => (ts.isPropertyAccessExpression(n) && n.name.text === 'market')
+    || (ts.isElementAccessExpression(n) && ts.isStringLiteral(n.argumentExpression) && n.argumentExpression.text === 'market');
   const bound = new Set();
   const readsMetadataMarket = (raw) => {
     const n = strip(raw);
     if (!n) return false;
-    if (ts.isPropertyAccessExpression(n)) return n.name.text === 'market' && isMetaId(n.expression);
-    if (ts.isElementAccessExpression(n)) {
-      return ts.isStringLiteral(n.argumentExpression) && n.argumentExpression.text === 'market' && isMetaId(n.expression);
-    }
+    if (isMarketMember(n)) return isMetaReceiver(n.expression);
     if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return readsMetadataMarket(n.right);
     if (ts.isConditionalExpression(n)) return readsMetadataMarket(n.whenTrue) || readsMetadataMarket(n.whenFalse);
     return ts.isIdentifier(n) && bound.has(n.text);
   };
+  // Any OTHER carrier's market: `x.market` / `x?.market` / `x['market']` on a receiver that is not metadata.
+  const readsOtherMarket = (raw) => {
+    const n = strip(raw);
+    return Boolean(n) && isMarketMember(n) && !isMetaReceiver(n.expression);
+  };
   const bind = (n) => {
     if (ts.isVariableDeclaration(n) && n.initializer) {
-      if (ts.isObjectBindingPattern(n.name) && isMetaId(n.initializer)) {
+      if (ts.isObjectBindingPattern(n.name) && isMetaReceiver(n.initializer)) {
         for (const el of n.name.elements) {
           const prop = (el.propertyName || el.name).getText(sf);
           if (prop === 'market' && ts.isIdentifier(el.name)) bound.add(el.name.text);
         }
+      } else if (ts.isIdentifier(n.name) && isMetaReceiver(n.initializer)) {
+        metaAliases.add(n.name.text);
       } else if (ts.isIdentifier(n.name) && readsMetadataMarket(n.initializer)) {
         bound.add(n.name.text);
       }
@@ -766,18 +781,61 @@ function marketCarrierFallbacks(text) {
     ts.forEachChild(n, bind);
   };
   bind(sf);
+  bind(sf); // a second pass: aliases first, then the names copied through them
   const hits = [];
+  const hit = (n, kind) => hits.push(`${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1} ${kind}: ${n.getText(sf).slice(0, 100)}`);
+  const assignments = (stmt) => {
+    const out = [];
+    const stmts = !stmt ? [] : ts.isBlock(stmt) ? stmt.statements : [stmt];
+    for (const st of stmts) {
+      if (ts.isExpressionStatement(st) && ts.isBinaryExpression(st.expression)
+        && st.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(st.expression.left)) {
+        out.push({ name: st.expression.left.text, value: st.expression.right });
+      }
+    }
+    return out;
+  };
+  const mentions = (node, name) => {
+    let found = false;
+    const walk = (n) => { if (found) return; if (ts.isIdentifier(n) && n.text === name) found = true; else ts.forEachChild(n, walk); };
+    walk(node);
+    return found;
+  };
   const visit = (n) => {
     if (ts.isBinaryExpression(n)
       && (n.operatorToken.kind === ts.SyntaxKind.BarBarToken || n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
       && (readsMetadataMarket(n.left) || readsMetadataMarket(n.right))) {
-      hits.push(`${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}: ${n.getText(sf).slice(0, 100)}`);
+      hit(n, '||');
+    } else if (ts.isCallExpression(n) && n.arguments.length >= 2
+      && n.arguments.some(readsMetadataMarket) && n.arguments.some(readsOtherMarket)) {
+      hit(n, 'call');
+    } else if (ts.isIfStatement(n)) {
+      const thenAssigned = assignments(n.thenStatement);
+      const elseAssigned = assignments(n.elseStatement);
+      for (const [mine, other] of [[thenAssigned, elseAssigned], [elseAssigned, thenAssigned]]) {
+        for (const { name, value } of mine) {
+          if (!readsMetadataMarket(value)) continue;
+          if (mentions(n.expression, name) || other.some((o) => o.name === name)) hit(n, 'if');
+        }
+      }
     }
     ts.forEachChild(n, visit);
   };
   visit(sf);
-  return hits;
+  return withDiagnostics ? { hits, diagnostics: sf.parseDiagnostics.length } : hits;
 }
+
+// Function-call carriers the pin found when it learned the call shape (2026-11-19). Not `||`, but the same choice
+// made by "first non-empty" rather than by requestMarket.marketIsUnnamed. Aligning each changes an answer for a sent
+// `[]` (first-non-empty skips it to metadata's market; requestedMarketOf reads it as sent), so each is its own change.
+const KNOWN_CALL_CARRIERS = {
+  'server.js call: firstNonEmptyString(search?.market, metadata?.market)':
+    'buildSearchProductsV2Body: the backend search body market. A sent [] + metadata SG sends SG upstream; the serving guard (requestedMarketOf) still empties that page.',
+  'server.js call: firstNonEmptyString(publicBeautySearch.market, metadata.market)':
+    'the public beauty lane\'s "a market was named" test; aligning it moves which lane answers a sent [] (and can turn it into the lane\'s 422 for a categorised search).',
+  'services/checkoutHandoffResolver.js call: selectBuyerMarket(metadata.market, payload.market)':
+    'requestBuyerMarket: the purchasability gate\'s documented rule (metadata first; the first carrier yielding ONE ISO-2 market wins, unreadable ones skipped), shared with the offers door.',
+};
 
 test('STRUCTURAL: no source file falls back to metadata.market with || or ?? (every carrier is requestedMarketOf)', () => {
   const fs = require('node:fs');
@@ -793,8 +851,26 @@ test('STRUCTURAL: no source file falls back to metadata.market with || or ?? (ev
   };
   walk(root);
   assert.ok(files.some((f) => f.endsWith(path.join('src', 'server.js'))));
-  const found = files.flatMap((f) => marketCarrierFallbacks(fs.readFileSync(f, 'utf8')).map((h) => `${path.relative(root, f)}:${h}`));
-  assert.deepEqual(found, []);
+  const found = [];
+  const unparsed = [];
+  for (const f of files) {
+    const { hits, diagnostics } = marketCarrierFallbacks(fs.readFileSync(f, 'utf8'), { withDiagnostics: true });
+    // The parser recovers from a syntax error and keeps walking; a file it could not read cleanly is a failure here,
+    // never a silent pass.
+    if (diagnostics !== 0) unparsed.push(`${path.relative(root, f)}: ${diagnostics} parse diagnostics`);
+    for (const h of hits) found.push(`${path.relative(root, f)}:${h}`);
+  }
+  assert.deepEqual(unparsed, []);
+  // The carriers this pin finds that do not go through requestedMarketOf yet, each named with why it stays for now.
+  // Exact: a new one fails, and so does one that is fixed or moved without being taken off this list.
+  const stripLine = (h) => h.replace(/:\d+ /, ' ');
+  assert.deepEqual(found.map(stripLine).sort(), Object.keys(KNOWN_CALL_CARRIERS).sort());
+  for (const reason of Object.values(KNOWN_CALL_CARRIERS)) assert.ok(reason.length > 40);
+});
+
+test('STRUCTURAL: the carrier pin reports a file it cannot parse', () => {
+  assert.ok(marketCarrierFallbacks('x = search.market || metadata.market; function (', { withDiagnostics: true }).diagnostics > 0);
+  assert.equal(marketCarrierFallbacks('x = search.market || metadata.market;', { withDiagnostics: true }).diagnostics, 0);
 });
 
 test('STRUCTURAL: the carrier pin catches every spelling (its own mutants)', () => {
@@ -809,6 +885,13 @@ test('STRUCTURAL: the carrier pin catches every spelling (its own mutants)', () 
     'const { market: metaMarket } = metadata; x = search.market || metaMarket;',
     'const fromMeta = metadata && metadata.market; x = search.market || fromMeta;',
     'x = req.body.market || requestMetadata.market;',
+    'x = search.market || req.body.metadata.market;',
+    'const md = metadata; x = search.market || md.market;',
+    'const md = req.body.metadata; x = search.market ?? md?.market;',
+    'let m = search.market; if (!m) m = metadata.market;',
+    'let m; if (search.market) { m = search.market; } else { m = metadata.market; }',
+    'x = firstNonEmptyString(options?.market, payload?.market, metadata?.market);',
+    'x = coalesce(search.market, md2.market); const md2 = metadata;',
   ];
   for (const snippet of caught) assert.equal(marketCarrierFallbacks(snippet).length, 1, snippet);
   const clean = [
@@ -816,6 +899,9 @@ test('STRUCTURAL: the carrier pin catches every spelling (its own mutants)', () 
     'x = String(product.market || "").trim();',
     'x = metadata.market;',
     "x = row.market || 'US';",
+    'if (!marketIsUnnamed(search.market)) return search.market;',
+    'x = capRequested(metadata.market);',
+    'let m = search.market; if (!m) m = "US";',
   ];
   for (const snippet of clean) assert.deepEqual(marketCarrierFallbacks(snippet), [], snippet);
 });
