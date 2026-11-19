@@ -14,6 +14,7 @@ const {
 const {
   normalizePublishedProductIntelBundle,
 } = require('../pdpProductIntel');
+const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
 
 function asString(value) {
   const normalized = String(value || '').trim();
@@ -633,13 +634,25 @@ const NO_DEFAULT_MARKET_FLAG = 'CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED'
  *   - scripts/catalog_serving_shadow_acceptance.js:19              DEFAULT_MARKET = 'US'
  *   - src/services/catalogServingGateway.js:8                      DEFAULT_MARKET = 'US'
  *   - src/services/discoveryFeed.js:2957 shadow read market = resolveDiscoveryExternalSeedMarketConfig() (:1448, US default)
- *   - buildCatalogServingSearchBody (this file :1183 `market = 'US'`, :1191 term `market || 'US'`)
- *   - filterLocalCatalogServingDocs (this file :1319 `params.market || 'US'`)
- *   - local DB search scope (this file :1434 `market: asString(params.market || 'US') || 'US'`)
+ *   - buildCatalogServingSearchBody (this file :1239 `market = 'US'`, :1247 term `market || 'US'`)
+ *   - filterLocalCatalogServingDocs (this file :1375 `params.market || 'US'`)
+ *   - local DB search scope (this file :1490 `market: asString(params.market || 'US') || 'US'`)
  *   - scripts/audit-kb-commerce-index-readiness.cjs:426 `market: row.market || 'US'` and :1034 `--market` default 'US'
- *   - catalog_offers.market writers: before any flip, find every writer of the column (retailer_ingest apply,
- *     shopify_markets capture, others; list in ~/pivota-arch-review/no_default_market_flip_checklist_2026_11_19.md)
- *     and either stamp provenance or also write the market into offer_payload, so 'assumed' can shrink.
+ *   - catalog_offers.market writers (column NOT NULL DEFAULT 'US', backend migration 149:21; a 'US' alone is
+ *     published 'assumed'): each must stamp provenance or also write offer_payload.market, so 'assumed' shrinks.
+ *     Backend writers that set the column: services/external_offer_dual_write.py:255 (also offer_payload.market
+ *     :503), services/retailer_ingest/shopify_markets.py:183, services/retailer_ingest/pipeline.py:349
+ *     stamp_declared_market -> services/catalog_enrichment_agent/apply.py:544 (its base upsert :325 sets none),
+ *     services/catalog_variant_offer_projection.py:88, scripts/attach_retailer_offer.py:173,
+ *     scripts/backfill_variant_identity_skus.py:266, scripts/capture_us_market_offers.py:216,
+ *     scripts/backfill_offer_market_currency.py:84, scripts/onboard_external_brand_from_crawl.py:658,
+ *     scripts/restamp_offer_market.py:152, migration 149:27-30 (one-off SET market = 'US' for internal_merchant).
+ *   - answer-level 'assumed': the gateway's market_assumed (decision D-10) labels a BUYER call that named no
+ *     market; it is not mapped from a doc's market_state here. Today the serving index is read only by the admin
+ *     search, the discoveryFeed shadow read (debug only) and the shadow acceptance script, none of which answer a
+ *     buyer, so the per-doc market_state is enough. Before any buyer path reads these docs, map market_state
+ *     'assumed' to market_assumed on that answer.
+ *   - set the flag on the gateway web service, the backfill workflow runner and the drain job TOGETHER.
  * Until then the script and the admin route, flag on, pass an ABSENT market through, so the backfill refuses it
  * (catalog_serving_backfill_market_required) instead of silently running scoped to 'US'.
  */
@@ -973,7 +986,44 @@ function buildCatalogServingBackfillDocs(
   };
   if (strict) {
     for (const key of Object.values(conflictCounters)) counts[key] = Number(counts[key] || 0);
+    counts.market_currency_conflict_skipped = Number(counts.market_currency_conflict_skipped || 0);
+    counts.market_currency_group_skipped = Number(counts.market_currency_group_skipped || 0);
   }
+  // Flag on: serving docs carry no currency, so a doc's prices must be in its market's currency. With the doc's
+  // market resolved (stated or assumed) and priced by this gateway (currencyForBuyerRegion, the buyer-region map
+  // kept identical to the backend's region_pricing), every offer price and the product price whose currency is
+  // states another one is dropped and counted (market_currency_conflict_skipped); a price that states no currency
+  // cannot be compared and is kept (as before), so a US doc priced without a currency field is not emptied. A group left
+  // with no price by that is skipped and counted (market_currency_group_skipped). A market this gateway does not
+  // price (e.g. DE) or no market at all: nothing to compare, prices kept as before.
+  const keepMarketCurrencyPrices = (input) => {
+    const currency = currencyForBuyerRegion(asString(input.market));
+    if (!currency) return input;
+    const offerCurrency = (offer) =>
+      asString(offer?.currency || offer?.price?.currency || offer?.current_price?.currency).toUpperCase();
+    const offers = asArray(input.offers);
+    const priced = (offer) => extractOfferAmounts([offer]).length > 0;
+    const mismatched = (stated) => Boolean(stated) && stated !== currency;
+    const keptOffers = offers.filter((offer) => !priced(offer) || !mismatched(offerCurrency(offer)));
+    let dropped = offers.length - keptOffers.length;
+    const productPriced = asPositiveNumber(input.price) != null;
+    const productCurrency = asString(input.currency || input.price_currency).toUpperCase();
+    const keepProductPrice = productPriced && !mismatched(productCurrency);
+    if (productPriced && !keepProductPrice) dropped += 1;
+    if (!dropped) return input;
+    counts.market_currency_conflict_skipped += dropped;
+    if (!keepProductPrice && !keptOffers.some(priced)) {
+      counts.market_currency_group_skipped += 1;
+      return null;
+    }
+    const keptIds = new Set(keptOffers.map((offer) => asString(offer?.offer_id || offer?.id)).filter(Boolean));
+    const out = { ...input, offers: keptOffers };
+    if (productPriced && !keepProductPrice) delete out.price;
+    if (asString(out.default_offer_id) && !keptIds.has(asString(out.default_offer_id))) {
+      out.default_offer_id = pickDefaultOfferId(keptOffers, []);
+    }
+    return out;
+  };
   // Flag on: a group with a market conflict (see resolveEntryMarket) is skipped and counted under any scope
   // ('*' too), never labelled by whichever entry sorts first. Set-based, so input order never changes the outcome.
   const groupConflicts = (groupEntries) => {
@@ -1003,8 +1053,10 @@ function buildCatalogServingBackfillDocs(
         market: groupMarket,
       });
       if (!input || conflicts(input)) continue;
+      const pricedInput = strict ? keepMarketCurrencyPrices(input) : input;
+      if (!pricedInput) continue;
       docs.push(
-        buildCatalogServingDoc(input, {
+        buildCatalogServingDoc(pricedInput, {
           publish_state: 'public',
           market: strict ? input.market : input.market || market,
         }),
@@ -1018,8 +1070,10 @@ function buildCatalogServingBackfillDocs(
       market: groupMarket,
     });
     if (!input || conflicts(input)) continue;
+    const pricedInput = strict ? keepMarketCurrencyPrices(input) : input;
+    if (!pricedInput) continue;
     docs.push(
-      buildCatalogServingDoc(input, {
+      buildCatalogServingDoc(pricedInput, {
         publish_state: publishState,
         shadow: publishState === 'shadow',
         market: strict ? input.market : input.market || market,
@@ -1130,6 +1184,8 @@ async function backfillCatalogServingIndex(
           market_group_conflict_skipped: Number(backfillStats.market_group_conflict_skipped || 0),
           market_offer_conflict_skipped: Number(backfillStats.market_offer_conflict_skipped || 0),
           market_payload_column_conflict_skipped: Number(backfillStats.market_payload_column_conflict_skipped || 0),
+          market_currency_conflict_skipped: Number(backfillStats.market_currency_conflict_skipped || 0),
+          market_currency_group_skipped: Number(backfillStats.market_currency_group_skipped || 0),
         }
       : {}),
     // Publication workers retain only these stable membership pointers. They

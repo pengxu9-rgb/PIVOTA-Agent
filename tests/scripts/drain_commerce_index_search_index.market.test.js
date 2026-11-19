@@ -71,9 +71,10 @@ describe('drain-shaped mirror rows -> serving docs (real builder)', () => {
     if (saved === undefined) delete process.env[FLAG]; else process.env[FLAG] = saved;
   });
 
-  const offer = (id, payloadMarket, columnMarket, currency = 'USD') => ({
+  const offer = (id, payloadMarket, columnMarket, currency = (payloadMarket || columnMarket) === 'SG' ? 'SGD' : 'USD',
+    amount = '12.00') => ({
     offer_id: `offer:external_seed:${id}`, sku_key: `pk_${id}::canonical`, offer_mode: 'external_referral',
-    availability: 'in_stock', inventory_quantity: null, currency, list_price: '12.00', merchant_effective_price: '12.00',
+    availability: 'in_stock', inventory_quantity: null, currency, list_price: amount, merchant_effective_price: amount,
     offer_payload: { external_seed_id: `seed_${id}`, ...(payloadMarket ? { market: payloadMarket } : {}) },
     ...(columnMarket ? { column_market: columnMarket } : {}),
   });
@@ -105,7 +106,7 @@ describe('drain-shaped mirror rows -> serving docs (real builder)', () => {
     return { docs, stats };
   };
   const ZERO = { market_conflict_skipped: 0, market_group_conflict_skipped: 0, market_offer_conflict_skipped: 0,
-    market_payload_column_conflict_skipped: 0 };
+    market_payload_column_conflict_skipped: 0, market_currency_conflict_skipped: 0, market_currency_group_skipped: 0 };
 
   // The census shapes (offer_payload.market x catalog_offers.market), no seed market.
   test.each([

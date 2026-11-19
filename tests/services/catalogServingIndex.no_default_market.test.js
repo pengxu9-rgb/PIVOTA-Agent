@@ -243,5 +243,57 @@ describe('catalog serving index never defaults a market (flag)', () => {
     });
     expect(result).toMatchObject({ market_payload_column_conflict_skipped: 1, market_offer_conflict_skipped: 0 });
   });
+  // Review P2: serving docs carry no currency, so a USD price must never land in an SG doc. Seed-lane shape
+  // (pdpIdentityGraph.fetchBackfillProducts: source_meta.market = the seed's market).
+  const seedRow = (id, product) => ({ merchant_id: 'external_seed', product_id: id, source_kind: 'external_seed',
+    source_meta: { market: 'SG' }, product: { product_id: id, title: `Item ${id}`, brand: 'Example Brand', ...product } });
+  const ZERO_CCY = { market_currency_conflict_skipped: 0, market_currency_group_skipped: 0 };
+
+  test('flag on: the reviewed case -- an SG seed priced 19 USD (assumed-US offer) is not published [SG, 19]', () => {
+    process.env[FLAG] = 'true';
+    const rows = [seedRow('r1', { price: 19, currency: 'USD',
+      offers: [{ offer_id: 'o_r1', price: { amount: 19, currency: 'USD' }, column_market: 'US' }] })];
+    const stats = {};
+    expect(buildCatalogServingBackfillDocs(rows, { includeNonPublic: true, market: '*', stats })).toEqual([]);
+    expect(stats).toMatchObject({ market_currency_conflict_skipped: 2, market_currency_group_skipped: 1,
+      market_offer_conflict_skipped: 0, market_payload_column_conflict_skipped: 0 });
+    delete process.env[FLAG];
+    const [off] = buildCatalogServingBackfillDocs(rows, { includeNonPublic: true, market: 'US' });
+    expect(off).toMatchObject({ market: 'SG', price_min: 19 });
+  });
+
+  test('flag on: an SG seed priced 25 SGD next to an assumed-US offer at 19 USD -> SG doc priced 25 only', () => {
+    process.env[FLAG] = 'true';
+    const rows = [seedRow('r2', { price: 25, currency: 'SGD', default_offer_id: 'o_r2_usd',
+      offers: [{ offer_id: 'o_r2_usd', price: { amount: 19, currency: 'USD' }, column_market: 'US' },
+               { offer_id: 'o_r2_sgd', price: { amount: 25, currency: 'SGD' } }] })];
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs(rows, { includeNonPublic: true, market: '*', stats });
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({ market: 'SG', market_state: 'stated', price_min: 25, price_max: 25,
+      default_offer_id: 'o_r2_sgd' });
+    expect(stats).toMatchObject({ ...ZERO_CCY, market_currency_conflict_skipped: 1 });
+  });
+
+  test('flag on: a price that states no currency is kept; a market the gateway does not price is not checked', () => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([
+      seedRow('r3', { price: 12, offers: [{ offer_id: 'o_r3', price: { amount: 12 } }] }),
+      { ...seedRow('r4', { price: 30, currency: 'USD', offers: [] }), source_meta: { market: 'DE' } },
+    ], { includeNonPublic: true, market: '*', stats });
+    expect(docs.map((d) => [d.market, d.price_min]).sort()).toEqual([['DE', 30], ['SG', 12]]);
+    expect(stats).toMatchObject(ZERO_CCY);
+  });
+
+  test('flag on: the backfill result carries both currency counters', async () => {
+    process.env[FLAG] = 'true';
+    const result = await backfillCatalogServingIndex({ market: '*', dryRun: true }, {
+      fetchBackfillProductsFn: async () => [seedRow('r5', { price: 19, currency: 'USD', offers: [] })],
+      identityRowsResolverFn: async () => [],
+      productIntelSummariesResolverFn: async () => new Map(),
+    });
+    expect(result).toMatchObject({ market_currency_conflict_skipped: 1, market_currency_group_skipped: 1 });
+  });
 });
 
