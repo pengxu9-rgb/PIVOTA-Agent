@@ -476,9 +476,13 @@ function buildCatalogServingDoc(input = {}, options = {}) {
     category_paths: categoryPaths,
     ...(noDefaultMarket()
       ? (() => {
-          // The source's own market wins; a caller market only fills in when the source states none.
-          const stated = asString(input.market || input.region || options.market) || null;
-          return { market: stated, market_state: stated ? 'stated' : 'unstated' };
+          // The source's own market wins ('stated'); a caller market only fills in when the source states
+          // none, and is labelled 'scoped' (the caller's scope, not the source's word). '*' names no market.
+          const stated = asString(input.market || input.region) || null;
+          if (stated) return { market: stated, market_state: 'stated' };
+          const scoped = asString(options.market);
+          if (scoped && scoped !== '*') return { market: scoped, market_state: 'scoped' };
+          return { market: null, market_state: 'unstated' };
         })()
       : { market: asString(options.market || input.market || input.region || 'US') || 'US' }),
     availability_state: resolveAvailabilityState(input),
@@ -615,13 +619,66 @@ function maxTimestamp(values = []) {
 
 const NO_DEFAULT_MARKET_FLAG = 'CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED';
 
+/*
+ * FLIP CHECKLIST for CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED (before it is set anywhere):
+ * with the flag on, a caller market is a SCOPE: a 'US' backfill skips every non-US group, so non-US docs go
+ * stale. After the flip '*' is the only scheduled/default backfill mode. Fix first (all still default 'US'):
+ *   - .github/workflows/catalog-serving-index-backfill.yml:11-14  `market` input: required, NO default "US"
+ *   - scripts/backfill-catalog-serving-index.js:58                `argValue('market') || ... || 'US'`
+ *   - src/server.js:43448-43449 (admin /api/admin/catalog-serving/backfill) `String(body.market || '').trim() || 'US'`
+ *   - scripts/catalog_serving_shadow_acceptance.js:19              DEFAULT_MARKET = 'US'
+ *   - src/services/catalogServingGateway.js:8                      DEFAULT_MARKET = 'US'
+ *   - src/services/discoveryFeed.js:2957 shadow read market = resolveDiscoveryExternalSeedMarketConfig() (:1448, US default)
+ *   - buildCatalogServingSearchBody (this file :1127 `market = 'US'`, :1135 term `market || 'US'`)
+ *   - filterLocalCatalogServingDocs (this file :1263 `params.market || 'US'`)
+ *   - local DB search scope (this file :1378 `market: asString(params.market || 'US') || 'US'`)
+ *   - scripts/audit-kb-commerce-index-readiness.cjs:426 `market: row.market || 'US'` and :1034 `--market` default 'US'
+ * Until then the script and the admin route, flag on, pass an ABSENT market through, so the backfill refuses it
+ * (catalog_serving_backfill_market_required) instead of silently running scoped to 'US'.
+ */
 function noDefaultMarket() {
   // Default OFF. On: a doc whose source states no market is published with market null and
   // market_state 'unstated' (never served under any market), instead of being stamped 'US'.
   return String(process.env[NO_DEFAULT_MARKET_FLAG] || '').trim().toLowerCase() === 'true';
 }
 
+// Flag on only. The market one entry's source states, read where the backend writes it:
+//   - product_payload.external_seed.market, the seed's serving partition
+//     (backend scripts/mirror_external_seeds_to_catalog_products.py:1665-1668);
+//   - the offer's offer_payload.market (backend services/external_offer_dual_write.py:503, the same value
+//     it binds to the catalog_offers.market column at :249/:257); the drain's buildOffer spreads offer_payload.
+// The catalog_offers.market COLUMN is not read: it is NOT NULL DEFAULT 'US' (backend migration 149) and most
+// writers never set it, so reading it would stamp US again. The seed's partition wins over an offer's market.
+function resolveEntryStatedMarket(entry = {}) {
+  const product = asPlainObject(entry?.product);
+  const offerMarkets = asArray(product.offers).map((offer) => asPlainObject(offer).market);
+  return (
+    asString(
+      firstNonEmptyString(
+        entry?.source_meta?.market,
+        product.market,
+        product.region,
+        product.locale_market,
+        asPlainObject(product.external_seed).market,
+        ...offerMarkets,
+      ),
+    ).toUpperCase() || null
+  );
+}
+
+// Flag on only. Every distinct market a group's entries state (sorted: independent of input order).
+function resolveGroupStatedMarkets(entries = []) {
+  return [...new Set(asArray(entries).map(resolveEntryStatedMarket).filter(Boolean))].sort();
+}
+
 function resolveGroupMarket(entries = [], fallbackMarket = noDefaultMarket() ? null : 'US') {
+  if (noDefaultMarket()) {
+    // One stated market: that one. Entries that disagree: none (a backfill skips such a group and counts it).
+    const stated = resolveGroupStatedMarkets(entries);
+    if (stated.length === 1) return stated[0];
+    if (stated.length > 1) return null;
+    return asString(fallbackMarket) || null;
+  }
   for (const entry of asArray(entries)) {
     const product = asPlainObject(entry?.product);
     const market = firstNonEmptyString(
@@ -633,7 +690,6 @@ function resolveGroupMarket(entries = [], fallbackMarket = noDefaultMarket() ? n
     );
     if (market) return market;
   }
-  if (noDefaultMarket()) return asString(fallbackMarket) || null;
   return asString(fallbackMarket || 'US') || 'US';
 }
 
@@ -865,6 +921,14 @@ function buildCatalogServingBackfillDocs(
     counts.market_conflict_skipped += 1;
     return true;
   };
+  if (strict) counts.market_group_conflict_skipped = Number(counts.market_group_conflict_skipped || 0);
+  // Flag on: a group whose entries state different markets is skipped and counted under any scope ('*' too),
+  // never labelled by whichever entry sorts first. Set-based, so the input order never changes the outcome.
+  const groupConflicts = (groupEntries) => {
+    if (!strict || resolveGroupStatedMarkets(groupEntries).length <= 1) return false;
+    counts.market_group_conflict_skipped += 1;
+    return true;
+  };
   const entries = buildCatalogServingBackfillEntries(sourceRows, { identityRows });
   const groups = new Map();
   for (const entry of entries) {
@@ -877,6 +941,7 @@ function buildCatalogServingBackfillDocs(
 
   const docs = [];
   for (const groupEntries of groups.values()) {
+    if (groupConflicts(groupEntries)) continue;
     const publicEntries = groupEntries.filter((entry) => entry.is_public);
     if (publicEntries.length > 0) {
       const input = buildCatalogServingGroupInput(publicEntries, {
@@ -1005,7 +1070,12 @@ async function backfillCatalogServingIndex(
     non_public_docs_built:
       Number(publishStateBreakdown.shadow || 0) + Number(publishStateBreakdown.eligible || 0),
     publish_state_breakdown: publishStateBreakdown,
-    ...(noDefaultMarket() ? { market_conflict_skipped: Number(backfillStats.market_conflict_skipped || 0) } : {}),
+    ...(noDefaultMarket()
+      ? {
+          market_conflict_skipped: Number(backfillStats.market_conflict_skipped || 0),
+          market_group_conflict_skipped: Number(backfillStats.market_group_conflict_skipped || 0),
+        }
+      : {}),
     // Publication workers retain only these stable membership pointers. They
     // are enough to repair an old grouped document when a source listing moves
     // to another sellable-item group, without persisting the full document.

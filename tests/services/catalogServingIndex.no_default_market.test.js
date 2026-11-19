@@ -32,13 +32,35 @@ describe('catalog serving index never defaults a market (flag)', () => {
   test.each([
     [{ market: 'SG' }, {}, 'SG'],
     [{ region: 'GB' }, {}, 'GB'],
-    [{}, { market: 'DE' }, 'DE'],
     [{ market: 'US' }, {}, 'US'],
+    [{ market: 'SG' }, { market: 'US' }, 'SG'],
   ])('flag on: a stated market is kept (%j / %j)', (input, options, market) => {
     process.env[FLAG] = 'true';
     const doc = buildCatalogServingDoc({ ...base, ...input }, options);
     expect(doc.market).toBe(market);
     expect(doc.market_state).toBe('stated');
+  });
+
+  test("flag on: no source market + a caller market = that market, labelled 'scoped' (never 'stated')", () => {
+    process.env[FLAG] = 'true';
+    const doc = buildCatalogServingDoc({ ...base }, { market: 'DE' });
+    expect(doc.market).toBe('DE');
+    expect(doc.market_state).toBe('scoped');
+    expect(buildCatalogServingDoc({ ...base }, { market: '*' })).toMatchObject({ market: null, market_state: 'unstated' });
+  });
+
+  test.each([
+    ['1', false], ['yes', false], ['on', false], ['TRUE1', false], ['', false],
+    ['true', true], [' TRUE ', true], ['True', true],
+  ])('flag value %j turns the flag on: %s', (value, on) => {
+    process.env[FLAG] = value;
+    const doc = buildCatalogServingDoc({ ...base });
+    if (on) {
+      expect(doc).toMatchObject({ market: null, market_state: 'unstated' });
+    } else {
+      expect(doc.market).toBe('US');
+      expect(doc).not.toHaveProperty('market_state');
+    }
   });
 
   test('flag on: the group input does not invent a market; a caller-named one is kept', () => {
@@ -135,7 +157,7 @@ describe('catalog serving index never defaults a market (flag)', () => {
   test('flag on: in a direct build the source market wins over a caller market', () => {
     process.env[FLAG] = 'true';
     expect(buildCatalogServingDoc({ ...base, market: 'SG' }, { market: 'US' }).market).toBe('SG');
-    expect(buildCatalogServingDoc({ ...base }, { market: 'US' }).market).toBe('US');
+    expect(buildCatalogServingDoc({ ...base }, { market: 'US' })).toMatchObject({ market: 'US', market_state: 'scoped' });
   });
 
   test('flag on: a PUBLIC unstated source is published unstated, never with the scope market', () => {
@@ -147,6 +169,66 @@ describe('catalog serving index never defaults a market (flag)', () => {
     expect(docs).toHaveLength(1);
     expect(docs[0].publish_state).toBe('public');
     expect(docs[0].market).toBeNull();
+  });
+  const grouped = (id, market) => ({ ...row(id, market), serving_eligible: true });
+  const groupIdentity = (ids) => ids.map((id) => ({ source_listing_ref: `external_seed:${id}`,
+    sellable_item_group_id: 'sig_shared', identity_status: 'approved', live_read_enabled: true }));
+
+  test.each([
+    ['*', ['a', 'US'], ['b', 'SG']],
+    ['*', ['b', 'SG'], ['a', 'US']],
+    ['US', ['a', 'US'], ['b', 'SG']],
+    ['US', ['b', 'SG'], ['a', 'US']],
+    ['SG', ['a', 'US'], ['b', 'SG']],
+    ['SG', ['b', 'SG'], ['a', 'US']],
+  ])('flag on: scope %s, a group whose entries state US and SG is skipped and counted (order %j, %j)',
+    (scope, first, second) => {
+      process.env[FLAG] = 'true';
+      for (const includeNonPublic of [true, false]) {
+        const stats = {};
+        const docs = buildCatalogServingBackfillDocs([grouped(...first), grouped(...second)],
+          { identityRows: groupIdentity(['a', 'b']), includeNonPublic, market: scope, stats });
+        expect(docs).toEqual([]);
+        expect(stats.market_group_conflict_skipped).toBe(1);
+        expect(stats.market_conflict_skipped).toBe(0);
+      }
+    });
+
+  test('flag on: a group that agrees (or adds an unstated entry) is one doc with that market', () => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([grouped('a', 'sg'), grouped('b', 'SG'), grouped('c')],
+      { identityRows: groupIdentity(['a', 'b', 'c']), includeNonPublic: true, market: '*', stats });
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({ market: 'SG', market_state: 'stated' });
+    expect(stats.market_group_conflict_skipped).toBe(0);
+  });
+
+  test('flag off: a disagreeing group is built as today (no group skip, no counter)', () => {
+    delete process.env[FLAG];
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([grouped('a', 'US'), grouped('b', 'SG')],
+      { identityRows: groupIdentity(['a', 'b']), includeNonPublic: true, market: 'US', stats });
+    expect(docs).toHaveLength(1);
+    expect(stats).not.toHaveProperty('market_group_conflict_skipped');
+  });
+
+  test('flag on: the backfill result reports the group-conflict count', async () => {
+    process.env[FLAG] = 'true';
+    const result = await backfillCatalogServingIndex({ market: '*', dryRun: true }, {
+      fetchBackfillProductsFn: async () => [grouped('a', 'US'), grouped('b', 'SG')],
+      identityRowsResolverFn: async () => groupIdentity(['a', 'b']),
+      productIntelSummariesResolverFn: async () => new Map(),
+    });
+    expect(result).toMatchObject({ market_conflict_skipped: 0, market_group_conflict_skipped: 1 });
+    delete process.env[FLAG];
+    const off = await backfillCatalogServingIndex({ market: 'US', dryRun: true }, {
+      fetchBackfillProductsFn: async () => [grouped('a', 'US'), grouped('b', 'SG')],
+      identityRowsResolverFn: async () => groupIdentity(['a', 'b']),
+      productIntelSummariesResolverFn: async () => new Map(),
+    });
+    expect(off).not.toHaveProperty('market_group_conflict_skipped');
+    expect(off).not.toHaveProperty('market_conflict_skipped');
   });
 });
 

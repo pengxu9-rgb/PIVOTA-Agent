@@ -60,3 +60,90 @@ describe('drain -> backfill market', () => {
     expect(options).toEqual({ limit: 1, includeNonPublic: true, refresh: true, market: '*' });
   });
 });
+
+// Rows exactly as the drain's resolveGroupProductRows SELECT returns them, in the backend mirror's shape: the seed's
+// market is nested at product_payload.external_seed.market and on each offer's offer_payload.market, never top-level.
+describe('drain-shaped mirror rows -> serving docs (real builder)', () => {
+  const real = jest.requireActual('../../src/services/catalogServingIndex');
+  const saved = process.env[FLAG];
+  afterEach(() => {
+    if (saved === undefined) delete process.env[FLAG]; else process.env[FLAG] = saved;
+  });
+
+  const mirrorRow = (id, seedMarket, offerMarket, currency) => ({
+    product_key: `pk_${id}`,
+    merchant_id: 'mirror_merchant_a',
+    platform: 'external_seed',
+    source_product_id: id,
+    title: `Example Item ${id}`,
+    description: null,
+    brand: 'Example Brand',
+    product_type: null,
+    category: null,
+    canonical_url: `https://shop.example/${id}`,
+    image_url: null,
+    product_payload: {
+      external_seed: { id: `seed_${id}`, external_product_id: id, market: seedMarket, price_currency: currency },
+      seed_data: {},
+    },
+    content_key: null,
+    pivota_signature_id: null,
+    updated_at: '2026-11-19T00:00:00Z',
+    offers: [{
+      offer_id: `offer:external_seed:${id}`, sku_key: `pk_${id}::canonical`, offer_mode: 'external_referral',
+      availability: 'in_stock', inventory_quantity: null, currency, list_price: '12.00', merchant_effective_price: '12.00',
+      offer_payload: { external_seed_id: `seed_${id}`, market: offerMarket },
+    }],
+  });
+  const build = (rows, market) => {
+    const stats = {};
+    const docs = real.buildCatalogServingBackfillDocs(drain.buildSourceRows(rows), { includeNonPublic: true, market, stats });
+    return { docs, stats };
+  };
+
+  test.each([
+    ['US', 'US', 'USD', 'US'],
+    ['SG', 'SG', 'SGD', 'SG'],
+    ['SG', 'US', 'USD', 'SG'], // an SG seed priced in USD: the seed's partition wins over the currency's market
+  ])("flag on, '*': seed %s (offer %s, %s) -> market %s, stated", (seedMarket, offerMarket, currency, expected) => {
+    process.env[FLAG] = 'true';
+    const { docs, stats } = build([mirrorRow('a1', seedMarket, offerMarket, currency)], '*');
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({ market: expected, market_state: 'stated' });
+    expect(stats).toMatchObject({ market_conflict_skipped: 0, market_group_conflict_skipped: 0 });
+  });
+
+  test("flag on: only the offer payload states a market -> that market, stated", () => {
+    process.env[FLAG] = 'true';
+    const row = mirrorRow('a2', null, 'SG', 'SGD');
+    delete row.product_payload.external_seed.market;
+    const { docs } = build([row], '*');
+    expect(docs[0]).toMatchObject({ market: 'SG', market_state: 'stated' });
+  });
+
+  test("flag on: scoped 'US' keeps the US seed and skips (counts) the SG seed", () => {
+    process.env[FLAG] = 'true';
+    const { docs, stats } = build([mirrorRow('u1', 'US', 'US', 'USD'), mirrorRow('s1', 'SG', 'SG', 'SGD')], 'US');
+    expect(docs.map((d) => [d.market, d.market_state])).toEqual([['US', 'stated']]);
+    expect(stats.market_conflict_skipped).toBe(1);
+  });
+
+  test('flag off: the same rows build exactly as today (stamped US, no market_state)', () => {
+    delete process.env[FLAG];
+    const { docs, stats } = build([mirrorRow('u1', 'US', 'US', 'USD'), mirrorRow('s1', 'SG', 'SG', 'SGD')], 'US');
+    expect(docs.map((d) => d.market)).toEqual(['US', 'US']);
+    for (const doc of docs) expect(doc).not.toHaveProperty('market_state');
+    expect(stats).not.toHaveProperty('market_group_conflict_skipped');
+    const keys = Object.keys(docs[0]);
+    expect(keys.indexOf('market')).toBe(keys.indexOf('category_paths') + 1);
+  });
+
+  test.each([[undefined], ['true']])('flag %s: the drain group SELECT reads no catalog_offers.market column', async (flag) => {
+    if (flag === undefined) delete process.env[FLAG]; else process.env[FLAG] = flag;
+    query.mockReset().mockResolvedValue({ rows: [] });
+    await drain.resolveGroupProductRows(['pk1']);
+    const sql = String(query.mock.calls[0][0]);
+    expect(sql).not.toMatch(/co\.market/);
+    expect(sql).toContain("'offer_payload', co.offer_payload");
+  });
+});

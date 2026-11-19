@@ -43444,7 +43444,9 @@ app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) =
     const result = await backfillCatalogServingIndex({
       limit: Number(body.limit ?? 500) || 500,
       brand: String(body.brand || '').trim() || null,
-      market: String(body.market || '').trim() || 'US',
+      // Flag CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED on: no market sent = none passed, so the backfill refuses.
+      market: String(body.market || '').trim() ||
+        (String(process.env.CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED || '').trim().toLowerCase() === 'true' ? undefined : 'US'),
       dryRun: body.dry_run === true || body.dryRun === true,
       refresh: body.refresh === true,
       includeNonPublic: !(body.public_only === true || body.publicOnly === true),
