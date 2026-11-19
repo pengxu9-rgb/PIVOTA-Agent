@@ -476,7 +476,8 @@ function buildCatalogServingDoc(input = {}, options = {}) {
     category_paths: categoryPaths,
     ...(noDefaultMarket()
       ? (() => {
-          const stated = asString(options.market || input.market || input.region) || null;
+          // The source's own market wins; a caller market only fills in when the source states none.
+          const stated = asString(input.market || input.region || options.market) || null;
           return { market: stated, market_state: stated ? 'stated' : 'unstated' };
         })()
       : { market: asString(options.market || input.market || input.region || 'US') || 'US' }),
@@ -846,8 +847,24 @@ function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', 
 
 function buildCatalogServingBackfillDocs(
   sourceRows = [],
-  { identityRows = [], includeNonPublic = true, market = 'US' } = {},
+  { identityRows = [], includeNonPublic = true, market, stats = null } = {},
 ) {
+  const strict = noDefaultMarket();
+  if (market === undefined) market = strict ? null : 'US';
+  // Flag on: the caller's market is a SCOPE, never a label. Entries keep the market their source states (or
+  // none), and a group whose stated market differs from the scope is skipped and counted, never relabelled.
+  // '*' (flag on) = every market: no scope filter, each doc keeps the market its source states (or none).
+  const scope = strict && asString(market) === '*' ? null : asString(market).toUpperCase() || null;
+  const groupMarket = strict ? null : market;
+  const counts = stats && typeof stats === 'object' ? stats : {};
+  counts.market_conflict_skipped = Number(counts.market_conflict_skipped || 0);
+  const conflicts = (input) => {
+    if (!strict || !scope) return false;
+    const stated = asString(input.market).toUpperCase();
+    if (!stated || stated === scope) return false;
+    counts.market_conflict_skipped += 1;
+    return true;
+  };
   const entries = buildCatalogServingBackfillEntries(sourceRows, { identityRows });
   const groups = new Map();
   for (const entry of entries) {
@@ -864,13 +881,13 @@ function buildCatalogServingBackfillDocs(
     if (publicEntries.length > 0) {
       const input = buildCatalogServingGroupInput(publicEntries, {
         publishState: 'public',
-        market,
+        market: groupMarket,
       });
-      if (!input) continue;
+      if (!input || conflicts(input)) continue;
       docs.push(
         buildCatalogServingDoc(input, {
           publish_state: 'public',
-          market: input.market || market,
+          market: strict ? input.market : input.market || market,
         }),
       );
       continue;
@@ -879,14 +896,14 @@ function buildCatalogServingBackfillDocs(
     const publishState = resolveBackfillPublishState(groupEntries);
     const input = buildCatalogServingGroupInput(groupEntries, {
       publishState,
-      market,
+      market: groupMarket,
     });
-    if (!input) continue;
+    if (!input || conflicts(input)) continue;
     docs.push(
       buildCatalogServingDoc(input, {
         publish_state: publishState,
         shadow: publishState === 'shadow',
-        market: input.market || market,
+        market: strict ? input.market : input.market || market,
       }),
     );
   }
@@ -898,7 +915,7 @@ async function backfillCatalogServingIndex(
   {
     limit = 500,
     brand = null,
-    market = 'US',
+    market,
     dryRun = false,
     refresh = false,
     includeNonPublic = true,
@@ -913,6 +930,14 @@ async function backfillCatalogServingIndex(
     env = process.env,
   } = {},
 ) {
+  if (market === undefined || market === null || !asString(market)) {
+    if (noDefaultMarket()) {
+      const error = new Error('catalog serving backfill needs an explicit market');
+      error.code = 'catalog_serving_backfill_market_required';  // name a market, or '*' for every market
+      throw error;
+    }
+    market = 'US';
+  }
   let rawSourceRows = await fetchBackfillProductsFn({
     limit,
     brandFilter: brand,
@@ -950,10 +975,12 @@ async function backfillCatalogServingIndex(
     sourceListingRefs,
     ...(typeof queryFn === 'function' ? { queryFn } : {}),
   });
+  const backfillStats = {};
   const docs = buildCatalogServingBackfillDocs(sourceRows, {
     identityRows,
     includeNonPublic,
     market,
+    stats: backfillStats,
   });
   const publishStateBreakdown = docs.reduce((acc, doc) => {
     const key = asString(doc?.publish_state) || 'unknown';
@@ -978,6 +1005,7 @@ async function backfillCatalogServingIndex(
     non_public_docs_built:
       Number(publishStateBreakdown.shadow || 0) + Number(publishStateBreakdown.eligible || 0),
     publish_state_breakdown: publishStateBreakdown,
+    ...(noDefaultMarket() ? { market_conflict_skipped: Number(backfillStats.market_conflict_skipped || 0) } : {}),
     // Publication workers retain only these stable membership pointers. They
     // are enough to repair an old grouped document when a source listing moves
     // to another sellable-item group, without persisting the full document.

@@ -1,4 +1,6 @@
 const {
+  backfillCatalogServingIndex,
+  buildCatalogServingBackfillDocs,
   buildCatalogServingDoc,
   _internals: { buildCatalogServingGroupInput, filterLocalCatalogServingDocs },
 } = require('../../src/services/catalogServingIndex');
@@ -70,4 +72,81 @@ describe('catalog serving index never defaults a market (flag)', () => {
     delete on.market_state;
     expect(on).toEqual(off);
   });
+
+  const row = (id, market) => ({
+    merchant_id: 'external_seed',
+    product_id: id,
+    source_kind: 'external_seed',
+    product: { product_id: id, title: `Item ${id}`, brand: 'Example Brand', price: 10,
+               offers: [{ offer_id: `o_${id}`, merchant_id: 'external_seed', price: { amount: 10, currency: 'USD' } }] },
+    ...(market ? { source_meta: { market } } : {}),
+  });
+
+  test.each([
+    ['US', 'SG'], ['US', 'GB'], ['US', 'DE'], ['SG', 'US'],
+  ])('flag on: a backfill scoped to %s never relabels a source that states %s (skip + count)', (scope, stated) => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([row('a', stated), row('b', scope)],
+      { includeNonPublic: true, market: scope, stats });
+    expect(docs.map((d) => d.market)).toEqual([scope]);
+    expect(stats.market_conflict_skipped).toBe(1);
+  });
+
+  test('flag on: an unstated source is published unstated, never stamped with the scope', () => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([row('a')], { includeNonPublic: true, market: 'US', stats });
+    expect(docs).toHaveLength(1);
+    expect(docs[0].market).toBeNull();
+    expect(docs[0].market_state).toBe('unstated');
+    expect(stats.market_conflict_skipped).toBe(0);
+  });
+
+  test('flag off: the backfill keeps today\'s labels (scope fills in, no conflict skip)', () => {
+    delete process.env[FLAG];
+    const docs = buildCatalogServingBackfillDocs([row('a'), row('b', 'SG')], { includeNonPublic: true, market: 'US' });
+    expect(docs.map((d) => d.market).sort()).toEqual(['SG', 'US']);
+  });
+
+  test('flag on: a backfill run without an explicit market refuses by name before any read', async () => {
+    process.env[FLAG] = 'true';
+    const fetchBackfillProductsFn = jest.fn(async () => []);
+    for (const market of [undefined, null, '']) {
+      await expect(backfillCatalogServingIndex({ market, dryRun: true }, { fetchBackfillProductsFn }))
+        .rejects.toMatchObject({ code: 'catalog_serving_backfill_market_required' });
+    }
+    expect(fetchBackfillProductsFn).not.toHaveBeenCalled();
+    delete process.env[FLAG];
+    const result = await backfillCatalogServingIndex({ dryRun: true }, {
+      fetchBackfillProductsFn, identityRowsResolverFn: async () => [], productIntelSummariesResolverFn: async () => new Map() });
+    expect(result.dry_run).toBe(true);
+  });
+
+  test("flag on: '*' scopes nothing; each doc keeps its source's market or none", () => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([row('a', 'SG'), row('b', 'US'), row('c')],
+      { includeNonPublic: true, market: '*', stats });
+    expect(docs.map((d) => d.market).sort()).toEqual(['SG', 'US', null].sort());
+    expect(stats.market_conflict_skipped).toBe(0);
+  });
+
+  test('flag on: in a direct build the source market wins over a caller market', () => {
+    process.env[FLAG] = 'true';
+    expect(buildCatalogServingDoc({ ...base, market: 'SG' }, { market: 'US' }).market).toBe('SG');
+    expect(buildCatalogServingDoc({ ...base }, { market: 'US' }).market).toBe('US');
+  });
+
+  test('flag on: a PUBLIC unstated source is published unstated, never with the scope market', () => {
+    process.env[FLAG] = 'true';
+    const r = { ...row('pub'), serving_eligible: true };
+    const identityRows = [{ source_listing_ref: 'external_seed:pub', sellable_item_group_id: 'sig_pub',
+                            identity_status: 'approved', live_read_enabled: true }];
+    const docs = buildCatalogServingBackfillDocs([r], { identityRows, includeNonPublic: false, market: 'US' });
+    expect(docs).toHaveLength(1);
+    expect(docs[0].publish_state).toBe('public');
+    expect(docs[0].market).toBeNull();
+  });
 });
+

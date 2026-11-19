@@ -325,7 +325,16 @@ async function main(argv = process.argv.slice(2)) {
     const rows = await resolveGroupProductRows(productKeys);
     if (!rows.length) throw new Error('search-index group expansion returned no catalog rows');
     const result = await backfillCatalogServingIndex(
-      { limit: rows.length, includeNonPublic: true, refresh: true },
+      // The drain publishes every market's rows. With CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED on it must say
+      // so ('*'): each doc keeps its source's market and none is stamped US. Off: today's call, unchanged.
+      {
+        limit: rows.length,
+        includeNonPublic: true,
+        refresh: true,
+        ...(String(process.env.CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED || '').trim().toLowerCase() === 'true'
+          ? { market: '*' }
+          : {}),
+      },
       { fetchBackfillProductsFn: async () => buildSourceRows(rows), queryFn: query },
     );
     if (result.source !== 'opensearch_compatible') {
