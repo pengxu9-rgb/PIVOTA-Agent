@@ -2,7 +2,7 @@
 
 // A SEARCH MARKET THAT WAS SENT IS NEVER READ AS SILENCE. Before, `false`, `0` and `[]` were read as "no market" by the
 // serving rule, which is answered for a US buyer: a US/USD page, unlabelled. They are not "no market" (only absent,
-// null or blank are), so the /mcp door forwards them unlabelled and the invoke search door now answers them as it
+// null or blank are), so the /mcp door refuses them by name (search_catalog's schema says string) and the invoke search door answers them as it
 // answers a market it has no currency for: nothing served (serving_currency_guard.serving_currency null). /ucp/mcp
 // refuses a non-string country by name (ucp_country_string_required). Absent stays a US answer.
 // Nock and the loopback harness only (tests/_support/priceLogDoors.cjs).
@@ -40,20 +40,43 @@ test('invoke search: market false, 0 or [] serves nothing, as an unpriced market
   assert.deepEqual(absent.products.map((p) => p.currency), ['USD'], 'absent: unchanged');
 });
 
-test('/mcp search_catalog forwards a sent false, 0 or [] as the market, unlabelled; absent is assumed US and labelled', async () => {
+test('/mcp search_catalog refuses a sent non-string market by name before any read; absent is assumed US and labelled', async () => {
   const { createCommerceToolSurface } = await import('../mcp-server/src/commerceToolSurface.js');
   const seen = [];
   const surface = createCommerceToolSurface({
     async execute(op, params) { seen.push(params); return { status: 'success', products: [] }; },
   }, { cache: false });
-  for (const market of [false, 0, []]) {
-    const out = await surface.callTool('search_catalog', { query: 'serum', market }, {});
-    assert.deepEqual(seen.at(-1).payload.search.market, market, JSON.stringify(market));
-    assert.equal('market_assumed' in out, false, JSON.stringify(market));
+  for (const market of [false, 0, [], {}, true]) {
+    const label = JSON.stringify(market);
+    await assert.rejects(surface.callTool('search_catalog', { query: 'serum', market }, {}), (e) => {
+      assert.equal(e.code, 'INVALID_ARGUMENTS', label);
+      assert.match(e.message, /^search_catalog: `market` must be the buyer's country as an ISO 3166-1 alpha-2 code/, label);
+      return true;
+    });
   }
-  const out = await surface.callTool('search_catalog', { query: 'serum' }, {});
-  assert.equal(seen.at(-1).payload.search.market, 'US');
-  assert.equal(out.market_assumed.code, 'US');
+  assert.deepEqual(seen, [], 'nothing is read for a refused market');
+  for (const market of ['US', 'SG', 'GB']) {
+    const out = await surface.callTool('search_catalog', { query: 'serum', market }, {});
+    assert.equal(seen.at(-1).payload.search.market, market);
+    assert.equal('market_assumed' in out, false, market);
+  }
+  for (const market of [undefined, null, '', '  ']) {
+    const out = await surface.callTool('search_catalog', { query: 'serum', ...(market === undefined ? {} : { market }) }, {});
+    assert.equal(seen.at(-1).payload.search.market, 'US', JSON.stringify(market));
+    assert.equal(out.market_assumed.code, 'US', JSON.stringify(market));
+  }
+});
+
+test('/mcp search_catalog at the door: a sent non-string market is an error naming market, never a page', async () => {
+  for (const market of [false, 0, [], {}, true]) {
+    const answer = await doors.send(() => supertest(doors.app).post('/mcp')
+      .send(rpc('search_catalog', { query: 'tint', market })), { flag: false });
+    const parsed = JSON.parse(answer.text);
+    const text = JSON.stringify(parsed);
+    assert.match(text, /INVALID_ARGUMENTS/, JSON.stringify(market));
+    assert.match(text, /ISO 3166-1 alpha-2/, JSON.stringify(market));
+    assert.doesNotMatch(text, /"products"/, JSON.stringify(market));
+  }
 });
 
 test('/ucp/mcp search_catalog: a non-string address_country (false, 0, []) is refused by name', async () => {

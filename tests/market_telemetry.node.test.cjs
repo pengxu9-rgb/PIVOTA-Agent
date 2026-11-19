@@ -25,6 +25,22 @@ test('the door precedence and truthiness, on the door values -- no trimming, no 
   assert.deepEqual(mt.describeRequested(null, null), { requested: null, source: 'defaulted' });
 });
 
+test('a metadata market that was SENT is the one described, as at the bind; only absent/null/blank is silence', () => {
+  const { requestedMarketOf } = require('../src/services/servingCurrencyGuard');
+  // No search market: metadata's decides. A sent false/0/[] is metadata's market (unreadable, so nothing is bound),
+  // never "defaulted", which the line would otherwise report beside a page that bound nothing.
+  for (const sent of [false, 0, []]) {
+    const label = JSON.stringify(sent);
+    assert.deepEqual(mt.describeRequested({}, { market: sent }), { requested: String(sent), source: 'explicit_metadata' }, label);
+    assert.deepEqual(mt.describeRequested({ query: 'serum' }, { market: sent }).source, 'explicit_metadata', label);
+    assert.deepEqual(requestedMarketOf({ search: {} }, { market: sent }), sent, `${label}: the bind reads the same carrier`);
+  }
+  for (const silent of [undefined, null, '', '   ']) {
+    assert.deepEqual(mt.describeRequested({}, { market: silent }), { requested: null, source: 'defaulted' }, JSON.stringify(silent));
+  }
+  assert.deepEqual(mt.describeRequested({}, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
+});
+
 test('market_requested is capped: free text cannot bloat every line or become an unbounded label', () => {
   const long = 'X'.repeat(500);
   const { requested } = mt.describeRequested({ market: long }, {});

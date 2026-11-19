@@ -492,7 +492,9 @@ function withDiscoveryBuyerMarket(discoveryPayload, requestPayload, metadata) {
   const market = requestedMarketOf(requestPayload, metadata);
   const source = discoveryPayload && typeof discoveryPayload === 'object' && !Array.isArray(discoveryPayload) ? discoveryPayload : {};
   const { buyer_market: _clientBuyerMarket, buyerMarket: _clientBuyerMarketCamel, ...rest } = source;
-  return market ? { ...rest, buyer_market: market } : rest;
+  // Stamped whenever it was SENT (requestMarket.marketIsUnnamed), not by truthiness: a sent false/0 is the request's
+  // market, which the feed reads as unreadable (resolveDiscoveryBuyerMarket), never dropped for silence here.
+  return marketIsUnnamed(market) ? rest : { ...rest, buyer_market: market };
 }
 const { readCanonicalSearchPricePair, resolveCanonicalSearchProductPrice } = require('./services/searchProductPrice');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
@@ -43802,10 +43804,16 @@ const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObserv
  * carry past the invoke ingress) is not the buyer's: the mint is sent no market, exactly as a market-less search
  * was before, so its links are never stamped `market_observed`. The flag beside any other market is ignored.
  */
-function seedAttributionMintMarket(search, payload, metadata) {
+function seedAttributionMintMarket(search, _payload, metadata) {
   const s = search && typeof search === 'object' ? search : {};
   if (s.market_assumed === true && String(s.market || '').trim().toUpperCase() === 'US') return null;
-  return String(s.market || (payload && payload.market) || (metadata && metadata.market) || '').trim() || null;
+  // The market every lane served this page for (servingCurrencyGuard.requestedMarketOf): the search block's when
+  // SENT, else metadata's. `search` is the payload itself for a flat payload, so its market counts; a payload
+  // market beside a search block is read by no lane and claims nothing. Before, `||` read a blank search market
+  // as silence for serving's sake but not here: serving answered metadata's SG, the mint got '' and no market.
+  // A sent non-string names no market a link can claim.
+  const market = requestedMarketOf({ search: s }, metadata);
+  return typeof market === 'string' && market.trim() ? market.trim() : null;
 }
 
 async function handleInvokeRequest(req, res, routeContext = {}) {
@@ -56361,6 +56369,7 @@ module.exports._debug = {
   buildFindProductsMultiPayloadFromQuery,
   buildSearchProductsV2Body,
   seedAttributionMintMarket,
+  withDiscoveryBuyerMarket,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,

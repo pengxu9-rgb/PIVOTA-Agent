@@ -20,6 +20,11 @@ process.env.AURORA_PRODUCT_MATCHER_ENABLED = 'false';
 process.env.AURORA_INGREDIENT_PLAN_ENABLED = 'false';
 process.env.AURORA_BFF_PDP_CORE_PREFETCH_ENABLED = 'false';
 process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
+// The beauty shared-truth hop (routes.js fetchAuroraBeautySharedTruthForChat, on by default) POSTs
+// find_products_multi to PIVOTA_BACKEND_BASE_URL on every eligible /v1/chat turn. No test here mocks or reads it, so
+// it went to the network: 8 lookups of pivota-backend.test per run (blocked under lowguard; NXDOMAIN in CI), each
+// answered as a failed hop (null). Off, the same turns skip the hop and get the same null, with no network.
+process.env.AURORA_BFF_BEAUTY_SHARED_TRUTH_ENABLED = 'false';
 process.env.AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED = 'true';
 process.env.AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED = 'true';
 process.env.AURORA_BFF_RECO_STEP_AWARE_SHADOW_COMPARE_ENABLED = 'false';
