@@ -825,22 +825,18 @@ function marketCarrierFallbacks(text, { withDiagnostics = false } = {}) {
   return withDiagnostics ? { hits, diagnostics: sf.parseDiagnostics.length } : hits;
 }
 
-// Function-call carriers the pin found when it learned the call shape (2026-11-19). Not `||`, but the same choice
-// made by "first non-empty" rather than by requestMarket.marketIsUnnamed. Aligning each changes an answer for a sent
-// `[]` (first-non-empty skips it to metadata's market; requestedMarketOf reads it as sent), so each is its own change.
+// Function-call carriers the pin found when it learned the call shape (2026-11-19), named with why each stays.
+// The backend search body market and the public beauty lane's "named" test now read requestedMarketOf; this one
+// keeps its own documented order on purpose.
 const KNOWN_CALL_CARRIERS = {
-  'server.js call: firstNonEmptyString(search?.market, metadata?.market)':
-    'buildSearchProductsV2Body: the backend search body market. A sent [] + metadata SG sends SG upstream; the serving guard (requestedMarketOf) still empties that page.',
-  'server.js call: firstNonEmptyString(publicBeautySearch.market, metadata.market)':
-    'the public beauty lane\'s "a market was named" test; aligning it moves which lane answers a sent [] (and can turn it into the lane\'s 422 for a categorised search).',
   'services/checkoutHandoffResolver.js call: selectBuyerMarket(metadata.market, payload.market)':
     'requestBuyerMarket: the purchasability gate\'s documented rule (metadata first; the first carrier yielding ONE ISO-2 market wins, unreadable ones skipped), shared with the offers door.',
 };
 
-test('STRUCTURAL: no source file falls back to metadata.market with || or ?? (every carrier is requestedMarketOf)', () => {
+/** Every carrier fallback and every file that did not parse cleanly, under `root` (a directory of .js/.cjs/.mjs). */
+function scanCarrierTree(root) {
   const fs = require('node:fs');
   const path = require('node:path');
-  const root = path.join(__dirname, '..', 'src');
   const files = [];
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -850,7 +846,6 @@ test('STRUCTURAL: no source file falls back to metadata.market with || or ?? (ev
     }
   };
   walk(root);
-  assert.ok(files.some((f) => f.endsWith(path.join('src', 'server.js'))));
   const found = [];
   const unparsed = [];
   for (const f of files) {
@@ -860,12 +855,39 @@ test('STRUCTURAL: no source file falls back to metadata.market with || or ?? (ev
     if (diagnostics !== 0) unparsed.push(`${path.relative(root, f)}: ${diagnostics} parse diagnostics`);
     for (const h of hits) found.push(`${path.relative(root, f)}:${h}`);
   }
+  return { files, found, unparsed };
+}
+
+test('STRUCTURAL: no source file falls back to metadata.market with || or ?? (every carrier is requestedMarketOf)', () => {
+  const path = require('node:path');
+  const { files, found, unparsed } = scanCarrierTree(path.join(__dirname, '..', 'src'));
+  assert.ok(files.some((f) => f.endsWith(path.join('src', 'server.js'))));
   assert.deepEqual(unparsed, []);
-  // The carriers this pin finds that do not go through requestedMarketOf yet, each named with why it stays for now.
+  // The carriers this pin finds that do not go through requestedMarketOf, each named with why it stays.
   // Exact: a new one fails, and so does one that is fixed or moved without being taken off this list.
   const stripLine = (h) => h.replace(/:\d+ /, ' ');
   assert.deepEqual(found.map(stripLine).sort(), Object.keys(KNOWN_CALL_CARRIERS).sort());
   for (const reason of Object.values(KNOWN_CALL_CARRIERS)) assert.ok(reason.length > 40);
+});
+
+test('STRUCTURAL: the tree scan reports a broken file by name, and still reads the carriers around it', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carrier-scan-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'services'));
+    fs.writeFileSync(path.join(dir, 'clean.js'), 'const x = requestedMarketOf({ search }, metadata);\n');
+    fs.writeFileSync(path.join(dir, 'services', 'broken.cjs'), 'const y = search.market || metadata.market;\nfunction (\n');
+    const { files, found, unparsed } = scanCarrierTree(dir);
+    assert.equal(files.length, 2);
+    assert.equal(unparsed.length, 1);
+    assert.match(unparsed[0], /^services[\\/]broken\.cjs: [1-9]\d* parse diagnostics$/);
+    assert.equal(found.length, 1, 'the carrier in the broken file is still found');
+    assert.match(found[0], /^services[\\/]broken\.cjs:1 \|\|/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('STRUCTURAL: the carrier pin reports a file it cannot parse', () => {
