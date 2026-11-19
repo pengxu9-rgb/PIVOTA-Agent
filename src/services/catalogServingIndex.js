@@ -14,6 +14,11 @@ const {
 const {
   normalizePublishedProductIntelBundle,
 } = require('../pdpProductIntel');
+const {
+  normalizeAvailability,
+  IN_STOCK: AVAILABILITY_IN_STOCK,
+  OUT_OF_STOCK: AVAILABILITY_OUT_OF_STOCK,
+} = require('./availabilityVocabulary');
 
 function asString(value) {
   const normalized = String(value || '').trim();
@@ -206,11 +211,14 @@ function extractOfferAmounts(offers = []) {
 }
 
 const UNKNOWN_STOCK_STAYS_UNKNOWN_FLAG = 'OFFERS_UNKNOWN_STOCK_STAYS_UNKNOWN_ENABLED';
-const STATED_OUT_OF_STOCK = new Set(['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'sold out', 'unavailable',
-  'out of stock', 'https://schema.org/outofstock', 'http://schema.org/outofstock']);
-const STATED_IN_STOCK = new Set(['in_stock', 'instock', 'in stock', 'available', 'https://schema.org/instock',
-  'http://schema.org/instock']);
 
+// Flip checklist for OFFERS_UNKNOWN_STOCK_STAYS_UNKNOWN_ENABLED (same name as the backend twin):
+//   - serving-index docs are built in three places; set the flag on ALL of them together, or the
+//     index mixes 'available' and 'unknown' docs for the same kind of input:
+//       1. gateway web (admin backfill route + local DB-serving search),
+//       2. the GitHub workflow runner that runs the backfill script,
+//       3. the drain job.
+//   - the value is parsed as trim + lowercase === 'true'; '1', 'yes' and 'on' stay OFF.
 function unknownStockStaysUnknown() {
   // Default OFF. On: missing or unrecognised availability is 'unknown', never 'available'.
   return String(process.env[UNKNOWN_STOCK_STAYS_UNKNOWN_FLAG] || '').trim().toLowerCase() === 'true';
@@ -218,10 +226,19 @@ function unknownStockStaysUnknown() {
 
 function resolveAvailabilityState(input = {}) {
   if (unknownStockStaysUnknown()) {
-    const stated = asString(input.availability || input.availability_state).trim().toLowerCase();
-    if (input.in_stock === false || STATED_OUT_OF_STOCK.has(stated)) return 'out_of_stock';
+    // One vocabulary with the backend (availabilityVocabulary). A boolean in_stock is one more
+    // signal: signals that disagree (e.g. in_stock true + 'discontinued') are 'unknown', as in
+    // the backend's normalize_availability.
+    const rawStated = input.availability || input.availability_state;
+    const statedVerdict = normalizeAvailability(rawStated);
+    const boolVerdict = typeof input.in_stock === 'boolean' ? normalizeAvailability(input.in_stock) : null;
+    const verdict = statedVerdict && boolVerdict && statedVerdict !== boolVerdict
+      ? null
+      : (statedVerdict || boolVerdict);
+    if (verdict === AVAILABILITY_OUT_OF_STOCK) return 'out_of_stock';
+    const stated = asString(rawStated).trim().toLowerCase();
     if (['preorder', 'backorder'].includes(stated)) return stated;
-    if (input.in_stock === true || STATED_IN_STOCK.has(stated)) return 'available';
+    if (verdict === AVAILABILITY_IN_STOCK) return 'available';
     return 'unknown';
   }
   if (input.in_stock === false) return 'out_of_stock';
