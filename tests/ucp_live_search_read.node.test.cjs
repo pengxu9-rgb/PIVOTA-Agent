@@ -726,3 +726,96 @@ test('a log line that throws never costs the enforce answer', async () => {
   const reads = await r.readCards([card(rbUrl(h), BLISS)], { market: 'US' });
   assert.equal(reads.get(0).status, STATUS.VERIFIED);
 });
+
+// --- STRUCTURAL: no `||` market carrier anywhere in src/ ------------------------------------------------------
+// The request market is read by ONE rule (servingCurrencyGuard.requestedMarketOf, by requestMarket.marketIsUnnamed):
+// the search block's market when SENT, else metadata's. A `||` / `??` fallback to metadata's market reads a sent
+// false/0 or a blank as silence and serves (or mints, or labels) a market no lane served. The pin reads the AST, so
+// every spelling is one: `x.market || metadata.market`, `|| (metadata && metadata.market)`, `metadata?.market`,
+// `metadata['market']`, a ternary, and a name destructured or copied from metadata's market.
+const ts = require('typescript');
+const META_NAME = /^(metadata|meta|[A-Za-z]*Metadata)$/;
+
+function marketCarrierFallbacks(text) {
+  const sf = ts.createSourceFile('src.js', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const strip = (n) => { while (n && ts.isParenthesizedExpression(n)) n = n.expression; return n; };
+  const isMetaId = (n) => ts.isIdentifier(strip(n)) && META_NAME.test(strip(n).text);
+  const bound = new Set();
+  const readsMetadataMarket = (raw) => {
+    const n = strip(raw);
+    if (!n) return false;
+    if (ts.isPropertyAccessExpression(n)) return n.name.text === 'market' && isMetaId(n.expression);
+    if (ts.isElementAccessExpression(n)) {
+      return ts.isStringLiteral(n.argumentExpression) && n.argumentExpression.text === 'market' && isMetaId(n.expression);
+    }
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return readsMetadataMarket(n.right);
+    if (ts.isConditionalExpression(n)) return readsMetadataMarket(n.whenTrue) || readsMetadataMarket(n.whenFalse);
+    return ts.isIdentifier(n) && bound.has(n.text);
+  };
+  const bind = (n) => {
+    if (ts.isVariableDeclaration(n) && n.initializer) {
+      if (ts.isObjectBindingPattern(n.name) && isMetaId(n.initializer)) {
+        for (const el of n.name.elements) {
+          const prop = (el.propertyName || el.name).getText(sf);
+          if (prop === 'market' && ts.isIdentifier(el.name)) bound.add(el.name.text);
+        }
+      } else if (ts.isIdentifier(n.name) && readsMetadataMarket(n.initializer)) {
+        bound.add(n.name.text);
+      }
+    }
+    ts.forEachChild(n, bind);
+  };
+  bind(sf);
+  const hits = [];
+  const visit = (n) => {
+    if (ts.isBinaryExpression(n)
+      && (n.operatorToken.kind === ts.SyntaxKind.BarBarToken || n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+      && (readsMetadataMarket(n.left) || readsMetadataMarket(n.right))) {
+      hits.push(`${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}: ${n.getText(sf).slice(0, 100)}`);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return hits;
+}
+
+test('STRUCTURAL: no source file falls back to metadata.market with || or ?? (every carrier is requestedMarketOf)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.join(__dirname, '..', 'src');
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(c|m)?js$/.test(entry.name)) files.push(full);
+    }
+  };
+  walk(root);
+  assert.ok(files.some((f) => f.endsWith(path.join('src', 'server.js'))));
+  const found = files.flatMap((f) => marketCarrierFallbacks(fs.readFileSync(f, 'utf8')).map((h) => `${path.relative(root, f)}:${h}`));
+  assert.deepEqual(found, []);
+});
+
+test('STRUCTURAL: the carrier pin catches every spelling (its own mutants)', () => {
+  const caught = [
+    'x = search.market || metadata.market;',
+    'x = { buyerMarket: publicBeautySearch.market || (metadata && metadata.market) };', // G10b
+    'x = s.market || (payload && payload.market) || (metadata && metadata.market) || "";',
+    'x = search.market || metadata?.market;',
+    'x = search?.market ?? metadata?.market;',
+    "x = search.market || metadata['market'];",
+    'x = search.market || (metadata ? metadata.market : undefined);',
+    'const { market: metaMarket } = metadata; x = search.market || metaMarket;',
+    'const fromMeta = metadata && metadata.market; x = search.market || fromMeta;',
+    'x = req.body.market || requestMetadata.market;',
+  ];
+  for (const snippet of caught) assert.equal(marketCarrierFallbacks(snippet).length, 1, snippet);
+  const clean = [
+    'x = requestedMarketOf({ search }, metadata);',
+    'x = String(product.market || "").trim();',
+    'x = metadata.market;',
+    "x = row.market || 'US';",
+  ];
+  for (const snippet of clean) assert.deepEqual(marketCarrierFallbacks(snippet), [], snippet);
+});

@@ -907,9 +907,19 @@ test('UUID-only sku does not send product_ref hint and avoids duplicated brand i
     },
     async () => {
       const originalPost = axios.post;
+      const originalGet = axios.get;
       let capturedBody = null;
       let stableInvokeCalls = 0;
       let queryResolveCalls = 0;
+      // After products.resolve finds nothing, the enrich path falls back to a catalog search (GET products/search).
+      // It was not mocked and went to the network (2 lookups of pivota-backend.test per run). Answered here as the
+      // transport failure it always got, so the path under test is unchanged and nothing leaves the process.
+      let catalogSearchCalls = 0;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+        catalogSearchCalls += 1;
+        throw Object.assign(new Error('getaddrinfo ENOTFOUND pivota-backend.test'), { code: 'ENOTFOUND' });
+      };
       axios.post = async (url, body) => {
         if (String(url).includes('/agent/shop/v1/invoke')) {
           stableInvokeCalls += 1;
@@ -949,8 +959,10 @@ test('UUID-only sku does not send product_ref hint and avoids duplicated brand i
         assert.equal(stableInvokeCalls, 0);
         assert.ok(queryResolveCalls >= 1);
         assert.equal(enriched?.metadata?.pdp_open_path, 'external');
+        assert.ok(catalogSearchCalls >= 1, 'the catalog-search fallback ran, against the mock');
       } finally {
         axios.post = originalPost;
+        axios.get = originalGet;
       }
     },
   );

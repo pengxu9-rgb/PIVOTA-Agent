@@ -520,6 +520,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         const problem = storefrontMarketProblem(toolArgs.market);
         if (problem) throw new ToolValidationError(`${op.mcp}: ${problem}`);
       }
+      // search_catalog's schema declares `market` a string. A SENT non-string (false, 0, [], {}, true) is refused by
+      // name before anything is read, with the refusal this door gives a checkout's unreadable market (it never
+      // repeats the value). Before, it was forwarded and answered with an empty page, while get_offers refused it
+      // (market_invalid) and /ucp/mcp refused it (ucp_country_string_required). Absent, null and blank still name no
+      // market (requestMarket.marketIsUnnamed): assumed US, labelled. A string is passed on exactly as before.
+      if (op.id === "search_catalog" && !requestMarket.marketIsUnnamed(toolArgs.market) && typeof toolArgs.market !== "string") {
+        throw new ToolValidationError(`${op.mcp}: ${storefrontMarketProblem(toolArgs.market)}`);
+      }
     }
 
     // 1) trusted identity from the verified session ONLY. Identity-derivation errors are swallowed for
