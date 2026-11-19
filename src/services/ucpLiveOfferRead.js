@@ -1452,7 +1452,18 @@ function createUcpLiveSearchReader(deps = {}) {
   return { mode, plan, readCards };
 }
 
+/**
+ * The country a live PDP read is KEYED under (its per-product x market claim, budget and cache record): the code
+ * upper-cased when `raw` is two ASCII letters (tested BEFORE upcasing: case mapping folds lookalikes such as 'uſ' or
+ * the ligature 'ﬁ' into 'US' / 'FI'), else null (never keyed).
+ */
+function livePdpReadCountryKey(raw) {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  return /^[A-Za-z]{2}$/.test(text) ? text.toUpperCase() : null;
+}
+
 module.exports = {
+  livePdpReadCountryKey,
   UCP_ANSWERED_AT,
   normalizeProductHandle,
   productHandleFromUrl,

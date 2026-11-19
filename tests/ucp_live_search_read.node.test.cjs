@@ -625,8 +625,10 @@ test('STRUCTURAL: search gets its own 8-slot pool and the buyer market the searc
   assert.match(block, /const ucpSearchReader = getUcpLiveSearchReader\(\);/);
   assert.match(block, /\n    ucpSearchReader,\n/);
   assert.match(block, /market: typeof buyerMarket === 'string' && buyerMarket\.trim\(\) \? buyerMarket\.trim\(\)/);
-  assert.match(src, /buyerMarket: search\.market \|\| metadata\.market \}/);
-  assert.match(src, /buyerMarket: publicBeautySearch\.market \|\| metadata\.market \}/);
+  // Both lanes hand the overlay the market by the shared carrier rule, never `||` (which dropped a SENT false/0).
+  assert.match(src, /buyerMarket: requestedMarketOf\(\{ search \}, metadata\) \}/);
+  assert.match(src, /buyerMarket: requestedMarketOf\(\{ search: publicBeautySearch \}, metadata\) \}/);
+  assert.doesNotMatch(src, /\.market \|\| metadata\.market/);
   const s = src.indexOf('function getUcpLiveSearchReader()');
   assert.ok(s > 0);
   assert.match(src.slice(s, s + 900), /\.\.\.ucpLiveReaderDeps\(8, \{ readClass: 'search' \}\),/);

@@ -27,6 +27,7 @@
 // That is refused in the seed SQL instead (seedSearchOfferScope.seedHasPriceCurrencySql).
 
 const { resolveServingCurrency } = require('./buyerMarket');
+const { marketIsUnnamed } = require('./requestMarket');
 const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
 
 // find_similar_products (2026-09-27): its handler already filters strictly
@@ -45,7 +46,11 @@ function isPlainObject(value) {
 function requestedMarketOf(payload, metadata) {
   const body = isPlainObject(payload) ? payload : {};
   const search = isPlainObject(body.search) ? body.search : body;
-  return search.market || (isPlainObject(metadata) ? metadata.market : undefined);
+  // The search block's market when it was SENT (anything but absent, null or blank), else metadata's. Picked with
+  // the shared "names no market" rule, not `||`: `false` or `0` is a value the caller sent, and `||` dropped it for
+  // the next carrier (or for silence, which is served as US).
+  if (!marketIsUnnamed(search.market)) return search.market;
+  return isPlainObject(metadata) ? metadata.market : undefined;
 }
 
 function servingCurrencyFor({ observation, payload, metadata } = {}) {

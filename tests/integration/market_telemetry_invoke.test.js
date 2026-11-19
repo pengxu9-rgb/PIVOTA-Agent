@@ -123,18 +123,21 @@ describe('market telemetry on the invoke completion log line', () => {
   test.each([
     ['B: flat payload, no search object', { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'SG' }, {},
       { requested: 'SG', source: 'explicit_search', bound: ['SG'] }],
-    ['D: whitespace search.market beats metadata, and binds the default', { search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: '   ' } }, { market: 'SG' },
-      { requested: '   ', source: 'explicit_search', bound: ['US'] }],
-    ['E: search.market false yields to metadata', { search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: false } }, { market: 'SG' },
+    // Blank names no market (requestMarket.marketIsUnnamed): it yields to metadata, at the bind and on the line.
+    ['D: whitespace search.market yields to metadata', { search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: '   ' } }, { market: 'SG' },
       { requested: 'SG', source: 'explicit_metadata', bound: ['SG'] }],
+    // false is SENT: the search block's market, unreadable, so nothing is bound and the line says so.
+    ['E: search.market false is the search block\'s market and binds nothing', { search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: false } }, { market: 'SG' },
+      { requested: 'false', source: 'explicit_search', bound: null }],
   ])('%s', async (_label, payload, metadata, want) => {
     await invoke(payload, metadata);
     expect(logged).toHaveLength(1);
     const line = logged[0];
     expect(line.market_observed).toBe(true);
     expect({ requested: line.market_requested, source: line.market_source, bound: line.market_bound }).toEqual(want);
-    // Not the record's word for it: the SQL got this market.
-    expect(boundInSql()).toContain(want.bound[0]);
+    // Not the record's word for it: the SQL got this market, or nothing at all.
+    if (want.bound) expect(boundInSql()).toContain(want.bound[0]);
+    else expect(sqlParams).toEqual([]);
   });
 
   test('silence is `defaulted`, and binds the deployment served list', async () => {

@@ -32,7 +32,7 @@
 // buyer sees does change at the flip.
 
 const { resolveServingCurrency } = require('./buyerMarket');
-const { parseMarketList } = require('./servedMarkets');
+const { parseDeploymentMarketList, parseRequestMarketList } = require('./servedMarkets');
 
 const FLAG = 'BUYER_MARKET_OFFER_SCOPE';
 const MARKETS_ENV = 'BUYER_MARKET_OFFER_SCOPE_MARKETS';
@@ -47,7 +47,7 @@ function isBuyerMarketOfferScopeEnabled(env = process.env) {
 /** The buyer markets the scope serves (BUYER_MARKET_OFFER_SCOPE_MARKETS, default SG). */
 function scopeMarkets(env = process.env) {
   const raw = env[MARKETS_ENV] == null ? DEFAULT_SCOPE_MARKETS : env[MARKETS_ENV];
-  return parseMarketList(raw, null);
+  return parseDeploymentMarketList(raw, null);
 }
 
 /**
@@ -60,8 +60,8 @@ function scopeMarkets(env = process.env) {
  */
 function resolveBuyerMarketOfferScope(buyerMarket, env = process.env) {
   if (!isBuyerMarketOfferScopeEnabled(env)) return null;
-  const named = parseMarketList(buyerMarket, null);
-  if (named.length !== 1) return null;
+  const named = parseRequestMarketList(buyerMarket);
+  if (!named || named.length !== 1) return null;
   const market = String(named[0]).trim().toUpperCase();
   if (!scopeMarkets(env).includes(market)) return null;
   const currency = resolveServingCurrency(market, env);

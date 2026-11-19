@@ -16,11 +16,12 @@ test('the door precedence and truthiness, on the door values -- no trimming, no 
   assert.deepEqual(mt.describeRequested({ market: 'SG' }, { market: 'US' }), { requested: 'SG', source: 'explicit_search' });
   assert.deepEqual(mt.describeRequested({}, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
   assert.deepEqual(mt.describeRequested({}, {}), { requested: null, source: 'defaulted' });
-  // Whitespace is TRUTHY for the door: it wins over metadata, as it does at the bind.
-  assert.deepEqual(mt.describeRequested({ market: '   ' }, { market: 'SG' }), { requested: '   ', source: 'explicit_search' });
-  // false and 0 are FALSY for the door: metadata wins, as it does at the bind.
-  assert.deepEqual(mt.describeRequested({ market: false }, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
-  assert.deepEqual(mt.describeRequested({ market: 0 }, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
+  // Blank names no market for the door (requestMarket.marketIsUnnamed): metadata wins, as it does at the bind.
+  assert.deepEqual(mt.describeRequested({ market: '   ' }, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
+  assert.deepEqual(mt.describeRequested({ market: '   ' }, { market: '' }), { requested: null, source: 'defaulted' });
+  // false and 0 are values the caller SENT: the search block's, unreadable, as at the bind (it binds nothing).
+  assert.deepEqual(mt.describeRequested({ market: false }, { market: 'SG' }), { requested: 'false', source: 'explicit_search' });
+  assert.deepEqual(mt.describeRequested({ market: 0 }, { market: 'SG' }), { requested: '0', source: 'explicit_search' });
   assert.deepEqual(mt.describeRequested(null, null), { requested: null, source: 'defaulted' });
 });
 

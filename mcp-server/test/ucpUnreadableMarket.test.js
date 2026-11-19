@@ -197,3 +197,54 @@ describe('unchanged: a readable market, an unpriced code, and no market', () => 
     assert.equal(fetched.length, before);
   });
 });
+
+describe('one envelope for an unreadable checkout market, word for word', () => {
+  test('the /ucp/mcp checkout refusal deep-equals the storefront checkout escalation refusal, for every unreadable value', async () => {
+    const { checkoutMarketInvalidRefusal } = await import('../src/ucpCheckoutEscalation.js');
+    const expected = checkoutMarketInvalidRefusal();
+    const shape = (e) => ({ name: e.name, code: e.code, message: e.message, detail: e.detail, retriable: e.retriable });
+    for (const tool of ['create_checkout', 'update_checkout']) {
+      for (const market of UNREADABLE) {
+        let err = null;
+        try { ucpToNativeToolArgs(canonicalOp(OPS[tool]), TOOLS[tool](market), FORWARD_ON); } catch (e) { err = e; }
+        assert.ok(err, `${tool} ${JSON.stringify(market)}`);
+        assert.deepEqual(shape(err), shape(expected), `${tool} ${JSON.stringify(market)}`);
+        assert.equal(Object.getPrototypeOf(err), Object.getPrototypeOf(expected));
+      }
+    }
+  });
+});
+
+test('the error taxonomy documents exactly the market reasons the doors emit, and where they appear', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const url = await import('node:url');
+  const here = path.dirname(url.fileURLToPath(import.meta.url));
+  const root = path.join(here, '..', '..');
+  const doc = fs.readFileSync(path.join(root, 'docs', 'agent-checkout', 'safety-kernel-contract.md'), 'utf8');
+  const section = doc.slice(doc.indexOf('### The buyer market'), doc.indexOf('**Hard rule:**'));
+  const rows = Object.fromEntries(section.split('\n').filter((l) => /^\| `[a-z_]+` \|/.test(l)).map((l) => [l.match(/^\| `([a-z_]+)`/)[1], l]));
+  const EXPECTED = ['buyer_market_has_no_pricing_currency', 'market_invalid', 'market_not_priced', 'ucp_country_string_required', 'ucp_market_invalid'];
+  assert.deepEqual(Object.keys(rows).sort(), EXPECTED);
+  // Every documented token is one the code emits (a literal in the door or kernel sources).
+  const sources = [
+    'mcp-server/src/ucpArgumentAdapter.js', 'mcp-server/src/ucpCheckoutEscalation.js', 'mcp-server/src/getOffersEmptyReasonDoor.js',
+    'safety-kernel/src/protocol/canonicalExecutor.js', 'safety-kernel/src/protocol/acpRestAdapter.js', 'src/server.js',
+    'src/agentSignals/intelligenceReads.js',
+  ].map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+  for (const token of EXPECTED) assert.match(sources, new RegExp(`['"]${token}['"]`), `${token} is emitted`);
+  // The cells that say where each appears.
+  assert.match(rows.market_invalid, /`detail\.rejected_field: "market"`/);
+  assert.match(sources, /'market_invalid',[\s\S]{0,400}rejected_field: 'market'/, 'the kernel quote refusal names `market`');
+  assert.match(rows.market_invalid, /fulfillment_address\.country/);
+  assert.match(rows.ucp_country_string_required, /catalog\.context\.address_country/);
+  assert.match(sources, /"ucp_country_string_required",[\s\S]{0,200}rejected_field: "catalog\.context\.address_country"/);
+  assert.match(rows.ucp_market_invalid, /a string that is not two letters/);
+  assert.match(rows.market_not_priced, /`error\.code: MARKET_NOT_PRICED`/);
+  assert.match(rows.buyer_market_has_no_pricing_currency, /decision_lock_reason/);
+  // The opening: no-market calls are not labelled everywhere yet, and only absent, null or blank is "no market".
+  assert.match(section, /The `offers\.resolve` operation does not label it yet/);
+  assert.match(section, /not named only when it is absent, `null` or blank/);
+  // The UCP refusal token in the docs is the adapter's own constant.
+  assert.equal(UCP_MARKET_INVALID_REASON, 'ucp_market_invalid');
+});

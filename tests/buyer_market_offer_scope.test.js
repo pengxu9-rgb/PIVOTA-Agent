@@ -48,6 +48,11 @@ describe('buyerMarketOfferScope', () => {
     for (const unpriced of ['US,SG', 'en-US', 'ZZ', "SG'; DROP TABLE x; --"]) {
       expect(scope.resolveBuyerMarketOfferScope(unpriced)).toBeNull();
     }
+    // A request market with any unreadable entry is unreadable, never its readable SG (the request parser's rule),
+    // and a sent non-string is not silence either.
+    for (const unreadable of ['SG,ﬁ', 'SG,USA', ['SG', 'ﬁ'], 'ſg', false, 0, []]) {
+      expect(scope.resolveBuyerMarketOfferScope(unreadable)).toBeNull();
+    }
     // Priceable but not served (acquisition markets): no scope, no currency.
     for (const acquired of ['JP', 'AU']) expect(scope.resolveBuyerMarketOfferScope(acquired)).toBeNull();
     expect(scope.resolveOfferScopeCurrency('JPY')).toBeNull();

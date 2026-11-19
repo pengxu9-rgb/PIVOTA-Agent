@@ -95,7 +95,7 @@ and no market reaches it (`QUOTE_KEYS` has no market field and `mapQuote` drops
 The gate keys on the **request's** buyer market and never on a default.
 
 * `checkoutHandoffResolver.requestBuyerMarket(input)` reads `metadata.market`, then `payload.market`
-  — the first that yields ONE ISO-2 market (§5 carrier rule) — this door's existing spelling (`src/server.js` reads `search.market || metadata.market` on the
+  — the first that yields ONE ISO-2 market (§5 carrier rule) — this door's existing spelling (`src/server.js` reads the search block's market when sent, else `metadata.market` (`servingCurrencyGuard.requestedMarketOf`), on the
   discovery lane, and the invoke handler threads `metadata` into the resolver verbatim).
 * `ucpWarmHandoffInternalRoute` reads an optional `body.market`.
 
@@ -176,9 +176,9 @@ Anything else is NOT a market and a caller must never send it, because the reade
   lanes serve nothing (`resolveServingCurrency` = `null`) — but the product-intel offers build passes
   the GATE's market into `resolveServingCurrency`, so there it is silence and serves USD;
 * other separators (`"US;US"`, `"US|US"`): the gate's `carrierMarket` splits on `[\s,;|]` and reads
-  `US`; `parseMarketList` splits on `[,\s]` only and serving gets `null`;
-* **carrier order differs by reader**: serving reads `search.market || metadata.market` (raw
-  truthiness), the offers gate `search` → `payload` → `metadata` (first VALID wins), the resolver lane
+  `US`; `parseRequestMarketList` splits on `[,\s]` only and serving gets `null`;
+* **carrier order differs by reader**: serving reads `search.market` unless it names no market (absent,
+  null, blank), then `metadata.market`, the offers gate `search` → `payload` → `metadata` (first VALID wins), the resolver lane
   `metadata` → `payload`, `offers.resolve` `payload.offers.market` → `payload.market` (§5), the `/r` mint `search || payload || metadata` (raw). So
   `{search:{market:"en-US"}}` + `metadata.market:"US"` serves nothing but keys the gate on US, and
   `payload.market:"SG"` + `metadata.market:"US"` serves USD but keys claims on SG.

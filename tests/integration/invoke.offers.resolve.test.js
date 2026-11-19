@@ -14,6 +14,30 @@ const request = require('supertest');
 const nock = require('nock');
 const app = require('../../src/server');
 
+// The door's two market refusals, EXACTLY (no key added or dropped): be#2843's offers.resolve envelopes.
+const MARKET_INVALID_BODY = Object.freeze({
+  status: 'error',
+  offers: [],
+  offers_count: 0,
+  error: {
+    code: 'MARKET_INVALID',
+    reason: 'market_invalid',
+    message: '`market` is not an ISO 3166-1 alpha-2 country code; nothing was looked up. '
+      + "Send the buyer's country as two letters; a market is never guessed.",
+  },
+});
+const marketNotPricedBody = (code) => ({
+  status: 'error',
+  offers: [],
+  offers_count: 0,
+  market: code,
+  error: {
+    code: 'MARKET_NOT_PRICED',
+    reason: 'market_not_priced',
+    message: `No offer is priced for a buyer in ${code}; nothing was looked up, and a request for ${code} is never answered as another market.`,
+  },
+});
+
 describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
   afterEach(() => {
     nock.cleanAll();
@@ -549,8 +573,7 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     if (forwarded === 'REFUSED') {
       // Refused by name before either lane: a carrier was sent and none is a market this door prices.
       expect(res.status).toBe(200);
-      expect(res.body.status).toBe('error');
-      expect(['market_invalid', 'market_not_priced']).toContain(res.body.error.reason);
+      expect([MARKET_INVALID_BODY, marketNotPricedBody('DE')]).toContainEqual(res.body);
       expect(seen).toEqual([]);
       return;
     }
@@ -577,10 +600,7 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       .reply(200, { status: 'success', offers: [] });
     const payload = { ...carriers, offers: { product: { sku_id: 'sku_market_probe', name: 'Probe Product' }, ...carriers.offers } };
     const res = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'offers.resolve', payload }).expect(200);
-    expect(res.body.status).toBe('error');
-    expect(res.body.error).toMatchObject({ code: 'MARKET_INVALID', reason: 'market_invalid' });
-    expect(res.body.offers).toEqual([]);
-    expect(res.body.offers_count).toBe(0);
+    expect(res.body).toEqual(MARKET_INVALID_BODY);
     expect(subjectScope.isDone()).toBe(false);
     expect(cacheScope.isDone()).toBe(false);
     for (const sent of [carriers.offers.market, carriers.market]) {
@@ -616,7 +636,7 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       payload: { offers: { product: { sku_id: 'sku_market_probe', name: 'Probe Product' } } },
       metadata: { market: 'USA' },
     }).expect(200);
-    expect(res.body.error).toMatchObject({ reason: 'market_invalid' });
+    expect(res.body).toEqual(MARKET_INVALID_BODY);
     expect(cacheScope.isDone()).toBe(false);
   });
 
@@ -653,7 +673,7 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       payload: { offers: { product: { sku_id: 'sku_market_probe', name: 'Probe Product' } } },
       metadata: { market: 'DE' },
     }).expect(200);
-    expect(refused.body.error).toMatchObject({ reason: 'market_not_priced' });
+    expect(refused.body).toEqual(marketNotPricedBody('DE'));
     expect(cacheScope.isDone()).toBe(false);
     nock.cleanAll();
     const seen = [];
@@ -677,18 +697,18 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       operation: 'offers.resolve',
       payload: { offers: { subject: { product_group_id: 'pg_market_probe_group' }, market: 'USA' } },
     }).expect(200);
-    expect(withGroup.body.error).toMatchObject({ code: 'MARKET_INVALID', reason: 'market_invalid' });
+    expect(withGroup.body).toEqual(MARKET_INVALID_BODY);
     expect(withGroup.body.pdp_target).toBeUndefined();
     const groupUnpriced = await request(app).post('/agent/shop/v1/invoke').send({
       operation: 'offers.resolve',
       payload: { offers: { subject: { product_group_id: 'pg_market_probe_group' }, market: 'DE' } },
     }).expect(200);
-    expect(groupUnpriced.body.error).toMatchObject({ reason: 'market_not_priced' });
+    expect(groupUnpriced.body).toEqual(marketNotPricedBody('DE'));
     const noIdentifier = await request(app).post('/agent/shop/v1/invoke').send({
       operation: 'offers.resolve',
       payload: { offers: { market: 'USA' } },
     }).expect(200);
-    expect(noIdentifier.body.error).toMatchObject({ code: 'MARKET_INVALID', reason: 'market_invalid' });
+    expect(noIdentifier.body).toEqual(MARKET_INVALID_BODY);
     // Control: the same group id with a priced market keeps its identity answer.
     const control = await request(app).post('/agent/shop/v1/invoke').send({
       operation: 'offers.resolve',
