@@ -1,75 +1,31 @@
 'use strict';
 
-// PARITY: every final-state code the backend WRITES, on both rails, is on an explicit gateway list, and reads honest
-// wording. A new backend code fails this test instead of silently landing in "checking" or the neutral copy.
+// PARITY: every final-state code the backend writes, on both rails, is on an explicit gateway list and reads honest
+// wording.
 //
-// Enumerated from the backend SOURCE (not from memory), each with its write site:
-//   A2A at pivota-backend 54874e2a5: services/payment_orchestration/a2a_rail_worker.py (every
-//     `ledger.transition_as_holder(..., to_state="failed"|"refused"|"expired", ...)`, `_token_failed`, `_checkout_failed`,
-//     `_cancel_checkout`), db/a2a_rail_ledger.py (the expiry sweep `_EXPIRE_SQL` ~:1266, the operator resolve ~:901).
-//   The rp_ rail at pivota-backend 54874e2a5 (its rp_-rail sources identical to origin/main 5ff890580):
-//     services/reap_agentic_purchase.py (every `_move(..., "failed"|"refused"|"expired", ...)`),
-//     db/reap_agentic_ledger.py (the sweeps `_EXPIRE_OVERDUE_SQL` ~:2282, `_FAIL_EXHAUSTED_SQL` ~:2361, contact re-entry
-//     ~:2680), services/reap_checkout_recovery.py (`manual_provider_<status>` ~:126), routes/agent_commerce_reap.py
-//     (`duplicate_idempotency_key` ~:2594), and the client's resolution reasons (services/reap_agentic_client.py).
-// A compound code is written here in a representative spelling (`<prefix>:<kind>:<status>`); every segment is read.
-// NOT enumerable: the partner's own error codes the rp_-rail worker lowercases into `last_error_code` on a failed row
-// (`_error_code(partner)`); on a failed row an unrecognised one reads "checking" by design.
-// Re-pin to one backend main SHA once the backend half merges. Placeholder ids only. No network.
+// The list is a MIRROR of the backend at one commit: tests/fixtures/agenpas_backend_final_codes.backend.json, generated
+// from the backend source (read only, `git show`) by scripts/agenpas/extract_backend_final_codes.py. A new backend code
+// fails this test only once the fixture is REGENERATED at the new commit, so regenerate it on every re-pin:
+//
+//   python3 -I scripts/agenpas/extract_backend_final_codes.py --repo <pivota-backend checkout> --sha <sha> \
+//     > tests/fixtures/agenpas_backend_final_codes.backend.json
+//
+// If the backend ships its own contract file of final codes, pass it as `--contract <path>`: the extractor merges it.
+// The fixture's `dynamic` list names the write sites whose codes are built at run time (a partner's own codes on a
+// failed rp_-rail row read "checking" by design). Placeholder ids only. No network.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   projectPurchaseView, isKnownFinalCode, HELD_CODES, FINAL_CHECKING_CODES,
 } = require('../src/agenpas/view');
 
-const BACKEND = Object.freeze({
-  a2a: {
-    failed: [
-      'binding_page_invalid', 'binding_answer_unrecognised', 'binding_refused:refused:400', 'card_binding_failed',
-      'card_binding_disabled', 'card_binding_expired', 'token_method_unavailable', 'token_currency_unsupported',
-      'token_payer_missing', 'approval_page_invalid', 'token_failed', 'token_answer_unrecognised', 'token_refused:refused:400',
-      'checkout_contact_incomplete', 'checkout_relay_refused', 'token_mismatch', 'approval_answer_unrecognised',
-      'pay_step_unavailable', 'reconcile_exhausted', 'token_request_unresolved', 'vic_currency_unsupported',
-      'vic_method_missing', 'vic_contact_missing', 'vic_amount_invalid', 'vic_order_refused:http_error',
-      'vic_quote_unrecognised', 'vic_quote_refused:http_error', 'vic_quote_currency_mismatch', 'vic_quote_price_changed',
-      'vic_quote_over_limit', 'vic_quote_invalid', 'vic_page_missing', 'vic_page_invalid', 'vic_order_unresolved',
-      'vic_authorization_declined', 'vic_buyer_abandoned', 'vic_checkout_failed', 'checkout_card_unavailable:network_token_missing',
-      'checkout_token_unavailable', 'checkout_setup_incomplete', 'checkout_setup_unrecognised',
-      'checkout_setup_refused:http_error:400', 'checkout_confirm_refused:http_error:422', 'checkout_captcha_failed',
-      'checkout_form_error', 'checkout_pay_disabled', 'checkout_confirm_total_refused', 'checkout_lock_invalid',
-      'checkout_price_missing', 'attempts_exhausted', 'contact_purged', 'operator_confirmed_not_charged',
-    ],
-    refused: [
-      'buyer_email_required', 'buyer_approval_missing', 'token_id_unstorable', 'checkout_currency_unsupported',
-      'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit',
-    ],
-    // `shipping_address_not_collected`: a2a_rail_worker.py:536 (opened -> expired, capture turned off while waiting).
-    expired: ['shipping_address_expired', 'vic_authorization_expired', 'buyer_action_expired', 'stale', 'shipping_address_not_collected'],
-  },
-  reap: {
-    failed: [
-      'buyer_email_missing', 'enrollment_no_hosted_action', 'enrollment_id_conflict', 'enrollment_create_failed',
-      'enrollment_read_failed', 'partner_id_malformed', 'enrollment_row_unreadable', 'enrollment_not_activatable',
-      'enrollment_dead', 'no_active_enrollment', 'quote_id_missing', 'enrollment_not_active', 'checkout_id_missing',
-      'checkout_failed', 'checkout_expired', 'approval_window_lapsed', 'attempts_exhausted', 'contact_reentry_lapsed',
-      'manual_provider_failed',
-    ],
-    refused: [
-      'merchant_not_completable', 'invalid_offer_code', 'offer_code_malformed', 'cart_link_rejected', 'card_payment_unavailable',
-      'quote_unfulfillable', 'variant_unavailable', 'offer_code_rejected', 'no_shipping_option', 'price_unverifiable',
-      'preflight_refused', 'price_changed', 'cart_link_disabled', 'cart_link_invalid', 'unverified_single_variant',
-      'duplicate_idempotency_key', 'no_products_returned', 'no_product_name_supplied', 'merchant_not_in_results',
-      'no_exact_name_match', 'ambiguous_name_match', 'product_id_not_in_reap_namespace', 'product_has_no_option_axes',
-      'variant_title_unusable', 'no_variant_title_supplied', 'single_variant_product_has_no_variant_id',
-      'resolved_id_not_in_reap_namespace', 'ambiguous_on_axis:color', 'duplicate_axis_name:size',
-      'label_too_long_to_compare:color', 'value_has_no_option_id:size', 'search:no_products_returned',
-      'details:http_error', 'options:sole_label_differs:color', 'variant:price_disagrees',
-    ],
-    expired: ['checkout_expired', 'hosted_url_expired', 'contact_reentry_lapsed', 'manual_provider_expired'],
-  },
-});
+const PINNED_BACKEND_SHA = '54874e2a5';
+const MIRROR = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'agenpas_backend_final_codes.backend.json'), 'utf8'));
+const BACKEND = Object.freeze({ a2a: MIRROR.a2a, reap: MIRROR.reap });
 
 // The exact copies the new lists read (src/agenpas/view.js).
 const COPY = Object.freeze({
@@ -82,6 +38,7 @@ const COPY = Object.freeze({
   details_needed: { kind: 'details_needed', title: 'Some details were missing', message: 'The store needs a bit more information. Go back to the chat to check your details.', retry_hint: true, outcome_unknown: false },
   checkout_refused: { kind: 'checkout_refused', title: "This purchase couldn't be started", message: "Our payment partner couldn't take this purchase. Go back to the chat for other options.", retry_hint: false, outcome_unknown: false },
   card_not_added: { kind: 'card_not_added', title: "Your card couldn't be used", message: "The card couldn't be set up for this purchase, so the order wasn't placed.", retry_hint: true, outcome_unknown: false },
+  not_purchasable: { kind: 'not_purchasable', title: "This item can't be bought here right now", message: "This item can't be bought through AgenPas at the moment. Nothing more needs to be done.", retry_hint: false, outcome_unknown: false },
   not_submitted: { kind: 'not_submitted', title: "This purchase didn't go through", message: "The store's checkout couldn't be completed, so no order was sent to the store.", retry_hint: false, outcome_unknown: false },
   post_checkout_failed: { kind: 'failed', title: "This purchase didn't complete", message: 'Go back to the chat for the latest on this purchase.', retry_hint: false, outcome_unknown: false },
   checking: { kind: 'outcome_unknown', title: "We're checking with the store", message: "We're checking with the store — don't try again. Your order may already be in progress, and we'll confirm what happened in the chat.", retry_hint: false, outcome_unknown: true },
@@ -112,6 +69,10 @@ const PINNED = [
     'no_shipping_option', 'price_unverifiable', 'preflight_refused', 'options:sole_label_differs:color', 'search:no_products_returned',
     'ambiguous_name_match'].map((code) => ['reap', 'refused', code, 'refused_before_order']),
   ...['invalid_offer_code', 'offer_code_malformed', 'offer_code_rejected'].map((code) => ['reap', 'refused', code, 'offer_code_refused']),
+  ...['pilot_scope_invalid', 'pilot_scope_refused'].map((code) => ['reap', 'refused', code, 'not_purchasable']),
+  ...['invalid_request', 'resolve_failed', 'cart_link_quote_unbuildable'].map((code) => ['reap', 'refused', code, 'refused_before_order']),
+  ['reap', 'failed', 'quote_failed', 'not_submitted'],
+  ['reap', 'failed', 'checkout_create_failed', 'post_checkout_failed'],
 ];
 
 const ID = { a2a: 'ap_0123456789abcdef01234567', reap: 'rp_0123456789abcdef01234567' };
@@ -123,7 +84,18 @@ function outcome(rail, state, code, field = state === 'refused' ? 'refusal_reaso
   return projectPurchaseView(body, { purchaseId: ID[rail] });
 }
 
-test('parity with backend 54874e2a5 (both rails): every final code the backend writes is on an explicit gateway list', () => {
+test('the mirror is the pinned backend commit, and it names both rails\' three final states', () => {
+  assert.equal(MIRROR.backend_sha, PINNED_BACKEND_SHA);
+  assert.equal(MIRROR.generated_by, 'scripts/agenpas/extract_backend_final_codes.py');
+  for (const rail of ['a2a', 'reap']) for (const state of ['failed', 'refused', 'expired']) assert.ok(BACKEND[rail][state].length > 0, `${rail}/${state}`);
+  // The codes the review named are in the mirror (found at their write sites, not typed in).
+  for (const [rail, state, code] of [['a2a', 'expired', 'shipping_address_not_collected'], ['reap', 'refused', 'pilot_scope_invalid'],
+    ['reap', 'refused', 'pilot_scope_refused'], ['reap', 'failed', 'attempts_exhausted'], ['a2a', 'expired', 'stale']]) {
+    assert.ok(BACKEND[rail][state].includes(code), `${rail}/${state}/${code}`);
+  }
+});
+
+test('parity with backend 54874e2a5 (both rails): every final code in the mirror is on an explicit gateway list', () => {
   const missing = [];
   for (const [rail, byState] of Object.entries(BACKEND)) {
     for (const [state, codes] of Object.entries(byState)) {

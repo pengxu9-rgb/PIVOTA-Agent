@@ -129,6 +129,8 @@ const REAP_FAILED_CODES = Object.freeze([
   'enrollment_no_hosted_action', 'enrollment_id_conflict', 'enrollment_row_unreadable', 'enrollment_not_activatable',
   'enrollment_dead', 'enrollment_create_failed', 'enrollment_read_failed', 'no_active_enrollment', 'enrollment_not_active',
   'quote_id_missing',
+  // The quote step's own fallback when the partner named no code (quoting -> failed, before the checkout create).
+  'quote_failed',
 ]);
 /**
  * HELD only from `placing` on and in final states. `checkout_read_permanent:<n>` is written after ONE permanent-shaped
@@ -163,8 +165,10 @@ const REAP_UNLISTED_PREFIX = 'reap_';
 /** Codes that say a checkout may have existed: they keep a FAILED code from saying "no order was sent". */
 // `vic_checkout_failed` (A2A): the rail answered "failed" for a checkout in `paying` (the confirm went out): the state's
 // generic wording, never "no order was sent".
+// `checkout_create_failed` (the rp_ rail's create fallback; the extractor finds it beside the quote step's failures):
+// it names the checkout create, so it never claims "no order was sent".
 const POST_CHECKOUT_GENERIC_CODES = new Set(['checkout_failed', 'checkout_expired', 'checkout_id_missing', 'partner_id_malformed',
-  'vic_checkout_failed']);
+  'vic_checkout_failed', 'checkout_create_failed']);
 const POST_CHECKOUT_CODES = new Set([...POST_CHECKOUT_GENERIC_CODES, 'approval_window_lapsed']);
 
 /** Terminal, nothing submitted to the store. */
@@ -295,7 +299,8 @@ const NOT_SUBMITTED_COPY = Object.freeze({
 const REAP_REFUSAL_REASONS = Object.freeze([
   'merchant_not_completable', 'cart_link_rejected', 'card_payment_unavailable', 'quote_unfulfillable',
   'variant_unavailable', 'no_shipping_option', 'price_unverifiable', 'preflight_refused', 'cart_link_disabled',
-  'cart_link_invalid', 'unverified_single_variant', 'duplicate_idempotency_key',
+  'cart_link_invalid', 'unverified_single_variant', 'duplicate_idempotency_key', 'resolve_failed',
+  'cart_link_quote_unbuildable',
   'no_products_returned', 'no_product_name_supplied', 'merchant_not_in_results', 'no_exact_name_match',
   'ambiguous_name_match', 'product_id_not_in_reap_namespace', 'product_has_no_option_axes', 'variant_title_unusable',
   'no_variant_title_supplied', 'single_variant_product_has_no_variant_id', 'resolved_id_not_in_reap_namespace',
@@ -303,6 +308,12 @@ const REAP_REFUSAL_REASONS = Object.freeze([
 ]);
 /** The client's compound refusal heads (`search:<reason>`, `details:<err>`, `options:<reason>`, `variant:<mismatch>`). */
 const REAP_REFUSAL_HEADS = new Set(['search', 'details', 'options', 'variant']);
+/**
+ * Codes too generic to match on any other row, read ONLY on a refused rp_-rail row (all before the checkout create):
+ * `invalid_request` (a `_row_scope` refusal), and the preflight witness's `preflight_interrupted` / `unverified`
+ * (its `last_error_code` beside a refusal reason).
+ */
+const REAP_REFUSED_ONLY_CODES = new Set(['invalid_request', 'preflight_interrupted', 'unverified']);
 
 const REASON_GROUPS = [
   {
@@ -367,7 +378,9 @@ const REASON_GROUPS = [
     kind: 'not_purchasable',
     codes: ['merchant_not_eligible', 'merchant_disabled', 'merchant_not_purchasable', 'row_not_found', 'row_unpriced',
       'row_price_ambiguous', 'row_not_shopify', 'row_variant_unverified', 'row_variant_ambiguous',
-      'row_currency_mismatch', 'seller_identity_unverified', 'currency_unsupported', 'vic_currency_unsupported'],
+      'row_currency_mismatch', 'seller_identity_unverified', 'currency_unsupported', 'vic_currency_unsupported',
+      // The rp_ rail's pilot scope (`_row_scope`, quoting -> refused before the checkout create).
+      'pilot_scope_invalid', 'pilot_scope_refused'],
     title: "This item can't be bought here right now",
     message: "This item can't be bought through AgenPas at the moment. Nothing more needs to be done.",
     retry_hint: false,
@@ -517,7 +530,8 @@ function isOutcomeUnknownCode(code) {
 /** The refusal group a refused row's compound client reason names by its head (`options:<reason>`, ...), or null. */
 function refusalHeadGroup(codes) {
   const flat = (Array.isArray(codes) ? codes : []).flatMap((c) => (Array.isArray(c) ? c : [c]));
-  const named = flat.some((code) => typeof code === 'string' && REAP_REFUSAL_HEADS.has(code.trim().toLowerCase().split(':')[0]));
+  const named = flat.some((code) => typeof code === 'string' && (REAP_REFUSAL_HEADS.has(code.trim().toLowerCase().split(':')[0])
+    || codeSegments([code]).some((seg) => REAP_REFUSED_ONLY_CODES.has(seg))));
   return named ? REASON_BY_CODE.get(REAP_REFUSAL_REASONS[0]) : null;
 }
 

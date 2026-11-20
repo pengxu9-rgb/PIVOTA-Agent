@@ -804,7 +804,7 @@ test('parity: the explicit FAILED list is exactly the backend\'s nothing-submitt
     // The Reap rail's codes written before any checkout exists (tests/agenpas_reap_consent.node.test.cjs).
     'enrollment_no_hosted_action', 'enrollment_id_conflict', 'enrollment_row_unreadable', 'enrollment_not_activatable',
     'enrollment_dead', 'enrollment_create_failed', 'enrollment_read_failed', 'no_active_enrollment', 'enrollment_not_active',
-    'quote_id_missing'];
+    'quote_id_missing', 'quote_failed'];
   assert.deepEqual([...FAILED_CODES].sort(), [...EXPECTED_FAILED].sort());
 });
 

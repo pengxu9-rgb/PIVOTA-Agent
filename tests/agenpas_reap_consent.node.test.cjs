@@ -292,7 +292,7 @@ test('Reap FAILED codes (written before any Reap checkout exists): "no order was
     ['failed', 'enrollment_no_hosted_action'], ['failed', 'enrollment_id_conflict'], ['failed', 'enrollment_row_unreadable'],
     ['failed', 'enrollment_not_activatable'], ['failed', 'enrollment_dead'], ['failed', 'enrollment_create_failed'],
     ['failed', 'enrollment_read_failed'], ['failed', 'no_active_enrollment'], ['failed', 'enrollment_not_active'],
-    ['failed', 'quote_id_missing'],
+    ['failed', 'quote_id_missing'], ['failed', 'quote_failed'],
   ];
   assert.deepEqual(rows.map(([, c]) => c).sort(), [...REAP_FAILED_CODES].sort());
   for (const [state, code] of rows) {
