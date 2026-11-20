@@ -134,6 +134,20 @@ test('gate on, no consent: the terms on the address screen, no form, the step re
   assert.equal(shippingConsentPending(gatedBody(), VIEW_OPTS), true);
 });
 
+test('gate on with no deadline on the marker (the backend sends expires_at: null when the form had none): still the terms first', () => {
+  const body = gatedBody({ next_action: { kind: 'shipping_address', consent_required: true, expires_at: null } });
+  body.detail.buyer_step = { kind: 'shipping_address', expires_at: null, consent_required: true, available: true };
+  const view = projectPurchaseView(body, VIEW_OPTS);
+  assert.equal(view.screen, 'shipping_address');
+  assert.equal(view.consent.step, 'shipping_address');
+  assert.equal(Object.hasOwn(view, 'address_request'), false);
+  assert.equal(shippingConsentPending(body, VIEW_OPTS), true);
+  // buyer_step.available false with no offer on the block: not available right now.
+  const closed = gatedBody({ consent: consentBlock({ available: false, offer: undefined }) });
+  closed.detail.buyer_step.available = false;
+  assert.equal(projectPurchaseView(closed, VIEW_OPTS).screen, 'unavailable');
+});
+
 test('gate on, consent given: the form (the backend\'s fields_missing), no consent member, nothing pending', () => {
   const view = projectPurchaseView(consentedFormBody(), VIEW_OPTS);
   assert.equal(view.screen, 'shipping_address');

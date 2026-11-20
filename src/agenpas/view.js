@@ -83,7 +83,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend eb19e277b (the hold sets unchanged since 229d1e587; services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
+// Mirrors pivota-backend 035aa5e6e (the hold sets unchanged since 229d1e587; services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the

@@ -668,7 +668,7 @@ test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now wri
   assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
 });
 
-test('parity with backend eb19e277b (hold sets unchanged since 4dc09ce55): the explicit HELD list is exactly the 24 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
+test('parity with backend 035aa5e6e (hold sets unchanged since 4dc09ce55): the explicit HELD list is exactly the 24 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
   const BACKEND_CHECKOUT_HOLD = ['checkout_answer_scrubbed', 'checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
     'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
     'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_paying_without_task',
@@ -949,7 +949,7 @@ for (const code of ['transition_refused', 'rail_refused', 'no_step_for_state', '
   });
 }
 
-test('parity with backend eb19e277b: the 6 _CHECKOUT_PAYMENT_REACHED_CODES are all HELD and never read as "not charged"', () => {
+test('parity with backend 035aa5e6e: the 6 _CHECKOUT_PAYMENT_REACHED_CODES are all HELD and never read as "not charged"', () => {
   const PAYMENT_REACHED = ['checkout_answer_scrubbed', 'checkout_order_id_card_shaped', 'checkout_payment_no_order',
     'checkout_payment_reached_unconfirmed', 'checkout_total_over_approved', 'checkout_total_unverified'];
   assert.equal(PAYMENT_REACHED.length, 6);
