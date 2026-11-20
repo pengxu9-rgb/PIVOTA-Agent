@@ -43461,13 +43461,25 @@ app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) =
     const result = await backfillCatalogServingIndex({
       limit: Number(body.limit ?? 500) || 500,
       brand: String(body.brand || '').trim() || null,
-      market: String(body.market || '').trim() || 'US',
+      // Flag CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED on: no market sent = none passed, so the backfill refuses.
+      market: String(body.market || '').trim() ||
+        (String(process.env.CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED || '').trim().toLowerCase() === 'true' ? undefined : 'US'),
       dryRun: body.dry_run === true || body.dryRun === true,
       refresh: body.refresh === true,
       includeNonPublic: !(body.public_only === true || body.publicOnly === true),
     });
     return res.json({ ok: true, result });
   } catch (err) {
+    // Flag on only (the backfill throws this code only then): a request that names no market is the caller's
+    // error, answered 400 like this file's other missing-parameter refusals, never a 500.
+    if (err?.code === 'catalog_serving_backfill_market_required') {
+      return res.status(400).json({
+        ok: false,
+        error: 'CATALOG_SERVING_BACKFILL_MARKET_REQUIRED',
+        code: err.code,
+        message: err.message,
+      });
+    }
     return res.status(500).json({
       ok: false,
       error: 'CATALOG_SERVING_BACKFILL_FAILED',

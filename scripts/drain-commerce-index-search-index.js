@@ -19,6 +19,11 @@ const {
 
 const APPLY_ENV = 'COMMERCE_INDEX_SEARCH_PUBLICATION_APPLY';
 
+// CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED, parsed exactly as src/services/catalogServingIndex.js does.
+function noDefaultMarketEnabled() {
+  return String(process.env.CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
 function enabled(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 }
@@ -61,6 +66,8 @@ function buildOffer(row) {
     price: asNumber(row.merchant_effective_price) ?? payload.price ?? asNumber(row.list_price) ?? null,
     merchant_effective_price: asNumber(row.merchant_effective_price) ?? payload.merchant_effective_price ?? null,
     offer_mode: row.offer_mode || payload.offer_mode || 'merchant_checkout',
+    // Flag on only: the catalog_offers.market column, kept apart from offer_payload.market (see resolveOfferMarket).
+    ...(noDefaultMarketEnabled() && row.column_market !== undefined ? { column_market: row.column_market } : {}),
   };
 }
 
@@ -200,7 +207,7 @@ async function resolveGroupProductRows(productKeys) {
                    'availability', co.availability, 'inventory_quantity', co.inventory_quantity,
                    'currency', co.currency, 'list_price', co.list_price,
                    'merchant_effective_price', co.merchant_effective_price,
-                   'offer_payload', co.offer_payload
+                   'offer_payload', co.offer_payload${noDefaultMarketEnabled() ? ", 'column_market', co.market" : ''}
                  ) ORDER BY co.offer_id
                ) FILTER (WHERE co.offer_id IS NOT NULL),
                '[]'::jsonb
@@ -325,7 +332,14 @@ async function main(argv = process.argv.slice(2)) {
     const rows = await resolveGroupProductRows(productKeys);
     if (!rows.length) throw new Error('search-index group expansion returned no catalog rows');
     const result = await backfillCatalogServingIndex(
-      { limit: rows.length, includeNonPublic: true, refresh: true },
+      // The drain publishes every market's rows. With CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED on it must say
+      // so ('*'): each doc keeps its source's market and none is stamped US. Off: today's call, unchanged.
+      {
+        limit: rows.length,
+        includeNonPublic: true,
+        refresh: true,
+        ...(noDefaultMarketEnabled() ? { market: '*' } : {}),
+      },
       { fetchBackfillProductsFn: async () => buildSourceRows(rows), queryFn: query },
     );
     if (result.source !== 'opensearch_compatible') {

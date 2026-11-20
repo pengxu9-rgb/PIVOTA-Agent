@@ -60,10 +60,14 @@ async function main() {
   const refresh = hasFlag('refresh');
   const seedMemberships = hasFlag('seed-memberships');
   const includeNonPublic = !hasFlag('public-only');
+  // CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED on (see the FLIP CHECKLIST in catalogServingIndex.js): a run
+  // with no --market passes none, so the backfill refuses it by name rather than silently scoping it to a default.
+  const noDefaultMarket =
+    String(process.env.CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED || '').trim().toLowerCase() === 'true';
   const result = await backfillCatalogServingIndex({
     limit,
     brand,
-    market,
+    market: noDefaultMarket && !asString(argValue('market')) ? undefined : market,
     dryRun,
     refresh,
     includeNonPublic,
