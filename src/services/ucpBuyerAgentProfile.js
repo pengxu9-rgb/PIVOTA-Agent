@@ -339,6 +339,7 @@ function buildUcpBuyerAgentProfile(config = {}) {
     payment_handlers: {},
   };
   if (profileUrl) ucp.profile_url = profileUrl;
+  const signingKeys = resolveSigningKeys(config);
 
   return {
     ucp,
@@ -354,7 +355,14 @@ function buildUcpBuyerAgentProfile(config = {}) {
     // profile — so a merchant verifying one of our SIGNED-tier requests read `profile.signing_keys`, got
     // undefined, and answered `key_not_found` / 401. The whole signed tier dark, for a reason nothing in the
     // document announces.
-    signing_keys: resolveSigningKeys(config),
+    signing_keys: signingKeys,
+    // THE SAME KEYS AS AN RFC 7517 JWK SET, `keys[]`. The 2026-04-08 signatures spec allows this mirror beside
+    // `signing_keys` (both MUST list the same kids, and a rotation updates both at once); the 2026-08-25 line
+    // drops `signing_keys` and reads ONLY `keys[]`. A verifier on the newer line — the Shopline agent standard is
+    // being designed now, 2026-11-20 — would otherwise find no key and answer `key_not_found`. Built from the one
+    // resolved array, so the two can never list different kids. Omitted when there are no keys, which leaves the
+    // keyless (anonymous/token tier) profile byte-identical to before.
+    ...(signingKeys.length ? { keys: signingKeys.map((k) => ({ ...k })) } : {}),
     // Human/founder-facing truthful descriptor of who Pivota is and what it will (and will NOT) do. Additive
     // metadata alongside the spec `ucp` block; kept small to stay under the profile payload size limit.
     agent: {

@@ -397,6 +397,7 @@ function createPublicNetworkFetch(lookup) {
  *                               // UCP_AGENT_PROFILE_URL, else `${UCP_BASE_URL}/.well-known/ucp-agent`.
  *                               // Never defaulted to an invented host — see the note at its resolution.
  *   ucpVersion?: string,
+ *   signAlways?: boolean,       // sign at the TOKEN tier too (beside the Bearer). Defaults to env UCP_AGENT_SIGN_ALWAYS.
  *   fetchImpl?: Function,       // injectable fetch (default: global fetch). Tests pass a fixture fetch.
  *   userAgent?: string,
  *   timeoutMs?: number,
@@ -548,6 +549,16 @@ function createUcpBuyerAgentClient(options = {}) {
   const tier = hasTokenTierCredential
     ? TRUST_TIER.TOKEN
     : (canSign ? TRUST_TIER.SIGNED : TRUST_TIER.ANONYMOUS);
+  // SIGN EVERY REQUEST WHEN A KEY IS PRESENT, whatever the tier. A Bearer token used to REPLACE the signature:
+  // the TOKEN tier sent `Authorization` and no Signature-Input. The UCP signatures spec says platforms "SHOULD
+  // sign all requests", and the Shopline agent standard (designed with Meta's Muse, 2026-11-20) identifies a
+  // platform by its signed `UCP-Agent` profile on EVERY call, token or not. UCP_AGENT_SIGN_ALWAYS (default OFF)
+  // adds the signature beside the Bearer token; off, the TOKEN tier is byte-identical to before. The tier name
+  // is unchanged — it still says which credential is strongest — so callers that branch on it are untouched.
+  const signAlways = typeof options.signAlways === 'boolean'
+    ? options.signAlways
+    : ['1', 'true', 'on', 'yes'].includes(String(process.env.UCP_AGENT_SIGN_ALWAYS || '').trim().toLowerCase());
+  const signsRequests = canSign && (tier === TRUST_TIER.SIGNED || (tier === TRUST_TIER.TOKEN && signAlways));
 
   // Cached minted JWT from the client-credential exchange: { token, expiresAt(ms) }. Never logged.
   let tokenCache = null;
@@ -758,6 +769,8 @@ function createUcpBuyerAgentClient(options = {}) {
       requested_scopes: profile.agent.requested_scopes,
       // SIGNED tier is now implemented (RFC 9421). complete_checkout is STILL refused at ALL tiers by this client.
       supports_signed_tier: canSign,
+      // Whether calls actually carry an RFC 9421 signature (SIGNED tier, or TOKEN tier with UCP_AGENT_SIGN_ALWAYS).
+      signs_requests: signsRequests,
       completes_checkout: false,
     };
   }
@@ -861,13 +874,13 @@ function createUcpBuyerAgentClient(options = {}) {
     const retryOk = retry && IDEMPOTENT_TOOLS.has(toolName);
     const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
     // Idempotency key is minted for signed (state-changing) requests; it lives in meta AND is a covered header.
-    if (requestKey !== undefined && (tier !== TRUST_TIER.SIGNED ||
+    if (requestKey !== undefined && (!signsRequests ||
       ![TOOL.CREATE_CHECKOUT, 'cancel_checkout'].includes(toolName) ||
       typeof requestKey !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestKey) ||
       Object.hasOwn(args, 'meta'))) {
       throw new Error('ucpBuyerAgentClient: invalid signed checkout idempotency key.');
     }
-    const idempotencyKey = tier === TRUST_TIER.SIGNED ? (requestKey ?? cryptoId()) : undefined;
+    const idempotencyKey = signsRequests ? (requestKey ?? cryptoId()) : undefined;
     const meta = requestMeta(idempotencyKey);
     // LIVE-VERIFIED shape (cosrx create_cart inputSchema, 2026-07-13): the tool's own fields sit DIRECTLY
     // alongside `meta` inside params.arguments (e.g. { meta, cart: { line_items: [...] } }). They are NOT
@@ -889,7 +902,7 @@ function createUcpBuyerAgentClient(options = {}) {
     // stay byte-identical to before (no exchange, no Authorization header).
     const bearer = tier === TRUST_TIER.TOKEN ? await resolveBearerToken() : null;
     const headers = authHeaders(bearer);
-    if (tier === TRUST_TIER.SIGNED) {
+    if (signsRequests) {
       // At SIGNED tier a missing profile cannot be shrugged off the way it can at anonymous tier.
       //
       // NOT for the reason an earlier version of this comment gave. `buildUcpSignatureBase` does

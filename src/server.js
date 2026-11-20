@@ -39126,8 +39126,9 @@ app.head('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 
 // public/ holds exactly one file: index.html, the "Pivota Shopping Agent (Internal UI)" chat page
 // that POSTs to /ui/chat. It must not be served on the PUBLIC read tier hosts. mcp.pivota.cc is the
-// UCP identity anchor (UCP_AGENT_PROFILE_URL) and was chosen because it is the public,
-// unauthenticated, STATIC read tier; serving an interactive internal console at its root both
+// public, unauthenticated, STATIC read tier (and was the UCP identity anchor until 2026-11-20, when the
+// canonical agent profile became https://ucp.pivota.cc/.well-known/ucp-agent); serving an interactive
+// internal console at its root both
 // contradicts that rationale and hands every crawler a working recipe for the LLM endpoint. Edge
 // logs for 2026-08-18..20 show that page returned 200 to 22 outside IPs, GPTBot included.
 //
