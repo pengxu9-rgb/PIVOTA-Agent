@@ -417,7 +417,7 @@ test('the A2A door\'s market refusals (400) are definite, each with its own hone
     // Raised after the backend's key lookup: no purchase can exist under the key.
     shipping_country_unsupported: {
       message: 'This purchase can only ship to the United States for now, so it was not started. Nothing was charged.',
-      recovery: 'tell the buyer it ships to the United States only; with a US shipping address, start again with a new idempotency_key',
+      recovery: 'tell the buyer it ships to the United States only; start again with a US shipping address and a new idempotency_key only if the buyer wants that',
     },
     // Raised BEFORE the key lookup: a purchase from an earlier unknown-outcome call may exist, so check it first.
     shipping_market_unknown: {

@@ -2128,7 +2128,7 @@ export function toToolError(error) {
     // this call opened nothing and no purchase exists under the key.
     if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_country_unsupported") {
       body.message = "This purchase can only ship to the United States for now, so it was not started. Nothing was charged.";
-      body.recovery = "tell the buyer it ships to the United States only; with a US shipping address, start again with a new idempotency_key";
+      body.recovery = "tell the buyer it ships to the United States only; start again with a US shipping address and a new idempotency_key only if the buyer wants that";
     }
     // shipping_market_unknown is raised BEFORE the key lookup: a retry of an earlier call whose outcome was unknown can
     // get it while that earlier purchase exists. So: check first, never "start again with a new key" outright.
