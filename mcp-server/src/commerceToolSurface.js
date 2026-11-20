@@ -320,6 +320,62 @@ export function agenpasStartPurchaseSentence(minutes) {
 export function agenpasGetOrderSentence(minutes) {
   return `For a purchase on Pivota's payment partner the answer may carry a fresh \`agenpas_url\` (the buyer's own page for it, valid ${minutesText(minutes)}): give the buyer the newest one if their link has expired.`;
 }
+// AgenPas consent (docs/agenpas.md, "Terms and privacy consent"): one more sentence on start_purchase and get_order, ONLY
+// while AGENPAS_CONSENT_ENABLED is on and links are minted. Off, both descriptions are exactly as above.
+export const AGENPAS_CONSENT_SENTENCE = "When `next_action.consent_required` is true, the buyer first reads and accepts Pivota's Terms of Service and Privacy Policy on their AgenPas page, which then opens the payment partner's page: give them `agenpas_url` (it is also `next_action.action_url`); there is no other link to that page. If the answer carries neither, the step is not available yet: poll again.";
+// The UCP create_checkout description gains this ONLY while the Reap lane creates AND AgenPas serves the Reap rail
+// (AGENPAS_CONSENT_ENABLED + AGENPAS_RAILS with reap + links minted). Off, tools/list is byte-identical.
+export const AGENPAS_UCP_REAP_CONSENT_SENTENCE = "On the Reap route, while Pivota's consent step is on, a requires_escalation checkout's continue_url is the buyer's own Pivota page (AgenPas): the buyer reads and accepts Pivota's Terms of Service and Privacy Policy there, and that page opens the payment partner's card or approval page. Send the buyer to continue_url as usual; expires_at is the earlier of the step's deadline and that link's.";
+
+/** A next_action the backend's consent gate holds back: `consent_required: true` and no handoff URL of its own. */
+function isConsentGatedAction(action) {
+  return Boolean(action && typeof action === "object" && !Array.isArray(action) && action.consent_required === true
+    && typeof action.action_url !== "string" && typeof action.url !== "string");
+}
+
+/** The minter says AGENPAS_CONSENT_ENABLED is on (a minter that cannot say: off). */
+function consentOn(link) {
+  try {
+    return Boolean(link && typeof link.consentEnabled === "function" && link.consentEnabled() === true);
+  } catch {
+    return false;
+  }
+}
+
+/** The earlier of an ISO instant and a unix-seconds instant, as ISO; whichever is readable when only one is. */
+function earlierInstant(iso, unixSeconds) {
+  const a = typeof iso === "string" ? Date.parse(iso) : NaN;
+  const b = Number.isSafeInteger(unixSeconds) ? unixSeconds * 1000 : NaN;
+  if (Number.isFinite(a) && Number.isFinite(b)) return new Date(Math.min(a, b)).toISOString();
+  if (Number.isFinite(a)) return new Date(a).toISOString();
+  if (Number.isFinite(b)) return new Date(b).toISOString();
+  return iso;
+}
+
+/**
+ * The door's half of the UCP consent swap (R3-5): the lane's captured AgenPas link goes ONLY onto the answer the lane
+ * built for it, a requires_escalation checkout with no continue_url of its own (never onto a degraded or any other
+ * answer of the same call). Anything else is returned as it is.
+ */
+export function withConsentContinueUrl(checkout, url) {
+  const swap = typeof url === "string" && url !== "" && isPlainObject(checkout) && checkout.status === "requires_escalation"
+    && checkout.continue_url === undefined;
+  return swap ? withContinueUrl(checkout, url) : checkout;
+}
+
+/** The checkout with `continue_url` in its usual place (right after `status`), every other member as it was. */
+function withContinueUrl(checkout, url) {
+  if (!isPlainObject(checkout)) return checkout;
+  const out = {};
+  let placed = false;
+  for (const [k, v] of Object.entries(checkout)) {
+    if (k === "continue_url") continue;
+    out[k] = v;
+    if (k === "status") { out.continue_url = url; placed = true; }
+  }
+  if (!placed) out.continue_url = url;
+  return out;
+}
 
 /**
  * Build the MCP commerce tool surface over an already-composed canonical executor.
@@ -464,6 +520,16 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
         const problem = storefrontMarketProblem(toolArgs.market);
         if (problem) throw new ToolValidationError(`${op.mcp}: ${problem}`);
       }
+      // Every market read's schema declares `market` a string (NON_STRING_MARKET_REFUSED_OPS). A SENT non-string
+      // (false, 0, [], {}, true) is refused by name before anything is read, with the refusal this door gives a
+      // checkout's unreadable market: a fixed text that never repeats the value. Before, search_catalog answered it
+      // with an empty page, and get_product (which dropped it) and get_alternatives (which read it as its default)
+      // answered it as an unlabelled US/USD page; get_offers keeps its own `market_invalid`, and /ucp/mcp refuses it
+      // as ucp_country_string_required. Absent, null and blank still name no market (requestMarket.marketIsUnnamed):
+      // assumed US, labelled. A string is passed on exactly as before.
+      if (NON_STRING_MARKET_REFUSED_OPS.includes(op.id) && !requestMarket.marketIsUnnamed(toolArgs.market) && typeof toolArgs.market !== "string") {
+        throw new ToolValidationError(`${op.mcp}: ${storefrontMarketProblem(toolArgs.market)}`);
+      }
     }
 
     // 1) trusted identity from the verified session ONLY. Identity-derivation errors are swallowed for
@@ -578,13 +644,23 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       //     result half of this door here — the SAME money filter (step 5) and the SAME dialect shaper (step 7)
       //     as a kernel result — instead of the executor.
       const reapHints = [];
+      // AgenPas consent (R3-5): while the gate is on, a pending Reap step whose page the backend withholds until the
+      // buyer accepts the terms is answered with the buyer's AgenPas link as continue_url. The lane decides and mints;
+      // the link is put in HERE, after the money filter (its fragment is a purchase-scoped grant for the buyer, which
+      // a scrub would break). Off: no `agenpasConsent`, and the lane answers exactly as before.
+      const agenpasConsent = agenpasReapConsentFor(ctx);
+      const consentLink = agenpasConsent ? { url: null } : null;
       const reap = await tryReapAgenticCheckout({
         op, params, ctx, executor: reads, ucpArgs: toolArgs, attested, recoverOnly,
         resumeCheckoutId: resumeOnly ? toolArgs.checkout_id : undefined,
         client: reapAgentic && reapAgentic.client,
         recoveryIdentityReader: reapAgentic && reapAgentic.recoveryIdentityReader, log: logger, hints: reapHints,
+        ...(agenpasConsent ? { agenpasConsent: { link: agenpasConsent.link, captured: consentLink } } : {}),
       });
-      if (reap) return shape(sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" }));
+      if (reap) {
+        const filtered = sanitizeResult(reap, { handoffAllowed: op.capability === "checkout" });
+        return shape(withConsentContinueUrl(filtered, consentLink && consentLink.url));
+      }
       if (recoverOnly || resumeOnly || String(params.session_id || "").startsWith("reap_")) {
         throw new PivotaCommerceError("CHECKOUT_OUTCOME_UNKNOWN", { reason: "ucp_reap_primary_route_unavailable" });
       }
@@ -718,7 +794,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       // unchanged), so a buyer whose link ran out can be handed a new one. See withAgenpasUrl. Native door only, by
       // construction: the UCP vocabulary has no get_order (UCP_DIALECT_OPERATIONS), so `op.id === "get_order"` is a
       // native call; tests/agenpas_start_purchase.node.test.cjs fails if a UCP get_order ever appears.
-      if (purchaseHandoff && isA2aPurchaseAnswer(sanitized)) {
+      if (purchaseHandoff && isAgenpasServedAnswer(sanitized)) {
         sanitized = withAgenpasUrl(sanitized, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx);
       }
       // The door cache's price-freshness side channel survives the sanitizer (which rebuilds the value).
@@ -837,9 +913,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       log: logger,
     });
     const out = sanitizeResult(result, { handoffAllowed: true });
-    // Only for a purchase on the A2A rail (the rail AgenPas serves), the same rule as get_order; a pending read
-    // (`pendingRead`) names its rail too.
-    return isA2aPurchaseAnswer(out) ? withAgenpasUrl(out, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx) : out;
+    // Only for a purchase on a rail AgenPas serves (A2A; Reap too while AGENPAS_RAILS names it, which needs consent
+    // on), the same rule as get_order; a pending read (`pendingRead`) names its rail too.
+    return isAgenpasServedAnswer(out) ? withAgenpasUrl(out, orchestratedPurchase && orchestratedPurchase.agenpasLink, ctx) : out;
   }
 
   /**
@@ -851,13 +927,31 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
    */
   function withAgenpasUrl(out, agenpasLink, ctx) {
     if (!agenpasLink || typeof agenpasLink.mint !== "function" || !isPlainObject(out)) return out;
+    const input = { purchaseId: out.order_id, agentId: ctx && ctx.agent_id, userRef: ctx && ctx.user_ref };
+    // CONSENT GATED (AGENPAS_CONSENT_ENABLED on, and the backend withheld the partner's page until the buyer accepts
+    // the terms: `next_action.consent_required` and no URL). The buyer's way on is THIS link, so it also goes in the
+    // action's handoff member, with the earlier of the step's deadline and the link's. Off, or not gated: only the
+    // additive `agenpas_url`, exactly as before.
+    const gated = isConsentGatedAction(out.next_action) && consentOn(agenpasLink) && typeof agenpasLink.mintLink === "function";
     let url = null;
+    let expiresAt = null;
     try {
-      url = agenpasLink.mint({ purchaseId: out.order_id, agentId: ctx && ctx.agent_id, userRef: ctx && ctx.user_ref });
+      if (gated) {
+        const link = agenpasLink.mintLink(input);
+        if (link && typeof link.url === "string") {
+          url = link.url;
+          expiresAt = Number.isSafeInteger(link.expiresAt) ? link.expiresAt : null;
+        }
+      } else {
+        url = agenpasLink.mint(input);
+      }
     } catch {
       url = null;
     }
-    if (typeof url === "string" && url) out.agenpas_url = url;
+    if (typeof url === "string" && url) {
+      out.agenpas_url = url;
+      if (gated) out.next_action = { ...out.next_action, action_url: url, expires_at: earlierInstant(out.next_action.expires_at, expiresAt) };
+    }
     return out;
   }
 
@@ -866,6 +960,45 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     if (!isPlainObject(out)) return false;
     const apId = (v) => typeof v === "string" && /^ap_[0-9a-f]{24}$/.test(v);
     return out.rail === "a2a" || apId(out.rail_purchase_id) || apId(out.order_id);
+  }
+
+  /** A purchase answer on the Reap rail: it says so, or its rail id / its own id is an `rp_` id. */
+  function isReapPurchaseAnswer(out) {
+    if (!isPlainObject(out)) return false;
+    const rpId = (v) => typeof v === "string" && /^rp_[0-9a-f]{24}$/.test(v);
+    return out.rail === "reap" || rpId(out.rail_purchase_id) || rpId(out.order_id);
+  }
+
+  /**
+   * A purchase on a rail AgenPas serves (AGENPAS_RAILS, read per call by the minter): A2A by default, exactly as
+   * before; Reap only while the minter says so (which needs AGENPAS_CONSENT_ENABLED). A minter that cannot say
+   * (no `servesRail`) serves A2A only.
+   */
+  function isAgenpasServedAnswer(out) {
+    const link = orchestratedPurchase && orchestratedPurchase.agenpasLink;
+    const serves = (rail) => {
+      if (!link || typeof link.servesRail !== "function") return rail === "a2a";
+      try {
+        return link.servesRail(rail) === true;
+      } catch {
+        return false;
+      }
+    };
+    // A Reap purchase gets its link ONLY when the page can carry the buyer on: the backend gated the step (consent
+    // pending) or says the consent is satisfied. With the backend's gate still off, a Reap answer is today's answer
+    // exactly (no link to a page that would say "not available right now"), so turning the gateway on first is safe.
+    if (isReapPurchaseAnswer(out)) return serves("reap") && (isConsentGatedAction(out.next_action) || consentSatisfied(out));
+    return isA2aPurchaseAnswer(out) && serves("a2a");
+  }
+
+  /**
+   * The answer's consent block (top level or in `detail`) says the current step's consent is recorded: `satisfied`
+   * must be exactly `true`. Today's public purchase door carries no consent block (only the internal AgenPas read does),
+   * so on that contract this never fires and a Reap link comes only from a gated step; it is kept for a door that does.
+   */
+  function consentSatisfied(out) {
+    const block = [out.consent, isPlainObject(out.detail) ? out.detail.consent : undefined].find(isPlainObject);
+    return Boolean(block && block.satisfied === true);
   }
 
   /** True only while a link can be minted (AGENPAS_ENABLED on, secret and base URL set); read per tools/list. */
@@ -891,11 +1024,48 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     } catch {
       minutes = undefined;
     }
+    // Only while AGENPAS_CONSENT_ENABLED is on AND a rail the backend can gate is served (a2a or reap; config.rails
+    // never serves neither): off, the two sentences above are the only change, as before. The sentence names
+    // `agenpas_url` as the way on, which every gated answer on a served rail carries (withAgenpasUrl), and says what a
+    // gated answer without it (a rail not served) means.
+    const servesAny = typeof link.servesRail === "function" && (link.servesRail("reap") === true || link.servesRail("a2a") === true);
+    const consent = consentOn(link) && servesAny ? ` ${AGENPAS_CONSENT_SENTENCE}` : "";
     return list.map((tool) => {
-      if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${agenpasStartPurchaseSentence(minutes)}` };
-      if (tool.name === "get_order" && orderReadOn) return { ...tool, description: `${tool.description} ${agenpasGetOrderSentence(minutes)}` };
+      if (tool.name === START_PURCHASE_TOOL) return { ...tool, description: `${tool.description} ${agenpasStartPurchaseSentence(minutes)}${consent}` };
+      if (tool.name === "get_order" && orderReadOn) return { ...tool, description: `${tool.description} ${agenpasGetOrderSentence(minutes)}${consent}` };
       return tool;
     });
+  }
+
+  /**
+   * The UCP Reap lane's consent swap (ucpReapAgenticLane.js, R3-5): on only while AgenPas serves the Reap rail
+   * (AGENPAS_RAILS with reap, which needs AGENPAS_CONSENT_ENABLED) and links are minted. Then `link(rpId)` mints the
+   * buyer's link for the VERIFIED caller of this call. Null otherwise: the lane answers exactly as before.
+   */
+  function agenpasReapConsentFor(ctx) {
+    const link = orchestratedPurchase && orchestratedPurchase.agenpasLink;
+    if (!agenpasReapConsentGateOn()) return null;
+    return Object.freeze({
+      link: (purchaseId) => {
+        try {
+          const minted = link.mintLink({ purchaseId, agentId: ctx && ctx.agent_id, userRef: ctx && ctx.user_ref });
+          return minted && typeof minted.url === "string" && Number.isSafeInteger(minted.expiresAt) ? minted : null;
+        } catch {
+          return null;
+        }
+      },
+    });
+  }
+
+  /** True while the UCP Reap lane swaps in the buyer's AgenPas link (see agenpasReapConsentFor); read per call. */
+  function agenpasReapConsentGateOn() {
+    const link = orchestratedPurchase && orchestratedPurchase.agenpasLink;
+    if (!link || typeof link.mintLink !== "function" || typeof link.servesRail !== "function") return false;
+    try {
+      return agenpasLinksAvailable() && link.servesRail("reap") === true && consentOn(link);
+    } catch {
+      return false;
+    }
   }
 
   function isCommerceTool(name, dialect) {
@@ -907,6 +1077,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
   }
 
   return {
+    // The UCP projection reads this per `tools/list` (ucpDialectSurface): create_checkout's consent sentence.
+    agenpasReapConsentGateOn,
     // Read per `tools/list`, so `start_purchase` is listed exactly while its dial is on.
     get tools() {
       const listed = recommendIngredientExclusionFlag.recommendIngredientExclusionEnabled(process.env) ? ingredientExclusionTools : tools;
@@ -1036,6 +1208,8 @@ const ADDR_KEYS = ["country", "city", "postal_code", "state", "address_line1", "
 // refused (or ignored) exactly as it was. recommend_products takes no market at all: it is always answered for the
 // US (its lane prices in USD), so its answer always says so; giving it a `market` is its own change (C-13).
 const MARKET_READ_OPS = Object.freeze(["search_catalog", "get_product", "get_offers", "get_alternatives"]);
+/** The market reads that refuse a sent non-string `market` up front (step 0b); get_offers answers it `market_invalid`. */
+export const NON_STRING_MARKET_REFUSED_OPS = Object.freeze(MARKET_READ_OPS.filter((id) => id !== "get_offers"));
 const ALWAYS_US_OPS = Object.freeze(["recommend_products"]);
 
 /** True when this op's answer is decided for a market the request did not name. */
@@ -1403,7 +1577,8 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", additionalProperties: false,
     properties: {
       merchant_id: { type: "string" }, product_id: { type: "string" },
-      product_group_id: { type: "string" }, currency: { type: "string" },
+      product_group_id: { type: "string", description: "Prefer `product_id`. Accepted here only as the product's signature id from search_catalog or get_product (sig_ followed by 32 hex characters), which is then looked up as the product_id; any other value is answered with no offers, reason product_group_id_not_product_id. Ignored when `product_id` is given." },
+      currency: { type: "string" },
       ...(GET_OFFERS_VARIANT_ID
         ? { variant_id: { type: "string", description: "One option of a seller's listing (from an offer's `variants`), for that variant's own offer and cart." } }
         : {}),
@@ -1645,6 +1820,17 @@ export function ucpCommerceToolDefinitionsFor(env = process.env) {
   return ucpGetProductForwardMarketEnabled(env) ? withUcpGetProductMarket(base) : base;
 }
 
+// AgenPas consent on the Reap route: create_checkout with one more sentence. Memoized per base list.
+const UCP_REAP_CONSENT_DEFINITIONS = new Map();
+function withUcpReapConsentSentence(base) {
+  if (!UCP_REAP_CONSENT_DEFINITIONS.has(base)) {
+    UCP_REAP_CONSENT_DEFINITIONS.set(base, Object.freeze(base.map((def) => (def.name === "create_checkout"
+      ? Object.freeze({ ...def, description: `${def.description} ${AGENPAS_UCP_REAP_CONSENT_SENTENCE}` })
+      : def))));
+  }
+  return UCP_REAP_CONSENT_DEFINITIONS.get(base);
+}
+
 // UCP_GET_PRODUCT_FORWARD_MARKET: the same declarations with get_product's `catalog.context.address_country`
 // declared and described (ucpArgumentAdapter reads it into the native `market`). Memoized per base list.
 const UCP_GET_PRODUCT_MARKET_DEFINITIONS = new Map();
@@ -1718,7 +1904,12 @@ export function ucpDialectSurface(surface) {
     // Read per `tools/list`, so the advertised create_checkout follows the Reap lane and offer-code dials (see
     // `ucpCommerceToolDefinitionsFor`).
     get tools() {
-      const base = ucpCommerceToolDefinitionsFor(process.env);
+      const listed = ucpCommerceToolDefinitionsFor(process.env);
+      // AgenPas consent on the Reap route: create_checkout says where continue_url leads (only while the lane creates
+      // and the gate is on; off, the very same list as before).
+      const gateOn = reapAgenticCreateEnabled(process.env) && typeof surface.agenpasReapConsentGateOn === "function"
+        && surface.agenpasReapConsentGateOn() === true;
+      const base = gateOn ? withUcpReapConsentSentence(listed) : listed;
       const tools = merchantCheckoutQuoteDoorOpen() ? [...base, merchantQuoteToolDefinition] : base;
       return reapAgenticLaneEnabled(process.env) ? [...tools, {
         name: "recover_checkout",

@@ -14,6 +14,12 @@ const {
 const {
   normalizePublishedProductIntelBundle,
 } = require('../pdpProductIntel');
+const { currencyForBuyerRegion } = require('../auroraBff/buyerRegion');
+const {
+  normalizeAvailability,
+  IN_STOCK: AVAILABILITY_IN_STOCK,
+  OUT_OF_STOCK: AVAILABILITY_OUT_OF_STOCK,
+} = require('./availabilityVocabulary');
 
 function asString(value) {
   const normalized = String(value || '').trim();
@@ -205,7 +211,37 @@ function extractOfferAmounts(offers = []) {
     .filter((amount) => Number.isFinite(amount));
 }
 
+const UNKNOWN_STOCK_STAYS_UNKNOWN_FLAG = 'OFFERS_UNKNOWN_STOCK_STAYS_UNKNOWN_ENABLED';
+
+// Flip checklist for OFFERS_UNKNOWN_STOCK_STAYS_UNKNOWN_ENABLED (same name as the backend twin):
+//   - serving-index docs are built in three places; set the flag on ALL of them together, or the
+//     index mixes 'available' and 'unknown' docs for the same kind of input:
+//       1. gateway web (admin backfill route + local DB-serving search),
+//       2. the GitHub workflow runner that runs the backfill script,
+//       3. the drain job.
+//   - the value is parsed as trim + lowercase === 'true'; '1', 'yes' and 'on' stay OFF.
+function unknownStockStaysUnknown() {
+  // Default OFF. On: missing or unrecognised availability is 'unknown', never 'available'.
+  return String(process.env[UNKNOWN_STOCK_STAYS_UNKNOWN_FLAG] || '').trim().toLowerCase() === 'true';
+}
+
 function resolveAvailabilityState(input = {}) {
+  if (unknownStockStaysUnknown()) {
+    // An offer's own boolean in_stock decides, as everywhere else in the codebase (backend
+    // _offer_known_out_of_stock / best-price, gateway offerToSignal after live verification):
+    // a live-verified sold-out with stale in-stock text stays out_of_stock. Exact
+    // 'preorder'/'backorder' text keeps its own state under in_stock true, as before the flag.
+    // Only with no boolean is the text read, through the vocabulary shared with the backend.
+    const rawStated = input.availability || input.availability_state;
+    const stated = asString(rawStated).trim().toLowerCase();
+    if (input.in_stock === false) return 'out_of_stock';
+    if (input.in_stock === true) return ['preorder', 'backorder'].includes(stated) ? stated : 'available';
+    const verdict = normalizeAvailability(rawStated);
+    if (verdict === AVAILABILITY_OUT_OF_STOCK) return 'out_of_stock';
+    if (['preorder', 'backorder'].includes(stated)) return stated;
+    if (verdict === AVAILABILITY_IN_STOCK) return 'available';
+    return 'unknown';
+  }
   if (input.in_stock === false) return 'out_of_stock';
   const normalized = asString(input.availability || input.availability_state).toLowerCase();
   if (!normalized) return input.in_stock === false ? 'out_of_stock' : 'available';
@@ -474,7 +510,21 @@ function buildCatalogServingDoc(input = {}, options = {}) {
     review_family_id: reviewFamilyId || null,
     brand_name: brandName || null,
     category_paths: categoryPaths,
-    market: asString(options.market || input.market || input.region || 'US') || 'US',
+    ...(noDefaultMarket()
+      ? (() => {
+          // The source's own market wins ('stated'); a caller market only fills in when the source states
+          // none, and is labelled 'scoped' (the caller's scope, not the source's word). '*' names no market.
+          const stated = asString(input.market || input.region) || null;
+          // A group input says how its market was reached ('assumed': a catalog_offers.market 'US' alone).
+          if (stated && ['assumed', 'scoped'].includes(input.market_state)) {
+            return { market: stated, market_state: input.market_state };
+          }
+          if (stated) return { market: stated, market_state: 'stated' };
+          const scoped = asString(options.market);
+          if (scoped && scoped !== '*') return { market: scoped, market_state: 'scoped' };
+          return { market: null, market_state: 'unstated' };
+        })()
+      : { market: asString(options.market || input.market || input.region || 'US') || 'US' }),
     availability_state: resolveAvailabilityState(input),
     publish_state: publishState,
     title: asString(input.card_title || input.title || input.name || productId),
@@ -607,7 +657,113 @@ function maxTimestamp(values = []) {
   return bestRaw || null;
 }
 
-function resolveGroupMarket(entries = [], fallbackMarket = 'US') {
+const NO_DEFAULT_MARKET_FLAG = 'CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED';
+
+/*
+ * FLIP CHECKLIST for CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED (before it is set anywhere):
+ * with the flag on, a caller market is a SCOPE: a 'US' backfill skips every non-US group, so non-US docs go
+ * stale. After the flip '*' is the only scheduled/default backfill mode. Fix first (all still default 'US'):
+ *   - .github/workflows/catalog-serving-index-backfill.yml:11-14  `market` input: required, NO default "US"
+ *   - scripts/backfill-catalog-serving-index.js:58                `argValue('market') || ... || 'US'`
+ *   - src/server.js:43448-43449 (admin /api/admin/catalog-serving/backfill) `String(body.market || '').trim() || 'US'`
+ *   - scripts/catalog_serving_shadow_acceptance.js:19              DEFAULT_MARKET = 'US'
+ *   - src/services/catalogServingGateway.js:8                      DEFAULT_MARKET = 'US'
+ *   - src/services/discoveryFeed.js:2957 shadow read market = resolveDiscoveryExternalSeedMarketConfig() (:1448, US default)
+ *   - buildCatalogServingSearchBody (this file :1239 `market = 'US'`, :1247 term `market || 'US'`)
+ *   - filterLocalCatalogServingDocs (this file :1375 `params.market || 'US'`)
+ *   - local DB search scope (this file :1490 `market: asString(params.market || 'US') || 'US'`)
+ *   - scripts/audit-kb-commerce-index-readiness.cjs:426 `market: row.market || 'US'` and :1034 `--market` default 'US'
+ *   - catalog_offers.market writers (column NOT NULL DEFAULT 'US', backend migration 149:21; a 'US' alone is
+ *     published 'assumed'): each must stamp provenance or also write offer_payload.market, so 'assumed' shrinks.
+ *     Backend writers that set the column: services/external_offer_dual_write.py:255 (also offer_payload.market
+ *     :503), services/retailer_ingest/shopify_markets.py:183, services/retailer_ingest/pipeline.py:349
+ *     stamp_declared_market -> services/catalog_enrichment_agent/apply.py:544 (its base upsert :325 sets none),
+ *     services/catalog_variant_offer_projection.py:88, scripts/attach_retailer_offer.py:173,
+ *     scripts/backfill_variant_identity_skus.py:266, scripts/capture_us_market_offers.py:216,
+ *     scripts/backfill_offer_market_currency.py:84, scripts/onboard_external_brand_from_crawl.py:658,
+ *     scripts/restamp_offer_market.py:152, migration 149:27-30 (one-off SET market = 'US' for internal_merchant).
+ *   - answer-level 'assumed': the gateway's market_assumed (decision D-10) labels a BUYER call that named no
+ *     market; it is not mapped from a doc's market_state here. Today the serving index is read only by the admin
+ *     search, the discoveryFeed shadow read (debug only) and the shadow acceptance script, none of which answer a
+ *     buyer, so the per-doc market_state is enough. Before any buyer path reads these docs, map market_state
+ *     'assumed' to market_assumed on that answer.
+ *   - set the flag on the gateway web service, the backfill workflow runner and the drain job TOGETHER.
+ * Until then the script and the admin route, flag on, pass an ABSENT market through, so the backfill refuses it
+ * (catalog_serving_backfill_market_required) instead of silently running scoped to 'US'.
+ */
+function noDefaultMarket() {
+  // Default OFF. On: a doc whose source states no market is published with market null and
+  // market_state 'unstated' (never served under any market), instead of being stamped 'US'.
+  return String(process.env[NO_DEFAULT_MARKET_FLAG] || '').trim().toLowerCase() === 'true';
+}
+
+// Flag on only. Where the backend writes a market, and how much each source is believed:
+//   1. the seed / source market: entry.source_meta.market (the seed lane, pdpIdentityGraph.js fetchBackfillProducts
+//      selects e.market), product.market/region/locale_market, or product_payload.external_seed.market (backend
+//      scripts/mirror_external_seeds_to_catalog_products.py:1665-1668) -- 'stated';
+//   2. else an offer's offer_payload.market (backend services/external_offer_dual_write.py:503; the drain's
+//      buildOffer spreads offer_payload onto the offer) -- 'stated';
+//   3. else the offer's catalog_offers.market column (the drain selects it as column_market, flag on only). The
+//      column is NOT NULL DEFAULT 'US' (backend migration 149), so a non-'US' value is a real write ('stated'),
+//      while 'US' may be the default: market 'US', market_state 'assumed' (a US query still serves it).
+// Conflicts (the whole group is skipped and counted, never relabelled):
+//   - payload_column: one offer's payload market and its NON-'US' column disagree (a column 'US' never conflicts);
+//   - offer: within one listing, the seed and an offer, or two offers, state different markets;
+//   - group: two listings of one group state different markets.
+// 'assumed' never conflicts with anything stated: the stated market wins. So no stated market is ever relabelled;
+// only an assumed 'US' can be published under the one market the rest of its group states.
+function resolveOfferMarket(offer = {}) {
+  const row = asPlainObject(offer);
+  const payload = asString(row.market).toUpperCase();
+  const column = asString(row.column_market).toUpperCase();
+  const columnStated = Boolean(column) && column !== 'US';
+  if (payload && columnStated && payload !== column) return { conflict: 'payload_column' };
+  if (payload) return { market: payload, state: 'stated' };
+  if (columnStated) return { market: column, state: 'stated' };
+  if (column) return { market: 'US', state: 'assumed' };
+  return { market: null, state: null };
+}
+
+function resolveEntryMarket(entry = {}) {
+  const product = asPlainObject(entry?.product);
+  const seed = asString(
+    firstNonEmptyString(
+      entry?.source_meta?.market,
+      product.market,
+      product.region,
+      product.locale_market,
+      asPlainObject(product.external_seed).market,
+    ),
+  ).toUpperCase();
+  const offers = asArray(product.offers).map(resolveOfferMarket);
+  if (offers.some((offer) => offer.conflict)) return { conflict: 'payload_column' };
+  const stated = [...new Set([seed, ...offers.filter((o) => o.state === 'stated').map((o) => o.market)].filter(Boolean))];
+  if (stated.length > 1) return { conflict: 'offer' };
+  if (stated.length === 1) return { market: stated[0], state: 'stated' };
+  if (offers.some((offer) => offer.state === 'assumed')) return { market: 'US', state: 'assumed' };
+  return { market: null, state: null };
+}
+
+// Flag on only. Set-based, so the outcome never depends on the entries' order.
+function resolveGroupMarketInfo(entries = []) {
+  const infos = asArray(entries).map(resolveEntryMarket);
+  for (const kind of ['payload_column', 'offer']) {
+    if (infos.some((info) => info.conflict === kind)) return { conflict: kind };
+  }
+  const stated = [...new Set(infos.filter((i) => i.state === 'stated').map((i) => i.market))].sort();
+  if (stated.length > 1) return { conflict: 'group' };
+  if (stated.length === 1) return { market: stated[0], state: 'stated' };
+  if (infos.some((info) => info.state === 'assumed')) return { market: 'US', state: 'assumed' };
+  return { market: null, state: null };
+}
+
+function resolveGroupMarket(entries = [], fallbackMarket = noDefaultMarket() ? null : 'US') {
+  if (noDefaultMarket()) {
+    // A conflict labels nothing (a backfill skips such a group and counts it).
+    const info = resolveGroupMarketInfo(entries);
+    if (info.conflict) return null;
+    return info.market || asString(fallbackMarket) || null;
+  }
   for (const entry of asArray(entries)) {
     const product = asPlainObject(entry?.product);
     const market = firstNonEmptyString(
@@ -719,7 +875,9 @@ function buildCatalogServingBackfillEntries(sourceRows = [], { identityRows = []
     .filter(Boolean);
 }
 
-function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', market = 'US' } = {}) {
+function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', market } = {}) {
+  // A market the caller names is the caller's scope; an omitted one is 'US' only while the flag is off.
+  if (market === undefined) market = noDefaultMarket() ? null : 'US';
   const sortedEntries = sortCatalogServingEntries(entries);
   const baseEntry = sortedEntries[0] || null;
   const baseProduct = asPlainObject(baseEntry?.product);
@@ -824,14 +982,92 @@ function buildCatalogServingGroupInput(entries = [], { publishState = 'shadow', 
     browse_score: browseScore >= 0 ? browseScore : composed.browse_score,
     publish_state: publishState,
     market: resolveGroupMarket(sortedEntries, market),
+    ...(noDefaultMarket()
+      ? (() => {
+          const info = resolveGroupMarketInfo(sortedEntries);
+          if (info.conflict) return { market_state: 'conflict' };
+          if (info.state) return { market_state: info.state };
+          return { market_state: asString(market) ? 'scoped' : 'unstated' };
+        })()
+      : {}),
     updated_at: updatedAt || composed.updated_at || composed.updatedAt || null,
   };
 }
 
 function buildCatalogServingBackfillDocs(
   sourceRows = [],
-  { identityRows = [], includeNonPublic = true, market = 'US' } = {},
+  { identityRows = [], includeNonPublic = true, market, stats = null } = {},
 ) {
+  const strict = noDefaultMarket();
+  if (market === undefined) market = strict ? null : 'US';
+  // Flag on: the caller's market is a SCOPE, never a label. Entries keep the market their source states (or
+  // none), and a group whose stated market differs from the scope is skipped and counted, never relabelled.
+  // '*' (flag on) = every market: no scope filter, each doc keeps the market its source states (or none).
+  const scope = strict && asString(market) === '*' ? null : asString(market).toUpperCase() || null;
+  const groupMarket = strict ? null : market;
+  const counts = stats && typeof stats === 'object' ? stats : {};
+  counts.market_conflict_skipped = Number(counts.market_conflict_skipped || 0);
+  const conflicts = (input) => {
+    if (!strict || !scope) return false;
+    const stated = asString(input.market).toUpperCase();
+    if (!stated || stated === scope) return false;
+    counts.market_conflict_skipped += 1;
+    return true;
+  };
+  const conflictCounters = {
+    payload_column: 'market_payload_column_conflict_skipped',
+    offer: 'market_offer_conflict_skipped',
+    group: 'market_group_conflict_skipped',
+  };
+  if (strict) {
+    for (const key of Object.values(conflictCounters)) counts[key] = Number(counts[key] || 0);
+    counts.market_currency_conflict_skipped = Number(counts.market_currency_conflict_skipped || 0);
+    counts.market_currency_group_skipped = Number(counts.market_currency_group_skipped || 0);
+  }
+  // Flag on: serving docs carry no currency, so a doc's prices must be in its market's currency. With the doc's
+  // market resolved (stated or assumed) and priced by this gateway (currencyForBuyerRegion, the buyer-region map
+  // kept identical to the backend's region_pricing), every offer price and the product price whose currency is
+  // states another one is dropped and counted (market_currency_conflict_skipped); a price that states no currency
+  // cannot be compared and is kept (as before), so a US doc priced without a currency field is not emptied. A group left
+  // with no price by that is skipped and counted (market_currency_group_skipped). A market this gateway does not
+  // price (e.g. DE) or no market at all: nothing to compare, prices kept as before.
+  const keepMarketCurrencyPrices = (input) => {
+    const currency = currencyForBuyerRegion(asString(input.market));
+    if (!currency) return input;
+    const offerCurrency = (offer) =>
+      asString(offer?.currency || offer?.price?.currency || offer?.current_price?.currency).toUpperCase();
+    const offers = asArray(input.offers);
+    const priced = (offer) => extractOfferAmounts([offer]).length > 0;
+    const mismatched = (stated) => Boolean(stated) && stated !== currency;
+    const keptOffers = offers.filter((offer) => !priced(offer) || !mismatched(offerCurrency(offer)));
+    let dropped = offers.length - keptOffers.length;
+    const productPriced = asPositiveNumber(input.price) != null;
+    const productCurrency = asString(input.currency || input.price_currency).toUpperCase();
+    const keepProductPrice = productPriced && !mismatched(productCurrency);
+    if (productPriced && !keepProductPrice) dropped += 1;
+    if (!dropped) return input;
+    counts.market_currency_conflict_skipped += dropped;
+    if (!keepProductPrice && !keptOffers.some(priced)) {
+      counts.market_currency_group_skipped += 1;
+      return null;
+    }
+    const keptIds = new Set(keptOffers.map((offer) => asString(offer?.offer_id || offer?.id)).filter(Boolean));
+    const out = { ...input, offers: keptOffers };
+    if (productPriced && !keepProductPrice) delete out.price;
+    if (asString(out.default_offer_id) && !keptIds.has(asString(out.default_offer_id))) {
+      out.default_offer_id = pickDefaultOfferId(keptOffers, []);
+    }
+    return out;
+  };
+  // Flag on: a group with a market conflict (see resolveEntryMarket) is skipped and counted under any scope
+  // ('*' too), never labelled by whichever entry sorts first. Set-based, so input order never changes the outcome.
+  const groupConflicts = (groupEntries) => {
+    if (!strict) return false;
+    const { conflict } = resolveGroupMarketInfo(groupEntries);
+    if (!conflict) return false;
+    counts[conflictCounters[conflict]] += 1;
+    return true;
+  };
   const entries = buildCatalogServingBackfillEntries(sourceRows, { identityRows });
   const groups = new Map();
   for (const entry of entries) {
@@ -844,17 +1080,20 @@ function buildCatalogServingBackfillDocs(
 
   const docs = [];
   for (const groupEntries of groups.values()) {
+    if (groupConflicts(groupEntries)) continue;
     const publicEntries = groupEntries.filter((entry) => entry.is_public);
     if (publicEntries.length > 0) {
       const input = buildCatalogServingGroupInput(publicEntries, {
         publishState: 'public',
-        market,
+        market: groupMarket,
       });
-      if (!input) continue;
+      if (!input || conflicts(input)) continue;
+      const pricedInput = strict ? keepMarketCurrencyPrices(input) : input;
+      if (!pricedInput) continue;
       docs.push(
-        buildCatalogServingDoc(input, {
+        buildCatalogServingDoc(pricedInput, {
           publish_state: 'public',
-          market: input.market || market,
+          market: strict ? input.market : input.market || market,
         }),
       );
       continue;
@@ -863,14 +1102,16 @@ function buildCatalogServingBackfillDocs(
     const publishState = resolveBackfillPublishState(groupEntries);
     const input = buildCatalogServingGroupInput(groupEntries, {
       publishState,
-      market,
+      market: groupMarket,
     });
-    if (!input) continue;
+    if (!input || conflicts(input)) continue;
+    const pricedInput = strict ? keepMarketCurrencyPrices(input) : input;
+    if (!pricedInput) continue;
     docs.push(
-      buildCatalogServingDoc(input, {
+      buildCatalogServingDoc(pricedInput, {
         publish_state: publishState,
         shadow: publishState === 'shadow',
-        market: input.market || market,
+        market: strict ? input.market : input.market || market,
       }),
     );
   }
@@ -882,7 +1123,7 @@ async function backfillCatalogServingIndex(
   {
     limit = 500,
     brand = null,
-    market = 'US',
+    market,
     dryRun = false,
     refresh = false,
     includeNonPublic = true,
@@ -897,6 +1138,14 @@ async function backfillCatalogServingIndex(
     env = process.env,
   } = {},
 ) {
+  if (market === undefined || market === null || !asString(market)) {
+    if (noDefaultMarket()) {
+      const error = new Error('catalog serving backfill needs an explicit market');
+      error.code = 'catalog_serving_backfill_market_required';  // name a market, or '*' for every market
+      throw error;
+    }
+    market = 'US';
+  }
   let rawSourceRows = await fetchBackfillProductsFn({
     limit,
     brandFilter: brand,
@@ -934,10 +1183,12 @@ async function backfillCatalogServingIndex(
     sourceListingRefs,
     ...(typeof queryFn === 'function' ? { queryFn } : {}),
   });
+  const backfillStats = {};
   const docs = buildCatalogServingBackfillDocs(sourceRows, {
     identityRows,
     includeNonPublic,
     market,
+    stats: backfillStats,
   });
   const publishStateBreakdown = docs.reduce((acc, doc) => {
     const key = asString(doc?.publish_state) || 'unknown';
@@ -962,6 +1213,16 @@ async function backfillCatalogServingIndex(
     non_public_docs_built:
       Number(publishStateBreakdown.shadow || 0) + Number(publishStateBreakdown.eligible || 0),
     publish_state_breakdown: publishStateBreakdown,
+    ...(noDefaultMarket()
+      ? {
+          market_conflict_skipped: Number(backfillStats.market_conflict_skipped || 0),
+          market_group_conflict_skipped: Number(backfillStats.market_group_conflict_skipped || 0),
+          market_offer_conflict_skipped: Number(backfillStats.market_offer_conflict_skipped || 0),
+          market_payload_column_conflict_skipped: Number(backfillStats.market_payload_column_conflict_skipped || 0),
+          market_currency_conflict_skipped: Number(backfillStats.market_currency_conflict_skipped || 0),
+          market_currency_group_skipped: Number(backfillStats.market_currency_group_skipped || 0),
+        }
+      : {}),
     // Publication workers retain only these stable membership pointers. They
     // are enough to repair an old grouped document when a source listing moves
     // to another sellable-item group, without persisting the full document.
@@ -1153,7 +1414,9 @@ function filterLocalCatalogServingDocs(docs = [], params = {}) {
 
   return asArray(docs).filter((doc) => {
     if (asString(doc.publish_state).toLowerCase() !== 'public') return false;
-    if (asString(doc.market || 'US').toUpperCase() !== market.toUpperCase()) return false;
+    // A doc with no stated market matches no market query (flag on); off: it was read as US.
+    const docMarket = noDefaultMarket() ? asString(doc.market) : asString(doc.market || 'US');
+    if (!docMarket || docMarket.toUpperCase() !== market.toUpperCase()) return false;
     if (brandTerms.length) {
       const brandName = normalizeLocalCatalogSearchToken(doc.brand_name);
       if (!brandTerms.includes(brandName)) return false;

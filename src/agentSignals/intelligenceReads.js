@@ -15,6 +15,10 @@ const { numericVariantId } = require('../services/ucpLiveOfferRead');
 // Recommendation price tiers (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off: nothing changes).
 const listPriceTiers = require('../services/listPriceTiers');
 const { decideEmptyReason, emptyReasonFromOffersResolve } = require('./getOffersEmptyReason');
+// "Names no market" is one rule for every door (decision D-10): absent, null or a blank string.
+const { marketIsUnnamed } = require('../services/requestMarket');
+// The partner door's own signature shape (trimmed, case-insensitive), so both doors read one id the same way.
+const { isCatalogSignatureShape } = require('../services/partnerDoorOneProductId');
 
 // When a get_alternatives row's stored price was last READ, as the graph edge carries it: the candidate snapshot's
 // price_checked_at (the graph build copies it from the source row's price read under
@@ -35,6 +39,20 @@ const DEFAULT_RELATIONS = Object.freeze(['competitive_alternative', 'niche_speci
 
 function nonEmpty(v) {
   return typeof v === 'string' && v.trim() !== '';
+}
+
+// A product's catalog signature passed as `product_group_id`, normalised as it is stored (`sig_` + 32
+// lowercase hex, trimmed), or null. Read with the partner door's own shape (isCatalogSignatureShape: trimmed,
+// case-insensitive), so an upper-case or padded signature is the same product. The 28-char identity group id
+// (`sig_` + 24 hex) is NOT one.
+function signatureInGroupArg(v) {
+  return typeof v === 'string' && isCatalogSignatureShape(v) ? v.trim().toLowerCase() : null;
+}
+
+// `product_group_id` was sent with something in it: anything but absent, null or a blank string. Absent, null
+// and blank keep today's answer (no product named at all); every other value names a group id.
+function groupArgPresent(v) {
+  return v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
 }
 
 // --- candidate snapshot hydration (the pure half of the injected hydrateCandidates) -----------------------
@@ -364,11 +382,16 @@ function makeGetAlternatives(deps = {}) {
 /**
  * THE MARKET A get_offers CALLER DECLARED, whether or not anything is priced for it: the ISO-2 code,
  * or null when the caller declared none or sent something that is not a market at all ('USA', 'en-US',
- * a list). Invalid input is absent input (buyerRegion.js); a well-formed code is a declaration.
+ * a list). A well-formed code is a declaration; makeGetOffers refuses a sent value that is not one
+ * (`market_invalid`), so this null never reaches a fetch for it.
  */
 function getOffersDeclaredMarket(p) {
-  const raw = p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
-  return normalizeBuyerRegion(raw) || null;
+  return normalizeBuyerRegion(getOffersRawMarket(p)) || null;
+}
+
+/** The market field a get_offers caller sent, as sent: `market`, else `buyer_market`. */
+function getOffersRawMarket(p) {
+  return p && typeof p === 'object' ? (p.market !== undefined ? p.market : p.buyer_market) : null;
 }
 
 /**
@@ -626,7 +649,21 @@ function makeGetOffers(deps = {}) {
 
   return async function getOffers(params = {}) {
     const p = (params && params.payload) || params || {};
-    const subject = { kind: 'product', id: nonEmpty(p.product_id) ? p.product_id : p.product_group_id || null };
+    // THE PRODUCT ASKED ABOUT. offers.resolve takes a product id only (the fetch below never forwards
+    // `product_group_id`), so a call that named the product by `product_group_id` alone was answered with no
+    // offer for every product. Search and get_product hand out the product's signature in group-id fields, so
+    // a signature there IS the product id. Any other group-id value cannot be resolved here and is refused by
+    // name below, never fetched. A given `product_id` always wins.
+    // A non-string value (a number, a list, an object) is a group id this door cannot read: refused too.
+    const hasProductId = nonEmpty(p.product_id);
+    const groupArgSignature = hasProductId ? null : signatureInGroupArg(p.product_group_id);
+    // Otherwise exactly what the caller sent (absent, or blank, stays so: the fetch is byte-identical to before).
+    const productId = groupArgSignature || p.product_id;
+    const groupArg = groupArgSignature || p.product_group_id;
+    const unresolvableGroupArg = !hasProductId && !groupArgSignature && groupArgPresent(p.product_group_id);
+    // Only a string is echoed as an id (a non-string group arg is refused, and named as no id).
+    const groupEcho = typeof groupArg === 'string' ? groupArg : null;
+    const subject = { kind: 'product', id: hasProductId ? p.product_id : groupEcho || null };
     if (typeof fetchOffers !== 'function') {
       return {
         subject,
@@ -639,6 +676,26 @@ function makeGetOffers(deps = {}) {
     const limit = Number.isInteger(p.limit) ? p.limit : 10;
     const declared = getOffersDeclaredMarket(p);
     const marketCurrency = declared ? currencyForBuyerRegion(declared) : '';
+    // A market SENT that is not a country code ('USA', 'en-US', 123, a list) is refused by name, before any
+    // backend call. Read as absent, it fetched with no market at all: no currency rule ran, and one answer mixed
+    // offers priced in several currencies. Never guessed, never echoed. A market not sent at all keeps its own
+    // rule (the door assumes US and says so, D-10); a well-formed code nothing is priced in is answered below.
+    if (!declared && !marketIsUnnamed(getOffersRawMarket(p))) {
+      return {
+        subject,
+        best_offer: null,
+        signals: [],
+        metadata: {
+          offer_count: 0,
+          product_group_id: groupEcho || null,
+          market: null,
+          market_currency: null,
+          reason: 'market_invalid',
+          // GET_OFFERS_EMPTY_REASON, the reason door only: the same call answers the same.
+          ...(emptyReasonDoor() ? { reason_retriable: false } : {}),
+        },
+      };
+    }
     // A declared market nothing is priced in has no offer it may be shown (the door serves it nothing,
     // as search does: buyerMarket.resolveServingCurrency). Answered here, without a backend call.
     if (declared && !marketCurrency) {
@@ -648,7 +705,7 @@ function makeGetOffers(deps = {}) {
         signals: [],
         metadata: {
           offer_count: 0,
-          product_group_id: p.product_group_id || null,
+          product_group_id: groupEcho || null,
           market: declared,
           market_currency: null,
           reason: 'market_not_priced',
@@ -658,12 +715,29 @@ function makeGetOffers(deps = {}) {
       };
     }
     const market = getOffersBuyerMarket(p);
+    // A group id that is not a signature: no offer can be looked up for it. Named, not fetched (after the
+    // market checks above, so an unpriced market keeps its own reason).
+    if (unresolvableGroupArg) {
+      return {
+        subject,
+        best_offer: null,
+        signals: [],
+        metadata: {
+          offer_count: 0,
+          product_group_id: groupEcho,
+          ...(market ? { market, market_currency: marketCurrency, withheld_other_currency_count: 0 } : {}),
+          reason: 'product_group_id_not_product_id',
+          // GET_OFFERS_EMPTY_REASON, the reason door only: asking again with the same id changes nothing.
+          ...(emptyReasonDoor() ? { reason_retriable: false } : {}),
+        },
+      };
+    }
     const fetchArgs = {
       merchant_id: p.merchant_id,
-      product_id: p.product_id,
+      product_id: productId,
       // A listing's option named for its own cart (one offer per listing lists them in `variants`).
       ...(variantIdEnabled && nonEmpty(p.variant_id) ? { variant_id: String(p.variant_id).trim() } : {}),
-      product_group_id: p.product_group_id,
+      product_group_id: groupArg,
       currency: p.currency,
       // The caller's limit, market or not. The filter runs after the backend's cut, so a declared market
       // can get fewer in-currency offers than exist; over-fetching would fix that here but the backend
@@ -724,7 +798,7 @@ function makeGetOffers(deps = {}) {
       fetchArgs, market, currency: marketCurrency, mode: liveCartMode(), secret: liveVerificationSecret(),
     });
     const { best_offer, signals, best_price } = offersToSignals(offers, {
-      productId: p.product_id,
+      productId,
       limit,
       now,
       // FRESH BEST PRICE (pivota-backend #2635): the backend's pick, passed only when it sent one (null
@@ -763,7 +837,7 @@ function makeGetOffers(deps = {}) {
       signals,
       metadata: {
         offer_count: offers.length,
-        product_group_id: (res && res.product_group_id) || p.product_group_id || null,
+        product_group_id: (res && res.product_group_id) || groupArg || null,
         ...(namedVariant
           ? {
               variant_id: namedVariant,

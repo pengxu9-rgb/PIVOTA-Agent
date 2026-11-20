@@ -4,7 +4,7 @@ const logger = require('../logger');
 const crypto = require('crypto');
 const { query } = require('../db');
 // THE BUYER'S MARKET, AND THE CURRENCY ITS PAGE MUST BE IN (applyBuyerMarketFallback below).
-const { parseMarketList } = require('./servedMarkets');
+const { parseRequestMarketList } = require('./servedMarkets');
 const { resolveServingCurrency } = require('./buyerMarket');
 const { filterProductsToServingCurrency, isPricedInServingCurrency } = require('./servingCurrencyGuard');
 const { resolveCanonicalSearchProductPrice } = require('./searchProductPrice');
@@ -3103,8 +3103,9 @@ function normalizeDiscoveryRequest(input = {}) {
 /** ONE ISO-2 market the request names, else null. A list or a locale is not a market. */
 function resolveDiscoveryBuyerMarket(source) {
   const raw = source && typeof source === 'object' ? (source.buyer_market ?? source.buyerMarket) : null;
-  const named = parseMarketList(raw, null);
-  return named.length === 1 ? named[0] : null;
+  // A REQUEST market: any unreadable entry makes it unreadable (null), never the readable rest.
+  const named = parseRequestMarketList(raw);
+  return named && named.length === 1 ? named[0] : null;
 }
 
 function buildAnchorFeatures(view) {

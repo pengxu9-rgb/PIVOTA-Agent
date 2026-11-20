@@ -122,6 +122,34 @@ cannot succeed without a token bound to the final amount.
 | `PRODUCT_GROUP_ID_NOT_PRODUCT_ID` | `/mcp` door, flag on: the id is a product group id (`sig_` + 24 hex) with no servable member, or `product_group_id` was passed to `get_offers` | do not retry; pass the `product_id` of a search row |
 | `MERCHANT_PRODUCT_MISMATCH` | `/mcp` door, flag on: the `merchant_id` named beside the product is not one of the product's sellers | do not retry as sent; omit `merchant_id` or pass the one returned with the product |
 
+### The buyer market: reasons a call is refused or answered empty
+
+A market is the buyer's country as ISO 3166-1 alpha-2: exactly two letters (`US`, `sg`, ` GB ` are read as US, SG,
+GB). It is never guessed, never inferred from a currency, and never answered as another market. A market counts as
+not named only when it is absent, `null` or blank; any other value (`false`, `0`, an empty list) was sent and is read
+as a market, or refused as one.
+
+A call that names no market at all: on the `/mcp` and `/ucp/mcp` tools it is answered for a US buyer and says so in
+`market_assumed`. The `offers.resolve` operation does not label it yet: with no market it is answered without a buyer
+market, so its offers are not limited to one currency. Send the market whenever you know it.
+
+| Reason | Where it appears | Meaning | Caller recovery |
+|---|---|---|---|
+| `market_invalid` | `/mcp` `get_offers`: an empty answer, `metadata.reason`. The `offers.resolve` operation: `status: "error"`, `error.code: MARKET_INVALID`, `error.reason`. Checkout quotes on any door: `QUOTE_REQUIRED`, `detail.reason`, `detail.rejected_field: "market"`. ACP checkout (the fulfillment address `country`): `QUOTE_REQUIRED`, `detail.reason`, `detail.rejected_field: "fulfillment_address.country"` | a market was sent but is not two letters (`USA`, `en-US`, a number, a list, a look-alike character); the value is not repeated back; nothing was looked up or priced | resend with the buyer's two-letter country; do not retry the same value; never substitute a market |
+| `ucp_market_invalid` | `/ucp/mcp`, a string that is not two letters in any market argument: `catalog.context.address_country`, `insights.market`, `checkout.context.address_country`. Code `OPERATION_NOT_ALLOWED` on the catalog and insights tools, `QUOTE_REQUIRED` on checkout; `detail.rejected_field` names the field | the same fact on the UCP door; nothing was read | resend with the buyer's two-letter country in the named field |
+| `ucp_country_string_required` | `/ucp/mcp` `search_catalog` and `get_product`: a `catalog.context.address_country` that is not a string (`false`, `0`, a list, an object). Code `OPERATION_NOT_ALLOWED`; `detail.rejected_field: "catalog.context.address_country"` | the country must be a string when it is supplied; nothing was read | send the buyer's two-letter country as a string, or leave the field out |
+| `market_not_priced` | `/mcp` and `/ucp/mcp` `get_offers`: an empty answer, `metadata.reason`. The `offers.resolve` operation: `status: "error"`, `error.code: MARKET_NOT_PRICED`, the code in `market`. Checkout: `NO_MERCHANT_OFFER`, `detail.reason` | a well-formed country code Pivota prices nothing in (for example `DE`); no offer or price is shown for it, and none in another market's currency | do not retry; tell the buyer no price can be offered for that country; do not resend as another market |
+| `buyer_market_has_no_pricing_currency` | Search (`search_catalog`, the `find_products_multi` operation): a successful, empty page, named either in `metadata.search_decision.decision_lock_reason` or, when rows were withheld, by `metadata.serving_currency_guard.serving_currency: null` | the market sent is unreadable (including a list with any unreadable entry, such as `SG,USA`), names several markets, or is one Pivota prices nothing in; no product can be shown as priced for that buyer | do not retry the same value; send the buyer's one two-letter country |
+
+On `/mcp`, a checkout argument whose `market` is not two letters is refused as `INVALID_ARGUMENTS` before anything is
+priced; there is no separate reason token for it.
+
+On `/mcp`, `search_catalog`, `get_product` and `get_alternatives` refuse a `market` that was sent but is not a
+string (`false`, `0`, a list, an object, `true`) the same way: `INVALID_ARGUMENTS`, before anything is read, with
+the fixed message ``<tool>: `market` must be the buyer's country as an ISO 3166-1 alpha-2 code (for example US).``,
+which never repeats the value. `get_offers` answers it `market_invalid` (above). A string that is not two letters is
+answered as the rows above say.
+
 **Hard rule:** the model must never auto-retry a money operation on ambiguous failure.
 Retries are safe only via the same `idempotency_key`, which the kernel dedupes.
 

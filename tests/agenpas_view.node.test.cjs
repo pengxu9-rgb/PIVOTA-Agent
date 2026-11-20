@@ -680,10 +680,12 @@ test('parity with backend 229d1e587 (hold sets unchanged since 4dc09ce55): the e
   // Outcome-unknown codes the worker writes outside those two sets (kept explicit, so the shape never decides them).
   const GATEWAY_EXTRAS = ['money_result_seen', 'outcome_unknown', 'vic_order_outcome_unknown', 'pending_write_unreconcilable',
     'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked', 'vic_held'];
+  // The Reap rail's (pivota-backend services/reap_agentic_purchase.py; tests/agenpas_reap_consent.node.test.cjs).
+  const REAP_HOLD = ['checkout_unresolvable', 'checkout_read_permanent', 'checkout_dispatch_unresolved', 'checkout_created_hosted_url_refused'];
   assert.equal(BACKEND_CHECKOUT_HOLD.length, 24);
   assert.equal(BACKEND_VIC_HOLD.length, 7);
   // Membership in the EXPLICIT list, not the outcome: the shape regex alone must not be able to satisfy this.
-  assert.deepEqual([...HELD_CODES].sort(), [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD, ...GATEWAY_EXTRAS].sort());
+  assert.deepEqual([...HELD_CODES].sort(), [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD, ...GATEWAY_EXTRAS, ...REAP_HOLD].sort());
   for (const code of HELD_CODES) assert.equal(FAILED_CODES.has(code), false, `${code} is on both lists`);
   // And each is decisive against a FAILED code on the same purchase (precedence, not the shape).
   for (const code of [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD]) {
@@ -765,7 +767,11 @@ test('parity: the explicit FAILED list is exactly the backend\'s nothing-submitt
     'checkout_setup_refused', 'checkout_confirm_refused', 'checkout_confirm_total_refused', 'checkout_captcha_failed',
     'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported', 'token_request_unresolved', 'pay_step_unavailable',
     'binding_answer_unrecognised', 'approval_answer_unrecognised', 'token_answer_unrecognised', 'token_mismatch',
-    'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved', 'operator_confirmed_not_charged'];
+    'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved', 'operator_confirmed_not_charged',
+    // The Reap rail's codes written before any checkout exists (tests/agenpas_reap_consent.node.test.cjs).
+    'enrollment_no_hosted_action', 'enrollment_id_conflict', 'enrollment_row_unreadable', 'enrollment_not_activatable',
+    'enrollment_dead', 'enrollment_create_failed', 'enrollment_read_failed', 'no_active_enrollment', 'enrollment_not_active',
+    'quote_id_missing'];
   assert.deepEqual([...FAILED_CODES].sort(), [...EXPECTED_FAILED].sort());
 });
 

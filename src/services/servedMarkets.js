@@ -32,16 +32,26 @@
  * one door mixes their pricing into one shopper's results unless the request names a market.
  */
 
+// The one "names no market" rule (absent, null, blank), shared with every door.
+const { marketIsUnnamed } = require('./requestMarket');
+
 const DEFAULT_MARKET = 'US';
 
-/** Split a comma/whitespace list into upper-case market codes, order preserved, deduped. */
-function parseMarketList(raw, fallback = DEFAULT_MARKET) {
+/**
+ * THE DEPLOYMENT'S OWN LIST (an env value such as CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET): split a comma/whitespace
+ * list into upper-case market codes, order preserved, deduped. An entry that is not a code is a typo in OUR config and
+ * is SKIPPED, the rest kept. Never use this for a market a REQUEST carries: see parseRequestMarketList.
+ */
+function parseDeploymentMarketList(raw, fallback = DEFAULT_MARKET) {
   const out = [];
   for (const part of String(raw == null ? '' : raw).split(/[,\s]+/)) {
-    const code = part.trim().toUpperCase();
-    // A market code is two letters. Anything else is a typo or a locale ("en-US"), and
-    // silently binding it would match no rows — the failure this module exists to stop.
-    if (/^[A-Z]{2}$/.test(code) && !out.includes(code)) out.push(code);
+    const entry = part.trim();
+    // A market code is two ASCII letters, tested BEFORE upcasing (case mapping folds lookalikes such as
+    // 'uſ' or the ligature 'ﬁ' into 'US' / 'FI'). Anything else is a typo, a locale ("en-US") or a lookalike,
+    // and silently binding it would match no rows — the failure this module exists to stop.
+    if (!/^[A-Za-z]{2}$/.test(entry)) continue;
+    const code = entry.toUpperCase();
+    if (!out.includes(code)) out.push(code);
   }
   if (out.length) return out;
   // `fallback: null` means "no fallback — an empty list is a real answer". Without this,
@@ -49,15 +59,49 @@ function parseMarketList(raw, fallback = DEFAULT_MARKET) {
   // one", because the empty parse coerced back to ['US'] and the deployment list was never
   // consulted. Caught by this module's own test, which is why the parameter is explicit.
   if (fallback === null) return [];
-  const fb = String(fallback || DEFAULT_MARKET).trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(fb) ? [fb] : [DEFAULT_MARKET];
+  const fb = String(fallback || DEFAULT_MARKET).trim();
+  return /^[A-Za-z]{2}$/.test(fb) ? [fb.toUpperCase()] : [DEFAULT_MARKET];
+}
+
+/**
+ * A MARKET LIST A REQUEST CARRIES (`search.market`, `metadata.market`, a buyer market): the codes it names, `[]` when
+ * it names none, or `null` when it is UNREADABLE.
+ *   - Names none: absent, null or a blank string ONLY -- the one "no market" rule every door shares
+ *     (requestMarket.marketIsUnnamed). `false`, `0`, `[]` or any other non-string were SENT: unreadable, never silence
+ *     (silence is answered for a US buyer, so reading them as silence served USD unlabelled).
+ *   - Unreadable: any entry not two ASCII letters (tested before upcasing), a value that is neither a string nor a
+ *     list of strings, or one that names no code at all (' , ', []). 'USA,SG' and 'SG,ﬁ' are unreadable, not SG --
+ *     the purchasability gate's unkeyable rule; skipping the bad entry would serve a market the buyer did not name.
+ * Order preserved, deduped, upper-cased.
+ */
+function parseRequestMarketList(raw) {
+  if (marketIsUnnamed(raw)) return [];
+  let entries;
+  if (Array.isArray(raw)) {
+    if (!raw.every((entry) => typeof entry === 'string')) return null;
+    entries = raw.flatMap((entry) => entry.split(/[,\s]+/));
+  } else if (typeof raw === 'string') {
+    entries = raw.split(/[,\s]+/);
+  } else {
+    return null;
+  }
+  const out = [];
+  for (const part of entries) {
+    const entry = part.trim();
+    if (entry === '') continue;
+    if (!/^[A-Za-z]{2}$/.test(entry)) return null;
+    const code = entry.toUpperCase();
+    if (!out.includes(code)) out.push(code);
+  }
+  // Something was sent and it names no code (' , ', []): unreadable, not silence.
+  return out.length ? out : null;
 }
 
 /**
  * The markets this deployment serves, from the environment. Always at least one element.
  */
 function servedMarkets(env = process.env) {
-  return parseMarketList(env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET, DEFAULT_MARKET);
+  return parseDeploymentMarketList(env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET, DEFAULT_MARKET);
 }
 
 /**
@@ -68,8 +112,10 @@ function servedMarkets(env = process.env) {
  * served list apply. `requested` may be a string or a list.
  */
 function marketsForRequest(requested, env = process.env) {
-  const asked = parseMarketList(requested, null);
-  if (asked.length) return asked;
+  // What the lanes BIND. An unreadable request binds the served list, exactly as a wholly unreadable value always
+  // did; whether anything is SERVED for it is buyerMarket.resolveServingCurrency's answer (null: nothing, named).
+  const asked = parseRequestMarketList(requested);
+  if (asked && asked.length) return asked;
   return servedMarkets(env);
 }
 
@@ -113,7 +159,7 @@ function primaryMarket(env = process.env) {
  * mismatch is precisely the bug this change already made once.
  */
 function marketBind(markets, paramRef) {
-  const list = Array.isArray(markets) ? markets : parseMarketList(markets);
+  const list = Array.isArray(markets) ? markets : parseDeploymentMarketList(markets);
   // An EMPTY list would emit `market = ANY($1::text[])` with `[]` — valid SQL that matches
   // nothing, silently. Every caller goes through servedMarkets()/marketsForRequest(), which
   // never return empty, so reaching this means a caller built a list by hand and got it wrong.
@@ -129,7 +175,8 @@ function marketBind(markets, paramRef) {
 module.exports = {
   DEFAULT_MARKET,
   marketBind,
-  parseMarketList,
+  parseDeploymentMarketList,
+  parseRequestMarketList,
   servedMarkets,
   marketsForRequest,
   laneMarkets,

@@ -135,8 +135,10 @@ function normalizeCacheHost(raw) {
 
 /** The declared market (ISO-2 Pivota prices) and its currency, or null. Never a default. */
 function declaredMarket(raw) {
-  const market = str(raw).toUpperCase();
-  if (!/^[A-Z]{2}$/.test(market)) return null;
+  // Two ASCII letters, tested before upcasing: case mapping folds lookalikes ('uſ', 'ﬁ') into ASCII codes.
+  const text = str(raw);
+  if (!/^[A-Za-z]{2}$/.test(text)) return null;
+  const market = text.toUpperCase();
   const currency = currencyForBuyerRegion(market);
   return currency ? { market, currency } : null;
 }

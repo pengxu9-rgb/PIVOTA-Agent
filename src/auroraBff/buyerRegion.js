@@ -65,8 +65,11 @@ const BUYER_REGION_CURRENCY = Object.freeze({
  */
 function normalizeBuyerRegion(raw) {
   if (typeof raw !== 'string') return '';
-  const token = raw.trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(token) ? token : '';
+  // The shape is checked on the TRIMMED value BEFORE upcasing: Unicode case mapping turns lookalikes into
+  // ASCII ('uſ' -> 'US', the ligature 'ﬁ' -> 'FI', dotless 'ıt' -> 'IT'), so checking after it read them as real
+  // markets. Only two ASCII letters are a region; anything else is '' (this layer's unreadable value).
+  const token = raw.trim();
+  return /^[A-Za-z]{2}$/.test(token) ? token.toUpperCase() : '';
 }
 
 /**
@@ -108,6 +111,17 @@ function currencyForBuyerRegion(region) {
   const normalized = normalizeBuyerRegion(region);
   if (!normalized) return '';
   return BUYER_REGION_CURRENCY[normalized] || '';
+}
+
+/**
+ * The market an offers.resolve call may NAME: the normalised ISO-2 code when this gateway prices it, else null
+ * (unreadable, or a well-formed code with no currency here, e.g. DE, ZZ). The rule get_offers already applies
+ * (intelligenceReads getOffersBuyerMarket). Null sends no market: the backend refuses a market it does not list
+ * (`market_not_priced`), which would cost a caller the lane entirely, while a call with no market is answered.
+ */
+function pricedBuyerRegion(raw) {
+  const region = normalizeBuyerRegion(raw);
+  return region && currencyForBuyerRegion(region) ? region : null;
 }
 
 /**
@@ -168,6 +182,7 @@ module.exports = {
   resolveBuyerRegion,
   isRejectedBuyerRegionInput,
   currencyForBuyerRegion,
+  pricedBuyerRegion,
   buyerRegionFromContext,
   explicitBuyerMarket,
   resolveBuyerRegionForBody,

@@ -162,7 +162,7 @@ import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 // from this module, so this cannot cycle.
 import { reapAgenticLaneEnabled, reapAgenticCreateEnabled, reapOfferCodesEnabled, REAP_CHECKOUT_ID_MAX_CHARS } from "./ucpReapAgenticLane.js";
 import { canonicalReapMerchantDomain } from "./ucpExpectedSeller.js";
-import { storefrontDiscountCodesEnabled } from "./ucpCheckoutEscalation.js";
+import { storefrontDiscountCodesEnabled, checkoutMarketInvalidRefusal } from "./ucpCheckoutEscalation.js";
 // The pinned UCP line (CommonJS, so the named exports arrive on the default import).
 import ucpSpecVersion from "../../safety-kernel/src/protocol/ucpSpecVersion.cjs";
 
@@ -1587,19 +1587,59 @@ function readSearchCurrency(context, code) {
   return nonEmpty(currency) ? currency.trim() : undefined;
 }
 
+// ---- A MARKET THE CALLER SENT IS READ AS A MARKET, OR REFUSED BY NAME ---------------------------------------
+//
+// Every market-bearing argument on this door goes through `readSentMarket`: `catalog.context.address_country`
+// (search_catalog, get_product), `insights.market` (get_alternatives, get_offers) and
+// `checkout.context.address_country` (create_checkout, update_checkout). A value that names no market (absent,
+// null, blank) stays absent, so the no-market rule (decision D-10: answered as US, labelled `market_assumed`) is
+// unchanged. A value that IS sent but cannot be read as a country code (not a string, or a string that does not
+// trim and upper-case to two letters: `USA`, `en-US`, 123, a list) is refused before anything is read, with the
+// reason this door already gives a storefront checkout for the same thing (`ucp_market_invalid`,
+// ucpCheckoutEscalation marketNotPricedRefusal). It was dropped and answered as an assumed US: a market the caller
+// named was replaced. The value is never echoed. A readable code is forwarded exactly as before (trimmed, case as
+// sent); a well-formed code nothing is priced in (DE, ZZ) keeps its own downstream answer (`market_not_priced`).
+export const UCP_MARKET_INVALID_REASON = "ucp_market_invalid";
+// Two ASCII letters, tested on the trimmed value BEFORE any upcasing: Unicode case mapping turns lookalikes into
+// ASCII ('uſ' -> 'US', the ligature 'ﬁ' -> 'FI', 'ıt' -> 'IT'), so testing after it read them as markets.
+const READABLE_MARKET_RE = /^[A-Za-z]{2}$/;
+
+function readSentMarket(raw, { code, field }) {
+  if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) return undefined;
+  if (typeof raw !== "string" || !READABLE_MARKET_RE.test(raw.trim())) {
+    throw ucpRefusal(code, UCP_MARKET_INVALID_REASON, [
+      `\`${field}\` is not a country code this door can read, so there is no buyer market to answer this for.`,
+      "Send the buyer's country as ISO 3166-1 alpha-2 (two letters); a market is never guessed, and nothing was read.",
+    ].join(" "), { rejected_field: field });
+  }
+  return raw.trim();
+}
+
 function readSearchCountry(context, code) {
   if (!isPlainObject(context)) return undefined;
   const country = own(context, "address_country");
   if (country === undefined) return undefined;
+  // Kept as it was: a non-string here was already refused by name, under its own reason.
   if (typeof country !== "string") {
     throw ucpRefusal(code, "ucp_country_string_required",
       "`catalog.context.address_country` must be a country code string when supplied.", { rejected_field: "catalog.context.address_country" });
   }
-  const trimmed = country.trim();
-  if (!trimmed) return undefined;
-  // The UCP schema accepts any string. Let the buyer-market resolver decide whether a code is
-  // supported, while keeping schema-valid calls executable (including future territories).
-  return trimmed;
+  return readSentMarket(country, { code, field: "catalog.context.address_country" });
+}
+
+/**
+ * `checkout.context.address_country`, read only to refuse an unreadable one (the context is forwarded into nothing),
+ * with the envelope this door's storefront lane already gives for it (ucpCheckoutEscalation), word for word.
+ */
+function refuseUnreadableCheckoutMarket(checkout) {
+  const context = own(checkout, "context");
+  if (!isPlainObject(context)) return;
+  try {
+    readSentMarket(own(context, "address_country"), { code: CHECKOUT_REFUSAL_CODE, field: "checkout.context.address_country" });
+  } catch (error) {
+    if (error && error.detail && error.detail.reason === UCP_MARKET_INVALID_REASON) throw checkoutMarketInvalidRefusal();
+    throw error;
+  }
 }
 
 /**
@@ -1994,6 +2034,7 @@ const SPECS = Object.freeze({
       const meta = requireMeta(args, code);
       const idempotency_key = requireIdempotencyKey(meta, code);
       const checkout = requireCheckoutObject(args, "create_checkout", env);
+      refuseUnreadableCheckoutMarket(checkout);
       return { idempotency_key, quote: mapQuote(checkout, { update: false }) };
     },
   }),
@@ -2024,6 +2065,7 @@ const SPECS = Object.freeze({
       // consulted — reading it would let a caller re-price a session it never named at the top level.
       const session_id = requireTopLevelId(args, code, "update_checkout");
       const checkout = requireCheckoutObject(args, "update_checkout", env);
+      refuseUnreadableCheckoutMarket(checkout);
       return { idempotency_key, session_id, quote: mapQuote(checkout, { update: true }) };
     },
   }),
@@ -2150,7 +2192,7 @@ const SPECS = Object.freeze({
         product_id: insights.id,
         relation,
         include_dupes: readOptionalBoolean(insights.raw, "include_dupes"),
-        market: readOptionalString(insights.raw, "market"),
+        market: readSentMarket(own(insights.raw, "market"), { code, field: "insights.market" }),
         max_price_ratio: maxPriceRatio,
         limit: readOptionalInteger(insights.raw, "limit", 1, 20),
       });
@@ -2185,7 +2227,7 @@ const SPECS = Object.freeze({
       return pruneUndefinedArgs({
         product_id: insights.id,
         currency: readOptionalString(insights.raw, "currency"),
-        market: readOptionalString(insights.raw, "market"),
+        market: readSentMarket(own(insights.raw, "market"), { code, field: "insights.market" }),
         limit: readOptionalInteger(insights.raw, "limit", 1, 10),
       });
     },

@@ -923,9 +923,88 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(seedAttributionMintMarket({ market: 'SG', market_assumed: true }, {}, {})).toBe('SG');
     expect(seedAttributionMintMarket({ market: 'US', market_assumed: 'true' }, {}, {})).toBe('US');
     expect(seedAttributionMintMarket({ market: 'US' }, {}, {})).toBe('US');
-    expect(seedAttributionMintMarket({}, { market: 'JP' }, {})).toBe('JP');
+    // A flat payload is the search (the caller passes it as `search`), so its market counts.
+    const flat = { query: 'serum', market: 'JP' };
+    expect(seedAttributionMintMarket(flat, flat, {})).toBe('JP');
     expect(seedAttributionMintMarket({}, {}, { market: 'GB' })).toBe('GB');
     expect(seedAttributionMintMarket({}, {}, {})).toBe(null);
+  });
+
+  test('the discovery feed is handed the market the request SENT (requestedMarketOf + marketIsUnnamed), never by truthiness', () => {
+    const { withDiscoveryBuyerMarket } = require('../../src/server')._debug;
+    const feed = { query: 'serum', buyer_market: 'JP', buyerMarket: 'JP' };
+    // A client-written buyer_market never survives; the door's reader is the only source.
+    expect(withDiscoveryBuyerMarket(feed, { search: {} }, {})).toEqual({ query: 'serum' });
+    expect(withDiscoveryBuyerMarket(feed, { search: { market: 'SG' } }, {})).toEqual({ query: 'serum', buyer_market: 'SG' });
+    // Blank names no market: metadata's is the one served.
+    expect(withDiscoveryBuyerMarket(feed, { search: { market: '  ' } }, { market: 'SG' })).toEqual({ query: 'serum', buyer_market: 'SG' });
+    // A sent false/0/[] is the request's market (the feed reads it as unreadable), never dropped for silence.
+    for (const sent of [false, 0, []]) {
+      expect(withDiscoveryBuyerMarket(feed, { search: { market: sent } }, { market: 'SG' })).toEqual({ query: 'serum', buyer_market: sent });
+    }
+    expect(withDiscoveryBuyerMarket(feed, { search: { market: null } }, {})).toEqual({ query: 'serum' });
+  });
+
+  test('the legacy-seed detail market reads requestedMarketOf, and answers every reachable input as firstNonEmptyString did', () => {
+    const { legacySeedDetailRequestedMarket, firstNonEmptyString } = require('../../src/server')._debug;
+    const old = (options, payload, metadata) => firstNonEmptyString(options?.market, payload?.market, metadata?.market) || undefined;
+    // Reachable today: strings, blank and absent on each carrier (/mcp and /ucp/mcp refuse a non-string market; the
+    // invoke detail route reads requestedMarketOf already). Every combination answers exactly as before.
+    const values = [undefined, null, '', '  ', 'US', ' sg ', 'GB', 'USA', 'en-US'];
+    let cells = 0;
+    for (const o of values) for (const p of values) for (const m of values) {
+      const options = o === undefined ? {} : { market: o };
+      const payload = { product: { product_id: 'p_any' }, ...(p === undefined ? {} : { market: p }) };
+      const metadata = m === undefined ? {} : { market: m };
+      expect([o, p, m, legacySeedDetailRequestedMarket(options, payload, metadata)]).toEqual([o, p, m, old(options, payload, metadata)]);
+      cells += 1;
+    }
+    expect(cells).toBe(values.length ** 3);
+    // Not reachable today, and now the one carrier rule: a sent non-string is the carrier's value (the gate reads it
+    // as unreadable), never skipped to metadata's market or turned into text.
+    for (const sent of [false, 0, [], {}, true]) {
+      expect(legacySeedDetailRequestedMarket({}, { market: sent }, { market: 'SG' })).toEqual(sent);
+    }
+  });
+
+  test('the backend search market and the public beauty "named" test read requestedMarketOf: only sent non-strings change', () => {
+    const { requestedSearchMarketText, publicBeautyMarketNamed, firstNonEmptyString } = require('../../src/server')._debug;
+    const oldBody = (search, metadata) => firstNonEmptyString(search?.market, metadata?.market);
+    const oldNamed = (search, metadata) => Boolean(firstNonEmptyString(search?.market, metadata?.market));
+    const reachable = [undefined, null, '', '  ', 'US', ' sg ', 'GB', 'USA', 'en-US'];
+    let cells = 0;
+    for (const sm of reachable) for (const mm of reachable) {
+      const search = sm === undefined ? {} : { market: sm };
+      const metadata = mm === undefined ? {} : { market: mm };
+      expect([sm, mm, requestedSearchMarketText(search, metadata)]).toEqual([sm, mm, oldBody(search, metadata)]);
+      expect([sm, mm, publicBeautyMarketNamed(search, metadata)]).toEqual([sm, mm, oldNamed(search, metadata)]);
+      cells += 1;
+    }
+    expect(cells).toBe(81);
+    // Sent non-strings: every cell where the answer changes, and only those. The old rule skipped [] to metadata's
+    // market (asking the backend for SG while the page served nothing) and read a lone [] as "no market named".
+    const changed = [];
+    for (const sm of [false, 0, [], {}, true]) for (const mm of [undefined, 'SG']) {
+      const search = { market: sm };
+      const metadata = mm === undefined ? {} : { market: mm };
+      const body = [oldBody(search, metadata), requestedSearchMarketText(search, metadata)];
+      const named = [oldNamed(search, metadata), publicBeautyMarketNamed(search, metadata)];
+      if (body[0] !== body[1]) changed.push(`body ${JSON.stringify(sm)}+${mm || '-'}: ${body[0]} -> ${body[1]}`);
+      if (named[0] !== named[1]) changed.push(`named ${JSON.stringify(sm)}+${mm || '-'}: ${named[0]} -> ${named[1]}`);
+      expect(publicBeautyMarketNamed(search, metadata)).toBe(true);
+    }
+    expect(changed.sort()).toEqual(['body []+SG: SG -> null', 'named []+-: false -> true']);
+  });
+
+  test('the mint market is the market every lane served: requestedMarketOf, never `||`', () => {
+    const { seedAttributionMintMarket } = require('../../src/server')._debug;
+    // Blank names no market: metadata's is the one served, so it is the one minted (before: none).
+    expect(seedAttributionMintMarket({ market: '   ' }, {}, { market: 'SG' })).toBe('SG');
+    expect(seedAttributionMintMarket({ market: '' }, {}, { market: 'SG' })).toBe('SG');
+    // A sent non-string is the search block's market, unreadable: no lane served metadata's SG, nothing is minted.
+    for (const sent of [false, 0, []]) expect(seedAttributionMintMarket({ market: sent }, {}, { market: 'SG' })).toBe(null);
+    // A payload market beside a search block is read by no lane.
+    expect(seedAttributionMintMarket({ query: 'serum' }, { search: { query: 'serum' }, market: 'JP' }, {})).toBe(null);
   });
 
   test('the backend search body carries market_assumed only for an assumed market (provenance for its minters)', () => {

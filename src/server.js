@@ -44,6 +44,7 @@ const {
   projectInvokeResponse,
 } = require('./invokeEgress');
 const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('./services/requestMarket');
+const { currencyForBuyerRegion: offersResolveMarketCurrency } = require('./auroraBff/buyerRegion');
 const {
   issuingAgentAssertionHeaders,
   oauthClientFromClaims,
@@ -491,7 +492,9 @@ function withDiscoveryBuyerMarket(discoveryPayload, requestPayload, metadata) {
   const market = requestedMarketOf(requestPayload, metadata);
   const source = discoveryPayload && typeof discoveryPayload === 'object' && !Array.isArray(discoveryPayload) ? discoveryPayload : {};
   const { buyer_market: _clientBuyerMarket, buyerMarket: _clientBuyerMarketCamel, ...rest } = source;
-  return market ? { ...rest, buyer_market: market } : rest;
+  // Stamped whenever it was SENT (requestMarket.marketIsUnnamed), not by truthiness: a sent false/0 is the request's
+  // market, which the feed reads as unreadable (resolveDiscoveryBuyerMarket), never dropped for silence here.
+  return marketIsUnnamed(market) ? rest : { ...rest, buyer_market: market };
 }
 const { readCanonicalSearchPricePair, resolveCanonicalSearchProductPrice } = require('./services/searchProductPrice');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
@@ -2871,6 +2874,23 @@ function shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
   );
 }
 
+// THE MARKET THE BACKEND SEARCH IS ASKED FOR: the one the page is bound for (servingCurrencyGuard.requestedMarketOf,
+// the search block's when SENT, else metadata's), trimmed. A sent non-string is passed as its text, which the
+// backend reads as an unknown partition, never skipped to metadata's market: before, `firstNonEmptyString` sent a
+// sent `[]` + metadata SG upstream as SG while the gateway's guard served nothing for it.
+function requestedSearchMarketText(search, metadata) {
+  const market = requestedMarketOf({ search }, metadata);
+  if (marketIsUnnamed(market)) return null;
+  const text = (typeof market === 'string' ? market : String(market)).trim();
+  return text || null;
+}
+
+// Whether the public beauty lane's request NAMES a market, by the same carrier rule (a sent value counts, even
+// one no currency is known for; absent, null and blank do not).
+function publicBeautyMarketNamed(search, metadata) {
+  return !marketIsUnnamed(requestedMarketOf({ search }, metadata));
+}
+
 function buildSearchProductsV2Body({
   payload = {},
   search = {},
@@ -2908,7 +2928,7 @@ function buildSearchProductsV2Body({
     merchant_ids: !merchantId && merchantIds.length > 0 ? merchantIds : undefined,
     search_all_merchants: searchAllMerchants,
     query: search?.query != null ? String(search.query || '') : undefined,
-    market: firstNonEmptyString(search?.market, metadata?.market),
+    market: requestedSearchMarketText(search, metadata),
     // Decision D-10: the search market was ASSUMED (US, for a call that named none). Provenance only, for the
     // backend's `/r` minters; absent for every other call, so their bodies are byte-identical.
     // ...and only beside the US it assumed (defence in depth: the invoke route already strips an unvouched one).
@@ -14568,7 +14588,7 @@ function maybeOverlayLiveSearchPriceRaw(response, search = {}, { intent = null, 
     priceCache: priceCacheHooks,
     hostGate: priceHostGate,
     ...(_searchOverlayFetchForTest ? { fetchImpl: _searchOverlayFetchForTest } : {}),
-    // The buyer market as the search lane resolved it (`search.market || metadata.market`), passed by the caller.
+    // The buyer market as the search lane resolved it (servingCurrencyGuard.requestedMarketOf), passed by the caller.
     market: typeof buyerMarket === 'string' && buyerMarket.trim() ? buyerMarket.trim() : (typeof search.market === 'string' ? search.market : undefined),
   }));
 }
@@ -23976,7 +23996,8 @@ async function searchBeautyExternalSeedProductsMainline({
   // `servingCurrency` is the currency every row on the page must carry, flag or no flag: a silent
   // request is a US request (USD), a named priced market is its own currency, and anything else
   // is null and served nothing. See resolveServingCurrency.
-  const { markets, buyerMarket, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(search.market || metadata.market);
+  // The request market by the shared carrier rule (servingCurrencyGuard.requestedMarketOf), never `||`.
+  const { markets, buyerMarket, buyerCurrency, servingCurrency } = resolveBuyerMarketScope(requestedMarketOf({ search }, metadata));
   const market = markets[0];
   // What the answer RECORDS as its market (search_quality_contract.hard_constraints.market): the buyer's
   // market when the request named one read as such, else the lane market. With the flag on, `market` is the
@@ -24645,7 +24666,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
       ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
     },
-  }, search, { intent, budgetConstraint, buyerMarket: search.market || metadata.market });
+  }, search, { intent, budgetConstraint, buyerMarket: requestedMarketOf({ search }, metadata) });
 }
 
 const LOOKUP_EQUIVALENCE_FAMILIES = [
@@ -32213,6 +32234,20 @@ function buildAgenpasPurchaseReader(log, deps = {}) {
   });
 }
 
+// AgenPas consent (docs/agenpas.md, "Terms and privacy consent"): the buyer's acceptance of the terms, recorded
+// server-to-server with its OWN key (AGENPAS_INTERNAL_CONSENT_KEY, read per call; the read key stays read-only). Only
+// reached while AGENPAS_CONSENT_ENABLED is on.
+function buildAgenpasConsentWriter(log, deps = {}) {
+  const { createBackendConsentWriter } = require('./agenpas/purchaseReader');
+  const agenpasConfig = require('./agenpas/config');
+  return createBackendConsentWriter({
+    baseUrl: deps.baseUrl || PIVOTA_API_BASE,
+    fetchImpl: (deps.privateBackendHop || privateBackendHop).wrapFetch(deps.fetchImpl),
+    internalKey: () => agenpasConfig.internalConsentKey(),
+    logger: log,
+  });
+}
+
 function isAgentPurchaseOrderReadEnabled() {
   // Default OFF. Off: get_order treats a `pp_` id exactly as before (a kernel lookup, which fails closed).
   const normalized = String(process.env.AGENT_PURCHASE_ORDER_READ_ENABLED || '').trim().toLowerCase();
@@ -32448,12 +32483,14 @@ function shadowPdpLiveRead(responsePayload, { market, ownMoneyGap, pageState, ra
     if (!reader || !(random() < ucpLivePdpSample())) return false;
     const detail = normalizePdpV2ToProductDetail(responsePayload);
     if (!detail || !detail.product) return false;
-    const { productHost, productVariantIds, STATUS } = require('./services/ucpLiveOfferRead');
+    const { productHost, productVariantIds, livePdpReadCountryKey, STATUS } = require('./services/ucpLiveOfferRead');
     const cache = ucpLivePdpCache();
     const host = productHost(detail.product);
     const ids = productVariantIds(detail.product);
-    const country = String(market || '').trim().toUpperCase();
-    const keyed = Boolean(host && ids.length && /^[A-Z]{2}$/.test(country));
+    // The market this read is keyed (claimed, budgeted, recorded) under: livePdpReadCountryKey, two ASCII letters
+    // tested before upcasing, so a lookalike ('uſ', 'ﬁ') is never keyed as the code case mapping folds it into.
+    const country = livePdpReadCountryKey(market);
+    const keyed = Boolean(host && ids.length && country);
     if (keyed && !cache.claimRead(host, country, ids)) return false;
     // Over this store's per-minute read budget (shared with pdp_live_read): no read, the claim released.
     if (keyed && !ucpLivePdpHostBudget().take(host)) {
@@ -32948,6 +32985,19 @@ function legacySeedNoActiveSeeds(productIds) {
 // served default): a quarantined source, an attached seed or a seed priced in another currency is not
 // re-routed, and neither is a request whose market has no single serving currency. The built detail is
 // checked again with the door's own currency test before it is served.
+// The market the legacy-seed detail lane is gated for: the kernel's declared `options.market` when SENT, else the
+// request's by the one carrier rule (servingCurrencyGuard.requestedMarketOf: the payload's when sent, else metadata's).
+// Before, `firstNonEmptyString` skipped `[]` and blank to the next carrier and turned other non-strings into text.
+// For every value that reaches here today (strings, blank, absent: /mcp and /ucp/mcp refuse a non-string market and
+// the invoke detail route reads requestedMarketOf already) the answer is the same; a sent non-string is now passed
+// raw, and the gate reads it as unreadable (no re-route) instead of falling through to the next carrier.
+function legacySeedDetailRequestedMarket(options, payload, metadata) {
+  const declared = options && typeof options === 'object' ? options.market : undefined;
+  const market = !marketIsUnnamed(declared) ? declared : requestedMarketOf(payload, metadata);
+  if (marketIsUnnamed(market)) return undefined;
+  return typeof market === 'string' ? market.trim() : market;
+}
+
 async function readLegacySeedDetail(merchantId, productId, { requestedMarket } = {}) {
   if (!routesToLegacySeedLane(merchantId, productId)) return null;
   const legacySeedGate = legacySeedDetailGate(requestedMarket);
@@ -33031,7 +33081,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // neither the backend products_cache read nor the unscoped signature lane can resolve it.
       // The buyer's market rides along exactly as it does to get_pdp_v2 below (declared, then the payload's own).
       const legacySeedDetail = await readLegacySeedDetail(rawDetailMerchant, pid, {
-        requestedMarket: firstNonEmptyString(options?.market, payload?.market, metadata?.market) || undefined,
+        requestedMarket: legacySeedDetailRequestedMarket(options, payload, metadata),
       });
       if (legacySeedDetail) return legacySeedDetailResponse(legacySeedDetail);
       const seedSupplyUnservableUpstream = isSeedSupplyUnservableUpstream(rawDetailMerchant, pid);
@@ -38991,16 +39041,22 @@ function isAcpDelegatePaymentRequest(req) {
   return p.toLowerCase().replace(/\/+$/, '') === target;
 }
 
+// express.json's default media-type match (`application/json`, parameters ignored), spelled inline so this does not
+// depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed. Named (and on `_debug`)
+// so the AgenPas host carve-out can be tested on its own (tests/agenpas_server_mount.test.js).
+function globalJsonBodyType(req) {
+  if (isAcpDelegatePaymentRequest(req)) return false;
+  // The AgenPas host (only while AGENPAS_ENABLED is on): its one body, the consent POST, is parsed by its own route,
+  // strictly and at most 1 kB (src/agenpas/router.js). Off, or any other host: false, so nothing changes.
+  if (agenpasHostGuard.skipsGlobalBodyParser(req)) return false;
+  const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  return ct === 'application/json';
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
-  // express.json's default media-type match (`application/json`, parameters ignored), spelled inline so this
-  // does not depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed.
-  type: (req) => {
-    if (isAcpDelegatePaymentRequest(req)) return false;
-    const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    return ct === 'application/json';
-  },
+  type: globalJsonBodyType,
   verify: (req, res, buf, encoding) => {
     try {
       JSON.parse(buf);
@@ -39131,6 +39187,7 @@ app.use((req, res, next) => {
 // handling, exactly as before. The routes live in src/agenpas/router.js.
 app.use(require('./agenpas/router').createAgenpasRouter({
   reader: buildAgenpasPurchaseReader(logger),
+  consentWriter: buildAgenpasConsentWriter(logger),
   logger,
 }));
 // …and on the AgenPas host an /agenpas path the router did not serve goes no further.
@@ -40979,7 +41036,64 @@ function extractOffersResolvePdpTargetFromResponse(responseBody, { fallbackQuery
   return null;
 }
 
-function normalizeOffersResolveInput(rawPayload) {
+/**
+ * THE MARKET AN offers.resolve CALL TO THIS DOOR IS ANSWERED FOR, and whether it is refused. ONE reader.
+ *
+ * The market is the one this door's purchasability gate keys on: the same carriers (`offers.market`,
+ * `payload.market`, `metadata.market`) by the same rule (offersResolveGateBuyerMarket -> selectBuyerMarket,
+ * docs/merchant-purchasability-gate.md section 5): the first readable ISO-2 code wins, upper-cased; an unreadable
+ * carrier is skipped ('USA' beside 'SG' is SG). Then:
+ *   - a market this gateway does not price (DE, ZZ: no currency) is refused, `market_not_priced`, as get_offers
+ *     refuses it and as the backend does after be#2843; forwarded, it was answered in every currency (before
+ *     be#2843) or re-labelled `no_offer_available` (after);
+ *   - a carrier SENT with none readable is refused, `market_invalid`;
+ *   - nothing sent anywhere (absent, null, blank) is no market, as before (the D-10 follow-up's).
+ * Never a default. `{ market, refusal }`, refusal null | 'market_invalid' | 'market_not_priced'.
+ */
+function readOffersResolveMarket(payload, metadata) {
+  const gateMarket = offersResolveGateBuyerMarket(payload, metadata) || null;
+  if (gateMarket) {
+    return { market: gateMarket, refusal: offersResolveMarketCurrency(gateMarket) ? null : 'market_not_priced' };
+  }
+  const offers = offersResolveIsRecord(payload) && offersResolveIsRecord(payload.offers) ? payload.offers : null;
+  const carriers = [
+    offers ? offers.market : undefined,
+    offersResolveIsRecord(payload) ? payload.market : undefined,
+    offersResolveIsRecord(metadata) ? metadata.market : undefined,
+  ];
+  return { market: null, refusal: carriers.every((carrier) => marketIsUnnamed(carrier)) ? null : 'market_invalid' };
+}
+
+/** This door's refusal for a market it cannot answer for: be#2843's offers.resolve envelope, field for field. */
+function offersResolveMarketRefusalResponse(refusal, market) {
+  if (refusal === 'market_not_priced') {
+    return {
+      status: 'error',
+      offers: [],
+      offers_count: 0,
+      market,
+      error: {
+        code: 'MARKET_NOT_PRICED',
+        reason: 'market_not_priced',
+        message: `No offer is priced for a buyer in ${market}; nothing was looked up, and a request for ${market} is never answered as another market.`,
+      },
+    };
+  }
+  return {
+    status: 'error',
+    offers: [],
+    offers_count: 0,
+    error: {
+      code: 'MARKET_INVALID',
+      reason: 'market_invalid',
+      message:
+        '`market` is not an ISO 3166-1 alpha-2 country code; nothing was looked up. ' +
+        'Send the buyer\'s country as two letters; a market is never guessed.',
+    },
+  };
+}
+
+function normalizeOffersResolveInput(rawPayload, metadata) {
   const payload = offersResolveIsRecord(rawPayload) ? rawPayload : {};
   const offersPayload =
     offersResolveIsRecord(payload.offers) && Object.keys(payload.offers).length > 0
@@ -41061,7 +41175,8 @@ function normalizeOffersResolveInput(rawPayload) {
 
   const limitRaw = offersPayload.limit ?? payload.limit;
   const limit = Math.min(Math.max(1, Number(limitRaw || 10) || 10), 50);
-  const market = offersResolvePickFirstTrimmed(offersPayload.market, payload.market) || null;
+  // The market both lanes are asked for, and its refusal: readOffersResolveMarket, the one reader.
+  const { market, refusal: marketRefusal } = readOffersResolveMarket(rawPayload, metadata);
   const tool = offersResolvePickFirstTrimmed(offersPayload.tool, payload.tool) || null;
 
   return {
@@ -41076,6 +41191,7 @@ function normalizeOffersResolveInput(rawPayload) {
       (rawProductId && offersResolveIsUuidLike(rawProductId)) ||
       (rawSkuId && offersResolveIsUuidLike(rawSkuId)),
     market,
+    market_refusal: marketRefusal,
     tool,
     limit,
     query_text: queryText || '',
@@ -42204,7 +42320,23 @@ async function handleOffersResolveOperation({
 }) {
   const startedAt = Date.now();
   const sourceTrace = [];
-  const normalizedInput = normalizeOffersResolveInput(payload);
+  const normalizedInput = normalizeOffersResolveInput(payload, metadata);
+
+  // A market this door cannot answer for is refused by name FIRST, before the identifier check and before any lane
+  // or identity short-circuit (group id, canonical ref, stable alias), in the envelope the backend's offers.resolve
+  // gives the same input (be#2843), so a caller reads one answer whichever side refuses. An unreadable value is never
+  // echoed; an unpriced one is (it is a valid ISO-2 code). Logged by reason only, never the value.
+  if (normalizedInput.market_refusal) {
+    try {
+      logger.warn({ event: 'offers_resolve_market_refused', reason: normalizedInput.market_refusal }, 'offers.resolve: market refused');
+    } catch {
+      /* a log line never costs the answer */
+    }
+    return {
+      statusCode: 200,
+      response: offersResolveMarketRefusalResponse(normalizedInput.market_refusal, normalizedInput.market),
+    };
+  }
 
   if (!normalizedInput.has_any_identifier) {
     return {
@@ -43329,13 +43461,25 @@ app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) =
     const result = await backfillCatalogServingIndex({
       limit: Number(body.limit ?? 500) || 500,
       brand: String(body.brand || '').trim() || null,
-      market: String(body.market || '').trim() || 'US',
+      // Flag CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED on: no market sent = none passed, so the backfill refuses.
+      market: String(body.market || '').trim() ||
+        (String(process.env.CATALOG_SERVING_INDEX_NO_DEFAULT_MARKET_ENABLED || '').trim().toLowerCase() === 'true' ? undefined : 'US'),
       dryRun: body.dry_run === true || body.dryRun === true,
       refresh: body.refresh === true,
       includeNonPublic: !(body.public_only === true || body.publicOnly === true),
     });
     return res.json({ ok: true, result });
   } catch (err) {
+    // Flag on only (the backfill throws this code only then): a request that names no market is the caller's
+    // error, answered 400 like this file's other missing-parameter refusals, never a 500.
+    if (err?.code === 'catalog_serving_backfill_market_required') {
+      return res.status(400).json({
+        ok: false,
+        error: 'CATALOG_SERVING_BACKFILL_MARKET_REQUIRED',
+        code: err.code,
+        message: err.message,
+      });
+    }
     return res.status(500).json({
       ok: false,
       error: 'CATALOG_SERVING_BACKFILL_FAILED',
@@ -43702,10 +43846,16 @@ const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObserv
  * carry past the invoke ingress) is not the buyer's: the mint is sent no market, exactly as a market-less search
  * was before, so its links are never stamped `market_observed`. The flag beside any other market is ignored.
  */
-function seedAttributionMintMarket(search, payload, metadata) {
+function seedAttributionMintMarket(search, _payload, metadata) {
   const s = search && typeof search === 'object' ? search : {};
   if (s.market_assumed === true && String(s.market || '').trim().toUpperCase() === 'US') return null;
-  return String(s.market || (payload && payload.market) || (metadata && metadata.market) || '').trim() || null;
+  // The market every lane served this page for (servingCurrencyGuard.requestedMarketOf): the search block's when
+  // SENT, else metadata's. `search` is the payload itself for a flat payload, so its market counts; a payload
+  // market beside a search block is read by no lane and claims nothing. Before, `||` read a blank search market
+  // as silence for serving's sake but not here: serving answered metadata's SG, the mint got '' and no market.
+  // A sent non-string names no market a link can claim.
+  const market = requestedMarketOf({ search: s }, metadata);
+  return typeof market === 'string' && market.trim() ? market.trim() : null;
 }
 
 async function handleInvokeRequest(req, res, routeContext = {}) {
@@ -45609,7 +45759,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       )
     ) {
       const { buyerCurrency: publicBeautyBuyerCurrency } = resolveBuyerMarketScope(
-        publicBeautySearch.market || metadata.market,
+        requestedMarketOf({ search: publicBeautySearch }, metadata),
       );
       const publicBeautyBudget = resolveBeautyMainlineBudgetConstraint({
         search: publicBeautySearch,
@@ -45622,7 +45772,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         publicBeautySearch.priceCurrency,
         publicBeautySearch.currency_code,
       );
-      const namedPublicBeautyMarket = firstNonEmptyString(publicBeautySearch.market, metadata.market);
+      const namedPublicBeautyMarket = publicBeautyMarketNamed(publicBeautySearch, metadata);
       if (
         (!namedPublicBeautyMarket || isBuyerMarketEnabled()) &&
         (publicBeautyBuyerCurrency || publicBeautyBudget || publicBeautyOfferCurrency)
@@ -45743,7 +45893,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
         return res.status(200).json(await maybeOverlayLiveSearchPrice(
-          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget, buyerMarket: publicBeautySearch.market || metadata.market },
+          bridgeResponse, publicBeautySearch, { intent: effectiveIntent, budgetConstraint: publicBeautyBudget, buyerMarket: requestedMarketOf({ search: publicBeautySearch }, metadata) },
         ));
       } catch (err) {
         logger.warn(
@@ -51286,7 +51436,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // leaking into US users' canonical chain). Falls back to env
         // / 'US' when not set.
         const ingredientPathMarket =
-          String(marketsForRequest(search.market || metadata.market)[0]) /* scalar: marketId only */
+          String(marketsForRequest(requestedMarketOf({ search }, metadata))[0]) /* scalar: marketId only */
             .trim()
             .toUpperCase() || 'US';
         // Bounded from inside: this leg is otherwise the only expensive stage
@@ -56008,6 +56158,7 @@ module.exports = app;
 module.exports._debug = {
   // AgenPas: the internal UI's static handler with its host gate, so the gate can be tested without the front guard.
   internalUiStaticGate,
+  globalJsonBodyType,
   // Exported because the price-check fan-out runs only behind the external reco lane: the property under
   // test is that its loopback sub-calls are marked fan-out (keyed per tool call, not per caller).
   recommendPriceVerifyLoopbackHeaders,
@@ -56260,6 +56411,11 @@ module.exports._debug = {
   buildFindProductsMultiPayloadFromQuery,
   buildSearchProductsV2Body,
   seedAttributionMintMarket,
+  withDiscoveryBuyerMarket,
+  legacySeedDetailRequestedMarket,
+  requestedSearchMarketText,
+  publicBeautyMarketNamed,
+  firstNonEmptyString,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,

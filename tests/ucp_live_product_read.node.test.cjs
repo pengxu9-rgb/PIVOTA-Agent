@@ -282,6 +282,20 @@ test('a declared market Pivota does not price is refused, never swapped for the 
   assert.equal(calls.length, 0);
 });
 
+test('a Unicode lookalike market (uſ, ﬁ, ıt) is never read as the code case mapping folds it into', async () => {
+  for (const market of ['uſ', 'ﬁ', 'ıt', 'ＵＳ']) {
+    const { r, calls } = reader(laneigeUS);
+    const out = await r.readProduct(laneigePdp({ currency: 'USD' }), { market });
+    assert.equal(out.product.live_read.status, STATUS.SKIPPED, market);
+    assert.equal(out.product.live_read.reason, 'market_not_priced', market);
+    assert.equal(calls.length, 0, market);
+  }
+  // 'us' is still US.
+  const { r, calls } = reader(laneigeUS);
+  await r.readProduct(laneigePdp({ currency: 'USD' }), { market: 'us' });
+  assert.ok(calls.length > 0);
+});
+
 test('ADR-026: no declared market, no live read -- never a market inferred from the listing currency', async () => {
   const { r, calls } = reader(laneigeUS);
   const declared = await r.readProduct(laneigePdp(), { market: 'US' });
@@ -619,4 +633,19 @@ test('a second viewer of a product being read shares its lookups and is not refu
   } finally {
     open();
   }
+});
+
+test('livePdpReadCountryKey (shadowPdpLiveRead): a lookalike is never keyed; a plain code is keyed upper-cased', () => {
+  const { livePdpReadCountryKey } = require('../src/services/ucpLiveOfferRead');
+  for (const lookalike of ['uſ', 'ﬁ', 'ıt', 'İT', 'ＵＳ', 'УС', 'ſg']) assert.equal(livePdpReadCountryKey(lookalike), null, lookalike);
+  for (const unreadable of ['USA', 'en-US', '', '  ', null, undefined, 7, ['US']]) {
+    assert.equal(livePdpReadCountryKey(unreadable), null, JSON.stringify(unreadable));
+  }
+  assert.equal(livePdpReadCountryKey(' us '), 'US');
+  assert.equal(livePdpReadCountryKey('Sg'), 'SG');
+  // The helper is what shadowPdpLiveRead keys on (not a copy of the rule).
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'server.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function shadowPdpLiveRead('), src.indexOf('function shadowPdpLiveRead(') + 4000);
+  assert.match(fn, /const country = livePdpReadCountryKey\(market\);/);
+  assert.match(fn, /const keyed = Boolean\(host && ids\.length && country\);/);
 });

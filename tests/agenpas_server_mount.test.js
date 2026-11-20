@@ -47,6 +47,7 @@ const TRAVERSALS = [
 const KEYS = [
   'AGENPAS_ENABLED', 'AGENPAS_LINK_SECRET', 'AGENPAS_PUBLIC_BASE_URL', 'AGENPAS_HOSTED_HOSTS', 'AGENPAS_DEV_FIXTURES',
   'AGENPAS_EMBED_HOSTED_PAGES', 'AGENPAS_LINK_TTL_SECONDS', 'AGENPAS_INTERNAL_READ_KEY', 'AGENPAS_COLLECT_SHIPPING',
+  'AGENPAS_CONSENT_ENABLED', 'AGENPAS_LEGAL_HOSTS', 'AGENPAS_RAILS', 'AGENPAS_INTERNAL_CONSENT_KEY',
 ];
 const PID = 'ap_000000000000000000000001';
 
@@ -307,6 +308,85 @@ describe('AgenPas routes in the gateway app', () => {
         'application/json', `X-Agenpas-Link: ${t}\r\n`);
       expect(saved.status).toBe(200);
       expect(JSON.parse(saved.body).screen).toBe('add_card');
+    });
+  });
+
+  test('the app\'s global JSON parser skips ONLY the AgenPas host, and only while AgenPas is on (the control: other hosts parse)', () => {
+    const { globalJsonBodyType } = require('../src/server')._debug;
+    const req = (host, type = 'application/json') => ({ method: 'POST', path: '/x', headers: { host, 'content-type': type } });
+    expect(globalJsonBodyType(req('agenpas.example'))).toBe(true);
+    process.env.AGENPAS_ENABLED = '1';
+    process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+    process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+    expect(globalJsonBodyType(req('agenpas.example'))).toBe(false);
+    expect(globalJsonBodyType(req('AGENPAS.example:443'))).toBe(false);
+    expect(globalJsonBodyType(req('gateway.example'))).toBe(true);
+    expect(globalJsonBodyType(req('localhost:3000'))).toBe(true);
+    expect(globalJsonBodyType(req('gateway.example', 'text/plain'))).toBe(false);
+  });
+
+  describe('terms and privacy consent (AGENPAS_CONSENT_ENABLED)', () => {
+    const CONSENT_PID = 'rp_000000000000000000000007';
+    const CONSENT_PATH = `/agenpas/api/p/${CONSENT_PID}/consent`;
+
+    test('off: a consent POST is the front guard\'s 404 on the AgenPas host, and with AgenPas off it is any unknown POST', async () => {
+      const app = require('../src/server');
+      const baseline = await request(app).post('/agenpas-path-that-never-existed/consent').set('Host', 'agenpas.example').send({ step: 'card_binding' });
+      const dark = await request(app).post(CONSENT_PATH).set('Host', 'agenpas.example').send({ step: 'card_binding' });
+      expect(dark.status).toBe(baseline.status);
+      expect(dark.headers['content-type']).toBe(baseline.headers['content-type']);
+      expect(dark.text.replace(CONSENT_PATH, '<path>')).toBe(baseline.text.replace('/agenpas-path-that-never-existed/consent', '<path>'));
+      process.env.AGENPAS_ENABLED = '1';
+      process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+      const lit = await request(app).post(CONSENT_PATH).set('Host', 'agenpas.example').set('Origin', 'https://agenpas.example')
+        .set('Sec-Fetch-Site', 'same-origin').send({ step: 'card_binding' });
+      expect(lit.status).toBe(404);
+      expect(lit.headers['x-agenpas-guard']).toBe('front');
+      const preflight = await request(app).options(CONSENT_PATH).set('Host', 'agenpas.example').set('Origin', 'https://evil.example')
+        .set('Access-Control-Request-Method', 'POST');
+      expect(preflight.status).toBe(404);
+      expect(preflight.headers['x-agenpas-guard']).toBe('front');
+    });
+
+    test('on, with dev fixtures: offer -> POST -> the hosted page appears; OPTIONS refused; the global parser skips the host (1 kB route limit)', async () => {
+      process.env.AGENPAS_ENABLED = '1';
+      process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+      process.env.AGENPAS_DEV_FIXTURES = '1';
+      process.env.AGENPAS_HOSTED_HOSTS = 'hosted.example';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'http://localhost:4000';
+      process.env.AGENPAS_CONSENT_ENABLED = '1';
+      const app = require('../src/server');
+      const HOST = 'localhost:4000';
+      const start = await request(app).get('/agenpas/dev/start?scenario=consent').set('Host', HOST);
+      expect(start.status).toBe(302);
+      const token = new URLSearchParams(new URL(start.headers.location, 'http://localhost').hash.slice(1)).get('t');
+      const before = await request(app).get(`/agenpas/api/p/${CONSENT_PID}`).set('Host', HOST).set('X-Agenpas-Link', token);
+      expect(before.status).toBe(200);
+      expect(before.body.screen).toBe('add_card');
+      expect(before.body.action).toBeNull();
+      expect(before.body.consent.step).toBe('card_binding');
+      const post = (body, extra = {}) => {
+        let r = request(app).post(CONSENT_PATH).set('Host', HOST).set('X-Agenpas-Link', token)
+          .set('Origin', 'http://localhost:4000').set('Sec-Fetch-Site', 'same-origin');
+        for (const [k, v] of Object.entries(extra)) r = r.set(k, v);
+        return r.send(body);
+      };
+      const offer = before.body.consent.offer;
+      // A VALID body padded with 2 kB of whitespace: the route's own 1 kB parser refuses it (413). Had the app's 10 MB
+      // parser read it first, it would parse to a small, valid body and be recorded.
+      const padded = `{"step":"card_binding",${' '.repeat(2048)}"offer_id":${JSON.stringify(offer.id)},"issued_at":${JSON.stringify(offer.issued_at)}}`;
+      const big = await post(padded, { 'Content-Type': 'application/json' });
+      expect(big.status).toBe(413);
+      expect((await post('step=card_binding', { 'Content-Type': 'application/x-www-form-urlencoded' })).status).toBe(415);
+      expect((await request(app).options(CONSENT_PATH).set('Host', HOST)).headers['x-agenpas-guard']).toBe('front');
+      const ok = await post({ step: 'card_binding', offer_id: offer.id, issued_at: offer.issued_at });
+      expect(ok.status).toBe(200);
+      expect(ok.body).toEqual({ recorded: true });
+      const after = await request(app).get(`/agenpas/api/p/${CONSENT_PID}`).set('Host', HOST).set('X-Agenpas-Link', token);
+      expect(after.body.screen).toBe('add_card');
+      expect(after.body.action.url).toMatch(/^https:\/\/hosted\.example\//);
+      expect(after.body.consent).toBeNull();
     });
   });
 
