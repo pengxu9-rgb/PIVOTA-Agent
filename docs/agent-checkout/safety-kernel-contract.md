@@ -144,6 +144,12 @@ market, so its offers are not limited to one currency. Send the market whenever 
 On `/mcp`, a checkout argument whose `market` is not two letters is refused as `INVALID_ARGUMENTS` before anything is
 priced; there is no separate reason token for it.
 
+On `/mcp`, `search_catalog`, `get_product` and `get_alternatives` refuse a `market` that was sent but is not a
+string (`false`, `0`, a list, an object, `true`) the same way: `INVALID_ARGUMENTS`, before anything is read, with
+the fixed message ``<tool>: `market` must be the buyer's country as an ISO 3166-1 alpha-2 code (for example US).``,
+which never repeats the value. `get_offers` answers it `market_invalid` (above). A string that is not two letters is
+answered as the rows above say.
+
 **Hard rule:** the model must never auto-retry a money operation on ambiguous failure.
 Retries are safe only via the same `idempotency_key`, which the kernel dedupes.
 
