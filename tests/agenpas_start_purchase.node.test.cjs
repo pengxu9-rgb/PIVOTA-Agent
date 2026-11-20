@@ -379,6 +379,44 @@ test('AGENPAS_RAILS=a2a,reap with consent on: a Reap purchase gets its link when
   });
 });
 
+// P3-5: only `satisfied === true` opens the link on an ungated Reap answer. Anything else (false, missing, a truthy
+// non-boolean) is today's answer exactly: no agenpas_url, byte-identical to the answer without the minter.
+test('AGENPAS_RAILS=a2a,reap with consent on: an ungated Reap answer whose consent block is NOT satisfied gets no link', async () => {
+  const withBlock = (block, where) => (id) => {
+    const b = unified(id);
+    if (where === 'detail') b.detail = { ...b.detail, consent: block };
+    else b.consent = block;
+    return b;
+  };
+  const blocks = [
+    ['satisfied: false', { required: true, satisfied: false, step: 'card_binding' }],
+    ['satisfied missing', { required: true, step: 'card_binding' }],
+    ['satisfied: "true" (a string)', { required: true, satisfied: 'true', step: 'card_binding' }],
+    ['satisfied: 1', { required: true, satisfied: 1, step: 'card_binding' }],
+  ];
+  for (const where of ['top', 'detail']) {
+    for (const [label, block] of blocks) {
+      const readBody = withBlock(block, where);
+      const order = await build({ orderRailId: RP, readBody });
+      const orderWithout = await build({ orderRailId: RP, readBody, withMinter: false });
+      const create = await build({ createRail: 'reap', readBody });
+      const createWithout = await build({ createRail: 'reap', readBody, withMinter: false });
+      await withEnv(REAP_ON, async () => {
+        const o = await order.callTool('get_order', { order_id: PP }, SESSION);
+        assert.equal(Object.hasOwn(o, 'agenpas_url'), false, `${where} ${label}: get_order`);
+        assert.equal(o.next_action.action_url, CARD_PAGE, `${where} ${label}: the backend's page stays the handoff`);
+        assert.equal(JSON.stringify(o), JSON.stringify(await orderWithout.callTool('get_order', { order_id: PP }, SESSION)), `${where} ${label}`);
+        const a = await create.callTool('start_purchase', args(), SESSION);
+        assert.equal(Object.hasOwn(a, 'agenpas_url'), false, `${where} ${label}: start_purchase`);
+        assert.equal(JSON.stringify(a), JSON.stringify(await createWithout.callTool('start_purchase', args(), SESSION)), `${where} ${label}`);
+      });
+    }
+  }
+  // Control: the same ungated answer with a satisfied block in `detail` does get the link.
+  const detailSatisfied = await build({ orderRailId: RP, readBody: withBlock({ required: true, satisfied: true, step: 'card_binding' }, 'detail') });
+  await withEnv(REAP_ON, async () => assert.ok((await detailSatisfied.callTool('get_order', { order_id: PP }, SESSION)).agenpas_url));
+});
+
 test('consent-gated next_action (consent on): the buyer\'s link is ALSO the handoff, expiring at the earlier of the step and the link', async () => {
   for (const railId of [RP, AP]) {
     const surface = await build({ orderRailId: railId, readBody: gated });
