@@ -991,7 +991,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     return isA2aPurchaseAnswer(out) && serves("a2a");
   }
 
-  /** The answer's consent block (top level or in `detail`) says the current step's consent is recorded. */
+  /**
+   * The answer's consent block (top level or in `detail`) says the current step's consent is recorded: `satisfied`
+   * must be exactly `true`. Today's public purchase door carries no consent block (only the internal AgenPas read does),
+   * so on that contract this never fires and a Reap link comes only from a gated step; it is kept for a door that does.
+   */
   function consentSatisfied(out) {
     const block = [out.consent, isPlainObject(out.detail) ? out.detail.consent : undefined].find(isPlainObject);
     return Boolean(block && block.satisfied === true);
