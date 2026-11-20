@@ -2874,6 +2874,23 @@ function shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
   );
 }
 
+// THE MARKET THE BACKEND SEARCH IS ASKED FOR: the one the page is bound for (servingCurrencyGuard.requestedMarketOf,
+// the search block's when SENT, else metadata's), trimmed. A sent non-string is passed as its text, which the
+// backend reads as an unknown partition, never skipped to metadata's market: before, `firstNonEmptyString` sent a
+// sent `[]` + metadata SG upstream as SG while the gateway's guard served nothing for it.
+function requestedSearchMarketText(search, metadata) {
+  const market = requestedMarketOf({ search }, metadata);
+  if (marketIsUnnamed(market)) return null;
+  const text = (typeof market === 'string' ? market : String(market)).trim();
+  return text || null;
+}
+
+// Whether the public beauty lane's request NAMES a market, by the same carrier rule (a sent value counts, even
+// one no currency is known for; absent, null and blank do not).
+function publicBeautyMarketNamed(search, metadata) {
+  return !marketIsUnnamed(requestedMarketOf({ search }, metadata));
+}
+
 function buildSearchProductsV2Body({
   payload = {},
   search = {},
@@ -2911,7 +2928,7 @@ function buildSearchProductsV2Body({
     merchant_ids: !merchantId && merchantIds.length > 0 ? merchantIds : undefined,
     search_all_merchants: searchAllMerchants,
     query: search?.query != null ? String(search.query || '') : undefined,
-    market: firstNonEmptyString(search?.market, metadata?.market),
+    market: requestedSearchMarketText(search, metadata),
     // Decision D-10: the search market was ASSUMED (US, for a call that named none). Provenance only, for the
     // backend's `/r` minters; absent for every other call, so their bodies are byte-identical.
     // ...and only beside the US it assumed (defence in depth: the invoke route already strips an unvouched one).
@@ -45755,7 +45772,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         publicBeautySearch.priceCurrency,
         publicBeautySearch.currency_code,
       );
-      const namedPublicBeautyMarket = firstNonEmptyString(publicBeautySearch.market, metadata.market);
+      const namedPublicBeautyMarket = publicBeautyMarketNamed(publicBeautySearch, metadata);
       if (
         (!namedPublicBeautyMarket || isBuyerMarketEnabled()) &&
         (publicBeautyBuyerCurrency || publicBeautyBudget || publicBeautyOfferCurrency)
@@ -56396,6 +56413,8 @@ module.exports._debug = {
   seedAttributionMintMarket,
   withDiscoveryBuyerMarket,
   legacySeedDetailRequestedMarket,
+  requestedSearchMarketText,
+  publicBeautyMarketNamed,
   firstNonEmptyString,
   buildServiceVersionMetadata,
   completeServiceVersionMetadata,

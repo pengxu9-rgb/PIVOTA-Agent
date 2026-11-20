@@ -590,9 +590,12 @@ function buildWarmHandoffOutput({ input = {}, descriptor = {}, product = null, o
   return output;
 }
 
-// THE REQUEST'S OWN BUYER MARKET, or nothing. `metadata.market || payload.market` is this door's existing
-// spelling — `src/server.js` reads `search.market || metadata.market` on the discovery lane — and the invoke
-// handler threads `metadata` into this resolver verbatim.
+// THE REQUEST'S OWN BUYER MARKET, or nothing. The purchasability gate's documented carrier order:
+// `metadata.market` first, then `payload.market`, and the FIRST carrier that yields ONE ISO-2 market wins
+// (`selectBuyerMarket`, the rule the offers door uses too); an unreadable carrier is skipped, never defaulted.
+// This is deliberately NOT servingCurrencyGuard.requestedMarketOf (search block first, a sent value decisive):
+// the gate keys a fact on a market the caller sent, and keeps its own order. The invoke handler threads
+// `metadata` into this resolver verbatim.
 //
 // ⚠️ THERE IS DELIBERATELY NO FALLBACK. `servedMarkets.primaryMarket()` would hand back the DEPLOYMENT's
 // market ('US' by default) for a request that named none, and the purchasability fact is keyed on the BUYER's

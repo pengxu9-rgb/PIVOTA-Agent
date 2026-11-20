@@ -247,4 +247,12 @@ test('the error taxonomy documents exactly the market reasons the doors emit, an
   assert.match(section, /not named only when it is absent, `null` or blank/);
   // The UCP refusal token in the docs is the adapter's own constant.
   assert.equal(UCP_MARKET_INVALID_REASON, 'ucp_market_invalid');
+  // The /mcp reads that refuse a sent non-string market are the code's own list, with the code's own fixed text.
+  const { NON_STRING_MARKET_REFUSED_OPS } = await import('../src/commerceToolSurface.js');
+  const { storefrontMarketProblem } = await import('../src/mcpStorefrontCart.js');
+  const refusal = section.match(/On `\/mcp`, ((?:`[a-z_]+`(?:, | and ))+`[a-z_]+`) refuse a `market` that was sent but is not a\s+string/);
+  assert.ok(refusal, 'the read refusal is documented');
+  assert.deepEqual(refusal[1].match(/`([a-z_]+)`/g).map((t) => t.slice(1, -1)).sort(), [...NON_STRING_MARKET_REFUSED_OPS].sort());
+  assert.ok(section.replace(/\s+/g, ' ').includes(`\`\`<tool>: ${storefrontMarketProblem(false)}\`\``), 'the fixed message, verbatim');
+  assert.match(section, /which never repeats the value/);
 });
