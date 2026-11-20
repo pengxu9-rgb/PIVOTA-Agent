@@ -2,11 +2,11 @@
 
 // UCP request signatures, VERIFIED: the default UCP regime (ucp.dev/2026-04-08/specification/signatures).
 //
-// WHY. Shopline's agent standard (designed with Meta's Muse, 2026-11-20) is UCP's: a platform names its
+// WHY. A platform agent standard (2026-11) is UCP's: a platform names its
 // profile in a `UCP-Agent: profile="<url>"` header, signs the request per RFC 9421 with ES256, and the
 // receiver finds the key in that profile's `signing_keys[]` by `kid`. Pivota signs that way outbound
 // (ucpBuyerAgentClient.signUcpRequest). This module is the receiving half, for two callers:
-//   - our doors, when Muse / Shopline / any UCP platform calls us signed (observe only:
+//   - our doors, when a UCP platform calls us signed (observe only:
 //     UCP_SIGNATURE_VERIFY_MODE, src/server.js ucpSignatureObserveMiddleware);
 //   - our order-webhook receiver, which a UCP business signs with a key from ITS `/.well-known/ucp`
 //     (ucpOrderWebhookReceiver.js, UCP_ORDER_WEBHOOK_RFC9421_MODE).

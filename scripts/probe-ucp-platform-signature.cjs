@@ -4,10 +4,9 @@
 /*
  * scripts/probe-ucp-platform-signature.cjs — MANUAL probe (NOT CI). Read-only.
  *
- * WHAT IT PROVES. Shopline's agent standard (designed with Meta's Muse, 2026-11-20) treats Pivota like Muse:
- * every UCP request we send names our profile in `UCP-Agent` and is RFC 9421-signed with ES256 under a kid
- * that profile publishes. This probe runs the conformance cases in
- * reports/muse_ucp_platform_profile_es256_readiness_2026_11_20.md and prints one line per case.
+ * WHAT IT PROVES. Under a platform agent standard (2026-11), every UCP request we send names our profile in
+ * `UCP-Agent` and is RFC 9421-signed with ES256 under a kid that profile publishes. This probe runs those
+ * conformance cases and prints one line per case.
  *
  *   self (default, OFFLINE — nothing leaves the process)
  *     The REAL outbound client (ucpBuyerAgentClient) builds and signs each request against a placeholder
@@ -24,9 +23,9 @@
  *       K  the private key we sign with is the public key the profile publishes under that kid
  *
  *   --live --check-profile   case 6: GET our profile URL: 200, no redirect, Cache-Control public
- *                            max-age >= 60, the kid in signing_keys[] AND keys[], both arrays the same kids.
+ *                            max-age >= 60, the kid in signing_keys[] AND keys[] (keys[] is served only with UCP_AGENT_PUBLISH_JWKS=1), both arrays the same kids.
  *   --live --target <mcp-url> --allow-host <host>
- *                            cases 1, 8, 9 against a partner sandbox (Shopline): search_catalog only.
+ *                            cases 1, 8, 9 against a partner sandbox: search_catalog only.
  *
  * KEY MATERIAL. Default: UCP_AGENT_SIGNING_PRIVATE_KEY (+ UCP_AGENT_SIGNING_KEY_ID) from env, never printed,
  * never logged, never written. `--test-key` uses an ephemeral key generated in memory instead (no secret

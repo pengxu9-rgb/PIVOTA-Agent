@@ -39389,7 +39389,7 @@ app.use((req, res, next) => isAgentSignatureDoorPath(req)
   ? agentSignatureMiddleware(req, res, next)
   : next());
 
-// UCP request signatures on our doors (ucpSignatureVerifier.js): a platform — Muse, Shopline, any UCP agent —
+// UCP request signatures on our doors (ucpSignatureVerifier.js): a platform — any UCP agent —
 // names its profile in `UCP-Agent` and signs per RFC 9421. OBSERVE ONLY (UCP_SIGNATURE_VERIFY_MODE=observe;
 // default off): the result is logged and set on `req.ucpSignature`, and the request goes on exactly as it
 // would unsigned. Only profiles in UCP_SIGNATURE_TRUSTED_PROFILES are fetched; any other is counted as

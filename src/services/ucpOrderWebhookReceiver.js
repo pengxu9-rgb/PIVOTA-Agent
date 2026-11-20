@@ -37,7 +37,7 @@
  * RFC 9421 (UCP 2026-04-08 order webhooks), behind UCP_ORDER_WEBHOOK_RFC9421_MODE = off | observe | accept:
  *   UCP's order capability says a business signs webhooks per RFC 9421 with a key from ITS business profile
  *   (`/.well-known/ucp`, named in the `UCP-Agent` header), plus Content-Digest over the body. That is what
- *   Shopline will send. The detached JWS above is the older Pivota-specific shape and stays the default.
+ *   a business following the spec sends. The detached JWS above is the older Pivota-specific shape and stays the default.
  *     off      (default) nothing changes: not verified, not logged, no new fields anywhere.
  *     observe  a request carrying Signature-Input is verified (ucpSignatureVerifier.js, business kind) and
  *              the outcome is logged; the accept/refuse decision is exactly the JWS one.
