@@ -412,6 +412,32 @@ test('definite backend refusals are named and final; nothing is read back', asyn
   }
 });
 
+test('the A2A door\'s market refusals (400) are definite, each with its own honest message; nothing is read back', async () => {
+  const expected = {
+    shipping_country_unsupported: /only ship to an address in the United States/,
+    shipping_market_unknown: /No shipping address was given/,
+  };
+  for (const [code, message] of Object.entries(expected)) {
+    const backend = fakeBackend();
+    backend.state.post = { status: 400, body: houseError(code, 400) };
+    const ctx = await build({ backend });
+    const { err } = await withEnv(ON, () => call(ctx, args()));
+    assert.equal(err.code, 'OPERATION_NOT_ALLOWED', code);
+    assert.equal(err.detail.reason, 'purchase_refused', code);
+    assert.equal(err.detail.refusal_code, code);
+    assert.match(err.message, message, code);
+    assert.match(err.message, /not started\. Nothing was charged\./, code);
+    assert.equal(typeof err.recovery, 'string', code);
+    assert.equal(/retry the same|may exist/.test(`${err.message} ${err.recovery}`), false, `${code}: never "outcome unknown"`);
+    assert.equal(backend.calls.filter((c) => c.method === 'GET').length, 0);
+  }
+  // At another status they are not the documented refusal: still an unknown outcome.
+  const backend = fakeBackend();
+  backend.state.post = { status: 409, body: houseError('shipping_country_unsupported', 409) };
+  const { err } = await withEnv(ON, async () => call(await build({ backend }), args()));
+  assert.equal(err.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+});
+
 test('every other answer is an UNKNOWN outcome: retry the same call, never start another', async () => {
   const cases = [
     ['503', (b) => { b.state.post = { status: 503, body: { error: 'checkout_outcome_unknown' } }; }],

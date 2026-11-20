@@ -23,6 +23,9 @@ const SCENARIOS = Object.freeze({
   // A Reap-rail purchase behind the consent step (AGENPAS_CONSENT_ENABLED and AGENPAS_RAILS=a2a,reap): the card page
   // and then the approval page appear only after the buyer accepts the terms on the page.
   consent: { id: 'rp_000000000000000000000007' },
+  // An A2A purchase whose address form is consent-gated (AGENPAS_CONSENT_ENABLED and AGENPAS_COLLECT_SHIPPING): the
+  // terms first, then the form, then the card step.
+  address_consent: { id: 'ap_000000000000000000000008' },
 });
 
 // needs_address: which links have given their address (dev memory only; a digest, never the address itself).
@@ -89,12 +92,43 @@ function isoSeconds(ms) {
 
 // The consent scenario: needs_payment_method until the card consent, then the card page for 10 s, then locking with
 // the approval consent offered, then (once accepted) the approval page for 10 s, then placing and completed.
-function consentPurchase(id, accepted, nowMs) {
-  const consentBlock = (step, satisfied) => ({
+function fixtureConsentBlock(step, satisfied, nowMs) {
+  return {
     required: true, available: true, step, satisfied,
     terms_url: FIXTURE_TERMS_URL, privacy_url: FIXTURE_PRIVACY_URL, terms_version: 'fixture-terms-1', privacy_version: 'fixture-privacy-1',
     ...(satisfied ? {} : { offer: { id: 'fixtureoffer0000000000000001', issued_at: isoSeconds(nowMs) } }),
-  });
+  };
+}
+
+const ALL_ADDRESS_FIELDS = Object.freeze(['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country']);
+
+// The address_consent scenario, as the backend's gate answers: the step marked and no field list until the
+// shipping_address consent, then the form, then (once the address is given) the card step and completed.
+function addressConsentPurchase(id, claims, accepted, nowMs) {
+  const deadline = new Date((claims.iat + 30 * 60) * 1000).toISOString();
+  if (!accepted.get('shipping_address')) {
+    const body = base(id, 'routing', {
+      next_action: { kind: 'shipping_address', consent_required: true, expires_at: deadline },
+      consent: fixtureConsentBlock('shipping_address', false, nowMs),
+    });
+    body.detail.buyer_step = { kind: 'shipping_address', expires_at: deadline, consent_required: true, available: true };
+    return body;
+  }
+  const given = addressGiven.get(addressKey(claims));
+  if (!given) {
+    return base(id, 'routing', {
+      next_action: { kind: 'shipping_address', fields_missing: [...ALL_ADDRESS_FIELDS], expires_at: deadline, prefill: { country: 'US' } },
+      consent: fixtureConsentBlock('shipping_address', true, nowMs),
+    });
+  }
+  const since = Math.max(0, nowMs / 1000 - given.at);
+  const state = step(since, [[0, 'needs_payment_method'], [20, 'completed']]);
+  if (state === 'completed') return base(id, state, { order_reference: '#1008', poll_after_seconds: null });
+  return base(id, state, { next_action: action('card_binding', claims.iat) });
+}
+
+function consentPurchase(id, accepted, nowMs) {
+  const consentBlock = (step, satisfied) => fixtureConsentBlock(step, satisfied, nowMs);
   const card = accepted.get('card_binding');
   const approval = accepted.get('approval');
   const deadline = new Date(nowMs + 10 * 60 * 1000).toISOString();
@@ -129,6 +163,8 @@ function fixturePurchase(claims, { now, accepted } = {}) {
   switch (name) {
     case 'consent':
       return consentPurchase(id, accepted instanceof Map ? accepted : new Map(), nowMs);
+    case 'address_consent':
+      return addressConsentPurchase(id, claims, accepted instanceof Map ? accepted : new Map(), nowMs);
     case 'happy': {
       const state = step(elapsed, [[0, 'routing'], [3, 'needs_payment_method'], [25, 'locking'], [30, 'awaiting_buyer_authorization'], [50, 'placing'], [56, 'completed']]);
       if (state === 'needs_payment_method') return base(id, state, { next_action: action('card_binding', claims.iat) });
@@ -167,7 +203,7 @@ function fixturePurchase(claims, { now, accepted } = {}) {
       if (!given) {
         return base(id, 'routing', {
           next_action: {
-            kind: 'shipping_address', fields_missing: ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'],
+            kind: 'shipping_address', fields_missing: [...ALL_ADDRESS_FIELDS],
             expires_at: new Date((claims.iat + 30 * 60) * 1000).toISOString(), prefill: { country: 'US' },
           },
         });
@@ -206,7 +242,10 @@ function createFixtures({ now } = {}) {
       },
       // Same answers as the backend's address write: the same address again is fine, another one is a 409.
       async submitShippingAddress(claims, address) {
-        if (scenarioForId(claims && claims.purchaseId) !== 'needs_address') return { kind: 'conflict' };
+        const scenario = scenarioForId(claims && claims.purchaseId);
+        if (scenario !== 'needs_address' && scenario !== 'address_consent') return { kind: 'conflict' };
+        // As the backend's gate: no address before the step's consent (nothing kept).
+        if (scenario === 'address_consent' && !acceptedFor(claims).has('shipping_address')) return { kind: 'consent_required' };
         const key = addressKey(claims);
         const digest = digestOf(address);
         const given = addressGiven.get(key);

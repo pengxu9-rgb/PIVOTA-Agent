@@ -21,6 +21,7 @@
  *                                                  versions recorded come from the gateway's own latest read.
  *   POST /agenpas/api/p/:purchaseId/shipping-address  ONLY while AGENPAS_COLLECT_SHIPPING is on: the buyer's shipping
  *                                                  address and email (JSON, at most 4 KB, token in `X-Agenpas-Link`).
+ *                                                  409 consent_required while the step's terms are not accepted.
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
  * answers exactly what it answered before this module existed (the app's normal not-found). The same happens while
@@ -43,7 +44,7 @@ const express = require('express');
 const config = require('./config');
 const { PURCHASE_ID_RE, REASON, mintLinkToken, verifyLinkToken } = require('./linkToken');
 const { hostedOrigins } = require('./hostedUrl');
-const { consentToRecord, projectPurchaseView } = require('./view');
+const { consentToRecord, projectPurchaseView, shippingConsentPending } = require('./view');
 const { sanitizeFieldErrors, validateAddress } = require('./shippingAddress');
 const { createTokenBucketLimiter } = require('../services/publicReadRateLimit');
 const { clientIpFromRequest } = require('../guardrails/gatewayGuardrails');
@@ -131,7 +132,8 @@ const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 // The consent POST: its raw path, its body members and their shapes (view.js accepts the same offer shapes).
 const CONSENT_POST_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/consent$/;
 const CONSENT_BODY_KEYS = Object.freeze(['step', 'offer_id', 'issued_at']);
-const CONSENT_STEPS = new Set(['card_binding', 'approval']);
+// `shipping_address`: the A2A address form is consent-gated too (the owner's decision, 11-20; view.js).
+const CONSENT_STEPS = new Set(['card_binding', 'approval', 'shipping_address']);
 const CONSENT_OFFER_ID_RE = /^[A-Za-z0-9+/=_-]{16,128}$/;
 const CONSENT_ISSUED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/;
 const CONSENT_BODY_LIMIT_BYTES = 1024;
@@ -530,6 +532,12 @@ function createAgenpasRouter(deps = {}) {
       return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
     }
     if (current.kind === 'not_found') return res.status(404).json({ error: 'not_found' });
+    // The form is consent-gated and the buyer has not accepted yet (the gateway's own read says so): nothing is sent
+    // on, and the page goes back to the terms. What the buyer typed stays on their page (app.js).
+    if (shippingConsentPending(current.purchase, { purchaseId, now: now(), collectShipping: true })) {
+      logRefusal({ surface: 'address', reason: 'consent_required' });
+      return res.status(409).json({ error: 'consent_required' });
+    }
     const projected = projectPurchaseView(current.purchase, { purchaseId, now: now(), collectShipping: true });
     const request = projected.address_request || null;
     const checked = validateAddress(parsed.body, { required: request ? request.fields_missing : [] });
@@ -556,6 +564,11 @@ function createAgenpasRouter(deps = {}) {
       logRefusal({ surface: 'address', reason: 'backend_invalid' });
       // Codes only, whatever the writer handed back: never a value the buyer typed.
       return res.status(422).json({ error: 'invalid_address', field_errors: sanitizeFieldErrors(answer.field_errors) });
+    }
+    if (answer && answer.kind === 'consent_required') {
+      // The backend's own gate (the consent is not on record there): the same answer as ours above.
+      logRefusal({ surface: 'address', reason: 'backend_consent_required' });
+      return res.status(409).json({ error: 'consent_required' });
     }
     if (answer && answer.kind === 'conflict') {
       logRefusal({ surface: 'address', reason: 'already_set' });

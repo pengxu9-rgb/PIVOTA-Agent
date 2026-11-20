@@ -781,3 +781,66 @@ test('the terms and privacy versions are shown next to their links; new versions
   await settle();
   assert.equal(JSON.parse(h.fetches.filter((f) => f.init.method === 'POST').pop().init.body).offer_id, 'offerv2v2v2v2v2v2v2v2v2v2v2v2v2v2v');
 });
+
+// ---- the address step behind the terms (A2A; the owner's decision, 11-20) ---------------------------------------
+
+function shippingConsentView(over = {}) {
+  return view({
+    state: 'routing', screen: 'shipping_address', action: null, poll_after_seconds: 15,
+    consent: { step: 'shipping_address', terms_url: 'https://legal.example/terms', privacy_url: 'https://legal.example/privacy', offer: { ...OFFER } },
+    ...over,
+  });
+}
+
+test('address consent: the terms first on the address screen (no address field), and the form only after agreeing', async () => {
+  const h = harness({ answers: [{ status: 200, body: shippingConsentView() }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Where should we send it\?/);
+  assert.match(h.text(), /Before you give your shipping address, read Pivota's/);
+  assert.deepEqual(findAll(h, (n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.type || n.tagName), ['checkbox']);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0, 'no form before the consent');
+  await readyToAgree(h);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: addressView(['email', 'postalCode']) });
+  clickAgree(h);
+  await settle();
+  const post = h.fetches.find((f) => f.init.method === 'POST');
+  assert.equal(post.url, `/agenpas/api/p/${PID}/consent`);
+  assert.deepEqual(JSON.parse(post.init.body), { step: 'shipping_address', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+  // The page read again at once and drew the form.
+  assert.deepEqual(h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name), ['email', 'postalCode']);
+  assert.equal(findAll(h, (n) => n.tagName === 'INPUT' && n.type === 'checkbox').length, 0);
+});
+
+test('address consent: a 409 consent_required on submit goes back to the terms, keeps what was typed, and fills the form again after agreeing', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'postalCode']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  type(byName(h, 'postalCode'), '94107');
+  h.answer({ status: 409, body: { error: 'consent_required' } }, { status: 200, body: shippingConsentView() });
+  submit(h);
+  await settle();
+  assert.match(h.text(), /Please accept the terms first\. What you typed is kept/);
+  assert.equal(/couldn't save|We already have your address/.test(h.text()), false, 'no generic error, not "already have it"');
+  await nextRead(h);
+  assert.match(h.text(), /Before you give your shipping address, read Pivota's/);
+  assert.match(h.text(), /Please accept the terms first/);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  assert.equal([...h.storage.values()].some((v) => v.includes('buyer@example.test')), false, 'never stored');
+  await readyToAgree(h);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: addressView(['email', 'postalCode']) });
+  clickAgree(h);
+  await settle();
+  assert.equal(byName(h, 'email').value, 'buyer@example.test', 'what the buyer typed is back');
+  assert.equal(byName(h, 'postalCode').value, '94107');
+  assert.equal(/Please accept the terms first/.test(h.text()), false, 'the note is gone once agreed');
+});
+
+test('address consent: with the gate off the address screen is the form at once (no terms, no checkbox)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  assert.deepEqual(h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name), ['email']);
+  assert.equal(/Terms of Service/.test(h.text()), false);
+});

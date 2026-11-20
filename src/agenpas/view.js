@@ -26,10 +26,17 @@
  * complete offer, the page offers the terms (`consent`: the step, the two links and the offer, nothing else); with
  * anything missing, the screen is `unavailable` ("not available right now"). With the flag off no `consent` member is
  * added, and a body without any consent field projects exactly as before.
+ *
+ * THE ADDRESS STEP'S CONSENT (A2A only). While the backend's gate holds the shipping-address form back, the body says
+ * `next_action` / `detail.buyer_step` = {kind: "shipping_address", consent_required: true, expires_at} with NO
+ * `fields_missing`, and the consent block is offered for step `shipping_address`. Until that block says satisfied the
+ * view carries no `address_request` (no form, even if the body listed fields): with the flag on and a complete offer the
+ * screen is `shipping_address` with `consent` (the terms first); otherwise `unavailable`. With collection off it stays
+ * `shipping_address_elsewhere`. Once satisfied, the backend's form (`fields_missing`) projects exactly as before.
  */
 
 const { isAllowedHostedUrl } = require('./hostedUrl');
-const { readAddressRequest } = require('./shippingAddress');
+const { ACTION_KIND: SHIPPING_STEP, STATE: SHIPPING_STATE, readAddressRequest } = require('./shippingAddress');
 
 const KNOWN_STATES = Object.freeze([
   'routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'placing',
@@ -52,7 +59,10 @@ const CONSENT_STEP_FOR_STATE = Object.freeze({
   locking: 'approval',
   awaiting_buyer_authorization: 'approval',
 });
-const GATED_KINDS = new Set(['card_binding', 'approval']);
+// `shipping_address`: the A2A rail's address form is a consent-gated step too (the owner's decision, 11-20): it has no
+// state of its own (`routing` while the rail waits for the buyer's contact) and no hosted page; what the gate holds
+// back is the form itself (docs/agenpas.md, "Shipping address").
+const GATED_KINDS = new Set(['card_binding', 'approval', 'shipping_address']);
 // The backend's consent block: versions are at most 32 printable characters (no space at either end); the offer id is
 // the backend's HMAC in hex or base64(url); issued_at is echoed back EXACTLY (it is an HMAC input), so only an
 // ISO-8601 UTC instant is accepted.
@@ -73,7 +83,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 229d1e587 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
+// Mirrors pivota-backend eb19e277b (the hold sets unchanged since 229d1e587; services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -579,6 +589,18 @@ function isOfferable(block, step) {
     && block.terms_url && block.privacy_url && block.terms_version && block.privacy_version && block.offer);
 }
 
+/** The body asks for the buyer's shipping address (the form, or the consent-gated marker), A2A wording. */
+function isShippingStep(state, rawAction, buyerStep) {
+  return state === SHIPPING_STATE || Boolean(rawAction && rawAction.kind === SHIPPING_STEP)
+    || Boolean(buyerStep && buyerStep.kind === SHIPPING_STEP);
+}
+
+/** The backend's gate marker on the address step: `consent_required: true` on its next_action or its buyer_step. */
+function shippingMarked(rawAction, buyerStep) {
+  return Boolean((rawAction && rawAction.kind === SHIPPING_STEP && rawAction.consent_required === true)
+    || (buyerStep && buyerStep.kind === SHIPPING_STEP && buyerStep.consent_required === true));
+}
+
 const DETAILS_NEEDED_COPY = Object.freeze({
   kind: 'details_needed',
   title: 'Some details are needed',
@@ -676,8 +698,19 @@ function buildView(body, {
   // THE ADDRESS STEP (shippingAddress.js): the buyer gives the shipping address / email the partner did not send. Never
   // while held. With AGENPAS_COLLECT_SHIPPING off the page only says to add it in the chat, and the view carries no
   // `address_request` (every other view is byte-identical either way).
-  const addressRequest = outcome && outcome.outcome_unknown ? null : readAddressRequest(state, rawAction, { now: nowMs });
+  // Consent-gated (A2A; the header above): no form until the block says THIS step is satisfied, whatever the body
+  // listed; the terms are offered on the address screen, or the step is "not available right now".
+  const held = Boolean(outcome && outcome.outcome_unknown);
+  const shippingGated = !held && !terminal && rail !== 'reap' && PRE_PLACING_STATES.has(state)
+    && isShippingStep(state, rawAction, buyerStep)
+    && (shippingMarked(rawAction, buyerStep) || Boolean(block && block.required && block.step === SHIPPING_STEP))
+    && !satisfiedFor(SHIPPING_STEP);
+  const shippingOfferable = shippingGated && consentEnabled && isOfferable(block, SHIPPING_STEP);
+  // A marker without a field list is never a form (it would read as "every field"), satisfied or not.
+  const markerOnly = shippingMarked(rawAction, null) && !Array.isArray(rawAction.fields_missing);
+  const addressRequest = held || shippingGated || markerOnly ? null : readAddressRequest(state, rawAction, { now: nowMs });
   if (addressRequest) screen = collectShipping ? 'shipping_address' : 'shipping_address_elsewhere';
+  else if (shippingGated) screen = !collectShipping ? 'shipping_address_elsewhere' : shippingOfferable ? 'shipping_address' : 'unavailable';
 
   // The rail paused the purchase for the buyer's contact details (Reap's `contact_reentry_required`): no card button,
   // no consent; the chat takes the details. Held still wins (screenFor already said outcome_unknown).
@@ -687,18 +720,20 @@ function buildView(body, {
     screen = 'details_needed';
   }
   if (unavailable && (screen === 'add_card' || screen === 'approve')) screen = 'unavailable';
-  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total';
+  const shippingConsentScreen = shippingOfferable && screen === 'shipping_address';
+  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total' || shippingConsentScreen;
+  const offeredStep = shippingConsentScreen ? SHIPPING_STEP : consentStep;
   let consent = null;
   let record = null;
-  if (offerable && consentScreen) {
+  if ((shippingConsentScreen || offerable) && consentScreen) {
     // The versions shown are the very values recorded (`record`, below): the buyer sees what the record names.
     consent = {
-      step: consentStep, terms_url: block.terms_url, privacy_url: block.privacy_url,
+      step: offeredStep, terms_url: block.terms_url, privacy_url: block.privacy_url,
       terms_version: block.terms_version, privacy_version: block.privacy_version, offer: { ...block.offer },
     };
     // Only when the backend states it (the page then waits at least that long plus a second; else its own 4 s).
     if (block.min_dwell_seconds !== null) consent.min_dwell_seconds = block.min_dwell_seconds;
-    record = { step: consentStep, terms_version: block.terms_version, privacy_version: block.privacy_version };
+    record = { step: offeredStep, terms_version: block.terms_version, privacy_version: block.privacy_version };
   }
 
   let poll = null;
@@ -734,7 +769,7 @@ function buildView(body, {
   };
   // Only while AGENPAS_CONSENT_ENABLED is on: off, the view has exactly the members it always had.
   if (consentEnabled) view.consent = consent;
-  return { view, record };
+  return { view, record, shippingConsentPending: shippingGated };
 }
 
 /**
@@ -758,6 +793,14 @@ function consentToRecord(body, opts = {}) {
   return buildView(body, { ...opts, consentEnabled: opts.consentEnabled === true }).record;
 }
 
+/**
+ * True while the purchase's shipping-address step waits for the buyer's consent (the backend's gate marker or its
+ * consent block, and no satisfied consent for `shipping_address`): the address write must not go on.
+ */
+function shippingConsentPending(body, opts = {}) {
+  return buildView(body, opts).shippingConsentPending === true;
+}
+
 module.exports = {
   ACTION_KIND_FOR_STATE,
   CONSENT_STEP_FOR_STATE,
@@ -776,4 +819,5 @@ module.exports = {
   outcomeFor,
   projectPurchaseView,
   screenFor,
+  shippingConsentPending,
 };

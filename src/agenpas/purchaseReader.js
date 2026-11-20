@@ -31,9 +31,10 @@
  *   POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/shipping-address
  *     body: {email, firstName, lastName, phone, addressLine1, addressLine2, city, region, postalCode, country}
  *   200 -> the unified view            422 -> {field_errors: {field: code}}
- *   409 -> already set / state moved   404 -> not that agent's
+ *   409 consent_required -> the step's terms are not accepted yet (nothing written; the page goes back to them)
+ *   409 (shipping_address_conflict, or any other) -> already set / state moved   404 -> not that agent's
  *
- * Outcomes: accepted {purchase} | invalid {field_errors} | conflict | not_found | unavailable {code}. The body (the
+ * Outcomes: accepted {purchase} | invalid {field_errors} | consent_required | conflict | not_found | unavailable {code}. The body (the
  * buyer's address) goes to the backend and NOWHERE else: never logged, never part of an outcome.
  */
 
@@ -200,6 +201,12 @@ function createBackendPurchaseReader(deps = {}) {
       return { kind: 'invalid', field_errors: sanitizeFieldErrors(raw) };
     }
     if (status === 409) {
+      // The app's error envelope names the reason in `detail.error` (reasonOf): `consent_required` (the step's terms
+      // are not on record; nothing was written) or `shipping_address_conflict` (and any other 409: as before).
+      if (reasonOf(body) === 'consent_required') {
+        log('info', { op: 'shipping_address', outcome: 'consent_required', http_status: status });
+        return { kind: 'consent_required' };
+      }
       log('info', { op: 'shipping_address', outcome: 'conflict', http_status: status });
       return { kind: 'conflict' };
     }

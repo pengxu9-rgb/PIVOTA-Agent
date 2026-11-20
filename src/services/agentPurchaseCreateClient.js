@@ -49,6 +49,9 @@ const STATE_RE = /^[a-z_]{1,32}$/;
 const CREATE_REFUSALS = Object.freeze({
   invalid_request: 400, invalid_address: 400, invalid_return_url: 400,
   currency_unsupported: 400, invalid_offer_code: 400, consent_required: 400,
+  // The A2A door's market refusals (pivota-backend services/payment_orchestration/a2a_shipping_address.py): the
+  // address's market is not served on that rail, or no market could be named at all. Nothing is opened.
+  shipping_country_unsupported: 400, shipping_market_unknown: 400,
   merchant_not_eligible: 409, merchant_disabled: 409, merchant_not_purchasable: 409,
   buyer_unlinked: 409, row_not_found: 409, row_unpriced: 409,
   row_price_ambiguous: 409, row_not_shopify: 409, row_variant_unverified: 409,

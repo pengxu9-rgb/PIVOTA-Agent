@@ -55,7 +55,7 @@ Process-local, like the public read tier's limiter:
 | `GET /agenpas/api/p/:purchaseId` | JSON for the page. Token ONLY in the `X-Agenpas-Link` header (a `?t=` query is ignored). 200 view, 404 `link_invalid` / `not_found`, 410 `link_expired`, 503 `unavailable` with `Retry-After`. |
 | `GET /agenpas/assets/app.js`, `app.css` | The page's script and style, same origin. |
 | `GET /agenpas/dev/start?scenario=<name>` | Dev fixtures only: mints a fixture link and redirects to it. |
-| `POST /agenpas/api/p/:purchaseId/shipping-address` | `AGENPAS_COLLECT_SHIPPING` only. The buyer's shipping address and email, JSON, token in `X-Agenpas-Link` only. 200 next view, 415 not JSON, 413 over 4 KB, 400 bad JSON, 422 `{field_errors}`, 409 `address_already_set`, 429, 404, 503. |
+| `POST /agenpas/api/p/:purchaseId/shipping-address` | `AGENPAS_COLLECT_SHIPPING` only. The buyer's shipping address and email, JSON, token in `X-Agenpas-Link` only. 200 next view, 415 not JSON, 413 over 4 KB, 400 bad JSON, 422 `{field_errors}`, 409 `address_already_set`, 409 `consent_required` (the step's terms are not accepted yet; nothing is sent on), 429, 404, 503. |
 | `POST /agenpas/api/p/:purchaseId/consent` | Only while `AGENPAS_CONSENT_ENABLED` is on (off: the front guard's 404, as before). The buyer accepted the terms for the current step. See "Terms and privacy consent" for its checks and answers. |
 
 The page: `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, no inline script or style, no external
@@ -94,7 +94,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). The worker's ordinary progress codes (`checkout_placing`, `checkout_ready`, `checkout_read`, `await_read`, `reconciled`: routine retries and reconciliation) are known and change nothing; a HELD code beside one still wins. Anomalies (`transition_refused`, `rail_refused`, `no_step_for_state`, `vic_order_step_disabled`, `checkout_answer_unrecognised`) keep the checking wording from placing on. A code the gateway does not recognise at all (on no list, not of the hold shape) gets the checking wording: "We're checking with the store — don't try again", no retry, never "no order was sent". With no code at all: neutral wording, no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
-Codes are read segment by segment (mirroring pivota-backend 229d1e587: its 24 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
+Codes are read segment by segment (mirroring pivota-backend eb19e277b, unchanged since 229d1e587: its 24 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
 (`paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`, `checkout_card_unavailable:<why>`,
 `checkout_setup_refused:<kind>:<status>`, `checkout_confirm_refused:http_error:422`), so each is lower-cased and split
 on `:`, and every segment is checked; a suffixed code matches on its head segment. The step prefixes (`paid_sent`,
@@ -186,6 +186,30 @@ or 9 digits. The inputs carry the shipping autocomplete tokens (`shipping given-
 The backend validates again: its 422 `field_errors` become inline messages; its 409 (the address is set already, or
 the state moved on) becomes "We already have your address". The same address sent again is the backend's to accept.
 
+**Consent first** (A2A only; the owner's decision of 11-20). With the backend's `AGENPAS_CONSENT_GATE` on, the form is a
+consent-gated step like the card and approval pages (step `shipping_address`, approval epoch 0, one consent per
+purchase). Until the buyer accepts, the backend withholds the field list: `next_action` = `detail.buyer_step` =
+`{kind: "shipping_address", consent_required: true, expires_at}` with no `fields_missing`, and the internal read's
+`consent` block is offered for step `shipping_address`. The gateway then:
+
+- shows no form (no `address_request` in the view), even if the body listed fields, until the block says
+  `shipping_address` is satisfied;
+- with `AGENPAS_CONSENT_ENABLED` on and a complete offer: the address screen ("Where should we send it?") with the
+  terms ("Before you give your shipping address, read Pivota's Terms of Service … and Privacy Policy …"), the checkbox
+  and "Agree and continue" (the same consent UI, dwell and POST as the other steps; the POST accepts
+  `step: "shipping_address"`); once recorded the page reads again and the form appears;
+- with the gateway flag off (or an incomplete offer): "This step isn't available right now", never a dead form;
+- with `AGENPAS_COLLECT_SHIPPING` off: "Go back to the chat to add your address", as before;
+- refuses the address POST itself with 409 `consent_required` while its own read says the step's consent is pending
+  (the address is not forwarded), and maps the backend's 409 `consent_required` (the app's error envelope,
+  `detail.error`) to the same answer.
+
+On a 409 `consent_required` the page goes back to the terms (it reads again) and says "Please accept the terms
+first. What you typed is kept, and the form comes back after you agree."; what the buyer typed stays in memory and
+fills the form again after they agree. It is never shown as a generic error. With the backend's gate off, the form
+comes at once, exactly as before. Agent surfaces: a gated `shipping_address` `next_action` is treated like the other
+gated steps (`agenpas_url`, also as `next_action.action_url` while consent is on).
+
 **PII.** The address goes to the backend and nowhere else. No log line, error message or refusal carries any of it:
 field errors are codes (`required`, `invalid_postal_code`, ...), refusal logs carry a reason only, and the page keeps
 what the buyer typed in memory only (never in storage).
@@ -273,11 +297,15 @@ GET  .../agent/internal/commerce/purchases/{purchase_id}     (the read above) ad
   consent: {required, available, step, satisfied, terms_url, privacy_url, terms_version, privacy_version,
             offer: {id, issued_at}}      (offer only while unsatisfied and available)
   and while gated: no hosted_url; detail.buyer_step = next_action = {kind, expires_at, consent_required: true}
+  (A2A, kind shipping_address: no fields_missing until the consent; the consent block's step is shipping_address)
 POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/consents
   X-Internal-Key:      AGENPAS_INTERNAL_CONSENT_KEY
   X-Agenpas-Agent-Id:  <agent id from the verified link>
   {step, offer_id, issued_at, terms_version, privacy_version}
+  step: card_binding | approval | shipping_address (A2A, while the purchase waits for the buyer's contact)
   201 / 200 recorded · 409 consent_stale (or consent_too_soon) · 400 / 404 refused · 503 unavailable
+POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/shipping-address
+  409 consent_required before the shipping_address consent (nothing written)
   (optional) consent.min_dwell_seconds or consent.offer.min_dwell_seconds: the backend's dwell, whole seconds 0..120
 ```
 
@@ -362,7 +390,9 @@ AGENPAS_PUBLIC_BASE_URL=http://localhost:<port> AGENPAS_LINK_SECRET=<any 32+ cha
 open http://localhost:<port>/agenpas/dev/start?scenario=happy   # redirects to /agenpas/p/<id>#t=…
 ```
 
-Scenarios: `needs_address` (with `AGENPAS_COLLECT_SHIPPING=1`: the address form, then the card step), `happy` (about a minute from routing to completed), `outcome_unknown`, `refused`, `declined`,
+Scenarios: `needs_address` (with `AGENPAS_COLLECT_SHIPPING=1`: the address form, then the card step), `address_consent` (with
+`AGENPAS_COLLECT_SHIPPING=1` and `AGENPAS_CONSENT_ENABLED=1`: the terms on the address screen, then the form, then the card
+step), `happy` (about a minute from routing to completed), `outcome_unknown`, `refused`, `declined`,
 `unknown_state`, `expired`, and `consent` (a Reap-rail purchase: add `AGENPAS_CONSENT_ENABLED=1`; the card page and then
 the approval page appear only after the terms are accepted on the page; the fixture links point at `pivota.cc`). Hosted page buttons point at `hosted.example`, which resolves nowhere; the purchase
 advances on its own timeline either way.

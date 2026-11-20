@@ -2123,6 +2123,15 @@ export function toToolError(error) {
     if (error.detail.reason === "purchase_unavailable") {
       body.message = "Purchases through this tool are not available right now.";
     }
+    // The A2A door's market refusals: definite (nothing was opened), each with what the buyer can do about it.
+    if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_country_unsupported") {
+      body.message = "This purchase can only ship to an address in the United States for now, so it was not started. Nothing was charged.";
+      body.recovery = "tell the buyer it ships to US addresses only; with a US shipping address, start again with a new idempotency_key";
+    }
+    if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_market_unknown") {
+      body.message = "No shipping address was given, and the currency alone does not say which country to ship to, so the purchase was not started. Nothing was charged.";
+      body.recovery = "ask the buyer for their shipping address and start again with it and a new idempotency_key";
+    }
   }
   if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"
       && typeof error.detail.reconciliation_id === "string" && /^[a-f0-9]{32}$/.test(error.detail.reconciliation_id)) {

@@ -309,6 +309,41 @@ describe('AgenPas routes in the gateway app', () => {
       expect(saved.status).toBe(200);
       expect(JSON.parse(saved.body).screen).toBe('add_card');
     });
+
+    test('collection + consent on, fixtures: address_consent on the real server (terms, then the form, then the card step)', async () => {
+      process.env.AGENPAS_COLLECT_SHIPPING = '1';
+      process.env.AGENPAS_CONSENT_ENABLED = '1';
+      process.env.AGENPAS_DEV_FIXTURES = '1';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'http://localhost:4000';
+      const app = require('../src/server');
+      const HOST = 'localhost:4000';
+      const start = await request(app).get('/agenpas/dev/start?scenario=address_consent').set('Host', HOST);
+      const loc = new URL(start.headers.location, 'http://localhost');
+      const t = new URLSearchParams(loc.hash.slice(1)).get('t');
+      const id = loc.pathname.split('/').pop();
+      const read = () => request(app).get(`/agenpas/api/p/${id}`).set('Host', HOST).set('X-Agenpas-Link', t);
+      const address = { email: 'buyer@example.test', firstName: 'Sam', lastName: 'Placeholder', phone: '415 555 0100',
+        addressLine1: '1 Example Way', city: 'Sample City', region: 'CA', postalCode: '94107', country: 'US' };
+      const send = () => rawPost(app, `/agenpas/api/p/${id}/shipping-address`, HOST, JSON.stringify(address), 'application/json', `X-Agenpas-Link: ${t}\r\n`);
+      const first = await read();
+      expect(first.body.screen).toBe('shipping_address');
+      expect(first.body.consent.step).toBe('shipping_address');
+      expect(first.body.address_request).toBeUndefined();
+      const early = await send();
+      expect(early.status).toBe(409);
+      expect(JSON.parse(early.body)).toEqual({ error: 'consent_required' });
+      const { offer } = first.body.consent;
+      const agreed = await request(app).post(`/agenpas/api/p/${id}/consent`).set('Host', HOST).set('X-Agenpas-Link', t)
+        .set('Origin', 'http://localhost:4000').set('Sec-Fetch-Site', 'same-origin')
+        .send({ step: 'shipping_address', offer_id: offer.id, issued_at: offer.issued_at });
+      expect(agreed.status).toBe(200);
+      const form = await read();
+      expect(form.body.consent).toBeNull();
+      expect(form.body.address_request.fields_missing).toContain('postalCode');
+      const saved = await send();
+      expect(saved.status).toBe(200);
+      expect(JSON.parse(saved.body).screen).toBe('add_card');
+    });
   });
 
   test('the app\'s global JSON parser skips ONLY the AgenPas host, and only while AgenPas is on (the control: other hosts parse)', () => {

@@ -81,6 +81,8 @@
     addressErrors: {},
     addressMessage: null,
     addressBusy: false,
+    // Shown above the terms when an address submit was sent back to them (409 consent_required).
+    addressConsentNote: null,
     // The consent offer on screen: { step, offer, shownAt, checked, posting, accepted, error, retryAt, button }.
     consent: null,
     latestOffer: null,
@@ -325,11 +327,14 @@
     if (c && c.accepted) {
       append(box, spinner(), el('p', 'waiting-text', offered.step === 'card_binding'
         ? 'Thanks. Getting the secure card page ready…'
-        : "Thanks. You'll approve on our payment partner's secure page as soon as it's ready…"));
+        : offered.step === 'shipping_address'
+          ? 'Thanks. Getting the address form ready…'
+          : "Thanks. You'll approve on our payment partner's secure page as soon as it's ready…"));
       return box;
     }
     var intro = el('p', 'consent-intro');
-    append(intro, el('span', null, offered.step === 'card_binding' ? "Before you add your card, read Pivota's " : "Before you approve, read Pivota's "));
+    append(intro, el('span', null, offered.step === 'card_binding' ? "Before you add your card, read Pivota's "
+      : offered.step === 'shipping_address' ? "Before you give your shipping address, read Pivota's " : "Before you approve, read Pivota's "));
     // The versions are the ones the acceptance records (the same read's values): the buyer sees what is recorded.
     append(intro, externalLink('Terms of Service', offered.terms_url), versionNote(offered.terms_version), el('span', null, ' and '),
       externalLink('Privacy Policy', offered.privacy_url), versionNote(offered.privacy_version), el('span', null, '.'));
@@ -395,6 +400,7 @@
       if (r.status === 200) {
         c.posting = false;
         c.accepted = true;
+        if (c.step === 'shipping_address') ui.addressConsentNote = null;
         render();
         pollNow();
         return;
@@ -646,6 +652,20 @@
   }
 
   function addressCard(view) {
+    // The address step is consent-gated: the terms first, and the form only from a later read (the API then sends
+    // `address_request`). Whatever the buyer already typed is kept in memory for it.
+    if (view.consent && !view.address_request) {
+      var gate = el('section', 'card step');
+      append(gate, el('h2', null, 'Where should we send it?'),
+        el('p', null, 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
+      if (ui.addressConsentNote) {
+        var note = el('p', 'fine', ui.addressConsentNote);
+        note.setAttribute('role', 'status');
+        gate.appendChild(note);
+      }
+      gate.appendChild(consentBlock(view));
+      return gate;
+    }
     var fields = addressFieldsOf(view);
     var prefill = (view.address_request && view.address_request.prefill) || {};
     Object.keys(prefill).forEach(function (k) {
@@ -657,6 +677,12 @@
     var form = el('form', 'address-form');
     form.setAttribute('novalidate', 'novalidate');
     fields.forEach(function (f) { form.appendChild(addressInput(f)); });
+    // Sent back to the terms (409 consent_required): said here too until the next read shows them.
+    if (ui.addressConsentNote) {
+      var sentBack = el('p', 'fine', ui.addressConsentNote);
+      sentBack.setAttribute('role', 'status');
+      form.appendChild(sentBack);
+    }
     if (ui.addressMessage) {
       var msg = el('p', 'field-error form-error', ui.addressMessage);
       msg.setAttribute('role', 'alert');
@@ -705,11 +731,24 @@
         ui.address = {};
         ui.addressErrors = {};
         ui.addressMessage = null;
+        ui.addressConsentNote = null;
         ui.view = r.body;
         ui.lastJson = JSON.stringify(r.body);
         render();
         if (r.body.terminal) { stop(); forgetToken(); return; }
         schedule(r.body.poll_after_seconds);
+        return;
+      }
+      if (r.status === 409 && r.body && r.body.error === 'consent_required') {
+        // The terms for this step are not accepted (yet, or any more): back to them. What the buyer typed stays in
+        // memory and fills the form again once they agree; the page says so.
+        ui.addressMessage = null;
+        ui.addressErrors = {};
+        ui.addressConsentNote = 'Please accept the terms first. What you typed is kept, and the form comes back after you agree.';
+        if (ui.consent && ui.consent.step === 'shipping_address') ui.consent = null;
+        ui.lastJson = null;
+        render();
+        pollNow();
         return;
       }
       if (r.status === 422) {
