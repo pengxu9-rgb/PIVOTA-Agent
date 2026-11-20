@@ -167,6 +167,13 @@ function resolveSigningKeys(config = {}) {
   return raw.map(toPublicJwk).filter(Boolean);
 }
 
+/** UCP_AGENT_PUBLISH_JWKS: also publish the signing keys as an RFC 7517 `keys[]` set. Default off. */
+function publishesJwks(config = {}) {
+  if (typeof config.publishJwks === 'boolean') return config.publishJwks;
+  const v = (config.env || process.env || {}).UCP_AGENT_PUBLISH_JWKS;
+  return ['1', 'true', 'on', 'yes'].includes(String(v || '').trim().toLowerCase());
+}
+
 function requireHttps(url, field) {
   if (typeof url !== 'string' || !url.trim()) throw new Error(`${field} is required`);
   let u;
@@ -358,11 +365,15 @@ function buildUcpBuyerAgentProfile(config = {}) {
     signing_keys: signingKeys,
     // THE SAME KEYS AS AN RFC 7517 JWK SET, `keys[]`. The 2026-04-08 signatures spec allows this mirror beside
     // `signing_keys` (both MUST list the same kids, and a rotation updates both at once); the 2026-08-25 line
-    // drops `signing_keys` and reads ONLY `keys[]`. A verifier on the newer line — the Shopline agent standard is
-    // being designed now, 2026-11-20 — would otherwise find no key and answer `key_not_found`. Built from the one
-    // resolved array, so the two can never list different kids. Omitted when there are no keys, which leaves the
-    // keyless (anonymous/token tier) profile byte-identical to before.
-    ...(signingKeys.length ? { keys: signingKeys.map((k) => ({ ...k })) } : {}),
+    // drops `signing_keys` and reads ONLY `keys[]`, so a verifier on the newer line would otherwise find no key.
+    // Built from the one resolved array, so the two can never list different kids.
+    //
+    // FLAGGED (UCP_AGENT_PUBLISH_JWKS, default off), not just "when keys exist": a deployment can publish a public
+    // JWK with no private key behind it, and a reader on the newer line that today sees NO key would, unflagged,
+    // newly see a kid nothing signs with — and may start expecting signatures we never send. The flag turns on
+    // together with the key rotation that puts a real key pair behind the published kid. Off, the profile is
+    // byte-identical to before whatever `signing_keys` holds.
+    ...(signingKeys.length && publishesJwks(config) ? { keys: signingKeys.map((k) => ({ ...k })) } : {}),
     // Human/founder-facing truthful descriptor of who Pivota is and what it will (and will NOT) do. Additive
     // metadata alongside the spec `ucp` block; kept small to stay under the profile payload size limit.
     agent: {
@@ -446,6 +457,7 @@ module.exports = {
   CATALOG_DRAFT_VERSION,
   assertNoPurchaseCompletion,
   resolveSigningKeys,
+  publishesJwks,
   toPublicJwk,
   PLACEHOLDER_PUBLIC_JWK,
   DEFAULT_UCP_VERSION,

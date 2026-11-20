@@ -14,7 +14,7 @@ const vectors = require('./fixtures/ucp_request_signature_vectors.json');
 
 // The SAME sha256 is pinned in pivota-backend tests/test_ucp_request_signing.py. A regenerated or edited
 // vector file fails here AND there until both pins move together, so the two copies cannot drift apart.
-const VECTORS_SHA256 = '6b5433aca7f573400ea62f11498aa0aceb6a14a45572c290ef5fdd20499b0dbf';
+const VECTORS_SHA256 = 'c263a74407f74187f1d7ae3f2a7f6664a54186c5794caafe50c50138f4786b50';
 const { buildUcpSignatureBase } = require('../src/services/ucpBuyerAgentClient');
 
 describe('shared UCP request-signature vectors (gateway side)', () => {
@@ -55,5 +55,9 @@ describe('shared UCP request-signature vectors (gateway side)', () => {
       expect(all).toContain(id);
     }
     expect(vectors.cases.some((c) => /[^\x00-\x7f]/.test(c.body || ''))).toBe(true);
+    // The URL shapes where the raw text and the wire differ: both signers must sign the WIRE form.
+    for (const n of ['url_path_with_space', 'url_path_non_ascii', 'url_dot_segments', 'url_query_space_and_non_ascii', 'url_idn_host', 'url_ipv6_host_with_port']) {
+      expect(vectors.cases.map((c) => c.name)).toContain(n);
+    }
   });
 });

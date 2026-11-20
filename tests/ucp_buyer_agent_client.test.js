@@ -947,8 +947,8 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
 
 // ---- sign at every tier: UCP_AGENT_SIGN_ALWAYS -----------------------------
 //
-// A Bearer token used to REPLACE the signature. UCP says platforms SHOULD sign all requests, and the Shopline
-// agent standard (with Meta's Muse, 2026-11-20) identifies a platform by its signed UCP-Agent on every call.
+// A Bearer token used to REPLACE the signature. UCP says platforms SHOULD sign all requests, and a platform
+// agent standard (2026-11) identifies a platform by its signed UCP-Agent on every call.
 // With the flag on, the TOKEN tier carries the Bearer AND a verifiable signature; with it off, nothing changes.
 
 describe('UCP_AGENT_SIGN_ALWAYS: the TOKEN tier signs too', () => {
@@ -1030,11 +1030,97 @@ describe('UCP_AGENT_SIGN_ALWAYS: the TOKEN tier signs too', () => {
     expect(client.tier).toBe(TRUST_TIER.SIGNED);
     expect(client.describeTier().signs_requests).toBe(true);
   });
+
+  // G2: the loaded key must be the published key (kid AND x/y), or the TOKEN tier stays Bearer-only.
+  test.each([
+    ['no published key', []],
+    ['the kid is published with another key', () => [{ ...otherPublicJwk(), kid: TEST_KEY_ID }]],
+    ['this key is published under another kid', [{ ...TEST_PUBLIC_JWK, kid: 'pivota-other-kid' }]],
+  ])('on, but %s: Bearer-only, warned once, and describeTier says why', async (_name, keys) => {
+    const warns = [];
+    const { client, fetchImpl } = tokenClient({
+      signAlways: true, signingKeys: typeof keys === 'function' ? keys() : keys, logger: { warn: (o, m) => warns.push([o, m]) },
+    });
+    const d = client.describeTier();
+    expect(d.signs_requests).toBe(false);
+    expect(d.signing_key_published).toBe(false);
+    expect(d.token_tier_sign_skipped).toBe('signing_key_not_published');
+    expect(warns).toHaveLength(1);
+    expect(JSON.stringify(warns)).not.toMatch(/BEGIN|MIGHAgEA|"d"/);
+    await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+    const call = fetchImpl.calls.at(-1);
+    expect(call.headers.authorization).toBe('Bearer test-token');
+    expect(call.headers['signature-input']).toBeUndefined();
+    expect(warns).toHaveLength(1);
+  });
+
+  test('the published-key check reads UCP_AGENT_SIGNING_PUBLIC_JWK when no keys are passed (the deploy path)', async () => {
+    const saved = process.env.UCP_AGENT_SIGNING_PUBLIC_JWK;
+    try {
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = JSON.stringify(TEST_PUBLIC_JWK);
+      expect(tokenClient({ signAlways: true, signingKeys: undefined }).client.describeTier().signs_requests).toBe(true);
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = JSON.stringify({ ...otherPublicJwk(), kid: TEST_KEY_ID });
+      expect(tokenClient({ signAlways: true, signingKeys: undefined }).client.describeTier().signs_requests).toBe(false);
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = '{not json';
+      // An unreadable published JWK never makes the TOKEN tier sign (the profile itself refuses to build).
+      const bad = tokenClient({ signAlways: true, signingKeys: undefined });
+      await bad.client.createCheckout(endpoint, { cartId: 'cart_abc' });
+      expect(bad.fetchImpl.calls.at(-1).headers['signature-input']).toBeUndefined();
+    } finally {
+      if (saved === undefined) delete process.env.UCP_AGENT_SIGNING_PUBLIC_JWK; else process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = saved;
+    }
+  });
+
+  // G4: no profile URL at the TOKEN tier -> Bearer-only, never a throw.
+  test('on, but no profile URL resolves: Bearer-only instead of throwing', async () => {
+    const savedP = process.env.UCP_AGENT_PROFILE_URL;
+    const savedB = process.env.UCP_BASE_URL;
+    delete process.env.UCP_AGENT_PROFILE_URL;
+    delete process.env.UCP_BASE_URL;
+    try {
+      const warns = [];
+      const { client, fetchImpl } = tokenClient({ signAlways: true, profileUrl: undefined, logger: { warn: (o) => warns.push(o) } });
+      expect(client.describeTier().token_tier_sign_skipped).toBe('no_profile_url');
+      expect(warns.map((w) => w.reason)).toContain('no_profile_url');
+      await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+      const call = fetchImpl.calls.at(-1);
+      expect(call.headers.authorization).toBe('Bearer test-token');
+      expect(call.headers['signature-input']).toBeUndefined();
+    } finally {
+      if (savedP === undefined) delete process.env.UCP_AGENT_PROFILE_URL; else process.env.UCP_AGENT_PROFILE_URL = savedP;
+      if (savedB === undefined) delete process.env.UCP_BASE_URL; else process.env.UCP_BASE_URL = savedB;
+    }
+  });
+
+  // G3: tools/list is signed whenever the client signs.
+  test('on: tools/list carries a verifiable signature and no idempotency key; off: unchanged', async () => {
+    const on = tokenClient({ signAlways: true });
+    await on.client.listTools(endpoint);
+    const signed = on.fetchImpl.calls.at(-1);
+    expect(signed.body.method).toBe('tools/list');
+    expect(signed.headers.authorization).toBe('Bearer test-token');
+    expect(signed.headers['idempotency-key']).toBeUndefined();
+    const { ok, covered } = verifyCapturedSignature(signed, endpoint);
+    expect(ok).toBe(true);
+    expect(covered).toEqual(['@method', '@authority', '@path', 'ucp-agent', 'content-digest', 'content-type']);
+
+    delete process.env.UCP_AGENT_SIGN_ALWAYS;
+    const off = tokenClient();
+    await off.client.listTools(endpoint);
+    const plain = off.fetchImpl.calls.at(-1);
+    for (const h of ['signature-input', 'signature', 'content-digest', 'ucp-agent']) expect(plain.headers[h]).toBeUndefined();
+  });
 });
 
-describe('profile publishes keys[] beside signing_keys', () => {
-  test('keys[] lists exactly the signing_keys kids, as separate objects', () => {
-    const p = buildUcpBuyerAgentProfile({ signingKeys: [TEST_PUBLIC_JWK] });
+function otherPublicJwk() {
+  const { publicKey } = nodeCrypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  return { ...publicKey.export({ format: 'jwk' }), use: 'sig' };
+}
+
+describe('profile publishes keys[] beside signing_keys (UCP_AGENT_PUBLISH_JWKS)', () => {
+  const profileUrl = 'https://ucp.pivota.cc/.well-known/ucp-agent';
+  test('flag on: keys[] lists exactly the signing_keys kids, as separate objects', () => {
+    const p = buildUcpBuyerAgentProfile({ signingKeys: [TEST_PUBLIC_JWK], publishJwks: true });
     expect(p.keys).toEqual(p.signing_keys);
     expect(p.keys[0]).not.toBe(p.signing_keys[0]);
     expect(p.keys.map((k) => k.kid)).toEqual([TEST_KEY_ID]);
@@ -1042,9 +1128,30 @@ describe('profile publishes keys[] beside signing_keys', () => {
   });
 
   test('no keys: no keys[] member, the keyless profile is unchanged', () => {
-    const p = buildUcpBuyerAgentProfile({ signingKeys: [] });
+    const p = buildUcpBuyerAgentProfile({ signingKeys: [], publishJwks: true });
     expect(p.signing_keys).toEqual([]);
     expect(Object.hasOwn(p, 'keys')).toBe(false);
+  });
+
+  // G1: the route's env path. A deployment that publishes a public JWK (UCP_AGENT_SIGNING_PUBLIC_JWK) with the flag
+  // off must serve exactly the old profile: signing_keys as before, and NO keys[] advertising that kid again.
+  test('the route env path: flag off -> a published JWK appears in signing_keys only; flag on -> keys[] too', () => {
+    const saved = { jwk: process.env.UCP_AGENT_SIGNING_PUBLIC_JWK, flag: process.env.UCP_AGENT_PUBLISH_JWKS };
+    try {
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = JSON.stringify(TEST_PUBLIC_JWK);
+      delete process.env.UCP_AGENT_PUBLISH_JWKS;
+      const off = buildUcpBuyerAgentProfile({ profileUrl });
+      expect(off.signing_keys.map((k) => k.kid)).toEqual([TEST_KEY_ID]);
+      expect(Object.hasOwn(off, 'keys')).toBe(false);
+      process.env.UCP_AGENT_PUBLISH_JWKS = '0';
+      expect(Object.hasOwn(buildUcpBuyerAgentProfile({ profileUrl }), 'keys')).toBe(false);
+      process.env.UCP_AGENT_PUBLISH_JWKS = '1';
+      const on = buildUcpBuyerAgentProfile({ profileUrl });
+      expect(on.keys).toEqual(on.signing_keys);
+    } finally {
+      if (saved.jwk === undefined) delete process.env.UCP_AGENT_SIGNING_PUBLIC_JWK; else process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = saved.jwk;
+      if (saved.flag === undefined) delete process.env.UCP_AGENT_PUBLISH_JWKS; else process.env.UCP_AGENT_PUBLISH_JWKS = saved.flag;
+    }
   });
 });
 

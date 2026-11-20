@@ -48,6 +48,7 @@ const nodeNet = require('node:net');
 const {
   buildUcpBuyerAgentProfile,
   DEFAULT_UCP_VERSION,
+  resolveSigningKeys,
 } = require('./ucpBuyerAgentProfile');
 
 // MCP tool names (verbatim from the live spec). complete_checkout is listed for the refusal guard ONLY.
@@ -551,14 +552,46 @@ function createUcpBuyerAgentClient(options = {}) {
     : (canSign ? TRUST_TIER.SIGNED : TRUST_TIER.ANONYMOUS);
   // SIGN EVERY REQUEST WHEN A KEY IS PRESENT, whatever the tier. A Bearer token used to REPLACE the signature:
   // the TOKEN tier sent `Authorization` and no Signature-Input. The UCP signatures spec says platforms "SHOULD
-  // sign all requests", and the Shopline agent standard (designed with Meta's Muse, 2026-11-20) identifies a
-  // platform by its signed `UCP-Agent` profile on EVERY call, token or not. UCP_AGENT_SIGN_ALWAYS (default OFF)
+  // sign all requests", and a platform agent standard (2026-11) identifies a platform by its signed `UCP-Agent`
+  // profile on EVERY call, token or not. UCP_AGENT_SIGN_ALWAYS (default OFF)
   // adds the signature beside the Bearer token; off, the TOKEN tier is byte-identical to before. The tier name
   // is unchanged — it still says which credential is strongest — so callers that branch on it are untouched.
   const signAlways = typeof options.signAlways === 'boolean'
     ? options.signAlways
     : ['1', 'true', 'on', 'yes'].includes(String(process.env.UCP_AGENT_SIGN_ALWAYS || '').trim().toLowerCase());
-  const signsRequests = canSign && (tier === TRUST_TIER.SIGNED || (tier === TRUST_TIER.TOKEN && signAlways));
+  // THE KEY WE SIGN WITH MUST BE THE KEY WE PUBLISH. The private key (UCP_AGENT_SIGNING_PRIVATE_KEY), its kid
+  // (UCP_AGENT_SIGNING_KEY_ID) and the published public JWK (UCP_AGENT_SIGNING_PUBLIC_JWK) are three separate
+  // values; a fresh private key under an already-published kid, or an unrotated public JWK, signs requests that
+  // verify against nothing. The public half is DERIVED from the loaded key and must appear in the keys the
+  // profile resolves (same kid, same x/y). Only public values are compared; nothing here is ever logged.
+  let signingKeyPublished = false;
+  if (canSign) {
+    const mine = nodeCrypto.createPublicKey(signingKeyObject).export({ format: 'jwk' });
+    let published = [];
+    try { published = resolveSigningKeys({ signingKeys: signingKeysToPublish }); } catch { published = []; }
+    signingKeyPublished = published.some((k) => k && k.kid === signingKeyId && k.x === mine.x && k.y === mine.y);
+  }
+  // The TOKEN tier already works with the Bearer alone, so a signature is added there only when it can verify:
+  // the key is the published one AND a profile URL resolves for the covered UCP-Agent header. Otherwise the call
+  // stays Bearer-only (as with the flag off) and the reason is warned once, here, at construction.
+  let tokenTierSignSkipped;
+  if (tier === TRUST_TIER.TOKEN && signAlways && canSign) {
+    if (!signingKeyPublished) tokenTierSignSkipped = 'signing_key_not_published';
+    else if (!profileUrl) tokenTierSignSkipped = 'no_profile_url';
+  }
+  if (tokenTierSignSkipped && typeof options.logger?.warn === 'function') {
+    options.logger.warn(
+      { surface: 'ucp_buyer_agent', reason: tokenTierSignSkipped, signing_key_id: signingKeyId },
+      'ucpBuyerAgentClient: UCP_AGENT_SIGN_ALWAYS is on but the TOKEN tier sends Bearer-only: '
+      + (tokenTierSignSkipped === 'no_profile_url'
+        ? 'no agent profile URL resolves for the UCP-Agent header.'
+        : 'the signing key is not the published key (UCP_AGENT_SIGNING_PUBLIC_JWK must list this kid with this key\'s x/y).'),
+    );
+  }
+  const signsRequests = canSign && (
+    tier === TRUST_TIER.SIGNED
+    || (tier === TRUST_TIER.TOKEN && signAlways && !tokenTierSignSkipped)
+  );
 
   // Cached minted JWT from the client-credential exchange: { token, expiresAt(ms) }. Never logged.
   let tokenCache = null;
@@ -771,6 +804,10 @@ function createUcpBuyerAgentClient(options = {}) {
       supports_signed_tier: canSign,
       // Whether calls actually carry an RFC 9421 signature (SIGNED tier, or TOKEN tier with UCP_AGENT_SIGN_ALWAYS).
       signs_requests: signsRequests,
+      // Whether the loaded key's public half (kid + x/y) is among the keys the profile publishes. Boolean only.
+      signing_key_published: canSign ? signingKeyPublished : undefined,
+      // Why UCP_AGENT_SIGN_ALWAYS did not add a signature at the TOKEN tier (undefined when it did, or is off).
+      token_tier_sign_skipped: tokenTierSignSkipped,
       completes_checkout: false,
     };
   }
@@ -1105,6 +1142,24 @@ function createUcpBuyerAgentClient(options = {}) {
       params: { arguments: { meta: requestMeta() } },
     };
     const bodyString = JSON.stringify(body);
+    // Signed like tools/call whenever this client signs (a platform that requires a signed UCP-Agent on every
+    // request would otherwise refuse the quote flow's tools/list before create_checkout). Read-only, so no
+    // idempotency key. With no profile URL it stays unsigned, as it always was.
+    if (signsRequests && ucpAgentHeaderValue()) {
+      headers['ucp-agent'] = ucpAgentHeaderValue();
+      const created = Math.floor(Date.now() / 1000);
+      const { headers: sigHeaders } = signUcpRequest({
+        method: 'POST',
+        url: endpoint,
+        bodyString,
+        ucpAgentValue: headers['ucp-agent'],
+        keyObject: signingKeyObject,
+        keyid: signingKeyId,
+        created,
+        expires: created + signatureTtlSec,
+      });
+      Object.assign(headers, sigHeaders);
+    }
     // tools/list is read-only discovery: safe to retry on a transient error (H1).
     const res = await fetchWithPolicy((signal) => fetchMerchantEndpoint(endpoint, {
       // Same rule as callTool: this carries the tier credential too.
