@@ -130,12 +130,18 @@ memory):
   `checkout_created_hosted_url_refused`. `checkout_read_permanent:<n>:<why>` (one permanent-shaped read failure, below
   the backend's limit of 3, after which it is `checkout_unresolvable`) is HELD from `placing` on and in final states;
   before placing it keeps the buyer's step, as the UCP lane keeps the hosted page for it. The hold shape also matches
-  `unresolvab`, and any `reap_*` code the lists do not name (`reap_status_500`, ...) reads as a hold from `placing` on.
+  `unresolvab`.
+- UNRECOGNISED (the rule is rail-neutral, the same on every rail): from `placing` on and in final states, ANY code the
+  gateway does not recognise (on no list above and not of the hold shape) reads as a hold, with the checking wording
+  and no retry; an unlisted `reap_*` code (`reap_status_500`, ...) is one case of it, not the only one. Before placing
+  it changes nothing. A code on any list keeps its own wording.
 - PROGRESS (`REAP_PROGRESS_CODES`, the state's own wording, never the checking copy; a HELD code beside one still wins):
   `reap_status_503`, `checkout_read_failed`, `transport_error` (`transport_error:<Type>`). Each is written only by a READ
   (the checkout poll's GET) or by a quote / enrollment call, which moves no money; the checkout create never writes
   them (pivota-backend 0b2749d28; the sources are in `src/agenpas/view.js`). `checkout_read_recovered` is NOT on the
-  list: it is also written on a row whose create answer was lost and that an operator attached.
+  list: it is also written on a row whose create answer was lost and that an operator attached. So
+  `checkout_read_recovered`, and `poller_advance_raised:<Type>` (which can follow a raised checkout create), now read
+  "We're checking with the store" in `placing` (the unrecognised rule above), no longer the placing screen.
 - FAILED ("no order was sent"), ONLY the codes written before any Reap checkout exists: `enrollment_no_hosted_action`,
   `enrollment_id_conflict`, `enrollment_row_unreadable`, `enrollment_not_activatable`, `enrollment_dead`,
   `enrollment_create_failed`, `enrollment_read_failed`, `no_active_enrollment`, `enrollment_not_active` (Reap's
@@ -147,8 +153,14 @@ memory):
   best reading), and it also keeps FAILED away.
 - `buyer_email_missing` (resolving -> failed): "some details were missing".
 - The codes the Reap worker releases on a live row before placing (`enrollment_settling`, `enrollment_pending`,
-  `quote_expired`, `checkout_quote_replayed`, transport codes, ...) leave the buyer's step alone; any other partner code
-  on a final row gets the neutral generic wording, except an unlisted `reap_*` one (the checking wording).
+  `quote_expired`, `checkout_quote_replayed`, transport codes, ...) leave the buyer's step alone; on a final row, a code
+  the gateway does not recognise gets the checking wording (no retry, never "no order was sent"), and a known code
+  keeps its own wording (the lists above).
+- OPERATOR FOLLOW-UP. A terminal row (`failed`, `refused`, `expired`) whose page reads "We're checking with the store"
+  (a HELD code, or a code the gateway does not recognise) is NOT settled for the buyer: the page tells them the outcome
+  will be confirmed in the chat and stops polling. An operator must follow up on every such row, establish the outcome
+  with the payment partner and the store, and confirm it to the buyer, exactly as `checkout_unresolvable` already
+  requires. Ops: these rows land with you.
 
 The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"
 once the backend has a quoted total, with the line that the final total includes shipping and tax and cannot exceed

@@ -336,7 +336,74 @@ test('Reap buyer_email_missing (resolving -> failed): "some details were missing
   assert.equal(view.outcome.kind, 'details_needed');
 });
 
-test('Reap pending-step codes (released, non-final) leave the step alone; an unknown partner code gets neutral wording', () => {
+// The two "checking" copies, exactly (src/agenpas/view.js OUTCOME_UNKNOWN_COPY / HELD_COPY).
+const FINAL_CHECKING = Object.freeze({
+  kind: 'outcome_unknown',
+  title: "We're checking with the store",
+  message: "We're checking with the store — don't try again. Your order may already be in progress, and we'll confirm what happened in the chat.",
+  retry_hint: false,
+  outcome_unknown: true,
+});
+const PLACING_CHECKING = Object.freeze({
+  kind: 'held',
+  title: "We're checking with the store",
+  message: "We're checking with the store — don't try again. This can take a while; we'll confirm what happened in the chat.",
+  retry_hint: false,
+  outcome_unknown: true,
+});
+
+// The rail-neutral unrecognised-code rule changes ONLY codes the gateway does not recognise: every known rp_-rail code
+// keeps its own wording, exactly as before the rule applied to this rail.
+test('known rp_-rail codes keep their wording under the unrecognised-code rule; only an unrecognised code reads "checking"', () => {
+  const NOT_SUBMITTED = {
+    kind: 'not_submitted', title: "This purchase didn't go through",
+    message: "The store's checkout couldn't be completed, so no order was sent to the store.", retry_hint: false, outcome_unknown: false,
+  };
+  const POST_CHECKOUT = {
+    kind: 'failed', title: "This purchase didn't complete", message: 'Go back to the chat for the latest on this purchase.',
+    retry_hint: false, outcome_unknown: false,
+  };
+  const TIMED_OUT = {
+    kind: 'approval_timed_out', title: "The approval didn't go through in time",
+    message: "The approval didn't go through in time, so the order wasn't placed. You can start again from the chat.",
+    retry_hint: true, outcome_unknown: false,
+  };
+  // Each is on an explicit list today (so the rule never decides it).
+  for (const code of ['enrollment_dead', 'no_active_enrollment', 'quote_id_missing', 'enrollment_not_active']) {
+    assert.equal(REAP_FAILED_CODES.includes(code), true, code);
+    assert.equal(FAILED_CODES.has(code), true, code);
+  }
+  for (const code of ['checkout_failed', 'checkout_expired']) assert.equal(POST_CHECKOUT_GENERIC_CODES.has(code), true, code);
+  const failed = (code) => project(reap('failed', {}, { last_error_code: code }));
+  // Pre-checkout FAILED codes: "no order was sent".
+  for (const code of ['enrollment_dead', 'no_active_enrollment', 'quote_id_missing', 'enrollment_not_active']) {
+    assert.equal(failed(code).screen, 'failed', code);
+    assert.deepEqual(failed(code).outcome, NOT_SUBMITTED, code);
+  }
+  // Every other pre-checkout FAILED code too (the whole list).
+  for (const code of REAP_FAILED_CODES) assert.deepEqual(failed(code).outcome, NOT_SUBMITTED, code);
+  // Post-checkout codes: their own wording, never "no order was sent", never "checking".
+  for (const code of ['checkout_failed', 'checkout_expired']) {
+    assert.equal(failed(code).screen, 'failed', code);
+    assert.deepEqual(failed(code).outcome, POST_CHECKOUT, code);
+  }
+  assert.equal(failed('approval_window_lapsed').screen, 'failed');
+  assert.deepEqual(failed('approval_window_lapsed').outcome, TIMED_OUT);
+  // In placing, a known code leaves the placing screen alone.
+  for (const code of ['enrollment_dead', 'checkout_failed', 'checkout_expired', 'approval_window_lapsed']) {
+    const placing = project(reap('placing', {}, { last_error_code: code }));
+    assert.equal(placing.screen, 'placing', code);
+    assert.equal(placing.outcome, null, code);
+  }
+  // Only an unrecognised code changes: final -> the final checking copy; placing -> the held checking copy.
+  for (const code of ['agentic_resource_not_found', 'checkout_read_recovered', 'poller_advance_raised:RuntimeError']) {
+    assert.equal(failed(code).screen, 'outcome_unknown', code);
+    assert.deepEqual(failed(code).outcome, FINAL_CHECKING, code);
+    assert.deepEqual(project(reap('placing', {}, { last_error_code: code })).outcome, PLACING_CHECKING, code);
+  }
+});
+
+test('Reap pending-step codes (released, non-final) leave the step alone; an unknown partner code reads "checking"', () => {
   for (const code of ['enrollment_settling', 'enrollment_pending', 'enrollment_link_expired', 'quote_expired', 'checkout_quote_replayed',
     'checkout_read_recovered', 'contact_retention_elapsed', 'transport_error:readtimeout', 'quote_budget_exhausted']) {
     const card = project(reap('needs_payment_method', { next_action: CARD_ACTION, consent: consent({ satisfied: true }) }, { last_error_code: code }), ON);
@@ -346,10 +413,9 @@ test('Reap pending-step codes (released, non-final) leave the step alone; an unk
   // A code the gateway does not recognise on a final purchase reads "checking" (the shipping branch's rule, every
   // rail): never "try again", never "no order was sent".
   const unknown = project(reap('failed', {}, { last_error_code: 'agentic_resource_not_found' }));
-  assert.equal(unknown.outcome.kind, 'outcome_unknown');
-  assert.equal(unknown.outcome.retry_hint, false);
-  assert.match(unknown.outcome.message, /checking with the store — don't try again/);
-  assert.equal(/no order was sent|you can (?:start|try) again/i.test(unknown.outcome.message), false);
+  assert.equal(unknown.screen, 'outcome_unknown');
+  assert.equal(unknown.action, null);
+  assert.deepEqual(unknown.outcome, FINAL_CHECKING);
 });
 
 test('the backend\'s dwell: `min_dwell_seconds` (on the block or the offer) reaches the page only when stated and sane', () => {
@@ -431,11 +497,17 @@ test('an unlisted reap_* code in placing (and once final) reads "checking"; befo
   }
   // checkout_read_recovered stays unlisted (not progress: it is also written after an operator attached a checkout
   // whose create answer was lost), so in placing it is a code the gateway does not recognise: "checking".
-  assert.equal(project(reap('placing', {}, { last_error_code: 'checkout_read_recovered' })).screen, 'outcome_unknown');
   // poller_advance_raised:<Type> can follow a raised checkout create: also "checking" in placing.
-  assert.equal(project(reap('placing', {}, { last_error_code: 'poller_advance_raised:RuntimeError' })).screen, 'outcome_unknown');
-  // The listed progress codes keep the placing screen.
+  for (const code of ['checkout_read_recovered', 'poller_advance_raised:RuntimeError']) {
+    const placing = project(reap('placing', {}, { last_error_code: code }));
+    assert.equal(placing.screen, 'outcome_unknown', code);
+    assert.equal(placing.action, null, code);
+    assert.deepEqual(placing.outcome, PLACING_CHECKING, code);
+  }
+  // The listed progress codes keep the placing screen and no outcome copy.
   for (const code of ['reap_status_503', 'checkout_read_failed', 'transport_error:ReadTimeout']) {
-    assert.equal(project(reap('placing', {}, { last_error_code: code })).screen, 'placing', code);
+    const placing = project(reap('placing', {}, { last_error_code: code }));
+    assert.equal(placing.screen, 'placing', code);
+    assert.equal(placing.outcome, null, code);
   }
 });
