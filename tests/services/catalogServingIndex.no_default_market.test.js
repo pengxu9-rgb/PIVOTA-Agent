@@ -286,6 +286,40 @@ describe('catalog serving index never defaults a market (flag)', () => {
     expect(stats).toMatchObject(ZERO_CCY);
   });
 
+  // Review P3-4: the three survivors -- a dropped product price beside a kept offer, the product currency's case,
+  // and price_currency as the product's currency field.
+  test('flag on: a USD product price beside a kept SGD offer -> the product price is dropped, the doc priced by the offer', () => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([seedRow('r6', { price: 19, currency: 'USD',
+      offers: [{ offer_id: 'o_r6', price: { amount: 25, currency: 'SGD' } }] })],
+    { includeNonPublic: true, market: '*', stats });
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({ market: 'SG', price_min: 25, price_max: 25 });
+    expect(stats).toMatchObject({ ...ZERO_CCY, market_currency_conflict_skipped: 1 });
+  });
+
+  test('flag on: the product currency is compared case-insensitively', () => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([
+      seedRow('r7', { price: 25, currency: 'sgd', offers: [] }),
+      seedRow('r8', { price: 19, currency: 'usd', offers: [] }),
+    ], { includeNonPublic: true, market: '*', stats });
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({ market: 'SG', price_min: 25 });
+    expect(stats).toMatchObject({ market_currency_conflict_skipped: 1, market_currency_group_skipped: 1 });
+  });
+
+  test('flag on: price_currency is read as the product currency when currency is absent', () => {
+    process.env[FLAG] = 'true';
+    const stats = {};
+    const docs = buildCatalogServingBackfillDocs([seedRow('r9', { price: 19, price_currency: 'USD', offers: [] })],
+      { includeNonPublic: true, market: '*', stats });
+    expect(docs).toEqual([]);
+    expect(stats).toMatchObject({ market_currency_conflict_skipped: 1, market_currency_group_skipped: 1 });
+  });
+
   test('flag on: the backfill result carries both currency counters', async () => {
     process.env[FLAG] = 'true';
     const result = await backfillCatalogServingIndex({ market: '*', dryRun: true }, {
