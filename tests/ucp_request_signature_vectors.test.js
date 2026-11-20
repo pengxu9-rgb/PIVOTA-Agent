@@ -8,10 +8,21 @@
 // signers fails before it ships. The key is TEST-ONLY (the one in ucp_buyer_agent_client.test.js).
 
 const nodeCrypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const vectors = require('./fixtures/ucp_request_signature_vectors.json');
+
+// The SAME sha256 is pinned in pivota-backend tests/test_ucp_request_signing.py. A regenerated or edited
+// vector file fails here AND there until both pins move together, so the two copies cannot drift apart.
+const VECTORS_SHA256 = '6b5433aca7f573400ea62f11498aa0aceb6a14a45572c290ef5fdd20499b0dbf';
 const { buildUcpSignatureBase } = require('../src/services/ucpBuyerAgentClient');
 
 describe('shared UCP request-signature vectors (gateway side)', () => {
+  test('the vector file is byte-for-byte the copy pivota-backend pins (same sha256 in both repos)', () => {
+    const bytes = fs.readFileSync(path.join(__dirname, 'fixtures', 'ucp_request_signature_vectors.json'));
+    expect(nodeCrypto.createHash('sha256').update(bytes).digest('hex')).toBe(VECTORS_SHA256);
+  });
+
   const pub = nodeCrypto.createPublicKey({ key: vectors.public_jwk, format: 'jwk' });
 
   test.each(vectors.cases.map((c) => [c.name, c]))('%s: the gateway signer reproduces the vector', (_name, c) => {
