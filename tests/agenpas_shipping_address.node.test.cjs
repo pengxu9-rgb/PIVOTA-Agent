@@ -307,11 +307,12 @@ test('POST: the backend\'s 422 / 409 / 404 / outage map to inline errors, "alrea
   assert.ok(down.headers['retry-after']);
 });
 
-test('POST: no address request in the view (already given): the backend decides; the same address again is a 200', async () => {
+test('POST: no address request in the view (already given, or moved on): refused in the gateway, nothing sent', async () => {
   const reader = fakeBackend({ view: body('needs_payment_method', { next_action: undefined }) });
   const res = await post(app({ reader }));
-  assert.equal(res.status, 200);
-  assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 1);
+  assert.equal(res.status, 409);
+  assert.deepEqual(res.body, { error: 'address_not_requested' });
+  assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 0);
 });
 
 test('POST with AGENPAS_COLLECT_SHIPPING off (or AgenPas off): the route does not exist', async () => {
@@ -373,7 +374,8 @@ test('writer: 422 (top level or under detail), 409, 404 and 5xx outcomes', async
     { kind: 'invalid', field_errors: { postalCode: 'invalid' } });
   assert.deepEqual(await mk({ status: 422, body: { detail: { field_errors: { email: 'invalid' } } } }).submitShippingAddress(CLAIMS, NORMALISED),
     { kind: 'invalid', field_errors: { email: 'invalid' } });
-  assert.deepEqual(await mk({ status: 409, body: {} }).submitShippingAddress(CLAIMS, NORMALISED), { kind: 'conflict' });
+  assert.deepEqual(await mk({ status: 409, body: { error: 'shipping_address_conflict' } }).submitShippingAddress(CLAIMS, NORMALISED), { kind: 'conflict' });
+  assert.deepEqual(await mk({ status: 409, body: {} }).submitShippingAddress(CLAIMS, NORMALISED), { kind: 'not_taken', code: 'unnamed' });
   assert.deepEqual(await mk({ status: 404, body: {} }).submitShippingAddress(CLAIMS, NORMALISED), { kind: 'not_found' });
   assert.equal((await mk({ status: 503, body: 'x' }).submitShippingAddress(CLAIMS, NORMALISED)).kind, 'unavailable');
   assert.equal((await createBackendPurchaseReader({ baseUrl: 'https://b.example', internalKey: () => '' }).submitShippingAddress(CLAIMS, NORMALISED)).code, 'unconfigured');
@@ -381,7 +383,7 @@ test('writer: 422 (top level or under detail), 409, 404 and 5xx outcomes', async
 
 // ---- the needs_address dev fixture -----------------------------------------------------------------------------
 
-test('fixture needs_address: the form, then the card step; the same address again is fine, another is a 409', async () => {
+test('fixture needs_address: the form, then the card step; once given, any address is refused in the gateway (409, nothing sent)', async () => {
   const local = { ...ENV_ON, AGENPAS_DEV_FIXTURES: '1', AGENPAS_PUBLIC_BASE_URL: 'http://localhost:4000' };
   let clock = NOW;
   const a = express();
@@ -402,6 +404,9 @@ test('fixture needs_address: the form, then the card step; the same address agai
   assert.equal(saved.body.screen, 'add_card');
   clock += 3000;
   assert.equal((await get()).body.screen, 'add_card');
-  assert.equal((await send(ADDRESS)).status, 200, 'the same address again');
-  assert.equal((await send({ ...ADDRESS, city: 'Othertown' })).status, 409, 'another address');
+  for (const again of [ADDRESS, { ...ADDRESS, city: 'Othertown' }]) {
+    const res = await send(again);
+    assert.equal(res.status, 409);
+    assert.deepEqual(res.body, { error: 'address_not_requested' });
+  }
 });

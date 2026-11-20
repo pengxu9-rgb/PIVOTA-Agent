@@ -414,10 +414,18 @@ test('definite backend refusals are named and final; nothing is read back', asyn
 
 test('the A2A door\'s market refusals (400) are definite, each with its own honest message; nothing is read back', async () => {
   const expected = {
-    shipping_country_unsupported: /only ship to an address in the United States/,
-    shipping_market_unknown: /No shipping address was given/,
+    // Raised after the backend's key lookup: no purchase can exist under the key.
+    shipping_country_unsupported: {
+      message: 'This purchase can only ship to the United States for now, so it was not started. Nothing was charged.',
+      recovery: 'tell the buyer it ships to the United States only; with a US shipping address, start again with a new idempotency_key',
+    },
+    // Raised BEFORE the key lookup: a purchase from an earlier unknown-outcome call may exist, so check it first.
+    shipping_market_unknown: {
+      message: 'No shipping address was given, and the currency alone does not say which country to ship to, so this call opened nothing.',
+      recovery: 'nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise ask the buyer for their shipping address and send it',
+    },
   };
-  for (const [code, message] of Object.entries(expected)) {
+  for (const [code, want] of Object.entries(expected)) {
     const backend = fakeBackend();
     backend.state.post = { status: 400, body: houseError(code, 400) };
     const ctx = await build({ backend });
@@ -425,10 +433,9 @@ test('the A2A door\'s market refusals (400) are definite, each with its own hone
     assert.equal(err.code, 'OPERATION_NOT_ALLOWED', code);
     assert.equal(err.detail.reason, 'purchase_refused', code);
     assert.equal(err.detail.refusal_code, code);
-    assert.match(err.message, message, code);
-    assert.match(err.message, /not started\. Nothing was charged\./, code);
-    assert.equal(typeof err.recovery, 'string', code);
-    assert.equal(/retry the same|may exist/.test(`${err.message} ${err.recovery}`), false, `${code}: never "outcome unknown"`);
+    assert.equal(err.message, want.message, code);
+    assert.equal(err.recovery, want.recovery, code);
+    assert.equal(/new idempotency_key/.test(err.recovery), code === 'shipping_country_unsupported', `${code}: a new key only after the lookup`);
     assert.equal(backend.calls.filter((c) => c.method === 'GET').length, 0);
   }
   // At another status they are not the documented refusal: still an unknown outcome.

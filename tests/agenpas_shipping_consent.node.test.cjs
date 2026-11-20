@@ -273,7 +273,10 @@ test('the consent POST accepts step shipping_address, records the read\'s versio
     step: 'shipping_address', offer_id: OFFER.id, issued_at: OFFER.issued_at, terms_version: 'terms-2026-11', privacy_version: 'privacy-2026-11',
   });
   reader.advance();
+  const readsBefore = reader.calls.filter((c) => c.op === 'read').length;
   const after = await getView(a);
+  // Inside the 2 s cache window, yet a NEW backend read: the recorded consent dropped this instance's cache entry.
+  assert.equal(reader.calls.filter((c) => c.op === 'read').length, readsBefore + 1);
   assert.equal(after.body.screen, 'shipping_address');
   assert.equal(after.body.consent, null);
   assert.deepEqual(after.body.address_request.fields_missing, [...ADDRESS_FIELDS]);
@@ -322,6 +325,59 @@ test('after the consent the address POST goes on as before (200, the next view)'
   assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 1);
 });
 
+test('the address POST forwards ONLY when the gateway\'s read shows the form: held, placing, the rp_ rail, an unsatisfied block are refused, nothing sent', async () => {
+  const held = consentedFormBody();
+  held.detail = { ...held.detail, last_error_code: 'checkout_unknown_timeout' };
+  const placing = consentedFormBody();
+  placing.state = 'placing';
+  const reapForm = consentedFormBody();
+  reapForm.rail = 'reap';
+  const placingUnsatisfied = formBody({ state: 'placing', consent: consentBlock() });
+  const cases = [
+    ['held', held, 'address_not_requested'],
+    ['placing', placing, 'address_not_requested'],
+    ['reap', reapForm, 'address_not_requested'],
+    ['placing + unsatisfied shipping block', placingUnsatisfied, 'address_not_requested'],
+    ['routing + unsatisfied shipping block', formBody({ consent: consentBlock() }), 'consent_required'],
+    ['moved on (card step)', base({ state: 'needs_payment_method', next_action: { kind: 'card_binding', expires_at: DEADLINE } }), 'address_not_requested'],
+  ];
+  for (const [name, view, error] of cases) {
+    const reader = fakeBackend({ views: [view] });
+    const res = await postAddress(app({ reader }));
+    assert.equal(res.status, 409, name);
+    assert.deepEqual(res.body, { error }, name);
+    assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 0, `${name}: no backend call`);
+  }
+});
+
+test('the address POST reads FRESH: a pre-consent read cached by a GET a moment ago does not send the buyer back', async () => {
+  const reader = fakeBackend({ views: [gatedBody(), consentedFormBody()] });
+  const a = app({ reader });
+  assert.equal((await getView(a)).body.consent.step, 'shipping_address');
+  reader.advance(); // the consent was recorded (on another instance, say): the backend now serves the form
+  const res = await postAddress(a);
+  assert.equal(res.status, 200);
+  assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 1);
+});
+
+test('the backend\'s other 409s (any unknown reason) answer 409 address_not_taken', async () => {
+  const reader = fakeBackend({ views: [consentedFormBody()], submit: () => ({ kind: 'not_taken', code: 'zz_some_new_reason' }) });
+  const res = await postAddress(app({ reader }));
+  assert.equal(res.status, 409);
+  assert.deepEqual(res.body, { error: 'address_not_taken' });
+});
+
+test('the rp_ rail never projects an address form, even if a body carried one (marked or not)', () => {
+  for (const body of [formBody(), consentedFormBody(), gatedBody()]) {
+    const reap = { ...body, rail: 'reap', rail_purchase_id: 'rp_0123456789abcdef01234567' };
+    const view = projectPurchaseView(reap, { ...VIEW_OPTS, purchaseId: 'rp_0123456789abcdef01234567' });
+    assert.equal(view.screen, 'shipping_address_elsewhere');
+    assert.equal(Object.hasOwn(view, 'address_request'), false);
+    assert.equal(view.consent, null);
+    assert.equal(shippingConsentPending(reap, VIEW_OPTS), false);
+  }
+});
+
 // ---- the backend writer: the app's error envelope --------------------------------------------------------------
 
 function stubFetch({ status, body }) {
@@ -337,12 +393,14 @@ function envelope409(code) {
   };
 }
 
-test('writer: a 409 whose detail.error is consent_required is consent_required; shipping_address_conflict (and any other 409) is conflict', async () => {
+test('writer: a 409 whose detail.error is consent_required is consent_required; shipping_address_conflict is conflict; any other 409 is not_taken', async () => {
   const mk = (answer) => createBackendPurchaseReader({ baseUrl: 'https://backend.internal.example', internalKey: () => 'k', fetchImpl: stubFetch(answer) });
   assert.deepEqual(await mk({ status: 409, body: envelope409('consent_required') }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'consent_required' });
   assert.deepEqual(await mk({ status: 409, body: { error: 'consent_required' } }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'consent_required' });
   assert.deepEqual(await mk({ status: 409, body: envelope409('shipping_address_conflict') }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'conflict' });
-  assert.deepEqual(await mk({ status: 409, body: {} }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'conflict' });
+  assert.deepEqual(await mk({ status: 409, body: {} }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'not_taken', code: 'unnamed' });
+  // An arbitrary unknown reason (the backend's coming "collection is off" 409, whatever its final name).
+  assert.deepEqual(await mk({ status: 409, body: envelope409('zz_some_new_reason') }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'not_taken', code: 'zz_some_new_reason' });
 });
 
 // ---- the address_consent dev fixture ---------------------------------------------------------------------------

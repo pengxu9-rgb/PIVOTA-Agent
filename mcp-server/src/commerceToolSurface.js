@@ -2124,13 +2124,17 @@ export function toToolError(error) {
       body.message = "Purchases through this tool are not available right now.";
     }
     // The A2A door's market refusals: definite (nothing was opened), each with what the buyer can do about it.
+    // shipping_country_unsupported is raised AFTER the backend's idempotency-key lookup (a replay answers first), so
+    // this call opened nothing and no purchase exists under the key.
     if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_country_unsupported") {
-      body.message = "This purchase can only ship to an address in the United States for now, so it was not started. Nothing was charged.";
-      body.recovery = "tell the buyer it ships to US addresses only; with a US shipping address, start again with a new idempotency_key";
+      body.message = "This purchase can only ship to the United States for now, so it was not started. Nothing was charged.";
+      body.recovery = "tell the buyer it ships to the United States only; with a US shipping address, start again with a new idempotency_key";
     }
+    // shipping_market_unknown is raised BEFORE the key lookup: a retry of an earlier call whose outcome was unknown can
+    // get it while that earlier purchase exists. So: check first, never "start again with a new key" outright.
     if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_market_unknown") {
-      body.message = "No shipping address was given, and the currency alone does not say which country to ship to, so the purchase was not started. Nothing was charged.";
-      body.recovery = "ask the buyer for their shipping address and start again with it and a new idempotency_key";
+      body.message = "No shipping address was given, and the currency alone does not say which country to ship to, so this call opened nothing.";
+      body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise ask the buyer for their shipping address and send it";
     }
   }
   if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"

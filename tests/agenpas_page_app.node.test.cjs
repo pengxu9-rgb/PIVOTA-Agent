@@ -821,7 +821,9 @@ test('address consent: a 409 consent_required on submit goes back to the terms, 
   h.answer({ status: 409, body: { error: 'consent_required' } }, { status: 200, body: shippingConsentView() });
   submit(h);
   await settle();
-  assert.match(h.text(), /Please accept the terms first\. What you typed is kept/);
+  // Never the form again without the terms: a waiting card until the read shows them.
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0, 'the stale form is not redrawn');
+  assert.match(h.text(), /Checking the terms… This page updates on its own\. What you typed is kept\./);
   assert.equal(/couldn't save|We already have your address/.test(h.text()), false, 'no generic error, not "already have it"');
   await nextRead(h);
   assert.match(h.text(), /Before you give your shipping address, read Pivota's/);
@@ -843,4 +845,79 @@ test('address consent: with the gate off the address screen is the form at once 
   await settle();
   assert.deepEqual(h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name), ['email']);
   assert.equal(/Terms of Service/.test(h.text()), false);
+});
+
+test('address: a second 409 consent_required after agreeing again closes the step (no loop); the form never shows without the terms', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  h.answer({ status: 409, body: { error: 'consent_required' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  // The read shows the form again (backend read and write disagree): still no form without the terms.
+  await nextRead(h);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  assert.match(h.text(), /Checking the terms…/);
+  // The terms come; the buyer agrees; the form is back; the write refuses again: closed.
+  h.answer({ status: 200, body: shippingConsentView() });
+  await nextRead(h);
+  await readyToAgree(h);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: addressView(['email']) });
+  clickAgree(h);
+  await settle();
+  assert.equal(byName(h, 'email').value, 'buyer@example.test');
+  const posts = () => h.fetches.filter((f) => f.init.method === 'POST' && f.url.endsWith('/shipping-address')).length;
+  h.answer({ status: 409, body: { error: 'consent_required' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  assert.equal(posts(), 2);
+  assert.match(h.text(), /We can't take your address here any more Go back to the chat\./);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  await nextRead(h);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0, 'still closed after a read that shows the form');
+  assert.equal(posts(), 2, 'never sent again');
+});
+
+test('address: any other 409 (address_not_taken) reads "We can\'t take your address here any more", re-reads, never a retry loop', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  const reads = () => h.fetches.filter((f) => f.init.method === 'GET').length;
+  h.answer({ status: 409, body: { error: 'address_not_taken' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  assert.match(h.text(), /We can't take your address here any more Go back to the chat\./);
+  assert.equal(/couldn't save|try again in a moment|We already have your address/.test(h.text()), false);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  const before = reads();
+  await nextRead(h);
+  assert.equal(reads(), before + 1, 'the purchase is read again');
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+});
+
+test('address: 409 address_not_requested re-reads; a second one closes the step', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  h.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: view() });
+  submit(h);
+  await settle();
+  await nextRead(h);
+  assert.match(h.text(), /Add a card securely/, 'the read shows where the purchase is');
+  const h2 = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h2.start();
+  await settle();
+  type(byName(h2, 'email'), 'buyer@example.test');
+  h2.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: addressView(['email']) });
+  submit(h2);
+  await settle();
+  await nextRead(h2);
+  h2.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: addressView(['email']) });
+  submit(h2);
+  await settle();
+  assert.match(h2.text(), /We can't take your address here any more/);
+  assert.equal(findAll(h2, (n) => n.tagName === 'FORM').length, 0);
 });

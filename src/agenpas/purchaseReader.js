@@ -32,9 +32,11 @@
  *     body: {email, firstName, lastName, phone, addressLine1, addressLine2, city, region, postalCode, country}
  *   200 -> the unified view            422 -> {field_errors: {field: code}}
  *   409 consent_required -> the step's terms are not accepted yet (nothing written; the page goes back to them)
- *   409 (shipping_address_conflict, or any other) -> already set / state moved   404 -> not that agent's
+ *   409 shipping_address_conflict -> already set / state moved   any other 409 -> not_taken (collection off, ...)
+ *   404 -> not that agent's
  *
- * Outcomes: accepted {purchase} | invalid {field_errors} | consent_required | conflict | not_found | unavailable {code}. The body (the
+ * Outcomes: accepted {purchase} | invalid {field_errors} | consent_required | conflict | not_taken {code} | not_found |
+ * unavailable {code}. The body (the
  * buyer's address) goes to the backend and NOWHERE else: never logged, never part of an outcome.
  */
 
@@ -202,13 +204,21 @@ function createBackendPurchaseReader(deps = {}) {
     }
     if (status === 409) {
       // The app's error envelope names the reason in `detail.error` (reasonOf): `consent_required` (the step's terms
-      // are not on record; nothing was written) or `shipping_address_conflict` (and any other 409: as before).
-      if (reasonOf(body) === 'consent_required') {
+      // are not on record; nothing was written), `shipping_address_conflict` (the address is set already / another
+      // one), and ANY other 409 (e.g. collection turned off while the page was open): the address cannot be taken
+      // here any more.
+      const reason = reasonOf(body);
+      if (reason === 'consent_required') {
         log('info', { op: 'shipping_address', outcome: 'consent_required', http_status: status });
         return { kind: 'consent_required' };
       }
-      log('info', { op: 'shipping_address', outcome: 'conflict', http_status: status });
-      return { kind: 'conflict' };
+      if (reason === 'shipping_address_conflict') {
+        log('info', { op: 'shipping_address', outcome: 'conflict', http_status: status });
+        return { kind: 'conflict' };
+      }
+      const code = typeof reason === 'string' && /^[a-z_]{1,48}$/.test(reason) ? reason : 'unnamed';
+      log('info', { op: 'shipping_address', outcome: 'not_taken', code, http_status: status });
+      return { kind: 'not_taken', code };
     }
     if (status === 404) {
       log('info', { op: 'shipping_address', outcome: 'not_found', http_status: status });

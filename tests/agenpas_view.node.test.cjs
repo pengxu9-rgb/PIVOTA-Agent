@@ -228,10 +228,39 @@ test('placing with a vetted bank check page shows the authenticate screen', () =
 
 // ---- failure wording -------------------------------------------------------------------------------------------
 
+// The exact final copies (src/agenpas/view.js): "checking" on a failed row, and the refused / expired rows' own words.
+const FINAL_CHECKING_COPY = Object.freeze({
+  kind: 'outcome_unknown', title: "We're checking with the store",
+  message: "We're checking with the store — don't try again. Your order may already be in progress, and we'll confirm what happened in the chat.",
+  retry_hint: false, outcome_unknown: true,
+});
+const STATE_COPY = Object.freeze({
+  refused: {
+    kind: 'refused', title: "This purchase couldn't be started",
+    message: "The store or our payment partner couldn't accept this purchase. Go back to the chat for other options.",
+    retry_hint: false, outcome_unknown: false,
+  },
+  expired: {
+    kind: 'expired', title: 'This purchase expired',
+    message: "It wasn't completed in time. Go back to the chat to check on it or to start again.",
+    retry_hint: true, outcome_unknown: false,
+  },
+});
+
 test('outcome-unknown codes say "checking with the store — don\'t try again" and never offer a retry', () => {
   for (const code of ['vic_order_outcome_unknown', 'outcome_unknown', 'vic_submit_unresolved', 'pending_write_unreconcilable', 'some_new_outcome_unknown_code']) {
     assert.equal(isOutcomeUnknownCode(code), true, code);
-    for (const state of ['failed', 'refused', 'expired']) {
+    // A hold-SHAPED code (not on the HELD list) reads "checking" only on a failed row: refused / expired end before
+    // any money step on both rails, so there it reads the state's own words.
+    const states = code === 'some_new_outcome_unknown_code' ? ['failed'] : ['failed', 'refused', 'expired'];
+    if (code === 'some_new_outcome_unknown_code') {
+      for (const state of ['refused', 'expired']) {
+        const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
+        assert.equal(view.screen, state);
+        assert.deepEqual(view.outcome, STATE_COPY[state], state);
+      }
+    }
+    for (const state of states) {
       const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
       assert.equal(view.screen, 'outcome_unknown');
       assert.equal(view.outcome.outcome_unknown, true);
@@ -568,7 +597,7 @@ test('currency: a lower-case or non-ISO currency on either side is a disagreemen
 
 // The reviewer's precedence probe (mixed.cjs): refusal_reason + last_error_code, in four states.
 const MIXED = [
-  // name, refusal_reason, last_error_code, terminal outcome kind, placing outcome kind
+  // name, refusal_reason, last_error_code, terminal outcome kind, placing outcome kind[, refused / expired kind]
   ['hold+fail', 'checkout_confirm_refused:http_error:422', 'checkout_unknown_timeout', 'outcome_unknown', 'held'],
   ['fail+hold reversed', 'checkout_unknown_timeout', 'checkout_lock_invalid', 'outcome_unknown', 'held'],
   ['suffixed hold in paid_sent', null, 'paid_sent:2:scheme:checkout_setup_unresolved', 'outcome_unknown', 'held'],
@@ -577,24 +606,25 @@ const MIXED = [
   ['named+hold', 'vic_quote_mismatch', 'outcome_unknown:http_error', 'outcome_unknown', 'held'],
   ['named+fail', 'price_changed', 'checkout_relay_refused', 'not_submitted', null],
   ['upper hold', null, 'CHECKOUT_UNKNOWN_TIMEOUT', 'outcome_unknown', 'held'],
-  ['dash hold (not a code shape: unrecognised)', null, 'checkout-unknown-timeout', 'outcome_unknown', 'held'],
+  ['dash hold (not a code shape: unrecognised)', null, 'checkout-unknown-timeout', 'outcome_unknown', 'held', 'generic'],
   ['space-padded', null, ' checkout_setup_unresolved ', 'outcome_unknown', 'held'],
   ['named beats a shape-only segment', null, 'token_refused:money_result:', 'card_not_added', null],
-  ['unknown only', null, 'zz_brand_new', 'outcome_unknown', 'held'],
-  ['unknown shapey', null, 'zz_new_unresolved_thing', 'outcome_unknown', 'held'],
+  ['unknown only', null, 'zz_brand_new', 'outcome_unknown', 'held', 'generic'],
+  ['unknown shapey', null, 'zz_new_unresolved_thing', 'outcome_unknown', 'held', 'generic'],
   ['fail beats shape', 'checkout_lock_invalid', 'zz_new_unresolved_thing', 'not_submitted', null],
   ['named beats shape', 'binding_refused', 'zz_new_unresolved_thing', 'card_not_added', null],
-  ['code over 512 chars is unrecognised', null, `${'x'.repeat(520)}:checkout_unknown_timeout`, 'outcome_unknown', 'held'],
-  ['segment over 64 chars is unrecognised', null, `checkout_unknown_timeout_${'x'.repeat(60)}`, 'outcome_unknown', 'held'],
+  ['code over 512 chars is unrecognised', null, `${'x'.repeat(520)}:checkout_unknown_timeout`, 'outcome_unknown', 'held', 'generic'],
+  ['segment over 64 chars is unrecognised', null, `checkout_unknown_timeout_${'x'.repeat(60)}`, 'outcome_unknown', 'held', 'generic'],
   ['a list of codes is read', ['checkout_unknown_timeout'], 'checkout_lock_invalid', 'outcome_unknown', 'held'],
 ];
-for (const [name, rr, le, terminalKind, placingKind] of MIXED) {
+for (const [name, rr, le, terminalKind, placingKind, definiteKind = terminalKind] of MIXED) {
   test(`precedence probe: ${name}`, () => {
     for (const state of ['failed', 'refused', 'expired']) {
       const view = projectPurchaseView({ state, detail: { refusal_reason: rr, last_error_code: le } }, { purchaseId: AP, hostedHosts: [] });
-      const kind = terminalKind === 'generic' ? state : terminalKind;
-      assert.equal(view.outcome.kind, kind, state);
-      if (terminalKind === 'outcome_unknown') assert.equal(view.outcome.retry_hint, false);
+      const expected = state === 'failed' ? terminalKind : definiteKind;
+      if (expected === 'generic' && state !== 'failed') assert.deepEqual(view.outcome, STATE_COPY[state], state);
+      else assert.equal(view.outcome.kind, expected === 'generic' ? state : expected, state);
+      if (expected === 'outcome_unknown') assert.deepEqual(view.outcome, FINAL_CHECKING_COPY, state);
     }
     const placing = projectPurchaseView({ state: 'placing', detail: { refusal_reason: rr, last_error_code: le } }, { purchaseId: AP, hostedHosts: [] });
     assert.equal(placing.outcome ? placing.outcome.kind : null, placingKind);
@@ -768,6 +798,9 @@ test('parity: the explicit FAILED list is exactly the backend\'s nothing-submitt
     'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported', 'token_request_unresolved', 'pay_step_unavailable',
     'binding_answer_unrecognised', 'approval_answer_unrecognised', 'token_answer_unrecognised', 'token_mismatch',
     'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved', 'operator_confirmed_not_charged',
+    // A2A pre-store failures listed in the fix round (pivota-backend a2a_rail_worker.py, all before any confirm).
+    'binding_page_invalid', 'approval_page_invalid', 'vic_page_missing', 'vic_page_invalid', 'vic_amount_invalid',
+    'vic_quote_invalid', 'vic_order_refused', 'vic_quote_refused', 'reconcile_exhausted',
     // The Reap rail's codes written before any checkout exists (tests/agenpas_reap_consent.node.test.cjs).
     'enrollment_no_hosted_action', 'enrollment_id_conflict', 'enrollment_row_unreadable', 'enrollment_not_activatable',
     'enrollment_dead', 'enrollment_create_failed', 'enrollment_read_failed', 'no_active_enrollment', 'enrollment_not_active',
@@ -825,13 +858,14 @@ for (const code of UNRECOGNISED) {
     assert.equal(view.outcome.kind, 'held');
     assert.equal(view.terminal, false);
   });
-  test(`unrecognised ${JSON.stringify(code)}: failed / refused / expired -> outcome_unknown, no retry, never "no order was sent"`, () => {
-    for (const state of ['failed', 'refused', 'expired']) {
+  test(`unrecognised ${JSON.stringify(code)}: failed -> outcome_unknown (exact copy); refused / expired -> the state's own words`, () => {
+    const failed = project(unified('failed', { poll_after_seconds: null }, { last_error_code: code }));
+    assert.equal(failed.screen, 'outcome_unknown');
+    assert.deepEqual(failed.outcome, FINAL_CHECKING_COPY);
+    for (const state of ['refused', 'expired']) {
       const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
-      assert.equal(view.screen, 'outcome_unknown', state);
-      assert.equal(view.outcome.retry_hint, false, state);
-      assert.equal(/no order was sent|wasn't placed|start again|try again from/i.test(view.outcome.message), false, state);
-      assert.match(view.outcome.message, /don't try again/);
+      assert.equal(view.screen, state, state);
+      assert.deepEqual(view.outcome, STATE_COPY[state], state);
     }
   });
   test(`unrecognised ${JSON.stringify(code)}: awaiting_buyer_authorization -> Approve stays`, () => {

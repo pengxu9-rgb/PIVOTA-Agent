@@ -83,6 +83,12 @@
     addressBusy: false,
     // Shown above the terms when an address submit was sent back to them (409 consent_required).
     addressConsentNote: null,
+    // Sent back to the terms: the form is not drawn again until the buyer accepts them on this page. A second send-back
+    // after a fresh acceptance, a second "not requested", or any other refusal of the address closes the step.
+    addressSentBack: false,
+    addressSentBackCount: 0,
+    addressNotRequestedCount: 0,
+    addressClosed: false,
     // The consent offer on screen: { step, offer, shownAt, checked, posting, accepted, error, retryAt, button }.
     consent: null,
     latestOffer: null,
@@ -400,7 +406,10 @@
       if (r.status === 200) {
         c.posting = false;
         c.accepted = true;
-        if (c.step === 'shipping_address') ui.addressConsentNote = null;
+        if (c.step === 'shipping_address') {
+          ui.addressConsentNote = null;
+          ui.addressSentBack = false;
+        }
         render();
         pollNow();
         return;
@@ -652,6 +661,9 @@
   }
 
   function addressCard(view) {
+    if (ui.addressClosed) {
+      return noticeCard("We can't take your address here any more", 'Go back to the chat.');
+    }
     // The address step is consent-gated: the terms first, and the form only from a later read (the API then sends
     // `address_request`). Whatever the buyer already typed is kept in memory for it.
     if (view.consent && !view.address_request) {
@@ -665,6 +677,10 @@
       }
       gate.appendChild(consentBlock(view));
       return gate;
+    }
+    // Sent back to the terms and not accepted again yet: never the form without them (no resend loop).
+    if (ui.addressSentBack) {
+      return progressCard('Checking the terms…', 'This page updates on its own. What you typed is kept.');
     }
     var fields = addressFieldsOf(view);
     var prefill = (view.address_request && view.address_request.prefill) || {};
@@ -739,13 +755,42 @@
         schedule(r.body.poll_after_seconds);
         return;
       }
-      if (r.status === 409 && r.body && r.body.error === 'consent_required') {
-        // The terms for this step are not accepted (yet, or any more): back to them. What the buyer typed stays in
-        // memory and fills the form again once they agree; the page says so.
+      var refusal = r.status === 409 && r.body && typeof r.body.error === 'string' ? r.body.error : null;
+      if (refusal === 'consent_required') {
+        // The terms for this step are not accepted (yet, or any more): back to them, never the form without them.
+        // What the buyer typed stays in memory and fills the form again once they agree; the page says so. Sent back
+        // again after a fresh acceptance: the step closes (no loop).
         ui.addressMessage = null;
         ui.addressErrors = {};
-        ui.addressConsentNote = 'Please accept the terms first. What you typed is kept, and the form comes back after you agree.';
+        ui.addressSentBackCount += 1;
+        if (ui.addressSentBackCount >= 2) {
+          ui.addressClosed = true;
+        } else {
+          ui.addressSentBack = true;
+          ui.addressConsentNote = 'Please accept the terms first. What you typed is kept, and the form comes back after you agree.';
+        }
         if (ui.consent && ui.consent.step === 'shipping_address') ui.consent = null;
+        ui.lastJson = null;
+        render();
+        pollNow();
+        return;
+      }
+      if (refusal === 'address_not_taken' || (refusal === 'address_not_requested' && ui.addressNotRequestedCount >= 1)) {
+        // The address can't be taken here any more (collection turned off, ...), or the step is still not asked for
+        // after a fresh read: closed, never a retry loop and never a generic error. Read the purchase again.
+        ui.addressMessage = null;
+        ui.addressErrors = {};
+        ui.addressClosed = true;
+        ui.lastJson = null;
+        render();
+        pollNow();
+        return;
+      }
+      if (refusal === 'address_not_requested') {
+        // The purchase is past the address step (or not at it): the next read shows where it is.
+        ui.addressNotRequestedCount += 1;
+        ui.addressMessage = null;
+        ui.addressErrors = {};
         ui.lastJson = null;
         render();
         pollNow();

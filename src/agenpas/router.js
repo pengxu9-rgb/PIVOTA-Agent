@@ -21,7 +21,9 @@
  *                                                  versions recorded come from the gateway's own latest read.
  *   POST /agenpas/api/p/:purchaseId/shipping-address  ONLY while AGENPAS_COLLECT_SHIPPING is on: the buyer's shipping
  *                                                  address and email (JSON, at most 4 KB, token in `X-Agenpas-Link`).
- *                                                  409 consent_required while the step's terms are not accepted.
+ *                                                  409 consent_required while the step's terms are not accepted;
+ *                                                  409 address_not_requested when the gateway's read shows no form;
+ *                                                  409 address_not_taken for the backend's other 409s.
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
  * answers exactly what it answered before this module existed (the app's normal not-found). The same happens while
@@ -524,8 +526,10 @@ function createAgenpasRouter(deps = {}) {
     }
     const fixture = fixturesFor(req, env);
     const reader = fixture ? fixtureReader : backendReader;
-    // What the purchase asks for decides what is required. No request in the view (the address was given already, or
-    // the state moved on): the backend decides (the same address again is fine; another one is a 409).
+    // A FRESH read (never the 2 s cache: a read cached on this instance before a consent recorded elsewhere must not
+    // send the buyer back to the terms), and what it shows decides: the address goes on ONLY when the page would show
+    // the form (A2A, the shipping step, its consent satisfied or not gated, not held, not placing).
+    forgetRead(verdict.claims, fixture);
     const current = await readOnce(reader, verdict.claims, fixture);
     if (!current || (current.kind !== 'accepted' && current.kind !== 'not_found')) {
       res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
@@ -539,8 +543,14 @@ function createAgenpasRouter(deps = {}) {
       return res.status(409).json({ error: 'consent_required' });
     }
     const projected = projectPurchaseView(current.purchase, { purchaseId, now: now(), collectShipping: true });
-    const request = projected.address_request || null;
-    const checked = validateAddress(parsed.body, { required: request ? request.fields_missing : [] });
+    const request = projected.screen === 'shipping_address' && projected.address_request ? projected.address_request : null;
+    if (!request) {
+      // No form on the gateway's own read (held, placing or later, the rp_ rail, an unsatisfied shipping block, the
+      // address already given): nothing is sent on.
+      logRefusal({ surface: 'address', reason: 'not_requested' });
+      return res.status(409).json({ error: 'address_not_requested' });
+    }
+    const checked = validateAddress(parsed.body, { required: request.fields_missing });
     if (!checked.ok) {
       logRefusal({ surface: 'address', reason: 'invalid_address' });
       return res.status(422).json({ error: 'invalid_address', field_errors: checked.field_errors });
@@ -569,6 +579,11 @@ function createAgenpasRouter(deps = {}) {
       // The backend's own gate (the consent is not on record there): the same answer as ours above.
       logRefusal({ surface: 'address', reason: 'backend_consent_required' });
       return res.status(409).json({ error: 'consent_required' });
+    }
+    if (answer && answer.kind === 'not_taken') {
+      // Any other 409 from the backend (collection turned off while the page was open, ...): not taken here any more.
+      logRefusal({ surface: 'address', reason: 'not_taken' });
+      return res.status(409).json({ error: 'address_not_taken' });
     }
     if (answer && answer.kind === 'conflict') {
       logRefusal({ surface: 'address', reason: 'already_set' });

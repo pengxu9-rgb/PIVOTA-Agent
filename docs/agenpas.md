@@ -55,7 +55,7 @@ Process-local, like the public read tier's limiter:
 | `GET /agenpas/api/p/:purchaseId` | JSON for the page. Token ONLY in the `X-Agenpas-Link` header (a `?t=` query is ignored). 200 view, 404 `link_invalid` / `not_found`, 410 `link_expired`, 503 `unavailable` with `Retry-After`. |
 | `GET /agenpas/assets/app.js`, `app.css` | The page's script and style, same origin. |
 | `GET /agenpas/dev/start?scenario=<name>` | Dev fixtures only: mints a fixture link and redirects to it. |
-| `POST /agenpas/api/p/:purchaseId/shipping-address` | `AGENPAS_COLLECT_SHIPPING` only. The buyer's shipping address and email, JSON, token in `X-Agenpas-Link` only. 200 next view, 415 not JSON, 413 over 4 KB, 400 bad JSON, 422 `{field_errors}`, 409 `address_already_set`, 409 `consent_required` (the step's terms are not accepted yet; nothing is sent on), 429, 404, 503. |
+| `POST /agenpas/api/p/:purchaseId/shipping-address` | `AGENPAS_COLLECT_SHIPPING` only. The buyer's shipping address and email, JSON, token in `X-Agenpas-Link` only. 200 next view, 415 not JSON, 413 over 4 KB, 400 bad JSON, 422 `{field_errors}`, 409 `address_already_set`, 409 `consent_required` (the step's terms are not accepted yet), 409 `address_not_requested` (the gateway's own fresh read shows no form: held, placing or later, the `rp_` rail, an unsatisfied shipping block, the address already given), 409 `address_not_taken` (any other backend 409, e.g. collection turned off while the page was open); in every 409 nothing is sent on, 429, 404, 503. |
 | `POST /agenpas/api/p/:purchaseId/consent` | Only while `AGENPAS_CONSENT_ENABLED` is on (off: the front guard's 404, as before). The buyer accepted the terms for the current step. See "Terms and privacy consent" for its checks and answers. |
 
 The page: `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, no inline script or style, no external
@@ -91,7 +91,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | ANY state not yet final with a hold / outcome-unknown code | "We're checking with the store — don't try again. This can take a while…" (polling goes on). No buyer step is offered at all, even if the rail still lists one (a held row can still be in `awaiting_buyer_authorization`). Before `placing` only an EXPLICIT HELD code does this: the backend's read-retry codes (`vic_status:unrecognised`, `paid_sent:<n>:await:await_answer_unrecognised`, `vic_quote:unrecognised:<n>`) have the hold shape but keep the buyer's step; the shape fallback applies from `placing` on and in final states. |
 | a state not yet final (other than `placing`), with a parked code and no buyer step | "Getting things ready…" (polling goes on). In `placing` a parked code gets the checking wording above: a confirm may already have gone out. |
 | `completed` | "Your order is placed": order number, total charged, store, link to the store's order page when it is on the store's domain. With `checkout_order_reference_withheld` (the merchant's order number looked card-shaped, so it was not kept) or `checkout_order_reference_invalid`, and no order number: "Your order number is in the store's confirmation email." Neither is a hold or a failure. |
-| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). The worker's ordinary progress codes (`checkout_placing`, `checkout_ready`, `checkout_read`, `await_read`, `reconciled`: routine retries and reconciliation) are known and change nothing; a HELD code beside one still wins. Anomalies (`transition_refused`, `rail_refused`, `no_step_for_state`, `vic_order_step_disabled`, `checkout_answer_unrecognised`) keep the checking wording from placing on. A code the gateway does not recognise at all (on no list, not of the hold shape) gets the checking wording: "We're checking with the store — don't try again", no retry, never "no order was sent". With no code at all: neutral wording, no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
+| `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). The worker's ordinary progress codes (`checkout_placing`, `checkout_ready`, `checkout_read`, `await_read`, `reconciled`: routine retries and reconciliation) are known and change nothing; a HELD code beside one still wins. Anomalies (`transition_refused`, `rail_refused`, `no_step_for_state`, `vic_order_step_disabled`, `checkout_answer_unrecognised`) keep the checking wording from placing on. On a `failed` row, a code the gateway does not recognise at all (on no list, not of the hold shape) gets the checking wording: "We're checking with the store — don't try again", no retry, never "no order was sent". On a `refused` or `expired` row (both end before any money step on both rails: see "Final states" below) an unrecognised or merely hold-shaped code gets the state's own wording; only an explicit HELD code (or `manual_provider_*`) reads "checking" there. With no code at all: neutral wording, no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
 Codes are read segment by segment (mirroring pivota-backend 035aa5e6e, unchanged since 229d1e587: its 24 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
@@ -131,10 +131,12 @@ memory):
   the backend's limit of 3, after which it is `checkout_unresolvable`) is HELD from `placing` on and in final states;
   before placing it keeps the buyer's step, as the UCP lane keeps the hosted page for it. The hold shape also matches
   `unresolvab`.
-- UNRECOGNISED (the rule is rail-neutral, the same on every rail): from `placing` on and in final states, ANY code the
-  gateway does not recognise (on no list above and not of the hold shape) reads as a hold, with the checking wording
-  and no retry; an unlisted `reap_*` code (`reap_status_500`, ...) is one case of it, not the only one. Before placing
-  it changes nothing. A code on any list keeps its own wording.
+- UNRECOGNISED (the rule is rail-neutral, the same on every rail): ONLY in `placing` (and the states after it that are
+  not final) and on a `failed` row does a code the gateway does not recognise (on no list and not of the hold shape)
+  read as a hold, with the checking wording and no retry; an unlisted `reap_*` code (`reap_status_500`, ...) is one case
+  of it. On a `refused` or `expired` row it reads the state's own words (an unlisted `reap_*` or hold-shaped code too),
+  because every backend write site of those states is before any money step ("Final states" below). Before placing it
+  changes nothing. A code on any list keeps its own wording.
 - PROGRESS (`REAP_PROGRESS_CODES`, the state's own wording, never the checking copy; a HELD code beside one still wins):
   `reap_status_503`, `checkout_read_failed`, `transport_error` (`transport_error:<Type>`). Each is written only by a READ
   (the checkout poll's GET) or by a quote / enrollment call, which moves no money; the checkout create never writes
@@ -153,14 +155,52 @@ memory):
   best reading), and it also keeps FAILED away.
 - `buyer_email_missing` (resolving -> failed): "some details were missing".
 - The codes the Reap worker releases on a live row before placing (`enrollment_settling`, `enrollment_pending`,
-  `quote_expired`, `checkout_quote_replayed`, transport codes, ...) leave the buyer's step alone; on a final row, a code
-  the gateway does not recognise gets the checking wording (no retry, never "no order was sent"), and a known code
-  keeps its own wording (the lists above).
-- OPERATOR FOLLOW-UP. A terminal row (`failed`, `refused`, `expired`) whose page reads "We're checking with the store"
-  (a HELD code, or a code the gateway does not recognise) is NOT settled for the buyer: the page tells them the outcome
-  will be confirmed in the chat and stops polling. An operator must follow up on every such row, establish the outcome
-  with the payment partner and the store, and confirm it to the buyer, exactly as `checkout_unresolvable` already
-  requires. Ops: these rows land with you.
+  `quote_expired`, `checkout_quote_replayed`, transport codes, ...) leave the buyer's step alone; on a `failed` row, a
+  code the gateway does not recognise gets the checking wording (no retry, never "no order was sent"); on a `refused`
+  or `expired` row, the state's own words; a known code keeps its own wording (the lists above).
+- Refusals (`refused`, every one before the checkout create's dispatch): the item, cart-link and quote refusals
+  (`merchant_not_completable`, `cart_link_rejected`, `card_payment_unavailable`, `quote_unfulfillable`,
+  `variant_unavailable`, `no_shipping_option`, `price_unverifiable`, `preflight_refused`, `cart_link_disabled`,
+  `cart_link_invalid`, `unverified_single_variant`, `duplicate_idempotency_key`, and the client's resolution reasons,
+  including the `search:`, `details:`, `options:`, `variant:` compounds): "The store couldn't take this purchase as it
+  was asked for, so nothing was ordered or charged." The discount-code refusals (`invalid_offer_code`,
+  `offer_code_malformed`, `offer_code_rejected`): "The discount code wasn't accepted, so the purchase wasn't started
+  and nothing was charged." `attempts_exhausted` and `contact_reentry_lapsed` (failed / expired; both SQL statements
+  require no dispatch key): "It couldn't be completed, so nothing was ordered or charged." The sweep's
+  `hosted_url_expired` (no checkout id, no dispatch key): "It wasn't completed in time, so nothing was ordered or
+  charged."
+- `manual_provider_expired` / `manual_provider_failed` (an operator closed a row whose checkout EXISTED, from a
+  `checkout_unresolvable:` hold) read "checking" in every final state: the buyer hears the outcome from the chat.
+- OPERATOR FOLLOW-UP. A terminal row whose page reads "We're checking with the store" is NOT settled for the buyer:
+  the page tells them the outcome will be confirmed in the chat and stops polling. That is now ONLY a `failed` row with
+  a HELD, hold-shaped or unrecognised code, and any final row with an explicit HELD or `manual_provider_*` code. An
+  operator must follow up on every such row, establish the outcome with the payment partner and the store, and confirm
+  it to the buyer, exactly as `checkout_unresolvable` already requires. Ops: these rows land with you. `refused` and
+  `expired` rows with other codes do not.
+
+**Final states** (verified from the backend source, read only: A2A at pivota-backend 035aa5e6e, the `rp_` rail at origin/main
+5ff890580; `tests/agenpas_terminal_codes_parity.node.test.cjs` holds every code those write sites write):
+
+- A2A `refused` / `expired` come only from `opened`, `needs_payment_method`, `quoting` or `awaiting_authorization`
+  (db/a2a_rail_ledger.py `ALLOWED_TRANSITIONS`: `paying` permits only `completed` / `failed`, "no expiry, no refusal
+  after the fact"); the expiry sweep (`_EXPIRE_SQL`) never touches `paying`, a row with a pending write, or one with
+  `money_result_seen`. The confirm goes out only in `paying`.
+- `rp_` rail `refused` comes only from `resolving` / `quoting` (db/reap_agentic_ledger.py `ALLOWED_TRANSITIONS`), and every
+  `quoting -> refused` write in services/reap_agentic_purchase.py is before `begin_dispatch` (the checkout create).
+- `rp_` rail `expired`: the sweep (`_EXPIRE_OVERDUE_SQL`) requires no checkout id and no dispatch key; the contact re-entry
+  sweep only from `needs_enrollment`; two cases come after a checkout exists, both on the partner's own word that it
+  EXPIRED (the buyer never approved; `processing` cannot expire): the poll's `checkout_expired` (a known code, the
+  state's generic wording, never "nothing was ordered") and the operator's `manual_provider_expired` (reads "checking").
+
+The new A2A codes: `shipping_address_expired` ("The shipping address wasn't given in time, so nothing was ordered or
+charged."), `shipping_address_not_collected` ("We can't take the shipping address here any more, so nothing was
+ordered or charged."), `stale` (the expiry sweep: "nothing was ordered or charged"), `buyer_email_required`,
+`contact_purged`, `token_payer_missing` ("Some details were missing"), `buyer_approval_missing` / `token_id_unstorable`
+(a token minted with no buyer approval step: "Our payment partner couldn't take this purchase"), `attempts_exhausted`,
+the pre-store failures `binding_page_invalid`, `approval_page_invalid`, `vic_page_missing`, `vic_page_invalid`,
+`vic_amount_invalid`, `vic_quote_invalid`, `vic_order_refused:*`, `vic_quote_refused:*`, `reconcile_exhausted` ("no order
+was sent"), the dead-card statuses `card_binding_failed|disabled|expired` ("Your card couldn't be used"), and
+`vic_checkout_failed` (the rail answered "failed" in `paying`: the generic wording, never "no order was sent").
 
 The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"
 once the backend has a quoted total, with the line that the final total includes shipping and tax and cannot exceed
@@ -217,8 +257,16 @@ purchase). Until the buyer accepts, the backend withholds the field list: `next_
   `detail.error`) to the same answer.
 
 On a 409 `consent_required` the page goes back to the terms (it reads again) and says "Please accept the terms
-first. What you typed is kept, and the form comes back after you agree."; what the buyer typed stays in memory and
-fills the form again after they agree. It is never shown as a generic error. With the backend's gate off, the form
+first. What you typed is kept, and the form comes back after you agree."; until the buyer accepts them again on the
+page the form is never drawn (a waiting card instead, even if a read shows the form), and what they typed stays in
+memory and fills the form again after they agree. A second `consent_required` after a fresh acceptance, any other 409
+(`address_not_taken`), or a second `address_not_requested` closes the step: "We can't take your address here any more.
+Go back to the chat." (the page reads the purchase again; no retry, no generic error). The address POST always reads
+the purchase FRESH (never the 2 s cache), and forwards the address only when that read shows the form (the `rp_` rail
+never shows one, whatever a body carries). A consent recorded on one instance drops that instance's cache; a read
+another instance cached up to 2 s earlier can still show the terms once, and the page then shows "Thanks. Getting the
+address form ready…" for an accepted offer (it re-offers only after three such reads); typed values survive either
+way. With the backend's gate off, the form
 comes at once, exactly as before. Agent surfaces: a gated `shipping_address` `next_action` is treated like the other
 gated steps (`agenpas_url`, also as `next_action.action_url` while consent is on).
 
