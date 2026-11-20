@@ -94,7 +94,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | `failed` / `refused` / `expired` | Plain-language reason from the backend's codes (never the code or any raw text). The worker's ordinary progress codes (`checkout_placing`, `checkout_ready`, `checkout_read`, `await_read`, `reconciled`: routine retries and reconciliation) are known and change nothing; a HELD code beside one still wins. Anomalies (`transition_refused`, `rail_refused`, `no_step_for_state`, `vic_order_step_disabled`, `checkout_answer_unrecognised`) keep the checking wording from placing on. On a `failed` row, a code the gateway does not recognise at all (on no list, not of the hold shape) gets the checking wording: "We're checking with the store — don't try again", no retry, never "no order was sent". On a `refused` or `expired` row (both end before any money step on both rails: see "Final states" below) an unrecognised or merely hold-shaped code gets the state's own wording; only an explicit HELD code (or `manual_provider_*`) reads "checking" there. With no code at all: neutral wording, no "try again" on `failed` / `refused`; `expired` keeps "start again from the chat" (the backend expires only pre-pay rows with no pending write and no money result). |
 | outcome-unknown or hold code | "We're checking with the store — don't try again." No retry is ever suggested. |
 
-Codes are read segment by segment (mirroring pivota-backend 035aa5e6e, unchanged since 229d1e587: its 24 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
+Codes are read segment by segment (mirroring pivota-backend 54874e2a5, unchanged since 229d1e587: its 24 `_CHECKOUT_HOLD_CODES`, 7 `_VIC_HOLD_CODES` and `money_result_seen` are the explicit HELD list): the backend writes compound codes
 (`paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`, `checkout_card_unavailable:<why>`,
 `checkout_setup_refused:<kind>:<status>`, `checkout_confirm_refused:http_error:422`), so each is lower-cased and split
 on `:`, and every segment is checked; a suffixed code matches on its head segment. The step prefixes (`paid_sent`,
@@ -178,8 +178,8 @@ memory):
   it to the buyer, exactly as `checkout_unresolvable` already requires. Ops: these rows land with you. `refused` and
   `expired` rows with other codes do not.
 
-**Final states** (verified from the backend source, read only: A2A at pivota-backend 035aa5e6e, the `rp_` rail at origin/main
-5ff890580; `tests/agenpas_terminal_codes_parity.node.test.cjs` holds every code those write sites write):
+**Final states** (verified from the backend source, read only: both rails at pivota-backend 54874e2a5, whose rp_-rail sources are identical to origin/main 5ff890580;
+`tests/agenpas_terminal_codes_parity.node.test.cjs` holds every code those write sites write):
 
 - A2A `refused` / `expired` come only from `opened`, `needs_payment_method`, `quoting` or `awaiting_authorization`
   (db/a2a_rail_ledger.py `ALLOWED_TRANSITIONS`: `paying` permits only `completed` / `failed`, "no expiry, no refusal
@@ -193,8 +193,8 @@ memory):
   state's generic wording, never "nothing was ordered") and the operator's `manual_provider_expired` (reads "checking").
 
 The new A2A codes: `shipping_address_expired` ("The shipping address wasn't given in time, so nothing was ordered or
-charged."), `shipping_address_not_collected` ("We can't take the shipping address here any more, so nothing was
-ordered or charged."), `stale` (the expiry sweep: "nothing was ordered or charged"), `buyer_email_required`,
+charged."), `shipping_address_not_collected` (opened -> expired when capture was turned off while the row waited, and the address
+POST's 409: "We can't take the shipping address here any more, so nothing was ordered or charged."), `stale` (the expiry sweep: "nothing was ordered or charged"), `buyer_email_required`,
 `contact_purged`, `token_payer_missing` ("Some details were missing"), `buyer_approval_missing` / `token_id_unstorable`
 (a token minted with no buyer approval step: "Our payment partner couldn't take this purchase"), `attempts_exhausted`,
 the pre-store failures `binding_page_invalid`, `approval_page_invalid`, `vic_page_missing`, `vic_page_invalid`,

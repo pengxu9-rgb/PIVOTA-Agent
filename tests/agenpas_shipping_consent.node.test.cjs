@@ -399,7 +399,9 @@ test('writer: a 409 whose detail.error is consent_required is consent_required; 
   assert.deepEqual(await mk({ status: 409, body: { error: 'consent_required' } }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'consent_required' });
   assert.deepEqual(await mk({ status: 409, body: envelope409('shipping_address_conflict') }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'conflict' });
   assert.deepEqual(await mk({ status: 409, body: {} }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'not_taken', code: 'unnamed' });
-  // An arbitrary unknown reason (the backend's coming "collection is off" 409, whatever its final name).
+  // The backend's "capture is off now" 409 (pivota-backend 54874e2a5, checked before consent and before the body).
+  assert.deepEqual(await mk({ status: 409, body: envelope409('shipping_address_not_collected') }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'not_taken', code: 'shipping_address_not_collected' });
+  // An arbitrary unknown reason: the same answer, whatever a future 409 is called.
   assert.deepEqual(await mk({ status: 409, body: envelope409('zz_some_new_reason') }).submitShippingAddress(CLAIMS, ADDRESS), { kind: 'not_taken', code: 'zz_some_new_reason' });
 });
 

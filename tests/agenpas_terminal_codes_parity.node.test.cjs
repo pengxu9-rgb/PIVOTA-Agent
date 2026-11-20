@@ -4,14 +4,14 @@
 // wording. A new backend code fails this test instead of silently landing in "checking" or the neutral copy.
 //
 // Enumerated from the backend SOURCE (not from memory), each with its write site:
-//   A2A at pivota-backend 035aa5e6e: services/payment_orchestration/a2a_rail_worker.py (every
+//   A2A at pivota-backend 54874e2a5: services/payment_orchestration/a2a_rail_worker.py (every
 //     `ledger.transition_as_holder(..., to_state="failed"|"refused"|"expired", ...)`, `_token_failed`, `_checkout_failed`,
 //     `_cancel_checkout`), db/a2a_rail_ledger.py (the expiry sweep `_EXPIRE_SQL` ~:1266, the operator resolve ~:901).
-//   The rp_ rail at pivota-backend origin/main 5ff890580 (services/reap_agentic_purchase.py identical at 035aa5e6e):
+//   The rp_ rail at pivota-backend 54874e2a5 (its rp_-rail sources identical to origin/main 5ff890580):
 //     services/reap_agentic_purchase.py (every `_move(..., "failed"|"refused"|"expired", ...)`),
 //     db/reap_agentic_ledger.py (the sweeps `_EXPIRE_OVERDUE_SQL` ~:2282, `_FAIL_EXHAUSTED_SQL` ~:2361, contact re-entry
 //     ~:2680), services/reap_checkout_recovery.py (`manual_provider_<status>` ~:126), routes/agent_commerce_reap.py
-//     (`duplicate_idempotency_key` ~:2589), and the client's resolution reasons (services/reap_agentic_client.py).
+//     (`duplicate_idempotency_key` ~:2594), and the client's resolution reasons (services/reap_agentic_client.py).
 // A compound code is written here in a representative spelling (`<prefix>:<kind>:<status>`); every segment is read.
 // NOT enumerable: the partner's own error codes the rp_-rail worker lowercases into `last_error_code` on a failed row
 // (`_error_code(partner)`); on a failed row an unrecognised one reads "checking" by design.
@@ -45,7 +45,7 @@ const BACKEND = Object.freeze({
       'buyer_email_required', 'buyer_approval_missing', 'token_id_unstorable', 'checkout_currency_unsupported',
       'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit',
     ],
-    // `shipping_address_not_collected`: from the backend fix round (not yet at 035aa5e6e).
+    // `shipping_address_not_collected`: a2a_rail_worker.py:536 (opened -> expired, capture turned off while waiting).
     expired: ['shipping_address_expired', 'vic_authorization_expired', 'buyer_action_expired', 'stale', 'shipping_address_not_collected'],
   },
   reap: {
@@ -123,7 +123,7 @@ function outcome(rail, state, code, field = state === 'refused' ? 'refusal_reaso
   return projectPurchaseView(body, { purchaseId: ID[rail] });
 }
 
-test('parity with backend 035aa5e6e (A2A) / origin/main 5ff890580 (rp_ rail): every final code the backend writes is on an explicit gateway list', () => {
+test('parity with backend 54874e2a5 (both rails): every final code the backend writes is on an explicit gateway list', () => {
   const missing = [];
   for (const [rail, byState] of Object.entries(BACKEND)) {
     for (const [state, codes] of Object.entries(byState)) {
