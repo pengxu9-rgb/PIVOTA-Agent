@@ -271,7 +271,10 @@ first. What you typed is kept, and the form comes back after you agree."; until 
 page the form is never drawn (a waiting card instead, even if a read shows the form), and what they typed stays in
 memory and fills the form again after they agree. A second `consent_required` after a fresh acceptance, any other 409
 (`address_not_taken`), or a second `address_not_requested` closes the step: "We can't take your address here any more.
-Go back to the chat." (the page reads the purchase again; no retry, no generic error). The address POST always reads
+Go back to the chat." (the page reads the purchase again; no retry, no generic error). Sent back to the terms but
+three reads in a row still show the form without them (the backend's read and write disagree): closed the same way,
+never an endless wait. A read that shows a new form (after one without it) starts the `address_not_requested` count
+again. The address POST always reads
 the purchase FRESH (never the 2 s cache), and forwards the address only when that read shows the form (the `rp_` rail
 never shows one, whatever a body carries). A consent recorded on one instance drops that instance's cache; a read
 another instance cached up to 2 s earlier can still show the terms once, and the page then shows "Thanks. Getting the

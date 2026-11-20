@@ -88,6 +88,8 @@
     addressSentBack: false,
     addressSentBackCount: 0,
     addressNotRequestedCount: 0,
+    // Reads that still show the form (and no terms) while sent back: after ADDRESS_SENT_BACK_MAX_READS, closed.
+    addressSentBackReads: 0,
     addressClosed: false,
     // The consent offer on screen: { step, offer, shownAt, checked, posting, accepted, error, retryAt, button }.
     consent: null,
@@ -1021,6 +1023,25 @@
     schedule(backoff);
   }
 
+  // The address step across reads. Sent back to the terms but the reads keep showing the form (the backend's read and
+  // write disagree): after a few such reads the step closes ("Go back to the chat") rather than wait forever. A read
+  // that shows a NEW form (after one without it) starts the "not requested" count again.
+  var ADDRESS_SENT_BACK_MAX_READS = 3;
+  function trackAddressStep(body) {
+    var hasForm = Boolean(body.address_request);
+    var hadForm = Boolean(ui.view && ui.view.address_request);
+    if (hasForm && !hadForm) ui.addressNotRequestedCount = 0;
+    if (ui.addressSentBack && hasForm && !body.consent) {
+      ui.addressSentBackReads += 1;
+      if (ui.addressSentBackReads >= ADDRESS_SENT_BACK_MAX_READS && !ui.addressClosed) {
+        ui.addressClosed = true;
+        ui.lastJson = null;
+      }
+    } else if (!ui.addressSentBack) {
+      ui.addressSentBackReads = 0;
+    }
+  }
+
   // What decides a re-render: the answer, except the consent offer's id and time (they change on every read, and a
   // re-render would drop the buyer's focus on the checkbox). Without a consent member: the answer itself, as before.
   function viewKey(body) {
@@ -1054,6 +1075,7 @@
       ui.inFlight = false;
       if (r.status === 200 && r.body && typeof r.body.screen === 'string') {
         syncConsent(r.body);
+        trackAddressStep(r.body);
         var json = viewKey(r.body);
         // An unchanged answer is not re-rendered: a re-render would reload a framed hosted page (embed mode) and
         // drop a focused button.

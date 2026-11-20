@@ -921,3 +921,50 @@ test('address: 409 address_not_requested re-reads; a second one closes the step'
   assert.match(h2.text(), /We can't take your address here any more/);
   assert.equal(findAll(h2, (n) => n.tagName === 'FORM').length, 0);
 });
+
+test('address: sent back to the terms but the reads keep showing the form: after 3 such reads the step closes (no endless wait)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  h.answer({ status: 409, body: { error: 'consent_required' } });
+  submit(h);
+  await settle();
+  for (const n of [1, 2]) {
+    h.answer({ status: 200, body: addressView(['email']) });
+    await nextRead(h);
+    assert.match(h.text(), /Checking the terms…/, `read ${n}: still waiting`);
+  }
+  h.answer({ status: 200, body: addressView(['email']) });
+  await nextRead(h);
+  assert.match(h.text(), /We can't take your address here any more Go back to the chat\./);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  assert.equal(h.fetches.filter((f) => f.init.method === 'POST').length, 1, 'never sent again');
+});
+
+test('address: a read that shows a NEW form starts the "not requested" count again (one stale 409 earlier does not close it)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  // First 409 address_not_requested; the read then shows no form (the step moved on) ...
+  h.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: view({ state: 'routing', screen: 'preparing', action: null }) });
+  submit(h);
+  await settle();
+  await nextRead(h);
+  assert.match(h.text(), /Getting your order ready/);
+  // ... and a later read shows a new form: one more 409 now re-reads instead of closing.
+  h.answer({ status: 200, body: addressView(['email']) });
+  await nextRead(h);
+  assert.ok(byName(h, 'email'));
+  h.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  assert.equal(/We can't take your address here any more/.test(h.text()), false, 'not closed by the earlier count');
+  // A second one in a row (no new form between) closes it.
+  await nextRead(h);
+  h.answer({ status: 409, body: { error: 'address_not_requested' } });
+  submit(h);
+  await settle();
+  assert.match(h.text(), /We can't take your address here any more/);
+});
