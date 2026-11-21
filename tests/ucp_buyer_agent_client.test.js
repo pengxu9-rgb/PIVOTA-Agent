@@ -1071,6 +1071,25 @@ describe('UCP_AGENT_SIGN_ALWAYS: the TOKEN tier signs too', () => {
     }
   });
 
+  test('the skip warning goes to the module logger when no logger is passed, once per process', () => {
+    const moduleLogger = require('../src/logger');
+    const spy = jest.spyOn(moduleLogger, 'warn').mockImplementation(() => {});
+    try {
+      const kid = 'pivota-warn-once-kid';
+      for (let i = 0; i < 3; i += 1) {
+        createUcpBuyerAgentClient({
+          credential: 'test-token', signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: kid,
+          signingKeys: [], profileUrl, fetchImpl: makeFetch({}), signAlways: true,
+        });
+      }
+      const mine = spy.mock.calls.filter(([o]) => o && o.signing_key_id === kid);
+      expect(mine).toHaveLength(1);
+      expect(mine[0][0].reason).toBe('signing_key_not_published');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   // G4: no profile URL at the TOKEN tier -> Bearer-only, never a throw.
   test('on, but no profile URL resolves: Bearer-only instead of throwing', async () => {
     const savedP = process.env.UCP_AGENT_PROFILE_URL;

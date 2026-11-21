@@ -51,6 +51,27 @@ const {
   resolveSigningKeys,
 } = require('./ucpBuyerAgentProfile');
 
+// Warn-once bookkeeping for configuration warnings: per logger, per message key. Clients are built per call in
+// some paths (ucpWarmHandoff), so "once" has to outlive the client. The module logger is one instance, so with it
+// a warning is logged once per process.
+const warnedOnce = new WeakMap();
+let moduleLogger;
+function configWarnLogger(options) {
+  if (typeof options.logger?.warn === 'function') return options.logger;
+  if (moduleLogger === undefined) {
+    try { moduleLogger = require('../logger'); } catch { moduleLogger = null; }
+  }
+  return moduleLogger && typeof moduleLogger.warn === 'function' ? moduleLogger : null;
+}
+function warnOnce(logger, key, fields, message) {
+  if (!logger) return;
+  let seen = warnedOnce.get(logger);
+  if (!seen) { seen = new Set(); warnedOnce.set(logger, seen); }
+  if (seen.has(key)) return;
+  seen.add(key);
+  logger.warn(fields, message);
+}
+
 // MCP tool names (verbatim from the live spec). complete_checkout is listed for the refusal guard ONLY.
 const TOOL = Object.freeze({
   GET_PRODUCT: 'get_product',
@@ -579,8 +600,10 @@ function createUcpBuyerAgentClient(options = {}) {
     if (!signingKeyPublished) tokenTierSignSkipped = 'signing_key_not_published';
     else if (!profileUrl) tokenTierSignSkipped = 'no_profile_url';
   }
-  if (tokenTierSignSkipped && typeof options.logger?.warn === 'function') {
-    options.logger.warn(
+  if (tokenTierSignSkipped) {
+    warnOnce(
+      configWarnLogger(options),
+      `token_tier_sign_skipped:${tokenTierSignSkipped}:${signingKeyId}`,
       { surface: 'ucp_buyer_agent', reason: tokenTierSignSkipped, signing_key_id: signingKeyId },
       'ucpBuyerAgentClient: UCP_AGENT_SIGN_ALWAYS is on but the TOKEN tier sends Bearer-only: '
       + (tokenTierSignSkipped === 'no_profile_url'
