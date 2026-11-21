@@ -51,6 +51,20 @@ const ASYNC_BACKFILL_SOURCE_DISCOVERY_TIMEOUT_MS = Math.max(
 );
 const ASYNC_BACKFILL_POST_ENRICHMENT_ENABLED =
   String(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_POST_ENRICHMENT_ENABLED || 'true').trim().toLowerCase() !== 'false';
+// The gateway this backfill's live PDP audit and Pivota-insights coverage batch call when no
+// PIVOTA_GATEWAY_URL (or EXTERNAL_PDP_QUALITY_GATEWAY_URL / PDP_SMOKE_GATEWAY for the audit) is set:
+// the authoritative invoke path, credentialed by the scripts' own key lookup (…, PIVOTA_API_KEY).
+//
+// NOT agent.pivota.cc/api/gateway any more. That is the shopping UI's browser proxy, and since the
+// 2026-11-21 abuse guard (pivota-agent-ui src/lib/gatewayGuard) it serves get_pdp_v2,
+// get_discovery_feed and find_similar_products only to a browser session cookie the UI's own pages
+// issue: a server-to-server caller with no session gets 401 GATEWAY_SESSION_REQUIRED. Both scripts
+// already speak the invoke path (audit-external-product-pdp-quality.js keeps it as-is and switches
+// to buildAuthoritativePayload; build_product_intel_live_pilot_cases.js posts the same envelope).
+// The one behaviour the proxy added on the way, the UGC review-summary overlay on get_pdp_v2, is
+// not applied on this path, so reviews_preview in these audit reports can differ.
+const BACKFILL_DEFAULT_GATEWAY_URL = 'https://gateway.pivota.cc/agent/shop/v1/invoke';
+
 const ASYNC_BACKFILL_PIVOTA_INSIGHTS_ENABLED =
   String(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_PIVOTA_INSIGHTS_ENABLED || 'true').trim().toLowerCase() !== 'false';
 const ASYNC_BACKFILL_PIVOTA_INSIGHTS_MODEL =
@@ -698,7 +712,8 @@ async function runPostApplyEnrichmentDefault({
           gatewayUrl: resolveQualityGatewayUrl(
             process.env.PIVOTA_GATEWAY_URL ||
               process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||
-              process.env.PDP_SMOKE_GATEWAY,
+              process.env.PDP_SMOKE_GATEWAY ||
+              BACKFILL_DEFAULT_GATEWAY_URL,
           ),
         }),
       );
@@ -767,7 +782,7 @@ async function runPostApplyEnrichmentDefault({
     const outDir = path.join(jobDir, 'pivota-insights');
     try {
       const coverageResult = await runPivotaInsightsCoverageBatch({
-        gatewayUrl: process.env.PIVOTA_GATEWAY_URL || 'https://agent.pivota.cc/api/gateway',
+        gatewayUrl: process.env.PIVOTA_GATEWAY_URL || BACKFILL_DEFAULT_GATEWAY_URL,
         productIds: limitedInsightsProductIds,
         frontendPaths: [],
         outDir,
