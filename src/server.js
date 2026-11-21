@@ -34707,6 +34707,12 @@ const { chainRowResolvable } = require('./services/publicReadChainResolvability'
 const { describeCaller } = require('./services/callerIdentity');
 const { agentSignatureMode, createAgentSignatureVerifier } = require('./services/agentSignatureVerifier');
 const {
+  ucpSignatureMode,
+  createUcpSignatureVerifier,
+  parseTrustedProfiles: parseUcpTrustedProfiles,
+  PROFILE_KIND: UCP_PROFILE_KIND,
+} = require('./services/ucpSignatureVerifier');
+const {
   ROUTE_GROUP: AGENT_SIGNATURE_ROUTE_GROUP,
   claimsTapTag,
   loadEnforcementConfig: loadAgentSignatureEnforcementConfig,
@@ -36301,6 +36307,10 @@ function registerUcpOrderWebhookRoutes() {
       const out = await receiver.handleOrderWebhook({
         headers: req.headers,
         rawBody: req.rawBody, // exact wire bytes (express.json verify hook) — the JWS binds these
+        // RFC 9421 (UCP_ORDER_WEBHOOK_RFC9421_MODE): the same bytes as a Buffer, and the request line the
+        // signature base is rebuilt from. Both unused while that mode is off.
+        rawBodyBytes: req.ucpRawBody,
+        request: { method: req.method, originalUrl: req.originalUrl, rawHeaders: req.rawHeaders, protocol: req.protocol },
         body: req.body,
       });
       return res.status(out.status).json(out.body);
@@ -39022,6 +39032,18 @@ function shouldCaptureAcpRawBody(url) {
   return pathOnly.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook';
 }
 
+// Should a UCP-signed request's exact body bytes be kept on `req.ucpRawBody`? Only when it is UCP-signed
+// (Signature-Input AND UCP-Agent), only while a UCP verifier that reads them is on (UCP_SIGNATURE_VERIFY_MODE
+// for the doors, UCP_ORDER_WEBHOOK_RFC9421_MODE for the order webhook), and only on a signature door path —
+// which already excludes ACP delegate_payment, whose body the parser never even reads.
+function shouldCaptureUcpSignedRawBody(req) {
+  const h = (req && req.headers) || {};
+  if (h['signature-input'] === undefined || h['ucp-agent'] === undefined) return false;
+  const webhookMode = String(process.env.UCP_ORDER_WEBHOOK_RFC9421_MODE || 'off').trim().toLowerCase();
+  if (ucpSignatureMode() === 'off' && (webhookMode === 'off' || webhookMode === '')) return false;
+  return isAgentSignatureDoorPath(req);
+}
+
 // Is this the ACP delegate_payment door? That request body carries raw cardholder data (FPAN + CVC) for a
 // door Pivota permanently refuses without reading (delegatedPaymentRefusal.js). Denying the rawBody stash is
 // not the strongest form of that promise — the JSON parser would still materialize the PAN on `req.body`.
@@ -39065,6 +39087,11 @@ app.use(express.json({
     }
     if (buf && buf.length && shouldCaptureAcpRawBody(req.originalUrl || req.url || '')) {
       req.rawBody = buf.toString(encoding || 'utf8');
+    }
+    // A UCP-signed request's Content-Digest is over the exact wire BYTES, so they are kept as a Buffer —
+    // only while a UCP verifier is on, and only on the doors it reads (shouldCaptureUcpSignedRawBody).
+    if (buf && buf.length && shouldCaptureUcpSignedRawBody(req)) {
+      req.ucpRawBody = buf;
     }
   }
 }));
@@ -39361,6 +39388,81 @@ async function agentSignatureMiddleware(req, res, next) {
 }
 app.use((req, res, next) => isAgentSignatureDoorPath(req)
   ? agentSignatureMiddleware(req, res, next)
+  : next());
+
+// UCP request signatures on our doors (ucpSignatureVerifier.js): a platform — any UCP agent —
+// names its profile in `UCP-Agent` and signs per RFC 9421. OBSERVE ONLY (UCP_SIGNATURE_VERIFY_MODE=observe;
+// default off): the result is logged and set on `req.ucpSignature`, and the request goes on exactly as it
+// would unsigned. Only profiles in UCP_SIGNATURE_TRUSTED_PROFILES are fetched; any other is counted as
+// `profile_not_trusted` with the URL it claimed. The order webhook is NOT read here: a business signs that
+// one, and its receiver verifies it with business-profile rules (UCP_ORDER_WEBHOOK_RFC9421_MODE).
+let ucpDoorSignatureVerifierCache = { key: null, verifier: null };
+function ucpDoorSignatureVerifier() {
+  const key = [
+    'UCP_SIGNATURE_TRUSTED_PROFILES', 'UCP_SIGNATURE_EXPECTED_AUTHORITIES', 'AGENT_SIGNATURE_EXPECTED_AUTHORITIES',
+    'UCP_SIGNATURE_MAX_AGE_S', 'UCP_SIGNATURE_REQUIRE_CREATED',
+  ].map((name) => process.env[name] || '').join('\u0000');
+  if (ucpDoorSignatureVerifierCache.key !== key) {
+    ucpDoorSignatureVerifierCache = {
+      key,
+      verifier: createUcpSignatureVerifier({
+        kind: UCP_PROFILE_KIND.PLATFORM,
+        trustedProfiles: parseUcpTrustedProfiles(process.env.UCP_SIGNATURE_TRUSTED_PROFILES),
+      }),
+    };
+  }
+  return ucpDoorSignatureVerifierCache.verifier;
+}
+function isUcpOrderWebhookPath(req) {
+  return (String(req.path || '').toLowerCase().replace(/\/+$/, '') || '/') === '/ucp/order-webhook';
+}
+async function ucpSignatureObserveMiddleware(req, res, next) {
+  const mode = ucpSignatureMode();
+  if (mode === 'off') return next();
+  if (req.headers['signature-input'] === undefined || req.headers['ucp-agent'] === undefined) return next();
+  if (isUcpOrderWebhookPath(req)) return next();
+  let timer;
+  try {
+    const result = await Promise.race([
+      ucpDoorSignatureVerifier().verifyRequest(req, { rawBody: req.ucpRawBody || null, body: req.body }),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ present: true, verified: false, reason: 'verification_timeout', ucp_error: null }), agentSignatureBudgetMs());
+      }),
+    ]).catch(() => ({ present: true, verified: false, reason: 'verifier_error', ucp_error: null }));
+    req.ucpSignature = Object.freeze(result);
+    const caller = describeCaller(req);
+    logger.info(
+      {
+        event: 'ucp_signature',
+        mode,
+        path: req.path,
+        method: req.method,
+        verified: result.verified,
+        reason: result.reason,
+        // The standard's error code this request WOULD get under enforce (none exists yet).
+        ucp_error: result.ucp_error ? result.ucp_error.code : null,
+        profile_url: result.profile_url || null,
+        // A profile we do not trust (or could not parse): counted, never fetched.
+        claimed_profile: result.claimed_profile || null,
+        keyid: result.keyid || null,
+        alg: result.alg || null,
+        ucp_agent_covered: result.ucp_agent_covered ?? null,
+        meta_binding: result.meta_binding || null,
+        keys_stale: result.keys_stale || false,
+        caller_class: caller.caller_class,
+        caller_ua: caller.ua,
+      },
+      'ucp signature',
+    );
+  } catch {
+    // Observe never breaks the request.
+  } finally {
+    clearTimeout(timer);
+    next();
+  }
+}
+app.use((req, res, next) => isAgentSignatureDoorPath(req)
+  ? ucpSignatureObserveMiddleware(req, res, next)
   : next());
 
 // ---------------- Aurora BFF surface: not served on the branded public hosts ----------------
@@ -56261,6 +56363,7 @@ module.exports._debug = {
   // Security property: the raw wire bytes of an ACP delegate_payment request (raw PAN + CVC) are never
   // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
   shouldCaptureAcpRawBody,
+  shouldCaptureUcpSignedRawBody,
   // #1933 decoupling property: whether the buyable mainline lane runs the
   // canonical token-match tokenizer must depend on THIS flag alone. It rode
   // PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED for its whole life, which chained
