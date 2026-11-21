@@ -57,7 +57,7 @@ const {
 const { createUcpSignatureVerifier, PROFILE_KIND } = require('../src/services/ucpSignatureVerifier');
 const { createUcpOrderWebhookReceiver } = require('../src/services/ucpOrderWebhookReceiver');
 
-// Decided 2026-11-20 (Peng): the one profile URL every Pivota UCP request names.
+// Decided 2026-11-20: the one profile URL every Pivota UCP request names.
 const CANONICAL_PROFILE_URL = 'https://ucp.pivota.cc/.well-known/ucp-agent';
 // A placeholder merchant: self mode never resolves or contacts it.
 const SELF_MERCHANT_HOST = 'merchant.probe.example';
@@ -78,7 +78,7 @@ function result(id, name, ok, detail, status) {
 /** A profile document from a file: a profile JSON as-is, or a bare public JWK wrapped in both arrays. */
 function profileDocFromJson(json) {
   if (json && typeof json === 'object' && !Array.isArray(json) && json.kty) {
-    if (json.d !== undefined) throw new Error('the profile file holds PRIVATE key material; pass the public JWK');
+    if (json.d !== undefined) throw new UsageError('the profile file holds PRIVATE key material; pass the public JWK');
     return { signing_keys: [json], keys: [json] };
   }
   return json;
@@ -368,6 +368,9 @@ function checkTarget(target, allowHost) {
   return null;
 }
 
+/** An error whose message is fixed text written here, so it is safe to print. Nothing else is printed as-is. */
+class UsageError extends Error {}
+
 async function main(argv = process.argv.slice(2), { env = process.env, stdout = process.stdout, fetchImpl } = {}) {
   let args;
   try {
@@ -391,14 +394,23 @@ async function main(argv = process.argv.slice(2), { env = process.env, stdout = 
       ({ privateKeyRaw, keyId, profileDoc } = ephemeralKey());
     } else {
       privateKeyRaw = String(env.UCP_AGENT_SIGNING_PRIVATE_KEY || '').trim();
-      if (!privateKeyRaw) throw new Error('no UCP_AGENT_SIGNING_PRIVATE_KEY (or pass --test-key)');
-      keyId = String(env.UCP_AGENT_SIGNING_KEY_ID || '').trim() || loadSigningPrivateKey(privateKeyRaw).kid;
-      if (!keyId) throw new Error('no UCP_AGENT_SIGNING_KEY_ID and no kid in the JWK');
-      if (args.profileFile) profileDoc = profileDocFromJson(JSON.parse(fs.readFileSync(args.profileFile, 'utf8')));
+      if (!privateKeyRaw) throw new UsageError('no UCP_AGENT_SIGNING_PRIVATE_KEY (or pass --test-key)');
+      let loadedKid;
+      try { loadedKid = loadSigningPrivateKey(privateKeyRaw).kid; } catch { throw new UsageError('UCP_AGENT_SIGNING_PRIVATE_KEY is not a usable P-256 key'); }
+      keyId = String(env.UCP_AGENT_SIGNING_KEY_ID || '').trim() || loadedKid;
+      if (!keyId) throw new UsageError('no UCP_AGENT_SIGNING_KEY_ID and no kid in the JWK');
+      if (args.profileFile) {
+        let text;
+        try { text = fs.readFileSync(args.profileFile, 'utf8'); } catch { throw new UsageError('--profile-file cannot be read'); }
+        let json;
+        // JSON.parse quotes the input's opening characters in its message, so its error is never printed.
+        try { json = JSON.parse(text); } catch { throw new UsageError('--profile-file is not valid JSON'); }
+        profileDoc = profileDocFromJson(json);
+      }
     }
   } catch (err) {
-    // Never echo key material: the message is ours, or a parse error about a file path.
-    stdout.write(`usage error: ${err.message}\n`);
+    // Never echo key material or file contents: only our own fixed messages are printed.
+    stdout.write(`usage error: ${err instanceof UsageError ? err.message : 'unreadable key or profile input'}\n`);
     return 2;
   }
 

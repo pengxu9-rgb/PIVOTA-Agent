@@ -83,6 +83,29 @@ test('a profile file holding a PRIVATE JWK is refused as a usage error', async (
   assert.equal(out.text().includes(k.priv.d), false);
 });
 
+test('a --profile-file that is not JSON gets a fixed message and none of its text', async () => {
+  const k = keyPair();
+  const pemBody = k.pem.split('\n').filter((l) => l && !l.startsWith('-----')).join('');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ucp-probe-'));
+  const p = path.join(dir, 'key.b64');
+  fs.writeFileSync(p, pemBody);
+  const out = sink();
+  const code = await probe.main(['--profile-file', p], {
+    env: { UCP_AGENT_SIGNING_PRIVATE_KEY: k.pem, UCP_AGENT_SIGNING_KEY_ID: k.kid },
+    stdout: out,
+  });
+  assert.equal(code, 2);
+  assert.equal(out.text(), 'usage error: --profile-file is not valid JSON\n');
+  assert.equal(out.text().includes(pemBody.slice(0, 8)), false);
+});
+
+test('an unusable env key gets a fixed message and none of its text', async () => {
+  const out = sink();
+  const code = await probe.main(['--profile-file', '/nonexistent'], { env: { UCP_AGENT_SIGNING_PRIVATE_KEY: 'MIGHAgEAMBMGByqGSM49notakey' }, stdout: out });
+  assert.equal(code, 2);
+  assert.equal(out.text(), 'usage error: UCP_AGENT_SIGNING_PRIVATE_KEY is not a usable P-256 key\n');
+});
+
 test('network paths need --live, https, and the exact --allow-host', async () => {
   const run = async (argv) => { const out = sink(); return { code: await probe.main(argv, { env: {}, stdout: out }), text: out.text() }; };
   assert.equal((await run(['--test-key', '--target', 'https://sandbox.example/ucp/mcp', '--allow-host', 'sandbox.example'])).code, 2);
