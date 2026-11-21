@@ -485,3 +485,123 @@ describe('recoAlternativesAuthorityBackfill', () => {
     expect(runCoverageBatch).not.toHaveBeenCalled();
   });
 });
+
+// The backfill's live PDP audit and insights batch must NOT default to the shopping UI's
+// browser proxy (agent.pivota.cc/api/gateway): since the 2026-11-21 abuse guard there, a
+// server-to-server caller without a browser session gets 401 GATEWAY_SESSION_REQUIRED for
+// get_pdp_v2 / get_discovery_feed / find_similar_products.
+describe('recoAlternativesAuthorityBackfill gateway URL', () => {
+  const GATEWAY_ENV = ['PIVOTA_GATEWAY_URL', 'EXTERNAL_PDP_QUALITY_GATEWAY_URL', 'PDP_SMOKE_GATEWAY'];
+  const saved = {};
+
+  beforeEach(() => {
+    for (const name of GATEWAY_ENV) {
+      saved[name] = process.env[name];
+      delete process.env[name];
+    }
+  });
+
+  afterEach(() => {
+    for (const name of GATEWAY_ENV) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+    jest.resetModules();
+    jest.dontMock('../src/db');
+    jest.dontMock('../src/services/externalSeedContentAudit');
+    jest.dontMock('../scripts/audit-external-product-pdp-quality.js');
+    jest.dontMock('../scripts/pivota_insights_coverage_batch.js');
+  });
+
+  async function runCleanSeedEnrichment() {
+    const query = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'seed_gw_1',
+          external_product_id: 'ext_gw_1',
+          market: 'US',
+          domain: 'example.com',
+          canonical_url: 'https://example.com/products/item-1',
+          destination_url: 'https://example.com/products/item-1',
+          title: 'Example Item One',
+          seed_data: {
+            brand: 'Example Brand',
+            snapshot: { brand: 'Example Brand', canonical_url: 'https://example.com/products/item-1' },
+          },
+          status: 'active',
+        },
+      ],
+    }));
+    const auditRow = jest.fn(async () => ({ seed_id: 'seed_gw_1', external_product_id: 'ext_gw_1', failure_reasons: [] }));
+    const runCoverageBatch = jest.fn(async () => ({
+      status: 'ok',
+      out_dir: '/tmp/pivota-insights',
+      review: '/tmp/pivota-insights/review.json',
+      count: 1,
+    }));
+    jest.doMock('../src/db', () => ({ getPool: () => ({}), query }));
+    jest.doMock('../src/services/externalSeedContentAudit', () => ({
+      auditExternalSeedRow: jest.fn(() => ({ findings: [] })),
+      summarizeAuditResults: jest.fn(() => ({
+        scanned: 1,
+        flagged_rows: 0,
+        findings_total: 0,
+        by_severity: { blocker: 0, review: 0, info: 0 },
+      })),
+    }));
+    // The REAL resolver, so the URL that reaches auditRow is what production would call. Loaded only
+    // AFTER the mocks above are registered: its dependency graph would otherwise cache an earlier
+    // test's mocks (the blocking seed audit) for the backfill module required below.
+    const { resolveGatewayUrl } = jest.requireActual('../scripts/audit-external-product-pdp-quality.js');
+    jest.doMock('../scripts/audit-external-product-pdp-quality.js', () => ({ auditRow, resolveGatewayUrl }));
+    jest.doMock('../scripts/pivota_insights_coverage_batch.js', () => ({ runCoverageBatch }));
+
+    const os = require('node:os');
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reco-backfill-gateway-url-'));
+    const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
+    const result = await backfill._internals.runPostApplyEnrichmentDefault({
+      jobDir,
+      brand: 'Example Brand',
+      market: 'US',
+      appliedSeedIds: ['seed_gw_1'],
+      logger: null,
+    });
+    return { result, auditRow, runCoverageBatch };
+  }
+
+  test('defaults both the live PDP audit and the insights batch to the authoritative invoke path', async () => {
+    const { result, auditRow, runCoverageBatch } = await runCleanSeedEnrichment();
+    expect(result.status).toBe('completed');
+    const invokeUrl = 'https://gateway.pivota.cc/agent/shop/v1/invoke';
+    expect(auditRow).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ gatewayUrl: invokeUrl }));
+    expect(runCoverageBatch).toHaveBeenCalledWith(expect.objectContaining({ gatewayUrl: invokeUrl }));
+    const sent = JSON.stringify([auditRow.mock.calls, runCoverageBatch.mock.calls]);
+    expect(sent).not.toContain('/api/gateway');
+  });
+
+  test('PIVOTA_GATEWAY_URL still overrides both', async () => {
+    process.env.PIVOTA_GATEWAY_URL = 'https://gateway-staging.example.test/agent/shop/v1/invoke';
+    const { auditRow, runCoverageBatch } = await runCleanSeedEnrichment();
+    expect(auditRow).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ gatewayUrl: 'https://gateway-staging.example.test/agent/shop/v1/invoke' }),
+    );
+    expect(runCoverageBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ gatewayUrl: 'https://gateway-staging.example.test/agent/shop/v1/invoke' }),
+    );
+  });
+
+  test('EXTERNAL_PDP_QUALITY_GATEWAY_URL still overrides the audit only', async () => {
+    process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL = 'https://audit.example.test/agent/shop/v1/invoke';
+    const { auditRow, runCoverageBatch } = await runCleanSeedEnrichment();
+    expect(auditRow).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ gatewayUrl: 'https://audit.example.test/agent/shop/v1/invoke' }),
+    );
+    expect(runCoverageBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ gatewayUrl: 'https://gateway.pivota.cc/agent/shop/v1/invoke' }),
+    );
+  });
+});
