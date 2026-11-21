@@ -34,6 +34,20 @@
  *     to accept-unverified; here that is an explicit dev-only opt-out (UCP_ORDER_WEBHOOK_ALLOW_UNVERIFIED)
  *     so enabling the receiver never silently opens an unauthenticated write door.
  *
+ * RFC 9421 (UCP 2026-04-08 order webhooks), behind UCP_ORDER_WEBHOOK_RFC9421_MODE = off | observe | accept:
+ *   UCP's order capability says a business signs webhooks per RFC 9421 with a key from ITS business profile
+ *   (`/.well-known/ucp`, named in the `UCP-Agent` header), plus Content-Digest over the body. That is what
+ *   a business following the spec sends. The detached JWS above is the older Pivota-specific shape and stays the default.
+ *     off      (default) nothing changes: not verified, not logged, no new fields anywhere.
+ *     observe  a request carrying Signature-Input is verified (ucpSignatureVerifier.js, business kind) and
+ *              the outcome is logged; the accept/refuse decision is exactly the JWS one.
+ *     accept   as observe, and a request with NO Request-Signature is accepted when its RFC 9421 signature
+ *              verifies (and refused 401 with the spec's error code when it does not).
+ *   Only profiles in UCP_ORDER_WEBHOOK_TRUSTED_BUSINESS_PROFILES (comma list) or UCP_BUSINESS_PROFILE_URL are
+ *   ever fetched. The spec's example covers no `ucp-agent`, so its coverage is recorded, not required.
+ *   NOT YET: the spec's "confirm the signer is authorized to send events for the referenced order" — this
+ *   receiver drives no order state (see below), so the signer profile is recorded for that check to read.
+ *
  * NO REPLAY PROTECTION YET (documented limitation): the sha256 dedup ring only collapses byte-identical
  * redeliveries — it is NOT a replay defense (a captured signed body replays fine once the ring evicts
  * its sha, and the signature stays valid forever). A timestamp/nonce requirement on the signed payload
@@ -45,6 +59,11 @@
  */
 
 const crypto = require('crypto');
+const {
+  createUcpSignatureVerifier,
+  parseTrustedProfiles,
+  PROFILE_KIND,
+} = require('./ucpSignatureVerifier');
 // Dependency-free by design, like this module: undici hides the real network reason on `.cause`.
 const { fetchCauseDetail } = require('../observability/fetchCauseDetail');
 
@@ -54,6 +73,14 @@ const ALLOW_UNVERIFIED_ENV = 'UCP_ORDER_WEBHOOK_ALLOW_UNVERIFIED';
 const PROFILE_URL_ENV = 'UCP_BUSINESS_PROFILE_URL';
 const MAX_EVENTS_ENV = 'UCP_ORDER_WEBHOOK_MAX_EVENTS';
 const EVENTS_KEY_ENV = 'UCP_ORDER_WEBHOOK_EVENTS_KEY';
+const RFC9421_MODE_ENV = 'UCP_ORDER_WEBHOOK_RFC9421_MODE';
+const TRUSTED_BUSINESS_PROFILES_ENV = 'UCP_ORDER_WEBHOOK_TRUSTED_BUSINESS_PROFILES';
+const RFC9421_MODES = new Set(['off', 'observe', 'accept']);
+
+function rfc9421Mode(env) {
+  const raw = firstNonEmptyString(env[RFC9421_MODE_ENV]).toLowerCase() || 'off';
+  return RFC9421_MODES.has(raw) ? raw : 'off';
+}
 
 const DEFAULT_MAX_EVENTS = 200;
 const JWKS_CACHE_TTL_MS = 300 * 1000; // matches the retired receiver's 300s profile cache
@@ -284,7 +311,31 @@ function createUcpOrderWebhookReceiver(deps = {}) {
     return promise;
   }
 
-  async function handleOrderWebhook({ headers = {}, rawBody, body } = {}) {
+  // One RFC 9421 verifier per distinct verifier config (env is read per request, so a flip applies live
+  // without rebuilding the key cache on every call).
+  let rfcVerifier = { key: null, verifier: null };
+  function rfc9421Verifier(env) {
+    const key = [
+      TRUSTED_BUSINESS_PROFILES_ENV, PROFILE_URL_ENV, 'UCP_SIGNATURE_EXPECTED_AUTHORITIES', 'AGENT_SIGNATURE_EXPECTED_AUTHORITIES',
+      'UCP_SIGNATURE_MAX_AGE_S', 'UCP_SIGNATURE_REQUIRE_CREATED',
+    ].map((name) => firstNonEmptyString(env[name])).join('\u0000');
+    if (rfcVerifier.key !== key) {
+      rfcVerifier = {
+        key,
+        verifier: createUcpSignatureVerifier({
+          env,
+          fetchImpl: typeof deps.fetchImpl === 'function' ? deps.fetchImpl : globalThis.fetch,
+          nowMs: now,
+          kind: PROFILE_KIND.BUSINESS,
+          trustedProfiles: parseTrustedProfiles(env[TRUSTED_BUSINESS_PROFILES_ENV], env[PROFILE_URL_ENV]),
+          requireUcpAgentCoverage: false,
+        }),
+      };
+    }
+    return rfcVerifier.verifier;
+  }
+
+  async function handleOrderWebhook({ headers = {}, rawBody, rawBodyBytes: exactBytes, body, request } = {}) {
     const env = deps.env || process.env;
     if (!isFlagOn(env[FLAG_ENV])) return { status: 404, body: { error: 'not_found' } };
 
@@ -301,9 +352,51 @@ function createUcpOrderWebhookReceiver(deps = {}) {
     // the explicit dev-only opt-out (and the force-on UCP_VERIFY_ORDER_WEBHOOK beats even that).
     const verifyRequired = isFlagOn(env[VERIFY_ENV]) || !isFlagOn(env[ALLOW_UNVERIFIED_ENV]);
 
+    // RFC 9421 (off by default; see the header comment). Verified over the EXACT wire bytes when the route
+    // captured them as a Buffer, else over the stashed string.
+    const rfcMode = rfc9421Mode(env);
+    let rfc = null;
+    if (rfcMode !== 'off' && header(headers, 'signature-input') !== undefined) {
+      const bytes = Buffer.isBuffer(exactBytes) ? exactBytes : rawBodyBytes;
+      rfc = await rfc9421Verifier(env).verifyRequest(
+        { method: 'POST', originalUrl: '/ucp/order-webhook', ...(request || {}), headers },
+        { rawBody: bytes },
+      );
+      if (logger && typeof logger.info === 'function') {
+        logger.info({
+          event: 'ucp_order_webhook_rfc9421',
+          surface: 'ucp_order_webhook',
+          mode: rfcMode,
+          verified: rfc.verified,
+          reason: rfc.reason,
+          ucp_error: rfc.ucp_error ? rfc.ucp_error.code : null,
+          profile_url: rfc.profile_url || null,
+          claimed_profile: rfc.claimed_profile || null,
+          keyid: rfc.keyid || null,
+          ucp_agent_covered: rfc.ucp_agent_covered ?? null,
+          has_request_signature: Boolean(signature),
+          webhook_id: firstNonEmptyString(header(headers, 'webhook-id')).slice(0, 100) || null,
+        }, 'UCP order webhook RFC 9421 signature');
+      }
+    }
+
     let verified = false;
     let kid = null;
-    if (verifyRequired) {
+    let scheme = null;
+    if (verifyRequired && !signature && rfcMode === 'accept' && rfc) {
+      if (!rawBodyBytes) {
+        return { status: 415, body: { detail: 'unsupported media type: application/json required' } };
+      }
+      if (!rfc.verified) {
+        return {
+          status: 401,
+          body: { detail: 'invalid RFC 9421 signature', code: rfc.ucp_error ? rfc.ucp_error.code : 'signature_invalid' },
+        };
+      }
+      verified = true;
+      kid = rfc.keyid || null;
+      scheme = 'rfc9421';
+    } else if (verifyRequired) {
       if (!signature) return { status: 401, body: { detail: 'missing Request-Signature' } };
       // No raw bytes captured means the JSON parser never saw this body (non-JSON content type) —
       // there is nothing the signature could have signed. 415 is the honest, diagnosable refusal.
@@ -315,6 +408,7 @@ function createUcpOrderWebhookReceiver(deps = {}) {
       if (!out.verified) return { status: 401, body: { detail: 'invalid Request-Signature' } };
       verified = true;
       kid = out.kid;
+      scheme = 'jws';
     }
 
     // Nothing parseable (no raw bytes AND no parsed content): acknowledge without recording. Express
@@ -346,6 +440,14 @@ function createUcpOrderWebhookReceiver(deps = {}) {
         signature_verified: verified,
         checkout_id: firstNonEmptyString(parsed.checkout_id, parsed.checkout_session_id) || null,
         order_id: firstNonEmptyString(parsed.order_id, isPlainObject(parsed.order) ? parsed.order.id : '') || null,
+        // RFC 9421 fields only when that mode is on: with it off the entry keeps exactly its old shape.
+        ...(rfcMode !== 'off' ? {
+          signature_scheme: scheme,
+          rfc9421_verified: rfc ? rfc.verified : null,
+          // The business whose key verified — what the spec's order-authorization check will compare.
+          signer_profile: rfc && rfc.verified ? rfc.profile_url : null,
+          webhook_id: firstNonEmptyString(header(headers, 'webhook-id')).slice(0, 100) || null,
+        } : {}),
       };
       events.push(entry);
       eventsBySha.set(bodySha256, entry);
@@ -360,7 +462,13 @@ function createUcpOrderWebhookReceiver(deps = {}) {
       status: 200,
       body: {
         status: 'ok',
-        meta: { body_sha256: bodySha256, duplicate, signature_verified: verified, kid },
+        meta: {
+          body_sha256: bodySha256,
+          duplicate,
+          signature_verified: verified,
+          kid,
+          ...(rfcMode !== 'off' ? { signature_scheme: scheme } : {}),
+        },
       },
     };
   }
@@ -403,5 +511,7 @@ module.exports = {
   PROFILE_URL_ENV,
   MAX_EVENTS_ENV,
   EVENTS_KEY_ENV,
+  RFC9421_MODE_ENV,
+  TRUSTED_BUSINESS_PROFILES_ENV,
   DEFAULT_MAX_EVENTS,
 };
