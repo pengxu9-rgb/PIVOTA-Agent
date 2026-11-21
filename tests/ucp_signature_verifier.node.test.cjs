@@ -491,3 +491,67 @@ test('parseTrustedProfiles keeps https URLs only, normalized, from several lists
   const s = parseTrustedProfiles(`${PLATFORM_PROFILE}, http://plain.example/p, not a url`, 'https://SHOP.example/.well-known/ucp#x');
   assert.deepEqual([...s].sort(), ['https://platform.example/.well-known/ucp-agent', 'https://shop.example/.well-known/ucp']);
 });
+
+// ---- R4: the key fetch reaches public addresses only ----------------------------------------------------
+
+function recordingLookup(addresses) {
+  const calls = [];
+  const lookup = (hostname, options, callback) => {
+    const cb = typeof options === 'function' ? options : callback;
+    calls.push(hostname);
+    cb(null, addresses);
+  };
+  return { lookup, calls };
+}
+
+function withNoGlobalFetch(fn) {
+  const saved = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => { calls.push(String(url)); throw new Error('global fetch must not be used'); };
+  return Promise.resolve().then(() => fn(calls)).finally(() => { globalThis.fetch = saved; });
+}
+
+for (const [label, addresses] of [
+  ['a private address', [{ address: '10.0.0.5', family: 4 }]],
+  ['the metadata address', [{ address: '169.254.169.254', family: 4 }]],
+  ['loopback v6', [{ address: '::1', family: 6 }]],
+  ['a mixed public/private answer', [{ address: '8.8.8.8', family: 4 }, { address: '192.168.1.1', family: 4 }]],
+]) {
+  test(`an allowlisted profile host resolving to ${label} is refused at connect: profile_unreachable`, async () => {
+    await withNoGlobalFetch(async (globalCalls) => {
+      const dns = recordingLookup(addresses);
+      const v = createUcpSignatureVerifier({ env: {}, dnsLookup: dns.lookup, trustedProfiles: [PLATFORM_PROFILE] });
+      const s = signedRequest();
+      const r = await v.verifyRequest(s.req, { rawBody: s.rawBody });
+      assert.equal(r.verified, false);
+      assert.equal(r.reason, 'profile_unreachable');
+      assert.deepEqual(dns.calls, ['platform.example']);
+      assert.equal(globalCalls.length, 0);
+    });
+  });
+}
+
+for (const profile of [
+  'https://127.0.0.1/.well-known/ucp-agent',
+  'https://[::ffff:169.254.169.254]/.well-known/ucp-agent',
+  'https://shop.internal/.well-known/ucp-agent',
+]) {
+  test(`an allowlisted ${new URL(profile).hostname} profile is refused before any DNS lookup`, async () => {
+    await withNoGlobalFetch(async (globalCalls) => {
+      const dns = recordingLookup([{ address: '8.8.8.8', family: 4 }]);
+      const v = createUcpSignatureVerifier({ env: {}, dnsLookup: dns.lookup, trustedProfiles: [profile] });
+      const s = signedRequest({ profile, bodyString: rpcBody({ profile }) });
+      const r = await v.verifyRequest(s.req, { rawBody: s.rawBody });
+      assert.equal(r.reason, 'profile_unreachable');
+      assert.equal(dns.calls.length, 0);
+      assert.equal(globalCalls.length, 0);
+    });
+  });
+}
+
+test('an injected fetchImpl is still used as given (tests and callers with their own transport)', async () => {
+  const { v, calls } = verifier();
+  const s = signedRequest();
+  assert.equal((await v.verifyRequest(s.req, { rawBody: s.rawBody })).verified, true);
+  assert.deepEqual(calls, [PLATFORM_PROFILE]);
+});

@@ -318,3 +318,35 @@ test('accept: a full signature memory refuses 503 rather than accepting unchecke
   assert.equal(out.status, 503);
   assert.equal((await h.events()).length, 1);
 });
+
+test('the receiver builds its business verifier on the public-only transport when no fetch is injected', async () => {
+  const saved = globalThis.fetch;
+  const globalCalls = [];
+  globalThis.fetch = async (url) => { globalCalls.push(String(url)); throw new Error('global fetch must not be used'); };
+  try {
+    const lookups = [];
+    const receiver = createUcpOrderWebhookReceiver({
+      env: {
+        UCP_ORDER_WEBHOOK_RECEIVER_ENABLED: '1',
+        UCP_ORDER_WEBHOOK_RFC9421_MODE: 'accept',
+        UCP_ORDER_WEBHOOK_TRUSTED_BUSINESS_PROFILES: BUSINESS,
+      },
+      logger: { info() {}, warn() {} },
+      dnsLookup: (host, options, callback) => {
+        const cb = typeof options === 'function' ? options : callback;
+        lookups.push(host);
+        cb(null, [{ address: '10.1.2.3', family: 4 }]);
+      },
+    });
+    const body = orderBody(40);
+    const out = await receiver.handleOrderWebhook({
+      headers: signWebhook(body), rawBody: body, rawBodyBytes: Buffer.from(body, 'utf8'), body: JSON.parse(body),
+      request: { method: 'POST', originalUrl: '/ucp/order-webhook' },
+    });
+    assert.equal(out.status, 401);
+    assert.deepEqual(lookups, ['shop.example']);
+    assert.equal(globalCalls.length, 0);
+  } finally {
+    globalThis.fetch = saved;
+  }
+});

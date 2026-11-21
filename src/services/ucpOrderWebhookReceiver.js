@@ -352,7 +352,9 @@ function createUcpOrderWebhookReceiver(deps = {}) {
         key,
         verifier: createUcpSignatureVerifier({
           env,
-          fetchImpl: typeof deps.fetchImpl === 'function' ? deps.fetchImpl : globalThis.fetch,
+          // Unset in production: the verifier then fetches business keys through its public-only transport.
+          fetchImpl: typeof deps.fetchImpl === 'function' ? deps.fetchImpl : undefined,
+          dnsLookup: typeof deps.dnsLookup === 'function' ? deps.dnsLookup : undefined,
           nowMs: now,
           kind: PROFILE_KIND.BUSINESS,
           trustedProfiles: parseTrustedProfiles(env[TRUSTED_BUSINESS_PROFILES_ENV], env[PROFILE_URL_ENV]),

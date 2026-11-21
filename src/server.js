@@ -36295,7 +36295,7 @@ function registerUcpOrderWebhookRoutes() {
   // Metadata only — never the raw body, no PII. Fail-closed dark unless UCP_ORDER_WEBHOOK_RECEIVER_ENABLED.
   // Registered in the LATE block (with the other UCP doors) so the caller-identity access log covers it.
   const { createUcpOrderWebhookReceiver, isUcpOrderWebhookReceiverEnabled } = require('./services/ucpOrderWebhookReceiver');
-  const receiver = createUcpOrderWebhookReceiver({ logger });
+  const receiver = createUcpOrderWebhookReceiver({ logger, fetchImpl: ucpProfileKeyFetchForTests() });
   app.post('/ucp/order-webhook', async (req, res) => {
     // Public write door: per-client token-bucket limit (ACP public-feed pattern), applied only when
     // the door is LIT — a dark door must stay indistinguishable from a missing route (404, never 429).
@@ -39397,6 +39397,11 @@ app.use((req, res, next) => isAgentSignatureDoorPath(req)
 // `profile_not_trusted` with the URL it claimed. The order webhook is NOT read here: a business signs that
 // one, and its receiver verifies it with business-profile rules (UCP_ORDER_WEBHOOK_RFC9421_MODE).
 let ucpDoorSignatureVerifierCache = { key: null, verifier: null };
+// Business/platform profile keys are fetched through the verifier's public-only transport. Under NODE_ENV=test
+// only, route tests reach their stubbed global fetch instead (read per call, so a stub set after require works).
+function ucpProfileKeyFetchForTests() {
+  return process.env.NODE_ENV === 'test' ? (url, init) => globalThis.fetch(url, init) : undefined;
+}
 function ucpDoorSignatureVerifier() {
   const key = [
     'UCP_SIGNATURE_TRUSTED_PROFILES', 'UCP_SIGNATURE_EXPECTED_AUTHORITIES', 'AGENT_SIGNATURE_EXPECTED_AUTHORITIES',
@@ -39406,6 +39411,7 @@ function ucpDoorSignatureVerifier() {
     ucpDoorSignatureVerifierCache = {
       key,
       verifier: createUcpSignatureVerifier({
+        fetchImpl: ucpProfileKeyFetchForTests(),
         kind: UCP_PROFILE_KIND.PLATFORM,
         trustedProfiles: parseUcpTrustedProfiles(process.env.UCP_SIGNATURE_TRUSTED_PROFILES),
       }),
