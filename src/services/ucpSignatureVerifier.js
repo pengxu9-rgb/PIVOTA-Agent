@@ -370,11 +370,15 @@ function createUcpSignatureVerifier({
   kind = PROFILE_KIND.PLATFORM,
   requireUcpAgentCoverage = true,
   checkMetaBinding,
+  // A caller that has no other freshness signal (the order webhook) forces `created`; unset reads the env.
+  requireCreated: requireCreatedOption,
 } = {}) {
   const trusted = new Set([...trustedProfiles].map(normalizeProfileUrl).filter(Boolean));
   const expectedAuthorities = loadExpectedAuthorities(env);
   const maxAgeS = positiveInt(env.UCP_SIGNATURE_MAX_AGE_S, DEFAULT_MAX_AGE_S);
-  const requireCreated = isFlagOn(env.UCP_SIGNATURE_REQUIRE_CREATED);
+  const requireCreated = requireCreatedOption === undefined
+    ? isFlagOn(env.UCP_SIGNATURE_REQUIRE_CREATED)
+    : Boolean(requireCreatedOption);
   const bindMeta = checkMetaBinding === undefined ? kind === PROFILE_KIND.PLATFORM : Boolean(checkMetaBinding);
   const keyCache = createProfileKeyCache({ fetchImpl, nowMs });
 
@@ -446,6 +450,9 @@ function createUcpSignatureVerifier({
       authority: view.authority,
       keys_stale: Boolean(got.stale),
       meta_binding: binding,
+      // A replayed request carries these exact signature bytes; the hash lets a caller remember them
+      // without keeping the signature itself.
+      signature_sha256: nodeCrypto.createHash('sha256').update(sigMember.value).digest('hex'),
     };
   }
 
@@ -505,7 +512,9 @@ function createUcpSignatureVerifier({
     }
   }
 
-  return { verifyRequest, trustedProfiles: trusted, kind };
+  return {
+    verifyRequest, trustedProfiles: trusted, kind, maxAgeS, clockSkewS: CLOCK_SKEW_S, requireCreated,
+  };
 }
 
 module.exports = {

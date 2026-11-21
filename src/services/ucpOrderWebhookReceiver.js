@@ -48,10 +48,20 @@
  *   NOT YET: the spec's "confirm the signer is authorized to send events for the referenced order" — this
  *   receiver drives no order state (see below), so the signer profile is recorded for that check to read.
  *
- * NO REPLAY PROTECTION YET (documented limitation): the sha256 dedup ring only collapses byte-identical
- * redeliveries — it is NOT a replay defense (a captured signed body replays fine once the ring evicts
- * its sha, and the signature stays valid forever). A timestamp/nonce requirement on the signed payload
- * MUST be added before this receiver drives any order state; today it is observability only.
+ * REPLAY (RFC 9421 path): the business verifier always requires a signed `created` (no older than
+ * UCP_SIGNATURE_MAX_AGE_S plus the clock skew), so a captured request stops verifying after that window.
+ * Inside the window, accept mode remembers the sha256 of every signature it accepted until that
+ * signature's window closes; the same signature again is acknowledged as a duplicate and not recorded.
+ * webhook-id is not a covered component, so it is never the replay defense; accept mode requires it and
+ * dedupes on it (24h) so a business's retry, which carries a new signature, is not recorded twice. Both
+ * memories are bounded; when the signature memory is full of unexpired entries the request gets 503,
+ * never an unchecked accept. Both live in THIS instance only: with several instances, a replay that lands
+ * on another one inside the `created` window is recorded once more there. That is harmless while this
+ * receiver drives no order state; a shared store is required before it does.
+ * NO REPLAY PROTECTION on the detached-JWS path (documented limitation): the sha256 dedup ring only
+ * collapses byte-identical redeliveries — a captured signed body replays fine once the ring evicts its
+ * sha, and the signature stays valid forever. That path MUST NOT drive order state; today it is
+ * observability only.
  *
  * Pure/dependency-injected: env, fetch, logger and clock all arrive via deps; the logic functions never
  * touch process.env directly (env is read PER REQUEST so flag flips apply live, like the warm-handoff
@@ -76,6 +86,11 @@ const EVENTS_KEY_ENV = 'UCP_ORDER_WEBHOOK_EVENTS_KEY';
 const RFC9421_MODE_ENV = 'UCP_ORDER_WEBHOOK_RFC9421_MODE';
 const TRUSTED_BUSINESS_PROFILES_ENV = 'UCP_ORDER_WEBHOOK_TRUSTED_BUSINESS_PROFILES';
 const RFC9421_MODES = new Set(['off', 'observe', 'accept']);
+// Accept-mode memories (see REPLAY above). Sized far past any plausible webhook rate from trusted businesses.
+const MAX_SEEN_SIGNATURES = 20_000;
+const MAX_SEEN_WEBHOOK_IDS = 20_000;
+const WEBHOOK_ID_TTL_MS = 24 * 60 * 60_000;
+const MAX_WEBHOOK_ID_LENGTH = 256;
 
 function rfc9421Mode(env) {
   const raw = firstNonEmptyString(env[RFC9421_MODE_ENV]).toLowerCase() || 'off';
@@ -224,6 +239,19 @@ function createUcpOrderWebhookReceiver(deps = {}) {
   const events = [];
   const eventsBySha = new Map();
 
+  // Accept-mode replay memories: key -> expiry (ms). Insertion order is close to expiry order, so pruning
+  // walks from the front and stops at the first live entry.
+  const seenSignatures = new Map();
+  const seenWebhookIds = new Map();
+  const maxSeenSignatures = Number.isInteger(deps.maxSeenSignatures) && deps.maxSeenSignatures > 0
+    ? deps.maxSeenSignatures : MAX_SEEN_SIGNATURES;
+  function prune(map, t) {
+    for (const [key, expiresAt] of map) {
+      if (expiresAt > t) break;
+      map.delete(key);
+    }
+  }
+
   // In-module TTL cache for the business profile's signing keys (single profile URL).
   // `good` marks a set that came from a successful fetch — a later failed refresh must never clobber it.
   let jwksCache = null; // { url, keys, expiresAt, good }
@@ -329,6 +357,8 @@ function createUcpOrderWebhookReceiver(deps = {}) {
           kind: PROFILE_KIND.BUSINESS,
           trustedProfiles: parseTrustedProfiles(env[TRUSTED_BUSINESS_PROFILES_ENV], env[PROFILE_URL_ENV]),
           requireUcpAgentCoverage: false,
+          // A webhook has no idempotency-key to bound a replay, so the signed `created` is mandatory here.
+          requireCreated: true,
         }),
       };
     }
@@ -355,10 +385,14 @@ function createUcpOrderWebhookReceiver(deps = {}) {
     // RFC 9421 (off by default; see the header comment). Verified over the EXACT wire bytes when the route
     // captured them as a Buffer, else over the stashed string.
     const rfcMode = rfc9421Mode(env);
+    const webhookId = firstNonEmptyString(header(headers, 'webhook-id'));
     let rfc = null;
+    let rfcWindow = null;
     if (rfcMode !== 'off' && header(headers, 'signature-input') !== undefined) {
       const bytes = Buffer.isBuffer(exactBytes) ? exactBytes : rawBodyBytes;
-      rfc = await rfc9421Verifier(env).verifyRequest(
+      const verifier = rfc9421Verifier(env);
+      rfcWindow = { maxAgeS: verifier.maxAgeS, clockSkewS: verifier.clockSkewS };
+      rfc = await verifier.verifyRequest(
         { method: 'POST', originalUrl: '/ucp/order-webhook', ...(request || {}), headers },
         { rawBody: bytes },
       );
@@ -375,7 +409,8 @@ function createUcpOrderWebhookReceiver(deps = {}) {
           keyid: rfc.keyid || null,
           ucp_agent_covered: rfc.ucp_agent_covered ?? null,
           has_request_signature: Boolean(signature),
-          webhook_id: firstNonEmptyString(header(headers, 'webhook-id')).slice(0, 100) || null,
+          created: rfc.created ?? null,
+          webhook_id: webhookId.slice(0, 100) || null,
         }, 'UCP order webhook RFC 9421 signature');
       }
     }
@@ -383,6 +418,7 @@ function createUcpOrderWebhookReceiver(deps = {}) {
     let verified = false;
     let kid = null;
     let scheme = null;
+    let replayed = false;
     if (verifyRequired && !signature && rfcMode === 'accept' && rfc) {
       if (!rawBodyBytes) {
         return { status: 415, body: { detail: 'unsupported media type: application/json required' } };
@@ -392,6 +428,33 @@ function createUcpOrderWebhookReceiver(deps = {}) {
           status: 401,
           body: { detail: 'invalid RFC 9421 signature', code: rfc.ucp_error ? rfc.ucp_error.code : 'signature_invalid' },
         };
+      }
+      // Checked after the signature so an unsigned caller learns nothing from this answer.
+      if (!webhookId || webhookId.length > MAX_WEBHOOK_ID_LENGTH) {
+        return { status: 400, body: { detail: 'webhook-id header required (at most 256 characters)' } };
+      }
+      const t = now();
+      prune(seenSignatures, t);
+      prune(seenWebhookIds, t);
+      // `created` is guaranteed here: the business verifier requires it.
+      const sigExpiresAt = (rfc.created + rfcWindow.maxAgeS + 2 * rfcWindow.clockSkewS) * 1000;
+      if (seenSignatures.has(rfc.signature_sha256)) {
+        replayed = true;
+      } else {
+        if (seenSignatures.size >= maxSeenSignatures) {
+          warn(new Error('signature replay memory full'), 'UCP order webhook refused: replay memory full');
+          return { status: 503, body: { detail: 'temporarily unable to accept webhooks; retry later' } };
+        }
+        // Remembered even when the webhook-id below marks a retry: webhook-id is not signed, so a replay of
+        // this signature under a fresh webhook-id must still be caught here.
+        seenSignatures.set(rfc.signature_sha256, sigExpiresAt);
+        if (seenWebhookIds.has(webhookId)) {
+          replayed = true;
+        } else {
+          // Over capacity the oldest webhook-id goes first; the signature memory still blocks replays.
+          while (seenWebhookIds.size >= MAX_SEEN_WEBHOOK_IDS) seenWebhookIds.delete(seenWebhookIds.keys().next().value);
+          seenWebhookIds.set(webhookId, t + WEBHOOK_ID_TTL_MS);
+        }
       }
       verified = true;
       kid = rfc.keyid || null;
@@ -423,7 +486,7 @@ function createUcpOrderWebhookReceiver(deps = {}) {
     // was captured — dedup-only, verification above never uses this fallback).
     const shaSource = rawBodyBytes || Buffer.from(JSON.stringify(body), 'utf8');
     const bodySha256 = crypto.createHash('sha256').update(shaSource).digest('hex');
-    const duplicate = eventsBySha.has(bodySha256);
+    const duplicate = replayed || eventsBySha.has(bodySha256);
 
     if (!duplicate) {
       let parsed = isPlainObject(body) ? body : null;
@@ -446,7 +509,7 @@ function createUcpOrderWebhookReceiver(deps = {}) {
           rfc9421_verified: rfc ? rfc.verified : null,
           // The business whose key verified — what the spec's order-authorization check will compare.
           signer_profile: rfc && rfc.verified ? rfc.profile_url : null,
-          webhook_id: firstNonEmptyString(header(headers, 'webhook-id')).slice(0, 100) || null,
+          webhook_id: webhookId.slice(0, 100) || null,
         } : {}),
       };
       events.push(entry);

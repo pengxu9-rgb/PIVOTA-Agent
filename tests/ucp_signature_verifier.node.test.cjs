@@ -91,6 +91,7 @@ function verifier(opts = {}) {
     trustedProfiles: opts.trustedProfiles || [PLATFORM_PROFILE],
     kind: opts.kind,
     requireUcpAgentCoverage: opts.requireUcpAgentCoverage,
+    requireCreated: opts.requireCreated,
   });
   return { v, calls };
 }
@@ -332,6 +333,29 @@ test('freshness: created in the future, created too old, or expires passed all f
   const strict = verifier({ env: { UCP_SIGNATURE_REQUIRE_CREATED: '1' } });
   s = signedRequest({ created: null, expires: null });
   assert.equal((await strict.v.verifyRequest(s.req, { rawBody: s.rawBody })).reason, 'created_missing');
+});
+
+test('the requireCreated option overrides UCP_SIGNATURE_REQUIRE_CREATED in both directions', async () => {
+  const forced = verifier({ env: { UCP_SIGNATURE_REQUIRE_CREATED: '0' }, requireCreated: true });
+  let s = signedRequest({ created: null, expires: null });
+  assert.equal((await forced.v.verifyRequest(s.req, { rawBody: s.rawBody })).reason, 'created_missing');
+  assert.equal(forced.v.requireCreated, true);
+  const relaxed = verifier({ env: { UCP_SIGNATURE_REQUIRE_CREATED: '1' }, requireCreated: false });
+  s = signedRequest({ created: null, expires: null });
+  assert.equal((await relaxed.v.verifyRequest(s.req, { rawBody: s.rawBody })).verified, true);
+  assert.equal(verifier().v.maxAgeS, 300);
+  assert.equal(verifier({ env: { UCP_SIGNATURE_MAX_AGE_S: '120' } }).v.maxAgeS, 120);
+});
+
+test('a verified result carries the sha256 of the signature bytes, never the signature', async () => {
+  const { v } = verifier();
+  const s = signedRequest();
+  const r = await v.verifyRequest(s.req, { rawBody: s.rawBody });
+  assert.equal(r.verified, true, r.reason);
+  const sigB64 = /=:([^:]+):/.exec(s.req.headers.signature)[1];
+  const expected = nodeCrypto.createHash('sha256').update(Buffer.from(sigB64, 'base64')).digest('hex');
+  assert.equal(r.signature_sha256, expected);
+  assert.ok(!JSON.stringify(r).includes(sigB64));
 });
 
 test('UCP_SIGNATURE_MAX_AGE_S widens the created window', async () => {
