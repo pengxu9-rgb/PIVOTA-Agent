@@ -151,3 +151,18 @@ test('an unrecognised code: "checking" on a failed row only; refused / expired r
     }
   }
 });
+
+test('the quote / cart-link verdict codes ride beside a refusal reason, which decides the wording; alone on a refused row they read refused-before-order', () => {
+  const both = (reason, code) => projectPurchaseView({
+    purchase_id: 'pp_aaaaaaaaaaaaaaaaaaaaaaaa', rail: 'reap', rail_purchase_id: ID.reap, state: 'refused', poll_after_seconds: null,
+    detail: { id: ID.reap, merchant_domain: 'merchant.example', refusal_reason: reason, last_error_code: code },
+  }, { purchaseId: ID.reap }).outcome;
+  assert.equal(both('price_changed', 'quote_items_subtotal_mismatch').kind, 'price_changed');
+  assert.deepEqual(both('price_unverifiable', 'quote_items_mismatch'), COPY.refused_before_order);
+  assert.deepEqual(both('cart_link_invalid', 'cart_link_quantity_mismatch'), COPY.refused_before_order);
+  for (const code of ['quote_total_not_reconciled', 'cart_link_quantity_mismatch', 'cart_link_market_country']) {
+    assert.deepEqual(outcome('reap', 'refused', code, 'last_error_code').outcome, COPY.refused_before_order, code);
+    // Never read on another row: on a failed row the hold-shaped ones keep "checking".
+  }
+  assert.deepEqual(outcome('reap', 'failed', 'quote_items_mismatch', 'last_error_code').outcome, COPY.checking);
+});

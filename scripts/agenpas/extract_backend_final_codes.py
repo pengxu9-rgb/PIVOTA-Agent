@@ -49,7 +49,7 @@ REAP_CLIENT = "services/reap_agentic_client.py"
 REAP_VERDICT_HELPERS = ("_preflight_refusal_reason", "_cart_link_verdict", "_single_variant_verdict", "_price_verdict")
 # The functions behind `_row_scope` (services/reap_agentic_purchase.py), whose PurchaseRefused reasons a refused row carries.
 REAP_SCOPE_FUNCTIONS = ("_row_scope", "enforce_pilot_scope", "_pilot_scope")
-CODE_RE = re.compile(r"^[a-z][a-z0-9_]*(?::[a-z0-9_<>]+)*$")
+CODE_RE = re.compile(r"^[a-z][a-z0-9_]*(?:<arg>)?(?::[a-z0-9_<>]+)*$")
 
 
 def show(repo, sha, path):
@@ -84,8 +84,10 @@ def resolve(node, consts, other):
         return resolve(node.func.value, consts, other)
     if isinstance(node, ast.JoinedStr):
         head = "".join(v.value for v in node.values if isinstance(v, ast.Constant))
+        if head.endswith("_") and isinstance(node.values[-1], ast.FormattedValue):
+            return f"{head}<arg>"  # f"cart_link_{reason}": the prefix, then a run-time name
         head = head.rstrip("_:").rstrip(":")
-        return f"{head}:<arg>" if not head.endswith("_") else None
+        return f"{head}:<arg>" if head else None
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_code" and node.args:
         prefix = resolve(node.args[0], consts, other)
         return f"{prefix}:<kind>:<status>" if prefix else None
@@ -117,6 +119,10 @@ def harvest(node, fn, funcs, consts, depth=0):
         v = node.value.lower() if node.value.isupper() else node.value
         if CODE_RE.match(v):
             found.add(v)
+    elif isinstance(node, ast.JoinedStr):
+        code = resolve(node, consts, {})
+        if code and CODE_RE.match(code):
+            found.add(code)
     elif isinstance(node, ast.BoolOp):
         for v in node.values:
             found |= harvest(v, fn, funcs, consts, depth + 1)
@@ -192,8 +198,9 @@ def a2a(repo, sha, out, dynamic):
     dead = re.search(r"_DEAD_METHOD_STATUSES = \{([^}]*)\}", src)
     for st in re.findall(r'"([A-Z]+)"', dead.group(1) if dead else ""):
         add(out, "a2a", "failed", f"card_binding_{st.lower()}", dynamic, f"{A2A_WORKER} _DEAD_METHOD_STATUSES")
-    out["a2a"]["failed"].discard("card_binding:<arg>")
-    out["a2a"]["failed"].discard("checkout:<arg>")
+    # Their f-string forms, enumerated above from the statuses they are built from.
+    for placeholder in ("card_binding:<arg>", "checkout:<arg>", "card_binding_<arg>", "checkout_<arg>"):
+        out["a2a"]["failed"].discard(placeholder)
     ledger = show(repo, sha, A2A_LEDGER)
     for sql in re.findall(r"SET state = 'expired',(.*?)WHERE", ledger, re.S):
         for code in re.findall(r"(?:THEN|ELSE) '([a-z_]+)'", sql):
@@ -242,11 +249,27 @@ def reap(repo, sha, out, dynamic):
     for name in REAP_VERDICT_HELPERS:
         fn = next((n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name), None)
         for ret in (r for r in ast.walk(fn) if isinstance(r, ast.Return)) if fn else ():
-            vals = ret.value.elts[:1] if isinstance(ret.value, ast.Tuple) else [ret.value]
+            # A `(refusal_reason, last_error_code)` tuple: both are written (the reason first).
+            vals = ret.value.elts[:2] if isinstance(ret.value, ast.Tuple) else [ret.value]
             for v in vals:
                 code = resolve(v, consts, {}) if v is not None else None
+                if not code and v is not None:
+                    codes = harvest(v, fn, funcs, consts)
+                    for c in codes:
+                        add(out, "reap", "refused", c, dynamic, name)
+                    continue
                 if code:
                     add(out, "reap", "refused", code.replace(":<arg>", ""), dynamic, name)
+    # The quote verdict: `QuoteCheck(False, <refusal_reason>, <last_error_code>)` (positional or keyword), written by
+    # the quoting step's `refused` move as `verdict.refusal_reason` / `verdict.last_error_code`.
+    for sub in ast.walk(tree):
+        if isinstance(sub, ast.Call) and ast.unparse(sub.func).endswith("QuoteCheck"):
+            kw = {k.arg: k.value for k in sub.keywords if k.arg}
+            ok = sub.args[0] if sub.args else kw.get("ok")
+            if not (isinstance(ok, ast.Constant) and ok.value is False):
+                continue
+            for v in list(sub.args[1:3]) + [kw[k] for k in ("refusal_reason", "last_error_code") if k in kw]:
+                add(out, "reap", "refused", resolve(v, consts, {}), dynamic, f"{REAP_SERVICE}:{sub.lineno} QuoteCheck")
     ledger = show(repo, sha, REAP_LEDGER)
     for state, body in re.findall(r"SET state = (?:CASE WHEN state = '[a-z_]+' THEN )?'(failed|expired)'(.*?)WHERE", ledger, re.S):
         for code in re.findall(r"last_error_code = (?:COALESCE\(last_error_code, )?'([a-z_]+)'", body):

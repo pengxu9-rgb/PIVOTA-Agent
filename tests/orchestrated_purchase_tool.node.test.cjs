@@ -414,10 +414,11 @@ test('definite backend refusals are named and final; nothing is read back', asyn
 
 test('the A2A door\'s market refusals (400) are definite, each with its own honest message; nothing is read back', async () => {
   const expected = {
-    // Raised after the backend's key lookup: no purchase can exist under the key.
+    // This call opened nothing, but a concurrent call with the same key may have opened a purchase (the backend's
+    // key-replay read is unlocked): check first; a new key only if the buyer wants that.
     shipping_country_unsupported: {
-      message: 'This purchase can only ship to the United States for now, so it was not started. Nothing was charged.',
-      recovery: 'tell the buyer it ships to the United States only; start again with a US shipping address and a new idempotency_key only if the buyer wants that',
+      message: 'This purchase can only ship to the United States on this route, so this call opened nothing.',
+      recovery: 'nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise, with a US shipping address and only if the buyer wants that, start again with a new idempotency_key',
     },
     // Raised BEFORE the key lookup: a purchase from an earlier unknown-outcome call may exist, so check it first.
     shipping_market_unknown: {
@@ -435,7 +436,8 @@ test('the A2A door\'s market refusals (400) are definite, each with its own hone
     assert.equal(err.detail.refusal_code, code);
     assert.equal(err.message, want.message, code);
     assert.equal(err.recovery, want.recovery, code);
-    assert.equal(/new idempotency_key/.test(err.recovery), code === 'shipping_country_unsupported', `${code}: a new key only after the lookup`);
+    assert.match(err.recovery, /^nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; /, `${code}: check first`);
+    assert.equal(/new idempotency_key/.test(err.recovery), code === 'shipping_country_unsupported', `${code}: a new key only on the country refusal, and only if the buyer wants that`);
     assert.equal(backend.calls.filter((c) => c.method === 'GET').length, 0);
   }
   // At another status they are not the documented refusal: still an unknown outcome.

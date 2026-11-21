@@ -2124,11 +2124,12 @@ export function toToolError(error) {
       body.message = "Purchases through this tool are not available right now.";
     }
     // The A2A door's market refusals: definite (nothing was opened), each with what the buyer can do about it.
-    // shipping_country_unsupported is raised AFTER the backend's idempotency-key lookup (a replay answers first), so
-    // this call opened nothing and no purchase exists under the key.
+    // shipping_country_unsupported: this call opened nothing, but the backend's key-replay check is an unlocked read and
+    // its rail choice reads a heartbeat, so a concurrent call with the same key can open a purchase on the other rail
+    // while this one is refused. So the same hedge as below: check first; a new key only if the buyer wants that.
     if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_country_unsupported") {
-      body.message = "This purchase can only ship to the United States for now, so it was not started. Nothing was charged.";
-      body.recovery = "tell the buyer it ships to the United States only; start again with a US shipping address and a new idempotency_key only if the buyer wants that";
+      body.message = "This purchase can only ship to the United States on this route, so this call opened nothing.";
+      body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise, with a US shipping address and only if the buyer wants that, start again with a new idempotency_key";
     }
     // shipping_market_unknown is raised BEFORE the key lookup: a retry of an earlier call whose outcome was unknown can
     // get it while that earlier purchase exists. So: check first, never "start again with a new key" outright.

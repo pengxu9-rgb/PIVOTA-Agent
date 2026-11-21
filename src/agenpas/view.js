@@ -165,8 +165,9 @@ const REAP_UNLISTED_PREFIX = 'reap_';
 /** Codes that say a checkout may have existed: they keep a FAILED code from saying "no order was sent". */
 // `vic_checkout_failed` (A2A): the rail answered "failed" for a checkout in `paying` (the confirm went out): the state's
 // generic wording, never "no order was sent".
-// `checkout_create_failed` (the rp_ rail's create fallback; the extractor finds it beside the quote step's failures):
-// it names the checkout create, so it never claims "no order was sent".
+// `checkout_create_failed`: a HOLD (release) code only (reap_agentic_purchase.py `_hold` when nothing left the process),
+// never written on a final row; the extractor's flow-insensitive harvest finds it beside the quote step's failures, so
+// it is listed here conservatively (the generic wording, never "no order was sent").
 const POST_CHECKOUT_GENERIC_CODES = new Set(['checkout_failed', 'checkout_expired', 'checkout_id_missing', 'partner_id_malformed',
   'vic_checkout_failed', 'checkout_create_failed']);
 const POST_CHECKOUT_CODES = new Set([...POST_CHECKOUT_GENERIC_CODES, 'approval_window_lapsed']);
@@ -313,7 +314,14 @@ const REAP_REFUSAL_HEADS = new Set(['search', 'details', 'options', 'variant']);
  * `invalid_request` (a `_row_scope` refusal), and the preflight witness's `preflight_interrupted` / `unverified`
  * (its `last_error_code` beside a refusal reason).
  */
-const REAP_REFUSED_ONLY_CODES = new Set(['invalid_request', 'preflight_interrupted', 'unverified']);
+const REAP_REFUSED_ONLY_CODES = new Set(['invalid_request', 'preflight_interrupted', 'unverified',
+  // The quote verdict's and the cart-link verdict's own codes (`QuoteCheck(False, reason, code)`, `_cart_link_verdict`):
+  // always beside a listed refusal reason, which decides the wording.
+  'quote_adjustments_unsupported', 'quote_amounts_unreadable', 'quote_currency_mismatch', 'quote_items_mismatch',
+  'quote_items_subtotal_mismatch', 'quote_no_shipping_option', 'quote_row_unverifiable', 'quote_shipping_not_reconciled',
+  'quote_shipping_options_malformed', 'quote_total_not_reconciled', 'cart_link_quantity_mismatch']);
+/** `cart_link_<reason>` (the cart-link verdict's run-time code), read on a refused row only. */
+const REAP_REFUSED_ONLY_PREFIXES = Object.freeze(['cart_link_']);
 
 const REASON_GROUPS = [
   {
@@ -530,8 +538,12 @@ function isOutcomeUnknownCode(code) {
 /** The refusal group a refused row's compound client reason names by its head (`options:<reason>`, ...), or null. */
 function refusalHeadGroup(codes) {
   const flat = (Array.isArray(codes) ? codes : []).flatMap((c) => (Array.isArray(c) ? c : [c]));
-  const named = flat.some((code) => typeof code === 'string' && (REAP_REFUSAL_HEADS.has(code.trim().toLowerCase().split(':')[0])
-    || codeSegments([code]).some((seg) => REAP_REFUSED_ONLY_CODES.has(seg))));
+  const named = flat.some((code) => {
+    if (typeof code !== 'string') return false;
+    const head = code.trim().toLowerCase().split(':')[0];
+    return REAP_REFUSAL_HEADS.has(head) || REAP_REFUSED_ONLY_PREFIXES.some((p) => head.startsWith(p))
+      || codeSegments([code]).some((seg) => REAP_REFUSED_ONLY_CODES.has(seg));
+  });
   return named ? REASON_BY_CODE.get(REAP_REFUSAL_REASONS[0]) : null;
 }
 
