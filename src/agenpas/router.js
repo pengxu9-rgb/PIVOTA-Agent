@@ -19,6 +19,11 @@
  *                                                  Site same-origin when sent, Content-Type application/json, or 403 /
  *                                                  415. The
  *                                                  versions recorded come from the gateway's own latest read.
+ *   POST /agenpas/api/p/:purchaseId/shipping-address  ONLY while AGENPAS_COLLECT_SHIPPING is on: the buyer's shipping
+ *                                                  address and email (JSON, at most 4 KB, token in `X-Agenpas-Link`).
+ *                                                  409 consent_required while the step's terms are not accepted;
+ *                                                  409 address_not_requested when the gateway's read shows no form;
+ *                                                  409 address_not_taken for the backend's other 409s.
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
  * answers exactly what it answered before this module existed (the app's normal not-found). The same happens while
@@ -41,7 +46,8 @@ const express = require('express');
 const config = require('./config');
 const { PURCHASE_ID_RE, REASON, mintLinkToken, verifyLinkToken } = require('./linkToken');
 const { hostedOrigins } = require('./hostedUrl');
-const { consentToRecord, projectPurchaseView } = require('./view');
+const { consentToRecord, projectPurchaseView, shippingConsentPending } = require('./view');
+const { sanitizeFieldErrors, validateAddress } = require('./shippingAddress');
 const { createTokenBucketLimiter } = require('../services/publicReadRateLimit');
 const { clientIpFromRequest } = require('../guardrails/gatewayGuardrails');
 const { SCENARIOS, createFixtures } = require('./devFixtures');
@@ -57,6 +63,69 @@ const READ_CACHE_MS = 2000;
 const READ_CACHE_MAX_KEYS = 5000;
 // Per link token: a page polls every 2..15 s, so 2/s with a burst of 10 only ever stops a script.
 const TOKEN_LIMIT = Object.freeze({ capacity: 10, refillPerSecond: 2 });
+// The address write, per link token: 5 a minute.
+const ADDRESS_LIMIT = Object.freeze({ capacity: 5, refillPerSecond: 5 / 60 });
+const ADDRESS_BODY_MAX_BYTES = 4096;
+const SHIPPING_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/shipping-address$/;
+
+function isJsonContentType(req) {
+  return String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() === 'application/json';
+}
+
+/**
+ * Read a JSON body of at most ADDRESS_BODY_MAX_BYTES ourselves (ahead of the app's 10 MB parser, which then skips a
+ * request marked `_body`). Resolves { ok, body } or { ok: false, status, error }. Never logs or returns the body.
+ */
+function readSmallJsonBody(req) {
+  if (req._body) {
+    let size = 0;
+    try {
+      size = Buffer.byteLength(JSON.stringify(req.body === undefined ? null : req.body));
+    } catch {
+      return Promise.resolve({ ok: false, status: 400, error: 'invalid_json' });
+    }
+    return Promise.resolve(size > ADDRESS_BODY_MAX_BYTES ? { ok: false, status: 413, error: 'body_too_large' } : { ok: true, body: req.body });
+  }
+  if (!isJsonContentType(req)) return Promise.resolve({ ok: false, status: 415, error: 'unsupported_media_type' });
+  const declared = Number(req.headers['content-length']);
+  if (Number.isFinite(declared) && declared > ADDRESS_BODY_MAX_BYTES) {
+    return Promise.resolve({ ok: false, status: 413, error: 'body_too_large' });
+  }
+  return new Promise((resolve) => {
+    const chunks = [];
+    let size = 0;
+    let done = false;
+    const finish = (answer) => {
+      if (done) return;
+      done = true;
+      resolve(answer);
+    };
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > ADDRESS_BODY_MAX_BYTES) {
+        finish({ ok: false, status: 413, error: 'body_too_large' });
+        req.pause();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (done) return;
+      let body;
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      } catch {
+        finish({ ok: false, status: 400, error: 'invalid_json' });
+        return;
+      }
+      req.body = body;
+      req._body = true;
+      req.agenpasBodyRead = true;
+      finish({ ok: true, body });
+    });
+    req.on('error', () => finish({ ok: false, status: 400, error: 'invalid_body' }));
+  });
+}
 // Per client IP: looser, because many buyers can share one carrier NAT address.
 const IP_LIMIT = Object.freeze({ capacity: 30, refillPerSecond: 5 });
 const RATE_LIMIT_RETRY_AFTER_SECONDS = 2;
@@ -65,7 +134,8 @@ const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 // The consent POST: its raw path, its body members and their shapes (view.js accepts the same offer shapes).
 const CONSENT_POST_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/consent$/;
 const CONSENT_BODY_KEYS = Object.freeze(['step', 'offer_id', 'issued_at']);
-const CONSENT_STEPS = new Set(['card_binding', 'approval']);
+// `shipping_address`: the A2A address form is consent-gated too (the owner's decision, 11-20; view.js).
+const CONSENT_STEPS = new Set(['card_binding', 'approval', 'shipping_address']);
 const CONSENT_OFFER_ID_RE = /^[A-Za-z0-9+/=_-]{16,128}$/;
 const CONSENT_ISSUED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/;
 const CONSENT_BODY_LIMIT_BYTES = 1024;
@@ -243,7 +313,7 @@ function createAgenpasRouter(deps = {}) {
   const logger = deps.logger && typeof deps.logger.info === 'function' ? deps.logger : null;
   const backendReader = deps.reader;
   const backendConsentWriter = deps.consentWriter;
-  const fixtures = createFixtures();
+  const fixtures = createFixtures({ now });
   const fixtureReader = deps.fixtureReader || fixtures.reader;
   const fixtureConsentWriter = deps.fixtureConsentWriter || fixtures.consentWriter;
   let assets = null;
@@ -265,6 +335,7 @@ function createAgenpasRouter(deps = {}) {
 
   const limits = deps.limits || {};
   const tokenBuckets = createTokenBucketLimiter({ ...TOKEN_LIMIT, ...(limits.token || {}), now });
+  const addressBuckets = createTokenBucketLimiter({ ...ADDRESS_LIMIT, ...(limits.address || {}), now });
   const ipBuckets = createTokenBucketLimiter({ ...IP_LIMIT, ...(limits.ip || {}), now });
 
   // SAMPLED refusal logs: the first few per reason per minute, then one line carrying how many were not logged.
@@ -332,7 +403,8 @@ function createAgenpasRouter(deps = {}) {
     if (!String(req.path || '').startsWith('/agenpas/')) return next('router');
     const env = envOf();
     if (!config.isEnabled(env)) return next('router');
-    if (req.method !== 'GET' && req.method !== 'HEAD' && !isConsentPost(req, env)) return next('router');
+    const addressPost = req.method === 'POST' && SHIPPING_PATH_RE.test(req.path) && config.collectShipping(env);
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !addressPost && !isConsentPost(req, env)) return next('router');
     if (!isAgenpasOrigin(req, env)) return next('router');
     return next();
   });
@@ -379,6 +451,7 @@ function createAgenpasRouter(deps = {}) {
       now: now(),
       linkExpiresAt: claims.exp,
       linkTtlMinutes: Math.max(1, Math.floor((claims.exp - claims.iat) / 60)),
+      collectShipping: config.collectShipping(env),
       // Only while the flag is on: off, the projection is called exactly as before.
       ...(consentOn ? { consentEnabled: true, legalHosts: config.legalHosts(env) } : {}),
     };
@@ -417,6 +490,107 @@ function createAgenpasRouter(deps = {}) {
       return res.status(404).json({ error: 'not_found' });
     }
     log('warn', { surface: 'api', outcome: 'unavailable', reason: (answer && typeof answer.code === 'string' && answer.code) || 'unknown' });
+    res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
+    return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
+  });
+
+  /*
+   * THE ADDRESS WRITE (AGENPAS_COLLECT_SHIPPING; docs/agenpas.md, "Shipping address"). JSON only (415), at most 4 KB
+   * (413), the link token in X-Agenpas-Link only (a header no cross-site form can send), 5 a minute per link (429) on
+   * top of the IP bucket. The address goes to the backend and nowhere else: no log line, no error message and no
+   * refusal carries any of it (field errors are codes).
+   */
+  router.post('/agenpas/api/p/:purchaseId/shipping-address', async (req, res) => {
+    const env = envOf();
+    setCommonHeaders(res);
+    const purchaseId = req.params.purchaseId;
+    if (!ipBuckets.allow(`ip:${digest(clientIpFromRequest(req) || 'unknown')}`)) return tooMany(res, 'address', 'rate_limited_ip');
+    if (!PURCHASE_ID_RE.test(purchaseId)) return res.status(404).json({ error: 'link_invalid' });
+    if (!req._body && !isJsonContentType(req)) {
+      logRefusal({ surface: 'address', reason: 'unsupported_media_type' });
+      return res.status(415).json({ error: 'unsupported_media_type' });
+    }
+    const token = firstString(req.headers[LINK_HEADER]);
+    const verdict = verify(token, purchaseId);
+    if (!verdict.ok) {
+      logRefusal({ surface: 'address', reason: verdict.reason });
+      if (verdict.reason === REASON.noSecret) return res.status(503).json({ error: 'unavailable' });
+      if (verdict.reason === REASON.expired) return res.status(410).json({ error: 'link_expired', link_ttl_minutes: config.linkTtlMinutes(env) });
+      return res.status(404).json({ error: 'link_invalid' });
+    }
+    if (!addressBuckets.allow(`a:${digest(token)}`)) return tooMany(res, 'address', 'rate_limited_token');
+    const parsed = await readSmallJsonBody(req);
+    if (!parsed.ok) {
+      logRefusal({ surface: 'address', reason: parsed.error });
+      return res.status(parsed.status).json({ error: parsed.error });
+    }
+    const fixture = fixturesFor(req, env);
+    const reader = fixture ? fixtureReader : backendReader;
+    // A FRESH read (never the 2 s cache: a read cached on this instance before a consent recorded elsewhere must not
+    // send the buyer back to the terms), and what it shows decides: the address goes on ONLY when the page would show
+    // the form (A2A, the shipping step, its consent satisfied or not gated, not held, not placing).
+    forgetRead(verdict.claims, fixture);
+    const current = await readOnce(reader, verdict.claims, fixture);
+    if (!current || (current.kind !== 'accepted' && current.kind !== 'not_found')) {
+      res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
+      return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
+    }
+    if (current.kind === 'not_found') return res.status(404).json({ error: 'not_found' });
+    // The form is consent-gated and the buyer has not accepted yet (the gateway's own read says so): nothing is sent
+    // on, and the page goes back to the terms. What the buyer typed stays on their page (app.js).
+    if (shippingConsentPending(current.purchase, { purchaseId, now: now(), collectShipping: true })) {
+      logRefusal({ surface: 'address', reason: 'consent_required' });
+      return res.status(409).json({ error: 'consent_required' });
+    }
+    const projected = projectPurchaseView(current.purchase, { purchaseId, now: now(), collectShipping: true });
+    const request = projected.screen === 'shipping_address' && projected.address_request ? projected.address_request : null;
+    if (!request) {
+      // No form on the gateway's own read (held, placing or later, the rp_ rail, an unsatisfied shipping block, the
+      // address already given): nothing is sent on.
+      logRefusal({ surface: 'address', reason: 'not_requested' });
+      return res.status(409).json({ error: 'address_not_requested' });
+    }
+    const checked = validateAddress(parsed.body, { required: request.fields_missing });
+    if (!checked.ok) {
+      logRefusal({ surface: 'address', reason: 'invalid_address' });
+      return res.status(422).json({ error: 'invalid_address', field_errors: checked.field_errors });
+    }
+    let answer;
+    try {
+      answer = reader && typeof reader.submitShippingAddress === 'function'
+        ? await reader.submitShippingAddress(verdict.claims, checked.value)
+        : { kind: 'unavailable', code: 'no_writer' };
+    } catch {
+      answer = { kind: 'unavailable', code: 'threw' };
+    }
+    // Whatever happened, the next poll reads afresh.
+    forgetRead(verdict.claims, fixture);
+    if (answer && answer.kind === 'accepted') {
+      const view = projectPurchaseView(answer.purchase, viewOptions(env, purchaseId, verdict.claims));
+      log('info', { surface: 'address', outcome: 'accepted', state: view.state, screen: view.screen });
+      return res.status(200).json(view);
+    }
+    if (answer && answer.kind === 'invalid') {
+      logRefusal({ surface: 'address', reason: 'backend_invalid' });
+      // Codes only, whatever the writer handed back: never a value the buyer typed.
+      return res.status(422).json({ error: 'invalid_address', field_errors: sanitizeFieldErrors(answer.field_errors) });
+    }
+    if (answer && answer.kind === 'consent_required') {
+      // The backend's own gate (the consent is not on record there): the same answer as ours above.
+      logRefusal({ surface: 'address', reason: 'backend_consent_required' });
+      return res.status(409).json({ error: 'consent_required' });
+    }
+    if (answer && answer.kind === 'not_taken') {
+      // Any other 409 from the backend (collection turned off while the page was open, ...): not taken here any more.
+      logRefusal({ surface: 'address', reason: 'not_taken' });
+      return res.status(409).json({ error: 'address_not_taken' });
+    }
+    if (answer && answer.kind === 'conflict') {
+      logRefusal({ surface: 'address', reason: 'already_set' });
+      return res.status(409).json({ error: 'address_already_set' });
+    }
+    if (answer && answer.kind === 'not_found') return res.status(404).json({ error: 'not_found' });
+    log('warn', { surface: 'address', outcome: 'unavailable', reason: (answer && typeof answer.code === 'string' && answer.code) || 'unknown' });
     res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
     return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
   });
@@ -606,13 +780,18 @@ const ADMITTED_PATHS = [
 const DEV_PATHS = [/^\/agenpas\/dev\/start$/];
 const UNSAFE_PATH_RE = /[%\\]|\.\.|\/\/|\/\.(?:\/|$)/;
 
+// The ONE write the AgenPas host admits, only while address collection is on.
+const ADMITTED_POST_PATHS = [SHIPPING_PATH_RE];
+
 function admitted(req, env) {
-  // The one non-GET shape: the consent POST, and only while AGENPAS_CONSENT_ENABLED is on. Everything else that is not
-  // GET/HEAD (OPTIONS included: no preflight is ever answered here) is refused.
+  // The non-GET shapes: the consent POST (only while AGENPAS_CONSENT_ENABLED is on) and the address POST (only while
+  // AGENPAS_COLLECT_SHIPPING is on). Everything else that is not GET/HEAD (OPTIONS included: no preflight is ever
+  // answered here) is refused.
   if (isConsentPost(req, env)) return true;
-  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
   const raw = rawPathOf(req);
   if (UNSAFE_PATH_RE.test(raw)) return false;
+  if (req.method === 'POST') return config.collectShipping(env) && ADMITTED_POST_PATHS.some((re) => re.test(raw));
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
   if (ADMITTED_PATHS.some((re) => re.test(raw))) return true;
   return config.devFixturesEnabled(env) && isLoopbackHost(req) && DEV_PATHS.some((re) => re.test(raw));
 }
@@ -637,13 +816,28 @@ function createAgenpasHostGuard(deps = {}) {
   };
   return Object.freeze({
     onHost: (req) => isOnAgenpasHost(req, envOf()),
-    front(req, res, next) {
+    async front(req, res, next) {
       const env = envOf();
       if (!isOnAgenpasHost(req, env)) return next();
-      return admitted(req, env) ? next() : refuse(res, 'front');
+      if (!admitted(req, env)) return refuse(res, 'front');
+      // The consent POST's body is parsed by its own route (strict, at most 1 kB).
+      if (req.method !== 'POST' || isConsentPost(req, env)) return next();
+      // The admitted write's body is read HERE, capped, before the app's own 10 MB JSON parser can (it skips a body
+      // already read). JSON only.
+      if (!isJsonContentType(req)) {
+        setCommonHeaders(res);
+        return res.status(415).json({ error: 'unsupported_media_type' });
+      }
+      const parsed = await readSmallJsonBody(req);
+      if (!parsed.ok) {
+        setCommonHeaders(res);
+        return res.status(parsed.status).json({ error: parsed.error });
+      }
+      return next();
     },
-    // The app's global JSON parser skips this host: the one body it admits (the consent POST) is parsed by its own
-    // route, strictly and at most 1 kB. False while AgenPas is off, so the parser is then exactly as before.
+    // The app's global JSON parser skips this host: the bodies it admits are parsed here (the consent POST by its own
+    // route, strictly and at most 1 kB; the address POST by front() above, at most 4 KB). False while AgenPas is off,
+    // so the parser is then exactly as before.
     skipsGlobalBodyParser: (req) => isOnAgenpasHost(req, envOf()),
     back(req, res, next) {
       return isOnAgenpasHost(req, envOf()) ? refuse(res, 'back') : next();

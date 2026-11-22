@@ -412,6 +412,41 @@ test('definite backend refusals are named and final; nothing is read back', asyn
   }
 });
 
+test('the A2A door\'s market refusals (400) are definite, each with its own honest message; nothing is read back', async () => {
+  const expected = {
+    // This call opened nothing, but a concurrent call with the same key may have opened a purchase (the backend's
+    // key-replay read is unlocked): check first; a new key only if the buyer wants that.
+    shipping_country_unsupported: {
+      message: 'This purchase can only ship to the United States on this route, so this call opened nothing.',
+      recovery: 'nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise, with a US shipping address and only if the buyer wants that, start again with a new idempotency_key',
+    },
+    // Raised BEFORE the key lookup: a purchase from an earlier unknown-outcome call may exist, so check it first.
+    shipping_market_unknown: {
+      message: 'No shipping address was given, and the currency alone does not say which country to ship to, so this call opened nothing.',
+      recovery: 'nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise ask the buyer for their shipping address and send it',
+    },
+  };
+  for (const [code, want] of Object.entries(expected)) {
+    const backend = fakeBackend();
+    backend.state.post = { status: 400, body: houseError(code, 400) };
+    const ctx = await build({ backend });
+    const { err } = await withEnv(ON, () => call(ctx, args()));
+    assert.equal(err.code, 'OPERATION_NOT_ALLOWED', code);
+    assert.equal(err.detail.reason, 'purchase_refused', code);
+    assert.equal(err.detail.refusal_code, code);
+    assert.equal(err.message, want.message, code);
+    assert.equal(err.recovery, want.recovery, code);
+    assert.match(err.recovery, /^nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; /, `${code}: check first`);
+    assert.equal(/new idempotency_key/.test(err.recovery), code === 'shipping_country_unsupported', `${code}: a new key only on the country refusal, and only if the buyer wants that`);
+    assert.equal(backend.calls.filter((c) => c.method === 'GET').length, 0);
+  }
+  // At another status they are not the documented refusal: still an unknown outcome.
+  const backend = fakeBackend();
+  backend.state.post = { status: 409, body: houseError('shipping_country_unsupported', 409) };
+  const { err } = await withEnv(ON, async () => call(await build({ backend }), args()));
+  assert.equal(err.code, 'CHECKOUT_OUTCOME_UNKNOWN');
+});
+
 test('every other answer is an UNKNOWN outcome: retry the same call, never start another', async () => {
   const cases = [
     ['503', (b) => { b.state.post = { status: 503, body: { error: 'checkout_outcome_unknown' } }; }],

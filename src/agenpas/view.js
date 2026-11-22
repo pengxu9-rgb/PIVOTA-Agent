@@ -26,13 +26,23 @@
  * complete offer, the page offers the terms (`consent`: the step, the two links and the offer, nothing else); with
  * anything missing, the screen is `unavailable` ("not available right now"). With the flag off no `consent` member is
  * added, and a body without any consent field projects exactly as before.
+ *
+ * THE ADDRESS STEP'S CONSENT (A2A only). While the backend's gate holds the shipping-address form back, the body says
+ * `next_action` / `detail.buyer_step` = {kind: "shipping_address", consent_required: true, expires_at} with NO
+ * `fields_missing`, and the consent block is offered for step `shipping_address`. Until that block says satisfied the
+ * view carries no `address_request` (no form, even if the body listed fields): with the flag on and a complete offer the
+ * screen is `shipping_address` with `consent` (the terms first); otherwise `unavailable`. With collection off it stays
+ * `shipping_address_elsewhere`. Once satisfied, the backend's form (`fields_missing`) projects exactly as before.
  */
 
 const { isAllowedHostedUrl } = require('./hostedUrl');
+const { ACTION_KIND: SHIPPING_STEP, STATE: SHIPPING_STATE, readAddressRequest } = require('./shippingAddress');
 
 const KNOWN_STATES = Object.freeze([
   'routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'placing',
   'completed', 'failed', 'refused', 'expired',
+  // The backend MAY name the address step as a state of its own (docs/agenpas.md, "Shipping address").
+  'needs_shipping_address',
 ]);
 const TERMINAL_STATES = new Set(['completed', 'failed', 'refused', 'expired']);
 
@@ -49,7 +59,10 @@ const CONSENT_STEP_FOR_STATE = Object.freeze({
   locking: 'approval',
   awaiting_buyer_authorization: 'approval',
 });
-const GATED_KINDS = new Set(['card_binding', 'approval']);
+// `shipping_address`: the A2A rail's address form is a consent-gated step too (the owner's decision, 11-20): it has no
+// state of its own (`routing` while the rail waits for the buyer's contact) and no hosted page; what the gate holds
+// back is the form itself (docs/agenpas.md, "Shipping address").
+const GATED_KINDS = new Set(['card_binding', 'approval', 'shipping_address']);
 // The backend's consent block: versions are at most 32 printable characters (no space at either end); the offer id is
 // the backend's HMAC in hex or base64(url); issued_at is echoed back EXACTLY (it is an HMAC input), so only an
 // ISO-8601 UTC instant is accepted.
@@ -70,7 +83,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 732733b93 (services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (23),
+// Mirrors pivota-backend 838643e34 (the hold sets unchanged since 229d1e587; services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -85,7 +98,10 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 //   2. FAILED (terminal, nothing was submitted to the store): the not_submitted wording.
 //   3. the other NAMED lists (declined, approval timed out, card, price, refusals, ...): their wording.
 //   4. the SHAPE heuristic (a new code of the hold families): outcome_unknown.
-//   5. the state's generic wording: neutral, no "try again".
+//   5. a code nothing above recognises: from placing on and on a FAILED row, the checking wording (outcome_unknown,
+//      no retry); on a refused / expired row (both before any money step) the state's own wording, and the hold shape
+//      (4) does not apply there either; before placing it changes nothing.
+//   6. no code at all: the state's generic wording.
 // Every explicit list beats the shape in both directions: `checkout_setup_unrecognised` is a FAILED code although its
 // name has the shape of a hold, and `vic_quote_mismatch` is a pre-submit price check.
 // While NOT terminal: a HELD (or hold-shaped) code in `placing` shows the checking screen, and a PARKED code (the
@@ -113,6 +129,8 @@ const REAP_FAILED_CODES = Object.freeze([
   'enrollment_no_hosted_action', 'enrollment_id_conflict', 'enrollment_row_unreadable', 'enrollment_not_activatable',
   'enrollment_dead', 'enrollment_create_failed', 'enrollment_read_failed', 'no_active_enrollment', 'enrollment_not_active',
   'quote_id_missing',
+  // The quote step's own fallback when the partner named no code (quoting -> failed, before the checkout create).
+  'quote_failed',
 ]);
 /**
  * HELD only from `placing` on and in final states. `checkout_read_permanent:<n>` is written after ONE permanent-shaped
@@ -145,7 +163,13 @@ const REAP_PROGRESS_CODES = new Set(['reap_status_503', 'checkout_read_failed', 
 /** An unlisted Reap partner status (`reap_status_<n>` and any other `reap_*` code) is read as a hold from placing on. */
 const REAP_UNLISTED_PREFIX = 'reap_';
 /** Codes that say a checkout may have existed: they keep a FAILED code from saying "no order was sent". */
-const POST_CHECKOUT_GENERIC_CODES = new Set(['checkout_failed', 'checkout_expired', 'checkout_id_missing', 'partner_id_malformed']);
+// `vic_checkout_failed` (A2A): the rail answered "failed" for a checkout in `paying` (the confirm went out): the state's
+// generic wording, never "no order was sent".
+// `checkout_create_failed`: a HOLD (release) code only (reap_agentic_purchase.py `_hold` when nothing left the process),
+// never written on a final row; the extractor's flow-insensitive harvest finds it beside the quote step's failures, so
+// it is listed here conservatively (the generic wording, never "no order was sent").
+const POST_CHECKOUT_GENERIC_CODES = new Set(['checkout_failed', 'checkout_expired', 'checkout_id_missing', 'partner_id_malformed',
+  'vic_checkout_failed', 'checkout_create_failed']);
 const POST_CHECKOUT_CODES = new Set([...POST_CHECKOUT_GENERIC_CODES, 'approval_window_lapsed']);
 
 /** Terminal, nothing submitted to the store. */
@@ -159,12 +183,24 @@ const FAILED_CODES = new Set([
   // the store; `vic_order_unresolved`: "the submit made nothing"). Listed so the shape never words them as unknown.
   'binding_answer_unrecognised', 'approval_answer_unrecognised', 'token_answer_unrecognised', 'token_mismatch',
   'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved',
+  // A2A pre-store failures (pivota-backend a2a_rail_worker.py, all from opened / needs_payment_method / quoting, before
+  // any confirm): a card or approval page the rail sent that we will not store or show; the VIC order / quote refused
+  // or invalid; an unseen card-binding or token write past its reconcile limit (it "charged nothing").
+  'binding_page_invalid', 'approval_page_invalid', 'vic_page_missing', 'vic_page_invalid', 'vic_amount_invalid',
+  'vic_quote_invalid', 'vic_order_refused', 'vic_quote_refused', 'reconcile_exhausted',
   // An OPERATOR ended a held checkout after checking the provider's side: no order and no charge
   // (pivota-backend jobs/a2a_rail_operator.py). Its own wording below.
   'operator_confirmed_not_charged',
   // REAP (pivota-backend services/reap_agentic_purchase.py): only the codes written BEFORE any Reap checkout exists.
   ...REAP_FAILED_CODES,
 ]);
+
+/**
+ * Final codes that read "checking" in EVERY final state, refused and expired included: an operator closed an rp_-rail row
+ * whose checkout EXISTED (`manual_provider_<status>`, pivota-backend services/reap_checkout_recovery.py, from
+ * awaiting_approval / processing with a `checkout_unresolvable:` hold). The buyer hears the outcome from the chat.
+ */
+const FINAL_CHECKING_CODES = new Set(['manual_provider_expired', 'manual_provider_failed']);
 
 /** The one FAILED code whose wording may say the buyer was not charged: a human verified it at the provider. */
 const OPERATOR_NOT_CHARGED_CODES = new Set(['operator_confirmed_not_charged']);
@@ -181,6 +217,9 @@ const HELD_CODES = new Set([
   'checkout_confirm_not_sent', 'checkout_paying_without_task',
   // The provider reported payment-reached without success: money may have moved.
   'checkout_payment_reached_unconfirmed',
+  // After the confirm, the provider's answer echoed a card code and was scrubbed: held, and one of the backend's six
+  // payment-reached codes (`_CHECKOUT_PAYMENT_REACHED_CODES`): never "not charged".
+  'checkout_answer_scrubbed',
   'money_result_seen',
   // _VIC_HOLD_CODES
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
@@ -192,6 +231,18 @@ const HELD_CODES = new Set([
   // The Reap rail's (see above).
   ...REAP_HELD_CODES,
 ]);
+
+/** On a COMPLETED purchase: the order IS placed, but the merchant's order number was not kept (withheld because it
+ * looked card-shaped, or invalid): `merchant_order_id` is null. Neither a hold nor a failure. */
+const COMPLETED_REFERENCE_CODES = new Set(['checkout_order_reference_withheld', 'checkout_order_reference_invalid',
+  'vic_order_reference_invalid']);
+
+/** The worker's ordinary progress codes (routine retries and reconciliation; not holds): the screen is the state's own.
+ * `checkout_placing` is written while the checkout is being placed, and also after a lookup finds it in progress.
+ * They never override a HELD code (HELD is decided first). Anomalies (`transition_refused`, `rail_refused`,
+ * `no_step_for_state`, `vic_order_step_disabled`, `checkout_answer_unrecognised`) are deliberately NOT here: from
+ * placing on they keep the checking wording. */
+const PROGRESS_CODES = new Set(['checkout_placing', 'checkout_ready', 'checkout_read', 'await_read', 'reconciled']);
 
 /** Paused before the checkout step; not terminal. */
 const PARKED_CODES = new Set(['checkout_step_disabled', 'checkout_schema_incomplete']);
@@ -238,6 +289,40 @@ const NOT_SUBMITTED_COPY = Object.freeze({
   outcome_unknown: false,
 });
 
+/**
+ * The rp_ rail's refusal reasons (`refusal_reason` on a `refused` row; pivota-backend services/reap_agentic_purchase.py
+ * `_QUOTE_REFUSAL_KINDS`, `_preflight_refusal_reason`, `_cart_link_verdict`, `_single_variant_verdict`,
+ * `_price_verdict`, `merchant_not_completable`, routes/agent_commerce_reap.py `duplicate_idempotency_key`, and the
+ * client's resolution reasons, services/reap_agentic_client.py, which reach the column verbatim). Compound reasons
+ * match on a segment (`ambiguous_on_axis:<axis>`, `value_has_no_option_id:<axis>`). `price_changed` is its own group.
+ * The generic heads `search:`, `details:`, `options:`, `variant:` are matched only on a refused row (below).
+ */
+const REAP_REFUSAL_REASONS = Object.freeze([
+  'merchant_not_completable', 'cart_link_rejected', 'card_payment_unavailable', 'quote_unfulfillable',
+  'variant_unavailable', 'no_shipping_option', 'price_unverifiable', 'preflight_refused', 'cart_link_disabled',
+  'cart_link_invalid', 'unverified_single_variant', 'duplicate_idempotency_key', 'resolve_failed',
+  'cart_link_quote_unbuildable',
+  'no_products_returned', 'no_product_name_supplied', 'merchant_not_in_results', 'no_exact_name_match',
+  'ambiguous_name_match', 'product_id_not_in_reap_namespace', 'product_has_no_option_axes', 'variant_title_unusable',
+  'no_variant_title_supplied', 'single_variant_product_has_no_variant_id', 'resolved_id_not_in_reap_namespace',
+  'ambiguous_on_axis', 'duplicate_axis_name', 'label_too_long_to_compare', 'value_has_no_option_id',
+]);
+/** The client's compound refusal heads (`search:<reason>`, `details:<err>`, `options:<reason>`, `variant:<mismatch>`). */
+const REAP_REFUSAL_HEADS = new Set(['search', 'details', 'options', 'variant']);
+/**
+ * Codes too generic to match on any other row, read ONLY on a refused rp_-rail row (all before the checkout create):
+ * `invalid_request` (a `_row_scope` refusal), and the preflight witness's `preflight_interrupted` / `unverified`
+ * (its `last_error_code` beside a refusal reason).
+ */
+const REAP_REFUSED_ONLY_CODES = new Set(['invalid_request', 'preflight_interrupted', 'unverified',
+  // The quote verdict's and the cart-link verdict's own codes (`QuoteCheck(False, reason, code)`, `_cart_link_verdict`):
+  // always beside a listed refusal reason, which decides the wording.
+  'quote_adjustments_unsupported', 'quote_amounts_unreadable', 'quote_currency_mismatch', 'quote_items_mismatch',
+  'quote_items_subtotal_mismatch', 'quote_no_shipping_option', 'quote_row_unverifiable', 'quote_shipping_not_reconciled',
+  'quote_shipping_options_malformed', 'quote_total_not_reconciled', 'cart_link_quantity_mismatch']);
+/** `cart_link_<reason>` (the cart-link verdict's run-time code), read on a refused row only. */
+const REAP_REFUSED_ONLY_PREFIXES = Object.freeze(['cart_link_']);
+
 const REASON_GROUPS = [
   {
     kind: 'declined',
@@ -248,7 +333,9 @@ const REASON_GROUPS = [
   },
   {
     kind: 'approval_timed_out',
-    codes: ['vic_authorization_expired', 'vic_authorization_overdue', 'vic_buyer_abandoned'],
+    // `buyer_action_expired`: the approval page lapsed before the buyer approved (the paid step mints a token; nothing
+    // is charged), e.g. `paid_sent:2:<variant>:buyer_action_expired`.
+    codes: ['vic_authorization_expired', 'vic_authorization_overdue', 'vic_buyer_abandoned', 'buyer_action_expired'],
     title: 'The approval timed out',
     message: "The purchase wasn't approved in time, so the order wasn't placed.",
     retry_hint: true,
@@ -265,7 +352,7 @@ const REASON_GROUPS = [
   {
     kind: 'card_not_added',
     codes: ['binding_refused', 'token_refused', 'token_failed', 'token_method_unavailable', 'method_not_listed',
-      'vic_method_missing'],
+      'vic_method_missing', 'card_binding_failed', 'card_binding_disabled', 'card_binding_expired'],
     title: "Your card couldn't be used",
     message: "The card couldn't be set up for this purchase, so the order wasn't placed.",
     retry_hint: true,
@@ -287,7 +374,10 @@ const REASON_GROUPS = [
   {
     // The rail's own refusals of the checkout (refusal_reason): plain refusal wording.
     kind: 'checkout_refused',
-    codes: ['checkout_currency_unsupported', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit'],
+    // `buyer_approval_missing` (A2A, quoting -> refused): the rail minted a token with no buyer approval step, which
+    // this flow never uses (`token_id_unstorable` beside it: that token's id could not be kept). Nothing was charged.
+    codes: ['checkout_currency_unsupported', 'checkout_ceiling_over_cap', 'checkout_ceiling_over_rail_limit',
+      'buyer_approval_missing', 'token_id_unstorable'],
     title: "This purchase couldn't be started",
     message: "Our payment partner couldn't take this purchase. Go back to the chat for other options.",
     retry_hint: false,
@@ -296,16 +386,73 @@ const REASON_GROUPS = [
     kind: 'not_purchasable',
     codes: ['merchant_not_eligible', 'merchant_disabled', 'merchant_not_purchasable', 'row_not_found', 'row_unpriced',
       'row_price_ambiguous', 'row_not_shopify', 'row_variant_unverified', 'row_variant_ambiguous',
-      'row_currency_mismatch', 'seller_identity_unverified', 'currency_unsupported', 'vic_currency_unsupported'],
+      'row_currency_mismatch', 'seller_identity_unverified', 'currency_unsupported', 'vic_currency_unsupported',
+      // The rp_ rail's pilot scope (`_row_scope`, quoting -> refused before the checkout create).
+      'pilot_scope_invalid', 'pilot_scope_refused'],
     title: "This item can't be bought here right now",
     message: "This item can't be bought through AgenPas at the moment. Nothing more needs to be done.",
     retry_hint: false,
   },
   {
     kind: 'details_needed',
-    codes: ['invalid_address', 'consent_required', 'vic_contact_missing', 'buyer_email_missing'],
+    // A2A: `buyer_email_required` (opened -> refused, no email to bind a card), `contact_purged` (opened /
+    // needs_payment_method -> failed, the contact was deleted after its retention), `token_payer_missing` (the token
+    // needs the payer's name and email).
+    codes: ['invalid_address', 'consent_required', 'vic_contact_missing', 'buyer_email_missing', 'buyer_email_required',
+      'contact_purged', 'token_payer_missing'],
     title: 'Some details were missing',
     message: 'The store needs a bit more information. Go back to the chat to check your details.',
+    retry_hint: true,
+  },
+  // ---- definite pre-order endings (every write site checked: docs/agenpas.md, "Final states") ----
+  {
+    // A2A `attempts_exhausted` (opened -> failed); rp_-rail `attempts_exhausted` and `contact_reentry_lapsed` (both SQL
+    // statements require `checkout_dispatch_key IS NULL`: no checkout was ever sent).
+    kind: 'not_started',
+    codes: ['attempts_exhausted', 'contact_reentry_lapsed'],
+    title: "This purchase didn't go through",
+    message: "It couldn't be completed, so nothing was ordered or charged. You can start again from the chat.",
+    retry_hint: true,
+  },
+  {
+    // A2A `shipping_address_expired` (opened -> expired): the address step lapsed.
+    kind: 'address_timed_out',
+    codes: ['shipping_address_expired'],
+    title: 'This purchase expired',
+    message: "The shipping address wasn't given in time, so nothing was ordered or charged. You can start again from the chat.",
+    retry_hint: true,
+  },
+  {
+    // A2A `shipping_address_not_collected` (expired): the row waited for the address when collection was turned off.
+    kind: 'address_not_collected',
+    codes: ['shipping_address_not_collected'],
+    title: "This purchase didn't go through",
+    message: "We can't take the shipping address here any more, so nothing was ordered or charged. Go back to the chat to start again.",
+    retry_hint: true,
+  },
+  {
+    // The expiry sweeps' own codes for rows that never reached a payment: A2A `stale` (no pending write, never
+    // `paying`), rp_-rail `hosted_url_expired` (no checkout id, no dispatch key).
+    kind: 'expired_unused',
+    codes: ['stale', 'hosted_url_expired'],
+    title: 'This purchase expired',
+    message: "It wasn't completed in time, so nothing was ordered or charged. You can start again from the chat.",
+    retry_hint: true,
+  },
+  {
+    // rp_-rail refusals (resolving / quoting -> refused, every one before the checkout create's dispatch): the item, the
+    // cart link or the quote could not be taken as asked.
+    kind: 'refused_before_order',
+    codes: REAP_REFUSAL_REASONS,
+    title: "This purchase couldn't be started",
+    message: "The store couldn't take this purchase as it was asked for, so nothing was ordered or charged. Go back to the chat for other options.",
+    retry_hint: false,
+  },
+  {
+    kind: 'offer_code_refused',
+    codes: ['invalid_offer_code', 'offer_code_malformed', 'offer_code_rejected'],
+    title: "The discount code couldn't be used",
+    message: "The discount code wasn't accepted, so the purchase wasn't started and nothing was charged. Go back to the chat to try again without it.",
     retry_hint: true,
   },
 ];
@@ -360,7 +507,8 @@ function codeSegments(codes) {
 
 function isExplicit(seg) {
   return FAILED_CODES.has(seg) || HELD_CODES.has(seg) || PARKED_CODES.has(seg) || REASON_BY_CODE.has(seg)
-    || POST_CHECKOUT_GENERIC_CODES.has(seg) || REAP_PROGRESS_CODES.has(seg);
+    || COMPLETED_REFERENCE_CODES.has(seg) || PROGRESS_CODES.has(seg)
+    || POST_CHECKOUT_GENERIC_CODES.has(seg) || REAP_PROGRESS_CODES.has(seg) || FINAL_CHECKING_CODES.has(seg);
 }
 
 /** A code the explicit lists do not name, with the hold shape or the `reap_` prefix (an unlisted Reap code). */
@@ -371,6 +519,7 @@ function isHoldShaped(seg) {
 /** What the codes say, by the precedence above: 'failed' | 'held' | a named group | 'generic' | 'shape_unknown' | null. */
 function classify(segments) {
   if (segments.some((seg) => HELD_CODES.has(seg))) return { kind: 'held' };
+  if (segments.some((seg) => FINAL_CHECKING_CODES.has(seg))) return { kind: 'final_checking' };
   // A code that says a checkout may have existed keeps a FAILED code from claiming "no order was sent".
   if (segments.some((seg) => FAILED_CODES.has(seg)) && !segments.some((seg) => POST_CHECKOUT_CODES.has(seg))) return { kind: 'failed' };
   const named = segments.map((seg) => REASON_BY_CODE.get(seg)).find(Boolean);
@@ -383,7 +532,29 @@ function classify(segments) {
 /** True when the codes, by the precedence above, say the outcome is unknown (held, or hold-shaped). */
 function isOutcomeUnknownCode(code) {
   const c = classify(codeSegments(Array.isArray(code) ? code : [code]));
-  return Boolean(c) && (c.kind === 'held' || c.kind === 'shape_unknown');
+  return Boolean(c) && (c.kind === 'held' || c.kind === 'shape_unknown' || c.kind === 'final_checking');
+}
+
+/** The refusal group a refused row's compound client reason names by its head (`options:<reason>`, ...), or null. */
+function refusalHeadGroup(codes) {
+  const flat = (Array.isArray(codes) ? codes : []).flatMap((c) => (Array.isArray(c) ? c : [c]));
+  const named = flat.some((code) => {
+    if (typeof code !== 'string') return false;
+    const head = code.trim().toLowerCase().split(':')[0];
+    return REAP_REFUSAL_HEADS.has(head) || REAP_REFUSED_ONLY_PREFIXES.some((p) => head.startsWith(p))
+      || codeSegments([code]).some((seg) => REAP_REFUSED_ONLY_CODES.has(seg));
+  });
+  return named ? REASON_BY_CODE.get(REAP_REFUSAL_REASONS[0]) : null;
+}
+
+/**
+ * True when a final code is on an explicit list for that state (any segment), or, on a refused row, has a known
+ * client refusal head. The terminal-code parity test holds every code the backend writes to this.
+ */
+function isKnownFinalCode(state, code) {
+  if (typeof code !== 'string') return false;
+  if (codeSegments([code]).some((seg) => isExplicit(seg))) return true;
+  return state === 'refused' && refusalHeadGroup([code]) !== null;
 }
 
 /**
@@ -400,20 +571,43 @@ function isOutcomeUnknownCode(code) {
 // (`vic_status:unrecognised`, `paid_sent:<n>:await:await_answer_unrecognised`, `vic_quote:unrecognised:<n>`); one of
 // them sticks on the row for the whole approval window. So there, only an EXPLICIT HELD code drops the step: the shape
 // fallback applies from `placing` on (where a confirm may have gone out) and in final states.
-const PRE_PLACING_STATES = new Set(['routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'unknown']);
+const PRE_PLACING_STATES = new Set(['routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'needs_shipping_address', 'unknown']);
+
+/**
+ * True when a code is on the purchase that the gateway does not recognise at all: none of its segments is on an
+ * explicit list or has the hold shape (a brand-new code, a malformed or oversized one, a bare `paid_sent:<n>:<v>`).
+ * Nothing known says the order was not placed, so from `placing` on and in final states it is read as "checking".
+ */
+function hasUnrecognisedCode(codes) {
+  const flat = (Array.isArray(codes) ? codes : []).flatMap((c) => (Array.isArray(c) ? c : [c]));
+  return flat.some((code) => {
+    if (typeof code !== 'string' || code.trim() === '') return false;
+    return !codeSegments([code]).some((seg) => isExplicit(seg) || OUTCOME_UNKNOWN_SHAPE_RE.test(seg));
+  });
+}
 
 function outcomeFor(state, codes) {
   const segments = codeSegments(codes);
   const c = classify(segments);
+  // Only when nothing on any list (or of the hold shape) decides: explicit lists and the shape keep their precedence.
+  const unrecognised = !c && hasUnrecognisedCode(codes);
   if (!TERMINAL_STATES.has(state)) {
     const preplacing = PRE_PLACING_STATES.has(state);
     const held = c && c.kind === 'held'
       && (!preplacing || segments.some((seg) => HELD_CODES.has(seg) && !PRE_PLACING_SOFT_HELD_CODES.has(seg)));
-    if (held || (c && c.kind === 'shape_unknown' && !preplacing)) return { ...HELD_COPY };
+    if (held || (c && (c.kind === 'shape_unknown' || c.kind === 'final_checking') && !preplacing)) return { ...HELD_COPY };
+    // Before placing an unrecognised code changes nothing: the buyer's step stays.
+    if (unrecognised && !preplacing && !segments.some((seg) => PARKED_CODES.has(seg))) return { ...HELD_COPY };
     if (segments.some((seg) => PARKED_CODES.has(seg))) return state === 'placing' ? { ...HELD_COPY } : { ...PARKED_COPY };
     return null;
   }
   if (!GENERIC_BY_STATE[state]) return null;
+  // `refused` and `expired` end a purchase BEFORE any money step on both rails (every write site checked against the
+  // backend source: docs/agenpas.md, "Final states"). There only an explicit HELD or FINAL_CHECKING code reads
+  // "checking"; a hold-shaped or unrecognised code reads the state's own wording. `failed` (which can follow a confirm)
+  // keeps the checking wording for both.
+  const definite = state === 'refused' || state === 'expired';
+  if (c && c.kind === 'final_checking') return { ...OUTCOME_UNKNOWN_COPY };
   if (c && c.kind === 'failed') {
     // HELD has already won above if any hold code is present. "You weren't charged" is said ONLY when nothing else on
     // the purchase is even hold-SHAPED: a claim that strong needs a clean record; otherwise, the checking wording.
@@ -423,7 +617,14 @@ function outcomeFor(state, codes) {
     }
     return { ...NOT_SUBMITTED_COPY };
   }
-  if (c && (c.kind === 'held' || c.kind === 'shape_unknown')) return { ...OUTCOME_UNKNOWN_COPY };
+  if (c && (c.kind === 'held' || (c.kind === 'shape_unknown' && !definite))) return { ...OUTCOME_UNKNOWN_COPY };
+  // An unrecognised code on a failed purchase: the checking wording, never "no order was sent", never a retry.
+  if (unrecognised && !definite) return { ...OUTCOME_UNKNOWN_COPY };
+  const headGroup = state === 'refused' && (!c || c.kind === 'shape_unknown') ? refusalHeadGroup(codes) : null;
+  if (headGroup) {
+    const { codes: _codes, ...copy } = headGroup;
+    return { ...copy, outcome_unknown: false };
+  }
   if (c && c.kind === 'named') {
     const { codes: _codes, ...copy } = c.group;
     return { ...copy, outcome_unknown: false };
@@ -454,6 +655,7 @@ function screenFor(state, { actionKind = null, outcome = null } = {}) {
     case 'needs_payment_method': return 'add_card';
     case 'locking': return 'confirming_total';
     case 'awaiting_buyer_authorization': return 'approve';
+    case 'needs_shipping_address': return 'preparing';
     case 'placing':
       if (outcome && outcome.outcome_unknown) return 'outcome_unknown';
       return actionKind === 'authenticate' ? 'authenticate' : 'placing';
@@ -537,6 +739,18 @@ function isOfferable(block, step) {
     && block.terms_url && block.privacy_url && block.terms_version && block.privacy_version && block.offer);
 }
 
+/** The body asks for the buyer's shipping address (the form, or the consent-gated marker), A2A wording. */
+function isShippingStep(state, rawAction, buyerStep) {
+  return state === SHIPPING_STATE || Boolean(rawAction && rawAction.kind === SHIPPING_STEP)
+    || Boolean(buyerStep && buyerStep.kind === SHIPPING_STEP);
+}
+
+/** The backend's gate marker on the address step: `consent_required: true` on its next_action or its buyer_step. */
+function shippingMarked(rawAction, buyerStep) {
+  return Boolean((rawAction && rawAction.kind === SHIPPING_STEP && rawAction.consent_required === true)
+    || (buyerStep && buyerStep.kind === SHIPPING_STEP && buyerStep.consent_required === true));
+}
+
 const DETAILS_NEEDED_COPY = Object.freeze({
   kind: 'details_needed',
   title: 'Some details are needed',
@@ -549,7 +763,10 @@ const DETAILS_NEEDED_COPY = Object.freeze({
  * The view and, when the page would offer the terms, what a consent for it records (`record`: step and the two
  * versions FROM THIS READ). Internal: projectPurchaseView returns the view; consentToRecord the record.
  */
-function buildView(body, { purchaseId, hostedHosts = [], embed = false, now, linkExpiresAt, linkTtlMinutes, consentEnabled = false, legalHosts = [] } = {}) {
+function buildView(body, {
+  purchaseId, hostedHosts = [], embed = false, now, linkExpiresAt, linkTtlMinutes, collectShipping = false,
+  consentEnabled = false, legalHosts = [],
+} = {}) {
   const nowMs = typeof now === 'number' ? now : Date.now();
   const src = isPlainObject(body) ? body : {};
   const detail = isPlainObject(src.detail) ? src.detail : {};
@@ -618,6 +835,8 @@ function buildView(body, { purchaseId, hostedHosts = [], embed = false, now, lin
       // page then says "see your email receipt").
       total_unparsed: currencyConflict,
     };
+    // The order number was withheld (or invalid) and not kept: the page points to the store's confirmation email.
+    if (!order.reference && codeSegments(codes).some((seg) => COMPLETED_REFERENCE_CODES.has(seg))) order.reference_withheld = true;
   }
 
   let outcome = outcomeFor(state, codes);
@@ -625,6 +844,28 @@ function buildView(body, { purchaseId, hostedHosts = [], embed = false, now, lin
   // that may already be on its way to the store is exactly what "don't try again" forbids.
   if (outcome && outcome.outcome_unknown) action = null;
   let screen = screenFor(state, { actionKind: action ? action.kind : null, outcome });
+
+  // THE ADDRESS STEP (shippingAddress.js): the buyer gives the shipping address / email the partner did not send. Never
+  // while held. With AGENPAS_COLLECT_SHIPPING off the page only says to add it in the chat, and the view carries no
+  // `address_request` (every other view is byte-identical either way).
+  // Consent-gated (A2A; the header above): no form until the block says THIS step is satisfied, whatever the body
+  // listed; the terms are offered on the address screen, or the step is "not available right now".
+  const held = Boolean(outcome && outcome.outcome_unknown);
+  const shippingGated = !held && !terminal && rail !== 'reap' && PRE_PLACING_STATES.has(state)
+    && isShippingStep(state, rawAction, buyerStep)
+    && (shippingMarked(rawAction, buyerStep) || Boolean(block && block.required && block.step === SHIPPING_STEP))
+    && !satisfiedFor(SHIPPING_STEP);
+  const shippingOfferable = shippingGated && consentEnabled && isOfferable(block, SHIPPING_STEP);
+  // A marker without a field list is never a form (it would read as "every field"), satisfied or not.
+  const markerOnly = shippingMarked(rawAction, null) && !Array.isArray(rawAction.fields_missing);
+  // The rp_ rail never takes an address on this page, whatever a body carries: "add it in the chat".
+  const reapAddress = rail === 'reap' && !held && !terminal && PRE_PLACING_STATES.has(state)
+    && isShippingStep(state, rawAction, buyerStep);
+  const addressRequest = held || shippingGated || markerOnly || reapAddress ? null : readAddressRequest(state, rawAction, { now: nowMs });
+  if (reapAddress) screen = 'shipping_address_elsewhere';
+  if (addressRequest) screen = collectShipping ? 'shipping_address' : 'shipping_address_elsewhere';
+  else if (shippingGated) screen = !collectShipping ? 'shipping_address_elsewhere' : shippingOfferable ? 'shipping_address' : 'unavailable';
+
   // The rail paused the purchase for the buyer's contact details (Reap's `contact_reentry_required`): no card button,
   // no consent; the chat takes the details. Held still wins (screenFor already said outcome_unknown).
   if (!terminal && screen !== 'outcome_unknown' && pick('contact_reentry_required') === true) {
@@ -633,18 +874,20 @@ function buildView(body, { purchaseId, hostedHosts = [], embed = false, now, lin
     screen = 'details_needed';
   }
   if (unavailable && (screen === 'add_card' || screen === 'approve')) screen = 'unavailable';
-  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total';
+  const shippingConsentScreen = shippingOfferable && screen === 'shipping_address';
+  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total' || shippingConsentScreen;
+  const offeredStep = shippingConsentScreen ? SHIPPING_STEP : consentStep;
   let consent = null;
   let record = null;
-  if (offerable && consentScreen) {
+  if ((shippingConsentScreen || offerable) && consentScreen) {
     // The versions shown are the very values recorded (`record`, below): the buyer sees what the record names.
     consent = {
-      step: consentStep, terms_url: block.terms_url, privacy_url: block.privacy_url,
+      step: offeredStep, terms_url: block.terms_url, privacy_url: block.privacy_url,
       terms_version: block.terms_version, privacy_version: block.privacy_version, offer: { ...block.offer },
     };
     // Only when the backend states it (the page then waits at least that long plus a second; else its own 4 s).
     if (block.min_dwell_seconds !== null) consent.min_dwell_seconds = block.min_dwell_seconds;
-    record = { step: consentStep, terms_version: block.terms_version, privacy_version: block.privacy_version };
+    record = { step: offeredStep, terms_version: block.terms_version, privacy_version: block.privacy_version };
   }
 
   let poll = null;
@@ -676,17 +919,18 @@ function buildView(body, { purchaseId, hostedHosts = [], embed = false, now, lin
     poll_after_seconds: poll,
     link_expires_at: Number.isSafeInteger(linkExpiresAt) ? new Date(linkExpiresAt * 1000).toISOString() : null,
     link_ttl_minutes: Number.isSafeInteger(linkTtlMinutes) && linkTtlMinutes > 0 ? linkTtlMinutes : null,
+    ...(addressRequest && collectShipping && screen === 'shipping_address' ? { address_request: addressRequest } : {}),
   };
   // Only while AGENPAS_CONSENT_ENABLED is on: off, the view has exactly the members it always had.
   if (consentEnabled) view.consent = consent;
-  return { view, record };
+  return { view, record, shippingConsentPending: shippingGated };
 }
 
 /**
  * Project one backend body for the page.
  * @param {object} body  the backend's unified purchase body
  * @param {{ purchaseId: string, hostedHosts: string[], embed?: boolean, now?: number, linkExpiresAt?: number,
- *           linkTtlMinutes?: number, consentEnabled?: boolean, legalHosts?: string[] }} opts
+ *           linkTtlMinutes?: number, collectShipping?: boolean, consentEnabled?: boolean, legalHosts?: string[] }} opts
  *        linkExpiresAt is the link token's `exp` (unix seconds); linkTtlMinutes its lifetime, for the page's copy;
  *        consentEnabled is AGENPAS_CONSENT_ENABLED, legalHosts AGENPAS_LEGAL_HOSTS
  */
@@ -703,6 +947,14 @@ function consentToRecord(body, opts = {}) {
   return buildView(body, { ...opts, consentEnabled: opts.consentEnabled === true }).record;
 }
 
+/**
+ * True while the purchase's shipping-address step waits for the buyer's consent (the backend's gate marker or its
+ * consent block, and no satisfied consent for `shipping_address`): the address write must not go on.
+ */
+function shippingConsentPending(body, opts = {}) {
+  return buildView(body, opts).shippingConsentPending === true;
+}
+
 module.exports = {
   ACTION_KIND_FOR_STATE,
   CONSENT_STEP_FOR_STATE,
@@ -715,10 +967,15 @@ module.exports = {
   REAP_FAILED_CODES,
   REAP_HELD_CODES,
   REAP_PROGRESS_CODES,
+  REAP_REFUSAL_HEADS,
+  REAP_REFUSAL_REASONS,
+  FINAL_CHECKING_CODES,
   codeSegments,
+  isKnownFinalCode,
   consentToRecord,
   isOutcomeUnknownCode,
   outcomeFor,
   projectPurchaseView,
   screenFor,
+  shippingConsentPending,
 };

@@ -185,6 +185,26 @@ p:last-child { margin-bottom: 0; }
 
 .notice { text-align: center; color: var(--muted); font-size: 13px; }
 
+/* The shipping address form (no card fields, ever). */
+.address-form { margin-top: 12px; }
+.field { margin: 0 0 12px; }
+.field-label { display: block; margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.field-input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.field-input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.field-input[aria-invalid="true"] { border-color: var(--stop); }
+.field-error { margin: 4px 0 0; color: var(--stop); font-size: 13px; }
+.form-error { margin: 4px 0 8px; }
+
 /* Terms and privacy consent (only when the API offers it). */
 .consent { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .consent .spinner { margin: 6px auto 8px; }
