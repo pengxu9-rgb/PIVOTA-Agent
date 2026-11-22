@@ -1,5 +1,5 @@
 {
-  "backend_sha": "54874e2a5",
+  "backend_sha": "838643e34",
   "generated_by": "scripts/agenpas/extract_backend_final_codes.py",
   "note": "`<arg>` / `<kind>` / `<status>` stand for a run-time segment; every segment is read.",
   "a2a": {
@@ -162,10 +162,10 @@
   },
   "dynamic": [
     "a2a/failed db/a2a_rail_ledger.py operator resolve (:code; operator_confirmed_not_charged, jobs/a2a_rail_operator.py)",
-    "a2a/failed services/payment_orchestration/a2a_rail_worker.py:1763",
-    "a2a/failed services/payment_orchestration/a2a_rail_worker.py:1902 last_error_code",
-    "a2a/failed services/payment_orchestration/a2a_rail_worker.py:682 last_error_code",
-    "a2a/refused services/payment_orchestration/a2a_rail_worker.py:1760 refusal_reason",
+    "a2a/failed services/payment_orchestration/a2a_rail_worker.py:1764",
+    "a2a/failed services/payment_orchestration/a2a_rail_worker.py:1903 last_error_code",
+    "a2a/failed services/payment_orchestration/a2a_rail_worker.py:683 last_error_code",
+    "a2a/refused services/payment_orchestration/a2a_rail_worker.py:1761 refusal_reason",
     "reap/failed services/reap_agentic_purchase.py _error_code(<partner code>): the partner's own codes",
     "reap/failed services/reap_agentic_purchase.py:2697 last_error_code (static part: enrollment_create_failed)",
     "reap/failed services/reap_agentic_purchase.py:2972 last_error_code",

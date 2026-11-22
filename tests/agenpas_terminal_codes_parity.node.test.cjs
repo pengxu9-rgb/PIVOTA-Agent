@@ -23,7 +23,7 @@ const {
   projectPurchaseView, isKnownFinalCode, HELD_CODES, FINAL_CHECKING_CODES,
 } = require('../src/agenpas/view');
 
-const PINNED_BACKEND_SHA = '54874e2a5';
+const PINNED_BACKEND_SHA = '838643e34';
 const MIRROR = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'agenpas_backend_final_codes.backend.json'), 'utf8'));
 const BACKEND = Object.freeze({ a2a: MIRROR.a2a, reap: MIRROR.reap });
 
@@ -95,7 +95,7 @@ test('the mirror is the pinned backend commit, and it names both rails\' three f
   }
 });
 
-test('parity with backend 54874e2a5 (both rails): every final code in the mirror is on an explicit gateway list', () => {
+test('parity with backend 838643e34 (both rails): every final code in the mirror is on an explicit gateway list', () => {
   const missing = [];
   for (const [rail, byState] of Object.entries(BACKEND)) {
     for (const [state, codes] of Object.entries(byState)) {
