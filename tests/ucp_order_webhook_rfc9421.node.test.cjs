@@ -490,3 +490,48 @@ test('F3: a full memory is swept of expired entries before it answers 503', asyn
   const out = await h.post(signWebhook(d, { webhookId: 'evt-63', created: nowSec() }), d);
   assert.equal(out.status, 200, JSON.stringify(out.body));
 });
+
+test('F11: a genuine re-signed retry extends the body memory to its own window', async () => {
+  let t = Date.now();
+  const sec = () => Math.floor(t / 1000);
+  const c1 = sec();
+  const h = harness({ ...FILLER_ENV, UCP_SIGNATURE_MAX_AGE_S: '300' }, { now: () => t });
+  const body = orderBody(70);
+  assert.equal((await h.post(signWebhook(body, { webhookId: 'evt-70', created: c1 }), body)).body.meta.duplicate, false);
+  t = (c1 + 300) * 1000;
+  const retry = signWebhook(body, { webhookId: 'evt-70', created: sec() });
+  assert.equal((await h.post(retry, body)).body.meta.duplicate, true, 'the business retry is a duplicate');
+  const filler = orderBody(71);
+  await h.post(signWebhook(filler, { webhookId: 'evt-71', created: sec() }), filler);
+  // Past the FIRST request's memory (c1 + 300 + 120) but inside the retry's window: the captured retry still
+  // verifies, so only an extended memory can catch it.
+  t = (c1 + 500) * 1000;
+  const out = await h.post({ ...retry, 'webhook-id': 'evt-70-replayed' }, body);
+  assert.equal(out.status, 200, JSON.stringify(out.body));
+  assert.equal(out.body.meta.duplicate, true);
+  assert.deepEqual((await h.events()).map((e) => e.checkout_id), ['co-71']);
+});
+
+test('F11: a duplicate never shortens a body memory, and a full memory never 503s a duplicate', async () => {
+  let t = Date.now();
+  const sec = () => Math.floor(t / 1000);
+  const c1 = sec();
+  const h = harness({ ...FILLER_ENV, UCP_SIGNATURE_MAX_AGE_S: '300' }, { now: () => t, maxSeenBodies: 2 });
+  const body = orderBody(72);
+  const late = signWebhook(body, { webhookId: 'evt-72', created: c1 + 60 });
+  await h.post(late, body);
+  // An earlier-created copy of the same body (a captured older signature) must not pull the memory back.
+  const early = signWebhook(body, { webhookId: 'evt-72-b', created: c1 - 200 });
+  assert.equal((await h.post(early, body)).body.meta.duplicate, true);
+  const other = orderBody(73);
+  await h.post(signWebhook(other, { webhookId: 'evt-73', created: c1 }), other); // memory now full (2)
+  // A re-serialised body under a known webhook-id while full: duplicate, not 503.
+  const reserialised = `${orderBody(72)} `;
+  const dup = await h.post(signWebhook(reserialised, { webhookId: 'evt-72', created: c1 }), reserialised);
+  assert.equal(dup.status, 200);
+  assert.equal(dup.body.meta.duplicate, true);
+  t = (c1 + 60 + 300 + 60) * 1000; // the late copy's last accepted second; the early copy's memory is long gone
+  const out = await h.post({ ...late, 'webhook-id': 'evt-72-c' }, body);
+  assert.equal(out.status, 200, JSON.stringify(out.body));
+  assert.equal(out.body.meta.duplicate, true);
+});

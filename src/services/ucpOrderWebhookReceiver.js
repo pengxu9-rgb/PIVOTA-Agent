@@ -456,17 +456,29 @@ function createUcpOrderWebhookReceiver(deps = {}) {
       // The bytes the Content-Digest was checked over (see REPLAY above for why the body is the key).
       const verifiedBytes = Buffer.isBuffer(exactBytes) ? exactBytes : rawBodyBytes;
       const replayKey = crypto.createHash('sha256').update(verifiedBytes).digest('hex');
-      if (seenBodies.has(replayKey) || seenWebhookIds.has(webhookId)) {
+      // `created` is guaranteed here: the business verifier requires it. The memory outlives the window the
+      // verifier accepts (created + maxAge + skew) by one more skew.
+      const expiresAt = (rfc.created + rfcWindow.maxAgeS + 2 * rfcWindow.clockSkewS) * 1000;
+      // EVERY verified request extends its body's memory, duplicates included: a business's genuine re-signed
+      // retry carries a later `created`, and a captured copy of THAT retry verifies until its own window
+      // closes, so the memory must last at least that long (max of every window seen for these bytes).
+      const known = seenBodies.get(replayKey);
+      if (known !== undefined || seenWebhookIds.has(webhookId)) {
         replayed = true;
+        if (known !== undefined) {
+          if (expiresAt > known) seenBodies.set(replayKey, expiresAt);
+        } else if (seenBodies.size < maxSeenBodies) {
+          // A new body under a known webhook-id (a re-serialised retry): remembered when there is room. It is
+          // not recorded either way, so a full memory costs nothing here and never answers 503.
+          seenBodies.set(replayKey, expiresAt);
+        }
       } else {
         if (seenBodies.size >= maxSeenBodies) prune(seenBodies, t, { sweep: true });
         if (seenBodies.size >= maxSeenBodies) {
           warn(new Error('replay memory full'), 'UCP order webhook refused: replay memory full');
           return { status: 503, body: { detail: 'temporarily unable to accept webhooks; retry later' } };
         }
-        // `created` is guaranteed here: the business verifier requires it. The memory outlives the window the
-        // verifier accepts (created + maxAge + skew) by one more skew.
-        remember = { replayKey, expiresAt: (rfc.created + rfcWindow.maxAgeS + 2 * rfcWindow.clockSkewS) * 1000, t };
+        remember = { replayKey, expiresAt, t };
       }
       verified = true;
       kid = rfc.keyid || null;
