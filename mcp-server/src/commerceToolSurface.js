@@ -322,10 +322,10 @@ export function agenpasGetOrderSentence(minutes) {
 }
 // AgenPas consent (docs/agenpas.md, "Terms and privacy consent"): one more sentence on start_purchase and get_order, ONLY
 // while AGENPAS_CONSENT_ENABLED is on and links are minted. Off, both descriptions are exactly as above.
-export const AGENPAS_CONSENT_SENTENCE = "When `next_action.consent_required` is true, the buyer first reads and accepts Pivota's Terms of Service and Privacy Policy on their AgenPas page, which then opens the payment partner's page: give them `agenpas_url` (it is also `next_action.action_url`); there is no other link to that page. If the answer carries neither, the step is not available yet: poll again.";
+export const AGENPAS_CONSENT_SENTENCE = "When `next_action.consent_required` is true, the buyer first reads and accepts Pivota's Terms of Service and Privacy Policy on their AgenPaz page, which then opens the payment partner's page: give them `agenpas_url` (it is also `next_action.action_url`); there is no other link to that page. If the answer carries neither, the step is not available yet: poll again.";
 // The UCP create_checkout description gains this ONLY while the Reap lane creates AND AgenPas serves the Reap rail
 // (AGENPAS_CONSENT_ENABLED + AGENPAS_RAILS with reap + links minted). Off, tools/list is byte-identical.
-export const AGENPAS_UCP_REAP_CONSENT_SENTENCE = "On the Reap route, while Pivota's consent step is on, a requires_escalation checkout's continue_url is the buyer's own Pivota page (AgenPas): the buyer reads and accepts Pivota's Terms of Service and Privacy Policy there, and that page opens the payment partner's card or approval page. Send the buyer to continue_url as usual; expires_at is the earlier of the step's deadline and that link's.";
+export const AGENPAS_UCP_REAP_CONSENT_SENTENCE = "On the Reap route, while Pivota's consent step is on, a requires_escalation checkout's continue_url is the buyer's own Pivota page (AgenPaz): the buyer reads and accepts Pivota's Terms of Service and Privacy Policy there, and that page opens the payment partner's card or approval page. Send the buyer to continue_url as usual; expires_at is the earlier of the step's deadline and that link's.";
 
 /** A next_action the backend's consent gate holds back: `consent_required: true` and no handoff URL of its own. */
 function isConsentGatedAction(action) {
