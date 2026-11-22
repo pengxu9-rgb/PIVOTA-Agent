@@ -315,9 +315,9 @@ test('flag on: each partner\'s quote, order and hosted link reach the backend si
       ['quote', partner, 'preview_quote', null, 'gateway-service-key'],
       ['order', partner, 'create_order', ridOf(i), 'gateway-service-key'],
       ['session', partner, 'create_payment_link', calls.filter((c) => c.path === 'session')[i].body.order_id, 'gateway-service-key'],
-      // The kernel's order read (two GETs on the order routes) is not a partner-identity op: unsigned.
-      ['order_tracking', null, null, null, 'gateway-service-key'],
-      ['order_read', null, null, null, 'gateway-service-key'],
+      // The kernel's order read: BOTH GETs signed for the partner (get_order_status), each naming the order (P2-A).
+      ['order_tracking', partner, 'get_order_status', calls.filter((c) => c.path === 'order_tracking')[i].uri.split('/')[4], 'gateway-service-key'],
+      ['order_read', partner, 'get_order_status', calls.filter((c) => c.path === 'order_read')[i].uri.split('/')[4], 'gateway-service-key'],
       ['after_sales', partner, 'request_after_sales', calls.filter((c) => c.path === 'after_sales')[i].uri.split('/')[4], 'gateway-service-key'],
     ];
     assert.deepEqual(seen, [...steps(PARTNER_A, 0), ...steps(PARTNER_B, 1)]);
