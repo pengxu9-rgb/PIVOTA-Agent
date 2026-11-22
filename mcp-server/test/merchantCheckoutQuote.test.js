@@ -88,6 +88,8 @@ function merchantFixture({
   return {
     calls,
     tier: transport,
+    // The real client's self-report (public values only); the quote refuses a client without one.
+    describeTier() { return { signing_key_published: true }; },
     async discoverEndpoint(url) {
       calls.push(["discover", url]);
       return { mcpEndpoint: discoveredEndpoint };
@@ -485,4 +487,14 @@ test("a client whose self-report throws is refused as unpublished", async () => 
   const out = await createService(client).quote(request);
   assert.equal(out.reason, "merchant_checkout_quote_signing_key_unpublished");
   assert.deepEqual(client.calls, []);
+});
+
+test("a client with no self-report, or one that omits signing_key_published, is refused (fails closed)", async () => {
+  for (const describeTier of [undefined, () => ({}), () => ({ signing_key_published: undefined }), () => null]) {
+    const client = { ...merchantFixture(), describeTier };
+    if (describeTier === undefined) delete client.describeTier;
+    const out = await createService(client).quote(request);
+    assert.equal(out.reason, "merchant_checkout_quote_signing_key_unpublished");
+    assert.deepEqual(client.calls, []);
+  }
 });

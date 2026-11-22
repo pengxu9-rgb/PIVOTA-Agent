@@ -295,11 +295,11 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
   }
 
   // A key that is not the published one signs requests the merchant cannot verify, so the quote would only learn
-  // that after creating a checkout. The real client reports it (describeTier, public values only); a client
-  // whose self-report throws is refused too. A client without describeTier (a test double) is not asked.
+  // that after creating a checkout. The real client reports it (describeTier, public values only). Fails closed:
+  // a client with no self-report, one whose self-report throws, and one that omits the field are all refused.
   function signingKeyUnpublished(sellerClient) {
-    if (typeof sellerClient.describeTier !== "function") return false;
-    try { return sellerClient.describeTier().signing_key_published !== true; } catch { return true; }
+    if (typeof sellerClient.describeTier !== "function") return true;
+    try { return sellerClient.describeTier()?.signing_key_published !== true; } catch { return true; }
   }
 
   return {

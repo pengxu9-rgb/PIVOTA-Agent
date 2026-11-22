@@ -55,6 +55,8 @@ function client(country, currency) {
   const calls = [];
   return {
     calls, tier: "signed",
+    // The real client's self-report (public values only); the quote refuses a client without one.
+    describeTier() { return { signing_key_published: true }; },
     async discoverEndpoint(url) { calls.push(["discover", url]); return { mcpEndpoint: endpoint }; },
     async listTools() {
       calls.push(["tools/list"]);
