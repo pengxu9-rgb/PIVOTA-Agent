@@ -50,14 +50,24 @@
  *
  * REPLAY (RFC 9421 path): the business verifier always requires a signed `created` (no older than
  * UCP_SIGNATURE_MAX_AGE_S plus the clock skew), so a captured request stops verifying after that window.
- * Inside the window, accept mode remembers the sha256 of every signature it accepted until that
- * signature's window closes; the same signature again is acknowledged as a duplicate and not recorded.
- * webhook-id is not a covered component, so it is never the replay defense; accept mode requires it and
- * dedupes on it (24h) so a business's retry, which carries a new signature, is not recorded twice. Both
- * memories are bounded; when the signature memory is full of unexpired entries the request gets 503,
- * never an unchecked accept. Both live in THIS instance only: with several instances, a replay that lands
- * on another one inside the `created` window is recorded once more there. That is harmless while this
- * receiver drives no order state; a shared store is required before it does.
+ * Inside the window, accept mode remembers the sha256 of every BODY it accepted until that request's
+ * window closes, and the same body again is acknowledged as a duplicate and not recorded. The key is the
+ * body, not the signature: Content-Digest is a required covered component, so every replay that verifies
+ * carries these exact bytes, while the signature bytes are attacker-malleable (an ES256 (r, s) also
+ * verifies as (r, n-s), and a dual-signed request can be replayed with one label stripped). High-S is NOT
+ * refused: node's own ES256 signer emits it about half the time, so refusing it would refuse genuine
+ * businesses.
+ * webhook-id is not a covered component, so it is never the replay defense. Accept mode requires it and
+ * dedupes on it (24h) so a business's re-signed retry is not recorded twice. A webhook-id is remembered
+ * only when its event is actually RECORDED: an attacker replaying a captured body under a guessed future
+ * id must not make the business's genuine event under that id read as a duplicate.
+ * Both memories are bounded. When the body memory is full, expired entries are swept first; if it is still
+ * full of live ones the request gets 503, never an unchecked accept. Both live in THIS instance only: with
+ * several instances, a replay that lands on another one inside the `created` window is recorded once more
+ * there. That is harmless while this receiver drives no order state; a shared store is required before it
+ * does.
+ * A request carrying BOTH a Request-Signature and RFC 9421 headers takes the detached-JWS path below, which
+ * has no replay memory: the weaker scheme wins when both are present.
  * NO REPLAY PROTECTION on the detached-JWS path (documented limitation): the sha256 dedup ring only
  * collapses byte-identical redeliveries — a captured signed body replays fine once the ring evicts its
  * sha, and the signature stays valid forever. That path MUST NOT drive order state; today it is
@@ -87,7 +97,7 @@ const RFC9421_MODE_ENV = 'UCP_ORDER_WEBHOOK_RFC9421_MODE';
 const TRUSTED_BUSINESS_PROFILES_ENV = 'UCP_ORDER_WEBHOOK_TRUSTED_BUSINESS_PROFILES';
 const RFC9421_MODES = new Set(['off', 'observe', 'accept']);
 // Accept-mode memories (see REPLAY above). Sized far past any plausible webhook rate from trusted businesses.
-const MAX_SEEN_SIGNATURES = 20_000;
+const MAX_SEEN_BODIES = 20_000;
 const MAX_SEEN_WEBHOOK_IDS = 20_000;
 const WEBHOOK_ID_TTL_MS = 24 * 60 * 60_000;
 const MAX_WEBHOOK_ID_LENGTH = 256;
@@ -239,15 +249,19 @@ function createUcpOrderWebhookReceiver(deps = {}) {
   const events = [];
   const eventsBySha = new Map();
 
-  // Accept-mode replay memories: key -> expiry (ms). Insertion order is close to expiry order, so pruning
-  // walks from the front and stops at the first live entry.
-  const seenSignatures = new Map();
+  // Accept-mode replay memories: key -> expiry (ms). Insertion order is only CLOSE to expiry order (a body's
+  // expiry follows its signed `created`, which may sit anywhere in the skew window), so the cheap prune walks
+  // from the front and stops at the first live entry, and a full memory is swept completely before any 503.
+  const seenBodies = new Map();
   const seenWebhookIds = new Map();
-  const maxSeenSignatures = Number.isInteger(deps.maxSeenSignatures) && deps.maxSeenSignatures > 0
-    ? deps.maxSeenSignatures : MAX_SEEN_SIGNATURES;
-  function prune(map, t) {
+  const maxSeenBodies = Number.isInteger(deps.maxSeenBodies) && deps.maxSeenBodies > 0
+    ? deps.maxSeenBodies : MAX_SEEN_BODIES;
+  function prune(map, t, { sweep = false } = {}) {
     for (const [key, expiresAt] of map) {
-      if (expiresAt > t) break;
+      if (expiresAt > t) {
+        if (!sweep) break;
+        continue;
+      }
       map.delete(key);
     }
   }
@@ -421,6 +435,7 @@ function createUcpOrderWebhookReceiver(deps = {}) {
     let kid = null;
     let scheme = null;
     let replayed = false;
+    let remember = null; // accept mode: what to remember once the event's fate is known
     if (verifyRequired && !signature && rfcMode === 'accept' && rfc) {
       if (!rawBodyBytes) {
         return { status: 415, body: { detail: 'unsupported media type: application/json required' } };
@@ -436,27 +451,22 @@ function createUcpOrderWebhookReceiver(deps = {}) {
         return { status: 400, body: { detail: 'webhook-id header required (at most 256 characters)' } };
       }
       const t = now();
-      prune(seenSignatures, t);
+      prune(seenBodies, t);
       prune(seenWebhookIds, t);
-      // `created` is guaranteed here: the business verifier requires it.
-      const sigExpiresAt = (rfc.created + rfcWindow.maxAgeS + 2 * rfcWindow.clockSkewS) * 1000;
-      if (seenSignatures.has(rfc.signature_sha256)) {
+      // The bytes the Content-Digest was checked over (see REPLAY above for why the body is the key).
+      const verifiedBytes = Buffer.isBuffer(exactBytes) ? exactBytes : rawBodyBytes;
+      const replayKey = crypto.createHash('sha256').update(verifiedBytes).digest('hex');
+      if (seenBodies.has(replayKey) || seenWebhookIds.has(webhookId)) {
         replayed = true;
       } else {
-        if (seenSignatures.size >= maxSeenSignatures) {
-          warn(new Error('signature replay memory full'), 'UCP order webhook refused: replay memory full');
+        if (seenBodies.size >= maxSeenBodies) prune(seenBodies, t, { sweep: true });
+        if (seenBodies.size >= maxSeenBodies) {
+          warn(new Error('replay memory full'), 'UCP order webhook refused: replay memory full');
           return { status: 503, body: { detail: 'temporarily unable to accept webhooks; retry later' } };
         }
-        // Remembered even when the webhook-id below marks a retry: webhook-id is not signed, so a replay of
-        // this signature under a fresh webhook-id must still be caught here.
-        seenSignatures.set(rfc.signature_sha256, sigExpiresAt);
-        if (seenWebhookIds.has(webhookId)) {
-          replayed = true;
-        } else {
-          // Over capacity the oldest webhook-id goes first; the signature memory still blocks replays.
-          while (seenWebhookIds.size >= MAX_SEEN_WEBHOOK_IDS) seenWebhookIds.delete(seenWebhookIds.keys().next().value);
-          seenWebhookIds.set(webhookId, t + WEBHOOK_ID_TTL_MS);
-        }
+        // `created` is guaranteed here: the business verifier requires it. The memory outlives the window the
+        // verifier accepts (created + maxAge + skew) by one more skew.
+        remember = { replayKey, expiresAt: (rfc.created + rfcWindow.maxAgeS + 2 * rfcWindow.clockSkewS) * 1000, t };
       }
       verified = true;
       kid = rfc.keyid || null;
@@ -489,6 +499,15 @@ function createUcpOrderWebhookReceiver(deps = {}) {
     const shaSource = rawBodyBytes || Buffer.from(JSON.stringify(body), 'utf8');
     const bodySha256 = crypto.createHash('sha256').update(shaSource).digest('hex');
     const duplicate = replayed || eventsBySha.has(bodySha256);
+    if (remember) {
+      // The body is remembered either way: only these exact bytes can ever match it.
+      seenBodies.set(remember.replayKey, remember.expiresAt);
+      // The webhook-id only when this event is recorded (see REPLAY above).
+      if (!duplicate) {
+        while (seenWebhookIds.size >= MAX_SEEN_WEBHOOK_IDS) seenWebhookIds.delete(seenWebhookIds.keys().next().value);
+        seenWebhookIds.set(webhookId, remember.t + WEBHOOK_ID_TTL_MS);
+      }
+    }
 
     if (!duplicate) {
       let parsed = isPlainObject(body) ? body : null;

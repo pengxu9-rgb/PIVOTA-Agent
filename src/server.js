@@ -56370,6 +56370,7 @@ module.exports._debug = {
   // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
   shouldCaptureAcpRawBody,
   shouldCaptureUcpSignedRawBody,
+  ucpProfileKeyFetchForTests,
   // #1933 decoupling property: whether the buyable mainline lane runs the
   // canonical token-match tokenizer must depend on THIS flag alone. It rode
   // PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED for its whole life, which chained

@@ -463,9 +463,6 @@ function createUcpSignatureVerifier({
       authority: view.authority,
       keys_stale: Boolean(got.stale),
       meta_binding: binding,
-      // A replayed request carries these exact signature bytes; the hash lets a caller remember them
-      // without keeping the signature itself.
-      signature_sha256: nodeCrypto.createHash('sha256').update(sigMember.value).digest('hex'),
     };
   }
 

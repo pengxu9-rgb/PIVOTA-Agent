@@ -173,3 +173,17 @@ test('webhook accept: the route hands the receiver the exact bytes and request l
     assert.equal(line.ucp_agent_covered, true);
   });
 });
+
+test('the profile-key fetch shim exists only under NODE_ENV=test; production passes none (public-only transport)', () => {
+  const saved = process.env.NODE_ENV;
+  try {
+    for (const value of ['production', 'staging', '', undefined]) {
+      if (value === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = value;
+      assert.equal(app._debug.ucpProfileKeyFetchForTests(), undefined, String(value));
+    }
+    process.env.NODE_ENV = 'test';
+    assert.equal(typeof app._debug.ucpProfileKeyFetchForTests(), 'function');
+  } finally {
+    process.env.NODE_ENV = saved;
+  }
+});

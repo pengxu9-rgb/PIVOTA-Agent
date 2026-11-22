@@ -347,17 +347,6 @@ test('the requireCreated option overrides UCP_SIGNATURE_REQUIRE_CREATED in both 
   assert.equal(verifier({ env: { UCP_SIGNATURE_MAX_AGE_S: '120' } }).v.maxAgeS, 120);
 });
 
-test('a verified result carries the sha256 of the signature bytes, never the signature', async () => {
-  const { v } = verifier();
-  const s = signedRequest();
-  const r = await v.verifyRequest(s.req, { rawBody: s.rawBody });
-  assert.equal(r.verified, true, r.reason);
-  const sigB64 = /=:([^:]+):/.exec(s.req.headers.signature)[1];
-  const expected = nodeCrypto.createHash('sha256').update(Buffer.from(sigB64, 'base64')).digest('hex');
-  assert.equal(r.signature_sha256, expected);
-  assert.ok(!JSON.stringify(r).includes(sigB64));
-});
-
 test('UCP_SIGNATURE_MAX_AGE_S widens the created window', async () => {
   const wide = verifier({ env: { UCP_SIGNATURE_MAX_AGE_S: '7200' } });
   const s = signedRequest({ created: nowS() - 3600, expires: nowS() + 60 });
