@@ -163,7 +163,8 @@ test('webhook accept: the route hands the receiver the exact bytes and request l
   }, async () => {
     // Non-canonical JSON spacing on purpose: a re-serialized body would not match the digest.
     const body = '{"id": "order-1",  "checkout_id": "co-1"}';
-    const headers = signedHeaders('/ucp/order-webhook', body, { profile: BUSINESS_PROFILE });
+    // Accept mode requires webhook-id (unsigned, deduped); it reaches the receiver through the route too.
+    const headers = { ...signedHeaders('/ucp/order-webhook', body, { profile: BUSINESS_PROFILE }), 'webhook-id': 'evt-route-1' };
     const { result, entries } = await captureLogs(() => post('/ucp/order-webhook', headers, body));
     assert.equal(result.status, 200, JSON.stringify(result.body));
     assert.equal(result.body.meta.signature_scheme, 'rfc9421');
@@ -171,4 +172,18 @@ test('webhook accept: the route hands the receiver the exact bytes and request l
     assert.equal(line.verified, true, line.reason);
     assert.equal(line.ucp_agent_covered, true);
   });
+});
+
+test('the profile-key fetch shim exists only under NODE_ENV=test; production passes none (public-only transport)', () => {
+  const saved = process.env.NODE_ENV;
+  try {
+    for (const value of ['production', 'staging', '', undefined]) {
+      if (value === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = value;
+      assert.equal(app._debug.ucpProfileKeyFetchForTests(), undefined, String(value));
+    }
+    process.env.NODE_ENV = 'test';
+    assert.equal(typeof app._debug.ucpProfileKeyFetchForTests(), 'function');
+  } finally {
+    process.env.NODE_ENV = saved;
+  }
 });

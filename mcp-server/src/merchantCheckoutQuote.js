@@ -294,6 +294,14 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
     } catch { return null; }
   }
 
+  // A key that is not the published one signs requests the merchant cannot verify, so the quote would only learn
+  // that after creating a checkout. The real client reports it (describeTier, public values only). Fails closed:
+  // a client with no self-report, one whose self-report throws, and one that omits the field are all refused.
+  function signingKeyUnpublished(sellerClient) {
+    if (typeof sellerClient.describeTier !== "function") return true;
+    try { return sellerClient.describeTier()?.signing_key_published !== true; } catch { return true; }
+  }
+
   return {
     async recoverCleanup({ sellerHost, endpoint, checkoutId, cancelKey }) {
       const sellerClient = signedClient();
@@ -325,6 +333,7 @@ export function createMerchantCheckoutQuoteService({ client, env = process.env, 
       const requestedCode = discountCodes?.[0]?.trim();
       const sellerClient = signedClient();
       if (!sellerClient) return refusal("merchant_checkout_quote_signed_client_unavailable");
+      if (signingKeyUnpublished(sellerClient)) return refusal("merchant_checkout_quote_signing_key_unpublished");
 
       try {
         const profile = await sellerClient.discoverEndpoint(`https://${seller}`);

@@ -27,6 +27,12 @@
 // is reported as `profile_not_trusted` with the claimed URL attached (bounded) for counting. The spec's own
 // rule for businesses: "SHOULD maintain a registry of pre-approved platforms".
 //
+// PUBLIC ADDRESSES ONLY. An allowlisted host can still resolve somewhere it must not (a lapsed domain, a DNS
+// change, rebinding). Unless a caller injects its own fetch, keys are fetched through the gateway's
+// public-only transport (ucpBuyerAgentClient.createPublicNetworkFetch): IP literals and never-a-merchant names
+// are refused before any lookup, every DNS answer is checked at connect time (a mixed public/private answer is
+// refused), and redirects are never followed. A refusal reads as `profile_unreachable`.
+//
 // FRESHNESS is application-defined in UCP (`created` is optional, replay protection is the signed
 // idempotency-key). Here: a `created` in the future beyond the skew, or older than UCP_SIGNATURE_MAX_AGE_S,
 // fails; an `expires` in the past fails; a missing `created` fails only with UCP_SIGNATURE_REQUIRE_CREATED.
@@ -36,6 +42,8 @@
 // standard's words. Nothing here refuses a request; callers decide.
 
 const nodeCrypto = require('crypto');
+const nodeDns = require('node:dns');
+const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
 const {
   importPublicJwk,
   requestView,
@@ -364,19 +372,28 @@ function withUcpError(result) {
  */
 function createUcpSignatureVerifier({
   env = process.env,
-  fetchImpl = globalThis.fetch,
+  // Omitted (production): the public-only transport above, dialled through `dnsLookup`.
+  fetchImpl,
+  dnsLookup,
   nowMs = Date.now,
   trustedProfiles = [],
   kind = PROFILE_KIND.PLATFORM,
   requireUcpAgentCoverage = true,
   checkMetaBinding,
+  // A caller that has no other freshness signal (the order webhook) forces `created`; unset reads the env.
+  requireCreated: requireCreatedOption,
 } = {}) {
   const trusted = new Set([...trustedProfiles].map(normalizeProfileUrl).filter(Boolean));
   const expectedAuthorities = loadExpectedAuthorities(env);
   const maxAgeS = positiveInt(env.UCP_SIGNATURE_MAX_AGE_S, DEFAULT_MAX_AGE_S);
-  const requireCreated = isFlagOn(env.UCP_SIGNATURE_REQUIRE_CREATED);
+  const requireCreated = requireCreatedOption === undefined
+    ? isFlagOn(env.UCP_SIGNATURE_REQUIRE_CREATED)
+    : Boolean(requireCreatedOption);
   const bindMeta = checkMetaBinding === undefined ? kind === PROFILE_KIND.PLATFORM : Boolean(checkMetaBinding);
-  const keyCache = createProfileKeyCache({ fetchImpl, nowMs });
+  const keyFetch = typeof fetchImpl === 'function'
+    ? fetchImpl
+    : createPublicNetworkFetch(typeof dnsLookup === 'function' ? dnsLookup : nodeDns.lookup);
+  const keyCache = createProfileKeyCache({ fetchImpl: keyFetch, nowMs });
 
   function requiredComponents(view, hasBody) {
     const req = ['"@method"', '"@authority"', '"@path"'];
@@ -505,7 +522,9 @@ function createUcpSignatureVerifier({
     }
   }
 
-  return { verifyRequest, trustedProfiles: trusted, kind };
+  return {
+    verifyRequest, trustedProfiles: trusted, kind, maxAgeS, clockSkewS: CLOCK_SKEW_S, requireCreated,
+  };
 }
 
 module.exports = {

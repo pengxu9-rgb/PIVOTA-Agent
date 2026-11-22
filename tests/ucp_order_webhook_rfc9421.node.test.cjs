@@ -23,13 +23,16 @@ const BUSINESS_JWK = { ...publicKey.export({ format: 'jwk' }), kid: 'shop-2026',
 const nowS = () => Math.floor(Date.now() / 1000);
 
 /** The spec's webhook example shape: covers @method @authority @path content-digest content-type. */
-function signWebhook(bodyString, { profile = BUSINESS, coverUcpAgent = false, key = privateKey, kid = 'shop-2026' } = {}) {
+function signWebhook(bodyString, {
+  profile = BUSINESS, coverUcpAgent = false, key = privateKey, kid = 'shop-2026', created = nowS(), webhookId = 'evt-0001',
+} = {}) {
   const digest = `sha-256=:${crypto.createHash('sha256').update(bodyString).digest('base64')}:`;
   const ucpAgent = `profile="${profile}"`;
   const comps = [['@method', 'POST'], ['@authority', HOST], ['@path', '/ucp/order-webhook']];
   if (coverUcpAgent) comps.push(['ucp-agent', ucpAgent]);
   comps.push(['content-digest', digest], ['content-type', 'application/json']);
-  const params = `(${comps.map(([n]) => `"${n}"`).join(' ')});created=${nowS()};keyid="${kid}"`;
+  const createdParam = created === null ? '' : `;created=${created}`;
+  const params = `(${comps.map(([n]) => `"${n}"`).join(' ')})${createdParam};keyid="${kid}"`;
   const base = [...comps.map(([n, v]) => `"${n}": ${v}`), `"@signature-params": ${params}`].join('\n');
   const sig = crypto.sign('sha256', Buffer.from(base, 'utf8'), { key, dsaEncoding: 'ieee-p1363' });
   return {
@@ -37,14 +40,14 @@ function signWebhook(bodyString, { profile = BUSINESS, coverUcpAgent = false, ke
     'content-type': 'application/json',
     'content-digest': digest,
     'ucp-agent': ucpAgent,
-    'webhook-id': 'evt-0001',
+    ...(webhookId === null ? {} : { 'webhook-id': webhookId }),
     'webhook-timestamp': String(nowS()),
     'signature-input': `sig1=${params}`,
     signature: `sig1=:${sig.toString('base64')}:`,
   };
 }
 
-function harness(envExtra = {}) {
+function harness(envExtra = {}, deps = {}) {
   const fetchCalls = [];
   const logs = [];
   const env = {
@@ -54,15 +57,16 @@ function harness(envExtra = {}) {
     ...envExtra,
   };
   const receiver = createUcpOrderWebhookReceiver({
+    ...deps,
     env,
     logger: { info: (o) => logs.push(o), warn: (o) => logs.push(o) },
-    fetchImpl: async (url) => {
+    fetchImpl: deps.fetchImpl || (async (url) => {
       fetchCalls.push(String(url));
       if (String(url) === BUSINESS) {
         return { status: 200, ok: true, headers: { get: () => null }, text: async () => JSON.stringify({ ucp: { version: '2026-04-08', signing_keys: [BUSINESS_JWK] } }), json: async () => ({}) };
       }
       return { status: 404, ok: false, headers: { get: () => null }, text: async () => '', json: async () => ({}) };
-    },
+    }),
   });
   const post = (headers, bodyString) => receiver.handleOrderWebhook({
     headers,
@@ -180,4 +184,354 @@ test('an unknown mode reads as off', async () => {
   const out = await h.post(signWebhook(body), body);
   assert.deepEqual(out.body, { detail: 'missing Request-Signature' });
   assert.equal(rfcLogs(h.logs).length, 0);
+});
+
+// ---- R1: freshness and replay (accept mode) ----
+
+const ACCEPT = { UCP_ORDER_WEBHOOK_RFC9421_MODE: 'accept' };
+
+test('accept: a webhook signed without created is refused, even with UCP_SIGNATURE_REQUIRE_CREATED unset', async () => {
+  const h = harness(ACCEPT);
+  const body = orderBody(20);
+  const out = await h.post(signWebhook(body, { created: null }), body);
+  assert.equal(out.status, 401);
+  assert.equal(out.body.code, 'signature_invalid');
+  assert.equal((await h.events()).length, 0);
+});
+
+test('accept: UCP_SIGNATURE_REQUIRE_CREATED=0 does not switch the webhook requirement off', async () => {
+  const h = harness({ ...ACCEPT, UCP_SIGNATURE_REQUIRE_CREATED: '0' });
+  const body = orderBody(21);
+  const out = await h.post(signWebhook(body, { created: null }), body);
+  assert.equal(out.status, 401);
+});
+
+test('observe: a webhook without created logs created_missing; the decision is unchanged', async () => {
+  const h = harness({ UCP_ORDER_WEBHOOK_RFC9421_MODE: 'observe', UCP_ORDER_WEBHOOK_ALLOW_UNVERIFIED: '1' });
+  const body = orderBody(22);
+  const out = await h.post(signWebhook(body, { created: null }), body);
+  assert.equal(out.status, 200);
+  const [line] = rfcLogs(h.logs);
+  assert.equal(line.verified, false);
+  assert.equal(line.reason, 'created_missing');
+  assert.equal(line.created, null);
+});
+
+test('accept: created older than UCP_SIGNATURE_MAX_AGE_S plus the skew is refused', async () => {
+  const h = harness({ ...ACCEPT, UCP_SIGNATURE_MAX_AGE_S: '120' });
+  const body = orderBody(23);
+  const out = await h.post(signWebhook(body, { created: nowS() - 120 - 61 }), body);
+  assert.equal(out.status, 401);
+  assert.equal(out.body.code, 'signature_invalid');
+  const [line] = rfcLogs(h.logs);
+  assert.equal(line.reason, 'expired');
+});
+
+test('accept: a verified webhook with no webhook-id is refused 400 and not recorded', async () => {
+  const h = harness(ACCEPT);
+  const body = orderBody(24);
+  const out = await h.post(signWebhook(body, { webhookId: null }), body);
+  assert.equal(out.status, 400);
+  assert.match(out.body.detail, /webhook-id/);
+  assert.equal((await h.events()).length, 0);
+});
+
+test('accept: an unverifiable webhook with no webhook-id still gets the signature refusal, not the 400', async () => {
+  const h = harness(ACCEPT);
+  const other = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey;
+  const body = orderBody(25);
+  const out = await h.post(signWebhook(body, { webhookId: null, key: other }), body);
+  assert.equal(out.status, 401);
+});
+
+test('accept: a webhook-id over 256 characters is refused 400', async () => {
+  const h = harness(ACCEPT);
+  const body = orderBody(26);
+  const out = await h.post(signWebhook(body, { webhookId: 'x'.repeat(257) }), body);
+  assert.equal(out.status, 400);
+});
+
+test('accept: the same signed request twice is acknowledged as a duplicate and recorded once', async () => {
+  const h = harness(ACCEPT);
+  const body = orderBody(27);
+  const headers = signWebhook(body, { webhookId: 'evt-27' });
+  const first = await h.post(headers, body);
+  const second = await h.post(headers, body);
+  assert.equal(first.status, 200);
+  assert.equal(first.body.meta.duplicate, false);
+  assert.equal(second.status, 200);
+  assert.equal(second.body.meta.duplicate, true);
+  assert.equal((await h.events()).length, 1);
+});
+
+test('accept: a replayed request under a fresh webhook-id is still a duplicate (webhook-id is not signed)', async () => {
+  // MAX_EVENTS=1 plus an event in between evicts the body sha from the event ring, so only the replay memory
+  // can catch it.
+  const h = harness({ ...ACCEPT, UCP_ORDER_WEBHOOK_MAX_EVENTS: '1' });
+  const body = orderBody(28);
+  const headers = signWebhook(body, { webhookId: 'evt-28' });
+  assert.equal((await h.post(headers, body)).body.meta.duplicate, false);
+  const between = orderBody(29);
+  assert.equal((await h.post(signWebhook(between, { webhookId: 'evt-29' }), between)).status, 200);
+  const replay = await h.post({ ...headers, 'webhook-id': 'evt-28-replayed' }, body);
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.meta.duplicate, true);
+  assert.deepEqual((await h.events()).map((e) => e.checkout_id), ['co-29']);
+});
+
+test('accept: a retry re-signed under the same webhook-id is a duplicate, and a replay of it is too', async () => {
+  const h = harness({ ...ACCEPT, UCP_ORDER_WEBHOOK_MAX_EVENTS: '1' });
+  const body = orderBody(30);
+  assert.equal((await h.post(signWebhook(body, { webhookId: 'evt-30' }), body)).body.meta.duplicate, false);
+  const between = orderBody(31);
+  await h.post(signWebhook(between, { webhookId: 'evt-31' }), between);
+  const retryHeaders = signWebhook(body, { webhookId: 'evt-30' });
+  const retry = await h.post(retryHeaders, body);
+  assert.equal(retry.body.meta.duplicate, true);
+  const another = orderBody(32);
+  await h.post(signWebhook(another, { webhookId: 'evt-32' }), another);
+  const replayOfRetry = await h.post({ ...retryHeaders, 'webhook-id': 'evt-30-b' }, body);
+  assert.equal(replayOfRetry.body.meta.duplicate, true);
+  assert.deepEqual((await h.events()).map((e) => e.checkout_id), ['co-32']);
+});
+
+test('accept: after its window a replayed request is refused by created, and its memory is released', async () => {
+  let t = Date.now();
+  const h = harness({ ...ACCEPT, UCP_SIGNATURE_MAX_AGE_S: '60' }, { now: () => t, maxSeenBodies: 1 });
+  const body = orderBody(33);
+  const headers = signWebhook(body, { webhookId: 'evt-33' });
+  assert.equal((await h.post(headers, body)).status, 200);
+  t += (60 + 2 * 60 + 1) * 1000;
+  const replay = await h.post(headers, body);
+  assert.equal(replay.status, 401);
+  // The one slot was freed by pruning: a fresh webhook signed "now" (the moved clock) is accepted.
+  const fresh = orderBody(34);
+  const ok = await h.post(signWebhook(fresh, { webhookId: 'evt-34', created: Math.floor(t / 1000) }), fresh);
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+});
+
+test('accept: a full replay memory refuses 503 rather than accepting unchecked', async () => {
+  const h = harness(ACCEPT, { maxSeenBodies: 1 });
+  const a = orderBody(35);
+  assert.equal((await h.post(signWebhook(a, { webhookId: 'evt-35' }), a)).status, 200);
+  const b = orderBody(36);
+  const out = await h.post(signWebhook(b, { webhookId: 'evt-36' }), b);
+  assert.equal(out.status, 503);
+  assert.equal((await h.events()).length, 1);
+});
+
+test('the receiver builds its business verifier on the public-only transport when no fetch is injected', async () => {
+  const saved = globalThis.fetch;
+  const globalCalls = [];
+  globalThis.fetch = async (url) => { globalCalls.push(String(url)); throw new Error('global fetch must not be used'); };
+  try {
+    const lookups = [];
+    const receiver = createUcpOrderWebhookReceiver({
+      env: {
+        UCP_ORDER_WEBHOOK_RECEIVER_ENABLED: '1',
+        UCP_ORDER_WEBHOOK_RFC9421_MODE: 'accept',
+        UCP_ORDER_WEBHOOK_TRUSTED_BUSINESS_PROFILES: BUSINESS,
+      },
+      logger: { info() {}, warn() {} },
+      dnsLookup: (host, options, callback) => {
+        const cb = typeof options === 'function' ? options : callback;
+        lookups.push(host);
+        cb(null, [{ address: '10.1.2.3', family: 4 }]);
+      },
+    });
+    const body = orderBody(40);
+    const out = await receiver.handleOrderWebhook({
+      headers: signWebhook(body), rawBody: body, rawBodyBytes: Buffer.from(body, 'utf8'), body: JSON.parse(body),
+      request: { method: 'POST', originalUrl: '/ucp/order-webhook' },
+    });
+    assert.equal(out.status, 401);
+    assert.deepEqual(lookups, ['shop.example']);
+    assert.equal(globalCalls.length, 0);
+  } finally {
+    globalThis.fetch = saved;
+  }
+});
+
+// ---- F1/F2/F3 (review of R1): the replay key is the body, the webhook-id is kept only for recorded events ----
+
+// P-256 group order: (r, n - s) verifies exactly like (r, s).
+const P256_N = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
+function highSOf(signatureHeader) {
+  const label = /^([^=]+)=:/.exec(signatureHeader)[1];
+  const sig = Buffer.from(/=:([^:]+):/.exec(signatureHeader)[1], 'base64');
+  const s = BigInt(`0x${sig.subarray(32).toString('hex')}`);
+  const flipped = Buffer.from((P256_N - s).toString(16).padStart(64, '0'), 'hex');
+  return `${label}=:${Buffer.concat([sig.subarray(0, 32), flipped]).toString('base64')}:`;
+}
+
+const { publicKey: publicKey2, privateKey: privateKey2 } = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+const BUSINESS_JWK_2 = { ...publicKey2.export({ format: 'jwk' }), kid: 'shop-2026-b', use: 'sig' };
+
+/** Two labels over the same components, each by its own published key (as during a rotation). */
+function signDual(bodyString, { webhookId }) {
+  const digest = `sha-256=:${crypto.createHash('sha256').update(bodyString).digest('base64')}:`;
+  const comps = [['@method', 'POST'], ['@authority', HOST], ['@path', '/ucp/order-webhook'],
+    ['content-digest', digest], ['content-type', 'application/json']];
+  const one = (kid, key) => {
+    const params = `(${comps.map(([n]) => `"${n}"`).join(' ')});created=${nowS()};keyid="${kid}"`;
+    const base = [...comps.map(([n, v]) => `"${n}": ${v}`), `"@signature-params": ${params}`].join('\n');
+    return { params, sig: crypto.sign('sha256', Buffer.from(base, 'utf8'), { key, dsaEncoding: 'ieee-p1363' }).toString('base64') };
+  };
+  const a = one('shop-2026', privateKey);
+  const b = one('shop-2026-b', privateKey2);
+  return {
+    host: HOST, 'content-type': 'application/json', 'content-digest': digest,
+    'ucp-agent': `profile="${BUSINESS}"`, 'webhook-id': webhookId,
+    'signature-input': `sig1=${a.params}, sig2=${b.params}`,
+    signature: `sig1=:${a.sig}:, sig2=:${b.sig}:`,
+    stripped: { 'signature-input': `sig2=${b.params}`, signature: `sig2=:${b.sig}:` },
+  };
+}
+
+function dualKeyHarness(envExtra = {}, deps = {}) {
+  const h = harness(envExtra, {
+    ...deps,
+    fetchImpl: async (url) => ({
+      status: String(url) === BUSINESS ? 200 : 404,
+      ok: String(url) === BUSINESS,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ ucp: { version: '2026-04-08', signing_keys: [BUSINESS_JWK, BUSINESS_JWK_2] } }),
+      json: async () => ({}),
+    }),
+  });
+  return h;
+}
+
+const FILLER_ENV = { ...ACCEPT, UCP_ORDER_WEBHOOK_MAX_EVENTS: '1' };
+async function evictRing(h, n) {
+  const filler = orderBody(n);
+  assert.equal((await h.post(signWebhook(filler, { webhookId: `filler-${n}` }), filler)).status, 200);
+}
+
+test('F1: a high-S copy of a captured signature verifies, and is still a duplicate', async () => {
+  const h = harness(FILLER_ENV);
+  const body = orderBody(50);
+  const headers = signWebhook(body, { webhookId: 'evt-50' });
+  assert.equal((await h.post(headers, body)).body.meta.duplicate, false);
+  await evictRing(h, 51);
+  const malleated = { ...headers, signature: highSOf(headers.signature), 'webhook-id': 'evt-50-b' };
+  const out = await h.post(malleated, body);
+  assert.equal(out.status, 200, 'high-S verifies (node accepts it), so the replay memory is what must catch it');
+  assert.equal(out.body.meta.duplicate, true);
+  assert.deepEqual((await h.events()).map((e) => e.checkout_id), ['co-51']);
+});
+
+test('F1: a dual-signed request replayed with one label stripped is still a duplicate', async () => {
+  const h = dualKeyHarness(FILLER_ENV);
+  const body = orderBody(52);
+  const { stripped, ...headers } = signDual(body, { webhookId: 'evt-52' });
+  assert.equal((await h.post(headers, body)).body.meta.duplicate, false);
+  await evictRing(h, 53);
+  const out = await h.post({ ...headers, ...stripped, 'webhook-id': 'evt-52-b' }, body);
+  assert.equal(out.status, 200, JSON.stringify(out.body));
+  assert.equal(out.body.meta.duplicate, true);
+  assert.deepEqual((await h.events()).map((e) => e.checkout_id), ['co-53']);
+});
+
+test('F2: a replay under a guessed future webhook-id does not block the genuine event under that id', async () => {
+  const h = harness(ACCEPT);
+  const body = orderBody(54);
+  const headers = signWebhook(body, { webhookId: 'wh-100' });
+  await h.post(headers, body);
+  const replay = await h.post({ ...headers, signature: highSOf(headers.signature), 'webhook-id': 'wh-101' }, body);
+  assert.equal(replay.body.meta.duplicate, true);
+  const genuine = orderBody(55);
+  const out = await h.post(signWebhook(genuine, { webhookId: 'wh-101' }), genuine);
+  assert.equal(out.body.meta.duplicate, false);
+  assert.deepEqual((await h.events()).map((e) => e.checkout_id).sort(), ['co-54', 'co-55']);
+});
+
+test('F2: a verified body the event ring already holds is a duplicate and does not claim its webhook-id', async () => {
+  // Memory of the body is lost (cap 1, a second body displaced it after expiry), the ring still has it.
+  let t = Date.now();
+  const h = harness({ ...ACCEPT, UCP_SIGNATURE_MAX_AGE_S: '60' }, { now: () => t, maxSeenBodies: 1 });
+  const body = orderBody(56);
+  await h.post(signWebhook(body, { webhookId: 'evt-56', created: Math.floor(t / 1000) }), body);
+  t += (60 + 2 * 60 + 1) * 1000;
+  const again = await h.post(signWebhook(body, { webhookId: 'evt-56-new', created: Math.floor(t / 1000) }), body);
+  assert.equal(again.body.meta.duplicate, true, 'byte-identical body still in the event ring');
+  const genuine = orderBody(57);
+  t += (60 + 2 * 60 + 1) * 1000;
+  const out = await h.post(signWebhook(genuine, { webhookId: 'evt-56-new', created: Math.floor(t / 1000) }), genuine);
+  assert.equal(out.body.meta.duplicate, false, 'evt-56-new was never recorded, so it is still free');
+});
+
+test('M7: a replay at the last second the verifier still accepts is a duplicate', async () => {
+  let t = Date.now();
+  const created = Math.floor(t / 1000);
+  const h = harness({ ...FILLER_ENV, UCP_SIGNATURE_MAX_AGE_S: '60' }, { now: () => t });
+  const body = orderBody(58);
+  const headers = signWebhook(body, { webhookId: 'evt-58', created });
+  await h.post(headers, body);
+  await evictRing(h, 59);
+  t = (created + 60 + 60) * 1000; // created + maxAge + skew: the verifier's last accepted second
+  const out = await h.post({ ...headers, 'webhook-id': 'evt-58-b' }, body);
+  assert.equal(out.status, 200, JSON.stringify(out.body));
+  assert.equal(out.body.meta.duplicate, true);
+});
+
+test('F3: a full memory is swept of expired entries before it answers 503', async () => {
+  let t = Date.now();
+  const nowSec = () => Math.floor(t / 1000);
+  const h = harness({ ...ACCEPT, UCP_SIGNATURE_MAX_AGE_S: '300' }, { now: () => t, maxSeenBodies: 3 });
+  const a = orderBody(60);
+  const b = orderBody(61);
+  const c = orderBody(62);
+  assert.equal((await h.post(signWebhook(a, { webhookId: 'evt-60', created: nowSec() + 60 }), a)).status, 200);
+  assert.equal((await h.post(signWebhook(b, { webhookId: 'evt-61', created: nowSec() - 300 }), b)).status, 200);
+  assert.equal((await h.post(signWebhook(c, { webhookId: 'evt-62', created: nowSec() - 300 }), c)).status, 200);
+  t += 200_000; // b and c expired; a (the head) is live
+  const d = orderBody(63);
+  const out = await h.post(signWebhook(d, { webhookId: 'evt-63', created: nowSec() }), d);
+  assert.equal(out.status, 200, JSON.stringify(out.body));
+});
+
+test('F11: a genuine re-signed retry extends the body memory to its own window', async () => {
+  let t = Date.now();
+  const sec = () => Math.floor(t / 1000);
+  const c1 = sec();
+  const h = harness({ ...FILLER_ENV, UCP_SIGNATURE_MAX_AGE_S: '300' }, { now: () => t });
+  const body = orderBody(70);
+  assert.equal((await h.post(signWebhook(body, { webhookId: 'evt-70', created: c1 }), body)).body.meta.duplicate, false);
+  t = (c1 + 300) * 1000;
+  const retry = signWebhook(body, { webhookId: 'evt-70', created: sec() });
+  assert.equal((await h.post(retry, body)).body.meta.duplicate, true, 'the business retry is a duplicate');
+  const filler = orderBody(71);
+  await h.post(signWebhook(filler, { webhookId: 'evt-71', created: sec() }), filler);
+  // Past the FIRST request's memory (c1 + 300 + 120) but inside the retry's window: the captured retry still
+  // verifies, so only an extended memory can catch it.
+  t = (c1 + 500) * 1000;
+  const out = await h.post({ ...retry, 'webhook-id': 'evt-70-replayed' }, body);
+  assert.equal(out.status, 200, JSON.stringify(out.body));
+  assert.equal(out.body.meta.duplicate, true);
+  assert.deepEqual((await h.events()).map((e) => e.checkout_id), ['co-71']);
+});
+
+test('F11: a duplicate never shortens a body memory, and a full memory never 503s a duplicate', async () => {
+  let t = Date.now();
+  const sec = () => Math.floor(t / 1000);
+  const c1 = sec();
+  const h = harness({ ...FILLER_ENV, UCP_SIGNATURE_MAX_AGE_S: '300' }, { now: () => t, maxSeenBodies: 2 });
+  const body = orderBody(72);
+  const late = signWebhook(body, { webhookId: 'evt-72', created: c1 + 60 });
+  await h.post(late, body);
+  // An earlier-created copy of the same body (a captured older signature) must not pull the memory back.
+  const early = signWebhook(body, { webhookId: 'evt-72-b', created: c1 - 200 });
+  assert.equal((await h.post(early, body)).body.meta.duplicate, true);
+  const other = orderBody(73);
+  await h.post(signWebhook(other, { webhookId: 'evt-73', created: c1 }), other); // memory now full (2)
+  // A re-serialised body under a known webhook-id while full: duplicate, not 503.
+  const reserialised = `${orderBody(72)} `;
+  const dup = await h.post(signWebhook(reserialised, { webhookId: 'evt-72', created: c1 }), reserialised);
+  assert.equal(dup.status, 200);
+  assert.equal(dup.body.meta.duplicate, true);
+  t = (c1 + 60 + 300 + 60) * 1000; // the late copy's last accepted second; the early copy's memory is long gone
+  const out = await h.post({ ...late, 'webhook-id': 'evt-72-c' }, body);
+  assert.equal(out.status, 200, JSON.stringify(out.body));
+  assert.equal(out.body.meta.duplicate, true);
 });
