@@ -1009,7 +1009,7 @@
     forgetToken();
     var minutes = Number(ttlMinutes) || (ui.view && Number(ui.view.link_ttl_minutes)) || 0;
     var lasting = minutes >= 1 ? 'only work for ' + Math.floor(minutes) + (Math.floor(minutes) === 1 ? ' minute' : ' minutes') : 'only work for a short time';
-    renderMessage('This link has expired', 'For your security, AgenPas links ' + lasting + '. Go back to the chat and ask for a new link to see your purchase.');
+    renderMessage('This link has expired', 'For your security, AgenPaz links ' + lasting + '. Go back to the chat and ask for a new link to see your purchase.');
   }
 
   function onError() {

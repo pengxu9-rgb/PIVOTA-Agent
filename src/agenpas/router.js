@@ -220,17 +220,17 @@ const SHELL_HTML = `<!doctype html>
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="light dark">
-<title>AgenPas</title>
+<title>AgenPaz</title>
 <link rel="stylesheet" href="/agenpas/assets/app.css">
 <script src="/agenpas/assets/app.js" defer></script>
 </head>
 <body>
 <div class="shell">
-<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPas</span></header>
+<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPaz</span></header>
 <main id="app" aria-live="polite">
 <section class="card"><p class="muted">Loading your purchase…</p></section>
 </main>
-<noscript><section class="card"><h1>Turn on JavaScript</h1><p>AgenPas needs JavaScript to show your purchase. Your card details are never entered on this page.</p></section></noscript>
+<noscript><section class="card"><h1>Turn on JavaScript</h1><p>AgenPaz needs JavaScript to show your purchase. Your card details are never entered on this page.</p></section></noscript>
 <footer class="foot">Your card number stays with our payment partner. Pivota never sees it.</footer>
 </div>
 </body>
@@ -246,12 +246,12 @@ function messageHtml(title, body) {
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="light dark">
-<title>AgenPas</title>
+<title>AgenPaz</title>
 <link rel="stylesheet" href="/agenpas/assets/app.css">
 </head>
 <body>
 <div class="shell">
-<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPas</span></header>
+<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPaz</span></header>
 <main><section class="card"><h1>${title}</h1><p>${body}</p></section></main>
 </div>
 </body>
@@ -262,7 +262,7 @@ function messageHtml(title, body) {
 // Static wording only: nothing from the request is ever interpolated into HTML.
 const PAGES = Object.freeze({
   invalid: messageHtml("This link isn't valid", 'Please open the link exactly as the chat gave it to you, or ask the chat for a new one.'),
-  unavailable: messageHtml("AgenPas isn't available right now", 'Please go back to the chat and try again in a little while.'),
+  unavailable: messageHtml("AgenPaz isn't available right now", 'Please go back to the chat and try again in a little while.'),
 });
 
 function firstString(value) {

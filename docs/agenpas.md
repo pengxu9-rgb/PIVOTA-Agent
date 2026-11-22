@@ -1,6 +1,6 @@
-# AgenPas: the buyer's own checkout pages
+# AgenPaz: the buyer's own checkout pages
 
-AgenPas (working name) is Pivota's buyer-facing checkout page. A partner chat app hands the buyer an AgenPas link;
+AgenPaz (working name) is Pivota's buyer-facing checkout page. A partner chat app hands the buyer an AgenPaz link;
 the buyer reviews the purchase on our page, adds a card and approves the purchase on the payment partner's own
 hosted pages, and watches the order get placed. The card number is typed only on the payment partner's page: our
 pages have no card fields anywhere, and Pivota never sees the card.
@@ -21,9 +21,9 @@ All read per request; no restart needed.
 | Variable | Default | Meaning |
 |---|---|---|
 | `AGENPAS_ENABLED` | off | Off: every `/agenpas` path falls through to the app's normal not-found (byte-identical to before), and `start_purchase`, `get_order` and both tool descriptions are exactly as before. |
-| `AGENPAS_LINK_SECRET` | none | HMAC-SHA256 key for link tokens, at least 32 characters. Missing or short: no link is minted and every link is refused (the page says AgenPas is unavailable). |
+| `AGENPAS_LINK_SECRET` | none | HMAC-SHA256 key for link tokens, at least 32 characters. Missing or short: no link is minted and every link is refused (the page says AgenPaz is unavailable). |
 | `AGENPAS_LINK_TTL_SECONDS` | 1800 | Link lifetime. Clamped to 60..1800 (30 min is a hard maximum, also enforced on verify). |
-| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at, and the ONLY host the AgenPas routes answer on. None: no link is minted and no route is served. It is also the token's audience (`aud`). `http://localhost` is accepted only while the dev fixtures are actually enabled. **The host is exclusive** (while `AGENPAS_ENABLED` is on): on it (matched by host NAME, so any port, a trailing dot and any case count; only the `Host` header decides, `X-Forwarded-Host` is ignored), every request answers 404 (`X-Agenpas-Guard: front`) unless it is a GET/HEAD of exactly one AgenPas route shape (or, only while `AGENPAS_CONSENT_ENABLED` is on, a POST of exactly `/agenpas/api/p/<id>/consent`; OPTIONS is always refused, so no preflight is ever answered): `/agenpas/p/<id>` (any id of plain characters `[A-Za-z0-9_-]`, so a malformed one gets the friendly "isn't valid" page), `/agenpas/api/p/<id>`, `/agenpas/assets/app.js|app.css` (and `/agenpas/dev/start` with the fixtures armed on a loopback Host). The shape is matched on the RAW request path, and any path containing `%`, `..`, `\` or `//` is refused, so no decoder downstream can resolve it elsewhere. This runs ahead of every other gateway middleware and route (the internal UI, `/health`, the APIs, `/mcp`); the internal UI's static handler also skips the host, and an admitted path the AgenPas router does not serve gets `X-Agenpas-Guard: back`. The routes themselves answer only on the exact origin (its port included). So no other gateway page shares the origin where the buyer's link token is kept. Give it a host name of its own (a dedicated origin): a host that also serves other gateway traffic would lose that traffic. Other hosts are unaffected. |
+| `AGENPAS_PUBLIC_BASE_URL` | none | The https origin minted links point at, and the ONLY host the AgenPaz routes answer on. None: no link is minted and no route is served. It is also the token's audience (`aud`). `http://localhost` is accepted only while the dev fixtures are actually enabled. **The host is exclusive** (while `AGENPAS_ENABLED` is on): on it (matched by host NAME, so any port, a trailing dot and any case count; only the `Host` header decides, `X-Forwarded-Host` is ignored), every request answers 404 (`X-Agenpas-Guard: front`) unless it is a GET/HEAD of exactly one AgenPaz route shape (or, only while `AGENPAS_CONSENT_ENABLED` is on, a POST of exactly `/agenpas/api/p/<id>/consent`; OPTIONS is always refused, so no preflight is ever answered): `/agenpas/p/<id>` (any id of plain characters `[A-Za-z0-9_-]`, so a malformed one gets the friendly "isn't valid" page), `/agenpas/api/p/<id>`, `/agenpas/assets/app.js|app.css` (and `/agenpas/dev/start` with the fixtures armed on a loopback Host). The shape is matched on the RAW request path, and any path containing `%`, `..`, `\` or `//` is refused, so no decoder downstream can resolve it elsewhere. This runs ahead of every other gateway middleware and route (the internal UI, `/health`, the APIs, `/mcp`); the internal UI's static handler also skips the host, and an admitted path the AgenPaz router does not serve gets `X-Agenpas-Guard: back`. The routes themselves answer only on the exact origin (its port included). So no other gateway page shares the origin where the buyer's link token is kept. Give it a host name of its own (a dedicated origin): a host that also serves other gateway traffic would lose that traffic. Other hosts are unaffected. |
 | `AGENPAS_INTERNAL_READ_KEY` | none | The dedicated key the gateway presents (`X-Internal-Key`) on the backend's internal buyer read. None: every read is unavailable. |
 | `AGENPAS_HOSTED_HOSTS` | empty | Comma-separated exact host names the payment partner serves its hosted pages from. Empty refuses every hosted URL (the page shows no button, only "Getting the secure page ready"). |
 | `AGENPAS_EMBED_HOSTED_PAGES` | off | Off: hosted pages open in a popup or a new tab. On: the page frames them (see below). |
@@ -64,7 +64,7 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 
 ## The flow
 
-1. The agent calls `start_purchase`. With AgenPas on, the answer for a purchase on a rail AgenPas serves (`AGENPAS_RAILS`:
+1. The agent calls `start_purchase`. With AgenPaz on, the answer for a purchase on a rail AgenPaz serves (`AGENPAS_RAILS`:
    A2A by default; Reap only with consent on) carries an additive `agenpas_url`
    (`<base>/agenpas/p/<order_id>#t=<token>`), minted for the purchase it answers and for the verified caller (agent
    id and user ref from the server-side request context, never from tool arguments). The agent gives the link to the
@@ -218,7 +218,7 @@ what the buyer approves.
 
 ## Shipping address
 
-The rule: the partner chat app sends the buyer's shipping address; when it does not, AgenPas asks for it.
+The rule: the partner chat app sends the buyer's shipping address; when it does not, AgenPaz asks for it.
 
 **The request** (one adapter, `src/agenpas/shippingAddress.js`, owns every backend name): in a state before placing,
 the unified view carries `next_action: {kind: "shipping_address", fields_missing: [...], expires_at, prefill?}` with no
@@ -235,7 +235,7 @@ or 9 digits. The inputs carry the shipping autocomplete tokens (`shipping given-
 
 **The write.** The page posts the fields to `POST /agenpas/api/p/:id/shipping-address`. The gateway:
 
-- admits only that one POST on the AgenPas host (the front guard, raw path), and only while collection is on;
+- admits only that one POST on the AgenPaz host (the front guard, raw path), and only while collection is on;
 - reads the body itself, at most 4 KB, JSON only, ahead of the app's 10 MB parser;
 - needs the link token in `X-Agenpas-Link` (never a cookie, so no cross-site form can send it);
 - limits 5 writes a minute per link, on top of the per-IP bucket;
@@ -290,7 +290,7 @@ what the buyer typed in memory only (never in storage).
 ## Terms and privacy consent
 
 Reap's production rule: the buyer sees Pivota's Terms of Service AND Privacy Policy, and accepts them, before a card is
-stored and again before every approval, and the acceptance is recorded in our system. AgenPas takes it, for both
+stored and again before every approval, and the acceptance is recorded in our system. AgenPaz takes it, for both
 rails, behind `AGENPAS_CONSENT_ENABLED` (off). The backend decides whether a step needs it, which versions are current,
 and records it (pivota-backend `AGENPAS_CONSENT_GATE`, its own dial).
 
@@ -321,7 +321,7 @@ something other than the offer changes, so a tick or focus is never dropped by a
 
 **The POST.** `POST /agenpas/api/p/:id/consent`, link token in `X-Agenpas-Link`, body exactly
 `{step, offer_id, issued_at}` (strict JSON, at most 1 kB, parsed by the route itself: the app's global JSON parser
-skips the AgenPas host whenever AgenPas is on, consent or not: so with AgenPas on, a GET to an AgenPas path that
+skips the AgenPaz host whenever AgenPaz is on, consent or not: so with AgenPaz on, a GET to an AgenPaz path that
 carries a malformed `application/json` body is served normally there, where before this change the global parser
 answered 400 `Invalid JSON`; nothing else on the host changes). Checked in this order: the per-IP bucket; the exact `Origin` (= `AGENPAS_PUBLIC_BASE_URL`) and
 `Sec-Fetch-Site`, which refuses only when it is SENT and is not `same-origin` (older Safari / iOS 15 send none; the
@@ -347,9 +347,9 @@ the earlier of the step's deadline and the link's; their descriptions gain one s
 served; it also says that a gated answer with neither link means "not available yet, poll again", which is what a
 gated answer on a rail not in `AGENPAS_RAILS` carries). A REAP purchase gets `agenpas_url` only when its answer is gated
 or its consent block says satisfied: with the backend's gate still off, a Reap answer is exactly today's answer. The UCP Reap lane
-(`ucpReapAgenticLane.js`), while AgenPas serves the Reap rail, answers a gated `needs_enrollment` / `awaiting_approval`
+(`ucpReapAgenticLane.js`), while AgenPaz serves the Reap rail, answers a gated `needs_enrollment` / `awaiting_approval`
 (no `hosted_url`, `buyer_step.consent_required` for that step, a future deadline) as `requires_escalation` with
-`continue_url` = the buyer's AgenPas link for the `rp_` id (minted for the verified caller, put in AFTER the money
+`continue_url` = the buyer's AgenPaz link for the `rp_` id (minted for the verified caller, put in AFTER the money
 filter) and `expires_at` = the earlier of the step's deadline and the link's; its state message says the buyer accepts
 the terms there first, and `create_checkout`'s description gains one sentence. A held, paused or expired step is not
 swapped, nor one whose backend says it cannot take the consent now (`available: false` on the marker or on a consent
@@ -357,8 +357,8 @@ block): no dead-end link. Off, every answer and `tools/list` is byte-identical.
 
 **Flag order.** Gateway first: `AGENPAS_CONSENT_ENABLED`, then `AGENPAS_RAILS=a2a,reap`, then the backend's
 `AGENPAS_CONSENT_GATE` (and its consent write). Gateway-first is safe: until the backend gates, a Reap answer gets no
-AgenPas link and keeps today's hosted page, so no buyer is sent to a page that would say "not available right now".
-Backend-first is NOT: gated Reap answers then carry neither the partner's URL nor an AgenPas link (and the A2A ones no
+AgenPaz link and keeps today's hosted page, so no buyer is sent to a page that would say "not available right now".
+Backend-first is NOT: gated Reap answers then carry neither the partner's URL nor an AgenPaz link (and the A2A ones no
 link either while the gateway's consent is off) until the gateway is on. Either way the page never shows a Reap step
 without a satisfied consent block (R3-4). `AGENPAS_HOSTED_HOSTS` must also
 list Reap's exact hosted-page host names (measured from one sandbox page) before a Reap page can show.
@@ -422,7 +422,7 @@ kind for the state and unexpired. The page itself opens only `https:` URLs.
   of them).
 - Keeping it out of logs: the token is never in a URL a server sees. It travels in the link's fragment (`#t=`),
   which browsers do not send, then only in the `X-Agenpas-Link` request header, which access logs do not record.
-  The page clears the fragment from the address bar and history. Our request log records `req.path`; AgenPas logs
+  The page clears the fragment from the address bar and history. Our request log records `req.path`; AgenPaz logs
   carry outcome codes only. `Referrer-Policy: no-referrer` stops the page URL leaking to the hosted page.
 
 ## Backend contract

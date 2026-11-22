@@ -390,7 +390,7 @@ const REASON_GROUPS = [
       // The rp_ rail's pilot scope (`_row_scope`, quoting -> refused before the checkout create).
       'pilot_scope_invalid', 'pilot_scope_refused'],
     title: "This item can't be bought here right now",
-    message: "This item can't be bought through AgenPas at the moment. Nothing more needs to be done.",
+    message: "This item can't be bought through AgenPaz at the moment. Nothing more needs to be done.",
     retry_hint: false,
   },
   {

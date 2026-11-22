@@ -104,7 +104,7 @@ test('gated + gate on: requires_escalation, continue_url = the buyer\'s AgenPas 
     const keys = Object.keys(out);
     assert.equal(keys[keys.indexOf('status') + 1], 'continue_url');
     const msg = out.messages.find((x) => x.code === `reap.${state}`);
-    assert.match(msg.content, /AgenPas/);
+    assert.match(msg.content, /AgenPaz/);
     assert.equal(msg.path, '$.continue_url');
     assert.equal(out.messages.some((x) => x.code === 'reap.hosted_page_not_ready'), false);
     if (state === 'awaiting_approval') assert.equal(out.messages.find((x) => x.code === 'reap.approval_deadline').content, out.expires_at);
