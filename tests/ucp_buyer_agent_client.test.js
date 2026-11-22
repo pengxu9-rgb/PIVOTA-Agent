@@ -945,6 +945,235 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
   });
 });
 
+// ---- sign at every tier: UCP_AGENT_SIGN_ALWAYS -----------------------------
+//
+// A Bearer token used to REPLACE the signature. UCP says platforms SHOULD sign all requests, and a platform
+// agent standard (2026-11) identifies a platform by its signed UCP-Agent on every call.
+// With the flag on, the TOKEN tier carries the Bearer AND a verifiable signature; with it off, nothing changes.
+
+describe('UCP_AGENT_SIGN_ALWAYS: the TOKEN tier signs too', () => {
+  const endpoint = 'https://coral-shop.myshopify.com/ucp/mcp';
+  const profileUrl = 'https://ucp.pivota.cc/.well-known/ucp-agent';
+  const savedEnv = process.env.UCP_AGENT_SIGN_ALWAYS;
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.UCP_AGENT_SIGN_ALWAYS;
+    else process.env.UCP_AGENT_SIGN_ALWAYS = savedEnv;
+  });
+
+  function tokenClient(extra = {}) {
+    const fetchImpl = makeFetch({ [TOOL.CREATE_CHECKOUT]: CREATE_CHECKOUT_FIXTURE });
+    const client = createUcpBuyerAgentClient({
+      credential: 'test-token', signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID,
+      signingKeys: [TEST_PUBLIC_JWK], profileUrl, fetchImpl, ...extra,
+    });
+    return { client, fetchImpl };
+  }
+
+  test('on: Bearer AND a signature that verifies against the published key', async () => {
+    const { client, fetchImpl } = tokenClient({ signAlways: true });
+    expect(client.tier).toBe(TRUST_TIER.TOKEN);
+    expect(client.describeTier().signs_requests).toBe(true);
+    await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+    const call = fetchImpl.calls.find((c) => c.body?.params?.name === TOOL.CREATE_CHECKOUT);
+    expect(call.headers.authorization).toBe('Bearer test-token');
+    expect(call.headers['ucp-agent']).toBe(`profile="${profileUrl}"`);
+    expect(call.body.params.arguments.meta['ucp-agent'].profile).toBe(profileUrl);
+    expect(call.headers['idempotency-key']).toBeTruthy();
+    expect(call.body.params.arguments.meta['idempotency-key']).toBe(call.headers['idempotency-key']);
+    expect(call.headers['content-digest']).toBe(contentDigestFor(call.rawBody));
+    const { ok, covered } = verifyCapturedSignature(call, endpoint);
+    expect(ok).toBe(true);
+    expect(covered).toEqual(['@method', '@authority', '@path', 'ucp-agent', 'idempotency-key', 'content-digest', 'content-type']);
+  });
+
+  test('on: a caller-supplied checkout idempotency key is accepted at the TOKEN tier', async () => {
+    const { client, fetchImpl } = tokenClient({ signAlways: true });
+    const key = 'efc9d77a-4d05-4ea4-bfda-5aec10010a0c';
+    await client.createCheckout(endpoint, { cartId: 'cart_abc' }, { idempotencyKey: key });
+    expect(fetchImpl.calls.at(-1).headers['idempotency-key']).toBe(key);
+  });
+
+  test('off (default): the TOKEN tier sends the Bearer alone, exactly as before', async () => {
+    delete process.env.UCP_AGENT_SIGN_ALWAYS;
+    const { client, fetchImpl } = tokenClient();
+    expect(client.describeTier().signs_requests).toBe(false);
+    await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+    const call = fetchImpl.calls.find((c) => c.body?.params?.name === TOOL.CREATE_CHECKOUT);
+    expect(call.headers.authorization).toBe('Bearer test-token');
+    for (const h of ['signature-input', 'signature', 'content-digest', 'ucp-agent', 'idempotency-key']) {
+      expect(call.headers[h]).toBeUndefined();
+    }
+    expect(call.body.params.arguments.meta['idempotency-key']).toBeUndefined();
+    await expect(client.createCheckout(endpoint, { cartId: 'cart_abc' }, { idempotencyKey: 'efc9d77a-4d05-4ea4-bfda-5aec10010a0c' }))
+      .rejects.toThrow('invalid signed checkout idempotency key');
+  });
+
+  test('the env flag is read when the option is absent', () => {
+    process.env.UCP_AGENT_SIGN_ALWAYS = '1';
+    expect(tokenClient().client.describeTier().signs_requests).toBe(true);
+    process.env.UCP_AGENT_SIGN_ALWAYS = '0';
+    expect(tokenClient().client.describeTier().signs_requests).toBe(false);
+  });
+
+  test('on, but no signing key: nothing to sign with, the Bearer goes alone', async () => {
+    const fetchImpl = makeFetch({ [TOOL.CREATE_CHECKOUT]: CREATE_CHECKOUT_FIXTURE });
+    const client = createUcpBuyerAgentClient({ credential: 'test-token', profileUrl, fetchImpl, signAlways: true });
+    expect(client.describeTier().signs_requests).toBe(false);
+    await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+    expect(fetchImpl.calls.at(-1).headers['signature-input']).toBeUndefined();
+  });
+
+  test('the SIGNED tier signs whatever the flag says', () => {
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, profileUrl, fetchImpl: makeFetch({}), signAlways: false,
+    });
+    expect(client.tier).toBe(TRUST_TIER.SIGNED);
+    expect(client.describeTier().signs_requests).toBe(true);
+  });
+
+  // G2: the loaded key must be the published key (kid AND x/y), or the TOKEN tier stays Bearer-only.
+  test.each([
+    ['no published key', []],
+    ['the kid is published with another key', () => [{ ...otherPublicJwk(), kid: TEST_KEY_ID }]],
+    ['this key is published under another kid', [{ ...TEST_PUBLIC_JWK, kid: 'pivota-other-kid' }]],
+  ])('on, but %s: Bearer-only, warned once, and describeTier says why', async (_name, keys) => {
+    const warns = [];
+    const { client, fetchImpl } = tokenClient({
+      signAlways: true, signingKeys: typeof keys === 'function' ? keys() : keys, logger: { warn: (o, m) => warns.push([o, m]) },
+    });
+    const d = client.describeTier();
+    expect(d.signs_requests).toBe(false);
+    expect(d.signing_key_published).toBe(false);
+    expect(d.token_tier_sign_skipped).toBe('signing_key_not_published');
+    expect(warns).toHaveLength(1);
+    expect(JSON.stringify(warns)).not.toMatch(/BEGIN|MIGHAgEA|"d"/);
+    await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+    const call = fetchImpl.calls.at(-1);
+    expect(call.headers.authorization).toBe('Bearer test-token');
+    expect(call.headers['signature-input']).toBeUndefined();
+    expect(warns).toHaveLength(1);
+  });
+
+  test('the published-key check reads UCP_AGENT_SIGNING_PUBLIC_JWK when no keys are passed (the deploy path)', async () => {
+    const saved = process.env.UCP_AGENT_SIGNING_PUBLIC_JWK;
+    try {
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = JSON.stringify(TEST_PUBLIC_JWK);
+      expect(tokenClient({ signAlways: true, signingKeys: undefined }).client.describeTier().signs_requests).toBe(true);
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = JSON.stringify({ ...otherPublicJwk(), kid: TEST_KEY_ID });
+      expect(tokenClient({ signAlways: true, signingKeys: undefined }).client.describeTier().signs_requests).toBe(false);
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = '{not json';
+      // An unreadable published JWK never makes the TOKEN tier sign (the profile itself refuses to build).
+      const bad = tokenClient({ signAlways: true, signingKeys: undefined });
+      await bad.client.createCheckout(endpoint, { cartId: 'cart_abc' });
+      expect(bad.fetchImpl.calls.at(-1).headers['signature-input']).toBeUndefined();
+    } finally {
+      if (saved === undefined) delete process.env.UCP_AGENT_SIGNING_PUBLIC_JWK; else process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = saved;
+    }
+  });
+
+  test('the skip warning goes to the module logger when no logger is passed, once per process', () => {
+    const moduleLogger = require('../src/logger');
+    const spy = jest.spyOn(moduleLogger, 'warn').mockImplementation(() => {});
+    try {
+      const kid = 'pivota-warn-once-kid';
+      for (let i = 0; i < 3; i += 1) {
+        createUcpBuyerAgentClient({
+          credential: 'test-token', signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: kid,
+          signingKeys: [], profileUrl, fetchImpl: makeFetch({}), signAlways: true,
+        });
+      }
+      const mine = spy.mock.calls.filter(([o]) => o && o.signing_key_id === kid);
+      expect(mine).toHaveLength(1);
+      expect(mine[0][0].reason).toBe('signing_key_not_published');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // G4: no profile URL at the TOKEN tier -> Bearer-only, never a throw.
+  test('on, but no profile URL resolves: Bearer-only instead of throwing', async () => {
+    const savedP = process.env.UCP_AGENT_PROFILE_URL;
+    const savedB = process.env.UCP_BASE_URL;
+    delete process.env.UCP_AGENT_PROFILE_URL;
+    delete process.env.UCP_BASE_URL;
+    try {
+      const warns = [];
+      const { client, fetchImpl } = tokenClient({ signAlways: true, profileUrl: undefined, logger: { warn: (o) => warns.push(o) } });
+      expect(client.describeTier().token_tier_sign_skipped).toBe('no_profile_url');
+      expect(warns.map((w) => w.reason)).toContain('no_profile_url');
+      await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+      const call = fetchImpl.calls.at(-1);
+      expect(call.headers.authorization).toBe('Bearer test-token');
+      expect(call.headers['signature-input']).toBeUndefined();
+    } finally {
+      if (savedP === undefined) delete process.env.UCP_AGENT_PROFILE_URL; else process.env.UCP_AGENT_PROFILE_URL = savedP;
+      if (savedB === undefined) delete process.env.UCP_BASE_URL; else process.env.UCP_BASE_URL = savedB;
+    }
+  });
+
+  // G3: tools/list is signed whenever the client signs.
+  test('on: tools/list carries a verifiable signature and no idempotency key; off: unchanged', async () => {
+    const on = tokenClient({ signAlways: true });
+    await on.client.listTools(endpoint);
+    const signed = on.fetchImpl.calls.at(-1);
+    expect(signed.body.method).toBe('tools/list');
+    expect(signed.headers.authorization).toBe('Bearer test-token');
+    expect(signed.headers['idempotency-key']).toBeUndefined();
+    const { ok, covered } = verifyCapturedSignature(signed, endpoint);
+    expect(ok).toBe(true);
+    expect(covered).toEqual(['@method', '@authority', '@path', 'ucp-agent', 'content-digest', 'content-type']);
+
+    delete process.env.UCP_AGENT_SIGN_ALWAYS;
+    const off = tokenClient();
+    await off.client.listTools(endpoint);
+    const plain = off.fetchImpl.calls.at(-1);
+    for (const h of ['signature-input', 'signature', 'content-digest', 'ucp-agent']) expect(plain.headers[h]).toBeUndefined();
+  });
+});
+
+function otherPublicJwk() {
+  const { publicKey } = nodeCrypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  return { ...publicKey.export({ format: 'jwk' }), use: 'sig' };
+}
+
+describe('profile publishes keys[] beside signing_keys (UCP_AGENT_PUBLISH_JWKS)', () => {
+  const profileUrl = 'https://ucp.pivota.cc/.well-known/ucp-agent';
+  test('flag on: keys[] lists exactly the signing_keys kids, as separate objects', () => {
+    const p = buildUcpBuyerAgentProfile({ signingKeys: [TEST_PUBLIC_JWK], publishJwks: true });
+    expect(p.keys).toEqual(p.signing_keys);
+    expect(p.keys[0]).not.toBe(p.signing_keys[0]);
+    expect(p.keys.map((k) => k.kid)).toEqual([TEST_KEY_ID]);
+    expect(JSON.stringify(p.keys)).not.toMatch(/"d"/);
+  });
+
+  test('no keys: no keys[] member, the keyless profile is unchanged', () => {
+    const p = buildUcpBuyerAgentProfile({ signingKeys: [], publishJwks: true });
+    expect(p.signing_keys).toEqual([]);
+    expect(Object.hasOwn(p, 'keys')).toBe(false);
+  });
+
+  // G1: the route's env path. A deployment that publishes a public JWK (UCP_AGENT_SIGNING_PUBLIC_JWK) with the flag
+  // off must serve exactly the old profile: signing_keys as before, and NO keys[] advertising that kid again.
+  test('the route env path: flag off -> a published JWK appears in signing_keys only; flag on -> keys[] too', () => {
+    const saved = { jwk: process.env.UCP_AGENT_SIGNING_PUBLIC_JWK, flag: process.env.UCP_AGENT_PUBLISH_JWKS };
+    try {
+      process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = JSON.stringify(TEST_PUBLIC_JWK);
+      delete process.env.UCP_AGENT_PUBLISH_JWKS;
+      const off = buildUcpBuyerAgentProfile({ profileUrl });
+      expect(off.signing_keys.map((k) => k.kid)).toEqual([TEST_KEY_ID]);
+      expect(Object.hasOwn(off, 'keys')).toBe(false);
+      process.env.UCP_AGENT_PUBLISH_JWKS = '0';
+      expect(Object.hasOwn(buildUcpBuyerAgentProfile({ profileUrl }), 'keys')).toBe(false);
+      process.env.UCP_AGENT_PUBLISH_JWKS = '1';
+      const on = buildUcpBuyerAgentProfile({ profileUrl });
+      expect(on.keys).toEqual(on.signing_keys);
+    } finally {
+      if (saved.jwk === undefined) delete process.env.UCP_AGENT_SIGNING_PUBLIC_JWK; else process.env.UCP_AGENT_SIGNING_PUBLIC_JWK = saved.jwk;
+      if (saved.flag === undefined) delete process.env.UCP_AGENT_PUBLISH_JWKS; else process.env.UCP_AGENT_PUBLISH_JWKS = saved.flag;
+    }
+  });
+});
+
 // ---- UCP spec: a profile fetch MUST NOT follow redirects -------------------
 //
 // ucp.dev/2026-04-08/specification/overview, "Profile Requirements" -> Hosting/Fetching: a profile
