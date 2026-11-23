@@ -322,10 +322,10 @@ export function agenpasGetOrderSentence(minutes) {
 }
 // AgenPas consent (docs/agenpas.md, "Terms and privacy consent"): one more sentence on start_purchase and get_order, ONLY
 // while AGENPAS_CONSENT_ENABLED is on and links are minted. Off, both descriptions are exactly as above.
-export const AGENPAS_CONSENT_SENTENCE = "When `next_action.consent_required` is true, the buyer first reads and accepts Pivota's Terms of Service and Privacy Policy on their AgenPas page, which then opens the payment partner's page: give them `agenpas_url` (it is also `next_action.action_url`); there is no other link to that page. If the answer carries neither, the step is not available yet: poll again.";
+export const AGENPAS_CONSENT_SENTENCE = "When `next_action.consent_required` is true, the buyer first reads and accepts Pivota's Terms of Service and Privacy Policy on their AgenPaz page, which then opens the payment partner's page: give them `agenpas_url` (it is also `next_action.action_url`); there is no other link to that page. If the answer carries neither, the step is not available yet: poll again.";
 // The UCP create_checkout description gains this ONLY while the Reap lane creates AND AgenPas serves the Reap rail
 // (AGENPAS_CONSENT_ENABLED + AGENPAS_RAILS with reap + links minted). Off, tools/list is byte-identical.
-export const AGENPAS_UCP_REAP_CONSENT_SENTENCE = "On the Reap route, while Pivota's consent step is on, a requires_escalation checkout's continue_url is the buyer's own Pivota page (AgenPas): the buyer reads and accepts Pivota's Terms of Service and Privacy Policy there, and that page opens the payment partner's card or approval page. Send the buyer to continue_url as usual; expires_at is the earlier of the step's deadline and that link's.";
+export const AGENPAS_UCP_REAP_CONSENT_SENTENCE = "On the Reap route, while Pivota's consent step is on, a requires_escalation checkout's continue_url is the buyer's own Pivota page (AgenPaz): the buyer reads and accepts Pivota's Terms of Service and Privacy Policy there, and that page opens the payment partner's card or approval page. Send the buyer to continue_url as usual; expires_at is the earlier of the step's deadline and that link's.";
 
 /** A next_action the backend's consent gate holds back: `consent_required: true` and no handoff URL of its own. */
 function isConsentGatedAction(action) {
@@ -431,7 +431,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
           }
         },
         // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price is kept only until that price is
-        // 15 min old (priceVerificationFacts.capCachePolicyAtPriceAge). Off (default): exactly the shouldCache
+        // 10 min old (priceVerificationFacts.capCachePolicyAtPriceAge). Off (default): exactly the shouldCache
         // policy this cache always had ({ ttlMs, staleMs } for a cacheable search result, else not stored).
         cachePolicy: (value) => {
           if (!isCacheableSearchResult(value)) return null;
@@ -2122,6 +2122,20 @@ export function toToolError(error) {
     }
     if (error.detail.reason === "purchase_unavailable") {
       body.message = "Purchases through this tool are not available right now.";
+    }
+    // The A2A door's market refusals: definite (nothing was opened), each with what the buyer can do about it.
+    // shipping_country_unsupported: this call opened nothing, but the backend's key-replay check is an unlocked read and
+    // its rail choice reads a heartbeat, so a concurrent call with the same key can open a purchase on the other rail
+    // while this one is refused. So the same hedge as below: check first; a new key only if the buyer wants that.
+    if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_country_unsupported") {
+      body.message = "This purchase can only ship to the United States on this route, so this call opened nothing.";
+      body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise, with a US shipping address and only if the buyer wants that, start again with a new idempotency_key";
+    }
+    // shipping_market_unknown is raised BEFORE the key lookup: a retry of an earlier call whose outcome was unknown can
+    // get it while that earlier purchase exists. So: check first, never "start again with a new key" outright.
+    if (error.detail.reason === "purchase_refused" && error.detail.refusal_code === "shipping_market_unknown") {
+      body.message = "No shipping address was given, and the currency alone does not say which country to ship to, so this call opened nothing.";
+      body.recovery = "nothing was opened by this call; if it retries an earlier call whose outcome was unknown, that purchase may exist: check it with get_order before starting another; otherwise ask the buyer for their shipping address and send it";
     }
   }
   if (code === "CHECKOUT_ATTEMPT_RETIRED" && error.detail?.reason === "ucp_reap_attempt_retired"

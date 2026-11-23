@@ -25,9 +25,23 @@
  *
  * Outcomes: { kind: 'accepted', purchase } | { kind: 'not_found' } | { kind: 'unavailable', code }. Never throws.
  * Logs carry an event, an outcome, a code and an HTTP status: never an id, a header, a ref or a body.
+ *
+ * THE ADDRESS WRITE (docs/agenpas.md, "Shipping address"), same authentication:
+ *
+ *   POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/shipping-address
+ *     body: {email, firstName, lastName, phone, addressLine1, addressLine2, city, region, postalCode, country}
+ *   200 -> the unified view            422 -> {field_errors: {field: code}}
+ *   409 consent_required -> the step's terms are not accepted yet (nothing written; the page goes back to them)
+ *   409 shipping_address_conflict -> already set / state moved   any other 409 -> not_taken (collection off, ...)
+ *   404 -> not that agent's
+ *
+ * Outcomes: accepted {purchase} | invalid {field_errors} | consent_required | conflict | not_taken {code} | not_found |
+ * unavailable {code}. The body (the
+ * buyer's address) goes to the backend and NOWHERE else: never logged, never part of an outcome.
  */
 
 const { PURCHASE_ID_RE } = require('./linkToken');
+const { sanitizeFieldErrors } = require('./shippingAddress');
 
 const INTERNAL_PURCHASES_PATH = '/agent/internal/commerce/purchases';
 const TIMEOUT_MS = 2000;
@@ -132,7 +146,89 @@ function createBackendPurchaseReader(deps = {}) {
     return { kind: 'unavailable', code };
   }
 
-  return Object.freeze({ read });
+  async function submitShippingAddress(claims, address) {
+    const purchaseId = claims && claims.purchaseId;
+    if (typeof purchaseId !== 'string' || !PURCHASE_ID_RE.test(purchaseId)) return { kind: 'not_found' };
+    let key = '';
+    try {
+      key = String(internalKey() || '').trim();
+    } catch {
+      key = '';
+    }
+    if (!baseUrl || !key || typeof fetchImpl !== 'function') {
+      log('warn', { op: 'shipping_address', outcome: 'unavailable', code: 'unconfigured' });
+      return { kind: 'unavailable', code: 'unconfigured' };
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let status;
+    let body;
+    try {
+      const res = await fetchImpl(`${baseUrl}${INTERNAL_PURCHASES_PATH}/${purchaseId}/shipping-address`, {
+        method: 'POST',
+        headers: {
+          'X-Internal-Key': key,
+          'X-Agenpas-Agent-Id': claims.agentId,
+          'X-Agenpas-Agent-User-Ref': claims.userRef,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(address),
+        signal: controller.signal,
+        redirect: 'error',
+      });
+      status = Number(res && res.status);
+      let text = '';
+      try {
+        text = typeof res.text === 'function' ? await res.text() : '';
+      } catch {
+        text = '';
+      }
+      body = text.length > MAX_BODY_CHARS ? undefined : parseJson(text);
+    } catch (err) {
+      const code = controller.signal.aborted || (err && err.name === 'AbortError') ? 'timeout' : 'transport';
+      log('warn', { op: 'shipping_address', outcome: 'unavailable', code });
+      return { kind: 'unavailable', code };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (status === 200 && isPlainObject(body) && typeof body.state === 'string'
+      && (body.purchase_id === purchaseId || body.rail_purchase_id === purchaseId)) {
+      log('info', { op: 'shipping_address', outcome: 'accepted', http_status: status });
+      return { kind: 'accepted', purchase: body };
+    }
+    if (status === 422) {
+      const raw = isPlainObject(body) ? (body.field_errors || (isPlainObject(body.detail) ? body.detail.field_errors : null)) : null;
+      log('info', { op: 'shipping_address', outcome: 'invalid', http_status: status });
+      return { kind: 'invalid', field_errors: sanitizeFieldErrors(raw) };
+    }
+    if (status === 409) {
+      // The app's error envelope names the reason in `detail.error` (reasonOf): `consent_required` (the step's terms
+      // are not on record; nothing was written), `shipping_address_conflict` (the address is set already / another
+      // one), and ANY other 409 (e.g. collection turned off while the page was open): the address cannot be taken
+      // here any more.
+      const reason = reasonOf(body);
+      if (reason === 'consent_required') {
+        log('info', { op: 'shipping_address', outcome: 'consent_required', http_status: status });
+        return { kind: 'consent_required' };
+      }
+      if (reason === 'shipping_address_conflict') {
+        log('info', { op: 'shipping_address', outcome: 'conflict', http_status: status });
+        return { kind: 'conflict' };
+      }
+      const code = typeof reason === 'string' && /^[a-z_]{1,48}$/.test(reason) ? reason : 'unnamed';
+      log('info', { op: 'shipping_address', outcome: 'not_taken', code, http_status: status });
+      return { kind: 'not_taken', code };
+    }
+    if (status === 404) {
+      log('info', { op: 'shipping_address', outcome: 'not_found', http_status: status });
+      return { kind: 'not_found' };
+    }
+    log('warn', { op: 'shipping_address', outcome: 'unavailable', code: status === 200 ? 'malformed' : `http_${Number.isFinite(status) ? status : 'unknown'}`, http_status: status });
+    return { kind: 'unavailable', code: status === 200 ? 'malformed' : `http_${status}` };
+  }
+
+  return Object.freeze({ read, submitShippingAddress });
 }
 
 /*

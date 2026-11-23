@@ -437,6 +437,41 @@ test('consent-gated next_action (consent on): the buyer\'s link is ALSO the hand
   });
 });
 
+// The A2A address step behind the terms (the owner's decision, 11-20): the backend's gated body names the step and no
+// field list; the agent's way to the buyer is the AgenPas link, exactly as for the card and approval steps.
+function gatedShipping(railId) {
+  const body = unified(railId);
+  body.state = 'routing';
+  body.rail_state = 'opened';
+  body.next_action = { kind: 'shipping_address', consent_required: true, expires_at: GATED_DEADLINE };
+  body.detail = { id: railId, state: 'opened', buyer_step: { kind: 'shipping_address', expires_at: GATED_DEADLINE, consent_required: true } };
+  return body;
+}
+
+test('a consent-gated shipping-address step (A2A) carries agenpas_url, also as next_action.action_url, like the other gated steps', async () => {
+  const surface = await build({ readBody: gatedShipping });
+  await withEnv(REAP_ON, async () => {
+    for (const o of [await surface.callTool('get_order', { order_id: PP }, SESSION), await surface.callTool('start_purchase', args(), SESSION)]) {
+      assert.equal(o.next_action.kind, 'shipping_address');
+      assert.equal(o.next_action.consent_required, true);
+      assert.equal(Object.hasOwn(o.next_action, 'fields_missing'), false);
+      assert.equal(typeof o.agenpas_url, 'string');
+      assert.equal(o.next_action.action_url, o.agenpas_url);
+      const linkExp = JSON.parse(Buffer.from(new URLSearchParams(new URL(o.agenpas_url).hash.slice(1)).get('t').split('.')[1], 'base64url')).exp;
+      assert.equal(o.next_action.expires_at, new Date(Math.min(Date.parse(GATED_DEADLINE), linkExp * 1000)).toISOString());
+    }
+  });
+  // Consent off: the additive agenpas_url only (A2A, as before); no handoff member is added.
+  const without = await build({ readBody: gatedShipping, withMinter: false });
+  await withEnv(ON_ALL, async () => {
+    const o = await surface.callTool('get_order', { order_id: PP }, SESSION);
+    assert.equal(typeof o.agenpas_url, 'string');
+    assert.equal(Object.hasOwn(o.next_action, 'action_url'), false);
+    const { agenpas_url: _url, ...rest } = o;
+    assert.deepEqual(rest, await without.callTool('get_order', { order_id: PP }, SESSION));
+  });
+});
+
 test('consent-gated next_action with consent OFF: the answer is exactly the answer without AgenPas consent (no handoff added)', async () => {
   const surface = await build({ readBody: gated });
   const without = await build({ readBody: gated, withMinter: false });

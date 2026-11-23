@@ -46,7 +46,7 @@ const TRAVERSALS = [
 
 const KEYS = [
   'AGENPAS_ENABLED', 'AGENPAS_LINK_SECRET', 'AGENPAS_PUBLIC_BASE_URL', 'AGENPAS_HOSTED_HOSTS', 'AGENPAS_DEV_FIXTURES',
-  'AGENPAS_EMBED_HOSTED_PAGES', 'AGENPAS_LINK_TTL_SECONDS', 'AGENPAS_INTERNAL_READ_KEY',
+  'AGENPAS_EMBED_HOSTED_PAGES', 'AGENPAS_LINK_TTL_SECONDS', 'AGENPAS_INTERNAL_READ_KEY', 'AGENPAS_COLLECT_SHIPPING',
   'AGENPAS_CONSENT_ENABLED', 'AGENPAS_LEGAL_HOSTS', 'AGENPAS_RAILS', 'AGENPAS_INTERNAL_CONSENT_KEY',
 ];
 const PID = 'ap_000000000000000000000001';
@@ -239,6 +239,111 @@ describe('AgenPas routes in the gateway app', () => {
     process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
     const front = await rawGet(app, '/agenpas/dev/start?scenario=happy', 'agenpas.example');
     expect(front.headers['x-agenpas-guard']).toBe('front');
+  });
+
+  describe('the shipping-address write on the real server (AGENPAS_COLLECT_SHIPPING)', () => {
+    const SHIP = '/agenpas/api/p/ap_000000000000000000000001/shipping-address';
+    const rawPost = (app, path, host, bodyText, type = 'application/json', extra = '') => rawRequest(app,
+      `POST ${path} HTTP/1.1\r\nHost: ${host}\r\nContent-Type: ${type}\r\nContent-Length: ${Buffer.byteLength(bodyText)}\r\n${extra}Connection: close\r\n\r\n${bodyText}`);
+    beforeEach(() => {
+      process.env.AGENPAS_ENABLED = '1';
+      process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+    });
+
+    test('collection off: the POST is refused by the front guard like any other write', async () => {
+      const app = require('../src/server');
+      const res = await rawPost(app, SHIP, 'agenpas.example', '{}');
+      expect(res.status).toBe(404);
+      expect(res.headers['x-agenpas-guard']).toBe('front');
+    });
+
+    test('collection on: only that POST is admitted; GET on it, other POSTs and traversal spellings stay refused', async () => {
+      process.env.AGENPAS_COLLECT_SHIPPING = '1';
+      const app = require('../src/server');
+      // Admitted and routed: no token -> the route's own 404 (not the guard's).
+      const routed = await rawPost(app, SHIP, 'agenpas.example', '{}');
+      expect(routed.status).toBe(404);
+      expect(routed.headers['x-agenpas-guard']).toBeUndefined();
+      expect(JSON.parse(routed.body)).toEqual({ error: 'link_invalid' });
+      for (const p of [
+        `${SHIP}/`, `${SHIP}%2f`, '/agenpas/api/p/ap_000000000000000000000001/shipping-address/..%2f..%2findex.html',
+        '/agenpas/api/p/ap_000000000000000000000001/..%2fshipping-address', '/agenpas/api/p/ap_000000000000000000000001/shipping%2daddress',
+        '/agenpas/api/p/ap_000000000000000000000001//shipping-address', '/agenpas/api/p/ap_000000000000000000000001/shipping-address%00',
+        '/agenpas/api/p/ap_000000000000000000000001', '/agenpas/p/ap_000000000000000000000001', '/agenpas/api/p/not_an_id/shipping-address',
+        '/', '/mcp', '/agenpas/api/p/ap_000000000000000000000001/SHIPPING-ADDRESS',
+      ]) {
+        const res = await rawPost(app, p, 'agenpas.example', '{}');
+        expect([p, res.status, res.headers['x-agenpas-guard']]).toEqual([p, 404, 'front']);
+      }
+      const get = await rawGet(app, SHIP, 'agenpas.example');
+      expect([get.status, get.headers['x-agenpas-guard']]).toEqual([404, 'front']);
+    });
+
+    test('collection on: 415 for anything but JSON and 413 past 4 KB, ahead of the app\'s 10 MB parser', async () => {
+      process.env.AGENPAS_COLLECT_SHIPPING = '1';
+      const app = require('../src/server');
+      for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x']) {
+        const res = await rawPost(app, SHIP, 'agenpas.example', 'email=x', type);
+        expect([type, res.status]).toEqual([type, 415]);
+      }
+      const big = await rawPost(app, SHIP, 'agenpas.example', JSON.stringify({ addressLine2: 'x'.repeat(6000) }));
+      expect(big.status).toBe(413);
+    });
+
+    test('collection on, fixtures: the needs_address scenario end to end on the real server', async () => {
+      process.env.AGENPAS_COLLECT_SHIPPING = '1';
+      process.env.AGENPAS_DEV_FIXTURES = '1';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'http://localhost:4000';
+      const app = require('../src/server');
+      const start = await request(app).get('/agenpas/dev/start?scenario=needs_address').set('Host', 'localhost:4000');
+      const loc = new URL(start.headers.location, 'http://localhost');
+      const t = new URLSearchParams(loc.hash.slice(1)).get('t');
+      const id = loc.pathname.split('/').pop();
+      const first = await request(app).get(`/agenpas/api/p/${id}`).set('Host', 'localhost:4000').set('X-Agenpas-Link', t);
+      expect(first.body.screen).toBe('shipping_address');
+      const address = { email: 'buyer@example.test', firstName: 'Sam', lastName: 'Placeholder', phone: '415 555 0100',
+        addressLine1: '1 Example Way', city: 'Sample City', region: 'CA', postalCode: '94107', country: 'US' };
+      const saved = await rawPost(app, `/agenpas/api/p/${id}/shipping-address`, 'localhost:4000', JSON.stringify(address),
+        'application/json', `X-Agenpas-Link: ${t}\r\n`);
+      expect(saved.status).toBe(200);
+      expect(JSON.parse(saved.body).screen).toBe('add_card');
+    });
+
+    test('collection + consent on, fixtures: address_consent on the real server (terms, then the form, then the card step)', async () => {
+      process.env.AGENPAS_COLLECT_SHIPPING = '1';
+      process.env.AGENPAS_CONSENT_ENABLED = '1';
+      process.env.AGENPAS_DEV_FIXTURES = '1';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'http://localhost:4000';
+      const app = require('../src/server');
+      const HOST = 'localhost:4000';
+      const start = await request(app).get('/agenpas/dev/start?scenario=address_consent').set('Host', HOST);
+      const loc = new URL(start.headers.location, 'http://localhost');
+      const t = new URLSearchParams(loc.hash.slice(1)).get('t');
+      const id = loc.pathname.split('/').pop();
+      const read = () => request(app).get(`/agenpas/api/p/${id}`).set('Host', HOST).set('X-Agenpas-Link', t);
+      const address = { email: 'buyer@example.test', firstName: 'Sam', lastName: 'Placeholder', phone: '415 555 0100',
+        addressLine1: '1 Example Way', city: 'Sample City', region: 'CA', postalCode: '94107', country: 'US' };
+      const send = () => rawPost(app, `/agenpas/api/p/${id}/shipping-address`, HOST, JSON.stringify(address), 'application/json', `X-Agenpas-Link: ${t}\r\n`);
+      const first = await read();
+      expect(first.body.screen).toBe('shipping_address');
+      expect(first.body.consent.step).toBe('shipping_address');
+      expect(first.body.address_request).toBeUndefined();
+      const early = await send();
+      expect(early.status).toBe(409);
+      expect(JSON.parse(early.body)).toEqual({ error: 'consent_required' });
+      const { offer } = first.body.consent;
+      const agreed = await request(app).post(`/agenpas/api/p/${id}/consent`).set('Host', HOST).set('X-Agenpas-Link', t)
+        .set('Origin', 'http://localhost:4000').set('Sec-Fetch-Site', 'same-origin')
+        .send({ step: 'shipping_address', offer_id: offer.id, issued_at: offer.issued_at });
+      expect(agreed.status).toBe(200);
+      const form = await read();
+      expect(form.body.consent).toBeNull();
+      expect(form.body.address_request.fields_missing).toContain('postalCode');
+      const saved = await send();
+      expect(saved.status).toBe(200);
+      expect(JSON.parse(saved.body).screen).toBe('add_card');
+    });
   });
 
   test('the app\'s global JSON parser skips ONLY the AgenPas host, and only while AgenPas is on (the control: other hosts parse)', () => {

@@ -75,6 +75,22 @@
     inFlight: false,
     noticeEl: null,
     lastJson: null,
+    // The address form: what the buyer typed (kept across re-renders, in memory only, never stored), field errors
+    // (codes), and whether a submit is in flight.
+    address: {},
+    addressErrors: {},
+    addressMessage: null,
+    addressBusy: false,
+    // Shown above the terms when an address submit was sent back to them (409 consent_required).
+    addressConsentNote: null,
+    // Sent back to the terms: the form is not drawn again until the buyer accepts them on this page. A second send-back
+    // after a fresh acceptance, a second "not requested", or any other refusal of the address closes the step.
+    addressSentBack: false,
+    addressSentBackCount: 0,
+    addressNotRequestedCount: 0,
+    // Reads that still show the form (and no terms) while sent back: after ADDRESS_SENT_BACK_MAX_READS, closed.
+    addressSentBackReads: 0,
+    addressClosed: false,
     // The consent offer on screen: { step, offer, shownAt, checked, posting, accepted, error, retryAt, button }.
     consent: null,
     latestOffer: null,
@@ -319,11 +335,14 @@
     if (c && c.accepted) {
       append(box, spinner(), el('p', 'waiting-text', offered.step === 'card_binding'
         ? 'Thanks. Getting the secure card page ready…'
-        : "Thanks. You'll approve on our payment partner's secure page as soon as it's ready…"));
+        : offered.step === 'shipping_address'
+          ? 'Thanks. Getting the address form ready…'
+          : "Thanks. You'll approve on our payment partner's secure page as soon as it's ready…"));
       return box;
     }
     var intro = el('p', 'consent-intro');
-    append(intro, el('span', null, offered.step === 'card_binding' ? "Before you add your card, read Pivota's " : "Before you approve, read Pivota's "));
+    append(intro, el('span', null, offered.step === 'card_binding' ? "Before you add your card, read Pivota's "
+      : offered.step === 'shipping_address' ? "Before you give your shipping address, read Pivota's " : "Before you approve, read Pivota's "));
     // The versions are the ones the acceptance records (the same read's values): the buyer sees what is recorded.
     append(intro, externalLink('Terms of Service', offered.terms_url), versionNote(offered.terms_version), el('span', null, ' and '),
       externalLink('Privacy Policy', offered.privacy_url), versionNote(offered.privacy_version), el('span', null, '.'));
@@ -389,6 +408,10 @@
       if (r.status === 200) {
         c.posting = false;
         c.accepted = true;
+        if (c.step === 'shipping_address') {
+          ui.addressConsentNote = null;
+          ui.addressSentBack = false;
+        }
         render();
         pollNow();
         return;
@@ -505,7 +528,7 @@
       append(wrap, el('dt', null, label), el('dd', null, value));
       list.appendChild(wrap);
     }
-    row('Order number', order.reference);
+    row('Order number', order.reference_withheld ? "Your order number is in the store's confirmation email." : order.reference);
     row('Total charged', order.total_unparsed
       ? 'See your email receipt'
       : money(view.amounts && view.amounts.final_total_minor, view.currency));
@@ -520,7 +543,7 @@
       extra.appendChild(link);
     }
     extra.appendChild(el('p', 'fine', 'You can go back to the chat now.'));
-    return resultCard('done', 'Order placed', 'Your order at ' + merchantName(view) + ' is confirmed.', extra);
+    return resultCard('done', 'Your order is placed', 'Your order at ' + merchantName(view) + ' is confirmed.', extra);
   }
 
   function outcomeCard(view) {
@@ -533,6 +556,270 @@
       extra = el('p', 'fine', 'You can go back to the chat to try again.');
     }
     return resultCard(kind, outcome.title || "This purchase didn't go through", outcome.message || 'Go back to the chat to check what happened.', extra);
+  }
+
+  // ---- the shipping address (AGENPAS_COLLECT_SHIPPING) ----------------------------------------------------------
+  //
+  // A plain form of the fields the purchase is missing. There is NO card field: the card is only ever typed on the
+  // payment partner's page. The address goes only to this page's own API (same origin) and is never stored.
+
+  var US_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY',
+    'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA',
+    'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
+  var ADDRESS_FIELDS = {
+    email: { label: 'Email', type: 'email', autocomplete: 'email', inputmode: 'email' },
+    firstName: { label: 'First name', autocomplete: 'shipping given-name' },
+    lastName: { label: 'Last name', autocomplete: 'shipping family-name' },
+    phone: { label: 'Phone', type: 'tel', autocomplete: 'shipping tel', inputmode: 'tel' },
+    addressLine1: { label: 'Address', autocomplete: 'shipping address-line1' },
+    addressLine2: { label: 'Apartment, suite, etc. (optional)', autocomplete: 'shipping address-line2', optional: true },
+    city: { label: 'City', autocomplete: 'shipping address-level2' },
+    region: { label: 'State', autocomplete: 'shipping address-level1', options: US_STATES.map(function (c) { return [c, c]; }) },
+    postalCode: { label: 'ZIP code', autocomplete: 'shipping postal-code', inputmode: 'numeric' },
+    country: { label: 'Country', autocomplete: 'shipping country', options: [['US', 'United States']] },
+  };
+  var ADDRESS_ORDER = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'];
+  var ERROR_TEXT = {
+    required: 'This is required.',
+    invalid_email: 'Enter a valid email address.',
+    invalid_phone: 'Enter a valid phone number.',
+    invalid_postal_code: 'Enter a 5-digit ZIP code.',
+    invalid_region: 'Choose a state.',
+    unsupported_country: 'We can only ship to the United States for now.',
+    too_long: 'This is too long.',
+    invalid_characters: 'Remove the special characters.',
+  };
+
+  function addressFieldsOf(view) {
+    var req = view.address_request || {};
+    var listed = Array.isArray(req.fields_missing) ? req.fields_missing : [];
+    return ADDRESS_ORDER.filter(function (f) { return listed.indexOf(f) >= 0; });
+  }
+
+  /** Client-side checks for a quick answer; the gateway and the backend check again. Returns {field: code}. */
+  function checkAddress(fields, values) {
+    var errors = {};
+    fields.forEach(function (f) {
+      var v = String(values[f] || '').trim();
+      if (!v) {
+        if (!ADDRESS_FIELDS[f].optional) errors[f] = 'required';
+        return;
+      }
+      if (v.length > 200) errors[f] = 'too_long';
+      else if (f === 'email' && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v)) errors[f] = 'invalid_email';
+      else if (f === 'phone' && (!/^[0-9+\s\-().]+$/.test(v) || v.replace(/[^0-9]/g, '').length < 10)) errors[f] = 'invalid_phone';
+      else if (f === 'postalCode' && !/^\d{5}(-?\d{4})?$/.test(v)) errors[f] = 'invalid_postal_code';
+      else if (f === 'region' && US_STATES.indexOf(v.toUpperCase()) < 0) errors[f] = 'invalid_region';
+      else if (f === 'country' && v.toUpperCase() !== 'US') errors[f] = 'unsupported_country';
+    });
+    return errors;
+  }
+
+  function addressInput(field) {
+    var meta = ADDRESS_FIELDS[field];
+    var id = 'agenpas-' + field;
+    var wrap = el('div', 'field');
+    var label = el('label', 'field-label', meta.label);
+    label.setAttribute('for', id);
+    var input;
+    if (meta.options) {
+      input = el('select', 'field-input');
+      if (meta.options.length > 1) {
+        var blank = el('option', null, 'Choose…');
+        blank.value = '';
+        input.appendChild(blank);
+      }
+      meta.options.forEach(function (o) {
+        var opt = el('option', null, o[1]);
+        opt.value = o[0];
+        input.appendChild(opt);
+      });
+    } else {
+      input = el('input', 'field-input');
+      input.type = meta.type || 'text';
+      if (meta.inputmode) input.setAttribute('inputmode', meta.inputmode);
+      input.setAttribute('maxlength', '200');
+    }
+    input.id = id;
+    input.name = field;
+    input.setAttribute('autocomplete', meta.autocomplete);
+    if (!meta.optional) input.setAttribute('aria-required', 'true');
+    input.value = ui.address[field] || (meta.options && meta.options.length === 1 ? meta.options[0][0] : '');
+    if (meta.options && meta.options.length === 1) ui.address[field] = input.value;
+    function keep() { ui.address[field] = input.value; }
+    input.addEventListener('input', keep);
+    input.addEventListener('change', keep);
+    append(wrap, label, input);
+    var code = ui.addressErrors[field];
+    if (code) {
+      var errId = id + '-error';
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-describedby', errId);
+      var err = el('p', 'field-error', ERROR_TEXT[code] || 'Check this field.');
+      err.id = errId;
+      wrap.appendChild(err);
+    }
+    return wrap;
+  }
+
+  function addressCard(view) {
+    if (ui.addressClosed) {
+      return noticeCard("We can't take your address here any more", 'Go back to the chat.');
+    }
+    // The address step is consent-gated: the terms first, and the form only from a later read (the API then sends
+    // `address_request`). Whatever the buyer already typed is kept in memory for it.
+    if (view.consent && !view.address_request) {
+      var gate = el('section', 'card step');
+      append(gate, el('h2', null, 'Where should we send it?'),
+        el('p', null, 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
+      if (ui.addressConsentNote) {
+        var note = el('p', 'fine', ui.addressConsentNote);
+        note.setAttribute('role', 'status');
+        gate.appendChild(note);
+      }
+      gate.appendChild(consentBlock(view));
+      return gate;
+    }
+    // Sent back to the terms and not accepted again yet: never the form without them (no resend loop).
+    if (ui.addressSentBack) {
+      return progressCard('Checking the terms…', 'This page updates on its own. What you typed is kept.');
+    }
+    var fields = addressFieldsOf(view);
+    var prefill = (view.address_request && view.address_request.prefill) || {};
+    Object.keys(prefill).forEach(function (k) {
+      if (ui.address[k] === undefined && typeof prefill[k] === 'string') ui.address[k] = prefill[k];
+    });
+    var card = el('section', 'card step');
+    append(card, el('h2', null, 'Where should we send it?'),
+      el('p', null, 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
+    var form = el('form', 'address-form');
+    form.setAttribute('novalidate', 'novalidate');
+    fields.forEach(function (f) { form.appendChild(addressInput(f)); });
+    // Sent back to the terms (409 consent_required): said here too until the next read shows them.
+    if (ui.addressConsentNote) {
+      var sentBack = el('p', 'fine', ui.addressConsentNote);
+      sentBack.setAttribute('role', 'status');
+      form.appendChild(sentBack);
+    }
+    if (ui.addressMessage) {
+      var msg = el('p', 'field-error form-error', ui.addressMessage);
+      msg.setAttribute('role', 'alert');
+      form.appendChild(msg);
+    }
+    var submit = el('button', 'btn btn-primary', ui.addressBusy ? 'Saving…' : 'Continue');
+    submit.type = 'submit';
+    if (ui.addressBusy) submit.setAttribute('disabled', 'disabled');
+    form.appendChild(submit);
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      submitAddress(view, fields);
+    });
+    card.appendChild(form);
+    return card;
+  }
+
+  function submitAddress(view, fields) {
+    if (ui.addressBusy) return;
+    var errors = checkAddress(fields, ui.address);
+    ui.addressErrors = errors;
+    ui.addressMessage = Object.keys(errors).length ? 'Please check the highlighted fields.' : null;
+    if (Object.keys(errors).length) {
+      render();
+      return;
+    }
+    var body = {};
+    fields.forEach(function (f) {
+      var v = String(ui.address[f] || '').trim();
+      if (v) body[f] = v;
+    });
+    ui.addressBusy = true;
+    render();
+    fetch('/agenpas/api/p/' + match[1] + '/shipping-address', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Agenpas-Link': token },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (b) { return { status: res.status, body: b }; });
+    }).then(function (r) {
+      ui.addressBusy = false;
+      if (r.status === 200 && r.body && typeof r.body.screen === 'string') {
+        ui.address = {};
+        ui.addressErrors = {};
+        ui.addressMessage = null;
+        ui.addressConsentNote = null;
+        ui.view = r.body;
+        ui.lastJson = JSON.stringify(r.body);
+        render();
+        if (r.body.terminal) { stop(); forgetToken(); return; }
+        schedule(r.body.poll_after_seconds);
+        return;
+      }
+      var refusal = r.status === 409 && r.body && typeof r.body.error === 'string' ? r.body.error : null;
+      if (refusal === 'consent_required') {
+        // The terms for this step are not accepted (yet, or any more): back to them, never the form without them.
+        // What the buyer typed stays in memory and fills the form again once they agree; the page says so. Sent back
+        // again after a fresh acceptance: the step closes (no loop).
+        ui.addressMessage = null;
+        ui.addressErrors = {};
+        ui.addressSentBackCount += 1;
+        if (ui.addressSentBackCount >= 2) {
+          ui.addressClosed = true;
+        } else {
+          ui.addressSentBack = true;
+          ui.addressConsentNote = 'Please accept the terms first. What you typed is kept, and the form comes back after you agree.';
+        }
+        if (ui.consent && ui.consent.step === 'shipping_address') ui.consent = null;
+        ui.lastJson = null;
+        render();
+        pollNow();
+        return;
+      }
+      if (refusal === 'address_not_taken' || (refusal === 'address_not_requested' && ui.addressNotRequestedCount >= 1)) {
+        // The address can't be taken here any more (collection turned off, ...), or the step is still not asked for
+        // after a fresh read: closed, never a retry loop and never a generic error. Read the purchase again.
+        ui.addressMessage = null;
+        ui.addressErrors = {};
+        ui.addressClosed = true;
+        ui.lastJson = null;
+        render();
+        pollNow();
+        return;
+      }
+      if (refusal === 'address_not_requested') {
+        // The purchase is past the address step (or not at it): the next read shows where it is.
+        ui.addressNotRequestedCount += 1;
+        ui.addressMessage = null;
+        ui.addressErrors = {};
+        ui.lastJson = null;
+        render();
+        pollNow();
+        return;
+      }
+      if (r.status === 422) {
+        ui.addressErrors = (r.body && r.body.field_errors) || {};
+        ui.addressMessage = 'Please check the highlighted fields.';
+      } else if (r.status === 409) {
+        ui.addressMessage = null;
+        ui.addressErrors = {};
+        setNotice('We already have your address.');
+        pollNow();
+      } else if (r.status === 429) {
+        ui.addressMessage = 'Too many tries. Wait a minute, then try again.';
+      } else if (r.status === 410) {
+        showExpired(r.body && r.body.link_ttl_minutes);
+        return;
+      } else {
+        ui.addressMessage = "We couldn't save your address just now. Please try again in a moment.";
+      }
+      render();
+    }).catch(function () {
+      ui.addressBusy = false;
+      ui.addressMessage = "We couldn't save your address just now. Please try again in a moment.";
+      render();
+    });
   }
 
   function stepCard(view) {
@@ -574,6 +861,10 @@
           button: 'Continue to your bank',
           waiting: 'Waiting for your bank…',
         });
+      case 'shipping_address':
+        return addressCard(view);
+      case 'shipping_address_elsewhere':
+        return progressCard('We need your shipping address', 'Go back to the chat to add your address. This page updates on its own.');
       case 'parked':
         return progressCard('Getting things ready…', 'This is taking a little longer than usual. This page updates on its own.');
       case 'placing':
@@ -718,7 +1009,7 @@
     forgetToken();
     var minutes = Number(ttlMinutes) || (ui.view && Number(ui.view.link_ttl_minutes)) || 0;
     var lasting = minutes >= 1 ? 'only work for ' + Math.floor(minutes) + (Math.floor(minutes) === 1 ? ' minute' : ' minutes') : 'only work for a short time';
-    renderMessage('This link has expired', 'For your security, AgenPas links ' + lasting + '. Go back to the chat and ask for a new link to see your purchase.');
+    renderMessage('This link has expired', 'For your security, AgenPaz links ' + lasting + '. Go back to the chat and ask for a new link to see your purchase.');
   }
 
   function onError() {
@@ -730,6 +1021,25 @@
       renderMessage("We can't load your purchase right now", "We'll keep trying. You can leave this page open.");
     }
     schedule(backoff);
+  }
+
+  // The address step across reads. Sent back to the terms but the reads keep showing the form (the backend's read and
+  // write disagree): after a few such reads the step closes ("Go back to the chat") rather than wait forever. A read
+  // that shows a NEW form (after one without it) starts the "not requested" count again.
+  var ADDRESS_SENT_BACK_MAX_READS = 3;
+  function trackAddressStep(body) {
+    var hasForm = Boolean(body.address_request);
+    var hadForm = Boolean(ui.view && ui.view.address_request);
+    if (hasForm && !hadForm) ui.addressNotRequestedCount = 0;
+    if (ui.addressSentBack && hasForm && !body.consent) {
+      ui.addressSentBackReads += 1;
+      if (ui.addressSentBackReads >= ADDRESS_SENT_BACK_MAX_READS && !ui.addressClosed) {
+        ui.addressClosed = true;
+        ui.lastJson = null;
+      }
+    } else if (!ui.addressSentBack) {
+      ui.addressSentBackReads = 0;
+    }
   }
 
   // What decides a re-render: the answer, except the consent offer's id and time (they change on every read, and a
@@ -765,6 +1075,7 @@
       ui.inFlight = false;
       if (r.status === 200 && r.body && typeof r.body.screen === 'string') {
         syncConsent(r.body);
+        trackAddressStep(r.body);
         var json = viewKey(r.body);
         // An unchanged answer is not re-rendered: a re-render would reload a framed hosted page (embed mode) and
         // drop a focused button.

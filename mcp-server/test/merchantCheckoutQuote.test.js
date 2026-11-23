@@ -88,6 +88,8 @@ function merchantFixture({
   return {
     calls,
     tier: transport,
+    // The real client's self-report (public values only); the quote refuses a client without one.
+    describeTier() { return { signing_key_published: true }; },
     async discoverEndpoint(url) {
       calls.push(["discover", url]);
       return { mcpEndpoint: discoveredEndpoint };
@@ -439,4 +441,60 @@ test("a requested code counts as applied only when Shopify applies it exactly on
   await assertOneGuardRefuses("code neither applied nor rejected", snapshot => {
     snapshot.discounts.codes = ["FIXTURE-QA"];
   }, withCode);
+});
+
+// The quote refuses before any merchant I/O when the key it would sign with is not the published one: the
+// merchant could not verify the signature, and the quote would only learn that after creating a checkout.
+test("a signing key that is not the published key is refused before any merchant call (real client)", async () => {
+  const nodeCrypto = await import("node:crypto");
+  const { default: clientModule } = await import("../../src/services/ucpBuyerAgentClient.js");
+  const mine = nodeCrypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const other = nodeCrypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const kid = "pivota-test-quote-key";
+  const pem = mine.privateKey.export({ format: "pem", type: "pkcs8" });
+  const publicOf = (key) => ({ ...key.publicKey.export({ format: "jwk" }), kid, use: "sig", alg: "ES256" });
+  const build = (signingKeys) => {
+    const calls = [];
+    const client = clientModule.createUcpBuyerAgentClient({
+      allowTokenTier: false,
+      profileUrl: "https://ucp.pivota.cc/.well-known/ucp-agent",
+      signingPrivateKey: pem,
+      signingKeyId: kid,
+      signingKeys,
+      logger: { warn() {} },
+      fetchImpl: async (url) => { calls.push(String(url)); return new Response("{}", { status: 404 }); },
+      retryAttempts: 0,
+    });
+    return { client, calls };
+  };
+
+  for (const signingKeys of [[], [publicOf(other)], [{ ...publicOf(mine), kid: "pivota-other-kid" }]]) {
+    const { client, calls } = build(signingKeys);
+    assert.equal(client.tier, "signed");
+    const out = await createService(client).quote(request);
+    assert.equal(out.reason, "merchant_checkout_quote_signing_key_unpublished");
+    assert.deepEqual(calls, []);
+  }
+
+  const { client, calls } = build([publicOf(mine)]);
+  const out = await createService(client).quote(request);
+  assert.notEqual(out.reason, "merchant_checkout_quote_signing_key_unpublished");
+  assert.ok(calls.length > 0, "a published key goes on to merchant discovery");
+});
+
+test("a client whose self-report throws is refused as unpublished", async () => {
+  const client = { ...merchantFixture(), describeTier() { throw new Error("bad profile config"); } };
+  const out = await createService(client).quote(request);
+  assert.equal(out.reason, "merchant_checkout_quote_signing_key_unpublished");
+  assert.deepEqual(client.calls, []);
+});
+
+test("a client with no self-report, or one that omits signing_key_published, is refused (fails closed)", async () => {
+  for (const describeTier of [undefined, () => ({}), () => ({ signing_key_published: undefined }), () => null]) {
+    const client = { ...merchantFixture(), describeTier };
+    if (describeTier === undefined) delete client.describeTier;
+    const out = await createService(client).quote(request);
+    assert.equal(out.reason, "merchant_checkout_quote_signing_key_unpublished");
+    assert.deepEqual(client.calls, []);
+  }
 });

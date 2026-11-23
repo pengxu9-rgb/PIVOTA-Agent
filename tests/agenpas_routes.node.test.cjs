@@ -186,7 +186,17 @@ test('assets: served same-origin with nosniff; the script builds DOM without inn
   assert.equal(js.headers['x-content-type-options'], 'nosniff');
   const src = js.text;
   assert.equal(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/.test(src), false);
-  assert.equal(/createElement\(['"](input|form|textarea|select)['"]/.test(src), false);
+  // The only inputs are the shipping-address fields: never a card field (no cc-* autofill, no card / CVV / expiry
+  // field or label), and the form posts to nothing but this page's own address route.
+  assert.equal(/cc-(?:number|exp|csc|name|type)|['"](?:cardNumber|card_number|cvv|cvv2|cvc|expiry|exp_month|exp_year|pan)['"]|security code/i.test(src), false);
+  // The form's fields are exactly the address fields.
+  const fieldBlock = /var ADDRESS_ORDER = \[([^\]]+)\]/.exec(src);
+  assert.deepEqual(fieldBlock[1].split(',').map((x) => x.trim().replace(/'/g, '')),
+    ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country']);
+  // Two inputs: the address field, and the consent checkbox (gw#2605).
+  assert.equal((src.match(/el\('input'/g) || []).length, 2);
+  assert.match(src, /input\.type = 'checkbox'/);
+  assert.equal(/textarea/.test(src), false);
   assert.equal(/https?:\/\/(?!\/)/.test(src.replace(/\/\*[\s\S]*?\*\//g, '')), false, 'no absolute URLs (no CDN, no third party)');
   // The token: read from the fragment, the fragment cleared, sent only as the header; the query is never read,
   // and an expired / invalid link is shown from the API's 410 / 404.

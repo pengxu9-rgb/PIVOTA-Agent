@@ -205,6 +205,8 @@ test('every unified state maps to a screen, and an unknown state maps to `unknow
     failed: 'failed',
     refused: 'refused',
     expired: 'expired',
+    // Without an address request in the view (or with collection off, see the address tests): just "getting ready".
+    needs_shipping_address: 'preparing',
   };
   assert.deepEqual(Object.keys(expected).sort(), [...KNOWN_STATES].sort());
   for (const [state, screen] of Object.entries(expected)) assert.equal(screenFor(state), screen, state);
@@ -226,10 +228,39 @@ test('placing with a vetted bank check page shows the authenticate screen', () =
 
 // ---- failure wording -------------------------------------------------------------------------------------------
 
+// The exact final copies (src/agenpas/view.js): "checking" on a failed row, and the refused / expired rows' own words.
+const FINAL_CHECKING_COPY = Object.freeze({
+  kind: 'outcome_unknown', title: "We're checking with the store",
+  message: "We're checking with the store — don't try again. Your order may already be in progress, and we'll confirm what happened in the chat.",
+  retry_hint: false, outcome_unknown: true,
+});
+const STATE_COPY = Object.freeze({
+  refused: {
+    kind: 'refused', title: "This purchase couldn't be started",
+    message: "The store or our payment partner couldn't accept this purchase. Go back to the chat for other options.",
+    retry_hint: false, outcome_unknown: false,
+  },
+  expired: {
+    kind: 'expired', title: 'This purchase expired',
+    message: "It wasn't completed in time. Go back to the chat to check on it or to start again.",
+    retry_hint: true, outcome_unknown: false,
+  },
+});
+
 test('outcome-unknown codes say "checking with the store — don\'t try again" and never offer a retry', () => {
   for (const code of ['vic_order_outcome_unknown', 'outcome_unknown', 'vic_submit_unresolved', 'pending_write_unreconcilable', 'some_new_outcome_unknown_code']) {
     assert.equal(isOutcomeUnknownCode(code), true, code);
-    for (const state of ['failed', 'refused', 'expired']) {
+    // A hold-SHAPED code (not on the HELD list) reads "checking" only on a failed row: refused / expired end before
+    // any money step on both rails, so there it reads the state's own words.
+    const states = code === 'some_new_outcome_unknown_code' ? ['failed'] : ['failed', 'refused', 'expired'];
+    if (code === 'some_new_outcome_unknown_code') {
+      for (const state of ['refused', 'expired']) {
+        const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
+        assert.equal(view.screen, state);
+        assert.deepEqual(view.outcome, STATE_COPY[state], state);
+      }
+    }
+    for (const state of states) {
       const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
       assert.equal(view.screen, 'outcome_unknown');
       assert.equal(view.outcome.outcome_unknown, true);
@@ -253,11 +284,12 @@ test('known codes map to plain language; the raw code never reaches the page', (
   assert.equal(refused.outcome.retry_hint, false);
 });
 
-test('an unknown code (or junk) gets the state\'s generic wording without a retry for failed/refused', () => {
+test('an unrecognised code (or junk) on a final purchase gets the checking wording; no code gets the generic wording', () => {
   const failed = outcomeFor('failed', ['brand_new_code', '<b>Traceback</b>']);
-  assert.equal(failed.kind, 'failed');
+  assert.equal(failed.kind, 'outcome_unknown');
   assert.equal(failed.retry_hint, false);
-  assert.equal(failed.outcome_unknown, false);
+  assert.equal(failed.outcome_unknown, true);
+  assert.equal(outcomeFor('failed', []).kind, 'failed');
   assert.equal(outcomeFor('refused', []).kind, 'refused');
   assert.equal(outcomeFor('expired', [null]).kind, 'expired');
   assert.equal(outcomeFor('completed', ['vic_order_outcome_unknown']), null);
@@ -315,7 +347,10 @@ test('paid_sent is the approval step, not a charge: only its code segment decide
   const unresolved = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'paid_sent:3:scheme:vic_submit_unresolved' }));
   assert.equal(unresolved.screen, 'outcome_unknown');
   assert.equal(unresolved.outcome.retry_hint, false);
-  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).outcome.kind, 'failed');
+  // An unrecognised code behind the prefix: the checking wording (review: unknown codes are never neutral once final).
+  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:1:v:some_new_code' })).outcome.kind, 'outcome_unknown');
+  // buyer_action_expired itself is named: the approval timed out.
+  assert.equal(project(unified('failed', {}, { last_error_code: 'paid_sent:2:scheme:buyer_action_expired' })).outcome.kind, 'approval_timed_out');
 });
 
 test('binding_refused:<kind>:<status> reads as the card not being usable', () => {
@@ -332,7 +367,7 @@ test('checkout_total_unparsed: retired by the backend; a completed purchase show
 });
 
 test('the generic failed wording is neutral: no "try again", no claim the order was not placed', () => {
-  const view = project(unified('failed', {}, { last_error_code: 'a_code_nobody_has_seen' }));
+  const view = project(unified('failed', {}, { last_error_code: null }));
   assert.equal(view.outcome.kind, 'failed');
   assert.equal(view.outcome.retry_hint, false);
   assert.equal(/try again|wasn't placed/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
@@ -399,7 +434,7 @@ const HELD = [
   'checkout_total_unverified', 'checkout_total_over_approved', 'checkout_payment_no_order', 'checkout_order_id_card_shaped',
   'checkout_unknown_timeout', 'checkout_unknown_script_error', 'checkout_cancel_unresolved',
   'checkout_confirm_pending_check', 'checkout_confirm_not_sent', 'checkout_paying_without_task',
-  'checkout_payment_reached_unconfirmed', 'money_result_seen',
+  'checkout_payment_reached_unconfirmed', 'checkout_answer_scrubbed', 'money_result_seen',
   'vic_order_stale', 'vic_total_over_approved', 'vic_currency_mismatch', 'vic_currency_missing', 'vic_total_missing',
   'vic_approved_amount_missing', 'vic_submit_unresolved',
 ];
@@ -562,7 +597,7 @@ test('currency: a lower-case or non-ISO currency on either side is a disagreemen
 
 // The reviewer's precedence probe (mixed.cjs): refusal_reason + last_error_code, in four states.
 const MIXED = [
-  // name, refusal_reason, last_error_code, terminal outcome kind, placing outcome kind
+  // name, refusal_reason, last_error_code, terminal outcome kind, placing outcome kind[, refused / expired kind]
   ['hold+fail', 'checkout_confirm_refused:http_error:422', 'checkout_unknown_timeout', 'outcome_unknown', 'held'],
   ['fail+hold reversed', 'checkout_unknown_timeout', 'checkout_lock_invalid', 'outcome_unknown', 'held'],
   ['suffixed hold in paid_sent', null, 'paid_sent:2:scheme:checkout_setup_unresolved', 'outcome_unknown', 'held'],
@@ -571,24 +606,25 @@ const MIXED = [
   ['named+hold', 'vic_quote_mismatch', 'outcome_unknown:http_error', 'outcome_unknown', 'held'],
   ['named+fail', 'price_changed', 'checkout_relay_refused', 'not_submitted', null],
   ['upper hold', null, 'CHECKOUT_UNKNOWN_TIMEOUT', 'outcome_unknown', 'held'],
-  ['dash hold (not a code shape: ignored)', null, 'checkout-unknown-timeout', 'generic', null],
+  ['dash hold (not a code shape: unrecognised)', null, 'checkout-unknown-timeout', 'outcome_unknown', 'held', 'generic'],
   ['space-padded', null, ' checkout_setup_unresolved ', 'outcome_unknown', 'held'],
   ['named beats a shape-only segment', null, 'token_refused:money_result:', 'card_not_added', null],
-  ['unknown only', null, 'zz_brand_new', 'generic', null],
-  ['unknown shapey', null, 'zz_new_unresolved_thing', 'outcome_unknown', 'held'],
+  ['unknown only', null, 'zz_brand_new', 'outcome_unknown', 'held', 'generic'],
+  ['unknown shapey', null, 'zz_new_unresolved_thing', 'outcome_unknown', 'held', 'generic'],
   ['fail beats shape', 'checkout_lock_invalid', 'zz_new_unresolved_thing', 'not_submitted', null],
   ['named beats shape', 'binding_refused', 'zz_new_unresolved_thing', 'card_not_added', null],
-  ['code over 512 chars is ignored', null, `${'x'.repeat(520)}:checkout_unknown_timeout`, 'generic', null],
-  ['segment over 64 chars is ignored', null, `checkout_unknown_timeout_${'x'.repeat(60)}`, 'generic', null],
+  ['code over 512 chars is unrecognised', null, `${'x'.repeat(520)}:checkout_unknown_timeout`, 'outcome_unknown', 'held', 'generic'],
+  ['segment over 64 chars is unrecognised', null, `checkout_unknown_timeout_${'x'.repeat(60)}`, 'outcome_unknown', 'held', 'generic'],
   ['a list of codes is read', ['checkout_unknown_timeout'], 'checkout_lock_invalid', 'outcome_unknown', 'held'],
 ];
-for (const [name, rr, le, terminalKind, placingKind] of MIXED) {
+for (const [name, rr, le, terminalKind, placingKind, definiteKind = terminalKind] of MIXED) {
   test(`precedence probe: ${name}`, () => {
     for (const state of ['failed', 'refused', 'expired']) {
       const view = projectPurchaseView({ state, detail: { refusal_reason: rr, last_error_code: le } }, { purchaseId: AP, hostedHosts: [] });
-      const kind = terminalKind === 'generic' ? state : terminalKind;
-      assert.equal(view.outcome.kind, kind, state);
-      if (terminalKind === 'outcome_unknown') assert.equal(view.outcome.retry_hint, false);
+      const expected = state === 'failed' ? terminalKind : definiteKind;
+      if (expected === 'generic' && state !== 'failed') assert.deepEqual(view.outcome, STATE_COPY[state], state);
+      else assert.equal(view.outcome.kind, expected === 'generic' ? state : expected, state);
+      if (expected === 'outcome_unknown') assert.deepEqual(view.outcome, FINAL_CHECKING_COPY, state);
     }
     const placing = projectPurchaseView({ state: 'placing', detail: { refusal_reason: rr, last_error_code: le } }, { purchaseId: AP, hostedHosts: [] });
     assert.equal(placing.outcome ? placing.outcome.kind : null, placingKind);
@@ -618,11 +654,11 @@ test('HELD checkout_confirm_not_sent (token exchange failed twice): still held, 
   assert.equal(failed.outcome.retry_hint, false);
 });
 
-test('checkout_confirm_not_verified (being removed by the backend): not on the FAILED list; neutral generic wording', () => {
+test('checkout_confirm_not_verified (removed by the backend): not on the FAILED list; unrecognised, so the checking wording', () => {
   const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_confirm_not_verified' }));
-  assert.equal(view.screen, 'failed');
-  assert.equal(view.outcome.kind, 'failed');
-  assert.equal(/no order was sent|wasn't placed|try again/i.test(view.outcome.message), false);
+  assert.equal(view.screen, 'outcome_unknown');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.equal(/no order was sent|wasn't placed/i.test(view.outcome.message), false);
 });
 
 test('HELD checkout_paying_without_task: the checking screen while placing, outcome_unknown once final', () => {
@@ -636,10 +672,11 @@ test('HELD checkout_paying_without_task: the checking screen while placing, outc
   assert.equal(failed.outcome.retry_hint, false);
 });
 
-test('removed checkout_confirm_window_passed: no longer a FAILED code; neutral generic wording', () => {
+test('removed checkout_confirm_window_passed: no longer a FAILED code; now unrecognised, so the checking wording', () => {
   const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_confirm_window_passed' }));
-  assert.equal(view.outcome.kind, 'failed');
-  assert.equal(/no order was sent|wasn't placed|try again/i.test(view.outcome.message), false);
+  assert.equal(view.outcome.kind, 'outcome_unknown');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.equal(/no order was sent|wasn't placed/i.test(view.outcome.message), false);
 });
 
 test('HELD checkout_confirm_ambiguous_4xx now also for 401 and 429: held, whatever the suffix', () => {
@@ -661,8 +698,8 @@ test('HELD checkout_setup_unresolved in paying (a setup 403 / error card now wri
   assert.equal(project(unified('failed', {}, { last_error_code: 'checkout_setup_refused:http_error:400' })).outcome.kind, 'not_submitted');
 });
 
-test('parity with backend 732733b93: the explicit HELD list is exactly the 23 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
-  const BACKEND_CHECKOUT_HOLD = ['checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
+test('parity with backend 838643e34 (hold sets unchanged since 4dc09ce55): the explicit HELD list is exactly the 24 checkout holds, the 7 VIC holds, money_result_seen and the gateway extras', () => {
+  const BACKEND_CHECKOUT_HOLD = ['checkout_answer_scrubbed', 'checkout_cancel_unresolved', 'checkout_confirm_ambiguous_4xx', 'checkout_confirm_conflict',
     'checkout_confirm_error_card', 'checkout_confirm_not_sent', 'checkout_confirm_pending_check', 'checkout_confirm_text_only',
     'checkout_confirm_unrecognised', 'checkout_confirm_unresolved', 'checkout_order_id_card_shaped', 'checkout_paying_without_task',
     'checkout_payment_no_order', 'checkout_payment_reached_unconfirmed', 'checkout_result_overdue', 'checkout_result_unrecognised', 'checkout_setup_submitted',
@@ -675,7 +712,7 @@ test('parity with backend 732733b93: the explicit HELD list is exactly the 23 ch
     'vic_status_inconsistent', 'vic_order_mismatch', 'checkout_outcome_unknown', 'charge_pending', 'money_result_parked', 'vic_held'];
   // The Reap rail's (pivota-backend services/reap_agentic_purchase.py; tests/agenpas_reap_consent.node.test.cjs).
   const REAP_HOLD = ['checkout_unresolvable', 'checkout_read_permanent', 'checkout_dispatch_unresolved', 'checkout_created_hosted_url_refused'];
-  assert.equal(BACKEND_CHECKOUT_HOLD.length, 23);
+  assert.equal(BACKEND_CHECKOUT_HOLD.length, 24);
   assert.equal(BACKEND_VIC_HOLD.length, 7);
   // Membership in the EXPLICIT list, not the outcome: the shape regex alone must not be able to satisfy this.
   assert.deepEqual([...HELD_CODES].sort(), [...BACKEND_CHECKOUT_HOLD, ...BACKEND_VIC_HOLD, ...GATEWAY_EXTRAS, ...REAP_HOLD].sort());
@@ -761,10 +798,13 @@ test('parity: the explicit FAILED list is exactly the backend\'s nothing-submitt
     'checkout_form_error', 'checkout_pay_disabled', 'token_currency_unsupported', 'token_request_unresolved', 'pay_step_unavailable',
     'binding_answer_unrecognised', 'approval_answer_unrecognised', 'token_answer_unrecognised', 'token_mismatch',
     'vic_quote_unrecognised', 'vic_quote_currency_mismatch', 'vic_order_unresolved', 'operator_confirmed_not_charged',
+    // A2A pre-store failures listed in the fix round (pivota-backend a2a_rail_worker.py, all before any confirm).
+    'binding_page_invalid', 'approval_page_invalid', 'vic_page_missing', 'vic_page_invalid', 'vic_amount_invalid',
+    'vic_quote_invalid', 'vic_order_refused', 'vic_quote_refused', 'reconcile_exhausted',
     // The Reap rail's codes written before any checkout exists (tests/agenpas_reap_consent.node.test.cjs).
     'enrollment_no_hosted_action', 'enrollment_id_conflict', 'enrollment_row_unreadable', 'enrollment_not_activatable',
     'enrollment_dead', 'enrollment_create_failed', 'enrollment_read_failed', 'no_active_enrollment', 'enrollment_not_active',
-    'quote_id_missing'];
+    'quote_id_missing', 'quote_failed'];
   assert.deepEqual([...FAILED_CODES].sort(), [...EXPECTED_FAILED].sort());
 });
 
@@ -804,5 +844,155 @@ test('HELD checkout_payment_reached_unconfirmed: the checking screen in placing,
     const view = project(unified('failed', {}, { refusal_reason: rr, last_error_code: le }));
     assert.equal(view.screen, 'outcome_unknown', `${rr} + ${le}`);
     assert.equal(/charged/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
+  }
+});
+
+// ---- unrecognised codes (controller P3, after gw#2599) ----------------------------------------------------------
+
+const UNRECOGNISED = ['zz_brand_new_code', 'checkout_something_new', 'paid_sent:3:scheme:zz_new_step_code', 'not a code at all'];
+
+for (const code of UNRECOGNISED) {
+  test(`unrecognised ${JSON.stringify(code)}: placing -> the checking screen`, () => {
+    const view = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: code }));
+    assert.equal(view.screen, 'outcome_unknown');
+    assert.equal(view.outcome.kind, 'held');
+    assert.equal(view.terminal, false);
+  });
+  test(`unrecognised ${JSON.stringify(code)}: failed -> outcome_unknown (exact copy); refused / expired -> the state's own words`, () => {
+    const failed = project(unified('failed', { poll_after_seconds: null }, { last_error_code: code }));
+    assert.equal(failed.screen, 'outcome_unknown');
+    assert.deepEqual(failed.outcome, FINAL_CHECKING_COPY);
+    for (const state of ['refused', 'expired']) {
+      const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: code }));
+      assert.equal(view.screen, state, state);
+      assert.deepEqual(view.outcome, STATE_COPY[state], state);
+    }
+  });
+  test(`unrecognised ${JSON.stringify(code)}: awaiting_buyer_authorization -> Approve stays`, () => {
+    const view = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: code }));
+    assert.equal(view.screen, 'approve');
+    assert.ok(view.action);
+    assert.equal(view.outcome, null);
+  });
+}
+
+test('unrecognised codes never override an explicit list: FAILED, named and PARKED keep their wording', () => {
+  assert.equal(project(unified('failed', {}, { refusal_reason: 'zz_new', last_error_code: 'checkout_relay_refused' })).outcome.kind, 'not_submitted');
+  assert.equal(project(unified('failed', {}, { refusal_reason: 'zz_new', last_error_code: 'vic_authorization_declined' })).outcome.kind, 'declined');
+  assert.equal(project(unified('locking', {}, { refusal_reason: 'zz_new', last_error_code: 'checkout_step_disabled' })).screen, 'parked');
+  // No code at all: the generic wording (with expired keeping its hint).
+  assert.equal(project(unified('expired', { poll_after_seconds: null })).outcome.kind, 'expired');
+});
+
+// ---- backend f59f4fe37: the withheld order number -------------------------------------------------------------
+
+for (const code of ['checkout_order_reference_withheld', 'checkout_order_reference_invalid']) {
+  test(`COMPLETED ${code}: placed, the verified total, the order number "in the store's confirmation email"`, () => {
+    const withTotal = project(unified('completed', { poll_after_seconds: null, totals: { currency: 'USD', final_total_minor: 2297 } },
+      { last_error_code: code, merchant_order_id: null }));
+    assert.equal(withTotal.screen, 'done');
+    assert.equal(withTotal.terminal, true);
+    assert.equal(withTotal.outcome, null);
+    assert.equal(withTotal.order.reference, null);
+    assert.equal(withTotal.order.reference_withheld, true);
+    assert.equal(withTotal.amounts.final_total_minor, 2297);
+    // Without a total: still placed, still the email line; no amount is made up.
+    const noTotal = project(unified('completed', { poll_after_seconds: null, totals: { currency: 'USD' } }, { last_error_code: code }));
+    assert.equal(noTotal.screen, 'done');
+    assert.equal(noTotal.order.reference_withheld, true);
+    assert.equal(noTotal.amounts.final_total_minor, null);
+    // Not a hold, not a failure: never the checking wording, in any state.
+    assert.equal(isOutcomeUnknownCode(code), false);
+    assert.equal(FAILED_CODES.has(code), false);
+    assert.equal(HELD_CODES.has(code), false);
+    assert.equal(project(unified('placing', {}, { last_error_code: code })).screen, 'placing');
+  });
+}
+
+test('a completed order WITH its number: no withheld flag, whatever the code', () => {
+  const view = project(unified('completed', { order_reference: '#1001', poll_after_seconds: null }, { last_error_code: 'checkout_order_reference_withheld' }));
+  assert.equal(view.order.reference, '#1001');
+  assert.equal(Object.hasOwn(view.order, 'reference_withheld'), false);
+  assert.equal(Object.hasOwn(project(unified('completed', { order_reference: '#1001' })).order, 'reference_withheld'), false);
+});
+
+// ---- backend 4dc09ce55 (DAVV) ----------------------------------------------------------------------------------
+
+test('HELD checkout_answer_scrubbed (after the confirm, a card code was echoed): checking while placing, outcome_unknown once final, never "charged"', () => {
+  const placing = project(unified('placing', { poll_after_seconds: 15 }, { last_error_code: 'checkout_answer_scrubbed' }));
+  assert.equal(placing.screen, 'outcome_unknown');
+  assert.equal(placing.terminal, false);
+  for (const state of ['failed', 'refused', 'expired']) {
+    const view = project(unified(state, { poll_after_seconds: null }, { last_error_code: 'checkout_answer_scrubbed' }));
+    assert.equal(view.screen, 'outcome_unknown', state);
+    assert.equal(view.outcome.retry_hint, false);
+    assert.equal(/charged/i.test(view.outcome.message), false);
+  }
+  // Beside the operator code, HELD wins.
+  assert.equal(project(unified('failed', {}, { refusal_reason: 'checkout_answer_scrubbed', last_error_code: 'operator_confirmed_not_charged' })).screen, 'outcome_unknown');
+});
+
+test('FAILED checkout_card_unavailable:davv_missing: not_submitted on its head segment, no retry', () => {
+  const view = project(unified('failed', { poll_after_seconds: null }, { last_error_code: 'checkout_card_unavailable:davv_missing' }));
+  assert.equal(view.screen, 'failed');
+  assert.equal(view.outcome.kind, 'not_submitted');
+  assert.equal(view.outcome.retry_hint, false);
+  assert.equal(isOutcomeUnknownCode('checkout_card_unavailable:davv_missing'), false);
+});
+
+test('checkout_placing (also written after a lookup finds the checkout in progress): the normal placing screen', () => {
+  const view = project(unified('placing', { poll_after_seconds: 5 }, { last_error_code: 'checkout_placing' }));
+  assert.equal(view.screen, 'placing');
+  assert.equal(view.outcome, null);
+  assert.equal(view.terminal, false);
+  assert.equal(isOutcomeUnknownCode('checkout_placing'), false);
+  // And it never hides a buyer step before placing.
+  const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: 'checkout_placing' }));
+  assert.equal(approve.screen, 'approve');
+});
+
+// ---- progress codes vs anomalies (decision after 34e647cce) -----------------------------------------------------
+
+for (const code of ['checkout_placing', 'checkout_ready', 'checkout_read', 'await_read', 'reconciled']) {
+  test(`PROGRESS ${code}: the normal placing screen; Approve stays before placing; a HELD code beside it still wins`, () => {
+    const placing = project(unified('placing', { poll_after_seconds: 5 }, { last_error_code: code }));
+    assert.equal(placing.screen, 'placing');
+    assert.equal(placing.outcome, null);
+    const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: code }));
+    assert.equal(approve.screen, 'approve');
+    assert.ok(approve.action);
+    for (const [rr, le] of [[code, 'checkout_confirm_unresolved'], ['money_result_seen', code]]) {
+      const held = project(unified('placing', {}, { refusal_reason: rr, last_error_code: le }));
+      assert.equal(held.screen, 'outcome_unknown', `${rr} + ${le}`);
+      assert.equal(held.outcome.kind, 'held');
+    }
+  });
+}
+
+for (const code of ['transition_refused', 'rail_refused', 'no_step_for_state', 'vic_order_step_disabled', 'checkout_answer_unrecognised']) {
+  test(`ANOMALY ${code}: the checking wording from placing on; nothing changes before placing`, () => {
+    const placing = project(unified('placing', { poll_after_seconds: 5 }, { last_error_code: code }));
+    assert.equal(placing.screen, 'outcome_unknown');
+    assert.equal(placing.outcome.kind, 'held');
+    const failed = project(unified('failed', { poll_after_seconds: null }, { last_error_code: code }));
+    assert.equal(failed.screen, 'outcome_unknown');
+    assert.equal(failed.outcome.retry_hint, false);
+    const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL }, { last_error_code: code }));
+    assert.equal(approve.screen, 'approve');
+    assert.ok(approve.action);
+  });
+}
+
+test('parity with backend 838643e34: the 6 _CHECKOUT_PAYMENT_REACHED_CODES are all HELD and never read as "not charged"', () => {
+  const PAYMENT_REACHED = ['checkout_answer_scrubbed', 'checkout_order_id_card_shaped', 'checkout_payment_no_order',
+    'checkout_payment_reached_unconfirmed', 'checkout_total_over_approved', 'checkout_total_unverified'];
+  assert.equal(PAYMENT_REACHED.length, 6);
+  for (const code of PAYMENT_REACHED) {
+    assert.equal(HELD_CODES.has(code), true, code);
+    for (const [rr, le] of [[code, 'operator_confirmed_not_charged'], ['operator_confirmed_not_charged', code]]) {
+      const view = project(unified('failed', {}, { refusal_reason: rr, last_error_code: le }));
+      assert.equal(view.screen, 'outcome_unknown', `${rr} + ${le}`);
+      assert.equal(/charged/i.test(`${view.outcome.title} ${view.outcome.message}`), false);
+    }
   }
 });

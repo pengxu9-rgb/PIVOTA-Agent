@@ -235,7 +235,7 @@ test('completed: polling stops, the token is forgotten; an unparsed total says t
   const h = harness({ answers: [{ status: 200, body: done }] });
   h.start();
   await settle();
-  assert.match(h.text(), /Order placed/);
+  assert.match(h.text(), /Your order is placed/);
   assert.match(h.text(), /See your email receipt/);
   assert.equal(h.pollTimers().length, 0);
   assert.equal(h.storage.has(`agenpas:t:${PID}`), false);
@@ -341,6 +341,138 @@ test('operator_confirmed_not_charged: the operator wording once, no second "try 
   assert.match(h.text(), /you weren't charged/);
   assert.equal(/try again/i.test(h.text()), false);
   assert.equal((h.text().match(/start again from the chat/g) || []).length, 1);
+  assert.equal(h.pollTimers().length, 0);
+});
+
+// ---- the shipping address form (AGENPAS_COLLECT_SHIPPING) -----------------------------------------------------
+
+function addressView(fields, prefill = {}) {
+  return view({
+    state: 'routing', screen: 'shipping_address', action: null, poll_after_seconds: 15,
+    address_request: { fields_missing: fields, expires_at: '2026-11-17T12:30:00.000Z', prefill },
+  });
+}
+const byName = (h, name) => h.app.all((n) => n.name === name)[0];
+const formOf = (h) => h.app.all((n) => n.tagName === 'FORM')[0];
+function type(input, value) {
+  input.value = value;
+  (input.listeners.input || []).forEach((f) => f({}));
+}
+function submit(h) {
+  const ev = { prevented: false, preventDefault() { this.prevented = true; } };
+  (formOf(h).listeners.submit || []).forEach((f) => f(ev));
+  return ev;
+}
+
+test('address screen: only the missing fields, with autocomplete / inputmode, prefilled, and no card field', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'phone', 'region', 'postalCode', 'country'], { country: 'US' }) }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Where should we send it\?/);
+  assert.match(h.text(), /goes to merchant\.example so they can ship your order/);
+  const names = h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name);
+  assert.deepEqual(names, ['email', 'phone', 'region', 'postalCode', 'country']);
+  assert.equal(byName(h, 'email').getAttribute('autocomplete'), 'email');
+  assert.equal(byName(h, 'phone').getAttribute('autocomplete'), 'shipping tel');
+  assert.equal(byName(h, 'phone').getAttribute('inputmode'), 'tel');
+  assert.equal(byName(h, 'postalCode').getAttribute('autocomplete'), 'shipping postal-code');
+  assert.equal(byName(h, 'postalCode').getAttribute('inputmode'), 'numeric');
+  assert.equal(byName(h, 'region').tagName, 'SELECT');
+  assert.equal(byName(h, 'region').children.length, 52); // "Choose…" + 50 states + DC
+  assert.equal(byName(h, 'country').value, 'US');
+  for (const n of h.app.all((x) => x.tagName === 'INPUT')) assert.equal(/cc-/.test(n.getAttribute('autocomplete') || ''), false);
+});
+
+test('address screen: the full set uses the shipping autocomplete tokens', async () => {
+  const all = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'];
+  const h = harness({ answers: [{ status: 200, body: addressView(all) }] });
+  h.start();
+  await settle();
+  const ac = Object.fromEntries(all.map((f) => [f, byName(h, f).getAttribute('autocomplete')]));
+  assert.deepEqual(ac, {
+    email: 'email', firstName: 'shipping given-name', lastName: 'shipping family-name', phone: 'shipping tel',
+    addressLine1: 'shipping address-line1', addressLine2: 'shipping address-line2', city: 'shipping address-level2',
+    region: 'shipping address-level1', postalCode: 'shipping postal-code', country: 'shipping country',
+  });
+});
+
+test('address form: client checks stop an incomplete submit with inline messages (nothing sent)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'postalCode']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'not-an-email');
+  type(byName(h, 'postalCode'), '941');
+  const ev = submit(h);
+  await settle();
+  assert.equal(ev.prevented, true);
+  assert.equal(h.fetches.length, 1, 'only the first read');
+  assert.match(h.text(), /Enter a valid email address\./);
+  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.equal(byName(h, 'email').getAttribute('aria-invalid'), 'true');
+});
+
+test('address form: submits JSON to its own route with the link header, then shows the next step', async () => {
+  const next = view({ state: 'needs_payment_method', screen: 'add_card' });
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'postalCode']) }, { status: 200, body: next }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), ' buyer@example.test ');
+  type(byName(h, 'postalCode'), '94107');
+  submit(h);
+  await settle();
+  const sent = h.fetches[1];
+  assert.equal(sent.url, `/agenpas/api/p/${PID}/shipping-address`);
+  assert.equal(sent.init.method, 'POST');
+  assert.equal(sent.init.headers['Content-Type'], 'application/json');
+  assert.equal(sent.init.headers['X-Agenpas-Link'], TOKEN);
+  assert.equal(sent.init.credentials, 'omit');
+  assert.deepEqual(JSON.parse(sent.init.body), { email: 'buyer@example.test', postalCode: '94107' });
+  assert.match(h.text(), /Add a card securely/);
+  assert.equal(h.storage.get(`agenpas:t:${PID}`), TOKEN, 'the address is never stored, the token still is');
+  assert.equal([...h.storage.values()].some((v) => v.includes('buyer@example.test')), false);
+});
+
+test('address form: a 422 shows the server\'s field errors inline; a 409 says "We already have your address"', async () => {
+  const h = harness({ answers: [
+    { status: 200, body: addressView(['postalCode']) },
+    { status: 422, body: { error: 'invalid_address', field_errors: { postalCode: 'invalid_postal_code' } } },
+  ] });
+  h.start();
+  await settle();
+  type(byName(h, 'postalCode'), '94107');
+  submit(h);
+  await settle();
+  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.equal(byName(h, 'postalCode').value, '94107', 'what the buyer typed is kept');
+  const h2 = harness({ answers: [{ status: 200, body: addressView(['postalCode']) }, { status: 409, body: { error: 'address_already_set' } }] });
+  h2.start();
+  await settle();
+  type(byName(h2, 'postalCode'), '94107');
+  submit(h2);
+  await settle();
+  assert.match(h2.text(), /We already have your address\./);
+});
+
+test('collection off: the "add it in the chat" screen, no form', async () => {
+  const h = harness({ answers: [{ status: 200, body: view({ state: 'routing', screen: 'shipping_address_elsewhere', action: null }) }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Go back to the chat to add your address/);
+  assert.equal(h.app.all((n) => n.tagName === 'FORM' || n.tagName === 'INPUT').length, 0);
+});
+
+test('completed with the order number withheld: "Your order is placed", the total, and the confirmation-email line', async () => {
+  const done = view({
+    state: 'completed', screen: 'done', terminal: true, action: null, poll_after_seconds: null,
+    amounts: { ...view().amounts, final_total_minor: 2297 },
+    order: { reference: null, status_url: null, total_unparsed: false, reference_withheld: true },
+  });
+  const h = harness({ answers: [{ status: 200, body: done }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Your order is placed/);
+  assert.match(h.text(), /Your order number is in the store's confirmation email\./);
+  assert.match(h.text(), /\$22\.97/);
   assert.equal(h.pollTimers().length, 0);
 });
 
@@ -648,4 +780,191 @@ test('the terms and privacy versions are shown next to their links; new versions
   clickAgree(h);
   await settle();
   assert.equal(JSON.parse(h.fetches.filter((f) => f.init.method === 'POST').pop().init.body).offer_id, 'offerv2v2v2v2v2v2v2v2v2v2v2v2v2v2v');
+});
+
+// ---- the address step behind the terms (A2A; the owner's decision, 11-20) ---------------------------------------
+
+function shippingConsentView(over = {}) {
+  return view({
+    state: 'routing', screen: 'shipping_address', action: null, poll_after_seconds: 15,
+    consent: { step: 'shipping_address', terms_url: 'https://legal.example/terms', privacy_url: 'https://legal.example/privacy', offer: { ...OFFER } },
+    ...over,
+  });
+}
+
+test('address consent: the terms first on the address screen (no address field), and the form only after agreeing', async () => {
+  const h = harness({ answers: [{ status: 200, body: shippingConsentView() }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Where should we send it\?/);
+  assert.match(h.text(), /Before you give your shipping address, read Pivota's/);
+  assert.deepEqual(findAll(h, (n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.type || n.tagName), ['checkbox']);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0, 'no form before the consent');
+  await readyToAgree(h);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: addressView(['email', 'postalCode']) });
+  clickAgree(h);
+  await settle();
+  const post = h.fetches.find((f) => f.init.method === 'POST');
+  assert.equal(post.url, `/agenpas/api/p/${PID}/consent`);
+  assert.deepEqual(JSON.parse(post.init.body), { step: 'shipping_address', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+  // The page read again at once and drew the form.
+  assert.deepEqual(h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name), ['email', 'postalCode']);
+  assert.equal(findAll(h, (n) => n.tagName === 'INPUT' && n.type === 'checkbox').length, 0);
+});
+
+test('address consent: a 409 consent_required on submit goes back to the terms, keeps what was typed, and fills the form again after agreeing', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email', 'postalCode']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  type(byName(h, 'postalCode'), '94107');
+  h.answer({ status: 409, body: { error: 'consent_required' } }, { status: 200, body: shippingConsentView() });
+  submit(h);
+  await settle();
+  // Never the form again without the terms: a waiting card until the read shows them.
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0, 'the stale form is not redrawn');
+  assert.match(h.text(), /Checking the terms… This page updates on its own\. What you typed is kept\./);
+  assert.equal(/couldn't save|We already have your address/.test(h.text()), false, 'no generic error, not "already have it"');
+  await nextRead(h);
+  assert.match(h.text(), /Before you give your shipping address, read Pivota's/);
+  assert.match(h.text(), /Please accept the terms first/);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  assert.equal([...h.storage.values()].some((v) => v.includes('buyer@example.test')), false, 'never stored');
+  await readyToAgree(h);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: addressView(['email', 'postalCode']) });
+  clickAgree(h);
+  await settle();
+  assert.equal(byName(h, 'email').value, 'buyer@example.test', 'what the buyer typed is back');
+  assert.equal(byName(h, 'postalCode').value, '94107');
+  assert.equal(/Please accept the terms first/.test(h.text()), false, 'the note is gone once agreed');
+});
+
+test('address consent: with the gate off the address screen is the form at once (no terms, no checkbox)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  assert.deepEqual(h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name), ['email']);
+  assert.equal(/Terms of Service/.test(h.text()), false);
+});
+
+test('address: a second 409 consent_required after agreeing again closes the step (no loop); the form never shows without the terms', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  h.answer({ status: 409, body: { error: 'consent_required' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  // The read shows the form again (backend read and write disagree): still no form without the terms.
+  await nextRead(h);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  assert.match(h.text(), /Checking the terms…/);
+  // The terms come; the buyer agrees; the form is back; the write refuses again: closed.
+  h.answer({ status: 200, body: shippingConsentView() });
+  await nextRead(h);
+  await readyToAgree(h);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: addressView(['email']) });
+  clickAgree(h);
+  await settle();
+  assert.equal(byName(h, 'email').value, 'buyer@example.test');
+  const posts = () => h.fetches.filter((f) => f.init.method === 'POST' && f.url.endsWith('/shipping-address')).length;
+  h.answer({ status: 409, body: { error: 'consent_required' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  assert.equal(posts(), 2);
+  assert.match(h.text(), /We can't take your address here any more Go back to the chat\./);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  await nextRead(h);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0, 'still closed after a read that shows the form');
+  assert.equal(posts(), 2, 'never sent again');
+});
+
+test('address: any other 409 (address_not_taken) reads "We can\'t take your address here any more", re-reads, never a retry loop', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  const reads = () => h.fetches.filter((f) => f.init.method === 'GET').length;
+  h.answer({ status: 409, body: { error: 'address_not_taken' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  assert.match(h.text(), /We can't take your address here any more Go back to the chat\./);
+  assert.equal(/couldn't save|try again in a moment|We already have your address/.test(h.text()), false);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  const before = reads();
+  await nextRead(h);
+  assert.equal(reads(), before + 1, 'the purchase is read again');
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+});
+
+test('address: 409 address_not_requested re-reads; a second one closes the step', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  h.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: view() });
+  submit(h);
+  await settle();
+  await nextRead(h);
+  assert.match(h.text(), /Add a card securely/, 'the read shows where the purchase is');
+  const h2 = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h2.start();
+  await settle();
+  type(byName(h2, 'email'), 'buyer@example.test');
+  h2.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: addressView(['email']) });
+  submit(h2);
+  await settle();
+  await nextRead(h2);
+  h2.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: addressView(['email']) });
+  submit(h2);
+  await settle();
+  assert.match(h2.text(), /We can't take your address here any more/);
+  assert.equal(findAll(h2, (n) => n.tagName === 'FORM').length, 0);
+});
+
+test('address: sent back to the terms but the reads keep showing the form: after 3 such reads the step closes (no endless wait)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  h.answer({ status: 409, body: { error: 'consent_required' } });
+  submit(h);
+  await settle();
+  for (const n of [1, 2]) {
+    h.answer({ status: 200, body: addressView(['email']) });
+    await nextRead(h);
+    assert.match(h.text(), /Checking the terms…/, `read ${n}: still waiting`);
+  }
+  h.answer({ status: 200, body: addressView(['email']) });
+  await nextRead(h);
+  assert.match(h.text(), /We can't take your address here any more Go back to the chat\./);
+  assert.equal(findAll(h, (n) => n.tagName === 'FORM').length, 0);
+  assert.equal(h.fetches.filter((f) => f.init.method === 'POST').length, 1, 'never sent again');
+});
+
+test('address: a read that shows a NEW form starts the "not requested" count again (one stale 409 earlier does not close it)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['email']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'email'), 'buyer@example.test');
+  // First 409 address_not_requested; the read then shows no form (the step moved on) ...
+  h.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: view({ state: 'routing', screen: 'preparing', action: null }) });
+  submit(h);
+  await settle();
+  await nextRead(h);
+  assert.match(h.text(), /Getting your order ready/);
+  // ... and a later read shows a new form: one more 409 now re-reads instead of closing.
+  h.answer({ status: 200, body: addressView(['email']) });
+  await nextRead(h);
+  assert.ok(byName(h, 'email'));
+  h.answer({ status: 409, body: { error: 'address_not_requested' } }, { status: 200, body: addressView(['email']) });
+  submit(h);
+  await settle();
+  assert.equal(/We can't take your address here any more/.test(h.text()), false, 'not closed by the earlier count');
+  // A second one in a row (no new form between) closes it.
+  await nextRead(h);
+  h.answer({ status: 409, body: { error: 'address_not_requested' } });
+  submit(h);
+  await settle();
+  assert.match(h.text(), /We can't take your address here any more/);
 });

@@ -16,9 +16,9 @@
  * Two decisions, in this order:
  *
  *   1. PUBLIC-READ HOSTS -> the route does not exist. 404, never 401: a 401 still advertises that
- *      something lives here, and on the UCP identity anchor (UCP_AGENT_PROFILE_URL is mcp.pivota.cc,
- *      chosen precisely because it is the public, unauthenticated, STATIC read tier) the honest
- *      answer is that the host serves no interactive agent surface at all.
+ *      something lives here, and on the public, unauthenticated, STATIC read tier (mcp.pivota.cc —
+ *      until 2026-11-20 also the UCP identity anchor; that is now ucp.pivota.cc) the honest answer is
+ *      that the host serves no interactive agent surface at all.
  *
  *      This branch is keyed on the HOST ALONE, deliberately NOT on PUBLIC_READ_MCP_ENABLED. Every
  *      other host check in server.js reads `isPublicReadMcpEnabled() && isPublicReadMcpHostRequest()`
