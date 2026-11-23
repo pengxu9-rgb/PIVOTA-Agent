@@ -7,7 +7,8 @@
 // dates the headline price (`price_as_of`) only when the DEFAULT variant answered a price and stock, but moves
 // the product's `in_stock` / `availability` on ANY live variant answer. So a read where only another variant
 // answered (or the merchant said every variant is gone) served live stock with nothing dated: the cap did not
-// fire, and the public tier (10 min fresh + 60 min stale by default) could replay that stock for ~70 min.
+// fire, and the public tier could replay that stock on its own clock: up to 60 min by default (10 min fresh,
+// then served stale until 60 min after it was stored; the stale window counts from the store, not after the ttl).
 //
 // Through the real producer (createUcpLiveProductReader, enforce) into the real public tier
 // (createPublicReadToolSurface, its read cache and cache policy), with only the merchant client, the executor
@@ -78,7 +79,12 @@ const SCENARIOS = {
   gone: goneAnswer,
   // The default variant answered price and stock: the headline is re-priced and dated (the existing path).
   priceAndStock: () => merchantAnswers([variantAnswer(ROSE, 2300), variantAnswer(PLUM, 2500)]),
+  // The default variant answered a price and OUT of stock, and the read could not ask every variant (one has no
+  // merchant id): the headline is re-priced and dated, the product's stock stays stored (and undated).
+  priceOnlyDefaultSoldOut: () => merchantAnswers([variantAnswer(ROSE, 2300, false)]),
 };
+const UNASKED_VARIANT = { variant_id: 'shade-3', title: 'Coral', price: { current: { amount: 26, currency: 'USD' } }, availability: { in_stock: false } };
+const withUnaskedVariant = (extra = {}) => ({ variants: [...storedResult().product.variants, UNASKED_VARIANT], ...extra });
 
 function withEnv(vars, fn) {
   const prior = {};
@@ -107,12 +113,13 @@ function withEnv(vars, fn) {
  * The public tier over an executor whose get_product answers what the real reader produced (read at `readAtMs`).
  * Returns how many upstream reads `get_product` took at each probe time (ms after NOW).
  */
-async function publicReplays(scenario, { cap, readAtMs = NOW, probesMin, extra }) {
+async function publicReplays(scenario, { cap, readAtMs = NOW, probesMin, extra, clocks = {} }) {
   return withEnv({
     DOOR_CACHE_PRICE_FRESHNESS_CAP: cap ? 'on' : undefined,
     PUBLIC_READ_CACHE_ENABLED: undefined,
     PUBLIC_READ_CACHE_TTL_MS: undefined,
     PUBLIC_READ_CACHE_STALE_MS: undefined,
+    ...clocks,
   }, async () => {
     const produced = await produce(SCENARIOS[scenario], readAtMs, extra);
     let upstream = 0;
@@ -190,6 +197,16 @@ test('public tier, cap ON: what the tier SERVES decides which answer dates it', 
   const stockWithheld = await publicReplays('stockOnly', { cap: true, probesMin: [0, 5, 15, 20], extra: { commerce_verification: { required: false, price_trusted: true, availability_trusted: false } } });
   assert.deepEqual(stockWithheld.seen.map((s) => [s.price, s.availability]), Array(4).fill([{ amount: 25, currency: 'USD' }, 'unknown']));
   assert.deepEqual(stockWithheld.seen.map((s) => s.upstream), [1, 1, 2, 2], 'its own clock');
+  // The live PRICE withheld (untrusted), the STORED stock served: the price answer is not served, so its
+  // price_as_of dates nothing and the tier keeps its own clock.
+  const priceWithheld = await publicReplays('priceOnlyDefaultSoldOut', { cap: true, probesMin: [0, 5, 15, 20], extra: withUnaskedVariant({ commerce_verification: { required: false, price_trusted: false, availability_trusted: true } }) });
+  const p = priceWithheld.produced.product;
+  assert.equal(p.price_as_of, new Date(NOW).toISOString(), 'the headline was re-priced and dated');
+  assert.equal(p.price_source, 'merchant_live');
+  assert.equal(p.availability_as_of, undefined, 'not every variant was asked: the product stock stays stored');
+  assert.equal(p.in_stock, false, 'stored');
+  assert.deepEqual(priceWithheld.seen.map((s) => [s.price, s.availability]), Array(4).fill([null, 'out_of_stock']));
+  assert.deepEqual(priceWithheld.seen.map((s) => s.upstream), [1, 1, 2, 2], 'its own clock (a served price would have capped it: 20 would recompute)');
 });
 
 test('public tier, cap ON: a price+stock answer is capped exactly as before (by price_as_of)', async () => {
@@ -205,6 +222,14 @@ test('public tier, cap OFF: every clock exactly as before (10 min fresh, then se
     const { seen } = await publicReplays(scenario, { probesMin: [0, 5, 15, 20] });
     assert.deepEqual(seen.map((s) => s.upstream), [1, 1, 2, 2], `${scenario}: ${JSON.stringify(seen)}`);
   }
+});
+
+test('public tier: a fresh window longer than the stale one keeps the entry fresh for the whole fresh window', async () => {
+  // PUBLIC_READ_CACHE_TTL_MS > PUBLIC_READ_CACHE_STALE_MS: fresh until 20 min (the stale window never opens),
+  // which is why the description's bound is the LONGER of the two.
+  const clocks = { PUBLIC_READ_CACHE_TTL_MS: String(20 * MIN), PUBLIC_READ_CACHE_STALE_MS: String(5 * MIN) };
+  const { seen } = await publicReplays('stockOnly', { probesMin: [0, 15, 19, 21], clocks });
+  assert.deepEqual(seen.map((s) => s.upstream), [1, 1, 1, 2]);
 });
 
 // ---------------------------------------------------------------------------------- the public description's bound
@@ -231,8 +256,12 @@ test('description: states the bound the cache keeps, never a shorter one', async
   assert.match(longer, /up to about 90 minutes old/);
   const shorter = await publicGetProductDescription({ ...CLOCKS, PUBLIC_READ_CACHE_TTL_MS: String(3 * MIN), PUBLIC_READ_CACHE_STALE_MS: String(5 * MIN), DOOR_CACHE_PRICE_FRESHNESS_CAP: 'on' });
   assert.match(shorter, /up to about 5 minutes old/);
+  // A fresh window longer than the stale one: the entry is replayed for the fresh window (test above).
+  const ttlLonger = await publicGetProductDescription({ ...CLOCKS, PUBLIC_READ_CACHE_TTL_MS: String(20 * MIN), PUBLIC_READ_CACHE_STALE_MS: String(5 * MIN), DOOR_CACHE_PRICE_FRESHNESS_CAP: undefined });
+  assert.match(ttlLonger, /up to about 20 minutes old/);
   const noCache = await publicGetProductDescription({ ...CLOCKS, PUBLIC_READ_CACHE_ENABLED: '0' });
-  assert.match(noCache, /\(the merchant answered it for this request\)/);
+  // No door replay, but the reader's lookup memo (30 s) can hand this request an answer read just before it.
+  assert.match(noCache, /\(the merchant answered within about the last minute\)/);
   // The rest of the sentence is what it was.
   for (const d of [off, on]) {
     assert.match(d, /Send `market` \(the buyer's country, ISO 3166-1 alpha-2\) whenever you know it/);

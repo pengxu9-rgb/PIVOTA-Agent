@@ -222,10 +222,12 @@ function minutesPhrase(ms) {
 // take the reader's lookup memo (request coalescing, 30 s). This tier's cache then replays the whole answer: for
 // at most its own clock (the longer of PUBLIC_READ_CACHE_TTL_MS / _STALE_MS) or, with
 // DOOR_CACHE_PRICE_FRESHNESS_CAP on, only until that price answer is 10 min old (publicReadCachePolicy). So "about"
-// covers the memo, and the bound is the cache's when the cap is off. Read at construction, like the cache's own
-// clocks: an env change reaches it with the restart that reaches them.
+// covers the memo, and the bound is the cache's when the cap is off. With the cache disabled nothing is replayed,
+// but the memo can still hand this request an answer read up to 30 s before it, so the bound is about a minute,
+// never "this request". Read at construction, like the cache's own clocks: an env change reaches it with the
+// restart that reaches them.
 function publicReplayAgePhrase({ cacheEnabled, cacheTtlMs, cacheStaleMs }) {
-  if (!cacheEnabled) return "the merchant answered it for this request";
+  if (!cacheEnabled) return "the merchant answered within about the last minute";
   const replayMs = Math.max(cacheTtlMs, cacheStaleMs);
   const boundMs = priceVerificationFacts.doorCachePriceFreshnessCapEnabled()
     ? Math.min(replayMs, priceVerificationFacts.DOOR_CAP_WINDOW_MS)
