@@ -281,8 +281,9 @@ test('shadow + forward: no answer changes, and the UCP door hands its declared m
 });
 
 // What enforce ADDS to an answer, taken back out: the UCP `price.*` message, the public `price_check`, and /mcp's
-// `price_as_of` and live `in_stock` (the reader sets the top-level flag with `availability` since #2503; the stored
-// detail-lane product carries none). Re-serialized the way the doors serialize (inner text JSON.stringify(_, null, 2), outer
+// `price_as_of`, live `in_stock` and its `availability_as_of` (the reader sets the top-level flag with `availability`
+// since #2503, and dates it whenever a live answer set it, for the door caches' freshness cap; the stored detail-lane
+// product carries none). Re-serialized the way the doors serialize (inner text JSON.stringify(_, null, 2), outer
 // JSON.stringify), so "the rest is byte-identical to main" is checked against main's sha, and `added` is the label.
 function stripEnforceLabels(body) {
   const o = JSON.parse(body);
@@ -302,8 +303,9 @@ function stripEnforceLabels(body) {
     if (inner.ucp) {
       // The UCP shaper publishes no price_as_of: the message carries the read time instead.
       assert.equal(inner.product && 'price_as_of' in inner.product, false, 'UCP never carries price_as_of');
+      assert.equal(inner.product && 'availability_as_of' in inner.product, false, 'nor availability_as_of');
     } else if (inner.product) {
-      for (const k of ['price_as_of', 'in_stock']) {
+      for (const k of ['price_as_of', 'availability_as_of', 'in_stock']) {
         if (k in inner.product) {
           added[k] = inner.product[k];
           delete inner.product[k];
@@ -348,9 +350,9 @@ test('enforce, forward off: a NAMED UCP context is not read and labels the store
   }
 });
 
-test('enforce: /mcp adds only price_as_of and the live in_stock to a verified product; /public/mcp adds only price_check', () => {
+test('enforce: /mcp adds only price_as_of and the live in_stock (dated) to a verified product; /public/mcp adds only price_check', () => {
   const { rest, added } = stripEnforceLabels(R.enforce.mcp_gp_market.body);
-  assert.deepEqual(added, { price_as_of: '2026-10-22T12:00:00.000Z', in_stock: true });
+  assert.deepEqual(added, { price_as_of: '2026-10-22T12:00:00.000Z', availability_as_of: '2026-10-22T12:00:00.000Z', in_stock: true });
   assert.equal(sha(rest), MAIN.combos.enforce.cases.mcp_gp_market.sha256, 'otherwise main\'s enforce answer');
   const p = productOf(R.enforce.mcp_gp_market);
   assert.equal(p.price, 23);
