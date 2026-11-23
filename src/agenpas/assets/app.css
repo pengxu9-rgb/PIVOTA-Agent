@@ -128,6 +128,7 @@ main { flex: 1; display: flex; flex-direction: column; }
   font-variant-numeric: tabular-nums;
 }
 .hero-store { margin: 0 0 6px; font-size: 15px; color: var(--hero-muted); overflow-wrap: anywhere; }
+.hero-label { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--hero-muted); }
 .hero-amount {
   margin: 0;
   font-size: clamp(44px, 15vw, 60px);
@@ -315,11 +316,12 @@ select.field-input { margin-left: -4px; width: calc(100% + 4px); }
   color: var(--muted);
 }
 
-/* On a phone, the panel above the long address form is small: amount and item only. */
+/* On a phone, the panel above the long address form is small. Nothing is hidden: the amount keeps its label and its
+   "shipping and tax are added" line. */
 @media (max-width: 899.98px) {
   .summary-compact { flex: none; padding-top: 20px; padding-bottom: 20px; }
   .summary-compact .hero-amount { font-size: 32px; letter-spacing: -0.03em; }
-  .summary-compact .hero-sub { display: none; }
+  .summary-compact .hero-sub { margin-top: 6px; font-size: 13px; }
   .summary-compact .hero-item { margin-top: 8px; padding: 0; border-radius: 0; background: transparent; }
   .summary-compact .hero-item-name { font-weight: 500; color: var(--hero-muted); }
   .summary-compact + .card { flex: 1; }
@@ -363,6 +365,7 @@ select.field-input { margin-left: -4px; width: calc(100% + 4px); }
   }
   .hero-cap { display: inline-block; font-size: 13px; padding: 7px 14px; }
   .hero-store { font-size: 18px; }
+  .hero-label { margin-bottom: 8px; font-size: 15px; }
   .hero-amount { font-size: 88px; letter-spacing: -0.045em; }
   .hero-sub { font-size: 16px; }
   .hero-item { margin-top: 28px; padding: 16px 18px; border-radius: 18px; }

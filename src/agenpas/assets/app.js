@@ -154,7 +154,9 @@
     var card = el('section', view.screen === 'shipping_address' ? 'card summary summary-compact' : 'card summary');
     var a = view.amounts || {};
     var done = view.screen === 'done';
-    var open = !done && !view.terminal;
+    // Open: a buyer step may still follow. A HELD purchase ("We're checking with the store") is not open, even while
+    // its state is not final: its amount is drawn like a stopped one, and nothing says "you'll approve".
+    var open = !done && !view.terminal && view.screen !== 'outcome_unknown';
     var qty = view.quantity || 1;
     var unit = money(a.unit_price_minor, view.currency);
     var items = typeof a.unit_price_minor === 'number' ? money(a.unit_price_minor * qty, view.currency) : null;
@@ -166,7 +168,13 @@
     if (view.merchant_domain) append(card, el('p', 'hero-store', view.merchant_domain));
     // Done: the total charged, when it could be read (the result card says "See your email receipt" when not).
     var amount = done ? money(a.final_total_minor, view.currency) : (quoted || items);
-    if (amount) append(card, el('p', open || done ? 'hero-amount' : 'hero-amount hero-amount-off', amount));
+    if (amount) {
+      // The number always says what it is. Before the store prices the cart it is the item price ONLY (shipping and
+      // tax are not in it yet), and it is never called a total.
+      var label = done ? 'Total charged' : quoted ? (open ? null : 'Total') : (qty > 1 ? 'Price for ' + qty + ' items' : 'Item price');
+      if (label) append(card, el('p', 'hero-label', label));
+      append(card, el('p', open || done ? 'hero-amount' : 'hero-amount hero-amount-off', amount));
+    }
     if (!done) {
       if (quoted) {
         // The parts as the store gave them, side by side: no sum is implied (a discount may sit between them).
@@ -193,10 +201,18 @@
     return card;
   }
 
-  // The one line under a buyer step (card, address, confirming the total, approval): the amount approved is a ceiling.
-  // Only those screens call it; a result screen never does.
-  function assurance(card) {
-    append(card, el('p', 'assure', "The final total can't be more than the amount you approve."));
+  // The one line under a buyer step (card, address form, confirming the total, approval). Only those call it: a
+  // result screen, a dead end and a "checking" card never do.
+  // - Once the store has priced the cart, the amount on the page is the most the buyer approves: the ceiling line.
+  // - Before that the page shows the item price only, so it promises no ceiling: it says the full total comes first.
+  // - An approval step with no quoted total says neither (there is no amount on the page to be a ceiling).
+  function assurance(view, card) {
+    var a = view.amounts || {};
+    if (money(a.quoted_total_minor, view.currency)) {
+      append(card, el('p', 'assure', "The final total can't be more than the amount you approve."));
+    } else if (view.screen !== 'approve') {
+      append(card, el('p', 'assure', "You'll see the full total before you approve."));
+    }
     return card;
   }
 
@@ -688,7 +704,7 @@
         gate.appendChild(note);
       }
       gate.appendChild(consentBlock(view));
-      return gate;
+      return assurance(view, gate);
     }
     // Sent back to the terms and not accepted again yet: never the form without them (no resend loop).
     if (ui.addressSentBack) {
@@ -725,7 +741,7 @@
       submitAddress(view, fields);
     });
     card.appendChild(form);
-    return card;
+    return assurance(view, card);
   }
 
   function submitAddress(view, fields) {
@@ -840,7 +856,7 @@
         return progressCard('Getting your order ready', 'Checking the price and availability at ' + m + '…');
       case 'add_card':
         // "Pivota never sees your card number" is said once, in the page's footer.
-        return assurance(actionCard(view, {
+        return assurance(view, actionCard(view, {
           title: 'Add a card',
           body: "You'll enter it on our payment partner's secure page.",
           button: 'Add a card securely',
@@ -850,7 +866,7 @@
         var confirming = progressCard('Confirming your total', 'Getting the final total from ' + m + ', including shipping and tax…');
         // The approval's terms may be accepted while the total is confirmed.
         if (view.consent) confirming.appendChild(consentBlock(view));
-        return assurance(confirming);
+        return assurance(view, confirming);
       }
       case 'unavailable':
         return noticeCard("This step isn't available right now", 'Please go back to the chat and try again in a little while. This page updates on its own.');
@@ -858,7 +874,7 @@
         return noticeCard((view.outcome && view.outcome.title) || 'Some details are needed',
           (view.outcome && view.outcome.message) || 'Go back to the chat to continue.');
       case 'approve':
-        return assurance(actionCard(view, {
+        return assurance(view, actionCard(view, {
           title: 'Approve your purchase',
           body: "With Face ID or fingerprint, on our payment partner's secure page.",
           button: quoted ? 'Approve ' + quoted : 'Approve',
@@ -872,7 +888,7 @@
           waiting: 'Waiting for your bank…',
         });
       case 'shipping_address':
-        return assurance(addressCard(view));
+        return addressCard(view);
       case 'shipping_address_elsewhere':
         return progressCard('We need your shipping address', 'Go back to the chat to add your address. This page updates on its own.');
       case 'parked':

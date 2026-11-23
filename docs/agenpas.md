@@ -214,12 +214,29 @@ refused row, `invalid_request`, `preflight_interrupted`, `unverified` (the refus
 
 The page is one dark panel and one sheet (stacked on a phone, side by side from 900 px). The panel shows the store,
 ONE amount, and the item (product, variant, quantity, and the unit price when the quantity is above one). The amount
-is the item price until the backend has a quoted total, then the quoted total with "You'll approve up to <quoted
-total>" above it ("You approved up to" while the order is placed) and the items, shipping and tax listed beside each
-other (no sum is implied); a placed order shows the total charged when it could be read; a purchase that stopped keeps
-its amount, dimmed, with no added claim. Under each buyer step (card, address, confirming the total, approval) one
-line says the final total cannot be more than the amount the buyer approves. The stylesheet uses system fonts and
-pure-CSS marks: it fetches nothing.
+always says what it is:
+
+- Before the backend has a quoted total it is the item price only, labelled "Item price" ("Price for N items" above
+  one), with "Shipping and tax are added before you approve." under it. It is never called a total, and on a phone
+  the small panel above the address form keeps both the label and that line.
+- Once quoted it is the quoted total, with "You'll approve up to <quoted total>" above it ("You approved up to" while
+  the order is placed) and the items, shipping and tax listed beside each other (no sum is implied).
+- A placed order shows "Total charged" when the total could be read.
+- A purchase that stopped, and a HELD one ("We're checking with the store", final or not), keeps its amount, dimmed,
+  with no "you'll approve" line and no added claim.
+
+Under a buyer step (the card step, the address terms and form, confirming the total, the approval step) one line:
+"The final total can't be more than the amount you approve." once there is a quoted total; before that, "You'll see
+the full total before you approve." (the page then shows the item price only, so it promises no ceiling); an approval
+step with no quoted total says neither. A dead end ("We can't take your address here any more"), a "Checking the
+terms…" card and every result screen carry no such line.
+
+The ceiling line is the page's wording for the amount the approval is bound to; this page enforces nothing. Where the
+ceiling is enforced depends on the rail. On the Reap rail it rests on the payment partner's own cap: the backend's
+own comparison of the charged total with the quoted one runs after the charge there (`charged_total_differs`,
+pivota-backend `services/reap_agentic_purchase.py`), so it reports a difference and does not prevent one.
+
+The stylesheet uses system fonts and pure-CSS marks: it fetches nothing.
 
 ## Shipping address
 
