@@ -157,8 +157,8 @@ function isDegradedUpstream(raw) {
 function publicReadCachePolicy(computed, { ttlMs, staleMs, emptyTtlMs }) {
   if (!computed || typeof computed !== "object" || computed.cacheable !== true) return null;
   if (computed.emptySearchPage || computed.chainFilterFailedOpen) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
-  // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price is kept only until that price is
-  // 10 min old (priceVerificationFacts.capCachePolicyAtPriceAge). The public answer itself still carries no
+  // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price or stock answer is kept only until that
+  // answer is 10 min old (priceVerificationFacts.capCachePolicyAtPriceAge). The public answer itself still carries no
   // timestamp; only its clock changes. Off (default): the clocks above exactly.
   if (priceVerificationFacts.doorCachePriceFreshnessCapEnabled() && Number.isFinite(computed.priceEarliestMs)) {
     return priceVerificationFacts.capCachePolicyAtPriceAge({ ttlMs, staleMs }, computed.priceEarliestMs);
@@ -198,23 +198,53 @@ const PUBLIC_DESCRIPTIONS = Object.freeze({
 
 // get_product's public description while the commerce schema declares `market` (it does exactly while the live
 // product read is on, UCP_LIVE_PRODUCT_READ). get_offers is not on this tier, so the price rule names no tool. This
-// tier replays an answer from its read cache for up to an hour, so a confirmed price is not claimed as current.
-const PUBLIC_GET_PRODUCT_MARKET_SENTENCES =
-  " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: Pivota may then confirm the " +
-  "price with the merchant for that market, and when it has, `price_check.confirmed_with_merchant` is true (an " +
-  "answer may be up to an hour old). Without it the product is answered for a US buyer, and the answer says so in `market_assumed`. A price here is for " +
-  "discovery only: never quote it to a buyer as the final price.";
+// tier replays an answer from its read cache, so a confirmed price is not claimed as current: the sentence states
+// how old a replayed answer can be (publicReplayAgePhrase).
+function publicGetProductMarketSentences(agePhrase) {
+  return (
+    " Send `market` (the buyer's country, ISO 3166-1 alpha-2) whenever you know it: Pivota may then confirm the " +
+    "price with the merchant for that market, and when it has, `price_check.confirmed_with_merchant` is true (" +
+    agePhrase + "). Without it the product is answered for a US buyer, and the answer says so in `market_assumed`. " +
+    "A price here is for discovery only: never quote it to a buyer as the final price."
+  );
+}
+
+const MINUTE_MS = 60 * 1000;
+function minutesPhrase(ms) {
+  const minutes = Math.max(1, Math.ceil(ms / MINUTE_MS));
+  if (minutes === 60) return "an hour";
+  if (minutes % 60 === 0) return `${minutes / 60} hours`;
+  return minutes === 1 ? "a minute" : `${minutes} minutes`;
+}
+
+// How old the merchant's answer in a confirmed price can be when this tier serves it. A confirmed price is the
+// product reader's read of THIS computation (productPriceCheck: price_as_of === live_read.checked_at), give or
+// take the reader's lookup memo (request coalescing, 30 s). This tier's cache then replays the whole answer: for
+// at most its own clock (the longer of PUBLIC_READ_CACHE_TTL_MS / _STALE_MS) or, with
+// DOOR_CACHE_PRICE_FRESHNESS_CAP on, only until that price answer is 10 min old (publicReadCachePolicy). So "about"
+// covers the memo, and the bound is the cache's when the cap is off. With the cache disabled nothing is replayed,
+// but the memo can still hand this request an answer read up to 30 s before it, so the bound is about a minute,
+// never "this request". Read at construction, like the cache's own clocks: an env change reaches it with the
+// restart that reaches them.
+function publicReplayAgePhrase({ cacheEnabled, cacheTtlMs, cacheStaleMs }) {
+  if (!cacheEnabled) return "the merchant answered within about the last minute";
+  const replayMs = Math.max(cacheTtlMs, cacheStaleMs);
+  const boundMs = priceVerificationFacts.doorCachePriceFreshnessCapEnabled()
+    ? Math.min(replayMs, priceVerificationFacts.DOOR_CAP_WINDOW_MS)
+    : replayMs;
+  return `the merchant's answer may be up to about ${minutesPhrase(boundMs)} old`;
+}
 
 // Apply the public presentation to a read tool: the de-marketed description, and — for get_product only —
 // relax the schema so it resolves by the single public sig id alone (the backend product cache matches by
 // product_id when merchant_id is absent; routes/agent_shop_gateway.py _load_product_by_id). Annotations are
 // inherited unchanged from the commerce definition (readOnlyHint:true, openWorldHint:false on all four).
-function publicPresentation(tool) {
+function publicPresentation(tool, { agePhrase }) {
   const next = { ...tool };
   if (PUBLIC_DESCRIPTIONS[tool.name]) next.description = PUBLIC_DESCRIPTIONS[tool.name];
   if (tool.name === "get_product" && tool.inputSchema) {
     next.inputSchema = { ...tool.inputSchema, required: ["product_id"] };
-    if (tool.inputSchema.properties && tool.inputSchema.properties.market) next.description += PUBLIC_GET_PRODUCT_MARKET_SENTENCES;
+    if (tool.inputSchema.properties && tool.inputSchema.properties.market) next.description += publicGetProductMarketSentences(agePhrase);
   }
   return next;
 }
@@ -232,9 +262,22 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
   // behind a second, differently-named one, stack two staleness windows, and hold the fat unprojected
   // payload in memory for no extra hit rate.
   const commerce = createCommerceToolSurface(executor, { log, cache: false });
+
+  // Projected-result cache (TTL + stale-while-revalidate): the mainline multi-merchant search costs ~8–15s
+  // per cold query (sequential recall legs — a search-perf workstream of its own); the public tier serves
+  // deterministic, slowly-changing catalog reads, so cached/popular queries answer in <100ms while cold
+  // queries keep the honest full cost. Caches ONLY successful projected values (≤ ~25KB each). Disable via
+  // PUBLIC_READ_CACHE_ENABLED=0; tune PUBLIC_READ_CACHE_TTL_MS / PUBLIC_READ_CACHE_STALE_MS /
+  // PUBLIC_READ_CACHE_MAX. (Read before the tools: get_product's description states the replay bound.)
+  const env = (typeof process !== "undefined" && process.env) || {};
+  const cacheEnabled = !["0", "false", "off", "no"].includes(String(env.PUBLIC_READ_CACHE_ENABLED ?? "").trim().toLowerCase() || "on");
+  const cacheTtlMs = Number(env.PUBLIC_READ_CACHE_TTL_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_TTL_MS) : 10 * 60 * 1000;
+  const cacheStaleMs = Number(env.PUBLIC_READ_CACHE_STALE_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_STALE_MS) : 60 * 60 * 1000;
+
+  const agePhrase = publicReplayAgePhrase({ cacheEnabled, cacheTtlMs, cacheStaleMs });
   const tools = commerce.tools
     .filter((tool) => PUBLIC_READ_TOOL_NAMES.includes(tool.name))
-    .map((tool) => publicPresentation({ ...tool }));
+    .map((tool) => publicPresentation({ ...tool }, { agePhrase }));
   if (tools.length !== PUBLIC_READ_TOOL_NAMES.length) {
     // Fail loud at construction: a missing read tool means the canonical contract changed under us and the
     // public app would silently lose capability.
@@ -244,17 +287,6 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
   const logger = log && typeof log.info === "function" ? log : null;
   const extraHostsCsv =
     (typeof process !== "undefined" && process.env && process.env.PUBLIC_READ_RESELLER_HOSTS) || "";
-
-  // Projected-result cache (TTL + stale-while-revalidate): the mainline multi-merchant search costs ~8–15s
-  // per cold query (sequential recall legs — a search-perf workstream of its own); the public tier serves
-  // deterministic, slowly-changing catalog reads, so cached/popular queries answer in <100ms while cold
-  // queries keep the honest full cost. Caches ONLY successful projected values (≤ ~25KB each). Disable via
-  // PUBLIC_READ_CACHE_ENABLED=0; tune PUBLIC_READ_CACHE_TTL_MS / PUBLIC_READ_CACHE_STALE_MS /
-  // PUBLIC_READ_CACHE_MAX.
-  const env = (typeof process !== "undefined" && process.env) || {};
-  const cacheEnabled = !["0", "false", "off", "no"].includes(String(env.PUBLIC_READ_CACHE_ENABLED ?? "").trim().toLowerCase() || "on");
-  const cacheTtlMs = Number(env.PUBLIC_READ_CACHE_TTL_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_TTL_MS) : 10 * 60 * 1000;
-  const cacheStaleMs = Number(env.PUBLIC_READ_CACHE_STALE_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_STALE_MS) : 60 * 60 * 1000;
   // Short clock for empty search pages. Long enough to collapse a burst onto one lane run, short enough
   // that a false negative cannot outlive the shopper's session.
   const emptyTtlMs = Number(env.PUBLIC_READ_EMPTY_TTL_MS) > 0 ? Number(env.PUBLIC_READ_EMPTY_TTL_MS) : 45 * 1000;
@@ -458,8 +490,12 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
           .filter((_, i) => served[i] && served[i].price != null);
         return priceVerificationFacts.earliestMerchantAnswerMsOfItems(rows);
       }
-      if (toolName === "get_product" && value && value.price != null) {
-        return priceVerificationFacts.earliestMerchantAnswerMs(toolName, raw);
+      if (toolName === "get_product" && value) {
+        // The served price dates by a live price answer, the served stock by a live stock answer (the product
+        // reader moves stock on any variant's answer, also when the headline price stays stored).
+        const price = value.price != null;
+        const stock = value.availability === "in_stock" || value.availability === "out_of_stock";
+        if (price || stock) return priceVerificationFacts.earliestMerchantAnswerMs(toolName, raw, { price, stock });
       }
     } catch {
       // the clock keeps its own TTL

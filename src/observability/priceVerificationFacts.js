@@ -181,7 +181,8 @@ function priceFactsOf(tool, value, { limit } = {}) {
 // MAX_PRICE_WINDOW_MS). The DOOR caches replay whole answers on top of that: the /mcp and /ucp/mcp read cache up
 // to 15 min (stale-served), the public tier up to 60 min, so a merchant answer could be served ~25 min (or more)
 // after it was read. DOOR_CACHE_PRICE_FRESHNESS_CAP (off | on, default off, read per store): on, an entry holding
-// a MERCHANT ANSWER (a fact with merchant: true and a read time) is kept only until its EARLIEST such answer is
+// a MERCHANT ANSWER (a price fact with merchant: true and a read time, or a dated live stock answer: see
+// availabilityAnsweredAtMs) the door serves is kept only until its EARLIEST such answer is
 // 10 minutes old, the same published limit (the cap was 15 min until 11-23) -- its ttl and its stale window both
 // end there, and an entry already past it is not stored. Entries with stored prices only keep their own clocks
 // (they carry no merchant answer; their age is the 7-day staleness rule's business). Off: every door cache's TTLs
@@ -218,20 +219,38 @@ function doorCachePriceFreshnessCapEnabled(env = process.env) {
   return /^(1|true|yes|on|enabled)$/i.test(String((env && env[DOOR_CAP_FLAG]) || '').trim());
 }
 
-/** The earliest merchant-answer read time (epoch ms) among `items` (priced objects), or null. Pure. */
+// A merchant's STOCK answer counts as well as its price: the product reader moves a product's in_stock /
+// availability on any live variant answer, also when the headline price stays stored (and undated), and stamps
+// `availability_as_of` when it does (services/ucpLiveOfferRead applyProductRead). Not a price fact: the price
+// line (priceFactOf) never reads it.
+function availabilityAnsweredAtMs(item) {
+  const t = isObj(item) && typeof item.availability_as_of === 'string' ? Date.parse(item.availability_as_of) : NaN;
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * The earliest merchant-answer read time (epoch ms) among `items` (priced objects), or null. Pure.
+ * `o.price` / `o.stock` (both default true): whether the door serves the items' price / availability, so whether
+ * a price answer / a stock answer counts. The rest of `o` is priceFactOf's.
+ */
 function earliestMerchantAnswerMsOfItems(items, o) {
+  const { price = true, stock = true, ...factOptions } = isObj(o) ? o : {};
   let min = null;
+  const note = (t) => { if (Number.isFinite(t)) min = min === null ? t : Math.min(min, t); };
   for (const item of Array.isArray(items) ? items : []) {
-    const f = priceFactOf(item, o);
-    if (f && f.priced && f.merchant && Number.isFinite(f.at)) min = min === null ? f.at : Math.min(min, f.at);
+    if (price) {
+      const f = priceFactOf(item, factOptions);
+      if (f && f.priced && f.merchant) note(f.at);
+    }
+    if (stock) note(availabilityAnsweredAtMs(item));
   }
   return min;
 }
 
-/** As above, for a priced tool's native value. Pure; independent of PRICE_VERIFICATION_LOG. */
-function earliestMerchantAnswerMs(tool, value) {
+/** As above, for a priced tool's native value (`o.price` / `o.stock` as above). Pure; independent of PRICE_VERIFICATION_LOG. */
+function earliestMerchantAnswerMs(tool, value, { price = true, stock = true } = {}) {
   try {
-    return earliestMerchantAnswerMsOfItems(pricedItemsOf(tool, value), tool === 'get_product' ? { liveReadDates: false } : undefined);
+    return earliestMerchantAnswerMsOfItems(pricedItemsOf(tool, value), { price, stock, ...(tool === 'get_product' ? { liveReadDates: false } : {}) });
   } catch {
     return null;
   }
