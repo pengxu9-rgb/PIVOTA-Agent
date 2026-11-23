@@ -48,12 +48,12 @@ test('THE CURRENCY RULE: no declared market, an unpriced market, or a currency t
   for (const variant of ['', 'a/b', 'x'.repeat(65), 'gid://shopify/Product/1']) assert.equal(pc.priceCacheKey({ ...KEY, variant_id: variant }), null, variant);
 });
 
-test('a verified doc: fields per the design, amount a decimal string in the currency\'s minor units, expire_at = read_at + 15 min', () => {
+test('a verified doc: fields per the design, amount a decimal string in the currency\'s minor units, expire_at = read_at + 10 min', () => {
   const built = pc.verifiedPriceDoc({ ...VERIFIED, compare_at: 30, handle: 'Tint' }, T0);
   assert.deepEqual(built.doc, {
     host: 'shop.example.com', market: 'US', variant_id: '43734829564039', currency: 'USD', status: 'verified',
     amount: '23.00', compare_at: '30.00', available: true, handle: 'tint', source: 'merchant_ucp', writer: 'offers',
-    read_at: new Date(T0), expire_at: new Date(T0 + 15 * MIN),
+    read_at: new Date(T0), expire_at: new Date(T0 + 10 * MIN),
   });
   assert.equal(pc.verifiedPriceDoc({ ...VERIFIED, market: 'JP', currency: 'JPY', amount: 2300.4 }, T0).doc.amount, '2300');
   assert.equal(pc.verifiedPriceDoc({ ...VERIFIED, compare_at: 20 }, T0).doc.compare_at, null, 'a compare-at below the price is not one');
@@ -66,7 +66,7 @@ test('not a verified answer: no doc (zero, negative or junk amounts, unknown sou
   for (const bad of [
     { ...VERIFIED, amount: 0 }, { ...VERIFIED, amount: -1 }, { ...VERIFIED, amount: 'x' }, { ...VERIFIED, amount: null },
     { ...VERIFIED, source: 'catalog_refresh' }, { ...VERIFIED, writer: 'refresh' }, { ...VERIFIED, source: undefined },
-    { ...VERIFIED, read_at: T0 + 10 * 1000 }, { ...VERIFIED, read_at: T0 - 61 * MIN }, { ...VERIFIED, currency: 'EUR' },
+    { ...VERIFIED, read_at: T0 + 10 * 1000 }, { ...VERIFIED, read_at: T0 - 11 * MIN }, { ...VERIFIED, currency: 'EUR' },
   ]) assert.equal(pc.verifiedPriceDoc(bad, T0), null, JSON.stringify(bad));
   assert.equal(pc.verifiedPriceDoc({ ...VERIFIED, read_at: new Date(T0 - 5 * MIN).toISOString() }, T0).doc.read_at.getTime(), T0 - 5 * MIN);
 });
@@ -89,27 +89,28 @@ test('record -> one queued Firestore doc keyed by the hashed id; nothing is sent
   await store.flush();
   const docId = pc.priceCacheDocId(pc.priceCacheKey(KEY));
   assert.deepEqual([...fake.docs.keys()], [`verified_prices/${docId}`]);
-  assert.equal(fake.docs.get(`verified_prices/${docId}`).expire_at.toMillis(), T0 + 15 * MIN);
+  assert.equal(fake.docs.get(`verified_prices/${docId}`).expire_at.toMillis(), T0 + 10 * MIN);
 });
 
-test('lookup: an answer inside the consumer window is servable; outside it, past 60 min, from the future or a tombstone is not', async () => {
+test('lookup: an answer inside the consumer window is servable; outside it, past the 10-min cap, or a tombstone is not', async () => {
   const { c, store, cache } = harness();
-  cache.recordVerifiedPrice({ ...VERIFIED, read_at: T0 - 14 * MIN });
-  cache.recordVerifiedPrice({ ...VERIFIED, variant_id: '2', read_at: T0 - 16 * MIN });
+  cache.recordVerifiedPrice({ ...VERIFIED, read_at: T0 - 9 * MIN });
+  cache.recordVerifiedPrice({ ...VERIFIED, variant_id: '2', read_at: T0 - 11 * MIN });
   cache.recordVariantGone({ ...KEY, variant_id: '3', source: 'merchant_ucp', writer: 'product' });
   await store.flush();
   const keys = [KEY, { ...KEY, variant_id: '2' }, { ...KEY, variant_id: '3' }, { ...KEY, variant_id: '4' }];
   const got = await cache.lookup(keys, { ttlMs: pc.TTL_MS.search });
   assert.deepEqual(got.map((a) => a && a.amount), [23, null, null, null]);
-  assert.equal(got[0].age_ms, 14 * MIN);
-  assert.equal(got[0].read_at_ms, T0 - 14 * MIN);
+  assert.equal(got[0].age_ms, 9 * MIN);
+  assert.equal(got[0].read_at_ms, T0 - 9 * MIN);
   assert.equal(got[0].handle, 'tint');
   const pdp = await cache.lookup([KEY], { ttlMs: pc.TTL_MS.pdp });
-  assert.equal(pdp[0], null, 'the PDP window is 10 min');
+  assert.equal(pdp[0].amount, 23, 'the PDP window is 10 min, as search\'s is');
+  assert.equal((await cache.lookup([KEY], { ttlMs: 5 * MIN }))[0], null, 'a consumer window shorter than the cap is honoured');
   assert.equal((await cache.lookup([KEY], { ttlMs: 0 }))[0], null, 'get_offers / cart: never from the cache');
   assert.equal((await cache.lookup([KEY], { ttlMs: 24 * 60 * MIN }))[0].amount, 23, 'a long window is capped at the hard expiry...');
   c.add(2 * MIN);
-  assert.equal((await cache.lookup([KEY], { ttlMs: 24 * 60 * MIN }))[0], null, '...of 15 min (Shopify\'s limit): 16 min old is never served');
+  assert.equal((await cache.lookup([KEY], { ttlMs: 24 * 60 * MIN }))[0], null, '...of 10 min (Shopify\'s published limit): 11 min old is never served');
 });
 
 test('lookup reads the STORE, not only this process: another instance\'s answer is served; the L1 then answers for 30 s', async () => {

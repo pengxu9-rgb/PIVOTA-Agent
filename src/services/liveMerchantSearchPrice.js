@@ -50,13 +50,14 @@ const THROTTLE_REASON = /^(?:http_429|http_430|http_5\d\d|host_backoff|host_budg
 // `options.hostGate` (services/priceHostBudget.js, PRICE_HOST_BUDGET) may refuse a read before it is sent, and is
 // told of each 429 / 430 / 5xx so the fleet's shared backoff hears of it.
 // A cache answer served as `recent` (price_source 'merchant_cache', the list contract's `cache` token,
-// services/listPriceTiers.js) is never older than Shopify's 15-min limit: the window is capped by the cache's own
-// constant, which no env var reaches.
+// services/listPriceTiers.js) is never older than Shopify's published 10-min limit (usage guidelines,
+// shopify.dev/docs/agents/catalog, read 2026-11-23): the window is capped by the cache's own constant, which no
+// env var reaches.
 const { MAX_PRICE_WINDOW_MS } = require('./priceCache');
 const { listPriceTiersActive } = require('./listPriceTiers');
 // When a UCP lookup answer arrived (ucpLiveOfferRead's lookup core; a symbol on the read).
 const UCP_ANSWERED_AT = Symbol.for('pivota.ucp.answeredAtMs');
-const SHARED_TTL_MS = Math.min(15 * 60 * 1000, MAX_PRICE_WINDOW_MS);
+const SHARED_TTL_MS = Math.min(10 * 60 * 1000, MAX_PRICE_WINDOW_MS);
 // TOP-K LIVE READ (UCP_LIVE_SEARCH_READ_TOP_K, D-16; read by the caller and passed as `options.topK` /
 // `options.liveBudgetMs`, only while UCP_LIVE_SEARCH_READ=enforce). 0, the default, is the overlay exactly as before.
 // K > 0: only the first K SHOWN cards are read live (the merchant's UCP catalog, then their `.json`), inside a
@@ -560,7 +561,7 @@ async function overlayLiveMerchantSearchPrices(response, options = {}) {
   for (const [index, a] of topKFallback) {
     if (liveSettled.has(index) || goneIndexes.has(index)) continue;
     // Only a read that did not ANSWER falls back. A merchant that answered (the variant is missing, the price
-    // is unreadable or in another currency, a 4xx) spoke for this card in this request: a 15-min-old fleet
+    // is unreadable or in another currency, a 4xx) spoke for this card in this request: a 10-min-old fleet
     // answer never overrides it.
     if (readFailure.has(index) && !TOP_K_FALLBACK_REASON.test(readFailure.get(index))) continue;
     const card = cards[index];

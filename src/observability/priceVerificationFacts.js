@@ -176,10 +176,13 @@ function priceFactsOf(tool, value, { limit } = {}) {
 
 // ---- the door caches' price-freshness cap (FIX_PLAN 1.17, P2-5) ------------------------------------------------
 //
-// Shopify's limit for keeping a price or stock answer is 15 minutes, and the fleet price cache honours it
-// (services/priceCache.js MAX_PRICE_WINDOW_MS). The DOOR caches replay whole answers on top of that: the /mcp and
+// Shopify's published limit for keeping a price or availability answer is 10 minutes (usage guidelines,
+// shopify.dev/docs/agents/catalog, read 2026-11-23), and the fleet price cache honours it (services/priceCache.js
+// MAX_PRICE_WINDOW_MS). THIS CAP IS STILL 15 MINUTES, the fleet cache's figure until 11-23: it acts on the door
+// caches under its own flag, so lowering it is a change of its own, not part of the fleet cache's window.
+// The DOOR caches replay whole answers on top of the fleet cache: the /mcp and
 // /ucp/mcp read cache up to 15 min (stale-served), the public tier up to 60 min, so a merchant answer could be
-// served ~30 min (or more) after it was read. DOOR_CACHE_PRICE_FRESHNESS_CAP (off | on, default off, read per
+// served ~25 min (or more) after it was read. DOOR_CACHE_PRICE_FRESHNESS_CAP (off | on, default off, read per
 // store): on, an entry holding a MERCHANT ANSWER (a fact with merchant: true and a read time) is kept only until
 // its EARLIEST such answer is 15 minutes old -- its ttl and its stale window both end there, and an entry already
 // past it is not stored. Entries with stored prices only keep their own clocks (they carry no merchant answer;
