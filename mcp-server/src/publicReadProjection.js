@@ -403,7 +403,8 @@ function projectGetProduct(raw, { base = DEFAULT_PDP_BASE, emptyReason } = {}) {
   }
   // The live read's verdict on the price (UCP_LIVE_PRODUCT_READ=enforce only; off or shadow, absent), so a stored
   // fallback does not pass for a merchant-confirmed price. Undated: this tier serves no timestamps (§3), and its
-  // read cache may replay a confirmed price for up to an hour, which the tool description says.
+  // read cache may replay a confirmed price (for its own clock, or until the price is 10 min old with the door cap
+  // on), which the tool description says.
   const check = detail.price ? productPriceCheck(p) : null;
   if (check) {
     detail.price_check = compact({

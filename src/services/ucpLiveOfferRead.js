@@ -1078,8 +1078,18 @@ function createUcpLiveProductReader(deps = {}) {
     const anyInStock = out.variants.some((v) => v && v.availability && v.availability.in_stock === true && v.live_read);
     // The top-level `in_stock` (the detail normalizer's flag, which the public and UCP doors read) moves with
     // `availability`: a stored `in_stock: true` beside a live sold-out answer would sell a sold-out product.
-    if (anyInStock) { out.availability = withLiveStock(product.availability, true); out.in_stock = true; }
-    else if (verified + gone > 0 && allAsked) { out.availability = withLiveStock(product.availability, false); out.in_stock = false; }
+    let liveStock = null;
+    if (anyInStock) liveStock = true;
+    else if (verified + gone > 0 && allAsked) liveStock = false;
+    if (liveStock !== null) {
+      out.availability = withLiveStock(product.availability, liveStock);
+      out.in_stock = liveStock;
+      // When the product's STOCK was read: whenever a live answer set it, re-priced headline or not (a non-default
+      // variant's answer, or the merchant saying every variant is gone, moves it while the price stays stored).
+      // The door caches' freshness cap reads it beside price_as_of (priceVerificationFacts), since the published
+      // limit covers availability as well as price. price_as_of itself still dates only a re-priced headline.
+      out.availability_as_of = checkedAt;
+    }
     out.live_read = { ...summary, checked: asked.size, verified, gone };
     return out;
   }
