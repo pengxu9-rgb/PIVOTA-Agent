@@ -2,11 +2,14 @@
 
 // THE SHARED PRICE CACHE'S WINDOW IS 10 MINUTES (src/services/priceCache.js MAX_PRICE_WINDOW_MS), the limit Shopify
 // publishes for keeping a price or availability answer (usage guidelines, shopify.dev/docs/agents/catalog, read
-// 2026-11-23; ADR-031 requires it before the cache is ever turned on). Three pins:
+// 2026-11-23; ADR-031 requires it before the cache is ever turned on). The door caches' price-freshness cap
+// (src/observability/priceVerificationFacts.js DOOR_CAP_WINDOW_MS) keeps to the same limit. Four pins:
 //   1. the window is exactly 600,000 ms everywhere the cache stores or serves a price;
 //   2. no env var raises it (a fresh module load with every env var the cache's modules name set to a day);
 //   3. under PRICE_CACHE_STORE=firestore + PRICE_CACHE_MODE=read (the real flags, the process cache), an answer the
-//      store still holds from 11 minutes ago is NOT served, to a lookup or to search; one from 9 minutes ago is.
+//      store still holds from 11 minutes ago is NOT served, to a lookup or to search; one from 9 minutes ago is;
+//   4. the door caches' cap is the same 600,000 ms: an entry ends when its merchant answer is 10 minutes old, and
+//      one already that old is not stored (through the real doors: recommendation_price_tiers_door_cache).
 // Nothing leaves the process: the store is the Firestore fake and the storefront is a fake fetch. Every host,
 // handle and product here is a placeholder.
 
@@ -23,6 +26,7 @@ const DAY_MS = 24 * 60 * MIN;
 
 const pc = require('../src/services/priceCache');
 const overlay = require('../src/services/liveMerchantSearchPrice');
+const facts = require('../src/observability/priceVerificationFacts');
 const { createFirestorePriceCacheStore } = require('../src/services/priceCacheStore');
 const { createFakeFirestore } = require('./_support/fakeFirestore.cjs');
 
@@ -54,7 +58,10 @@ test('PIN: the window is exactly 10 minutes wherever the cache stores or serves 
 });
 
 test('NO ENV VAR RAISES IT: a fresh load with every env var the cache\'s modules name (and the likely names) set to a day keeps 10 minutes', () => {
-  const sources = ['../src/services/priceCache', '../src/services/priceCacheStore', '../src/services/liveMerchantSearchPrice'];
+  const sources = [
+    '../src/services/priceCache', '../src/services/priceCacheStore', '../src/services/liveMerchantSearchPrice',
+    '../src/observability/priceVerificationFacts',
+  ];
   const named = new Set();
   for (const s of sources) {
     for (const m of fs.readFileSync(require.resolve(s), 'utf8').matchAll(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g)) named.add(m[0]);
@@ -64,6 +71,7 @@ test('NO ENV VAR RAISES IT: a fresh load with every env var the cache\'s modules
     'MAX_PRICE_WINDOW_MS', 'HARD_EXPIRY_MS', 'SHARED_TTL_MS', 'TTL_MS', 'PRICE_CACHE_TTL_MS', 'PRICE_CACHE_HARD_EXPIRY_MS',
     'PRICE_CACHE_WINDOW_MS', 'PRICE_CACHE_MAX_PRICE_WINDOW_MS', 'PRICE_CACHE_MAX_WINDOW_MS', 'PRICE_CACHE_EXPIRY_MIN',
     'PRICE_CACHE_WINDOW_MIN', 'PRICE_CACHE_SEARCH_TTL_MS', 'SEARCH_PRICE_CACHE_TTL_MS', 'PRICE_CACHE_SHARED_TTL_MS',
+    'DOOR_CAP_WINDOW_MS', 'DOOR_CACHE_PRICE_FRESHNESS_CAP_MS', 'DOOR_CACHE_PRICE_FRESHNESS_CAP_WINDOW_MS', 'DOOR_CACHE_PRICE_WINDOW_MS',
   ];
   const hostile = [...new Set([...named, ...likely])];
   const before = new Map(hostile.map((k) => [k, process.env[k]]));
@@ -74,7 +82,10 @@ test('NO ENV VAR RAISES IT: a fresh load with every env var the cache\'s modules
     for (const id of ids) delete require.cache[id];
     const fresh = require('../src/services/priceCache');
     const freshOverlay = require('../src/services/liveMerchantSearchPrice');
+    const freshFacts = require('../src/observability/priceVerificationFacts');
     assert.notEqual(fresh, pc, 'a fresh load, not the cached module');
+    assert.notEqual(freshFacts, facts);
+    assert.equal(freshFacts.DOOR_CAP_WINDOW_MS, TEN_MINUTES_MS);
     assert.equal(fresh.MAX_PRICE_WINDOW_MS, TEN_MINUTES_MS);
     assert.equal(fresh.HARD_EXPIRY_MS, TEN_MINUTES_MS);
     assert.equal(freshOverlay.SHARED_TTL_MS, TEN_MINUTES_MS);
@@ -84,6 +95,8 @@ test('NO ENV VAR RAISES IT: a fresh load with every env var the cache\'s modules
     assert.equal(doc.expire_at - doc.read_at, TEN_MINUTES_MS);
     assert.equal(fresh.verifiedPriceDoc(verified(1, { read_at: NOW - 11 * MIN }), NOW), null);
     assert.equal(fresh.servableAnswer(doc, key(1), { nowMs: NOW + 11 * MIN, ttlMs: DAY_MS }), null);
+    assert.equal(freshFacts.capCachePolicyAtPriceAge({ ttlMs: DAY_MS, staleMs: DAY_MS }, NOW - 11 * MIN, NOW), null);
+    assert.deepEqual(freshFacts.capCachePolicyAtPriceAge({ ttlMs: DAY_MS, staleMs: DAY_MS }, NOW - 9 * MIN, NOW), { ttlMs: MIN, staleMs: MIN });
   } finally {
     for (const [k, v] of before) {
       if (v === undefined) delete process.env[k];
@@ -170,4 +183,28 @@ test('PRICE_CACHE_MODE=read: an answer the store holds from 11 minutes ago is no
     }
     pc._setStoreFactoryForTest(null);
   }
+});
+
+test('THE DOOR CACHES\' CAP is the same 10 minutes: an entry ends when its merchant answer is 10 min old; one already that old is not stored', () => {
+  assert.equal(facts.DOOR_CAP_WINDOW_MS, TEN_MINUTES_MS);
+  assert.equal(facts.DOOR_CAP_WINDOW_MS, pc.MAX_PRICE_WINDOW_MS, 'one published limit, one figure');
+  const NOW = Date.parse('2026-11-23T12:00:00.000Z');
+  // The /mcp read cache's own clocks (5 min fresh, 15 min stale) and the public tier's (10 and 60).
+  for (const policy of [{ ttlMs: 5 * MIN, staleMs: 15 * MIN }, { ttlMs: 10 * MIN, staleMs: 60 * MIN }, { ttlMs: DAY_MS, staleMs: DAY_MS }]) {
+    // Read just now: the whole 10 minutes are left, and no clock runs past them.
+    assert.deepEqual(facts.capCachePolicyAtPriceAge(policy, NOW, NOW),
+      { ttlMs: Math.min(policy.ttlMs, TEN_MINUTES_MS), staleMs: TEN_MINUTES_MS });
+    // 9 minutes old: one minute left, for the fresh window and the stale window alike.
+    assert.deepEqual(facts.capCachePolicyAtPriceAge(policy, NOW - 9 * MIN, NOW), { ttlMs: MIN, staleMs: MIN });
+    assert.deepEqual(facts.capCachePolicyAtPriceAge(policy, NOW - TEN_MINUTES_MS + 1, NOW), { ttlMs: 1, staleMs: 1 });
+    // 10 minutes old, or older: not stored at all.
+    for (const age of [TEN_MINUTES_MS, 11 * MIN, 15 * MIN]) {
+      assert.equal(facts.capCachePolicyAtPriceAge(policy, NOW - age, NOW), null, `${age} ms old`);
+    }
+    // No merchant answer in the entry: its own clocks, untouched.
+    assert.equal(facts.capCachePolicyAtPriceAge(policy, null, NOW), policy);
+  }
+  // The cap itself stays behind its flag, default off.
+  assert.equal(facts.doorCachePriceFreshnessCapEnabled({}), false);
+  assert.equal(facts.DOOR_CAP_FLAG, 'DOOR_CACHE_PRICE_FRESHNESS_CAP');
 });

@@ -431,7 +431,7 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
           }
         },
         // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price is kept only until that price is
-        // 15 min old (priceVerificationFacts.capCachePolicyAtPriceAge). Off (default): exactly the shouldCache
+        // 10 min old (priceVerificationFacts.capCachePolicyAtPriceAge). Off (default): exactly the shouldCache
         // policy this cache always had ({ ttlMs, staleMs } for a cacheable search result, else not stored).
         cachePolicy: (value) => {
           if (!isCacheableSearchResult(value)) return null;
