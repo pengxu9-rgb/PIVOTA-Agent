@@ -109,7 +109,7 @@ test('get_offers: a verified read records the offer\'s variant and every option 
     const bliss = (await h.written()).find((d) => d.variant_id === BLISS);
     assert.equal(bliss.available, true);
     assert.equal(bliss.handle, HANDLE);
-    assert.equal(bliss.expire_at - bliss.read_at, 15 * 60 * 1000);
+    assert.equal(bliss.expire_at - bliss.read_at, 10 * 60 * 1000);
   }
 });
 
@@ -367,7 +367,7 @@ async function seed(h, entry) {
   h.cache._l1.clear(); // as another instance: only the store knows
 }
 
-test('READ MODE: a card the fleet verified within 15 min is served from the cache, before any read, dated when the merchant answered', async () => {
+test('READ MODE: a card the fleet verified within 10 min is served from the cache, before any read, dated when the merchant answered', async () => {
   const h = cacheHarness({ read: true });
   const products = jsonCards(2);
   const host = `shop-${seq}.example.com`;
@@ -390,12 +390,12 @@ test('READ MODE: a card the fleet verified within 15 min is served from the cach
   assert.equal(m.drift_count, 2);
 });
 
-test('READ MODE: not served from the cache: another product\'s handle, older than 15 min, a tombstone, another currency, no market', async () => {
+test('READ MODE: not served from the cache: another product\'s handle, older than 10 min, a tombstone, another currency, no market', async () => {
   const h = cacheHarness({ read: true });
   const products = jsonCards(4);
   const host = `shop-${seq}.example.com`;
   await seed(h, { host, variant_id: '9000', amount: 26, handle: 'another-page' });
-  await seed(h, { host, variant_id: '9001', amount: 26, handle: 'p-1', read_at: Date.now() - 16 * 60 * 1000 });
+  await seed(h, { host, variant_id: '9001', amount: 26, handle: 'p-1', read_at: Date.now() - 11 * 60 * 1000 });
   h.cache.recordVariantGone({ host, market: 'US', variant_id: '9002', handle: 'p-2', source: 'merchant_ucp', writer: 'product' });
   await h.store.flush();
   h.cache._l1.clear();

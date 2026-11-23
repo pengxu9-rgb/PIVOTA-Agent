@@ -176,16 +176,18 @@ function priceFactsOf(tool, value, { limit } = {}) {
 
 // ---- the door caches' price-freshness cap (FIX_PLAN 1.17, P2-5) ------------------------------------------------
 //
-// Shopify's limit for keeping a price or stock answer is 15 minutes, and the fleet price cache honours it
-// (services/priceCache.js MAX_PRICE_WINDOW_MS). The DOOR caches replay whole answers on top of that: the /mcp and
-// /ucp/mcp read cache up to 15 min (stale-served), the public tier up to 60 min, so a merchant answer could be
-// served ~30 min (or more) after it was read. DOOR_CACHE_PRICE_FRESHNESS_CAP (off | on, default off, read per
-// store): on, an entry holding a MERCHANT ANSWER (a fact with merchant: true and a read time) is kept only until
-// its EARLIEST such answer is 15 minutes old -- its ttl and its stale window both end there, and an entry already
-// past it is not stored. Entries with stored prices only keep their own clocks (they carry no merchant answer;
-// their age is the 7-day staleness rule's business). Off: every door cache's TTLs exactly as before.
+// Shopify's published limit for keeping a price or availability answer is 10 minutes (usage guidelines,
+// shopify.dev/docs/agents/catalog, read 2026-11-23), and the fleet price cache honours it (services/priceCache.js
+// MAX_PRICE_WINDOW_MS). The DOOR caches replay whole answers on top of that: the /mcp and /ucp/mcp read cache up
+// to 15 min (stale-served), the public tier up to 60 min, so a merchant answer could be served ~25 min (or more)
+// after it was read. DOOR_CACHE_PRICE_FRESHNESS_CAP (off | on, default off, read per store): on, an entry holding
+// a MERCHANT ANSWER (a fact with merchant: true and a read time) is kept only until its EARLIEST such answer is
+// 10 minutes old, the same published limit (the cap was 15 min until 11-23) -- its ttl and its stale window both
+// end there, and an entry already past it is not stored. Entries with stored prices only keep their own clocks
+// (they carry no merchant answer; their age is the 7-day staleness rule's business). Off: every door cache's TTLs
+// exactly as before.
 const DOOR_CAP_FLAG = 'DOOR_CACHE_PRICE_FRESHNESS_CAP';
-const DOOR_CAP_WINDOW_MS = 15 * 60 * 1000;
+const DOOR_CAP_WINDOW_MS = 10 * 60 * 1000;
 // THE SIDE CHANNEL. A door caches the loopback invoke's answer, whose rows the search transport projection has
 // already stripped of their internal price_source, so the door cannot find the merchant answers in it. The
 // invoke route, at its final exit and for a loopback call only, sends the earliest merchant-answer read time
@@ -237,7 +239,7 @@ function earliestMerchantAnswerMs(tool, value) {
 
 /**
  * `policy` ({ ttlMs, staleMs } measured from now) capped so the entry ends when its earliest merchant answer is
- * 15 min old; null (do not store) when that is already past; `policy` itself when there is no merchant answer or
+ * 10 min old; null (do not store) when that is already past; `policy` itself when there is no merchant answer or
  * no policy. Pure.
  */
 function capCachePolicyAtPriceAge(policy, earliestMs, nowMs = Date.now()) {

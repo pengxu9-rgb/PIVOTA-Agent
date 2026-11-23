@@ -158,7 +158,7 @@ function publicReadCachePolicy(computed, { ttlMs, staleMs, emptyTtlMs }) {
   if (!computed || typeof computed !== "object" || computed.cacheable !== true) return null;
   if (computed.emptySearchPage || computed.chainFilterFailedOpen) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
   // DOOR_CACHE_PRICE_FRESHNESS_CAP=on: an answer serving a merchant's price is kept only until that price is
-  // 15 min old (priceVerificationFacts.capCachePolicyAtPriceAge). The public answer itself still carries no
+  // 10 min old (priceVerificationFacts.capCachePolicyAtPriceAge). The public answer itself still carries no
   // timestamp; only its clock changes. Off (default): the clocks above exactly.
   if (priceVerificationFacts.doorCachePriceFreshnessCapEnabled() && Number.isFinite(computed.priceEarliestMs)) {
     return priceVerificationFacts.capCachePolicyAtPriceAge({ ttlMs, staleMs }, computed.priceEarliestMs);

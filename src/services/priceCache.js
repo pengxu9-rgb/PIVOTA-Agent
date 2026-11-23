@@ -14,7 +14,7 @@
  *     write  every writer records its verified answers and 429/5xx backoffs; NOTHING READS the cache, so every
  *            answer is byte-identical to off (shadow fill: the hit rate can be measured before anything uses it)
  *     read   as write, and a consumer may serve an answer from the cache as `recent` inside its own window
- *            (search: 15 min; services/liveMerchantSearchPrice.js is the only consumer today: recommend_products
+ *            (search: 10 min; services/liveMerchantSearchPrice.js is the only consumer today: recommend_products
  *            and get_alternatives rows carry no declared market and no merchant host + variant key, so the
  *            currency rule below gives them nothing to read; see services/listPriceTiers.js)
  *   PRICE_CACHE_FIRESTORE_DATABASE  the Firestore database id (default price-cache)
@@ -33,11 +33,13 @@
  *
  * VALUE. amount and compare_at as decimal strings, available, handle (the merchant's product handle, so a reader
  * can refuse another product's answer), source (merchant_ucp | merchant_storefront | merchant_cart), writer
- * (search | pdp | product | offers | cart), read_at, expire_at = read_at + 15 min (the Firestore TTL field; the
- * TTL sweep is lazy, so freshness is always judged from read_at, never from presence). 15 min is Shopify's limit
- * for keeping a price or stock answer (shopify.md F7), and it is a CONSTANT, not a setting: MAX_PRICE_WINDOW_MS
- * caps the stored expiry, the age a writer may record and every consumer window (TTL_MS, servableAnswer's ttlMs),
- * and no env var reaches any of them. (It was 60 min until 11-08.) A variant the merchant
+ * (search | pdp | product | offers | cart), read_at, expire_at = read_at + 10 min (the Firestore TTL field; the
+ * TTL sweep is lazy, so freshness is always judged from read_at, never from presence). 10 min is the limit Shopify
+ * publishes for keeping a price or availability answer (the usage guidelines at shopify.dev/docs/agents/catalog,
+ * read 2026-11-23), and those guidelines cover both the Global Catalog and a store's Storefront Catalog endpoint.
+ * It is a CONSTANT, not a setting: MAX_PRICE_WINDOW_MS caps the stored expiry, the age a writer may record and
+ * every consumer window (TTL_MS, servableAnswer's ttlMs), and no env var reaches any of them, so none can raise
+ * it. (It was 60 min until 11-08 and 15 min until 11-23.) A variant the merchant
  * said it does not have (`variant_gone`) is a tombstone: status variant_gone, no amount, expire_at = read_at +
  * 10 min; no consumer serves a price from one.
  *
@@ -61,8 +63,9 @@ const { sharedCacheWritesAllowed } = require('../guardrails/syntheticContext');
 
 const L1_TTL_MS = 30 * 1000;
 const L1_MAX = 5000;
-// SHOPIFY'S LIMIT for caching a price or stock answer: up to 15 minutes. The one cap every window here takes.
-const MAX_PRICE_WINDOW_MS = 15 * 60 * 1000;
+// SHOPIFY'S PUBLISHED LIMIT for caching a price or availability answer: up to 10 minutes (usage guidelines,
+// shopify.dev/docs/agents/catalog, read 2026-11-23). The one cap every window here takes; no env var reaches it.
+const MAX_PRICE_WINDOW_MS = 10 * 60 * 1000;
 const HARD_EXPIRY_MS = MAX_PRICE_WINDOW_MS;
 const TOMBSTONE_TTL_MS = 10 * 60 * 1000;
 // An answer stamped this far in the future is another clock's error, not a fresh price.
@@ -76,7 +79,7 @@ const BACKOFF_BASE_MS = 60 * 1000;
 const BACKOFF_MAX_MS = 10 * 60 * 1000;
 // Write cost: an answer identical to the one this instance last saw for the key (same status, amount, compare-at,
 // stock, handle and source) is not written again until that one is this old. The doc's read_at then lags the
-// truth by at most this much, well inside every consumer window (10 and 15 min).
+// truth by at most this much, well inside every consumer window (10 min).
 const UNCHANGED_REWRITE_MS = 5 * 60 * 1000;
 // THE SKIP AND READ MODE (settled for PRICE_CACHE_MODE=read): the skip compares against what THIS instance last saw.
 // When instance A wrote $10, instance B then wrote $12, and A reads $10 again inside 5 min, a skip would leave B's
@@ -603,7 +606,7 @@ module.exports = {
   activePriceCache,
   // Every consumer window, each capped at MAX_PRICE_WINDOW_MS (a window can only be shorter than Shopify's limit).
   TTL_MS: Object.freeze(Object.fromEntries(Object.entries({
-    search: 15 * 60 * 1000, recommend: 15 * 60 * 1000, get_product: 10 * 60 * 1000, pdp: 10 * 60 * 1000, get_offers: 0, cart: 0,
+    search: 10 * 60 * 1000, recommend: 10 * 60 * 1000, get_product: 10 * 60 * 1000, pdp: 10 * 60 * 1000, get_offers: 0, cart: 0,
   }).map(([k, v]) => [k, Math.min(v, MAX_PRICE_WINDOW_MS)]))),
   MAX_PRICE_WINDOW_MS,
   HARD_EXPIRY_MS,

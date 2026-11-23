@@ -1,7 +1,7 @@
 'use strict';
 
 // RECOMMENDATION PRICE TIERS (FIX_PLAN Phase 1 item 1.17; D-03 / D-16). One rule per section:
-//   1. the shared price cache keeps a price at most 15 min (a constant no env var reaches); tombstones 10 min;
+//   1. the shared price cache keeps a price at most 10 min (a constant no env var reaches); tombstones 10 min;
 //      read mode writes an answer its own L1 cannot vouch the store holds; a synthetic call writes nothing;
 //   2. read mode serves search rows from the fleet cache, marked as cache;
 //   3. top-K live read: only the first K shown cards, inside a budget, per-host budget respected, falling back
@@ -57,28 +57,30 @@ const { INVOKE_AUTH_CONTEXT } = require('../src/guardrails/syntheticContext');
 
 // ---- 1. the cache window --------------------------------------------------------------------------------
 
-test('1a TTL CAP: 15 min everywhere the cache keeps or serves a price; tombstones stay 10 min', () => {
-  assert.equal(pc.MAX_PRICE_WINDOW_MS, 15 * MIN);
-  assert.equal(pc.HARD_EXPIRY_MS, 15 * MIN);
+test('1a TTL CAP: 10 min everywhere the cache keeps or serves a price; tombstones stay 10 min', () => {
+  assert.equal(pc.MAX_PRICE_WINDOW_MS, 10 * MIN);
+  assert.equal(pc.HARD_EXPIRY_MS, 10 * MIN);
   assert.equal(pc.TOMBSTONE_TTL_MS, 10 * MIN);
-  for (const [k, v] of Object.entries(pc.TTL_MS)) assert.ok(v <= 15 * MIN, `${k} window ${v} is within the cap`);
-  assert.equal(overlay.SHARED_TTL_MS, 15 * MIN, 'search serves a cache answer for at most 15 min');
+  for (const [k, v] of Object.entries(pc.TTL_MS)) assert.ok(v <= 10 * MIN, `${k} window ${v} is within the cap`);
+  assert.equal(overlay.SHARED_TTL_MS, 10 * MIN, 'search serves a cache answer for at most 10 min');
   const KEY = { host: 'shop.example.com', market: 'US', variant_id: '1', currency: 'USD' };
   const doc = pc.verifiedPriceDoc({ ...KEY, amount: 20, source: 'merchant_ucp', writer: 'search' }, NOW).doc;
-  assert.equal(doc.expire_at - doc.read_at, 15 * MIN, 'expire_at = read_at + 15 min');
-  assert.equal(pc.verifiedPriceDoc({ ...KEY, amount: 20, source: 'merchant_ucp', writer: 'search', read_at: NOW - 15 * MIN - 1 }, NOW), null,
-    'an answer already older than 15 min is not written');
+  assert.equal(doc.expire_at - doc.read_at, 10 * MIN, 'expire_at = read_at + 10 min');
+  assert.equal(pc.verifiedPriceDoc({ ...KEY, amount: 20, source: 'merchant_ucp', writer: 'search', read_at: NOW - 10 * MIN - 1 }, NOW), null,
+    'an answer already older than 10 min is not written');
   const gone = pc.variantGoneDoc({ ...KEY, source: 'merchant_ucp', writer: 'search' }, NOW).doc;
   assert.equal(gone.expire_at - gone.read_at, 10 * MIN, 'variant_gone tombstones: 10 min');
   // Freshness is judged from read_at, and a consumer's window can never exceed the cap.
   const stored = { ...doc };
-  assert.equal(pc.servableAnswer(stored, KEY, { nowMs: NOW + 14 * MIN, ttlMs: 24 * 60 * MIN }).amount, 20);
-  assert.equal(pc.servableAnswer(stored, KEY, { nowMs: NOW + 15 * MIN + 1, ttlMs: 24 * 60 * MIN }), null, 'a 1-day window is capped at 15 min');
-  // A doc stored under the old 60-min expiry is never served past 15 min either (read_at decides, not expire_at).
-  assert.equal(pc.servableAnswer({ ...doc, expire_at: new Date(NOW + 60 * MIN) }, KEY, { nowMs: NOW + 20 * MIN, ttlMs: 15 * MIN }), null);
+  assert.equal(pc.servableAnswer(stored, KEY, { nowMs: NOW + 9 * MIN, ttlMs: 24 * 60 * MIN }).amount, 20);
+  assert.equal(pc.servableAnswer(stored, KEY, { nowMs: NOW + 10 * MIN + 1, ttlMs: 24 * 60 * MIN }), null, 'a 1-day window is capped at 10 min');
+  // A doc stored under an older, longer expiry (60 min until 11-08, 15 min until 11-23) is never served past 10 min
+  // either, even to a consumer asking for the old 15-min window (read_at decides, not expire_at).
+  assert.equal(pc.servableAnswer({ ...doc, expire_at: new Date(NOW + 60 * MIN) }, KEY, { nowMs: NOW + 11 * MIN, ttlMs: 15 * MIN }), null);
+  assert.equal(pc.servableAnswer({ ...doc, expire_at: new Date(NOW + 15 * MIN) }, KEY, { nowMs: NOW + 11 * MIN, ttlMs: 15 * MIN }), null);
 });
 
-test('1b TTL CAP: no env var reaches the window (a fresh module load under hostile env keeps 15 min)', () => {
+test('1b TTL CAP: no env var reaches the window (a fresh module load under hostile env keeps 10 min)', () => {
   const hostile = {
     PRICE_CACHE_TTL_MS: String(DAY), PRICE_CACHE_HARD_EXPIRY_MS: String(DAY), PRICE_CACHE_WINDOW_MS: String(DAY),
     PRICE_CACHE_EXPIRY_MIN: '600', SEARCH_PRICE_CACHE_TTL_MS: String(DAY),
@@ -90,12 +92,12 @@ test('1b TTL CAP: no env var reaches the window (a fresh module load under hosti
     for (const id of ids) delete require.cache[id];
     const fresh = require('../src/services/priceCache');
     const freshOverlay = require('../src/services/liveMerchantSearchPrice');
-    assert.equal(fresh.HARD_EXPIRY_MS, 15 * MIN);
-    assert.equal(fresh.MAX_PRICE_WINDOW_MS, 15 * MIN);
-    assert.equal(freshOverlay.SHARED_TTL_MS, 15 * MIN);
+    assert.equal(fresh.HARD_EXPIRY_MS, 10 * MIN);
+    assert.equal(fresh.MAX_PRICE_WINDOW_MS, 10 * MIN);
+    assert.equal(freshOverlay.SHARED_TTL_MS, 10 * MIN);
     const KEY = { host: 'shop.example.com', market: 'US', variant_id: '1', currency: 'USD' };
     const doc = fresh.verifiedPriceDoc({ ...KEY, amount: 20, source: 'merchant_ucp', writer: 'search' }, NOW).doc;
-    assert.equal(doc.expire_at - doc.read_at, 15 * MIN);
+    assert.equal(doc.expire_at - doc.read_at, 10 * MIN);
   } finally {
     for (const k of Object.keys(hostile)) delete process.env[k];
     ids.forEach((id, i) => { require.cache[id] = saved[i]; });
@@ -273,7 +275,7 @@ test('2 READ MODE serves search rows from the fleet cache, marked merchant_cache
     market: 'US', priceCache: fleet,
     fetchImpl: async (url) => { fetched.push(url); return { ok: true, json: async () => json(1001, 21) }; },
   });
-  assert.equal(fleet.lookups[0].opts.ttlMs, 15 * MIN, 'the search window');
+  assert.equal(fleet.lookups[0].opts.ttlMs, 10 * MIN, 'the search window');
   assert.equal(out.products[0].price, 18);
   assert.equal(out.products[0].price_source, 'merchant_cache');
   assert.equal(out.products[0].price_as_of, iso(readAt));
