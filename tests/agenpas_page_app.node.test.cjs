@@ -968,3 +968,116 @@ test('address: a read that shows a NEW form starts the "not requested" count aga
   await settle();
   assert.match(h.text(), /We can't take your address here any more/);
 });
+
+// ---- the amount panel and the line under the step ---------------------------------------------------------------
+
+const byClass = (h, name) => h.app.all((n) => String(n.className).split(' ').includes(name));
+const CEILING_RE = /The final total can't be more than the amount you approve\./;
+
+test('panel: before the store prices the cart it shows the item price, no cap, and the ceiling line sits under the step', async () => {
+  const h = harness({ answers: [{ status: 200, body: view() }] });
+  h.start();
+  await settle();
+  assert.deepEqual(byClass(h, 'hero-amount').map((n) => n.textContent), ['$18.00']);
+  assert.equal(byClass(h, 'hero-cap').length, 0);
+  assert.deepEqual(byClass(h, 'summary').map((n) => n.className), ['card summary']);
+  assert.match(h.text(), /merchant\.example/);
+  assert.match(h.text(), /Shipping and tax are added before you approve\./);
+  assert.match(h.text(), CEILING_RE);
+  assert.equal(byClass(h, 'assure').length, 1);
+});
+
+test('panel: once quoted, the amount is the quoted total, the cap is said once, and the parts are listed without a sum', async () => {
+  const quoted = view({
+    state: 'awaiting_buyer_authorization', screen: 'approve',
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+    action: { kind: 'approval', url: 'https://pay.partner.example/approve?s=1', expires_at: '2026-11-17T12:30:00.000Z', open_mode: 'popup' },
+  });
+  const h = harness({ answers: [{ status: 200, body: quoted }] });
+  h.start();
+  await settle();
+  assert.deepEqual(byClass(h, 'hero-amount').map((n) => n.textContent), ['$23.49']);
+  assert.deepEqual(byClass(h, 'hero-cap').map((n) => n.textContent), ["You'll approve up to $23.49"]);
+  assert.deepEqual(byClass(h, 'hero-sub').map((n) => n.textContent), ['Items $18.00 · Shipping $3.99 · Tax $1.50']);
+  assert.equal(/\+/.test(byClass(h, 'hero-sub')[0].textContent), false);
+  assert.deepEqual(hostedLinks(h).map((n) => n.textContent), ['Approve $23.49']);
+  assert.match(h.text(), CEILING_RE);
+});
+
+test('panel: while the order is placed the cap reads "You approved up to"; a quantity above one shows the unit price', async () => {
+  const placing = view({
+    state: 'placing', screen: 'placing', action: null, quantity: 2,
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 4149, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+  });
+  const h = harness({ answers: [{ status: 200, body: placing }] });
+  h.start();
+  await settle();
+  assert.deepEqual(byClass(h, 'hero-cap').map((n) => n.textContent), ['You approved up to $41.49']);
+  assert.deepEqual(byClass(h, 'hero-item-meta').map((n) => n.textContent), ['Qty 2 · $18.00 each']);
+  assert.match(byClass(h, 'hero-sub')[0].textContent, /^Items \$36\.00 · /);
+});
+
+test('panel: a placed order shows the total charged and neither the cap nor the ceiling line', async () => {
+  const done = view({
+    state: 'completed', screen: 'done', terminal: true, action: null, poll_after_seconds: null,
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: 2297, shipping_minor: 399, tax_minor: 150 },
+    order: { reference: 'R-1001', status_url: null, total_unparsed: false, reference_withheld: false },
+  });
+  const h = harness({ answers: [{ status: 200, body: done }] });
+  h.start();
+  await settle();
+  assert.deepEqual(byClass(h, 'hero-amount').map((n) => n.textContent), ['$22.97']);
+  assert.equal(byClass(h, 'hero-cap').length, 0);
+  assert.equal(byClass(h, 'hero-sub').length, 0);
+  assert.equal(byClass(h, 'assure').length, 0);
+  assert.doesNotMatch(h.text(), /approve up to|approved up to/);
+});
+
+test('panel: a placed order whose total could not be read shows no amount in the panel (the result card says where to find it)', async () => {
+  const done = view({
+    state: 'completed', screen: 'done', terminal: true, action: null, poll_after_seconds: null,
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+    order: { reference: 'R-1001', status_url: null, total_unparsed: true, reference_withheld: false },
+  });
+  const h = harness({ answers: [{ status: 200, body: done }] });
+  h.start();
+  await settle();
+  assert.equal(byClass(h, 'hero-amount').length, 0);
+  assert.match(h.text(), /See your email receipt/);
+});
+
+test('panel: a purchase that stopped keeps its amount, dimmed, and claims nothing: no cap, no ceiling line, no added wording', async () => {
+  const stopped = view({
+    state: 'failed', screen: 'failed', terminal: true, action: null, poll_after_seconds: null,
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+    outcome: { kind: 'declined', title: 'The approval was declined', message: "Your card issuer didn't approve this purchase, so the order wasn't placed.", retry_hint: true, outcome_unknown: false },
+  });
+  const h = harness({ answers: [{ status: 200, body: stopped }] });
+  h.start();
+  await settle();
+  const amount = byClass(h, 'hero-amount');
+  assert.deepEqual(amount.map((n) => n.textContent), ['$23.49']);
+  assert.match(amount[0].className, /hero-amount-off/);
+  assert.equal(byClass(h, 'hero-cap').length, 0);
+  assert.equal(byClass(h, 'assure').length, 0);
+  assert.deepEqual(byClass(h, 'back-hint').map((n) => n.textContent), ['You can go back to the chat to try again.']);
+});
+
+test('address: each field is one box named for its field, and a refused field is marked on its box', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['firstName', 'lastName', 'postalCode']) }] });
+  h.start();
+  await settle();
+  assert.deepEqual(byClass(h, 'field').map((n) => n.className), ['field field-firstName', 'field field-lastName', 'field field-postalCode']);
+  // The panel above the long form is the small one; every other screen draws the full panel.
+  assert.deepEqual(byClass(h, 'summary').map((n) => n.className), ['card summary summary-compact']);
+  const inputs = findAll(h, (n) => n.tagName === 'INPUT');
+  inputs[0].value = 'Sam';
+  inputs[1].value = 'Buyer';
+  inputs[2].value = '12';
+  for (const input of inputs) for (const fn of input.listeners.input || []) fn();
+  const form = findAll(h, (n) => n.tagName === 'FORM')[0];
+  for (const fn of form.listeners.submit || []) fn({ preventDefault() {} });
+  await settle();
+  assert.deepEqual(byClass(h, 'field-bad').map((n) => n.className), ['field field-postalCode field-bad']);
+  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+});

@@ -147,47 +147,56 @@
 
   // ---- screens -------------------------------------------------------------------------------------------------
 
+  // The dark panel: the store, ONE amount, and the item. The amount is the quoted total once the store has priced the
+  // cart (the most the buyer approves), the item price before that, and the total charged once the order is placed.
   function summaryCard(view) {
-    var card = el('section', 'card summary');
-    append(card, el('p', 'eyebrow', 'Your purchase'));
-    append(card, el('h1', 'product', view.product_name || 'Your item'));
+    // The address form is long: on a phone the panel above it is drawn small (`summary-compact`).
+    var card = el('section', view.screen === 'shipping_address' ? 'card summary summary-compact' : 'card summary');
+    var a = view.amounts || {};
+    var done = view.screen === 'done';
+    var open = !done && !view.terminal;
+    var qty = view.quantity || 1;
+    var unit = money(a.unit_price_minor, view.currency);
+    var items = typeof a.unit_price_minor === 'number' ? money(a.unit_price_minor * qty, view.currency) : null;
+    var quoted = money(a.quoted_total_minor, view.currency);
+
+    if (open && quoted) {
+      append(card, el('p', 'hero-cap', (view.state === 'placing' ? 'You approved up to ' : "You'll approve up to ") + quoted));
+    }
+    if (view.merchant_domain) append(card, el('p', 'hero-store', view.merchant_domain));
+    // Done: the total charged, when it could be read (the result card says "See your email receipt" when not).
+    var amount = done ? money(a.final_total_minor, view.currency) : (quoted || items);
+    if (amount) append(card, el('p', open || done ? 'hero-amount' : 'hero-amount hero-amount-off', amount));
+    if (!done) {
+      if (quoted) {
+        // The parts as the store gave them, side by side: no sum is implied (a discount may sit between them).
+        var parts = [];
+        var shipping = money(a.shipping_minor, view.currency);
+        var tax = money(a.tax_minor, view.currency);
+        if (items && (shipping || tax)) parts.push('Items ' + items);
+        if (shipping) parts.push('Shipping ' + shipping);
+        if (tax) parts.push('Tax ' + tax);
+        if (parts.length) append(card, el('p', 'hero-sub', parts.join(' · ')));
+      } else if (open) {
+        append(card, el('p', 'hero-sub', 'Shipping and tax are added before you approve.'));
+      }
+    }
+
+    var item = el('div', 'hero-item');
+    append(item, el('p', 'hero-item-name product', view.product_name || 'Your item'));
     var meta = [];
     if (view.variant_title) meta.push(view.variant_title);
     if (view.quantity) meta.push('Qty ' + view.quantity);
-    if (meta.length) append(card, el('p', 'muted', meta.join(' · ')));
-    if (view.merchant_domain) append(card, el('p', 'merchant', 'Sold by ' + view.merchant_domain));
+    if (qty > 1 && unit) meta.push(unit + ' each');
+    if (meta.length) append(item, el('p', 'hero-item-meta', meta.join(' · ')));
+    card.appendChild(item);
+    return card;
+  }
 
-    var a = view.amounts || {};
-    var rows = el('dl', 'rows');
-    function row(label, value, strong) {
-      if (!value) return;
-      var wrap = el('div', strong ? 'row row-strong' : 'row');
-      append(wrap, el('dt', null, label), el('dd', null, value));
-      rows.appendChild(wrap);
-    }
-    var unit = money(a.unit_price_minor, view.currency);
-    var qty = view.quantity || 1;
-    var items = typeof a.unit_price_minor === 'number' ? money(a.unit_price_minor * qty, view.currency) : null;
-    // Done: the total charged is on the result card below, once.
-    if (view.screen !== 'done') {
-      row(qty > 1 ? 'Price (' + qty + ' × ' + unit + ')' : 'Price', items);
-      if (typeof a.quoted_total_minor === 'number') {
-        row('Shipping', money(a.shipping_minor, view.currency));
-        row('Tax', money(a.tax_minor, view.currency));
-      }
-    }
-    if (rows.firstChild) card.appendChild(rows);
-
-    if (view.screen !== 'done' && !view.terminal) {
-      var quoted = money(a.quoted_total_minor, view.currency);
-      var approved = view.state === 'placing';
-      if (quoted) {
-        append(card, el('p', 'approve-cap', (approved ? 'You approved up to ' : "You'll approve up to ") + quoted));
-        append(card, el('p', 'fine', "The final total includes shipping and tax and can't be more than the amount you approve."));
-      } else {
-        append(card, el('p', 'fine', "Shipping and tax are added before you approve. The final total can't be more than the amount you approve."));
-      }
-    }
+  // The one line under a buyer step (card, address, confirming the total, approval): the amount approved is a ceiling.
+  // Only those screens call it; a result screen never does.
+  function assurance(card) {
+    append(card, el('p', 'assure', "The final total can't be more than the amount you approve."));
     return card;
   }
 
@@ -470,8 +479,8 @@
 
   function actionCard(view, opts) {
     var card = el('section', 'card step');
-    append(card, el('h2', null, opts.title));
-    append(card, el('p', null, opts.body));
+    append(card, el('h1', null, opts.title));
+    append(card, el('p', 'muted', opts.body));
     if (opts.note) append(card, el('p', 'fine', opts.note));
     // The terms first: no hosted page button exists until a later read carries its URL.
     if (view.consent && !view.action) {
@@ -499,14 +508,14 @@
   function progressCard(title, body) {
     var card = el('section', 'card step');
     var head = el('div', 'progress-head');
-    append(head, spinner(), el('h2', null, title));
+    append(head, spinner(), el('h1', null, title));
     append(card, head, el('p', 'muted', body));
     return card;
   }
 
   function noticeCard(title, body) {
     var card = el('section', 'card step');
-    append(card, el('h2', null, title), el('p', 'muted', body));
+    append(card, el('h1', null, title), el('p', 'muted', body));
     return card;
   }
 
@@ -514,7 +523,7 @@
     var card = el('section', 'card step result result-' + kind);
     var icon = el('span', 'result-icon icon-' + kind);
     icon.setAttribute('aria-hidden', 'true');
-    append(card, icon, el('h2', null, title), el('p', null, body));
+    append(card, icon, el('h1', null, title), el('p', 'muted', body));
     if (extra) card.appendChild(extra);
     return card;
   }
@@ -553,7 +562,7 @@
     // Never a retry for an outcome-unknown purchase: the order may already exist.
     // The hint line only when the message does not already say it.
     if (outcome.retry_hint && !outcome.outcome_unknown && !/start again|try again/i.test(outcome.message || '')) {
-      extra = el('p', 'fine', 'You can go back to the chat to try again.');
+      extra = el('p', 'back-hint', 'You can go back to the chat to try again.');
     }
     return resultCard(kind, outcome.title || "This purchase didn't go through", outcome.message || 'Go back to the chat to check what happened.', extra);
   }
@@ -618,7 +627,8 @@
   function addressInput(field) {
     var meta = ADDRESS_FIELDS[field];
     var id = 'agenpas-' + field;
-    var wrap = el('div', 'field');
+    // One box per field, its label inside; `field-<name>` sets how wide it sits in a row.
+    var wrap = el('div', 'field field-' + field + (ui.addressErrors[field] ? ' field-bad' : ''));
     var label = el('label', 'field-label', meta.label);
     label.setAttribute('for', id);
     var input;
@@ -670,8 +680,8 @@
     // `address_request`). Whatever the buyer already typed is kept in memory for it.
     if (view.consent && !view.address_request) {
       var gate = el('section', 'card step');
-      append(gate, el('h2', null, 'Where should we send it?'),
-        el('p', null, 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
+      append(gate, el('h1', null, 'Where should we send it?'),
+        el('p', 'muted', 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
       if (ui.addressConsentNote) {
         var note = el('p', 'fine', ui.addressConsentNote);
         note.setAttribute('role', 'status');
@@ -690,8 +700,8 @@
       if (ui.address[k] === undefined && typeof prefill[k] === 'string') ui.address[k] = prefill[k];
     });
     var card = el('section', 'card step');
-    append(card, el('h2', null, 'Where should we send it?'),
-      el('p', null, 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
+    append(card, el('h1', null, 'Where should we send it?'),
+      el('p', 'muted', 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
     var form = el('form', 'address-form');
     form.setAttribute('novalidate', 'novalidate');
     fields.forEach(function (f) { form.appendChild(addressInput(f)); });
@@ -829,17 +839,18 @@
       case 'preparing':
         return progressCard('Getting your order ready', 'Checking the price and availability at ' + m + '…');
       case 'add_card':
-        return actionCard(view, {
+        // "Pivota never sees your card number" is said once, in the page's footer.
+        return assurance(actionCard(view, {
           title: 'Add a card',
-          body: "Your card is added on our payment partner's secure page. Pivota never sees your card number.",
+          body: "You'll enter it on our payment partner's secure page.",
           button: 'Add a card securely',
           waiting: 'Waiting for your card…',
-        });
+        }));
       case 'confirming_total': {
         var confirming = progressCard('Confirming your total', 'Getting the final total from ' + m + ', including shipping and tax…');
         // The approval's terms may be accepted while the total is confirmed.
         if (view.consent) confirming.appendChild(consentBlock(view));
-        return confirming;
+        return assurance(confirming);
       }
       case 'unavailable':
         return noticeCard("This step isn't available right now", 'Please go back to the chat and try again in a little while. This page updates on its own.');
@@ -847,13 +858,12 @@
         return noticeCard((view.outcome && view.outcome.title) || 'Some details are needed',
           (view.outcome && view.outcome.message) || 'Go back to the chat to continue.');
       case 'approve':
-        return actionCard(view, {
+        return assurance(actionCard(view, {
           title: 'Approve your purchase',
-          body: 'Approve ' + (quoted || 'this purchase') + ' at ' + m + ' with Face ID or fingerprint.',
-          note: "You approve on our payment partner's secure page.",
+          body: "With Face ID or fingerprint, on our payment partner's secure page.",
           button: quoted ? 'Approve ' + quoted : 'Approve',
           waiting: 'Waiting for your approval…',
-        });
+        }));
       case 'authenticate':
         return actionCard(view, {
           title: 'Confirm with your bank',
@@ -862,7 +872,7 @@
           waiting: 'Waiting for your bank…',
         });
       case 'shipping_address':
-        return addressCard(view);
+        return assurance(addressCard(view));
       case 'shipping_address_elsewhere':
         return progressCard('We need your shipping address', 'Go back to the chat to add your address. This page updates on its own.');
       case 'parked':

@@ -226,7 +226,7 @@ const SHELL_HTML = `<!doctype html>
 </head>
 <body>
 <div class="shell">
-<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPaz</span></header>
+<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPaz</span><span class="brand-secure">Secure checkout</span></header>
 <main id="app" aria-live="polite">
 <section class="card"><p class="muted">Loading your purchase…</p></section>
 </main>
@@ -251,7 +251,7 @@ function messageHtml(title, body) {
 </head>
 <body>
 <div class="shell">
-<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPaz</span></header>
+<header class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">AgenPaz</span><span class="brand-secure">Secure checkout</span></header>
 <main><section class="card"><h1>${title}</h1><p>${body}</p></section></main>
 </div>
 </body>
