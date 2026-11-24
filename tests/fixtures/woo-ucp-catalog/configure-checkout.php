@@ -12,6 +12,7 @@ update_option('woocommerce_default_country', 'US:CA');
 update_option('woocommerce_allowed_countries', 'all');
 update_option('woocommerce_ship_to_countries', 'all');
 update_option('woocommerce_calc_taxes', 'no');
+update_option('woocommerce_enable_coupons', 'yes');
 WC_Install::create_pages();
 
 $zone = new WC_Shipping_Zone();
@@ -25,9 +26,17 @@ update_option('woocommerce_flat_rate_' . $instance_id . '_settings', [
     'cost' => '5.00',
 ]);
 
+$coupon = new WC_Coupon();
+$coupon->set_code('fixture-dollar-off');
+$coupon->set_discount_type('fixed_cart');
+$coupon->set_amount('1.00');
+$coupon->save();
+
 file_put_contents('/wordpress/ucp-checkout-fixture.json', wp_json_encode([
     'checkoutUrl' => wc_get_checkout_url(),
     'guestEnabled' => get_option('woocommerce_enable_guest_checkout') === 'yes',
     'registrationRequired' => WC()->checkout()->is_registration_required(),
     'shippingAmount' => 500,
+    'discountCode' => $coupon->get_code(),
+    'discountAmount' => 100,
 ]));

@@ -39,17 +39,18 @@ function checkLine(cart, variantId) {
   return line;
 }
 
-function checkTotals(cart, shippingAmount) {
+function checkTotals(cart, shippingAmount, discountAmount = 0) {
   const { totals } = cart;
   assert.equal(totals.currency_code, 'USD');
   assert.equal(totals.currency_minor_unit, 2);
   assert.equal(totals.total_items, '1234');
   assert.equal(totals.total_shipping, String(shippingAmount));
   assert.equal(totals.total_tax, '0');
-  assert.equal(totals.total_discount, '0');
+  assert.equal(totals.total_discount, String(discountAmount));
   assert.equal(totals.total_fees, '0');
-  assert.equal(totals.total_price, String(1234 + shippingAmount));
-  return { subtotal: 1234, shipping: shippingAmount, tax: 0, discounts: 0, total: 1234 + shippingAmount, currency: 'USD' };
+  const total = 1234 + shippingAmount - discountAmount;
+  assert.equal(totals.total_price, String(total));
+  return { subtotal: 1234, shipping: shippingAmount, tax: 0, discounts: discountAmount, total, currency: 'USD' };
 }
 
 async function checkStoreApi(variantId, shippingAmount) {
@@ -103,8 +104,8 @@ async function checkStoreApi(variantId, shippingAmount) {
   };
 }
 
-async function checkCheckoutLink(variantId, checkoutUrl) {
-  const expected = new URL(checkoutUrl);
+async function checkCheckoutLink(variantId, config) {
+  const expected = new URL(config.checkoutUrl);
   assert.equal(expected.origin, origin);
   const link = new URL('/checkout-link/', origin);
   link.searchParams.set('products', `${variantId}:1`);
@@ -125,12 +126,41 @@ async function checkCheckoutLink(variantId, checkoutUrl) {
   const cookie = page.headers.getSetCookie().find((value) => /^wp_woocommerce_session_[^=]+=/.test(value))?.split(';')[0];
   assert.ok(cookie, 'fresh client received its WooCommerce session cookie');
   const cart = await json(`${store}/cart`, { cookie });
-  checkLine(cart.body, variantId);
+  const line = checkLine(cart.body, variantId);
+  const token = cart.headers.get('cart-token');
+  assert.ok(token, 'the browser cart exposes its Store API cart token');
+
+  const quoted = await json(`${store}/cart/update-customer`, {
+    method: 'POST', token,
+    data: { shipping_address: syntheticAddress, billing_address: { ...syntheticAddress, email: 'fixture@example.com' } },
+  });
+  const quote = checkTotals(quoted.body, config.shippingAmount);
+  assert.equal(checkLine(quoted.body, variantId).key, line.key);
+
+  // Open the checkout again with just the browser session, without reimporting the shareable link.
+  const resumedPage = await request(expected.href, { headers: { cookie } });
+  assert.equal(resumedPage.status, 200, 'checkout resumes with the browser session');
+  const resumed = await json(`${store}/cart`, { cookie });
+  assert.equal(resumed.body.shipping_address.postcode, syntheticAddress.postcode);
+  assert.equal(checkLine(resumed.body, variantId).key, line.key);
+  assert.deepEqual(checkTotals(resumed.body, config.shippingAmount), quote);
+
+  const discounted = await json(`${store}/cart/apply-coupon`, {
+    method: 'POST', token, data: { code: config.discountCode },
+  });
+  const changedQuote = checkTotals(discounted.body, config.shippingAmount, config.discountAmount);
+  assert.equal(checkLine(discounted.body, variantId).key, line.key);
+  assert.notEqual(changedQuote.total, quote.total, 'a changed quote cannot reuse the recorded approval amount');
+  const checkout = await json(`${store}/checkout`, { token });
+  assert.equal(checkout.body.__experimentalCart.totals.total_price, String(changedQuote.total));
+  assert.equal(checkout.body.order_id, 0);
+  assert.equal(checkout.body.payment_result, null);
 
   return {
     status: 'pass', initialHttp: redirect.status, sameOriginCheckoutPath: follow.pathname, guestLinkSessionPresent: true,
     checkoutPageHttp: page.status, freshBrowserCartHttp: cart.status,
     importedVariation: { variantId, sku: 'UCP-FIX-BLUE', quantity: 1 },
+    quote, resumedQuoteUnchanged: true, changedQuote, orderSubmitted: false,
   };
 }
 
@@ -154,7 +184,7 @@ async function main() {
     guestPolicy: { enabled: config.guestEnabled, registrationRequired: config.registrationRequired },
     ucpCheckoutAdvertised,
     storeApi: await checkStoreApi(variantId, config.shippingAmount),
-    shareableLink: await checkCheckoutLink(variantId, config.checkoutUrl),
+    shareableLink: await checkCheckoutLink(variantId, config),
   }, null, 2));
 }
 
