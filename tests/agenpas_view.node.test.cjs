@@ -996,3 +996,51 @@ test('parity with backend 838643e34: the 6 _CHECKOUT_PAYMENT_REACHED_CODES are a
     }
   }
 });
+
+// ---- the card the purchase pays with (backend AGENPAS_PAYMENT_CARD_ENABLED) ----------------------------------------
+
+const APPROVAL_ACTION = { type: 'open_url', kind: 'approval', url: APPROVE_PAGE, expires_at: '2026-11-17T12:10:00Z' };
+
+test('card: shown as a fixed label and four digits on the approval screen and on "order placed" only', () => {
+  const card = { network: 'VISA', last4: '4242' };
+  const approve = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL_ACTION, payment_card: card }));
+  assert.equal(approve.screen, 'approve');
+  assert.deepEqual(approve.payment_card, { label: 'Visa', last4: '4242' });
+  const done = project(unified('completed', { payment_card: card, order_reference: 'ORD-1' }));
+  assert.equal(done.screen, 'done');
+  assert.deepEqual(done.payment_card, { label: 'Visa', last4: '4242' });
+});
+
+test('card: never on any other screen, whatever the body says', () => {
+  const card = { network: 'VISA', last4: '4242' };
+  for (const state of ['routing', 'needs_payment_method', 'locking', 'placing', 'failed', 'refused', 'expired', 'unknown_state']) {
+    const view = project(unified(state, { payment_card: card }));
+    assert.equal('payment_card' in view, false, state);
+  }
+  // A held approval (the checking screen) names no card either.
+  const held = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL_ACTION, payment_card: card },
+    { last_error_code: 'checkout_unresolvable:3:checkout_read' }));
+  assert.notEqual(held.screen, 'approve');
+  assert.equal('payment_card' in held, false);
+});
+
+test('card: only from the top level, never from detail', () => {
+  const view = project(unified('awaiting_buyer_authorization', { next_action: APPROVAL_ACTION },
+    { payment_card: { network: 'VISA', last4: '4242' } }));
+  assert.equal(view.screen, 'approve');
+  assert.equal('payment_card' in view, false);
+});
+
+test('card: the network is a label from the fixed list (unknown: "Card"); no member without exactly four digits', () => {
+  const at = (card) => project(unified('awaiting_buyer_authorization', { next_action: APPROVAL_ACTION, payment_card: card })).payment_card;
+  assert.deepEqual(at({ network: 'MASTERCARD', last4: '5454' }), { label: 'Mastercard', last4: '5454' });
+  assert.deepEqual(at({ network: 'American Express', last4: '0005' }), { label: 'American Express', last4: '0005' });
+  assert.deepEqual(at({ network: 'union_pay', last4: '1234' }), { label: 'UnionPay', last4: '1234' });
+  assert.deepEqual(at({ network: null, last4: '1234' }), { label: 'Card', last4: '1234' });
+  assert.deepEqual(at({ network: '<b>Evil Bank</b>', last4: '1234' }), { label: 'Card', last4: '1234' });
+  assert.deepEqual(at({ network: 'constructor', last4: '1234' }), { label: 'Card', last4: '1234' });
+  for (const bad of [{ network: 'VISA' }, { network: 'VISA', last4: '424' }, { network: 'VISA', last4: '42424' },
+    { network: 'VISA', last4: 4242 }, { network: 'VISA', last4: '42a2' }, { network: 'VISA', last4: '4242\n' }, 'VISA 4242', ['4242'], null]) {
+    assert.equal(at(bad), undefined, JSON.stringify(bad));
+  }
+});
