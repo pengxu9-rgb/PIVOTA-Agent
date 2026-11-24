@@ -1009,6 +1009,9 @@ test('panel: before a quote, every buyer step that shows a line shows the pre-qu
   assert.deepEqual(hostedLinks(h2).map((n) => n.textContent), ['Approve']);
   assert.equal(byClass(h2, 'assure').length, 0);
   assert.deepEqual(byClass(h2, 'hero-label').map((n) => n.textContent), ['Item price']);
+  // At the approval step itself nothing says "before you approve": the line only says the number leaves them out.
+  assert.deepEqual(byClass(h2, 'hero-sub').map((n) => n.textContent), ['Shipping and tax are not included.']);
+  assert.doesNotMatch(h2.text(), /before you approve/);
 });
 
 test('panel: amounts are drawn in the purchase\'s own currency and its own minor units, never as dollars', async () => {
@@ -1052,7 +1055,7 @@ test('panel: a HELD purchase that is not final ("checking with the store") shows
   const amount = byClass(h, 'hero-amount');
   assert.deepEqual(amount.map((n) => n.textContent), ['$23.49']);
   assert.match(amount[0].className, /hero-amount-off/);
-  assert.deepEqual(byClass(h, 'hero-label').map((n) => n.textContent), ['Total']);
+  assert.deepEqual(byClass(h, 'hero-label').map((n) => n.textContent), ['Quoted total']);
   assert.equal(byClass(h, 'assure').length, 0);
   assert.equal(h.app.all((n) => n.tagName === 'BUTTON' || (n.tagName === 'A' && /btn/.test(n.className))).length, 0);
 });
@@ -1129,7 +1132,7 @@ test('panel: a purchase that stopped keeps its amount, dimmed, and claims nothin
   const amount = byClass(h, 'hero-amount');
   assert.deepEqual(amount.map((n) => n.textContent), ['$23.49']);
   assert.match(amount[0].className, /hero-amount-off/);
-  assert.deepEqual(byClass(h, 'hero-label').map((n) => n.textContent), ['Total']);
+  assert.deepEqual(byClass(h, 'hero-label').map((n) => n.textContent), ['Quoted total']);
   assert.equal(byClass(h, 'hero-cap').length, 0);
   assert.equal(byClass(h, 'assure').length, 0);
   assert.deepEqual(byClass(h, 'back-hint').map((n) => n.textContent), ['You can go back to the chat to try again.']);
