@@ -472,10 +472,19 @@ Fields the projection reads (tolerant of extra fields, and of the same names at 
 `detail`): `state`, `totals.{currency, our_price_minor, quoted_total_minor, final_total_minor, shipping_minor,
 tax_minor}`, `next_action.{kind, url, expires_at, consent_required}` (or `action`), `order_reference`,
 `poll_after_seconds`, `rail` / `rail_purchase_id` (only to tell the rail), `consent` (see "Terms and privacy consent"),
+`payment_card.{network, last4}` (top level only: see below),
 `detail.{merchant_domain, product_name, variant_title, quantity, currency, refusal_reason, last_error_code,
 merchant_order_status_url, buyer_step, contact_reentry_required}`. Never passed to the page: `rail`, `executor`,
 `rail_purchase_id`, the `pp_` id when the link names a rail id, `detail` itself, owner hashes, consent records and
 versions, raw codes.
+
+THE CARD. With the backend's `AGENPAS_PAYMENT_CARD_ENABLED` on, a Reap-rail body whose checkout is bound to a card
+carries `payment_card = {network, last4}`: the enrollment's two display attributes (no other card data exists on
+Pivota's side). The view passes it as `payment_card = {label, last4}` ONLY on the `approve` and `done` screens: the label
+is from a fixed list (Visa, Mastercard, American Express, Discover, JCB, UnionPay, Diners Club; anything else is
+"Card"), never the partner's word as is, and there is no member at all without exactly four digits. The page shows
+"Pay with Visa ending 4242" on the approval screen and "Paid with" on "Your order is placed". A held, stopped or
+earlier screen never names a card, whatever the body says.
 
 ## Trying it locally
 

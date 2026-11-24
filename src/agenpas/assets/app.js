@@ -493,11 +493,25 @@
     });
   }
 
+  // "Visa ending 4242": the card the purchase's checkout is bound to, only when the API names it (approval and order
+  // placed only; the API never sends it anywhere else).
+  function cardText(view) {
+    var c = view.payment_card;
+    if (!c || typeof c.label !== 'string' || !/^[0-9]{4}$/.test(String(c.last4 || ''))) return null;
+    return c.label + ' ending ' + c.last4;
+  }
+
   function actionCard(view, opts) {
     var card = el('section', 'card step');
     append(card, el('h1', null, opts.title));
     append(card, el('p', 'muted', opts.body));
     if (opts.note) append(card, el('p', 'fine', opts.note));
+    if (opts.showCard && cardText(view)) {
+      var pay = el('dl', 'rows');
+      var payRow = el('div', 'row');
+      append(payRow, el('dt', null, 'Pay with'), el('dd', null, cardText(view)));
+      append(card, append(pay, payRow));
+    }
     // The terms first: no hosted page button exists until a later read carries its URL.
     if (view.consent && !view.action) {
       card.appendChild(consentBlock(view));
@@ -557,6 +571,7 @@
     row('Total charged', order.total_unparsed
       ? 'See your email receipt'
       : money(view.amounts && view.amounts.final_total_minor, view.currency));
+    row('Paid with', cardText(view));
     row('Store', view.merchant_domain);
     var extra = el('div');
     extra.appendChild(list);
@@ -879,6 +894,7 @@
           body: "With Face ID or fingerprint, on our payment partner's secure page.",
           button: quoted ? 'Approve ' + quoted : 'Approve',
           waiting: 'Waiting for your approval…',
+          showCard: true,
         }));
       case 'authenticate':
         return actionCard(view, {

@@ -1194,3 +1194,41 @@ test('address: "We can\'t take your address here any more" carries no line about
   assert.match(h.text(), /We can't take your address here any more/);
   assert.equal(byClass(h, 'assure').length, 0);
 });
+
+test('card: "Pay with Visa ending 4242" on the approval screen and "Paid with" once the order is placed', async () => {
+  const approve = view({
+    state: 'awaiting_buyer_authorization', screen: 'approve',
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+    action: { kind: 'approval', url: 'https://pay.partner.example/approve?s=1', expires_at: '2026-11-17T12:30:00.000Z', open_mode: 'popup' },
+    payment_card: { label: 'Visa', last4: '4242' },
+  });
+  const h = harness({ answers: [{ status: 200, body: approve }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Pay with Visa ending 4242/);
+
+  const done = view({
+    state: 'completed', screen: 'done', terminal: true, action: null, poll_after_seconds: null,
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: 2349, shipping_minor: 399, tax_minor: 150 },
+    order: { reference: '#1001', status_url: null }, payment_card: { label: 'Visa', last4: '4242' },
+  });
+  const h2 = harness({ answers: [{ status: 200, body: done }] });
+  h2.start();
+  await settle();
+  assert.match(h2.text(), /Paid with Visa ending 4242/);
+});
+
+test('card: no card line without one, or with a malformed one', async () => {
+  for (const paymentCard of [undefined, { label: 'Visa' }, { label: 'Visa', last4: '42' }, { label: 7, last4: '4242' }]) {
+    const approve = view({
+      state: 'awaiting_buyer_authorization', screen: 'approve',
+      action: { kind: 'approval', url: 'https://pay.partner.example/approve?s=1', expires_at: '2026-11-17T12:30:00.000Z', open_mode: 'popup' },
+      ...(paymentCard ? { payment_card: paymentCard } : {}),
+    });
+    const h = harness({ answers: [{ status: 200, body: approve }] });
+    h.start();
+    await settle();
+    assert.doesNotMatch(h.text(), /Pay with|ending/, JSON.stringify(paymentCard));
+    assert.match(h.text(), /Approve your purchase/);
+  }
+});

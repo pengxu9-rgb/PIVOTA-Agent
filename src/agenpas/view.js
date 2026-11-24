@@ -668,6 +668,39 @@ function screenFor(state, { actionKind = null, outcome = null } = {}) {
   }
 }
 
+// ---- the card the purchase pays with ------------------------------------------------------------------------------
+//
+// The backend's top-level `payment_card = {network, last4}` (pivota-backend docs/agent_purchases_routes.md, behind its
+// AGENPAS_PAYMENT_CARD_ENABLED): the two display attributes of the card a BOUND checkout pays with. Read only from the
+// top level (never `detail`), shown only on the approval screen and on "Your order is placed": a card the purchase may
+// still not use (before its checkout), or on a held / stopped purchase, is never named. The network becomes a label
+// from this fixed list (the partner's word is never shown as is); an unknown one is "Card". No field at all without
+// exactly four digits.
+const CARD_SCREENS = new Set(['approve', 'done']);
+const LAST4_RE = /^[0-9]{4}$/;
+const CARD_NETWORK_LABELS = Object.freeze({
+  visa: 'Visa',
+  mastercard: 'Mastercard',
+  mc: 'Mastercard',
+  amex: 'American Express',
+  americanexpress: 'American Express',
+  discover: 'Discover',
+  jcb: 'JCB',
+  unionpay: 'UnionPay',
+  cup: 'UnionPay',
+  diners: 'Diners Club',
+  dinersclub: 'Diners Club',
+});
+
+function paymentCardFor(raw, screen) {
+  if (!CARD_SCREENS.has(screen) || !isPlainObject(raw)) return null;
+  const last4 = typeof raw.last4 === 'string' ? raw.last4 : '';
+  if (!LAST4_RE.test(last4)) return null;
+  const key = typeof raw.network === 'string' ? raw.network.toLowerCase().replace(/[\s_-]+/g, '') : '';
+  const label = Object.prototype.hasOwnProperty.call(CARD_NETWORK_LABELS, key) ? CARD_NETWORK_LABELS[key] : 'Card';
+  return { label, last4 };
+}
+
 function cleanText(value) {
   if (typeof value !== 'string') return null;
   // eslint-disable-next-line no-control-regex
@@ -923,6 +956,9 @@ function buildView(body, {
   };
   // Only while AGENPAS_CONSENT_ENABLED is on: off, the view has exactly the members it always had.
   if (consentEnabled) view.consent = consent;
+  // Only when the backend names the card and the screen may show it: otherwise no member at all.
+  const paymentCard = paymentCardFor(src.payment_card, screen);
+  if (paymentCard) view.payment_card = paymentCard;
   return { view, record, shippingConsentPending: shippingGated };
 }
 
