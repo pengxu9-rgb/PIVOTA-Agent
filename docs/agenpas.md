@@ -217,13 +217,15 @@ ONE amount, and the item (product, variant, quantity, and the unit price when th
 always says what it is:
 
 - Before the backend has a quoted total it is the item price only, labelled "Item price" ("Price for N items" above
-  one), with "Shipping and tax are added before you approve." under it. It is never called a total, and on a phone
-  the small panel above the address form keeps both the label and that line.
+  one), with "Shipping and tax are added before you approve." under it ("Shipping and tax are not included." on an
+  approval step that has no quoted total, where "before you approve" would be wrong). It is never called a total,
+  and on a phone the small panel above the address form keeps both the label and that line.
 - Once quoted it is the quoted total, with "You'll approve up to <quoted total>" above it ("You approved up to" while
   the order is placed) and the items, shipping and tax listed beside each other (no sum is implied).
 - A placed order shows "Total charged" when the total could be read.
 - A purchase that stopped, and a HELD one ("We're checking with the store", final or not), keeps its amount, dimmed,
-  with no "you'll approve" line and no added claim.
+  with no "you'll approve" line and no added claim. A quoted amount there is labelled "Quoted total": the buyer may
+  never have approved it, and nothing says it was charged.
 
 Under a buyer step (the card step, the address terms and form, confirming the total, the approval step) one line:
 "The final total can't be more than the amount you approve." once there is a quoted total; before that, "You'll see
