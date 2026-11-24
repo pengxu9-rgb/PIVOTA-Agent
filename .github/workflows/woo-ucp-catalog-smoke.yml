@@ -5,6 +5,7 @@ on:
     branches: [codex/woo-ucp-catalog-ci]
     paths:
       - .github/workflows/woo-ucp-catalog-smoke.yml
+      - src/services/wooUcpCatalogClient.js
       - tests/fixtures/woo-ucp-catalog/**
 
 permissions:

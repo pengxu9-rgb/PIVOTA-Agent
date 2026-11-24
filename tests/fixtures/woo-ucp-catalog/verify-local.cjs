@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { probeWooCatalog } = require('./probe-woo-catalog.cjs');
 
 const origin = 'http://127.0.0.1:9463';
 const version = '2026-04-08';
@@ -77,6 +78,22 @@ async function main() {
   assert.equal(currency.body.products[0].variants[0].price.currency, 'USD');
   assert.ok(currency.body.messages.some(({ code }) => code === 'currency_not_supported'));
 
+  const adapterOrigin = 'https://woo-fixture.example';
+  const adapterProfile = structuredClone(discovery.body);
+  adapterProfile.ucp.services['dev.ucp.shopping'][0].endpoint = binding.endpoint.replace(origin, adapterOrigin);
+  const gatewayCatalogLookup = await probeWooCatalog({
+    origin: adapterOrigin, productId: fixture.product_id, variantId: fixture.blue_id,
+    fetchMerchant: (url, options) => {
+      if (url === `${adapterOrigin}/.well-known/ucp`) return Response.json(adapterProfile);
+      assert.equal(url, `${adapterOrigin}/wp-json/wc/ucp/v1/catalog/lookup`);
+      // Translate only the synthetic HTTPS origin to the real loopback Woo response.
+      // The default gateway fetch continues to reject loopback addresses.
+      return fetch(`${binding.endpoint}/catalog/lookup`, options);
+    },
+  });
+  assert.equal(gatewayCatalogLookup.lookup.variantId, variant.id);
+  assert.deepEqual(gatewayCatalogLookup.lookup.price, variant.price);
+
   let gatewayDiscovery;
   if (process.env.PIVOTA_GATEWAY_ROOT) {
     const { resolve } = require('node:path');
@@ -103,6 +120,7 @@ async function main() {
     parentLookup: { http: parent.status, featured: featured.map(({ id }) => id) },
     skuOnlyLookup: { http: sku.status, matched: 0, code: 'not_found' },
     requestedEUR: { http: currency.status, returned: 'USD', code: 'currency_not_supported' },
+    gatewayCatalogLookup,
     gatewayDiscovery,
   }, null, 2));
 }
