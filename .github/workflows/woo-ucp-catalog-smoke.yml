@@ -1,0 +1,83 @@
+name: WooCommerce UCP Catalog Smoke
+
+on:
+  push:
+    branches: [codex/woo-ucp-catalog-ci]
+    paths:
+      - .github/workflows/woo-ucp-catalog-smoke.yml
+      - tests/fixtures/woo-ucp-catalog/**
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: tests/fixtures/woo-ucp-catalog
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+
+      - name: Run catalog probe fixture tests
+        run: node --test probe-woo-catalog.test.cjs
+
+      - name: Install the pinned WordPress Playground and WooCommerce release
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          printf 'Node %s, Playground %s, runner %s %s\n' \
+            "$(node --version)" "$(node -p 'require("@wp-playground/cli/package.json").version')" \
+            "$ImageOS" "$ImageVersion"
+          mkdir -p "$RUNNER_TEMP/woo-catalog/plugins"
+          cd "$RUNNER_TEMP/woo-catalog"
+          curl --fail --silent --show-error --location --retry 3 --max-time 120 \
+            https://downloads.wordpress.org/plugin/woocommerce.11.3.1.zip -o woocommerce.zip
+          printf '%s  %s\n' 1502600c738840f7f9ebfa2f11e1aaff087221a5fc5a2006c51be2d874ae2a09 woocommerce.zip | sha256sum --check
+          unzip -q woocommerce.zip -d plugins
+
+      - name: Verify discovery, search and exact lookup in WooCommerce
+        env:
+          PIVOTA_GATEWAY_ROOT: ${{ github.workspace }}
+        run: |
+          evidence_dir="$RUNNER_TEMP/woo-catalog"
+          NODE_OPTIONS="--require=$PWD/loopback-only.cjs" \
+            node --experimental-wasm-jspi node_modules/@wp-playground/cli/wp-playground.js server \
+            --port=9463 --wp=7.1.5 --php=8.3 --workers=6 --blueprint="$PWD/blueprint.json" \
+            --mount="$evidence_dir/plugins/woocommerce:/wordpress/wp-content/plugins/woocommerce" \
+            > "$evidence_dir/playground.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" || true' EXIT
+
+          ready=false
+          for _attempt in {1..90}; do
+            if ! kill -0 "$server_pid" 2>/dev/null; then break; fi
+            if curl --noproxy '*' --fail --silent --max-time 2 http://127.0.0.1:9463/ucp-fixture.json | grep -q '"blue_id"'; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$ready" != true ]]; then
+            tail -n 80 "$evidence_dir/playground.log"
+            exit 1
+          fi
+
+          node verify-local.cjs | tee "$evidence_dir/catalog-evidence.json"
+
+      - name: Upload catalog evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: woo-ucp-catalog-evidence
+          path: |
+            ${{ runner.temp }}/woo-catalog/catalog-evidence.json
+            ${{ runner.temp }}/woo-catalog/playground.log
+          retention-days: 7
