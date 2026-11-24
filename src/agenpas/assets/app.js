@@ -170,8 +170,9 @@
     var amount = done ? money(a.final_total_minor, view.currency) : (quoted || items);
     if (amount) {
       // The number always says what it is. Before the store prices the cart it is the item price ONLY (shipping and
-      // tax are not in it yet), and it is never called a total.
-      var label = done ? 'Total charged' : quoted ? (open ? null : 'Total') : (qty > 1 ? 'Price for ' + qty + ' items' : 'Item price');
+      // tax are not in it yet), and it is never called a total. On a stopped or held purchase the quoted total is
+      // "Quoted total": the buyer may never have approved it, and nothing says it was charged.
+      var label = done ? 'Total charged' : quoted ? (open ? null : 'Quoted total') : (qty > 1 ? 'Price for ' + qty + ' items' : 'Item price');
       if (label) append(card, el('p', 'hero-label', label));
       append(card, el('p', open || done ? 'hero-amount' : 'hero-amount hero-amount-off', amount));
     }
@@ -186,7 +187,10 @@
         if (tax) parts.push('Tax ' + tax);
         if (parts.length) append(card, el('p', 'hero-sub', parts.join(' · ')));
       } else if (open) {
-        append(card, el('p', 'hero-sub', 'Shipping and tax are added before you approve.'));
+        // On the approval step itself "before you approve" would be wrong: there it only says the number leaves them out.
+        append(card, el('p', 'hero-sub', view.screen === 'approve'
+          ? 'Shipping and tax are not included.'
+          : 'Shipping and tax are added before you approve.'));
       }
     }
 
