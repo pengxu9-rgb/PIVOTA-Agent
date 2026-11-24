@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { createHash, randomBytes, randomUUID } = require('node:crypto');
+const { createRequire } = require('node:module');
 const { createCheckoutPreview } = require('../../../src/services/checkoutPreview');
 const { createWooCheckoutPreviewAdapter } = require('../../../src/services/wooCheckoutPreviewAdapter');
 
@@ -14,7 +16,9 @@ const shippingAddress = {
   first_name: 'Fixture', last_name: 'Buyer', address_1: '100 Example Street',
   city: 'Palo Alto', state: 'CA', postcode: '94301', country: 'US',
 };
-const buyer = { user_ref: 'fixture_buyer', acp_session_id: 'fixture_checkout' };
+const issuer = 'https://fixture-wallet.example';
+const audience = 'pivota-checkout-preview';
+const subject = 'fixture-buyer';
 
 async function fetchJson(path, options) {
   const response = await fetch(`${loopback}${path}`, {
@@ -25,6 +29,25 @@ async function fetchJson(path, options) {
 }
 
 async function main() {
+  const requireKernel = createRequire(require.resolve('../../../safety-kernel/package.json'));
+  const { exportJWK, generateKeyPair, SignJWT } = requireKernel('jose');
+  const { deriveUserRefFromClaims } = await import('../../../safety-kernel/src/identity/userTokenVerifier.js');
+  const buyer = { user_ref: deriveUserRefFromClaims(issuer, subject), acp_session_id: 'fixture_checkout' };
+  const { publicKey, privateKey } = await generateKeyPair('ES256');
+  const jwk = { ...await exportJWK(publicKey), kid: 'fixture', alg: 'ES256', use: 'sig' };
+
+  async function signApproval(preview, { buyerSubject = subject, amount = preview.quote.totalMinor,
+    expiresAt = Date.parse(preview.expiresAt) } = {}) {
+    const signature = new SignJWT({
+      vct: 'urn:ap2:checkout-mandate', amount, currency: preview.quote.currency, merchant_id: preview.merchantId,
+      checkout_hash: createHash('sha256').update(preview.checkoutJwt).digest('base64url'),
+    }).setProtectedHeader({ alg: 'ES256', kid: 'fixture' }).setIssuer(issuer).setAudience(audience)
+      .setIssuedAt().setExpirationTime(Math.floor(expiresAt / 1000)).setJti(randomUUID());
+    if (buyerSubject) signature.setSubject(buyerSubject);
+    const jwt = await signature.sign(privateKey);
+    return { method: 'ap2_mandate', mandate: `${jwt}~`, checkout_jwt: preview.checkoutJwt };
+  }
+
   const product = await fetchJson('/ucp-fixture.json');
   const config = await fetchJson('/ucp-checkout-fixture.json');
   const routeCalls = [];
@@ -42,9 +65,13 @@ async function main() {
       return fetch(`${loopback}${target.pathname}`, { ...options, redirect: 'manual' });
     },
   });
-  let now = Date.parse('2026-11-24T00:00:00Z');
+  let now = Date.now();
   const ttlMs = 60_000;
-  const preview = await createCheckoutPreview({ merchantId: 'woo_fixture', adapter, ttlMs, now: () => now });
+  const preview = await createCheckoutPreview({
+    merchantId: 'woo_fixture', adapter, ttlMs, now: () => now,
+    ap2Approval: { bindingSecret: randomBytes(32).toString('hex'),
+      issuers: [{ iss: issuer, aud: audience, jwks: { keys: [jwk] }, algs: ['ES256'] }] },
+  });
   const prepared = await preview.prepare({
     sku: 'UCP-FIX-BLUE', variationId: product.blue_id, quantity: 1, currency: 'USD',
     shippingAddress, billingAddress: { ...shippingAddress, email: 'fixture@example.test' },
@@ -57,12 +84,13 @@ async function main() {
   assert.equal(Date.parse(prepared.expiresAt), now + ttlMs);
 
   const checkoutReference = prepared.checkoutReference;
-  const originalApproval = { checkoutReference, approvedQuoteReference: prepared.quoteReference };
+  const originalApproval = { checkoutReference, authorization: await signApproval(prepared) };
   const original = await preview.resume(originalApproval, buyer);
   assert.equal(original.quoteReference, prepared.quoteReference);
   assert.deepEqual(original.quote, prepared.quote);
   assert.equal(original.requiresFreshApproval, false);
-  assert.equal((await preview.resume({ checkoutReference }, buyer)).requiresFreshApproval, true);
+  const unsigned = await preview.resume({ checkoutReference, approvedQuoteReference: prepared.quoteReference }, buyer);
+  assert.equal(unsigned.requiresFreshApproval, true);
 
   assert.ok(cartToken);
   assert.ok(!JSON.stringify({ prepared, original }).includes(cartToken));
@@ -79,12 +107,36 @@ async function main() {
   assert.equal(changed.quote.discountMinor, 100);
   assert.equal(changed.quote.totalMinor, 1634);
   assert.equal(changed.requiresFreshApproval, true);
-  const replay = await preview.resume(originalApproval, buyer);
+  const replay = await preview.resume({ checkoutReference }, buyer);
   assert.equal(replay.quoteReference, changed.quoteReference);
   assert.equal(replay.requiresFreshApproval, true);
-  const requoted = await preview.resume({ checkoutReference, approvedQuoteReference: changed.quoteReference }, buyer);
+
+  async function expectInvalid(authorization, reason) {
+    await assert.rejects(preview.resume({ checkoutReference, authorization }, buyer),
+      (error) => error.code === 'CONFIRMATION_INVALID' && error.detail?.reason === reason);
+  }
+
+  await expectInvalid(originalApproval.authorization, 'amount_mismatch');
+  await expectInvalid({ ...originalApproval.authorization, checkout_jwt: changed.checkoutJwt }, 'checkout_hash_mismatch');
+  const revisedApproval = await signApproval(changed);
+  const requoted = await preview.resume({ checkoutReference, authorization: revisedApproval }, buyer);
   assert.equal(requoted.requiresFreshApproval, false);
+  await expectInvalid(await signApproval(changed, { buyerSubject: 'other-buyer' }), 'buyer_mismatch');
+  await expectInvalid(await signApproval(changed, { buyerSubject: null }), 'approval_buyer_missing');
+  await expectInvalid(await signApproval(changed, { expiresAt: now - 10_000 }), 'credential_signature_invalid');
+  const [header, payload, signature] = revisedApproval.mandate.split('.');
+  const tampered = `${header}.${payload}.${signature[0] === 'a' ? 'b' : 'a'}${signature.slice(1)}`;
+  await expectInvalid({ ...revisedApproval, mandate: tampered }, 'credential_signature_invalid');
   assert.ok(!JSON.stringify({ changed, replay, requoted }).includes(cartToken));
+
+  await fetchJson(`${storeApi}/cart/remove-coupon`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'cart-token': cartToken },
+    body: JSON.stringify({ code: config.discountCode }),
+  });
+  const reverted = await preview.resume({ checkoutReference }, buyer);
+  assert.equal(reverted.quote.totalMinor, prepared.quote.totalMinor);
+  assert.notEqual(reverted.quoteReference, prepared.quoteReference);
+  await expectInvalid(originalApproval.authorization, 'session_mismatch');
 
   const callsBeforeRefusals = routeCalls.length;
   await assert.rejects(preview.resume(originalApproval, { ...buyer, user_ref: 'another_buyer' }), { code: 'QUOTE_NOT_FOUND' });
@@ -100,6 +152,10 @@ async function main() {
     environment: 'Pivota-owned checkout preview with the WooCommerce runner fixture',
     status: 'pass', quote: prepared.quote, requote: changed.quote, expiresInSeconds: ttlMs / 1000,
     sameCheckoutReference: true, previousQuoteRequiresFreshApproval: true,
+    signedOriginalAccepted: true, signedRequoteAccepted: true, unsignedQuoteReferenceRejected: true,
+    staleAmountRefused: true, checkoutJwtSubstitutionRefused: true, equalAmountOldQuoteRefused: true,
+    wrongBuyerApprovalRefused: true, missingBuyerApprovalRefused: true,
+    expiredApprovalRefused: true, tamperedApprovalRefused: true,
     buyerMismatchRefused: true, sessionMismatchRefused: true, expiredRefused: true,
     merchantTokenRedacted: true, orderId: draft.order_id, paymentResult: draft.payment_result,
     previewStoreApiCalls: routeCalls.length,

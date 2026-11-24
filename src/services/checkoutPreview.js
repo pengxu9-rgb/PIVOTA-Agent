@@ -6,7 +6,7 @@ const { isDeepStrictEqual } = require('node:util');
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
 /** Rehearsal-only quote preparation. The authenticated caller supplies the buyer/session context. */
-async function createCheckoutPreview({ merchantId, adapter, ttlMs = DEFAULT_TTL_MS, now = Date.now } = {}) {
+async function createCheckoutPreview({ merchantId, adapter, ap2Approval, ttlMs = DEFAULT_TTL_MS, now = Date.now } = {}) {
   if (typeof merchantId !== 'string' || !merchantId.trim() ||
       typeof adapter?.prepare !== 'function' || typeof adapter?.resume !== 'function' ||
       !Number.isSafeInteger(ttlMs) || ttlMs < 1) {
@@ -19,6 +19,7 @@ async function createCheckoutPreview({ merchantId, adapter, ttlMs = DEFAULT_TTL_
   ]);
   const sessions = new InMemoryKvStore({ now });
   const quotes = new QuoteRegistry({ now, ttlMs });
+  const approval = ap2Approval && await configureApproval(ap2Approval, merchantId, now);
 
   function buyerOf(context) {
     if (typeof context?.user_ref !== 'string' || !context.user_ref.trim() ||
@@ -56,10 +57,20 @@ async function createCheckoutPreview({ merchantId, adapter, ttlMs = DEFAULT_TTL_
     return {
       checkoutReference: reference, quoteReference: snapshot.quote_id, merchantId: snapshot.merchant_of_record,
       expiresAt: new Date(state.expiresAt).toISOString(),
+      ...(state.checkoutJwt ? { checkoutJwt: state.checkoutJwt } : {}),
       quote: {
         ...state.item, subtotalMinor: subtotal, shippingMinor: shipping,
         taxMinor: tax, discountMinor: discount, totalMinor: total,
       },
+    };
+  }
+
+  function quoteState(state, snapshot) {
+    return {
+      ...state, quoteReference: snapshot.quote_id,
+      checkoutJwt: approval?.binding.mintCheckoutJwt({
+        checkout_session_id: snapshot.quote_id, expires_at: state.expiresAt,
+      }),
     };
   }
 
@@ -74,13 +85,13 @@ async function createCheckoutPreview({ merchantId, adapter, ttlMs = DEFAULT_TTL_
     const item = { sku, variationId, quantity, currency };
     const { session: merchantSession, quote } = await adapter.prepare({ ...item, shippingAddress, billingAddress });
     const snapshot = await issueQuote(reference, buyer, item, lockedTotals(quote, item));
-    const state = { ...buyer, item, merchantSession, expiresAt: snapshot.expires_at, quoteReference: snapshot.quote_id };
+    const state = quoteState({ ...buyer, item, merchantSession, expiresAt: snapshot.expires_at }, snapshot);
     await sessions.set(reference, state, { ttlMs: Math.max(0, state.expiresAt - now()) });
     return summary(reference, state, snapshot);
   }
 
-  /** approvedQuoteReference is the quote shown during approval. This method checks price freshness only. */
-  async function resume({ checkoutReference, approvedQuoteReference } = {}, context) {
+  /** Reprice the private cart before verifying any signed approval for this quote revision. */
+  async function resume({ checkoutReference, authorization } = {}, context) {
     const buyer = buyerOf(context);
     const state = await sessions.get(checkoutReference);
     if (!state || state.user_ref !== buyer.user_ref || state.acp_session_id !== buyer.acp_session_id) {
@@ -94,24 +105,61 @@ async function createCheckoutPreview({ merchantId, adapter, ttlMs = DEFAULT_TTL_
     if (now() >= state.expiresAt) throw new PivotaCommerceError('QUOTE_EXPIRED');
 
     let current = previous;
+    let currentState = state;
+    let requiresFreshApproval = true;
     if (!isDeepStrictEqual(previous.locked_totals, totals)) {
       current = await issueQuote(checkoutReference, buyer, state.item, totals);
       const remainingMs = state.expiresAt - now();
       if (remainingMs <= 0) throw new PivotaCommerceError('QUOTE_EXPIRED');
+      currentState = quoteState(state, current);
       const replaced = await sessions.compareAndSet(checkoutReference, 'quoteReference', previous.quote_id,
-        { ...state, quoteReference: current.quote_id }, { ttlMs: remainingMs });
+        currentState, { ttlMs: remainingMs });
       if (!replaced) throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'checkout_preview_changed_concurrently' });
-    } else if ((await sessions.get(checkoutReference))?.quoteReference !== previous.quote_id) {
-      throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'checkout_preview_changed_concurrently' });
+    } else {
+      if (authorization !== undefined) {
+        if (!approval) throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'checkout_preview_approval_unavailable' });
+        await approval.verify(authorization, {
+          user_ref: buyer.user_ref, ctx: buyer, merchant_id: merchantId,
+          checkout_session_id: previous.quote_id, currency: previous.currency, amount: totals.total,
+        });
+        requiresFreshApproval = false;
+      }
+      if (now() >= state.expiresAt) throw new PivotaCommerceError('QUOTE_EXPIRED');
+      if ((await sessions.get(checkoutReference))?.quoteReference !== previous.quote_id) {
+        throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'checkout_preview_changed_concurrently' });
+      }
     }
 
     return {
-      ...summary(checkoutReference, state, current),
-      requiresFreshApproval: approvedQuoteReference !== current.quote_id,
+      ...summary(checkoutReference, currentState, current), requiresFreshApproval,
     };
   }
 
   return { prepare, resume };
+}
+
+async function configureApproval({ bindingSecret, issuers }, merchantId, now) {
+  const [{ Ap2CheckoutBindingService }, { createAp2MandateVerifier },
+    { createPaymentAuthorizationVerifier }, { PivotaCommerceError }] = await Promise.all([
+    import('../../safety-kernel/src/protocol/ap2CheckoutBinding.js'),
+    import('../../safety-kernel/src/protocol/protocolPaymentVerifiers.js'),
+    import('../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js'),
+    import('../../safety-kernel/src/errors.js'),
+  ]);
+  const binding = new Ap2CheckoutBindingService({ secret: bindingSecret, now });
+  const verifyMandate = createAp2MandateVerifier({
+    issuers, expectedVct: 'urn:ap2:checkout-mandate',
+    verifyCheckoutHash: binding.createCheckoutHashVerifier(), clockToleranceSeconds: 0,
+  });
+  const verify = createPaymentAuthorizationVerifier({
+    merchantId, now, clockToleranceMs: 0,
+    methods: { ap2_mandate: async (authorization) => {
+      const claims = await verifyMandate(authorization);
+      if (!claims.user_ref) throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'approval_buyer_missing' });
+      return claims;
+    } },
+  });
+  return { binding, verify };
 }
 
 module.exports = { createCheckoutPreview };

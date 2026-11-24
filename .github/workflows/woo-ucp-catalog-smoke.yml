@@ -36,6 +36,7 @@ jobs:
       - name: Install the pinned WordPress Playground and WooCommerce release
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
+          npm ci --prefix ../../../safety-kernel --ignore-scripts --no-audit --no-fund
           printf 'Node %s, Playground %s, runner %s %s\n' \
             "$(node --version)" "$(node -p 'require("@wp-playground/cli/package.json").version')" \
             "$ImageOS" "$ImageVersion"
