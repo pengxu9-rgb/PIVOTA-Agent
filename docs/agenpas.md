@@ -82,9 +82,9 @@ CDN or third-party script, `frame-ancestors 'none'`, `frame-src 'none'` (or the 
 | State | Screen |
 |---|---|
 | `routing` | Getting your order ready |
-| `needs_payment_method` (+ `card_binding` page) | Add a card: "Your card is added on our payment partner's secure page. Pivota never sees your card number." Then "Waiting for your card…" |
+| `needs_payment_method` (+ `card_binding` page) | Add a card: "You'll enter it on our payment partner's secure page." ("Pivota never sees your card number" is said once, in the page's footer.) Then "Waiting for your card…" |
 | `locking` | Confirming your total (the merchant prices the exact cart; nothing is approved yet) |
-| `awaiting_buyer_authorization` (+ `approval` page) | "Approve $X at merchant with Face ID or fingerprint", then "Waiting for your approval…" |
+| `awaiting_buyer_authorization` (+ `approval` page) | "Approve your purchase": "With Face ID or fingerprint, on our payment partner's secure page.", the button "Approve $X", then "Waiting for your approval…" |
 | `placing` | "Placing your order at merchant…" (or "Confirm with your bank" while a bank check page is offered) |
 | a card / approval step that is consent GATED and not satisfied, with nothing the buyer can accept here | "This step isn't available right now" (screen `unavailable`; polling goes on). Never a dead approve screen. See "Terms and privacy consent". |
 | not final, the rail paused for contact details (Reap `contact_reentry_required: true`) | "Some details are needed — go back to the chat" (screen `details_needed`): no card button, no consent, polling goes on. A held code still wins. |
@@ -212,9 +212,31 @@ On the `rp_` rail: `pilot_scope_invalid` / `pilot_scope_refused` (a `_row_scope`
 refused row, `invalid_request`, `preflight_interrupted`, `unverified` (the refused-before-order wording); `quote_failed`
 ("no order was sent"); `checkout_create_failed` (the generic wording, never "no order was sent").
 
-The summary card shows the product, variant, quantity, store and price, and "You'll approve up to <quoted total>"
-once the backend has a quoted total, with the line that the final total includes shipping and tax and cannot exceed
-what the buyer approves.
+The page is one dark panel and one sheet (stacked on a phone, side by side from 900 px). The panel shows the store,
+ONE amount, and the item (product, variant, quantity, and the unit price when the quantity is above one). The amount
+always says what it is:
+
+- Before the backend has a quoted total it is the item price only, labelled "Item price" ("Price for N items" above
+  one), with "Shipping and tax are added before you approve." under it. It is never called a total, and on a phone
+  the small panel above the address form keeps both the label and that line.
+- Once quoted it is the quoted total, with "You'll approve up to <quoted total>" above it ("You approved up to" while
+  the order is placed) and the items, shipping and tax listed beside each other (no sum is implied).
+- A placed order shows "Total charged" when the total could be read.
+- A purchase that stopped, and a HELD one ("We're checking with the store", final or not), keeps its amount, dimmed,
+  with no "you'll approve" line and no added claim.
+
+Under a buyer step (the card step, the address terms and form, confirming the total, the approval step) one line:
+"The final total can't be more than the amount you approve." once there is a quoted total; before that, "You'll see
+the full total before you approve." (the page then shows the item price only, so it promises no ceiling); an approval
+step with no quoted total says neither. A dead end ("We can't take your address here any more"), a "Checking the
+terms…" card and every result screen carry no such line.
+
+The ceiling line is the page's wording for the amount the approval is bound to; this page enforces nothing. Where the
+ceiling is enforced depends on the rail. On the Reap rail it rests on the payment partner's own cap: the backend's
+own comparison of the charged total with the quoted one runs after the charge there (`charged_total_differs`,
+pivota-backend `services/reap_agentic_purchase.py`), so it reports a difference and does not prevent one.
+
+The stylesheet uses system fonts and pure-CSS marks: it fetches nothing.
 
 ## Shipping address
 
