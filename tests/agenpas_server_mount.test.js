@@ -1,8 +1,44 @@
 // AgenPas mounted in the real gateway app (src/server.js; docs/agenpas.md). Dark by default: every /agenpas path
 // answers exactly what an unknown path answers. Lit with dev fixtures (local only): the page, its assets and its API
 // answer, and nothing reaches the backend. Loopback only.
+const http = require('node:http');
 const net = require('node:net');
-const request = require('supertest');
+const supertest = require('supertest');
+
+// Each request gets its own server listening on 127.0.0.1, on a port the OS picks for IPv4. supertest's own
+// `listen(0)` binds the IPv6 wildcard and then connects to 127.0.0.1, which on a busy machine can reach ANOTHER
+// process that holds the same port number on IPv4 (seen here as a stray 404 'not found', or a page this app never
+// served). Same chaining as supertest: request(app).get(p).set(...).send(...), awaited. Closed after each test.
+const servers = [];
+function listening(app) {
+  return new Promise((resolve, reject) => {
+    const srv = http.createServer(app);
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => { servers.push(srv); resolve(srv); });
+  });
+}
+function request(app) {
+  const verb = (method) => (path) => {
+    const steps = [];
+    const chain = {
+      set(...x) { steps.push(['set', x]); return chain; },
+      send(...x) { steps.push(['send', x]); return chain; },
+      then(onOk, onErr) {
+        return listening(app).then((srv) => {
+          let t = supertest(srv)[method](path);
+          for (const [name, x] of steps) t = t[name](...x);
+          return t;
+        }).then(onOk, onErr);
+      },
+    };
+    return chain;
+  };
+  return { get: verb('get'), post: verb('post'), options: verb('options') };
+}
+async function closeServers() {
+  const open = servers.splice(0);
+  await Promise.all(open.map((srv) => new Promise((resolve) => { srv.closeAllConnections(); srv.close(() => resolve()); })));
+}
 
 // RAW requests: the request line goes out byte for byte (supertest's URL handling would resolve dot segments and
 // re-encode), which is what a path-traversal probe needs. Returns { status, headers, body }.
@@ -61,7 +97,8 @@ describe('AgenPas routes in the gateway app', () => {
     for (const k of KEYS) delete process.env[k];
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await closeServers();
     jest.resetModules();
     for (const k of KEYS) {
       if (saved[k] === undefined) delete process.env[k];
