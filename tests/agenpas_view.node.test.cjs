@@ -1044,3 +1044,32 @@ test('card: the network is a label from the fixed list (unknown: "Card"); no mem
     assert.equal(at(bad), undefined, JSON.stringify(bad));
   }
 });
+
+// ---- the agent's reviewed name (backend agents.buyer_display_name) -------------------------------------------------
+
+test('agent name: a reviewed name from the top level is passed on every screen', () => {
+  for (const state of ['routing', 'needs_payment_method', 'awaiting_buyer_authorization', 'placing', 'completed', 'failed',
+    'refused', 'expired']) {
+    const extra = state === 'awaiting_buyer_authorization' ? { next_action: APPROVAL_ACTION } : {};
+    const view = project(unified(state, { ...extra, agent_display_name: 'Example Assistant' }));
+    assert.equal(view.agent_display_name, 'Example Assistant', state);
+  }
+});
+
+test('agent name: no member without one, and never from detail', () => {
+  assert.equal('agent_display_name' in project(unified('routing')), false);
+  const fromDetail = project(unified('routing', {}, { agent_display_name: 'Example Assistant' }));
+  assert.equal('agent_display_name' in fromDetail, false);
+});
+
+test('agent name: a name without a name\'s shape is dropped whole, never repaired', () => {
+  const at = (name) => project(unified('routing', { agent_display_name: name })).agent_display_name;
+  for (const good of ['Example Assistant', 'Agent Ñandú', '示例助手', 'Assistant 2', 'A', 'x'.repeat(64)]) {
+    assert.equal(at(good), good, good);
+  }
+  for (const bad of ['', ' ', ' Example', 'Example ', 'Two  Spaces', 'x'.repeat(65), 'Line\nBreak', 'Tab\tName',
+    'No Break', '‮knaB ruoY', 'Zero​Width', 'Bom﻿', 'Para Sep', 'Private',
+    'Agent Ñandu', '!!! ---', 42, null, ['Example'], { name: 'Example' }]) {
+    assert.equal(at(bad), undefined, JSON.stringify(bad));
+  }
+});
