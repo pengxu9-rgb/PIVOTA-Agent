@@ -5,6 +5,8 @@ on:
     branches: [codex/woo-ucp-catalog-ci]
     paths:
       - .github/workflows/woo-ucp-catalog-smoke.yml
+      - src/services/checkoutPreview.js
+      - src/services/wooCheckoutPreviewAdapter.js
       - src/services/wooUcpCatalogClient.js
       - tests/fixtures/woo-ucp-catalog/**
 
@@ -44,7 +46,7 @@ jobs:
           printf '%s  %s\n' 1502600c738840f7f9ebfa2f11e1aaff087221a5fc5a2006c51be2d874ae2a09 woocommerce.zip | sha256sum --check
           unzip -q woocommerce.zip -d plugins
 
-      - name: Verify WooCommerce catalog and guest checkout access
+      - name: Verify WooCommerce catalog and Pivota-owned checkout preview
         env:
           PIVOTA_GATEWAY_ROOT: ${{ github.workspace }}
         run: |
@@ -80,6 +82,7 @@ jobs:
 
           node verify-local.cjs | tee "$evidence_dir/catalog-evidence.json"
           node verify-checkout-local.cjs | tee "$evidence_dir/checkout-evidence.json"
+          node verify-pivota-preview.cjs | tee "$evidence_dir/pivota-preview-evidence.json"
 
       - name: Upload catalog evidence
         if: always()
@@ -89,5 +92,6 @@ jobs:
           path: |
             ${{ runner.temp }}/woo-catalog/catalog-evidence.json
             ${{ runner.temp }}/woo-catalog/checkout-evidence.json
+            ${{ runner.temp }}/woo-catalog/pivota-preview-evidence.json
             ${{ runner.temp }}/woo-catalog/playground.log
           retention-days: 7
