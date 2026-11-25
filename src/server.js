@@ -107,6 +107,7 @@ const {
   deploymentId: platformDeploymentId,
   gitBranch: platformGitBranch,
   serviceName: platformServiceName,
+  platformEnv: platformEnvLabel,
   requirePlatformEnv,
 } = require('./config/platform');
 const logger = require('./logger');
@@ -31085,7 +31086,7 @@ function extractInvokeAuthToken(req) {
 
 // The key FORMAT this environment accepts lives in ONE place, src/config/sandbox.js agentApiKeyFormatOk: today's
 // `ak_(live_)?<64 hex>` everywhere, `ak_test_<64 hex>` only under PIVOTA_ENV=sandbox. Read per request.
-const { agentApiKeyFormatOk: invokeApiKeyFormatOk, sandboxVersionFields } = require('./config/sandbox');
+const { agentApiKeyFormatOk: invokeApiKeyFormatOk } = require('./config/sandbox');
 const invokeAuthCache = new Map();
 const AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
@@ -40023,8 +40024,10 @@ app.get('/version', (req, res) => {
     branch: SERVICE_GIT_BRANCH || null,
     deployment_id: SERVICE_DEPLOYMENT_ID || null,
     started_at: SERVICE_STARTED_AT,
-    // `env: "sandbox"` in the partner sandbox only; nothing added anywhere else.
-    ...sandboxVersionFields(),
+    // The environment label (src/config/platform.js platformEnv, read per request): production | staging |
+    // sandbox | development | test, so a run driver can pin which environment it is talking to. On a managed
+    // platform that names no environment this is the fail-closed "production" (and the boot refuses there anyway).
+    env: platformEnvLabel(),
   });
 });
 

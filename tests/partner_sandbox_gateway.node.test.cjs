@@ -92,21 +92,31 @@ for (const [label, env] of [['production', { PIVOTA_ENV: 'production' }], ['stag
 
 const VERSION_KEYS = ['ok', 'service', 'commit', 'full_sha', 'build_id', 'branch', 'deployment_id', 'started_at'];
 
-test('/version: env:"sandbox" in the sandbox, after the fields it always had', async () => {
-  process.env.PIVOTA_ENV = 'sandbox';
-  const res = await supertest(app).get('/version');
-  assert.equal(res.status, 200);
-  assert.deepEqual(Object.keys(res.body), [...VERSION_KEYS, 'env']);
-  assert.equal(res.body.env, 'sandbox');
-});
-
-test('/version: production, staging and unset answer exactly the fields they did before (no env)', async () => {
-  for (const env of [{ PIVOTA_ENV: 'production' }, { PIVOTA_ENV: 'staging' }, {}]) {
-    delete process.env.PIVOTA_ENV;
-    Object.assign(process.env, env);
-    const res = await supertest(app).get('/version');
-    assert.equal(res.status, 200);
-    assert.deepEqual(Object.keys(res.body), VERSION_KEYS, JSON.stringify(env));
+test('/version: every environment reports its label as `env`, after the fields it always had, read per request', async () => {
+  // NODE_ENV=test is set for this file (it would otherwise win below PIVOTA_ENV), so the unset case reads `test`.
+  const cases = [
+    [{ PIVOTA_ENV: 'sandbox' }, 'sandbox'],
+    [{ PIVOTA_ENV: 'production' }, 'production'],
+    [{ PIVOTA_ENV: 'staging' }, 'staging'],
+    [{ PIVOTA_ENV: 'development' }, 'development'],
+    [{}, 'test'],
+    // A Cloud Run revision with no environment name: the fail-closed answer, said out loud.
+    [{ K_SERVICE: 'gateway', NODE_ENV: '' }, 'production'],
+  ];
+  const savedNodeEnv = process.env.NODE_ENV;
+  try {
+    for (const [env, label] of cases) {
+      delete process.env.PIVOTA_ENV;
+      delete process.env.K_SERVICE;
+      process.env.NODE_ENV = savedNodeEnv;
+      Object.assign(process.env, env);
+      const res = await supertest(app).get('/version');
+      assert.equal(res.status, 200);
+      assert.deepEqual(Object.keys(res.body), [...VERSION_KEYS, 'env'], JSON.stringify(env));
+      assert.equal(res.body.env, label, JSON.stringify(env));
+    }
+  } finally {
+    process.env.NODE_ENV = savedNodeEnv;
   }
 });
 

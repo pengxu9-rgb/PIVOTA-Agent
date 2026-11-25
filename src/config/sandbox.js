@@ -14,7 +14,7 @@
  *   3. DECISION 4. Copied catalog prices are fresh in the sandbox (`copiedPricesAreFresh`), and every MCP tool
  *      answer carries `sandbox: true` (`markSandboxToolValue` / `markSandboxToolResult`, applied once, in
  *      mcp-server/src/remoteMcpAdapter.js).
- *   4. /version adds `env: "sandbox"` (`sandboxVersionFields`).
+ *   (/version reports the env label in every environment; src/server.js reads it from platform.js.)
  *
  * Env is read at call time, like src/config/platform.js. Dependency-free apart from platform.js and the AgenPas
  * config, so it can be required at the top of src/server.js before anything starts.
@@ -310,15 +310,6 @@ function markSandboxToolResult(result) {
   return out;
 }
 
-// ---------------------------------------------------------------------------------------------------------------
-// 4. /version.
-// ---------------------------------------------------------------------------------------------------------------
-
-/** Extra /version fields: `{ env: 'sandbox' }` in the sandbox, nothing anywhere else (byte-identical). */
-function sandboxVersionFields(env) {
-  return isSandbox(env) ? { env: platform.PLATFORM_ENVS.SANDBOX } : {};
-}
-
 module.exports = {
   LIVE_AGENT_API_KEY_PATTERN,
   SANDBOX_AGENT_API_KEY_PATTERN,
@@ -338,5 +329,4 @@ module.exports = {
   copiedPricesAreFresh,
   markSandboxToolValue,
   markSandboxToolResult,
-  sandboxVersionFields,
 };

@@ -473,11 +473,6 @@ test('sandbox mark: outside the sandbox the answer is byte-identical to the unma
   }
 });
 
-test('/version fields: env:"sandbox" in the sandbox only', () => {
-  assert.deepEqual(sandbox.sandboxVersionFields(SAFE_SANDBOX), { env: 'sandbox' });
-  for (const [name, env] of Object.entries(NON_SANDBOX_ENVS)) assert.deepEqual(sandbox.sandboxVersionFields(env), {}, name);
-});
-
 // --------------------------------------------------------------------------------------------------------------
 // 5. The two guards that would otherwise open on a public, non-production deploy.
 // --------------------------------------------------------------------------------------------------------------
