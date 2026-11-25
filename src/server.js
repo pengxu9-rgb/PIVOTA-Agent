@@ -41,6 +41,8 @@ const {
   isInvokeResponseCommitted,
   isLegacySeedProbeHop,
   legacySeedProbeHopHeaders,
+  isKernelSearchHop,
+  kernelSearchHopHeaders,
   projectInvokeResponse,
 } = require('./invokeEgress');
 const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('./services/requestMarket');
@@ -14525,21 +14527,30 @@ function maybeOverlayLiveSearchPrice(response, search = {}, opts = {}) {
 }
 
 // CAFE24 GLOBAL CATALOG SHADOW (services/cafe24GlobalCatalog.js). Every served search page passes through the overlay
-// above, so this is the one place both search paths meet. Off by default (CAFE24_CATALOG_SEARCH); in `shadow` it starts
-// one bounded Cafe24 search for the same query and market and LOGS COUNTS. It is never awaited, never throws, and
-// nothing it learns reaches `response`: no Cafe24 seller is admitted (ADR-033) and no Cafe24 offer is buyable.
+// above, so both search paths meet here. Off by default (CAFE24_CATALOG_SEARCH). In `shadow` it starts one bounded
+// Cafe24 search for the same query and market and logs counts. It is never awaited, never throws, and nothing it
+// learns reaches `response`.
+//
+// WHOSE SEARCHES. Only a door's search_catalog: the request store must say `kernel_search_hop` (the commerce kernel's
+// own loopback hop, src/invokeEgress.js isKernelSearchHop). Every other caller of this overlay is refused, because
+// some send text that is not a search: the Aurora chat re-invoke puts the raw chat message in search.query, and
+// recommend's recall, the commerce-resolution fallback and the admin prompt test are not agent searches either.
+// ONCE PER REQUEST: one request can reach the overlay twice (a discovery fall-through); the first call marks the store.
 // A synthetic call makes no live read; only page 1 is observed.
 function maybeShadowCafe24CatalogSearch(response, search = {}, { buyerMarket = undefined } = {}) {
   try {
     if (cafe24GlobalCatalog.readMode() !== cafe24GlobalCatalog.MODES.SHADOW) return;
+    const store = INVOKE_AUTH_CONTEXT.getStore();
+    if (!store || store.kernel_search_hop !== true) return;
     if (!syntheticLiveReadsAllowed()) return;
+    if (store.cafe24_shadow_started === true) return;
     if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return;
+    store.cafe24_shadow_started = true;
     const market = typeof buyerMarket === 'string' && buyerMarket.trim()
       ? buyerMarket.trim()
       : (typeof search.market === 'string' ? search.market : undefined);
-    const served = response && Array.isArray(response.products) ? response.products.length : null;
     cafe24GlobalCatalog.defaultLane(logger)
-      .observeSearch({ query: extractSearchQueryText(search), market, servedCount: served })
+      .observeSearch({ query: extractSearchQueryText(search), market })
       .catch(() => {});
   } catch (_) {
     // The shadow never reaches the page.
@@ -33327,6 +33338,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // The loopback search hop asks this process's invoke egress to say whether it probed the page's legacy seed
       // rows (LEGACY_SEED_PROBE_HEADER, read below). A per-process token: outside callers never get the header.
       ...(selfInvoked && op === 'find_products_multi' ? legacySeedProbeHopHeaders() : {}),
+      // Marks this hop as a door's search (src/invokeEgress.js isKernelSearchHop). The invoke route records it on its
+      // request store; the Cafe24 catalog shadow observes ONLY such searches, never another caller's query.
+      ...(selfInvoked && op === 'find_products_multi' ? kernelSearchHopHeaders() : {}),
       // Decision D-10: a search this gateway answered for an ASSUMED US vouches for its own `search.market_assumed`
       // (the invoke route strips the flag from every request that cannot): see loopbackCallerAssertion.js.
       ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackMarketAssumedHeaders(payload) : {}),
@@ -56130,6 +56144,9 @@ function registerExternalInvokeRoute(path, clientChannel) {
           req?.header('x-buyer-ref'),
         ),
         ...loopbackSyntheticInvokeContext(req),
+        // A door's search_catalog arriving over the kernel's own loopback hop (src/invokeEgress.js). Read by the
+        // Cafe24 catalog shadow, which observes no other search.
+        kernel_search_hop: isKernelSearchHop(req),
       },
       () =>
         handleInvokeRequest(req, res, {

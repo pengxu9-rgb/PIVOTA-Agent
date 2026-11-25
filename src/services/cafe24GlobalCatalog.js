@@ -6,22 +6,25 @@
  * WHAT IT IS. Cafe24 documents a platform-wide UCP catalog: discovery at
  * https://mcp-catalog.cafe24.com/.well-known/ucp, MCP endpoint https://mcp-catalog.cafe24.com/api/ucp/mcp, tools
  * search_catalog / get_product / lookup_catalog, UCP 2026-04-08, and our own HTTPS agent profile URL in
- * `arguments.meta["ucp-agent"].profile` on every call (Cafe24 partner docs, as summarised in the 2026-11-25 task
- * brief; the pages themselves did not load from here, so nothing below is confirmed against a live Cafe24 answer).
+ * `arguments.meta["ucp-agent"].profile` on every call (Cafe24's published MCP documentation). No live Cafe24 answer
+ * has been captured yet, so the shapes below follow the UCP 2026-04-08 catalog contract, not an observed response.
  * This module reads that catalog through the gateway's EXISTING UCP buyer client (ucpBuyerAgentClient.js) and turns
  * its answer into Pivota offer candidates.
  *
  * WHAT IT IS NOT.
  *   - Not buyable. Every candidate carries `buyable: false` and `execution.eligible: false` with named blockers. No
- *     Cafe24 checkout, payment, or order route has been verified (no partnership, the per-mall MCP is merchant-scoped,
- *     and no Pivota executor fills a Cafe24 checkout). A listing never acquires an executable flag here.
+ *     Cafe24 checkout, payment, or order route is implemented or verified for this lane. A listing never acquires an
+ *     executable flag here.
  *   - Not served. The only mode is `shadow`: the lane runs beside a served search page and LOGS COUNTS. The page is
- *     never changed. ADR-033 (Proposed; owner answer Q1, 2026-11-23): sellers no admission record covers are not
- *     shown, and no Cafe24 seller has one. Serving needs seller admission + its own PR + the owner's go.
+ *     never changed. Under seller admission (ADR-033, Proposed) a seller no admission record covers is not shown, and
+ *     no Cafe24 seller has one. Serving would be its own change.
  *   - Not stored. No result, id, price, or image is cached or written anywhere (Cafe24's catalog terms on caching
  *     and attribution are unverified; the Shopify catalog's forbid it). Only the discovery check is memoised.
- *   - Not a credential carrier. The client is built `forceAnonymous` and `allowTokenTier: false`, so the Shopify
- *     Bearer token / client credentials / signing key configured for other UCP work can NEVER reach Cafe24.
+ *   - Not a credential carrier. The client is built `forceAnonymous` and `allowTokenTier: false`, and a client that
+ *     still reports any tier but anonymous, or would sign, is refused before a byte is sent (`credential_tier_refused`).
+ *     The Bearer token, client credentials and signing key configured for other UCP work never reach Cafe24.
+ *   - Not every search. The server hook observes only a door's search_catalog (src/server.js
+ *     maybeShadowCafe24CatalogSearch), once per request.
  *
  * VERSIONS (three different things, kept apart):
  *   - MCP: this client sends stateless JSON-RPC `tools/call` with no `initialize` (the existing client's behaviour).
@@ -38,21 +41,31 @@
  * (KRW 0, JPY 0, USD 2). An amount in a currency that is not the buyer market's is counted as a mismatch, never
  * converted. A catalog price is a LIST price (`price_kind: 'catalog_list'`), not a quote with shipping and tax.
  *
+ * ENDPOINT. Discovery must name exactly PINNED_ENDPOINT (scheme, host, port and path); anything else stops the lane
+ * (`endpoint_not_pinned`). Nothing else is ever contacted.
+ *
  * BOUNDS. One page, at most MAX_RESULTS products. A per-process ceiling (CAFE24_CATALOG_SHADOW_PER_MIN, default 10,
  * 1..60), at most MAX_IN_FLIGHT calls at once, no retries, a per-call timeout, and a breaker that opens on 429 / 5xx /
  * timeout / transport failures (Retry-After honoured, capped at 1 h). Discovery + tools/list run at most once per
- * DISCOVERY_TTL_MS. None of Cafe24's REST quotas are assumed to apply to this endpoint.
+ * DISCOVERY_TTL_MS; a remembered discovery failure is not counted again. None of Cafe24's REST quotas are assumed to
+ * apply to this endpoint.
+ *
+ * LOGS. A search that sent a request logs one `cafe24_catalog_shadow` line of counts and allowlisted codes. A search
+ * refused before sending (no market, ceiling, breaker, ...) is only counted, and the counts are logged at most once a
+ * minute as `cafe24_catalog_shadow_refusals`. Error codes from the server are logged only when they match SAFE_CODE.
  *
  * FAILURES ARE NAMED SEPARATELY (REASON): a transport failure, an HTTP status, a JSON-RPC (MCP) error, an MCP tool
  * error, a UCP business error, and a schema mismatch are different outcomes. HTTP 200 alone is never success.
  *
- * SWITCH: CAFE24_CATALOG_SEARCH = off (default) | shadow, read per call. Any other value, `enforce` included, is off.
+ * SWITCH: CAFE24_CATALOG_SEARCH = off (default) | shadow (case-insensitive, trimmed), read per call. Any other value,
+ * `enforce` included, is off.
  * CAFE24_CATALOG_DENY (1/true) is a kill switch that wins over everything.
  */
 
 const {
   createUcpBuyerAgentClient,
   createPublicNetworkFetch,
+  TRUST_TIER,
   unwrapToolPayload,
   profileAdvertisesCapability,
 } = require('./ucpBuyerAgentClient');
@@ -89,6 +102,9 @@ const MAX_TITLE_LENGTH = 300;
 const MAX_IMAGES = 3;
 const MAX_VARIANTS = 50;
 const MAX_QUERY_LENGTH = 200;
+const REFUSAL_LOG_INTERVAL_MS = 60 * 1000;
+// An error code from the server is logged only in this shape; anything else (free text, a query echoed back) is null.
+const SAFE_CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 const REASON = Object.freeze({
   OK: 'ok',
@@ -102,7 +118,8 @@ const REASON = Object.freeze({
   BREAKER_OPEN: 'breaker_open',
   NO_PROFILE_URL: 'no_profile_url',
   DISCOVERY_FAILED: 'discovery_failed',
-  ENDPOINT_HOST_REFUSED: 'endpoint_host_refused',
+  ENDPOINT_NOT_PINNED: 'endpoint_not_pinned',
+  CREDENTIAL_TIER_REFUSED: 'credential_tier_refused',
   UCP_VERSION_UNSUPPORTED: 'ucp_version_unsupported',
   CAPABILITY_NOT_ADVERTISED: 'capability_not_advertised',
   TOOL_NOT_LISTED: 'tool_not_listed',
@@ -129,9 +146,9 @@ const BREAKER_REASONS = new Set([
 
 // Every candidate is blocked from execution by these, whatever else is true.
 const ALWAYS_BLOCKED = Object.freeze([
-  // No Cafe24 checkout / payment / order route is verified for Pivota (parity matrix, 2026-11-25).
+  // No Cafe24 checkout / payment / order route is implemented or verified for this lane.
   'execution_route_unverified',
-  // ADR-033 (Proposed): no admission record covers a Cafe24 seller.
+  // Seller admission (ADR-033, Proposed): no admission record covers a Cafe24 seller.
   'seller_not_admitted',
 ]);
 
@@ -152,10 +169,17 @@ function readMode(env = process.env) {
   return str(env[MODE_FLAG]).toLowerCase() === MODES.SHADOW ? MODES.SHADOW : MODES.OFF;
 }
 
+/** An integer, clamped to 1..MAX_PER_MIN; anything that is not an integer is the default. */
 function perMinuteCeiling(env = process.env) {
-  const n = Number.parseInt(str(env[PER_MIN_FLAG]), 10);
-  if (!Number.isFinite(n) || n < 1) return DEFAULT_PER_MIN;
-  return Math.min(n, MAX_PER_MIN);
+  const raw = str(env[PER_MIN_FLAG]);
+  if (!/^-?\d+$/.test(raw)) return DEFAULT_PER_MIN;
+  return Math.max(1, Math.min(Number(raw), MAX_PER_MIN));
+}
+
+/** A server-supplied code, or null unless it is an integer or matches SAFE_CODE. */
+function safeCode(v) {
+  if (Number.isInteger(v)) return v;
+  return typeof v === 'string' && SAFE_CODE.test(v) ? v : null;
 }
 
 /** An opaque id: a non-empty string (or a finite number, stringified) of bounded length, kept exactly. */
@@ -210,9 +234,7 @@ function jsonRpcMessageOf(callResult) {
 }
 
 function errorCodeOf(err) {
-  if (!isPlainObject(err)) return null;
-  const c = err.code;
-  return Number.isInteger(c) ? c : (typeof c === 'string' ? clip(c, 64) : null);
+  return isPlainObject(err) ? safeCode(err.code) : null;
 }
 
 function errorTextOf(err) {
@@ -271,7 +293,7 @@ function classifyCallOutcome({ thrown, callResult } = {}) {
     .filter((m) => isPlainObject(m) && str(m.type).toLowerCase() === 'error');
   if (!Array.isArray(payload.products)) {
     if (ucpStatus === 'error' || errorMessages.length) {
-      const code = errorMessages.length ? clip(errorMessages[0].code, 64) || undefined : undefined;
+      const code = errorMessages.length ? safeCode(errorMessages[0].code) : null;
       return { ...base, reason: REASON.UCP_BUSINESS_ERROR, ucp_error_code: code };
     }
     return { ...base, reason: REASON.SCHEMA_MISMATCH };
@@ -447,10 +469,14 @@ function createCafe24CatalogLane(options = {}) {
   let consecutiveFailures = 0;
   let breakerUntilMs = 0;
   let breakerMs = 0;
+  let refusals = {};
+  let refusalsSinceMs = null;
 
   // A client per call, so the Retry-After of THIS call's answer is read without sharing state across calls.
+  // Returns null when the client would carry any credential or signature: the options above should make that
+  // impossible, and this check keeps it so if either option is ever dropped.
   function clientFor(observed) {
-    return createUcpBuyerAgentClient({
+    const client = createUcpBuyerAgentClient({
       forceAnonymous: true,
       allowTokenTier: false,
       retryAttempts: 0,
@@ -462,12 +488,20 @@ function createCafe24CatalogLane(options = {}) {
         return res;
       },
     });
+    const tier = client.describeTier();
+    if (tier.tier !== TRUST_TIER.ANONYMOUS || tier.signs_requests || tier.has_credential || tier.has_client_credentials) {
+      return null;
+    }
+    return client;
   }
 
+  // Only outcomes of a request actually sent move the breaker. A breaker reason counts toward opening it; any
+  // other answered outcome (the server replied) resets the count.
   function noteBreaker(outcome, retryAfter) {
     const t = now();
     if (!BREAKER_REASONS.has(outcome.reason)) {
-      if (outcome.reason === REASON.OK) { consecutiveFailures = 0; breakerMs = 0; }
+      consecutiveFailures = 0;
+      if (outcome.reason === REASON.OK) breakerMs = 0;
       return;
     }
     consecutiveFailures += 1;
@@ -497,44 +531,45 @@ function createCafe24CatalogLane(options = {}) {
   async function runDiscovery() {
     const observed = {};
     const client = clientFor(observed);
-    if (!client.describeTier().profile_url) return { ok: false, reason: REASON.NO_PROFILE_URL };
+    if (!client) return { ok: false, reason: REASON.CREDENTIAL_TIER_REFUSED, sent: false };
+    if (!client.describeTier().profile_url) return { ok: false, reason: REASON.NO_PROFILE_URL, sent: false };
     let found;
     try {
       found = await client.discoverEndpoint(CATALOG_ORIGIN);
     } catch (e) {
-      return { ok: false, reason: e && e.name === 'AbortError' ? REASON.TIMEOUT : REASON.DISCOVERY_FAILED };
+      return { ok: false, reason: e && e.name === 'AbortError' ? REASON.TIMEOUT : REASON.DISCOVERY_FAILED, sent: true };
     }
     if (!found || !found.businessProfile) {
-      return { ok: false, reason: REASON.DISCOVERY_FAILED, http_status: found && found.status };
+      return { ok: false, reason: REASON.DISCOVERY_FAILED, http_status: found && found.status, sent: true };
     }
     const endpoint = httpsUrl(found.mcpEndpoint);
-    if (!endpoint || hostOf(endpoint) !== CATALOG_HOST) return { ok: false, reason: REASON.ENDPOINT_HOST_REFUSED };
+    if (endpoint !== PINNED_ENDPOINT) return { ok: false, reason: REASON.ENDPOINT_NOT_PINNED, sent: true };
     const bp = found.businessProfile;
     const ucp = isPlainObject(bp.ucp) ? bp.ucp : bp;
     const versions = [ucp.version, ...(Array.isArray(ucp.supported_versions) ? ucp.supported_versions : [])]
       .map(str).filter(Boolean);
     if (versions.length && !versions.includes(UCP_SPEC_VERSION)) {
-      return { ok: false, reason: REASON.UCP_VERSION_UNSUPPORTED };
+      return { ok: false, reason: REASON.UCP_VERSION_UNSUPPORTED, sent: true };
     }
     if (!profileAdvertisesCapability(bp, SEARCH_CAPABILITY)) {
-      return { ok: false, reason: REASON.CAPABILITY_NOT_ADVERTISED };
+      return { ok: false, reason: REASON.CAPABILITY_NOT_ADVERTISED, sent: true };
     }
     let listed;
     try {
       listed = await client.listTools(endpoint);
     } catch (e) {
-      return { ok: false, reason: e && e.name === 'AbortError' ? REASON.TIMEOUT : REASON.TRANSPORT_ERROR };
+      return { ok: false, reason: e && e.name === 'AbortError' ? REASON.TIMEOUT : REASON.TRANSPORT_ERROR, sent: true };
     }
     const listOutcome = classifyListOutcome(listed);
-    if (listOutcome) return { ok: false, ...listOutcome };
+    if (listOutcome) return { ok: false, ...listOutcome, sent: true };
     const search = toolNamesOf(listed).find((t) => t.name === 'search_catalog');
-    if (!search) return { ok: false, reason: REASON.TOOL_NOT_LISTED };
+    if (!search) return { ok: false, reason: REASON.TOOL_NOT_LISTED, sent: true };
     const props = isPlainObject(search.inputSchema) && isPlainObject(search.inputSchema.properties)
       ? search.inputSchema.properties : null;
     if (props && !Object.prototype.hasOwnProperty.call(props, 'catalog')) {
-      return { ok: false, reason: REASON.SCHEMA_MISMATCH };
+      return { ok: false, reason: REASON.SCHEMA_MISMATCH, sent: true };
     }
-    return { ok: true, reason: REASON.OK, endpoint };
+    return { ok: true, reason: REASON.OK, endpoint, sent: true };
   }
 
   function classifyListOutcome(listed) {
@@ -555,31 +590,34 @@ function createCafe24CatalogLane(options = {}) {
     return null;
   }
 
+  // Returns the discovery verdict and whether THIS call ran it (`ranNow`). A remembered verdict sent nothing.
   async function ensureDiscovery() {
     const t = now();
     if (discovery) {
       const ttl = discovery.ok ? DISCOVERY_TTL_MS : DISCOVERY_FAILURE_RETRY_MS;
-      if (t - discovery.checkedAtMs < ttl) return discovery;
+      if (t - discovery.checkedAtMs < ttl) return { ...discovery, ranNow: false };
     }
-    if (!discoveryInFlight) {
-      discoveryInFlight = runDiscovery()
-        .catch(() => ({ ok: false, reason: REASON.DISCOVERY_FAILED }))
-        .then((d) => {
-          discovery = { ...d, checkedAtMs: now() };
-          discoveryInFlight = null;
-          return discovery;
-        });
-    }
-    return discoveryInFlight;
+    if (discoveryInFlight) return { ...(await discoveryInFlight), ranNow: false };
+    discoveryInFlight = runDiscovery()
+      .catch(() => ({ ok: false, reason: REASON.DISCOVERY_FAILED, sent: true }))
+      .then((d) => {
+        discovery = { ...d, checkedAtMs: now() };
+        discoveryInFlight = null;
+        return discovery;
+      });
+    return { ...(await discoveryInFlight), ranNow: true };
   }
 
   /**
-   * One bounded search. Never throws. Returns { reason, candidates, latency_ms, http_status?, mcp_error_code? }.
-   * `candidates` is empty unless reason is `ok`. Runs whatever the mode: callers gate on readMode().
+   * One bounded search. Never throws. Returns { reason, sent, candidates, latency_ms, http_status?, mcp_error_code?,
+   * ucp_error_code?, phase? }. `sent` is true only when a request left this process for it. `candidates` is empty
+   * unless reason is `ok`. Runs whatever the mode: callers gate on readMode().
    */
   async function search({ query, market, limit } = {}) {
     const started = now();
-    const done = (fields, candidates = []) => ({ ...fields, candidates, latency_ms: Math.max(0, now() - started) });
+    const done = (fields, candidates = []) => ({
+      sent: false, ...fields, candidates, latency_ms: Math.max(0, now() - started),
+    });
     if (truthyFlag(envOf()[DENY_FLAG])) return done({ reason: REASON.DENIED });
     const q = clip(query, MAX_QUERY_LENGTH);
     if (!q) return done({ reason: REASON.NO_QUERY });
@@ -591,12 +629,16 @@ function createCafe24CatalogLane(options = {}) {
     try {
       const d = await ensureDiscovery();
       if (!d.ok) {
-        noteBreaker(d, null);
-        return done({ reason: d.reason, http_status: d.http_status, mcp_error_code: d.mcp_error_code, phase: 'discovery' });
+        const sent = d.ranNow === true && d.sent === true;
+        if (sent) noteBreaker(d, null);
+        return done({
+          reason: d.reason, sent, http_status: d.http_status, mcp_error_code: d.mcp_error_code, phase: 'discovery',
+        });
       }
       const pageSize = Math.max(1, Math.min(Number.parseInt(limit, 10) || MAX_RESULTS, MAX_RESULTS));
       const observed = {};
       const client = clientFor(observed);
+      if (!client) return done({ reason: REASON.CREDENTIAL_TIER_REFUSED });
       let outcome;
       try {
         const callResult = await client.callTool(d.endpoint, 'search_catalog', {
@@ -612,42 +654,68 @@ function createCafe24CatalogLane(options = {}) {
       }
       noteBreaker(outcome, observed.retryAfter);
       const { payload, ...fields } = outcome;
-      if (outcome.reason !== REASON.OK) return done(fields);
+      if (outcome.reason !== REASON.OK) return done({ ...fields, sent: true });
       const answeredAtMs = now();
       const candidates = payload.products.slice(0, pageSize)
         .map((p) => normalizeCatalogProduct(p, { market: region, answeredAtMs }))
         .filter(Boolean);
-      if (payload.products.length && !candidates.length) return done({ ...fields, reason: REASON.SCHEMA_MISMATCH });
-      return done(fields, candidates);
+      if (payload.products.length && !candidates.length) {
+        return done({ ...fields, sent: true, reason: REASON.SCHEMA_MISMATCH });
+      }
+      return done({ ...fields, sent: true }, candidates);
     } finally {
       inFlight -= 1;
     }
   }
 
+  function info(fields, message) {
+    try {
+      if (logger && typeof logger.info === 'function') logger.info(fields, message);
+    } catch { /* a log failure never reaches the page */ }
+  }
+
+  // Refusals (nothing sent) are counted, and the counts are logged at most once per REFUSAL_LOG_INTERVAL_MS.
+  function countRefusal(reason) {
+    const t = now();
+    if (refusalsSinceMs === null) refusalsSinceMs = t;
+    refusals[reason] = (refusals[reason] || 0) + 1;
+    if (t - refusalsSinceMs >= REFUSAL_LOG_INTERVAL_MS) flushRefusals();
+  }
+
+  function flushRefusals() {
+    if (refusalsSinceMs === null) return;
+    const counts = refusals;
+    const windowMs = Math.max(0, now() - refusalsSinceMs);
+    refusals = {};
+    refusalsSinceMs = null;
+    info({ event: 'cafe24_catalog_shadow_refusals', window_ms: windowMs, counts }, 'cafe24 catalog shadow refusals');
+  }
+
   /**
-   * SHADOW: run a search beside a served page and log counts. Returns a promise that never rejects; the caller
-   * does not await it and nothing it learns reaches the page.
+   * SHADOW: run a search beside a served page and log what was learned. Returns a promise that never rejects; the
+   * caller does not await it and nothing it learns reaches the page.
    */
-  async function observeSearch({ query, market, servedCount } = {}) {
-    if (readMode(envOf()) !== MODES.SHADOW) return { reason: REASON.OFF, candidates: [] };
+  async function observeSearch({ query, market } = {}) {
+    if (readMode(envOf()) !== MODES.SHADOW) return { reason: REASON.OFF, sent: false, candidates: [] };
     let result;
     try {
       result = await search({ query, market });
     } catch {
-      result = { reason: REASON.TRANSPORT_ERROR, candidates: [], latency_ms: null };
+      result = { reason: REASON.TRANSPORT_ERROR, sent: false, candidates: [], latency_ms: null };
     }
     try {
-      if (logger && typeof logger.info === 'function') {
-        logger.info({
+      if (!result.sent) {
+        countRefusal(result.reason);
+      } else {
+        info({
           event: 'cafe24_catalog_shadow',
           reason: result.reason,
           phase: result.phase || 'search',
           latency_ms: result.latency_ms,
           http_status: result.http_status,
-          mcp_error_code: result.mcp_error_code,
-          ucp_error_code: result.ucp_error_code,
+          mcp_error_code: safeCode(result.mcp_error_code),
+          ucp_error_code: safeCode(result.ucp_error_code),
           market: normalizeBuyerRegion(market) || null,
-          served_count: Number.isFinite(servedCount) ? servedCount : null,
           ...summarizeCandidates(result.candidates || []),
         }, 'cafe24 catalog shadow search');
       }
@@ -656,10 +724,10 @@ function createCafe24CatalogLane(options = {}) {
   }
 
   function stateForTest() {
-    return { inFlight, windowCount, breakerUntilMs, consecutiveFailures, discovery };
+    return { inFlight, windowCount, breakerUntilMs, consecutiveFailures, discovery, refusals };
   }
 
-  return { search, observeSearch, stateForTest };
+  return { search, observeSearch, flushRefusals, stateForTest };
 }
 
 let defaultLaneInstance = null;

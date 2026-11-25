@@ -308,8 +308,13 @@ test('search: discovery -> tools/list -> one search_catalog call with our profil
 
 test('search: no Shopify Bearer token, client credentials or signature ever reaches Cafe24', async () => {
   const saved = {};
-  const keys = ['UCP_AGENT_CREDENTIAL', 'UCP_AGENT_CLIENT_ID', 'UCP_AGENT_CLIENT_SECRET'];
+  const keys = ['UCP_AGENT_CREDENTIAL', 'UCP_AGENT_CLIENT_ID', 'UCP_AGENT_CLIENT_SECRET',
+    'UCP_AGENT_SIGNING_PRIVATE_KEY', 'UCP_AGENT_SIGNING_KEY_ID', 'UCP_AGENT_SIGN_ALWAYS'];
   for (const k of keys) { saved[k] = process.env[k]; }
+  const { privateKey } = require('node:crypto').generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  process.env.UCP_AGENT_SIGNING_PRIVATE_KEY = privateKey.export({ format: 'pem', type: 'pkcs8' });
+  process.env.UCP_AGENT_SIGNING_KEY_ID = 'key-for-another-lane';
+  process.env.UCP_AGENT_SIGN_ALWAYS = '1';
   process.env.UCP_AGENT_CREDENTIAL = 'static-bearer-for-another-lane';
   process.env.UCP_AGENT_CLIENT_ID = 'client-id-for-another-lane';
   process.env.UCP_AGENT_CLIENT_SECRET = 'client-secret-for-another-lane';
@@ -320,7 +325,7 @@ test('search: no Shopify Bearer token, client credentials or signature ever reac
     for (const r of cat.requests) {
       const flat = JSON.stringify(r);
       assert.equal(flat.includes('another-lane'), false, `credential leaked to ${r.url}`);
-      assert.equal(Object.keys(r.headers).some((h) => /^(authorization|signature|signature-input)$/i.test(h)), false);
+      assert.equal(Object.keys(r.headers).some((h) => /^(authorization|signature|signature-input|ucp-agent|content-digest)$/i.test(h)), false);
     }
     assert.equal(cat.requests.some((r) => r.url.includes('api.shopify.com')), false, 'no token exchange');
   } finally {
@@ -357,7 +362,11 @@ test('discovery: a different UCP version, a foreign endpoint host, a missing cap
   const cases = [
     [{ profile: businessProfile({ version: '2026-09-01' }) }, REASON.UCP_VERSION_UNSUPPORTED],
     [{ profile: businessProfile({ services: { 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: 'https://elsewhere.example.test/mcp' }] } }) },
-      REASON.ENDPOINT_HOST_REFUSED],
+      REASON.ENDPOINT_NOT_PINNED],
+    [{ profile: businessProfile({ services: { 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: 'https://mcp-catalog.cafe24.com:8443/other/path' }] } }) },
+      REASON.ENDPOINT_NOT_PINNED],
+    [{ profile: businessProfile({ services: { 'dev.ucp.shopping': [{ transport: 'mcp', endpoint: 'https://mcp-catalog.cafe24.com/api/ucp/mcp?x=1' }] } }) },
+      REASON.ENDPOINT_NOT_PINNED],
     [{ profile: businessProfile({ capabilities: { 'dev.ucp.shopping.catalog.lookup': [{ version: '2026-04-08' }] } }) },
       REASON.CAPABILITY_NOT_ADVERTISED],
     [{ tools: toolsList(['get_product']) }, REASON.TOOL_NOT_LISTED],
@@ -369,7 +378,7 @@ test('discovery: a different UCP version, a foreign endpoint host, a missing cap
     assert.equal(result.reason, reason);
     assert.equal(result.phase, 'discovery');
     assert.equal(cat.calls().length, 0, `${reason}: no search_catalog call`);
-    assert.equal(cat.requests.some((r) => r.url.includes('elsewhere.example.test')), false);
+    assert.equal(cat.requests.some((r) => r.url.includes('elsewhere.example.test') || r.url.includes(':8443')), false);
   }
 });
 
@@ -405,22 +414,36 @@ test('bounds: the per-minute ceiling refuses before sending; the window resets',
   assert.equal((await l.search({ query: 'd', market: 'US' })).reason, REASON.OK);
   assert.equal(lane.perMinuteCeiling({ CAFE24_CATALOG_SHADOW_PER_MIN: '9999' }), 60);
   assert.equal(lane.perMinuteCeiling({ CAFE24_CATALOG_SHADOW_PER_MIN: 'x' }), 10);
+  assert.equal(lane.perMinuteCeiling({ CAFE24_CATALOG_SHADOW_PER_MIN: '0' }), 1);
+  assert.equal(lane.perMinuteCeiling({ CAFE24_CATALOG_SHADOW_PER_MIN: '-1' }), 1);
+  assert.equal(lane.perMinuteCeiling({ CAFE24_CATALOG_SHADOW_PER_MIN: '5abc' }), 10);
+  assert.equal(lane.perMinuteCeiling({ CAFE24_CATALOG_SHADOW_PER_MIN: '2.5' }), 10);
 });
 
-test('bounds: at most two calls in flight; a third is refused without a request', async () => {
+test('bounds: at most two calls in flight; a third is refused without any request, discovery included', { timeout: 5000 }, async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
+  const c = clock();
   const cat = fakeCatalog({ onCall: async () => { await gate; return jsonResponse(toolText({ products: [] })); } });
-  const l = makeLane(cat);
-  // Prime discovery so the in-flight calls are search calls.
-  const first = l.search({ query: 'a', market: 'US' });
-  const second = l.search({ query: 'b', market: 'US' });
-  const third = await l.search({ query: 'c', market: 'US' });
-  assert.equal(third.reason, REASON.IN_FLIGHT_CAP);
-  release();
-  assert.equal((await first).reason, REASON.OK);
-  assert.equal((await second).reason, REASON.OK);
-  assert.equal(l.stateForTest().inFlight, 0);
+  const l = makeLane(cat, { now: c.now, env: { CAFE24_CATALOG_SHADOW_PER_MIN: '60' } });
+  try {
+    const first = l.search({ query: 'a', market: 'US' });
+    const second = l.search({ query: 'b', market: 'US' });
+    // Let both reach their (held) search call, then let the remembered discovery go stale.
+    while (cat.calls().length < 2) await new Promise((r) => setImmediate(r));
+    c.advance(61 * 60 * 1000);
+    const before = cat.requests.length;
+    const third = await l.search({ query: 'c', market: 'US' });
+    assert.equal(third.reason, REASON.IN_FLIGHT_CAP);
+    assert.equal(third.sent, false);
+    assert.equal(cat.requests.length, before, 'a refused search sends nothing, not even a discovery refresh');
+    release();
+    assert.equal((await first).reason, REASON.OK);
+    assert.equal((await second).reason, REASON.OK);
+    assert.equal(l.stateForTest().inFlight, 0);
+  } finally {
+    release();
+  }
 });
 
 test('bounds: three 5xx answers open the breaker; while open nothing is sent; it closes after the window', async () => {
@@ -472,7 +495,7 @@ test('shadow: off sends nothing and logs nothing', async () => {
   const cat = fakeCatalog();
   const lines = [];
   const l = makeLane(cat, { env: { CAFE24_CATALOG_SEARCH: 'off' }, logger: { info: (o) => lines.push(o) } });
-  const out = await l.observeSearch({ query: 'toner', market: 'US', servedCount: 3 });
+  const out = await l.observeSearch({ query: 'toner', market: 'US' });
   assert.equal(out.reason, REASON.OFF);
   assert.equal(cat.requests.length, 0);
   assert.equal(lines.length, 0);
@@ -486,7 +509,7 @@ test('shadow: logs counts only (no query, id, title, url or price) and never rej
   });
   const lines = [];
   const l = makeLane(cat, { logger: { info: (o) => lines.push(o) } });
-  const out = await l.observeSearch({ query: 'secret buyer words', market: 'US', servedCount: 4 });
+  const out = await l.observeSearch({ query: 'secret buyer words', market: 'US' });
   assert.equal(out.reason, REASON.OK);
   assert.equal(lines.length, 1);
   const line = lines[0];
@@ -496,7 +519,6 @@ test('shadow: logs counts only (no query, id, title, url or price) and never rej
   assert.equal(line.priced_in_market, 1);
   assert.equal(line.currency_mismatch, 1);
   assert.equal(line.sellers, 2);
-  assert.equal(line.served_count, 4);
   const flat = JSON.stringify(line);
   for (const secret of ['secret buyer words', OPAQUE_PRODUCT_ID, 'Example Cushion', 'examplemall.example.test', '24.99']) {
     assert.equal(flat.includes(secret), false, secret);
@@ -506,7 +528,99 @@ test('shadow: logs counts only (no query, id, title, url or price) and never rej
   await assert.doesNotReject(throwingLog.observeSearch({ query: 'x', market: 'US' }));
 });
 
-// ---- the server hook: every served search page passes through it, and it never changes the page ----------------
+// ---- log hygiene, refusal batching, breaker accounting ---------------------------------------------------------
+
+test('logs: server-supplied codes are logged only when they look like codes', async () => {
+  const lines = [];
+  const biz = fakeCatalog({ onCall: async () => jsonResponse(toolText({ ucp: { status: 'error' }, messages: [{ type: 'error', code: 'no results for my-secret-query' }] })) });
+  await makeLane(biz, { logger: { info: (o) => lines.push(o) } }).observeSearch({ query: 'my-secret-query', market: 'US' });
+  const rpc = fakeCatalog({ onCall: async () => jsonResponse({ jsonrpc: '2.0', id: 1, error: { code: 'bad query my-secret-query', message: 'x' } }) });
+  await makeLane(rpc, { logger: { info: (o) => lines.push(o) } }).observeSearch({ query: 'my-secret-query', market: 'US' });
+  const ok = fakeCatalog({ onCall: async () => jsonResponse(toolText({ ucp: { status: 'error' }, messages: [{ type: 'error', code: 'unsupported_country' }] })) });
+  await makeLane(ok, { logger: { info: (o) => lines.push(o) } }).observeSearch({ query: 'x', market: 'US' });
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0].reason, REASON.UCP_BUSINESS_ERROR);
+  assert.equal(lines[0].ucp_error_code, null);
+  assert.equal(lines[1].reason, REASON.MCP_ERROR);
+  assert.equal(lines[1].mcp_error_code, null);
+  assert.equal(lines[2].ucp_error_code, 'unsupported_country');
+  assert.equal(JSON.stringify(lines).includes('my-secret-query'), false);
+});
+
+test('logs: a search refused before sending is counted, not logged per search; counts flush at most once a minute', async () => {
+  const c = clock();
+  const lines = [];
+  const cat = fakeCatalog();
+  const l = makeLane(cat, { now: c.now, logger: { info: (o) => lines.push(o) } });
+  for (let i = 0; i < 5; i += 1) await l.observeSearch({ query: 'toner' });
+  await l.observeSearch({ query: 'toner', market: 'DE' });
+  assert.equal(lines.length, 0, 'no line per refused search');
+  assert.equal(cat.requests.length, 0);
+  c.advance(60 * 1000);
+  await l.observeSearch({ query: '', market: 'US' });
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].event, 'cafe24_catalog_shadow_refusals');
+  assert.deepEqual(lines[0].counts, { no_market: 5, market_not_priced: 1, no_query: 1 });
+  await l.observeSearch({ query: 'toner' });
+  assert.equal(lines.length, 1, 'the next window starts empty');
+});
+
+test('breaker: a remembered discovery failure is not counted again on reuse', async () => {
+  const c = clock();
+  const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+  let discoveries = 0;
+  const fetchImpl = async (url) => {
+    if (url.endsWith('/.well-known/ucp')) { discoveries += 1; throw abort; }
+    throw new Error(`unexpected ${url}`);
+  };
+  const l = createCafe24CatalogLane({ fetchImpl, profileUrl: PROFILE, now: c.now, env: { CAFE24_CATALOG_SEARCH: 'shadow', CAFE24_CATALOG_SHADOW_PER_MIN: '60' } });
+  const first = await l.search({ query: 'a', market: 'US' });
+  assert.equal(first.reason, REASON.TIMEOUT);
+  assert.equal(first.sent, true);
+  for (let i = 0; i < 5; i += 1) {
+    const again = await l.search({ query: `q${i}`, market: 'US' });
+    assert.equal(again.reason, REASON.TIMEOUT);
+    assert.equal(again.sent, false, 'a remembered verdict sent nothing');
+  }
+  assert.equal(discoveries, 1);
+  assert.equal(l.stateForTest().consecutiveFailures, 1);
+  assert.equal(l.stateForTest().breakerUntilMs, 0, 'the breaker never opened');
+});
+
+test('breaker: an answered non-breaker outcome resets the failure count', async () => {
+  const statuses = [503, 503, 403, 503, 503];
+  const cat = fakeCatalog({ onCall: async () => new Response('x', { status: statuses.shift() }) });
+  const l = makeLane(cat, { env: { CAFE24_CATALOG_SHADOW_PER_MIN: '60' } });
+  for (let i = 0; i < 5; i += 1) await l.search({ query: `q${i}`, market: 'US' });
+  assert.equal(l.stateForTest().breakerUntilMs, 0);
+  assert.equal(l.stateForTest().consecutiveFailures, 2);
+});
+
+// ---- the hop marker ----------------------------------------------------------------------------------------------
+
+test('hop: only this process\'s own loopback hop with its token counts as a door search', () => {
+  const { isKernelSearchHop, kernelSearchHopHeaders, KERNEL_SEARCH_HOP_HEADER } = require('../src/invokeEgress');
+  const lower = (h) => Object.fromEntries(Object.entries(h).map(([k, v]) => [k.toLowerCase(), v]));
+  const loop = { remoteAddress: '127.0.0.1' };
+  assert.equal(isKernelSearchHop({ headers: lower(kernelSearchHopHeaders()), socket: loop }), true);
+  assert.equal(isKernelSearchHop({ headers: {}, socket: loop }), false, 'an in-process caller with no token (chat, recall, fallback)');
+  assert.equal(isKernelSearchHop({ headers: lower({ [KERNEL_SEARCH_HOP_HEADER]: 'f'.repeat(48) }), socket: loop }), false, 'a guessed token');
+  assert.equal(isKernelSearchHop({ headers: { ...lower(kernelSearchHopHeaders()), 'x-forwarded-for': '203.0.113.7' }, socket: loop }), false, 'routed in from outside');
+  assert.equal(isKernelSearchHop({ headers: lower(kernelSearchHopHeaders()), socket: { remoteAddress: '203.0.113.9' } }), false, 'not loopback');
+  assert.equal(isKernelSearchHop(null), false);
+});
+
+test('hop: the kernel\'s search hop sends the marker and the invoke route records it (wiring, read from source)', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/server.js'), 'utf8');
+  assert.match(src, /\.\.\.\(selfInvoked && op === 'find_products_multi' \? kernelSearchHopHeaders\(\) : \{\}\)/);
+  assert.match(src, /kernel_search_hop: isKernelSearchHop\(req\)/);
+  assert.equal((src.match(/kernelSearchHopHeaders\(\)/g) || []).length, 1, 'no other request carries the marker');
+});
+
+// ---- the server hook: door searches only, once per request, never changes the page ----------------------------
+
+// The request store the invoke route runs (the same instance src/server.js imports).
+const { INVOKE_AUTH_CONTEXT } = require('../src/guardrails/syntheticContext');
 
 let app = null;
 function server() {
@@ -525,37 +639,83 @@ function servedPage() {
   };
 }
 
-test('server: in shadow the served search overlay starts one Cafe24 observation and returns the page unchanged', async () => {
-  const a = server();
+async function withHookEnv(fn) {
   const saved = { mode: process.env.CAFE24_CATALOG_SEARCH, serve: process.env.SERVE_LIVE_MERCHANT_PRICE, lane: lane.defaultLane };
-  const seen = [];
-  lane.defaultLane = () => ({ observeSearch: async (args) => { seen.push(args); return { reason: 'ok', candidates: [{ title: 'never served' }] }; } });
   delete process.env.SERVE_LIVE_MERCHANT_PRICE;
+  process.env.CAFE24_CATALOG_SEARCH = 'shadow';
   try {
-    process.env.CAFE24_CATALOG_SEARCH = 'shadow';
-    const out = await a._debug.maybeOverlayLiveSearchPrice(servedPage(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' });
-    assert.deepEqual(out.products, servedPage().products);
-    assert.equal(JSON.stringify(out).includes('never served'), false);
-    assert.equal(seen.length, 1);
-    assert.deepEqual(seen[0], { query: 'serum', market: 'US', servedCount: 1 });
-
-    await a._debug.maybeOverlayLiveSearchPrice(servedPage(), { query: 'serum', market: 'US', page: 2 }, { buyerMarket: 'US' });
-    assert.equal(seen.length, 1, 'page 2 is not observed');
-
-    process.env.CAFE24_CATALOG_SEARCH = 'off';
-    await a._debug.maybeOverlayLiveSearchPrice(servedPage(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' });
-    assert.equal(seen.length, 1, 'off starts nothing');
-
-    process.env.CAFE24_CATALOG_SEARCH = 'shadow';
-    lane.defaultLane = () => { throw new Error('lane broke'); };
-    const survived = await a._debug.maybeOverlayLiveSearchPrice(servedPage(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' });
-    assert.deepEqual(survived.products, servedPage().products, 'a broken lane never reaches the page');
-    lane.defaultLane = () => ({ observeSearch: () => Promise.reject(new Error('rejected')) });
-    const rejected = await a._debug.maybeOverlayLiveSearchPrice(servedPage(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' });
-    assert.deepEqual(rejected.products, servedPage().products);
+    return await fn();
   } finally {
     lane.defaultLane = saved.lane;
     if (saved.mode === undefined) delete process.env.CAFE24_CATALOG_SEARCH; else process.env.CAFE24_CATALOG_SEARCH = saved.mode;
     if (saved.serve !== undefined) process.env.SERVE_LIVE_MERCHANT_PRICE = saved.serve;
   }
+}
+
+function overlay(a, store, search = { query: 'serum', market: 'US' }) {
+  const run = () => a._debug.maybeOverlayLiveSearchPrice(servedPage(), search, { buyerMarket: 'US' });
+  return store ? INVOKE_AUTH_CONTEXT.run(store, run) : run();
+}
+
+test('server: a door search starts one observation; the page is byte-identical and returned without waiting', { timeout: 10000 }, async () => {
+  const a = server();
+  await withHookEnv(async () => {
+    process.env.CAFE24_CATALOG_SEARCH = 'off';
+    const baseline = await overlay(a, { kernel_search_hop: true });
+    process.env.CAFE24_CATALOG_SEARCH = 'shadow';
+    const seen = [];
+    lane.defaultLane = () => ({ observeSearch: (args) => { seen.push(args); return new Promise(() => {}); } });
+    const out = await Promise.race([
+      overlay(a, { kernel_search_hop: true }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('the page waited for the shadow')), 2000)),
+    ]);
+    assert.deepEqual(out, baseline, 'the whole body, metadata included, is what it would be with the lane off');
+    assert.deepEqual(seen, [{ query: 'serum', market: 'US' }]);
+  });
+});
+
+test('server: no other caller is observed: no store, chat / recall / fallback / admin stores, synthetic, page 2', async () => {
+  const a = server();
+  await withHookEnv(async () => {
+    const seen = [];
+    lane.defaultLane = () => ({ observeSearch: async (args) => { seen.push(args); return { reason: 'ok' }; } });
+    await overlay(a, null); // the admin prompt test and other in-process callers outside a request store
+    // What the invoke route records for the Aurora chat re-invoke, recommend.recall and the commerce-resolution
+    // fallback: their requests carry no hop token, so the store says false.
+    await overlay(a, { agent_id: 'aurora', kernel_search_hop: false }, { query: 'my skin is breaking out after my medication', market: 'US' });
+    await overlay(a, { kernel_search_hop: false });
+    await overlay(a, { kernel_search_hop: 'true' });
+    await overlay(a, { kernel_search_hop: true, synthetic: true });
+    await overlay(a, { kernel_search_hop: true }, { query: 'serum', market: 'US', page: 2 });
+    assert.equal(seen.length, 0);
+    process.env.CAFE24_CATALOG_SEARCH = 'off';
+    await overlay(a, { kernel_search_hop: true });
+    assert.equal(seen.length, 0, 'off starts nothing');
+  });
+});
+
+test('server: one request reaches the overlay twice (discovery fall-through) and is observed once', async () => {
+  const a = server();
+  await withHookEnv(async () => {
+    const seen = [];
+    lane.defaultLane = () => ({ observeSearch: async (args) => { seen.push(args); return { reason: 'ok' }; } });
+    const store = { kernel_search_hop: true };
+    await INVOKE_AUTH_CONTEXT.run(store, async () => {
+      await a._debug.maybeOverlayLiveSearchPrice(servedPage(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' });
+      await a._debug.maybeOverlayLiveSearchPrice(servedPage(), { query: 'serum', market: 'US' }, { buyerMarket: 'US' });
+    });
+    assert.equal(seen.length, 1);
+    await overlay(a, { kernel_search_hop: true });
+    assert.equal(seen.length, 2, 'the next request is observed again');
+  });
+});
+
+test('server: a broken lane never reaches the page', async () => {
+  const a = server();
+  await withHookEnv(async () => {
+    lane.defaultLane = () => { throw new Error('lane broke'); };
+    assert.deepEqual((await overlay(a, { kernel_search_hop: true })).products, servedPage().products);
+    lane.defaultLane = () => ({ observeSearch: () => Promise.reject(new Error('rejected')) });
+    assert.deepEqual((await overlay(a, { kernel_search_hop: true })).products, servedPage().products);
+  });
 });
