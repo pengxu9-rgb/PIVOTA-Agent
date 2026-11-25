@@ -52,6 +52,7 @@ const SAFE_SANDBOX = Object.freeze({
   SKIP_DB_MIGRATIONS: 'true',
   DB_AUTO_MIGRATE: 'false',
   GOOGLE_CLOUD_PROJECT: 'zz-sandbox-standin',
+  LLM_KILL_SWITCH: 'true',
 });
 
 /** Today's deployed environments plus the local defaults. None names the sandbox. */
@@ -853,5 +854,31 @@ test('brand zones: the sandbox label must be a whole label (sandbox or sandbox-.
   }
   for (const bad of ['https://nosandbox.pivota.cc', 'https://pay-sandbox.agenpaz.com', 'https://sandboxed.pivota.cc', 'https://xsandbox-api.pivota.cc']) {
     assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: bad }) || '', /SOME_SETTING\(names a non-sandbox /, bad);
+  }
+});
+
+test('lexical-only: Vertex is refused in any truthy spelling, and the LLM kill switch must be exactly true', () => {
+  const { vertexEnabled } = require('../src/llm/vertexGemini');
+  for (const v of ['true', 'TRUE', ' true ', '1', 'yes', 'on', 'Y']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, VERTEX_AI_ENABLED: v }) || '', /VERTEX_AI_ENABLED\(must be off in the sandbox\)/, v);
+  }
+  for (const v of [undefined, '', 'false', '0', 'off']) {
+    const env = { ...SAFE_SANDBOX, VERTEX_AI_ENABLED: v };
+    if (v === undefined) delete env.VERTEX_AI_ENABLED;
+    assert.equal(refusalOf(env), null, String(v));
+  }
+  // Every value the REAL reader calls enabled is refused.
+  for (const v of ['true', 'TRUE', ' True ', '1', 'yes']) {
+    const on = withProcessEnv({ VERTEX_AI_ENABLED: v }, () => vertexEnabled());
+    if (on) assert.ok(refusalOf({ ...SAFE_SANDBOX, VERTEX_AI_ENABLED: v }), v);
+  }
+  for (const v of [undefined, '', 'false', 'TRUE', ' true', '1', 'yes']) {
+    const env = { ...SAFE_SANDBOX, LLM_KILL_SWITCH: v };
+    if (v === undefined) delete env.LLM_KILL_SWITCH;
+    assert.match(refusalOf(env) || '', /LLM_KILL_SWITCH\(must be exactly true in the sandbox\)/, String(v));
+  }
+  // Outside the sandbox neither flag matters to the check.
+  for (const [name, env] of Object.entries(NON_SANDBOX_ENVS)) {
+    assert.deepEqual(sandbox.sandboxConfigProblems({ ...env, VERTEX_AI_ENABLED: 'true' }), [], name);
   }
 });

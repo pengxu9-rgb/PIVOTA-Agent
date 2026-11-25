@@ -473,6 +473,13 @@ function sandboxConfigProblems(env = process.env) {
     if (['1', 'true', 'yes', 'y', 'on'].includes(str(e[key]).toLowerCase())) problems.push(`${key}(the Aurora BFF is not loaded in the sandbox)`);
   }
 
+  // LEXICAL-ONLY (sandbox plan Q7): no Vertex/Gemini call from the sandbox. GOOGLE_CLOUD_PROJECT is the sandbox signal
+  // there, and its only gateway reader is the Vertex client (src/llm/vertexGemini.js), which would then bill and call
+  // in the sandbox project. VERTEX_AI_ENABLED is refused in ANY truthy spelling (the reader takes only 'true', so
+  // this is stricter), and the LLM kill switch must be exactly 'true'.
+  if (['1', 'true', 'yes', 'y', 'on'].includes(str(e.VERTEX_AI_ENABLED).toLowerCase())) problems.push('VERTEX_AI_ENABLED(must be off in the sandbox)');
+  if (e.LLM_KILL_SWITCH !== 'true') problems.push('LLM_KILL_SWITCH(must be exactly true in the sandbox)');
+
   // Live reads and store fetches.
   for (const flag of LIVE_READ_FLAGS) {
     if (!flagIsOff(e, flag)) problems.push(`${flag.name}(must be off${flag.requireExplicit ? ', set explicitly' : ''})`);

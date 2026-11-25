@@ -182,6 +182,7 @@ const SAFE_SANDBOX = {
   SKIP_DB_MIGRATIONS: 'true',
   DB_AUTO_MIGRATE: 'false',
   GOOGLE_CLOUD_PROJECT: 'zz-sandbox-standin',
+  LLM_KILL_SWITCH: 'true',
 };
 
 /** Require src/server.js in a child with exactly `extra` over a scrubbed env; it never listens (require.main). */
