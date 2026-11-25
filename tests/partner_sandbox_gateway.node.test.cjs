@@ -177,10 +177,11 @@ const SAFE_SANDBOX = {
   PIVOTA_ENV: 'sandbox',
   AGENPAS_RAILS: 'reap',
   AGENPAS_CONSENT_ENABLED: 'true',
-  PIVOTA_API_BASE: 'https://web-sbx0example-uw.a.run.app',
+  PIVOTA_API_BASE: 'https://web-sbx0exampl-uw.a.run.app',
   CATALOG_IMAGE_CACHE_JOB_RUNNER_ENABLED: 'false',
   SKIP_DB_MIGRATIONS: 'true',
   DB_AUTO_MIGRATE: 'false',
+  GOOGLE_CLOUD_PROJECT: 'zz-sandbox-standin',
 };
 
 /** Require src/server.js in a child with exactly `extra` over a scrubbed env; it never listens (require.main). */
@@ -211,4 +212,37 @@ test('boot: a safe sandbox config, and production with the same unsafe settings,
   const prod = loadServerWith({ PIVOTA_ENV: 'production', A2A_RAIL_PILOT_AGENT_IDS: 'x', PIVOTA_API_BASE: 'https://api.pivota.cc' });
   assert.equal(prod.status, 0, prod.stderr.slice(-2000));
   assert.equal(prod.stderr.includes('SANDBOX_CONFIG_REFUSED'), false);
+});
+
+test('boot: the Aurora BFF module is not loaded in the sandbox; production loads it as before', () => {
+  const probe = (extra) => {
+    const env = {};
+    for (const key of ['PATH', 'HOME', 'TMPDIR', 'NODE_OPTIONS', 'LOWGUARD_LOG', 'LOWGUARD_TAG']) {
+      if (process.env[key] !== undefined) env[key] = process.env[key];
+    }
+    Object.assign(env, extra);
+    const script = "require('./src/server'); const loaded = Object.keys(require.cache).some((k) => k.endsWith('/src/auroraBff/routes.js')); console.log('AURORA_LOADED=' + loaded); process.exit(0)";
+    return spawnSync(process.execPath, ['-e', script], { cwd: REPO, env, encoding: 'utf8', timeout: 90_000 });
+  };
+  const sbx = probe(SAFE_SANDBOX);
+  assert.equal(sbx.status, 0, sbx.stderr.slice(-1500));
+  assert.match(sbx.stdout, /AURORA_LOADED=false/);
+  const prod = probe({ PIVOTA_ENV: 'production' });
+  assert.equal(prod.status, 0, prod.stderr.slice(-1500));
+  assert.match(prod.stdout, /AURORA_LOADED=true/);
+});
+
+test('boot: in the sandbox the Aurora skip logs at info with its code, no error and no stack', () => {
+  const env = {};
+  for (const key of ['PATH', 'HOME', 'TMPDIR', 'NODE_OPTIONS', 'LOWGUARD_LOG', 'LOWGUARD_TAG']) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
+  Object.assign(env, SAFE_SANDBOX);
+  const r = spawnSync(process.execPath, ['-e', "require('./src/server'); process.exit(0)"], { cwd: REPO, env, encoding: 'utf8', timeout: 90_000 });
+  assert.equal(r.status, 0, r.stderr.slice(-1500));
+  const lines = `${r.stdout}\n${r.stderr}`.split('\n').filter((l) => l.includes('aurora'));
+  const skip = lines.find((l) => l.includes('aurora_skipped_in_sandbox'));
+  assert.ok(skip, lines.join('\n'));
+  assert.match(skip, /"level":30/);
+  assert.equal(lines.some((l) => l.includes('failed to load')), false);
 });
