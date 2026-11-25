@@ -75,6 +75,32 @@ function isLegacySeedProbeHop(req) {
   }
 }
 
+// THE COMMERCE KERNEL'S OWN SEARCH HOP, as a request-scoped fact the invoke handler can read: true only for the
+// find_products_multi call that invokeCommerceKernelRawUpstream (src/server.js) sends back into this process on
+// behalf of an MCP / UCP door's search_catalog. Same rules as the hop above: a per-process token minted at start,
+// never configured, logged or sent anywhere but this process's own loopback search, and accepted only over a
+// loopback socket with no X-Forwarded-For. A separate header, so a change to when the legacy-seed probe is
+// asked for cannot silently change which searches count as a door's.
+const KERNEL_SEARCH_HOP_HEADER = 'X-Pivota-Kernel-Search-Hop';
+const KERNEL_SEARCH_HOP_TOKEN = crypto.randomBytes(24).toString('hex');
+
+/** The request header the kernel's loopback search hop carries. */
+function kernelSearchHopHeaders() {
+  return { [KERNEL_SEARCH_HOP_HEADER]: KERNEL_SEARCH_HOP_TOKEN };
+}
+
+/** Is this request the commerce kernel's own loopback search hop (a door's search_catalog)? Never throws. */
+function isKernelSearchHop(req) {
+  try {
+    const raw = req && req.headers ? req.headers[KERNEL_SEARCH_HOP_HEADER.toLowerCase()] : null;
+    if (typeof raw !== 'string' || raw.length !== KERNEL_SEARCH_HOP_TOKEN.length) return false;
+    if (!isLoopbackSelfCall(req)) return false;
+    return crypto.timingSafeEqual(Buffer.from(raw), Buffer.from(KERNEL_SEARCH_HOP_TOKEN));
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
  * Has this response been answered? True once headers are out or the stream has ended, AND while the egress
  * holds a deferred send for it. A guard that asks "may I still send?" must ask this, not `res.headersSent`
@@ -327,7 +353,10 @@ module.exports = {
   finalizeInvokeSearchBody,
   installInvokeEgress,
   isInvokeResponseCommitted,
+  isKernelSearchHop,
   isLegacySeedProbeHop,
+  KERNEL_SEARCH_HOP_HEADER,
+  kernelSearchHopHeaders,
   legacySeedProbeHopHeaders,
   projectInvokeResponse,
 };

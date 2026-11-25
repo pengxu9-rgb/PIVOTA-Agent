@@ -1,5 +1,6 @@
 import { UnknownToolError, toToolError, toToolResult } from "./commerceToolSurface.js";
 import { describeToolError, describeToolErrorReason, noteToolCall, resultCountOf, toolErrorFieldsOf } from "./toolCallOutcome.js";
+import sandbox from "../../src/config/sandbox.js";
 
 const DEFAULT_PROTOCOL_VERSION = "2025-03-26";
 
@@ -85,12 +86,17 @@ export function createRemoteMcpAdapter(surface, opts = {}) {
         const observe = typeof req?.observe === "function" ? req.observe : null;
         const callArgs = [params.name, params.arguments ?? {}, sessionContext ?? {}];
         if (observe) callArgs.push({ observe: (fields) => noteToolCall(observe, fields) });
+        // THE PARTNER SANDBOX MARK (decision 4), in the one place every MCP door's tools/call answers through:
+        // under PIVOTA_ENV=sandbox the answer gets a top-level `sandbox: true` and the result `_meta.sandbox: true`
+        // (src/config/sandbox.js). Read per call. Anywhere else `marked` is the identity and nothing changes.
+        const inSandbox = sandbox.isSandbox();
+        const marked = (result) => (inSandbox ? sandbox.markSandboxToolResult(result) : result);
         try {
           const value = await surface.callTool(...callArgs);
           noteToolCall(observe, () => ({ tool_registered: true, ...resultCountOf(value) }));
-          return ok(id, formatResult(value, params.name));
+          return ok(id, marked(formatResult(inSandbox ? sandbox.markSandboxToolValue(value) : value, params.name)));
         } catch (error) {
-          const result = toToolError(error);
+          const result = marked(toToolError(error));
           noteToolCall(observe, () => ({
             tool_registered: !(error instanceof UnknownToolError),
             ...toolErrorFieldsOf(result),

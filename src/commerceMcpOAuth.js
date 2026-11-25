@@ -14,7 +14,9 @@
 // The ESM safety-kernel primitives are loaded via dynamic import().
 
 const RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource';
-const API_KEY_PATTERN = /^ak_(live_)?[0-9a-f]{64}$/;
+// Is a Bearer value an agent API key (and so NOT an OAuth token)? The format is the one src/server.js's invoke auth
+// accepts, from ONE place: src/config/sandbox.js (ak_test_ only in the sandbox; today's pattern everywhere else).
+const { agentApiKeyFormatOk } = require('./config/sandbox');
 const PRIMITIVES = '../safety-kernel/src/identity/mcpOAuthResourceServer.js';
 
 function mcpOAuthEnabled() {
@@ -241,7 +243,7 @@ function hasApiKey(req) {
   ).trim();
   if (fromHeader) return true;
   const bearer = parseBearer(req);
-  return Boolean(bearer) && API_KEY_PATTERN.test(bearer);
+  return Boolean(bearer) && agentApiKeyFormatOk(bearer);
 }
 
 /**

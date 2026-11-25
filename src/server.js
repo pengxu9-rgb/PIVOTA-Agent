@@ -13,6 +13,9 @@ const vertexGemini = require('./llm/vertexGemini');
  */
 require('dotenv').config();
 require('./config/storedCatalogRehearsal').assertStoredCatalogRehearsal();
+// PIVOTA_ENV=sandbox only (a no-op everywhere else): refuse to load a partner-sandbox gateway whose settings could
+// reach real money, prod, or a store's site. Names the settings, never their values (src/config/sandbox.js).
+require('./config/sandbox').assertSandboxConfig();
 const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
@@ -41,6 +44,8 @@ const {
   isInvokeResponseCommitted,
   isLegacySeedProbeHop,
   legacySeedProbeHopHeaders,
+  isKernelSearchHop,
+  kernelSearchHopHeaders,
   projectInvokeResponse,
 } = require('./invokeEgress');
 const { marketAssumedLabel, marketIsUnnamed, resolveRequestMarket } = require('./services/requestMarket');
@@ -102,6 +107,8 @@ const {
   deploymentId: platformDeploymentId,
   gitBranch: platformGitBranch,
   serviceName: platformServiceName,
+  platformEnv: platformEnvLabel,
+  isProduction: platformIsProduction,
   requirePlatformEnv,
 } = require('./config/platform');
 const logger = require('./logger');
@@ -129,6 +136,8 @@ const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices, searchTopKSettings } = require('./services/liveMerchantSearchPrice');
+// Cafe24 Global Catalog, search-only and shadow-only (CAFE24_CATALOG_SEARCH, default off): counts, never served.
+const cafe24GlobalCatalog = require('./services/cafe24GlobalCatalog');
 // Recommendation price tiers on list rows (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off).
 const listPriceTiers = require('./services/listPriceTiers');
 // The door caches' price-freshness cap (DOOR_CACHE_PRICE_FRESHNESS_CAP, default off) and its side channel.
@@ -14518,7 +14527,41 @@ function applySearchListPriceTiers(response, { search = {}, intent = null, budge
 // The overlay. The list price tiers are NOT applied here: a search answer is tiered once, at the invoke route's
 // final exit (finalizeSearchListPriceTiers), after every step that can still replace or reorder its list.
 function maybeOverlayLiveSearchPrice(response, search = {}, opts = {}) {
+  maybeShadowCafe24CatalogSearch(response, search, opts);
   return maybeOverlayLiveSearchPriceRaw(response, search, opts);
+}
+
+// CAFE24 GLOBAL CATALOG SHADOW (services/cafe24GlobalCatalog.js). Called from the overlay above, which runs on the two
+// BEAUTY search paths only: the external-seed mainline (searchBeautyExternalSeedProductsMainline) and the public beauty
+// discovery bridge (handleInvokeRequest). A door search served by any other lane (the canonical direct lane, upstream
+// v2 search) and a door cache hit never reach it, so the shadow's counts describe beauty door searches only. Off by
+// default (CAFE24_CATALOG_SEARCH). In `shadow` it starts one bounded Cafe24 search for the same query and market and
+// logs counts. It is never awaited, never throws, and nothing it learns reaches `response`.
+//
+// WHOSE SEARCHES. Only a door's search_catalog: the request store must say `kernel_search_hop` (the commerce kernel's
+// own loopback hop, src/invokeEgress.js isKernelSearchHop). Every other caller of this overlay is refused, because
+// some send text that is not a search: the Aurora chat re-invoke puts the raw chat message in search.query, and
+// recommend's recall, the commerce-resolution fallback and the admin prompt test are not agent searches either.
+// ONCE PER REQUEST: one request can reach the overlay twice (a discovery fall-through); the first call marks the store.
+// A synthetic call makes no live read; only page 1 is observed.
+function maybeShadowCafe24CatalogSearch(response, search = {}, { buyerMarket = undefined } = {}) {
+  try {
+    if (cafe24GlobalCatalog.readMode() !== cafe24GlobalCatalog.MODES.SHADOW) return;
+    const store = INVOKE_AUTH_CONTEXT.getStore();
+    if (!store || store.kernel_search_hop !== true) return;
+    if (!syntheticLiveReadsAllowed()) return;
+    if (store.cafe24_shadow_started === true) return;
+    if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return;
+    store.cafe24_shadow_started = true;
+    const market = typeof buyerMarket === 'string' && buyerMarket.trim()
+      ? buyerMarket.trim()
+      : (typeof search.market === 'string' ? search.market : undefined);
+    cafe24GlobalCatalog.defaultLane(logger)
+      .observeSearch({ query: extractSearchQueryText(search), market })
+      .catch(() => {});
+  } catch (_) {
+    // The shadow never reaches the page.
+  }
 }
 
 /**
@@ -30975,6 +31018,13 @@ function isPydanticMissingBodyField(err, fieldName) {
 }
 
 const app = express();
+// PARTNER SANDBOX marks (src/config/sandbox.js sandboxResponseMarks): a no-op outside PIVOTA_ENV=sandbox. In the
+// sandbox, X-Pivota-Env: sandbox on every response, and every JSON body on the MCP doors and the REST invoke route
+// marked sandbox. Mounted first so no handler's response escapes it.
+app.use(require('./config/sandbox').sandboxResponseMarks((req) => {
+  const p = String(req?.path || '').toLowerCase().replace(/\/+$/, '');
+  return p === '/mcp' || p === '/ucp/mcp' || p === '/agent/shop/v1/invoke' || p === '/agent/creator/v1/invoke';
+}));
 
 async function fetchBackendAdmin({ method, path, params, data }) {
   if (!ADMIN_API_KEY) {
@@ -31042,7 +31092,9 @@ function extractInvokeAuthToken(req) {
   return bearer || null;
 }
 
-const INVOKE_EXTERNAL_API_KEY_PATTERN = /^ak_(live_)?[0-9a-f]{64}$/;
+// The key FORMAT this environment accepts lives in ONE place, src/config/sandbox.js agentApiKeyFormatOk: today's
+// `ak_(live_)?<64 hex>` everywhere, `ak_test_<64 hex>` only under PIVOTA_ENV=sandbox. Read per request.
+const { agentApiKeyFormatOk: invokeApiKeyFormatOk, markSandboxRpcOutcome, markSandboxRpcBody } = require('./config/sandbox');
 const invokeAuthCache = new Map();
 const AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
@@ -31752,7 +31804,7 @@ async function requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken 
     });
   }
 
-  if (!INVOKE_EXTERNAL_API_KEY_PATTERN.test(provided)) {
+  if (!invokeApiKeyFormatOk(provided)) {
     logger.warn(
       {
         path: req?.path || null,
@@ -33302,6 +33354,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {},
       // The loopback search hop asks this process's invoke egress to say whether it probed the page's legacy seed
       // rows (LEGACY_SEED_PROBE_HEADER, read below). A per-process token: outside callers never get the header.
       ...(selfInvoked && op === 'find_products_multi' ? legacySeedProbeHopHeaders() : {}),
+      // Marks this hop as a door's search (src/invokeEgress.js isKernelSearchHop). The invoke route records it on its
+      // request store; the Cafe24 catalog shadow observes ONLY such searches, never another caller's query.
+      ...(selfInvoked && op === 'find_products_multi' ? kernelSearchHopHeaders() : {}),
       // Decision D-10: a search this gateway answered for an ASSUMED US vouches for its own `search.market_assumed`
       // (the invoke route strips the flag from every request that cannot): see loopbackCallerAssertion.js.
       ...(url.startsWith(`${selfInvokeBase()}/`) ? loopbackMarketAssumedHeaders(payload) : {}),
@@ -35141,9 +35196,10 @@ function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
       );
       try {
         const adapter = await getPublicReadMcpAdapter();
-        const out = await adapter.handleJsonRpc(
+        // Marked before the heartbeat can write it raw (a no-op outside the sandbox).
+        const out = markSandboxRpcOutcome(await adapter.handleJsonRpc(
           withMcpToolCallObserver({ headers: req.headers || {}, body: req.body }, toolCallRecorder),
-        );
+        ));
         toolCallRecorder?.recordRpcResponse(out);
         logMcpToolCallPriceVerification(req, out);
         // finish() returns true when the heartbeat already committed the wire (slow path) and wrote the
@@ -35162,7 +35218,7 @@ function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
         logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
         toolCallRecorder?.recordInternalError();
         const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
-        if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+        if (heartbeat.fail(markSandboxRpcBody({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } }))) {
           return undefined;
         }
         return res.status(503).json({ error: 'mcp_unavailable' });
@@ -35358,6 +35414,8 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
             // A listed synthetic caller is shown only the tools it may call: an LLM simulator would otherwise
             // try the rest, be refused, and count those refusals as tool errors.
             if (req.syntheticCaller && req.body?.method === 'tools/list') out = filterToolsListForSynthetic(out);
+            // Marked before the heartbeat can write it raw (a no-op outside the sandbox).
+            out = markSandboxRpcOutcome(out);
             toolCallRecorder?.recordRpcResponse(out);
             logMcpToolCallPriceVerification(req, out);
             if (heartbeat.finish(out)) {
@@ -35373,7 +35431,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
             logger.error({ err: err?.message || String(err) }, failureLabel);
             toolCallRecorder?.recordInternalError();
             const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
-            if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+            if (heartbeat.fail(markSandboxRpcBody({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } }))) {
               return undefined;
             }
             return res.status(503).json({ error: 'mcp_unavailable' });
@@ -39977,6 +40035,12 @@ app.get('/version', (req, res) => {
     branch: SERVICE_GIT_BRANCH || null,
     deployment_id: SERVICE_DEPLOYMENT_ID || null,
     started_at: SERVICE_STARTED_AT,
+    // The environment label (src/config/platform.js platformEnv, read per request): production | staging |
+    // sandbox | development | test, so a run driver can pin which environment it is talking to. On a managed
+    // platform that names no environment this is the fail-closed "production" (and the boot refuses there anyway).
+    // The production UNION wins, as every guard sees it: PIVOTA_ENV=staging beside NODE_ENV=production reports
+    // "production", never "staging".
+    env: platformIsProduction() ? 'production' : platformEnvLabel(),
   });
 });
 
@@ -56105,6 +56169,9 @@ function registerExternalInvokeRoute(path, clientChannel) {
           req?.header('x-buyer-ref'),
         ),
         ...loopbackSyntheticInvokeContext(req),
+        // A door's search_catalog arriving over the kernel's own loopback hop (src/invokeEgress.js). Read by the
+        // Cafe24 catalog shadow, which observes no other search.
+        kernel_search_hop: isKernelSearchHop(req),
       },
       () =>
         handleInvokeRequest(req, res, {
