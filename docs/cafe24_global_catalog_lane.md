@@ -1,21 +1,26 @@
 # Cafe24 Global Catalog lane (search-only, shadow-only)
 
 Code: `src/services/cafe24GlobalCatalog.js`. Hook: `maybeShadowCafe24CatalogSearch` in `src/server.js`, called
-from `maybeOverlayLiveSearchPrice`, which every served search page goes through. Tests:
-`tests/cafe24_global_catalog.node.test.cjs`.
+from `maybeOverlayLiveSearchPrice`. Tests: `tests/cafe24_global_catalog.node.test.cjs`.
+
+**Coverage.** That overlay runs on the two beauty search paths only: the external-seed mainline and the public
+beauty discovery bridge. A door search served by any other lane (the canonical direct lane, upstream v2 search) and
+a door search answered from the door's cache never reach the hook. Shadow counts therefore describe beauty door
+searches that missed the door cache, not all searches.
 
 ## What it does
 
-- In `shadow` mode, a page-1 search from an MCP / UCP door's `search_catalog` (the commerce kernel's own loopback
+- In `shadow` mode, a page-1 beauty search (see Coverage) from an MCP / UCP door's `search_catalog` (the commerce kernel's own loopback
   hop, `isKernelSearchHop` in `src/invokeEgress.js`) with a market we price starts one bounded Cafe24
   `search_catalog` call for the same query and market, once per request. No other caller is observed: the chat
   re-invoke, recommendation recall, the commerce-resolution fallback, admin tools and synthetic calls never are.
 - A search that sent a request logs one `cafe24_catalog_shadow` line containing only counts: products, variants,
   priced, priced in the market's currency, currency mismatches, in stock, and distinct sellers. It also logs the
-  outcome `reason`, `http_status`, `latency_ms`, and `mcp_error_code` / `ucp_error_code` only when they match
-  `^[A-Za-z0-9_.:-]{1,64}$` (else null).
+  outcome `reason`, `http_status` and `latency_ms`. `mcp_error_code` / `ucp_error_code` are logged as an integer
+  JSON-RPC code, a code from the lane's known-code list, or `other` for any other string.
 - A search refused before sending (no market, ceiling, breaker, a remembered discovery failure, ...) is only counted.
-  The counts are logged at most once a minute as `cafe24_catalog_shadow_refusals`.
+  The counts are logged at most once a minute as `cafe24_catalog_shadow_refusals`, on a timer, so the last window is
+  logged even when traffic stops.
 - The served page is never changed. The call is never awaited. A failure in the lane never reaches the page.
 - Every normalized candidate has `buyable: false` and `execution.eligible: false`. Its blockers always include
   `execution_route_unverified` and `seller_not_admitted`. Others are added as they apply: `merchant_unresolved`,
@@ -68,8 +73,13 @@ Offline:
 node --test tests/cafe24_global_catalog.node.test.cjs
 ```
 
-Before any shadow flip, check the gateway service's CPU allocation: the shadow call runs after the response is
-sent, and CPU throttled outside requests would inflate `latency_ms`, cause timeouts and trip the breaker.
+Pre-flip checklist (before any environment turns `shadow` on):
+
+1. Check the gateway service's CPU allocation. The shadow call can outlive the response, and CPU throttled outside
+   requests would inflate `latency_ms`, cause timeouts and trip the breaker.
+2. Confirm `SELF_INVOKE_BASE` is unset on the gateway service (a presence check only). The door-search marker is
+   accepted only over a loopback socket, so a self-invoke base that leaves the process would stop every observation.
+3. Read the Coverage note above before reading any counts.
 
 Live access has not been verified. The first live check should run from the gateway's normal egress in staging, with
 `CAFE24_CATALOG_SEARCH=shadow`. Read the `cafe24_catalog_shadow` lines and their `reason` values. `ok` with a non-zero

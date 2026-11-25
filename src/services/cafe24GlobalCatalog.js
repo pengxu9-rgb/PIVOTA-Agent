@@ -52,7 +52,8 @@
  *
  * LOGS. A search that sent a request logs one `cafe24_catalog_shadow` line of counts and allowlisted codes. A search
  * refused before sending (no market, ceiling, breaker, ...) is only counted, and the counts are logged at most once a
- * minute as `cafe24_catalog_shadow_refusals`. Error codes from the server are logged only when they match SAFE_CODE.
+ * minute as `cafe24_catalog_shadow_refusals` (on a timer, so the last window is not lost when traffic stops). A string
+ * error code from the server is logged only when it is in KNOWN_CODES; any other string is logged as 'other'.
  *
  * FAILURES ARE NAMED SEPARATELY (REASON): a transport failure, an HTTP status, a JSON-RPC (MCP) error, an MCP tool
  * error, a UCP business error, and a schema mismatch are different outcomes. HTTP 200 alone is never success.
@@ -103,8 +104,17 @@ const MAX_IMAGES = 3;
 const MAX_VARIANTS = 50;
 const MAX_QUERY_LENGTH = 200;
 const REFUSAL_LOG_INTERVAL_MS = 60 * 1000;
-// An error code from the server is logged only in this shape; anything else (free text, a query echoed back) is null.
-const SAFE_CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
+// A server-supplied STRING code is logged only when it is one of these (UCP 2026-04-08 message / error codes and the
+// profile refusals seen from UCP servers); any other string is logged as 'other', never as itself, because a
+// one-word code can still be the buyer's query echoed back. Integer JSON-RPC codes are logged as they are.
+const KNOWN_CODES = Object.freeze(new Set([
+  'invalid_request', 'invalid_params', 'invalid_argument', 'not_found', 'unauthorized', 'forbidden',
+  'rate_limited', 'too_many_requests', 'internal_error', 'unavailable', 'timeout',
+  'unsupported_country', 'unsupported_currency', 'unsupported_version', 'version_unsupported',
+  'capability_unsupported', 'profile_unreachable', 'profile_invalid', 'invalid_profile',
+  'session_required', 'session_not_found',
+]));
+const OTHER_CODE = 'other';
 
 const REASON = Object.freeze({
   OK: 'ok',
@@ -176,10 +186,12 @@ function perMinuteCeiling(env = process.env) {
   return Math.max(1, Math.min(Number(raw), MAX_PER_MIN));
 }
 
-/** A server-supplied code, or null unless it is an integer or matches SAFE_CODE. */
+/** A server-supplied code for a log line: an integer as is, a known code as is, any other string 'other', else null. */
 function safeCode(v) {
   if (Number.isInteger(v)) return v;
-  return typeof v === 'string' && SAFE_CODE.test(v) ? v : null;
+  if (typeof v !== 'string' || !v.trim()) return null;
+  const c = v.trim().toLowerCase();
+  return KNOWN_CODES.has(c) ? c : OTHER_CODE;
 }
 
 /** An opaque id: a non-empty string (or a finite number, stringified) of bounded length, kept exactly. */
@@ -460,6 +472,11 @@ function createCafe24CatalogLane(options = {}) {
   const envOf = () => options.env || process.env;
   const logger = options.logger || null;
   const baseFetch = typeof options.fetchImpl === 'function' ? options.fetchImpl : createPublicNetworkFetch();
+  // The refusal flush timer. Unref'd, so it never holds the process open; injectable for tests.
+  const scheduleTimer = typeof options.setTimer === 'function'
+    ? options.setTimer
+    : (fn, ms) => { const t = setTimeout(fn, ms); if (t && typeof t.unref === 'function') t.unref(); return t; };
+  const cancelTimer = typeof options.clearTimer === 'function' ? options.clearTimer : (t) => clearTimeout(t);
 
   let discovery = null; // { ok, reason, endpoint, checkedAtMs }
   let discoveryInFlight = null;
@@ -471,6 +488,7 @@ function createCafe24CatalogLane(options = {}) {
   let breakerMs = 0;
   let refusals = {};
   let refusalsSinceMs = null;
+  let refusalTimer = null;
 
   // A client per call, so the Retry-After of THIS call's answer is read without sharing state across calls.
   // Returns null when the client would carry any credential or signature: the options above should make that
@@ -674,15 +692,22 @@ function createCafe24CatalogLane(options = {}) {
     } catch { /* a log failure never reaches the page */ }
   }
 
-  // Refusals (nothing sent) are counted, and the counts are logged at most once per REFUSAL_LOG_INTERVAL_MS.
+  // Refusals (nothing sent) are counted. The first refusal of a window starts a timer that logs the window's counts
+  // REFUSAL_LOG_INTERVAL_MS later, so counts are logged at most once per interval and the last window is never lost.
   function countRefusal(reason) {
     const t = now();
-    if (refusalsSinceMs === null) refusalsSinceMs = t;
+    if (refusalsSinceMs === null) {
+      refusalsSinceMs = t;
+      try { refusalTimer = scheduleTimer(flushRefusals, REFUSAL_LOG_INTERVAL_MS); } catch { refusalTimer = null; }
+    }
     refusals[reason] = (refusals[reason] || 0) + 1;
-    if (t - refusalsSinceMs >= REFUSAL_LOG_INTERVAL_MS) flushRefusals();
   }
 
   function flushRefusals() {
+    if (refusalTimer !== null) {
+      try { cancelTimer(refusalTimer); } catch { /* ignore */ }
+      refusalTimer = null;
+    }
     if (refusalsSinceMs === null) return;
     const counts = refusals;
     const windowMs = Math.max(0, now() - refusalsSinceMs);

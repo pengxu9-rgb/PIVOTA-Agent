@@ -530,39 +530,57 @@ test('shadow: logs counts only (no query, id, title, url or price) and never rej
 
 // ---- log hygiene, refusal batching, breaker accounting ---------------------------------------------------------
 
-test('logs: server-supplied codes are logged only when they look like codes', async () => {
+test('logs: a string code is logged only when known; any other string is "other", never itself', async () => {
   const lines = [];
-  const biz = fakeCatalog({ onCall: async () => jsonResponse(toolText({ ucp: { status: 'error' }, messages: [{ type: 'error', code: 'no results for my-secret-query' }] })) });
-  await makeLane(biz, { logger: { info: (o) => lines.push(o) } }).observeSearch({ query: 'my-secret-query', market: 'US' });
-  const rpc = fakeCatalog({ onCall: async () => jsonResponse({ jsonrpc: '2.0', id: 1, error: { code: 'bad query my-secret-query', message: 'x' } }) });
-  await makeLane(rpc, { logger: { info: (o) => lines.push(o) } }).observeSearch({ query: 'my-secret-query', market: 'US' });
-  const ok = fakeCatalog({ onCall: async () => jsonResponse(toolText({ ucp: { status: 'error' }, messages: [{ type: 'error', code: 'unsupported_country' }] })) });
-  await makeLane(ok, { logger: { info: (o) => lines.push(o) } }).observeSearch({ query: 'x', market: 'US' });
-  assert.equal(lines.length, 3);
-  assert.equal(lines[0].reason, REASON.UCP_BUSINESS_ERROR);
-  assert.equal(lines[0].ucp_error_code, null);
-  assert.equal(lines[1].reason, REASON.MCP_ERROR);
-  assert.equal(lines[1].mcp_error_code, null);
-  assert.equal(lines[2].ucp_error_code, 'unsupported_country');
-  assert.equal(JSON.stringify(lines).includes('my-secret-query'), false);
+  const say = async (onCall, query) => {
+    const cat = fakeCatalog({ onCall });
+    await makeLane(cat, { logger: { info: (o) => lines.push(o) } }).observeSearch({ query, market: 'US' });
+  };
+  const biz = (code) => async () => jsonResponse(toolText({ ucp: { status: 'error' }, messages: [{ type: 'error', code }] }));
+  await say(biz('no results for my-secret-query'), 'my-secret-query');
+  await say(biz('retinol'), 'retinol');
+  await say(biz('my-secret-query'), 'my-secret-query');
+  await say(async () => jsonResponse({ jsonrpc: '2.0', id: 1, error: { code: 'tretinoin', message: 'x' } }), 'tretinoin');
+  await say(biz('Unsupported_Country'), 'x');
+  await say(async () => jsonResponse({ jsonrpc: '2.0', id: 1, error: { code: -32602, message: 'retinol' } }), 'retinol');
+  assert.equal(lines.length, 6);
+  assert.deepEqual(lines.map((l) => l.ucp_error_code ?? l.mcp_error_code),
+    ['other', 'other', 'other', 'other', 'unsupported_country', -32602]);
+  const flat = JSON.stringify(lines);
+  for (const echo of ['my-secret-query', 'retinol', 'tretinoin']) assert.equal(flat.includes(echo), false, echo);
 });
 
-test('logs: a search refused before sending is counted, not logged per search; counts flush at most once a minute', async () => {
-  const c = clock();
+test('logs: refusals are counted, not logged per search; a timer logs the window once, even when traffic stops', async () => {
   const lines = [];
+  const timers = [];
+  const cleared = [];
   const cat = fakeCatalog();
-  const l = makeLane(cat, { now: c.now, logger: { info: (o) => lines.push(o) } });
+  const l = createCafe24CatalogLane({
+    fetchImpl: cat.fetchImpl,
+    profileUrl: PROFILE,
+    env: { CAFE24_CATALOG_SEARCH: 'shadow' },
+    logger: { info: (o) => lines.push(o) },
+    setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimer: (t) => cleared.push(t),
+  });
   for (let i = 0; i < 5; i += 1) await l.observeSearch({ query: 'toner' });
   await l.observeSearch({ query: 'toner', market: 'DE' });
+  await l.observeSearch({ query: '', market: 'US' });
   assert.equal(lines.length, 0, 'no line per refused search');
   assert.equal(cat.requests.length, 0);
-  c.advance(60 * 1000);
-  await l.observeSearch({ query: '', market: 'US' });
+  assert.equal(timers.length, 1, 'one timer per window');
+  assert.equal(timers[0].ms, 60 * 1000);
+  timers[0].fn(); // the window ends with no further traffic
   assert.equal(lines.length, 1);
   assert.equal(lines[0].event, 'cafe24_catalog_shadow_refusals');
   assert.deepEqual(lines[0].counts, { no_market: 5, market_not_priced: 1, no_query: 1 });
+  timers[0].fn();
+  assert.equal(lines.length, 1, 'an empty window logs nothing');
   await l.observeSearch({ query: 'toner' });
-  assert.equal(lines.length, 1, 'the next window starts empty');
+  assert.equal(timers.length, 2, 'the next window starts its own timer');
+  l.flushRefusals();
+  assert.equal(lines.length, 2);
+  assert.deepEqual(cleared, [1, 2]);
 });
 
 test('breaker: a remembered discovery failure is not counted again on reuse', async () => {

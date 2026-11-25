@@ -14526,10 +14526,12 @@ function maybeOverlayLiveSearchPrice(response, search = {}, opts = {}) {
   return maybeOverlayLiveSearchPriceRaw(response, search, opts);
 }
 
-// CAFE24 GLOBAL CATALOG SHADOW (services/cafe24GlobalCatalog.js). Every served search page passes through the overlay
-// above, so both search paths meet here. Off by default (CAFE24_CATALOG_SEARCH). In `shadow` it starts one bounded
-// Cafe24 search for the same query and market and logs counts. It is never awaited, never throws, and nothing it
-// learns reaches `response`.
+// CAFE24 GLOBAL CATALOG SHADOW (services/cafe24GlobalCatalog.js). Called from the overlay above, which runs on the two
+// BEAUTY search paths only: the external-seed mainline (searchBeautyExternalSeedProductsMainline) and the public beauty
+// discovery bridge (handleInvokeRequest). A door search served by any other lane (the canonical direct lane, upstream
+// v2 search) and a door cache hit never reach it, so the shadow's counts describe beauty door searches only. Off by
+// default (CAFE24_CATALOG_SEARCH). In `shadow` it starts one bounded Cafe24 search for the same query and market and
+// logs counts. It is never awaited, never throws, and nothing it learns reaches `response`.
 //
 // WHOSE SEARCHES. Only a door's search_catalog: the request store must say `kernel_search_hop` (the commerce kernel's
 // own loopback hop, src/invokeEgress.js isKernelSearchHop). Every other caller of this overlay is refused, because
