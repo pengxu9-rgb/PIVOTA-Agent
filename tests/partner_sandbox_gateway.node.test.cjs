@@ -102,6 +102,8 @@ test('/version: every environment reports its label as `env`, after the fields i
     [{}, 'test'],
     // A Cloud Run revision with no environment name: the fail-closed answer, said out loud.
     [{ K_SERVICE: 'gateway', NODE_ENV: '' }, 'production'],
+    // The production UNION wins over the label: staging beside a production signal reports production.
+    [{ PIVOTA_ENV: 'staging', NODE_ENV: 'production' }, 'production'],
   ];
   const savedNodeEnv = process.env.NODE_ENV;
   try {
@@ -118,6 +120,52 @@ test('/version: every environment reports its label as `env`, after the fields i
   } finally {
     process.env.NODE_ENV = savedNodeEnv;
   }
+});
+
+test('sandbox marks through the real server: invoke bodies and the header on every response; none outside the sandbox', async () => {
+  // The REST invoke route: its format refusal carries the mark in the sandbox (and the header).
+  // Outside the sandbox, ak_test_ is the key the format check refuses (before any backend dial).
+  const sbx = await supertest(app).post('/agent/shop/v1/invoke').set('X-Agent-API-Key', `ak_test_${HEX('7')}`)
+    .send(ORDER_STATUS).then((r) => r);
+  process.env.PIVOTA_ENV = 'sandbox';
+  const sbxInvoke = await supertest(app).post('/agent/shop/v1/invoke').set('X-Agent-API-Key', `ak_live_${HEX('7')}`).send(ORDER_STATUS);
+  assert.equal(sbxInvoke.status, 401);
+  assert.equal(sbxInvoke.body.sandbox, true);
+  assert.equal(sbxInvoke.headers['x-pivota-env'], 'sandbox');
+  const sbxVersion = await supertest(app).get('/version');
+  assert.equal(sbxVersion.headers['x-pivota-env'], 'sandbox');
+  assert.equal('sandbox' in sbxVersion.body, false, '/version is not a marked path');
+  delete process.env.PIVOTA_ENV;
+  // Outside the sandbox the same call is unchanged: no mark, no header.
+  assert.equal(sbx.status, 401);
+  assert.equal('sandbox' in sbx.body, false);
+  assert.equal(sbx.headers['x-pivota-env'], undefined);
+});
+
+test('sandbox marks: a tools/call refused BEFORE the adapter (blocked money op) is marked in the sandbox only', async () => {
+  const call = async (env, key) => {
+    Object.assign(process.env, { AGENT_CHECKOUT_STRICT: '1', ...env });
+    delete process.env.AGENT_CHECKOUT_HOSTED_LINK_ENABLED;
+    nock(INTROSPECT_BASE).post(INTROSPECT_PATH, (b) => b?.api_key === key)
+      .reply(200, { valid: true, agent_id: 'agent_sbx', is_active: true, auth_source: 'api_keys' });
+    try {
+      return await supertest(app).post('/mcp').set('X-Agent-API-Key', key)
+        .send({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'create_payment_link', arguments: {} } });
+    } finally {
+      delete process.env.AGENT_CHECKOUT_STRICT;
+    }
+  };
+  const sbx = await call({ PIVOTA_ENV: 'sandbox' }, `ak_test_${HEX('8')}`);
+  assert.equal(sbx.status, 200, JSON.stringify(sbx.body));
+  assert.equal(sbx.body.result?.isError, true, JSON.stringify(sbx.body));
+  assert.match(JSON.stringify(sbx.body.result.content), /OPERATION_NOT_ALLOWED/);
+  assert.deepEqual(sbx.body.result._meta, { sandbox: true });
+  delete process.env.PIVOTA_ENV;
+  invokeAuthCache.clear();
+  const prod = await call({ PIVOTA_ENV: 'production' }, `ak_live_${HEX('9')}`);
+  assert.equal(prod.status, 200, JSON.stringify(prod.body));
+  assert.match(JSON.stringify(prod.body.result.content), /OPERATION_NOT_ALLOWED/);
+  assert.equal(prod.body.result._meta, undefined);
 });
 
 // --------------------------------------------------------------------------------------------------------------

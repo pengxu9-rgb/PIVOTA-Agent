@@ -102,6 +102,8 @@ function runAppProjectCandidates(host) {
 
 /** Test-only: refuse these digests instead of the shipped ones; no argument restores the shipped list. */
 function setRefusedProjectDigestsForTests(digests) {
+  // Never in a deploy: a caller there could otherwise swap the refused projects for none.
+  if (!platform.isTestRuntime()) throw new Error('setRefusedProjectDigestsForTests is test-only');
   refusedProjectDigests = new Set(digests === undefined ? SHIPPED_REFUSED_PROJECT_DIGESTS : digests);
 }
 
@@ -210,6 +212,8 @@ function sandboxConfigProblems(env = process.env) {
   // Under a test runtime the invoke route can bypass API-key auth (src/server.js shouldBypassInvokeAuthForTest).
   if (str(e.NODE_ENV).toLowerCase() === 'test') problems.push('NODE_ENV(test disables auth)');
   if (str(e.JEST_WORKER_ID)) problems.push('JEST_WORKER_ID(test disables auth)');
+  // platform.isTestRuntime also answers true on NODE_TEST_CONTEXT (set by `node --test`).
+  if (str(e.NODE_TEST_CONTEXT)) problems.push('NODE_TEST_CONTEXT(test runtime)');
 
   // Rails: Reap only. AgenPas drops `reap` and falls back to a2a unless consent is on (src/agenpas/config.js), so
   // the raw value alone is not enough: the rails the page would actually mint must be exactly ['reap'].
@@ -319,6 +323,57 @@ function markSandboxToolResult(result) {
   return out;
 }
 
+/**
+ * A JSON body from an MCP door or the REST invoke route, marked for the sandbox (never mutated):
+ *   - a JSON-RPC result: `_meta.sandbox` (and `structuredContent.sandbox`), as markSandboxToolResult;
+ *   - a JSON-RPC error: `error.data.sandbox: true` (the spec's place for extra error information);
+ *   - any other plain object (an invoke answer, a 401/429/503 body): a top-level `sandbox: true`;
+ *   - a JSON-RPC batch: each member.
+ */
+function markSandboxResponseBody(body) {
+  if (Array.isArray(body)) return body.map((member) => (isPlainObject(member) && member.jsonrpc === '2.0' ? markSandboxResponseBody(member) : member));
+  if (!isPlainObject(body)) return body;
+  if (body.jsonrpc === '2.0') {
+    if (isPlainObject(body.result)) return { ...body, result: markSandboxToolResult(body.result) };
+    if (isPlainObject(body.error)) {
+      const data = isPlainObject(body.error.data) ? body.error.data : {};
+      return { ...body, error: { ...body.error, data: { ...data, sandbox: true } } };
+    }
+    return body;
+  }
+  return { ...body, sandbox: true };
+}
+
+/** An adapter outcome `{ status, headers, body }` with its body marked, in the sandbox only (else the same object). */
+function markSandboxRpcOutcome(out, env) {
+  if (!isSandbox(env) || !out || typeof out !== 'object') return out;
+  return { ...out, body: markSandboxResponseBody(out.body) };
+}
+
+/** A JSON-RPC body the server writes itself (the heartbeat's error), marked in the sandbox only. */
+function markSandboxRpcBody(body, env) {
+  return isSandbox(env) ? markSandboxResponseBody(body) : body;
+}
+
+/**
+ * THE ONE EXPRESS MIDDLEWARE for the sandbox's response marks (mounted first in src/server.js). Outside the sandbox
+ * it calls next() and does nothing else. In the sandbox: every response carries `X-Pivota-Env: sandbox`, and on a
+ * path `isMarkedPath(req)` names (the MCP doors and the REST invoke route) every `res.json` body is marked by
+ * markSandboxResponseBody, whichever handler sends it: tool results, tool refusals that never reach the adapter,
+ * JSON-RPC errors and HTTP error bodies alike. Bodies the heartbeat writes raw are marked at their two call sites.
+ */
+function sandboxResponseMarks(isMarkedPath) {
+  return function sandboxResponseMarksMiddleware(req, res, next) {
+    if (!isSandbox()) return next();
+    res.setHeader('X-Pivota-Env', platform.PLATFORM_ENVS.SANDBOX);
+    if (typeof isMarkedPath === 'function' && isMarkedPath(req)) {
+      const json = res.json.bind(res);
+      res.json = (body) => json(markSandboxResponseBody(body));
+    }
+    return next();
+  };
+}
+
 module.exports = {
   LIVE_AGENT_API_KEY_PATTERN,
   SANDBOX_AGENT_API_KEY_PATTERN,
@@ -338,4 +393,8 @@ module.exports = {
   copiedPricesAreFresh,
   markSandboxToolValue,
   markSandboxToolResult,
+  markSandboxResponseBody,
+  markSandboxRpcOutcome,
+  markSandboxRpcBody,
+  sandboxResponseMarks,
 };

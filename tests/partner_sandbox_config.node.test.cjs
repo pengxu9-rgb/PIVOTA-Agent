@@ -592,3 +592,79 @@ test('shipped project digests match the REAL project parts (only when they are g
     sandbox.setRefusedProjectDigestsForTests(STAND_IN_PROJECT_PARTS.map(sandbox.projectPartDigest));
   }
 });
+
+// --------------------------------------------------------------------------------------------------------------
+// 7. Review fixes: digest known answers, the override guard, test runtimes, the response marks.
+// --------------------------------------------------------------------------------------------------------------
+
+test('project digest known answers: CI pins the salt and scrypt parameters (stand-in inputs only)', () => {
+  // If the salt, N/r/p or output length change, these change, and so would every shipped digest.
+  assert.equal(sandbox.projectPartDigest('zq7stand1n'), '4e14c7a7a1e6129e0072909c790c9d679b505b60e286bfa9c12ba719253b0529');
+  assert.equal(sandbox.projectPartDigest('900000000001'), 'f116f9d8e548ed10a6dd16cef7a68155a31b2d3ee0f922b51e75e081f7247ca4');
+});
+
+test('the refused-project override throws outside a test runtime', () => {
+  withProcessEnv({ NODE_ENV: undefined, NODE_TEST_CONTEXT: undefined, JEST_WORKER_ID: undefined }, () => {
+    assert.throws(() => sandbox.setRefusedProjectDigestsForTests([]), /test-only/);
+  });
+  // Inside one it still works (the suite relies on it).
+  sandbox.setRefusedProjectDigestsForTests(STAND_IN_PROJECT_PARTS.map(sandbox.projectPartDigest));
+});
+
+test('boot check: every spelling of a test runtime is refused (NODE_ENV any case, NODE_TEST_CONTEXT)', () => {
+  for (const v of ['test', 'TEST', 'Test', ' test ']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, NODE_ENV: v }) || '', /NODE_ENV\(test disables auth\)/, v);
+  }
+  assert.match(refusalOf({ ...SAFE_SANDBOX, NODE_TEST_CONTEXT: 'child-v8' }) || '', /NODE_TEST_CONTEXT\(test runtime\)/);
+  // Every value the platform's own reader calls a test runtime is refused.
+  for (const extra of [{ NODE_ENV: 'test' }, { NODE_ENV: 'TEST' }, { NODE_TEST_CONTEXT: 'x' }]) {
+    const env = { ...SAFE_SANDBOX, ...extra };
+    if (platform.isTestRuntime(env)) assert.ok(refusalOf(env), JSON.stringify(extra));
+  }
+});
+
+test('response marks: JSON-RPC results, JSON-RPC errors, batches and plain bodies', () => {
+  const m = sandbox.markSandboxResponseBody;
+  assert.deepEqual(m({ jsonrpc: '2.0', id: 1, result: { content: [], isError: true } }),
+    { jsonrpc: '2.0', id: 1, result: { content: [], isError: true, _meta: { sandbox: true } } });
+  assert.deepEqual(m({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error.' } }),
+    { jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error.', data: { sandbox: true } } });
+  assert.deepEqual(m({ jsonrpc: '2.0', id: 1, error: { code: -32001, message: 'x', data: { a: 1 } } }).error.data, { a: 1, sandbox: true });
+  assert.deepEqual(m([{ jsonrpc: '2.0', id: 1, result: {} }, { jsonrpc: '2.0', id: 2, error: { code: 1, message: 'm' } }]),
+    [{ jsonrpc: '2.0', id: 1, result: { _meta: { sandbox: true } } }, { jsonrpc: '2.0', id: 2, error: { code: 1, message: 'm', data: { sandbox: true } } }]);
+  assert.deepEqual(m({ error: 'mcp_unavailable' }), { error: 'mcp_unavailable', sandbox: true });
+  assert.equal(m('text'), 'text');
+  assert.equal(m(null), null);
+  const body = { a: 1 };
+  m(body);
+  assert.deepEqual(body, { a: 1 }, 'never mutates');
+  // The conditional helpers are identities outside the sandbox.
+  const out = { status: 200, headers: {}, body: { jsonrpc: '2.0', id: 1, result: {} } };
+  for (const [name, env] of Object.entries(NON_SANDBOX_ENVS)) {
+    assert.equal(sandbox.markSandboxRpcOutcome(out, env), out, name);
+    assert.equal(sandbox.markSandboxRpcBody(out.body, env), out.body, name);
+  }
+  assert.deepEqual(sandbox.markSandboxRpcOutcome(out, SAFE_SANDBOX).body.result, { _meta: { sandbox: true } });
+  assert.deepEqual(sandbox.markSandboxRpcBody({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'm' } }, SAFE_SANDBOX).error.data, { sandbox: true });
+});
+
+test('response marks middleware: header on every path, bodies only on marked paths, nothing outside the sandbox', async () => {
+  const app = express();
+  app.use(sandbox.sandboxResponseMarks((req) => req.path === '/marked'));
+  app.get('/marked', (req, res) => res.status(401).json({ error: 'UNAUTHORIZED' }));
+  app.get('/other', (req, res) => res.json({ ok: true }));
+  const call = (env, p) => withProcessEnv({ PIVOTA_ENV: undefined, NODE_ENV: undefined, K_SERVICE: undefined, ...env },
+    async () => supertest(app).get(p).then((r) => r));
+  const sbxMarked = await call({ PIVOTA_ENV: 'sandbox' }, '/marked');
+  assert.equal(sbxMarked.headers['x-pivota-env'], 'sandbox');
+  assert.deepEqual(sbxMarked.body, { error: 'UNAUTHORIZED', sandbox: true });
+  assert.equal(sbxMarked.status, 401);
+  const sbxOther = await call({ PIVOTA_ENV: 'sandbox' }, '/other');
+  assert.equal(sbxOther.headers['x-pivota-env'], 'sandbox');
+  assert.deepEqual(sbxOther.body, { ok: true });
+  for (const env of [{ PIVOTA_ENV: 'production' }, { PIVOTA_ENV: 'staging' }, {}]) {
+    const r = await call(env, '/marked');
+    assert.equal(r.headers['x-pivota-env'], undefined, JSON.stringify(env));
+    assert.deepEqual(r.body, { error: 'UNAUTHORIZED' }, JSON.stringify(env));
+  }
+});

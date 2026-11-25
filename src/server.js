@@ -108,6 +108,7 @@ const {
   gitBranch: platformGitBranch,
   serviceName: platformServiceName,
   platformEnv: platformEnvLabel,
+  isProduction: platformIsProduction,
   requirePlatformEnv,
 } = require('./config/platform');
 const logger = require('./logger');
@@ -31017,6 +31018,13 @@ function isPydanticMissingBodyField(err, fieldName) {
 }
 
 const app = express();
+// PARTNER SANDBOX marks (src/config/sandbox.js sandboxResponseMarks): a no-op outside PIVOTA_ENV=sandbox. In the
+// sandbox, X-Pivota-Env: sandbox on every response, and every JSON body on the MCP doors and the REST invoke route
+// marked sandbox. Mounted first so no handler's response escapes it.
+app.use(require('./config/sandbox').sandboxResponseMarks((req) => {
+  const p = String(req?.path || '').toLowerCase().replace(/\/+$/, '');
+  return p === '/mcp' || p === '/ucp/mcp' || p === '/agent/shop/v1/invoke' || p === '/agent/creator/v1/invoke';
+}));
 
 async function fetchBackendAdmin({ method, path, params, data }) {
   if (!ADMIN_API_KEY) {
@@ -31086,7 +31094,7 @@ function extractInvokeAuthToken(req) {
 
 // The key FORMAT this environment accepts lives in ONE place, src/config/sandbox.js agentApiKeyFormatOk: today's
 // `ak_(live_)?<64 hex>` everywhere, `ak_test_<64 hex>` only under PIVOTA_ENV=sandbox. Read per request.
-const { agentApiKeyFormatOk: invokeApiKeyFormatOk } = require('./config/sandbox');
+const { agentApiKeyFormatOk: invokeApiKeyFormatOk, markSandboxRpcOutcome, markSandboxRpcBody } = require('./config/sandbox');
 const invokeAuthCache = new Map();
 const AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
@@ -35188,9 +35196,10 @@ function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
       );
       try {
         const adapter = await getPublicReadMcpAdapter();
-        const out = await adapter.handleJsonRpc(
+        // Marked before the heartbeat can write it raw (a no-op outside the sandbox).
+        const out = markSandboxRpcOutcome(await adapter.handleJsonRpc(
           withMcpToolCallObserver({ headers: req.headers || {}, body: req.body }, toolCallRecorder),
-        );
+        ));
         toolCallRecorder?.recordRpcResponse(out);
         logMcpToolCallPriceVerification(req, out);
         // finish() returns true when the heartbeat already committed the wire (slow path) and wrote the
@@ -35209,7 +35218,7 @@ function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
         logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
         toolCallRecorder?.recordInternalError();
         const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
-        if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+        if (heartbeat.fail(markSandboxRpcBody({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } }))) {
           return undefined;
         }
         return res.status(503).json({ error: 'mcp_unavailable' });
@@ -35405,6 +35414,8 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
             // A listed synthetic caller is shown only the tools it may call: an LLM simulator would otherwise
             // try the rest, be refused, and count those refusals as tool errors.
             if (req.syntheticCaller && req.body?.method === 'tools/list') out = filterToolsListForSynthetic(out);
+            // Marked before the heartbeat can write it raw (a no-op outside the sandbox).
+            out = markSandboxRpcOutcome(out);
             toolCallRecorder?.recordRpcResponse(out);
             logMcpToolCallPriceVerification(req, out);
             if (heartbeat.finish(out)) {
@@ -35420,7 +35431,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
             logger.error({ err: err?.message || String(err) }, failureLabel);
             toolCallRecorder?.recordInternalError();
             const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
-            if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+            if (heartbeat.fail(markSandboxRpcBody({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } }))) {
               return undefined;
             }
             return res.status(503).json({ error: 'mcp_unavailable' });
@@ -40027,7 +40038,9 @@ app.get('/version', (req, res) => {
     // The environment label (src/config/platform.js platformEnv, read per request): production | staging |
     // sandbox | development | test, so a run driver can pin which environment it is talking to. On a managed
     // platform that names no environment this is the fail-closed "production" (and the boot refuses there anyway).
-    env: platformEnvLabel(),
+    // The production UNION wins, as every guard sees it: PIVOTA_ENV=staging beside NODE_ENV=production reports
+    // "production", never "staging".
+    env: platformIsProduction() ? 'production' : platformEnvLabel(),
   });
 });
 
